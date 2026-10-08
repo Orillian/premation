@@ -40,7 +40,9 @@ console.log(`[buildMcp] wrote ${path.relative(root, outfile)}`);
 // exactly what the server announces.
 const toolsFile = path.join(path.dirname(outfile), 'tools.json');
 delete require.cache[outfile];
+process.env.PREMATION_MCP_NO_MAIN = '1'; // import for listTools only; do not start stdio
 const { listTools } = require(outfile);
+delete process.env.PREMATION_MCP_NO_MAIN;
 require('node:fs').writeFileSync(toolsFile, JSON.stringify(listTools().tools.map((t) => ({ name: t.name, description: t.description }))));
 console.log(`[buildMcp] wrote ${path.relative(root, toolsFile)}`);
 
@@ -51,13 +53,18 @@ if (process.argv.includes('--check')) {
     { jsonrpc: '2.0', method: 'notifications/initialized' },
     { jsonrpc: '2.0', id: 2, method: 'tools/list' },
   ].map((m) => JSON.stringify(m)).join('\n') + '\n';
-  const r = spawnSync(process.execPath, [outfile], { input: lines, encoding: 'utf8', timeout: 15000 });
-  const replies = r.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  const list = replies.find((m) => m.id === 2);
-  const count = list?.result?.tools?.length ?? 0;
-  if (!count) {
-    console.error('[buildMcp] check failed:', r.stderr || r.stdout);
-    process.exit(1);
+  // Run directly, and loaded through a wrapper the way Claude Desktop's
+  // built-in Node loads an extension entry (require.main is not the bundle).
+  const launches = { direct: [outfile], wrapper: ['-e', `require(${JSON.stringify(outfile)})`] };
+  let count = 0;
+  for (const [how, args] of Object.entries(launches)) {
+    const r = spawnSync(process.execPath, args, { input: lines, encoding: 'utf8', timeout: 15000 });
+    const replies = r.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    count = replies.find((m) => m.id === 2)?.result?.tools?.length ?? 0;
+    if (!count) {
+      console.error(`[buildMcp] check failed (${how} launch):`, r.stderr || r.stdout);
+      process.exit(1);
+    }
   }
   console.log(`[buildMcp] check ok: ${count} tools`);
 }

@@ -29,7 +29,8 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { ALL_TOOL_DEFS, MCP_SERVER_INSTRUCTIONS, mcpToolDefs } from '@motion/ai-tools';
+import { MCP_SERVER_INSTRUCTIONS } from '@motion/ai-tools';
+import { listTools } from './tools';
 import { PipeClient, PremationUnavailable, NOT_SET_UP, type McpToolResult } from './pipeClient';
 import { PREMATION_PROMPTS, findPrompt } from './prompts';
 
@@ -48,13 +49,6 @@ function makeLogger(dir: string | undefined): (line: string) => void {
       if (fs.existsSync(file) && fs.statSync(file).size > LOG_LIMIT) fs.renameSync(file, `${file}.1`);
       fs.appendFileSync(file, `${stamped}\n`);
     } catch { /* logging is best effort */ }
-  };
-}
-
-/** The tools this server announces. */
-export function listTools(): { tools: Array<{ name: string; description: string; inputSchema: unknown }> } {
-  return {
-    tools: mcpToolDefs(ALL_TOOL_DEFS).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
   };
 }
 
@@ -108,8 +102,13 @@ export async function main(): Promise<void> {
   log(`started ${VERSION}${dir ? '' : ' (no PREMATION_MCP_DIR — not configured by Premation)'}`);
 }
 
-// Run when executed (the bundle), not when a test imports it.
-if (require.main === module) {
+export { listTools };
+
+// Always start, except when the build script imports the bundle for listTools.
+// Not `require.main === module`: Claude Desktop's built-in Node loads the
+// extension entry through its own wrapper, where that is false and the server
+// would never answer `initialize`.
+if (process.env.PREMATION_MCP_NO_MAIN !== '1') {
   main().catch((err: unknown) => {
     process.stderr.write(`[premation-mcp] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
     process.exit(1);

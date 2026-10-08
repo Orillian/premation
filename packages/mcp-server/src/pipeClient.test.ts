@@ -5,7 +5,7 @@
 
 import path from 'node:path';
 import { NOT_SET_UP, PremationUnavailable, readEndpoint } from './pipeClient';
-import { listTools } from './server';
+import { listTools } from './tools';
 
 const files = (map: Record<string, string>) => (p: string): string => {
   const v = map[path.basename(p)];
