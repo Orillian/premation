@@ -468,6 +468,38 @@ const bridge = {
   reportEdition: (edition: string) => ipcRenderer.invoke('edition:report', edition),
 
   /**
+   * Claude for Premation (docs/MCP_PLAN.md; electron/mcp/). Settings drives the
+   * setup; the editor page runs the tool calls main relays from the MCP pipe.
+   */
+  mcp: {
+    getStatus: () => ipcRenderer.invoke('mcp:getStatus'),
+    connect: () => ipcRenderer.invoke('mcp:connect'),
+    enable: () => ipcRenderer.invoke('mcp:enable'),
+    disconnect: () => ipcRenderer.invoke('mcp:disconnect'),
+    repair: () => ipcRenderer.invoke('mcp:repair'),
+    test: () => ipcRenderer.invoke('mcp:test'),
+    getClaude: () => ipcRenderer.invoke('mcp:getClaude'),
+    onStatus: (handler: (status: unknown) => void) => {
+      const listener = (_event: unknown, status: unknown): void => handler(status);
+      ipcRenderer.on('mcp:status', listener);
+      return () => ipcRenderer.removeListener('mcp:status', listener);
+    },
+    /** The editor page can (or can no longer) take Claude's calls. */
+    setPageReady: (ready: boolean) => ipcRenderer.send('mcp:pageReady', ready),
+    onCall: (handler: (call: { id: number; clientId: number; name: string; args: unknown }) => void) => {
+      const listener = (_event: unknown, call: { id: number; clientId: number; name: string; args: unknown }): void => handler(call);
+      ipcRenderer.on('mcp:call', listener);
+      return () => ipcRenderer.removeListener('mcp:call', listener);
+    },
+    onClients: (handler: (clientIds: number[]) => void) => {
+      const listener = (_event: unknown, ids: number[]): void => handler(ids);
+      ipcRenderer.on('mcp:clients', listener);
+      return () => ipcRenderer.removeListener('mcp:clients', listener);
+    },
+    respond: (id: number, result: unknown) => ipcRenderer.invoke('mcp:result', id, result),
+  },
+
+  /**
    * The C++ engine process (NATIVE_CORE_PLAN C3; electron/engineHost.ts). Bytes
    * in, bytes out: the page's ProcessEngineClient owns the codec, main relays.
    * The engine is the only one; `engine:unavailable` says it cannot run (main

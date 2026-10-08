@@ -38,6 +38,7 @@ import { getAccentColor, setAccentColor } from '@core/theme/accent';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import type { KeyChord } from '@app-types/common';
 import { AiSettingsSection } from './AiSettingsSection';
+import { ClaudeConnectSection } from './ClaudeConnectSection';
 import { ExportSettingsSection } from './ExportSettingsSection';
 import { UpdatesControl } from './UpdatesControl';
 import { ObjectMatteControl } from './ObjectMatteControl';
@@ -1135,7 +1136,10 @@ export function Customize({ initialTab = 'shortcuts' }: { initialTab?: Tab }): J
         ) : tab === 'files' ? (
           <FilesTab />
         ) : tab === 'ai' ? (
-          <div className={styles.section}><AiSettingsSection /></div>
+          <div className={styles.section}>
+            <AiSettingsSection />
+            <ClaudeConnectSection />
+          </div>
         ) : (
           <AppearanceTab />
         )}

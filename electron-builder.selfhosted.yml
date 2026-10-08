@@ -39,6 +39,11 @@ extraResources:
     to: models/object-matte
     filter:
       - '*.onnx'
+  # Repeated: Claude for Premation's bundled MCP server (scripts/buildMcp.cjs).
+  - from: build/mcp
+    to: mcp
+    filter:
+      - premation-mcp.cjs
   - from: ../motion-back/dist
     to: backend/dist
   - from: ../motion-back/node_modules

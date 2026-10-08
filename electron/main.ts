@@ -50,6 +50,7 @@ import {
 } from './exportProcess';
 import { enforceProjectExtension } from './projectSavePath';
 import { vaultEncryptionAvailable } from './vaultCrypto';
+import { McpHost, removeFromClaude } from './mcp/ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
 /**
@@ -61,6 +62,9 @@ const DEV_SERVER_URL = (process.env.PREMATION_DEV_URL ?? 'http://localhost:5173'
 
 /** The main window, tracked so the OAuth deep-link handler can reach it. */
 let mainWindow: BrowserWindow | null = null;
+
+/** Claude for Premation: the local pipe MCP clients reach the editor through (electron/mcp/). */
+let mcpHost: McpHost | null = null;
 
 /** The export queue, owned here so it outlives any window (electron/exportProcess.ts). */
 let exportSupervisor: ExportSupervisor | null = null;
@@ -122,6 +126,20 @@ function handleDeepLink(url: string | undefined): void {
     return;
   }
 
+}
+
+// ── Uninstall: take Premation out of Claude's config ─────────────────────
+//
+// The Windows uninstaller runs `Premation.exe --premation-mcp-uninstall`
+// before it removes the files (build/installer.nsh; skipped on an update), so
+// Claude Desktop is not left launching a program that is gone. Only
+// `mcpServers.premation` is removed. Synchronous, before anything else boots,
+// and the process leaves straight after (docs/MCP_PLAN.md D9).
+if (process.argv.includes('--premation-mcp-uninstall')) {
+  try {
+    removeFromClaude();
+  } catch { /* an uninstall must never fail on this */ }
+  app.exit(0);
 }
 
 // ── What kind of launch is this? ─────────────────────────────────────────
@@ -1249,6 +1267,23 @@ app.whenReady().then(() => {
     },
   });
   registerEngineIpc(engineHost);
+
+  // Claude for Premation (docs/MCP_PLAN.md). Off until the user connects it in
+  // Settings; listens again at launch if it was on, and repairs a Claude config
+  // entry an update left pointing at an old path.
+  mcpHost = new McpHost({
+    userDataDir: app.getPath('userData'),
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.isPackaged ? app.getAppPath() : path.join(__dirname, '..'),
+    execPath: process.execPath,
+    getWindow: () => mainWindow,
+    log: (line) => console.log(line),
+  });
+  mcpHost.register();
+  void mcpHost.start();
+
   // Dev only: the real-app harness reads the frame-forwarding counters from
   // the main-process inspector (`globalThis.__premationEngineHost.frames.stats`).
   if (isDev) (globalThis as { __premationEngineHost?: EngineHost }).__premationEngineHost = engineHost;
@@ -1317,4 +1352,5 @@ app.on('before-quit', () => {
   // The engine gets a Goodbye and exits on its own; the supervisor kills it
   // after 2 s if it does not (a closing stdin ends it either way).
   void engineHost?.stop();
+  void mcpHost?.stop();
 });

@@ -69,6 +69,15 @@ export {
   stripUnsupported,
 } from './emit';
 export * from './tools';
+export {
+  MCP_EXCLUDED_TOOLS,
+  MCP_ONLY_TOOL_DEFS,
+  MCP_ONLY_TOOL_NAMES,
+  MCP_SERVER_INSTRUCTIONS,
+  isMcpTool,
+  mcpAllowsRegistryTool,
+  mcpToolDefs,
+} from './mcp';
 export { CRAFT_RULES, NEVER_RULES } from './craftRules';
 export {
   FAL_VIDEO_MODELS,

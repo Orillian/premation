@@ -1,0 +1,9 @@
+{
+  "name": "@motion/mcp-server",
+  "version": "1.0.0",
+  "description": "The MCP server Claude Desktop / Claude Code launch to drive Premation: stdio MCP on one side, the running app's local pipe on the other. A thin adapter — no editing logic. Bundled to resources/mcp/premation-mcp.cjs and run by the installed app's own binary as Node (docs/MCP_PLAN.md D6).",
+  "private": true,
+  "main": "src/server.ts",
+  "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json", "test": "jest --config jest.config.cjs" },
+  "license": "AGPL-3.0-only"
+}

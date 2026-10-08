@@ -1,0 +1,250 @@
+/* Settings → AI → Claude. Same quiet card language as the AI key rows. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-surface);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-2);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.lede,
+.subtle {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.caps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 12px;
+  font-size: 0.72rem;
+  color: var(--color-text-primary);
+}
+
+.caps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.capIcon {
+  color: var(--color-accent);
+  flex: none;
+}
+
+.pill {
+  flex: none;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  white-space: nowrap;
+}
+
+.pillOk {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+}
+
+.pillWarn {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
+}
+
+.pillOff {
+  color: var(--color-text-secondary);
+}
+
+.plan,
+.repair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  font-size: 0.72rem;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.repair {
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.clients {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+  color: var(--color-text-primary);
+}
+
+.clients li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+  flex: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.primary,
+.secondary {
+  font-size: 0.74rem;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.primary {
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.secondary {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--color-text-primary) 25%, transparent);
+  color: var(--color-text-primary);
+}
+
+.secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error,
+.note {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.note {
+  color: var(--color-text-primary);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+}
+
+.steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.stepOk {
+  color: var(--color-text-primary);
+}
+
+.stepOk > :first-child {
+  color: var(--color-success);
+}
+
+.stepFail {
+  color: var(--color-danger);
+}
+
+.detail {
+  color: var(--color-text-secondary);
+}
+
+.more {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.more summary {
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.more[open] > * + * {
+  margin-top: 8px;
+}
+
+.codeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.code {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-subtle);
+  font-family: var(--font-family-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}

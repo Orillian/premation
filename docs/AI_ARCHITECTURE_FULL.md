@@ -646,6 +646,10 @@ panel all refresh on mount, and without it the *oldest* answer could win.
 
 ---
 
+### 11a. Claude for Premation (MCP)
+
+Outside clients (Claude Desktop, Claude Code) reach the same registry through MCP: a bundled stdio server (`packages/mcp-server`) talks to Electron main over a local pipe (`electron/mcp/bridge.ts`), main relays each call to the editor page, and `src/core/ai/mcp/mcpHost.ts` runs it with the in-app transaction and tool context. The surface is `mcpToolDefs` in `packages/ai-tools/src/mcp.ts`. Design and decisions: `docs/MCP_PLAN.md`; user guide: `docs/CONNECT_CLAUDE.md`.
+
 ## 12. End-to-end workflows
 
 ### 12.1 Generative prompt, caster path (the common case)
