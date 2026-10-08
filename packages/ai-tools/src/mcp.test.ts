@@ -34,7 +34,8 @@ describe('mcpToolDefs', () => {
     const has = (n: string): boolean => ALL_TOOL_DEFS.some((d) => d.name === n);
     expect(isMcpTool('describe_scene', has)).toBe(true);
     expect(isMcpTool('render_frame', has)).toBe(true);
-    expect(isMcpTool('export_video', has)).toBe(false);
+    expect(isMcpTool('generate_video', has)).toBe(false);
+    expect(isMcpTool('export_video', has)).toBe(true);
     expect(isMcpTool('rm_rf', has)).toBe(false);
   });
 });

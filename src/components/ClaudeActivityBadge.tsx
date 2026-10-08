@@ -1,30 +1,51 @@
 /**
- * "Claude is editing…" — shown over the editor while an MCP client is running
- * a tool or holds an open edit group (docs/MCP_PLAN.md §3.3). Stop aborts the
- * running call and throws the open group away.
+ * "Claude is editing…" over the editor while Claude works, and the place an
+ * approval shows up where the user is looking (docs/MCP_PLAN.md §13).
  *
- * Also the component that mounts the editor's MCP host, so it renders on every
- * editor page; it draws nothing while Claude is idle (or in a browser build).
+ * Also mounts the editor's MCP host (useMcpHost), so it renders on every
+ * editor page; it draws nothing while Claude is idle or turned off.
  */
 
+import { Button } from '@components/Button';
 import { useMcpHost } from '@hooks/useMcpHost';
-import styles from './ClaudeActivityBadge.module.css';
-
-const toolLabel = (name: string): string => name.replace(/_/g, ' ');
+import { mcpFrontDesk } from '@core/ai/mcp/frontDesk';
+import { useClaudeStore } from '@stores/claudeStore';
+import { claudeToolLabel } from './claude/claudeLabels';
+import styles from './claude/Claude.module.css';
 
 export function ClaudeActivityBadge(): JSX.Element | null {
-  const { activity, stop } = useMcpHost();
-  if (!activity.busy && !activity.group) return null;
-  const what = activity.group ? `“${activity.group}”` : activity.tool ? toolLabel(activity.tool) : '';
+  useMcpHost();
+  const desk = useClaudeStore((s) => s.desk);
+  const approval = useClaudeStore((s) => s.approvals[0]);
+  const answer = useClaudeStore((s) => s.answerApproval);
+  const openPanel = useClaudeStore((s) => s.setPanelOpen);
+
+  if (approval) {
+    return (
+      <div className={styles.badge} data-mode="needs-you" role="alertdialog" aria-label="Claude is asking for permission">
+        <span className={styles.dot} data-mode="needs-you" aria-hidden="true" />
+        <span className={styles.badgeText}>
+          Claude wants to {approval.title.charAt(0).toLowerCase()}{approval.title.slice(1)}
+        </span>
+        <Button size="sm" variant="ghost" onClick={() => openPanel(true)}>Details</Button>
+        <Button size="sm" variant="secondary" onClick={() => answer(approval.id, false)}>Deny</Button>
+        <Button size="sm" variant="primary" onClick={() => answer(approval.id, true)}>Allow</Button>
+      </div>
+    );
+  }
+
+  if (!desk.busy && !desk.group) return null;
+  const doing = desk.tool ? claudeToolLabel(desk.tool) : 'Thinking';
   return (
-    <div className={styles.badge} role="status" aria-live="polite">
-      <span className={styles.dot} aria-hidden="true" />
-      <span className={styles.text}>
-        Claude is editing{what ? <span className={styles.what}> · {what}</span> : null}
+    <div className={styles.badge} data-mode="working" role="status" aria-live="polite">
+      <span className={styles.dot} data-mode="working" aria-hidden="true" />
+      <span className={styles.badgeText}>
+        Claude · {doing}
+        {desk.group ? <span className={styles.badgeWhat}> — “{desk.group}”</span> : null}
       </span>
-      <button type="button" className={styles.stop} onClick={stop} title="Stop Claude and undo its unfinished changes">
+      <Button size="sm" variant="secondary" onClick={() => void mcpFrontDesk()?.stop()} title="Stop Claude and undo its unfinished change">
         Stop
-      </button>
+      </Button>
     </div>
   );
 }

@@ -38,26 +38,38 @@ import {
   type PlatformInfo,
 } from './claudeConfig';
 import { runSelfTest, type TestStep } from './selfTest';
+import { EXTENSION_FILE, inspectExtension, writeExtension, type ExtensionState } from './extension';
 
 export const CLAUDE_DOWNLOAD_URL = 'https://claude.ai/download';
 
 export interface ClaudeSetupStatus {
   bridge: McpBridgeStatus;
-  claude: { installed: boolean; configs: Array<{ path: string; state: EntryState }> };
-  /** At least one Claude Desktop config launches this install. */
+  claude: {
+    installed: boolean;
+    configs: Array<{ path: string; state: EntryState }>;
+    /** Premation installed as a Claude Desktop extension (the route with the logo). */
+    extension: ExtensionState;
+  };
+  /** How Claude Desktop reaches Premation now, if at all. */
+  method: 'extension' | 'config' | null;
+  /** Premation is installed in Claude Desktop (extension or config entry) for THIS app. */
   configured: boolean;
-  /** A config names Premation but launches something that is gone. */
+  /** Claude names Premation but launches an old copy (the app or its data moved). */
   needsRepair: boolean;
+  /** The extension bundle Connect last wrote, if it exists — for "open it again". */
+  extensionFile: string | null;
   /** The bundled connector script exists. */
   connectorInstalled: boolean;
   claudeCodeCommand: string;
   manualSnippet: string;
-  /** The name Premation has in Claude: `premation`, or `premation-dev` for a development build. */
+  /** The name Premation has in Claude. */
   serverName: string;
+  /** A development build (it replaces an installed Premation's entry in Claude). */
+  devBuild: boolean;
 }
 
 export type ConnectResult =
-  | { ok: true; status: ClaudeSetupStatus; changed: boolean }
+  | { ok: true; status: ClaudeSetupStatus; changed: boolean; method: 'extension' | 'config'; extensionFile?: string; openError?: string }
   | { ok: false; code: 'not-installed' | 'malformed' | 'io' | 'unreadable' | 'no-connector'; message: string; status: ClaudeSetupStatus };
 
 export interface McpHostOptions {
@@ -100,22 +112,24 @@ export function platformInfo(): PlatformInfo {
 const nodeFs: ConfigFs = fs;
 
 /**
- * Remove Premation from every Claude Desktop config on this machine. Run by
- * the Windows uninstaller (`--premation-mcp-uninstall`) and by Disconnect.
+ * Remove Premation's config-file entries from every Claude Desktop config on
+ * this machine — `premation`, and `premation-dev` that early development
+ * builds wrote. Run by the Windows uninstaller (`--premation-mcp-uninstall`)
+ * and by Disconnect. An installed EXTENSION is Claude's to remove.
  */
-export function removeFromClaude(p: PlatformInfo = platformInfo(), cfs: ConfigFs = nodeFs, key: string = SERVER_KEY): Array<{ path: string; ok: boolean; message?: string }> {
-  return detectClaude(p, cfs).configPaths.map((file) => {
+export function removeFromClaude(p: PlatformInfo = platformInfo(), cfs: ConfigFs = nodeFs): Array<{ path: string; ok: boolean; message?: string }> {
+  return detectClaude(p, cfs).configPaths.flatMap((file) => [SERVER_KEY, DEV_SERVER_KEY].map((key) => {
     const r = removeEntry(file, cfs, key);
     return r.ok ? { path: file, ok: true } : { path: file, ok: false, message: r.message };
-  });
+  }));
 }
 
 export class McpHost {
   readonly bridge: McpBridge;
   private readonly spec: McpLaunchSpec;
   private readonly script: string;
-  /** `premation` for the installed app, `premation-dev` for a development build. */
-  readonly key: string;
+  /** Premation's name in Claude — the same for a development build (owner decision). */
+  readonly key = SERVER_KEY;
   private readonly readySenders = new WeakSet<WebContents>();
 
   constructor(private readonly o: McpHostOptions) {
@@ -132,17 +146,34 @@ export class McpHost {
     });
     this.spec = launchSpecFor(o, this.bridge.paths.dir);
     this.script = connectorScriptPath(o);
-    this.key = o.isPackaged ? SERVER_KEY : DEV_SERVER_KEY;
+  }
+
+  private extensionInputs() {
+    const o = this.o;
+    return {
+      appVersion: o.appVersion,
+      scriptPath: this.script,
+      toolsPath: path.join(path.dirname(this.script), 'tools.json'),
+      iconPath: o.isPackaged ? path.join(o.resourcesPath, 'build', 'icon.png') : path.join(o.appPath, 'build', 'icon.png'),
+      mcpDir: this.bridge.paths.dir,
+    };
   }
 
   status(): ClaudeSetupStatus {
     const det = detectClaude(platformInfo(), nodeFs);
     const configs = det.configPaths.map((p) => ({ path: p, state: inspectEntry(p, this.spec, nodeFs, this.key) }));
+    const extStates = det.configPaths.map((p) => inspectExtension(path.dirname(p), this.bridge.paths.dir));
+    const extension: ExtensionState = extStates.includes('ok') ? 'ok' : extStates.includes('stale') ? 'stale' : 'absent';
+    const configOk = configs.some((c) => c.state === 'ok');
+    const extFile = path.join(this.bridge.paths.dir, EXTENSION_FILE);
     return {
       bridge: this.bridge.status(),
-      claude: { installed: det.installed, configs },
-      configured: configs.some((c) => c.state === 'ok'),
-      needsRepair: configs.some((c) => c.state === 'stale'),
+      claude: { installed: det.installed, configs, extension },
+      method: extension === 'ok' ? 'extension' : configOk ? 'config' : null,
+      configured: extension === 'ok' || configOk,
+      needsRepair: extension !== 'ok' && !configOk && (extension === 'stale' || configs.some((c) => c.state === 'stale')),
+      extensionFile: fs.existsSync(extFile) ? extFile : null,
+      devBuild: !this.o.isPackaged,
       connectorInstalled: fs.existsSync(this.script),
       claudeCodeCommand: claudeCodeCommand(this.spec, process.platform, this.key),
       manualSnippet: manualSnippet(this.spec, this.key),
@@ -168,7 +199,43 @@ export class McpHost {
     }
   }
 
+  /**
+   * Connect, the way that shows Premation's logo in Claude: write the
+   * extension bundle and open it, so Claude Desktop shows its install screen.
+   * The config-file entries an earlier Connect wrote are removed, so Claude
+   * does not list Premation twice.
+   */
   async connect(): Promise<ConnectResult> {
+    if (!fs.existsSync(this.script)) {
+      return { ok: false, code: 'no-connector', message: `Premation's Claude connector is missing (${this.script}). Reinstall Premation.`, status: this.status() };
+    }
+    const det = detectClaude(platformInfo(), nodeFs);
+    if (!det.installed) {
+      return { ok: false, code: 'not-installed', message: 'Claude Desktop isn\'t installed.', status: this.status() };
+    }
+    await this.bridge.enable();
+    let file: string;
+    try {
+      file = writeExtension(this.extensionInputs());
+    } catch (err) {
+      return { ok: false, code: 'io', message: err instanceof Error ? err.message : String(err), status: this.status() };
+    }
+    removeFromClaude();
+    // Opens with whatever owns .mcpb — Claude Desktop. An empty string is success.
+    const openError = await shell.openPath(file);
+    this.o.log?.(`[mcp] opened extension ${file}${openError ? `: ${openError}` : ''}`);
+    this.pushStatus();
+    return { ok: true, status: this.status(), changed: true, method: 'extension', extensionFile: file, ...(openError ? { openError } : {}) };
+  }
+
+  /** Show the bundle in Explorer / Finder, to drag it into Claude by hand. */
+  revealExtension(): void {
+    const file = path.join(this.bridge.paths.dir, EXTENSION_FILE);
+    if (fs.existsSync(file)) shell.showItemInFolder(file);
+  }
+
+  /** The older route: a `claude_desktop_config.json` entry (generic icon, fully removable). */
+  async connectConfig(): Promise<ConnectResult> {
     if (!fs.existsSync(this.script)) {
       return { ok: false, code: 'no-connector', message: `Premation's Claude connector is missing (${this.script}). Reinstall Premation.`, status: this.status() };
     }
@@ -184,7 +251,7 @@ export class McpHost {
       changed ||= r.changed;
     }
     this.pushStatus();
-    return { ok: true, status: this.status(), changed };
+    return { ok: true, status: this.status(), changed, method: 'config' };
   }
 
   async enableOnly(): Promise<ClaudeSetupStatus> {
@@ -192,14 +259,22 @@ export class McpHost {
     return this.status();
   }
 
-  async disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[] }> {
-    const problems = removeFromClaude(platformInfo(), nodeFs, this.key).filter((r) => !r.ok).map((r) => r.message ?? r.path);
+  /**
+   * Turn Claude off: Premation stops accepting connections and rotates its
+   * token, and config-file entries are removed. An installed extension stays
+   * in Claude until the user removes it there (`extensionInstalled` says so).
+   */
+  async disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[]; extensionInstalled: boolean }> {
+    const problems = removeFromClaude().filter((r) => !r.ok).map((r) => r.message ?? r.path);
     await this.bridge.disable();
-    return { status: this.status(), problems };
+    const status = this.status();
+    return { status, problems, extensionInstalled: status.claude.extension !== 'absent' };
   }
 
+  /** Re-point Claude at this copy of Premation, by the route it uses now. */
   async repair(): Promise<ConnectResult> {
-    return this.connect();
+    const s = this.status();
+    return s.claude.extension === 'absent' && s.claude.configs.some((c) => c.state === 'stale') ? this.connectConfig() : this.connect();
   }
 
   stop(): Promise<void> {
@@ -213,6 +288,8 @@ export class McpHost {
   register(): void {
     handle('mcp:getStatus', () => this.status());
     handle('mcp:connect', () => this.connect());
+    handle('mcp:connectConfig', () => this.connectConfig());
+    handle('mcp:revealExtension', () => this.revealExtension());
     handle('mcp:enable', () => this.enableOnly());
     handle('mcp:disconnect', () => this.disconnect());
     handle('mcp:repair', () => this.repair());
@@ -228,8 +305,13 @@ export class McpHost {
       if (sender !== this.o.getWindow()?.webContents) return;
       if (!this.readySenders.has(sender)) {
         this.readySenders.add(sender);
-        // A reload or navigation drops the page's host without unmounting it cleanly.
-        sender.on('did-start-loading', () => this.bridge.setPageReady(false));
+        // A reload or a navigation to another document drops the page's host
+        // without unmounting it cleanly. Not `did-start-loading`: that also
+        // fires for the router's in-page (hash) navigations — home → editor —
+        // and would fail the very create_project that caused it.
+        sender.on('did-start-navigation', (details) => {
+          if (details.isMainFrame && !details.isSameDocument) this.bridge.setPageReady(false);
+        });
         sender.once('destroyed', () => this.bridge.setPageReady(false));
       }
       this.bridge.setPageReady(ready === true);

@@ -1,57 +1,45 @@
-/* Settings → AI → Claude. Same quiet card language as the AI key rows. */
+/* Settings → AI → Claude for Premation. Same quiet card language as the AI key rows. */
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 14px;
+  padding: 16px;
   border-radius: var(--radius-surface);
   border: 1px solid var(--color-border-subtle);
   background: var(--color-surface-2);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--color-text-primary);
 }
 
 .head {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  justify-content: space-between;
+}
+
+.logo {
+  flex: none;
+  border-radius: 8px;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
 }
 
 .title {
-  margin: 0 0 4px;
-  font-size: 0.85rem;
+  margin: 0 0 3px;
+  font-size: 0.86rem;
   font-weight: 600;
-  color: var(--color-text-primary);
 }
 
 .lede,
 .subtle {
   margin: 0;
   font-size: 0.72rem;
-  line-height: 1.45;
   color: var(--color-text-secondary);
-}
-
-.caps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 4px 12px;
-  font-size: 0.72rem;
-  color: var(--color-text-primary);
-}
-
-.caps li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.capIcon {
-  color: var(--color-accent);
-  flex: none;
 }
 
 .pill {
@@ -70,6 +58,11 @@
   border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
 }
 
+.pillReady {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
 .pillWarn {
   color: var(--color-warning);
   border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
@@ -79,8 +72,24 @@
   color: var(--color-text-secondary);
 }
 
+.dev {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border-strong);
+}
+
+.dev code {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-primary);
+}
+
 .plan,
-.repair {
+.repair,
+.getClaude,
+.live {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -88,7 +97,10 @@
   padding: 8px 10px;
   border-radius: var(--radius-control);
   font-size: 0.72rem;
-  color: var(--color-text-primary);
+}
+
+.plan,
+.getClaude {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 
@@ -96,33 +108,147 @@
   background: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
-.clients {
+.live {
+  justify-content: flex-start;
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+
+/* ── The three steps ── */
+
+.steps {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.72rem;
-  color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
 }
 
-.clients li {
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+/* The rail between step marks. */
+.step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 26px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-border-subtle);
+}
+
+.step[data-done='true']:not(:last-child)::before {
+  background: color-mix(in srgb, var(--color-success) 55%, transparent);
+}
+
+.stepMark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-1);
+}
+
+.step[data-current='true'] .stepMark {
+  color: var(--color-text-on-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.step[data-done='true'] .stepMark {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 60%, transparent);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.stepTitle {
+  font-weight: 600;
+}
+
+.step[data-done='false'][data-current='false'] .stepTitle {
+  color: var(--color-text-secondary);
+}
+
+.stepHelp {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.examples {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.example {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-1);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
 }
 
-.live {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-success);
-  flex: none;
+.example:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
+
+.example > :last-child {
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+/* ── Buttons ── */
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  margin-top: 4px;
 }
 
 .primary,
@@ -165,18 +291,13 @@
 .note {
   margin: 0;
   font-size: 0.72rem;
-  line-height: 1.45;
 }
 
 .error {
   color: var(--color-danger);
 }
 
-.note {
-  color: var(--color-text-primary);
-}
-
-.steps {
+.testSteps {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -186,21 +307,17 @@
   font-size: 0.72rem;
 }
 
-.steps li {
+.testSteps li {
   display: flex;
   align-items: flex-start;
   gap: 6px;
 }
 
-.stepOk {
-  color: var(--color-text-primary);
-}
-
-.stepOk > :first-child {
+.testOk > :first-child {
   color: var(--color-success);
 }
 
-.stepFail {
+.testFail {
   color: var(--color-danger);
 }
 
@@ -208,33 +325,53 @@
   color: var(--color-text-secondary);
 }
 
+/* ── Advanced ── */
+
 .more {
-  font-size: 0.72rem;
-  color: var(--color-text-secondary);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 10px;
 }
 
-.more summary {
+.moreToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
   cursor: pointer;
+  text-align: left;
+}
+
+.moreToggle:hover {
   color: var(--color-text-primary);
 }
 
-.more[open] > * + * {
-  margin-top: 8px;
+.moreBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .codeRow {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  width: 100%;
 }
 
 .code {
   display: block;
   flex: 1;
   min-width: 0;
+  width: 100%;
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--radius-control);
@@ -243,22 +380,7 @@
   font-family: var(--font-family-mono);
   font-size: 0.68rem;
   line-height: 1.5;
-  color: var(--color-text-primary);
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
-}
-.dev {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: var(--radius-control);
-  font-size: 0.7rem;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-  border: 1px dashed var(--color-border-strong);
-}
-
-.dev code {
-  font-family: var(--font-family-mono);
-  color: var(--color-text-primary);
 }

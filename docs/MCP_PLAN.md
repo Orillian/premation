@@ -298,3 +298,47 @@ never answer each other's calls.
   frames, the badge showed and cleared on disconnect.
 - Not yet done: a run with the real Claude Desktop app (needs the packaged or
   restarted dev app + a Pro account), a packaged installer build, macOS.
+
+## 13. Round 2 (2026-10-08): extension, no-project, indicators, deeper tools
+
+Owner asks: Premation's logo and the single name "Premation" in Claude;
+smoother connect UX and live indicators; Claude can start with no project and
+create one; deeper editing; files in/out with in-app approval.
+
+- **Install route = Claude Desktop extension (`.mcpb`).** Claude shows a
+  server's own logo only for an installed extension (a config-file entry gets
+  a generic icon). Connect now writes `<userData>/mcp/Premation.mcpb`
+  (`electron/mcp/extension.ts`: manifest 0.3, `name: premation`,
+  `display_name: Premation`, `icon.png` = build/icon.png, `server.type: node`
+  so Claude runs the bundled server with its own Node, `PREMATION_MCP_DIR`
+  baked in) and opens it; Claude shows its install screen. Detection reads
+  `<Claude data>/Claude Extensions/*/manifest.json`. Trade-off (accepted):
+  removing the extension is done in Claude (Settings → Extensions); Disconnect
+  turns Premation's side off and says so. The config-file route stays under
+  Advanced. Dev and installed builds both register as `premation`.
+- **Front desk** (`src/core/ai/mcp/frontDesk.ts`, mounted app-wide by
+  `src/hooks/useMcpFrontDesk.ts`): `get_app_state`, `list_projects`,
+  `create_project`, `open_project` work on any page; everything else goes to
+  the editor host once a project is loaded (waiting for the RIGHT project),
+  else a sentence telling Claude to create/open one. Cloud create shares
+  `core/project/newProjectDocument.ts` with the Dashboard; local create runs
+  the start screen's `project.new`.
+- **New editor tools:** `list_compositions`, `create_composition`,
+  `set_active_composition`, `save_project` (via `src/hooks/mcpEditorOps.ts`),
+  `import_media` and `export_video` behind an in-app **Allow / Deny**
+  (`claudeStore.requestApproval`, 2-minute timeout = deny).
+- **MCP prompts** (`packages/mcp-server/src/prompts.ts`): Logo reveal, Kinetic
+  typography, Product promo, Vertical social clip, Polish my animation.
+- **Indicators:** `ClaudeIndicator` pill in the title bar on every page (Ready /
+  Connected / Working / Needs you) with an activity panel (live step, approvals,
+  recent steps, Stop, "Undo Claude's last change" — only when the newest history
+  entry is Claude's), the editor badge names the step and carries approvals, and
+  the Settings card is three live steps.
+- **Fix found while testing:** the bridge marked the page gone on
+  `did-start-loading`, which also fires for in-page (hash) navigation, so
+  `create_project` from the home screen failed itself. Now
+  `did-start-navigation` with `!isSameDocument`.
+- Verified in an isolated real instance: from the login screen Claude created a
+  1080×1920 project, built a grouped change, rendered; an import waited for a
+  real click on Allow and placed the layer. Not verified: the extension install
+  in Claude Desktop (needs the user's click), cloud-edition create/open.

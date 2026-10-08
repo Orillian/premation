@@ -62,6 +62,7 @@ extraResources:
     to: mcp
     filter:
       - premation-mcp.cjs
+      - tools.json
 
 beforePack: ./scripts/stageEngine.cjs
 

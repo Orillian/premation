@@ -83,7 +83,7 @@ describe('Claude calls on the engine', () => {
   });
 
   it('refuses a tool that is not offered to Claude', async () => {
-    const r = await call('export_video', {});
+    const r = await call('generate_video', {});
     expect(r.isError).toBe(true);
     expect(textOf(r)).toMatch(/does not offer/);
   });

@@ -19,7 +19,7 @@ function setup(over: Partial<McpHostDeps> = {}) {
   const executed: string[] = [];
   const deps: McpHostDeps = {
     registry: () => ({
-      has: (n: string) => ['describe_scene', 'create_layer', 'export_video'].includes(n),
+      has: (n: string) => ['describe_scene', 'create_layer', 'export_video', 'generate_video'].includes(n),
       get: (n: string) => (n === 'describe_scene' ? { name: n, kind: 'read', description: '', inputSchema: {} }
         : n === 'create_layer' ? { name: n, kind: 'write', description: '', inputSchema: {} } : undefined),
       execute: async (n: string): Promise<ToolResult> => {
@@ -73,7 +73,7 @@ describe('McpCallHost', () => {
 
   it('refuses an excluded tool before running anything', async () => {
     const { call, executed } = setup();
-    expect((await call('export_video')).isError).toBe(true);
+    expect((await call('generate_video')).isError).toBe(true);
     expect(executed).toEqual([]);
   });
 
@@ -137,5 +137,47 @@ describe('McpCallHost', () => {
     await call('begin_edit', { label: 'L' });
     expect(seen).toContain('begin_edit');
     expect(host.getActivity()).toEqual({ busy: false, tool: null, group: 'L' });
+  });
+});
+
+describe('approvals and project operations', () => {
+  const editor = () => {
+    const calls: string[] = [];
+    return {
+      calls,
+      ops: {
+        listCompositions: async () => ({ active: 'c1', compositions: [{ id: 'c1' }] }),
+        createComposition: async (o: { name: string }) => { calls.push(`create:${o.name}`); return { id: 'c2' }; },
+        setActiveComposition: async (id: string) => (id === 'c1' ? { ok: true as const, name: 'Main' } : { error: 'No composition' }),
+        save: async () => ({ ok: true as const, message: 'Saved.' }),
+        importMedia: async (paths: readonly string[]) => { calls.push(`import:${paths.join(',')}`); return { ok: true as const, message: 'Imported 1' }; },
+      },
+    };
+  };
+
+  it('imports only after the user allows it', async () => {
+    const ed = editor();
+    const denied = setup({ editor: ed.ops, approve: async () => false });
+    const r = await denied.call('import_media', { paths: ['C:/a.png'] });
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/did not allow/);
+    expect(ed.calls).toEqual([]);
+    const allowed = setup({ editor: ed.ops, approve: async () => true });
+    expect(textOf(await allowed.call('import_media', { paths: ['C:/a.png'] }))).toBe('Imported 1');
+    expect(ed.calls).toEqual(['import:C:/a.png']);
+  });
+
+  it('never exports without an approver', async () => {
+    const { call, executed } = setup();
+    expect((await call('export_video', { format: 'mp4' })).isError).toBe(true);
+    expect(executed).toEqual([]);
+  });
+
+  it('creates and switches compositions through the editor operations', async () => {
+    const ed = editor();
+    const { call } = setup({ editor: ed.ops });
+    expect(textOf(await call('create_composition', { name: 'Vertical', width: 1080, height: 1920 }))).toMatch(/Created composition "Vertical" \(id c2\)/);
+    expect(textOf(await call('set_active_composition', { compId: 'c1' }))).toMatch(/"Main" is now the active/);
+    expect((await call('set_active_composition', { compId: 'zz' })).isError).toBe(true);
   });
 });

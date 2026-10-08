@@ -181,7 +181,7 @@ describe('MCP → bundled server → pipe → bridge → page', () => {
     const list = await client.request('tools/list', {});
     const names = ((list.result as { tools: Array<{ name: string }> }).tools).map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(['describe_scene', 'create_layer', 'render_frame', 'begin_edit', 'author_scene']));
-    expect(names).not.toContain('export_video');
+    expect(names).not.toContain('generate_image');
     expect(names).not.toContain('generate_video');
   });
 });

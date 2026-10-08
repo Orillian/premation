@@ -65,6 +65,29 @@ export interface McpActivity {
 /** May this account use Claude for Premation? */
 export type AccessDecision = { ok: true } | { ok: false; message: string };
 
+/** Something only the user may allow (a file in, a render out). */
+export interface ApprovalRequest {
+  kind: 'import' | 'export';
+  /** One line: "Import 3 files", "Render Main Comp to MP4". */
+  title: string;
+  /** What exactly: the paths, the format. */
+  detail: string[];
+}
+
+/**
+ * Project-level editor operations an MCP client needs beyond the tool
+ * registry. Injected (src/hooks/mcpEditorOps.ts) because they live in the
+ * editor's layout code, which src/core may not import.
+ */
+export interface McpEditorOps {
+  listCompositions(): Promise<unknown>;
+  /** The new composition's id, or a sentence saying why not. */
+  createComposition(o: { name: string; width: number; height: number; fps: number; durationSeconds: number; background: string }): Promise<{ id: string } | { error: string }>;
+  setActiveComposition(compId: string): Promise<{ ok: true; name: string } | { error: string }>;
+  save(): Promise<{ ok: true; message: string } | { error: string }>;
+  importMedia(paths: readonly string[], placeOnTimeline: boolean): Promise<{ ok: true; message: string } | { error: string }>;
+}
+
 export interface McpHostDeps {
   registry(): Pick<ToolRegistry, 'execute' | 'has' | 'get'>;
   beginTransaction(label: string): Promise<AiTransaction>;
@@ -77,6 +100,9 @@ export interface McpHostDeps {
   /** A labelled contact sheet of `cells` frames between two times. */
   renderStrip(startSec: number, endSec: number, cells: number): Promise<{ mimeType: string; data: string } | null>;
   access(): Promise<AccessDecision>;
+  editor?: McpEditorOps;
+  /** Ask the user in Premation; resolves false on Deny or timeout. Absent = always refused. */
+  approve?(request: ApprovalRequest): Promise<boolean>;
   setTimer?(fn: () => void, ms: number): unknown;
   clearTimer?(handle: unknown): void;
 }
@@ -208,6 +234,15 @@ export class McpCallHost {
         case 'render_filmstrip': return await this.renderStrip(call);
         case 'get_author_guide': return this.authorGuide(call);
         case 'author_scene': return await this.inTransaction(call, 'Claude: build scene', (ctx) => this.authorScene(call, ctx));
+        case 'list_compositions': return await this.editorOp(async (ed) => text(JSON.stringify(await ed.listCompositions(), null, 1)));
+        case 'create_composition': return await this.createComposition(call);
+        case 'set_active_composition': return await this.setActiveComposition(call);
+        case 'save_project': return await this.editorOp(async (ed) => {
+          const r = await ed.save();
+          return 'error' in r ? text(r.error, true) : text(r.message);
+        });
+        case 'import_media': return await this.importMedia(call);
+        case 'export_video': return await this.exportVideo(call);
         default: return await this.registryCall(call);
       }
     } catch (err) {
@@ -257,6 +292,63 @@ export class McpCallHost {
       await tx.rollback();
       throw err;
     }
+  }
+
+  // ── Project-level operations ─────────────────────────────────────────
+
+  private async editorOp(fn: (ed: McpEditorOps) => Promise<McpResult>): Promise<McpResult> {
+    const ed = this.deps.editor;
+    if (!ed) return text('This Premation build cannot do that from Claude.', true);
+    return fn(ed);
+  }
+
+  private createComposition(call: McpCall): Promise<McpResult> {
+    const a = obj(call.args);
+    const name = String(a.name ?? '').trim().slice(0, 120) || 'Composition';
+    return this.editorOp(async (ed) => {
+      const r = await ed.createComposition({
+        name,
+        width: Math.round(Math.max(16, Math.min(8192, num(a.width, 1920)))),
+        height: Math.round(Math.max(16, Math.min(8192, num(a.height, 1080)))),
+        fps: Math.max(1, Math.min(120, num(a.fps, 30))),
+        durationSeconds: Math.max(0.1, Math.min(3600, num(a.durationSeconds, 10))),
+        background: typeof a.background === 'string' && /^#[0-9a-f]{6}$/i.test(a.background) ? a.background : '#101014',
+      });
+      return 'error' in r ? text(r.error, true) : text(`Created composition "${name}" (id ${r.id}); it is now the active composition.`);
+    });
+  }
+
+  private setActiveComposition(call: McpCall): Promise<McpResult> {
+    const compId = String(obj(call.args).compId ?? '');
+    return this.editorOp(async (ed) => {
+      const r = await ed.setActiveComposition(compId);
+      return 'error' in r ? text(r.error, true) : text(`"${r.name}" is now the active composition.`);
+    });
+  }
+
+  /** Ask the user; a refusal is final for this request and says so. */
+  private async approved(req: ApprovalRequest): Promise<boolean> {
+    return this.deps.approve ? this.deps.approve(req) : false;
+  }
+
+  private async importMedia(call: McpCall): Promise<McpResult> {
+    const a = obj(call.args);
+    const paths = (Array.isArray(a.paths) ? a.paths : []).filter((p): p is string => typeof p === 'string' && p.trim() !== '').slice(0, 20);
+    if (paths.length === 0) return text('import_media needs `paths`: absolute file paths.', true);
+    const ok = await this.approved({ kind: 'import', title: `Import ${paths.length} file${paths.length === 1 ? '' : 's'} into this project`, detail: paths });
+    if (!ok) return text('The user did not allow this import. Do not retry it unless they ask; work with the media already in the project (list_assets).', true);
+    return this.editorOp(async (ed) => {
+      const r = await ed.importMedia(paths, a.placeOnTimeline !== false);
+      return 'error' in r ? text(r.error, true) : text(r.message);
+    });
+  }
+
+  private async exportVideo(call: McpCall): Promise<McpResult> {
+    const a = obj(call.args);
+    const format = typeof a.format === 'string' ? a.format : 'mp4';
+    const ok = await this.approved({ kind: 'export', title: `Render the active composition to ${format.toUpperCase()}`, detail: [`Format: ${format}`, a.mode === 'immediate' ? 'Starts now' : 'Added to the Render Queue'] });
+    if (!ok) return text('The user did not allow this render. Do not retry it unless they ask.', true);
+    return this.registryCall(call);
   }
 
   // ── Groups ───────────────────────────────────────────────────────────

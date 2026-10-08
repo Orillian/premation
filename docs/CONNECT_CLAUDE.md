@@ -17,17 +17,17 @@ You do not need to install anything else.
 
 ## Connect Claude Desktop
 
-1. In Premation open **Settings → AI Engine**, scroll to **Claude for Premation**.
-2. Click **Connect Claude**.
-3. **Quit Claude Desktop completely and open it again.** (Closing the window is
-   not enough — quit it from the tray / menu bar.)
-4. Open a project in Premation, then ask Claude, for example:
-   *"In Premation, make a 5-second title reveal that says SUMMER SALE."*
+1. In Premation open **Settings → AI Engine** and find **Claude for Premation**.
+2. Click **Connect Claude**. Claude Desktop opens its install screen showing
+   Premation's logo — click **Install**. The card ticks step 1 by itself.
+3. Open Claude Desktop (a new chat). Step 2 ticks when Claude connects.
+4. Ask Claude, for example:
+   *"In Premation, make a 10-second logo reveal for NOVA with a glow."*
+   No project open? Claude creates one.
 
-Claude asks your permission the first time it uses a Premation tool.
-
-To check everything works, click **Test connection** in the same card. Each step
-gets a tick, or says what is wrong.
+Claude asks your permission the first time it uses a Premation tool. In Claude
+Desktop's **+** menu you will also find ready-made Premation workflows (logo
+reveal, kinetic typography, product promo, vertical clip, polish).
 
 ## Connect Claude Code
 
@@ -37,8 +37,13 @@ a terminal.
 
 ## While Claude works
 
-- A small **Claude is editing** badge appears at the bottom of the editor. Click
-  **Stop** to stop it and throw away what it was in the middle of.
+- The **Claude** pill in the title bar shows its state (Ready, Connected,
+  Working, Needs you). Click it for what Claude is doing, its recent steps,
+  **Stop**, and **Undo Claude's last change**.
+- In the editor a badge names the current step. Click **Stop** to stop Claude
+  and throw away what it was in the middle of.
+- Claude asks before importing files or rendering a video: **Allow** or
+  **Deny** in the badge or the pill's panel.
 - Each request Claude makes is one step in **Edit → Undo** (it is labelled
   "Claude: …" in the History panel). Press Ctrl+Z / ⌘Z to undo it.
 - If you start editing while Claude is in the middle of something, Claude's part
@@ -57,9 +62,10 @@ a terminal.
 
 ## Turning it off
 
-Click **Disconnect Claude**. Premation removes only its own entry from Claude's
-settings — your other Claude connectors stay as they are — and stops accepting
-connections. Uninstalling Premation on Windows removes the entry too.
+Click **Disconnect**. Premation stops accepting Claude. To remove Premation from
+Claude as well: Claude Desktop → Settings → Extensions → Premation → Uninstall.
+(If you set it up through Claude's settings file under Advanced, Disconnect and
+uninstalling Premation remove that entry for you.)
 
 ## Privacy
 

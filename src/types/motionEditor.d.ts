@@ -36,19 +36,25 @@ export interface ClaudeSetupStatus {
     pageReady: boolean;
     clients: Array<{ id: number; name: string; version: string; since: number; lastCallAt: number | null }>;
   };
-  claude: { installed: boolean; configs: Array<{ path: string; state: 'absent' | 'ok' | 'stale' | 'malformed' }> };
+  claude: {
+    installed: boolean;
+    configs: Array<{ path: string; state: 'absent' | 'ok' | 'stale' | 'malformed' }>;
+    extension: 'absent' | 'ok' | 'stale';
+  };
+  method: 'extension' | 'config' | null;
   configured: boolean;
   needsRepair: boolean;
+  extensionFile: string | null;
   connectorInstalled: boolean;
   claudeCodeCommand: string;
   manualSnippet: string;
-  /** `premation`, or `premation-dev` for a development build. */
   serverName: string;
+  devBuild: boolean;
 }
 
 /** electron/mcp/ipc.ts ConnectResult. */
 export type ClaudeConnectResult =
-  | { ok: true; status: ClaudeSetupStatus; changed: boolean }
+  | { ok: true; status: ClaudeSetupStatus; changed: boolean; method: 'extension' | 'config'; extensionFile?: string; openError?: string }
   | { ok: false; code: 'not-installed' | 'malformed' | 'io' | 'unreadable' | 'no-connector'; message: string; status: ClaudeSetupStatus };
 
 /** electron/mcp/selfTest.ts TestStep. */
@@ -71,8 +77,10 @@ export interface McpRelayedCall {
 export interface McpBridgeApi {
   getStatus(): Promise<ClaudeSetupStatus>;
   connect(): Promise<ClaudeConnectResult>;
+  connectConfig(): Promise<ClaudeConnectResult>;
+  revealExtension(): Promise<void>;
   enable(): Promise<ClaudeSetupStatus>;
-  disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[] }>;
+  disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[]; extensionInstalled: boolean }>;
   repair(): Promise<ClaudeConnectResult>;
   test(): Promise<ClaudeTestStep[]>;
   getClaude(): Promise<void>;

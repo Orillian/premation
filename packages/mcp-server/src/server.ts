@@ -23,9 +23,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { ALL_TOOL_DEFS, MCP_SERVER_INSTRUCTIONS, mcpToolDefs } from '@motion/ai-tools';
 import { PipeClient, PremationUnavailable, NOT_SET_UP, type McpToolResult } from './pipeClient';
+import { PREMATION_PROMPTS, findPrompt } from './prompts';
 
 declare const __PREMATION_VERSION__: string;
 const VERSION = typeof __PREMATION_VERSION__ === 'string' ? __PREMATION_VERSION__ : '0.0.0-dev';
@@ -62,12 +68,23 @@ export async function main(): Promise<void> {
   const known = new Set(listTools().tools.map((t) => t.name));
 
   const server = new Server(
-    { name: 'premation', version: VERSION },
-    { capabilities: { tools: {} }, instructions: MCP_SERVER_INSTRUCTIONS },
+    { name: 'premation', title: 'Premation', version: VERSION },
+    { capabilities: { tools: {}, prompts: {} }, instructions: MCP_SERVER_INSTRUCTIONS },
   );
   const pipe = dir ? new PipeClient({ dir, client: () => server.getClientVersion(), log }) : null;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => listTools());
+
+  // Ready-made workflows (prompts.ts): Claude Desktop lists them in its + menu.
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: PREMATION_PROMPTS.map((p) => ({ name: p.name, title: p.title, description: p.description, arguments: p.arguments })),
+  }));
+  server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+    const p = findPrompt(req.params.name);
+    if (!p) throw new Error(`Unknown prompt '${req.params.name}'.`);
+    const args = (req.params.arguments ?? {}) as Record<string, string>;
+    return { description: p.description, messages: [{ role: 'user' as const, content: { type: 'text' as const, text: p.build(args) } }] };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;

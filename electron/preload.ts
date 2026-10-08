@@ -474,6 +474,8 @@ const bridge = {
   mcp: {
     getStatus: () => ipcRenderer.invoke('mcp:getStatus'),
     connect: () => ipcRenderer.invoke('mcp:connect'),
+    connectConfig: () => ipcRenderer.invoke('mcp:connectConfig'),
+    revealExtension: () => ipcRenderer.invoke('mcp:revealExtension'),
     enable: () => ipcRenderer.invoke('mcp:enable'),
     disconnect: () => ipcRenderer.invoke('mcp:disconnect'),
     repair: () => ipcRenderer.invoke('mcp:repair'),

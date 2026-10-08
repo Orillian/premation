@@ -44,6 +44,7 @@ extraResources:
     to: mcp
     filter:
       - premation-mcp.cjs
+      - tools.json
   - from: ../motion-back/dist
     to: backend/dist
   - from: ../motion-back/node_modules

@@ -9,6 +9,7 @@ import { usePresentationStore } from '@stores/presentationStore';
 import { useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { openExportDialog } from '@layout/Export/ExportDialog';
+import { ClaudeIndicator } from '@components/claude/ClaudeIndicator';
 import styles from './TitleBar.module.css';
 
 /**
@@ -32,6 +33,7 @@ export function EditorChromeActions({ showCustomize = true }: { showCustomize?: 
 
   return (
     <div className={styles.editorControls}>
+      <ClaudeIndicator />
       <IconButton
         aria-label="Toggle Left Sidebar"
         size="sm"

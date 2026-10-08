@@ -35,6 +35,15 @@ esbuild.buildSync({
 });
 console.log(`[buildMcp] wrote ${path.relative(root, outfile)}`);
 
+// The tool list Claude Desktop shows on the extension's install screen
+// (electron/mcp/extension.ts reads it). Taken from the bundle itself, so it is
+// exactly what the server announces.
+const toolsFile = path.join(path.dirname(outfile), 'tools.json');
+delete require.cache[outfile];
+const { listTools } = require(outfile);
+require('node:fs').writeFileSync(toolsFile, JSON.stringify(listTools().tools.map((t) => ({ name: t.name, description: t.description }))));
+console.log(`[buildMcp] wrote ${path.relative(root, toolsFile)}`);
+
 if (process.argv.includes('--check')) {
   // initialize + tools/list over stdio, the way Claude starts it.
   const lines = [
