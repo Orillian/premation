@@ -25,6 +25,7 @@
 
 import { columnLeft, spanCenterX, spanWidth, baselineY, baselineRows } from '../grid';
 import { radius } from '../shape';
+import { breakLines } from '../type';
 import { mulberry32, pick, type ToolCall } from '../toolcall';
 import {
   type ComposeContext,
@@ -291,20 +292,30 @@ export const notificationStack: LayoutTemplate = {
     if (content.headline) {
       const span: [number, number] = [2, 9];
       const id = `${ctx.idPrefix}_headline`;
-      calls.push(...emitText(ctx, id, content.headline, 'headline', {
-        x: spanCenterX(ctx.grid, span), y: baselineY(ctx.grid, row), width: spanWidth(ctx.grid, span),
+      // Broken and advanced by its real height (it wraps at video sizes): the
+      // stack starts under the headline's LAST line, not a fixed 8 rows down.
+      const hm = textMetricsFor(ctx, 'headline');
+      const hLines = breakLines(content.headline, Math.max(6, Math.floor(spanWidth(ctx.grid, span) / (hm.fontSizePx * 0.56))), 3);
+      const n = Math.max(1, hLines.length);
+      calls.push(...emitText(ctx, id, hLines.join('\n'), 'headline', {
+        x: spanCenterX(ctx.grid, span), y: baselineY(ctx.grid, row) + ((n - 1) * lhPx(ctx, 'headline')) / 2, width: spanWidth(ctx.grid, span),
         fill: palette.fg,
       }));
       slots.headline = [id];
-      boxes.push({ width: spanWidth(ctx.grid, span), height: lhPx(ctx, 'headline') });
-      row += 8;
+      boxes.push({ width: spanWidth(ctx.grid, span), height: n * lhPx(ctx, 'headline') });
+      row += Math.ceil((n * lhPx(ctx, 'headline')) / ctx.grid.baseline) + 3;
     }
 
     const items = (content.items ?? []).slice(0, 4);
     const span: [number, number] = pick(rng, [[2, 9], [3, 8]] as [number, number][]);
     const w = spanWidth(ctx.grid, span);
     const cx = spanCenterX(ctx.grid, span);
-    const cardH = Math.round(ctx.height * 0.13);
+    // Tall enough for a title line and two caption lines at the type's REAL
+    // size, with padding — a fixed 13% of the frame put the caption inside the
+    // title once type was sized for video.
+    const pad = ctx.grid.baseline * 2;
+    const noteGap = Math.round(ctx.grid.baseline / 2);
+    const cardH = Math.max(Math.round(ctx.height * 0.13), Math.round(lhPx(ctx, 'title') + noteGap + 2 * lhPx(ctx, 'caption') + 2 * pad));
     // Whole baselines between cards, so every card centre is on the grid.
     const step = Math.round((cardH * 1.18) / ctx.grid.baseline) * ctx.grid.baseline;
     let y = baselineY(ctx.grid, row) + cardH / 2;
@@ -322,15 +333,21 @@ export const notificationStack: LayoutTemplate = {
       }));
 
       const titleId = `${ctx.idPrefix}_notetitle_${i}`;
+      // Title on the card's top padding, caption right under it — by height.
+      const titleY = y - cardH / 2 + pad + lhPx(ctx, 'title') / 2;
       calls.push(...emitText(ctx, titleId, item.title ?? item.label ?? `Update ${i + 1}`, 'title', {
-        x: cx, y: y - cardH * 0.16, width: cw * 0.86, fill: palette.fg, align: 'left',
+        x: cx, y: titleY, width: cw * 0.86, fill: palette.fg, align: 'left',
       }));
       surfaces[titleId] = palette.surface;
 
       if (item.body) {
         const bodyId = `${ctx.idPrefix}_notebody_${i}`;
-        calls.push(...emitText(ctx, bodyId, item.body, 'caption', {
-          x: cx, y: y + cardH * 0.2, width: cw * 0.86, fill: palette.muted, align: 'left',
+        const cap = textMetricsFor(ctx, 'caption');
+        const bodyLines = breakLines(item.body, Math.max(8, Math.floor((cw * 0.86) / (cap.fontSizePx * 0.56))), 2);
+        calls.push(...emitText(ctx, bodyId, bodyLines.join('\n'), 'caption', {
+          x: cx,
+          y: titleY + lhPx(ctx, 'title') / 2 + noteGap + (bodyLines.length * lhPx(ctx, 'caption')) / 2,
+          width: cw * 0.86, fill: palette.muted, align: 'left',
         }));
         surfaces[bodyId] = palette.surface;
         slots.list!.push(bodyId);

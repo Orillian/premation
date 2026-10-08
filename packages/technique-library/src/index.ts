@@ -25,6 +25,7 @@ export {
 
 export {
   BLUR_VELOCITY_THRESHOLD_PX_PER_SEC,
+  absolutizePositions,
   CURVES,
   PROPERTY_LEAD_FRAMES,
   blurIfFast,

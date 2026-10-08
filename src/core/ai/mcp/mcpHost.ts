@@ -36,6 +36,17 @@ import {
   formatRepairs,
 } from '@motion/author';
 import type { AiTransaction } from '../aiTransaction';
+import { SFX_ITEMS, getSfxItem } from '@core/library/sfxLibrary';
+import {
+  applyLook,
+  applyTechnique,
+  castPiece,
+  designGuide,
+  listLooks,
+  listTechniques,
+  reviewDesign,
+  type SessionLook,
+} from './designTools';
 
 /** An open `begin_edit` group closes itself after this long without a call. */
 export const GROUP_IDLE_MS = 30_000;
@@ -86,6 +97,10 @@ export interface McpEditorOps {
   setActiveComposition(compId: string): Promise<{ ok: true; name: string } | { error: string }>;
   save(): Promise<{ ok: true; message: string } | { error: string }>;
   importMedia(paths: readonly string[], placeOnTimeline: boolean): Promise<{ ok: true; message: string } | { error: string }>;
+  /** A built-in sound effect as an audio layer starting at `atSec`; its layer id. */
+  addSfx(id: string, atSec: number, levelDb: number | null): Promise<{ id: string } | { error: string }>;
+  setAudioLevels(nodeId: string, o: { levelDb?: number; fadeInSec?: number; fadeOutSec?: number }): Promise<{ ok: true; message: string } | { error: string }>;
+  duck(musicId: string, voiceId: string, duckDb: number): Promise<{ ok: true; message: string } | { error: string }>;
 }
 
 export interface McpHostDeps {
@@ -141,6 +156,8 @@ export class McpCallHost {
   /** Per-client alias maps (handles a client invented → real ids), kept across calls. */
   private readonly aliases = new Map<number, Map<string, string>>();
   private activity: McpActivity = { busy: false, tool: null, group: null };
+  /** The look apply_look chose; casts and techniques use it. */
+  private look: SessionLook | null = null;
   private readonly listeners = new Set<(a: McpActivity) => void>();
 
   constructor(private readonly deps: McpHostDeps) {}
@@ -243,6 +260,54 @@ export class McpCallHost {
         });
         case 'import_media': return await this.importMedia(call);
         case 'export_video': return await this.exportVideo(call);
+        case 'generate_speech': return await this.generateSpeech(call);
+        case 'get_design_guide': return text(designGuide(typeof obj(call.args).topic === 'string' ? String(obj(call.args).topic) : undefined));
+        case 'list_looks': return text(listLooks());
+        case 'apply_look': {
+          const r = applyLook(call.args);
+          if ('error' in r) return text(r.error, true);
+          this.look = r.look;
+          return text(r.summary);
+        }
+        case 'list_techniques': return text(listTechniques(call.args, this.look));
+        case 'apply_technique': return await this.inTransaction(call, 'Claude: apply technique', async (ctx) => {
+          const r = await applyTechnique(call.args, this.look, this.deps.registry(), ctx);
+          return { result: text(r.text, !r.ok), ok: r.ok };
+        });
+        case 'cast_piece': {
+          const menusOnly = obj(call.args).menusOnly === true;
+          if (menusOnly) {
+            const ctx = this.deps.context(null, this.abort.signal, this.aliasesFor(call.clientId));
+            const r = await castPiece(call.args, this.look, { execute: async () => ({ ok: false, content: 'menus only' }) }, ctx);
+            return text(r.text, !r.ok);
+          }
+          return await this.inTransaction(call, 'Claude: cast piece', async (ctx) => {
+            const r = await castPiece(call.args, this.look, this.deps.registry(), ctx);
+            return { result: text(r.text, !r.ok), ok: r.ok };
+          });
+        }
+        case 'review_design': {
+          const ctx = this.deps.context(this.group?.tx.session ?? null, this.abort.signal, this.aliasesFor(call.clientId));
+          const r = await reviewDesign(ctx);
+          return { content: [...r.images.map((i) => ({ type: 'image' as const, data: i.data, mimeType: i.mimeType })), { type: 'text', text: r.text }] };
+        }
+        case 'list_sfx': return text(SFX_ITEMS.map((x) => `${x.id} — ${x.name} (${x.cat}, ${x.duration.toFixed(2)}s)`).join('\n'));
+        case 'add_sfx': return await this.addSfx(call);
+        case 'set_audio_levels': return await this.editorOp(async (ed) => {
+          const a = obj(call.args);
+          const nodeId = String(a.nodeId ?? '');
+          const r = await ed.setAudioLevels(nodeId, {
+            ...(typeof a.levelDb === 'number' ? { levelDb: Math.max(-96, Math.min(12, a.levelDb)) } : {}),
+            ...(typeof a.fadeInSec === 'number' && a.fadeInSec > 0 ? { fadeInSec: Math.min(30, a.fadeInSec) } : {}),
+            ...(typeof a.fadeOutSec === 'number' && a.fadeOutSec > 0 ? { fadeOutSec: Math.min(30, a.fadeOutSec) } : {}),
+          });
+          return 'error' in r ? text(r.error, true) : text(r.message);
+        });
+        case 'duck_audio': return await this.editorOp(async (ed) => {
+          const a = obj(call.args);
+          const r = await ed.duck(String(a.musicId ?? ''), String(a.voiceId ?? ''), Math.max(-40, Math.min(0, num(a.duckDb, -12))));
+          return 'error' in r ? text(r.error, true) : text(r.message);
+        });
         default: return await this.registryCall(call);
       }
     } catch (err) {
@@ -348,6 +413,29 @@ export class McpCallHost {
     const format = typeof a.format === 'string' ? a.format : 'mp4';
     const ok = await this.approved({ kind: 'export', title: `Render the active composition to ${format.toUpperCase()}`, detail: [`Format: ${format}`, a.mode === 'immediate' ? 'Starts now' : 'Added to the Render Queue'] });
     if (!ok) return text('The user did not allow this render. Do not retry it unless they ask.', true);
+    return this.registryCall(call);
+  }
+
+  private async addSfx(call: McpCall): Promise<McpResult> {
+    const a = obj(call.args);
+    const id = String(a.id ?? '');
+    const item = getSfxItem(id);
+    if (!item) return text(`Unknown sound effect '${id}'. See list_sfx.`, true);
+    return this.editorOp(async (ed) => {
+      const r = await ed.addSfx(id, Math.max(0, num(a.atSec, 0)), typeof a.levelDb === 'number' ? Math.max(-48, Math.min(12, a.levelDb)) : null);
+      return 'error' in r ? text(r.error, true) : text(`Added "${item.name}" at ${num(a.atSec, 0)}s as audio layer ${r.id} (${item.duration.toFixed(2)}s).`);
+    });
+  }
+
+  private async generateSpeech(call: McpCall): Promise<McpResult> {
+    const a = obj(call.args);
+    const words = typeof a.text === 'string' ? a.text : '';
+    const ok = await this.approved({
+      kind: 'export',
+      title: 'Generate a voice-over (uses generation credit)',
+      detail: [words.length > 160 ? `${words.slice(0, 157)}…` : words || '(no text)'],
+    });
+    if (!ok) return text('The user did not allow generating a voice-over. Do not retry it unless they ask.', true);
     return this.registryCall(call);
   }
 

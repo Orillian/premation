@@ -151,6 +151,9 @@ describe('approvals and project operations', () => {
         setActiveComposition: async (id: string) => (id === 'c1' ? { ok: true as const, name: 'Main' } : { error: 'No composition' }),
         save: async () => ({ ok: true as const, message: 'Saved.' }),
         importMedia: async (paths: readonly string[]) => { calls.push(`import:${paths.join(',')}`); return { ok: true as const, message: 'Imported 1' }; },
+        addSfx: async (id: string) => { calls.push(`sfx:${id}`); return { id: 'layer_9' }; },
+        setAudioLevels: async () => ({ ok: true as const, message: 'Set.' }),
+        duck: async () => ({ ok: true as const, message: 'Ducked.' }),
       },
     };
   };

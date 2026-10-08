@@ -35,6 +35,18 @@ In **Claude for Premation**, open *Using Claude Code, or setting it up by hand*,
 click **Turn on for Claude Code**, then copy the command shown and run it once in
 a terminal.
 
+## Getting designed results, and sound
+
+Ask for the result you want and Claude uses Premation's design system: a look
+(Keynote, Swiss editorial, luxury film, broadcast sports, …), professional
+motion techniques, and a design review of its own work. You can name a look:
+*"In Premation, a 15-second launch film for Nova in the luxury film look."*
+
+Claude can also add sound: built-in effects (whooshes, risers, impacts, clicks,
+drones) timed to the motion, levels and fades, ducking music under a voice,
+your own music files (it asks first), and voice-over (it asks first — it uses
+generation credit).
+
 ## While Claude works
 
 - The **Claude** pill in the title bar shows its state (Ready, Connected,

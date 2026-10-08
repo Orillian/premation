@@ -42,6 +42,18 @@ const LABELS: Record<string, string> = {
   set_light: 'Lighting the scene',
   create_precomp: 'Nesting a composition',
   update_composition: 'Changing composition settings',
+  get_design_guide: 'Reading the design guide',
+  list_looks: 'Choosing a look',
+  apply_look: 'Applying a look',
+  list_techniques: 'Choosing motion',
+  apply_technique: 'Animating with a technique',
+  cast_piece: 'Designing the piece',
+  review_design: 'Reviewing the design',
+  list_sfx: 'Choosing sound effects',
+  add_sfx: 'Adding a sound effect',
+  set_audio_levels: 'Mixing audio',
+  duck_audio: 'Ducking the music',
+  generate_speech: 'Recording a voice-over',
 };
 
 /** "add_kinetic_title" → "Add kinetic title" for anything not listed. */

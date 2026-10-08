@@ -161,8 +161,14 @@ export class McpFrontDesk {
 
   // ── Calls ────────────────────────────────────────────────────────────
 
-  /** Every call from the pipe comes here, one at a time. */
+  /**
+   * Every call from the pipe comes here, one at a time — except the desk's
+   * own read-only questions. A create_project can sit for minutes behind
+   * Premation's "save your changes?" dialog; "where is the user?" must still
+   * get an answer meanwhile (it is how Claude learns it is waiting on them).
+   */
   handle(call: McpCall): Promise<McpResult> {
+    if (call.name === 'get_app_state' || call.name === 'list_projects') return this.run(call);
     const run = this.queue.then(() => this.run(call));
     this.queue = run.catch(() => undefined);
     return run;

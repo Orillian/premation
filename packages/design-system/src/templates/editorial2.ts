@@ -656,7 +656,10 @@ export const timeline: LayoutTemplate = {
     // The spine runs the full height of the events and NO further. A spine that
     // overshoots the last event reads as an unfinished list.
     const spineH = Math.max(1, (items.length - 1) * stepRows * ctx.grid.baseline);
-    const dot = Math.round(lineHeightPx(ctx, 'body') * 0.36);
+    // Capped so the spine (centred on the dots) keeps its edge on the column
+    // within the grid tolerance — at video type sizes an uncapped dot pushed the
+    // spine off the column (OFF_GRID). 10px still reads as a bullet at 1080p.
+    const dot = Math.min(10, Math.round(lineHeightPx(ctx, 'body') * 0.36));
     calls.push(...emitRule(ctx, `${ctx.idPrefix}_spine`, {
       x: x0 + dot / 2,
       y: baselineY(ctx.grid, startRow) + spineH / 2,

@@ -23,7 +23,6 @@ export const MCP_EXCLUDED_TOOLS: Readonly<Record<string, string>> = {
   // assistant shows the cost before it runs, an outside client cannot.
   generate_image: 'spends generation credit',
   generate_video: 'spends generation credit',
-  generate_speech: 'spends generation credit',
   generate_3d_model: 'spends generation credit',
   // Reads the in-app prompt's attachments, which an MCP call does not have.
   create_media_from_attachment: 'needs an in-app prompt attachment',
@@ -33,7 +32,7 @@ export const MCP_EXCLUDED_TOOLS: Readonly<Record<string, string>> = {
  * Registry tools that run only after the user clicks Allow in Premation
  * (owner decision 2026-10-08: files in or out need an in-app approval).
  */
-export const MCP_APPROVAL_TOOLS: ReadonlySet<string> = new Set(['export_video', 'import_media']);
+export const MCP_APPROVAL_TOOLS: ReadonlySet<string> = new Set(['export_video', 'import_media', 'generate_speech']);
 
 /**
  * Tools that work with NO project open — the app's front desk answers them
@@ -147,6 +146,190 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
     kind: 'read',
     description: 'Save the open project (File ▸ Save). Cloud projects also save themselves; call this at the end of a big change.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'get_design_guide',
+    kind: 'read',
+    description:
+      'How to make work that looks DESIGNED in Premation, not generic: the process (look → cast or compose → technique → ' +
+      'review), the craft rules and the things never to do. Read it once at the start of any design task. topic: "process", ' +
+      '"craft", "looks" or "techniques" for one section.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { topic: { type: 'string', enum: ['process', 'craft', 'looks', 'techniques'] } },
+    },
+  },
+  {
+    name: 'list_looks',
+    kind: 'read',
+    description:
+      'Premation\'s look packs — complete visual systems (palette, type pairing, shape language, pacing, motion signature, ' +
+      'signature techniques): Apple-keynote, Swiss editorial, broadcast sports, cyberpunk kinetic, luxury film, SaaS ' +
+      'explainer/product, mobile app. Pick the one that fits the brief and apply_look it.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'apply_look',
+    kind: 'read',
+    description:
+      'Adopt a look pack for this session: cast_piece and apply_technique use it, and the compose tools (add_title, ' +
+      'add_background, …) take its palette and easing. Give the brand colour as accent when there is one. Returns the ' +
+      'palette and type to use when you build layers yourself.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['lookId'],
+      properties: {
+        lookId: { type: 'string' },
+        accent: { type: 'string', description: 'Brand accent, hex.' },
+        mode: { type: 'string', enum: ['dark', 'light'] },
+      },
+    },
+  },
+  {
+    name: 'list_techniques',
+    kind: 'read',
+    description:
+      'The motion technique library — about 110 hand-authored, professionally timed techniques: entrances, kinetic type, ' +
+      'camera moves, transitions, backgrounds, emphasis, exits, product-UI motion. Each line: id, intent, energy, duration, ' +
+      'which roles it animates, params. Filtered and ordered by the active look.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        category: { type: 'string', enum: ['entrance', 'kinetic_type', 'transition', 'camera', 'background', 'emphasis', 'exit', 'ui'] },
+        query: { type: 'string', description: 'Words to match in id, intent or tags.' },
+      },
+    },
+  },
+  {
+    name: 'apply_technique',
+    kind: 'compose',
+    description:
+      'Animate layers you made with a library technique — far better motion than hand-keyed fades: designed easing, ' +
+      'property offsets, overshoot, blur on fast moves. Give the layer ids per ROLE the technique animates (from ' +
+      'list_techniques), and when it starts. It never creates the content itself.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Technique id, e.g. "entrance.mask_rise".' },
+        targets: { type: 'object', description: 'Role → layer ids, e.g. { "headline": ["layer_2"], "subhead": ["layer_3"] }.' },
+        startSec: { type: 'number', minimum: 0, default: 0 },
+        durationSec: { type: 'number', minimum: 0.1, description: 'Fitted to the technique\'s own range.' },
+        params: { type: 'object', description: 'The technique\'s params (see list_techniques).' },
+        seed: { type: 'integer', description: 'Pick another of its authored variants.' },
+      },
+    },
+  },
+  {
+    name: 'cast_piece',
+    kind: 'compose',
+    description:
+      'Build a complete designed piece from a brief: Premation sequences your beats, gives each a layout template and a ' +
+      'motion technique in the active look, lints design and timing, repairs problems, and builds the best of several ' +
+      'variants in the active composition. Write REAL copy in each beat. Call with menusOnly: true first to see the layout ' +
+      'and technique options per beat and choose them (layoutPicks / motionPicks); omit picks to take the best-ranked.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['beats'],
+      properties: {
+        tone: { type: 'string', description: 'One line: what the piece is and how it should feel.' },
+        energy: { type: 'number', minimum: 0, maximum: 1, default: 0.5, description: '0 calm … 1 high-energy.' },
+        durationSec: { type: 'number', minimum: 1, description: 'Default: the composition length.' },
+        lookId: { type: 'string', description: 'Default: the look from apply_look.' },
+        accent: { type: 'string' },
+        mode: { type: 'string', enum: ['dark', 'light'] },
+        beats: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 10,
+          items: {
+            type: 'object',
+            properties: {
+              purpose: { type: 'string', description: 'What the beat is for: hook, reveal, feature, stat, quote, cta, …' },
+              weight: { type: 'number', description: 'Relative length (default 1).' },
+              content: {
+                type: 'object',
+                description: 'headline, subhead, support, overline, quote, attribution, cta, items [{value,label} | {title,body}], mediaAssetId (from list_assets).',
+              },
+            },
+          },
+        },
+        layoutPicks: { type: 'array', items: { type: 'object' }, description: '[{ beatIndex, id, seed? }] from the menus.' },
+        motionPicks: { type: 'array', items: { type: 'object' }, description: '[{ beatIndex, id, params?, seed? }] from the menus.' },
+        variants: { type: 'integer', minimum: 1, maximum: 4, default: 3 },
+        menusOnly: { type: 'boolean', default: false },
+      },
+    },
+  },
+  {
+    name: 'review_design',
+    kind: 'read',
+    description:
+      'Critique the active composition: mechanical checks (off-screen, invisible, past the end, everything popping in ' +
+      'together), a filmstrip sampled around the keyframes plus speed graphs of the hero moves, and the questions a senior ' +
+      'motion designer asks. Call after building and after each round of fixes.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'list_sfx',
+    kind: 'read',
+    description: 'Premation\'s built-in sound effects (clicks, whooshes, impacts, risers, booms, drones…), with length. Add with add_sfx.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'add_sfx',
+    kind: 'write',
+    description:
+      'Add a built-in sound effect to the active composition at a time — a whoosh into a transition, an impact on a reveal, ' +
+      'a riser before a drop, a click on a UI tap. Time it to the motion it belongs to.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id', 'atSec'],
+      properties: {
+        id: { type: 'string', description: 'From list_sfx, e.g. "sfx-whoosh".' },
+        atSec: { type: 'number', minimum: 0 },
+        levelDb: { type: 'number', minimum: -48, maximum: 12, description: 'Loudness, dB (0 = as is).' },
+      },
+    },
+  },
+  {
+    name: 'set_audio_levels',
+    kind: 'write',
+    description:
+      'Set an audio layer\'s level (dB, 0 = unity, -6 half as loud, -96 silent) and optionally fade it in and/or out. ' +
+      'Use to sit effects and voice over music.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['nodeId'],
+      properties: {
+        nodeId: { type: 'string' },
+        levelDb: { type: 'number', minimum: -96, maximum: 12 },
+        fadeInSec: { type: 'number', minimum: 0, maximum: 30 },
+        fadeOutSec: { type: 'number', minimum: 0, maximum: 30 },
+      },
+    },
+  },
+  {
+    name: 'duck_audio',
+    kind: 'write',
+    description: 'Lower the music automatically while a voice-over plays (sidechain ducking), like a professional mix.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['musicId', 'voiceId'],
+      properties: {
+        musicId: { type: 'string', description: 'The music layer.' },
+        voiceId: { type: 'string', description: 'The voice / dialogue layer.' },
+        duckDb: { type: 'number', minimum: -40, maximum: 0, default: -12 },
+      },
+    },
   },
   {
     name: 'import_media',
@@ -283,14 +466,15 @@ export function isMcpTool(name: string, registryHas: (name: string) => boolean):
  * Premation, in the order that produces good results.
  */
 export const MCP_SERVER_INSTRUCTIONS = [
-  'Premation is a desktop motion-design editor (an After Effects-class timeline with 2D/3D layers, keyframes, effects, cameras and lights). These tools drive the running Premation app; the user watches every change happen live and can undo it.',
-  'Work like this:',
-  '1. Start with get_app_state. If no project is open, create_project (pick the frame from the request: 1920x1080 video, 1080x1920 vertical, 1080x1080 square) or open_project from list_projects.',
-  '2. Look before editing: describe_scene (layers, what is already animated), get_selection for "this"/"the selected layer", list_compositions for the project, list_capabilities when unsure a property or effect exists.',
-  '3. Plan bigger pieces as scenes: one composition per deliverable or scene (create_composition / set_active_composition), nest them with create_precomp, move the camera with add_camera_move, and time entrances to music with analyse_audio.',
-  '4. For a whole designed piece, read get_author_guide once and build it with author_scene, then refine with the individual tools (create_layer, update_layer, set_keyframes, set_easing, add_effect, text_animator, ...).',
-  '5. Wrap each request that takes several changing calls in begin_edit / end_edit, so the user can undo it in one step.',
-  '6. Check your work with render_frame (a still) or render_filmstrip (motion), fix what looks wrong, then save_project.',
-  'import_media and export_video need the user to click Allow in Premation; say what you are about to do before calling them.',
-  'Times are composition seconds. Ids come from describe_scene, list_compositions or the tool that created the thing. A failed call says why and what to do differently: read it and change the call rather than repeating it.',
+  'Premation is a desktop motion-design editor (an After Effects-class timeline with 2D/3D layers, keyframes, effects, cameras, lights and audio). These tools drive the running Premation app; the user watches every change live and can undo it.',
+  'Aim for work a senior motion designer would sign, not a generic template. Premation has a professional design system for that — use it instead of hand-building rectangles and fades:',
+  '1. Start with get_app_state. No project open: create_project (1920x1080 video, 1080x1920 vertical, 1080x1080 square) or open_project.',
+  '2. Read get_design_guide once. Choose a look (list_looks, apply_look with the brand accent) before building anything.',
+  '3. Whole piece from a brief: cast_piece with real copy per beat (menusOnly: true first to choose the layout and technique per beat). Or compose it yourself with author_scene (get_author_guide) or the layer tools.',
+  '4. Motion: animate layers with apply_technique (list_techniques) — designed timing, easing, offsets and blur — rather than hand-keyed opacity fades. Use set_keyframes / set_easing for details.',
+  '5. Sound: list_sfx / add_sfx on the moments that hit, set_audio_levels and duck_audio for the mix; import_media for the user\'s music; generate_speech for voice-over.',
+  '6. review_design after building; fix the three biggest problems inside begin_edit / end_edit; review again; then save_project.',
+  'Look before editing: describe_scene, get_selection ("this"), list_compositions, list_capabilities. Multi-scene: one composition per scene or format (create_composition / set_active_composition), nest with create_precomp.',
+  'import_media, export_video and generate_speech need the user to click Allow in Premation; say what you are about to do first.',
+  'Times are composition seconds. Ids come from describe_scene, list_compositions or the tool that created the thing. A failed call says why: change the call rather than repeating it.',
 ].join('\n');

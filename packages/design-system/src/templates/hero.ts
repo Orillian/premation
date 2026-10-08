@@ -310,11 +310,13 @@ export const vastSpace: LayoutTemplate = {
       boxes.push({ width: Math.round(width * 0.34), height: 1 });
     }
 
+    let headlineLines = 0;
     if (content.headline) {
       // `headline` not `display`: at this much emptiness a display size would
       // fill the space the template exists to leave empty.
       const s = textMetricsFor(ctx, 'headline');
       const lines = breakLines(content.headline, Math.max(6, Math.floor(width / (s.fontSizePx * 0.5))), 4);
+      headlineLines = lines.length;
       const ids: string[] = [];
       lines.forEach((line, i) => {
         const id = `${ctx.idPrefix}_headline_${i}`;
@@ -336,7 +338,9 @@ export const vastSpace: LayoutTemplate = {
       const s = textMetricsFor(ctx, 'caption');
       calls.push(...emitText(ctx, id, content.support.toUpperCase(), 'overline', {
         x: cx,
-        y: baselineY(ctx.grid, row + 8),
+        // Below the headline's LAST line, not a fixed 8 rows under its first:
+        // a wrapped headline at video sizes ran past row + 8.
+        y: baselineY(ctx.grid, row + Math.ceil(((Math.max(1, headlineLines) - 0.5) * lineHeightPx(ctx, 'headline')) / ctx.grid.baseline) + 4),
         width,
         fill: palette.muted,
         align,

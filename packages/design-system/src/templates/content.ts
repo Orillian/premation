@@ -16,7 +16,6 @@
 import { breakLines } from '../type';
 import { columnLeft, spanCenterX, spanWidth, baselineY, baselineRows } from '../grid';
 import { radius } from '../shape';
-import { elevation } from '../depth';
 import { mulberry32, pick, type ToolCall } from '../toolcall';
 import {
   type ComposeContext,
@@ -328,46 +327,64 @@ export const numberedSteps: LayoutTemplate = {
 
     if (content.headline) {
       const id = `${ctx.idPrefix}_headline`;
-      calls.push(...emitText(ctx, id, content.headline, 'headline', {
-        x: left + w / 2, y: baselineY(ctx.grid, row), width: w, fill: palette.fg, align: 'left',
+      // Broken here and advanced by its real height: at video sizes a long
+      // headline wraps, and the list below must start under its LAST line.
+      const hm = textMetricsFor(ctx, 'headline');
+      const hLines = breakLines(content.headline, Math.max(6, Math.floor(w / (hm.fontSizePx * 0.56))), 3);
+      const n = Math.max(1, hLines.length);
+      calls.push(...emitText(ctx, id, hLines.join('\n'), 'headline', {
+        x: left + w / 2, y: baselineY(ctx.grid, row) + ((n - 1) * lhPx(ctx, 'headline')) / 2, width: w, fill: palette.fg, align: 'left',
       }));
       slots.headline = [id];
-      boxes.push({ width: w, height: lhPx(ctx, 'headline') });
-      row += Math.ceil(lhPx(ctx, 'headline') / ctx.grid.baseline) + 4;
+      boxes.push({ width: w, height: n * lhPx(ctx, 'headline') });
+      row += Math.ceil((n * lhPx(ctx, 'headline')) / ctx.grid.baseline) + 4;
     }
 
     const numberW = ctx.grid.baseline * 7;
-    // Row pitch is NOT uniform: it grows slightly down the list. A perfectly even
-    // pitch across rows of different content length is the clearest signal a list
-    // was generated rather than laid out.
-    const basePitch = Math.ceil((lhPx(ctx, 'title') + lhPx(ctx, 'body')) / ctx.grid.baseline) + 3;
+    // Text is placed by its CENTRE, so every line below the first is laid out
+    // from the real line heights: a title that wraps pushes its body down, and
+    // each item's pitch is its own height plus air. A fixed one-title offset
+    // put a two-line body inside its title once type was sized for video.
+    const bodyGap = ctx.grid.baseline;
+    const lhT = lhPx(ctx, 'title');
+    const lhB = lhPx(ctx, 'body');
+    const titleM = textMetricsFor(ctx, 'title');
+    const bodyM = textMetricsFor(ctx, 'body');
+    const textW = w - numberW;
 
     items.forEach((item, i) => {
       const y = baselineY(ctx.grid, row);
       const numId = `${ctx.idPrefix}_num_${i}`;
       const titleId = `${ctx.idPrefix}_listtitle_${i}`;
       const bodyId = `${ctx.idPrefix}_listbody_${i}`;
+      const titleLines = breakLines(item.title ?? '', Math.max(6, Math.floor(textW / (titleM.fontSizePx * 0.56))), 2);
+      const nTitle = Math.max(1, titleLines.length);
 
       calls.push(...emitText(ctx, numId, String(i + 1).padStart(2, '0'), 'title', {
         x: left + numberW / 2, y, width: numberW, fill: palette.accent, weight: 700, align: 'left',
       }));
-      calls.push(...emitText(ctx, titleId, item.title ?? '', 'title', {
-        x: left + numberW + (w - numberW) / 2, y, width: w - numberW,
+      // First line level with the number; further lines hang below it.
+      calls.push(...emitText(ctx, titleId, titleLines.join('\n'), 'title', {
+        x: left + numberW + textW / 2, y: y + ((nTitle - 1) * lhT) / 2, width: textW,
         fill: palette.fg, weight: 600, align: 'left',
       }));
+      let itemH = nTitle * lhT;
       if (item.body) {
-        const body = textMetricsFor(ctx, 'body');
-        calls.push(...emitText(ctx, bodyId, breakLines(item.body, Math.floor((w - numberW) / (body.fontSizePx * 0.5)), 2).join('\n'), 'body', {
-          x: left + numberW + (w - numberW) / 2,
-          y: y + lhPx(ctx, 'title') + ctx.grid.baseline,
-          width: w - numberW, fill: palette.muted, align: 'left',
+        const bodyLines = breakLines(item.body, Math.max(8, Math.floor(textW / (bodyM.fontSizePx * 0.56))), 2);
+        calls.push(...emitText(ctx, bodyId, bodyLines.join('\n'), 'body', {
+          x: left + numberW + textW / 2,
+          y: y - lhT / 2 + nTitle * lhT + bodyGap + (bodyLines.length * lhB) / 2,
+          width: textW, fill: palette.muted, align: 'left',
         }));
         slots.list!.push(numId, titleId, bodyId);
+        itemH += bodyGap + bodyLines.length * lhB;
       } else {
         slots.list!.push(numId, titleId);
       }
-      boxes.push({ width: w, height: lhPx(ctx, 'title') + (item.body ? lhPx(ctx, 'body') : 0) });
-      row += basePitch + i; // the deliberate non-uniformity
+      boxes.push({ width: w, height: itemH });
+      // Pitch grows slightly down the list: a perfectly even pitch across rows of
+      // different content is the clearest sign a list was generated, not laid out.
+      row += Math.ceil(itemH / ctx.grid.baseline) + 3 + i;
     });
 
     return { calls, slots, boxes };
@@ -402,25 +419,29 @@ export const endcardMarkAndLine: LayoutTemplate = {
 
     const rows = baselineRows(ctx.grid);
     const markRow = Math.round(rows * pick(rng, [0.36, 0.4, 0.44]));
-    const markSize = Math.round(ctx.grid.baseline * pick(rng, [9, 11, 13]));
+    // No logo arrives with a brief, so the "mark" is a short accent rule over
+    // the line of type — the classic end-card signature. It used to be a solid
+    // accent SQUARE with a drop shadow standing in for a logo, which read as a
+    // placeholder (the stock-template look) in every piece that ended here.
+    const ruleW = Math.round(ctx.grid.baseline * pick(rng, [10, 12, 14]));
+    const markSize = Math.max(3, Math.round(ctx.grid.baseline * 0.5));
 
     const markId = `${ctx.idPrefix}_mark`;
     calls.push(...emitRule(ctx, markId, {
-      x: ctx.width / 2, y: baselineY(ctx.grid, markRow), width: markSize, thickness: markSize, fill: palette.accent,
+      x: ctx.width / 2, y: baselineY(ctx.grid, markRow), width: ruleW, thickness: markSize, fill: palette.accent,
     }));
-    calls.push({ name: 'set_shadow_stack', args: {
-      nodeId: markId,
-      shadows: elevation(3, { background: palette.bg, angle: 90, scale: ctx.height / 1080 }),
-    } });
     slots.mark = [markId];
-    boxes.push({ width: markSize, height: markSize });
+    boxes.push({ width: ruleW, height: markSize });
 
     if (content.headline) {
       const id = `${ctx.idPrefix}_headline`;
       const w = spanWidth(ctx.grid, [2, 9]);
       calls.push(...emitText(ctx, id, content.headline, 'headline', {
         x: ctx.width / 2,
-        y: baselineY(ctx.grid, markRow + Math.ceil(markSize / ctx.grid.baseline) + 5),
+        // Centre a rule's half + air + the headline's half below the rule, so
+        // the rule sits ABOVE the cap height (a fixed 5 rows ran it through
+        // the type once the headline was sized for video).
+        y: baselineY(ctx.grid, markRow + Math.ceil((markSize / 2 + ctx.grid.baseline * 3 + lhPx(ctx, 'headline') / 2) / ctx.grid.baseline)),
         width: w, fill: palette.fg,
       }));
       slots.headline = [id];

@@ -342,3 +342,52 @@ create one; deeper editing; files in/out with in-app approval.
   1080×1920 project, built a grouped change, rendered; an import waited for a
   real click on Allow and placed the layer. Not verified: the extension install
   in Claude Desktop (needs the user's click), cloud-edition create/open.
+
+## 14. Round 3 (2026-10-08): audio, and why output looked like AI slop
+
+**Diagnosis.** Over MCP Claude got only primitives; every piece of Premation's
+design machinery was unreachable (look packs, ~110 techniques, the caster with
+~49 layout templates, the design/timing linters, the critique, the SFX library).
+
+**New tools** (`src/core/ai/mcp/designTools.ts`, defs in `packages/ai-tools/src/mcp.ts`):
+`get_design_guide`, `list_looks` / `apply_look`, `list_techniques` /
+`apply_technique`, `cast_piece` (Claude is the caster's brief + pick hooks;
+`menusOnly` returns the per-beat menus), `review_design` (verifyScene +
+keyframe filmstrip + speed graphs + critique questions); audio: `list_sfx`,
+`add_sfx`, `set_audio_levels`, `duck_audio`, and `generate_speech` behind
+Allow (uses credit). Server instructions now lead with the design process.
+
+**Quality bugs found by rendering cast output, and fixed (they hit the in-app
+caster path too):**
+- Type was web-sized: body 17px at 1080p → 10px labels, 72px "display".
+  `baseSizeFor` is now 32px at 1080p (design-system/type.ts).
+- Text collided (overline across headline): fixed row offsets assumed small
+  type. New `resolveTextCollisions` pass (design-system/textCollisions.ts) in
+  the caster after every layout, a test that NO template × look × variant
+  produces colliding text, and real-height spacing in list.numbered_steps,
+  ui.notification_stack, hero.vast_space, endcard.mark_and_line.
+- The linter failed optical alignment at display sizes (OFF_GRID): it now
+  accepts a text box offset by its first letter's optical overhang.
+- `cast_piece` with no picks cast NO motion technique (the caster repairs a
+  bad pick, never invents one) → everything was a bare fade. Missing picks now
+  take the best-ranked entrance/kinetic technique per beat (camera/depth only
+  when Claude chooses them — an auto camera move emptied whole beats).
+- Techniques move x/y as OFFSETS from rest; the keyframe tools take absolute
+  positions; nothing converted → every cast entrance sent its text to y = 0.
+  `absolutizePositions` (technique-library/emit.ts) in the caster and
+  `apply_technique`.
+- `fill: 'transparent'` is refused by update_layer and the refusal drops the
+  whole update → the "rings" ornament rendered as a solid default-blue disc.
+  Devices use `#00000000`; the linter no longer calls that pure black.
+- The end card's "mark" was a solid accent square with a shadow (placeholder
+  look): now a short accent rule above the type.
+
+**Measured:** the same brief went from 12 verifier findings (all flat fades,
+overlapping type, 10px labels, a blue square) to 2 minor ones, with real
+entrances. Full suite green (16,213), lint 0 errors.
+
+**Open (separate tasks):** engine stills render gradient backdrops washed out
+vs the viewport (task "Fix washed-out gradients in engine stills"); a huge
+layer blanks the whole frame (task from round 1). Quality is now "clean and
+correct", not yet "award-winning": richer looks, imagery (imported media in
+`cast_piece` beats), and stronger technique choice are the next levers.

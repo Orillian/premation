@@ -33,6 +33,7 @@ import {
   layoutTemplate,
   lintDesign,
   resolvePack,
+  resolveTextCollisions,
   type ComposeResult,
   type LintLayer,
   type LintScene,
@@ -42,6 +43,7 @@ import {
 } from '@motion/design-system';
 import {
   CURVES,
+  absolutizePositions,
   coerceParams,
   compositionShutter,
   craftScore as computeCraftScore,
@@ -243,7 +245,11 @@ function emitPass(o: EmitOptions, pack: ResolvedPack, repairs: readonly string[]
       idPrefix: `b${beat.index}`,
       hasCompositionBackdrop: true,
     });
-    const result = template.compose(ctx, beat.content, cast.seed);
+    const composed = template.compose(ctx, beat.content, cast.seed);
+    // Templates space text by fixed row offsets; at video type sizes those can
+    // collide (overline across headline). Separate them before anything reads
+    // the layout (design-system/textCollisions.ts).
+    const result = { ...composed, calls: resolveTextCollisions(composed.calls, ctx.grid) };
     pass.calls.push(...withGeneratedMedia(result.calls, beat, pack, imageBeats.has(beat.index)));
     pass.layouts.set(beat.index, result);
     Object.assign(pass.surfaces, result.surfaces ?? {});
@@ -341,7 +347,10 @@ function emitPass(o: EmitOptions, pack: ResolvedPack, repairs: readonly string[]
       targets,
       idPrefix: `b${beat.index}_${cast.techniqueId.replace(/\W/g, '_')}`,
     };
-    const calls = def.emit(ctx, params.value, cast.seed);
+    // Techniques move x/y as offsets from rest; the layout's create_layer calls
+    // are where each layer rests (after the text-collision pass).
+    const rest = restingPositions(pass.calls);
+    const calls = absolutizePositions(def.emit(ctx, params.value, cast.seed), (id) => rest.get(id));
     pass.calls.push(...calls);
 
     /**
@@ -722,6 +731,8 @@ export function sceneFromCalls(
           // Carried so `RECT_ONLY` can tell a box from an arc. Dropping it here
           // was what made that rule unwritable in the first place.
           ...(a.shape !== undefined ? { shape: String(a.shape) } : {}),
+          // The first letter decides a text line's optical overhang (OFF_GRID).
+          ...(typeof a.text === 'string' ? { text: a.text } : {}),
           // Kind-derived flags. A light and a particle emitter are both real
           // layers with live readers in `buildSnapshot`, and both were counted
           // here as ordinary shapes — so a lit composition and a flat one were
@@ -1048,5 +1059,20 @@ function lintAll(pass: EmitPass, o: EmitOptions, pack: ResolvedPack): Finding[] 
     }
   }
 
+  return out;
+}
+
+/** Where each created layer rests: its create_layer x / y (moved later by update_layer x / y). */
+function restingPositions(calls: readonly ToolCall[]): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  for (const c of calls) {
+    const id = c.name === 'create_layer' ? c.args.id : c.name === 'update_layer' ? c.args.nodeId : undefined;
+    if (typeof id !== 'string') continue;
+    const prev = out.get(id);
+    if (c.name === 'create_layer') out.set(id, { x: Number(c.args.x ?? 0), y: Number(c.args.y ?? 0) });
+    else if (prev && (typeof c.args.x === 'number' || typeof c.args.y === 'number')) {
+      out.set(id, { x: typeof c.args.x === 'number' ? c.args.x : prev.x, y: typeof c.args.y === 'number' ? c.args.y : prev.y });
+    }
+  }
   return out;
 }

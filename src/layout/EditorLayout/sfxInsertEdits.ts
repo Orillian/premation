@@ -17,6 +17,7 @@ import { importBrowserFilesEdit } from '@layout/Assets/assetEdits';
 import type { ImportedAsset } from '@stores/assetStore';
 import { documentMirror } from '@stores/documentMirror';
 import { itemAsset } from '@core/mirror/itemAssets';
+import { compTime } from '@core/engine/propRefs';
 
 /** The project's audio item for `sfxId`, importing it on first use. Null for an unknown id. */
 async function sfxAsset(sfxId: string): Promise<ImportedAsset | null> {
@@ -55,5 +56,22 @@ export async function insertSfxEdit(sfxId: string): Promise<string | null> {
   if (!asset) return null;
   const item = getSfxItem(sfxId);
   const ids = await insertMediaEdit([asset], { label: `Insert ${item?.name ?? asset.name}` });
+  return ids?.[0] ?? null;
+}
+
+/**
+ * Insert a Sound FX item starting at composition second `atSec` (Claude's
+ * `add_sfx`): the same import and insert as the Sound FX panel, with the
+ * clip's start set in the SAME undo entry.
+ */
+export async function insertSfxAtEdit(sfxId: string, atSec: number): Promise<string | null> {
+  const asset = await sfxAsset(sfxId);
+  if (!asset) return null;
+  const item = getSfxItem(sfxId);
+  const at = Math.max(0, atSec);
+  const ids = await insertMediaEdit([asset], {
+    label: `Insert ${item?.name ?? asset.name}`,
+    follow: (_selected, layers) => [{ type: 'setLayerTiming', items: layers.map((layer) => ({ layer, startTime: compTime(at) })) }],
+  });
   return ids?.[0] ?? null;
 }
