@@ -13,6 +13,7 @@ import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { useUIStore } from '@stores/uiStore';
 import { setPendingFootage } from '@core/project/pendingFootage';
 import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
+import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
 import { NativePluginsPage } from '@layout/Plugins/NativePluginsPage';
 import { RegistryPluginsNotice } from '@layout/Plugins/RegistryPluginsNotice';
 import { BillingSection } from '@layout/Settings/BillingSection';
@@ -1648,6 +1649,10 @@ export function DashboardPage(): JSX.Element {
               <h3 className={styles.settingsLabel}>Assistant</h3>
               <AiSettingsSection />
             </div>
+
+            {/* Claude for Premation — connect Claude Desktop / Claude Code
+                (renders nothing in a browser build). */}
+            <ClaudeConnectSection />
 
             {/*
               Editor preferences live on their own first-class Customize page.

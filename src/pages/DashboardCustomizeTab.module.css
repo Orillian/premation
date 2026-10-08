@@ -76,6 +76,8 @@
 .aiContainer {
   display: flex;
   flex-direction: column;
+  /* The AI keys section, then the Claude for Premation card. */
+  gap: var(--space-6);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
