@@ -191,7 +191,10 @@ Unsupported features say so — no fake success.
    so `author_scene` (wrapping `@motion/author` compile) ships in M2, not later.
 3. **Uninstall removes our Claude entry** → D9.
 
-**D8 — Gating: Premation paid plan.** The gate reads the server's decision,
+**D8 — Gating: Premation paid plan.** *Update 2026-10-08: switched OFF for now
+(owner) — `CLAUDE_REQUIRES_PRO = false` in `src/core/ai/mcp/mcpAccess.ts`; any
+signed-in account, Free included, may use Claude. Flip that constant to
+restore everything below.* The gate reads the server's decision,
 `CloudAccess.plan === 'pro'` (`src/core/api/client.ts:523`, cached by
 `entitlementStore`); the client never computes entitlement itself.
 - Checked when Settings → Claude connects, on every MCP `initialize`, and on

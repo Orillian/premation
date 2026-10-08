@@ -5,7 +5,8 @@ layers and text, animate, add effects, cameras and lights — and look at the
 frames it made to fix them. You watch it happen in the editor, and you can undo
 anything it does.
 
-Claude for Premation is part of the **Premation Pro** plan.
+Claude for Premation works with any Premation account, Free included (sign in
+first).
 
 ## What you need
 
@@ -51,7 +52,7 @@ a terminal.
 | Claude says *Claude is not set up in Premation* | Click **Connect Claude** in Settings. |
 | The card says **Needs repair** | Click **Repair connection**, then restart Claude Desktop. This happens when Premation moved, usually after an update. |
 | Claude does not list Premation | Quit and reopen Claude Desktop. |
-| Claude says it needs a Pro plan | Upgrade in Premation (Settings → Billing). |
+| Claude says to sign in | Sign in to Premation, then ask again. |
 | The card says Claude's config is not valid | Premation will not touch a file it cannot read. Fix the file, or add Premation by hand with the snippet in the card. |
 
 ## Turning it off

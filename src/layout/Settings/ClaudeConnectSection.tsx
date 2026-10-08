@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@components/Icon';
 import { billingEnabled } from '@core/config/edition';
 import { useEntitlementStore } from '@stores/entitlementStore';
-import { mcpDevPlan } from '@core/ai/mcp/mcpAccess';
+import { CLAUDE_REQUIRES_PRO, mcpDevPlan } from '@core/ai/mcp/mcpAccess';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import type { ClaudeSetupStatus, ClaudeTestStep } from '@app-types/motionEditor';
 import styles from './ClaudeConnectSection.module.css';
@@ -72,7 +72,7 @@ export function ClaudeConnectSection(): JSX.Element | null {
   if (!api) return null;
 
   const devPlan = mcpDevPlan();
-  const needsPlan = devPlan ? devPlan === 'free' : billingEnabled() && access?.plan !== 'pro';
+  const needsPlan = devPlan ? devPlan === 'free' : CLAUDE_REQUIRES_PRO && billingEnabled() && access?.plan !== 'pro';
 
   const run = async (kind: NonNullable<typeof busy>, fn: () => Promise<void>): Promise<void> => {
     setBusy(kind);
