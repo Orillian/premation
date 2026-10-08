@@ -26,6 +26,12 @@ import path from 'node:path';
 
 /** The `mcpServers` key Premation owns. Nothing else is ever written. */
 export const SERVER_KEY = 'premation';
+/**
+ * The key a DEVELOPMENT build owns, so connecting the dev app never replaces
+ * (or, on Disconnect, removes) the installed app's entry — both can be in
+ * Claude at once, as "premation" and "premation-dev".
+ */
+export const DEV_SERVER_KEY = 'premation-dev';
 
 /** What a Claude config entry launches. */
 export interface McpLaunchSpec {
@@ -192,12 +198,12 @@ export function sameLaunch(entry: unknown, spec: McpLaunchSpec): boolean {
   return Object.entries(spec.env).every(([k, v]) => env[k] === v);
 }
 
-export function inspectEntry(file: string, spec: McpLaunchSpec, fs: ConfigFs): EntryState {
+export function inspectEntry(file: string, spec: McpLaunchSpec, fs: ConfigFs, key: string = SERVER_KEY): EntryState {
   const r = readConfig(file, fs);
   if (!r.ok) return 'malformed';
   const servers = isObject(r.config.mcpServers) ? r.config.mcpServers : {};
-  if (!(SERVER_KEY in servers)) return 'absent';
-  return sameLaunch(servers[SERVER_KEY], spec) ? 'ok' : 'stale';
+  if (!(key in servers)) return 'absent';
+  return sameLaunch(servers[key], spec) ? 'ok' : 'stale';
 }
 
 // ── Writing ────────────────────────────────────────────────────────────
@@ -238,33 +244,33 @@ function commit(file: string, before: { config: JsonObject; existed: boolean }, 
 }
 
 /** Add or replace `mcpServers.premation`, keeping every other key and server. */
-export function upsertEntry(file: string, spec: McpLaunchSpec, fs: ConfigFs): WriteResult {
+export function upsertEntry(file: string, spec: McpLaunchSpec, fs: ConfigFs, key: string = SERVER_KEY): WriteResult {
   const r = readConfig(file, fs);
   if (!r.ok) return r;
   const servers = isObject(r.config.mcpServers) ? r.config.mcpServers : {};
-  if (sameLaunch(servers[SERVER_KEY], spec)) return { ok: true, changed: false, backup: null };
+  if (sameLaunch(servers[key], spec)) return { ok: true, changed: false, backup: null };
   const next: JsonObject = {
     ...r.config,
-    mcpServers: { ...servers, [SERVER_KEY]: { command: spec.command, args: [...spec.args], env: { ...spec.env } } },
+    mcpServers: { ...servers, [key]: { command: spec.command, args: [...spec.args], env: { ...spec.env } } },
   };
   return commit(file, r, next, fs);
 }
 
 /** Remove `mcpServers.premation` and nothing else. A missing file or entry is a no-op. */
-export function removeEntry(file: string, fs: ConfigFs): WriteResult {
+export function removeEntry(file: string, fs: ConfigFs, key: string = SERVER_KEY): WriteResult {
   if (!fs.existsSync(file)) return { ok: true, changed: false, backup: null };
   const r = readConfig(file, fs);
   if (!r.ok) return r;
   const servers = isObject(r.config.mcpServers) ? r.config.mcpServers : null;
-  if (!servers || !(SERVER_KEY in servers)) return { ok: true, changed: false, backup: null };
+  if (!servers || !(key in servers)) return { ok: true, changed: false, backup: null };
   const rest: JsonObject = { ...servers };
-  delete rest[SERVER_KEY];
+  delete rest[key];
   return commit(file, r, { ...r.config, mcpServers: rest }, fs);
 }
 
 /** The JSON a user pastes by hand when the file cannot be edited for them. */
-export function manualSnippet(spec: McpLaunchSpec): string {
-  return JSON.stringify({ mcpServers: { [SERVER_KEY]: { command: spec.command, args: spec.args, env: spec.env } } }, null, 2);
+export function manualSnippet(spec: McpLaunchSpec, key: string = SERVER_KEY): string {
+  return JSON.stringify({ mcpServers: { [key]: { command: spec.command, args: spec.args, env: spec.env } } }, null, 2);
 }
 
 /** Quote one argument for a shell command line the user copies. */
@@ -274,9 +280,9 @@ function shellQuote(s: string, platform: NodeJS.Platform): string {
 }
 
 /** The one-line `claude mcp add` command for Claude Code (user scope). */
-export function claudeCodeCommand(spec: McpLaunchSpec, platform: NodeJS.Platform): string {
+export function claudeCodeCommand(spec: McpLaunchSpec, platform: NodeJS.Platform, key: string = SERVER_KEY): string {
   const env = Object.entries(spec.env).map(([k, v]) => `--env ${shellQuote(`${k}=${v}`, platform)}`);
   // The name goes FIRST: `--env` takes several values, and a name after it
   // would be read as one more KEY=value.
-  return [`claude mcp add ${SERVER_KEY} --scope user`, ...env, '--', shellQuote(spec.command, platform), ...spec.args.map((a) => shellQuote(a, platform))].join(' ');
+  return [`claude mcp add ${key} --scope user`, ...env, '--', shellQuote(spec.command, platform), ...spec.args.map((a) => shellQuote(a, platform))].join(' ');
 }

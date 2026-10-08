@@ -42,6 +42,8 @@ export interface ClaudeSetupStatus {
   connectorInstalled: boolean;
   claudeCodeCommand: string;
   manualSnippet: string;
+  /** `premation`, or `premation-dev` for a development build. */
+  serverName: string;
 }
 
 /** electron/mcp/ipc.ts ConnectResult. */

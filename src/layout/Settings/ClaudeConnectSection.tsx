@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@components/Icon';
 import { billingEnabled } from '@core/config/edition';
 import { useEntitlementStore } from '@stores/entitlementStore';
+import { mcpDevPlan } from '@core/ai/mcp/mcpAccess';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import type { ClaudeSetupStatus, ClaudeTestStep } from '@app-types/motionEditor';
 import styles from './ClaudeConnectSection.module.css';
@@ -70,7 +71,8 @@ export function ClaudeConnectSection(): JSX.Element | null {
   // A browser build has no desktop app for Claude to reach.
   if (!api) return null;
 
-  const needsPlan = billingEnabled() && access?.plan !== 'pro';
+  const devPlan = mcpDevPlan();
+  const needsPlan = devPlan ? devPlan === 'free' : billingEnabled() && access?.plan !== 'pro';
 
   const run = async (kind: NonNullable<typeof busy>, fn: () => Promise<void>): Promise<void> => {
     setBusy(kind);
@@ -165,6 +167,15 @@ export function ClaudeConnectSection(): JSX.Element | null {
           </span>
         </div>
       )}
+
+      {/* A development build says which Claude entry it owns and whether the
+          plan answer is overridden — so a dev never mistakes it for the real gate. */}
+      {status && status.serverName !== 'premation' ? (
+        <p className={styles.dev}>
+          Development build: appears in Claude as <code>{status.serverName}</code>, beside an installed Premation.
+          {devPlan ? <> Plan overridden to <strong>{devPlan}</strong> by <code>VITE_MCP_DEV_PLAN</code>.</> : null}
+        </p>
+      ) : null}
 
       {status?.bridge.error ? <p className={styles.error}>{status.bridge.error}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}

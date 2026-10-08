@@ -24,6 +24,8 @@ import { shell, type BrowserWindow, type WebContents } from 'electron';
 import { handle, on } from '../ipcGuard';
 import { McpBridge, type McpBridgeStatus } from './bridge';
 import {
+  DEV_SERVER_KEY,
+  SERVER_KEY,
   claudeCodeCommand,
   detectClaude,
   inspectEntry,
@@ -50,6 +52,8 @@ export interface ClaudeSetupStatus {
   connectorInstalled: boolean;
   claudeCodeCommand: string;
   manualSnippet: string;
+  /** The name Premation has in Claude: `premation`, or `premation-dev` for a development build. */
+  serverName: string;
 }
 
 export type ConnectResult =
@@ -99,9 +103,9 @@ const nodeFs: ConfigFs = fs;
  * Remove Premation from every Claude Desktop config on this machine. Run by
  * the Windows uninstaller (`--premation-mcp-uninstall`) and by Disconnect.
  */
-export function removeFromClaude(p: PlatformInfo = platformInfo(), cfs: ConfigFs = nodeFs): Array<{ path: string; ok: boolean; message?: string }> {
+export function removeFromClaude(p: PlatformInfo = platformInfo(), cfs: ConfigFs = nodeFs, key: string = SERVER_KEY): Array<{ path: string; ok: boolean; message?: string }> {
   return detectClaude(p, cfs).configPaths.map((file) => {
-    const r = removeEntry(file, cfs);
+    const r = removeEntry(file, cfs, key);
     return r.ok ? { path: file, ok: true } : { path: file, ok: false, message: r.message };
   });
 }
@@ -110,6 +114,8 @@ export class McpHost {
   readonly bridge: McpBridge;
   private readonly spec: McpLaunchSpec;
   private readonly script: string;
+  /** `premation` for the installed app, `premation-dev` for a development build. */
+  readonly key: string;
   private readonly readySenders = new WeakSet<WebContents>();
 
   constructor(private readonly o: McpHostOptions) {
@@ -126,19 +132,21 @@ export class McpHost {
     });
     this.spec = launchSpecFor(o, this.bridge.paths.dir);
     this.script = connectorScriptPath(o);
+    this.key = o.isPackaged ? SERVER_KEY : DEV_SERVER_KEY;
   }
 
   status(): ClaudeSetupStatus {
     const det = detectClaude(platformInfo(), nodeFs);
-    const configs = det.configPaths.map((p) => ({ path: p, state: inspectEntry(p, this.spec, nodeFs) }));
+    const configs = det.configPaths.map((p) => ({ path: p, state: inspectEntry(p, this.spec, nodeFs, this.key) }));
     return {
       bridge: this.bridge.status(),
       claude: { installed: det.installed, configs },
       configured: configs.some((c) => c.state === 'ok'),
       needsRepair: configs.some((c) => c.state === 'stale'),
       connectorInstalled: fs.existsSync(this.script),
-      claudeCodeCommand: claudeCodeCommand(this.spec, process.platform),
-      manualSnippet: manualSnippet(this.spec),
+      claudeCodeCommand: claudeCodeCommand(this.spec, process.platform, this.key),
+      manualSnippet: manualSnippet(this.spec, this.key),
+      serverName: this.key,
     };
   }
 
@@ -153,8 +161,8 @@ export class McpHost {
     if (!this.bridge.status().enabled) return;
     const det = detectClaude(platformInfo(), nodeFs);
     for (const file of det.configPaths) {
-      if (inspectEntry(file, this.spec, nodeFs) === 'stale') {
-        const r = upsertEntry(file, this.spec, nodeFs);
+      if (inspectEntry(file, this.spec, nodeFs, this.key) === 'stale') {
+        const r = upsertEntry(file, this.spec, nodeFs, this.key);
         this.o.log?.(`[mcp] repaired ${file}: ${r.ok ? 'ok' : r.message}`);
       }
     }
@@ -171,7 +179,7 @@ export class McpHost {
     await this.bridge.enable();
     let changed = false;
     for (const file of det.configPaths) {
-      const r = upsertEntry(file, this.spec, nodeFs);
+      const r = upsertEntry(file, this.spec, nodeFs, this.key);
       if (!r.ok) return { ok: false, code: r.code, message: r.message, status: this.status() };
       changed ||= r.changed;
     }
@@ -185,7 +193,7 @@ export class McpHost {
   }
 
   async disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[] }> {
-    const problems = removeFromClaude().filter((r) => !r.ok).map((r) => r.message ?? r.path);
+    const problems = removeFromClaude(platformInfo(), nodeFs, this.key).filter((r) => !r.ok).map((r) => r.message ?? r.path);
     await this.bridge.disable();
     return { status: this.status(), problems };
   }

@@ -11,9 +11,16 @@
  *   • signed out: ask to sign in;
  *   • no decision cached yet: fetch it once, then decide;
  *   • `plan === 'pro'`: allowed; anything else: the upgrade sentence.
+ *
+ * DEVELOPMENT ONLY: `VITE_MCP_DEV_PLAN=pro` (or `free`) in `.env.local` stands in
+ * for the server's answer, so the MCP can be used — or the refusal tested —
+ * without a paid account or a backend. `main.tsx` passes it in only when
+ * `import.meta.env.DEV`, and it is ignored again here unless `isDevBuild()`:
+ * a production bundle never reads it, whatever its environment held.
  */
 
 import { billingEnabled } from '@core/config/edition';
+import { isDevBuild } from '@core/config/devBuild';
 import { isAuthenticated, type CloudAccess } from '@core/api/client';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import type { AccessDecision } from './mcpHost';
@@ -23,8 +30,31 @@ export const NEEDS_PRO =
 export const NEEDS_SIGN_IN =
   'Sign in to Premation to use Claude for Premation (it needs a Premation Pro plan).';
 
+/** A development build's stand-in for the server's plan answer. */
+export type McpDevPlan = 'pro' | 'free';
+
+let devPlan: McpDevPlan | null = null;
+
+/** Parse `VITE_MCP_DEV_PLAN`: `pro` or `free`, anything else is no override. */
+export function parseMcpDevPlan(raw: string | undefined | null): McpDevPlan | null {
+  const v = (raw ?? '').trim().toLowerCase();
+  return v === 'pro' || v === 'free' ? v : null;
+}
+
+/** Set at boot by `main.tsx` (dev builds only); also the test seam. */
+export function setMcpDevPlan(plan: McpDevPlan | null): void {
+  devPlan = plan;
+}
+
+/** The override in force: only ever in a development build. */
+export function mcpDevPlan(): McpDevPlan | null {
+  return isDevBuild() ? devPlan : null;
+}
+
 /** The decision for a known access record (pure; the table the tests cover). */
-export function decideClaudeAccess(opts: { billing: boolean; signedIn: boolean; access: CloudAccess | null }): AccessDecision | 'unknown' {
+export function decideClaudeAccess(opts: { billing: boolean; signedIn: boolean; access: CloudAccess | null; devPlan?: McpDevPlan | null }): AccessDecision | 'unknown' {
+  if (opts.devPlan === 'pro') return { ok: true };
+  if (opts.devPlan === 'free') return { ok: false, message: `${NEEDS_PRO} (Development override: VITE_MCP_DEV_PLAN=free.)` };
   if (!opts.billing) return { ok: true };
   if (!opts.signedIn) return { ok: false, message: NEEDS_SIGN_IN };
   if (!opts.access) return 'unknown';
@@ -33,7 +63,7 @@ export function decideClaudeAccess(opts: { billing: boolean; signedIn: boolean; 
 
 export async function claudeAccess(): Promise<AccessDecision> {
   const read = (): AccessDecision | 'unknown' =>
-    decideClaudeAccess({ billing: billingEnabled(), signedIn: isAuthenticated(), access: useEntitlementStore.getState().access });
+    decideClaudeAccess({ billing: billingEnabled(), signedIn: isAuthenticated(), access: useEntitlementStore.getState().access, devPlan: mcpDevPlan() });
   let d = read();
   if (d === 'unknown') {
     await useEntitlementStore.getState().refresh();

@@ -6,6 +6,7 @@
 
 import path from 'node:path';
 import {
+  DEV_SERVER_KEY,
   backupPathFor,
   claudeCodeCommand,
   detectClaude,
@@ -164,5 +165,18 @@ describe('the hand-setup text', () => {
     const cmd = claudeCodeCommand(SPEC, 'win32');
     expect(cmd.startsWith('claude mcp add premation --scope user --env ELECTRON_RUN_AS_NODE=1')).toBe(true);
     expect(cmd).toContain('-- "C:\\Program Files\\Premation\\Premation.exe"');
+  });
+});
+
+describe('a development build', () => {
+  const DEV: McpLaunchSpec = { command: 'C:/dev/electron.exe', args: ['C:/dev/build/mcp/premation-mcp.cjs'], env: { ELECTRON_RUN_AS_NODE: '1', PREMATION_MCP_DIR: 'C:/dev/mcp' } };
+
+  it('owns premation-dev, beside (never over) the installed app entry', () => {
+    const fs = memFs({ [CONFIG]: JSON.stringify({ mcpServers: { premation: SPEC } }) });
+    upsertEntry(CONFIG, DEV, fs, DEV_SERVER_KEY);
+    expect(JSON.parse(fs.files.get(CONFIG)!).mcpServers).toEqual({ premation: SPEC, 'premation-dev': DEV });
+    expect(inspectEntry(CONFIG, SPEC, fs)).toBe('ok');
+    removeEntry(CONFIG, fs, DEV_SERVER_KEY);
+    expect(JSON.parse(fs.files.get(CONFIG)!).mcpServers).toEqual({ premation: SPEC });
   });
 });

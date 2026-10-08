@@ -248,3 +248,17 @@
   word-break: break-all;
   user-select: text;
 }
+.dev {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border-strong);
+}
+
+.dev code {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-primary);
+}

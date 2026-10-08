@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@components/ErrorBoundary/ErrorBoundary';
 import { TooltipProvider } from '@components/Tooltip';
 import { setLocalFirst } from '@core/config/flags';
 import { parseEdition, setEdition } from '@core/config/edition';
+import { parseMcpDevPlan, setMcpDevPlan } from '@core/ai/mcp/mcpAccess';
 import { purgeLegacyLocalAiKeys } from '@core/api/purgeLocalKeys';
 import { configureUiPlatform } from '@core/config/uiPlatform';
 import { setDevBuild } from '@core/config/devBuild';
@@ -37,6 +38,9 @@ const edition = parseEdition(import.meta.env.VITE_EDITION as string | undefined)
 // Developer-only menu entries (the demo-scene loader) show in dev builds only.
 setDevBuild(import.meta.env.DEV === true);
 setEdition(edition);
+// Claude for Premation, development only: stand in for the plan the server
+// would report (`VITE_MCP_DEV_PLAN=pro|free` in .env.local) — src/core/ai/mcp/mcpAccess.ts.
+if (import.meta.env.DEV) setMcpDevPlan(parseMcpDevPlan(import.meta.env.VITE_MCP_DEV_PLAN as string | undefined));
 
 // Report it to the shell, which resolved its OWN edition from a different build
 // input (MOTION_EDITION, or the packaged manifest — a Vite define does not reach

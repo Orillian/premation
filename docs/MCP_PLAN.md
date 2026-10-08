@@ -238,6 +238,32 @@ Unsupported features say so — no fake success.
 keeps the run's style, scene window and the client's alias map across calls,
 which an MCP client needs (it calls `define_style` once, then many tools).
 
+### Developing with Claude connected
+
+1. Add to `.env.local` (git-ignored), then restart `npm run electron:dev`:
+
+   ```
+   VITE_MCP_DEV_PLAN=pro    # use Claude without a paid account or a backend
+   # VITE_MCP_DEV_PLAN=free # or: test the "needs Pro" refusal
+   ```
+
+   Read only when `import.meta.env.DEV` (`src/main.tsx`) and ignored again
+   unless `isDevBuild()` (`src/core/ai/mcp/mcpAccess.ts`), so a production
+   bundle never honours it. The Settings card says when it is in force.
+2. `npm run electron:dev` already rebuilds the connector
+   (`electron:compile` runs `scripts/buildMcp.cjs`); after changing
+   `packages/mcp-server` alone, run `npm run mcp:build`.
+3. Settings → AI Engine → Claude for Premation → Connect. A development build
+   registers as **`premation-dev`** (launching `node_modules/electron` on
+   `build/mcp/premation-mcp.cjs`, with the dev profile's pipe), beside — never
+   over — an installed Premation's `premation` entry; Disconnect removes only
+   `premation-dev`. Restart Claude Desktop to pick it up.
+4. Claude Code instead: the card's *Turn on for Claude Code* + the copied
+   `claude mcp add premation-dev …` command.
+
+The pipe is keyed by the user-data folder, so the dev app and an installed app
+never answer each other's calls.
+
 ### Differences from the plan
 
 - **D7:** v1 connects Claude Desktop by editing `claude_desktop_config.json`
