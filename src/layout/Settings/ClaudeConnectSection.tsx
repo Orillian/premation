@@ -194,6 +194,16 @@ export function ClaudeConnectSection(): JSX.Element | null {
         </div>
       )}
 
+      {/* Configured but no Claude on the line yet: say the one step left,
+          every time the card opens — not only right after Connect. */}
+      {configured && !status?.needsRepair && clients.length === 0 && !note && (
+        <p className={styles.note}>
+          Next: quit Claude Desktop completely (from the tray / menu bar) and open it again. Then open a
+          project here and ask Claude, e.g. &ldquo;In Premation, make a 5-second title animation&rdquo;.
+          This card shows <strong>Connected</strong> once Claude is using Premation.
+        </p>
+      )}
+
       {clients.length > 0 && (
         <ul className={styles.clients}>
           {clients.map((c) => (
@@ -245,7 +255,7 @@ export function ClaudeConnectSection(): JSX.Element | null {
       )}
 
       <details className={styles.more} open={showCode} onToggle={(e) => setShowCode((e.target as HTMLDetailsElement).open)}>
-        <summary>Using Claude Code, or setting it up by hand</summary>
+        <summary>Advanced: Claude Code (terminal) or manual setup — not needed for Claude Desktop</summary>
         <p className={styles.subtle}>
           Claude Code: turn Premation on, then run this once in a terminal.
         </p>
