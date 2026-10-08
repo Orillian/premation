@@ -174,6 +174,47 @@ TEST_CASE("E4: fill opacity fades the contents and shapes the stroke by the silh
   CHECK(px(14, 24, 0) > 200);  // the outside stroke is still drawn at full strength
 }
 
+TEST_CASE("gradient-ramp lands its authored sRGB stops in the linear chain (one display encode)") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  const auto ramp = [](double r0, double g0, double b0, double r1, double g1, double b1) {
+    api::RenderEffect e;
+    e.type = "gradient-ramp";
+    e.params.push_back(color_param("colorA", r0, g0, b0, 1));
+    e.params.push_back(color_param("colorB", r1, g1, b1, 1));
+    e.params.push_back(num_param("angle", 90));
+    e.params.push_back(num_param("blend", 1));
+    return e;
+  };
+  Frame frame;
+  FrameStats s;
+  const auto px = [&](std::uint32_t x, std::uint32_t y, std::size_t c) {
+    return static_cast<int>(frame.rgba.at((std::size_t{y} * 64 + x) * 4 + c));
+  };
+  // A flat ramp of the design system's deep navy (#02081b) over a white solid:
+  // the frame shows #02081b. Written raw into the linear buffer, the stop was
+  // display-encoded a second time and came out (22, 50, 91).
+  auto flat = solid_scene(1, 1, 1);
+  flat.scene.renderables[0].effects = {ramp(2 / 255.0, 8 / 255.0, 27 / 255.0, 2 / 255.0, 8 / 255.0, 27 / 255.0)};
+  REQUIRE(renderer->render(flat, &frame, s, err));
+  CHECK(s.gpuError.empty());
+  CHECK(std::abs(px(32, 24, 0) - 2) <= 1);
+  CHECK(std::abs(px(32, 24, 1) - 8) <= 1);
+  CHECK(std::abs(px(32, 24, 2) - 27) <= 1);
+  // Red → blue top to bottom over the rect (rows 12..36): the stops blend in sRGB,
+  // as the Canvas2D ramp does, so the row at t blends to (1 − t, 0, t) on screen.
+  auto rb = solid_scene(1, 1, 1);
+  rb.scene.renderables[0].effects = {ramp(1, 0, 0, 0, 0, 1)};
+  REQUIRE(renderer->render(rb, &frame, s, err));
+  for (const std::uint32_t y : {14U, 24U, 34U}) {
+    const double t = (y + 0.5 - 12) / 24;
+    CHECK(std::abs(px(32, y, 0) - static_cast<int>(std::lround((1 - t) * 255))) <= 3);
+    CHECK(px(32, y, 1) <= 1);
+    CHECK(std::abs(px(32, y, 2) - static_cast<int>(std::lround(t * 255))) <= 3);
+  }
+}
+
 TEST_CASE("E4: a faded effect of several chain entries blends back once over its input (blendSpan)") {
   std::string err;
   auto renderer = SceneRenderer::create({}, err);
