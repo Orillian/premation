@@ -38,9 +38,9 @@ Radeon 780M iGPU unused (`force_high_performance_gpu`), d3d11va zero-copy decode
 | S1 | "Strokes look broken in effect-heavy 3D" (owner, 2026-10-10). Probe renders: every glowing 3D layer sat in a hard-edged box — the 3D surface's margin budgeted the glow's blur radius, not its wide halo (2.2×), so the halo was cut at the texture edge. | `effect_spread_px` budgets what the chain draws. Two goldens whose REFERENCE has the box take a ceiling with that reason. | done |
 | S2 | Thin strokes (1–2 px) on a 3D layer at a steep angle broke into dotted lines: the layer's raster was sampled minified with no mips. | 3D quads sample a mipmapped copy of their raster (`texture_mipmapped`, `#mip` pool entry) with trilinear + 16× anisotropic filtering; 2D sampling unchanged. | done |
 | S3 | Extruded text from a traced raster outline — checked: the walls are flat-shaded planes (correct); exact font outlines tried and REVERTED: the front cap is the painted raster, and font curves left a dark seam where they diverge from it. | — | no change |
-| T6 | `update_layer` refuses stroke on text ("give type an outline with a text_animator or an effect") although the Character panel has Stroke. | | open |
+| T6 | `update_layer` refuses stroke on text ("give type an outline with a text_animator or an effect") although the Character panel has Stroke. | Text strokes write what the Character panel writes: `text/stroke` (strokeOpacity is its alpha), the Text component's `strokeWidth`, No Stroke off. | done — `textStroke.native.test.ts`; outline-only, filled+stroke and 3D outline titles render |
 | E | 60 After Effects effects Premation lacks, the popular ones first (owner, 2026-10-10). | | open |
 
 ## Progress
 
-- [x] V1 · [x] V2 · [x] V3 · [x] V4 · [x] V5 · [ ] V6 · [ ] V7 · [ ] V8 · [ ] P8b · [x] U1 · [x] U2 · [x] S1 · [x] S2 · [x] S3 · [ ] T6 · [ ] E
+- [x] V1 · [x] V2 · [x] V3 · [x] V4 · [x] V5 · [ ] V6 · [ ] V7 · [ ] V8 · [ ] P8b · [x] U1 · [x] U2 · [x] S1 · [x] S2 · [x] S3 · [x] T6 · [ ] E

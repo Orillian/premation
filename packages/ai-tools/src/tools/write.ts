@@ -276,11 +276,12 @@ export const updateLayerDef: AiToolDef = {
           'stroke) while layer styles (drop shadow, glow, stroke style) keep theirs. For an outline-only shape set ' +
           'fill: "none" instead.',
       },
-      // ── Stroke (the layer's first stroke, Contents ▸ Stroke 1) ──
+      // ── Stroke (the layer's first stroke, Contents ▸ Stroke 1; on text, Character ▸ Stroke) ──
       stroke: {
         type: 'string',
         description:
-          'Stroke colour, hex. Shape and solid layers only. Adds a stroke when the layer has none. ' +
+          'Stroke colour, hex. Shape and solid layers (adds a stroke when the layer has none) and text layers ' +
+          '(the Character stroke — with fill: "none" an outline-only title). ' +
           'Combine with set_trim_path for a line that draws itself on.',
       },
       strokeWidth: { type: 'number', minimum: 0, description: 'Stroke width in layer px. 0 draws no stroke.' },

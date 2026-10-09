@@ -80,6 +80,7 @@ import { engineOnly } from './toolContext';
 import { activePlayheadSeconds, trackMatteCommand } from '@core/engine/trackWrites';
 import { componentOfType, fieldWrite, memberWrite } from '@core/engine/propRefs';
 import { maskToBezier } from '@core/engine/props';
+import { parseCssColor } from '@core/text/cssColor';
 import {
   addMaskFromPath, addPathOperator, addTextAnimatorGroup, applyLayerTiming, convertSvgLayer, ensurePathOperator, importAssetBytes,
   insertAssetLayer, insertModelPlaceholder, insertSvgMarkupLayer, patchLayerStyle, patchPathOperator, patchTextAnimator,
@@ -687,20 +688,27 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
   if (typeof i.strokeOpacity === 'number') strokePatch.opacity = Math.max(0, Math.min(100, i.strokeOpacity)) / 100;
   if (Object.keys(strokePatch).length > 0 && node) {
     const kind = (await ctx.scene.get(i.nodeId))?.kind ?? 'shape';
-    if (NO_PATH_PIPELINE.has(kind)) {
+    if (kind === 'text') {
+      // Type's own stroke — the Character panel's Stroke Color / Stroke Width
+      // (`text/stroke`, the Text component's latent `strokeWidth`); opacity
+      // is the colour's alpha, as in the panel's picker.
+      const writes = await textStrokeWrites(i.nodeId, strokePatch);
+      if (!writes) return fail(`Could not set the stroke of text layer '${i.nodeId}'.`);
+      await ctx.engine.apply([{ type: 'setProperties', writes } as Command]);
+    } else if (NO_PATH_PIPELINE.has(kind)) {
       return fail(
-        `stroke / strokeWidth / strokeOpacity apply to shape and solid layers; '${i.nodeId}' is a ${kind}. ` +
-          (kind === 'text' ? 'Give type an outline with a text_animator or an effect (stroke) instead.' : 'Stroke a shape layer instead.'),
+        `stroke / strokeWidth / strokeOpacity apply to shape, solid and text layers; '${i.nodeId}' is a ${kind}. Stroke a shape layer instead.`,
       );
+    } else {
+      const stack = mirrorStrokes(documentMirror(), i.nodeId);
+      const next = stack.length > 0 ? [...stack] : [defaultStroke()];
+      next[0] = normalizeStroke({ ...(next[0] ?? defaultStroke()), ...strokePatch, enabled: true });
+      await ctx.engine.apply([{
+        type: 'setProperty',
+        prop: { layer: i.nodeId, path: 'layer/strokes' },
+        value: { kind: 'json', value: JSON.stringify(next) },
+      } as Command]);
     }
-    const stack = mirrorStrokes(documentMirror(), i.nodeId);
-    const next = stack.length > 0 ? [...stack] : [defaultStroke()];
-    next[0] = normalizeStroke({ ...(next[0] ?? defaultStroke()), ...strokePatch, enabled: true });
-    await ctx.engine.apply([{
-      type: 'setProperty',
-      prop: { layer: i.nodeId, path: 'layer/strokes' },
-      value: { kind: 'json', value: JSON.stringify(next) },
-    } as Command]);
     applied.push(...Object.keys(strokePatch).map((k) => (k === 'color' ? 'stroke' : `stroke${k[0]!.toUpperCase()}${k.slice(1)}`)));
   }
 
@@ -708,6 +716,43 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
   refreshAfterLegacy(ctx);
   return ok(`Updated ${i.nodeId}: ${applied.join(', ')}.`);
 };
+
+/**
+ * A text layer's stroke as the Character panel writes it: `text/stroke` (the
+ * colour; opacity is its alpha) and the Text component's `strokeWidth`. A
+ * colour or width turns No Stroke off. Null when the layer does not address one.
+ */
+async function textStrokeWrites(nodeId: string, patch: { color?: string; width?: number; opacity?: number }): Promise<PropertyWrite[] | null> {
+  const m = documentMirror();
+  await m.loadTree(nodeId);
+  const text = componentOfType(nodeId, 'Text');
+  if (!text) return null;
+  const t = activePlayheadSeconds();
+  const writes: PropertyWrite[] = [];
+  if (patch.color !== undefined || patch.opacity !== undefined) {
+    let color = patch.color;
+    if (patch.opacity !== undefined) {
+      const cur = m.tree(nodeId)?.nodes.get('text/stroke')?.value;
+      const c = patch.color !== undefined ? parseCssColor(patch.color) : null;
+      const rgb = c ? [c[0], c[1], c[2]]
+        : cur?.kind === 'color' ? [cur.value.r * 255, cur.value.g * 255, cur.value.b * 255] : [0, 0, 0];
+      color = `rgba(${rgb.map((n) => Math.round(n)).join(', ')}, ${patch.opacity})`;
+    }
+    const w = fieldWrite(nodeId, text, 'stroke', color, t);
+    if (!w) return null;
+    writes.push(w);
+  }
+  if (patch.width !== undefined) {
+    const w = memberWrite(nodeId, 'strokeWidth', patch.width, t);
+    if (!w) return null;
+    writes.push(w);
+  }
+  if (patch.color !== undefined || (patch.width ?? 0) > 0) {
+    const w = fieldWrite(nodeId, text, 'noStroke', false, t);
+    if (w) writes.push(w);
+  }
+  return writes;
+}
 
 // ── Write: animation ──────────────────────────────────────────────
 
