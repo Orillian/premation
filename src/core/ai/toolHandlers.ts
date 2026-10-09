@@ -441,6 +441,58 @@ const setAudio: AiTool['handler'] = async (input, ctx) => {
   return ok(`'${i.nodeId}': ${done.join(', ')}.` + (i.loop !== undefined && i.loop !== 1 ? ' Extend its bar with set_layer_timing (outSec) to hear the repeats.' : ''));
 };
 
+interface PaintStrokeArgs {
+  points: number[][];
+  color?: string;
+  size?: number;
+  hardness?: number;
+  opacity?: number;
+  minSize?: number;
+  reveal?: { from: number; to: number };
+}
+
+const paintStrokes: AiTool['handler'] = async (input, ctx) => {
+  const i = input as { nodeId: string; strokes: PaintStrokeArgs[]; onTransparent?: boolean };
+  if (!await ctx.scene.has(i.nodeId)) return fail(await unknownNode(ctx, i.nodeId));
+  const info = documentMirror().layer(i.nodeId)!;
+  // Reveal keys are on the stroke's own axis: LAYER seconds (the layer's start time off).
+  const layerStart = flicksToSeconds(info.timing.startTime);
+  // The tool speaks the layer's top-left (how anyone describes a drawing);
+  // stored paint points are centre-relative layer px.
+  const box = await layerBox(i.nodeId);
+  const ox = (box.width ?? 0) / 2;
+  const oy = (box.height ?? 0) / 2;
+  const ids: string[] = [];
+  for (const [n, s] of i.strokes.entries()) {
+    const pts = s.points.filter((p) => p.length >= 2 && p.every((v) => Number.isFinite(v)));
+    if (pts.length === 0) return fail(`strokes[${n}] has no finite points.`);
+    const pressured = pts.some((p) => p.length >= 3);
+    const stroke: Record<string, unknown> = {
+      points: pts.map((p) => ({ x: p[0]! - ox, y: p[1]! - oy })),
+      color: s.color ?? '#000000',
+      size: s.size ?? 12,
+      hardness: Math.min(100, Math.max(0, s.hardness ?? 80)) / 100,
+      opacity: Math.min(100, Math.max(0, s.opacity ?? 100)) / 100,
+      mode: 'paint',
+      ...(pressured ? {
+        pressure: pts.map((p) => Math.min(1, Math.max(0, p[2] ?? 1))),
+        dynamics: { size: 'pressure', minSize: Math.min(100, Math.max(0, s.minSize ?? 10)) / 100 },
+      } : {}),
+    };
+    const keys = s.reveal && s.reveal.to > s.reveal.from
+      ? [{ param: 'end', time: s.reveal.from - layerStart, value: 0 }, { param: 'end', time: s.reveal.to - layerStart, value: 100 }]
+      : [];
+    const r = await ctx.engine.apply([{ type: 'addPaintStroke', layer: i.nodeId, stroke: JSON.stringify(stroke), keys } as Command]);
+    ids.push((r[0] as { stroke?: string }).stroke ?? '');
+  }
+  if (i.onTransparent !== undefined) await ctx.engine.apply([{ type: 'setPaintOnTransparent', layers: [i.nodeId], on: i.onTransparent } as Command]);
+  return ok(
+    `Painted ${ids.length} stroke(s) on ${i.nodeId}: ${ids.join(', ')}.` +
+    ` Their numeric params animate as "paint.<strokeId>.<param>" (start, end, diameter, opacity …).`,
+    { strokes: ids },
+  );
+};
+
 const reorderLayer: AiTool['handler'] = async (input, ctx) => {
   const i = input as { nodeIds: string[]; position: 'top' | 'bottom' | 'above' | 'below'; relativeTo?: string };
   for (const id of i.nodeIds) if (!await ctx.scene.has(id)) return fail(await unknownNode(ctx, id));
@@ -2389,7 +2441,7 @@ const addPathMorph: AiTool['handler'] = async (input, ctx) => {
  * one batch: the result pasted, the operands flagged `layer/booleanOperand`.
  */
 export const ENGINE_ROUTED_TOOLS: ReadonlySet<string> = new Set([
-  'create_layer', 'delete_layer', 'reparent_layer', 'reorder_layer', 'set_audio', 'update_layer',
+  'create_layer', 'delete_layer', 'reparent_layer', 'reorder_layer', 'set_audio', 'paint_strokes', 'update_layer',
   'set_keyframes', 'remove_keyframes', 'set_easing', 'set_expression', 'set_layer_timing',
   'add_effect', 'update_effect', 'update_effect_param', 'update_composition', 'apply_preset',
   'set_spring', 'set_motion_blur', 'create_precomp', 'set_time_remap', 'set_light', 'set_shadow_stack',
@@ -2436,6 +2488,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   reparent_layer: reparentLayer,
   reorder_layer: reorderLayer,
   set_audio: setAudio,
+  paint_strokes: paintStrokes,
   update_layer: updateLayer,
   set_keyframes: setKeyframes,
   remove_keyframes: removeKeyframes,

@@ -86,7 +86,7 @@ Heartbeat: 2026-10-09 19:04 — session "Motion-editor rendering bugs" working (
 - [x] P0 · [ ] P1 · [x] P2 · [ ] P3 · [ ] P4 · [ ] P5 · [ ] P6 · [ ] P7 · [ ] P8 · [ ] P9 · [ ] P10 · [ ] P11
 - [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
 - [x] I1 · [x] I2 · [ ] I3 · [ ] I4 · [ ] I5
-- [ ] F1 · [ ] F2 · [ ] F3 · [ ] F4 · [ ] F5
+- [ ] F1 · [ ] F2 · [ ] F3 · [x] F4 · [ ] F5
 - [x] M1 · [x] M2 · [x] M3 · [x] M4 · [x] M5 · [ ] M6 · [x] M7 · [ ] M8
 
 Notes log (newest first):

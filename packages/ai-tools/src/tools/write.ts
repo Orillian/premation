@@ -511,6 +511,57 @@ export const setAudioDef: AiToolDef = {
   },
 };
 
+export const paintStrokesDef: AiToolDef = {
+  name: 'paint_strokes',
+  kind: 'write',
+  description:
+    'Paint brush strokes on a layer (AE Paint ▸ Brush): calligraphy, ink marks, hand-drawn lines. Each stroke is a ' +
+    'list of points in layer px from the layer\'s top-left; a third number per point is pen PRESSURE 0..1, which ' +
+    'scales the tip down to minSize — that is the brush taper (press hard in the belly of a stroke, lift at its ' +
+    'ends). `reveal` draws the stroke on between two composition times (AE Write On). onTransparent: the layer ' +
+    'shows ONLY its paint (paint on a transparent solid over other layers).',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nodeId', 'strokes'],
+    properties: {
+      nodeId: { type: 'string' },
+      onTransparent: { type: 'boolean' },
+      strokes: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['points'],
+          properties: {
+            points: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 2000,
+              items: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'number' } },
+              description: '[[x, y], …] or [[x, y, pressure], …] in layer px (top-left origin). Pressure 0..1.',
+            },
+            color: { type: 'string', description: 'Hex. Default #000000.' },
+            size: { type: 'number', minimum: 1, maximum: 2500, description: 'Brush diameter px at full pressure. Default 12.' },
+            hardness: { type: 'number', minimum: 0, maximum: 100, description: '% — 100 a crisp edge, 0 a soft wash. Default 80.' },
+            opacity: { type: 'number', minimum: 0, maximum: 100, description: '%. Default 100.' },
+            minSize: { type: 'number', minimum: 0, maximum: 100, description: '% of size at zero pressure (AE Minimum Size). Default 10.' },
+            reveal: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['from', 'to'],
+              properties: { from: { type: 'number', minimum: 0 }, to: { type: 'number', minimum: 0 } },
+              description: 'Composition seconds: the stroke draws itself on from `from` to `to`.',
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 export const setLayerTimingDef: AiToolDef = {
   name: 'set_layer_timing',
   kind: 'write',
@@ -1270,6 +1321,7 @@ export const WRITE_TOOL_DEFS: readonly AiToolDef[] = [
   setExpressionDef,
   setLayerTimingDef,
   setAudioDef,
+  paintStrokesDef,
   addEffectDef,
   updateEffectDef,
   textAnimatorDef,
