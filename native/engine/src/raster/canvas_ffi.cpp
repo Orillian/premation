@@ -243,6 +243,7 @@ struct State {
   TextAlign align = TextAlign::start;
   TextBaseline baseline = TextBaseline::alphabetic;
   Direction direction = Direction::inherit;
+  std::string lang;  // setLang: ShapeRequest::language
   double letterSpacing = 0.0;
   double wordSpacing = 0.0;
   bool kerning = true;
@@ -407,6 +408,7 @@ class SkiaCanvas final : public Canvas2D {
   void setTextAlign(TextAlign a) override { st_.align = a; }
   void setTextBaseline(TextBaseline b) override { st_.baseline = b; }
   void setDirection(Direction d) override { st_.direction = d; }
+  void setLang(std::string_view lang) override { st_.lang = std::string(lang); }
   [[nodiscard]] Direction direction() const override { return st_.direction; }
   void setLetterSpacing(double px) override { st_.letterSpacing = px; }
   void setWordSpacing(double px) override { st_.wordSpacing = px; }
@@ -785,6 +787,7 @@ class SkiaCanvas final : public Canvas2D {
     ShapeRequest r;
     r.font = st_.font;
     r.rtl = st_.direction == Direction::rtl;
+    r.language = st_.lang;
     r.letterSpacing = st_.letterSpacing;
     r.wordSpacing = st_.wordSpacing;
     r.kerning = st_.kerning;

@@ -84,6 +84,7 @@ export const TEXT_FIELDS: readonly TextFieldSpec[] = [
   { key: 'verticalRomanAlignment', label: 'Standard Vertical Roman Alignment', type: 'bool', default: false },
   { key: 'tateChuYokoAuto', label: 'Tate-Chu-Yoko', type: 'bool', default: false },
   { key: 'tateChuYokoDigits', label: 'Tate-Chu-Yoko Digits', type: 'scalar', default: 2, min: 1, max: 4 },
+  { key: 'language', label: 'Language', type: 'choice', default: 'auto', choices: ['auto', 'en', 'ja', 'ko', 'zh-Hans', 'zh-Hant', 'ar', 'he', 'hi', 'th', 'vi', 'ru'] },
   // ── Paragraph (box) text ──
   { key: 'boxWidth', label: 'Box Width', type: 'scalar', default: 0, min: 0 },
   { key: 'boxHeight', label: 'Box Height', type: 'scalar', default: 0, min: 0 },

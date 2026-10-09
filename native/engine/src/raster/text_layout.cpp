@@ -69,6 +69,7 @@ TextExtras read_text_extras(const json::Value& v) {
   x.verticalRomanAlignment = v["verticalRomanAlignment"].truthy();
   if (v["tateChuYokoDigits"].is_number()) x.tateChuYokoDigits = static_cast<int>(v["tateChuYokoDigits"].num());
   x.boxOffsetY = opt_num(v["boxOffsetY"]);
+  x.language = v["language"].str_or("");
   return x;
 }
 

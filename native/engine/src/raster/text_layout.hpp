@@ -44,6 +44,7 @@ struct TextExtras {
   bool verticalRomanAlignment = false;
   std::optional<int> tateChuYokoDigits;
   std::optional<double> boxOffsetY;
+  std::string language;  // BCP 47 ('' = from the script): T3
 };
 [[nodiscard]] TextExtras read_text_extras(const json::Value& v);
 

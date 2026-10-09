@@ -204,6 +204,13 @@ export const updateLayerDef: AiToolDef = {
         description: 'Text: vertical = tategaki (CJK upright in columns read right to left, punctuation in vertical forms).',
       },
       direction: { type: 'string', enum: ['ltr', 'rtl'], description: 'Text: paragraph direction (rtl for Arabic / Hebrew paragraphs).' },
+      language: {
+        type: 'string',
+        enum: ['auto', 'en', 'ja', 'ko', 'zh-Hans', 'zh-Hant', 'ar', 'he', 'hi', 'th', 'vi', 'ru'],
+        description:
+          'Text: the language the text is set in (default auto = from its script). Han characters take Japanese, ' +
+          'Simplified or Traditional Chinese glyph forms and fallback fonts from it: set ja for kanji, zh-Hans / zh-Hant for hanzi.',
+      },
       fill: { type: 'string', description: 'Colour: hex or CSS (rgba(), named). "none" = no fill (a stroke-only shape).' },
       x: { type: 'number' },
       y: { type: 'number' },
@@ -717,6 +724,8 @@ export const addEffectDef: AiToolDef = {
           'star-burst', 'snowfall', 'rainfall', 'write-on', 'light-burst',
           // Round five — Stylize & Blur
           'deep-glow', 'beam-path', 'glass', 'texturize', 'threads', 'chromatic-aberration', 'hex-tile', 'vector-blur',
+          // Program F1–F3: the ink set
+          'ink-bleed', 'paper', 'ink-splatter',
           // Round five — Distort
           'flo-motion', 'lens', 'griddler', 'ball-action', 'drizzle',
           // Round five — Transition

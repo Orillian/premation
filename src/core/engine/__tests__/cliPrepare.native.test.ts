@@ -58,6 +58,9 @@ maybe('premation-engine --prepare', () => {
       expect(made.ok).toBe(true);
       const comp = (made as { value: { item: string } }).value.item;
       textLayer = (unwrap(await client.execute({ type: 'createLayer', comp, kind: 'text', name: 'Name here', init: [] } as never)) as unknown as { layer: string }).layer;
+      // A family no machine has: the engine records a `font` advisory on the layer
+      // (it draws in a fallback face), which must not fail the reframe / export.
+      unwrap(await client.execute({ type: 'setProperty', prop: { layer: textLayer, path: 'text/fontFamily' }, value: { kind: 'string', value: 'Premation Not Installed Sans' } } as never));
       const fields = [{ id: 'name', label: 'Name', kind: 'text', default: '', target: { nodeId: textLayer, componentType: 'Text', prop: 'content' } }];
       unwrap(await client.execute({ type: 'setCompositionSettings', comp, patch: { templateFields: JSON.stringify(fields) } } as never));
       startDocument = new TextDecoder().decode((unwrap(await client.query({ type: 'exportDocument' } as never)) as unknown as { document: Uint8Array }).document);

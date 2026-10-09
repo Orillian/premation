@@ -1,6 +1,8 @@
 #include "snapshot_build.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
 #include <exception>
 #include <functional>
@@ -11,8 +13,10 @@
 #include <unordered_map>
 #include <utility>
 
+#include "canvas.hpp"
 #include "cloner_port.hpp"
 #include "comp_instance.hpp"
+#include "fonts.hpp"
 #include "effect_handoff.hpp"
 #include "effects_port.hpp"
 #include "frame_build.hpp"
@@ -313,6 +317,8 @@ class Walk final : public Scene3DHost {
   void emit_stub(const doc::Node& n);
   void build_node(const doc::Node& n);
   void unported(RLayer& l, const doc::Node& n, std::string what);
+  /// T4: a `font` layer error when none of the text's families is registered.
+  void note_missing_font(RLayer& l, const doc::Node& n, std::string_view cssFamilies);
   std::vector<Json> effects_of(const doc::Node& n, const Values& a, std::optional<double> layerTime, RLayer* note);
   /// `matrixAt` (3D layers): the projected affine per sample (threed_port `matrix_at`).
   /// `quadAt`: a 3D comp card's perspective quad per sample (MotionSample.quad).
@@ -590,6 +596,38 @@ const doc::Node* Walk::nearest_precomp_root(const doc::Node& n) const {
     pid = p->parent;
   }
   return nullptr;
+}
+
+void Walk::note_missing_font(RLayer& l, const doc::Node& n, std::string_view cssFamilies) {
+  // A family the font set does not have is drawn in a fallback face SILENTLY —
+  // the samurai session's Cormorant / Playfair / Yu Mincho all came out as one
+  // sans. Recorded as a `font` layer error naming what was asked for (the
+  // first family that is not a CSS generic; the list's later entries are the
+  // author's own fallbacks, so the layer is only reported when NONE is there).
+  const raster::CanvasOptions* canvas = c_.measurer != nullptr ? c_.measurer->canvas_options() : nullptr;
+  if (canvas == nullptr || canvas->fonts == nullptr) return;
+  static constexpr std::array<std::string_view, 8> kGeneric = {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "-apple-system", "ui-sans-serif"};
+  std::string first;
+  std::string_view rest = cssFamilies;
+  while (!rest.empty()) {
+    const std::size_t comma = rest.find(',');
+    std::string_view one = rest.substr(0, comma);
+    while (!one.empty() && (one.front() == ' ' || one.front() == '"' || one.front() == '\'')) one.remove_prefix(1);
+    while (!one.empty() && (one.back() == ' ' || one.back() == '"' || one.back() == '\'')) one.remove_suffix(1);
+    if (!one.empty()) {
+      std::string low(one);
+      std::ranges::transform(low, low.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+      if (std::ranges::find(kGeneric, low) != kGeneric.end() || canvas->fonts->has_family(one)) return;  // drawn as asked
+      if (first.empty()) first = std::string(one);
+    }
+    if (comma == std::string_view::npos) break;
+    rest.remove_prefix(comma + 1);
+  }
+  if (first.empty()) return;
+  const std::string what = "font '" + first + "' is not installed or bundled — the text is drawn in a fallback face (list_fonts shows what is available)";
+  if (std::ranges::any_of(errors_, [&](const LayerError& e) { return e.layerId == n.id && e.stage == "font"; })) return;
+  (void)l;
+  errors_.push_back({n.id, n.name, "font", what});
 }
 
 void Walk::unported(RLayer& l, const doc::Node& n, std::string what) {
@@ -1201,6 +1239,7 @@ void Walk::build_node(const doc::Node& n) {
       if (c_.measurer == nullptr) unported(l, n, "text measurement (no fonts)");
       else measured = c_.measurer->measure_text_size(*style);
       if (!measured && c_.measurer != nullptr) unported(l, n, "text measurement of this style");
+      note_missing_font(l, n, style->fontFamily);
     }
   }
   const std::optional<double> rawW = a.has("width") ? a.get("width") : base.width;

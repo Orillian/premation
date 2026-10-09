@@ -128,11 +128,20 @@ const describeScene: AiTool['handler'] = async (input, ctx) => {
   const cap = limit ?? 120;
   const shown = nodes.slice(0, cap);
   const comp = await ctx.comp.get();
+  // What the engine recorded against layers (a font that is not installed, an
+  // effect on the CPU fallback, a feature it does not draw yet): the model sees
+  // why a layer looks wrong instead of guessing.
+  const shownIds = new Set(shown.map((n) => n.id));
+  const problems = documentMirror().layerErrors(activeCompRootId() as string)
+    .filter((e) => shownIds.has(e.layer))
+    .slice(0, 40)
+    .map((e) => ({ layer: e.layer, stage: e.stage, message: e.message }));
 
   const payload = {
     composition: { ...comp, playhead: ctx.comp.playhead() },
     selection: ctx.scene.selection(),
     layerCount: nodes.length,
+    ...(problems.length ? { problems } : {}),
     layers: await mapSeq(shown, async (n) => ({
       id: n.id,
       name: n.name,
@@ -628,7 +637,7 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     // Paragraph text (boxWidth > 0: the text wraps inside the box and `align`
     // places each line in it), vertical type (tategaki) and RTL paragraphs —
     // the Character / Paragraph panels' fields, unreachable from any tool.
-    'boxWidth', 'boxHeight', 'orientation', 'direction',
+    'boxWidth', 'boxHeight', 'orientation', 'direction', 'language',
     // Both are read by buildSnapshot (cornerRadius:189, backdropBlur:190) and
     // were unreachable from any tool. `backdropBlur` in particular is the whole
     // glass-surface vocabulary and it was already fully wired and tested.

@@ -229,6 +229,26 @@
       "max": 4
     },
     {
+      "key": "language",
+      "label": "Language",
+      "type": "choice",
+      "default": "auto",
+      "choices": [
+        "auto",
+        "en",
+        "ja",
+        "ko",
+        "zh-Hans",
+        "zh-Hant",
+        "ar",
+        "he",
+        "hi",
+        "th",
+        "vi",
+        "ru"
+      ]
+    },
+    {
       "key": "boxWidth",
       "label": "Box Width",
       "type": "scalar",

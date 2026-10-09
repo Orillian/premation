@@ -82,7 +82,14 @@ struct ShapeRequest {
   /// CSS font-feature-settings / font-variation-settings strings ("" = none).
   std::string features;
   std::string variations;
+  /// BCP 47 language for shaping ("" = from the text's script: kana → ja,
+  /// Hangul → ko, other Han → zh-Hans, else en). Picks a pan-CJK face's
+  /// Japanese vs Chinese glyph forms (OpenType `locl`).
+  std::string language;
 };
+
+/// The language a run's script implies (ShapeRequest::language's default).
+[[nodiscard]] std::string script_language(std::u32string_view text);
 
 /// One positioned glyph, in user-space px relative to the run's pen origin.
 struct Glyph {
@@ -159,6 +166,25 @@ class FontSet {
   /// Returns how many faces were added. Call before shaping from threads:
   /// shaping only reads the set.
   std::size_t add_system_family(const std::string& family);
+
+  /// Per-character fallback (Blink's FontFallbackList → the OS). Whether any
+  /// registered face has a glyph for `cp`.
+  [[nodiscard]] bool covers_any(char32_t cp) const;
+  /// The installed family the OS would draw `cp` with (DirectWrite on Windows),
+  /// nullopt when none has it or the platform has no per-character query here
+  /// (the bundled manifest is the fallback there).
+  /// `language` (BCP 47, "" = none) steers Han: ja → a Japanese face, zh-Hans → a Chinese one.
+  [[nodiscard]] static std::optional<std::string> fallback_family_for(char32_t cp, int weight, bool italic,
+                                                                      std::string_view language = {});
+  /// Make a registered family a fallback: a character no requested family
+  /// covers is drawn from the fallbacks, in the order they were marked, before
+  /// the primary face's missing-glyph box. Call before shaping (between frames).
+  /// `language` (BCP 47, "" = any): the language the OS picked the family for —
+  /// text shaped in that language tries it before the other fallbacks, so
+  /// kanji set in Japanese take the Japanese face and hanzi the Chinese one (T3).
+  void mark_fallback(const std::string& family, std::string_view language = {});
+  /// Whether `family` (or what it aliases to) has any registered face.
+  [[nodiscard]] bool has_family(std::string_view family) const;
 
   [[nodiscard]] std::size_t face_count() const noexcept;
   [[nodiscard]] const FontOptions& options() const noexcept { return opts_; }

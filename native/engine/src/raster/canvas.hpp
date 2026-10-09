@@ -231,6 +231,9 @@ class Canvas2D {
   virtual void setWordSpacing(double px) = 0;
   virtual void setFontKerning(bool on) = 0;
   virtual void setSmallCaps(bool on) = 0;
+  /// The text's BCP 47 language for shaping (canvas `lang`; '' = from the
+  /// script). Steers HarfBuzz's `locl` forms and Han fallback (T3).
+  virtual void setLang(std::string_view /*lang*/) {}
   /// CSS font-variation-settings ("'wght' 700, 'wdth' 80") — applied on top of the face.
   virtual void setFontVariationSettings(std::string_view s) = 0;
   /// CSS font-feature-settings for the next draws (features the TS applies through alias faces).

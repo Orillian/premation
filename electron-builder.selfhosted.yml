@@ -39,6 +39,15 @@ extraResources:
     to: models/object-matte
     filter:
       - '*.onnx'
+  # Repeated: the bundled fonts (resources/fonts).
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - fonts.json
+      - '*.ttf'
+      - '*.otf'
+      - '*.woff2'
+      - '*-OFL.txt'
   # Repeated: Claude for Premation's bundled MCP server (scripts/buildMcp.cjs).
   - from: build/mcp
     to: mcp

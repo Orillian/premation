@@ -97,6 +97,17 @@ export function viewportRoute(env: Record<string, string | undefined>): 'auto' |
  * when it cannot); only the copy otherwise (no handle source, or the route
  * forced to copy).
  */
+/**
+ * `PREMATION_FONTS_MANIFEST` for the engine: the bundled `fonts/fonts.json`
+ * (<resources>/fonts when packaged, resources/fonts in a checkout), when it is
+ * there. A developer's own PREMATION_FONTS_MANIFEST wins.
+ */
+export function bundledFontsManifest(o: { isPackaged: boolean; resourcesPath: string; appPath: string }): { PREMATION_FONTS_MANIFEST?: string } {
+  if (process.env.PREMATION_FONTS_MANIFEST) return { PREMATION_FONTS_MANIFEST: process.env.PREMATION_FONTS_MANIFEST };
+  const manifest = o.isPackaged ? path.join(o.resourcesPath, 'fonts', 'fonts.json') : path.join(o.appPath, 'resources', 'fonts', 'fonts.json');
+  return existsSync(manifest) ? { PREMATION_FONTS_MANIFEST: manifest } : {};
+}
+
 export function offeredFrameCapabilities(canImportShared: boolean): string[] {
   return canImportShared ? ['frames.sharedTexture', 'frames.copy'] : ['frames.copy'];
 }
@@ -716,6 +727,10 @@ export class EngineHost {
               ...(o.faceUserDir ? { PREMATION_FACE_USER_DIR: o.faceUserDir } : {}),
               PREMATION_SAM_DIR: process.env.PREMATION_SAM_DIR
                 ?? (o.isPackaged ? path.join(o.resourcesPath, 'models', 'object-matte') : path.join(o.appPath, 'dist', 'models', 'object-matte')),
+              // The fonts the app ships (resources/fonts, scripts/fetchFonts.cjs): the
+              // default Inter and the Noto families every script falls back to, so
+              // text renders the same on every machine — not only in what is installed.
+              ...bundledFontsManifest(o),
             },
           }) as unknown as EngineChild,
         resolveExe,

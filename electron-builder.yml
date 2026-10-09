@@ -55,6 +55,17 @@ extraResources:
     to: models/object-matte
     filter:
       - '*.onnx'
+  # The fonts the engine registers first (resources/fonts, scripts/fetchFonts.cjs):
+  # outside app.asar because the engine reads them; main points it at fonts.json
+  # with PREMATION_FONTS_MANIFEST (engineHost.ts bundledFontsManifest).
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - fonts.json
+      - '*.ttf'
+      - '*.otf'
+      - '*.woff2'
+      - '*-OFL.txt'
   # Claude for Premation: the bundled MCP server (scripts/buildMcp.cjs). Outside
   # app.asar because Claude Desktop launches it — with this app's own binary as
   # Node — and a launched script must be a real file (docs/MCP_PLAN.md D6).

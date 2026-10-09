@@ -112,6 +112,9 @@ export interface TextExtras {
   direction?: 'rtl' | 'auto';
   /** Vertical type (columns top→bottom, right→left); absent = horizontal. */
   orientation?: 'vertical';
+  /** The text's language (BCP 47) for shaping: Japanese vs Chinese forms of a
+   *  pan-CJK face. Absent = from the text's script ('auto'). */
+  language?: string;
   /** Standard Vertical Roman Alignment: Latin / digits upright in vertical
    *  type. Absent = rotated sideways (AE's default). Only kept when vertical. */
   verticalRomanAlignment?: true;
@@ -152,6 +155,10 @@ export function readTextExtrasProps(node: SceneNode): TextExtras {
     const dir = readParagraphDirection(p.direction);
     if (dir) out.direction = dir;
     else if (p.direction === 'ltr') delete out.direction;
+    if (typeof p.language === 'string') {
+      if (p.language && p.language !== 'auto') out.language = p.language;
+      else delete out.language;
+    }
     if (p.orientation === 'vertical') out.orientation = 'vertical';
     else if (p.orientation === 'horizontal') delete out.orientation;
     if (typeof p.verticalRomanAlignment === 'boolean') {
@@ -204,6 +211,7 @@ export function compactTextExtras(x: TextExtras): TextExtras | undefined {
   if (x.boxHeight && (x.boxVerticalAlign === 'center' || x.boxVerticalAlign === 'bottom')) out.boxVerticalAlign = x.boxVerticalAlign;
   if (x.fitScale !== undefined && x.fitScale > 0 && x.fitScale < 1) out.fitScale = x.fitScale;
   if (x.direction === 'rtl' || x.direction === 'auto') out.direction = x.direction;
+  if (x.language) out.language = x.language;
   if (x.orientation === 'vertical') {
     out.orientation = 'vertical';
     if (x.verticalRomanAlignment) out.verticalRomanAlignment = true;

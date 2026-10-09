@@ -21,6 +21,7 @@
 #include <cstring>
 #include <functional>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -195,6 +196,10 @@ struct FontSet::Impl {
   };
   std::vector<std::unique_ptr<Face>> faces;
   std::vector<std::pair<std::string, std::string>> aliases;
+  /// Per-character fallback families (lower case), in the order they were marked.
+  std::vector<std::string> fallbacks;
+  /// Per fallback (same index): the languages it was picked for ("" = any).
+  std::vector<std::vector<std::string>> fallbackLangs;
   sk_sp<SkFontMgr> mgr;
   HbFuncs funcs;
 
@@ -521,6 +526,70 @@ std::size_t FontSet::add_system_family(const std::string& family) {
 #endif
 }
 
+bool FontSet::covers_any(char32_t cp) const {
+  for (std::size_t i = 0; i < impl_->faces.size(); ++i) {
+    if (impl_->covers(static_cast<int>(i), cp)) return true;
+  }
+  return false;
+}
+
+std::string script_language(std::u32string_view text) {
+  bool han = false;
+  for (const char32_t c : text) {
+    if ((c >= 0x3040 && c <= 0x30FF) || (c >= 0x31F0 && c <= 0x31FF) || (c >= 0xFF66 && c <= 0xFF9F)) return "ja";  // kana
+    if ((c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F)) return "ko";  // Hangul
+    if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x20000 && c <= 0x2FA1F)) han = true;
+  }
+  return han ? "zh-Hans" : "en";
+}
+
+std::optional<std::string> FontSet::fallback_family_for(char32_t cp, int weight, bool italic, std::string_view language) {
+#if defined(_WIN32)
+  // DirectWrite's system font fallback (IDWriteFontFallback) behind Skia's
+  // matchFamilyStyleCharacter — what Chromium asks on Windows. No locale: the
+  // OS picks its default for the script (Yu Gothic / Microsoft YaHei / Malgun
+  // Gothic / Nirmala UI / Leelawadee UI / Segoe UI Emoji / Segoe UI Symbol).
+  const sk_sp<SkFontMgr> sys = SkFontMgr_New_DirectWrite();
+  if (!sys) return std::nullopt;
+  const SkFontStyle style(std::clamp(weight, 1, 1000), SkFontStyle::kNormal_Width,
+                          italic ? SkFontStyle::kItalic_Slant : SkFontStyle::kUpright_Slant);
+  const std::string lang(language);
+  const char* bcp47[] = {lang.c_str()};  // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays): Skia's C-style list
+  const sk_sp<SkTypeface> tf(sys->matchFamilyStyleCharacter(nullptr, style, lang.empty() ? nullptr : bcp47, lang.empty() ? 0 : 1,
+                                                            static_cast<SkUnichar>(cp)));
+  if (!tf) return std::nullopt;
+  SkString name;
+  tf->getFamilyName(&name);
+  if (name.isEmpty()) return std::nullopt;
+  return std::string(name.c_str());
+#else
+  // macOS / Linux: no per-character query wired here yet — the bundled fonts
+  // (PREMATION_FONTS_MANIFEST) are the fallback.
+  (void)cp;
+  (void)weight;
+  (void)italic;
+  (void)language;
+  return std::nullopt;
+#endif
+}
+
+void FontSet::mark_fallback(const std::string& family, std::string_view language) {
+  const std::string l = lower(family);
+  auto it = std::ranges::find(impl_->fallbacks, l);
+  if (it == impl_->fallbacks.end()) {
+    impl_->fallbacks.push_back(l);
+    impl_->fallbackLangs.emplace_back();
+    it = std::prev(impl_->fallbacks.end());
+  }
+  auto& langs = impl_->fallbackLangs[static_cast<std::size_t>(it - impl_->fallbacks.begin())];
+  if (!language.empty() && std::ranges::find(langs, language) == langs.end()) langs.emplace_back(language);
+}
+
+bool FontSet::has_family(std::string_view family) const {
+  const std::string l = impl_->resolve_family(family);
+  return std::ranges::any_of(impl_->faces, [&l](const auto& f) { return f->familyLower == l; });
+}
+
 bool FontSet::load_manifest(const std::filesystem::path& manifest, std::string& error) {
   std::ifstream in(manifest, std::ios::binary);
   if (!in) {
@@ -545,6 +614,8 @@ bool FontSet::load_manifest(const std::filesystem::path& manifest, std::string& 
     }
     const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(ff)), std::istreambuf_iterator<char>());
     if (!add_face(info, bytes, error)) return false;
+    // The app's bundled families (resources/fonts): per-character fallbacks, in manifest order.
+    if (f.has("fallback") && f["fallback"].is_bool() && f["fallback"].truthy()) mark_fallback(info.family);
   }
   for (const auto& a : doc["aliases"].keys()) alias(a, doc["aliases"][a].str());
   return true;
@@ -597,6 +668,15 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
   for (auto& c : cps) {
     if (c.cp == '\t' || c.cp == '\n' || c.cp == '\r' || c.cp == 0x0C) c.cp = ' ';  // TextRun::SetNormalizeSpace
   }
+  // T3: the run's language for HarfBuzz (locl: Japanese vs Chinese forms of a pan-CJK face).
+  std::string shapeLanguage = req.language;
+  if (shapeLanguage.empty()) {
+    std::u32string u;
+    u.reserve(cps.size());
+    for (const CodePoint& c : cps) u.push_back(c.cp);
+    shapeLanguage = script_language(u);
+  }
+  const hb_language_t hbLanguage = hb_language_from_string(shapeLanguage.c_str(), -1);
 
   // Families → the face set CSS matching selects in each.
   std::vector<std::vector<int>> famFaces;
@@ -629,6 +709,20 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
         if (impl.covers(*it, cp)) found = *it;
       }
       if (found >= 0) break;
+    }
+    // No requested family has it: the fallback families (the OS's choice per
+    // script, or the bundled set), as Blink asks the platform before drawing
+    // the primary face's .notdef box.
+    // T3: first the fallbacks picked for the text's language (Japanese kanji →
+    // the Japanese face even when a Chinese one was registered first), then all.
+    for (int pass = 0; pass < 2 && found < 0; ++pass) {
+      for (std::size_t k = 0; found < 0 && k < impl.fallbacks.size(); ++k) {
+        if (pass == 0 && std::ranges::find(impl.fallbackLangs[k], shapeLanguage) == impl.fallbackLangs[k].end()) continue;
+        const auto set = impl.match_family(impl.fallbacks[k], req.font.weight, req.font.italic);
+        for (auto it = set.rbegin(); it != set.rend() && found < 0; ++it) {
+          if (impl.covers(*it, cp)) found = *it;
+        }
+      }
     }
     faceOf[i] = found >= 0 ? found : primary;
   }
@@ -761,7 +855,7 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
       for (std::size_t i = a; i < b; ++i) hb_buffer_add(buf.get(), cps[i].cp, cps[i].byte);
       hb_buffer_set_content_type(buf.get(), HB_BUFFER_CONTENT_TYPE_UNICODE);
       hb_buffer_set_direction(buf.get(), run.rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
-      hb_buffer_set_language(buf.get(), hb_language_from_string("en", -1));
+      hb_buffer_set_language(buf.get(), hbLanguage);
       hb_buffer_guess_segment_properties(buf.get());
       hb_buffer_set_direction(buf.get(), run.rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
       hb_shape(font.get(), buf.get(), features.empty() ? nullptr : features.data(), static_cast<unsigned>(features.size()));

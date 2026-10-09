@@ -567,7 +567,7 @@ export function createSceneFacade(session: AiEngineSession = freeSession()): Sce
 const TEXT_OWNED = new Set([
   'content', 'fontSize', 'fontWeight', 'fontFamily', 'letterSpacing', 'lineHeight', 'align', 'paragraphSpacing',
   // Paragraph text (a box that wraps and aligns), vertical type, RTL paragraphs.
-  'boxWidth', 'boxHeight', 'orientation', 'direction',
+  'boxWidth', 'boxHeight', 'orientation', 'direction', 'language',
 ]);
 
 /**

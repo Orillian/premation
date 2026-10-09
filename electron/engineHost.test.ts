@@ -7,7 +7,27 @@
 
 jest.mock('electron', () => ({ ipcMain: { handle: () => undefined, on: () => undefined } }));
 
-import { FrameForwarder, nativePluginArgs, offeredFrameCapabilities, viewportRoute, type ForwardedFrameMeta, type SharedTextureApi } from './engineHost';
+import { FrameForwarder, bundledFontsManifest, nativePluginArgs, offeredFrameCapabilities, viewportRoute, type ForwardedFrameMeta, type SharedTextureApi } from './engineHost';
+import path from 'node:path';
+
+describe('bundledFontsManifest', () => {
+  it('points the engine at resources/fonts/fonts.json in a checkout, and nowhere when it is missing', () => {
+    const saved = process.env.PREMATION_FONTS_MANIFEST;
+    delete process.env.PREMATION_FONTS_MANIFEST;
+    try {
+      const appPath = path.resolve(__dirname, '..');
+      expect(bundledFontsManifest({ isPackaged: false, resourcesPath: '', appPath })).toEqual({
+        PREMATION_FONTS_MANIFEST: path.join(appPath, 'resources', 'fonts', 'fonts.json'),
+      });
+      expect(bundledFontsManifest({ isPackaged: true, resourcesPath: path.join(appPath, 'no-such-resources'), appPath })).toEqual({});
+      process.env.PREMATION_FONTS_MANIFEST = 'C:/mine/fonts.json';
+      expect(bundledFontsManifest({ isPackaged: true, resourcesPath: '', appPath })).toEqual({ PREMATION_FONTS_MANIFEST: 'C:/mine/fonts.json' });
+    } finally {
+      if (saved === undefined) delete process.env.PREMATION_FONTS_MANIFEST;
+      else process.env.PREMATION_FONTS_MANIFEST = saved;
+    }
+  });
+});
 import type { PixelFrame } from './pixelChannel';
 import type { IoSurfaceBridge } from './ioSurfaceBridge';
 import { ioSurfaceSource, type SlotTextureHandle as SharedTextureImportHandle } from './sharedTextureHandles';

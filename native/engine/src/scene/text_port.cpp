@@ -217,6 +217,11 @@ Json point_text_extras(const doc::Node& n) {
       if (dir == "rtl" || dir == "auto") x.set("direction", p.at("direction"));
       else if (dir == "ltr") x.erase("direction");
     }
+    // T3: the text's language ('auto' / absent = from its script).
+    if (p.at("language").is_string()) {
+      if (!p.at("language").str().empty() && p.at("language").str() != "auto") x.set("language", p.at("language"));
+      else x.erase("language");
+    }
     if (p.at("orientation").is_string() && p.at("orientation").str() == "vertical") x.set("orientation", Json::string("vertical"));
     else if (p.at("orientation").is_string() && p.at("orientation").str() == "horizontal") x.erase("orientation");
     // Standard Vertical Roman Alignment, auto tate-chu-yoko.
@@ -247,6 +252,7 @@ Json point_text_extras(const doc::Node& n) {
   }
   if (x.at("kerningMode").is_string() && x.at("kerningMode").str() == "optical") out.set("kerningMode", x.at("kerningMode"));
   if (x.at("direction").is_string()) out.set("direction", x.at("direction"));
+  if (x.at("language").is_string()) out.set("language", x.at("language"));
   if (x.at("orientation").is_string()) {
     out.set("orientation", Json::string("vertical"));
     if (x.at("verticalRomanAlignment").b()) out.set("verticalRomanAlignment", Json::boolean(true));

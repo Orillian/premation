@@ -24,6 +24,7 @@
 
 #include "numconv.hpp"
 #include "font_features.hpp"
+#include "fonts.hpp"
 #include "optical_kerning.hpp"
 #include "paint_common.hpp"
 #include "text_layout.hpp"
@@ -736,6 +737,16 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   if (tt == "uppercase") text = to_upper(text);
   else if (tt == "lowercase") text = to_lower(text);
   else if (tt == "capitalize") unsupported.emplace_back("textTransform capitalize");
+  // T3: the layer's language (Japanese vs Chinese forms of a pan-CJK face, and
+  // which fallback face draws Han); 'auto' = from the script of the WHOLE text,
+  // so a kanji-only line of a Japanese title shapes as Japanese too.
+  if (!ex.language.empty()) {
+    ctx.setLang(ex.language);
+  } else {
+    std::u32string u;
+    for (const CodePoint& c : decode_utf8(text)) u.push_back(c.cp);
+    ctx.setLang(script_language(u));
+  }
 
   const double tsw = spec["textStrokeWidth"].num(0);
   const double layerStrokeW = !ex.noStroke && spec["textStrokeWidth"].is_number() && tsw > 0 ? tsw : 0;

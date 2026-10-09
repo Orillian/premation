@@ -162,7 +162,14 @@ struct Fonts {
       if (seen.emplace(g).second) (void)set->add_system_family(g);
     }
     for (const std::string& f : families) {
-      if (seen.emplace(f).second) (void)set->add_system_family(f);
+      // '\x01' marks a per-character fallback family (sc::document_font_families),
+      // '\x02' the language the OS picked it for (T3).
+      const bool fallback = !f.empty() && f.front() == '\x01';
+      const std::string body = fallback ? f.substr(1) : f;
+      const std::size_t at = fallback ? body.find('\x02') : std::string::npos;
+      const std::string fam = at == std::string::npos ? body : body.substr(0, at);
+      if (seen.emplace(fam).second) (void)set->add_system_family(fam);
+      if (fallback) set->mark_fallback(fam, at == std::string::npos ? std::string_view{} : std::string_view(body).substr(at + 1));
     }
     canvas.fonts = set.get();
     canvas.lcdGeometry = chromium;
@@ -327,6 +334,11 @@ std::unique_ptr<Built> build_frame(DocCopy& dc, const Plan& p, std::int64_t fram
     return b;
   }
   for (const sc::LayerError& e : b->nf.errors) {
+    // Advisories, not failures: the frame still draws — a family that is not
+    // installed falls back to another face (T4's `font`), effects take the
+    // CPU path (P11's `cpu-effects`). The viewport reports them; an export or
+    // an auto-reframe must not refuse the frame over them.
+    if (e.stage == "font" || e.stage == "cpu-effects") continue;
     std::string r = e.stage == "snapshot" ? "snapshot error: " : "";
     r += e.message;
     if (!e.layerId.empty()) r += " (" + e.layerId + ")";
