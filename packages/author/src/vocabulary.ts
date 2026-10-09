@@ -207,7 +207,7 @@ export function vocabularyCard(): string {
     '  text: give `text`, then type props (fontFamily, fontSize, fontWeight, letterSpacing, lineHeight, align, fill, width for wrapping).',
     '  solid: a filled rectangle; adjustment: effects on it apply to everything below; null: an invisible parent.',
     '  camera: frames 3D layers (focalLength, poi*, orbit*, dof*); light: lights layers that have threeD and acceptsLights (set `light`).',
-    '  gradient: full-frame gradient backdrop (set `gradient`: stops, kind linear|radial|corners, angle, centerX/centerY/radius in %).',
+    '  gradient: full-frame gradient backdrop (set `gradient`: stops = 2–4 COLOUR STRINGS, e.g. ["#050303", "$ember"], spaced evenly (no offsets); kind linear|radial|corners (corners takes exactly 4); angle; centerX/centerY/radius in %).',
     '  image: a generated picture (set `image`: prompt = subject and look, aspect). svg: your own vector (set `svg`: markup).',
     '  video: a generated clip (set `video`: prompt = subject, light and camera with no text, durationSec, aspect, fit contain|cover, model optional) — b-roll or a background plate under authored type.',
     '  particle: a particle emitter with the engine default look — prefer effects (snowfall, rainfall, particle-systems, cc-bubbles) for styled particles.',

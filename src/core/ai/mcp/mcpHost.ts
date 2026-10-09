@@ -32,6 +32,7 @@ import {
   authorSystemPrompt,
   coerceScript,
   compileScript,
+  sameFrameKeys,
   formatAdvice,
   formatRepairs,
 } from '@motion/author';
@@ -516,6 +517,9 @@ export class McpCallHost {
       authorSystemPrompt({ prompt: brief }),
       '',
       'Pass the script to author_scene as `script`: the header fields, `globals`, and `beats` — each beat with its `startSec`, `endSec` and `layers` — in one object. Premation fits it to the active composition (its size, fps and length).',
+      '',
+      'A beat may also carry `precompose`: [{ id, name, layers: [layer ids of that beat sharing a parent], props?: { x, y, scale, rotation, opacity }, keys?: { prop: [[t, v], …] } }] — the layers become ONE composition layer that moves, fades and takes effects as a unit (a camera rig, a crowd). Its keys are beat seconds.',
+      'Key times snap to frames: two keys of one property closer than a frame (1/fps s) merge and only the later one survives — author_scene reports any it finds.',
     ].join('\n'));
   }
 
@@ -545,6 +549,8 @@ export class McpCallHost {
       `Built "${coerced.value.title || 'scene'}": ${coerced.value.beats.length} beats, ${applied} of ${compiled.calls.length} operations applied, in ${comp.width}×${comp.height} at ${comp.fps} fps, ${comp.durationSeconds}s.`,
     ];
     if (coerced.repairs.length) lines.push('', 'Repaired in the script:', formatRepairs(coerced.repairs));
+    const collisions = sameFrameKeys(compiled, comp.fps);
+    if (collisions.length) lines.push('', 'Keys merged by frame snapping:', ...collisions.slice(0, 20).map((c) => `- ${c}`));
     if (rejected.length) lines.push('', 'Rejected by the engine:', ...rejected.slice(0, 20));
     if (advice.findings.length) lines.push('', 'Design advisors:', formatAdvice(advice.findings));
     lines.push('', 'Look at it with render_filmstrip, then refine with the individual tools.');

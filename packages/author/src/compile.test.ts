@@ -9,7 +9,7 @@
 
 import { ALL_TOOL_DEFS, validate } from '@motion/ai-tools';
 import { coerceScript } from './coerce';
-import { TAIL_ROOT, beatRootId, compileScript, rebuildCalls, trimHandle } from './compile';
+import { TAIL_ROOT, beatRootId, compileScript, rebuildCalls, sameFrameKeys, trimHandle } from './compile';
 import { AUTHOR_EXEMPLARS } from './exemplars';
 import type { SceneScript, ToolCall } from './types';
 
@@ -206,5 +206,55 @@ describe('compileScript', () => {
       expect(c.repairs).toEqual([]);
       expect(compileScript(c.value).calls).toEqual(compileScript(ex.script).calls);
     }
+  });
+});
+
+describe('program M7: precompose, frame-snapped keys, gradient stops', () => {
+  const raw = {
+    title: 't', intent: 'i', background: '#000000', palette: { ink: '#ffffff' },
+    beats: [{
+      name: 'Crowd', startSec: 0, endSec: 6,
+      layers: [
+        { id: 'a', kind: 'shape', name: 'A', props: { x: 100, y: 100 } },
+        { id: 'b', kind: 'shape', name: 'B', props: { x: 200, y: 100 } },
+        { id: 'c', kind: 'shape', name: 'C', props: { x: 300, y: 100 }, keys: { opacity: [[1.0, 0], [1.01, 100]] } },
+      ],
+      precompose: [
+        { id: 'crowd', name: 'Crowd group', layers: ['a', 'b', 'ghost'], props: { scale: 0.5 }, keys: { x: [[0, 0], [2, 400]] } },
+        { id: 'dup', name: 'Dup', layers: ['a'] },
+      ],
+    }],
+  };
+
+  it('pre-composes a beat\'s layers after building them, with the group\'s own props and keys', () => {
+    const c = coerceScript(raw, CTX);
+    expect(c.value.beats[0]!.precompose).toEqual([{ id: 'crowd', name: 'Crowd group', layers: ['a', 'b'], props: { scale: 0.5 }, keys: { x: [{ t: 0, v: 0 }, { t: 2, v: 400 }] } }]);
+    expect(c.repairs.map((r) => r.message).join('\n')).toMatch(/'ghost' is not a layer of this beat/);
+    expect(c.repairs.map((r) => r.message).join('\n')).toMatch(/already in another precompose group/);
+    const out = compileScript(c.value);
+    const names = out.calls.map((x) => x.name);
+    const pc = names.indexOf('create_precomp');
+    expect(pc).toBeGreaterThan(names.lastIndexOf('create_layer'));
+    expect(out.calls[pc]!.args).toEqual({ id: 'crowd', nodeIds: ['a', 'b'], name: 'Crowd group' });
+    expect(out.calls[pc + 1]).toEqual({ name: 'update_layer', args: { nodeId: 'crowd', scaleX: 0.5, scaleY: 0.5 } });
+    expect(out.beatOfLayer.get('crowd')).toBe(0);
+  });
+
+  it('reports keys of one property that land on one frame', () => {
+    const out = compileScript(coerceScript(raw, CTX).value);
+    const hits = sameFrameKeys(out, 30);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/^c opacity: keys at 1s, 1.01s share frame 30 at 30 fps/);
+    expect(sameFrameKeys(out, 240)).toEqual([]);
+  });
+
+  it('takes { color } stop objects for their colour and says offsets are ignored', () => {
+    const c = coerceScript({
+      title: 't', intent: 'i', background: '#000', palette: {},
+      globals: [{ id: 'sky', kind: 'gradient', name: 'Sky', gradient: { stops: [{ color: '#050303', offset: 0 }, { colour: '#5e2415', offset: 1 }] } }],
+      beats: [],
+    }, CTX);
+    expect(c.value.globals[0]!.gradient!.stops).toEqual(['#050303', '#5e2415']);
+    expect(c.repairs.some((r) => /offsets ignored/.test(r.message))).toBe(true);
   });
 });

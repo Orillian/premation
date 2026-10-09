@@ -254,8 +254,23 @@ export interface BeatOutline {
   notes?: string;
 }
 
+/**
+ * Layers of one beat pre-composed into ONE composition layer (AE Layer ▸
+ * Pre-compose, all attributes moved): the group then moves, scales, fades and
+ * takes effects as a unit — a camera rig, a crowd of silhouettes. `layers`
+ * share a parent. `keys` / `props` are the new composition layer's (beat seconds).
+ */
+export interface PrecomposeSpec {
+  id: string;
+  name: string;
+  layers: string[];
+  props?: Record<string, number>;
+  keys?: Keys;
+}
+
 export interface Beat extends BeatOutline {
   layers: LayerSpec[];
+  precompose?: PrecomposeSpec[];
 }
 
 /** The part of a script the DESIGN call writes. */

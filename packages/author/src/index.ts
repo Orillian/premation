@@ -54,6 +54,7 @@ export {
   pathOpHandle,
   rebuildCalls,
   repeaterHandle,
+  sameFrameKeys,
   trimHandle,
   type CompileOptions,
 } from './compile';

@@ -315,6 +315,42 @@ export interface CompileOptions {
   setBackground?: boolean;
 }
 
+/**
+ * Keys of one property that land on the same frame at `fps`: the engine snaps
+ * key times to frames, so the later key replaces the earlier one silently —
+ * a hard cut authored as 19.17 → 19.18 at 30 fps becomes one key. One line
+ * per collision (layer, property, times, frame).
+ */
+export function sameFrameKeys(compiled: Pick<CompiledScript, 'calls'>, fps: number): string[] {
+  if (!(fps > 0)) return [];
+  const byTrack = new Map<string, number[]>();
+  for (const c of compiled.calls) {
+    if (c.name !== 'set_keyframes') continue;
+    for (const k of (c.args.keyframes as KeyItem[] | undefined) ?? []) {
+      const key = `${k.nodeId}\u0000${k.prop}`;
+      const list = byTrack.get(key) ?? [];
+      list.push(k.t);
+      byTrack.set(key, list);
+    }
+  }
+  const out: string[] = [];
+  for (const [key, times] of byTrack) {
+    const [nodeId, prop] = key.split('\u0000') as [string, string];
+    const byFrame = new Map<number, number[]>();
+    for (const t of times) {
+      const f = Math.round(t * fps + 1e-6);
+      byFrame.set(f, [...(byFrame.get(f) ?? []), t]);
+    }
+    for (const [f, ts] of byFrame) {
+      const distinct = [...new Set(ts)];
+      if (distinct.length > 1) {
+        out.push(`${nodeId} ${prop}: keys at ${distinct.map((t) => `${t}s`).join(', ')} share frame ${f} at ${fps} fps — only the last is kept; space keys at least ${(1 / fps).toFixed(3)}s apart`);
+      }
+    }
+  }
+  return out;
+}
+
 /** Compile a (coerced) script. Same script in, same calls out. */
 export function compileScript(script: SceneScript, opts: CompileOptions = {}): CompiledScript {
   const e = new Emitter(script.palette);
@@ -337,6 +373,7 @@ export function compileScript(script: SceneScript, opts: CompileOptions = {}): C
     const start = e.calls.length;
     emitBeat(e, script, b, i);
     for (const l of b.layers) beatOfLayer.set(l.id, i);
+    for (const pc of b.precompose ?? []) beatOfLayer.set(pc.id, i);
     byBeat.push({ beatIndex: i, rootId: beatRootId(i), start, end: e.calls.length });
   });
 
@@ -357,6 +394,20 @@ function emitBeat(e: Emitter, script: SceneScript, b: Beat, i: number): void {
   // The root sits at the origin so a child's world position is its local one.
   e.push('create_layer', { id: root, kind: 'null', name: `Beat ${i + 1} — ${b.name}`, x: 0, y: 0 });
   emitLayers(e, script, b.layers, root, b.startSec, span);
+  // Pre-compose groups, once their layers are built: the composition layer
+  // then takes its own static props and keys (beat seconds, like a layer's).
+  for (const pc of b.precompose ?? []) {
+    e.push('create_precomp', { id: pc.id, nodeIds: [...pc.layers], name: pc.name });
+    if (pc.props) {
+      const { scale, ...rest } = pc.props;
+      e.push('update_layer', { nodeId: pc.id, ...rest, ...(scale !== undefined ? { scaleX: scale, scaleY: scale } : {}) });
+    }
+    if (pc.keys) {
+      const items: KeyItem[] = [];
+      for (const [prop, list] of Object.entries(pc.keys)) keyItems(pc.id, prop, list, b.startSec, items);
+      for (let k = 0; k < items.length; k += KEY_BATCH) e.push('set_keyframes', { keyframes: items.slice(k, k + KEY_BATCH) });
+    }
+  }
   // The root's own bar, appended to the beat's last timing call when it has room.
   const last = e.calls[e.calls.length - 1];
   const item = { nodeId: root, inSec: round(b.startSec), outSec: round(b.endSec) };

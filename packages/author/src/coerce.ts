@@ -36,6 +36,7 @@ import {
   type LayerSpec,
   type MaskSpec,
   type PathOpSpec,
+  type PrecomposeSpec,
   type Repair,
   type RepeaterSpec,
   type SceneScript,
@@ -636,9 +637,15 @@ function layers(
     }
     if (kind === 'gradient') {
       const g = isObj(l0.gradient) ? l0.gradient : undefined;
-      const stops = Array.isArray(g?.stops)
-        ? (g!.stops as unknown[]).map((s, j) => colour(s, header.palette, `${p}.gradient.stops[${j}]`, r)).filter((s): s is string => !!s)
-        : [];
+      // A stop is a colour (hex or $palette). The shape models reach for —
+      // { color, offset } — is taken for its colour; stops are spaced evenly.
+      const rawStops = Array.isArray(g?.stops) ? (g!.stops as unknown[]) : [];
+      if (rawStops.some((s) => isObj(s) && s.offset !== undefined)) {
+        r.add(`${p}.gradient.stops`, 'stops are colours spaced evenly — offsets ignored');
+      }
+      const stops = rawStops
+        .map((s, j) => colour(isObj(s) ? (s.color ?? s.colour ?? s.c) : s, header.palette, `${p}.gradient.stops[${j}]`, r))
+        .filter((s): s is string => !!s);
       if (stops.length < 2) { r.add(`${p}.gradient`, 'a gradient needs at least two valid stops — layer dropped'); return; }
       const gk = g!.kind === 'radial' || g!.kind === 'corners' || g!.kind === 'linear' ? g!.kind : undefined;
       if (gk === 'corners' && stops.length !== 4) { r.add(`${p}.gradient`, 'a corners gradient needs exactly four stops — layer dropped'); return; }
@@ -867,7 +874,39 @@ export function coerceBeat(
   const ls = layers(o.layers, head, pool, path, r);
   fitLayersToTime(ls, outline.startSec, ctx, path, r);
   if (!ls.length) r.add(`beats[${beatIndex}]`, 'the beat has no usable layers');
-  return { value: { ...outline, layers: ls }, repairs: r.list };
+  const pc = precompose(o.precompose, ls, pool, `beats[${beatIndex}].precompose`, r);
+  return { value: { ...outline, layers: ls, ...(pc.length ? { precompose: pc } : {}) }, repairs: r.list };
+}
+
+const PRECOMP_PROPS = ['x', 'y', 'scale', 'rotation', 'opacity'] as const;
+
+/** A beat's `precompose` groups: layers of this beat that share a parent, each used once. */
+function precompose(raw: unknown, ls: readonly LayerSpec[], pool: IdPool, path: string, r: Repairs): PrecomposeSpec[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) { r.add(path, 'precompose is a list of { id, name, layers } — dropped'); return []; }
+  const byId = new Map(ls.map((l) => [l.id, l]));
+  const used = new Set<string>();
+  const out: PrecomposeSpec[] = [];
+  raw.forEach((g, i) => {
+    const p = `${path}[${i}]`;
+    if (!isObj(g)) { r.add(p, 'not an object — dropped'); return; }
+    const want = Array.isArray(g.layers) ? g.layers.map((x) => String(x)) : [];
+    const ids = want.filter((id) => {
+      if (!byId.has(id)) { r.add(`${p}.layers`, `'${id}' is not a layer of this beat — left out`); return false; }
+      if (used.has(id)) { r.add(`${p}.layers`, `'${id}' is already in another precompose group — left out`); return false; }
+      return true;
+    });
+    if (ids.length === 0) { r.add(p, 'no layers to pre-compose — dropped'); return; }
+    const parents = new Set(ids.map((id) => byId.get(id)!.parent ?? ''));
+    if (parents.size > 1) { r.add(p, 'layers pre-composed together must share a parent — dropped'); return; }
+    for (const id of ids) used.add(id);
+    const name = str(g.name) ?? `Precomp ${i + 1}`;
+    const props: Record<string, number> = {};
+    if (isObj(g.props)) for (const k of PRECOMP_PROPS) { const v = num(g.props[k]); if (v !== undefined) props[k] = v; }
+    const keys = layerKeys(g.keys, `${p}.keys`, r);
+    out.push({ id: pool.claim(str(g.id) ?? `precomp_${i}`), name, layers: ids, ...(Object.keys(props).length ? { props } : {}), ...(keys ? { keys } : {}) });
+  });
+  return out;
 }
 
 /** A whole script in one object (exemplars, tests, a single-call author). */

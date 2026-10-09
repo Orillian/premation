@@ -256,6 +256,33 @@ describe('set_audio (M6)', () => {
   });
 });
 
+describe('author scripts pre-compose (M7)', () => {
+  it('a compiled precompose runs on the engine: one composition layer holding the group', async () => {
+    const { coerceScript, compileScript } = await import('@motion/author');
+    const c = coerceScript({
+      title: 't', intent: 'i', background: '#000000', palette: {},
+      beats: [{
+        name: 'Rig', startSec: 0, endSec: 4,
+        layers: [
+          { id: 'pa', kind: 'shape', name: 'PcA', props: { x: 100, y: 100 } },
+          { id: 'pb', kind: 'shape', name: 'PcB', props: { x: 300, y: 100 } },
+        ],
+        precompose: [{ id: 'rig', name: 'Rig group', layers: ['pa', 'pb'], keys: { x: [[0, 600], [2, 900]] } }],
+      }],
+    }, { durationSec: 5, width: 1920, height: 1080 });
+    const out = compileScript(c.value, { setBackground: false });
+    const r = await runToolTurn('AI: author precomp', out.calls.map((x) => ({ name: x.name, args: x.args })));
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    const m = documentMirror();
+    const group = m.layerIds().find((id) => m.layer(id)?.name === 'Rig group');
+    expect(group).toBeDefined();
+    expect(m.layer(group!)?.source).toBeDefined();  // a composition layer
+    const inner = m.comp(m.layer(group!)!.source!)?.layers ?? [];
+    expect(inner.map((id) => m.layer(id)?.name).sort()).toEqual(['PcA', 'PcB']);
+  });
+});
+
 describe('add_effect params (M3)', () => {
   it('applies initial values and reports unknown keys', async () => {
     const r = await runToolTurn('AI: fx params', [
