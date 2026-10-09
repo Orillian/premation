@@ -431,6 +431,9 @@ export const ACCENT_AREA_LIMIT = 0.15;
 /** True when `hex` is literally pure black or pure white. */
 export function isPureBlackOrWhite(hex: string): boolean {
   const h = hex.replace('#', '').toLowerCase();
+  // A fully transparent colour (#rrggbb00) shows no colour at all — it is how
+  // an outline-only shape says "no fill", not a pure black.
+  if (h.length === 8 && h.endsWith('00')) return false;
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
   return full === '000000' || full === 'ffffff';
 }

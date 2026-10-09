@@ -52,6 +52,14 @@ import type { ShapeVocabulary } from './shape';
 import { snapBaseline, spanCenterX, type GridSpec } from './grid';
 import { mulberry32, pick, type ToolCall } from './toolcall';
 
+/**
+ * A fully transparent fill the engine accepts. `'transparent'` (and rgba())
+ * is refused by update_layer, and the refusal drops the WHOLE update — the
+ * low device opacity with it — so an outline device rendered as a solid,
+ * full-strength default-blue shape (found 2026-10-08).
+ */
+const CLEAR_FILL = '#00000000';
+
 export interface DeviceContext {
   pack: ResolvedPack;
   grid: GridSpec;
@@ -177,7 +185,7 @@ const drawnArc: GraphicDevice = {
       { name: 'create_layer', args: { id, kind: 'shape', shape: 'ellipse', name: 'Arc', x: at.x, y: at.y, width: size, height: size } },
       // No fill: an unfilled ellipse plus a stroke effect is an outline. A filled
       // one at this size is a wash across the whole frame.
-      { name: 'update_layer', args: { nodeId: id, fill: 'transparent', opacity: MAX_DEVICE_OPACITY, cornerRadius: 0 } },
+      { name: 'update_layer', args: { nodeId: id, fill: CLEAR_FILL, opacity: MAX_DEVICE_OPACITY, cornerRadius: 0 } },
       { name: 'add_effect', args: { nodeId: id, type: 'stroke', amount: Math.max(1, Math.round(u * pick(rng, [2, 3, 6]))) } },
       { name: 'set_trim_path', args: { nodeId: id, start, end, offset: Math.round(rng() * 360) } },
     ];
@@ -203,7 +211,7 @@ const contourRings: GraphicDevice = {
     const at = place(ctx.grid, pick(rng, [0.2, 0.78, 0.5]), pick(rng, [0.24, 0.72]));
     return [
       { name: 'create_layer', args: { id, kind: 'shape', shape: 'ellipse', name: 'Rings', x: at.x, y: at.y, width: base, height: base } },
-      { name: 'update_layer', args: { nodeId: id, fill: 'transparent', opacity: MAX_DEVICE_OPACITY } },
+      { name: 'update_layer', args: { nodeId: id, fill: CLEAR_FILL, opacity: MAX_DEVICE_OPACITY } },
       { name: 'add_effect', args: { nodeId: id, type: 'stroke', amount: Math.max(1, Math.round(u)) } },
       { name: 'add_repeater', args: { nodeId: id, copies: pick(rng, [5, 7, 9]), scaleX: 1.34, scaleY: 1.34, startOpacity: 100, endOpacity: 0 } },
     ];

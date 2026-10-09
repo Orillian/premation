@@ -54,6 +54,7 @@ export {
   negativeSpaceRatio,
   opticalCenterY,
   opticalLeftX,
+  opticalOverhangPx,
   place,
   snapBaseline,
   spanCenterX,
@@ -194,3 +195,5 @@ export {
   type DeviceBox,
   type DeviceSpec,
 } from './templates/device';
+
+export { resolveTextCollisions, textBoxes, textCollisions, type TextBox } from './textCollisions';

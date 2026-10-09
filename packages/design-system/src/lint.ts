@@ -32,7 +32,7 @@
  */
 
 import { contrast, isPureBlackOrWhite, requiredContrast } from './color';
-import { isOnGrid, MIN_NEGATIVE_SPACE, negativeSpaceRatio, type GridSpec } from './grid';
+import { isOnGrid, MIN_NEGATIVE_SPACE, negativeSpaceRatio, opticalOverhangPx, type GridSpec } from './grid';
 import { isDisplaySize, hasHierarchyContrast, MIN_SIZE_RATIO, MIN_WEIGHT_CONTRAST } from './type';
 import { hasUniformRadius } from './shape';
 
@@ -88,6 +88,8 @@ export interface LintLayer {
   /** Text only. */
   fontSizePx?: number;
   fontWeight?: number;
+  /** A text layer's content — its first letter decides its optical overhang (OFF_GRID). */
+  text?: string;
   letterSpacingPx?: number;
   /** True for imported/generated assets — media, SVG, image. */
   isAsset?: boolean;
@@ -378,6 +380,11 @@ export function lintDesign(scene: LintScene): DesignFinding[] {
   const offGrid = layers
     .filter((l) => !fillsFrame(l, g) && !l.isTreatment)
     .filter((l) => !isOnGrid(g, l.x, l.y, { width: l.width }))
+    // Optical alignment is alignment: a round or pointed first letter is SET
+    // outside the column edge (opticalLeftX) so it LOOKS on it. At display
+    // sizes that overhang passes the grid tolerance, and the rule was failing
+    // the very correction the templates make on purpose.
+    .filter((l) => !(l.text && l.fontSizePx && isOnGrid(g, l.x + opticalOverhangPx(l.fontSizePx, l.text[0] ?? ''), l.y, { width: l.width })))
     .filter((l) => !isInsideAPanel(l, layers, g))
     .map((l) => l.id);
   if (offGrid.length) {

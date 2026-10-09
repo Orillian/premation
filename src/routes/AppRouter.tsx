@@ -26,6 +26,7 @@ import { useAutoUpdate } from '@hooks/useAutoUpdate';
 import { applyPasteboardColor } from '@core/theme/pasteboard';
 import { applyAccentColor } from '@core/theme/accent';
 import { useOAuthDeepLink } from '@hooks/useOAuthDeepLink';
+import { useMcpFrontDesk } from '@hooks/useMcpFrontDesk';
 
 import { LoadingScreen } from '@components/LoadingScreen';
 
@@ -63,6 +64,9 @@ function AppLayout(): JSX.Element {
   // update that finished downloading while the user sat on the dashboard is
   // still worth telling them about.
   useAutoUpdate();
+  // Claude for Premation: reachable on every page, the home screen included
+  // (docs/MCP_PLAN.md §13). Renders nothing; it serves Claude's calls.
+  useMcpFrontDesk();
 
   useEffect(() => {
     if (isEditor) {

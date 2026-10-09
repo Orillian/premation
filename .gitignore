@@ -19,6 +19,9 @@ build/*
 # Required at BUILD time for notarization — not an artifact. Without it the mac
 # build has no hardened-runtime entitlements and notarytool rejects the app.
 !build/entitlements.mac.plist
+# The NSIS include (electron-builder.yml nsis.include): removes Premation from
+# Claude Desktop's config on uninstall (docs/MCP_PLAN.md D9).
+!build/installer.nsh
 .vite/
 
 # Test / coverage

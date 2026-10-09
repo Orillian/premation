@@ -26,12 +26,12 @@
     "build": "tsc -b && vite build",
     "build:local": "tsc -b && cross-env VITE_EDITION=local MOTION_EDITION=local vite build",
     "preview": "vite preview",
-    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:compile": "tsc -p electron/tsconfig.json && node scripts/buildMcp.cjs",
     "electron:watch": "tsc -p electron/tsconfig.json --watch --preserveWatchOutput",
     "electron:dev": "npm run electron:compile && concurrently -k \"vite\" \"npm:electron:watch\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron dist-electron/main.js\"",
     "electron:dev:local": "npm run electron:compile && concurrently -k \"cross-env VITE_EDITION=local MOTION_EDITION=local vite\" \"npm:electron:watch\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development MOTION_EDITION=local electron dist-electron/main.js\"",
-    "electron:build": "node scripts/fetchObjectMatte.cjs && vite build && tsc -p electron/tsconfig.json",
-    "electron:build:local": "node scripts/fetchObjectMatte.cjs && cross-env VITE_EDITION=local MOTION_EDITION=local vite build && tsc -p electron/tsconfig.json",
+    "electron:build": "node scripts/fetchObjectMatte.cjs && vite build && tsc -p electron/tsconfig.json && node scripts/buildMcp.cjs --check",
+    "electron:build:local": "node scripts/fetchObjectMatte.cjs && cross-env VITE_EDITION=local MOTION_EDITION=local vite build && tsc -p electron/tsconfig.json && node scripts/buildMcp.cjs --check",
     "electron:start": "cross-env NODE_ENV=development electron dist-electron/main.js",
     "cli": "npm run electron:compile && cross-env MOTION_EDITION=local electron dist-electron/main.js",
     "pack": "npm run electron:build && electron-builder --dir --publish never",
@@ -62,7 +62,8 @@
     "engine-api:gen": "node packages/engine-api/codegen/generate.cjs",
     "engine-api:check": "node packages/engine-api/codegen/generate.cjs --check",
     "engine-api:bench": "node packages/engine-api/bench/run.mjs",
-    "protocol:build": "node native/protocol/build.mjs"
+    "protocol:build": "node native/protocol/build.mjs",
+    "mcp:build": "node scripts/buildMcp.cjs --check"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
@@ -88,6 +89,7 @@
   },
   "devDependencies": {
     "@material-symbols/svg-700": "^0.45.10",
+    "@modelcontextprotocol/sdk": "1.30.1",
     "@napi-rs/canvas": "^1.0.2",
     "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.0.0",

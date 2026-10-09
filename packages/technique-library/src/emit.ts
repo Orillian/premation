@@ -506,3 +506,53 @@ export function rolesTargets(ctx: EmitContext, roles: readonly string[]): string
   }
   return out;
 }
+
+// ── Offsets → positions ───────────────────────────────────────────────
+
+/**
+ * Techniques move `x` / `y` as OFFSETS from a layer's resting position: a rise
+ * goes `from: dist, to: 0`, an exit `to: ctx.width * 1.05`. The tool they
+ * emit to (`set_keyframes`, `set_spring`) takes ABSOLUTE positions, and
+ * nothing converted between the two — so every cast entrance sent its text
+ * to y = 0, the top edge of the frame (found 2026-10-08 executing a cast; the
+ * caster's tests check emitted calls without executing them, so it never
+ * showed). The host calls this on a technique's output, with each layer's
+ * resting position.
+ *
+ * Layers the technique itself creates rest where its `create_layer` put them.
+ */
+export function absolutizePositions(
+  calls: readonly ToolCall[],
+  restOf: (nodeId: string) => { x: number; y: number } | undefined,
+): ToolCall[] {
+  const created = new Map<string, { x: number; y: number }>();
+  for (const c of calls) {
+    if (c.name === 'create_layer' && typeof c.args.id === 'string') {
+      created.set(c.args.id, { x: Number(c.args.x ?? 0), y: Number(c.args.y ?? 0) });
+    }
+  }
+  const rest = (id: unknown): { x: number; y: number } | undefined =>
+    typeof id === 'string' ? created.get(id) ?? restOf(id) : undefined;
+  const shift = (v: unknown, by: number): unknown => (typeof v === 'number' && Number.isFinite(v) ? v + by : v);
+
+  return calls.map((c) => {
+    if (c.name === 'set_keyframes' && Array.isArray(c.args.keyframes)) {
+      let changed = false;
+      const keyframes = (c.args.keyframes as Record<string, unknown>[]).map((k) => {
+        if (k.prop !== 'x' && k.prop !== 'y') return k;
+        const r = rest(k.nodeId);
+        if (!r) return k;
+        changed = true;
+        return { ...k, value: shift(k.value, r[k.prop]) };
+      });
+      return changed ? { ...c, args: { ...c.args, keyframes } } : c;
+    }
+    if (c.name === 'set_spring' && (c.args.prop === 'x' || c.args.prop === 'y')) {
+      const r = rest(c.args.nodeId);
+      if (!r) return c;
+      const by = r[c.args.prop as 'x' | 'y'];
+      return { ...c, args: { ...c.args, from: shift(c.args.from, by), to: shift(c.args.to, by) } };
+    }
+    return c;
+  });
+}

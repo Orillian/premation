@@ -16,6 +16,7 @@ import { LocalThumbnailWorker } from '../components/LocalThumbnailWorker';
 import { getProjectManager, getFileManager } from '@core/services/coreServices';
 import { CloudAutosave } from '../components/CloudAutosave';
 import { ReadOnlyBanner } from '../components/ReadOnlyBanner';
+import { ClaudeActivityBadge } from '../components/ClaudeActivityBadge';
 import { ApiFileAdapter } from '@core/files/ApiFileAdapter';
 import { useUIStore } from '@stores/uiStore';
 import { useCloudProjectStore } from '@stores/cloudProjectStore';
@@ -207,6 +208,9 @@ export function EditorPage(): JSX.Element {
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
             <LazyEditorShell />
             <LocalStart />
+            {/* Claude for Premation: runs the calls an MCP client sends, and
+                says so while it does (docs/MCP_PLAN.md). */}
+            <ClaudeActivityBadge />
           </div>
         </div>
       </Suspense>

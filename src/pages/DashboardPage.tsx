@@ -13,6 +13,8 @@ import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { useUIStore } from '@stores/uiStore';
 import { setPendingFootage } from '@core/project/pendingFootage';
 import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
+import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
+import { newProjectDocument } from '@core/project/newProjectDocument';
 import { NativePluginsPage } from '@layout/Plugins/NativePluginsPage';
 import { RegistryPluginsNotice } from '@layout/Plugins/RegistryPluginsNotice';
 import { BillingSection } from '@layout/Settings/BillingSection';
@@ -35,7 +37,6 @@ import { edit } from '@core/engine/uiEdits';
 import { engine, hasEngine } from '@core/engine/engineInstance';
 import { getAssetVisualInfo, FOLDER_COLOR } from '@layout/Assets/assetVisuals';
 import { createFolderEdit, createFolderTreeEdit, importBrowserFilesEdit, renameItemEdit } from '@layout/Assets/assetEdits';
-import type { CompositionSettings } from '@stores/compositionStore';
 import {
   api,
   type AccountRecord,
@@ -47,8 +48,6 @@ import { projectLimitDetail } from '@core/api/transport';
 import { usePagedList } from '@hooks/usePagedList';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import { clearRecovery } from '@core/persistence/recovery';
-import { emptySceneProject } from '@core/scene/sceneProjectIO';
-import type { EditorDocument } from '@core/api/cloudDocument';
 import { DashboardCustomizeTab } from './DashboardCustomizeTab';
 import { APP_VERSION } from '@layout/Help/whatsNew';
 import { openWhatsNew } from '@layout/Help/WhatsNewDialog';
@@ -636,10 +635,8 @@ export function DashboardPage(): JSX.Element {
       const height = clampDimension(setupHeight);
       const fps = clampFps(setupFps);
       const durationSeconds = clampDuration(setupDuration);
-      // Same ROOT_COMP_ID contract as the quick-create path above: the comp id
-      // and the scene root id must agree, or the project opens on a phantom.
-      const initialComp: CompositionSettings = {
-        id: 'comp_root',
+      // Shared with Claude's create_project (core/project/newProjectDocument).
+      const initialDoc = newProjectDocument({
         name: compName,
         width,
         height,
@@ -647,16 +644,7 @@ export function DashboardPage(): JSX.Element {
         durationSeconds,
         background: setupBg,
         transparent: setupTransparent,
-        startFrame: 0,
-      };
-      const scene = emptySceneProject();
-      if (scene.nodes[0]) scene.nodes[0].name = compName;
-      const initialDoc: EditorDocument = {
-        version: '1.1.0',
-        scene,
-        animation: { tracks: {}, expressions: {} },
-        comps: { comp_root: initialComp },
-      };
+      });
       const p = await create(compName, initialDoc);
       if (!p?.id) throw new Error('The server did not return a project id.');
       // Nothing primed here: the stores still belong to whatever project is
@@ -1648,6 +1636,10 @@ export function DashboardPage(): JSX.Element {
               <h3 className={styles.settingsLabel}>Assistant</h3>
               <AiSettingsSection />
             </div>
+
+            {/* Claude for Premation — connect Claude Desktop / Claude Code
+                (renders nothing in a browser build). */}
+            <ClaudeConnectSection />
 
             {/*
               Editor preferences live on their own first-class Customize page.

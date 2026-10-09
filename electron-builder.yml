@@ -55,6 +55,14 @@ extraResources:
     to: models/object-matte
     filter:
       - '*.onnx'
+  # Claude for Premation: the bundled MCP server (scripts/buildMcp.cjs). Outside
+  # app.asar because Claude Desktop launches it — with this app's own binary as
+  # Node — and a launched script must be a real file (docs/MCP_PLAN.md D6).
+  - from: build/mcp
+    to: mcp
+    filter:
+      - premation-mcp.cjs
+      - tools.json
 
 beforePack: ./scripts/stageEngine.cjs
 
@@ -138,6 +146,9 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # customUnInstall: take Premation out of Claude Desktop's config on a real
+  # uninstall (not an update) — docs/MCP_PLAN.md D9.
+  include: build/installer.nsh
 
 mac:
   target:

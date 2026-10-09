@@ -9,6 +9,7 @@ import { useNativeMenuSync } from '@layout/Menu/useNativeMenuSync';
 import { getUiPlatform, getWindowControls, hasDesktopChrome } from '@core/config/uiPlatform';
 import { UpdateButton } from './UpdateButton';
 import { EditorChromeActions } from './EditorChromeActions';
+import { ClaudeIndicator } from '@components/claude/ClaudeIndicator';
 import { MacWindowControls } from './MacWindowControls';
 import { useTitleBarOverlaySync } from './useTitleBarOverlaySync';
 import styles from './TitleBar.module.css';
@@ -114,6 +115,7 @@ export function TitleBar(): JSX.Element | null {
           {/* The page's own controls (see routeSlot.ts). Never on the editor route. */}
           <div id={TITLE_BAR_ROUTE_SLOT_ID} className={styles.routeSlot} />
           <UpdateButton />
+          <ClaudeIndicator />
         </div>
       </div>
     );
@@ -150,6 +152,9 @@ export function TitleBar(): JSX.Element | null {
         {/* The page's own controls (see routeSlot.ts). Never on the editor route. */}
         {!isEditor && <div id={TITLE_BAR_ROUTE_SLOT_ID} className={styles.routeSlot} />}
         <UpdateButton />
+        {/* Claude for Premation: off = nothing drawn. On the editor route the
+            pill sits in EditorChromeActions, which the macOS toolbar shares. */}
+        {!isEditor && <ClaudeIndicator />}
         {isEditor && <EditorChromeActions />}
         {controls === 'drawn' && <WindowsCaptionButtons />}
       </div>

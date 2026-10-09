@@ -1,0 +1,341 @@
+/*
+  Claude for Premation — the title-bar pill, its activity panel, and the
+  editor badge share these. Type uses the panel roles (tokens/typography.css).
+*/
+
+/* ── The pill ─────────────────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height-md);
+  max-width: 260px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-button);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pill:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.pill[data-mode='connected'],
+.pill[data-mode='working'] {
+  color: var(--color-text-primary);
+}
+
+.pill[data-mode='working'] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+}
+
+.pill[data-mode='needs-you'] {
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.pillText {
+  white-space: nowrap;
+}
+
+.pillDoing {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-weight: var(--panel-weight-help);
+}
+
+.pillDoing::before {
+  content: '·';
+  margin-right: 6px;
+}
+
+/* The status dot: one colour per state, shared by the pill and the panel. */
+.dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-text-tertiary, var(--color-text-secondary));
+}
+
+[data-mode='connected'] > .dot,
+.dot[data-mode='connected'] {
+  background: var(--color-success);
+}
+
+[data-mode='working'] > .dot,
+.dot[data-mode='working'] {
+  background: var(--color-accent);
+  animation: claudePulse 1.2s ease-in-out infinite;
+}
+
+[data-mode='needs-you'] > .dot,
+.dot[data-mode='needs-you'] {
+  background: var(--color-warning);
+}
+
+@keyframes claudePulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── The panel ────────────────────────────────────────────────────────── */
+
+.panel {
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+  color: var(--color-text-primary);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panelHead > .dot {
+  width: 9px;
+  height: 9px;
+}
+
+.panelHeadText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panelTitle {
+  font-weight: var(--panel-weight-group);
+}
+
+.panelSub,
+.panelNote,
+.empty {
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.approval {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+}
+
+.approval .row {
+  justify-content: flex-end;
+}
+
+.approvalTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: var(--panel-weight-subgroup);
+}
+
+.approvalDetail {
+  margin: 0;
+  padding: 0 0 0 22px;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-secondary);
+}
+
+.approvalDetail li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.nowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-top-color: var(--color-accent);
+  animation: claudeSpin 0.9s linear infinite;
+}
+
+@keyframes claudeSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feedHead {
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-subgroup);
+  color: var(--color-text-secondary);
+}
+
+.feedList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.feedItem {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: start;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.feedItem:first-child {
+  border-top: none;
+}
+
+.feedIcon {
+  margin-top: 2px;
+  color: var(--color-success);
+}
+
+.feedItem[data-ok='false'] .feedIcon {
+  color: var(--color-warning);
+}
+
+.feedText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.feedTool {
+  font-weight: var(--panel-weight-label);
+}
+
+.feedSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-secondary);
+}
+
+.feedTime {
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── The editor badge ─────────────────────────────────────────────────── */
+
+.badge {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 6px 6px 6px 12px;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  color: var(--color-text-primary);
+  background: var(--color-surface-2);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  animation: claudeBadgeIn 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.badge[data-mode='needs-you'] {
+  border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
+}
+
+@keyframes claudeBadgeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+
+.badgeText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badgeWhat {
+  color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge,
+  .spinner,
+  [data-mode='working'] > .dot,
+  .dot[data-mode='working'] {
+    animation: none;
+  }
+}

@@ -21,6 +21,76 @@ export type CliTaskRequest =
   | { kind: 'comps'; projectPath: string }
   | { kind: 'captions'; projectPath: string; outPath: string; comp?: string; language?: string };
 
+/** electron/mcp/bridge.ts McpToolResult — MCP's CallToolResult. */
+export interface McpToolResult {
+  content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>;
+  isError?: boolean;
+}
+
+/** electron/mcp/ipc.ts ClaudeSetupStatus. */
+export interface ClaudeSetupStatus {
+  bridge: {
+    enabled: boolean;
+    listening: boolean;
+    error: string | null;
+    pageReady: boolean;
+    clients: Array<{ id: number; name: string; version: string; since: number; lastCallAt: number | null }>;
+  };
+  claude: {
+    installed: boolean;
+    configs: Array<{ path: string; state: 'absent' | 'ok' | 'stale' | 'malformed' }>;
+    extension: 'absent' | 'ok' | 'stale';
+  };
+  method: 'extension' | 'config' | null;
+  configured: boolean;
+  needsRepair: boolean;
+  extensionFile: string | null;
+  connectorInstalled: boolean;
+  claudeCodeCommand: string;
+  manualSnippet: string;
+  serverName: string;
+  devBuild: boolean;
+}
+
+/** electron/mcp/ipc.ts ConnectResult. */
+export type ClaudeConnectResult =
+  | { ok: true; status: ClaudeSetupStatus; changed: boolean; method: 'extension' | 'config'; extensionFile?: string; openError?: string }
+  | { ok: false; code: 'not-installed' | 'malformed' | 'io' | 'unreadable' | 'no-connector'; message: string; status: ClaudeSetupStatus };
+
+/** electron/mcp/selfTest.ts TestStep. */
+export interface ClaudeTestStep {
+  id: 'script' | 'start' | 'initialize' | 'tools' | 'app';
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+/** One tool call main relays from the MCP pipe to the editor page. */
+export interface McpRelayedCall {
+  id: number;
+  clientId: number;
+  name: string;
+  args: unknown;
+}
+
+/** `window.motionEditor.mcp` (electron/preload.ts). */
+export interface McpBridgeApi {
+  getStatus(): Promise<ClaudeSetupStatus>;
+  connect(): Promise<ClaudeConnectResult>;
+  connectConfig(): Promise<ClaudeConnectResult>;
+  revealExtension(): Promise<void>;
+  enable(): Promise<ClaudeSetupStatus>;
+  disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[]; extensionInstalled: boolean }>;
+  repair(): Promise<ClaudeConnectResult>;
+  test(): Promise<ClaudeTestStep[]>;
+  getClaude(): Promise<void>;
+  onStatus(handler: (status: ClaudeSetupStatus) => void): () => void;
+  setPageReady(ready: boolean): void;
+  onCall(handler: (call: McpRelayedCall) => void): () => void;
+  onClients(handler: (clientIds: number[]) => void): () => void;
+  respond(id: number, result: McpToolResult): Promise<void>;
+}
+
 /** electron/nativePluginStore.ts InstallOutcome. */
 export type NativePluginInstallOutcome =
   | { ok: true; id: string; version: string; restartNeeded: boolean }
@@ -661,6 +731,8 @@ export interface MotionEditorApi {
    * Optional like every other member here: there is no bridge in a browser build.
    */
   reportEdition?(edition: string): Promise<{ ok: boolean; message?: string }>;
+  /** Claude for Premation (docs/MCP_PLAN.md, electron/mcp/ipc.ts). */
+  mcp?: McpBridgeApi;
   /**
    * The C++ engine process (NATIVE_CORE_PLAN C3, electron/engineHost.ts):
    * encoded EngineMessages in and out, plus the supervisor's lifecycle and the

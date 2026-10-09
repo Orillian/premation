@@ -866,6 +866,25 @@ export function createToolContext(
   resetSceneWindow();
   setRuntimeStyle(null);
   setEntranceSeed((Math.random() * 0xffffffff) >>> 0);
+  // Fresh per run. A library emitter produces its whole ToolCall[] before
+  // anything executes, so it refers to layers by handles it invented; this is
+  // where those handles get bound to real engine ids.
+  return sessionToolContext(session, signal, new Map<string, string>(), images);
+}
+
+/**
+ * A tool context over `session` WITHOUT starting a new run: the scene window,
+ * the runtime style and the entrance seed stay as they are, and `aliases` is
+ * the caller's. For a host whose "run" spans many separate calls — an MCP
+ * client calls `define_style` once and expects the next calls to use it
+ * (src/core/ai/mcp/mcpHost.ts). Call `createToolContext` once at the start.
+ */
+export function sessionToolContext(
+  session: AiEngineSession,
+  signal: AbortSignal,
+  aliases: Map<string, string>,
+  images?: readonly { mediaType: string; dataBase64: string }[],
+): ToolContext {
   return {
     scene: createSceneFacade(session),
     anim: createAnimFacade(session),
@@ -874,9 +893,6 @@ export function createToolContext(
     engine: session,
     signal,
     images,
-    // Fresh per run. A library emitter produces its whole ToolCall[] before
-    // anything executes, so it refers to layers by handles it invented; this is
-    // where those handles get bound to real engine ids.
-    aliases: new Map<string, string>(),
+    aliases,
   };
 }

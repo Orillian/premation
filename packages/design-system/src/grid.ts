@@ -139,11 +139,16 @@ export function opticalCenterY(targetY: number, fontSizePx: number): number {
  * margin or the column edge looks ragged.
  */
 export function opticalLeftX(x: number, fontSizePx: number, firstChar: string): number {
+  return x - opticalOverhangPx(fontSizePx, firstChar);
+}
+
+/** How far a line starting with `firstChar` is set outside its edge (px) — see opticalLeftX. */
+export function opticalOverhangPx(fontSizePx: number, firstChar: string): number {
   const round = /[OQCGSocegs068]/.test(firstChar);
   const pointed = /[AVWXYvwxy]/.test(firstChar);
   const quote = /["'“‘«]/.test(firstChar);
   const overhang = quote ? 0.22 : round ? 0.035 : pointed ? 0.025 : 0;
-  return x - fontSizePx * overhang;
+  return fontSizePx * overhang;
 }
 
 // ── Placement ─────────────────────────────────────────────────────────

@@ -284,9 +284,18 @@ export function typeStyle(o: TypeScaleOptions, role: TypeRole, weightOverride?: 
   };
 }
 
-/** Body size that suits a frame — 16px at 1080p, scaled proportionally. */
+/**
+ * Body size that suits a frame — 32px at 1080p, scaled proportionally.
+ *
+ * VIDEO sizes, not page sizes. This was 17px at 1080p — a web body size — so
+ * a 1080p piece got 10px overlines and a 72px "display" headline: illegible
+ * labels, heroes that read as captions, and the overline colliding with the
+ * headline beneath it (found 2026-10-08 rendering a cast piece). Broadcast and
+ * motion work set body copy around 30–40px at 1080p; on the perfect-fourth
+ * scale 32px gives ≈18px overlines and ≈135px display.
+ */
 export function baseSizeFor(frameHeight: number): number {
-  return Math.max(11, Math.round((frameHeight / 1080) * 17));
+  return Math.max(16, Math.round((frameHeight / 1080) * 32));
 }
 
 // ── Hierarchy validation ──────────────────────────────────────────────

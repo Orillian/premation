@@ -20,6 +20,7 @@ import { tabsForEdition } from '@layout/Settings/customizeTabs';
 import { AudioHardwareSection } from '@layout/Settings/AudioHardwareSection';
 import { FilesTab } from '@layout/Settings/FilesTab';
 import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
+import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
 import styles from './DashboardCustomizeTab.module.css';
 
 /** Map 'workspaces' URL query parameter alias to the internal 'tabs' id */
@@ -100,6 +101,7 @@ export function DashboardCustomizeTab(): JSX.Element {
         ) : activeSection === 'ai' ? (
           <div className={styles.aiContainer}>
             <AiSettingsSection />
+            <ClaudeConnectSection />
           </div>
         ) : (
           <AppearanceTab />

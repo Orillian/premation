@@ -19,6 +19,7 @@ import { lintDesign, designScore, type LintLayer, type LintScene } from './lint'
 import { isPureBlackOrWhite } from './color';
 import { isDisplaySize } from './type';
 import type { ToolCall } from './toolcall';
+import { resolveTextCollisions, textBoxes, textCollisions } from './textCollisions';
 
 const FRAME = { width: 1920, height: 1080 };
 
@@ -67,6 +68,7 @@ function sceneFromCalls(
           ...(a.width !== undefined ? { width: Number(a.width) } : {}),
           ...(a.height !== undefined ? { height: Number(a.height) } : {}),
           ...(a.fill !== undefined ? { fill: String(a.fill) } : {}),
+          ...(typeof a.text === 'string' ? { text: a.text } : {}),
           effects: [],
         });
         break;
@@ -164,7 +166,8 @@ function compose(templateId: string, packId: string, seed: number) {
   const t = layoutTemplate(templateId)!;
   const pack = resolvePack(packId);
   const ctx = composeContext(pack, FRAME.width, FRAME.height, { idPrefix: `t${seed}` });
-  const result = t.compose(ctx, CONTENT, seed);
+  const composed = t.compose(ctx, CONTENT, seed);
+  const result = { ...composed, calls: resolveTextCollisions(composed.calls, ctx.grid) };
   const scene = sceneFromCalls(result.calls, {
     grid: ctx.grid,
     background: pack.palette.bg,
@@ -373,5 +376,32 @@ describe('pack coverage', () => {
       expect(ids.some((id) => id.startsWith('hero.') || id.startsWith('editorial.'))).toBe(true);
       expect(ids.some((id) => id.startsWith('stat.') || id.startsWith('grid.') || id.startsWith('quote.') || id.startsWith('list.') || id.startsWith('data.') || id.startsWith('lowerthird.'))).toBe(true);
     }
+  });
+});
+
+describe('text never collides', () => {
+  it('every template x pack x variant: no two text boxes overlap or crowd once composed', () => {
+    const bad: string[] = [];
+    for (const { templateId, packId, seed } of everyComposition()) {
+      const t = layoutTemplate(templateId)!;
+      const ctx = composeContext(resolvePack(packId), FRAME.width, FRAME.height, { idPrefix: `t${seed}` });
+      const calls = resolveTextCollisions(t.compose(ctx, CONTENT, seed).calls, ctx.grid);
+      for (const [a, b] of textCollisions(textBoxes(calls), ctx.grid)) bad.push(`${templateId} / ${packId} / ${seed}: ${a.id} x ${b.id}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('lifts the smaller text off the larger rather than moving the hero', () => {
+    const g = composeContext(resolvePack('apple_keynote'), 1920, 1080, {}).grid;
+    const calls: ToolCall[] = [
+      { name: 'create_layer', args: { id: 'o', kind: 'text', text: 'INTRODUCING', x: 960, y: 353 } },
+      { name: 'update_layer', args: { nodeId: 'o', fontSize: 18, lineHeight: 1.2, width: 866, align: 'center' } },
+      { name: 'create_layer', args: { id: 'h', kind: 'text', text: 'Nova', x: 960, y: 385 } },
+      { name: 'update_layer', args: { nodeId: 'h', fontSize: 135, lineHeight: 1, width: 866, align: 'center' } },
+    ];
+    const out = resolveTextCollisions(calls, g);
+    expect(out[2]!.args.y).toBe(385);
+    expect(Number(out[0]!.args.y)).toBeLessThan(353);
+    expect(textCollisions(textBoxes(out), g)).toEqual([]);
   });
 });
