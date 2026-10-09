@@ -258,7 +258,7 @@ TEST_CASE("collectFiles: the session collects a copy and the document is unchang
   (void)h.hello();
   const auto comp = make_comp(h);
   api::ImportFiles imp;
-  imp.files = {api::ImportFile{"C:/m/clip.mp4", false, {}, {}, false}, api::ImportFile{"C:/m/spare.png", false, {}, {}, false}};
+  imp.files = {api::ImportFile{"C:/m/clip.mp4", false, {}, {}, false, {}}, api::ImportFile{"C:/m/spare.png", false, {}, {}, false, {}}};
   const auto items = result_as<api::ItemList>(h.run(cmd(imp))).items;
   REQUIRE(items.size() == 2);
   api::CreateLayer c;

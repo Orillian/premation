@@ -273,7 +273,7 @@ TEST_CASE("session: every layer kind has a property tree whose values all read",
   (void)h.hello();
   const auto comp = make_comp(h);
   api::ImportFiles imp;
-  imp.files = {api::ImportFile{"C:/m/clip.mp4", false, {}, {}, false}};
+  imp.files = {api::ImportFile{"C:/m/clip.mp4", false, {}, {}, false, {}}};
   const auto clip = result_as<api::ItemList>(h.run(cmd(imp))).items.at(0);
   std::size_t props = 0;
   for (const auto kind : {api::LayerKind::null, api::LayerKind::solid, api::LayerKind::shape, api::LayerKind::rectangle,

@@ -48,7 +48,7 @@ api::LayerId make_layer(Harness& h, const api::ItemId& comp, api::LayerKind kind
 
 api::ItemId import_clip(Harness& h, std::string path) {
   api::ImportFiles imp;
-  imp.files = {api::ImportFile{std::move(path), false, {}, {}, false}};
+  imp.files = {api::ImportFile{std::move(path), false, {}, {}, false, {}}};
   const auto r = h.run(cmd(imp));
   REQUIRE(is_ok(r));
   return result_as<api::ItemList>(r).items.at(0);
