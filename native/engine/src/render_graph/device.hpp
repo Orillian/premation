@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -117,6 +118,9 @@ struct DrawItem {
   /// instanceCount > 0 with no buffer: drawn that many times all the same (E4).
   wgpu::Buffer instanceBuffer;
   std::uint32_t instanceCount = 0;
+  /// This draw alone clipped to (x, y, w, h), inside the pass's own scissor —
+  /// a layer's composite limited to its effect chain's reach (fx_bounds.hpp).
+  std::optional<std::array<std::uint32_t, 4>> scissor;
 };
 
 /// CommandBuffer: draws in paint order + their packed uniforms. Reused across
@@ -216,7 +220,8 @@ class Device {
 
   // ── passes ──
   /// Begin a render pass on `att` with the viewport set to w × h. `scissor`
-  /// (surface passes only) clips draws.
+  /// clips draws (the surface's frame clip; an effect chain's reach on a target).
+  /// A clear still clears the whole attachment.
   wgpu::RenderPassEncoder begin_pass(const Attachment& att, std::uint32_t w, std::uint32_t h,
                                      const wgpu::TextureView& surfaceView, wgpu::TextureFormat surfaceFormat,
                                      const std::array<std::uint32_t, 4>* scissor, bool depth);
@@ -301,6 +306,9 @@ class Device {
   std::uint32_t chunk_ = 0;
 
   std::string key_;  // scratch, reused for keys (no per-draw allocation once warm)
+  /// The scissor of the pass begin_pass opened last (its whole attachment when it
+  /// has none): a draw's own scissor is cut to it, and it is restored after.
+  std::array<std::uint32_t, 4> passRect_{};
   DeviceStats stats_;
   std::string firstError_;
 };

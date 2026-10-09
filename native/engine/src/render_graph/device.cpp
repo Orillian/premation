@@ -62,6 +62,18 @@ std::uint32_t bytes_per_texel(wgpu::TextureFormat f) {
   }
 }
 
+/// Scissor `a` cut to `b` (x, y, w, h); an empty result keeps its corner inside `b`.
+std::array<std::uint32_t, 4> clip_rect(const std::array<std::uint32_t, 4>& a, const std::array<std::uint32_t, 4>& b) {
+  const std::uint64_t bx1 = std::uint64_t{b[0]} + b[2];
+  const std::uint64_t by1 = std::uint64_t{b[1]} + b[3];
+  const std::uint64_t x0 = std::min<std::uint64_t>(std::max(a[0], b[0]), bx1);
+  const std::uint64_t y0 = std::min<std::uint64_t>(std::max(a[1], b[1]), by1);
+  const std::uint64_t x1 = std::max(x0, std::min(std::uint64_t{a[0]} + a[2], bx1));
+  const std::uint64_t y1 = std::max(y0, std::min(std::uint64_t{a[1]} + a[3], by1));
+  return {static_cast<std::uint32_t>(x0), static_cast<std::uint32_t>(y0), static_cast<std::uint32_t>(x1 - x0),
+          static_cast<std::uint32_t>(y1 - y0)};
+}
+
 void append_u64(std::string& s, std::uint64_t v) {
   std::array<char, 24> buf{};
   std::size_t n = 0;
@@ -500,7 +512,13 @@ wgpu::RenderPassEncoder Device::begin_pass(const Attachment& att, std::uint32_t 
     rp.depthStencilAttachment = &da;
   }
   wgpu::RenderPassEncoder pass = encoder_.BeginRenderPass(&rp);
-  if (scissor != nullptr && t == nullptr) pass.SetScissorRect((*scissor)[0], (*scissor)[1], (*scissor)[2], (*scissor)[3]);
+  // A target may be larger than the viewport drawn into it; a scissor never leaves either.
+  passRect_ = {0, 0, t != nullptr ? std::min(std::max(1U, w), t->width) : std::max(1U, w),
+               t != nullptr ? std::min(std::max(1U, h), t->height) : std::max(1U, h)};
+  if (scissor != nullptr) {
+    pass.SetScissorRect((*scissor)[0], (*scissor)[1], (*scissor)[2], (*scissor)[3]);
+    passRect_ = *scissor;
+  }
   pass.SetViewport(0, 0, static_cast<float>(std::max(1U, w)), static_cast<float>(std::max(1U, h)), 0, 1);
   return pass;
 }
@@ -508,7 +526,13 @@ wgpu::RenderPassEncoder Device::begin_pass(const Attachment& att, std::uint32_t 
 void Device::execute(wgpu::RenderPassEncoder& pass, const Commands& cmds, wgpu::TextureFormat format,
                      std::uint32_t samples) {
   std::uint64_t boundPipeline = 0;
+  std::array<std::uint32_t, 4> scissor = passRect_;
   for (const DrawItem& it : cmds.items()) {
+    const std::array<std::uint32_t, 4> want = it.scissor ? clip_rect(*it.scissor, passRect_) : passRect_;
+    if (want != scissor) {
+      pass.SetScissorRect(want[0], want[1], want[2], want[3]);
+      scissor = want;
+    }
     const Pipeline& p = pipeline(it.material, it.blend, format, samples, it.depthWrite);
     if (p.id != boundPipeline) {
       pass.SetPipeline(p.pipeline);
@@ -559,6 +583,7 @@ void Device::execute(wgpu::RenderPassEncoder& pass, const Commands& cmds, wgpu::
     }
     ++stats_.draws;
   }
+  if (scissor != passRect_) pass.SetScissorRect(passRect_[0], passRect_[1], passRect_[2], passRect_[3]);
 }
 
 wgpu::BindGroup Device::make_bind_group(const Pipeline& p, const MaterialDesc& m, const DrawItem& it,

@@ -50,10 +50,13 @@ if(MSVC)
 endif()
 
 # ── render graph, GPU-free half (D2): graph ordering + resource pools ───────
-add_library(engine_rg_core STATIC src/render_graph/graph.cpp)
+add_library(engine_rg_core STATIC
+  src/render_graph/graph.cpp
+  src/render_graph/fx_bounds.cpp  # the effect chain's grow bounds (reads the frame scene's effect entries)
+)
 target_include_directories(engine_rg_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/render_graph)
 target_compile_features(engine_rg_core PUBLIC cxx_std_20)
-target_link_libraries(engine_rg_core PRIVATE motion::options)
+target_link_libraries(engine_rg_core PUBLIC engine_protocol PRIVATE motion::options)
 
 # ── GPU + process ───────────────────────────────────────────────────────────
 if(Dawn_FOUND)
@@ -250,6 +253,7 @@ if(MOTION_BUILD_TESTS)
     tests/test_migrations.cpp
     tests/test_stress.cpp
     tests/test_render_graph.cpp
+    tests/test_fx_bounds.cpp
   )
   # engine_scene_core: the rig overlay (B4 round 5, tests/test_b4_round5_rig.cpp) — the tests link it, engine_core does not.
   target_link_libraries(engine_tests PRIVATE engine_core engine_rg_core engine_scene_core motion::options Catch2::Catch2WithMain)

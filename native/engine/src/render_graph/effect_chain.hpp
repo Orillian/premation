@@ -3,15 +3,18 @@
 // Ping-pongs a pool of full-viewport targets (pool[0] holds the input), one
 // branch per effect family, with Compositing ▸ Effect Opacity blended back and
 // the fail-safe that an effect producing no draw leaves the chain untouched.
+// Each entry's passes are scissored to the layer's reach so far (fx_bounds.hpp).
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
+#include "fx_bounds.hpp"
 #include "render_context.hpp"
 
 namespace premation::rg {
@@ -52,6 +55,8 @@ struct FxSpace {
 struct ChainResult {
   TexRef tex;
   std::string_view name;
+  /// Where `tex` can be non-zero, in buffer texels (fx_bounds.hpp); absent = anywhere.
+  std::optional<PxBox> covered;
 };
 
 /// G1: native SDK plugin effects — a `native-plugin` chain entry (written by
@@ -90,9 +95,14 @@ class NativeEffectHost {
 /// (composition_pass.cpp chain_content_key), 0 = unknown. Equal keys promise
 /// equal input pixels, so the styles' distance fields are kept across frames
 /// under it (fx_cache.hpp) while only effect params change.
+///
+/// `content`: where the input can be non-zero, in buffer texels (fx_bounds.hpp
+/// content_box); absent = anywhere. A screen-space chain that knows it
+/// scissors each entry's passes to the reach of the entries so far.
 ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEffect>& effects, TexRef input,
                               std::span<const std::string_view> pool, const ById& byId, std::string_view selfId,
-                              MapLayerSource& maps, const FxSpace* space = nullptr, std::uint64_t contentKey = 0);
+                              MapLayerSource& maps, const FxSpace* space = nullptr, std::uint64_t contentKey = 0,
+                              const std::optional<PxBox>& content = std::nullopt);
 
 /// Whether the C++ chain renders this effect entry (support.cpp's gate).
 [[nodiscard]] bool effect_ported(const api::RenderEffect& e, std::string& why);

@@ -134,6 +134,18 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
   return k.value();
 }
 
+/// Grow bounds: where a chain input drawn from `r` (renderable_cmds) can be non-zero.
+std::optional<PxBox> drawn_box(const PassContext& ctx, const api::Renderable& r) {
+  return content_box(r, ctx.viewport.viewProjection, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
+}
+
+/// The blends (device.cpp blend_state) under which a transparent source texel
+/// leaves the destination exactly as it was.
+bool transparent_is_noop(Blend b) {
+  return b == Blend::normal || b == Blend::add || b == Blend::screen || b == Blend::subtract || b == Blend::overlay ||
+         b == Blend::lighter || b == Blend::atop;
+}
+
 }  // namespace
 
 // ── emit helpers (passUtils.ts) ─────────────────────────────────────────────
@@ -348,8 +360,8 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
                              const ListState& st, double opacity) {
     if (r.effects.empty()) return src;
     const std::array<std::string_view, 4> pool = {dest, kBlur1, kBlur2, kBlur3};
-    const ChainResult res =
-        run_effects_chain(ctx, r.effects, src, pool, st.byId, r.id, *this, nullptr, chain_content_key(ctx, r, opacity));
+    const ChainResult res = run_effects_chain(ctx, r.effects, src, pool, st.byId, r.id, *this, nullptr,
+                                              chain_content_key(ctx, r, opacity), drawn_box(ctx, r));
     if (res.name == dest) return res.tex;
     Commands copy;
     emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, res.tex, ctx.linear_clamp(), {0, 0, 1, 1},
@@ -867,10 +879,15 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       return;
     }
     const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
-    const TexRef effectTex =
-        run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr, chain_content_key(ctx, r, 1)).tex;
-    emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend_of(r.blend), effectTex, ctx.linear_clamp(),
-                  targetUv, kIdentityColor, true);
+    const ChainResult res = run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr,
+                                              chain_content_key(ctx, r, 1), drawn_box(ctx, r));
+    const Blend blend = blend_of(r.blend);
+    emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend, res.tex, ctx.linear_clamp(), targetUv,
+                  kIdentityColor, true);
+    // Outside the chain's reach its result is transparent: the composite covers the reach, not the frame.
+    if (res.covered && transparent_is_noop(blend)) {
+      st.main.last().scissor = scissor_of(*res.covered, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
+    }
   }
 
 };

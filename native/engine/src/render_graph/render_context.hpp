@@ -104,6 +104,11 @@ struct PassContext {
   /// E4: strokes and spreads from alpha distance fields (fx_distance.hpp);
   /// off = the reference STROKE_MATERIAL disc scan (the TS renderer's pixels).
   bool fxFields = false;
+  /// Grow bounds (fx_bounds.hpp): screen-space effect chains scissor their passes to their reach.
+  bool fxBounds = true;
+  /// The scissor (x, y, w, h) of the effect-chain entry being drawn, for passes
+  /// into viewport-sized targets; set and cleared by run_effects_chain.
+  std::optional<std::array<std::uint32_t, 4>> fxScissor = std::nullopt;
 
   /// ctx.target(name): nullptr = the surface (or an undeclared name).
   [[nodiscard]] RenderTarget* target(std::string_view name) const {

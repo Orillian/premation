@@ -107,8 +107,14 @@ void PassContext::draw_into_sized(std::string_view name, const Commands& cmds, b
   att.target = t;
   att.clear = clear;
   const bool toSurface = t == nullptr;
-  wgpu::RenderPassEncoder pass =
-      dev.begin_pass(att, w, h, surfaceView, surfaceFormat, toSurface && surfaceScissor ? &*surfaceScissor : nullptr, false);
+  // The surface takes the frame clip; a viewport-sized target, the effect chain's reach.
+  const std::array<std::uint32_t, 4>* scissor = nullptr;
+  if (toSurface) {
+    if (surfaceScissor) scissor = &*surfaceScissor;
+  } else if (fxScissor && w == viewport.pixelWidth && h == viewport.pixelHeight && t->width == w && t->height == h) {
+    scissor = &*fxScissor;
+  }
+  wgpu::RenderPassEncoder pass = dev.begin_pass(att, w, h, surfaceView, surfaceFormat, scissor, false);
   if (!cmds.empty()) dev.execute(pass, cmds, toSurface ? surfaceFormat : t->format, toSurface ? 1 : t->samples);
   pass.End();
 }

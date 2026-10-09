@@ -279,22 +279,7 @@ std::vector<Vec4> p_rows(const Fx& fx) {
   return rows;
 }
 
-/// deepGlowKernel.ts.
-struct Octave {
-  double sigma, delta;
-};
-std::vector<Octave> deep_glow_octaves(double radius, double octaves) {
-  const int k = std::max(1, static_cast<int>(std::floor(octaves + 0.5)));
-  std::vector<Octave> out;
-  double prev = 0;
-  for (int i = 0; i < k; ++i) {
-    const double sigma = radius / std::pow(2.0, k - 1 - i);
-    out.push_back({sigma, std::sqrt(std::max(0.0, sigma * sigma - prev * prev))});
-    prev = sigma;
-  }
-  return out;
-}
-double deep_glow_step(double sigma) { return std::max(1.0, std::ceil((4 * sigma) / 16)); }
+/// deepGlowKernel.ts (the octaves and their tap step: fx_bounds.cpp, which measures their reach).
 double deep_glow_inv(double sigma) { return sigma <= 1e-3 ? 1e12 : 1 / (2 * sigma * sigma); }
 
 /// E4: a field-table style's `p` rows as STYLE_FILL_FX_MATERIAL reads them —
@@ -360,6 +345,22 @@ class Touch {
   bool* pristine_;
 };
 
+/// Grow bounds: the chain owns the context's scissor while it runs, and
+/// leaves it as it found it (unset) — the composite that follows is not clipped.
+class ChainScissor {
+ public:
+  explicit ChainScissor(PassContext& ctx) : ctx_(&ctx), saved_(ctx.fxScissor) { ctx.fxScissor.reset(); }
+  ~ChainScissor() { ctx_->fxScissor = saved_; }
+  ChainScissor(const ChainScissor&) = delete;
+  ChainScissor& operator=(const ChainScissor&) = delete;
+  ChainScissor(ChainScissor&&) = delete;
+  ChainScissor& operator=(ChainScissor&&) = delete;
+
+ private:
+  PassContext* ctx_;
+  std::optional<std::array<std::uint32_t, 4>> saved_;
+};
+
 /// renderableBox: where a renderable sits in the viewport, as a [0,1] rect.
 Rect renderable_box(const PassContext& ctx, const api::Renderable* r) {
   const Rect v = ctx.viewport.visibleWorldRect;
@@ -420,7 +421,8 @@ bool effect_ported(const api::RenderEffect& e, std::string& why) {
 
 ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEffect>& effects, TexRef input,
                               std::span<const std::string_view> pool, const ById& byId, std::string_view selfId,
-                              MapLayerSource& maps, const FxSpace* space, std::uint64_t contentKey) {
+                              MapLayerSource& maps, const FxSpace* space, std::uint64_t contentKey,
+                              const std::optional<PxBox>& content) {
   const ViewportState& vp = ctx.viewport;
   const Rect targetUv{0, 0, 1, 1};
   const Mat3 mvp = screen_mvp();
@@ -431,6 +433,15 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
   const double pw = vp.pixelWidth;
   const double ph = vp.pixelHeight;
   const bool poolHasMatte = std::ranges::find(pool, kMatteTarget) != pool.end();
+
+  // Grow bounds (fx_bounds.hpp): where the buffer may be non-zero so far. Each
+  // entry's passes are scissored to its reach from there; an entry of unknown
+  // reach (or no content box, or the 3D route's own buffer) runs full frame
+  // from then on.
+  const ChainScissor scissorScope(ctx);
+  std::optional<PxBox> covered = ctx.fxBounds && space == nullptr ? content : std::nullopt;
+  const Rect world = vp.visibleWorldRect;
+  const FxBoundsView boundsView{world.width > 0 ? pw / world.width : 1, world.height > 0 ? ph / world.height : 1};
 
   TexRef curTex = std::move(input);
   std::string_view curName = pool[0];
@@ -548,6 +559,17 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     }
     const Fx fx(e);
     const std::string_view type = fx.type();
+    // After the last entry's blend-back landed (under that entry's scissor), before
+    // anything this one draws — its span copy and scope mask included.
+    if (covered) {
+      if (const std::optional<FxReach> reach = fx_reach(e, *covered, boundsView)) {
+        ctx.fxScissor = scissor_of(reach->passes, vp.pixelWidth, vp.pixelHeight);
+        covered = reach->out;
+      } else {
+        ctx.fxScissor.reset();
+        covered.reset();
+      }
+    }
     if (const double span = fx.num("blendSpan", 1); span > 1 && type != "plugin" &&
                                                     ((fx.has("effectOpacity") && fx.num("effectOpacity") < 1) ||
                                                      !fx.text("scopeMaskKey").empty())) {
@@ -583,6 +605,10 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     const std::string_view f1 = free[1];
     const std::string_view f2 = free.size() > 2 ? free[2] : std::string_view{};
     PathNote note(ctx.effectStats, selfId, type);
+    if (ctx.effectStats != nullptr) {
+      if (ctx.fxScissor) ++ctx.effectStats->bounded;
+      else ++ctx.effectStats->fullFrame;
+    }
     // Every entry but the fill fade changes the buffer a later field would be built from.
     Touch touch(pristine);
 
@@ -1570,7 +1596,7 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     curName = f0;
   }
   land();
-  return {curTex, curName};
+  return {curTex, curName, covered};
 }
 
 }  // namespace premation::rg

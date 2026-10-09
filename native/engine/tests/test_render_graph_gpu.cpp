@@ -253,6 +253,123 @@ TEST_CASE("E4: a faded effect of several chain entries blends back once over its
   for (std::size_t c = 0; c < 3; ++c) CHECK(std::abs(static_cast<int>(px(32, 24, c)) - rp(c)) <= 1);
 }
 
+namespace {
+
+api::RenderEffect fx_entry(std::string type, std::vector<api::RenderEffectParam> params) {
+  api::RenderEffect e;
+  e.type = std::move(type);
+  e.params = std::move(params);
+  return e;
+}
+
+api::RenderEffectParam nums_param(std::string name, std::vector<double> v) {
+  api::RenderEffectParam p;
+  p.name = std::move(name);
+  p.kind = api::RenderParamKind::numbers;
+  p.numbers = std::move(v);
+  return p;
+}
+
+api::Renderable fx_rect(std::string id, double x, double y, double w, double h, api::Color c,
+                        std::vector<api::RenderEffect> effects) {
+  api::Renderable r;
+  r.id = std::move(id);
+  r.kind = api::RenderableKind::rect;
+  r.model_matrix = {w, 0, 0, 0, h, 0, x, y, 1};
+  r.bounds = {x, y, w, h};
+  r.opacity = 1;
+  r.color = c;
+  r.effects = std::move(effects);
+  return r;
+}
+
+/// Small layers far apart on a 256 × 192 frame, each with a stack the grow
+/// bounds measure — and one whose stack ends in an entry they do not.
+api::RenderFrameFile bounded_fx_scene() {
+  api::RenderFrameFile f = solid_scene(0, 0, 0);
+  f.view.css_width = 256;
+  f.view.css_height = 192;
+  f.view.camera_center_x = 128;
+  f.view.camera_center_y = 96;
+  f.scene.width = 256;
+  f.scene.height = 192;
+  f.scene.background = api::Color{0.1, 0.1, 0.12, 1};
+  f.scene.renderables.clear();
+  auto& list = f.scene.renderables;
+  list.push_back(fx_rect("blur", 20, 20, 24, 24, {1, 0.2, 0.1, 1}, {fx_entry("gaussian-blur", {num_param("radiusPx", 4)})}));
+  list.push_back(fx_rect("shadow", 150, 30, 30, 20, {0.2, 0.9, 0.3, 1},
+                         {fx_entry("drop-shadow", {num_param("radiusPx", 6), num_param("spreadPx", 2), num_param("offsetX", 12),
+                                                   num_param("offsetY", 9), color_param("color", 0, 0, 0, 0.7)}),
+                          fx_entry("gaussian-blur", {num_param("radiusPx", 2)})}));
+  list.push_back(fx_rect("glow", 40, 130, 20, 20, {0.9, 0.9, 0.2, 1},
+                         {fx_entry("glow", {num_param("radiusPx", 8), num_param("spreadPx", 3), color_param("color", 1, 0.5, 0, 0.9)})}));
+  // Motion blur: the chain's input is both samples.
+  api::Renderable moving = fx_rect("moving", 200, 140, 26, 26, {0.3, 0.4, 1, 1},
+                                   {fx_entry("stroke", {num_param("widthPx", 3), color_param("color", 1, 1, 1, 1)}),
+                                    fx_entry("sharpen", {num_param("amount", 0.5)})});
+  for (const double x : {200.0, 215.0}) {
+    api::RenderMotionSample s;
+    s.model_matrix = {26, 0, 0, 0, 26, 0, x, 140, 1};
+    s.opacity = 1;
+    moving.motion_samples.push_back(s);
+  }
+  list.push_back(moving);
+  // Past the right edge: the scissor is clamped to the frame.
+  list.push_back(fx_rect("edge", 240, 100, 30, 30, {1, 1, 1, 1}, {fx_entry("blur", {num_param("radiusPx", 5)})}));
+  list.push_back(fx_rect("inner", 100, 90, 24, 24, {0.8, 0.2, 0.8, 1},
+                         {fx_entry("fill-opacity", {num_param("amount", 0.5)}),
+                          fx_entry("inner-shadow", {nums_param("p", {3, 3, 0.8, 0, 0, 0, 0, 0, 24, 24, 0, 0}), num_param("sigmaPx", 4)}),
+                          fx_entry("stroke", {num_param("widthPx", 2), color_param("color", 0, 1, 1, 1)})}));
+  list.push_back(fx_rect("deep", 120, 150, 16, 16, {1, 0.6, 0.6, 1},
+                         {fx_entry("deep-glow", {num_param("radiusPx", 10), num_param("octaves", 3), num_param("gain", 1.5),
+                                                 nums_param("chroma", {1, 1, 1}), nums_param("aspect", {1, 1}),
+                                                 nums_param("tint", {1, 1, 1})})}));
+  // Vignette's reach is not measured: the chain runs full frame from it on.
+  list.push_back(fx_rect("unknown", 60, 60, 20, 20, {0.5, 1, 1, 1},
+                         {fx_entry("gaussian-blur", {num_param("radiusPx", 3)}),
+                          fx_entry("vignette", {num_param("amount", 0.5), num_param("feather", 0.5), num_param("roundness", 1),
+                                                num_param("cx", 0.5), num_param("cy", 0.5), num_param("aspect", 1)})}));
+  return f;
+}
+
+}  // namespace
+
+TEST_CASE("grow bounds: a chain scissored to each layer's reach draws the same pixels as the full-frame chain") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  const auto file = bounded_fx_scene();
+  for (const bool fields : {false, true}) {
+    CAPTURE(fields);
+    renderer->set_effect_fields(fields);
+    renderer->set_effect_bounds(true);
+    Frame bounded;
+    FrameStats sb;
+    REQUIRE(renderer->render(file, &bounded, sb, err));
+    CHECK(sb.gpuError.empty());
+    renderer->set_effect_bounds(false);
+    Frame full;
+    FrameStats sf;
+    REQUIRE(renderer->render(file, &full, sf, err));
+    CHECK(sf.gpuError.empty());
+    // Every measured entry ran scissored, the vignette full frame; nothing bounded without bounds.
+    CHECK(sb.effects.bounded == 12);
+    CHECK(sb.effects.fullFrame == 1);
+    CHECK(sf.effects.bounded == 0);
+    CHECK(sf.effects.fullFrame == 13);
+    REQUIRE(bounded.width == full.width);
+    REQUIRE(bounded.height == full.height);
+    std::size_t differing = 0;
+    for (std::size_t i = 0; i < full.rgba.size(); ++i) differing += bounded.rgba[i] != full.rgba[i] ? 1 : 0;
+    CHECK(differing == 0);
+    // The effects did draw (the scene is not just its background).
+    const auto px = [&](std::uint32_t x, std::uint32_t y, std::size_t c) { return full.rgba.at((std::size_t{y} * 256 + x) * 4 + c); };
+    CHECK(px(32, 32, 0) > 150);   // the blurred red square's centre
+    CHECK(px(250, 115, 0) > 150);  // the edge layer, on screen
+  }
+  renderer->set_effect_bounds(true);
+}
+
 TEST_CASE("a texture over the device's 2D limit skips its layer, not the frame") {
   // 2026-10-08: a 10000 % text layer rasterised 16384 px wide on a device made
   // with the WebGPU default 8192 limit; Dawn's error texture failed the frame's

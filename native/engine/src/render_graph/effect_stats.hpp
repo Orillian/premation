@@ -55,6 +55,10 @@ struct EffectStats {
   /// Faded / scoped effects of several chain entries blended back once over their kept input.
   std::uint32_t blendSpans = 0;
   std::uint32_t skipped = 0;
+  /// Grow bounds (fx_bounds.hpp): entries whose passes were scissored to the
+  /// chain's reach, and entries drawn over the full frame (an unknown reach).
+  std::uint32_t bounded = 0;
+  std::uint32_t fullFrame = 0;
   /// Set by the caller before the frame: keep one record per entry.
   bool keepPaths = false;
   std::vector<EffectPathRecord> paths;

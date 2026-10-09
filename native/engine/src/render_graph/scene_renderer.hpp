@@ -125,6 +125,9 @@ class SceneRenderer {
   /// fields (the engine's frames); off = the TS renderer's reference passes (parity).
   void set_effect_fields(bool on) noexcept { effectFields_ = on; }
   [[nodiscard]] bool effect_fields() const noexcept { return effectFields_; }
+  /// Grow bounds (fx_bounds.hpp): screen-space effect chains scissor their passes
+  /// to the layer's reach. Off = every pass over the full frame (the same pixels; tests).
+  void set_effect_bounds(bool on) noexcept { effectBounds_ = on; }
 
  private:
   SceneRenderer() = default;
@@ -138,6 +141,7 @@ class SceneRenderer {
   /// E4: the effect chain's distance fields, kept across frames.
   FxCache fxCache_;
   bool effectFields_ = false;
+  bool effectBounds_ = true;
   wgpu::Texture surface_;
   wgpu::TextureView surfaceView_;
   std::uint32_t surfaceW_ = 0;
