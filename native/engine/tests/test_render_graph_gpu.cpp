@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 #include "scene_renderer.hpp"
@@ -250,4 +251,55 @@ TEST_CASE("E4: a faded effect of several chain entries blends back once over its
   const auto rp = [&](std::size_t c) { return static_cast<int>(ref.rgba.at((std::size_t{24} * 64 + 32) * 4 + c)); };
   CHECK(px(32, 24, 0) < 20);
   for (std::size_t c = 0; c < 3; ++c) CHECK(std::abs(static_cast<int>(px(32, 24, c)) - rp(c)) <= 1);
+}
+
+TEST_CASE("a texture over the device's 2D limit skips its layer, not the frame") {
+  // 2026-10-08: a 10000 % text layer rasterised 16384 px wide on a device made
+  // with the WebGPU default 8192 limit; Dawn's error texture failed the frame's
+  // whole command buffer and every layer came back transparent.
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  const std::uint32_t limit = renderer->device().max_texture_dimension();
+  // The device asks for the adapter's 2D size, up to the rasters' 16384 (device_limits.hpp).
+  CHECK(limit >= 8192);
+  CHECK(limit <= 16384);
+  WARN("maxTextureDimension2D " << limit);
+
+  auto file = solid_scene(1, 0.5, 0);
+  const std::uint32_t w = limit + 1;
+  api::RenderBlob blob;
+  blob.hash = "hash:huge";
+  blob.width = w;
+  blob.height = 1;
+  blob.format = api::RenderTextureFormat::rgba8unorm;
+  blob.pixels.assign(std::size_t{w} * 4, 255);
+  file.blobs.push_back(std::move(blob));
+  api::RenderTextureRef ref;
+  ref.key = "text:huge";
+  ref.hash = "hash:huge";
+  ref.ready = true;
+  file.textures.push_back(ref);
+  api::Renderable huge;
+  huge.id = "huge";
+  huge.kind = api::RenderableKind::image;
+  huge.model_matrix = {64, 0, 0, 0, 48, 0, 0, 0, 1};  // covers the frame
+  huge.bounds = {0, 0, 64, 48};
+  huge.opacity = 1;
+  huge.texture_key = "text:huge";
+  file.scene.renderables.push_back(huge);
+
+  const std::uint64_t refusedBefore = renderer->device().stats().texturesRefused;
+  Frame frame;
+  FrameStats s;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  CHECK(s.gpuError.empty());
+  CHECK(renderer->device().stats().texturesRefused == refusedBefore + 1);
+  const auto px = [&](std::uint32_t x, std::uint32_t y, std::size_t c) { return frame.rgba.at((std::size_t{y} * 64 + x) * 4 + c); };
+  // The rest of the frame is drawn: the orange rect and the black background, opaque.
+  CHECK(px(32, 24, 0) == 255);
+  CHECK(std::abs(static_cast<int>(px(32, 24, 1)) - 128) <= 1);
+  CHECK(px(32, 24, 3) == 255);
+  CHECK(px(2, 2, 0) == 0);
+  CHECK(px(2, 2, 3) == 255);
 }

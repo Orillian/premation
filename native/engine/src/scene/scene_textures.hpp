@@ -70,6 +70,8 @@ struct PrepareStats {
   std::uint32_t mediaRefs = 0;
   /// E4: GPU Vegas contour textures made this frame (once per content + threshold).
   std::uint32_t contourBuilds = 0;
+  /// Rasters over the device's 2D texture limit, not uploaded (their layers draw nothing).
+  std::uint32_t oversizeRefused = 0;
   /// Features the painters could not draw (key → what), for the explicit-fallback report.
   std::vector<std::pair<std::string, std::string>> unsupported;
 };
@@ -123,6 +125,8 @@ class SceneTextures final : public rg::ExternalTextureSource {
     std::string hash;
     std::shared_ptr<const RasterEntry> entry;  // shared: a frame in flight keeps its pixels while the LRU evicts
   };
+  /// prepare without the device-limit check.
+  void prepare_refs(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs, PrepareStats& stats);
   std::string media_ref(const TextureRequest& r, PrepareStats& stats, std::optional<api::RenderColorSpace>& space);
   std::string image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats);
   /// A still carried as a `data:image/…;base64,` URL (a content-aware fill frame).

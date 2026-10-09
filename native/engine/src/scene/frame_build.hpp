@@ -8,6 +8,7 @@
 // against the TS-exported FrameScene lines up renderable for renderable.
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -76,6 +77,14 @@ struct FrameBuild {
 /// `snapshotToFrameScene(snapshot)` + the texture feed. `rasterScale` is the
 /// comp→device scale (view scale × DPR) the TS provider rasterises at.
 [[nodiscard]] FrameBuild build_frame_scene(const Snapshot& s, double rasterScale);
+
+/// The largest 2D texture rasters are planned against (VectorRasterizer.ts
+/// deviceMax): 16384 — the TS provider's figure, and what the engine's devices
+/// ask for (render_graph/device_limits.hpp) — until a render device reports a
+/// smaller limit. Process-wide because every frame builder in the process
+/// draws on that one device; the renderer that made it sets it.
+[[nodiscard]] double texture_dimension_limit() noexcept;
+void set_texture_dimension_limit(std::uint32_t px) noexcept;
 
 /// `rasterPadding(layer)` (vectorDraw.ts) for the ported layer shapes.
 [[nodiscard]] double raster_padding(const RLayer& l);

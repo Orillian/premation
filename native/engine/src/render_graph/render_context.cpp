@@ -87,6 +87,7 @@ TexRef PassContext::texture(std::string_view key) {
   }
   const api::RenderBlob& b = *rb.blob;
   TexRef t = dev.texture(b.hash, b.width, b.height, blob_format(b.format), b.pixels, b.mipmapped);
+  if (!t) return {};  // refused (over the device's size limit): the draw is skipped
   t.sampleLinear = rb.sampleLinear;
   // D3: a colour texture under colour management is sampled as its working-
   // space conversion (made once per content + interpretation), already linear.

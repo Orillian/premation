@@ -166,6 +166,8 @@ struct DeviceStats {
   std::uint64_t passes = 0;
   std::uint64_t gpuBytes = 0;
   std::uint64_t gpuBytesPeak = 0;
+  /// Textures not made because they were over the device's 2D size limit.
+  std::uint64_t texturesRefused = 0;
 };
 
 /// Dawn-side services for one device. Owned by the SceneRenderer; single-threaded (the render thread).
@@ -181,6 +183,8 @@ class Device {
   [[nodiscard]] const wgpu::Device& device() const noexcept { return device_; }
   [[nodiscard]] const wgpu::Queue& queue() const noexcept { return queue_; }
   [[nodiscard]] const wgpu::Instance& instance() const noexcept { return instance_; }
+  /// The device's maxTextureDimension2D (device_limits.hpp asks for up to 16384).
+  [[nodiscard]] std::uint32_t max_texture_dimension() const noexcept { return maxTexture2D_; }
 
   // ── frame lifecycle ──
   void begin_frame();
@@ -267,6 +271,7 @@ class Device {
   wgpu::Buffer quad_;
   std::uint64_t frame_ = 0;
   std::uint64_t nextId_ = 1;
+  std::uint32_t maxTexture2D_ = 8192;  // the WebGPU default, until the device says
 
   MemoryMeter meter_;
   Pool<RenderTarget> targets_{&meter_};

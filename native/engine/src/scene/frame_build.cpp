@@ -3,6 +3,7 @@
 #include "text_port.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -32,8 +33,11 @@ namespace {
 constexpr double kMaxGlyphPad = 512;
 /// The raster tier ladder below Continuous Rasterization (VectorRasterizer.ts).
 constexpr std::array<double, 4> kTiers = {0.5, 1, 2, 4};
-/// The GPU max texture size the TS provider reports (WebGPU on the gate's adapters).
-constexpr double kDeviceMax = 16384;
+/// The GPU max texture size the TS provider reports (WebGPU on the gate's
+/// adapters), lowered when the render device offers less (texture_dimension_limit).
+constexpr std::uint32_t kDeviceMax = 16384;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): the process's one render device sets it (set_texture_dimension_limit)
+std::atomic<std::uint32_t> gTextureLimit{kDeviceMax};
 
 double resolution_tier(double scale) {
   if (!(scale > 0) || std::isnan(scale)) return 1;
@@ -55,7 +59,8 @@ double continuous_resolution_tier(double scale, double boxW, double boxH) {
   const double h = std::max(1.0, boxH != 0 && !std::isnan(boxH) ? boxH : 1);
   double best = kContinuousTiers.front();
   for (const double t : kContinuousTiers) {
-    if (w * t > kDeviceMax || h * t > kDeviceMax) break;
+    const double deviceMax = texture_dimension_limit();
+    if (w * t > deviceMax || h * t > deviceMax) break;
     if (w * t * h * t > kMaxRasterPixels) break;
     best = t;
   }
@@ -335,7 +340,7 @@ Json layer_json(const RLayer& l, std::string_view kind) {
   if (l.fillOpacity) o.set("fillOpacity", Json::number(*l.fillOpacity));
   if (!l.paint.is_undefined()) o.set("paint", l.paint);
   o.set("__baked", Json::boolean(layer_is_baked(l)));
-  o.set("__deviceMax", Json::number(kDeviceMax));
+  o.set("__deviceMax", Json::number(texture_dimension_limit()));
   return o;
 }
 
@@ -392,7 +397,7 @@ Json text_spec(const RLayer& l) {
   if (has_paint_strokes(l)) o.set("paint", l.paint);
   o.set("kind", Json::string("text"));
   o.set("__baked",Json::boolean(layer_is_baked(l)));  // text_spec is only built for text layers
-  o.set("__deviceMax", Json::number(kDeviceMax));
+  o.set("__deviceMax", Json::number(texture_dimension_limit()));
   return o;
 }
 
@@ -593,7 +598,7 @@ void Flattener::feed(const RLayer& l) {
       r.spec.set("effect", std::move(effect));
       r.spec.set("width", Json::number(l.width));
       r.spec.set("height", Json::number(l.height));
-      r.spec.set("__deviceMax", Json::number(kDeviceMax));
+      r.spec.set("__deviceMax", Json::number(texture_dimension_limit()));
       // The layer raster's tier and padding: the overlay covers the same padded box.
       r.resolutionScale = tier;
       r.padding = raster_padding(l);
@@ -994,6 +999,13 @@ void Flattener::flatten(const std::vector<RLayer>& layers, const Mat3& parent, d
 }
 
 }  // namespace
+
+double texture_dimension_limit() noexcept { return gTextureLimit.load(std::memory_order_relaxed); }
+
+void set_texture_dimension_limit(std::uint32_t px) noexcept {
+  // Never above the TS figure (the parity tier ladder), never below the WebGPU default.
+  gTextureLimit.store(std::clamp<std::uint32_t>(px, 8192, kDeviceMax), std::memory_order_relaxed);
+}
 
 double raster_padding(const RLayer& l) {
   double pad = bake::baked_effect_spread(l);  // bakedEffectSpread (bake_chain.cpp)

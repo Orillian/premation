@@ -5,6 +5,8 @@
 #include <string_view>
 #include <vector>
 
+#include "render_graph/device_limits.hpp"
+
 namespace premation {
 namespace {
 
@@ -130,9 +132,12 @@ std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std:
     if (gpu.adapter.HasFeature(f)) features.push_back(f);
   }
 
+  // The 2D texture size the frame builder plans rasters against (device_limits.hpp).
+  const wgpu::Limits limits = rg::required_device_limits(gpu.adapter);
   wgpu::DeviceDescriptor deviceDesc{};
   deviceDesc.requiredFeatureCount = features.size();
   deviceDesc.requiredFeatures = features.data();
+  deviceDesc.requiredLimits = &limits;
   deviceDesc.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType type, wgpu::StringView msg) {
     std::fprintf(stderr, "engine: GPU error %d: %.*s\n", static_cast<int>(type), static_cast<int>(view(msg).size()),
                  view(msg).data());

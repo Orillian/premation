@@ -135,6 +135,28 @@ void SceneTextures::insert_content(std::uint64_t key, std::shared_ptr<const rast
 
 void SceneTextures::prepare(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs,
                             PrepareStats& stats) {
+  const std::size_t first = refs.size();
+  prepare_refs(reqs, refs, stats);
+  // A raster over the device's 2D limit (frame_build plans to texture_dimension_limit,
+  // but a still, a light wash or a particle field is sized by its content) is never
+  // handed to the GPU: Dawn would make an error texture and fail the whole frame.
+  // The ref is not ready — its layer draws nothing — and the reason is reported.
+  const double limit = dev_ != nullptr ? dev_->max_texture_dimension() : texture_dimension_limit();
+  for (std::size_t i = first; i < refs.size(); ++i) {
+    api::RenderTextureRef& ref = refs[i];
+    if (!ref.ready || !(ref.hash.starts_with("rs:") || ref.hash.starts_with("img:"))) continue;
+    const RasterEntry* e = raster(ref.hash);
+    if (e == nullptr || (e->width <= limit && e->height <= limit)) continue;
+    ref.ready = false;
+    ++stats.oversizeRefused;
+    stats.unsupported.emplace_back(ref.key, "texture " + std::to_string(e->width) + "x" + std::to_string(e->height) +
+                                                " is over the GPU limit of " + std::to_string(static_cast<std::uint32_t>(limit)) +
+                                                " px; the layer is skipped");
+  }
+}
+
+void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs,
+                                 PrepareStats& stats) {
   struct Miss {
     const TextureRequest* req;
     std::string hash;

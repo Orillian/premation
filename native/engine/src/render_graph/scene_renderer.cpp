@@ -9,6 +9,7 @@
 #include <span>
 
 #include "color/color_system.hpp"
+#include "device_limits.hpp"
 #include "passes.hpp"
 #include "render_context.hpp"
 
@@ -107,9 +108,11 @@ std::unique_ptr<SceneRenderer> SceneRenderer::create(const RendererOptions& opti
   for (const wgpu::FeatureName f : options.optionalFeatures) {
     if (adapter.HasFeature(f)) features.push_back(f);
   }
+  const wgpu::Limits limits = required_device_limits(adapter);  // device_limits.hpp: 16384 rasters, not 8192
   wgpu::DeviceDescriptor dd{};
   dd.requiredFeatureCount = features.size();
   dd.requiredFeatures = features.data();
+  dd.requiredLimits = &limits;
   dd.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType, wgpu::StringView msg) {
     record_error(view_of(msg));
   });

@@ -92,6 +92,10 @@ Device::Device(wgpu::Instance instance, wgpu::Device device, wgpu::Queue queue)
   qd.label = "unit-quad";
   quad_ = device_.CreateBuffer(&qd);
   queue_.WriteBuffer(quad_, 0, kQuad.data(), sizeof(kQuad));
+  wgpu::Limits limits{};
+  if (device_.GetLimits(&limits) == wgpu::Status::Success && limits.maxTextureDimension2D != wgpu::kLimitU32Undefined) {
+    maxTexture2D_ = limits.maxTextureDimension2D;
+  }
 }
 
 Device::~Device() = default;
@@ -192,6 +196,14 @@ RenderTarget& Device::target(std::string_view name, std::uint32_t w, std::uint32
 
 TexRef Device::texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
                        std::span<const std::uint8_t> pixels, bool mipmapped) {
+  // Over the device's 2D limit Dawn makes an error texture, and drawing it
+  // fails validation for the frame's whole command buffer — every layer, not
+  // just this one. No texture instead: the draw that wanted it is skipped
+  // (a layer with no texture draws nothing) and the frame goes on.
+  if (w > maxTexture2D_ || h > maxTexture2D_) {
+    ++stats_.texturesRefused;
+    return {};
+  }
   const std::uint32_t bpp = bytes_per_texel(format);
   const std::uint64_t bytes = std::uint64_t{w} * h * bpp;
   // A mipmapped blob carries level 0 only (the TS texture's chain is never

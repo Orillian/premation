@@ -2,13 +2,58 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
+#include <string>
+#include <utility>
 #include <cstdlib>
 #include <string_view>
 
 #include "color_settings.hpp"
 #include "effects_port.hpp"
+#include "raster_source.hpp"
 
 namespace premation::scene {
+
+namespace {
+
+/// The texel size a request will be uploaded at, when the builder already knows
+/// it: rasters (raster_source.cpp sizes them from the spec) and builder-made
+/// pixels. nullopt = sized by its content (footage, light washes, particles).
+std::optional<std::pair<double, double>> planned_texture_size(const TextureRequest& r) {
+  switch (r.kind) {
+    case TexKind::pixels: return std::pair<double, double>{static_cast<double>(r.pxWidth), static_cast<double>(r.pxHeight)};
+    case TexKind::text:
+    case TexKind::path:
+    case TexKind::overlay: {
+      const Json& dm = r.spec.at("__deviceMax");
+      const raster::RasterCanvasSize z =
+          raster::raster_canvas_size(r.spec.at("width").num(), r.spec.at("height").num(), r.resolutionScale, r.padding,
+                                     r.spec.at("__baked").b(), dm.is_number() ? dm.num() : texture_dimension_limit());
+      return std::pair<double, double>{static_cast<double>(z.width), static_cast<double>(z.height)};
+    }
+    default: return std::nullopt;
+  }
+}
+
+/// A texture the GPU cannot hold fails its layer, never the frame (CLAUDE.md
+/// reliability): a request planned over the device's 2D limit is dropped and
+/// recorded on the frame's layer errors — its renderable finds no texture and
+/// draws nothing. Content-sized textures are checked when prepared
+/// (SceneTextures::prepare) and when uploaded (rg::Device::texture).
+void drop_oversize_textures(NativeFrame& nf) {
+  const double limit = texture_dimension_limit();
+  std::erase_if(nf.textures, [&](const TextureRequest& r) {
+    const auto size = planned_texture_size(r);
+    if (!size || (size->first <= limit && size->second <= limit)) return false;
+    nf.errors.push_back({r.layerId, "", "texture",
+                         "the layer's texture would be " + std::to_string(static_cast<long long>(size->first)) + "x" +
+                             std::to_string(static_cast<long long>(size->second)) + " px, over the GPU limit of " +
+                             std::to_string(static_cast<long long>(limit)) + " px; the layer is skipped"});
+    return true;
+  });
+}
+
+}  // namespace
 
 ViewSpec export_view(double outW, double outH, double compW, double compH) {
   // exportView: scale = min(outW/cw, outH/ch), centred; viewToCamera: zoom = scale,
@@ -127,6 +172,7 @@ NativeFrame native_frame_of(const doc::Document& d, Snapshot snap, const ViewSpe
     f.blobs.push_back(std::move(white));
   }
   nf.textures = std::move(fb.textures);
+  drop_oversize_textures(nf);
   return nf;
 }
 
