@@ -327,8 +327,14 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     // (a 2-up / 4-up pane is another viewport of this window), subscribed once
     // the id is known below.
     let unFrames: (() => void) | null = null;
+    // Auto resolution's input: playback falling behind. Every FrameReady says
+    // how many frames the engine skipped since the one before it (superseded
+    // jobs + clock skips), so the hysteresis counts real frames — the 1 Hz
+    // RenderStats event it used to read made "3 slow frames" three SECONDS.
+    let playing = false;
     const onFrame = (frame: VideoFrameLike, meta: EngineFrameMeta, release: () => void): void => {
       stats.received += 1;
+      if (playing) useRenderQualityStore.getState().reportPlaybackFrame(meta.dropped > 0 ? 2 : 0, 1);
       const route = (meta as EngineFrameMeta).route ?? 'shared';
       if (route !== stats.route) {
         stats.route = route;
@@ -537,11 +543,6 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     };
     const unLut = useViewerLutStore.subscribe(sendViewerLut);
     sendViewerLut();
-    // Auto resolution's input: playback falling behind (the engine's dropped
-    // frames) degrades to the floor; it restores after a run of good frames.
-    let playing = false;
-    let lastDropped = -1;
-
     // A restarted engine has no viewport until it is told again (the replay
     // restores it too; resending is cheap and makes the surface self-healing).
     const unsub = client.subscribe((batch: EventBatch) => {
@@ -555,11 +556,6 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
           sendResolution();
         } else if (e.type === 'renderStatsUpdated') {
           stats.engineBuildMs = e.stats.cpuFrameMs;
-          if (playing && lastDropped >= 0) {
-            const dropped = e.stats.droppedFrames - lastDropped;
-            useRenderQualityStore.getState().reportPlaybackFrame(dropped > 0 ? 2 : 0, 1);
-          }
-          lastDropped = e.stats.droppedFrames;
         } else if (e.type === 'transportChanged') {
           const now = e.state === 'playing';
           if (playing && !now) useRenderQualityStore.getState().setSlowPlayback(false);

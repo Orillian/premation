@@ -137,6 +137,38 @@ describe('playback auto-quality', () => {
     expect(useRenderQualityStore.getState().effectiveResolution()).toBe(1);
   });
 
+  it('backs off: a restore undone soon after doubles the next cheap run, and stopping resets it', () => {
+    const s = useRenderQualityStore.getState();
+    const slow = (n: number): void => { for (let i = 0; i < n; i++) s.reportPlaybackFrame(50, 33); };
+    const fast = (n: number): void => { for (let i = 0; i < n; i++) s.reportPlaybackFrame(5, 33); };
+    slow(3);
+    fast(45);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(false);
+    // Full resolution does not hold: down again within a few frames.
+    fast(10); slow(3);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(true);
+    fast(89);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(true);
+    fast(1);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(false);
+    // Stopping playback resets the back-off.
+    useRenderQualityStore.getState().setSlowPlayback(false);
+    slow(3);
+    fast(45);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(false);
+  });
+
+  it('a degrade long after the last restore does not back off', () => {
+    const s = useRenderQualityStore.getState();
+    for (let i = 0; i < 3; i++) s.reportPlaybackFrame(50, 33);
+    for (let i = 0; i < 45; i++) s.reportPlaybackFrame(5, 33);
+    for (let i = 0; i < 200; i++) s.reportPlaybackFrame(5, 33);
+    for (let i = 0; i < 3; i++) s.reportPlaybackFrame(50, 33);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(true);
+    for (let i = 0; i < 45; i++) s.reportPlaybackFrame(5, 33);
+    expect(useRenderQualityStore.getState().slowPlayback).toBe(false);
+  });
+
   it('does nothing when adaptive is off', () => {
     useRenderQualityStore.getState().setAdaptive(false);
     for (let i = 0; i < 5; i++) useRenderQualityStore.getState().reportPlaybackFrame(100, 33);

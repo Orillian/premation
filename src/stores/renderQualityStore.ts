@@ -123,8 +123,18 @@ export function effectiveResolutionOf(s: {
 /** Frames over budget before degrading, and under budget before restoring. */
 const SLOW_FRAMES_TO_DEGRADE = 3;
 const FAST_FRAMES_TO_RESTORE = 45;
+/** The restore run never grows past this (24 s at 30 fps). */
+const MAX_FRAMES_TO_RESTORE = 720;
 let overBudget = 0;
 let underBudget = 0;
+/**
+ * Back-off: the cheap run a restore needs right now. A restore that is undone
+ * soon after (the comp cannot hold full resolution) doubles it, so per-frame
+ * input settles at the floor instead of pumping between sizes — every switch
+ * is a new slot size, and with it a frame cache that misses everything.
+ */
+let restoreNeed = FAST_FRAMES_TO_RESTORE;
+let sinceRestore = Number.POSITIVE_INFINITY;
 /** Separate counters for the interact path — a slow drag frame must not be
  *  cancelled out by a fast playback frame or vice versa. */
 const INTERACT_SLOW_TO_DEGRADE = 2;
@@ -149,6 +159,8 @@ export const useRenderQualityStore = create<RenderQualityStore>((set, get) => ({
   setSlowPlayback: (v) => {
     overBudget = 0;
     underBudget = 0;
+    restoreNeed = FAST_FRAMES_TO_RESTORE;
+    sinceRestore = Number.POSITIVE_INFINITY;
     set((s) => (s.slowPlayback === v ? s : { slowPlayback: v }));
   },
   reportPlaybackFrame: (ms, budgetMs) => {
@@ -162,15 +174,20 @@ export const useRenderQualityStore = create<RenderQualityStore>((set, get) => ({
     // resolution that holds the rate is the better picture.
     if (ms > budgetMs) { overBudget++; underBudget = 0; }
     else { underBudget++; overBudget = 0; }
+    if (!s.slowPlayback) sinceRestore++;
     if (!s.slowPlayback && overBudget >= SLOW_FRAMES_TO_DEGRADE) {
       overBudget = 0;
+      // Degraded again soon after a restore: full resolution does not hold.
+      if (sinceRestore < restoreNeed * 2) restoreNeed = Math.min(restoreNeed * 2, MAX_FRAMES_TO_RESTORE);
       set({ slowPlayback: true });
-    } else if (s.slowPlayback && underBudget >= FAST_FRAMES_TO_RESTORE) {
+    } else if (s.slowPlayback && underBudget >= restoreNeed) {
       // Restoring is conservative: at the degraded size frames are cheap, so
       // "under budget" here says little about full-res cost. Once restored,
-      // three slow frames bring it straight back down — the cycle settles on
-      // whatever the comp can actually sustain.
+      // three slow frames bring it straight back down, and the next restore
+      // waits twice as long (restoreNeed) — the cycle settles on whatever the
+      // comp can actually sustain.
       underBudget = 0;
+      sinceRestore = 0;
       set({ slowPlayback: false });
     }
   },

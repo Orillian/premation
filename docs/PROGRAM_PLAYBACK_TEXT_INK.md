@@ -83,7 +83,7 @@ the owner says so). Evidence for every item: the two audits in this session
 
 Heartbeat: 2026-10-09 15:40 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
 
-- [ ] P0 · [ ] P1 · [ ] P2 · [ ] P3 · [ ] P4 · [ ] P5 · [ ] P6 · [ ] P7 · [ ] P8 · [ ] P9 · [ ] P10 · [ ] P11
+- [ ] P0 · [ ] P1 · [x] P2 · [ ] P3 · [ ] P4 · [ ] P5 · [ ] P6 · [ ] P7 · [ ] P8 · [ ] P9 · [ ] P10 · [ ] P11
 - [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
 - [ ] I1 · [ ] I2 · [ ] I3 · [ ] I4 · [ ] I5
 - [ ] F1 · [ ] F2 · [ ] F3 · [ ] F4 · [ ] F5
