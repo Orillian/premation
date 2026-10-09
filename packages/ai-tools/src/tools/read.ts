@@ -121,6 +121,25 @@ export const listAssetsDef: AiToolDef = {
   inputSchema: { type: 'object', additionalProperties: false, properties: {} },
 };
 
+export const listFontsDef: AiToolDef = {
+  name: 'list_fonts',
+  kind: 'read',
+  description:
+    'The font families the renderer can actually use (bundled + installed), with the scripts each covers. ' +
+    'A family that is not listed silently renders in a fallback face — check here before naming a font, and ' +
+    'for Japanese / Chinese / Korean / Hindi / Thai / Arabic text pick a family that covers that script ' +
+    '(script: "ja", "zh", "ko", "hi", "th", "ar", "he", or an ISO 15924 code like "Hang").',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      query: { type: 'string', description: 'Substring of the family name. Omit for all.' },
+      script: { type: 'string', description: 'Only families covering this script.' },
+      limit: { type: 'integer', minimum: 1, maximum: 300, default: 80 },
+    },
+  },
+};
+
 export const READ_TOOL_DEFS: readonly AiToolDef[] = [
   describeSceneDef,
   readTracksDef,
@@ -129,4 +148,5 @@ export const READ_TOOL_DEFS: readonly AiToolDef[] = [
   listCapabilitiesDef,
   listPresetsDef,
   listAssetsDef,
+  listFontsDef,
 ];

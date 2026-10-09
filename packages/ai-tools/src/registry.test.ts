@@ -202,8 +202,10 @@ describe('the tool surface itself', () => {
     // silhouette behind a foreground meant rebuilding the whole scene.
     // 67 → 68: `update_mask`. create_mask could only add a centred mask; a
     // mask could not move, animate, restyle or go away.
-    expect(ALL_TOOL_DEFS).toHaveLength(68);
-    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(8);
+    // 68 → 69: `list_fonts`. A family the renderer does not have falls back
+    // silently — kanji named in an uninstalled font came out as boxes.
+    expect(ALL_TOOL_DEFS).toHaveLength(69);
+    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(9);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(44);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'compose')).toHaveLength(16);
   });

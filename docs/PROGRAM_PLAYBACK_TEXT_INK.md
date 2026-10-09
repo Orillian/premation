@@ -90,5 +90,6 @@ Heartbeat: 2026-10-09 15:40 — session "Motion-editor rendering bugs" working (
 - [x] M1 · [x] M2 · [x] M3 · [ ] M4 · [ ] M5 · [ ] M6 · [ ] M7 · [ ] M8
 
 Notes log (newest first):
+- 2026-10-09: T5 done except `language`, which needs T3 (no engine property yet). Point-text anchoring left as is (existing documents depend on it): align works inside a paragraph box (boxWidth), documented in the tool schema. listFonts is empty under --test-ports by design (deterministic replays).
 - 2026-10-09: P0 landed by the peer session (3d7148d9, 77361ddd, b41d210b): ctest 16/16, native golden 335/345, native jest 200 suites, bench:check clean.
 - 2026-10-09: program started. Peer session "Motion-editor remaining tasks" had P0's patches applied uncommitted in the tree.

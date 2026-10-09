@@ -86,6 +86,7 @@ import {
 } from './hostWrites';
 import { flicksToSeconds, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
 import { mirrorMaskIds } from '@core/mirror/masks';
+import { engine } from '@core/engine/engineInstance';
 import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
 import { mirrorStrokes } from '@core/mirror/paintFields';
 
@@ -520,6 +521,10 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     // so every AI-authored headline shipped at the font's default tracking and a
     // body line-height, which is most of why generated type reads as untypeset.
     'fontFamily', 'letterSpacing', 'lineHeight', 'align',
+    // Paragraph text (boxWidth > 0: the text wraps inside the box and `align`
+    // places each line in it), vertical type (tategaki) and RTL paragraphs —
+    // the Character / Paragraph panels' fields, unreachable from any tool.
+    'boxWidth', 'boxHeight', 'orientation', 'direction',
     // Both are read by buildSnapshot (cornerRadius:189, backdropBlur:190) and
     // were unreachable from any tool. `backdropBlur` in particular is the whole
     // glass-surface vocabulary and it was already fully wired and tested.
@@ -961,6 +966,48 @@ const textAnimator: AiTool['handler'] = async (input, ctx) => {
 };
 
 // ── Media ─────────────────────────────────────────────────────────
+
+/** list_fonts' friendly script names → the ISO 15924 codes FontInfo.scripts carries. */
+const SCRIPT_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  ja: ['Jpan', 'Hira', 'Kana'], japanese: ['Jpan', 'Hira', 'Kana'],
+  zh: ['Hani', 'Hans', 'Hant'], chinese: ['Hani', 'Hans', 'Hant'],
+  ko: ['Hang', 'Kore'], korean: ['Hang', 'Kore'],
+  hi: ['Deva'], hindi: ['Deva'], th: ['Thai'], thai: ['Thai'],
+  ar: ['Arab'], arabic: ['Arab'], he: ['Hebr'], hebrew: ['Hebr'],
+  ru: ['Cyrl'], el: ['Grek'], latin: ['Latn'],
+};
+
+/** list_fonts' grouping: faces → families (styles, scripts), filtered by script (alias or ISO 15924), sorted. */
+export function fontFamiliesOf(
+  fonts: ReadonlyArray<{ family: string; style: string; scripts: readonly string[] }>,
+  script?: string,
+): Array<[string, { styles: Set<string>; scripts: Set<string> }]> {
+  const want = script ? (SCRIPT_ALIASES[script.toLowerCase()] ?? [script]) : null;
+  const families = new Map<string, { styles: Set<string>; scripts: Set<string> }>();
+  for (const f of fonts) {
+    if (want && !f.scripts.some((s) => want.some((w) => w.toLowerCase() === s.toLowerCase()))) continue;
+    const e = families.get(f.family) ?? { styles: new Set<string>(), scripts: new Set<string>() };
+    e.styles.add(f.style);
+    for (const s of f.scripts) e.scripts.add(s);
+    families.set(f.family, e);
+  }
+  return [...families.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+const listFonts: AiTool['handler'] = async (input) => {
+  const i = input as { query?: string; script?: string; limit?: number };
+  const res = await engine().query({ type: 'listFonts', query: i.query ?? '' });
+  if (!res.ok) return fail(`listFonts: ${res.error.message}`);
+  const all = fontFamiliesOf(res.value.fonts, i.script);
+  const families = new Map(all);
+  const limit = i.limit ?? 80;
+  const rows = all.slice(0, limit);
+  if (rows.length === 0) {
+    return ok(`No font${i.script ? ` covering ${i.script}` : ''}${i.query ? ` matching "${i.query}"` : ''}. Text in that script will render as boxes in any other face.`, { families: [] });
+  }
+  const lines = rows.map(([fam, e]) => `- ${fam} (${[...e.styles].slice(0, 6).join(', ')}${e.styles.size > 6 ? ', …' : ''}) scripts: ${[...e.scripts].slice(0, 10).join(' ')}`);
+  return ok(`${families.size} famil${families.size === 1 ? 'y' : 'ies'}${families.size > limit ? ` (first ${limit})` : ''}:\n${lines.join('\n')}`, { families: rows.map(([f]) => f) });
+};
 
 const listAssets: AiTool['handler'] = async () => {
   const assets = useAssetStore.getState().assets;
@@ -2233,6 +2280,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   list_capabilities: listCapabilities,
   list_presets: listPresetsHandler,
   list_assets: listAssets,
+  list_fonts: listFonts,
   create_layer: createLayer,
   create_puppet_rig: createPuppetRig,
   set_puppet_pin_keyframes: setPuppetPinKeyframes,

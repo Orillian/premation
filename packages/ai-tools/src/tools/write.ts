@@ -183,7 +183,27 @@ export const updateLayerDef: AiToolDef = {
           'already wider than the eye wants); body copy needs 1.4–1.6. One line-height across both ' +
           'is why generated type reads as a single block.',
       },
-      align: { type: 'string', enum: ['left', 'center', 'right'] },
+      align: {
+        type: 'string',
+        enum: ['left', 'center', 'right'],
+        description:
+          'Line alignment INSIDE a paragraph box (boxWidth > 0). Point text (no box) is centred on x / y ' +
+          'whatever this says — give the text a boxWidth to align it to a column edge.',
+      },
+      boxWidth: {
+        type: 'number',
+        minimum: 0,
+        description:
+          'Text: paragraph box width in px (AE paragraph text). The text wraps inside it and `align` places each ' +
+          'line; the box is centred on x / y. 0 = point text (one line per paragraph, no wrapping).',
+      },
+      boxHeight: { type: 'number', minimum: 0, description: 'Text: paragraph box height in px (0 = grows with the text).' },
+      orientation: {
+        type: 'string',
+        enum: ['horizontal', 'vertical'],
+        description: 'Text: vertical = tategaki (CJK upright in columns read right to left, punctuation in vertical forms).',
+      },
+      direction: { type: 'string', enum: ['ltr', 'rtl'], description: 'Text: paragraph direction (rtl for Arabic / Hebrew paragraphs).' },
       fill: { type: 'string', description: 'Colour: hex or CSS (rgba(), named). "none" = no fill (a stroke-only shape).' },
       x: { type: 'number' },
       y: { type: 'number' },

@@ -8,6 +8,7 @@ import { activeCompRootId } from '@core/scene/activeComp';
 import { setupAppEngine, settleEdits, sec, type Harness } from '@core/engine/__testHelpers__/appEngine';
 import { documentMirror } from '@stores/documentMirror';
 import { runToolTurn } from './aiTurn';
+import { fontFamiliesOf } from './toolHandlers';
 
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'queueMicrotask', 'nextTick', 'setImmediate'] });
 
@@ -140,6 +141,55 @@ describe('masks (M2)', () => {
     expect(d.results[0]!.ok).toBe(true);
     const gone = await runToolTurn('AI: mask rm2', [{ name: 'update_mask', args: { nodeId: layer, maskId, feather: 1 } }]);
     expect(gone.results[0]!.ok).toBe(false);
+  });
+});
+
+describe('text layout fields (T5)', () => {
+  it('sets vertical orientation, a paragraph box and its alignment', async () => {
+    const r = await runToolTurn('AI: tategaki', [
+      { name: 'create_layer', args: { id: 'v', kind: 'text', name: 'Tate', text: '最後の一太刀' } },
+      { name: 'update_layer', args: { nodeId: 'v', orientation: 'vertical' } },
+      { name: 'create_layer', args: { id: 'p', kind: 'text', name: 'Para', text: 'Left aligned paragraph' } },
+      { name: 'update_layer', args: { nodeId: 'p', boxWidth: 800, align: 'left' } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    expect(await value(idNamed('Tate'), 'text/orientation')).toBe('vertical');
+    expect(await value(idNamed('Para'), 'text/boxWidth')).toBe(800);
+    expect(await value(idNamed('Para'), 'text/align')).toBe('left');
+  });
+
+  (process.env.PREMATION_GPU_TESTS === '1' ? it : it.skip)('a left-aligned paragraph starts at the box edge; list_fonts sees installed fonts (GPU)', async () => {
+    const comp = activeCompRootId() as string;
+    const r = await runToolTurn('AI: para render', [
+      { name: 'create_layer', args: { id: 'bg', kind: 'shape', name: 'ParaBG', x: 960, y: 540, width: 1920, height: 1080, fill: '#ffffff' } },
+      { name: 'create_layer', args: { id: 't', kind: 'text', name: 'ParaR', text: 'Left', x: 960, y: 540 } },
+      { name: 'update_layer', args: { nodeId: 't', fontSize: 80, fill: '#000000', boxWidth: 1000, align: 'left' } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    const th = (await h.query({ type: 'getThumbnail', item: comp, time: 0, maxSize: 1920 } as never)) as { data: Uint8Array };
+    const { PNG } = await import('pngjs');
+    const png = PNG.sync.read(Buffer.from(th.data));
+    let minX = png.width;
+    for (let y = 0; y < png.height; y++) {
+      for (let x = 0; x < png.width; x++) if (png.data[(y * png.width + x) * 4]! < 128) { minX = Math.min(minX, x); break; }
+    }
+    // The box spans 460..1460 in comp px: the ink starts near its left edge, not centred around 960.
+    expect(Math.abs(minX * 1920 / png.width - 460)).toBeLessThan(40);
+  }, 120_000);
+
+  it('list_fonts groups faces by family and filters by script alias', () => {
+    const rows = fontFamiliesOf([
+      { family: 'Yu Gothic', style: 'Regular', scripts: ['Latn', 'Hira', 'Kana', 'Hani'] },
+      { family: 'Yu Gothic', style: 'Bold', scripts: ['Latn', 'Hira', 'Kana', 'Hani'] },
+      { family: 'Malgun Gothic', style: 'Regular', scripts: ['Latn', 'Hang'] },
+      { family: 'Arial', style: 'Regular', scripts: ['Latn', 'Cyrl', 'Grek'] },
+    ], 'ja');
+    expect(rows.map(([f]) => f)).toEqual(['Yu Gothic']);
+    expect([...rows[0]![1].styles]).toEqual(['Regular', 'Bold']);
+    expect(fontFamiliesOf([{ family: 'Malgun Gothic', style: 'R', scripts: ['Hang'] }], 'Hang').map(([f]) => f)).toEqual(['Malgun Gothic']);
+    expect(fontFamiliesOf([{ family: 'Arial', style: 'R', scripts: ['Latn'] }], 'ko')).toEqual([]);
   });
 });
 
