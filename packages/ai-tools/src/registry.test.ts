@@ -208,9 +208,11 @@ describe('the tool surface itself', () => {
     // could say whether a job ran, failed, waited for a folder, or where it wrote.
     // 70 → 71: `inspect_layers`. The samurai session found its bugs by rendering
     // frames and guessing; the built bounds, fills and fallbacks were never readable.
-    expect(ALL_TOOL_DEFS).toHaveLength(71);
+    // 71 → 72: `set_audio`. Ambience clips were one-shot: a 30 s bed meant
+    // stacking copies of a 4 s file, with no loop and no fades.
+    expect(ALL_TOOL_DEFS).toHaveLength(72);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(11);
-    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(44);
+    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(45);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'compose')).toHaveLength(16);
   });
 
@@ -235,7 +237,7 @@ describe('the tool surface itself', () => {
     // 'write' silently drops the compose tools — and it was a literal 'write'
     // test that decided which calls appear in the user's pending-changes list.
     const mutating = ALL_TOOL_DEFS.filter((t) => mutates(t.kind));
-    expect(mutating).toHaveLength(60);
+    expect(mutating).toHaveLength(61);
     expect(mutating.map((t) => t.name)).toContain('add_title');
     expect(mutating.map((t) => t.name)).toContain('set_spring');
   });

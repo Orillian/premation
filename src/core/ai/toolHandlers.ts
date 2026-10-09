@@ -87,7 +87,8 @@ import {
 } from './hostWrites';
 import { flicksToSeconds, secondsToFlicks, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
 import { mirrorMaskIds } from '@core/mirror/masks';
-import { engine } from '@core/engine/engineInstance';
+import { engine, engineIdle } from '@core/engine/engineInstance';
+import { AUDIO_LEVELS_PATH, planFadeKeysIn } from '@core/mirror/audio';
 import { activeCompRootId } from '@core/scene/activeComp';
 import { colorValueHex } from '@core/mirror/paintFields';
 import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
@@ -390,6 +391,39 @@ const reparentLayer: AiTool['handler'] = async (input, ctx) => {
   if (parentId === nodeId) return fail('A layer cannot be its own parent.');
   await ctx.scene.reparent(nodeId, parentId ?? null);
   return ok(`Re-parented ${nodeId} to ${parentId ?? 'the top level'}.`);
+};
+
+const setAudio: AiTool['handler'] = async (input, ctx) => {
+  const i = input as { nodeId: string; loop?: number; levelDb?: number; fadeInSec?: number; fadeOutSec?: number };
+  if (!await ctx.scene.has(i.nodeId)) return fail(await unknownNode(ctx, i.nodeId));
+  const m = documentMirror();
+  await m.loadTree(i.nodeId);
+  const info = m.layer(i.nodeId)!;
+  if (!m.property(i.nodeId, AUDIO_LEVELS_PATH)) return fail(`'${i.nodeId}' (${info.kind}) has no sound — set_audio applies to audio layers and video layers with a track.`);
+  const done: string[] = [];
+  if (i.loop !== undefined) {
+    if (!info.source) return fail(`'${i.nodeId}' plays no footage item, so it cannot loop.`);
+    await ctx.engine.apply([{ type: 'setInterpretation', items: [info.source], patch: { loops: i.loop } } as Command]);
+    done.push(i.loop === 0 ? 'loops for as long as its bar lasts' : `plays ${i.loop}×`);
+  }
+  if (i.levelDb !== undefined) {
+    await ctx.engine.apply([{ type: 'setProperty', prop: { layer: i.nodeId, path: AUDIO_LEVELS_PATH }, value: { kind: 'scalar', value: i.levelDb }, time: secondsToFlicks(activePlayheadSeconds()) } as Command]);
+    done.push(`level ${i.levelDb} dB`);
+  }
+  for (const [side, sec] of [['in', i.fadeInSec], ['out', i.fadeOutSec]] as const) {
+    if (sec === undefined) continue;
+    await engineIdle();
+    await m.loadTree(i.nodeId);
+    const keys = planFadeKeysIn(m, i.nodeId, side, sec, (t) => t);
+    if (keys.length !== 2) return fail(`No audible span on '${i.nodeId}' to fade ${side} over ${sec}s (is its bar on the timeline?).`);
+    await ctx.engine.apply([{
+      type: 'addKeyframes',
+      keys: keys.map((k) => ({ prop: { layer: i.nodeId, path: AUDIO_LEVELS_PATH }, time: secondsToFlicks(k.seconds), value: { kind: 'scalar', value: k.value }, spatialIn: [], spatialOut: [] })),
+    } as Command]);
+    done.push(`fade ${side} ${keys[0]!.seconds.toFixed(2)}–${keys[1]!.seconds.toFixed(2)}s`);
+  }
+  if (done.length === 0) return fail('Nothing to change — pass loop, levelDb, fadeInSec or fadeOutSec.');
+  return ok(`'${i.nodeId}': ${done.join(', ')}.` + (i.loop !== undefined && i.loop !== 1 ? ' Extend its bar with set_layer_timing (outSec) to hear the repeats.' : ''));
 };
 
 const reorderLayer: AiTool['handler'] = async (input, ctx) => {
@@ -2339,7 +2373,7 @@ const addPathMorph: AiTool['handler'] = async (input, ctx) => {
  * one batch: the result pasted, the operands flagged `layer/booleanOperand`.
  */
 export const ENGINE_ROUTED_TOOLS: ReadonlySet<string> = new Set([
-  'create_layer', 'delete_layer', 'reparent_layer', 'reorder_layer', 'update_layer',
+  'create_layer', 'delete_layer', 'reparent_layer', 'reorder_layer', 'set_audio', 'update_layer',
   'set_keyframes', 'remove_keyframes', 'set_easing', 'set_expression', 'set_layer_timing',
   'add_effect', 'update_effect', 'update_effect_param', 'update_composition', 'apply_preset',
   'set_spring', 'set_motion_blur', 'create_precomp', 'set_time_remap', 'set_light', 'set_shadow_stack',
@@ -2385,6 +2419,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   delete_layer: deleteLayer,
   reparent_layer: reparentLayer,
   reorder_layer: reorderLayer,
+  set_audio: setAudio,
   update_layer: updateLayer,
   set_keyframes: setKeyframes,
   remove_keyframes: removeKeyframes,

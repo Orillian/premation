@@ -485,6 +485,32 @@ export const setExpressionDef: AiToolDef = {
  * evaluated, and still under every later scene. A beat that owns its time
  * needs its layers to start and end with it.
  */
+export const setAudioDef: AiToolDef = {
+  name: 'set_audio',
+  kind: 'write',
+  description:
+    'Sound of an audio layer (or a video layer\'s own track): loop the clip (Interpret Footage ▸ Loop — a 4 s ' +
+    'ambience under a 30 s scene: loop it, then stretch the layer\'s bar with set_layer_timing outSec), its level ' +
+    'in dB, and a fade in / out at the ends of its bar (level keys down to −60 dB).',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nodeId'],
+    properties: {
+      nodeId: { type: 'string' },
+      loop: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 1000,
+        description: 'How many times the source plays: 0 = forever (as long as the bar lasts), 1 = once (no loop).',
+      },
+      levelDb: { type: 'number', minimum: -60, maximum: 24, description: 'Static level in dB (0 = as recorded).' },
+      fadeInSec: { type: 'number', minimum: 0.01, maximum: 60 },
+      fadeOutSec: { type: 'number', minimum: 0.01, maximum: 60 },
+    },
+  },
+};
+
 export const setLayerTimingDef: AiToolDef = {
   name: 'set_layer_timing',
   kind: 'write',
@@ -1243,6 +1269,7 @@ export const WRITE_TOOL_DEFS: readonly AiToolDef[] = [
   setEasingDef,
   setExpressionDef,
   setLayerTimingDef,
+  setAudioDef,
   addEffectDef,
   updateEffectDef,
   textAnimatorDef,
