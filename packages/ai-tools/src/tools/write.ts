@@ -94,7 +94,7 @@ export const createLayerDef: AiToolDef = {
       outerRadius: { type: 'number', minimum: 1, description: 'shape=polygon|star: corner / spike radius in px. Defaults to half of width/height, else 100.' },
       innerRadius: { type: 'number', minimum: 0, description: 'shape=star: valley radius in px. Defaults to half the outer radius. Smaller = spikier.' },
       roundness: { type: 'number', minimum: -100, maximum: 100, description: 'shape=polygon|star: segment bulge, percent. 0 = sharp corners, positive rounds them, negative curls them inward.' },
-      fill: { type: 'string', description: 'Hex colour, e.g. #2b7eff.' },
+      fill: { type: 'string', description: 'Colour: hex (#2b7eff, #2b7eff80) or CSS (rgba(), named). "none" = no fill — a shape that is only its stroke.' },
       parent: { type: 'string', description: 'Parent layer id.' },
     },
   },
@@ -125,6 +125,26 @@ export const reparentLayerDef: AiToolDef = {
     properties: {
       nodeId: { type: 'string' },
       parentId: { type: 'string', description: 'Omit or pass null to move to the top level.' },
+    },
+  },
+};
+
+export const reorderLayerDef: AiToolDef = {
+  name: 'reorder_layer',
+  kind: 'write',
+  description:
+    'Move layers in the stack (AE Layer ▸ Arrange): to the top or bottom of their composition, or just ' +
+    'above / below another layer. New layers are always created on top — use this instead of rebuilding a ' +
+    'scene to put a silhouette behind a foreground or a backdrop under everything. Layers moved together keep ' +
+    'their relative order and must share a parent.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nodeIds', 'position'],
+    properties: {
+      nodeIds: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string' } },
+      position: { type: 'string', enum: ['top', 'bottom', 'above', 'below'] },
+      relativeTo: { type: 'string', description: 'position above / below: the layer to sit next to.' },
     },
   },
 };
@@ -164,7 +184,7 @@ export const updateLayerDef: AiToolDef = {
           'is why generated type reads as a single block.',
       },
       align: { type: 'string', enum: ['left', 'center', 'right'] },
-      fill: { type: 'string', description: 'Hex colour.' },
+      fill: { type: 'string', description: 'Colour: hex or CSS (rgba(), named). "none" = no fill (a stroke-only shape).' },
       x: { type: 'number' },
       y: { type: 'number' },
       width: { type: 'number', description: 'Layer width in px. Required for GPU renderer to display the layer.' },
@@ -224,7 +244,10 @@ export const updateLayerDef: AiToolDef = {
         type: 'number',
         minimum: 0,
         maximum: 100,
-        description: 'Opacity of the FILL only, 0..100 — the stroke and effects keep theirs. 0 with a stroke is an outline.',
+        description:
+          'AE Blending Options ▸ Fill Opacity, 0..100: fades the layer CONTENT (on a shape that is its fill AND its ' +
+          'stroke) while layer styles (drop shadow, glow, stroke style) keep theirs. For an outline-only shape set ' +
+          'fill: "none" instead.',
       },
       // ── Stroke (the layer's first stroke, Contents ▸ Stroke 1) ──
       stroke: {
@@ -1145,6 +1168,7 @@ export const WRITE_TOOL_DEFS: readonly AiToolDef[] = [
   createLayerDef,
   deleteLayerDef,
   reparentLayerDef,
+  reorderLayerDef,
   updateLayerDef,
   setKeyframesDef,
   removeKeyframesDef,

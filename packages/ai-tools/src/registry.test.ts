@@ -198,9 +198,11 @@ describe('the tool surface itself', () => {
     // the budget above is exactly why a tool that cannot work is not free.
     // 65 → 66: `set_layer_timing`. Without it no layer could start or end, so
     // an authored beat could not own its slice of the timeline.
-    expect(ALL_TOOL_DEFS).toHaveLength(66);
+    // 66 → 67: `reorder_layer`. New layers land on top; without it, putting a
+    // silhouette behind a foreground meant rebuilding the whole scene.
+    expect(ALL_TOOL_DEFS).toHaveLength(67);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(8);
-    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(42);
+    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(43);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'compose')).toHaveLength(16);
   });
 
@@ -225,7 +227,7 @@ describe('the tool surface itself', () => {
     // 'write' silently drops the compose tools — and it was a literal 'write'
     // test that decided which calls appear in the user's pending-changes list.
     const mutating = ALL_TOOL_DEFS.filter((t) => mutates(t.kind));
-    expect(mutating).toHaveLength(58);
+    expect(mutating).toHaveLength(59);
     expect(mutating.map((t) => t.name)).toContain('add_title');
     expect(mutating.map((t) => t.name)).toContain('set_spring');
   });

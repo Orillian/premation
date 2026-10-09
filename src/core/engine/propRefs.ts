@@ -37,6 +37,7 @@ import { PLUGIN_LAYER_COMPONENT_PREFIX } from './pluginProps';
 import { documentMirror } from '@stores/documentMirror';
 import { trackRefIn, type TrackRef as MirrorTrackRef } from '@core/mirror/trackIndex';
 import { parseColorChannels } from '@core/effects/effects';
+import { parseCssColor } from '@core/text/cssColor';
 
 // ── Pure path builders ─────────────────────────────────────────────────
 
@@ -333,9 +334,16 @@ function typedFieldValue(b: Omit<FieldTarget, 'path'>, raw: unknown): Value | nu
     case 'scalar': return typeof raw === 'number' && Number.isFinite(raw) ? values.scalar(raw) : null;
     case 'scalars': return Array.isArray(raw) && raw.every((x) => typeof x === 'number' && Number.isFinite(x)) ? { kind: 'scalars', value: { values: [...raw] as number[] } } : null;
     case 'color': {
-      if (typeof raw !== 'string' || !/^#?[0-9a-fA-F]{3,8}$/.test(raw.trim())) return null;
-      const [r, g, b2, a] = parseColorChannels(raw);
-      return values.color(r, g, b2, a);
+      if (typeof raw !== 'string') return null;
+      if (/^#?[0-9a-fA-F]{3,8}$/.test(raw.trim())) {
+        const [r, g, b2, a] = parseColorChannels(raw);
+        return values.color(r, g, b2, a);
+      }
+      // `none` (a shape with a stroke and no fill — AE's Fill: None), and any CSS
+      // colour: rgba(), hsl(), named, `transparent`.
+      if (raw.trim().toLowerCase() === 'none') return values.color(0, 0, 0, 0);
+      const c = parseCssColor(raw);
+      return c ? values.color(c[0] / 255, c[1] / 255, c[2] / 255, c[3]) : null;
     }
     case 'json': return values.json(raw);
     default: return null;

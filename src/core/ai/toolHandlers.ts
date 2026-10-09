@@ -387,6 +387,37 @@ const reparentLayer: AiTool['handler'] = async (input, ctx) => {
   return ok(`Re-parented ${nodeId} to ${parentId ?? 'the top level'}.`);
 };
 
+const reorderLayer: AiTool['handler'] = async (input, ctx) => {
+  const i = input as { nodeIds: string[]; position: 'top' | 'bottom' | 'above' | 'below'; relativeTo?: string };
+  for (const id of i.nodeIds) if (!await ctx.scene.has(id)) return fail(await unknownNode(ctx, id));
+  const m = documentMirror();
+  const comp = m.layer(i.nodeIds[0]!)?.comp;
+  if (!comp) return fail(`'${i.nodeIds[0]}' is not in a composition.`);
+  if (i.nodeIds.some((id) => m.layer(id)?.comp !== comp)) return fail('Layers moved together must be in one composition.');
+  const parent = m.layer(i.nodeIds[0]!)?.parent ?? null;
+  if (i.nodeIds.some((id) => (m.layer(id)?.parent ?? null) !== parent)) {
+    return fail('Layers moved together must share a parent — reparent_layer them first, or move them one at a time.');
+  }
+  // reorderLayers' toIndex counts the front-first stack WITHOUT the moving layers.
+  const moving = new Set(i.nodeIds);
+  const stack = [...(m.comp(comp)?.layers ?? [])].filter((id) => !moving.has(id));
+  let toIndex: number;
+  if (i.position === 'top') toIndex = 0;
+  else if (i.position === 'bottom') toIndex = stack.length;
+  else {
+    if (!i.relativeTo) return fail(`position "${i.position}" needs relativeTo: the layer to sit ${i.position}.`);
+    if (!await ctx.scene.has(i.relativeTo)) return fail(await unknownNode(ctx, i.relativeTo));
+    if (moving.has(i.relativeTo)) return fail('relativeTo cannot be one of the layers being moved.');
+    if (m.layer(i.relativeTo)?.comp !== comp) return fail(`'${i.relativeTo}' is in another composition.`);
+    const at = stack.indexOf(i.relativeTo);
+    toIndex = i.position === 'above' ? at : at + 1;
+  }
+  await ctx.engine.apply([{ type: 'reorderLayers', comp, layers: [...i.nodeIds], toIndex } as Command]);
+  const after = [...(documentMirror().comp(comp)?.layers ?? [])];
+  const where = i.nodeIds.map((id) => `${id} → #${after.indexOf(id) + 1}`).join(', ');
+  return ok(`Moved ${where} (layer 1 is the top of the stack, drawn over everything below it).`);
+};
+
 const updateLayer: AiTool['handler'] = async (input, ctx) => {
   const i = input as Record<string, unknown> & {
     nodeId: string;
@@ -2118,7 +2149,7 @@ const addPathMorph: AiTool['handler'] = async (input, ctx) => {
  * one batch: the result pasted, the operands flagged `layer/booleanOperand`.
  */
 export const ENGINE_ROUTED_TOOLS: ReadonlySet<string> = new Set([
-  'create_layer', 'delete_layer', 'reparent_layer', 'update_layer',
+  'create_layer', 'delete_layer', 'reparent_layer', 'reorder_layer', 'update_layer',
   'set_keyframes', 'remove_keyframes', 'set_easing', 'set_expression', 'set_layer_timing',
   'add_effect', 'update_effect', 'update_effect_param', 'update_composition', 'apply_preset',
   'set_spring', 'set_motion_blur', 'create_precomp', 'set_time_remap', 'set_light', 'set_shadow_stack',
@@ -2161,6 +2192,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   pose_skeleton: poseSkeletonHandler,
   delete_layer: deleteLayer,
   reparent_layer: reparentLayer,
+  reorder_layer: reorderLayer,
   update_layer: updateLayer,
   set_keyframes: setKeyframes,
   remove_keyframes: removeKeyframes,

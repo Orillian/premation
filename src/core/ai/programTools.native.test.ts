@@ -13,7 +13,7 @@ jest.useFakeTimers({ doNotFake: ['setTimeout', 'queueMicrotask', 'nextTick', 'se
 
 let h: Harness;
 beforeAll(async () => {
-  h = await setupAppEngine();
+  h = await setupAppEngine({ gpu: process.env.PREMATION_GPU_TESTS === '1' });
   await h.run({ type: 'setCompositionSettings', comp: activeCompRootId() as string, patch: { duration: sec(5) } } as Command);
   await settleEdits();
 }, 60_000);
@@ -30,6 +30,83 @@ async function value(layer: string, path: string): Promise<unknown> {
   };
   return r.values[0]?.value.value;
 }
+
+describe('stroke-only shapes (I1)', () => {
+  it('fill "none" / CSS colours are accepted, and the stroke stays', async () => {
+    const r = await runToolTurn('AI: ring', [
+      { name: 'create_layer', args: { id: 'ring', kind: 'shape', shape: 'ellipse', name: 'Ring', width: 300, height: 300, fill: 'none' } },
+      { name: 'update_layer', args: { nodeId: 'ring', stroke: '#c0201a', strokeWidth: 14 } },
+      { name: 'create_layer', args: { id: 'veil', kind: 'shape', name: 'Veil', fill: 'rgba(255, 0, 0, 0.5)' } },
+      { name: 'update_layer', args: { nodeId: 'veil', fill: 'transparent' } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    expect(await value(idNamed('Ring'), 'layer/fill')).toMatchObject({ a: 0 });
+    expect(await value(idNamed('Veil'), 'layer/fill')).toMatchObject({ a: 0 });
+    const strokes = await value(idNamed('Ring'), 'layer/strokes');
+    expect(JSON.stringify(strokes)).toContain('c0201a');
+  });
+
+  (process.env.PREMATION_GPU_TESTS === '1' ? it : it.skip)('renders the ring and not the interior (GPU)', async () => {
+    const comp = activeCompRootId() as string;
+    const r = await runToolTurn('AI: ring render', [
+      { name: 'create_layer', args: { id: 'bg', kind: 'shape', name: 'RingBG', x: 960, y: 540, width: 1920, height: 1080, fill: '#ffffff' } },
+      { name: 'create_layer', args: { id: 'r2', kind: 'shape', shape: 'ellipse', name: 'Ring2', x: 960, y: 540, width: 400, height: 400, fill: 'none' } },
+      { name: 'update_layer', args: { nodeId: 'r2', stroke: '#ff0000', strokeWidth: 20 } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    const th = (await h.query({ type: 'getThumbnail', item: comp, time: 0, maxSize: 1920 } as never)) as { data: Uint8Array };
+    const { PNG } = await import('pngjs');
+    const png = PNG.sync.read(Buffer.from(th.data));
+    const px = (x: number, y: number): number[] => {
+      const sx = Math.round(x * png.width / 1920);
+      const sy = Math.round(y * png.height / 1080);
+      const i = (sy * png.width + sx) * 4;
+      return [png.data[i]!, png.data[i + 1]!, png.data[i + 2]!];
+    };
+    expect(px(960, 540)).toEqual([255, 255, 255]);   // the interior shows the white backdrop
+    const ring = px(960 + 200, 540);                  // on the stroke (centred on the path)
+    expect(ring[0]).toBeGreaterThan(200);
+    expect(ring[1]).toBeLessThan(60);
+  }, 120_000);
+});
+
+describe('reorder_layer (M1)', () => {
+  it('moves layers to the bottom, top, above and below another', async () => {
+    const r = await runToolTurn('AI: stack', [
+      { name: 'create_layer', args: { id: 'a', kind: 'null', name: 'StackA' } },
+      { name: 'create_layer', args: { id: 'b', kind: 'null', name: 'StackB' } },
+      { name: 'create_layer', args: { id: 'c', kind: 'null', name: 'StackC' } },
+    ]);
+    expect(r.results.every((x) => x.ok)).toBe(true);
+    await settleEdits();
+    const [A, B, C] = ['StackA', 'StackB', 'StackC'].map(idNamed) as [string, string, string];
+    const order = (): string[] => {
+      const m = documentMirror();
+      const comp = m.layer(A)!.comp;
+      return [...m.comp(comp)!.layers].filter((id) => [A, B, C].includes(id));
+    };
+    expect(order()).toEqual([C, B, A]);  // newest on top
+    const run = async (args: Record<string, unknown>): Promise<void> => {
+      const t = await runToolTurn('AI: reorder', [{ name: 'reorder_layer', args }]);
+      expect(t.results.map((x) => (x.ok ? 'ok' : x.content))).toEqual(['ok']);
+      await settleEdits();
+    };
+    await run({ nodeIds: [C], position: 'bottom' });
+    expect(order()).toEqual([B, A, C]);
+    await run({ nodeIds: [C], position: 'top' });
+    expect(order()).toEqual([C, B, A]);
+    await run({ nodeIds: [C], position: 'below', relativeTo: A });
+    expect(order()).toEqual([B, A, C]);
+    await run({ nodeIds: [C], position: 'above', relativeTo: B });
+    expect(order()).toEqual([C, B, A]);
+    await run({ nodeIds: [A], position: 'above', relativeTo: C });
+    expect(order()).toEqual([A, C, B]);
+    const bad = await runToolTurn('AI: reorder bad', [{ name: 'reorder_layer', args: { nodeIds: [A], position: 'above' } }]);
+    expect(bad.results[0]!.ok).toBe(false);
+  });
+});
 
 describe('add_effect params (M3)', () => {
   it('applies initial values and reports unknown keys', async () => {
