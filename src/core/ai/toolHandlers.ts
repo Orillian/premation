@@ -207,6 +207,20 @@ const getSelection: AiTool['handler'] = async (_input, ctx) => {
   return ok(JSON.stringify(payload), payload);
 };
 
+/**
+ * What a model must know about an effect that its params do not say — read
+ * by list_capabilities and add_effect's reply. The samurai session keyed
+ * Write-on's brush from (400, 300) to (1500, 800) as if from the top-left; the
+ * brush is centre-relative, so the stroke ran off the frame.
+ */
+export const EFFECT_AI_NOTES: Readonly<Record<string, string>> = {
+  'write-on':
+    'Mode 0 (Brush Position) paints a trail where the brush has been: brushPositionX/Y are px from the LAYER CENTRE ' +
+    '(0, 0 = centre; −width/2 = left edge), not from the top-left. Key them for the stroke path. For a tapered, ' +
+    'calligraphic line key brushSize along the same times AND set brushTimeProps: 1 (Size) — as in After Effects, ' +
+    'without it every dab takes the CURRENT size. strokeLength limits the trail to its last N seconds.',
+};
+
 const listCapabilities: AiTool['handler'] = async (input, ctx) => {
   const { area } = input as { area?: string };
   const want = (a: string) => !area || area === 'all' || area === a;
@@ -230,6 +244,7 @@ const listCapabilities: AiTool['handler'] = async (input, ctx) => {
       type: e.type,
       label: e.label,
       gpuOnly: e.gpuOnly === true,
+      ...(EFFECT_AI_NOTES[e.type] ? { note: EFFECT_AI_NOTES[e.type] } : {}),
       params: e.params.map((p) => ({
         key: p.key,
         label: p.label,
@@ -920,7 +935,8 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
       (primary
         ? ` ${primary.key} ranges ${primary.min}..${primary.max}${primary.unit ? ` ${primary.unit}` : ''}.`
         : '') +
-      ` Animate any numeric param by keyframing prop "effect.${id}.<param>".`,
+      ` Animate any numeric param by keyframing prop "effect.${id}.<param>".` +
+      (EFFECT_AI_NOTES[type] ? ` NOTE: ${EFFECT_AI_NOTES[type]}` : ''),
     { effectId: id },
   );
 };

@@ -81,15 +81,16 @@ the owner says so). Evidence for every item: the two audits in this session
 
 ## Progress
 
-Heartbeat: 2026-10-09 16:15 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
+Heartbeat: 2026-10-09 19:04 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
 
 - [x] P0 · [ ] P1 · [x] P2 · [ ] P3 · [ ] P4 · [ ] P5 · [ ] P6 · [ ] P7 · [ ] P8 · [ ] P9 · [ ] P10 · [ ] P11
 - [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
-- [x] I1 · [ ] I2 · [ ] I3 · [ ] I4 · [ ] I5
+- [x] I1 · [x] I2 · [ ] I3 · [ ] I4 · [ ] I5
 - [ ] F1 · [ ] F2 · [ ] F3 · [ ] F4 · [ ] F5
 - [x] M1 · [x] M2 · [x] M3 · [x] M4 · [x] M5 · [ ] M6 · [x] M7 · [ ] M8
 
 Notes log (newest first):
+- 2026-10-09: I2 was not an engine bug: Write-on's brush position is centre-relative by design (range ±4000, default 0 = centre; the .aep importer converts), and per-dab size needs Brush Time Properties = Size, as in AE. Fixed by telling the model (EFFECT_AI_NOTES in add_effect / list_capabilities) + a GPU test of position and taper.
 - 2026-10-09: T5 done except `language`, which needs T3 (no engine property yet). Point-text anchoring left as is (existing documents depend on it): align works inside a paragraph box (boxWidth), documented in the tool schema. listFonts is empty under --test-ports by design (deterministic replays).
 - 2026-10-09: P0 landed by the peer session (3d7148d9, 77361ddd, b41d210b): ctest 16/16, native golden 335/345, native jest 200 suites, bench:check clean.
 - 2026-10-09: program started. Peer session "Motion-editor remaining tasks" had P0's patches applied uncommitted in the tree.
