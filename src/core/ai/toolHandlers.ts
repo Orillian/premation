@@ -51,6 +51,7 @@ import { generateVideoBytes, generateSpeechBytes, generate3dBytes } from './aiMe
 import { cachedAsset, generationKey, rememberAsset } from './aiMediaCache';
 import { useAiMediaPrefsStore } from '@stores/aiMediaPrefsStore';
 import { exportCompositionVideo } from './aiExport';
+import { useRenderQueueStore } from '@stores/renderQueueStore';
 import type { AiImageResult, AiMediaResult } from '@app-types/motionEditor';
 import type { EntranceArchetype } from './archetypes';
 import {
@@ -1299,8 +1300,39 @@ const exportVideoTool: AiTool['handler'] = async (input, ctx) => {
   }
   return ok(
     `Queued ${format ?? 'mp4'} export as job '${result.jobId}' in the Render Queue` +
-    (result.started ? ' and started rendering.' : '. Open Render Queue to choose an output folder and Start.'),
+    (result.started ? ' and started rendering.' : '. Open Render Queue to choose an output folder and Start.') +
+    ` Follow it with get_export_status { jobId: '${result.jobId}' }.`,
     { jobId: result.jobId },
+  );
+};
+
+const getExportStatus: AiTool['handler'] = async (input) => {
+  const { jobId } = input as { jobId?: string };
+  const q = useRenderQueueStore.getState();
+  const jobs = jobId ? q.jobs.filter((j) => j.id === jobId) : q.jobs;
+  if (jobId && jobs.length === 0) return fail(`No Render Queue job '${jobId}'. Jobs: ${q.jobs.map((j) => j.id).join(', ') || '(none)'}.`);
+  if (jobs.length === 0) return ok('The Render Queue is empty.', { jobs: [] });
+  const sep = q.outputDir && /\\/.test(q.outputDir) ? '\\' : '/';
+  const file = (p: string): string => (q.outputDir ? `${q.outputDir.replace(/[\\/]+$/, '')}${sep}${p}` : p);
+  const rows = jobs.map((j) => {
+    const waiting = j.status === 'queued' && !q.outputDir;
+    return {
+      id: j.id,
+      comp: j.compositionName,
+      status: waiting ? 'waiting for an output folder' : j.status,
+      progress: Math.round(j.progress * 100),
+      output: file(j.outputPath),
+      ...(j.error ? { error: j.error } : {}),
+      ...(j.attention ? { attention: j.attention } : {}),
+    };
+  });
+  const lines = rows.map((r) =>
+    `- ${r.id} "${r.comp}": ${r.status}${r.status === 'rendering' ? ` ${r.progress}%` : ''} → ${r.output}` +
+    (r.error ? ` (error: ${r.error})` : '') + (r.attention ? ` (${r.attention})` : ''));
+  const needsFolder = rows.some((r) => r.status === 'waiting for an output folder');
+  return ok(
+    lines.join('\n') + (needsFolder ? '\nThe user must choose an output folder in the Render Queue (one dialog) before anything renders.' : ''),
+    { jobs: rows },
   );
 };
 
@@ -2308,6 +2340,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   generate_speech: generateSpeech,
   generate_3d_model: generate3dModel,
   export_video: exportVideoTool,
+  get_export_status: getExportStatus,
   import_svg: importSvg,
   analyse_audio: analyseAudioTool,
   create_media_from_attachment: createMediaFromAttachment,

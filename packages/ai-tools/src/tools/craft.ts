@@ -510,6 +510,22 @@ export const generate3dModelDef: AiToolDef = {
   },
 };
 
+export const getExportStatusDef: AiToolDef = {
+  name: 'get_export_status',
+  kind: 'read',
+  description:
+    'The Render Queue: each export job\'s status (queued / rendering / done / failed / …), progress, error and ' +
+    'the output file it writes. Call it after export_video to know when the file exists and where — a job ' +
+    'that waits for an output folder is reported as such (the user picks the folder in the Render Queue).',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      jobId: { type: 'string', description: 'One job (export_video returns its id). Omit for every job.' },
+    },
+  },
+};
+
 export const exportVideoDef: AiToolDef = {
   name: 'export_video',
   kind: 'write',
@@ -632,6 +648,7 @@ export const LATE_TOOL_DEFS: readonly AiToolDef[] = [
   generateSpeechDef,
   generate3dModelDef,
   exportVideoDef,
+  getExportStatusDef,
   importSvgDef,
   analyseAudioDef,
   applyLayerStyleDef,

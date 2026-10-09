@@ -193,6 +193,30 @@ describe('text layout fields (T5)', () => {
   });
 });
 
+describe('get_export_status (M4)', () => {
+  it('reports a job, its progress and its output file, and a missing output folder', async () => {
+    const { useRenderQueueStore } = await import('@stores/renderQueueStore');
+    const q = useRenderQueueStore.getState();
+    const jobId = q.addJob({
+      compositionName: 'Samurai', compositionId: activeCompRootId() as string, background: '#000000',
+      outputPath: 'Samurai_take1.mp4', format: 'mp4', width: 1920, height: 1080, compWidth: 1920, compHeight: 1080,
+      fps: 30, durationSec: 2, transparent: false, quality: 'high',
+    } as never);
+    useRenderQueueStore.setState({ outputDir: null });
+    const a = await runToolTurn('AI: status', [{ name: 'get_export_status', args: { jobId } }]);
+    expect(String(a.results[0]!.content)).toContain('waiting for an output folder');
+    useRenderQueueStore.setState((s) => ({
+      outputDir: 'C:\\Renders',
+      jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, status: 'rendering' as const, progress: 0.42 } : j)),
+    }));
+    const b = await runToolTurn('AI: status 2', [{ name: 'get_export_status', args: { jobId } }]);
+    expect(String(b.results[0]!.content)).toContain('rendering 42%');
+    expect(String(b.results[0]!.content)).toContain('C:\\Renders\\Samurai_take1.mp4');
+    const missing = await runToolTurn('AI: status 3', [{ name: 'get_export_status', args: { jobId: 'nope' } }]);
+    expect(missing.results[0]!.ok).toBe(false);
+  });
+});
+
 describe('add_effect params (M3)', () => {
   it('applies initial values and reports unknown keys', async () => {
     const r = await runToolTurn('AI: fx params', [
