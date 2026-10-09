@@ -74,6 +74,21 @@ wgpu::TextureFormat blob_format(api::RenderTextureFormat f) {
 }
 }  // namespace
 
+TexRef PassContext::texture_mipmapped(std::string_view key) {
+  const ResolvedBlob rb = textures.resolve(key);
+  if (colorSystem != nullptr && colorSystem->active() && rb.inputSpace) return texture(key);
+  if (rb.blob == nullptr) {
+    if (external == nullptr || rb.hash.empty()) return {};
+    TexRef t = external->external_texture_mipmapped(rb.hash);
+    if (t) t.sampleLinear = rb.sampleLinear;
+    return t;
+  }
+  const api::RenderBlob& b = *rb.blob;
+  TexRef t = dev.texture(b.hash + "#mip", b.width, b.height, blob_format(b.format), b.pixels, true);
+  if (t) t.sampleLinear = rb.sampleLinear;
+  return t;
+}
+
 TexRef PassContext::texture(std::string_view key) {
   const ResolvedBlob rb = textures.resolve(key);
   if (rb.blob == nullptr) {

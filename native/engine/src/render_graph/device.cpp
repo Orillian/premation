@@ -288,7 +288,7 @@ void Device::generate_mips(const wgpu::Texture& tex, wgpu::TextureFormat format,
   }
 }
 
-SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address) {
+SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy) {
   return samplers_.acquire(
       key, frame_,
       [&] {
@@ -300,6 +300,8 @@ SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::
         sd.mipmapFilter = filter == wgpu::FilterMode::Linear ? wgpu::MipmapFilterMode::Linear : wgpu::MipmapFilterMode::Nearest;
         sd.addressModeU = address;
         sd.addressModeV = address;
+        // Anisotropy needs every filter linear (WebGPU); 1 = off.
+        if (filter == wgpu::FilterMode::Linear) sd.maxAnisotropy = std::max<std::uint16_t>(1, maxAnisotropy);
         return SamplerRef{device_.CreateSampler(&sd), nextId_++};
       },
       0, true);

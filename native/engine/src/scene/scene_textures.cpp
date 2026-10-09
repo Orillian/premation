@@ -395,6 +395,16 @@ rg::TexRef SceneTextures::external_texture(std::string_view hash) {
   return {};
 }
 
+rg::TexRef SceneTextures::external_texture_mipmapped(std::string_view hash) {
+  if (!hash.starts_with("rs:") && !hash.starts_with("img:")) return external_texture(hash);
+  if (dev_ == nullptr) return {};
+  const std::shared_ptr<const RasterEntry> e = find(hash);
+  if (!e) return {};
+  std::string key(hash);
+  key += "#mip";
+  return dev_->texture(key, e->width, e->height, wgpu::TextureFormat::RGBA8Unorm, std::span<const std::uint8_t>(e->rgba), true);
+}
+
 std::string SceneTextures::image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats) {
   // Still footage: the file's RGBA8 (image_decode.hpp), cached with the rasters
   // by path + size + last write (a re-saved file decodes again).

@@ -210,7 +210,7 @@ class Device {
   /// A texture holding `pixels` (rows top-down, tightly packed), keyed by content hash.
   TexRef texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
                  std::span<const std::uint8_t> pixels, bool mipmapped);
-  SamplerRef sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address);
+  SamplerRef sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy = 1);
   /// The shared unit quad (Geometry.ts UNIT_QUAD).
   [[nodiscard]] const wgpu::Buffer& quad() const noexcept { return quad_; }
   /// A vertex/index buffer holding `bytes`, keyed. Uploaded on creation only,

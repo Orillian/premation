@@ -35,6 +35,10 @@ class ExternalTextureSource {
   ExternalTextureSource(ExternalTextureSource&&) = delete;
   ExternalTextureSource& operator=(ExternalTextureSource&&) = delete;
   [[nodiscard]] virtual TexRef external_texture(std::string_view hash) = 0;
+  /// The same picture with a full mip chain (a 3D layer seen at a steep angle
+  /// samples it minified: without mips a 1 px stroke breaks into dots). The
+  /// default has none to offer.
+  [[nodiscard]] virtual TexRef external_texture_mipmapped(std::string_view hash) { return external_texture(hash); }
 };
 
 /// Viewport + Camera2D (viewport/Viewport.ts, camera/Camera2D.ts).
@@ -118,9 +122,17 @@ struct PassContext {
   [[nodiscard]] Packer packer() { return Packer(scratch, color); }
   /// A sampled blob by key, uploaded on first use.
   [[nodiscard]] TexRef texture(std::string_view key);
+  /// texture(), mipmapped where the source can be (3D quads: trilinear +
+  /// anisotropic sampling keeps thin strokes whole when minified). A colour-
+  /// managed texture keeps its single-level working-space conversion.
+  [[nodiscard]] TexRef texture_mipmapped(std::string_view key);
   /// Whether `key` resolved to real (ready) pixels when the frame was captured.
   [[nodiscard]] bool texture_ready(std::string_view key) const { return textures.resolve(key).ready; }
   [[nodiscard]] SamplerRef linear_clamp() { return dev.sampler("linear-clamp", wgpu::FilterMode::Linear, wgpu::AddressMode::ClampToEdge); }
+  /// Trilinear with 16× anisotropy — for 3D quads over mipmapped textures (texture_mipmapped).
+  [[nodiscard]] SamplerRef linear_clamp_aniso() {
+    return dev.sampler("linear-clamp-aniso16", wgpu::FilterMode::Linear, wgpu::AddressMode::ClampToEdge, 16);
+  }
   [[nodiscard]] SamplerRef nearest_clamp() { return dev.sampler("nearest-clamp", wgpu::FilterMode::Nearest, wgpu::AddressMode::ClampToEdge); }
   [[nodiscard]] SamplerRef linear_repeat() { return dev.sampler("linear-repeat", wgpu::FilterMode::Linear, wgpu::AddressMode::Repeat); }
 

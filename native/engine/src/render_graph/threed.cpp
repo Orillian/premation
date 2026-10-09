@@ -278,7 +278,14 @@ double effect_spread_px(const std::vector<api::RenderEffect>& effects, double la
     const std::string_view t = fx.type();
     double s = 0;
     if (t == "blur" || t == "gaussian-blur" || t == "fast-box-blur") s = fx.num("radiusPx") * kBlurTail;
-    else if (t == "glow") s = (fx.num("radiusPx") + fx.num("spreadPx")) * kBlurTail;
+    else if (t == "glow") {
+      // What the chain draws (effect_chain.cpp): a blur of radius × 1.15 and,
+      // from 6 px, a wide halo 2.2× that. Budgeting only the radius cut the wide
+      // halo at the layer texture's edge — every glowing 3D layer sat in a
+      // hard-edged box (docs/PROGRAM_PERFORMANCE.md S1).
+      const double r = fx.num("radiusPx") * 1.15;
+      s = ((r >= 6 ? r * 2.2 : r) + fx.num("spreadPx")) * kBlurTail;
+    }
     else if (t == "deep-glow") {
       const auto a = fx.nums("aspect");
       const auto c = fx.nums("chroma");
@@ -951,7 +958,9 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
   const std::string_view groupOut = gather ? kDofTarget : out;
 
   const Rect targetUv{0, 0, 1, 1};
-  const SamplerRef clamp = ctx.linear_clamp();
+  // Trilinear + anisotropic: 3D quads sample mipmapped content (texFor) at
+  // steep angles; on a single-level texture this is the plain linear filter.
+  const SamplerRef clamp = ctx.linear_clamp_aniso();
   // Image-based diffuse lights a surface with no light layers at all (AE parity 4.4).
   const bool haveLights = !scene.lights3d->empty() || (envLight != nullptr && envLight->sh.size() >= 27);
   // AE parity 4.8: the scope's fog, packed into every draw of the run (lit or

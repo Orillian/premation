@@ -801,7 +801,12 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
         }
         if (!group.empty()) {
           flush(ctx, st);
-          render_3d_group(ctx, group, out, st.byId, [this, &ctx](const std::optional<std::string>& k) { return tex_for(ctx, k); },
+          // 3D quads sample their content mipmapped (anisotropic in threed.cpp):
+          // a layer at a steep angle no longer drops a thin stroke into dots.
+          render_3d_group(ctx, group, out, st.byId, [this, &ctx](const std::optional<std::string>& k) {
+            if (k && precompTex_.find(*k) == precompTex_.end()) return ctx.texture_mipmapped(*k);
+            return tex_for(ctx, k);
+          },
                           *this);
         }
         continue;
