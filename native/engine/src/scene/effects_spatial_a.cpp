@@ -1186,7 +1186,7 @@ bool round_eleven_b(std::string_view t, const Params& P, double lw, double lh, O
   return false;
 }
 
-constexpr std::array<std::string_view, 79> kHandled = {
+constexpr std::array<std::string_view, 82> kHandled = {
     "deep-glow", "beam", "light-sweep", "lens-flare", "light-rays", "vignette", "black-and-white", "tritone",
     "photo-filter", "threshold", "vibrance", "mirror", "offset", "bulge", "twirl", "spherize", "kaleidoscope",
     "ripple", "chromatic-aberration", "magnify", "mosaic", "gaussian-blur", "fast-box-blur", "radial-blur",
@@ -1197,7 +1197,39 @@ constexpr std::array<std::string_view, 79> kHandled = {
     "line-sweep", "channel-blur", "minimax", "unsharp-mask", "shadow-highlight", "checkerboard", "grid",
     "four-color-gradient", "circle", "ellipse", "polar-coordinates", "optics-compensation", "warp", "page-turn",
     "split", "slant", "smear", "rolling-shutter", "radial-shadow", "flo-motion", "lens", "griddler",
-    "ball-action", "drizzle", "jaws", "pixel-polly", "twister"};
+    "ball-action", "drizzle", "jaws", "pixel-polly", "twister", "ink-bleed", "paper", "ink-splatter"};
+
+/// Program F1–F3: the ink set. Lengths are layer px (the chain runs in the layer box).
+bool ink_set(std::string_view t, const Params& P, double lw, double lh, std::vector<api::RenderEffect>& out) {
+  if (t == "ink-bleed") {
+    FxWriter w("ink-bleed");
+    w.num("spread", jmax(0, P.n("spread"))).num("roughness", jclamp(P.n("roughness") / 100, 0, 1));
+    w.num("pool", jclamp(P.n("pool") / 100, 0, 1)).num("granulation", jclamp(P.n("granulation") / 100, 0, 1));
+    w.num("scale", jmax(1, P.n("scale"))).num("evolution", P.n("evolution")).num("seed", mjs::round(P.n("seed")));
+    w.num("lw", lw).num("lh", lh);
+    out.push_back(w.done());
+    return true;
+  }
+  if (t == "paper") {
+    FxWriter w("paper");
+    w.num("fibre", jclamp(P.n("fibre") / 100, 0, 1)).num("grain", jclamp(P.n("grain") / 100, 0, 1));
+    w.num("mottle", jclamp(P.n("mottle") / 100, 0, 1)).num("scale", jclamp(P.n("scale") / 100, 0.1, 4));
+    w.num("seed", mjs::round(P.n("seed"))).nums("color", P.unit3("color")).num("lw", lw).num("lh", lh);
+    out.push_back(w.done());
+    return true;
+  }
+  if (t == "ink-splatter") {
+    FxWriter w("ink-splatter");
+    w.num("amount", jclamp(mjs::round(P.n("amount")), 0, 48)).num("size", jmax(0.5, P.n("size")));
+    w.num("spread", jmax(0, P.n("spread"))).num("seed", mjs::round(P.n("seed")));
+    w.num("cx", lw / 2 + P.n("centerX")).num("cy", lh / 2 + P.n("centerY"));
+    w.num("reveal", jclamp(P.n("reveal") / 100, 0, 1)).num("opacity", jclamp(P.n("opacity") / 100, 0, 1));
+    w.nums("color", P.unit3("color")).num("composite", mjs::round(P.n("composite"))).num("lw", lw).num("lh", lh);
+    out.push_back(w.done());
+    return true;
+  }
+  return false;
+}
 
 }  // namespace
 
@@ -1214,7 +1246,8 @@ bool spatial_a(const Json& e, const Json& params, const RLayer& layer, std::vect
   const double lw = jmax(1, js_or(layer.width, 1));
   const double lh = jmax(1, js_or(layer.height, 1));
   return warps(t, P, lw, lh, out) || keying(t, P, lw, lh, out) || round_nine(t, P, lw, lh, out) ||
-         round_ten(t, P, lw, lh, out) || round_eleven_a(t, P, lw, lh, out) || round_eleven_b(t, P, lw, lh, out);
+         round_ten(t, P, lw, lh, out) || round_eleven_a(t, P, lw, lh, out) || round_eleven_b(t, P, lw, lh, out) ||
+         ink_set(t, P, lw, lh, out);
 }
 
 }  // namespace premation::scene

@@ -128,7 +128,7 @@ registry, this section is expected to drift, so re-check before quoting it.
 - 2D and 3D layers in one space, with cameras and lights (parenting included)
 - Masks, track mattes, blend modes, layer styles
 - Shape layers, paths, trim paths, repeaters, path operations
-- **212 effects** ([`src/core/effects/effects.ts`](src/core/effects/effects.ts))
+- **215 effects** ([`src/core/effects/effects.ts`](src/core/effects/effects.ts))
 
 **Animation**
 - Keyframes with full easing control and one graph editor, shared by the timeline
@@ -216,7 +216,7 @@ new object.
 
 ## The AI assistant
 
-The editor contains a complete AI layer: **66 AI tools** it can call, an agent loop,
+The editor contains a complete AI layer: **73 AI tools** it can call, an agent loop,
 a deterministic "caster" pipeline that assembles motion from a hand-authored
 technique library, and a self-critique pass.
 

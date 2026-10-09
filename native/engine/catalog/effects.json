@@ -13434,5 +13434,234 @@
         "default": 1
       }
     ]
+  },
+  {
+    "type": "ink-bleed",
+    "label": "Ink Bleed",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "spread",
+        "label": "Spread",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 200,
+        "default": 10
+      },
+      {
+        "key": "roughness",
+        "label": "Roughness",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 60
+      },
+      {
+        "key": "pool",
+        "label": "Edge Pooling",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 50
+      },
+      {
+        "key": "granulation",
+        "label": "Granulation",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 35
+      },
+      {
+        "key": "scale",
+        "label": "Paper Scale",
+        "type": "number",
+        "unit": "px",
+        "min": 1,
+        "max": 400,
+        "default": 24
+      },
+      {
+        "key": "evolution",
+        "label": "Evolution",
+        "type": "number",
+        "unit": "°",
+        "min": -36000,
+        "max": 36000,
+        "default": 0
+      },
+      {
+        "key": "seed",
+        "label": "Random Seed",
+        "type": "number",
+        "min": 0,
+        "max": 9999,
+        "precision": 0,
+        "default": 1
+      }
+    ]
+  },
+  {
+    "type": "paper",
+    "label": "Paper",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "color",
+        "label": "Paper Color",
+        "type": "color",
+        "default": "#ece4d2"
+      },
+      {
+        "key": "fibre",
+        "label": "Fibres",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 50
+      },
+      {
+        "key": "grain",
+        "label": "Grain",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 40
+      },
+      {
+        "key": "mottle",
+        "label": "Mottling",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 45
+      },
+      {
+        "key": "scale",
+        "label": "Scale",
+        "type": "number",
+        "unit": "%",
+        "min": 10,
+        "max": 400,
+        "default": 100
+      },
+      {
+        "key": "seed",
+        "label": "Random Seed",
+        "type": "number",
+        "min": 0,
+        "max": 9999,
+        "precision": 0,
+        "default": 1
+      }
+    ]
+  },
+  {
+    "type": "ink-splatter",
+    "label": "Ink Splatter",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "amount",
+        "label": "Splats",
+        "type": "number",
+        "min": 0,
+        "max": 48,
+        "precision": 0,
+        "default": 12
+      },
+      {
+        "key": "size",
+        "label": "Size",
+        "type": "number",
+        "unit": "px",
+        "min": 1,
+        "max": 400,
+        "default": 18
+      },
+      {
+        "key": "spread",
+        "label": "Spread",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 2000,
+        "default": 220
+      },
+      {
+        "key": "centerX",
+        "label": "Center X",
+        "type": "number",
+        "unit": "px",
+        "min": -4000,
+        "max": 4000,
+        "default": 0
+      },
+      {
+        "key": "centerY",
+        "label": "Center Y",
+        "type": "number",
+        "unit": "px",
+        "min": -4000,
+        "max": 4000,
+        "default": 0
+      },
+      {
+        "key": "reveal",
+        "label": "Reveal",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 100
+      },
+      {
+        "key": "opacity",
+        "label": "Opacity",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 100
+      },
+      {
+        "key": "color",
+        "label": "Ink Color",
+        "type": "color",
+        "default": "#111111"
+      },
+      {
+        "key": "composite",
+        "label": "Composite",
+        "type": "enum",
+        "options": [
+          {
+            "value": 0,
+            "label": "Over Original"
+          },
+          {
+            "value": 1,
+            "label": "On Transparent"
+          }
+        ],
+        "default": 0
+      },
+      {
+        "key": "seed",
+        "label": "Random Seed",
+        "type": "number",
+        "min": 0,
+        "max": 9999,
+        "precision": 0,
+        "default": 1
+      }
+    ]
   }
 ]

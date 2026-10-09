@@ -197,7 +197,25 @@ fn sstep(e0 : f32, e1 : f32, x : f32) -> f32 {
     norm = norm + amp; amp = amp * 0.5; f = f * 2.0;
   }
   n = n / max(norm, 0.000001);
-  var a1 = max(0.0, s0.a - n * obj.p0.z / max(1.0, obj.p0.z));
+  // AE Roughen Edges: the noise cuts the edge back by up to `border` px. How
+  // deep this pixel sits in the shape (px, up to the border) is the first of
+  // six rings of eight taps that reaches outside it; it survives when it lies
+  // deeper than n of the border (a 1 px anti-aliased band). The interior past
+  // the border is untouched — the old per-pixel `alpha − noise` shredded whole
+  // shapes (warp_kernels.cpp roughen_edges is the CPU twin).
+  let border = obj.p0.z;
+  if (border <= 0.0) { return s0; }
+  var d = border;
+  var found = false;
+  for (var k = 1; k <= 6; k = k + 1) {
+    if (found) { break; }
+    let r = border * f32(k) / 6.0;
+    for (var j = 0; j < 8; j = j + 1) {
+      let ang = f32(j) * 0.7853981634;
+      if (samplePx(pp + vec2<f32>(cos(ang), sin(ang)) * r, lwh).a < 0.5) { d = r - border / 12.0; found = true; break; }
+    }
+  }
+  var a1 = s0.a * clamp(d - n * border + 0.5, 0.0, 1.0);
   if (obj.p1.w > 0.0) { a1 = clamp((a1 - 0.5) * (1.0 + obj.p1.w * 2.0) + 0.5, 0.0, 1.0); }
   let a0 = max(s0.a, 0.00001);
   return s0 * (a1 / a0);

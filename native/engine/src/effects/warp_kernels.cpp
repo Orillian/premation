@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 #include "kernels.hpp"
@@ -239,6 +240,27 @@ void roughen_edges(RgbaView img, double border, double scale, double complexity,
   const double evo = evolution / 60;
   const double sharp = std::max(0.0, edge_sharpness);
   std::uint8_t* data = img.data.data();
+  // The alpha as it was: depth is measured on the shape, not on what this pass already ate.
+  std::vector<std::uint8_t> alpha(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
+  for (int i = 0; i < w * h; ++i) alpha[static_cast<std::size_t>(i)] = data[static_cast<std::size_t>(i) * 4 + 3];
+  const auto inside = [&](double sx, double sy) {
+    const int ix = static_cast<int>(std::floor(sx));
+    const int iy = static_cast<int>(std::floor(sy));
+    if (ix < 0 || iy < 0 || ix >= w || iy >= h) return false;
+    return alpha[static_cast<std::size_t>(iy) * static_cast<std::size_t>(w) + static_cast<std::size_t>(ix)] >= 128;
+  };
+  // How deep (px, up to the border) a pixel sits inside the shape: the first
+  // of six rings (eight taps each) that reaches outside it.
+  const auto depth = [&](int x, int y) {
+    for (int k = 1; k <= 6; ++k) {
+      const double r = border * k / 6;
+      for (int j = 0; j < 8; ++j) {
+        const double ang = j * std::numbers::pi / 4;
+        if (!inside(x + 0.5 + std::cos(ang) * r, y + 0.5 + std::sin(ang) * r)) return r - border / 12;
+      }
+    }
+    return border;
+  };
   for_rows(pool, h, [&](int y0, int y1) {
     for (int y = y0; y < y1; ++y) {
       for (int x = 0; x < w; ++x) {
@@ -256,8 +278,12 @@ void roughen_edges(RgbaView img, double border, double scale, double complexity,
             f *= 2;
           }
           n /= norm != 0 ? norm : 1;
-          const double bite = n * border * (255 / std::max(1.0, border));
-          p[3] = u8c(std::max(0.0, a - bite));
+          // AE Roughen Edges: the noise cuts the edge back by up to `border` px.
+          // A pixel survives when it lies deeper than n of the border (a 1 px
+          // anti-aliased band); the interior beyond the border is untouched —
+          // the old per-pixel `alpha − noise` shredded whole shapes.
+          const double keep = std::clamp(depth(x, y) - n * border + 0.5, 0.0, 1.0);
+          p[3] = u8c(js::round(a * keep));
         }
         // applyRoughenEdges' Edge Sharpness, over every pixel of the result.
         if (sharp > 0) {

@@ -208,6 +208,11 @@ const std::unordered_map<std::string, FxEntry>& fx_table() {
     t.emplace("hex-tile", entry(Mat::HEX_TILE_FX_MATERIAL, {"lw lh R bd"}));
     // Round six colour ports + the Perspective / Channel families (own packers, same rows).
     t.emplace("vignette", entry(Mat::VIGNETTE_MATERIAL, {"amount inner feather roundness", "cx cy aspect 0"}));
+    // Program F1–F3: the ink set (ink-bleed.wgsl, paper.wgsl, ink-splatter.wgsl).
+    t.emplace("ink-bleed", entry(Mat::INK_BLEED_MATERIAL, {"spread roughness pool granulation", "scale evolution seed 0", "lw lh 0 0"}));
+    t.emplace("paper", entry(Mat::PAPER_MATERIAL, {"fibre grain mottle scale", "seed 0 0 0", "color[0] color[1] color[2] 0", "lw lh 0 0"}));
+    t.emplace("ink-splatter", entry(Mat::INK_SPLATTER_MATERIAL, {"amount size spread seed", "cx cy reveal opacity",
+                                                                 "color[0] color[1] color[2] composite", "lw lh 0 0"}));
     t.emplace("black-and-white", entry(Mat::BLACK_AND_WHITE_MATERIAL, {"reds yellows greens cyans", "blues magentas tintOn tintH",
                                                                       "tintS 0 0 0"}, Tail::none));
     t.emplace("tritone", entry(Mat::TRITONE_MATERIAL, {"sr sg sb blend", "mr mg mb 0", "hr hg hb 0"}, Tail::none));
@@ -398,6 +403,32 @@ bool known_single(std::string_view t) {
 }
 
 }  // namespace
+
+std::optional<Mat> effect_material(std::string_view type) {
+  const std::string t(type);
+  if (const auto it = fx_table().find(t); it != fx_table().end()) return it->second.material;
+  if (const auto it = p_table().find(t); it != p_table().end()) return it->second;
+  if (const auto it = field_table().find(t); it != field_table().end()) return it->second;
+  return std::nullopt;
+}
+
+std::vector<std::pair<Mat, Blend>> effect_warm_passes(std::string_view type) {
+  std::vector<std::pair<Mat, Blend>> out;
+  if (const std::optional<Mat> m = effect_material(type)) out.emplace_back(*m, Blend::normal);
+  const bool blurs = type == "blur" || type == "glow" || type == "drop-shadow" || type == "gaussian-blur" || type == "fast-box-blur";
+  if (blurs) {
+    out.emplace_back(Mat::BLUR_MATERIAL, Blend::normal);
+    out.emplace_back(Mat::TEXTURED_LINEAR_MATERIAL, Blend::normal);
+  }
+  if (type == "glow") out.emplace_back(Mat::TEXTURED_SILHOUETTE_MATERIAL, Blend::screen);
+  if (type == "drop-shadow") out.emplace_back(Mat::TEXTURED_SILHOUETTE_MATERIAL, Blend::normal);
+  if (type == "deep-glow") {
+    out.emplace_back(Mat::DEEP_GLOW_BLUR_FX_MATERIAL, Blend::normal);
+    out.emplace_back(Mat::DEEP_GLOW_ACC_FX_MATERIAL, Blend::add);
+    out.emplace_back(Mat::DEEP_GLOW_COMPOSITE_FX_MATERIAL, Blend::normal);
+  }
+  return out;
+}
 
 bool effect_ported(const api::RenderEffect& e, std::string& why) {
   const std::string& t = e.type;

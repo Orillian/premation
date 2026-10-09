@@ -49,6 +49,7 @@ bool gpu_blends_effect_opacity(std::string_view t) {
       "mosaic", "find-edges", "roughen-edges", "bulge", "twirl", "spherize", "mirror", "offset", "emboss",
       "scatter", "ripple", "magnify", "warp", "smear", "rolling-shutter", "radial-shadow", "cartoon",
       "brush-strokes", "strobe-light", "color-emboss", "halftone", "kaleidoscope", "vignette", "glass",
+      "ink-bleed", "paper", "ink-splatter",
       "texturize", "threads", "chromatic-aberration", "hex-tile", "flo-motion", "lens", "griddler",
       "ball-action", "drizzle", "card-dance", "plastic", "ripple-pulse", "3d-glasses", "fractal",
       "polar-coordinates", "wave-warp", "turbulent-displace", "curl-noise", "minimax",

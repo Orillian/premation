@@ -128,7 +128,7 @@ fn viewerSlice(rg : vec2<f32>, slice : f32, n : f32) -> vec3<f32> {
   return textureSampleLevel(lutTex, smp, vec2<f32>(u, v), 0.0).rgb;
 }
 @fragment
-fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+fn fs(@builtin(position) frag : vec4<f32>, @location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   let c = unpremul(textureSample(tex, smp, uv)) * obj.tint;
   // View ▸ Adjust Exposure: cr1.y is a linear gain (2^stops; 1 = none).
   var rgb = workingToDisplay(c.rgb * obj.cr1.y, obj.srcSpace);
@@ -165,5 +165,12 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
     if (ch < 1.5) { v = rgb.r * c.a; } else if (ch < 2.5) { v = rgb.g * c.a; } else if (ch < 3.5) { v = rgb.b * c.a; }
     return vec4<f32>(v, v, v, 1.0);
   }
-  return vec4<f32>(rgb * c.a, c.a);
+  // Output dither (scene-blit.wgsl ditherOffset): the picture only — the
+  // channel views above are measurements and stay exact.
+  let dithered = clamp(rgb + vec3<f32>(ditherOffset(floor(frag.xy)) / 255.0), vec3<f32>(0.0), vec3<f32>(1.0));
+  return vec4<f32>(dithered * c.a, c.a);
+}
+
+fn ditherOffset(p : vec2<f32>) -> f32 {
+  return fract(52.9829189 * fract(dot(p, vec2<f32>(0.06711056, 0.00583715)))) - 0.5;
 }

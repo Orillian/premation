@@ -107,6 +107,14 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
 /// Whether the C++ chain renders this effect entry (support.cpp's gate).
 [[nodiscard]] bool effect_ported(const api::RenderEffect& e, std::string& why);
 
+/// P7: the material a single-pass effect type draws with (nullopt: multi-pass
+/// or not a table entry) — what pipeline warm-up compiles ahead of first use.
+[[nodiscard]] std::optional<Mat> effect_material(std::string_view type);
+/// P7: every (material, blend) pass `type` draws in a chain — its table entry
+/// and the special-cased families' passes (the blurs, glow, drop shadow, deep
+/// glow) — what the render thread compiles ahead while idle.
+[[nodiscard]] std::vector<std::pair<Mat, Blend>> effect_warm_passes(std::string_view type);
+
 // emit helpers shared with the composition (passUtils.ts twins).
 void emit_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
                    const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear);

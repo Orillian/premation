@@ -120,9 +120,18 @@ fn workingToStorage(rgb : vec3<f32>) -> vec3<f32> { return rgb; }
 fn storageToWorking(rgb : vec3<f32>) -> vec3<f32> { return rgb; }
 
 
+// Output dither (program I5): a per-pixel offset in [-0.5, 0.5) of one 8-bit
+// step (interleaved gradient noise — a pure function of the pixel, so frames
+// stay deterministic). A smooth dark gradient quantised to 8 bits bands; the
+// offset spreads each step's edge into a fine grain. A value that already sits
+// on an 8-bit level rounds to that same level, so flat colours do not change.
+fn ditherOffset(p : vec2<f32>) -> f32 {
+  return fract(52.9829189 * fract(dot(p, vec2<f32>(0.06711056, 0.00583715)))) - 0.5;
+}
+
 @fragment
-fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+fn fs(@builtin(position) frag : vec4<f32>, @location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   let c = unpremul(textureSample(tex, smp, uv)) * obj.tint;
-  let rgb = workingToDisplay(c.rgb, obj.srcSpace);
-  return vec4<f32>(rgb * c.a, c.a);
+  let rgb = workingToDisplay(c.rgb, obj.srcSpace) + vec3<f32>(ditherOffset(floor(frag.xy)) / 255.0);
+  return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * c.a, c.a);
 }

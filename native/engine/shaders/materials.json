@@ -226,7 +226,10 @@
     "matte-ops",
     "hue-sat-ranges",
     "field-warp",
-    "reshape-tps"
+    "reshape-tps",
+    "ink-bleed",
+    "paper",
+    "ink-splatter"
   ],
   "materials": [
     {
@@ -8816,6 +8819,90 @@
         {
           "binding": 4,
           "type": "texture",
+          "stages": [
+            "fragment"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INK_BLEED_MATERIAL",
+      "shader": "ink-bleed",
+      "layout": [
+        {
+          "binding": 0,
+          "type": "uniform-buffer",
+          "stages": [
+            "vertex",
+            "fragment"
+          ]
+        },
+        {
+          "binding": 1,
+          "type": "texture",
+          "stages": [
+            "fragment"
+          ]
+        },
+        {
+          "binding": 2,
+          "type": "sampler",
+          "stages": [
+            "fragment"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PAPER_MATERIAL",
+      "shader": "paper",
+      "layout": [
+        {
+          "binding": 0,
+          "type": "uniform-buffer",
+          "stages": [
+            "vertex",
+            "fragment"
+          ]
+        },
+        {
+          "binding": 1,
+          "type": "texture",
+          "stages": [
+            "fragment"
+          ]
+        },
+        {
+          "binding": 2,
+          "type": "sampler",
+          "stages": [
+            "fragment"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INK_SPLATTER_MATERIAL",
+      "shader": "ink-splatter",
+      "layout": [
+        {
+          "binding": 0,
+          "type": "uniform-buffer",
+          "stages": [
+            "vertex",
+            "fragment"
+          ]
+        },
+        {
+          "binding": 1,
+          "type": "texture",
+          "stages": [
+            "fragment"
+          ]
+        },
+        {
+          "binding": 2,
+          "type": "sampler",
           "stages": [
             "fragment"
           ]

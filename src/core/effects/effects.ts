@@ -249,6 +249,10 @@ export type EffectType =
   | 'deep-glow'
   | 'glass'
   | 'texturize'
+  // Program F1–F3: the ink set (ink-bleed.wgsl, paper.wgsl, ink-splatter.wgsl).
+  | 'ink-bleed'
+  | 'paper'
+  | 'ink-splatter'
   | 'threads'
   | 'chromatic-aberration'
   | 'hex-tile'
@@ -3984,6 +3988,62 @@ export const EFFECT_DEFS: EffectDef[] = [
       { key: 'contrast', label: 'Texture Contrast', type: 'number', unit: '%', min: 0, max: 200, default: 80 },
       { key: 'scale', label: 'Texture Scale', type: 'number', unit: '%', min: 10, max: 400, default: 100 },
       { key: 'lightAngle', label: 'Light Direction', type: 'number', unit: '°', min: -360, max: 360, default: 135 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Ink soaking into paper: the layer's ink spreads by a noise-varied reach,
+       pools darker inside its edge and granulates (sumi-e wash). GPU only. */
+    type: 'ink-bleed',
+    label: 'Ink Bleed',
+    gpuOnly: true,
+    params: [
+      { key: 'spread', label: 'Spread', type: 'number', unit: 'px', min: 0, max: 200, default: 10 },
+      { key: 'roughness', label: 'Roughness', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'pool', label: 'Edge Pooling', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'granulation', label: 'Granulation', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'scale', label: 'Paper Scale', type: 'number', unit: 'px', min: 1, max: 400, default: 24 },
+      { key: 'evolution', label: 'Evolution', type: 'number', unit: '°', min: -36000, max: 36000, default: 0 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A paper surface over the layer's shape: tone, mottling, fibres, grain.
+       Replaces the layer's colour (its alpha kept) — washi / rice paper. GPU only. */
+    type: 'paper',
+    label: 'Paper',
+    gpuOnly: true,
+    params: [
+      { key: 'color', label: 'Paper Color', type: 'color', default: '#ece4d2' },
+      { key: 'fibre', label: 'Fibres', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'grain', label: 'Grain', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'mottle', label: 'Mottling', type: 'number', unit: '%', min: 0, max: 100, default: 45 },
+      { key: 'scale', label: 'Scale', type: 'number', unit: '%', min: 10, max: 400, default: 100 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Seeded ink splats with satellite droplets — the flick of a loaded brush.
+       Reveal grows them in (keyframe it for the splash landing). GPU only. */
+    type: 'ink-splatter',
+    label: 'Ink Splatter',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Splats', type: 'number', min: 0, max: 48, precision: 0, default: 12 },
+      { key: 'size', label: 'Size', type: 'number', unit: 'px', min: 1, max: 400, default: 18 },
+      { key: 'spread', label: 'Spread', type: 'number', unit: 'px', min: 0, max: 2000, default: 220 },
+      { key: 'centerX', label: 'Center X', type: 'number', unit: 'px', min: -4000, max: 4000, default: 0 },
+      { key: 'centerY', label: 'Center Y', type: 'number', unit: 'px', min: -4000, max: 4000, default: 0 },
+      { key: 'reveal', label: 'Reveal', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'opacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'color', label: 'Ink Color', type: 'color', default: '#111111' },
+      {
+        key: 'composite', label: 'Composite', type: 'enum', default: 0,
+        options: [{ value: 0, label: 'Over Original' }, { value: 1, label: 'On Transparent' }],
+      },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
     ],
     css: () => '',
   },

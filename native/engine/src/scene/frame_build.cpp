@@ -267,7 +267,7 @@ class Flattener {
   api::Renderable layer_to_renderable(const RLayer& l, const Mat3& parent, double parentOpacity, const Mat3* placement);
   api::Renderable precomp_to_renderable(const RLayer& l, const Mat3& parent, double parentOpacity, const Mat3* placement);
   api::Renderable particles_to_renderable(const RLayer& l, const Mat3& parent, double parentOpacity);
-  std::optional<api::Renderable> adjustment_to_renderable(const RLayer& l);
+  std::optional<api::Renderable> adjustment_to_renderable(const RLayer& l, const Mat3& parent);
   void feed(const RLayer& l);
   static bool needs_isolation(const RLayer& l);
   double rasterScale_;
@@ -898,7 +898,7 @@ api::Renderable Flattener::particles_to_renderable(const RLayer& l, const Mat3& 
   return r;
 }
 
-std::optional<api::Renderable> Flattener::adjustment_to_renderable(const RLayer& l) {
+std::optional<api::Renderable> Flattener::adjustment_to_renderable(const RLayer& l, const Mat3& parent) {
   const ColorMatrix cm = l.effects.empty() ? ColorMatrix{} : effect_color_matrix(l.effects);
   const bool lut = has_lut_effect(l);
   std::vector<api::RenderEffect> spatial = extract_spatial_effects(l, false);
@@ -907,10 +907,12 @@ std::optional<api::Renderable> Flattener::adjustment_to_renderable(const RLayer&
   r.id = l.id;
   r.kind = api::RenderableKind::group;
   r.model_matrix = mat_wire(Mat3::identity());
-  r.bounds.x = 0;
-  r.bounds.y = 0;
-  r.bounds.width = 1;
-  r.bounds.height = 1;
+  // The layer's own box in world space, as every other layer's: the effect
+  // chain's fxBox (renderable_box) is where box-relative effects put their
+  // centre and extent — a Vignette's falloff, a generator's field. A 1 × 1
+  // box at the origin made Vignette darken the whole frame evenly and
+  // Snowfall / Rainfall draw into one pixel (2026-10-09 samurai session).
+  r.bounds = bounds_of(mat3_mul(parent, center_model(l)));
   r.opacity = 1;
   r.blend = api::RenderBlendMode::normal;
   api::RenderAdjustment adj;
@@ -945,7 +947,7 @@ void Flattener::flatten(const std::vector<RLayer>& layers, const Mat3& parent, d
         continue;
       }
       if (l.isAdjustment) {
-        if (auto adj = adjustment_to_renderable(l)) out.push_back(std::move(*adj));
+        if (auto adj = adjustment_to_renderable(l, parent)) out.push_back(std::move(*adj));
         continue;
       }
       if (l.light) {  // a light's screen-blended glow quad
