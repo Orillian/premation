@@ -57,7 +57,9 @@ class BuiltFrameDrawer {
   BuiltFrameDrawer& operator=(BuiltFrameDrawer&&) = delete;
 
   /// Encode + submit the frame into `target` (RGBA8Unorm, width × height).
-  virtual bool draw(const BuiltFrame& frame, const wgpu::TextureView& target, std::uint32_t width,
+  /// The frame is the render thread's once submitted: a draw fills its texture
+  /// refs in place (BuiltFrame::asBuilt) instead of copying it.
+  virtual bool draw(BuiltFrame& frame, const wgpu::TextureView& target, std::uint32_t width,
                     std::uint32_t height, std::string& error) = 0;
 
   /// D4: the frame's content key for the frame cache (frame_cache.hpp) — equal
@@ -66,20 +68,25 @@ class BuiltFrameDrawer {
                                                                  std::uint32_t /*height*/) const {
     return std::nullopt;
   }
-  /// D4: whether the frame `draw` just drew is final — false while footage on
-  /// it may show a nearest decoded frame instead of the exact one.
+  /// D4: whether the frame `draw` just drew is final — false when footage on
+  /// it was drawn from a nearest decoded frame (or skipped) instead of the exact one.
   [[nodiscard]] virtual bool last_frame_exact() const { return false; }
+  /// RenderJob::exactMedia for the next draw: footage waits for its exact frame.
+  virtual void set_exact_media(bool /*exact*/) {}
+  /// P7: idle work (pipeline warm-up) — whether there is some, and one step of it.
+  [[nodiscard]] virtual bool warm_pending() const { return false; }
+  virtual bool warm_step() { return false; }
 
   /// getThumbnail: draw `frame` offscreen at width × height and encode it
   /// (StillImage). False (with `error`) when it cannot.
-  virtual bool draw_still(const BuiltFrame& /*frame*/, std::uint32_t /*width*/, std::uint32_t /*height*/,
+  virtual bool draw_still(BuiltFrame& /*frame*/, std::uint32_t /*width*/, std::uint32_t /*height*/,
                           StillImage& /*out*/, std::string& error) {
     error = "this drawer cannot draw stills";
     return false;
   }
   /// readPixels: `region` of `frame` (drawn for a width × height slot) in
   /// working space — the frame is drawn again offscreen, then read.
-  virtual bool read_working(const BuiltFrame& /*frame*/, std::uint32_t /*width*/, std::uint32_t /*height*/,
+  virtual bool read_working(BuiltFrame& /*frame*/, std::uint32_t /*width*/, std::uint32_t /*height*/,
                             PixelRegion /*region*/, WorkingPixels& /*out*/, std::string& error) {
     error = "this drawer cannot read working-space pixels";
     return false;
@@ -126,6 +133,8 @@ class RenderThread final : public FrameSink {
 
   // FrameSink
   void submit(RenderJob job) override;
+  [[nodiscard]] bool job_pending(std::uint32_t viewport) const override;
+  void note_dropped(std::uint32_t viewport, std::uint32_t skipped, std::uint32_t clockJumped) override;
   void configure(const ViewportConfig& config) override;
   void set_shared(bool shared) override;
   [[nodiscard]] bool shared_supported() const override;
@@ -174,6 +183,24 @@ class RenderThread final : public FrameSink {
   /// Route A: the slot's read-back buffer → one pixel message. False = nothing sent.
   bool send_copy(SlotSet& set, std::uint32_t slot);
   void render(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config);
+  /// P5: a frame submitted to the GPU, announced (FrameReady) once its work is
+  /// done — the render thread does not wait for it, so the next frame's CPU
+  /// work (rasters, encoding) overlaps this frame's GPU work.
+  struct InFlight {
+    Port* port = nullptr;
+    std::uint32_t generation = 0;
+    std::uint32_t slot = 0;
+    bool copy = false;
+    wgpu::Future done{};
+    std::chrono::steady_clock::time_point t0{};
+    api::FrameReady ready;
+    std::vector<api::FrameGeometry> geometry;
+  };
+  /// Announce finished frames, oldest first (submission order); `block` waits
+  /// for the oldest one. Render thread only. Returns how many were finished.
+  std::size_t complete_frames(bool block);
+  /// Every frame in flight finished (before slots change, queries, teardown).
+  void complete_all();
   void collect_retired(std::chrono::steady_clock::time_point now);
   /// Queue `task` for the render thread (queries: stills, pixel reads).
   void post(std::function<void()> task);
@@ -199,6 +226,8 @@ class RenderThread final : public FrameSink {
   std::deque<std::function<void()>> tasks_;
 
   // Render-thread-only state.
+  std::deque<InFlight> inflight_;  // P5: submitted, not yet announced
+  bool lastJobPlaying_ = false;    // the last job drawn was playback (RenderJob::playing): no warm-up
   std::optional<Gpu> gpu_;
   std::unique_ptr<Compositor> compositor_;
   std::unique_ptr<BuiltFrameDrawer> drawer_;

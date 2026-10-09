@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "effect_chain.hpp"
+#include "effect_stats.hpp"
+#include "fx_distance.hpp"
 #include "passes.hpp"
 #include "render_context.hpp"
 #include "threed.hpp"
@@ -133,6 +135,96 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
   for (const float v : ctx.viewport.viewProjection.m) k.f64(v);
   return k.value();
 }
+
+/// P8: the key of a layer's whole effect-chain RESULT — its input (chain_content_key)
+/// and every parameter of every entry — or 0 when the chain is not a pure
+/// function of those: one that reads another layer or a data texture (a text
+/// parameter names it), or a native plugin (its own state).
+std::uint64_t layer_fx_key(const PassContext& ctx, const api::Renderable& r, std::uint64_t contentKey, double opacity) {
+  if (contentKey == 0) return 0;
+  KeyMix k;
+  k.u64(contentKey);
+  k.f64(opacity);
+  // The renderer's own switches choose the chain's passes (distance fields, grow bounds).
+  k.u64((ctx.fxFields ? 1U : 0U) | (ctx.fxBounds ? 2U : 0U));
+  // … and the project's working precision and space its intermediates run in.
+  const api::RenderView& view = ctx.file.view;
+  k.u64((std::uint64_t{view.bit_depth} << 8U) | (view.float16_textures ? 1U : 0U) | (view.float32_textures ? 2U : 0U));
+  k.u64(static_cast<std::uint64_t>(view.working_space));
+  for (const api::RenderEffect& e : r.effects) {
+    if (e.type == "native-plugin") return 0;
+    k.str(e.type);
+    for (const api::RenderEffectParam& p : e.params) {
+      if (!p.text.empty() || !p.texts.empty()) return 0;
+      k.str(p.name);
+      k.u64(static_cast<std::uint64_t>(p.kind));
+      k.f64(p.number);
+      k.u64(p.numbers.size());
+      for (const double v : p.numbers) k.f64(v);
+    }
+  }
+  return k.value();
+}
+
+/// P8: finished effect-chain outputs of layers whose input and parameters did
+/// not change, kept across frames in persistent device targets (`fx-layer-<i>`,
+/// full viewport rgba16float). A static glowing title or a textured backdrop
+/// under moving layers pays its chain once, not every frame. A slot is valid
+/// while its target lives: the device pool collects targets idle 120 frames,
+/// and a re-created one is reported `created` (as FxCache's distance fields).
+class LayerFxCache {
+ public:
+  static constexpr std::size_t kSlots = 8;
+  struct Slot {
+    std::string name;
+    std::uint64_t key = 0;
+    std::uint32_t w = 0;
+    std::uint32_t h = 0;
+    std::uint64_t used = 0;
+    std::optional<PxBox> covered;  // the chain result's reach (ChainResult::covered)
+    wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;  // the chain target's: a lossless copy
+  };
+  LayerFxCache() {
+    for (std::size_t i = 0; i < kSlots; ++i) slots_.at(i).name = "fx-layer-" + std::to_string(i);
+  }
+  [[nodiscard]] Slot* find(std::uint64_t key, std::uint32_t w, std::uint32_t h) noexcept {
+    for (Slot& s : slots_) {
+      if (s.key == key && s.w == w && s.h == h) return &s;
+    }
+    return nullptr;
+  }
+  /// The free or least recently used slot — never one this frame read or
+  /// wrote (its texture may still be composited this frame); nullptr if all were.
+  Slot* claim(std::uint64_t key, std::uint32_t w, std::uint32_t h, std::uint64_t frame) noexcept {
+    Slot* pick = nullptr;
+    for (Slot& s : slots_) {
+      if (s.key == 0) { pick = &s; break; }
+      if (s.used != frame && (pick == nullptr || s.used < pick->used)) pick = &s;
+    }
+    if (pick == nullptr) return nullptr;
+    pick->key = key;
+    pick->w = w;
+    pick->h = h;
+    pick->used = frame;
+    return pick;
+  }
+  static void forget(Slot& s) noexcept { s.key = 0; }
+  /// Whether `layer`'s chain key is the one it had last time (a layer whose
+  /// chain changes every frame — animated — is never stored: the copy into a
+  /// slot would be paid every frame and never read).
+  bool steady(const std::string& layer, std::uint64_t key) {
+    if (last_.size() > 4096) last_.clear();  // layers come and go over a session: bounded
+    auto [it, fresh] = last_.try_emplace(layer, key);
+    if (fresh) return false;
+    const bool same = it->second == key;
+    it->second = key;
+    return same;
+  }
+
+ private:
+  std::array<Slot, kSlots> slots_;
+  std::unordered_map<std::string, std::uint64_t> last_;
+};
 
 /// Grow bounds: where a chain input drawn from `r` (renderable_cmds) can be non-zero.
 std::optional<PxBox> drawn_box(const PassContext& ctx, const api::Renderable& r) {
@@ -279,6 +371,22 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   std::unordered_map<std::string, TexRef> precompTex_;
   /// AE parity 4.2: images of 3D-run layers drawn by render_3d_group, during composite_special_3d.
   const std::unordered_map<std::string, TexRef>* predrawn_ = nullptr;
+  /// P8: finished layer chains kept across frames (render thread only).
+  LayerFxCache layerFx_;
+  /// Kill switch (PREMATION_LAYER_FX_CACHE=0): every chain runs, as before P8.
+  bool layerFxEnabled_ = [] {
+#ifdef _WIN32
+    char* v = nullptr;
+    std::size_t len = 0;
+    if (_dupenv_s(&v, &len, "PREMATION_LAYER_FX_CACHE") != 0 || v == nullptr) return true;
+    const bool on = std::string_view(v) != "0";
+    std::free(v);  // NOLINT(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): _dupenv_s allocates with malloc
+    return on;
+#else
+    const char* v = std::getenv("PREMATION_LAYER_FX_CACHE");  // NOLINT(concurrency-mt-unsafe): read once, at construction
+    return v == nullptr || std::string_view(v) != "0";
+#endif
+  }();
   /// Renderables synthesized this frame (reparented precomp children, prepared containers).
   std::vector<std::unique_ptr<std::vector<api::Renderable>>> owned_;
 
@@ -359,15 +467,68 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   TexRef apply_layer_effects(PassContext& ctx, const api::Renderable& r, const TexRef& src, std::string_view dest,
                              const ListState& st, double opacity) {
     if (r.effects.empty()) return src;
+    const std::uint64_t contentKey = chain_content_key(ctx, r, opacity);
+    const std::uint64_t fxKey = layerFxEnabled_ ? layer_fx_key(ctx, r, contentKey, opacity) : 0;
+    if (const std::optional<ChainResult> kept = reuse_layer_fx(ctx, fxKey, dest)) return kept->tex;
     const std::array<std::string_view, 4> pool = {dest, kBlur1, kBlur2, kBlur3};
-    const ChainResult res = run_effects_chain(ctx, r.effects, src, pool, st.byId, r.id, *this, nullptr,
-                                              chain_content_key(ctx, r, opacity), drawn_box(ctx, r));
-    if (res.name == dest) return res.tex;
+    const ChainResult res = run_effects_chain(ctx, r.effects, src, pool, st.byId, r.id, *this, nullptr, contentKey,
+                                              drawn_box(ctx, r));
+    TexRef out = res.tex;
+    if (res.name != dest) {
+      Commands copy;
+      emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, res.tex, ctx.linear_clamp(), {0, 0, 1, 1},
+                    kIdentityColor, true);
+      ctx.draw_into(dest, copy, true);
+      out = ctx.target(dest)->tex();
+    }
+    keep_layer_fx(ctx, r.id, fxKey, out, dest, res.covered);
+    return out;
+  }
+
+  /// P8: an earlier frame's chain result under `fxKey` (0 = not cacheable) —
+  /// the same input and parameters draw the same result. Copied into `dest`
+  /// when one is named; otherwise the kept texture itself (it outlives the frame).
+  std::optional<ChainResult> reuse_layer_fx(PassContext& ctx, std::uint64_t fxKey, std::string_view dest) {
+    if (fxKey == 0) return std::nullopt;
+    const std::uint32_t w = ctx.viewport.pixelWidth;
+    const std::uint32_t h = ctx.viewport.pixelHeight;
+    LayerFxCache::Slot* s = layerFx_.find(fxKey, w, h);
+    if (s == nullptr) return std::nullopt;
+    bool created = false;
+    RenderTarget& t = ctx.dev.target(s->name, w, h, s->format, 1, false, &created);
+    if (created) {
+      LayerFxCache::forget(*s);  // the pool collected it: the chain runs again
+      return std::nullopt;
+    }
+    s->used = ctx.dev.frame();
+    if (ctx.effectStats != nullptr) ++ctx.effectStats->layerChainsReused;
+    if (dest.empty()) return ChainResult{t.tex(), s->name, s->covered};
+    // Nearest: a texel-for-texel copy (a linear tap off by an ulp would mix neighbours).
     Commands copy;
-    emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, res.tex, ctx.linear_clamp(), {0, 0, 1, 1},
-                  kIdentityColor, true);
+    emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, t.tex(), ctx.nearest_clamp(), {0, 0, 1, 1},
+                  kIdentityColor, false);
     ctx.draw_into(dest, copy, true);
-    return ctx.target(dest)->tex();
+    return ChainResult{ctx.target(dest)->tex(), dest, s->covered};
+  }
+
+  /// P8: keep `out` (the chain result of layer `id` under `fxKey`) for later
+  /// frames — once the layer's key held for two frames in a row.
+  void keep_layer_fx(PassContext& ctx, const std::string& id, std::uint64_t fxKey, const TexRef& out, std::string_view outName,
+                     const std::optional<PxBox>& covered) {
+    if (fxKey == 0 || !layerFx_.steady(id, fxKey)) return;
+    const RenderTarget* src = ctx.target(outName);
+    if (src == nullptr) return;
+    const std::uint32_t w = ctx.viewport.pixelWidth;
+    const std::uint32_t h = ctx.viewport.pixelHeight;
+    LayerFxCache::Slot* slot = layerFx_.claim(fxKey, w, h, ctx.dev.frame());
+    if (slot == nullptr) return;  // every slot is in use this frame
+    slot->covered = covered;
+    slot->format = src->format;
+    RenderTarget& t = ctx.dev.target(slot->name, w, h, slot->format, 1, false);
+    Commands keep;  // nearest: texel for texel, as reuse_layer_fx copies it back
+    emit_textured(ctx, keep, screen_mvp(), Color::white(), 1, Blend::none, out, ctx.nearest_clamp(), {0, 0, 1, 1},
+                  kIdentityColor, false);
+    draw_to_target(ctx, t, keep);
   }
 
  public:
@@ -859,6 +1020,18 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     }
 
     flush(ctx, st);
+    // P8: a layer whose chain input and parameters match a kept result is a copy of it.
+    const std::uint64_t contentKey = hasEffects ? chain_content_key(ctx, r, 1) : 0;
+    const std::uint64_t fxKey = hasEffects && layerFxEnabled_ ? layer_fx_key(ctx, r, contentKey, 1) : 0;
+    if (const std::optional<ChainResult> kept = reuse_layer_fx(ctx, fxKey, {})) {
+      const Blend blend = blend_of(r.blend);
+      emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend, kept->tex, ctx.linear_clamp(), targetUv,
+                    kIdentityColor, true);
+      if (kept->covered && transparent_is_noop(blend)) {
+        st.main.last().scissor = scissor_of(*kept->covered, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
+      }
+      return;
+    }
     Commands layerCmds;
     if (hasMotion) {
       const auto n = static_cast<double>(r.motion_samples.size());
@@ -879,8 +1052,9 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       return;
     }
     const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
-    const ChainResult res = run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr,
-                                              chain_content_key(ctx, r, 1), drawn_box(ctx, r));
+    const ChainResult res = run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr, contentKey,
+                                              drawn_box(ctx, r));
+    keep_layer_fx(ctx, r.id, fxKey, res.tex, res.name, res.covered);
     const Blend blend = blend_of(r.blend);
     emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend, res.tex, ctx.linear_clamp(), targetUv,
                   kIdentityColor, true);

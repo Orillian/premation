@@ -54,6 +54,14 @@ struct RenderJob {
   std::uint64_t revision = 0;
   /// Frames the clock skipped before this one (reported with the frame).
   std::uint32_t clockDropped = 0;
+  /// Cache Work Area: footage on this frame is drawn from its exact decoded
+  /// frame (waiting for it), never a nearest stand-in, so the frame can be
+  /// stored — the fill is not real time; playback reads what it stored.
+  bool exactMedia = false;
+  /// Built while the transport played: superseded before it drew, it is a
+  /// dropped frame (FrameReady.dropped of the next one). A paused edit
+  /// superseded by the next edit is not — no frame of playback was lost.
+  bool playing = false;
   /// B4 round 2: the viewport's overlays subscribed (setOverlayGeometry): the sink sends `geometry` as
   /// FrameGeometry messages right before this frame's FrameReady (even when empty).
   bool geometrySubscribed = false;
@@ -288,6 +296,14 @@ class FrameSink {
 
   /// Newest job wins: a job not yet started when a newer one arrives is dropped.
   virtual void submit(RenderJob job) = 0;
+  /// Whether `viewport` still holds a submitted job that has not started
+  /// (playback back-pressure: the session skips building a frame it would supersede).
+  [[nodiscard]] virtual bool job_pending(std::uint32_t /*viewport*/) const { return false; }
+  /// A clock frame the session did not build for `viewport` because its job was
+  /// pending (`skipped`, counted like a superseded job), with the frames the
+  /// clock jumped before it (`clockJumped`, the session counts those): both
+  /// reported with the viewport's next FrameReady, as a superseded job's are.
+  virtual void note_dropped(std::uint32_t /*viewport*/, std::uint32_t /*skipped*/, std::uint32_t /*clockJumped*/) {}
   virtual void configure(const ViewportConfig& config) = 0;
   /// Use shared (cross-process) slot textures. Called once, from Hello.
   virtual void set_shared(bool shared) = 0;

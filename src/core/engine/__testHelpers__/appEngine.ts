@@ -27,6 +27,7 @@ import { bootEngine, engine, engineIdle, shutdownEngine } from '../engineInstanc
 import { resetEngineOwnership, setEngineOwnsDocument } from '../engineOwnership';
 import { resetProcessEngine } from '../process/processEngine';
 import { nativeEngineIsHeadless, startNativeEngine, type NativeEngine } from './nativeEngine';
+import type { EngineFrameMessage } from '../../../../electron/engineFraming';
 
 export const S = 705_600_000;
 
@@ -104,6 +105,18 @@ export function forwardFrames(n: NativeEngine): void {
     if (mine) parts.delete(m.viewport);
     publishFrameGeometry(m.viewport, m.time, m.revision, mine ? p.layers : [], mine ? p.views : []);
   });
+}
+
+/**
+ * Listen to the shared engine's frame channel (benches: frame times, drops).
+ * The harness already releases every slot; the listener only observes.
+ * Returns the unsubscribe; a no-op when no engine is running.
+ */
+export function onSharedEngineFrames(listener: (m: EngineFrameMessage) => void): () => void {
+  const n = shared;
+  if (!n) return () => undefined;
+  const off = n.supervisor.on('frame', listener);
+  return typeof off === 'function' ? (off as () => void) : () => undefined;
 }
 
 /** Open the main viewport the way EngineSurface does, so its frames (and their geometry) flow. */

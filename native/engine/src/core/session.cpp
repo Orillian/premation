@@ -1431,6 +1431,8 @@ void Session::start_playback(Clock::time_point now, std::optional<api::Time> fro
   lastU_ = playBaseU_;
   clockDropped_ = 0;
   lastStats_ = now;
+  autoFilled_ = false;
+  passDropBase_ = drops_so_far();
   // cacheFirst stores the range before the clock runs, so audio waits with it.
   const bool filling = transportState_ == api::TransportState::caching;
   if (!filling && mediaClock_ != nullptr) {  // E2: the audio clock starts with the transport
@@ -1525,6 +1527,8 @@ void Session::rebase_playback(Clock::time_point now) {
     mediaPaced_ = false;
   }
 }
+
+std::uint64_t Session::drops_so_far() const { return sink_.counters().dropped + clockDropped_; }
 
 void Session::stop_playback() {
   if (!playing_) return;
@@ -1646,12 +1650,35 @@ void Session::tick(Clock::time_point now) {
       break;
     }
   }
+  // P9 — AE's RAM preview: a looping play whose pass dropped frames never
+  // gets smoother on its own (only shown frames are stored, and the same ones
+  // are skipped every pass). At the wrap the transport stores the whole range
+  // once (Cache Work Area's exact fill), then plays it from the start out of
+  // the cache. Once per play: a range larger than the cache does not refill forever.
+  const bool wrapped = loop_ == api::LoopMode::loop && span > 0 && floor_div(u, span) != floor_div(lastU_, span);
+  if (wrapped && !autoFilled_ && drops_so_far() + dropped > passDropBase_) {
+    autoFilled_ = true;
+    lastK_ = k;
+    lastU_ = u;
+    transportState_ = api::TransportState::caching;
+    cacheOnly_ = false;
+    cacheFrame_ = r.first;
+    cacheInFlight_ = false;
+    playFrom_ = r.first * frame_dur();
+    if (mediaClock_ != nullptr) mediaClock_->pause();
+    mediaPaced_ = false;
+    emit_transport();
+    fill_cache(now);
+    return;
+  }
+  if (wrapped) passDropBase_ = drops_so_far() + dropped;
   lastK_ = k;
   lastU_ = u;
   clockDropped_ += dropped;
   set_time((r.first + pos) * frame_dur());
   emit_playhead();
-  submit_frame(dropped);
+  // The last frame of a play-once always draws: it is what the viewport keeps.
+  submit_frame(dropped, !stop);
   renderDirty_ = false;
   if (stop) {
     stop_playback();
@@ -1715,7 +1742,7 @@ void Session::flush_render() {
   submit_frame(0);
 }
 
-void Session::submit_frame(std::uint32_t clockDropped) {
+void Session::submit_frame(std::uint32_t clockDropped, bool fromClock) {
   const auto c = active_comp();
   if (!c) return;
   // One job per open viewport, each built with its own camera (the frame
@@ -1723,7 +1750,16 @@ void Session::submit_frame(std::uint32_t clockDropped) {
   // document's, the same for every viewport: announced once.
   bool first = true;
   for (const auto& [id, port] : surfaces_) {
-    if (port.open) submit_frame_to(port, *c, clockDropped, first);
+    if (port.open) {
+      // Back-pressure: while playing, a viewport whose last job the render
+      // thread has not started would only see that job superseded — the
+      // build (the whole document → frame scene, on this thread, which every
+      // UI request waits behind) is skipped instead, and the frame counted
+      // as dropped with the pending job. Edits and seeks still replace a
+      // pending job: they must show.
+      if (fromClock && sink_.job_pending(id)) sink_.note_dropped(id, 1, clockDropped);
+      else submit_frame_to(port, *c, clockDropped, first);
+    }
     first = false;
   }
 }
@@ -1761,6 +1797,8 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
   job.time = t;
   job.revision = revision_;
   job.clockDropped = clockDropped;
+  job.exactMedia = playing_ && transportState_ == api::TransportState::caching;
+  job.playing = playing_;
   // B4 round 2: the overlays' geometry at this frame's time and revision, read here on the core thread;
   // the sink sends it (FrameGeometry) right before the frame's FrameReady.
   for (const doc::OverlaySubscription& o : overlays_) {

@@ -118,6 +118,35 @@ TEST_CASE("pool: a key hit reuses, bytes are charged once, GC honours idle frame
   CHECK(meter.bytes == 0);
 }
 
+TEST_CASE("P10: a budgeted pool keeps a loop's idle textures under budget, oldest go first over it") {
+  MemoryMeter meter;
+  Pool<int> pool(&meter);
+  // Three 100-byte textures used at frames 0, 10, 20 (a loop's rasters).
+  (void)pool.acquire("a", 0, [] { return 1; }, 100);
+  (void)pool.acquire("b", 10, [] { return 2; }, 100);
+  (void)pool.acquire("c", 20, [] { return 3; }, 100);
+  // Frame 500: all idle past minIdle (120) but within maxIdle (3600) and under
+  // the 1000-byte budget — kept for the next pass (the plain collect dropped them).
+  CHECK(pool.collect_budgeted(500, 120, 3600, 1000) == 0);
+  CHECK(pool.has("a"));
+  CHECK(pool.has("c"));
+  // Over a 250-byte budget: the least recently used goes until it fits.
+  CHECK(pool.collect_budgeted(500, 120, 3600, 250) == 1);
+  CHECK_FALSE(pool.has("a"));
+  CHECK(pool.has("b"));
+  CHECK(meter.bytes == 200);
+  // Past maxIdle: gone whatever the budget.
+  CHECK(pool.collect_budgeted(4000, 120, 3600, 1000) == 2);
+  CHECK(meter.bytes == 0);
+  // A companion pool keyed like it (texture objects behind views) follows it.
+  Pool<int> objects(nullptr);
+  (void)pool.acquire("d", 4000, [] { return 4; }, 10);
+  (void)objects.acquire("d", 4000, [] { return 4; });
+  (void)objects.acquire("gone", 4000, [] { return 5; });
+  CHECK(objects.collect_absent_from(pool) == 1);
+  CHECK(objects.has("d"));
+}
+
 TEST_CASE("render-target byte estimate matches gpuMemory.ts") {
   // 1920×1080 rgba16float, 4× MSAA with depth: colour + MSAA colour + MSAA depth.
   const std::uint64_t px = 1920ULL * 1080ULL;

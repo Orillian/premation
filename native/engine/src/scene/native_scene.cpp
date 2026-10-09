@@ -91,6 +91,22 @@ std::size_t mark_gpu_effect_layers(std::vector<RLayer>& layers) {
   return n;
 }
 
+/// P11: layers whose effect stack still bakes on the CPU (Skia, per frame) and
+/// why the GPU route refused them — a cliff in playback cost a user cannot
+/// see otherwise (one Plexus in a stack sends the whole stack to the CPU).
+static void note_cpu_effect_layers(const std::vector<RLayer>& layers, std::vector<LayerError>& out) {
+  for (const RLayer& l : layers) {
+    if (l.precompLayers) {
+      note_cpu_effect_layers(*l.precompLayers, out);
+      continue;  // a container's chain is the container's own
+    }
+    if (l.gpuEffects || !layer_is_baked(l) || l.effects.empty()) continue;
+    const char* why = gpu_effect_route_blocker(l);
+    out.push_back({l.id, "", "cpu-effects",
+                   std::string("effects render on the CPU (slow in playback): ") + (why != nullptr ? why : "not routed to the GPU")});
+  }
+}
+
 NativeFrame native_frame_of(const doc::Document& d, Snapshot snap, const ViewSpec& view, double clipWidth,
                             double clipHeight, const std::string& sceneId, std::int64_t frame) {
   using Clock = std::chrono::steady_clock;
@@ -103,6 +119,7 @@ NativeFrame native_frame_of(const doc::Document& d, Snapshot snap, const ViewSpe
   nf.sceneMs = std::chrono::duration<double, std::milli>(t2 - t1).count();
   nf.errors = std::move(snap.layerErrors);
   for (auto& [id, what] : fb.unported) nf.errors.push_back({id, "", "unported", std::move(what)});
+  if (view.gpuEffects) note_cpu_effect_layers(snap.layers, nf.errors);
 
   api::RenderFrameFile& f = nf.file;
   f.format_version = 1;

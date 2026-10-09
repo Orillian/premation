@@ -38,11 +38,24 @@ class SimulatedSink final : public FrameSink {
     Port& p = *it->second;
     if (p.pending) {
       ++counters_.dropped;
-      ++p.droppedPending;
+      if (p.pending->playing) ++p.droppedPending;  // as RenderThread::submit: only playback frames are drops
     }
     p.droppedPending += job.clockDropped;
     p.pending = std::move(job);
     pump_locked(p);
+  }
+
+  [[nodiscard]] bool job_pending(std::uint32_t viewport) const override {
+    const std::lock_guard<std::mutex> lock(m_);
+    const auto it = ports_.find(viewport);
+    return it != ports_.end() && it->second->pending.has_value();
+  }
+  void note_dropped(std::uint32_t viewport, std::uint32_t skipped, std::uint32_t clockJumped) override {
+    const std::lock_guard<std::mutex> lock(m_);
+    const auto it = ports_.find(viewport);
+    if (it == ports_.end()) return;
+    it->second->droppedPending += skipped + clockJumped;
+    counters_.dropped += skipped;
   }
 
   /// Each viewport has its own ring (a generation unique across viewports); a

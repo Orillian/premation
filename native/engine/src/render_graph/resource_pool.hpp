@@ -19,6 +19,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace premation::rg {
 
@@ -81,6 +82,51 @@ class Pool {
       const Entry& e = it->second;
       if (!e.pinned && frame > e.lastFrame + maxIdle) {
         if (meter_ != nullptr) meter_->sub(e.bytes);
+        it = map_.erase(it);
+        ++n;
+      } else {
+        ++it;
+      }
+    }
+    stats_.collected += n;
+    return n;
+  }
+
+  /// Program P10 — collection with a byte budget: an entry idle longer than
+  /// `maxIdle` frames goes; one idle longer than `minIdle` goes only while the
+  /// pool holds more than `budgetBytes`, oldest first. A playback loop longer
+  /// than `minIdle` frames keeps its textures for the next pass (the plain
+  /// collect re-uploaded every raster each time round), and memory stays bounded.
+  std::size_t collect_budgeted(std::uint64_t frame, std::uint64_t minIdle, std::uint64_t maxIdle, std::uint64_t budgetBytes) {
+    std::size_t n = collect(frame, maxIdle);
+    std::uint64_t total = 0;
+    for (const auto& [k, e] : map_) total += e.bytes;
+    if (total <= budgetBytes) return n;
+    std::vector<typename decltype(map_)::iterator> idle;
+    for (auto it = map_.begin(); it != map_.end(); ++it) {
+      if (!it->second.pinned && frame > it->second.lastFrame + minIdle) idle.push_back(it);
+    }
+    std::ranges::sort(idle, [](const auto& a, const auto& b) { return a->second.lastFrame < b->second.lastFrame; });
+    std::size_t extra = 0;
+    for (auto it : idle) {
+      if (total <= budgetBytes) break;
+      total -= it->second.bytes;
+      if (meter_ != nullptr) meter_->sub(it->second.bytes);
+      map_.erase(it);
+      ++extra;
+    }
+    stats_.collected += extra;
+    return n + extra;
+  }
+
+  /// Drop every entry whose key `other` no longer holds (a companion pool
+  /// keyed like it: the texture objects behind the views). Returns how many.
+  template <typename U>
+  std::size_t collect_absent_from(const Pool<U>& other) {
+    std::size_t n = 0;
+    for (auto it = map_.begin(); it != map_.end();) {
+      if (!it->second.pinned && !other.has(it->first)) {
+        if (meter_ != nullptr) meter_->sub(it->second.bytes);
         it = map_.erase(it);
         ++n;
       } else {

@@ -152,6 +152,47 @@ TEST_CASE("E4: a distance-field stroke lands outside the shape and its field is 
   CHECK(px(11, 24, 0) > 200);
 }
 
+TEST_CASE("P8: a static layer's effect chain runs once; moving it or changing a parameter runs it again") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = solid_scene(0, 0, 1);
+  api::RenderEffect blur;
+  blur.type = "gaussian-blur";
+  blur.params.push_back(num_param("radiusPx", 6));
+  file.scene.renderables[0].effects.push_back(blur);
+  Frame first;
+  FrameStats s1;
+  REQUIRE(renderer->render(file, &first, s1, err));
+  CHECK(s1.gpuError.empty());
+  CHECK(s1.effects.layerChainsReused == 0);
+  // The same frame again: its key held for two frames, the result is kept…
+  Frame again;
+  FrameStats s2;
+  REQUIRE(renderer->render(file, &again, s2, err));
+  CHECK(s2.effects.layerChainsReused == 0);
+  CHECK(again.rgba == first.rgba);
+  // … and from the third on the chain's result is a copy, pixel for pixel.
+  FrameStats s2b;
+  REQUIRE(renderer->render(file, &again, s2b, err));
+  CHECK(s2b.effects.layerChainsReused == 1);
+  CHECK(again.rgba == first.rgba);
+  // A parameter changed: the chain runs (a different blur).
+  file.scene.renderables[0].effects[0].params[0].number = 2;
+  Frame sharper;
+  FrameStats s3;
+  REQUIRE(renderer->render(file, &sharper, s3, err));
+  CHECK(s3.effects.layerChainsReused == 0);
+  CHECK(sharper.rgba != first.rgba);
+  // Moved: the chain runs on the new placement (screen-space chains move with their input).
+  file.scene.renderables[0].model_matrix[6] += 3;
+  Frame moved;
+  FrameStats s4;
+  REQUIRE(renderer->render(file, &moved, s4, err));
+  CHECK(s4.effects.layerChainsReused == 0);
+  CHECK(moved.rgba != sharper.rgba);
+}
+
 TEST_CASE("E4: fill opacity fades the contents and shapes the stroke by the silhouette") {
   std::string err;
   auto renderer = SceneRenderer::create({}, err);

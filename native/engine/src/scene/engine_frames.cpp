@@ -6,14 +6,17 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <span>
 #include <exception>
 #include <filesystem>
 #include <limits>
 #include <map>
 #include <thread>
+#include <optional>
 #include <set>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 
 #include "anim.hpp"
@@ -44,6 +47,7 @@
 #include "rig_overlay.hpp"
 #include "scene.hpp"
 #include "svg_layer.hpp"
+#include "effect_chain.hpp"
 #include "scene_renderer.hpp"
 #include "scene_textures.hpp"
 #include "text_measure.hpp"
@@ -75,6 +79,13 @@ std::filesystem::path utf8_path(const std::string& s) { return {std::u8string(s.
 
 // ── fonts ─────────────────────────────────────────────────────────────────
 
+/// A text layer's text and the language it is set in (T3; never empty: the
+/// layer's `language`, else its script's).
+struct TextRun {
+  std::string text;
+  std::string language;
+};
+
 /// One thread's FontSet (FontSet is filled before shaping, then read-only —
 /// the core thread measures with one, the render thread rasterises with another).
 struct Fonts {
@@ -102,7 +113,111 @@ struct Fonts {
     (void)set->add_system_family(std::string(family));
     return true;
   }
+
+  /// BuiltFrame::fontFamilies marks a per-character fallback family with this
+  /// prefix, so the render thread's set registers it as one too; the language
+  /// the OS picked it for follows kLangMark (T3).
+  static constexpr char kFallbackMark = '\x01';
+  static constexpr char kLangMark = '\x02';
+  std::set<std::pair<std::string, std::string>> fallbacks;  // (family, language)
+  std::set<std::pair<char32_t, std::string>> looked;        // (code point, language) already asked of the OS
+
+  [[nodiscard]] static std::string marked(const std::string& family, const std::string& language) {
+    std::string out(1, kFallbackMark);
+    out += family;
+    if (!language.empty()) {
+      out += kLangMark;
+      out += language;
+    }
+    return out;
+  }
+  /// A fallback family (registered, then marked): characters no requested family has are drawn from it.
+  bool add_fallback(std::string_view family, std::string_view language = {}) {
+    const bool added = add(family);
+    if (fallbacks.emplace(std::string(family), std::string(language)).second) {
+      set->mark_fallback(std::string(family), language);
+      return true;
+    }
+    return added;
+  }
+  /// A BuiltFrame::fontFamilies entry made by marked().
+  bool add_marked(std::string_view m) {
+    m.remove_prefix(1);
+    const std::size_t at = m.find(kLangMark);
+    return at == std::string_view::npos ? add_fallback(m) : add_fallback(m.substr(0, at), m.substr(at + 1));
+  }
+
+  /// Per-character fallback for `text`: every code point outside ASCII not
+  /// asked about before is looked up ONCE in the OS's fallback (the family it
+  /// would draw it with) and that family registered as a fallback. Kanji in a
+  /// font that is not installed, Hangul in a Latin font, an emoji, a ★ — glyphs
+  /// instead of boxes. Runs where the set may grow (before shaping), never while
+  /// rasterising. Returns whether a family was added.
+  bool cover(const std::vector<TextRun>& runs) {
+    bool added = false;
+    for (const TextRun& r : runs) {
+      // The text's language steers Han to a Japanese / Chinese / Korean face (T3).
+      for (const raster::CodePoint& c : raster::decode_utf8(r.text)) {
+        if (c.cp < 0x80 || !looked.emplace(c.cp, r.language).second) continue;
+        if (const std::optional<std::string> fam = raster::FontSet::fallback_family_for(c.cp, 400, false, r.language)) {
+          added = add_fallback(*fam, r.language) || added;
+        }
+      }
+    }
+    return added;
+  }
 };
+
+/// Every effect type the document's layers carry (P7 pipeline warm-up), sorted, unique.
+std::vector<std::string> document_effect_types(const doc::Document& d) {
+  std::vector<std::string> out;
+  for (const auto& [id, node] : d.nodes()) {
+    if (!node) continue;
+    for (const doc::Component& c : node->components) {
+      const Json& fx = c.props.at("effects");
+      if (!fx.is_array()) continue;
+      for (const Json& e : fx.arr()) {
+        if (e.at("type").is_string()) out.push_back(e.at("type").str());
+      }
+    }
+  }
+  std::ranges::sort(out);
+  out.erase(std::ranges::unique(out).begin(), out.end());
+  return out;
+}
+
+/// Every text of the document (text layers' Source Text and rich-text runs),
+/// one entry per Text component with the language it is set in — what
+/// per-character fallback must cover.
+std::vector<TextRun> document_text_runs(const doc::Document& d) {
+  std::vector<TextRun> out;
+  for (const auto& [id, node] : d.nodes()) {
+    if (!node) continue;
+    for (const doc::Component& c : node->components) {
+      TextRun run;
+      const Json& t = c.props.at("content");
+      if (t.is_string()) run.text += t.str();
+      const Json& runs = c.props.at("richText").at("runs");
+      if (runs.is_array()) {
+        for (const Json& r : runs.arr()) {
+          if (r.at("text").is_string()) run.text += r.at("text").str();
+        }
+      }
+      if (run.text.empty()) continue;
+      // `language` (T3): the layer's own, or its script's ('auto').
+      const Json& lang = c.props.at("language");
+      if (lang.is_string() && !lang.str().empty() && lang.str() != "auto") {
+        run.language = lang.str();
+      } else {
+        std::u32string u;
+        for (const raster::CodePoint& cp : raster::decode_utf8(run.text)) u.push_back(cp.cp);
+        run.language = raster::script_language(u);
+      }
+      out.push_back(std::move(run));
+    }
+  }
+  return out;
+}
 
 /// "Inter, 'Segoe UI', sans-serif" → each family.
 void split_families(std::string_view css, std::vector<std::string>& out) {
@@ -136,6 +251,82 @@ std::vector<std::string> document_families(const doc::Document& d) {
   std::ranges::sort(out);
   out.erase(std::ranges::unique(out).begin(), out.end());
   return out;
+}
+
+/// A fast 64-bit content hash (8 bytes per step, multiply-xorshift mix): the
+/// file can carry megabytes of mesh and environment blobs, so byte-wise
+/// FNV would cost milliseconds per frame. Not cryptographic; a collision
+/// shows a wrong cached frame, at ~2^-64 per pair.
+class ContentHash {
+ public:
+  void bytes(std::span<const std::uint8_t> b) {
+    std::size_t i = 0;
+    for (; i + 8 <= b.size(); i += 8) {
+      std::uint64_t w = 0;
+      std::memcpy(&w, b.subspan(i, 8).data(), 8);
+      mix(w);
+    }
+    std::uint64_t tail = 0;
+    if (i < b.size()) std::memcpy(&tail, b.subspan(i).data(), b.size() - i);
+    mix(tail ^ (static_cast<std::uint64_t>(b.size()) << 56U));
+  }
+  void str(std::string_view s) { bytes({reinterpret_cast<const std::uint8_t*>(s.data()), s.size()}); }  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): chars → bytes
+  void u64(std::uint64_t v) { mix(v); }
+  void f64(double v) { mix(std::bit_cast<std::uint64_t>(v)); }
+  [[nodiscard]] std::uint64_t value() const {
+    std::uint64_t x = h_;
+    x ^= x >> 33U;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33U;
+    return x;
+  }
+
+ private:
+  void mix(std::uint64_t w) {
+    h_ ^= w * 0x9e3779b97f4a7c15ULL;
+    h_ = std::rotl(h_, 27) * 0xc2b2ae3d27d4eb4fULL + 0x165667b19e3779f9ULL;
+  }
+  std::uint64_t h_ = 0x243f6a8885a308d3ULL;
+};
+
+/// D4 / P6: the frame's pixels as one hash — the encoded RenderFrameFile
+/// (FrameScene, view, colour, blobs), the texture feed each key resolves
+/// through (raster drawables, footage paths and source times), the font
+/// families and the media base. Everything but the slot size, which the
+/// drawer mixes in (BuiltFrameDrawer::content_key). Computed once, on the core
+/// thread, as the frame is built: the render thread no longer encodes the file
+/// again for every draw.
+std::uint64_t frame_content_hash(const BuiltFrame& frame, wire::Writer& scratch) {
+  // One writer reused across frames: encoding allocates only when a frame
+  // outgrows the last one. The raster specs' JSON text is a per-frame
+  // string per texture request (small, bounded by the layer count).
+  scratch.clear();
+  api::encode(scratch, frame.file);
+  ContentHash h;
+  h.bytes(scratch.bytes());
+  for (const TextureRequest& t : frame.textures) {
+    h.str(t.key);
+    h.u64(static_cast<std::uint64_t>(t.kind));
+    if (!t.spec.is_undefined()) h.str(js::stringify(t.spec));
+    h.f64(t.resolutionScale);
+    h.f64(t.padding);
+    h.str(t.src);
+    h.f64(t.sourceTime);
+    h.u64((t.video ? 1U : 0U) | (t.premultiplied ? 2U : 0U) | (t.pixelMotion ? 4U : 0U));
+    h.f64(t.compFps);
+    // Footage interpretation and the Pixel Motion pair pick other pixels.
+    h.u64((t.pulldownPhase ? static_cast<std::uint64_t>(*t.pulldownPhase) + 1U : 0U) |
+          (static_cast<std::uint64_t>(static_cast<unsigned char>(t.fields)) << 8U));
+    h.f64(t.blendTime);
+    h.f64(t.blendWeight);
+    h.f64(t.bake ? t.bakeTargetScale + 1 : 0);  // a footage bake and the size it bakes at
+    // Builder-computed textures (TexKind::pixels: the colour-LUT strips).
+    h.u64((std::uint64_t{t.pxWidth} << 32U) | t.pxHeight);
+    h.bytes(t.pixels);
+  }
+  for (const std::string& f : frame.fontFamilies) h.str(f);
+  h.str(frame.mediaBase);
+  return h.value();
 }
 
 // ── the core-thread builder ───────────────────────────────────────────────
@@ -238,6 +429,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
     try {
       // Fonts the text names, registered before measuring (and forwarded to the render thread).
       out->fontFamilies = register_fonts(d);
+      out->effectTypes = document_effect_types(d);
       out->mediaBase = mediaBase_;
       BuildContext ctx = context(d, view, expr, cache);
       ctx.hiddenLayers = viewport.hiddenLayers;  // setViewportHiddenLayers: the text under the in-place editor
@@ -336,6 +528,9 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
       return nullptr;
     }
     out->playing = playing;
+    // P6: the frame-cache key, hashed here (counted in buildMs) instead of on
+    // the render thread for every draw. A ghost (onion skin) is never cached.
+    if (!viewport.ghost) out->contentHash = frame_content_hash(*out, hashWriter_);
     out->buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return out;
   }
@@ -467,7 +662,23 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
     std::vector<std::string> families = document_families(d);
     bool added = false;
     for (const std::string& f : families) added = fonts_.add(f) || added;
+    // Per-character fallback, only when the text changed (the revision of
+    // its content, not every frame's walk of it).
+    const std::vector<TextRun> runs = document_text_runs(d);
+    std::string text;
+    for (const TextRun& r : runs) {
+      text += r.text;
+      text += Fonts::kLangMark;
+      text += r.language;
+      text += Fonts::kFallbackMark;
+    }
+    if (text != lastText_) {
+      lastText_ = std::move(text);
+      added = fonts_.cover(runs) || added;
+    }
     if (added) measurer_ = make_canvas_measurer(fonts_.canvas);
+    // The render thread's set registers the same fallbacks (marked).
+    for (const auto& [f, lang] : fonts_.fallbacks) families.push_back(Fonts::marked(f, lang));
     return families;
   }
   BuildContext context(const doc::Document& d, const doc::EditorView& view, const doc::ExprEnv& expr,
@@ -537,9 +748,11 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
   std::optional<TextureRequest> viewerLutStrip_;
   api::RenderViewerLut viewerLutMeta_;
   Fonts fonts_;
+  std::string lastText_;  // the document text per-character fallback last covered
   std::unique_ptr<TextMeasurer> measurer_;
   MediaClock* audio_ = nullptr;
   std::uint64_t builtFrames_ = 0;
+  wire::Writer hashWriter_;  // P6: frame_content_hash's scratch, reused across frames
   std::string mediaBase_;
   /// B4 round 5: the rig as the overlays see it, over this builder's media.
   DocRigQueries rig_{RigMediaHooks{
@@ -578,19 +791,53 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     return d;
   }
 
-  bool draw(const BuiltFrame& frame, const wgpu::TextureView& target, std::uint32_t width, std::uint32_t height,
+  bool draw(BuiltFrame& frame, const wgpu::TextureView& target, std::uint32_t width, std::uint32_t height,
             std::string& error) override {
-    const api::RenderFrameFile file = prepare(frame, width, height);
-    // D4: a frame is final unless footage on it was drawn from the nearest
-    // decoded frame (playing, MediaTextures preview mode).
-    exact_ = !frame.playing || lastMediaRefs_ == 0;
+    for (const std::string& t : frame.effectTypes) {
+      if (warmSeen_.insert(t).second) warmQueue_.push_back(t);
+    }
+#if defined(PREMATION_HAVE_MEDIA)
+    (void)mediaTex_->take_misses();  // count this draw's own
+#endif
+    const api::RenderFrameFile& file = prepare(frame, width, height);
     rg::FrameStats st;
-    return renderer_->render_into(file, target, wgpu::TextureFormat::RGBA8Unorm, st, error);
+    const bool ok = renderer_->render_into(file, target, wgpu::TextureFormat::RGBA8Unorm, st, error);
+    // D4: a frame is final unless footage on it was drawn from a nearest decoded
+    // frame or skipped — what the media source REPORTS for this draw, not "it
+    // is playing and has footage": decode that keeps up makes exact frames
+    // while playing, and an exact-mode wait that timed out does not.
+#if defined(PREMATION_HAVE_MEDIA)
+    const media::MediaTextures::Misses m = mediaTex_->take_misses();
+    exact_ = m.approximate == 0 && m.skipped == 0;
+#else
+    exact_ = true;
+#endif
+    return ok;
   }
 
-  bool draw_still(const BuiltFrame& frame, std::uint32_t width, std::uint32_t height, StillImage& out,
+  void set_exact_media(bool exact) override { exactMedia_ = exact; }
+
+  // P7: compile the document's effect pipelines while the render thread idles.
+  [[nodiscard]] bool warm_pending() const override { return !warmQueue_.empty(); }
+  bool warm_step() override {
+    if (warmQueue_.empty()) return false;
+    const std::string type = std::move(warmQueue_.front());
+    warmQueue_.pop_front();
+    // Every pass the effect draws (rg::effect_warm_passes), into a chain target
+    // of the precision the last frame's intermediates ran at (the project's bit
+    // depth), one sample — the variants its first real draw asks for. Dawn
+    // caches the compiled shader under each, which is the expensive part.
+    const rg::IntermediatePrecision p = renderer_->precision();
+    const wgpu::TextureFormat format = p == rg::IntermediatePrecision::float32   ? wgpu::TextureFormat::RGBA32Float
+                                       : p == rg::IntermediatePrecision::float16 ? wgpu::TextureFormat::RGBA16Float
+                                                                                  : wgpu::TextureFormat::RGBA8Unorm;
+    for (const auto& [m, blend] : rg::effect_warm_passes(type)) renderer_->device().warm_pipeline(m, blend, format);
+    return true;
+  }
+
+  bool draw_still(BuiltFrame& frame, std::uint32_t width, std::uint32_t height, StillImage& out,
                   std::string& error) override {
-    const api::RenderFrameFile file = prepare(frame, width, height);
+    const api::RenderFrameFile& file = prepare(frame, width, height);
     rg::Frame px;
     rg::FrameStats st;
     if (!renderer_->render(file, &px, st, error)) return false;
@@ -619,14 +866,14 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     return true;
   }
 
-  bool read_working(const BuiltFrame& frame, std::uint32_t width, std::uint32_t height, PixelRegion region,
+  bool read_working(BuiltFrame& frame, std::uint32_t width, std::uint32_t height, PixelRegion region,
                     WorkingPixels& out, std::string& error) override {
     // Drawn again, into the renderer's own surface (the slot the host shows is
     // not touched): the graph's targets may hold another frame — the viewport
     // may have shown a frame-cache copy, or a still was drawn since — and
     // telling would cost a content key on every viewport draw. A pixel read
     // is a click or a hover (the UI throttles it), not a per-frame cost.
-    const api::RenderFrameFile file = prepare(frame, width, height);
+    const api::RenderFrameFile& file = prepare(frame, width, height);
     rg::FrameStats st;
     if (!renderer_->render(file, nullptr, st, error)) return false;
     rg::TargetPixels scene;
@@ -661,37 +908,12 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   /// (CLAUDE.md determinism), so equal keys draw equal pixels.
   [[nodiscard]] std::optional<std::uint64_t> content_key(const BuiltFrame& frame, std::uint32_t width,
                                                          std::uint32_t height) const override {
-    // One writer reused across frames: encoding allocates only when a frame
-    // outgrows the last one. The raster specs' JSON text is a per-frame
-    // string per texture request (small, bounded by the layer count).
-    keyWriter_.clear();
-    api::encode(keyWriter_, frame.file);
+    // P6: the build hashed the frame (BuiltFrame::contentHash); a frame built
+    // without one (a still, a footage thumbnail) is hashed here.
     ContentHash h;
-    h.bytes(keyWriter_.bytes());
+    h.u64(frame.contentHash ? *frame.contentHash : frame_content_hash(frame, keyWriter_));
     h.u64(width);
     h.u64(height);
-    for (const TextureRequest& t : frame.textures) {
-      h.str(t.key);
-      h.u64(static_cast<std::uint64_t>(t.kind));
-      if (!t.spec.is_undefined()) h.str(js::stringify(t.spec));
-      h.f64(t.resolutionScale);
-      h.f64(t.padding);
-      h.str(t.src);
-      h.f64(t.sourceTime);
-      h.u64((t.video ? 1U : 0U) | (t.premultiplied ? 2U : 0U) | (t.pixelMotion ? 4U : 0U));
-      h.f64(t.compFps);
-      // Footage interpretation and the Pixel Motion pair pick other pixels.
-      h.u64((t.pulldownPhase ? static_cast<std::uint64_t>(*t.pulldownPhase) + 1U : 0U) |
-            (static_cast<std::uint64_t>(static_cast<unsigned char>(t.fields)) << 8U));
-      h.f64(t.blendTime);
-      h.f64(t.blendWeight);
-      h.f64(t.bake ? t.bakeTargetScale + 1 : 0);  // a footage bake and the size it bakes at
-      // Builder-computed textures (TexKind::pixels: the colour-LUT strips).
-      h.u64((std::uint64_t{t.pxWidth} << 32U) | t.pxHeight);
-      h.bytes(t.pixels);
-    }
-    for (const std::string& f : frame.fontFamilies) h.str(f);
-    h.str(frame.mediaBase);
     return h.value();
   }
 
@@ -700,11 +922,13 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
  private:
   /// The frame's file as it draws into width × height, with its texture feed
   /// prepared (rasters, footage) — what every draw of it starts from.
-  api::RenderFrameFile prepare(const BuiltFrame& frame, std::uint32_t width, std::uint32_t height) {
+  const api::RenderFrameFile& prepare(BuiltFrame& frame, std::uint32_t width, std::uint32_t height) {
     // New families: the FontSet grows between frames (never while rasterising),
     // and cached rasters drawn without the face are dropped.
     bool added = false;
-    for (const std::string& f : frame.fontFamilies) added = fonts_.add(f) || added;
+    for (const std::string& f : frame.fontFamilies) {
+      added = (!f.empty() && f.front() == Fonts::kFallbackMark ? fonts_.add_marked(f) : fonts_.add(f)) || added;
+    }
     if (added) textures_->clear();
     // Relative media follow the project the frame was built for.
     if (frame.mediaBase != mediaBase_) {
@@ -713,12 +937,23 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     }
 #if defined(PREMATION_HAVE_MEDIA)
     // Paused: the exact frame (short wait); playing: never block, nearest frame.
-    mediaTex_->set_mode(frame.playing ? media::MediaTextures::Mode::preview : media::MediaTextures::Mode::exact);
+    // Cache Work Area (exactMedia_) waits for the exact frame too, still reading ahead.
+    mediaTex_->set_mode(frame.playing && !exactMedia_ ? media::MediaTextures::Mode::preview : media::MediaTextures::Mode::exact);
     mediaTex_->set_exact_timeout(std::chrono::milliseconds(250));
 #endif
     textures_->set_playing(frame.playing);
     textures_->set_color_managed(frame.file.view.color_management.has_value());
-    api::RenderFrameFile file = frame.file;  // refs are filled per draw (hashes depend on the cache)
+    // P6: in place, back to the frame as built (BuiltFrame::asBuilt); refs are
+    // filled per draw (their hashes depend on the cache).
+    api::RenderFrameFile& file = frame.file;
+    if (!frame.asBuilt) {
+      frame.asBuilt = BuiltFrame::AsBuilt{file.textures.size(), file.view.css_width, file.view.css_height,
+                                          file.view.device_pixel_ratio};
+    }
+    file.textures.resize(frame.asBuilt->textureRefs);
+    file.view.css_width = frame.asBuilt->cssWidth;
+    file.view.css_height = frame.asBuilt->cssHeight;
+    file.view.device_pixel_ratio = frame.asBuilt->devicePixelRatio;
     PrepareStats ps;
     textures_->prepare(frame.textures, file.textures, ps);
     for (const auto& [key, what] : ps.unsupported) {
@@ -739,51 +974,17 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
       file.view.css_height = height;
       file.view.device_pixel_ratio = 1;
     }
-    lastMediaRefs_ = ps.mediaRefs;
     return file;
   }
 
-  /// A fast 64-bit content hash (8 bytes per step, multiply-xorshift mix): the
-  /// file can carry megabytes of mesh and environment blobs, so byte-wise
-  /// FNV would cost milliseconds per frame. Not cryptographic; a collision
-  /// shows a wrong cached frame, at ~2^-64 per pair.
-  class ContentHash {
-   public:
-    void bytes(std::span<const std::uint8_t> b) {
-      std::size_t i = 0;
-      for (; i + 8 <= b.size(); i += 8) {
-        std::uint64_t w = 0;
-        std::memcpy(&w, b.subspan(i, 8).data(), 8);
-        mix(w);
-      }
-      std::uint64_t tail = 0;
-      if (i < b.size()) std::memcpy(&tail, b.subspan(i).data(), b.size() - i);
-      mix(tail ^ (static_cast<std::uint64_t>(b.size()) << 56U));
-    }
-    void str(std::string_view s) { bytes({reinterpret_cast<const std::uint8_t*>(s.data()), s.size()}); }  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): chars → bytes
-    void u64(std::uint64_t v) { mix(v); }
-    void f64(double v) { mix(std::bit_cast<std::uint64_t>(v)); }
-    [[nodiscard]] std::uint64_t value() const {
-      std::uint64_t x = h_;
-      x ^= x >> 33U;
-      x *= 0xff51afd7ed558ccdULL;
-      x ^= x >> 33U;
-      return x;
-    }
-
-   private:
-    void mix(std::uint64_t w) {
-      h_ ^= w * 0x9e3779b97f4a7c15ULL;
-      h_ = std::rotl(h_, 27) * 0xc2b2ae3d27d4eb4fULL + 0x165667b19e3779f9ULL;
-    }
-    std::uint64_t h_ = 0x243f6a8885a308d3ULL;
-  };
 
   explicit ViewportDrawer(const EngineFramesOptions& o) : fonts_(o) {}
   mutable wire::Writer keyWriter_;
   bool exact_ = false;
-  std::uint32_t lastMediaRefs_ = 0;  // footage refs of the last prepare (D4 exactness)
-  std::string mediaBase_;             // the texture feed's (BuiltFrame::mediaBase)
+  bool exactMedia_ = false;  // RenderJob::exactMedia of the job being drawn
+  std::set<std::string> warmSeen_;      // P7: effect types queued (or warmed) once
+  std::deque<std::string> warmQueue_;   // P7: still to compile, while idle
+  std::string mediaBase_;    // the texture feed's (BuiltFrame::mediaBase)
   Fonts fonts_;
   std::unique_ptr<rg::SceneRenderer> renderer_;
   std::unique_ptr<SceneTextures> textures_;
@@ -1023,6 +1224,15 @@ class EngineAudio final : public MediaClock {
     pan_of(c, n, v, v.startSec, dur);
   }
 
+  /// Interpret Footage ▸ Loop (`interpret.loopCount`, 0 = forever): the voice
+  /// reads its source modulo its length, as the picture does (snapshot_build),
+  /// for as long as the layer's bar lasts — a 4 s ambience under a 30 s scene.
+  static bool asset_loops(const Json* asset) {
+    if (asset == nullptr) return false;
+    const Json& n = asset->at("interpret").at("loopCount");
+    return n.is_number() && n.num() != 1;
+  }
+
   /// readAudioVoices (an audio layer).
   std::vector<audio::Voice> audio_voices(const Ctx& c, const doc::Node& n) {
     const doc::Component* a = n.comp("Audio");
@@ -1030,11 +1240,11 @@ class EngineAudio final : public MediaClock {
     const Json& p = a->props;
     const std::string assetId = p.at("__assetId").is_string() ? p.at("__assetId").str() : "";
     std::string src = p.at("__src").is_string() ? p.at("__src").str() : "";
-    if (!assetId.empty()) {
-      if (const Json* asset = doc::find_asset(c.d, assetId); asset != nullptr) {
-        if (std::string media = doc::asset_media_src(*asset); !media.empty()) src = std::move(media);
-      }
+    const Json* asset = assetId.empty() ? nullptr : doc::find_asset(c.d, assetId);
+    if (asset != nullptr) {
+      if (std::string media = doc::asset_media_src(*asset); !media.empty()) src = std::move(media);
     }
+    const bool loops = asset_loops(asset);
     if (src.empty() || assetId.empty()) return {};
     const double db = static_level_db(p, "audioLevelDb", "__level");
     const bool muted = !n.visible || (p.at("__muted").is_bool() && p.at("__muted").b());
@@ -1057,6 +1267,7 @@ class EngineAudio final : public MediaClock {
       v.startSec = t.startSec;
       v.inSec = t.inSec;
       v.outSec = t.outSec;
+      v.loop = loops;
       v.muted = muted || !t.enabled;
       finish_voice(c, n, v, db);
       out.push_back(std::move(v));
@@ -1116,6 +1327,7 @@ class EngineAudio final : public MediaClock {
       v.outSec = t.outSec;
       v.playbackRate = freeze ? 1 : rate;
       v.reverse = !freeze && lt.reverse;
+      v.loop = asset_loops(asset);
       v.muted = muted || !t.enabled || freeze;
       finish_voice(c, n, v, db);
       out.push_back(std::move(v));
@@ -1213,7 +1425,22 @@ std::unique_ptr<MediaClock> make_media_clock(bool useDevice, std::string& error)
 #endif
 }
 
-std::vector<std::string> document_font_families(const doc::Document& d) { return document_families(d); }
+std::vector<std::string> document_font_families(const doc::Document& d) {
+  // With the per-character fallbacks the document's text needs, marked
+  // (Fonts::kFallbackMark) — an export draws the same glyphs the viewport does.
+  std::vector<std::string> out = document_families(d);
+  std::set<std::pair<std::string, std::string>> seen;
+  std::set<std::pair<char32_t, std::string>> looked;
+  for (const TextRun& r : document_text_runs(d)) {
+    for (const raster::CodePoint& c : raster::decode_utf8(r.text)) {
+      if (c.cp < 0x80 || !looked.emplace(c.cp, r.language).second) continue;
+      if (auto fam = raster::FontSet::fallback_family_for(c.cp, 400, false, r.language); fam && seen.emplace(*fam, r.language).second) {
+        out.push_back(Fonts::marked(*fam, r.language));
+      }
+    }
+  }
+  return out;
+}
 
 WaveformProvider offline_waveform(const doc::Document& d, const doc::EditorView& view, const doc::ExprEnv& expr,
                                   doc::ExprCache& cache) {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,9 +22,30 @@ struct BuiltFrame {
   /// Font families the document's text names (the render thread's FontSet
   /// loads new ones before rasterising — FontSet is filled before shaping).
   std::vector<std::string> fontFamilies;
+  /// P7: every effect type the DOCUMENT uses (not only this frame's), so the
+  /// render thread compiles their pipelines while idle — before an effect's
+  /// first appearance mid-playback would stall that frame on the compile.
+  std::vector<std::string> effectTypes;
   /// Where relative media paths resolve (FrameBuilder::set_media_base; the
   /// render thread's texture feed follows it). '' = none.
   std::string mediaBase;
+  /// P6: the frame's content hash (everything but the slot size), computed by
+  /// the build on the core thread — the render thread's frame-cache key mixes
+  /// the slot size into it instead of encoding the file again. Absent = the
+  /// drawer hashes the frame itself.
+  std::optional<std::uint64_t> contentHash;
+  /// P6: the render thread draws `file` in place (a per-draw copy of the
+  /// scene, its meshes and blobs cost as much as the draw's CPU work). What a
+  /// draw changes is put back first: the texture refs the build made (the
+  /// feed's are appended per draw) and the view as built (a resize in flight
+  /// draws it at the slot's size). Render thread only, set on the first draw.
+  struct AsBuilt {
+    std::size_t textureRefs = 0;
+    double cssWidth = 0;
+    double cssHeight = 0;
+    double devicePixelRatio = 0;
+  };
+  std::optional<AsBuilt> asBuilt;
 };
 
 }  // namespace premation

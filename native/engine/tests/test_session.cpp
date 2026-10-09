@@ -534,6 +534,85 @@ TEST_CASE("session: the clock emits frames at comp fps and drops rather than dri
   }
 }
 
+TEST_CASE("session: playback builds no frame a pending job would supersede", "[session][transport][p3]") {
+  Harness h;  // 3 slots
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  (void)make_layer(h, comp);
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 320;
+  v.height = 180;
+  v.device_pixel_ratio = 1.0;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  h.release_all();
+  const std::size_t base = h.sink.submitted();
+  REQUIRE(is_ok(h.run(cmd(api::Play{1.0, api::PlayRange::all, {}, false, false, {}, false}))));
+  // A host that holds every slot for a second: three frames fill the ring, a
+  // fourth waits as the pending job, and every later tick builds nothing.
+  for (int i = 0; i < 1000; ++i) h.advance(std::chrono::milliseconds(1));
+  REQUIRE(h.sink.submitted() - base == 4);
+  REQUIRE(h.session.time() == 30 * (kSec / 30));
+
+  // The slots come back: the pending frame draws, and the next clock frame is
+  // built again, carrying every frame the viewport skipped as dropped.
+  h.release_all();
+  h.advance(std::chrono::milliseconds(34));
+  h.release_all();
+  const auto ready = h.frames_ready();
+  REQUIRE(h.sink.submitted() - base == 5);
+  REQUIRE(ready.back().frame == 31);
+  std::uint32_t dropped = 0;
+  for (const auto& r : ready) dropped += r.dropped;
+  REQUIRE(dropped >= 26);
+}
+
+TEST_CASE("session: a looping play that dropped frames stores the range at the wrap, then plays it", "[session][transport][p9]") {
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  (void)make_layer(h, comp);
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 320;
+  v.height = 180;
+  v.device_pixel_ratio = 1;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  h.release_all();
+  api::Play play;
+  play.rate = 1;
+  play.range = api::PlayRange::custom;
+  play.custom = api::TimeRange{0, 10 * (kSec / 30)};
+  REQUIRE(is_ok(h.run(cmd(play))));
+  // A slow first pass: one late tick skips frames.
+  h.release_all();
+  h.advance(std::chrono::milliseconds(150));
+  h.release_all();
+  // Run to just before the wrap (10 frames ≈ 333 ms), then 1 ms ticks across it.
+  for (int i = 0; i < 175; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  const std::size_t mark = h.frames_ready().size();
+  for (int i = 0; i < 25; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  const auto ready = h.frames_ready();
+  std::vector<std::int64_t> frames;
+  for (std::size_t i = mark; i < ready.size(); ++i) frames.push_back(ready[i].frame);
+  // 25 ms of real-time play is at most one frame; a fill stores one per tick.
+  REQUIRE(frames.size() >= 8);
+  for (std::size_t i = 1; i < frames.size() && frames[i] != 0; ++i) REQUIRE(frames[i] == frames[i - 1] + 1);
+  REQUIRE(h.session.playing());
+}
+
 TEST_CASE("session: cacheFirst stores every frame of the range, then plays it", "[session][transport][d4]") {
   Harness h(64);
   (void)h.hello();

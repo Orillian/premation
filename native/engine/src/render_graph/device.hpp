@@ -252,6 +252,11 @@ class Device {
   /// WebGPU; Dawn reports it through the error scope this device pushes).
   [[nodiscard]] std::string take_error();
 
+  /// P7: build the pipeline an effect-chain pass of `material` uses (normal
+  /// blend into an rgba16float target, one sample) ahead of its first draw.
+  /// P7: compile `material`'s pipeline for a chain pass (one sample, `format` targets) ahead of its first draw.
+  void warm_pipeline(Mat material, Blend blend, wgpu::TextureFormat format) { (void)pipeline(material, blend, format, 1); }
+
  private:
   struct Pipeline {
     wgpu::RenderPipeline pipeline;

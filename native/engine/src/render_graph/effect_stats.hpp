@@ -49,6 +49,8 @@ struct EffectStats {
   /// Alpha distance fields built / reused from the cache (fx_distance.hpp).
   std::uint32_t sdfBuilt = 0;
   std::uint32_t sdfReused = 0;
+  /// P8: layers whose whole effect chain was a copy of an earlier frame's result.
+  std::uint32_t layerChainsReused = 0;
   /// Styles shaped by a fill-opacity silhouette; entries blended back through a scoped mask.
   std::uint32_t silhouetteStyles = 0;
   std::uint32_t scoped = 0;

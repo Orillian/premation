@@ -209,7 +209,9 @@ class Session {
   void emit_playhead();
   void request_render() noexcept { renderDirty_ = true; }
   void flush_render();
-  void submit_frame(std::uint32_t clockDropped);
+  /// `fromClock`: a playback tick — a viewport whose previous job has not
+  /// started yet gets no new build (back-pressure, below).
+  void submit_frame(std::uint32_t clockDropped, bool fromClock = false);
   /// One viewport's job for the frame at `time_` (`announce`: report the layer errors).
   void submit_frame_to(const ViewportConfig& port, const std::string& comp, std::uint32_t clockDropped, bool announce);
   [[nodiscard]] std::optional<std::string> active_comp() const;
@@ -298,6 +300,11 @@ class Session {
   /// returns to `cacheReturn_` (where it was before the fill).
   bool cacheOnly_ = false;
   api::Time cacheReturn_ = 0;
+  /// P9: frames dropped so far (sink + clock) when the current loop pass
+  /// began, and whether this play already switched to a fill once.
+  std::uint64_t passDropBase_ = 0;
+  bool autoFilled_ = false;
+  [[nodiscard]] std::uint64_t drops_so_far() const;
   std::uint64_t playheadSkipped_ = 0;
   Clock::time_point lastStats_{};
 

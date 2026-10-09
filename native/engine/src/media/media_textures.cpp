@@ -95,10 +95,14 @@ bool MediaTextures::convert_into(Entry& e, const DecodedFrame& f, SourceId src, 
 
 bool MediaTextures::convert_frame(SourceId source, std::int64_t frame, ConvertedFrame& out, bool& exact, std::string& error) {
   const FramePtr f = frame_for(source, frame, exact);
+  // Counted like a drawn ref: a bake or a Pixel Motion pair from a stand-in
+  // makes the frame that uses it not final (the frame cache keeps exact frames only).
   if (!f) {
+    ++misses_.skipped;
     error = "frame not decoded";
     return false;
   }
+  if (!exact) ++misses_.approximate;
   const auto a = alpha_.find(source);
   return converter_.convert(*f, a == alpha_.end() ? AlphaMode::straight : a->second, out, error);
 }

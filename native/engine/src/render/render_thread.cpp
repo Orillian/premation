@@ -114,12 +114,26 @@ void RenderThread::submit(RenderJob job) {
     Port& p = *it->second;
     if (p.pending) {
       ++counters_.dropped;  // superseded before it started: the newest frame wins
-      ++p.droppedPending;
+      if (p.pending->playing) ++p.droppedPending;  // a frame of playback lost (an edit's is not)
     }
     p.droppedPending += job.clockDropped;
     p.pending = std::move(job);
   }
   cv_.notify_all();
+}
+
+bool RenderThread::job_pending(std::uint32_t viewport) const {
+  const std::lock_guard<std::mutex> lock(m_);
+  const auto it = ports_.find(viewport);
+  return it != ports_.end() && it->second->pending.has_value();
+}
+
+void RenderThread::note_dropped(std::uint32_t viewport, std::uint32_t skipped, std::uint32_t clockJumped) {
+  const std::lock_guard<std::mutex> lock(m_);
+  const auto it = ports_.find(viewport);
+  if (it == ports_.end()) return;
+  it->second->droppedPending += skipped + clockJumped;
+  counters_.dropped += skipped;
 }
 
 void RenderThread::configure(const ViewportConfig& config) {
@@ -359,12 +373,28 @@ void RenderThread::run(std::promise<std::string>& ready) {
   const auto anyDirty = [this] {
     return std::any_of(ports_.begin(), ports_.end(), [](const auto& e) { return e.second->dirty; });
   };
+  // P7's warm-up is a synchronous pipeline compile: only in true idle time —
+  // never while frames are on the GPU (their announcement would wait behind
+  // it) nor while the transport plays (the next frame would).
+  const auto canWarm = [this] { return inflight_.empty() && !lastJobPlaying_ && drawer_ && drawer_->warm_pending(); };
+  const auto workReady = [this, &anyDirty, &canWarm] {
+    return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr || canWarm();
+  };
   for (;;) {
-    cv_.wait_for(lock, std::chrono::milliseconds(500), [this, &anyDirty] {
-      return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr;
-    });
+    if (!inflight_.empty()) {
+      // P5: frames on the GPU. With nothing else to do, wait for the oldest;
+      // otherwise announce whatever finished and get on with the next frame.
+      const bool idle = !workReady();
+      lock.unlock();
+      (void)complete_frames(idle);
+      lock.lock();
+      if (idle) continue;
+    } else {
+      cv_.wait_for(lock, std::chrono::milliseconds(500), workReady);
+    }
     if (quit_) break;
     if (gpu_->device_lost()) {
+      inflight_.clear();  // their slots are rebuilt with the device (a new generation)
       lock.unlock();
       const bool recovered = recover_device();
       if (!recovered && onFatal_) onFatal_("GPU device lost");
@@ -386,6 +416,10 @@ void RenderThread::run(std::promise<std::string>& ready) {
       lock.lock();
     }
     if (anyDirty()) {
+      // Frames in flight belong to the rings about to be replaced: announce them first.
+      lock.unlock();
+      complete_all();
+      lock.lock();
       const bool shared = shared_;
       const bool copy = copy_;
       for (auto it = ports_.begin(); it != ports_.end();) {
@@ -408,17 +442,30 @@ void RenderThread::run(std::promise<std::string>& ready) {
     if (!tasks_.empty()) {
       // Queries between frames: a still or a pixel read never waits behind a
       // playing viewport for more than the frame in hand.
+      lock.unlock();
+      complete_all();
+      lock.lock();
       run_tasks(lock);
       continue;
     }
     Port* port = next_ready_locked();
-    if (port == nullptr) continue;
+    if (port == nullptr) {
+      // Idle: one step of the drawer's warm-up (P7), then look for work again —
+      // a frame that arrives waits at most one pipeline compile.
+      if (canWarm()) {
+        lock.unlock();
+        (void)drawer_->warm_step();
+        lock.lock();
+      }
+      continue;
+    }
     const std::optional<std::uint32_t> slot = port->ring->acquire();
     if (!slot) continue;  // every slot is with the host: keep the newest job until one returns
     RenderJob job = std::move(*port->pending);
     port->pending.reset();
     job.clockDropped = port->droppedPending;
     port->droppedPending = 0;
+    lastJobPlaying_ = job.playing;
     lastServed_ = port->config.viewport;
     const ViewportConfig config = port->config;
     lock.unlock();
@@ -430,6 +477,8 @@ void RenderThread::run(std::promise<std::string>& ready) {
   // which the core answers as an internal error (the engine is stopping).
   tasks_.clear();
   lock.unlock();
+  if (gpu_ && !gpu_->device_lost()) complete_all();
+  inflight_.clear();
   // Tear down on this thread, which created everything.
   close_gpu();
 }
@@ -649,6 +698,7 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
 #endif
   bool drawn = false;
   if (job.built && drawer_) {
+    drawer_->set_exact_media(job.exactMedia);
     const wgpu::Texture& slotTexture = set.textures[slot];
     std::optional<std::uint64_t> key;
     if (cache_ && set.copyable) key = drawer_->content_key(*job.built, set.width, set.height);
@@ -704,23 +754,19 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
   }
   // Electron's rgba sharedTexture import takes no fence, so a frame is
   // complete on the GPU before its slot is announced (docs/VIEWPORT_ROUTE.md,
-  // implication 6). The ring keeps throughput; this costs latency only.
-  wait_idle(*gpu_);
-  if (gpu_->device_lost()) {
-    // The slot holds nothing: never announced; the loop recovers and draws the job again.
-    ring.unacquire(slot);
-    return;
-  }
-  if (set.copy && !send_copy(set, slot)) {
-    // No pixels, no FrameReady: the host pairs the two and would wait for pixels forever.
-    ring.unacquire(slot);
-    return;
-  }
-  lossesSinceFrame_ = 0;
-  const double doneUs = os::epoch_us();
-  const double gpuMs = std::chrono::duration<double, std::milli>(SteadyClock::now() - t0).count();
-
-  api::FrameReady ready;
+  // implication 6). P5: the render thread does not wait for it here — the
+  // completion is polled (complete_frames), and the next frame's CPU work
+  // (rasters, encoding) runs while this one's GPU work does. Frames are still
+  // announced in submission order, each only once its work is done.
+  (void)ring;
+  InFlight f;
+  f.port = &port;
+  f.generation = set.generation;
+  f.slot = slot;
+  f.copy = set.copy;
+  f.t0 = t0;
+  f.done = gpu_->queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {});
+  api::FrameReady& ready = f.ready;
   ready.generation = set.generation;
   ready.slot = slot;
   ready.viewport = job.viewport;
@@ -729,32 +775,71 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
   ready.time = job.time;
   ready.revision = job.revision;
   ready.render_start_us = startUs;
-  ready.render_done_us = doneUs;
   ready.width = set.width;
   ready.height = set.height;
   // B4 round 2: the overlays' geometry for this frame first (the host pairs it with the FrameReady that follows).
-  if (job.geometrySubscribed && send_) {
-    for (api::FrameGeometry& g : doc::pack_frame_geometry(job.viewport, set.generation, job.frame, job.time, job.revision,
-                                                          std::move(job.geometry), std::move(job.views))) {
-      send_(frames::Message{.v = std::move(g)});
-    }
+  if (job.geometrySubscribed) {
+    f.geometry = doc::pack_frame_geometry(job.viewport, set.generation, job.frame, job.time, job.revision, std::move(job.geometry),
+                                          std::move(job.views));
   }
-  if (send_) send_(frames::Message{.v = ready});
+  inflight_.push_back(std::move(f));
+}
 
-  const std::lock_guard<std::mutex> lock(m_);
-  if (cache_) cacheStats_ = cache_->stats();
-  ++counters_.rendered;
-  ++windowFrames_;
-  windowGpuMs_ += gpuMs;
-  const auto now = SteadyClock::now();
-  const double secs = std::chrono::duration<double>(now - windowStart_).count();
-  if (secs >= 1.0) {
-    counters_.fps = static_cast<double>(windowFrames_) / secs;
-    counters_.gpuFrameMs = windowGpuMs_ / static_cast<double>(std::max<std::uint64_t>(windowFrames_, 1));
-    windowFrames_ = 0;
-    windowGpuMs_ = 0;
-    windowStart_ = now;
+std::size_t RenderThread::complete_frames(bool block) {
+  std::size_t n = 0;
+  while (!inflight_.empty()) {
+    InFlight& f = inflight_.front();
+    const wgpu::WaitStatus st = gpu_->instance.WaitAny(f.done, block && n == 0 ? UINT64_MAX : 0);
+    if (st == wgpu::WaitStatus::TimedOut) break;
+    FrameRing& ring = *f.port->ring;
+    SlotSet* set = f.port->slots.get();
+    const bool sameSet = set != nullptr && set->generation == f.generation;
+    // A failed wait (the device went away under it) never announces the frame.
+    if (st != wgpu::WaitStatus::Success || gpu_->device_lost() || !sameSet) {
+      // The slot holds nothing: never announced; the loop recovers and draws the job again.
+      if (sameSet) ring.unacquire(f.slot);
+      inflight_.pop_front();
+      ++n;
+      continue;
+    }
+    if (f.copy && !send_copy(*set, f.slot)) {
+      // No pixels, no FrameReady: the host pairs the two and would wait for pixels forever.
+      ring.unacquire(f.slot);
+      inflight_.pop_front();
+      ++n;
+      continue;
+    }
+    lossesSinceFrame_ = 0;
+    f.ready.render_done_us = os::epoch_us();
+    const double gpuMs = std::chrono::duration<double, std::milli>(SteadyClock::now() - f.t0).count();
+    if (send_) {
+      for (api::FrameGeometry& g : f.geometry) send_(frames::Message{.v = std::move(g)});
+      send_(frames::Message{.v = f.ready});
+    }
+    {
+      const std::lock_guard<std::mutex> lock(m_);
+      if (cache_) cacheStats_ = cache_->stats();
+      ++counters_.rendered;
+      ++windowFrames_;
+      windowGpuMs_ += gpuMs;
+      const auto now = SteadyClock::now();
+      const double secs = std::chrono::duration<double>(now - windowStart_).count();
+      if (secs >= 1.0) {
+        counters_.fps = static_cast<double>(windowFrames_) / secs;
+        counters_.gpuFrameMs = windowGpuMs_ / static_cast<double>(std::max<std::uint64_t>(windowFrames_, 1));
+        windowFrames_ = 0;
+        windowGpuMs_ = 0;
+        windowStart_ = now;
+      }
+    }
+    inflight_.pop_front();
+    ++n;
   }
+  return n;
+}
+
+void RenderThread::complete_all() {
+  while (!inflight_.empty()) (void)complete_frames(true);
 }
 
 bool RenderThread::send_copy(SlotSet& set, std::uint32_t slot) {

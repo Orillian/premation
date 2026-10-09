@@ -46,7 +46,9 @@ struct EngineFramesOptions {
 [[nodiscard]] std::unique_ptr<MediaClock> make_media_clock(bool useDevice, std::string& error);
 
 /// Every font family the document's text names (component props + rich-text
-/// runs), sorted and unique — registered on a FontSet before measuring.
+/// runs), sorted and unique — registered on a FontSet before measuring — then
+/// the per-character fallback families its text needs, each prefixed with
+/// '\x01' (register it, then FontSet::mark_fallback it).
 [[nodiscard]] std::vector<std::string> document_font_families(const doc::Document& d);
 
 /// F1 export: a composition's audio mixed offline (the same voices the

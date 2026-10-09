@@ -130,8 +130,13 @@ std::size_t Device::end_frame() {
     encoder_ = nullptr;
   }
   constexpr std::uint64_t kMaxIdle = 120;  // ResourceManager default maxIdleFrames
-  return targets_.collect(frame_, kMaxIdle) + textures_.collect(frame_, kMaxIdle) +
-         textureObjects_.collect(frame_, kMaxIdle) + buffers_.collect(frame_, kMaxIdle) +
+  // Content textures (rasters, footage frames) outlive a playback loop while
+  // they fit the budget (P10): a 30 s loop no longer re-uploads every raster
+  // each time round. Anything idle for two minutes (at 30 fps) still goes.
+  constexpr std::uint64_t kLoopIdle = 3600;
+  constexpr std::uint64_t kTextureBudget = std::uint64_t{512} << 20U;
+  const std::size_t textures = textures_.collect_budgeted(frame_, kMaxIdle, kLoopIdle, kTextureBudget);
+  return targets_.collect(frame_, kMaxIdle) + textures + textureObjects_.collect_absent_from(textures_) + buffers_.collect(frame_, kMaxIdle) +
          bindGroups_.collect(frame_, kMaxIdle);
 }
 
