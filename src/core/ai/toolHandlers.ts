@@ -85,9 +85,11 @@ import {
   insertAssetLayer, insertModelPlaceholder, insertSvgMarkupLayer, patchLayerStyle, patchPathOperator, patchTextAnimator,
   pathOperators, textAnimators, patchMask, keyMaskPath, removeMask, type LayerTimingSeconds, type MaskPatch,
 } from './hostWrites';
-import { flicksToSeconds, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
+import { flicksToSeconds, secondsToFlicks, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
 import { mirrorMaskIds } from '@core/mirror/masks';
 import { engine } from '@core/engine/engineInstance';
+import { activeCompRootId } from '@core/scene/activeComp';
+import { colorValueHex } from '@core/mirror/paintFields';
 import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
 import { mirrorStrokes } from '@core/mirror/paintFields';
 
@@ -1008,6 +1010,63 @@ const listFonts: AiTool['handler'] = async (input) => {
   }
   const lines = rows.map(([fam, e]) => `- ${fam} (${[...e.styles].slice(0, 6).join(', ')}${e.styles.size > 6 ? ', …' : ''}) scripts: ${[...e.scripts].slice(0, 10).join(' ')}`);
   return ok(`${families.size} famil${families.size === 1 ? 'y' : 'ies'}${families.size > limit ? ` (first ${limit})` : ''}:\n${lines.join('\n')}`, { families: rows.map(([f]) => f) });
+};
+
+const inspectLayers: AiTool['handler'] = async (input) => {
+  const i = input as { nodeIds?: string[]; t?: number };
+  const m = documentMirror();
+  const comp = activeCompRootId() as string;
+  const ids = (i.nodeIds && i.nodeIds.length > 0 ? i.nodeIds : [...(m.comp(comp)?.layers ?? [])]).slice(0, 60);
+  const unknown = ids.filter((id) => !m.layer(id));
+  if (unknown.length > 0) return fail(`Unknown layer id(s): ${unknown.join(', ')}.`);
+  const seconds = i.t ?? activePlayheadSeconds();
+  const time = secondsToFlicks(seconds);
+  const box = async (includeEffects: boolean): Promise<Map<string, { x: number; y: number; width: number; height: number }>> => {
+    const r = await engine().query({ type: 'getLayerBounds', layers: ids, time, space: 'comp', includeEffects });
+    return new Map(r.ok ? r.value.bounds.map((b) => [b.layer, b.bounds] as const) : []);
+  };
+  const [plain, withFx] = await Promise.all([box(false), box(true)]);
+  const errorsByComp = new Map<string, readonly { layer: string; stage: string; message: string }[]>();
+  const errorsOf = (id: string): string[] => {
+    const c = m.layer(id)?.comp ?? comp;
+    if (!errorsByComp.has(c)) errorsByComp.set(c, m.layerErrors(c));
+    return errorsByComp.get(c)!.filter((e) => e.layer === id).map((e) => `${e.stage}: ${e.message}`);
+  };
+  const compInfo = m.comp(comp)?.settings;
+  const fmt = (b?: { x: number; y: number; width: number; height: number }): string =>
+    b ? `x ${Math.round(b.x)}..${Math.round(b.x + b.width)}, y ${Math.round(b.y)}..${Math.round(b.y + b.height)} (${Math.round(b.width)}×${Math.round(b.height)})` : 'none';
+  const rows: Record<string, unknown>[] = [];
+  const lines: string[] = [];
+  for (const id of ids) {
+    await m.loadTree(id);
+    const info = m.layer(id)!;
+    const kind = kindOf(id) ?? info.kind;
+    const b = plain.get(id);
+    const fx = withFx.get(id);
+    const fill = colorValueHex(m.valueAt(id, 'layer/fill', time) ?? m.property(id, 'layer/fill')?.value);
+    const opacity = m.valueAt(id, 'transform/opacity', time);
+    const row: Record<string, unknown> = { id, name: info.name, kind, bounds: b ?? null, boundsWithEffects: fx ?? null };
+    let line = `- ${id} "${info.name}" (${kind}) bounds ${fmt(b)}`;
+    if (fx && b && (fx.width > b.width + 1 || fx.height > b.height + 1)) line += `, with effects ${fmt(fx)}`;
+    if (b && compInfo && (b.x + b.width <= 0 || b.y + b.height <= 0 || b.x >= compInfo.width || b.y >= compInfo.height)) line += ' — OFF-SCREEN';
+    if (fill) { row.fill = fill; line += `, fill ${fill}`; }
+    if (opacity?.kind === 'scalar') { row.opacity = opacity.value; line += `, opacity ${Math.round(opacity.value)}%`; }
+    if (kind === 'text') {
+      const fam = m.property(id, 'text/fontFamily')?.value;
+      if (fam?.kind === 'string') { row.fontFamily = fam.value; line += `, font "${fam.value}"`; }
+      const t = await engine().query({ type: 'getTextLayout', layer: id, time });
+      if (t.ok) {
+        row.lines = t.value.lines;
+        row.textBox = t.value.box;
+        line += `, ${t.value.lines} line(s)`;
+      }
+    }
+    const errs = errorsOf(id);
+    if (errs.length > 0) { row.problems = errs; line += `\n    PROBLEMS: ${errs.join('; ')}`; }
+    rows.push(row);
+    lines.push(line);
+  }
+  return ok(`At ${seconds.toFixed(2)}s (composition ${compInfo?.width ?? '?'}×${compInfo?.height ?? '?'}):\n${lines.join('\n')}`, { layers: rows });
 };
 
 const listAssets: AiTool['handler'] = async () => {
@@ -2313,6 +2372,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   list_presets: listPresetsHandler,
   list_assets: listAssets,
   list_fonts: listFonts,
+  inspect_layers: inspectLayers,
   create_layer: createLayer,
   create_puppet_rig: createPuppetRig,
   set_puppet_pin_keyframes: setPuppetPinKeyframes,

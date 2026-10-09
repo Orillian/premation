@@ -217,6 +217,25 @@ describe('get_export_status (M4)', () => {
   });
 });
 
+describe('inspect_layers (M5)', () => {
+  it('reports built bounds, fill and an off-screen layer', async () => {
+    const r = await runToolTurn('AI: inspect', [
+      { name: 'create_layer', args: { id: 'q', kind: 'shape', name: 'Quarter', x: 480, y: 270, width: 960, height: 540, fill: '#123456' } },
+      { name: 'create_layer', args: { id: 'o', kind: 'shape', name: 'Gone', x: -800, y: 540, width: 200, height: 200, fill: '#ff0000' } },
+    ]);
+    expect(r.results.every((x) => x.ok)).toBe(true);
+    await settleEdits();
+    const q = idNamed('Quarter');
+    const o = idNamed('Gone');
+    const t = await runToolTurn('AI: inspect run', [{ name: 'inspect_layers', args: { nodeIds: [q, o], t: 0 } }]);
+    expect(t.results[0]!.ok).toBe(true);
+    const text = String(t.results[0]!.content);
+    expect(text).toContain('x 0..960, y 0..540');
+    expect(text).toContain('#123456');
+    expect(text).toMatch(/Gone.*OFF-SCREEN/);
+  });
+});
+
 describe('add_effect params (M3)', () => {
   it('applies initial values and reports unknown keys', async () => {
     const r = await runToolTurn('AI: fx params', [

@@ -87,7 +87,7 @@ Heartbeat: 2026-10-09 15:40 — session "Motion-editor rendering bugs" working (
 - [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
 - [x] I1 · [ ] I2 · [ ] I3 · [ ] I4 · [ ] I5
 - [ ] F1 · [ ] F2 · [ ] F3 · [ ] F4 · [ ] F5
-- [x] M1 · [x] M2 · [x] M3 · [x] M4 · [ ] M5 · [ ] M6 · [ ] M7 · [ ] M8
+- [x] M1 · [x] M2 · [x] M3 · [x] M4 · [x] M5 · [ ] M6 · [ ] M7 · [ ] M8
 
 Notes log (newest first):
 - 2026-10-09: T5 done except `language`, which needs T3 (no engine property yet). Point-text anchoring left as is (existing documents depend on it): align works inside a paragraph box (boxWidth), documented in the tool schema. listFonts is empty under --test-ports by design (deterministic replays).

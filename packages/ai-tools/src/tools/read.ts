@@ -140,6 +140,25 @@ export const listFontsDef: AiToolDef = {
   },
 };
 
+export const inspectLayersDef: AiToolDef = {
+  name: 'inspect_layers',
+  kind: 'read',
+  description:
+    'What the engine actually BUILT at a time, per layer: its rendered bounds in composition px (with and ' +
+    'without effects — a layer meant to cover the frame that only covers a quarter shows here), fill and ' +
+    'opacity as resolved, for text the font requested, its line count and laid-out box, and any problem the ' +
+    'renderer recorded (a missing font that fell back, an effect that failed, a decode that did not open). ' +
+    'Check here after building instead of guessing from a rendered frame.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 60, description: 'Omit for every layer of the active composition (first 60).' },
+      t: { type: 'number', minimum: 0, description: 'Composition seconds. Defaults to the playhead.' },
+    },
+  },
+};
+
 export const READ_TOOL_DEFS: readonly AiToolDef[] = [
   describeSceneDef,
   readTracksDef,
@@ -149,4 +168,5 @@ export const READ_TOOL_DEFS: readonly AiToolDef[] = [
   listPresetsDef,
   listAssetsDef,
   listFontsDef,
+  inspectLayersDef,
 ];

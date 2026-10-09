@@ -206,8 +206,10 @@ describe('the tool surface itself', () => {
     // silently — kanji named in an uninstalled font came out as boxes.
     // 69 → 70: `get_export_status`. export_video was fire-and-forget: nothing
     // could say whether a job ran, failed, waited for a folder, or where it wrote.
-    expect(ALL_TOOL_DEFS).toHaveLength(70);
-    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(10);
+    // 70 → 71: `inspect_layers`. The samurai session found its bugs by rendering
+    // frames and guessing; the built bounds, fills and fallbacks were never readable.
+    expect(ALL_TOOL_DEFS).toHaveLength(71);
+    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(11);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(44);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'compose')).toHaveLength(16);
   });
