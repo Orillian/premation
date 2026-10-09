@@ -248,6 +248,32 @@ describe('program M7: precompose, frame-snapped keys, gradient stops', () => {
     expect(sameFrameKeys(out, 240)).toEqual([]);
   });
 
+  it('F5: brush paint and stroke-only shapes compile to calls the schemas accept', () => {
+    const c = coerceScript({
+      title: 't', intent: 'i', background: '#000', palette: { ink: '#151210' },
+      grid: { columns: 12, gutter: 24, margin: 120, baseline: 8 },
+      beats: [{
+        name: 'Brush', startSec: 2, endSec: 6,
+        layers: [
+          { id: 'canvas', kind: 'shape', name: 'Canvas', props: { x: 960, y: 540, width: 1920, height: 1080, fill: 'none' },
+            paint: [{ points: [[100, 500, 0.2], [500, 520, 1], [900, 500, 0.2]], color: '$ink', size: 48, minSize: 8, reveal: { from: 0.5, to: 1.5 } }] },
+          { id: 'ring', kind: 'shape', shape: 'ellipse', name: 'Ring', props: { width: 300, height: 300, fill: 'none', stroke: '$ink', strokeWidth: 8 },
+            trim: { keys: { end: [[0, 0], [1, 100]] } } },
+        ],
+      }],
+    }, CTX);
+    expect(c.repairs).toEqual([]);
+    const out = compileScript(c.value);
+    const paintCall = calls(out.calls, 'paint_strokes')[0]!;
+    expect(paintCall.args).toMatchObject({ nodeId: 'canvas', strokes: [{ color: '#151210', size: 48, minSize: 8, reveal: { from: 2.5, to: 3.5 } }] });
+    expect(calls(out.calls, 'create_layer').find((x) => x.args.id === 'ring')!.args.fill).toBe('none');
+    const defs = new Map(ALL_TOOL_DEFS.map((d) => [d.name, d]));
+    for (const call of out.calls) {
+      const r = validate(defs.get(call.name)!.inputSchema, call.args);
+      expect({ call: call.name, ok: r.ok, errors: r.ok ? [] : r.errors }).toEqual({ call: call.name, ok: true, errors: [] });
+    }
+  });
+
   it('takes { color } stop objects for their colour and says offsets are ignored', () => {
     const c = coerceScript({
       title: 't', intent: 'i', background: '#000', palette: {},

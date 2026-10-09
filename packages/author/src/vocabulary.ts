@@ -221,6 +221,8 @@ export function vocabularyCard(): string {
     `Easings: ${EASES.join(', ')}. bezier takes [x1,y1,x2,y2]. Ease applies to the segment starting at that key.`,
     `Blend modes: ${BLEND_MODES.join(', ')}.`,
     `Path operators (pathOps[].op): ${PATH_OPS.join(', ')} — amount keyable. trim: start/end/offset %, keyable. repeaters: copies, positionX/Y, rotation, scale, anchorX/Y, startOpacity/endOpacity; copies and offset keyable.`,
+    'A line that draws itself on: a shape with props fill "none", stroke, strokeWidth and a trim whose end keys 0 → 100.',
+    'Brush ink (calligraphy, ink marks): a layer\'s `paint`: [{ points: [[x, y, pressure], …] in layer px from its top-left, pressure 0..1 tapers the tip down to minSize %, color, size px, hardness %, opacity %, reveal: { from, to } in the layer\'s seconds to draw it on }]. Paint on a transparent shape or solid over the scene.',
     `Text animators: basedOn characters|words|lines, shape square|rampUp|rampDown|triangle|round|smooth, numeric ${TEXT_ANIMATOR_FIELDS.join(', ')}, color; sweep {from,to,fromOffset,toOffset,ease} sweeps the range selector.`,
     'Masks: rectangle|ellipse, mode add|subtract|intersect, width, height, feather, opacity 0..1, expansion, inverted.',
     'Track matte: matte { mode alpha|luma|alpha-inv|luma-inv, source: <layer id> }.',

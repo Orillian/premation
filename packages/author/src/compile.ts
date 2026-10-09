@@ -248,6 +248,17 @@ function styleLayer(e: Emitter, script: SceneScript, l: LayerSpec, parentId: str
     for (const [param, list] of Object.entries(pKeys ?? {})) keyItems(id, `pathop.${h}.${param}`, list, offset, keys);
   });
   for (const m of l.masks ?? []) e.push('create_mask', { nodeId: id, ...m });
+  if (l.paint?.length) {
+    e.push('paint_strokes', {
+      nodeId: id,
+      strokes: l.paint.map((s) => ({
+        ...s,
+        ...(s.color !== undefined ? { color: e.colour(s.color) } : {}),
+        // Beat seconds → composition seconds, as keys are.
+        ...(s.reveal ? { reveal: { from: round(offset + s.reveal.from), to: round(offset + s.reveal.to) } } : {}),
+      })),
+    });
+  }
 
   for (const [prop, list] of Object.entries(l.keys ?? {})) keyItems(id, prop, list, offset, keys);
   for (const [prop, expression] of Object.entries(l.expressions ?? {})) {

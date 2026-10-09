@@ -35,6 +35,7 @@ import {
   type LayerKind,
   type LayerSpec,
   type MaskSpec,
+  type PaintSpec,
   type PathOpSpec,
   type PrecomposeSpec,
   type Repair,
@@ -139,6 +140,8 @@ function colour(v: unknown, palette: Readonly<Record<string, string>>, path: str
   const s = str(v);
   if (!s) return undefined;
   if (HEX.test(s)) return s;
+  // No paint at all: a stroke-only shape's fill (create_layer / update_layer take it).
+  if (s === 'none' || s === 'transparent') return 'none';
   if (s.startsWith('$')) {
     if (palette[s.slice(1)] !== undefined) return s;
     r.add(path, `palette has no swatch '${s.slice(1)}' — dropped (define it in palette, or use a hex)`);
@@ -630,6 +633,8 @@ function layers(
     }
     const mk = masks(l0.masks, `${p}.masks`, r);
     if (mk) spec.masks = mk;
+    const pt = paint(l0.paint, header.palette, `${p}.paint`, r);
+    if (pt) spec.paint = pt;
 
     if (kind === 'light' && isObj(l0.light)) {
       const c = colour(l0.light.color, header.palette, `${p}.light.color`, r);
@@ -726,7 +731,7 @@ function layers(
 /** Fields of a layer object that are NOT static props. */
 const LAYER_KEYS = new Set([
   'id', 'kind', 'name', 'parent', 'role', 'inSec', 'outSec', 'shape', 'text', 'typeStyle', 'props', 'matte',
-  'keys', 'expressions', 'effects', 'textAnimators', 'trim', 'repeaters', 'repeater', 'pathOps', 'masks',
+  'keys', 'expressions', 'effects', 'textAnimators', 'trim', 'repeaters', 'repeater', 'pathOps', 'masks', 'paint',
   'light', 'gradient', 'image', 'svg', 'video', 'stack',
 ]);
 
@@ -876,6 +881,32 @@ export function coerceBeat(
   if (!ls.length) r.add(`beats[${beatIndex}]`, 'the beat has no usable layers');
   const pc = precompose(o.precompose, ls, pool, `beats[${beatIndex}].precompose`, r);
   return { value: { ...outline, layers: ls, ...(pc.length ? { precompose: pc } : {}) }, repairs: r.list };
+}
+
+/** A layer's `paint` strokes: finite points (2 or 3 numbers each), the brush fields clamped. */
+function paint(raw: unknown, palette: Readonly<Record<string, string>>, path: string, r: Repairs): PaintSpec[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) { r.add(path, 'paint is a list of { points, … } strokes — dropped'); return undefined; }
+  const out: PaintSpec[] = [];
+  raw.slice(0, 64).forEach((s, i) => {
+    const p = `${path}[${i}]`;
+    if (!isObj(s) || !Array.isArray(s.points)) { r.add(p, 'a stroke needs points: [[x, y], …] — dropped'); return; }
+    const points = (s.points as unknown[])
+      .filter((q): q is unknown[] => Array.isArray(q) && q.length >= 2)
+      .map((q) => q.slice(0, 3).map((v) => num(v)))
+      .filter((q): q is number[] => q.every((v) => v !== undefined))
+      .slice(0, 2000);
+    if (points.length === 0) { r.add(p, 'no usable [x, y] points — dropped'); return; }
+    const c = s.color !== undefined ? colour(s.color, palette, `${p}.color`, r) : undefined;
+    const rev = isObj(s.reveal) ? { from: num(s.reveal.from), to: num(s.reveal.to) } : undefined;
+    out.push({
+      points,
+      ...(c ? { color: c } : {}),
+      ...numberFields(s, ['size', 'hardness', 'opacity', 'minSize']),
+      ...(rev && rev.from !== undefined && rev.to !== undefined && rev.to > rev.from ? { reveal: { from: rev.from, to: rev.to } } : {}),
+    });
+  });
+  return out.length ? out : undefined;
 }
 
 const PRECOMP_PROPS = ['x', 'y', 'scale', 'rotation', 'opacity'] as const;

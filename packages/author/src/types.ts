@@ -236,11 +236,29 @@ export interface LayerSpec {
   repeaters?: RepeaterSpec[];
   pathOps?: PathOpSpec[];
   masks?: MaskSpec[];
+  /** Brush strokes painted on the layer (paint_strokes): ink, calligraphy. */
+  paint?: PaintSpec[];
   light?: LightSpec;
   gradient?: GradientSpec;
   image?: ImageSpec;
   svg?: SvgSpec;
   video?: VideoSpec;
+}
+
+/**
+ * One brush stroke (AE Paint ▸ Brush): points in layer px from the layer's
+ * top-left, a third number per point is pen pressure 0..1 (the taper down to
+ * `minSize` %). `reveal` draws it on between two times (the layer's own seconds,
+ * like its keys).
+ */
+export interface PaintSpec {
+  points: number[][];
+  color?: Colour;
+  size?: number;
+  hardness?: number;
+  opacity?: number;
+  minSize?: number;
+  reveal?: { from: number; to: number };
 }
 
 export interface BeatOutline {
