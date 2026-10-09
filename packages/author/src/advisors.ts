@@ -14,7 +14,7 @@
  */
 
 import { sceneFromCalls } from '@motion/caster';
-import { grid as gridFor, lintDesign, type LintScene } from '@motion/design-system';
+import { grid as gridFor, lintDesign, type LintLayer, type LintScene } from '@motion/design-system';
 import { lintTiming } from '@motion/technique-library';
 import { lintUiMotion } from '@motion/product-motion';
 import type { CompiledScript, SceneScript } from './types';
@@ -84,6 +84,33 @@ function survivorsAt(script: SceneScript, t: number): number {
   return n;
 }
 
+/** Kinds that are never a surface text sits on. */
+const NOT_A_SURFACE = new Set(['text', 'null', 'camera', 'light', 'adjustment', 'audio']);
+
+/**
+ * The surface each text layer sits on: the top-most filled layer created
+ * BEFORE it (the stack is creation order, newest on top) in its own beat or
+ * globally, whose box holds the text's anchor. The title on a paper card was
+ * measured against the composition's base colour — a contrast "failure" the
+ * paper made impossible. Layers keep an `onSurface` they already have.
+ */
+function setSurfaces(layers: LintLayer[], frame: { width: number; height: number }): void {
+  layers.forEach((t, i) => {
+    if (t.kind !== 'text' || t.onSurface) return;
+    for (let j = i - 1; j >= 0; j--) {
+      const s = layers[j]!;
+      if (NOT_A_SURFACE.has(s.kind) || !s.fill || s.isTransition) continue;
+      if (s.group !== undefined && s.group !== t.group) continue;
+      const w = s.width ?? frame.width;
+      const h = s.height ?? frame.height;
+      if (Math.abs(t.x - s.x) <= w / 2 && Math.abs(t.y - s.y) <= h / 2) {
+        t.onSurface = s.fill;
+        return;
+      }
+    }
+  });
+}
+
 /** Run all three linters over a compiled script. Pure. */
 export function adviseScript(script: SceneScript, compiled: CompiledScript, o: AdviseOptions): Advice {
   const findings: AdvisorFinding[] = [];
@@ -111,11 +138,13 @@ export function adviseScript(script: SceneScript, compiled: CompiledScript, o: A
     ...(script.grid.baseline ? { baseline: script.grid.baseline } : {}),
   });
   const background = script.background.startsWith('$') ? script.palette[script.background.slice(1)] ?? '#000000' : script.background || '#000000';
+  const lintLayers = sceneFromCalls(compiled.calls, { width: o.width, height: o.height }, {}, ambient, groupOf);
+  setSurfaces(lintLayers, { width: o.width, height: o.height });
   const scene: LintScene = {
     grid: g,
     background,
     accent: accentOf(script),
-    layers: sceneFromCalls(compiled.calls, { width: o.width, height: o.height }, {}, ambient, groupOf),
+    layers: lintLayers,
   };
   for (const f of lintDesign(scene)) push('design', f);
 

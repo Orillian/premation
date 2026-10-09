@@ -386,6 +386,13 @@ export function lintTiming(scene: TimingLintScene): TimingFinding[] {
       if (a.easing === 'hold' || a.easing === 'step') continue;
       const dt = b.t - a.t;
       if (dt > frameMs * 1.5) continue;
+      // A spike that comes straight back (up, then down to where it started
+      // within three frames) is a FLASH — a deliberate one-frame white-out or
+      // strobe — not a move that pops. Likewise the return half of one.
+      const c = t.keys[i + 1];
+      if (c && c.t - b.t <= frameMs * 3 && Math.abs(c.value - a.value) / range < 0.1) continue;
+      const before = t.keys[i - 2];
+      if (before && a.t - before.t <= frameMs * 3 && Math.abs(b.value - before.value) / range < 0.1) continue;
       if (Math.abs(b.value - a.value) / range > POP_FRACTION) {
         popping.push(`${t.nodeId}.${t.prop}@${b.t.toFixed(0)}ms`);
       }

@@ -172,6 +172,12 @@ export interface LintLayer {
   /** Whether this layer is a frame-wide adjustment/treatment layer. */
   isTreatment?: boolean;
   /**
+   * A full-frame layer whose opacity is animated: a fade to black, a white
+   * flash, a dip — a TRANSITION device, on screen for a moment, not the
+   * backdrop the frame is lit by. FLAT_FILL does not apply to it.
+   */
+  isTransition?: boolean;
+  /**
    * The surface this element actually sits on, when it is not the composition
    * background — a button fill, a card fill.
    *
@@ -207,6 +213,10 @@ const ERROR_RULES: ReadonlySet<DesignRule> = new Set([
 /** Effect types that count as texture. */
 const TEXTURE_EFFECTS: ReadonlySet<string> = new Set([
   'noise', 'fractal-noise', 'gradient-ramp', 'four-color-gradient', 'turbulent-displace',
+  // Grain and vignette are THE surface treatment (add_surface_treatment's own
+  // pair). Leaving them out reported "no grain, vignette or light source" on
+  // compositions that had both.
+  'add-grain', 'vignette', 'noise-hls', 'noise-alpha', 'texturize', 'dust-scratches', 'turbulent-noise',
 ]);
 
 /** Layers that fill (almost) the whole frame. */
@@ -335,9 +345,16 @@ export function lintDesign(scene: LintScene): DesignFinding[] {
   // nothing but light source. Without this, a full-bleed hero — the most
   // ordinary layout in the medium — was reported as the very defect the rule was
   // written to catch.
-  const backdrops = layers.filter((l) => fillsFrame(l, g) && !l.isTreatment && !l.isAsset);
+  const backdrops = layers.filter((l) => fillsFrame(l, g) && !l.isTreatment && !l.isAsset && !l.isTransition);
+  // A texture treatment (grain / vignette on an adjustment layer) textures
+  // every backdrop under it: one in the backdrop's own group, or a global one
+  // (no group), means that backdrop is not a flat fill — a deliberately plain
+  // paper under a grain pass is the craft, not the defect.
+  const treatedGroups = new Set(
+    layers.filter((l) => l.isTreatment && (l.effects ?? []).some((e) => TEXTURE_EFFECTS.has(e))).map((l) => l.group ?? ''),
+  );
   for (const l of backdrops) {
-    const textured = (l.effects ?? []).some((e) => TEXTURE_EFFECTS.has(e));
+    const textured = (l.effects ?? []).some((e) => TEXTURE_EFFECTS.has(e)) || treatedGroups.has('') || treatedGroups.has(l.group ?? '');
     if (!l.hasGradient && !textured) {
       out.push(find('FLAT_FILL', [l.id],
         `'${l.name ?? l.id}' is a flat full-frame fill. Every background needs a light source: ` +

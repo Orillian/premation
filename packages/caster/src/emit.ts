@@ -739,8 +739,21 @@ export function sceneFromCalls(
           // indistinguishable to every rule.
           ...(a.kind === 'light' ? { isLight: true } : {}),
           ...(a.kind === 'particle' ? { isParticle: true } : {}),
+          // An adjustment layer draws nothing of its own: it is a treatment of
+          // what is under it, never a "flat full-frame fill".
+          ...(a.kind === 'adjustment' ? { isTreatment: true } : {}),
           effects: [],
         });
+        break;
+      }
+      case 'set_keyframes': {
+        // A full-frame layer whose opacity is keyed is a fade / flash device
+        // (isTransition), not a backdrop. Marked here; fillsFrame decides later.
+        for (const k of (Array.isArray(a.keyframes) ? a.keyframes : []) as Array<{ nodeId?: unknown; prop?: unknown }>) {
+          if (k.prop !== 'opacity') continue;
+          const l = byId.get(String(k.nodeId ?? ''));
+          if (l) l.isTransition = true;
+        }
         break;
       }
       case 'add_repeater': {
