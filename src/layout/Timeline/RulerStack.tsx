@@ -172,7 +172,7 @@ function RulerImpl({
       <div
         ref={fillRef}
         className={styles.rulerProgressFill}
-        style={fillRef ? { left: leftOffset } : { left: leftOffset, width: progressWidth }}
+        style={fillRef ? { left: leftOffset } : { left: leftOffset, transform: `translateX(${progressWidth}px)` }}
         aria-hidden
       />
 

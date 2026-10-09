@@ -529,11 +529,24 @@
 
 /* The current frame, under the window. */
 .timeNavPlayhead {
+  /* Spans the track; the 2px line is ::before at its left edge, moved by a
+     translateX percentage of this width (BottomTimeline.tsx). */
   position: absolute;
   top: 0;
   bottom: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.timeNavPlayhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
   width: 2px;
-  margin-left: -1px;
   background: var(--color-text-primary);
   opacity: 0.75;
 }

@@ -238,6 +238,12 @@ export interface AnimFacade {
   isValidProp(nodeId: string, prop: string): Promise<boolean>;
   setKeyframe(nodeId: string, prop: string, t: number, value: number, easing?: string): Promise<void>;
   /**
+   * Many keyframes in ONE engine write (one round trip, one change batch) —
+   * same rules as setKeyframe, applied in order. A tracked path of hundreds of
+   * keys written one call at a time cost ~11 ms a key (2026-10-10).
+   */
+  setKeyframes?(keys: readonly { nodeId: string; prop: string; t: number; value: number; easing?: string }[]): Promise<void>;
+  /**
    * Upsert a `points`-kind data keyframe (e.g. a puppet pin's position track,
    * `puppet.<pinId>.position`).
    */

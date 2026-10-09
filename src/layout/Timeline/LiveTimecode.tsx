@@ -36,7 +36,10 @@ export function LiveTimecode({ fps, startFrame = 0, format = 'timecode', classNa
     const el = ref.current;
     if (!el) return;
     const text = formatPlayhead(t, fps, startFrame, format);
-    if (el.textContent !== text) el.textContent = text;
+    // One text node, its value rewritten: `textContent =` replaced the node
+    // every frame (a DOM insertion, a layout and a full repaint, U1).
+    const node = el.firstChild ?? el.appendChild(document.createTextNode(''));
+    if (node.nodeValue !== text) node.nodeValue = text;
   }, [fps, startFrame, format]);
   useLivePlayhead(apply);
   // No children: the text node is this component's, not React's — a React

@@ -739,6 +739,7 @@ const setKeyframes: AiTool['handler'] = async (input, ctx) => {
   const landed = new Map<string, Map<number, { index: number; t: number }>>();
   const merged: Array<{ nodeId: string; prop: string; kept: number; replaced: number; t: number }> = [];
   const mergeNotes: string[] = [];
+  const valid: Array<{ i: number; k: KeyframeInput }> = [];
 
   for (const [i, k] of keyframes.entries()) {
     if (!await ctx.scene.has(k.nodeId)) { bad.push(`keyframes[${i}]: ${(await unknownNode(ctx, k.nodeId))}`); continue; }
@@ -787,11 +788,17 @@ const setKeyframes: AiTool['handler'] = async (input, ctx) => {
       continue;
     }
 
-    // Where the engine will store this key (the frame-snapped layer axis) —
-    // only to spot two requested times collapsing onto one key. The WRITES
-    // below speak composition time; the engine converts the value AND its
-    // easing together, which is the bug this design exists to prevent.
-    const lt = await ctx.time.toLayerTime(k.nodeId, k.t);
+    valid.push({ i, k });
+  }
+
+  // Where the engine will store each key (the frame-snapped layer axis) — only
+  // to spot two requested times collapsing onto one key. The WRITES below
+  // speak composition time; the engine converts the value AND its easing
+  // together, which is the bug this design exists to prevent. Asked all at
+  // once: one query per key in sequence was most of a long track's write time.
+  const layerTimes = await Promise.all(valid.map(({ k }) => ctx.time.toLayerTime(k.nodeId, k.t)));
+  for (const [n, { i, k }] of valid.entries()) {
+    const lt = layerTimes[n]!;
     const trackKey = `${k.nodeId}.${k.prop}`;
     const slots = landed.get(trackKey) ?? new Map<number, { index: number; t: number }>();
     landed.set(trackKey, slots);
@@ -806,12 +813,19 @@ const setKeyframes: AiTool['handler'] = async (input, ctx) => {
       );
     }
     slots.set(lt, { index: i, t: k.t });
-    await ctx.anim.setKeyframe(k.nodeId, k.prop, k.t, k.value, k.easing ?? 'linear');
-    if (k.easing === 'bezier' && k.bezier) {
-      await ctx.anim.setBezier(k.nodeId, k.prop, k.t, k.bezier);
-    }
     touched.add(trackKey);
     applied++;
+  }
+  // The writes: one engine batch when the facade has it (a tracked path is
+  // hundreds of keys), then the bezier handles, which address existing keys.
+  const writes = valid.map(({ k }) => ({ nodeId: k.nodeId, prop: k.prop, t: k.t, value: k.value, easing: k.easing ?? 'linear' }));
+  if (ctx.anim.setKeyframes) {
+    await ctx.anim.setKeyframes(writes);
+  } else {
+    for (const w of writes) await ctx.anim.setKeyframe(w.nodeId, w.prop, w.t, w.value, w.easing);
+  }
+  for (const { k } of valid) {
+    if (k.easing === 'bezier' && k.bezier) await ctx.anim.setBezier(k.nodeId, k.prop, k.t, k.bezier);
   }
 
   // A single keyframe on a property holds a constant — usually a mistake worth

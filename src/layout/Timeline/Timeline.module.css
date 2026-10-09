@@ -220,13 +220,17 @@
  * the leading edge, which is the part that says "here".
  */
 .rulerProgressFill {
+  /* The progress line: a zero-width box whose right border is the mark, moved
+     by transform every frame (a width with a transition was a layout and a
+     repaint per frame, U1). */
   position: absolute;
   top: 0;
   bottom: 0;
+  width: 0;
   background: transparent;
   border-right: 1.5px solid var(--color-primary);
   pointer-events: none;
-  transition: width 0.04s linear;
+  will-change: transform;
 }
 
 .rulerSpacer {
@@ -579,14 +583,27 @@
               filter var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.keyframeGlyph {
-  display: block;
-  width: 12px;
+/* A row's glyphs: ONE svg on the row's centre line (KeyframeLayer.tsx — an
+   svg per diamond made each its own paint chunk, re-layerized every frame). */
+.keyframeGlyphs {
+  /* A 12px band on the row's centre line (a zero-height svg is not painted). */
+  position: absolute;
+  left: 0;
+  top: calc(50% - 6px);
+  width: 100%;
   height: 12px;
   overflow: visible;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.keyframeGlyph path {
+.kfGlyph {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.kfGlyph path {
   fill: var(--color-timeline-keyframe);
   stroke: var(--color-timeline-keyframe-stroke);
   stroke-width: 1;
@@ -620,10 +637,10 @@
    `data-interp` names the OUT segment's family; the fill follows it so a row of
    diamonds reads as its curve at a glance. Tokens: TIMELINE-KF-TOKENS in
    domain.css. Hover / selection / drag states below override the fill. */
-.keyframe[data-interp='linear'] .keyframeGlyph path { fill: var(--color-timeline-kf-linear); }
-.keyframe[data-interp='bezier'] .keyframeGlyph path { fill: var(--color-timeline-kf-bezier); }
-.keyframe[data-interp='auto'] .keyframeGlyph path   { fill: var(--color-timeline-kf-auto); }
-.keyframe[data-interp='hold'] .keyframeGlyph path   { fill: var(--color-timeline-kf-hold); }
+.kfGlyph[data-interp='linear'] path { fill: var(--color-timeline-kf-linear); }
+.kfGlyph[data-interp='bezier'] path { fill: var(--color-timeline-kf-bezier); }
+.kfGlyph[data-interp='auto'] path   { fill: var(--color-timeline-kf-auto); }
+.kfGlyph[data-interp='hold'] path   { fill: var(--color-timeline-kf-hold); }
 
 /* A hold keyframe's TAIL — the flat stretch until the next key. A short bar
    to the right of the glyph, in the hold colour, so a hold is legible even
@@ -653,7 +670,12 @@
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-primary) 70%, transparent));
 }
 
-.keyframe:hover .keyframeGlyph path {
+.kfGlyphHover {
+  transform: scale(1.25);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-primary) 70%, transparent));
+}
+
+.kfGlyphHover path {
   fill: var(--color-primary);
   stroke: var(--color-timeline-keyframe-stroke-active);
 }
@@ -664,7 +686,11 @@
   z-index: 4;
 }
 
-.keyframeDragging .keyframeGlyph path {
+.kfGlyphDragging {
+  transform: scale(1.35);
+}
+
+.kfGlyphDragging path {
   fill: var(--color-primary);
   stroke: var(--color-timeline-keyframe-stroke-active);
 }
@@ -678,7 +704,11 @@
   cursor: grab;
 }
 
-.keyframeSelected .keyframeGlyph path {
+.kfGlyphSelected {
+  transform: scale(1.2);
+}
+
+.kfGlyphSelected path {
   fill: var(--color-primary);
   /* A 2px RING in the selection colour, not just a fill change — a selected
      linear key and an unselected bezier one used to be the same blue. */

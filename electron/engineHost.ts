@@ -228,6 +228,39 @@ export class FrameForwarder {
   setReceiverReady(ready: boolean, copyReady: boolean = ready, key = 0): void {
     this.receivers.set(key, { ready, copyReady });
     if (!copyReady) this.releaseCopiesInPage(key);
+    if (!ready) this.abandonTransfers(key);
+  }
+
+  /**
+   * A window's page went away (reload, navigation, crash): the shared-texture
+   * transfers to it may never settle — a reload during one left that viewport
+   * waiting on it for good ("Waiting for the C++ engine's first frame"), and
+   * main's reference held the engine's slot. Each is abandoned: main lets go
+   * of the texture (the slot is freed once the dead page's reference goes),
+   * the frame waiting behind it is released, and the late settle is ignored.
+   */
+  private abandonTransfers(key: number): void {
+    for (const [viewport, v] of this.views) {
+      if (this.owner(viewport) !== key || !v.inFlight) continue;
+      v.transfer += 1;
+      v.inFlight = false;
+      const imported = v.inFlightImport;
+      v.inFlightImport = null;
+      try {
+        imported?.release();
+      } catch (e) {
+        this.fail(e);
+      }
+      if (v.waiting) {
+        this.dropFrame(v.waiting);
+        v.waiting = null;
+      }
+      if (v.retirePending) {
+        v.retirePending = false;
+        v.held.clear();
+        this.handles.retire(this.liveGenerations());
+      }
+    }
   }
 
   /** A window closed: its receivers and its copied frames go. */
@@ -278,7 +311,7 @@ export class FrameForwarder {
   private view(viewport: number): ViewState {
     let v = this.views.get(viewport);
     if (!v) {
-      v = { rings: new Map(), held: new Set(), inFlight: false, retirePending: false, waiting: null, geometry: null };
+      v = { rings: new Map(), held: new Set(), inFlight: false, transfer: 0, inFlightImport: null, retirePending: false, waiting: null, geometry: null };
       this.views.set(viewport, v);
     }
     return v;
@@ -417,6 +450,7 @@ export class FrameForwarder {
       };
     })();
     v.inFlight = true;
+    const transfer = ++v.transfer;
     let imported: { release(): void };
     try {
       imported = st.importSharedTexture({
@@ -431,6 +465,7 @@ export class FrameForwarder {
       releaseOnce();
       return;
     }
+    v.inFlightImport = imported;
     const meta = this.meta(f, 'shared');
     st.sendSharedTexture({ frame: target, importedSharedTexture: imported }, meta)
       .then(() => {
@@ -440,6 +475,10 @@ export class FrameForwarder {
         this.fail(e);
       })
       .finally(() => {
+        // Abandoned by a page reset: main's reference already went, and the
+        // viewport has moved on to the new page.
+        if (transfer !== v.transfer) return;
+        v.inFlightImport = null;
         // Main's reference goes; the slot is freed once the page's goes too
         // (allReferencesReleased). A failed send leaves only ours: this frees it.
         try {
@@ -535,6 +574,10 @@ interface ViewState {
   held: Set<number>;
   /** A shared-texture transfer of this viewport is in flight. */
   inFlight: boolean;
+  /** Which transfer is in flight (a page reset abandons it: the dead page's late settle is ignored). */
+  transfer: number;
+  /** Main's reference to the texture in flight (released at once when the transfer is abandoned). */
+  inFlightImport: { release(): void } | null;
   /** A newer ring arrived while a transfer was in flight: retire the older ones when it ends. */
   retirePending: boolean;
   /** Route C: the newest frame that arrived during the transfer in flight; forwarded when it ends. */

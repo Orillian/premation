@@ -138,9 +138,13 @@ function useClientLeft(ref: RefObject<HTMLElement | null>, key: unknown): { left
 
 const ROW_HEIGHT_LABEL: Record<number, string> = { 28: 'Compact', 36: 'Normal', 46: 'Tall' };
 
-/** The navigator playhead's CSS `left`, as a percentage of the comp. */
-function navPlayheadLeft(time: number, duration: number): string {
-  return `${Math.min(100, Math.max(0, (time / (duration || 1)) * 100))}%`;
+/**
+ * The navigator playhead's position as a `transform`: the element spans the
+ * whole track, so a translate percentage IS a percentage of the comp — moved
+ * every frame without a layout (a `left` was one per frame, U1).
+ */
+function navPlayheadTransform(time: number, duration: number): string {
+  return `translateX(${Math.min(100, Math.max(0, (time / (duration || 1)) * 100))}%)`;
 }
 
 /**
@@ -268,7 +272,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
   navDurationRef.current = props.model.duration;
   useLivePlayhead((t) => {
     const el = navPlayheadRef.current;
-    if (el) el.style.left = navPlayheadLeft(t, navDurationRef.current);
+    if (el) el.style.transform = navPlayheadTransform(t, navDurationRef.current);
   }, !!ws);
 
   const proportionalScrub = usePropertySelectionStore((s) => s.proportional);
@@ -833,7 +837,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                 className={styles.timeNavPlayhead}
                 // With a tab, `left` is the live subscription's (below) — a
                 // React-managed value would be the throttled one.
-                style={ws ? undefined : { left: navPlayheadLeft(playheadTime, props.model.duration) }}
+                style={ws ? undefined : { transform: navPlayheadTransform(playheadTime, props.model.duration) }}
               />
               <div
                 className={styles.timeNavigatorWindow}

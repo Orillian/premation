@@ -2156,7 +2156,7 @@ function Timeline({
       line.setAttribute('aria-valuetext', `${t.toFixed(2)} seconds`);
     }
     if (stickyPlayheadRef.current) stickyPlayheadRef.current.style.transform = transform;
-    if (rulerFillRef.current) rulerFillRef.current.style.width = `${rulerProgressWidth(t, dur, p)}px`;
+    if (rulerFillRef.current) rulerFillRef.current.style.transform = `translateX(${rulerProgressWidth(t, dur, p)}px)`;
     followTo(t);
   }, livePlayhead);
 

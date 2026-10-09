@@ -48,6 +48,7 @@ import {
   type Command,
   type CommandResult,
   type Easing,
+  type KeyframeInsert,
   type LayerKind,
   type PropRef,
   type PropertyInfo,
@@ -632,7 +633,7 @@ async function trackExpressionOf(nodeId: string, prop: string): Promise<{ source
 }
 
 export function createAnimFacade(session: AiEngineSession = freeSession()): AnimFacade {
-  return {
+  const anim: AnimFacade = {
     isValidProp: async (_nodeId, prop) => isAnimatableProp(prop),
 
     setKeyframe: async (nodeId, rawProp, t, value, easing) => {
@@ -663,6 +664,41 @@ export function createAnimFacade(session: AiEngineSession = freeSession()): Anim
       const w = prop === 'scale' ? uniformScaleKey(nodeId, value, t) : memberKey(nodeId, prop, value, t);
       if (!w) throw new AiEngineError('unsupported', `set_keyframes ${prop}: ${LEGACY_GAPS.perMemberKey}`);
       await session.apply([{ type: 'addKeyframes', keys: [{ prop: w.prop, time: secondsToFlicks(t), value: w.value, ...(easing ? { easing: easing as Easing } : {}), spatialIn: [], spatialOut: [] }] } as Command]);
+    },
+
+    setKeyframes: async (keys) => {
+      // Every directly addressable key in one addKeyframes (a separate-dimensions
+      // switch first where a member needs it); the rest — a member of an
+      // unseparated value — one at a time, as setKeyframe writes them.
+      const adds: KeyframeInsert[] = [];
+      const pre: Command[] = [];
+      const separated = new Set<string>();
+      const slow: typeof keys[number][] = [];
+      for (const k of keys) {
+        await treeOf(k.nodeId);
+        const prop = await effectTrackOf(k.nodeId, k.prop);
+        if (!Number.isFinite(k.value)) throw new AiEngineError('invalidArgument', `keyframe value for '${prop}' is not a finite number`);
+        if (k.easing !== undefined && !ENGINE_EASINGS.has(k.easing)) throw new AiEngineError('invalidArgument', `unknown easing '${k.easing}' for '${prop}'`);
+        const target = keyTargetFor(k.nodeId, prop);
+        if (!target) {
+          slow.push(k);
+          continue;
+        }
+        if (!keyAddressable(k.nodeId, prop, target) && !separated.has(k.nodeId)) {
+          separated.add(k.nodeId);
+          pre.push(separateDimensionsCommand(k.nodeId));
+        }
+        adds.push({
+          prop: target.ref,
+          time: secondsToFlicks(k.t),
+          value: { kind: 'scalar', value: k.value * apiUnitFactor(target.member) },
+          ...(k.easing ? { easing: k.easing as Easing } : {}),
+          spatialIn: [],
+          spatialOut: [],
+        });
+      }
+      if (adds.length > 0) await session.apply([...pre, { type: 'addKeyframes', keys: adds } as Command]);
+      for (const k of slow) await anim.setKeyframe(k.nodeId, k.prop, k.t, k.value, k.easing);
     },
 
     setPointsKeyframe: async (nodeId, prop, t, points) => {
@@ -789,6 +825,7 @@ export function createAnimFacade(session: AiEngineSession = freeSession()): Anim
     },
     listPresets: async () => listPresets().map((p) => p.name),
   };
+  return anim;
 }
 
 function compView(): CompSettingsView {

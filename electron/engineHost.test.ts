@@ -137,6 +137,31 @@ describe('FrameForwarder', () => {
     expect(released).toEqual([]);
   });
 
+  it('a page reload during a transfer does not freeze the viewport: the new page gets the next frame', async () => {
+    // Found 2026-10-10 in the real app: a reload while a frame was in transfer
+    // left that viewport "Waiting for the C++ engine's first frame" for good —
+    // the dead page never settled the send, so the transfer stayed in flight
+    // and every later frame waited behind it.
+    const { fw, released, sends, imports } = setup();
+    fw.setReceiverReady(true);
+    fw.onFrame(slots(1));
+    fw.onFrame(ready(1, 0));
+    expect(imports).toHaveLength(1);
+    fw.setReceiverReady(false);          // pageReset (did-start-loading)
+    fw.setReceiverReady(true);           // the reloaded page's receiver
+    fw.onFrame(ready(1, 1));
+    expect(imports).toHaveLength(2);     // forwarded, not stuck behind the dead transfer
+    // The dead page's send settling late changes nothing for the new one.
+    sends[0]!.reject(new Error('frame gone'));
+    await new Promise((r) => setTimeout(r, 0));
+    fw.onFrame(ready(1, 2));             // the new transfer is still in flight: this one waits
+    expect(imports).toHaveLength(2);
+    sends[1]!.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(imports).toHaveLength(3);
+    expect(released).toEqual([]);
+  });
+
   it('a frame waiting on a ring that was replaced is released, not shown', async () => {
     const { fw, sends, released } = setup();
     fw.setReceiverReady(true);

@@ -246,6 +246,11 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Its size is the flex column's, never its content's: a property value
+     refreshing during playback (10 Hz) re-lays out and repaints only this
+     panel. Without it each refresh relaid the page and cost a second display
+     frame (rAF p95 26.7 -> 13.6 ms with a keyed layer selected, U1). */
+  contain: strict;
 }
 
 .inspectorExtras {
