@@ -794,6 +794,54 @@ export const createMaskDef: AiToolDef = {
       opacity: { type: 'number', minimum: 0, maximum: 1, description: 'Mask strength, 0..1. Default 1.' },
       expansion: { type: 'number', description: 'Grow (+) or shrink (−) the shape in px.' },
       inverted: { type: 'boolean', description: 'Clip to the OUTSIDE of the shape instead of the inside.' },
+      x: { type: 'number', description: 'Mask centre offset from the layer centre, layer px (+ right). Default 0.' },
+      y: { type: 'number', description: 'Mask centre offset from the layer centre, layer px (+ down). Default 0.' },
+    },
+  },
+};
+
+const MASK_SHAPE_PROPS = {
+  shape: { type: 'string', enum: ['rectangle', 'ellipse'] },
+  width: { type: 'number', minimum: 1, description: 'Layer px. Defaults to the layer width.' },
+  height: { type: 'number', minimum: 1, description: 'Layer px. Defaults to the layer height.' },
+  x: { type: 'number', description: 'Centre offset from the layer centre, layer px (+ right).' },
+  y: { type: 'number', description: 'Centre offset from the layer centre, layer px (+ down).' },
+} as const;
+
+export const updateMaskDef: AiToolDef = {
+  name: 'update_mask',
+  kind: 'write',
+  description:
+    'Change, animate or delete a mask create_mask made (maskId from its result). Pass shape (with width / height / ' +
+    'x / y) to replace the outline, feather / opacity / expansion / mode / inverted to restyle it, keys for an ' +
+    'animated Mask Path (a reveal that grows, a window that slides — each key is a whole outline at comp ' +
+    'seconds t), or remove: true to delete it.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nodeId', 'maskId'],
+    properties: {
+      nodeId: { type: 'string' },
+      maskId: { type: 'string' },
+      remove: { type: 'boolean' },
+      ...MASK_SHAPE_PROPS,
+      mode: { type: 'string', enum: ['none', 'add', 'subtract', 'intersect', 'lighten', 'darken', 'difference'] },
+      feather: { type: 'number', minimum: 0 },
+      opacity: { type: 'number', minimum: 0, maximum: 1 },
+      expansion: { type: 'number' },
+      inverted: { type: 'boolean' },
+      keys: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        description: 'Mask Path keyframes. Each key\'s shape / size / offset fall back to the call\'s, then the layer box.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['t'],
+          properties: { t: { type: 'number', minimum: 0 }, ...MASK_SHAPE_PROPS },
+        },
+      },
     },
   },
 };
@@ -1181,6 +1229,7 @@ export const WRITE_TOOL_DEFS: readonly AiToolDef[] = [
   createMediaDef,
   createMediaFromAttachmentDef,
   createMaskDef,
+  updateMaskDef,
   updateCompositionDef,
   applyPresetDef,
   createPuppetRigDef,

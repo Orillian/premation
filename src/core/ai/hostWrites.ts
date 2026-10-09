@@ -319,6 +319,52 @@ export async function addMaskFromPath(session: AiEngineSession, layer: string, m
   return id;
 }
 
+/** update_mask's static changes to one mask (`masks/<id>/…`; opacity stored 0..1). */
+export interface MaskPatch {
+  path?: BezierPath;
+  feather?: number;
+  opacity?: number;
+  expansion?: number;
+  mode?: string;
+  inverted?: boolean;
+}
+
+/** Write `patch` onto mask `maskId` of `layer` as ONE command (a keyed path gets its value at the playhead). */
+export async function patchMask(session: AiEngineSession, layer: string, maskId: string, patch: MaskPatch): Promise<void> {
+  const writes: PropertyWrite[] = [];
+  const time = secondsToFlicks(activePlayheadSeconds());
+  if (patch.path) writes.push({ prop: { layer, path: `masks/${maskId}/path` }, value: { kind: 'path', value: patch.path }, time });
+  if (patch.mode !== undefined) {
+    if (!API_MASK_MODES.has(patch.mode)) refuse('update_mask', [`mode ${patch.mode}`]);
+    writes.push({ prop: { layer, path: `masks/${maskId}/mode` }, value: { kind: 'choice', value: patch.mode } });
+  }
+  if (patch.inverted !== undefined) writes.push({ prop: { layer, path: `masks/${maskId}/inverted` }, value: { kind: 'bool', value: patch.inverted } });
+  const nums: Record<string, number> = {};
+  if (patch.feather !== undefined) nums[`mask.${maskId}.feather`] = patch.feather;
+  if (patch.opacity !== undefined) nums[`mask.${maskId}.opacity`] = patch.opacity;
+  if (patch.expansion !== undefined) nums[`mask.${maskId}.expansion`] = patch.expansion;
+  if (Object.keys(nums).length > 0) {
+    const w = await memberWritesNow(layer, nums);
+    if (!w) refuse('update_mask', Object.keys(nums));
+    writes.push(...w);
+  }
+  if (writes.length > 0) await session.apply([setProps(writes)]);
+}
+
+/** Mask Path keys: one per entry, at comp seconds `t` (AE Mask Path keyframes — a mask that moves or morphs). */
+export async function keyMaskPath(session: AiEngineSession, layer: string, maskId: string, keys: ReadonlyArray<{ t: number; path: BezierPath }>): Promise<void> {
+  if (keys.length === 0) return;
+  await session.apply([{
+    type: 'addKeyframes',
+    keys: keys.map((k) => ({ prop: { layer, path: `masks/${maskId}/path` }, time: secondsToFlicks(k.t), value: { kind: 'path', value: k.path }, spatialIn: [], spatialOut: [] })),
+  } as Command]);
+}
+
+/** Delete one mask (its property group). */
+export async function removeMask(session: AiEngineSession, layer: string, maskId: string): Promise<void> {
+  await session.apply([{ type: 'removePropertyGroups', groups: [{ layer, path: `masks/${maskId}` }] } as Command]);
+}
+
 // ── Inserts laid into fragments (media, SVG) ──────────────────────────
 
 /**

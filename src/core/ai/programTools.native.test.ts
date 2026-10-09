@@ -108,6 +108,41 @@ describe('reorder_layer (M1)', () => {
   });
 });
 
+describe('masks (M2)', () => {
+  it('creates an offset mask, restyles it, animates its path, deletes it', async () => {
+    const r = await runToolTurn('AI: mask', [
+      { name: 'create_layer', args: { id: 'm', kind: 'shape', name: 'Masked', width: 400, height: 400, fill: '#ffffff' } },
+      { name: 'create_mask', args: { nodeId: 'm', shape: 'ellipse', width: 100, height: 100, x: 50, y: -20 } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    const maskId = (r.results[1]!.data as { maskId: string }).maskId;
+    await settleEdits();
+    const layer = idNamed('Masked');
+    const path = (await value(layer, `masks/${maskId}/path`)) as { vertices: number[] };
+    const xs = path.vertices.filter((_, i) => i % 2 === 0);
+    const ys = path.vertices.filter((_, i) => i % 2 === 1);
+    expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(50, 3);
+    expect((Math.min(...ys) + Math.max(...ys)) / 2).toBeCloseTo(-20, 3);
+
+    const u = await runToolTurn('AI: mask edit', [
+      { name: 'update_mask', args: { nodeId: layer, maskId, feather: 12, inverted: true, mode: 'subtract' } },
+      { name: 'update_mask', args: { nodeId: layer, maskId, shape: 'rectangle', keys: [{ t: 0, width: 10, height: 10 }, { t: 2, width: 300, height: 300, x: 20 }] } },
+    ]);
+    expect(u.results.map((x) => (x.ok ? 'ok' : x.content))).toEqual(['ok', 'ok']);
+    await settleEdits();
+    expect(await value(layer, `masks/${maskId}/feather`)).toBe(12);
+    expect(await value(layer, `masks/${maskId}/inverted`)).toBe(true);
+    expect(await value(layer, `masks/${maskId}/mode`)).toBe('subtract');
+    const keys = (await h.query({ type: 'getKeyframes', props: [{ layer, path: `masks/${maskId}/path` }] } as never)) as { sets: { keyframes: unknown[] }[] };
+    expect(keys.sets[0]!.keyframes).toHaveLength(2);
+
+    const d = await runToolTurn('AI: mask rm', [{ name: 'update_mask', args: { nodeId: layer, maskId, remove: true } }]);
+    expect(d.results[0]!.ok).toBe(true);
+    const gone = await runToolTurn('AI: mask rm2', [{ name: 'update_mask', args: { nodeId: layer, maskId, feather: 1 } }]);
+    expect(gone.results[0]!.ok).toBe(false);
+  });
+});
+
 describe('add_effect params (M3)', () => {
   it('applies initial values and reports unknown keys', async () => {
     const r = await runToolTurn('AI: fx params', [

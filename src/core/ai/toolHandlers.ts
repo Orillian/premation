@@ -38,7 +38,7 @@ import { layerBox, layerInfo, puppetPins } from './mirrorReads';
 import { pathOpPropPath, type PathOp } from '@core/scene/pathOps';
 
 import { defaultPolystar } from '@core/scene/polystar';
-import { rectangleMask, ellipseMask, type MaskMode } from '@core/effects/mask';
+import { rectangleMask, ellipseMask, type MaskMode, type MaskPath } from '@core/effects/mask';
 import { refreshAfterLegacy } from './toolContext';
 import { useAssetStore, type ImportedAsset } from '@stores/assetStore';
 import { useAiProviderStore } from '@stores/aiProviderStore';
@@ -82,9 +82,10 @@ import { maskToBezier } from '@core/engine/props';
 import {
   addMaskFromPath, addPathOperator, addTextAnimatorGroup, applyLayerTiming, convertSvgLayer, ensurePathOperator, importAssetBytes,
   insertAssetLayer, insertModelPlaceholder, insertSvgMarkupLayer, patchLayerStyle, patchPathOperator, patchTextAnimator,
-  pathOperators, textAnimators, type LayerTimingSeconds,
+  pathOperators, textAnimators, patchMask, keyMaskPath, removeMask, type LayerTimingSeconds, type MaskPatch,
 } from './hostWrites';
-import { flicksToSeconds, type Command, type PropertyWrite } from '@motion/engine-api';
+import { flicksToSeconds, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
+import { mirrorMaskIds } from '@core/mirror/masks';
 import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
 import { mirrorStrokes } from '@core/mirror/paintFields';
 
@@ -1394,6 +1395,8 @@ const createMask: AiTool['handler'] = async (input, ctx) => {
     opacity?: number;
     expansion?: number;
     inverted?: boolean;
+    x?: number;
+    y?: number;
   };
   if (!await ctx.scene.has(i.nodeId)) return fail((await unknownNode(ctx, i.nodeId)));
 
@@ -1403,7 +1406,7 @@ const createMask: AiTool['handler'] = async (input, ctx) => {
   const w = i.width ?? (box.width !== undefined && box.width > 0 ? box.width : 200);
   const h = i.height ?? (box.height !== undefined && box.height > 0 ? box.height : 200);
 
-  const path = i.shape === 'ellipse' ? ellipseMask(w, h) : rectangleMask(w, h);
+  const path = maskPathFor(i.shape, w, h, i.x ?? 0, i.y ?? 0);
   if (i.mode) path.mode = i.mode;
   if (i.feather !== undefined) path.feather = i.feather;
   if (i.opacity !== undefined) path.opacity = i.opacity;
@@ -1417,6 +1420,55 @@ const createMask: AiTool['handler'] = async (input, ctx) => {
       `with maskId '${maskId}'. It clips the layer to the ${path.inverted ? 'outside' : 'inside'} of the shape.`,
     { maskId },
   );
+};
+
+/** A rectangle / ellipse mask outline `w × h`, centred `(x, y)` from the layer centre (layer px). */
+function maskPathFor(shape: 'rectangle' | 'ellipse', w: number, h: number, x: number, y: number): MaskPath {
+  const path = shape === 'ellipse' ? ellipseMask(w, h) : rectangleMask(w, h);
+  if (x !== 0 || y !== 0) {
+    path.points = path.points.map((p) => ({ ...p, x: p.x + x, y: p.y + y, inX: p.inX + x, inY: p.inY + y, outX: p.outX + x, outY: p.outY + y }));
+  }
+  return path;
+}
+
+interface MaskShapeArgs { shape?: 'rectangle' | 'ellipse'; width?: number; height?: number; x?: number; y?: number }
+
+const updateMask: AiTool['handler'] = async (input, ctx) => {
+  const i = input as MaskShapeArgs & {
+    nodeId: string; maskId: string; remove?: boolean; mode?: string; feather?: number; opacity?: number;
+    expansion?: number; inverted?: boolean; keys?: Array<MaskShapeArgs & { t: number }>;
+  };
+  if (!await ctx.scene.has(i.nodeId)) return fail(await unknownNode(ctx, i.nodeId));
+  await documentMirror().loadTree(i.nodeId);
+  const masks = mirrorMaskIds(documentMirror().tree(i.nodeId));
+  if (!masks.includes(i.maskId)) {
+    return fail(`'${i.nodeId}' has no mask '${i.maskId}'. Its masks: ${masks.join(', ') || '(none — create_mask first)'}.`);
+  }
+  if (i.remove) {
+    await removeMask(ctx.engine, i.nodeId, i.maskId);
+    return ok(`Deleted mask '${i.maskId}' from ${i.nodeId}.`);
+  }
+  const box = await layerBox(i.nodeId);
+  const outline = (a: MaskShapeArgs): BezierPath => {
+    const shape = a.shape ?? i.shape ?? 'rectangle';
+    const w = a.width ?? i.width ?? (box.width !== undefined && box.width > 0 ? box.width : 200);
+    const h = a.height ?? i.height ?? (box.height !== undefined && box.height > 0 ? box.height : 200);
+    return maskToBezier(maskPathFor(shape, w, h, a.x ?? i.x ?? 0, a.y ?? i.y ?? 0));
+  };
+  const reshaped = i.shape !== undefined || i.width !== undefined || i.height !== undefined || i.x !== undefined || i.y !== undefined;
+  const done: string[] = [];
+  const patch: MaskPatch = {};
+  if (reshaped && !i.keys) { patch.path = outline({}); done.push('outline'); }
+  for (const k of ['feather', 'opacity', 'expansion', 'mode', 'inverted'] as const) {
+    if (i[k] !== undefined) { (patch as Record<string, unknown>)[k] = i[k]; done.push(k); }
+  }
+  await patchMask(ctx.engine, i.nodeId, i.maskId, patch);
+  if (i.keys) {
+    await keyMaskPath(ctx.engine, i.nodeId, i.maskId, i.keys.map((k) => ({ t: k.t, path: outline(k) })));
+    done.push(`${i.keys.length} Mask Path key(s) at ${i.keys.map((k) => `${k.t}s`).join(', ')}`);
+  }
+  if (done.length === 0) return fail('Nothing to change — pass a shape / size / offset, a style field, keys, or remove: true.');
+  return ok(`Updated mask '${i.maskId}' on ${i.nodeId}: ${done.join(', ')}.`);
 };
 
 // ── Write: comp + presets ─────────────────────────────────────────
@@ -2156,7 +2208,7 @@ export const ENGINE_ROUTED_TOOLS: ReadonlySet<string> = new Set([
   'create_puppet_rig', 'set_puppet_pin_keyframes', 'pose_skeleton',
   // B5 finish: text animators, masks, media, SVG, path operators, rigs, layer
   // styles, gradients and the compose recipes.
-  'text_animator', 'create_mask', 'create_media', 'create_media_from_attachment', 'generate_image',
+  'text_animator', 'create_mask', 'update_mask', 'create_media', 'create_media_from_attachment', 'generate_image',
   'generate_video', 'generate_speech', 'generate_3d_model', 'import_svg', 'set_trim_path', 'add_repeater',
   'add_path_operator', 'create_skeleton_rig', 'apply_layer_style', 'recolor_lottie_vector', 'create_gradient',
   'add_surface_treatment', 'define_style', 'add_background', 'add_title', 'add_emblem', 'add_cards', 'stagger_in',
@@ -2212,6 +2264,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   analyse_audio: analyseAudioTool,
   create_media_from_attachment: createMediaFromAttachment,
   create_mask: createMask,
+  update_mask: updateMask,
   update_composition: updateComposition,
   apply_preset: applyPreset,
   define_style: defineStyle,
