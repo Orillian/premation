@@ -245,6 +245,8 @@ struct RenderCounters {
   std::uint64_t dropped = 0;     // ring full or superseded before rendering
   double gpuFrameMs = 0;         // mean over the last second
   double fps = 0;                // delivered frames per second, last second
+  double decodeMs = 0;           // the slowest footage source's decode time per frame (EMA)
+  std::uint64_t vramBytes = 0;   // render graph targets + textures, converted footage, the frame cache
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.

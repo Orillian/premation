@@ -1,5 +1,6 @@
 #include "media_textures.hpp"
 
+#include <algorithm>
 #include <charconv>
 
 namespace premation::media {
@@ -69,16 +70,30 @@ MediaTextures::~MediaTextures() = default;
 void MediaTextures::set_alpha(SourceId source, AlphaMode alpha) { alpha_[source] = alpha; }
 
 MediaTextures::Misses MediaTextures::take_misses() noexcept {
-  const Misses m = misses_;
+  Misses m = std::move(misses_);
   misses_ = {};
   return m;
 }
 
+bool MediaTextures::settled(const std::vector<std::pair<SourceId, std::int64_t>>& wanted) {
+  return std::ranges::all_of(wanted, [this](const auto& w) { return media_.settled(w.first, w.second); });
+}
+
 FramePtr MediaTextures::frame_for(SourceId src, std::int64_t frame, bool& exact) {
   exact = true;
-  if (mode_ == Mode::exact) return media_.wait(src, frame, Lane::exact, timeout_);
-  if (FramePtr f = media_.request(src, frame, Lane::latest)) return f;
+  if (mode_ == Mode::exact) {
+    FramePtr f = media_.wait(src, frame, Lane::exact, timeout_);
+    if (!f) misses_.wanted.emplace_back(src, frame);
+    return f;
+  }
+  if (mode_ == Mode::settle) {
+    // Paused: the latest lane (a newer seek supersedes this one), a short wait.
+    if (FramePtr f = media_.wait(src, frame, Lane::latest, timeout_)) return f;
+  } else if (FramePtr f = media_.request(src, frame, Lane::latest)) {
+    return f;
+  }
   exact = false;
+  misses_.wanted.emplace_back(src, frame);
   return media_.nearest(src, frame);
 }
 
@@ -107,11 +122,17 @@ bool MediaTextures::convert_frame(SourceId source, std::int64_t frame, Converted
   return converter_.convert(*f, a == alpha_.end() ? AlphaMode::straight : a->second, out, error);
 }
 
-void MediaTextures::touch(std::list<Entry>::iterator it) { lru_.splice(lru_.begin(), lru_, it); }
+void MediaTextures::touch(std::list<Entry>::iterator it) {
+  it->used = frame_;
+  lru_.splice(lru_.begin(), lru_, it);
+}
 
 void MediaTextures::trim() {
-  while (lru_.size() > capacity_) {
+  while (lru_.size() > 1 && (lru_.size() > capacity_ || bytes_ > budget_)) {
     Entry& last = lru_.back();
+    // Least recently used first: when even it is drawn this frame, so is everything — keep them.
+    if (frame_ != 0 && last.used == frame_) break;
+    bytes_ -= std::min(bytes_, last.bytes);
     converter_.recycle(std::move(last.tex));
     byHash_.erase(last.hash);
     lru_.pop_back();
@@ -146,7 +167,7 @@ rg::TexRef MediaTextures::external_texture(std::string_view hash) {
     return {e.tex.view, e.id, e.tex.width, e.tex.height, false};
   }
   if (it == byHash_.end()) {
-    lru_.push_front(Entry{std::string(hash), {}, 0, -1, false});
+    lru_.push_front(Entry{std::string(hash), {}, 0, -1, false, frame_, 0});
     it = byHash_.emplace(lru_.front().hash, lru_.begin()).first;
   } else {
     touch(it->second);
@@ -180,11 +201,17 @@ rg::TexRef MediaTextures::external_texture(std::string_view hash) {
   if (!ok) {
     ++misses_.skipped;
     const auto node = it->second;
+    bytes_ -= std::min(bytes_, e.bytes);
     converter_.recycle(std::move(e.tex));
     byHash_.erase(it);
     lru_.erase(node);
     return {};
   }
+  // RGBA16F (FrameConverter's output): 8 bytes a texel.
+  bytes_ -= std::min(bytes_, e.bytes);
+  e.bytes = std::uint64_t{e.tex.width} * e.tex.height * 8U;
+  bytes_ += e.bytes;
+  e.used = frame_;
   e.heldFrame = a->index;
   e.exact = exact;
   if (!exact) ++misses_.approximate;

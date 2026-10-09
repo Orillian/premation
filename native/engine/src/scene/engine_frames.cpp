@@ -807,8 +807,9 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     // is playing and has footage": decode that keeps up makes exact frames
     // while playing, and an exact-mode wait that timed out does not.
 #if defined(PREMATION_HAVE_MEDIA)
-    const media::MediaTextures::Misses m = mediaTex_->take_misses();
+    media::MediaTextures::Misses m = mediaTex_->take_misses();
     exact_ = m.approximate == 0 && m.skipped == 0;
+    wants_ = std::move(m.wanted);
 #else
     exact_ = true;
 #endif
@@ -816,6 +817,38 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   }
 
   void set_exact_media(bool exact) override { exactMedia_ = exact; }
+
+  [[nodiscard]] render::MediaWants take_media_wants() override {
+    render::MediaWants out;
+#if defined(PREMATION_HAVE_MEDIA)
+    out.reserve(wants_.size());
+    for (const auto& [src, frame] : wants_) out.emplace_back(src, frame);
+    wants_.clear();
+#endif
+    return out;
+  }
+  [[nodiscard]] std::uint64_t vram_bytes() override {
+    std::uint64_t b = renderer_->device().stats().gpuBytes;
+#if defined(PREMATION_HAVE_MEDIA)
+    b += mediaTex_->held_bytes();
+#endif
+    return b;
+  }
+  [[nodiscard]] double decode_ms() const override {
+#if defined(PREMATION_HAVE_MEDIA)
+    return media_->slowest_ms_per_frame();
+#else
+    return 0;
+#endif
+  }
+  [[nodiscard]] bool media_settled(const render::MediaWants& wants) override {
+#if defined(PREMATION_HAVE_MEDIA)
+    return std::ranges::all_of(wants, [this](const auto& w) { return media_->settled(w.first, w.second); });
+#else
+    (void)wants;
+    return true;
+#endif
+  }
 
   // P7: compile the document's effect pipelines while the render thread idles.
   [[nodiscard]] bool warm_pending() const override { return !warmQueue_.empty(); }
@@ -837,7 +870,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
 
   bool draw_still(BuiltFrame& frame, std::uint32_t width, std::uint32_t height, StillImage& out,
                   std::string& error) override {
-    const api::RenderFrameFile& file = prepare(frame, width, height);
+    const api::RenderFrameFile& file = prepare(frame, width, height, true);
     rg::Frame px;
     rg::FrameStats st;
     if (!renderer_->render(file, &px, st, error)) return false;
@@ -873,7 +906,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     // may have shown a frame-cache copy, or a still was drawn since — and
     // telling would cost a content key on every viewport draw. A pixel read
     // is a click or a hover (the UI throttles it), not a per-frame cost.
-    const api::RenderFrameFile& file = prepare(frame, width, height);
+    const api::RenderFrameFile& file = prepare(frame, width, height, true);
     rg::FrameStats st;
     if (!renderer_->render(file, nullptr, st, error)) return false;
     rg::TargetPixels scene;
@@ -922,7 +955,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
  private:
   /// The frame's file as it draws into width × height, with its texture feed
   /// prepared (rasters, footage) — what every draw of it starts from.
-  const api::RenderFrameFile& prepare(BuiltFrame& frame, std::uint32_t width, std::uint32_t height) {
+  const api::RenderFrameFile& prepare(BuiltFrame& frame, std::uint32_t width, std::uint32_t height, bool still = false) {
     // New families: the FontSet grows between frames (never while rasterising),
     // and cached rasters drawn without the face are dropped.
     bool added = false;
@@ -936,10 +969,20 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
       textures_->set_media_base(utf8_path(mediaBase_));
     }
 #if defined(PREMATION_HAVE_MEDIA)
-    // Paused: the exact frame (short wait); playing: never block, nearest frame.
-    // Cache Work Area (exactMedia_) waits for the exact frame too, still reading ahead.
-    mediaTex_->set_mode(frame.playing && !exactMedia_ ? media::MediaTextures::Mode::preview : media::MediaTextures::Mode::exact);
-    mediaTex_->set_exact_timeout(std::chrono::milliseconds(250));
+    // Playing: never block, nearest frame. Cache Work Area (exactMedia_) and
+    // stills wait for the exact frame. Paused: a short wait on the latest lane
+    // (a scrub supersedes its stale decodes), then the nearest frame — and the
+    // render thread draws again once the exact one is decoded (take_media_wants).
+    mediaTex_->begin_frame();
+    if (frame.playing && !exactMedia_) {
+      mediaTex_->set_mode(media::MediaTextures::Mode::preview);
+    } else if (exactMedia_ || still) {
+      mediaTex_->set_mode(media::MediaTextures::Mode::exact);
+      mediaTex_->set_exact_timeout(std::chrono::milliseconds(250));
+    } else {
+      mediaTex_->set_mode(media::MediaTextures::Mode::settle);
+      mediaTex_->set_exact_timeout(std::chrono::milliseconds(60));
+    }
 #endif
     textures_->set_playing(frame.playing);
     textures_->set_color_managed(frame.file.view.color_management.has_value());
@@ -982,6 +1025,9 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   mutable wire::Writer keyWriter_;
   bool exact_ = false;
   bool exactMedia_ = false;  // RenderJob::exactMedia of the job being drawn
+#if defined(PREMATION_HAVE_MEDIA)
+  std::vector<std::pair<media::SourceId, std::int64_t>> wants_;  // the last draw's stand-in footage frames
+#endif
   std::set<std::string> warmSeen_;      // P7: effect types queued (or warmed) once
   std::deque<std::string> warmQueue_;   // P7: still to compile, while idle
   std::string mediaBase_;    // the texture feed's (BuiltFrame::mediaBase)

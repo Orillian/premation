@@ -500,9 +500,14 @@ export function createSceneFacade(session: AiEngineSession = freeSession()): Sce
       const effect = (await layerEffects(nodeId)).find((e) => e.id === effectId);
       const key = effect ? primaryParamKey(effect.type as EffectType) : undefined;
       if (!effect || !key) return;
+      // The write is addressed through the layer's property tree: a layer the
+      // page never opened (made in the timeline, by a script, an import) has
+      // none loaded yet, and every effect write on it was refused.
+      await documentMirror().loadTree(nodeId);
       await engineOnly(session, `${LEGACY_GAPS.effectParam}: ${effect.type}.${key}`, effectParamCommand(nodeId, effectId, key, amount, playheadSeconds()), () => undefined);
     },
     updateEffectParam: async (nodeId, effectId, key, value) => {
+      await documentMirror().loadTree(nodeId);
       await engineOnly(session, `${LEGACY_GAPS.effectParam}: ${key}`, effectParamCommand(nodeId, effectId, key, value, playheadSeconds()), () => undefined);
     },
     listEffects: async (nodeId) => layerEffects(nodeId),

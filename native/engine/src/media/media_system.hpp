@@ -113,6 +113,10 @@ class MediaSystem {
 
   [[nodiscard]] FramePtr cached(SourceId id, std::int64_t frame);
   [[nodiscard]] FramePtr nearest(SourceId id, std::int64_t frame) const;
+  /// Whether `frame` (clamped to the source, as requests are) is decoded — or
+  /// never will be (the source failed or is gone): a paused viewport drawn
+  /// from a stand-in redraws once this holds (render_thread retry).
+  [[nodiscard]] bool settled(SourceId id, std::int64_t frame);
   /// The frame if cached; else schedules it (latest lane: replaces the previous latest request).
   FramePtr request(SourceId id, std::int64_t frame, Lane lane = Lane::latest);
   /// Request and block until it is decoded, fails, or `timeout` passes (then nullptr).
@@ -121,6 +125,9 @@ class MediaSystem {
   void playhead(SourceId id, std::int64_t frame, int direction);
 
   [[nodiscard]] SourceStats stats(SourceId id) const;
+  /// The slowest open source's decode time per frame (its EMA), ms — what the
+  /// render stats report as `decodeMs` (0: nothing decoded yet).
+  [[nodiscard]] double slowest_ms_per_frame() const;
   [[nodiscard]] CacheStats cache_stats() const { return cache_.stats(); }
   [[nodiscard]] FrameCache& cache() noexcept { return cache_; }
   [[nodiscard]] const MediaConfig& config() const noexcept { return config_; }

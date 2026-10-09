@@ -321,8 +321,17 @@ ConvertedFrame FrameConverter::target(std::uint32_t w, std::uint32_t h) {
 
 void FrameConverter::recycle(ConvertedFrame&& f) {
   if (f.texture == nullptr) return;
-  if (free_.size() >= 8) free_.erase(free_.begin());
+  // At most 8 spare targets and 256 MB of them (RGBA16F: 8 bytes a texel) —
+  // eight spare 4K frames were another half gigabyte of VRAM.
+  constexpr std::uint64_t kFreeBudget = std::uint64_t{256} << 20U;
+  const auto bytesOf = [](const ConvertedFrame& c) { return std::uint64_t{c.width} * c.height * 8U; };
   free_.push_back(std::move(f));
+  std::uint64_t total = 0;
+  for (const ConvertedFrame& c : free_) total += bytesOf(c);
+  while (free_.size() > 1 && (free_.size() > 8 || total > kFreeBudget)) {
+    total -= bytesOf(free_.front());
+    free_.erase(free_.begin());
+  }
 }
 
 void FrameConverter::run_pass(bool floatPlanes, const std::array<wgpu::TextureView, 4>& planes,

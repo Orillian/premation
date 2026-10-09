@@ -377,8 +377,20 @@ void RenderThread::run(std::promise<std::string>& ready) {
   // never while frames are on the GPU (their announcement would wait behind
   // it) nor while the transport plays (the next frame would).
   const auto canWarm = [this] { return inflight_.empty() && !lastJobPlaying_ && drawer_ && drawer_->warm_pending(); };
-  const auto workReady = [this, &anyDirty, &canWarm] {
-    return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr || canWarm();
+  // Paused footage still decoding (Port::settling): the earliest poll, if any.
+  const auto nextSettle = [this]() -> std::optional<SteadyClock::time_point> {
+    std::optional<SteadyClock::time_point> at;
+    for (const auto& [id, p] : ports_) {
+      if (!p->settling.empty() && !p->pending && (!at || p->settleAt < *at)) at = p->settleAt;
+    }
+    return at;
+  };
+  const auto settleDue = [&nextSettle] {
+    const auto at = nextSettle();
+    return at && *at <= SteadyClock::now();
+  };
+  const auto workReady = [this, &anyDirty, &canWarm, &settleDue] {
+    return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr || canWarm() || settleDue();
   };
   for (;;) {
     if (!inflight_.empty()) {
@@ -390,7 +402,10 @@ void RenderThread::run(std::promise<std::string>& ready) {
       lock.lock();
       if (idle) continue;
     } else {
-      cv_.wait_for(lock, std::chrono::milliseconds(500), workReady);
+      // Sleep until work, or the next settle poll (paused footage still decoding).
+      auto until = SteadyClock::now() + std::chrono::milliseconds(500);
+      if (const auto at = nextSettle(); at && *at < until) until = *at;
+      cv_.wait_until(lock, until, workReady);
     }
     if (quit_) break;
     if (gpu_->device_lost()) {
@@ -447,6 +462,22 @@ void RenderThread::run(std::promise<std::string>& ready) {
       lock.lock();
       run_tasks(lock);
       continue;
+    }
+    if (settleDue()) {
+      // Poll the footage each due port waits on; once decoded, its last job again.
+      for (auto& [id, p] : ports_) {
+        if (p->settling.empty() || p->pending || p->settleAt > SteadyClock::now()) continue;
+        ++p->settleTries;
+        if (!p->lastJob || !p->config.open) {
+          p->settling.clear();
+        } else if (drawer_ && drawer_->media_settled(p->settling)) {
+          p->settling.clear();
+          p->pending = *p->lastJob;
+          p->pending->clockDropped = 0;
+        } else {
+          p->settleAt = SteadyClock::now() + kSettlePoll;
+        }
+      }
     }
     Port* port = next_ready_locked();
     if (port == nullptr) {
@@ -726,6 +757,17 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
       }
     }
     if (drawn && !job.onion.empty() && compositor_) composite_onion(job, set.views[slot], set.width, set.height);
+    // A paused frame whose footage came from a stand-in: wait for the decode, then draw it again.
+    MediaWants wants = drawer_->take_media_wants();
+    if (job.playing || job.exactMedia || wants.empty()) {
+      port.settling.clear();
+      port.settleTries = 0;
+    } else if (port.settleTries < kMaxSettleTries) {
+      port.settling = std::move(wants);
+      port.settleAt = SteadyClock::now() + kSettlePoll;
+    } else {
+      port.settling.clear();
+    }
   }
   if (!drawn) {
     // C2's quads (a built frame that failed to draw has none: the slot clears to black).
@@ -779,8 +821,12 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
   ready.height = set.height;
   // B4 round 2: the overlays' geometry for this frame first (the host pairs it with the FrameReady that follows).
   if (job.geometrySubscribed) {
-    f.geometry = doc::pack_frame_geometry(job.viewport, set.generation, job.frame, job.time, job.revision, std::move(job.geometry),
-                                          std::move(job.views));
+    // A job drawn again once its footage settles announces its geometry again: keep it.
+    f.geometry = port.settling.empty()
+                     ? doc::pack_frame_geometry(job.viewport, set.generation, job.frame, job.time, job.revision,
+                                                std::move(job.geometry), std::move(job.views))
+                     : doc::pack_frame_geometry(job.viewport, set.generation, job.frame, job.time, job.revision, job.geometry,
+                                                job.views);
   }
   inflight_.push_back(std::move(f));
 }
@@ -825,6 +871,8 @@ std::size_t RenderThread::complete_frames(bool block) {
       const auto now = SteadyClock::now();
       const double secs = std::chrono::duration<double>(now - windowStart_).count();
       if (secs >= 1.0) {
+        if (drawer_) counters_.decodeMs = drawer_->decode_ms();
+        counters_.vramBytes = (drawer_ ? drawer_->vram_bytes() : 0) + cacheStats_.bytes;
         counters_.fps = static_cast<double>(windowFrames_) / secs;
         counters_.gpuFrameMs = windowGpuMs_ / static_cast<double>(std::max<std::uint64_t>(windowFrames_, 1));
         windowFrames_ = 0;

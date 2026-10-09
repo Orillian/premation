@@ -1694,6 +1694,8 @@ void Session::emit_stats(Clock::time_point now) {
   st.gpu_frame_ms = c.gpuFrameMs;
   st.cpu_frame_ms = buildMs_;
   st.fps = c.fps;
+  st.decode_ms = c.decodeMs;
+  st.vram_bytes = c.vramBytes;
   st.dropped_frames = c.dropped + clockDropped_;
   // What the viewport frame cache holds (VRAM; the HUD's cache row and getCacheCoverage agree).
   st.ram_cache_bytes = sink_.cache_coverage().ramBytes;

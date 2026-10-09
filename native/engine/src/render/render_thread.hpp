@@ -47,6 +47,10 @@ namespace premation::render {
 /// on the render thread only, on the render thread's device; implemented in
 /// engine_frames (scene/engine_frames.cpp) so this library stays free of the
 /// render graph, the rasters and the media code.
+/// Footage frames a draw wanted but drew from a stand-in (or skipped): (media
+/// source, frame). Opaque to the render thread — the drawer reads them back.
+using MediaWants = std::vector<std::pair<std::uint32_t, std::int64_t>>;
+
 class BuiltFrameDrawer {
  public:
   BuiltFrameDrawer() = default;
@@ -76,6 +80,15 @@ class BuiltFrameDrawer {
   /// P7: idle work (pipeline warm-up) — whether there is some, and one step of it.
   [[nodiscard]] virtual bool warm_pending() const { return false; }
   virtual bool warm_step() { return false; }
+  /// The footage frames the last draw wanted but did not have (a paused
+  /// viewport's seek still decoding) — taken, so the next draw starts empty.
+  [[nodiscard]] virtual MediaWants take_media_wants() { return {}; }
+  /// Whether every frame in `wants` is decoded now (or never will be).
+  [[nodiscard]] virtual bool media_settled(const MediaWants& /*wants*/) { return true; }
+  /// The slowest footage source's decode time per frame, ms (render stats `decodeMs`).
+  [[nodiscard]] virtual double decode_ms() const { return 0; }
+  /// GPU memory the drawer holds (render graph targets and textures, converted footage), bytes.
+  [[nodiscard]] virtual std::uint64_t vram_bytes() { return 0; }
 
   /// getThumbnail: draw `frame` offscreen at width × height and encode it
   /// (StillImage). False (with `error`) when it cannot.
@@ -170,7 +183,15 @@ class RenderThread final : public FrameSink {
     std::unique_ptr<SlotSet> slots;
     /// The job drawn last, drawn again on a recovered device (and read by readPixels).
     std::optional<RenderJob> lastJob;
+    /// Paused footage drawn from a stand-in: the frames still decoding. The
+    /// last job is drawn again once they are (polled every kSettlePoll), so a
+    /// seek always ends on its exact frame — AE's "the frame resolves".
+    MediaWants settling;
+    std::chrono::steady_clock::time_point settleAt{};
+    std::uint32_t settleTries = 0;
   };
+  static constexpr std::chrono::milliseconds kSettlePoll{12};
+  static constexpr std::uint32_t kMaxSettleTries = 2500;  // ~30 s of polling, then the stand-in stays
   static constexpr std::uint32_t kMaxDeviceRecoveries = 3;
   void run(std::promise<std::string>& ready);
   /// Device, compositor, drawer and frame cache; "" or why not.

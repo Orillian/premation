@@ -161,6 +161,17 @@ FramePtr MediaSystem::cached(SourceId id, std::int64_t frame) { return cache_.ge
 
 FramePtr MediaSystem::nearest(SourceId id, std::int64_t frame) const { return cache_.nearest(id, frame); }
 
+bool MediaSystem::settled(SourceId id, std::int64_t frame) {
+  const auto s = find(id);
+  if (!s) return true;
+  {
+    const std::scoped_lock lock(s->mu);
+    if (s->failed || s->closing) return true;
+    if (s->index) frame = s->index->clamp(frame);
+  }
+  return cache_.contains(id, frame);
+}
+
 FramePtr MediaSystem::request(SourceId id, std::int64_t frame, Lane lane) {
   if (FramePtr hit = cache_.get(id, frame)) return hit;
   const auto s = find(id);
@@ -211,6 +222,21 @@ void MediaSystem::playhead(SourceId id, std::int64_t frame, int direction) {
     s->direction = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
   }
   s->wake.notify_one();
+}
+
+double MediaSystem::slowest_ms_per_frame() const {
+  std::vector<std::shared_ptr<Source>> all;
+  {
+    const std::scoped_lock lock(mu_);
+    all.reserve(sources_.size());
+    for (const auto& [id, s] : sources_) all.push_back(s);
+  }
+  double ms = 0;
+  for (const auto& s : all) {
+    const std::scoped_lock lock(s->mu);
+    ms = std::max(ms, s->stats.msPerFrame);
+  }
+  return ms;
 }
 
 SourceStats MediaSystem::stats(SourceId id) const {
