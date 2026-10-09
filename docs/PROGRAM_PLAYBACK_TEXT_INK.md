@@ -32,6 +32,7 @@ the owner says so). Evidence for every item: the two audits in this session
 | P6 | Cheaper content key: hash the frame once at build (core thread, in the worker), no re-encode on the render thread; prepare stops copying the file | per-frame CPU on render thread down (bench) |
 | P7 | Pipeline warm-up: compile every material pipeline the document uses at open / on first sight, async (CreateRenderPipelineAsync) | no first-appearance hitch (frame-time spike) in a bench that introduces an effect mid-play |
 | P8 | Per-layer effect-chain cache: a GPU-routed layer whose content + effect params are unchanged reuses its chain output (layer-space key; transform-only animation reuses) | bench: static glowing layer moving = one chain run; goldens identical |
+| P8b | Transform-only reuse of a layer's chain: chains run in layer space (AE), so a layer that only moves keeps its result | bench: a glowing title sliding = one chain run; goldens identical; frames identical to a fresh render |
 | P9 | Play falls back to cache-first on a comp that cannot play in real time (or idle background caching), so the second loop is a blit | after one pass, loop 2 has zero drops on heavyScene |
 | P10 | Device texture pool idle limit scales with the play range (no re-upload every loop > 4 s) | loop 2 uploads 0 textures |
 | P11 | HUD / layerErrors report a layer that fell to the CPU bake (and why) | snapshot test |
@@ -81,15 +82,23 @@ the owner says so). Evidence for every item: the two audits in this session
 
 ## Progress
 
-Heartbeat: 2026-10-09 19:04 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
+Heartbeat: 2026-10-10 02:32 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
 
-- [x] P0 · [ ] P1 · [x] P2 · [ ] P3 · [ ] P4 · [ ] P5 · [ ] P6 · [ ] P7 · [ ] P8 · [ ] P9 · [ ] P10 · [ ] P11
-- [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
-- [x] I1 · [x] I2 · [ ] I3 · [ ] I4 · [ ] I5
-- [ ] F1 · [ ] F2 · [ ] F3 · [x] F4 · [ ] F5
-- [x] M1 · [x] M2 · [x] M3 · [x] M4 · [x] M5 · [ ] M6 · [x] M7 · [ ] M8
+- [x] P0 · [x] P1 · [x] P2 · [x] P3 · [ ] P4 · [x] P5 · [x] P6 · [x] P7 · [x] P8 · [ ] P8b · [x] P9 · [x] P10 · [x] P11
+- [x] T1 · [ ] T2 · [x] T3 · [x] T4 · [x] T5
+- [x] I1 · [x] I2 · [x] I3 · [x] I4 · [x] I5
+- [x] F1 · [x] F2 · [x] F3 · [x] F4 · [x] F5
+- [x] M1 · [x] M2 · [x] M3 · [x] M4 · [x] M5 · [x] M6 · [x] M7 · [x] M8
 
 Notes log (newest first):
+- 2026-10-10: the native batch is committed (see `git log`). Gates on the final build: ctest 16/16; native golden 335/345 (baseline count; two ceilings raised by the I5 dither — every changed value exactly 1/255); native jest 197 suites / 1719 tests; `bench:check` 0 regressions; typecheck + lint clean. Parity fixtures re-blessed: effect_chain / effect_kernel (roughen rows only, I3), d1_eval + undo (`getPropertyTree` / `getDocument` probes of text layers: the new `language` field; the ink effects in catalog listings).
+  Bench, pre-program engine → now: heavyScene Full 14–17.5 → 31 fps (GPU 57–71 → 10 ms/frame; the baseline engine also predates P0's grow bounds, which carry part of this); heavy3d first pass 19–29 → 28–29 fps, dropped 26–250 → 6–12 (part of the old count was paused edits carried into the first played frame — fixed: only a superseded PLAYING job is a drop, RenderJob::playing); heavy3d cached pass render p50 2.2–3.1 → 0.4–0.5 ms (P6); P7 bench (effects first appearing at 1 s) in-point frame 180–218 → 10–11 ms.
+  P4 measured, not built: during heavy playback a UI query waits p50 0.55–0.7 ms, p95 3.2–3.9 ms, worst ≤ 9.5 ms against a 3.4–3.6 ms frame build (P3 already keeps the core to one build per drawn frame). A build worker needs the frame builder, the expression cache and the plugin host off the core thread — a determinism risk for ≤ one build of latency. Recommend leaving it unless a heavier comp shows builds of tens of ms.
+  P8 caches a layer's chain while its input, parameters and the renderer's switches are unchanged (stored once its key held two frames, pixel-exact — nearest copies in the chain target's own format); a layer that only moves still runs its chain (screen-space chains): that is P8b.
+  P6's hash moved ~1–2 ms from the render thread to the core thread's build (cpuFrameMs 2.3 → 3.5); the render thread is the playback pace, the core has headroom.
+  Found on the way: every export / auto-reframe failed on a document whose font is not installed (the T4 `font` advisory and P11's `cpu-effects` were counted as frame failures) — export_job skips advisories, cliPrepare test now uses an uninstalled family. P7's synchronous compiles had run while frames were in flight and during playback (1.1 s hitches) — warm-up only in true idle now. A ninja deps log truncated by a stopped build made every build a full rebuild ("premature end of file; recovering"): delete native/build/<preset>/.ninja_deps once.
+  T2 waits for the owner: scripts/fetchFonts.cjs downloads the OFL fonts (needs an explicit OK); the wiring (resources/fonts, PREMATION_FONTS_MANIFEST, electron-builder) is committed with an empty manifest.
+- 2026-10-09 (evening): (superseded by the 2026-10-10 note — committed) native batch in the tree, needs one full build + gates before commit: P1 (video frames reach the frame cache), P3 (back-pressure), M6-engine (looped audio voices), T1/T4 (per-character OS fallback, font layer error), T2 wiring (resources/fonts, fetchFonts.cjs NOT run — downloading the fonts needs the owner's OK), T3 (script language), I3 (Roughen Edges edge band; re-bless effect_kernel_parity / effect_chain_parity roughen rows with PARITY_REBLESS=1), I4 (adjustment bounds), I5 (output dither), F1-F3 (ink-bleed / paper / ink-splatter shaders + catalog), P7 (pipeline warm-up), P9 (auto cache fill at the wrap), P10 (texture budget), P11 (cpu-effects layer error). Tests: src/core/engine/{videoCacheFill,fontFallback,inkEffects}.native.test.ts (PREMATION_GPU_TESTS=1), test_session.cpp [p3] [p9]. Build trap: the dev app holds native/build/windows-clang-cl-engine/engine/premation-engine.exe — rename it to *.in-use-<ts>.exe before linking; CMAKE_BUILD_PARALLEL_LEVEL=6 (higher ran the machine out of memory).
 - 2026-10-09: I2 was not an engine bug: Write-on's brush position is centre-relative by design (range ±4000, default 0 = centre; the .aep importer converts), and per-dab size needs Brush Time Properties = Size, as in AE. Fixed by telling the model (EFFECT_AI_NOTES in add_effect / list_capabilities) + a GPU test of position and taper.
 - 2026-10-09: T5 done except `language`, which needs T3 (no engine property yet). Point-text anchoring left as is (existing documents depend on it): align works inside a paragraph box (boxWidth), documented in the tool schema. listFonts is empty under --test-ports by design (deterministic replays).
 - 2026-10-09: P0 landed by the peer session (3d7148d9, 77361ddd, b41d210b): ctest 16/16, native golden 335/345, native jest 200 suites, bench:check clean.
