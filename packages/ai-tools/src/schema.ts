@@ -63,6 +63,11 @@ export function validate(schema: JsonSchema, value: unknown, path = ''): ValidRe
           }
         }
       }
+      if (schema.additionalProperties === true) {
+        // An open map (e.g. add_effect `params`): undeclared keys pass through
+        // as they are — the handler checks them against what it knows.
+        for (const [key, v] of Object.entries(src)) if (!(key in props)) out[key] = v;
+      }
       for (const [key, sub] of Object.entries(props)) {
         const child = src[key];
         if (child === undefined) {

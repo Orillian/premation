@@ -812,8 +812,8 @@ const setLayerTiming: AiTool['handler'] = async (input, ctx) => {
 // ── Write: effects + text ─────────────────────────────────────────
 
 const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
-  const { nodeId, type, amount, id: wantedId } = input as {
-    nodeId: string; type: string; amount?: number; id?: string;
+  const { nodeId, type, amount, id: wantedId, params: initial } = input as {
+    nodeId: string; type: string; amount?: number; id?: string; params?: Record<string, unknown>;
   };
   if (!await ctx.scene.has(nodeId)) return fail((await unknownNode(ctx, nodeId)));
   const id = await ctx.scene.addEffect(nodeId, type, wantedId);
@@ -824,10 +824,25 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
   // just successfully added as having no parameters — and the model would then
   // have no key to keyframe.
   const d = effectDefFor(type);
+  // Initial values: the same write update_effect_param makes, one per key.
+  const set: string[] = [];
+  const unknown: string[] = [];
+  for (const [key, value] of Object.entries(initial ?? {})) {
+    const known = d ? d.params.some((p) => p.key === key) : true;
+    if (!known || !(typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')) {
+      unknown.push(key);
+      continue;
+    }
+    await ctx.scene.updateEffectParam(nodeId, id, key, value);
+    set.push(`${key}=${String(value)}`);
+  }
   const primary = d?.params.find((p) => p.type === 'number');
   const params = d?.params.map((p) => p.key).join(', ') ?? '';
   return ok(
-    `Added ${type} to ${nodeId} with effectId '${id}'. Params: ${params}.` +
+    `Added ${type} to ${nodeId} with effectId '${id}'.` +
+      (set.length ? ` Set ${set.join(', ')}.` : '') +
+      (unknown.length ? ` NOT set (unknown key or non-scalar value): ${unknown.join(', ')}.` : '') +
+      ` Params: ${params}.` +
       (primary
         ? ` ${primary.key} ranges ${primary.min}..${primary.max}${primary.unit ? ` ${primary.unit}` : ''}.`
         : '') +

@@ -87,7 +87,7 @@ Heartbeat: 2026-10-09 15:40 — session "Motion-editor rendering bugs" working (
 - [ ] T1 · [ ] T2 · [ ] T3 · [ ] T4 · [ ] T5
 - [ ] I1 · [ ] I2 · [ ] I3 · [ ] I4 · [ ] I5
 - [ ] F1 · [ ] F2 · [ ] F3 · [ ] F4 · [ ] F5
-- [ ] M1 · [ ] M2 · [ ] M3 · [ ] M4 · [ ] M5 · [ ] M6 · [ ] M7 · [ ] M8
+- [ ] M1 · [ ] M2 · [x] M3 · [ ] M4 · [ ] M5 · [ ] M6 · [ ] M7 · [ ] M8
 
 Notes log (newest first):
 - 2026-10-09: program started. Peer session "Motion-editor remaining tasks" had P0's patches applied uncommitted in the tree.

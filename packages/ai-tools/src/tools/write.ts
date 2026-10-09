@@ -512,8 +512,8 @@ export const addEffectDef: AiToolDef = {
     'Add an effect to a layer and return its effectId. Effects have named params ' +
     '(see list_capabilities for each type\'s params, types and ranges). Animate any ' +
     'numeric param by keyframing the prop path "effect.<effectId>.<paramKey>" (or the ' +
-    'legacy "effect.<effectId>" for the primary param). Set static param values with ' +
-    'update_effect_param.',
+    'legacy "effect.<effectId>" for the primary param). Set static param values here with ' +
+    '`params` ({ "blurriness": 40, "color": "#ff0000" }), or later with update_effect_param.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -630,6 +630,13 @@ export const addEffectDef: AiToolDef = {
           'Name the effect rather than taking the generated id. Use this when the ' +
           'keyframes animating it are authored in the same batch and so cannot read ' +
           "this call's result. Ignored if the node already has an effect with this id.",
+      },
+      params: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Initial static values by param key (numbers, colour strings, booleans), the keys ' +
+          'list_capabilities gives for this type. Unknown keys are reported, not applied.',
       },
     },
   },
