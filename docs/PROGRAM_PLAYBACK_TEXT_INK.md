@@ -82,7 +82,7 @@ the owner says so). Evidence for every item: the two audits in this session
 
 ## Progress
 
-Heartbeat: 2026-10-10 02:32 — session "Motion-editor rendering bugs" working (refresh every 30 min; a resume run stands down if < 45 min old)
+Heartbeat: 2026-10-10 — batch done; P4, P8b and T2 WAIT FOR THE OWNER (a resumed session stands down: do not start them unasked)
 
 - [x] P0 · [x] P1 · [x] P2 · [x] P3 · [ ] P4 · [x] P5 · [x] P6 · [x] P7 · [x] P8 · [ ] P8b · [x] P9 · [x] P10 · [x] P11
 - [x] T1 · [ ] T2 · [x] T3 · [x] T4 · [x] T5
