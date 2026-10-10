@@ -339,7 +339,11 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
   // The outline is part of the insert (B5): a rect or ellipse is the layer
   // factory's own kind; a line or a polystar is inserted whole (pasteLayers).
   const shape = i.kind === 'shape' && i.shape
-    ? (polystar ? { shapeType: 'polystar', polystar: polystar as unknown as Record<string, unknown> } : { shapeType: i.shape })
+    ? (polystar
+      ? { shapeType: 'polystar', polystar: polystar as unknown as Record<string, unknown> }
+      : i.shape === 'line'
+        ? { shapeType: 'line', width: i.width ?? 200, height: i.height ?? 200, ...(i.fill && i.fill !== 'none' ? { color: i.fill } : {}) }
+        : { shapeType: i.shape })
     : undefined;
   const id = await ctx.scene.create(i.kind, i.name, at, shape);
   if (!id) return fail(`Could not create a ${i.kind} layer — the insert produced no node.`);
@@ -347,7 +351,8 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
   // batch can address this layer without a round-trip through the model.
   bindAlias(ctx, i.id, id);
   if (i.text !== undefined) await ctx.scene.setProp(id, 'content', i.text);
-  if (i.fill) await ctx.scene.setProp(id, 'fill', i.fill);
+  // A line's `fill` is its stroke colour (laid into the insert above).
+  if (i.fill && i.shape !== 'line') await ctx.scene.setProp(id, 'fill', i.fill);
   if (i.parent) await ctx.scene.reparent(id, i.parent);
 
   // GPU renderer builds its model matrix from layer.width × layer.scaleX and

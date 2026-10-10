@@ -196,6 +196,11 @@ export interface LayerShapeSpec {
   shapeType: string;
   /** The parametric Polystar (`fx.polystar`) when `shapeType` is `polystar`. */
   polystar?: Record<string, unknown>;
+  /** A `line`'s box, layer px: its two end points are laid across it. */
+  width?: number;
+  height?: number;
+  /** A `line`'s stroke colour (a line encloses no area, so `fill` is its colour). */
+  color?: string;
 }
 
 export interface SceneNodeView {

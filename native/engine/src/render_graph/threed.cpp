@@ -31,7 +31,7 @@ namespace {
 
 constexpr std::size_t kMaxLights = 8;
 constexpr std::uint32_t kEnvSpecLevels = 5;
-constexpr double kBlurTail = 2.5;
+constexpr double kBlurTail = 3.5;  // blur.wgsl's reach in σ
 constexpr double kMaxFxMargin = 1.5;
 constexpr std::size_t kShadeFloatsBase = 16 + 4 + 4 + static_cast<std::size_t>(kMaxLights) * 4 * 4 + 4 + 8 + 20 + std::size_t{28} * 2;
 /// AE parity 4.3 / 4.4 / 4.8, appended after the second shadow block: shadow

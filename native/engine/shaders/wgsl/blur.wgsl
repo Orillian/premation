@@ -128,7 +128,7 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   var total = 0.0;
 
   // CSS blur semantics: the radius IS the Gaussian sigma (what Canvas2D's
-  // filter uses, so both backends match). Taps span ±2.5σ; when that exceeds
+  // filter uses, so both backends match). Taps span ±3.5σ; when that exceeds
   // the loop cap, taps spread out and linear filtering fills the gaps. The
   // old kernel used σ = r/2 truncated at ±r — visibly tighter than Canvas2D
   // at every radius (profiled: tail died 2–3× sooner).
@@ -137,7 +137,11 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   // than gamma-space grey. Helpers are identity when LINEAR_WORKING_SPACE is off.
   let sigma = r;
   let steps = 30;
-  let spacing = max(1.0, (sigma * 2.5) / f32(steps));
+  // ±3.5σ, not 2.5σ: at 2.5σ the Gaussian is still 4% of its peak, and the two
+  // separable passes cut a wide glow off at a RECTANGLE — a faint box around
+  // every big glow on a dark ground (docs/PROGRAM_PERFORMANCE.md S4). At 3.5σ
+  // the tail is 0.2%, below one 8-bit step.
+  let spacing = max(1.0, (sigma * 3.5) / f32(steps));
   for(var i = -steps; i <= steps; i = i + 1) {
     let off = f32(i) * spacing;
     let w = exp(-0.5 * (off * off) / (sigma * sigma));

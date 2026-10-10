@@ -224,7 +224,7 @@ OverlayOutput draw_effect_overlay(const Json& spec, double resolutionScale, doub
 double baked_effect_spread(const RLayer& l) {
   if (!layer_is_baked(l)) return 0;
   if (l.effects.empty()) return 0;
-  constexpr double kBlurExtent = 3;
+  constexpr double kBlurExtent = 3.5;  // blur.wgsl's reach in σ
   constexpr double kMaxEffectPad = 256;
   double spread = 0;
   for (const Json& e : l.effects) {
@@ -233,7 +233,14 @@ double baked_effect_spread(const RLayer& l) {
     const auto n = [&e](const char* k) { return effect_number(e, k); };
     double s = 0;
     if (t == "blur") s = n("amount") * kBlurExtent;
-    else if (t == "glow" || t == "deep-glow") s = n("radius") * kBlurExtent;
+    else if (t == "glow") {
+      // What the chain draws (effect_chain.cpp, threed.cpp effect_spread_px):
+      // a blur of radius x 1.15 and, from 6 px, a wide halo 2.2x that. The
+      // raster padded for the radius alone cut the halo off at a box around
+      // every glowing text or shape layer (docs/PROGRAM_PERFORMANCE.md S4).
+      const double r = n("radius") * 1.15;
+      s = (r >= 6 ? r * 2.2 : r) * kBlurExtent + n("spread");
+    } else if (t == "deep-glow") s = n("radius") * kBlurExtent;
     else if (t == "beam-path") s = n("coreWidth") * std::max(n("startSize"), n("endSize")) / 100 + n("glowSpread") * 10 + n("distortion");
     else if (t == "drop-shadow") s = n("distance") + n("softness") * kBlurExtent;
     else if (t == "stroke" || t == "vegas") s = n("width");

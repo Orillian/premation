@@ -27,7 +27,10 @@ fn vs(@location(0) pos : vec2<f32>) -> VOut {
 }
 
 fn unpremul(t : vec4<f32>) -> vec4<f32> {
-  if (t.a < 0.00392156862745098) { return vec4<f32>(0.0, 0.0, 0.0, 0.0); }
+  // Below 1e-5, not 1/255: faint light (a glow's tail, a soft shadow's edge) has
+  // alpha under one 8-bit step, and zeroing it drew a hard contour on dark grounds
+  // (docs/PROGRAM_PERFORMANCE.md S4). The divide is exact in float either way.
+  if (t.a < 0.00001) { return vec4<f32>(0.0, 0.0, 0.0, 0.0); }
   return vec4<f32>(t.rgb / t.a, t.a);
 }
 

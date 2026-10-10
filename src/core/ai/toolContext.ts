@@ -387,13 +387,40 @@ const ENGINE_CREATE_INIT: Partial<Record<string, PropertyInit[]>> = {
  */
 function drawnShapeNode(name: string, at: { x: number; y: number }, shape: LayerShapeSpec): SceneNode {
   const id = `shape_${Math.random().toString(36).slice(2, 10)}`;
-  const props = { [SCENE_KIND_PROP]: 'shape', x: at.x, y: at.y, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, width: 220, height: 220, shapeType: shape.shapeType };
+  const line = shape.shapeType === 'line' ? lineParts(id, shape) : null;
+  const props = {
+    [SCENE_KIND_PROP]: 'shape', x: at.x, y: at.y, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0,
+    width: line?.width ?? 220, height: line?.height ?? 220, shapeType: shape.shapeType,
+  };
   return {
     id, name, parent: null, children: [], visible: true, locked: false,
     transform: { position: { x: at.x, y: at.y }, rotation: 0, scale: { x: 1, y: 1 } },
     components: [
       { id: `${id}_t`, type: 'Transform', props },
-      { id: `${id}_s`, type: 'Style', props: { opacity: 100, fill: '#2b7eff' } },
+      { id: `${id}_s`, type: 'Style', props: { opacity: 100, fill: line ? 'rgba(0,0,0,0)' : '#2b7eff' } },
+      ...(line?.components ?? []),
+    ],
+  };
+}
+
+/**
+ * A line is an OPEN two-point path with a stroke — what the Shape library's
+ * Line inserts (layerBuilders.buildShape). `shapeType: 'line'` alone has no
+ * path, and the renderer drew it as a thin rectangle: stroked, two parallel
+ * rails (docs/PROGRAM_PERFORMANCE.md S5). Across a flat box (height under a
+ * tenth of the width) it runs level, in a tall thin one upright, else corner
+ * to corner (bottom-left → top-right, as the library's).
+ */
+function lineParts(id: string, shape: LayerShapeSpec): { width: number; height: number; components: SceneNode['components'] } {
+  const w = Math.max(1, shape.width ?? 200);
+  const h = Math.max(1, shape.height ?? 200);
+  const ends = h <= w * 0.1 ? [[-w / 2, 0], [w / 2, 0]] : w <= h * 0.1 ? [[0, h / 2], [0, -h / 2]] : [[-w / 2, h / 2], [w / 2, -h / 2]];
+  return {
+    width: w,
+    height: h,
+    components: [
+      { id: `${id}_g`, type: 'Geometry', props: { points: ends.map(([x, y]) => ({ x, y, inX: x, inY: y, outX: x, outY: y })), open: true } },
+      { id: `${id}_fx`, type: 'fx', props: { stroke: { enabled: true, color: shape.color ?? '#2b7eff', width: 6, opacity: 1, cap: 'round', join: 'miter', align: 'center', dash: [] } } },
     ],
   };
 }
@@ -603,8 +630,15 @@ async function setPropCommands(nodeId: string, prop: string, value: unknown): Pr
   // Static fields (G1: a layer's own fill colour, the Text component's strings
   // / choices) as the plugin host sends them, then one numeric member of its
   // property.
-  const owner = componentOfType(nodeId, TEXT_OWNED.has(prop) ? 'Text' : prop === 'fill' ? 'Style' : 'Transform');
-  const fw = owner ? fieldWrite(nodeId, owner, prop, value, t) : null;
+  const ownerType = TEXT_OWNED.has(prop) ? 'Text' : prop === 'fill' ? 'Style' : 'Transform';
+  const owner = componentOfType(nodeId, ownerType);
+  let fw = owner ? fieldWrite(nodeId, owner, prop, value, t) : null;
+  // A static Style field (Backdrop Blur): update_layer documents it, and the
+  // Transform lookup refused it as "a static write the catalog does not address".
+  if (!fw && ownerType === 'Transform') {
+    const style = componentOfType(nodeId, 'Style');
+    fw = style ? fieldWrite(nodeId, style, prop, value, t) : null;
+  }
   if (fw) return [{ type: 'setProperty', prop: fw.prop, value: fw.value, ...(fw.time !== undefined ? { time: fw.time } : {}) } as Command];
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const r = propRefForTrack(nodeId, prop);
