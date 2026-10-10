@@ -118,6 +118,18 @@ it('orders the tree as After Effects does: the presets folder first, then every 
   expect(rest).toEqual([...rest].sort((a, b) => a.localeCompare(b, 'en')));
 });
 
+it('lists each folder once: Cloner and Physics join the effects’ own Simulation folder', async () => {
+  renderPanel();
+
+  // "ics": Physics (a simulation modifier) and Caustics (a Simulation effect).
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search effects and presets' }), { target: { value: 'ics' } });
+  const names = folderNames();
+  expect(new Set(names).size).toBe(names.length);
+  expect(names.filter((n) => n === 'Simulation')).toHaveLength(1);
+  expect(screen.getByText('Physics')).toBeTruthy();
+  expect(screen.getByText('Caustics')).toBeTruthy();
+});
+
 it('has one toolbar row — search and favourites — and no heading, stack verbs or masks note', async () => {
   renderPanel();
 

@@ -26,9 +26,23 @@ function toBlob(t: Thumbnail): Blob | null {
 
 const clampSize = (maxSize: number): number => Math.max(1, Math.min(ENGINE_STILL_MAX, Math.round(maxSize)));
 
+/**
+ * The engine waits on its renderer for a still at most ~2 s (it must keep
+ * answering the supervisor's heartbeat) and then says `busy`: a heavy still
+ * is asked for again rather than lost.
+ */
+const STILL_ATTEMPTS = 4;
+
+async function askUntilReady<R extends { ok: boolean; error?: { code: string } }>(ask: () => Promise<R>): Promise<R> {
+  let res = await ask();
+  for (let i = 1; i < STILL_ATTEMPTS && !res.ok && res.error?.code === 'busy'; i++) res = await ask();
+  return res;
+}
+
 /** `compId` of the open document at composition second `seconds`. */
 export async function engineCompStill(compId: string, seconds: number, maxSize: number): Promise<Blob | null> {
-  const res = await engine().query({ type: 'getThumbnail', item: compId, time: secondsToFlicks(Math.max(0, seconds)), maxSize: clampSize(maxSize) });
+  const res = await askUntilReady(() =>
+    engine().query({ type: 'getThumbnail', item: compId, time: secondsToFlicks(Math.max(0, seconds)), maxSize: clampSize(maxSize) }));
   return res.ok ? toBlob(res.value) : null;
 }
 
@@ -43,13 +57,13 @@ export function engineCompFrameStill(comp: { id: string; fps: number; width: num
 
 /** A composition of `document` (an EditorDocument) at `seconds`; `compId` absent = its active tab's. */
 export async function engineDocumentStill(document: unknown, seconds: number, maxSize: number, compId?: string): Promise<Blob | null> {
-  const res = await engine().query({
+  const res = await askUntilReady(() => engine().query({
     type: 'renderDocumentStill',
     document: JSON.stringify(document),
     ...(compId ? { comp: compId } : {}),
     time: secondsToFlicks(Math.max(0, seconds)),
     maxSize: clampSize(maxSize),
-  });
+  }));
   if (!res.ok) throw new Error(res.error.message);
   return toBlob(res.value);
 }

@@ -16,12 +16,14 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -367,9 +369,43 @@ bool round_trips(const Decomposed& x, const std::string& C, int K) {
   return lo > 0 || (lo == 0 && inclusive);
 }
 
+Digits shortest_digits_exact(double x);
+
 /// Number::toString's digits: shortest round-tripping s, closest to x, ties
-/// to even. x > 0, finite.
+/// to even. x > 0, finite. std::to_chars' shortest form is that same
+/// definition ([charconv.to.chars]: fewest digits that round-trip, then the
+/// closest, then round-to-nearest) — Ryu, well under a microsecond. The
+/// big-integer search below took tens of microseconds a number, and JSON keys
+/// of large shapes print hundreds of thousands of numbers a frame.
 Digits shortest_digits(double x) {
+  std::array<char, 32> buf{};
+  const auto [end, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), x, std::chars_format::scientific);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  if (ec == std::errc{}) {
+    // "d.ddde±XX" → digits "dddd", n = XX + 1 (the decimal point after n digits).
+    const std::string_view text(buf.data(), static_cast<std::size_t>(end - buf.data()));
+    const std::size_t e = text.find('e');
+    if (e != std::string_view::npos) {
+      Digits out;
+      out.d.reserve(e);
+      for (const char c : text.substr(0, e)) {
+        if (c != '.') out.d += c;
+      }
+      int exp = 0;
+      std::size_t i = e + 1;
+      const bool neg = i < text.size() && text[i] == '-';
+      if (i < text.size() && (text[i] == '-' || text[i] == '+')) ++i;
+      for (; i < text.size(); ++i) exp = exp * 10 + (text[i] - '0');
+      out.n = (neg ? -exp : exp) + 1;
+      out.d = strip_trailing_zeros(std::move(out.d));
+      return out;
+    }
+  }
+  return shortest_digits_exact(x);
+}
+
+/// shortest_digits by big-integer search (the reference; to_chars failing is
+/// the only way here).
+Digits shortest_digits_exact(double x) {
   const Decomposed dx = decompose(x);
   const Digits ex = exact_digits(x);
   const int len = static_cast<int>(ex.d.size());

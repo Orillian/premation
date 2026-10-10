@@ -183,7 +183,9 @@ export class McpHost {
 
   private pushStatus(): void {
     const w = this.o.getWindow();
-    if (w && !w.isDestroyed()) w.webContents.send('mcp:status', this.status());
+    // The page's `destroyed` (setPageReady(false)) arrives while the window
+    // still stands but its webContents is gone: sending then throws in main.
+    if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) w.webContents.send('mcp:status', this.status());
   }
 
   /** At launch: listen again if Claude was on, and fix an entry an update left stale. */

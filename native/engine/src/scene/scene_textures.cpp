@@ -45,6 +45,52 @@ std::uint64_t fnv1a(std::string_view s, std::uint64_t h = 0xcbf29ce484222325ULL)
   return h;
 }
 
+/// FNV-1a over what `js::stringify(v)` would say, without building the text:
+/// kinds, keys, string bytes and the BITS of numbers (printing a long path's
+/// numbers was most of a stroked layer's frame — every frame, cached raster or
+/// not). Equal values hash equal; -0 is hashed as 0, as stringify prints it.
+/// `skip`: top-level keys left out (what `keyed.erase(…)` did, without the copy).
+std::uint64_t hash_json(const js::Json& v, std::uint64_t h, std::span<const std::string_view> skip = {}) {
+  const auto mix = [&h](std::uint64_t bits) {
+    for (unsigned i = 0; i < 8; ++i) {
+      h ^= (bits >> (8U * i)) & 0xFFU;
+      h *= 0x100000001b3ULL;
+    }
+  };
+  mix(static_cast<std::uint64_t>(v.kind() == js::Json::Kind::undefined ? js::Json::Kind::null : v.kind()));
+  switch (v.kind()) {
+    case js::Json::Kind::undefined:
+    case js::Json::Kind::null:
+      return h;
+    case js::Json::Kind::boolean:
+      mix(v.b() ? 1U : 0U);
+      return h;
+    case js::Json::Kind::number: {
+      const double d = v.num();
+      // Non-finite prints as null; ±0 prints as "0".
+      mix(!std::isfinite(d) ? 0x7FF8000000000001ULL : std::bit_cast<std::uint64_t>(d == 0 ? 0.0 : d));
+      return h;
+    }
+    case js::Json::Kind::string:
+      mix(v.str().size());
+      return fnv1a(v.str(), h);
+    case js::Json::Kind::array:
+      mix(v.arr().size());
+      for (const js::Json& e : v.arr()) h = hash_json(e, h);
+      return h;
+    case js::Json::Kind::object:
+      for (const auto& m : v.obj()) {
+        if (m.value.is_undefined() || std::ranges::find(skip, std::string_view(m.key)) != skip.end()) continue;
+        mix(m.key.size());
+        h = fnv1a(m.key, h);
+        h = hash_json(m.value, h);
+      }
+      mix(0xFFFFFFFFFFFFFFFFULL);  // end of object
+      return h;
+  }
+  return h;
+}
+
 std::string hex64(std::uint64_t v) {
   std::array<char, 17> b{};
   std::snprintf(b.data(), b.size(), "%016llx", static_cast<unsigned long long>(v));  // NOLINT(cppcoreguidelines-pro-type-vararg)
@@ -202,7 +248,6 @@ void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::v
       refs.push_back(std::move(ref));
       continue;
     }
-    std::string spec = js::stringify(r.spec);
     std::array<char, 64> tail{};
     std::snprintf(tail.data(), tail.size(), "|%d|%.17g|%.17g", static_cast<int>(r.kind), r.resolutionScale, r.padding);  // NOLINT(cppcoreguidelines-pro-type-vararg)
     // Keyed by CONTENT, as the TS keys a path raster by contentHash × tier ×
@@ -215,42 +260,34 @@ void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::v
         opts_.contentCacheBytes > 0) {
       // What the painters read: the drawable without what only the bake reads
       // (effects, fillOpacity, mask — bake_chain.cpp) and without placement.
-      js::Json keyed = r.spec;
-      for (const char* k : {"x", "y", "rotation", "scaleX", "scaleY", "depth", "opacity", "blend", "sourceTime", "effects",
-                            "fillOpacity", "mask"}) {
-        keyed.erase(k);
-      }
-      contentKey = fnv1a(tail.data(), fnv1a(js::stringify(keyed), fnv1a("baked-content")));
+      static constexpr std::array<std::string_view, 12> kBakedSkip = {
+          "x", "y", "rotation", "scaleX", "scaleY", "depth", "opacity", "blend", "sourceTime", "effects", "fillOpacity", "mask"};
+      contentKey = fnv1a(tail.data(), hash_json(r.spec, fnv1a("baked-content"), kBakedSkip));
       if (contentKey == 0) contentKey = 1;
     }
+    const std::uint64_t seed = 0xcbf29ce484222325ULL;
     if ((r.kind == TexKind::path || r.kind == TexKind::mask) && r.spec.is_object()) {
-      js::Json keyed = r.spec;
       // sourceTime too, baked or not (contentHash.ts keys it for media layers
       // only): the painters never read it, and a baked chain sees time only
       // through its resolved params (resolve_effect_params puts the layer time
       // into timecode / strobe-light / particle-systems), which ARE keyed — so a
       // baked layer whose stack does not animate keeps its bake across frames.
-      for (const char* k : {"x", "y", "rotation", "scaleX", "scaleY", "depth", "opacity", "blend", "sourceTime"}) keyed.erase(k);
-      // GPU route: the chain applies fill opacity and the effect stack, and the
-      // painters do not read them. Leaving them in the key re-rasterizes the
-      // shape on every fill-opacity frame (the E4 bench).
-      if (!r.spec.at("__baked").b()) {
-        keyed.erase("fillOpacity");
-        keyed.erase("effects");
-      }
-      h = fnv1a(tail.data(), fnv1a(js::stringify(keyed)));
+      // GPU route (not baked): the chain applies fill opacity and the effect
+      // stack, and the painters do not read them. Leaving them in the key
+      // re-rasterizes the shape on every fill-opacity frame (the E4 bench).
+      static constexpr std::array<std::string_view, 9> kPlacement = {"x",     "y",       "rotation", "scaleX",    "scaleY",
+                                                                     "depth", "opacity", "blend",    "sourceTime"};
+      static constexpr std::array<std::string_view, 11> kPlacementChain = {
+          "x", "y", "rotation", "scaleX", "scaleY", "depth", "opacity", "blend", "sourceTime", "fillOpacity", "effects"};
+      h = fnv1a(tail.data(), r.spec.at("__baked").b() ? hash_json(r.spec, seed, kPlacement)
+                                                      : hash_json(r.spec, seed, kPlacementChain));
     } else if (r.kind == TexKind::text && r.spec.is_object()) {
       // The layer scale picks the tier (in `tail`); the text painters never read it.
-      js::Json keyed = r.spec;
-      keyed.erase("scaleX");
-      keyed.erase("scaleY");
-      if (!r.spec.at("__baked").b()) {
-        keyed.erase("fillOpacity");
-        keyed.erase("effects");
-      }
-      h = fnv1a(tail.data(), fnv1a(js::stringify(keyed)));
+      static constexpr std::array<std::string_view, 2> kScale = {"scaleX", "scaleY"};
+      static constexpr std::array<std::string_view, 4> kScaleChain = {"scaleX", "scaleY", "fillOpacity", "effects"};
+      h = fnv1a(tail.data(), r.spec.at("__baked").b() ? hash_json(r.spec, seed, kScale) : hash_json(r.spec, seed, kScaleChain));
     } else {
-      h = fnv1a(tail.data(), fnv1a(spec));
+      h = fnv1a(tail.data(), hash_json(r.spec, seed));
     }
     ref.hash = "rs:" + hex64(h);
     ref.ready = true;
@@ -260,7 +297,8 @@ void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::v
       ++stats.rasterHits;
     } else if (std::ranges::find(seen, ref.hash) == seen.end()) {
       seen.push_back(ref.hash);
-      misses.push_back({&r, ref.hash, std::move(spec), contentKey});
+      // The rasterizer reads the drawable as text: printed only for a miss.
+      misses.push_back({&r, ref.hash, js::stringify(r.spec), contentKey});
     }
     refs.push_back(std::move(ref));
   }
@@ -795,7 +833,7 @@ std::string SceneTextures::footage_bake_ref(const TextureRequest& r, const std::
   std::array<char, 48> dims{};
   std::snprintf(dims.data(), dims.size(), "|%ux%u|%c", bw, bh, r.fields != 0 ? r.fields : '-');  // NOLINT(cppcoreguidelines-pro-type-vararg)
   // Not const: returned by move.
-  std::string hash = "img:bake:" + hex64(fnv1a(js::stringify(r.spec), fnv1a(dims.data(), fnv1a(baseHash))));
+  std::string hash = "img:bake:" + hex64(hash_json(r.spec, fnv1a(dims.data(), fnv1a(baseHash))));
   if (const std::shared_ptr<const RasterEntry> hit = find(hash)) {
     ++stats.rasterHits;
     for (const std::string& u : hit->unsupported) stats.unsupported.emplace_back(r.key, u);

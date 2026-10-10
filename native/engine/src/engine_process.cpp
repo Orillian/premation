@@ -6,6 +6,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <mutex>
+#include <stop_token>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -130,6 +133,70 @@ void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, ReleaseFn rele
     }
   }
 }
+
+/// What the core thread is doing, for the watchdog: the supervisor kills an
+/// engine whose core thread misses heartbeats for 5 s (engineSupervisor.ts
+/// hangMs), and without this the log never says what it was stuck in.
+class CoreWatchdog {
+ public:
+  static constexpr auto kBusyAfter = std::chrono::milliseconds(2000);
+
+  CoreWatchdog() : thread_([this](const std::stop_token& stop) { run(stop); }) {}
+
+  /// The core thread starts on `what` (a request's description, `tick`, …).
+  void begin(std::string what) {
+    {
+      const std::scoped_lock lock(mu_);
+      what_ = std::move(what);
+    }
+    since_.store(Clock::now().time_since_epoch().count(), std::memory_order_release);
+  }
+  /// A request names itself once decoded (SessionOptions::activity).
+  void name(std::string what) {
+    const std::scoped_lock lock(mu_);
+    what_ = std::move(what);
+  }
+  /// The core thread is back waiting on its queue.
+  void end() {
+    const Clock::rep since = since_.exchange(0, std::memory_order_acq_rel);
+    if (since == 0) return;
+    const auto took = Clock::now() - Clock::time_point(Clock::duration(since));
+    if (took >= kBusyAfter) {
+      PREMATION_LOG(warn, "core_slow")
+          .kv("what", current())
+          .kv("ms", static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(took).count()));
+    }
+  }
+
+ private:
+  [[nodiscard]] std::string current() {
+    const std::scoped_lock lock(mu_);
+    return what_;
+  }
+  void run(const std::stop_token& stop) {
+    Clock::rep reported = 0;  // the busy episode already reported (its start)
+    auto nextReport = Clock::time_point{};
+    while (!stop.stop_requested()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+      const Clock::rep since = since_.load(std::memory_order_acquire);
+      if (since == 0) continue;
+      const auto start = Clock::time_point(Clock::duration(since));
+      const auto now = Clock::now();
+      if (now - start < kBusyAfter) continue;
+      if (since == reported && now < nextReport) continue;
+      reported = since;
+      nextReport = now + kBusyAfter;
+      PREMATION_LOG(warn, "core_busy")
+          .kv("what", current())
+          .kv("ms", static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()));
+    }
+  }
+
+  std::mutex mu_;
+  std::string what_;
+  std::atomic<Clock::rep> since_{0};  // 0 = idle
+  std::jthread thread_;  // last: stopped and joined before the members it reads go
+};
 
 }  // namespace
 
@@ -297,6 +364,8 @@ int run_engine(const EngineOptions& options) {
   sessionOptions.footageDir = os::env_var("PREMATION_SESSION_FOOTAGE").value_or("");
   sessionOptions.testPorts = options.testPorts;
   sessionOptions.testPortsDir = options.testPortsDir;
+  CoreWatchdog watchdog;
+  sessionOptions.activity = [&watchdog](std::string what) { watchdog.name(std::move(what)); };
 #if defined(PREMATION_HAVE_JOBS)
   // importFiles / importBytes / relink: the jobs' decoders probe the file (ffmpeg + the OS still codec).
   sessionOptions.mediaProbe = [](const std::string& path, js::Json& facts, std::string& error) {
@@ -337,7 +406,9 @@ int run_engine(const EngineOptions& options) {
     if (item) {
       switch (item->kind) {
         case CoreItem::Kind::frame:
+          watchdog.begin("message");
           session.on_frame(item->bytes, now);
+          watchdog.end();
           break;
         case CoreItem::Kind::ping:
           session.on_ping(item->nonce, static_cast<std::uint32_t>(queue.size()));
@@ -361,7 +432,9 @@ int run_engine(const EngineOptions& options) {
           break;
       }
     }
+    watchdog.begin(session.playing() ? "tick (playing)" : "tick");
     session.tick(now);
+    watchdog.end();
     os::high_resolution_timer(session.playing());
   }
   os::high_resolution_timer(false);

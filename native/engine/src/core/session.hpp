@@ -85,6 +85,10 @@ struct SessionOptions {
   doc::FilePorts::MediaProbe mediaProbe;
   /// Where importBytes caches bytes as files ('' = `<temp>/premation-session-footage`).
   std::string footageDir;
+  /// Called on the core thread as each request starts, with what it is
+  /// (`command createLayer`, `query 1000`, `batch <label>`): the engine
+  /// process's watchdog names a stalled core thread with it. Unset: nothing.
+  std::function<void(std::string)> activity;
 };
 
 class Session {
@@ -194,7 +198,11 @@ class Session {
   /// A render-thread answer, waited for at most kRenderQueryTimeout.
   template <class T>
   T await_render(std::future<T> result, std::string_view what);
-  static constexpr std::chrono::seconds kRenderQueryTimeout{10};
+  /// Well inside the supervisor's hang window (engineSupervisor.ts: a ping a
+  /// second, killed after 5 s without a pong): this thread answers the pings,
+  /// so a longer wait turned a busy renderer into a "hung" engine — and the
+  /// thumbnails the page asks for again after the restart into a crash loop.
+  static constexpr std::chrono::milliseconds kRenderQueryTimeout{2000};
 
   // ── transport ──
   [[nodiscard]] std::optional<Clock::time_point> next_clock_deadline() const;

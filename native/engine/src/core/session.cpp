@@ -306,6 +306,19 @@ void Session::send_engine_error(ErrorCode code, std::string message, bool fatal)
 // ── the request loop (LocalEngine.handle) ───────────────────────────────────
 
 void Session::handle_request(api::Request request, Clock::time_point now) {
+  if (options_.activity) {
+    switch (request.body.kind()) {
+      case api::RequestBody::Kind::command:
+        options_.activity("command " + command_name(std::get<api::Command>(request.body.v)));
+        break;
+      case api::RequestBody::Kind::query:
+        options_.activity("query " + std::to_string(static_cast<std::uint32_t>(std::get<api::Query>(request.body.v).kind())));
+        break;
+      case api::RequestBody::Kind::batch:
+        options_.activity("batch " + std::get<api::CommandBatch>(request.body.v).label);
+        break;
+    }
+  }
   scope_ = RequestScope{request.seq, request.origin, std::nullopt};
   api::Outcome o = handle_request_body(request, now);
   respond(request.seq, std::move(o));

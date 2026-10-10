@@ -377,6 +377,18 @@ void RenderThread::run(std::promise<std::string>& ready) {
   // never while frames are on the GPU (their announcement would wait behind
   // it) nor while the transport plays (the next frame would).
   const auto canWarm = [this] { return inflight_.empty() && !lastJobPlaying_ && drawer_ && drawer_->warm_pending(); };
+  // A step that holds this thread a second or more delays every query queued
+  // behind it (render_query_late): the log says which step it was.
+  const auto timed = [](const char* what, auto&& step) {
+    const auto t0 = SteadyClock::now();
+    step();
+    const auto took = SteadyClock::now() - t0;
+    if (took >= std::chrono::seconds(1)) {
+      PREMATION_LOG(warn, "render_step_slow")
+          .kv("what", what)
+          .kv("ms", static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(took).count()));
+    }
+  };
   // Paused footage still decoding (Port::settling): the earliest poll, if any.
   const auto nextSettle = [this]() -> std::optional<SteadyClock::time_point> {
     std::optional<SteadyClock::time_point> at;
@@ -398,7 +410,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
       // otherwise announce whatever finished and get on with the next frame.
       const bool idle = !workReady();
       lock.unlock();
-      (void)complete_frames(idle);
+      timed("complete_frames", [&] { (void)complete_frames(idle); });
       lock.lock();
       if (idle) continue;
     } else {
@@ -433,7 +445,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
     if (anyDirty()) {
       // Frames in flight belong to the rings about to be replaced: announce them first.
       lock.unlock();
-      complete_all();
+      timed("complete_all", [&] { complete_all(); });
       lock.lock();
       const bool shared = shared_;
       const bool copy = copy_;
@@ -446,7 +458,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
         p.dirty = false;
         const ViewportConfig config = p.config;
         lock.unlock();
-        rebuild(p, config, shared, copy);  // a closed viewport: an empty ring, announced
+        timed("rebuild", [&] { rebuild(p, config, shared, copy); });  // a closed viewport: an empty ring, announced
         lock.lock();
         // Forget a viewport that is (still) closed once its ring is retired; its
         // late releases name a generation no ring has any more.
@@ -458,7 +470,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
       // Queries between frames: a still or a pixel read never waits behind a
       // playing viewport for more than the frame in hand.
       lock.unlock();
-      complete_all();
+      timed("complete_all", [&] { complete_all(); });
       lock.lock();
       run_tasks(lock);
       continue;
@@ -485,7 +497,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
       // a frame that arrives waits at most one pipeline compile.
       if (canWarm()) {
         lock.unlock();
-        (void)drawer_->warm_step();
+        timed("warm_step", [&] { (void)drawer_->warm_step(); });
         lock.lock();
       }
       continue;
@@ -500,7 +512,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
     lastServed_ = port->config.viewport;
     const ViewportConfig config = port->config;
     lock.unlock();
-    render(*port, job, *slot, config);
+    timed("render", [&] { render(*port, job, *slot, config); });
     port->lastJob = std::move(job);
     lock.lock();
   }
@@ -530,7 +542,15 @@ void RenderThread::post(std::function<void()> task) {
   {
     const std::lock_guard<std::mutex> lock(m_);
     if (quit_) return;  // the task (and its promise) is dropped: a broken promise
-    tasks_.push_back(std::move(task));
+    // A query the core gave up on (Session::kRenderQueryTimeout) says how late it ran.
+    tasks_.emplace_back([task = std::move(task), posted = SteadyClock::now()] {
+      const auto late = SteadyClock::now() - posted;
+      if (late >= std::chrono::seconds(1)) {
+        PREMATION_LOG(warn, "render_query_late")
+            .kv("ms", static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(late).count()));
+      }
+      task();
+    });
   }
   cv_.notify_all();
 }

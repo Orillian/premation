@@ -295,20 +295,22 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
   }
   if (!starredOnly && simulationItems.length > 0) {
     // Simulation — Cloner and Physics, enabled here and edited in Effect
-    // Controls. Not EffectType entries, same browser chrome.
-    folders.push({
-      id: 'Simulation',
-      label: 'Simulation',
-      icon: 'zap',
-      defaultOpen: false,
-      items: simulationItems.map((item) => ({
-        kind: 'sim' as const,
-        id: item.id,
-        label: item.label,
-        icon: item.icon,
-        on: item.id === 'cloner' ? clonerOn : physicsOn,
-      })),
-    });
+    // Controls. Not EffectType entries, same browser chrome. They join the
+    // effects' own Simulation category (Caustics, Shatter, …) when it exists:
+    // two folders with one id made the list's row keys collide.
+    const simRows = simulationItems.map((item) => ({
+      kind: 'sim' as const,
+      id: item.id,
+      label: item.label,
+      icon: item.icon,
+      on: item.id === 'cloner' ? clonerOn : physicsOn,
+    }));
+    const at = folders.findIndex((f) => f.id === 'Simulation');
+    if (at >= 0) {
+      folders[at] = { ...folders[at]!, items: [...simRows, ...folders[at]!.items] };
+    } else {
+      folders.push({ id: 'Simulation', label: 'Simulation', icon: 'zap', defaultOpen: false, items: simRows });
+    }
   }
   folders.sort(byLabel);
   // The first folder starts open, so the panel never opens on a wall of shut rows.
