@@ -10,6 +10,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
 
@@ -147,6 +148,14 @@ class FfmpegFrames final : public FrameSource {
       }
       return true;
     }
+    // Any other YUV picture (scaled to the analysis size, 10-bit, 4:2:2...):
+    // the luma plane alone, area-filtered straight to 8-bit grey — the same
+    // 'raw8' luma as above. Converting the whole picture to RGBA (bicubic,
+    // chroma upsampled) to throw the colour away again was most of the
+    // tracker's time on 1440p / 4K footage (docs/PROGRAM_PERFORMANCE.md V6).
+    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(fmt);
+    const bool yuv = desc != nullptr && desc->nb_components >= 3 && (desc->flags & (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_HWACCEL)) == 0;
+    if (yuv && luma_scaled(out)) return true;
     RgbaImage rgba;
     if (!convert(rgba, error)) return false;
     out = luma_from_rgba(rgba);
@@ -232,6 +241,23 @@ class FfmpegFrames final : public FrameSource {
     }
   }
 
+  /// The decoded picture's luma at the analysis size, 8-bit (`bytes`); false when swscale cannot.
+  bool luma_scaled(LumaImage& out) {
+    const auto fmtIn = static_cast<AVPixelFormat>(frame_->format);
+    swsLuma_.reset(sws_getCachedContext(swsLuma_.release(), frame_->width, frame_->height, fmtIn, static_cast<int>(outW_),
+                                        static_cast<int>(outH_), AV_PIX_FMT_GRAY8, SWS_AREA, nullptr, nullptr, nullptr));
+    if (!swsLuma_) return false;
+    grey_.resize(static_cast<std::size_t>(outW_) * outH_);
+    std::uint8_t* dst[4] = {grey_.data(), nullptr, nullptr, nullptr};
+    const int dstStride[4] = {static_cast<int>(outW_), 0, 0, 0};
+    if (sws_scale(swsLuma_.get(), frame_->data, frame_->linesize, 0, frame_->height, dst, dstStride) <= 0) return false;
+    out.width = outW_;
+    out.height = outH_;
+    out.bytes = true;
+    out.data.assign(grey_.begin(), grey_.end());
+    return true;
+  }
+
   bool convert(RgbaImage& out, std::string& error) {
     const auto fmtIn = static_cast<AVPixelFormat>(frame_->format);
     sws_.reset(sws_getCachedContext(sws_.release(), frame_->width, frame_->height, fmtIn, static_cast<int>(outW_),
@@ -259,6 +285,8 @@ class FfmpegFrames final : public FrameSource {
   std::unique_ptr<AVFrame, FrameDeleter> frame_;
   std::unique_ptr<AVPacket, PacketDeleter> pkt_;
   std::unique_ptr<SwsContext, SwsDeleter> sws_;
+  std::unique_ptr<SwsContext, SwsDeleter> swsLuma_;
+  std::vector<std::uint8_t> grey_;  // luma_scaled's scratch, kept across frames
   int stream_ = -1;
   std::uint32_t srcW_ = 0;
   std::uint32_t srcH_ = 0;
