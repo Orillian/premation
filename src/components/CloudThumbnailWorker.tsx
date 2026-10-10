@@ -3,6 +3,12 @@ import { api } from '@core/api/client';
 import { documentMirror } from '@stores/documentMirror';
 import { captureThumbnailWhenIdle } from './thumbnailCapture';
 
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /**
  * Project-thumbnail capture for cloud projects: render the poster frame and
  * upload it.
@@ -20,8 +26,20 @@ export function CloudThumbnailWorker({ projectId }: { projectId: string }): null
 
   useEffect(() => {
     let cancelCapture: (() => void) | null = null;
+    // The bytes last sent: an edit that does not change the poster frame (a
+    // later keyframe, a rename) sends nothing. Each upload is a storage write
+    // and a CDN invalidation on the server, ~1.2 s.
+    let lastSent: Uint8Array | null = null;
     const upload = (blob: Blob | null): void => {
-      if (blob) void api.setProjectThumbnail(projectId, blob);
+      if (!blob) return;
+      void blob.arrayBuffer().then((buf) => {
+        const bytes = new Uint8Array(buf);
+        if (lastSent && sameBytes(lastSent, bytes)) return;
+        lastSent = bytes;
+        void api.setProjectThumbnail(projectId, blob).catch(() => {
+          lastSent = null;  // not stored: the next capture sends it again
+        });
+      }, () => undefined);
     };
 
     const capture = (): void => {
