@@ -16,6 +16,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { availableParallelism, freemem } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -108,6 +109,22 @@ function run(cmd, args, opts = {}) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
+/**
+ * Ninja runs one compile per core, and a clang-cl compile of an engine test
+ * or Dawn source takes 4–6 GB: sixteen of them exhausted a 32 GB machine's
+ * memory (Windows "virtual memory low", 2026-10-09/10), which starved
+ * everything else on it — the local Postgres stopped answering and a running
+ * premation-engine missed its heartbeat. Unless CMAKE_BUILD_PARALLEL_LEVEL
+ * says otherwise, run as many compiles as the free memory holds.
+ */
+function limitBuildJobs() {
+  if (process.env.CMAKE_BUILD_PARALLEL_LEVEL) return;
+  const perJob = 5.5 * 1024 ** 3;
+  const jobs = Math.max(1, Math.min(availableParallelism(), Math.floor(freemem() / perJob)));
+  process.env.CMAKE_BUILD_PARALLEL_LEVEL = String(jobs);
+  console.log(`[native] ${jobs} parallel compile(s) for ${(freemem() / 1024 ** 3).toFixed(1)} GB free (CMAKE_BUILD_PARALLEL_LEVEL overrides)`);
+}
+
 function buildDir(p) {
   return join(nativeDir, 'build', p);
 }
@@ -117,6 +134,7 @@ switch (step) {
     run('cmake', ['--preset', preset()], { cwd: nativeDir });
     break;
   case 'build': {
+    limitBuildJobs();
     // `--target a,b`: only those targets (a machine short on disk / time).
     const targets = flag('--target');
     run('cmake', ['--build', '--preset', preset(), ...(typeof targets === 'string' ? ['--target', ...targets.split(',')] : [])], { cwd: nativeDir });
