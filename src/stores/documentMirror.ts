@@ -231,6 +231,8 @@ interface TreeEntry {
 }
 
 const MAX_UNRETAINED_TREES = 256;
+/** A failed document refetch is asked again after these delays, then left to the next event. */
+const LOAD_RETRY_MS = [250, 500, 1000, 2000, 4000] as const;
 
 function treeFromNodes(layer: string, nodes: readonly PropertyInfo[]): MirrorTree {
   const map = new Map<string, PropertyInfo>();
@@ -665,6 +667,21 @@ export class DocumentMirror {
     return [...this.trees].filter(([, e]) => e.tree !== null).map(([l]) => l);
   }
 
+  private loadRetries = 0;
+
+  /**
+   * A failed refetch (an engine still restarting or busy answers `busy`) is
+   * asked again a few times, sooner than the next event would: until then the
+   * mirror shows the document as it last had it.
+   */
+  private retryLoad(): void {
+    if (!this.unsubscribe || this.loadRetries >= LOAD_RETRY_MS.length) return;
+    const seq = this.loadSeq;
+    setTimeout(() => {
+      if (seq === this.loadSeq && this.statusValue === 'error' && this.unsubscribe) this.reload();
+    }, LOAD_RETRY_MS[this.loadRetries++]);
+  }
+
   private finishLoad(seq: number, r: EngineResult<DocumentSnapshot>): void {
     if (seq !== this.loadSeq) return;
     const buffered = this.buffer ?? [];
@@ -674,8 +691,10 @@ export class DocumentMirror {
       this.errorValue = `${r.error.code}: ${r.error.message}`;
       this.flushNotify(true);
       this.releaseRevWaiters(true);
+      this.retryLoad();
       return;
     }
+    this.loadRetries = 0;
     this.install(r.value);
     this.flushNotify(true);
     this.releaseRevWaiters();
@@ -827,6 +846,15 @@ export class DocumentMirror {
       return;
     }
     const revisioned = b.fromRevision !== b.toRevision;
+    if (this.statusValue === 'error') {
+      // The last refetch failed: `rev` is the document as it was before it —
+      // after an engine restart, another engine's numbering, so comparing
+      // against it would drop every new batch as already applied.
+      this.applyEphemeral(b);
+      this.flushNotify();
+      this.reload();
+      return;
+    }
     if (b.events.some((e) => e.type === 'documentReset')) {
       // Whatever its revisions say (a fresh engine starts at 0 → 0).
       this.applyEphemeral(b);
