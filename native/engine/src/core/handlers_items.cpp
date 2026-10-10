@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <set>
+#include <string_view>
 
 #include "fxstate.hpp"
 #include "parenting.hpp"
@@ -170,6 +171,23 @@ bool in_queue(const RenderQueue& q, const std::string& id) {
   return std::any_of(q.begin(), q.end(), [&id](const api::RenderItemInfo& r) { return r.id == id; });
 }
 
+/// A Git-Bash / MSYS drive path (`/c/Users/...`) as the path Windows opens
+/// (`C:/Users/...`). Tools run from those shells (the MCP server, scripts)
+/// hand such paths in; the import probe accepted them while ffmpeg and the
+/// job readers could not open them (docs/PROGRAM_PERFORMANCE.md V7). Other
+/// paths, and every path off Windows, are returned unchanged.
+std::string native_path(std::string_view p) {
+#ifdef _WIN32
+  const bool drive = p.size() >= 2 && p[0] == '/' && ((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z')) &&
+                     (p.size() == 2 || p[2] == '/');
+  if (drive) {
+    const char letter = p[1] >= 'a' ? static_cast<char>(p[1] - 'a' + 'A') : p[1];
+    return std::string{letter, ':'} + (p.size() == 2 ? std::string("/") : std::string(p.substr(2)));
+  }
+#endif
+  return std::string(p);
+}
+
 }  // namespace
 
 ResultOf<api::ImportFiles> handle(const api::ImportFiles& c, HCtx& x) {
@@ -193,7 +211,9 @@ ResultOf<api::ImportFiles> handle(const api::ImportFiles& c, HCtx& x) {
     // Re-thrown outside the handler (a throw inside a catch crashes clang-cl ASan).
     std::optional<std::string> failed;
     try {
-      records.push_back(x.ports.import_file(c.files[i], ids[i]));
+      api::ImportFile f = c.files[i];
+      f.path = native_path(f.path);
+      records.push_back(x.ports.import_file(f, ids[i]));
     } catch (const EngineFail& e) {
       failed = e.error.message;
     }
@@ -206,7 +226,7 @@ ResultOf<api::ImportFiles> handle(const api::ImportFiles& c, HCtx& x) {
     Json a = r;
     a.set("id", Json::string(ids[i]));
     if (f.folder && !f.folder->empty()) a.set("folderId", Json::string(*f.folder));
-    a.set("path", nn(r.at("path"), Json::string(f.path)));
+    a.set("path", nn(r.at("path"), Json::string(native_path(f.path))));
     if (f.interpretation) a = with_interpretation(a, interpretation_patch(*f.interpretation));
     added.push_back(std::move(a));
   }
@@ -263,16 +283,17 @@ ResultOf<api::RelinkItem> handle(const api::RelinkItem& c, HCtx& x) {
   if (ref.kind != ItemRefKind::footage) fail(ErrorCode::invalid_argument, "only footage can be relinked", {.item = c.item});
   if (js_trim(c.path).empty()) fail(ErrorCode::invalid_argument, "path is empty");
   x.label = "Relink Footage";
+  const std::string path = native_path(c.path);
   // A plugin FILE param's `data` item (a LUT, a model) is no footage: nothing to probe, the file as it is.
   const Json* cur = find_asset(d, c.item);
   const bool data = cur != nullptr && cur->at("type").is_string() && cur->at("type").str() == "data";
   Json probed = Json::object();
-  if (data) probed.set("src", Json::string(local_file_url(c.path)));
-  else if (x.ports.has_probe()) probed = x.ports.probe_file(c.path);
+  if (data) probed.set("src", Json::string(local_file_url(path)));
+  else if (x.ports.has_probe()) probed = x.ports.probe_file(path);
   patch_asset(d, c.item, [&](const Json& a) {
     Json next = spread(a, probed.is_object() ? probed : Json::object());
     next.set("id", a.at("id"));
-    next.set("path", Json::string(c.path));
+    next.set("path", Json::string(path));
     if (!c.keep_interpretation) next.erase("interpret");
     return next;
   });
