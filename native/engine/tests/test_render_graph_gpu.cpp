@@ -184,13 +184,70 @@ TEST_CASE("P8: a static layer's effect chain runs once; moving it or changing a 
   REQUIRE(renderer->render(file, &sharper, s3, err));
   CHECK(s3.effects.layerChainsReused == 0);
   CHECK(sharper.rgba != first.rgba);
-  // Moved: the chain runs on the new placement (screen-space chains move with their input).
+  // Moved: the chain runs on the new placement (in this 64×48 view the blur's
+  // reach leaves the frame, so P8b cannot move a kept result — see below).
   file.scene.renderables[0].model_matrix[6] += 3;
   Frame moved;
   FrameStats s4;
   REQUIRE(renderer->render(file, &moved, s4, err));
   CHECK(s4.effects.layerChainsReused == 0);
   CHECK(moved.rgba != sharper.rgba);
+}
+
+TEST_CASE("P8b: a layer that only moves reuses its effect chain, pixel for pixel a fresh render") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = solid_scene(0, 0.5, 1);
+  file.view.css_width = 256;
+  file.view.css_height = 160;
+  file.view.camera_center_x = 128;
+  file.view.camera_center_y = 80;
+  file.scene.width = 256;
+  file.scene.height = 160;
+  file.scene.renderables[0].model_matrix = {32, 0, 0, 0, 24, 0, 100, 60, 1};
+  file.scene.renderables[0].bounds = {100, 60, 32, 24};
+  api::RenderEffect blur;
+  blur.type = "gaussian-blur";
+  blur.params.push_back(num_param("radiusPx", 4));
+  file.scene.renderables[0].effects.push_back(blur);
+  Frame f;
+  std::vector<std::uint8_t> firstRgba;
+  for (int i = 0; i < 3; ++i) {
+    FrameStats s;
+    REQUIRE(renderer->render(file, &f, s, err));
+    CHECK(s.gpuError.empty());
+    if (i == 0) firstRgba = f.rgba;
+    CHECK(f.rgba == firstRgba);  // the kept copy is exact (frame 3 reuses it)
+  }
+  // A fresh renderer — no kept results — at the same placement.
+  const auto fresh = [&]() {
+    std::string e;
+    auto other = SceneRenderer::create({}, e);
+    Frame out;
+    FrameStats s;
+    REQUIRE(other->render(file, &out, s, e));
+    return out.rgba;
+  };
+  for (const double dx : {7.0, 2.5, -11.25}) {
+    file.scene.renderables[0].model_matrix[6] += dx;
+    file.scene.renderables[0].bounds.x += dx;
+    Frame moved;
+    FrameStats s;
+    REQUIRE(renderer->render(file, &moved, s, err));
+    CHECK(s.effects.layerChainsReused == 1);  // moved, not re-run
+    CHECK(moved.rgba == fresh());  // a moved copy, texel for texel the frame a fresh render draws
+  }
+  // Moved until the blur's reach leaves the frame: the chain's buffer holds the
+  // layer where its whole reach fits, so the kept result still moves there —
+  // and draws what a fresh render draws.
+  file.scene.renderables[0].model_matrix[6] = 2;
+  file.scene.renderables[0].bounds.x = 2;
+  Frame edge;
+  FrameStats se;
+  REQUIRE(renderer->render(file, &edge, se, err));
+  CHECK(se.effects.layerChainsReused == 1);
+  CHECK(edge.rgba == fresh());
 }
 
 TEST_CASE("E4: fill opacity fades the contents and shapes the stroke by the silhouette") {

@@ -185,8 +185,9 @@ RenderTarget& Device::target(std::string_view name, std::uint32_t w, std::uint32
         wgpu::TextureDescriptor td{};
         td.size = {w, h, 1};
         td.format = format;
+        // CopyDst: P8 keeps a chain result by an exact texture copy (composition_pass.cpp).
         td.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding |
-                   wgpu::TextureUsage::CopySrc;
+                   wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
         t.texture = device_.CreateTexture(&td);
         t.view = t.texture.CreateView();
         if (sampleCount > 1) {

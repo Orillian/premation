@@ -88,9 +88,11 @@ class KeyMix {
 /// viewport — equal keys, equal input pixels, so the chain keeps its distance
 /// fields under it across frames (fx_cache.hpp). 0 where the input is not a
 /// function of these (a precomp's offscreen, an unresolved texture, a mesh).
-std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity) {
+std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity, bool translationFree = false) {
   if (r.precomp || !r.precomp_children.empty() || r.deformed_mesh) return 0;
   KeyMix k;
+  // P8b: a key without the layer's (whole-pixel) place on screen — the slot keeps where it was drawn.
+  k.u64(translationFree ? 0x7038625ULL : 0);
   k.u64(static_cast<std::uint64_t>(r.kind));
   k.u64(static_cast<std::uint64_t>(r.blend));
   k.u64(static_cast<std::uint64_t>(r.sampling));
@@ -103,7 +105,10 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
     if (rb.hash.empty()) return 0;
     k.str(rb.hash);
   }
-  for (const double v : r.model_matrix) k.f64(v);
+  for (std::size_t i = 0; i < r.model_matrix.size(); ++i) {
+    if (translationFree && (i == 6 || i == 7)) continue;
+    k.f64(r.model_matrix[i]);
+  }
   if (r.uv_rect) {
     k.f64(r.uv_rect->x);
     k.f64(r.uv_rect->y);
@@ -132,8 +137,125 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
     k.f64(s.opacity);
   }
   k.u64((std::uint64_t{ctx.viewport.pixelWidth} << 32U) | ctx.viewport.pixelHeight);
-  for (const float v : ctx.viewport.viewProjection.m) k.f64(v);
+  for (std::size_t i = 0; i < 9; ++i) {
+    if (translationFree && (i == 6 || i == 7)) continue;  // a pan is a translation too
+    k.f64(ctx.viewport.viewProjection[i]);
+  }
   return k.value();
+}
+
+/// P8b: a 2D layer's chain run in a buffer placement of its own. The layer is
+/// drawn with its origin on a WHOLE buffer pixel — and, when the chain's reach
+/// would leave the buffer, moved inside it — under a view shifted by that
+/// offset (ViewShift: every position the chain reads moves with it). The
+/// result is then a function of the layer's content alone, not of where it is
+/// on screen: a layer that only MOVES reuses it (AE runs effects in layer space
+/// for the same reason), composited where the layer is — the fraction by a
+/// bilinear shift.
+struct PixelSnap {
+  bool on = false;
+  double px = 0;  // the layer origin on screen (viewport px, top-left origin)
+  double py = 0;
+  double bx = 0;  // where it is drawn in the chain's buffer (whole px)
+  double by = 0;
+};
+
+PxBox unite_box(const PxBox& a, const PxBox& b) noexcept {
+  return {std::min(a.x0, b.x0), std::min(a.y0, b.y0), std::max(a.x1, b.x1), std::max(a.y1, b.y1)};
+}
+
+/// Where `r`'s chain can draw (fx_bounds), from its drawn box: every pass and the result.
+std::optional<PxBox> chain_reach(const PassContext& ctx, const api::Renderable& r) {
+  const double pw = ctx.viewport.pixelWidth;
+  const double ph = ctx.viewport.pixelHeight;
+  const std::optional<PxBox> in = content_box(r, ctx.viewport.viewProjection, pw, ph);
+  if (!in) return std::nullopt;
+  const Rect world = ctx.viewport.visibleWorldRect;
+  const FxBoundsView view{world.width > 0 ? pw / world.width : 1, world.height > 0 ? ph / world.height : 1};
+  PxBox box = *in;
+  PxBox all = *in;
+  for (const api::RenderEffect& e : r.effects) {
+    const std::optional<FxReach> reach = fx_reach(e, box, view);
+    if (!reach) return std::nullopt;
+    all = unite_box(unite_box(all, reach->passes), reach->out);
+    box = reach->out;
+  }
+  return all;
+}
+
+PixelSnap pixel_snap(const PassContext& ctx, const api::Renderable& r) {
+  PixelSnap s;
+  if (r.precomp || !r.precomp_children.empty() || r.deformed_mesh || r.motion_samples.size() > 1) return s;
+  const Mat3& vp = ctx.viewport.viewProjection;
+  // A 2D view is scale + translate (Camera2D): anything else is not snapped.
+  if (vp[1] != 0 || vp[3] != 0 || vp[0] == 0 || vp[4] == 0) return s;
+  const double pw = ctx.viewport.pixelWidth;
+  const double ph = ctx.viewport.pixelHeight;
+  if (pw <= 0 || ph <= 0) return s;
+  const Vec2 c = transform_point(mul(vp, mat3_of(r.model_matrix)), {0, 0});
+  s.px = (c.x + 1) * 0.5 * pw;
+  s.py = (1 - c.y) * 0.5 * ph;
+  if (!std::isfinite(s.px) || !std::isfinite(s.py)) return s;
+  s.bx = std::round(s.px);
+  s.by = std::round(s.py);
+  // A reach that would leave the buffer is moved inside it (when it fits), so
+  // the kept result is whole and may be moved anywhere later. (Whatever the
+  // grow-bounds switch: the result must not depend on it.)
+  {
+    if (const std::optional<PxBox> reach = chain_reach(ctx, r)) {
+      const double ox = s.bx - s.px;
+      const double oy = s.by - s.py;
+      const PxBox b{reach->x0 + ox, reach->y0 + oy, reach->x1 + ox, reach->y1 + oy};
+      if (b.x1 - b.x0 <= pw - 2) {
+        if (b.x0 < 1) s.bx += std::ceil(1 - b.x0);
+        else if (b.x1 > pw - 1) s.bx -= std::ceil(b.x1 - (pw - 1));
+      }
+      if (b.y1 - b.y0 <= ph - 2) {
+        if (b.y0 < 1) s.by += std::ceil(1 - b.y0);
+        else if (b.y1 > ph - 1) s.by -= std::ceil(b.y1 - (ph - 1));
+      }
+    }
+  }
+  s.on = true;
+  return s;
+}
+
+/// P8b: the pass context's view moved by (dx, dy) viewport px — what the
+/// layer's draw and its chain see — and put back when the scope ends.
+class ViewShift {
+ public:
+  ViewShift(PassContext& ctx, double dx, double dy) : ctx_(&ctx), saved_(ctx.viewport) {
+    if (dx == 0 && dy == 0) return;
+    ViewportState& v = ctx.viewport;
+    v.viewProjection = mul(translation(2 * dx / v.pixelWidth, -2 * dy / v.pixelHeight), v.viewProjection);
+    const double wx = v.visibleWorldRect.width / v.pixelWidth;  // world units a pixel
+    const double wy = v.visibleWorldRect.height / v.pixelHeight;
+    v.visibleWorldRect.x -= dx * wx;
+    v.visibleWorldRect.y -= dy * wy;
+    v.centerX -= dx * wx;
+    v.centerY -= dy * wy;
+  }
+  ~ViewShift() { ctx_->viewport = saved_; }
+  ViewShift(const ViewShift&) = delete;
+  ViewShift& operator=(const ViewShift&) = delete;
+  ViewShift(ViewShift&&) = delete;
+  ViewShift& operator=(ViewShift&&) = delete;
+
+ private:
+  PassContext* ctx_;
+  ViewportState saved_;
+};
+
+std::optional<PxBox> shifted(const std::optional<PxBox>& b, double dx, double dy) {
+  if (!b) return std::nullopt;
+  // A fractional move spreads the box's edge texels by one pixel.
+  const double gx = dx != std::floor(dx) ? 1 : 0;
+  const double gy = dy != std::floor(dy) ? 1 : 0;
+  return PxBox{b->x0 + dx - gx, b->y0 + dy - gy, b->x1 + dx + gx, b->y1 + dy + gy};
+}
+
+bool inside_view(const std::optional<PxBox>& b, double pw, double ph) {
+  return b && b->x0 >= 0 && b->y0 >= 0 && b->x1 <= pw && b->y1 <= ph;
 }
 
 /// P8: the key of a layer's whole effect-chain RESULT — its input (chain_content_key)
@@ -182,6 +304,10 @@ class LayerFxCache {
     std::uint32_t h = 0;
     std::uint64_t used = 0;
     std::optional<PxBox> covered;  // the chain result's reach (ChainResult::covered)
+    /// P8b: where the layer's origin was drawn in the buffer (PixelSnap bx, by), for a translation-free key.
+    std::optional<std::array<double, 2>> at;
+    /// P8b: the whole result was on screen, so it may be moved (else reused in place only).
+    bool movable = false;
     wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;  // the chain target's: a lossless copy
   };
   LayerFxCache() {
@@ -206,6 +332,8 @@ class LayerFxCache {
     pick->w = w;
     pick->h = h;
     pick->used = frame;
+    pick->at.reset();
+    pick->movable = false;
     return pick;
   }
   static void forget(Slot& s) noexcept { s.key = 0; }
@@ -503,32 +631,92 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     s->used = ctx.dev.frame();
     if (ctx.effectStats != nullptr) ++ctx.effectStats->layerChainsReused;
     if (dest.empty()) return ChainResult{t.tex(), s->name, s->covered};
-    // Nearest: a texel-for-texel copy (a linear tap off by an ulp would mix neighbours).
-    Commands copy;
-    emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, t.tex(), ctx.nearest_clamp(), {0, 0, 1, 1},
-                  kIdentityColor, false);
-    ctx.draw_into(dest, copy, true);
+    // Exact: a texture copy. The textured shader's storage decode darkened every
+    // reused result's midtones in a linear working space, and even raw its
+    // unpremultiply round trip moved half-float texels by an ulp (P8b, 2026-10-10).
+    RenderTarget* d = ctx.target(dest);
+    if (d != nullptr && d->format == t.format && d->width == t.width && d->height == t.height) {
+      copy_texels(ctx, t, *d);
+    } else {
+      Commands copy;
+      emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, t.tex(), ctx.nearest_clamp(), {0, 0, 1, 1},
+                    kIdentityColor, true);
+      ctx.draw_into(dest, copy, true);
+    }
     return ChainResult{ctx.target(dest)->tex(), dest, s->covered};
   }
 
+  /// P8b: a kept chain result for a snapped layer (PixelSnap), and the move
+  /// from where its origin sits in the kept buffer to where the layer is now.
+  struct KeptFx {
+    TexRef tex;
+    std::optional<PxBox> covered;  // at the kept place
+    double dx = 0;
+    double dy = 0;
+  };
+
+  /// P8b: an earlier frame's chain result under the translation-free `fxKey`,
+  /// moved to where the layer is now. A result the buffer's edge cut (not
+  /// `movable`) is reused only where it was drawn.
+  std::optional<KeptFx> reuse_layer_fx_moved(PassContext& ctx, std::uint64_t fxKey, const PixelSnap& snap) {
+    if (fxKey == 0 || !snap.on) return std::nullopt;
+    const std::uint32_t w = ctx.viewport.pixelWidth;
+    const std::uint32_t h = ctx.viewport.pixelHeight;
+    LayerFxCache::Slot* s = layerFx_.find(fxKey, w, h);
+    if (s == nullptr || !s->at) return std::nullopt;
+    if (!s->movable && ((*s->at)[0] != snap.bx || (*s->at)[1] != snap.by)) return std::nullopt;
+    const double dx = snap.px - (*s->at)[0];
+    const double dy = snap.py - (*s->at)[1];
+    bool created = false;
+    RenderTarget& t = ctx.dev.target(s->name, w, h, s->format, 1, false, &created);
+    if (created) {
+      LayerFxCache::forget(*s);  // the pool collected it: the chain runs again
+      return std::nullopt;
+    }
+    s->used = ctx.dev.frame();
+    if (ctx.effectStats != nullptr) ++ctx.effectStats->layerChainsReused;
+    return KeptFx{t.tex(), s->covered, dx, dy};
+  }
+
   /// P8: keep `out` (the chain result of layer `id` under `fxKey`) for later
-  /// frames — once the layer's key held for two frames in a row.
+  /// frames — once the layer's key held for two frames in a row. P8b: a snapped
+  /// layer's result is kept with where it was drawn; it may be MOVED only when
+  /// its whole reach was on screen (a result cut by the viewport's edge cannot).
   void keep_layer_fx(PassContext& ctx, const std::string& id, std::uint64_t fxKey, const TexRef& out, std::string_view outName,
-                     const std::optional<PxBox>& covered) {
+                     const std::optional<PxBox>& covered, const PixelSnap* snap = nullptr) {
     if (fxKey == 0 || !layerFx_.steady(id, fxKey)) return;
     const RenderTarget* src = ctx.target(outName);
     if (src == nullptr) return;
     const std::uint32_t w = ctx.viewport.pixelWidth;
     const std::uint32_t h = ctx.viewport.pixelHeight;
+    const bool snapped = snap != nullptr && snap->on;
     LayerFxCache::Slot* slot = layerFx_.claim(fxKey, w, h, ctx.dev.frame());
     if (slot == nullptr) return;  // every slot is in use this frame
     slot->covered = covered;
+    if (snapped) {
+      slot->at = std::array<double, 2>{snap->bx, snap->by};
+      slot->movable = inside_view(covered, w, h);
+    }
     slot->format = src->format;
     RenderTarget& t = ctx.dev.target(slot->name, w, h, slot->format, 1, false);
-    Commands keep;  // nearest: texel for texel, as reuse_layer_fx copies it back
+    if (src->width == t.width && src->height == t.height) {
+      copy_texels(ctx, *src, t);  // exact, as reuse_layer_fx copies it back
+      return;
+    }
+    Commands keep;
     emit_textured(ctx, keep, screen_mvp(), Color::white(), 1, Blend::none, out, ctx.nearest_clamp(), {0, 0, 1, 1},
-                  kIdentityColor, false);
+                  kIdentityColor, true);  // raw: the chain's working-space texels as they are
     draw_to_target(ctx, t, keep);
+  }
+
+  /// P8: `from` into `to` texel for texel (same format and size), in encode order.
+  static void copy_texels(PassContext& ctx, const RenderTarget& from, const RenderTarget& to) {
+    wgpu::TexelCopyTextureInfo a{};
+    a.texture = from.texture;
+    wgpu::TexelCopyTextureInfo b{};
+    b.texture = to.texture;
+    const wgpu::Extent3D size{from.width, from.height, 1};
+    ctx.dev.encoder().CopyTextureToTexture(&a, &b, &size);
   }
 
  public:
@@ -1026,15 +1214,30 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
 
     flush(ctx, st);
     // P8: a layer whose chain input and parameters match a kept result is a copy of it.
-    const std::uint64_t contentKey = hasEffects ? chain_content_key(ctx, r, 1) : 0;
+    // P8b: the input is drawn at a whole pixel and keyed without its place, so a
+    // layer that only moves reuses its chain — the result composited where the
+    // layer is (the fraction by a bilinear shift).
+    const PixelSnap snap = hasEffects && layerFxEnabled_ ? pixel_snap(ctx, r) : PixelSnap{};
+    // The layer's draw and its chain see the view moved to its buffer placement (restored at scope end).
+    const ViewShift shiftView(ctx, snap.on ? snap.bx - snap.px : 0, snap.on ? snap.by - snap.py : 0);
+    const std::uint64_t contentKey = hasEffects ? chain_content_key(ctx, r, 1, snap.on) : 0;
     const std::uint64_t fxKey = hasEffects && layerFxEnabled_ ? layer_fx_key(ctx, r, contentKey, 1) : 0;
-    if (const std::optional<ChainResult> kept = reuse_layer_fx(ctx, fxKey, {})) {
+    const double vw = ctx.viewport.pixelWidth;
+    const double vh = ctx.viewport.pixelHeight;
+    const auto composite = [&](const TexRef& tex, const std::optional<PxBox>& covered, double dx, double dy) {
       const Blend blend = blend_of(r.blend);
-      emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend, kept->tex, ctx.linear_clamp(), targetUv,
-                    kIdentityColor, true);
-      if (kept->covered && transparent_is_noop(blend)) {
-        st.main.last().scissor = scissor_of(*kept->covered, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
+      const Mat3 mvp = dx == 0 && dy == 0 ? screen_mvp() : mul(translation(2 * dx / vw, -2 * dy / vh), screen_mvp());
+      emit_textured(ctx, st.main, mvp, Color::white(), r.opacity, blend, tex, ctx.linear_clamp(), targetUv, kIdentityColor, true);
+      const std::optional<PxBox> at = shifted(covered, dx, dy);
+      if (at && transparent_is_noop(blend)) st.main.last().scissor = scissor_of(*at, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
+    };
+    if (snap.on) {
+      if (const std::optional<KeptFx> kept = reuse_layer_fx_moved(ctx, fxKey, snap)) {
+        composite(kept->tex, kept->covered, kept->dx, kept->dy);
+        return;
       }
+    } else if (const std::optional<ChainResult> kept = reuse_layer_fx(ctx, fxKey, {})) {
+      composite(kept->tex, kept->covered, 0, 0);
       return;
     }
     Commands layerCmds;
@@ -1059,14 +1262,9 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
     const ChainResult res = run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr, contentKey,
                                               drawn_box(ctx, r));
-    keep_layer_fx(ctx, r.id, fxKey, res.tex, res.name, res.covered);
-    const Blend blend = blend_of(r.blend);
-    emit_textured(ctx, st.main, screen_mvp(), Color::white(), r.opacity, blend, res.tex, ctx.linear_clamp(), targetUv,
-                  kIdentityColor, true);
+    keep_layer_fx(ctx, r.id, fxKey, res.tex, res.name, res.covered, &snap);
     // Outside the chain's reach its result is transparent: the composite covers the reach, not the frame.
-    if (res.covered && transparent_is_noop(blend)) {
-      st.main.last().scissor = scissor_of(*res.covered, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
-    }
+    composite(res.tex, res.covered, snap.on ? snap.px - snap.bx : 0, snap.on ? snap.py - snap.by : 0);
   }
 
 };

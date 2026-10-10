@@ -210,7 +210,7 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
                                 std::string& error, PendingReadback* pending) {
   using Clock = std::chrono::steady_clock;
   const auto t0 = Clock::now();
-  const ViewportState vp = ViewportState::from(file.view);
+  ViewportState vp = ViewportState::from(file.view);  // the pass context's (P8b shifts it for a scope)
   const wgpu::TextureFormat surfaceFormat =
       target != nullptr ? targetFormat
       : file.view.surface_format == api::RenderTextureFormat::rgba8unorm ? wgpu::TextureFormat::RGBA8Unorm

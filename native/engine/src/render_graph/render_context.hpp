@@ -80,7 +80,8 @@ struct PassContext {
   Device& dev;
   const api::RenderFrameFile& file;
   const TextureTable& textures;
-  const ViewportState& viewport;
+  /// Mutable for one reason: P8b's ViewShift moves it for a layer's draw and chain, and puts it back.
+  ViewportState& viewport;
   ColorPipeline color;
   /// Graph targets resolved this frame (name → target). Absent = surface.
   std::unordered_map<std::string, RenderTarget*> targets;
