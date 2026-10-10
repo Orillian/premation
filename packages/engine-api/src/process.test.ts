@@ -150,6 +150,36 @@ describe('ProcessEngineClient', () => {
     expect(notices).toEqual([expect.objectContaining({ kind: 'restarted', replayed: 2, mismatches: 0 })]);
   });
 
+  it('an endGesture lost on the dead pipe is sent to the restarted engine after the replay, before any waiting request', async () => {
+    const { host, client } = setup();
+    await client.whenReady();
+    await client.execute({ type: 'beginGesture', label: 'AI: turn' }, { origin: 'ai' });
+    // Dead before the client hears `restarting`: the pipe answers `gone`.
+    host.state = 'restarting';
+    const lost = await client.endGesture(7, false, { origin: 'ai' });
+    expect(lost.ok).toBe(false);
+    // `0` ("the open one") is not resent: by then it could be someone else's.
+    expect((await client.endGesture(0, true)).ok).toBe(false);
+    host.setState('restarting');
+    const waiting = client.execute({ type: 'renameLayer', layer: 'L1', name: 'after' });
+    const before = host.requests.length;
+    host.restart();
+    expect((await waiting).ok).toBe(true);
+    const sent = host.requests.slice(before).filter((q) => q.body.kind === 'command').map((q) => ({ ...(q.body.value as object), origin: q.origin }));
+    expect(sent).toEqual([
+      { type: 'beginGesture', label: 'AI: turn', origin: 'ai' },  // the replay
+      { type: 'endGesture', gesture: 7, commit: false, origin: 'ai' },  // the lost end, as its owner asked
+      { type: 'renameLayer', layer: 'L1', name: 'after', origin: 'ui' },
+    ]);
+    // Sent once: the next restart does not send it again.
+    host.setState('restarting');
+    const n = host.requests.length;
+    host.restart();
+    await client.whenReady();
+    await flush();
+    expect(host.requests.slice(n).filter((q) => q.body.kind === 'command' && q.body.value.type === 'endGesture')).toHaveLength(1);  // the replayed log's
+  });
+
   it('is unavailable after the host gives up: requests answer busy, said once; a retry brings it back', async () => {
     const { host, client, notices } = setup();
     await client.whenReady();

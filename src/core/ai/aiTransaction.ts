@@ -116,8 +116,14 @@ export async function beginAiTransaction(label: string, opts: BeginTurnOptions =
       release();
       const res = await client.endGesture(gesture, true, { origin });
       // The gesture closed under the turn (a leaked-gesture recovery) still
-      // committed its writes in the engine; say so.
-      if (!res.ok) session.legacy(`the turn's gesture was closed by another client (${res.error.code})`);
+      // committed its writes in the engine; say so. `busy`: the engine was
+      // gone — the client ends the gesture once the restarted engine has the
+      // log back (ProcessEngineClient), so it still lands as one entry.
+      if (!res.ok) {
+        session.legacy(res.error.code === 'busy'
+          ? `the engine restarted before the turn closed; its edits land as one entry when the engine is back`
+          : `the turn's gesture was closed by another client (${res.error.code})`);
+      }
       return { kind: res.ok && client.revision === startRevision ? 'empty' : 'engine', gaps: session.legacyGaps };
     } finally {
       session.dispose();

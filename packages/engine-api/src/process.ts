@@ -22,6 +22,14 @@
  *    requests mint the same ids) before any new request is sent, then
  *    subscribers get one `documentReset{engineRestarted}`. Requests made
  *    meanwhile wait, in order.
+ *  - **A gesture let go during the outage is closed after it.** An
+ *    `endGesture` that never reached an engine (the pipe was dead) leaves its
+ *    `beginGesture` in the log, so the replay opens the gesture again with no
+ *    owner left to close it — and the engine's one gesture slot answers
+ *    `gestureOpen` to every later turn and drag. The client remembers such an
+ *    end and sends it (same id, commit flag and origin) to the restarted engine
+ *    before any waiting request. A gesture whose owner never asked to end it
+ *    (a drag still held) is left open for that owner.
  *  - **Unavailable.** There is no other engine (docs/TS_ENGINE_REMOVAL.md).
  *    When the supervisor gives up (crash loop, no GPU, protocol mismatch,
  *    engine missing) requests answer `busy` ("the engine is unavailable") and
@@ -199,6 +207,8 @@ export class ProcessEngineClient extends EngineClientBase {
   private lastRestart: { replayed: number; mismatches: number; ms: number } | null = null;
   /** Seqs for the client's own queries: far above the base class's counter, never in flight twice. */
   private internalSeq = 2 ** 50;
+  /** Gesture id → the `endGesture` its owner sent that never reached an engine (sent again after the restart). */
+  private readonly unendedGestures = new Map<number, { commit: boolean; origin: Request['origin'] }>();
 
   constructor(
     private readonly bridge: EngineBridge,
@@ -249,11 +259,16 @@ export class ProcessEngineClient extends EngineClientBase {
   async request(req: Request): Promise<Response> {
     if (this.mode === 'closed') return errorResponse(req.seq, this.revision, 'cancelled', 'the engine client is closed');
     await this.gate();
-    if (this.mode === 'unavailable') return errorResponse(req.seq, this.revision, 'busy', 'the engine is unavailable');
+    if (this.mode === 'unavailable') {
+      const res = errorResponse(req.seq, this.revision, 'busy', 'the engine is unavailable');
+      this.noteGestureEnd(req, res);
+      return res;
+    }
     if ((this.mode as Mode) === 'closed') return errorResponse(req.seq, this.revision, 'cancelled', 'the engine client is closed');
     const res = await this.wire(req);
     this.noteRevision(res.revision);
     this.record(req, res);
+    this.noteGestureEnd(req, res);
     return res;
   }
 
@@ -315,6 +330,8 @@ export class ProcessEngineClient extends EngineClientBase {
 
   /** Learn the engine's revision, give subscribers a starting point, open the gate. */
   private async becomeReady(why: 'connected' | 'engineRestarted'): Promise<void> {
+    // Before the gate opens: a turn waiting to begin must find the slot free.
+    if (why === 'engineRestarted') await this.endUnendedGestures();
     const res = await this.wire({ seq: this.nextInternalSeq(), body: { kind: 'query', value: { type: 'getHistory' } }, origin: 'engine' });
     if (this.mode === 'unavailable' || this.mode === 'closed') return;
     this.noteRevision(res.revision);
@@ -361,6 +378,42 @@ export class ProcessEngineClient extends EngineClientBase {
     if (req.body.kind === 'query' || res.outcome.kind === 'error') return;
     if (req.body.kind === 'command' && req.body.value.type === 'newProject') this.log = [];  // nothing before it matters
     this.log.push({ request: deepCopy(req), revisionAfter: res.revision, documentHash: 0 });
+  }
+
+  /**
+   * An `endGesture` that never reached an engine (`busy`: the pipe was gone or
+   * the engine unavailable) is remembered; one that reached it, either way, is
+   * settled. Only an explicit id is kept: `0` ("the open one") could name a
+   * gesture that is not the sender's by the time the engine is back.
+   */
+  private noteGestureEnd(req: Request, res: Response): void {
+    if (req.body.kind !== 'command' || req.body.value.type !== 'endGesture') return;
+    const { gesture, commit } = req.body.value;
+    if (gesture === 0) return;
+    if (res.outcome.kind === 'error' && res.outcome.value.code === 'busy') this.unendedGestures.set(gesture, { commit, origin: req.origin });
+    else this.unendedGestures.delete(gesture);
+  }
+
+  /**
+   * The restarted engine has the log back, so a gesture whose end was lost is
+   * open again: end it as its owner asked. The engine refuses an id that is not
+   * the open gesture (`invalidArgument` / `noGesture`), so another owner's
+   * gesture is never closed by this.
+   */
+  private async endUnendedGestures(): Promise<void> {
+    for (const [gesture, end] of [...this.unendedGestures]) {
+      this.unendedGestures.delete(gesture);
+      const req: Request = {
+        seq: this.nextInternalSeq(),
+        body: { kind: 'command', value: { type: 'endGesture', gesture, commit: end.commit } },
+        origin: end.origin,
+      };
+      const res = await this.wire(req);
+      this.noteRevision(res.revision);
+      this.record(req, res);
+      // Died again before it landed: the next restart tries again.
+      if (res.outcome.kind === 'error' && res.outcome.value.code === 'busy') this.unendedGestures.set(gesture, end);
+    }
   }
 
   private onEventBytes(bytes: Uint8Array): void {
