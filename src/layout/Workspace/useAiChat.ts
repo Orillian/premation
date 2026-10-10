@@ -91,12 +91,16 @@ const TOOL_ACTIVITY: Record<string, string> = {
   list_capabilities: 'Reading the scene',
   list_presets: 'Reading the scene',
   analyse_audio: 'Reading the scene',
+  inspect_layers: 'Reading the scene',
+  list_fonts: 'Reading the scene',
+  get_export_status: 'Reading the scene',
 
   // ── Structure ──
   create_layer: 'Creating layers',
   delete_layer: 'Removing layers',
   update_layer: 'Editing layers',
   reparent_layer: 'Editing layers',
+  reorder_layer: 'Arranging layers',
   update_composition: 'Editing layers',
   create_precomp: 'Nesting a precomp',
 
@@ -135,6 +139,9 @@ const TOOL_ACTIVITY: Record<string, string> = {
   import_svg: 'Drawing vectors',
   create_media_from_attachment: 'Placing media',
   create_mask: 'Masking',
+  update_mask: 'Masking',
+  paint_strokes: 'Painting strokes',
+  set_audio: 'Mixing audio',
 
   // ── Shapes and rigs ──
   merge_paths: 'Merging paths',
