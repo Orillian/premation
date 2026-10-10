@@ -33,7 +33,7 @@ Radeon 780M iGPU unused (`force_high_performance_gpu`), d3d11va zero-copy decode
 | U2 | Reloading the page (or a renderer crash) while a frame was in transfer left the viewport on "Waiting for the C++ engine's first frame" for good: the dead page never settled the shared-texture send, so the viewport's transfer stayed in flight, and main's reference kept the engine slot. | `FrameForwarder` abandons a window's in-flight transfers on page reset: main's reference released, the waiting frame released, the late settle ignored. | done — test + 4 reloads mid-playback in the app all draw |
 | V6 | Motion tracker 38 fps on 1440p60, 52 fps on 4K (90 frames: 2.4 s / 1.7 s): the analysis decodes and converts full frames to track at 960 px. | | open |
 | V7 | Tracking job could not open footage the media system had opened (`/c/…` path accepted by import, refused by the job's reader). | The import stored the path as given; ffmpeg cannot open `/c/...`. Import and Relink now store the Windows drive path (`C:/...`) for a Git-Bash / MSYS drive path. | done — `importMsysPath.native.test.ts` (the tracker failed on it before) |
-| V8 | Properties shows shape fields (Roundness, Fill 1, Stroke 1) on a video layer. | | open |
+| V8 | Properties shows shape fields (Roundness, Fill 1, Stroke 1) on a video layer. | Every layer carries the generic Style component; only shapes (and solids) draw it. The Appearance section shows for shapes (Stroke for text), not for footage, where the rows were inert. | done — `appearanceFootage.native.test.tsx` |
 | P8b | (from the playback program) a layer that only moves re-runs its effect chain every frame. | | open |
 | S1 | "Strokes look broken in effect-heavy 3D" (owner, 2026-10-10). Probe renders: every glowing 3D layer sat in a hard-edged box — the 3D surface's margin budgeted the glow's blur radius, not its wide halo (2.2×), so the halo was cut at the texture edge. | `effect_spread_px` budgets what the chain draws. Two goldens whose REFERENCE has the box take a ceiling with that reason. | done |
 | S2 | Thin strokes (1–2 px) on a 3D layer at a steep angle broke into dotted lines: the layer's raster was sampled minified with no mips. | 3D quads sample a mipmapped copy of their raster (`texture_mipmapped`, `#mip` pool entry) with trilinear + 16× anisotropic filtering; 2D sampling unchanged. | done |
@@ -43,4 +43,4 @@ Radeon 780M iGPU unused (`force_high_performance_gpu`), d3d11va zero-copy decode
 
 ## Progress
 
-- [x] V1 · [x] V2 · [x] V3 · [x] V4 · [x] V5 · [ ] V6 · [x] V7 · [ ] V8 · [ ] P8b · [x] U1 · [x] U2 · [x] S1 · [x] S2 · [x] S3 · [x] T6 · [x] E
+- [x] V1 · [x] V2 · [x] V3 · [x] V4 · [x] V5 · [ ] V6 · [x] V7 · [x] V8 · [ ] P8b · [x] U1 · [x] U2 · [x] S1 · [x] S2 · [x] S3 · [x] T6 · [x] E

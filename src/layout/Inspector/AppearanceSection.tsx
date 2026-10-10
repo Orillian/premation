@@ -187,8 +187,13 @@ function AppearanceSectionInner({ nodeId }: { nodeId: string }): JSX.Element | n
   // render, including the ones for a node that has just been deleted. Returning
   // before them made React render fewer hooks than the previous pass and throw
   // — deleting a selected layer with this panel open took the editor down.
-  const hasStyle = tree?.nodes.has('layer/cornersLinked') === true;
-  const isText = uiKindOf(layer) === 'text';
+  // Every layer carries the generic Style component, video and image included,
+  // but only a shape (or solid) draws its corners, fills and strokes: on
+  // footage the rows were inert controls (docs/PROGRAM_PERFORMANCE.md V8), and
+  // After Effects shows no Contents on a footage layer either.
+  const kind = uiKindOf(layer);
+  const hasStyle = tree?.nodes.has('layer/cornersLinked') === true && kind === 'shape';
+  const isText = kind === 'text';
 
   if (!layer || (!hasStyle && !isText)) return null;
 
