@@ -1055,6 +1055,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
     src/scene/effects_spatial.cpp
     src/scene/effects_spatial_a.cpp
     src/scene/effects_spatial_b.cpp
+    src/scene/effects_spatial_c.cpp
     src/scene/layer_styles.cpp
     src/scene/path_ops.cpp
     src/scene/snapshot_build.cpp

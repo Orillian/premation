@@ -92,6 +92,11 @@ export function effectParamCommand(
     const opt = def.options?.find((o) => String(o.value) === String(value) || o.label === value);
     return opt ? [{ type: 'setProperty', prop: ref, value: { kind: 'choice', value: opt.label } } as Command] : null;
   }
+  // A layer picker (Displacement Map's Map Layer, Blend's Blend With Layer):
+  // the layer's id, '' = none — a static reference, as the Effect panel writes it.
+  if (def?.type === 'layer') {
+    return typeof value === 'string' ? [{ type: 'setProperty', prop: ref, value: { kind: 'layer', value } } as Command] : null;
+  }
   if (typeof value === 'number') {
     const member = `effect.${effectId}.${key}`;
     const r = propRefForTrack(nodeId, member);

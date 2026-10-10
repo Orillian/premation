@@ -743,6 +743,17 @@ export const addEffectDef: AiToolDef = {
           'block-load', 'kernel', '3d-glasses', 'fractal', 'particle-systems', 'cc-bubbles',
           // Stroke-like paint effects (2026-09-15) — AE Stroke and Scribble
           'path-stroke', 'scribble',
+          // fx60:b12:begin
+          'brightness-contrast', 'color-balance-hls', 'calculations', 'set-channels', 'blend', 'difference-matte',
+          'color-neutralizer', 'blobbylize', 'cc-split-2', 'eyedropper-fill', 'noise-hls-auto', 'caustics', 'shatter',
+          'wave-world', 'warpomatic', 'overbrights', 'hdr-compander', 'hdr-highlight-compression',
+          'reduce-interlace-flicker', 'basic-3d', 'digital-glitch', 'vr-rotate-sphere', 'color-gradients', 'vhs',
+          'crt', 'pixel-sort', 'long-shadow', 'halation', 'light-leaks', 'tilt-shift', 'gradient-map', 'duotone',
+          'soft-glow', 'neon', 'hologram', 'dither', 'ascii', 'led-screen', 'pencil-sketch', 'oil-paint',
+          'camera-shake', 'flicker', 'prism', 'frosted-glass', 'bleach-bypass', 'cross-process', 'split-toning',
+          'old-film', 'anamorphic-streaks', 'starglow', 'sparkle', 'white-balance', 'clarity', 'lens-distortion',
+          'heat-haze', 'color-halftone', 'crystallize', 'fog', 'chrome', 'night-vision',
+          // fx60:b12:end
         ],
       },
       amount: {

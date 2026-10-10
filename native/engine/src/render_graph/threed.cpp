@@ -309,6 +309,8 @@ double effect_spread_px(const std::vector<api::RenderEffect>& effects, double la
       s = pos == 1 ? 0 : pos == 2 ? fx.num("widthPx") * 0.5 : fx.num("widthPx");
     } else if (t == "displacement-map") s = fx.num("amount");
     else if (t == "compound-blur") s = fx.num("maxRadiusPx") * kBlurTail;
+    // Program E's effects say how far they draw past their input (layer px).
+    else if (fx.has("reachPx")) s = std::max(0.0, fx.num("reachPx"));
     mx = std::max(mx, s);
   }
   return mx;

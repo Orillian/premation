@@ -50,8 +50,10 @@ const CATEGORY_LABEL_KEY: Record<string, string> = {
   Perspective: 'menu.sub.effect.perspective',
   Channel: 'menu.sub.effect.channel',
   Keying: 'menu.sub.effect.keying',
+  Simulation: 'menu.sub.effect.simulation',
   Time: 'menu.sub.effect.time',
   Transition: 'menu.sub.effect.transition',
+  Utility: 'menu.sub.effect.utility',
 };
 
 function byLabel(a: EffectDef, b: EffectDef): number {

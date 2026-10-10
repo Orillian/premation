@@ -21,10 +21,12 @@ namespace premation::scene {
 /// amount ← stored params). Returns false when the type is not handled here.
 bool extract_more_spatial(const Json& e, const Json& params, const RLayer& layer, std::vector<api::RenderEffect>& out);
 
-// The two halves (effects_spatial_a.cpp, effects_spatial_b.cpp), same contract.
+// The parts (effects_spatial_a.cpp, effects_spatial_b.cpp, effects_spatial_c.cpp), same contract.
 [[nodiscard]] bool spatial_a_handles(std::string_view type);
 bool spatial_a(const Json& e, const Json& params, const RLayer& layer, std::vector<api::RenderEffect>& out);
 [[nodiscard]] bool spatial_b_handles(std::string_view type);
 bool spatial_b(const Json& e, const Json& params, const RLayer& layer, std::vector<api::RenderEffect>& out);
+[[nodiscard]] bool spatial_c_handles(std::string_view type);
+bool spatial_c(const Json& e, const Json& params, const RLayer& layer, std::vector<api::RenderEffect>& out);
 
 }  // namespace premation::scene

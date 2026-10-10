@@ -259,6 +259,58 @@ const std::unordered_map<std::string, Mat>& p_table() {
       {"kernel", Mat::KERNEL_FX_MATERIAL}, {"3d-glasses", Mat::GLASSES_3D_FX_MATERIAL},
       {"fractal", Mat::FRACTAL_FX_MATERIAL}, {"particle-systems", Mat::PARTICLE_SYSTEMS_FX_MATERIAL},
       {"cc-bubbles", Mat::BUBBLES_FX_MATERIAL},
+      // fx60:b1:begin
+      {"brightness-contrast", Mat::FX60_BRIGHTNESS_CONTRAST_MATERIAL},
+      {"color-balance-hls", Mat::FX60_COLOR_BALANCE_HLS_MATERIAL},
+      {"color-neutralizer", Mat::FX60_COLOR_NEUTRALIZER_MATERIAL},
+      {"cc-split-2", Mat::FX60_CC_SPLIT_2_MATERIAL},
+      {"eyedropper-fill", Mat::FX60_EYEDROPPER_FILL_MATERIAL},
+      {"noise-hls-auto", Mat::FX60_NOISE_HLS_AUTO_MATERIAL},
+      {"caustics", Mat::FX60_CAUSTICS_MATERIAL},
+      {"shatter", Mat::FX60_SHATTER_MATERIAL},
+      {"wave-world", Mat::FX60_WAVE_WORLD_MATERIAL},
+      {"overbrights", Mat::FX60_OVERBRIGHTS_MATERIAL},
+      {"hdr-compander", Mat::FX60_HDR_COMPANDER_MATERIAL},
+      {"hdr-highlight-compression", Mat::FX60_HDR_HIGHLIGHT_COMPRESSION_MATERIAL},
+      {"reduce-interlace-flicker", Mat::FX60_REDUCE_INTERLACE_FLICKER_MATERIAL},
+      {"basic-3d", Mat::FX60_BASIC_3D_MATERIAL},
+      {"digital-glitch", Mat::FX60_DIGITAL_GLITCH_MATERIAL},
+      {"vr-rotate-sphere", Mat::FX60_VR_ROTATE_SPHERE_MATERIAL},
+      {"color-gradients", Mat::FX60_COLOR_GRADIENTS_MATERIAL},
+      {"vhs", Mat::FX60_VHS_MATERIAL},
+      {"crt", Mat::FX60_CRT_MATERIAL},
+      {"pixel-sort", Mat::FX60_PIXEL_SORT_MATERIAL},
+      {"long-shadow", Mat::FX60_LONG_SHADOW_MATERIAL},
+      {"light-leaks", Mat::FX60_LIGHT_LEAKS_MATERIAL},
+      {"tilt-shift", Mat::FX60_TILT_SHIFT_MATERIAL},
+      {"gradient-map", Mat::FX60_GRADIENT_MAP_MATERIAL},
+      {"duotone", Mat::FX60_DUOTONE_MATERIAL},
+      {"hologram", Mat::FX60_HOLOGRAM_MATERIAL},
+      {"dither", Mat::FX60_DITHER_MATERIAL},
+      {"ascii", Mat::FX60_ASCII_MATERIAL},
+      {"led-screen", Mat::FX60_LED_SCREEN_MATERIAL},
+      {"pencil-sketch", Mat::FX60_PENCIL_SKETCH_MATERIAL},
+      {"oil-paint", Mat::FX60_OIL_PAINT_MATERIAL},
+      {"camera-shake", Mat::FX60_CAMERA_SHAKE_MATERIAL},
+      {"flicker", Mat::FX60_FLICKER_MATERIAL},
+      {"prism", Mat::FX60_PRISM_MATERIAL},
+      {"frosted-glass", Mat::FX60_FROSTED_GLASS_MATERIAL},
+      {"bleach-bypass", Mat::FX60_BLEACH_BYPASS_MATERIAL},
+      {"cross-process", Mat::FX60_CROSS_PROCESS_MATERIAL},
+      {"split-toning", Mat::FX60_SPLIT_TONING_MATERIAL},
+      {"old-film", Mat::FX60_OLD_FILM_MATERIAL},
+      {"anamorphic-streaks", Mat::FX60_ANAMORPHIC_STREAKS_MATERIAL},
+      {"starglow", Mat::FX60_STARGLOW_MATERIAL},
+      {"sparkle", Mat::FX60_SPARKLE_MATERIAL},
+      {"white-balance", Mat::FX60_WHITE_BALANCE_MATERIAL},
+      {"lens-distortion", Mat::FX60_LENS_DISTORTION_MATERIAL},
+      {"heat-haze", Mat::FX60_HEAT_HAZE_MATERIAL},
+      {"color-halftone", Mat::FX60_COLOR_HALFTONE_MATERIAL},
+      {"crystallize", Mat::FX60_CRYSTALLIZE_MATERIAL},
+      {"fog", Mat::FX60_FOG_MATERIAL},
+      {"chrome", Mat::FX60_CHROME_MATERIAL},
+      {"night-vision", Mat::FX60_NIGHT_VISION_MATERIAL},
+      // fx60:b1:end
   };
   return t;
 }
@@ -267,8 +319,33 @@ const std::unordered_map<std::string, Mat>& p_table() {
 const std::unordered_map<std::string, Mat>& field_table() {
   static const std::unordered_map<std::string, Mat> t = {
       {"cartoon", Mat::CARTOON_FX_MATERIAL}, {"inner-shadow", Mat::INTERIOR_STYLE_FX_MATERIAL},
-      {"inner-glow", Mat::INTERIOR_STYLE_FX_MATERIAL}, {"satin", Mat::SATIN_FX_MATERIAL}, {"bevel", Mat::BEVEL_FX_MATERIAL}};
+      {"inner-glow", Mat::INTERIOR_STYLE_FX_MATERIAL}, {"satin", Mat::SATIN_FX_MATERIAL}, {"bevel", Mat::BEVEL_FX_MATERIAL},
+      // fx60:b2:begin
+      {"blobbylize", Mat::FX60_BLOBBYLIZE_MATERIAL},
+      {"warpomatic", Mat::FX60_WARPOMATIC_MATERIAL},
+      {"halation", Mat::FX60_HALATION_MATERIAL},
+      {"soft-glow", Mat::FX60_SOFT_GLOW_MATERIAL},
+      {"neon", Mat::FX60_NEON_MATERIAL},
+      {"clarity", Mat::FX60_CLARITY_MATERIAL},
+      // fx60:b2:end
+  };
   return t;
+}
+
+/// Program E (2026-10-10): single-pass effects that read ANOTHER layer at
+/// binding 3 (`mapLayerId`, rendered where it sits in the comp — the layer
+/// itself when unset or unavailable): Calculations, Set Channels, Blend,
+/// Difference Matte. Their `p` rows verbatim.
+const std::unordered_map<std::string, Mat>& map_table() {
+  static const std::unordered_map<std::string, Mat> m = {
+      // fx60:b3:begin
+      {"calculations", Mat::FX60_CALCULATIONS_MATERIAL},
+      {"set-channels", Mat::FX60_SET_CHANNELS_MATERIAL},
+      {"blend", Mat::FX60_BLEND_MATERIAL},
+      {"difference-matte", Mat::FX60_DIFFERENCE_MATTE_MATERIAL},
+      // fx60:b3:end
+  };
+  return m;
 }
 
 double term_value(const Fx& fx, const Term& t) {
@@ -409,6 +486,7 @@ std::optional<Mat> effect_material(std::string_view type) {
   if (const auto it = fx_table().find(t); it != fx_table().end()) return it->second.material;
   if (const auto it = p_table().find(t); it != p_table().end()) return it->second;
   if (const auto it = field_table().find(t); it != field_table().end()) return it->second;
+  if (const auto it = map_table().find(t); it != map_table().end()) return it->second;
   return std::nullopt;
 }
 
@@ -445,7 +523,10 @@ bool effect_ported(const api::RenderEffect& e, std::string& why) {
   if (t == "color-matrix" || t == "channel-lut") return true;  // E4: a grade in stack order (below)
   if (t == "stamp-field") return true;  // E4: Plexus / Write-on brush (below)
   if (t == "fx-overlay") return true;   // E4 round 2: a drawn Canvas2D effect's own raster (below)
-  if (fx_table().count(t) != 0 || p_table().count(t) != 0 || field_table().count(t) != 0 || known_single(t)) return true;
+  if (fx_table().count(t) != 0 || p_table().count(t) != 0 || field_table().count(t) != 0 || map_table().count(t) != 0 ||
+      known_single(t)) {
+    return true;
+  }
   why = "effect " + t;
   return false;
 }
@@ -1553,6 +1634,11 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     } else if (const auto p = p_table().find(std::string(type)); p != p_table().end()) {
       const auto rows = p_rows(fx);
       add(p->second, pack_fx_block(ctx.packer(), mvp, targetUv, rows, fxBox), ctx.linear_clamp());
+    } else if (const auto mt = map_table().find(std::string(type)); mt != map_table().end()) {
+      TexRef map = poolHasMatte ? TexRef{} : maps.map_layer(ctx, byId, fx.text("mapLayerId"), selfId);
+      if (!map) map = curTex;
+      const auto rows = p_rows(fx);
+      add(mt->second, pack_fx_block(ctx.packer(), mvp, targetUv, rows, fxBox), ctx.linear_clamp()).mask = map;
     } else if (type == "gradient-ramp") {
       Color a = Color::white();
       Color b{0, 0, 0, 1};

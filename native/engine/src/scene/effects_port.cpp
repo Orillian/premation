@@ -40,6 +40,33 @@ bool is_lut_effect(std::string_view t) {
   return std::ranges::find(k, t) != k.end();
 }
 
+/// effects.ts TIME_DEPENDENT: the effects whose `time` param follows the layer
+/// clock (unless `followCompTime` is off) — membership re-renders the layer
+/// every frame, so it is kept to effects whose pixels ARE the motion.
+bool follows_clock(std::string_view t) {
+  static const std::set<std::string, std::less<>> kClock = {
+      // fx60:b7:begin
+      "noise-hls-auto",
+      "caustics",
+      "shatter",
+      "wave-world",
+      "digital-glitch",
+      "vhs",
+      "light-leaks",
+      "hologram",
+      "camera-shake",
+      "flicker",
+      "old-film",
+      "sparkle",
+      "heat-haze",
+      "fog",
+      "night-vision",
+      // fx60:b7:end
+      "timecode", "strobe-light", "particle-systems",
+  };
+  return kClock.contains(t);
+}
+
 /// effectBake.ts GPU_BLENDED_OPACITY.
 bool gpu_blends_effect_opacity(std::string_view t) {
   static const std::set<std::string, std::less<>> k = {
@@ -50,6 +77,68 @@ bool gpu_blends_effect_opacity(std::string_view t) {
       "scatter", "ripple", "magnify", "warp", "smear", "rolling-shutter", "radial-shadow", "cartoon",
       "brush-strokes", "strobe-light", "color-emboss", "halftone", "kaleidoscope", "vignette", "glass",
       "ink-bleed", "paper", "ink-splatter",
+      // fx60:b6:begin
+      "brightness-contrast",
+      "color-balance-hls",
+      "calculations",
+      "set-channels",
+      "blend",
+      "difference-matte",
+      "color-neutralizer",
+      "blobbylize",
+      "cc-split-2",
+      "eyedropper-fill",
+      "noise-hls-auto",
+      "caustics",
+      "shatter",
+      "wave-world",
+      "warpomatic",
+      "overbrights",
+      "hdr-compander",
+      "hdr-highlight-compression",
+      "reduce-interlace-flicker",
+      "basic-3d",
+      "digital-glitch",
+      "vr-rotate-sphere",
+      "color-gradients",
+      "vhs",
+      "crt",
+      "pixel-sort",
+      "long-shadow",
+      "halation",
+      "light-leaks",
+      "tilt-shift",
+      "gradient-map",
+      "duotone",
+      "soft-glow",
+      "neon",
+      "hologram",
+      "dither",
+      "ascii",
+      "led-screen",
+      "pencil-sketch",
+      "oil-paint",
+      "camera-shake",
+      "flicker",
+      "prism",
+      "frosted-glass",
+      "bleach-bypass",
+      "cross-process",
+      "split-toning",
+      "old-film",
+      "anamorphic-streaks",
+      "starglow",
+      "sparkle",
+      "white-balance",
+      "clarity",
+      "lens-distortion",
+      "heat-haze",
+      "color-halftone",
+      "crystallize",
+      "fog",
+      "chrome",
+      "night-vision",
+      // fx60:b6:end
       "texturize", "threads", "chromatic-aberration", "hex-tile", "flo-motion", "lens", "griddler",
       "ball-action", "drizzle", "card-dance", "plastic", "ripple-pulse", "3d-glasses", "fractal",
       "polar-coordinates", "wave-warp", "turbulent-displace", "curl-noise", "minimax",
@@ -146,7 +235,7 @@ std::vector<Json> resolve_effect_params(const std::vector<Json>& effects, const 
     Json params = doc::params_of(e);
     bool touched = false;
     const std::string t = type_of(e);
-    const char* timeParam = t == "timecode" || t == "strobe-light" || t == "particle-systems" ? "time" : nullptr;
+    const char* timeParam = follows_clock(t) ? "time" : nullptr;
     if (timeParam != nullptr && layerTimeSec) {
       const Json& follow = param_of(params, "followCompTime");
       if (!(follow.is_bool() && !follow.b())) {

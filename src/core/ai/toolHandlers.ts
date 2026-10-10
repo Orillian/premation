@@ -26,7 +26,7 @@
  */
 
 import type { AiTool, ToolContext, ToolResult } from '@motion/ai-tools';
-import { ALL_TOOL_DEFS, PREVIEW_VIDEO_MODEL, bindAlias, mutates, snapVideoDuration, videoModel } from '@motion/ai-tools';
+import { ALL_TOOL_DEFS, PREVIEW_VIDEO_MODEL, bindAlias, mutates, resolveAlias, snapVideoDuration, videoModel } from '@motion/ai-tools';
 import { EFFECT_DEFS, effectDefFor } from '@core/effects/effects';
 import { ANIMATOR_PARAMS } from '@core/text/textAnimators';
 import { isRiggableKind } from '@core/scene/rigLogo';
@@ -1036,9 +1036,16 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
   // Initial values: the same write update_effect_param makes, one per key.
   const set: string[] = [];
   const unknown: string[] = [];
-  for (const [key, value] of Object.entries(initial ?? {})) {
-    const known = d ? d.params.some((p) => p.key === key) : true;
-    if (!known || !(typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean')) {
+  for (const [key, raw] of Object.entries(initial ?? {})) {
+    const def = d?.params.find((p) => p.key === key);
+    const known = d ? def !== undefined : true;
+    if (!known || !(typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean')) {
+      unknown.push(key);
+      continue;
+    }
+    // A layer param takes a layer id — or the handle a create_layer in this turn bound.
+    const value = def?.type === 'layer' && typeof raw === 'string' && raw !== '' ? resolveAlias(ctx, raw) : raw;
+    if (def?.type === 'layer' && typeof value === 'string' && value !== '' && !(await ctx.scene.has(value))) {
       unknown.push(key);
       continue;
     }

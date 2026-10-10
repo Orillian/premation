@@ -56,7 +56,7 @@ const std::map<std::string, std::string, std::less<>>& effect_table() {
     {"CC Tiler", "cc-tiler"},
     {"CC Burn Film", "burn-film"},
     {"CC Vignette", "vignette"},
-    {"ADBE Brightness & Contrast 2", "brightness"},
+    {"ADBE Brightness & Contrast 2", "brightness-contrast"},
     {"ADBE Easy Levels2", "levels"},
     {"ADBE Pro Levels2", "levels"},
     {"ADBE CurvesCustom", "curves"},
@@ -73,7 +73,7 @@ const std::map<std::string, std::string, std::less<>>& effect_table() {
     {"ADBE ChannelMixer", "channel-mixer"},
     {"ADBE Shift Channels", "shift-channels"},
     {"ADBE Color Balance 2", "color-balance"},
-    {"ADBE Color Balance (HLS)", "color-balance"},
+    {"ADBE Color Balance (HLS)", "color-balance-hls"},
     {"ADBE Gamma/Pedestal/Gain2", "gamma-pedestal-gain"},
     {"ADBE Apply Color LUT2", "apply-color-lut"},
     {"ADBE Change Color", "change-color"},
@@ -203,15 +203,27 @@ const std::map<std::string, std::string, std::less<>>& effect_table() {
     {"ADBE Timecode", "timecode"},
     {"ADBE AUD SPECTRUM", "audio-spectrum"},
     {"ADBE AUD WAVEFORM", "audio-waveform"},
+    // Program E (2026-10-10): the built-ins that had no effect here before.
+    {"ADBE Set Channels", "set-channels"},
+    {"ADBE Blend", "blend"},
+    {"ADBE Difference Matte2", "difference-matte"},
+    {"ADBE Basic 3D", "basic-3d"},
+    {"ADBE Shatter", "shatter"},
+    {"ADBE Wave World", "wave-world"},
+    {"ADBE Caustics", "caustics"},
+    {"ADBE Noise HLS Auto", "noise-hls-auto"},
+    {"CC Color Neutralizer", "color-neutralizer"},
+    {"CC Blobbylize", "blobbylize"},
+    {"CC Split 2", "cc-split-2"},
+    {"CC WarpoMatic", "warpomatic"},
+    {"CC Overbrights", "overbrights"},
   };
   return kTable;
 }
 
-/// AE effects that need a SECOND effect of ours (Brightness & Contrast → brightness + contrast).
-std::optional<std::string> companion_of(std::string_view matchName) {
-  if (matchName == "ADBE Brightness & Contrast 2") return std::string("contrast");
-  return std::nullopt;
-}
+/// AE effects that need a SECOND effect of ours. None since 2026-10-10: Brightness &
+/// Contrast, imported as brightness + contrast until then, is one effect here now.
+std::optional<std::string> companion_of(std::string_view /*matchName*/) { return std::nullopt; }
 
 /// Where the two products call one thing by two names (normalised labels).
 std::optional<std::string_view> label_synonym(std::string_view label) {

@@ -253,6 +253,68 @@ export type EffectType =
   | 'ink-bleed'
   | 'paper'
   | 'ink-splatter'
+  // fx60:b8:begin
+  | 'brightness-contrast'
+  | 'color-balance-hls'
+  | 'calculations'
+  | 'set-channels'
+  | 'blend'
+  | 'difference-matte'
+  | 'color-neutralizer'
+  | 'blobbylize'
+  | 'cc-split-2'
+  | 'eyedropper-fill'
+  | 'noise-hls-auto'
+  | 'caustics'
+  | 'shatter'
+  | 'wave-world'
+  | 'warpomatic'
+  | 'overbrights'
+  | 'hdr-compander'
+  | 'hdr-highlight-compression'
+  | 'reduce-interlace-flicker'
+  | 'basic-3d'
+  | 'digital-glitch'
+  | 'vr-rotate-sphere'
+  | 'color-gradients'
+  | 'vhs'
+  | 'crt'
+  | 'pixel-sort'
+  | 'long-shadow'
+  | 'halation'
+  | 'light-leaks'
+  | 'tilt-shift'
+  | 'gradient-map'
+  | 'duotone'
+  | 'soft-glow'
+  | 'neon'
+  | 'hologram'
+  | 'dither'
+  | 'ascii'
+  | 'led-screen'
+  | 'pencil-sketch'
+  | 'oil-paint'
+  | 'camera-shake'
+  | 'flicker'
+  | 'prism'
+  | 'frosted-glass'
+  | 'bleach-bypass'
+  | 'cross-process'
+  | 'split-toning'
+  | 'old-film'
+  | 'anamorphic-streaks'
+  | 'starglow'
+  | 'sparkle'
+  | 'white-balance'
+  | 'clarity'
+  | 'lens-distortion'
+  | 'heat-haze'
+  | 'color-halftone'
+  | 'crystallize'
+  | 'fog'
+  | 'chrome'
+  | 'night-vision'
+  // fx60:b8:end
   | 'threads'
   | 'chromatic-aberration'
   | 'hex-tile'
@@ -676,6 +738,23 @@ const TIME_DEPENDENT: ReadonlyMap<string, string> = new Map<string, string>([
     needs no absolute origin. An emitter does.
   */
   ['particle-systems', 'time'],
+  // fx60:b10:begin
+  ['noise-hls-auto', 'time'],
+  ['caustics', 'time'],
+  ['shatter', 'time'],
+  ['wave-world', 'time'],
+  ['digital-glitch', 'time'],
+  ['vhs', 'time'],
+  ['light-leaks', 'time'],
+  ['hologram', 'time'],
+  ['camera-shake', 'time'],
+  ['flicker', 'time'],
+  ['old-film', 'time'],
+  ['sparkle', 'time'],
+  ['heat-haze', 'time'],
+  ['fog', 'time'],
+  ['night-vision', 'time'],
+  // fx60:b10:end
 ]);
 
 export function isTimeDependentEffect(type: string): boolean {
@@ -4786,6 +4865,924 @@ export const EFFECT_DEFS: EffectDef[] = [
     ],
     css: () => '',
   },
+  // fx60:b9:begin
+  {
+    /* AE's Brightness & Contrast: a brightness curve through black and white and an S-curve contrast; Use Legacy is the old linear shift and scale. GPU only. */
+    type: 'brightness-contrast',
+    label: 'Brightness & Contrast',
+    gpuOnly: true,
+    params: [
+      { key: 'brightness', label: 'Brightness', type: 'number', min: -150, max: 150, default: 0 },
+      { key: 'contrast', label: 'Contrast', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'useLegacy', label: 'Use Legacy', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Color Balance (HLS): rotate the hue, lift or lower the lightness, scale the saturation. GPU only. */
+    type: 'color-balance-hls',
+    label: 'Color Balance (HLS)',
+    gpuOnly: true,
+    params: [
+      { key: 'hue', label: 'Hue', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'lightness', label: 'Lightness', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'saturation', label: 'Saturation', type: 'number', min: -100, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Calculations: one channel of this layer (or all of it) blended with a channel of a second layer by a blending mode. GPU only. */
+    type: 'calculations',
+    label: 'Calculations',
+    gpuOnly: true,
+    params: [
+      { key: 'inputChannel', label: 'Input Channel', type: 'enum', default: 0, options: [{ value: 0, label: 'RGBA' }, { value: 1, label: 'Gray' }, { value: 2, label: 'Red' }, { value: 3, label: 'Green' }, { value: 4, label: 'Blue' }, { value: 5, label: 'Alpha' }] },
+      { key: 'invertInput', label: 'Invert Input', type: 'checkbox', default: false },
+      { key: 'secondLayer', label: 'Second Layer', type: 'layer', default: '' },
+      { key: 'secondChannel', label: 'Second Layer Channel', type: 'enum', default: 0, options: [{ value: 0, label: 'RGBA' }, { value: 1, label: 'Gray' }, { value: 2, label: 'Red' }, { value: 3, label: 'Green' }, { value: 4, label: 'Blue' }, { value: 5, label: 'Alpha' }] },
+      { key: 'secondOpacity', label: 'Second Layer Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'invertSecond', label: 'Invert Second Layer', type: 'checkbox', default: false },
+      { key: 'blendingMode', label: 'Blending Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Copy' }, { value: 1, label: 'Multiply' }, { value: 2, label: 'Screen' }, { value: 3, label: 'Overlay' }, { value: 4, label: 'Soft Light' }, { value: 5, label: 'Hard Light' }, { value: 6, label: 'Add' }, { value: 7, label: 'Subtract' }, { value: 8, label: 'Difference' }, { value: 9, label: 'Darken' }, { value: 10, label: 'Lighten' }, { value: 11, label: 'Color Dodge' }, { value: 12, label: 'Color Burn' }, { value: 13, label: 'Exclusion' }] },
+      { key: 'preserveTransparency', label: 'Preserve Transparency', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Set Channels: each output channel taken from a channel (or luminance, hue, lightness, saturation) of the source layer. GPU only. */
+    type: 'set-channels',
+    label: 'Set Channels',
+    gpuOnly: true,
+    params: [
+      { key: 'sourceLayer', label: 'Source Layer', type: 'layer', default: '' },
+      { key: 'setRed', label: 'Set Red To', type: 'enum', default: 0, options: [{ value: 0, label: 'Red' }, { value: 1, label: 'Green' }, { value: 2, label: 'Blue' }, { value: 3, label: 'Alpha' }, { value: 4, label: 'Luminance' }, { value: 5, label: 'Hue' }, { value: 6, label: 'Lightness' }, { value: 7, label: 'Saturation' }, { value: 8, label: 'Full' }, { value: 9, label: 'Off' }] },
+      { key: 'setGreen', label: 'Set Green To', type: 'enum', default: 1, options: [{ value: 0, label: 'Red' }, { value: 1, label: 'Green' }, { value: 2, label: 'Blue' }, { value: 3, label: 'Alpha' }, { value: 4, label: 'Luminance' }, { value: 5, label: 'Hue' }, { value: 6, label: 'Lightness' }, { value: 7, label: 'Saturation' }, { value: 8, label: 'Full' }, { value: 9, label: 'Off' }] },
+      { key: 'setBlue', label: 'Set Blue To', type: 'enum', default: 2, options: [{ value: 0, label: 'Red' }, { value: 1, label: 'Green' }, { value: 2, label: 'Blue' }, { value: 3, label: 'Alpha' }, { value: 4, label: 'Luminance' }, { value: 5, label: 'Hue' }, { value: 6, label: 'Lightness' }, { value: 7, label: 'Saturation' }, { value: 8, label: 'Full' }, { value: 9, label: 'Off' }] },
+      { key: 'setAlpha', label: 'Set Alpha To', type: 'enum', default: 3, options: [{ value: 0, label: 'Red' }, { value: 1, label: 'Green' }, { value: 2, label: 'Blue' }, { value: 3, label: 'Alpha' }, { value: 4, label: 'Luminance' }, { value: 5, label: 'Hue' }, { value: 6, label: 'Lightness' }, { value: 7, label: 'Saturation' }, { value: 8, label: 'Full' }, { value: 9, label: 'Off' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Blend: crossfade with another layer, or take only its colour, its tint, or its darker / lighter pixels. GPU only. */
+    type: 'blend',
+    label: 'Blend',
+    gpuOnly: true,
+    params: [
+      { key: 'blendLayer', label: 'Blend With Layer', type: 'layer', default: '' },
+      { key: 'mode', label: 'Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Crossfade' }, { value: 1, label: 'Color Only' }, { value: 2, label: 'Tint Only' }, { value: 3, label: 'Darken Only' }, { value: 4, label: 'Lighten Only' }] },
+      { key: 'blendWithOriginal', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Difference Matte: pixels that match the difference layer (a clean plate) become transparent. GPU only. */
+    type: 'difference-matte',
+    label: 'Difference Matte',
+    gpuOnly: true,
+    params: [
+      { key: 'view', label: 'View', type: 'enum', default: 0, options: [{ value: 0, label: 'Final Output' }, { value: 1, label: 'Matte Only' }] },
+      { key: 'differenceLayer', label: 'Difference Layer', type: 'layer', default: '' },
+      { key: 'tolerance', label: 'Matching Tolerance', type: 'number', unit: '%', min: 0, max: 100, default: 15 },
+      { key: 'softness', label: 'Matching Softness', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC Color Neutralizer: the colour casts picked for the shadows, midtones and highlights are taken out of their tonal ranges. GPU only. */
+    type: 'color-neutralizer',
+    label: 'CC Color Neutralizer',
+    gpuOnly: true,
+    params: [
+      { key: 'shadowsUnbalance', label: 'Shadows Unbalance', type: 'color', default: '#000000' },
+      { key: 'midtonesUnbalance', label: 'Midtones Unbalance', type: 'color', default: '#808080' },
+      { key: 'highlightsUnbalance', label: 'Highlights Unbalance', type: 'color', default: '#ffffff' },
+      { key: 'blend', label: 'Blend w. Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC Blobbylize: the softened layer becomes a lit, glossy blob surface, cut away below a height. GPU only. */
+    type: 'blobbylize',
+    label: 'CC Blobbylize',
+    gpuOnly: true,
+    params: [
+      { key: 'softness', label: 'Softness', type: 'number', unit: 'px', min: 0, max: 400, default: 20 },
+      { key: 'cutAway', label: 'Cut Away', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'lightIntensity', label: 'Light Intensity', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'lightColor', label: 'Light Color', type: 'color', default: '#ffffff' },
+      { key: 'lightDirection', label: 'Light Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 315 },
+      { key: 'ambient', label: 'Ambient', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'specular', label: 'Specular', type: 'number', unit: '%', min: 0, max: 300, default: 60 },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC Split 2: the layer splits open along the line from Point A to Point B, each side by its own amount. GPU only. */
+    type: 'cc-split-2',
+    label: 'CC Split 2',
+    gpuOnly: true,
+    params: [
+      { key: 'pointAX', label: 'Point A X', type: 'number', unit: 'px', min: -10000, max: 10000, default: -200 },
+      { key: 'pointAY', label: 'Point A Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'pointBX', label: 'Point B X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 200 },
+      { key: 'pointBY', label: 'Point B Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'split1', label: 'Split 1', type: 'number', unit: 'px', min: 0, max: 4000, default: 50 },
+      { key: 'split2', label: 'Split 2', type: 'number', unit: 'px', min: 0, max: 4000, default: 50 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Eyedropper Fill: the layer filled with the colour sampled (and averaged) around a point. GPU only. */
+    type: 'eyedropper-fill',
+    label: 'Eyedropper Fill',
+    gpuOnly: true,
+    params: [
+      { key: 'sampleX', label: 'Sample Point X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'sampleY', label: 'Sample Point Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'sampleRadius', label: 'Sample Radius', type: 'number', unit: 'px', min: 0, max: 1000, default: 0 },
+      { key: 'average', label: 'Average Pixel Colors', type: 'enum', default: 0, options: [{ value: 0, label: 'Skip Empty' }, { value: 1, label: 'All' }, { value: 2, label: 'All Premultiplied' }] },
+      { key: 'maintainAlpha', label: 'Maintain Original Alpha', type: 'checkbox', default: true },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Noise HLS Auto: hue, lightness and saturation noise that animates by itself at the Noise Animation Speed. GPU only. */
+    type: 'noise-hls-auto',
+    label: 'Noise HLS Auto',
+    gpuOnly: true,
+    params: [
+      { key: 'noise', label: 'Noise', type: 'enum', default: 0, options: [{ value: 0, label: 'Uniform' }, { value: 1, label: 'Squared' }, { value: 2, label: 'Grain' }] },
+      { key: 'hue', label: 'Hue', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'lightness', label: 'Lightness', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'grainSize', label: 'Grain Size', type: 'number', unit: 'px', min: 1, max: 100, default: 1 },
+      { key: 'speed', label: 'Noise Animation Speed', type: 'number', min: 0, max: 100, default: 10 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Caustics: the layer seen as the bottom of moving water, refracted, under a bright caustic light web. GPU only. */
+    type: 'caustics',
+    label: 'Caustics',
+    gpuOnly: true,
+    params: [
+      { key: 'scale', label: 'Wave Scale', type: 'number', unit: 'px', min: 10, max: 4000, default: 160 },
+      { key: 'distortion', label: 'Surface Distortion', type: 'number', unit: '%', min: 0, max: 300, default: 30 },
+      { key: 'intensity', label: 'Light Intensity', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'lightColor', label: 'Light Color', type: 'color', default: '#e2f6ff' },
+      { key: 'strength', label: 'Caustics Strength', type: 'number', unit: '%', min: 0, max: 300, default: 60 },
+      { key: 'ambient', label: 'Ambient Light', type: 'number', unit: '%', min: 0, max: 200, default: 70 },
+      { key: 'speed', label: 'Wave Speed', type: 'number', min: 0, max: 20, default: 0.5 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Shatter: the layer breaks into glass shards, bricks or squares that a force throws outward and gravity pulls down, from the Shatter Time on. GPU only. */
+    type: 'shatter',
+    label: 'Shatter',
+    gpuOnly: true,
+    params: [
+      { key: 'pattern', label: 'Pattern', type: 'enum', default: 0, options: [{ value: 0, label: 'Glass' }, { value: 1, label: 'Bricks' }, { value: 2, label: 'Squares' }] },
+      { key: 'pieceSize', label: 'Piece Size', type: 'number', unit: 'px', min: 4, max: 2000, default: 48 },
+      { key: 'forceX', label: 'Force Position X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'forceY', label: 'Force Position Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'forceRadius', label: 'Force Radius', type: 'number', unit: 'px', min: 1, max: 20000, default: 400 },
+      { key: 'forceStrength', label: 'Force Strength', type: 'number', min: 0, max: 60, default: 6 },
+      { key: 'gravity', label: 'Gravity', type: 'number', min: 0, max: 60, default: 4 },
+      { key: 'gravityDirection', label: 'Gravity Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 180 },
+      { key: 'rotationSpeed', label: 'Rotation Speed', type: 'number', min: 0, max: 20, default: 1 },
+      { key: 'randomness', label: 'Randomness', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'startTime', label: 'Shatter Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Wave World: rings of waves spreading from one or two producers, rendered as a height map (for Displacement Map, Caustics) or shaded. GPU only. */
+    type: 'wave-world',
+    label: 'Wave World',
+    gpuOnly: true,
+    params: [
+      { key: 'view', label: 'View', type: 'enum', default: 0, options: [{ value: 0, label: 'Height Map' }, { value: 1, label: 'Shaded' }] },
+      { key: 'producer1X', label: 'Producer 1 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'producer1Y', label: 'Producer 1 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'producer2', label: 'Producer 2', type: 'checkbox', default: false },
+      { key: 'producer2X', label: 'Producer 2 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 200 },
+      { key: 'producer2Y', label: 'Producer 2 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'speed', label: 'Wave Speed', type: 'number', unit: 'px/s', min: 0, max: 10000, default: 300 },
+      { key: 'wavelength', label: 'Wavelength', type: 'number', unit: 'px', min: 4, max: 4000, default: 80 },
+      { key: 'amplitude', label: 'Amplitude', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'damping', label: 'Damping', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC WarpoMatic: the layer warps along its own (smoothed) brightness and dissolves bright parts first as Completion rises. GPU only. */
+    type: 'warpomatic',
+    label: 'CC WarpoMatic',
+    gpuOnly: true,
+    params: [
+      { key: 'completion', label: 'Completion', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'smoothness', label: 'Smoothness', type: 'number', unit: 'px', min: 0, max: 400, default: 10 },
+      { key: 'warpAmount', label: 'Warp Amount', type: 'number', unit: 'px', min: 0, max: 4000, default: 150 },
+      { key: 'warpDirection', label: 'Warp Direction', type: 'enum', default: 0, options: [{ value: 0, label: 'Joint' }, { value: 1, label: 'Opposing' }, { value: 2, label: 'Twisting' }] },
+      { key: 'blendSpan', label: 'Blend Span', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC Overbrights: shows the pixels whose values lie above 1 (or below 0) in a clip colour, to find out-of-range light in float work. GPU only. */
+    type: 'overbrights',
+    label: 'CC Overbrights',
+    gpuOnly: true,
+    params: [
+      { key: 'channel', label: 'Channel', type: 'enum', default: 0, options: [{ value: 0, label: 'RGB' }, { value: 1, label: 'Red' }, { value: 2, label: 'Green' }, { value: 3, label: 'Blue' }, { value: 4, label: 'Alpha' }, { value: 5, label: 'Luminance' }] },
+      { key: 'show', label: 'Show', type: 'enum', default: 0, options: [{ value: 0, label: 'Overbrights' }, { value: 1, label: 'Underdarks' }, { value: 2, label: 'Both' }] },
+      { key: 'clipColor', label: 'Clip Color', type: 'color', default: '#ff00ff' },
+      { key: 'dim', label: 'Dim Other Pixels', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's HDR Compander: compress a float image's range by a gain and gamma (to run an 8-bit effect on it), or expand it back. GPU only. */
+    type: 'hdr-compander',
+    label: 'HDR Compander',
+    gpuOnly: true,
+    params: [
+      { key: 'mode', label: 'Compander', type: 'enum', default: 0, options: [{ value: 0, label: 'Compress Range' }, { value: 1, label: 'Expand Range' }] },
+      { key: 'gain', label: 'Gain', type: 'number', min: 1, max: 100, default: 1 },
+      { key: 'gamma', label: 'Gamma', type: 'number', min: 0.1, max: 10, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's HDR Highlight Compression: values above the knee roll off smoothly toward 1, keeping their hue. GPU only. */
+    type: 'hdr-highlight-compression',
+    label: 'HDR Highlight Compression',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Reduce Interlace Flicker: a vertical soften that calms thin horizontal lines on interlaced displays. GPU only. */
+    type: 'reduce-interlace-flicker',
+    label: 'Reduce Interlace Flicker',
+    gpuOnly: true,
+    params: [
+      { key: 'softness', label: 'Softness', type: 'number', unit: 'px', min: 0, max: 20, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's Basic 3D: swivel and tilt the layer in perspective about its centre and push it back, with an optional specular highlight. GPU only. */
+    type: 'basic-3d',
+    label: 'Basic 3D',
+    gpuOnly: true,
+    params: [
+      { key: 'swivel', label: 'Swivel', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'tilt', label: 'Tilt', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'distance', label: 'Distance to Image', type: 'number', unit: 'px', min: -5000, max: 20000, default: 0 },
+      { key: 'specular', label: 'Specular Highlight', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's VR Digital Glitch, for any layer: torn bands, jumping blocks, RGB split, colour corruption, scan lines and noise, re-rolled at the Glitch Rate. GPU only. */
+    type: 'digital-glitch',
+    label: 'Digital Glitch',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Master Amplitude', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'blockSize', label: 'Block Size', type: 'number', unit: 'px', min: 2, max: 2000, default: 40 },
+      { key: 'rgbSplit', label: 'RGB Split', type: 'number', unit: 'px', min: 0, max: 1000, default: 12 },
+      { key: 'scanlines', label: 'Scan Lines', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'noise', label: 'Noise', type: 'number', unit: '%', min: 0, max: 100, default: 15 },
+      { key: 'corruption', label: 'Color Corruption', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'speed', label: 'Glitch Rate', type: 'number', unit: 'Hz', min: 0, max: 60, default: 12 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's VR Rotate Sphere: turn an equirectangular (360) image about its tilt, pan and roll axes. GPU only. */
+    type: 'vr-rotate-sphere',
+    label: 'VR Rotate Sphere',
+    gpuOnly: true,
+    params: [
+      { key: 'tilt', label: 'Tilt (X Axis)', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'pan', label: 'Pan (Y Axis)', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'roll', label: 'Roll (Z Axis)', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* AE's VR Color Gradients, for any layer: a smooth field blended between up to five coloured points (a mesh-gradient look). GPU only. */
+    type: 'color-gradients',
+    label: 'Color Gradients',
+    gpuOnly: true,
+    params: [
+      { key: 'points', label: 'Points', type: 'number', min: 2, max: 5, precision: 0, default: 4 },
+      { key: 'falloff', label: 'Falloff', type: 'number', min: 0.5, max: 10, default: 2 },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'point1X', label: 'Point 1 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: -400 },
+      { key: 'point1Y', label: 'Point 1 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: -250 },
+      { key: 'color1', label: 'Color 1', type: 'color', default: '#ff4d6d' },
+      { key: 'point2X', label: 'Point 2 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 400 },
+      { key: 'point2Y', label: 'Point 2 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: -250 },
+      { key: 'color2', label: 'Color 2', type: 'color', default: '#ffd166' },
+      { key: 'point3X', label: 'Point 3 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: -400 },
+      { key: 'point3Y', label: 'Point 3 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 250 },
+      { key: 'color3', label: 'Color 3', type: 'color', default: '#06d6a0' },
+      { key: 'point4X', label: 'Point 4 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 400 },
+      { key: 'point4Y', label: 'Point 4 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 250 },
+      { key: 'color4', label: 'Color 4', type: 'color', default: '#118ab2' },
+      { key: 'point5X', label: 'Point 5 X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'point5Y', label: 'Point 5 Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'color5', label: 'Color 5', type: 'color', default: '#9b5de5' },
+    ],
+    css: () => '',
+  },
+  {
+    /* A worn VHS tape: chroma smeared sideways, line jitter, a rolling tracking band with white streaks, noise and scan lines. GPU only. */
+    type: 'vhs',
+    label: 'VHS',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'chromaBleed', label: 'Chroma Bleed', type: 'number', unit: 'px', min: 0, max: 200, default: 6 },
+      { key: 'tracking', label: 'Tracking Noise', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'jitter', label: 'Line Jitter', type: 'number', unit: 'px', min: 0, max: 80, default: 1.5 },
+      { key: 'noise', label: 'Noise', type: 'number', unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'scanlines', label: 'Scan Lines', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 85 },
+      { key: 'softness', label: 'Softness', type: 'number', unit: 'px', min: 0, max: 40, default: 1.5 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* An old tube monitor: a curved screen, scan lines, an aperture-grille or shadow-mask phosphor pattern, glow and vignette. GPU only. */
+    type: 'crt',
+    label: 'CRT',
+    gpuOnly: true,
+    params: [
+      { key: 'curvature', label: 'Curvature', type: 'number', unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'scanlines', label: 'Scan Lines', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'lineSize', label: 'Scan Line Size', type: 'number', unit: 'px', min: 1, max: 80, default: 3 },
+      { key: 'mask', label: 'Phosphor Mask', type: 'enum', default: 0, options: [{ value: 0, label: 'Aperture Grille' }, { value: 1, label: 'Shadow Mask' }, { value: 2, label: 'None' }] },
+      { key: 'maskStrength', label: 'Mask Strength', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'glow', label: 'Glow', type: 'number', unit: '%', min: 0, max: 200, default: 25 },
+      { key: 'vignette', label: 'Vignette', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'brightness', label: 'Brightness', type: 'number', unit: '%', min: 50, max: 300, default: 120 },
+      { key: 'convergence', label: 'Convergence', type: 'number', unit: 'px', min: 0, max: 40, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Pixel sorting: runs of pixels whose brightness lies in the threshold range are sorted along a direction into streaks. GPU only. */
+    type: 'pixel-sort',
+    label: 'Pixel Sort',
+    gpuOnly: true,
+    params: [
+      { key: 'direction', label: 'Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 90 },
+      { key: 'thresholdLow', label: 'Threshold Low', type: 'number', unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'thresholdHigh', label: 'Threshold High', type: 'number', unit: '%', min: 0, max: 100, default: 80 },
+      { key: 'maxLength', label: 'Max Length', type: 'number', unit: 'px', min: 4, max: 8000, default: 400 },
+      { key: 'order', label: 'Order', type: 'enum', default: 0, options: [{ value: 0, label: 'Ascending' }, { value: 1, label: 'Descending' }] },
+      { key: 'sortBy', label: 'Sort By', type: 'enum', default: 0, options: [{ value: 0, label: 'Brightness' }, { value: 1, label: 'Hue' }, { value: 2, label: 'Saturation' }] },
+      { key: 'invertRange', label: 'Invert Range', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* The flat-design long shadow: the layer's silhouette cast far in one direction, fading along its length. GPU only. */
+    type: 'long-shadow',
+    label: 'Long Shadow',
+    gpuOnly: true,
+    params: [
+      { key: 'angle', label: 'Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 45 },
+      { key: 'length', label: 'Length', type: 'number', unit: 'px', min: 0, max: 10000, default: 300 },
+      { key: 'color', label: 'Color', type: 'color', default: '#000000' },
+      { key: 'shadowOpacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'fade', label: 'Fade', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'shadowOnly', label: 'Shadow Only', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* Film halation: a warm red-orange halo bleeding out from the bright parts of the picture. GPU only. */
+    type: 'halation',
+    label: 'Halation',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 55 },
+      { key: 'radius', label: 'Radius', type: 'number', unit: 'px', min: 0, max: 800, default: 18 },
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 500, default: 100 },
+      { key: 'tint', label: 'Halation Color', type: 'color', default: '#ff3b1f' },
+    ],
+    css: () => '',
+  },
+  {
+    /* Drifting film light leaks: soft warm blooms pouring in from the frame's edges, screened (or added) over the layer. GPU only. */
+    type: 'light-leaks',
+    label: 'Light Leaks',
+    gpuOnly: true,
+    params: [
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 300, default: 80 },
+      { key: 'color1', label: 'Color 1', type: 'color', default: '#ff6a00' },
+      { key: 'color2', label: 'Color 2', type: 'color', default: '#ff2d7a' },
+      { key: 'color3', label: 'Color 3', type: 'color', default: '#ffd36b' },
+      { key: 'scale', label: 'Scale', type: 'number', unit: '%', min: 10, max: 500, default: 100 },
+      { key: 'speed', label: 'Speed', type: 'number', min: 0, max: 10, default: 1 },
+      { key: 'mode', label: 'Blend Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Screen' }, { value: 1, label: 'Add' }, { value: 2, label: 'Overlay' }, { value: 3, label: 'Leak Only' }] },
+      { key: 'evolution', label: 'Evolution', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* The miniature look: a sharp band of focus with lens blur growing above and below it, and a saturation lift. GPU only. */
+    type: 'tilt-shift',
+    label: 'Tilt-Shift',
+    gpuOnly: true,
+    params: [
+      { key: 'focusPosition', label: 'Focus Position', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'focusAngle', label: 'Focus Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'focusWidth', label: 'Focus Width', type: 'number', unit: 'px', min: 0, max: 20000, default: 120 },
+      { key: 'transition', label: 'Transition', type: 'number', unit: 'px', min: 1, max: 20000, default: 300 },
+      { key: 'blurRadius', label: 'Blur Radius', type: 'number', unit: 'px', min: 0, max: 400, default: 16 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 115 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Photoshop's Gradient Map: the picture's brightness mapped onto a four-colour gradient. GPU only. */
+    type: 'gradient-map',
+    label: 'Gradient Map',
+    gpuOnly: true,
+    params: [
+      { key: 'color1', label: 'Shadows', type: 'color', default: '#1a1033' },
+      { key: 'color2', label: 'Color 2', type: 'color', default: '#7b2cbf' },
+      { key: 'position2', label: 'Color 2 Position', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'color3', label: 'Color 3', type: 'color', default: '#ff7a59' },
+      { key: 'position3', label: 'Color 3 Position', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'color4', label: 'Highlights', type: 'color', default: '#ffe8b0' },
+      { key: 'reverse', label: 'Reverse', type: 'checkbox', default: false },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Duotone: the picture rebuilt from two inks, one for the shadows and one for the highlights. GPU only. */
+    type: 'duotone',
+    label: 'Duotone',
+    gpuOnly: true,
+    params: [
+      { key: 'shadows', label: 'Shadows', type: 'color', default: '#1b1464' },
+      { key: 'highlights', label: 'Highlights', type: 'color', default: '#ff5f6d' },
+      { key: 'contrast', label: 'Contrast', type: 'number', unit: '%', min: 0, max: 300, default: 100 },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* The Orton / dreamy glow: a blurred, brightened copy of the picture screened or soft-lit over it. GPU only. */
+    type: 'soft-glow',
+    label: 'Soft Glow',
+    gpuOnly: true,
+    params: [
+      { key: 'radius', label: 'Radius', type: 'number', unit: 'px', min: 0, max: 800, default: 30 },
+      { key: 'amount', label: 'Glow Amount', type: 'number', unit: '%', min: 0, max: 200, default: 60 },
+      { key: 'brightness', label: 'Brightness', type: 'number', unit: '%', min: -100, max: 100, default: 10 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 100 },
+      { key: 'mode', label: 'Blend Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Screen' }, { value: 1, label: 'Soft Light' }, { value: 2, label: 'Overlay' }, { value: 3, label: 'Lighten' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* A neon tube traced along the layer's edges: a hot core line inside a coloured glow. GPU only. */
+    type: 'neon',
+    label: 'Neon Glow',
+    gpuOnly: true,
+    params: [
+      { key: 'color', label: 'Glow Color', type: 'color', default: '#29e3ff' },
+      { key: 'coreColor', label: 'Core Color', type: 'color', default: '#ffffff' },
+      { key: 'tubeWidth', label: 'Tube Width', type: 'number', unit: 'px', min: 0.5, max: 120, default: 3 },
+      { key: 'glowRadius', label: 'Glow Radius', type: 'number', unit: 'px', min: 0, max: 800, default: 18 },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 500, default: 150 },
+      { key: 'fill', label: 'Original Fill', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A sci-fi hologram: the layer tinted to one colour, moving scan lines, flicker, band glitches, colour fringes and an edge glow. GPU only. */
+    type: 'hologram',
+    label: 'Hologram',
+    gpuOnly: true,
+    params: [
+      { key: 'color', label: 'Color', type: 'color', default: '#3df2ff' },
+      { key: 'lines', label: 'Scan Lines', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'lineSize', label: 'Line Size', type: 'number', unit: 'px', min: 1, max: 200, default: 4 },
+      { key: 'flicker', label: 'Flicker', type: 'number', unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'glitch', label: 'Glitch', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'chromatic', label: 'Chromatic Offset', type: 'number', unit: 'px', min: 0, max: 200, default: 4 },
+      { key: 'hologramOpacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 85 },
+      { key: 'edge', label: 'Edge Glow', type: 'number', unit: '%', min: 0, max: 300, default: 60 },
+      { key: 'speed', label: 'Speed', type: 'number', min: 0, max: 20, default: 1 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Retro ordered dithering: the picture quantised to a few levels through a Bayer or noise threshold, optionally in two colours. GPU only. */
+    type: 'dither',
+    label: 'Dither',
+    gpuOnly: true,
+    params: [
+      { key: 'method', label: 'Method', type: 'enum', default: 0, options: [{ value: 0, label: 'Bayer 4x4' }, { value: 1, label: 'Bayer 8x8' }, { value: 2, label: 'Noise' }] },
+      { key: 'levels', label: 'Levels', type: 'number', min: 2, max: 32, precision: 0, default: 2 },
+      { key: 'pixelSize', label: 'Pixel Size', type: 'number', unit: 'px', min: 1, max: 128, default: 2 },
+      { key: 'palette', label: 'Palette', type: 'enum', default: 0, options: [{ value: 0, label: 'Original Colors' }, { value: 1, label: 'Monochrome' }, { value: 2, label: 'Two Colors' }] },
+      { key: 'color1', label: 'Dark Color', type: 'color', default: '#0d1117' },
+      { key: 'color2', label: 'Light Color', type: 'color', default: '#e6edf3' },
+    ],
+    css: () => '',
+  },
+  {
+    /* ASCII art: each cell of the picture drawn as a character whose density follows its brightness. GPU only. */
+    type: 'ascii',
+    label: 'ASCII',
+    gpuOnly: true,
+    params: [
+      { key: 'cellSize', label: 'Character Size', type: 'number', unit: 'px', min: 4, max: 256, default: 10 },
+      { key: 'colorMode', label: 'Color', type: 'enum', default: 0, options: [{ value: 0, label: 'Original Colors' }, { value: 1, label: 'Text Color' }, { value: 2, label: 'Green Terminal' }] },
+      { key: 'textColor', label: 'Text Color', type: 'color', default: '#ffffff' },
+      { key: 'background', label: 'Background', type: 'color', default: '#000000' },
+      { key: 'backgroundOpacity', label: 'Background Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'brightness', label: 'Brightness', type: 'number', unit: '%', min: 10, max: 300, default: 100 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A dot-matrix LED board: each cell of the picture lit as one round or square LED with a soft glow. GPU only. */
+    type: 'led-screen',
+    label: 'LED Screen',
+    gpuOnly: true,
+    params: [
+      { key: 'pitch', label: 'Dot Pitch', type: 'number', unit: 'px', min: 3, max: 256, default: 10 },
+      { key: 'shape', label: 'Dot Shape', type: 'enum', default: 0, options: [{ value: 0, label: 'Round' }, { value: 1, label: 'Square' }] },
+      { key: 'gap', label: 'Gap', type: 'number', unit: '%', min: 0, max: 90, default: 25 },
+      { key: 'glow', label: 'Glow', type: 'number', unit: '%', min: 0, max: 200, default: 50 },
+      { key: 'brightness', label: 'Brightness', type: 'number', unit: '%', min: 50, max: 400, default: 110 },
+      { key: 'background', label: 'Background', type: 'color', default: '#050505' },
+    ],
+    css: () => '',
+  },
+  {
+    /* A pencil drawing: the picture's edges traced and its tones cross-hatched on paper. GPU only. */
+    type: 'pencil-sketch',
+    label: 'Pencil Sketch',
+    gpuOnly: true,
+    params: [
+      { key: 'edges', label: 'Edge Strength', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'hatching', label: 'Hatching', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'hatchSpacing', label: 'Hatch Spacing', type: 'number', unit: 'px', min: 2, max: 120, default: 6 },
+      { key: 'paper', label: 'Paper Color', type: 'color', default: '#f4f1ea' },
+      { key: 'pencil', label: 'Pencil Color', type: 'color', default: '#2b2b2b' },
+      { key: 'colorize', label: 'Color', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Oil paint (a Kuwahara filter): each pixel takes the calmest of its four neighbouring quadrants, flattening the picture into brush strokes. GPU only. */
+    type: 'oil-paint',
+    label: 'Oil Paint',
+    gpuOnly: true,
+    params: [
+      { key: 'brushSize', label: 'Brush Size', type: 'number', unit: 'px', min: 1, max: 60, default: 5 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 110 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Handheld camera shake: the layer wanders, rolls and breathes on smooth noise, with motion blur and edge handling. GPU only. */
+    type: 'camera-shake',
+    label: 'Camera Shake',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amplitude', type: 'number', unit: 'px', min: 0, max: 4000, default: 20 },
+      { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', min: 0, max: 180, default: 1 },
+      { key: 'zoom', label: 'Zoom', type: 'number', unit: '%', min: 0, max: 50, default: 0 },
+      { key: 'frequency', label: 'Frequency', type: 'number', unit: 'Hz', min: 0.1, max: 60, default: 4 },
+      { key: 'octaves', label: 'Octaves', type: 'number', min: 1, max: 4, precision: 0, default: 2 },
+      { key: 'roughness', label: 'Roughness', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'motionBlur', label: 'Motion Blur', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'edges', label: 'Edges', type: 'enum', default: 3, options: [{ value: 0, label: 'Transparent' }, { value: 1, label: 'Mirror' }, { value: 2, label: 'Repeat' }, { value: 3, label: 'Scale to Fill' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Light flicker: the layer's brightness (or opacity) dips on a mix of stepped and smooth noise at the given rate. GPU only. */
+    type: 'flicker',
+    label: 'Flicker',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'speed', label: 'Speed', type: 'number', unit: 'Hz', min: 0.1, max: 60, default: 12 },
+      { key: 'smoothness', label: 'Smoothness', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'mode', label: 'Flicker', type: 'enum', default: 0, options: [{ value: 0, label: 'Brightness' }, { value: 1, label: 'Opacity' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A prism split: spectral copies of the layer fanned out along a direction (or from a centre), red to blue. GPU only. */
+    type: 'prism',
+    label: 'Prism',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Separation', type: 'number', unit: 'px', min: 0, max: 2000, default: 20 },
+      { key: 'angle', label: 'Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'copies', label: 'Copies', type: 'number', min: 2, max: 12, precision: 0, default: 3 },
+      { key: 'mode', label: 'Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Directional' }, { value: 1, label: 'Radial' }] },
+      { key: 'centerX', label: 'Center X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'centerY', label: 'Center Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Frosted glass: the picture seen through a rough pane, each pixel scattered within the frost radius. GPU only. */
+    type: 'frosted-glass',
+    label: 'Frosted Glass',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Frost', type: 'number', unit: 'px', min: 0, max: 400, default: 8 },
+      { key: 'smoothness', label: 'Smoothness', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Bleach bypass: the film look of skipping the bleach bath — a silver-retaining overlay of luminance, desaturated and contrasty. GPU only. */
+    type: 'bleach-bypass',
+    label: 'Bleach Bypass',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Cross processing: slide film developed as negative — punchy reds, curved greens, blues lifted in the shadows and crushed in the highlights. GPU only. */
+    type: 'cross-process',
+    label: 'Cross Process',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Split toning: one hue laid into the highlights and another into the shadows, with a balance between them. GPU only. */
+    type: 'split-toning',
+    label: 'Split Toning',
+    gpuOnly: true,
+    params: [
+      { key: 'highlightHue', label: 'Highlights Hue', type: 'number', unit: '°', min: 0, max: 360, default: 45 },
+      { key: 'highlightSaturation', label: 'Highlights Saturation', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'shadowHue', label: 'Shadows Hue', type: 'number', unit: '°', min: 0, max: 360, default: 210 },
+      { key: 'shadowSaturation', label: 'Shadows Saturation', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'balance', label: 'Balance', type: 'number', min: -100, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Old film: sepia, grain, flicker, gate weave, vertical scratches and dust, re-rolled per film frame, with a vignette. GPU only. */
+    type: 'old-film',
+    label: 'Old Film',
+    gpuOnly: true,
+    params: [
+      { key: 'sepia', label: 'Sepia', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'grain', label: 'Grain', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'scratches', label: 'Scratches', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'dust', label: 'Dust', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'flicker', label: 'Flicker', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'weave', label: 'Gate Weave', type: 'number', unit: 'px', min: 0, max: 80, default: 2 },
+      { key: 'vignette', label: 'Vignette', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'fps', label: 'Film Frame Rate', type: 'number', unit: 'fps', min: 1, max: 60, default: 18 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Anamorphic lens streaks: long horizontal (or angled) blue flares drawn out of the brightest highlights. GPU only. */
+    type: 'anamorphic-streaks',
+    label: 'Anamorphic Streaks',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 75 },
+      { key: 'length', label: 'Length', type: 'number', unit: 'px', min: 0, max: 10000, default: 400 },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 500, default: 100 },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#4fa8ff' },
+      { key: 'angle', label: 'Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Starglow: star-shaped streaks of light (4, 6 or 8 points) radiating from the highlights, in their own colours or a tint. GPU only. */
+    type: 'starglow',
+    label: 'Starglow',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'length', label: 'Streak Length', type: 'number', unit: 'px', min: 0, max: 4000, default: 120 },
+      { key: 'points', label: 'Streaks', type: 'enum', default: 2, options: [{ value: 0, label: '4' }, { value: 1, label: '6' }, { value: 2, label: '8' }] },
+      { key: 'angle', label: 'Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'intensity', label: 'Boost Light', type: 'number', unit: '%', min: 0, max: 500, default: 100 },
+      { key: 'colorMode', label: 'Colors', type: 'enum', default: 0, options: [{ value: 0, label: 'Source Colors' }, { value: 1, label: 'Tint' }] },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#fff1d6' },
+    ],
+    css: () => '',
+  },
+  {
+    /* Twinkling glints: four-point star sparkles born on the layer's bright pixels, each on its own twinkle cycle. GPU only. */
+    type: 'sparkle',
+    label: 'Sparkle',
+    gpuOnly: true,
+    params: [
+      { key: 'density', label: 'Density', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'size', label: 'Size', type: 'number', unit: 'px', min: 1, max: 800, default: 18 },
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 55 },
+      { key: 'speed', label: 'Twinkle Speed', type: 'number', min: 0, max: 20, default: 1 },
+      { key: 'color', label: 'Color', type: 'color', default: '#ffffff' },
+      { key: 'sourceColor', label: 'Use Source Color', type: 'checkbox', default: true },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Temperature and Tint: warm or cool the picture and shift it toward green or magenta, keeping its brightness. GPU only. */
+    type: 'white-balance',
+    label: 'White Balance',
+    gpuOnly: true,
+    params: [
+      { key: 'temperature', label: 'Temperature', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'tint', label: 'Tint', type: 'number', min: -100, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Clarity: local contrast in the midtones (the picture against its own large-radius blur), for punch without crushing. GPU only. */
+    type: 'clarity',
+    label: 'Clarity',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: '%', min: -100, max: 200, default: 25 },
+      { key: 'radius', label: 'Radius', type: 'number', unit: 'px', min: 1, max: 800, default: 30 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Lens distortion: barrel or pincushion curvature with colour fringing and vignetting, scaled to fill the frame. GPU only. */
+    type: 'lens-distortion',
+    label: 'Lens Distortion',
+    gpuOnly: true,
+    params: [
+      { key: 'curvature', label: 'Curvature', type: 'number', min: -100, max: 100, default: 30 },
+      { key: 'chromatic', label: 'Chromatic Aberration', type: 'number', unit: '%', min: 0, max: 100, default: 10 },
+      { key: 'vignette', label: 'Vignette', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'fill', label: 'Scale to Fill', type: 'checkbox', default: true },
+      { key: 'centerX', label: 'Center X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+      { key: 'centerY', label: 'Center Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Heat haze: the picture shimmers through rising, turbulent air. GPU only. */
+    type: 'heat-haze',
+    label: 'Heat Haze',
+    gpuOnly: true,
+    params: [
+      { key: 'amount', label: 'Amount', type: 'number', unit: 'px', min: 0, max: 400, default: 6 },
+      { key: 'scale', label: 'Scale', type: 'number', unit: 'px', min: 2, max: 4000, default: 60 },
+      { key: 'speed', label: 'Speed', type: 'number', min: 0, max: 20, default: 1.5 },
+      { key: 'direction', label: 'Rise Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 270 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Photoshop's Color Halftone: four rotated CMYK dot screens printed on paper. GPU only. */
+    type: 'color-halftone',
+    label: 'Color Halftone',
+    gpuOnly: true,
+    params: [
+      { key: 'radius', label: 'Max Radius', type: 'number', unit: 'px', min: 1, max: 200, default: 6 },
+      { key: 'angleC', label: 'Cyan Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 108 },
+      { key: 'angleM', label: 'Magenta Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 162 },
+      { key: 'angleY', label: 'Yellow Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 90 },
+      { key: 'angleK', label: 'Black Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 45 },
+      { key: 'paper', label: 'Paper', type: 'color', default: '#ffffff' },
+    ],
+    css: () => '',
+  },
+  {
+    /* Photoshop's Crystallize, with stained-glass borders: the picture flattened into random polygonal cells. GPU only. */
+    type: 'crystallize',
+    label: 'Crystallize',
+    gpuOnly: true,
+    params: [
+      { key: 'cellSize', label: 'Cell Size', type: 'number', unit: 'px', min: 2, max: 800, default: 24 },
+      { key: 'borders', label: 'Borders', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'borderColor', label: 'Border Color', type: 'color', default: '#111111' },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Drifting fog: layered noise in the fog colour, thicker toward the bottom, drifting with time. GPU only. */
+    type: 'fog',
+    label: 'Fog',
+    gpuOnly: true,
+    params: [
+      { key: 'density', label: 'Density', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'color', label: 'Fog Color', type: 'color', default: '#c9d3dc' },
+      { key: 'scale', label: 'Scale', type: 'number', unit: 'px', min: 20, max: 20000, default: 500 },
+      { key: 'speed', label: 'Drift Speed', type: 'number', min: 0, max: 20, default: 0.5 },
+      { key: 'direction', label: 'Drift Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'falloff', label: 'Height Falloff', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Chrome: the layer as polished metal — its brightness and edges bent into a sky-and-horizon reflection. GPU only. */
+    type: 'chrome',
+    label: 'Chrome',
+    gpuOnly: true,
+    params: [
+      { key: 'bands', label: 'Reflections', type: 'number', min: 1, max: 10, default: 3 },
+      { key: 'depth', label: 'Depth', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#ffffff' },
+      { key: 'contrast', label: 'Contrast', type: 'number', unit: '%', min: 0, max: 300, default: 100 },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Night vision: amplified green phosphor with noise, scan lines, vignette and an optional scope or binocular mask. GPU only. */
+    type: 'night-vision',
+    label: 'Night Vision',
+    gpuOnly: true,
+    params: [
+      { key: 'gain', label: 'Gain', type: 'number', unit: '%', min: 100, max: 800, default: 150 },
+      { key: 'noise', label: 'Noise', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'scanlines', label: 'Scan Lines', type: 'number', unit: '%', min: 0, max: 100, default: 15 },
+      { key: 'vignette', label: 'Vignette', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'color', label: 'Phosphor Color', type: 'color', default: '#3dff6e' },
+      { key: 'mask', label: 'Mask', type: 'enum', default: 0, options: [{ value: 0, label: 'None' }, { value: 1, label: 'Circle' }, { value: 2, label: 'Binoculars' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  // fx60:b9:end
 ];
 
 const BUILTIN_DEF = new Map(EFFECT_DEFS.map((d) => [d.type, d]));

@@ -117,6 +117,10 @@ std::optional<FxReach> reach_of(const Fx& fx, std::string_view t, const PxBox& i
     const double b = blur_reach(fx.num("sigmaPx"));
     return FxReach{grow(in, b, b), in};
   }
+  // Program E (effects_spatial_c.cpp): `reachPx` 0 = a per-pixel effect whose
+  // result is transparent wherever its input is. A reach past the input is in
+  // layer px, which this view does not convert: not measured.
+  if (fx.has("reachPx") && fx.num("reachPx") == 0) return same(in);
   return std::nullopt;
 }
 

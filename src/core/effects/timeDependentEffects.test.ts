@@ -69,7 +69,19 @@ describe('the TIME_DEPENDENT set', () => {
     // `particle-systems` (round seven) is the third: an emitter indexes births
     // by absolute time, so a keyframed phase would leave it static by default
     // — the one case the note above says to reach past keyframes for.
-    expect(members).toEqual(['timecode', 'strobe-light', 'particle-systems']);
+    //
+    // Program E (2026-10-10) adds the effects whose pixels ARE the motion and
+    // that After Effects (or the plugins AE users reach for) animate on their
+    // own: Noise HLS Auto, Shatter, Wave World, Caustics, the glitch / VHS /
+    // hologram / old-film / night-vision looks, Camera Shake, Flicker, Light
+    // Leaks, Sparkle, Heat Haze and Fog. Each still has its `time` param and an
+    // "Animate With Time" switch: off, the time is an ordinary keyframable
+    // value and the layer caches again.
+    expect(members).toEqual([
+      'timecode', 'strobe-light', 'particle-systems',
+      'noise-hls-auto', 'caustics', 'shatter', 'wave-world', 'digital-glitch', 'vhs', 'light-leaks', 'hologram',
+      'camera-shake', 'flicker', 'old-film', 'sparkle', 'heat-haze', 'fog', 'night-vision',
+    ]);
   });
 
   it('names a real param on a real effect for every member', () => {
