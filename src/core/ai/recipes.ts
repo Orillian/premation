@@ -18,7 +18,7 @@ import { defaultPolystar } from '@core/scene/polystar';
 import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
 import { secondsToFlicks, type Command } from '@motion/engine-api';
 import { addPathOperator, ensurePathOperator, patchPathOperator, setThreeD } from './hostWrites';
-import { activeSceneWindow, nextSceneElementStart, beginSceneWindow } from './sceneWindow';
+import { activeSceneWindow, nextSceneElementStart, beginSceneWindow, recordSceneElement } from './sceneWindow';
 import { applyEntrance, nonUniformStagger, type EntranceArchetype } from './archetypes';
 
 type KfPoint = { t: number; value: number; easing?: string; bezier?: Bezier };
@@ -77,6 +77,7 @@ async function setLayerInPoint(ctx: ToolContext, nodeId: string, startSec: numbe
 async function applySceneExit(ctx: ToolContext, id: string, cy: number): Promise<void> {
   const w = activeSceneWindow();
   if (!w) return;
+  recordSceneElement(id);
   await setLayerInPoint(ctx, id, w.startSec);
   const out = Math.min(w.transitionSec, 0.5);
   const exitAt = Math.max(w.startSec + 0.2, w.endSec - out);
@@ -143,6 +144,7 @@ export async function recipeScene(
   beginSceneWindow(opts.index, startSec, endSec, trans || 0.35);
 
   const id = await ctx.scene.create('solid', `Scene ${opts.index} BG`, { x: comp.width / 2, y: comp.height / 2 });
+  recordSceneElement(id);
   await ctx.scene.setProp(id, 'width', comp.width);
   await ctx.scene.setProp(id, 'height', comp.height);
   await ctx.scene.setProp(id, 'fill', opts.background ?? s.palette.bg);

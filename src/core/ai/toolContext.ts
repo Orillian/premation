@@ -62,6 +62,7 @@ import { setRuntimeStyle } from './design';
 import { setEntranceSeed } from './archetypes';
 import { SCENE_KIND_PROP } from '@core/scene/sceneKind';
 import { POLYSTAR_FX_PROP } from '@core/scene/polystar';
+import { parsePaintColorPath, parsePaintPropPath } from '@core/paint/paintProps';
 import { nextDeviceNameIn } from '@core/mirror/deviceNames';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useCompositionStore } from '@stores/compositionStore';
@@ -190,6 +191,18 @@ const isSkeletonScalar = (prop: string): boolean =>
     (prop.endsWith('.rotation') || prop.endsWith('.x') || prop.endsWith('.y'))) ||
   (prop.startsWith('ikTarget.') && (prop.endsWith('.x') || prop.endsWith('.y')));
 
+/**
+ * Paint stroke tracks (AE Effects ▸ Paint ▸ Brush N): the numeric Stroke
+ * Options / Transform keys `paint.<strokeId>.<key>` (`paintProps.ts`
+ * PAINT_OPTION_KEYS / CLONE / TRANSFORM) and the colour channels
+ * `paint.<strokeId>.color_r|g|b|a`. The Path (`paint.<id>.path`) is a `points`
+ * data track, not a scalar — excluded for the same reason the puppet pin
+ * Position is. paint_strokes' own reply tells the model to keyframe these;
+ * until this the gate refused every one of them.
+ */
+const isPaintScalar = (prop: string): boolean =>
+  parsePaintPropPath(prop) !== null || parsePaintColorPath(prop) !== null;
+
 export function isAnimatableProp(prop: string): boolean {
   return (
     (TRANSFORM_PROPS as readonly string[]).includes(prop) ||
@@ -200,7 +213,8 @@ export function isAnimatableProp(prop: string): boolean {
     (SAMPLED_LAYER_PROPS as readonly string[]).includes(prop) ||
     isPrefixed(prop) ||
     isPuppetScalar(prop) ||
-    isSkeletonScalar(prop)
+    isSkeletonScalar(prop) ||
+    isPaintScalar(prop)
   );
 }
 

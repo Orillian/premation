@@ -37,6 +37,7 @@ import {
   formatRepairs,
 } from '@motion/author';
 import type { AiTransaction } from '../aiTransaction';
+import { beatNameOfRoot, FRONT_GLOBALS_ROOT_NAME } from '../structureAdvisors';
 import { SFX_ITEMS, getSfxItem } from '@core/library/sfxLibrary';
 import {
   applyLook,
@@ -150,6 +151,37 @@ function num(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 }
 
+/**
+ * Remove what an earlier build of `script` left in the composition: the beat
+ * roots whose beat name the script has again (`compileScript` names each root
+ * `Beat N — <name>`, so a beat's identity is its name), the `Front globals`
+ * root when the script has front globals, and — only when a beat root
+ * matched, i.e. this IS a re-run — the top-level layers that carry a back
+ * global's name. Children go with their roots. Returns what was removed.
+ */
+async function removeScriptLayers(ctx: ToolContext, script: { beats: readonly { name: string }[]; globals: readonly { name: string; stack?: string }[] }): Promise<string[]> {
+  const all = await ctx.scene.all();
+  const top = all.filter((n) => n.parent === null);
+  const beatNames = new Set(script.beats.map((b) => b.name));
+  const roots = top.filter((n) => {
+    const beat = beatNameOfRoot(n.name);
+    return beat !== null && beatNames.has(beat);
+  });
+  const victims = [...roots];
+  if (script.globals.some((g) => g.stack === 'front')) victims.push(...top.filter((n) => n.name === FRONT_GLOBALS_ROOT_NAME));
+  if (roots.length > 0) {
+    const backNames = new Set(script.globals.filter((g) => g.stack !== 'front').map((g) => g.name));
+    victims.push(...top.filter((n) => backNames.has(n.name) && !victims.includes(n)));
+  }
+  const removed: string[] = [];
+  for (const v of victims) {
+    if (!(await ctx.scene.has(v.id))) continue;
+    await ctx.scene.remove(v.id);
+    removed.push(v.name);
+  }
+  return removed;
+}
+
 export class McpCallHost {
   private queue: Promise<unknown> = Promise.resolve();
   private group: Group | null = null;
@@ -159,6 +191,12 @@ export class McpCallHost {
   private activity: McpActivity = { busy: false, tool: null, group: null };
   /** The look apply_look chose; casts and techniques use it. */
   private look: SessionLook | null = null;
+  /**
+   * Per client: the layers its last cast_piece created. A second cast_piece
+   * REPLACES them (docs/PROGRAM_3D_PERF_UX.md M1) unless `append: true` —
+   * the owner's comp held a whole script twice because every re-run stacked.
+   */
+  private readonly casts = new Map<number, string[]>();
   private readonly listeners = new Set<(a: McpActivity) => void>();
 
   constructor(private readonly deps: McpHostDeps) {}
@@ -192,6 +230,7 @@ export class McpCallHost {
   /** The connected clients changed; a group whose client left is committed. */
   clientsChanged(ids: readonly number[]): Promise<void> {
     for (const id of [...this.aliases.keys()]) if (!ids.includes(id)) this.aliases.delete(id);
+    for (const id of [...this.casts.keys()]) if (!ids.includes(id)) this.casts.delete(id);
     const g = this.group;
     return g && !ids.includes(g.clientId) ? this.closeQueued(g) : Promise.resolve();
   }
@@ -283,8 +322,24 @@ export class McpCallHost {
             return text(r.text, !r.ok);
           }
           return await this.inTransaction(call, 'Claude: cast piece', async (ctx) => {
+            const append = obj(call.args).append === true;
+            const previous = this.casts.get(call.clientId) ?? [];
+            let replaced = 0;
+            if (!append) {
+              // Inside this call's transaction: the removal and the new piece
+              // are one undo entry, and a failed cast rolls the removal back.
+              for (const id of previous) {
+                if (!(await ctx.scene.has(id))) continue;
+                await ctx.scene.remove(id);
+                replaced++;
+              }
+            }
             const r = await castPiece(call.args, this.look, this.deps.registry(), ctx);
-            return { result: text(r.text, !r.ok), ok: r.ok };
+            if (r.ok) this.casts.set(call.clientId, append ? [...previous, ...r.created] : r.created);
+            const note = replaced > 0
+              ? `\nReplaced the piece cast earlier in this session (${replaced} layer(s) removed). Pass append: true to keep an earlier cast and add to it.`
+              : '';
+            return { result: text(r.text + note, !r.ok), ok: r.ok };
           });
         }
         case 'review_design': {
@@ -534,6 +589,12 @@ export class McpCallHost {
     const compiled = compileScript(coerced.value);
     const advice = adviseScript(coerced.value, compiled, { width: comp.width, height: comp.height, fps: comp.fps });
     const reg = this.deps.registry();
+    // A beat that is already in the composition is REPLACED, not built again
+    // next to itself (M1): the owner's comp carried every beat twice with
+    // identical clip times — two cameras per beat, three adjustment layers at
+    // once — because each author_scene re-run appended. Same transaction, so
+    // the removal undoes with the rebuild.
+    const replaced = obj(call.args).append === true ? [] : await removeScriptLayers(ctx, coerced.value);
     const rejected: string[] = [];
     let applied = 0;
     for (const c of compiled.calls) {
@@ -548,6 +609,7 @@ export class McpCallHost {
     const lines = [
       `Built "${coerced.value.title || 'scene'}": ${coerced.value.beats.length} beats, ${applied} of ${compiled.calls.length} operations applied, in ${comp.width}×${comp.height} at ${comp.fps} fps, ${comp.durationSeconds}s.`,
     ];
+    if (replaced.length) lines.push('', `Replaced ${replaced.length} layer group(s) the composition already had from an earlier build: ${replaced.join(', ')}. Pass append: true to keep an earlier build next to this one.`);
     if (coerced.repairs.length) lines.push('', 'Repaired in the script:', formatRepairs(coerced.repairs));
     const collisions = sameFrameKeys(compiled, comp.fps);
     if (collisions.length) lines.push('', 'Keys merged by frame snapping:', ...collisions.slice(0, 20).map((c) => `- ${c}`));

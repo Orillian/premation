@@ -39,6 +39,7 @@ import { PRODUCT_TECHNIQUES } from '@motion/product-motion';
 import { runCaster, type CreativeBrief } from '@motion/caster';
 import { buildCustomStyle, setRuntimeStyle, type EasingPersonality } from '../design';
 import { formatFindings, verifyScene } from '../verify';
+import { formatStructureWarnings, sceneStructureWarnings } from '../structureAdvisors';
 import { renderCritiqueEvidence } from '../filmstrip';
 
 // ── Session look ──────────────────────────────────────────────────────
@@ -290,10 +291,10 @@ export function coerceCastArgs(args: unknown, look: SessionLook | null, compDura
  * repaired to the best-ranked candidate; the variants are linted and the best
  * scoring one is built.
  */
-export async function castPiece(args: unknown, look: SessionLook | null, registry: Registry, ctx: ToolContext): Promise<{ ok: boolean; text: string }> {
+export async function castPiece(args: unknown, look: SessionLook | null, registry: Registry, ctx: ToolContext): Promise<{ ok: boolean; text: string; created: string[] }> {
   const comp = await ctx.comp.get();
   const c = coerceCastArgs(args, look, comp.durationSeconds);
-  if ('error' in c) return { ok: false, text: c.error };
+  if ('error' in c) return { ok: false, text: c.error, created: [] };
   const menus: string[] = [];
   const result = await runCaster({
     userPrompt: c.brief.tone,
@@ -332,6 +333,7 @@ export async function castPiece(args: unknown, look: SessionLook | null, registr
   if (c.menusOnly) {
     return {
       ok: true,
+      created: [],
       text: [
         'The menus for this brief (nothing was built). Pick a layout id and a technique id per beat, then call cast_piece again with layoutPicks / motionPicks — or omit them to let Premation pick the best-ranked.',
         '',
@@ -339,7 +341,17 @@ export async function castPiece(args: unknown, look: SessionLook | null, registr
       ].join('\n'),
     };
   }
+  // The layers this cast creates, by their real ids: every handle the emitted
+  // calls introduce (`id` on create_layer, import_svg, create_gradient, …) that
+  // the alias map resolves to an id it did not hold before. The host keeps
+  // them so a second cast_piece replaces the piece instead of stacking a copy.
+  const before = new Set(ctx.aliases.values());
+  const handles = new Set(result.calls.flatMap((c) => (typeof c.args.id === 'string' ? [c.args.id] : [])));
   const r = await execCalls(result.calls, registry, ctx);
+  const created = [...handles].flatMap((h) => {
+    const id = ctx.aliases.get(h);
+    return id && !before.has(id) ? [id] : [];
+  });
   const rep = result.report as unknown as Record<string, unknown>;
   const score = (k: string): string => (typeof rep[k] === 'number' ? (rep[k] as number).toFixed(2) : '—');
   const lines = [
@@ -353,7 +365,7 @@ export async function castPiece(args: unknown, look: SessionLook | null, registr
   if (problems.length) lines.push('Repaired:', ...problems.slice(0, 10).map((p) => `- ${p}`));
   if (r.rejected.length) lines.push('Rejected:', ...r.rejected.slice(0, 8).map((x) => `- ${x}`));
   lines.push('Next: review_design, then refine with apply_technique and the individual tools.');
-  return { ok: r.applied > 0, text: lines.join('\n') };
+  return { ok: r.applied > 0, text: lines.join('\n'), created };
 }
 
 // ── Review ────────────────────────────────────────────────────────────
@@ -373,9 +385,11 @@ const REVIEW_QUESTIONS = [
 export async function reviewDesign(ctx: ToolContext): Promise<{ text: string; images: { mimeType: string; data: string }[] }> {
   const comp = await ctx.comp.get();
   const findings = formatFindings(await verifyScene(ctx));
+  const structure = formatStructureWarnings(await sceneStructureWarnings(ctx));
   const evidence = await renderCritiqueEvidence(ctx, comp.durationSeconds);
   const text = [
     findings ? `Mechanical checks found problems:\n${findings}` : 'Mechanical checks: nothing off-screen, invisible, past the end, or popping in together.',
+    structure ? `\nStructure — fix these FIRST, they make everything else slower and wrong:\n${structure}` : '',
     '',
     evidence.length ? `Attached: ${evidence.length === 2 ? 'a filmstrip sampled around the keyframes (cells labelled with time) and speed graphs of the hero properties' : 'a filmstrip sampled around the keyframes'}.` : 'No frames could be rendered for review.',
     '',

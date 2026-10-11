@@ -88,6 +88,32 @@ describe('design tools on the engine', () => {
     expect(await h.doc()).toBe(before);
   });
 
+  it('casting again REPLACES the piece — one copy, one undo entry per cast (M1)', async () => {
+    await call('apply_look', { lookId: 'swiss_editorial' });
+    const brief = {
+      tone: 'A calm product launch for Nova headphones',
+      durationSec: 8,
+      beats: [
+        { purpose: 'hook', content: { overline: 'Introducing', headline: 'Nova' } },
+        { purpose: 'cta', content: { headline: 'Pre-order today', cta: 'nova.audio' } },
+      ],
+      variants: 1,
+    };
+    const first = await call('cast_piece', brief);
+    expect(first.isError).toBeUndefined();
+    const once = layerCount();
+    const second = await call('cast_piece', brief);
+    expect(second.isError).toBeUndefined();
+    expect(textOf(second)).toMatch(/Replaced the piece cast earlier in this session \(\d+ layer\(s\) removed\)/);
+    expect(layerCount()).toBe(once);
+    expect((await historyLabels()).filter((l) => l === 'Claude: cast piece')).toHaveLength(2);
+    // append keeps the earlier piece.
+    const third = await call('cast_piece', { ...brief, append: true });
+    expect(third.isError).toBeUndefined();
+    expect(textOf(third)).not.toMatch(/Replaced/);
+    expect(layerCount()).toBe(once * 2);
+  });
+
   it('reviews the scene with mechanical findings and the critique questions', async () => {
     await call('create_layer', { id: 'off', kind: 'text', name: 'Lost', text: 'off frame', x: 99999, y: 99999 });
     const r = await call('review_design');

@@ -83,10 +83,11 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 
 ## Progress
 
-- [ ] M1 · [ ] M2 · [ ] A1 · [ ] A2
+- [x] M1 · [x] M2 · [ ] A1 · [ ] A2
 - [ ] E1 · [ ] E2 · [ ] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
 - [ ] U1 · [ ] U2 · [ ] U3 · [ ] U4 · [ ] U5
-- [ ] I1 · [ ] I2 · [ ] I3 · [ ] I4
+- [x] I1 · [x] I2 · [x] I3 · [ ] I4
 
 Notes log (newest first):
+- 2026-10-12: M1, M2, I1–I3 landed (TS only). A beat's identity is its NAME (compileScript's `Beat N — <name>` root; the Beat type has no id); cast_piece identity is the host's per-client record of the last cast's layer ids; add_scene's is its index via sceneWindow's element registry. Structure warnings (structureAdvisors.ts) run in describe_scene (`warnings`) and review_design ("Structure" block); two different adjustment layers at once are deliberately NOT flagged. Native tool tests ran on premation-engine-headless via PREMATION_ENGINE_PATH while the full engine was renamed for a link.
 - 2026-10-11: program started.

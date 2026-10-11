@@ -30,6 +30,12 @@ export interface SceneWindow {
 const scenes = new Map<number, SceneWindow>();
 /** How many animated elements each scene has placed — per-scene stagger. */
 const elementCounts = new Map<number, number>();
+/**
+ * The layer ids each scene placed (its background and the content bound to
+ * it), so a repeated add_scene with the same index can REPLACE the scene
+ * instead of stacking a second copy of it (docs/PROGRAM_3D_PERF_UX.md M1).
+ */
+const elementIds = new Map<number, string[]>();
 let currentIndex: number | null = null;
 
 /** Register (or replace) a scene window and make it the current one. */
@@ -43,6 +49,24 @@ export function beginSceneWindow(index: number, startSec: number, endSec: number
   scenes.set(index, w);
   elementCounts.set(index, 0);
   currentIndex = index;
+}
+
+/** Remember a layer as part of the active scene (see `sceneElementIds`). */
+export function recordSceneElement(id: string): void {
+  if (currentIndex === null) return;
+  const list = elementIds.get(currentIndex) ?? [];
+  if (!list.includes(id)) list.push(id);
+  elementIds.set(currentIndex, list);
+}
+
+/** The layers scene `index` placed so far (in this run), oldest first; [] when it has none. */
+export function sceneElementIds(index: number): string[] {
+  return [...(elementIds.get(index) ?? [])];
+}
+
+/** Forget scene `index`'s layers (they were deleted for a rebuild). */
+export function forgetSceneElements(index: number): void {
+  elementIds.delete(index);
 }
 
 /** Bind subsequent content to an already-registered scene by index. Returns
@@ -76,5 +100,6 @@ export function nextSceneElementStart(staggerSec: number): number | null {
 export function resetSceneWindow(): void {
   scenes.clear();
   elementCounts.clear();
+  elementIds.clear();
   currentIndex = null;
 }

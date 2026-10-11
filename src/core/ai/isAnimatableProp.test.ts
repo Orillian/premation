@@ -10,6 +10,7 @@ import { isAnimatableProp } from './toolContext';
 import { pathOpPropPath, newPathOpId } from '@core/scene/pathOps';
 import { polystarPropPath } from '@core/scene/polystar';
 import { FILL_GRADIENT_TRACKS } from '@core/paint/gradientPaintTracks';
+import { PAINT_OPTION_KEYS, paintColorPath, paintPathProp, paintPropPath } from '@core/paint/paintProps';
 
 describe('isAnimatableProp', () => {
   it('REGRESSION: accepts the exact path pathOpPropPath mints', () => {
@@ -29,6 +30,19 @@ describe('isAnimatableProp', () => {
     expect(isAnimatableProp(FILL_GRADIENT_TRACKS.radius)).toBe(true);
     expect(isAnimatableProp(FILL_GRADIENT_TRACKS.centerX)).toBe(true);
     expect(isAnimatableProp(FILL_GRADIENT_TRACKS.angle)).toBe(true);
+  });
+
+  it('accepts the paint stroke tracks paint_strokes tells the model to keyframe, not the Path', () => {
+    // paint_strokes' reply said "animate paint.<strokeId>.<param>" while this
+    // gate had no `paint.` prefix: every ink write-on set_keyframes authored
+    // was refused as "not animatable" (docs/PROGRAM_3D_PERF_UX.md I1).
+    for (const key of PAINT_OPTION_KEYS) expect(isAnimatableProp(paintPropPath('ps_1', key))).toBe(true);
+    expect(isAnimatableProp(paintPropPath('ps_1', 'positionX'))).toBe(true);
+    expect(isAnimatableProp(`${paintColorPath('ps_1')}_r`)).toBe(true);
+    // The Path is a `points` data track, like a puppet pin's Position.
+    expect(isAnimatableProp(paintPathProp('ps_1'))).toBe(false);
+    expect(isAnimatableProp('paint.ps_1.nonsense')).toBe(false);
+    expect(isAnimatableProp('paint.ps_1')).toBe(false);
   });
 
   it('still rejects arbitrary names', () => {

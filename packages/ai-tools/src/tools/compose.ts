@@ -303,6 +303,12 @@ export const addSceneDef: AiToolDef = {
       background: { type: 'string', description: 'Hex background for this scene. Make each scene CLEARLY different from the others (distinct hues or deep tints, e.g. #0a1a3a → #1a0a2e → #0a2e1f), not near-identical shades — the background change is how the viewer feels a new scene.' },
       transition: { type: 'string', enum: ['dissolve', 'cut'], default: 'dissolve', description: 'How this scene enters over the previous one.' },
       style: STYLE_PROP,
+      append: {
+        type: 'boolean',
+        description:
+          'Calling add_scene again with an index that was already built REPLACES that scene (its background and the content ' +
+          'bound to it are removed first). Pass true to keep the earlier build and add a second one.',
+      },
     },
   },
 };

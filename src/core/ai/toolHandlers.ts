@@ -71,7 +71,7 @@ import {
   recipeRadialBurst,
   recipePathMorph,
 } from './recipes';
-import { selectScene } from './sceneWindow';
+import { selectScene, sceneElementIds, forgetSceneElements } from './sceneWindow';
 import { TRANSFORM_PROPS, THREE_D_PROPS, SPECIAL_PROPS, CAMERA_PROPS, SAMPLED_LAYER_PROPS, isAnimatableProp } from './toolContext';
 import { readMatte } from '@core/effects/matte';
 import { CRAFT_HANDLERS } from './craftHandlers';
@@ -92,7 +92,9 @@ import { engine, engineIdle } from '@core/engine/engineInstance';
 import { AUDIO_LEVELS_PATH, planFadeKeysIn } from '@core/mirror/audio';
 import { activeCompRootId } from '@core/scene/activeComp';
 import { colorValueHex } from '@core/mirror/paintFields';
-import { defaultStroke, normalizeStroke } from '@core/paint/stroke';
+import { defaultStroke, normalizeStroke, type Stroke } from '@core/paint/stroke';
+import { sceneStructureWarnings } from './structureAdvisors';
+import { MAX_STROKE_DASH_ENTRIES } from '@core/paint/strokeTracks';
 import { mirrorStrokes } from '@core/mirror/paintFields';
 
 const def = (name: string) => {
@@ -138,11 +140,16 @@ const describeScene: AiTool['handler'] = async (input, ctx) => {
     .slice(0, 40)
     .map((e) => ({ layer: e.layer, stage: e.stage, message: e.message }));
 
+  // Whole-stack problems no single layer shows (structureAdvisors.ts): a
+  // script built twice, two cameras live at once, stacked adjustment layers.
+  const warnings = subtreeOf ? [] : (await sceneStructureWarnings(ctx)).map((w) => w.message);
+
   const payload = {
     composition: { ...comp, playhead: ctx.comp.playhead() },
     selection: ctx.scene.selection(),
     layerCount: nodes.length,
     ...(problems.length ? { problems } : {}),
+    ...(warnings.length ? { warnings } : {}),
     layers: await mapSeq(shown, async (n) => ({
       id: n.id,
       name: n.name,
@@ -242,6 +249,7 @@ const listCapabilities: AiTool['handler'] = async (input, ctx) => {
       layer: { props: SAMPLED_LAYER_PROPS, note: 'Anchor, skew, fill/stroke opacity, stroke width, text tracking.' },
       effects: 'effect.<effectId> — the id returned by add_effect',
       textAnimators: 'ta.<index>.<param> — index from text_animator',
+      paint: 'paint.<strokeId>.<param> — strokeId from paint_strokes; param: start, end, diameter, angle, hardness, roundness, spacing, opacity, flow, positionX, positionY, scale, rotation, color_r/g/b/a',
       special: SPECIAL_PROPS,
       note: 'Values are numbers only. opacity 0..100, rotation in degrees, scale is a multiplier (1 = 100%).',
     };
@@ -303,7 +311,7 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
     id?: string; kind: string; name: string; x?: number; y?: number; width?: number; height?: number;
     text?: string; shape?: string; fill?: string; parent?: string;
     points?: number; outerRadius?: number; innerRadius?: number; roundness?: number;
-  };
+  } & StrokeToolInput;
   if (i.parent && !await ctx.scene.has(i.parent)) return fail((await unknownNode(ctx, i.parent)));
   // Accept x-only or y-only (the old code discarded BOTH if either was missing,
   // silently centring the layer). Only when NEITHER is given do we hand the
@@ -382,6 +390,15 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
     if (i.height !== undefined) await ctx.scene.setProp(id, 'height', i.height);
   }
 
+  // The outline asked for in the same call (STROKE_PROPS). A refusal here is
+  // the whole call's: the layer exists, and the reply must not say it has a
+  // stroke it does not.
+  const strokePatch = strokePatchOf(i);
+  if (Object.keys(strokePatch).length > 0) {
+    const refused = await applyStrokePatch(ctx, id, strokePatch);
+    if (refused) return fail(`Created ${i.kind} layer ${id}, but its stroke was not set: ${refused.content}`);
+  }
+
   // Report what the scene ACTUALLY holds, read back — not the request echoed.
   // The special inserters (camera/light/adjustment/particle) name and select
   // their own node, and a reply that repeats `i.name` regardless is how "Created
@@ -395,8 +412,9 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
       `. Keyframe 'polystar.points' / 'polystar.outerRadius' / 'polystar.innerRadius' / ` +
       `'polystar.outerRoundness' / 'polystar.rotation' with set_keyframes.`
     : '';
+  const strokeNote = Object.keys(strokePatch).length > 0 ? ` Stroke set: ${strokeFieldNames(strokePatch).join(', ')}.` : '';
   return ok(
-    `Created ${i.kind} layer '${realName}' with id ${id}${renamed}. Use this id in later calls.${shapeNote}`,
+    `Created ${i.kind} layer '${realName}' with id ${id}${renamed}. Use this id in later calls.${shapeNote}${strokeNote}`,
     { id, name: realName, ...(polystar ? { polystar } : {}) },
   );
 };
@@ -463,8 +481,17 @@ interface PaintStrokeArgs {
   hardness?: number;
   opacity?: number;
   minSize?: number;
+  angle?: number;
+  roundness?: number;
+  spacing?: number;
+  flow?: number;
+  mode?: 'paint' | 'erase' | 'clone';
+  cloneOffsetX?: number;
+  cloneOffsetY?: number;
   reveal?: { from: number; to: number };
 }
+
+const pct = (v: number | undefined, fallback: number): number => Math.min(100, Math.max(0, v ?? fallback)) / 100;
 
 const paintStrokes: AiTool['handler'] = async (input, ctx) => {
   const i = input as { nodeId: string; strokes: PaintStrokeArgs[]; onTransparent?: boolean };
@@ -482,13 +509,22 @@ const paintStrokes: AiTool['handler'] = async (input, ctx) => {
     const pts = s.points.filter((p) => p.length >= 2 && p.every((v) => Number.isFinite(v)));
     if (pts.length === 0) return fail(`strokes[${n}] has no finite points.`);
     const pressured = pts.some((p) => p.length >= 3);
+    const mode = s.mode === 'erase' || s.mode === 'clone' ? s.mode : 'paint';
+    // The tip, in the model's units (paintStrokes.ts: fractions; degrees for
+    // the angle). Spacing is written only when asked: its PRESENCE switches
+    // the stroke to the dab renderer, and a continuous polyline is the default.
     const stroke: Record<string, unknown> = {
       points: pts.map((p) => ({ x: p[0]! - ox, y: p[1]! - oy })),
       color: s.color ?? '#000000',
       size: s.size ?? 12,
-      hardness: Math.min(100, Math.max(0, s.hardness ?? 80)) / 100,
-      opacity: Math.min(100, Math.max(0, s.opacity ?? 100)) / 100,
-      mode: 'paint',
+      hardness: pct(s.hardness, 80),
+      opacity: pct(s.opacity, 100),
+      mode,
+      ...(typeof s.angle === 'number' ? { angle: Math.max(-180, Math.min(180, s.angle)) } : {}),
+      ...(typeof s.roundness === 'number' ? { roundness: Math.max(0.01, pct(s.roundness, 100)) } : {}),
+      ...(typeof s.spacing === 'number' ? { spacing: Math.max(0.01, Math.min(10, s.spacing / 100)) } : {}),
+      ...(typeof s.flow === 'number' ? { flow: pct(s.flow, 100) } : {}),
+      ...(mode === 'clone' ? { cloneOffsetX: s.cloneOffsetX ?? 0, cloneOffsetY: s.cloneOffsetY ?? 0 } : {}),
       ...(pressured ? {
         pressure: pts.map((p) => Math.min(1, Math.max(0, p[2] ?? 1))),
         dynamics: { size: 'pressure', minSize: Math.min(100, Math.max(0, s.minSize ?? 10)) / 100 },
@@ -501,9 +537,10 @@ const paintStrokes: AiTool['handler'] = async (input, ctx) => {
     ids.push((r[0] as { stroke?: string }).stroke ?? '');
   }
   if (i.onTransparent !== undefined) await ctx.engine.apply([{ type: 'setPaintOnTransparent', layers: [i.nodeId], on: i.onTransparent } as Command]);
+  const modes = [...new Set(i.strokes.map((s) => s.mode ?? 'paint'))];
   return ok(
-    `Painted ${ids.length} stroke(s) on ${i.nodeId}: ${ids.join(', ')}.` +
-    ` Their numeric params animate as "paint.<strokeId>.<param>" (start, end, diameter, opacity …).`,
+    `Painted ${ids.length} ${modes.join('/')} stroke(s) on ${i.nodeId}: ${ids.join(', ')}.` +
+    ` Their numeric params animate as "paint.<strokeId>.<param>" with set_keyframes: start, end (0..100, the write-on), diameter, angle, hardness, roundness, spacing, opacity, flow, positionX, positionY, scale, rotation.`,
     { strokes: ids },
   );
 };
@@ -555,10 +592,7 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     blendMode?: string;
     matte?: { mode: string; inverted?: boolean; sourceId?: string } | string;
     removeMatte?: boolean;
-    stroke?: string;
-    strokeWidth?: number;
-    strokeOpacity?: number;
-  };
+  } & StrokeToolInput;
   if (!await ctx.scene.has(i.nodeId)) return fail((await unknownNode(ctx, i.nodeId)));
 
   const node = layerInfo(i.nodeId);
@@ -683,44 +717,122 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     if (await ctx.scene.setProp(i.nodeId, map[key] ?? key, i[key])) applied.push(key);
   }
 
-  // Stroke 1 of the layer's stroke stack (`layer/strokes`, Contents ▸ Stroke),
-  // patched whole as the Inspector's stroke rows patch it: created from the
-  // default when the layer has none. Text strokes live elsewhere, and a kind
-  // with no shape path has no outline to stroke — both refused, not dropped.
-  const strokePatch: { color?: string; width?: number; opacity?: number } = {};
-  if (typeof i.stroke === 'string') strokePatch.color = i.stroke;
-  if (typeof i.strokeWidth === 'number') strokePatch.width = Math.max(0, i.strokeWidth);
-  if (typeof i.strokeOpacity === 'number') strokePatch.opacity = Math.max(0, Math.min(100, i.strokeOpacity)) / 100;
+  const strokePatch = strokePatchOf(i);
   if (Object.keys(strokePatch).length > 0 && node) {
-    const kind = (await ctx.scene.get(i.nodeId))?.kind ?? 'shape';
-    if (kind === 'text') {
-      // Type's own stroke — the Character panel's Stroke Color / Stroke Width
-      // (`text/stroke`, the Text component's latent `strokeWidth`); opacity
-      // is the colour's alpha, as in the panel's picker.
-      const writes = await textStrokeWrites(i.nodeId, strokePatch);
-      if (!writes) return fail(`Could not set the stroke of text layer '${i.nodeId}'.`);
-      await ctx.engine.apply([{ type: 'setProperties', writes } as Command]);
-    } else if (NO_PATH_PIPELINE.has(kind)) {
-      return fail(
-        `stroke / strokeWidth / strokeOpacity apply to shape, solid and text layers; '${i.nodeId}' is a ${kind}. Stroke a shape layer instead.`,
-      );
-    } else {
-      const stack = mirrorStrokes(documentMirror(), i.nodeId);
-      const next = stack.length > 0 ? [...stack] : [defaultStroke()];
-      next[0] = normalizeStroke({ ...(next[0] ?? defaultStroke()), ...strokePatch, enabled: true });
-      await ctx.engine.apply([{
-        type: 'setProperty',
-        prop: { layer: i.nodeId, path: 'layer/strokes' },
-        value: { kind: 'json', value: JSON.stringify(next) },
-      } as Command]);
-    }
-    applied.push(...Object.keys(strokePatch).map((k) => (k === 'color' ? 'stroke' : `stroke${k[0]!.toUpperCase()}${k.slice(1)}`)));
+    const r = await applyStrokePatch(ctx, i.nodeId, strokePatch);
+    if (r) return r;
+    applied.push(...strokeFieldNames(strokePatch));
   }
 
   if (!applied.length) return fail('Nothing to update — pass at least one property besides nodeId.');
   refreshAfterLegacy(ctx);
   return ok(`Updated ${i.nodeId}: ${applied.join(', ')}.`);
 };
+
+/**
+ * The tool-side stroke fields (STROKE_PROPS) as a patch on a stored `Stroke`:
+ * percentages become fractions, the dash list is trimmed to AE's three pairs,
+ * and the Taper / Wave groups are complete objects `normalizeStroke` can
+ * drop when they say nothing (an identity taper, a zero wave).
+ */
+interface StrokeToolInput {
+  stroke?: string;
+  strokeWidth?: number;
+  strokeOpacity?: number;
+  strokeCap?: string;
+  strokeJoin?: string;
+  miterLimit?: number;
+  strokeDash?: number[];
+  strokeDashOffset?: number;
+  strokeTaper?: { startLength?: number; endLength?: number; startWidth?: number; endWidth?: number; startEase?: number; endEase?: number };
+  strokeWave?: { amount?: number; wavelength?: number; phase?: number; units?: string };
+}
+
+type StrokePatch = Partial<Pick<Stroke, 'color' | 'width' | 'opacity' | 'cap' | 'join' | 'miterLimit' | 'dash' | 'dashOffset' | 'taper' | 'wave'>>;
+
+function strokePatchOf(i: StrokeToolInput): StrokePatch {
+  const p: StrokePatch = {};
+  if (typeof i.stroke === 'string') p.color = i.stroke;
+  if (typeof i.strokeWidth === 'number') p.width = Math.max(0, i.strokeWidth);
+  if (typeof i.strokeOpacity === 'number') p.opacity = pct(i.strokeOpacity, 100);
+  if (i.strokeCap === 'butt' || i.strokeCap === 'round' || i.strokeCap === 'square') p.cap = i.strokeCap;
+  if (i.strokeJoin === 'miter' || i.strokeJoin === 'round' || i.strokeJoin === 'bevel') p.join = i.strokeJoin;
+  if (typeof i.miterLimit === 'number') p.miterLimit = Math.max(1, i.miterLimit);
+  if (Array.isArray(i.strokeDash)) {
+    p.dash = i.strokeDash.filter((n) => Number.isFinite(n) && n >= 0).slice(0, MAX_STROKE_DASH_ENTRIES);
+  }
+  if (typeof i.strokeDashOffset === 'number') p.dashOffset = i.strokeDashOffset;
+  if (i.strokeTaper && typeof i.strokeTaper === 'object') {
+    const t = i.strokeTaper;
+    const ease = (v: number | undefined): number => Math.max(-1, Math.min(1, v ?? 0));
+    // A taper whose ends are not given tapers TO A POINT — what "taper" means
+    // to anyone asking for one. Width 100 (= 1) at an end leaves it full.
+    p.taper = {
+      startLength: pct(t.startLength, 0), endLength: pct(t.endLength, 0),
+      startWidth: pct(t.startWidth, 0), endWidth: pct(t.endWidth, 0),
+      startEase: ease(t.startEase), endEase: ease(t.endEase),
+    };
+  }
+  if (i.strokeWave && typeof i.strokeWave === 'object') {
+    const w = i.strokeWave;
+    p.wave = {
+      amount: Math.max(0, w.amount ?? 0),
+      wavelength: Math.max(0, w.wavelength ?? 0),
+      phase: w.phase ?? 0,
+      ...(w.units === 'cycles' ? { units: 'cycles' as const } : {}),
+    };
+  }
+  return p;
+}
+
+const STROKE_FIELD_NAME: Readonly<Record<keyof StrokePatch, string>> = {
+  color: 'stroke', width: 'strokeWidth', opacity: 'strokeOpacity', cap: 'strokeCap', join: 'strokeJoin',
+  miterLimit: 'miterLimit', dash: 'strokeDash', dashOffset: 'strokeDashOffset', taper: 'strokeTaper', wave: 'strokeWave',
+};
+
+const strokeFieldNames = (p: StrokePatch): string[] => (Object.keys(p) as (keyof StrokePatch)[]).map((k) => STROKE_FIELD_NAME[k]);
+
+/**
+ * Stroke 1 of the layer's stroke stack (`layer/strokes`, Contents ▸ Stroke),
+ * patched whole as the Inspector's stroke rows patch it: created from the
+ * default when the layer has none. Text strokes live elsewhere (and have no
+ * cap, join, dashes, taper or wave), and a kind with no shape path has no
+ * outline to stroke — both refused, not dropped. Returns the refusal, or null
+ * when the stroke was written.
+ */
+async function applyStrokePatch(ctx: ToolContext, nodeId: string, patch: StrokePatch): Promise<ToolResult | null> {
+  const kind = (await ctx.scene.get(nodeId))?.kind ?? 'shape';
+  if (kind === 'text') {
+    const shapeOnly = strokeFieldNames(patch).filter((k) => k !== 'stroke' && k !== 'strokeWidth' && k !== 'strokeOpacity');
+    if (shapeOnly.length) {
+      return fail(
+        `${shapeOnly.join(' / ')} belong to a shape layer's Stroke; a text layer's Character stroke has only colour, width and opacity. ` +
+        `For a dashed, tapered or wavy outline on type, convert the text to shapes or draw the line as a shape layer.`,
+      );
+    }
+    // Type's own stroke — the Character panel's Stroke Color / Stroke Width
+    // (`text/stroke`, the Text component's latent `strokeWidth`); opacity
+    // is the colour's alpha, as in the panel's picker.
+    const writes = await textStrokeWrites(nodeId, patch);
+    if (!writes) return fail(`Could not set the stroke of text layer '${nodeId}'.`);
+    await ctx.engine.apply([{ type: 'setProperties', writes } as Command]);
+    return null;
+  }
+  if (NO_PATH_PIPELINE.has(kind)) {
+    return fail(
+      `${strokeFieldNames(patch).join(' / ')} apply to shape, solid and text layers; '${nodeId}' is a ${kind}. Stroke a shape layer instead.`,
+    );
+  }
+  const stack = mirrorStrokes(documentMirror(), nodeId);
+  const next = stack.length > 0 ? [...stack] : [defaultStroke()];
+  next[0] = normalizeStroke({ ...(next[0] ?? defaultStroke()), ...patch, enabled: true });
+  await ctx.engine.apply([{
+    type: 'setProperty',
+    prop: { layer: nodeId, path: 'layer/strokes' },
+    value: { kind: 'json', value: JSON.stringify(next) },
+  } as Command]);
+  return null;
+}
 
 /**
  * A text layer's stroke as the Character panel writes it: `text/stroke` (the
@@ -1194,6 +1306,29 @@ const listFonts: AiTool['handler'] = async (input) => {
   return ok(`${families.size} famil${families.size === 1 ? 'y' : 'ies'}${families.size > limit ? ` (first ${limit})` : ''}:\n${lines.join('\n')}`, { families: rows.map(([f]) => f) });
 };
 
+/** A stored stroke in the tool's own units (STROKE_PROPS): percentages, px, degrees. */
+function strokeReadback(s: Stroke): { row: Record<string, unknown>; text: string } {
+  const r = (n: number): number => Math.round(n * 100) / 100;
+  const row: Record<string, unknown> = {
+    stroke: s.color, strokeWidth: s.width, strokeOpacity: r(s.opacity * 100), strokeCap: s.cap, strokeJoin: s.join,
+    ...(s.miterLimit !== undefined ? { miterLimit: s.miterLimit } : {}),
+    ...(s.dash.length ? { strokeDash: s.dash, strokeDashOffset: s.dashOffset ?? 0 } : {}),
+    ...(s.taper ? {
+      strokeTaper: {
+        startLength: r(s.taper.startLength * 100), endLength: r(s.taper.endLength * 100),
+        startWidth: r(s.taper.startWidth * 100), endWidth: r(s.taper.endWidth * 100),
+        startEase: s.taper.startEase, endEase: s.taper.endEase,
+      },
+    } : {}),
+    ...(s.wave ? { strokeWave: { amount: s.wave.amount, wavelength: s.wave.wavelength, phase: s.wave.phase, ...(s.wave.units ? { units: s.wave.units } : {}) } } : {}),
+  };
+  const parts = [`${s.color} ${s.width}px`, `${s.cap} cap`, `${s.join} join`];
+  if (s.dash.length) parts.push(`dash [${s.dash.join(', ')}]${s.dashOffset ? ` offset ${s.dashOffset}` : ''}`);
+  if (s.taper) parts.push(`taper ${r(s.taper.startLength * 100)}%/${r(s.taper.endLength * 100)}%`);
+  if (s.wave) parts.push(`wave ${s.wave.amount}px every ${s.wave.wavelength}${s.wave.units === 'cycles' ? ' cycles' : 'px'}`);
+  return { row, text: parts.join(', ') };
+}
+
 const inspectLayers: AiTool['handler'] = async (input) => {
   const i = input as { nodeIds?: string[]; t?: number };
   const m = documentMirror();
@@ -1232,6 +1367,14 @@ const inspectLayers: AiTool['handler'] = async (input) => {
     if (fx && b && (fx.width > b.width + 1 || fx.height > b.height + 1)) line += `, with effects ${fmt(fx)}`;
     if (b && compInfo && (b.x + b.width <= 0 || b.y + b.height <= 0 || b.x >= compInfo.width || b.y >= compInfo.height)) line += ' — OFF-SCREEN';
     if (fill) { row.fill = fill; line += `, fill ${fill}`; }
+    // Stroke 1 as written (update_layer's STROKE_PROPS read back): the model
+    // can see a dash, taper or wave landed instead of trusting the reply.
+    const stroke = kind === 'text' ? undefined : mirrorStrokes(m, id)[0];
+    if (stroke && stroke.enabled && stroke.width > 0) {
+      const s = strokeReadback(stroke);
+      row.stroke = s.row;
+      line += `, stroke ${s.text}`;
+    }
     if (opacity?.kind === 'scalar') { row.opacity = opacity.value; line += `, opacity ${Math.round(opacity.value)}%`; }
     if (kind === 'text') {
       const fam = m.property(id, 'text/fontFamily')?.value;
@@ -1939,7 +2082,21 @@ const addLowerThird: AiTool['handler'] = async (input, ctx) => {
 };
 
 const addScene: AiTool['handler'] = async (input, ctx) => {
-  const i = input as { index: number; startSec: number; durationSec: number; background?: string; transition?: 'dissolve' | 'cut'; style?: string };
+  const i = input as { index: number; startSec: number; durationSec: number; background?: string; transition?: 'dissolve' | 'cut'; style?: string; append?: boolean };
+  // A scene that already exists is REPLACED, not stacked: the second call of
+  // add_scene { index: 2 } used to put a second background and a second set of
+  // content under the first, and the comp carried the whole script twice
+  // (docs/PROGRAM_3D_PERF_UX.md M1). One handler call = one undo entry, so the
+  // removal and the rebuild undo together.
+  let replaced = 0;
+  if (i.append !== true) {
+    for (const old of sceneElementIds(i.index)) {
+      if (!(await ctx.scene.has(old))) continue;
+      await ctx.scene.remove(old);
+      replaced++;
+    }
+    forgetSceneElements(i.index);
+  }
   const id = await recipeScene(ctx, resolveStyle(i.style), {
     index: i.index,
     startSec: i.startSec,
@@ -1950,8 +2107,9 @@ const addScene: AiTool['handler'] = async (input, ctx) => {
   refreshAfterLegacy(ctx);
   return ok(
     `Opened scene ${i.index} at ${i.startSec}s for ${i.durationSec}s (bg id ${id}). ` +
-      `Content added now enters at ${i.startSec}s and exits at its end.`,
-    { id },
+      `Content added now enters at ${i.startSec}s and exits at its end.` +
+      (replaced > 0 ? ` Replaced the scene ${i.index} built earlier (${replaced} layer(s) removed; pass append: true to keep an earlier build).` : ''),
+    { id, ...(replaced > 0 ? { replaced } : {}) },
   );
 };
 

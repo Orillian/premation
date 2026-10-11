@@ -243,6 +243,12 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
         lookId: { type: 'string', description: 'Default: the look from apply_look.' },
         accent: { type: 'string' },
         mode: { type: 'string', enum: ['dark', 'light'] },
+        append: {
+          type: 'boolean',
+          description:
+            'By default a second cast_piece in this session REPLACES the piece the first one built (re-casting with better copy ' +
+            'or picks never leaves two copies in the composition). Pass true to keep the earlier piece and add this one.',
+        },
         beats: {
           type: 'array',
           minItems: 1,
@@ -438,6 +444,12 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
       required: ['script'],
       properties: {
         script: { type: 'object', description: 'The scene script, exactly as get_author_guide describes it.' },
+        append: {
+          type: 'boolean',
+          description:
+            'By default a beat the composition already has (same beat name from an earlier author_scene) is REPLACED, ' +
+            'so re-running a revised script never leaves two copies. Pass true to build next to what is there.',
+        },
       },
     },
   },

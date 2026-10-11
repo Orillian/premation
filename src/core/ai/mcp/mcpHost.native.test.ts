@@ -96,6 +96,40 @@ describe('Claude calls on the engine', () => {
     expect(await historyLabels()).toEqual(['Claude: create layer']);
   });
 
+  it('REPLACES a script already built when author_scene runs again — one copy, one undo entry per run (M1)', async () => {
+    const script = AUTHOR_EXEMPLARS[0]!.script;
+    expect((await call('author_scene', { script })).isError).toBeUndefined();
+    const once = layerNames();
+    const again = await call('author_scene', { script });
+    expect(again.isError).toBeUndefined();
+    expect(textOf(again)).toMatch(/Replaced \d+ layer group\(s\) the composition already had/);
+    expect(textOf(again)).toMatch(/Beat 1 — /);
+    expect(layerNames().length).toBe(once.length);
+    expect(layerNames().filter((n) => /^Beat 1 — /.test(n))).toHaveLength(1);
+    expect(await historyLabels()).toEqual(['Claude: build scene', 'Claude: build scene']);
+    // describe_scene has nothing structural to say about one copy.
+    expect(textOf(await call('describe_scene'))).not.toMatch(/"warnings"/);
+    // One undo removes the rebuild AND restores the first build.
+    await h.run({ type: 'undo' });
+    expect(layerNames().length).toBe(once.length);
+  });
+
+  it('append: true builds next to the earlier copy, and describe_scene / review_design then warn (M2)', async () => {
+    const script = AUTHOR_EXEMPLARS[0]!.script;
+    await call('author_scene', { script });
+    const once = layerNames();
+    const r = await call('author_scene', { script, append: true });
+    expect(r.isError).toBeUndefined();
+    expect(textOf(r)).not.toMatch(/Replaced/);
+    expect(layerNames().length).toBe(once.length * 2);
+    const described = textOf(await call('describe_scene'));
+    expect(described).toMatch(/"warnings"/);
+    expect(described).toMatch(/exists 2 times/);
+    const review = textOf(await call('review_design'));
+    expect(review).toMatch(/Structure — fix these FIRST/);
+    expect(review).toMatch(/\[duplicate-beat\]/);
+  });
+
   it('builds a scene script as one undo step', async () => {
     const before = await h.doc();
     const r = await call('author_scene', { script: AUTHOR_EXEMPLARS[0]!.script });

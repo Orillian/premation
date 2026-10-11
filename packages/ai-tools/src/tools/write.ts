@@ -34,6 +34,8 @@ const PROP_HINT =
   'orbitYaw, orbitPitch (rotate around the look-at point), poiX, poiY, poiZ (look-at target), ' +
   'dofStrength, focusDistance, dofAperture (depth of field). ' +
   'Effects: effect.<effectId>. Text animators: ta.<index>.<param>. Time remap: timeRemap. ' +
+  'Paint strokes (ids from paint_strokes): paint.<strokeId>.<param> — start, end (write-on, 0..100), diameter, angle, ' +
+  'hardness, roundness, spacing, opacity, flow, positionX, positionY, scale, rotation, color_r/g/b/a. ' +
   'Values are numbers only — opacity is 0..100, rotation is degrees, scale is a multiplier (1 = 100%).';
 
 // ── Structure ─────────────────────────────────────────────────────
@@ -56,6 +58,75 @@ export const ALIAS_PROP = {
   description:
     'Optional handle to refer to this layer in LATER calls in the same batch, before the engine ' +
     'has assigned it a real id. Must be unique within the run.',
+} as const;
+
+/**
+ * The layer's first stroke (Contents ▸ Stroke 1; on text, Character ▸ Stroke),
+ * as create_layer and update_layer both take it. Colour / width / opacity
+ * apply to text too; everything from the cap down is AE's shape-layer Stroke
+ * group (Line Cap, Line Join, Miter Limit, Dashes, Taper, Wave), which type's
+ * Character stroke does not have.
+ */
+export const STROKE_PROPS = {
+  stroke: {
+    type: 'string',
+    description:
+      'Stroke colour, hex. Shape and solid layers (adds a stroke when the layer has none) and text layers ' +
+      '(the Character stroke — with fill: "none" an outline-only title). ' +
+      'Combine with set_trim_path for a line that draws itself on.',
+  },
+  strokeWidth: { type: 'number', minimum: 0, description: 'Stroke width in layer px. 0 draws no stroke.' },
+  strokeOpacity: { type: 'number', minimum: 0, maximum: 100, description: 'Opacity of the stroke only, 0..100.' },
+  strokeCap: {
+    type: 'string',
+    enum: ['butt', 'round', 'square'],
+    description: 'Line Cap (shape/solid strokes): butt (flat at the path end), round, square (extends half a width). Round caps make dashes into dots.',
+  },
+  strokeJoin: {
+    type: 'string',
+    enum: ['miter', 'round', 'bevel'],
+    description: 'Line Join (shape/solid strokes): miter (sharp corners), round, bevel (cut corners).',
+  },
+  miterLimit: { type: 'number', minimum: 1, description: 'Miter Limit for join "miter": a corner sharper than this ratio (miter length / width) is bevelled. Default 4.' },
+  strokeDash: {
+    type: 'array',
+    maxItems: 6,
+    items: { type: 'number', minimum: 0 },
+    description:
+      'Dash pattern in layer px, [dash, gap, dash, gap, …] (AE Dashes, up to 3 pairs). [] = solid. ' +
+      'Animate strokeDashOffset (set_keyframes) for a marching border; a dash with round caps and gap > width is a dotted line.',
+  },
+  strokeDashOffset: { type: 'number', description: 'Dash Offset: how far the pattern is slid along the path, px.' },
+  strokeTaper: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'AE Taper: the stroke thins to a point at its ends. Lengths are % of the path (0..100); widths are % of the stroke width at the very ' +
+      'end (0 = a point, default 0); ease is −1..1 (negative = pointy/concave, positive = round/convex). ' +
+      '{ startLength: 0, endLength: 0 } removes the taper.',
+    properties: {
+      startLength: { type: 'number', minimum: 0, maximum: 100 },
+      endLength: { type: 'number', minimum: 0, maximum: 100 },
+      startWidth: { type: 'number', minimum: 0, maximum: 100 },
+      endWidth: { type: 'number', minimum: 0, maximum: 100 },
+      startEase: { type: 'number', minimum: -1, maximum: 1 },
+      endEase: { type: 'number', minimum: -1, maximum: 1 },
+    },
+  },
+  strokeWave: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'AE Wave: a sine displacement of the stroke along its path. amount = peak displacement px, wavelength = period in px of path ' +
+      '(or whole cycles with units "cycles" — the only way a wave meets itself on a closed outline), phase in degrees (keyframe ' +
+      'strokeWavePhase to make it travel). amount 0 removes the wave.',
+    properties: {
+      amount: { type: 'number', minimum: 0 },
+      wavelength: { type: 'number', minimum: 0 },
+      phase: { type: 'number' },
+      units: { type: 'string', enum: ['pixels', 'cycles'] },
+    },
+  },
 } as const;
 
 export const createLayerDef: AiToolDef = {
@@ -96,6 +167,9 @@ export const createLayerDef: AiToolDef = {
       roundness: { type: 'number', minimum: -100, maximum: 100, description: 'shape=polygon|star: segment bulge, percent. 0 = sharp corners, positive rounds them, negative curls them inward.' },
       fill: { type: 'string', description: 'Colour: hex (#2b7eff, #2b7eff80) or CSS (rgba(), named). "none" = no fill — a shape that is only its stroke.' },
       parent: { type: 'string', description: 'Parent layer id.' },
+      // The outline, in the same call — a ring, a dashed border, a tapered
+      // calligraphic line is one create_layer, not create + update.
+      ...STROKE_PROPS,
     },
   },
 };
@@ -277,15 +351,7 @@ export const updateLayerDef: AiToolDef = {
           'fill: "none" instead.',
       },
       // ── Stroke (the layer's first stroke, Contents ▸ Stroke 1; on text, Character ▸ Stroke) ──
-      stroke: {
-        type: 'string',
-        description:
-          'Stroke colour, hex. Shape and solid layers (adds a stroke when the layer has none) and text layers ' +
-          '(the Character stroke — with fill: "none" an outline-only title). ' +
-          'Combine with set_trim_path for a line that draws itself on.',
-      },
-      strokeWidth: { type: 'number', minimum: 0, description: 'Stroke width in layer px. 0 draws no stroke.' },
-      strokeOpacity: { type: 'number', minimum: 0, maximum: 100, description: 'Opacity of the stroke only, 0..100.' },
+      ...STROKE_PROPS,
       cornerRadius: {
         type: 'number',
         minimum: 0,
@@ -527,7 +593,10 @@ export const paintStrokesDef: AiToolDef = {
     'list of points in layer px from the layer\'s top-left; a third number per point is pen PRESSURE 0..1, which ' +
     'scales the tip down to minSize — that is the brush taper (press hard in the belly of a stroke, lift at its ' +
     'ends). `reveal` draws the stroke on between two composition times (AE Write On). onTransparent: the layer ' +
-    'shows ONLY its paint (paint on a transparent solid over other layers).',
+    'shows ONLY its paint (paint on a transparent solid over other layers). The brush tip is AE\'s: angle + roundness ' +
+    'make a flat calligraphy nib (roundness 20–40 with angle 45 is a broad-nib pen), spacing turns the stroke into dabs, ' +
+    'flow builds paint up per dab under the opacity cap. mode "erase" cuts the layer\'s content away; "clone" paints ' +
+    'the layer\'s own content from an offset. Every numeric option animates as paint.<strokeId>.<param> (set_keyframes).',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -556,6 +625,13 @@ export const paintStrokesDef: AiToolDef = {
             hardness: { type: 'number', minimum: 0, maximum: 100, description: '% — 100 a crisp edge, 0 a soft wash. Default 80.' },
             opacity: { type: 'number', minimum: 0, maximum: 100, description: '%. Default 100.' },
             minSize: { type: 'number', minimum: 0, maximum: 100, description: '% of size at zero pressure (AE Minimum Size). Default 10.' },
+            angle: { type: 'number', minimum: -180, maximum: 180, description: 'Brush tip angle, degrees (AE Angle). Only visible with roundness < 100. Default 0.' },
+            roundness: { type: 'number', minimum: 1, maximum: 100, description: '% — 100 a round tip, lower a flatter ellipse (a nib). Default 100.' },
+            spacing: { type: 'number', minimum: 1, maximum: 1000, description: '% of the diameter between dabs (AE Spacing). Omit for a continuous stroke; 25 is AE\'s brush default, > 100 leaves separate dots.' },
+            flow: { type: 'number', minimum: 0, maximum: 100, description: '% paint laid per dab, accumulating up to opacity (AE Flow). Default 100.' },
+            mode: { type: 'string', enum: ['paint', 'erase', 'clone'], description: 'paint (default) composites colour; erase cuts the layer away; clone paints the layer\'s own content from cloneOffsetX/Y.' },
+            cloneOffsetX: { type: 'number', description: 'mode "clone": where to sample from, layer px right of where the stroke paints. Default 0.' },
+            cloneOffsetY: { type: 'number', description: 'mode "clone": layer px below where the stroke paints. Default 0.' },
             reveal: {
               type: 'object',
               additionalProperties: false,
