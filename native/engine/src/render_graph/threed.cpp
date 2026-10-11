@@ -6,11 +6,15 @@
 #include "threed.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <cstring>
 #include <numbers>
+#include <string>
 
+#include "fx_keys.hpp"
 #include "passes.hpp"
 
 namespace premation::rg {
@@ -328,6 +332,156 @@ std::vector<double> expand_model(const std::vector<double>& model, double ex, do
     m[4 + i] = cy;
   }
   return m;
+}
+
+// ── E1 / E2: 3D surface chains in layer-sized buffers ─────────────────────
+
+/// The chain buffer's texel count along one axis for a layer footprint of `px`
+/// comp pixels: whole multiples of 16 (a layer whose scale animates a little
+/// keeps its buffer, and its kept chain result), at least 16, at most the
+/// viewport's — the size every 3D chain ran in before E1, never exceeded.
+std::uint32_t surface_texels(double px, std::uint32_t cap) {
+  const double most = std::max(1U, cap);
+  if (!std::isfinite(px) || px <= 0) return static_cast<std::uint32_t>(std::min(16.0, most));
+  const double q = std::ceil(px / 16) * 16;
+  return static_cast<std::uint32_t>(std::min(most, std::max(16.0, q)));
+}
+
+/// While alive, the effect chain's targets and the pass viewport are the w × h
+/// buffer a 3D surface's chain runs in (E1), not the comp viewport: the names
+/// below are re-declared at that size (allocated on first use, as every graph
+/// target — PassContext::target) and the viewport's pixel size reads w × h, so
+/// every pass the chain opens (ctx.draw_into) and every texel step it packs
+/// (1 / pixelWidth) agree. Restored on scope exit.
+class SurfaceSpace {
+ public:
+  SurfaceSpace(PassContext& ctx, std::uint32_t w, std::uint32_t h)
+      : ctx_(&ctx), savedW_(ctx.viewport.pixelWidth), savedH_(ctx.viewport.pixelHeight) {
+    ctx.viewport.pixelWidth = w;
+    ctx.viewport.pixelHeight = h;
+    for (std::size_t i = 0; i < kNames.size(); ++i) {
+      const std::string_view n = kNames.at(i);
+      if (const auto it = ctx.targets.find(n); it != ctx.targets.end()) {
+        saved_.at(i) = it->second;
+        ctx.targets.erase(it);
+      }
+      if (const auto s = ctx.specs.find(n); s != ctx.specs.end()) {
+        specs_.at(i) = s->second;
+        hadSpec_.at(i) = true;
+        s->second.width = w;
+        s->second.height = h;
+        s->second.samples = 1;
+        s->second.depth = false;
+      }
+    }
+  }
+  ~SurfaceSpace() {
+    // Restores state; the one thing here that can throw is the emplace's
+    // allocation, and a frame that cannot allocate a map node is lost anyway.
+    try {
+      for (std::size_t i = 0; i < kNames.size(); ++i) {
+        const std::string_view n = kNames.at(i);
+        if (const auto it = ctx_->targets.find(n); it != ctx_->targets.end()) ctx_->targets.erase(it);
+        if (saved_.at(i) != nullptr) ctx_->targets.emplace(std::string(n), saved_.at(i));
+        if (hadSpec_.at(i)) {
+          if (const auto s = ctx_->specs.find(n); s != ctx_->specs.end()) s->second = specs_.at(i);
+        }
+      }
+    } catch (...) {  // NOLINT(bugprone-empty-catch): see above
+    }
+    ctx_->viewport.pixelWidth = savedW_;
+    ctx_->viewport.pixelHeight = savedH_;
+  }
+  SurfaceSpace(const SurfaceSpace&) = delete;
+  SurfaceSpace& operator=(const SurfaceSpace&) = delete;
+  SurfaceSpace(SurfaceSpace&&) = delete;
+  SurfaceSpace& operator=(SurfaceSpace&&) = delete;
+
+ private:
+  /// Every target run_effects_chain (and a map-reading entry's map_layer) draws into at the pass viewport's size.
+  static constexpr std::array<std::string_view, 13> kNames = {
+      kLayerTarget, kBlur1,    kBlur2,    kBlur3,    kFxSilhouette, kFxScopeMask, kFxBlendInput,
+      kFxAux[0],    kFxAux[1], kFxAux[2], kFxAux[3], kPluginOrigin, kMatteTarget};
+  PassContext* ctx_;
+  std::uint32_t savedW_;
+  std::uint32_t savedH_;
+  std::array<RenderTarget*, 13> saved_{};
+  std::array<PassContext::TargetSpec, 13> specs_{};
+  std::array<bool, 13> hadSpec_{};
+};
+
+/// `from` into `to`, texel for texel (same size and format), in encode order — exact.
+void copy_texels(PassContext& ctx, const RenderTarget& from, const RenderTarget& to) {
+  wgpu::TexelCopyTextureInfo a{};
+  a.texture = from.texture;
+  wgpu::TexelCopyTextureInfo b{};
+  b.texture = to.texture;
+  const wgpu::Extent3D size{from.width, from.height, 1};
+  ctx.dev.encoder().CopyTextureToTexture(&a, &b, &size);
+}
+
+/// E1: what a 3D surface's chain INPUT is drawn from (resolve_surface's fill):
+/// its textures by content hash, colour, matrix, UV, shape, the solid fill, the
+/// layer's world size and the buffer's size and inset — and NOT its model's
+/// place or rotation under the camera, so a layer that only moves reuses its
+/// chain. 0 where the input is not a function of these (a precomp's offscreen,
+/// an unresolved texture, a deformed mesh).
+std::uint64_t surface_content_key(const PassContext& ctx, const api::Renderable& r, double worldW, double worldH,
+                                  const Rect& inset, std::uint32_t bw, std::uint32_t bh, bool textured, bool solid,
+                                  const Color& fill, const SolidShape& shape, std::string_view meshKey) {
+  if (r.precomp || !r.precomp_children.empty() || r.deformed_mesh) return 0;
+  KeyMix k;
+  k.u64(0x3D5EFULL);  // a 3D surface key, never equal to a 2D chain's
+  k.u64(static_cast<std::uint64_t>(r.kind));
+  for (const std::optional<std::string>* key : {&r.texture_key, &r.mask_texture_key, &r.lut_texture_key}) {
+    if (!*key) {
+      k.u64(0);
+      continue;
+    }
+    const ResolvedBlob rb = ctx.textures.resolve(**key);
+    if (rb.hash.empty()) return 0;
+    k.str(rb.hash);
+  }
+  if (r.uv_rect) {
+    k.f64(r.uv_rect->x);
+    k.f64(r.uv_rect->y);
+    k.f64(r.uv_rect->width);
+    k.f64(r.uv_rect->height);
+  }
+  if (r.color) {
+    k.f64(r.color->r);
+    k.f64(r.color->g);
+    k.f64(r.color->b);
+    k.f64(r.color->a);
+  }
+  if (r.color_matrix) {
+    for (const double v : r.color_matrix->m) k.f64(v);
+    for (const double v : r.color_matrix->offset) k.f64(v);
+  }
+  if (r.sdf) {
+    k.u64(static_cast<std::uint64_t>(r.sdf->shape));
+    k.f64(r.sdf->width);
+    k.f64(r.sdf->height);
+    k.f64(r.sdf->radius_px);
+  }
+  k.u64((textured ? 1U : 0U) | (solid ? 2U : 0U) | (r.extruded_mesh ? 4U : 0U));
+  k.f64(fill.r);
+  k.f64(fill.g);
+  k.f64(fill.b);
+  k.f64(fill.a);
+  k.f64(shape.kind);
+  k.f64(shape.radiusPx);
+  k.f64(shape.width);
+  k.f64(shape.height);
+  k.str(meshKey);
+  k.f64(worldW);
+  k.f64(worldH);
+  k.f64(inset.x);
+  k.f64(inset.y);
+  k.f64(inset.width);
+  k.f64(inset.height);
+  k.u64((std::uint64_t{bw} << 32U) | bh);
+  return k.value();
 }
 
 // ── shadowMap.ts ─────────────────────────────────────────────────────────
@@ -1037,18 +1191,27 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     return Color{c.r * g[0], c.g * g[1], c.b * g[2], c.a};
   };
 
-  /// resolveEffect3DTexture: a renderable's content drawn into LAYER_TARGET at
-  /// layer resolution (inset by the chain's margin when `margin`), its effect
-  /// chain run there in layer space, the result left in LAYER_TARGET. Shared by
-  /// effect-laden quads and (AE parity 4.1) mesh surfaces. `worldW/H` are the
-  /// world units the texture spans; `fill`/`shape` the solid content.
+  /// resolveEffect3DTexture: a renderable's content drawn at layer resolution
+  /// (inset by the chain's margin when `margin`), its effect chain run there in
+  /// layer space, the result in a texture of its own. Shared by effect-laden
+  /// quads and (AE parity 4.1) mesh surfaces. `worldW/H` are the world units the
+  /// texture spans; `fill`/`shape` the solid content; `meshKey` a mesh's.
+  ///
+  /// E1: the chain runs in a LAYER-SIZED buffer — the layer's footprint at comp
+  /// scale plus the margin (surface_texels), camera-independent — not the comp
+  /// viewport, and its result is keyed by the surface's content and the effect
+  /// params (surface_content_key + layer_fx_key) and kept across frames by the
+  /// composition pass (MapLayerSource::reuse/keep_surface_fx): a layer that only
+  /// moves under the camera pays its chain once. E2: each surface's result has
+  /// a target of its own, so the run's draws never wait for LAYER_TARGET to be
+  /// free — one group pass per run, whatever the number of effect layers.
   struct Surface {
     TexRef tex;
     Rect inset;
     double ex = 1, ey = 1;
   };
   const auto resolve_surface = [&](const api::Renderable& r, double worldW, double worldH, bool margin, bool textured, bool solid,
-                                   const Color& fill, const SolidShape& shape) -> std::optional<Surface> {
+                                   const Color& fill, const SolidShape& shape, std::string_view meshKey) -> std::optional<Surface> {
     const Rect uv = r.uv_rect ? rect_of(*r.uv_rect) : Rect{0, 0, 1, 1};
     const double spread = margin ? effect_spread_px(r.effects, worldW, worldH) : 0;
     const double fxm = std::min(spread / worldW, kMaxFxMargin);
@@ -1057,6 +1220,18 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     out.ex = 1 + 2 * fxm;
     out.ey = 1 + 2 * fym;
     out.inset = Rect{fxm / out.ex, fym / out.ey, 1 / out.ex, 1 / out.ey};
+    const double texPerWorldX = vp.visibleWorldRect.width > 0 ? vp.pixelWidth / vp.visibleWorldRect.width : 1;
+    const double texPerWorldY = vp.visibleWorldRect.height > 0 ? vp.pixelHeight / vp.visibleWorldRect.height : 1;
+    // Off (the parity harness): the viewport-sized buffer the goldens were drawn in.
+    const std::uint32_t bw = ctx.fxLayerBuffers ? surface_texels(worldW * out.ex * texPerWorldX, vp.pixelWidth) : vp.pixelWidth;
+    const std::uint32_t bh = ctx.fxLayerBuffers ? surface_texels(worldH * out.ey * texPerWorldY, vp.pixelHeight) : vp.pixelHeight;
+    const std::uint64_t contentKey =
+        surface_content_key(ctx, r, worldW, worldH, out.inset, bw, bh, textured, solid, fill, shape, meshKey);
+    const std::uint64_t fxKey = layer_fx_key(ctx, r, contentKey, 1);
+    if (const TexRef kept = maps.reuse_surface_fx(ctx, fxKey, bw, bh)) {
+      out.tex = kept;
+      return out;
+    }
     const Mat3 fillMvp = mul(screen_mvp(), model_from_rect(out.inset));
     Commands fillCmds;
     if (r.mask_texture_key) {
@@ -1081,22 +1256,37 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       }
     }
     if (fillCmds.empty()) return std::nullopt;
+    // From here to the end of the scope the chain's targets and pass viewport are bw × bh.
+    const SurfaceSpace buffer(ctx, bw, bh);
     ctx.draw_into(kLayerTarget, fillCmds, true);
-    const FxSpace space{vp.pixelWidth / (worldW * out.ex), vp.pixelHeight / (worldH * out.ey), out.inset};
+    const FxSpace space{bw / (worldW * out.ex), bh / (worldH * out.ey), out.inset};
     const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
-    const ChainResult res = run_effects_chain(ctx, r.effects, ctx.target(kLayerTarget)->tex(), pool, byId, r.id, maps, &space);
-    out.tex = res.tex;
-    if (res.name != kLayerTarget) {
+    const ChainResult res =
+        run_effects_chain(ctx, r.effects, ctx.target(kLayerTarget)->tex(), pool, byId, r.id, maps, &space, contentKey);
+    const RenderTarget* resT = ctx.target(res.name);
+    if (resT == nullptr) return std::nullopt;
+    // E2: the result in a target of this surface's own, so the next surface's
+    // chain can reuse the pool without a flush of the run. The name is built
+    // per surface, not per draw (a handful per frame).
+    RenderTarget& own = ctx.dev.target("fx3d-out-" + std::to_string(ctx.surfaceFx++), bw, bh, resT->format, 1, false);
+    if (!ctx.fxLayerBuffers && res.name != kLayerTarget) {
+      // The parity path keeps the blit the goldens were drawn with (a textured
+      // draw moves half-float texels by an ulp; an exact copy would not).
       Commands copy;
       emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, res.tex, clamp, targetUv, kIdentityColor, true);
-      ctx.draw_into(kLayerTarget, copy, true);
-      out.tex = ctx.target(kLayerTarget)->tex();
+      run_into(ctx, own, copy, true, false);
+    } else {
+      copy_texels(ctx, *resT, own);  // exact
     }
+    if (const TexRef kept = maps.keep_surface_fx(ctx, r.id, fxKey, own)) {
+      out.tex = kept;
+      return out;
+    }
+    out.tex = own.tex();
     return out;
   };
 
   Commands cmds;
-  bool pendingResolved = false;
   // Whether the run's depth buffer holds this run yet: the first pass clears
   // it, every later one (a pass after an offscreen step) LOADS it — a run that
   // flushes mid-way keeps its occlusion.
@@ -1116,7 +1306,6 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     ctx.dev.execute(pass, cmds, t->format, t->samples);
     pass.End();
     cmds.clear();
-    pendingResolved = false;
   };
   /// The run's depth buffer, cleared for this run before anything tests against it.
   const auto ensure_started = [&] {
@@ -1191,7 +1380,6 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       const bool uvSpace = mesh.surface == api::RenderMeshSurface::uv;
       std::optional<Surface> fx;
       if (!r.effects.empty()) {
-        if (&out == &cmds && pendingResolved) flush();
         const double sx = std::hypot(model[0], model[1], model[2]);
         const double sy = std::hypot(model[4], model[5], model[6]);
         double w = mesh.surface_width;
@@ -1210,8 +1398,7 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
                            : r.color                                            ? color_of(*r.color)
                                                                                 : Color::white();
         fx = resolve_surface(r, std::max(1.0, w * (sx != 0 ? sx : 1)), std::max(1.0, h * (sy != 0 ? sy : 1)), false,
-                             texturedContent, !texturedContent, fill, uvSpace ? SolidShape{} : solid_shape(r.sdf));
-        if (fx && &out == &cmds) pendingResolved = true;
+                             texturedContent, !texturedContent, fill, uvSpace ? SolidShape{} : solid_shape(r.sdf), mesh.key);
       }
       for (const auto& range : mesh.ranges) {
         if (range.count == 0) continue;
@@ -1291,11 +1478,11 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     const bool textured = r.kind == api::RenderableKind::image || r.kind == api::RenderableKind::video || r.kind == api::RenderableKind::text;
 
     if (!r.effects.empty()) {
-      if (&out == &cmds && pendingResolved) flush();
       // resolveEffect3DTexture: content inset by the effects' margin, chain in layer space.
       const double worldW = [&] { const double v = std::hypot(model[0], model[1], model[2]); return v != 0 ? v : 1; }();
       const double worldH = [&] { const double v = std::hypot(model[4], model[5], model[6]); return v != 0 ? v : 1; }();
-      const auto res = resolve_surface(r, worldW, worldH, true, textured, solid, r.color ? color_of(*r.color) : Color::white(), solid_shape(r.sdf));
+      const auto res = resolve_surface(r, worldW, worldH, true, textured, solid, r.color ? color_of(*r.color) : Color::white(),
+                                       solid_shape(r.sdf), {});
       if (!res) return;
       const std::vector<double> fxModel = expand_model(model, res->ex, res->ey);
       const Mat4 fxMvp = mvp3d(vp, cam, fxModel);
@@ -1308,7 +1495,6 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       it.texture = res->tex;
       it.sampler = clamp;
       bind_scene(it);
-      if (&out == &cmds) pendingResolved = true;
       return;
     }
 
@@ -1449,13 +1635,8 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       for (const api::Renderable* g : group) {
         if (g == rr || g->matte_source || g->opacity <= 0 || !g->three_d) continue;
         models.push_back(mul4d(R, g->three_d->model));
+        // An effect-laden layer samples a surface texture of its own (E2): no run split per layer.
         draw_one(*g, rc, DrawOpts{&models.back(), g->opacity, std::nullopt, DrawItem::kDepthWriteMaterial});
-        // An effect-laden layer's draw samples LAYER_TARGET: run it before the next one overwrites that.
-        if (!g->effects.empty() && !rc.empty()) {
-          run_into(ctx, t, rc, first, true, !first);
-          first = false;
-          rc.clear();
-        }
       }
       if (!rc.empty() || first) run_into(ctx, t, rc, first, true, !first);
       inReflectionPass = false;

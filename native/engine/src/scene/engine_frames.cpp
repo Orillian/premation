@@ -769,6 +769,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     d->renderer_ = rg::SceneRenderer::create_on(gpu.instance, gpu.adapter, gpu.device, gpu.float32, error);
     if (!d->renderer_) return nullptr;
     d->renderer_->set_effect_fields(engine_gpu_effects());  // E4: the frames build with gpuEffects the same way
+    d->renderer_->set_effect_layer_buffers(true);           // E1: 3D surface chains in layer-sized buffers
     // The frame builder plans rasters against this device's 2D texture limit (device_limits.hpp).
     set_texture_dimension_limit(d->renderer_->device().max_texture_dimension());
     SceneTextures::Options to;

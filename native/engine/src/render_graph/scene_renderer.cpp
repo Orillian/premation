@@ -238,7 +238,7 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
   TextureTable textures;
   textures.build(file);
   dev_->begin_frame();
-  PassContext ctx{*dev_, file, textures, vp, {}, {}, outView, surfaceFormat, std::nullopt,
+  PassContext ctx{*dev_, file, textures, vp, {}, {}, {}, outView, surfaceFormat, std::nullopt,
                   std::string(kSceneColor), stats.diagnostics, {}, Scope3D::of(file.scene)};
   ctx.color.working = file.view.working_space == api::RenderWorkingSpace::aces_cg ? WorkingSpace::aces_cg : WorkingSpace::srgb_linear;
   switch (file.view.display_transform) {
@@ -253,6 +253,7 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
   ctx.fxCache = &fxCache_;
   ctx.fxFields = effectFields_;
   ctx.fxBounds = effectBounds_;
+  ctx.fxLayerBuffers = effectLayerBuffers_;
   stats.effects.gpuEntries = stats.effects.sdfBuilt = stats.effects.sdfReused = 0;
   stats.effects.silhouetteStyles = stats.effects.scoped = stats.effects.skipped = stats.effects.blendSpans = 0;
   stats.effects.bounded = stats.effects.fullFrame = 0;
@@ -279,6 +280,8 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
   }
   // resolveTargets: every active declared target, float where declared float,
   // in the precision the project bit depth asks for (intermediate_format).
+  // E3: declared here, allocated by PassContext::target on first use — a
+  // frame pays only for the targets it draws into.
   const IntermediatePrecision inter =
       select_intermediate({file.view.bit_depth, file.view.float16_textures, file.view.float32_textures, float32_});
   ctx.color.bitDepth = bits_of(inter);
@@ -296,8 +299,7 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
     const wgpu::TextureFormat fmt = data ? dataFormat : wantsFloat ? interFormat : wgpu::TextureFormat::RGBA8Unorm;
     // RenderGraph.resolveTargets: rgba32float targets are never multisampled.
     const std::uint32_t samples = fmt == wgpu::TextureFormat::RGBA32Float ? 1 : desc.samples;
-    RenderTarget& t = dev_->target(name, desc.width, desc.height, fmt, samples, desc.depth);
-    ctx.targets.emplace(name, &t);
+    ctx.specs.emplace(name, PassContext::TargetSpec{desc.width, desc.height, fmt, samples, desc.depth});
   }
   // D3: a colour-managed frame (RenderView.colorManagement) builds its OCIO
   // programs here; an unmanaged one leaves ctx.color exactly as above.

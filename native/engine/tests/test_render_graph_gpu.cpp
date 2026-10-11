@@ -518,3 +518,163 @@ TEST_CASE("a texture over the device's 2D limit skips its layer, not the frame")
   CHECK(px(2, 2, 0) == 0);
   CHECK(px(2, 2, 3) == 255);
 }
+
+// ── E1 / E2 / E3 (docs/PROGRAM_3D_PERF_UX.md) ─────────────────────────────
+
+namespace {
+
+/// A depth-eligible 3D rect: unit quad under a column-major 4×4 model at (x, y) of w × h.
+api::Renderable rect3d(std::string id, double x, double y, double w, double h, double r, double g, double b) {
+  api::Renderable q;
+  q.id = std::move(id);
+  q.kind = api::RenderableKind::rect;
+  q.model_matrix = {w, 0, 0, 0, h, 0, x, y, 1};
+  q.bounds = {x, y, w, h};
+  q.opacity = 1;
+  q.color = api::Color{r, g, b, 1};
+  api::RenderThreeD td;
+  td.model = {w, 0, 0, 0, 0, h, 0, 0, 0, 0, 1, 0, x, y, 0, 1};
+  q.three_d = td;
+  return q;
+}
+
+/// solid_scene's view with an identity (orthographic) 3D camera: a 3D layer lands where a 2D one would.
+api::RenderFrameFile threed_scene() {
+  api::RenderFrameFile f = solid_scene(0, 0, 1);
+  f.scene.renderables.clear();
+  api::RenderCamera3D cam;
+  cam.view = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+  cam.projection = cam.view;
+  f.scene.camera3d = cam;
+  return f;
+}
+
+api::RenderEffect blur_fx(double radius) {
+  api::RenderEffect blur;
+  blur.type = "gaussian-blur";
+  blur.params.push_back(num_param("radiusPx", radius));
+  return blur;
+}
+
+}  // namespace
+
+TEST_CASE("E1: a 3D surface's effect chain is kept across frames and reused when only the camera moves, pixel for pixel") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  renderer->set_effect_layer_buffers(true);  // the engine's path: layer-sized chain buffers
+  auto file = threed_scene();
+  file.scene.renderables.push_back(rect3d("a", 16, 12, 24, 16, 0, 0.5, 1));
+  file.scene.renderables[0].effects.push_back(blur_fx(3));
+  Frame first;
+  FrameStats s1;
+  REQUIRE(renderer->render(file, &first, s1, err));
+  CHECK(s1.gpuError.empty());
+  CHECK(s1.effects.layerChainsReused == 0);
+  // The blur reached outside the rect: the chain ran in a buffer with a margin.
+  const auto px = [&](const Frame& f, std::uint32_t x, std::uint32_t y, std::size_t c) { return f.rgba.at((std::size_t{y} * 64 + x) * 4 + c); };
+  CHECK(px(first, 14, 20, 2) > 0);
+  CHECK(px(first, 2, 2, 2) == 0);
+  Frame again;
+  FrameStats s2;
+  REQUIRE(renderer->render(file, &again, s2, err));
+  CHECK(s2.effects.layerChainsReused == 0);  // the key held: kept this frame
+  CHECK(again.rgba == first.rgba);
+  FrameStats s3;
+  REQUIRE(renderer->render(file, &again, s3, err));
+  CHECK(s3.effects.layerChainsReused == 1);  // a copy of the kept result
+  CHECK(again.rgba == first.rgba);
+  // A fresh renderer — no kept results — for the same frame.
+  const auto fresh = [&]() {
+    std::string e;
+    auto other = SceneRenderer::create({}, e);
+    other->set_effect_layer_buffers(true);
+    Frame out;
+    FrameStats s;
+    REQUIRE(other->render(file, &out, s, e));
+    return out.rgba;
+  };
+  // The camera moves (the layer slides 5 px): the chain is in layer space, so
+  // the kept result is reused — and draws what a fresh render draws.
+  file.scene.camera3d->view[12] = 5;
+  Frame moved;
+  FrameStats s4;
+  REQUIRE(renderer->render(file, &moved, s4, err));
+  CHECK(s4.effects.layerChainsReused == 1);
+  CHECK(moved.rgba != first.rgba);
+  CHECK(moved.rgba == fresh());
+  // A parameter changed: the chain runs again.
+  file.scene.renderables[0].effects[0].params[0].number = 1;
+  Frame sharper;
+  FrameStats s5;
+  REQUIRE(renderer->render(file, &sharper, s5, err));
+  CHECK(s5.effects.layerChainsReused == 0);
+  CHECK(sharper.rgba != moved.rgba);
+  CHECK(sharper.rgba == fresh());
+}
+
+TEST_CASE("E2: effect-bearing 3D layers add only their chain's passes to a run — the group pass is never split") {
+  // The second frame's pass count (the first pays one-off texture preparation),
+  // for a run of three 3D layers with none / one / all three carrying a blur.
+  const auto passes_with = [](std::size_t withBlur) -> std::uint64_t {
+    std::string err;
+    auto renderer = SceneRenderer::create({}, err);
+    if (!renderer) return 0;
+    renderer->set_effect_layer_buffers(true);
+    auto file = threed_scene();
+    file.scene.renderables.push_back(rect3d("a", 4, 4, 16, 12, 1, 0, 0));
+    file.scene.renderables.push_back(rect3d("b", 24, 10, 16, 12, 0, 1, 0));
+    file.scene.renderables.push_back(rect3d("c", 44, 20, 16, 12, 0, 0, 1));
+    for (std::size_t i = 0; i < withBlur; ++i) file.scene.renderables[i].effects.push_back(blur_fx(2));
+    Frame f;
+    FrameStats s;
+    REQUIRE(renderer->render(file, &f, s, err));
+    const std::uint64_t before = renderer->device().stats().passes;
+    REQUIRE(renderer->render(file, &f, s, err));
+    CHECK(s.gpuError.empty());
+    return renderer->device().stats().passes - before;
+  };
+  const std::uint64_t p0 = passes_with(0);
+  if (p0 == 0) return;  // no adapter
+  const std::uint64_t p1 = passes_with(1);
+  const std::uint64_t p3 = passes_with(3);
+  CHECK(p1 > p0);
+  // Each effect layer costs its content draw + its chain, and nothing else: no
+  // flush / resolve of the MSAA group target per layer.
+  CHECK(p3 - p0 == 3 * (p1 - p0));
+}
+
+TEST_CASE("E3: graph targets are allocated on demand and a slot-size change keeps the other size's targets warm") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = solid_scene(0, 0, 1);
+  Frame frame;
+  FrameStats s;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  // A comp without precomps never allocates the precomp MSAA pairs; the scene colour is there.
+  TargetPixels tp;
+  std::string e2;
+  CHECK_FALSE(renderer->read_target("precomp-target-0", tp, e2));
+  CHECK(renderer->read_target("scene-color", tp, e2));
+  REQUIRE(renderer->render(file, &frame, s, err));
+  const std::uint64_t atA = renderer->device().stats().targetMisses;
+  // Half the slot width: new targets.
+  file.view.css_width = 32;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  REQUIRE(renderer->render(file, &frame, s, err));
+  const std::uint64_t atB = renderer->device().stats().targetMisses;
+  CHECK(atB > atA);
+  // Back to the first size: every target is a pool hit.
+  file.view.css_width = 64;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  CHECK(renderer->device().stats().targetMisses == atB);
+  // The other size stays warm past the pool's 120-frame idle collection.
+  file.view.css_width = 32;
+  for (int i = 0; i < 200; ++i) REQUIRE(renderer->render(file, nullptr, s, err));
+  const std::uint64_t afterIdle = renderer->device().stats().targetMisses;
+  file.view.css_width = 64;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  CHECK(renderer->device().stats().targetMisses == afterIdle);
+  CHECK(frame.width == 64);
+}

@@ -83,8 +83,22 @@ struct PassContext {
   /// Mutable for one reason: P8b's ViewShift moves it for a layer's draw and chain, and puts it back.
   ViewportState& viewport;
   ColorPipeline color;
-  /// Graph targets resolved this frame (name → target). Absent = surface.
-  std::unordered_map<std::string, RenderTarget*> targets;
+  /// Graph targets resolved this frame (name → target), filled ON DEMAND by
+  /// `target()` from `specs` (E3): a target no pass touches this frame — the
+  /// precomp MSAA pairs of a comp without precomps, the DOF pair of a comp
+  /// without DOF — is never allocated. Mutable for that one reason. Absent from
+  /// `specs` = the surface (or an undeclared name).
+  mutable TargetMap targets;
+  /// E3: every target the graph declares this frame, in the precision the
+  /// project asked for (scene_renderer.cpp resolveTargets).
+  struct TargetSpec {
+    std::uint32_t width = 1;
+    std::uint32_t height = 1;
+    wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;
+    std::uint32_t samples = 1;
+    bool depth = false;
+  };
+  std::unordered_map<std::string, TargetSpec, KeyHash, std::equal_to<>> specs;
   wgpu::TextureView surfaceView;
   wgpu::TextureFormat surfaceFormat = wgpu::TextureFormat::BGRA8Unorm;
   std::optional<std::array<std::uint32_t, 4>> surfaceScissor;
@@ -111,14 +125,26 @@ struct PassContext {
   bool fxFields = false;
   /// Grow bounds (fx_bounds.hpp): screen-space effect chains scissor their passes to their reach.
   bool fxBounds = true;
+  /// E1: a 3D surface's effect chain runs in a layer-sized buffer (its footprint
+  /// at comp scale, threed.cpp surface_texels) instead of a viewport-sized one.
+  /// Off = the viewport-sized chain the golden references were drawn with (the
+  /// engine turns it on; the parity harness leaves it off).
+  bool fxLayerBuffers = false;
   /// The scissor (x, y, w, h) of the effect-chain entry being drawn, for passes
   /// into viewport-sized targets; set and cleared by run_effects_chain.
   std::optional<std::array<std::uint32_t, 4>> fxScissor = std::nullopt;
 
-  /// ctx.target(name): nullptr = the surface (or an undeclared name).
-  [[nodiscard]] RenderTarget* target(std::string_view name) const {
-    const auto it = targets.find(std::string(name));
-    return it == targets.end() ? nullptr : it->second;
+  /// E1/E2: 3D surfaces resolved so far this frame (threed.cpp) — each keeps
+  /// its chain result in a target of its own, named by this count.
+  std::uint32_t surfaceFx = 0;
+
+  /// ctx.target(name): nullptr = the surface (or an undeclared name). A
+  /// declared target is allocated (from the device pool) on its first use.
+  [[nodiscard]] RenderTarget* target(std::string_view name) const;
+  /// The declared descriptor of `name` this frame, or nullptr (never allocates).
+  [[nodiscard]] const TargetSpec* spec(std::string_view name) const {
+    const auto it = specs.find(name);
+    return it == specs.end() ? nullptr : &it->second;
   }
   [[nodiscard]] Packer packer() { return Packer(scratch, color); }
   /// A sampled blob by key, uploaded on first use.

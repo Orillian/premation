@@ -42,6 +42,19 @@ class MapLayerSource {
                                     const ById& /*byId*/) {
     return false;
   }
+  /// E1: an earlier frame's effect-chain result of a 3D surface under `key`
+  /// (fx_keys.hpp layer_fx_key over the surface's content) in a w × h buffer;
+  /// empty = none kept. The texture outlives the frame.
+  virtual TexRef reuse_surface_fx(PassContext& /*ctx*/, std::uint64_t /*key*/, std::uint32_t /*w*/, std::uint32_t /*h*/) {
+    return {};
+  }
+  /// E1: keep `result`, the chain output of layer `id` under `key`, for later
+  /// frames. The kept copy's texture when it was kept this frame (the caller
+  /// samples it instead of its own copy); empty = not kept.
+  virtual TexRef keep_surface_fx(PassContext& /*ctx*/, const std::string& /*id*/, std::uint64_t /*key*/,
+                                 const RenderTarget& /*result*/) {
+    return {};
+  }
 };
 
 /// The buffer a chain runs in when it is NOT screen space (the 3D route: layer

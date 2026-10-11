@@ -25,6 +25,7 @@
 #include "effect_chain.hpp"
 #include "effect_stats.hpp"
 #include "fx_distance.hpp"
+#include "fx_keys.hpp"
 #include "passes.hpp"
 #include "render_context.hpp"
 #include "threed.hpp"
@@ -59,36 +60,10 @@ Blend blend_of(api::RenderBlendMode b) { return static_cast<Blend>(static_cast<s
 Color color_or_white(const api::Renderable& r) { return r.color ? color_of(*r.color) : Color::white(); }
 Rect uv_or_full(const api::Renderable& r) { return r.uv_rect ? rect_of(*r.uv_rect) : Rect{0, 0, 1, 1}; }
 
-/// A 64-bit mix (multiply-xorshift); not cryptographic.
-class KeyMix {
- public:
-  void u64(std::uint64_t v) noexcept {
-    h_ ^= v * 0x9e3779b97f4a7c15ULL;
-    h_ = std::rotl(h_, 27) * 0xc2b2ae3d27d4eb4fULL + 0x165667b19e3779f9ULL;
-  }
-  void f64(double v) noexcept { u64(std::bit_cast<std::uint64_t>(v)); }
-  void str(std::string_view s) noexcept {
-    u64(s.size());
-    for (const char c : s) u64(static_cast<unsigned char>(c));
-  }
-  [[nodiscard]] std::uint64_t value() const noexcept {
-    std::uint64_t x = h_;
-    x ^= x >> 33U;
-    x *= 0xff51afd7ed558ccdULL;
-    x ^= x >> 33U;
-    return x | 1U;  // never 0 (= no key)
-  }
+}  // namespace
 
- private:
-  std::uint64_t h_ = 0x243f6a8885a308d3ULL;
-};
-
-/// E4: what a layer's chain input is drawn from (renderable_cmds' inputs): its
-/// textures BY CONTENT HASH, placement, colour, opacity, motion samples and the
-/// viewport — equal keys, equal input pixels, so the chain keeps its distance
-/// fields under it across frames (fx_cache.hpp). 0 where the input is not a
-/// function of these (a precomp's offscreen, an unresolved texture, a mesh).
-std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity, bool translationFree = false) {
+// fx_keys.hpp (KeyMix lives there: the 3D surface path keys its chains the same way).
+std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity, bool translationFree) {
   if (r.precomp || !r.precomp_children.empty() || r.deformed_mesh) return 0;
   KeyMix k;
   // P8b: a key without the layer's (whole-pixel) place on screen — the slot keeps where it was drawn.
@@ -143,6 +118,8 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
   }
   return k.value();
 }
+
+namespace {
 
 /// P8b: a 2D layer's chain run in a buffer placement of its own. The layer is
 /// drawn with its origin on a WHOLE buffer pixel — and, when the chain's reach
@@ -258,10 +235,9 @@ bool inside_view(const std::optional<PxBox>& b, double pw, double ph) {
   return b && b->x0 >= 0 && b->y0 >= 0 && b->x1 <= pw && b->y1 <= ph;
 }
 
-/// P8: the key of a layer's whole effect-chain RESULT — its input (chain_content_key)
-/// and every parameter of every entry — or 0 when the chain is not a pure
-/// function of those: one that reads another layer or a data texture (a text
-/// parameter names it), or a native plugin (its own state).
+}  // namespace
+
+// fx_keys.hpp: the key of a layer's whole effect-chain RESULT (P8).
 std::uint64_t layer_fx_key(const PassContext& ctx, const api::Renderable& r, std::uint64_t contentKey, double opacity) {
   if (contentKey == 0) return 0;
   KeyMix k;
@@ -288,15 +264,18 @@ std::uint64_t layer_fx_key(const PassContext& ctx, const api::Renderable& r, std
   return k.value();
 }
 
+namespace {
+
 /// P8: finished effect-chain outputs of layers whose input and parameters did
-/// not change, kept across frames in persistent device targets (`fx-layer-<i>`,
-/// full viewport rgba16float). A static glowing title or a textured backdrop
-/// under moving layers pays its chain once, not every frame. A slot is valid
-/// while its target lives: the device pool collects targets idle 120 frames,
-/// and a re-created one is reported `created` (as FxCache's distance fields).
+/// not change, kept across frames in persistent device targets (`<prefix><i>`,
+/// rgba16float at the chain buffer's size). A static glowing title or a textured
+/// backdrop under moving layers pays its chain once, not every frame. A slot is
+/// valid while its target lives: the device pool collects targets idle 120
+/// frames, and a re-created one is reported `created` (as FxCache's distance
+/// fields). E1: a second instance holds the 3D surfaces' chains (threed.cpp),
+/// whose buffers are layer-sized.
 class LayerFxCache {
  public:
-  static constexpr std::size_t kSlots = 8;
   struct Slot {
     std::string name;
     std::uint64_t key = 0;
@@ -310,8 +289,8 @@ class LayerFxCache {
     bool movable = false;
     wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;  // the chain target's: a lossless copy
   };
-  LayerFxCache() {
-    for (std::size_t i = 0; i < kSlots; ++i) slots_.at(i).name = "fx-layer-" + std::to_string(i);
+  LayerFxCache(std::string_view prefix, std::size_t slots) : slots_(slots) {
+    for (std::size_t i = 0; i < slots; ++i) slots_[i].name = std::string(prefix) + std::to_string(i);
   }
   [[nodiscard]] Slot* find(std::uint64_t key, std::uint32_t w, std::uint32_t h) noexcept {
     for (Slot& s : slots_) {
@@ -350,7 +329,7 @@ class LayerFxCache {
   }
 
  private:
-  std::array<Slot, kSlots> slots_;
+  std::vector<Slot> slots_;
   std::unordered_map<std::string, std::uint64_t> last_;
 };
 
@@ -500,7 +479,10 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   /// AE parity 4.2: images of 3D-run layers drawn by render_3d_group, during composite_special_3d.
   const std::unordered_map<std::string, TexRef>* predrawn_ = nullptr;
   /// P8: finished layer chains kept across frames (render thread only).
-  LayerFxCache layerFx_;
+  LayerFxCache layerFx_{"fx-layer-", 8};
+  /// E1: finished 3D surface chains (threed.cpp resolve_surface), layer-sized
+  /// buffers — a 3D comp holds more effect layers at once than a 2D one.
+  LayerFxCache surfaceFx_{"fx-surface-", 16};
   /// Kill switch (PREMATION_LAYER_FX_CACHE=0): every chain runs, as before P8.
   bool layerFxEnabled_ = [] {
 #ifdef _WIN32
@@ -720,6 +702,38 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   }
 
  public:
+  /// E1: an earlier frame's chain result for a 3D surface under `key` at w × h
+  /// (threed.cpp resolve_surface). The slot's own texture: it outlives the
+  /// frame, and no slot read or written this frame is claimed again in it.
+  TexRef reuse_surface_fx(PassContext& ctx, std::uint64_t key, std::uint32_t w, std::uint32_t h) override {
+    if (key == 0 || !layerFxEnabled_) return {};
+    LayerFxCache::Slot* s = surfaceFx_.find(key, w, h);
+    if (s == nullptr) return {};
+    bool created = false;
+    RenderTarget& t = ctx.dev.target(s->name, w, h, s->format, 1, false, &created);
+    if (created) {
+      LayerFxCache::forget(*s);  // the pool collected it: the chain runs again
+      return {};
+    }
+    s->used = ctx.dev.frame();
+    if (ctx.effectStats != nullptr) ++ctx.effectStats->layerChainsReused;
+    return t.tex();
+  }
+
+  /// E1: keep `result` (layer `id`'s surface chain under `key`) once the key
+  /// held two frames in a row; the kept copy's texture, which the surface's
+  /// draw samples directly (empty = not kept this frame).
+  TexRef keep_surface_fx(PassContext& ctx, const std::string& id, std::uint64_t key, const RenderTarget& result) override {
+    if (key == 0 || !layerFxEnabled_ || !surfaceFx_.steady(id, key)) return {};
+    LayerFxCache::Slot* slot = surfaceFx_.claim(key, result.width, result.height, ctx.dev.frame());
+    if (slot == nullptr) return {};  // every slot is in use this frame
+    slot->covered.reset();
+    slot->format = result.format;
+    RenderTarget& t = ctx.dev.target(slot->name, result.width, result.height, result.format, 1, false);
+    copy_texels(ctx, result, t);
+    return t.tex();
+  }
+
   bool composite_special_3d(PassContext& ctx, const api::Renderable& r, const std::unordered_map<std::string, TexRef>& predrawn,
                             std::string_view out, const ById& byId) override {
     ListState st;

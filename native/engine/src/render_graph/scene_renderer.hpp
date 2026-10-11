@@ -128,6 +128,9 @@ class SceneRenderer {
   /// Grow bounds (fx_bounds.hpp): screen-space effect chains scissor their passes
   /// to the layer's reach. Off = every pass over the full frame (the same pixels; tests).
   void set_effect_bounds(bool on) noexcept { effectBounds_ = on; }
+  /// E1: 3D surface chains run in layer-sized buffers (render_context.hpp
+  /// fxLayerBuffers). Off = viewport-sized, the golden references' pixels.
+  void set_effect_layer_buffers(bool on) noexcept { effectLayerBuffers_ = on; }
 
  private:
   SceneRenderer() = default;
@@ -142,15 +145,17 @@ class SceneRenderer {
   FxCache fxCache_;
   bool effectFields_ = false;
   bool effectBounds_ = true;
+  bool effectLayerBuffers_ = false;
   wgpu::Texture surface_;
   wgpu::TextureView surfaceView_;
   std::uint32_t surfaceW_ = 0;
   std::uint32_t surfaceH_ = 0;
   bool float32_ = false;
   IntermediatePrecision precision_ = IntermediatePrecision::float16;
-  /// The last frame's graph targets (moved out of its PassContext, so no copy).
-  /// Pool entries touched this frame outlive the next 120 frames' GC.
-  std::unordered_map<std::string, RenderTarget*> lastTargets_;
+  /// The last frame's graph targets (moved out of its PassContext, so no copy):
+  /// E3 — the ones that frame touched. Pool entries touched this frame outlive
+  /// the next 120 frames' GC (and stay warm longer within the pool's budget).
+  TargetMap lastTargets_;
   std::string adapter_;
   std::string backend_;
 };

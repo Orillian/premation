@@ -67,6 +67,9 @@ struct RenderTarget {
   [[nodiscard]] TexRef tex() const { return {view, id, width, height, true}; }
 };
 
+/// Graph targets by name (a frame's resolved set; looked up by string_view, no allocation).
+using TargetMap = std::unordered_map<std::string, RenderTarget*, KeyHash, std::equal_to<>>;
+
 /// Where a render pass draws: a named target, or the surface.
 struct Attachment {
   RenderTarget* target = nullptr;  // nullptr = surface

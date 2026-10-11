@@ -84,11 +84,28 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 ## Progress
 
 - [x] M1 · [x] M2 · [x] A1 · [ ] A2
-- [ ] E1 · [ ] E2 · [ ] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
+- [x] E1 · [x] E2 · [x] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
 - [x] U1 (UI; engine `clipToComp` pending) · [x] U2 · [x] U3 (UI; engine `renderer` key pending) · [x] U4 · [x] U5
 - [x] I1 · [x] I2 · [x] I3 · [ ] I4
 
 Notes log (newest first):
+- 2026-10-12 E1–E3 (render graph): 3D surface chains run in LAYER-SIZED buffers
+  (footprint at comp scale + margin, multiples of 16, capped at the viewport;
+  `SceneRenderer::set_effect_layer_buffers`, on in the engine and exports, off
+  in the parity harness so the goldens' pixels hold) and are keyed by content +
+  effect params (`fx_keys.hpp`, `surface_content_key`) and kept across frames
+  in a second `LayerFxCache` (`fx-surface-<i>`, 16 slots) — a layer that only
+  moves under the camera reuses its chain. Each surface's result lives in a
+  target of its own (`fx3d-out-<n>`), so a run no longer flushes its MSAA group
+  pass per effect layer. Graph targets are declared per frame and allocated on
+  first use (`PassContext::target`), and the device pool keeps idle targets up
+  to 1800 frames within a 768 MB budget (a Full↔Half switch finds the other
+  size warm). Numbers (RTX 4060 laptop): heavy3d first pass p50 23.5 → 7.0 ms,
+  second pass p50 16.5 → 0.6 ms (0 dropped); Samurai probe (20 s, 1080p30)
+  p50 10.3 → 8.0 ms first pass, 8.8 → 7.6 second; Half→Full switch stall
+  155 → 7 ms (first pass), 75 → 20 ms (second). Tests: `E1:`/`E2:`/`E3:` in
+  test_render_graph_gpu.cpp (reuse bit-identical to a fresh render under a
+  camera move; `p3 − p0 == 3·(p1 − p0)` passes; on-demand + warm pool).
 - 2026-10-12: A1, U1–U5 landed on the UI side (renderQualityStore hysteresis; extendedViewer store flag + outline; adaptive overlay grid; Renderer tab under World JSON `renderer`; gizmo on cameras/lights via deviceGizmo.ts; Layers "3D" view + active-camera mark). Engine side still owed: `SetViewport.clipToComp` (+ pasteboard clear colour), `renderer` in the World key whitelist (handlers_comps.cpp:110, readmodel.cpp:499) and its consumers, E6's Draft 3D lighting.
 - 2026-10-12: M1, M2, I1–I3 landed (TS only). A beat's identity is its NAME (compileScript's `Beat N — <name>` root; the Beat type has no id); cast_piece identity is the host's per-client record of the last cast's layer ids; add_scene's is its index via sceneWindow's element registry. Structure warnings (structureAdvisors.ts) run in describe_scene (`warnings`) and review_design ("Structure" block); two different adjustment layers at once are deliberately NOT flagged. Native tool tests ran on premation-engine-headless via PREMATION_ENGINE_PATH while the full engine was renamed for a link.
 - 2026-10-11: program started.

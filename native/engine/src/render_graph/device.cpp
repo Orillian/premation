@@ -136,7 +136,14 @@ std::size_t Device::end_frame() {
   constexpr std::uint64_t kLoopIdle = 3600;
   constexpr std::uint64_t kTextureBudget = std::uint64_t{512} << 20U;
   const std::size_t textures = textures_.collect_budgeted(frame_, kMaxIdle, kLoopIdle, kTextureBudget);
-  return targets_.collect(frame_, kMaxIdle) + textures + textureObjects_.collect_absent_from(textures_) + buffers_.collect(frame_, kMaxIdle) +
+  // E3: graph targets of a slot size the viewport left (Full ↔ Half, a pane
+  // resize) stay warm for a minute while they fit the budget, so switching back
+  // is a pool hit instead of a reallocation of every target (a 0.1–1.7 s stall
+  // on a 3D comp). Anything idle a minute still goes, whatever the budget.
+  constexpr std::uint64_t kTargetWarmIdle = 1800;
+  constexpr std::uint64_t kTargetBudget = std::uint64_t{768} << 20U;
+  const std::size_t targets = targets_.collect_budgeted(frame_, kMaxIdle, kTargetWarmIdle, kTargetBudget);
+  return targets + textures + textureObjects_.collect_absent_from(textures_) + buffers_.collect(frame_, kMaxIdle) +
          bindGroups_.collect(frame_, kMaxIdle);
 }
 

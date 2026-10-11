@@ -110,6 +110,19 @@ TexRef PassContext::texture(std::string_view key) {
   return t;
 }
 
+RenderTarget* PassContext::target(std::string_view name) const {
+  if (const auto it = targets.find(name); it != targets.end()) return it->second;
+  // E3: declared, not touched yet this frame — allocated now (a pool hit after
+  // the first frame at this size; the pool keeps the other slot size's targets
+  // warm, device.cpp end_frame).
+  const auto s = specs.find(name);
+  if (s == specs.end()) return nullptr;
+  const TargetSpec& d = s->second;
+  RenderTarget& t = dev.target(name, d.width, d.height, d.format, d.samples, d.depth);
+  targets.emplace(std::string(name), &t);
+  return &t;
+}
+
 void PassContext::draw_into(std::string_view name, const Commands& cmds, bool clear, const Color& clearColor) {
   draw_into_sized(name, cmds, clear, viewport.pixelWidth, viewport.pixelHeight);
   (void)clearColor;

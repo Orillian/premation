@@ -798,6 +798,7 @@ int run_export(const std::string& jobPath) {
       const auto t0 = Clock::now();
       renderer = rg::SceneRenderer::create(ro, gpuErr);
       if (renderer) renderer->set_effect_fields(sc::engine_gpu_effects());  // E4, with the view's gpuEffects
+      if (renderer) renderer->set_effect_layer_buffers(true);                // E1: as the viewport renders 3D chains
       // Rasters are planned against this device's 2D texture limit (device_limits.hpp).
       if (renderer) sc::set_texture_dimension_limit(renderer->device().max_texture_dimension());
       gpuInitMs = ms_since(t0);
