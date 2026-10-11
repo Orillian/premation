@@ -81,12 +81,23 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 | I3 | `paint_strokes` exposes brush angle, roundness, spacing, flow, mode | tool test |
 | I4 | Tapered stroke on a rounded rect keeps its corners (vector_paint.cpp) | render test |
 
+### B — bugs hit while authoring the samurai comp (peer session, 2026-10-12)
+
+| id | task | done when |
+|---|---|---|
+| B1 | `author_scene` places adjustment layers at x/y 0,0 so full-frame effects cover only the top-left quarter; adjustment / full-frame layers are centred on the comp | compile test + render probe |
+| B2 | `add_sfx` fails inside `begin_edit` / `end_edit` | tool test |
+| B3 | Script text-animator sweeps go offset -100→100 over a square [0,100] selector: text visible before/after, hidden mid-sweep; the compiler emits AE-correct offsets (selector sweeps across the text once) | compile test + evaluate_at probe |
+| B4 | Out-of-range effect params (e.g. negative snowfall evolution) silently clamp to 0: the tool reply says what was clamped, and params that are legitimately signed (evolution, rotation, offsets) accept negatives | tool test |
+| B5 | Light Sweep on a text layer paints the whole text box, not the glyph alpha (engine, effects_spatial) | GPU test |
+
 ## Progress
 
 - [x] M1 · [x] M2 · [x] A1 · [ ] A2
 - [x] E1 · [x] E2 · [x] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
 - [x] U1 (UI; engine `clipToComp` pending) · [x] U2 · [x] U3 (UI; engine `renderer` key pending) · [x] U4 · [x] U5
 - [x] I1 · [x] I2 · [x] I3 · [ ] I4
+- [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5
 
 Notes log (newest first):
 - 2026-10-12 E1–E3 (render graph): 3D surface chains run in LAYER-SIZED buffers
