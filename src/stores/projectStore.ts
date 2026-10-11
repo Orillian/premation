@@ -180,6 +180,47 @@ export interface CompositionSettings {
    * disk for a feature nobody turned on. Read it through `resolveSsao`.
    */
   ssao?: SsaoSettings;
+  /**
+   * Composition Settings ▸ Renderer (U3): the 3D renderer's quality knobs for
+   * THIS composition — shadow-map size, how many lights may cast mapped
+   * shadows, depth-of-field quality and MSAA. Stored under the World JSON like
+   * `ssao`; absent = the defaults (`resolveRenderer`). The engine reads them
+   * from `CompSettings.world`.
+   */
+  renderer?: RendererSettings;
+}
+
+/** Composition Settings ▸ Renderer. */
+export interface RendererSettings {
+  /** Shadow map edge, px. */
+  shadowMapSize: 512 | 1024 | 2048;
+  /** How many lights may cast mapped shadows per frame (the brightest win). */
+  shadowLightCap: number;
+  /** Depth-of-field sample quality. */
+  dofQuality: 'draft' | 'medium' | 'high';
+  /** Multisample anti-aliasing for the 3D runs: 1 = off, 4 = 4×. */
+  msaa: 1 | 4;
+}
+
+export const DEFAULT_RENDERER: RendererSettings = {
+  shadowMapSize: 1024,
+  shadowLightCap: 4,
+  dofQuality: 'medium',
+  msaa: 4,
+};
+
+/** Resolve a composition's renderer settings, filling in the defaults for every document written before they existed. */
+export function resolveRenderer(comp: Pick<CompositionSettings, 'renderer'> | undefined): RendererSettings {
+  const r = comp?.renderer;
+  if (!r) return DEFAULT_RENDERER;
+  return {
+    shadowMapSize: r.shadowMapSize === 512 || r.shadowMapSize === 2048 ? r.shadowMapSize : 1024,
+    shadowLightCap: typeof r.shadowLightCap === 'number' && Number.isFinite(r.shadowLightCap)
+      ? Math.max(0, Math.min(16, Math.round(r.shadowLightCap)))
+      : DEFAULT_RENDERER.shadowLightCap,
+    dofQuality: r.dofQuality === 'draft' || r.dofQuality === 'high' ? r.dofQuality : 'medium',
+    msaa: r.msaa === 1 ? 1 : 4,
+  };
 }
 
 /** Composition Settings ▸ World ▸ Ambient Occlusion. */

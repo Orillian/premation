@@ -12,6 +12,8 @@ import {
   viewportToComp,
   compToViewport,
   buildGroundGridLines,
+  buildAdaptiveGroundGrid,
+  niceGridStep,
   getGizmoBasis,
   type Gizmo3DConfig,
 } from '../selection/gizmo3d';
@@ -251,6 +253,74 @@ describe('buildGroundGridLines (AE-style floor centred under the comp)', () => {
     const lines = buildGroundGridLines(W, H, 200, 5);
     const majorVertical = lines.filter((l) => l.major && l.start.x === l.end.x);
     expect(majorVertical.every((l) => l.start.x !== 0)).toBe(true);
+  });
+});
+
+describe('niceGridStep (1 / 2 / 5 × 10ⁿ)', () => {
+  it.each([
+    [1, 1], [1.4, 1], [1.6, 2], [3, 2], [4, 5], [7, 5], [8, 10],
+    [120, 100], [227, 200], [320, 200], [360, 500], [2667, 2000], [0.03, 0.02],
+  ] as const)('%p → %p', (raw, step) => {
+    expect(niceGridStep(raw)).toBeCloseTo(step, 9);
+  });
+  it('degenerate input is 1', () => {
+    expect(niceGridStep(0)).toBe(1);
+    expect(niceGridStep(-5)).toBe(1);
+    expect(niceGridStep(Number.NaN)).toBe(1);
+  });
+});
+
+describe('buildAdaptiveGroundGrid (cell size follows the camera, two nested levels)', () => {
+  it('the default framing lands on the 200 px cells the fixed grid drew', () => {
+    // Default camera over 1080p (≈2720 px from the floor centre) at fit zoom ½.
+    const g = buildAdaptiveGroundGrid(W, H, 2720 / 0.5);
+    expect(g.step).toBe(200);
+    expect(g.minorStep).toBe(50);
+    expect(g.extent).toBe(1600);
+  });
+
+  it('refines as the camera comes closer and coarsens as it leaves', () => {
+    expect(buildAdaptiveGroundGrid(W, H, 480).step).toBe(20);
+    expect(buildAdaptiveGroundGrid(W, H, 48_000).step).toBe(2000);
+    // Monotone: a nearer camera never gets a coarser grid.
+    let last = Infinity;
+    for (let d = 100_000; d >= 100; d /= 1.3) {
+      const s = buildAdaptiveGroundGrid(W, H, d).step;
+      expect(s).toBeLessThanOrEqual(last);
+      last = s;
+    }
+  });
+
+  it('lies on the ground plane (comp bottom + ground level) and is centred under the comp', () => {
+    const g = buildAdaptiveGroundGrid(W, H, 4800, { groundLevel: 40 });
+    const all = [g.axisX, g.axisZ, ...g.major, ...g.minor];
+    for (const l of all) {
+      expect(l.start.y).toBe(H + 40);
+      expect(l.end.y).toBe(H + 40);
+    }
+    expect(g.center).toEqual({ x: W / 2, y: H + 40, z: 0 });
+    expect(g.axisX.start.z).toBe(0);
+    expect(g.axisX.end.z).toBe(0);
+    expect(g.axisZ.start.x).toBe(W / 2);
+    expect(g.axisZ.end.x).toBe(W / 2);
+  });
+
+  it('counts: 2·cells major lines per direction (axes apart), minor lines fill every major cell', () => {
+    const g = buildAdaptiveGroundGrid(W, H, 4800, { cells: 8 });
+    expect(g.major).toHaveLength(8 * 2 * 2);
+    // 200 px cells with 50 px minors: 3 minor lines per cell, 16 cells, both directions.
+    expect(g.minor).toHaveLength(3 * 16 * 2);
+    expect(g.minor.every((l) => !l.major)).toBe(true);
+    expect(g.major.every((l) => l.major)).toBe(true);
+    // No minor line coincides with a major line or an axis.
+    const majorX = new Set([g.axisZ, ...g.major].filter((l) => l.start.x === l.end.x).map((l) => l.start.x));
+    for (const l of g.minor.filter((m) => m.start.x === m.end.x)) expect(majorX.has(l.start.x)).toBe(false);
+  });
+
+  it('a 2·10ⁿ step subdivides by four, a 1 or 5 step by five', () => {
+    expect(buildAdaptiveGroundGrid(W, H, 24 * 200).minorStep).toBe(50);
+    expect(buildAdaptiveGroundGrid(W, H, 24 * 100).minorStep).toBe(20);
+    expect(buildAdaptiveGroundGrid(W, H, 24 * 500).minorStep).toBe(100);
   });
 });
 

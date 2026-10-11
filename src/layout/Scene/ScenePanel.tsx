@@ -35,6 +35,7 @@ import { Panel } from '@components/Panel';
 import { TreeView } from '@components/TreeView';
 import { SearchField } from '@components/SearchField';
 import { Icon } from '@components/Icon';
+import { IconButton } from '@components/IconButton';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { PickWhip } from '@components/PickWhip';
 import { useSelectionStore } from '@stores/selectionStore';
@@ -54,6 +55,8 @@ import {
 import { getEventBus } from '@core/events/EventBus';
 import type { RenameLayerResult } from '@core/scene/renameLayer';
 import { isLayer } from '@core/mirror/docFacts';
+import { activeCameraIdOf } from '@core/mirror/activeCamera';
+import { getTime } from '@stores/playbackClockStore';
 import { type SceneKind } from '@core/scene/sceneKind';
 import { KIND_LABEL } from '@core/scene/sceneDerive';
 import { parentLayer } from '@layout/Inspector/inspectorEdits';
@@ -181,10 +184,14 @@ export function ScenePanel(): JSX.Element {
     [patchFilter, activeCompId],
   );
 
+  // The active camera mark (U5) is resolved when the tree is rebuilt — on a
+  // structural change, never per played frame (this panel does not follow the
+  // playhead; a camera whose bar starts later is marked once the stack changes
+  // or the panel remounts).
   const tree = useMemo(
-    () => sceneGraphToTree(scope, { thumbnails }),
+    () => sceneGraphToTree(scope, { thumbnails, activeCameraId: activeCameraIdOf(documentMirror(), activeCompId, getTime(activeTabId)) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rev, activeTabId, scope, thumbnails],
+    [rev, activeTabId, scope, thumbnails, activeCompId],
   );
 
   const q = stored.query.trim().toLowerCase();
@@ -203,6 +210,7 @@ export function ScenePanel(): JSX.Element {
     label: stored.label,
     animatedOnly: stored.animatedOnly,
     effectsOnly: stored.effectsOnly,
+    threeDOnly: stored.threeDOnly,
     query: q,
     fields: stored.fields,
     hideShy,
@@ -235,7 +243,7 @@ export function ScenePanel(): JSX.Element {
     () => filterSceneTree(tree, filter, factsOf),
     // The filter object is rebuilt every render; its FIELDS are the dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tree, kindFilter, stored.label, stored.animatedOnly, stored.effectsOnly, q, stored.fields, hideShy, factsOf],
+    [tree, kindFilter, stored.label, stored.animatedOnly, stored.effectsOnly, stored.threeDOnly, q, stored.fields, hideShy, factsOf],
   );
   const matchCount = useMemo(
     () => (filterActive ? countSceneMatches(filtered, filter, factsOf) : 0),
@@ -647,6 +655,16 @@ export function ScenePanel(): JSX.Element {
         >
           <Icon name="magic-wand" size="sm" />
         </button>
+        <IconButton
+          size="sm"
+          active={stored.threeDOnly}
+          tooltip="3D view — cameras, lights and 3D layers only; the active camera is marked"
+          aria-label="Only cameras, lights and 3D layers"
+          aria-pressed={stored.threeDOnly}
+          onClick={() => patch({ threeDOnly: !stored.threeDOnly })}
+        >
+          <Icon name="cube" size="sm" />
+        </IconButton>
         {filterActive && (
           <button
             type="button"

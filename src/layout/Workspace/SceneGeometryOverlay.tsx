@@ -15,7 +15,7 @@
  * where a camera or a light sits.
  */
 
-import React from 'react';
+import React, { useId } from 'react';
 import type { Camera3D, OrthoView, Vec3 } from '@motion/scene';
 import { Project3D } from '@motion/scene';
 import { Gizmo3D, type GizmoSegmentKind, type SceneGizmo } from '@motion/workspace';
@@ -52,6 +52,12 @@ export interface SceneGeometryOverlayProps {
    * drifting off-screen, which is the opposite of what is happening.
    */
   throughSceneCamera?: boolean;
+  /**
+   * Draw the comp frame even through a scene camera: the Extended Viewer (U1,
+   * core/workspace/extendedViewer.ts) shows layers outside the frame there,
+   * and the outline is what says where the output ends.
+   */
+  compFrameVisible?: boolean;
 }
 
 /**
@@ -91,7 +97,11 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
   deviceHandles,
   hoveredDeviceHandle,
   throughSceneCamera,
+  compFrameVisible = false,
 }) => {
+  // One mask id per overlay instance: the main viewport and each inspection
+  // pane mount their own copy, and SVG ids are document-wide.
+  const gridMaskId = `ground-grid${useId().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const projectScreen = (p: Vec3): { x: number; y: number } => {
     const cp = orthoView
       ? Project3D.projectOrtho(p, orthoView, compWidth, compHeight)
@@ -102,40 +112,80 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
   const finite = (p: { x: number; y: number }): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
 
   /**
-   * The ground plane. A floor seen from floor level correctly collapses to a
-   * single horizontal line in Front / Back / Left / Right — that line IS the
-   * horizon, and it is the cheapest thing on screen that tells you which way is
-   * up in an otherwise empty side view.
+   * The ground plane (U2 interim, until the engine draws it — E8). A floor
+   * seen from floor level correctly collapses to a single horizontal line in
+   * Front / Back / Left / Right — that line IS the horizon, and it is the
+   * cheapest thing on screen that tells you which way is up in an otherwise
+   * empty side view.
+   *
+   * Adaptive: the cell size follows the camera's distance from the floor's
+   * centre (over the viewport magnification), two nested levels, so the floor
+   * reads at any zoom instead of thinning to nothing or filling the view. The
+   * X axis is the red axis token, the Z axis the blue one (the gizmo's
+   * colours, CVD-aware); minor lines are fainter. Distance fade is a radial
+   * mask in screen space around the floor's projected centre — the far edge
+   * of a receding floor is at the top of its footprint, which the fade dims —
+   * four paths and one mask rather than hundreds of segments.
    */
   const renderGroundGrid = () => {
     if (!groundGridVisible) return null;
-    // The builder lays the floor on y = compHeight; the comp's World ▸ ground
-    // level slides that plane. Applied HERE rather than inside the builder so
-    // the packaged geometry (and its pinned tests) keep their one meaning, and
-    // so an offset of 0 produces the identical numbers it always has.
-    const shift = (p: Vec3): Vec3 => (groundLevel === 0 ? p : { ...p, y: p.y + groundLevel });
-    const lines = Gizmo3D.buildGroundGridLines(compWidth, compHeight).map((l) => ({
-      start: projectScreen(shift(l.start)),
-      end: projectScreen(shift(l.end)),
-      alpha: l.major ? 0.4 : 0.15,
-    }));
+    const scale = viewTransform.scale || 1;
+    const centerWorld: Vec3 = { x: compWidth / 2, y: compHeight + groundLevel, z: 0 };
+    // How far the viewer is from the floor's centre, in comp px per screen px:
+    // a perspective camera's true distance; an axis view is a parallel
+    // projection with no distance, so the comp's width stands in for it.
+    const distance = orthoView
+      ? compWidth
+      : Math.hypot(camera.position.x - centerWorld.x, camera.position.y - centerWorld.y, camera.position.z - centerWorld.z);
+    const grid = Gizmo3D.buildAdaptiveGroundGrid(compWidth, compHeight, Math.max(1, distance) / scale, { groundLevel });
+    const pathOf = (lines: readonly Gizmo3D.GroundGridLine3D[]): string => {
+      let d = '';
+      for (const l of lines) {
+        const a = projectScreen(l.start);
+        const b = projectScreen(l.end);
+        if (!finite(a) || !finite(b)) continue;
+        d += `M${a.x} ${a.y}L${b.x} ${b.y}`;
+      }
+      return d;
+    };
+    const axisLine = (l: Gizmo3D.GroundGridLine3D, stroke: string, key: string) => {
+      const a = projectScreen(l.start);
+      const b = projectScreen(l.end);
+      if (!finite(a) || !finite(b)) return null;
+      return <line key={key} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={stroke} strokeOpacity={0.85} strokeWidth={1.5} />;
+    };
+    // The fade: a radial mask around the projected centre, out to the farthest
+    // projected corner of the floor. A corner behind the camera (non-finite)
+    // means no usable radius — the floor then draws unfaded.
+    const centerScreen = projectScreen(centerWorld);
+    const corners = [
+      { x: centerWorld.x - grid.extent, y: centerWorld.y, z: -grid.extent },
+      { x: centerWorld.x + grid.extent, y: centerWorld.y, z: -grid.extent },
+      { x: centerWorld.x - grid.extent, y: centerWorld.y, z: grid.extent },
+      { x: centerWorld.x + grid.extent, y: centerWorld.y, z: grid.extent },
+    ].map(projectScreen);
+    const radius = finite(centerScreen) && corners.every(finite)
+      ? Math.max(...corners.map((c) => Math.hypot(c.x - centerScreen.x, c.y - centerScreen.y)))
+      : 0;
+    const maskId = `${gridMaskId}-fade`;
     return (
-      <g className="ground-grid">
-        {lines.map((line, idx) =>
-          finite(line.start) && finite(line.end) ? (
-            <line
-              key={`grid_${idx}`}
-              x1={line.start.x}
-              y1={line.start.y}
-              x2={line.end.x}
-              y2={line.end.y}
-              stroke="var(--color-overlay-stroke)"
-              strokeOpacity={line.alpha}
-              strokeWidth={line.alpha > 0.2 ? 1.5 : 1}
-              strokeDasharray={line.alpha <= 0.2 ? '3 3' : undefined}
-            />
-          ) : null,
+      <g className="ground-grid" mask={radius > 0 ? `url(#${maskId})` : undefined}>
+        {radius > 0 && (
+          <defs>
+            <radialGradient id={`${maskId}-g`} gradientUnits="userSpaceOnUse" cx={centerScreen.x} cy={centerScreen.y} r={radius}>
+              <stop offset="0" stopColor="#fff" stopOpacity={1} />
+              <stop offset="0.45" stopColor="#fff" stopOpacity={1} />
+              <stop offset="1" stopColor="#fff" stopOpacity={0} />
+            </radialGradient>
+            <mask id={maskId} maskUnits="userSpaceOnUse" x={centerScreen.x - radius} y={centerScreen.y - radius} width={radius * 2} height={radius * 2}>
+              <circle cx={centerScreen.x} cy={centerScreen.y} r={radius} fill={`url(#${maskId}-g)`} />
+            </mask>
+          </defs>
         )}
+        <path d={pathOf(grid.minor)} fill="none" stroke="var(--color-overlay-stroke)" strokeOpacity={0.1} strokeWidth={1} />
+        <path d={pathOf(grid.major)} fill="none" stroke="var(--color-overlay-stroke)" strokeOpacity={0.3} strokeWidth={1} />
+        {axisLine(grid.axisX, 'var(--color-axis-x)', 'axis-x')}
+        {axisLine(grid.axisZ, 'var(--color-axis-z)', 'axis-z')}
       </g>
     );
   };
@@ -143,14 +193,15 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
   /**
    * The composition frame as 3D geometry — the z = 0 rectangle.
    *
-   * Nothing clips to the comp box (render targets are viewport-sized), so from
-   * a side view most of the scene sits outside the frame with no indication of
-   * where the frame went. This is AE's Extended Viewer edge: the comp rect from
-   * the front, a vertical line edge-on from Left/Right, a receding quad from a
-   * custom view — which is exactly the cue that tells you how you are looking.
+   * The engine clips every view to the comp rectangle unless the Extended
+   * Viewer is on (U1): with it, from a side view most of the scene sits outside
+   * the frame and this outline is the only indication of where the frame went.
+   * It is AE's Extended Viewer edge: the comp rect from the front, a vertical
+   * line edge-on from Left/Right, a receding quad from a custom view — which is
+   * exactly the cue that tells you how you are looking.
    */
   const renderCompFrame = () => {
-    if (throughSceneCamera) return null;
+    if (throughSceneCamera && !compFrameVisible) return null;
     const corners = [
       { x: 0, y: 0, z: 0 },
       { x: compWidth, y: 0, z: 0 },

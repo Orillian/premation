@@ -4,7 +4,7 @@
  *
  * Renders crisp SVG elements over active 3D layer selections:
  *   • 3D Transform Gizmo (Universal / Position / Scale / Rotation handles)
- *   • Ground Grid (3D Floor Grid at Y=0)
+ *   • Ground Grid (the 3D floor at the comp's bottom edge, y = compHeight + World ▸ ground level)
  *   • Dimensional Guides (pink trajectory line, drop lines to floor, live callout badge)
  */
 
@@ -40,6 +40,8 @@ export interface Gizmo3dOverlayProps {
   orthoView: OrthoView | null;
   /** See `SceneGeometryOverlay`. */
   throughSceneCamera?: boolean;
+  /** U1 Extended Viewer is active in this view: the comp frame outline is drawn even through a scene camera. */
+  extendedViewer?: boolean;
   compWidth: number;
   compHeight: number;
   /** Comp → canvas transform (RenderView): canvasPx = compPx·scale + offset. */
@@ -63,6 +65,7 @@ export const Gizmo3dOverlay: React.FC<Gizmo3dOverlayProps> = ({
   deviceHandles,
   hoveredDeviceHandle,
   throughSceneCamera,
+  extendedViewer,
   showGizmo,
   position3D,
   nodeRotation,
@@ -261,6 +264,7 @@ export const Gizmo3dOverlay: React.FC<Gizmo3dOverlayProps> = ({
         deviceHandles={deviceHandles}
         hoveredDeviceHandle={hoveredDeviceHandle}
         throughSceneCamera={throughSceneCamera}
+        compFrameVisible={extendedViewer}
       />
 
       {/* ── Render 3D Gizmo Handles ── */}

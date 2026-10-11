@@ -27,8 +27,9 @@ import { useCurrentTime } from '@stores/playbackClockStore';
 import { useActiveCompSize, useMirrorRevisionFrame } from '@hooks/useMirrorFrame';
 import { useRetainTrees } from '@hooks/useMirror';
 import { documentMirror } from '@stores/documentMirror';
-import { canBe3DLayer } from '@core/mirror/layerKinds';
-import { gizmoFrameOf, toParentSpace, transform3DOf, type GizmoFrame } from '@core/mirror/viewGeometry';
+import { canBe3DLayer, uiKindOf } from '@core/mirror/layerKinds';
+import { deviceGizmoAnchorOf, gizmoFrameOf, toParentSpace, transform3DOf, type GizmoFrame } from '@core/mirror/viewGeometry';
+import { deviceGizmoValues, type DeviceGizmoState } from '@core/workspace/deviceGizmo';
 import type { Gizmo3DNodeUpdate, Transform3DValues } from '@core/workspace/ports';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { beginViewportGesture, endViewportGesture } from '@core/workspace/viewportGesture';
@@ -46,6 +47,7 @@ import { useUIStore } from '@stores/uiStore';
 import { readTrack } from '@core/mirror/selection';
 import { snapActive, snapGizmoTranslate } from './gizmo3dSnap';
 import { isSceneCameraView } from '@core/scene/cameraViewMode';
+import { extendedViewerActive } from '@core/workspace/extendedViewer';
 
 export interface DragState3D {
   active: boolean;
@@ -78,6 +80,8 @@ export interface DragState3D {
     orientation: { x: number; y: number; z: number };
     /** Anchor point at grab time (Pan Behind edits it). */
     anchor: { x: number; y: number; z: number };
+    /** A camera or light (U4): the gizmo writes its device props instead of a layer transform. */
+    device?: DeviceGizmoState;
   }>;
 }
 
@@ -132,6 +136,11 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
   // viewport's camera is the one its frame on screen was drawn with.
   const refGeometry = useSceneRefGeometry(mode, { mainViewport: !getViewOpt, drawnCustomView: options?.drawnCustomView });
   const customViews = useGuidesStore((s) => s.customViews);
+  // U1 Extended Viewer: this view draws past the comp frame, so the frame's
+  // outline is drawn even through a scene camera (SceneGeometryOverlay).
+  const draft3d = useGuidesStore((s) => s.draft3d);
+  const extendedViewerOn = useGuidesStore((s) => s.extendedViewer);
+  const extendedViewer = extendedViewerActive(mode, draft3d, extendedViewerOn);
 
   /**
    * Comp → canvas view transform (RenderView: canvasPx = compPx·scale + offset,
@@ -179,31 +188,52 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
    */
   const snapRef = useRef<{ points: SnapPointTarget[]; thresholdWorld: number; enabled: boolean; shown: boolean } | null>(null);
 
-  // Filter selected nodes to those with 3D enabled (AE multi-layer 3D selection).
+  // The selection's gizmo targets (AE multi-layer 3D selection):
   //
-  // `canBe3D` — not bare `is3DEnabled` — is the gate, and it is the SAME predicate
-  // the renderer, the selection chrome (ports.ts) and the axis widget use.
-  // insertCamera writes `z = -focalLength`, so every camera satisfies
-  // `is3DEnabled` and used to get a full layer transform gizmo whose drags wrote
-  // camera x/y/z; lights had the same problem. Cameras and lights are positioned
-  // with the camera-navigation tools and their own inspector, not this gizmo.
-  // The gate reads the mirror's layer header (`canBe3DLayer` is `canBe3D`'s
-  // twin, the 3D switch is `is3DEnabled`); the per-frame transform sample below
-  // is the layer's pushed scene3d record (B4 round 5) — the local transform the
-  // engine sampled for the frame on screen.
+  //  • 3D-switched layers — `canBe3D` (not bare `is3DEnabled`) is the gate, the
+  //    SAME predicate the renderer, the selection chrome (ports.ts) and the axis
+  //    widget use, read from the mirror's layer header; the per-frame transform
+  //    sample is the layer's pushed scene3d record (B4 round 5);
+  //  • cameras and lights (U4) — anchored on their pushed position (a device
+  //    has no layer transform), with a zero rotation and unit scale so the
+  //    gizmo's local axes are the parent's; their drags write device props
+  //    (deviceGizmo.ts). The camera this view looks THROUGH gets no gizmo, as
+  //    it gets no handle dot — it would sit on the viewer itself.
   const mirror = documentMirror();
-  const { recordOf } = refGeometry;
+  const { recordOf, activeCameraId } = refGeometry;
   const recordOfRef = useRef(recordOf);
   recordOfRef.current = recordOf;
+  const viewingThrough = isSceneCameraView(mode) ? activeCameraId : null;
+  type GizmoNode = { id: string; tv: Transform3DValues; frame: GizmoFrame; device: ReturnType<typeof deviceGizmoAnchorOf> };
+  const gizmoNodeOf = (id: string, rec: ReturnType<typeof recordOfRef.current>): GizmoNode | null => {
+    const layer = mirror.layer(id);
+    const kind = uiKindOf(layer);
+    if (kind === 'camera' || kind === 'light') {
+      if (id === viewingThrough) return null;
+      const d = deviceGizmoAnchorOf(kind, rec);
+      if (!d) return null;
+      return {
+        id,
+        tv: { x: d.world.x, y: d.world.y, z: d.world.z, rotationX: 0, rotationY: 0, rotation: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
+        frame: { parent: d.parent, orientation: { x: 0, y: 0, z: 0 }, world: d.world },
+        device: d,
+      };
+    }
+    if (!(canBe3DLayer(layer) && layer?.switches.threeD === true)) return null;
+    const tv = transform3DOf(rec);
+    const frame = gizmoFrameOf(rec);
+    return tv && frame ? { id, tv, frame, device: null } : null;
+  };
   const selected3DNodes = selectedIds
-    .filter((id) => {
-      const layer = mirror.layer(id);
-      return canBe3DLayer(layer) && layer?.switches.threeD === true;
-    })
-    .map((id) => ({ id, tv: transform3DOf(recordOf(id)), frame: gizmoFrameOf(recordOf(id)) }))
-    .filter((n): n is { id: string; tv: Transform3DValues; frame: GizmoFrame } => n.tv !== null && n.frame !== null);
+    .map((id) => gizmoNodeOf(id, recordOf(id)))
+    .filter((n): n is GizmoNode => n !== null);
 
   const is3D = selected3DNodes.length > 0;
+  // A device has no size: a selection of devices alone shows the position
+  // gizmo where the Scale gizmo was picked (Universal keeps its rings — a
+  // camera turns, an untargeted spot light aims — and its cubes do nothing).
+  const devicesOnly = is3D && selected3DNodes.every((n) => n.device !== null);
+  const effectiveGizmoState = devicesOnly && gizmoState === 'scale' ? 'position' : gizmoState;
   const singleId = selectedIds.length === 1 ? selectedIds[0] : (selected3DNodes[0]?.id ?? null);
 
   // Compute centroid (group center) for single or multi-layer selection
@@ -259,7 +289,7 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
       nodeRotation,
       camera,
       orthoView,
-      { gizmoState, axisMode, gizmoLengthPx: 85 / viewScale, frame: localFrame },
+      { gizmoState: effectiveGizmoState, axisMode, gizmoLengthPx: 85 / viewScale, frame: localFrame },
       compWidth,
       compHeight,
     );
@@ -502,6 +532,14 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
       const isScaleHandle = handle.startsWith('scale_');
       const updates: Gizmo3DNodeUpdate[] = (dragState.initialNodeStates ?? []).map((st) => {
         const values: Record<string, number> = {};
+        if (st.device) {
+          // A camera / light (U4): its own props, by the same handle semantics.
+          Object.assign(values, deviceGizmoValues(st.device, handle, {
+            delta: { x: deltaX, y: deltaY, z: deltaZ },
+            rot: { x: deltaRotX, y: deltaRotY, z: deltaRotZ },
+          }));
+          return { id: st.id, values: values as Gizmo3DNodeUpdate['values'] };
+        }
         if (isPosHandle) {
           // The move is a WORLD delta; a parented layer stores parent-space values.
           Object.assign(values, toParentSpace(st.parent, { x: st.world.x + deltaX, y: st.world.y + deltaY, z: st.world.z + deltaZ }));
@@ -541,7 +579,8 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
       // value. Absolute (drag-start state + this move), latest wins.
       const s = useProjectStore.getState();
       const cmds = trackValueCommands(
-        updates.map((u) => ({ nodeId: u.id, values: u.values as Record<string, number> })),
+        // A device under a handle that means nothing to it (a scale cube) writes nothing.
+        updates.filter((u) => Object.keys(u.values).length > 0).map((u) => ({ nodeId: u.id, values: u.values as Record<string, number> })),
         { seconds: s.tabs[s.activeTabId ?? '']?.time ?? 0, autoKeyframe: usePreferenceStore.getState().timelineAutoKeyframe },
       );
       // null: a node the engine does not address (not a composition's layer,
@@ -681,9 +720,9 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
         // Nodes are re-fetched at event time so the anchor is never a stale
         // render-closure value.
         const initialNodeStates = selected3DNodes
-          .map((n) => ({ id: n.id, tv: transform3DOf(recordOfRef.current(n.id)), frame: gizmoFrameOf(recordOfRef.current(n.id)) }))
-          .filter((n): n is { id: string; tv: Transform3DValues; frame: GizmoFrame } => n.tv !== null && n.frame !== null)
-          .map(({ id, tv, frame }) => {
+          .map((n) => gizmoNodeOf(n.id, recordOfRef.current(n.id)))
+          .filter((n): n is GizmoNode => n !== null)
+          .map(({ id, tv, frame, device }) => {
             const m = documentMirror();
             const sec = useProjectStore.getState().tabs[useProjectStore.getState().activeTabId ?? '']?.time ?? 0;
             const anchor = (track: string): number => readTrack(m, id, track, sec) ?? 0;
@@ -696,6 +735,14 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
               scale: { scaleX: tv.scaleX, scaleY: tv.scaleY, scaleZ: tv.scaleZ },
               orientation: frame.orientation,
               anchor: { x: anchor('anchorX'), y: anchor('anchorY'), z: anchor('anchorZ') },
+              // A device's stored aim at grab time (the pushed `light` angle includes the parent's turn).
+              ...(device ? {
+                device: {
+                  ...device,
+                  lightAngle: anchor('lightAngle'),
+                  orientation: { x: anchor('orientationX'), y: anchor('orientationY'), z: anchor('orientationZ') },
+                } satisfies DeviceGizmoState,
+              } : {}),
             };
           });
         if (initialNodeStates.length === 0) return;
@@ -811,11 +858,12 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
     // `selectedIds` (not just `singleId`) because onPointerDown snapshots the
     // selection's nodes: a multi-select change that keeps the same primary id
     // must still rebind the closure.
-  }, [is3D, singleId, selectedIds, axisMode, mode, customViews, compWidth, compHeight, time, gizmoState]);
+  }, [is3D, singleId, selectedIds, axisMode, mode, customViews, compWidth, compHeight, time, gizmoState, viewingThrough]);
 
   return {
     /** Looking THROUGH a scene camera (Active Camera / Camera N), not at the scene from outside. */
     throughSceneCamera: isSceneCameraView(mode),
+    extendedViewer,
     is3D,
     scene3d,
     sceneGizmos,
@@ -829,7 +877,7 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
     compWidth,
     compHeight,
     viewTransform,
-    gizmoState,
+    gizmoState: effectiveGizmoState,
     axisMode,
     groundGridVisible,
     groundLevel,

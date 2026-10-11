@@ -576,6 +576,28 @@
   opacity: 0.5;
 }
 
+/* The active camera's row (the "3D" view, U5): a small mark after the name
+   says which of several cameras the composition renders through. */
+.activeCameraRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.activeCameraBadge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-value);
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .rowAction:hover {
   background: var(--color-hover);
   color: var(--color-text-primary);

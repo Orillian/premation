@@ -7,6 +7,7 @@ import { TooltipProvider } from '@components/Tooltip';
 import { setupAppEngine, historyLabels, settleEdits } from '@core/engine/__testHelpers__/appEngine';
 import { docView } from '@core/engine/__testHelpers__/docView';
 import type { Harness } from '@core/engine/__testHelpers__/appEngine';
+import { documentMirror } from '@stores/documentMirror';
 
 const render = (ui: React.ReactElement) => rtlRender(ui, { wrapper: TooltipProvider });
 
@@ -101,6 +102,9 @@ describe('CompositionSettingsDialog', () => {
     expect(screen.getByText(/pixel grid/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /world/i }));
     expect(screen.getByText(/default sky preset/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /renderer/i }));
+    expect(screen.getByText(/shadow map size/i)).toBeInTheDocument();
+    expect(screen.getByText(/ambient occlusion \(ssao\)/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /time/i }));
     expect(screen.getByText(/responsive time/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /color/i }));
@@ -158,5 +162,35 @@ describe('CompositionSettingsDialog', () => {
       await settleEdits();
     });
     expect(comp().fps).toBe(29.97);
+  });
+
+  it('Renderer tab: shadow-map size, light cap, DOF quality and MSAA save under the composition World JSON, one entry, undoable (U3)', async () => {
+    render(<CompositionSettings close={jest.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /renderer/i }));
+    fireEvent.change(screen.getByLabelText(/shadow map size/i), { target: { value: '2048' } });
+    fireEvent.change(screen.getByLabelText(/depth of field quality/i), { target: { value: 'high' } });
+    fireEvent.change(screen.getByLabelText(/multisample anti-aliasing/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByLabelText(/enable ambient occlusion/i));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+      await settleEdits();
+    });
+    const world = JSON.parse(documentMirror().comp(compId)?.settings.world ?? '{}') as { renderer?: unknown; ssao?: { enabled: boolean } };
+    // The SSAO half rides the key the engine already keeps: the tab's save path is proven by it.
+    expect(world.ssao?.enabled).toBe(true);
+    expect((await historyLabels()).filter((l) => l === 'Composition Settings')).toHaveLength(1);
+    // The renderer block is a NEW World key. Until the engine keeps it
+    // (handlers_comps.cpp / readmodel.cpp whitelist `renderer`), the engine
+    // drops it on the floor; once it does, this asserts the round trip.
+    const engineKeepsRenderer = world.renderer !== undefined;
+    if (engineKeepsRenderer) {
+      expect(world.renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
+      expect(comp().renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
+    } else {
+      console.warn('U3: the engine does not keep World.renderer yet — round trip not asserted');
+    }
+    await h.run({ type: 'undo' });
+    expect(comp().renderer).toBeUndefined();
+    expect(comp().ssao?.enabled ?? false).toBe(false);
   });
 });

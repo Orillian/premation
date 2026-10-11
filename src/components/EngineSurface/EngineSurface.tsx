@@ -49,6 +49,8 @@ import { publishFrame } from '@core/engine/frameTap';
 import { notePresented } from '@core/engine/presentedFrames';
 import { captureViewportPicture, setViewportPictureRefresh, viewportPictureWanted } from '@core/engine/viewportPicture';
 import { useActiveMirrorComp } from '@hooks/useMirror';
+import { settingsFps } from '@core/mirror/compFacts';
+import { extendedViewerActive } from '@core/workspace/extendedViewer';
 import { compUvRect, parseCssRgb } from './pasteboard';
 import { BOARD_FLOATS, createFrameBlitter } from './frameBlit';
 import { subscribeEngineFrames } from './engineFrameHub';
@@ -125,6 +127,12 @@ export interface EngineSurfaceStats {
     exposure: number;
     transparencyGrid: boolean;
     roi: { x: number; y: number; width: number; height: number } | null;
+    /**
+     * U1 Extended Viewer: false = the engine draws layers outside the comp
+     * frame (core/workspace/extendedViewer.ts); the pasteboard paint is then
+     * off and the overlay draws the frame outline instead.
+     */
+    clipToComp: boolean;
   } | null;
   errors: string[];
 }
@@ -179,6 +187,9 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
   const compSizeRef = useRef({ width: 0, height: 0 });
   compSizeRef.current.width = compSettings?.width ?? 0;
   compSizeRef.current.height = compSettings?.height ?? 0;
+  // Auto resolution's frame budget: the comp's frame period (A1).
+  const frameBudgetMsRef = useRef(1000 / 30);
+  frameBudgetMsRef.current = 1000 / settingsFps(compSettings);
 
   useEffect(() => {
     const box = frameBoxRef.current;
@@ -236,7 +247,8 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         boardRgb = parseCssRgb(getComputedStyle(canvas).color);
       }
       const size = compSizeRef.current;
-      const rect = cam && boardRgb
+      // Extended Viewer: the layers outside the frame are the point; nothing is painted over them.
+      const rect = cam && boardRgb && cam.clipToComp
         && Math.abs(w / Math.max(1, h) - cam.width / Math.max(1, cam.height)) < 0.02
         ? compUvRect(cam, size.width, size.height)
         : null;
@@ -329,12 +341,23 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     let unFrames: (() => void) | null = null;
     // Auto resolution's input: playback falling behind. Every FrameReady says
     // how many frames the engine skipped since the one before it (superseded
-    // jobs + clock skips), so the hysteresis counts real frames — the 1 Hz
-    // RenderStats event it used to read made "3 slow frames" three SECONDS.
+    // jobs + clock skips) and when its render started and finished, so the
+    // hysteresis (renderQualityStore, A1) sees real frames: a frame is slow
+    // when its render alone exceeds the comp's frame period or frames were
+    // dropped before it. A jump in the frame counter that the drops do not
+    // explain is a seek (or a loop): cold caches, a fresh warm-up.
     let playing = false;
+    let lastPlayedFrame = -1;
     const onFrame = (frame: VideoFrameLike, meta: EngineFrameMeta, release: () => void): void => {
       stats.received += 1;
-      if (playing) useRenderQualityStore.getState().reportPlaybackFrame(meta.dropped > 0 ? 2 : 0, 1);
+      if (playing) {
+        const quality = useRenderQualityStore.getState();
+        const budget = frameBudgetMsRef.current;
+        if (lastPlayedFrame >= 0 && Math.abs(meta.frame - (lastPlayedFrame + 1 + meta.dropped)) > 2) quality.notePlaybackStart();
+        lastPlayedFrame = meta.frame;
+        const renderMs = (meta.renderDoneUs - meta.renderStartUs) / 1000;
+        quality.reportPlaybackFrame(Math.max(Number.isFinite(renderMs) ? renderMs : 0, meta.dropped > 0 ? budget * 2 : 0), budget);
+      }
       const route = (meta as EngineFrameMeta).route ?? 'shared';
       if (route !== stats.route) {
         stats.route = route;
@@ -399,6 +422,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         exposure: display.exposure,
         transparencyGrid: display.transparencyGrid,
         roi: g.roi,
+        clipToComp: !extendedViewerActive(g.camera3dMode, g.draft3d, g.extendedViewer),
       };
     };
     const sameOnion = (a: NonNullable<EngineSurfaceStats['lastViewport']>['onion'], b: NonNullable<EngineSurfaceStats['lastViewport']>['onion']): boolean =>
@@ -416,7 +440,8 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       if (!force && last && channel === lastChannel && last.width === d.width && last.height === d.height && last.dpr === d.dpr
         && last.zoom === d.zoom && last.panX === d.panX && last.panY === d.panY
         && last.view === d.view && sameCustomView(last.customView, d.customView) && sameOnion(last.onion, d.onion)
-        && last.exposure === d.exposure && last.transparencyGrid === d.transparencyGrid && last.roi === d.roi) return;
+        && last.exposure === d.exposure && last.transparencyGrid === d.transparencyGrid && last.roi === d.roi
+        && last.clipToComp === d.clipToComp) return;
       if (inFlight) {
         again = true;
         return;
@@ -439,6 +464,9 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         ...(d.roi ? { regionOfInterest: { x: d.roi.x, y: d.roi.y, width: d.roi.width, height: d.roi.height } } : {}),
         displayTransform: '',
         layerRenderEffects: true,
+        // TODO(engine, U1): send `clipToComp: d.clipToComp` once SetViewport
+        // carries the field (engine_frames.cpp `vs.clipToComp`, today false only
+        // for a layer view) and clears the surround to the pasteboard colour.
         view: d.view,
         ...(d.customView ? {
           customView: {
@@ -498,8 +526,10 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     const unRender = getWorkspaceController().onRender(() => sendViewport());
     // The channel and the 3D view both ride on setViewport; `sendViewport` drops a request that changes nothing.
     const unGuides = useGuidesStore.subscribe((s, prev) => {
-      if (s.channel !== lastChannel || s.camera3dMode !== prev.camera3dMode || s.customViews !== prev.customViews || s.roi !== prev.roi) sendViewport();
-      if (s.draft3d !== prev.draft3d) sendResolution();
+      if (s.channel !== lastChannel || s.camera3dMode !== prev.camera3dMode || s.customViews !== prev.customViews || s.roi !== prev.roi
+        || s.extendedViewer !== prev.extendedViewer) sendViewport();
+      // Draft 3D decides whether Active Camera extends (extendedViewer.ts) as well as the quality.
+      if (s.draft3d !== prev.draft3d) { sendResolution(); sendViewport(); }
     });
     const unDisplay = useViewportDisplayStore.subscribe((s, prev) => {
       if (s.exposure !== prev.exposure || s.transparencyGrid !== prev.transparencyGrid) sendViewport();
@@ -559,6 +589,10 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         } else if (e.type === 'transportChanged') {
           const now = e.state === 'playing';
           if (playing && !now) useRenderQualityStore.getState().setSlowPlayback(false);
+          if (!playing && now) {
+            useRenderQualityStore.getState().notePlaybackStart();
+            lastPlayedFrame = -1;
+          }
           playing = now;
         }
       }

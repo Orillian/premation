@@ -54,6 +54,8 @@ export interface SceneFilterState {
   label: string | 'none' | null;
   animatedOnly: boolean;
   effectsOnly: boolean;
+  /** The "3D" view (U5): cameras, lights and 3D layers only. */
+  threeDOnly: boolean;
   query: string;
   /** Which fields `query` is matched against. Empty is treated as `['name']`. */
   fields: SearchField[];
@@ -64,6 +66,7 @@ export const EMPTY_FILTER: SceneFilterState = {
   label: null,
   animatedOnly: false,
   effectsOnly: false,
+  threeDOnly: false,
   query: '',
   fields: ['name'],
 };
@@ -74,6 +77,7 @@ export function isFilterActive(f: SceneFilterState): boolean {
     || f.label !== null
     || f.animatedOnly
     || f.effectsOnly
+    || f.threeDOnly
     || f.query.trim().length > 0
   );
 }

@@ -264,7 +264,7 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'checkbox',
       id: 'preview-draft-3d',
-      label: 'Draft 3D — skip heavy lights & shadows',
+      label: 'Draft 3D — skips lights, shadows & DOF',
       checked: draft3d,
       onChange: () => toggleDraft3d(),
     },

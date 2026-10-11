@@ -19,6 +19,7 @@ import {
   DEFAULT_SSAO,
   resolveFog,
   resolveGroundShadows,
+  resolveRenderer,
   type CompositionSettings,
 } from './projectStore';
 import { sortedStops, type FillPaint } from '@core/paint/fill';
@@ -50,7 +51,9 @@ export function compKeyFor(c: CompositionSettings): string {
     : '';
   // Fog, ground shadows and the sky backdrop change pixels too (AE parity 4.3 / 4.4 / 4.8).
   const world3d = `${c.fog ? JSON.stringify(c.fog) : ''}/${c.groundShadows ? JSON.stringify(c.groundShadows) : ''}/${c.showSkyBackdrop ? 1 : 0}/${c.groundLevel ?? 0}`;
-  return `${c.width}x${c.height}:${c.fps}:${c.durationSeconds}:${c.background}:${c.transparent ? 1 : 0}:${c.startFrame ?? 0}:${paint}:${light}:${ao}:${world3d}`;
+  // The renderer settings (U3) change pixels too: shadow-map size, MSAA, DOF quality.
+  const renderer = c.renderer ? JSON.stringify(c.renderer) : '';
+  return `${c.width}x${c.height}:${c.fps}:${c.durationSeconds}:${c.background}:${c.transparent ? 1 : 0}:${c.startFrame ?? 0}:${paint}:${light}:${ao}:${world3d}:${renderer}`;
 }
 
 export const DEFAULT_COMPOSITION: CompositionSettings = {
@@ -165,6 +168,8 @@ export function sanitize(patch: Partial<CompositionSettings>): Partial<Compositi
   // 3D ▸ Fog and Ground shadows (AE parity 4.8 / 4.3): whole objects, sanitized like SSAO.
   if (patch.fog !== undefined) out.fog = resolveFog({ fog: patch.fog });
   if (patch.groundShadows !== undefined) out.groundShadows = resolveGroundShadows({ groundShadows: patch.groundShadows });
+  // Renderer (U3): a whole object, sanitized like SSAO.
+  if (patch.renderer !== undefined) out.renderer = resolveRenderer({ renderer: patch.renderer });
   return out;
 }
 

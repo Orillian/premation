@@ -19,7 +19,7 @@ const FACTS: Record<string, SceneNodeFacts> = {
   titles: { kind: 'group', label: 'coral', animated: false, hasEffects: false, name: 'Titles' },
   t1: { kind: 'text', label: undefined, animated: true, hasEffects: false, name: 'Headline', expressions: 'wiggle(2, 30)' },
   t2: { kind: 'text', label: 'coral', animated: false, hasEffects: true, name: 'Sub', effectNames: 'gaussian blur', shy: true },
-  cam: { kind: 'camera', label: undefined, animated: true, hasEffects: false, name: 'Camera 1' },
+  cam: { kind: 'camera', label: undefined, animated: true, hasEffects: false, name: 'Camera 1', threeD: true },
   bg: { kind: 'image', label: 'teal', animated: false, hasEffects: true, name: 'Backdrop', source: 'skyline.png', effectNames: 'levels' },
 };
 
@@ -130,6 +130,19 @@ describe('sceneFilters', () => {
       expect(out).toContain('titles');
       expect(out).not.toContain('t2');
     });
+  });
+
+  it('the "3D" view keeps cameras, lights and 3D layers only (ancestors as their path), and counts as filtering', () => {
+    const facts: Record<string, SceneNodeFacts> = {
+      ...FACTS,
+      t1: { ...FACTS.t1!, threeD: true },
+      key: { kind: 'light', label: undefined, animated: false, hasEffects: false, name: 'Key', threeD: true },
+    };
+    const tree: TreeNode<unknown>[] = [n('comp', [n('titles', [n('t1'), n('t2')]), n('cam'), { id: 'key', label: 'Key' }, n('bg')])];
+    const f: SceneFilter = { ...EMPTY_SCENE_FILTER, threeDOnly: true };
+    expect(isSceneFilterActive(f)).toBe(true);
+    expect(ids(filterSceneTree(tree, f, (id) => facts[id] ?? null))).toEqual(['comp', 'titles', 't1', 'cam', 'key']);
+    expect(countSceneMatches(filterSceneTree(tree, f, (id) => facts[id] ?? null), f, (id) => facts[id] ?? null)).toBe(3);
   });
 
   it('withRevealed adds only the missing ids and keeps identity when none are', () => {

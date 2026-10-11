@@ -32,12 +32,14 @@ import {
   resolveSsao,
   resolveFog,
   resolveGroundShadows,
+  resolveRenderer,
   resolvePixelAspect,
   DEFAULT_PIXEL_ASPECT,
   type CompositionSettings as CompRecord,
   type SsaoSettings,
   type FogSettings,
   type GroundShadowSettings,
+  type RendererSettings,
 } from '@stores/projectStore';
 import { saveCompositionSettingsEdit } from './compositionEdits';
 import { useGuidesStore, type GridStyle } from '@stores/guidesStore';
@@ -67,7 +69,7 @@ import {
 } from '@core/scene/environmentLight';
 import styles from './CompositionSettingsDialog.module.css';
 
-export type TabId = 'general' | 'background' | 'grid' | 'world' | 'time' | 'color';
+export type TabId = 'general' | 'background' | 'grid' | 'world' | 'renderer' | 'time' | 'color';
 
 /* eslint-disable design-system/no-hex-color -- Studio background hex values are composition document presets */
 const STUDIO_COLOR_SWATCHES = [
@@ -250,6 +252,9 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
   const groundShadows = resolveGroundShadows(s);
   const patchGroundShadows = (patch: Partial<GroundShadowSettings>): void =>
     update({ groundShadows: { ...groundShadows, ...patch } });
+  // Renderer (U3): per-comp quality knobs, stored under the World JSON beside `ssao`.
+  const renderer = resolveRenderer(s);
+  const patchRenderer = (patch: Partial<RendererSettings>): void => update({ renderer: { ...renderer, ...patch } });
 
   // Background paint
   const bgPaint: FillPaint = s.backgroundPaint ?? solidFill(s.background);
@@ -385,6 +390,16 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         >
           <Icon name="axis-world" size="sm" />
           <span>World</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'renderer'}
+          className={`${styles.navTab} ${activeTab === 'renderer' ? styles.navTabActive : ''}`}
+          onClick={() => setActiveTab('renderer')}
+        >
+          <Icon name="cube" size="sm" />
+          <span>Renderer</span>
         </button>
         <button
           type="button"
@@ -1003,61 +1018,6 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Ambient Occlusion (SSAO)</div>
-              <p className={styles.hint}>
-                Contact darkening between proximate 3D surfaces. Dims ambient light only.
-              </p>
-              <div className={styles.colorCardRow}>
-                <span className={styles.colorCardLabel}>Enable Ambient Occlusion</span>
-                <Switch
-                  checked={ssao.enabled}
-                  onChange={(e) => patchSsao({ enabled: e.target.checked })}
-                  aria-label="Enable ambient occlusion"
-                />
-              </div>
-              <div className={styles.row}>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Radius</span>
-                  <ValueField
-                    value={ssao.radius}
-                    onChange={(v) => patchSsao({ radius: v })}
-                    min={1}
-                    max={2000}
-                    step={5}
-                    unit="px"
-                    disabled={!ssao.enabled}
-                    aria-label="Ambient occlusion radius"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Intensity</span>
-                  <ValueField
-                    value={ssao.intensity}
-                    onChange={(v) => patchSsao({ intensity: v })}
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    disabled={!ssao.enabled}
-                    aria-label="Ambient occlusion intensity"
-                  />
-                </div>
-              </div>
-              <div className={styles.field}>
-                <span className={styles.fieldLabel}>Quality</span>
-                <select
-                  className={styles.selectInput}
-                  value={ssao.quality}
-                  disabled={!ssao.enabled}
-                  onChange={(e) => patchSsao({ quality: e.target.value === 'full' ? 'full' : 'half' })}
-                  aria-label="Ambient occlusion quality"
-                >
-                  <option value="half">Half resolution (faster preview)</option>
-                  <option value="full">Full resolution (crisp contact edges)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className={styles.section}>
               <div className={styles.label}>Ground Shadows</div>
               <p className={styles.hint}>
                 An invisible floor at the ground level catches the shadows of shadow-casting lights.
@@ -1157,10 +1117,142 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           </>
         )}
 
-        {/* TAB 5: TIME */}
+        {/* TAB 5: RENDERER (U3) — the 3D renderer's quality knobs, per composition. */}
+        {activeTab === 'renderer' && (
+          <>
+            <div className={styles.section}>
+              <div className={styles.label}>Shadows</div>
+              <p className={styles.hint}>
+                Mapped shadows from the lights that cast them. A larger map is sharper and costs more memory and time per light.
+              </p>
+              <div className={styles.row}>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Shadow map size</span>
+                  <select
+                    className={styles.selectInput}
+                    value={renderer.shadowMapSize}
+                    onChange={(e) => patchRenderer({ shadowMapSize: Number(e.target.value) === 512 ? 512 : Number(e.target.value) === 2048 ? 2048 : 1024 })}
+                    aria-label="Shadow map size"
+                  >
+                    <option value={512}>512 px (fast)</option>
+                    <option value={1024}>1024 px</option>
+                    <option value={2048}>2048 px (sharp)</option>
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Shadow-casting lights</span>
+                  <ValueField
+                    value={renderer.shadowLightCap}
+                    onChange={(v) => patchRenderer({ shadowLightCap: Math.max(0, Math.min(16, Math.round(v))) })}
+                    min={0}
+                    max={16}
+                    step={1}
+                    aria-label="Shadow-casting light cap"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.section}>
+              <div className={styles.label}>Ambient Occlusion (SSAO)</div>
+              <p className={styles.hint}>
+                Contact darkening between proximate 3D surfaces. Dims ambient light only.
+              </p>
+              <div className={styles.colorCardRow}>
+                <span className={styles.colorCardLabel}>Enable Ambient Occlusion</span>
+                <Switch
+                  checked={ssao.enabled}
+                  onChange={(e) => patchSsao({ enabled: e.target.checked })}
+                  aria-label="Enable ambient occlusion"
+                />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Radius</span>
+                  <ValueField
+                    value={ssao.radius}
+                    onChange={(v) => patchSsao({ radius: v })}
+                    min={1}
+                    max={2000}
+                    step={5}
+                    unit="px"
+                    disabled={!ssao.enabled}
+                    aria-label="Ambient occlusion radius"
+                  />
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Intensity</span>
+                  <ValueField
+                    value={ssao.intensity}
+                    onChange={(v) => patchSsao({ intensity: v })}
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    disabled={!ssao.enabled}
+                    aria-label="Ambient occlusion intensity"
+                  />
+                </div>
+              </div>
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>Quality</span>
+                <select
+                  className={styles.selectInput}
+                  value={ssao.quality}
+                  disabled={!ssao.enabled}
+                  onChange={(e) => patchSsao({ quality: e.target.value === 'full' ? 'full' : 'half' })}
+                  aria-label="Ambient occlusion quality"
+                >
+                  <option value="half">Half resolution (faster preview)</option>
+                  <option value="full">Full resolution (crisp contact edges)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className={styles.section}>
+              <div className={styles.label}>Depth of Field</div>
+              <p className={styles.hint}>
+                How many samples the camera&apos;s depth of field gathers. Draft is for working; High for the final look.
+              </p>
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>Quality</span>
+                <select
+                  className={styles.selectInput}
+                  value={renderer.dofQuality}
+                  onChange={(e) => patchRenderer({ dofQuality: e.target.value === 'draft' || e.target.value === 'high' ? e.target.value : 'medium' })}
+                  aria-label="Depth of field quality"
+                >
+                  <option value="draft">Draft (fastest)</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High (smoothest bokeh)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className={styles.section}>
+              <div className={styles.label}>Anti-aliasing</div>
+              <p className={styles.hint}>
+                Multisampling on the 3D runs smooths layer edges in depth. Off is fastest on heavy scenes.
+              </p>
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>MSAA</span>
+                <select
+                  className={styles.selectInput}
+                  value={renderer.msaa}
+                  onChange={(e) => patchRenderer({ msaa: Number(e.target.value) === 1 ? 1 : 4 })}
+                  aria-label="Multisample anti-aliasing"
+                >
+                  <option value={1}>Off</option>
+                  <option value={4}>4× MSAA</option>
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* TAB 6: TIME */}
         {activeTab === 'time' && <ResponsiveTimeSection />}
 
-        {/* TAB 6: COLOR */}
+        {/* TAB 7: COLOR */}
         {activeTab === 'color' && (
           <>
             <div className={styles.section}>

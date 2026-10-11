@@ -245,6 +245,13 @@ interface GuidesStore extends GuidesSettings {
    */
   draft3d: boolean;
   /**
+   * Extended Viewer (AE's Composition panel option): the axis and custom views
+   * — and Active Camera while Draft 3D is on — draw layers outside the comp
+   * frame, with the frame's outline on top (core/workspace/extendedViewer.ts).
+   * View state — never in the document, never in a render.
+   */
+  extendedViewer: boolean;
+  /**
    * Figma-style smart guides: distance badges to the nearest neighbours,
    * pink hatch bars over equal-spacing runs, and equal-size highlights, drawn
    * only while a gesture is in flight (or an Alt-hover is measuring).
@@ -306,6 +313,7 @@ interface GuidesStore extends GuidesSettings {
   setGizmo3dAxisMode: (mode: Gizmo3dAxisMode) => void;
   toggleGroundGridVisible: () => void;
   toggleDraft3d: () => void;
+  toggleExtendedViewer: () => void;
   /** View ▸ Options ▸ Smart Guides. */
   toggleSmartGuides: () => void;
   setSmartGuides: (on: boolean) => void;
@@ -418,6 +426,7 @@ export const useGuidesStore = create<GuidesStore>((set, get) => ({
   gizmo3dAxisMode: 'local',
   groundGridVisible: true,
   draft3d: false,
+  extendedViewer: false,
   smartGuides: true,
   cameraTool: 'none',
   // 'scene', not 'poi': a one-node camera's POI is wherever it happens to be
@@ -497,6 +506,7 @@ export const useGuidesStore = create<GuidesStore>((set, get) => ({
   setGizmo3dAxisMode: (mode) => set({ gizmo3dAxisMode: mode }),
   toggleGroundGridVisible: () => set((s) => ({ groundGridVisible: !s.groundGridVisible })),
   toggleDraft3d: () => set((s) => ({ draft3d: !s.draft3d })),
+  toggleExtendedViewer: () => set((s) => ({ extendedViewer: !s.extendedViewer })),
   toggleSmartGuides: () => set((s) => ({ smartGuides: !s.smartGuides })),
   setSmartGuides: (on) => set({ smartGuides: on }),
   setCameraTool: (tool) => set({ cameraTool: tool }),
@@ -583,7 +593,7 @@ export const useGuidesStore = create<GuidesStore>((set, get) => ({
           return `${v.yaw},${v.pitch},${v.distance ?? '-'},${v.poi ? `${v.poi.x},${v.poi.y},${v.poi.z}` : '-'}`;
         })()
       : '-';
-    return `${s.rulers ? 1 : 0}${s.grid ? 1 : 0}:${s.gridSpacing}/${s.gridSubdivisions}/${s.gridStyle}:${s.proportionalGrid ? 1 : 0}${s.proportionalColumns}x${s.proportionalRows}:${s.gridColor}:${s.safeArea ? 1 : 0}:${s.camera3dMode}:${cv}:${s.viewLayout}:${s.secondaryViewMode}:${s.quadViewModes.join(',')}:${s.channel}:${s.motionPathVisible ? 1 : 0}:${s.motionPathDots}:${s.motionPathShow}/${s.motionPathWindowSeconds}:${s.gizmo3dState}:${s.gizmo3dAxisMode}:${s.groundGridVisible ? 1 : 0}:${s.draft3d ? 1 : 0}:${roi}`;
+    return `${s.rulers ? 1 : 0}${s.grid ? 1 : 0}:${s.gridSpacing}/${s.gridSubdivisions}/${s.gridStyle}:${s.proportionalGrid ? 1 : 0}${s.proportionalColumns}x${s.proportionalRows}:${s.gridColor}:${s.safeArea ? 1 : 0}:${s.camera3dMode}:${cv}:${s.viewLayout}:${s.secondaryViewMode}:${s.quadViewModes.join(',')}:${s.channel}:${s.motionPathVisible ? 1 : 0}:${s.motionPathDots}:${s.motionPathShow}/${s.motionPathWindowSeconds}:${s.gizmo3dState}:${s.gizmo3dAxisMode}:${s.groundGridVisible ? 1 : 0}:${s.draft3d ? 1 : 0}${s.extendedViewer ? 'x' : ''}:${roi}`;
   },
 }));
 

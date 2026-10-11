@@ -25,6 +25,11 @@ export interface SceneFilter {
   label: string | 'none' | null;
   animatedOnly: boolean;
   effectsOnly: boolean;
+  /**
+   * The "3D" view (U5): cameras, lights and 3D-switched layers only — the
+   * scene outliner of a 3D comp, with the flat artwork out of the way.
+   */
+  threeDOnly?: boolean;
   /** Lower-cased, trimmed search. */
   query: string;
   /**
@@ -50,6 +55,8 @@ export interface SceneNodeFacts {
   label: string | undefined;
   animated: boolean;
   hasEffects: boolean;
+  /** A camera, a light, or a layer with its 3D switch on (the "3D" view's test). */
+  threeD?: boolean;
   name: string;
   /** Applied effect names, lower-cased — the `effects` search field. */
   effectNames?: string;
@@ -69,7 +76,7 @@ export const EMPTY_SCENE_FILTER: SceneFilter = {
 };
 
 export function isSceneFilterActive(f: SceneFilter): boolean {
-  return f.kinds !== null || f.label !== null || f.animatedOnly || f.effectsOnly || f.query.length > 0;
+  return f.kinds !== null || f.label !== null || f.animatedOnly || f.effectsOnly || f.threeDOnly === true || f.query.length > 0;
 }
 
 /** Does the query hit any of the fields the filter is searching? */
@@ -93,6 +100,7 @@ export function nodeMatches(facts: SceneNodeFacts, f: SceneFilter): boolean {
   if (f.label === 'none' ? facts.label !== undefined : f.label !== null && facts.label !== f.label) return false;
   if (f.animatedOnly && !facts.animated) return false;
   if (f.effectsOnly && !facts.hasEffects) return false;
+  if (f.threeDOnly && !facts.threeD) return false;
   if (f.query && !queryMatches(facts, f)) return false;
   return true;
 }

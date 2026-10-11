@@ -95,6 +95,8 @@ export function SceneControls(): JSX.Element {
   const toggleDraft3d = useGuidesStore((s) => s.toggleDraft3d);
   const groundGridVisible = useGuidesStore((s) => s.groundGridVisible);
   const toggleGroundGridVisible = useGuidesStore((s) => s.toggleGroundGridVisible);
+  const extendedViewer = useGuidesStore((s) => s.extendedViewer);
+  const toggleExtendedViewer = useGuidesStore((s) => s.toggleExtendedViewer);
   // A preference, not view state — see `Preferences.showLayerBounds`.
   const layerBoxesVisible = usePreferenceStore((s) => s.showLayerBounds);
   const setPreference = usePreferenceStore((s) => s.set);
@@ -109,7 +111,7 @@ export function SceneControls(): JSX.Element {
   const focusPlaneOn = focusPlaneVisibility !== 'off';
   // The focus plane defaults ON, so it does not count toward lighting the
   // trigger — a button that is lit in a fresh project is saying nothing.
-  const viewOnCount = [layerBoxesVisible, deviceWireframesAll].filter(Boolean).length;
+  const viewOnCount = [layerBoxesVisible, deviceWireframesAll, extendedViewer].filter(Boolean).length;
 
   const cameraItems: DropdownItem[] = [
     ...CAMERA_TOOLS.map((t) => ({
@@ -219,7 +221,7 @@ export function SceneControls(): JSX.Element {
         className={draft3d ? styles.triggerActive : styles.trigger}
         aria-label="Draft 3D"
         aria-pressed={draft3d}
-        title="Draft 3D — fast preview, skips heavy lights & shadows"
+        title="Draft 3D — skips lights, shadows & DOF"
         onClick={() => toggleDraft3d()}
       >
         <Icon name="draft-3d" size="md" />
@@ -242,6 +244,16 @@ export function SceneControls(): JSX.Element {
       <Dropdown
         placement="bottom-start"
         items={[
+          {
+            // AE's Extended Viewer: the axis / custom views (and Draft 3D in
+            // Active Camera) draw layers outside the comp frame, outline on top.
+            type: 'checkbox',
+            id: 'view-extended-viewer',
+            label: 'Extended Viewer — draw layers outside the comp frame',
+            checked: extendedViewer,
+            onChange: () => toggleExtendedViewer(),
+          },
+          { type: 'separator' },
           {
             type: 'checkbox',
             id: 'view-layer-boxes',
@@ -281,7 +293,7 @@ export function SceneControls(): JSX.Element {
             type="button"
             className={viewOnCount > 0 ? styles.triggerActive : styles.trigger}
             aria-label="3D view options"
-            title="3D view — layer bounding boxes, camera & light wireframes, focus plane"
+            title="3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane"
           >
             <Icon name="cube" size="md" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />

@@ -90,11 +90,17 @@ interface RenderQualityStore {
   setInteracting: (v: boolean) => void;
   setSlowPlayback: (v: boolean) => void;
   /**
-   * Report one rendered frame's cost while playing. `ms` is the render time,
-   * `budgetMs` the frame period. Returns nothing; updates `slowPlayback` by
-   * hysteresis so a single hitch neither drops quality nor restores it.
+   * Playback (re)started or seeked at `nowMs`: the next `PLAYBACK_WARMUP_MS`
+   * of frames are cold-cache frames and do not count towards a switch.
    */
-  reportPlaybackFrame: (ms: number, budgetMs: number) => void;
+  notePlaybackStart: (nowMs?: number) => void;
+  /**
+   * Report one rendered frame's cost while playing. `ms` is the render time,
+   * `budgetMs` the frame period, `nowMs` the wall clock (injectable for tests).
+   * Returns nothing; updates `slowPlayback` by the hysteresis documented at
+   * `PLAYBACK_WINDOW` so neither a hitch nor a burst pumps the resolution.
+   */
+  reportPlaybackFrame: (ms: number, budgetMs: number, nowMs?: number) => void;
   /**
    * Report one rendered frame's cost during a DRAG (not playing). Flips
    * `slowInteract` by the same hysteresis `reportPlaybackFrame` uses, so a
@@ -120,21 +126,48 @@ export function effectiveResolutionOf(s: {
   return Math.max(s.resolution, s.adaptiveFloor) as PreviewResolution;
 }
 
-/** Frames over budget before degrading, and under budget before restoring. */
-const SLOW_FRAMES_TO_DEGRADE = 3;
+/*
+  Playback auto-resolution hysteresis (A1, docs/PROGRAM_3D_PERF_UX.md).
+
+  Every Full↔Half switch is a new slot size for the engine — a frame cache that
+  misses everything and, measured on the Samurai comp, a 0.3–1.7 s stall. The
+  old rule (three slow frames down, 45 cheap frames up) pumped on a cold first
+  pass whose drops come in bursts: Full→Half→Full every few seconds, each
+  switch a freeze and a soft picture. So:
+
+   • a frame is SLOW when its render time exceeds the frame period or the
+     engine dropped frames before it;
+   • a degrade needs a SUSTAINED slow run: `PLAYBACK_SLOW_IN_WINDOW` of the
+     last `PLAYBACK_WINDOW` frames (a burst of a few drops is not one);
+   • the first `PLAYBACK_WARMUP_MS` after play starts or after a seek are cold
+     caches and do not count at all;
+   • a restore waits `restoreDelayMs` after the degrade (3 s, doubling each
+     time full resolution does not hold for `PLAYBACK_HOLD_MS` after a restore,
+     capped) AND needs `FAST_FRAMES_TO_RESTORE` consecutive cheap frames;
+   • there is never more than one switch per `PLAYBACK_MIN_SWITCH_GAP_MS`.
+*/
+export const PLAYBACK_WINDOW = 12;
+export const PLAYBACK_SLOW_IN_WINDOW = 8;
+export const PLAYBACK_WARMUP_MS = 2000;
+export const PLAYBACK_MIN_SWITCH_GAP_MS = 10_000;
+export const PLAYBACK_RESTORE_DELAY_MS = 3000;
+const PLAYBACK_RESTORE_DELAY_MAX_MS = 48_000;
+/** A restore undone within this long of it means full resolution does not hold: the next wait doubles. */
+const PLAYBACK_HOLD_MS = 20_000;
 const FAST_FRAMES_TO_RESTORE = 45;
-/** The restore run never grows past this (24 s at 30 fps). */
-const MAX_FRAMES_TO_RESTORE = 720;
-let overBudget = 0;
+/** The last `PLAYBACK_WINDOW` frames' slow flags as a bitmask (bit 0 = newest). */
+let slowWindow = 0;
+let framesInWindow = 0;
 let underBudget = 0;
-/**
- * Back-off: the cheap run a restore needs right now. A restore that is undone
- * soon after (the comp cannot hold full resolution) doubles it, so per-frame
- * input settles at the floor instead of pumping between sizes — every switch
- * is a new slot size, and with it a frame cache that misses everything.
- */
-let restoreNeed = FAST_FRAMES_TO_RESTORE;
-let sinceRestore = Number.POSITIVE_INFINITY;
+let playStartAt = Number.NEGATIVE_INFINITY;
+let lastSwitchAt = Number.NEGATIVE_INFINITY;
+let lastDegradeAt = Number.NEGATIVE_INFINITY;
+let lastRestoreAt = Number.NEGATIVE_INFINITY;
+let restoreDelayMs = PLAYBACK_RESTORE_DELAY_MS;
+const WINDOW_MASK = (1 << PLAYBACK_WINDOW) - 1;
+const popCount = (v: number): number => { let n = 0; for (let x = v; x !== 0; x &= x - 1) n++; return n; };
+const resetPlaybackWindow = (): void => { slowWindow = 0; framesInWindow = 0; underBudget = 0; };
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 /** Separate counters for the interact path — a slow drag frame must not be
  *  cancelled out by a fast playback frame or vice versa. */
 const INTERACT_SLOW_TO_DEGRADE = 2;
@@ -157,37 +190,54 @@ export const useRenderQualityStore = create<RenderQualityStore>((set, get) => ({
   setAdaptiveFloor: (f) => set({ adaptiveFloor: f }),
   setInteracting: (v) => set((s) => (s.interacting === v ? s : { interacting: v })),
   setSlowPlayback: (v) => {
-    overBudget = 0;
-    underBudget = 0;
-    restoreNeed = FAST_FRAMES_TO_RESTORE;
-    sinceRestore = Number.POSITIVE_INFINITY;
+    // Stopping (or a manual reset) forgets the whole history: the next play
+    // starts cold, with the first restore wait and no switch on record.
+    resetPlaybackWindow();
+    playStartAt = Number.NEGATIVE_INFINITY;
+    lastSwitchAt = Number.NEGATIVE_INFINITY;
+    lastDegradeAt = Number.NEGATIVE_INFINITY;
+    lastRestoreAt = Number.NEGATIVE_INFINITY;
+    restoreDelayMs = PLAYBACK_RESTORE_DELAY_MS;
     set((s) => (s.slowPlayback === v ? s : { slowPlayback: v }));
   },
-  reportPlaybackFrame: (ms, budgetMs) => {
+  notePlaybackStart: (nowMs = now()) => {
+    playStartAt = nowMs;
+    resetPlaybackWindow();
+  },
+  reportPlaybackFrame: (ms, budgetMs, nowMs = now()) => {
     // The preview cache's blit gate weighs this same measurement against its
     // blit cost, adaptive resolution on or off (see PlaybackBlitPolicy).
     playbackBlitPolicy.noteLiveRender(ms, budgetMs);
     const s = get();
     if (!s.adaptive) return;
+    // Cold caches: a seek or a fresh play drops frames whatever the resolution.
+    if (nowMs - playStartAt < PLAYBACK_WARMUP_MS) return;
     // A frame is "slow" when it alone eats more than the whole frame period —
     // at that point playback is already dropping frames, and a lower
     // resolution that holds the rate is the better picture.
-    if (ms > budgetMs) { overBudget++; underBudget = 0; }
-    else { underBudget++; overBudget = 0; }
-    if (!s.slowPlayback) sinceRestore++;
-    if (!s.slowPlayback && overBudget >= SLOW_FRAMES_TO_DEGRADE) {
-      overBudget = 0;
-      // Degraded again soon after a restore: full resolution does not hold.
-      if (sinceRestore < restoreNeed * 2) restoreNeed = Math.min(restoreNeed * 2, MAX_FRAMES_TO_RESTORE);
+    const slow = ms > budgetMs;
+    slowWindow = ((slowWindow << 1) | (slow ? 1 : 0)) & WINDOW_MASK;
+    framesInWindow = Math.min(PLAYBACK_WINDOW, framesInWindow + 1);
+    underBudget = slow ? 0 : underBudget + 1;
+    const gapOk = nowMs - lastSwitchAt >= PLAYBACK_MIN_SWITCH_GAP_MS;
+    if (!s.slowPlayback) {
+      if (!gapOk || framesInWindow < PLAYBACK_WINDOW || popCount(slowWindow) < PLAYBACK_SLOW_IN_WINDOW) return;
+      // Degraded again soon after a restore: full resolution does not hold,
+      // so the next restore waits twice as long — the cycle settles on
+      // whatever the comp can actually sustain instead of pumping.
+      if (nowMs - lastRestoreAt < PLAYBACK_HOLD_MS) restoreDelayMs = Math.min(restoreDelayMs * 2, PLAYBACK_RESTORE_DELAY_MAX_MS);
+      lastSwitchAt = nowMs;
+      lastDegradeAt = nowMs;
+      resetPlaybackWindow();
       set({ slowPlayback: true });
-    } else if (s.slowPlayback && underBudget >= restoreNeed) {
+    } else {
       // Restoring is conservative: at the degraded size frames are cheap, so
-      // "under budget" here says little about full-res cost. Once restored,
-      // three slow frames bring it straight back down, and the next restore
-      // waits twice as long (restoreNeed) — the cycle settles on whatever the
-      // comp can actually sustain.
-      underBudget = 0;
-      sinceRestore = 0;
+      // "under budget" here says little about full-res cost — hence the wait
+      // after the degrade, the back-off and the long cheap run.
+      if (!gapOk || nowMs - lastDegradeAt < restoreDelayMs || underBudget < FAST_FRAMES_TO_RESTORE) return;
+      lastSwitchAt = nowMs;
+      lastRestoreAt = nowMs;
+      resetPlaybackWindow();
       set({ slowPlayback: false });
     }
   },

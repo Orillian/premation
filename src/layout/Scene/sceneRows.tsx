@@ -17,7 +17,7 @@ import type { TreeNode } from '@components/TreeView';
 import type { LayerInfo, LayerSearchFacts } from '@motion/engine-api';
 import { KIND_GLYPH_COLOR, KIND_ICON } from '@core/scene/sceneDerive';
 import { effectDisplayNames, type Effect } from '@core/inspector/effectCatalog';
-import { uiKindOf } from '@core/mirror/layerKinds';
+import { canBe3DLayer, uiKindOf } from '@core/mirror/layerKinds';
 import { mirrorIconName } from '@core/mirror/layerGlyph';
 import { mirrorLabelColor } from '@core/mirror/layerLabels';
 import { childOrderOf } from '@core/mirror/layerTree';
@@ -37,6 +37,12 @@ export interface SceneNodeData {
 export interface RowOptions {
   /** Draw a source preview instead of the kind glyph on media layers. */
   thumbnails?: boolean;
+  /**
+   * The composition's ACTIVE camera (core/mirror/activeCamera.ts): its row
+   * carries an "Active" mark, so the "3D" view says which of several cameras
+   * the shot is through. Null / absent = none marked.
+   */
+  activeCameraId?: string | null;
 }
 
 /**
@@ -129,6 +135,16 @@ function layerToTreeNode(m: DocumentMirror, id: string, opts: RowOptions): TreeN
       <span className={styles.pluginInertRow} title={`"${layer.generator}" came from a JavaScript plugin, which this version no longer runs.`}>
         {label}
         <Icon name="warning" size="sm" />
+      </span>
+    );
+  }
+
+  // The active camera (U5): the camera the comp renders through right now.
+  if (opts.activeCameraId && id === opts.activeCameraId && kind === 'camera') {
+    label = (
+      <span className={styles.activeCameraRow} title="Active camera — the topmost enabled camera at the playhead">
+        {label}
+        <span className={styles.activeCameraBadge} aria-label="active camera">Active</span>
       </span>
     );
   }
@@ -264,11 +280,14 @@ export function makeFactsReader(
       source = (named ?? (layer.kind === 'precomp' ? m.comp(id)?.settings.name : undefined))?.toLowerCase();
     }
 
+    const kind = rowKind(layer);
     return {
-      kind: rowKind(layer),
+      kind,
       label: mirrorLabelColor(layer),
       animated: m.layerKeyframes(id).size > 0,
       hasEffects: layer.effectCount > 0,
+      // The "3D" view's test: a device, or a layer whose 3D switch is on and means something.
+      threeD: kind === 'camera' || kind === 'light' || (layer.switches.threeD === true && canBe3DLayer(layer)),
       name: layer.name || id,
       shy: layer.switches.shy,
       effectNames: wantEffectNames ? effectNamesOf(id) : undefined,

@@ -143,6 +143,28 @@ describe('footer counts', () => {
   });
 });
 
+describe('the "3D" view (U5)', () => {
+  it('lists cameras, lights and 3D layers only, and marks the active camera', async () => {
+    const cam1 = await mk(ROOT, 'camera', 'Cam Low');
+    const cam2 = await mk(ROOT, 'camera', 'Cam Top');
+    const light = await mk(ROOT, 'light', 'Key');
+    await setNodeFlag(N.beta, { threeD: true });
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Only cameras, lights and 3D layers'));
+    const ids = rowIds();
+    expect(ids).toEqual(expect.arrayContaining([cam1, cam2, light, N.beta]));
+    expect(ids).not.toContain(N.alpha);
+    expect(ids).not.toContain(N.child);
+    // The topmost enabled camera is the active one — one mark, on it.
+    expect(within(rowFor(cam2)).getByLabelText('active camera')).toBeInTheDocument();
+    expect(within(rowFor(cam1)).queryByLabelText('active camera')).toBeNull();
+    // Pressed state and the clear button: it is a filter like the others.
+    expect(screen.getByLabelText('Only cameras, lights and 3D layers')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByLabelText('Clear layer filters'));
+    expect(rowIds()).toContain(N.alpha);
+  });
+});
+
 describe('"Only layers with keyframes" follows the animation, not the scene revision', () => {
   it('a keyframe added while the filter is on brings the layer in', async () => {
     renderPanel();

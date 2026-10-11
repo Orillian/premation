@@ -144,6 +144,7 @@ export function compRecordFromSettings(id: string, s: CompSettings): Composition
     ...(world.ssao !== undefined ? { ssao: world.ssao } : {}),
     ...(world.fog !== undefined ? { fog: world.fog } : {}),
     ...(world.groundShadows !== undefined ? { groundShadows: world.groundShadows } : {}),
+    ...(world.renderer !== undefined ? { renderer: world.renderer } : {}),
   } as CompositionSettings;
 }
 

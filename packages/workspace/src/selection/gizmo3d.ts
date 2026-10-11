@@ -197,6 +197,98 @@ export function buildGroundGridLines(
 }
 
 /**
+ * The 1·10ⁿ / 2·10ⁿ / 5·10ⁿ step nearest `raw` (comp px) — the rounding every
+ * CAD / DCC floor grid uses, so the cell size reads as a round number at any
+ * camera distance. `raw` ≤ 0 or non-finite → 1.
+ */
+export function niceGridStep(raw: number): number {
+  if (!(raw > 0) || !Number.isFinite(raw)) return 1;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const m = raw / pow;
+  const mant = m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10;
+  return mant * pow;
+}
+
+/** Minor cells per major cell: 1 → 5 (0.2), 2 → 4 (0.5), 5 → 5 (1): the next nice step down. */
+function minorSubdivisions(step: number): number {
+  const pow = 10 ** Math.floor(Math.log10(step));
+  const mant = Math.round(step / pow);
+  return mant === 2 ? 4 : 5;
+}
+
+export interface AdaptiveGroundGrid {
+  /** Major cell size, comp px (a nice step — see `niceGridStep`). */
+  step: number;
+  /** Minor cell size, comp px (`step` / 4 or / 5). */
+  minorStep: number;
+  /** Half-width of the floor drawn, comp px, from its centre. */
+  extent: number;
+  /** The floor's centre: under the comp's middle, on the ground plane, at z = 0. */
+  center: Vec3;
+  /** The X axis of the floor (constant z = 0) and its Z axis (constant x = compWidth / 2). */
+  axisX: GroundGridLine3D;
+  axisZ: GroundGridLine3D;
+  /** Every other major line, then the minor lines between them (axes excluded from both). */
+  major: GroundGridLine3D[];
+  minor: GroundGridLine3D[];
+}
+
+/**
+ * The adaptive ground grid (U2 of docs/PROGRAM_3D_PERF_UX.md): the floor
+ * `buildGroundGridLines` lays, but with a cell size that follows the camera —
+ * `cameraDistance` is how far the viewer is from the floor's centre in comp px
+ * divided by the viewport magnification, and the major step is the nice step
+ * nearest a 24th of it (the default camera over a 1080p comp at fit zoom
+ * lands on the 200 px cells the fixed grid drew). Two nested levels: `major`
+ * cells and `minor` cells inside them; the two axis lines are returned apart
+ * so they can be coloured. `cells` major cells each side of the centre.
+ *
+ * Distance fade is the painter's job (it needs screen space); this returns
+ * the geometry only. Pure.
+ */
+export function buildAdaptiveGroundGrid(
+  compWidth: number,
+  compHeight: number,
+  cameraDistance: number,
+  options: { cells?: number; groundLevel?: number } = {},
+): AdaptiveGroundGrid {
+  const cells = Math.max(1, Math.round(options.cells ?? 8));
+  const step = niceGridStep(cameraDistance / 24);
+  const subs = minorSubdivisions(step);
+  const minorStep = step / subs;
+  const extent = cells * step;
+  const cx = compWidth / 2;
+  const groundY = compHeight + (options.groundLevel ?? 0);
+  const zLine = (x: number, major: boolean): GroundGridLine3D => ({
+    start: { x, y: groundY, z: -extent }, end: { x, y: groundY, z: extent }, major,
+  });
+  const xLine = (z: number, major: boolean): GroundGridLine3D => ({
+    start: { x: cx - extent, y: groundY, z }, end: { x: cx + extent, y: groundY, z }, major,
+  });
+  const major: GroundGridLine3D[] = [];
+  const minor: GroundGridLine3D[] = [];
+  for (let i = -cells; i <= cells; i++) {
+    if (i !== 0) {
+      major.push(zLine(cx + i * step, true));
+      major.push(xLine(i * step, true));
+    }
+    if (i === cells) break;
+    for (let k = 1; k < subs; k++) {
+      const off = i * step + k * minorStep;
+      minor.push(zLine(cx + off, false));
+      minor.push(xLine(off, false));
+    }
+  }
+  return {
+    step, minorStep, extent,
+    center: { x: cx, y: groundY, z: 0 },
+    axisX: xLine(0, true),
+    axisZ: zLine(cx, true),
+    major, minor,
+  };
+}
+
+/**
  * Compute the 3D basis vectors (X, Y, Z unit directions) for the requested axis mode.
  */
 export function getGizmoBasis(

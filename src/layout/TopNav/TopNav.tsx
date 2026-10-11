@@ -333,6 +333,7 @@ export function TopNav(): JSX.Element {
   // the overflow checkmarks would go stale the moment the value changed).
   const draft3d = useGuidesStore((s) => s.draft3d);
   const groundGridVisible = useGuidesStore((s) => s.groundGridVisible);
+  const extendedViewer = useGuidesStore((s) => s.extendedViewer);
   const layerBoxesVisible = usePreferenceStore((s) => s.showLayerBounds);
   const deviceWireframesAll = usePreferenceStore((s) => s.deviceWireframesAll);
 
@@ -470,8 +471,9 @@ export function TopNav(): JSX.Element {
         // The view lock (Free/Fixed) is NOT mirrored here — the Composition
         // tab strip owns it (`EditorTabs.tsx`, the lock button in its panel
         // actions), so a copy would be a second switch for one state.
-        { type: 'checkbox', id: 'draft-3d', label: 'Draft 3D — fast preview, skips lights, shadows & DOF', checked: draft3d, onChange: () => useGuidesStore.getState().toggleDraft3d() },
+        { type: 'checkbox', id: 'draft-3d', label: 'Draft 3D — skips lights, shadows & DOF', checked: draft3d, onChange: () => useGuidesStore.getState().toggleDraft3d() },
         { type: 'checkbox', id: 'ground-grid', label: '3D Ground Plane', checked: groundGridVisible, onChange: () => useGuidesStore.getState().toggleGroundGridVisible() },
+        { type: 'checkbox', id: 'extended-viewer', label: 'Extended Viewer — Draw Layers Outside the Comp Frame', checked: extendedViewer, onChange: () => useGuidesStore.getState().toggleExtendedViewer() },
         { type: 'checkbox', id: 'layer-boxes', label: 'Layer Bounding Boxes', checked: layerBoxesVisible, onChange: () => usePreferenceStore.getState().set('showLayerBounds', !usePreferenceStore.getState().showLayerBounds) },
         { type: 'checkbox', id: 'device-wireframes', label: 'Camera & Light Wireframes for Unselected Layers', checked: deviceWireframesAll, onChange: () => usePreferenceStore.getState().set('deviceWireframesAll', !usePreferenceStore.getState().deviceWireframesAll) },
       ]

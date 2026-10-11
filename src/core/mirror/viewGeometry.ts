@@ -216,6 +216,37 @@ export function gizmoFrameOf(rec: PushedLayer | undefined): GizmoFrame | null {
   };
 }
 
+/**
+ * A camera's or light's gizmo anchor from its pushed scene3d record (U4): the
+ * world position the gizmo sits at, its point of interest (null without one),
+ * the parent chain and the light type — `transform3DOf` / `gizmoFrameOf` for a
+ * device, which has no layer transform. Null for an ambient light (no position
+ * meaning), an environment light, or a layer with no record yet.
+ */
+export interface DeviceGizmoAnchor {
+  device: 'camera' | 'light';
+  lightType: string;
+  world: Vec3;
+  poi: Vec3 | null;
+  parent: readonly number[];
+}
+
+export function deviceGizmoAnchorOf(kind: 'camera' | 'light', rec: PushedLayer | undefined): DeviceGizmoAnchor | null {
+  const s = rec?.scene;
+  if (!s) return null;
+  const parent = s.parent.length === 16 ? s.parent : [];
+  const poi = s.poi.length === 3 ? vec(s.poi) : null;
+  if (kind === 'camera' && s.role === 'camera') {
+    const cam = cameraOfLens(s.lens);
+    return cam ? { device: 'camera', lightType: '', world: cam.position, poi, parent } : null;
+  }
+  if (kind === 'light' && s.role === 'light' && s.position.length === 3) {
+    if (s.lightType === 'ambient' || s.lightType === 'environment') return null;
+    return { device: 'light', lightType: s.lightType, world: vec(s.position), poi, parent };
+  }
+  return null;
+}
+
 // ── Device handles (deviceHandles.ts over the push) ─────────────────────────
 
 /** Which of a device's two draggable points this is. */
