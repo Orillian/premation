@@ -36,12 +36,20 @@ export function enterShouldConfirm(target: EventTarget | null): boolean {
  * in a `DialogFooter`'s primary slot (the slot carries the marker, so a footer
  * rendered inside the body counts too); else the primary-variant `Button` in
  * the modal's footer chrome (`Button` stamps `data-variant`).
+ *
+ * A `DialogFooter` with an EMPTY primary slot has no Enter action: its
+ * destructive verb ("Install anyway", "Discard") is never one keystroke. The
+ * footer-chrome fallback (which also takes a danger button) is only for a
+ * footer that is not a `DialogFooter`.
  */
 export function findPrimaryButton(root: HTMLElement | null): HTMLButtonElement | null {
   if (!root) return null;
+  const marked = root.querySelector<HTMLButtonElement>(`button[${DIALOG_PRIMARY_ATTR}]`);
+  const slot = root.querySelector<HTMLElement>(`[${DIALOG_PRIMARY_ATTR}]:not(button)`);
   const el =
-    root.querySelector<HTMLButtonElement>(`button[${DIALOG_PRIMARY_ATTR}]`)
-    ?? root.querySelector<HTMLButtonElement>(`[${DIALOG_PRIMARY_ATTR}] button`)
-    ?? root.querySelector<HTMLButtonElement>('footer button[data-variant="primary"], footer button[data-variant="danger"]');
+    marked
+    ?? (slot
+      ? slot.querySelector<HTMLButtonElement>('button')
+      : root.querySelector<HTMLButtonElement>('footer button[data-variant="primary"], footer button[data-variant="danger"]'));
   return el && !el.disabled ? el : null;
 }
