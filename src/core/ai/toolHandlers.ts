@@ -442,23 +442,8 @@ const reparentLayer: AiTool['handler'] = async (input, ctx) => {
   if (!await ctx.scene.has(nodeId)) return fail((await unknownNode(ctx, nodeId)));
   if (parentId && !await ctx.scene.has(parentId)) return fail((await unknownNode(ctx, parentId)));
   if (parentId === nodeId) return fail('A layer cannot be its own parent.');
-  if (parentId && kindOf(nodeId) === 'adjustment') {
-    // The engine's keep-world re-parent reads an adjustment layer's world
-    // transform as identity (it draws no quad of its own), so a centred rain /
-    // grain pass landed at the parent's origin — the top-left corner under a
-    // beat root (B1). Re-parent without it and keep the world POSITION by
-    // hand: the old position less the parent's world translation (a rotated
-    // or scaled parent is not compensated; beat roots are plain nulls).
-    const before = await ctx.scene.get(nodeId);
-    await ctx.scene.reparent(nodeId, parentId, { preserveWorld: false });
-    const r = await engine().query({ type: 'getLayerTransforms', layers: [parentId], time: secondsToFlicks(activePlayheadSeconds()) });
-    const m = r.ok ? r.value.transforms[0]?.matrix : undefined;
-    if (before && m && (m[12] !== 0 || m[13] !== 0)) {
-      await ctx.scene.setProp(nodeId, 'x', before.x - (m[12] ?? 0));
-      await ctx.scene.setProp(nodeId, 'y', before.y - (m[13] ?? 0));
-    }
-    return ok(`Re-parented ${nodeId} to ${parentId}.`);
-  }
+  // An adjustment layer re-parents keep-world like any other: the engine reads
+  // its transform (worldxf.cpp is_drawable_kind, B1) instead of identity.
   await ctx.scene.reparent(nodeId, parentId ?? null);
   return ok(`Re-parented ${nodeId} to ${parentId ?? 'the top level'}.`);
 };

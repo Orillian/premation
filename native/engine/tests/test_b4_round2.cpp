@@ -499,3 +499,75 @@ TEST_CASE("setMemberKeyframes: writes one member apart from its siblings; '[]' r
   set.tracks.clear();
   CHECK_FALSE(is_ok(h.run(cmd(set))));
 }
+
+// ── B1 (docs/PROGRAM_3D_PERF_UX.md): an adjustment layer has a transform of its own ──
+// `setParent keepWorldTransform` read an adjustment layer's world as identity
+// (worldxf.cpp is_drawable_kind had no `adjustment`), so a centred grade dropped
+// to its new parent's origin; `getLayerTransforms` answered identity for it and
+// `getLayerBounds` nothing. Its box is its width × height (the comp's when it
+// has none) centred on its position, as frame_build.cpp draws it.
+
+TEST_CASE("B1: an adjustment layer keeps its world position through a keep-world re-parent, and has bounds", "[b1][adjustment]") {
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h);  // 1920 × 1080
+  const auto adj = make_layer(h, comp, api::LayerKind::adjustment);
+  const auto parent = make_layer(h, comp);
+  const auto set_position = [&](const api::LayerId& id, double x, double y) {
+    api::SetProperty s;
+    s.prop = {id, "transform/position"};
+    s.value = vec2(x, y);
+    REQUIRE(is_ok(h.run(cmd(s))));
+  };
+  set_position(adj, 960, 540);
+  set_position(parent, 300, 200);
+
+  const auto world_of = [&](const api::LayerId& id) {
+    api::GetLayerTransforms q;
+    q.layers = {id};
+    q.time = 0;
+    const auto list = query<api::LayerTransformList>(h, qry(q));
+    REQUIRE(list.transforms.size() == 1);
+    REQUIRE(list.transforms[0].matrix.size() == 16);
+    return std::pair<double, double>{list.transforms[0].matrix[12], list.transforms[0].matrix[13]};
+  };
+  const auto bounds_of = [&](const api::LayerId& id) {
+    api::GetLayerBounds q;
+    q.layers = {id};
+    q.time = 0;
+    q.space = api::BoundsSpace::comp;
+    const auto list = query<api::LayerBoundsList>(h, qry(q));
+    REQUIRE(list.bounds.size() == 1);
+    return list.bounds[0].bounds;
+  };
+  // Its own transform, not identity.
+  CHECK(world_of(adj).first == Approx(960));
+  CHECK(world_of(adj).second == Approx(540));
+  // The comp-sized box centred on its position (size-less adjustment layer).
+  const api::Rect before = bounds_of(adj);
+  CHECK(before.x == Approx(0));
+  CHECK(before.y == Approx(0));
+  CHECK(before.width == Approx(1920));
+  CHECK(before.height == Approx(1080));
+
+  api::SetParent p;
+  p.layers = {adj};
+  p.parent = parent;
+  p.keep_world_transform = true;
+  REQUIRE(is_ok(h.run(cmd(p))));
+  // The world position held: the local one moved by the parent's offset.
+  CHECK(world_of(adj).first == Approx(960));
+  CHECK(world_of(adj).second == Approx(540));
+  api::GetPropertyValues pv;
+  pv.props = {api::PropRef{adj, "transform/position"}};
+  pv.time = 0;
+  pv.evaluated = true;
+  const api::Vec2 local = std::get<api::Vec2>(query<api::PropertyValues>(h, qry(pv)).values.at(0).value.v);
+  CHECK(local.x == Approx(660));
+  CHECK(local.y == Approx(340));
+  const api::Rect after = bounds_of(adj);
+  CHECK(after.x == Approx(0));
+  CHECK(after.y == Approx(0));
+  CHECK(after.width == Approx(1920));
+  CHECK(after.height == Approx(1080));
+}

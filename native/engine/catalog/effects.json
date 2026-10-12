@@ -71,7 +71,7 @@
         "label": "Angle",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 135
       },
@@ -5180,7 +5180,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -1000,
         "max": 1000,
         "default": 0
       },
@@ -6551,7 +6551,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -10000,
         "max": 10000,
         "default": 0
       }
@@ -10053,7 +10053,7 @@
         "key": "noisePhase",
         "label": "Noise Phase",
         "type": "number",
-        "min": 0,
+        "min": -100000,
         "max": 100000,
         "precision": 0,
         "default": 0
@@ -10074,7 +10074,7 @@
         "key": "phase",
         "label": "Phase",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       },
@@ -10150,7 +10150,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       },
@@ -10224,7 +10224,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       },
@@ -11548,7 +11548,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       },
@@ -11641,7 +11641,7 @@
         "label": "Spin",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -720,
         "max": 720,
         "default": 180
       },
@@ -11751,7 +11751,7 @@
         "key": "phase",
         "label": "Phase",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       }
@@ -12076,7 +12076,7 @@
         "label": "Direction",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 0
       },
@@ -12612,7 +12612,7 @@
         "key": "noisePhase",
         "label": "Noise Phase",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       }
@@ -12627,7 +12627,7 @@
         "label": "Red Phase",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 0
       },
@@ -12636,7 +12636,7 @@
         "label": "Green Phase",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 0
       },
@@ -12645,7 +12645,7 @@
         "label": "Blue Phase",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 0
       },
@@ -13180,7 +13180,7 @@
         "type": "number",
         "group": "Physics",
         "unit": "°",
-        "min": 0,
+        "min": -360,
         "max": 360,
         "default": 0
       },
@@ -13420,7 +13420,7 @@
         "key": "evolution",
         "label": "Evolution",
         "type": "number",
-        "min": 0,
+        "min": -36000,
         "max": 36000,
         "default": 0
       },
@@ -16601,7 +16601,7 @@
         "label": "Rotation",
         "type": "number",
         "unit": "°",
-        "min": 0,
+        "min": -180,
         "max": 180,
         "default": 1
       },

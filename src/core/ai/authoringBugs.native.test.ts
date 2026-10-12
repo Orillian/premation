@@ -106,6 +106,33 @@ describe('B1: full-frame layers cover the comp', () => {
   });
 });
 
+describe('B1 (engine): an adjustment layer re-parents keep-world and has comp-sized bounds', () => {
+  it('reparent_layer under an offset root keeps the grade centred; getLayerBounds answers the comp box', async () => {
+    const r = await runToolTurn('AI: grade under root', [
+      { name: 'create_layer', args: { id: 'root', kind: 'null', name: 'Root B1', x: 300, y: 200 } },
+      { name: 'create_layer', args: { id: 'g', kind: 'adjustment', name: 'Grade B1' } },
+      { name: 'reparent_layer', args: { nodeId: 'g', parentId: 'root' } },
+    ]);
+    expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
+    await settleEdits();
+    const comp = useCompositionStore.getState().comp();
+    const id = idNamed('Grade B1');  // a name of its own: the suite keeps its earlier layers
+    // The world transform the engine answers: still the comp centre.
+    const t = (await h.query({ type: 'getLayerTransforms', layers: [id], time: 0 } as never)) as { transforms: { matrix: number[] }[] };
+    expect(t.transforms[0]!.matrix[12]).toBeCloseTo(comp.width / 2, 3);
+    expect(t.transforms[0]!.matrix[13]).toBeCloseTo(comp.height / 2, 3);
+    // And the local position moved by the root's offset (keep-world compensation).
+    const local = (await value(id, 'transform/position')) as { x: number; y: number };
+    expect(local.x).toBeCloseTo(comp.width / 2 - 300, 3);
+    expect(local.y).toBeCloseTo(comp.height / 2 - 200, 3);
+    // getLayerBounds: the comp-sized box (an adjustment layer used to answer nothing).
+    const b = (await h.query({ type: 'getLayerBounds', layers: [id], time: 0, space: 'comp', includeEffects: false } as never)) as { bounds: { bounds: { x: number; y: number; width: number; height: number } }[] };
+    expect(b.bounds).toHaveLength(1);
+    const box = b.bounds[0]!.bounds;
+    expect([box.x, box.y, box.width, box.height].map((v) => Math.round(v))).toEqual([0, 0, comp.width, comp.height]);
+  });
+});
+
 describe('B3: a text-animator sweep crosses the text once', () => {
   it('the compiled sweep takes every character from selected to unselected, monotonically', async () => {
     const s = script({
@@ -145,25 +172,28 @@ describe('B3: a text-animator sweep crosses the text once', () => {
   });
 });
 
-describe('B4: out-of-range effect params say what was clamped', () => {
-  it('add_effect params and update_effect_param report the clamp, and the engine holds the clamped value', async () => {
+describe('B4: out-of-range effect params say what was clamped; signed params keep their sign', () => {
+  it('a negative evolution is kept (catalog range symmetric), an opacity over 100 is clamped and said', async () => {
     const r = await runToolTurn('AI: snow', [
       { name: 'create_layer', args: { id: 'a', kind: 'adjustment', name: 'Snow' } },
-      { name: 'add_effect', args: { nodeId: 'a', type: 'snowfall', id: 'snow', params: { evolution: -90, wind: -40 } } },
-      { name: 'update_effect_param', args: { nodeId: 'a', effectId: 'snow', key: 'evolution', value: -45 } },
+      { name: 'add_effect', args: { nodeId: 'a', type: 'snowfall', id: 'snow', params: { evolution: -90, wind: -40, opacity: 150 } } },
+      { name: 'update_effect_param', args: { nodeId: 'a', effectId: 'snow', key: 'evolution', value: -50 } },
       { name: 'update_effect_param', args: { nodeId: 'a', effectId: 'snow', key: 'wind', value: 30 } },
+      { name: 'update_effect_param', args: { nodeId: 'a', effectId: 'snow', key: 'opacity', value: 140 } },
     ]);
     expect(r.results.filter((x) => !x.ok).map((x) => x.content)).toEqual([]);
-    const [, added, clamped, plain] = r.results;
-    expect(added!.content).toMatch(/evolution[^.]*clamped[^.]*-90[^.]*\b0\b/i);
-    expect(added!.content).not.toMatch(/wind[^.]*clamped/i);
-    expect(clamped!.content).toMatch(/clamped/i);
-    expect(clamped!.content).toMatch(/-45/);
-    expect(clamped!.content).toMatch(/0\.\.36000|0 to 36000/);
+    const [, added, kept, plain, clamped] = r.results;
+    expect(added!.content).toMatch(/opacity was clamped from 150 to 100/i);
+    expect(added!.content).not.toMatch(/evolution was clamped/i);
+    expect(added!.content).not.toMatch(/wind was clamped/i);
+    expect(kept!.content).not.toMatch(/clamped/i);
     expect(plain!.content).not.toMatch(/clamped/i);
+    expect(clamped!.content).toMatch(/clamped/i);
+    expect(clamped!.content).toMatch(/140/);
     await settleEdits();
     const id = idNamed('Snow');
-    expect(await value(id, 'effects/snow/evolution')).toBe(0);
+    expect(await value(id, 'effects/snow/evolution')).toBe(-50);
     expect(await value(id, 'effects/snow/wind')).toBe(30);
+    expect(await value(id, 'effects/snow/opacity')).toBe(100);
   });
 });

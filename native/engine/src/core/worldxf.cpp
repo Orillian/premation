@@ -11,10 +11,17 @@
 namespace premation::doc {
 namespace {
 
+/// geometry.ts `isDrawableKind`, plus `adjustment` (B1, docs/PROGRAM_3D_PERF_UX.md):
+/// an adjustment layer has a Transform like any other and the frame walk
+/// (snapshot_build.cpp Walk::local_of) places it and its children by it, so
+/// reading it as identity here made `setParent keepWorldTransform` drop a
+/// centred grade / rain pass to its new parent's origin and `getLayerTransforms`
+/// answer identity for it.
 bool is_drawable_kind(const std::string& kind) {
   if (kind.find('.') != std::string::npos) return true;
   return kind == "shape" || kind == "text" || kind == "image" || kind == "video" || kind == "svg" || kind == "light" ||
-         kind == "camera" || kind == "particle" || kind == "comp" || kind == "null" || kind == "group";
+         kind == "camera" || kind == "particle" || kind == "comp" || kind == "null" || kind == "group" ||
+         kind == "adjustment";
 }
 
 }  // namespace

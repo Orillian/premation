@@ -20,11 +20,15 @@ namespace {
 using api::ErrorCode;
 using Values = std::vector<std::pair<std::string, double>>;
 
-/// geometry.ts `isDrawableKind`.
+/// geometry.ts `isDrawableKind`, plus `adjustment` (B1, docs/PROGRAM_3D_PERF_UX.md):
+/// an adjustment layer's quad is its box (frame_build.cpp adjustment_to_renderable:
+/// width × height centred on its position, the comp's size when it has none),
+/// so getLayerBounds answers that box instead of nothing.
 bool is_drawable_kind(const std::string& kind) {
   if (kind.find('.') != std::string::npos) return true;
   return kind == "shape" || kind == "text" || kind == "image" || kind == "video" || kind == "svg" || kind == "light" ||
-         kind == "camera" || kind == "particle" || kind == "comp" || kind == "null" || kind == "group";
+         kind == "camera" || kind == "particle" || kind == "comp" || kind == "null" || kind == "group" ||
+         kind == "adjustment";
 }
 
 std::optional<double> value_of(const Values& av, std::string_view k) {
@@ -59,7 +63,7 @@ std::pair<double, double> kind_size(const std::string& kind, double compW, doubl
   if (kind == "particle") return {140, 140};
   if (kind == "null") return {60, 60};
   if (kind == "group") return {280, 280};
-  if (kind == "comp") return {compW, compH};
+  if (kind == "comp" || kind == "adjustment") return {compW, compH};  // B1: a size-less adjustment layer is comp-sized
   if (kind == "svg" || kind == "image") return {280, 180};
   if (kind == "shape") return {220, 220};
   if (kind == "text") return {320, 80};

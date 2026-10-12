@@ -15,6 +15,8 @@
 
 #include "bake_chain.hpp"
 #include "canvas.hpp"
+#include "effects/canvas_effects.hpp"
+#include "raster/json.hpp"
 #include "json.hpp"
 #include "parity_rebless.hpp"
 #include "recording_canvas.hpp"
@@ -165,4 +167,47 @@ TEST_CASE("footage bake: the mask matte lands on the bitmap (bake_footage)", "[s
     CHECK(alpha_at(*c, 40, 20) == 255);
   }
   CHECK(unsupported.empty());
+}
+
+// ── B5 (docs/PROGRAM_3D_PERF_UX.md): Light Sweep lights the layer, never its box ──
+// The CPU twin of the GPU chain's light-sweep (the headless engine, a baked
+// stack): in every Light Reception mode the band is cut to the layer's alpha —
+// AE's CC Light Sweep. Mode 1 (add) used to paint the whole box.
+
+TEST_CASE("B5: the CPU light sweep leaves the layer's transparent box transparent in every composite mode", "[scene][bake][b5]") {
+  const raster::CanvasOptions opts;
+  const auto frame = [&opts] {
+    // An 80 × 40 layer with a dark grey 40 × 20 block in the middle.
+    auto c = raster::Canvas2D::make(80, 40, opts);
+    std::vector<std::uint8_t> px(80U * 40U * 4U, 0);
+    for (std::uint32_t y = 10; y < 30; ++y) {
+      for (std::uint32_t x = 20; x < 60; ++x) {
+        const std::size_t i = (static_cast<std::size_t>(y) * 80 + x) * 4;
+        px[i] = px[i + 1] = px[i + 2] = 64;
+        px[i + 3] = 255;
+      }
+    }
+    c->putImageData(px, 80, 40, 0, 0);
+    return c;
+  };
+  const auto at = [](const raster::Canvas2D& c, std::uint32_t x, std::uint32_t y, std::size_t ch) {
+    return c.pixels().at((static_cast<std::size_t>(y) * c.width() + x) * 4 + ch);
+  };
+  for (const int mode : {0, 1, 2, 3, 4}) {
+    INFO("composite " << mode);
+    auto c = frame();
+    raster::json::Value params;
+    std::string err;
+    REQUIRE(raster::json::parse(R"({"position":50,"sweepWidth":400,"angle":0,"color":"#ffffff","intensity":100,"softness":50,"composite":)" +
+                                    std::to_string(mode) + "}",
+                                params, err));
+    REQUIRE(premation::effects::run_canvas_effect("light-sweep", params, *c, 80, 40));
+    // Outside the block: still nothing.
+    CHECK(at(*c, 5, 5, 3) == 0);
+    CHECK(at(*c, 75, 35, 3) == 0);
+    CHECK(at(*c, 40, 3, 3) == 0);
+    // Inside the block: still opaque, and (bar multiply, which darkens) lit.
+    CHECK(at(*c, 40, 20, 3) == 255);
+    if (mode != 3) CHECK(at(*c, 40, 20, 1) > 64);
+  }
 }

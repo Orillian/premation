@@ -269,32 +269,6 @@ void draw_light_rays(Canvas2D& oc, double w, double h, const Value& p) {
   });
 }
 
-void draw_light_sweep(Canvas2D& oc, double w, double h, const Value& p) {
-  const double a = clamp01_cs(num(p, "intensity") / 100);
-  const double width = num(p, "sweepWidth");
-  if (a <= 0 || width <= 0) return;
-  const double rad = (num(p, "angle") * kPi) / 180;
-  const double span = std::abs(w * cos_js(rad)) + std::abs(h * sin_js(rad));
-  const double t = num(p, "position") / 100;
-  const double cx = w / 2 + cos_js(rad) * (t - 0.5) * span;
-  const double cy = h / 2 + sin_js(rad) * (t - 0.5) * span;
-  const double half = width / 2;
-  const double soft = clamp01_cs(num(p, "softness") / 100);
-  const std::string color = str(p, "color", "#ffffff");
-  with_composite(oc, num(p, "composite"), [&] {
-    oc.save();
-    const Grad g = linear(cx - cos_js(rad) * half, cy - sin_js(rad) * half, cx + cos_js(rad) * half, cy + sin_js(rad) * half);
-    g.stop(0, rgba(color, 0));
-    g.stop(std::max(0.001, 0.5 - 0.5 * (1 - soft)), rgba(color, a * 0.5));
-    g.stop(0.5, rgba(color, a));
-    g.stop(std::min(0.999, 0.5 + 0.5 * (1 - soft)), rgba(color, a * 0.5));
-    g.stop(1, rgba(color, 0));
-    oc.setFillStyle(g.style());
-    oc.fillRect(0, 0, w, h);
-    oc.restore();
-  });
-}
-
 // ── canvas2dEffects.ts, round two: the styles and drawn passes (E4) ──────────
 
 std::string trim_ws(const std::string& s) {
@@ -458,6 +432,62 @@ void apply_beam(CanvasEffectContext& /*x*/, Canvas2D& oc, double w, double h, co
   oc.lineTo(hx, hy);
   oc.stroke();
   oc.restore();
+}
+
+/// canvas2dEffects.ts drawLightSweep, inside the layer's own alpha (B5,
+/// docs/PROGRAM_3D_PERF_UX.md): AE's CC Light Sweep lights the LAYER — its
+/// glyphs, its shape — never the box around it, in every Light Reception
+/// mode. The TS painted the band over the whole box under the composite mode,
+/// so modes 0–3 (over, add, screen, multiply) lit the transparent box of a text
+/// or shape layer; only mode 4 (source-atop) was masked. The band is now
+/// painted on its own canvas, cut to the layer's silhouette (destination-in),
+/// and landed under the mode. Mode 4 keeps its direct source-atop paint: the
+/// same pixels, and the op program the parity fixture froze.
+void apply_light_sweep(CanvasEffectContext& x, Canvas2D& oc, double w, double h, const Value& p) {
+  const double a = clamp01_cs(num(p, "intensity") / 100);
+  const double width = num(p, "sweepWidth");
+  if (a <= 0 || width <= 0) return;
+  const double rad = (num(p, "angle") * kPi) / 180;
+  const double span = std::abs(w * cos_js(rad)) + std::abs(h * sin_js(rad));
+  const double t = num(p, "position") / 100;
+  const double cx = w / 2 + cos_js(rad) * (t - 0.5) * span;
+  const double cy = h / 2 + sin_js(rad) * (t - 0.5) * span;
+  const double half = width / 2;
+  const double soft = clamp01_cs(num(p, "softness") / 100);
+  const std::string color = str(p, "color", "#ffffff");
+  const double mode = num(p, "composite");
+  const auto band_style = [&] {
+    const Grad g = linear(cx - cos_js(rad) * half, cy - sin_js(rad) * half, cx + cos_js(rad) * half, cy + sin_js(rad) * half);
+    g.stop(0, rgba(color, 0));
+    g.stop(std::max(0.001, 0.5 - 0.5 * (1 - soft)), rgba(color, a * 0.5));
+    g.stop(0.5, rgba(color, a));
+    g.stop(std::min(0.999, 0.5 + 0.5 * (1 - soft)), rgba(color, a * 0.5));
+    g.stop(1, rgba(color, 0));
+    return g.style();
+  };
+  if (composite_for(mode) == "source-atop") {
+    with_composite(oc, mode, [&] {
+      oc.save();
+      oc.setFillStyle(band_style());
+      oc.fillRect(0, 0, w, h);
+      oc.restore();
+    });
+    return;
+  }
+  const auto uw = static_cast<std::uint32_t>(std::max(1.0, w));
+  const auto uh = static_cast<std::uint32_t>(std::max(1.0, h));
+  Canvas2D& band = x.scratch(oc, "light-sweep-band", uw, uh);
+  reset(band, w, h);
+  band.setFillStyle(band_style());
+  band.fillRect(0, 0, w, h);
+  (void)band.setGlobalCompositeOperation("destination-in");
+  draw_at(band, silhouette_of(x, oc), 0, 0);
+  with_composite(oc, mode, [&] {
+    oc.save();
+    oc.setTransform({});
+    draw_at(oc, band, 0, 0);
+    oc.restore();
+  });
 }
 
 /// canvas2dEffects.ts applyInterior: an interior band inside the layer's own alpha.
@@ -794,7 +824,7 @@ void apply_cc_repetile(CanvasEffectContext& x, Canvas2D& oc, double w, double h,
 }
 
 using CtxFn = void (*)(CanvasEffectContext&, Canvas2D&, double, double, const Value&);
-constexpr std::array<std::pair<std::string_view, CtxFn>, 10> kContextEffects{{
+constexpr std::array<std::pair<std::string_view, CtxFn>, 11> kContextEffects{{
     {"four-color-gradient", apply_four_color_gradient},
     {"stroke", apply_stroke},
     {"beam", apply_beam},
@@ -805,10 +835,11 @@ constexpr std::array<std::pair<std::string_view, CtxFn>, 10> kContextEffects{{
     {"directional-blur", apply_directional_blur},
     {"transform", apply_transform},
     {"cc-repetile", apply_cc_repetile},
+    {"light-sweep", apply_light_sweep},
 }};
 
 using Fn = void (*)(Canvas2D&, double, double, const Value&);
-constexpr std::array<std::pair<std::string_view, Fn>, 9> kEffects{{
+constexpr std::array<std::pair<std::string_view, Fn>, 8> kEffects{{
     {"fill", apply_fill},
     {"linear-wipe", apply_linear_wipe},
     {"checkerboard", draw_checkerboard},
@@ -817,7 +848,6 @@ constexpr std::array<std::pair<std::string_view, Fn>, 9> kEffects{{
     {"ellipse", draw_ellipse},
     {"radio-waves", draw_radio_waves},
     {"light-rays", draw_light_rays},
-    {"light-sweep", draw_light_sweep},
 }};
 
 }  // namespace
