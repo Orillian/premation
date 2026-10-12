@@ -95,6 +95,11 @@ export function mirrorEffectParam(tree: MirrorTreeLike | undefined, effectId: st
     case 'maskPath':
       return typeof v === 'string' ? v : '';
     case 'curve': return Array.isArray(v) ? (v as EffectParamValue) : undefined;
+    // Plugin SDK 1.1 params (pluginEffectDefs.ts KIND_OF): without these the card
+    // showed the declared default after any re-render, not what the document holds.
+    case 'text': return typeof v === 'string' ? v : undefined;
+    case 'gradient': return Array.isArray(v) ? (v as EffectParamValue) : undefined;
+    case 'file': return typeof v === 'string' ? v : '';
     default: return undefined;
   }
 }

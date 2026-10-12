@@ -17,6 +17,9 @@ import { bootEngine, engine, engineIdle, shutdownEngine } from '@core/engine/eng
 import { resetEngineOwnership } from '@core/engine/engineOwnership';
 import { resetProcessEngine } from '@core/engine/process/processEngine';
 import { nativeEngineExe, startNativeEngine, type NativeEngine } from '@core/engine/__testHelpers__/nativeEngine';
+import { refreshPluginEffectDefs } from '@core/inspector/pluginEffectDefs';
+import { mirrorEffects } from '@core/mirror/effects';
+import { documentMirror } from '@stores/documentMirror';
 
 jest.setTimeout(120_000);
 
@@ -106,5 +109,24 @@ maybe('plugin SDK 1.1 params, engine side', () => {
     // No longer referenced: Remove Unused takes it.
     unwrap(await client.execute({ type: 'setProperty', prop: { layer, path: `${fx}/p4` }, value: { kind: 'string', value: '' } }));
     expect(unwrap(await client.execute({ type: 'removeUnusedItems' })).items).toContain(warm);
+  });
+
+  // Found on the RTX box (2026-10-13): the Effect Controls card showed the
+  // declared defaults ("rgb", two gradient stops, no LUT) after any re-render —
+  // the mirror never read TEXT / GRADIENT / FILE values back.
+  it('the mirror reads TEXT, GRADIENT and FILE values back for the effect card', async () => {
+    await refreshPluginEffectDefs(client);
+    const layer = (unwrap(await client.execute({ type: 'createLayer', comp: 'comp_root', kind: 'solid', name: 'M', init: [] } as never)) as unknown as { layer: string }).layer;
+    const fx = unwrap(await client.execute({ type: 'addEffect', layers: [layer], effect: GRADEMAP, params: [] })).groups[0]!;
+    const stops = [[0, 0, 0, 0, 1], [0.5, 1, 0.5, 0, 1], [1, 1, 1, 1, 1]];
+    const warm = unwrap(await client.execute({ type: 'importFiles', files: [{ path: path.join(dir, 'warm.cube'), asSequence: false, createComposition: false, asData: true }] })).items[0]!;
+    unwrap(await client.execute({ type: 'setProperty', prop: { layer, path: `${fx}/p1` }, value: { kind: 'string', value: 'r' } }));
+    unwrap(await client.execute({ type: 'setProperty', prop: { layer, path: `${fx}/p3` }, value: { kind: 'json', value: JSON.stringify(stops) } }));
+    unwrap(await client.execute({ type: 'setProperty', prop: { layer, path: `${fx}/p4` }, value: { kind: 'string', value: warm } }));
+    await engineIdle();
+    const m = documentMirror().start();
+    const tree = await m.loadTree(layer);
+    const card = mirrorEffects(tree).find((e) => e.type === GRADEMAP);
+    expect(card?.params).toMatchObject({ p1: 'r', p3: stops, p4: warm });
   });
 });
