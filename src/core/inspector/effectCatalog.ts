@@ -251,13 +251,15 @@ export function effectHasOpacity(e: Effect): boolean {
 
 /**
  * AE Effect Controls names: "Gaussian Blur", "Gaussian Blur 2" for the second
- * of a kind, numbered in stack order (the first keeps its plain name).
+ * of a kind, numbered in stack order (the first keeps its plain name). A loaded
+ * plugin's effect is named by its plugin ("Color Grade (GPU)"), not its match
+ * name; only an effect nobody provides (a missing plugin) shows its type.
  */
 export function effectDisplayNames(effects: ReadonlyArray<Effect>): Map<string, string> {
   const seen = new Map<string, number>();
   const out = new Map<string, string>();
   for (const e of effects) {
-    const label = catalogEffect(e.type)?.label ?? e.type;
+    const label = effectDefFor(e.type)?.label ?? e.type;
     const n = (seen.get(e.type) ?? 0) + 1;
     seen.set(e.type, n);
     out.set(e.id, n === 1 ? label : `${label} ${n}`);
