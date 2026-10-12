@@ -184,11 +184,13 @@ export const COMMANDS: Readonly<Record<CommandType, CommandInfo>> = {
   setPluginEnabled: { id: 870, kind: 'control', coalesce: false, family: "Plugins", result: "Empty", doc: "Enable/disable an installed plugin for this session (install/uninstall stays in the editor's plugin manager; Electron persists the choice and passes `--plugin-disabled` at the next start)." },
   rescanPlugins: { id: 872, kind: 'control', coalesce: false, family: "Plugins", result: "PluginList", doc: "AE parity 2.7 — rescan the plugin folders (`--plugins`, PREMATION_PLUGIN_PATH) after an install: new bundles load and their effects become available without a restart; plugins already loaded stay loaded until the engine restarts (a loaded module cannot be swapped under live instances). Returns every plugin afterwards, like listPlugins." },
   setPluginData: { id: 871, kind: 'edit', coalesce: false, family: "Plugins", result: "Empty", doc: "Store plugin data in the DOCUMENT (AE sequence data / arbitrary-data params). Undoable, saved with the project." },
+  runPluginCommand: { id: 873, kind: 'edit', coalesce: false, family: "Plugins", result: "PluginCommandResult", doc: "P7a — run a native plugin's command in the engine (core thread, crash-guarded, under the watchdog). `comp`, `layers` and `time` are what the user had (the active composition, the selected layers top first, the playhead; absent comp / time = the engine's active composition and playhead); `args` is JSON handed to the plugin. Every edit the plugin makes through `engine_command` is ONE undo entry labelled with the command's name, and the log holds those edits (a replay never runs the plugin). `notFound`: no such command or its plugin is not loaded; the plugin's error or a crash: `internal`, nothing changed (a crash disables the command until setPluginEnabled(true))." },
 };
 
 export const QUERIES: Readonly<Record<QueryType, QueryInfo>> = {
   getLayerTrackers: { id: 1090, family: "Jobs", result: "LayerTrackers", doc: "The layer's saved trackers, sample times in composition time." },
   getCameraSolve: { id: 1091, family: "Jobs", result: "CameraSolveAnswer", doc: "" },
+  listPluginCommands: { id: 1092, family: "Plugins", result: "PluginCommandList", doc: "P7a — every native plugin command, in load order (a disabled plugin's are listed with enabled = false; the editor hides them)." },
   getDocument: { id: 1000, family: "Model", result: "DocumentSnapshot", doc: "" },
   exportDocument: { id: 1088, family: "Model", result: "ExportedDocument", doc: "F2 — the whole project document at the answer's revision, exactly as saveProject writes it (cloud upload, versions, templates and export read it here instead of capturing a copy in the page). Byte order of keys is the engine's; parse it, do not compare bytes across engines." },
   getComposition: { id: 1001, family: "Model", result: "CompositionDetails", doc: "" },
@@ -280,4 +282,4 @@ export const EVENTS: Readonly<Record<EventType, EventInfo>> = {
 };
 
 /** Size of the schema, for docs and tests. */
-export const SCHEMA_COUNTS = {"enums":91,"structs":522,"unions":11,"commands":169,"queries":54,"events":33} as const;
+export const SCHEMA_COUNTS = {"enums":91,"structs":531,"unions":11,"commands":170,"queries":55,"events":33} as const;

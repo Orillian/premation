@@ -3424,6 +3424,76 @@ export interface SetPluginData {
   data: Uint8Array;
 }
 
+/** P7a — a native plugin's command (manifest `commands`, docs/PLUGIN_SDK.md "Commands"): the Plugins menu and the command palette list them. */
+export interface PluginCommandInfo {
+  plugin: string;
+  /** The manifest command id (unique within the plugin). */
+  id: string;
+  name: string;
+  /** The submenu of the Plugins menu it goes under ('' = the plugin's own). */
+  menu: string;
+  /** False when the plugin is not loaded (disabled, failed, quarantined, locked) or the command crashed this session. */
+  enabled: boolean;
+  /** Why it is not enabled ('' otherwise). */
+  error: string;
+}
+
+export interface PluginCommandList {
+  commands: PluginCommandInfo[];
+}
+
+/** P7b — a native plugin's footage importer (manifest `importers`): files with these extensions (lower case, no dot) import and render through it. */
+export interface PluginImporterInfo {
+  id: string;
+  name: string;
+  extensions: string[];
+}
+
+/** P7c — one declared option of a plugin output module: `type` 'popup' (`choices`, the value a 1-based index), 'number' (`min` / `max`) or 'checkbox' (0 / 1). */
+export interface PluginOutputOption {
+  id: string;
+  name: string;
+  type: string;
+  choices: string[];
+  defaultValue: number;
+  min?: number;
+  max?: number;
+}
+
+/** P7c — a native plugin's output module (manifest `outputModules`): a Render Queue format, `plugin:<plugin>/<id>`. */
+export interface PluginOutputModuleInfo {
+  id: string;
+  name: string;
+  extension: string;
+  options: PluginOutputOption[];
+}
+
+/** P7d — a dockable panel a plugin ships (manifest `panels`): `page` under the bundle's `ui/` folder, served as `plugin-ui://<plugin>/<page>`. */
+export interface PluginPanelInfo {
+  id: string;
+  name: string;
+  page: string;
+}
+
+/** P7a — every native plugin command, in load order (a disabled plugin's are listed with enabled = false; the editor hides them). */
+export interface ListPluginCommands {}
+
+/** P7a — run a native plugin's command in the engine (core thread, crash-guarded, under the watchdog). `comp`, `layers` and `time` are what the user had (the active composition, the selected layers top first, the playhead; absent comp / time = the engine's active composition and playhead); `args` is JSON handed to the plugin. Every edit the plugin makes through `engine_command` is ONE undo entry labelled with the command's name, and the log holds those edits (a replay never runs the plugin). `notFound`: no such command or its plugin is not loaded; the plugin's error or a crash: `internal`, nothing changed (a crash disables the command until setPluginEnabled(true)). */
+export interface RunPluginCommand {
+  plugin: string;
+  command: string;
+  comp?: ItemId;
+  layers: LayerId[];
+  time?: Time;
+  args?: string;
+}
+
+/** `message`: the plugin's note (PrCommandOut.return_msg). `edits`: how many edit commands it applied. */
+export interface PluginCommandResult {
+  message: string;
+  edits: number;
+}
+
 /** A project item as the mirror holds it. */
 export interface ItemInfo {
   id: ItemId;
@@ -4081,6 +4151,11 @@ export interface PluginInfo {
   gpu: boolean;
   /** Plugin SDK 1.1 — the bundle ships a panel (`ui/index.html`), shown in a sandboxed frame (`plugin-ui://<id>/index.html`). */
   panel: boolean;
+  /** P7 — what else the plugin contributes (docs/PLUGIN_SDK.md): commands (Plugins menu), footage importers, Render Queue output modules, dockable panels. Listed from the manifest, also while it is not loaded. */
+  commands: PluginCommandInfo[];
+  importers: PluginImporterInfo[];
+  outputModules: PluginOutputModuleInfo[];
+  panels: PluginPanelInfo[];
   /** Plugin SDK 1.2 — the presets the bundle ships (manifest `presets`, `presets/*.json`), listed under the plugin in Effects & Presets. Empty until the plugin is loaded (the values are checked against its params). */
   presets: PluginPresetInfo[];
 }
@@ -5579,7 +5654,8 @@ export type Command =
   | ({ type: 'setCaptions' } & SetCaptions)
   | ({ type: 'setPluginEnabled' } & SetPluginEnabled)
   | ({ type: 'rescanPlugins' } & RescanPlugins)
-  | ({ type: 'setPluginData' } & SetPluginData);
+  | ({ type: 'setPluginData' } & SetPluginData)
+  | ({ type: 'runPluginCommand' } & RunPluginCommand);
 export type CommandType = Command['type'];
 
 /** The typed result of a successful command; same key as its command. */
@@ -5752,13 +5828,15 @@ export type CommandResult =
   | ({ type: 'setCaptions' } & LayerList)
   | ({ type: 'setPluginEnabled' } & Empty)
   | ({ type: 'rescanPlugins' } & PluginList)
-  | ({ type: 'setPluginData' } & Empty);
+  | ({ type: 'setPluginData' } & Empty)
+  | ({ type: 'runPluginCommand' } & PluginCommandResult);
 export type CommandResultType = CommandResult['type'];
 
 /** Every query, keyed by its schema id. */
 export type Query =
   | ({ type: 'getLayerTrackers' } & GetLayerTrackers)
   | ({ type: 'getCameraSolve' } & GetCameraSolve)
+  | ({ type: 'listPluginCommands' } & ListPluginCommands)
   | ({ type: 'getDocument' } & GetDocument)
   | ({ type: 'exportDocument' } & ExportDocument)
   | ({ type: 'getComposition' } & GetComposition)
@@ -5817,6 +5895,7 @@ export type QueryType = Query['type'];
 export type QueryResult =
   | ({ type: 'getLayerTrackers' } & LayerTrackers)
   | ({ type: 'getCameraSolve' } & CameraSolveAnswer)
+  | ({ type: 'listPluginCommands' } & PluginCommandList)
   | ({ type: 'getDocument' } & DocumentSnapshot)
   | ({ type: 'exportDocument' } & ExportedDocument)
   | ({ type: 'getComposition' } & CompositionDetails)
@@ -6079,6 +6158,7 @@ export interface CommandArgs {
   setPluginEnabled: SetPluginEnabled;
   rescanPlugins: RescanPlugins;
   setPluginData: SetPluginData;
+  runPluginCommand: RunPluginCommand;
 }
 
 /** Result of each command, by name. */
@@ -6252,12 +6332,14 @@ export interface CommandResults {
   setPluginEnabled: Empty;
   rescanPlugins: PluginList;
   setPluginData: Empty;
+  runPluginCommand: PluginCommandResult;
 }
 
 /** Arguments of each query, by name. */
 export interface QueryArgs {
   getLayerTrackers: GetLayerTrackers;
   getCameraSolve: GetCameraSolve;
+  listPluginCommands: ListPluginCommands;
   getDocument: GetDocument;
   exportDocument: ExportDocument;
   getComposition: GetComposition;
@@ -6316,6 +6398,7 @@ export interface QueryArgs {
 export interface QueryResults {
   getLayerTrackers: LayerTrackers;
   getCameraSolve: CameraSolveAnswer;
+  listPluginCommands: PluginCommandList;
   getDocument: DocumentSnapshot;
   exportDocument: ExportedDocument;
   getComposition: CompositionDetails;

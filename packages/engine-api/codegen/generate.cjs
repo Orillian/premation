@@ -1390,6 +1390,30 @@ function genFixtures(model) {
  * native/engine/catalog, see catalog/embed_catalog.cmake): wire id, history
  * kind and name of every command, in schema order.
  */
+/**
+ * The schema as JSON data (native/protocol/generated/api_schema.inc) for the
+ * engine's reflective JSON ⇄ wire translation (native/engine/src/plugins/api_json.cpp):
+ * a native plugin command speaks the API in its TypeScript object form.
+ *   aliases  { name: scalar }
+ *   enums    { name: [[member, num], …] }
+ *   structs  { name: [[field, num, type, list(0|1), optional(0|1)], …] }   (field-number order)
+ *   unions   { name: [flat(0|1), [[variant, num, type], …]] }
+ * Emitted as string chunks (each well under compiler literal limits), concatenated at runtime.
+ */
+function genCppSchema(model) {
+  const data = { aliases: {}, enums: {}, structs: {}, unions: {} };
+  for (const a of model.aliases.values()) data.aliases[a.name] = a.target;
+  for (const e of model.enums.values()) data.enums[e.name] = e.members.map((m) => [m.name, m.num]);
+  for (const s of model.structs.values()) {
+    data.structs[s.name] = sortedFields(s).map((f) => [f.name, f.num, f.type.name, f.type.list ? 1 : 0, f.optional ? 1 : 0]);
+  }
+  for (const u of model.unions.values()) data.unions[u.name] = [u.flat ? 1 : 0, sortedVariants(u).map((v) => [v.name, v.num, v.type])];
+  const text = JSON.stringify(data);
+  const L = [`// ${HEADER_NOTE}`, '//', '// The engine API schema as JSON (generate.cjs genCppSchema), in chunks: #include inside an array initializer.'];
+  for (let i = 0; i < text.length; i += 4000) L.push(`R"PRSCHEMA(${text.slice(i, i + 4000)})PRSCHEMA",`);
+  return `${L.join('\n')}\n`;
+}
+
 function genCommandsJson(model) {
   const rows = model.commands.map((c) => ({
     id: c.id,
@@ -1561,6 +1585,8 @@ function generateAll(model = loadSchema()) {
     [join(CPP_OUT, 'engine_api.hpp')]: genCppHeader(model),
     [join(CPP_OUT, 'engine_api.cpp')]: genCppSource(model),
     [join(CPP_OUT, 'fixtures.inc')]: genFixtures(model),
+    // The schema as data, for the engine's JSON form of the API (plugin commands, P7a).
+    [join(CPP_OUT, 'api_schema.inc')]: genCppSchema(model),
     // The command classes the C++ catalog embeds (native/engine/catalog/embed_catalog.cmake).
     [join(CPP_OUT, 'commands.json')]: genCommandsJson(model),
     // The engine's catalog (native/engine/catalog/*.json) for the UI's synchronous metadata.

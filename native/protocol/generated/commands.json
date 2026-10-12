@@ -843,5 +843,10 @@
     "id": 871,
     "kind": "edit",
     "type": "setPluginData"
+  },
+  {
+    "id": 873,
+    "kind": "edit",
+    "type": "runPluginCommand"
   }
 ]

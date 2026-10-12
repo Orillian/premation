@@ -9733,6 +9733,287 @@ function decS_SetPluginData(r: Reader, end: number, o: any): T.SetPluginData {
   o.data = v_data;
   return o;
 }
+function encS_PluginCommandInfo(w: Writer, v: T.PluginCommandInfo): void {
+  w.byte(10); w.str(v.plugin);
+  w.byte(18); w.str(v.id);
+  w.byte(26); w.str(v.name);
+  w.byte(34); w.str(v.menu);
+  w.byte(40); w.bool(v.enabled);
+  w.byte(50); w.str(v.error);
+}
+function decS_PluginCommandInfo(r: Reader, end: number, o: any): T.PluginCommandInfo {
+  let h_plugin = false;
+  let h_id = false;
+  let h_name = false;
+  let h_menu = false;
+  let h_enabled = false;
+  let h_error = false;
+  let v_plugin: string | undefined;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  let v_menu: string | undefined;
+  let v_enabled: boolean | undefined;
+  let v_error: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_plugin = r.str(); h_plugin = true; break;
+      case 18: v_id = r.str(); h_id = true; break;
+      case 26: v_name = r.str(); h_name = true; break;
+      case 34: v_menu = r.str(); h_menu = true; break;
+      case 40: v_enabled = r.bool(); h_enabled = true; break;
+      case 50: v_error = r.str(); h_error = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_plugin) throw new DecodeError('PluginCommandInfo.plugin: missing', 'missingField');
+  if (!h_id) throw new DecodeError('PluginCommandInfo.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('PluginCommandInfo.name: missing', 'missingField');
+  if (!h_menu) throw new DecodeError('PluginCommandInfo.menu: missing', 'missingField');
+  if (!h_enabled) throw new DecodeError('PluginCommandInfo.enabled: missing', 'missingField');
+  if (!h_error) throw new DecodeError('PluginCommandInfo.error: missing', 'missingField');
+  o.plugin = v_plugin;
+  o.id = v_id;
+  o.name = v_name;
+  o.menu = v_menu;
+  o.enabled = v_enabled;
+  o.error = v_error;
+  return o;
+}
+function encS_PluginCommandList(w: Writer, v: T.PluginCommandList): void {
+  { const a = v.commands; for (let i = 0; i < a.length; i++) { w.byte(10); { const s = w.beginLd(); encS_PluginCommandInfo(w, a[i]!); w.endLd(s); } } }
+}
+function decS_PluginCommandList(r: Reader, end: number, o: any): T.PluginCommandList {
+  const l_commands: T.PluginCommandInfo[] = [];
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: l_commands.push(decS_PluginCommandInfo(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  o.commands = l_commands;
+  return o;
+}
+function encS_PluginImporterInfo(w: Writer, v: T.PluginImporterInfo): void {
+  w.byte(10); w.str(v.id);
+  w.byte(18); w.str(v.name);
+  { const a = v.extensions; for (let i = 0; i < a.length; i++) { w.byte(26); w.str(a[i]!); } }
+}
+function decS_PluginImporterInfo(r: Reader, end: number, o: any): T.PluginImporterInfo {
+  const l_extensions: string[] = [];
+  let h_id = false;
+  let h_name = false;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_id = r.str(); h_id = true; break;
+      case 18: v_name = r.str(); h_name = true; break;
+      case 26: l_extensions.push(r.str()); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_id) throw new DecodeError('PluginImporterInfo.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('PluginImporterInfo.name: missing', 'missingField');
+  o.id = v_id;
+  o.name = v_name;
+  o.extensions = l_extensions;
+  return o;
+}
+function encS_PluginOutputOption(w: Writer, v: T.PluginOutputOption): void {
+  w.byte(10); w.str(v.id);
+  w.byte(18); w.str(v.name);
+  w.byte(26); w.str(v.type);
+  { const a = v.choices; for (let i = 0; i < a.length; i++) { w.byte(34); w.str(a[i]!); } }
+  w.byte(41); w.f64(v.defaultValue);
+  if (v.min !== undefined) { w.byte(49); w.f64(v.min); }
+  if (v.max !== undefined) { w.byte(57); w.f64(v.max); }
+}
+function decS_PluginOutputOption(r: Reader, end: number, o: any): T.PluginOutputOption {
+  const l_choices: string[] = [];
+  let h_id = false;
+  let h_name = false;
+  let h_type = false;
+  let h_defaultValue = false;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  let v_type: string | undefined;
+  let v_defaultValue: number | undefined;
+  let v_min: number | undefined;
+  let v_max: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_id = r.str(); h_id = true; break;
+      case 18: v_name = r.str(); h_name = true; break;
+      case 26: v_type = r.str(); h_type = true; break;
+      case 34: l_choices.push(r.str()); break;
+      case 41: v_defaultValue = r.f64(); h_defaultValue = true; break;
+      case 49: v_min = r.f64(); break;
+      case 57: v_max = r.f64(); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_id) throw new DecodeError('PluginOutputOption.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('PluginOutputOption.name: missing', 'missingField');
+  if (!h_type) throw new DecodeError('PluginOutputOption.type: missing', 'missingField');
+  if (!h_defaultValue) throw new DecodeError('PluginOutputOption.defaultValue: missing', 'missingField');
+  o.id = v_id;
+  o.name = v_name;
+  o.type = v_type;
+  o.choices = l_choices;
+  o.defaultValue = v_defaultValue;
+  if (v_min !== undefined) o.min = v_min;
+  if (v_max !== undefined) o.max = v_max;
+  return o;
+}
+function encS_PluginOutputModuleInfo(w: Writer, v: T.PluginOutputModuleInfo): void {
+  w.byte(10); w.str(v.id);
+  w.byte(18); w.str(v.name);
+  w.byte(26); w.str(v.extension);
+  { const a = v.options; for (let i = 0; i < a.length; i++) { w.byte(34); { const s = w.beginLd(); encS_PluginOutputOption(w, a[i]!); w.endLd(s); } } }
+}
+function decS_PluginOutputModuleInfo(r: Reader, end: number, o: any): T.PluginOutputModuleInfo {
+  const l_options: T.PluginOutputOption[] = [];
+  let h_id = false;
+  let h_name = false;
+  let h_extension = false;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  let v_extension: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_id = r.str(); h_id = true; break;
+      case 18: v_name = r.str(); h_name = true; break;
+      case 26: v_extension = r.str(); h_extension = true; break;
+      case 34: l_options.push(decS_PluginOutputOption(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_id) throw new DecodeError('PluginOutputModuleInfo.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('PluginOutputModuleInfo.name: missing', 'missingField');
+  if (!h_extension) throw new DecodeError('PluginOutputModuleInfo.extension: missing', 'missingField');
+  o.id = v_id;
+  o.name = v_name;
+  o.extension = v_extension;
+  o.options = l_options;
+  return o;
+}
+function encS_PluginPanelInfo(w: Writer, v: T.PluginPanelInfo): void {
+  w.byte(10); w.str(v.id);
+  w.byte(18); w.str(v.name);
+  w.byte(26); w.str(v.page);
+}
+function decS_PluginPanelInfo(r: Reader, end: number, o: any): T.PluginPanelInfo {
+  let h_id = false;
+  let h_name = false;
+  let h_page = false;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  let v_page: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_id = r.str(); h_id = true; break;
+      case 18: v_name = r.str(); h_name = true; break;
+      case 26: v_page = r.str(); h_page = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_id) throw new DecodeError('PluginPanelInfo.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('PluginPanelInfo.name: missing', 'missingField');
+  if (!h_page) throw new DecodeError('PluginPanelInfo.page: missing', 'missingField');
+  o.id = v_id;
+  o.name = v_name;
+  o.page = v_page;
+  return o;
+}
+function encS_ListPluginCommands(w: Writer, v: T.ListPluginCommands): void {
+  void w; void v;
+}
+function decS_ListPluginCommands(r: Reader, end: number, o: any): T.ListPluginCommands {
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  return o;
+}
+function encS_RunPluginCommand(w: Writer, v: T.RunPluginCommand): void {
+  w.byte(10); w.str(v.plugin);
+  w.byte(18); w.str(v.command);
+  if (v.comp !== undefined) { w.byte(26); w.str(v.comp); }
+  { const a = v.layers; for (let i = 0; i < a.length; i++) { w.byte(34); w.str(a[i]!); } }
+  if (v.time !== undefined) { w.byte(40); w.i64(v.time); }
+  if (v.args !== undefined) { w.byte(50); w.str(v.args); }
+}
+function decS_RunPluginCommand(r: Reader, end: number, o: any): T.RunPluginCommand {
+  const l_layers: string[] = [];
+  let h_plugin = false;
+  let h_command = false;
+  let v_plugin: string | undefined;
+  let v_command: string | undefined;
+  let v_comp: string | undefined;
+  let v_time: number | undefined;
+  let v_args: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_plugin = r.str(); h_plugin = true; break;
+      case 18: v_command = r.str(); h_command = true; break;
+      case 26: v_comp = r.str(); break;
+      case 34: l_layers.push(r.str()); break;
+      case 40: v_time = r.i64(); break;
+      case 50: v_args = r.str(); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_plugin) throw new DecodeError('RunPluginCommand.plugin: missing', 'missingField');
+  if (!h_command) throw new DecodeError('RunPluginCommand.command: missing', 'missingField');
+  o.plugin = v_plugin;
+  o.command = v_command;
+  if (v_comp !== undefined) o.comp = v_comp;
+  o.layers = l_layers;
+  if (v_time !== undefined) o.time = v_time;
+  if (v_args !== undefined) o.args = v_args;
+  return o;
+}
+function encS_PluginCommandResult(w: Writer, v: T.PluginCommandResult): void {
+  w.byte(10); w.str(v.message);
+  w.byte(16); w.u32(v.edits);
+}
+function decS_PluginCommandResult(r: Reader, end: number, o: any): T.PluginCommandResult {
+  let h_message = false;
+  let h_edits = false;
+  let v_message: string | undefined;
+  let v_edits: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_message = r.str(); h_message = true; break;
+      case 16: v_edits = r.u32(); h_edits = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_message) throw new DecodeError('PluginCommandResult.message: missing', 'missingField');
+  if (!h_edits) throw new DecodeError('PluginCommandResult.edits: missing', 'missingField');
+  o.message = v_message;
+  o.edits = v_edits;
+  return o;
+}
 function encS_ItemInfo(w: Writer, v: T.ItemInfo): void {
   w.byte(10); w.str(v.id);
   w.byte(16); w.varint(enc_ItemKind(v.kind));
@@ -12331,10 +12612,18 @@ function encS_PluginInfo(w: Writer, v: T.PluginInfo): void {
   { const a = v.effects; for (let i = 0; i < a.length; i++) { w.byte(66); w.str(a[i]!); } }
   w.byte(72); w.bool(v.gpu);
   w.byte(80); w.bool(v.panel);
+  { const a = v.commands; for (let i = 0; i < a.length; i++) { w.byte(90); { const s = w.beginLd(); encS_PluginCommandInfo(w, a[i]!); w.endLd(s); } } }
+  { const a = v.importers; for (let i = 0; i < a.length; i++) { w.byte(98); { const s = w.beginLd(); encS_PluginImporterInfo(w, a[i]!); w.endLd(s); } } }
+  { const a = v.outputModules; for (let i = 0; i < a.length; i++) { w.byte(106); { const s = w.beginLd(); encS_PluginOutputModuleInfo(w, a[i]!); w.endLd(s); } } }
+  { const a = v.panels; for (let i = 0; i < a.length; i++) { w.byte(114); { const s = w.beginLd(); encS_PluginPanelInfo(w, a[i]!); w.endLd(s); } } }
   { const a = v.presets; for (let i = 0; i < a.length; i++) { w.byte(122); { const s = w.beginLd(); encS_PluginPresetInfo(w, a[i]!); w.endLd(s); } } }
 }
 function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
   const l_effects: string[] = [];
+  const l_commands: T.PluginCommandInfo[] = [];
+  const l_importers: T.PluginImporterInfo[] = [];
+  const l_outputModules: T.PluginOutputModuleInfo[] = [];
+  const l_panels: T.PluginPanelInfo[] = [];
   const l_presets: T.PluginPresetInfo[] = [];
   let h_id = false;
   let h_name = false;
@@ -12367,6 +12656,10 @@ function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
       case 66: l_effects.push(r.str()); break;
       case 72: v_gpu = r.bool(); h_gpu = true; break;
       case 80: v_panel = r.bool(); h_panel = true; break;
+      case 90: l_commands.push(decS_PluginCommandInfo(r, r.ldEnd(), {})); break;
+      case 98: l_importers.push(decS_PluginImporterInfo(r, r.ldEnd(), {})); break;
+      case 106: l_outputModules.push(decS_PluginOutputModuleInfo(r, r.ldEnd(), {})); break;
+      case 114: l_panels.push(decS_PluginPanelInfo(r, r.ldEnd(), {})); break;
       case 122: l_presets.push(decS_PluginPresetInfo(r, r.ldEnd(), {})); break;
       default: r.skip(key);
     }
@@ -12391,6 +12684,10 @@ function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
   o.effects = l_effects;
   o.gpu = v_gpu;
   o.panel = v_panel;
+  o.commands = l_commands;
+  o.importers = l_importers;
+  o.outputModules = l_outputModules;
+  o.panels = l_panels;
   o.presets = l_presets;
   return o;
 }
@@ -17770,6 +18067,7 @@ function encU_Command(w: Writer, v: T.Command): void {
     case 'setPluginEnabled': w.varint(6962); { const s = w.beginLd(); encS_SetPluginEnabled(w, v); w.endLd(s); } return;
     case 'setPluginData': w.varint(6970); { const s = w.beginLd(); encS_SetPluginData(w, v); w.endLd(s); } return;
     case 'rescanPlugins': w.varint(6978); { const s = w.beginLd(); encS_RescanPlugins(w, v); w.endLd(s); } return;
+    case 'runPluginCommand': w.varint(6986); { const s = w.beginLd(); encS_RunPluginCommand(w, v); w.endLd(s); } return;
     case 'liftRange': w.varint(7770); { const s = w.beginLd(); encS_LiftRange(w, v); w.endLd(s); } return;
     case 'setOverlayGeometry': w.varint(14170); { const s = w.beginLd(); encS_SetOverlayGeometry(w, v); w.endLd(s); } return;
     case 'setContentAwareFill': w.varint(14818); { const s = w.beginLd(); encS_SetContentAwareFill(w, v); w.endLd(s); } return;
@@ -17948,6 +18246,7 @@ function decU_Command(r: Reader, end: number): T.Command {
       case 6962: out = decS_SetPluginEnabled(r, r.ldEnd(), { type: 'setPluginEnabled' }) as T.Command; break;
       case 6970: out = decS_SetPluginData(r, r.ldEnd(), { type: 'setPluginData' }) as T.Command; break;
       case 6978: out = decS_RescanPlugins(r, r.ldEnd(), { type: 'rescanPlugins' }) as T.Command; break;
+      case 6986: out = decS_RunPluginCommand(r, r.ldEnd(), { type: 'runPluginCommand' }) as T.Command; break;
       case 7770: out = decS_LiftRange(r, r.ldEnd(), { type: 'liftRange' }) as T.Command; break;
       case 14170: out = decS_SetOverlayGeometry(r, r.ldEnd(), { type: 'setOverlayGeometry' }) as T.Command; break;
       case 14818: out = decS_SetContentAwareFill(r, r.ldEnd(), { type: 'setContentAwareFill' }) as T.Command; break;
@@ -18126,6 +18425,7 @@ function encU_CommandResult(w: Writer, v: T.CommandResult): void {
     case 'setPluginEnabled': w.varint(6962); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'setPluginData': w.varint(6970); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'rescanPlugins': w.varint(6978); { const s = w.beginLd(); encS_PluginList(w, v); w.endLd(s); } return;
+    case 'runPluginCommand': w.varint(6986); { const s = w.beginLd(); encS_PluginCommandResult(w, v); w.endLd(s); } return;
     case 'liftRange': w.varint(7770); { const s = w.beginLd(); encS_TimeRangeEdit(w, v); w.endLd(s); } return;
     case 'setOverlayGeometry': w.varint(14170); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'setContentAwareFill': w.varint(14818); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
@@ -18304,6 +18604,7 @@ function decU_CommandResult(r: Reader, end: number): T.CommandResult {
       case 6962: out = decS_Empty(r, r.ldEnd(), { type: 'setPluginEnabled' }) as T.CommandResult; break;
       case 6970: out = decS_Empty(r, r.ldEnd(), { type: 'setPluginData' }) as T.CommandResult; break;
       case 6978: out = decS_PluginList(r, r.ldEnd(), { type: 'rescanPlugins' }) as T.CommandResult; break;
+      case 6986: out = decS_PluginCommandResult(r, r.ldEnd(), { type: 'runPluginCommand' }) as T.CommandResult; break;
       case 7770: out = decS_TimeRangeEdit(r, r.ldEnd(), { type: 'liftRange' }) as T.CommandResult; break;
       case 14170: out = decS_Empty(r, r.ldEnd(), { type: 'setOverlayGeometry' }) as T.CommandResult; break;
       case 14818: out = decS_Empty(r, r.ldEnd(), { type: 'setContentAwareFill' }) as T.CommandResult; break;
@@ -18363,6 +18664,7 @@ function encU_Query(w: Writer, v: T.Query): void {
     case 'getCacheCoverage': w.varint(8714); { const s = w.beginLd(); encS_GetCacheCoverage(w, v); w.endLd(s); } return;
     case 'getLayerTrackers': w.varint(8722); { const s = w.beginLd(); encS_GetLayerTrackers(w, v); w.endLd(s); } return;
     case 'getCameraSolve': w.varint(8730); { const s = w.beginLd(); encS_GetCameraSolve(w, v); w.endLd(s); } return;
+    case 'listPluginCommands': w.varint(8738); { const s = w.beginLd(); encS_ListPluginCommands(w, v); w.endLd(s); } return;
     case 'capturePreset': w.varint(15106); { const s = w.beginLd(); encS_CapturePreset(w, v); w.endLd(s); } return;
     case 'copyKeyframes': w.varint(15114); { const s = w.beginLd(); encS_CopyKeyframes(w, v); w.endLd(s); } return;
     case 'copyEffects': w.varint(15122); { const s = w.beginLd(); encS_CopyEffects(w, v); w.endLd(s); } return;
@@ -18426,6 +18728,7 @@ function decU_Query(r: Reader, end: number): T.Query {
       case 8714: out = decS_GetCacheCoverage(r, r.ldEnd(), { type: 'getCacheCoverage' }) as T.Query; break;
       case 8722: out = decS_GetLayerTrackers(r, r.ldEnd(), { type: 'getLayerTrackers' }) as T.Query; break;
       case 8730: out = decS_GetCameraSolve(r, r.ldEnd(), { type: 'getCameraSolve' }) as T.Query; break;
+      case 8738: out = decS_ListPluginCommands(r, r.ldEnd(), { type: 'listPluginCommands' }) as T.Query; break;
       case 15106: out = decS_CapturePreset(r, r.ldEnd(), { type: 'capturePreset' }) as T.Query; break;
       case 15114: out = decS_CopyKeyframes(r, r.ldEnd(), { type: 'copyKeyframes' }) as T.Query; break;
       case 15122: out = decS_CopyEffects(r, r.ldEnd(), { type: 'copyEffects' }) as T.Query; break;
@@ -18489,6 +18792,7 @@ function encU_QueryResult(w: Writer, v: T.QueryResult): void {
     case 'getCacheCoverage': w.varint(8714); { const s = w.beginLd(); encS_CacheCoverage(w, v); w.endLd(s); } return;
     case 'getLayerTrackers': w.varint(8722); { const s = w.beginLd(); encS_LayerTrackers(w, v); w.endLd(s); } return;
     case 'getCameraSolve': w.varint(8730); { const s = w.beginLd(); encS_CameraSolveAnswer(w, v); w.endLd(s); } return;
+    case 'listPluginCommands': w.varint(8738); { const s = w.beginLd(); encS_PluginCommandList(w, v); w.endLd(s); } return;
     case 'capturePreset': w.varint(15106); { const s = w.beginLd(); encS_CapturedPreset(w, v); w.endLd(s); } return;
     case 'copyKeyframes': w.varint(15114); { const s = w.beginLd(); encS_KeyframeSets(w, v); w.endLd(s); } return;
     case 'copyEffects': w.varint(15122); { const s = w.beginLd(); encS_CopiedEffects(w, v); w.endLd(s); } return;
@@ -18552,6 +18856,7 @@ function decU_QueryResult(r: Reader, end: number): T.QueryResult {
       case 8714: out = decS_CacheCoverage(r, r.ldEnd(), { type: 'getCacheCoverage' }) as T.QueryResult; break;
       case 8722: out = decS_LayerTrackers(r, r.ldEnd(), { type: 'getLayerTrackers' }) as T.QueryResult; break;
       case 8730: out = decS_CameraSolveAnswer(r, r.ldEnd(), { type: 'getCameraSolve' }) as T.QueryResult; break;
+      case 8738: out = decS_PluginCommandList(r, r.ldEnd(), { type: 'listPluginCommands' }) as T.QueryResult; break;
       case 15106: out = decS_CapturedPreset(r, r.ldEnd(), { type: 'capturePreset' }) as T.QueryResult; break;
       case 15114: out = decS_KeyframeSets(r, r.ldEnd(), { type: 'copyKeyframes' }) as T.QueryResult; break;
       case 15122: out = decS_CopiedEffects(r, r.ldEnd(), { type: 'copyEffects' }) as T.QueryResult; break;
@@ -18980,6 +19285,15 @@ export const codecs = {
   SetPluginEnabled: mk<T.SetPluginEnabled>(encS_SetPluginEnabled, (r, e) => decS_SetPluginEnabled(r, e, {})),
   RescanPlugins: mk<T.RescanPlugins>(encS_RescanPlugins, (r, e) => decS_RescanPlugins(r, e, {})),
   SetPluginData: mk<T.SetPluginData>(encS_SetPluginData, (r, e) => decS_SetPluginData(r, e, {})),
+  PluginCommandInfo: mk<T.PluginCommandInfo>(encS_PluginCommandInfo, (r, e) => decS_PluginCommandInfo(r, e, {})),
+  PluginCommandList: mk<T.PluginCommandList>(encS_PluginCommandList, (r, e) => decS_PluginCommandList(r, e, {})),
+  PluginImporterInfo: mk<T.PluginImporterInfo>(encS_PluginImporterInfo, (r, e) => decS_PluginImporterInfo(r, e, {})),
+  PluginOutputOption: mk<T.PluginOutputOption>(encS_PluginOutputOption, (r, e) => decS_PluginOutputOption(r, e, {})),
+  PluginOutputModuleInfo: mk<T.PluginOutputModuleInfo>(encS_PluginOutputModuleInfo, (r, e) => decS_PluginOutputModuleInfo(r, e, {})),
+  PluginPanelInfo: mk<T.PluginPanelInfo>(encS_PluginPanelInfo, (r, e) => decS_PluginPanelInfo(r, e, {})),
+  ListPluginCommands: mk<T.ListPluginCommands>(encS_ListPluginCommands, (r, e) => decS_ListPluginCommands(r, e, {})),
+  RunPluginCommand: mk<T.RunPluginCommand>(encS_RunPluginCommand, (r, e) => decS_RunPluginCommand(r, e, {})),
+  PluginCommandResult: mk<T.PluginCommandResult>(encS_PluginCommandResult, (r, e) => decS_PluginCommandResult(r, e, {})),
   ItemInfo: mk<T.ItemInfo>(encS_ItemInfo, (r, e) => decS_ItemInfo(r, e, {})),
   CompInfo: mk<T.CompInfo>(encS_CompInfo, (r, e) => decS_CompInfo(r, e, {})),
   LayerInfo: mk<T.LayerInfo>(encS_LayerInfo, (r, e) => decS_LayerInfo(r, e, {})),

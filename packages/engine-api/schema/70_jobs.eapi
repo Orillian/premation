@@ -307,3 +307,33 @@ command setPluginEnabled = 870 [control] { plugin: string = 1; enabled: bool = 2
 command rescanPlugins = 872 [control] {} -> PluginList;
 /// Store plugin data in the DOCUMENT (AE sequence data / arbitrary-data params). Undoable, saved with the project.
 command setPluginData = 871 { layer: LayerId = 1; group: PropPath = 2; key: string = 3; data: bytes = 4; }
+
+/// P7a — a native plugin's command (manifest `commands`, docs/PLUGIN_SDK.md "Commands"): the Plugins menu and the command palette list them.
+struct PluginCommandInfo {
+  plugin: string = 1;
+  /// The manifest command id (unique within the plugin).
+  id: string = 2;
+  name: string = 3;
+  /// The submenu of the Plugins menu it goes under ('' = the plugin's own).
+  menu: string = 4;
+  /// False when the plugin is not loaded (disabled, failed, quarantined, locked) or the command crashed this session.
+  enabled: bool = 5;
+  /// Why it is not enabled ('' otherwise).
+  error: string = 6;
+}
+struct PluginCommandList { commands: PluginCommandInfo[] = 1; }
+/// P7b — a native plugin's footage importer (manifest `importers`): files with these extensions (lower case, no dot) import and render through it.
+struct PluginImporterInfo { id: string = 1; name: string = 2; extensions: string[] = 3; }
+/// P7c — one declared option of a plugin output module: `type` 'popup' (`choices`, the value a 1-based index), 'number' (`min` / `max`) or 'checkbox' (0 / 1).
+struct PluginOutputOption { id: string = 1; name: string = 2; type: string = 3; choices: string[] = 4; defaultValue: f64 = 5; min?: f64 = 6; max?: f64 = 7; }
+/// P7c — a native plugin's output module (manifest `outputModules`): a Render Queue format, `plugin:<plugin>/<id>`.
+struct PluginOutputModuleInfo { id: string = 1; name: string = 2; extension: string = 3; options: PluginOutputOption[] = 4; }
+/// P7d — a dockable panel a plugin ships (manifest `panels`): `page` under the bundle's `ui/` folder, served as `plugin-ui://<plugin>/<page>`.
+struct PluginPanelInfo { id: string = 1; name: string = 2; page: string = 3; }
+
+/// P7a — every native plugin command, in load order (a disabled plugin's are listed with enabled = false; the editor hides them).
+query listPluginCommands = 1092 {} -> PluginCommandList;
+/// P7a — run a native plugin's command in the engine (core thread, crash-guarded, under the watchdog). `comp`, `layers` and `time` are what the user had (the active composition, the selected layers top first, the playhead; absent comp / time = the engine's active composition and playhead); `args` is JSON handed to the plugin. Every edit the plugin makes through `engine_command` is ONE undo entry labelled with the command's name, and the log holds those edits (a replay never runs the plugin). `notFound`: no such command or its plugin is not loaded; the plugin's error or a crash: `internal`, nothing changed (a crash disables the command until setPluginEnabled(true)).
+command runPluginCommand = 873 { plugin: string = 1; command: string = 2; comp?: ItemId = 3; layers: LayerId[] = 4; time?: Time = 5; args?: string = 6; } -> PluginCommandResult;
+/// `message`: the plugin's note (PrCommandOut.return_msg). `edits`: how many edit commands it applied.
+struct PluginCommandResult { message: string = 1; edits: u32 = 2; }

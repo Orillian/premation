@@ -443,6 +443,11 @@ struct PluginInfo {
   gpu: bool = 9;
   /// Plugin SDK 1.1 — the bundle ships a panel (`ui/index.html`), shown in a sandboxed frame (`plugin-ui://<id>/index.html`).
   panel: bool = 10;
+  /// P7 — what else the plugin contributes (docs/PLUGIN_SDK.md): commands (Plugins menu), footage importers, Render Queue output modules, dockable panels. Listed from the manifest, also while it is not loaded.
+  commands: PluginCommandInfo[] = 11;
+  importers: PluginImporterInfo[] = 12;
+  outputModules: PluginOutputModuleInfo[] = 13;
+  panels: PluginPanelInfo[] = 14;
   /// Plugin SDK 1.2 — the presets the bundle ships (manifest `presets`, `presets/*.json`), listed under the plugin in Effects & Presets. Empty until the plugin is loaded (the values are checked against its params).
   presets: PluginPresetInfo[] = 15;
 }
