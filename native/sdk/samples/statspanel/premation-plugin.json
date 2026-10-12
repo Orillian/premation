@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "id": "com.premation.samples.statspanel",
+  "name": "Layer Stats (sample)",
+  "version": "1.0.0",
+  "vendor": "Premation",
+  "sdk": { "major": 1, "minor": 2 },
+  "binary": { "windows": "statspanel.dll", "macos": "libstatspanel.dylib", "linux": "libstatspanel.so" },
+  "commands": [
+    { "id": "number", "name": "Number Layers", "menu": "Arrange" }
+  ],
+  "panels": [
+    { "id": "stats", "name": "Layer Stats", "page": "stats.html" }
+  ]
+}

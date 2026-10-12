@@ -1,0 +1,12 @@
+{
+  "manifestVersion": 1,
+  "id": "com.premation.samples.distribute",
+  "name": "Distribute Layers (sample)",
+  "version": "1.0.0",
+  "vendor": "Premation",
+  "sdk": { "major": 1, "minor": 2 },
+  "binary": { "windows": "distribute.dll", "macos": "libdistribute.dylib", "linux": "libdistribute.so" },
+  "commands": [
+    { "id": "distribute", "name": "Distribute Layers", "menu": "Arrange" }
+  ]
+}

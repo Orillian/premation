@@ -12,6 +12,8 @@
 #     grademap  SDK 1.1 STRING / CURVE / GRADIENT / FILE params (a 1D .cube LUT via get_asset_bytes)
 #     checkout  layer checkouts: another layer (Layer Displace — on the GPU too
 #               where Dawn's headers are), own layer at other times (Time Echo)
+#     distribute / ppmio / ppmseq / statspanel   SDK 1.2 plugins that are not effects: a command,
+#               an importer, an output module, a panel (docs/PLUGIN_SDK.md "Commands" …)
 #     grade     GPU effect (SMART_RENDER_GPU on the engine's Dawn device) + CPU
 #               fallback — needs Dawn's headers, so only with the `engine` feature
 
@@ -93,6 +95,10 @@ premation_sample_plugin(rings samples/rings/rings.cpp)
 premation_sample_plugin(checkout samples/checkout/checkout.cpp)
 premation_sample_plugin(particles samples/particles/particles.cpp)  # SDK 1.1: comp camera, lights, layer transforms; 1.2: trails + shutter blur (checkout_time), presets
 premation_sample_plugin(grademap samples/grademap/grademap.cpp)    # SDK 1.1: STRING / CURVE / GRADIENT / FILE params
+premation_sample_plugin(distribute samples/distribute/distribute.cpp)  # SDK 1.2: a command (Plugins menu), engine API edits
+premation_sample_plugin(ppmio samples/ppmio/ppmio.cpp)              # SDK 1.2: a footage importer (.ppm / .pfm)
+premation_sample_plugin(ppmseq samples/ppmseq/ppmseq.cpp)           # SDK 1.2: an output module (a .ppm sequence)
+premation_sample_plugin(statspanel samples/statspanel/statspanel.cpp)  # SDK 1.2: a panel without an effect (+ a command)
 
 # The GPU samples call WebGPU through the proc table the host hands over, so
 # they link no Dawn — they need only the headers (webgpu.h, dawn_proc_table.h).

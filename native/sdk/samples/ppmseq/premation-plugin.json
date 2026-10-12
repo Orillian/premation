@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.premation.samples.ppmseq",
+  "name": "PPM Sequence (sample)",
+  "version": "1.0.0",
+  "vendor": "Premation",
+  "sdk": { "major": 1, "minor": 2 },
+  "binary": { "windows": "ppmseq.dll", "macos": "libppmseq.dylib", "linux": "libppmseq.so" },
+  "outputModules": [
+    {
+      "id": "ppmseq",
+      "name": "PPM Sequence",
+      "extension": "ppm",
+      "options": [
+        { "id": "depth", "name": "Depth", "type": "popup", "choices": ["8-bit", "16-bit"], "default": 1 },
+        { "id": "digits", "name": "Frame Digits", "type": "number", "default": 5, "min": 1, "max": 9 },
+        { "id": "fault", "name": "Debug: Fault", "type": "popup", "choices": ["None", "Crash on frame 2", "Error on frame 2"], "default": 1 }
+      ]
+    }
+  ]
+}
