@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "audio_decode.hpp"
+#include "external_audio.hpp"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -268,13 +269,77 @@ bool decode_loop(Stream& s, const std::atomic<bool>* cancel, std::string& error,
   }
 }
 
+/// A plugin-imported file's sound (external_audio.hpp) as AVFrames of interleaved
+/// float, so it goes through the same Converter — down-mix and resampler — as a
+/// decoded stream. Frames [from, from + count) (count < 0: to the end), in order.
+template <class F>
+bool external_loop(const std::string& path, const ExternalAudioFormat& fmt, std::int64_t from, std::int64_t count,
+                   const std::atomic<bool>* cancel, std::string& error, const F& onFrame) {
+  const AvFramePtr frame(av_frame_alloc());
+  if (!frame) {
+    error = "out of memory";
+    return false;
+  }
+  constexpr std::int64_t kChunk = 8192;
+  std::vector<float> buf;
+  std::int64_t pos = std::max<std::int64_t>(0, from);
+  const std::int64_t end = count < 0 ? -1 : pos + count;
+  while (end < 0 || pos < end) {
+    if (cancel != nullptr && cancel->load(std::memory_order_relaxed)) {
+      error = "cancelled";
+      return false;
+    }
+    const std::int64_t want = end < 0 ? kChunk : std::min(kChunk, end - pos);
+    buf.clear();
+    if (!ExternalAudio::read(path, pos, static_cast<std::uint32_t>(want), buf, error)) return false;
+    const auto got = static_cast<std::int64_t>(buf.size() / static_cast<std::size_t>(fmt.channels));
+    if (got <= 0) break;
+    // A frame over our buffer: not ref-counted, so av_frame_unref leaves `data` alone.
+    av_frame_unref(frame.get());
+    frame->format = AV_SAMPLE_FMT_FLT;
+    frame->sample_rate = fmt.sampleRate;
+    av_channel_layout_default(&frame->ch_layout, fmt.channels);
+    frame->nb_samples = static_cast<int>(got);
+    frame->pts = pos;
+    frame->best_effort_timestamp = pos;
+    frame->data[0] = reinterpret_cast<std::uint8_t*>(buf.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): libswresample's byte-plane API
+    frame->extended_data = frame->data;
+    const bool more = onFrame(frame.get());
+    frame->data[0] = nullptr;
+    if (!more) return true;
+    pos += got;
+    if (got < want) break;  // the end of the sound
+  }
+  return true;
+}
+
+/// The claimed file's format; false + `error` when it is unreadable or reports a bad format.
+bool external_format(const std::string& path, ExternalAudioFormat& fmt, std::string& error) {
+  if (!ExternalAudio::probe(path, fmt, error)) return false;
+  if (fmt.channels < 0 || fmt.channels > 64 || (fmt.channels > 0 && (fmt.sampleRate < 1000 || fmt.sampleRate > 768000))) {
+    error = "'" + path + "': the reader reported an unusable sound format";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 int conformed_channels(int sourceChannels) noexcept { return sourceChannels <= 1 ? 1 : 2; }
 
 bool probe_audio(const std::string& path, AudioStreamInfo& out, std::string& error) {
-  Stream s;
   out = AudioStreamInfo{};
+  if (ExternalAudio::claims(path)) {  // P7b: a plugin importer reads this file
+    ExternalAudioFormat fmt;
+    if (!external_format(path, fmt, error)) return false;
+    out.hasAudio = fmt.channels > 0;
+    out.channels = fmt.channels;
+    out.sampleRate = fmt.sampleRate;
+    out.durationSec = fmt.channels > 0 && fmt.frames > 0 ? static_cast<double>(fmt.frames) / fmt.sampleRate : 0;
+    out.codec = fmt.codec;
+    return true;
+  }
+  Stream s;
   if (!s.open(path, error)) {
     if (error == "no audio stream") {
       error.clear();
@@ -295,10 +360,12 @@ bool probe_audio(const std::string& path, AudioStreamInfo& out, std::string& err
   return true;
 }
 
-bool conform_audio(const std::string& path, int targetRate, SourceData& sink, const std::atomic<bool>* cancel,
-                   std::string& error) {
-  Stream s;
-  if (!s.open(path, error)) return false;
+namespace {
+
+/// conform_audio's body over any frame source: `loop(onFrame)` runs the decode (or the
+/// plugin's reads) and calls onFrame for every frame of `sourceRate` audio.
+template <class Loop>
+bool conform_frames(const Loop& loop, int sourceRate, int targetRate, SourceData& sink, std::string& error) {
   const int outCh = sink.channels();
   Converter conv(outCh, targetRate);
   std::vector<std::vector<float>> buf(static_cast<std::size_t>(outCh));
@@ -318,8 +385,8 @@ bool conform_audio(const std::string& path, int targetRate, SourceData& sink, co
     appended += static_cast<std::int64_t>(take);
     for (auto& b : buf) b.erase(b.begin(), b.begin() + static_cast<std::ptrdiff_t>(take));
   };
-  int inRate = s.sampleRate;
-  const bool ok = decode_loop(s, cancel, error, [&](AVFrame* f) {
+  int inRate = sourceRate;
+  const bool ok = loop([&](AVFrame* f) {
     if (!conv.setup(f, error)) return false;
     inRate = f->sample_rate;
     inTotal += f->nb_samples;
@@ -349,7 +416,43 @@ bool conform_audio(const std::string& path, int targetRate, SourceData& sink, co
   return true;
 }
 
+}  // namespace
+
+bool conform_audio(const std::string& path, int targetRate, SourceData& sink, const std::atomic<bool>* cancel,
+                   std::string& error) {
+  if (ExternalAudio::claims(path)) {  // P7b: the plugin's samples, through the same resampler
+    ExternalAudioFormat fmt;
+    if (!external_format(path, fmt, error) || fmt.channels == 0) {
+      if (error.empty()) error = "'" + path + "' has no sound";
+      sink.fail(error);
+      return false;
+    }
+    return conform_frames([&](const auto& onFrame) { return external_loop(path, fmt, 0, -1, cancel, error, onFrame); },
+                          fmt.sampleRate, targetRate, sink, error);
+  }
+  Stream s;
+  if (!s.open(path, error)) return false;
+  return conform_frames([&](const auto& onFrame) { return decode_loop(s, cancel, error, onFrame); }, s.sampleRate,
+                        targetRate, sink, error);
+}
+
 bool decode_all_native(const std::string& path, std::vector<std::vector<float>>& out, std::string& error) {
+  if (ExternalAudio::claims(path)) {  // P7b
+    ExternalAudioFormat fmt;
+    if (!external_format(path, fmt, error)) return false;
+    if (fmt.channels == 0) {
+      error = "no audio stream";
+      return false;
+    }
+    const int outCh = conformed_channels(fmt.channels);
+    Converter conv(outCh, fmt.sampleRate);
+    out.assign(static_cast<std::size_t>(outCh), {});
+    const bool ok = external_loop(path, fmt, 0, -1, nullptr, error, [&](AVFrame* f) {
+      if (!conv.setup(f, error)) return false;
+      return conv.run(f, out, error);
+    });
+    return ok && conv.run(nullptr, out, error);
+  }
   Stream s;
   if (!s.open(path, error)) return false;
   const int outCh = conformed_channels(s.channels);
@@ -365,6 +468,30 @@ bool decode_all_native(const std::string& path, std::vector<std::vector<float>>&
 
 bool decode_range(const std::string& path, std::int64_t from, std::int64_t n, std::vector<std::vector<float>>& out,
                   std::string& error) {
+  if (ExternalAudio::claims(path)) {  // P7b: the plugin reads by sample index — no seek, no pre-roll
+    ExternalAudioFormat fmt;
+    if (!external_format(path, fmt, error)) return false;
+    if (fmt.channels == 0) {
+      error = "no audio stream";
+      return false;
+    }
+    const int outCh = conformed_channels(fmt.channels);
+    const auto len = static_cast<std::size_t>(std::max<std::int64_t>(0, n));
+    out.assign(static_cast<std::size_t>(outCh), std::vector<float>(len, 0.0F));
+    std::vector<std::vector<float>> got(static_cast<std::size_t>(outCh));
+    Converter conv(outCh, fmt.sampleRate);
+    const std::int64_t skip = std::clamp<std::int64_t>(-from, 0, std::max<std::int64_t>(0, n));  // before 0: silence
+    const bool ok = external_loop(path, fmt, from + skip, n - skip, nullptr, error, [&](AVFrame* f) {
+      if (!conv.setup(f, error)) return false;
+      return conv.run(f, got, error);
+    });
+    if (!ok || (conv.ready() && !conv.run(nullptr, got, error))) return false;
+    const auto offset = static_cast<std::size_t>(skip);
+    for (std::size_t c = 0; c < got.size(); ++c) {
+      for (std::size_t i = 0; i < got[c].size() && i + offset < len; ++i) out[c][i + offset] = got[c][i];
+    }
+    return true;
+  }
   Stream s;
   if (!s.open(path, error)) return false;
   const int outCh = conformed_channels(s.channels);

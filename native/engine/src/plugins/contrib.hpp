@@ -135,6 +135,10 @@ class Contrib {
   /// Interleaved float32 sample frames [start, start + frames); `channels` set from the probe.
   bool read_audio(const std::string& path, std::int64_t start, std::uint32_t frames, std::vector<float>& out,
                   std::uint32_t& channels, std::string& error);
+  /// The file's sound as PROBE reported it (channels 0 = none): what the audio decoders
+  /// (audio/external_audio.hpp) conform plugin footage from.
+  bool audio_format(const std::string& path, std::uint32_t& rate, std::uint32_t& channels, std::int64_t& frames,
+                    std::string& codec, std::string& error);
 
   // ── output modules (the export process) ──
   /// `format` is `plugin:<plugin id>/<module id>`; nullptr + `error` when no loaded plugin provides it.

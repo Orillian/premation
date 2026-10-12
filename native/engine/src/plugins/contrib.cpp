@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "api_json.hpp"
+#include "audio/external_audio.hpp"  // P7b: plugin footage's sound reaches the audio decoders (header-only)
 #include "fail.hpp"
 #include "host.hpp"
 #include "log.hpp"
@@ -253,6 +254,24 @@ void Contrib::attach() {
                                      [this](const std::string& path, double seconds, doc::NativeImage& out, std::string& error) {
                                        return read_frame(path, seconds, out, error);
                                      });
+  // The sound of plugin footage: the playback mixer, the export mix and the audio jobs
+  // read it through the audio decoders (audio_decode_ffi.cpp), which ask these first.
+  audio::ExternalAudio::set_handlers(
+      [this](std::string_view path) { return claims(path); },
+      [this](const std::string& path, audio::ExternalAudioFormat& out, std::string& error) {
+        std::uint32_t rate = 0;
+        std::uint32_t channels = 0;
+        std::int64_t frames = 0;
+        if (!audio_format(path, rate, channels, frames, out.codec, error)) return false;
+        out.sampleRate = static_cast<int>(rate);
+        out.channels = static_cast<int>(channels);
+        out.frames = frames;
+        return true;
+      },
+      [this](const std::string& path, std::int64_t start, std::uint32_t frames, std::vector<float>& interleaved, std::string& error) {
+        std::uint32_t channels = 0;
+        return read_audio(path, start, frames, interleaved, channels, error);
+      });
   const std::scoped_lock lock(mutex_);
   bool any = false;
   for (const auto& [id, man] : manifests_) any = any || !man.importers.empty();
@@ -269,6 +288,7 @@ void Contrib::detach() {
   if (!was) return;
   doc::NativeCommands::clear_handlers();
   doc::NativeImporters::clear_handlers();
+  audio::ExternalAudio::clear_handlers();  // waits for reads in flight
 }
 
 bool Contrib::loaded(const std::string& pluginId) const {
@@ -559,7 +579,9 @@ Contrib::OpenFile* Contrib::open_file(const Entry& e, const std::string& path, s
   c.path = path.c_str();
   c.info = &f->info;
   if (!call_import(e, PR_IMPORT_PROBE, c, error)) return nullptr;
-  if (f->info.width <= 0 || f->info.height <= 0 || f->info.width > kMaxImportEdge || f->info.height > kMaxImportEdge) {
+  // A picture within the size limit, or (0 × 0) sound only.
+  const bool soundOnly = f->info.width == 0 && f->info.height == 0 && f->info.has_audio != 0;
+  if (!soundOnly && (f->info.width <= 0 || f->info.height <= 0 || f->info.width > kMaxImportEdge || f->info.height > kMaxImportEdge)) {
     error = "it reported no picture";
     return nullptr;
   }
@@ -609,6 +631,10 @@ bool Contrib::read_frame(const std::string& path, double seconds, doc::NativeIma
   OpenFile* f = open_file(*e, path, error);
   if (f == nullptr) return false;
   const PrImportInfo info = f->info;
+  if (info.width <= 0 || info.height <= 0) {
+    error = "it reported no picture";
+    return false;
+  }
   const PrPixelFormat fmt = info.pixel_format == PR_PIXEL_FORMAT_RGBA16 || info.pixel_format == PR_PIXEL_FORMAT_RGBA32F
                                 ? info.pixel_format
                                 : PR_PIXEL_FORMAT_RGBA8;
@@ -670,6 +696,36 @@ bool Contrib::read_audio(const std::string& path, std::int64_t start, std::uint3
   c.audio = out.data();
   if (!call_import(*e, PR_IMPORT_READ_AUDIO, c, error)) return false;
   out.resize(static_cast<std::size_t>(std::min(c.audio_frames_read, frames)) * channels);
+  return true;
+}
+
+bool Contrib::audio_format(const std::string& path, std::uint32_t& rate, std::uint32_t& channels, std::int64_t& frames,
+                           std::string& codec, std::string& error) {
+  const std::scoped_lock lock(mutex_);
+  std::string why;
+  const Entry* e = importer_for(path, why);
+  if (e == nullptr || !why.empty() || !loaded(e->plugin)) {
+    error = !why.empty() ? why : "no loaded plugin imports this file";
+    return false;
+  }
+  OpenFile* f = open_file(*e, path, error);
+  if (f == nullptr) {
+    error = "plugin failed to read '" + path + "': " + error;
+    return false;
+  }
+  rate = 0;
+  channels = 0;
+  frames = 0;
+  codec = message_of(f->info.codec, sizeof(f->info.codec));
+  if (f->info.has_audio == 0) return true;  // no sound: a silent source
+  if (f->info.audio_channels == 0 || f->info.audio_channels > 64 || f->info.audio_sample_rate < 1000 ||
+      f->info.audio_sample_rate > 768000 || f->info.audio_frames < 0) {
+    error = "plugin failed to read '" + path + "': it reported an unusable sound format";
+    return false;
+  }
+  rate = f->info.audio_sample_rate;
+  channels = f->info.audio_channels;
+  frames = f->info.audio_frames;
   return true;
 }
 

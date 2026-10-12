@@ -19,6 +19,7 @@
 #include "audio_decode.hpp"
 #include "audio_fixture_ffi.hpp"
 #include "audio_system.hpp"
+#include "external_audio.hpp"
 #include "media_fixture_ffi.hpp"
 #include "mixer.hpp"
 #include "source_store.hpp"
@@ -189,6 +190,104 @@ TEST_CASE("AudioSystem: open → conform → peaks → offline mix", "[audio][de
   CHECK(out[0][23999] == 0);
   CHECK(out[0][24000 + 100] == src->at(0, 100));
   CHECK(out[1][24000 + 100] == src->at(1, 100));
+}
+
+TEST_CASE("decode: a file an external reader claims (P7b plugin footage) conforms like a decoded one", "[audio][decode]") {
+  // The same stereo 44.1 kHz samples as a float WAV (ffmpeg) and as a claimed ".praw"
+  // read through ExternalAudio (what the plugin host installs): same probe, same
+  // down-mix and resampler, so the conformed sources match.
+  const auto planes = signal(2, 44100, 44100, 21);
+  const std::string wav = make_file(fixture::Codec::wavFloat, "external_ref.wav", planes, 44100);
+  const std::string claimed = (tmp_dir() / "external.praw").string();
+  std::vector<float> interleaved(planes[0].size() * 2);
+  for (std::size_t i = 0; i < planes[0].size(); ++i) {
+    interleaved[i * 2] = planes[0][i];
+    interleaved[i * 2 + 1] = planes[1][i];
+  }
+  int reads = 0;
+  ExternalAudio::set_handlers(
+      [](std::string_view p) { return p.ends_with(".praw"); },
+      [&](const std::string& p, ExternalAudioFormat& f, std::string& e) {
+        if (p != claimed) return e = "unknown file", false;
+        f.channels = 2;
+        f.sampleRate = 44100;
+        f.frames = static_cast<std::int64_t>(planes[0].size());
+        f.codec = "PRAW";
+        return true;
+      },
+      [&](const std::string&, std::int64_t start, std::uint32_t frames, std::vector<float>& out, std::string&) {
+        ++reads;
+        const auto total = static_cast<std::int64_t>(planes[0].size());
+        const std::int64_t n = std::clamp<std::int64_t>(total - start, 0, frames);
+        out.assign(interleaved.begin() + start * 2, interleaved.begin() + (start + n) * 2);
+        return true;
+      });
+  struct Clear {
+    ~Clear() { ExternalAudio::clear_handlers(); }
+  } clear;
+
+  AudioStreamInfo info;
+  std::string error;
+  REQUIRE(probe_audio(claimed, info, error));
+  CHECK(info.hasAudio);
+  CHECK(info.channels == 2);
+  CHECK(info.sampleRate == 44100);
+  CHECK(info.durationSec == Catch::Approx(1.0));
+  CHECK(info.codec == "PRAW");
+  REQUIRE(probe_audio(wav, info, error));  // not claimed: ffmpeg as before
+  CHECK(info.codec != "PRAW");
+
+  SourceData ref(2, 48000, 48000 * 4);
+  SourceData ext(2, 48000, 48000 * 4);
+  REQUIRE(conform_audio(wav, 48000, ref, nullptr, error));
+  REQUIRE(conform_audio(claimed, 48000, ext, nullptr, error));
+  CHECK(reads > 1);
+  REQUIRE(ext.total_frames() == ref.total_frames());
+  CHECK(ext.total_frames() == 48000);
+  float worst = 0;
+  for (int c = 0; c < 2; ++c) {
+    for (std::int64_t i = 0; i < ref.total_frames(); ++i) worst = std::max(worst, std::fabs(ext.at(c, i) - ref.at(c, i)));
+  }
+  INFO("largest difference to the decoded WAV " << worst);
+  CHECK(worst < 1e-5F);
+
+  // Random access and the whole-file decode (the audio jobs) read the plugin's samples exactly.
+  std::vector<std::vector<float>> range;
+  REQUIRE(decode_range(claimed, 1000, 64, range, error));
+  REQUIRE(range.size() == 2);
+  CHECK(range[1][10] == planes[1][1010]);
+  REQUIRE(decode_range(claimed, -10, 20, range, error));
+  CHECK(range[0][9] == 0);
+  CHECK(range[0][10] == planes[0][0]);
+  std::vector<std::vector<float>> all;
+  REQUIRE(decode_all_native(claimed, all, error));
+  REQUIRE(all.size() == 2);
+  CHECK(all[0].size() == planes[0].size());
+  CHECK(all[0][44099] == planes[0][44099]);
+
+  // The playback mixer and the export mix (AudioSystem) play it.
+  AudioSystem sys(AudioSystemOptions{{48000, 2}, 1, false, 10});
+  const std::uint64_t id = sys.open_source(claimed, error);
+  REQUIRE(id != 0);
+  const SourcePtr src = sys.source(id);
+  REQUIRE(src);
+  src->wait_for(INT64_MAX);
+  for (int i = 0; i < 200 && sys.state(id) != SourceState::ready; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  CHECK(sys.state(id) == SourceState::ready);
+  Program prog;
+  Voice v;
+  v.id = "v";
+  v.source = id;
+  v.outSec = 1.0;
+  prog.voices.push_back(v);
+  const auto out = sys.render(prog, 0, 48000);
+  CHECK(out[0][1000] == src->at(0, 1000));
+  CHECK(out[0][1000] != 0);
+
+  // A reader error fails that source; the handlers gone, the file is ffmpeg's again (and unreadable).
+  ExternalAudio::clear_handlers();
+  CHECK_FALSE(ExternalAudio::claims(claimed));
+  CHECK_FALSE(probe_audio(claimed, info, error));
 }
 
 TEST_CASE("TransportClock over AudioSystem + NullDevice: the Session's clock seam", "[audio][clock]") {

@@ -13,9 +13,11 @@
 #include <vector>
 
 #include "api_json.hpp"
+#include "audio/external_audio.hpp"
 #include "contrib.hpp"
 #include "host.hpp"
 #include "manifest.hpp"
+#include "media_input.hpp"
 #include "native_contrib.hpp"
 #include "native_effects.hpp"
 #include "session_harness.hpp"
@@ -112,6 +114,27 @@ void write_pfm(const fs::path& p, int w, int h) {
   f << "PF\n" << w << " " << h << "\n-1.0\n";
   const float px[3] = {0.25F, 2.0F, 0.5F};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays)
   for (int i = 0; i < w * h; ++i) f.write(reinterpret_cast<const char*>(px), sizeof px);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+
+/// A moving PPM (P6 images back to back, ppmio's moving footage): frame k is w x h of (k * 40, 0, 0),
+/// at the rate a `# fps` comment names.
+void write_moving_ppm(const fs::path& p, int w, int h, int frames, int fps) {
+  std::ofstream f(p, std::ios::binary);
+  for (int k = 0; k < frames; ++k) {
+    f << "P6\n";
+    if (k == 0) f << "# fps " << fps << "\n";
+    f << w << " " << h << "\n255\n";
+    for (int i = 0; i < w * h; ++i) f << static_cast<char>(k * 40) << static_cast<char>(0) << static_cast<char>(0);
+  }
+}
+
+/// A .praw (ppmio's sound-only format): `PRAW <rate> <channels>` + interleaved float32 LE.
+void write_praw(const fs::path& p, int rate, const std::vector<std::vector<float>>& planes) {
+  std::ofstream f(p, std::ios::binary);
+  f << "PRAW " << rate << " " << planes.size() << "\n";
+  for (std::size_t i = 0; i < planes.front().size(); ++i) {
+    for (const auto& ch : planes) f.write(reinterpret_cast<const char*>(&ch[i]), sizeof(float));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  }
 }
 
 std::string slurp(const fs::path& p) {
@@ -432,10 +455,116 @@ TEST_CASE("P7d panels are listed from the manifest", "[plugins][contrib]") {
   CHECK(it->commands.size() == 1);
   const auto io = std::ranges::find_if(infos, [](const api::PluginInfo& p) { return p.id == kPpmio; });
   REQUIRE(io != infos.end());
-  REQUIRE(io->importers.size() == 1);
+  REQUIRE(io->importers.size() == 2);
   CHECK(io->importers[0].extensions == std::vector<std::string>{"ppm", "pfm"});
+  CHECK(io->importers[1].extensions == std::vector<std::string>{"praw"});
   const auto seq = std::ranges::find_if(infos, [](const api::PluginInfo& p) { return p.id == kPpmseq; });
   REQUIRE(seq != infos.end());
   REQUIRE(seq->output_modules.size() == 1);
   CHECK(seq->output_modules[0].options.size() == 3);
+}
+
+TEST_CASE("P7b moving plugin footage reaches the analysis jobs (open_frames)", "[plugins][contrib]") {
+  pl::PluginHost host(attached());
+  host.scan();
+  const fs::path dir = temp_dir("jobs");
+  write_moving_ppm(dir / "move.ppm", 8, 4, 5, 10);
+
+  // importFiles: moving footage, 5 frames at 10 fps.
+  Harness h;
+  (void)h.hello();
+  api::ImportFiles imp;
+  imp.files.push_back(api::ImportFile{utf8(dir / "move.ppm"), false, std::nullopt, std::nullopt, false, std::nullopt});
+  const auto ri = h.run(cmd(imp));
+  REQUIRE(is_ok(ri));
+  api::GetItems gi;
+  gi.items = result_as<api::ItemList>(ri).items;
+  const auto items = query<api::ItemDetails>(h, qry(gi));
+  REQUIRE(items.items.size() == 1);
+  CHECK(items.items[0].media_type == api::MediaType::video);
+  CHECK(items.items[0].width == 8);
+
+  // What every analysis job (tracker, stabilizer, scene detection, ...) reads: frames through the importer.
+  std::string err;
+  auto src = jobs::open_plugin_frames(utf8(dir / "move.ppm"), 0, err);
+  REQUIRE(src);
+  CHECK(err.empty());
+  CHECK(src->fps() == 10);
+  CHECK(src->frame_count() == 5);
+  CHECK(src->source_width() == 8);
+  jobs::RgbaImage img;
+  for (std::int64_t k = 0; k < 5; ++k) {
+    REQUIRE(src->read(k, img, err));
+    REQUIRE(img.width == 8);
+    CHECK(img.rgba.at(0) == k * 40);
+    CHECK(img.rgba.at(3) == 255);
+  }
+  // Scaled to the job's analysis size.
+  auto small = jobs::open_plugin_frames(utf8(dir / "move.ppm"), 4, err);
+  REQUIRE(small);
+  CHECK(small->width() == 4);
+  CHECK(small->height() == 2);
+  REQUIRE(small->read(3, img, err));
+  CHECK(img.rgba.at(0) == 120);
+  // Not a plugin's file: no source, no error (the decoders take it).
+  CHECK_FALSE(jobs::open_plugin_frames("clip.mp4", 0, err));
+  CHECK(err.empty());
+  // A file the plugin refuses fails with its message.
+  write_ppm(dir / "broken.ppm", 2, 2);
+  CHECK_FALSE(jobs::open_plugin_frames(utf8(dir / "broken.ppm"), 0, err));
+  CHECK(err.find("plugin failed to read") != std::string::npos);
+}
+
+TEST_CASE("P7b plugin footage with sound: READ_AUDIO through the audio decoders' reader", "[plugins][contrib]") {
+  pl::PluginHost host(attached());
+  host.scan();
+  const fs::path dir = temp_dir("sound");
+  std::vector<std::vector<float>> planes(2, std::vector<float>(12000));
+  for (std::size_t i = 0; i < planes[0].size(); ++i) {
+    planes[0][i] = static_cast<float>(i % 100) / 100.0F;
+    planes[1][i] = -planes[0][i];
+  }
+  write_praw(dir / "tone.praw", 24000, planes);
+  const std::string path = utf8(dir / "tone.praw");
+
+  // importFiles: an audio item.
+  Harness h;
+  (void)h.hello();
+  api::ImportFiles imp;
+  imp.files.push_back(api::ImportFile{path, false, std::nullopt, std::nullopt, false, std::nullopt});
+  const auto ri = h.run(cmd(imp));
+  REQUIRE(is_ok(ri));
+  api::GetItems gi;
+  gi.items = result_as<api::ItemList>(ri).items;
+  const auto items = query<api::ItemDetails>(h, qry(gi));
+  REQUIRE(items.items.size() == 1);
+  CHECK(items.items[0].media_type == api::MediaType::audio);
+  CHECK(items.items[0].codec == "PRAW float32");
+
+  // The host installed the audio decoders' reader (audio/external_audio.hpp).
+  CHECK(audio::ExternalAudio::claims(path));
+  CHECK(audio::ExternalAudio::claims(utf8(dir / "x.ppm")));
+  CHECK_FALSE(audio::ExternalAudio::claims("song.wav"));
+  audio::ExternalAudioFormat fmt;
+  std::string err;
+  REQUIRE(audio::ExternalAudio::probe(path, fmt, err));
+  CHECK(fmt.channels == 2);
+  CHECK(fmt.sampleRate == 24000);
+  CHECK(fmt.frames == 12000);
+  std::vector<float> got;
+  REQUIRE(audio::ExternalAudio::read(path, 11990, 64, got, err));
+  REQUIRE(got.size() == 20);  // 10 frames left x 2 channels
+  CHECK(got[0] == planes[0][11990]);
+  CHECK(got[1] == planes[1][11990]);
+  // A picture-only file of the plugin is claimed but silent.
+  write_ppm(dir / "still.ppm", 2, 2);
+  REQUIRE(audio::ExternalAudio::probe(utf8(dir / "still.ppm"), fmt, err));
+  CHECK(fmt.channels == 0);
+  // The sound-only file has no picture for the texture feed.
+  doc::NativeImage img;
+  CHECK_FALSE(doc::NativeImporters::read_frame(path, 0, img, err));
+
+  // The host gone: nothing is claimed any more.
+  host.contrib().shutdown();
+  CHECK_FALSE(audio::ExternalAudio::claims(path));
 }

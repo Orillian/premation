@@ -1,8 +1,8 @@
 // Sample: PPM Sequence — an OUTPUT MODULE plugin (SDK 1.2, pr_io.h): a format
 // the Render Queue lists ("plugin:com.premation.samples.ppmseq/ppmseq") that
 // writes every frame as a binary PPM beside the output path the user chose:
-// `shot.ppm` → `shot_00000.ppm`, `shot_00001.ppm`, … (and `shot_audio.f32`,
-// interleaved float32, when the export carries sound).
+// `shot.ppm` → `shot_00000.ppm`, `shot_00001.ppm`, … and, when the export
+// carries sound, `shot.wav` (32-bit float WAV of the mix, PR_OUTPUT_WRITE_AUDIO).
 //
 // Options (declared in the manifest, drawn by the Render Queue):
 //   depth    popup  8-bit | 16-bit
@@ -30,7 +30,36 @@ struct Job {
   int digits = 5;
   int fault = 1;
   long long frames = 0;
+  unsigned audioRate = 0;
+  unsigned audioChannels = 0;
+  unsigned long long audioFrames = 0;  ///< sample frames written to the .wav
+  bool audioStarted = false;
 };
+
+void put_u32(unsigned char* p, unsigned long long v) {
+  for (int i = 0; i < 4; ++i) p[i] = static_cast<unsigned char>((v >> (8U * static_cast<unsigned>(i))) & 0xFFU);
+}
+
+/// A 44-byte WAVE header: IEEE float (format 3), 32-bit, `frames` sample frames.
+void wav_header(unsigned char* h, unsigned rate, unsigned channels, unsigned long long frames) {
+  const unsigned long long data = frames * channels * 4ULL;
+  std::memcpy(h, "RIFF", 4);
+  put_u32(h + 4, 36 + data);
+  std::memcpy(h + 8, "WAVEfmt ", 8);
+  put_u32(h + 16, 16);
+  h[20] = 3;  // WAVE_FORMAT_IEEE_FLOAT
+  h[21] = 0;
+  h[22] = static_cast<unsigned char>(channels);
+  h[23] = 0;
+  put_u32(h + 24, rate);
+  put_u32(h + 28, static_cast<unsigned long long>(rate) * channels * 4ULL);
+  h[32] = static_cast<unsigned char>(channels * 4);
+  h[33] = 0;
+  h[34] = 32;
+  h[35] = 0;
+  std::memcpy(h + 36, "data", 4);
+  put_u32(h + 40, data);
+}
 
 std::FILE* open_utf8(const std::string& path, const char* mode) {
 #if defined(_WIN32)
@@ -81,6 +110,8 @@ PrErr begin(PrOutputCall* c) {
   if (j->digits < 1 || j->digits > 9) j->digits = 5;
   j->fault = static_cast<int>(o["fault"].num(1));
   j->frames = c->frame_count;
+  j->audioRate = c->audio_sample_rate;
+  j->audioChannels = c->audio_channels;
   if (j->stem.empty()) return fail(c, "no output path"), PR_ERR_INVALID_PARAM;
   return PR_ERR_NONE;
 }
@@ -126,18 +157,40 @@ PrErr write_frame(PrOutputCall* c) {
 
 PrErr write_audio(PrOutputCall* c) {
   Job* j = job_of(c);
-  if (j == nullptr || c->audio == nullptr || c->audio_channels == 0) return PR_ERR_NONE;
-  std::FILE* f = open_utf8(j->stem + "_audio.f32", "ab");
-  if (f == nullptr) return fail(c, "cannot write the audio"), PR_ERR_INTERNAL;
-  std::fwrite(c->audio, sizeof(float), static_cast<std::size_t>(c->audio_frames) * c->audio_channels, f);
-  std::fclose(f);
+  if (j == nullptr || c->audio == nullptr || j->audioChannels == 0 || j->audioRate == 0) return PR_ERR_NONE;
+  const std::string file = j->stem + ".wav";
+  // The first block writes the header (sizes patched at END); later blocks append.
+  std::FILE* f = open_utf8(file, j->audioStarted ? "ab" : "wb");
+  if (f == nullptr) return fail(c, "cannot write " + file), PR_ERR_INTERNAL;
+  if (!j->audioStarted) {
+    unsigned char h[44];
+    wav_header(h, j->audioRate, j->audioChannels, 0);
+    std::fwrite(h, 1, sizeof h, f);
+    j->audioStarted = true;
+  }
+  // Little-endian float32 as the host hands it (every platform the SDK targets is little-endian).
+  const std::size_t n = static_cast<std::size_t>(c->audio_frames) * j->audioChannels;
+  const bool ok = std::fwrite(c->audio, sizeof(float), n, f) == n;
+  const bool closed = std::fclose(f) == 0;
+  if (!ok || !closed) return fail(c, "cannot write " + file), PR_ERR_INTERNAL;
+  j->audioFrames += c->audio_frames;
   return PR_ERR_NONE;
 }
 
 PrErr end(PrOutputCall* c) {
-  if (Job* j = job_of(c)) j->~Job();
+  Job* j = job_of(c);
+  PrErr err = PR_ERR_NONE;
+  if (j != nullptr && j->audioStarted) {  // the WAV's sizes, now that they are known
+    const std::string file = j->stem + ".wav";
+    std::FILE* f = open_utf8(file, "r+b");
+    unsigned char h[44];
+    wav_header(h, j->audioRate, j->audioChannels, j->audioFrames);
+    if (f == nullptr || std::fwrite(h, 1, sizeof h, f) != sizeof h) err = (fail(c, "cannot finish " + file), PR_ERR_INTERNAL);
+    if (f != nullptr) std::fclose(f);
+  }
+  if (j != nullptr) j->~Job();
   c->host->handle_dispose(c->host_ref, c->job_data);
-  return PR_ERR_NONE;
+  return err;
 }
 
 PrErr PR_CALL ppmseq_main(PrIoCmd cmd, PrOutputCall* c) {

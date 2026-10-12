@@ -312,35 +312,11 @@ class StillFrames final : public FrameSource {
     if (!scene::decode_image_file(fs_path(path), img, error)) return false;
     srcW_ = img.width;
     srcH_ = img.height;
-    const std::uint32_t edge = std::max(srcW_, srcH_);
-    if (maxEdge == 0 || edge <= maxEdge) {
-      image_.width = srcW_;
-      image_.height = srcH_;
-      image_.rgba = std::move(img.rgba);
-      return true;
-    }
-    const double k = static_cast<double>(maxEdge) / edge;
-    image_.width = std::max(1U, static_cast<std::uint32_t>(std::lround(srcW_ * k)));
-    image_.height = std::max(1U, static_cast<std::uint32_t>(std::lround(srcH_ * k)));
-    image_.rgba.assign(static_cast<std::size_t>(image_.width) * image_.height * 4U, 0);
-    for (std::uint32_t y = 0; y < image_.height; ++y) {
-      const std::uint32_t y0 = static_cast<std::uint32_t>(static_cast<std::uint64_t>(y) * srcH_ / image_.height);
-      const std::uint32_t y1 = std::max(y0 + 1, static_cast<std::uint32_t>(static_cast<std::uint64_t>(y + 1) * srcH_ / image_.height));
-      for (std::uint32_t x = 0; x < image_.width; ++x) {
-        const std::uint32_t x0 = static_cast<std::uint32_t>(static_cast<std::uint64_t>(x) * srcW_ / image_.width);
-        const std::uint32_t x1 = std::max(x0 + 1, static_cast<std::uint32_t>(static_cast<std::uint64_t>(x + 1) * srcW_ / image_.width));
-        std::uint64_t sum[4] = {0, 0, 0, 0};
-        for (std::uint32_t sy = y0; sy < y1; ++sy) {
-          for (std::uint32_t sx = x0; sx < x1; ++sx) {
-            const std::size_t i = (static_cast<std::size_t>(sy) * srcW_ + sx) * 4U;
-            for (std::size_t c = 0; c < 4; ++c) sum[c] += img.rgba[i + c];  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
-          }
-        }
-        const std::uint64_t n = static_cast<std::uint64_t>(y1 - y0) * (x1 - x0);
-        const std::size_t o = (static_cast<std::size_t>(y) * image_.width + x) * 4U;
-        for (std::size_t c = 0; c < 4; ++c) image_.rgba[o + c] = static_cast<std::uint8_t>((sum[c] + n / 2) / n);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
-      }
-    }
+    RgbaImage full;
+    full.width = srcW_;
+    full.height = srcH_;
+    full.rgba = std::move(img.rgba);
+    image_ = box_downscale(std::move(full), maxEdge);
     return true;
   }
   [[nodiscard]] std::uint32_t width() const noexcept override { return image_.width; }
@@ -363,6 +339,8 @@ class StillFrames final : public FrameSource {
 }  // namespace
 
 std::unique_ptr<FrameSource> open_frames(const std::string& path, std::uint32_t maxEdge, std::string& error) {
+  // P7b: footage a native plugin imports never reaches the decoders.
+  if (auto plugin = open_plugin_frames(path, maxEdge, error); plugin || !error.empty()) return plugin;
   if (scene::is_still_image_path(fs_path(path))) {
     auto still = std::make_unique<StillFrames>();
     std::string stillError;

@@ -74,7 +74,16 @@ class FrameSource {
 };
 
 /// Open a video or still image. `maxEdge` 0 = full size. Null with `error` when it cannot be read.
+/// Footage a native plugin imports (P7b) is read through that plugin's importer.
 [[nodiscard]] std::unique_ptr<FrameSource> open_frames(const std::string& path, std::uint32_t maxEdge, std::string& error);
+
+/// Footage a loaded native plugin imports (P7b, doc::NativeImporters), frames through its
+/// importer. Null with `error` empty when no plugin claims `path`; null with `error` set when
+/// the plugin cannot read it ("plugin failed to read …").
+[[nodiscard]] std::unique_ptr<FrameSource> open_plugin_frames(const std::string& path, std::uint32_t maxEdge, std::string& error);
+
+/// Box-filter `img` down so its long edge is at most `maxEdge` (0 = unchanged; never up).
+[[nodiscard]] RgbaImage box_downscale(RgbaImage img, std::uint32_t maxEdge);
 
 /// importFiles' media facts (core/engine_ctx.hpp FilePorts::MediaProbe): a
 /// still `image` (width, height, duration 0), a `video` (its picture's size,

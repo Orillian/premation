@@ -2,11 +2,12 @@
   "manifestVersion": 1,
   "id": "com.premation.samples.ppmio",
   "name": "PPM / PFM Footage (sample)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "vendor": "Premation",
   "sdk": { "major": 1, "minor": 2 },
   "binary": { "windows": "ppmio.dll", "macos": "libppmio.dylib", "linux": "libppmio.so" },
   "importers": [
-    { "id": "ppm", "name": "PPM / PFM", "extensions": ["ppm", "pfm"] }
+    { "id": "ppm", "name": "PPM / PFM", "extensions": ["ppm", "pfm"] },
+    { "id": "praw", "name": "Premation Raw Audio", "extensions": ["praw"] }
   ]
 }

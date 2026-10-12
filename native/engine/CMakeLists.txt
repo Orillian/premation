@@ -631,6 +631,8 @@ if(MOTION_BUILD_TESTS)
   add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap distribute ppmio ppmseq statspanel)
   add_test(NAME engine_plugins_tests COMMAND engine_plugins_tests --reporter compact)
   target_sources(engine_plugins_tests PRIVATE tests/test_plugin_sdk12.cpp)  # SDK 1.2: times, shutter, assets, presets
+  # P7b: analysis jobs read plugin footage through its importer (jobs/media_input.cpp open_plugin_frames).
+  target_link_libraries(engine_plugins_tests PRIVATE engine_jobs_core)
 endif()
 
 # anim.cpp samples keyframes through motion_eval's C++ entry points (eval.hpp,
