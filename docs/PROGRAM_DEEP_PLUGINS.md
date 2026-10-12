@@ -30,8 +30,8 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit).
 
 ### V — verify what exists (GPU box)
 
-- [ ] V1 Build P4–P6 into the real engine (`scene_finish.cpp`, `scene_native_fx.cpp`, `export_job.cpp`); run `engine_plugins_tests`, `engine_plugins_gpu_tests`, the headless `*plugin*.native.test`, golden renders.
-- [ ] V2 Export passes the plugin host to `finish_native_frame` (camera, lights, transforms, checkouts at other times, disabled instances) — export = preview.
+- [x] V1 (2026-10-12, RTX 4060: plugin tests 364 + 322 green, then every later gate) Build P4–P6 into the real engine (`scene_finish.cpp`, `scene_native_fx.cpp`, `export_job.cpp`); run `engine_plugins_tests`, `engine_plugins_gpu_tests`, the headless `*plugin*.native.test`, golden renders.
+- [x] V2 (baa1b807) Export passes the plugin host to `finish_native_frame` (camera, lights, transforms, checkouts at other times, disabled instances) — export = preview.
 - [x] V3 Golden: `particles` applied to a comp-sized solid with an orbiting camera, 3 frames (P4 gate). (83f45afa: `plugin-particles-orbit`, 3 frames, with a trail through checkout_time; `premation-scene --plugins`)
 
 ### S — SDK 1.2 (effects)
