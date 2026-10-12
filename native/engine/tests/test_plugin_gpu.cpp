@@ -516,3 +516,27 @@ TEST_CASE("plugin GPU (SDK 1.2): an asset image is uploaded once per file and ke
   huge.height = 1;
   CHECK(glue.asset_texture(r->device(), "huge", huge) == nullptr);
 }
+
+TEST_CASE("plugin GPU: a plugin's output is linear — an identity grade leaves the frame as it was", "[plugins][gpu]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  api::RenderEffect identity = grade_effect(32, 32);
+  for (auto& p : identity.params) {
+    if (p.name == "p.p1") p.numbers = {1, 1, 1, 1};
+    if (p.name == "p.p2" || p.name == "p.p4") p.number = 0;
+    if (p.name == "p.p3") p.number = 100;
+  }
+  const Rendered plain = render(*r, frame(32, nullptr));
+  for (const bool gpu : {true, false}) {
+    glue.set_gpu_enabled(gpu);
+    const Rendered graded = render(*r, frame(32, &identity));
+    INFO("gpu " << gpu);
+    CHECK(max_diff(graded.scene, plain.scene) < 1e-4F);  // was: the output sRGB-decoded on the way back (darker)
+  }
+  glue.set_gpu_enabled(true);
+}

@@ -100,11 +100,13 @@ bool read_back(rg::Device& dev, const wgpu::Texture& texture, std::uint32_t w, s
   return true;
 }
 
-/// `tex` drawn over the whole of target `name` (texel for texel: same size, nearest).
+/// `tex` drawn over the whole of target `name` (texel for texel: same size, nearest), its texels
+/// as they are when `tex.sampleLinear` (a chain buffer, a plugin's output: linear working space) —
+/// never sRGB-decoded on the way, which darkened every plugin's output and checkout.
 void draw_full(rg::PassContext& ctx, std::string_view name, const rg::TexRef& tex) {
   rg::Commands cmds;
   rg::emit_textured(ctx, cmds, rg::screen_mvp(), rg::Color::white(), 1, rg::Blend::none, tex, ctx.nearest_clamp(), rg::Rect{0, 0, 1, 1},
-                    rg::kIdentityColor, false);
+                    rg::kIdentityColor, tex.sampleLinear);
   ctx.draw_into(name, cmds, true);
 }
 
@@ -366,7 +368,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
     const std::string oom = pop_scope(dev);
     if (r.ok && validation.empty() && oom.empty()) {
       dev.queue().Submit(1, &cb);
-      draw_full(ctx, call.dest, rg::TexRef{out.view, out.id, w, h, false});
+      draw_full(ctx, call.dest, rg::TexRef{out.view, out.id, w, h, true});
       ++stats_.gpu;
       return true;
     }
@@ -406,7 +408,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
   layout.rowsPerImage = h;
   const wgpu::Extent3D size{w, h, 1};
   dev.queue().WriteTexture(&dst, out.bytes.data(), out.bytes.size(), &layout, &size);
-  draw_full(ctx, call.dest, rg::TexRef{up.view, up.id, w, h, false});
+  draw_full(ctx, call.dest, rg::TexRef{up.view, up.id, w, h, true});
   ++stats_.cpu;
   return true;
 }
