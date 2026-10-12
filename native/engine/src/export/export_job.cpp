@@ -22,6 +22,7 @@
 #include "child_process.hpp"
 #include "docexpr.hpp"
 #include "docio.hpp"
+#include "effects_port.hpp"
 #include "engine_frames.hpp"
 #include "fonts.hpp"
 #include "exr_write.hpp"
@@ -343,6 +344,9 @@ std::unique_ptr<Built> build_frame(DocCopy& dc, const Plan& p, std::int64_t fram
     // CPU path (P11's `cpu-effects`). The viewport reports them; an export or
     // an auto-reframe must not refuse the frame over them.
     if (e.stage == "font" || e.stage == "cpu-effects") continue;
+    // A Premation Cloud plugin without a valid token passes its layer through,
+    // in an export as in the viewer (PLUGIN_STORE.md §4b) — not a refusal.
+    if (sc::is_plugin_locked_error(e.stage, e.message)) continue;
     std::string r = e.stage == "snapshot" ? "snapshot error: " : "";
     r += e.message;
     if (!e.layerId.empty()) r += " (" + e.layerId + ")";

@@ -31,6 +31,17 @@ namespace premation::scene {
 /// Why the port cannot render this (enabled) effect yet — nullptr when it can.
 [[nodiscard]] const char* effect_unported_reason(const Json& e);
 
+/// The reason `effect_unported_reason` gives for a Premation Cloud plugin found
+/// but locked (no valid entitlement): the effect passes its layer through.
+inline constexpr const char* kPluginLockedReason = "requires Premation Cloud — the effect passes through until the plan is active";
+
+/// A layer error (`stage`, `message`) for a locked Premation Cloud plugin. Not a
+/// failure: the frame draws with the layer unaffected — in the viewer and in an
+/// export (docs/PLUGIN_STORE.md §4b), which must not refuse the frame over it.
+[[nodiscard]] inline bool is_plugin_locked_error(std::string_view stage, std::string_view message) {
+  return stage == "unported" && message.starts_with(kPluginLockedReason);
+}
+
 [[nodiscard]] bool effect_enabled(const Json& e);
 /// `effectNumber(e, key)` — the param, else its declared default, else 0.
 [[nodiscard]] double effect_number(const Json& e, std::string_view key);

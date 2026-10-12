@@ -522,3 +522,14 @@ TEST_CASE("gpu route (AE parity 5.3): every keying / grade / deformation pass th
     CHECK(has_data(l, "fxdata:L:a", 1 + 40 * 2 + 43 * 2));
   }
 }
+
+// A Premation Cloud plugin without a valid token (PLUGIN_STORE.md §4b): its
+// layer error is an advisory — the export draws the layer unaffected, as the
+// viewer does, instead of refusing the frame ("preflight: frame 0: requires
+// Premation Cloud …", found on the RTX box 2026-10-13).
+TEST_CASE("a locked Premation Cloud plugin's layer error is not an export failure", "[scene][plugins]") {
+  const std::string msg = std::string(sc::kPluginLockedReason) + " (premation.saber)";
+  CHECK(sc::is_plugin_locked_error("unported", msg));
+  CHECK_FALSE(sc::is_plugin_locked_error("unported", "missing plugin — the effect passes through until it is installed (com.acme.glow)"));
+  CHECK_FALSE(sc::is_plugin_locked_error("effect", msg));
+}
