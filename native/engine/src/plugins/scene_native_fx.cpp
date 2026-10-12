@@ -90,6 +90,8 @@ std::optional<api::RenderEffect> native_effect_entry(const Json& e, const Json& 
   put_num(out, "layerW", l.width);
   put_num(out, "layerH", l.height);
   if (l.draft) put_flag(out, "draft", true);
+  // SDK 1.2 (S3): a layer in a nested comp runs on that comp's clock (scene_finish.cpp).
+  if (l.compSeconds) put_num(out, "ownCompSeconds", *l.compSeconds);
   for (const doc::EffectParamDef& p : ne->def.params) {
     const Json& v = params.at(p.key);
     const std::string name = "p." + p.key;

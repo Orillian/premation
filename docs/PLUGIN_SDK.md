@@ -271,8 +271,16 @@ comp time of layer time 0 (with no stretch, comp time = `layer_start` + layer
 time). `comp_width`, `comp_height` and `layer_is_3d` describe the composition
 and the layer. Buttons, overlays and the params UI get the layer time of the
 playhead too (the `particles` sample's **Reseed From Playhead** writes it).
-Inside a nested composition `comp_time` is the top composition's time (a known
-limit).
+Inside a nested composition (a precomp layer) `comp_time` is that
+composition's time — the source time its instance shows at this frame, through
+the instance's start offset, stretch and time remap — and `layer_start` is
+relative to it. Times passed to the host map back through each instance to
+the frame's composition (the camera, the lights and a checkout's frame are
+evaluated there), anchored at the frame's own time; a Time Remap on an
+instance is followed exactly at the frame's time and by its offset / stretch at
+other times. `comp_width` / `comp_height` and the camera stay the frame's
+composition's. A layer of a collapsed precomp runs on the frame's clock, as it
+is drawn.
 
 ## Motion blur (SDK 1.2)
 

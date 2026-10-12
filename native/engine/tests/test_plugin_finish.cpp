@@ -107,12 +107,12 @@ struct Fixture {
     api::Renderable solid;
     api::RenderEffect entry;
   };
-  Built frame(double t, bool motionBlur = false) {
+  Built frame(double t, bool motionBlur = false, std::string_view id = "solid") {
     const sc::BuildContext ctx{d, view, *env, cache, nullptr, {}};
     const sc::ViewSpec vs = sc::export_view(480, 360, 480, 360);
     sc::NativeFrame nf = sc::build_native_frame(ctx, "comp_root", t, vs, motionBlur);
     pl::finish_native_frame(ctx, "comp_root", t, vs, motionBlur, nf, host.get());
-    const api::Renderable* r = pl::find_renderable_in(nf.file.scene.renderables, "solid");
+    const api::Renderable* r = pl::find_renderable_in(nf.file.scene.renderables, id);
     REQUIRE(r != nullptr);
     Built b;
     b.solid = *r;
@@ -448,4 +448,119 @@ TEST_CASE("a COLOR param stored as something other than a colour renders its def
   // A document colour: no error.
   Fixture ok(scene_json());
   CHECK(ok.plugin_errors(0.5).empty());
+}
+
+TEST_CASE("SDK 1.2 S3: in a nested comp, comp_time and layer_start are that comp's", "[plugins][finish]") {
+  // The particles solid moved into comp "inner"; the top comp shows it through a sealed
+  // instance "pc" that starts at 0.5 s and is stretched to 200 %.
+  Json document = scene_json();
+  Json innerRec = Json::object();
+  innerRec.set("id", Json::string("inner"));
+  innerRec.set("name", Json::string("inner"));
+  innerRec.set("width", Json::number(480));
+  innerRec.set("height", Json::number(360));
+  innerRec.set("fps", Json::number(30));
+  innerRec.set("durationSeconds", Json::number(10));
+  innerRec.set("background", Json::string("#000000"));
+  document.find_mut("comps")->set("inner", std::move(innerRec));
+  document.find_mut("comps")->find_mut("comp_root")->set("durationSeconds", Json::number(10));
+  auto& nodes = document.find_mut("scene")->find_mut("nodes")->arr_mut();
+  for (Json& n : nodes) {
+    if (n.at("id").str() == "comp_root") {
+      Json::Array kids;
+      kids.push_back(Json::string("pc"));
+      kids.push_back(Json::string("cam"));
+      n.set("children", Json::array(std::move(kids)));
+    }
+    if (n.at("id").str() == "solid") n.set("parent", Json::string("inner"));
+  }
+  const auto component = [](const char* id, const char* type, Json props) {
+    Json c = Json::object();
+    c.set("id", Json::string(id));
+    c.set("type", Json::string(type));
+    c.set("props", std::move(props));
+    return c;
+  };
+  const auto node = [](const char* id, std::optional<const char*> parent, std::vector<const char*> children, Json::Array comps) {
+    Json n = Json::object();
+    n.set("id", Json::string(id));
+    n.set("name", Json::string(id));
+    n.set("parent", parent ? Json::string(*parent) : Json::null());
+    Json::Array kids;
+    for (const char* k : children) kids.push_back(Json::string(k));
+    n.set("children", Json::array(std::move(kids)));
+    n.set("visible", Json::boolean(true));
+    n.set("locked", Json::boolean(false));
+    n.set("components", Json::array(std::move(comps)));
+    return n;
+  };
+  {
+    Json meta = Json::object();
+    meta.set("__kind", Json::string("group"));
+    Json::Array comps;
+    comps.push_back(component("inner_meta", "group", std::move(meta)));
+    nodes.push_back(node("inner", std::nullopt, {"solid"}, std::move(comps)));
+  }
+  {
+    Json t = Json::object();
+    t.set("__kind", Json::string("comp"));
+    t.set("x", Json::number(240));
+    t.set("y", Json::number(180));
+    t.set("rotation", Json::number(0));
+    t.set("width", Json::number(480));
+    t.set("height", Json::number(360));
+    Json st = Json::object();
+    st.set("opacity", Json::number(100));
+    Json fx = Json::object();
+    fx.set("precomp", Json::boolean(true));
+    fx.set("__compRef", Json::string("inner"));
+    Json time = Json::object();
+    time.set("stretch", Json::number(200));
+    fx.set("time", std::move(time));
+    Json::Array comps;
+    comps.push_back(component("pc_t", "Transform", std::move(t)));
+    comps.push_back(component("pc_s", "Style", std::move(st)));
+    comps.push_back(component("pc_fx", "fx", std::move(fx)));
+    nodes.push_back(node("pc", "comp_root", {}, std::move(comps)));
+  }
+  Fixture f(std::move(document));
+  REQUIRE(doc::tl_ensure(f.d, "comp_root"));
+  REQUIRE(doc::tl_ensure(f.d, "inner"));
+  int moved = 0;
+  for (doc::Bar& b : f.d.timeline_mut("comp_root").bars) {
+    if (b.sourceId && *b.sourceId == "pc") {
+      b.clip.start = 15;  // the instance starts at 0.5 s
+      ++moved;
+    }
+  }
+  for (doc::Bar& b : f.d.timeline_mut("inner").bars) {
+    if (b.sourceId && *b.sourceId == "solid") {
+      b.clip.start = 3;  // the layer starts 0.1 s into its comp
+      ++moved;
+    }
+  }
+  REQUIRE(moved == 2);
+
+  // Top 1.5 s: the instance is 1.0 s in at half speed — inner 0.5 s; the layer 0.4 s into its time.
+  const Fixture::Built b = f.frame(1.5, false, "pc::solid");
+  const pl::RenderInputs in = f.decode(b.entry);
+  CHECK(in.compTime == flicks(0.5));
+  CHECK(in.layerTime == flicks(0.4));
+  CHECK(in.layerStart == flicks(0.1));
+
+  // checkout_time at layer times maps back to the TOP comp: one layer frame = two top frames.
+  REQUIRE(in.samples.size() == 3);
+  const std::int64_t step = flicks(1.0 / 30);
+  for (std::size_t i = 0; i < 3; ++i) {
+    const pl::TimeSample& s = in.samples[i];
+    INFO("sample " << i);
+    CHECK(s.time == in.layerTime - static_cast<std::int64_t>(3 - i) * step);
+    const double top = 1.5 - (2.0 * static_cast<double>(3 - i)) / 30;
+    const pl::RenderInputs at = f.decode(f.frame(top, false, "pc::solid").entry);
+    REQUIRE(s.camera.has_value());
+    REQUIRE(at.camera.has_value());
+    for (std::size_t k = 0; k < 16; ++k) {
+      CHECK(std::abs(s.camera->view.at(k) - at.camera->view.at(k)) < 1e-6 * std::max(1.0, std::abs(at.camera->view.at(k))));
+    }
+  }
 }

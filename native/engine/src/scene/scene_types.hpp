@@ -146,6 +146,9 @@ struct RLayer {
   /// A 3D comp CARD: the card's projected corners (TL, TR, BR, BL; comp px).
   std::optional<std::array<double, 8>> quad3d;
   std::optional<double> sourceTime;
+  /// A layer inside a sealed nested comp: that comp's time at this frame (the source time
+  /// its instance was built at; comp_instance.cpp). Unset = the frame's own comp.
+  std::optional<double> compSeconds;
   /// RenderLayer.frameBlend: the two source frames bracketing sourceTime and the
   /// sub-frame weight toward the second (video only; mode mix | pixelMotion).
   struct FrameBlend {

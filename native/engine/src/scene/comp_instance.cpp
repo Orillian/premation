@@ -245,6 +245,14 @@ WalkNodes expand_walk_nodes(const doc::Document& d, const std::vector<const doc:
   return w;
 }
 
+/// Each layer's own comp time (the innermost comp a layer sits in keeps its own).
+static void stamp_comp_seconds(std::vector<RLayer>& layers, double seconds) {  // NOLINT(misc-use-anonymous-namespace)
+  for (RLayer& l : layers) {
+    if (!l.compSeconds) l.compSeconds = seconds;
+    if (l.precompLayers) stamp_comp_seconds(*l.precompLayers, seconds);
+  }
+}
+
 void prefix_layer_ids(std::vector<RLayer>& layers, const std::string& prefix) {
   for (RLayer& l : layers) {
     l.id = prefix + l.id;
@@ -288,6 +296,7 @@ std::optional<NestedComp> nested_comp_layers(const BuildContext& c, const Snapsh
     out.scene3d = std::move(p);
   }
   out.layers = std::move(s.layers);
+  stamp_comp_seconds(out.layers, nestedTime);
   prefix_layer_ids(out.layers, prefix);
   return out;
 }

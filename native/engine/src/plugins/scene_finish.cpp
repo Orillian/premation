@@ -159,6 +159,65 @@ bool engine_decode(const std::filesystem::path& file, DecodedAsset& out, std::st
   return true;
 }
 
+// ── SDK 1.2 (S3): an effect's clock ─────────────────────────────────────────
+//
+// A layer's time is read in ITS comp: for a layer inside sealed nested comps the
+// frame's top-comp time maps through each comp instance (the source time the
+// snapshot built that instance at, stamped on the entry as ownCompSeconds), and
+// layer_start is relative to that comp. What the host evaluates off the document
+// at other times (the camera, the lights, a checkout's frame) is in the TOP comp:
+// own-comp times map back through each instance's layer clock (offset, stretch,
+// reverse), anchored so the frame's own time maps back to the frame exactly.
+struct EffectClock {
+  doc::NativeLayerClock layer;                ///< the layer in its own comp
+  std::vector<doc::NativeLayerClock> outer;   ///< the comp instances, top first
+  double ownNow = 0;                          ///< the own comp's time at this frame
+  double shift = 0;                           ///< top-comp anchor (time remap, frame rounding)
+
+  /// Own-comp seconds → top-comp seconds.
+  [[nodiscard]] double to_top(double own) const {
+    for (auto it = outer.rbegin(); it != outer.rend(); ++it) own = it->comp_time(own);
+    return own + shift;
+  }
+  /// Layer seconds → top-comp seconds.
+  [[nodiscard]] double top_time(double layerSeconds) const { return to_top(layer.comp_time(layerSeconds)); }
+};
+
+/// The sealed comp instances a renderable id names, top first ("<instance>::…::<layer>").
+std::vector<std::string> instance_chain(const doc::Document& d, std::string_view renderableId) {
+  std::vector<std::string> out;
+  std::size_t pos = 0;
+  for (std::size_t next = renderableId.find("::", pos); next != std::string_view::npos; next = renderableId.find("::", pos)) {
+    const std::string seg(renderableId.substr(pos, next - pos));
+    pos = next + 2;
+    const doc::Node* n = d.node(seg);
+    if (n != nullptr && doc::read_comp_ref(*n) && !doc::read_comp_collapse(*n)) out.push_back(seg);
+  }
+  return out;
+}
+
+/// The document node a (possibly prefixed) layer id names: itself, else the part after the last "::".
+std::string doc_layer_of(const doc::Document& d, const std::string& id) {
+  if (d.node(id) != nullptr) return id;
+  const std::size_t i = id.rfind("::");
+  return i == std::string::npos ? id : id.substr(i + 2);
+}
+
+EffectClock effect_clock(const scene::BuildContext& c, const api::Renderable& r, const api::RenderEffect& e,
+                         const std::string& layerId, double t) {
+  EffectClock k;
+  const double stamped = num_of(e, "ownCompSeconds", NAN);
+  double x = t;
+  for (const std::string& inst : instance_chain(c.d, r.id)) {
+    k.outer.push_back(doc::native_layer_clock(c.d, c.view, inst, x));
+    x = k.outer.back().layer_time(x);
+  }
+  k.ownNow = std::isfinite(stamped) ? stamped : x;
+  k.layer = doc::native_layer_clock(c.d, c.view, layerId, k.ownNow);
+  k.shift = t - k.to_top(k.ownNow);
+  return k;
+}
+
 // ── SDK 1.2: what an effect checked out at other times (checkout_time) ──────
 //
 // A light evaluator: the effect's params, the comp camera, the comp lights and
@@ -181,13 +240,13 @@ class Sampler {
         eval_(sc_, std::string(comp), scene.width > 0 ? scene.width : 1920, scene.height > 0 ? scene.height : 1080) {}
 
   SampleWire sample(const EffectSpec& spec, const api::RenderEffect& e, const std::string& layerId, const std::string& effectId,
-                    const doc::NativeLayerClock& clock, const TimeRequest& q) {
+                    const EffectClock& clock, const TimeRequest& q) {
     const doc::TlSubFrameScope subFrame;
     SampleWire w;
     w.time = q.time;
     w.what = q.what;
     const double layerSeconds = static_cast<double>(q.time) / kFlicks;
-    const double compSeconds = clock.comp_time(layerSeconds);
+    const double compSeconds = clock.top_time(layerSeconds);  // the top comp's, where the host evaluates
     if ((q.what & PR_SAMPLE_PARAMS) != 0) w.params = params_at(layerId, effectId, layerSeconds, e);
     if ((q.what & PR_SAMPLE_CAMERA) != 0 && spec.has(PR_OUT_FLAG_USES_CAMERA)) w.camera = camera_at(compSeconds);
     if ((q.what & PR_SAMPLE_LIGHTS) != 0 && spec.has(PR_OUT_FLAG_USES_LIGHTS)) w.lights = lights_at(compSeconds);
@@ -402,14 +461,19 @@ void finish_native_frame(const scene::BuildContext& c, std::string_view comp, do
       const std::string matchName = text_of(e, "matchName");
       const std::size_t slash = instance.rfind('/');
       const std::string effectId = slash == std::string::npos ? std::string() : instance.substr(slash + 1);
-      const doc::Node* node = c.d.node(layerId);
+      // A layer drawn inside a precomp carries its instance's prefix ("<instance>::<id>", a
+      // collapsed or cloned copy too); its document node — params, state, files — is <id>.
+      const std::string docLayer = doc_layer_of(c.d, layerId);
+      const std::string prefix = layerId.substr(0, layerId.size() - docLayer.size());
+      const doc::Node* node = c.d.node(docLayer);
       // SDK 1.2 (S3): the layer's own time — start offset, Time Stretch, reverse, freeze — the
       // mapping its keyframes use; checkouts at other times are layer times too.
-      const doc::NativeLayerClock clock = doc::native_layer_clock(c.d, c.view, layerId, t);
-      const std::int64_t lt = node != nullptr ? flicks(clock.layer_time(t)) : tf;
-      set_num(e, "compTime", static_cast<double>(tf));
+      // In a nested comp, comp_time and layer_start are that comp's (effect_clock).
+      const EffectClock clock = effect_clock(c, r, e, docLayer, t);
+      const std::int64_t lt = node != nullptr ? flicks(clock.layer.layer_time(clock.ownNow)) : tf;
+      set_num(e, "compTime", static_cast<double>(node != nullptr ? flicks(clock.ownNow) : tf));
       set_num(e, "layerTime", static_cast<double>(lt));
-      set_num(e, "layerStart", static_cast<double>(node != nullptr ? flicks(clock.comp_time(0)) : 0));
+      set_num(e, "layerStart", static_cast<double>(node != nullptr ? flicks(clock.layer.comp_time(0)) : 0));
       set_num(e, "timeStep", static_cast<double>(step));
       set_num(e, "fps", fps);
       set_num(e, "compW", compW);
@@ -498,17 +562,18 @@ void finish_native_frame(const scene::BuildContext& c, std::string_view comp, do
         wires.reserve(info.times.size());
         for (const TimeRequest& q : info.times) {
           if (q.time == lt) continue;  // the frame's own time: the entry already is that
-          wires.push_back(sampler.sample(*spec, e, layerId, effectId, clock, q));
+          wires.push_back(sampler.sample(*spec, e, docLayer, effectId, clock, q));
         }
         if (!wires.empty()) encode_native_samples(e, *spec, std::move(wires));
       }
       if (!spec->has(PR_OUT_FLAG_WIDE_TIME_INPUT)) continue;
       for (const CheckoutRequest& q : reqs) {
         if (q.time == lt) continue;  // "now" is the chain's own input / a live layer
-        std::string layer = q.paramIndex == 0 ? layerId : q.paramIndex - 1 < in.values.size() ? in.values[q.paramIndex - 1].layer : "";
+        std::string layer = q.paramIndex == 0 ? docLayer : q.paramIndex - 1 < in.values.size() ? in.values[q.paramIndex - 1].layer : "";
         if (layer.empty()) continue;
-        // A checkout's time is the effect layer's time: the composition is built at its comp time.
-        const std::int64_t at = node != nullptr ? flicks(clock.comp_time(static_cast<double>(q.time) / kFlicks)) : q.time;
+        layer = prefix + layer;  // the layers of the effect's own comp, drawn under its prefix
+        // A checkout's time is the effect layer's time: the TOP composition is built at the matching time.
+        const std::int64_t at = node != nullptr ? flicks(clock.top_time(static_cast<double>(q.time) / kFlicks)) : q.time;
         wants.push_back({std::move(layer), q.time, at, &list});
       }
     }
