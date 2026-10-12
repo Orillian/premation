@@ -886,3 +886,68 @@ TEST_CASE("plugin GPU: a plugin's output is linear — an identity grade leaves 
   }
   glue.set_gpu_enabled(true);
 }
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): a collapsed precomp's 3D layer occludes each sub-frame where its instance put it",
+          "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  // The wall sits inside a COLLAPSED precomp "pc" (no camera of its own, not a card): at the frame's
+  // time it covers the view in front of the model. Its instance carries it far behind the model at
+  // the shutter's two sub-times — the poses finish_native_frame now gives "pc::wall" (a frame built
+  // at each sub-time; before, a collapsed copy kept its frame pose and hid every sub-frame).
+  auto wall = solid3d("pc::wall", -2000, -2000, 4000 + kDW, 4000 + kDH, -60, {0, 1, 0, 1});
+  const auto behind = solid3d("pc::wall", -2000, -2000, 4000 + kDW, 4000 + kDH, 2000, {0, 1, 0, 1});
+  api::Renderable pc;
+  pc.id = "pc";
+  pc.kind = api::RenderableKind::image;
+  pc.model_matrix = {static_cast<double>(kDW), 0, 0, 0, static_cast<double>(kDH), 0, 0, 0, 1};
+  pc.bounds = {0, 0, static_cast<double>(kDW), static_cast<double>(kDH)};
+  pc.opacity = 1;
+  pc.texture_key = "precomp:pc";
+  pc.precomp = api::RenderPrecompFrame{};
+  pc.precomp_children.push_back(std::move(wall));
+  const std::int64_t step = std::llround(static_cast<double>(PR_TIME_SCALE) / 30);
+  const std::array<std::int64_t, 2> times{std::llround(45.0 / 360 * static_cast<double>(step)), std::llround(135.0 / 360 * static_cast<double>(step))};
+  const auto blurred = [&](bool posed) {
+    api::RenderEffect e = model3d_effect("fx", 1, true);
+    for (auto p : {num("mb", 1), num("shutterAngle", 180), num("shutterPhase", 0), num("mbSamples", 2), num("timeStep", static_cast<double>(step)),
+                   num("layerTime", 0), num("compTime", 0), num("p.p14", 1)}) {
+      e.params.push_back(p);
+    }
+    const std::uint32_t what = PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LAYER_TRANSFORMS | PR_SAMPLE_SCENE_DEPTH;
+    std::vector<double> index;
+    for (std::size_t i = 0; i < times.size(); ++i) {
+      index.push_back(static_cast<double>(times.at(i)));
+      index.push_back(static_cast<double>(what));
+      if (!posed) continue;  // what the hook sent for a collapsed copy before: no pose
+      const std::string pre = "s" + std::to_string(i) + ".dp.";
+      e.params.push_back({pre + "ids", api::RenderParamKind::text, 0, {}, "pc::wall", {}});
+      e.params.push_back({pre + "m", api::RenderParamKind::numbers, 0, behind.three_d->model, "", {}});
+    }
+    e.params.push_back({"samples", api::RenderParamKind::numbers, 0, index, "", {}});
+    return e;
+  };
+  const auto lit = [](const Rendered& o) {
+    std::size_t n = 0;
+    for (std::size_t i = 0; i < o.scene.size(); i += 4) n += o.scene[i] > 0.05F ? 1 : 0;
+    return n;
+  };
+  for (const bool gpu : {true, false}) {
+    INFO((gpu ? "GPU" : "CPU") << " path");
+    glue.set_gpu_enabled(gpu);
+    const Rendered framePose = render(*r, depth_frame({pc}, {blurred(false)}));
+    const Rendered subPose = render(*r, depth_frame({pc}, {blurred(true)}));
+    std::printf("[measure] model3d blurred behind a collapsed precomp's wall, %s: lit %zu px unposed, %zu px posed\n",
+                gpu ? "GPU" : "CPU", lit(framePose), lit(subPose));
+    CHECK(lit(framePose) == 0);
+    CHECK(lit(subPose) > 1000);
+    const float* c = px_at(subPose, kDW / 2, kDH / 2);
+    CHECK(c[0] > 0.05F);
+  }
+  glue.set_gpu_enabled(true);
+}

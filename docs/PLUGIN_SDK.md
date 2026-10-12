@@ -388,9 +388,10 @@ the depth at those times:
 The engine evaluates, for each such time, the comp camera and every 3D layer the
 depth draws (keyframes, parenting, expressions; sub-frame exact) and the frame
 carries them, so preview and export draw the same depth. A layer inside a
-collapsed precomp moves with its own animation at the sub-time; the precomp
-layer's own motion is not re-evaluated, and an instance copy the document cannot
-pose keeps its frame pose.
+collapsed precomp is posed by the composition built at the sub-time (its
+instance's motion and its own, through nested collapsed precomps), built once
+per sub-time and only when such a layer is in the depth; a layer not drawn at
+that time keeps its frame pose. The precomp's opacity is the frame's.
 
 ## Presets (SDK 1.2)
 

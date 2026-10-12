@@ -564,3 +564,109 @@ TEST_CASE("SDK 1.2 S3: in a nested comp, comp_time and layer_start are that comp
     }
   }
 }
+
+TEST_CASE("SDK 1.2 S6: a collapsed precomp's 3D layers are posed at each sub-time by their instance's motion too",
+          "[plugins][finish][sdk12]") {
+  // The model3d occlusion scene with its 3D wall moved into comp "inner", shown through a
+  // COLLAPSED 3D instance "pc" whose x is keyed 240 -> 540 over 1 s; the wall itself does not move.
+  Json document = scene_json("plugin-model3d-occlusion.json");
+  document.find_mut("motionBlur")->set("enabled", Json::boolean(true));
+  fx_props(*find_node(document, "solid")).set("motionBlur", Json::boolean(true));
+  Json innerRec = Json::object();
+  innerRec.set("id", Json::string("inner"));
+  innerRec.set("name", Json::string("inner"));
+  innerRec.set("width", Json::number(480));
+  innerRec.set("height", Json::number(360));
+  innerRec.set("fps", Json::number(30));
+  innerRec.set("durationSeconds", Json::number(2));
+  innerRec.set("background", Json::string("#000000"));
+  document.find_mut("comps")->set("inner", std::move(innerRec));
+  auto& nodes = document.find_mut("scene")->find_mut("nodes")->arr_mut();
+  for (Json& n : nodes) {
+    if (n.at("id").str() == "comp_root") {
+      Json::Array kids;
+      for (const char* k : {"pc", "solid", "cam", "key", "fill"}) kids.push_back(Json::string(k));
+      n.set("children", Json::array(std::move(kids)));
+    }
+    if (n.at("id").str() == "wall") n.set("parent", Json::string("inner"));
+  }
+  const auto component = [](const char* id, const char* type, Json props) {
+    Json c = Json::object();
+    c.set("id", Json::string(id));
+    c.set("type", Json::string(type));
+    c.set("props", std::move(props));
+    return c;
+  };
+  const auto node = [](const char* id, const Json& parent, const char* child, Json::Array comps) {
+    Json n = Json::object();
+    n.set("id", Json::string(id));
+    n.set("name", Json::string(id));
+    n.set("parent", parent);
+    Json::Array kids;
+    if (child != nullptr) kids.push_back(Json::string(child));
+    n.set("children", Json::array(std::move(kids)));
+    n.set("visible", Json::boolean(true));
+    n.set("locked", Json::boolean(false));
+    n.set("components", Json::array(std::move(comps)));
+    return n;
+  };
+  {
+    Json meta = Json::object();
+    meta.set("__kind", Json::string("group"));
+    Json::Array comps;
+    comps.push_back(component("inner_meta", "group", std::move(meta)));
+    nodes.push_back(node("inner", Json::null(), "wall", std::move(comps)));
+  }
+  {
+    Json t = Json::object();
+    t.set("__kind", Json::string("comp"));
+    t.set("x", Json::number(240));
+    t.set("y", Json::number(180));
+    t.set("z", Json::number(0));
+    t.set("rotation", Json::number(0));
+    t.set("width", Json::number(480));
+    t.set("height", Json::number(360));
+    Json st = Json::object();
+    st.set("opacity", Json::number(100));
+    Json fx = Json::object();
+    fx.set("precomp", Json::boolean(true));
+    fx.set("__compRef", Json::string("inner"));
+    fx.set("collapseTransforms", Json::boolean(true));
+    Json::Array comps;
+    comps.push_back(component("pc_t", "Transform", std::move(t)));
+    comps.push_back(component("pc_s", "Style", std::move(st)));
+    comps.push_back(component("pc_fx", "fx", std::move(fx)));
+    nodes.push_back(node("pc", Json::string("comp_root"), nullptr, std::move(comps)));
+  }
+  add_track(document, "pc", "x", keys({{0, 240}, {1, 540}}));
+  Fixture f(std::move(document));
+  const pl::EffectSpec* spec = f.host->effect("com.premation.samples.model3d");
+  REQUIRE(spec != nullptr);
+  const double t = 0.5;
+  const Fixture::Built b = f.frame(t, true);
+  pl::RenderInputs in;
+  pl::decode_native_fx(b.entry, *spec, in);
+  REQUIRE(in.motionBlur);
+  REQUIRE_FALSE(in.samples.empty());
+  const sc::BuildContext ctx{f.d, f.view, *f.env, f.cache, nullptr, {}};
+  const auto model_at = [&](double seconds) {
+    const doc::TlSubFrameScope subFrame;
+    sc::NativeFrame nf = sc::build_native_frame(ctx, "comp_root", seconds, sc::export_view(480, 360, 480, 360), false);
+    const api::Renderable* wall = pl::find_renderable_in(nf.file.scene.renderables, "pc::wall");
+    REQUIRE(wall != nullptr);
+    REQUIRE(wall->three_d.has_value());
+    return wall->three_d->model;
+  };
+  const std::vector<double> frameModel = model_at(t);
+  for (const pl::TimeSample& s : in.samples) {
+    const double at = static_cast<double>(s.time) / kFlicks;
+    INFO("sample at " << at);
+    REQUIRE(s.depth.has_value());
+    const auto it = std::ranges::find_if(s.depth->models, [](const auto& m) { return m.first == "pc::wall"; });
+    REQUIRE(it != s.depth->models.end());  // before: not posed (the document cannot place a collapsed copy)
+    const std::vector<double> truth = model_at(at);
+    for (std::size_t k = 0; k < 16; ++k) CHECK(std::abs(it->second.at(k) - truth.at(k)) < 1e-6 * std::max(1.0, std::abs(truth.at(k))));
+    // The instance moved it: 300 px/s along x from the frame's pose.
+    CHECK(std::abs((it->second.at(12) - frameModel.at(12)) - 300 * (at - t)) < 1e-3);
+  }
+}

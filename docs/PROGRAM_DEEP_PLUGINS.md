@@ -105,8 +105,8 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
   precomps (no own camera, not a flat card; × the precomp's opacity). PR_SAMPLE_SCENE_DEPTH +
   `checkout_scene_depth_gpu_at` / `checkout_scene_depth_at`: finish_native_frame poses the comp camera and the
   drawn 3D layers at each sub-time (`s<i>.dp.*` in the entry); model3d occludes each blur sub-frame at its time.
-  Limits: a collapsed precomp's own layer motion is not re-evaluated per sub-time; a layer the document cannot
-  pose keeps its frame pose. No edit to threed.cpp. (9fb58daa)
+  ~~Limits: a collapsed precomp's own layer motion is not re-evaluated per sub-time~~ — 2026-10-13: a collapsed
+  precomp's layers are posed by the comp built at each sub-time (scene_finish.cpp built_model_at). No edit to threed.cpp. (9fb58daa)
 
 ### P7 — plugins that are not effects
 

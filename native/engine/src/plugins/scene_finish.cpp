@@ -235,8 +235,9 @@ EffectClock effect_clock(const scene::BuildContext& c, const api::Renderable& r,
 // keep the frame's lights — so a sample at the frame time equals the frame.
 class Sampler {
  public:
-  Sampler(const scene::BuildContext& c, std::string_view comp, double t, const api::RenderFrameScene& scene)
-      : c_(c), t_(t), scene_(scene), sc_{c.d, c.view, c.expr, c.cache},
+  Sampler(const scene::BuildContext& c, std::string_view comp, double t, const scene::ViewSpec& view,
+          const api::RenderFrameScene& scene)
+      : c_(c), comp_(comp), view_(view), t_(t), scene_(scene), sc_{c.d, c.view, c.expr, c.cache},
         eval_(sc_, std::string(comp), scene.width > 0 ? scene.width : 1920, scene.height > 0 ? scene.height : 1080) {}
 
   SampleWire sample(const EffectSpec& spec, const api::RenderEffect& e, const std::string& layerId, const std::string& effectId,
@@ -397,8 +398,9 @@ class Sampler {
 
   /// SDK 1.2 (PR_SAMPLE_SCENE_DEPTH): the comp camera and every 3D layer the scene depth draws
   /// (render_graph/scene_depth.cpp collect_drawn: the depth-eligible 3D renderables and the 3D
-  /// layers of collapsed 3D precomps) posed at comp `seconds`. A layer the document cannot pose
-  /// (a precomp instance's copy) keeps its frame model.
+  /// layers of collapsed 3D precomps) posed at comp `seconds`. A collapsed precomp's layers (copies
+  /// the document cannot place) are posed by a frame built at that time (built_model_at): their
+  /// instance moves them as well as their own tracks.
   DepthPose depth_at(double seconds) {
     const std::int64_t k = flicks(seconds);
     if (const auto it = depths_.find(k); it != depths_.end()) return it->second;
@@ -417,12 +419,30 @@ class Sampler {
     };
     collect(scene_.renderables, 0);
     for (const api::Renderable* r : drawn) {
-      if (auto m = matrix_at(r->id, seconds)) d.models.emplace_back(r->id, std::move(*m));
+      // A layer the document places is moved by its own tracks; one it cannot (a collapsed
+      // precomp's copy, "<instance>::<id>") is read from the frame built at that time.
+      std::optional<std::vector<double>> m = matrix_at(r->id, seconds);
+      if (!m) m = built_model_at(r->id, seconds);
+      if (m) d.models.emplace_back(r->id, std::move(*m));
     }
     return depths_.emplace(k, std::move(d)).first->second;
   }
 
+  /// A renderable's 3D model in the frame built at comp `seconds` (no motion blur, no plugins run):
+  /// for the layers of a collapsed precomp, posed by their instance's motion and their own. One
+  /// build per time, kept for this frame — only when such a layer's depth is asked for at a sub-time.
+  std::optional<std::vector<double>> built_model_at(const std::string& id, double seconds) {
+    const std::int64_t k = flicks(seconds);
+    auto it = built_.find(k);
+    if (it == built_.end()) it = built_.emplace(k, scene::build_native_frame(c_, comp_, seconds, view_, false)).first;
+    const api::Renderable* r = find_renderable_in(it->second.file.scene.renderables, id);
+    if (r == nullptr || !r->three_d || r->three_d->model.size() != 16) return std::nullopt;  // not drawn then: its frame pose
+    return r->three_d->model;
+  }
+
   const scene::BuildContext& c_;
+  std::string comp_;
+  scene::ViewSpec view_;
   double t_;
   const api::RenderFrameScene& scene_;
   doc::SpaceCtx sc_;
@@ -433,6 +453,7 @@ class Sampler {
   std::map<std::int64_t, std::vector<api::RenderLight3D>> lights_;
   std::map<std::pair<std::string, std::int64_t>, scene::Values> values_;
   std::map<std::int64_t, DepthPose> depths_;
+  std::map<std::int64_t, scene::NativeFrame> built_;
 };
 
 }  // namespace
@@ -450,7 +471,7 @@ void finish_native_frame(const scene::BuildContext& c, std::string_view comp, do
   const double compH = frame.file.scene.height;
   std::vector<Want> wants;
   std::set<std::string> reported;
-  Sampler sampler(c, comp, t, frame.file.scene);
+  Sampler sampler(c, comp, t, view, frame.file.scene);
 
   visit(frame.file.scene.renderables, [&](api::Renderable& r, List& list) {
     bool blursItself = false;
