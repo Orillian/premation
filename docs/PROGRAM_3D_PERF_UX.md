@@ -103,6 +103,10 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 - [x] B1 (TS; engine keep-world re-parent of adjustment layers pending) · [x] B2 · [x] B3 · [x] B4 (TS; catalog signed ranges pending) · [ ] B5
 
 Notes log (newest first):
+- 2026-10-12: known red BEFORE this program (not to chase here; owner to re-bless or fix): native-golden
+  three-d-outer-glow x2, bevel-above-cap, bevel-below-cap, blur-hard-edge (7.030 / 2.594 / 6.685 %, identical
+  with E1-E3 reverted — from the 2026-10-10 glow/dither commits); ctest test_fx_bounds, D1 eval parity, undo parity.
+  Batch 2 (E4, E6, A2, I4, clipToComp, renderer key) is EDITED in the tree, compiles (peer build green), gates not yet run; worker stopped by the owner.
 - 2026-10-12 B1–B4 (TS only). B1: `create_layer` centres a full-frame layer
   (kind adjustment, or a solid with no size) on the comp — the engine creates
   it comp-sized at (0, 0), and the quad is centred on its position; and
