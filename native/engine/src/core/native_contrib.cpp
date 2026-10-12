@@ -16,6 +16,7 @@ struct Registry {
   NativeImporters::ClaimFn claim;
   NativeImporters::ProbeFn probe;
   NativeImporters::FrameFn frame;
+  NativeImporters::RefuseFn refuse;
   std::atomic<bool> anyImporter{false};
   std::mutex failMutex;
   std::map<std::string, std::string, std::less<>> failures;
@@ -64,11 +65,12 @@ std::variant<PluginCommandOutcome, api::EngineError> NativeCommands::run(const P
   return fn(r, bridge);
 }
 
-void NativeImporters::set_handlers(ClaimFn claim, ProbeFn probe, FrameFn frame) {
+void NativeImporters::set_handlers(ClaimFn claim, ProbeFn probe, FrameFn frame, RefuseFn refuse) {
   const std::unique_lock lock(reg().mutex);
   reg().claim = std::move(claim);
   reg().probe = std::move(probe);
   reg().frame = std::move(frame);
+  reg().refuse = std::move(refuse);
 }
 
 void NativeImporters::clear_handlers() {
@@ -76,6 +78,7 @@ void NativeImporters::clear_handlers() {
   reg().claim = nullptr;
   reg().probe = nullptr;
   reg().frame = nullptr;
+  reg().refuse = nullptr;
   reg().anyImporter.store(false);
 }
 
@@ -86,6 +89,15 @@ bool NativeImporters::claims(std::string_view path) {
     fn = reg().claim;
   }
   return fn && fn(path);
+}
+
+std::string NativeImporters::refusal(std::string_view path) {
+  RefuseFn fn;
+  {
+    const std::shared_lock lock(reg().mutex);
+    fn = reg().refuse;
+  }
+  return fn ? fn(path) : std::string();
 }
 
 void NativeImporters::set_any(bool any) { reg().anyImporter.store(any, std::memory_order_release); }

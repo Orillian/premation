@@ -79,7 +79,8 @@ class FrameSource {
 
 /// Footage a loaded native plugin imports (P7b, doc::NativeImporters), frames through its
 /// importer. Null with `error` empty when no plugin claims `path`; null with `error` set when
-/// the plugin cannot read it ("plugin failed to read …").
+/// the plugin cannot read it, or when the plugin that imports it does not run (disabled,
+/// revoked, locked, quarantined): "plugin failed to read …".
 [[nodiscard]] std::unique_ptr<FrameSource> open_plugin_frames(const std::string& path, std::uint32_t maxEdge, std::string& error);
 
 /// Box-filter `img` down so its long edge is at most `maxEdge` (0 = unchanged; never up).

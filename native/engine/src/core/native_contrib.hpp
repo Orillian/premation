@@ -85,9 +85,14 @@ class NativeImporters {
   using ProbeFn = std::function<bool(const std::string& path, js::Json& facts, std::string& error)>;
   /// The frame at `seconds` of source time.
   using FrameFn = std::function<bool(const std::string& path, double seconds, NativeImage& out, std::string& error)>;
-  static void set_handlers(ClaimFn claim, ProbeFn probe, FrameFn frame);
+  /// Why a listed plugin importer of `path`'s extension cannot read it (its plugin is disabled,
+  /// revoked, locked, quarantined, failed); "" = no listed importer refuses it.
+  using RefuseFn = std::function<std::string(std::string_view path)>;
+  static void set_handlers(ClaimFn claim, ProbeFn probe, FrameFn frame, RefuseFn refuse = nullptr);
   static void clear_handlers();
   [[nodiscard]] static bool claims(std::string_view path);
+  /// When claims() is false: why the plugin that would import `path` does not ("" = none would).
+  [[nodiscard]] static std::string refusal(std::string_view path);
   /// Is any plugin importer loaded (FilePorts imports without a decoder probe then)?
   static void set_any(bool any);
   [[nodiscard]] static bool any();

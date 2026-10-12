@@ -384,9 +384,12 @@ TEST_CASE("P7b importers: .ppm / .pfm footage through the plugin, failures isola
   CHECK_FALSE(doc::NativeImporters::read_frame(utf8(dir / "crash.ppm"), 0, img, err));
   CHECK(err.find("crashed") != std::string::npos);
   CHECK_FALSE(doc::NativeImporters::read_frame(utf8(dir / "grad.ppm"), 0, img, err));
+  // A child job's plugin set lists it disabled meanwhile (engine_process.cpp, child_job.hpp).
+  CHECK(host.contrib().importers_off().contains(kPpmio));
   // setPluginEnabled(true) re-arms it.
   REQUIRE(host.set_enabled(kPpmio, true));
   host.contrib().reset(kPpmio);
+  CHECK(host.contrib().importers_off().empty());
   CHECK(doc::NativeImporters::read_frame(utf8(dir / "grad.ppm"), 0, img, err));
 
   // A failure recorded by the texture feed is what layerErrors shows for the footage.
@@ -513,6 +516,45 @@ TEST_CASE("P7b moving plugin footage reaches the analysis jobs (open_frames)", "
   write_ppm(dir / "broken.ppm", 2, 2);
   CHECK_FALSE(jobs::open_plugin_frames(utf8(dir / "broken.ppm"), 0, err));
   CHECK(err.find("plugin failed to read") != std::string::npos);
+}
+
+TEST_CASE("P7b a job on footage of a plugin that does not run fails with why (disabled, revoked)", "[plugins][contrib]") {
+  const fs::path dir = temp_dir("jobs-off");
+  write_moving_ppm(dir / "move.ppm", 8, 4, 3, 10);
+  const std::string file = utf8(dir / "move.ppm");
+  std::string err;
+  {
+    // Disabled at start (a child job's host lists every plugin its engine does not run this way).
+    pl::HostOptions o = attached();
+    o.disabled = {kPpmio};
+    pl::PluginHost host(std::move(o));
+    host.scan();
+    CHECK_FALSE(doc::NativeImporters::claims(file));
+    CHECK_FALSE(jobs::open_plugin_frames(file, 0, err));
+    CHECK(err == "plugin failed to read '" + file + "': plugin 'com.premation.samples.ppmio' is disabled");
+    // Turned on: read through the importer again; off at run time: refused again.
+    REQUIRE(host.set_enabled(kPpmio, true));
+    err.clear();
+    CHECK(jobs::open_plugin_frames(file, 0, err));
+    CHECK(err.empty());
+    CHECK(host.contrib().importers_off().empty());
+    REQUIRE(host.set_enabled(kPpmio, false));
+    CHECK_FALSE(jobs::open_plugin_frames(file, 0, err));
+    CHECK(err.find("is disabled") != std::string::npos);
+    // A file no plugin lists: no refusal (the decoders take it).
+    CHECK(doc::NativeImporters::refusal("clip.mp4").empty());
+  }
+  {
+    pl::HostOptions o = attached();
+    o.revoked = {{kPpmio, "test revocation"}};
+    pl::PluginHost host(std::move(o));
+    host.scan();
+    err.clear();
+    CHECK_FALSE(jobs::open_plugin_frames(file, 0, err));
+    CHECK(err == "plugin failed to read '" + file + "': plugin 'com.premation.samples.ppmio' is revoked (revoked: test revocation)");
+  }
+  // No host at all: nothing claims or refuses.
+  CHECK(doc::NativeImporters::refusal(file).empty());
 }
 
 TEST_CASE("P7b plugin footage with sound: READ_AUDIO through the audio decoders' reader", "[plugins][contrib]") {

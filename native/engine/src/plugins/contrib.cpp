@@ -253,7 +253,8 @@ void Contrib::attach() {
                                      [this](const std::string& path, js::Json& facts, std::string& error) { return probe(path, facts, error); },
                                      [this](const std::string& path, double seconds, doc::NativeImage& out, std::string& error) {
                                        return read_frame(path, seconds, out, error);
-                                     });
+                                     },
+                                     [this](std::string_view path) { return refusal(path); });
   // The sound of plugin footage: the playback mixer, the export mix and the audio jobs
   // read it through the audio decoders (audio_decode_ffi.cpp), which ask these first.
   audio::ExternalAudio::set_handlers(
@@ -468,6 +469,34 @@ bool Contrib::claims(std::string_view path) const {
     plugin = e->plugin;
   }
   return loaded(plugin);
+}
+
+std::string Contrib::refusal(std::string_view path) const {
+  const std::string ext = ext_of(path);
+  if (ext.empty()) return {};
+  const std::vector<PluginRecord> records = host_.plugins();
+  const std::scoped_lock lock(mutex_);
+  std::string why;
+  for (const PluginRecord& r : records) {  // load order
+    const auto mit = manifests_.find(r.id);
+    if (mit == manifests_.end()) continue;
+    for (const ManifestImporter& c : mit->second.importers) {
+      if (std::ranges::find(c.extensions, ext) == c.extensions.end()) continue;
+      if (r.status == PluginStatus::loaded) return {};  // it reads the file (or says why not itself)
+      if (why.empty()) why = "plugin '" + r.id + "' is " + std::string(to_string(r.status)) + (r.error.empty() ? "" : " (" + r.error + ")");
+    }
+  }
+  return why;
+}
+
+std::set<std::string, std::less<>> Contrib::importers_off() const {
+  const std::scoped_lock lock(mutex_);
+  std::set<std::string, std::less<>> out;
+  for (const std::string& k : crashed_) {
+    const auto e = entries_.find(k);
+    if (e != entries_.end() && e->second->kind == 'i') out.insert(e->second->plugin);
+  }
+  return out;
 }
 
 bool Contrib::call_import(const Entry& e, PrIoCmd cmd, PrImportCall& c, std::string& error) {

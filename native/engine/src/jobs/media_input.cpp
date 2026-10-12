@@ -115,7 +115,12 @@ class PluginFrames final : public FrameSource {
 }  // namespace
 
 std::unique_ptr<FrameSource> open_plugin_frames(const std::string& path, std::uint32_t maxEdge, std::string& error) {
-  if (!doc::NativeImporters::claims(path)) return nullptr;
+  if (!doc::NativeImporters::claims(path)) {
+    // A listed importer whose plugin does not run (disabled, revoked, locked, …): the job fails
+    // with why, rather than reading the file through a decoder the footage was not imported with.
+    if (std::string why = doc::NativeImporters::refusal(path); !why.empty()) error = "plugin failed to read '" + path + "': " + why;
+    return nullptr;
+  }
   auto f = std::make_unique<PluginFrames>();
   if (!f->open(path, maxEdge, error)) {
     if (error.find("plugin failed to read") == std::string::npos) error = "plugin failed to read '" + path + "': " + error;

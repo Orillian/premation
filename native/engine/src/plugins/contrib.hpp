@@ -130,6 +130,11 @@ class Contrib {
   // ── importers (any thread) ──
   /// The loaded importer for `path`'s extension, if any.
   [[nodiscard]] bool claims(std::string_view path) const;
+  /// No loaded importer claims `path` but a listed one would: why its plugin does not run
+  /// ("plugin '<id>' is disabled", revoked, locked, …). "" = no listed importer reads it.
+  [[nodiscard]] std::string refusal(std::string_view path) const;
+  /// Plugins with an importer that crashed this session (off until the plugin is enabled again).
+  [[nodiscard]] std::set<std::string, std::less<>> importers_off() const;
   bool probe(const std::string& path, js::Json& facts, std::string& error);
   bool read_frame(const std::string& path, double seconds, doc::NativeImage& out, std::string& error);
   /// Interleaved float32 sample frames [start, start + frames); `channels` set from the probe.
