@@ -35,6 +35,7 @@
 #include "premation/protocol/wire.hpp"
 #include "render_glue.hpp"
 #include "scene_renderer.hpp"
+#include "transform.hpp"
 
 namespace pl = premation::plugins;
 namespace rg = premation::rg;
@@ -515,6 +516,239 @@ TEST_CASE("plugin GPU (SDK 1.2): an asset image is uploaded once per file and ke
   huge.width = static_cast<std::int32_t>(r->device().max_texture_dimension()) + 1;
   huge.height = 1;
   CHECK(glue.asset_texture(r->device(), "huge", huge) == nullptr);
+}
+
+// ── SDK 1.2 (S6 scene depth, S8 the model3d sample) ─────────────────────────
+
+namespace {
+
+constexpr const char* kModel3d = "com.premation.samples.model3d";
+constexpr std::uint32_t kDW = 96;
+constexpr std::uint32_t kDH = 64;
+
+/// The comp's default camera (After Effects' 50 mm, centred) — what the host gives a plugin on a
+/// frame without a camera layer, and the frame's camera3d here, so both see the same view.
+api::RenderCamera3D default_camera3d() {
+  const motion::xf::Camera c = motion::xf::default_camera(kDW, kDH);
+  const auto v = motion::xf::camera_view_matrix(c);
+  const auto p = motion::xf::camera_projection_matrix(c);
+  api::RenderCamera3D cam;
+  cam.view.assign(v.begin(), v.end());
+  cam.projection.assign(p.begin(), p.end());
+  cam.eye = {c.position.x, c.position.y, c.position.z};
+  return cam;
+}
+double default_zoom() { return motion::xf::default_camera(kDW, kDH).focal_length; }
+
+/// A 3D solid: the unit quad onto (x, y, w, h) at depth z, colour `c`.
+api::Renderable solid3d(const char* id, double x, double y, double w, double h, double z, api::Color c) {
+  api::Renderable r;
+  r.id = id;
+  r.kind = api::RenderableKind::rect;
+  r.model_matrix = {w, 0, 0, 0, h, 0, x, y, 1};
+  r.bounds = {x, y, w, h};
+  r.opacity = 1;
+  r.color = c;
+  api::RenderThreeD t;
+  t.model = {w, 0, 0, 0, 0, h, 0, 0, 0, 0, 1, 0, x, y, z, 1};
+  r.three_d = t;
+  return r;
+}
+
+/// The model3d effect on layer `layer` (W × H): `mode` 1 shaded / 2 scene depth, `depth` the
+/// "Composite with Scene Depth" checkbox.
+api::RenderEffect model3d_effect(const std::string& layer, int mode, bool depth, double size = 40) {
+  const std::string instance = layer + "/m3d";
+  api::RenderEffect e;
+  e.type = "native-plugin";
+  e.params = {text("matchName", kModel3d), text("instance", instance.c_str()), text("layerId", layer.c_str()),
+              num("layerW", kDW), num("layerH", kDH), num("compW", kDW), num("compH", kDH), num("fps", 30),
+              num("p.p6", size), num("p.p13", depth ? 1 : 0), num("p.p15", mode)};
+  return e;
+}
+
+/// A 32 bpc frame with the default camera, `solids` (3D) and, on top, comp-sized 2D layers
+/// carrying `effects` (one layer each, named by the effect's layerId).
+api::RenderFrameFile depth_frame(std::vector<api::Renderable> solids, const std::vector<api::RenderEffect>& effects) {
+  api::RenderFrameFile f;
+  f.format_version = 1;
+  f.scene_id = "plugin-scene-depth";
+  f.view.css_width = kDW;
+  f.view.css_height = kDH;
+  f.view.device_pixel_ratio = 1;
+  f.view.camera_center_x = kDW / 2.0;
+  f.view.camera_center_y = kDH / 2.0;
+  f.view.camera_zoom = 1;
+  f.view.bit_depth = 32;
+  f.view.float16_textures = true;
+  f.view.float32_textures = true;
+  f.view.surface_format = api::RenderTextureFormat::bgra8unorm;
+  f.scene.width = kDW;
+  f.scene.height = kDH;
+  f.scene.background = api::Color{0, 0, 0, 1};
+  f.scene.has_effects = true;
+  f.scene.camera3d = default_camera3d();
+  for (auto& s : solids) f.scene.renderables.push_back(std::move(s));
+  for (const api::RenderEffect& e : effects) {
+    api::Renderable r;
+    for (const auto& p : e.params) {
+      if (p.name == "layerId") r.id = p.text;
+    }
+    r.kind = api::RenderableKind::rect;
+    r.model_matrix = {static_cast<double>(kDW), 0, 0, 0, static_cast<double>(kDH), 0, 0, 0, 1};
+    r.bounds = {0, 0, static_cast<double>(kDW), static_cast<double>(kDH)};
+    r.opacity = 1;
+    r.color = api::Color{0, 0, 0, 1};
+    r.effects.push_back(e);
+    f.scene.renderables.push_back(std::move(r));
+  }
+  return f;
+}
+
+const float* px_at(const Rendered& r, std::uint32_t x, std::uint32_t y) { return &r.scene[(std::size_t{y} * kDW + x) * 4]; }
+
+}  // namespace
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): the scene depth holds each 3D layer's camera-space z, +inf where empty", "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) {
+    WARN("no float32 targets: skipped");
+    return;
+  }
+  pl::PluginHost host(options());
+  host.scan();
+  REQUIRE(host.effect(kModel3d) != nullptr);
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  const double zoom = default_zoom();
+  // A wall 100 px behind the comp's plane over the middle; a nearer card (z = -60) over its upper left (the default camera of a 96 px comp is only ~133 px away).
+  const auto wall = solid3d("wall", 20, 16, 56, 32, 100, {0, 1, 0, 1});
+  const auto card = solid3d("card", 10, 10, 30, 20, -60, {1, 1, 1, 1});
+  const auto before = glue.stats();
+  const Rendered out = render(*r, depth_frame({wall, card}, {model3d_effect("fx", 2, false)}));
+  for (const auto& dg : out.stats.diagnostics) std::printf("[diag] %s: %s\n", dg.code.c_str(), dg.detail.c_str());
+  CHECK(glue.stats().gpu == before.gpu + 1);
+  CHECK(glue.scene_depth().passes() == 1);
+  // Right of centre the wall is seen: z = 100 + zoom (red = z / 1000).
+  const float* c = px_at(out, kDW / 2 + 8, kDH / 2);
+  INFO("zoom " << zoom << " centre " << c[0] << "," << c[1] << "," << c[2]);
+  CHECK(std::abs(c[0] * 1000.0 - (100 + zoom)) < 0.5);
+  CHECK(c[2] == 0.0F);
+  // Where the card covers the wall, the nearer one wins: -60 + zoom. The card's centre (25, 20)
+  // at z = -60 is magnified about the view's centre by zoom / (zoom - 60).
+  const double cardZ = -60 + zoom;
+  const double k = zoom / cardZ;
+  const auto sx = static_cast<std::uint32_t>(kDW / 2.0 + (25 - kDW / 2.0) * k);
+  const auto sy = static_cast<std::uint32_t>(kDH / 2.0 + (20 - kDH / 2.0) * k);
+  const float* d = px_at(out, sx, sy);
+  INFO("card at " << sx << "," << sy << ": " << d[0] << "," << d[2]);
+  CHECK(std::abs(d[0] * 1000.0 - cardZ) < 0.5);
+  // Nothing drawn in the corner: +inf (blue).
+  const float* e = px_at(out, kDW - 2, kDH - 2);
+  CHECK(e[0] == 0.0F);
+  CHECK(e[2] == 1.0F);
+}
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): the effect's own 3D layer is not in its scene depth", "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  // The effect sits on the only 3D layer: its depth sees nothing — blue on the layer, not red.
+  auto wall = solid3d("wall", 0, 0, kDW, kDH, 0, {0, 1, 0, 1});
+  wall.effects.push_back(model3d_effect("wall", 2, false));
+  const Rendered out = render(*r, depth_frame({wall}, {}));
+  const float* c = px_at(out, kDW / 2, kDH / 2);
+  INFO("centre " << c[0] << "," << c[1] << "," << c[2]);
+  CHECK(c[2] > 0.9F);
+  CHECK(c[0] < 0.01F);
+  CHECK(c[1] < 0.01F);  // the layer's own green is replaced by the generator's output
+}
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): effects of one frame share one depth pass; only those that ask pay", "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  const auto wall = solid3d("wall", 20, 16, 56, 32, 100, {0, 1, 0, 1});
+  // Shaded without the checkbox: the depth is never made.
+  (void)render(*r, depth_frame({wall}, {model3d_effect("a", 1, false)}));
+  CHECK(glue.scene_depth().passes() == 0);
+  // Two 2D layers that read it in one frame: one pass (neither excludes a drawn layer).
+  (void)render(*r, depth_frame({wall}, {model3d_effect("a", 2, false), model3d_effect("b", 1, true)}));
+  CHECK(glue.scene_depth().passes() == 1);
+  // The next frame makes its own.
+  (void)render(*r, depth_frame({wall}, {model3d_effect("a", 2, false)}));
+  CHECK(glue.scene_depth().passes() == 2);
+}
+
+TEST_CASE("plugin GPU (SDK 1.2 S8): model3d on the GPU matches its CPU path; scene depth occludes it", "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  const auto lit = [](const Rendered& o) {
+    std::size_t n = 0;
+    for (std::size_t i = 0; i < o.scene.size(); i += 4) n += o.scene[i] + o.scene[i + 1] + o.scene[i + 2] > 0.05F ? 1 : 0;
+    return n;
+  };
+
+  glue.set_gpu_enabled(true);
+  auto before = glue.stats();
+  const Rendered gpu = render(*r, depth_frame({}, {model3d_effect("fx", 1, false)}));
+  for (const auto& dg : gpu.stats.diagnostics) std::printf("[diag] %s: %s\n", dg.code.c_str(), dg.detail.c_str());
+  CHECK(glue.stats().gpu == before.gpu + 1);
+  CHECK(glue.stats().gpuErrors == before.gpuErrors);
+  CHECK(gpu.stats.diagnostics.empty());
+  glue.set_gpu_enabled(false);
+  before = glue.stats();
+  const Rendered cpu = render(*r, depth_frame({}, {model3d_effect("fx", 1, false)}));
+  CHECK(glue.stats().cpu == before.cpu + 1);
+  glue.set_gpu_enabled(true);
+  const std::size_t g = lit(gpu);
+  const std::size_t c = lit(cpu);
+  std::printf("[measure] model3d coverage GPU %zu px, CPU %zu px\n", g, c);
+  CHECK(g > 1000);
+  CHECK(std::abs(static_cast<double>(g) - static_cast<double>(c)) < 0.04 * static_cast<double>(c));
+  // Shading: the same maths — the centre pixel within a few percent.
+  const float* gc = px_at(gpu, kDW / 2, kDH / 2);
+  const float* cc = px_at(cpu, kDW / 2, kDH / 2);
+  INFO("centre GPU " << gc[0] << "," << gc[1] << "," << gc[2] << " CPU " << cc[0] << "," << cc[1] << "," << cc[2]);
+  CHECK(std::abs(gc[0] - cc[0]) < 0.03F);
+  CHECK(std::abs(gc[1] - cc[1]) < 0.03F);
+
+  // A green 3D wall in front of the model's left half (z = -60) and the checkbox on: the wall
+  // shows through where it is nearer; without the checkbox the model (a 2D layer on top) covers it.
+  const auto wall = solid3d("wall", -2000, -2000, 2000 + kDW / 2.0, 4000, -60, {0, 1, 0, 1});
+  const Rendered over = render(*r, depth_frame({wall}, {model3d_effect("fx", 1, false)}));
+  const Rendered occluded = render(*r, depth_frame({wall}, {model3d_effect("fx", 1, true)}));
+  const float* a = px_at(over, kDW / 2 - 6, kDH / 2);
+  const float* b = px_at(occluded, kDW / 2 - 6, kDH / 2);
+  INFO("over " << a[0] << "," << a[1] << "," << a[2] << " occluded " << b[0] << "," << b[1] << "," << b[2]);
+  CHECK_FALSE((a[0] < 0.02F && a[1] > 0.9F));  // the model
+  CHECK(b[0] < 0.02F);                          // the wall
+  CHECK(b[1] > 0.9F);
+  // The right half is behind nothing: the model either way.
+  const float* ra = px_at(over, kDW / 2 + 6, kDH / 2);
+  const float* rb = px_at(occluded, kDW / 2 + 6, kDH / 2);
+  CHECK(std::abs(ra[0] - rb[0]) < 1e-4F);
+  // The CPU path occludes the same way (the depth read back).
+  glue.set_gpu_enabled(false);
+  const Rendered cpuOccluded = render(*r, depth_frame({wall}, {model3d_effect("fx", 1, true)}));
+  glue.set_gpu_enabled(true);
+  const float* cb = px_at(cpuOccluded, kDW / 2 - 6, kDH / 2);
+  CHECK(cb[1] > 0.9F);
+  CHECK(cb[0] < 0.02F);
 }
 
 TEST_CASE("plugin GPU: a plugin's output is linear — an identity grade leaves the frame as it was", "[plugins][gpu]") {

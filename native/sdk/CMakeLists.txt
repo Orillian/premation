@@ -14,6 +14,9 @@
 #               where Dawn's headers are), own layer at other times (Time Echo)
 #     distribute / ppmio / ppmseq / statspanel   SDK 1.2 plugins that are not effects: a command,
 #               an importer, an output module, a panel (docs/PLUGIN_SDK.md "Commands" …)
+#     model3d   SDK 1.2 Element 3D class: a glTF model through the comp camera and lights, motion
+#               blur, scene-depth occlusion, an overlay handle and a material panel (GPU with Dawn's
+#               headers, CPU always); its test assets in samples/model3d/models
 #     grade     GPU effect (SMART_RENDER_GPU on the engine's Dawn device) + CPU
 #               fallback — needs Dawn's headers, so only with the `engine` feature
 
@@ -100,6 +103,11 @@ premation_sample_plugin(ppmio samples/ppmio/ppmio.cpp)              # SDK 1.2: a
 premation_sample_plugin(ppmseq samples/ppmseq/ppmseq.cpp)           # SDK 1.2: an output module (a .ppm sequence)
 premation_sample_plugin(statspanel samples/statspanel/statspanel.cpp)  # SDK 1.2: a panel without an effect (+ a command)
 
+premation_sample_plugin(model3d samples/model3d/model3d.cpp)  # SDK 1.2: glTF, camera + lights, shutter blur, scene depth (S8)
+foreach(_f box.glb box.gltf box.bin checker.png)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/samples/model3d/models/${_f} ${PREMATION_PLUGIN_BUNDLES}/model3d/models/${_f} COPYONLY)
+endforeach()
+
 # The GPU samples call WebGPU through the proc table the host hands over, so
 # they link no Dawn — they need only the headers (webgpu.h, dawn_proc_table.h).
 find_package(Dawn CONFIG QUIET)
@@ -108,4 +116,6 @@ if(TARGET dawn::webgpu_dawn)
   target_include_directories(grade PRIVATE $<TARGET_PROPERTY:dawn::webgpu_dawn,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(checkout PRIVATE $<TARGET_PROPERTY:dawn::webgpu_dawn,INTERFACE_INCLUDE_DIRECTORIES>)
   target_compile_definitions(checkout PRIVATE PRS_SAMPLE_GPU)
+  target_include_directories(model3d PRIVATE $<TARGET_PROPERTY:dawn::webgpu_dawn,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_compile_definitions(model3d PRIVATE PRS_SAMPLE_GPU)
 endif()

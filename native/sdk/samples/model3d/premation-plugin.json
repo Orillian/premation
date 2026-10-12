@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "com.premation.samples.model3d",
+  "name": "Model 3D (sample)",
+  "version": "1.0.0",
+  "vendor": "Premation",
+  "sdk": { "major": 1, "minor": 2 },
+  "binary": { "windows": "model3d.dll", "macos": "libmodel3d.dylib", "linux": "libmodel3d.so" },
+  "effects": [
+    { "matchName": "com.premation.samples.model3d", "name": "Model 3D", "category": "Premation Samples" }
+  ],
+  "presets": [
+    { "name": "Glossy Red", "category": "Materials", "values": { "p8": "#c8202a", "p9": 12, "p10": 90 } },
+    { "name": "Matte Clay", "category": "Materials", "values": { "p8": "#b08a6e", "p9": 90, "p10": 5 } }
+  ]
+}

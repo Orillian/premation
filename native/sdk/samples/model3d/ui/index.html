@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Model 3D</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <h1>Model 3D material</h1>
+  <p class="hint">Every change is one undo step (an ordinary engine edit).</p>
+  <label class="row">Base colour <input id="color" type="color"></label>
+  <label class="row">Roughness <input id="roughness" type="range" min="2" max="100" step="1"> <span id="roughnessValue"></span></label>
+  <label class="row">Specular <input id="specular" type="range" min="0" max="100" step="1"> <span id="specularValue"></span></label>
+  <label class="row"><input id="depth" type="checkbox"> Composite with scene depth</label>
+  <div class="row">
+    <button id="clay" type="button">Clay</button>
+    <button id="chrome" type="button">Gloss</button>
+    <button id="preview" type="button" class="primary">Preview frame</button>
+  </div>
+  <img id="frame" alt="" hidden>
+  <p id="status" class="hint" role="status"></p>
+  <script src="panel.js"></script>
+</body>
+</html>

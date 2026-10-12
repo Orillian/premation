@@ -536,6 +536,7 @@ if(TARGET engine_render_graph)
       PREMATION_PLUGIN_BUNDLES="${PREMATION_PLUGIN_BUNDLES}"
       PREMATION_RENDER_TOOL="$<TARGET_FILE:premation-render>")
     add_dependencies(engine_plugins_gpu_tests premation-render grade checkout)
+    add_dependencies(engine_plugins_gpu_tests model3d)  # SDK 1.2: scene depth (S6) + the model3d sample (S8)
     if(MSVC)
       target_compile_options(engine_plugins_gpu_tests PRIVATE /bigobj)
       target_compile_definitions(engine_plugins_gpu_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -631,6 +632,8 @@ if(MOTION_BUILD_TESTS)
   add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap distribute ppmio ppmseq statspanel)
   add_test(NAME engine_plugins_tests COMMAND engine_plugins_tests --reporter compact)
   target_sources(engine_plugins_tests PRIVATE tests/test_plugin_sdk12.cpp)  # SDK 1.2: times, shutter, assets, presets
+  target_sources(engine_plugins_tests PRIVATE tests/test_plugin_model3d.cpp)  # SDK 1.2 (S8): the model3d sample's CPU path
+  add_dependencies(engine_plugins_tests model3d)
   # P7b: analysis jobs read plugin footage through its importer (jobs/media_input.cpp open_plugin_frames).
   target_link_libraries(engine_plugins_tests PRIVATE engine_jobs_core)
 endif()
