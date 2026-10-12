@@ -4,8 +4,10 @@
  * viewer, and their draggable handles.
  *
  * The engine asks the plugin (PR_CMD_DRAW_OVERLAY) and pushes the draw list
- * with every frame (overlay kind `plugin`, layer px), like the rig. This maps
- * it through the shared layer ↔ screen mapping and draws it. A handle drag is
+ * with every frame (overlay kind `plugin`), like the rig. This maps layer-px
+ * items through the shared layer ↔ screen mapping and comp-px items (SDK 1.2:
+ * points the plugin projected through the comp camera) through the viewer's
+ * comp → screen, and draws them. A handle drag is
  * `dragEffectOverlay` steps inside ONE engine gesture — one undo entry — and
  * the plugin writes its params through the engine. No plugin code runs here.
  *
@@ -27,6 +29,7 @@ import {
   DRAG_BEGIN,
   DRAG_END,
   DRAG_MOVE,
+  OVERLAY_SPACE_COMP,
   type OverlayShape,
   type Point,
 } from '@core/nativePlugins/pluginOverlay';
@@ -43,7 +46,9 @@ interface Drag {
   effect: string;
   handle: number;
   start: Point;
+  space: number;
   gesture: GestureSession;
+  /** Screen px → the handle's own space (layer px, or comp px for a comp-space handle). */
   screenToLocal: (x: number, y: number) => Point;
 }
 
@@ -71,13 +76,17 @@ export function PluginOverlay(): JSX.Element | null {
   /** Per selected layer: its shapes in screen px and the inverse mapping a drag needs. */
   const layers = useMemo(() => {
     const at = secondsToFlicks(time);
-    const out: Array<{ layer: string; shapes: OverlayShape[]; screenToLocal: (x: number, y: number) => Point }> = [];
+    type ToLocal = (x: number, y: number) => Point;
+    const out: Array<{ layer: string; shapes: OverlayShape[]; screenToLocal: ToLocal | null; screenToComp: ToLocal }> = [];
+    const compToScreen = (x: number, y: number): Point => camera.worldToScreen({ x, y });
+    const screenToComp = (x: number, y: number): Point => camera.screenToWorld({ x, y });
     for (const layer of ids) {
       const items = overlayLayer(MAIN_VIEWPORT, layer, at)?.plugin ?? [];
       if (items.length === 0) continue;
       const mapping = layerScreenMapping(layer, time, comp, camera);
-      if (!mapping) continue;
-      out.push({ layer, shapes: overlayShapes(items, mapping.localToScreen), screenToLocal: mapping.screenToLocal });
+      const shapes = overlayShapes(items, mapping?.localToScreen ?? null, compToScreen);
+      if (shapes.length === 0) continue;
+      out.push({ layer, shapes, screenToLocal: mapping?.screenToLocal ?? null, screenToComp });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the push is read by tick
@@ -95,11 +104,15 @@ export function PluginOverlay(): JSX.Element | null {
       for (const l of layers) {
         const hit = pickHandle(l.shapes, p, PICK_RADIUS);
         if (!hit) continue;
+        const toLocal = hit.space === OVERLAY_SPACE_COMP ? l.screenToComp : l.screenToLocal;
+        if (!toLocal) continue;
         e.stopPropagation();
         e.preventDefault();
         const gesture = new GestureSession('Drag Effect Handle');
-        dragRef.current = { layer: l.layer, effect: hit.effect, handle: hit.handle, start: hit.local, gesture, screenToLocal: l.screenToLocal };
-        gesture.send([dragCommand(l.layer, hit.effect, hit.handle, hit.local, hit.local, DRAG_BEGIN)]);
+        dragRef.current = {
+          layer: l.layer, effect: hit.effect, handle: hit.handle, start: hit.local, space: hit.space, gesture, screenToLocal: toLocal,
+        };
+        gesture.send([dragCommand(l.layer, hit.effect, hit.handle, hit.local, hit.local, DRAG_BEGIN, hit.space)]);
         try {
           svg.setPointerCapture(e.pointerId);
         } catch {
@@ -112,14 +125,14 @@ export function PluginOverlay(): JSX.Element | null {
       const d = dragRef.current;
       if (!d) return;
       const p = local(e);
-      d.gesture.send([dragCommand(d.layer, d.effect, d.handle, d.screenToLocal(p.x, p.y), d.start, DRAG_MOVE)]);
+      d.gesture.send([dragCommand(d.layer, d.effect, d.handle, d.screenToLocal(p.x, p.y), d.start, DRAG_MOVE, d.space)]);
     };
     const onUp = (e: PointerEvent): void => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
       const p = local(e);
-      d.gesture.send([dragCommand(d.layer, d.effect, d.handle, d.screenToLocal(p.x, p.y), d.start, DRAG_END)]);
+      d.gesture.send([dragCommand(d.layer, d.effect, d.handle, d.screenToLocal(p.x, p.y), d.start, DRAG_END, d.space)]);
       void d.gesture.end();
       if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
     };
