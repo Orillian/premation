@@ -39,6 +39,25 @@ machine it runs on, then the generic one:
 | Linux x64 | `linux-x64`, `linux` |
 | Linux arm64 | `linux-arm64`, `linux` |
 
+**Contributions besides effects (SDK 1.2, P7).** `effects` may be empty or
+absent when the bundle contributes something else. Every key is optional; each
+entry needs an `id` (1–64 of `A-Z a-z 0-9 . _ -`, unique within its key), and
+each id must have its entry point in the binary (PrPluginInfo's SDK 1.2
+fields), or the plugin is listed `failed`:
+
+| Key | Entry | What the editor does |
+|---|---|---|
+| `commands` | `{ "id", "name", "menu" }` | Plugins menu (under `menu`, a submenu; "" = the plugin's name) and the command palette (pr_command.h) |
+| `importers` | `{ "id", "name", "extensions": ["ppm", "pfm"] }` | Files with these extensions import and render through the plugin (pr_io.h); the media picker offers them |
+| `outputModules` | `{ "id", "name", "extension", "options": [ … ] }` | A Render Queue / Export format `plugin:<id>/<module>`; `options` are `{ "id", "name", "type": "popup" \| "number" \| "checkbox", "choices", "default", "min", "max" }` (pr_io.h) |
+| `panels` | `{ "id", "name", "page": "stats.html" }` | A dockable panel showing `ui/<page>` in the P5 sandbox (docs/PLUGIN_SDK.md "Panels") |
+
+A malformed entry (no id, an extension that is not 1–16 letters or digits, a
+`page` outside `ui/`, an option type the editor does not draw) fails the
+manifest before any code runs. The install dialog (§4a) lists the
+contributions next to the effects; the registry's manifest reader (motion-back)
+reads the same keys (PROGRAM_DEEP_PLUGINS.md B1).
+
 ## 2. The package (`.pplugin`)
 
 `node scripts/pack-plugin.mjs <bundle-folder> [--out x.pplugin] [--key key.json]`
@@ -173,7 +192,8 @@ closed it opens and then shows the dialog).
    already pinned for the id is **the same publisher as your installed
    copy**; else **unknown** (or **unsigned**).
 3. The page's dialog names the plugin, version, publisher and trust, the
-   effects, and what it can access (native code with the app's access). An
+   effects and what else it adds (commands, import and export formats, panels: §1),
+   and what it can access (native code with the app's access). An
    unknown or unsigned package installs only through **Install anyway**
    (never on Enter); its key is pinned then, as a store install pins it.
    Refused outright: a key different from the pinned one, no build for this

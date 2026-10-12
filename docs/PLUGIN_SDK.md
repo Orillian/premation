@@ -9,10 +9,10 @@ so an AE plugin author can find their way around.
 | | |
 |---|---|
 | Headers | `native/sdk/include/premation_sdk/` (C, versioned ABI; `premation_sdk.h` includes all) |
-| Samples | `native/sdk/samples/` — `ripple` (CPU), `rings` (generator + sequence data + button), `checkout` (Layer Displace, Time Echo), `grade` (GPU), `particles` (SDK 1.1: comp camera, lights, layer transforms; SDK 1.2: trails and its own motion blur through `checkout_time`, comp space, presets, a layer-time button) |
+| Samples | `native/sdk/samples/` — `ripple` (CPU), `rings` (generator + sequence data + button), `checkout` (Layer Displace, Time Echo), `grade` (GPU), `particles` (SDK 1.1: comp camera, lights, layer transforms; SDK 1.2: trails and its own motion blur through `checkout_time`, comp space, presets, a layer-time button); SDK 1.2 plugins that are not effects: `distribute` (a command), `ppmio` (an importer), `ppmseq` (an output module), `statspanel` (a panel + a command) |
 | Host | `native/engine/src/plugins/` (runs inside `premation-engine`) |
 | Tool | `premation-plugins` — list, render, crash-check a plugin folder without an editor |
-| Tests | `engine_plugins_tests` (`tests/test_plugin_host.cpp`, `tests/test_plugin_session.cpp`, `tests/test_plugin_scene.cpp`, `tests/test_plugin_entitlement.cpp`, `tests/test_plugin_sdk12.cpp`), `engine_plugins_scene_tests` (`tests/test_plugin_finish.cpp`: the frame hook over a document), `engine_plugins_gpu_tests`, the golden scene `plugin-particles-orbit` (packages/render-tests) |
+| Tests | `engine_plugins_tests` (`tests/test_plugin_host.cpp`, `tests/test_plugin_session.cpp`, `tests/test_plugin_scene.cpp`, `tests/test_plugin_entitlement.cpp`, `tests/test_plugin_sdk12.cpp`, `tests/test_plugin_contrib.cpp`: commands, importers, output modules, panels), `engine_plugins_scene_tests` (`tests/test_plugin_finish.cpp`: the frame hook over a document), `engine_plugins_gpu_tests`, the golden scene `plugin-particles-orbit` (packages/render-tests) |
 
 ## Packaging
 
@@ -389,6 +389,148 @@ The `rings` panel reads its palette from the sequence data and applies an
 edited one through the hidden **Set Palette** button (`#rrggbb` colours as the
 payload).
 
+## Plugins that are not effects (SDK 1.2, P7)
+
+After Effects has three plugin classes besides effects: AEGP (menu commands
+that edit the project), AEIO (footage formats the app cannot read) and output
+modules (formats the Render Queue writes), and AEGP plugins also dock panels.
+Premation has all four. A bundle may list any of them in its manifest, with
+or without effects (`effects` may then be empty or absent; docs/PLUGIN_STORE.md
+§1 has the keys), and the module hands their entry points over in
+`PrPluginInfo`'s SDK 1.2 trailing fields:
+
+```c
+const PrCommandEntry kCommands[] = {{"distribute", &distribute_main}};
+const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.example.tools",
+                            0, NULL,            /* effects */
+                            1, kCommands,       /* SDK 1.2: commands (pr_command.h) */
+                            0, NULL,            /* importers (pr_io.h) */
+                            0, NULL};           /* output modules (pr_io.h) */
+```
+
+A 1.0 / 1.1 module's struct ends at `effects` and keeps loading: the host reads
+the new fields only when `struct_size` covers them. A manifest entry without
+its entry point (or the other way round) fails the plugin before it is used.
+A disabled, failed, quarantined or locked plugin contributes nothing: its
+commands leave the Plugins menu, its formats the import picker and the
+Render Queue, its panels the dock.
+
+| | AE | Premation | Header | Sample |
+|---|---|---|---|---|
+| Command | AEGP `AEGP_InsertMenuCommand` + command hook | manifest `commands`, `PrCommandEntry` | `pr_command.h` | `distribute` (Distribute Layers) |
+| Importer | AEIO `AEIO_GetInSpecInfo`, `AEIO_DrawSparseFrame` | manifest `importers`, `PrImporterEntry` | `pr_io.h` | `ppmio` (.ppm / .pfm) |
+| Output module | AEIO output (`AEIO_StartAdding`, `AEIO_AddFrame`, `AEIO_EndAdding`) | manifest `outputModules`, `PrOutputModuleEntry` | `pr_io.h` | `ppmseq` (a .ppm sequence) |
+| Panel | AEGP panels (`AEGP_RegisterCreatePanelHook`) | manifest `panels` (no code: an HTML page) | — | `statspanel` (Layer Stats) |
+
+### Commands (`pr_command.h`)
+
+A command is one selector, `PR_COMMAND_RUN`, with a `PrCommandContext`: the
+active composition, the selected layers (top first), the playhead (comp time,
+ticks), the composition's frame rate and `args_json` (runPluginCommand's
+`args`). It reads and edits the document through the **engine API** — the
+same API the editor speaks — as JSON, through `PrCommandSuite`:
+
+```c
+const char* json; uint32_t len;
+ctx->engine->engine_query(ctx->host_ref, "{\"type\":\"getComposition\",\"comp\":\"comp_1\"}", &json, &len);
+ctx->engine->engine_command(ctx->host_ref,
+    "{\"type\":\"setProperty\",\"prop\":{\"layer\":\"l2\",\"path\":\"transform/position\"},"
+    "\"value\":{\"kind\":\"vec2\",\"value\":{\"x\":100,\"y\":50}},\"time\":0}", &json, &len);
+```
+
+- The JSON is the API's TypeScript object form (packages/engine-api types):
+  flat unions (Command, Query and their results) carry `type`; other unions
+  `kind` and `value`; enums their names; bytes base64; times integer ticks.
+  The engine translates it with the schema itself (`api_schema.inc`, generated
+  with the codec), so every query and edit command the schema has is there.
+- A result is host-owned JSON, valid until RUN returns. An engine error answers
+  `PR_ERR_INVALID_PARAM` (`PR_ERR_NOT_FOUND` for `notFound`) with
+  `{"code": "…", "message": "…"}`.
+- Only **edit** commands: no undo / redo, open / save, transport, jobs, or
+  another runPluginCommand.
+- **One invocation = one undo entry**, labelled with the command's name, origin
+  `plugin`. Every edit lands in the request's journal as it is made (the next
+  query sees it). If RUN returns an error, or any edit failed, or the plugin
+  crashes, **all** of it rolls back. The command log keeps the edits the plugin
+  made (a batch, `LogRecord.job` = `plugin:<id>/<command>`), never the
+  runPluginCommand, so a crash replay does not run the plugin again.
+- It runs in premation-engine on the core thread, under the crash guard, the
+  crash journal and the watchdog. A crash rolls back, the command is off for the
+  session (listed `enabled: false` with why) and `setPluginEnabled(true)`
+  re-arms it; a hang quarantines the plugin and restarts the engine.
+- The editor: the **Plugins** menu (a submenu per manifest `menu`), the command
+  palette ("Plugins: Distribute Layers"; Customize can bind a shortcut), and
+  `runPluginCommand` from anywhere else (a plugin panel's `command`). The engine API:
+  `listPluginCommands`, `runPluginCommand`.
+
+### Importers (`pr_io.h`)
+
+Files with an importer's extensions import and render through the plugin
+instead of the engine's decoders:
+
+| Selector | In | Out |
+|---|---|---|
+| `PR_IMPORT_PROBE` | `path` | `info`: size, `frame_rate` and `duration` (0 = a still), `has_alpha`, `linear`, `pixel_format`, audio format, `codec` |
+| `PR_IMPORT_OPEN` | `path` | `file_data` (a handle the plugin owns) |
+| `PR_IMPORT_READ_FRAME` | `time` (source time) | `frame`: a host world of `info.width × info.height` at `info.pixel_format` — straight RGBA, display-encoded unless `linear` |
+| `PR_IMPORT_READ_AUDIO` | `audio_start`, `audio_frames` | `audio` (interleaved float32), `audio_frames_read` |
+| `PR_IMPORT_CLOSE` | `file_data` | — |
+
+- `importFiles` probes through the plugin (the Project panel shows its size,
+  rate and codec); the media picker offers the extensions; Collect Files,
+  Relink and Remove Unused treat the item like any footage.
+- The texture feed reads frames through it (premultiplied there, encoded to
+  sRGB when `linear`), cached by file, modification time and source time; at
+  most 16 files stay open.
+- A file the plugin refuses fails the import with "plugin failed to read …"
+  (`io`). A failure at render time draws nothing for that layer and names it on
+  `layerErrors`; the frame renders. A crash turns the importer off for the
+  session (every read then fails with why) until the plugin is enabled again.
+- Not yet: plugin footage in the playback audio mixer (`READ_AUDIO` is in the
+  ABI and the host, `Contrib::read_audio`) and in analysis jobs (tracker,
+  stabilizer), which read frames with the engine's own decoders.
+
+### Output modules (`pr_io.h`)
+
+An output module is an export format: `plugin:<plugin id>/<module id>` in the
+Export dialog's **Plugins** category and in the Render Queue, with its declared
+`options` drawn as controls (popup — the value a 1-based index —, number with
+`min` / `max`, checkbox).
+
+| Selector | What the module gets |
+|---|---|
+| `PR_OUTPUT_BEGIN` | `path` (what the user chose), size, frame rate, frame count, audio format (0 channels = none), `options_json` (`{ "<id>": value }`, defaults filled, clamped) → `job_data` |
+| `PR_OUTPUT_WRITE_FRAME` | `frame_index` (0-based), `time`, `frame`: RGBA32F, straight alpha, display-encoded (the output space) — in order |
+| `PR_OUTPUT_WRITE_AUDIO` | the mix, interleaved float32, after the frames |
+| `PR_OUTPUT_END` | `cancelled` = 1 when the job did not finish |
+
+The export job (`premation-engine --export`, job fields `sequence:
+"plugin:…"`, `pluginPath`, `pluginOptions`) runs the module in its own
+process with its own plugin host; the module writes its files itself (nothing
+is moved afterwards). A crash or an error fails that job with the module's
+message; the editor and the engine carry on.
+
+### Panels (manifest `panels`)
+
+A dockable panel with no effect behind it: `{ "id", "name", "page" }` shows
+`ui/<page>` from the bundle in the P5 sandbox (`plugin-ui://<id>/<page>`,
+`sandbox="allow-scripts"`, no Node, no storage, no network). The Plugins menu
+▸ Panels opens it; it docks like any on-demand panel. It talks to
+the editor by `window.parent.postMessage({ premation: 1, … }, '*')`:
+
+| Panel sends | What happens |
+|---|---|
+| `{ type: 'ready' }` | the editor answers `context` |
+| `{ id, type: 'query', request }` | the engine API query (`{ type: 'getComposition', comp }`); the reply's `result` is its answer |
+| `{ id, type: 'command', request, label? }` | one EDIT command, origin `plugin`: one undo entry (a `runPluginCommand` runs the plugin's own command) |
+| `{ id, type: 'command', commands: [...], label }` | several edits as ONE undo entry |
+
+The editor sends `{ type: 'context', plugin, comp, layers, time }` on `ready`
+and after every document change (undo and redo too), selection or time change,
+and `{ type: 'reply', id, ok, result?, error? }` to each request. Requests over
+1 MiB, non-edit commands (undo, save, transport, jobs) and unknown types are
+refused with an error reply; nothing changes.
+
 ## Sequence data
 
 Per-instance state lives **in the document**, not only in the process:
@@ -456,6 +598,8 @@ it and clears the quarantine.
 | `getEffectUi` | the param UI state (UPDATE_PARAMS_UI) at a time |
 | `setPluginEnabled` | enable / disable for this session; re-enabling retries a failed or quarantined plugin |
 | `setPluginData` | write a plugin's document data (arbitrary-data params) |
+| `listPluginCommands` / `runPluginCommand` | SDK 1.2 commands (see "Commands"): one undo entry per run |
+| `PluginInfo.commands` / `importers` / `outputModules` / `panels` | what a plugin contributes besides effects, from its manifest |
 
 The C++ engine is the only engine (the TypeScript one is deleted), so these
 queries always answer from `premation-engine`. Native plugins render in the
