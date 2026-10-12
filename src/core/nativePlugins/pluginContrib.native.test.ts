@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
 import { createProcessEngineClient, unwrap, type EngineClient } from '@motion/engine-api';
 import { bootEngine, engine, engineIdle, shutdownEngine } from '@core/engine/engineInstance';
 import { resetEngineOwnership } from '@core/engine/engineOwnership';
@@ -95,6 +96,85 @@ function writeMovingPpm(file: string, w: number, h: number, frames: number, fps:
     parts.push(px);
   }
   writeFileSync(file, Buffer.concat(parts));
+}
+
+/** A light disc (radius 18) on a dark ground, centred at (40 + 12 k, 60) on frame k: RGB rows. */
+function discFrame(w: number, h: number, k: number): Buffer {
+  const px = Buffer.alloc(w * h * 3);
+  const cx = 40 + 12 * k;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const inside = (x - cx) ** 2 + (y - 60) ** 2 <= 18 * 18;
+      px.set(inside ? [235, 210, 60] : [30, 40, 70], (y * w + x) * 3);
+    }
+  }
+  return px;
+}
+
+/** ppmio moving footage of discFrame: `frames` P6 images back to back at `fps`. */
+function writeDiscPpm(file: string, w: number, h: number, frames: number, fps: number): void {
+  const parts: Buffer[] = [];
+  for (let k = 0; k < frames; k++) {
+    parts.push(Buffer.from(`P6\n${k === 0 ? `# fps ${fps}\n` : ''}${w} ${h}\n255\n`, 'latin1'), discFrame(w, h, k));
+  }
+  writeFileSync(file, Buffer.concat(parts));
+}
+
+/** An RGB PNG (8-bit, no filter) of `rgb` — the same picture as a still the OS codec reads. */
+function writePng(file: string, w: number, h: number, rgb: Buffer): void {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (b: Buffer): number => {
+    let c = 0xffffffff;
+    for (const v of b) c = crcTable[(c ^ v) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) rgb.copy(raw, y * (w * 3 + 1) + 1, y * w * 3, (y + 1) * w * 3);
+  writeFileSync(file, Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+  ]));
+}
+
+interface ChildRun { code: number | null; error?: { code: string; message: string }; result?: unknown }
+
+/** `premation-engine --job FILE` (jobs/child_job.hpp) on a hand-written job file: its error or result line. */
+async function runJobChild(full: string, file: string, job: object): Promise<ChildRun> {
+  writeFileSync(file, JSON.stringify(job));
+  return new Promise<ChildRun>((resolve, reject) => {
+    const p = spawn(full, ['--job', file], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let out = '';
+    p.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+    p.stderr.resume();
+    p.on('error', reject);
+    p.on('close', (code) => {
+      const run: ChildRun = { code };
+      for (const line of out.split('\n')) {
+        try {
+          const ev = JSON.parse(line) as { ev?: string; code?: string; message?: string; result?: unknown };
+          if (ev.ev === 'error') run.error = { code: ev.code ?? '', message: ev.message ?? '' };
+          if (ev.ev === 'result') run.result = ev.result;
+        } catch { /* stray output */ }
+      }
+      resolve(run);
+    });
+  });
 }
 
 /** premation-engine (the full build: export, audio, jobs) beside the engine the suite runs, or ''. */
@@ -400,6 +480,143 @@ maybe('native plugins that are not effects (P7)', () => {
       }
     } finally {
       await jobs.stop();
+      rmSync(projDir, { recursive: true, force: true });
+    }
+  });
+
+  // Object Matte and the face tracker run in a CHILD engine (jobs/child_job.hpp). The child starts
+  // its own plugin host from the engine's plugin set and reads plugin footage through the same importer.
+  const SAM_DIR = path.join(__dirname, '..', '..', '..', 'public', 'models', 'object-matte');
+  const SAM_ENCODER = path.join(SAM_DIR, 'vision_encoder_quantized.onnx');
+  const SAM_DECODER = path.join(SAM_DIR, 'prompt_encoder_mask_decoder_quantized.onnx');
+
+  it('Object Matte segments moving plugin footage in its child process, frame for frame as the same still (premation-engine)', async () => {
+    const full = fullEngineExe();
+    if (!full || !existsSync(SAM_ENCODER) || !existsSync(SAM_DECODER)) {
+      console.log('[plugin contrib native] premation-engine or the Object Matte model missing — the child job case is skipped');
+      return;
+    }
+    const projDir = mkdtempSync(path.join(os.tmpdir(), 'plugin-contrib-matte-'));
+    const clip = path.join(projDir, 'disc.ppm');
+    const still = path.join(projDir, 'disc3.png');
+    writeDiscPpm(clip, 160, 120, 6, 10);
+    writePng(still, 160, 120, discFrame(160, 120, 3));
+    const prev = process.env.PREMATION_ENGINE_PATH;
+    process.env.PREMATION_ENGINE_PATH = full;
+    let jobs: NativeEngine | null = null;
+    try {
+      jobs = await startNativeEngine({ extraArgs: ['--no-gpu', '--plugins', dir] });
+    } finally {
+      if (prev === undefined) delete process.env.PREMATION_ENGINE_PATH;
+      else process.env.PREMATION_ENGINE_PATH = prev;
+    }
+    try {
+      const c3 = createProcessEngineClient(jobs.bridge);
+      await c3.whenReady();
+      const sec = (s: number) => Math.round(s * 705_600_000);
+      unwrap(await c3.execute({ type: 'setCompositionSettings', comp: 'comp_root', patch: { width: 160, height: 120, frameRate: { num: 10, den: 1 }, duration: sec(0.6) } } as never));
+      const layerOf = async (file: string) => {
+        const items = unwrap(await c3.execute({ type: 'importFiles', files: [{ path: file, asSequence: false, createComposition: false }] }));
+        return (unwrap(await c3.execute({ type: 'createLayer', comp: 'comp_root', kind: file.endsWith('.png') ? 'image' : 'video', source: items.items[0]!, init: [] } as never)) as unknown as { layer: string }).layer;
+      };
+      const moving = await layerOf(clip);
+      const ref = await layerOf(still);
+      const finished = new Map<string, { result: string; error?: string }>();
+      const off = c3.subscribe((b) => {
+        for (const e of b.events) if (e.type === 'jobFinished') finished.set(e.job.id, { result: e.job.result, ...(e.error ? { error: e.error.message } : {}) });
+      });
+      // Frame 3 (0.3 s) of the clip: the disc is at (76, 60).
+      const matte = async (layer: string) => {
+        const started = unwrap(await c3.execute({ type: 'startJob', apply: true, job: { kind: 'objectMatte', value: {
+          layer, range: { start: sec(0.3), duration: sec(0.1) }, prompts: [{ x: 76, y: 60 }], backgroundPrompts: [],
+          encoderModel: SAM_ENCODER, decoderModel: SAM_DECODER, replaceMasks: [], strokes: [],
+        } } } as never)) as unknown as { job: string };
+        const t0 = Date.now();
+        while (!finished.has(started.job) && Date.now() - t0 < 90_000) await new Promise((r) => setTimeout(r, 50));
+        return finished.get(started.job);
+      };
+      // The summary: {contourPoints, engine, iou, mask: the new mask's id}.
+      const outline = async (layer: string, result: string) => {
+        const { mask, ...rest } = JSON.parse(result) as { mask: string };
+        const v = unwrap(await c3.query({ type: 'getPropertyValues', props: [{ layer, path: `masks/${mask}/path` }], time: sec(0.3), evaluated: false })).values[0]!.value as unknown as { value: { vertices: number[] } };
+        return { rest, vertices: v.value.vertices };
+      };
+      const a = await matte(moving);
+      expect(a?.error).toBeUndefined();
+      const b = await matte(ref);
+      expect(b?.error).toBeUndefined();
+      // The same picture in, the same matte out: the importer gave the child frame 3 exactly.
+      const oa = await outline(moving, a!.result);
+      const ob = await outline(ref, b!.result);
+      expect(oa).toEqual(ob);
+      const va = oa.vertices;
+      expect(va.length).toBeGreaterThanOrEqual(6);
+      // Layer-centred px: the outline sits on the disc of frame 3 (centre 76 - 80 = -4, 60 - 60 = 0).
+      const n = va.length / 2;
+      const cx = va.filter((_, i) => i % 2 === 0).reduce((s, x) => s + x, 0) / n;
+      const cy = va.filter((_, i) => i % 2 === 1).reduce((s, y) => s + y, 0) / n;
+      expect(Math.abs(cx - -4)).toBeLessThan(3);
+      expect(Math.abs(cy)).toBeLessThan(3);
+
+      // Disabled in the engine: the child lists it disabled too — no code of it runs, the job fails with why.
+      unwrap(await c3.execute({ type: 'setPluginEnabled', plugin: 'com.premation.samples.ppmio', enabled: false }));
+      const c = await matte(moving);
+      expect(c?.error).toMatch(/plugin failed to read '.*disc\.ppm': plugin 'com\.premation\.samples\.ppmio' is disabled/);
+      unwrap(await c3.execute({ type: 'setPluginEnabled', plugin: 'com.premation.samples.ppmio', enabled: true }));
+      expect((await matte(moving))?.error).toBeUndefined();
+      off();
+    } finally {
+      await jobs.stop();
+      rmSync(projDir, { recursive: true, force: true });
+    }
+  });
+
+  it('a child job reads plugin footage with the engine plugin set; a disabled or revoked importer fails cleanly (premation-engine --job)', async () => {
+    const full = fullEngineExe();
+    if (!full) {
+      console.log('[plugin contrib native] premation-engine not built — the child job case is skipped');
+      return;
+    }
+    const projDir = mkdtempSync(path.join(os.tmpdir(), 'plugin-contrib-child-'));
+    try {
+      const clip = path.join(projDir, 'disc.ppm');
+      writeDiscPpm(clip, 160, 120, 6, 10);
+      // No landmark model in the test tree: a file that is not one. Reaching "Face model:" means the
+      // child opened the footage through the importer first (kind_face_track.cpp face_track_child).
+      const model = path.join(projDir, 'face_landmark.onnx');
+      writeFileSync(model, 'not a model');
+      const PPMIO = 'com.premation.samples.ppmio';
+      const face = {
+        work: 'faceTrack',
+        input: { file: clip, model, layerWidth: 160, layerHeight: 120, outline: [60, 40, 90, 40, 90, 80, 60, 80], walks: [[[0.3, 0.3], [0.4, 0.4]]], fps: 10 },
+      };
+      const job = path.join(projDir, 'job.json');
+      const ok = await runJobChild(full, job, { ...face, plugins: { paths: [dir], disabled: [], revoked: '', entitlement: '' } });
+      expect(ok.code).toBe(0);
+      expect(ok.error?.message).toMatch(/^Face model:/);
+
+      const disabled = await runJobChild(full, job, { ...face, plugins: { paths: [dir], disabled: [PPMIO], revoked: '', entitlement: '' } });
+      expect(disabled.code).toBe(0);
+      expect(disabled.error).toEqual({ code: 'decode', message: expect.stringMatching(/^cannot read the footage: plugin failed to read '.*disc\.ppm': plugin 'com\.premation\.samples\.ppmio' is disabled/) });
+
+      const revokedFile = path.join(projDir, 'revoked.json');
+      writeFileSync(revokedFile, JSON.stringify({ revoked: [{ id: PPMIO, reason: 'test revocation' }] }));
+      const revoked = await runJobChild(full, job, { ...face, plugins: { paths: [dir], disabled: [], revoked: revokedFile, entitlement: '' } });
+      expect(revoked.code).toBe(0);
+      expect(revoked.error?.message).toMatch(/plugin failed to read '.*disc\.ppm': plugin 'com\.premation\.samples\.ppmio' is revoked \(revoked: test revocation\)/);
+
+      // Object Matte's child reads its frame through the same path (before the model).
+      const matte = {
+        work: 'objectMatte',
+        input: { file: clip, sourceSeconds: 0.3, layerWidth: 160, layerHeight: 120, points: [[76, 60, 1]], encoder: model, decoder: model },
+      };
+      const mOk = await runJobChild(full, job, { ...matte, plugins: { paths: [dir], disabled: [], revoked: '', entitlement: '' } });
+      expect(mOk.code).toBe(0);
+      expect(mOk.error?.message).toMatch(/^Object Matte model:/);
+      const mRevoked = await runJobChild(full, job, { ...matte, plugins: { paths: [dir], disabled: [], revoked: revokedFile, entitlement: '' } });
+      expect(mRevoked.code).toBe(0);
+      expect(mRevoked.error?.message).toMatch(/plugin failed to read '.*disc\.ppm': plugin 'com\.premation\.samples\.ppmio' is revoked/);
+    } finally {
       rmSync(projDir, { recursive: true, force: true });
     }
   });

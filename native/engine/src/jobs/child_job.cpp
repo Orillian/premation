@@ -29,6 +29,7 @@ struct Registry {
   std::mutex mu;
   std::map<std::string, ChildWork, std::less<>> works;
   std::string exe;
+  std::function<ChildPlugins()> plugins;
 };
 
 Registry& registry() {
@@ -54,6 +55,7 @@ ErrorCode code_named(const std::string& s) {
   if (s == "invalidArgument") return ErrorCode::invalid_argument;
   if (s == "unsupported") return ErrorCode::unsupported;
   if (s == "io") return ErrorCode::io;
+  if (s == "decode") return ErrorCode::decode;  // footage the child cannot read
   if (s == "outOfRange") return ErrorCode::out_of_range;
   return ErrorCode::internal;
 }
@@ -64,6 +66,7 @@ std::string code_name(ErrorCode c) {
     case ErrorCode::invalid_argument: return "invalidArgument";
     case ErrorCode::unsupported: return "unsupported";
     case ErrorCode::io: return "io";
+    case ErrorCode::decode: return "decode";
     case ErrorCode::out_of_range: return "outOfRange";
     default: return "internal";
   }
@@ -118,6 +121,50 @@ void set_child_executable(std::string path) {
 
 std::string child_executable() { return exe_path(); }
 
+void set_child_plugins(std::function<ChildPlugins()> current) {
+  Registry& r = registry();
+  const std::lock_guard<std::mutex> lock(r.mu);
+  r.plugins = std::move(current);
+}
+
+namespace {
+
+Json strings_json(const std::vector<std::string>& v) {
+  Json a = Json::array();
+  for (const std::string& s : v) a.arr_mut().push_back(Json::string(s));
+  return a;
+}
+
+std::vector<std::string> json_strings(const Json& a) {
+  std::vector<std::string> out;
+  if (!a.is_array()) return out;
+  for (const Json& s : a.arr()) {
+    if (s.is_string()) out.push_back(s.str());
+  }
+  return out;
+}
+
+/// The job file's "plugins": the engine's plugin set right now (undefined = none).
+std::optional<Json> current_plugins_json() {
+  std::function<ChildPlugins()> fn;
+  {
+    Registry& r = registry();
+    const std::lock_guard<std::mutex> lock(r.mu);
+    fn = r.plugins;
+  }
+  if (!fn) return std::nullopt;
+  const ChildPlugins cp = fn();
+  if (cp.paths.empty()) return std::nullopt;
+  Json o = Json::object();
+  o.set("paths", strings_json(cp.paths));
+  o.set("disabled", strings_json(cp.disabled));
+  o.set("revoked", Json::string(cp.revoked));
+  o.set("entitlement", Json::string(cp.entitlement));
+  return o;
+}
+
+}  // namespace
+
 std::optional<std::string> run_child(const std::string& name, const std::string& inputJson, JobControl& control) {
   const std::string exe = exe_path();
   if (exe.empty()) {
@@ -135,6 +182,7 @@ std::optional<std::string> run_child(const std::string& name, const std::string&
     Json job = Json::object();
     job.set("work", Json::string(name));
     job.set("input", *input);
+    if (std::optional<Json> plugins = current_plugins_json()) job.set("plugins", std::move(*plugins));
     std::ofstream f(file, std::ios::binary | std::ios::trunc);
     f << js::stringify(job);
     if (!f) fail(ErrorCode::io, "could not write the job file '" + file.string() + "'");
@@ -207,7 +255,7 @@ std::optional<std::string> run_child(const std::string& name, const std::string&
   return result;
 }
 
-int child_main(const std::string& jobFile) {
+int child_main(const std::string& jobFile, const ChildPluginStarter& startPlugins) {
   register_child_works();
   auto emit_error = [](ErrorCode code, const std::string& message) {
     Json o = Json::object();
@@ -228,6 +276,17 @@ int child_main(const std::string& jobFile) {
   if (!work) {
     emit_error(ErrorCode::unsupported, "no job work '" + job->at("work").str() + "' in this engine build");
     return 64;
+  }
+  // P7b: the plugin host the work reads plugin footage with (the engine's set, child_job.hpp).
+  // Declared before the work's state, so it outlives every reader of its importers.
+  std::unique_ptr<ChildPluginScope> plugins;
+  if (const Json& pj = job->at("plugins"); startPlugins && pj.is_object()) {
+    ChildPlugins cp;
+    cp.paths = json_strings(pj.at("paths"));
+    cp.disabled = json_strings(pj.at("disabled"));
+    cp.revoked = pj.at("revoked").is_string() ? pj.at("revoked").str() : std::string();
+    cp.entitlement = pj.at("entitlement").is_string() ? pj.at("entitlement").str() : std::string();
+    if (!cp.paths.empty()) plugins = startPlugins(cp);
   }
   ChildControl control;
   // Failures are answered as an error line and exit 0: only a crash is a crash.

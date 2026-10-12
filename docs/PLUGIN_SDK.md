@@ -532,8 +532,16 @@ instead of the engine's decoders:
 - Analysis jobs (tracker, stabilizer, scene detection, roto, …) read the
   item's frames through the importer too (jobs/media_input.cpp
   `open_plugin_frames`). The jobs that run in a child process (Object
-  Matte, the face tracker) have no plugin host and fail on plugin footage
-  with "plugin failed to read".
+  Matte, the face tracker; jobs/child_job.hpp) start a plugin host of their
+  own from the engine's plugin folders, revocation list and entitlement
+  token, with every plugin the engine does not run at that moment
+  (disabled, quarantined, failed, revoked, locked, or with an importer that
+  crashed this session) listed disabled: the same importer, the same frames,
+  and no plugin code the engine would not run. A plugin crash there fails
+  that job only.
+- A job on footage whose importer's plugin does not run fails with why
+  ("plugin failed to read 'x.ppm': plugin '…' is disabled"), rather than
+  reading the file through another decoder.
 - The `ppmio` sample reads a PPM holding several images back to back as
   moving footage (30 fps, or `# fps <n>` in the first header) and a second
   format, `.praw` (`PRAW <rate> <channels>` + interleaved float32), that is

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -33,6 +34,7 @@
 #endif
 #if defined(PREMATION_HAVE_JOBS)
 #include "jobs/child_job.hpp"
+#include "plugins/contrib.hpp"  // P7b: importers_off, for a child job's plugin set
 #include "jobs/job_kinds.hpp"
 #include "jobs/media_input.hpp"
 #endif
@@ -231,20 +233,20 @@ int run_engine(const EngineOptions& options) {
   // session so it outlives both (the render glue and the document reach it
   // through PluginHost::active()). Absent when no plugin folder is configured.
   std::unique_ptr<plugins::PluginHost> pluginHost;
+  std::vector<std::string> pluginFolders = options.pluginPaths;  // P7b: also a child job's (child_job.hpp)
   {
-    std::vector<std::filesystem::path> paths(options.pluginPaths.begin(), options.pluginPaths.end());
     if (const std::optional<std::string> env = os::env_var("PREMATION_PLUGIN_PATH")) {
       std::string_view rest = *env;
       while (!rest.empty()) {
         const std::size_t cut = rest.find(';');
-        if (cut != 0) paths.emplace_back(std::string(rest.substr(0, cut)));
+        if (cut != 0) pluginFolders.emplace_back(rest.substr(0, cut));
         if (cut == std::string_view::npos) break;
         rest.remove_prefix(cut + 1);
       }
     }
-    if (!paths.empty()) {
+    if (!pluginFolders.empty()) {
       plugins::HostOptions ho;
-      ho.searchPaths = std::move(paths);
+      ho.searchPaths.assign(pluginFolders.begin(), pluginFolders.end());
       ho.journal = options.pluginJournal;
       ho.disabled = options.pluginDisabled;
       if (!options.pluginRevoked.empty()) ho.revoked = plugins::read_revoked_file(options.pluginRevoked);
@@ -393,6 +395,31 @@ int run_engine(const EngineOptions& options) {
   // model-loading job's work runs in a child of this executable (`--job`),
   // proxies and renders use the export's ffmpeg.
   jobs::set_child_executable(os::executable_path());
+  // P7b: a child job reads plugin footage through a plugin host of its own, started
+  // from this engine's folders with every plugin this engine does not run right now
+  // listed disabled (child_job.hpp). Reset before the host goes away.
+  struct ChildPluginsReset {
+    ChildPluginsReset() = default;
+    ~ChildPluginsReset() { jobs::set_child_plugins({}); }
+    ChildPluginsReset(const ChildPluginsReset&) = delete;
+    ChildPluginsReset& operator=(const ChildPluginsReset&) = delete;
+    ChildPluginsReset(ChildPluginsReset&&) = delete;
+    ChildPluginsReset& operator=(ChildPluginsReset&&) = delete;
+  } const childPluginsReset;
+  if (pluginHost) {
+    jobs::set_child_plugins([host = pluginHost.get(), folders = pluginFolders, revoked = options.pluginRevoked,
+                             entitlement = options.pluginEntitlement] {
+      jobs::ChildPlugins cp;
+      cp.paths = folders;
+      const std::set<std::string, std::less<>> off = host->contrib().importers_off();
+      for (const plugins::PluginRecord& r : host->plugins()) {
+        if (r.status != plugins::PluginStatus::loaded || off.contains(r.id)) cp.disabled.push_back(r.id);
+      }
+      cp.revoked = revoked;
+      cp.entitlement = entitlement;
+      return cp;
+    });
+  }
   jobs::set_ffmpeg_executable(os::env_var("PREMATION_FFMPEG").value_or(""));
   jobs::register_child_works();
   const std::unique_ptr<jobs::JobKinds> jobKinds = jobs::make_job_kinds();
@@ -453,5 +480,36 @@ int run_engine(const EngineOptions& options) {
   }
   return exitCode;
 }
+
+#if defined(PREMATION_HAVE_JOBS)
+namespace {
+
+/// A child job's plugin host (child_job.hpp ChildPluginScope).
+class ChildPluginHost final : public jobs::ChildPluginScope {
+ public:
+  explicit ChildPluginHost(std::unique_ptr<plugins::PluginHost> host) : host_(std::move(host)) {}
+
+ private:
+  std::unique_ptr<plugins::PluginHost> host_;
+};
+
+}  // namespace
+
+int run_job_child(const std::string& jobFile) {
+  // As the export process starts its host (export_job.cpp): the engine's folders, disabled set,
+  // revocations and entitlement — no crash journal (a crash here fails the job, not the engine).
+  return jobs::child_main(jobFile, [](const jobs::ChildPlugins& cp) -> std::unique_ptr<jobs::ChildPluginScope> {
+    plugins::HostOptions ho;
+    ho.searchPaths.assign(cp.paths.begin(), cp.paths.end());
+    ho.disabled = cp.disabled;
+    if (!cp.revoked.empty()) ho.revoked = plugins::read_revoked_file(cp.revoked);
+    ho.entitlement = cp.entitlement;
+    auto host = std::make_unique<plugins::PluginHost>(std::move(ho));
+    const std::vector<plugins::PluginRecord> recs = host->scan();
+    PREMATION_LOG(info, "job_plugins").kv("count", static_cast<std::uint64_t>(recs.size()));
+    return std::make_unique<ChildPluginHost>(std::move(host));
+  });
+}
+#endif
 
 }  // namespace premation

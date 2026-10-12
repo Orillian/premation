@@ -42,8 +42,6 @@
 #endif
 #if defined(PREMATION_HAVE_JOBS)
 #include <string>
-
-#include "jobs/child_job.hpp"
 #endif
 
 namespace {
@@ -99,7 +97,7 @@ int run(int argc, char** argv) {
         std::fprintf(stderr, "premation-engine: --job needs a job file\n");
         return 64;
       }
-      return premation::jobs::child_main(std::string(v));
+      return premation::run_job_child(std::string(v));
 #else
       std::fprintf(stderr, "premation-engine: built without engine jobs\n");
       return 3;

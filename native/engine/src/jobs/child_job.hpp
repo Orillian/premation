@@ -9,11 +9,23 @@
 //   {"ev":"error","code":S,"message":S}
 // — and exits 0. A crash, a kill or a non-zero exit fails the job with the
 // exit status; the engine that asked keeps running. Cancel kills the child.
+//
+// Footage a native plugin imports (P7b): the child starts its OWN plugin host
+// from the engine's plugin folders (the job file's "plugins"), as the export
+// process does, so it reads that footage through the same importer at the same
+// source times as the engine. Every plugin the engine does not run at that
+// moment (disabled, quarantined, failed, revoked, locked, or with an importer
+// that crashed this session) is listed disabled for the child, and the
+// revocation list and entitlement token are the engine's files: no plugin code
+// runs in the child that would not run in the engine. A plugin crash there
+// fails the job, never the engine or the editor.
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "job_api.hpp"
 
@@ -36,12 +48,41 @@ void set_child_executable(std::string path);
 /// The executable set above ('' = none known).
 [[nodiscard]] std::string child_executable();
 
+/// The plugin set a child job loads (the job file's "plugins"). Empty `paths` = no plugin host.
+struct ChildPlugins {
+  /// The engine's plugin folders (--plugins and PREMATION_PLUGIN_PATH, already expanded).
+  std::vector<std::string> paths;
+  /// Plugin ids the child lists as disabled: every plugin the engine does not run right now.
+  std::vector<std::string> disabled;
+  /// The engine's --revoked and --entitlement files ("" = none).
+  std::string revoked;
+  std::string entitlement;
+};
+
+/// Parent side: what each child gets, asked at every run_child (the engine process
+/// installs it beside its plugin host; unset = no plugins in the child).
+void set_child_plugins(std::function<ChildPlugins()> current);
+
+/// Child side: the plugin host a job runs with, alive until the work has answered.
+class ChildPluginScope {
+ public:
+  ChildPluginScope() = default;
+  virtual ~ChildPluginScope() = default;
+  ChildPluginScope(const ChildPluginScope&) = delete;
+  ChildPluginScope& operator=(const ChildPluginScope&) = delete;
+  ChildPluginScope(ChildPluginScope&&) = delete;
+  ChildPluginScope& operator=(ChildPluginScope&&) = delete;
+};
+/// Starts that host (engine_process.cpp run_job_child: the jobs library does not link the plugin host).
+using ChildPluginStarter = std::function<std::unique_ptr<ChildPluginScope>(const ChildPlugins&)>;
+
 /// Parent side: run `name` on `inputJson` in a child process; progress is
 /// relayed to `control`. The result JSON, or nullopt when cancelled. Throws
 /// EngineFail: the child's own error, or `internal` when it crashed.
 [[nodiscard]] std::optional<std::string> run_child(const std::string& name, const std::string& inputJson, JobControl& control);
 
-/// `premation-engine --job FILE`: the child's main. Returns the exit code.
-int child_main(const std::string& jobFile);
+/// `premation-engine --job FILE`: the child's main. Returns the exit code. `startPlugins`
+/// runs before the work when the job file lists plugin folders.
+int child_main(const std::string& jobFile, const ChildPluginStarter& startPlugins = {});
 
 }  // namespace premation::jobs

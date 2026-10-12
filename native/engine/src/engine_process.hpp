@@ -75,4 +75,8 @@ inline constexpr const char* kEngineVersion = "0.2.0-c2";
 
 int run_engine(const EngineOptions& options);
 
+/// `premation-engine --job FILE` (jobs/child_job.hpp): the child's main, with the plugin
+/// host the job file asks for (P7b). Built with the engine jobs only.
+int run_job_child(const std::string& jobFile);
+
 }  // namespace premation
