@@ -36,6 +36,7 @@ import {
 } from '@core/engine/process/processEngine';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { useGuidesStore } from '@stores/guidesStore';
+import { useEngineRendererStore } from '@stores/engineRendererStore';
 import { isCustomViewId, type CustomViewParams } from '@core/workspace/customViews';
 import { useRenderQualityStore, type PreviewResolution } from '@stores/renderQualityStore';
 import { useViewportDisplayStore, viewportHudStats } from '@stores/viewportDisplayStore';
@@ -133,6 +134,8 @@ export interface EngineSurfaceStats {
      * off and the overlay draws the frame outline instead.
      */
     clipToComp: boolean;
+    /** E8: the engine draws the 3D ground grid into this viewport's frames (View ▸ 3D Ground Plane, or Draft 3D). */
+    groundGrid: boolean;
   } | null;
   errors: string[];
 }
@@ -175,6 +178,17 @@ function noticeText(n: NonNullable<ReturnType<typeof lastProcessEngineNotice>>):
 }
 
 function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineClient; mode: EngineSurfaceMode; notice: string | null }): JSX.Element {
+  // E8: whether this engine renders on a GPU (and so draws the ground grid
+  // itself); the overlay grid stands down when it does (engineRendererStore).
+  useEffect(() => {
+    let live = true;
+    void client.query({ type: 'getCapabilities' }).then((r) => {
+      if (live && r.ok) useEngineRendererStore.getState().setGpu(r.value.gpuAdapter !== '');
+    });
+    return () => {
+      live = false;
+    };
+  }, [client]);
   const frameBoxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const displayMode = useViewportDisplayStore((s) => s.displayMode);
@@ -423,6 +437,8 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         transparencyGrid: display.transparencyGrid,
         roi: g.roi,
         clipToComp: !extendedViewerActive(g.camera3dMode, g.draft3d, g.extendedViewer),
+        // E8: the engine's ground grid, under the same rule as the overlay's (useSceneRefGeometry).
+        groundGrid: g.groundGridVisible || g.draft3d,
       };
     };
     const sameOnion = (a: NonNullable<EngineSurfaceStats['lastViewport']>['onion'], b: NonNullable<EngineSurfaceStats['lastViewport']>['onion']): boolean =>
@@ -441,7 +457,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         && last.zoom === d.zoom && last.panX === d.panX && last.panY === d.panY
         && last.view === d.view && sameCustomView(last.customView, d.customView) && sameOnion(last.onion, d.onion)
         && last.exposure === d.exposure && last.transparencyGrid === d.transparencyGrid && last.roi === d.roi
-        && last.clipToComp === d.clipToComp) return;
+        && last.clipToComp === d.clipToComp && last.groundGrid === d.groundGrid) return;
       if (inFlight) {
         again = true;
         return;
@@ -467,6 +483,8 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         // U1 Extended Viewer: off = layers draw outside the frame over the
         // engine's pasteboard colour (engine_frames.cpp `vs.clipToComp`).
         clipToComp: d.clipToComp,
+        // E8: the engine draws the 3D ground grid (viewport frames only; never exports / thumbnails).
+        groundGrid: d.groundGrid,
         view: d.view,
         ...(d.customView ? {
           customView: {

@@ -193,7 +193,7 @@ export function EmptyCompositionView(): JSX.Element {
    *  sail through, producing a broken "image" asset and a default comp. */
   const isFootageFile = (file: File): boolean =>
     /^(video|image|audio)\//.test(file.type)
-    || /\.(mp4|mov|webm|m4v|mkv|avi|wmv|flv|mts|m2ts|mpg|mpeg|vob|ts|mxf|r3d|braw|ari|3gp|ogv|png|jpe?g|gif|svg|webp|bmp|tiff?|exr|dpx|psd|dng|cr2|cr3|nef|arw|orf|rw2|raf|pef|srw|raw|mp3|wav|aac|m4a|ogg|oga|flac|opus|wma|aif|aiff)$/i.test(file.name);
+    || /\.(mp4|mov|webm|m4v|mkv|avi|wmv|flv|mts|m2ts|mpg|mpeg|vob|ts|mxf|r3d|braw|ari|3gp|ogv|png|jpe?g|gif|svg|webp|bmp|tiff?|exr|hdr|dpx|psd|dng|cr2|cr3|nef|arw|orf|rw2|raf|pef|srw|raw|mp3|wav|aac|m4a|ogg|oga|flac|opus|wma|aif|aiff)$/i.test(file.name);
 
   const onDropFootage = async (e: DragEvent<HTMLButtonElement>): Promise<void> => {
     e.preventDefault();
@@ -229,7 +229,7 @@ export function EmptyCompositionView(): JSX.Element {
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.m4v,.png,.jpg,.jpeg,.gif,.svg,.mp3,.wav,.mxf,.avi,.mts,.m2ts,.mpg,.wmv,.mkv,.dng,.cr2,.cr3,.nef,.arw,.exr,.dpx,.psd"
+        accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.m4v,.png,.jpg,.jpeg,.gif,.svg,.mp3,.wav,.mxf,.avi,.mts,.m2ts,.mpg,.wmv,.mkv,.dng,.cr2,.cr3,.nef,.arw,.exr,.hdr,.dpx,.psd"
         style={{ display: 'none' }}
         onChange={(e) => void handleFileSelected(e)}
       />

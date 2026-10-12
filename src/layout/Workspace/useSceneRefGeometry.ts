@@ -16,6 +16,7 @@ import { useMemo } from 'react';
 import { secondsToFlicks, type OverlayKind, type OverlayView } from '@motion/engine-api';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useGuidesStore } from '@stores/guidesStore';
+import { useEngineRendererStore } from '@stores/engineRendererStore';
 import { useCurrentTime } from '@stores/playbackClockStore';
 import { useActiveCompRootId, useActiveTabCompSettings, useMirrorRevisionFrame } from '@hooks/useMirrorFrame';
 import { useOverlayRequest } from '@hooks/useOverlayRequest';
@@ -92,6 +93,7 @@ export function useSceneRefGeometry(mode: Camera3dMode, options?: SceneRefOption
   const layerBoxesVisible = usePreferenceStore((s) => s.showLayerBounds);
   const deviceWireframesAll = usePreferenceStore((s) => s.deviceWireframesAll);
   const draft3d = useGuidesStore((s) => s.draft3d);
+  const engineGrid = useEngineRendererStore((s) => s.gpu === true);
   const compSettings = useActiveTabCompSettings();
   const compWidth = compSettings?.width ?? 1920;
   const compHeight = compSettings?.height ?? 1080;
@@ -109,7 +111,10 @@ export function useSceneRefGeometry(mode: Camera3dMode, options?: SceneRefOption
   // Draft 3D turns shadows / DOF / motion blur OFF and the spatial aids ON —
   // that pairing is the point of the mode, so the ground plane is forced rather
   // than left to a separate toggle the user has to find.
-  const groundGridVisible = groundGridSetting || draft3d;
+  // E8: a GPU engine draws the grid into its frames (EngineSurface sends
+  // setViewport `groundGrid` under the same rule); the overlay grid stands down
+  // then and keeps drawing for the headless / no-GPU engine.
+  const groundGridVisible = (groundGridSetting || draft3d) && !engineGrid;
   // Absent (every document written before World settings existed) reads as 0,
   // which is byte-for-byte the plane this drew before.
   const groundLevel = Number.isFinite(groundLevelSetting) ? (groundLevelSetting as number) : 0;

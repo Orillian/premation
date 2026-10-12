@@ -1095,6 +1095,7 @@ struct ControlVisitor {
     } else {
       v.transparencyGrid = c.transparency_grid;
       v.clipToComp = c.clip_to_comp.value_or(true);  // U1: the Extended Viewer draws outside the frame
+      v.groundGrid = c.ground_grid.value_or(false);  // E8: the engine-drawn ground grid
     }
     if (c.time && *c.time >= 0) v.time = *c.time;
     if (c.layer_source_time && v.time) v.layerSourceTime = *c.layer_source_time;

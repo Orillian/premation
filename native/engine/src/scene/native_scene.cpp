@@ -219,6 +219,20 @@ NativeFrame build_native_frame(const BuildContext& c, std::string_view comp, dou
   const double snapshotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
   NativeFrame nf = native_frame_of(c.d, std::move(snap), view, sc.width, sc.height, sceneId, frame);
   nf.snapshotMs = snapshotMs;
+  if (view.groundGrid && nf.file.scene.camera3d) {
+    // E8: the viewport's ground grid — the floor at the comp's Ground Level
+    // (World ▸ Ground level, comp height + level), centred under the comp.
+    double groundLevel = 0;
+    if (const js::Json* rec = c.d.comp(comp); rec != nullptr) {
+      const js::Json& gl = rec->at("groundLevel");
+      if (gl.is_number() && std::isfinite(gl.num())) groundLevel = gl.num();
+    }
+    api::RenderGroundGrid gg;
+    gg.y = sc.height + groundLevel;
+    gg.center_x = sc.width / 2;
+    gg.center_z = 0;
+    nf.file.scene.ground_grid = gg;
+  }
   return nf;
 }
 

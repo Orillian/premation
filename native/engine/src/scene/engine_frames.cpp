@@ -508,6 +508,8 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
         vs.clipToComp = false;
         if (!viewport.ghost) vs.clear = kPasteboardColor;
       }
+      // E8: the engine-drawn ground grid, a composition view's aid only (never a layer view, a ghost, an export).
+      vs.groundGrid = viewport.groundGrid && viewport.layer.empty() && !viewport.ghost;
       // setPreviewQuality `motionBlur` false (Preview ▸ Draft Quality): no blur samples in this viewport.
       NativeFrame nf = build_native_frame(ctx, comp, seconds, vs, viewport.previewMotionBlur, {}, 0, ov);
       // G1: native plugin entries completed from the document (sequence data,

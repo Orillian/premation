@@ -251,12 +251,15 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
   ctx.external = external_;
   ctx.nativeFx = nativeFx_;
   ctx.fxCache = &fxCache_;
+  ctx.cache3d = &cache3d_;
   ctx.fxFields = effectFields_;
   ctx.fxBounds = effectBounds_;
   ctx.fxLayerBuffers = effectLayerBuffers_;
   stats.effects.gpuEntries = stats.effects.sdfBuilt = stats.effects.sdfReused = 0;
   stats.effects.silhouetteStyles = stats.effects.scoped = stats.effects.skipped = stats.effects.blendSpans = 0;
   stats.effects.bounded = stats.effects.fullFrame = 0;
+  stats.effects.shadowMapsBuilt = stats.effects.shadowMapsReused = stats.effects.ssaoBuilt = stats.effects.ssaoReused = 0;
+  stats.effects.reflectionsBuilt = stats.effects.reflectionsReused = 0;
   stats.effects.paths.clear();
   ctx.effectStats = &stats.effects;
   if (file.view.frame_clip) {

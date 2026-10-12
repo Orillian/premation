@@ -41,6 +41,9 @@ struct ViewSpec {
   /// TextureRequest::svgDisplayLong). Off = rasterizeSvg's own size, byte for
   /// byte (the parity gate).
   bool svgDisplayScale = false;
+  /// E8: draw the composition's ground grid (RenderFrameScene.groundGrid) —
+  /// the viewport's frames only; exports, thumbnails and the cache leave it off.
+  bool groundGrid = false;
 };
 
 /// E4: whether the engine's own frames take the GPU effect route — on, unless

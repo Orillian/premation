@@ -589,6 +589,7 @@ add_library(engine_scene_core STATIC
   src/scene/alpha_mesh.cpp  # puppet.ts coverage mask + alphaMesh.ts (image-layer rig meshes)
   src/scene/frame_hit.cpp  # hitTest over a built frame's renderables
   src/scene/exr_read.cpp  # exr.ts decodeExr + exrToFloatRgba (EXR environment skies)
+  src/scene/hdr_read.cpp  # Radiance .hdr (RGBE) environment skies (E7)
   src/scene/zlib_inflate_ffi.cpp  # the EXR reader's zlib inflate
 )
 target_include_directories(engine_scene_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/scene)

@@ -201,6 +201,9 @@ struct ViewportConfig {
   /// layers draw outside the composition's rectangle over the pasteboard
   /// colour (engine_frames.cpp). A layer view is never clipped.
   bool clipToComp = true;
+  /// setViewport `groundGrid` (absent = false): the engine draws the 3D ground
+  /// grid into this viewport's frames (E8). Never on a layer view or a ghost.
+  bool groundGrid = false;
   /// setViewport `regionOfInterest` (comp px): draws are clipped to it.
   std::optional<api::Rect> regionOfInterest;
   /// setViewerLut, filled per frame by the Session like `hiddenLayers`.

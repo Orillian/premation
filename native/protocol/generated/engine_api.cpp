@@ -10170,6 +10170,7 @@ void encode(wire::Writer& w, const SetViewport& v) {
   if (v.onion.has_value()) { w.varint(146U); { const std::size_t s = w.begin_ld(); encode(w, *v.onion); w.end_ld(s); } }
   if (v.layer_alpha_view.has_value()) { w.varint(154U); w.str(*v.layer_alpha_view); }
   if (v.clip_to_comp.has_value()) { w.varint(160U); w.boolean(*v.clip_to_comp); }
+  if (v.ground_grid.has_value()) { w.varint(168U); w.boolean(*v.ground_grid); }
 }
 
 Status decode(wire::Reader& r, SetViewport& out) {
@@ -10295,6 +10296,12 @@ Status decode(wire::Reader& r, SetViewport& out) {
         bool e = false;
         if (!r.boolean(e)) return Status::truncated;
         out.clip_to_comp = std::move(e);
+        break;
+      }
+      case 168U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.ground_grid = std::move(e);
         break;
       }
       default:
@@ -30094,6 +30101,46 @@ Status decode(wire::Reader& r, RenderSsao& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const RenderGroundGrid& v) {
+  w.varint(9U); w.f64(v.y);
+  w.varint(17U); w.f64(v.center_x);
+  w.varint(25U); w.f64(v.center_z);
+}
+
+Status decode(wire::Reader& r, RenderGroundGrid& out) {
+  bool has_y = false;
+  bool has_center_x = false;
+  bool has_center_z = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 9U: {
+        if (!r.f64(out.y)) return Status::truncated;
+        has_y = true;
+        break;
+      }
+      case 17U: {
+        if (!r.f64(out.center_x)) return Status::truncated;
+        has_center_x = true;
+        break;
+      }
+      case 25U: {
+        if (!r.f64(out.center_z)) return Status::truncated;
+        has_center_z = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_y) return Status::missing_field;
+  if (!has_center_x) return Status::missing_field;
+  if (!has_center_z) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const RenderRendererSettings& v) {
   w.varint(8U); w.varint(v.dof_rings);
   w.varint(16U); w.varint(v.msaa);
@@ -30460,6 +30507,7 @@ void encode(wire::Writer& w, const RenderFrameScene& v) {
   if (v.fog.has_value()) { w.varint(98U); { const std::size_t s = w.begin_ld(); encode(w, *v.fog); w.end_ld(s); } }
   if (v.shadow_catcher.has_value()) { w.varint(106U); { const std::size_t s = w.begin_ld(); encode(w, *v.shadow_catcher); w.end_ld(s); } }
   if (v.renderer.has_value()) { w.varint(114U); { const std::size_t s = w.begin_ld(); encode(w, *v.renderer); w.end_ld(s); } }
+  if (v.ground_grid.has_value()) { w.varint(122U); { const std::size_t s = w.begin_ld(); encode(w, *v.ground_grid); w.end_ld(s); } }
 }
 
 Status decode(wire::Reader& r, RenderFrameScene& out) {
@@ -30547,6 +30595,12 @@ Status decode(wire::Reader& r, RenderFrameScene& out) {
         RenderRendererSettings e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         out.renderer = std::move(e);
+        break;
+      }
+      case 122U: {
+        RenderGroundGrid e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.ground_grid = std::move(e);
         break;
       }
       default:
@@ -31324,7 +31378,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 543> kNames = {
+constexpr std::array<std::string_view, 544> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -31849,6 +31903,7 @@ constexpr std::array<std::string_view, 543> kNames = {
     "RenderFog",
     "RenderShadowCatcher",
     "RenderSsao",
+    "RenderGroundGrid",
     "RenderRendererSettings",
     "RenderPrecompFrame",
     "Renderable",
@@ -32398,6 +32453,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "RenderFog") return roundtrip<RenderFog>(bytes, out);
   if (type == "RenderShadowCatcher") return roundtrip<RenderShadowCatcher>(bytes, out);
   if (type == "RenderSsao") return roundtrip<RenderSsao>(bytes, out);
+  if (type == "RenderGroundGrid") return roundtrip<RenderGroundGrid>(bytes, out);
   if (type == "RenderRendererSettings") return roundtrip<RenderRendererSettings>(bytes, out);
   if (type == "RenderPrecompFrame") return roundtrip<RenderPrecompFrame>(bytes, out);
   if (type == "Renderable") return roundtrip<Renderable>(bytes, out);

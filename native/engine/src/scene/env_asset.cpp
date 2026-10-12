@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include "exr_read.hpp"
+#include "hdr_read.hpp"
 #include "image_decode.hpp"
 #include "jsmath.hpp"
 #include "native_effects.hpp"
@@ -102,6 +103,59 @@ std::shared_ptr<const EnvAsset> exr_sky(const std::string& assetId, const std::s
   return cache().skies.emplace(key, std::move(out)).first->second;
 }
 
+/// E7: a Radiance .hdr sky, read the way an EXR one is — from the src when it
+/// is an .hdr file, else the asset's original path — decoded to linear float
+/// RGBE planes (hdr_read.hpp), resampled as linear data, projected and
+/// prefiltered like an 8-bit sky. Null (with `why` when a file was found but
+/// did not read) when no .hdr file is reachable.
+std::shared_ptr<const EnvAsset> hdr_sky(const std::string& assetId, const std::string& src, const std::string& path,
+                                        std::string& why) {
+  std::filesystem::path file;
+  for (const std::string* cand : {&src, &path}) {
+    if (!ends_with_ci(*cand, ".hdr") || cand->starts_with("data:") || cand->starts_with("blob:") || cand->starts_with("http")) continue;
+    const std::string p = file_url_path(*cand);
+    std::filesystem::path fp{std::u8string(p.begin(), p.end())};
+    if (fp.is_relative()) continue;
+    if (std::error_code ec; std::filesystem::is_regular_file(fp, ec)) {
+      file = std::move(fp);
+      break;
+    }
+  }
+  if (file.empty()) return nullptr;
+  const FileStamp st = file_stamp(file);
+  const std::string key = assetId + "|hdr|" + file.lexically_normal().string() + "|" + std::to_string(st.size) + "|" +
+                          std::to_string(st.modified);
+  {
+    const std::scoped_lock lock(cache().mu);
+    if (const auto it = cache().skies.find(key); it != cache().skies.end()) return it->second;
+  }
+  std::vector<std::uint8_t> bytes;
+  {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+      why = "the HDR sky did not open";
+      return nullptr;
+    }
+    bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  }
+  std::string err;
+  const std::optional<hdr::FloatRgba> rgba = hdr::decode(bytes, err);
+  if (!rgba) {
+    why = "the HDR sky did not decode: " + err;
+    return nullptr;
+  }
+  auto out = std::make_shared<EnvAsset>();
+  const EnvPixels base = resample_equirect(std::span<const float>(rgba->rgba), rgba->width, rgba->height, kEnvSpecWidth,
+                                           kEnvSpecHeight, true);
+  out->sh = sh_project(base);
+  out->specular = build_env_specular_atlas(base, env_atlas_key("asset:" + assetId + "#" + hash_env_pixels(base)));
+  const EnvPixels hdrPx = resample_equirect(std::span<const float>(rgba->rgba), rgba->width, rgba->height, kEnvHdrWidth,
+                                            kEnvHdrHeight, true);
+  out->hdr = build_env_hdr_atlas(hdrPx, "hdr:asset:" + assetId + "#" + hash_env_pixels(hdrPx));
+  const std::scoped_lock lock(cache().mu);
+  return cache().skies.emplace(key, std::move(out)).first->second;
+}
+
 }  // namespace
 
 std::shared_ptr<const EnvAsset> environment_asset(const doc::Document& d, std::string_view sky, std::string& why) {
@@ -130,6 +184,18 @@ std::shared_ptr<const EnvAsset> environment_asset(const doc::Document& d, std::s
     }
     if (ends_with_ci(src, ".exr")) {
       why = exrWhy.empty() ? "the EXR sky could not be read" : exrWhy;
+      return nullptr;
+    }
+  }
+  if (ends_with_ci(name, ".hdr") || ends_with_ci(src, ".hdr")) {
+    // E7: a Radiance .hdr sky projects its linear RGBE planes (hdr_read.hpp);
+    // with no .hdr file reachable it falls back to the asset's 8-bit src.
+    std::string hdrWhy;
+    if (auto loaded = hdr_sky(assetId, src, asset->at("path").is_string() ? asset->at("path").str() : std::string(), hdrWhy)) {
+      return loaded;
+    }
+    if (ends_with_ci(src, ".hdr")) {
+      why = hdrWhy.empty() ? "the HDR sky could not be read" : hdrWhy;
       return nullptr;
     }
   }

@@ -18,6 +18,7 @@ namespace premation::rg {
 class ColorSystem;
 class NativeEffectHost;  // effect_chain.hpp (G1)
 class FxCache;           // fx_cache.hpp (E4)
+struct SceneCache3D;     // scene_cache3d.hpp (E5)
 struct EffectStats;      // effect_stats.hpp (E4)
 
 /// E1: textures another engine system owns (the media system's decoded video
@@ -118,6 +119,15 @@ struct PassContext {
   NativeEffectHost* nativeFx = nullptr;
   /// E4: distance fields kept across frames (nullptr = rebuilt every frame).
   FxCache* fxCache = nullptr;
+  /// E5: shadow maps, SSAO and planar reflections kept across runs and frames
+  /// (nullptr = rebuilt every run).
+  SceneCache3D* cache3d = nullptr;
+  /// E8: the frame asks for the ground grid (scene.groundGrid) and it is not
+  /// drawn yet; `groundGridRun` = the 3D run being rendered is the frame's last
+  /// one, so it draws the grid against its depth (threed.cpp). Both are set by
+  /// the composition pass (root scope only).
+  bool groundGridPending = false;
+  bool groundGridRun = false;
   /// E4: where the chain records the path each entry took (nullptr = not recorded).
   EffectStats* effectStats = nullptr;
   /// E4: strokes and spreads from alpha distance fields (fx_distance.hpp);

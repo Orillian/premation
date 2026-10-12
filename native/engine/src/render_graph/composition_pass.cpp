@@ -469,7 +469,12 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     if (ctx.target(ctx.activeColorTarget) != nullptr) {
       render_sky(ctx, ctx.activeColorTarget, [this, &ctx](const std::optional<std::string>& k) { return tex_for(ctx, k); });
     }
+    // E8: the viewport's ground grid rides the frame's last 3D run (threed.cpp);
+    // with no 3D run it is drawn here over the finished frame.
+    ctx.groundGridPending = ctx.file.scene.ground_grid.has_value() && ctx.scope.camera3d != nullptr;
+    ctx.groundGridRun = false;
     render_list(ctx, list, ctx.activeColorTarget, 0);
+    if (ctx.groundGridPending) render_ground_grid(ctx, ctx.activeColorTarget);
     return true;
   }
 
@@ -992,6 +997,14 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     // with a mapped light is refused until shadow maps are ported.
     const bool canDepthGroup = ctx.scope.camera3d != nullptr && ctx.target(out) != nullptr;
     const Rect visible = ctx.viewport.visibleWorldRect;
+    // E8: the index past the frame's last depth-eligible renderable (root list only).
+    const bool rootList = depth == 0 && ctx.scope.all == &ctx.file.scene.renderables;
+    std::size_t lastEligibleEnd = 0;
+    if (rootList && ctx.groundGridPending) {
+      for (std::size_t k = 0; k < list.size(); ++k) {
+        if (depth_eligible_3d(*list[k])) lastEligibleEnd = k + 1;
+      }
+    }
     std::size_t i = 0;
     while (i < list.size()) {
       if (canDepthGroup && depth_eligible_3d(*list[i])) {
@@ -1003,6 +1016,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
         }
         if (!group.empty()) {
           flush(ctx, st);
+          ctx.groundGridRun = rootList && ctx.groundGridPending && i >= lastEligibleEnd;
           // 3D quads sample their content mipmapped (anisotropic in threed.cpp):
           // a layer at a steep angle no longer drops a thin stroke into dots.
           render_3d_group(ctx, group, out, st.byId, [this, &ctx](const std::optional<std::string>& k) {

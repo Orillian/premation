@@ -2,6 +2,7 @@
 // exrToFloatRgba) over synthetic files: NONE / RLE / ZIPS chunks (the ZIP
 // stream built from stored deflate blocks, so the test needs no compressor),
 // HALF / FLOAT / UINT channels, Y-only images, and exr.ts's refusals.
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "exr_read.hpp"
+#include "hdr_read.hpp"
 
 namespace exr = premation::scene::exr;
 
@@ -224,4 +226,87 @@ TEST_CASE("EXR: what exr.ts refuses is refused with its reason", "[scene][exr]")
   put_i32(truncated, 0);
   put_i32(truncated, 100);  // a chunk longer than the file
   CHECK_FALSE(exr::decode(truncated, exr::zlib_inflate(), error));
+}
+
+// ── E7 (docs/PROGRAM_3D_PERF_UX.md): the Radiance .hdr reader (hdr_read.hpp) ──
+
+namespace {
+
+namespace hdr = premation::scene::hdr;
+using HdrApprox = Catch::Approx;
+
+Bytes hdr_file(const std::string& resolution) {
+  const std::string h = "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\nEXPOSURE=1.0\nSOFTWARE=test\n\n" + resolution + "\n";
+  return Bytes(h.begin(), h.end());
+}
+
+}  // namespace
+
+TEST_CASE("HDR: flat RGBE pixels and the old repeat code decode to linear floats, rows top-down", "[scene][hdr]") {
+  Bytes f = hdr_file("-Y 2 +X 4");
+  // Row 0: one pixel, then "the previous pixel again, 3 times" (1 1 1 3).
+  f.insert(f.end(), {128, 64, 32, 129, 1, 1, 1, 3});
+  // Row 1: four flat pixels, exponent 128 (mantissa / 256).
+  for (std::uint8_t i = 0; i < 4; ++i) f.insert(f.end(), {static_cast<std::uint8_t>(64 * i), 0, 255, 128});
+  std::string err;
+  const auto img = hdr::decode(f, err);
+  INFO(err);
+  REQUIRE(img);
+  CHECK(img->width == 4);
+  CHECK(img->height == 2);
+  // (128, 64, 32, e = 129): 2^(129 − 136) = 1/128 → 1.0, 0.5, 0.25, alpha 1.
+  CHECK(img->rgba[0] == HdrApprox(1.0));
+  CHECK(img->rgba[1] == HdrApprox(0.5));
+  CHECK(img->rgba[2] == HdrApprox(0.25));
+  CHECK(img->rgba[3] == 1.0F);
+  CHECK(img->rgba[3 * 4] == HdrApprox(1.0));  // the repeat
+  CHECK(img->rgba[3 * 4 + 1] == HdrApprox(0.5));
+  // Row 1, pixel 2: (128, 0, 255, 128) → 2^-8: 0.5, 0, 255/256.
+  const std::size_t o = (1 * 4 + 2) * 4;
+  CHECK(img->rgba[o] == HdrApprox(0.5));
+  CHECK(img->rgba[o + 1] == HdrApprox(0.0));
+  CHECK(img->rgba[o + 2] == HdrApprox(255.0 / 256));
+}
+
+TEST_CASE("HDR: new-style RLE scanlines (a run and a literal per channel), a bottom-up file, the exposure gain", "[scene][hdr]") {
+  Bytes f = hdr_file("+Y 2 +X 8");  // +Y: the first scanline is the BOTTOM row
+  const auto rle_line = [&f](std::uint8_t red) {
+    // 2 2 <hi> <lo>, then R: a run of 8 × red; G: 8 literals 0..7; B: a run of 8 × 0; E: a run of 8 × 128.
+    f.insert(f.end(), {2, 2, 0, 8, 128 + 8, red, 8, 0, 1, 2, 3, 4, 5, 6, 7, 128 + 8, 0, 128 + 8, 128});
+  };
+  rle_line(64);
+  rle_line(192);
+  std::string err;
+  const auto img = hdr::decode(f, err);
+  INFO(err);
+  REQUIRE(img);
+  CHECK(img->width == 8);
+  CHECK(img->height == 2);
+  CHECK(img->rgba[(1 * 8 + 0) * 4] == HdrApprox(0.25));        // the first scanline landed on the bottom row
+  CHECK(img->rgba[(1 * 8 + 5) * 4 + 1] == HdrApprox(5.0 / 256));  // the literal run, per pixel
+  CHECK(img->rgba[(0 * 8 + 0) * 4] == HdrApprox(0.75));
+  CHECK(img->rgba[(0 * 8 + 7) * 4 + 2] == HdrApprox(0.0));
+  const auto brighter = hdr::decode(f, err, 1.0);
+  REQUIRE(brighter);
+  CHECK(brighter->rgba[(0 * 8 + 0) * 4] == HdrApprox(1.5));
+}
+
+TEST_CASE("HDR: what is not a Radiance RGBE file is refused with its reason", "[scene][hdr]") {
+  std::string err;
+  const std::string xyze = "#?RADIANCE\nFORMAT=32-bit_rle_xyze\n\n-Y 1 +X 1\n";
+  const Bytes bx(xyze.begin(), xyze.end());
+  CHECK_FALSE(hdr::decode(bx, err));
+  CHECK(err.find("XYZE") != std::string::npos);
+  const std::string png = "\x89PNG\r\n";
+  const Bytes bp(png.begin(), png.end());
+  CHECK_FALSE(hdr::looks_like_hdr(bp));
+  CHECK_FALSE(hdr::decode(bp, err));
+  CHECK(err.find("signature") != std::string::npos);
+  Bytes truncated = hdr_file("-Y 1 +X 4");
+  CHECK(hdr::looks_like_hdr(truncated));
+  truncated.insert(truncated.end(), {1, 2, 3, 4});
+  CHECK_FALSE(hdr::decode(truncated, err));
+  CHECK(err.find("early") != std::string::npos);
+  const Bytes bad = hdr_file("-Y 0 +X 4");
+  CHECK_FALSE(hdr::decode(bad, err));
 }

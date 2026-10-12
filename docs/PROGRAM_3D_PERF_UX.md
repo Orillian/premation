@@ -97,12 +97,82 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 ## Progress
 
 - [x] M1 · [x] M2 · [x] A1 · [x] A2
-- [x] E1 · [x] E2 · [x] E3 · [x] E4 · [ ] E5 · [x] E6 · [ ] E7 · [ ] E8
+- [x] E1 · [x] E2 · [x] E3 · [x] E4 · [x] E5 · [x] E6 · [x] E7 · [x] E8
 - [x] U1 · [x] U2 · [x] U3 · [x] U4 · [x] U5
 - [x] I1 · [x] I2 · [x] I3 · [x] I4
-- [x] B1 (TS; engine keep-world re-parent of adjustment layers pending) · [x] B2 · [x] B3 · [x] B4 (TS; catalog signed ranges pending) · [ ] B5
+- [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5
 
 Notes log (newest first):
+- 2026-10-13 batch 3 — B5, B1 (engine), B4 (catalog), E5, E7, E8 (engine
+  worker). B5: the GPU light-sweep (light-sweep.wgsl) was already masked by
+  the layer's alpha (`add · src.a`) — the samurai "band over the whole text
+  box" was a Drop Shadow BEFORE the sweep in the stack: the shadow's soft 85 %
+  halo is alpha the sweep lights, as AE's CC Light Sweep does after a Drop
+  Shadow effect (put the shadow last). What did paint the box was the CPU
+  twin (canvas_effects.cpp drawLightSweep, the headless engine / a baked
+  stack): modes 0–3 filled the whole box under the composite op; it is now a
+  context effect that cuts its band to the layer's silhouette (destination-in)
+  in every mode (mode 4 keeps its source-atop paint). Light Rays and Beam are
+  generators whose light leaves the alpha by design (CC Light Rays' rays, a
+  laser) — unchanged, documented in the test. Re-blessed (PARITY_REBLESS=1,
+  one case each): canvas_effects_parity.json (light-sweep composite 1) and
+  effect_chain_parity.json (light-sweep#1/#2 ops + bytes). Tests:
+  overlayEffectsAlpha.native.test.ts (GPU: sweep over 2D / 3D / animator /
+  boxed / scripted text and an SVG lights the content and leaves the empty
+  box texels empty; sweep→shadow dark halo vs shadow→sweep lit halo;
+  light-rays / beam leave the alpha), test_bake_chain.cpp `B5`. B1 engine:
+  `adjustment` joins is_drawable_kind in worldxf.cpp (keep-world re-parent,
+  getLayerTransforms) and layer_geometry.cpp (getLayerBounds: width × height
+  centred on the position, the comp's size when it has none); the TS
+  reparent_layer workaround is gone; test_b4_round2.cpp `B1`,
+  authoringBugs.native.test.ts `B1 (engine)`. B4 catalog: symmetric ranges
+  for snowfall / rainfall / drizzle / cc-bubbles / noise / scatter evolution,
+  star-burst / card-dance phase, noise-hls / noise-alpha noisePhase,
+  pixel-polly spin, camera-shake rotation, scale-wipe / particle-systems
+  direction, color-offset *Phase, drop-shadow angle — in
+  catalog/effects.json AND src/core/effects/effects.ts (the tool's clamp reads
+  the TS mirror; the engine the JSON); every consumer takes negatives
+  (sin / cos / fract / i32 hashing, noise.wgsl's 2^23 offset) so nothing
+  wraps; catalog.ts regenerated (engine-api:gen); no parity listing changed.
+  E5: SceneCache3D (scene_cache3d.hpp, owned by the SceneRenderer, pointed
+  to by PassContext.cache3d) keys each shadow-map slot (the shadow camera +
+  size + every caster's transform / coverage / content), the SSAO buffers
+  (camera + viewport + settings + occluders) and each planar reflection
+  (camera + lights + environment + every mirrored layer); equal key and a
+  device target that was not re-created = reuse (EffectStats
+  shadowMapsBuilt/Reused, ssaoBuilt/Reused, reflectionsBuilt/Reused). The
+  shadow camera now fits the whole scope's 3D layers rather than the run's,
+  so a frame split into runs by a 2D layer builds its maps once and the
+  later runs reuse them. test_render_graph_gpu.cpp `E5` (static lit scene:
+  2 maps + SSAO + a mirror built on frame 1, 0 built / all reused on frame
+  2, identical pixels; a moved caster rebuilds; a split frame builds 2 and
+  reuses 2). E7: hdr_read.hpp/.cpp (Radiance RGBE: header, every
+  orientation, new-style RLE, old repeat code, flat) → env_asset.cpp
+  `hdr_sky` (linear planes → SH + atlases, like the EXR path);
+  image_decode_ffi.cpp decodes an .hdr still (tone-mapped sRGB preview) on
+  both platforms; engine_ctx.cpp footage_type and the page's drop / pick
+  lists take .hdr; CMake +1 line (hdr_read.cpp). test_exr_read.cpp `HDR:`
+  ×3, test_viewport_view.cpp `E7`. E8: setViewport `groundGrid` (schema 21) →
+  ViewportConfig → ViewSpec.groundGrid → RenderFrameScene.groundGrid {y =
+  comp height + Ground Level, centre} (viewport frames only: engine_frames
+  sets it; exports / thumbnails / the cache never); ground-grid.wgsl +
+  GROUND_GRID_MATERIAL (depth test on, write off): one quad on the floor
+  plane, nice 1 / 2 / 5 step from the camera's distance to the floor centre
+  over the view zoom (the overlay's rule), minor cells, X axis red, Z axis
+  blue, radial fade; drawn last in the frame's last 3D run (threed.cpp,
+  against its depth) or over the frame when no run drew. The page sends the
+  flag under the overlay's rule (EngineSurface) and the SVG overlay grid
+  stands down when the engine reports a GPU adapter (engineRendererStore
+  from getCapabilities; the headless engine keeps the overlay).
+  test_render_graph_gpu.cpp `E8`, test_viewport_view.cpp `E8`. heavy3d bench
+  (two shadow lights, RTX 4060 laptop, single runs, uncached first pass):
+  before → after p50 6.64 → 5.95 ms, p95 110.7 → 81.6 ms, worst 1173 → 393
+  ms, dropped 16 → 7 (46 → 54 frames); the cached second pass is unchanged
+  (p50 0.5 ms). Gates: engine_gpu_tests 35/35, plugins_gpu 14/14,
+  native-golden = the known five only (340/355), native:test green but the
+  known red, GPU jest (overlayEffectsAlpha, authoringBugs, fx60Effects,
+  objectFidelity, inkEffects, oversizeLayer, svgDisplayScale) 31/31,
+  typecheck clean, lint 0 errors / 433 warnings (none in touched files).
 - 2026-10-12 batch 2 — E4, E6, A2, I4 + the engine side U1/U3 owed (engine
   worker; gates run on the whole tree). E4: an SVG SOURCE (`svg` / image kind,
   svg_layer.cpp) rasterises at its DISPLAYED long edge — layer box × view

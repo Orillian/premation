@@ -146,6 +146,8 @@ command setViewport = 808 [control, coalesce] {
   layerAlphaView?: string = 19;
   /// Clip the frame to the composition's rectangle (AE's comp panel). Absent = true. False (the Extended Viewer: a custom / axis view, Draft 3D) draws layers outside the frame over the pasteboard colour; the UI draws the frame outline on top. Ignored on a layer view (never clipped).
   clipToComp?: bool = 20;
+  /// E8: draw the 3D ground grid into this viewport's frames (View ▸ 3D Ground Plane, Draft 3D): the comp's ground plane (World ▸ Ground level), depth-tested against the scene, adaptive 1 / 2 / 5 spacing with minor cells, the X axis red, the Z axis blue, a distance fade. Absent = off. Never in an export, a thumbnail or the cache. Ignored on a layer view.
+  groundGrid?: bool = 21;
 }
 command closeViewport = 809 [control] { viewport: u32 = 1; }
 command setCacheBudget = 810 [control] { ramMegabytes: u64 = 1; diskMegabytes: u64 = 2; diskPath: string = 3; }

@@ -20,6 +20,7 @@
     "set-matte",
     "beam",
     "light-sweep",
+    "ground-grid",
     "lens-flare",
     "light-rays",
     "bend",
@@ -8624,6 +8625,24 @@
           "binding": 17,
           "type": "texture",
           "stages": [
+            "fragment"
+          ]
+        }
+      ],
+      "depth": {
+        "test": true,
+        "write": false
+      }
+    },
+    {
+      "name": "GROUND_GRID_MATERIAL",
+      "shader": "ground-grid",
+      "layout": [
+        {
+          "binding": 0,
+          "type": "uniform-buffer",
+          "stages": [
+            "vertex",
             "fragment"
           ]
         }

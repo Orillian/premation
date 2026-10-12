@@ -5,6 +5,8 @@
 // DOF gather are refused by `unported_3d` until they are ported.
 #include "threed.hpp"
 
+#include "scene_cache3d.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -14,6 +16,7 @@
 #include <numbers>
 #include <string>
 
+#include "effect_stats.hpp"
 #include "fx_keys.hpp"
 #include "passes.hpp"
 
@@ -777,7 +780,153 @@ EnvBinding env_binding(PassContext& ctx, const api::RenderEnvMap& env, const Tex
   return {t, half ? -(env.scale > 0 ? env.scale : 1.0) : env.scale};
 }
 
+// ── E5: what a shadow map / SSAO pass / planar reflection is a function of ──
+
+/// Mix what a 3D renderable DRAWS into `k` — its placement, coverage and
+/// content — for the caches' keys. False when its content is not known yet (a
+/// texture without a hash): the pass is built this frame.
+bool mix_renderable(const PassContext& ctx, const api::Renderable& r, KeyMix& k) {
+  k.str(r.id);
+  k.u64(static_cast<std::uint64_t>(r.kind));
+  k.f64(r.opacity);
+  if (r.three_d) {
+    for (const double v : r.three_d->model) k.f64(v);
+  }
+  for (const std::optional<std::string>* key : {&r.texture_key, &r.mask_texture_key}) {
+    if (!*key) {
+      k.u64(0);
+      continue;
+    }
+    const ResolvedBlob rb = ctx.textures.resolve(**key);
+    if (rb.hash.empty()) return false;
+    k.str(rb.hash);
+  }
+  if (r.uv_rect) {
+    k.f64(r.uv_rect->x);
+    k.f64(r.uv_rect->y);
+    k.f64(r.uv_rect->width);
+    k.f64(r.uv_rect->height);
+  }
+  if (r.color) {
+    k.f64(r.color->r);
+    k.f64(r.color->g);
+    k.f64(r.color->b);
+    k.f64(r.color->a);
+  }
+  if (r.sdf) {
+    k.u64(static_cast<std::uint64_t>(r.sdf->shape));
+    k.f64(r.sdf->width);
+    k.f64(r.sdf->height);
+    k.f64(r.sdf->radius_px);
+  }
+  if (r.extruded_mesh) k.str(r.extruded_mesh->key);
+  if (r.deformed_mesh) return false;  // per-frame geometry
+  k.u64(r.effects.size());
+  for (const api::RenderEffect& e : r.effects) {
+    k.str(e.type);
+    for (const api::RenderEffectParam& prm : e.params) {
+      k.str(prm.name);
+      k.u64(static_cast<std::uint64_t>(prm.kind));
+      k.f64(prm.number);
+      for (const double v : prm.numbers) k.f64(v);
+      k.str(prm.text);
+      for (const std::string& t : prm.texts) k.str(t);
+    }
+  }
+  if (r.three_d && r.three_d->shade) {
+    const api::RenderShade3D& sh = *r.three_d->shade;
+    k.f64(sh.specular);
+    k.f64(sh.shininess);
+    k.f64(sh.metal.value_or(-1));
+    k.f64(sh.roughness.value_or(-1));
+    k.f64(sh.toon_bands.value_or(-1));
+    for (const double v : sh.quad_gain) k.f64(v);
+    k.f64(sh.ambient.value_or(-1));
+    k.f64(sh.diffuse.value_or(-1));
+    k.f64(sh.reflection_intensity.value_or(-1));
+    k.f64(sh.transparency.value_or(-1));
+  }
+  return true;
+}
+
+void mix_camera(const api::RenderCamera3D& cam, const ViewportState& vp, KeyMix& k) {
+  for (const double v : cam.view) k.f64(v);
+  for (const double v : cam.projection) k.f64(v);
+  for (const double v : cam.eye) k.f64(v);
+  k.u64((std::uint64_t{vp.pixelWidth} << 32U) | vp.pixelHeight);
+  for (std::size_t i = 0; i < 9; ++i) k.f64(vp.viewProjection[i]);
+}
+
+void mix_light(const api::RenderLight3D& l, KeyMix& k) {
+  k.u64(static_cast<std::uint64_t>(l.type));
+  for (const double v : l.color) k.f64(v);
+  for (const double v : {l.gain, l.x, l.y, l.z, l.radius, l.aim_x, l.aim_y, l.aim_z, l.half_cone_rad, l.cone_feather_rad,
+                         l.falloff_mode, l.falloff_distance}) {
+    k.f64(v);
+  }
+  k.f64(l.shadow_map.value_or(false) ? 1 : 0);
+  k.f64(l.shadow_map_size.value_or(0));
+}
+
+/// E8: the ground grid's nice step — the 1·10ⁿ / 2·10ⁿ / 5·10ⁿ step nearest
+/// `raw` (gizmo3d.ts niceGridStep), and its minor subdivisions (1 → 5, 2 → 4, 5 → 5).
+double nice_grid_step(double raw) {
+  if (!(raw > 0) || !std::isfinite(raw)) return 1;
+  const double pw = std::pow(10.0, std::floor(std::log10(raw)));
+  const double m = raw / pw;
+  const double mant = m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10;
+  return mant * pw;
+}
+double minor_subdivisions(double step) {
+  const double pw = std::pow(10.0, std::floor(std::log10(step)));
+  const double mant = std::round(step / pw);
+  return mant == 2 ? 4 : 5;
+}
+
+/// E8: the ground grid's one draw (ground-grid.wgsl) appended to `cmds`: a quad
+/// on the floor plane, adaptive spacing from the camera's distance to the
+/// floor's centre over the viewport magnification (the overlay's rule,
+/// SceneGeometryOverlay.tsx renderGroundGrid), 8 major cells each side.
+void add_ground_grid(PassContext& ctx, const api::RenderCamera3D& cam, Commands& cmds) {
+  if (!ctx.file.scene.ground_grid) return;
+  const api::RenderGroundGrid& gg = *ctx.file.scene.ground_grid;
+  const ViewportState& vp = ctx.viewport;
+  const double scale = vp.zoom > 0 && std::isfinite(vp.zoom) ? vp.zoom : 1;
+  // A perspective camera's distance to the floor's centre; an axis view has none — the comp's width stands in.
+  double distance = std::max(1.0, ctx.file.scene.width);
+  if (cam.eye.size() >= 3) distance = std::hypot(cam.eye[0] - gg.center_x, cam.eye[1] - gg.y, cam.eye[2] - gg.center_z);
+  const double step = nice_grid_step(std::max(1.0, distance) / scale / 24);
+  const double minorStep = step / minor_subdivisions(step);
+  const double extent = 8 * step;
+  const std::vector<double> model = {2 * extent, 0, 0, 0, 0, 0, 2 * extent, 0, 0, 1, 0, 0,
+                                     gg.center_x - extent, gg.y, gg.center_z - extent, 1};
+  Packer pk = ctx.packer();
+  pk.mat4(mvp3d(vp, cam, model)).mat4(mat4_of(model));
+  pk.vec4(step, minorStep, extent, 0.45).vec4(gg.center_x, gg.y, gg.center_z, 1.0);
+  // Linear working-space colours: the neutral line, the X axis (red), the Z axis (blue).
+  pk.vec4(0.55, 0.55, 0.60, 1).vec4(0.85, 0.09, 0.09, 1).vec4(0.09, 0.26, 0.90, 1);
+  cmds.add(Mat::GROUND_GRID_MATERIAL, Blend::normal, pk.span());
+}
+
 }  // namespace
+
+void render_ground_grid(PassContext& ctx, std::string_view out) {
+  ctx.groundGridPending = false;
+  if (!ctx.file.scene.ground_grid || ctx.scope.camera3d == nullptr) return;
+  RenderTarget* t = ctx.target(out);
+  const PassContext::TargetSpec* spec = ctx.spec(out);
+  if (t == nullptr || spec == nullptr || !spec->depth) return;
+  Commands cmds;
+  add_ground_grid(ctx, *ctx.scope.camera3d, cmds);
+  Attachment att;
+  att.target = t;
+  att.clear = false;
+  att.loadDepth = false;  // no 3D run drew: a fresh depth, the grid over the 2D frame
+  wgpu::RenderPassEncoder pass = ctx.dev.begin_pass(att, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight, ctx.surfaceView,
+                                                     ctx.surfaceFormat, nullptr, true);
+  ctx.dev.execute(pass, cmds, t->format, t->samples);
+  pass.End();
+}
 
 bool depth_eligible_3d(const api::Renderable& r) noexcept {
   if (!r.three_d) return false;
@@ -888,7 +1037,21 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     } else {
       for (const api::Renderable* r : group) add_caster(r);
     }
+    // E5: the shadow camera fits the whole scope's 3D layers (every run's), not
+    // this run's alone — so a frame split into runs by a 2D layer gives every
+    // run the same camera, and the map one run built serves the next.
     WorldBox box = run_world_box(group);
+    if (scene.all != nullptr) {
+      std::vector<const api::Renderable*> receivers;
+      for (const api::Renderable& r : *scene.all) {
+        if (r.opacity > 0 && depth_eligible_3d(r)) receivers.push_back(&r);
+      }
+      const WorldBox rb = run_world_box(receivers);
+      if (!rb.empty()) {
+        box.add(rb.minX, rb.minY, rb.minZ);
+        box.add(rb.maxX, rb.maxY, rb.maxZ);
+      }
+    }
     {
       const WorldBox cb = run_world_box(casters);
       if (!cb.empty()) {
@@ -896,13 +1059,37 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
         box.add(cb.maxX, cb.maxY, cb.maxZ);
       }
     }
+    // E5: the key of a slot's map — its camera, its size and every caster's
+    // transform and content (0 = unknown content: always built).
+    const auto shadow_key = [&](const ShadowCamera& camera, std::uint32_t size) -> std::uint64_t {
+      KeyMix k;
+      k.str("shadow-map");
+      for (const double v : camera.matrix.m) k.f64(v);
+      k.f64(camera.invFar);
+      k.u64(size);
+      k.u64(casters.size());
+      for (const api::Renderable* r : casters) {
+        if (!mix_renderable(ctx, *r, k)) return 0;
+      }
+      return k.value();
+    };
     const auto render_map = [&](const api::RenderLight3D& light, std::size_t slot, TexRef& texOut) -> std::optional<Shade::ShadowBlock> {
       if (casters.empty() || box.empty()) return std::nullopt;
       const auto camera = shadow_camera_for(light, box);
       if (!camera) return std::nullopt;
       const std::uint32_t size = shadow_map_size(light.shadow_map_size);
-      RenderTarget& rt = ctx.dev.target("shadow-map:" + std::to_string(slot), size, size, wgpu::TextureFormat::RGBA16Float, 1, true);
+      bool created = false;
+      RenderTarget& rt = ctx.dev.target("shadow-map:" + std::to_string(slot), size, size, wgpu::TextureFormat::RGBA16Float, 1, true, &created);
+      SceneCache3D::Slot* kept = ctx.cache3d != nullptr && slot < SceneCache3D::kShadowSlots ? &ctx.cache3d->shadow.at(slot) : nullptr;
+      const std::uint64_t key = kept != nullptr ? shadow_key(*camera, size) : 0;
+      const bool reuse = kept != nullptr && key != 0 && !created && kept->key == key;
+      if (kept != nullptr) kept->key = reuse ? key : 0;
+      if (ctx.effectStats != nullptr) {
+        if (reuse) ++ctx.effectStats->shadowMapsReused;
+        else ++ctx.effectStats->shadowMapsBuilt;
+      }
       Commands sc;
+      if (!reuse) {
       for (const api::Renderable* r : casters) {
         const auto& model = r->three_d->model;
         const Mat4 mvp = mul(camera->matrix, mat4_of(model));
@@ -946,6 +1133,8 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       wgpu::RenderPassEncoder pass = ctx.dev.begin_pass(att, size, size, ctx.surfaceView, ctx.surfaceFormat, nullptr, true);
       ctx.dev.execute(pass, sc, rt.format, 1);
       pass.End();
+      if (kept != nullptr) kept->key = key;
+      }  // !reuse
       texOut = rt.tex();
       Shade::ShadowBlock b;
       b.matrix = camera->matrix;
@@ -1030,7 +1219,39 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       const std::uint32_t shh = std::max(1U, vp.pixelHeight / (full ? 1U : 2U));
       // Float depth (r + g / 4096, shadow-depth*.wgsl since AE parity 4.3): an
       // rgba8 target would clamp g and keep r to 1/255 of the far plane.
-      RenderTarget& depthRt = ctx.dev.target("ssao-depth", sw, shh, wgpu::TextureFormat::RGBA16Float, 1, true);
+      bool madeDepth = false;
+      bool madeRaw = false;
+      bool madeBlur = false;
+      RenderTarget& depthRt = ctx.dev.target("ssao-depth", sw, shh, wgpu::TextureFormat::RGBA16Float, 1, true, &madeDepth);
+      RenderTarget& aoRt = ctx.dev.target("ssao-raw", sw, shh, wgpu::TextureFormat::RGBA8Unorm, 1, false, &madeRaw);
+      RenderTarget& blurRt = ctx.dev.target("ssao-blur", sw, shh, wgpu::TextureFormat::RGBA8Unorm, 1, false, &madeBlur);
+      // E5: the three buffers are a function of the camera, the viewport, the
+      // settings and the occluders' transforms and content — kept across frames.
+      std::uint64_t aoKey = 0;
+      if (ctx.cache3d != nullptr) {
+        KeyMix k;
+        k.str("ssao");
+        mix_camera(cam, vp, k);
+        k.f64(intensity);
+        k.f64(std::isfinite(settings.radius) ? settings.radius : 40.0);
+        k.u64(full ? 1 : 0);
+        k.u64(occluders.size());
+        aoKey = k.value();
+        for (const api::Renderable* r : occluders) {
+          if (!mix_renderable(ctx, *r, k)) {
+            aoKey = 0;
+            break;
+          }
+        }
+        if (aoKey != 0) aoKey = k.value();
+      }
+      const bool aoReuse = ctx.cache3d != nullptr && aoKey != 0 && !madeDepth && !madeRaw && !madeBlur && ctx.cache3d->ssao.key == aoKey;
+      if (ctx.cache3d != nullptr) ctx.cache3d->ssao.key = aoReuse ? aoKey : 0;
+      if (ctx.effectStats != nullptr) {
+        if (aoReuse) ++ctx.effectStats->ssaoReused;
+        else ++ctx.effectStats->ssaoBuilt;
+      }
+      if (!aoReuse) {
       Commands dc;
       for (const api::Renderable* r : occluders) {
         const auto& model = r->three_d->model;
@@ -1079,7 +1300,6 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       const Mat4 proj = mul(mat4_from_mat3(vp.viewProjection), mat4_of(cam.projection));
       const SamplerRef nearest = ctx.dev.sampler("ssao-depth", wgpu::FilterMode::Nearest, wgpu::AddressMode::ClampToEdge);
       const double radius = std::max(1.0, std::min(2000.0, std::isfinite(settings.radius) ? settings.radius : 40.0));
-      RenderTarget& aoRt = ctx.dev.target("ssao-raw", sw, shh, wgpu::TextureFormat::RGBA8Unorm, 1, false);
       Commands ac;
       {
         Packer pk = ctx.packer();
@@ -1090,7 +1310,6 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
         it.sampler = nearest;
       }
       sized(aoRt, ac, false);
-      RenderTarget& blurRt = ctx.dev.target("ssao-blur", sw, shh, wgpu::TextureFormat::RGBA8Unorm, 1, false);
       Commands bc;
       {
         Packer pk = ctx.packer();
@@ -1101,6 +1320,8 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
         it.mask = depthRt.tex();
       }
       sized(blurRt, bc, false);
+      if (ctx.cache3d != nullptr) ctx.cache3d->ssao.key = aoKey;
+      }  // !aoReuse
       aoResult = blurRt.tex();
       aoMatrix = mvp3d(vp, cam, {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
     }
@@ -1625,21 +1846,49 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       const V3 n = normalize3(m[8], m[9], m[10]);
       const V3 p0{m[12], m[13], m[14]};
       const std::array<double, 16> R = mirror_about(n, p0);
+      bool created = false;
       RenderTarget& t = ctx.dev.target("layer-refl:" + std::to_string(made), vp.pixelWidth, vp.pixelHeight,
-                                       wgpu::TextureFormat::RGBA16Float, 1, true);
-      inReflectionPass = true;
-      Commands rc;
-      bool first = true;
-      std::vector<std::vector<double>> models;
-      models.reserve(group.size());
-      for (const api::Renderable* g : group) {
-        if (g == rr || g->matte_source || g->opacity <= 0 || !g->three_d) continue;
-        models.push_back(mul4d(R, g->three_d->model));
-        // An effect-laden layer samples a surface texture of its own (E2): no run split per layer.
-        draw_one(*g, rc, DrawOpts{&models.back(), g->opacity, std::nullopt, DrawItem::kDepthWriteMaterial});
+                                       wgpu::TextureFormat::RGBA16Float, 1, true, &created);
+      // E5: the mirrored view is a function of the reflector, the camera, the
+      // lights, the environment and every mirrored layer's transform + content.
+      std::uint64_t key = 0;
+      SceneCache3D::Slot* kept = ctx.cache3d != nullptr && made < SceneCache3D::kReflectionSlots ? &ctx.cache3d->reflection.at(made) : nullptr;
+      if (kept != nullptr) {
+        KeyMix k;
+        k.str("layer-refl");
+        mix_camera(cam, vp, k);
+        for (const api::RenderLight3D& l : *scene.lights3d) mix_light(l, k);
+        k.str(envLight != nullptr ? envLight->id : std::string());
+        k.f64(envScale);
+        bool known = mix_renderable(ctx, *rr, k);
+        for (const api::Renderable* g : group) {
+          if (g == rr || g->matte_source || g->opacity <= 0 || !g->three_d) continue;
+          known = known && mix_renderable(ctx, *g, k);
+        }
+        if (known) key = k.value();
       }
-      if (!rc.empty() || first) run_into(ctx, t, rc, first, true, !first);
-      inReflectionPass = false;
+      const bool reuse = kept != nullptr && key != 0 && !created && kept->key == key;
+      if (kept != nullptr) kept->key = reuse ? key : 0;
+      if (ctx.effectStats != nullptr) {
+        if (reuse) ++ctx.effectStats->reflectionsReused;
+        else ++ctx.effectStats->reflectionsBuilt;
+      }
+      if (!reuse) {
+        inReflectionPass = true;
+        Commands rc;
+        bool first = true;
+        std::vector<std::vector<double>> models;
+        models.reserve(group.size());
+        for (const api::Renderable* g : group) {
+          if (g == rr || g->matte_source || g->opacity <= 0 || !g->three_d) continue;
+          models.push_back(mul4d(R, g->three_d->model));
+          // An effect-laden layer samples a surface texture of its own (E2): no run split per layer.
+          draw_one(*g, rc, DrawOpts{&models.back(), g->opacity, std::nullopt, DrawItem::kDepthWriteMaterial});
+        }
+        if (!rc.empty() || first) run_into(ctx, t, rc, first, true, !first);
+        inReflectionPass = false;
+        if (kept != nullptr) kept->key = key;
+      }
       reflections.emplace(rr->id, t.tex());
       ++made;
     }
@@ -1690,6 +1939,13 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
       ctx.draw_into(groupOut, lay, false);
     }
   }
+  // E8: the ground grid, last in the frame's last 3D run — tested against the
+  // run's depth (hidden behind layers, visible through the gaps), never written.
+  if (ctx.groundGridRun && ctx.groundGridPending) {
+    add_ground_grid(ctx, cam, cmds);
+    ctx.groundGridPending = false;
+  }
+  ctx.groundGridRun = false;
   flush();
   if (gather && started) {
     RenderTarget* dt = ctx.target(kDofTarget);

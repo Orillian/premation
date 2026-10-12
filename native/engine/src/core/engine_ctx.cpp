@@ -500,8 +500,8 @@ std::string footage_type(std::string_view name, std::string_view mime) {
   if (mime.starts_with("audio/")) return "audio";
   if (mime.starts_with("image/")) return "image";
   if (mime.starts_with("video/")) return "video";
-  if (any_suffix(name, {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".exr", ".svg", ".avif", ".heic"})) {
-    return "image";
+  if (any_suffix(name, {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".exr", ".hdr", ".svg", ".avif", ".heic"})) {
+    return "image";  // .hdr: Radiance RGBE (E7), an environment sky and a tone-mapped still
   }
   if (any_suffix(name, {".wav", ".mp3", ".aac", ".m4a", ".flac", ".ogg", ".opus", ".aif", ".aiff"})) return "audio";
   return "video";

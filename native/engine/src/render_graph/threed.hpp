@@ -28,6 +28,10 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
 /// an environment that asks for it.
 void render_sky(PassContext& ctx, std::string_view out, const TexFor& texFor);
 
+/// E8: the viewport's ground grid (scene.groundGrid) when no 3D run of the
+/// frame drew it — over `out`, against a fresh depth. Clears `groundGridPending`.
+void render_ground_grid(PassContext& ctx, std::string_view out);
+
 /// Whether the 3D path can render this frame's 3D features (shadow maps, SSAO,
 /// camera DOF gather are not ported yet). Appends reasons.
 void unported_3d(const api::RenderFrameFile& f, std::vector<std::string>& reasons);

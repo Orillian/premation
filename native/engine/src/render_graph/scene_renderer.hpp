@@ -17,6 +17,7 @@
 #include "device.hpp"
 #include "effect_stats.hpp"
 #include "fx_cache.hpp"
+#include "scene_cache3d.hpp"
 #include "frame_scene.hpp"
 #include "graph.hpp"
 
@@ -143,6 +144,8 @@ class SceneRenderer {
   NativeEffectHost* nativeFx_ = nullptr;
   /// E4: the effect chain's distance fields, kept across frames.
   FxCache fxCache_;
+  /// E5: the 3D runs' shadow maps / SSAO / reflections, kept across runs and frames.
+  SceneCache3D cache3d_;
   bool effectFields_ = false;
   bool effectBounds_ = true;
   bool effectLayerBuffers_ = false;

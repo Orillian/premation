@@ -9,10 +9,15 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "docexpr.hpp"
 #include "docio.hpp"
+#include "env_asset.hpp"
 #include "frame_scene.hpp"
 #include "json.hpp"
 #include "native_scene.hpp"
@@ -213,4 +218,70 @@ TEST_CASE("U1: a ViewSpec with clipToComp off carries no frame clip; on, the com
   CHECK_FALSE(open.file.view.frame_clip.has_value());
   // The layers are the same in both: only the clip (and, in the engine, the pasteboard clear) differ.
   CHECK(open.file.scene.renderables.size() == clipped.file.scene.renderables.size());
+}
+
+// ── E8 (3D perf program): the engine-drawn ground grid is a viewport's, never an export's ──
+
+TEST_CASE("E8: ViewSpec.groundGrid puts the comp's ground plane on the frame; an export view never has one", "[viewport][e8]") {
+  LitScene scene;
+  doc::DocExprEnv env(scene.d, scene.view, scene.cache);
+  const sc::BuildContext ctx{scene.d, scene.view, env, scene.cache, nullptr, {}};
+  sc::ViewSpec vs = sc::export_view(480, 360, 480, 360);
+  const sc::NativeFrame exported = sc::build_native_frame(ctx, "comp_root", 0.0, vs, false);
+  REQUIRE(exported.file.scene.camera3d.has_value());
+  CHECK_FALSE(exported.file.scene.ground_grid.has_value());
+  vs.groundGrid = true;
+  const sc::NativeFrame viewed = sc::build_native_frame(ctx, "comp_root", 0.0, vs, false);
+  REQUIRE(viewed.file.scene.ground_grid.has_value());
+  CHECK(viewed.file.scene.ground_grid->y == Approx(360));  // comp height + Ground Level 0
+  CHECK(viewed.file.scene.ground_grid->center_x == Approx(240));
+  CHECK(viewed.file.scene.ground_grid->center_z == Approx(0));
+  // The layers are the same: the grid is a render-graph pass, not a renderable.
+  CHECK(viewed.file.scene.renderables.size() == exported.file.scene.renderables.size());
+}
+
+// ── E7 (3D perf program): a Radiance .hdr image asset is an environment sky ──
+
+TEST_CASE("E7: an .hdr image asset projects its linear RGBE planes into the sky's SH and atlases", "[scene][env][e7]") {
+  namespace fs = std::filesystem;
+  const fs::path file = fs::temp_directory_path() / "premation-e7-sky.hdr";
+  {
+    // 16 × 8, flat RGBE: a bright upper half (≈ 2.0) over a dark lower half (0.125).
+    std::string h = "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 8 +X 16\n";
+    std::vector<unsigned char> bytes(h.begin(), h.end());
+    for (int y = 0; y < 8; ++y) {
+      for (int x = 0; x < 16; ++x) {
+        if (y < 4) bytes.insert(bytes.end(), {255, 255, 255, 129});
+        else bytes.insert(bytes.end(), {32, 32, 32, 128});
+      }
+    }
+    std::ofstream out(file, std::ios::binary);
+    REQUIRE(out.good());
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  }
+  doc::Document d;
+  premation::js::Json asset = premation::js::Json::object();
+  asset.set("id", premation::js::Json::string("sky1"));
+  asset.set("type", premation::js::Json::string("image"));
+  asset.set("name", premation::js::Json::string("sky.hdr"));
+  asset.set("src", premation::js::Json::string(file.string()));
+  asset.set("path", premation::js::Json::string(file.string()));
+  d.items_mut().assets.push_back(asset);
+  std::string why;
+  const std::shared_ptr<const sc::EnvAsset> sky = sc::environment_asset(d, "asset:sky1", why);
+  INFO(why);
+  REQUIRE(sky);
+  CHECK(why.empty());
+  // Energy in the mean band, finite, and the HDR atlas built.
+  CHECK(sky->sh[0] > 0.05F);
+  CHECK(std::isfinite(sky->sh[0]));
+  CHECK(sky->hdr.width > 0);
+  CHECK(sky->specular.width > 0);
+  // A missing file says why (no fallback to a PNG src that is not there either).
+  std::error_code ec;
+  fs::remove(file, ec);
+  sc::clear_environment_assets();
+  why.clear();
+  CHECK_FALSE(sc::environment_asset(d, "asset:sky1", why));
+  CHECK_FALSE(why.empty());
 }

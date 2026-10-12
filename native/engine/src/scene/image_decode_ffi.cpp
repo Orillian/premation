@@ -4,9 +4,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <limits>
+#include <optional>
 #include <string_view>
+#include <vector>
+
+#include "hdr_read.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -30,11 +37,56 @@ namespace premation::scene {
 bool is_still_image_path(const std::filesystem::path& p) {
   std::string ext = p.extension().string();
   std::ranges::transform(ext, ext.begin(), [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; });
-  for (const std::string_view e : {".png", ".jpg", ".jpeg", ".jpe", ".webp", ".bmp", ".gif", ".tif", ".tiff"}) {
+  for (const std::string_view e : {".png", ".jpg", ".jpeg", ".jpe", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".hdr"}) {
     if (ext == e) return true;
   }
   return false;
 }
+
+namespace {
+
+/// E7: a Radiance .hdr still — not a codec of WIC's or Skia's: decoded here
+/// (hdr_read.hpp, pure C++) to linear float, and tone-mapped for the 8-bit
+/// raster the way the EXR import's preview is: clamped to [0, 1] and sRGB
+/// encoded, opaque. The environment sky reads the linear planes from the file
+/// itself (env_asset.cpp), never this preview.
+bool hdr_path(const std::filesystem::path& p) {
+  std::string ext = p.extension().string();
+  std::ranges::transform(ext, ext.begin(), [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; });
+  return ext == ".hdr";
+}
+
+bool decode_hdr_still(std::span<const std::uint8_t> bytes, DecodedImage& out, std::string& error) {
+  const std::optional<hdr::FloatRgba> img = hdr::decode(bytes, error);
+  if (!img) return false;
+  const auto encode = [](float v) {
+    const double c = std::clamp(static_cast<double>(v), 0.0, 1.0);
+    const double s = c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1.0 / 2.4) - 0.055;
+    return static_cast<std::uint8_t>(std::lround(std::clamp(s, 0.0, 1.0) * 255.0));
+  };
+  out.width = static_cast<std::uint32_t>(img->width);
+  out.height = static_cast<std::uint32_t>(img->height);
+  out.rgba.resize(img->rgba.size());
+  for (std::size_t i = 0; i + 3 < img->rgba.size(); i += 4) {
+    out.rgba[i] = encode(img->rgba[i]);
+    out.rgba[i + 1] = encode(img->rgba[i + 1]);
+    out.rgba[i + 2] = encode(img->rgba[i + 2]);
+    out.rgba[i + 3] = 255;
+  }
+  return true;
+}
+
+bool decode_hdr_file(const std::filesystem::path& p, DecodedImage& out, std::string& error) {
+  std::ifstream in(p, std::ios::binary);
+  if (!in) {
+    error = "open " + p.string() + " failed";
+    return false;
+  }
+  const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return decode_hdr_still(bytes, out, error);
+}
+
+}  // namespace
 
 #ifdef _WIN32
 
@@ -86,6 +138,7 @@ bool decode_frame(IWICBitmapDecoder* decoder, DecodedImage& out, std::string& er
 }  // namespace
 
 bool decode_image_file(const std::filesystem::path& p, DecodedImage& out, std::string& error) {
+  if (hdr_path(p)) return decode_hdr_file(p, out, error);  // E7
   const ComScope com;
   if (!com.usable()) {
     error = "COM unavailable";
@@ -109,6 +162,7 @@ bool decode_image_file(const std::filesystem::path& p, DecodedImage& out, std::s
 }
 
 bool decode_image_bytes(std::span<const std::uint8_t> bytes, DecodedImage& out, std::string& error) {
+  if (hdr::looks_like_hdr(bytes)) return decode_hdr_still(bytes, out, error);  // E7
   const ComScope com;
   if (!com.usable()) {
     error = "COM unavailable";
@@ -243,6 +297,7 @@ bool decode_data(sk_sp<SkData> data, DecodedImage& out, std::string& error) {
 }  // namespace
 
 bool decode_image_file(const std::filesystem::path& p, DecodedImage& out, std::string& error) {
+  if (hdr_path(p)) return decode_hdr_file(p, out, error);  // E7
   sk_sp<SkData> data = SkData::MakeFromFileName(p.string().c_str());
   if (!data) {
     error = "open " + p.string() + " failed";
@@ -256,6 +311,7 @@ bool decode_image_bytes(std::span<const std::uint8_t> bytes, DecodedImage& out, 
     error = "image bytes unusable";
     return false;
   }
+  if (hdr::looks_like_hdr(bytes)) return decode_hdr_still(bytes, out, error);  // E7
   return decode_data(SkData::MakeWithCopy(bytes.data(), bytes.size()), out, error);
 }
 

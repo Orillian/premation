@@ -248,6 +248,16 @@ struct RenderShadowCatcher {
 
 struct RenderSsao { enabled: bool = 1; radius: f64 = 2; intensity: f64 = 3; quality: RenderSsaoQuality = 4; }
 
+/// E8: the viewport's engine-drawn ground grid (setViewport `groundGrid`): the floor plane at the comp's Ground Level,
+/// centred under the comp, depth-tested against the 3D scene. Viewport frames only — never an export, a thumbnail or the cache.
+struct RenderGroundGrid {
+  /// World y of the floor plane (comp height + Ground Level).
+  y: f64 = 1;
+  /// The floor's centre on the plane (x = comp width / 2, z = 0).
+  centerX: f64 = 2;
+  centerZ: f64 = 3;
+}
+
 /// Composition Settings ▸ Renderer (U3): the 3D renderer's per-composition quality knobs the frame carries.
 struct RenderRendererSettings {
   /// Depth-of-field gather rings (dof-gather.wgsl): 3 draft, 5 medium, 7 high.
@@ -324,6 +334,8 @@ struct RenderFrameScene {
   shadowCatcher?: RenderShadowCatcher = 13;
   /// Composition Settings ▸ Renderer: DOF rings and MSAA for the 3D runs (absent = 5 rings, 4×).
   renderer?: RenderRendererSettings = 14;
+  /// E8: the viewport's ground grid (absent = none; exports and thumbnails never carry one).
+  groundGrid?: RenderGroundGrid = 15;
 }
 
 /// One user guide (OverlayPass).

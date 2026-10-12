@@ -1465,6 +1465,7 @@ struct RenderEnvMap;
 struct RenderFog;
 struct RenderShadowCatcher;
 struct RenderSsao;
+struct RenderGroundGrid;
 struct RenderRendererSettings;
 struct RenderPrecompFrame;
 struct Renderable;
@@ -2997,6 +2998,7 @@ struct SetViewport {
   std::optional<OnionSkin> onion;
   std::optional<std::string> layer_alpha_view;
   std::optional<bool> clip_to_comp;
+  std::optional<bool> ground_grid;
   bool operator==(const SetViewport&) const = default;
 };
 
@@ -6165,6 +6167,13 @@ struct RenderSsao {
   bool operator==(const RenderSsao&) const = default;
 };
 
+struct RenderGroundGrid {
+  double y = 0.0;
+  double center_x = 0.0;
+  double center_z = 0.0;
+  bool operator==(const RenderGroundGrid&) const = default;
+};
+
 struct RenderRendererSettings {
   std::uint32_t dof_rings = 0;
   std::uint32_t msaa = 0;
@@ -6234,6 +6243,7 @@ struct RenderFrameScene {
   std::optional<RenderFog> fog;
   std::optional<RenderShadowCatcher> shadow_catcher;
   std::optional<RenderRendererSettings> renderer;
+  std::optional<RenderGroundGrid> ground_grid;
   bool operator==(const RenderFrameScene&) const = default;
 };
 
@@ -7412,6 +7422,8 @@ void encode(wire::Writer& w, const RenderShadowCatcher& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderShadowCatcher& out);
 void encode(wire::Writer& w, const RenderSsao& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderSsao& out);
+void encode(wire::Writer& w, const RenderGroundGrid& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, RenderGroundGrid& out);
 void encode(wire::Writer& w, const RenderRendererSettings& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderRendererSettings& out);
 void encode(wire::Writer& w, const RenderPrecompFrame& v);

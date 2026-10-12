@@ -7657,6 +7657,7 @@ function encS_SetViewport(w: Writer, v: T.SetViewport): void {
   if (v.onion !== undefined) { w.varint(146); { const s = w.beginLd(); encS_OnionSkin(w, v.onion); w.endLd(s); } }
   if (v.layerAlphaView !== undefined) { w.varint(154); w.str(v.layerAlphaView); }
   if (v.clipToComp !== undefined) { w.varint(160); w.bool(v.clipToComp); }
+  if (v.groundGrid !== undefined) { w.varint(168); w.bool(v.groundGrid); }
 }
 function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let h_viewport = false;
@@ -7690,6 +7691,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let v_onion: T.OnionSkin | undefined;
   let v_layerAlphaView: string | undefined;
   let v_clipToComp: boolean | undefined;
+  let v_groundGrid: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -7713,6 +7715,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
       case 146: v_onion = decS_OnionSkin(r, r.ldEnd(), {}); break;
       case 154: v_layerAlphaView = r.str(); break;
       case 160: v_clipToComp = r.bool(); break;
+      case 168: v_groundGrid = r.bool(); break;
       default: r.skip(key);
     }
   }
@@ -7748,6 +7751,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   if (v_onion !== undefined) o.onion = v_onion;
   if (v_layerAlphaView !== undefined) o.layerAlphaView = v_layerAlphaView;
   if (v_clipToComp !== undefined) o.clipToComp = v_clipToComp;
+  if (v_groundGrid !== undefined) o.groundGrid = v_groundGrid;
   return o;
 }
 function encS_CloseViewport(w: Writer, v: T.CloseViewport): void {
@@ -16884,6 +16888,36 @@ function decS_RenderSsao(r: Reader, end: number, o: any): T.RenderSsao {
   o.quality = v_quality;
   return o;
 }
+function encS_RenderGroundGrid(w: Writer, v: T.RenderGroundGrid): void {
+  w.byte(9); w.f64(v.y);
+  w.byte(17); w.f64(v.centerX);
+  w.byte(25); w.f64(v.centerZ);
+}
+function decS_RenderGroundGrid(r: Reader, end: number, o: any): T.RenderGroundGrid {
+  let h_y = false;
+  let h_centerX = false;
+  let h_centerZ = false;
+  let v_y: number | undefined;
+  let v_centerX: number | undefined;
+  let v_centerZ: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 9: v_y = r.f64(); h_y = true; break;
+      case 17: v_centerX = r.f64(); h_centerX = true; break;
+      case 25: v_centerZ = r.f64(); h_centerZ = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_y) throw new DecodeError('RenderGroundGrid.y: missing', 'missingField');
+  if (!h_centerX) throw new DecodeError('RenderGroundGrid.centerX: missing', 'missingField');
+  if (!h_centerZ) throw new DecodeError('RenderGroundGrid.centerZ: missing', 'missingField');
+  o.y = v_y;
+  o.centerX = v_centerX;
+  o.centerZ = v_centerZ;
+  return o;
+}
 function encS_RenderRendererSettings(w: Writer, v: T.RenderRendererSettings): void {
   w.byte(8); w.u32(v.dofRings);
   w.byte(16); w.u32(v.msaa);
@@ -17129,6 +17163,7 @@ function encS_RenderFrameScene(w: Writer, v: T.RenderFrameScene): void {
   if (v.fog !== undefined) { w.byte(98); { const s = w.beginLd(); encS_RenderFog(w, v.fog); w.endLd(s); } }
   if (v.shadowCatcher !== undefined) { w.byte(106); { const s = w.beginLd(); encS_RenderShadowCatcher(w, v.shadowCatcher); w.endLd(s); } }
   if (v.renderer !== undefined) { w.byte(114); { const s = w.beginLd(); encS_RenderRendererSettings(w, v.renderer); w.endLd(s); } }
+  if (v.groundGrid !== undefined) { w.byte(122); { const s = w.beginLd(); encS_RenderGroundGrid(w, v.groundGrid); w.endLd(s); } }
 }
 function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameScene {
   const l_renderables: T.Renderable[] = [];
@@ -17149,6 +17184,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
   let v_fog: T.RenderFog | undefined;
   let v_shadowCatcher: T.RenderShadowCatcher | undefined;
   let v_renderer: T.RenderRendererSettings | undefined;
+  let v_groundGrid: T.RenderGroundGrid | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -17166,6 +17202,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
       case 98: v_fog = decS_RenderFog(r, r.ldEnd(), {}); break;
       case 106: v_shadowCatcher = decS_RenderShadowCatcher(r, r.ldEnd(), {}); break;
       case 114: v_renderer = decS_RenderRendererSettings(r, r.ldEnd(), {}); break;
+      case 122: v_groundGrid = decS_RenderGroundGrid(r, r.ldEnd(), {}); break;
       default: r.skip(key);
     }
   }
@@ -17188,6 +17225,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
   if (v_fog !== undefined) o.fog = v_fog;
   if (v_shadowCatcher !== undefined) o.shadowCatcher = v_shadowCatcher;
   if (v_renderer !== undefined) o.renderer = v_renderer;
+  if (v_groundGrid !== undefined) o.groundGrid = v_groundGrid;
   return o;
 }
 function encS_RenderGuide(w: Writer, v: T.RenderGuide): void {
@@ -19553,6 +19591,7 @@ export const codecs = {
   RenderFog: mk<T.RenderFog>(encS_RenderFog, (r, e) => decS_RenderFog(r, e, {})),
   RenderShadowCatcher: mk<T.RenderShadowCatcher>(encS_RenderShadowCatcher, (r, e) => decS_RenderShadowCatcher(r, e, {})),
   RenderSsao: mk<T.RenderSsao>(encS_RenderSsao, (r, e) => decS_RenderSsao(r, e, {})),
+  RenderGroundGrid: mk<T.RenderGroundGrid>(encS_RenderGroundGrid, (r, e) => decS_RenderGroundGrid(r, e, {})),
   RenderRendererSettings: mk<T.RenderRendererSettings>(encS_RenderRendererSettings, (r, e) => decS_RenderRendererSettings(r, e, {})),
   RenderPrecompFrame: mk<T.RenderPrecompFrame>(encS_RenderPrecompFrame, (r, e) => decS_RenderPrecompFrame(r, e, {})),
   Renderable: mk<T.Renderable>(encS_Renderable, (r, e) => decS_Renderable(r, e, {})),

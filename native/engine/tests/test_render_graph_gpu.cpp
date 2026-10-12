@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <string>
 
 #include "scene_renderer.hpp"
@@ -677,4 +678,151 @@ TEST_CASE("E3: graph targets are allocated on demand and a slot-size change keep
   REQUIRE(renderer->render(file, &frame, s, err));
   CHECK(renderer->device().stats().targetMisses == afterIdle);
   CHECK(frame.width == 64);
+}
+
+// ── E5 / E8 (docs/PROGRAM_3D_PERF_UX.md) ─────────────────────────────────────
+
+namespace {
+
+/// A point light with a shadow map (as the comp's key light carries it).
+api::RenderLight3D shadow_light(double x, double y) {
+  api::RenderLight3D l;
+  l.type = api::RenderLightType::point;
+  l.color = {1, 1, 1};
+  l.gain = 1;
+  l.x = x;
+  l.y = y;
+  l.z = -300;
+  l.radius = 2000;
+  l.aim_x = 0;
+  l.aim_y = 0;
+  l.aim_z = 1;
+  l.falloff_mode = 0;
+  l.falloff_distance = 0;
+  l.shadow_map = true;
+  l.shadow_map_size = 256;
+  l.shadow_darkness = 1;
+  l.shadow_softness = 1;
+  return l;
+}
+
+/// Two shadow lights, a caster, a lit reflector, SSAO on.
+api::RenderFrameFile lit_scene() {
+  api::RenderFrameFile file = threed_scene();
+  file.scene.lights3d.push_back(shadow_light(10, 6));
+  file.scene.lights3d.push_back(shadow_light(54, 40));
+  api::Renderable a = rect3d("a", 8, 6, 20, 14, 1, 0, 0);
+  a.three_d->casts_shadow = true;
+  api::Renderable b = rect3d("b", 30, 22, 26, 18, 0, 0.5, 1);
+  b.three_d->casts_shadow = true;
+  api::RenderShade3D sh;
+  sh.specular = 0.5;
+  sh.shininess = 20;
+  sh.reflection_intensity = 1;
+  sh.layer_reflections = true;
+  b.three_d->shade = sh;
+  api::RenderSsao ao;
+  ao.enabled = true;
+  ao.radius = 20;
+  ao.intensity = 1;
+  ao.quality = api::RenderSsaoQuality::half;
+  file.scene.ssao = ao;
+  file.scene.renderables.push_back(a);
+  file.scene.renderables.push_back(b);
+  return file;
+}
+
+}  // namespace
+
+TEST_CASE("E5: a static lit scene builds its shadow maps, SSAO and reflections once; the next frame reuses them; a run split reuses within the frame") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = lit_scene();
+  Frame f1;
+  FrameStats s1;
+  REQUIRE(renderer->render(file, &f1, s1, err));
+  CHECK(s1.gpuError.empty());
+  CHECK(s1.effects.shadowMapsBuilt == 2);
+  CHECK(s1.effects.shadowMapsReused == 0);
+  CHECK(s1.effects.ssaoBuilt == 1);
+  CHECK(s1.effects.ssaoReused == 0);
+  CHECK(s1.effects.reflectionsBuilt == 1);
+  CHECK(s1.effects.reflectionsReused == 0);
+  // Frame 2 of a static scene: nothing rebuilt, the same pixels.
+  Frame f2;
+  FrameStats s2;
+  REQUIRE(renderer->render(file, &f2, s2, err));
+  CHECK(s2.effects.shadowMapsBuilt == 0);
+  CHECK(s2.effects.shadowMapsReused == 2);
+  CHECK(s2.effects.ssaoBuilt == 0);
+  CHECK(s2.effects.ssaoReused == 1);
+  CHECK(s2.effects.reflectionsBuilt == 0);
+  CHECK(s2.effects.reflectionsReused == 1);
+  CHECK(f2.rgba == f1.rgba);
+  // The caster moves: the maps, the AO and the mirror are built again (and differ).
+  file.scene.renderables[0].three_d->model[12] += 3;
+  file.scene.renderables[0].model_matrix[6] += 3;
+  Frame f3;
+  FrameStats s3;
+  REQUIRE(renderer->render(file, &f3, s3, err));
+  CHECK(s3.effects.shadowMapsBuilt == 2);
+  CHECK(s3.effects.ssaoBuilt == 1);
+  CHECK(s3.effects.reflectionsBuilt == 1);
+  CHECK(f3.rgba != f1.rgba);
+  // A 2D layer between the two 3D layers splits the frame into two runs: the
+  // shadow maps are built by the first run and served to the second.
+  auto split = lit_scene();
+  api::Renderable flat = solid_scene(0, 1, 0).scene.renderables[0];
+  flat.id = "flat";
+  split.scene.renderables.insert(split.scene.renderables.begin() + 1, flat);
+  std::string e2;
+  auto other = SceneRenderer::create({}, e2);
+  REQUIRE(other);
+  Frame fs;
+  FrameStats ss;
+  REQUIRE(other->render(split, &fs, ss, e2));
+  CHECK(ss.gpuError.empty());
+  CHECK(ss.effects.shadowMapsBuilt == 2);
+  CHECK(ss.effects.shadowMapsReused == 2);
+}
+
+TEST_CASE("E8: the ground grid draws into a frame that asks for it, against the scene, and into no other") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = threed_scene();
+  file.scene.renderables.push_back(rect3d("a", 24, 8, 16, 12, 1, 1, 1));
+  // A view tilted 60° about X (through the origin), its depth compressed into
+  // [0, 1]: a horizontal floor plane is seen in perspective-free foreshortening.
+  const double c = std::cos(60.0 * std::numbers::pi / 180);
+  const double sn = std::sin(60.0 * std::numbers::pi / 180);
+  file.scene.camera3d->view = {1, 0, 0, 0, 0, c, 0.001 * sn, 0, 0, -sn, 0.001 * c, 0, 0, 0, 0.5, 1};
+  Frame plain;
+  FrameStats sp;
+  REQUIRE(renderer->render(file, &plain, sp, err));
+  CHECK(sp.gpuError.empty());
+  api::RenderGroundGrid gg;
+  gg.y = 48;
+  gg.center_x = 32;
+  gg.center_z = 0;
+  file.scene.ground_grid = gg;
+  Frame grid;
+  FrameStats sg;
+  REQUIRE(renderer->render(file, &grid, sg, err));
+  CHECK(sg.gpuError.empty());
+  const auto px = [](const Frame& f, std::uint32_t x, std::uint32_t y, std::size_t ch) { return f.rgba.at((std::size_t{y} * 64 + x) * 4 + ch); };
+  // The floor's centre lands at (32, 48·cos 60° = 24): both axes cross there — drawn.
+  CHECK(grid.rgba != plain.rgba);
+  CHECK(px(grid, 32, 24, 0) + px(grid, 32, 24, 1) + px(grid, 32, 24, 2) > px(plain, 32, 24, 0) + px(plain, 32, 24, 1) + px(plain, 32, 24, 2));
+  // Outside the floor's extent (8 cells of the nice step 2 → x ∈ [16, 48]): untouched.
+  for (const std::size_t ch : {0U, 1U, 2U, 3U}) CHECK(px(grid, 2, 46, ch) == px(plain, 2, 46, ch));
+  // The layer in front keeps its own pixels: the grid is depth-tested, not painted over it.
+  for (const std::size_t ch : {0U, 1U, 2U}) CHECK(px(grid, 32, 7, ch) == px(plain, 32, 7, ch));
+  // A frame without the flag (an export, a thumbnail) is the plain frame again.
+  file.scene.ground_grid.reset();
+  Frame again;
+  FrameStats sa;
+  REQUIRE(renderer->render(file, &again, sa, err));
+  CHECK(again.rgba == plain.rgba);
 }

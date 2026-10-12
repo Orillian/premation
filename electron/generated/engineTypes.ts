@@ -2866,6 +2866,8 @@ export interface SetViewport {
   layerAlphaView?: string;
   /** Clip the frame to the composition's rectangle (AE's comp panel). Absent = true. False (the Extended Viewer: a custom / axis view, Draft 3D) draws layers outside the frame over the pasteboard colour; the UI draws the frame outline on top. Ignored on a layer view (never clipped). */
   clipToComp?: boolean;
+  /** E8: draw the 3D ground grid into this viewport's frames (View ▸ 3D Ground Plane, Draft 3D): the comp's ground plane (World ▸ Ground level), depth-tested against the scene, adaptive 1 / 2 / 5 spacing with minor cells, the X axis red, the Z axis blue, a distance fade. Absent = off. Never in an export, a thumbnail or the cache. Ignored on a layer view. */
+  groundGrid?: boolean;
 }
 
 export interface CloseViewport {
@@ -5250,6 +5252,18 @@ export interface RenderSsao {
   quality: RenderSsaoQuality;
 }
 
+/**
+ * E8: the viewport's engine-drawn ground grid (setViewport `groundGrid`): the floor plane at the comp's Ground Level,
+ * centred under the comp, depth-tested against the 3D scene. Viewport frames only — never an export, a thumbnail or the cache.
+ */
+export interface RenderGroundGrid {
+  /** World y of the floor plane (comp height + Ground Level). */
+  y: number;
+  /** The floor's centre on the plane (x = comp width / 2, z = 0). */
+  centerX: number;
+  centerZ: number;
+}
+
 /** Composition Settings ▸ Renderer (U3): the 3D renderer's per-composition quality knobs the frame carries. */
 export interface RenderRendererSettings {
   /** Depth-of-field gather rings (dof-gather.wgsl): 3 draft, 5 medium, 7 high. */
@@ -5326,6 +5340,8 @@ export interface RenderFrameScene {
   shadowCatcher?: RenderShadowCatcher;
   /** Composition Settings ▸ Renderer: DOF rings and MSAA for the 3D runs (absent = 5 rings, 4×). */
   renderer?: RenderRendererSettings;
+  /** E8: the viewport's ground grid (absent = none; exports and thumbnails never carry one). */
+  groundGrid?: RenderGroundGrid;
 }
 
 /** One user guide (OverlayPass). */

@@ -61,6 +61,15 @@ struct EffectStats {
   /// chain's reach, and entries drawn over the full frame (an unknown reach).
   std::uint32_t bounded = 0;
   std::uint32_t fullFrame = 0;
+  /// E5 (3D perf): shadow maps / SSAO passes / planar reflections rendered this
+  /// frame, and the ones served from the last frame's (or an earlier run's)
+  /// targets (scene_cache3d.hpp).
+  std::uint32_t shadowMapsBuilt = 0;
+  std::uint32_t shadowMapsReused = 0;
+  std::uint32_t ssaoBuilt = 0;
+  std::uint32_t ssaoReused = 0;
+  std::uint32_t reflectionsBuilt = 0;
+  std::uint32_t reflectionsReused = 0;
   /// Set by the caller before the frame: keep one record per entry.
   bool keepPaths = false;
   std::vector<EffectPathRecord> paths;
