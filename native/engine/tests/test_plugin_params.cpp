@@ -103,6 +103,14 @@ TEST_CASE("SDK 1.1 params: values reach the render", "[plugins][params]") {
     CHECK(std::abs(p[2] - 128) <= 1);
   }
 
+  SECTION("gradient stops arrive in linear light (SDK 1.2)") {
+    // The document keeps sRGB-encoded 0..1; the plugin reads the working space, as built-ins do:
+    // a flat sRGB 0.5 grey is linear 0.214 (8-bit 55), not 128.
+    in.values[slot(kGradient)].gradient = {0, 0.5, 0.5, 0.5, 1, 1, 0.5, 0.5, 0.5, 1};
+    REQUIRE(pl::run_native_cpu(host, in, grey(), {}, out).ok);
+    for (const int c : px(out)) CHECK(std::abs(c - 55) <= 1);
+  }
+
   SECTION("a curve bends luma before the gradient") {
     in.values[slot(kCurve)].curve = {0, 1, 1, 1};  // everything to white
     REQUIRE(pl::run_native_cpu(host, in, grey(), {}, out).ok);

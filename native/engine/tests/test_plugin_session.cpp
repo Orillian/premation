@@ -12,6 +12,7 @@
 #include "host.hpp"
 #include "native_effects.hpp"
 #include "session_harness.hpp"
+#include "values.hpp"
 
 using namespace premation;
 using namespace premation::test;
@@ -162,4 +163,57 @@ TEST_CASE("plugins in the session: no host — an empty list and builtin effect 
   CHECK(std::ranges::all_of(state.params, [](const api::EffectParamUi& p) { return p.enabled && !p.hidden; }));
   ui.effect = "effects/nope";
   CHECK(is_error(h.ask(qry(ui)), api::ErrorCode::not_found));
+}
+
+TEST_CASE("plugins in the session: colours round-trip through linear light (SDK 1.2)", "[plugins][session][color]") {
+  // A COLOR param reaches the plugin decoded to linear light and a set_param_value of it is encoded
+  // back: rings' Swap Colors writes what it read, so each document colour must be exactly the
+  // other's afterwards — an identity round trip, not a gamma drift.
+  pl::PluginHost host(attached());
+  host.scan();
+  Harness h;
+  (void)h.hello();
+  const api::LayerId layer = solid(h);
+  api::AddEffect add;
+  add.layers = {layer};
+  add.effect = kRings;
+  const auto ra = h.run(cmd(add));
+  REQUIRE(is_ok(ra));
+  const std::string fxPath = result_as<api::GroupList>(ra).groups.at(0);
+  const auto set = [&](const char* key, double r, double g, double b) {
+    api::SetProperty sp;
+    sp.prop = {layer, fxPath + "/" + key};
+    sp.value = doc::v_color(r, g, b, 1);
+    REQUIRE(is_ok(h.run(cmd(sp))));
+  };
+  const auto get = [&](const char* key) {
+    api::GetPropertyValues q;
+    q.props = {{layer, fxPath + "/" + key}};
+    q.time = 0;
+    const auto v = query<api::PropertyValues>(h, qry(q));
+    REQUIRE(v.values.size() == 1);
+    return std::get<api::Color>(v.values[0].value.v);
+  };
+  set("p5", 0.8, 0.4, 0.2);       // #cc6633
+  set("p6", 0.1, 0.5, 0.9);       // #1a80e6
+  const api::Color a0 = get("p5");
+  const api::Color b0 = get("p6");
+  api::InvokeEffectAction act;
+  act.group = {layer, fxPath};
+  act.action = "p10";  // Swap Colors (hidden, supervised)
+  REQUIRE(is_ok(h.run(cmd(act))));
+  const api::Color a1 = get("p5");
+  const api::Color b1 = get("p6");
+  CHECK(a1.r == b0.r);
+  CHECK(a1.g == b0.g);
+  CHECK(a1.b == b0.b);
+  CHECK(b1.r == a0.r);
+  CHECK(b1.g == a0.g);
+  CHECK(b1.b == a0.b);
+  // And back: still exact.
+  REQUIRE(is_ok(h.run(cmd(act))));
+  const api::Color a2 = get("p5");
+  CHECK(a2.r == a0.r);
+  CHECK(a2.g == a0.g);
+  CHECK(a2.b == a0.b);
 }

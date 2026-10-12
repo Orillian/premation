@@ -28,7 +28,7 @@
 
 namespace {
 
-enum : uint32_t { kCenter = 1, kSpacing = 2, kRotation = 3, kMix = 4, kColorA = 5, kColorB = 6, kOpacity = 7, kShuffle = 8, kSetPalette = 9 };
+enum : uint32_t { kCenter = 1, kSpacing = 2, kRotation = 3, kMix = 4, kColorA = 5, kColorB = 6, kOpacity = 7, kShuffle = 8, kSetPalette = 9, kSwapColors = 10 };
 
 constexpr uint32_t kMagic = 0x52494E47;  // 'RING'
 constexpr uint32_t kFormat = 1;
@@ -116,6 +116,11 @@ PrErr params_setup(const PrInData* in) {
   if (e == PR_ERR_NONE) e = prs::add_simple(in, PR_PARAM_BUTTON, kShuffle, "Shuffle Palette", {}, PR_PARAM_FLAG_SUPERVISE);
   if (e == PR_ERR_NONE) {
     e = prs::add_simple(in, PR_PARAM_BUTTON, kSetPalette, "Set Palette", {}, PR_PARAM_FLAG_SUPERVISE | PR_PARAM_FLAG_HIDDEN);
+  }
+  if (e == PR_ERR_NONE) {
+    // SDK 1.2: colours arrive in linear light and are written back in it — swapping them through
+    // set_param_value must leave each document colour exactly the other's (the round trip is identity).
+    e = prs::add_simple(in, PR_PARAM_BUTTON, kSwapColors, "Swap Colors", {}, PR_PARAM_FLAG_SUPERVISE | PR_PARAM_FLAG_HIDDEN);
   }
   if (e == PR_ERR_NONE) e = prs::add_fault_params(in);
   return e;
@@ -235,6 +240,19 @@ PrErr PR_CALL rings_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamD
       const auto* x = static_cast<const PrUserChangedParamExtra*>(extra);
       if (x == nullptr || params == nullptr || params[x->param_index] == nullptr) return PR_ERR_NONE;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
       const uint32_t id = params[x->param_index]->id;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      if (id == kSwapColors) {
+        uint32_t ia = 0, ib = 0;
+        for (uint32_t i = 1; i < in->num_params; ++i) {
+          if (params[i] != nullptr && params[i]->id == kColorA) ia = i;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+          if (params[i] != nullptr && params[i]->id == kColorB) ib = i;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        }
+        if (ia == 0 || ib == 0) return PR_ERR_NONE;
+        const double* a = params[ia]->value;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        const double* b = params[ib]->value;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+        PrErr e = in->host->set_param_value(in->host_ref, ia, b, 4);
+        if (e == PR_ERR_NONE) e = in->host->set_param_value(in->host_ref, ib, a, 4);
+        return e;
+      }
       if (id != kShuffle && id != kSetPalette) return PR_ERR_NONE;
       Palette p;
       if (!read_palette(in, in->sequence_data, p)) roll(p);

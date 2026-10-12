@@ -34,6 +34,15 @@ using premation::plugins::PluginHost;
 
 // ── the per-call context the SDK hands back to every callback ─────────────
 // (declared `typedef struct PrHost PrHost` in pr_types.h: global namespace)
+namespace premation::plugins {
+/// One call's PrParamDefs and what their pointers point into besides the specs and values:
+/// the GRADIENT stops decoded to linear light (the document keeps them sRGB-encoded).
+struct ParamDefs {
+  std::vector<PrParamDef> defs;
+  std::vector<std::vector<double>> owned;  ///< moved with the struct: the inner buffers stay put
+};
+}  // namespace premation::plugins
+
 struct PrHost {
   PluginHost* host = nullptr;
   PrCmd cmd = PR_CMD_ABOUT;
@@ -72,7 +81,7 @@ struct PrHost {
   const premation::plugins::EffectSpec* effect = nullptr;
   /// checkout_param: the defs built per sample (index into inputs->samples; SIZE_MAX = the frame) —
   /// alive until the selector returns. Guarded by assetMutex (iterate workers may ask too).
-  std::map<std::size_t, std::vector<PrParamDef>> sampleDefs;
+  std::map<std::size_t, premation::plugins::ParamDefs> sampleDefs;
   /// get_asset_image / _gpu / get_asset_sibling_bytes: what the call handed out, alive until it returns.
   std::map<std::uint32_t, std::shared_ptr<const premation::plugins::AssetImage>> assetImages;
   std::map<std::uint32_t, PrWorld> assetWorlds;
@@ -88,6 +97,16 @@ class HandleTable {
  public:
   PrHandle make(std::size_t size) {
     const std::scoped_lock lock(mutex_);
+// ── colour params: the document's sRGB-encoded 0..1 ↔ the plugin's linear light ──
+// The IEC 61966-2-1 transfer the built-in effects decode their colours with
+// (scene/effects_spatial_c.cpp `s2l`, render_graph/rg_math.hpp srgb_to_linear):
+// every world a plugin sees is linear working space, and so are its colours
+// (After Effects delivers PF_ADD_COLOR values in the project's working space).
+double srgb_to_linear(double c) noexcept { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
+double linear_to_srgb(double c) noexcept {
+  return c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(std::max(c, 0.0), 1 / 2.4) - 0.055;
+}
+
     const PrHandle h = next_++;
     blocks_[h].assign(size, 0);
     return h;
@@ -426,8 +445,10 @@ struct PluginHost::Impl {
   void setdown(Instance& inst, Plugin& p);
   // ── params ──
   /// `values` (SDK 1.2 checkout_param): a sample's values instead of `in.values`.
-  std::vector<PrParamDef> param_defs(const EffectSpec& e, const RenderInputs& in, std::vector<PrParamDef*>& ptrs,
-                                     const std::vector<ParamValue>* values = nullptr) const;
+  /// COLOR values and GRADIENT stops reach the plugin in linear light (the working space), decoded
+  /// from the document's sRGB-encoded 0..1 — what the built-in effects do with theirs.
+  ParamDefs param_defs(const EffectSpec& e, const RenderInputs& in, std::vector<PrParamDef*>& ptrs,
+                       const std::vector<ParamValue>* values = nullptr) const;
   void fill_in_data(PrInData& d, const RenderInputs& in) const;
   CallResult call_render(Plugin& p, EffectSpec& e, const RenderInputs& in, PrHost& ctx, PrCmd cmd, PrWorld* output,
                          void* extra, PrHandle sequence);
@@ -763,7 +784,7 @@ PrErr PR_CALL cb_checkout_param(PrHost* h, std::uint32_t paramIndex, std::int64_
     std::vector<PrParamDef*> ptrs;
     it = h->sampleDefs.emplace(slot, impl_of(h).param_defs(*h->effect, in, ptrs, values)).first;
   }
-  return copy_sized(out, it->second.at(paramIndex));
+  return copy_sized(out, it->second.defs.at(paramIndex));
 }
 
 // ── SDK 1.2: a FILE param's image and the files beside it ───────────────────
@@ -1856,10 +1877,15 @@ void PluginHost::Impl::fill_in_data(PrInData& d, const RenderInputs& in) const {
   for (std::size_t i = 0; i < 9; ++i) d.comp_to_world[i] = in.compToWorld.at(i);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
 }
 
-std::vector<PrParamDef> PluginHost::Impl::param_defs(const EffectSpec& e, const RenderInputs& in,
-                                                     std::vector<PrParamDef*>& ptrs, const std::vector<ParamValue>* values) const {
+ParamDefs PluginHost::Impl::param_defs(const EffectSpec& e, const RenderInputs& in, std::vector<PrParamDef*>& ptrs,
+                                       const std::vector<ParamValue>* values) const {
   const std::vector<ParamValue>& vals = values != nullptr ? *values : in.values;
-  std::vector<PrParamDef> defs(e.params.size() + 1);
+  ParamDefs out;
+  std::vector<PrParamDef>& defs = out.defs;
+  defs.resize(e.params.size() + 1);
+  std::size_t gradients = 0;
+  for (const ParamSpec& s : e.params) gradients += s.type == PR_PARAM_GRADIENT ? 1 : 0;
+  out.owned.reserve(gradients);
   PrParamDef& input = defs[0];
   input.struct_size = sizeof(PrParamDef);
   input.type = PR_PARAM_LAYER;
@@ -1912,8 +1938,12 @@ std::vector<PrParamDef> PluginHost::Impl::param_defs(const EffectSpec& e, const 
       }
       case PR_PARAM_GRADIENT: {
         const std::vector<double>& g = v != nullptr && v->gradient.size() >= 5 ? v->gradient : s.gradient;
-        d.gradient = g.data();
-        d.gradient_count = static_cast<std::uint32_t>(g.size() / 5);
+        std::vector<double>& lin = out.owned.emplace_back(g);
+        for (std::size_t at = 0; at + 5 <= lin.size(); at += 5) {
+          for (std::size_t k = 1; k <= 3; ++k) lin[at + k] = srgb_to_linear(lin[at + k]);  // position, r, g, b, a: the colour only
+        }
+        d.gradient = lin.data();
+        d.gradient_count = static_cast<std::uint32_t>(lin.size() / 5);
         break;
       }
       case PR_PARAM_FILE:
@@ -1928,7 +1958,7 @@ std::vector<PrParamDef> PluginHost::Impl::param_defs(const EffectSpec& e, const 
   }
   ptrs.resize(defs.size());
   for (std::size_t i = 0; i < defs.size(); ++i) ptrs[i] = &defs[i];
-  return defs;
+  return out;
 }
 
 PrPixelFormat PluginHost::world_format(const EffectSpec& e, std::uint32_t projectBits) noexcept {
@@ -1945,6 +1975,9 @@ bool PluginHost::instance_disabled(std::string_view instance, std::string* why) 
   const auto it = m.failures.find(std::string(instance));
   if (it == m.failures.end()) return false;
   if (why != nullptr) *why = it->second.message;
+    if (s.type == PR_PARAM_COLOR) {
+      for (std::size_t k = 0; k < 3; ++k) d.value[k] = srgb_to_linear(d.value[k]);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index): alpha stays as is
+    }
   return true;
 }
 
@@ -2001,7 +2034,7 @@ class RenderLock {
 CallResult PluginHost::Impl::call_render(Plugin& p, EffectSpec& e, const RenderInputs& in, PrHost& ctx, PrCmd cmd, PrWorld* output,
                                          void* extra, PrHandle sequence) {
   std::vector<PrParamDef*> ptrs;
-  std::vector<PrParamDef> defs = param_defs(e, in, ptrs);
+  ParamDefs defs = param_defs(e, in, ptrs);
   PrInData d = base_in(ctx, e);
   fill_in_data(d, in);
   ctx.cmd = cmd;
@@ -2110,8 +2143,8 @@ CallResult PluginHost::render_cpu(const RenderInputs& in, CheckoutSource& io, Pr
   if (!r.ok) return r;
   {
     std::vector<PrParamDef*> ptrs;
-    std::vector<PrParamDef> defs = m.param_defs(*e, in, ptrs);
-    defs[0].world = input;
+    ParamDefs defs = m.param_defs(*e, in, ptrs);
+    defs.defs[0].world = input;
     PrInData d = m.base_in(ctx, *e);
     m.fill_in_data(d, in);
     ctx.cmd = PR_CMD_RENDER;
@@ -2442,7 +2475,7 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
   ctx.overlay = draw;
   ctx.inputs = &in;  // SDK 1.1 asset callbacks (the scene callbacks stay render-only: renderSelector)
   std::vector<PrParamDef*> ptrs;
-  std::vector<PrParamDef> defs = m.param_defs(*e, in, ptrs);
+  ParamDefs defs = m.param_defs(*e, in, ptrs);
   d.sequence_data = live;
   PrOutData out{};
   Impl::reset_out(out, e->globalData, live);
@@ -2490,7 +2523,9 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
         edit.params.emplace_back(s.key + "Y", doc::v_scalar(v[1] - in.layerH / 2.0));
         if (s.type == PR_PARAM_POINT_3D) edit.params.emplace_back(s.key + "Z", doc::v_scalar(v[2]));
         break;
-      case PR_PARAM_COLOR: edit.params.emplace_back(s.key, doc::v_color(v[0], v[1], v[2], v[3])); break;
+      case PR_PARAM_COLOR:  // the plugin writes linear light (what it reads); the document keeps sRGB-encoded 0..1
+        edit.params.emplace_back(s.key, doc::v_color(linear_to_srgb(v[0]), linear_to_srgb(v[1]), linear_to_srgb(v[2]), v[3]));
+        break;
       case PR_PARAM_CHECKBOX: edit.params.emplace_back(s.key, doc::v_bool(v[0] != 0)); break;
       case PR_PARAM_POPUP: {
         const auto c = static_cast<std::size_t>(std::clamp(std::round(v[0]), 1.0, static_cast<double>(s.choices.size())));
@@ -2619,7 +2654,7 @@ std::variant<std::vector<ParamUi>, std::string> PluginHost::params_ui(const Rend
   m.fill_in_data(d, in);
   ctx.numParams = d.num_params;
   std::vector<PrParamDef*> ptrs;
-  std::vector<PrParamDef> defs = m.param_defs(*e, in, ptrs);
+  ParamDefs defs = m.param_defs(*e, in, ptrs);
   PrOutData out{};
   Impl::reset_out(out, e->globalData, 0);
   const CallResult r = m.invoke(p->manifest.id, e->main, PR_CMD_UPDATE_PARAMS_UI, &d, &out, ptrs.data(), nullptr, nullptr);

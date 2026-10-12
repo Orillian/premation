@@ -85,7 +85,9 @@ api::RenderEffect grade_effect(std::uint32_t layerW, std::uint32_t layerH, Grade
               // integer 0..32768 (AE's 16 bpc) and clips, where the GPU path's
               // rgba16float buffer keeps over-range values (sat 120 % + hue 30°
               // pushed channels out of range: a 0.0055 difference at 16 bpc only).
-              color("p.p1", 1.1, 0.9, 0.8, 1),
+              // A colour param is the document's sRGB-encoded 0..1 and reaches the plugin linear
+              // (SDK 1.2): 1.1 would be 1.23 in linear light — out of range again.
+              color("p.p1", 1.0, 0.95, 0.85, 1),
               num("p.p2", 2),
               num("p.p3", 110),
               num("p.p4", 10),

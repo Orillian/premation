@@ -86,7 +86,7 @@ copy/paste, save/open and change events all work as they do for a builtin.
 |---|---|
 | `SLIDER`, `FLOAT_SLIDER`, `ANGLE` | number (angle in °, valid range → min/max) |
 | `POINT`, `POINT_3D` | numbers `p<id>X`, `p<id>Y` (`p<id>Z`), layer px from the layer centre; the plugin gets layer pixels |
-| `COLOR` | colour (straight RGBA 0..1 to the plugin) |
+| `COLOR` | colour, sRGB-encoded 0..1 as the colour picker shows it; the plugin gets straight RGBA in **linear light** (the working space, SDK 1.2) |
 | `POPUP` | choice, 1-based |
 | `CHECKBOX` | bool |
 | `LAYER` | a layer reference (id, `""` = none) |
@@ -96,10 +96,25 @@ copy/paste, save/open and change events all work as they do for a builtin.
 | `GROUP_START` / `GROUP_END` | a twirl-down section |
 | `STRING` (1.1) | text (`text`; a multi-line field) |
 | `CURVE` (1.1) | the Curves effect's point list `[[x, y]…]` in 0..255; the plugin gets `curve` / `curve_count`, x, y in 0..1 |
-| `GRADIENT` (1.1) | stops `[[position, r, g, b, a]…]` in 0..1; the plugin gets `gradient` / `gradient_count` |
+| `GRADIENT` (1.1) | stops `[[position, r, g, b, a]…]` in 0..1 (colours sRGB-encoded); the plugin gets `gradient` / `gradient_count`, the stops' r, g, b in linear light (SDK 1.2) |
 | `FILE` (1.1) | a project item id (`file_types` filters the picker); the plugin gets `file_name`, `file_missing` and the file through `get_asset_path` / `get_asset_bytes` |
 
 Flags: `CANNOT_ANIMATE`, `SUPERVISE`, `HIDDEN`, `START_COLLAPSED`, `DISABLED`.
+
+**Colours are linear (SDK 1.2).** Every world a plugin reads and writes is linear
+working space, and so are its colours: a `COLOR` value (the frame's `params[]`,
+`checkout_param` at another time, `DRAW_OVERLAY` / `OVERLAY_DRAG` /
+`USER_CHANGED_PARAM` / `UPDATE_PARAMS_UI`) and a `GRADIENT` stop's r, g, b arrive
+decoded from the document's sRGB-encoded 0..1 with the IEC 61966-2-1 transfer — the
+one the built-in effects decode their colours with — so a `#808080` grey is
+0.2159, not 0.5. Alpha and positions are not touched. A colour written back with
+`set_param_value` is taken as linear and encoded for the document, so writing back
+what was read leaves the document's colour exactly as it was. Declared defaults
+(`add_param`) and preset colours are document values, sRGB-encoded like the picker
+(`{0.8, 0.8, 0.8}` reaches the plugin as 0.604). After Effects delivers
+`PF_ADD_COLOR` values in the project's working space the same way. SDK 1.0 / 1.1
+plugins see the same linear values: a colour they used as a display value renders
+darker in mid-tones than before.
 
 The SDK 1.1 types are never keyframed. Their defaults go in the fields at the end
 of `PrParamDef` (`text`, `curve`, `gradient`, `file_types`); an SDK 1.0 struct

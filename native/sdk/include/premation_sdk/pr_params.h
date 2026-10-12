@@ -77,7 +77,10 @@ typedef int32_t PrParamType;
  *                                  THE LAYER CENTRE in layer pixels (so it is size-independent);
  *                                  the host adds width/2, height/2 before delivering it.
  *   POINT_3D                       value[0..2] (same convention; z as declared)
- *   COLOR                          value[0..3] = r, g, b, a (straight, 0..1, working space)
+ *   COLOR                          value[0..3] = r, g, b, a (straight, 0..1). SDK 1.2: r, g, b in LINEAR
+ *                                  light (the working space), decoded from the document's sRGB-encoded
+ *                                  value; set_param_value takes linear and encodes it back. The
+ *                                  declared default is a document (sRGB) value, like the picker's.
  *   POPUP                          value[0] = 1-based choice index
  *   CHECKBOX                       value[0] = 0 or 1
  *   others                         unused
@@ -126,7 +129,8 @@ typedef struct PrParamDef {
   /** CURVE: `curve_count` (x, y) pairs in 0..1, x ascending (setup: the default). */
   const double* curve;
   uint32_t curve_count;
-  /** GRADIENT: `gradient_count` stops of 5 doubles: position 0..1, r, g, b, a (straight). */
+  /** GRADIENT: `gradient_count` stops of 5 doubles: position 0..1, r, g, b, a (straight; SDK 1.2: r, g, b in
+   *  linear light at render time, like COLOR — the declared default is sRGB-encoded). */
   const double* gradient;
   uint32_t gradient_count;
   /** FILE (setup): the extensions the picker offers, '|'-separated, no dots ("" / NULL = any). */
