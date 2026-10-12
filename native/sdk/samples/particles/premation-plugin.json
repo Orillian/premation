@@ -2,11 +2,15 @@
   "manifestVersion": 1,
   "id": "com.premation.samples.particles",
   "name": "Particles (sample)",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "vendor": "Premation",
-  "sdk": { "major": 1, "minor": 1 },
+  "sdk": { "major": 1, "minor": 2 },
   "binary": { "windows": "particles.dll", "macos": "libparticles.dylib", "linux": "libparticles.so" },
   "effects": [
     { "matchName": "com.premation.samples.particles", "name": "Particles", "category": "Premation Samples" }
+  ],
+  "presets": [
+    { "name": "Warm Fountain", "category": "Fountains", "values": { "p2": 600, "p3": 320, "p4": 25, "p7": 400, "p8": "#ffb347" } },
+    { "name": "Slow Snow", "category": "Ambient", "values": { "p2": 300, "p3": 40, "p4": 180, "p6": 4, "p7": 60, "p8": [0.9, 0.95, 1, 1] } }
   ]
 }

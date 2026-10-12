@@ -488,3 +488,31 @@ TEST_CASE("plugin GPU: 1080p cost, GPU path vs CPU path", "[plugins][gpu][measur
   }
   glue.set_gpu_enabled(true);
 }
+
+TEST_CASE("plugin GPU (SDK 1.2): an asset image is uploaded once per file and kept with the device", "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  pl::AssetImage img;
+  img.width = 3;
+  img.height = 2;
+  img.rgba.assign(3 * 2 * 4, 0.25F);
+  const PrGpuWorld* a = glue.asset_texture(r->device(), "a.exr|1|2", img);
+  REQUIRE(a != nullptr);
+  CHECK(a->width == 3);
+  CHECK(a->height == 2);
+  CHECK(a->format == PR_GPU_FORMAT_RGBA32_FLOAT);
+  CHECK(a->wgpu_texture != nullptr);
+  CHECK(a->wgpu_texture_view != nullptr);
+  // The same file and modification time: the same texture, not a second upload.
+  CHECK(glue.asset_texture(r->device(), "a.exr|1|2", img) == a);
+  // A re-saved file (another key) is its own texture.
+  CHECK(glue.asset_texture(r->device(), "a.exr|1|3", img) != a);
+  // Past the device's limits: none (the plugin falls back), never an error texture.
+  pl::AssetImage huge;
+  huge.width = static_cast<std::int32_t>(r->device().max_texture_dimension()) + 1;
+  huge.height = 1;
+  CHECK(glue.asset_texture(r->device(), "huge", huge) == nullptr);
+}

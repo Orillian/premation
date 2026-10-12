@@ -81,12 +81,17 @@ function(premation_sample_plugin name)
   foreach(_f IN LISTS _ui)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/samples/${name}/ui/${_f} ${_dir}/ui/${_f} COPYONLY)
   endforeach()
+  # SDK 1.2: a sample's presets/*.json ship as the bundle's presets/.
+  file(GLOB _presets RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/samples/${name}/presets ${CMAKE_CURRENT_SOURCE_DIR}/samples/${name}/presets/*.json)
+  foreach(_f IN LISTS _presets)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/samples/${name}/presets/${_f} ${_dir}/presets/${_f} COPYONLY)
+  endforeach()
 endfunction()
 
 premation_sample_plugin(ripple samples/ripple/ripple.cpp)
 premation_sample_plugin(rings samples/rings/rings.cpp)
 premation_sample_plugin(checkout samples/checkout/checkout.cpp)
-premation_sample_plugin(particles samples/particles/particles.cpp)  # SDK 1.1: comp camera, lights, layer transforms
+premation_sample_plugin(particles samples/particles/particles.cpp)  # SDK 1.1: comp camera, lights, layer transforms; 1.2: trails + shutter blur (checkout_time), presets
 premation_sample_plugin(grademap samples/grademap/grademap.cpp)    # SDK 1.1: STRING / CURVE / GRADIENT / FILE params
 
 # The GPU samples call WebGPU through the proc table the host hands over, so

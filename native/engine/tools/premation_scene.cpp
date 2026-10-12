@@ -56,6 +56,11 @@
 #include "scene_renderer.hpp"
 #include "scene_textures.hpp"
 #include "text_measure.hpp"
+#if defined(PREMATION_SCENE_PLUGINS)
+#include "host.hpp"
+#include "render_glue.hpp"
+#include "scene_finish.hpp"
+#endif
 
 #if defined(PREMATION_HAVE_MEDIA)
 #include "media_system.hpp"
@@ -422,6 +427,8 @@ struct Options {
   /// --gpu-effects: E4's GPU route for layers the TypeScript bakes (the engine's
   /// default); off = the CPU bake, the parity gate's reference.
   bool gpuEffects = false;
+  /// --plugins DIR: native plugin bundles a scene's effects use (render-tests V3: the SDK samples).
+  std::string plugins;
 };
 
 struct Engine {
@@ -475,6 +482,20 @@ int batch(const Options& o) {
     if (fs::exists(de.path() / "project.json")) dirs.push_back(de.path());
   }
   std::ranges::sort(dirs);
+#if defined(PREMATION_SCENE_PLUGINS)
+  // Plugin SDK golden scenes: the host registers the plugins' effects with the document before a
+  // scene opens, every frame goes through its frame hook, and the render glue runs the effects.
+  std::unique_ptr<premation::plugins::PluginHost> pluginHost;
+  std::unique_ptr<premation::plugins::RenderGlue> pluginGlue;
+  if (!o.plugins.empty()) {
+    premation::plugins::HostOptions ho;
+    ho.searchPaths.emplace_back(o.plugins);
+    pluginHost = std::make_unique<premation::plugins::PluginHost>(std::move(ho));
+    (void)pluginHost->scan();
+    pluginGlue = std::make_unique<premation::plugins::RenderGlue>(pluginHost.get());
+    eng.renderer->set_native_effects(pluginGlue.get());
+  }
+#endif
   std::ostringstream rep;
   rep << "{\"adapter\":\"" << esc(eng.renderer->adapter()) << "\",\"backend\":\"" << eng.renderer->backend() << "\",\"frames\":[";
   bool first = true;
@@ -519,6 +540,9 @@ int batch(const Options& o) {
       std::string buildErr;
       try {
         nf = sc::build_native_frame(ctx, proj.comp, static_cast<double>(frame) / fps, view, mbOn, sceneId, frame);
+#if defined(PREMATION_SCENE_PLUGINS)
+        if (pluginHost) premation::plugins::finish_native_frame(ctx, proj.comp, static_cast<double>(frame) / fps, view, mbOn, nf, pluginHost.get());
+#endif
       } catch (const std::exception& e) {
         buildErr = e.what();
       }
@@ -996,6 +1020,7 @@ int run(int argc, char** argv) {
   if (opt.contains("frames")) o.frames = std::stoi(opt["frames"]);
   o.hash = opt.contains("hash");
   o.gpuEffects = opt.contains("gpu-effects");
+  if (opt.contains("plugins")) o.plugins = opt["plugins"];
   if (opt.contains("only")) {
     std::stringstream ss(opt["only"]);
     std::string s;

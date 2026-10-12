@@ -625,6 +625,7 @@ if(MOTION_BUILD_TESTS)
     PREMATION_PLUGINS_TOOL="$<TARGET_FILE:premation-plugins>")
   add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap)
   add_test(NAME engine_plugins_tests COMMAND engine_plugins_tests --reporter compact)
+  target_sources(engine_plugins_tests PRIVATE tests/test_plugin_sdk12.cpp)  # SDK 1.2: times, shutter, assets, presets
 endif()
 
 # anim.cpp samples keyframes through motion_eval's C++ entry points (eval.hpp,
@@ -1124,6 +1125,10 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
   add_executable(premation-scene tools/premation_scene.cpp)
   target_include_directories(premation-scene PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
   target_link_libraries(premation-scene PRIVATE engine_scene motion::options)
+  if(TARGET engine_plugins_gpu)  # --plugins: native plugin effects in golden scenes (render-tests, plugin SDK V3)
+    target_link_libraries(premation-scene PRIVATE engine_plugins_gpu)
+    target_compile_definitions(premation-scene PRIVATE PREMATION_SCENE_PLUGINS=1)
+  endif()
   if(MSVC)
     target_compile_definitions(premation-scene PRIVATE _CRT_SECURE_NO_WARNINGS)
   endif()
@@ -1149,6 +1154,18 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
       target_compile_definitions(engine_scene_tests PRIVATE _CRT_SECURE_NO_WARNINGS)  # getenv in parity_rebless.hpp
     endif()
     add_test(NAME engine_scene_tests COMMAND engine_scene_tests --reporter compact)
+
+    # Plugin SDK 1.2: the frame hook (plugins/scene_finish.cpp) over a real document — layer time,
+    # checkout_time samples, the shutter, the reach (the `particles` sample, the V3 golden scene).
+    add_executable(engine_plugins_scene_tests tests/test_plugin_finish.cpp)
+    target_link_libraries(engine_plugins_scene_tests PRIVATE engine_scene motion::options Catch2::Catch2WithMain)
+    target_compile_definitions(engine_plugins_scene_tests PRIVATE PREMATION_PLUGIN_BUNDLES="${PREMATION_PLUGIN_BUNDLES}"
+      PREMATION_GOLDEN_SCENES="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/scenes")
+    add_dependencies(engine_plugins_scene_tests particles)
+    if(MSVC)
+      target_compile_options(engine_plugins_scene_tests PRIVATE /bigobj)
+    endif()
+    add_test(NAME engine_plugins_scene_tests COMMAND engine_plugins_scene_tests --reporter compact)
   endif()
 
   # engine_frames: the scene builder + render graph + audio wired into the

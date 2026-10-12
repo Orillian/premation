@@ -1,0 +1,5 @@
+{
+  "name": "Comet Trails",
+  "category": "Trails",
+  "values": { "p2": 120, "p3": 260, "p6": 8, "p10": 6, "p11": true }
+}
