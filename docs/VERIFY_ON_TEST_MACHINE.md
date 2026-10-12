@@ -162,6 +162,28 @@ the WGSL compiled with naga. Everything below did not run.
       one "Missing plugin …" notice, renders the layer unaffected, keeps the
       effect after a save and reopen.
 
+## Plugin platform SDK 1.2 / P7 — real app (2026-10-13, agent, second instance, localhost backend + R2)
+
+- [x] Plugins ▸ Arrange ▸ Distribute Layers (and the palette's "Plugins: Distribute
+      Layers") on three selected layers: one entry "Distribute Layers"; one Undo
+      restores. (On layers at the same position it does nothing and says so only in
+      a 2.4 s toast.)
+- [x] statspanel docked (Layer Stats) and popped out (Undock Panel → its own
+      window): it lists the document; "Number selected" from the pop-out is one
+      entry ("Number Layers"). The pop-out's title bar shows the raw id
+      `plugin:com.premation.samples.statspanel/stats`.
+- [x] A `.ppm` through ppmio (File ▸ Import ▸ Files…): probed 320×180, renders.
+- [x] Export through ppmseq (Export ▸ Plugins ▸ PPM Sequence, work area 3 frames,
+      Quarter): 3 × 480×270 P6 files; frame 0 against the viewer: mean |Δ| 4.2/255
+      (sampled, resampling of fine rings).
+- [x] Presets: Effects & Presets ▸ Glossy Red (model3d) = one entry "Apply Glossy Red".
+- [x] model3d with a camera: moving the camera moves the box and the overlay
+      handle together (handle at the box's projected centre, 609 vs 608 px); the
+      material panel edits (Clay/Gloss) are engine edits (Gloss is two entries,
+      Roughness + Specular; Roughness/Specular changed nothing visible here).
+- [ ] Not run: rings' Debug ▸ Fault in DRAW_OVERLAY, the panel CSP probes, a
+      packaged build, P4 lights.
+
 ## Plugin platform P6 — STRING / CURVE / GRADIENT / FILE params (2026-10-08, docs/PLUGIN_SDK.md)
 
 Run in the cloud session: `engine_plugins_tests` `[params]` (the `grademap`
@@ -170,13 +192,19 @@ with get_asset_bytes, a missing file skipped); `pluginParams.native.test` on
 the headless engine (listEffects kinds, values stored, a `data` item kept by
 Remove Unused, relinked, saved). Not run (needs the Dawn build / the app):
 
-- [ ] `plugins/scene_native_fx.cpp` and `plugins/scene_finish.cpp` link into
+- [x] `plugins/scene_native_fx.cpp` and `plugins/scene_finish.cpp` link into
       `engine_scene` (they pass `-fsyntax-only` with the engine's flags here).
-- [ ] Real app: Grade Map on footage — edit Channels (text field), the Tone
+      (windows-clang-cl-engine builds them; 2026-10-13.)
+- [x] Real app: Grade Map on footage — edit Channels (text field), the Tone
       Curve (the Curves editor), the Gradient (stops); each edit is one undo step
-      and re-renders.
+      and re-renders. (2026-10-13, agent, second instance, localhost backend + R2:
+      on a Rings layer, "Set Grade Map Channels / Tone Curve / Gradient" one entry
+      each. Found and fixed: the card showed the declared defaults after any
+      re-render — 45338c34, 5cd62b77.)
 - [ ] LUT ▸ Choose… a 1D `.cube`: the image is graded; the item appears in the
       Project panel; Remove Unused keeps it; File ▸ Collect Files copies it.
+      (2026-10-13, agent: graded — G/B mean 148→86 / 131→61 with a warm 1D LUT — and
+      the item is in the Project panel; Remove Unused and Collect Files not run.)
 - [ ] Rename the `.cube` on disk and reopen the project: the layer shows "file
       'x.cube' is missing", the frame still renders (ungraded); Relink the item
       → graded again without touching the effect.
@@ -195,12 +223,21 @@ tests. Not run (needs the app window and the GPU build):
       draw over the layer in the viewer and follow the layer's transform (a
       rotated, scaled, parented layer); dragging the crosshair moves the rings
       live; Ctrl+Z after the drag is one step.
+      (2026-10-13, agent, second instance: the drag is ONE entry, "Drag Effect
+      Handle", and one Ctrl+Z restores Center. FAILS: on a Layer ▸ New ▸ Solid
+      (a shape layer) the overlay is drawn one layer-size away from the render —
+      Center (0,0) renders at the comp centre but the handle sits at the comp's
+      bottom-right corner (+1920,+1080 comp px); after a drag to the viewer
+      centre, Center = (−724,−400) and the rings render at the top-left. Not fixed.)
 - [ ] A plugin that draws many items (or crashes in DRAW_OVERLAY, rings' Debug
       ▸ Fault): the viewer still draws the frame and the other overlays.
-- [ ] Effect card ▸ Open Panel on `rings`: the panel loads (`plugin-ui://`),
+- [x] Effect card ▸ Open Panel on `rings`: the panel loads (`plugin-ui://`),
       shows the palette, Apply palette re-colours the render, Undo / Redo
       restore the palette and the panel's swatches follow; Preview frame shows
       the engine's render; the Spacing slider writes Spacing.
+      (2026-10-13, agent, second instance: load, Apply palette = one entry "Rings",
+      Edit ▸ Undo restores 6 colours and the swatches; Preview frame and Spacing
+      not exercised. Ctrl+Z while focus is in the panel frame does nothing.)
 - [ ] The panel cannot reach the network or the editor: in the panel's
       DevTools console, `fetch('https://example.com')` is refused by CSP,
       `parent.document` throws, `location = 'https://example.com'` does not
@@ -238,17 +275,33 @@ Not run:
       `plugins/entitlement.cpp` under clang-cl / -Werror, and
       `export/export_job.cpp` (`pluginEntitlement`) needs Dawn and was only
       read, not compiled, here.
-- [ ] With `MOTION_REVOCATION_KEY` set to the real operator key, sign in as a
+      (2026-10-13: windows-clang-cl-engine builds both (premation-engine relinked
+      today); macOS not built.)
+- [x] With `MOTION_REVOCATION_KEY` set to the real operator key, sign in as a
       Pro account: `<userData>/native-plugins/entitlement.json` appears; a
       Premation plugin installs from the Store and loads. Sign in as a free
       account: the Store's Install answers "Included with Premation Cloud —
       Upgrade" (402).
-- [ ] Remove `entitlement.json` (or sign out) and restart: the plugin is
+      (2026-10-13, agent, second instance, localhost backend + R2: the local .env
+      key's public half equals the pinned OPERATOR_PUBLIC_KEY / kOperatorPublicKey.
+      A test `premation.*` cloud plugin, published by a verified test `premation`
+      publisher: Pro → token, Install → "Loaded" with no restart; free → 402
+      `plan_required`, the Store shows "This plugin is included with Premation
+      Cloud. Upgrade to install it." — as text, there is no Upgrade button.)
+- [x] Remove `entitlement.json` (or sign out) and restart: the plugin is
       listed "Requires Premation Cloud", a project using it opens with the
       notice, renders the layer unaffected and keeps the effect after a save.
       "Check plan" after signing back in, then restart, brings it back.
-- [ ] Export a comp with a Premation plugin effect: it renders with a valid
+      (2026-10-13, agent: sign-out deletes the token; locked → layer drawn
+      #4F7EA8 unaffected, effect kept; Check plan + restart → rippled again. Found
+      and fixed: the effect card said "Missing plugin premation … until installed"
+      — c4c61e39.)
+- [x] Export a comp with a Premation plugin effect: it renders with a valid
       token and passes through without one.
+      (2026-10-13, agent, second instance: with the token the still matches the
+      viewer (centre 67,140,217 vs 66,140,217). Found and fixed: without one the
+      export was REFUSED at preflight ("requires Premation Cloud …") — 26e05003;
+      with it the still exports.)
 
 ## Plugin platform P2 — install from a file (2026-10-08, docs/PLUGIN_STORE.md §4a)
 
@@ -262,18 +315,29 @@ Windows / macOS):
       double-click a `.pplugin` (packed with `--key`) with Premation
       closed: the app opens, then the install dialog names the plugin,
       version and publisher; Install puts it in Effects with no restart.
-- [ ] The same with Premation already open (Windows: `second-instance`;
+- [x] The same with Premation already open (Windows: `second-instance`;
       macOS: `open-file`): the window comes forward and shows the dialog
       over the editor.
-- [ ] A package whose key is not the store's: the dialog says Unknown
+      (2026-10-13, agent, Windows only: a second `electron main.js <x.pplugin>`
+      with the same profile → the dialog in the running window. Not packaged, no
+      file association.)
+- [x] A package whose key is not the store's: the dialog says Unknown
       publisher and offers only "Install anyway" (Enter does nothing); after
       it, a later version signed with a different key is refused.
-- [ ] A tampered package (edit a byte of the binary inside the zip, or the
+      (2026-10-13, agent: found and fixed — Enter with focus in the dialog body
+      clicked "Install anyway" (a2b9b89d); ripple 1.0.1 signed with another key →
+      "installed signed by a different publisher key", refused.)
+- [x] A tampered package (edit a byte of the binary inside the zip, or the
       manifest) is refused with a message, nothing installed.
-- [ ] Copy a bundle folder into the machine-wide folder
+      (2026-10-13, agent: "A file does not match its manifest hash: rings.dll".)
+- [x] Copy a bundle folder into the machine-wide folder
       (`%ProgramData%\Premation\Plug-ins`, `/Library/Application
       Support/Premation/Plug-ins`): Plugins ▸ Rescan lists it and its effect
       renders, in the viewer and in an export.
+      (2026-10-13, agent: with `ProgramData` pointed at a scratch folder for the
+      test instance — nothing written to the real %ProgramData% — checkout,
+      distribute, ppmio and ppmseq copied in → Rescan lists them, no Uninstall;
+      ppmio footage renders and exports through ppmseq.)
 
 ## Plugin platform P1 — store end to end (2026-10-08, docs/PLUGIN_PLATFORM_PLAN.md)
 
@@ -284,26 +348,47 @@ download, R2 SigV4 against AWS's published vectors), the editor's
 `src/core/api` and `src/core/nativePlugins` tests, typecheck and lint.
 Not run (needs Postgres, a real R2 bucket, Windows/macOS):
 
-- [ ] motion-back on real Postgres: migration
+- [x] motion-back on real Postgres: migration
       `20261008120000_native_plugin_packages` applies on top of dev's schema
       (`npx prisma migrate deploy`); existing JS plugins still browse and
       download.
+      (2026-10-13, agent, local Postgres: 20261008120000, 20261008130000_plugin_tier
+      and 20261012120000_native_plugin_contributions are applied (finished
+      2026-10-12 11:18 UTC); `migrate deploy` today: no pending. The JS plugin
+      premation.vertex-3d browses (apiVersion ≥ 6) and downloads, SHA-256 equal to
+      the record.)
 - [ ] Gate: publish the `grade` sample private with
       `sign-plugin.mjs publish … --visibility private`, install it from
       Dashboard ▸ Plugins ▸ Store (owner) on Windows and on macOS; the effect
       appears in the Effects panel with no restart; export renders it.
+      (2026-10-13, agent, Windows only, localhost backend + R2: published private
+      (`pack-plugin --only-present`; the sample's manifest names three platforms),
+      installed from Dashboard ▸ Plugins ▸ Publish ▸ Your plugins (a private plugin
+      is not in the Store tab). Found and fixed: the dashboard install never
+      reached the engine, so the effect was missing until a restart — 049a70f0;
+      after it, Installed → Loaded and Color Grade (GPU) is in the Effects panel.
+      macOS not run.)
 - [ ] Per-platform packages: pack `examples/plugin-ci` with `--only-present`
       on two OSes, publish both as the same version; each machine's install
       downloads only its own package (compare the size in the record with the
       `.pplugin` you built on that OS).
-- [ ] Publishing public from an unverified publisher answers 403
+- [x] Publishing public from an unverified publisher answers 403
       `publisher_not_verified`; after an operator verifies the publisher
       (`POST /api/publishers/<id>/verify/admin { "verified": true }` as an
       admin) it publishes public and shows in the Store tab.
-- [ ] R2: with the four `R2_*` variables set against a real bucket, a
+      (2026-10-13, agent, localhost backend: PATCH listing public on the unverified
+      grade → 403 `publisher_not_verified`; a cloud-tier publish before
+      verification → 403 `tier_not_allowed`; after the test admin's verify/admin
+      the plugin lists public and shows in the Store tab.)
+- [x] R2: with the four `R2_*` variables set against a real bucket, a
       publish writes `plugin-packages/<id>/<version>/<sha256>.pplugin`, the
       install downloads it from the presigned URL, and a link older than 15
       minutes is refused by R2. Unpublishing removes the objects.
+      (2026-10-13, agent, localhost backend + the real R2 bucket: the key listed
+      and HEAD 200 (11710 B); the download record's presigned URL (900 s) gives
+      bytes equal in size and SHA-256 (9d11fdfa…); a presigned link with a 2 s TTL
+      fetched after 4 s → 403; `DELETE /plugins/<id>` → both test objects HEAD 404,
+      prefix empty.)
 
 ## AE parity step 2 (2026-10-06, docs/PLUGIN_STORE.md) — needs the GPU box and real platforms
 
