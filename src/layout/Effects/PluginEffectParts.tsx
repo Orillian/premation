@@ -11,8 +11,8 @@
  * failed query leaves every param as declared (the plugin may be disabled).
  */
 
-import { useEffect, useState } from 'react';
-import type { EffectParamUi, EffectUi } from '@motion/engine-api';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { EffectParamUi, EffectUi, PluginInfo } from '@motion/engine-api';
 import { secondsToFlicks } from '@motion/engine-api';
 import { Button } from '@components/Button';
 import { engine } from '@core/engine/engineInstance';
@@ -21,6 +21,7 @@ import { paths, ref } from '@core/engine/propRefs';
 import type { Effect } from '@core/inspector/effectCatalog';
 import type { PluginEffectDef } from '@core/inspector/pluginEffectDefs';
 import { pluginOfType } from '@core/project/missingPluginContent';
+import { pluginContribRevision, pluginForEffect, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import panel from './EffectsPanel.module.css';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
 
@@ -85,8 +86,30 @@ export function PluginEffectActions({
   );
 }
 
-/** An effect whose definition is unknown: its plugin is missing (or failed to load). */
+/**
+ * Why an effect has no definition, as the card says it: its plugin is installed
+ * but not loaded (requires Premation Cloud, turned off, failed), or missing.
+ */
+export function missingPluginReason(type: string, plugin: PluginInfo | undefined): string {
+  const kept = 'The effect is kept and passes the layer through';
+  if (!plugin) return `Missing plugin ${pluginOfType(type)}. ${kept} until the plugin is installed (Dashboard ▸ Plugins).`;
+  const who = plugin.name || plugin.id;
+  switch (plugin.status) {
+    case 'locked':
+      return `${who} requires Premation Cloud. ${kept} until the plan is active (Dashboard ▸ Plugins ▸ Installed ▸ Check plan).`;
+    case 'disabled':
+      return `${who} is turned off. ${kept} until it is turned on (Dashboard ▸ Plugins ▸ Installed).`;
+    case 'loaded':
+      // Loaded, yet this effect is not one of its own (an older version's effect).
+      return `${who} does not provide this effect. ${kept}.`;
+    default:
+      return `${who} did not load${plugin.error ? `: ${plugin.error}` : ''}. ${kept}.`;
+  }
+}
+
+/** An effect whose definition is unknown: its plugin is missing, or installed but not loaded. */
 export function MissingPluginCard({ effect, name }: { effect: Effect; name?: string }): JSX.Element {
+  useSyncExternalStore(subscribePluginContrib, pluginContribRevision, pluginContribRevision);
   return (
     <div className={panel.effectCardItem}>
       <div className={panel.effectCardHead}>
@@ -94,8 +117,7 @@ export function MissingPluginCard({ effect, name }: { effect: Effect; name?: str
         <span className={panel.itemLabelOff}>{name ?? effect.type}</span>
       </div>
       <div className={panel.hint} style={{ padding: '4px 8px 8px' }}>
-        Missing plugin {pluginOfType(effect.type)}. The effect is kept and passes the layer through until the plugin is
-        installed (Dashboard ▸ Plugins).
+        {missingPluginReason(effect.type, pluginForEffect(effect.type))}
       </div>
     </div>
   );

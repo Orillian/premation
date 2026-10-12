@@ -73,6 +73,16 @@ export function pluginName(id: string): string {
   return plugins.find((p) => p.id === id)?.name || id;
 }
 
+/**
+ * The plugin the engine lists for an effect type, loaded or not (locked,
+ * disabled, failed): by its effects' match names, else by the id the match
+ * name starts with (`<id>` or `<id>.<name>`). Undefined when no plugin claims it.
+ */
+export function pluginForEffect(type: string): PluginInfo | undefined {
+  return plugins.find((p) => p.effects.includes(type))
+    ?? plugins.find((p) => type === p.id || type.startsWith(`${p.id}.`));
+}
+
 export function pluginFormatId(plugin: string, module: string): PluginFormatId {
   return `plugin:${plugin}/${module}`;
 }
