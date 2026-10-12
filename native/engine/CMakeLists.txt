@@ -498,9 +498,12 @@ add_library(engine_plugins STATIC
   src/plugins/api_json.cpp  # P7a: the engine API as JSON (reflective, api_schema.inc)
   src/plugins/asset_image.cpp  # SDK 1.2: FILE params' images (linear premultiplied float) and sibling files
   src/plugins/presets.cpp  # SDK 1.2: presets a bundle ships (manifest `presets`, presets/*.json)
+  src/plugins/scene_eval.cpp  # SDK 1.2: the comp camera / lights / layer matrices off the document (samples, overlays)
 )
 target_include_directories(engine_plugins PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins ${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include)
 target_link_libraries(engine_plugins PUBLIC engine_core Threads::Threads PRIVATE ${CMAKE_DL_LIBS} motion::options)
+# scene_eval.cpp reads the comp's lights through the scene readers (lights3d.cpp, readers.cpp).
+target_link_libraries(engine_plugins PUBLIC engine_scene_core)
 if(MSVC)
   target_compile_options(engine_plugins PRIVATE /bigobj)
 endif()
@@ -1172,7 +1175,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
     target_link_libraries(engine_plugins_scene_tests PRIVATE engine_scene motion::options Catch2::Catch2WithMain)
     target_compile_definitions(engine_plugins_scene_tests PRIVATE PREMATION_PLUGIN_BUNDLES="${PREMATION_PLUGIN_BUNDLES}"
       PREMATION_GOLDEN_SCENES="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/scenes")
-    add_dependencies(engine_plugins_scene_tests particles)
+    add_dependencies(engine_plugins_scene_tests particles model3d)  # model3d: scene depth at sub-times (S6)
     if(MSVC)
       target_compile_options(engine_plugins_scene_tests PRIVATE /bigobj)
     endif()

@@ -48,10 +48,8 @@ PrWorld* TexelCheckouts::cpu_checkout(std::uint32_t checkoutId) {
 
 PrWorld* TexelCheckouts::cpu_output() { return &output_; }
 
-PrWorld* TexelCheckouts::cpu_scene_depth() {
-  if (depth_) return &*depth_;
-  const std::vector<float>* d = depthFn_ ? depthFn_() : nullptr;
-  if (d == nullptr || d->size() != std::size_t{width_} * height_) return nullptr;
+std::optional<PrWorld> TexelCheckouts::depth_world(const std::vector<float>* d) const {
+  if (d == nullptr || d->size() != std::size_t{width_} * height_) return std::nullopt;
   PrWorld w{};
   w.struct_size = sizeof(PrWorld);
   w.width = static_cast<std::int32_t>(width_);
@@ -59,8 +57,20 @@ PrWorld* TexelCheckouts::cpu_scene_depth() {
   w.row_bytes = static_cast<std::int32_t>(width_) * 4;
   w.format = PR_PIXEL_FORMAT_R32F;
   w.data = const_cast<float*>(d->data());  // NOLINT(cppcoreguidelines-pro-type-const-cast): PrWorld is a C struct; a plugin must not write it
-  depth_ = w;
-  return &*depth_;
+  return w;
+}
+
+PrWorld* TexelCheckouts::cpu_scene_depth() {
+  if (depth_) return &*depth_;
+  depth_ = depth_world(depthFn_ ? depthFn_() : nullptr);
+  return depth_ ? &*depth_ : nullptr;
+}
+
+PrWorld* TexelCheckouts::cpu_scene_depth_at(const TimeSample& sample) {
+  if (const auto it = depthAt_.find(sample.time); it != depthAt_.end()) return &it->second;
+  const std::optional<PrWorld> w = depth_world(depthAtFn_ ? depthAtFn_(sample) : nullptr);
+  if (!w) return nullptr;
+  return &depthAt_.emplace(sample.time, *w).first->second;
 }
 
 RenderInputs default_inputs(const EffectSpec& spec, std::string instance, std::uint32_t w, std::uint32_t h,
@@ -92,7 +102,7 @@ int param_slot(const EffectSpec& spec, std::uint32_t id) noexcept {
 }
 
 CallResult run_native_cpu(PluginHost& host, const RenderInputs& in, const TexelImage& input, const CheckoutImageFn& checkout,
-                          TexelImage& out, const TexelCheckouts::DepthFn& depth) {
+                          TexelImage& out, const TexelCheckouts::DepthFn& depth, const TexelCheckouts::DepthAtFn& depthAt) {
   CallResult r;
   const EffectSpec* spec = host.effect(in.matchName);
   if (spec == nullptr) {
@@ -106,6 +116,7 @@ CallResult run_native_cpu(PluginHost& host, const RenderInputs& in, const TexelI
   const PrPixelFormat wf = PluginHost::world_format(*spec, in.projectBits);
   TexelCheckouts io(wf, input.width, input.height);
   if (depth) io.set_scene_depth(depth);
+  if (depthAt) io.set_scene_depth_at(depthAt);
   for (const CheckoutRequest& c : reqs) {
     // The input at the frame's own time needs no round trip through the caller.
     if (c.paramIndex == 0 && c.time == in.layerTime) {

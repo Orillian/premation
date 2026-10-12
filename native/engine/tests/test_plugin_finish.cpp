@@ -11,6 +11,7 @@
 //   S4  a COMP_SPACE effect's reach grows its layer's buffer.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -41,8 +42,8 @@ namespace {
 constexpr const char* kParticles = "com.premation.samples.particles";
 constexpr double kFlicks = PR_TIME_SCALE;
 
-Json scene_json() {
-  std::ifstream f(fs::path(PREMATION_GOLDEN_SCENES) / "plugin-particles-orbit.json", std::ios::binary);
+Json scene_json(const char* name = "plugin-particles-orbit.json") {
+  std::ifstream f(fs::path(PREMATION_GOLDEN_SCENES) / name, std::ios::binary);
   std::stringstream ss;
   ss << f.rdbuf();
   auto j = premation::js::parse(ss.str());
@@ -245,4 +246,50 @@ TEST_CASE("SDK 1.2 S2: a USES_SHUTTER effect's layer is not supersampled through
 TEST_CASE("SDK 1.2 S4: a COMP_SPACE effect reaches the comp", "[plugins][finish]") {
   Fixture f(scene_json());
   CHECK(std::abs(num(f.frame(0).entry, "reachPx") - std::hypot(480.0, 360.0)) < 1e-9);
+}
+
+TEST_CASE("SDK 1.2 S6: PR_SAMPLE_SCENE_DEPTH carries the 3D layers and the camera at each sub-time", "[plugins][finish][sdk12]") {
+  // The model3d occlusion scene: a 3D wall, an orbiting camera (x keyed 320 → 160 over 1 s).
+  // The wall slides too, and motion blur is on: model3d (Motion Blur + Composite with Scene Depth)
+  // checks out the depth at its shutter's sub-times.
+  Json document = scene_json("plugin-model3d-occlusion.json");
+  document.find_mut("motionBlur")->set("enabled", Json::boolean(true));
+  fx_props(*find_node(document, "solid")).set("motionBlur", Json::boolean(true));
+  add_track(document, "wall", "x", keys({{0, 150}, {1, 450}}));
+  Fixture f(std::move(document));
+  const pl::EffectSpec* spec = f.host->effect("com.premation.samples.model3d");
+  REQUIRE(spec != nullptr);
+  const double t = 0.5;
+  const Fixture::Built b = f.frame(t, true);
+  pl::RenderInputs in;
+  pl::decode_native_fx(b.entry, *spec, in);
+  REQUIRE(in.motionBlur);
+  REQUIRE_FALSE(in.samples.empty());
+  // The frame's wall, for the motion each sub-time adds.
+  const sc::BuildContext ctx{f.d, f.view, *f.env, f.cache, nullptr, {}};
+  sc::NativeFrame nf = sc::build_native_frame(ctx, "comp_root", t, sc::export_view(480, 360, 480, 360), true);
+  const api::Renderable* wall = pl::find_renderable_in(nf.file.scene.renderables, "wall");
+  REQUIRE(wall != nullptr);
+  REQUIRE(wall->three_d.has_value());
+  const double frameX = wall->three_d->model.at(12);
+  for (const pl::TimeSample& s : in.samples) {
+    INFO("sample at " << static_cast<double>(s.time) / kFlicks);
+    CHECK((s.what & PR_SAMPLE_SCENE_DEPTH) != 0);
+    REQUIRE(s.depth.has_value());
+    // The wall, moved by what its x track adds between the frame and the sample (300 px/s).
+    const auto it = std::ranges::find_if(s.depth->models, [](const auto& m) { return m.first == "wall"; });
+    REQUIRE(it != s.depth->models.end());
+    const double dt = static_cast<double>(s.time) / kFlicks - t;
+    CHECK(std::abs(it->second.at(12) - (frameX + 300 * dt)) < 1e-3);
+    // The camera at that time (it moves too): not the frame's.
+    REQUIRE(s.depth->camera.has_value());
+    REQUIRE(in.camera.has_value());
+    // (the wire carries view and projection: the eye moves with x, keyed 320 -> 160 over 1 s)
+    double moved = 0;
+    for (std::size_t k = 0; k < 16; ++k) moved = std::max(moved, std::abs(s.depth->camera->view.at(k) - in.camera->view.at(k)));
+    CHECK(moved > 1e-6);
+    // The model's own layer is drawn by the effect, never into its depth: its id may be listed
+    // (the pass excludes it), but nothing else of the comp is missing.
+    CHECK(s.depth->models.size() >= 1);
+  }
 }

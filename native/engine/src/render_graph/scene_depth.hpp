@@ -29,7 +29,9 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "render_context.hpp"
@@ -45,6 +47,12 @@ class SceneDepth {
     std::array<double, 9> compToWorld{1, 0, 0, 0, 1, 0, 0, 0, 1};
     /// The effect's own layer: never drawn into its depth.
     std::string_view selfId;
+    /// SDK 1.2 (checkout_scene_depth_gpu_at): the 3D layers and camera posed at a sample's time.
+    /// `poseKey` names the pose (the sample's time; INT64_MIN = the frame's own); `camera` replaces
+    /// the comp camera (nullptr = the frame's) and `models` a drawn renderable's three_d.model by id.
+    std::int64_t poseKey = INT64_MIN;
+    const api::RenderCamera3D* camera = nullptr;
+    const std::vector<std::pair<std::string, std::vector<double>>>* models = nullptr;
   };
   struct Result {
     wgpu::Texture texture;  ///< r32float, TextureBinding | CopySrc | RenderAttachment

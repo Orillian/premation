@@ -113,6 +113,8 @@ export interface OverlayPluginItem {
   handle: number;
   /** A handle's shape: 0 square, 1 circle, 2 crosshair. */
   shape: number;
+  /** SDK 1.2 (PR_OVERLAY_SPACE_*): 0 = `points` are LAYER px (mapped with the layer), 1 = COMPOSITION px (a point the plugin projected through the comp camera itself; mapped by the viewer's comp → screen only). */
+  space: number;
 }
 
 /** B4 round 5 — one puppet pin as the rig resolves it at a time (OverlayRig, getRigPose). Layer space: the layer's local px, the space readGeometry's box is in. */
@@ -509,6 +511,7 @@ function encS_OverlayPluginItem(w: Writer, v: OverlayPluginItem): void {
   { const a = v.color; if (a.length) { w.byte(42); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
   w.byte(48); w.u32(v.handle);
   w.byte(56); w.u32(v.shape);
+  w.byte(64); w.u32(v.space);
 }
 function decS_OverlayPluginItem(r: Reader, end: number, o: any): OverlayPluginItem {
   const l_points: number[] = [];
@@ -518,11 +521,13 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): OverlayPluginIt
   let h_closed = false;
   let h_handle = false;
   let h_shape = false;
+  let h_space = false;
   let v_effect: string | undefined;
   let v_kind: string | undefined;
   let v_closed: boolean | undefined;
   let v_handle: number | undefined;
   let v_shape: number | undefined;
+  let v_space: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -533,6 +538,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): OverlayPluginIt
       case 42: { const e = r.ldEnd(); while (r.pos < e) l_color.push(r.f64()); r.expectAt(e); break; }
       case 48: v_handle = r.u32(); h_handle = true; break;
       case 56: v_shape = r.u32(); h_shape = true; break;
+      case 64: v_space = r.u32(); h_space = true; break;
       default: r.skip(key);
     }
   }
@@ -542,6 +548,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): OverlayPluginIt
   if (!h_closed) throw new DecodeError('OverlayPluginItem.closed: missing', 'missingField');
   if (!h_handle) throw new DecodeError('OverlayPluginItem.handle: missing', 'missingField');
   if (!h_shape) throw new DecodeError('OverlayPluginItem.shape: missing', 'missingField');
+  if (!h_space) throw new DecodeError('OverlayPluginItem.space: missing', 'missingField');
   o.effect = v_effect;
   o.kind = v_kind;
   o.points = l_points;
@@ -549,6 +556,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): OverlayPluginIt
   o.color = l_color;
   o.handle = v_handle;
   o.shape = v_shape;
+  o.space = v_space;
   return o;
 }
 function encS_RigPinPose(w: Writer, v: RigPinPose): void {

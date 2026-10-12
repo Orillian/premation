@@ -151,6 +151,17 @@ struct SceneLight {
   double shadowDiffusion = 0;
 };
 
+/// SDK 1.2 (PR_SAMPLE_SCENE_DEPTH): the comp's 3D layers and camera posed at a sample's time, for
+/// its scene depth (render_graph/scene_depth.cpp draws the frame's renderables with these instead).
+struct DepthPose {
+  /// The comp camera at that time; absent = the frame's (the comp has no camera layer, or the frame
+  /// shows the comp through a viewer's own view).
+  std::optional<api::RenderCamera3D> camera;
+  /// Renderable id → its `three_d.model` at that time (16, column-major). A drawn layer not listed
+  /// keeps its frame pose.
+  std::vector<std::pair<std::string, std::vector<double>>> models;
+};
+
 /// SDK 1.2: what the effect asked to read at one other LAYER time (checkout_time), as the
 /// engine evaluated it (scene_finish.cpp) — PR_SAMPLE_* bits in `what`.
 struct TimeSample {
@@ -160,6 +171,8 @@ struct TimeSample {
   std::optional<SceneCamera> camera;
   std::optional<std::vector<SceneLight>> lights;
   std::vector<std::optional<std::array<double, 16>>> layerMatrices;
+  /// PR_SAMPLE_SCENE_DEPTH (an effect with PR_OUT_FLAG_USES_SCENE_DEPTH).
+  std::optional<DepthPose> depth;
 };
 
 /// SDK 1.2: one checkout_time request from SMART_PRE_RENDER.
@@ -259,6 +272,10 @@ class CheckoutSource {
   /// 3D layers in the render's world (pr_host.h), made when first asked. nullptr = no GPU to make it.
   virtual const PrGpuWorld* gpu_scene_depth() { return nullptr; }
   virtual PrWorld* cpu_scene_depth() { return nullptr; }
+  /// SDK 1.2 checkout_scene_depth_gpu_at / _at: the same depth with the comp's 3D layers and camera
+  /// posed at a checked-out sample (`sample.depth`). nullptr = no GPU.
+  virtual const PrGpuWorld* gpu_scene_depth_at(const TimeSample& /*sample*/) { return nullptr; }
+  virtual PrWorld* cpu_scene_depth_at(const TimeSample& /*sample*/) { return nullptr; }
 };
 
 struct CallResult {

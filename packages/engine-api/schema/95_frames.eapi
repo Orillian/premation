@@ -105,6 +105,8 @@ struct OverlayPluginItem {
   handle: u32 = 6;
   /// A handle's shape: 0 square, 1 circle, 2 crosshair.
   shape: u32 = 7;
+  /// SDK 1.2 (PR_OVERLAY_SPACE_*): 0 = `points` are LAYER px (mapped with the layer), 1 = COMPOSITION px (a point the plugin projected through the comp camera itself; mapped by the viewer's comp → screen only).
+  space: u32 = 8;
 }
 
 /// B4 round 5 — one puppet pin as the rig resolves it at a time (OverlayRig, getRigPose). Layer space: the layer's local px, the space readGeometry's box is in.

@@ -37,6 +37,8 @@
 //   samples                          numbers [time, what] per checkout_time sample (layer flicks, PR_SAMPLE_*)
 //   s<i>.p.<key>                     sample i's animatable param values (number / flag / color, as p.<key>)
 //   s<i>.cam.*, s<i>.lights, s<i>.p.<key>.m   sample i's camera, lights and LAYER matrices (as above)
+//   s<i>.dp.cam.view, s<i>.dp.cam.proj  PR_SAMPLE_SCENE_DEPTH: the comp camera at sample i (absent = the frame's)
+//   s<i>.dp.ids, s<i>.dp.m           its 3D layers' renderable ids (text, one per line) and models (16 each)
 //
 // So a frame stays a pure function of the document: a plugin instance's state
 // travels with the frame, never from a cache only this process has.
@@ -86,9 +88,16 @@ struct SampleWire {
   std::vector<api::RenderLight3D> lights;
   /// PR_SAMPLE_LAYER_TRANSFORMS: LAYER param key → its world matrix (16, column-major).
   std::vector<std::pair<std::string, std::vector<double>>> matrices;
+  /// PR_SAMPLE_SCENE_DEPTH: the 3D layers and the camera at that time.
+  std::optional<DepthPose> depth;
 };
 /// Write the samples into the entry (`samples` + the `s<i>.` entries); sorted by time.
 void encode_native_samples(api::RenderEffect& e, const EffectSpec& spec, std::vector<SampleWire> samples);
+
+/// SDK 1.2: the scene a DRAW_OVERLAY / OVERLAY_DRAG request carries (doc::NativeScene) into `in` —
+/// compW / compH, and the camera, lights and LAYER matrices `spec` declared it reads, in the forms
+/// the render selectors get them (through a chain entry: the same conversions as a frame's).
+void decode_overlay_scene(const doc::NativeScene& scene, const EffectSpec& spec, RenderInputs& in);
 
 /// SDK 1.1: a FILE param resolved against the document (doc::native_file_of) into the
 /// entry — the path is part of the entry, so a relink re-renders the effect.

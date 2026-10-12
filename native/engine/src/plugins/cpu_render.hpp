@@ -48,6 +48,10 @@ class TexelCheckouts final : public CheckoutSource {
   using DepthFn = std::function<const std::vector<float>*()>;
   void set_scene_depth(DepthFn fn) { depthFn_ = std::move(fn); }
   PrWorld* cpu_scene_depth() override;
+  /// SDK 1.2: checkout_scene_depth_at — the depth posed at a checked-out sample (unset = none).
+  using DepthAtFn = std::function<const std::vector<float>*(const TimeSample&)>;
+  void set_scene_depth_at(DepthAtFn fn) { depthAtFn_ = std::move(fn); }
+  PrWorld* cpu_scene_depth_at(const TimeSample& sample) override;
 
  private:
   struct Slot {
@@ -63,6 +67,9 @@ class TexelCheckouts final : public CheckoutSource {
   PrWorld output_{};
   DepthFn depthFn_;
   std::optional<PrWorld> depth_;
+  DepthAtFn depthAtFn_;
+  std::map<std::int64_t, PrWorld> depthAt_;  ///< per sample time, alive while the effect renders
+  [[nodiscard]] std::optional<PrWorld> depth_world(const std::vector<float>* d) const;
 };
 
 /// Render inputs for `spec` with every param at its declared default: a
@@ -79,7 +86,8 @@ class TexelCheckouts final : public CheckoutSource {
 using CheckoutImageFn = std::function<const TexelImage*(const CheckoutRequest&)>;
 /// `depth` (SDK 1.2, S6): the scene depth checkout_scene_depth hands out (TexelCheckouts::DepthFn;
 /// empty = none).
+/// `depthAt` (SDK 1.2): checkout_scene_depth_at's source (TexelCheckouts::DepthAtFn; empty = none).
 CallResult run_native_cpu(PluginHost& host, const RenderInputs& in, const TexelImage& input, const CheckoutImageFn& checkout,
-                          TexelImage& out, const TexelCheckouts::DepthFn& depth = {});
+                          TexelImage& out, const TexelCheckouts::DepthFn& depth = {}, const TexelCheckouts::DepthAtFn& depthAt = {});
 
 }  // namespace premation::plugins

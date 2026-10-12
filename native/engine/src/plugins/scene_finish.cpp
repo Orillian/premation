@@ -23,8 +23,10 @@
 #include "native_effects.hpp"
 #include "readers.hpp"
 #include "scene.hpp"
+#include "scene_eval.hpp"
 #include "scene_native_fx.hpp"
 #include "snapshot_build.hpp"
+#include "../render_graph/threed.hpp"  // depth_eligible_3d: what the scene depth draws
 #include "timeline.hpp"
 #include "worldxf.hpp"
 
@@ -175,7 +177,8 @@ bool engine_decode(const std::filesystem::path& file, DecodedAsset& out, std::st
 class Sampler {
  public:
   Sampler(const scene::BuildContext& c, std::string_view comp, double t, const api::RenderFrameScene& scene)
-      : c_(c), comp_(comp), t_(t), scene_(scene), sc_{c.d, c.view, c.expr, c.cache} {}
+      : c_(c), t_(t), scene_(scene), sc_{c.d, c.view, c.expr, c.cache},
+        eval_(sc_, std::string(comp), scene.width > 0 ? scene.width : 1920, scene.height > 0 ? scene.height : 1080) {}
 
   SampleWire sample(const EffectSpec& spec, const api::RenderEffect& e, const std::string& layerId, const std::string& effectId,
                     const doc::NativeLayerClock& clock, const TimeRequest& q) {
@@ -196,6 +199,7 @@ class Sampler {
         if (auto m = matrix_at(id, compSeconds)) w.matrices.emplace_back(s.key, std::move(*m));
       }
     }
+    if ((q.what & PR_SAMPLE_SCENE_DEPTH) != 0 && spec.has(PR_OUT_FLAG_USES_SCENE_DEPTH)) w.depth = depth_at(compSeconds);
     return w;
   }
 
@@ -214,43 +218,6 @@ class Sampler {
 
  private:
   [[nodiscard]] bool frame3d() const { return scene_.camera3d && scene_.camera3d->view.size() == 16; }
-  [[nodiscard]] double comp_w() const { return scene_.width > 0 ? scene_.width : 1920; }
-  [[nodiscard]] double comp_h() const { return scene_.height > 0 ? scene_.height : 1080; }
-
-  const std::vector<const doc::Node*>& nodes() {
-    if (!nodes_) {
-      nodes_.emplace();
-      std::set<std::string> seen;
-      std::function<void(const doc::Node&)> walk = [&](const doc::Node& n) {
-        if (!seen.insert(n.id).second) return;
-        nodes_->push_back(&n);
-        for (const auto& ch : n.children) {
-          if (const doc::Node* child = c_.d.node(ch)) walk(*child);
-        }
-      };
-      if (const doc::Node* root = c_.d.node(comp_)) walk(*root);
-    }
-    return *nodes_;
-  }
-
-  /// Inside its in/out bar at comp `seconds` (the renderer's isLiveAt: own bars, else a plain group's).
-  bool live_at(const doc::Node& n, double seconds) {
-    std::vector<const doc::Bar*> clips = doc::tl_bars_for_node(c_.d, c_.view, n.id);
-    if (clips.empty()) {
-      const doc::Node* cur = &n;
-      for (int depth = 0; depth < 32 && cur != nullptr && cur->parent; ++depth) {
-        const doc::Node* parent = c_.d.node(*cur->parent);
-        if (parent == nullptr || doc::is_precomp(*parent) || parent->kind() != "group") break;
-        clips = doc::tl_bars_for_node(c_.d, c_.view, parent->id);
-        if (!clips.empty()) break;
-        cur = parent;
-      }
-    }
-    if (clips.empty()) return true;
-    const double frame = motion::js::round(seconds * doc::tl_fps_for_node(c_.d, c_.view, n.id));
-    return std::ranges::any_of(clips, [frame](const doc::Bar* b) { return b->active_at(frame); });
-  }
-
   /// The effect's `p.<key>` chain entries at layer time `layerSeconds` (animatable kinds only).
   std::vector<api::RenderEffectParam> params_at(const std::string& layerId, const std::string& effectId, double layerSeconds,
                                                 const api::RenderEffect& frameEntry) {
@@ -285,23 +252,8 @@ class Sampler {
   }
 
   std::optional<api::RenderCamera3D> eval_camera(double seconds) {
-    const std::vector<const doc::Node*>& ns = nodes();
-    const doc::Node* cam = nullptr;
-    for (std::size_t i = ns.size(); i-- > 0;) {
-      if (ns[i]->kind() == "camera" && ns[i]->visible && live_at(*ns[i], seconds)) {
-        cam = ns[i];
-        break;
-      }
-    }
-    if (cam == nullptr) return std::nullopt;
-    const motion::xf::Camera xc = doc::camera_at(sc_, *cam, comp_w(), comp_h(), seconds);
-    api::RenderCamera3D out;
-    const motion::xf::Mat4 v = motion::xf::camera_view_matrix(xc);
-    const motion::xf::Mat4 p = motion::xf::camera_projection_matrix(xc);
-    out.view.assign(v.begin(), v.end());
-    out.projection.assign(p.begin(), p.end());
-    out.eye = {xc.position.x, xc.position.y, xc.position.z};
-    if (scene_.camera3d && scene_.camera3d->dof) out.dof = scene_.camera3d->dof;  // the lens settings of the frame
+    std::optional<api::RenderCamera3D> out = eval_.camera(seconds);
+    if (out && scene_.camera3d && scene_.camera3d->dof) out->dof = scene_.camera3d->dof;  // the lens settings of the frame
     return out;
   }
 
@@ -331,46 +283,7 @@ class Sampler {
     return it->second;
   }
 
-  std::vector<api::RenderLight3D> eval_lights(double seconds) {
-    std::vector<scene::SceneLight> list;
-    doc::PCtx pc{const_cast<doc::Document&>(c_.d), c_.view, c_.expr, c_.cache};  // NOLINT(cppcoreguidelines-pro-type-const-cast): world_2d_at only reads
-    for (const doc::Node* n : nodes()) {
-      if (n->kind() != "light" || !n->visible || !live_at(*n, seconds)) continue;
-      const scene::LightProps lt = scene::read_node_light(*n);
-      if (lt.type == "environment") continue;  // the probe lights through its SH, not light slots
-      const double keyTime = doc::comp_to_keyframe_time(c_.d, c_.view, n->id, seconds);
-      const scene::Values av(doc::anim_evaluate_node(c_.d, c_.expr, c_.cache, n->id, keyTime));
-      scene::SceneLight r = scene::scene_light_of(lt);
-      r.shadowMap = lt.shadows && lt.type != "ambient";
-      r.intensity = av.get("intensity").value_or(lt.intensity);
-      r.radius = av.get("radius").value_or(lt.radius);
-      r.angle = av.get("lightAngle").value_or(lt.angle) + motion::xf::decompose(doc::world_2d_at(pc, n->id, seconds)).rotation * (180 / 3.14159265358979323846);
-      r.cone = av.get("lightCone").value_or(lt.cone);
-      r.coneFeather = av.get("lightConeFeather").value_or(lt.coneFeather);
-      r.falloffDistance = av.get("falloffDistance").value_or(lt.falloffDistance);
-      r.shadowDarkness = av.get("shadowDarkness").value_or(lt.shadowDarkness);
-      r.shadowDiffusion = av.get("shadowDiffusion").value_or(lt.shadowDiffusion);
-      const auto g = doc::read_geometry_local(*n);
-      double z = 0;
-      if (const doc::Component* t = n->comp("Transform"); t != nullptr && t->props.at("z").is_number()) z = t->props.at("z").num();
-      const motion::xf::Vec3 wp = doc::world_point_at(
-          sc_, n->id, seconds, {av.get("x").value_or(g ? g->x : 0), av.get("y").value_or(g ? g->y : 0), av.get("z").value_or(z)});
-      r.x = wp.x;
-      r.y = wp.y;
-      r.z = wp.z;
-      const std::optional<double> px = av.get("poiX") ? av.get("poiX") : lt.poi ? std::optional<double>((*lt.poi)[0]) : std::nullopt;
-      const std::optional<double> py = av.get("poiY") ? av.get("poiY") : lt.poi ? std::optional<double>((*lt.poi)[1]) : std::nullopt;
-      const std::optional<double> pz = av.get("poiZ") ? av.get("poiZ") : lt.poi ? std::optional<double>((*lt.poi)[2]) : std::nullopt;
-      if (px || py || pz) {
-        const motion::xf::Vec3 w = doc::world_point_at(sc_, n->id, seconds, {px.value_or(0), py.value_or(0), pz.value_or(0)});
-        r.poi = std::array<double, 3>{w.x, w.y, w.z};
-      } else {
-        r.poi = std::nullopt;
-      }
-      list.push_back(std::move(r));
-    }
-    return scene::to_shader_lights(list);
-  }
+  std::vector<api::RenderLight3D> eval_lights(double seconds) { return eval_.lights(seconds); }
 
   std::vector<api::RenderLight3D> lights_at(double seconds) {
     if (lightsFollowFrame_ < 0) lightsFollowFrame_ = frame3d() && eval_lights(t_).size() != scene_.lights3d.size() ? 1 : 0;
@@ -382,18 +295,7 @@ class Sampler {
   }
 
   /// A layer's own layer → world 4×4 off the document (2D: its affine at z = 0).
-  std::optional<motion::xf::Mat4> world_of(const std::string& id, double seconds) {
-    const auto key = std::make_pair(id, flicks(seconds));
-    if (const auto it = worlds_.find(key); it != worlds_.end()) return it->second;
-    std::optional<motion::xf::Mat4> m;
-    if (const doc::Node* n = c_.d.node(id); n != nullptr && doc::is_3d_enabled(*n)) {
-      m = doc::world_3d_at(sc_, id, seconds, comp_w(), comp_h());
-    } else if (const auto space = doc::layer_space_at(sc_, id, seconds, comp_w(), comp_h())) {
-      if (const auto* flat = std::get_if<motion::xf::LayerSpace2D>(&*space)) m = motion::xf::from_mat2d(flat->world);
-    }
-    worlds_.emplace(key, m);
-    return m;
-  }
+  std::optional<motion::xf::Mat4> world_of(const std::string& id, double seconds) { return eval_.world(id, seconds); }
 
   /// A LAYER param's matrix at comp `seconds`, in the frame's convention: the frame's renderable
   /// matrix moved by how the layer moved since the frame (W(t) · W(frame)⁻¹ · R(frame)).
@@ -412,18 +314,44 @@ class Sampler {
     return std::vector<double>(out.begin(), out.end());
   }
 
+  /// SDK 1.2 (PR_SAMPLE_SCENE_DEPTH): the comp camera and every 3D layer the scene depth draws
+  /// (render_graph/scene_depth.cpp collect_drawn: the depth-eligible 3D renderables and the 3D
+  /// layers of collapsed 3D precomps) posed at comp `seconds`. A layer the document cannot pose
+  /// (a precomp instance's copy) keeps its frame model.
+  DepthPose depth_at(double seconds) {
+    const std::int64_t k = flicks(seconds);
+    if (const auto it = depths_.find(k); it != depths_.end()) return it->second;
+    DepthPose d;
+    d.camera = camera_at(seconds);
+    std::vector<const api::Renderable*> drawn;
+    const std::function<void(const std::vector<api::Renderable>&, int)> collect = [&](const std::vector<api::Renderable>& list, int depth) {
+      for (const api::Renderable& r : list) {
+        if (r.matte_source || r.light_wash || !(r.opacity > 0)) continue;
+        if (r.precomp) {
+          if (!r.precomp->camera3d && !r.precomp->flat_width && depth < 16) collect(r.precomp_children, depth + 1);
+          continue;
+        }
+        if (rg::depth_eligible_3d(r) && r.three_d->model.size() == 16) drawn.push_back(&r);
+      }
+    };
+    collect(scene_.renderables, 0);
+    for (const api::Renderable* r : drawn) {
+      if (auto m = matrix_at(r->id, seconds)) d.models.emplace_back(r->id, std::move(*m));
+    }
+    return depths_.emplace(k, std::move(d)).first->second;
+  }
+
   const scene::BuildContext& c_;
-  std::string comp_;
   double t_;
   const api::RenderFrameScene& scene_;
   doc::SpaceCtx sc_;
-  std::optional<std::vector<const doc::Node*>> nodes_;
+  SceneEval eval_;  // the camera, lights and world matrices off the document, kept per time
   int cameraFollowsFrame_ = -1;
   int lightsFollowFrame_ = -1;
   std::map<std::int64_t, std::optional<api::RenderCamera3D>> cameras_;
   std::map<std::int64_t, std::vector<api::RenderLight3D>> lights_;
-  std::map<std::pair<std::string, std::int64_t>, std::optional<motion::xf::Mat4>> worlds_;
   std::map<std::pair<std::string, std::int64_t>, scene::Values> values_;
+  std::map<std::int64_t, DepthPose> depths_;
 };
 
 }  // namespace

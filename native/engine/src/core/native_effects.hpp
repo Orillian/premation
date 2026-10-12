@@ -61,7 +61,7 @@ struct NativeEffect {
   std::vector<std::pair<std::string, std::string>> files;
 };
 
-/// SDK 1.1 — one item of a plugin's viewer overlay (DRAW_OVERLAY), layer px.
+/// SDK 1.1 — one item of a plugin's viewer overlay (DRAW_OVERLAY), layer px (SDK 1.2: or comp px, `space`).
 struct NativeOverlayItem {
   std::string kind;  ///< "line" | "path" | "handle"
   std::vector<double> points;  ///< x, y pairs
@@ -69,14 +69,29 @@ struct NativeOverlayItem {
   std::vector<double> color;   ///< straight rgba 0..1; empty = the viewer's handle colour
   std::uint32_t handle = 0;    ///< a handle's id (OVERLAY_DRAG)
   std::uint32_t shape = 0;     ///< PR_OVERLAY_HANDLE_*
+  std::uint32_t space = 0;     ///< SDK 1.2 PR_OVERLAY_SPACE_*: 0 layer px, 1 composition px
 };
 
-/// SDK 1.1 — dragEffectOverlay's pointer, layer px.
+/// SDK 1.1 — dragEffectOverlay's pointer, in the handle's space (layer px; SDK 1.2: or comp px).
 struct NativeOverlayDrag {
   std::uint32_t handle = 0;
   std::int32_t phase = 0;  ///< PR_OVERLAY_DRAG_*
   double x = 0, y = 0, startX = 0, startY = 0;
+  std::uint32_t space = 0;  ///< SDK 1.2 PR_OVERLAY_SPACE_*
 };
+
+/// SDK 1.2 — what a plugin's get_comp_camera / get_comp_lights / get_layer_transform answer in
+/// DRAW_OVERLAY / OVERLAY_DRAG: the composition the layer is in, at the request's time, read off
+/// the document (NativeEffects::fill_scene; the plugin host evaluates only what the effect declared).
+struct NativeScene {
+  double compW = 0, compH = 0;
+  std::optional<api::RenderCamera3D> camera;  ///< absent = no camera layer: the comp's default view
+  std::vector<api::RenderLight3D> lights;
+  /// LAYER param key → that layer's world matrix (layer px → world px, 16, column-major).
+  std::vector<std::pair<std::string, std::vector<double>>> matrices;
+};
+
+struct SpaceCtx;  // worldxf.hpp
 
 /// What invokeEffectAction hands the host.
 struct NativeActionRequest {
@@ -104,6 +119,8 @@ struct NativeActionRequest {
   double timeSeconds = 0;
   /// SDK 1.2: the layer's own time at `timeSeconds` (handlers_native.hpp NativeLayerClock).
   std::optional<double> layerTimeSeconds;
+  /// SDK 1.2: the comp camera / lights / LAYER matrices for DRAW_OVERLAY / OVERLAY_DRAG (fill_scene).
+  std::optional<NativeScene> scene;
 };
 
 /// What the plugin changed.
@@ -152,6 +169,12 @@ class NativeEffects {
   using OverlayFn = std::function<std::variant<std::vector<NativeOverlayItem>, NativeFailure>(const NativeActionRequest&)>;
   using DragFn = std::function<std::variant<NativeEdit, NativeFailure>(const NativeActionRequest&, const NativeOverlayDrag&)>;
   static void set_overlay_handlers(OverlayFn draw, DragFn drag);
+  /// SDK 1.2: fill `r.scene` (the comp camera, lights, LAYER matrices at r.timeSeconds) for an
+  /// overlay call — the host's evaluator (it reads what the effect declared it uses). No handler:
+  /// `r.scene` stays empty and the scene callbacks answer PR_ERR_INVALID_CALLBACK as before.
+  using SceneFn = std::function<void(const SpaceCtx& space, NativeActionRequest& r)>;
+  static void set_scene_handler(SceneFn fn);
+  static void fill_scene(const SpaceCtx& space, NativeActionRequest& r);
   [[nodiscard]] static std::variant<std::vector<NativeOverlayItem>, NativeFailure> draw_overlay(const NativeActionRequest& r);
   [[nodiscard]] static std::variant<NativeEdit, NativeFailure> overlay_drag(const NativeActionRequest& r, const NativeOverlayDrag& d);
   static void clear_handlers();

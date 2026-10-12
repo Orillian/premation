@@ -2542,7 +2542,7 @@ export interface InvokeEffectAction {
   payload?: string;
 }
 
-/** Plugin SDK 1.1 — a drag of a plugin effect's viewer-overlay handle (PR_CMD_OVERLAY_DRAG; the handle comes from the `plugin` overlay kind). `x`, `y` is the pointer and `startX`, `startY` where the drag began, LAYER px; `phase` 0 begin, 1 move, 2 end. The plugin's param writes land like invokeEffectAction's (an animated param keys at `time`); the editor wraps a drag in beginGesture / endGesture, so the whole drag is ONE undo entry. `notFound` for an effect that draws no overlay. */
+/** Plugin SDK 1.1 — a drag of a plugin effect's viewer-overlay handle (PR_CMD_OVERLAY_DRAG; the handle comes from the `plugin` overlay kind). `x`, `y` is the pointer and `startX`, `startY` where the drag began, in the handle's `space` (0 LAYER px; 1 COMPOSITION px, SDK 1.2: a handle the plugin drew in comp space); `phase` 0 begin, 1 move, 2 end. The plugin's param writes land like invokeEffectAction's (an animated param keys at `time`); the editor wraps a drag in beginGesture / endGesture, so the whole drag is ONE undo entry. `notFound` for an effect that draws no overlay. */
 export interface DragEffectOverlay {
   group: PropRef;
   handle: number;
@@ -2551,6 +2551,7 @@ export interface DragEffectOverlay {
   startX: number;
   startY: number;
   phase: number;
+  space: number;
 }
 
 /** AE's Add ▸ Property: add OPTIONAL properties that exist only once added — a text animator's Anchor Point, Skew Axis, Line Anchor, Character Value, Fill / Stroke Hue·Saturation·Brightness, Stroke Opacity, Fill Color, Stroke Color, and Font Axis properties ('axis<TAG>'). `parent` is the property group ('text/animators/<id>/props'); `names` are the new properties' path leaves. A property already present is kept as it is (AE's menu disables it). Returns the property paths in input order. Undo removes what this added. */
@@ -4812,6 +4813,8 @@ export interface OverlayPluginItem {
 export interface RigPinPose {
   id: string;
   /** pinKindOf: advanced (the default), position, bend, starch, overlap. */
+  /** SDK 1.2 (PR_OVERLAY_SPACE_*): 0 = `points` are LAYER px (mapped with the layer), 1 = COMPOSITION px (a point the plugin projected through the comp camera itself; mapped by the viewer's comp → screen only). */
+  space: number;
   kind: string;
   /** Where the pin is DRAWN: its live position — a bend pin's solved mesh vertex — carried through the skeleton pose (identity without one). */
   x: number;

@@ -21,6 +21,10 @@
 
 #include "cpu_render.hpp"
 #include "host.hpp"
+#include "json.hpp"
+#include "native_effects.hpp"
+#include "transform.hpp"
+#include "values.hpp"
 
 namespace pl = premation::plugins;
 namespace fs = std::filesystem;
@@ -250,5 +254,128 @@ TEST_CASE("model3d: its own crash is contained (Debug ▸ Fault, child process)"
   for (const int fault : {2, 3, 5, 7}) {
     INFO("fault " << fault);
     CHECK(run_tool("--bits 32 crash-check com.premation.samples.model3d " + std::to_string(fault)) == 0);
+  }
+}
+
+namespace {
+
+namespace doc = premation::doc;
+namespace api = premation::api;
+using premation::js::Json;
+
+/// comp px of world point p through a column-major projection · view.
+std::array<double, 2> project(const std::vector<double>& proj, const std::vector<double>& view, const std::array<double, 3>& p) {
+  std::array<double, 4> v{};
+  for (std::size_t r = 0; r < 4; ++r) v.at(r) = view.at(r) * p[0] + view.at(4 + r) * p[1] + view.at(8 + r) * p[2] + view.at(12 + r);
+  std::array<double, 4> c{};
+  for (std::size_t r = 0; r < 4; ++r) c.at(r) = proj.at(r) * v[0] + proj.at(4 + r) * v[1] + proj.at(8 + r) * v[2] + proj.at(12 + r) * v[3];
+  return {c[0] / c[3], c[1] / c[3]};
+}
+double view_z(const std::vector<double>& view, const std::array<double, 3>& p) {
+  return view.at(2) * p[0] + view.at(6) * p[1] + view.at(10) * p[2] + view.at(14);
+}
+
+double scalar_of(const doc::NativeEdit& e, const std::string& key) {
+  for (const auto& [k, v] : e.params) {
+    if (k == key) return doc::get<doc::VK::scalar>(v);
+  }
+  FAIL("no write to " << key);
+  return 0;
+}
+
+}  // namespace
+
+TEST_CASE("model3d (SDK 1.2): the viewer handle follows the comp camera; a drag moves the model in the view plane",
+          "[plugins][model3d][overlay][sdk12]") {
+  pl::PluginHost host(options());
+  (void)host.scan();
+  const pl::EffectSpec* spec = host.effect(kModel3d);
+  REQUIRE(spec != nullptr);
+  // A camera off to the side, turned and tilted: Position's x / y is NOT where the model shows.
+  motion::xf::Camera cam = motion::xf::default_camera(kW, kH);
+  cam.position.x += 60;
+  cam.orientation = motion::xf::Orientation{15, -10, std::nullopt};
+  const motion::xf::Mat4 vm = motion::xf::camera_view_matrix(cam);
+  const motion::xf::Mat4 pm = motion::xf::camera_projection_matrix(cam);
+  api::RenderCamera3D rc;
+  rc.view.assign(vm.begin(), vm.end());
+  rc.projection.assign(pm.begin(), pm.end());
+  rc.eye = {cam.position.x, cam.position.y, cam.position.z};
+
+  doc::NativeActionRequest req;
+  req.layer = "L";
+  req.effectId = "m3d";
+  req.type = kModel3d;
+  req.params = Json::object();
+  req.params.set("p2X", Json::number(30));  // no rendered instance: the layer size is 0, so these are world px
+  req.params.set("p2Y", Json::number(20));
+  req.params.set("p2Z", Json::number(50));
+  req.timeSeconds = 0;
+  const std::array<double, 3> pos{30, 20, 50};
+
+  SECTION("an older host's view (no scene in the request): layer px at Position's x / y") {
+    const auto r = host.draw_overlay(req);
+    REQUIRE(std::holds_alternative<std::vector<doc::NativeOverlayItem>>(r));
+    const auto& items = std::get<std::vector<doc::NativeOverlayItem>>(r);
+    const auto h = std::ranges::find_if(items, [](const doc::NativeOverlayItem& i) { return i.kind == "handle"; });
+    REQUIRE(h != items.end());
+    CHECK(h->space == PR_OVERLAY_SPACE_LAYER);
+    CHECK(h->points == std::vector<double>{30, 20});
+  }
+
+  doc::NativeScene scene;
+  scene.compW = kW;
+  scene.compH = kH;
+  scene.camera = rc;
+  req.scene = scene;
+
+  SECTION("DRAW_OVERLAY reads the camera: the handle is the projected Position, in comp px") {
+    const auto r = host.draw_overlay(req);
+    REQUIRE(std::holds_alternative<std::vector<doc::NativeOverlayItem>>(r));
+    const auto& items = std::get<std::vector<doc::NativeOverlayItem>>(r);
+    REQUIRE(items.size() == 2);
+    const auto expect = project(rc.projection, rc.view, pos);
+    for (const doc::NativeOverlayItem& i : items) CHECK(i.space == PR_OVERLAY_SPACE_COMP);
+    const auto h = std::ranges::find_if(items, [](const doc::NativeOverlayItem& i) { return i.kind == "handle"; });
+    REQUIRE(h != items.end());
+    REQUIRE(h->points.size() == 2);
+    INFO("handle " << h->points[0] << "," << h->points[1] << " expect " << expect[0] << "," << expect[1]);
+    CHECK(std::abs(h->points[0] - expect[0]) < 1e-6);
+    CHECK(std::abs(h->points[1] - expect[1]) < 1e-6);
+    CHECK(std::abs(h->points[0] - 30) > 5);  // not the naive layer-px spot
+  }
+
+  SECTION("OVERLAY_DRAG in comp px: the model lands under the pointer at its own camera depth") {
+    const std::array<double, 2> target{70, 12};
+    doc::NativeOverlayDrag d;
+    d.handle = 1;
+    d.phase = PR_OVERLAY_DRAG_MOVE;
+    d.x = target[0];
+    d.y = target[1];
+    d.space = PR_OVERLAY_SPACE_COMP;
+    const auto r = host.overlay_drag(req, d);
+    REQUIRE(std::holds_alternative<doc::NativeEdit>(r));
+    const auto& edit = std::get<doc::NativeEdit>(r);
+    const std::array<double, 3> moved{scalar_of(edit, "p2X"), scalar_of(edit, "p2Y"), scalar_of(edit, "p2Z")};
+    const auto at = project(rc.projection, rc.view, moved);
+    INFO("moved to " << moved[0] << "," << moved[1] << "," << moved[2] << " → " << at[0] << "," << at[1]);
+    CHECK(std::abs(at[0] - target[0]) < 1e-6);
+    CHECK(std::abs(at[1] - target[1]) < 1e-6);
+    CHECK(std::abs(view_z(rc.view, moved) - view_z(rc.view, pos)) < 1e-6);  // the view plane, at the model's depth
+    CHECK(std::abs(moved[2] - pos[2]) > 1e-3);  // the camera is turned: the plane is not z = const
+  }
+
+  SECTION("a layer-px drag (an older editor) still moves x / y only") {
+    doc::NativeOverlayDrag d;
+    d.handle = 1;
+    d.phase = PR_OVERLAY_DRAG_MOVE;
+    d.x = 5;
+    d.y = 6;
+    const auto r = host.overlay_drag(req, d);
+    REQUIRE(std::holds_alternative<doc::NativeEdit>(r));
+    const auto& edit = std::get<doc::NativeEdit>(r);
+    CHECK(scalar_of(edit, "p2X") == 5);
+    CHECK(scalar_of(edit, "p2Y") == 6);
+    CHECK(scalar_of(edit, "p2Z") == 50);
   }
 }

@@ -19,6 +19,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -751,6 +753,114 @@ TEST_CASE("plugin GPU (SDK 1.2 S8): model3d on the GPU matches its CPU path; sce
   const float* cb = px_at(cpuOccluded, kDW / 2 - 6, kDH / 2);
   CHECK(cb[1] > 0.9F);
   CHECK(cb[0] < 0.02F);
+}
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): a collapsed 3D precomp's 3D layers are in the scene depth; a sealed one's and a card's are not",
+          "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  const double zoom = default_zoom();
+  // A precomp layer whose only content is a 3D wall 100 px behind the comp's plane.
+  const auto precomp = [](bool card, bool sealed) {
+    api::Renderable pc;
+    pc.id = "pc";
+    pc.kind = api::RenderableKind::image;
+    pc.model_matrix = {static_cast<double>(kDW), 0, 0, 0, static_cast<double>(kDH), 0, 0, 0, 1};
+    pc.bounds = {0, 0, static_cast<double>(kDW), static_cast<double>(kDH)};
+    pc.opacity = 1;
+    pc.texture_key = "precomp:pc";
+    api::RenderPrecompFrame frame;
+    if (card) {
+      frame.flat_width = kDW;
+      frame.flat_height = kDH;
+    }
+    if (sealed) frame.camera3d = default_camera3d();
+    pc.precomp = frame;
+    pc.precomp_children.push_back(solid3d("inner", 20, 16, 56, 32, 100, {0, 1, 0, 1}));
+    return pc;
+  };
+  const auto centre_z = [&](const Rendered& out) {
+    const float* c = px_at(out, kDW / 2 + 8, kDH / 2);
+    return c[2] == 0.0F ? static_cast<double>(c[0]) * 1000.0 : std::numeric_limits<double>::infinity();
+  };
+  // Collapsed (no camera of its own, not a card): the 3D renderer draws the wall under the comp's
+  // camera with its own model, so the depth has it: z = 100 + zoom.
+  const Rendered collapsed = render(*r, depth_frame({precomp(false, false)}, {model3d_effect("fx", 2, false)}));
+  INFO("collapsed centre z " << centre_z(collapsed));
+  CHECK(std::abs(centre_z(collapsed) - (100 + zoom)) < 0.5);
+  // A card (flatWidth) and a sealed precomp (its own camera) are flat pictures in the comp: no depth.
+  const Rendered asCard = render(*r, depth_frame({precomp(true, false)}, {model3d_effect("fx", 2, false)}));
+  CHECK(std::isinf(centre_z(asCard)));
+  const Rendered sealed = render(*r, depth_frame({precomp(false, true)}, {model3d_effect("fx", 2, false)}));
+  CHECK(std::isinf(centre_z(sealed)));
+  // A precomp at 0 opacity draws nothing: nothing in the depth either.
+  auto hidden = precomp(false, false);
+  hidden.opacity = 0;
+  const Rendered none = render(*r, depth_frame({hidden}, {model3d_effect("fx", 2, false)}));
+  CHECK(std::isinf(centre_z(none)));
+}
+
+TEST_CASE("plugin GPU (SDK 1.2 S6): checkout_scene_depth_gpu_at — model3d's own motion blur occludes each sub-frame at its time",
+          "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  // At the frame's time a green wall covers the whole view in front of the model (z = -60). At the
+  // shutter's two sub-times (what finish_native_frame evaluates off the document) the wall has moved
+  // far behind the model (z = +2000): every sub-frame sees the model.
+  const auto wall = solid3d("wall", -2000, -2000, 4000 + kDW, 4000 + kDH, -60, {0, 1, 0, 1});
+  const auto behind = solid3d("wall", -2000, -2000, 4000 + kDW, 4000 + kDH, 2000, {0, 1, 0, 1});
+  // The sample times model3d asks for: 2 samples over a 180° shutter at phase 0, 30 fps.
+  const std::int64_t step = std::llround(static_cast<double>(PR_TIME_SCALE) / 30);
+  const std::array<std::int64_t, 2> times{std::llround(45.0 / 360 * static_cast<double>(step)), std::llround(135.0 / 360 * static_cast<double>(step))};
+  const auto blurred = [&](bool depthAt) {
+    api::RenderEffect e = model3d_effect("fx", 1, true);
+    for (auto p : {num("mb", 1), num("shutterAngle", 180), num("shutterPhase", 0), num("mbSamples", 2), num("timeStep", static_cast<double>(step)),
+                   num("layerTime", 0), num("compTime", 0), num("p.p14", 1)}) {
+      e.params.push_back(p);
+    }
+    const std::uint32_t what = PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LAYER_TRANSFORMS | (depthAt ? PR_SAMPLE_SCENE_DEPTH : 0U);
+    std::vector<double> index;
+    for (std::size_t i = 0; i < times.size(); ++i) {
+      index.push_back(static_cast<double>(times.at(i)));
+      index.push_back(static_cast<double>(what));
+      const std::string pre = "s" + std::to_string(i) + ".dp.";
+      e.params.push_back({pre + "ids", api::RenderParamKind::text, 0, {}, "wall", {}});
+      e.params.push_back({pre + "m", api::RenderParamKind::numbers, 0, behind.three_d->model, "", {}});
+    }
+    e.params.push_back({"samples", api::RenderParamKind::numbers, 0, index, "", {}});
+    return e;
+  };
+  const auto lit = [](const Rendered& o) {  // pixels that are not the green wall
+    std::size_t n = 0;
+    for (std::size_t i = 0; i < o.scene.size(); i += 4) n += o.scene[i] > 0.05F ? 1 : 0;
+    return n;
+  };
+  for (const bool gpu : {true, false}) {
+    INFO((gpu ? "GPU" : "CPU") << " path");
+    glue.set_gpu_enabled(gpu);
+    // Without PR_SAMPLE_SCENE_DEPTH the sub-frames fall back to the frame's depth: the wall hides it all.
+    const Rendered frameDepth = render(*r, depth_frame({wall}, {blurred(false)}));
+    const auto passes = glue.scene_depth().passes();
+    const Rendered atDepth = render(*r, depth_frame({wall}, {blurred(true)}));
+    std::printf("[measure] model3d blurred, %s: lit with the frame's depth %zu px, with the sub-times' %zu px\n", gpu ? "GPU" : "CPU",
+                lit(frameDepth), lit(atDepth));
+    CHECK(lit(frameDepth) == 0);
+    CHECK(lit(atDepth) > 1000);
+    CHECK(glue.scene_depth().passes() >= passes + 2);  // one pass per posed sub-time
+    const float* c = px_at(atDepth, kDW / 2, kDH / 2);
+    CHECK(c[0] > 0.05F);  // the model, not the wall's green
+  }
+  glue.set_gpu_enabled(true);
 }
 
 TEST_CASE("plugin GPU: a plugin's output is linear — an identity grade leaves the frame as it was", "[plugins][gpu]") {

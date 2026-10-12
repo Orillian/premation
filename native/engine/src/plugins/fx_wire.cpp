@@ -346,6 +346,51 @@ void encode_native_scene(api::RenderEffect& e, const EffectSpec& spec, const api
   }
 }
 
+namespace {
+/// A PR_SAMPLE_SCENE_DEPTH sample's pose (encode_native_samples writes it).
+DepthPose read_depth_pose(const Index& ix, const std::string& pre) {
+  DepthPose d;
+  const auto* view = ix.nums(pre + "dp.cam.view", 16);
+  const auto* proj = ix.nums(pre + "dp.cam.proj", 16);
+  if (view != nullptr && proj != nullptr) {
+    api::RenderCamera3D c;
+    c.view.assign(view->begin(), view->begin() + 16);
+    c.projection.assign(proj->begin(), proj->begin() + 16);
+    d.camera = std::move(c);
+  }
+  const std::string ids = ix.text(pre + "dp.ids");
+  const std::vector<double>* models = ix.nums(pre + "dp.m", 0);
+  std::size_t at = 0;
+  std::size_t k = 0;
+  while (models != nullptr && at < ids.size() && (k + 1) * 16 <= models->size()) {
+    std::size_t end = ids.find('\n', at);
+    if (end == std::string::npos) end = ids.size();
+    const auto first = models->begin() + static_cast<std::ptrdiff_t>(k * 16);
+    d.models.emplace_back(ids.substr(at, end - at), std::vector<double>(first, first + 16));
+    at = end + 1;
+    ++k;
+  }
+  return d;
+}
+}  // namespace
+
+void decode_overlay_scene(const doc::NativeScene& scene, const EffectSpec& spec, RenderInputs& in) {
+  api::RenderEffect e;
+  put(e, "compW", api::RenderParamKind::number, scene.compW);
+  put(e, "compH", api::RenderParamKind::number, scene.compH);
+  if (spec.has(PR_OUT_FLAG_USES_CAMERA) && scene.camera) write_camera(e, "", *scene.camera, &put_w);
+  if (spec.has(PR_OUT_FLAG_USES_LIGHTS)) write_lights(e, "", scene.lights, &put_w);
+  if (spec.has(PR_OUT_FLAG_USES_LAYER_TRANSFORMS)) {
+    for (const auto& [key, m] : scene.matrices) put(e, "p." + key + ".m", api::RenderParamKind::numbers, 0, m);
+  }
+  const Index ix(e);
+  in.compW = scene.compW;
+  in.compH = scene.compH;
+  if (spec.has(PR_OUT_FLAG_USES_CAMERA)) in.camera = read_camera(ix, "");
+  if (spec.has(PR_OUT_FLAG_USES_LIGHTS)) in.lights = read_lights(ix, "");
+  if (spec.has(PR_OUT_FLAG_USES_LAYER_TRANSFORMS)) in.layerMatrices = read_matrices(ix, spec, "");
+}
+
 void encode_native_samples(api::RenderEffect& e, const EffectSpec& spec, std::vector<SampleWire> samples) {
   std::ranges::sort(samples, {}, &SampleWire::time);
   std::vector<double> index;
@@ -365,6 +410,28 @@ void encode_native_samples(api::RenderEffect& e, const EffectSpec& spec, std::ve
     if ((s.what & PR_SAMPLE_LIGHTS) != 0 && spec.has(PR_OUT_FLAG_USES_LIGHTS)) write_lights(e, pre, s.lights, &append_w);
     if ((s.what & PR_SAMPLE_LAYER_TRANSFORMS) != 0 && spec.has(PR_OUT_FLAG_USES_LAYER_TRANSFORMS)) {
       for (auto& [key, m] : s.matrices) append(e, pre + "p." + key + ".m", api::RenderParamKind::numbers, 0, std::move(m));
+    }
+    if ((s.what & PR_SAMPLE_SCENE_DEPTH) != 0 && spec.has(PR_OUT_FLAG_USES_SCENE_DEPTH) && s.depth) {
+      const DepthPose& d = *s.depth;
+      if (d.camera && d.camera->view.size() == 16 && d.camera->projection.size() == 16) {
+        append(e, pre + "dp.cam.view", api::RenderParamKind::numbers, 0, d.camera->view);
+        append(e, pre + "dp.cam.proj", api::RenderParamKind::numbers, 0, d.camera->projection);
+      }
+      std::string ids;
+      std::vector<double> models;
+      models.reserve(d.models.size() * 16);
+      for (const auto& [id, m] : d.models) {
+        if (m.size() != 16) continue;
+        if (!ids.empty()) ids += '\n';
+        ids += id;
+        models.insert(models.end(), m.begin(), m.end());
+      }
+      api::RenderEffectParam t;
+      t.name = pre + "dp.ids";
+      t.kind = api::RenderParamKind::text;
+      t.text = std::move(ids);
+      e.params.push_back(std::move(t));
+      append(e, pre + "dp.m", api::RenderParamKind::numbers, 0, std::move(models));
     }
   }
   put(e, "samples", api::RenderParamKind::numbers, 0, std::move(index));
@@ -413,6 +480,7 @@ void decode_native_fx(const api::RenderEffect& e, const EffectSpec& spec, Render
       if ((s.what & PR_SAMPLE_CAMERA) != 0 && spec.has(PR_OUT_FLAG_USES_CAMERA)) s.camera = read_camera(ix, pre);
       if ((s.what & PR_SAMPLE_LIGHTS) != 0 && spec.has(PR_OUT_FLAG_USES_LIGHTS)) s.lights = read_lights(ix, pre);
       if ((s.what & PR_SAMPLE_LAYER_TRANSFORMS) != 0 && spec.has(PR_OUT_FLAG_USES_LAYER_TRANSFORMS)) s.layerMatrices = read_matrices(ix, spec, pre);
+      if ((s.what & PR_SAMPLE_SCENE_DEPTH) != 0 && spec.has(PR_OUT_FLAG_USES_SCENE_DEPTH)) s.depth = read_depth_pose(ix, pre);
       out.samples.push_back(std::move(s));
     }
     std::ranges::stable_sort(out.samples, {}, &TimeSample::time);

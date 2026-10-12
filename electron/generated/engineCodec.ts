@@ -6568,6 +6568,7 @@ function encS_DragEffectOverlay(w: Writer, v: T.DragEffectOverlay): void {
   w.byte(41); w.f64(v.startX);
   w.byte(49); w.f64(v.startY);
   w.byte(56); w.u32(v.phase);
+  w.byte(64); w.u32(v.space);
 }
 function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOverlay {
   let h_group = false;
@@ -6577,6 +6578,7 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
   let h_startX = false;
   let h_startY = false;
   let h_phase = false;
+  let h_space = false;
   let v_group: T.PropRef | undefined;
   let v_handle: number | undefined;
   let v_x: number | undefined;
@@ -6584,6 +6586,7 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
   let v_startX: number | undefined;
   let v_startY: number | undefined;
   let v_phase: number | undefined;
+  let v_space: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -6594,6 +6597,7 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
       case 41: v_startX = r.f64(); h_startX = true; break;
       case 49: v_startY = r.f64(); h_startY = true; break;
       case 56: v_phase = r.u32(); h_phase = true; break;
+      case 64: v_space = r.u32(); h_space = true; break;
       default: r.skip(key);
     }
   }
@@ -6605,6 +6609,7 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
   if (!h_startX) throw new DecodeError('DragEffectOverlay.startX: missing', 'missingField');
   if (!h_startY) throw new DecodeError('DragEffectOverlay.startY: missing', 'missingField');
   if (!h_phase) throw new DecodeError('DragEffectOverlay.phase: missing', 'missingField');
+  if (!h_space) throw new DecodeError('DragEffectOverlay.space: missing', 'missingField');
   o.group = v_group;
   o.handle = v_handle;
   o.x = v_x;
@@ -6612,6 +6617,7 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
   o.startX = v_startX;
   o.startY = v_startY;
   o.phase = v_phase;
+  o.space = v_space;
   return o;
 }
 function encS_AddProperties(w: Writer, v: T.AddProperties): void {
@@ -15232,6 +15238,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
   let v_effect: string | undefined;
   let v_kind: string | undefined;
   let v_closed: boolean | undefined;
+  w.byte(64); w.u32(v.space);
   let v_handle: number | undefined;
   let v_shape: number | undefined;
   while (r.pos < end) {
@@ -15241,11 +15248,13 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
       case 18: v_kind = r.str(); h_kind = true; break;
       case 26: { const e = r.ldEnd(); while (r.pos < e) l_points.push(r.f64()); r.expectAt(e); break; }
       case 32: v_closed = r.bool(); h_closed = true; break;
+  let h_space = false;
       case 42: { const e = r.ldEnd(); while (r.pos < e) l_color.push(r.f64()); r.expectAt(e); break; }
       case 48: v_handle = r.u32(); h_handle = true; break;
       case 56: v_shape = r.u32(); h_shape = true; break;
       default: r.skip(key);
     }
+  let v_space: number | undefined;
   }
   r.expectAt(end);
   if (!h_effect) throw new DecodeError('OverlayPluginItem.effect: missing', 'missingField');
@@ -15256,6 +15265,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
   o.effect = v_effect;
   o.kind = v_kind;
   o.points = l_points;
+      case 64: v_space = r.u32(); h_space = true; break;
   o.closed = v_closed;
   o.color = l_color;
   o.handle = v_handle;
@@ -15265,6 +15275,7 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
 function encS_RigPinPose(w: Writer, v: T.RigPinPose): void {
   w.byte(10); w.str(v.id);
   w.byte(18); w.str(v.kind);
+  if (!h_space) throw new DecodeError('OverlayPluginItem.space: missing', 'missingField');
   w.byte(25); w.f64(v.x);
   w.byte(33); w.f64(v.y);
   w.byte(41); w.f64(v.cx);
@@ -15272,6 +15283,7 @@ function encS_RigPinPose(w: Writer, v: T.RigPinPose): void {
   w.byte(57); w.f64(v.rotation);
   w.byte(65); w.f64(v.scale);
 }
+  o.space = v_space;
 function decS_RigPinPose(r: Reader, end: number, o: any): T.RigPinPose {
   let h_id = false;
   let h_kind = false;

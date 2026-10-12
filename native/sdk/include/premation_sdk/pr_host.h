@@ -102,7 +102,10 @@ typedef struct PrHostSuite {
    * SMART_PRE_RENDER (checkout_time); any other time answers PR_ERR_NOT_FOUND
    * (PR_ERR_UNSUPPORTED on an SDK 1.1 host).
    * Declare PR_OUT_FLAG_USES_CAMERA / _USES_LIGHTS / _USES_LAYER_TRANSFORMS in
-   * GLOBAL_SETUP, or these answer PR_ERR_INVALID_CALLBACK. See pr_scene.h. */
+   * GLOBAL_SETUP, or these answer PR_ERR_INVALID_CALLBACK. See pr_scene.h.
+   * SDK 1.2: also in PR_CMD_DRAW_OVERLAY / PR_CMD_OVERLAY_DRAG, at the viewer's time
+   * (in_data->current_time; any other time: PR_ERR_NOT_FOUND) — project a 3D point for a
+   * comp-space handle (overlay_set_space). */
   PrErr(PR_CALL* get_comp_camera)(PrHost* host, int64_t time, PrCamera* out_camera);
   /* Up to `capacity` lights into `out_lights` (each struct_size set by the caller);
    * the comp's light count (≤ PR_MAX_LIGHTS) into *out_count. */
@@ -113,7 +116,8 @@ typedef struct PrHostSuite {
   PrErr(PR_CALL* get_layer_transform)(PrHost* host, uint32_t param_index, int64_t time, double out_matrix[16]);
 
   /* ── SDK 1.1, PR_CMD_DRAW_OVERLAY only ── the viewer overlay's draw list, layer px
-   * (the editor maps it with the layer like a mask). Colours are straight RGBA 0..1;
+   * (the editor maps it with the layer like a mask; SDK 1.2: composition px after
+   * overlay_set_space(host, PR_OVERLAY_SPACE_COMP)). Colours are straight RGBA 0..1;
    * NULL = the viewer's handle colour. At most 256 items and 2048 points per call, 192 per path. */
   PrErr(PR_CALL* overlay_line)(PrHost* host, double x0, double y0, double x1, double y1, const float* rgba);
   PrErr(PR_CALL* overlay_path)(PrHost* host, const double* xy, uint32_t point_count, int32_t closed, const float* rgba);
@@ -168,7 +172,9 @@ typedef struct PrHostSuite {
    * (view · p).z with it. +INFINITY where no 3D layer is drawn. A texel whose coverage (texture alpha
    * × mask × layer opacity, or a solid's shape) is under 1/255 writes no depth, as in the engine's
    * own 3D pass; any other one does (depth is not blended). The 3D layers are the ones of the
-   * composition the effect's layer is in, drawn at the frame time (not per motion-blur sample).
+   * composition the effect's layer is in — with the 3D layers inside its collapsed (continuously
+   * rasterized) 3D precomps, posed as the 3D renderer draws them — at the frame time (a motion-blur
+   * sub-time: checkout_scene_depth_gpu_at below).
    *
    * It is an input of the frame: moving a 3D layer re-renders the effect. The engine renders it
    * once per frame and render size for every effect that asks, and only when one asks.
@@ -184,11 +190,38 @@ typedef struct PrHostSuite {
    * selector's own thread, not from an iterate() job. */
   PrErr(PR_CALL* checkout_scene_depth_gpu)(PrHost* host, const PrGpuWorld** out_world);
   PrErr(PR_CALL* checkout_scene_depth)(PrHost* host, PrWorld** out_world);
+
+  /* ── SDK 1.2, overlay space (appended after checkout_scene_depth; check struct_size >=
+   *    offsetof(PrHostSuite, overlay_set_space) + sizeof(void*) before calling) ──
+   * PR_CMD_DRAW_OVERLAY only: what the coordinates of the overlay_line / overlay_path /
+   * overlay_handle calls that FOLLOW are in — PR_OVERLAY_SPACE_LAYER (the default: layer px, the
+   * editor maps them with the layer like a mask) or PR_OVERLAY_SPACE_COMP (composition px: a point
+   * the plugin projected through the comp camera itself — get_comp_camera, which DRAW_OVERLAY and
+   * OVERLAY_DRAG may call at in_data->current_time — drawn by the viewer's comp → screen only).
+   * A handle's OVERLAY_DRAG reports the pointer in that handle's space (PrOverlayDragExtra.space).
+   * PR_ERR_INVALID_PARAM for another value. */
+  PrErr(PR_CALL* overlay_set_space)(PrHost* host, uint32_t space);
+
+  /* ── SDK 1.2, scene depth at another time (appended after overlay_set_space; check struct_size >=
+   *    offsetof(PrHostSuite, checkout_scene_depth_at) + sizeof(void*) before calling) ──
+   * The scene depth (checkout_scene_depth_gpu / checkout_scene_depth above, same format, same
+   * PR_ERR_UNSUPPORTED without a GPU) at LAYER time `time`: in_data->current_time (the frame's own
+   * depth), or a time the effect checked out in SMART_PRE_RENDER with checkout_time(...,
+   * PR_SAMPLE_SCENE_DEPTH) — the comp's 3D layers posed at that time, seen through the comp camera
+   * at that time (else PR_ERR_NOT_FOUND). What an effect that renders its own motion blur
+   * (PR_OUT_FLAG_USES_SHUTTER) occludes each sub-frame with. A layer the engine cannot pose at the
+   * time (a precomp's instance copy) keeps its frame pose. Each distinct time is its own pass. */
+  PrErr(PR_CALL* checkout_scene_depth_gpu_at)(PrHost* host, int64_t time, const PrGpuWorld** out_world);
+  PrErr(PR_CALL* checkout_scene_depth_at)(PrHost* host, int64_t time, PrWorld** out_world);
 } PrHostSuite;
 
 #define PR_OVERLAY_HANDLE_SQUARE 0
 #define PR_OVERLAY_HANDLE_CIRCLE 1
 #define PR_OVERLAY_HANDLE_CROSSHAIR 2
+
+/* SDK 1.2: overlay_set_space / PrOverlayDragExtra.space. */
+#define PR_OVERLAY_SPACE_LAYER 0
+#define PR_OVERLAY_SPACE_COMP 1
 
 #ifdef __cplusplus
 }

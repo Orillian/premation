@@ -2752,6 +2752,7 @@ struct DragEffectOverlay {
   double start_y = 0.0;
   std::uint32_t phase = 0;
   bool operator==(const DragEffectOverlay&) const = default;
+  std::uint32_t space = 0;
 };
 
 struct AddProperties {
@@ -5833,6 +5834,7 @@ struct OverlayPluginItem {
 };
 
 struct OverlayLayerGeometry {
+  std::uint32_t space = 0;
   LayerId layer;
   std::vector<double> matrix;
   std::vector<double> box;

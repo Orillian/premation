@@ -404,6 +404,8 @@ void plugin_overlay_of(const PCtx& pc, const Node& n, const std::string& layer, 
     for (const auto& [k, v] : *av) {
       if (k.starts_with(prefix)) req.params.set(k.substr(prefix.size()), Json::number(v));
     }
+    // SDK 1.2: the comp camera / lights / LAYER matrices at the viewer's time, for what the effect declared.
+    NativeEffects::fill_scene(SpaceCtx{pc.d, pc.view, pc.expr, pc.cache}, req);
     auto items = NativeEffects::draw_overlay(req);
     if (auto* list = std::get_if<std::vector<NativeOverlayItem>>(&items)) {
       for (NativeOverlayItem& i : *list) {
@@ -415,6 +417,7 @@ void plugin_overlay_of(const PCtx& pc, const Node& n, const std::string& layer, 
         o.color = std::move(i.color);
         o.handle = i.handle;
         o.shape = i.shape;
+        o.space = i.space;  // SDK 1.2: layer px or comp px
         g.plugin.push_back(std::move(o));
       }
     }

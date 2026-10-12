@@ -24,6 +24,8 @@
 #include "values.hpp"
 #include "workers.hpp"
 #include "contrib.hpp"
+#include "fx_wire.hpp"     // SDK 1.2: decode_overlay_scene
+#include "scene_eval.hpp"  // SDK 1.2: overlay_scene
 
 namespace fs = std::filesystem;
 using premation::plugins::CheckoutRequest;
@@ -32,8 +34,6 @@ using premation::plugins::ParamSpec;
 using premation::plugins::ParamUi;
 using premation::plugins::PluginHost;
 
-// ── the per-call context the SDK hands back to every callback ─────────────
-// (declared `typedef struct PrHost PrHost` in pr_types.h: global namespace)
 namespace premation::plugins {
 /// One call's PrParamDefs and what their pointers point into besides the specs and values:
 /// the GRADIENT stops decoded to linear light (the document keeps them sRGB-encoded).
@@ -43,6 +43,8 @@ struct ParamDefs {
 };
 }  // namespace premation::plugins
 
+// ── the per-call context the SDK hands back to every callback ─────────────
+// (declared `typedef struct PrHost PrHost` in pr_types.h: global namespace)
 struct PrHost {
   PluginHost* host = nullptr;
   PrCmd cmd = PR_CMD_ABOUT;
@@ -65,6 +67,10 @@ struct PrHost {
   bool renderSelector = false;
   /// SDK 1.1 — DRAW_OVERLAY's draw list.
   std::vector<premation::doc::NativeOverlayItem>* overlay = nullptr;
+  /// SDK 1.2 — overlay_set_space: the space of the overlay items that follow (PR_OVERLAY_SPACE_*).
+  std::uint32_t overlaySpace = PR_OVERLAY_SPACE_LAYER;
+  /// SDK 1.2 — DRAW_OVERLAY / OVERLAY_DRAG carry the comp camera & co. (the scene callbacks answer).
+  bool overlayScene = false;
   /// SDK 1.1 — the render selector's inputs and effect (get_comp_camera, …).
   const premation::plugins::RenderInputs* inputs = nullptr;
   /// SDK 1.1 — get_asset_bytes: each FILE param's bytes, read once per call (iterate workers may ask too).
@@ -91,12 +97,6 @@ struct PrHost {
 namespace premation::plugins {
 namespace {
 
-// ── host memory handles ─────────────────────────────────────────────────
-
-class HandleTable {
- public:
-  PrHandle make(std::size_t size) {
-    const std::scoped_lock lock(mutex_);
 // ── colour params: the document's sRGB-encoded 0..1 ↔ the plugin's linear light ──
 // The IEC 61966-2-1 transfer the built-in effects decode their colours with
 // (scene/effects_spatial_c.cpp `s2l`, render_graph/rg_math.hpp srgb_to_linear):
@@ -107,6 +107,12 @@ double linear_to_srgb(double c) noexcept {
   return c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(std::max(c, 0.0), 1 / 2.4) - 0.055;
 }
 
+// ── host memory handles ─────────────────────────────────────────────────
+
+class HandleTable {
+ public:
+  PrHandle make(std::size_t size) {
+    const std::scoped_lock lock(mutex_);
     const PrHandle h = next_++;
     blocks_[h].assign(size, 0);
     return h;
@@ -591,9 +597,12 @@ const TimeSample* find_sample(const RenderInputs& in, std::int64_t time, std::ui
 /// Any other time: PR_ERR_NOT_FOUND.
 PrErr scene_gate(PrHost* h, std::uint32_t flag, std::uint32_t bit, std::int64_t time, const TimeSample** sample) {
   *sample = nullptr;
-  if (h == nullptr || !h->renderSelector || h->inputs == nullptr) return PR_ERR_INVALID_CALLBACK;
+  // SDK 1.2: DRAW_OVERLAY / OVERLAY_DRAG read the scene at the viewer's time (the request carried it).
+  const bool overlay = h != nullptr && h->overlayScene && (h->cmd == PR_CMD_DRAW_OVERLAY || h->cmd == PR_CMD_OVERLAY_DRAG);
+  if (h == nullptr || (!h->renderSelector && !overlay) || h->inputs == nullptr) return PR_ERR_INVALID_CALLBACK;
   if ((h->outFlags & flag) == 0) return PR_ERR_INVALID_CALLBACK;
   if (time == h->inputs->layerTime || time == h->inputs->compTime) return PR_ERR_NONE;
+  if (overlay) return PR_ERR_NOT_FOUND;  // no checked-out times outside a render
   *sample = find_sample(*h->inputs, time, bit);
   return *sample != nullptr ? PR_ERR_NONE : PR_ERR_NOT_FOUND;
 }
@@ -752,7 +761,7 @@ PrErr PR_CALL cb_get_asset_bytes(PrHost* h, std::uint32_t paramIndex, const std:
 PrErr PR_CALL cb_checkout_time(PrHost* h, std::int64_t time, std::uint32_t what) {
   if (h == nullptr || h->cmd != PR_CMD_SMART_PRE_RENDER) return PR_ERR_INVALID_CALLBACK;
   if ((h->outFlags & PR_OUT_FLAG_SAMPLES_TIME) == 0) return PR_ERR_INVALID_CALLBACK;
-  if ((what & ~std::uint32_t{PR_SAMPLE_ALL}) != 0 || what == 0) return PR_ERR_INVALID_PARAM;
+  if ((what & ~std::uint32_t{PR_SAMPLE_ALL | PR_SAMPLE_SCENE_DEPTH}) != 0 || what == 0) return PR_ERR_INVALID_PARAM;
   if (h->times == nullptr) return PR_ERR_NONE;  // a render-time pre-render: the frame already carries the samples
   for (TimeRequest& r : *h->times) {
     if (r.time == time) {
@@ -893,6 +902,38 @@ PrErr PR_CALL cb_checkout_scene_depth(PrHost* h, PrWorld** world) {
   return *world != nullptr ? PR_ERR_NONE : PR_ERR_UNSUPPORTED;
 }
 
+/// SDK 1.2: the frame's time, or a time checked out with PR_SAMPLE_SCENE_DEPTH (`*sample`).
+PrErr scene_depth_time(PrHost* h, std::int64_t time, const TimeSample** sample) {
+  *sample = nullptr;
+  if (time == h->inputs->layerTime) return PR_ERR_NONE;
+  *sample = find_sample(*h->inputs, time, PR_SAMPLE_SCENE_DEPTH);
+  return *sample != nullptr && (*sample)->depth ? PR_ERR_NONE : PR_ERR_NOT_FOUND;
+}
+
+PrErr PR_CALL cb_checkout_scene_depth_gpu_at(PrHost* h, std::int64_t time, const PrGpuWorld** world) {
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  *world = nullptr;
+  if (const PrErr e = scene_depth_gate(h, true); e != PR_ERR_NONE) return e;
+  if (h->inputs == nullptr) return PR_ERR_INVALID_CALLBACK;
+  const TimeSample* sample = nullptr;
+  if (const PrErr e = scene_depth_time(h, time, &sample); e != PR_ERR_NONE) return e;
+  const std::scoped_lock lock(h->assetMutex);
+  *world = sample != nullptr ? h->source->gpu_scene_depth_at(*sample) : h->source->gpu_scene_depth();
+  return *world != nullptr ? PR_ERR_NONE : PR_ERR_UNSUPPORTED;
+}
+
+PrErr PR_CALL cb_checkout_scene_depth_at(PrHost* h, std::int64_t time, PrWorld** world) {
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  *world = nullptr;
+  if (const PrErr e = scene_depth_gate(h, false); e != PR_ERR_NONE) return e;
+  if (h->inputs == nullptr) return PR_ERR_INVALID_CALLBACK;
+  const TimeSample* sample = nullptr;
+  if (const PrErr e = scene_depth_time(h, time, &sample); e != PR_ERR_NONE) return e;
+  const std::scoped_lock lock(h->assetMutex);
+  *world = sample != nullptr ? h->source->cpu_scene_depth_at(*sample) : h->source->cpu_scene_depth();
+  return *world != nullptr ? PR_ERR_NONE : PR_ERR_UNSUPPORTED;
+}
+
 // ── SDK 1.1: the viewer overlay's draw list (DRAW_OVERLAY) ─────────────────
 
 // The overlay crosses the frame channel with every frame: small by construction. A path's
@@ -904,6 +945,7 @@ constexpr std::uint32_t kMaxOverlayPathPoints = 192;
 PrErr overlay_push(PrHost* h, doc::NativeOverlayItem item) {
   if (h == nullptr || h->cmd != PR_CMD_DRAW_OVERLAY || h->overlay == nullptr) return PR_ERR_INVALID_CALLBACK;
   if (h->overlay->size() >= kMaxOverlayItems) return PR_ERR_OUT_OF_MEMORY;
+  item.space = h->overlaySpace;  // SDK 1.2: layer px or comp px (overlay_set_space)
   std::size_t points = item.points.size() / 2;
   for (const auto& i : *h->overlay) points += i.points.size() / 2;
   if (points > kMaxOverlayPoints) return PR_ERR_OUT_OF_MEMORY;
@@ -944,6 +986,13 @@ PrErr PR_CALL cb_overlay_handle(PrHost* h, std::uint32_t id, double x, double y,
   i.handle = id;
   i.shape = shape <= PR_OVERLAY_HANDLE_CROSSHAIR ? shape : PR_OVERLAY_HANDLE_SQUARE;
   return overlay_push(h, std::move(i));
+}
+
+PrErr PR_CALL cb_overlay_set_space(PrHost* h, std::uint32_t space) {
+  if (h == nullptr || h->cmd != PR_CMD_DRAW_OVERLAY || h->overlay == nullptr) return PR_ERR_INVALID_CALLBACK;
+  if (space != PR_OVERLAY_SPACE_LAYER && space != PR_OVERLAY_SPACE_COMP) return PR_ERR_INVALID_PARAM;
+  h->overlaySpace = space;
+  return PR_ERR_NONE;
 }
 
 PrErr PR_CALL cb_checkout_layer_pixels(PrHost* h, std::uint32_t checkoutId, PrWorld** world) {
@@ -1111,6 +1160,9 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
   s.get_asset_sibling_bytes = &cb_get_asset_sibling_bytes;
   s.checkout_scene_depth_gpu = &cb_checkout_scene_depth_gpu;  // SDK 1.2 (S6)
   s.checkout_scene_depth = &cb_checkout_scene_depth;
+  s.overlay_set_space = &cb_overlay_set_space;  // SDK 1.2: overlay space
+  s.checkout_scene_depth_gpu_at = &cb_checkout_scene_depth_gpu_at;  // SDK 1.2: scene depth at a sample
+  s.checkout_scene_depth_at = &cb_checkout_scene_depth_at;
 
   int threads = m.options.threads;
   if (threads <= 0) threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) - 1, 0, 16);
@@ -1156,6 +1208,10 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
                                              [this](const doc::NativeActionRequest& r, const doc::NativeOverlayDrag& d) {
                                                return overlay_drag(r, d);
                                              });
+    // SDK 1.2: what an overlay call may read of the scene, evaluated for what the effect declared.
+    doc::NativeEffects::set_scene_handler([this](const doc::SpaceCtx& sc, doc::NativeActionRequest& r) {
+      if (const EffectSpec* e = effect(r.type)) overlay_scene(sc, *e, r);
+    });
   }
 }
 
@@ -1915,6 +1971,9 @@ ParamDefs PluginHost::Impl::param_defs(const EffectSpec& e, const RenderInputs& 
       d.value[0] = std::clamp(d.value[0], s.validMin, s.validMax);
     }
     if (s.type == PR_PARAM_SLIDER) d.value[0] = std::round(d.value[0]);
+    if (s.type == PR_PARAM_COLOR) {
+      for (std::size_t k = 0; k < 3; ++k) d.value[k] = srgb_to_linear(d.value[k]);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index): alpha stays as is
+    }
     if (v != nullptr) {
       if (s.type == PR_PARAM_LAYER) d.layer_id = v->layer.empty() ? nullptr : v->layer.c_str();
       if (s.type == PR_PARAM_PATH && !v->path.empty()) {
@@ -1975,9 +2034,6 @@ bool PluginHost::instance_disabled(std::string_view instance, std::string* why) 
   const auto it = m.failures.find(std::string(instance));
   if (it == m.failures.end()) return false;
   if (why != nullptr) *why = it->second.message;
-    if (s.type == PR_PARAM_COLOR) {
-      for (std::size_t k = 0; k < 3; ++k) d.value[k] = srgb_to_linear(d.value[k]);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index): alpha stays as is
-    }
   return true;
 }
 
@@ -2372,6 +2428,8 @@ std::variant<std::vector<doc::NativeOverlayItem>, doc::NativeFailure> PluginHost
   std::vector<doc::NativeOverlayItem> items;
   PrOverlayExtra x{};
   x.struct_size = sizeof(PrOverlayExtra);
+  x.comp_width = req.scene ? req.scene->compW : 0;  // SDK 1.2: the space of comp-space items
+  x.comp_height = req.scene ? req.scene->compH : 0;
   auto r = instance_call(req, PR_CMD_DRAW_OVERLAY, 0, &x, &items);
   if (auto* f = std::get_if<doc::NativeFailure>(&r)) return std::move(*f);
   return items;
@@ -2387,6 +2445,7 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::overlay_drag(const
   x.y = d.y;
   x.start_x = d.startX;
   x.start_y = d.startY;
+  x.space = d.space == PR_OVERLAY_SPACE_COMP ? PR_OVERLAY_SPACE_COMP : PR_OVERLAY_SPACE_LAYER;  // SDK 1.2
   return instance_call(req, PR_CMD_OVERLAY_DRAG, 0, &x, nullptr);
 }
 
@@ -2438,6 +2497,9 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
       in.layerH = it->second->layerH.load(std::memory_order_relaxed);
     }
   }
+  // SDK 1.2: an overlay call reads the comp camera / lights / LAYER matrices the request carries.
+  const bool overlayScene = req.scene.has_value() && (cmd == PR_CMD_DRAW_OVERLAY || cmd == PR_CMD_OVERLAY_DRAG);
+  if (overlayScene) decode_overlay_scene(*req.scene, *e, in);
 
   const std::scoped_lock serial(p->serial);
   // A private instance built from the document's flat data: the action's result
@@ -2473,7 +2535,10 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
   ctx.params = &e->params;
   ctx.numParams = d.num_params;
   ctx.overlay = draw;
-  ctx.inputs = &in;  // SDK 1.1 asset callbacks (the scene callbacks stay render-only: renderSelector)
+  ctx.inputs = &in;  // SDK 1.1 asset callbacks; SDK 1.2: the scene callbacks in an overlay call (overlayScene)
+  ctx.effect = e;
+  ctx.outFlags = e->outFlags;
+  ctx.overlayScene = overlayScene;
   std::vector<PrParamDef*> ptrs;
   ParamDefs defs = m.param_defs(*e, in, ptrs);
   d.sequence_data = live;

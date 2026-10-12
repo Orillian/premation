@@ -24,10 +24,14 @@
 //     per sample (motion_blur_samples, at most 16), averaged.
 //   · Composite with Scene Depth (S6, PR_OUT_FLAG_USES_SCENE_DEPTH): a model
 //     fragment behind the comp's 3D layers (checkout_scene_depth[_gpu]) is
-//     discarded. Render Mode ▸ Scene Depth shows that depth (red = z / 1000 px,
+//     discarded; under motion blur each sub-frame against the depth at its own
+//     time (PR_SAMPLE_SCENE_DEPTH, checkout_scene_depth_gpu_at / _at). Render Mode ▸ Scene Depth shows that depth (red = z / 1000 px,
 //     blue = nothing drawn) — a debug view, and how the engine tests read it.
-//   · a viewer handle (DRAW_OVERLAY / OVERLAY_DRAG) that drags Position, and a
-//     material panel (ui/index.html: colour, roughness, specular).
+//   · a viewer handle (DRAW_OVERLAY / OVERLAY_DRAG) on the model, projected
+//     through the comp camera at the viewer's time (comp-space overlay,
+//     overlay_set_space); a drag moves Position in the camera's view plane at
+//     the model's depth. And a material panel (ui/index.html: colour,
+//     roughness, specular).
 //   · a CPU path (SMART_RENDER) with the same maths in a small z-buffered
 //     rasteriser — flat sampling, no near-plane clipping (a triangle reaching
 //     behind the eye is dropped): lower quality, but a frame without a GPU.
@@ -302,6 +306,9 @@ bool has_v12(const PrInData* in) {
          in->struct_size >= offsetof(PrInData, comp_to_world) + sizeof(in->comp_to_world);
 }
 bool has_depth_suite(const PrInData* in) { return in->host->struct_size >= offsetof(PrHostSuite, checkout_scene_depth) + sizeof(void*); }
+/// SDK 1.2, later: overlay_set_space, then checkout_scene_depth_gpu_at / _at.
+bool has_overlay_space(const PrInData* in) { return in->host->struct_size >= offsetof(PrHostSuite, overlay_set_space) + sizeof(void*); }
+bool has_depth_at(const PrInData* in) { return in->host->struct_size >= offsetof(PrHostSuite, checkout_scene_depth_at) + sizeof(void*); }
 
 std::vector<int64_t> sample_times(const PrInData* in, PrParamDef* const* params) {
   std::vector<int64_t> out;
@@ -522,6 +529,12 @@ PrErr cpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params) 
   std::vector<double> zbuf(static_cast<std::size_t>(W) * static_cast<std::size_t>(H));
   const double* c2w = in->comp_to_world;
   for (const Sample& s : samples) {
+    // Each sub-frame occludes against the comp's 3D layers at ITS time (checked out in pre-render).
+    PrWorld* sampleDepth = sceneDepth;
+    if (wantDepth && s.time != in->current_time && has_depth_at(in)) {
+      PrWorld* at = nullptr;
+      if (in->host->checkout_scene_depth_at(in->host_ref, s.time, &at) == PR_ERR_NONE && at != nullptr) sampleDepth = at;
+    }
     const M4 pvm = mul(s.proj, mul(s.view, s.model));
     const M4 vm = mul(s.view, s.model);
     const M4 nm = normal_matrix(s.model);
@@ -594,7 +607,7 @@ PrErr cpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params) 
           const double z = l0 * a.z + l1 * b.z + l2 * c.z;
           if (z <= 0 || z >= zr[x]) continue;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
           if (wantDepth) {
-            const double sd = depth_at(sceneDepth, x, y);
+            const double sd = depth_at(sampleDepth, x, y);
             if (z > sd + 0.5 + 0.001 * z) continue;  // behind the comp's 3D layers
           }
           zr[x] = z;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -1106,18 +1119,27 @@ PrErr gpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params, 
       flags |= 2U;
     }
   }
-  if (wantDepth && sceneDepth != nullptr) flags |= 4U;
+  // Each sub-frame occludes against the comp's 3D layers at ITS time (checked out in pre-render).
+  std::vector<WGPUTextureView> sampleDepth(samples.size(), sceneDepth != nullptr ? depthView : nullptr);
+  for (std::size_t i = 0; wantDepth && has_depth_at(in) && i < samples.size(); ++i) {
+    if (samples[i].time == in->current_time) continue;
+    const PrGpuWorld* at = nullptr;
+    if (in->host->checkout_scene_depth_gpu_at(in->host_ref, samples[i].time, &at) == PR_ERR_NONE && at != nullptr) {
+      sampleDepth[i] = static_cast<WGPUTextureView>(at->wgpu_texture_view);
+    }
+  }
   const M4 c2c = comp_to_clip(in->comp_to_world, W, H);
   for (std::size_t i = 0; i < samples.size(); ++i) {
     const Sample& s = samples[i];
     const std::size_t at = slot(static_cast<uint32_t>(i));
+    const uint32_t sflags = flags | (wantDepth && sampleDepth[i] != nullptr ? 4U : 0U);
     put(u, at, mul(c2c, mul(s.proj, mul(s.view, s.model))));
     put(u, at + 16, s.model);
     put(u, at + 32, normal_matrix(s.model));
     put4(u, at + 48, s.view[2], s.view[6], s.view[10], s.view[14]);
     put4(u, at + 52, s.eye[0], s.eye[1], s.eye[2], 1);
     put4(u, at + 56, mat.base[0] * model->baseColor[0], mat.base[1] * model->baseColor[1], mat.base[2] * model->baseColor[2], 1);
-    put4(u, at + 60, mat.roughness, mat.specular, flags, static_cast<double>(lights.size()));
+    put4(u, at + 60, mat.roughness, mat.specular, sflags, static_cast<double>(lights.size()));
     put4(u, at + 64, kDepthKnee, shininess(mat.roughness), s.weight, 0);
     for (std::size_t k = 0; k < lights.size(); ++k) {
       const Light& l = lights[k];
@@ -1131,10 +1153,10 @@ PrErr gpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params, 
   // Queue-ordered: the host submits this call's commands before the next call can write again.
   p->queueWriteBuffer(g->queue, g->uniforms, 0, u.data(), u.size() * sizeof(float));
 
-  const WGPUBindGroup meshGroup = bind(baseView, layerView, depthView);
   const WGPUBindGroup accumGroup = bind(g->sampleView, g->whiteView, g->infView);
   for (std::size_t i = 0; i < samples.size(); ++i) {
     const auto off = static_cast<uint32_t>(slot(static_cast<uint32_t>(i)) * sizeof(float));
+    const WGPUBindGroup meshGroup = bind(baseView, layerView, sampleDepth[i] != nullptr ? sampleDepth[i] : g->infView);
     {
       WGPURenderPassColorAttachment ca = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
       ca.view = g->sampleView;
@@ -1159,6 +1181,7 @@ PrErr gpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params, 
       p->renderPassEncoderEnd(pass);
       p->renderPassEncoderRelease(pass);
     }
+    p->bindGroupRelease(meshGroup);
     {
       WGPURenderPassColorAttachment ca = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
       ca.view = g->accumView;
@@ -1189,7 +1212,6 @@ PrErr gpu_render(const PrInData* in, PrOutData* out, PrParamDef* const* params, 
     p->renderPassEncoderEnd(pass);
     p->renderPassEncoderRelease(pass);
   }
-  p->bindGroupRelease(meshGroup);
   p->bindGroupRelease(accumGroup);
   final_pass(g->accumView, false);
   return PR_ERR_NONE;
@@ -1228,9 +1250,12 @@ PrErr params_setup(const PrInData* in) {
 
 PrErr pre_render(const PrInData* in, PrParamDef* const* params) {
   if (!has_v12(in)) return PR_ERR_NONE;
+  // Composite with Scene Depth under motion blur: the comp's 3D layers at each sub-time too.
+  const uint32_t depth = prs::num(params, in, kSceneDepth) != 0 && has_depth_at(in) ? PR_SAMPLE_SCENE_DEPTH : 0U;
   for (const int64_t t : sample_times(in, params)) {
     if (t == in->current_time) continue;
-    if (PrErr e = in->host->checkout_time(in->host_ref, t, PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LAYER_TRANSFORMS); e != PR_ERR_NONE) return e;
+    const uint32_t what = PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LAYER_TRANSFORMS | depth;
+    if (PrErr e = in->host->checkout_time(in->host_ref, t, what); e != PR_ERR_NONE) return e;
   }
   const uint32_t li = index_of(in, params, kTextureLayer);
   if (li != 0 && params[li] != nullptr && params[li]->layer_id != nullptr) {  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -1239,28 +1264,96 @@ PrErr pre_render(const PrInData* in, PrParamDef* const* params) {
   return PR_ERR_NONE;
 }
 
-/// DRAW_OVERLAY: a crosshair at Position. The overlay has no camera (the scene callbacks are
-/// render-only), so the handle sits at Position's x / y — exactly over the model under the
-/// comp's default camera, on a comp-sized layer at the comp's origin.
+/// The comp camera at the viewer's time (DRAW_OVERLAY / OVERLAY_DRAG may read it on an SDK 1.2
+/// host that has overlay_set_space). False = no camera to project with.
+bool overlay_camera(const PrInData* in, PrCamera& cam) {
+  if (!has_overlay_space(in)) return false;
+  cam = PrCamera{};
+  cam.struct_size = sizeof(cam);
+  return in->host->get_comp_camera(in->host_ref, in->current_time, &cam) == PR_ERR_NONE;
+}
+
+/// World px → comp px through the camera; false behind the eye.
+bool project(const PrCamera& cam, const V3& p, double& x, double& y) {
+  const M4 pv = mul(from(cam.projection), from(cam.view));
+  const auto c = apply(pv, p);  // named: an rvalue would bind std::apply through ADL
+  if (!(c[3] > 1e-9)) return false;
+  x = c[0] / c[3];
+  y = c[1] / c[3];
+  return std::isfinite(x) && std::isfinite(y);
+}
+
+/// DRAW_OVERLAY: a crosshair on the model and a square around it. SDK 1.2: projected through the
+/// comp camera at the viewer's time and drawn in COMP px (overlay_set_space), so the handle sits on
+/// the model under any camera. An older host (no camera in the overlay): at Position's x / y in
+/// layer px — right only under the default camera on a comp-sized layer at the comp's origin.
 PrErr draw_overlay(const PrInData* in, PrParamDef* const* params) {
   if (in->host->struct_size < offsetof(PrHostSuite, overlay_handle) + sizeof(void*)) return PR_ERR_UNSUPPORTED;
   const uint32_t layerIdx = index_of(in, params, kTransformLayer);
   if (layerIdx != 0 && params[layerIdx]->layer_id != nullptr) return PR_ERR_NONE;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): the layer places it
-  const double x = prs::num(params, in, kPosition, 0);
-  const double y = prs::num(params, in, kPosition, 1);
+  const V3 pos{prs::num(params, in, kPosition, 0), prs::num(params, in, kPosition, 1), prs::num(params, in, kPosition, 2)};
   const double r = std::max(8.0, prs::num(params, in, kSize) / 2);
   const float box[4] = {0.4F, 0.8F, 1, 0.7F};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays): the SDK's rgba
+  PrCamera cam{};
+  if (overlay_camera(in, cam)) {
+    double cx = 0, cy = 0;
+    if (!project(cam, pos, cx, cy)) return PR_ERR_NONE;  // behind the eye: nothing to grab
+    if (PrErr e = in->host->overlay_set_space(in->host_ref, PR_OVERLAY_SPACE_COMP); e != PR_ERR_NONE) return e;
+    // A square of half-size r in the camera's view plane through the model (its right / down axes).
+    const V3 right{cam.world[0], cam.world[1], cam.world[2]};
+    const V3 down{cam.world[4], cam.world[5], cam.world[6]};
+    std::array<double, 10> xy{};
+    const std::array<std::array<double, 2>, 5> corners{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}}};
+    for (std::size_t k = 0; k < corners.size(); ++k) {
+      const V3 q{pos[0] + r * (corners.at(k)[0] * right[0] + corners.at(k)[1] * down[0]),
+                 pos[1] + r * (corners.at(k)[0] * right[1] + corners.at(k)[1] * down[1]),
+                 pos[2] + r * (corners.at(k)[0] * right[2] + corners.at(k)[1] * down[2])};
+      if (!project(cam, q, xy.at(2 * k), xy.at(2 * k + 1))) return in->host->overlay_handle(in->host_ref, kPositionHandle, cx, cy, PR_OVERLAY_HANDLE_CROSSHAIR);
+    }
+    if (PrErr e = in->host->overlay_path(in->host_ref, xy.data(), 5, 1, box); e != PR_ERR_NONE) return e;
+    return in->host->overlay_handle(in->host_ref, kPositionHandle, cx, cy, PR_OVERLAY_HANDLE_CROSSHAIR);
+  }
+  const double x = pos[0];
+  const double y = pos[1];
   const std::array<double, 10> xy{x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r, x - r, y - r};
   if (PrErr e = in->host->overlay_path(in->host_ref, xy.data(), 5, 1, box); e != PR_ERR_NONE) return e;
   return in->host->overlay_handle(in->host_ref, kPositionHandle, x, y, PR_OVERLAY_HANDLE_CROSSHAIR);
 }
 
-/// OVERLAY_DRAG: Position's x / y follow the pointer; z stays.
+/// OVERLAY_DRAG. A comp-space handle (SDK 1.2): the model moves in the camera's view plane at its
+/// own depth — the point at the model's camera-space z that projects to the pointer. A layer-px
+/// handle (an older host): Position's x / y follow the pointer; z stays.
 PrErr overlay_drag(const PrInData* in, PrParamDef* const* params, const PrOverlayDragExtra* drag) {
   if (drag == nullptr || drag->handle_id != kPositionHandle) return PR_ERR_NONE;
   const uint32_t i = index_of(in, params, kPosition);
   if (i == 0) return PR_ERR_NONE;
-  const std::array<double, 3> v{drag->x, drag->y, prs::num(params, in, kPosition, 2)};
+  const V3 pos{prs::num(params, in, kPosition, 0), prs::num(params, in, kPosition, 1), prs::num(params, in, kPosition, 2)};
+  const bool comp = drag->struct_size >= offsetof(PrOverlayDragExtra, space) + sizeof(drag->space) && drag->space == PR_OVERLAY_SPACE_COMP;
+  PrCamera cam{};
+  if (comp && overlay_camera(in, cam)) {
+    // Camera space c = (a, b, z, 1) with z the model's depth; P · c lands on the pointer:
+    //   (P·c).x − px (P·c).w = 0, (P·c).y − py (P·c).w = 0 — two linear equations in a, b.
+    const M4 P = from(cam.projection);
+    const M4 view = from(cam.view);
+    const double z = apply(view, pos)[2];
+    const double px = drag->x;
+    const double py = drag->y;
+    const double a00 = P[0] - px * P[3], a01 = P[4] - px * P[7];
+    const double a10 = P[1] - py * P[3], a11 = P[5] - py * P[7];
+    const double b0 = -(P[8] * z + P[12]) + px * (P[11] * z + P[15]);
+    const double b1 = -(P[9] * z + P[13]) + py * (P[11] * z + P[15]);
+    const double det = a00 * a11 - a01 * a10;
+    if (std::abs(det) < 1e-12) return PR_ERR_NONE;
+    const double ca = (b0 * a11 - a01 * b1) / det;
+    const double cb = (a00 * b1 - b0 * a10) / det;
+    const M4 world = from(cam.world);
+    const V3 local{ca, cb, z};
+    const auto w = apply(world, local);
+    const std::array<double, 3> v{w[0], w[1], w[2]};
+    if (!std::isfinite(v[0]) || !std::isfinite(v[1]) || !std::isfinite(v[2])) return PR_ERR_NONE;
+    return in->host->set_param_value(in->host_ref, i, v.data(), 3);
+  }
+  const std::array<double, 3> v{drag->x, drag->y, pos[2]};
   return in->host->set_param_value(in->host_ref, i, v.data(), 3);
 }
 

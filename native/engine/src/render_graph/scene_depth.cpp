@@ -4,9 +4,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <span>
 #include <string>
+#include <unordered_map>
 
 #include "threed.hpp"
 
@@ -160,6 +162,34 @@ void put(std::span<float> out, std::size_t at, const M4& m) {
   for (std::size_t i = 0; i < 16; ++i) out[at + i] = static_cast<float>(m.at(i));
 }
 
+/// One renderable the pass draws, and the opacity of the collapsed precomps it sits in.
+struct DrawnLayer {
+  const api::Renderable* r = nullptr;
+  double inherited = 1;
+  bool operator==(const DrawnLayer&) const = default;
+};
+
+/// The 3D layers a scope's list draws into its depth: its depth-eligible 3D renderables, and the 3D
+/// layers inside its COLLAPSED 3D precomps (a precomp with neither its own camera — a sealed
+/// precompScope, drawn through that camera into a card — nor a flat card: composition_pass.cpp
+/// prepare_isolated_precomp draws those children with their own models under the comp's camera,
+/// already in the comp's world), times the precomp's opacity, recursively.
+void collect_drawn(const std::vector<api::Renderable>& list, std::string_view selfId, double inherited, int depth,
+                   std::vector<DrawnLayer>& out) {
+  for (const api::Renderable& r : list) {
+    if (r.id == selfId || r.matte_source || r.light_wash || !(r.opacity > 0)) continue;
+    if (r.precomp) {
+      const bool collapsed = !r.precomp->camera3d && !r.precomp->flat_width;
+      if (collapsed && !r.precomp_children.empty() && depth < 16) {
+        collect_drawn(r.precomp_children, selfId, inherited * r.opacity, depth + 1, out);
+      }
+      continue;
+    }
+    if (!depth_eligible_3d(r) || r.three_d->model.size() != 16) continue;
+    out.push_back({&r, inherited});
+  }
+}
+
 void put4(std::span<float> out, std::size_t at, double a, double b, double c, double d) {
   out[at] = static_cast<float>(a);
   out[at + 1] = static_cast<float>(b);
@@ -288,8 +318,9 @@ struct SceneDepth::Entry {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
   std::array<double, 9> compToWorld{};
-  std::vector<const api::Renderable*> drawn;
+  std::vector<DrawnLayer> drawn;
   const api::RenderCamera3D* camera = nullptr;
+  std::int64_t poseKey = INT64_MIN;
   Result result;
   wgpu::Texture depth;
   wgpu::TextureView depthView;
@@ -311,18 +342,16 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
   }
 
   // The 3D layers of the scope the effect renders in (the comp's, or a sealed precomp's own).
-  const api::RenderCamera3D* cam = ctx.scope.camera3d != nullptr ? ctx.scope.camera3d
-                                   : ctx.file.scene.camera3d     ? &*ctx.file.scene.camera3d
-                                                                 : nullptr;
-  const std::vector<api::Renderable>* all = ctx.scope.all != nullptr ? ctx.scope.all : &ctx.file.scene.renderables;
-  std::vector<const api::Renderable*> drawn;
-  if (cam != nullptr && cam->view.size() == 16 && cam->projection.size() == 16) {
-    for (const api::Renderable& r : *all) {
-      if (r.id == req.selfId || r.matte_source || r.light_wash || !(r.opacity > 0)) continue;
-      if (!depth_eligible_3d(r) || r.three_d->model.size() != 16) continue;
-      drawn.push_back(&r);
-    }
+  const api::RenderCamera3D* frameCam = ctx.file.scene.camera3d ? &*ctx.file.scene.camera3d : nullptr;
+  const api::RenderCamera3D* cam = ctx.scope.camera3d != nullptr ? ctx.scope.camera3d : frameCam;
+  // A sample's camera (SDK 1.2) replaces the comp's — not a sealed precomp's own, which never moves with it.
+  if (req.camera != nullptr && req.camera->view.size() == 16 && req.camera->projection.size() == 16 &&
+      (ctx.scope.camera3d == nullptr || ctx.scope.camera3d == frameCam)) {
+    cam = req.camera;
   }
+  const std::vector<api::Renderable>* all = ctx.scope.all != nullptr ? ctx.scope.all : &ctx.file.scene.renderables;
+  std::vector<DrawnLayer> drawn;
+  if (cam != nullptr && cam->view.size() == 16 && cam->projection.size() == 16) collect_drawn(*all, req.selfId, 1, 0, drawn);
 
   const std::uint64_t frame = dev.frame();
   if (frame != frame_) {
@@ -331,7 +360,7 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
   }
   for (auto& e : entries_) {
     if (e->frame == frame && e->width == req.width && e->height == req.height && e->compToWorld == req.compToWorld &&
-        e->drawn == drawn && e->camera == cam) {
+        e->drawn == drawn && e->camera == cam && e->poseKey == req.poseKey) {
       return e.get();
     }
   }
@@ -372,6 +401,7 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
   e->compToWorld = req.compToWorld;
   e->drawn = std::move(drawn);
   e->camera = cam;
+  e->poseKey = req.poseKey;
   e->cpu.clear();
   e->cpuRead = false;
   e->result.layers = static_cast<std::uint32_t>(e->drawn.size());
@@ -395,7 +425,15 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
   if (cam != nullptr) {
     const M4 view = m4_of(cam->view);
     const M4 pv = mul(comp_to_clip(req), mul(m4_of(cam->projection), view));
-    for (const api::Renderable* r : e->drawn) {
+    // A sample's poses (SDK 1.2): a drawn layer's model at that time, else its frame model.
+    std::unordered_map<std::string_view, const std::vector<double>*> posed;
+    if (req.models != nullptr) {
+      for (const auto& [id, m] : *req.models) {
+        if (m.size() == 16) posed.emplace(id, &m);
+      }
+    }
+    for (const DrawnLayer& dl : e->drawn) {
+      const api::Renderable* r = dl.r;
       Draw d;
       d.r = r;
       bool textured = false;
@@ -412,7 +450,8 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
           masked = true;
         }
       }
-      const M4 model = m4_of(r->three_d->model);
+      const auto pose = posed.find(r->id);
+      const M4 model = m4_of(pose != posed.end() ? *pose->second : r->three_d->model);
       const std::size_t at = floats.size();
       floats.resize(at + kSlotBytes / sizeof(float), 0.0F);
       const std::span<float> u(floats);
@@ -429,7 +468,7 @@ SceneDepth::Entry* SceneDepth::entry_for(PassContext& ctx, const Request& req) {
         radius = kind == 1 ? std::max(0.0, std::min(r->sdf->radius_px, std::min(sw, sh) / 2)) : 0;
       }
       put4(u, at + 40, kind, radius, sw, sh);
-      const double alpha = std::max(0.0, r->opacity) * (r->color ? r->color->a : 1.0);
+      const double alpha = std::max(0.0, r->opacity) * dl.inherited * (r->color ? r->color->a : 1.0);
       put4(u, at + 44, alpha, textured ? 1 : 0, masked ? 1 : 0, kDepthKnee);
       d.slot = static_cast<std::uint32_t>(at * sizeof(float) / kSlotBytes);
       draws.push_back(std::move(d));

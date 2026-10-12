@@ -39,6 +39,7 @@ struct State {
   NativeEffects::ListFn rescan;
   NativeEffects::OverlayFn overlay;
   NativeEffects::DragFn drag;
+  NativeEffects::SceneFn scene;  // SDK 1.2
   /// Plugin ids listed `locked` (no entitlement).
   std::vector<std::string> locked;
 };
@@ -136,6 +137,23 @@ void NativeEffects::clear_handlers() {
   set_query_handlers({}, {});
   set_rescan_handler({});
   set_overlay_handlers({}, {});
+  set_scene_handler({});
+}
+
+void NativeEffects::set_scene_handler(SceneFn fn) {
+  State& s = state();
+  const std::scoped_lock lock(s.handlerMutex);
+  s.scene = std::move(fn);
+}
+
+void NativeEffects::fill_scene(const SpaceCtx& space, NativeActionRequest& r) {
+  State& s = state();
+  SceneFn fn;
+  {
+    const std::scoped_lock lock(s.handlerMutex);
+    fn = s.scene;
+  }
+  if (fn) fn(space, r);
 }
 
 std::optional<std::vector<api::PluginInfo>> NativeEffects::rescan() {

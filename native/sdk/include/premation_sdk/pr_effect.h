@@ -53,7 +53,8 @@ extern "C" {
  *   GPU_DEVICE_SETDOWN         PrGpuDeviceSetupExtra*
  *   SMART_RENDER_GPU           PrSmartRenderGpuExtra*
  *   DRAW_OVERLAY (1.1)         PrOverlayExtra*           overlay_line / _path / _handle: the viewer
- *                                                        overlay, in layer px (PR_OUT_FLAG_CUSTOM_OVERLAY)
+ *                                                        overlay, in layer px (PR_OUT_FLAG_CUSTOM_OVERLAY;
+ *                                                        1.2: or comp px, overlay_set_space)
  *   OVERLAY_DRAG (1.1)         PrOverlayDragExtra*       a handle was dragged: set_param_value / set_arb_data
  *                                                        (the whole drag is ONE undo step)
  */
@@ -211,21 +212,29 @@ typedef struct PrOverlayExtra {
   uint32_t struct_size;
   double layer_width; /* the layer, px: the overlay's coordinate space */
   double layer_height;
+  /* SDK 1.2 (check struct_size): the composition, px — the space of PR_OVERLAY_SPACE_COMP items
+   * (PrHostSuite.overlay_set_space). The comp camera is get_comp_camera at in_data->current_time. */
+  double comp_width;
+  double comp_height;
 } PrOverlayExtra;
 
 #define PR_OVERLAY_DRAG_BEGIN 0
 #define PR_OVERLAY_DRAG_MOVE 1
 #define PR_OVERLAY_DRAG_END 2
 
-/* SDK 1.1 — OVERLAY_DRAG: handle `handle_id` (from overlay_handle) is at (x, y), layer px.
- * Write params with set_param_value (an animated one keys at the current time). Every
- * phase of one drag lands in the same undo step. */
+/* SDK 1.1 — OVERLAY_DRAG: handle `handle_id` (from overlay_handle) is at (x, y), layer px
+ * (SDK 1.2: in the handle's `space`). Write params with set_param_value (an animated one keys at
+ * the current time). Every phase of one drag lands in the same undo step. */
 typedef struct PrOverlayDragExtra {
   uint32_t struct_size;
   uint32_t handle_id;
   int32_t phase; /* PR_OVERLAY_DRAG_* */
   double x, y;   /* the pointer, layer px */
   double start_x, start_y; /* where the drag began, layer px */
+  /* SDK 1.2 (check struct_size): PR_OVERLAY_SPACE_* the handle was drawn in — x, y, start_x, start_y
+   * are composition px for a PR_OVERLAY_SPACE_COMP handle. */
+  uint32_t space;
+  uint32_t reserved_1_2; /* 0 */
 } PrOverlayDragExtra;
 
 typedef PrErr(PR_CALL* PrEffectMainFn)(PrCmd cmd, const PrInData* in_data, PrOutData* out_data,

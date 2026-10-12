@@ -16,6 +16,7 @@
 #include "scene.hpp"
 #include "strutil.hpp"
 #include "time_conv.hpp"
+#include "worldxf.hpp"
 
 namespace premation::doc {
 
@@ -274,6 +275,7 @@ void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c) {
     fail(ErrorCode::not_found, "no plugin effect with a viewer overlay at '" + group.path + "'", {.layer = group.layer, .path = group.path});
   }
   NativeActionRequest req = native_request(d, node, group.layer, seg[1], *e, *ne, x.time);
+  NativeEffects::fill_scene(SpaceCtx{d, x.view, x.expr, x.cache}, req);  // SDK 1.2: the comp camera & co. at the drag's time
   NativeOverlayDrag drag;
   drag.handle = c.handle;
   drag.phase = static_cast<std::int32_t>(std::min<std::uint32_t>(c.phase, 2));
@@ -281,6 +283,7 @@ void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c) {
   drag.y = c.y;
   drag.startX = c.start_x;
   drag.startY = c.start_y;
+  drag.space = c.space;  // SDK 1.2: the handle's space (layer px or comp px)
   const std::variant<NativeEdit, NativeFailure> result = NativeEffects::overlay_drag(req, drag);
   if (const auto* f = std::get_if<NativeFailure>(&result)) {
     fail(ErrorCode::internal, "plugin '" + ne->provider + "': " + f->message, {.layer = group.layer, .path = group.path});

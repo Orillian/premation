@@ -8857,6 +8857,7 @@ void encode(wire::Writer& w, const DragEffectOverlay& v) {
   w.varint(41U); w.f64(v.start_x);
   w.varint(49U); w.f64(v.start_y);
   w.varint(56U); w.varint(v.phase);
+  w.varint(64U); w.varint(v.space);
 }
 
 Status decode(wire::Reader& r, DragEffectOverlay& out) {
@@ -8867,6 +8868,7 @@ Status decode(wire::Reader& r, DragEffectOverlay& out) {
   bool has_start_x = false;
   bool has_start_y = false;
   bool has_phase = false;
+  bool has_space = false;
   while (!r.at_end()) {
     std::uint64_t key = 0;
     if (!r.varint(key)) return Status::truncated;
@@ -8906,6 +8908,11 @@ Status decode(wire::Reader& r, DragEffectOverlay& out) {
         has_phase = true;
         break;
       }
+      case 64U: {
+        if (!r.u32(out.space)) return Status::bad_value;
+        has_space = true;
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
@@ -8918,6 +8925,7 @@ Status decode(wire::Reader& r, DragEffectOverlay& out) {
   if (!has_start_x) return Status::missing_field;
   if (!has_start_y) return Status::missing_field;
   if (!has_phase) return Status::missing_field;
+  if (!has_space) return Status::missing_field;
   return Status::ok;
 }
 
@@ -27970,6 +27978,7 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
         if (!r.str(out.kind)) return Status::truncated;
         has_kind = true;
         break;
+  w.varint(64U); w.varint(v.space);
       }
       case 26U: {
         wire::Reader sub;
@@ -27978,6 +27987,7 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
         break;
       }
       case 32U: {
+  bool has_space = false;
         if (!r.boolean(out.closed)) return Status::truncated;
         has_closed = true;
         break;
@@ -28019,6 +28029,11 @@ void encode(wire::Writer& w, const OverlayLayerGeometry& v) {
   if (!v.path.empty()) { w.varint(42U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path) w.f64(e); w.end_ld(s); }
   if (!v.path_keys.empty()) { w.varint(50U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path_keys) w.f64(e); w.end_ld(s); }
   if (!v.pins.empty()) { w.varint(58U); const std::size_t s = w.begin_ld(); for (const auto& e : v.pins) w.f64(e); w.end_ld(s); }
+      case 64U: {
+        if (!r.u32(out.space)) return Status::bad_value;
+        has_space = true;
+        break;
+      }
   if (!v.bones.empty()) { w.varint(66U); const std::size_t s = w.begin_ld(); for (const auto& e : v.bones) w.f64(e); w.end_ld(s); }
   if (!v.text_box.empty()) { w.varint(74U); const std::size_t s = w.begin_ld(); for (const auto& e : v.text_box) w.f64(e); w.end_ld(s); }
   if (!v.path_frames.empty()) { w.varint(82U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path_frames) w.f64(e); w.end_ld(s); }
@@ -28029,6 +28044,7 @@ void encode(wire::Writer& w, const OverlayLayerGeometry& v) {
   for (const auto& e : v.plugin) { w.varint(482U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
 }
 
+  if (!has_space) return Status::missing_field;
 Status decode(wire::Reader& r, OverlayLayerGeometry& out) {
   bool has_layer = false;
   while (!r.at_end()) {

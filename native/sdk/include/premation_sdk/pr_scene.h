@@ -81,6 +81,10 @@ typedef struct PrLight {
 #define PR_SAMPLE_LIGHTS (1u << 2)
 #define PR_SAMPLE_LAYER_TRANSFORMS (1u << 3)
 #define PR_SAMPLE_ALL (PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LIGHTS | PR_SAMPLE_LAYER_TRANSFORMS)
+/** SDK 1.2: the scene depth at that time (PrHostSuite.checkout_scene_depth_gpu_at / _at): the comp's
+ *  3D layers and camera evaluated at it. Needs PR_OUT_FLAG_USES_SCENE_DEPTH; not in PR_SAMPLE_ALL
+ *  (each time is a depth pass of its own: ask only for what you occlude with). */
+#define PR_SAMPLE_SCENE_DEPTH (1u << 4)
 /** The most distinct times one instance may check out per frame. */
 #define PR_MAX_TIME_SAMPLES 1024
 
