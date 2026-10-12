@@ -1,0 +1,366 @@
+{
+  "version": "1.9.0",
+  "scene": {
+    "version": "1.0.0",
+    "nodes": [
+      {
+        "id": "comp_root",
+        "name": "Composition 1",
+        "parent": null,
+        "children": [
+          "solid",
+          "cam",
+          "key",
+          "fill"
+        ],
+        "transform": {
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "rotation": 0,
+          "scale": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "visible": true,
+        "locked": false,
+        "components": [
+          {
+            "id": "comp_root_meta",
+            "type": "group",
+            "props": {
+              "__kind": "group"
+            }
+          }
+        ]
+      },
+      {
+        "id": "solid",
+        "name": "Model",
+        "children": [],
+        "parent": "comp_root",
+        "transform": {
+          "position": {
+            "x": 240,
+            "y": 180
+          },
+          "rotation": 0,
+          "scale": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "components": [
+          {
+            "id": "solid_t",
+            "type": "Transform",
+            "props": {
+              "__kind": "shape",
+              "x": 240,
+              "y": 180,
+              "rotation": 0,
+              "width": 480,
+              "height": 360,
+              "shapeType": "rect"
+            }
+          },
+          {
+            "id": "solid_s",
+            "type": "Style",
+            "props": {
+              "opacity": 100,
+              "fill": "#000000"
+            }
+          },
+          {
+            "id": "solid_fx",
+            "type": "fx",
+            "props": {
+              "effects": [
+                {
+                  "id": "fx",
+                  "type": "com.premation.samples.model3d",
+                  "params": {
+                    "p1": "m3d-box",
+                    "p6": 170,
+                    "p8": [
+                      1,
+                      1,
+                      1,
+                      1
+                    ],
+                    "p9": 30,
+                    "p10": 60,
+                    "p11": "m3d-checker"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "cam",
+        "name": "Camera",
+        "children": [],
+        "parent": "comp_root",
+        "transform": {
+          "position": {
+            "x": 240,
+            "y": 180
+          },
+          "rotation": 0,
+          "scale": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "components": [
+          {
+            "id": "cam_t",
+            "type": "Transform",
+            "props": {
+              "__kind": "camera",
+              "x": 240,
+              "y": 180,
+              "rotation": 0,
+              "z": -700,
+              "focalLength": 700,
+              "poiX": 240,
+              "poiY": 180,
+              "poiZ": 0
+            }
+          }
+        ],
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "key",
+        "name": "key",
+        "children": [],
+        "parent": "comp_root",
+        "transform": {
+          "position": {
+            "x": 60,
+            "y": 40
+          },
+          "rotation": 0,
+          "scale": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "components": [
+          {
+            "id": "key_t",
+            "type": "Transform",
+            "props": {
+              "__kind": "light",
+              "rotation": 0,
+              "lightGlow": false,
+              "x": 60,
+              "y": 40,
+              "z": -500,
+              "lightType": "point",
+              "intensity": 110
+            }
+          },
+          {
+            "id": "key_s",
+            "type": "Style",
+            "props": {
+              "opacity": 100,
+              "fill": "#ffffff"
+            }
+          }
+        ],
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "fill",
+        "name": "fill",
+        "children": [],
+        "parent": "comp_root",
+        "transform": {
+          "position": {
+            "x": 240,
+            "y": 180
+          },
+          "rotation": 0,
+          "scale": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "components": [
+          {
+            "id": "fill_t",
+            "type": "Transform",
+            "props": {
+              "__kind": "light",
+              "rotation": 0,
+              "lightGlow": false,
+              "x": 240,
+              "y": 180,
+              "lightType": "ambient",
+              "intensity": 25
+            }
+          },
+          {
+            "id": "fill_s",
+            "type": "Style",
+            "props": {
+              "opacity": 100,
+              "fill": "#ffffff"
+            }
+          }
+        ],
+        "visible": true,
+        "locked": false
+      }
+    ]
+  },
+  "animation": {
+    "tracks": {
+      "cam": {
+        "x": {
+          "nodeId": "cam",
+          "prop": "x",
+          "keyframes": [
+            {
+              "t": 0,
+              "value": 240
+            },
+            {
+              "t": 0.5,
+              "value": 735
+            },
+            {
+              "t": 1,
+              "value": 940
+            }
+          ]
+        },
+        "z": {
+          "nodeId": "cam",
+          "prop": "z",
+          "keyframes": [
+            {
+              "t": 0,
+              "value": -700
+            },
+            {
+              "t": 0.5,
+              "value": -495
+            },
+            {
+              "t": 1,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    "expressions": {}
+  },
+  "comps": {
+    "comp_root": {
+      "id": "comp_root",
+      "name": "comp_root",
+      "width": 480,
+      "height": 360,
+      "fps": 30,
+      "durationSeconds": 2,
+      "background": "#0c0c12"
+    }
+  },
+  "motionBlur": {
+    "enabled": false,
+    "shutterAngle": 180,
+    "shutterPhase": -90,
+    "samples": 8,
+    "adaptiveSampleLimit": 128
+  },
+  "colorManagement": {
+    "workingSpace": "srgb-linear",
+    "displayTransform": "srgb",
+    "bitDepth": 16
+  },
+  "projectItems": {
+    "folders": [],
+    "footage": {
+      "m3d-box": {
+        "name": "box.glb",
+        "type": "model"
+      },
+      "m3d-checker": {
+        "name": "checker.png",
+        "type": "image"
+      }
+    }
+  },
+  "openTabs": {
+    "tabOrder": [
+      "tab1"
+    ],
+    "activeTabId": "tab1",
+    "tabs": {
+      "tab1": {
+        "id": "tab1",
+        "compositionId": "comp_root",
+        "breadcrumbPath": [
+          "comp_root"
+        ],
+        "title": "comp_root",
+        "time": 0,
+        "frame": 0
+      }
+    }
+  },
+  "harness": {
+    "sceneId": "plugin-model3d-orbit",
+    "frames": [
+      0,
+      15,
+      30
+    ],
+    "fps": 30,
+    "size": {
+      "w": 480,
+      "h": 360
+    },
+    "motionBlurFps": null,
+    "motionBlurOn": false,
+    "overlays": null,
+    "viewerLut": false,
+    "assets": [
+      {
+        "id": "m3d-box",
+        "type": "model",
+        "src": "box.glb",
+        "metadata": {}
+      },
+      {
+        "id": "m3d-checker",
+        "type": "image",
+        "src": "checker.png",
+        "metadata": {}
+      }
+    ],
+    "compId": "comp_root",
+    "viewerLutCube": null,
+    "media": [
+      "box.glb",
+      "checker.png"
+    ],
+    "tolerance": null,
+    "fidelityOnly": false,
+    "description": "Plugin SDK S8: the model3d sample (a 2 x 1 x 1 glTF box, its orange baseColorFactor x a checker Base Color Map through get_asset_image) on a comp-sized 2D solid, the comp camera orbiting a quarter turn over 1 s, lit by a point light and an ambient light (Lambert + Blinn-Phong)."
+  }
+}

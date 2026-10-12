@@ -399,6 +399,17 @@ bool open_project(const fs::path& file, Project& p, std::string& err) {
   // The harness's footage records (sceneProject.ts `harness.assets`) are the session's assets.
   std::vector<js::Json> assets;
   if (json->at("harness").at("assets").is_array()) assets = json->at("harness").at("assets").arr();
+  // A record's `src` names a file beside project.json (textures resolve it through the media base);
+  // its absolute `path` lets the document resolve it as a file too (plugin FILE params: the model3d scenes).
+  for (js::Json& a : assets) {
+    if (!a.at("src").is_string() || a.at("path").is_string()) continue;
+    const fs::path beside = file.parent_path() / fs::path(std::u8string(a.at("src").str().begin(), a.at("src").str().end()));
+    std::error_code ec;
+    if (fs::is_regular_file(beside, ec)) {
+      const std::u8string abs = fs::absolute(beside, ec).u8string();
+      a.set("path", js::Json::string(std::string(abs.begin(), abs.end())));
+    }
+  }
   try {
     (void)doc::restore_document(p.d, p.view, *json, assets);
   } catch (const std::exception& e) {
