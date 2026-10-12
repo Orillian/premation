@@ -108,6 +108,18 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
   ~~Limits: a collapsed precomp's own layer motion is not re-evaluated per sub-time~~ — 2026-10-13: a collapsed
   precomp's layers are posed by the comp built at each sub-time (scene_finish.cpp built_model_at). No edit to threed.cpp. (9fb58daa)
 
+### Close-out 2026-10-13
+
+- Known red settled (11057941): test_fx_bounds expectations at 3.5σ; bevel-above/below-cap were a regression of S4 (blur taps
+  spread past the texels) — fixed, references kept; blur-hard-edge and three-d-outer-glow ×2 re-blessed (S4's faded tail).
+- model3d goldens store Base Color "#ffffff"; an invalid plugin COLOR is reported on layerErrors (f908c381).
+- S3 in nested comps: comp_time / layer_start are the layer's own comp's; prefixed nested layers resolve their node (66f6bb68).
+- G3: collapsed precomps' layers posed at scene-depth sub-times (1b61c244).
+- S5 Collect Files + siblings: not built, reasons in PLUGIN_SDK.md "Assets" (7bb1175d).
+- Gates: engine_plugins 49/49, plugins_scene 9/9, plugins_gpu 15/15, engine_tests 190/190 (green), audio 34/34, jobs 99/99;
+  plugin jest 12 suites green (headless); typecheck, lint (0 errors), engine-api:check, native golden gate green
+  (345/355 gated + ceilings), bench:check 0 regressions.
+
 ### P7 — plugins that are not effects
 
 - [x] P7a **Commands (AEGP class).** `pr_command.h`: a module lists commands
