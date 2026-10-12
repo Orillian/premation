@@ -8,7 +8,9 @@
 
 #include "anim.hpp"
 #include "host.hpp"
+#include "fail.hpp"
 #include "jsmath.hpp"
+#include "layer_geometry.hpp"
 #include "lights3d.hpp"
 #include "readers.hpp"
 #include "scene.hpp"
@@ -140,6 +142,31 @@ std::optional<motion::xf::Mat4> SceneEval::world(const std::string& id, double s
   return m;
 }
 
+std::optional<motion::xf::Mat4> SceneEval::layer_world(const std::string& id, double seconds) {
+  const std::optional<motion::xf::Mat4> w = world(id, seconds);
+  if (!w) return std::nullopt;
+  std::optional<doc::LayerGeometry> g;
+  try {
+    g = doc::layer_geometry_at(sc_, nullptr, id, seconds);
+  } catch (const doc::EngineFail&) {
+    return std::nullopt;  // a text layer with no measurer here: the caller keeps its fallback
+  }
+  if (!g) return std::nullopt;
+  // Layer px p → the document's local space: the box's top-left is (offset − size / 2). A 2D layer's
+  // world (world_2d_at) has no anchor term — its content is drawn at world · T(−anchor) — while a 3D
+  // layer's (world_3d_at) composes T(−anchor) itself.
+  double ax = 0;
+  double ay = 0;
+  if (const doc::Node* n = sc_.d.node(id); n != nullptr && !doc::is_3d_enabled(*n)) {
+    if (const auto local = doc::local_3d_at(sc_, *n, seconds)) {
+      ax = local->anchor_x;
+      ay = local->anchor_y;
+    }
+  }
+  const motion::xf::Mat4 toLocal{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, g->offsetX - g->width / 2 - ax, g->offsetY - g->height / 2 - ay, 0, 1};
+  return motion::xf::multiply(*w, toLocal);
+}
+
 void overlay_scene(const doc::SpaceCtx& sc, const EffectSpec& spec, doc::NativeActionRequest& req) {
   const bool cam = spec.has(PR_OUT_FLAG_USES_CAMERA);
   const bool lit = spec.has(PR_OUT_FLAG_USES_LIGHTS);
@@ -166,7 +193,7 @@ void overlay_scene(const doc::SpaceCtx& sc, const EffectSpec& spec, doc::NativeA
         if (p.type != PR_PARAM_LAYER) continue;
         const js::Json& v = req.params.at(p.key);
         if (!v.is_string() || v.str().empty()) continue;
-        if (auto m = ev.world(v.str(), t)) s.matrices.emplace_back(p.key, std::vector<double>(m->begin(), m->end()));
+        if (auto m = ev.layer_world(v.str(), t)) s.matrices.emplace_back(p.key, std::vector<double>(m->begin(), m->end()));
       }
     }
   }

@@ -36,8 +36,14 @@ class SceneEval {
   std::optional<api::RenderCamera3D> camera(double seconds);
   /// The comp's lights at comp `seconds`, in the renderer's terms (environment lights excluded).
   std::vector<api::RenderLight3D> lights(double seconds);
-  /// A layer's own layer px → world 4×4 at comp `seconds` (a 2D layer: its affine at z = 0).
+  /// A layer's world 4×4 at comp `seconds` in the document's own local space (centred on the layer's
+  /// origin, as layerSpace.ts resolves it; a 2D layer: its affine at z = 0).
   std::optional<motion::xf::Mat4> world(const std::string& id, double seconds);
+  /// The SDK's LAYER-param matrix (pr_host.h get_layer_transform): LAYER PX — (0, 0) the layer's
+  /// top-left, (w, h) its bottom-right, as drawn — → comp world px, column-major. `world` through the
+  /// layer's box (layer_geometry.hpp: width, height and the box centre's offset from the origin).
+  /// nullopt for a node the document cannot place (gone, no geometry, a text layer without a measurer).
+  std::optional<motion::xf::Mat4> layer_world(const std::string& id, double seconds);
   /// Inside its in/out bar at comp `seconds` (the renderer's isLiveAt: own bars, else a plain group's).
   bool live_at(const doc::Node& n, double seconds);
 

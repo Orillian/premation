@@ -196,7 +196,7 @@ class Sampler {
         if (s.type != PR_PARAM_LAYER) continue;
         const std::string id = text_of(e, "p." + s.key);
         if (id.empty()) continue;
-        if (auto m = matrix_at(id, compSeconds)) w.matrices.emplace_back(s.key, std::move(*m));
+        if (auto m = layer_matrix_at(id, compSeconds)) w.matrices.emplace_back(s.key, std::move(*m));
       }
     }
     if ((q.what & PR_SAMPLE_SCENE_DEPTH) != 0 && spec.has(PR_OUT_FLAG_USES_SCENE_DEPTH)) w.depth = depth_at(compSeconds);
@@ -214,6 +214,18 @@ class Sampler {
     if (frame3d()) return std::nullopt;
     const doc::TlSubFrameScope subFrame;
     return lights_at(t_);
+  }
+
+  /// The frame's LAYER-param matrices in the SDK's contract (layer px → world): what
+  /// encode_native_scene wrote from the renderables (their unit quads) is replaced where the
+  /// document places the layer.
+  void layer_matrices(api::RenderEffect& e, const EffectSpec& spec) {
+    for (const ParamSpec& s : spec.params) {
+      if (s.type != PR_PARAM_LAYER) continue;
+      const std::string id = text_of(e, "p." + s.key);
+      if (id.empty()) continue;
+      if (auto m = eval_.layer_world(id, t_)) param(e, "p." + s.key + ".m", api::RenderParamKind::numbers).numbers.assign(m->begin(), m->end());
+    }
   }
 
  private:
@@ -299,6 +311,16 @@ class Sampler {
 
   /// A LAYER param's matrix at comp `seconds`, in the frame's convention: the frame's renderable
   /// matrix moved by how the layer moved since the frame (W(t) · W(frame)⁻¹ · R(frame)).
+  /// A LAYER param's matrix at comp `seconds` — the SDK's contract (pr_host.h): layer px → comp
+  /// world px, off the document (SceneEval::layer_world); a layer the document cannot place (a
+  /// precomp instance's copy, a text layer here) falls back to the frame's renderable, moved.
+  std::optional<std::vector<double>> layer_matrix_at(const std::string& id, double seconds) {
+    if (auto m = eval_.layer_world(id, seconds)) return std::vector<double>(m->begin(), m->end());
+    return matrix_at(id, seconds);
+  }
+
+  /// A renderable's drawn model (renderable_world_matrix: the unit quad's) at comp `seconds`, moved by
+  /// how the layer moved since the frame — the depth pass draws these.
   std::optional<std::vector<double>> matrix_at(const std::string& id, double seconds) {
     const api::Renderable* r = find_renderable_in(scene_.renderables, id);
     if (r == nullptr) return std::nullopt;
@@ -440,6 +462,7 @@ void finish_native_frame(const scene::BuildContext& c, std::string_view comp, do
         if (spec->has(PR_OUT_FLAG_USES_CAMERA)) cam = sampler.frame_camera_if_missing();
         if (spec->has(PR_OUT_FLAG_USES_LIGHTS)) lights = sampler.frame_lights_if_missing();
         encode_native_scene(e, *spec, frame.file.scene, cam && *cam ? &**cam : nullptr, lights ? &*lights : nullptr);
+        if (spec->has(PR_OUT_FLAG_USES_LAYER_TRANSFORMS)) sampler.layer_matrices(e, *spec);
       }
       if (blurOn && spec->has(PR_OUT_FLAG_USES_SHUTTER)) blursItself = true;
       if (!spec->has(PR_OUT_FLAG_SMART_RENDER)) continue;

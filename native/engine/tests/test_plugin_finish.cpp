@@ -12,6 +12,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +20,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include "docexpr.hpp"
 #include "docio.hpp"
@@ -27,6 +29,7 @@
 #include "json.hpp"
 #include "model.hpp"
 #include "native_scene.hpp"
+#include "scene_eval.hpp"
 #include "scene_finish.hpp"
 #include "timeline.hpp"
 
@@ -291,5 +294,111 @@ TEST_CASE("SDK 1.2 S6: PR_SAMPLE_SCENE_DEPTH carries the 3D layers and the camer
     // The model's own layer is drawn by the effect, never into its depth: its id may be listed
     // (the pass excludes it), but nothing else of the comp is missing.
     CHECK(s.depth->models.size() >= 1);
+  }
+}
+
+TEST_CASE("SDK get_layer_transform: layer px -> world, the same in the render and the overlay, on the drawn corners",
+          "[plugins][finish][layer-transform]") {
+  // model3d's Transform Layer (LAYER param p7) names a 3D layer (turned, anchor moved) or a 2D one
+  // (scaled, rotated, anchor moved). pr_host.h: the matrix maps LAYER px — (0, 0) the top-left,
+  // (w, h) the bottom-right of the layer as drawn — to comp world px.
+  Json document = scene_json("plugin-model3d-occlusion.json");
+  for (Json& c : find_node(document, "wall")->find_mut("components")->arr_mut()) {
+    if (c.at("type").str() != "Transform") continue;
+    c.find_mut("props")->set("anchorX", Json::number(20));
+    c.find_mut("props")->set("anchorY", Json::number(-30));
+    c.find_mut("props")->set("rotationX", Json::number(-15));
+  }
+  {
+    Json flat = *find_node(document, "wall");
+    flat.set("id", Json::string("flat"));
+    flat.set("name", Json::string("Flat"));
+    Json comps = Json::array();
+    Json t = Json::object();
+    t.set("id", Json::string("flat_t"));
+    t.set("type", Json::string("Transform"));
+    Json props = Json::object();
+    props.set("__kind", Json::string("shape"));
+    props.set("shapeType", Json::string("rect"));
+    props.set("x", Json::number(330));
+    props.set("y", Json::number(110));
+    props.set("width", Json::number(80));
+    props.set("height", Json::number(40));
+    props.set("rotation", Json::number(30));
+    props.set("scaleX", Json::number(1.5));
+    props.set("scaleY", Json::number(0.75));
+    props.set("anchorX", Json::number(10));
+    props.set("anchorY", Json::number(-5));
+    t.set("props", std::move(props));
+    comps.arr_mut().push_back(std::move(t));
+    for (const Json& c : find_node(document, "wall")->at("components").arr()) {
+      if (c.at("type").str() == "Style") comps.arr_mut().push_back(c);
+    }
+    flat.set("components", std::move(comps));
+    document.find_mut("scene")->find_mut("nodes")->arr_mut().push_back(std::move(flat));
+    Json* root = find_node(document, "comp_root");
+    root->find_mut("children")->arr_mut().push_back(Json::string("flat"));
+  }
+  for (const char* target : {"wall", "flat"}) {
+    INFO("Transform Layer = " << target);
+    Json d = document;
+    for (Json& c : find_node(d, "solid")->find_mut("components")->arr_mut()) {
+      if (c.at("type").str() == "fx") c.find_mut("props")->find_mut("effects")->arr_mut()[0].find_mut("params")->set("p7", Json::string(target));
+    }
+    Fixture f(std::move(d));
+    const pl::EffectSpec* spec = f.host->effect("com.premation.samples.model3d");
+    REQUIRE(spec != nullptr);
+    const int slot = [&] {
+      for (std::size_t i = 0; i < spec->params.size(); ++i) {
+        if (spec->params[i].id == 7) return static_cast<int>(i);
+      }
+      return -1;
+    }();
+    REQUIRE(slot >= 0);
+    const double t = 0.25;
+    // The render path: the chain entry finish_native_frame writes.
+    pl::RenderInputs in;
+    pl::decode_native_fx(f.frame(t).entry, *spec, in);
+    REQUIRE(in.layerMatrices.size() > static_cast<std::size_t>(slot));
+    REQUIRE(in.layerMatrices[static_cast<std::size_t>(slot)].has_value());
+    const std::array<double, 16> render = *in.layerMatrices[static_cast<std::size_t>(slot)];
+    // The overlay path: what DRAW_OVERLAY's request carries.
+    doc::NativeActionRequest req;
+    req.layer = "solid";
+    req.type = spec->matchName;
+    req.params = Json::object();
+    req.params.set("p7", Json::string(target));
+    req.timeSeconds = t;
+    pl::overlay_scene(doc::SpaceCtx{f.d, f.view, *f.env, f.cache}, *spec, req);
+    REQUIRE(req.scene.has_value());
+    REQUIRE(req.scene->matrices.size() == 1);
+    const std::vector<double>& overlay = req.scene->matrices[0].second;
+    REQUIRE(overlay.size() == 16);
+    for (std::size_t k = 0; k < 16; ++k) CHECK(std::abs(render.at(k) - overlay[k]) < 1e-9 * std::max(1.0, std::abs(overlay[k])));
+    // Layer px (0, 0) and (w, h) land on the corners the frame draws: the renderable's unit quad.
+    const sc::BuildContext ctx{f.d, f.view, *f.env, f.cache, nullptr, {}};
+    sc::NativeFrame nf = sc::build_native_frame(ctx, "comp_root", t, sc::export_view(480, 360, 480, 360), false);
+    const api::Renderable* r = pl::find_renderable_in(nf.file.scene.renderables, target);
+    REQUIRE(r != nullptr);
+    const double w = std::string_view(target) == "wall" ? 150 : 80;
+    const double h = std::string_view(target) == "wall" ? 300 : 40;
+    const auto apply = [](const auto& m, double x, double y) {
+      return std::array<double, 3>{m[0] * x + m[4] * y + m[12], m[1] * x + m[5] * y + m[13], m[2] * x + m[6] * y + m[14]};
+    };
+    std::array<std::array<double, 3>, 2> drawn{};
+    if (r->three_d) {
+      const auto& m = r->three_d->model;
+      drawn = {apply(m, 0, 0), apply(m, 1, 1)};
+    } else {
+      const auto& m = r->model_matrix;  // Mat3, column-major: the unit quad onto the comp
+      drawn = {std::array<double, 3>{m[6], m[7], 0}, std::array<double, 3>{m[0] + m[3] + m[6], m[1] + m[4] + m[7], 0}};
+    }
+    CHECK((r->three_d.has_value()) == (std::string_view(target) == "wall"));
+    const std::array<std::array<double, 3>, 2> mapped{apply(render, 0, 0), apply(render, w, h)};
+    for (std::size_t c = 0; c < 2; ++c) {
+      INFO("corner " << c << " mapped " << mapped[c][0] << "," << mapped[c][1] << "," << mapped[c][2] << " drawn " << drawn[c][0] << ","
+                     << drawn[c][1] << "," << drawn[c][2]);
+      for (std::size_t k = 0; k < 3; ++k) CHECK(std::abs(mapped[c][k] - drawn[c][k]) < 1e-3);
+    }
   }
 }

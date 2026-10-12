@@ -25,7 +25,9 @@
 //   cam.eye                          numbers 3
 //   cam.zoom, cam.focus, cam.aperture number
 //   lights                           numbers, kLightStride per light (see encode_native_scene)
-//   p.<key>.m                        numbers 16: a LAYER param's world matrix
+//   p.<key>.m                        numbers 16: a LAYER param's world matrix — layer px (0,0 top-left) → world px; scene_finish.cpp
+//                                    writes it off the document. Without a document (a bare FrameScene) it is the
+//                                    renderable's drawn model (its unit quad: renderable_world_matrix)
 //
 // SDK 1.2 (scene_finish.cpp writes them):
 //   layerStart                       number flicks: comp time of layer time 0
