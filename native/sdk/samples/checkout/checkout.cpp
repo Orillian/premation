@@ -247,7 +247,7 @@ PrErr PR_CALL echo_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamDe
 
 const PrEffectEntry kEffects[] = {{"com.premation.samples.checkout.displace", &displace_main},  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays): C ABI table
                                   {"com.premation.samples.checkout.echo", &echo_main}};
-const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.checkout", 2, kEffects};
+const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.checkout", 2, kEffects, 0, nullptr, 0, nullptr, 0, nullptr};  // SDK 1.2: no commands, importers or output modules
 
 }  // namespace
 

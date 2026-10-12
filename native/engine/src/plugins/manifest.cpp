@@ -2,6 +2,9 @@
 
 #include <premation_sdk/pr_types.h>
 
+#include <algorithm>
+#include <cmath>
+
 #include "json.hpp"
 
 namespace premation::plugins {
@@ -34,6 +37,144 @@ bool sdk_compatible(std::uint32_t major, std::uint32_t minor, std::string& why) 
 std::optional<Manifest> parse_manifest(std::string_view json, std::string_view platform, std::string& error) {
   const std::string_view one[] = {platform};
   return parse_manifest(json, std::span<const std::string_view>(one), error);
+}
+
+namespace {
+
+/// A contribution id: 1–64 of [A-Za-z0-9._-], not starting with '.' or '-'.
+bool valid_local_id(std::string_view id) noexcept {
+  if (id.empty() || id.size() > 64) return false;
+  for (const char c : id) {
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+    if (!ok) return false;
+  }
+  return id.front() != '.' && id.front() != '-';
+}
+
+/// A file extension as the manifest gives it ("ppm", ".PPM") → "ppm"; "" when not one.
+std::string extension_of(const js::Json& v) {
+  if (!v.is_string()) return {};
+  std::string e = v.str();
+  if (!e.empty() && e.front() == '.') e.erase(0, 1);
+  if (e.empty() || e.size() > 16) return {};
+  for (char& c : e) {
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) return {};
+  }
+  return e;
+}
+
+/// `key` must be absent or an array of objects; each needs a valid, unique `id`.
+bool contribution_list(const js::Json& j, std::string_view key, std::string& error) {
+  const js::Json& list = j.at(key);
+  if (list.is_undefined()) return true;
+  if (!list.is_array()) {
+    error = "\"" + std::string(key) + "\" must be an array";
+    return false;
+  }
+  std::vector<std::string> seen;
+  for (const js::Json& e : list.arr()) {
+    const std::string id = e.at("id").is_string() ? e.at("id").str() : std::string();
+    if (!e.is_object() || !valid_local_id(id)) {
+      error = std::string(key) + ": every entry needs an \"id\" (1-64 of A-Z a-z 0-9 . _ -), got '" + id + "'";
+      return false;
+    }
+    if (std::ranges::find(seen, id) != seen.end()) {
+      error = std::string(key) + ": '" + id + "' is listed twice";
+      return false;
+    }
+    seen.push_back(id);
+  }
+  return true;
+}
+
+std::string str_or(const js::Json& v, std::string def) { return v.is_string() && !v.str().empty() ? v.str() : std::move(def); }
+
+}  // namespace
+
+bool parse_contributions(const js::Json& j, Manifest& m, std::string& error) {
+  for (const std::string_view key : {"commands", "importers", "outputModules", "panels"}) {
+    if (!contribution_list(j, key, error)) return false;
+  }
+  for (const js::Json& e : j.at("commands").arr()) {
+    ManifestCommand c;
+    c.id = e.at("id").str();
+    c.name = str_or(e.at("name"), c.id);
+    c.menu = str_or(e.at("menu"), "");
+    m.commands.push_back(std::move(c));
+  }
+  for (const js::Json& e : j.at("importers").arr()) {
+    ManifestImporter c;
+    c.id = e.at("id").str();
+    c.name = str_or(e.at("name"), c.id);
+    for (const js::Json& x : e.at("extensions").arr()) {
+      const std::string ext = extension_of(x);
+      if (ext.empty()) {
+        error = "importers: '" + c.id + "' has an extension that is not 1-16 letters or digits";
+        return false;
+      }
+      if (std::ranges::find(c.extensions, ext) == c.extensions.end()) c.extensions.push_back(ext);
+    }
+    if (c.extensions.empty()) {
+      error = "importers: '" + c.id + "' lists no extensions";
+      return false;
+    }
+    m.importers.push_back(std::move(c));
+  }
+  for (const js::Json& e : j.at("outputModules").arr()) {
+    ManifestOutputModule c;
+    c.id = e.at("id").str();
+    c.name = str_or(e.at("name"), c.id);
+    c.extension = extension_of(e.at("extension"));
+    if (c.extension.empty()) {
+      error = "outputModules: '" + c.id + "' needs an \"extension\" (1-16 letters or digits)";
+      return false;
+    }
+    if (const js::Json& opts = e.at("options"); !opts.is_undefined() && !opts.is_array()) {
+      error = "outputModules: '" + c.id + "' \"options\" must be an array";
+      return false;
+    }
+    for (const js::Json& o : e.at("options").arr()) {
+      ManifestOutputOption op;
+      op.id = o.at("id").is_string() ? o.at("id").str() : std::string();
+      op.name = str_or(o.at("name"), op.id);
+      op.type = o.at("type").is_string() ? o.at("type").str() : std::string();
+      if (!valid_local_id(op.id) || (op.type != "popup" && op.type != "number" && op.type != "checkbox")) {
+        error = "outputModules: '" + c.id + "' option '" + op.id + "' needs an id and a type (popup, number, checkbox)";
+        return false;
+      }
+      for (const js::Json& ch : o.at("choices").arr()) {
+        if (ch.is_string()) op.choices.push_back(ch.str());
+      }
+      if (op.type == "popup" && (op.choices.empty() || op.choices.size() > 64)) {
+        error = "outputModules: '" + c.id + "' popup '" + op.id + "' needs 1-64 choices";
+        return false;
+      }
+      const js::Json& d = o.at("default");
+      op.def = d.is_number() ? d.num() : d.is_bool() ? (d.b() ? 1.0 : 0.0) : (op.type == "popup" ? 1.0 : 0.0);
+      if (o.at("min").is_number()) op.min = o.at("min").num();
+      if (o.at("max").is_number()) op.max = o.at("max").num();
+      if (op.type == "popup") op.def = std::clamp(std::round(op.def), 1.0, static_cast<double>(op.choices.size()));
+      if (op.type == "checkbox") op.def = op.def != 0 ? 1.0 : 0.0;
+      c.options.push_back(std::move(op));
+    }
+    m.outputModules.push_back(std::move(c));
+  }
+  for (const js::Json& e : j.at("panels").arr()) {
+    ManifestPanel c;
+    c.id = e.at("id").str();
+    c.name = str_or(e.at("name"), c.id);
+    c.page = str_or(e.at("page"), "index.html");
+    // A page inside the bundle's ui/ folder: relative, no `..`, no backslashes, no hidden parts.
+    const bool bad = c.page.find("..") != std::string::npos || c.page.find('\\') != std::string::npos || c.page.front() == '/' ||
+                     c.page.find(':') != std::string::npos || c.page.front() == '.' || c.page.find("/.") != std::string::npos;
+    if (bad) {
+      error = "panels: '" + c.id + "' page must be a path inside the bundle's ui/ folder";
+      return false;
+    }
+    m.panels.push_back(std::move(c));
+  }
+  return true;
 }
 
 std::optional<Manifest> parse_manifest(std::string_view json, std::span<const std::string_view> platforms, std::string& error) {
@@ -83,8 +224,9 @@ std::optional<Manifest> parse_manifest(std::string_view json, std::span<const st
     return std::nullopt;
   }
   const js::Json& effects = j.at("effects");
-  if (!effects.is_array() || effects.arr().empty()) {
-    error = "the manifest lists no effects";
+  // P7: a plugin may contribute no effect at all (commands, importers, output modules, panels).
+  if (!effects.is_undefined() && !effects.is_array()) {
+    error = "\"effects\" must be an array";
     return std::nullopt;
   }
   for (const js::Json& e : effects.arr()) {
@@ -112,6 +254,11 @@ std::optional<Manifest> parse_manifest(std::string_view json, std::span<const st
       return std::nullopt;
     }
     m.entitlement = ent.str();
+  }
+  if (!parse_contributions(j, m, error)) return std::nullopt;
+  if (m.effects.empty() && m.commands.empty() && m.importers.empty() && m.outputModules.empty() && m.panels.empty()) {
+    error = "the manifest lists no effects, commands, importers, output modules or panels";
+    return std::nullopt;
   }
   return m;
 }

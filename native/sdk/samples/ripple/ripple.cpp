@@ -104,7 +104,7 @@ PrErr PR_CALL ripple_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParam
 }
 
 const PrEffectEntry kEffects[] = {{"com.premation.samples.ripple", &ripple_main}};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays): C ABI table
-const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.ripple", 1, kEffects};
+const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.ripple", 1, kEffects, 0, nullptr, 0, nullptr, 0, nullptr};  // SDK 1.2: no commands, importers or output modules
 
 }  // namespace
 

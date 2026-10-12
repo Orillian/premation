@@ -19,8 +19,10 @@
 #ifndef PREMATION_SDK_PR_EFFECT_H
 #define PREMATION_SDK_PR_EFFECT_H
 
+#include "pr_command.h"
 #include "pr_gpu.h"
 #include "pr_host.h"
+#include "pr_io.h"
 #include "pr_params.h"
 #include "pr_types.h"
 #include "pr_world.h"
@@ -236,6 +238,16 @@ typedef struct PrPluginInfo {
   const char* plugin_id; /* must equal the manifest's id */
   uint32_t effect_count;
   const PrEffectEntry* effects;
+  /* ── SDK 1.2 (appended; the host reads them only when struct_size covers them, so a 1.0 / 1.1
+   *    module, whose struct ends at `effects`, keeps loading): what the module contributes besides
+   *    effects. Each id must be listed in the manifest's matching key, and every manifest entry
+   *    must have its entry point here. ── */
+  uint32_t command_count;                      /* pr_command.h — manifest `commands` */
+  const PrCommandEntry* commands;
+  uint32_t importer_count;                     /* pr_io.h — manifest `importers` */
+  const PrImporterEntry* importers;
+  uint32_t output_module_count;                /* pr_io.h — manifest `outputModules` */
+  const PrOutputModuleEntry* output_modules;
 } PrPluginInfo;
 
 typedef const PrPluginInfo*(PR_CALL* PrPluginInfoFn)(void);

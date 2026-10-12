@@ -141,7 +141,7 @@ PrErr PR_CALL grade_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamD
 }
 
 const PrEffectEntry kEffects[] = {{"com.premation.samples.grade", &grade_main}};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays): C ABI table
-const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.grade", 1, kEffects};
+const PrPluginInfo kInfo = {sizeof(PrPluginInfo), PR_SDK_VERSION, "com.premation.samples.grade", 1, kEffects, 0, nullptr, 0, nullptr, 0, nullptr};  // SDK 1.2: no commands, importers or output modules
 
 }  // namespace
 

@@ -8,15 +8,19 @@
  *   pr_host.h     the host callback suite
  *   pr_scene.h    the comp camera, lights and layer transforms (SDK 1.1)
  *   pr_effect.h   the entry point, command selectors, in/out data, flags
+ *   pr_command.h  commands: plugins that edit the project from a menu (SDK 1.2)
+ *   pr_io.h       importers (footage formats) and output modules (export formats) (SDK 1.2)
  *
  * Guide: docs/PLUGIN_SDK.md. Samples: native/sdk/samples/.
  */
 #ifndef PREMATION_SDK_H
 #define PREMATION_SDK_H
 
+#include "pr_command.h"
 #include "pr_effect.h"
 #include "pr_gpu.h"
 #include "pr_host.h"
+#include "pr_io.h"
 #include "pr_params.h"
 #include "pr_scene.h"
 #include "pr_types.h"

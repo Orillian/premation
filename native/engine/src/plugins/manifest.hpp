@@ -10,6 +10,10 @@
 #include <string_view>
 #include <vector>
 
+namespace premation::js {
+class Json;
+}  // namespace premation::js
+
 namespace premation::plugins {
 
 inline constexpr std::string_view kManifestFile = "premation-plugin.json";
@@ -18,6 +22,41 @@ struct ManifestEffect {
   std::string matchName;
   std::string name;
   std::string category;
+};
+
+/// P7a — a command (manifest `commands`): the Plugins menu / command palette entry.
+struct ManifestCommand {
+  std::string id;
+  std::string name;
+  std::string menu;  ///< submenu ("" = the plugin's own)
+};
+/// P7b — a footage importer (manifest `importers`).
+struct ManifestImporter {
+  std::string id;
+  std::string name;
+  std::vector<std::string> extensions;  ///< lower case, no dot
+};
+/// P7c — one declared option of an output module.
+struct ManifestOutputOption {
+  std::string id;
+  std::string name;
+  std::string type;  ///< "popup" | "number" | "checkbox"
+  std::vector<std::string> choices;
+  double def = 0;  ///< popup: 1-based index; checkbox: 0 / 1
+  std::optional<double> min, max;
+};
+/// P7c — an output module (manifest `outputModules`).
+struct ManifestOutputModule {
+  std::string id;
+  std::string name;
+  std::string extension;  ///< lower case, no dot
+  std::vector<ManifestOutputOption> options;
+};
+/// P7d — a dockable panel (manifest `panels`): `page` under the bundle's `ui/`.
+struct ManifestPanel {
+  std::string id;
+  std::string name;
+  std::string page;
 };
 
 struct Manifest {
@@ -36,6 +75,11 @@ struct Manifest {
   /// `"entitlement"`: the bundle loads only with a valid token for it
   /// (entitlement.hpp; today only `premation-cloud`). Empty = free.
   std::string entitlement;
+  // P7 — contributions that are not effects (docs/PLUGIN_SDK.md "Commands", "Importers", …).
+  std::vector<ManifestCommand> commands;
+  std::vector<ManifestImporter> importers;
+  std::vector<ManifestOutputModule> outputModules;
+  std::vector<ManifestPanel> panels;
 };
 
 /// Parse + validate. `platforms` are the `binary` keys to try, most specific
@@ -45,6 +89,10 @@ struct Manifest {
                                                      std::string& error);
 /// One key (tests, tools).
 [[nodiscard]] std::optional<Manifest> parse_manifest(std::string_view json, std::string_view platform, std::string& error);
+
+/// P7: the manifest's `commands`, `importers`, `outputModules` and `panels` (parse_manifest calls it).
+/// False with `error` when one is malformed.
+[[nodiscard]] bool parse_contributions(const premation::js::Json& j, Manifest& m, std::string& error);
 
 /// The host runs a plugin built against SDK `major.minor` iff major == PR_SDK_VERSION_MAJOR and
 /// minor ≤ PR_SDK_VERSION_MINOR (a plugin needing a newer minor may call what this host lacks).
