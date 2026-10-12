@@ -67,6 +67,23 @@ typedef struct PrLight {
 /** The most lights get_comp_lights reports (the engine's light slots). */
 #define PR_MAX_LIGHTS 32
 
+/* ── SDK 1.2: other times (PrHostSuite.checkout_time) ──────────────────────
+ * In SMART_PRE_RENDER an effect that declared PR_OUT_FLAG_SAMPLES_TIME asks
+ * for what it will read at other times (trails, its own motion blur, a
+ * simulation's history). The engine evaluates exactly those — the params,
+ * the camera, the lights, the LAYER params' transforms; never a whole frame —
+ * and they travel with the frame, so preview and export render the same
+ * pixels. In the render selectors checkout_param / get_comp_camera /
+ * get_comp_lights / get_layer_transform then answer for those times (a time
+ * not asked for: PR_ERR_NOT_FOUND). Times are LAYER times. */
+#define PR_SAMPLE_PARAMS (1u << 0)
+#define PR_SAMPLE_CAMERA (1u << 1)
+#define PR_SAMPLE_LIGHTS (1u << 2)
+#define PR_SAMPLE_LAYER_TRANSFORMS (1u << 3)
+#define PR_SAMPLE_ALL (PR_SAMPLE_PARAMS | PR_SAMPLE_CAMERA | PR_SAMPLE_LIGHTS | PR_SAMPLE_LAYER_TRANSFORMS)
+/** The most distinct times one instance may check out per frame. */
+#define PR_MAX_TIME_SAMPLES 1024
+
 #ifdef __cplusplus
 }
 #endif

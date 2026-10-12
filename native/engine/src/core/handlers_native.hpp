@@ -7,6 +7,7 @@
 
 #include "engine_ctx.hpp"
 #include "native_effects.hpp"
+#include "timeline.hpp"
 
 namespace premation::doc {
 
@@ -42,6 +43,24 @@ void apply_native_edit(HCtx& x, const api::PropRef& group, const std::string& ef
 
 /// Is `item` the value of a FILE param of a native effect on `node`? (removeUnusedItems, collect).
 [[nodiscard]] bool native_effects_use_item(const Node& node, std::string_view item);
+
+/// SDK 1.2 (plugin layer time): a layer's own clock — the mapping its keyframes are
+/// evaluated on (comp_to_keyframe_time: the clip's source offset, Time Stretch,
+/// reverse, freeze), but sub-frame exact both ways, so checkout_time's layer
+/// times map back to comp times. Read at comp `seconds` (the active clip there).
+struct NativeLayerClock {
+  double fps = 30;
+  bool hasClip = false;
+  double clipStart = 0, sourceIn = 0;  ///< frames
+  std::optional<LayerTime> cfg;
+  double spanStart = 0, spanEnd = 1;
+  double atComp = 0, atLayer = 0;  ///< the reading point (a frozen layer maps around it)
+  /// Comp seconds → layer seconds.
+  [[nodiscard]] double layer_time(double compSeconds) const;
+  /// Layer seconds → comp seconds (a frozen layer: the same offset from the reading point).
+  [[nodiscard]] double comp_time(double layerSeconds) const;
+};
+[[nodiscard]] NativeLayerClock native_layer_clock(const Document& d, const EditorView& v, std::string_view layer, double compSeconds);
 
 /// Write one entry of fx.pluginData (setPluginData's storage; empty bytes = delete).
 void native_write_plugin_data(Document& d, std::string_view layer, std::string_view group, std::string_view key,

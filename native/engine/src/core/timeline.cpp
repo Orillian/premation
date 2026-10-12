@@ -491,6 +491,13 @@ double remap_time(double t, const LayerTime& cfg, double spanStart, double spanE
 
 // ── the keyframe axis ────────────────────────────────────────────────────
 
+namespace {
+thread_local int g_subFrame = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): TlSubFrameScope depth
+}  // namespace
+
+TlSubFrameScope::TlSubFrameScope() { ++g_subFrame; }
+TlSubFrameScope::~TlSubFrameScope() { --g_subFrame; }
+
 double comp_to_keyframe_time(const Document& d, const EditorView& v, std::string_view node, double compTime,
                              std::string_view prop) {
   // Responsive time (templates) and animated precomp-ancestor remaps: neither
@@ -516,7 +523,7 @@ double comp_to_keyframe_time(const Document& d, const EditorView& v, std::string
   }
   for (const Bar* b : clips) {
     if (b->active_at(frame)) {
-      time = b->clip.source_frame_at(frame) / fps;
+      time = b->clip.source_frame_at(g_subFrame > 0 ? time * fps : frame) / fps;
       break;
     }
   }

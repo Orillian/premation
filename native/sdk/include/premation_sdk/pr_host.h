@@ -98,7 +98,9 @@ typedef struct PrHostSuite {
 
   /* ── SDK 1.1 (appended; check struct_size >= offsetof(PrHostSuite, get_layer_transform)
    *    + sizeof(void*) before calling) ── the render selectors, at the frame's time
-   * (`time` must be in_data->current_time; another time answers PR_ERR_UNSUPPORTED).
+   * (`time` = in_data->current_time) or, SDK 1.2, a layer time the effect checked out in
+   * SMART_PRE_RENDER (checkout_time); any other time answers PR_ERR_NOT_FOUND
+   * (PR_ERR_UNSUPPORTED on an SDK 1.1 host).
    * Declare PR_OUT_FLAG_USES_CAMERA / _USES_LIGHTS / _USES_LAYER_TRANSFORMS in
    * GLOBAL_SETUP, or these answer PR_ERR_INVALID_CALLBACK. See pr_scene.h. */
   PrErr(PR_CALL* get_comp_camera)(PrHost* host, int64_t time, PrCamera* out_camera);
@@ -125,6 +127,33 @@ typedef struct PrHostSuite {
    * PR_ERR_INVALID_PARAM: not a FILE param; PR_ERR_NOT_FOUND: none chosen or missing. */
   PrErr(PR_CALL* get_asset_path)(PrHost* host, uint32_t param_index, char* buf, uint32_t capacity, uint32_t* out_len);
   PrErr(PR_CALL* get_asset_bytes)(PrHost* host, uint32_t param_index, const uint8_t** data, uint64_t* size);
+
+  /* ── SDK 1.2 (appended; check struct_size >= offsetof(PrHostSuite, get_asset_sibling_bytes)
+   *    + sizeof(void*) before calling) ── */
+  /* PR_CMD_SMART_PRE_RENDER, PR_OUT_FLAG_SAMPLES_TIME only: the effect will read `what`
+   * (PR_SAMPLE_* bits, pr_scene.h) at LAYER time `time` in its render selectors. Asking again
+   * for a time adds bits. At most PR_MAX_TIME_SAMPLES times per instance and frame
+   * (PR_ERR_OUT_OF_MEMORY past that). Camera / lights / transforms also need their USES_* flag. */
+  PrErr(PR_CALL* checkout_time)(PrHost* host, int64_t time, uint32_t what);
+  /* Render selectors: param `param_index` at layer time `time` — in_data->current_time (the
+   * param as params[] has it) or a time checked out with PR_SAMPLE_PARAMS (else
+   * PR_ERR_NOT_FOUND). The caller sets out_def->struct_size; pointers inside stay valid until
+   * the selector returns. AE's PF_CHECKOUT_PARAM. */
+  PrErr(PR_CALL* checkout_param)(PrHost* host, uint32_t param_index, int64_t time, PrParamDef* out_def);
+  /* Any selector with params: a FILE param's image (png, jpg, tiff, exr, hdr, …) decoded by the
+   * engine to linear, premultiplied RGBA32F (PR_PIXEL_FORMAT_RGBA32F; origin 0, 0). The host
+   * keeps it per file and modification time; *out_world stays valid until the selector returns.
+   * PR_ERR_UNSUPPORTED: not an image the engine reads. */
+  PrErr(PR_CALL* get_asset_image)(PrHost* host, uint32_t param_index, PrWorld** out_world);
+  /* PR_CMD_SMART_RENDER_GPU only: the same image as an rgba32float texture on the engine's
+   * device, uploaded once and kept per file and modification time (dropped with the device). */
+  PrErr(PR_CALL* get_asset_image_gpu)(PrHost* host, uint32_t param_index, const PrGpuWorld** out_world);
+  /* Any selector with params: a file beside a FILE param's asset — a glTF's `.bin` and textures,
+   * an `.obj`'s `.mtl`. `relative` is a UTF-8 path under the asset's folder ('/' separators;
+   * no "..", no absolute path, no symlink out: PR_ERR_INVALID_PARAM). At most 512 MiB
+   * (PR_ERR_OUT_OF_MEMORY); *data stays valid until the selector returns. */
+  PrErr(PR_CALL* get_asset_sibling_bytes)(PrHost* host, uint32_t param_index, const char* relative, const uint8_t** data,
+                                          uint64_t* size);
 } PrHostSuite;
 
 #define PR_OVERLAY_HANDLE_SQUARE 0

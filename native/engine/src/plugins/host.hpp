@@ -151,6 +151,23 @@ struct SceneLight {
 };
 
 /// Everything a render selector call needs besides pixels.
+/// SDK 1.2: what the effect asked to read at one other LAYER time (checkout_time), as the
+/// engine evaluated it (scene_finish.cpp) — PR_SAMPLE_* bits in `what`.
+struct TimeSample {
+  std::int64_t time = 0;  ///< layer time, flicks
+  std::uint32_t what = 0;
+  std::vector<ParamValue> values;  ///< PR_SAMPLE_PARAMS: parallel to EffectSpec::params
+  std::optional<SceneCamera> camera;
+  std::optional<std::vector<SceneLight>> lights;
+  std::vector<std::optional<std::array<double, 16>>> layerMatrices;
+};
+
+/// SDK 1.2: one checkout_time request from SMART_PRE_RENDER.
+struct TimeRequest {
+  std::int64_t time = 0;  ///< layer time, flicks
+  std::uint32_t what = 0;
+};
+
 struct RenderInputs {
   std::string matchName;
   std::string instance;  ///< "<layer>/<effectId>" — the sequence / failure key
@@ -176,8 +193,45 @@ struct RenderInputs {
   /// The comp size (the default camera's film).
   double compW = 0, compH = 0;
 };
+  // SDK 1.2.
+  std::int64_t layerStart = 0;  ///< comp time of layer time 0, flicks
+  bool layer3d = false;
+  bool motionBlur = false;  ///< comp + layer switches on for this render
+  double shutterAngle = 0, shutterPhase = 0;
+  std::uint32_t motionBlurSamples = 0;
+  /// Comp px → world px (row-major 3×3; render_glue fills it from the chain's buffer).
+  std::array<double, 9> compToWorld{1, 0, 0, 0, 1, 0, 0, 0, 1};
+  /// The times the effect checked out (PR_OUT_FLAG_SAMPLES_TIME), sorted by time.
+  std::vector<TimeSample> samples;
 
 /// A layer checkout asked for in SMART_PRE_RENDER.
+/// SDK 1.2: what SMART_PRE_RENDER said besides layer checkouts.
+struct PreRenderInfo {
+  std::vector<TimeRequest> times;  ///< checkout_time, merged per time, in call order
+  PrRect request{};
+  PrRect result{};  ///< result_rect as the plugin left it (preset to `request`)
+};
+
+/// SDK 1.2: a decoded asset image (get_asset_image): linear, premultiplied RGBA float, rows top-down.
+struct AssetImage {
+  std::int32_t width = 0;
+  std::int32_t height = 0;
+  std::vector<float> rgba;
+};
+
+/// Decodes an image file into straight or premultiplied pixels; `premultiplied` / `linear` say
+/// which (the host converts to linear premultiplied). False + `error` when it cannot.
+struct DecodedAsset {
+  AssetImage image;
+  bool linear = false;         ///< false = sRGB-encoded (8-bit footage)
+  bool premultiplied = false;  ///< false = straight alpha
+  bool unsupported = false;    ///< set by a decoder that does not read this kind of file
+};
+using AssetImageDecoder = std::function<bool(const std::filesystem::path& file, DecodedAsset& out, std::string& error)>;
+/// Install the engine's image decoders (scene_finish.cpp does, for every binary that renders
+/// frames). Without one only the host's own formats decode (Radiance .hdr, binary .ppm / .pfm).
+void set_asset_image_decoder(AssetImageDecoder decoder);
+
 struct CheckoutRequest {
   std::uint32_t id = 0;
   std::uint32_t paramIndex = 0;  ///< 0 = the input; else a LAYER param's index
@@ -198,6 +252,9 @@ class CheckoutSource {
   virtual PrWorld* cpu_output() = 0;
   virtual const PrGpuWorld* gpu_checkout(std::uint32_t checkoutId) = 0;
 };
+  /// SDK 1.2 get_asset_image_gpu: `image` as an rgba32float texture on the render's device,
+  /// uploaded once per `key` (file + modification time) and kept with the device. nullptr = no GPU.
+  virtual const PrGpuWorld* gpu_asset(const std::string& /*key*/, const AssetImage& /*image*/) { return nullptr; }
 
 struct CallResult {
   bool ok = false;
@@ -299,7 +356,8 @@ class PluginHost {
   [[nodiscard]] std::vector<api::PluginInfo> plugin_infos() const;
 
   // ── render side (any thread) ──
-  CallResult pre_render(const RenderInputs& in, std::vector<CheckoutRequest>& out);
+  /// SMART_PRE_RENDER. `info` (SDK 1.2): the times checked out and the result rect.
+  CallResult pre_render(const RenderInputs& in, std::vector<CheckoutRequest>& out, PreRenderInfo* info = nullptr);
   /// SMART_RENDER (or FRAME_SETUP / RENDER / FRAME_SETDOWN for non-smart
   /// effects), into `io`'s worlds of `format`.
   CallResult render_cpu(const RenderInputs& in, CheckoutSource& io, PrPixelFormat format);

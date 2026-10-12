@@ -5,9 +5,11 @@
 #include <system_error>
 #include <variant>
 
+#include "anim.hpp"
 #include "fail.hpp"
 #include "fxstate.hpp"
 #include "handlers_common.hpp"
+#include "jsmath.hpp"
 #include "jobs/job_inputs.hpp"
 #include "native_effects.hpp"
 #include "props.hpp"
@@ -36,6 +38,7 @@ NativeActionRequest request_for(const Document& d, const Node& node, const std::
   req.type = ne.def.type;
   req.params = params_of(e);
   req.timeSeconds = flicks_to_seconds(time);
+  req.layerTimeSeconds = native_layer_clock(d, EditorView{}, layer, req.timeSeconds).layer_time(req.timeSeconds);
   const std::string dataGroup = native_data_group(effectId);
   if (auto seq = native_read_plugin_data(node, dataGroup, kNativeSequenceKey)) req.sequence = std::move(*seq);
   for (const std::string& key : ne.arbitrary) {
@@ -86,6 +89,63 @@ bool native_effects_use_item(const Node& node, std::string_view item) {
     }
   }
   return false;
+}
+
+double NativeLayerClock::layer_time(double compSeconds) const {
+  double x = compSeconds;
+  if (hasClip) x = (sourceIn + (compSeconds * fps - clipStart)) / fps;
+  return cfg ? remap_time(x, *cfg, spanStart, spanEnd) : x;
+}
+
+double NativeLayerClock::comp_time(double layerSeconds) const {
+  if (cfg && cfg->freeze) return atComp + (layerSeconds - atLayer);
+  double x = layerSeconds;
+  if (cfg) {
+    const double stretch = cfg->stretch > 0 ? cfg->stretch : 100;
+    double s = layerSeconds;
+    if (cfg->reverse) s = spanStart + spanEnd - s;
+    x = spanStart + (s - spanStart) * (stretch / 100);
+  }
+  return hasClip ? (x * fps - sourceIn + clipStart) / fps : x;
+}
+
+NativeLayerClock native_layer_clock(const Document& d, const EditorView& v, std::string_view layer, double compSeconds) {
+  NativeLayerClock c;
+  c.fps = tl_fps_for_node(d, v, layer);
+  if (!(c.fps > 0)) c.fps = 30;
+  // Governing clips: the node's own, else an enclosing plain GROUP's (comp_to_keyframe_time's rule).
+  std::vector<const Bar*> clips = tl_bars_for_node(d, v, layer);
+  if (clips.empty()) {
+    const Node* n = d.node(layer);
+    for (int depth = 0; depth < 32 && n != nullptr; ++depth) {
+      if (!n->parent) break;
+      const Node* parent = d.node(*n->parent);
+      if (parent == nullptr || is_precomp(*parent) || parent->kind() != "group") break;
+      clips = tl_bars_for_node(d, v, parent->id);
+      if (!clips.empty()) break;
+      n = parent;
+    }
+  }
+  const double frame = motion::js::round(compSeconds * c.fps);
+  for (const Bar* b : clips) {
+    if (b->active_at(frame)) {
+      c.hasClip = true;
+      c.clipStart = b->clip.start;
+      c.sourceIn = b->clip.sourceIn;
+      break;
+    }
+  }
+  if (const Node* n = d.node(layer)) {
+    if (auto cfg = read_node_layer_time(*n)) {
+      const auto span = anim_time_span(d, layer);
+      c.spanStart = span ? span->start : 0;
+      c.spanEnd = span ? span->end : 1;
+      c.cfg = std::move(cfg);
+    }
+  }
+  c.atComp = compSeconds;
+  c.atLayer = c.layer_time(compSeconds);
+  return c;
 }
 
 NativeActionRequest native_request(const Document& d, const Node& node, const std::string& layer, const std::string& effectId,

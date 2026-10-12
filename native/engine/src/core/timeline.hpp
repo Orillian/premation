@@ -74,6 +74,20 @@ class TlReadScope {
 /// `writeGeoms(comp, layer, geoms)` → `applyClipGeometry({comp: {layer: geoms}})`.
 void write_geoms(Document& d, std::string_view comp, std::string_view layer, const std::vector<Geo>& geoms);
 
+/// While one is alive (on this thread), comp_to_keyframe_time maps a comp time
+/// between frames to the clip's source time between frames — the snapshot's
+/// sub-frame remap (motion-blur samples) — instead of the frame's. Plugin SDK
+/// 1.2 evaluates checkout_time samples (a shutter, a trail) under it.
+class TlSubFrameScope {
+ public:
+  TlSubFrameScope();
+  ~TlSubFrameScope();
+  TlSubFrameScope(const TlSubFrameScope&) = delete;
+  TlSubFrameScope& operator=(const TlSubFrameScope&) = delete;
+  TlSubFrameScope(TlSubFrameScope&&) = delete;
+  TlSubFrameScope& operator=(TlSubFrameScope&&) = delete;
+};
+
 /// `compToKeyframeTime(node, seconds, prop?)`.
 [[nodiscard]] double comp_to_keyframe_time(const Document& d, const EditorView& v, std::string_view node,
                                            double compTime, std::string_view prop = {});

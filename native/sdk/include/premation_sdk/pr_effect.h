@@ -98,6 +98,16 @@ typedef int32_t PrCmd;
 #define PR_OUT_FLAG_CUSTOM_OVERLAY (1u << 13)
 
 typedef int32_t PrQuality;
+/* SDK 1.2: asks for param values / camera / lights / layer transforms at other times
+ * (checkout_time in SMART_PRE_RENDER, then checkout_param & co. in the render selectors) —
+ * AE's PF_CHECKOUT_PARAM at another time. Needs PR_OUT_FLAG_SMART_RENDER. */
+#define PR_OUT_FLAG_SAMPLES_TIME (1u << 14)
+/* SDK 1.2: renders its own motion blur from PrInData's shutter fields (AE's
+ * PF_OutFlag2_I_USE_SHUTTER_ANGLE): the engine does not supersample the layer through it. */
+#define PR_OUT_FLAG_USES_SHUTTER (1u << 15)
+/* SDK 1.2: the output covers the composition frame, not the layer (Element 3D, Optical Flares
+ * on a solid of any size): draw with PrInData.comp_to_world. */
+#define PR_OUT_FLAG_COMP_SPACE (1u << 16)
 #define PR_QUALITY_DRAFT 0
 #define PR_QUALITY_HIGH 1
 
@@ -136,6 +146,24 @@ typedef struct PrInData {
   const char* instance_key;
 } PrInData;
 
+
+  /* ── SDK 1.2 (appended: check struct_size >= offsetof(PrInData, comp_to_world) + sizeof(comp_to_world)) ── */
+  /** The composition time of layer time 0 (ticks): comp time = layer_start + layer time for a layer
+   *  with no stretch / remap. With a stretch, map times through checkout_time instead. */
+  int64_t layer_start;
+  double comp_width, comp_height; /* the composition, px */
+  int32_t layer_is_3d;            /* 1 = the layer is a 3D layer */
+  /** 1 when the composition's motion-blur switch and the layer's are both on for this render
+   *  (the viewer's preview switch off, or a draft render, gives 0). */
+  int32_t motion_blur;
+  double shutter_angle;          /* degrees (the composition's setting, 0..720) */
+  double shutter_phase;          /* degrees */
+  uint32_t motion_blur_samples;  /* the composition's samples per frame */
+  uint32_t reserved_1_2;         /* 0 */
+  /** Composition pixel (x, y) → world pixel, like layer_to_world (row-major 3×3). On a 2D layer this
+   *  is the view of the composition the chain renders in; on a 3D layer (whose chain runs in the
+   *  layer's own plane) composition pixels are taken as the layer's pixels. */
+  double comp_to_world[9];
 /** What the plugin tells the host. The host zero-fills it before each call
  *  (global_data / sequence_data preset to the current handles). */
 typedef struct PrOutData {
@@ -150,7 +178,11 @@ typedef struct PrOutData {
 typedef struct PrPreRenderExtra {
   uint32_t struct_size;
   PrRect request_rect;    /* in: the output region the host needs (world pixels) */
-  PrRect result_rect;     /* out: what the plugin will produce (preset to request_rect) */
+  /* out: what the plugin will produce (preset to request_rect). SDK 1.2: a rect past the
+   * layer (e.g. a glow's halo, a flare off the layer) grows the layer's effect buffer — the
+   * engine asks once per frame with the world = the layer's own pixels (layer_to_world the
+   * identity), capped at the engine's texture limit. */
+  PrRect result_rect;
   PrHandle pre_render_data; /* out: handed to SMART_RENDER(_GPU); disposed by the host afterwards */
 } PrPreRenderExtra;
 

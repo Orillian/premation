@@ -39,6 +39,7 @@
 // an include path that lists src/effects first would bind that name instead.
 #include "../render_graph/effect_chain.hpp"
 #include "../render_graph/device.hpp"
+#include "host.hpp"
 
 namespace premation::plugins {
 
@@ -88,6 +89,18 @@ class RenderGlue final : public rg::NativeEffectHost {
   std::uint32_t deviceIndex_ = 0;
   std::uint64_t nextId_ = 0;
   std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>, OwnTexture> textures_;
+  /// SDK 1.2 get_asset_image_gpu: decoded asset images uploaded once per file + modification
+  /// time (the host's key), kept while the device is this one.
+  struct AssetTexture {
+    wgpu::Texture texture;
+    wgpu::TextureView view;
+    PrGpuWorld world{};
+  };
+  std::map<std::string, AssetTexture> assets_;
+
+ public:
+  /// The asset texture for `key` (uploaded on first use); nullptr past the device's limits.
+  const PrGpuWorld* asset_texture(rg::Device& dev, const std::string& key, const AssetImage& image);
 };
 
 }  // namespace premation::plugins

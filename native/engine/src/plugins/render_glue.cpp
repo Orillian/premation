@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -126,11 +127,26 @@ std::array<double, 9> layer_to_world(const rg::PassContext& ctx, const rg::Nativ
   return {sx, 0, box.x * w, 0, sy, box.y * h, 0, 0, 1};
 }
 
+/// SDK 1.2 comp_to_world: comp px → buffer px. A screen-space chain sees the viewport's
+/// window onto the composition; a layer-space one (the 3D route) takes comp px as layer px.
+std::array<double, 9> comp_to_world(const rg::PassContext& ctx, const rg::NativeEffectHost::Call& call, const RenderInputs& in,
+                                    std::uint32_t w, std::uint32_t h) {
+  if (call.space != nullptr) return in.layerToWorld;
+  const rg::Rect v = ctx.viewport.visibleWorldRect;
+  if (!(v.width > 0 && v.height > 0)) return in.layerToWorld;
+  const double sx = w / v.width;
+  const double sy = h / v.height;
+  return {sx, 0, -v.x * sx, 0, sy, -v.y * sy, 0, 0, 1};
+}
+
 /// The GPU path's checkouts: checkout id → a texture of the chain buffer's size
 /// and format. A missing id checks out empty (nullptr), as the SDK allows.
 class GpuCheckouts final : public CheckoutSource {
  public:
+  using AssetFn = std::function<const PrGpuWorld*(const std::string&, const AssetImage&)>;
+  explicit GpuCheckouts(AssetFn assets) : assets_(std::move(assets)) {}
   void set(std::uint32_t checkoutId, const PrGpuWorld& world) { worlds_[checkoutId] = world; }
+  const PrGpuWorld* gpu_asset(const std::string& key, const AssetImage& image) override { return assets_(key, image); }
   PrWorld* cpu_checkout(std::uint32_t /*checkoutId*/) override { return nullptr; }
   PrWorld* cpu_output() override { return nullptr; }
   const PrGpuWorld* gpu_checkout(std::uint32_t checkoutId) override {
@@ -140,6 +156,7 @@ class GpuCheckouts final : public CheckoutSource {
 
  private:
   std::map<std::uint32_t, PrGpuWorld> worlds_;
+  AssetFn assets_;
 };
 
 /// A checkout other than the input at the frame's time, drawn as the chain
@@ -181,6 +198,34 @@ std::string pop_scope(rg::Device& dev) {
 RenderGlue::~RenderGlue() {
   PluginHost* host = host_ != nullptr ? host_ : PluginHost::active();
   if (device_ != nullptr && host != nullptr) host->gpu_device_gone(deviceIndex_);
+}
+
+const PrGpuWorld* RenderGlue::asset_texture(rg::Device& dev, const std::string& key, const AssetImage& image) {
+  if (const auto it = assets_.find(key); it != assets_.end()) return &it->second.world;
+  const std::uint32_t most = dev.max_texture_dimension();
+  if (image.width <= 0 || image.height <= 0 || static_cast<std::uint32_t>(image.width) > most || static_cast<std::uint32_t>(image.height) > most) {
+    return nullptr;
+  }
+  if (assets_.size() >= 64) assets_.clear();  // a plugin cycling through many files: start over
+  const auto w = static_cast<std::uint32_t>(image.width);
+  const auto h = static_cast<std::uint32_t>(image.height);
+  wgpu::TextureDescriptor td{};
+  td.size = {w, h, 1};
+  td.format = wgpu::TextureFormat::RGBA32Float;
+  td.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc;
+  td.label = "native-plugin-asset";
+  AssetTexture t;
+  t.texture = dev.device().CreateTexture(&td);
+  t.view = t.texture.CreateView();
+  wgpu::TexelCopyTextureInfo dst{};
+  dst.texture = t.texture;
+  wgpu::TexelCopyBufferLayout layout{};
+  layout.bytesPerRow = w * 16;
+  layout.rowsPerImage = h;
+  const wgpu::Extent3D size{w, h, 1};
+  dev.queue().WriteTexture(&dst, image.rgba.data(), image.rgba.size() * sizeof(float), &layout, &size);
+  t.world = PrGpuWorld{sizeof(PrGpuWorld), image.width, image.height, PR_GPU_FORMAT_RGBA32_FLOAT, t.texture.Get(), t.view.Get(), nullptr};
+  return &assets_.emplace(key, std::move(t)).first->second.world;
 }
 
 RenderGlue::OwnTexture& RenderGlue::own(rg::Device& dev, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format, std::uint32_t slot) {
@@ -231,6 +276,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
   in.worldH = static_cast<std::int32_t>(h);
   in.projectBits = project_bits_of(*tf);
   in.layerToWorld = layer_to_world(ctx, call, in, w, h);
+  in.compToWorld = comp_to_world(ctx, call, in, w, h);
 
   rg::Device& dev = ctx.dev;
   if (dev.device().Get() != device_.Get()) {
@@ -242,6 +288,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
       ++stats_.deviceResets;
     }
     textures_.clear();
+    assets_.clear();
     device_ = dev.device();
     deviceIndex_ = g_nextDeviceIndex.fetch_add(1, std::memory_order_relaxed);
   }
@@ -272,7 +319,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
     };
     const PrGpuWorld inWorld = world(src.texture, src.view);
     const PrGpuWorld outWorld = world(out.texture, out.view);
-    GpuCheckouts io;
+    GpuCheckouts io([this, &dev](const std::string& key, const AssetImage& image) { return asset_texture(dev, key, image); });
     for (std::uint32_t i = 0; i < reqs.size(); ++i) {
       const CheckoutRequest& c = reqs[i];
       if (c.paramIndex == 0 && c.time == in.layerTime) {

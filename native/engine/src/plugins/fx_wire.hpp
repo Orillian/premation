@@ -27,11 +27,24 @@
 //   lights                           numbers, kLightStride per light (see encode_native_scene)
 //   p.<key>.m                        numbers 16: a LAYER param's world matrix
 //
+// SDK 1.2 (scene_finish.cpp writes them):
+//   layerStart                       number flicks: comp time of layer time 0
+//   layer3d, mb                      flag   a 3D layer · motion blur on for this render (comp + layer)
+//   shutterAngle, shutterPhase       number degrees
+//   mbSamples                        number the comp's samples per frame
+//   reachPx                          number how far the effect draws past the layer (result_rect /
+//                                           COMP_SPACE): grows a 3D layer's chain buffer (threed.cpp)
+//   samples                          numbers [time, what] per checkout_time sample (layer flicks, PR_SAMPLE_*)
+//   s<i>.p.<key>                     sample i's animatable param values (number / flag / color, as p.<key>)
+//   s<i>.cam.*, s<i>.lights, s<i>.p.<key>.m   sample i's camera, lights and LAYER matrices (as above)
+//
 // So a frame stays a pure function of the document: a plugin instance's state
 // travels with the frame, never from a cache only this process has.
 #pragma once
 
+#include <optional>
 #include <string_view>
+#include <vector>
 
 #include "engine_api.hpp"
 #include "host.hpp"
@@ -50,7 +63,32 @@ inline constexpr std::size_t kLightStride = 18;
 /// reads (PR_OUT_FLAG_USES_*) from the built frame scene into the entry. They
 /// become part of the entry, so a change to any of them re-renders the effect,
 /// and nothing else does.
-void encode_native_scene(api::RenderEffect& e, const EffectSpec& spec, const api::RenderFrameScene& scene);
+/// SDK 1.2: `camera` / `lights` (non-null) replace the frame's — a comp camera and lights the
+/// frame does not carry because it has no 3D layer (a plugin on a 2D solid still sees them).
+void encode_native_scene(api::RenderEffect& e, const EffectSpec& spec, const api::RenderFrameScene& scene,
+                         const api::RenderCamera3D* camera = nullptr, const std::vector<api::RenderLight3D>* lights = nullptr);
+
+/// A renderable's layer → world matrix as encode_native_scene reports it (its 3D model, else its
+/// 2D model at z = 0; column-major 16), nullopt when it has neither.
+[[nodiscard]] std::optional<std::vector<double>> renderable_world_matrix(const api::Renderable& r);
+/// The renderable `id` in `list` or its precomps' children.
+[[nodiscard]] const api::Renderable* find_renderable_in(const std::vector<api::Renderable>& list, std::string_view id);
+
+/// SDK 1.2: one checkout_time sample as scene_finish.cpp evaluated it.
+struct SampleWire {
+  std::int64_t time = 0;  ///< layer flicks
+  std::uint32_t what = 0;
+  /// PR_SAMPLE_PARAMS: the effect's `p.<key>` entries at that time (native_effect_entry's form).
+  std::vector<api::RenderEffectParam> params;
+  /// PR_SAMPLE_CAMERA: the comp camera (absent = the comp's default view).
+  std::optional<api::RenderCamera3D> camera;
+  /// PR_SAMPLE_LIGHTS.
+  std::vector<api::RenderLight3D> lights;
+  /// PR_SAMPLE_LAYER_TRANSFORMS: LAYER param key → its world matrix (16, column-major).
+  std::vector<std::pair<std::string, std::vector<double>>> matrices;
+};
+/// Write the samples into the entry (`samples` + the `s<i>.` entries); sorted by time.
+void encode_native_samples(api::RenderEffect& e, const EffectSpec& spec, std::vector<SampleWire> samples);
 
 /// SDK 1.1: a FILE param resolved against the document (doc::native_file_of) into the
 /// entry — the path is part of the entry, so a relink re-renders the effect.

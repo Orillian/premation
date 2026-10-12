@@ -102,6 +102,8 @@ struct NativeActionRequest {
   /// Arbitrary-data params: key → bytes.
   std::vector<std::pair<std::string, std::vector<std::uint8_t>>> arb;
   double timeSeconds = 0;
+  /// SDK 1.2: the layer's own time at `timeSeconds` (handlers_native.hpp NativeLayerClock).
+  std::optional<double> layerTimeSeconds;
 };
 
 /// What the plugin changed.

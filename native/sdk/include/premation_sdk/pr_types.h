@@ -27,8 +27,11 @@ extern "C" {
 #endif
 
 #define PR_SDK_VERSION_MAJOR 1
-#define PR_SDK_VERSION_MINOR 1 /* 1.1: get_comp_camera / get_comp_lights / get_layer_transform (pr_scene.h), viewer
-                                  overlays, panels' button payloads, STRING / CURVE / GRADIENT / FILE params */
+#define PR_SDK_VERSION_MINOR 2 /* 1.1: get_comp_camera / get_comp_lights / get_layer_transform (pr_scene.h), viewer
+                                  overlays, panels' button payloads, STRING / CURVE / GRADIENT / FILE params.
+                                  1.2: checkout_time / checkout_param (values, camera, lights, layer transforms at
+                                  other times), shutter + motion blur in PrInData, layer time, result_rect and
+                                  PR_OUT_FLAG_COMP_SPACE, get_asset_image(_gpu) / get_asset_sibling_bytes, presets */
 /** (major << 16) | minor — what PrInData.host_sdk_version and PrPluginInfo.sdk_version carry. */
 #define PR_SDK_VERSION ((uint32_t)((PR_SDK_VERSION_MAJOR << 16) | PR_SDK_VERSION_MINOR))
 #define PR_SDK_VERSION_MAJOR_OF(v) ((uint32_t)(v) >> 16)

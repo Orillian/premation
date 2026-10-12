@@ -12,6 +12,7 @@
 #include <sstream>
 #include <thread>
 
+#include "asset_image.hpp"
 #include "fxstate.hpp"
 #include "journal.hpp"
 #include "json.hpp"
@@ -62,6 +63,18 @@ struct PrHost {
   /// iterate(): a job crashed on a worker (the instance is disabled like a crash on the caller).
   premation::plugins::Fault iterateFault;
   std::atomic<bool> iterateStop{false};
+  // ── SDK 1.2 ──
+  /// SMART_PRE_RENDER: checkout_time requests (nullptr = not collected: the call ignores them).
+  std::vector<premation::plugins::TimeRequest>* times = nullptr;
+  /// The effect the render selector runs (checkout_param builds its PrParamDefs).
+  const premation::plugins::EffectSpec* effect = nullptr;
+  /// checkout_param: the defs built per sample (index into inputs->samples; SIZE_MAX = the frame) —
+  /// alive until the selector returns. Guarded by assetMutex (iterate workers may ask too).
+  std::map<std::size_t, std::vector<PrParamDef>> sampleDefs;
+  /// get_asset_image / _gpu / get_asset_sibling_bytes: what the call handed out, alive until it returns.
+  std::map<std::uint32_t, std::shared_ptr<const premation::plugins::AssetImage>> assetImages;
+  std::map<std::uint32_t, PrWorld> assetWorlds;
+  std::map<std::pair<std::uint32_t, std::string>, std::vector<std::uint8_t>> siblingBytes;
 };
 
 namespace premation::plugins {
@@ -408,7 +421,9 @@ struct PluginHost::Impl {
   bool ensure_setup(Instance& inst, const RenderInputs& in, const EffectSpec& e, Plugin& p, std::uint64_t hash, CallResult& r);
   void setdown(Instance& inst, Plugin& p);
   // ── params ──
-  std::vector<PrParamDef> param_defs(const EffectSpec& e, const RenderInputs& in, std::vector<PrParamDef*>& ptrs) const;
+  /// `values` (SDK 1.2 checkout_param): a sample's values instead of `in.values`.
+  std::vector<PrParamDef> param_defs(const EffectSpec& e, const RenderInputs& in, std::vector<PrParamDef*>& ptrs,
+                                     const std::vector<ParamValue>* values = nullptr) const;
   void fill_in_data(PrInData& d, const RenderInputs& in) const;
   CallResult call_render(Plugin& p, EffectSpec& e, const RenderInputs& in, PrHost& ctx, PrCmd cmd, PrWorld* output,
                          void* extra, PrHandle sequence);
@@ -539,12 +554,23 @@ PrErr copy_sized(T* dst, const T& src) {
   return PR_ERR_NONE;
 }
 
-/// Shared gate: a render selector, the effect declared `flag`, and the frame's own time.
-PrErr scene_gate(PrHost* h, std::uint32_t flag, std::int64_t time) {
+/// SDK 1.2: the sample of `in` at layer time `time` that carries `bit` (samples are sorted by time).
+const TimeSample* find_sample(const RenderInputs& in, std::int64_t time, std::uint32_t bit) {
+  const auto it = std::ranges::lower_bound(in.samples, time, {}, &TimeSample::time);
+  if (it == in.samples.end() || it->time != time || (it->what & bit) == 0) return nullptr;
+  return &*it;
+}
+
+/// Shared gate: a render selector and the effect declared `flag`; then the frame's own time
+/// (`*sample` nullptr) or, SDK 1.2, a time it checked out with `bit` (`*sample` set).
+/// Any other time: PR_ERR_NOT_FOUND.
+PrErr scene_gate(PrHost* h, std::uint32_t flag, std::uint32_t bit, std::int64_t time, const TimeSample** sample) {
+  *sample = nullptr;
   if (h == nullptr || !h->renderSelector || h->inputs == nullptr) return PR_ERR_INVALID_CALLBACK;
   if ((h->outFlags & flag) == 0) return PR_ERR_INVALID_CALLBACK;
-  if (time != h->inputs->layerTime && time != h->inputs->compTime) return PR_ERR_UNSUPPORTED;
-  return PR_ERR_NONE;
+  if (time == h->inputs->layerTime || time == h->inputs->compTime) return PR_ERR_NONE;
+  *sample = find_sample(*h->inputs, time, bit);
+  return *sample != nullptr ? PR_ERR_NONE : PR_ERR_NOT_FOUND;
 }
 
 /// A rigid view matrix's inverse (rotation transposed, translation back-rotated).
@@ -561,13 +587,15 @@ std::array<double, 16> rigid_inverse(const std::array<double, 16>& v) {
 }
 
 PrErr PR_CALL cb_get_comp_camera(PrHost* h, std::int64_t time, PrCamera* out) {
-  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_CAMERA, time); e != PR_ERR_NONE) return e;
+  const TimeSample* sample = nullptr;
+  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_CAMERA, PR_SAMPLE_CAMERA, time, &sample); e != PR_ERR_NONE) return e;
   const RenderInputs& in = *h->inputs;
+  const std::optional<SceneCamera>& source = sample != nullptr ? sample->camera : in.camera;
   const double w = in.compW > 0 ? in.compW : static_cast<double>(in.worldW);
   const double ht = in.compH > 0 ? in.compH : static_cast<double>(in.worldH);
   SceneCamera cam;
-  if (in.camera && in.camera->hasCamera) {
-    cam = *in.camera;
+  if (source && source->hasCamera) {
+    cam = *source;
   } else {
     // The comp's default view: After Effects' default camera, centred on the comp.
     const motion::xf::Camera def = motion::xf::default_camera(w, ht);
@@ -579,7 +607,7 @@ PrErr PR_CALL cb_get_comp_camera(PrHost* h, std::int64_t time, PrCamera* out) {
   }
   PrCamera c{};
   c.struct_size = sizeof(PrCamera);
-  c.has_camera = in.camera && in.camera->hasCamera ? 1 : 0;
+  c.has_camera = source && source->hasCamera ? 1 : 0;
   c.orthographic = cam.orthographic ? 1 : 0;
   c.dof_enabled = cam.dofEnabled ? 1 : 0;
   const std::array<double, 16> world = rigid_inverse(cam.view);
@@ -597,10 +625,12 @@ PrErr PR_CALL cb_get_comp_camera(PrHost* h, std::int64_t time, PrCamera* out) {
 }
 
 PrErr PR_CALL cb_get_comp_lights(PrHost* h, std::int64_t time, PrLight* out, std::uint32_t capacity, std::uint32_t* count) {
-  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_LIGHTS, time); e != PR_ERR_NONE) return e;
+  const TimeSample* sample = nullptr;
+  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_LIGHTS, PR_SAMPLE_LIGHTS, time, &sample); e != PR_ERR_NONE) return e;
   if (count == nullptr || (capacity > 0 && out == nullptr)) return PR_ERR_INVALID_PARAM;
   const std::vector<SceneLight> none;
-  const std::vector<SceneLight>& lights = h->inputs->lights ? *h->inputs->lights : none;
+  const std::optional<std::vector<SceneLight>>& source = sample != nullptr ? sample->lights : h->inputs->lights;
+  const std::vector<SceneLight>& lights = source ? *source : none;
   const auto n = static_cast<std::uint32_t>(std::min<std::size_t>(lights.size(), PR_MAX_LIGHTS));
   *count = n;
   // The caller's array is laid out at ITS struct size (the first element's struct_size).
@@ -630,10 +660,13 @@ PrErr PR_CALL cb_get_comp_lights(PrHost* h, std::int64_t time, PrLight* out, std
 }
 
 PrErr PR_CALL cb_get_layer_transform(PrHost* h, std::uint32_t paramIndex, std::int64_t time, double* out) {
-  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_LAYER_TRANSFORMS, time); e != PR_ERR_NONE) return e;
+  const TimeSample* sample = nullptr;
+  if (const PrErr e = scene_gate(h, PR_OUT_FLAG_USES_LAYER_TRANSFORMS, PR_SAMPLE_LAYER_TRANSFORMS, time, &sample); e != PR_ERR_NONE) {
+    return e;
+  }
   if (out == nullptr || paramIndex == 0 || paramIndex > h->inputs->values.size()) return PR_ERR_INVALID_PARAM;
   if (h->params == nullptr || h->params->at(paramIndex - 1).type != PR_PARAM_LAYER) return PR_ERR_INVALID_PARAM;
-  const auto& ms = h->inputs->layerMatrices;
+  const auto& ms = sample != nullptr ? sample->layerMatrices : h->inputs->layerMatrices;
   if (paramIndex - 1 >= ms.size() || !ms[paramIndex - 1]) return PR_ERR_NOT_FOUND;
   std::copy(ms[paramIndex - 1]->begin(), ms[paramIndex - 1]->end(), out);
   return PR_ERR_NONE;
@@ -683,6 +716,125 @@ PrErr PR_CALL cb_get_asset_bytes(PrHost* h, std::uint32_t paramIndex, const std:
     std::ifstream f(p, std::ios::binary);
     if (!f || !f.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(n))) return PR_ERR_NOT_FOUND;  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes
     it = h->assetBytes.emplace(paramIndex, std::move(bytes)).first;
+  }
+  *data = it->second.data();
+  *size = it->second.size();
+  return PR_ERR_NONE;
+}
+
+// ── SDK 1.2: other times (checkout_time / checkout_param) ──────────────────
+
+PrErr PR_CALL cb_checkout_time(PrHost* h, std::int64_t time, std::uint32_t what) {
+  if (h == nullptr || h->cmd != PR_CMD_SMART_PRE_RENDER) return PR_ERR_INVALID_CALLBACK;
+  if ((h->outFlags & PR_OUT_FLAG_SAMPLES_TIME) == 0) return PR_ERR_INVALID_CALLBACK;
+  if ((what & ~std::uint32_t{PR_SAMPLE_ALL}) != 0 || what == 0) return PR_ERR_INVALID_PARAM;
+  if (h->times == nullptr) return PR_ERR_NONE;  // a render-time pre-render: the frame already carries the samples
+  for (TimeRequest& r : *h->times) {
+    if (r.time == time) {
+      r.what |= what;
+      return PR_ERR_NONE;
+    }
+  }
+  if (h->times->size() >= PR_MAX_TIME_SAMPLES) return PR_ERR_OUT_OF_MEMORY;
+  h->times->push_back({time, what});
+  return PR_ERR_NONE;
+}
+
+PrErr PR_CALL cb_checkout_param(PrHost* h, std::uint32_t paramIndex, std::int64_t time, PrParamDef* out) {
+  if (h == nullptr || !h->renderSelector || h->inputs == nullptr || h->effect == nullptr) return PR_ERR_INVALID_CALLBACK;
+  if (out == nullptr || out->struct_size < sizeof(std::uint32_t)) return PR_ERR_INVALID_PARAM;
+  if (paramIndex == 0 || paramIndex > h->effect->params.size()) return PR_ERR_INVALID_PARAM;
+  const RenderInputs& in = *h->inputs;
+  std::size_t slot = SIZE_MAX;
+  const std::vector<ParamValue>* values = &in.values;
+  if (time != in.layerTime) {
+    const TimeSample* s = find_sample(in, time, PR_SAMPLE_PARAMS);
+    if (s == nullptr || s->values.size() != h->effect->params.size()) return PR_ERR_NOT_FOUND;
+    slot = static_cast<std::size_t>(s - in.samples.data());
+    values = &s->values;
+  }
+  const std::scoped_lock lock(h->assetMutex);
+  auto it = h->sampleDefs.find(slot);
+  if (it == h->sampleDefs.end()) {
+    std::vector<PrParamDef*> ptrs;
+    it = h->sampleDefs.emplace(slot, impl_of(h).param_defs(*h->effect, in, ptrs, values)).first;
+  }
+  return copy_sized(out, it->second.at(paramIndex));
+}
+
+// ── SDK 1.2: a FILE param's image and the files beside it ───────────────────
+
+PrErr PR_CALL cb_get_asset_image(PrHost* h, std::uint32_t paramIndex, PrWorld** world) {
+  const ParamValue* v = nullptr;
+  if (const PrErr e = asset_param(h, paramIndex, &v); e != PR_ERR_NONE) return e;
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  const std::scoped_lock lock(h->assetMutex);
+  if (const auto it = h->assetWorlds.find(paramIndex); it != h->assetWorlds.end()) {
+    *world = &it->second;
+    return PR_ERR_NONE;
+  }
+  std::string key;
+  std::string why;
+  bool unsupported = false;
+  const fs::path p(std::u8string(v->filePath.begin(), v->filePath.end()));
+  std::shared_ptr<const AssetImage> img = load_asset_image(p, key, why, unsupported);
+  if (!img) {
+    PREMATION_LOG(warn, "plugin_asset_image").kv("file", v->filePath).kv("why", why);
+    return unsupported ? PR_ERR_UNSUPPORTED : PR_ERR_NOT_FOUND;
+  }
+  PrWorld w{};
+  w.struct_size = sizeof(PrWorld);
+  w.width = img->width;
+  w.height = img->height;
+  w.row_bytes = img->width * 16;
+  w.format = PR_PIXEL_FORMAT_RGBA32F;
+  w.data = const_cast<float*>(img->rgba.data());  // NOLINT(cppcoreguidelines-pro-type-const-cast): PrWorld is a C struct; the plugin must not write an asset
+  h->assetImages[paramIndex] = std::move(img);
+  *world = &h->assetWorlds.emplace(paramIndex, w).first->second;
+  return PR_ERR_NONE;
+}
+
+PrErr PR_CALL cb_get_asset_image_gpu(PrHost* h, std::uint32_t paramIndex, const PrGpuWorld** world) {
+  if (h == nullptr || h->cmd != PR_CMD_SMART_RENDER_GPU || h->source == nullptr) return PR_ERR_INVALID_CALLBACK;
+  const ParamValue* v = nullptr;
+  if (const PrErr e = asset_param(h, paramIndex, &v); e != PR_ERR_NONE) return e;
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  std::string key;
+  std::string why;
+  bool unsupported = false;
+  const fs::path p(std::u8string(v->filePath.begin(), v->filePath.end()));
+  std::shared_ptr<const AssetImage> img = load_asset_image(p, key, why, unsupported);
+  if (!img) return unsupported ? PR_ERR_UNSUPPORTED : PR_ERR_NOT_FOUND;
+  const std::scoped_lock lock(h->assetMutex);
+  const PrGpuWorld* g = h->source->gpu_asset(key, *img);
+  if (g == nullptr) return PR_ERR_UNSUPPORTED;
+  h->assetImages[paramIndex] = std::move(img);
+  *world = g;
+  return PR_ERR_NONE;
+}
+
+PrErr PR_CALL cb_get_asset_sibling_bytes(PrHost* h, std::uint32_t paramIndex, const char* relative, const std::uint8_t** data,
+                                         std::uint64_t* size) {
+  const ParamValue* v = nullptr;
+  if (const PrErr e = asset_param(h, paramIndex, &v); e != PR_ERR_NONE) return e;
+  if (relative == nullptr || data == nullptr || size == nullptr) return PR_ERR_INVALID_PARAM;
+  const std::string rel(relative);
+  const std::scoped_lock lock(h->assetMutex);
+  const auto key = std::make_pair(paramIndex, rel);
+  auto it = h->siblingBytes.find(key);
+  if (it == h->siblingBytes.end()) {
+    fs::path file;
+    std::string why;
+    const fs::path asset(std::u8string(v->filePath.begin(), v->filePath.end()));
+    if (!resolve_sibling(asset, rel, file, why)) return PR_ERR_INVALID_PARAM;
+    std::error_code ec;
+    const std::uintmax_t n = fs::file_size(file, ec);
+    if (ec) return PR_ERR_NOT_FOUND;
+    if (n > kMaxAssetBytes) return PR_ERR_OUT_OF_MEMORY;
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(n));
+    std::ifstream f(file, std::ios::binary);
+    if (!f || !f.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(n))) return PR_ERR_NOT_FOUND;  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes
+    it = h->siblingBytes.emplace(key, std::move(bytes)).first;
   }
   *data = it->second.data();
   *size = it->second.size();
@@ -899,6 +1051,11 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
   s.overlay_handle = &cb_overlay_handle;
   s.get_asset_path = &cb_get_asset_path;
   s.get_asset_bytes = &cb_get_asset_bytes;
+  s.checkout_time = &cb_checkout_time;  // SDK 1.2
+  s.checkout_param = &cb_checkout_param;
+  s.get_asset_image = &cb_get_asset_image;
+  s.get_asset_image_gpu = &cb_get_asset_image_gpu;
+  s.get_asset_sibling_bytes = &cb_get_asset_sibling_bytes;
 
   int threads = m.options.threads;
   if (threads <= 0) threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) - 1, 0, 16);
@@ -1639,10 +1796,21 @@ void PluginHost::Impl::fill_in_data(PrInData& d, const RenderInputs& in) const {
   d.project_bit_depth = in.projectBits;
   d.quality = in.draft ? PR_QUALITY_DRAFT : PR_QUALITY_HIGH;
   d.instance_key = in.instance.c_str();
+  // SDK 1.2.
+  d.layer_start = in.layerStart;
+  d.comp_width = in.compW;
+  d.comp_height = in.compH;
+  d.layer_is_3d = in.layer3d ? 1 : 0;
+  d.motion_blur = in.motionBlur ? 1 : 0;
+  d.shutter_angle = in.shutterAngle;
+  d.shutter_phase = in.shutterPhase;
+  d.motion_blur_samples = in.motionBlurSamples;
+  for (std::size_t i = 0; i < 9; ++i) d.comp_to_world[i] = in.compToWorld.at(i);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
 }
 
 std::vector<PrParamDef> PluginHost::Impl::param_defs(const EffectSpec& e, const RenderInputs& in,
-                                                     std::vector<PrParamDef*>& ptrs) const {
+                                                     std::vector<PrParamDef*>& ptrs, const std::vector<ParamValue>* values) const {
+  const std::vector<ParamValue>& vals = values != nullptr ? *values : in.values;
   std::vector<PrParamDef> defs(e.params.size() + 1);
   PrParamDef& input = defs[0];
   input.struct_size = sizeof(PrParamDef);
@@ -1662,7 +1830,7 @@ std::vector<PrParamDef> PluginHost::Impl::param_defs(const EffectSpec& e, const 
     d.slider_min = s.sliderMin;
     d.slider_max = s.sliderMax;
     d.precision = s.precision;
-    const ParamValue* v = i < in.values.size() ? &in.values[i] : nullptr;
+    const ParamValue* v = i < vals.size() ? &vals[i] : nullptr;
     for (std::size_t k = 0; k < 4; ++k) d.value[k] = v != nullptr ? v->v.at(k) : s.def.at(k);  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
     if (s.type == PR_PARAM_POINT || s.type == PR_PARAM_POINT_3D) {
       // The document stores centre offsets; the plugin sees layer px from the top-left (AE).
@@ -1791,6 +1959,7 @@ CallResult PluginHost::Impl::call_render(Plugin& p, EffectSpec& e, const RenderI
   ctx.cmd = cmd;
   ctx.renderSelector = true;
   ctx.inputs = &in;
+  ctx.effect = &e;
   ctx.outFlags = e.outFlags;
   ctx.numParams = d.num_params;
   ctx.params = &e.params;
@@ -1809,12 +1978,16 @@ CallResult PluginHost::Impl::call_render(Plugin& p, EffectSpec& e, const RenderI
   return r;
 }
 
-CallResult PluginHost::pre_render(const RenderInputs& in, std::vector<CheckoutRequest>& out) {
+CallResult PluginHost::pre_render(const RenderInputs& in, std::vector<CheckoutRequest>& out, PreRenderInfo* info) {
   Impl& m = *impl_;
   CallResult r;
   EffectSpec* e = nullptr;
   Plugin* p = nullptr;
   out.clear();
+  if (info != nullptr) {
+    info->times.clear();
+    info->request = info->result = PrRect{0, 0, in.worldW, in.worldH};
+  }
   if (!resolve(*this, m, in, e, p, r)) return r;
   if (!e->has(PR_OUT_FLAG_SMART_RENDER)) {
     // A non-smart effect reads its input at the current time, nothing else.
@@ -1831,11 +2004,19 @@ CallResult PluginHost::pre_render(const RenderInputs& in, std::vector<CheckoutRe
   PrHost ctx;
   ctx.host = this;
   ctx.checkouts = &out;
+  if (info != nullptr) {
+    info->times.clear();
+    ctx.times = &info->times;
+  }
   PrPreRenderExtra x{};
   x.struct_size = sizeof(PrPreRenderExtra);
   x.request_rect = {0, 0, in.worldW, in.worldH};
   x.result_rect = x.request_rect;
   r = m.call_render(*p, *e, in, ctx, PR_CMD_SMART_PRE_RENDER, nullptr, &x, lease.sequence());
+  if (info != nullptr) {
+    info->request = x.request_rect;
+    info->result = x.result_rect;
+  }
   if (x.pre_render_data != 0) m.handles.dispose(x.pre_render_data);  // G1: pre-render data is per call (see PLUGIN_SDK.md)
   return r;
 }
@@ -1888,6 +2069,7 @@ CallResult PluginHost::render_cpu(const RenderInputs& in, CheckoutSource& io, Pr
     ctx.cmd = PR_CMD_RENDER;
     ctx.renderSelector = true;
     ctx.inputs = &in;
+    ctx.effect = e;
     ctx.outFlags = e->outFlags;
     ctx.numParams = d.num_params;
     ctx.params = &e->params;
@@ -2166,7 +2348,8 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
     }
   }
   in.compTime = static_cast<std::int64_t>(std::llround(req.timeSeconds * PR_TIME_SCALE));
-  in.layerTime = in.compTime;
+  // SDK 1.2: the layer's own time (start offset, stretch, remap), as the render gets it.
+  in.layerTime = req.layerTimeSeconds ? static_cast<std::int64_t>(std::llround(*req.layerTimeSeconds * PR_TIME_SCALE)) : in.compTime;
   {
     const std::scoped_lock lock(m.instancesMutex);
     if (const auto it = m.instances.find(in.instance); it != m.instances.end()) {
@@ -2317,7 +2500,8 @@ std::variant<std::vector<api::EffectParamUi>, doc::NativeFailure> PluginHost::pa
     }
   }
   in.compTime = static_cast<std::int64_t>(std::llround(req.timeSeconds * PR_TIME_SCALE));
-  in.layerTime = in.compTime;
+  // SDK 1.2: the layer's own time (start offset, stretch, remap), as the render gets it.
+  in.layerTime = req.layerTimeSeconds ? static_cast<std::int64_t>(std::llround(*req.layerTimeSeconds * PR_TIME_SCALE)) : in.compTime;
   {
     Impl& m = *impl_;
     const std::scoped_lock lock(m.instancesMutex);
