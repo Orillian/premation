@@ -41,6 +41,12 @@ struct TextureRequest {
   bool premultiplied = false;
   /// The layer's fill: an SVG source is recoloured with it (AppTextureProvider.rasterizeSvg).
   std::optional<std::string> fill;
+  /// E4: an SVG source's DISPLAYED long edge in screen texels — the layer box's
+  /// long edge × screen px per layer px (view zoom × DPR × the layer's scale,
+  /// or its projected size under the 3D camera). The texture feed quantises
+  /// it to a raster step. 0 = rasterize at rasterizeSvg's own size (the parity
+  /// harness, ViewSpec::svgDisplayScale off).
+  double svgDisplayLong = 0;
   /// The composition's frame rate (the frame-blend grid's last fallback).
   double compFps = 30;
   /// Footage: Interpret Footage ▸ Remove Pulldown (3:2 phase 0–4, the frames
@@ -76,7 +82,9 @@ struct FrameBuild {
 
 /// `snapshotToFrameScene(snapshot)` + the texture feed. `rasterScale` is the
 /// comp→device scale (view scale × DPR) the TS provider rasterises at.
-[[nodiscard]] FrameBuild build_frame_scene(const Snapshot& s, double rasterScale);
+/// `svgDisplayScale` (E4): SVG sources ask for their displayed size
+/// (TextureRequest::svgDisplayLong); off = rasterizeSvg's own size.
+[[nodiscard]] FrameBuild build_frame_scene(const Snapshot& s, double rasterScale, bool svgDisplayScale = false);
 
 /// The largest 2D texture rasters are planned against (VectorRasterizer.ts
 /// deviceMax): 16384 — the TS provider's figure, and what the engine's devices

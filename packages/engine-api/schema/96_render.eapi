@@ -248,6 +248,14 @@ struct RenderShadowCatcher {
 
 struct RenderSsao { enabled: bool = 1; radius: f64 = 2; intensity: f64 = 3; quality: RenderSsaoQuality = 4; }
 
+/// Composition Settings ▸ Renderer (U3): the 3D renderer's per-composition quality knobs the frame carries.
+struct RenderRendererSettings {
+  /// Depth-of-field gather rings (dof-gather.wgsl): 3 draft, 5 medium, 7 high.
+  dofRings: u32 = 1;
+  /// Multisample count of the 3D runs' colour targets: 1 (off) or 4.
+  msaa: u32 = 2;
+}
+
 /// An isolated precomp's own frame (FrameScene `Renderable.precomp` minus its children, which ride on the renderable as `precompChildren`).
 struct RenderPrecompFrame {
   camera3d?: RenderCamera3D = 1;
@@ -314,6 +322,8 @@ struct RenderFrameScene {
   ssao?: RenderSsao = 11;
   fog?: RenderFog = 12;
   shadowCatcher?: RenderShadowCatcher = 13;
+  /// Composition Settings ▸ Renderer: DOF rings and MSAA for the 3D runs (absent = 5 rings, 4×).
+  renderer?: RenderRendererSettings = 14;
 }
 
 /// One user guide (OverlayPass).

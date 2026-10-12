@@ -105,7 +105,7 @@ raster::svg::SvgFacts svg_file_facts(const std::filesystem::path& p) {
 }
 
 raster::RasterOutput rasterize_svg_src(std::string_view src, const std::optional<std::string>& fill,
-                                       const std::string& filePath, double time) {
+                                       const std::string& filePath, double time, double targetLongEdge) {
   raster::RasterOutput out;
   std::string markup;
   if (src.starts_with("data:")) {
@@ -127,6 +127,7 @@ raster::RasterOutput rasterize_svg_src(std::string_view src, const std::optional
   raster::svg::RasterizeOptions opts;
   opts.fillColor = fill;
   opts.time = time;
+  opts.targetLongEdge = targetLongEdge;
   opts.decodeImage = [](std::span<const std::uint8_t> bytes, raster::svg::Bitmap& bm) {
     DecodedImage img;
     std::string err;

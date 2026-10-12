@@ -298,7 +298,9 @@ bool SceneRenderer::render_impl(const api::RenderFrameFile& file, const wgpu::Te
     const wgpu::TextureFormat dataFormat = float32_ ? wgpu::TextureFormat::RGBA32Float : wgpu::TextureFormat::RGBA16Float;
     const wgpu::TextureFormat fmt = data ? dataFormat : wantsFloat ? interFormat : wgpu::TextureFormat::RGBA8Unorm;
     // RenderGraph.resolveTargets: rgba32float targets are never multisampled.
-    const std::uint32_t samples = fmt == wgpu::TextureFormat::RGBA32Float ? 1 : desc.samples;
+    // Composition Settings ▸ Renderer ▸ MSAA off (U3): the 3D runs' colour targets single-sampled.
+    const bool msaaOff = file.scene.renderer && file.scene.renderer->msaa == 1;
+    const std::uint32_t samples = fmt == wgpu::TextureFormat::RGBA32Float || msaaOff ? 1 : desc.samples;
     ctx.specs.emplace(name, PassContext::TargetSpec{desc.width, desc.height, fmt, samples, desc.depth});
   }
   // D3: a colour-managed frame (RenderView.colorManagement) builds its OCIO

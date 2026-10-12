@@ -52,6 +52,8 @@ const mb = (bytes: number): string => {
   const v = bytes / (1024 * 1024);
   return v >= 100 ? v.toFixed(0) : v.toFixed(1);
 };
+/** A2: how long ago the slot size last switched. */
+const ago = (v: number): string => (v < 1000 ? `${v.toFixed(0)} ms` : v < 60_000 ? `${(v / 1000).toFixed(1)} s` : `${Math.floor(v / 60_000)} min`);
 
 export function ViewportHud(): JSX.Element | null {
   const on = useViewportDisplayStore((s) => s.hud);
@@ -113,6 +115,17 @@ export function ViewportHud(): JSX.Element | null {
       <span className={styles.key}>cache</span>
       <span className={styles.value}>
         {engineStats && engineStats.ramCacheBytes > 0 ? `${mb(engineStats.ramCacheBytes)} MB` : '—'}
+      </span>
+
+      {/* A2: VRAM (device pool + footage textures + frame cache) and the last slot-size switch (a resolution / pane-size rebuild: the stall Auto resolution must not pump). */}
+      <span className={styles.key}>vram</span>
+      <span className={styles.value}>
+        {engineStats && engineStats.vramBytes > 0 ? `${mb(engineStats.vramBytes)} MB` : '—'}
+      </span>
+
+      <span className={styles.key}>slot switch</span>
+      <span className={`${styles.value} ${engineStats?.slotSwitchMs !== undefined && engineStats.slotSwitchMs > 100 ? styles.warn : ''}`}>
+        {engineStats?.lastSlotSwitchAgoMs !== undefined ? `${ago(engineStats.lastSlotSwitchAgoMs)} ago · ${ms(engineStats.slotSwitchMs ?? 0)} ms` : '—'}
       </span>
 
       <span className={styles.key}>res</span>

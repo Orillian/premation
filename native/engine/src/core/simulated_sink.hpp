@@ -89,6 +89,11 @@ class SimulatedSink final : public FrameSink {
     const std::lock_guard<std::mutex> lock(m_);
     return counters_;
   }
+  /// Tests: what a render thread would have measured (VRAM, the last slot-size switch).
+  void set_counters(const RenderCounters& c) {
+    const std::lock_guard<std::mutex> lock(m_);
+    counters_ = c;
+  }
   [[nodiscard]] std::string adapter() const override { return "none (simulated)"; }
   [[nodiscard]] std::string backend() const override { return "none"; }
 

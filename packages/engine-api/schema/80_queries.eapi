@@ -636,6 +636,10 @@ struct RenderStats {
   diskCacheBytes: u64 = 7;
   cacheHitRate: f64 = 8;
   decodeMs: f64 = 9;
+  /// Milliseconds since the viewport's slot size last changed (a preview-resolution or pane-size switch rebuilt the slots). Absent = never.
+  lastSlotSwitchAgoMs?: f64 = 10;
+  /// How long that last slot rebuild took (ms). Absent = never.
+  slotSwitchMs?: f64 = 11;
 }
 
 struct LayerError {

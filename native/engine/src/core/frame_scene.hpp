@@ -197,6 +197,10 @@ struct ViewportConfig {
   /// setViewport `transparencyGrid` on a composition view: a checkerboard
   /// where the comp is transparent, in place of its background colour.
   bool transparencyGrid = false;
+  /// setViewport `clipToComp` (absent = true): false is the Extended Viewer —
+  /// layers draw outside the composition's rectangle over the pasteboard
+  /// colour (engine_frames.cpp). A layer view is never clipped.
+  bool clipToComp = true;
   /// setViewport `regionOfInterest` (comp px): draws are clipped to it.
   std::optional<api::Rect> regionOfInterest;
   /// setViewerLut, filled per frame by the Session like `hiddenLayers`.
@@ -247,6 +251,10 @@ struct RenderCounters {
   double fps = 0;                // delivered frames per second, last second
   double decodeMs = 0;           // the slowest footage source's decode time per frame (EMA)
   std::uint64_t vramBytes = 0;   // render graph targets + textures, converted footage, the frame cache
+  /// A2: the last slot-SIZE switch (a preview-resolution / pane-size rebuild):
+  /// when (epoch µs, 0 = never) and how long the rebuild took (ms).
+  double slotSwitchEpochUs = 0;
+  double slotSwitchMs = 0;
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.

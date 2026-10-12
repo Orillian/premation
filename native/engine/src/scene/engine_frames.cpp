@@ -76,6 +76,10 @@ using Json = js::Json;
 /// A UTF-8 path string as a path (not the ANSI code page on Windows).
 std::filesystem::path utf8_path(const std::string& s) { return {std::u8string(s.begin(), s.end())}; }
 
+/// U1: the pasteboard behind an Extended Viewer frame (AE's dark grey; the
+/// editor's board colour is the same tone), where the comp's clip is off.
+constexpr api::Color kPasteboardColor{0.118, 0.118, 0.118, 1};
+
 
 // ── fonts ─────────────────────────────────────────────────────────────────
 
@@ -463,6 +467,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
       ViewSpec vs = export_view(std::max(1.0, std::round(viewport.width * res)), std::max(1.0, std::round(viewport.height * res)),
                                 std::max(1.0, sc.width), std::max(1.0, sc.height));
       vs.gpuEffects = engine_gpu_effects();  // E4: drawn on the render thread's device
+      vs.svgDisplayScale = svg_display_scale_on();  // 3D perf E4: SVGs at the displayed size
       if (viewport.zoom > 0) {
         // D5: the page's own camera (viewToCamera), so the engine's frame lines up
         // with the overlays the page draws over it: CSS px, DPR, zoom, centre.
@@ -494,7 +499,15 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
       // The Layer panel draws the layer at its own size, centred in the comp's
       // frame: the comp's clip cut whatever of it falls outside the composition (a
       // picture wider or taller than the comp) along a straight line.
-      if (!viewport.layer.empty()) vs.clipToComp = false;
+      if (!viewport.layer.empty()) {
+        vs.clipToComp = false;
+      } else if (!viewport.clipToComp) {
+        // U1 Extended Viewer (setViewport clipToComp false): layers draw outside
+        // the frame, over the pasteboard rather than black; the UI draws the
+        // frame outline on top. A ghost keeps its transparent clear.
+        vs.clipToComp = false;
+        if (!viewport.ghost) vs.clear = kPasteboardColor;
+      }
       // setPreviewQuality `motionBlur` false (Preview ▸ Draft Quality): no blur samples in this viewport.
       NativeFrame nf = build_native_frame(ctx, comp, seconds, vs, viewport.previewMotionBlur, {}, 0, ov);
       // G1: native plugin entries completed from the document (sequence data,
@@ -548,6 +561,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
     ViewSpec vs = export_view(width, height, std::max(1.0, sc.width), std::max(1.0, sc.height));
     vs.clear = api::Color{0, 0, 0, 0};
     vs.gpuEffects = engine_gpu_effects();
+    vs.svgDisplayScale = svg_display_scale_on();
     vs.surfaceFormat = api::RenderTextureFormat::rgba8unorm;
     try {
       // The document's own motion blur: a thumbnail is the frame as it renders.
@@ -814,6 +828,10 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
 #else
     exact_ = true;
 #endif
+    // E4: an SVG drawn from a stand-in step (its exact raster still on the SVG
+    // worker) is not final either: not cached, and drawn again once it is in.
+    svgWant_ = textures_->svg_stand_in();
+    if (svgWant_) exact_ = false;
     return ok;
   }
 
@@ -822,10 +840,13 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   [[nodiscard]] render::MediaWants take_media_wants() override {
     render::MediaWants out;
 #if defined(PREMATION_HAVE_MEDIA)
-    out.reserve(wants_.size());
+    out.reserve(wants_.size() + 1);
     for (const auto& [src, frame] : wants_) out.emplace_back(src, frame);
     wants_.clear();
 #endif
+    // E4: the SVG worker's pending step rides the same settle poll (a sentinel source).
+    if (svgWant_) out.emplace_back(kSvgWantSource, 0);
+    svgWant_ = false;
     return out;
   }
   [[nodiscard]] std::uint64_t vram_bytes() override {
@@ -843,12 +864,14 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
 #endif
   }
   [[nodiscard]] bool media_settled(const render::MediaWants& wants) override {
+    return std::ranges::all_of(wants, [this](const auto& w) {
+      if (w.first == kSvgWantSource) return !textures_->svg_pending();  // E4
 #if defined(PREMATION_HAVE_MEDIA)
-    return std::ranges::all_of(wants, [this](const auto& w) { return media_->settled(w.first, w.second); });
+      return media_->settled(w.first, w.second);
 #else
-    (void)wants;
-    return true;
+      return true;
 #endif
+    });
   }
 
   // P7: compile the document's effect pipelines while the render thread idles.
@@ -986,6 +1009,8 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     }
 #endif
     textures_->set_playing(frame.playing);
+    // E4: Cache Work Area and stills draw SVGs at their exact step, synchronously.
+    textures_->set_exact(exactMedia_ || still);
     textures_->set_color_managed(frame.file.view.color_management.has_value());
     // P6: in place, back to the frame as built (BuiltFrame::asBuilt); refs are
     // filled per draw (their hashes depend on the cache).
@@ -1026,6 +1051,9 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   mutable wire::Writer keyWriter_;
   bool exact_ = false;
   bool exactMedia_ = false;  // RenderJob::exactMedia of the job being drawn
+  /// E4: the last draw used an SVG stand-in step (take_media_wants reports the sentinel want).
+  bool svgWant_ = false;
+  static constexpr std::uint32_t kSvgWantSource = 0xFFFFFFFFU;
 #if defined(PREMATION_HAVE_MEDIA)
   std::vector<std::pair<media::SourceId, std::int64_t>> wants_;  // the last draw's stand-in footage frames
 #endif

@@ -1465,6 +1465,7 @@ struct RenderEnvMap;
 struct RenderFog;
 struct RenderShadowCatcher;
 struct RenderSsao;
+struct RenderRendererSettings;
 struct RenderPrecompFrame;
 struct Renderable;
 struct RenderFrameScene;
@@ -2751,8 +2752,8 @@ struct DragEffectOverlay {
   double start_x = 0.0;
   double start_y = 0.0;
   std::uint32_t phase = 0;
-  bool operator==(const DragEffectOverlay&) const = default;
   std::uint32_t space = 0;
+  bool operator==(const DragEffectOverlay&) const = default;
 };
 
 struct AddProperties {
@@ -2995,6 +2996,7 @@ struct SetViewport {
   std::optional<Time> layer_source_time;
   std::optional<OnionSkin> onion;
   std::optional<std::string> layer_alpha_view;
+  std::optional<bool> clip_to_comp;
   bool operator==(const SetViewport&) const = default;
 };
 
@@ -5325,6 +5327,8 @@ struct RenderStats {
   std::uint64_t disk_cache_bytes = 0;
   double cache_hit_rate = 0.0;
   double decode_ms = 0.0;
+  std::optional<double> last_slot_switch_ago_ms;
+  std::optional<double> slot_switch_ms;
   bool operator==(const RenderStats&) const = default;
 };
 
@@ -5830,11 +5834,11 @@ struct OverlayPluginItem {
   std::vector<double> color;
   std::uint32_t handle = 0;
   std::uint32_t shape = 0;
+  std::uint32_t space = 0;
   bool operator==(const OverlayPluginItem&) const = default;
 };
 
 struct OverlayLayerGeometry {
-  std::uint32_t space = 0;
   LayerId layer;
   std::vector<double> matrix;
   std::vector<double> box;
@@ -6161,6 +6165,12 @@ struct RenderSsao {
   bool operator==(const RenderSsao&) const = default;
 };
 
+struct RenderRendererSettings {
+  std::uint32_t dof_rings = 0;
+  std::uint32_t msaa = 0;
+  bool operator==(const RenderRendererSettings&) const = default;
+};
+
 struct RenderPrecompFrame {
   std::optional<RenderCamera3D> camera3d;
   std::vector<RenderLight3D> lights3d;
@@ -6223,6 +6233,7 @@ struct RenderFrameScene {
   std::optional<RenderSsao> ssao;
   std::optional<RenderFog> fog;
   std::optional<RenderShadowCatcher> shadow_catcher;
+  std::optional<RenderRendererSettings> renderer;
   bool operator==(const RenderFrameScene&) const = default;
 };
 
@@ -7401,6 +7412,8 @@ void encode(wire::Writer& w, const RenderShadowCatcher& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderShadowCatcher& out);
 void encode(wire::Writer& w, const RenderSsao& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderSsao& out);
+void encode(wire::Writer& w, const RenderRendererSettings& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, RenderRendererSettings& out);
 void encode(wire::Writer& w, const RenderPrecompFrame& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderPrecompFrame& out);
 void encode(wire::Writer& w, const Renderable& v);

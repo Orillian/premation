@@ -72,6 +72,8 @@ struct PrepareStats {
   std::uint32_t contourBuilds = 0;
   /// Rasters over the device's 2D texture limit, not uploaded (their layers draw nothing).
   std::uint32_t oversizeRefused = 0;
+  /// E4: SVG rasters handed to the worker this frame (a stand-in or preview drew meanwhile).
+  std::uint32_t svgAsync = 0;
   /// Features the painters could not draw (key → what), for the explicit-fallback report.
   std::vector<std::pair<std::string, std::string>> unsupported;
 };
@@ -109,6 +111,19 @@ class SceneTextures final : public rg::ExternalTextureSource {
   /// what the file says, stills and authored text / shape rasters as sRGB; masks
   /// stay data. Off = no ref is tagged (the TS pipeline, byte for byte).
   void set_color_managed(bool managed) noexcept { colorManaged_ = managed; }
+  /// E4 (3D perf program): exact mode — exports, Cache Work Area, stills — an
+  /// SVG source is drawn synchronously at its exact display step. Off (the
+  /// viewport): the nearest cached step (or a quick 512 px preview) draws now,
+  /// the exact step rasterises on the SVG worker, and `svg_stand_in()` says so.
+  void set_exact(bool exact) noexcept { exact_ = exact; }
+  /// E4: the last prepare drew an SVG from a stand-in step (its exact raster
+  /// was still on the worker). The frame is not final: draw again when
+  /// `svg_pending()` clears.
+  [[nodiscard]] bool svg_stand_in() const noexcept { return svgStandIn_; }
+  /// E4: SVG rasters queued or in flight on the worker.
+  [[nodiscard]] bool svg_pending() const;
+  /// E4: block until the worker's queue is empty (tests; bounded by `timeoutMs`).
+  bool wait_svg_idle(std::uint32_t timeoutMs);
 
   /// Resolve a frame's requests into refs (key → hash), rasterising misses.
   void prepare(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs, PrepareStats& stats);
@@ -197,6 +212,27 @@ class SceneTextures final : public rg::ExternalTextureSource {
   std::unordered_map<std::string, std::string> openErrors_;
   /// SVG documents seen (svg_ref's document key) → whether they animate.
   std::unordered_map<std::string, bool> svgAnimated_;
+  // E4: SVGs at the displayed size. A request's display long edge is quantised
+  // to a step (√2 apart, 16 … 4096 px); while playing, a request keeps its last
+  // step until the need leaves [½, 1] × that step's size (no re-raster per frame).
+  std::unordered_map<std::string, int> svgLastStep_;  // request key → the step last drawn
+  bool exact_ = false;
+  bool svgStandIn_ = false;
+  struct SvgJob {
+    std::string key;
+    std::string src;
+    std::optional<std::string> fill;
+    std::string path;
+    double time = 0;
+    double targetLong = 0;
+  };
+  struct SvgWorker;  // scene_textures.cpp: one thread, FIFO, keys de-duplicated
+  std::unique_ptr<SvgWorker> svgWorker_;
+  void svg_enqueue(SvgJob job);
+  /// A static document keeps one raster: once step `step` is in, the steps below it are dropped.
+  void svg_drop_below(const std::string& doc, int step);
+  /// The SVG display step for a request's need, with playback hysteresis (remembers it per request key).
+  [[nodiscard]] int svg_step_for(const TextureRequest& r);
   /// The CPU bakes' kernel pool (bake_chain.hpp SharedPool): one bake at a time
   /// uses it, the others run their kernels inline — the bytes are the same.
   std::unique_ptr<effects::ThreadPool> bakePool_;

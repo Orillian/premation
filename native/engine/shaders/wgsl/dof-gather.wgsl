@@ -160,6 +160,8 @@ fn cocAt(z : f32) -> f32 {
   let thr = clamp(obj.dofP2.w, 0.0, 0.999);
   let sat = max(0.0, obj.dofP3.x);
   let fringe = max(0.0, obj.dofP3.y);
+  // Composition Settings ▸ Renderer ▸ DOF quality: gather rings (3 draft, 5 medium, 7 high); 0 = 5.
+  let rings = select(5, clamp(i32(obj.dofP3.z + 0.5), 3, 7), obj.dofP3.z >= 1.0);
   let cr = cos(rot);
   let sr = sin(rot);
   let ax = sqrt(aspect);
@@ -189,8 +191,9 @@ fn cocAt(z : f32) -> f32 {
   // never bleeds over an in-focus edge.
   if (blades >= 3.0) {
     let n = max(3.0, min(11.0, floor(blades + 0.5)));
-    for (var ring = 1; ring <= 5; ring = ring + 1) {
-      let fr = f32(ring) / 5.0;
+    for (var ring = 1; ring <= 7; ring = ring + 1) {
+      if (ring > rings) { break; }
+      let fr = f32(ring) / f32(rings);
       let r = maxR * fr;
       let ringW = 1.0 + fringe * 3.0 * fr * fr * fr * fr;
       for (var b = 0; b < 11; b = b + 1) {
@@ -229,13 +232,14 @@ fn cocAt(z : f32) -> f32 {
     // 60 total) and a golden rotation per ring so edges don't stamp aligned
     // ghosts. A 32-tap spiral was visibly stepped at CoC ≈ the cap: one
     // direction per radius undersamples the disk's rim.
-    for (var ring = 1; ring <= 5; ring = ring + 1) {
-      let fr = f32(ring) / 5.0;
+    for (var ring = 1; ring <= 7; ring = ring + 1) {
+      if (ring > rings) { break; }
+      let fr = f32(ring) / f32(rings);
       let rd = maxR * fr;
       let ringW = 1.0 + fringe * 3.0 * fr * fr * fr * fr;
       let cnt = 4 * ring;
       let base = 2.3999632 * f32(ring);
-      for (var b = 0; b < 20; b = b + 1) {
+      for (var b = 0; b < 28; b = b + 1) {
         if (b >= cnt) { break; }
         let a = base + 6.2831853 * f32(b) / f32(cnt);
         let d0 = vec2<f32>(cos(a) * ax, sin(a) / ax);

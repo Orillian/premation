@@ -464,9 +464,9 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         ...(d.roi ? { regionOfInterest: { x: d.roi.x, y: d.roi.y, width: d.roi.width, height: d.roi.height } } : {}),
         displayTransform: '',
         layerRenderEffects: true,
-        // TODO(engine, U1): send `clipToComp: d.clipToComp` once SetViewport
-        // carries the field (engine_frames.cpp `vs.clipToComp`, today false only
-        // for a layer view) and clears the surround to the pasteboard colour.
+        // U1 Extended Viewer: off = layers draw outside the frame over the
+        // engine's pasteboard colour (engine_frames.cpp `vs.clipToComp`).
+        clipToComp: d.clipToComp,
         view: d.view,
         ...(d.customView ? {
           customView: {

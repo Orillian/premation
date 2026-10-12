@@ -10169,6 +10169,7 @@ void encode(wire::Writer& w, const SetViewport& v) {
   if (v.layer_source_time.has_value()) { w.varint(136U); w.svarint(*v.layer_source_time); }
   if (v.onion.has_value()) { w.varint(146U); { const std::size_t s = w.begin_ld(); encode(w, *v.onion); w.end_ld(s); } }
   if (v.layer_alpha_view.has_value()) { w.varint(154U); w.str(*v.layer_alpha_view); }
+  if (v.clip_to_comp.has_value()) { w.varint(160U); w.boolean(*v.clip_to_comp); }
 }
 
 Status decode(wire::Reader& r, SetViewport& out) {
@@ -10288,6 +10289,12 @@ Status decode(wire::Reader& r, SetViewport& out) {
         std::string e;
         if (!r.str(e)) return Status::truncated;
         out.layer_alpha_view = std::move(e);
+        break;
+      }
+      case 160U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.clip_to_comp = std::move(e);
         break;
       }
       default:
@@ -24887,6 +24894,8 @@ void encode(wire::Writer& w, const RenderStats& v) {
   w.varint(56U); w.varint(v.disk_cache_bytes);
   w.varint(65U); w.f64(v.cache_hit_rate);
   w.varint(73U); w.f64(v.decode_ms);
+  if (v.last_slot_switch_ago_ms.has_value()) { w.varint(81U); w.f64(*v.last_slot_switch_ago_ms); }
+  if (v.slot_switch_ms.has_value()) { w.varint(89U); w.f64(*v.slot_switch_ms); }
 }
 
 Status decode(wire::Reader& r, RenderStats& out) {
@@ -24946,6 +24955,18 @@ Status decode(wire::Reader& r, RenderStats& out) {
       case 73U: {
         if (!r.f64(out.decode_ms)) return Status::truncated;
         has_decode_ms = true;
+        break;
+      }
+      case 81U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.last_slot_switch_ago_ms = std::move(e);
+        break;
+      }
+      case 89U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.slot_switch_ms = std::move(e);
         break;
       }
       default:
@@ -27957,6 +27978,7 @@ void encode(wire::Writer& w, const OverlayPluginItem& v) {
   if (!v.color.empty()) { w.varint(42U); const std::size_t s = w.begin_ld(); for (const auto& e : v.color) w.f64(e); w.end_ld(s); }
   w.varint(48U); w.varint(v.handle);
   w.varint(56U); w.varint(v.shape);
+  w.varint(64U); w.varint(v.space);
 }
 
 Status decode(wire::Reader& r, OverlayPluginItem& out) {
@@ -27965,6 +27987,7 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
   bool has_closed = false;
   bool has_handle = false;
   bool has_shape = false;
+  bool has_space = false;
   while (!r.at_end()) {
     std::uint64_t key = 0;
     if (!r.varint(key)) return Status::truncated;
@@ -27978,7 +28001,6 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
         if (!r.str(out.kind)) return Status::truncated;
         has_kind = true;
         break;
-  w.varint(64U); w.varint(v.space);
       }
       case 26U: {
         wire::Reader sub;
@@ -27987,7 +28009,6 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
         break;
       }
       case 32U: {
-  bool has_space = false;
         if (!r.boolean(out.closed)) return Status::truncated;
         has_closed = true;
         break;
@@ -28008,6 +28029,11 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
         has_shape = true;
         break;
       }
+      case 64U: {
+        if (!r.u32(out.space)) return Status::bad_value;
+        has_space = true;
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
@@ -28018,6 +28044,7 @@ Status decode(wire::Reader& r, OverlayPluginItem& out) {
   if (!has_closed) return Status::missing_field;
   if (!has_handle) return Status::missing_field;
   if (!has_shape) return Status::missing_field;
+  if (!has_space) return Status::missing_field;
   return Status::ok;
 }
 
@@ -28029,11 +28056,6 @@ void encode(wire::Writer& w, const OverlayLayerGeometry& v) {
   if (!v.path.empty()) { w.varint(42U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path) w.f64(e); w.end_ld(s); }
   if (!v.path_keys.empty()) { w.varint(50U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path_keys) w.f64(e); w.end_ld(s); }
   if (!v.pins.empty()) { w.varint(58U); const std::size_t s = w.begin_ld(); for (const auto& e : v.pins) w.f64(e); w.end_ld(s); }
-      case 64U: {
-        if (!r.u32(out.space)) return Status::bad_value;
-        has_space = true;
-        break;
-      }
   if (!v.bones.empty()) { w.varint(66U); const std::size_t s = w.begin_ld(); for (const auto& e : v.bones) w.f64(e); w.end_ld(s); }
   if (!v.text_box.empty()) { w.varint(74U); const std::size_t s = w.begin_ld(); for (const auto& e : v.text_box) w.f64(e); w.end_ld(s); }
   if (!v.path_frames.empty()) { w.varint(82U); const std::size_t s = w.begin_ld(); for (const auto& e : v.path_frames) w.f64(e); w.end_ld(s); }
@@ -28044,7 +28066,6 @@ void encode(wire::Writer& w, const OverlayLayerGeometry& v) {
   for (const auto& e : v.plugin) { w.varint(482U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
 }
 
-  if (!has_space) return Status::missing_field;
 Status decode(wire::Reader& r, OverlayLayerGeometry& out) {
   bool has_layer = false;
   while (!r.at_end()) {
@@ -30073,6 +30094,38 @@ Status decode(wire::Reader& r, RenderSsao& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const RenderRendererSettings& v) {
+  w.varint(8U); w.varint(v.dof_rings);
+  w.varint(16U); w.varint(v.msaa);
+}
+
+Status decode(wire::Reader& r, RenderRendererSettings& out) {
+  bool has_dof_rings = false;
+  bool has_msaa = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 8U: {
+        if (!r.u32(out.dof_rings)) return Status::bad_value;
+        has_dof_rings = true;
+        break;
+      }
+      case 16U: {
+        if (!r.u32(out.msaa)) return Status::bad_value;
+        has_msaa = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_dof_rings) return Status::missing_field;
+  if (!has_msaa) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const RenderPrecompFrame& v) {
   if (v.camera3d.has_value()) { w.varint(10U); { const std::size_t s = w.begin_ld(); encode(w, *v.camera3d); w.end_ld(s); } }
   for (const auto& e : v.lights3d) { w.varint(18U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
@@ -30406,6 +30459,7 @@ void encode(wire::Writer& w, const RenderFrameScene& v) {
   if (v.ssao.has_value()) { w.varint(90U); { const std::size_t s = w.begin_ld(); encode(w, *v.ssao); w.end_ld(s); } }
   if (v.fog.has_value()) { w.varint(98U); { const std::size_t s = w.begin_ld(); encode(w, *v.fog); w.end_ld(s); } }
   if (v.shadow_catcher.has_value()) { w.varint(106U); { const std::size_t s = w.begin_ld(); encode(w, *v.shadow_catcher); w.end_ld(s); } }
+  if (v.renderer.has_value()) { w.varint(114U); { const std::size_t s = w.begin_ld(); encode(w, *v.renderer); w.end_ld(s); } }
 }
 
 Status decode(wire::Reader& r, RenderFrameScene& out) {
@@ -30487,6 +30541,12 @@ Status decode(wire::Reader& r, RenderFrameScene& out) {
         RenderShadowCatcher e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         out.shadow_catcher = std::move(e);
+        break;
+      }
+      case 114U: {
+        RenderRendererSettings e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.renderer = std::move(e);
         break;
       }
       default:
@@ -31264,7 +31324,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 542> kNames = {
+constexpr std::array<std::string_view, 543> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -31789,6 +31849,7 @@ constexpr std::array<std::string_view, 542> kNames = {
     "RenderFog",
     "RenderShadowCatcher",
     "RenderSsao",
+    "RenderRendererSettings",
     "RenderPrecompFrame",
     "Renderable",
     "RenderFrameScene",
@@ -32337,6 +32398,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "RenderFog") return roundtrip<RenderFog>(bytes, out);
   if (type == "RenderShadowCatcher") return roundtrip<RenderShadowCatcher>(bytes, out);
   if (type == "RenderSsao") return roundtrip<RenderSsao>(bytes, out);
+  if (type == "RenderRendererSettings") return roundtrip<RenderRendererSettings>(bytes, out);
   if (type == "RenderPrecompFrame") return roundtrip<RenderPrecompFrame>(bytes, out);
   if (type == "Renderable") return roundtrip<Renderable>(bytes, out);
   if (type == "RenderFrameScene") return roundtrip<RenderFrameScene>(bytes, out);

@@ -10,8 +10,11 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <thread>
+#include <unordered_set>
 
 #include "core/joining_thread.hpp"
 #include "bake_chain.hpp"
@@ -38,6 +41,12 @@ namespace {
 
 /// An animated SVG's samples per second of source time (svg_ref).
 constexpr double kSvgSamplesPerSecond = 60;
+/// E4: SVG display steps — the raster's long edge is 2^(step/2) px: 16 … 4096.
+/// A first sight in the viewport draws the preview step (512 px) now.
+constexpr int kSvgMinStep = 8;
+constexpr int kSvgMaxStep = 24;
+constexpr int kSvgPreviewStep = 18;
+double svg_step_long(int step) { return std::round(std::pow(2.0, static_cast<double>(step) / 2.0)); }
 
 std::uint64_t fnv1a(std::string_view s, std::uint64_t h = 0xcbf29ce484222325ULL) {
   for (const char c : s) {
@@ -110,10 +119,98 @@ raster::RasterKind raster_kind(TexKind k) {
 }  // namespace
 
 
+// ── E4: the SVG worker ─────────────────────────────────────────────────────
+// One thread draws the exact display step of an SVG the viewport asked for
+// while the frame draws a stand-in (the nearest cached step, or a quick
+// preview). Keys are de-duplicated: a step queued or in flight is not queued
+// again. The result lands in the raster cache through `insert` (its lock);
+// the render thread finds it on its next prepare. Exact mode (exports, Cache
+// Work Area) never uses the worker: it draws synchronously.
+struct SceneTextures::SvgWorker {
+  explicit SvgWorker(SceneTextures& owner) : owner_(owner), thread_([this] { run(); }) {}
+  ~SvgWorker() {
+    {
+      const std::scoped_lock lock(m_);
+      stop_ = true;
+    }
+    cv_.notify_all();
+    thread_.join();
+  }
+  SvgWorker(const SvgWorker&) = delete;
+  SvgWorker& operator=(const SvgWorker&) = delete;
+  SvgWorker(SvgWorker&&) = delete;
+  SvgWorker& operator=(SvgWorker&&) = delete;
+
+  void enqueue(SvgJob job) {
+    {
+      const std::scoped_lock lock(m_);
+      if (!keys_.insert(job.key).second) return;  // queued or in flight already
+      queue_.push_back(std::move(job));
+    }
+    cv_.notify_one();
+  }
+  [[nodiscard]] bool pending() const {
+    const std::scoped_lock lock(m_);
+    return !keys_.empty();
+  }
+  bool wait_idle(std::uint32_t timeoutMs) {
+    std::unique_lock lock(m_);
+    return idle_.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this] { return keys_.empty(); });
+  }
+
+ private:
+  void run() {
+    for (;;) {
+      SvgJob job;
+      {
+        std::unique_lock lock(m_);
+        cv_.wait(lock, [this] { return stop_ || !queue_.empty(); });
+        if (stop_) return;
+        job = std::move(queue_.front());
+        queue_.pop_front();
+      }
+      raster::RasterOutput out = rasterize_svg_src(job.src, job.fill, job.path, job.time, job.targetLong);
+      auto e = std::make_shared<RasterEntry>();
+      if (out.ok) {
+        e->width = out.width;
+        e->height = out.height;
+        e->rgba = std::move(out.rgba);
+        e->unsupported = std::move(out.unsupported);
+      } else {
+        e->error = out.error.empty() ? "SVG render failed" : out.error;  // a failed step stays failed (no re-queue loop)
+      }
+      owner_.insert(job.key, std::move(e));
+      {
+        const std::scoped_lock lock(m_);
+        keys_.erase(job.key);
+      }
+      idle_.notify_all();
+    }
+  }
+
+  SceneTextures& owner_;
+  mutable std::mutex m_;
+  std::condition_variable cv_;
+  std::condition_variable idle_;
+  std::deque<SvgJob> queue_;
+  std::unordered_set<std::string> keys_;
+  bool stop_ = false;
+  JoiningThread thread_;  // last: joined first
+};
+
 SceneTextures::SceneTextures(Options opts)
     : opts_(std::move(opts)),
       bakePool_(std::make_unique<effects::ThreadPool>(std::min(8U, std::max(1U, std::thread::hardware_concurrency())))) {}
 SceneTextures::~SceneTextures() = default;
+
+bool SceneTextures::svg_pending() const { return svgWorker_ != nullptr && svgWorker_->pending(); }
+
+bool SceneTextures::wait_svg_idle(std::uint32_t timeoutMs) { return svgWorker_ == nullptr || svgWorker_->wait_idle(timeoutMs); }
+
+void SceneTextures::svg_enqueue(SvgJob job) {
+  if (!svgWorker_) svgWorker_ = std::make_unique<SvgWorker>(*this);
+  svgWorker_->enqueue(std::move(job));
+}
 
 void SceneTextures::set_media(media::MediaSystem* system, media::MediaTextures* frames) noexcept {
   media_ = system;
@@ -184,6 +281,7 @@ void SceneTextures::insert_content(std::uint64_t key, std::shared_ptr<const rast
 void SceneTextures::prepare(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs,
                             PrepareStats& stats) {
   const std::size_t first = refs.size();
+  svgStandIn_ = false;
   prepare_refs(reqs, refs, stats);
   // A raster over the device's 2D limit (frame_build plans to texture_dimension_limit,
   // but a still, a light wash or a particle field is sized by its content) is never
@@ -945,18 +1043,86 @@ std::string SceneTextures::svg_ref(const TextureRequest& r, PrepareStats& stats)
   // 60 times a second, each sample its own entry; a static one is one entry.
   const long long frame = std::llround(std::max(0.0, r.sourceTime) * kSvgSamplesPerSecond);
   const double time = static_cast<double>(frame) / kSvgSamplesPerSecond;
-  const auto keyFor = [&doc, frame](bool animated) { return animated ? doc + "@" + std::to_string(frame) : doc; };
+  // E4: at the displayed size, one entry per (document, time, display step).
+  const int step = r.svgDisplayLong > 0 ? svg_step_for(r) : 0;
+  const double targetLong = step > 0 ? svg_step_long(step) : 0;
+  const auto keyFor = [&doc, frame](bool animated, int s) {
+    std::string k = animated ? doc + "@" + std::to_string(frame) : doc;
+    if (s > 0) k += "#s" + std::to_string(s);
+    return k;
+  };
+  const auto report_hit = [&](const std::shared_ptr<const RasterEntry>& hit) {
+    for (const std::string& u : hit->unsupported) stats.unsupported.emplace_back(r.key, "SVG: " + u);
+  };
   const auto known = svgAnimated_.find(doc);
   if (known != svgAnimated_.end()) {
-    const std::string key = keyFor(known->second);
+    const std::string key = keyFor(known->second, step);
     if (const std::shared_ptr<const RasterEntry> hit = find(key)) {
+      if (!hit->error.empty()) {  // the worker's failed step
+        stats.unsupported.emplace_back(r.key, "SVG did not render: " + hit->error);
+        return {};
+      }
       ++stats.rasterHits;
-      for (const std::string& u : hit->unsupported) stats.unsupported.emplace_back(r.key, "SVG: " + u);
+      report_hit(hit);
+      if (step > 0 && !known->second) svg_drop_below(doc, step);  // the exact step is in: the stand-ins below it go
       return key;
     }
+    if (step > 0 && !known->second && !exact_) {
+      // The viewport. A static document keeps ONE raster: the largest step
+      // asked for so far (frame_build caps the need at the comp's displayed
+      // size). A larger cached step serves a smaller need outright — the 3D
+      // sampler minifies it through its mips — so a camera pulling back never
+      // re-rasters, and the cache holds one raster per document, not one per
+      // step. Only growth rasterises: the exact step goes to the worker, the
+      // largest cached step (or a quick preview) draws meanwhile, and the
+      // frame is not final until the exact step is in.
+      for (int s = kSvgMaxStep; s > step; --s) {
+        const std::string bigger = keyFor(false, s);
+        if (const std::shared_ptr<const RasterEntry> hit = find(bigger); hit && hit->error.empty()) {
+          ++stats.rasterHits;
+          report_hit(hit);
+          return bigger;
+        }
+      }
+      svg_enqueue(SvgJob{key, r.src, r.fill, path, time, targetLong});
+      ++stats.svgAsync;
+      svgStandIn_ = true;
+      for (int s = step - 1; s >= kSvgMinStep; --s) {
+        const std::string smaller = keyFor(false, s);
+        if (const std::shared_ptr<const RasterEntry> hit = find(smaller); hit && hit->error.empty()) {
+          ++stats.rasterHits;
+          report_hit(hit);
+          return smaller;
+        }
+      }
+      // Nothing of this document is cached: a preview step draws now (cheap), the exact step follows.
+      const int previewStep = std::min(step, kSvgPreviewStep);
+      const std::string previewKey = keyFor(false, previewStep);
+      const auto tp = std::chrono::steady_clock::now();
+      raster::RasterOutput pv = rasterize_svg_src(r.src, r.fill, path, time, svg_step_long(previewStep));
+      stats.rasterMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tp).count();
+      ++stats.rasterMisses;
+      if (!pv.ok) {
+        openErrors_.emplace(doc, pv.error);
+        stats.unsupported.emplace_back(r.key, "SVG did not render: " + pv.error);
+        return {};
+      }
+      for (const std::string& u : pv.unsupported) stats.unsupported.emplace_back(r.key, "SVG: " + u);
+      auto pe = std::make_shared<RasterEntry>();
+      pe->width = pv.width;
+      pe->height = pv.height;
+      pe->rgba = std::move(pv.rgba);
+      pe->unsupported = std::move(pv.unsupported);
+      insert(previewKey, std::move(pe));
+      return previewKey;
+    }
   }
+  // A document never seen (or an animated one, or exact mode): drawn now. In
+  // the viewport a first sight draws the preview step (cheap, no spike) and
+  // the exact step follows on the worker once the document is known static.
+  const int syncStep = step > 0 && !exact_ && known == svgAnimated_.end() ? std::min(step, kSvgPreviewStep) : step;
   const auto t0 = std::chrono::steady_clock::now();
-  raster::RasterOutput out = rasterize_svg_src(r.src, r.fill, path, time);
+  raster::RasterOutput out = rasterize_svg_src(r.src, r.fill, path, time, syncStep > 0 ? svg_step_long(syncStep) : 0);
   stats.rasterMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
   ++stats.rasterMisses;
   if (!out.ok) {
@@ -971,9 +1137,48 @@ std::string SceneTextures::svg_ref(const TextureRequest& r, PrepareStats& stats)
   e->height = out.height;
   e->rgba = std::move(out.rgba);
   e->unsupported = std::move(out.unsupported);
-  std::string key = keyFor(out.animated);
+  std::string key = keyFor(out.animated, syncStep);
   insert(key, std::move(e));
+  if (syncStep != step && !out.animated) {
+    svg_enqueue(SvgJob{keyFor(false, step), r.src, r.fill, path, time, targetLong});
+    ++stats.svgAsync;
+    svgStandIn_ = true;
+  } else if (syncStep > 0 && !out.animated) {
+    svg_drop_below(doc, syncStep);
+  }
   return key;
+}
+
+void SceneTextures::svg_drop_below(const std::string& doc, int step) {
+  const std::scoped_lock lock(m_);
+  for (int s = kSvgMinStep; s < step; ++s) {
+    const auto it = byHash_.find(doc + "#s" + std::to_string(s));
+    if (it == byHash_.end()) continue;
+    bytes_ -= it->second->entry->rgba.size();
+    lru_.erase(it->second);
+    byHash_.erase(it);
+  }
+}
+
+int SceneTextures::svg_step_for(const TextureRequest& r) {
+  // The step whose size covers the need (√2 apart), within the device's 2D limit.
+  const double limit = std::min(raster::svg::kSvgRasterMax, dev_ != nullptr ? dev_->max_texture_dimension() : texture_dimension_limit());
+  int maxStep = kSvgMaxStep;
+  while (maxStep > kSvgMinStep && svg_step_long(maxStep) > limit) --maxStep;
+  const double need = std::max(1.0, r.svgDisplayLong);
+  int step = static_cast<int>(std::ceil(2.0 * std::log2(need)));
+  step = std::clamp(step, kSvgMinStep, maxStep);
+  if (playing_ && !exact_) {
+    // Playback hysteresis: the last step serves while it still covers the need
+    // and is not more than 2× oversampled — a scale animation re-rasters at
+    // step boundaries only, not once per frame.
+    if (const auto last = svgLastStep_.find(r.key); last != svgLastStep_.end()) {
+      const double have = svg_step_long(last->second);
+      if (have >= need && have <= 2 * need && last->second <= maxStep) step = last->second;
+    }
+  }
+  svgLastStep_[r.key] = step;
+  return step;
 }
 
 }  // namespace premation::scene

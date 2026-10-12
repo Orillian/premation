@@ -36,8 +36,11 @@ struct SvgLayerSource {
 
 /// `rasterizeSvg(src, fillColor)`: a data URL or a file path. Premultiplied RGBA8.
 /// `time`: the document time an animated SVG is drawn at (seconds).
+/// `targetLongEdge`: E4 — the raster's long edge in texels (the displayed size);
+/// 0 = rasterizeSvg's own sizing (svg_render.hpp RasterizeOptions).
 [[nodiscard]] raster::RasterOutput rasterize_svg_src(std::string_view src, const std::optional<std::string>& fill,
-                                                     const std::string& filePath, double time = 0);
+                                                     const std::string& filePath, double time = 0,
+                                                     double targetLongEdge = 0);
 
 /// An .svg file's import facts (size, animated) for the media probe; !ok + error when it does not read.
 [[nodiscard]] raster::svg::SvgFacts svg_file_facts(const std::filesystem::path& p);

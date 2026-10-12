@@ -309,6 +309,7 @@ bool make_plan(const doc::Document& d, const JobSpec& job, Plan& p, std::string&
   p.overrides.transparent = p.alpha;
   p.view = sc::export_view(p.width, p.height, p.compW, p.compH);
   p.view.gpuEffects = sc::engine_gpu_effects();  // E4: exports render on the device too
+  p.view.svgDisplayScale = true;                 // 3D perf E4: SVGs at the exported size (exact, synchronous)
   // RGBA surface: the read-back rows are the raw pipe's channel order already.
   // 16-bit output draws the same display-encoded frame into a half-float surface.
   p.depth = p.hdr ? 16 : job.depth;
@@ -1023,6 +1024,7 @@ int run_export(const std::string& jobPath) {
   sc::SceneTextures textures(to);
   textures.set_device(&renderer->device());
   textures.set_playing(false);
+  textures.set_exact(true);  // E4: SVGs at their exact display step, synchronously — the export is deterministic
 #if defined(PREMATION_HAVE_MEDIA)
   std::string decodeNote;
   media::MediaSystem mediaSystem(media::media_config_for(renderer->device().device(), decodeNote));

@@ -496,7 +496,7 @@ api::CompSettings comp_settings(const Document& d, std::string_view comp) {
   s.preserve_frame_rate = c.at("preserveFrameRate").is_bool() && c.at("preserveFrameRate").b();
   s.preserve_resolution = c.at("preserveResolution").is_bool() && c.at("preserveResolution").b();
   Json world = Json::object();
-  for (const char* k : {"defaultEnvPreset", "groundLevel", "showSkyBackdrop", "ssao", "fog", "groundShadows"}) {
+  for (const char* k : {"defaultEnvPreset", "groundLevel", "showSkyBackdrop", "ssao", "fog", "groundShadows", "renderer"}) {
     if (!c.at(k).is_undefined()) world.set(k, c.at(k));
   }
   if (!world.obj().empty()) s.world = stringify(world);

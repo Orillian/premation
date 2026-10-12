@@ -3,6 +3,7 @@
 #include "text_port.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <bit>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <functional>
 #include <limits>
 #include <numbers>
+#include <span>
 #include <utility>
 
 #include "bake_chain.hpp"
@@ -260,6 +262,13 @@ class Flattener {
                const Mat3* placement = nullptr);
   [[nodiscard]] std::vector<TextureRequest> take_textures() noexcept { return std::move(textures_); }
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> take_unported() noexcept { return std::move(unported_); }
+  /// E4: SVG sources ask for their DISPLAYED size (TextureRequest::svgDisplayLong);
+  /// `camera` (may be null) projects a 3D layer's box for its magnification.
+  void set_svg_display_scale(const api::RenderCamera3D* camera, double compLongEdge) noexcept {
+    svgDisplayScale_ = true;
+    camera3d_ = camera;
+    compLong_ = compLongEdge;
+  }
 
  private:
   std::vector<TextureRequest> textures_;
@@ -270,10 +279,58 @@ class Flattener {
   std::optional<api::Renderable> adjustment_to_renderable(const RLayer& l, const Mat3& parent);
   void feed(const RLayer& l);
   static bool needs_isolation(const RLayer& l);
+  /// E4: screen texels per layer px at the layer's centre — the view's raster
+  /// scale × the layer's own scale, or × its projected size under the 3D camera.
+  [[nodiscard]] double screen_per_layer_px(const RLayer& l) const;
   double rasterScale_;
   double fps_;
   double time_;  ///< snapshot.time (a particle field's clock)
+  bool svgDisplayScale_ = false;
+  const api::RenderCamera3D* camera3d_ = nullptr;
+  double compLong_ = 0;  ///< the comp's long edge (px): an SVG never needs more texels than the comp shows
 };
+
+double Flattener::screen_per_layer_px(const RLayer& l) const {
+  const double layerScale = std::max({1.0, std::abs(l.scaleX != 0 ? l.scaleX : 1), std::abs(l.scaleY != 0 ? l.scaleY : 1)});
+  if (!l.world3d || camera3d_ == nullptr || camera3d_->view.size() != 16 || camera3d_->projection.size() != 16) {
+    return rasterScale_ * layerScale;
+  }
+  // world3d maps the layer's centred pixel frame to world (threed_frame.cpp
+  // model3d_for); projection × view maps world to comp px (threed.cpp mvp3d:
+  // the 2D view projection is applied after). The magnification is the comp-px
+  // length of one layer px along the layer's x and y at its centre.
+  // Column-major 4 × 4 products (a · b), as threed.cpp's mul.
+  const auto mul4 = [](std::span<const double, 16> a, std::span<const double, 16> b) {
+    std::array<double, 16> o{};
+    for (std::size_t c = 0; c < 4; ++c) {
+      for (std::size_t r = 0; r < 4; ++r) {
+        double v = 0;
+        for (std::size_t k = 0; k < 4; ++k) v += a[k * 4 + r] * b[c * 4 + k];
+        o[c * 4 + r] = v;
+      }
+    }
+    return o;
+  };
+  const std::array<double, 16> pv = mul4(std::span<const double, 16>(camera3d_->projection.data(), 16),
+                                         std::span<const double, 16>(camera3d_->view.data(), 16));
+  const std::array<double, 16> m = mul4(pv, *l.world3d);
+  const auto proj = [&m](double x, double y, double& ox, double& oy) {
+    const double px = m[0] * x + m[4] * y + m[12];
+    const double py = m[1] * x + m[5] * y + m[13];
+    const double pw = m[3] * x + m[7] * y + m[15];
+    if (!(pw > 1e-9) || !std::isfinite(pw)) return false;
+    ox = px / pw;
+    oy = py / pw;
+    return true;
+  };
+  double ox = 0, oy = 0, xx = 0, xy = 0, yx = 0, yy = 0;
+  if (!proj(0, 0, ox, oy) || !proj(1, 0, xx, xy) || !proj(0, 1, yx, yy)) return rasterScale_ * layerScale;
+  const double sx = std::hypot(xx - ox, xy - oy);
+  const double sy = std::hypot(yx - ox, yy - oy);
+  const double mag = std::max(sx, sy);
+  if (!std::isfinite(mag) || mag <= 0) return rasterScale_ * layerScale;
+  return rasterScale_ * mag;
+}
 
 bool Flattener::needs_isolation(const RLayer& l) {
   if (!l.precompLayers || l.precompLayers->empty()) return false;
@@ -404,6 +461,10 @@ Json text_spec(const RLayer& l) {
 void Flattener::feed(const RLayer& l) {
   // MotionRendererBackend's per-layer texture feed (the keys layerToRenderable names).
   const double layerScale = std::max({1.0, std::abs(l.scaleX != 0 ? l.scaleX : 1), std::abs(l.scaleY != 0 ? l.scaleY : 1)});
+  // A 3D layer's scaleX / scaleY are its PROJECTED footprint (threed_port.cpp
+  // set_pose: the camera's magnification included), so a vector / text raster
+  // already follows the camera through the tier ladder; only an SVG source's
+  // intrinsic raster did not (E4, svgDisplayLong below).
   const double effective = rasterScale_ * layerScale;
   const double tier = tier_for(effective, l.width, l.height, l.continuousRaster);
   if (l.extrudedMesh && l.extrudedMesh->paint) {
@@ -449,6 +510,15 @@ void Flattener::feed(const RLayer& l) {
     r.fill = l.fill;
     r.compFps = fps_;
     r.layerId = l.id;
+    // E4: an SVG source rasterises at the size it is displayed (the texture
+    // feed quantises the long edge; other sources ignore the figure).
+    if (svgDisplayScale_ && l.kind == LayerKind::image) {
+      const double longEdge = std::max(l.width, l.height);
+      // Capped at the comp's displayed long edge: a card pushed past the frame
+      // shows no more texels than the frame has (the 4096 cap is the feed's).
+      const double cap = compLong_ > 0 ? compLong_ * rasterScale_ : std::numeric_limits<double>::infinity();
+      if (longEdge > 0) r.svgDisplayLong = std::min(cap, longEdge * screen_per_layer_px(l));
+    }
     if (l.kind == LayerKind::video) {
       r.pulldownPhase = l.pulldownSource;
       r.fields = l.fieldsSource;
@@ -1097,9 +1167,10 @@ bool needs_shape_raster(const RLayer& l) {
   return layer_is_baked(l);
 }
 
-FrameBuild build_frame_scene(const Snapshot& s, double rasterScale) {
+FrameBuild build_frame_scene(const Snapshot& s, double rasterScale, bool svgDisplayScale) {
   FrameBuild out;
   Flattener f(rasterScale, s.fps, s.time);
+  if (svgDisplayScale) f.set_svg_display_scale(s.camera3d ? &*s.camera3d : nullptr, std::max(s.width, s.height));
   std::vector<api::Renderable> renderables;
   f.flatten(s.layers, Mat3::identity(), 1, renderables);
   api::RenderFrameScene& sc = out.scene;

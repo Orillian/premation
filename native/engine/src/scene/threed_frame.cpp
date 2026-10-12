@@ -279,6 +279,7 @@ bool finish_frame_3d(const Snapshot& s, api::RenderFrameScene& sc) {
   if (s.fog) sc.fog = s.fog;
   if (s.shadowCatcher) sc.shadow_catcher = s.shadowCatcher;
   if (s.ssao && s.ssao->enabled) sc.ssao = s.ssao;
+  if (s.renderer) sc.renderer = s.renderer;  // U3: DOF rings + MSAA for the 3D runs
   return true;
 }
 

@@ -628,9 +628,81 @@ Run primitive_run(const Value& layer, std::vector<std::string>& unsupported) {
     return r;
   }
   const bool rounded = (layer["cornerRadius"].num(0) > 0) || layer["cornerRadii"].is_array();
-  if (rounded) unsupported.emplace_back("profiled stroke on a rounded rect (pathOps rectOutline)");
-  r.points = {{-w / 2, -h / 2, -w / 2, -h / 2, -w / 2, -h / 2}, {w / 2, -h / 2, w / 2, -h / 2, w / 2, -h / 2},
-              {w / 2, h / 2, w / 2, h / 2, w / 2, h / 2}, {-w / 2, h / 2, -w / 2, h / 2, -w / 2, h / 2}};
+  if (!rounded) {
+    r.points = {{-w / 2, -h / 2, -w / 2, -h / 2, -w / 2, -h / 2}, {w / 2, -h / 2, w / 2, -h / 2, w / 2, -h / 2},
+                {w / 2, h / 2, w / 2, h / 2, w / 2, h / 2}, {-w / 2, h / 2, -w / 2, h / 2, -w / 2, h / 2}};
+    return r;
+  }
+  // I4 (3D perf program): the rounded rect as a Bézier run (pathOps rectOutline),
+  // so a tapered / wavy / dashed stroke rides the corners round_rect draws —
+  // the same radii clamp and axis scale, each arc a kappa cubic.
+  (void)unsupported;
+  std::array<double, 4> raw{};
+  if (layer["cornerRadii"].is_array()) {
+    for (std::size_t i = 0; i < 4; ++i) raw.at(i) = layer["cornerRadii"][i].num(0);
+  } else {
+    const double cr = layer["cornerRadius"].num(0);
+    raw = {cr, cr, cr, cr};
+  }
+  std::array<double, 2> axisScale{1, 1};
+  if (layer["cornerRadiusScale"].is_array()) axisScale = {layer["cornerRadiusScale"][0].num(1), layer["cornerRadiusScale"][1].num(1)};
+  const double kx = axisScale[0] > 1e-6 ? 1 / axisScale[0] : 1;
+  const double ky = axisScale[1] > 1e-6 ? 1 / axisScale[1] : 1;
+  const auto scaleFor = [](double a, double b, double k, double limit) {
+    const double sum = (a + b) * k;
+    if (sum <= limit || sum <= 1e-6) return 1.0;
+    return limit / sum;
+  };
+  double tl = std::max(0.0, raw[0]);
+  double tr = std::max(0.0, raw[1]);
+  double br = std::max(0.0, raw[2]);
+  double bl = std::max(0.0, raw[3]);
+  const double s = std::min({scaleFor(tl, tr, kx, w), scaleFor(tr, br, ky, h), scaleFor(br, bl, kx, w), scaleFor(bl, tl, ky, h), 1.0});
+  tl *= s; tr *= s; br *= s; bl *= s;
+  const double x = -w / 2;
+  const double y = -h / 2;
+  const double k = kEllipseKappa;
+  // Clockwise from the top-left arc's end; a corner of radius 0 is one point.
+  const auto push = [&r](BPt p) {
+    if (!r.points.empty()) {
+      const BPt& q = r.points.back();
+      if (q.x == p.x && q.y == p.y) {  // merge a zero-length segment (a square corner)
+        r.points.back().outX = p.outX;
+        r.points.back().outY = p.outY;
+        return;
+      }
+    }
+    r.points.push_back(p);
+  };
+  // Each corner's arc: entry point on the edge the walk arrives by (its out
+  // handle k·r along the edge's continuation), exit point on the next edge
+  // (its in handle k·r back along that edge). The run closes on the top-left arc.
+  const auto radii = [kx, ky](double v) { return std::pair{v * kx, v * ky}; };
+  {
+    const auto [rx, ry] = radii(tl);
+    push({x + rx, y, x + rx - k * rx, y, x + rx, y});
+  }
+  {
+    const auto [rx, ry] = radii(tr);
+    push({x + w - rx, y, x + w - rx, y, x + w - rx + k * rx, y});
+    push({x + w, y + ry, x + w, y + ry - k * ry, x + w, y + ry});
+  }
+  {
+    const auto [rx, ry] = radii(br);
+    push({x + w, y + h - ry, x + w, y + h - ry, x + w, y + h - ry + k * ry});
+    push({x + w - rx, y + h, x + w - rx + k * rx, y + h, x + w - rx, y + h});
+  }
+  {
+    const auto [rx, ry] = radii(bl);
+    push({x + rx, y + h, x + rx, y + h, x + rx - k * rx, y + h});
+    push({x, y + h - ry, x, y + h - ry + k * ry, x, y + h - ry});
+  }
+  {
+    const auto [rx, ry] = radii(tl);
+    push({x, y + ry, x, y + ry, x, y + ry - k * ry});
+  }
+  // A square top-left corner: the closing point coincides with the start.
+  if (r.points.size() > 1 && r.points.back().x == r.points.front().x && r.points.back().y == r.points.front().y) r.points.pop_back();
   return r;
 }
 

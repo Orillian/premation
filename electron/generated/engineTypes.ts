@@ -2864,6 +2864,8 @@ export interface SetViewport {
   onion?: OnionSkin;
   /** With `layer`: how the layer's ALPHA is shown (the Layer panel's Roto / matte views, AE's Alpha, Alpha Boundary and Alpha Overlay). Absent or '' = the layer as it is. 'alpha' = the matte itself, white on black. 'boundary' = the untouched source with the matte's edge outlined. 'overlay' = the untouched source with everything OUTSIDE the matte under a red tint. A viewer aid only: never in a composition render or an export. Any other value: `invalidArgument`. */
   layerAlphaView?: string;
+  /** Clip the frame to the composition's rectangle (AE's comp panel). Absent = true. False (the Extended Viewer: a custom / axis view, Draft 3D) draws layers outside the frame over the pasteboard colour; the UI draws the frame outline on top. Ignored on a layer view (never clipped). */
+  clipToComp?: boolean;
 }
 
 export interface CloseViewport {
@@ -4468,6 +4470,10 @@ export interface RenderStats {
   diskCacheBytes: number;
   cacheHitRate: number;
   decodeMs: number;
+  /** Milliseconds since the viewport's slot size last changed (a preview-resolution or pane-size switch rebuilt the slots). Absent = never. */
+  lastSlotSwitchAgoMs?: number;
+  /** How long that last slot rebuild took (ms). Absent = never. */
+  slotSwitchMs?: number;
 }
 
 export interface LayerError {
@@ -4807,14 +4813,14 @@ export interface OverlayPluginItem {
   handle: number;
   /** A handle's shape: 0 square, 1 circle, 2 crosshair. */
   shape: number;
+  /** SDK 1.2 (PR_OVERLAY_SPACE_*): 0 = `points` are LAYER px (mapped with the layer), 1 = COMPOSITION px (a point the plugin projected through the comp camera itself; mapped by the viewer's comp → screen only). */
+  space: number;
 }
 
 /** B4 round 5 — one puppet pin as the rig resolves it at a time (OverlayRig, getRigPose). Layer space: the layer's local px, the space readGeometry's box is in. */
 export interface RigPinPose {
   id: string;
   /** pinKindOf: advanced (the default), position, bend, starch, overlap. */
-  /** SDK 1.2 (PR_OVERLAY_SPACE_*): 0 = `points` are LAYER px (mapped with the layer), 1 = COMPOSITION px (a point the plugin projected through the comp camera itself; mapped by the viewer's comp → screen only). */
-  space: number;
   kind: string;
   /** Where the pin is DRAWN: its live position — a bend pin's solved mesh vertex — carried through the skeleton pose (identity without one). */
   x: number;
@@ -5244,6 +5250,14 @@ export interface RenderSsao {
   quality: RenderSsaoQuality;
 }
 
+/** Composition Settings ▸ Renderer (U3): the 3D renderer's per-composition quality knobs the frame carries. */
+export interface RenderRendererSettings {
+  /** Depth-of-field gather rings (dof-gather.wgsl): 3 draft, 5 medium, 7 high. */
+  dofRings: number;
+  /** Multisample count of the 3D runs' colour targets: 1 (off) or 4. */
+  msaa: number;
+}
+
 /** An isolated precomp's own frame (FrameScene `Renderable.precomp` minus its children, which ride on the renderable as `precompChildren`). */
 export interface RenderPrecompFrame {
   camera3d?: RenderCamera3D;
@@ -5310,6 +5324,8 @@ export interface RenderFrameScene {
   ssao?: RenderSsao;
   fog?: RenderFog;
   shadowCatcher?: RenderShadowCatcher;
+  /** Composition Settings ▸ Renderer: DOF rings and MSAA for the 3D runs (absent = 5 rings, 4×). */
+  renderer?: RenderRendererSettings;
 }
 
 /** One user guide (OverlayPass). */

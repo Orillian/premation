@@ -212,6 +212,12 @@ class Scene3D {
   /// Every shadow light, mapped or not: a 2D layer's drop-shadow reads the first.
   std::vector<ShadowLight> flatShadowLights_;
   bool hasShadowMapLight_ = false;
+  // Composition Settings ▸ Renderer (U3, World JSON `renderer`), read in setup:
+  // how many lights may take shadow maps (≤ the shader's four slots), their
+  // map size, and what the frame carries (DOF rings, MSAA).
+  int shadowLightCap_ = 4;
+  std::optional<double> shadowMapSize_;
+  std::optional<api::RenderRendererSettings> renderer_;
   struct EnvReflect {
     Json sky;
     double intensity = 0;

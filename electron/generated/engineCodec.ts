@@ -7656,6 +7656,7 @@ function encS_SetViewport(w: Writer, v: T.SetViewport): void {
   if (v.layerSourceTime !== undefined) { w.varint(136); w.i64(v.layerSourceTime); }
   if (v.onion !== undefined) { w.varint(146); { const s = w.beginLd(); encS_OnionSkin(w, v.onion); w.endLd(s); } }
   if (v.layerAlphaView !== undefined) { w.varint(154); w.str(v.layerAlphaView); }
+  if (v.clipToComp !== undefined) { w.varint(160); w.bool(v.clipToComp); }
 }
 function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let h_viewport = false;
@@ -7688,6 +7689,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let v_layerSourceTime: number | undefined;
   let v_onion: T.OnionSkin | undefined;
   let v_layerAlphaView: string | undefined;
+  let v_clipToComp: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -7710,6 +7712,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
       case 136: v_layerSourceTime = r.i64(); break;
       case 146: v_onion = decS_OnionSkin(r, r.ldEnd(), {}); break;
       case 154: v_layerAlphaView = r.str(); break;
+      case 160: v_clipToComp = r.bool(); break;
       default: r.skip(key);
     }
   }
@@ -7744,6 +7747,7 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   if (v_layerSourceTime !== undefined) o.layerSourceTime = v_layerSourceTime;
   if (v_onion !== undefined) o.onion = v_onion;
   if (v_layerAlphaView !== undefined) o.layerAlphaView = v_layerAlphaView;
+  if (v_clipToComp !== undefined) o.clipToComp = v_clipToComp;
   return o;
 }
 function encS_CloseViewport(w: Writer, v: T.CloseViewport): void {
@@ -13901,6 +13905,8 @@ function encS_RenderStats(w: Writer, v: T.RenderStats): void {
   w.byte(56); w.u64(v.diskCacheBytes);
   w.byte(65); w.f64(v.cacheHitRate);
   w.byte(73); w.f64(v.decodeMs);
+  if (v.lastSlotSwitchAgoMs !== undefined) { w.byte(81); w.f64(v.lastSlotSwitchAgoMs); }
+  if (v.slotSwitchMs !== undefined) { w.byte(89); w.f64(v.slotSwitchMs); }
 }
 function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   let h_gpuFrameMs = false;
@@ -13921,6 +13927,8 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   let v_diskCacheBytes: number | undefined;
   let v_cacheHitRate: number | undefined;
   let v_decodeMs: number | undefined;
+  let v_lastSlotSwitchAgoMs: number | undefined;
+  let v_slotSwitchMs: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -13933,6 +13941,8 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
       case 56: v_diskCacheBytes = r.u64(); h_diskCacheBytes = true; break;
       case 65: v_cacheHitRate = r.f64(); h_cacheHitRate = true; break;
       case 73: v_decodeMs = r.f64(); h_decodeMs = true; break;
+      case 81: v_lastSlotSwitchAgoMs = r.f64(); break;
+      case 89: v_slotSwitchMs = r.f64(); break;
       default: r.skip(key);
     }
   }
@@ -13955,6 +13965,8 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   o.diskCacheBytes = v_diskCacheBytes;
   o.cacheHitRate = v_cacheHitRate;
   o.decodeMs = v_decodeMs;
+  if (v_lastSlotSwitchAgoMs !== undefined) o.lastSlotSwitchAgoMs = v_lastSlotSwitchAgoMs;
+  if (v_slotSwitchMs !== undefined) o.slotSwitchMs = v_slotSwitchMs;
   return o;
 }
 function encS_LayerError(w: Writer, v: T.LayerError): void {
@@ -15226,6 +15238,7 @@ function encS_OverlayPluginItem(w: Writer, v: T.OverlayPluginItem): void {
   { const a = v.color; if (a.length) { w.byte(42); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
   w.byte(48); w.u32(v.handle);
   w.byte(56); w.u32(v.shape);
+  w.byte(64); w.u32(v.space);
 }
 function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPluginItem {
   const l_points: number[] = [];
@@ -15235,12 +15248,13 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
   let h_closed = false;
   let h_handle = false;
   let h_shape = false;
+  let h_space = false;
   let v_effect: string | undefined;
   let v_kind: string | undefined;
   let v_closed: boolean | undefined;
-  w.byte(64); w.u32(v.space);
   let v_handle: number | undefined;
   let v_shape: number | undefined;
+  let v_space: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -15248,13 +15262,12 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
       case 18: v_kind = r.str(); h_kind = true; break;
       case 26: { const e = r.ldEnd(); while (r.pos < e) l_points.push(r.f64()); r.expectAt(e); break; }
       case 32: v_closed = r.bool(); h_closed = true; break;
-  let h_space = false;
       case 42: { const e = r.ldEnd(); while (r.pos < e) l_color.push(r.f64()); r.expectAt(e); break; }
       case 48: v_handle = r.u32(); h_handle = true; break;
       case 56: v_shape = r.u32(); h_shape = true; break;
+      case 64: v_space = r.u32(); h_space = true; break;
       default: r.skip(key);
     }
-  let v_space: number | undefined;
   }
   r.expectAt(end);
   if (!h_effect) throw new DecodeError('OverlayPluginItem.effect: missing', 'missingField');
@@ -15262,20 +15275,20 @@ function decS_OverlayPluginItem(r: Reader, end: number, o: any): T.OverlayPlugin
   if (!h_closed) throw new DecodeError('OverlayPluginItem.closed: missing', 'missingField');
   if (!h_handle) throw new DecodeError('OverlayPluginItem.handle: missing', 'missingField');
   if (!h_shape) throw new DecodeError('OverlayPluginItem.shape: missing', 'missingField');
+  if (!h_space) throw new DecodeError('OverlayPluginItem.space: missing', 'missingField');
   o.effect = v_effect;
   o.kind = v_kind;
   o.points = l_points;
-      case 64: v_space = r.u32(); h_space = true; break;
   o.closed = v_closed;
   o.color = l_color;
   o.handle = v_handle;
   o.shape = v_shape;
+  o.space = v_space;
   return o;
 }
 function encS_RigPinPose(w: Writer, v: T.RigPinPose): void {
   w.byte(10); w.str(v.id);
   w.byte(18); w.str(v.kind);
-  if (!h_space) throw new DecodeError('OverlayPluginItem.space: missing', 'missingField');
   w.byte(25); w.f64(v.x);
   w.byte(33); w.f64(v.y);
   w.byte(41); w.f64(v.cx);
@@ -15283,7 +15296,6 @@ function encS_RigPinPose(w: Writer, v: T.RigPinPose): void {
   w.byte(57); w.f64(v.rotation);
   w.byte(65); w.f64(v.scale);
 }
-  o.space = v_space;
 function decS_RigPinPose(r: Reader, end: number, o: any): T.RigPinPose {
   let h_id = false;
   let h_kind = false;
@@ -16872,6 +16884,30 @@ function decS_RenderSsao(r: Reader, end: number, o: any): T.RenderSsao {
   o.quality = v_quality;
   return o;
 }
+function encS_RenderRendererSettings(w: Writer, v: T.RenderRendererSettings): void {
+  w.byte(8); w.u32(v.dofRings);
+  w.byte(16); w.u32(v.msaa);
+}
+function decS_RenderRendererSettings(r: Reader, end: number, o: any): T.RenderRendererSettings {
+  let h_dofRings = false;
+  let h_msaa = false;
+  let v_dofRings: number | undefined;
+  let v_msaa: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 8: v_dofRings = r.u32(); h_dofRings = true; break;
+      case 16: v_msaa = r.u32(); h_msaa = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_dofRings) throw new DecodeError('RenderRendererSettings.dofRings: missing', 'missingField');
+  if (!h_msaa) throw new DecodeError('RenderRendererSettings.msaa: missing', 'missingField');
+  o.dofRings = v_dofRings;
+  o.msaa = v_msaa;
+  return o;
+}
 function encS_RenderPrecompFrame(w: Writer, v: T.RenderPrecompFrame): void {
   if (v.camera3d !== undefined) { w.byte(10); { const s = w.beginLd(); encS_RenderCamera3D(w, v.camera3d); w.endLd(s); } }
   { const a = v.lights3d; for (let i = 0; i < a.length; i++) { w.byte(18); { const s = w.beginLd(); encS_RenderLight3D(w, a[i]!); w.endLd(s); } } }
@@ -17092,6 +17128,7 @@ function encS_RenderFrameScene(w: Writer, v: T.RenderFrameScene): void {
   if (v.ssao !== undefined) { w.byte(90); { const s = w.beginLd(); encS_RenderSsao(w, v.ssao); w.endLd(s); } }
   if (v.fog !== undefined) { w.byte(98); { const s = w.beginLd(); encS_RenderFog(w, v.fog); w.endLd(s); } }
   if (v.shadowCatcher !== undefined) { w.byte(106); { const s = w.beginLd(); encS_RenderShadowCatcher(w, v.shadowCatcher); w.endLd(s); } }
+  if (v.renderer !== undefined) { w.byte(114); { const s = w.beginLd(); encS_RenderRendererSettings(w, v.renderer); w.endLd(s); } }
 }
 function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameScene {
   const l_renderables: T.Renderable[] = [];
@@ -17111,6 +17148,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
   let v_ssao: T.RenderSsao | undefined;
   let v_fog: T.RenderFog | undefined;
   let v_shadowCatcher: T.RenderShadowCatcher | undefined;
+  let v_renderer: T.RenderRendererSettings | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -17127,6 +17165,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
       case 90: v_ssao = decS_RenderSsao(r, r.ldEnd(), {}); break;
       case 98: v_fog = decS_RenderFog(r, r.ldEnd(), {}); break;
       case 106: v_shadowCatcher = decS_RenderShadowCatcher(r, r.ldEnd(), {}); break;
+      case 114: v_renderer = decS_RenderRendererSettings(r, r.ldEnd(), {}); break;
       default: r.skip(key);
     }
   }
@@ -17148,6 +17187,7 @@ function decS_RenderFrameScene(r: Reader, end: number, o: any): T.RenderFrameSce
   if (v_ssao !== undefined) o.ssao = v_ssao;
   if (v_fog !== undefined) o.fog = v_fog;
   if (v_shadowCatcher !== undefined) o.shadowCatcher = v_shadowCatcher;
+  if (v_renderer !== undefined) o.renderer = v_renderer;
   return o;
 }
 function encS_RenderGuide(w: Writer, v: T.RenderGuide): void {
@@ -19513,6 +19553,7 @@ export const codecs = {
   RenderFog: mk<T.RenderFog>(encS_RenderFog, (r, e) => decS_RenderFog(r, e, {})),
   RenderShadowCatcher: mk<T.RenderShadowCatcher>(encS_RenderShadowCatcher, (r, e) => decS_RenderShadowCatcher(r, e, {})),
   RenderSsao: mk<T.RenderSsao>(encS_RenderSsao, (r, e) => decS_RenderSsao(r, e, {})),
+  RenderRendererSettings: mk<T.RenderRendererSettings>(encS_RenderRendererSettings, (r, e) => decS_RenderRendererSettings(r, e, {})),
   RenderPrecompFrame: mk<T.RenderPrecompFrame>(encS_RenderPrecompFrame, (r, e) => decS_RenderPrecompFrame(r, e, {})),
   Renderable: mk<T.Renderable>(encS_Renderable, (r, e) => decS_Renderable(r, e, {})),
   RenderFrameScene: mk<T.RenderFrameScene>(encS_RenderFrameScene, (r, e) => decS_RenderFrameScene(r, e, {})),

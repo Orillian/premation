@@ -49,7 +49,15 @@ struct RasterizeOptions {
   /// Document time in seconds for SMIL / CSS animation (svg_anim.hpp): the
   /// layer's source time. A static document ignores it.
   double time = 0;
+  /// E4 (3D perf program): the raster's long edge in texels — the size the
+  /// document is DISPLAYED at (DPR × layer scale × camera magnification,
+  /// quantised by the texture feed). 0 = rasterizeSvg's own sizing (the
+  /// intrinsic size, at least SVG_TARGET_LONG). Clamped to kSvgRasterMax.
+  double targetLongEdge = 0;
 };
+
+/// The largest raster edge rasterize_svg draws (AppTextureProvider RASTER_MAX).
+inline constexpr double kSvgRasterMax = 4096;
 
 /// An SVG document's facts for import (the media probe): its intrinsic size
 /// (rasterizeSvg's rules, without the raster scale) and whether it animates.

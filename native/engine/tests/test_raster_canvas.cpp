@@ -155,3 +155,30 @@ TEST_CASE("optical kerning: outline and raster profiles tighten AV, leave nn alo
     CHECK(std::fabs(k.kern_px(css, "H", 100, css, "H", 100) / 100) < 0.01);
   }
 }
+
+TEST_CASE("I4: a tapered stroke on a rounded rect keeps its corners", "[raster][vector][i4]") {
+  // A 100 × 100 rounded rect (radius 40), no fill, a 12 px stroke tapered to
+  // 20 % at both ends: the profiled ribbon used to be built from a SQUARE
+  // outline (pathOps rectOutline was not ported), which painted the corners.
+  const std::string spec = R"({"kind":"path","width":100,"height":100,"primitive":"rect","cornerRadius":40,"fill":"transparent",
+    "stroke":{"color":"#000000","width":12,"opacity":1,"align":"center",
+              "taper":{"startLength":50,"endLength":50,"startWidth":0.2,"endWidth":0.2,"startEase":0,"endEase":0,"lengthUnits":"percent"}},
+    "__baked":false})";
+  const RasterOutput o = draw_raster_source(RasterKind::path, spec, 1, 0, {});
+  REQUIRE(o.ok);
+  REQUIRE(o.width == 200);  // tier 1 × supersample 2
+  REQUIRE(o.height == 200);
+  CHECK(o.unsupported.empty());  // no "profiled stroke on a rounded rect" fallback any more
+  const auto alpha = [&](std::uint32_t x, std::uint32_t y) { return px(o.rgba, 200, x, y)[3]; };
+  // The square corner is empty: the ribbon turned with the arc.
+  CHECK(alpha(2, 2) == 0);
+  CHECK(alpha(197, 2) == 0);
+  CHECK(alpha(2, 197) == 0);
+  CHECK(alpha(197, 197) == 0);
+  // The arc itself is painted (the top-left corner's 45° point: centre (40,40), r 40 → (11.7, 11.7) × 2).
+  CHECK(alpha(23, 23) > 0);
+  CHECK(alpha(176, 23) > 0);
+  // The straight edges keep their (tapered) ribbon.
+  CHECK(alpha(1, 100) > 0);
+  CHECK(alpha(198, 100) > 0);
+}

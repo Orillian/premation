@@ -36,12 +36,23 @@ struct ViewSpec {
   /// (effects_port.hpp gpu_effect_route). Off = the TypeScript's bake rule,
   /// byte for byte (the parity gate, CPU-only callers).
   bool gpuEffects = false;
+  /// E4: SVG sources rasterise at the size they are displayed (DPR × layer
+  /// scale × camera magnification, quantised, capped; frame_build.hpp
+  /// TextureRequest::svgDisplayLong). Off = rasterizeSvg's own size, byte for
+  /// byte (the parity gate).
+  bool svgDisplayScale = false;
 };
 
 /// E4: whether the engine's own frames take the GPU effect route — on, unless
 /// the process was started with PREMATION_CPU_BAKE=1 (read once: the CPU bake
 /// is the reference, for A/B against the golden scenes in the app).
 [[nodiscard]] bool engine_gpu_effects() noexcept;
+
+/// 3D perf E4: whether the engine's own frames rasterise SVG sources at their
+/// displayed size — on, unless the process was started with
+/// PREMATION_SVG_INTRINSIC=1 (read once; the intrinsic raster is the reference
+/// for A/B against the golden scenes in the app).
+[[nodiscard]] bool svg_display_scale_on() noexcept;
 
 /// Set RLayer::gpuEffects on every layer of `layers` (and of the precomps they
 /// hold) that gpu_effect_route accepts. Returns how many were routed.

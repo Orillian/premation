@@ -179,16 +179,11 @@ describe('CompositionSettingsDialog', () => {
     // The SSAO half rides the key the engine already keeps: the tab's save path is proven by it.
     expect(world.ssao?.enabled).toBe(true);
     expect((await historyLabels()).filter((l) => l === 'Composition Settings')).toHaveLength(1);
-    // The renderer block is a NEW World key. Until the engine keeps it
-    // (handlers_comps.cpp / readmodel.cpp whitelist `renderer`), the engine
-    // drops it on the floor; once it does, this asserts the round trip.
-    const engineKeepsRenderer = world.renderer !== undefined;
-    if (engineKeepsRenderer) {
-      expect(world.renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
-      expect(comp().renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
-    } else {
-      console.warn('U3: the engine does not keep World.renderer yet — round trip not asserted');
-    }
+    // The renderer block rides the World JSON: the engine keeps it
+    // (handlers_comps.cpp / readmodel.cpp whitelist `renderer`) and the mirror
+    // hands it back as `renderer` on the composition.
+    expect(world.renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
+    expect(comp().renderer).toEqual({ shadowMapSize: 2048, shadowLightCap: 4, dofQuality: 'high', msaa: 1 });
     await h.run({ type: 'undo' });
     expect(comp().renderer).toBeUndefined();
     expect(comp().ssao?.enabled ?? false).toBe(false);

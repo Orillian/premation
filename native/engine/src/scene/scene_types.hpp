@@ -267,6 +267,7 @@ struct Snapshot {
   std::optional<api::RenderEnvMap> envMap;
   std::optional<api::RenderFog> fog;                       ///< AE parity 4.8
   std::optional<api::RenderShadowCatcher> shadowCatcher;   ///< AE parity 4.3
+  std::optional<api::RenderRendererSettings> renderer;     ///< Composition Settings ▸ Renderer (U3): DOF rings, MSAA
 };
 
 /// SnapshotComp (buildSnapshot.ts) — comp-level inputs.

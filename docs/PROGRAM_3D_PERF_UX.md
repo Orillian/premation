@@ -96,13 +96,70 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 
 ## Progress
 
-- [x] M1 · [x] M2 · [x] A1 · [ ] A2
-- [x] E1 · [x] E2 · [x] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
-- [x] U1 (UI; engine `clipToComp` pending) · [x] U2 · [x] U3 (UI; engine `renderer` key pending) · [x] U4 · [x] U5
-- [x] I1 · [x] I2 · [x] I3 · [ ] I4
+- [x] M1 · [x] M2 · [x] A1 · [x] A2
+- [x] E1 · [x] E2 · [x] E3 · [x] E4 · [ ] E5 · [x] E6 · [ ] E7 · [ ] E8
+- [x] U1 · [x] U2 · [x] U3 · [x] U4 · [x] U5
+- [x] I1 · [x] I2 · [x] I3 · [x] I4
 - [x] B1 (TS; engine keep-world re-parent of adjustment layers pending) · [x] B2 · [x] B3 · [x] B4 (TS; catalog signed ranges pending) · [ ] B5
 
 Notes log (newest first):
+- 2026-10-12 batch 2 — E4, E6, A2, I4 + the engine side U1/U3 owed (engine
+  worker; gates run on the whole tree). E4: an SVG SOURCE (`svg` / image kind,
+  svg_layer.cpp) rasterises at its DISPLAYED long edge — layer box × view
+  zoom × DPR × own scale, or × its projected size under the comp camera
+  (frame_build.cpp `screen_per_layer_px`, `TextureRequest::svgDisplayLong`,
+  capped at the comp's displayed long edge) — quantised to √2 steps
+  (16 … 4096 px, `scene_textures.cpp svg_step_for`, playback hysteresis: a
+  step serves while it covers the need and is ≤ 2× oversampled), one cache
+  entry per (document, time, step). Viewport: the exact step rasterises on an
+  SVG worker thread while the largest cached step (or a 512 px preview) draws;
+  the frame is not final until it lands (`svg_stand_in` rides the footage
+  settle poll, `kSvgWantSource`), a larger cached step serves a smaller need
+  (a camera pulling back never re-rasters). Exact mode (exports, Cache Work
+  Area, stills: `SceneTextures::set_exact`) draws the exact step synchronously
+  — deterministic. `ViewSpec::svgDisplayScale` is on in the engine and exports,
+  off in the parity harness (goldens byte-identical); env opt-out
+  PREMATION_SVG_INTRINSIC=1 (the A/B reference). Vector / text rasters in 3D
+  already followed the camera (threed_port set_pose writes the projected
+  scale into scaleX/Y; test documents it). Tests: test_oversize_texture.cpp
+  `E4:` ×5 (display need incl. camera 2×, step quantisation + exact-mode
+  determinism, 4096 vs 2048 sharper under magnification, ≤ 4 rasters over a
+  60-frame 1→2× scale on the worker, 3D text tier) and
+  svgDisplayScale.native.test.ts (GPU: 1500 px document at 250 % in a 4K comp
+  sharper than a PREMATION_SVG_INTRINSIC engine's frame; stills byte-identical
+  before/after a scale animation; no frame > 80 ms past warm-up). Samurai
+  probe (real ports, 1080p30, 20 s, RTX 4060; single runs, noisy): intrinsic →
+  display: first pass 584 → 590 / 600, 17 → 11 dropped, p50 8.1 → 8.3 ms,
+  worst mid-run second 127 → 72 ms; second Full pass 598 → 600 / 600, 2 → 0
+  dropped, p50 10.5 → 9.2 ms, p95 18.1 → 17.3; Half↔Full slot switch 3–4 ms;
+  the remaining first-pass spikes (58 / 72 ms) are not SVG rasters (same
+  seconds with the intrinsic raster: 60 / 37). E6: Draft 3D keeps every ambient
+  light and the FIRST non-ambient light (no shadow maps / casts, no SSAO, no
+  DOF, no layer or environment reflections; the form rig keeps ambient + key)
+  — threed_port.cpp setup/finish/emit; labels in SceneControls / ViewControls /
+  TopNav say "ambient + key light only; no shadows, SSAO, DOF or reflections";
+  test_viewport_view.cpp `E6:`. A2: `vramBytes` per frame (device meter +
+  footage + frame cache) and the last slot-SIZE switch (`lastSlotSwitchAgoMs`,
+  `slotSwitchMs`, RenderCounters.slotSwitch*) in getRenderStats AND
+  renderStatsUpdated (`Session::render_stats`); HUD rows `vram` and `slot
+  switch` (ViewportHud.tsx); test_session.cpp `A2`. I4: the rounded rect as a
+  Bézier run (pathOps rectOutline port in vector_paint.cpp primitive_run:
+  same radii clamp / axis scale, kappa arcs), so a tapered / wavy / dashed
+  stroke rides the corners; test_raster_canvas.cpp `I4`. U1 engine:
+  `SetViewport.clipToComp` (schema 20) → ViewportConfig → `ViewSpec::clipToComp`
+  false + pasteboard clear (engine_frames.cpp); EngineSurface sends it. U3
+  engine: `renderer` in the World key whitelist (handlers_comps / readmodel /
+  engineItemsView), read in threed_port setup (shadow-map size 512/1024/2048,
+  shadow-light cap ≤ 4, DOF rings 3/5/7 → dof-gather.wgsl via dofP3.z, MSAA
+  1/4 → scene_renderer target samples) and carried as
+  `RenderFrameScene.renderer`; CompositionSettingsDialog.native.test asserts
+  the round trip. Gates: native:test green except the known-red
+  (test_fx_bounds, D1 eval parity, undo parity); native-golden = the known
+  five only; engine_gpu_tests + plugins_gpu green; GPU jest fx60Effects /
+  objectFidelity / oversizeLayer / inkEffects / svgDisplayScale green;
+  typecheck, lint (0 errors, 433 / 620 warnings, none in touched files).
+  Still owed elsewhere: B1 engine keep-world re-parent of adjustment layers,
+  B4 catalog signed ranges, B5.
 - 2026-10-12: known red BEFORE this program (not to chase here; owner to re-bless or fix): native-golden
   three-d-outer-glow x2, bevel-above-cap, bevel-below-cap, blur-hard-edge (7.030 / 2.594 / 6.685 %, identical
   with E1-E3 reverted — from the 2026-10-10 glow/dither commits); ctest test_fx_bounds, D1 eval parity, undo parity.

@@ -79,6 +79,14 @@ bool engine_gpu_effects() noexcept {
   return on;
 }
 
+bool svg_display_scale_on() noexcept {
+  static const bool on = [] {
+    const char* v = std::getenv("PREMATION_SVG_INTRINSIC");  // NOLINT(concurrency-mt-unsafe): read once, before any thread sets it
+    return v == nullptr || std::string_view(v).empty() || std::string_view(v) == "0";
+  }();
+  return on;
+}
+
 std::size_t mark_gpu_effect_layers(std::vector<RLayer>& layers) {
   std::size_t n = 0;
   for (RLayer& l : layers) {
@@ -114,7 +122,7 @@ NativeFrame native_frame_of(const doc::Document& d, Snapshot snap, const ViewSpe
   const auto t1 = Clock::now();
   const double rasterScale = view.zoom * view.dpr;
   if (view.gpuEffects) (void)mark_gpu_effect_layers(snap.layers);  // E4: before anything reads layer_is_baked
-  FrameBuild fb = build_frame_scene(snap, rasterScale);
+  FrameBuild fb = build_frame_scene(snap, rasterScale, view.svgDisplayScale);
   const auto t2 = Clock::now();
   nf.sceneMs = std::chrono::duration<double, std::milli>(t2 - t1).count();
   nf.errors = std::move(snap.layerErrors);

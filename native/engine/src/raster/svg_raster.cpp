@@ -11,7 +11,7 @@
 namespace premation::raster::svg {
 namespace {
 
-constexpr double kRasterMax = 4096;    // AppTextureProvider RASTER_MAX
+constexpr double kRasterMax = kSvgRasterMax;    // AppTextureProvider RASTER_MAX
 constexpr double kSvgTargetLong = 2048;  // rasterizeSvg SVG_TARGET_LONG
 
 bool js_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
@@ -225,7 +225,11 @@ RasterOutput rasterize_svg(std::string_view markup, const RasterizeOptions& opts
   const double w = s.w;
   const double h = s.h;
   const double longEdge = std::max(w, h);
-  const double targetLong = std::min(kRasterMax, anim.animated ? kSvgAnimatedTargetLong : std::max(longEdge, kSvgTargetLong));
+  // E4: a displayed-size request draws exactly that many texels along the long
+  // edge (the texture feed quantised and capped it); otherwise rasterizeSvg's rule.
+  const bool displayed = std::isfinite(opts.targetLongEdge) && opts.targetLongEdge > 0;
+  const double targetLong = displayed ? std::max(1.0, std::min(kRasterMax, opts.targetLongEdge))
+                                      : std::min(kRasterMax, anim.animated ? kSvgAnimatedTargetLong : std::max(longEdge, kSvgTargetLong));
   const double scale = targetLong / longEdge;
   const double rw = std::max(1.0, std::min(kRasterMax, js_round(w * scale)));
   const double rh = std::max(1.0, std::min(kRasterMax, js_round(h * scale)));

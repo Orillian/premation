@@ -221,7 +221,7 @@ export function SceneControls(): JSX.Element {
         className={draft3d ? styles.triggerActive : styles.trigger}
         aria-label="Draft 3D"
         aria-pressed={draft3d}
-        title="Draft 3D — skips lights, shadows & DOF"
+        title="Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections"
         onClick={() => toggleDraft3d()}
       >
         <Icon name="draft-3d" size="md" />

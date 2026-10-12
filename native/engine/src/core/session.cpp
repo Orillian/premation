@@ -1094,6 +1094,7 @@ struct ControlVisitor {
       }
     } else {
       v.transparencyGrid = c.transparency_grid;
+      v.clipToComp = c.clip_to_comp.value_or(true);  // U1: the Extended Viewer draws outside the frame
     }
     if (c.time && *c.time >= 0) v.time = *c.time;
     if (c.layer_source_time && v.time) v.layerSourceTime = *c.layer_source_time;
@@ -1222,15 +1223,7 @@ api::QueryResult Session::run_query(const api::Query& q) {
     cap.cpu_threads = std::thread::hardware_concurrency();
     return cap;
   };
-  c.renderStats = [this] {
-    const RenderCounters rc = sink_.counters();
-    api::RenderStats st;
-    st.gpu_frame_ms = rc.gpuFrameMs;
-    st.fps = rc.fps;
-    st.dropped_frames = rc.dropped;
-    st.cpu_frame_ms = buildMs_;
-    return st;
-  };
+  c.renderStats = [this] { return render_stats(); };
   c.cacheCoverage = [this](const std::optional<std::string>& comp) {
     api::CacheCoverage out;
     const auto active = active_comp();
@@ -1703,8 +1696,10 @@ void Session::tick(Clock::time_point now) {
   if (now - lastStats_ >= std::chrono::seconds(1)) emit_stats(now);
 }
 
-void Session::emit_stats(Clock::time_point now) {
-  lastStats_ = now;
+api::RenderStats Session::render_stats() {
+  // A2: getRenderStats and renderStatsUpdated answer the same figures — VRAM
+  // (device pool + footage textures + frame cache, from the render thread),
+  // decode time and the last slot-size switch included.
   const RenderCounters c = sink_.counters();
   api::RenderStats st;
   st.gpu_frame_ms = c.gpuFrameMs;
@@ -1715,6 +1710,21 @@ void Session::emit_stats(Clock::time_point now) {
   st.dropped_frames = c.dropped + clockDropped_;
   // What the viewport frame cache holds (VRAM; the HUD's cache row and getCacheCoverage agree).
   st.ram_cache_bytes = sink_.cache_coverage().ramBytes;
+  if (c.slotSwitchEpochUs > 0) {
+    // The same clock os::epoch_us reads (engine_core does not link os_ffi).
+    const double nowUs = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                 std::chrono::system_clock::now().time_since_epoch())
+                                                 .count()) /
+                         1000.0;
+    st.last_slot_switch_ago_ms = std::max(0.0, (nowUs - c.slotSwitchEpochUs) / 1000.0);
+    st.slot_switch_ms = c.slotSwitchMs;
+  }
+  return st;
+}
+
+void Session::emit_stats(Clock::time_point now) {
+  lastStats_ = now;
+  const api::RenderStats st = render_stats();
   std::vector<api::Event> ev;
   ev.push_back(make_event(api::RenderStatsUpdatedEvent{st}));
   send_events(revision_, revision_, std::move(ev), std::nullopt, api::Origin::engine);

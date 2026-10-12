@@ -645,6 +645,9 @@ void RenderThread::rebuild(Port& port, const ViewportConfig& config, bool shared
   // the page scales them up to the viewer.
   const std::uint32_t W = preview_pixels(config.width, config.resolution);
   const std::uint32_t H = preview_pixels(config.height, config.resolution);
+  // A2: a slot-SIZE switch (preview resolution, pane size) is what the HUD reports.
+  const bool sizeSwitch = port.slots && (port.slots->width != W || port.slots->height != H) && W > 0 && H > 0;
+  const auto rebuildStart = SteadyClock::now();
   auto next = std::make_unique<SlotSet>();
   next->generation = ++generation_;
   next->width = W;
@@ -727,6 +730,10 @@ void RenderThread::rebuild(Port& port, const ViewportConfig& config, bool shared
       .kv("copy", port.slots->copy);
   if (send_) send_(frames::Message{.v = std::move(announce)});
   const std::lock_guard<std::mutex> lock(m_);
+  if (sizeSwitch) {
+    counters_.slotSwitchEpochUs = os::epoch_us();
+    counters_.slotSwitchMs = std::chrono::duration<double, std::milli>(SteadyClock::now() - rebuildStart).count();
+  }
   cv_.notify_all();
 }
 
@@ -888,11 +895,12 @@ std::size_t RenderThread::complete_frames(bool block) {
       ++counters_.rendered;
       ++windowFrames_;
       windowGpuMs_ += gpuMs;
+      // A2: VRAM per frame (the device meter + held footage + the frame cache: a few integer reads).
+      counters_.vramBytes = (drawer_ ? drawer_->vram_bytes() : 0) + cacheStats_.bytes;
       const auto now = SteadyClock::now();
       const double secs = std::chrono::duration<double>(now - windowStart_).count();
       if (secs >= 1.0) {
         if (drawer_) counters_.decodeMs = drawer_->decode_ms();
-        counters_.vramBytes = (drawer_ ? drawer_->vram_bytes() : 0) + cacheStats_.bytes;
         counters_.fps = static_cast<double>(windowFrames_) / secs;
         counters_.gpuFrameMs = windowGpuMs_ / static_cast<double>(std::max<std::uint64_t>(windowFrames_, 1));
         windowFrames_ = 0;

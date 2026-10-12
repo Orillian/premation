@@ -302,6 +302,22 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
     const Json* rec = c_.d.comp(comp_.rootId);
     return rec != nullptr && rec->at("showSkyBackdrop").is_bool() && rec->at("showSkyBackdrop").b();
   };
+  // Composition Settings ▸ Renderer (U3): the comp's World JSON `renderer`
+  // block — shadow-map size (512 / 1024 / 2048), the shadow-light cap (the
+  // shader has four map slots), DOF quality (gather rings) and MSAA (1 / 4).
+  if (const Json* rec = c_.d.comp(comp_.rootId); rec != nullptr && rec->at("renderer").is_object()) {
+    const Json& rr = rec->at("renderer");
+    api::RenderRendererSettings rs;
+    const double size = rr.at("shadowMapSize").is_number() ? rr.at("shadowMapSize").num() : 1024;
+    shadowMapSize_ = size <= 640 ? 512.0 : size <= 1400 ? 1024.0 : 2048.0;
+    if (rr.at("shadowLightCap").is_number() && std::isfinite(rr.at("shadowLightCap").num())) {
+      shadowLightCap_ = std::clamp(static_cast<int>(std::lround(rr.at("shadowLightCap").num())), 0, kMappedShadowLights);
+    }
+    const std::string q = rr.at("dofQuality").is_string() ? rr.at("dofQuality").str() : "medium";
+    rs.dof_rings = q == "draft" ? 3U : q == "high" ? 7U : 5U;
+    rs.msaa = rr.at("msaa").is_number() && rr.at("msaa").num() == 1 ? 1U : 4U;
+    renderer_ = rs;
+  }
   ortho_ = ortho_view_of(comp_.camera3dMode);
   const bool custom = !ortho_ && comp_.customViewCamera.has_value();
   viewCam_ = ortho_ ? nullptr : view_camera_node(nodes);
@@ -346,7 +362,7 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
       // A 2D layer is in no depth pass, so no map reaches it: it keeps the
       // drop-shadow from the first shadow light, mapped or not.
       flatShadowLights_.push_back(sl);
-      if (mapped < kMappedShadowLights) {
+      if (mapped < shadowLightCap_) {
         ++mapped;
         hasShadowMapLight_ = true;
         continue;
@@ -356,7 +372,7 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
   }
 
   // The form rig (extruded solids in a comp with no lights).
-  if (!comp_.draft3d) {
+  {
     const double cx = comp_.width / 2;
     const double cy = comp_.height / 2;
     constexpr double kFar = 100000;
@@ -388,16 +404,27 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
     amb.z = 0;
     formRig_.push_back(amb);
     formRig_.push_back(parallel(0.45, 0.62, 0.64, 64));
-    formRig_.push_back(parallel(-0.8, 0.05, 0.4, 14));
+    // E6: Draft 3D keeps the rig's ambient + key; the fill is dropped with the rest.
+    if (!comp_.draft3d) formRig_.push_back(parallel(-0.8, 0.05, 0.4, 14));
   }
 
-  // Scene lights in world space.
-  if (!comp_.draft3d) {
+  // Scene lights in world space. E6: Draft 3D keeps cheap lighting — every
+  // ambient light and the first non-ambient light (the key), no shadows, no
+  // reflections; SSAO and DOF are off (below / setup).
+  {
     int mappedLights = 0;
+    bool draftKeyTaken = false;
     for (const doc::Node* n : nodes) {
       if (n->kind() != "light") continue;
       if (!n->visible || !h_.live3d(n->id)) continue;
-      const LightProps lt = read_node_light(*n);
+      LightProps lt = read_node_light(*n);
+      if (comp_.draft3d) {
+        lt.shadows = false;
+        if (lt.type != "ambient" && lt.type != "environment") {  // an environment probe is diffuse ambient here
+          if (draftKeyTaken) continue;
+          draftKeyTaken = true;
+        }
+      }
       const Values& av = h_.values3d(n->id);
       const xf::Vec3 wp = node_world_position(*n);
       if (lt.type == "environment") {
@@ -410,7 +437,7 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
         const double envRefl = av.get("envReflections").value_or(lt.envReflections) / 100;
         EnvReflect er;
         er.sky = lt.envPreset;
-        er.intensity = std::max(0.0, (envIntensity / 100) * envRefl);
+        er.intensity = comp_.draft3d ? 0.0 : std::max(0.0, (envIntensity / 100) * envRefl);  // E6: no reflections in Draft 3D
         er.rotationDeg = envRot;
         er.nodeId = n->id;
         er.lightGain = std::max(0.0, envIntensity / 100);
@@ -466,8 +493,9 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
         continue;
       }
       SceneLight r = scene_light_of(lt);
-      if (lt.shadows && lt.type != "ambient" && mappedLights < kMappedShadowLights) {
+      if (lt.shadows && lt.type != "ambient" && mappedLights < shadowLightCap_) {
         r.shadowMap = true;  // AE parity 4.3 (see the cast-shadow pass above)
+        if (shadowMapSize_) r.shadowMapSize = shadowMapSize_;  // Composition Settings ▸ Renderer
         ++mappedLights;
       }
       r.intensity = av.get("intensity").value_or(lt.intensity);
@@ -1636,6 +1664,16 @@ std::optional<RLayer> Scene3D::light_layer(const doc::Node& n) {
 }
 
 void Scene3D::finish(std::vector<RLayer>& layers) {
+  // E6: Draft 3D draws no layer reflections (the mirror pass is the cost).
+  if (comp_.draft3d) {
+    const std::function<void(std::vector<RLayer>&)> strip = [&strip](std::vector<RLayer>& ls) {
+      for (RLayer& l : ls) {
+        if (l.shade3d) l.shade3d->layer_reflections = std::nullopt;
+        if (l.precompLayers) strip(*l.precompLayers);
+      }
+    };
+    strip(layers);
+  }
   // environmentSpecularMap (the prefiltered reflection atlas) is not ported: a frame
   // that would carry envMap falls back.
   if (envReflect_ && envReflect_->intensity > 0 && has_world3d(layers) && envReflect_->sky.is_string() &&
@@ -1965,7 +2003,8 @@ void Scene3D::emit(Snapshot& s, const std::vector<RLayer>& layers) const {
       s.shadowCatcher = cc;
     }
   }
-  if (const Json* rec = c_.d.comp(comp_.rootId)) {
+  s.renderer = renderer_;  // Composition Settings ▸ Renderer: DOF rings + MSAA (threed.cpp / scene_renderer.cpp)
+  if (const Json* rec = c_.d.comp(comp_.rootId); rec != nullptr && !comp_.draft3d) {  // E6: no SSAO in Draft 3D
     const Json& ss = rec->at("ssao");
     if (ss.is_object() && ss.at("enabled").is_bool() && ss.at("enabled").b()) {
       api::RenderSsao o;

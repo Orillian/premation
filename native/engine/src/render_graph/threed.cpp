@@ -1701,7 +1701,9 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     p.vec4(dof.focus, dof.aperture, dof.strength, dof.focal_length.value_or(dof.focus));
     p.vec4(dof.f_stop.value_or(0), dof.iris_rotation.value_or(0) * std::numbers::pi / 180, dof.iris_aspect.value_or(1),
            dof.highlight_threshold.value_or(0));
-    p.vec4(dof.highlight_saturation.value_or(0), dof.diffraction_fringe.value_or(0), 0, 0);
+    // Composition Settings ▸ Renderer ▸ DOF quality: gather rings (dof-gather.wgsl; 0 = its default 5).
+    const double rings = ctx.file.scene.renderer ? std::clamp<double>(ctx.file.scene.renderer->dof_rings, 3, 7) : 0;
+    p.vec4(dof.highlight_saturation.value_or(0), dof.diffraction_fringe.value_or(0), rings, 0);
     Commands gc;
     DrawItem& it = gc.add(Mat::DOF_GATHER_MATERIAL, Blend::normal, p.span());
     it.texture = dt->tex();

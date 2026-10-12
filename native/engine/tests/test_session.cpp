@@ -1191,3 +1191,72 @@ TEST_CASE("setViewport: the Layer panel's viewport renders one layer, optionally
   v.layer = "nope";
   CHECK_FALSE(is_ok(h.run(cmd(v))));
 }
+
+// ── 3D perf program: U1 clipToComp, U3 renderer World key, A2 render stats ──
+
+TEST_CASE("session: setViewport clipToComp reaches the viewport's config (U1 Extended Viewer)", "[session][frames][u1]") {
+  Harness h;
+  (void)h.hello();
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 800;
+  v.height = 450;
+  v.device_pixel_ratio = 1.0;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(h.sink.config(1).clipToComp);  // absent = clipped (AE's comp panel)
+  v.clip_to_comp = false;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK_FALSE(h.sink.config(1).clipToComp);
+  v.clip_to_comp = true;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(h.sink.config(1).clipToComp);
+}
+
+TEST_CASE("session: the composition World JSON keeps the Renderer block and undoes it (U3)", "[session][comp][u3]") {
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h);
+  api::SetCompositionSettings s;
+  s.comp = comp;
+  s.patch.world = R"({"renderer":{"shadowMapSize":2048,"shadowLightCap":2,"dofQuality":"high","msaa":1},"ssao":{"enabled":true,"radius":40,"intensity":1,"quality":"half"}})";
+  REQUIRE(is_ok(h.run(cmd(s))));
+  api::GetComposition q;
+  q.comp = comp;
+  const auto info = query<api::CompositionDetails>(h, qry(q)).comp.settings;
+  REQUIRE(info.world.has_value());
+  CHECK(info.world->find("\"renderer\"") != std::string::npos);
+  CHECK(info.world->find("shadowMapSize") != std::string::npos);
+  CHECK(info.world->find("2048") != std::string::npos);
+  CHECK(info.world->find("\"dofQuality\"") != std::string::npos);
+  CHECK(info.world->find("\"msaa\"") != std::string::npos);
+  CHECK(info.world->find("\"ssao\"") != std::string::npos);
+  REQUIRE(is_ok(h.run(cmd(api::Undo{}))));
+  const auto undone = query<api::CompositionDetails>(h, qry(q)).comp.settings;
+  CHECK((!undone.world.has_value() || undone.world->find("renderer") == std::string::npos));
+}
+
+TEST_CASE("session: getRenderStats answers the render thread's VRAM and the last slot-size switch (A2)", "[session][stats][a2]") {
+  Harness h;
+  (void)h.hello();
+  RenderCounters c;
+  c.vramBytes = 123456789;
+  c.decodeMs = 2.5;
+  const double nowUs = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) / 1000.0;
+  c.slotSwitchEpochUs = nowUs - 1500000;  // 1.5 s ago
+  c.slotSwitchMs = 42;
+  h.sink.set_counters(c);
+  const auto st = query<api::RenderStats>(h, qry(api::GetRenderStats{}));
+  CHECK(st.vram_bytes == 123456789);
+  CHECK(st.decode_ms == Approx(2.5));
+  REQUIRE(st.last_slot_switch_ago_ms.has_value());
+  CHECK(*st.last_slot_switch_ago_ms >= 1400);
+  CHECK(*st.last_slot_switch_ago_ms < 60000);
+  REQUIRE(st.slot_switch_ms.has_value());
+  CHECK(*st.slot_switch_ms == Approx(42));
+  // Never switched: the fields are absent, not zero.
+  h.sink.set_counters(RenderCounters{});
+  const auto none = query<api::RenderStats>(h, qry(api::GetRenderStats{}));
+  CHECK(none.vram_bytes == 0);
+  CHECK_FALSE(none.last_slot_switch_ago_ms.has_value());
+  CHECK_FALSE(none.slot_switch_ms.has_value());
+}

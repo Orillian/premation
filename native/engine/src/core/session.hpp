@@ -230,6 +230,8 @@ class Session {
   };
   [[nodiscard]] Range play_range() const;
   void emit_stats(Clock::time_point now);
+  /// A2: the figures getRenderStats and renderStatsUpdated share (VRAM, decode, slot switch).
+  [[nodiscard]] api::RenderStats render_stats();
 
   Outbox& out_;
   FrameSink& sink_;
@@ -428,11 +430,11 @@ class Session {
   /// thread, its masks written inside the request's journal (one entry);
   /// answers the added mask groups (session_jobs.cpp).
   api::CommandResult auto_trace_in_journal(const api::AutoTrace& c, api::Origin origin, std::string& label);
-};
-
   /// P7a runPluginCommand: the plugin's command run inside the request's journal (one entry), its edits
   /// kept in jobLog_ for the log (session_plugins.cpp).
   api::CommandResult run_plugin_command_in_journal(const api::RunPluginCommand& c, api::Origin origin, std::string& label);
+};
+
 /// The seq of a Request inside an EngineMessage that failed to decode (so
 /// the client's pending request can still be answered). nullopt when the
 /// bytes are not a request or the seq itself is unreadable.
