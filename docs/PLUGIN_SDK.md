@@ -86,7 +86,7 @@ copy/paste, save/open and change events all work as they do for a builtin.
 |---|---|
 | `SLIDER`, `FLOAT_SLIDER`, `ANGLE` | number (angle in °, valid range → min/max) |
 | `POINT`, `POINT_3D` | numbers `p<id>X`, `p<id>Y` (`p<id>Z`), layer px from the layer centre; the plugin gets layer pixels |
-| `COLOR` | colour, sRGB-encoded 0..1 as the colour picker shows it; the plugin gets straight RGBA in **linear light** (the working space, SDK 1.2) |
+| `COLOR` | colour, sRGB-encoded 0..1 as the colour picker shows it; the plugin gets straight RGBA in **linear light** (the working space, SDK 1.2). The document stores it as `#rgb` / `#rrggbb` / `#rrggbbaa`; any other stored value renders the declared default and the layer reports "parameter '…' is not a colour" on layerErrors |
 | `POPUP` | choice, 1-based |
 | `CHECKBOX` | bool |
 | `LAYER` | a layer reference (id, `""` = none) |

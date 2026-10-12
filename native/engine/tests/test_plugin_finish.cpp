@@ -122,6 +122,18 @@ struct Fixture {
     REQUIRE(b.entry.type == pl::kNativeFxType);
     return b;
   }
+  /// The frame's layerErrors after the hook (the plugin stage only).
+  std::vector<sc::LayerError> plugin_errors(double t) {
+    const sc::BuildContext ctx{d, view, *env, cache, nullptr, {}};
+    const sc::ViewSpec vs = sc::export_view(480, 360, 480, 360);
+    sc::NativeFrame nf = sc::build_native_frame(ctx, "comp_root", t, vs, false);
+    pl::finish_native_frame(ctx, "comp_root", t, vs, false, nf, host.get());
+    std::vector<sc::LayerError> out;
+    for (sc::LayerError& e : nf.errors) {
+      if (e.stage == "plugin") out.push_back(std::move(e));
+    }
+    return out;
+  }
   pl::RenderInputs decode(const api::RenderEffect& e) const {
     pl::RenderInputs in;
     pl::decode_native_fx(e, *host->effect(kParticles), in);
@@ -401,4 +413,39 @@ TEST_CASE("SDK get_layer_transform: layer px -> world, the same in the render an
       for (std::size_t k = 0; k < 3; ++k) CHECK(std::abs(mapped[c][k] - drawn[c][k]) < 1e-3);
     }
   }
+}
+
+TEST_CASE("a COLOR param stored as something other than a colour renders its default and is reported once",
+          "[plugins][finish]") {
+  for (const char* bad : {"array", "malformed"}) {
+    Json document = scene_json();
+    Json& props = fx_props(*find_node(document, "solid"));
+    Json& params = *props.find_mut("effects")->arr_mut().at(0).find_mut("params");
+    if (std::string_view(bad) == "array") {
+      Json::Array a;
+      for (int i = 0; i < 4; ++i) a.push_back(Json::number(1));
+      params.set("p8", Json::array(std::move(a)));  // what the model3d goldens once stored
+    } else {
+      params.set("p8", Json::string("#12345"));
+    }
+    Fixture f(std::move(document));
+    // The declared default (particles: Color {1, 0.85, 0.4}) reaches the plugin, not white.
+    const pl::RenderInputs in = f.decode(f.frame(0.5).entry);
+    const auto& specs = f.host->effect(kParticles)->params;
+    std::size_t color = specs.size();
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+      if (specs[i].key == "p8") color = i;
+    }
+    REQUIRE(color < in.values.size());
+    INFO(bad);
+    CHECK(in.values.at(color).v.at(0) > 0.99);
+    CHECK(in.values.at(color).v.at(2) < 0.5);
+    const auto errors = f.plugin_errors(0.5);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].layerId == "solid");
+    CHECK(errors[0].message.find("'Color' is not a colour") != std::string::npos);
+  }
+  // A document colour: no error.
+  Fixture ok(scene_json());
+  CHECK(ok.plugin_errors(0.5).empty());
 }

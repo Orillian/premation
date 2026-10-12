@@ -94,7 +94,7 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
   UPDATE_PARAMS_UI, defaults) and GRADIENT stops' r, g, b reach a plugin decoded from the document's sRGB
   (the builtins' IEC transfer, host.cpp `param_defs`); `set_param_value` encodes back (round trip exact:
   rings' hidden Swap Colors + test_plugin_session). Re-blessed plugin-particles-orbit (×3) and
-  plugin-model3d-orbit / -blur / -occlusion (Base Color resolves to the declared #cccccc default → 0.604 linear). (a5154862)
+  plugin-model3d-orbit / -blur / -occlusion (Base Color resolves to the declared #cccccc default → 0.604 linear). (a5154862) 2026-10-13: those scenes stored Base Color as [1,1,1,1], not a document colour — now "#ffffff" (the model renders as intended, ~25 % brighter; re-blessed), and a COLOR param stored as anything but `#rgb` / `#rrggbb` / `#rrggbbaa` is reported on layerErrors once per instance and param ("parameter 'Base Color' is not a colour"), still rendering the default.
 - [x] G2 **Overlay through the camera.** get_comp_camera / _lights / get_layer_transform answer in DRAW_OVERLAY /
   OVERLAY_DRAG at the viewer's time (doc::NativeScene in the request, plugins/scene_eval.cpp, also the
   Sampler's evaluator now); `overlay_set_space` (PR_OVERLAY_SPACE_COMP), PrOverlayExtra.comp_width/height,

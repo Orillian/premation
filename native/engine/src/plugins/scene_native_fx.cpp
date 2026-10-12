@@ -1,5 +1,8 @@
 #include "scene_native_fx.hpp"
 
+#include <cctype>
+#include <string_view>
+
 #include "fxstate.hpp"
 #include "native_effects.hpp"
 #include "props.hpp"
@@ -62,6 +65,14 @@ std::optional<std::pair<std::vector<double>, bool>> mask_path(const RLayer& l, s
   return std::nullopt;
 }
 
+/// What parse_color_channels reads: `#` (optional) + 3, 6 or 8 hex digits.
+bool is_document_color(std::string_view s) {
+  if (!doc::is_hex_color(s)) return false;
+  std::size_t n = 0;
+  for (const char ch : s) n += std::isxdigit(static_cast<unsigned char>(ch)) != 0 ? 1 : 0;
+  return n == 3 || n == 6 || n == 8;
+}
+
 }  // namespace
 
 bool is_native_effect(std::string_view type) noexcept { return doc::NativeEffects::find(type) != nullptr; }
@@ -87,9 +98,15 @@ std::optional<api::RenderEffect> native_effect_entry(const Json& e, const Json& 
     } else if (p.type == "checkbox") {
       put_flag(out, name, (v.is_bool() && v.b()) || (v.is_number() && v.num() != 0));
     } else if (p.type == "color") {
-      const std::string hex = v.is_string() ? v.str() : p.def.is_string() ? p.def.str() : "#ffffff";
+      // A document colour is a `#rgb` / `#rrggbb` / `#rrggbbaa` string. Anything else stored
+      // (an array, a number, a malformed string) renders the declared default and is named
+      // on the entry (`invalid.<key>`): finish_native_frame reports it on layerErrors.
+      const bool given = !v.is_null();
+      const bool valid = v.is_string() && is_document_color(v.str());
+      const std::string hex = valid ? v.str() : p.def.is_string() ? p.def.str() : "#ffffff";
       const auto c = doc::parse_color_channels(hex);
       put_nums(out, name, {c[0], c[1], c[2], c[3]}, api::RenderParamKind::color);
+      if (given && !valid) put_text(out, "invalid." + p.key, p.label.empty() ? p.key : p.label);
     } else if (p.type == "layer") {
       put_text(out, name, v.is_string() ? v.str() : "");
     } else if (p.type == "maskPath") {

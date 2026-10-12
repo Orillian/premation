@@ -442,6 +442,14 @@ void finish_native_frame(const scene::BuildContext& c, std::string_view comp, do
           }
         }
       }
+      // A COLOR param the document stores as something other than a colour renders its
+      // default (scene_native_fx.cpp marks it `invalid.<key>`): said once per instance and param.
+      for (const api::RenderEffectParam& p : e.params) {
+        if (!p.name.starts_with("invalid.") || !reported.insert(instance + "#" + p.name).second) continue;
+        frame.errors.push_back(scene::LayerError{layerId, "", "plugin",
+                                                 "parameter '" + p.text + "' is not a colour (#rrggbb); its default is used (" +
+                                                     matchName + ")"});
+      }
       if (host == nullptr) continue;
       if (std::string why; host->instance_disabled(instance, &why)) {
         if (reported.insert(instance).second) frame.errors.push_back(scene::LayerError{layerId, "", "plugin", why});
