@@ -56,7 +56,10 @@ export function canEncodeLocally(): boolean {
   return typeof window !== 'undefined' && !!window.motionEditor?.exportSupervisor?.enqueue;
 }
 
-export type OutputFormat = VideoFormat | 'png-sequence' | 'jpg-sequence' | 'exr-sequence';
+/** P7c: `plugin:<plugin id>/<module id>` — a native plugin's output module (core/nativePlugins/pluginContrib.ts). */
+export type PluginOutputFormat = `plugin:${string}`;
+
+export type OutputFormat = VideoFormat | 'png-sequence' | 'jpg-sequence' | 'exr-sequence' | PluginOutputFormat;
 
 /**
  * Everything a render needs to know, and nothing about who asked for it.
@@ -132,6 +135,8 @@ export interface RenderJobSpec {
    * based on editor state the invocation never mentioned.
    */
   chapters?: ReadonlyArray<ExportChapter>;
+  /** P7c: a plugin output module's option values (JSON) — `format` is `plugin:<id>/<module>`. */
+  pluginOptions?: string;
 }
 
 /**

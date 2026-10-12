@@ -15,12 +15,13 @@
  * the user expects to see.
  */
 
-import { dialog, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { handle } from '../ipcGuard';
 import { rememberDir, rememberedDir } from '../dialogDirs';
+import { pluginImportExtensions } from '../pluginImportExtensions';
 
 export interface DirEntryDto {
   name: string;
@@ -81,13 +82,16 @@ export function registerRevealIpc(): void {
    * `importMediaFile` the browser's rows use. Null if cancelled.
    */
   handle('dialog:pickFiles', async () => {
+    // P7b: footage formats installed native plugins import (.ppm, …).
+    const pluginExts = await pluginImportExtensions([path.join(app.getPath('userData'), 'native-plugins')]);
     const res = await dialog.showOpenDialog({
       ...rememberedDir('media'),
       properties: ['openFile', 'multiSelections'],
       filters: [
         { name: 'Media', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mpg', 'mpeg', 'wmv', 'mxf', 'mts', 'm2ts',
           'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp', 'tif', 'tiff', 'exr', 'dpx', 'psd',
-          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aif', 'aiff', 'opus'] },
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aif', 'aiff', 'opus', ...pluginExts] },
+        ...(pluginExts.length > 0 ? [{ name: 'Plugin formats', extensions: pluginExts }] : []),
         { name: 'All Files', extensions: ['*'] },
       ],
     });

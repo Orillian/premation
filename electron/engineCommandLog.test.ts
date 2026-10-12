@@ -176,6 +176,36 @@ describe('EngineCommandLog', () => {
     const batch = decodeEngineMessage(plan[0]!.bytes) as Extract<EngineMessage, { kind: 'request' }>;
     expect(batch.value.body).toMatchObject({ kind: 'batch', value: { label: 'Gate' } });
   });
+
+  it('logs a plugin command as the edits it made, never as runPluginCommand (P7a)', () => {
+    const log = new EngineCommandLog();
+    const started = encodeEngineMessage({
+      kind: 'response',
+      value: { seq: 1, revision: 1, outcome: { kind: 'command', value: { type: 'startJob', job: 'job_1' } as never } },
+    });
+    // A job still running: the plugin's log record must not drop its startJob.
+    log.record(req({ type: 'startJob', job: { kind: 'sceneDetect', value: { layer: 'A', createMarkers: true, splitLayers: false } }, apply: true } as Command), started, 1);
+    const applied = appliedRequestFromLogRecord(encodeEngineMessage({
+      kind: 'logRecord',
+      value: {
+        request: {
+          seq: 0,
+          origin: 'engine',
+          body: { kind: 'batch', value: { label: 'Distribute Layers', commands: [{ type: 'renameLayer', layer: 'A', name: 'B' } as Command] } },
+        },
+        revisionAfter: 2,
+        documentHash: 0,
+        job: 'plugin:com.premation.samples.distribute/distribute',
+      },
+    }))!;
+    log.absorbJobEdit(applied.bytes, applied.revisionAfter, applied.job);
+    log.record(req({ type: 'runPluginCommand', plugin: 'com.premation.samples.distribute', command: 'distribute', layers: [] } as Command), ok(2), 2);
+    expect(log.length).toBe(2);
+    const plan = log.plan();
+    expect(plan).toHaveLength(1);  // the startJob is never replayed; the plugin's batch is
+    const batch = decodeEngineMessage(plan[0]!.bytes) as Extract<EngineMessage, { kind: 'request' }>;
+    expect(batch.value.body).toMatchObject({ kind: 'batch', value: { label: 'Distribute Layers' } });
+  });
 });
 
 describe("the transcribe job's provider key (main to engine only)", () => {

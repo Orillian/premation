@@ -46,6 +46,7 @@ import { loadRenderCapabilities, renderOnServer, serverEncodeFor, serverRenderAv
 import type { RenderCapabilities } from '@core/api/client';
 import styles from './ExportDialog.module.css';
 import { useState } from 'react';
+import { PluginFormatOptions, isPluginFormat, pluginFormatExt, pluginOptionsField, usePluginExportPresets } from './pluginFormats';
 
 const RES = [
   { label: 'Full', scale: 1 },
@@ -153,11 +154,14 @@ export interface ExportModel {
  */
 export function useExportModel(duration: number, fps: number): ExportModel {
   const presets = useMemo(() => availableExportPresets(), []);
+  // P7c: native plugins' output modules (`plugin:<id>/<module>`) beside the built-in formats.
+  const pluginFormats = usePluginExportPresets();
   const presetByFormat = useMemo(() => {
     const map = new Map<ExportFormat, ExportPreset>();
     for (const p of presets) map.set(p.format, p);
+    for (const p of pluginFormats.presets) map.set(p.format, p);
     return map;
-  }, [presets]);
+  }, [presets, pluginFormats.presets]);
 
   const seed = useExportFormStore((s) => s.seed);
   const seeded = useExportFormStore((s) => s.seeded);
@@ -212,7 +216,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
   const width = Math.round(baseComp.width * scale);
   const height = Math.round(baseComp.height * scale);
   const supportsAlpha =
-    ALPHA_FORMATS.has(format)
+    (ALPHA_FORMATS.has(format) || isPluginFormat(format))
     && (format !== 'webm' || canEncodeLocally())
     && (format !== 'mov' || proresProfile === '4444');
   const alpha = transparent && supportsAlpha;
@@ -265,6 +269,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
         ...(format === 'mov' && bitDepth === 16 ? { bitDepth: 16 as const } : {}),
         transparent: alpha,
         ...(chapterMarks.length ? { chapters: chapterMarks } : {}),
+        ...pluginOptionsField(format),
         outPath,
       });
       ui.notify({ level: 'success', message: `Queued ${outputName} — it renders in the background`, durationMs: 3000 });
@@ -314,8 +319,8 @@ export function useExportModel(duration: number, fps: number): ExportModel {
   }, [format, width, height, fps, duration, baseComp.id, outputName, exportViaSupervisor]);
 
   const queueJob = useCallback((): boolean => {
-    if (!QUEUEABLE.has(format)) return false;
-    const ext = outputExtFor(format as OutputFormat);
+    if (!QUEUEABLE.has(format) && !isPluginFormat(format)) return false;
+    const ext = isPluginFormat(format) ? pluginFormatExt(format) : outputExtFor(format as OutputFormat);
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     // Capture the range AT QUEUE TIME. The work area is a live, global value;
     // without this snapshot, "Entire composition" still rendered the current
@@ -347,6 +352,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       // Captured at queue time, like the range — see RenderJobSpec.videoEncoder.
       ...(format === 'mp4' ? { videoEncoder: usePreferenceStore.getState().exportVideoEncoder } : {}),
       ...(chapterMarks.length ? { chapters: chapterMarks } : {}),
+      ...pluginOptionsField(format),
     });
     showRenderQueue();
     useUIStore.getState().notify({
@@ -387,7 +393,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     };
   }, [caps, serverEncode, width, height, fps, duration, alpha, outputName]);
 
-  return { busy, progress, showQueue: QUEUEABLE.has(format), outputName, activePreset, doExport, queueJob, cancel, serverRender };
+  return { busy, progress, showQueue: QUEUEABLE.has(format) || isPluginFormat(format), outputName, activePreset, doExport, queueJob, cancel, serverRender };
 }
 
 export interface ExportFormProps {
@@ -398,11 +404,14 @@ export interface ExportFormProps {
 
 export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Element {
   const presets = useMemo(() => availableExportPresets(), []);
+  // P7c: native plugins' output modules (`plugin:<id>/<module>`) beside the built-in formats.
+  const pluginFormats = usePluginExportPresets();
   const presetByFormat = useMemo(() => {
     const map = new Map<ExportFormat, ExportPreset>();
     for (const p of presets) map.set(p.format, p);
+    for (const p of pluginFormats.presets) map.set(p.format, p);
     return map;
-  }, [presets]);
+  }, [presets, pluginFormats.presets]);
 
   const format = useExportFormStore((s) => s.format);
   const activeCategory = useExportFormStore((s) => s.activeCategory);
@@ -414,6 +423,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
   const rangeMode = useExportFormStore((s) => s.rangeMode);
   const patch = useExportFormStore((s) => s.patch);
   const { busy, progress, activePreset, cancel } = useExportModel(duration, fps);
+  const formatGroups = pluginFormats.group ? [...FORMAT_GROUPS, pluginFormats.group] : FORMAT_GROUPS;
 
   // The composition record from the document mirror (see useExportModel).
   const baseComp = useActiveCompRecord();
@@ -433,12 +443,12 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
   // yuva420p). The browser's WebCodecs VP9 profile-0 encode is opaque.
   // MOV alpha is a 4444-only fact: the 422 family has no alpha plane.
   const supportsAlpha =
-    ALPHA_FORMATS.has(format)
+    (ALPHA_FORMATS.has(format) || isPluginFormat(format))
     && (format !== 'webm' || canEncodeLocally())
     && (format !== 'mov' || proresProfile === '4444');
   const alpha = transparent && supportsAlpha;
   const showRaster = !NON_RASTER.has(format);
-  const showRange = RANGED.has(format);
+  const showRange = RANGED.has(format) || isPluginFormat(format);
   const showQuality = MOVING.has(format);
 
   const rangeStart = useWorkArea && workArea ? workArea.start : 0;
@@ -519,7 +529,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           <div className={styles.section}>
             <div className={styles.label}>Format Category</div>
             <div className={styles.categoryTabs} role="tablist">
-              {FORMAT_GROUPS.map((group) => {
+              {formatGroups.map((group) => {
                 const items = group.formats.filter((f) => presetByFormat.has(f));
                 if (items.length === 0) return null;
                 const on = activeCategory === group.id;
@@ -549,7 +559,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           <div className={styles.section}>
             <div className={styles.label}>Format Preset</div>
             <div className={styles.formatGrid} role="radiogroup" aria-label="Format Preset">
-              {(FORMAT_GROUPS.find((g) => g.id === activeCategory)?.formats.filter((f) => presetByFormat.has(f)) ?? []).map((id) => {
+              {(formatGroups.find((g) => g.id === activeCategory)?.formats.filter((f) => presetByFormat.has(f)) ?? []).map((id) => {
                 const p = presetByFormat.get(id)!;
                 const on = format === id;
                 return (
@@ -572,6 +582,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           </div>
 
           {activePreset ? <p className={styles.formatHint}>{activePreset.hint}</p> : null}
+
+          {isPluginFormat(format) ? <PluginFormatOptions format={format} disabled={busy} /> : null}
 
           {showRange ? (
             <div className={styles.section}>

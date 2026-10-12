@@ -12,6 +12,7 @@
 
 import type { EngineClient, PluginInfo } from '@motion/engine-api';
 import { refreshPluginEffectDefs } from '@core/inspector/pluginEffectDefs';
+import { refreshPluginContrib } from './pluginContrib';
 import type { NativePluginInstallOutcome, NativePluginStoreState } from '@/types/motionEditor';
 
 type PluginsBridge = NonNullable<NonNullable<Window['motionEditor']>['plugins']>;
@@ -35,6 +36,7 @@ export async function rescanPlugins(client: Pick<EngineClient, 'execute'> & Part
   try {
     const res = await client.execute({ type: 'rescanPlugins' });
     if (client.query) await refreshPluginEffectDefs({ query: client.query.bind(client) });
+    if (client.query) await refreshPluginContrib({ query: client.query.bind(client) });  // P7: commands, formats, panels
     return res.ok ? res.value.plugins : null;
   } catch {
     return null;
@@ -93,6 +95,7 @@ export async function setPluginEnabled(client: Pick<EngineClient, 'execute'>, id
     await bridge()?.setEnabled?.({ id, enabled });
     const q = (client as Partial<Pick<EngineClient, 'query'>>).query;
     if (q) await refreshPluginEffectDefs({ query: q.bind(client) });
+    if (q) await refreshPluginContrib({ query: q.bind(client) });  // P7: a disabled plugin's commands, formats and panels go
     return res.ok ? null : res.error.message;
   } catch (e) {
     return e instanceof Error ? e.message : 'Could not change the plugin.';

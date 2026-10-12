@@ -14,6 +14,7 @@ import {
   subscribeRegistryNotice,
   type NativePlugin,
 } from '@core/nativePlugins/nativePlugins';
+import { setPluginContrib } from '@core/nativePlugins/pluginContrib';
 
 export interface NativePluginsState {
   /** Null until the first answer. */
@@ -35,6 +36,7 @@ export function useNativePlugins(): NativePluginsState {
       if (!alive.current) return;
       if (res.ok) {
         setPlugins(res.plugins);
+        setPluginContrib(res.plugins);  // P7: the same answer feeds the menu, formats and panels
         setError(null);
       } else {
         setError(res.error);

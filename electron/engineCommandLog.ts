@@ -41,6 +41,7 @@ export const CMD = {
   setViewerLut: 815,
   startJob: 850,
   applyJobResult: 852,
+  runPluginCommand: 873,
 } as const;
 
 /**
@@ -88,6 +89,8 @@ export class EngineCommandLog {
     // The engine sent the job's commands as a log record just before this
     // answer (absorbJobEdit); the applyJobResult itself has nothing to replay.
     if (id === CMD.applyJobResult) return;
+    // P7a: likewise a plugin command — the engine logs the edits it made (a replay never runs the plugin).
+    if (id === CMD.runPluginCommand) return;
     if (id === CMD.newProject) this.entries = [];
     let key = '';
     if (id === CMD.setViewport || id === CMD.closeViewport) key = `viewport:${req.firstVarint ?? 0}`;

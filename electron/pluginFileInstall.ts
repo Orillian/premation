@@ -53,6 +53,46 @@ export type FileTrust =
   /** No signature at all. */
   | 'unsigned';
 
+/** P7: a package's non-effect contributions as display names (the manifest's keys, docs/PLUGIN_STORE.md). */
+export interface PackageContributions {
+  commands: string[];
+  /** "PPM / PFM (.ppm, .pfm)". */
+  importers: string[];
+  /** "PPM Sequence (.ppm)". */
+  outputModules: string[];
+  panels: string[];
+}
+
+const names = (list: unknown, label: (e: Record<string, unknown>) => string): string[] =>
+  (Array.isArray(list) ? list : [])
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+    .map(label)
+    .filter((s) => s.length > 0)
+    .slice(0, 64);
+
+/** What a manifest contributes besides effects, for the install dialog. Pure; never throws. */
+export function manifestContributions(m: {
+  commands?: unknown;
+  importers?: unknown;
+  outputModules?: unknown;
+  panels?: unknown;
+}): PackageContributions {
+  const str = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 120) : '');
+  return {
+    commands: names(m.commands, (e) => str(e.name) || str(e.id)),
+    importers: names(m.importers, (e) => {
+      const exts = (Array.isArray(e.extensions) ? e.extensions : []).filter((x): x is string => typeof x === 'string').map((x) => `.${x.replace(/^\./, '')}`);
+      const n = str(e.name) || str(e.id);
+      return exts.length > 0 ? `${n} (${exts.join(', ')})` : n;
+    }),
+    outputModules: names(m.outputModules, (e) => {
+      const n = str(e.name) || str(e.id);
+      return str(e.extension) ? `${n} (.${str(e.extension).replace(/^\./, '')})` : n;
+    }),
+    panels: names(m.panels, (e) => str(e.name) || str(e.id)),
+  };
+}
+
 /** The install dialog's facts (the page renders them; src/types/motionEditor.d.ts mirrors it). */
 export interface PackagePreview {
   token: string;
@@ -63,6 +103,8 @@ export interface PackagePreview {
   vendor: string;
   sdk: string;
   effects: Array<{ matchName: string; name: string; category: string }>;
+  /** P7: what else it adds — commands (Plugins menu), footage importers, export formats, panels. */
+  contributes: PackageContributions;
   platforms: string[];
   runsHere: boolean;
   trust: FileTrust;
@@ -172,6 +214,7 @@ export async function inspectPackageFile(input: InspectInput): Promise<{ result:
       name: String(e?.name ?? e?.matchName ?? ''),
       category: String(e?.category ?? ''),
     })),
+    contributes: manifestContributions(m),
     platforms,
     runsHere,
     trust,

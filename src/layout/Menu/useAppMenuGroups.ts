@@ -1,23 +1,41 @@
 /**
  * The menu groups the two menu renderers draw: `APP_MENU` with every edition
  * gate applied (`visibleItems`), localized. A hook so an open menu follows a
- * change of UI language. (The Plugins group and the plugin layer kinds under
- * Layer ▸ New are gone with the JavaScript plugin system, G2.)
+ * change of UI language. The Plugins group is the native plugins' commands and
+ * panels (P7a, pluginMenu.ts); the JavaScript plugin system's is gone (G2).
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { APP_MENU, type MenuGroupModel, type MenuItemModel } from './menuModel';
 import { useCatalogueRevision } from '@hooks/useLocale';
 import { localizeMenuGroups } from './menuI18n';
+import { usePluginContrib } from '@hooks/usePluginContrib';
+import { buildPluginMenuGroup, installPluginMenuCommands } from './pluginMenu';
 
 export function useAppMenuGroups(): MenuGroupModel[] {
   const i18nRevision = useCatalogueRevision();
+  // P7a: the native plugins' commands and panels (pluginMenu.ts) — a new revision on every
+  // install, rescan or enable / disable, so the native menu is re-sent too.
+  const pluginRevision = usePluginContrib();
+  useEffect(() => installPluginMenuCommands(), []);
   return useMemo(
-    () => localizeMenuGroups(APP_MENU.map((g) => ({ ...g, items: visibleItems(g.items) }))),
+    () => {
+      const plugins = buildPluginMenuGroup();
+      const groups = plugins ? withPluginGroup(APP_MENU, plugins) : APP_MENU;
+      return localizeMenuGroups(groups.map((g) => ({ ...g, items: visibleItems(g.items) })));
+    },
     // The catalogue is read by `t()` inside, not by this closure — hence the rule.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [i18nRevision],
+    [i18nRevision, pluginRevision],
   );
+}
+
+/** The Plugins group sits before Window, as After Effects' third-party menus do. */
+function withPluginGroup(groups: ReadonlyArray<MenuGroupModel>, plugins: MenuGroupModel): MenuGroupModel[] {
+  const at = groups.findIndex((g) => g.id === 'window');
+  const out = [...groups];
+  out.splice(at < 0 ? out.length : at, 0, plugins);
+  return out;
 }
 
 /**

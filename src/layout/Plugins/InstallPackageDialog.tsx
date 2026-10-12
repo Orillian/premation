@@ -31,6 +31,30 @@ import styles from './InstallPackageDialog.module.css';
 
 export type PackageChoice = 'install' | 'anyway' | null;
 
+/** P7: what the package adds besides effects — commands, footage formats, export formats, panels. */
+function Contributions({ p }: { p: NativePluginPackagePreview }): JSX.Element | null {
+  const c = p.contributes;
+  if (!c) return null;
+  const rows: Array<[string, string[]]> = [
+    ['Commands (Plugins menu)', c.commands],
+    ['Imports', c.importers],
+    ['Export formats', c.outputModules],
+    ['Panels', c.panels],
+  ];
+  const shown = rows.filter(([, list]) => list.length > 0);
+  if (shown.length === 0) return null;
+  return (
+    <ul className={styles.effects}>
+      {shown.map(([label, list]) => (
+        <li key={label}>
+          {label}
+          <span className={styles.muted}> — {list.join(', ')}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PreviewBody({ p }: { p: NativePluginPackagePreview }): JSX.Element {
   const trust = trustLine(p);
   return (
@@ -56,6 +80,7 @@ function PreviewBody({ p }: { p: NativePluginPackagePreview }): JSX.Element {
           ))}
         </ul>
       ) : null}
+      <Contributions p={p} />
       <p className={styles.muted}>
         SDK {p.sdk} · builds for {p.platforms.join(', ') || 'no platform'}
         {p.entitlement === 'premation-cloud' ? ' · loads with Premation Cloud' : ''}

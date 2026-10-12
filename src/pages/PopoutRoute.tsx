@@ -7,6 +7,7 @@ import { WorkspaceViewport } from '@layout/Workspace';
 import { PopoutTimeline } from '@layout/BottomTimeline/PopoutTimeline';
 import { PresentationModeWindow } from '@layout/Presentation/PresentationModeWindow';
 
+import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
 import { Providers } from '../providers/Providers';
 
 function PopoutContent(): JSX.Element {
@@ -56,7 +57,8 @@ function PopoutContent(): JSX.Element {
   }
 
   const renderers = getAllPanelRenderers();
-  const renderContent = renderers[panelId];
+  // P7d: a plugin panel resolves by its id even before this window knows the plugin list.
+  const renderContent = renderers[panelId] ?? pluginToolPanelRenderer(panelId);
 
   return (
     <div

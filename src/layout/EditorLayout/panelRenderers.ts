@@ -43,6 +43,9 @@ import { AssetsPanel } from '@layout/Assets/AssetsPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { RigPanel } from './RigPanel';
 import { LibraryPanel } from './LibraryPanel';
+import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
+import { pluginPanels } from '@core/nativePlugins/pluginContrib';
+import { useLayoutStore } from '@stores/layoutStore';
 
 /**
  * The static half of the map — everything known at build time.
@@ -107,6 +110,13 @@ export function getAllPanelRenderers(): Record<string, () => ReactNode> {
   if (aiEnabled()) out.ai = () => createElement(AiChatPanel);
   for (const [id, Component] of Object.entries(PANEL_COMPONENTS)) {
     out[id] = () => createElement(Component);
+  }
+  // P7d: native plugins' panels (`plugin:<id>/<panel>`) — the loaded ones, and any a saved
+  // layout still docks (it shows why it is empty while its plugin is not loaded).
+  const pluginIds = new Set([...pluginPanels().map((p) => p.panelId), ...Object.keys(useLayoutStore.getState().panels)]);
+  for (const id of pluginIds) {
+    const render = pluginToolPanelRenderer(id);
+    if (render) out[id] = render;
   }
   return out;
 }

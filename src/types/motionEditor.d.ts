@@ -128,6 +128,8 @@ export type NativePluginPackageInspect =
 /** electron/nativePluginStore.ts PluginStoreState. */
 export interface NativePluginStoreState {
   plugins: Record<string, { version: string; publisherKey: string; enabled: boolean; installedAt: number; pending?: boolean }>;
+  /** P7: commands, footage importers, export formats and panels the package adds (display names). */
+  contributes?: { commands: string[]; importers: string[]; outputModules: string[]; panels: string[] };
   uninstall: string[];
 }
 
@@ -218,6 +220,8 @@ export interface ExportJobRecord {
   status: ExportJobStatus;
   priority: number;
   createdAt: number;
+  /** P7c: a plugin output module's option values (JSON), for `plugin:<id>/<module>` formats. */
+  pluginOptions?: string;
   startedAt?: number;
   finishedAt?: number;
   progress: ExportJobProgress;

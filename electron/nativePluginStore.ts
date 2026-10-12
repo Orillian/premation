@@ -167,6 +167,12 @@ export interface PluginManifest {
   sdk?: { major?: number; minor?: number };
   binary: Record<string, string>;
   effects?: Array<{ matchName?: string; name?: string; category?: string }>;
+  // P7 (docs/PLUGIN_SDK.md): what a plugin contributes besides effects. Read for display only;
+  // the engine validates them before any code of the plugin runs.
+  commands?: Array<{ id?: string; name?: string; menu?: string }>;
+  importers?: Array<{ id?: string; name?: string; extensions?: string[] }>;
+  outputModules?: Array<{ id?: string; name?: string; extension?: string }>;
+  panels?: Array<{ id?: string; name?: string; page?: string }>;
   entitlement?: string;
   integrity?: { files?: Record<string, string> };
 }

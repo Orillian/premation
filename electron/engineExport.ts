@@ -70,6 +70,8 @@ export interface EngineExportSpec {
   chapters?: unknown;
   /** 16 = rgba64le from the engine's half-float surface (mov only). */
   bitDepth?: 8 | 16;
+  /** P7c: a plugin output module's option values (JSON), for `plugin:<id>/<module>` formats. */
+  pluginOptions?: string;
   /**
    * mov only — an HDR ProRes master (PQ or HLG, BT.2020, 10-bit). The
    * `hdr10` / `hlg` formats are the MP4 (HEVC) deliveries and imply it.
@@ -164,13 +166,18 @@ function masteringOf(spec: EngineExportSpec): HdrMastering {
   return m;
 }
 
+/** P7c: a native plugin's output module (`plugin:<plugin id>/<module id>`, docs/PLUGIN_SDK.md "Output modules"). */
+export function isPluginFormat(format: string): boolean {
+  return /^plugin:[A-Za-z][\w.-]{0,99}\/[A-Za-z0-9_][\w.-]{0,63}$/.test(format);
+}
+
 function isSequence(format: string): boolean {
   return format === 'png-sequence' || format === 'jpg-sequence' || format === 'exr-sequence';
 }
 
 /** The engine writes these itself: no ffmpeg command line is sent. */
 function writesWithoutEncoder(format: string): boolean {
-  return isSequence(format) || format === 'png' || format === 'wav';
+  return isSequence(format) || format === 'png' || format === 'wav' || isPluginFormat(format);
 }
 
 function resolvedChapters(raw: unknown): Array<{ startMs: number; endMs: number; title: string }> | null {
@@ -194,7 +201,7 @@ export const EXPORT_EXIT = { ok: 0, failed: 1, fallback: 3, cancelled: 4, usage:
  */
 export function engineIneligible(spec: EngineExportSpec, enginePath: string | null): string | null {
   if (!enginePath) return 'premation-engine is not available';
-  if (!ENGINE_FORMATS.has(spec.format)) return `the engine does not write "${spec.format}"`;
+  if (!ENGINE_FORMATS.has(spec.format) && !isPluginFormat(spec.format)) return `the engine does not write "${spec.format}"`;
   if (Array.isArray(spec.chapters) && spec.chapters.length > 0 && !resolvedChapters(spec.chapters)) return 'chapters are formatted by the editor';
   return null;
 }
@@ -242,6 +249,13 @@ export function engineJobFile(spec: EngineExportSpec, workDir: string, plugins?:
   if (spec.format === 'png-sequence') job.sequence = 'png-zip';
   if (spec.format === 'jpg-sequence') job.sequence = 'jpg-zip';
   if (spec.format === 'exr-sequence') job.sequence = 'exr-zip';
+  // P7c: the plugin's output module writes the frames (and the mix) to the user's path itself.
+  if (isPluginFormat(spec.format)) {
+    job.sequence = spec.format;
+    job.pluginPath = spec.outPath;
+    job.pluginOptions = spec.pluginOptions ?? '{}';
+    job.audio = true;
+  }
   const chapters = resolvedChapters(spec.chapters);
   if (chapters) job.chapters = chapters;
   // HDR: the engine encodes PQ / HLG in BT.2020 (hdr_convert.hpp), opaque, 16-bit.
@@ -472,7 +486,8 @@ export function startEngineExport(
     const outcome = terminal as EngineExportOutcome | null;
     if (exit.code === EXPORT_EXIT.ok && outcome?.kind === 'completed') {
       try {
-        await deliver(fs, out, spec.outPath);
+        // P7c: an output module wrote its files where the user asked: nothing to move.
+        if (!isPluginFormat(spec.format)) await deliver(fs, out, spec.outPath);
       } catch (err) {
         finish({ kind: 'failed', message: `The export could not be moved to ${spec.outPath}: ${(err as Error).message}` });
         return;

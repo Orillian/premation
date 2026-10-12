@@ -33,7 +33,7 @@ import { exportOtioText } from './exportOtio';
 import { exportFcpxmlText } from './exportFcpxml';
 import { exportAleText } from './exportAle';
 import { exportMogrtZip } from './exportMogrt';
-import { canEncodeLocally, type VideoFormat } from './renderSpec';
+import { canEncodeLocally, type PluginOutputFormat, type VideoFormat } from './renderSpec';
 import { exportFormatCode, failureReason, track as trackEvent } from '@core/analytics/productEvents';
 
 export type ExportFormat =
@@ -43,6 +43,7 @@ export type ExportFormat =
   | 'jpg-sequence'
   | 'exr-sequence'
   | 'wav'
+  | PluginOutputFormat
   | DataExportFormat;
 
 /** The formats this module writes (no pixels). */

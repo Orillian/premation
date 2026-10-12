@@ -55,6 +55,7 @@ import { AUDIO_WAVEFORM_ROW } from '@core/timeline/propertyTree';
 import { AUDIO_LEVEL_DB_PROP, AUDIO_PAN_PROP } from '@core/audio/audioParams';
 import { useFocusContext } from '@layout/focus/useFocusContext';
 import { useResponsiveLayout } from '@hooks/useResponsiveLayout';
+import { usePluginPanels } from '@layout/Plugins/usePluginPanels';
 
 /** The editor UI wrapped in the AI chat provider — chat state must sit above
  *  the dock tree so switching sidebar tabs never cancels a run or rolls back a
@@ -80,6 +81,8 @@ export function EditorShell(): JSX.Element {
  * only that span re-renders per comp frame, not EditorShellInner. */
 function EditorShellInner(): JSX.Element {
   const registerPanel = useLayoutStore((s) => s.registerPanel);
+  // P7d: native plugins' panels in the dock (re-renders the shell when the plugin list changes).
+  usePluginPanels();
   const selectedIds = useSelectionStore((s) => s.ids);
   // NO document-revision subscription here. The shell used to re-render on
   // every revision of the mirror (`useMirrorRevision`), and because it hosts

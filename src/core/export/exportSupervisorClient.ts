@@ -102,6 +102,8 @@ export interface SupervisorSpecInput {
   outPath: string;
   /** F1: 16 bits per channel (mov only, the engine export path). */
   bitDepth?: 8 | 16;
+  /** P7c: a plugin output module's option values (JSON) — `format` is `plugin:<id>/<module>`. */
+  pluginOptions?: string;
 }
 
 /**
@@ -138,6 +140,7 @@ export function buildSupervisorSpec(input: SupervisorSpecInput): ExportJobSpec {
   if (input.proresProfile) spec.proresProfile = input.proresProfile;
   if (input.videoEncoder) spec.videoEncoder = input.videoEncoder;
   if (input.chapters && input.chapters.length > 0) spec.chapters = input.chapters;
+  if (input.pluginOptions !== undefined && input.format.startsWith('plugin:')) spec.pluginOptions = input.pluginOptions;
   // Main refuses 16 bits for anything but mov; the form only offers it there.
   if (input.bitDepth === 16 && input.format === 'mov') spec.bitDepth = 16;
   return spec;

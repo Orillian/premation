@@ -110,6 +110,8 @@ export interface ExportJobSpec {
   hdrEncoder?: 'libx265' | 'libx264';
   /** HDR10 static metadata overrides (nits). */
   hdrMastering?: { maxCll?: number; maxFall?: number; displayMaxNits?: number; displayMinNits?: number };
+  /** P7c: a plugin output module's option values (JSON) when `format` is `plugin:<id>/<module>`. */
+  pluginOptions?: string;
   /** What the UI calls this job — "Promo → promo.mp4". */
   label: string;
   /** Frames in the range, for progress. */
@@ -256,6 +258,11 @@ export function validateSpec(raw: unknown): ExportJobSpec {
   if (typeof s['transparent'] === 'boolean') out.transparent = s['transparent'];
   const enc = optStr('videoEncoder');
   if (enc !== undefined) out.videoEncoder = enc;
+  const pluginOptions = optStr('pluginOptions');
+  if (pluginOptions !== undefined) {
+    if (pluginOptions.length > 65536) throw new Error('Export job: "pluginOptions" is too long.');
+    out.pluginOptions = pluginOptions;
+  }
   if (Array.isArray(s['chapters']) && s['chapters'].length > 0) out.chapters = s['chapters'];
   const depth = optNum('bitDepth');
   if (depth !== undefined) {

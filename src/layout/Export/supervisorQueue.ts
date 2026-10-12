@@ -25,6 +25,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useExportQueueStore } from '@stores/exportQueueStore';
 import { canChooseOutputDir, setRenderQueueSubmitter, useRenderQueueStore, type RenderJob } from '@stores/renderQueueStore';
 import { useUIStore } from '@stores/uiStore';
+import { isPluginFormat } from '@core/nativePlugins/pluginContrib';
 
 /** The formats the engine export writes. The document exports (Lottie, JSON, the cut lists) are `runDataExport`'s. */
 const ENGINE_FORMATS: ReadonlySet<string> = new Set<ExportFormat>([
@@ -33,7 +34,8 @@ const ENGINE_FORMATS: ReadonlySet<string> = new Set<ExportFormat>([
 
 /** Whether the engine export writes `format`. */
 export function isEngineFormat(format: ExportFormat | string): boolean {
-  return ENGINE_FORMATS.has(format);
+  // P7c: a native plugin's output module (`plugin:<id>/<module>`) writes through the engine too.
+  return ENGINE_FORMATS.has(format) || isPluginFormat(format);
 }
 
 /**
@@ -86,6 +88,7 @@ function specInput(job: QueueJobInput): Omit<SupervisorSpecInput, 'projectPath' 
     ...(job.videoEncoder ? { videoEncoder: job.videoEncoder } : {}),
     transparent: job.transparent,
     ...(job.chapters && job.chapters.length > 0 ? { chapters: job.chapters } : {}),
+    ...(job.pluginOptions !== undefined ? { pluginOptions: job.pluginOptions } : {}),
   };
 }
 

@@ -1,0 +1,181 @@
+/**
+ * P7 — what native plugins contribute besides effects (docs/PLUGIN_SDK.md
+ * "Commands", "Importers", "Output modules", "Panels"): AE's AEGP menu
+ * commands, AEIO footage formats, output-module formats and effect-less
+ * panels. All of it is the engine's own answer to `listPlugins`
+ * (PluginInfo.commands / importers / outputModules / panels), cached here with
+ * listeners so the menu bar, the command palette, the import dialog, the
+ * Render Queue's format list and the panel registry all read one list and
+ * follow an install, a rescan or enable / disable.
+ *
+ * A disabled (failed, quarantined, locked…) plugin contributes nothing: its
+ * commands are hidden, its formats and panels gone.
+ *
+ * Pure registry with listeners: no React, no zustand (src/core). React reads
+ * it through `usePluginContrib` (src/hooks).
+ */
+
+import type {
+  EngineClient,
+  PluginCommandInfo,
+  PluginInfo,
+  PluginOutputModuleInfo,
+  PluginPanelInfo,
+} from '@motion/engine-api';
+
+/** A plugin output module as an export format id: `plugin:<plugin id>/<module id>`. */
+export type PluginFormatId = `plugin:${string}`;
+
+export interface PluginOutputFormat {
+  readonly id: PluginFormatId;
+  readonly plugin: string;
+  readonly pluginName: string;
+  readonly module: PluginOutputModuleInfo;
+}
+
+export interface PluginPanelEntry {
+  /** The dock panel id: `plugin:<plugin id>/<panel id>`. */
+  readonly panelId: string;
+  readonly plugin: string;
+  readonly pluginName: string;
+  readonly panel: PluginPanelInfo;
+}
+
+let plugins: readonly PluginInfo[] = [];
+let revision = 0;
+const listeners = new Set<() => void>();
+
+export function setPluginContrib(list: readonly PluginInfo[]): void {
+  plugins = list;
+  revision += 1;
+  for (const l of listeners) l();
+}
+
+/** Bumps on every change (the native menu's memo key). */
+export function pluginContribRevision(): number {
+  return revision;
+}
+
+export function subscribePluginContrib(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+const loaded = (p: PluginInfo) => p.status === 'loaded';
+
+/** Every command a LOADED plugin offers that has not crashed this session, in load order. */
+export function pluginCommands(): readonly PluginCommandInfo[] {
+  return plugins.filter(loaded).flatMap((p) => (p.commands ?? []).filter((c) => c.enabled));
+}
+
+/** The plugin's display name. */
+export function pluginName(id: string): string {
+  return plugins.find((p) => p.id === id)?.name || id;
+}
+
+export function pluginFormatId(plugin: string, module: string): PluginFormatId {
+  return `plugin:${plugin}/${module}`;
+}
+
+export function isPluginFormat(format: string): format is PluginFormatId {
+  return format.startsWith('plugin:') && format.indexOf('/') > 7;
+}
+
+/** The output modules of loaded plugins, as export formats. */
+export function pluginOutputFormats(): readonly PluginOutputFormat[] {
+  return plugins.filter(loaded).flatMap((p) =>
+    (p.outputModules ?? []).map((m) => ({ id: pluginFormatId(p.id, m.id), plugin: p.id, pluginName: p.name || p.id, module: m })),
+  );
+}
+
+export function pluginOutputFormat(id: string): PluginOutputFormat | undefined {
+  return pluginOutputFormats().find((f) => f.id === id);
+}
+
+/** File extensions (lower case, no dot) loaded plugins import. */
+export function pluginImportExtensions(): readonly string[] {
+  const out = new Set<string>();
+  for (const p of plugins.filter(loaded)) for (const i of p.importers ?? []) for (const e of i.extensions) out.add(e);
+  return [...out];
+}
+
+export function pluginPanelId(plugin: string, panel: string): string {
+  return `plugin:${plugin}/${panel}`;
+}
+
+/** The dockable panels of loaded plugins. */
+export function pluginPanels(): readonly PluginPanelEntry[] {
+  return plugins.filter(loaded).flatMap((p) =>
+    (p.panels ?? []).map((panel) => ({ panelId: pluginPanelId(p.id, panel.id), plugin: p.id, pluginName: p.name || p.id, panel })),
+  );
+}
+
+export function pluginPanel(panelId: string): PluginPanelEntry | undefined {
+  return pluginPanels().find((p) => p.panelId === panelId);
+}
+
+/** Option values with every declared default filled in (what BEGIN receives; the engine clamps again). */
+export function defaultOutputOptions(module: PluginOutputModuleInfo): Record<string, number | boolean> {
+  const out: Record<string, number | boolean> = {};
+  for (const o of module.options) out[o.id] = o.type === 'checkbox' ? o.defaultValue !== 0 : o.defaultValue;
+  return out;
+}
+
+/** Ask the engine again (start, an install, a rescan, enable / disable). Never throws. */
+export async function refreshPluginContrib(client: Pick<EngineClient, 'query'>): Promise<void> {
+  try {
+    const res = await client.query({ type: 'listPlugins' });
+    if (res.ok) setPluginContrib(res.value.plugins);
+  } catch {
+    // The engine is restarting: the next refresh fills it in.
+  }
+}
+
+/** What the user has when they run a command: the active composition, the selection (top first), the playhead. */
+export interface PluginCommandTarget {
+  comp?: string;
+  layers?: readonly string[];
+  /** Composition time, flicks. */
+  time?: number;
+  args?: Record<string, unknown>;
+}
+
+export type PluginCommandOutcome = { ok: true; message: string; edits: number } | { ok: false; error: string };
+
+/**
+ * runPluginCommand with origin `plugin`: the plugin runs in the engine (crash-guarded, under
+ * the watchdog); its edits are ONE undo entry. A plain execute (never a batch): the engine
+ * logs the plugin's edits in place of the command. Never throws.
+ */
+export async function runPluginCommand(
+  client: Pick<EngineClient, 'execute'>,
+  plugin: string,
+  command: string,
+  target: PluginCommandTarget = {},
+): Promise<PluginCommandOutcome> {
+  try {
+    const res = await client.execute(
+      {
+        type: 'runPluginCommand',
+        plugin,
+        command,
+        layers: [...(target.layers ?? [])],
+        ...(target.comp ? { comp: target.comp } : {}),
+        ...(target.time !== undefined ? { time: Math.round(target.time) } : {}),
+        ...(target.args ? { args: JSON.stringify(target.args) } : {}),
+      },
+      { origin: 'plugin' },
+    );
+    if (!res.ok) return { ok: false, error: res.error.message || 'The command failed.' };
+    return { ok: true, message: res.value.message, edits: res.value.edits };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'The command failed.' };
+  }
+}
+
+/** Test seam. */
+export function resetPluginContribForTest(): void {
+  plugins = [];
+  revision = 0;
+  listeners.clear();
+}
