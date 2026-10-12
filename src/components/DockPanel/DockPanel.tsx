@@ -61,6 +61,7 @@ import { Icon } from '@components/Icon';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { cn } from '@utils/cn';
 import { panelDef, availablePanelDefs } from '@layout/EditorLayout/panelDefs';
+import { popoutHash } from '@core/layout/popoutPath';
 import styles from './DockPanel.module.css';
 
 export interface DockPanelHeaderContextValue {
@@ -120,7 +121,7 @@ function spawnPopout(panelId: string): void {
   if (window.motionEditor?.popout?.spawnWindow) {
     window.motionEditor.popout.spawnWindow(panelId);
   } else {
-    const url = `${window.location.origin}${window.location.pathname}#/popout/${panelId}`;
+    const url = `${window.location.origin}${window.location.pathname}${popoutHash(panelId)}`;
     window.open(url, `popout-${panelId}`, 'width=900,height=650,resizable=yes');
   }
 }

@@ -8,10 +8,13 @@ import { PopoutTimeline } from '@layout/BottomTimeline/PopoutTimeline';
 import { PresentationModeWindow } from '@layout/Presentation/PresentationModeWindow';
 
 import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
+import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
 import { Providers } from '../providers/Providers';
 
 function PopoutContent(): JSX.Element {
-  const { panelId } = useParams<{ panelId: string }>();
+  // The segment is encoded (a plugin panel's id holds a '/': core/layout/popoutPath.ts).
+  const { panelId: segment } = useParams<{ panelId: string }>();
+  const panelId = segment ? panelIdFromPopoutSegment(segment) : undefined;
   const panels = useLayoutStore((s) => s.panels);
   const panel = panelId ? panels[panelId] : undefined;
 

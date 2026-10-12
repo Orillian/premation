@@ -12,6 +12,8 @@ import { EditorChromeActions } from './EditorChromeActions';
 import { ClaudeIndicator } from '@components/claude/ClaudeIndicator';
 import { MacWindowControls } from './MacWindowControls';
 import { useTitleBarOverlaySync } from './useTitleBarOverlaySync';
+import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
+import { pluginPanels } from '@core/nativePlugins/pluginContrib';
 import styles from './TitleBar.module.css';
 
 /**
@@ -89,8 +91,8 @@ const POPOUT_TITLES: Readonly<Record<string, string>> = { viewport: 'Composition
 function popoutTitle(pathname: string): string | null {
   const m = new RegExp('^/popout/([^/]+)').exec(pathname);
   if (!m) return null;
-  const id = decodeURIComponent(m[1] ?? '');
-  return POPOUT_TITLES[id] ?? panelDef(id)?.title ?? id;
+  const id = panelIdFromPopoutSegment(m[1] ?? '');
+  return POPOUT_TITLES[id] ?? panelDef(id)?.title ?? pluginPanels().find((p) => p.panelId === id)?.panel.name ?? id;
 }
 
 export function TitleBar(): JSX.Element | null {

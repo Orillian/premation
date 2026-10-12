@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLayoutStore, type RegionId } from '@stores/layoutStore';
 import { Icon } from '@components/Icon';
 import { openHelp } from '@layout/Help/openHelp';
+import { popoutHash } from '@core/layout/popoutPath';
 import styles from './PanelHeader.module.css';
 
 interface PanelHeaderProps {
@@ -64,7 +65,7 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
     if (window.motionEditor?.popout?.spawnWindow) {
       window.motionEditor.popout.spawnWindow(panelId);
     } else {
-      const url = `${window.location.origin}${window.location.pathname}#/popout/${panelId}`;
+      const url = `${window.location.origin}${window.location.pathname}${popoutHash(panelId)}`;
       window.open(url, `popout-${panelId}`, 'width=900,height=650,resizable=yes');
     }
   };

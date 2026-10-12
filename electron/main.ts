@@ -973,9 +973,11 @@ function registerPopoutIpc(): void {
     });
 
     const isDev = process.env.NODE_ENV === 'development';
+    // One route segment however the id is spelled: a plugin panel is `plugin:<id>/<panel>` (src/core/layout/popoutPath.ts).
+    const segment = encodeURIComponent(String(panelId));
     const popoutUrl = isDev
-      ? `${DEV_SERVER_URL}/#/popout/${panelId}`
-      : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#/popout/${panelId}`;
+      ? `${DEV_SERVER_URL}/#/popout/${segment}`
+      : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#/popout/${segment}`;
 
     // F2: the engine relays its events to every pop-out (a second mirror).
     // C: a pop-out's viewport is its own engine surface — its receivers reset
