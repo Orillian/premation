@@ -99,8 +99,12 @@ export interface McpEditorOps {
   setActiveComposition(compId: string): Promise<{ ok: true; name: string } | { error: string }>;
   save(): Promise<{ ok: true; message: string } | { error: string }>;
   importMedia(paths: readonly string[], placeOnTimeline: boolean): Promise<{ ok: true; message: string } | { error: string }>;
-  /** A built-in sound effect as an audio layer starting at `atSec`; its layer id. */
-  addSfx(id: string, atSec: number, levelDb: number | null): Promise<{ id: string } | { error: string }>;
+  /**
+   * A built-in sound effect as an audio layer starting at `atSec`; its layer id.
+   * `inGroup`: the host holds an open `begin_edit` gesture the insert must join
+   * (its own gesture would be refused, B2).
+   */
+  addSfx(id: string, atSec: number, levelDb: number | null, opts?: { inGroup?: boolean }): Promise<{ id: string } | { error: string }>;
   setAudioLevels(nodeId: string, o: { levelDb?: number; fadeInSec?: number; fadeOutSec?: number }): Promise<{ ok: true; message: string } | { error: string }>;
   duck(musicId: string, voiceId: string, duckDb: number): Promise<{ ok: true; message: string } | { error: string }>;
 }
@@ -478,7 +482,7 @@ export class McpCallHost {
     const item = getSfxItem(id);
     if (!item) return text(`Unknown sound effect '${id}'. See list_sfx.`, true);
     return this.editorOp(async (ed) => {
-      const r = await ed.addSfx(id, Math.max(0, num(a.atSec, 0)), typeof a.levelDb === 'number' ? Math.max(-48, Math.min(12, a.levelDb)) : null);
+      const r = await ed.addSfx(id, Math.max(0, num(a.atSec, 0)), typeof a.levelDb === 'number' ? Math.max(-48, Math.min(12, a.levelDb)) : null, { inGroup: this.group !== null });
       return 'error' in r ? text(r.error, true) : text(`Added "${item.name}" at ${num(a.atSec, 0)}s as audio layer ${r.id} (${item.duration.toFixed(2)}s).`);
     });
   }

@@ -223,7 +223,7 @@ export function vocabularyCard(): string {
     `Path operators (pathOps[].op): ${PATH_OPS.join(', ')} — amount keyable. trim: start/end/offset %, keyable. repeaters: copies, positionX/Y, rotation, scale, anchorX/Y, startOpacity/endOpacity; copies and offset keyable.`,
     'A line that draws itself on: a shape with props fill "none", stroke, strokeWidth and a trim whose end keys 0 → 100.',
     'Brush ink (calligraphy, ink marks): a layer\'s `paint`: [{ points: [[x, y, pressure], …] in layer px from its top-left, pressure 0..1 tapers the tip down to minSize %, color, size px, hardness %, opacity %, reveal: { from, to } in the layer\'s seconds to draw it on }]. Paint on a transparent shape or solid over the scene.',
-    `Text animators: basedOn characters|words|lines, shape square|rampUp|rampDown|triangle|round|smooth, numeric ${TEXT_ANIMATOR_FIELDS.join(', ')}, color; sweep {from,to,fromOffset,toOffset,ease} sweeps the range selector.`,
+    `Text animators: basedOn characters|words|lines, shape square|rampUp|rampDown|triangle|round|smooth, numeric ${TEXT_ANIMATOR_FIELDS.join(', ')}, color; sweep {from,to,fromOffset,toOffset,ease} sweeps the range selector's offset: the selector is Start 0 / End 100, offset o covers characters [o%, o%+100%], so the default 0 → 100 uncovers the text once left to right (a reveal when the animator hides what it covers) and 100 → 0 covers it once; never −100 → 100 (covered only mid-sweep).`,
     'Masks: rectangle|ellipse, mode add|subtract|intersect, width, height, feather, opacity 0..1, expansion, inverted.',
     'Track matte: matte { mode alpha|luma|alpha-inv|luma-inv, source: <layer id> }.',
     'Expressions: expressions { <prop>: "<single JS expression>" } — wiggle(f,a), loopOut("cycle"), time, value, Math.',

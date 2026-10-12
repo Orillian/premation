@@ -74,7 +74,7 @@ import {
 import { selectScene, sceneElementIds, forgetSceneElements } from './sceneWindow';
 import { TRANSFORM_PROPS, THREE_D_PROPS, SPECIAL_PROPS, CAMERA_PROPS, SAMPLED_LAYER_PROPS, isAnimatableProp } from './toolContext';
 import { readMatte } from '@core/effects/matte';
-import { CRAFT_HANDLERS } from './craftHandlers';
+import { CRAFT_HANDLERS, clampEffectParam } from './craftHandlers';
 import { mapSeq, filterSeq } from './asyncList';
 import { engineOnly } from './toolContext';
 import { activePlayheadSeconds, trackMatteCommand } from '@core/engine/trackWrites';
@@ -317,8 +317,13 @@ const createLayer: AiTool['handler'] = async (input, ctx) => {
   // silently centring the layer). Only when NEITHER is given do we hand the
   // facade `undefined`, which fans the layer out instead of stacking at centre.
   const comp = await ctx.comp.get();
+  // A FULL-FRAME layer — an adjustment layer, or a solid with no size of its
+  // own (the engine sizes both to the comp) — is centred on the comp: its quad
+  // is centred on its position, so at the engine's default (0, 0) a rain /
+  // grain / vignette pass covered only the top-left quarter of the frame (B1).
+  const fullFrame = i.kind === 'adjustment' || (i.kind === 'solid' && i.width === undefined && i.height === undefined);
   const at =
-    i.x !== undefined || i.y !== undefined
+    i.x !== undefined || i.y !== undefined || fullFrame
       ? { x: i.x ?? comp.width / 2, y: i.y ?? comp.height / 2 }
       : undefined;
   // Polygon / star are PARAMETRIC — the same `fx.polystar` node the UI's
@@ -437,6 +442,23 @@ const reparentLayer: AiTool['handler'] = async (input, ctx) => {
   if (!await ctx.scene.has(nodeId)) return fail((await unknownNode(ctx, nodeId)));
   if (parentId && !await ctx.scene.has(parentId)) return fail((await unknownNode(ctx, parentId)));
   if (parentId === nodeId) return fail('A layer cannot be its own parent.');
+  if (parentId && kindOf(nodeId) === 'adjustment') {
+    // The engine's keep-world re-parent reads an adjustment layer's world
+    // transform as identity (it draws no quad of its own), so a centred rain /
+    // grain pass landed at the parent's origin — the top-left corner under a
+    // beat root (B1). Re-parent without it and keep the world POSITION by
+    // hand: the old position less the parent's world translation (a rotated
+    // or scaled parent is not compensated; beat roots are plain nulls).
+    const before = await ctx.scene.get(nodeId);
+    await ctx.scene.reparent(nodeId, parentId, { preserveWorld: false });
+    const r = await engine().query({ type: 'getLayerTransforms', layers: [parentId], time: secondsToFlicks(activePlayheadSeconds()) });
+    const m = r.ok ? r.value.transforms[0]?.matrix : undefined;
+    if (before && m && (m[12] !== 0 || m[13] !== 0)) {
+      await ctx.scene.setProp(nodeId, 'x', before.x - (m[12] ?? 0));
+      await ctx.scene.setProp(nodeId, 'y', before.y - (m[13] ?? 0));
+    }
+    return ok(`Re-parented ${nodeId} to ${parentId}.`);
+  }
   await ctx.scene.reparent(nodeId, parentId ?? null);
   return ok(`Re-parented ${nodeId} to ${parentId ?? 'the top level'}.`);
 };
@@ -1161,13 +1183,15 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
       continue;
     }
     // A layer param takes a layer id — or the handle a create_layer in this turn bound.
-    const value = def?.type === 'layer' && typeof raw === 'string' && raw !== '' ? resolveAlias(ctx, raw) : raw;
-    if (def?.type === 'layer' && typeof value === 'string' && value !== '' && !(await ctx.scene.has(value))) {
+    const resolved = def?.type === 'layer' && typeof raw === 'string' && raw !== '' ? resolveAlias(ctx, raw) : raw;
+    if (def?.type === 'layer' && typeof resolved === 'string' && resolved !== '' && !(await ctx.scene.has(resolved))) {
       unknown.push(key);
       continue;
     }
+    // Held to the catalog's range, and said (B4): the engine clamps silently.
+    const { value, note } = clampEffectParam(def, resolved);
     await ctx.scene.updateEffectParam(nodeId, id, key, value);
-    set.push(`${key}=${String(value)}`);
+    set.push(`${key}=${String(value)}${note ? ` (${note})` : ''}`);
   }
   const primary = d?.params.find((p) => p.type === 'number');
   const params = d?.params.map((p) => p.key).join(', ') ?? '';
@@ -1196,6 +1220,14 @@ const updateEffectHandler: AiTool['handler'] = async (input, ctx) => {
   await ctx.scene.updateEffect(nodeId, effectId, amount);
   return ok(`Set effect ${effectId} to ${amount}.`);
 };
+
+/**
+ * The default range-selector sweep (B3): offset 0 → 100 over a Start 0 /
+ * End 100 selector uncovers the characters once, left to right. The scene-
+ * script compiler (packages/author) spells the same defaults out.
+ */
+export const SWEEP_FROM_OFFSET = 0;
+export const SWEEP_TO_OFFSET = 100;
 
 const textAnimator: AiTool['handler'] = async (input, ctx) => {
   const i = input as Record<string, unknown> & { nodeId: string; index?: number; remove?: boolean };
@@ -1244,14 +1276,23 @@ const textAnimator: AiTool['handler'] = async (input, ctx) => {
     const a = sweep.fromSec; // composition seconds — the engine converts
     const b = sweep.toSec;
     const easing = sweep.easing ?? 'bezier';
-    await ctx.anim.setKeyframe(i.nodeId, prop, a, sweep.fromOffset ?? -100, easing);
-    await ctx.anim.setKeyframe(i.nodeId, prop, b, sweep.toOffset ?? 100, 'linear');
+    // The selector is Start 0 / End 100, so Offset o covers the characters in
+    // [o%, o% + 100%]: 0 covers them all, 100 none. The default sweep 0 → 100
+    // therefore uncovers the text once, left to right (a reveal when the
+    // animator hides what it covers). The old −100 → 100 covered the text in
+    // the MIDDLE of the sweep and left it uncovered at both ends (B3).
+    const fromOffset = sweep.fromOffset ?? SWEEP_FROM_OFFSET;
+    const toOffset = sweep.toOffset ?? SWEEP_TO_OFFSET;
+    await ctx.anim.setKeyframe(i.nodeId, prop, a, fromOffset, easing);
+    await ctx.anim.setKeyframe(i.nodeId, prop, b, toOffset, 'linear');
     if (easing === 'bezier') {
       // A default that is not linear: a linear selector sweep gives every
       // character exactly the same timing, which is the flat machine-gun type-on.
       await ctx.anim.setBezier(i.nodeId, prop, a, (sweep.bezier as [number, number, number, number]) ?? [0.22, 0.61, 0.36, 1]);
     }
-    swept = ` Selector sweeps ${sweep.fromOffset ?? -100}% → ${sweep.toOffset ?? 100}% between ${sweep.fromSec}s and ${sweep.toSec}s.`;
+    swept = ` Selector offset sweeps ${fromOffset}% → ${toOffset}% between ${sweep.fromSec}s and ${sweep.toSec}s` +
+      ' (Start 0 / End 100 covers [offset, offset + 100]% of the characters: offset 0 covers all of them, ±100 none;' +
+      ' 0 → 100 uncovers the text once, left to right; 100 → 0 covers it once).';
   }
 
   refreshAfterLegacy(ctx);

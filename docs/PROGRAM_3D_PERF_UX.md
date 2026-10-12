@@ -97,9 +97,32 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 - [x] E1 · [x] E2 · [x] E3 · [ ] E4 · [ ] E5 · [ ] E6 · [ ] E7 · [ ] E8
 - [x] U1 (UI; engine `clipToComp` pending) · [x] U2 · [x] U3 (UI; engine `renderer` key pending) · [x] U4 · [x] U5
 - [x] I1 · [x] I2 · [x] I3 · [ ] I4
-- [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5
+- [x] B1 (TS; engine keep-world re-parent of adjustment layers pending) · [x] B2 · [x] B3 · [x] B4 (TS; catalog signed ranges pending) · [ ] B5
 
 Notes log (newest first):
+- 2026-10-12 B1–B4 (TS only). B1: `create_layer` centres a full-frame layer
+  (kind adjustment, or a solid with no size) on the comp — the engine creates
+  it comp-sized at (0, 0), and the quad is centred on its position; and
+  `reparent_layer` of an adjustment layer no longer uses the engine's
+  keep-world re-parent, which reads an adjustment layer's world transform as
+  identity and dropped a centred one to the parent's origin (`setParent
+  keepWorldTransform`, and `getLayerTransforms` answers identity for them —
+  engine side still owed). B2: `add_sfx` inside a group — the timed insert
+  (`insertMediaEdit` with `follow`) opened its OWN gesture, refused
+  `gestureOpen` while the group's was open; `joinGesture` sends it into the
+  caller's. B3: the text_animator sweep default is offset 0 → 100 (was
+  −100 → 100: over Start 0 / End 100 that covers the text only mid-sweep);
+  the compiler spells `fromOffset`/`toOffset` out. B4: `add_effect` params and
+  `update_effect_param` clamp numbers to the catalog range and SAY so; the
+  engine's own clamp is silent. Catalog ranges that forbid negatives for
+  signed-looking params (snowfall / rainfall / drizzle / cc-bubbles
+  `evolution` 0..36000, noise 0..1000, scatter 0..10000, star-burst /
+  card-dance / noise-hls `phase`, pixel-polly `spin`, camera-shake `rotation`,
+  scale-wipe / particle-systems `direction`) are reported for the engine
+  catalog, not changed. Tests: authoringBugs.native.test.ts (B1 probe over
+  evaluated position + size, B3 per-character weights via rangeSelectorAt over
+  evaluate_at offsets, B4 reply + engine read-back), sfxInsertEdits.native.test.ts,
+  mcpHost.test.ts (inGroup flag), compile.test.ts (B1, B3).
 - 2026-10-12 E1–E3 (render graph): 3D surface chains run in LAYER-SIZED buffers
   (footprint at comp scale + margin, multiples of 16, capped at the viewport;
   `SceneRenderer::set_effect_layer_buffers`, on in the engine and exports, off

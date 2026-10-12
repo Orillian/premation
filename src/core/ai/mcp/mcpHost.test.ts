@@ -158,6 +158,18 @@ describe('approvals and project operations', () => {
     };
   };
 
+  it('tells add_sfx when it runs inside an open group, so the insert joins the gesture (B2)', async () => {
+    const seen: Array<boolean | undefined> = [];
+    const ed = editor();
+    const ops = { ...ed.ops, addSfx: async (_id: string, _at: number, _db: number | null, o?: { inGroup?: boolean }) => { seen.push(o?.inGroup); return { id: 'layer_9' }; } };
+    const { call } = setup({ editor: ops });
+    expect(textOf(await call('add_sfx', { id: 'sfx-click', atSec: 1 }))).toMatch(/audio layer layer_9/);
+    await call('begin_edit', { label: 'sound' });
+    expect(textOf(await call('add_sfx', { id: 'sfx-click', atSec: 2 }))).toMatch(/audio layer layer_9/);
+    await call('end_edit');
+    expect(seen).toEqual([false, true]);
+  });
+
   it('imports only after the user allows it', async () => {
     const ed = editor();
     const denied = setup({ editor: ed.ops, approve: async () => false });

@@ -920,13 +920,17 @@ export const textAnimatorDef: AiToolDef = {
         description:
           'Animate the range selector in THIS call instead of a follow-up set_keyframes on ' +
           '"ta.<index>.offset". Sweeping the selector is what makes a text animator animate at ' +
-          'all — an animator with a static selector is a static style.',
+          'all — an animator with a static selector is a static style. The selector is Start 0 / ' +
+          'End 100, so Offset o covers the characters in [o%, o% + 100%]: 0 covers them all, ±100 ' +
+          'none. The default 0 → 100 uncovers the text once, left to right (a reveal when the ' +
+          'animator hides what it covers); 100 → 0 covers it once. Do NOT sweep −100 → 100: that ' +
+          'covers the text only mid-sweep and leaves it uncovered at both ends.',
         required: ['fromSec', 'toSec'],
         properties: {
           fromSec: { type: 'number', minimum: 0, description: 'Composition seconds the sweep starts.' },
           toSec: { type: 'number', minimum: 0, description: 'Composition seconds the sweep ends.' },
-          fromOffset: { type: 'number', default: -100, description: 'Selector offset at fromSec, percent.' },
-          toOffset: { type: 'number', default: 100, description: 'Selector offset at toSec, percent.' },
+          fromOffset: { type: 'number', default: 0, description: 'Selector offset at fromSec, percent (0 = every character covered).' },
+          toOffset: { type: 'number', default: 100, description: 'Selector offset at toSec, percent (100 = none covered).' },
           easing: { type: 'string', enum: EASING_ENUM, default: 'bezier' },
           bezier: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'number' } },
         },

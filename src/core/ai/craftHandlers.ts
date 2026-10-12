@@ -16,6 +16,7 @@
 import type { AiTool, ToolContext, ToolResult } from '@motion/ai-tools';
 import { bakeSpring, bindAlias, resolveSpring, thinSamples, type SpringParams, type SpringPresetName } from '@motion/ai-tools';
 import { refreshAfterLegacy } from './toolContext';
+import { effectDefFor, type EffectParamDef } from '@core/effects/effects';
 import { makeStop } from '@core/paint/fill';
 import { compOfLayer, layerIdsOfComp } from '@core/mirror/docFacts';
 import { isAnimatableProp } from './toolContext';
@@ -252,6 +253,29 @@ const setTimeRemap: AiTool['handler'] = async (input, ctx) => {
 
 // ── update_effect_param ───────────────────────────────────────────────
 
+/**
+ * A numeric effect param held to the catalog's range (B4). The engine clamps
+ * an out-of-range write silently; the tool clamps it first and SAYS so, so a
+ * model that asked for evolution −90 learns it got 0 (and why) instead of
+ * believing the snow drifts backwards. Non-numbers and params without a
+ * range pass through untouched.
+ */
+export function clampEffectParam(
+  def: EffectParamDef | undefined,
+  value: number | string | boolean,
+): { value: number | string | boolean; note: string | null } {
+  if (typeof value !== 'number' || !def || def.type !== 'number') return { value, note: null };
+  const lo = def.min ?? -Infinity;
+  const hi = def.max ?? Infinity;
+  const clamped = Math.min(hi, Math.max(lo, value));
+  if (clamped === value) return { value, note: null };
+  const range = `${Number.isFinite(lo) ? lo : '−∞'}..${Number.isFinite(hi) ? hi : '∞'}${def.unit ? ` ${def.unit}` : ''}`;
+  return {
+    value: clamped,
+    note: `${def.key} was clamped from ${value} to ${clamped} (its range is ${range}${value < lo && lo === 0 ? '; it does not take negatives' : ''})`,
+  };
+}
+
 const updateEffectParamHandler: AiTool['handler'] = async (input, ctx) => {
   const i = input as { nodeId: string; effectId: string; key: string; value: number | string | boolean };
   if (!await ctx.scene.has(i.nodeId)) return fail((await unknownNode(ctx, i.nodeId)));
@@ -263,8 +287,9 @@ const updateEffectParamHandler: AiTool['handler'] = async (input, ctx) => {
       (effects.map((e) => `${e.id} (${e.type})`).join(', ') || '(none — call add_effect first)'),
     );
   }
-  await ctx.scene.updateEffectParam(i.nodeId, i.effectId, i.key, i.value);
-  return ok(`Set ${target.type}.${i.key} = ${String(i.value)} on '${i.nodeId}'.`);
+  const { value, note } = clampEffectParam(effectDefFor(target.type)?.params.find((p) => p.key === i.key), i.value);
+  await ctx.scene.updateEffectParam(i.nodeId, i.effectId, i.key, value);
+  return ok(`Set ${target.type}.${i.key} = ${String(value)} on '${i.nodeId}'.${note ? ` NOTE: ${note}.` : ''}`, note ? { clamped: note } : undefined);
 };
 
 // ── set_light ─────────────────────────────────────────────────────────

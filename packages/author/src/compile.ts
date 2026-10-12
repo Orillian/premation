@@ -133,6 +133,13 @@ function createCall(e: Emitter, l: LayerSpec, props: Record<string, unknown>, of
 /** Kinds whose creation call already carried the create-time props. */
 const CREATED_WITH_PROPS = new Set(['shape', 'text', 'solid', 'null', 'camera', 'light', 'adjustment', 'particle']);
 
+/**
+ * A sweep's default selector offsets: 0 (every character covered) → 100 (none),
+ * the one crossing of the text the text_animator tool also defaults to.
+ */
+export const SWEEP_FROM_OFFSET = 0;
+export const SWEEP_TO_OFFSET = 100;
+
 /** A layer's static props, with its type style folded in (explicit props win). */
 function staticProps(script: SceneScript, l: LayerSpec): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -215,11 +222,15 @@ function styleLayer(e: Emitter, script: SceneScript, l: LayerSpec, parentId: str
     const args: Record<string, unknown> = { nodeId: id, ...fields };
     if (fields.color) args.color = e.colour(fields.color);
     if (sweep) {
+      // The offsets are spelled out (B3): over the Start 0 / End 100 selector
+      // the engine covers [offset, offset + 100]% of the characters, so 0 → 100
+      // uncovers the text once, left to right. A script that wants the other
+      // direction says so.
       args.sweep = {
         fromSec: round(offset + sweep.from),
         toSec: round(offset + sweep.to),
-        ...(sweep.fromOffset !== undefined ? { fromOffset: sweep.fromOffset } : {}),
-        ...(sweep.toOffset !== undefined ? { toOffset: sweep.toOffset } : {}),
+        fromOffset: sweep.fromOffset ?? SWEEP_FROM_OFFSET,
+        toOffset: sweep.toOffset ?? SWEEP_TO_OFFSET,
         ...(sweep.ease ? { easing: sweep.ease } : {}),
         ...(sweep.bezier ? { bezier: [...sweep.bezier] } : {}),
       };

@@ -108,9 +108,11 @@ export const mcpEditorOps: McpEditorOps = {
     }
   },
 
-  async addSfx(id, atSec, levelDb) {
+  async addSfx(id, atSec, levelDb, opts) {
     try {
-      const layer = await insertSfxAtEdit(id, atSec);
+      // Inside a begin_edit group the host holds the engine's gesture: the
+      // insert joins it rather than opening a second one (refused, B2).
+      const layer = await insertSfxAtEdit(id, atSec, { joinGesture: opts?.inGroup === true });
       if (!layer) return { error: `Premation could not add the sound effect '${id}'.` };
       if (levelDb !== null && levelDb !== 0) await mcpEditorOps.setAudioLevels(layer, { levelDb });
       return { id: layer };

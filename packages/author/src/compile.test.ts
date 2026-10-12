@@ -85,9 +85,47 @@ describe('compileScript', () => {
     expect(kf.filter((k) => k.prop === 'opacity').map((k) => k.t)).toEqual([2.4, 2.9]);
     expect(kf.filter((k) => k.prop === 'ta.0.blur').map((k) => k.t)).toEqual([2.4, 3.1]);
     expect(kf.filter((k) => k.prop === 'effect.g.radius').map((k) => k.t)).toEqual([2.1, 3.1]);
-    expect(calls(out.calls, 'text_animator')[0]!.args.sweep).toEqual({ fromSec: 2.4, toSec: 3.3 });
+    expect(calls(out.calls, 'text_animator')[0]!.args.sweep).toEqual({ fromSec: 2.4, toSec: 3.3, fromOffset: 0, toOffset: 100 });
     const bar = (calls(out.calls, 'set_layer_timing').at(-1)!.args.items as Array<{ nodeId: string }>).find((i) => i.nodeId === 't');
     expect(bar).toEqual({ nodeId: 't', inSec: 2.4, outSec: 5.6 });
+  });
+
+  it('spells every sweep out as one crossing of the text (offset 0 → 100), unless the script says otherwise (B3)', () => {
+    const s = base({
+      beats: [{
+        name: 'A', purpose: '', startSec: 1, endSec: 6,
+        layers: [
+          { id: 'in', kind: 'text', name: 'In', text: 'Hi', textAnimators: [{ opacity: 0, sweep: { from: 0, to: 1 } }] },
+          { id: 'out', kind: 'text', name: 'Out', text: 'Bye', textAnimators: [{ opacity: 0, sweep: { from: 2, to: 3, fromOffset: 100, toOffset: 0 } }] },
+        ],
+      }],
+    });
+    const sweeps = calls(compileScript(s).calls, 'text_animator').map((c) => c.args.sweep);
+    expect(sweeps).toEqual([
+      { fromSec: 1, toSec: 2, fromOffset: 0, toOffset: 100 },
+      { fromSec: 3, toSec: 4, fromOffset: 100, toOffset: 0 },
+    ]);
+    // Never the old −100 → 100, which covers the text only mid-sweep.
+    for (const sw of sweeps as Array<{ fromOffset: number; toOffset: number }>) expect(sw.fromOffset).not.toBe(-100);
+  });
+
+  it('leaves an unplaced adjustment layer to create_layer, which centres full-frame layers on the comp (B1)', () => {
+    const s = base({
+      beats: [{
+        name: 'A', purpose: '', startSec: 0, endSec: 6,
+        layers: [
+          { id: 'rain', kind: 'adjustment', name: 'Rain', effects: [{ id: 'fx', type: 'rainfall' }] },
+          { id: 'grade', kind: 'adjustment', name: 'Grade', props: { x: 480, y: 270, width: 960, height: 540 } },
+        ],
+      }],
+    });
+    const out = compileScript(s);
+    const created = calls(out.calls, 'create_layer');
+    // No x/y of its own: the compiler pins nothing (and never 0,0 — the origin is the comp's corner).
+    expect(created.find((c) => c.args.id === 'rain')).toEqual({ name: 'create_layer', args: { id: 'rain', kind: 'adjustment', name: 'Rain' } });
+    // A placed, sized one keeps what the script said.
+    expect(created.find((c) => c.args.id === 'grade')!.args).toMatchObject({ x: 480, y: 270, width: 960, height: 540 });
+    expect(calls(out.calls, 'update_layer').filter((c) => c.args.nodeId === 'rain')).toEqual([]);
   });
 
   it('resolves palette references and type styles, and writes nothing the script did not say', () => {

@@ -62,9 +62,12 @@ export async function insertSfxEdit(sfxId: string): Promise<string | null> {
 /**
  * Insert a Sound FX item starting at composition second `atSec` (Claude's
  * `add_sfx`): the same import and insert as the Sound FX panel, with the
- * clip's start set in the SAME undo entry.
+ * clip's start set in the SAME undo entry. `joinGesture` when the caller
+ * already holds the engine's gesture (a `begin_edit` group): the insert then
+ * lands in that gesture instead of opening one — which the engine would
+ * refuse (B2).
  */
-export async function insertSfxAtEdit(sfxId: string, atSec: number): Promise<string | null> {
+export async function insertSfxAtEdit(sfxId: string, atSec: number, opts: { joinGesture?: boolean } = {}): Promise<string | null> {
   const asset = await sfxAsset(sfxId);
   if (!asset) return null;
   const item = getSfxItem(sfxId);
@@ -72,6 +75,7 @@ export async function insertSfxAtEdit(sfxId: string, atSec: number): Promise<str
   const ids = await insertMediaEdit([asset], {
     label: `Insert ${item?.name ?? asset.name}`,
     follow: (_selected, layers) => [{ type: 'setLayerTiming', items: layers.map((layer) => ({ layer, startTime: compTime(at) })) }],
+    ...(opts.joinGesture ? { joinGesture: true } : {}),
   });
   return ids?.[0] ?? null;
 }

@@ -154,6 +154,15 @@ export interface MediaInsertOptions {
    * `selected` are the new ids the router selected, `layers` every new id.
    */
   follow?: (selected: readonly string[], layers: readonly string[]) => Command[];
+  /**
+   * The caller already holds the engine's gesture (an AI turn, a Claude
+   * `begin_edit` group): send the paste and its `follow` commands INTO it
+   * instead of opening one of our own — the engine has one gesture slot, and
+   * a nested `beginGesture` is refused (`gestureOpen`), which is how `add_sfx`
+   * failed inside `begin_edit` / `end_edit` (B2). The caller's commit / rollback
+   * covers the insert.
+   */
+  joinGesture?: boolean;
 }
 
 /**
@@ -215,6 +224,22 @@ export async function insertMediaEdit(
       return null;
     }
     ids = (res.value[0] as { layers?: string[] } | undefined)?.layers ?? [];
+  } else if (opts.joinGesture) {
+    // Inside the caller's gesture: plain sends, no gesture of our own.
+    const res = await client.execute(paste);
+    if (!res.ok) {
+      reportEngineError(label, res.error);
+      return null;
+    }
+    ids = (res.value as { layers?: string[] }).layers ?? [];
+    const more = follow(selectedOf(media, ids), ids);
+    if (more.length > 0) {
+      const r = await client.batch(label, more);
+      if (!r.ok) {
+        reportEngineError(label, r.error);
+        return null;
+      }
+    }
   } else {
     const opened = await client.beginGesture(label);
     if (!opened.ok) {
