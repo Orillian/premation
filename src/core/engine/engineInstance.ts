@@ -142,6 +142,19 @@ export function engine(): EngineClient {
   return owned ?? noEngine;
 }
 
+/**
+ * The engine for plugin management (listPlugins, rescanPlugins, setPluginEnabled,
+ * installs): requests that are not about the document, made from the
+ * dashboard's Plugins page too, where no editor session has booted `engine()`.
+ * The session's engine when there is one, else the window's process client
+ * (the same one the session wraps when it boots), else the inert `busy` client.
+ * Without this, an install from Dashboard ▸ Plugins never reached the engine:
+ * no rescan, so its effects stayed missing until a restart.
+ */
+export function pluginEngine(): EngineClient {
+  return owned ?? createAppProcessEngine() ?? noEngine;
+}
+
 /** The owner client (diagnostics, the harness). */
 export function ownedEngine(): OwnedEngineClient | null {
   return owned;

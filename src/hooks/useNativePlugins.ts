@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { engine } from '@core/engine/engineInstance';
+import { pluginEngine } from '@core/engine/engineInstance';
 import {
   isRegistryNoticeDismissed,
   listNativePlugins,
@@ -32,7 +32,7 @@ export function useNativePlugins(): NativePluginsState {
 
   const refresh = useCallback(() => {
     setLoading(true);
-    void listNativePlugins(engine()).then((res) => {
+    void listNativePlugins(pluginEngine()).then((res) => {
       if (!alive.current) return;
       if (res.ok) {
         setPlugins(res.plugins);

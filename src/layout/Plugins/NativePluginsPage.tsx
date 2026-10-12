@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { Segmented } from '@components/Segmented';
-import { engine } from '@core/engine/engineInstance';
+import { pluginEngine } from '@core/engine/engineInstance';
 import { canInstallFromFile } from '@core/nativePlugins/pluginFiles';
 import { canInstallFromStore, rescanPlugins } from '@core/nativePlugins/pluginStore';
 import { useNativePlugins } from '@hooks/useNativePlugins';
@@ -84,7 +84,7 @@ export function NativePluginsPage(): JSX.Element {
                 leftIcon={<Icon name="refresh" size="sm" />}
                 onClick={() => {
                   setRescanNote(null);
-                  void rescanPlugins(engine()).then((list) => {
+                  void rescanPlugins(pluginEngine()).then((list) => {
                     setRescanNote(list ? `${list.length} plugin${list.length === 1 ? '' : 's'} found.` : 'The engine has no plugins folder.');
                     native.refresh();
                     store.refresh();

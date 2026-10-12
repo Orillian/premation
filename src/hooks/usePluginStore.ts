@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type StorePluginSummary, type StorePluginUpdate } from '@core/api/client';
-import { engine } from '@core/engine/engineInstance';
+import { pluginEngine } from '@core/engine/engineInstance';
 import {
   checkPremationCloud,
   installFromStore,
@@ -114,16 +114,16 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
     refresh,
     clearMessage: () => setMessage(null),
     install: (id, version, owner) => run(id, async () => {
-      const r = await installFromStore(engine(), { id, version, owner });
+      const r = await installFromStore(pluginEngine(), { id, version, owner });
       return { text: r.message, error: !r.ok };
     }),
     uninstall: (id) => run(id, async () => {
-      const err = await uninstallPlugin(engine(), id);
+      const err = await uninstallPlugin(pluginEngine(), id);
       return err ? { text: err, error: true } : { text: `${id} is disabled and will be removed when Premation restarts.`, error: false };
     }),
     checkPlan: () => run('premation-cloud', checkPremationCloud),
     setEnabled: (id, enabled) => run(id, async () => {
-      const err = await setPluginEnabled(engine(), id, enabled);
+      const err = await setPluginEnabled(pluginEngine(), id, enabled);
       return err ? { text: err, error: true } : { text: `${id} ${enabled ? 'enabled' : 'disabled'}.`, error: false };
     }),
   };

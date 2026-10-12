@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { Badge } from '@components/Badge';
 import { Button } from '@components/Button';
 import { DialogFooter, customAlert } from '@components/Modal';
-import { engine } from '@core/engine/engineInstance';
+import { pluginEngine } from '@core/engine/engineInstance';
 import {
   accessLine,
   installPackageFile,
@@ -140,7 +140,7 @@ export async function runPackageInstall(r: NativePluginPackageInspect): Promise<
   }
   const choice = await confirmPackageInstall(r.preview);
   if (!choice) return null;
-  return installPackageFile(engine(), r.preview.token, choice === 'anyway');
+  return installPackageFile(pluginEngine(), r.preview.token, choice === 'anyway');
 }
 
 /** Plugins ▸ Installed ▸ "Install from file…". */

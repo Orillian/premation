@@ -5,7 +5,11 @@ import { NativePluginsList } from './NativePluginsList';
 import { NativePluginsPanel } from './NativePluginsPanel';
 import { RegistryPluginsNotice } from './RegistryPluginsNotice';
 
-jest.mock('@core/engine/engineInstance', () => ({ engine: jest.fn() }));
+jest.mock('@core/engine/engineInstance', () => {
+  const engine = jest.fn();
+  // Plugin management goes through pluginEngine() (the dashboard has no editor session): the same mock.
+  return { engine, pluginEngine: (...a: unknown[]) => engine(...a) };
+});
 
 const base = { vendor: 'Acme', sdk: '1.0', error: '', effects: [], gpu: false };
 
