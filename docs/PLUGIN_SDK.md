@@ -486,9 +486,21 @@ instead of the engine's decoders:
   (`io`). A failure at render time draws nothing for that layer and names it on
   `layerErrors`; the frame renders. A crash turns the importer off for the
   session (every read then fails with why) until the plugin is enabled again.
-- Not yet: plugin footage in the playback audio mixer (`READ_AUDIO` is in the
-  ABI and the host, `Contrib::read_audio`) and in analysis jobs (tracker,
-  stabilizer), which read frames with the engine's own decoders.
+- Sound (`has_audio`, `READ_AUDIO`): the engine's audio decoders ask the
+  plugin first (audio/external_audio.hpp), so the item's sound goes through
+  the same down-mix and resampler as a decoded file — it plays in the
+  playback mixer, is in the export mix (and an output module's
+  `WRITE_AUDIO`) and is what the audio jobs analyse. A file with
+  `width = height = 0` and `has_audio` is sound only (an audio item).
+- Analysis jobs (tracker, stabilizer, scene detection, roto, …) read the
+  item's frames through the importer too (jobs/media_input.cpp
+  `open_plugin_frames`). The jobs that run in a child process (Object
+  Matte, the face tracker) have no plugin host and fail on plugin footage
+  with "plugin failed to read".
+- The `ppmio` sample reads a PPM holding several images back to back as
+  moving footage (30 fps, or `# fps <n>` in the first header) and a second
+  format, `.praw` (`PRAW <rate> <channels>` + interleaved float32), that is
+  sound only.
 
 ### Output modules (`pr_io.h`)
 
@@ -504,6 +516,9 @@ Export dialog's **Plugins** category and in the Render Queue, with its declared
 | `PR_OUTPUT_WRITE_AUDIO` | the mix, interleaved float32, after the frames |
 | `PR_OUTPUT_END` | `cancelled` = 1 when the job did not finish |
 
+The `ppmseq` sample writes `shot.wav` (32-bit float) beside `shot_00000.ppm` …
+when the export carries sound.
+
 The export job (`premation-engine --export`, job fields `sequence:
 "plugin:…"`, `pluginPath`, `pluginOptions`) runs the module in its own
 process with its own plugin host; the module writes its files itself (nothing
@@ -515,7 +530,8 @@ message; the editor and the engine carry on.
 A dockable panel with no effect behind it: `{ "id", "name", "page" }` shows
 `ui/<page>` from the bundle in the P5 sandbox (`plugin-ui://<id>/<page>`,
 `sandbox="allow-scripts"`, no Node, no storage, no network). The Plugins menu
-▸ Panels opens it; it docks like any on-demand panel. It talks to
+▸ Panels opens it; it docks like any on-demand panel and pops out into its
+own window (the window's route carries the id encoded, `#/popout/plugin%3A…%2F<panel>`). It talks to
 the editor by `window.parent.postMessage({ premation: 1, … }, '*')`:
 
 | Panel sends | What happens |
