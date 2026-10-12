@@ -274,4 +274,31 @@ describe('scripts/pack-plugin.mjs --key', () => {
       await rm(work, { recursive: true, force: true });
     }
   });
+
+  // Found on the RTX box (2026-10-13): the SDK 1.2 samples `distribute`, `ppmio`,
+  // `ppmseq` and `statspanel` could not be packed — "the manifest lists no effects".
+  it('packs a bundle that contributes only a command (SDK 1.2), and still refuses one that contributes nothing', async () => {
+    const work = await mkdtemp(path.join(os.tmpdir(), 'ppk-'));
+    try {
+      const bundle = path.join(work, 'bundle');
+      await mkdir(bundle);
+      await writeFile(path.join(bundle, 'libtidy.so'), 'so-bytes');
+      const manifest = {
+        manifestVersion: 1, id: 'com.acme.tidy', version: '1.0.0', sdk: { major: 1, minor: 2 },
+        binary: { 'linux-x64': 'libtidy.so' }, commands: [{ id: 'tidy', name: 'Tidy Layers', menu: '' }],
+      };
+      await writeFile(path.join(bundle, 'premation-plugin.json'), JSON.stringify(manifest));
+      const pack = (out: string): void => {
+        execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'pack-plugin.mjs'), bundle, '--out', out], { stdio: 'pipe' });
+      };
+      const out = path.join(work, 'tidy.pplugin');
+      pack(out);
+      expect((await readFile(out)).length).toBeGreaterThan(0);
+
+      await writeFile(path.join(bundle, 'premation-plugin.json'), JSON.stringify({ ...manifest, commands: [] }));
+      expect(() => pack(path.join(work, 'none.pplugin'))).toThrow(/no effects, commands, importers, output modules or panels/);
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  });
 });

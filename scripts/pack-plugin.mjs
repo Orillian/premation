@@ -59,7 +59,11 @@ export function checkManifest(m, files) {
     if (typeof file !== 'string' || file === '' || /[\\/]|\.\./.test(file)) problems.push(`binary.${key} must be a file name inside the bundle`);
     else if (!files.has(file)) problems.push(`binary.${key} names "${file}", which is not in the bundle`);
   }
-  if (!Array.isArray(m.effects) || m.effects.length === 0) problems.push('the manifest lists no effects');
+  // SDK 1.2 (P7): a bundle may contribute only commands, importers, output
+  // modules or panels — the engine and the registry accept it (docs/PLUGIN_STORE.md §1).
+  const contributes = ['effects', 'commands', 'importers', 'outputModules', 'panels'].some((k) => Array.isArray(m[k]) && m[k].length > 0);
+  if (m.effects !== undefined && !Array.isArray(m.effects)) problems.push('effects must be a list');
+  else if (!contributes) problems.push('the manifest lists no effects, commands, importers, output modules or panels');
   const seen = new Set();
   for (const e of m.effects ?? []) {
     const mn = e?.matchName;
