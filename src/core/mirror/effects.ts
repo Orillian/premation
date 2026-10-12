@@ -27,6 +27,7 @@ import {
   type EffectParamValue,
   type EffectType,
 } from '@core/inspector/effectCatalog';
+import { pluginEffectDefsRevision } from '@core/inspector/pluginEffectDefs';
 import { plainValue, storedNumber, trackRefIn, type MirrorTreeLike } from './trackIndex';
 
 /** Expression controls' group-id prefix (engine/controlSpecs.ts `CONTROL_PREFIX`). */
@@ -117,7 +118,12 @@ export function mirrorEffectCompositing(tree: MirrorTreeLike | undefined, effect
   return out;
 }
 
-const stackCache = new WeakMap<object, Effect[]>();
+/**
+ * Per tree record, and per plugin-definition revision: a plugin effect read before
+ * its definition arrived (the engine is asked once the app is up) has no params,
+ * and must be read again once it does — the tree record alone does not change.
+ */
+const stackCache = new WeakMap<object, { defs: number; out: Effect[] }>();
 
 /**
  * The stack as `Effect` records: the header, every declared parameter the tree
@@ -127,8 +133,9 @@ const stackCache = new WeakMap<object, Effect[]>();
  */
 export function mirrorEffects(tree: MirrorTreeLike | undefined): Effect[] {
   if (!tree) return [];
+  const defs = pluginEffectDefsRevision();
   const hit = stackCache.get(tree);
-  if (hit) return hit;
+  if (hit && hit.defs === defs) return hit.out;
   const out: Effect[] = mirrorEffectHeaders(tree).map((h) => {
     const def = effectDefFor(h.type);
     const params: Record<string, EffectParamValue> = {};
@@ -145,7 +152,7 @@ export function mirrorEffects(tree: MirrorTreeLike | undefined): Effect[] {
       ...mirrorEffectCompositing(tree, h.id),
     };
   });
-  stackCache.set(tree, out);
+  stackCache.set(tree, { defs, out });
   return out;
 }
 

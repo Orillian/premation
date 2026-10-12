@@ -28,6 +28,7 @@ export type PluginEffectDef = EffectDef & {
 
 let defs: readonly PluginEffectDef[] = [];
 let byType = new Map<string, PluginEffectDef>();
+let revision = 0;
 const listeners = new Set<() => void>();
 
 const TYPE_OF: Record<string, EffectParamDef['type'] | undefined> = {
@@ -86,11 +87,17 @@ export function effectInfoToDef(info: EffectInfo): PluginEffectDef {
 export function setPluginEffectDefs(infos: readonly EffectInfo[]): void {
   defs = infos.filter((e) => e.provider !== 'builtin' && !e.audio).map(effectInfoToDef);
   byType = new Map(defs.map((d) => [d.type, d]));
+  revision += 1;
   for (const l of listeners) l();
 }
 
 export function pluginEffectDefs(): readonly PluginEffectDef[] {
   return defs;
+}
+
+/** Bumps whenever the plugin effect definitions are replaced (a cache key for what is derived from them). */
+export function pluginEffectDefsRevision(): number {
+  return revision;
 }
 
 export function pluginEffectDefFor(type: string): PluginEffectDef | undefined {

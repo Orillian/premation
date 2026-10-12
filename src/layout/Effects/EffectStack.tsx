@@ -5,7 +5,7 @@ import { paths, ref, values } from '@core/engine/propRefs';
 import { useLiquifyBrushStore } from '@stores/liquifyBrushStore';
 import { LIQUIFY_TOOLS, type LiquifyTool } from '@core/effects/liquifyField';
 import { useEffectHandleStore } from '@stores/effectHandleStore';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 /**
  * EffectStack — the applied-effects list for a layer (AE Effect Controls): each
  * effect has an enable toggle, reorder, remove, and one row per PARAMETER.
@@ -98,7 +98,7 @@ import panel from './EffectsPanel.module.css';
 import { MissingPluginCard, PluginEffectActions, usePluginEffectUi } from './PluginEffectParts';
 import { PluginPanel } from './PluginPanel';
 import { PluginFileField, PluginGradientField, PluginTextField } from './PluginParamControls';
-import { isPluginEffectDef, type PluginEffectDef } from '@core/inspector/pluginEffectDefs';
+import { isPluginEffectDef, pluginEffectDefsRevision, subscribePluginEffectDefs, type PluginEffectDef } from '@core/inspector/pluginEffectDefs';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
 
 /**
@@ -818,6 +818,8 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
   // B4: the stack from the layer's mirror property tree (re-renders when the `effects` group changes — not on
   // a write elsewhere on the layer, e.g. a drag of Position).
   const tree = useMirrorTreeGroups(nodeId, EFFECTS_ROOT);
+  // A plugin effect's card (its params) needs its definition, which can arrive after the stack drew.
+  useSyncExternalStore(subscribePluginEffectDefs, pluginEffectDefsRevision, pluginEffectDefsRevision);
   const effects = mirrorEffects(tree);
   // "Gaussian Blur 2" for the second of a kind — see effectDisplayNames.
   const names = effectDisplayNames(effects);
