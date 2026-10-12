@@ -191,6 +191,7 @@ callbacks to `PrHostSuite` (an SDK 1.0 plugin never reads past the old end; a
 | `PrPreRenderExtra.result_rect` past the layer; `PR_OUT_FLAG_COMP_SPACE`, `comp_to_world` | `max_result_rect` / `result_rect`, `PF_OutFlag_I_EXPAND_BUFFER` | a glow's halo, a flare off the layer, Element 3D on any solid |
 | `get_asset_image` / `get_asset_image_gpu` / `get_asset_sibling_bytes` | the plugin's own loaders | images decoded by the engine; a glTF's `.bin` and textures |
 | manifest `presets`, `presets/*.json` | `.ffx` animation presets | listed under the plugin in Effects & Presets |
+| `PR_OUT_FLAG_USES_SCENE_DEPTH`, `checkout_scene_depth_gpu` / `checkout_scene_depth` | none (Element 3D renders the comp's 3D layers itself for "Composite with scene depth") | occlusion by the comp's own 3D layers |
 
 Everything is appended: new `PrHostSuite` callbacks at the end (check
 `struct_size >= offsetof(PrHostSuite, get_asset_sibling_bytes) + sizeof(void*)`),
@@ -306,6 +307,42 @@ siblings a plugin read: a collected project stores its files content-addressed
 (`blobs/<hh>/<sha256>`), so there is no folder for a sibling to sit beside.
 Ship self-contained assets (`.glb`, embedded textures) where you can; a `.gltf`
 with external files needs its folder next to the collected project.
+
+## Scene depth (SDK 1.2)
+
+Element 3D's **Composite with scene depth**: a model passes behind the comp's
+own 3D layers. After Effects gives a plugin no depth buffer (E3D rebuilds the
+comp's 3D layers itself); Premation hands it one.
+
+- Declare `PR_OUT_FLAG_USES_SCENE_DEPTH` in `GLOBAL_SETUP` (without it the
+  callbacks answer `PR_ERR_INVALID_CALLBACK`).
+- `checkout_scene_depth_gpu(host, &gpuWorld)` in `SMART_RENDER_GPU`: an
+  `r32float` texture (`PR_GPU_FORMAT_R32_FLOAT`) on the engine's device. It is
+  not filterable: read it with `textureLoad`.
+- `checkout_scene_depth(host, &world)` in `SMART_RENDER` / `RENDER`: the same
+  depth read back, a `PR_PIXEL_FORMAT_R32F` world (one float per pixel).
+- `PR_ERR_UNSUPPORTED` when the render has no GPU to draw the depth with (the
+  SDK's `premation-plugins` CPU host, the host tests): render without occlusion.
+
+What a pixel holds:
+
+| | |
+|---|---|
+| layers | the comp's 3D layers **other than the effect's own**, in the composition the layer is in (a sealed precomp's own camera and layers inside it) |
+| view | the comp camera at the frame's time (not per motion-blur sample) |
+| size | world-sized: pixel (x, y) is world pixel (x, y) of this render, so `layer_to_world` / `comp_to_world` line up with it |
+| value | the **camera-space z** of the nearest surface: the distance from the eye along the view axis, in comp px — `(view · p).z` with `PrCamera.view`, positive in front. Not the straight-line distance to the eye. Compare a fragment's own `(view · p).z` with it. |
+| empty | `+inf` where no 3D layer is drawn |
+| transparency | a texel whose coverage (texture alpha × mask × opacity, or a solid's shape) is under 1/255 writes no depth — the engine's own 3D pass discards by the same rule; any other texel does (depth is not blended) |
+
+It is an input of the frame: moving a 3D layer (or the camera) re-renders the
+effect, and an effect that never asks never pays. The engine draws it in its
+own pass over the 3D group's geometry (`render_graph/scene_depth.cpp`: the
+quads and the extruded / model meshes, through the scope's camera and the
+chain's `comp_to_world`) the first time an effect of the frame asks, and every
+effect of the frame that asks with the same world size and placement shares it
+(an effect on a 2D layer excludes no drawn layer, so all of them share one pass).
+Call the checkouts from the selector's own thread, not from an `iterate()` job.
 
 ## Presets (SDK 1.2)
 
@@ -648,6 +685,119 @@ the editor with a signature check and no restart.
    `sign-plugin.mjs publish`. Public needs a verified publisher.
 
 `examples/plugin-ci/` does all of this in GitHub Actions for three platforms.
+
+## Building an Element 3D class plugin
+
+The `model3d` sample (`native/sdk/samples/model3d`, open source) is the
+walkthrough: a glTF model drawn through the comp camera and lights, anywhere in
+the frame, with motion blur and occlusion by the comp's 3D layers, on the GPU
+and on the CPU. What it does, step by step, and the After Effects call each
+step replaces:
+
+| Step | Premation | After Effects |
+|---|---|---|
+| Draw on a solid of any size, anywhere in the frame | `PR_OUT_FLAG_COMP_SPACE`; project with `PrInData.comp_to_world` | `PF_OutFlag_I_EXPAND_BUFFER`, `result_rect` = the comp |
+| Load the model | a `FILE` param (`file_types` `"glb\|gltf"`), `get_asset_bytes`; a `.gltf`'s `.bin` through `get_asset_sibling_bytes` | the plugin opens the path itself |
+| Textures | a `FILE` image param through `get_asset_image_gpu` / `get_asset_image` (decoded by the engine, linear premultiplied); a `LAYER` param through `checkout_layer_gpu` / `checkout_layer_pixels` | `PF_CHECKOUT_PARAM` on a layer param; the plugin's own image loaders |
+| Camera and lights | `PR_OUT_FLAG_USES_CAMERA` / `_USES_LIGHTS`; `get_comp_camera`, `get_comp_lights` | `AEGP_GetEffectCamera`, the light suites |
+| Follow a layer | a `LAYER` param, `PR_OUT_FLAG_USES_LAYER_TRANSFORMS`, `get_layer_transform` | `AEGP_GetLayerToWorldXform` |
+| Render on the GPU | `PR_OUT_FLAG_GPU_RENDER`, `SMART_RENDER_GPU`: your own pipelines and depth buffer on the engine's Dawn device, through `device->procs` | the GPU suites (`PF_GPUDeviceSuite`) |
+| Motion blur | `PR_OUT_FLAG_USES_SHUTTER` + `PR_OUT_FLAG_SAMPLES_TIME`: `checkout_time` at the shutter's sub-times with `PR_SAMPLE_PARAMS \| _CAMERA \| _LAYER_TRANSFORMS`, one render per sample, averaged | `PF_OutFlag2_I_USE_SHUTTER_ANGLE`, `PF_CHECKOUT_PARAM` at other times |
+| Occlusion by the comp's 3D layers | `PR_OUT_FLAG_USES_SCENE_DEPTH`, `checkout_scene_depth_gpu` / `checkout_scene_depth` | none: E3D renders the comp's layers itself |
+| A handle in the viewer | `PR_OUT_FLAG_CUSTOM_OVERLAY`: `DRAW_OVERLAY` / `OVERLAY_DRAG` | `PF_Cmd_EVENT` |
+| A setup panel | `ui/index.html`, the `setParam` / `requestPreview` messages | E3D's Scene Setup window |
+| Works without a GPU | `SMART_RENDER`: the same maths on the CPU | the CPU render path |
+
+**1. Flags and params.** `GLOBAL_SETUP` declares `SMART_RENDER | GENERATOR |
+GPU_RENDER | USES_CAMERA | USES_LIGHTS | USES_LAYER_TRANSFORMS | SAMPLES_TIME |
+USES_SHUTTER | COMP_SPACE | USES_SCENE_DEPTH | CUSTOM_OVERLAY`. The params:
+Model (`FILE`), Position (`POINT_3D`, comp world px), X / Y / Z Rotation,
+Size (the model's largest extent in px), Transform Layer (`LAYER`), a Material
+group (Base Color, Roughness, Specular, Base Color Map, Texture Layer),
+Composite with Scene Depth, Motion Blur, Render Mode (Shaded / Scene Depth) and
+the samples' Debug group. Keep param ids stable: the document stores values by
+them, and the panel addresses them as `p<id>`.
+
+**2. The model.** `gltf_lite.hpp` reads `.glb` and `.gltf` (+ `.bin` through
+`get_asset_sibling_bytes`, or a `data:` URI): triangle primitives, the node
+hierarchy, positions, normals, uvs, indices and the first material's
+`baseColorFactor`. Parse once per file content (the sample keys a cache by the
+bytes' hash) — never per frame. No model chosen: a built-in cube. A chosen file
+that is missing or unreadable returns `PR_ERR_NOT_FOUND` with the reason in
+`return_msg`: the host records it on `layerErrors` and the frame renders, and
+the instance stays enabled (an error return is not a fault).
+
+**3. Space.** World space is After Effects' (px, +y down, +z away). glTF is +y
+up and +z toward the viewer, so the model is turned 180° about x, centred on its
+bounds and scaled to Size. A vertex goes model → world (the placement: Position
+× rotations × size, or the Transform Layer's matrix) → camera
+(`PrCamera.view`) → comp px (`PrCamera.projection`, divide by w) → world px
+(`comp_to_world`). On the GPU the last two are one matrix: comp_to_world and
+the NDC mapping lifted to act on homogeneous x, y, w. Depth is camera-space z
+everywhere — the same unit as the scene depth, so the occlusion test is one
+comparison.
+
+**4. Shading.** Lambert diffuse + Blinn-Phong specular (shininess from
+Roughness), two-sided, over up to 8 comp lights: ambient adds `albedo ×
+colour × intensity`, parallel lights along `direction`, point lights from
+`position`, spot lights with a smoothstep over the cone and feather. With no
+light in the comp a headlight from the camera keeps the model readable (AE lights
+unlit layers fully). The WGSL and the C++ are the same function, line for line.
+
+**5. The GPU path.** `GPU_DEVICE_SETUP` builds one WGSL module, an explicit bind
+group layout (every texture `unfilterable-float` and read with `textureLoad`:
+the `rgba32float` maps and the `r32float` depth are not filterable without a
+device feature), a mesh pipeline into an `rgba16float` sample target with its
+own `depth32float` buffer, an additive accumulation pipeline, and an output
+pipeline per `PrGpuFormat`. `SMART_RENDER_GPU` uploads the model once per
+content, writes one uniform slot per shutter sample, and records into the host's
+encoder: per sample, the mesh pass then an additive pass (× 1/N) into the
+accumulation; then the accumulation into the output. Never submit; never keep
+the encoder. A GPU error is caught by the host's error scope and the frame
+renders on the CPU path.
+
+**6. Motion blur.** In `SMART_PRE_RENDER`, when `PrInData.motion_blur` is 1 and
+`shutter_angle` > 0, call `checkout_time` for N = `motion_blur_samples`
+(clamped to 2..16) sample times centred across `shutter_phase … shutter_phase +
+shutter_angle`. In the render, read the camera (`get_comp_camera`), the
+placement params (`checkout_param`) and the Transform Layer
+(`get_layer_transform`) at each time; a time the host did not evaluate answers
+`PR_ERR_NOT_FOUND` — skip that sample, never fail the frame. Lights are read at
+the frame time.
+
+**7. Scene depth.** With Composite with Scene Depth on, call
+`checkout_scene_depth_gpu` and discard a fragment whose camera z is behind the
+depth at its pixel (`z > depth + 0.5 + 0.001 z`: a small bias, so a model sitting
+exactly on a card does not flicker). `PR_ERR_UNSUPPORTED` (no GPU): render
+unoccluded. The CPU path does the same with `checkout_scene_depth`.
+
+**8. Viewer handle and panel.** `DRAW_OVERLAY` draws a box and a crosshair handle
+at Position; `OVERLAY_DRAG` writes Position's x / y (z kept) with
+`set_param_value` — the whole drag is one undo entry. The overlay is drawn
+without the camera (the scene callbacks answer in render selectors only), so
+the handle sits at Position's x / y: exactly over the model under the comp's
+default camera on a comp-sized layer at the comp's origin, offset when a camera
+layer looks from elsewhere — a known limit. The panel (`ui/`) sets Base Color,
+Roughness, Specular and the depth checkbox with `setParam` and shows a
+`requestPreview`.
+
+**9. The CPU path.** `SMART_RENDER` runs the same transform and shading in a
+small rasteriser: per output row (`iterate`), every triangle over that row,
+perspective-correct barycentrics, a z-buffer in camera z, nearest texels. It is
+lower quality — no near-plane clipping (a triangle reaching behind the eye is
+dropped), no filtering — but a machine without a GPU still gets the frame.
+
+**10. Tests.** `engine_plugins_tests` (`tests/test_plugin_model3d.cpp`): the cube
+through the camera, `.glb` and `.gltf` + `.bin` giving the same picture, a missing
+model as a layer error, CPU occlusion against a depth, the Debug ▸ Fault popup in a
+child process. `engine_plugins_gpu_tests`: the scene depth's values (camera z, +inf,
+the effect's own layer excluded, one pass per frame), GPU vs CPU coverage, and
+occlusion on both paths. Golden scenes (`packages/render-tests`):
+`plugin-model3d-orbit` (camera orbit, a checker Base Color Map, point + ambient
+light), `plugin-model3d-blur` (the sample's own motion blur under a camera pan),
+`plugin-model3d-occlusion` (a 3D card in front of the model).
+`models/make_models.mjs` regenerates the test assets (a 2 × 1 × 1 box as `.glb`
+and as `.gltf` + `.bin`, an 8 × 8 checker), all made for the sample.
 
 ## Building and testing a plugin
 
