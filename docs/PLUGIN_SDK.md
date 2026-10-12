@@ -9,10 +9,10 @@ so an AE plugin author can find their way around.
 | | |
 |---|---|
 | Headers | `native/sdk/include/premation_sdk/` (C, versioned ABI; `premation_sdk.h` includes all) |
-| Samples | `native/sdk/samples/` — `ripple` (CPU), `rings` (generator + sequence data + button), `checkout` (Layer Displace, Time Echo), `grade` (GPU), `particles` (SDK 1.1: comp camera, lights, layer transforms) |
+| Samples | `native/sdk/samples/` — `ripple` (CPU), `rings` (generator + sequence data + button), `checkout` (Layer Displace, Time Echo), `grade` (GPU), `particles` (SDK 1.1: comp camera, lights, layer transforms; SDK 1.2: trails and its own motion blur through `checkout_time`, comp space, presets, a layer-time button) |
 | Host | `native/engine/src/plugins/` (runs inside `premation-engine`) |
 | Tool | `premation-plugins` — list, render, crash-check a plugin folder without an editor |
-| Tests | `engine_plugins_tests` (`tests/test_plugin_host.cpp`, `tests/test_plugin_session.cpp`, `tests/test_plugin_scene.cpp`, `tests/test_plugin_entitlement.cpp`) |
+| Tests | `engine_plugins_tests` (`tests/test_plugin_host.cpp`, `tests/test_plugin_session.cpp`, `tests/test_plugin_scene.cpp`, `tests/test_plugin_entitlement.cpp`, `tests/test_plugin_sdk12.cpp`), `engine_plugins_scene_tests` (`tests/test_plugin_finish.cpp`: the frame hook over a document), `engine_plugins_gpu_tests`, the golden scene `plugin-particles-orbit` (packages/render-tests) |
 
 ## Packaging
 
@@ -70,7 +70,7 @@ The plugin id and the match names must match the manifest.
 | `GPU_DEVICE_SETUP` / `_SETDOWN`, `SMART_RENDER_GPU` | `PF_Cmd_GPU_DEVICE_SETUP`, `PF_Cmd_SMART_RENDER_GPU` | Dawn/WebGPU on the engine's own device (see GPU) |
 | `DRAW_OVERLAY` / `OVERLAY_DRAG` (1.1) | `PF_Cmd_EVENT` (draw / drag) | the viewer overlay (see Viewer overlays) |
 
-Out flags: `DEEP_COLOR_AWARE` (16-bit), `FLOAT_COLOR_AWARE` (32-bit float),
+Out flags (SDK 1.2 adds `SAMPLES_TIME`, `USES_SHUTTER`, `COMP_SPACE`, below): `DEEP_COLOR_AWARE` (16-bit), `FLOAT_COLOR_AWARE` (32-bit float),
 `SMART_RENDER`, `GPU_RENDER`, `SEQUENCE_DATA`, `GENERATOR`, `WIDE_TIME_INPUT`,
 `NON_PARAM_VARY`, `SEND_UPDATE_PARAMS_UI`, `THREADED_RENDER`.
 
@@ -133,7 +133,8 @@ sample uses all four types (a 1D `.cube` LUT as its FILE).
 ## Time and checkouts
 
 Times are integer ticks of `PR_TIME_SCALE` (705,600,000 per second, flicks).
-`current_time` is the **layer** time; `comp_time` is the composition time.
+`current_time` is the **layer** time; `comp_time` is the composition time
+(SDK 1.2, see "Layer time": before 1.2 the engine passed the comp time in both).
 `SMART_PRE_RENDER` may check out:
 
 - the effect's input (param index 0) at the current time, which is the chain's
@@ -164,15 +165,173 @@ callbacks to `PrHostSuite` (an SDK 1.0 plugin never reads past the old end; a
 - **Declare what you read** in `GLOBAL_SETUP`: `PR_OUT_FLAG_USES_CAMERA`,
   `PR_OUT_FLAG_USES_LIGHTS`, `PR_OUT_FLAG_USES_LAYER_TRANSFORMS`. Without the
   flag the callback answers `PR_ERR_INVALID_CALLBACK`.
-- **Evaluated at the frame time** (`time` = `current_time`; another time
-  answers `PR_ERR_UNSUPPORTED`). `finish_native_frame` writes them from the
+- **Evaluated at the frame time** (`time` = `current_time`) or, SDK 1.2, at
+  a time the effect checked out (see "Other times"); any other time answers
+  `PR_ERR_NOT_FOUND` (`PR_ERR_UNSUPPORTED` on an SDK 1.1 host). `finish_native_frame` writes them from the
   built frame into the effect's chain entry (`fx_wire.hpp`), so they are
   inputs of that effect's render: moving the camera re-renders an effect that
   reads it, and no other. The frame stays a pure function of the document.
 - World space is After Effects': pixels, +x right, +y down, +z away from the
   viewer, matrices column-major.
+- SDK 1.2: on a composition with no 3D layer (Particular on a 2D solid) the
+  effect still gets the comp's camera and lights — the scene's own, evaluated
+  off the document — instead of the default view.
 - The manifest says `"sdk": { "major": 1, "minor": 1 }`; an engine with SDK
   1.0 lists such a plugin as failed ("needs SDK 1.1") instead of loading it.
+
+## SDK 1.2 at a glance — the After Effects mapping
+
+| Premation (SDK 1.2) | After Effects | For |
+|---|---|---|
+| `PR_OUT_FLAG_SAMPLES_TIME`, `checkout_time(host, time, what)` in `SMART_PRE_RENDER` | `PF_CHECKOUT_PARAM` / AEGP stream values at another time | params, camera, lights, layer transforms at other (layer) times |
+| `checkout_param(host, index, time, PrParamDef*)` | `PF_CHECKOUT_PARAM` | a param's value at the frame or a checked-out time |
+| `get_comp_camera` / `get_comp_lights` / `get_layer_transform` at a checked-out time | `AEGP_GetEffectCamera`, the light suites, `AEGP_GetLayerToWorldXform` at a time | trails, motion blur, simulations |
+| `PrInData.shutter_angle`, `shutter_phase`, `motion_blur`, `motion_blur_samples`; `PR_OUT_FLAG_USES_SHUTTER` | `in_data->shutter_angle` / `shutter_phase`, `PF_OutFlag2_I_USE_SHUTTER_ANGLE` | the effect renders its own blur |
+| `current_time` = layer time; `layer_start`, `comp_width` / `comp_height`, `layer_is_3d` | `in_data->current_time` (layer time) | start offset, Time Stretch, reverse, freeze |
+| `PrPreRenderExtra.result_rect` past the layer; `PR_OUT_FLAG_COMP_SPACE`, `comp_to_world` | `max_result_rect` / `result_rect`, `PF_OutFlag_I_EXPAND_BUFFER` | a glow's halo, a flare off the layer, Element 3D on any solid |
+| `get_asset_image` / `get_asset_image_gpu` / `get_asset_sibling_bytes` | the plugin's own loaders | images decoded by the engine; a glTF's `.bin` and textures |
+| manifest `presets`, `presets/*.json` | `.ffx` animation presets | listed under the plugin in Effects & Presets |
+
+Everything is appended: new `PrHostSuite` callbacks at the end (check
+`struct_size >= offsetof(PrHostSuite, get_asset_sibling_bytes) + sizeof(void*)`),
+new `PrInData` fields at the end (check
+`struct_size >= offsetof(PrInData, comp_to_world) + sizeof(in_data->comp_to_world)`),
+new flags in free bits. SDK 1.0 and 1.1 plugins load and render unchanged; a
+plugin whose manifest says `"minor": 2` fails on an older engine with "needs SDK 1.2".
+
+## Other times (SDK 1.2)
+
+A trail, a plugin's own motion blur or a simulation's history reads the scene
+at times other than the frame's. In After Effects that is `PF_CHECKOUT_PARAM`
+and the AEGP stream suites at any time; here the effect says up front what it
+will read, and the engine evaluates exactly that:
+
+1. Declare `PR_OUT_FLAG_SAMPLES_TIME` (with `SMART_RENDER`) and the
+   `USES_CAMERA` / `USES_LIGHTS` / `USES_LAYER_TRANSFORMS` flags of what it reads.
+2. In `SMART_PRE_RENDER` call `checkout_time(host, time, what)` for each time —
+   a **layer** time in ticks — with `what` any of `PR_SAMPLE_PARAMS`,
+   `PR_SAMPLE_CAMERA`, `PR_SAMPLE_LIGHTS`, `PR_SAMPLE_LAYER_TRANSFORMS`
+   (`PR_SAMPLE_ALL`). Asking again for a time adds bits; at most
+   `PR_MAX_TIME_SAMPLES` (1024) times per instance and frame.
+3. In any render selector, `checkout_param(host, index, time, &def)` (the caller
+   sets `def.struct_size`) and `get_comp_camera` / `get_comp_lights` /
+   `get_layer_transform` answer for the frame's time and every checked-out time.
+   Another time is `PR_ERR_NOT_FOUND`: skip that sample, never fail the frame (a
+   renderer that runs no frame hook, such as `premation-render` on a frame file,
+   evaluates none).
+
+`finish_native_frame` (`scene_finish.cpp`) runs the pre-render once per frame
+and evaluates the requested values **off the document** — the effect's
+animatable params (keyframes and expressions at that layer time), the scene
+camera, the lights and the LAYER params' world matrices — never a whole frame
+per time. Comp times between frames map to source times between frames, as a
+layer's motion-blur samples do. Every evaluation is kept for the frame, so many
+effects asking for the same shutter samples pay once. The values are written
+into the effect's chain entry (`fx_wire.hpp`, `s<i>.*`), so a frame is still a
+pure function of the document: preview, export and a restarted engine render
+the same pixels. Static params (strings, curves, files, layers, paths) are the
+frame's at every time.
+
+When the viewer shows the comp through another camera than the scene's (a
+custom or axis view, which never moves) the samples keep that view; when the
+frame's lights are not the scene's (Draft 3D) they keep the frame's. A sample
+at the frame's own time always equals the frame.
+
+The `particles` sample uses it: Trail Length draws each particle again at the
+past frames, where the camera, the emitter and Velocity put it then, and with
+the comp's motion blur on it renders its own blur over the shutter.
+
+## Layer time (SDK 1.2)
+
+`current_time` is the layer's own time — its start offset, Time Stretch,
+reverse and freeze, the mapping its keyframes use — and `comp_time` the
+composition's. Every time an effect passes the host (`checkout_layer`,
+`checkout_time`, the scene callbacks) is a layer time; the engine maps it back
+to comp time where it builds or evaluates the composition. `layer_start` is the
+comp time of layer time 0 (with no stretch, comp time = `layer_start` + layer
+time). `comp_width`, `comp_height` and `layer_is_3d` describe the composition
+and the layer. Buttons, overlays and the params UI get the layer time of the
+playhead too (the `particles` sample's **Reseed From Playhead** writes it).
+Inside a nested composition `comp_time` is the top composition's time (a known
+limit).
+
+## Motion blur (SDK 1.2)
+
+`PrInData.shutter_angle` and `shutter_phase` (degrees) and `motion_blur_samples`
+are the composition's settings; `motion_blur` is 1 when the render, the
+composition's switch and the layer's switch are all on (the viewer's Draft
+preview turns it off). An effect that declares `PR_OUT_FLAG_USES_SHUTTER`
+renders its own blur — it checks out the shutter's times and draws each (AE's
+`PF_OutFlag2_I_USE_SHUTTER_ANGLE`) — and the engine does **not** supersample its
+layer through it: the layer is drawn once, at the frame. An effect without the
+flag is rendered with its layer as before.
+
+## Output beyond the layer (SDK 1.2)
+
+Once per frame the engine runs `SMART_PRE_RENDER` with the world = the layer's
+own pixels (`request_rect` = the layer, `layer_to_world` the identity). A
+`result_rect` past the layer (a glow's halo, a flare off the layer's edge) grows
+the layer's effect buffer by that much — the built-in effects' grow bounds
+(`reachPx` in the chain entry) — capped at the engine's texture limit. On a 2D
+layer the chain already runs in the frame's own buffer, so the output shows
+anywhere in the frame; on a 3D layer the layer-space buffer grows.
+
+`PR_OUT_FLAG_COMP_SPACE`: the effect's output covers the composition frame
+(Element 3D, Optical Flares, Particular on a solid of any size). Draw with
+`PrInData.comp_to_world` (composition px → world px, row-major like
+`layer_to_world`): on a 2D layer it is the view of the composition the chain
+renders in; on a 3D layer, whose chain runs in the layer's own plane,
+composition pixels are taken as the layer's.
+
+## Assets (SDK 1.2)
+
+A `FILE` param's file, beyond `get_asset_path` / `get_asset_bytes`:
+
+- `get_asset_image(host, index, &world)`: the image decoded by the engine — PNG,
+  JPEG, WebP, GIF, BMP, TIFF (the engine's still decoders), OpenEXR, Radiance
+  `.hdr`, binary `.ppm` / `.pfm` — as linear, premultiplied `RGBA32F` (8-bit
+  footage is sRGB-decoded and straight alpha premultiplied). Kept per file, size
+  and modification time: a re-saved file decodes again. `PR_ERR_UNSUPPORTED`: not
+  an image the engine reads.
+- `get_asset_image_gpu(host, index, &gpuWorld)` (`SMART_RENDER_GPU`): the same
+  image as an `rgba32float` texture on the engine's device, uploaded once per
+  file and modification time and dropped with the device.
+- `get_asset_sibling_bytes(host, index, "textures/albedo.png", &data, &size)`: a
+  file beside the asset (a glTF's `.bin` and textures, an `.obj`'s `.mtl`).
+  `relative` uses `/` (or `\`); no `..`, no absolute path or drive, no symlink
+  out of the asset's folder (`PR_ERR_INVALID_PARAM`); at most 512 MiB.
+
+Collect Files copies the `FILE` param's own file. It does **not** carry the
+siblings a plugin read: a collected project stores its files content-addressed
+(`blobs/<hh>/<sha256>`), so there is no folder for a sibling to sit beside.
+Ship self-contained assets (`.glb`, embedded textures) where you can; a `.gltf`
+with external files needs its folder next to the collected project.
+
+## Presets (SDK 1.2)
+
+A bundle ships named starting points for its effects (AE's `.ffx`), in the manifest
+
+```json
+"presets": [
+  { "name": "Warm Fountain", "category": "Fountains", "effect": "com.example.particles",
+    "values": { "p2": 600, "p8": "#ffb347", "p5": 2, "p1": [0, -100] } }
+]
+```
+
+and / or as `presets/*.json` in the bundle (one such object, or
+`{ "presets": [ … ] }`). `effect` defaults to the plugin's first effect. Values
+are by param key: numbers, angles and sliders (clamped to the valid range),
+popups (a 1-based number or the choice's label), checkboxes, colours
+(`"#rrggbb[aa]"` or `[r, g, b(, a)]` in 0..1), points (`[x, y(, z)]` or `p<id>X` …,
+offsets from the layer centre as the document stores them), strings, curves and
+gradients. A key the effect lacks, a `LAYER` / `FILE` / `PATH` param, or a value
+of the wrong kind is dropped; a preset without a name, or naming an effect the
+bundle does not list, is skipped and logged — never a failed plugin.
+
+`listPlugins` returns them (`PluginInfo.presets`, values in the API's own
+encoding); the editor lists them under their effect in Effects & Presets, and
+applying one is **one** `addEffect` with the values as its `params` — one undo
+entry, no plugin code beyond what adding the effect runs.
 
 ## Viewer overlays (SDK 1.1)
 
