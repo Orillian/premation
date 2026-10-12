@@ -14,7 +14,10 @@ Work lands as local commits on `native-core` (no push until the owner says so).
 ## How a resumed session continues
 
 1. `git log --oneline -15`, read **Progress**; take the first task not `[x]`.
-2. Two native builds in one checkout collide: ONE engine worker at a time.
+2. Two native builds in one checkout collide: ONE engine worker at a time, and
+   other sessions build here too — take the shared lock first: `mkdir
+   native/build/.build-lock` (atomic; if it exists, wait and retry; never
+   remove another session's lock without messaging it), `rmdir` it when done.
    The dev app holds `native/build/windows-clang-cl-engine/engine/premation-engine.exe`
    — rename it `*.in-use-<ts>.exe` before linking.
 3. One task = one commit (`<area>: <what>`), tests green for what it touches:
