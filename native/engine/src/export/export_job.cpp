@@ -32,6 +32,7 @@
 #include "log.hpp"
 #include "png_write.hpp"
 #include "zip_write.hpp"
+#include "contrib.hpp"
 #include "model.hpp"
 #include "host.hpp"
 #include "native_scene.hpp"
@@ -718,7 +719,17 @@ bool parse_job(const Json& j, JobSpec& out, std::string& error) {
       return false;
     }
     const std::string& s = j.at("sequence").str();
-    if (s != "png" && s != "jpg" && s != "exr" && s != "png-zip" && s != "jpg-zip" && s != "exr-zip") {
+    // P7c: `plugin:<plugin>/<module>` — a plugin output module (pluginPath, pluginOptions).
+    const bool plugin = s.starts_with("plugin:") && s.find('/') != std::string::npos;
+    if (plugin) {
+      out.pluginPath = j.at("pluginPath").is_string() ? j.at("pluginPath").str() : std::string();
+      if (j.at("pluginOptions").is_string()) out.pluginOptions = j.at("pluginOptions").str();
+      if (out.pluginPath.empty()) {
+        error = "job: a plugin output module needs \"pluginPath\"";
+        return false;
+      }
+    }
+    if (!plugin && s != "png" && s != "jpg" && s != "exr" && s != "png-zip" && s != "jpg-zip" && s != "exr-zip") {
       error = "job: \"sequence\" must be png, jpg, exr, or their -zip forms";
       return false;
     }
@@ -921,6 +932,8 @@ int run_export(const std::string& jobPath) {
   std::vector<std::string> warnings;
   std::optional<std::string> audioPath;
   if (job.audio) {
+  std::vector<std::vector<float>> pluginAudio;  // P7c: the mix, for a plugin output module's WRITE_AUDIO
+  int pluginAudioRate = 0;
     const auto t0 = Clock::now();
     sc::CompAudioMix mix;
     DocCopy& dc = *docs.front();
@@ -939,6 +952,10 @@ int run_export(const std::string& jobPath) {
       return kExitFallback;
     }
     if (mix.audible) {
+    if (mix.audible && job.sequence.starts_with("plugin:")) {
+      pluginAudio = mix.channels;
+      pluginAudioRate = mix.sampleRate;
+    }
       const fs::path wav = u8path(job.workDir) / "audio.wav";
       if (!write_wav16(wav, mix.channels, mix.sampleRate)) {
         ctl.emit(error_line(false, "could not write the audio mix to " + wav.string()));
@@ -988,6 +1005,7 @@ int run_export(const std::string& jobPath) {
   const bool asExr = job.sequence == "exr" || job.sequence == "exr-zip";
   const bool asJpg = job.sequence == "jpg" || job.sequence == "jpg-zip";
   std::string bin = job.encodeBin.value_or("");
+  const bool viaPlugin = job.sequence.starts_with("plugin:");  // P7c
   std::vector<std::string> args = job.encodeArgs;
   if (!sequence && !job.encodeBin && !ctl.wait_encode(bin, args)) return kExitCancelled;
 
@@ -1028,7 +1046,30 @@ int run_export(const std::string& jobPath) {
   std::unique_ptr<ChildProcess> child;
   ZipWriter zip;
   bool zipOpen = false;
-  if (sequence) {
+  // P7c: a plugin output module (BEGIN here; END below, or cancelled when the job stops).
+  std::unique_ptr<plugins::OutputJob> pluginOut;
+  std::vector<float> pluginFrame;
+  if (viaPlugin) {
+    plugins::OutputParams op;
+    op.path = job.pluginPath;
+    op.width = static_cast<std::int32_t>(plan.width);
+    op.height = static_cast<std::int32_t>(plan.height);
+    op.fps = plan.fps;
+    op.frameCount = plan.frames();
+    op.audioRate = pluginAudio.empty() ? 0U : static_cast<std::uint32_t>(pluginAudioRate);
+    op.audioChannels = static_cast<std::uint32_t>(pluginAudio.size());
+    std::string perr;
+    if (plugins::PluginHost* ph = plugins::PluginHost::active(); ph != nullptr) {
+      op.optionsJson = ph->contrib().output_options(job.sequence, job.pluginOptions);
+      pluginOut = ph->contrib().output_job(job.sequence, perr);
+    } else {
+      perr = "no plugin host (the job lists no plugin folders)";
+    }
+    if (!pluginOut || !pluginOut->begin(op, perr)) {
+      ctl.emit(error_line(false, "output module: " + perr));
+      return kExitFailed;
+    }
+  } else if (sequence) {
     std::error_code ec;
     if (asZip) {
       const char* zipName = asExr ? "frames.exr.zip" : asJpg ? "frames.jpg.zip" : "frames.png.zip";
@@ -1058,7 +1099,16 @@ int run_export(const std::string& jobPath) {
   const auto hpx = static_cast<std::uint32_t>(plan.height);
   const auto sink = [&](const OutFrame& f) {
     if (ctl.cancelled()) return false;
-    if (sequence) {
+  std::string sinkFailure;  // P7c: why the output module refused a frame
+    if (pluginOut) {
+      plugins::export_frame_to_float(f.rgba, plan.depth, pluginFrame);
+      std::string perr;
+      const std::int64_t t = static_cast<std::int64_t>(std::llround(static_cast<double>(f.index) / plan.fps * 705600000.0));
+      if (!pluginOut->write_frame(f.index - plan.start, t, pluginFrame.data(), perr)) {
+        sinkFailure = "output module: " + perr;
+        return false;
+      }
+    } else if (sequence) {
       std::string name = std::to_string(f.index);
       if (name.size() < 5) name.insert(0, 5 - name.size(), '0');
       name = "frame_" + name + (asExr ? ".exr" : asJpg ? ".jpg" : ".png");
@@ -1101,6 +1151,7 @@ int run_export(const std::string& jobPath) {
   stats.renderMs = ms_since(tRender);
   if (code != kExitOk) {
     if (child) child->kill();
+  if (code != kExitOk && !sinkFailure.empty()) failure = sinkFailure;
     if (code == kExitCancelled || ctl.cancelled()) return kExitCancelled;
     if (code == kExitFailed) {
       const std::string tail = tail_of(ffLog, 600);
@@ -1109,7 +1160,16 @@ int run_export(const std::string& jobPath) {
     ctl.emit(error_line(code == kExitFallback, failure));
     return code;
   }
-  if (sequence) {
+  if (pluginOut) {
+    std::string perr;
+    std::vector<float> interleaved;
+    plugins::interleave_audio(pluginAudio, interleaved);
+    const auto frames = pluginAudio.empty() ? 0U : static_cast<std::uint32_t>(pluginAudio.front().size());
+    if ((frames > 0 && !pluginOut->write_audio(interleaved.data(), frames, perr)) || !pluginOut->finish(false, perr)) {
+      ctl.emit(error_line(false, "output module: " + perr));
+      return kExitFailed;
+    }
+  } else if (sequence) {
     if (asZip && !zip.finish()) {
       ctl.emit(error_line(false, "the sequence archive could not be finished"));
       return kExitFailed;

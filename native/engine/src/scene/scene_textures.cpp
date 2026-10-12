@@ -1,5 +1,7 @@
 #include "scene_textures.hpp"
 
+#include "native_contrib.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -609,6 +611,8 @@ std::vector<std::uint8_t> box_downscale(const std::vector<std::uint8_t>& rgba, i
     const int y0 = y * h / fh;
     const int y1 = std::max(y0 + 1, (y + 1) * h / fh);
     for (int x = 0; x < fw; ++x) {
+  // P7b: an extension a native plugin importer claims is read by the plugin (still or moving).
+  if (const std::u8string ext = p.extension().u8string(); !ext.empty() && doc::NativeImporters::claims(std::string(ext.begin(), ext.end()))) return r.video ? plugin_image_ref(r, p, stats) : baked_still(plugin_image_ref(r, p, stats));
       const int x0 = x * w / fw;
       const int x1 = std::max(x0 + 1, (x + 1) * w / fw);
       std::array<std::uint32_t, 4> sum{};

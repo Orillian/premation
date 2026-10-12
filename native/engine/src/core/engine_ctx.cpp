@@ -1,5 +1,7 @@
 #include "engine_ctx.hpp"
 
+#include "native_contrib.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -242,7 +244,31 @@ double fake_duration(const std::string& name) {
 }
 }  // namespace
 
+namespace {
+/// P7b: a file a native plugin importer reads (native_contrib.hpp) — its record from the
+/// plugin's PROBE, the file staying where it is (`src` its local-file URL). Throws
+/// EngineFail(io) with the plugin's message when it cannot read it.
+Json plugin_import_record(const std::string& path, const std::string& name, const std::string& id) {
+  Json facts = Json::object();
+  std::string error;
+  if (!NativeImporters::probe(path, facts, error)) fail(api::ErrorCode::io, error.empty() ? "the plugin could not read the file" : error);
+  std::error_code ec;
+  const auto size = std::filesystem::file_size(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
+  Json a = Json::object();
+  a.set("id", Json::string(id));
+  a.set("name", Json::string(name));
+  a.set("type", facts.at("type").is_string() ? facts.at("type") : Json::string("image"));
+  a.set("src", Json::string(local_file_url(path)));
+  a.set("size", Json::number(ec ? 0.0 : static_cast<double>(size)));
+  if (facts.at("metadata").is_object()) a.set("metadata", facts.at("metadata"));
+  a.set("path", Json::string(path));
+  return a;
+}
+}  // namespace
+
 Json FakePorts::import_file(const api::ImportFile& file, const std::string& id) {
+  // P7b: a plugin importer's format is read for real, even by the test ports.
+  if (!file.as_data.value_or(false) && NativeImporters::claims(file.path)) return plugin_import_record(file.path, base_name(file.path), id);
   const std::string name = base_name(file.path);
   // A file named `undecodable…`: the decode failure the import tests need.
   if (name.find("undecodable") != std::string::npos) fail(api::ErrorCode::io, "cannot decode '" + name + "'");
@@ -518,6 +544,8 @@ Json FilePorts::record_for(const std::string& path, const std::string& name, con
     m.set("path", Json::string(path));
     return m;
   }
+  // P7b: an extension a native plugin importer claims goes to the plugin, not the decoders.
+  if (NativeImporters::claims(path)) return plugin_import_record(path, name, id);
   Json facts = Json::object();
   std::string error;
   if (!probe_ || !probe_(path, facts, error)) fail(api::ErrorCode::io, error.empty() ? "the file could not be read" : error);
@@ -572,6 +600,9 @@ Json FilePorts::import_bytes(const api::ImportBytesFile& file, const std::string
   return a;
 }
 
+bool FilePorts::has_import() const { return static_cast<bool>(probe_) || NativeImporters::any(); }
+bool FilePorts::has_probe() const { return static_cast<bool>(probe_) || NativeImporters::any(); }
+
 Json FilePorts::probe_file(const std::string& path) {
   Json out = Json::object();
   out.set("name", Json::string(base_name(path)));
@@ -581,7 +612,8 @@ Json FilePorts::probe_file(const std::string& path) {
   Json facts = Json::object();
   std::string error;
   // Relinking to an unreadable file keeps the old facts (the TS port's probe tier `none`).
-  if (probe_ && probe_(path, facts, error)) {
+  const bool read = NativeImporters::claims(path) ? NativeImporters::probe(path, facts, error) : probe_ && probe_(path, facts, error);
+  if (read) {
     if (facts.at("type").is_string()) out.set("type", facts.at("type"));
     if (facts.at("metadata").is_object()) out.set("metadata", facts.at("metadata"));
   }

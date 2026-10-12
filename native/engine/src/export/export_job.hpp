@@ -100,7 +100,11 @@ struct JobSpec {
   std::optional<std::string> encodeBin;
   std::vector<std::string> encodeArgs;
   /// Image sequence instead of an encoder: "png", "exr", "png-zip", or "exr-zip".
+  /// P7c: `plugin:<plugin id>/<module id>` — a native plugin's output module writes the frames.
   std::string sequence;
+  /// P7c: where the output module writes (the user's output path) and its option values (JSON).
+  std::string pluginPath;
+  std::string pluginOptions = "{}";
   /// Resolved chapters written to workDir/chapters.ffmeta before the encoder starts.
   std::vector<std::pair<std::pair<double, double>, std::string>> chapters;
   /// Tools: stop after the preflight report.

@@ -23,6 +23,7 @@
 #include "item_facts.hpp"
 #include "handlers_native.hpp"
 #include "layer_geometry.hpp"
+#include "native_contrib.hpp"
 #include "native_effects.hpp"
 #include "presets_capture.hpp"
 #include "readmodel.hpp"
@@ -802,6 +803,12 @@ struct Q {
     api::PluginList out;
     out.plugins = NativeEffects::plugins();
     return query_result_for<api::ListPlugins>(std::move(out));
+  }
+  api::QueryResult operator()(const api::ListPluginCommands&) const {
+    // P7a: native plugin commands (none without a host).
+    api::PluginCommandList out;
+    out.commands = NativeCommands::list();
+    return query_result_for<api::ListPluginCommands>(std::move(out));
   }
   api::QueryResult operator()(const api::GetEffectUi& q) const {
     return query_result_for<api::GetEffectUi>(native_effect_ui(d, q.layer, q.effect, q.time.value_or(0)));

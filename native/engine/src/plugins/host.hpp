@@ -48,6 +48,7 @@ namespace premation::plugins {
 class CrashJournal;
 class DynamicLibrary;
 class WorkerPool;
+class Contrib;  // P7: commands, importers, output modules, panels (contrib.hpp)
 
 /// One declared parameter (the host's copy of a PrParamDef from PARAMS_SETUP).
 struct ParamSpec {
@@ -381,6 +382,16 @@ class PluginHost {
   /// hook reach it through here). nullptr when none is attached.
   static PluginHost* active() noexcept;
 
+  // ── P7 (contrib.hpp): plugins that are not effects ──
+  /// What the plugins contribute besides effects: commands, importers, output modules, panels.
+  [[nodiscard]] Contrib& contrib() noexcept { return *contrib_; }
+  /// fn(ctx, host, suite) for `pluginId` under the crash guard, the crash journal and the watchdog
+  /// (`journalCmd` names it there), serialised with the plugin's other non-render selectors. The
+  /// PrHost answers the memory and log callbacks (the render-only ones refuse it). `skipped` when
+  /// the plugin is not loaded; a fault pins the module (and a hang quarantines the plugin).
+  using GuardedFn = void (*)(void* ctx, PrHost* host, const PrHostSuite* suite);
+  CallResult call_guarded(std::string_view pluginId, std::int32_t journalCmd, GuardedFn fn, void* ctx);
+
   /// PrHostSuite callbacks reach the host through these (host.cpp internals).
   struct Impl;
   [[nodiscard]] Impl& impl() noexcept { return *impl_; }
@@ -392,6 +403,7 @@ class PluginHost {
                                                                   std::uint32_t paramIndex, void* extra,
                                                                   std::vector<doc::NativeOverlayItem>* draw);
   std::unique_ptr<Impl> impl_;
+  std::unique_ptr<Contrib> contrib_;
   std::atomic<std::uint64_t> frame_{0};
 };
 

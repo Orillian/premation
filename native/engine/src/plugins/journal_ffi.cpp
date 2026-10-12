@@ -224,6 +224,20 @@ void CrashJournal::release(std::string_view pluginId) noexcept {
 }
 
 std::string_view command_name(std::int32_t cmd) noexcept {
+  // P7 (contrib.hpp kJournal*): selectors of commands, importers and output modules.
+  switch (cmd) {
+    case 1000: return "COMMAND_RUN";
+    case 1010: return "IMPORT_PROBE";
+    case 1011: return "IMPORT_OPEN";
+    case 1012: return "IMPORT_READ_FRAME";
+    case 1013: return "IMPORT_READ_AUDIO";
+    case 1014: return "IMPORT_CLOSE";
+    case 1020: return "OUTPUT_BEGIN";
+    case 1021: return "OUTPUT_WRITE_FRAME";
+    case 1022: return "OUTPUT_WRITE_AUDIO";
+    case 1023: return "OUTPUT_END";
+    default: break;
+  }
   static constexpr std::array<std::string_view, 20> kNames = {
       "ABOUT",           "GLOBAL_SETUP",       "GLOBAL_SETDOWN",   "PARAMS_SETUP",      "SEQUENCE_SETUP",
       "SEQUENCE_RESETUP", "SEQUENCE_FLATTEN",  "SEQUENCE_SETDOWN", "FRAME_SETUP",       "FRAME_SETDOWN",

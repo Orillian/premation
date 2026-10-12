@@ -430,6 +430,9 @@ class Session {
   api::CommandResult auto_trace_in_journal(const api::AutoTrace& c, api::Origin origin, std::string& label);
 };
 
+  /// P7a runPluginCommand: the plugin's command run inside the request's journal (one entry), its edits
+  /// kept in jobLog_ for the log (session_plugins.cpp).
+  api::CommandResult run_plugin_command_in_journal(const api::RunPluginCommand& c, api::Origin origin, std::string& label);
 /// The seq of a Request inside an EngineMessage that failed to decode (so
 /// the client's pending request can still be answered). nullopt when the
 /// bytes are not a request or the seq itself is unreadable.

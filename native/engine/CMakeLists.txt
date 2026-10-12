@@ -37,6 +37,7 @@ set(ENGINE_CORE_SOURCES
   src/core/history.cpp
   src/core/session.cpp
   src/core/session_jobs.cpp
+  src/core/session_plugins.cpp  # P7a: runPluginCommand inside the request's journal
   src/jobs/job_runner.cpp
   src/jobs/job_inputs.cpp
 )  # the D1b document model adds its sources in its own block at the end
@@ -437,6 +438,7 @@ set(ENGINE_DOC_SOURCES
   src/core/meta.cpp
   src/core/model.cpp
   src/core/native_effects.cpp
+  src/core/native_contrib.cpp  # P7: plugin commands and importers, seen from the core
   src/core/overlay_geometry.cpp
   src/core/overlay_rig_pack.cpp
   src/core/parenting.cpp
@@ -491,6 +493,8 @@ add_library(engine_plugins STATIC
   src/plugins/journal_ffi.cpp
   src/plugins/cpu_render.cpp
   src/plugins/entitlement.cpp  # Premation Cloud: the operator-signed token checked before a bundle loads
+  src/plugins/contrib.cpp  # P7: commands, importers, output modules, panels
+  src/plugins/api_json.cpp  # P7a: the engine API as JSON (reflective, api_schema.inc)
   src/plugins/asset_image.cpp  # SDK 1.2: FILE params' images (linear premultiplied float) and sibling files
   src/plugins/presets.cpp  # SDK 1.2: presets a bundle ships (manifest `presets`, presets/*.json)
 )
@@ -617,13 +621,13 @@ if(MOTION_BUILD_TESTS)
   # The host against the SDK's sample bundles (native/sdk): load, render at
   # 8/16/32 bpc, sequence data, checkouts, the journal, crash isolation.
   add_executable(engine_plugins_tests tests/test_plugin_host.cpp tests/test_plugin_session.cpp tests/test_plugin_entitlement.cpp tests/test_plugin_scene.cpp
-                                      tests/test_plugin_params.cpp)
+                                      tests/test_plugin_params.cpp tests/test_plugin_contrib.cpp)
   target_link_libraries(engine_plugins_tests PRIVATE engine_plugins motion::options Catch2::Catch2WithMain)
   target_include_directories(engine_plugins_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_compile_definitions(engine_plugins_tests PRIVATE
     PREMATION_PLUGIN_BUNDLES="${PREMATION_PLUGIN_BUNDLES}"
     PREMATION_PLUGINS_TOOL="$<TARGET_FILE:premation-plugins>")
-  add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap)
+  add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap distribute ppmio ppmseq statspanel)
   add_test(NAME engine_plugins_tests COMMAND engine_plugins_tests --reporter compact)
   target_sources(engine_plugins_tests PRIVATE tests/test_plugin_sdk12.cpp)  # SDK 1.2: times, shutter, assets, presets
 endif()
@@ -1068,6 +1072,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
     src/scene/model_carrier.cpp
     src/scene/env_asset.cpp
     src/scene/scene_textures_model.cpp
+    src/scene/scene_textures_plugin.cpp  # P7b: footage a plugin importer reads
     src/scene/light_wash.cpp
     src/scene/frame_build.cpp
     src/scene/text_measure.cpp

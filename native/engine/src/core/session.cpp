@@ -350,7 +350,7 @@ api::Outcome Session::handle_request_body(const api::Request& request, Clock::ti
         } else {
           r = run_control(cmd, request.origin, now);
         }
-        if (cmd.kind() == api::Command::Kind::apply_job_result && jobLog_) {
+        if ((cmd.kind() == api::Command::Kind::apply_job_result || cmd.kind() == api::Command::Kind::run_plugin_command) && jobLog_) {
           // The job's commands are the record (a replay has no held result);
           // an empty apply wrote nothing and is not logged.
           JobLog applied = std::move(*jobLog_);
@@ -566,8 +566,11 @@ std::vector<api::CommandResult> Session::run_edits(const std::vector<const api::
       const auto* applyJob = std::get_if<api::ApplyJobResult>(&cmd.v);
       // autoTrace reads decoded frames: the autoTrace job run inline (session_jobs.cpp).
       const auto* autoTrace = std::get_if<api::AutoTrace>(&cmd.v);
+      // P7a: a native plugin's command, its edits in this journal (session_plugins.cpp).
+      const auto* pluginCmd = std::get_if<api::RunPluginCommand>(&cmd.v);
       api::CommandResult r = applyJob != nullptr    ? apply_job_in_journal(*applyJob, origin, own)
                              : autoTrace != nullptr ? auto_trace_in_journal(*autoTrace, origin, own)
+                             : pluginCmd != nullptr ? run_plugin_command_in_journal(*pluginCmd, origin, own)
                                                     : run_in_journal(cmd, origin, &own);
       results.push_back(std::move(r));
       if (!batchLabel) label = std::move(own);

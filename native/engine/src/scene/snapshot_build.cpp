@@ -1,5 +1,7 @@
 #include "snapshot_build.hpp"
 
+#include "native_contrib.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -1686,6 +1688,15 @@ void Walk::build_node(const doc::Node& n) {
       }
     }
     l.src = src;
+    // P7b: footage a native plugin importer failed to read (scene_textures_plugin.cpp) — named on
+    // layerErrors; the layer draws nothing and the frame renders.
+    if (asset != nullptr && asset->at("path").is_string()) {
+      const std::string& path = asset->at("path").str();
+      const std::size_t slash = path.find_last_of("/\\");
+      if (auto why = doc::NativeImporters::failure(slash == std::string::npos ? path : path.substr(slash + 1))) {
+        errors_.push_back({n.id, n.name, "footage", std::move(*why)});
+      }
+    }
     if (kind == "svg") {  // svgLayerSrc: the stored document (svg_layer.cpp)
       SvgLayerSource svg = svg_layer_source(n);
       if (svg.src) l.src = std::move(svg.src);

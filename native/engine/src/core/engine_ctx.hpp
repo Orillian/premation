@@ -204,10 +204,12 @@ class FilePorts final : public Ports {
   /// it knew one, else the cache file. The footage dir is
   /// `<temp>/premation-session-footage` unless set (the engine process sets
   /// PREMATION_SESSION_FOOTAGE = <userData>/session-footage).
-  [[nodiscard]] bool has_import() const override { return static_cast<bool>(probe_); }
+  /// P7b: a native plugin importer (native_contrib.hpp) also imports without a probe.
+  [[nodiscard]] bool has_import() const override;
   [[nodiscard]] Json import_file(const api::ImportFile& file, const std::string& id) override;
   [[nodiscard]] Json import_bytes(const api::ImportBytesFile& file, const std::string& id) override;
-  [[nodiscard]] bool has_probe() const override { return static_cast<bool>(probe_); }
+  /// P7b: a native plugin importer (native_contrib.hpp) also imports without a probe.
+  [[nodiscard]] bool has_probe() const override;
   [[nodiscard]] Json probe_file(const std::string& path) override;
   void set_footage_dir(std::string dir) { footageDir_ = std::move(dir); }
   [[nodiscard]] bool has_projects() const override { return true; }

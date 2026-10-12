@@ -23,6 +23,7 @@
 #include "presets.hpp"
 #include "values.hpp"
 #include "workers.hpp"
+#include "contrib.hpp"
 
 namespace fs = std::filesystem;
 using premation::plugins::CheckoutRequest;
@@ -1026,6 +1027,7 @@ std::int32_t PR_CALL cb_iterate_threads(PrHost* h) { return h == nullptr ? 1 : i
 
 PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this, std::move(options))) {
   Impl& m = *impl_;
+  contrib_ = std::make_unique<Contrib>(*this);  // P7
   PrHostSuite& s = m.suite;
   s.struct_size = sizeof(PrHostSuite);
   s.handle_new = &cb_handle_new;
@@ -1099,6 +1101,7 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
       (void)scan();
       return plugin_infos();
     });
+    contrib_->attach();  // P7: runPluginCommand, listPluginCommands, plugin importers
     doc::NativeEffects::set_overlay_handlers([this](const doc::NativeActionRequest& r) { return draw_overlay(r); },
                                              [this](const doc::NativeActionRequest& r, const doc::NativeOverlayDrag& d) {
                                                return overlay_drag(r, d);
@@ -1108,6 +1111,7 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
 
 PluginHost::~PluginHost() {
   Impl& m = *impl_;
+  contrib_->shutdown();  // P7: CLOSE open importer files while the modules are set up
   if (m.options.attachToDocument) {
     PluginHost* self = this;
     if (g_active.compare_exchange_strong(self, nullptr)) doc::NativeEffects::clear_handlers();
@@ -1244,6 +1248,8 @@ void PluginHost::Impl::load_bundle(const fs::path& dir) {
       if (q->manifest.id == p->manifest.id) return;  // already known (rescans keep what is loaded)
     }
   }
+  // P7: commands, importers, output modules and panels are listed from the manifest, loaded or not.
+  if (p->status != PluginStatus::failed || p->error.empty()) self.contrib().note_manifest(p->manifest.id, dir, p->manifest);
   const std::string id = p->manifest.id;
   if (p->status == PluginStatus::failed && !p->error.empty()) {
     // stays failed (manifest)
@@ -1294,7 +1300,7 @@ void PluginHost::Impl::load_bundle(const fs::path& dir) {
           p->status = PluginStatus::failed;
           p->error = std::string(to_string(f.kind)) + " in " + PR_PLUGIN_INFO_SYMBOL;
           p->lib->pin();
-        } else if (info == nullptr || info->struct_size < sizeof(PrPluginInfo) || info->plugin_id == nullptr) {
+        } else if (info == nullptr || info->struct_size < offsetof(PrPluginInfo, command_count) || info->plugin_id == nullptr) {
           p->status = PluginStatus::failed;
           p->error = "PremationPluginInfo returned no valid info";
         } else if (std::string(info->plugin_id) != id) {
@@ -1303,6 +1309,9 @@ void PluginHost::Impl::load_bundle(const fs::path& dir) {
         } else if (!sdk_compatible(PR_SDK_VERSION_MAJOR_OF(info->sdk_version), PR_SDK_VERSION_MINOR_OF(info->sdk_version), binaryWhy)) {
           p->status = PluginStatus::failed;
           p->error = "binary " + binaryWhy;
+        } else if (std::string contribWhy = self.contrib().bind(id, *info); !contribWhy.empty()) {
+          p->status = PluginStatus::failed;  // P7: a manifest command / importer / output module without its entry point
+          p->error = std::move(contribWhy);
         } else {
           p->status = PluginStatus::loaded;
           for (const ManifestEffect& me : p->manifest.effects) {
@@ -1593,6 +1602,7 @@ bool PluginHost::set_enabled(std::string_view pluginId, bool enabled) {
     return true;
   }
   p->userDisabled = false;
+  contrib_->reset(p->manifest.id);  // P7: re-arm crashed commands / importers
   {
     const std::scoped_lock lock(m.failuresMutex);
     std::erase_if(m.failures, [&](const auto& kv) { return kv.second.pluginId == pluginId; });
@@ -2513,6 +2523,7 @@ std::vector<api::PluginInfo> PluginHost::plugin_infos() const {
     i.effects = std::move(r.effects);
     i.gpu = r.gpu;
     i.panel = r.panel;
+    contrib_->fill(i);  // P7: commands, importers, output modules, panels
     out.push_back(std::move(i));
   }
   return out;
@@ -2586,6 +2597,61 @@ std::variant<std::vector<ParamUi>, std::string> PluginHost::params_ui(const Rend
   if (r.fault) m.on_fault(*p, e, nullptr, r);
   if (!r.ok) return r.message;
   return ui;
+}
+
+// ── P7: guarded calls for commands, importers and output modules (contrib.cpp) ──
+
+CallResult PluginHost::call_guarded(std::string_view pluginId, std::int32_t journalCmd, GuardedFn fn, void* ctx) {
+  Impl& m = *impl_;
+  CallResult r;
+  Plugin* p = nullptr;
+  {
+    const std::shared_lock lock(m.pluginsMutex);
+    for (const auto& q : m.plugins) {
+      if (q->manifest.id == pluginId) p = q.get();
+    }
+  }
+  if (p == nullptr || p->status != PluginStatus::loaded) {
+    r.skipped = true;
+    r.message = "plugin '" + std::string(pluginId) + "' is " + (p == nullptr ? std::string("not installed") : std::string(to_string(p->status)));
+    return r;
+  }
+  const std::scoped_lock serial(p->serial);
+  PrHost host;
+  host.host = this;
+  host.cmd = journalCmd;
+  struct Call {
+    GuardedFn fn;
+    void* ctx;
+    PrHost* host;
+    const PrHostSuite* suite;
+    bool threw;
+  } call{fn, ctx, &host, &m.suite, false};
+  const int js = m.journal ? m.journal->enter(p->manifest.id, journalCmd) : -1;
+  const int ws = m.watchdog ? m.watchdog->enter(p->manifest.id, journalCmd) : -1;
+  Fault fault = guarded_call(
+      [](void* x) {
+        auto* c = static_cast<Call*>(x);
+        try {
+          c->fn(c->ctx, c->host, c->suite);
+        } catch (...) {  // a C++ exception must not cross the C ABI; it counts as a crash
+          c->threw = true;
+        }
+      },
+      &call);
+  const bool hung = m.watchdog ? m.watchdog->leave(ws) : false;
+  if (m.journal) m.journal->leave(js);
+  if (!fault && call.threw) fault = {FaultKind::cpp_exception, 0};
+  if (!fault && host.iterateFault) fault = host.iterateFault;
+  if (!fault && hung) fault = {FaultKind::hang, 0};
+  if (fault) {
+    r.fault = fault;
+    r.message = std::string(to_string(fault.kind)) + " in " + std::string(command_name(journalCmd));
+    m.on_fault(*p, nullptr, nullptr, r);
+    return r;
+  }
+  r.ok = true;
+  return r;
 }
 
 }  // namespace premation::plugins

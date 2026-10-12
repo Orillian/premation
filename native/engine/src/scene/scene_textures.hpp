@@ -146,6 +146,8 @@ class SceneTextures final : public rg::ExternalTextureSource {
   /// Pixel Motion (`vfm:`): the flow-warped in-between of frames a and b of
   /// source `id` at the request's weight, as an `img:pm:` raster — or the
   /// nearer frame's media hash while either is still decoding.
+  /// P7b: footage a native plugin importer reads (scene_textures_plugin.cpp).
+  std::string plugin_image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats);
   std::string pixel_motion_ref(const TextureRequest& r, std::uint32_t id, const media::FramePick& a,
                                const media::FramePick& b, PrepareStats& stats);
   /// A converted frame's pixels as RGBA8 (premultiplied, as converted), top-down.
