@@ -328,7 +328,9 @@ std::unique_ptr<Built> build_frame(DocCopy& dc, const Plan& p, std::int64_t fram
   try {
     sc::BuildContext ctx = dc.ctx();
     b->nf = sc::build_native_frame(ctx, p.compId, t, p.view, true, {}, frame, p.overrides);
-    plugins::finish_native_frame(ctx, p.compId, t, p.view, true, b->nf, nullptr);
+    // The export's own host (run_export): the camera / lights / transforms an
+    // effect reads and its checkouts at other times, as the viewport finishes them.
+    plugins::finish_native_frame(ctx, p.compId, t, p.view, true, b->nf, plugins::PluginHost::active());
   } catch (const std::exception& e) {
     b->reasons.push_back(std::string("frame build failed: ") + e.what());
     return b;
