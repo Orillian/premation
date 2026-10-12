@@ -14,6 +14,7 @@
  */
 
 import type { EffectInfo, EngineClient } from '@motion/engine-api';
+import { refreshPluginPresets } from '@core/nativePlugins/pluginPresets';
 import type { EffectDef, EffectParamDef } from './effectCatalog';
 
 /** A plugin effect's definition, with what only plugins have. */
@@ -110,6 +111,7 @@ export async function refreshPluginEffectDefs(client: Pick<EngineClient, 'query'
   try {
     const res = await client.query({ type: 'listEffects', category: '' });
     if (res.ok) setPluginEffectDefs(res.value.effects);
+    await refreshPluginPresets(client);  // SDK 1.2: what the plugins ship with their effects
   } catch {
     // The engine is restarting: the next refresh fills it in.
   }

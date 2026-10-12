@@ -20,6 +20,7 @@
 #include "manifest.hpp"
 #include "transform.hpp"
 #include "module.hpp"
+#include "presets.hpp"
 #include "values.hpp"
 #include "workers.hpp"
 
@@ -149,6 +150,8 @@ struct Plugin {
   std::unique_ptr<DynamicLibrary> lib;
   PluginStatus status = PluginStatus::failed;
   std::string error;
+  /// SDK 1.2: the presets the bundle ships (manifest `presets`, presets/*.json).
+  std::vector<PresetSpec> presets;
   std::vector<std::unique_ptr<EffectSpec>> effects;
   /// Serialises every selector except the render ones of THREADED_RENDER effects.
   std::recursive_mutex serial;
@@ -1228,6 +1231,12 @@ void PluginHost::Impl::load_bundle(const fs::path& dir) {
     p->error = "manifest: " + err;
   } else {
     p->manifest = std::move(*man);
+    // SDK 1.2 presets: read with the manifest; a bad one is skipped and logged, never fatal.
+    std::vector<std::string> effectNames;
+    for (const ManifestEffect& me : p->manifest.effects) effectNames.push_back(me.matchName);
+    std::vector<std::string> problems;
+    p->presets = read_presets(dir, text, effectNames, problems);
+    for (const std::string& why : problems) PREMATION_LOG(warn, "plugin_preset").kv("plugin", p->manifest.id).kv("why", why);
   }
   {
     const std::shared_lock lock(pluginsMutex);
@@ -2459,6 +2468,29 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
   return edit;
 }
 
+namespace {
+/// SDK 1.2: a loaded plugin's presets, their values checked against its effects' params.
+std::vector<api::PluginPresetInfo> presets_of(const PluginHost::Impl& m, std::string_view pluginId) {
+  std::vector<api::PluginPresetInfo> out;
+  const std::shared_lock lock(m.pluginsMutex);
+  for (const auto& p : m.plugins) {
+    if (p->manifest.id != pluginId || p->status != PluginStatus::loaded) continue;
+    for (const PresetSpec& ps : p->presets) {
+      for (const auto& e : p->effects) {
+        if (e->matchName != ps.effect) continue;
+        api::PluginPresetInfo info;
+        info.name = ps.name;
+        info.effect = ps.effect;
+        info.values = preset_values(ps, *e);
+        info.category = ps.category;
+        out.push_back(std::move(info));
+      }
+    }
+  }
+  return out;
+}
+}  // namespace
+
 std::vector<api::PluginInfo> PluginHost::plugin_infos() const {
   std::vector<api::PluginInfo> out;
   for (PluginRecord& r : plugins()) {
@@ -2468,6 +2500,7 @@ std::vector<api::PluginInfo> PluginHost::plugin_infos() const {
     i.version = std::move(r.version);
     i.vendor = std::move(r.vendor);
     i.sdk = std::move(r.sdk);
+    i.presets = presets_of(*impl_, i.id);  // SDK 1.2
     switch (r.status) {
       case PluginStatus::loaded: i.status = api::PluginStatus::loaded; break;
       case PluginStatus::disabled: i.status = api::PluginStatus::disabled; break;

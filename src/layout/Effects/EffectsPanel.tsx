@@ -35,6 +35,7 @@ import { jsonField } from '@core/mirror/layerFields';
 import { edit } from '@core/engine/uiEdits';
 import { setCanvasDrag } from '@core/dnd/canvasDrag';
 import { applyEffectPresetEdit, enableSimulationEdit } from './effectEdits';
+import { applyPluginPresetCommand, pluginPresets, subscribePluginPresets } from '@core/nativePlugins/pluginPresets';
 import { EFFECT_CATEGORY, PLUGIN_EFFECTS_CATEGORY, effectCategoryOf } from './effectCategory';
 import { effectPreviewFor, EFFECT_PREVIEW_H, EFFECT_PREVIEW_W } from './effectPreviewThumbs';
 import {
@@ -205,6 +206,8 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
   // Built-ins then plugin effects, re-read when the plugin set changes — see
   // `useAllEffectDefs`.
   const allDefs = useAllEffectDefs();
+  // Plugin SDK 1.2: the presets plugins ship, refreshed with their effects.
+  const shippedPresets = useSyncExternalStore(subscribePluginPresets, pluginPresets, pluginPresets);
 
   const q = effectQuery.trim().toLowerCase();
   const browserDefs = allDefs.filter((d) => {
@@ -270,13 +273,33 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
       label: cat,
       icon: cat === PLUGIN_EFFECTS_CATEGORY ? 'plugin' : EFFECT_CATEGORY_ICON[cat],
       defaultOpen: false,
-      items: items.map((d) => ({
-        kind: 'effect' as const,
-        id: d.type,
-        def: d,
-        gpuTag: d.gpuOnly ? ('gpu' as const) : null,
-      })),
+      items: items.flatMap((d) => [
+        {
+          kind: 'effect' as const,
+          id: d.type,
+          def: d,
+          gpuTag: d.gpuOnly ? ('gpu' as const) : null,
+        },
+        // A plugin's presets right under its effect (AE lists a plugin's .ffx beside it).
+        ...shippedPresets
+          .filter((p) => p.effect === d.type)
+          .map((p) => ({ kind: 'pluginPreset' as const, id: `${d.type}#${p.name}`, preset: p, effectLabel: d.label })),
+      ]),
     });
+  }
+  // A search for a shipped preset's name finds it even when its effect's name does not match.
+  if (q && !starredOnly) {
+    const listed = new Set(browserDefs.map((d) => d.type));
+    for (const p of shippedPresets) {
+      if (listed.has(p.effect) || !p.name.toLowerCase().includes(q)) continue;
+      const d = allDefs.find((x) => x.type === p.effect);
+      const cat = d ? effectCategoryOf(d) : undefined;
+      if (!d || !cat) continue;
+      const row = { kind: 'pluginPreset' as const, id: `${d.type}#${p.name}`, preset: p, effectLabel: d.label };
+      const at = folders.findIndex((f) => f.id === cat);
+      if (at >= 0) folders[at] = { ...folders[at]!, items: [...folders[at]!.items, row] };
+      else folders.push({ id: cat, label: cat, icon: cat === PLUGIN_EFFECTS_CATEGORY ? 'plugin' : EFFECT_CATEGORY_ICON[cat], defaultOpen: false, items: [row] });
+    }
   }
   if (!starredOnly && shapeOps.length > 0 && node) {
     folders.push({
@@ -363,6 +386,11 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
         break;
       case 'preset':
         void applyEffectPresetEdit(row.name, [primary]);
+        revealEffectsInProperties();
+        break;
+      case 'pluginPreset':
+        // One addEffect with the preset's values: one undo entry.
+        void edit(`Apply ${row.preset.name}`, applyPluginPresetCommand(row.preset, [primary]));
         revealEffectsInProperties();
         break;
       case 'shapeOp':
@@ -523,6 +551,19 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                       }
                       activateRow(row);
                     }}
+                  />
+                );
+              }
+              if (row.kind === 'pluginPreset') {
+                return (
+                  <BrowserRow
+                    className={styles.fxLeafRow}
+                    label={row.preset.name}
+                    icon="sparkles"
+                    selected={active}
+                    right={row.preset.category ? <BrowserTag>{row.preset.category}</BrowserTag> : undefined}
+                    title={`Apply the ${row.effectLabel} preset "${row.preset.name}"`}
+                    onClick={(e) => { if (e.detail > 1) return; setFocusIndex(i); activateRow(row); }}
                   />
                 );
               }

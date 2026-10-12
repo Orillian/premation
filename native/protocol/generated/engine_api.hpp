@@ -1280,6 +1280,7 @@ struct PropertyPaths;
 struct PaintStrokeId;
 struct MarkerIds;
 struct JobRef;
+struct PluginPresetInfo;
 struct PluginInfo;
 struct PluginList;
 struct CommandResult;
@@ -4223,6 +4224,14 @@ struct JobRef {
   bool operator==(const JobRef&) const = default;
 };
 
+struct PluginPresetInfo {
+  std::string name;
+  std::string effect;
+  std::vector<PropertyInit> values;
+  std::string category;
+  bool operator==(const PluginPresetInfo&) const = default;
+};
+
 struct PluginInfo {
   std::string id;
   std::string name;
@@ -4234,6 +4243,7 @@ struct PluginInfo {
   std::vector<std::string> effects;
   bool gpu = false;
   bool panel = false;
+  std::vector<PluginPresetInfo> presets;
   bool operator==(const PluginInfo&) const = default;
 };
 
@@ -6934,6 +6944,8 @@ void encode(wire::Writer& w, const MarkerIds& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, MarkerIds& out);
 void encode(wire::Writer& w, const JobRef& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, JobRef& out);
+void encode(wire::Writer& w, const PluginPresetInfo& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, PluginPresetInfo& out);
 void encode(wire::Writer& w, const PluginInfo& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, PluginInfo& out);
 void encode(wire::Writer& w, const PluginList& v);

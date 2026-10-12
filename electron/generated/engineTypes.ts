@@ -4081,10 +4081,20 @@ export interface PluginInfo {
   gpu: boolean;
   /** Plugin SDK 1.1 — the bundle ships a panel (`ui/index.html`), shown in a sandboxed frame (`plugin-ui://<id>/index.html`). */
   panel: boolean;
+  /** Plugin SDK 1.2 — the presets the bundle ships (manifest `presets`, `presets/*.json`), listed under the plugin in Effects & Presets. Empty until the plugin is loaded (the values are checked against its params). */
+  presets: PluginPresetInfo[];
 }
 
 export interface PluginList {
   plugins: PluginInfo[];
+}
+
+/** Plugin SDK 1.2 — one preset a plugin ships (AE's .ffx): applying it is `addEffect` of `effect` with `values` as its `params`, ONE undo entry. `values` are the effect's own property paths (`p2`, `p1X`, `p4`) with values in the API's encoding. */
+export interface PluginPresetInfo {
+  name: string;
+  effect: string;
+  values: PropertyInit[];
+  category: string;
 }
 
 export interface EffectParamUi {

@@ -17885,6 +17885,52 @@ Status decode(wire::Reader& r, JobRef& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const PluginPresetInfo& v) {
+  w.varint(10U); w.str(v.name);
+  w.varint(18U); w.str(v.effect);
+  for (const auto& e : v.values) { w.varint(26U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  w.varint(34U); w.str(v.category);
+}
+
+Status decode(wire::Reader& r, PluginPresetInfo& out) {
+  bool has_name = false;
+  bool has_effect = false;
+  bool has_category = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.name)) return Status::truncated;
+        has_name = true;
+        break;
+      }
+      case 18U: {
+        if (!r.str(out.effect)) return Status::truncated;
+        has_effect = true;
+        break;
+      }
+      case 26U: {
+        auto& e = out.values.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 34U: {
+        if (!r.str(out.category)) return Status::truncated;
+        has_category = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_name) return Status::missing_field;
+  if (!has_effect) return Status::missing_field;
+  if (!has_category) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const PluginInfo& v) {
   w.varint(10U); w.str(v.id);
   w.varint(18U); w.str(v.name);
@@ -17896,6 +17942,7 @@ void encode(wire::Writer& w, const PluginInfo& v) {
   for (const auto& e : v.effects) { w.varint(66U); w.str(e); }
   w.varint(72U); w.boolean(v.gpu);
   w.varint(80U); w.boolean(v.panel);
+  for (const auto& e : v.presets) { w.varint(122U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
 }
 
 Status decode(wire::Reader& r, PluginInfo& out) {
@@ -17960,6 +18007,11 @@ Status decode(wire::Reader& r, PluginInfo& out) {
       case 80U: {
         if (!r.boolean(out.panel)) return Status::truncated;
         has_panel = true;
+        break;
+      }
+      case 122U: {
+        auto& e = out.presets.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         break;
       }
       default:
@@ -30748,7 +30800,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 532> kNames = {
+constexpr std::array<std::string_view, 533> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -31141,6 +31193,7 @@ constexpr std::array<std::string_view, 532> kNames = {
     "GetEffectUi",
     "PluginInfo",
     "PluginList",
+    "PluginPresetInfo",
     "EffectParamUi",
     "PluginDataEntry",
     "EffectUi",
@@ -31679,6 +31732,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "GetEffectUi") return roundtrip<GetEffectUi>(bytes, out);
   if (type == "PluginInfo") return roundtrip<PluginInfo>(bytes, out);
   if (type == "PluginList") return roundtrip<PluginList>(bytes, out);
+  if (type == "PluginPresetInfo") return roundtrip<PluginPresetInfo>(bytes, out);
   if (type == "EffectParamUi") return roundtrip<EffectParamUi>(bytes, out);
   if (type == "PluginDataEntry") return roundtrip<PluginDataEntry>(bytes, out);
   if (type == "EffectUi") return roundtrip<EffectUi>(bytes, out);

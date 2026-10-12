@@ -15,15 +15,18 @@
 
 import type { IconName } from '@components/Icon';
 import type { EffectDef } from '@core/inspector/effectCatalog';
+import type { PluginPreset } from '@core/nativePlugins/pluginPresets';
 
 /** Folder header height, and leaf height — the virtual list's row geometry. */
 export const FX_FOLDER_ROW_H = 26;
 export const FX_LEAF_ROW_H = 24;
 
-/** A leaf, in the four flavours the browser lists. */
+/** A leaf, in the five flavours the browser lists. */
 export type FxLeaf =
   | { kind: 'effect'; id: string; def: EffectDef; gpuTag: 'gpu' | 'no-webgpu' | null }
   | { kind: 'preset'; id: string; name: string; effectCount: number; userSaved: boolean }
+  /** Plugin SDK 1.2: a preset a plugin ships, listed under its effect. */
+  | { kind: 'pluginPreset'; id: string; preset: PluginPreset; effectLabel: string }
   | { kind: 'shapeOp'; id: string; opType: string; label: string; taken: boolean }
   | { kind: 'sim'; id: 'cloner' | 'physics'; label: string; icon: IconName; on: boolean };
 

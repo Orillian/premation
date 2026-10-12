@@ -492,6 +492,7 @@ add_library(engine_plugins STATIC
   src/plugins/cpu_render.cpp
   src/plugins/entitlement.cpp  # Premation Cloud: the operator-signed token checked before a bundle loads
   src/plugins/asset_image.cpp  # SDK 1.2: FILE params' images (linear premultiplied float) and sibling files
+  src/plugins/presets.cpp  # SDK 1.2: presets a bundle ships (manifest `presets`, presets/*.json)
 )
 target_include_directories(engine_plugins PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins ${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include)
 target_link_libraries(engine_plugins PUBLIC engine_core Threads::Threads PRIVATE ${CMAKE_DL_LIBS} motion::options)
