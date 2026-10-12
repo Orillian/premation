@@ -122,8 +122,8 @@ cannot declare them (the plugin fails to load with "needs SDK 1.1").
 
 A `FILE` param's value is a **project item**: the editor's **Choose…** imports
 the file as a `data` item (`importFiles` with `asData`: never probed as
-footage), so Collect Files copies it, Relink re-points it, Remove Unused keeps
-it while an effect uses it, and the project saves it. At render the engine
+footage), so Relink re-points it, Remove Unused keeps it while an effect uses
+it, and the project saves it (by its path: see "Assets" for Collect Files). At render the engine
 resolves the item to a file (`p.<key>.path`, `.missing` in the chain entry), so
 a relink re-renders the effect. A missing file never fails the frame: the
 plugin sees `file_missing = 1` and `get_asset_*` answer `PR_ERR_NOT_FOUND`,
@@ -328,11 +328,44 @@ A `FILE` param's file, beyond `get_asset_path` / `get_asset_bytes`:
   `relative` uses `/` (or `\`); no `..`, no absolute path or drive, no symlink
   out of the asset's folder (`PR_ERR_INVALID_PARAM`); at most 512 MiB.
 
-Collect Files copies the `FILE` param's own file. It does **not** carry the
-siblings a plugin read: a collected project stores its files content-addressed
-(`blobs/<hh>/<sha256>`), so there is no folder for a sibling to sit beside.
-Ship self-contained assets (`.glb`, embedded textures) where you can; a `.gltf`
-with external files needs its folder next to the collected project.
+Collect Files does **not** copy a `FILE` param's file, nor the siblings a
+plugin read (checked 2026-10-13, collect_files.cpp): it collects what layers
+name through `assetId` / `src` and the files of unused items; a `data` item an
+effect uses is neither, so it keeps its outside `path` and the collected
+project still reads the original file (on that machine). Carrying them is not
+one change but five, and no clean design fits today:
+
+1. What a plugin reads is known only while it renders. Writing it into the
+   document from the render thread (pluginData) is a document edit outside a
+   command — not undoable, it dirties a saved project by viewing it, and a
+   project collected before the effect rendered once (opened, then collected)
+   would still lose its siblings. The alternative — the engine guessing
+   siblings by parsing the asset (a glTF's `uri`s) — is a per-format loader the
+   SDK leaves to the plugin.
+2. A collected project stores files content-addressed (`blobs/<hh>/<sha256>`,
+   no names, no folders); a sibling read resolves relative to the asset's
+   folder, so the host would need a per-item `relative → blob` table in the
+   document and `resolve_sibling` to consult it.
+3. `native_file_of` resolves an item with no bundle root, so a `motion-blob:`
+   item cannot reach a plugin at all; and a collected item's record keeps no
+   `src` (the footage record persists `path` only), so after collect + reopen
+   the item would resolve to nothing. Collecting the main file today would
+   break the effect rather than carry it.
+4. The portable `.motion` copy embeds only layer `props.src` blobs (flat
+   `assets/<node>.<ext>`, nested paths dropped on open), and a cloud save
+   uploads the document only — neither carries a local `FILE` item's bytes, let
+   alone its siblings.
+5. Recovery and the export snapshot pass references through unchanged; they
+   would work once 2–3 exist.
+
+So: ship self-contained assets (`.glb`, embedded textures) — the engine's own
+model import does the same (it repacks a `.gltf` and its files into one
+`.glb`). The order that would make this clean: items carry their `src` / a
+bundle-relative ref through every save (3), `native_file_of` resolves blobs,
+Collect Files collects `FILE` items, then a sibling table (2) filled by a
+command — e.g. the host recording sibling reads made during
+`USER_CHANGED_PARAM` on the param (core thread, one undo entry) — and the
+portable writer learning item files (4).
 
 ## Scene depth (SDK 1.2)
 

@@ -70,7 +70,7 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
   by the host per file and modification time), and
   `get_asset_sibling_bytes(host, index, relative, data, size)` (a file beside
   the asset: glTF `.bin` and textures, `.mtl`; no `..`, no absolute paths, no
-  symlinks out). Collect Files copies the siblings a plugin read. (1458aa41; Collect Files does NOT carry siblings — content-addressed bundle, documented in PLUGIN_SDK.md "Assets")
+  symlinks out). Collect Files copies the siblings a plugin read. (1458aa41; Collect Files does NOT carry siblings — content-addressed bundle, documented in PLUGIN_SDK.md "Assets") 2026-10-13: NOT built — no clean design today (PLUGIN_SDK.md "Assets" lists why: siblings known only at render, content-addressed blobs, native_file_of has no bundle root and a collected item keeps no src, portable/cloud carry no FILE item bytes). Found on the way: Collect Files does not copy a FILE param's own file either (it keeps its outside path); the doc said it did — corrected.
 - [x] S6 **Scene depth.** `PR_OUT_FLAG_USES_SCENE_DEPTH`;
   `checkout_scene_depth_gpu(host, const PrGpuWorld**)` in `SMART_RENDER_GPU`
   and `checkout_scene_depth(host, PrWorld**)` on the CPU path: the depth of the
