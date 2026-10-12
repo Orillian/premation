@@ -154,6 +154,36 @@ typedef struct PrHostSuite {
    * (PR_ERR_OUT_OF_MEMORY); *data stays valid until the selector returns. */
   PrErr(PR_CALL* get_asset_sibling_bytes)(PrHost* host, uint32_t param_index, const char* relative, const uint8_t** data,
                                           uint64_t* size);
+
+  /* ── SDK 1.2, scene depth (appended after get_asset_sibling_bytes; check struct_size >=
+   *    offsetof(PrHostSuite, checkout_scene_depth) + sizeof(void*) before calling) ──
+   * Declare PR_OUT_FLAG_USES_SCENE_DEPTH in GLOBAL_SETUP, or these answer PR_ERR_INVALID_CALLBACK.
+   *
+   * The depth of the composition's 3D layers OTHER than the effect's own layer, seen through the
+   * comp camera at the frame's time — Element 3D's "Composite with scene depth". It is world-sized:
+   * pixel (x, y) is world pixel (x, y) of this render, so layer_to_world / comp_to_world line up
+   * with it. Each pixel holds the CAMERA-SPACE Z of the nearest surface: the distance from the eye
+   * ALONG THE VIEW AXIS, in composition px — (view · p).z with PrCamera.view (pr_scene.h), positive in
+   * front of the camera; not the straight-line distance to the eye. Compare a fragment's own
+   * (view · p).z with it. +INFINITY where no 3D layer is drawn. A texel whose coverage (texture alpha
+   * × mask × layer opacity, or a solid's shape) is under 1/255 writes no depth, as in the engine's
+   * own 3D pass; any other one does (depth is not blended). The 3D layers are the ones of the
+   * composition the effect's layer is in, drawn at the frame time (not per motion-blur sample).
+   *
+   * It is an input of the frame: moving a 3D layer re-renders the effect. The engine renders it
+   * once per frame and render size for every effect that asks, and only when one asks.
+   *
+   * checkout_scene_depth_gpu — PR_CMD_SMART_RENDER_GPU: an r32float texture on the engine's device
+   *   (PR_GPU_FORMAT_R32_FLOAT, TEXTURE_BINDING | COPY_SRC; read it with textureLoad), valid until
+   *   the selector returns.
+   * checkout_scene_depth — PR_CMD_SMART_RENDER / PR_CMD_RENDER: a PrWorld of PR_PIXEL_FORMAT_R32F
+   *   (one float per pixel, row_bytes apart), the same depth read back from the GPU; the host owns
+   *   it until the selector returns.
+   * PR_ERR_UNSUPPORTED (and *out = NULL): this render has no GPU to draw the depth with (the SDK's
+   * CPU host in premation-plugins and the host tests) — render without occlusion. Call them from the
+   * selector's own thread, not from an iterate() job. */
+  PrErr(PR_CALL* checkout_scene_depth_gpu)(PrHost* host, const PrGpuWorld** out_world);
+  PrErr(PR_CALL* checkout_scene_depth)(PrHost* host, PrWorld** out_world);
 } PrHostSuite;
 
 #define PR_OVERLAY_HANDLE_SQUARE 0

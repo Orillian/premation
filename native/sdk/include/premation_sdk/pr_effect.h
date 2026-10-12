@@ -98,8 +98,6 @@ typedef int32_t PrCmd;
 #define PR_OUT_FLAG_USES_LAYER_TRANSFORMS (1u << 12)
 /* SDK 1.1: draws a viewer overlay (DRAW_OVERLAY) with draggable handles (OVERLAY_DRAG) — AE's PF_Cmd_EVENT. */
 #define PR_OUT_FLAG_CUSTOM_OVERLAY (1u << 13)
-
-typedef int32_t PrQuality;
 /* SDK 1.2: asks for param values / camera / lights / layer transforms at other times
  * (checkout_time in SMART_PRE_RENDER, then checkout_param & co. in the render selectors) —
  * AE's PF_CHECKOUT_PARAM at another time. Needs PR_OUT_FLAG_SMART_RENDER. */
@@ -110,6 +108,12 @@ typedef int32_t PrQuality;
 /* SDK 1.2: the output covers the composition frame, not the layer (Element 3D, Optical Flares
  * on a solid of any size): draw with PrInData.comp_to_world. */
 #define PR_OUT_FLAG_COMP_SPACE (1u << 16)
+/* SDK 1.2: reads the depth of the comp's 3D layers (PrHostSuite.checkout_scene_depth[_gpu]) —
+ * Element 3D's "Composite with scene depth". Only an effect that declares it (and then asks) pays
+ * for the depth pass. */
+#define PR_OUT_FLAG_USES_SCENE_DEPTH (1u << 17)
+
+typedef int32_t PrQuality;
 #define PR_QUALITY_DRAFT 0
 #define PR_QUALITY_HIGH 1
 
@@ -146,8 +150,6 @@ typedef struct PrInData {
   PrHandle sequence_data;
   /** Stable, opaque instance key (layer + effect ids) for plugin-side caches. NULL outside instances. */
   const char* instance_key;
-} PrInData;
-
 
   /* ── SDK 1.2 (appended: check struct_size >= offsetof(PrInData, comp_to_world) + sizeof(comp_to_world)) ── */
   /** The composition time of layer time 0 (ticks): comp time = layer_start + layer time for a layer
@@ -166,6 +168,8 @@ typedef struct PrInData {
    *  is the view of the composition the chain renders in; on a 3D layer (whose chain runs in the
    *  layer's own plane) composition pixels are taken as the layer's pixels. */
   double comp_to_world[9];
+} PrInData;
+
 /** What the plugin tells the host. The host zero-fills it before each call
  *  (global_data / sequence_data preset to the current handles). */
 typedef struct PrOutData {

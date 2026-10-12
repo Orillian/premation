@@ -53,6 +53,9 @@ typedef int32_t PrGpuFormat;
 #define PR_GPU_FORMAT_RGBA8_UNORM 0
 #define PR_GPU_FORMAT_RGBA16_FLOAT 1
 #define PR_GPU_FORMAT_RGBA32_FLOAT 2
+/* SDK 1.2: one float channel — the scene depth (checkout_scene_depth_gpu). Not filterable:
+ * read it with textureLoad (or a non-filtering sampler). */
+#define PR_GPU_FORMAT_R32_FLOAT 3
 
 typedef struct PrGpuDeviceInfo {
   uint32_t struct_size;

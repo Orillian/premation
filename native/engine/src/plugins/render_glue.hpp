@@ -39,6 +39,7 @@
 // an include path that lists src/effects first would bind that name instead.
 #include "../render_graph/effect_chain.hpp"
 #include "../render_graph/device.hpp"
+#include "../render_graph/scene_depth.hpp"
 #include "host.hpp"
 
 namespace premation::plugins {
@@ -70,6 +71,8 @@ class RenderGlue final : public rg::NativeEffectHost {
   void set_gpu_enabled(bool on) noexcept { gpuEnabled_ = on; }
   [[nodiscard]] bool gpu_enabled() const noexcept { return gpuEnabled_; }
   [[nodiscard]] const Stats& stats() const noexcept { return stats_; }
+  /// SDK 1.2 (S6): the scene depth pass effects with PR_OUT_FLAG_USES_SCENE_DEPTH read (tests: passes()).
+  [[nodiscard]] const rg::SceneDepth& scene_depth() const noexcept { return sceneDepth_; }
 
  private:
   struct OwnTexture {
@@ -97,6 +100,8 @@ class RenderGlue final : public rg::NativeEffectHost {
     PrGpuWorld world{};
   };
   std::map<std::string, AssetTexture> assets_;
+  /// SDK 1.2 (S6): checkout_scene_depth[_gpu], one pass per frame and request.
+  rg::SceneDepth sceneDepth_;
 
  public:
   /// The asset texture for `key` (uploaded on first use); nullptr past the device's limits.

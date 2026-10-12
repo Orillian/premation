@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,11 @@ class TexelCheckouts final : public CheckoutSource {
   PrWorld* cpu_output() override;
   const PrGpuWorld* gpu_checkout(std::uint32_t /*checkoutId*/) override { return nullptr; }
   [[nodiscard]] const PrWorld& output() const noexcept { return output_; }
+  /// SDK 1.2 (S6): where checkout_scene_depth comes from — width × height floats, asked for when
+  /// the plugin first calls it (nullptr / unset = none: PR_ERR_UNSUPPORTED).
+  using DepthFn = std::function<const std::vector<float>*()>;
+  void set_scene_depth(DepthFn fn) { depthFn_ = std::move(fn); }
+  PrWorld* cpu_scene_depth() override;
 
  private:
   struct Slot {
@@ -55,6 +61,8 @@ class TexelCheckouts final : public CheckoutSource {
   std::map<std::uint32_t, Slot> slots_;
   std::vector<std::uint8_t> outBytes_;
   PrWorld output_{};
+  DepthFn depthFn_;
+  std::optional<PrWorld> depth_;
 };
 
 /// Render inputs for `spec` with every param at its declared default: a
@@ -69,7 +77,9 @@ class TexelCheckouts final : public CheckoutSource {
 /// size of `input`, converted back to `input.format` in `out`. On failure `out`
 /// is untouched and the result says why (a fault has disabled the instance).
 using CheckoutImageFn = std::function<const TexelImage*(const CheckoutRequest&)>;
+/// `depth` (SDK 1.2, S6): the scene depth checkout_scene_depth hands out (TexelCheckouts::DepthFn;
+/// empty = none).
 CallResult run_native_cpu(PluginHost& host, const RenderInputs& in, const TexelImage& input, const CheckoutImageFn& checkout,
-                          TexelImage& out);
+                          TexelImage& out, const TexelCheckouts::DepthFn& depth = {});
 
 }  // namespace premation::plugins

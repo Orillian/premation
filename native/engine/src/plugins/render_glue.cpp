@@ -144,9 +144,11 @@ std::array<double, 9> comp_to_world(const rg::PassContext& ctx, const rg::Native
 class GpuCheckouts final : public CheckoutSource {
  public:
   using AssetFn = std::function<const PrGpuWorld*(const std::string&, const AssetImage&)>;
-  explicit GpuCheckouts(AssetFn assets) : assets_(std::move(assets)) {}
+  using DepthFn = std::function<const PrGpuWorld*()>;
+  GpuCheckouts(AssetFn assets, DepthFn depth) : assets_(std::move(assets)), depth_(std::move(depth)) {}
   void set(std::uint32_t checkoutId, const PrGpuWorld& world) { worlds_[checkoutId] = world; }
   const PrGpuWorld* gpu_asset(const std::string& key, const AssetImage& image) override { return assets_(key, image); }
+  const PrGpuWorld* gpu_scene_depth() override { return depth_ ? depth_() : nullptr; }
   PrWorld* cpu_checkout(std::uint32_t /*checkoutId*/) override { return nullptr; }
   PrWorld* cpu_output() override { return nullptr; }
   const PrGpuWorld* gpu_checkout(std::uint32_t checkoutId) override {
@@ -157,6 +159,7 @@ class GpuCheckouts final : public CheckoutSource {
  private:
   std::map<std::uint32_t, PrGpuWorld> worlds_;
   AssetFn assets_;
+  DepthFn depth_;
 };
 
 /// A checkout other than the input at the frame's time, drawn as the chain
@@ -278,6 +281,10 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
   in.layerToWorld = layer_to_world(ctx, call, in, w, h);
   in.compToWorld = comp_to_world(ctx, call, in, w, h);
 
+  // SDK 1.2 (S6): the comp's other 3D layers' depth in this world — made only when the effect asks.
+  const bool usesDepth = spec->has(PR_OUT_FLAG_USES_SCENE_DEPTH);
+  const rg::SceneDepth::Request depthReq{w, h, in.compToWorld, call.selfId};
+
   rg::Device& dev = ctx.dev;
   if (dev.device().Get() != device_.Get()) {
     // Another device: the plugins' per-device data (pipelines, buffers, a
@@ -319,7 +326,15 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
     };
     const PrGpuWorld inWorld = world(src.texture, src.view);
     const PrGpuWorld outWorld = world(out.texture, out.view);
-    GpuCheckouts io([this, &dev](const std::string& key, const AssetImage& image) { return asset_texture(dev, key, image); });
+    PrGpuWorld depthWorld{};
+    GpuCheckouts io([this, &dev](const std::string& key, const AssetImage& image) { return asset_texture(dev, key, image); },
+                    [&]() -> const PrGpuWorld* {
+                      const rg::SceneDepth::Result* d = usesDepth ? sceneDepth_.render(ctx, depthReq) : nullptr;
+                      if (d == nullptr) return nullptr;
+                      depthWorld = PrGpuWorld{sizeof(PrGpuWorld), static_cast<std::int32_t>(d->width), static_cast<std::int32_t>(d->height),
+                                              PR_GPU_FORMAT_R32_FLOAT, d->texture.Get(), d->view.Get(), nullptr};
+                      return &depthWorld;
+                    });
     for (std::uint32_t i = 0; i < reqs.size(); ++i) {
       const CheckoutRequest& c = reqs[i];
       if (c.paramIndex == 0 && c.time == in.layerTime) {
@@ -380,7 +395,8 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
     return &held.back();
   };
   TexelImage out;
-  const CallResult r = run_native_cpu(*host, in, input, checkout, out);
+  const TexelCheckouts::DepthFn depth = [&]() { return usesDepth ? sceneDepth_.read_back(ctx, depthReq) : nullptr; };
+  const CallResult r = run_native_cpu(*host, in, input, checkout, out, depth);
   if (!r.ok) return decline(r.fault ? "native-plugin-crash" : "native-plugin-failed", matchName + ": " + r.message);
   const OwnTexture& up = own(dev, w, h, src.format, kUploadSlot);
   wgpu::TexelCopyTextureInfo dst{};

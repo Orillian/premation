@@ -32,6 +32,9 @@ typedef int32_t PrPixelFormat;
 #define PR_PIXEL_FORMAT_RGBA8 0
 #define PR_PIXEL_FORMAT_RGBA16 1
 #define PR_PIXEL_FORMAT_RGBA32F 2
+/* SDK 1.2: one float per pixel, not a colour — the scene depth (checkout_scene_depth). The host
+ * never hands it as an input or output world. */
+#define PR_PIXEL_FORMAT_R32F 3
 
 #define PR_MAX_CHANNEL8 255
 #define PR_MAX_CHANNEL16 65535
@@ -60,7 +63,7 @@ typedef struct PrWorld {
   int32_t origin_y;
 } PrWorld;
 
-/** Bytes per pixel of a format (4, 8 or 16). */
+/** Bytes per pixel of a format (4, 8 or 16; R32F: 4). */
 static inline int32_t pr_bytes_per_pixel(PrPixelFormat f) {
   return f == PR_PIXEL_FORMAT_RGBA32F ? 16 : f == PR_PIXEL_FORMAT_RGBA16 ? 8 : 4;
 }

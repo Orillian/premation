@@ -119,6 +119,7 @@ if(Dawn_FOUND)
     src/render_graph/fx_distance.cpp
     src/render_graph/support.cpp
     src/render_graph/threed.cpp
+    src/render_graph/scene_depth.cpp  # plugin SDK 1.2 (S6): checkout_scene_depth
     src/render_graph/scene_renderer.cpp
   )
   target_include_directories(engine_render_graph PUBLIC

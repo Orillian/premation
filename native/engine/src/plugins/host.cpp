@@ -845,6 +845,33 @@ PrErr PR_CALL cb_get_asset_sibling_bytes(PrHost* h, std::uint32_t paramIndex, co
   return PR_ERR_NONE;
 }
 
+// ── SDK 1.2 (S6): the depth of the comp's other 3D layers ───────────────────
+
+PrErr scene_depth_gate(PrHost* h, bool gpu) {
+  if (h == nullptr || h->source == nullptr || !h->renderSelector) return PR_ERR_INVALID_CALLBACK;
+  if (gpu ? h->cmd != PR_CMD_SMART_RENDER_GPU : h->cmd != PR_CMD_SMART_RENDER && h->cmd != PR_CMD_RENDER) return PR_ERR_INVALID_CALLBACK;
+  if ((h->outFlags & PR_OUT_FLAG_USES_SCENE_DEPTH) == 0) return PR_ERR_INVALID_CALLBACK;
+  return PR_ERR_NONE;
+}
+
+PrErr PR_CALL cb_checkout_scene_depth_gpu(PrHost* h, const PrGpuWorld** world) {
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  *world = nullptr;
+  if (const PrErr e = scene_depth_gate(h, true); e != PR_ERR_NONE) return e;
+  const std::scoped_lock lock(h->assetMutex);  // the source renders on first ask: one at a time
+  *world = h->source->gpu_scene_depth();
+  return *world != nullptr ? PR_ERR_NONE : PR_ERR_UNSUPPORTED;
+}
+
+PrErr PR_CALL cb_checkout_scene_depth(PrHost* h, PrWorld** world) {
+  if (world == nullptr) return PR_ERR_INVALID_PARAM;
+  *world = nullptr;
+  if (const PrErr e = scene_depth_gate(h, false); e != PR_ERR_NONE) return e;
+  const std::scoped_lock lock(h->assetMutex);
+  *world = h->source->cpu_scene_depth();
+  return *world != nullptr ? PR_ERR_NONE : PR_ERR_UNSUPPORTED;
+}
+
 // ── SDK 1.1: the viewer overlay's draw list (DRAW_OVERLAY) ─────────────────
 
 // The overlay crosses the frame channel with every frame: small by construction. A path's
@@ -1061,6 +1088,8 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
   s.get_asset_image = &cb_get_asset_image;
   s.get_asset_image_gpu = &cb_get_asset_image_gpu;
   s.get_asset_sibling_bytes = &cb_get_asset_sibling_bytes;
+  s.checkout_scene_depth_gpu = &cb_checkout_scene_depth_gpu;  // SDK 1.2 (S6)
+  s.checkout_scene_depth = &cb_checkout_scene_depth;
 
   int threads = m.options.threads;
   if (threads <= 0) threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) - 1, 0, 16);
