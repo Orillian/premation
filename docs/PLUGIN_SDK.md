@@ -207,6 +207,9 @@ callbacks to `PrHostSuite` (an SDK 1.0 plugin never reads past the old end; a
 | `get_asset_image` / `get_asset_image_gpu` / `get_asset_sibling_bytes` | the plugin's own loaders | images decoded by the engine; a glTF's `.bin` and textures |
 | manifest `presets`, `presets/*.json` | `.ffx` animation presets | listed under the plugin in Effects & Presets |
 | `PR_OUT_FLAG_USES_SCENE_DEPTH`, `checkout_scene_depth_gpu` / `checkout_scene_depth` | none (Element 3D renders the comp's 3D layers itself for "Composite with scene depth") | occlusion by the comp's own 3D layers |
+| `COLOR` values and `GRADIENT` stops in linear light; `set_param_value` encodes back | colour params in the project's working space | colours that match the linear worlds |
+| `get_comp_camera` / `get_comp_lights` / `get_layer_transform` in `DRAW_OVERLAY` / `OVERLAY_DRAG`; `overlay_set_space(host, PR_OVERLAY_SPACE_COMP)`; `PrOverlayDragExtra.space` | `AEGP_GetEffectCamera` in `PF_Cmd_EVENT`, `PF_EA_LAYER` / `PF_EA_COMP` coordinate spaces | handles on a 3D point the plugin projects itself |
+| `checkout_time(..., PR_SAMPLE_SCENE_DEPTH)`, `checkout_scene_depth_gpu_at` / `checkout_scene_depth_at` | none | occlusion per motion-blur sub-frame |
 
 Everything is appended: new `PrHostSuite` callbacks at the end (check
 `struct_size >= offsetof(PrHostSuite, get_asset_sibling_bytes) + sizeof(void*)`),
@@ -343,8 +346,8 @@ What a pixel holds:
 
 | | |
 |---|---|
-| layers | the comp's 3D layers **other than the effect's own**, in the composition the layer is in (a sealed precomp's own camera and layers inside it) |
-| view | the comp camera at the frame's time (not per motion-blur sample) |
+| layers | the comp's 3D layers **other than the effect's own**, in the composition the layer is in (a sealed precomp's own camera and layers inside it), and the 3D layers inside its **collapsed** 3D precomps (no camera of their own, not a flat 3D card): the 3D renderer draws those under the comp's camera with their own models, and so does the depth (their alpha × the precomp's opacity) |
+| view | the comp camera at the frame's time; at a motion-blur sub-time with `checkout_scene_depth_gpu_at` (below) |
 | size | world-sized: pixel (x, y) is world pixel (x, y) of this render, so `layer_to_world` / `comp_to_world` line up with it |
 | value | the **camera-space z** of the nearest surface: the distance from the eye along the view axis, in comp px — `(view · p).z` with `PrCamera.view`, positive in front. Not the straight-line distance to the eye. Compare a fragment's own `(view · p).z` with it. |
 | empty | `+inf` where no 3D layer is drawn |
@@ -358,6 +361,28 @@ chain's `comp_to_world`) the first time an effect of the frame asks, and every
 effect of the frame that asks with the same world size and placement shares it
 (an effect on a 2D layer excludes no drawn layer, so all of them share one pass).
 Call the checkouts from the selector's own thread, not from an `iterate()` job.
+
+**At a sub-time (motion blur).** An effect that blurs itself
+(`PR_OUT_FLAG_USES_SHUTTER`) renders sub-frames at other times; occluding each
+against the frame's depth smears the model behind a layer that moves. Ask for
+the depth at those times:
+
+1. In `SMART_PRE_RENDER`, add `PR_SAMPLE_SCENE_DEPTH` to the `checkout_time`
+   bits for each sub-time (not in `PR_SAMPLE_ALL`: each time is a depth pass of
+   its own).
+2. In the render, `checkout_scene_depth_gpu_at(host, time, &gpuWorld)`
+   (`SMART_RENDER_GPU`) or `checkout_scene_depth_at(host, time, &world)`
+   (`SMART_RENDER` / `RENDER`) — appended after `overlay_set_space`; check
+   `struct_size >= offsetof(PrHostSuite, checkout_scene_depth_at) + sizeof(void*)`.
+   `time` = `in_data->current_time` is the frame's depth; a time not checked out
+   with the bit answers `PR_ERR_NOT_FOUND`.
+
+The engine evaluates, for each such time, the comp camera and every 3D layer the
+depth draws (keyframes, parenting, expressions; sub-frame exact) and the frame
+carries them, so preview and export draw the same depth. A layer inside a
+collapsed precomp moves with its own animation at the sub-time; the precomp
+layer's own motion is not re-evaluated, and an instance copy the document cannot
+pose keeps its frame pose.
 
 ## Presets (SDK 1.2)
 
@@ -405,6 +430,34 @@ process. Declare `PR_OUT_FLAG_CUSTOM_OVERLAY` in `GLOBAL_SETUP`, then:
 
 The `rings` sample draws its three rings and a crosshair at its centre; dragging
 the crosshair moves `Center`.
+
+**SDK 1.2 — overlays through the camera.** A layer-px overlay is right for a 2D
+handle, not for a 3D point (Element 3D's model position, a light's target): the
+editor maps layer px with the layer, so a point that is not on the layer's plane
+sits in the wrong place under any camera that is not the default. So:
+
+- In `DRAW_OVERLAY` and `OVERLAY_DRAG` the scene callbacks answer at the viewer's
+  time (`in_data->current_time`, or the comp time): `get_comp_camera`,
+  `get_comp_lights`, `get_layer_transform` — each still needs its
+  `PR_OUT_FLAG_USES_*`. Another time answers `PR_ERR_NOT_FOUND` (there are no
+  checked-out times outside a render). The engine evaluates them off the document
+  for the composition the layer is in (the topmost visible camera live at that
+  time, else the comp's default view), only for what the effect declared.
+- `overlay_set_space(host, PR_OVERLAY_SPACE_COMP)` (appended after
+  `checkout_scene_depth`; `PR_OVERLAY_SPACE_LAYER` is the default) makes the
+  `overlay_line` / `_path` / `_handle` calls that follow take **composition px**:
+  project the point yourself — `(projection · view · p).xy / w` with `PrCamera` —
+  and the editor draws it through the viewer's comp → screen only.
+  `PrOverlayExtra.comp_width` / `comp_height` (appended) are that space's size.
+- A drag of a comp-space handle reports the pointer in comp px:
+  `PrOverlayDragExtra.space` (appended; check `struct_size`) is
+  `PR_OVERLAY_SPACE_COMP` and `x`, `y`, `start_x`, `start_y` are comp px. To move
+  a 3D point in the camera's view plane, solve for the camera-space point at the
+  point's own depth that projects to the pointer and take it back to the world
+  with `PrCamera.world` (the `model3d` sample, `overlay_drag`).
+- The comp px are those of the comp camera (the active camera layer, else the
+  default view): in a viewer looking through a custom or axis view the handles
+  follow the comp camera, as the effect's render does.
 
 ## Plugin panels (SDK 1.1)
 
@@ -792,15 +845,23 @@ the frame time.
 `checkout_scene_depth_gpu` and discard a fragment whose camera z is behind the
 depth at its pixel (`z > depth + 0.5 + 0.001 z`: a small bias, so a model sitting
 exactly on a card does not flicker). `PR_ERR_UNSUPPORTED` (no GPU): render
-unoccluded. The CPU path does the same with `checkout_scene_depth`.
+unoccluded. The CPU path does the same with `checkout_scene_depth`. Under motion
+blur the sample also checks out `PR_SAMPLE_SCENE_DEPTH` at each shutter time and
+occludes each sub-frame with `checkout_scene_depth_gpu_at` / `_at` at that time
+(the frame's depth where a time was not evaluated).
 
-**8. Viewer handle and panel.** `DRAW_OVERLAY` draws a box and a crosshair handle
-at Position; `OVERLAY_DRAG` writes Position's x / y (z kept) with
-`set_param_value` — the whole drag is one undo entry. The overlay is drawn
-without the camera (the scene callbacks answer in render selectors only), so
-the handle sits at Position's x / y: exactly over the model under the comp's
-default camera on a comp-sized layer at the comp's origin, offset when a camera
-layer looks from elsewhere — a known limit. The panel (`ui/`) sets Base Color,
+**8. Viewer handle and panel.** `DRAW_OVERLAY` reads the comp camera at the
+viewer's time (`get_comp_camera`), projects Position, switches to comp px
+(`overlay_set_space(host, PR_OVERLAY_SPACE_COMP)`) and draws a crosshair handle
+there inside a square of Size / 2 in the camera's view plane — on the model
+under any camera. `OVERLAY_DRAG` gets the pointer in comp px
+(`PrOverlayDragExtra.space`), solves for the camera-space point at the model's
+own depth that projects to it (two linear equations in x, y), takes it back to
+the world with `PrCamera.world` and writes Position with `set_param_value` — the
+model moves in the camera's view plane, and the whole drag is one undo entry. On
+a host without `overlay_set_space` it falls back to layer px at Position's x / y.
+With a Transform Layer the layer places the model and no handle is drawn. The
+panel (`ui/`) sets Base Color,
 Roughness, Specular and the depth checkbox with `setParam` and shows a
 `requestPreview`.
 
