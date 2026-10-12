@@ -236,6 +236,10 @@ export const EFFECT_AI_NOTES: Readonly<Record<string, string>> = {
     '(0, 0 = centre; −width/2 = left edge), not from the top-left. Key them for the stroke path. For a tapered, ' +
     'calligraphic line key brushSize along the same times AND set brushTimeProps: 1 (Size) — as in After Effects, ' +
     'without it every dab takes the CURRENT size. strokeLength limits the trail to its last N seconds.',
+  'light-sweep':
+    'The sweep lights whatever alpha the layer has at that point of the effect stack — like After Effects. Add it ' +
+    'BEFORE drop-shadow / glow (or keep shadows last): a drop-shadow placed earlier is lit too, so the band shows ' +
+    'over the whole box of a text layer instead of the glyphs.',
 };
 
 const listCapabilities: AiTool['handler'] = async (input, ctx) => {
