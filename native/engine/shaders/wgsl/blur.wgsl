@@ -136,12 +136,18 @@ fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   // Accumulate in linear-premul so glow/blur falloff matches lit light rather
   // than gamma-space grey. Helpers are identity when LINEAR_WORKING_SPACE is off.
   let sigma = r;
-  let steps = 30;
   // ±3.5σ, not 2.5σ: at 2.5σ the Gaussian is still 4% of its peak, and the two
   // separable passes cut a wide glow off at a RECTANGLE — a faint box around
   // every big glow on a dark ground (docs/PROGRAM_PERFORMANCE.md S4). At 3.5σ
   // the tail is 0.2%, below one 8-bit step.
-  let spacing = max(1.0, (sigma * 3.5) / f32(steps));
+  //
+  // The tap SPACING stays what it was at ±2.5σ over 30 taps (max(1, 2.5σ / 30));
+  // the reach grows by adding taps (up to 42 a side), not by spreading them. Taps
+  // further apart skip texels, and on a hard edge that aliases: a bevel's lighting
+  // (the slope of this blur) rippled ±6 levels at σ 30 when the 30 taps were
+  // stretched over 3.5σ (bevel-below-cap / -above-cap goldens, 2026-10-13).
+  let spacing = max(1.0, (sigma * 2.5) / 30.0);
+  let steps = max(30, i32(ceil((sigma * 3.5) / spacing - 0.001)));
   for(var i = -steps; i <= steps; i = i + 1) {
     let off = f32(i) * spacing;
     let w = exp(-0.5 * (off * off) / (sigma * sigma));

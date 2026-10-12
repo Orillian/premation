@@ -93,23 +93,24 @@ TEST_CASE("content_box: no bound for a deformed mesh or a quad projected through
   CHECK_FALSE(content_box(broken, vp, 64, 64));
 }
 
-TEST_CASE("fx_reach: blurs reach their last tap — max(30, 2.5 sigma) texels, plus two") {
+TEST_CASE("fx_reach: blurs reach their last tap — max(30, 3.5 sigma) texels, plus two") {
+  // 3.5 sigma since S4 (docs/PROGRAM_PERFORMANCE.md): radius 10 reaches 35 + 2.
   const auto g = fx_reach(entry("gaussian-blur", {{"radiusPx", 10}}), kIn, kView);
   REQUIRE(g);
-  check_box(g->out, 68, 68, 232, 182);
-  check_box(g->passes, 68, 68, 232, 182);
+  check_box(g->out, 63, 63, 237, 187);
+  check_box(g->passes, 63, 63, 237, 187);
 
   const auto wide = fx_reach(entry("blur", {{"radiusPx", 40}}), kIn, kView);
   REQUIRE(wide);
-  check_box(wide->out, -2, -2, 302, 252);
+  check_box(wide->out, -42, -42, 342, 292);
 
   // dims 1 = horizontal only, 2 = vertical only.
   const auto h = fx_reach(entry("fast-box-blur", {{"radiusPx", 40}, {"dims", 1}}), kIn, kView);
   REQUIRE(h);
-  check_box(h->out, -2, 100, 302, 150);
+  check_box(h->out, -42, 100, 342, 150);
   const auto v = fx_reach(entry("gaussian-blur", {{"radiusPx", 40}, {"dims", 2}}), kIn, kView);
   REQUIRE(v);
-  check_box(v->out, 100, -2, 200, 252);
+  check_box(v->out, 100, -42, 200, 292);
 
   // No radius: blur.wgsl samples the centre only.
   const auto none = fx_reach(entry("gaussian-blur", {{"radiusPx", 0}}), kIn, kView);
@@ -118,14 +119,14 @@ TEST_CASE("fx_reach: blurs reach their last tap — max(30, 2.5 sigma) texels, p
 }
 
 TEST_CASE("fx_reach: a glow adds its spread and its wide pass (2.2 x the radius)") {
-  // radius 10 → rPx 11.5 ≥ 6: the wide pass at 25.3 reaches 2.5 × 25.3 + 2.
+  // radius 10 → rPx 11.5 ≥ 6: the wide pass at 25.3 reaches 3.5 × 25.3 + 2.
   const auto g = fx_reach(entry("glow", {{"radiusPx", 10}}), kIn, kView);
   REQUIRE(g);
-  check_box(g->out, 100 - 65.25, 100 - 65.25, 200 + 65.25, 150 + 65.25);
+  check_box(g->out, 100 - 90.55, 100 - 90.55, 200 + 90.55, 150 + 90.55);
   // A spread dilates first (spread + 1 + 2).
   const auto spread = fx_reach(entry("glow", {{"radiusPx", 10}, {"spreadPx", 4}}), kIn, kView);
   REQUIRE(spread);
-  check_box(spread->out, 100 - 72.25, 100 - 72.25, 200 + 72.25, 150 + 72.25);
+  check_box(spread->out, 100 - 97.55, 100 - 97.55, 200 + 97.55, 150 + 97.55);
   // A small glow has no wide pass: the 30-texel tap floor.
   const auto small = fx_reach(entry("glow", {{"radiusPx", 4}}), kIn, kView);
   REQUIRE(small);

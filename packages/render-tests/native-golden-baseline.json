@@ -9,8 +9,6 @@
     "model-maps#0": "Same debt as webgpu-baseline.json (9.905 %): PBR maps shaded on WebGPU vs the WebGL2 reference; the base-colour texture now renders (was 24 %: textured leaves needed a session src). Raised 9.877 → 10.628 % by the I5 output dither (2026-10-10: every changed value is exactly 1/255 against the pre-dither render).",
     "svg-embedded-raster#0": "Same debt as webgpu-baseline.json (19.156 %): Chromium upscales the SVG's 2x2 embedded bitmap with its low-quality filter in the WebGL2 reference; the engine filters it bilinearly.",
     "three-d-dof-visible#0": "Same debt as webgpu-baseline.json (5.243 %); the C++ FrameScene is structurally equal to the TS one (premation-scene against the TS .pfs).",
-    "three-d-outer-glow#0": "The reference clips the 3D layer's glow at the layer texture's edge (a hard-edged box around the halo): the margin budgeted the blur radius only, not the glow's wide halo (2.2×). Fixed 2026-10-10 (docs/PROGRAM_PERFORMANCE.md S1) — the halo now fades out as the 2D glow does; the difference IS the reference's box.",
-    "three-d-outer-glow-green-on-blue#0": "The reference clips the 3D layer's glow at the layer texture's edge (a hard-edged box around the halo): the margin budgeted the blur radius only, not the glow's wide halo (2.2×). Fixed 2026-10-10 (docs/PROGRAM_PERFORMANCE.md S1) — the halo now fades out as the 2D glow does; the difference IS the reference's box.",
     "video-decoded-frame#13": "E1 decode: ffmpeg YUV->RGB (chroma siting / matrix rounding) vs Chromium's WebCodecs decode of the same H.264 frame.",
     "video-decoded-frame#5": "E1 decode: ffmpeg YUV->RGB (chroma siting / matrix rounding) vs Chromium's WebCodecs decode of the same H.264 frame."
   },
@@ -23,8 +21,6 @@
     "model-maps#0": 0.10628,
     "svg-embedded-raster#0": 0.19316,
     "three-d-dof-visible#0": 0.05242,
-    "three-d-outer-glow#0": 0.20923,
-    "three-d-outer-glow-green-on-blue#0": 0.22377,
     "video-decoded-frame#13": 0.1928,
     "video-decoded-frame#5": 0.19326
   }

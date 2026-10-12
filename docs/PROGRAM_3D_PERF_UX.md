@@ -103,6 +103,7 @@ Draft 3D: no gain. heavy3d bench: 28–29 fps first pass, 6–12 dropped.
 - [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5
 
 Notes log (newest first):
+- 2026-10-13: known red closed (deep-plugins program, item 1). test_fx_bounds expected 2.5σ — S4 made it 3.5σ on purpose: expectations updated. bevel-above/below-cap were a REGRESSION of S4 (30 taps stretched over 3.5σ skip texels; a bevel's lighting rippled): blur.wgsl keeps the 2.5σ/30 spacing and adds taps. blur-hard-edge and three-d-outer-glow ×2 are S4's intended faded tail: re-blessed, ceilings removed. D1 eval parity / undo parity not looked at here.
 - 2026-10-13: ALL rows done and committed locally on native-core (unpushed). Light Sweep effect-order hint added to EFFECT_AI_NOTES. Known red unchanged (see 2026-10-12 note).
 - 2026-10-13 batch 3 — B5, B1 (engine), B4 (catalog), E5, E7, E8 (engine
   worker). B5: the GPU light-sweep (light-sweep.wgsl) was already masked by
