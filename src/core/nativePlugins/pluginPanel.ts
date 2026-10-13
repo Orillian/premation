@@ -11,6 +11,7 @@
  *   panel → editor                         engine
  *   { type: 'ready' }                      (the editor answers with `state`)
  *   { id, type: 'setParam', key, value }   setProperty effects/<fx>/<key> (keys at the time when animated)
+ *   { id, type: 'setParams', values: [{ key, value }…], label? }   several setProperty as ONE undo entry (a preset button)
  *   { id, type: 'setArbitraryData', key, data }   setPluginData (an ARBITRARY_DATA param's bytes, base64)
  *   { id, type: 'invokeButton', key, payload? }   invokeEffectAction (a button; `payload` reaches the plugin)
  *   { id, type: 'requestPreview', maxSize? }      getThumbnail of the layer — the engine renders, never the panel
@@ -49,8 +50,12 @@ export const PANEL_SANDBOX = 'allow-scripts';
 /** A param value from a panel: a number (slider, angle, popup, a point's `p<id>X` / `p<id>Y`), a checkbox or a colour (0..1). */
 export type PanelParamValue = number | boolean | { r: number; g: number; b: number; a?: number };
 
+/** The most params one `setParams` sets (a panel's preset button sets a handful). */
+export const MAX_PANEL_PARAMS = 64;
+
 export type PanelRequest =
   | { id: number; type: 'setParam'; key: string; value: PanelParamValue }
+  | { id: number; type: 'setParams'; values: Array<{ key: string; value: PanelParamValue }>; label?: string }
   | { id: number; type: 'setArbitraryData'; key: string; data: string }
   | { id: number; type: 'invokeButton'; key: string; payload?: string }
   | { id: number; type: 'requestPreview'; maxSize: number };
@@ -97,6 +102,19 @@ export function parsePanelMessage(raw: unknown): PanelMessage | null {
       if (typeof m.key !== 'string' || !PARAM_KEY.test(m.key)) return null;
       const value = paramValue(m.value);
       return value === null ? null : { id, type: 'setParam', key: m.key, value };
+    }
+    case 'setParams': {
+      if (!Array.isArray(m.values) || m.values.length === 0 || m.values.length > MAX_PANEL_PARAMS) return null;
+      const values: Array<{ key: string; value: PanelParamValue }> = [];
+      for (const raw of m.values as unknown[]) {
+        const v = raw as Record<string, unknown> | null;
+        if (!v || typeof v.key !== 'string' || !PARAM_KEY.test(v.key)) return null;
+        const value = paramValue(v.value);
+        if (value === null) return null;
+        values.push({ key: v.key, value });
+      }
+      const label = typeof m.label === 'string' && m.label.trim() ? m.label.trim().slice(0, 80) : undefined;
+      return { id, type: 'setParams', values, ...(label ? { label } : {}) };
     }
     case 'setArbitraryData': {
       if (typeof m.key !== 'string' || !PARAM_KEY.test(m.key)) return null;
@@ -145,8 +163,14 @@ export interface PanelTarget {
   time: number;
 }
 
-/** The engine command for an edit request (not for `requestPreview`). */
-export function panelCommand(req: Exclude<PanelRequest, { type: 'requestPreview' }>, t: PanelTarget): Command {
+/** The engine commands for an edit request (not for `requestPreview`): sent as ONE batch, one undo entry. */
+export function panelCommands(req: Exclude<PanelRequest, { type: 'requestPreview' }>, t: PanelTarget): Command[] {
+  if (req.type !== 'setParams') return [panelCommand(req, t)];
+  return req.values.map((v) => panelCommand({ id: req.id, type: 'setParam', key: v.key, value: v.value }, t));
+}
+
+/** The engine command for a single edit request (not for `requestPreview` / `setParams`). */
+export function panelCommand(req: Exclude<PanelRequest, { type: 'requestPreview' | 'setParams' }>, t: PanelTarget): Command {
   const group = `effects/${t.effectId}`;
   switch (req.type) {
     case 'setParam':
@@ -166,6 +190,11 @@ export function panelCommand(req: Exclude<PanelRequest, { type: 'requestPreview'
 /** The undo label of a panel edit. */
 export function panelLabel(req: PanelRequest, effectName: string, params: readonly EffectParamUi[]): string {
   if (req.type === 'requestPreview') return effectName;
+  if (req.type === 'setParams') {
+    if (req.label) return `${effectName}: ${req.label}`;
+    if (req.values.length !== 1) return effectName;
+    return panelLabel({ id: req.id, type: 'setParam', key: req.values[0]!.key, value: req.values[0]!.value }, effectName, params);
+  }
   const base = req.key.replace(/[XYZ]$/, '');
   const name = params.find((p) => p.key === req.key || p.key === base)?.name;
   return name ? `${effectName}: ${name}` : effectName;

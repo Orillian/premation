@@ -3,6 +3,7 @@ import {
   base64ToBytes,
   bytesToBase64,
   panelCommand,
+  panelCommands,
   panelLabel,
   panelReply,
   panelState,
@@ -32,6 +33,17 @@ describe('plugin panel protocol', () => {
     expect(parsePanelMessage({ premation: 1, id: 1, type: 'setArbitraryData', key: 'p2', data: 'not base64!' })).toBeNull();
     expect(parsePanelMessage({ premation: 1, id: 1, type: 'invokeButton', key: 'p9', payload: 'x'.repeat(70_000) })).toBeNull();
     expect(parsePanelMessage({ premation: 1, id: 1, type: 'eval', code: '1' })).toBeNull();
+  });
+
+  it('setParams: several params as one request, each checked like setParam', () => {
+    const ok = parsePanelMessage({ premation: 1, id: 9, type: 'setParams', label: 'Gloss', values: [{ key: 'p9', value: 8 }, { key: 'p10', value: 100 }] });
+    expect(ok).toEqual({ id: 9, type: 'setParams', label: 'Gloss', values: [{ key: 'p9', value: 8 }, { key: 'p10', value: 100 }] });
+    if (ok?.type !== 'setParams') throw new Error('not parsed');
+    expect(panelCommands(ok, T).map((c) => (c as { prop: { path: string } }).prop.path)).toEqual(['effects/fx_1/p9', 'effects/fx_1/p10']);
+    expect(panelLabel(ok, 'Model 3D', [])).toBe('Model 3D: Gloss');
+    expect(parsePanelMessage({ premation: 1, id: 9, type: 'setParams', values: [] })).toBeNull();
+    expect(parsePanelMessage({ premation: 1, id: 9, type: 'setParams', values: [{ key: 'opacity', value: 1 }] })).toBeNull();
+    expect(parsePanelMessage({ premation: 1, id: 9, type: 'setParams', values: Array.from({ length: 65 }, () => ({ key: 'p1', value: 1 })) })).toBeNull();
   });
 
   it('parses an editor shortcut forwarded from the frame (Undo / Redo only)', () => {

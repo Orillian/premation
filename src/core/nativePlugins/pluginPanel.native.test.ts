@@ -20,7 +20,7 @@ import { resetProcessEngine } from '@core/engine/process/processEngine';
 import { nativeEngineExe, startNativeEngine, type NativeEngine } from '@core/engine/__testHelpers__/nativeEngine';
 import { readPanelFile } from '../../../electron/pluginPanelProtocol';
 import { dragCommand, DRAG_BEGIN, DRAG_END } from './pluginOverlay';
-import { panelCommand, parsePanelMessage } from './pluginPanel';
+import { panelCommand, panelCommands, panelLabel, parsePanelMessage } from './pluginPanel';
 
 jest.setTimeout(120_000);
 
@@ -54,6 +54,7 @@ maybe('plugin panels, engine side', () => {
   beforeAll(async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'plugin-panel-'));
     cpSync(path.join(samples, 'rings'), path.join(dir, 'rings'), { recursive: true });
+    cpSync(path.join(samples, 'model3d'), path.join(dir, 'model3d'), { recursive: true });
     native = await startNativeEngine({ extraArgs: ['--no-gpu', '--test-ports', '--plugins', dir] });
     (window as unknown as { motionEditor?: unknown }).motionEditor = { engine: native.bridge };
     resetProcessEngine();
@@ -68,6 +69,32 @@ maybe('plugin panels, engine side', () => {
     await native?.stop();
     delete (window as unknown as { motionEditor?: unknown }).motionEditor;
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  // 2026-10-13 QA: model3d's Gloss button (Roughness + Specular) made two undo entries.
+  it('a preset button (setParams) is ONE undo entry, and one undo restores every value', async () => {
+    const layer = (unwrap(await client.execute({ type: 'createLayer', comp: 'comp_root', kind: 'solid', name: 'M', init: [] } as never)) as unknown as { layer: string }).layer;
+    const fx = unwrap(await client.execute({ type: 'addEffect', layers: [layer], effect: 'com.premation.samples.model3d', params: [] })).groups[0]!;
+    const effectId = fx.split('/')[1]!;
+    const read = async (): Promise<number[]> => {
+      const v = unwrap(await client.query({ type: 'getPropertyValues', props: [{ layer, path: `${fx}/p9` }, { layer, path: `${fx}/p10` }], time: 0, evaluated: false } as never)) as unknown as {
+        values: Array<{ value: { value: number } }>;
+      };
+      return v.values.map((x) => x.value.value);
+    };
+    const before = await read();
+    // What the Gloss button sends (ui/panel.js setMany), as PluginPanel.tsx runs it: one batch.
+    const msg = parsePanelMessage({ premation: 1, id: 7, type: 'setParams', label: 'Gloss', values: [{ key: 'p9', value: 8 }, { key: 'p10', value: 100 }] });
+    expect(msg?.type).toBe('setParams');
+    if (msg?.type !== 'setParams') return;
+    const entries = unwrap(await client.query({ type: 'getHistory' })).entries.length;
+    unwrap(await client.batch(panelLabel(msg, 'Model 3D', []), panelCommands(msg, { layer, effectId, time: 0 })));
+    const history = unwrap(await client.query({ type: 'getHistory' })).entries;
+    expect(history.length).toBe(entries + 1);
+    expect(history[history.length - 1]!.label).toBe('Model 3D: Gloss');
+    expect(await read()).toEqual([8, 100]);
+    unwrap(await client.execute({ type: 'undo' }));
+    expect(await read()).toEqual(before);
   });
 
   it('lists the panel, and main serves it from the bundle the engine loaded', async () => {

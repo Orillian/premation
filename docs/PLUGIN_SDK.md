@@ -527,6 +527,7 @@ The panel talks to the editor with `window.parent.postMessage({ premation: 1, �
 |---|---|
 | `{ type: 'ready' }` | the editor answers with `state` |
 | `{ id, type: 'setParam', key: 'p2', value }` | `setProperty` on the param (a number, a checkbox, `{ r, g, b, a }`; a point is `p<id>X` / `p<id>Y`); an animated param keys at the current time |
+| `{ id, type: 'setParams', values: [{ key, value }…], label? }` | several `setParam`s (≤ 64) as ONE undo entry — a preset button (`model3d`'s Clay / Gloss); the entry reads `<effect>: <label>` |
 | `{ id, type: 'setArbitraryData', key: 'p3', data: '<base64>' }` | `setPluginData`: an ARBITRARY_DATA param's bytes (≤ 256 KiB) |
 | `{ id, type: 'invokeButton', key: 'p9', payload? }` | `invokeEffectAction`: `USER_CHANGED_PARAM` with `PrUserChangedParamExtra.payload` (UTF-8, ≤ 64 KiB) — a hidden button (`PR_PARAM_FLAG_HIDDEN`) is how a panel hands the plugin data for its sequence data |
 | `{ id, type: 'requestPreview', maxSize? }` | the engine renders the layer at the current time; the reply carries `image` (a PNG data URL). The panel never renders. |

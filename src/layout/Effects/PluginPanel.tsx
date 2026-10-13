@@ -20,7 +20,7 @@ import type { PluginEffectDef } from '@core/inspector/pluginEffectDefs';
 import {
   PANEL_SANDBOX,
   bytesToBase64,
-  panelCommand,
+  panelCommands,
   panelLabel,
   panelReply,
   panelState,
@@ -94,7 +94,7 @@ function PanelFrame({ nodeId, effect, def, time, plugin }: Omit<Props, 'ui'> & {
       return panelReply(req.id, { ok: true, image: `data:image/${res.value.format || 'png'};base64,${bytesToBase64(res.value.data)}` });
     }
     const label = panelLabel(req, d.label, d.params.map((p) => ({ key: p.key, name: p.label, enabled: true, hidden: false })));
-    const res = await edit(label, panelCommand(req, { layer, effectId: fx.id, time: secondsToFlicks(t) }), { quiet: true });
+    const res = await edit(label, panelCommands(req, { layer, effectId: fx.id, time: secondsToFlicks(t) }), { quiet: true });
     return res.ok ? panelReply(req.id, { ok: true }) : panelReply(req.id, { ok: false, error: res.error.message });
   }, []);
 

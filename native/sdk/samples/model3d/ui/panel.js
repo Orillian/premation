@@ -1,7 +1,7 @@
 // Model 3D material panel (Premation SDK 1.2 sample). Runs in a sandboxed frame:
 // no Node, no network. It talks to the editor only through postMessage
 // (docs/PLUGIN_SDK.md "Plugin panels"): it reads `state` and sends setParam /
-// requestPreview. Every edit goes through the engine, so undo and redo work.
+// setParams / requestPreview. Every edit goes through the engine, so undo and redo work.
 /* global window, document */
 'use strict';
 
@@ -73,15 +73,14 @@ $('roughness').addEventListener('change', (e) => set(ROUGHNESS, Number(e.target.
 $('specular').addEventListener('input', (e) => { $('specularValue').textContent = e.target.value; });
 $('specular').addEventListener('change', (e) => set(SPECULAR, Number(e.target.value)));
 $('depth').addEventListener('change', (e) => set(DEPTH, e.target.checked));
-$('clay').addEventListener('click', async () => {
-  await set(COLOR, fromHex('#b08a6e'));
-  await set(ROUGHNESS, 90);
-  await set(SPECULAR, 5);
-});
-$('chrome').addEventListener('click', async () => {
-  await set(ROUGHNESS, 8);
-  await set(SPECULAR, 100);
-});
+// A preset button is ONE edit (one undo entry): setParams sends its values together.
+async function setMany(label, values) {
+  const r = await request({ type: 'setParams', label, values: Object.entries(values).map(([key, value]) => ({ key, value })) });
+  status(r.ok ? '' : r.error);
+}
+
+$('clay').addEventListener('click', () => setMany('Clay', { [COLOR]: fromHex('#b08a6e'), [ROUGHNESS]: 90, [SPECULAR]: 5 }));
+$('chrome').addEventListener('click', () => setMany('Gloss', { [ROUGHNESS]: 8, [SPECULAR]: 100 }));
 $('preview').addEventListener('click', async () => {
   const r = await request({ type: 'requestPreview', maxSize: 320 });
   if (r.ok && r.image) { $('frame').src = r.image; $('frame').hidden = false; } else status(r.error || 'No preview.');
