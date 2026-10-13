@@ -19,7 +19,7 @@ import { engine } from '@core/engine/engineInstance';
 import { useActiveCompId, useMirrorKeys, useMirror } from '@hooks/useMirror';
 import styles from './EngineUnportedNotice.module.css';
 
-interface Group {
+export interface Group {
   what: string;
   unported: boolean;
   layers: number;
@@ -45,6 +45,31 @@ function groupErrors(errors: readonly LayerError[], nameOf: (id: string) => stri
   return [...by.values()]
     .map(({ ids: _ids, ...g }) => g)
     .sort((a, b) => Number(b.unported) - Number(a.unported) || b.layers - a.layers || a.what.localeCompare(b.what));
+}
+
+/** What the engine says for a Premation Cloud plugin it found but may not load (effects_port.hpp kPluginLockedReason). */
+const CLOUD_LOCKED = /^requires Premation Cloud /;
+/** …and for an effect whose plugin is not installed, or failed to load. */
+const MISSING_PLUGIN = /^missing plugin /;
+
+/**
+ * The notice's heading. "The C++ engine does not render yet" is true only of an unported feature:
+ * a Cloud-locked plugin is not a gap in the engine (2026-10-13 QA: a locked plugin's notice said it
+ * was), nor is a plugin that is not installed.
+ */
+export function noticeHeading(groups: readonly Group[], layerCount: number): string {
+  const layers = `(${layerCount} layer${layerCount === 1 ? '' : 's'})`;
+  const n = groups.length;
+  if (n > 0 && groups.every((g) => g.unported && CLOUD_LOCKED.test(g.what))) {
+    return `Needs Premation Cloud: ${n === 1 ? 'an effect' : `${n} effects`} drawn without ${n === 1 ? 'its' : 'their'} plugin ${layers}`;
+  }
+  if (n > 0 && groups.every((g) => g.unported && MISSING_PLUGIN.test(g.what))) {
+    return `Missing plugin: ${n === 1 ? 'an effect' : `${n} effects`} drawn without ${n === 1 ? 'it' : 'them'} ${layers}`;
+  }
+  if (n > 0 && groups.every((g) => g.unported && !CLOUD_LOCKED.test(g.what) && !MISSING_PLUGIN.test(g.what))) {
+    return `Drawn without ${n === 1 ? 'one feature' : `${n} features`} the C++ engine does not render yet ${layers}`;
+  }
+  return `Drawn without ${n === 1 ? 'one feature' : `${n} features`} ${layers}`;
 }
 
 export function EngineUnportedNotice(): JSX.Element | null {
@@ -81,10 +106,7 @@ export function EngineUnportedNotice(): JSX.Element | null {
   return (
     <div className={styles.notice} role="status" data-engine-unported="">
       <div className={styles.head}>
-        <span className={styles.title}>
-          Drawn without {groups.length === 1 ? 'one feature' : `${groups.length} features`} the C++ engine does not render yet
-          {' '}({layerCount} layer{layerCount === 1 ? '' : 's'})
-        </span>
+        <span className={styles.title}>{noticeHeading(groups, layerCount)}</span>
         <button type="button" className={styles.close} onClick={() => setDismissed(signature)} aria-label="Dismiss">×</button>
       </div>
       <ul className={styles.list}>
