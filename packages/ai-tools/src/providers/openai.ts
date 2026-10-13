@@ -134,17 +134,28 @@ class OpenAiParser implements StreamParser {
   }
 }
 
+/**
+ * Reasoning-era OpenAI models (o-series, gpt-5.x, gpt-6.x) reject `temperature`
+ * and take `max_completion_tokens`; `max_tokens` is the gpt-4o-era name.
+ */
+function isReasoningModel(model: string): boolean {
+  return /^(o\d|gpt-[5-9]|gpt-\d\d)/.test(model);
+}
+
 export const openAiAdapter: ProviderAdapter = {
   id: 'openai',
-  defaultModel: 'gpt-4o',
+  defaultModel: 'gpt-6-astra',
   buildBody(req: AiRequest): unknown {
+    const reasoning = isReasoningModel(req.model);
     return {
       model: req.model,
       stream: true,
       messages: toOpenAiMessages(req.system, req.messages),
       ...(req.tools.length ? { tools: toOpenAiTools(req.tools), tool_choice: 'auto' } : {}),
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
+      ...(req.temperature !== undefined && !reasoning ? { temperature: req.temperature } : {}),
+      ...(req.maxTokens !== undefined
+        ? reasoning ? { max_completion_tokens: req.maxTokens } : { max_tokens: req.maxTokens }
+        : {}),
       ...(req.responseSchema
         ? {
             response_format: {

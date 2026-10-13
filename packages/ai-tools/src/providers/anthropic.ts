@@ -159,15 +159,30 @@ class AnthropicParser implements StreamParser {
   }
 }
 
+/**
+ * Models on which the request shape of the 4.x era returns a 400.
+ *
+ * Opus 5.5, Sonnet 5.5 and Fable 5.1 reject a forced `tool_choice` (`any` /
+ * `tool`) and any non-default sampling parameter (`temperature`, `top_p`,
+ * `top_k`); Opus 5, Sonnet 5, Opus 4.7/4.8 and Haiku 5.5 reject sampling too.
+ * Only 4.6 and older still take them. One rule for the whole family rather than
+ * a per-model table that goes stale: never send sampling to Anthropic, and ask
+ * for the stage tool with `auto` plus an instruction instead of forcing it. The
+ * parser accepts either a `record_stage_output` call or JSON text, so a model
+ * that answers in text still parses.
+ */
+const STAGE_TOOL_INSTRUCTION =
+  '\n\nAnswer by calling the record_stage_output tool exactly once with the complete result as its input. Do not answer in prose.';
+
 export const anthropicAdapter: ProviderAdapter = {
   id: 'anthropic',
-  defaultModel: 'claude-sonnet-5',
+  defaultModel: 'claude-opus-5-5',
   buildBody(req: AiRequest): unknown {
     return {
       model: req.model,
       stream: true,
       // Anthropic takes the system prompt as a top-level field, not a message.
-      system: req.system,
+      system: req.responseSchema ? `${req.system}${STAGE_TOOL_INSTRUCTION}` : req.system,
       max_tokens: req.maxTokens ?? 8192,
       messages: toAnthropicMessages(req.messages),
       ...(req.responseSchema
@@ -179,12 +194,11 @@ export const anthropicAdapter: ProviderAdapter = {
                 input_schema: req.responseSchema,
               },
             ],
-            tool_choice: { type: 'tool', name: 'record_stage_output' },
+            tool_choice: { type: 'auto', disable_parallel_tool_use: true },
           }
         : req.tools.length
           ? { tools: toAnthropicTools(req.tools) }
           : {}),
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
     };
   },
   createParser(): StreamParser {

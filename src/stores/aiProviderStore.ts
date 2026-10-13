@@ -60,13 +60,18 @@ import {
  * empty dropdown, which is a worse failure than a slightly old list.
  */
 export const MODEL_SUGGESTIONS: Record<AiProviderId, readonly string[]> = {
-  anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'],
-  // NOTE: unverified against a live OpenAI key — these are carried over, not
-  // confirmed current. Every OpenAI run in the audit used gpt-4o.
-  openai: ['gpt-4o', 'gpt-4o-mini', 'o4-mini'],
-  // Gemini 3.x only — the 2.x models are retired / unavailable on current keys.
-  // gemini-3.5-flash is the current stable; 3.1-pro-preview is the latest Pro.
-  gemini: ['gemini-3.5-flash', 'gemini-3.1-pro-preview'],
+  // Current generation (2026-10-13): Opus 5.5 is the default tier, Sonnet 5.5
+  // and Haiku 5.5 below it, Fable 5.1 above. Opus 5 / Sonnet 5 / 4.8 / 4.5 are
+  // still served but superseded; a saved pick of one keeps working.
+  anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
+  // From the OpenAI models page 2026-10-13: GPT-6 Astra (flagship), GPT-6.1 Sol
+  // (balanced), GPT-6 Luna (cost). gpt-4o and o4-mini are listed as previous
+  // generation. Ids read off the docs' model pages, not confirmed on a live key.
+  openai: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-luna'],
+  // From the Gemini models page 2026-10-13: 3.8 Flash is the current stable
+  // (recommended for new projects), 3.1 Pro is still the latest Pro (preview),
+  // 3.5 Flash-Lite is the separate-quota relief tier. 2.x is shut down.
+  gemini: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash-lite'],
 };
 
 /** The BYOK providers this editor offers, in the order it prefers them. */

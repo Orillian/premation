@@ -165,7 +165,7 @@ class GeminiParser implements StreamParser {
 
 export const geminiAdapter: ProviderAdapter = {
   id: 'gemini',
-  defaultModel: 'gemini-3.5-flash',
+  defaultModel: 'gemini-3.8-flash',
   buildBody(req: AiRequest): unknown {
     return {
       systemInstruction: { parts: [{ text: req.system }] },

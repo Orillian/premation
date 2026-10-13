@@ -96,12 +96,23 @@ function renderProviderIcon(provider: GatewayProviderId): JSX.Element {
  * label nobody can see.
  */
 const MODEL_LABELS: readonly [match: string, label: string][] = [
+  ['claude-fable-5-1', 'Claude Fable 5.1'],
+  ['claude-opus-5-5', 'Claude Opus 5.5'],
+  ['claude-sonnet-5-5', 'Claude Sonnet 5.5'],
+  ['claude-haiku-5-5', 'Claude Haiku 5.5'],
+  // Superseded but still served — a saved pick keeps its name.
   ['claude-opus-5', 'Claude Opus 5'],
   ['claude-opus-4-8', 'Claude Opus 4.8'],
   ['claude-sonnet-5', 'Claude Sonnet 5'],
   ['claude-haiku-4-5', 'Claude Haiku 4.5'],
-  ['gemini-3.1-pro', 'Gemini 3.1 Pro'],
+  ['gemini-3.8-flash', 'Gemini 3.8 Flash'],
+  ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite'],
   ['gemini-3.5-flash', 'Gemini 3.5 Flash'],
+  ['gemini-3.1-pro', 'Gemini 3.1 Pro'],
+  ['gpt-6-astra', 'GPT-6 Astra'],
+  ['gpt-6.1-sol', 'GPT-6.1 Sol'],
+  ['gpt-6-luna', 'GPT-6 Luna'],
+  ['gpt-5.6-sol', 'GPT-5.6 Sol'],
   ['gpt-4o-mini', 'GPT-4o mini'],
   ['gpt-4o', 'GPT-4o'],
   ['o4-mini', 'o4-mini'],
