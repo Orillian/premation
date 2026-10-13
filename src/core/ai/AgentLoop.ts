@@ -412,13 +412,20 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
         isGenerative = true;
         maxCritiques = MAX_CRITIQUES_GENERATIVE;
         let backendRan = false;
+        const generativeMode = opts.mode ?? authorModeDefault();
 
         // ── Author mode ───────────────────────────────────────────────────
         // The model writes the whole composition against the engine's own
         // vocabulary, renders it, critiques it per beat and revises the beats
         // that fail — so by the time it returns, the work HAS been looked at.
-        // On any failure the caster below runs exactly as before.
-        if ((opts.mode ?? authorModeDefault()) === 'author') {
+        //
+        // It is the ONLY generative path unless the user picked Library. It
+        // used to fall back to the caster on any failure, which meant a model
+        // hiccup silently handed the user a template piece from a 50-layout
+        // library — indistinguishable from the AI's own work, and the reason
+        // "every video looks the same". A failed author run is now an error
+        // the user sees, with the reasons, and nothing is built in its place.
+        if (generativeMode === 'author') {
           try {
             const authored = await runAuthorPipeline(
               {
@@ -450,24 +457,28 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
               }
               if (authored.critique) casterCritique = authored.critique;
             } else {
-              recordPathFailure('author', `author run produced nothing usable (${authored.problems.join('; ') || 'no detail'}); falling back to the caster`);
+              const why = authored.problems.join('; ') || 'the model returned nothing usable';
+              recordPathFailure('author', `author run produced nothing usable (${why})`);
+              throw new AiError('unknown', `The design did not come together: ${why}. Nothing was built. Try again, or rephrase the brief.`);
             }
           } catch (err) {
             if (signal.aborted) throw err;
+            if (err instanceof AiError) throw err;
             recordPathFailure('author', err);
+            throw new AiError('unknown', `The design run failed: ${err instanceof Error ? err.message : String(err)}. Nothing was built.`);
           }
         }
 
-        // ── The caster ────────────────────────────────────────────────────
+        // ── The caster (Library mode only) ────────────────────────────────
         // Three model calls, and none of them authors a keyframe: the brief
         // picks a look and the beats, the cast picks a layout and a technique
         // per beat, and every keyframe comes from a hand-authored library that
         // the timing, design and UI linters have already verified.
         //
-        // Tried FIRST, and the director is kept as the fallback rather than
-        // deleted — until the caster has carried real traffic, a path that has
-        // shipped is worth more than a path that has passed tests.
-        if (!backendRan && casterEnabled()) {
+        // Runs only when the user chose Library in the chat. It is an
+        // instrument the user picks up, never a fallback the pipeline reaches
+        // for on the author's behalf.
+        if (generativeMode === 'library' && !backendRan && casterEnabled()) {
           try {
             const cast = await runCasterPipeline(
               {
@@ -525,10 +536,10 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
           }
         }
 
-        // The director only runs if the caster did not. Guarding here rather
-        // than throwing a sentinel keeps the catch below meaning exactly one
-        // thing — "the director failed" — which is what its message says.
-        if (!backendRan) {
+        // The director only runs in Library mode, and only if the caster did
+        // not. Guarding here rather than throwing a sentinel keeps the catch
+        // below meaning exactly one thing — "the director failed".
+        if (generativeMode === 'library' && !backendRan) {
         events?.onActivity?.('Connecting to Director Service…');
         try {
           const dirRes = await runBackendDirector(
@@ -571,13 +582,17 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
         // it produced exactly the output the caster exists to replace — and when
         // it did not, it was ~2,200 lines of latency nobody could see.
         //
-        // Two paths remain and the fallback order is deliberate: the caster,
-        // whose craft floor is deterministic; then the backend director; then the
-        // direct tool loop below, which at least lets the model see the scene.
+        // In Library mode the fallback order is deliberate: the caster, whose
+        // craft floor is deterministic; then the backend director; then the
+        // direct tool loop below. In Author mode there is no fallback at all.
       }
     } catch (err) {
-      // Fail-safe fallback to the direct tool loop. Same rule as above: the
-      // fallback is fine, the silence is not.
+      // An author failure is the user's to see — it was thrown as an AiError on
+      // purpose, and swallowing it here would turn "nothing was built" into a
+      // direct-loop run that builds something generic.
+      if (err instanceof AiError) throw err;
+      // Library mode: fail-safe fallback to the direct tool loop. Same rule as
+      // above: the fallback is fine, the silence is not.
       recordPathFailure('generative-path', err);
       events?.onActivity?.('Pipeline failed. Falling back to direct mode…');
     }

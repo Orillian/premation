@@ -78,27 +78,30 @@ describe('coerceBrief', () => {
     expect(b.beats).toHaveLength(1);
   });
 
+  const oneBeat = [{ purpose: 'open', content: { headline: 'Hi' } }];
+
   it('replaces an unknown pack id rather than failing', () => {
-    expect(coerceBrief({ lookPackId: 'nope' }, 'p').lookPackId).toBe('apple_keynote');
+    expect(coerceBrief({ lookPackId: 'nope', beats: oneBeat }, 'p').lookPackId).toBe('apple_keynote');
   });
 
   it('clamps energy into range', () => {
-    expect(coerceBrief({ energy: 7 }, 'p').energy).toBe(1);
-    expect(coerceBrief({ energy: -3 }, 'p').energy).toBe(0);
-    expect(coerceBrief({ energy: 'loud' }, 'p').energy).toBe(0.5);
+    expect(coerceBrief({ energy: 7, beats: oneBeat }, 'p').energy).toBe(1);
+    expect(coerceBrief({ energy: -3, beats: oneBeat }, 'p').energy).toBe(0);
+    expect(coerceBrief({ energy: 'loud', beats: oneBeat }, 'p').energy).toBe(0.5);
   });
 
-  it('survives a completely empty response', () => {
-    // The alternative is a blank composition and an apology. A worse piece than
-    // the model should have planned is a much better outcome.
-    const b = coerceBrief(undefined, 'a bold product teaser');
-    expect(b.beats.length).toBeGreaterThan(0);
-    expect(b.beats[0]!.content.headline).toContain('bold product teaser');
-    expect(b.totalDurationMs).toBeGreaterThan(0);
+  it('refuses an empty response instead of inventing a brief', () => {
+    // It used to answer a failed model call with a one-beat apple_keynote hero
+    // card carrying the prompt as the headline — the same piece every time,
+    // indistinguishable from a real run. A brief the model did not write is an
+    // error the user sees, not a default.
+    expect(() => coerceBrief(undefined, 'a bold product teaser')).toThrow(/no creative brief/);
+    expect(() => coerceBrief({ lookPackId: 'swiss_editorial' }, 'a bold product teaser')).toThrow(/no beats/);
+    expect(() => coerceBrief({ beats: [] }, 'p')).toThrow(/no beats/);
   });
 
   it('caps a runaway duration', () => {
-    expect(coerceBrief({ totalDurationMs: 999_999_999 }, 'p').totalDurationMs).toBe(120_000);
+    expect(coerceBrief({ totalDurationMs: 999_999_999, beats: oneBeat }, 'p').totalDurationMs).toBe(120_000);
   });
 
   it('defaults a missing beat weight rather than producing NaN timings', () => {
@@ -107,10 +110,10 @@ describe('coerceBrief', () => {
   });
 
   it('only carries accent and mode when they are actually present', () => {
-    const bare = coerceBrief({ lookPackId: 'luxury_film' }, 'p');
+    const bare = coerceBrief({ lookPackId: 'luxury_film', beats: oneBeat }, 'p');
     expect('accent' in bare).toBe(false);
     expect('mode' in bare).toBe(false);
-    const full = coerceBrief({ lookPackId: 'luxury_film', accent: '#c8a862', mode: 'light' }, 'p');
+    const full = coerceBrief({ lookPackId: 'luxury_film', accent: '#c8a862', mode: 'light', beats: oneBeat }, 'p');
     expect(full.accent).toBe('#c8a862');
     expect(full.mode).toBe('light');
   });

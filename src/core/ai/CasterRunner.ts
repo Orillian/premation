@@ -39,7 +39,7 @@ import {
 import type { GatewayProviderId } from '@core/api/client';
 import type { ProviderId } from '@motion/ai-tools';
 import { analyseSceneAudioForCaster } from './audioForCaster';
-import { streamTurn, recordAiPathFailure, type AgentEvents } from './AgentLoop';
+import { AiError, streamTurn, recordAiPathFailure, type AgentEvents } from './AgentLoop';
 import { renderCritiqueEvidence } from './filmstrip';
 import { askJson, extractJson } from './askJson';
 
@@ -201,27 +201,36 @@ const CAST_SCHEMA: AiRequest['responseSchema'] = {
   },
 };
 
-/** A brief that is structurally valid whatever the model returned. */
+/**
+ * A brief that is structurally valid, from a model answer that planned one.
+ *
+ * Throws `AiError` when there is no answer or no beats. This used to invent a
+ * one-beat brief in the first look pack with the prompt as the headline — so a
+ * failed or unparseable model call built the SAME apple_keynote hero card every
+ * time, indistinguishable from a real run. A brief the model did not write is
+ * not a brief; the user gets the error and nothing is built.
+ */
 function coerceBrief(raw: unknown, prompt: string): CreativeBrief {
-  const o = (raw ?? {}) as Record<string, unknown>;
+  if (raw === undefined || raw === null || typeof raw !== 'object') {
+    throw new AiError('unknown', 'The model returned no creative brief, so nothing was built. Try again or rephrase the brief.');
+  }
+  const o = raw as Record<string, unknown>;
   const packIds = new Set(LOOK_PACKS.map((p) => p.id));
   const lookPackId = typeof o.lookPackId === 'string' && packIds.has(o.lookPackId)
     ? o.lookPackId
     : LOOK_PACKS[0]!.id;
-  const beats = Array.isArray(o.beats) && o.beats.length
-    ? (o.beats as Record<string, unknown>[]).map((b) => ({
-        purpose: String(b.purpose ?? 'beat'),
-        weight: typeof b.weight === 'number' && Number.isFinite(b.weight) ? b.weight : 1,
-        content: (b.content ?? {}) as CreativeBrief['beats'][number]['content'],
-        // Length-gated, not just type-gated. The backend's image DTO rejects a
-        // prompt under 8 characters, so an `art: "yes"` would cost a round trip
-        // to be told so — and a one-word subject was never art direction anyway.
-        ...(typeof b.art === 'string' && b.art.trim().length >= 8 ? { art: b.art.trim() } : {}),
-      }))
-    // A brief with no beats still has to render something. One beat carrying the
-    // prompt as a headline is a worse piece than the model should have planned,
-    // and an infinitely better outcome than a blank composition.
-    : [{ purpose: 'hero', weight: 1, content: { headline: prompt.slice(0, 90) } }];
+  if (!Array.isArray(o.beats) || o.beats.length === 0) {
+    throw new AiError('unknown', `The model's brief for "${prompt.slice(0, 60)}" had no beats, so nothing was built. Try again or rephrase the brief.`);
+  }
+  const beats = (o.beats as Record<string, unknown>[]).map((b) => ({
+    purpose: String(b.purpose ?? 'beat'),
+    weight: typeof b.weight === 'number' && Number.isFinite(b.weight) ? b.weight : 1,
+    content: (b.content ?? {}) as CreativeBrief['beats'][number]['content'],
+    // Length-gated, not just type-gated. The backend's image DTO rejects a
+    // prompt under 8 characters, so an `art: "yes"` would cost a round trip
+    // to be told so — and a one-word subject was never art direction anyway.
+    ...(typeof b.art === 'string' && b.art.trim().length >= 8 ? { art: b.art.trim() } : {}),
+  }));
 
   return {
     lookPackId,

@@ -372,6 +372,15 @@ caster path too):**
   bad pick, never invents one) → everything was a bare fade. Missing picks now
   take the best-ranked entrance/kinetic technique per beat (camera/depth only
   when Claude chooses them — an auto camera move emptied whole beats).
+  **Reversed 2026-10-13:** auto-picking the first menu entry made every cast
+  with N beats the same N layouts and entrances whatever the brief said. A
+  missing pick now returns the menus and builds nothing; Claude chooses per
+  beat. The server instructions and `get_design_guide` lead with
+  `author_scene` (Claude designs against the whole engine) and present looks,
+  techniques and `cast_piece` as instruments, never the starting point. The
+  in-app chat changed the same day: Author mode no longer falls back to the
+  caster — a failed author run is an error the user sees — and the caster's
+  default one-beat brief on a failed model call is gone (`coerceBrief` throws).
 - Techniques move x/y as OFFSETS from rest; the keyframe tools take absolute
   positions; nothing converted → every cast entrance sent its text to y = 0.
   `absolutizePositions` (technique-library/emit.ts) in the caster and

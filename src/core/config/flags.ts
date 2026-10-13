@@ -51,9 +51,10 @@ export function setCasterEnabled(on: boolean): void {
  * `author` (default): the model writes the whole composition as a scene
  * script against the engine's vocabulary, looks at it and revises it
  * (docs/AI_AUTHOR_MODE_PLAN.md). `library`: the caster, which picks templates
- * and techniques from the hand-authored libraries. The caster stays either
- * way — it is the fallback when an author run fails and the baseline the eval
- * harness compares against.
+ * and techniques from the hand-authored libraries. The two never mix: an
+ * author run that fails is an error the user sees, not a caster run — the
+ * caster is reached only when the user picks Library. It stays as that explicit
+ * instrument and as the baseline the eval harness compares against.
  */
 let authorDefault: 'author' | 'library' = 'author';
 

@@ -286,16 +286,19 @@ export function coerceCastArgs(args: unknown, look: SessionLook | null, compDura
 
 /**
  * Brief → designed piece, through the caster. Claude is the caster's two
- * "model" hooks: it supplies the brief, and optionally the layout/motion pick
- * per beat (from the menus `menusOnly` returns). Missing or invalid picks are
- * repaired to the best-ranked candidate; the variants are linted and the best
- * scoring one is built.
+ * "model" hooks: it supplies the brief AND the layout/motion pick per beat
+ * (from the menus `menusOnly` returns). An invalid pick is repaired to the
+ * best-ranked candidate; a MISSING pick is not filled in — the call returns
+ * the menus instead of building. Premation used to take the first entry of
+ * each menu on Claude's behalf, which made every cast with N beats the same
+ * N layouts and entrances whatever the brief said. The choice is Claude's.
  */
 export async function castPiece(args: unknown, look: SessionLook | null, registry: Registry, ctx: ToolContext): Promise<{ ok: boolean; text: string; created: string[] }> {
   const comp = await ctx.comp.get();
   const c = coerceCastArgs(args, look, comp.durationSeconds);
   if ('error' in c) return { ok: false, text: c.error, created: [] };
   const menus: string[] = [];
+  const open: string[] = [];
   const result = await runCaster({
     userPrompt: c.brief.tone,
     width: comp.width,
@@ -307,35 +310,21 @@ export async function castPiece(args: unknown, look: SessionLook | null, registr
       cast: async (prompts, kind) => {
         for (const p of prompts) menus.push(`── ${kind.toUpperCase()} for beat ${p.beatIndex} ──\n${p.prompt}`);
         const given = kind === 'layout' ? c.layoutPicks : c.motionPicks;
-        // A beat Claude left open gets the best-ranked candidate from its menu.
-        // Without this a motion beat got NO technique — the caster repairs a
-        // bad pick but does not invent a missing one — and the whole piece fell
-        // back to bare opacity fades. Prefer one not used yet, so beats differ.
-        // Automatic MOTION picks stay with techniques that animate the type the
-        // layout placed (entrances, kinetic type): a camera or depth technique
-        // picked for variety moved the camera off the text and emptied whole
-        // beats (seen 2026-10-08). Claude can still choose those deliberately.
-        const safe = (id: string): boolean => kind === 'layout' || /^(entrance|kinetic_type|ui)\./.test(id);
-        const used = new Set(given.map((g) => g.id));
-        const auto = prompts.flatMap((p) => {
-          if (given.some((g) => g.beatIndex === p.beatIndex)) return [];
-          const all = [...p.prompt.matchAll(/^\s*([a-z][a-z0-9_]*\.[a-z0-9_]+)\s+—/gm)].map((m) => m[1]!);
-          const ids = all.filter(safe).length ? all.filter(safe) : all;
-          const id = (kind === 'motion' ? ids.find((x) => !used.has(x)) : undefined) ?? ids[0];
-          if (!id) return [];
-          used.add(id);
-          return [{ beatIndex: p.beatIndex, id }];
-        });
-        return [...given, ...auto];
+        for (const p of prompts) {
+          if (!given.some((g) => g.beatIndex === p.beatIndex)) open.push(`${kind} for beat ${p.beatIndex}`);
+        }
+        return given;
       },
     },
   });
-  if (c.menusOnly) {
+  if (c.menusOnly || open.length) {
     return {
       ok: true,
       created: [],
       text: [
-        'The menus for this brief (nothing was built). Pick a layout id and a technique id per beat, then call cast_piece again with layoutPicks / motionPicks — or omit them to let Premation pick the best-ranked.',
+        c.menusOnly
+          ? 'The menus for this brief (nothing was built). Pick a layout id and a technique id per beat, then call cast_piece again with layoutPicks / motionPicks.'
+          : `Nothing was built: no pick for ${open.join(', ')}. Premation does not choose for you — read the menus below, pick a layout id and a technique id for EVERY beat (vary them; a camera or depth technique only where the beat can carry it), and call cast_piece again with layoutPicks and motionPicks. Or design the piece yourself with author_scene.`,
         '',
         ...menus,
       ].join('\n'),
@@ -404,9 +393,9 @@ export function designGuide(topic: string | undefined): string {
   const sections: Record<string, string> = {
     process: [
       'PROCESS — how a designed piece gets made here:',
-      '1. Decide the look first (list_looks → apply_look, with the brand accent if there is one). Everything downstream follows it.',
-      '2. For a whole piece from words: cast_piece with a brief (beats with real copy). It sequences the beats, puts a layout template and a motion technique on each, lints and repairs, and builds the best of several variants. Use menusOnly: true first to see the layout/technique options per beat and pick deliberately.',
-      '3. For a piece Claude composes itself: author_scene (read get_author_guide), or build layers with the tools — then animate them with apply_technique instead of hand-keyed fades.',
+      '1. Design the piece yourself: read get_author_guide, write the concept, palette, type scale, grid and beats, then author_scene. Everything the engine can do is yours — 3D, cameras, lights, effects with animated params, text animators, trim paths, repeaters, masks, mattes, blend modes, your own vectors. Nothing is chosen for you.',
+      '2. Instruments, picked up when they serve YOUR idea, never as a starting point: apply_look (a palette/type/pacing pack — list_looks), apply_technique (a hand-authored move for layers you made — list_techniques), cast_piece (a template layout + technique per beat; you must pick both per beat from its menus, menusOnly: true first). A piece that is only a look pack and a template reads as a template.',
+      '3. Refine with the individual tools: set_easing, text_animator, add_effect, add_camera_move, set_light, set_keyframes.',
       '4. review_design: fix the three biggest problems, review again. Twice is normal for good work.',
       '5. Sound: list_sfx / add_sfx on the moments that hit (whoosh into a transition, impact on a reveal, riser before a drop); set_audio_levels to sit them under music; import_media for the user\'s music.',
     ].join('\n'),

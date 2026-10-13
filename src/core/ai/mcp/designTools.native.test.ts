@@ -27,6 +27,26 @@ const call = (name: string, args: unknown = {}): Promise<McpResult> => host.hand
 const textOf = (r: McpResult): string => r.content.map((c) => (c.type === 'text' ? c.text : '[image]')).join('\n');
 const layerCount = (): number => documentMirror().layerIds().length;
 
+/**
+ * What an MCP Claude does before casting: read the menus and choose a layout
+ * and a technique per beat. Premation no longer picks for it.
+ */
+async function picksFor(brief: Record<string, unknown>): Promise<{ layoutPicks: { beatIndex: number; id: string }[]; motionPicks: { beatIndex: number; id: string }[] }> {
+  const menus = textOf(await call('cast_piece', { ...brief, menusOnly: true }));
+  const layoutPicks: { beatIndex: number; id: string }[] = [];
+  const motionPicks: { beatIndex: number; id: string }[] = [];
+  for (const m of menus.matchAll(/── (LAYOUT|MOTION) for beat (\d+) ──\n([\s\S]*?)(?=\n── |$)/g)) {
+    const ids = [...m[3]!.matchAll(/^\s*([a-z][a-z0-9_]*\.[a-z0-9_]+)\s+—/gm)].map((x) => x[1]!);
+    const beatIndex = Number(m[2]);
+    if (m[1] === 'LAYOUT') layoutPicks.push({ beatIndex, id: ids[beatIndex % ids.length]! });
+    else {
+      const moving = ids.filter((id) => /^(entrance|kinetic_type)\./.test(id));
+      motionPicks.push({ beatIndex, id: (moving.length ? moving : ids)[beatIndex % (moving.length || ids.length)]! });
+    }
+  }
+  return { layoutPicks, motionPicks };
+}
+
 describe('design tools on the engine', () => {
   it('lists looks and techniques, and applying a look orders techniques by it', async () => {
     expect(textOf(await call('list_looks'))).toMatch(/swiss_editorial/);
@@ -64,10 +84,25 @@ describe('design tools on the engine', () => {
     expect(layerCount()).toBe(before);
   });
 
+  it('builds nothing when a beat has no pick — the menus come back instead', async () => {
+    const before = layerCount();
+    const r = await call('cast_piece', {
+      tone: 'launch',
+      beats: [
+        { purpose: 'hook', content: { headline: 'Meet Nova' } },
+        { purpose: 'cta', content: { headline: 'Pre-order', cta: 'nova.audio' } },
+      ],
+    });
+    expect(r.isError).toBeUndefined();
+    expect(textOf(r)).toMatch(/Nothing was built: no pick for layout for beat 0/);
+    expect(textOf(r)).toMatch(/MOTION for beat 1/);
+    expect(layerCount()).toBe(before);
+  });
+
   it('casts a whole piece from a brief as one undo step', async () => {
     await call('apply_look', { lookId: 'swiss_editorial' });
     const before = await h.doc();
-    const r = await call('cast_piece', {
+    const brief = {
       tone: 'A calm product launch for Nova headphones',
       energy: 0.4,
       durationSec: 8,
@@ -77,7 +112,8 @@ describe('design tools on the engine', () => {
         { purpose: 'cta', content: { headline: 'Pre-order today', cta: 'nova.audio' } },
       ],
       variants: 2,
-    });
+    };
+    const r = await call('cast_piece', { ...brief, ...(await picksFor(brief)) });
     expect(textOf(r)).toMatch(/^Cast "/);
     expect(r.isError).toBeUndefined();
     expect(layerCount()).toBeGreaterThan(3);
@@ -90,7 +126,7 @@ describe('design tools on the engine', () => {
 
   it('casting again REPLACES the piece — one copy, one undo entry per cast (M1)', async () => {
     await call('apply_look', { lookId: 'swiss_editorial' });
-    const brief = {
+    const outline = {
       tone: 'A calm product launch for Nova headphones',
       durationSec: 8,
       beats: [
@@ -99,6 +135,7 @@ describe('design tools on the engine', () => {
       ],
       variants: 1,
     };
+    const brief = { ...outline, ...(await picksFor(outline)) };
     const first = await call('cast_piece', brief);
     expect(first.isError).toBeUndefined();
     const once = layerCount();
