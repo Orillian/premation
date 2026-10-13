@@ -14,6 +14,8 @@
  *   { id, type: 'setArbitraryData', key, data }   setPluginData (an ARBITRARY_DATA param's bytes, base64)
  *   { id, type: 'invokeButton', key, payload? }   invokeEffectAction (a button; `payload` reaches the plugin)
  *   { id, type: 'requestPreview', maxSize? }      getThumbnail of the layer — the engine renders, never the panel
+ *   { type: 'shortcut', action }           Edit ▸ Undo / Redo (`'undo' | 'redo'`): the editor's own
+ *                                          shortcuts, which a key press inside the frame never reaches
  *
  *   editor → panel
  *   { type: 'state', effect, plugin, time, params, values, data }   on ready and after every document change
@@ -53,7 +55,11 @@ export type PanelRequest =
   | { id: number; type: 'invokeButton'; key: string; payload?: string }
   | { id: number; type: 'requestPreview'; maxSize: number };
 
-export type PanelMessage = { type: 'ready' } | PanelRequest;
+/** An editor shortcut pressed inside the frame (the sandboxed frame keeps its keys to itself). */
+export type PanelShortcut = 'undo' | 'redo';
+export const PANEL_SHORTCUTS: readonly PanelShortcut[] = ['undo', 'redo'];
+
+export type PanelMessage = { type: 'ready' } | { type: 'shortcut'; action: PanelShortcut } | PanelRequest;
 
 /** A native plugin param's document key: `p<id>` (a point's `p<id>X` / `p<id>Y`). */
 const PARAM_KEY = /^p\d{1,9}[XYZ]?$/;
@@ -81,6 +87,9 @@ export function parsePanelMessage(raw: unknown): PanelMessage | null {
   const m = raw as Record<string, unknown>;
   if (m.premation !== PANEL_PROTOCOL || typeof m.type !== 'string') return null;
   if (m.type === 'ready') return { type: 'ready' };
+  if (m.type === 'shortcut') {
+    return PANEL_SHORTCUTS.includes(m.action as PanelShortcut) ? { type: 'shortcut', action: m.action as PanelShortcut } : null;
+  }
   const id = m.id;
   if (typeof id !== 'number' || !Number.isSafeInteger(id)) return null;
   switch (m.type) {

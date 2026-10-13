@@ -30,6 +30,7 @@ import {
   type PanelRequest,
 } from '@core/nativePlugins/pluginPanel';
 import { useMirrorRevision } from '@hooks/useMirror';
+import { runPanelShortcut } from '@layout/Plugins/panelShortcut';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
 
 interface Props {
@@ -106,6 +107,10 @@ function PanelFrame({ nodeId, effect, def, time, plugin }: Omit<Props, 'ui'> & {
       if (msg.type === 'ready') {
         ready.current = true;
         void pushState();
+        return;
+      }
+      if (msg.type === 'shortcut') {
+        runPanelShortcut(msg.action, frame.current);
         return;
       }
       void run(msg).then(post, (err: unknown) => post(panelReply(msg.id, { ok: false, error: err instanceof Error ? err.message : String(err) })));

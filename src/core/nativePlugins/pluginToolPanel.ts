@@ -11,6 +11,8 @@
  *     { id, type: 'command', request, label? }       → ONE edit command, origin `plugin`,
  *                                                       ONE undo entry
  *     { id, type: 'command', commands: [...], label } → several, still ONE undo entry
+ *     { type: 'shortcut', action: 'undo' | 'redo' }  → Edit ▸ Undo / Redo (a key press in the
+ *                                                       frame never reaches the editor's shortcuts)
  *   editor → panel
  *     { type: 'context', plugin, comp, layers, time } on ready and after every document,
  *                                                       selection or time change
@@ -24,6 +26,7 @@
  */
 
 import { COMMANDS, QUERIES, type Command, type CommandType, type Query, type QueryType } from '@motion/engine-api';
+import { PANEL_SHORTCUTS, type PanelShortcut } from './pluginPanel';
 
 export const TOOL_PANEL_PROTOCOL = 1;
 /** A request's JSON size limit (a panel never needs more; the frame is untrusted). */
@@ -32,6 +35,7 @@ export const MAX_TOOL_BATCH = 256;
 
 export type ToolPanelMessage =
   | { type: 'ready' }
+  | { type: 'shortcut'; action: PanelShortcut }
   | { id: number; type: 'query'; request: Query }
   | { id: number; type: 'command'; commands: Command[]; label: string };
 
@@ -65,6 +69,9 @@ export function checkPanelCommand(c: unknown): string | null {
 export function parseToolPanelMessage(raw: unknown): ToolPanelParse {
   if (!isObject(raw) || raw.premation !== TOOL_PANEL_PROTOCOL || typeof raw.type !== 'string') return null;
   if (raw.type === 'ready') return { type: 'ready' };
+  if (raw.type === 'shortcut') {
+    return PANEL_SHORTCUTS.includes(raw.action as PanelShortcut) ? { type: 'shortcut', action: raw.action as PanelShortcut } : null;
+  }
   const id = raw.id;
   if (typeof id !== 'number' || !Number.isSafeInteger(id)) return null;
   const invalid = (error: string) => ({ id, type: 'invalid' as const, error });

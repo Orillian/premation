@@ -524,6 +524,7 @@ The panel talks to the editor with `window.parent.postMessage({ premation: 1, �
 | `{ id, type: 'setArbitraryData', key: 'p3', data: '<base64>' }` | `setPluginData`: an ARBITRARY_DATA param's bytes (≤ 256 KiB) |
 | `{ id, type: 'invokeButton', key: 'p9', payload? }` | `invokeEffectAction`: `USER_CHANGED_PARAM` with `PrUserChangedParamExtra.payload` (UTF-8, ≤ 64 KiB) — a hidden button (`PR_PARAM_FLAG_HIDDEN`) is how a panel hands the plugin data for its sequence data |
 | `{ id, type: 'requestPreview', maxSize? }` | the engine renders the layer at the current time; the reply carries `image` (a PNG data URL). The panel never renders. |
+| `{ type: 'shortcut', action: 'undo' \| 'redo' }` | Edit ▸ Undo / Redo, as the menu runs them — honoured only while the panel's frame has the focus |
 
 The editor sends `{ type: 'state', effect, plugin, time, params, values, data }`
 on `ready` and after every document change (undo and redo too): `params` as
@@ -535,6 +536,12 @@ command: one undo entry, saved with the project, in the command log.
 The `rings` panel reads its palette from the sequence data and applies an
 edited one through the hidden **Set Palette** button (`#rrggbb` colours as the
 payload).
+
+A key pressed inside the panel stays in its sandboxed frame: the editor's
+shortcuts never see it. A panel forwards Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
+(Cmd on macOS) with the `shortcut` message — the samples' `keydown` handler
+does, except in a text field, which keeps its own undo. The editor runs it only
+while that frame holds the focus, so a panel cannot undo on its own.
 
 ## Plugins that are not effects (SDK 1.2, P7)
 
@@ -695,6 +702,7 @@ the editor by `window.parent.postMessage({ premation: 1, … }, '*')`:
 | `{ id, type: 'query', request }` | the engine API query (`{ type: 'getComposition', comp }`); the reply's `result` is its answer |
 | `{ id, type: 'command', request, label? }` | one EDIT command, origin `plugin`: one undo entry (a `runPluginCommand` runs the plugin's own command) |
 | `{ id, type: 'command', commands: [...], label }` | several edits as ONE undo entry |
+| `{ type: 'shortcut', action: 'undo' \| 'redo' }` | Edit ▸ Undo / Redo for a key pressed in the panel (only while its frame has the focus; an `undo` COMMAND stays refused) |
 
 The editor sends `{ type: 'context', plugin, comp, layers, time }` on `ready`
 and after every document change (undo and redo too), selection or time change,

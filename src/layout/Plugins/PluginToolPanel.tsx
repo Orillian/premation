@@ -26,6 +26,7 @@ import { usePluginContrib } from '@hooks/usePluginContrib';
 import { useThrottledTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
+import { runPanelShortcut } from './panelShortcut';
 
 export function PluginToolPanel({ panelId }: { panelId: string }): JSX.Element {
   usePluginContrib();
@@ -59,7 +60,7 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
     post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(t) }));
   }, [plugin, post]);
 
-  const run = useCallback(async (msg: Exclude<ToolPanelMessage, { type: 'ready' }>) => {
+  const run = useCallback(async (msg: Exclude<ToolPanelMessage, { type: 'ready' } | { type: 'shortcut' }>) => {
     const client = engine();
     if (msg.type === 'query') {
       const res = await client.query(msg.request);
@@ -84,6 +85,10 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
       if (msg.type === 'ready') {
         ready.current = true;
         pushContext();
+        return;
+      }
+      if (msg.type === 'shortcut') {
+        runPanelShortcut(msg.action, frame.current);
         return;
       }
       if (msg.type === 'invalid') {

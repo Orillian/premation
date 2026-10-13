@@ -34,6 +34,13 @@ describe('plugin panel protocol', () => {
     expect(parsePanelMessage({ premation: 1, id: 1, type: 'eval', code: '1' })).toBeNull();
   });
 
+  it('parses an editor shortcut forwarded from the frame (Undo / Redo only)', () => {
+    expect(parsePanelMessage({ premation: 1, type: 'shortcut', action: 'undo' })).toEqual({ type: 'shortcut', action: 'undo' });
+    expect(parsePanelMessage({ premation: 1, type: 'shortcut', action: 'redo' })).toEqual({ type: 'shortcut', action: 'redo' });
+    expect(parsePanelMessage({ premation: 1, type: 'shortcut', action: 'save' })).toBeNull();
+    expect(parsePanelMessage({ premation: 1, type: 'shortcut' })).toBeNull();
+  });
+
   it('parses each request', () => {
     expect(parsePanelMessage({ premation: 1, type: 'ready' })).toEqual({ type: 'ready' });
     expect(parsePanelMessage({ premation: 1, id: 3, type: 'setParam', key: 'p1X', value: 12 })).toEqual({ id: 3, type: 'setParam', key: 'p1X', value: 12 });

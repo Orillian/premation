@@ -92,3 +92,18 @@ $('preview').addEventListener('click', async () => {
 });
 
 send({ type: 'ready' });
+
+// Edit > Undo / Redo while focus is in this frame: the editor's shortcuts never see a key pressed
+// in a sandboxed frame, so the panel forwards them (docs/PLUGIN_SDK.md "Plugin panels"). A text
+// field keeps its own undo.
+window.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const t = e.target;
+  const typing = t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|number|email|url|password)$/.test(t.type)));
+  if (typing) return;
+  const k = e.key.toLowerCase();
+  const action = k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'y' && !e.shiftKey ? 'redo' : null;
+  if (!action) return;
+  e.preventDefault();
+  window.parent.postMessage({ premation: 1, type: 'shortcut', action }, '*');
+});
