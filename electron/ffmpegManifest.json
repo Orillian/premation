@@ -1,0 +1,35 @@
+{
+  "$comment": "The ffmpeg every Premation build ships, and the one the app re-downloads when the shipped copy is missing or broken. ONE pin, read by scripts/fetchFfmpeg.cjs (packaging) and electron/ffmpegRepair.ts (in-app repair), so the two can never disagree. A GPL build on purpose: export uses libx264, libx265, libvpx-vp9 and libopus (electron/ffmpegEncodeArgs.ts), none of which an LGPL build has. ffmpeg runs as a separate executable; its licence and source pointer ship beside it (resources/ffmpeg/LICENSE.txt + NOTICE.txt → <resources>/ffmpeg/). Windows: BtbN's month-end autobuild (kept two years; dailies are kept 14 days, so never pin a daily). macOS: martin-riedl.de release builds (signed by the publisher). To bump: pick new archives, put their SHA-256 here, and run `node scripts/fetchFfmpeg.cjs --all`. `urls` is a mirror list tried in order; every mirror must serve the identical bytes (the hash is checked).",
+  "version": "9.0.2",
+  "source": "https://ffmpeg.org/download.html#get-sources (FFmpeg 9.0.2; Windows build recipe https://github.com/BtbN/FFmpeg-Builds, macOS build recipe https://ffmpeg.martin-riedl.de)",
+  "requiredEncoders": ["libx264", "aac", "libvpx-vp9", "libopus", "prores_ks", "gif", "png"],
+  "builds": {
+    "win32-x64": {
+      "urls": [
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-win64-gpl-9.0.zip"
+      ],
+      "sha256": "a0e45723c72141975f51d8666302e614711745f3102b704ca3f82c897a58d278",
+      "bytes": 194034585,
+      "installedBytes": 165155840,
+      "entry": "ffmpeg-n9.0.2-17-g2a571b6068-win64-gpl-9.0/bin/ffmpeg.exe"
+    },
+    "darwin-arm64": {
+      "urls": [
+        "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip"
+      ],
+      "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924",
+      "bytes": 28395699,
+      "installedBytes": 66332880,
+      "entry": "ffmpeg"
+    },
+    "darwin-x64": {
+      "urls": [
+        "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip"
+      ],
+      "sha256": "7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4",
+      "bytes": 33816391,
+      "installedBytes": 94769296,
+      "entry": "ffmpeg"
+    }
+  }
+}

@@ -629,6 +629,8 @@ export interface EngineHostOptions {
   samUserDir?: string;
   /** The face landmark model folder (<userData>/models/face-landmarks; faceModel.ts). */
   faceUserDir?: string;
+  /** app.getPath('userData'): lets PREMATION_FFMPEG find the in-app repaired ffmpeg (ffmpegRepair.ts). */
+  userDataPath?: string;
   log?(line: string): void;
   /**
    * The user's speech-provider key for a transcribe job ('openai' …), from
@@ -759,7 +761,7 @@ export class EngineHost {
             // Engine jobs (proxies) run the same ffmpeg an export does (ffmpegBinary.ts).
             env: {
               ...process.env,
-              PREMATION_FFMPEG: resolveFfmpegBinary({ vars: process.env, resourcesPath: o.resourcesPath, platform: process.platform, exists: existsSync }),
+              PREMATION_FFMPEG: resolveFfmpegBinary({ vars: process.env, resourcesPath: o.resourcesPath, platform: process.platform, exists: existsSync, ...(o.userDataPath ? { userDataPath: o.userDataPath } : {}) }),
               // The objectMatte job's SAM pair: <resources>/models/object-matte when
               // packaged (electron-builder extraResources), dist/ in development.
               // importBytes caches bytes as files here (the page's session-footage

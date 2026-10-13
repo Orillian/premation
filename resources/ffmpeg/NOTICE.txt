@@ -1,0 +1,15 @@
+Premation ships an unmodified FFmpeg executable (ffmpeg / ffmpeg.exe) in this
+folder. Premation runs it as a separate program to encode exported video.
+
+  FFmpeg 9.0.2 — https://ffmpeg.org
+  Built with --enable-gpl (libx264, libx265, libvpx, libopus and others), so
+  this executable is licensed under the GNU General Public License version 3;
+  the full text is in LICENSE.txt beside this file.
+
+Corresponding source:
+  FFmpeg 9.0.2 source            https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+  Windows build scripts          https://github.com/BtbN/FFmpeg-Builds
+  macOS build scripts            https://ffmpeg.martin-riedl.de
+
+The exact archives Premation ships are pinned by SHA-256 in
+electron/ffmpegManifest.json in the Premation source repository.

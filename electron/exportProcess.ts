@@ -44,6 +44,9 @@ import {
 import { resolveEngineExecutable } from './engineSupervisor';
 import { EncoderProbe } from './encoderProbe';
 import { resolveFfmpegBinary } from './ffmpegBinary';
+import { formatBlocker } from './ffmpegHealth';
+import { ffmpegService } from './ffmpegService';
+import { explainExportFailure, FFMPEG_UNAVAILABLE_MESSAGE, type ExportErrorCode } from './exportFailure';
 import { isHwVideoEncoder } from './ffmpegEncodeArgs';
 
 /*
@@ -139,6 +142,10 @@ export interface ExportJobRecord {
   finishedAt?: number;
   progress: ExportJobProgress;
   error?: string;
+  /** What kind of failure `error` is, so the UI can offer the fix (exportFailure.ts). */
+  errorCode?: ExportErrorCode;
+  /** The engine's / ffmpeg's own words when `error` was rewritten for people. */
+  errorDetail?: string;
   warnings?: string[];
   /** How many times this job has been started. 1 on its first run. */
   attempts: number;
@@ -451,6 +458,8 @@ export class ExportSupervisor {
     if (!job || !RETRYABLE_STATUSES.has(job.status)) return null;
     job.status = 'queued';
     delete job.error;
+    delete job.errorCode;
+    delete job.errorDetail;
     delete job.warnings;
     delete job.startedAt;
     delete job.finishedAt;
@@ -533,6 +542,8 @@ export class ExportSupervisor {
     job.attempts += 1;
     job.progress = freshProgress(job.spec.totalFrames);
     delete job.error;
+    delete job.errorCode;
+    delete job.errorDetail;
 
     const run: Run = { jobId: job.id, engine: null, watchdog: null, renderStartedAt: null, lastEmitAt: 0, settled: false };
     this.runs.set(job.id, run);
@@ -651,7 +662,14 @@ export class ExportSupervisor {
     }
     job.status = status;
     job.finishedAt = this.now();
-    if (error !== undefined) job.error = error;
+    delete job.errorCode;
+    delete job.errorDetail;
+    if (error !== undefined && status === 'failed') {
+      const explained = explainExportFailure(error);
+      job.error = explained.message;
+      if (explained.code) job.errorCode = explained.code;
+      if (explained.detail) job.errorDetail = explained.detail;
+    } else if (error !== undefined) job.error = error;
     else delete job.error;
     this.persist();
     this.emitJob(job);
@@ -832,7 +850,7 @@ function createEngineLauncher(root: string): EngineLauncher {
   });
   const deps = {
     enginePath,
-    ffmpegPath: () => resolveFfmpegBinary({ vars: process.env, resourcesPath: process.resourcesPath ?? '', platform: process.platform, exists: existsSync }),
+    ffmpegPath: () => resolveFfmpegBinary({ vars: process.env, resourcesPath: process.resourcesPath ?? '', platform: process.platform, exists: existsSync, userDataPath: app.getPath('userData') }),
     workDirFor: (id: string) => path.join(root, id, 'engine'),
     log: (m: string) => console.log(`[export/engine] ${m}`),
     // Plugin effects render in exports with the editor's installed plugins.
@@ -846,6 +864,18 @@ function createEngineLauncher(root: string): EngineLauncher {
       let abandon = false;
       const done = (async () => {
         let next = spec;
+        // Before rendering a single frame: can this machine encode the format at
+        // all? A broken ffmpeg fails here in seconds, with a Fix button
+        // (exportFailure.ts → the renderer's repair dialog), instead of at the end.
+        const health = await ffmpegService.ensure();
+        const blocker = formatBlocker(health, spec.format);
+        if (blocker) {
+          const why = blocker.code === 'incomplete'
+            ? `the FFmpeg in use has no ${blocker.missingEncoders.join(', ')} encoder`
+            : `FFmpeg ${blocker.code}${health.problem?.detail ? `: ${health.problem.detail}` : ''}`;
+          deps.log(`job ${jobId}: refused before render — ${why}`);
+          return { kind: 'failed' as const, message: `${FFMPEG_UNAVAILABLE_MESSAGE} (could not start ffmpeg: ${why})` };
+        }
         if (spec.format === 'mp4' && isHwVideoEncoder(spec.videoEncoder)) {
           const resolved = await probe.resolveVideoEncoder(spec.videoEncoder);
           if (resolved.fallbackReason) deps.log(`job ${jobId}: ${resolved.fallbackReason}`);

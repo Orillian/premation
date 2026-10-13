@@ -28,6 +28,32 @@ export interface EngineUnavailableDeps {
   /** Where the recovery copy is offered by default (the user's documents folder). */
   defaultDir: string;
   joinPath(...parts: string[]): string;
+  /**
+   * Open the page where Premation is downloaded. When given, a fatal startup
+   * failure offers it as a button — reinstalling is the fix, and someone who
+   * does not know where the installer came from should not have to search.
+   */
+  openDownloadPage?(): void;
+}
+
+export const ENGINE_FATAL_BUTTONS = ['Download Premation', 'Quit'] as const;
+
+/** A fatal reason → what to tell a person, and whether reinstalling is the fix. */
+export function explainFatal(reason: string): { message: string; detail: string; reinstall: boolean } {
+  if (/not found|could not start|ENOENT|EACCES|EPERM|protocol/i.test(reason)) {
+    return {
+      message: 'Part of Premation is missing or blocked on this computer.',
+      detail: 'Security software sometimes removes or blocks it, or an update did not finish. '
+        + 'Download Premation and install it again — your projects and settings are kept.',
+      reinstall: true,
+    };
+  }
+  return {
+    message: 'Premation could not start its graphics engine on this computer.',
+    detail: 'Updating the graphics driver (from NVIDIA, AMD, Intel or Windows Update) usually fixes this. '
+      + 'If it does not, download and install Premation again — your projects and settings are kept.',
+    reinstall: false,
+  };
 }
 
 export const ENGINE_UNAVAILABLE_BUTTONS = ['Save Recovery Copy…', 'Try Again', 'Quit'] as const;
@@ -35,6 +61,24 @@ export const ENGINE_UNAVAILABLE_BUTTONS = ['Save Recovery Copy…', 'Try Again',
 /** Handle one `unavailable` report. Resolves once the user has chosen (fatal: at once). */
 export async function handleEngineUnavailable(info: UnavailableInfo, d: EngineUnavailableDeps): Promise<'quit' | 'retry'> {
   if (info.fatal) {
+    if (d.openDownloadPage) {
+      const e = explainFatal(info.reason);
+      const { response } = await d.showMessageBox({
+        type: 'error',
+        title: 'Premation cannot start',
+        message: e.message,
+        detail: `${e.detail}
+
+Technical detail: ${info.reason}`,
+        buttons: [...ENGINE_FATAL_BUTTONS],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (response === 0) d.openDownloadPage();
+      d.quit();
+      return 'quit';
+    }
     d.showErrorBox(
       'Premation cannot start',
       `The Premation engine could not start on this computer:\n\n${info.reason}\n\n`

@@ -43,6 +43,7 @@ import { useActiveCompSize, useMirrorRevisionFrame } from '@hooks/useMirrorFrame
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { runAutoTrack } from '@core/tracking/autoTrackCommand';
 import { runObjectMaskPick } from '@core/tracking/objectMask';
+import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
 import { mirrorSourceDisplaySize } from '@core/mirror/sourceSize';
 import { documentMirror } from '@stores/documentMirror';
 import { layerScreenMapping, type LayerScreenMapping } from './layerScreen';
@@ -258,7 +259,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
         const a = toSource(start.x, start.y);
         const b = toSource(p.x, p.y);
         if (intent === 'object') {
-          void runObjectMaskPick({ nodeId: active, box: { x0: a.x, y0: a.y, x1: b.x, y1: b.y } });
+          void runObjectMaskPick({ nodeId: active, box: { x0: a.x, y0: a.y, x1: b.x, y1: b.y }, onError: offerObjectMatteDownload });
           return;
         }
         const hint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -268,7 +269,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
         const radius = Math.max(12, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2);
         void runAutoTrack({ nodeId: active, hint, radius });
       } else if (intent === 'object') {
-        void runObjectMaskPick({ nodeId: active, point: toSource(p.x, p.y) });
+        void runObjectMaskPick({ nodeId: active, point: toSource(p.x, p.y), onError: offerObjectMatteDownload });
       } else {
         void runAutoTrack({ nodeId: active, hint: toSource(p.x, p.y) });
       }

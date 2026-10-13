@@ -66,6 +66,19 @@ extraResources:
       - '*.otf'
       - '*.woff2'
       - '*-OFL.txt'
+  # The ffmpeg export encodes with (electron/ffmpegBinary.ts looks here first),
+  # staged per platform + arch by scripts/fetchFfmpeg.cjs in beforePack from
+  # the SHA-256 pin in electron/ffmpegManifest.json, with its GPL licence and
+  # source notice. REQUIRED: a package without it is refused. If it goes missing
+  # on a user's machine anyway (antivirus), the app re-downloads the same pin
+  # (electron/ffmpegRepair.ts).
+  - from: build/ffmpeg
+    to: ffmpeg
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+      - LICENSE.txt
+      - NOTICE.txt
   # Claude for Premation: the bundled MCP server (scripts/buildMcp.cjs). Outside
   # app.asar because Claude Desktop launches it — with this app's own binary as
   # Node — and a launched script must be a real file (docs/MCP_PLAN.md D6).
@@ -75,7 +88,7 @@ extraResources:
       - premation-mcp.cjs
       - tools.json
 
-beforePack: ./scripts/stageEngine.cjs
+beforePack: ./scripts/beforePack.cjs
 
 # The renderer bundle + compiled main/preload + manifest are all that ship.
 #
@@ -110,12 +123,6 @@ files:
 #   npm run dist:selfhosted
 # It ships the server WITHOUT any .env; the app reads configuration from
 # <userData>/backend.env at first run instead. See electron-builder.selfhosted.yml.
-#
-# To bundle ffmpeg (so MP4 export works without a system install), add:
-#   extraResources:
-#     - from: <path-to>/ffmpeg           # directory containing ffmpeg[.exe]
-#       to: ffmpeg
-# electron/main.ts checks <resources>/ffmpeg before falling back to PATH.
 
 # ── Where updates come from ───────────────────────────────────────────────────
 # Publishing writes the installers AND the update metadata (latest.yml,
@@ -189,6 +196,9 @@ mac:
   binaries:
     - Contents/Resources/engine/premation-engine
     - Contents/Resources/engine/premation-host-bridge.node
+    # Signed again by us (hardened runtime) — the publisher's own signature is
+    # not ours, and notarization rejects a nested binary we did not sign.
+    - Contents/Resources/ffmpeg/ffmpeg
   # electron-builder signs every nested binary, framework and helper it finds.
   # Missed components are the single most common notarization rejection, so this
   # is left ON rather than narrowed for build speed.

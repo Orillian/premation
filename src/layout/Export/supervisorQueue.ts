@@ -25,6 +25,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useExportQueueStore } from '@stores/exportQueueStore';
 import { canChooseOutputDir, setRenderQueueSubmitter, useRenderQueueStore, type RenderJob } from '@stores/renderQueueStore';
 import { useUIStore } from '@stores/uiStore';
+import { ensureFfmpegFor, useFfmpegStore } from '@stores/ffmpegStore';
 import { isPluginFormat } from '@core/nativePlugins/pluginContrib';
 
 /** The formats the engine export writes. The document exports (Lottie, JSON, the cut lists) are `runDataExport`'s. */
@@ -50,6 +51,33 @@ export function engineExportRefusal(): string | null {
     return 'Some footage in this project lives only in this window (it was never saved to disk), so the engine cannot read it. Re-import it from a file and export again.';
   }
   return null;
+}
+
+/** Video export is not set up on this machine and the person closed the repair dialog. */
+export class FfmpegNotReadyError extends Error {
+  constructor() {
+    super("Video export isn't set up on this computer yet. Press Fix to repair it.");
+    this.name = 'FfmpegNotReadyError';
+  }
+}
+
+/**
+ * Say why a render could not be queued. The ffmpeg case gets its Fix button
+ * (the dialog was just closed — the way back must be one click, not a hunt).
+ */
+export function reportQueueFailure(err: unknown, fallback = 'The render could not be queued'): void {
+  const ui = useUIStore.getState();
+  if (err instanceof FfmpegNotReadyError) {
+    ui.notify({
+      level: 'warning',
+      message: err.message,
+      durationMs: 0,
+      group: 'ffmpeg-health',
+      action: { label: 'Fix', onSelect: () => useFfmpegStore.getState().openDialog() },
+    });
+    return;
+  }
+  ui.notify({ level: 'error', message: err instanceof Error ? err.message : fallback, durationMs: 8000 });
 }
 
 /** Whether an export of `format` can be queued on the engine now. */
@@ -102,6 +130,10 @@ export async function queueEngineRender(
 ): Promise<string> {
   const refusal = engineExportRefusal();
   if (refusal) throw new Error(refusal);
+  // Can this machine write the format at all? If not, the repair dialog opens
+  // and the export waits for it — rather than rendering everything first and
+  // failing at the encode (src/stores/ffmpegStore.ts).
+  if (!(await ensureFfmpegFor(input.format))) throw new FfmpegNotReadyError();
   const { id, projectPath } = await exportSupervisorClient.reserve();
   await getProjectManager().snapshotTo(projectPath);
   const spec = buildSupervisorSpec({ ...input, projectPath });
@@ -118,7 +150,6 @@ export async function queueEngineRender(
  * it holds, one at a time, in priority order.
  */
 export async function enqueueSupervisorJob(job: QueueJobInput, priority = 0): Promise<string | null> {
-  const ui = useUIStore.getState();
   const rq = useRenderQueueStore.getState();
   const fileName = job.outputPath.replace(/^.*[\\/]/, '');
   let dir = rq.outputDir;
@@ -133,7 +164,7 @@ export async function enqueueSupervisorJob(job: QueueJobInput, priority = 0): Pr
     if (!outPath) return null;
     return await queueEngineRender({ ...specInput(job), outPath }, priority);
   } catch (err) {
-    ui.notify({ level: 'error', message: err instanceof Error ? err.message : 'The render could not be queued', durationMs: 8000 });
+    reportQueueFailure(err);
     return null;
   }
 }

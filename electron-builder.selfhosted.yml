@@ -48,6 +48,14 @@ extraResources:
       - '*.otf'
       - '*.woff2'
       - '*-OFL.txt'
+  # Repeated: the ffmpeg export encodes with (scripts/fetchFfmpeg.cjs, beforePack).
+  - from: build/ffmpeg
+    to: ffmpeg
+    filter:
+      - ffmpeg
+      - ffmpeg.exe
+      - LICENSE.txt
+      - NOTICE.txt
   # Repeated: Claude for Premation's bundled MCP server (scripts/buildMcp.cjs).
   - from: build/mcp
     to: mcp

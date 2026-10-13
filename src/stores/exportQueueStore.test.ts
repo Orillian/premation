@@ -3,7 +3,7 @@
  * one tray entry for its lifetime.
  */
 
-import { resetExportQueueForTest, useExportQueueStore } from './exportQueueStore';
+import { failureAction, resetExportQueueForTest, useExportQueueStore } from './exportQueueStore';
 import { useUIStore } from './uiStore';
 import type { ExportJobRecord } from '@core/export/exportSupervisorClient';
 
@@ -69,6 +69,17 @@ describe('the tray mirror', () => {
     const t = trayJob('a');
     expect(t?.status).toBe('failed');
     expect(useUIStore.getState().notifications.some((n) => /oom/.test(n.message))).toBe(true);
+  });
+
+  it('an encoder that cannot start closes with a Fix action; a full disk with Retry; an unwritable folder with none', () => {
+    const s = useExportQueueStore.getState();
+    s.apply({ type: 'job', job: record({ status: 'rendering' }) });
+    s.apply({ type: 'job', job: record({ status: 'failed', error: 'Video export is missing.', errorCode: 'ffmpeg-unavailable' }) });
+    expect(useUIStore.getState().notifications.find((n) => n.message === 'Video export is missing.')?.action?.label).toBe('Fix');
+    expect(failureAction(record({ status: 'failed', errorCode: 'disk-full' })).action?.label).toBe('Retry');
+    expect(failureAction(record({ status: 'failed', errorCode: 'output-busy' })).action?.label).toBe('Retry');
+    expect(failureAction(record({ status: 'failed', errorCode: 'output-unwritable' })).action).toBeUndefined();
+    expect(failureAction(record({ status: 'failed' })).action).toBeUndefined();
   });
 
   it('a job that arrives already finished opens nothing', () => {

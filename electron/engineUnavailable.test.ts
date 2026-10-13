@@ -25,6 +25,18 @@ describe('handleEngineUnavailable', () => {
     expect(calls).toEqual(['error:Premation cannot start', 'quit']);
   });
 
+  it('with a download page, a missing engine offers "Download Premation", then quits', async () => {
+    const { d, calls } = deps([0], { openDownloadPage: () => { calls.push('download'); } });
+    expect(await handleEngineUnavailable({ reason: 'premation-engine executable not found', fatal: true, logTail: [] }, d)).toBe('quit');
+    expect(calls).toEqual(['download', 'quit']);
+  });
+
+  it('choosing Quit on the fatal dialog does not open the page', async () => {
+    const { d, calls } = deps([1], { openDownloadPage: () => { calls.push('download'); } });
+    await handleEngineUnavailable({ reason: 'no usable GPU adapter', fatal: true, logTail: [] }, d);
+    expect(calls).toEqual(['quit']);
+  });
+
   it('a crash loop offers a recovery save, then Try Again', async () => {
     const { d, calls } = deps([0, 1]);
     expect(await handleEngineUnavailable({ reason: 'crashed 3 times', fatal: false, logTail: [] }, d)).toBe('retry');

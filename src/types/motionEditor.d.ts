@@ -234,6 +234,41 @@ export interface ExportJobProgress {
   etaSec: number | null;
 }
 
+export type ExportErrorCode = 'ffmpeg-unavailable' | 'disk-full' | 'output-unwritable' | 'output-busy';
+
+/** electron/ffmpegHealth.ts FfmpegProblemCode. */
+export type FfmpegProblemCode = 'missing' | 'blocked' | 'wrong-arch' | 'damaged' | 'timeout' | 'incomplete';
+export type FfmpegSource = 'override' | 'chosen' | 'bundled' | 'repaired' | 'system';
+
+/** electron/ffmpegService.ts FfmpegStatusView. */
+export interface FfmpegStatus {
+  ok: boolean;
+  active?: { source: FfmpegSource; path: string; encoders: string[]; missingEncoders: string[] };
+  problem?: { code: FfmpegProblemCode; source: FfmpegSource; detail: string };
+  canRepair: boolean;
+  repairBytes?: number;
+  checkedAt: number;
+  repairing: boolean;
+  /** Where the pinned archive downloads from — for "download it on another device". */
+  downloadUrl?: string;
+}
+
+/** electron/ffmpegRepair.ts RepairErrorCode, plus the chooser's 'not-ffmpeg'. */
+export type FfmpegRepairErrorCode =
+  | 'offline' | 'network-blocked' | 'unavailable' | 'stalled' | 'disk-full' | 'no-permission'
+  | 'corrupted' | 'blocked-after-install' | 'cancelled' | 'unsupported' | 'not-ffmpeg';
+
+export type FfmpegRepairResult =
+  | { ok: true; status: FfmpegStatus }
+  | { ok: false; code: FfmpegRepairErrorCode; detail: string; neededBytes?: number; status: FfmpegStatus };
+
+export interface FfmpegRepairProgress {
+  phase: 'checking-space' | 'downloading' | 'verifying' | 'installing' | 'testing';
+  receivedBytes: number;
+  totalBytes: number;
+  attempt: number;
+}
+
 export interface ExportJobRecord {
   id: string;
   spec: ExportJobSpec;
@@ -244,6 +279,10 @@ export interface ExportJobRecord {
   finishedAt?: number;
   progress: ExportJobProgress;
   error?: string;
+  /** What kind of failure `error` is, so the UI offers the fix (electron/exportFailure.ts). */
+  errorCode?: ExportErrorCode;
+  /** The engine's / ffmpeg's own words when `error` was rewritten for people. */
+  errorDetail?: string;
   warnings?: string[];
   attempts: number;
   /** Which renderer runs the current attempt: premation-engine (F1) or a hidden window. */
@@ -510,6 +549,17 @@ export interface MotionEditorApi {
     remove(): Promise<boolean>;
     cancelDownload(requestId: string): Promise<boolean>;
     onDownloadProgress(handler: (event: unknown) => void): () => void;
+  };
+  /** Export's ffmpeg: health check, one-click repair, "choose file" (electron/ffmpegService.ts). */
+  ffmpeg?: {
+    status(force?: boolean): Promise<FfmpegStatus>;
+    repair(): Promise<FfmpegRepairResult>;
+    cancelRepair(): Promise<boolean>;
+    /** null when the person closed the file dialog. */
+    chooseFile(): Promise<FfmpegRepairResult | null>;
+    clearChoice(): Promise<FfmpegStatus>;
+    onStatus(handler: (status: FfmpegStatus) => void): () => void;
+    onRepairProgress(handler: (progress: FfmpegRepairProgress) => void): () => void;
   };
   objectMatte?: {
     status?(): Promise<{ encoderUrl: string; decoderUrl: string; bytes: number; installedAt: number } | null>;

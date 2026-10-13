@@ -22,6 +22,7 @@ import { RequireAuth } from './RequireAuth';
 import { TitleBar } from '@layout/TitleBar/TitleBar';
 import { ModalHost, ContextMenuHost, NotificationHost } from '@layout/overlays';
 import { PluginPackageOpener } from '@layout/Plugins/InstallPackageDialog';
+import { FfmpegRepairHost } from '@layout/Export/FfmpegRepairHost';
 import { useAutoUpdate } from '@hooks/useAutoUpdate';
 import { applyPasteboardColor } from '@core/theme/pasteboard';
 import { applyAccentColor } from '@core/theme/accent';
@@ -160,6 +161,8 @@ function AppLayout(): JSX.Element {
       <NotificationHost />
       {/* A double-clicked `.pplugin` shows its install dialog over whatever is open. */}
       <PluginPackageOpener />
+      {/* "Fix video export": the ffmpeg repair dialog + its startup notice. */}
+      <FfmpegRepairHost />
     </div>
   );
 }

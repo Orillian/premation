@@ -20,6 +20,7 @@ import { handleEngineUnavailable } from './engineUnavailable';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolveFfmpegBinary } from './ffmpegBinary';
+import { ffmpegService, registerFfmpegIpc } from './ffmpegService';
 import { EncoderProbe } from './encoderProbe';
 import { shouldStartBackend, startBackend, stopBackend } from './backend';
 import { registerIndexIpc } from './localIndexDb';
@@ -549,6 +550,7 @@ function registerRenderIpc(): void {
     resourcesPath: process.resourcesPath ?? '',
     platform: process.platform,
     exists: existsSync,
+    userDataPath: app.getPath('userData'),
   });
 
   /**
@@ -1291,6 +1293,9 @@ app.whenReady().then(() => {
   // Face Tracking's landmark model, downloaded on first use (faceModel.ts).
   registerFaceModelIpc(() => app.getPath('userData'));
   registerModelDownloadIpc();
+  // Export's ffmpeg: health check, one-click repair download, "choose file"
+  // (ffmpegService.ts). Ungated for the same reason as the model download.
+  registerFfmpegIpc();
   // The account session, and every authenticated call that uses it.
   //
   // Both tokens live in this process. There is no `credentials:get` any more:
@@ -1354,6 +1359,7 @@ app.whenReady().then(() => {
     sessionFootageDir: ensureDir(path.join(app.getPath('userData'), 'session-footage')),
     samUserDir: objectMatteUserDir(app.getPath('userData')),
     faceUserDir: faceModelUserDir(app.getPath('userData')),
+    userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>
       (VAULT_PROVIDERS as readonly string[]).includes(provider) ? getKeyForProvider(provider as VaultProvider) : null,
@@ -1372,6 +1378,8 @@ app.whenReady().then(() => {
         quit: () => app.quit(),
         defaultDir: app.getPath('documents'),
         joinPath: (...parts) => path.join(...parts),
+        // The releases page the updater reads (electron-builder.yml `publish`): the installer is there.
+        openDownloadPage: () => { void shell.openExternal('https://github.com/isroil01/premation/releases/latest'); },
       });
     },
   });
@@ -1420,6 +1428,9 @@ app.whenReady().then(() => {
   // adapter inactive, initializationTime:0) — a premature, misleading snapshot.
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => void logGpuDiagnostics(), 6000);
+    // Find a broken ffmpeg now (the renderer offers the fix) rather than at the
+    // end of someone's first export. After load, so it never slows startup.
+    setTimeout(() => void ffmpegService.check(), 3000);
     // Jobs queued in a previous session start now, with an editor to show them.
     void supervisorLoaded.then(() => exportSupervisor?.dispatch());
   });

@@ -23,6 +23,7 @@ import { settingsFps } from '@core/mirror/compFacts';
 import { engine } from '@core/engine/engineInstance';
 import { requireEngineJob, runEngineJob } from '@core/engine/engineJobs';
 import { secondsToFlicks } from '@motion/engine-api';
+import { explainObjectMatteError } from './samModelInstall';
 
 /**
  * The pick-gesture entry: segment at the playhead and narrate the outcome
@@ -38,6 +39,8 @@ export async function runObjectMaskPick(opts: {
   nodeId: string;
   point?: { x: number; y: number };
   box?: { x0: number; y0: number; x1: number; y1: number };
+  /** Told the engine's error, so the caller can offer a fix (e.g. the missing-model download). */
+  onError?: (message: string) => void;
 }): Promise<void> {
   const store = useTrackerStore;
   if (store.getState().tracking || store.getState().autoPhase === 'analyzing') return;
@@ -77,6 +80,8 @@ export async function runObjectMaskPick(opts: {
         'Track mask makes it follow; Write-on/Vegas can draw along it via their Path option.',
     );
   } catch (e) {
-    store.getState().finishTracking(prevResult, e instanceof Error ? e.message : String(e));
+    const message = e instanceof Error ? e.message : String(e);
+    opts.onError?.(message);
+    store.getState().finishTracking(prevResult, explainObjectMatteError(message));
   }
 }

@@ -38,7 +38,8 @@ import { canEncodeLocally, PRORES_PROFILE_LABELS, type ExportQuality, type Prore
 import { chaptersFromMarkers, formatCarriesChapters, type ExportChapter } from '@core/export/chapters';
 import { openHelp } from '@layout/Help/openHelp';
 import { exportSupervisorClient } from '@core/export/exportSupervisorClient';
-import { addToRenderQueue, engineExportRefusal, queueEngineRender, shouldUseSupervisor } from './supervisorQueue';
+import { addToRenderQueue, engineExportRefusal, FfmpegNotReadyError, queueEngineRender, reportQueueFailure, shouldUseSupervisor } from './supervisorQueue';
+import { ensureFfmpegFor } from '@stores/ffmpegStore';
 import { ExportPreview } from './ExportPreview';
 import { ExportQueueList } from './ExportQueueList';
 import { useExportFormStore } from './exportFormStore';
@@ -249,6 +250,12 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       ui.notify({ level: 'error', message: refusal, durationMs: 8000 });
       return;
     }
+    // Before the save dialog: nobody should pick a destination and then be told
+    // the file cannot be written. Opens the repair dialog when needed.
+    if (!(await ensureFfmpegFor(format))) {
+      reportQueueFailure(new FfmpegNotReadyError());
+      return;
+    }
     const outPath = await exportSupervisorClient.chooseOutputPath(outputName);
     if (!outPath) return;
     const chapterMarks = captureChapters();
@@ -274,7 +281,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       });
       ui.notify({ level: 'success', message: `Queued ${outputName} — it renders in the background`, durationMs: 3000 });
     } catch (err) {
-      ui.notify({ level: 'error', message: err instanceof Error ? err.message : 'The export could not be queued', durationMs: 8000 });
+      reportQueueFailure(err, 'The export could not be queued');
     }
   }, [outputName, captureChapters, captureRange, baseComp.id, compName, format, width, height, fps, time, quality, proresProfile, bitDepth, alpha]);
 

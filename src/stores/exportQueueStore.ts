@@ -20,7 +20,8 @@ import {
   type ExportJobRecord,
   type ExportQueueEvent,
 } from '@core/export/exportSupervisorClient';
-import { useUIStore } from './uiStore';
+import { useUIStore, type JobOutcome } from './uiStore';
+import { ensureFfmpegFor } from './ffmpegStore';
 
 const TRAY_PREFIX = 'export-job:';
 
@@ -64,7 +65,34 @@ function mirrorToTray(prev: ExportJobRecord | undefined, next: ExportJobRecord):
   } else if (next.status === 'cancelled') {
     ui.finishJob(trayId, { status: 'cancelled', message: 'Export cancelled' });
   } else {
-    ui.finishJob(trayId, { status: 'failed', message: next.error ?? 'Export failed' });
+    ui.finishJob(trayId, { status: 'failed', message: next.error ?? 'Export failed', ...failureAction(next) });
+  }
+}
+
+/**
+ * The one follow-up a failed export offers, by what failed (electron/exportFailure.ts):
+ * the encoder missing → Fix (repair, then the job runs again by itself); a full
+ * disk or a file open elsewhere → Retry once that is sorted. A folder that
+ * cannot be written needs a new destination, which is a new export: no button.
+ */
+export function failureAction(job: ExportJobRecord): Pick<JobOutcome, 'action'> {
+  switch (job.errorCode) {
+    case 'ffmpeg-unavailable':
+      return {
+        action: {
+          label: 'Fix',
+          onSelect: () => {
+            void ensureFfmpegFor(job.spec.format).then((ready) => {
+              if (ready) void useExportQueueStore.getState().retry(job.id);
+            });
+          },
+        },
+      };
+    case 'disk-full':
+    case 'output-busy':
+      return { action: { label: 'Retry', onSelect: () => { void useExportQueueStore.getState().retry(job.id); } } };
+    default:
+      return {};
   }
 }
 

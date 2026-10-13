@@ -20,6 +20,33 @@ builds; ctest 15/15; every `*.native.test.*` suite on the full engine with
 — the same numbers CI's WARP run gives, so the gate is blocking in CI);
 `npm run bench:check`; tsc; lint.
 
+**Bundled ffmpeg + in-app repair (2026-10-13):** export's ffmpeg now ships in
+every package (`scripts/fetchFfmpeg.cjs`, pinned in `electron/ffmpegManifest.json`)
+and the app repairs a missing/blocked copy itself (`electron/ffmpegService.ts`,
+"Fix video export" dialog). Verified on the Windows box: the Windows pin fetched,
+SHA-checked, extracted, run, encoders checked and staged by `stageFfmpeg`; both
+macOS pins fetched + hash-checked (cross-arch); in the REAL app (built renderer +
+main, isolated profile, PATH without ffmpeg, FFMPEG_PATH = a corrupt .exe) the
+startup notice appeared, Fix opened the dialog, and Download and fix ran
+download (185 MB) → check → install → test → "Video export works again" in 11 s;
+a real-network resume after a simulated reset (HTTP 206) worked. Still open:
+- [ ] `npm run dist` on Windows: `release/*/win-unpacked/resources/ffmpeg/ffmpeg.exe`
+      present, and an MP4 / WebM / MOV / GIF export from the INSTALLED app on a
+      machine with no ffmpeg on PATH.
+- [ ] macOS dmg (both arches): `Contents/Resources/ffmpeg/ffmpeg` signed with our
+      identity (hardened runtime), notarization accepts it, `lipo -archs` matches
+      the engine, and an export works from the installed app.
+- [ ] macOS in-app repair (delete the bundled ffmpeg, press Fix): the downloaded
+      martin-riedl binary runs under the hardened app (no quarantine via
+      `net.fetch`; it carries the publisher's signature).
+- [ ] Windows Defender: quarantine the bundled ffmpeg.exe by hand → the startup
+      notice says "missing"; Fix restores export.
+- [ ] Engine proxies after an in-app repair use the repaired ffmpeg only after an
+      engine restart (PREMATION_FFMPEG is read at spawn) — confirm acceptable or
+      add an engine message to update it.
+- [ ] Object Matte with the bundled model deleted: Roto Brush shows "Download
+      model"; pressing it installs and the next click segments.
+
 **Real Mac (nothing has run on one):**
 - [ ] The viewport over route C (`__premationEngineSurface.route === 'shared'`,
       IOSurface) and over route A with the host bridge removed; 50 resizes leak

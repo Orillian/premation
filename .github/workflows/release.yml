@@ -395,6 +395,15 @@ jobs:
           echo "::error::Set the repository variable under Settings > Secrets and variables > Actions > Variables."
           exit 1
 
+      # The pinned ffmpeg archives (electron/ffmpegManifest.json): fetched once
+      # per pin, not per release. A cache miss just downloads; the SHA-256 pin is
+      # checked either way (scripts/fetchFfmpeg.cjs).
+      - name: Cache the pinned ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: build/.cache/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('electron/ffmpegManifest.json') }}
+
       - name: Build renderer and main process
         shell: bash
         env:
@@ -487,6 +496,40 @@ jobs:
             [ "$found" = 1 ] || { echo "::error::no .app produced"; exit 1; }
           fi
           echo "engine present in every package"
+
+      # ── ffmpeg is inside every package, for the right CPU, and runs ──
+      # fetchFfmpeg.cjs refuses to package without it; this checks the output.
+      # Without it every video export fails on a machine with no ffmpeg of its own.
+      - name: Verify ffmpeg shipped
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            shopt -s globstar nullglob
+            exe=$(ls release/**/win-unpacked/resources/ffmpeg/ffmpeg.exe | head -1)
+            [ -n "$exe" ] || { echo "::error::ffmpeg.exe missing from win-unpacked/resources/ffmpeg"; exit 1; }
+            ls release/**/win-unpacked/resources/ffmpeg/LICENSE.txt >/dev/null || { echo "::error::ffmpeg LICENSE.txt missing"; exit 1; }
+            enc=$("$exe" -hide_banner -encoders)
+            for e in libx264 aac libvpx-vp9 libopus prores_ks gif; do
+              grep -qE "^ [VAS][A-Z.]{5} $e " <<<"$enc" || { echo "::error::bundled ffmpeg has no $e encoder"; exit 1; }
+            done
+          else
+            found=0
+            while IFS= read -r app; do
+              found=1
+              ff="$app/Contents/Resources/ffmpeg/ffmpeg"
+              test -x "$ff" || { echo "::error::ffmpeg missing (or not executable) in $app"; exit 1; }
+              test -f "$app/Contents/Resources/ffmpeg/LICENSE.txt" || { echo "::error::ffmpeg LICENSE.txt missing in $app"; exit 1; }
+              # Same CPU as the engine beside it: an x64 ffmpeg in the arm64 dmg is "wrong-arch" for every user.
+              eng=$(lipo -archs "$app/Contents/Resources/engine/premation-engine")
+              got=$(lipo -archs "$ff")
+              [ "$eng" = "$got" ] || { echo "::error::$app: ffmpeg is $got but the engine is $eng"; exit 1; }
+              if [ "$got" = "$(uname -m)" ]; then "$ff" -hide_banner -version | head -1; fi
+              codesign --verify --strict --verbose=2 "$ff" || [ "${{ needs.verify.outputs.signMac }}" != "true" ]
+            done < <(find release -type d -name '*.app' -prune)
+            [ "$found" = 1 ] || { echo "::error::no .app produced"; exit 1; }
+          fi
+          echo "ffmpeg present in every package"
 
       # ── macOS: notarize, then STAPLE ──
       # Stapling matters more than it looks. Without the ticket attached, a

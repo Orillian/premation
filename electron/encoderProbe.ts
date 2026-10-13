@@ -72,12 +72,29 @@ function run(deps: ProbeDeps, args: string[]): Promise<{ code: number | null; te
 export class EncoderProbe {
   private listed: Promise<Set<string>> | null = null;
   private readonly smoke = new Map<string, Promise<boolean>>();
+  /** The binary the caches describe: a repair or a chosen ffmpeg (ffmpegService.ts) changes it mid-session. */
+  private cachedFor: string | null = null;
 
   constructor(private readonly deps: ProbeDeps) {}
 
+  private fresh(): void {
+    const bin = this.deps.bin();
+    if (bin !== this.cachedFor) {
+      this.cachedFor = bin;
+      this.listed = null;
+      this.smoke.clear();
+    }
+  }
+
   /** Names `ffmpeg -encoders` reports. Empty when ffmpeg cannot be run at all. */
   listEncoders(): Promise<Set<string>> {
-    this.listed ??= run(this.deps, ['-hide_banner', '-encoders']).then(({ text }) => parseFfmpegEncoders(text));
+    this.fresh();
+    if (!this.listed) {
+      const p = run(this.deps, ['-hide_banner', '-encoders']).then(({ text }) => parseFfmpegEncoders(text));
+      this.listed = p;
+      // "Could not run ffmpeg" is not a fact worth keeping: the next ask tries again.
+      void p.then((set) => { if (set.size === 0 && this.listed === p) this.listed = null; });
+    }
     return this.listed;
   }
 
@@ -92,6 +109,7 @@ export class EncoderProbe {
    * device. `-nostdin` so a misbehaving encoder cannot wait on a terminal.
    */
   works(name: string): Promise<boolean> {
+    this.fresh();
     let p = this.smoke.get(name);
     if (!p) {
       p = (async () => {

@@ -135,6 +135,24 @@ const bridge = {
       return () => ipcRenderer.removeListener('faceModel:downloadProgress', listener);
     },
   },
+  // Export's ffmpeg: health, one-click repair, "choose file" (electron/ffmpegService.ts).
+  ffmpeg: {
+    status: (force?: boolean) => ipcRenderer.invoke('ffmpeg:status', force === true),
+    repair: () => ipcRenderer.invoke('ffmpeg:repair'),
+    cancelRepair: () => ipcRenderer.invoke('ffmpeg:cancelRepair'),
+    chooseFile: () => ipcRenderer.invoke('ffmpeg:chooseFile'),
+    clearChoice: () => ipcRenderer.invoke('ffmpeg:clearChoice'),
+    onStatus: (handler: (status: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('ffmpeg:statusChanged', listener);
+      return () => ipcRenderer.removeListener('ffmpeg:statusChanged', listener);
+    },
+    onRepairProgress: (handler: (progress: unknown) => void) => {
+      const listener = (_event: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('ffmpeg:repairProgress', listener);
+      return () => ipcRenderer.removeListener('ffmpeg:repairProgress', listener);
+    },
+  },
   objectMatte: {
     status: () => ipcRenderer.invoke('objectMatte:status'),
     install: (request: { encoderUrl: string; decoderUrl: string; requestId: string }) =>

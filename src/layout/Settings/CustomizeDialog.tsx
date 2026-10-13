@@ -43,6 +43,7 @@ import { McpAppsSection } from './McpAppsSection';
 import { ExportSettingsSection } from './ExportSettingsSection';
 import { UpdatesControl } from './UpdatesControl';
 import { ObjectMatteControl } from './ObjectMatteControl';
+import { VideoExportControl } from './VideoExportControl';
 import { FaceModelControl } from './FaceModelControl';
 import { FilesTab } from './FilesTab';
 import { AudioHardwareSection } from './AudioHardwareSection';
@@ -1013,6 +1014,16 @@ export function AppearanceTab(): JSX.Element {
             </div>
             <div className={styles.settingRight}>
               <PreviewCacheControl />
+            </div>
+          </div>
+
+          <div className={styles.settingRow}>
+            <div className={styles.settingInfo}>
+              <span className={styles.settingTitle}>Video Export</span>
+              <span className={styles.settingDesc}>FFmpeg, which writes MP4, WebM, MOV and GIF files. Built in; repair or replace it here.</span>
+            </div>
+            <div className={styles.settingRight}>
+              <VideoExportControl />
             </div>
           </div>
 

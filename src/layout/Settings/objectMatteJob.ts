@@ -12,6 +12,7 @@
  * the control unmounts with the dialog and the download does not.
  */
 
+import { isObjectMatteModelMissing, SUGGESTED_MODEL } from '@core/tracking/samModelInstall';
 import { useSamModelStore } from '@stores/samModelStore';
 import { useUIStore } from '@stores/uiStore';
 
@@ -54,4 +55,26 @@ export function installObjectMatteJob(): void {
       ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'cancelled', message: 'Model download cancelled' });
     }
   });
+}
+
+/**
+ * The model is missing (the engine said so): offer the fix where the person
+ * is — a toast with "Download model", which installs the suggested pair with
+ * the same progress tray as Settings ▸ AI Object Matte Model. Returns whether
+ * `message` was that failure, so callers can stop there.
+ */
+export function offerObjectMatteDownload(message: string): boolean {
+  if (!isObjectMatteModelMissing(message)) return false;
+  installObjectMatteJob();
+  const sam = useSamModelStore.getState();
+  if (sam.status.kind === 'downloading') return true;
+  useUIStore.getState().notify({
+    level: 'warning',
+    message: "Object Matte's AI model isn't on this computer",
+    detail: 'It is a one-time download of about 14 MB. Try the selection again once it finishes.',
+    durationMs: 0,
+    group: 'object-matte-model',
+    action: { label: 'Download model', onSelect: () => { void sam.install(SUGGESTED_MODEL.encoderUrl, SUGGESTED_MODEL.decoderUrl); } },
+  });
+  return true;
 }

@@ -12,7 +12,7 @@
  */
 
 import { useSamModelStore } from '@stores/samModelStore';
-import { checkUrls } from './samModelInstall';
+import { checkUrls, explainObjectMatteError, isObjectMatteModelMissing, OBJECT_MATTE_MISSING_MESSAGE } from './samModelInstall';
 
 const ENCODER_URL = 'https://example.test/vision_encoder.onnx';
 const DECODER_URL = 'https://example.test/decoder.onnx';
@@ -111,5 +111,19 @@ describe('the Object Matte model store', () => {
   it('outside the desktop app there is nothing to install into', async () => {
     await useSamModelStore.getState().install(ENCODER_URL, DECODER_URL);
     expect(useSamModelStore.getState().status).toMatchObject({ kind: 'failed', message: expect.stringMatching(/desktop app/) });
+  });
+});
+
+describe('a missing model (the bundled pair removed, none installed)', () => {
+  it("recognises the engine's words and replaces them with the fix", () => {
+    const raw = String.raw`Object Matte model 'C:\Program Files\Premation\resources\models\object-matte\vision_encoder_quantized.onnx' does not exist`;
+    expect(isObjectMatteModelMissing(raw)).toBe(true);
+    expect(isObjectMatteModelMissing('no Object Matte model: pass encoderModel / decoderModel, or set PREMATION_SAM_DIR')).toBe(true);
+    expect(explainObjectMatteError(raw)).toBe(OBJECT_MATTE_MISSING_MESSAGE);
+  });
+
+  it('leaves other failures in their own words', () => {
+    expect(isObjectMatteModelMissing('Object Matte: the layer has no source')).toBe(false);
+    expect(explainObjectMatteError('Object Matte: the layer has no source')).toBe('Object Matte: the layer has no source');
   });
 });

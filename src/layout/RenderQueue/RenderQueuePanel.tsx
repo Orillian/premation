@@ -27,7 +27,7 @@ import {
 } from '@stores/renderQueueStore';
 import { canEncodeLocally } from '@core/export/renderSpec';
 import { customConfirm } from '@components/Modal/Dialogs';
-import { useExportQueueStore } from '@stores/exportQueueStore';
+import { failureAction, useExportQueueStore } from '@stores/exportQueueStore';
 import { describeProgress, isFinishedStatus, isLiveStatus, type ExportJobRecord } from '@core/export/exportSupervisorClient';
 import { SUPERVISOR_RESTART_NOTE, orderForDisplay } from '@layout/Export/ExportQueueList';
 import styles from './RenderQueuePanel.module.css';
@@ -399,6 +399,9 @@ function BackgroundRow({ job, index }: { job: ExportJobRecord; index: number }):
             <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} title="Stop this export — nothing is written" onClick={() => void cancel(job.id)}>Cancel</Button>
           ) : (
             <>
+              {job.errorCode === 'ffmpeg-unavailable' && (
+                <Button variant="secondary" size="sm" title="Repair video export, then render this again" onClick={() => failureAction(job).action?.onSelect()}>Fix</Button>
+              )}
               {job.status !== 'completed' && (
                 <Button variant="ghost" size="sm" iconOnly icon={<Icon name="loop" size="sm" />} title="Render this export again, from the first frame" onClick={() => void retry(job.id)}>Retry</Button>
               )}

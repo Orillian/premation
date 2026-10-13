@@ -25,6 +25,8 @@ import { edit } from '@core/engine/uiEdits';
 import { isLayer } from '@core/mirror/docFacts';
 import { customConfirm } from '@components/Modal';
 import { needsSelfApplyConfirm, selfApplyConfirmCopy } from './applyTargetGuard';
+import { explainObjectMatteError } from '@core/tracking/samModelInstall';
+import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
 
 export type StabVariant = 'similarity' | 'subspace' | 'rolling-shutter';
 
@@ -656,13 +658,15 @@ export function trackMotionActions(ctx: TrackMotionContext) {
           ...(box ? { box } : {}),
         },
       }) : null;
+      const segmentError = viaEngine?.error?.message;
+      if (segmentError) offerObjectMatteDownload(segmentError);
       store.getState().finishTracking(
         null,
         !viaEngine
           ? 'Segment: place a track point on the subject first (or two points as a box).'
           : viaEngine.status === 'done'
             ? `Segment (SAM): ${viaEngine.result?.contourPoints ?? 0} contour points → mask path. Use Track mask / Roto Brush to propagate.`
-            : `Segment: ${viaEngine.error?.message ?? 'cancelled'}`,
+            : `Segment: ${segmentError ? explainObjectMatteError(segmentError) : 'cancelled'}`,
       );
     }
   };

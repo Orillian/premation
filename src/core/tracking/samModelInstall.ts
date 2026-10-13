@@ -35,6 +35,25 @@ export const SUGGESTED_MODEL = {
   approxBytes: 14 * 1024 * 1024,
 } as const;
 
+/**
+ * The engine's answer when no model is on disk — the bundled pair was removed
+ * (antivirus, a damaged install) and none was installed: "Object Matte model
+ * '<path>' does not exist" or "no Object Matte model: …"
+ * (native/engine/src/jobs/kind_object_matte.cpp).
+ */
+export function isObjectMatteModelMissing(message: string): boolean {
+  return /Object Matte model '.*' does not exist|no Object Matte model/i.test(message);
+}
+
+/** What to say instead — the fix is one click (objectMatteJob.offerObjectMatteDownload). */
+export const OBJECT_MATTE_MISSING_MESSAGE =
+  "Object Matte's AI model isn't on this computer. Press Download model (about 14 MB, one time) and try again.";
+
+/** An Object Matte failure in people's words. */
+export function explainObjectMatteError(message: string): string {
+  return isObjectMatteModelMissing(message) ? OBJECT_MATTE_MISSING_MESSAGE : message;
+}
+
 export type ModelStatus =
   /** Nothing installed: the engine uses the pair bundled with the app. */
   | { kind: 'absent' }

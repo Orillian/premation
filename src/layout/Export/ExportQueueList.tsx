@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { cn } from '@utils/cn';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
-import { useExportQueueStore } from '@stores/exportQueueStore';
+import { failureAction, useExportQueueStore } from '@stores/exportQueueStore';
 import { describeProgress, isFinishedStatus, type ExportJobRecord } from '@core/export/exportSupervisorClient';
 import styles from './ExportDialog.module.css';
 
@@ -111,6 +111,11 @@ export function ExportQueueRow({ job, priorityControls = false }: ExportQueueRow
         </span>
       ) : (
         <span className={styles.queueActions}>
+          {job.errorCode === 'ffmpeg-unavailable' ? (
+            <Button variant="primary" size="sm" onClick={() => failureAction(job).action?.onSelect()} title="Repair video export, then render this again">
+              Fix
+            </Button>
+          ) : null}
           {job.status !== 'completed' ? (
             <Button variant="secondary" size="sm" onClick={() => void retry(job.id)} title="Render this export again, from the first frame">
               Retry

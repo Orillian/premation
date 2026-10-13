@@ -32,6 +32,8 @@ import { useMirrorTree } from '@hooks/useMirror';
 import { playheadSeconds } from '@core/timeline/timelineView';
 import { settingsDurationSeconds, settingsFps, settingsSetWorkArea } from '@core/mirror/compFacts';
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
+import { explainObjectMatteError } from '@core/tracking/samModelInstall';
+import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
 import styles from './ToolOptionsBar.module.css';
 
 /** The two things a roto stroke can mean, and how to say so. */
@@ -416,7 +418,11 @@ function RotoOptions(): JSX.Element {
       return useRotoBrushStore.getState().busy;
     })
       .then((r) => useRotoBrushStore.getState().setStatus(r.status === 'cancelled' ? 'Cancelled.' : `Object Matte: ${r.frames} frames.`))
-      .catch((err: unknown) => useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : 'Object Matte failed.'))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Object Matte failed.';
+        offerObjectMatteDownload(message);
+        useRotoBrushStore.getState().setStatus(explainObjectMatteError(message));
+      })
       .finally(() => useRotoBrushStore.getState().setBusy(false));
   };
 
