@@ -70,7 +70,7 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
   by the host per file and modification time), and
   `get_asset_sibling_bytes(host, index, relative, data, size)` (a file beside
   the asset: glTF `.bin` and textures, `.mtl`; no `..`, no absolute paths, no
-  symlinks out). Collect Files copies the siblings a plugin read. (1458aa41; Collect Files does NOT carry siblings — content-addressed bundle, documented in PLUGIN_SDK.md "Assets") 2026-10-13: NOT built — no clean design today (PLUGIN_SDK.md "Assets" lists why: siblings known only at render, content-addressed blobs, native_file_of has no bundle root and a collected item keeps no src, portable/cloud carry no FILE item bytes). Found on the way: Collect Files does not copy a FILE param's own file either (it keeps its outside path); the doc said it did — corrected.
+  symlinks out). Collect Files copies the siblings a plugin read. (1458aa41; Collect Files does NOT carry siblings — content-addressed bundle, documented in PLUGIN_SDK.md "Assets") 2026-10-13 (second pass): BUILT — PR_CMD_LIST_ASSET_FILES (SDK 1.2, document side, at Collect Files); the item records `collected { name, siblings }` with `path: motion-blob:`; opening lays the files out under their names; bundle Save As, portable, recovery and export snapshots carry it; plugin-imported footage keeps its extension. test_plugin_collect.cpp. (The first pass had found that Collect Files did not even copy a FILE param's own file.)
 - [x] S6 **Scene depth.** `PR_OUT_FLAG_USES_SCENE_DEPTH`;
   `checkout_scene_depth_gpu(host, const PrGpuWorld**)` in `SMART_RENDER_GPU`
   and `checkout_scene_depth(host, PrWorld**)` on the CPU path: the depth of the
@@ -115,7 +115,7 @@ keep loading unchanged. `PR_SDK_VERSION_MINOR` = 2.
 - model3d goldens store Base Color "#ffffff"; an invalid plugin COLOR is reported on layerErrors (f908c381).
 - S3 in nested comps: comp_time / layer_start are the layer's own comp's; prefixed nested layers resolve their node (66f6bb68).
 - G3: collapsed precomps' layers posed at scene-depth sub-times (1b61c244).
-- S5 Collect Files + siblings: not built, reasons in PLUGIN_SDK.md "Assets" (7bb1175d).
+- S5 Collect Files + siblings: built in the second pass (see S5 above).
 - Gates: engine_plugins 49/49, plugins_scene 9/9, plugins_gpu 15/15, engine_tests 190/190 (green), audio 34/34, jobs 99/99;
   plugin jest 12 suites green (headless); typecheck, lint (0 errors), engine-api:check, native golden gate green
   (345/355 gated + ceilings), bench:check 0 regressions.

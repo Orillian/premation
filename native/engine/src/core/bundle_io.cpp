@@ -513,10 +513,39 @@ std::uint64_t write_portable(const fs::path& file, const Json& doc, const fs::pa
     }
   }
 
+  // Collected items (collect_files.hpp): a plugin's FILE asset, the files beside it and
+  // plugin-imported footage travel as `assets/blob-<sha256>`; read_portable turns them back.
+  std::vector<std::pair<std::string, std::string>> itemFiles;
+  if (Json* footage = packed.find_mut("projectItems") != nullptr ? packed.find_mut("projectItems")->find_mut("footage") : nullptr;
+      footage != nullptr && footage->is_object() && !source.empty()) {
+    std::set<std::string, std::less<>> packedHashes;
+    const auto pack = [&](Json& ref) {
+      const std::string hash(blob_hash(ref));
+      if (hash.empty()) return;
+      if (!packedHashes.contains(hash)) {
+        std::string bytes;
+        if (!read_file(blob_path(source, hash), bytes)) return;  // unreachable: left for relink
+        itemFiles.emplace_back("assets/blob-" + hash, std::move(bytes));
+        packedHashes.insert(hash);
+      }
+      ref = Json::string("assets/blob-" + hash);
+    };
+    for (auto& m : footage->obj_mut()) {
+      if (!m.value.is_object()) continue;
+      Json* col = m.value.find_mut("collected");
+      if (col == nullptr || !col->is_object()) continue;
+      if (Json* path = m.value.find_mut("path"); path != nullptr) pack(*path);
+      if (Json* sib = col->find_mut("siblings"); sib != nullptr && sib->is_object()) {
+        for (auto& f : sib->obj_mut()) pack(f.value);
+      }
+    }
+  }
+
   const Encoded e = encode(packed);
   std::vector<std::pair<std::string, std::string>> entries = e.chunks;
   entries.emplace_back(kManifest, js::stringify(e.manifest));
   for (const Asset& a : assets) entries.emplace_back("assets/" + a.fileName, a.bytes);
+  for (auto& f : itemFiles) entries.emplace_back(std::move(f));
   if (!assets.empty()) {
     Json rows = Json::array();
     for (const Asset& a : assets) {
@@ -793,6 +822,25 @@ PortableOpen read_portable(const fs::path& file, const fs::path& staging) {
           if (const Json& aid = props->at("assetId"); aid.is_string() && !aid.str().empty()) it->second.id = aid.str();
         }
         *src = Json::string(std::string(kBlobScheme) + it->second.hash);
+      }
+    }
+  }
+
+  // Collected items' files (write_portable's `assets/blob-<sha256>`) → `motion-blob:` again.
+  if (Json* footage = out.doc.find_mut("projectItems") != nullptr ? out.doc.find_mut("projectItems")->find_mut("footage") : nullptr;
+      footage != nullptr && footage->is_object()) {
+    const auto unpack = [&staged](Json& ref) {
+      if (!ref.is_string()) return;
+      const auto it = staged.find(ref.str());
+      if (it != staged.end()) ref = Json::string(std::string(kBlobScheme) + it->second.hash);
+    };
+    for (auto& m : footage->obj_mut()) {
+      if (!m.value.is_object()) continue;
+      Json* col = m.value.find_mut("collected");
+      if (col == nullptr || !col->is_object()) continue;
+      if (Json* path = m.value.find_mut("path"); path != nullptr) unpack(*path);
+      if (Json* sib = col->find_mut("siblings"); sib != nullptr && sib->is_object()) {
+        for (auto& f : sib->obj_mut()) unpack(f.value);
       }
     }
   }

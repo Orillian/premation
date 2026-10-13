@@ -50,6 +50,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -1357,6 +1360,22 @@ PrErr overlay_drag(const PrInData* in, PrParamDef* const* params, const PrOverla
   return in->host->set_param_value(in->host_ref, i, v.data(), 3);
 }
 
+/// SDK 1.2 LIST_ASSET_FILES (Collect Files): a .gltf's external buffers and images, so a collected
+/// project carries them beside the model.
+PrErr list_asset_files(const PrInData* in, PrOutData* out, PrParamDef* const* params, const PrListAssetFilesExtra* x) {
+  if (const PrErr f = prs::inject(prs::by_id(params, in, prs::kFaultParamId), out); f != PR_ERR_NONE) return f;
+  if (x == nullptr || x->asset_path == nullptr || x->add_file == nullptr || x->param_index != index_of(in, params, kModel)) return PR_ERR_NONE;
+  const std::string utf8(x->asset_path);
+  std::ifstream file(std::filesystem::path(std::u8string(utf8.begin(), utf8.end())), std::ios::binary);
+  if (!file) return PR_ERR_NONE;  // the host reports a missing asset itself
+  const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  std::vector<std::string> uris;
+  std::string why;
+  if (!gltf_lite::external_uris(bytes, uris, why)) return PR_ERR_NONE;  // not a model: nothing beside it
+  for (const std::string& u : uris) (void)x->add_file(x->refcon, u.c_str());
+  return PR_ERR_NONE;
+}
+
 PrErr PR_CALL model3d_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamDef* const* params, PrWorld* /*output*/,
                            void* extra) {
   switch (cmd) {
@@ -1384,6 +1403,7 @@ PrErr PR_CALL model3d_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrPara
 #endif
     case PR_CMD_DRAW_OVERLAY: return draw_overlay(in, params);
     case PR_CMD_OVERLAY_DRAG: return overlay_drag(in, params, static_cast<const PrOverlayDragExtra*>(extra));
+    case PR_CMD_LIST_ASSET_FILES: return list_asset_files(in, out, params, static_cast<const PrListAssetFilesExtra*>(extra));
     default: return PR_ERR_NONE;
   }
 }

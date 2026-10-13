@@ -69,6 +69,7 @@ The plugin id and the match names must match the manifest.
 | `UPDATE_PARAMS_UI` | same | `set_param_ui` (enable / hide / rename) |
 | `GPU_DEVICE_SETUP` / `_SETDOWN`, `SMART_RENDER_GPU` | `PF_Cmd_GPU_DEVICE_SETUP`, `PF_Cmd_SMART_RENDER_GPU` | Dawn/WebGPU on the engine's own device (see GPU) |
 | `DRAW_OVERLAY` / `OVERLAY_DRAG` (1.1) | `PF_Cmd_EVENT` (draw / drag) | the viewer overlay (see Viewer overlays) |
+| `LIST_ASSET_FILES` (1.2) | AE's Collect Files has no plugin hook (Element 3D ships its own model folders) | the files beside a `FILE` param's asset the effect reads, so Collect Files carries them (see Assets) |
 
 Out flags (SDK 1.2 adds `SAMPLES_TIME`, `USES_SHUTTER`, `COMP_SPACE`, below): `DEEP_COLOR_AWARE` (16-bit), `FLOAT_COLOR_AWARE` (32-bit float),
 `SMART_RENDER`, `GPU_RENDER`, `SEQUENCE_DATA`, `GENERATOR`, `WIDE_TIME_INPUT`,
@@ -122,8 +123,9 @@ cannot declare them (the plugin fails to load with "needs SDK 1.1").
 
 A `FILE` param's value is a **project item**: the editor's **Choose…** imports
 the file as a `data` item (`importFiles` with `asData`: never probed as
-footage), so Relink re-points it, Remove Unused keeps it while an effect uses
-it, and the project saves it (by its path: see "Assets" for Collect Files). At render the engine
+footage), so Collect Files copies it (and the files beside it the plugin
+lists, see "Assets"), Relink re-points it, Remove Unused keeps it while an
+effect uses it, and the project saves it. At render the engine
 resolves the item to a file (`p.<key>.path`, `.missing` in the chain entry), so
 a relink re-renders the effect. A missing file never fails the frame: the
 plugin sees `file_missing = 1` and `get_asset_*` answer `PR_ERR_NOT_FOUND`,
@@ -328,44 +330,42 @@ A `FILE` param's file, beyond `get_asset_path` / `get_asset_bytes`:
   `relative` uses `/` (or `\`); no `..`, no absolute path or drive, no symlink
   out of the asset's folder (`PR_ERR_INVALID_PARAM`); at most 512 MiB.
 
-Collect Files does **not** copy a `FILE` param's file, nor the siblings a
-plugin read (checked 2026-10-13, collect_files.cpp): it collects what layers
-name through `assetId` / `src` and the files of unused items; a `data` item an
-effect uses is neither, so it keeps its outside `path` and the collected
-project still reads the original file (on that machine). Carrying them is not
-one change but five, and no clean design fits today:
+Collect Files copies a `FILE` param's file **and the files beside it the
+plugin lists**. The collected project stores files content-addressed
+(`blobs/<hh>/<sha256>`: no names, no folders), so it asks the effect which
+siblings its asset needs:
 
-1. What a plugin reads is known only while it renders. Writing it into the
-   document from the render thread (pluginData) is a document edit outside a
-   command — not undoable, it dirties a saved project by viewing it, and a
-   project collected before the effect rendered once (opened, then collected)
-   would still lose its siblings. The alternative — the engine guessing
-   siblings by parsing the asset (a glTF's `uri`s) — is a per-format loader the
-   SDK leaves to the plugin.
-2. A collected project stores files content-addressed (`blobs/<hh>/<sha256>`,
-   no names, no folders); a sibling read resolves relative to the asset's
-   folder, so the host would need a per-item `relative → blob` table in the
-   document and `resolve_sibling` to consult it.
-3. `native_file_of` resolves an item with no bundle root, so a `motion-blob:`
-   item cannot reach a plugin at all; and a collected item's record keeps no
-   `src` (the footage record persists `path` only), so after collect + reopen
-   the item would resolve to nothing. Collecting the main file today would
-   break the effect rather than carry it.
-4. The portable `.motion` copy embeds only layer `props.src` blobs (flat
-   `assets/<node>.<ext>`, nested paths dropped on open), and a cloud save
-   uploads the document only — neither carries a local `FILE` item's bytes, let
-   alone its siblings.
-5. Recovery and the export snapshot pass references through unchanged; they
-   would work once 2–3 exist.
+- `PR_CMD_LIST_ASSET_FILES` (SDK 1.2, `PrListAssetFilesExtra`: `param_index`,
+  `asset_path`, `add_file(refcon, relative)`). Document side, on the engine's
+  core thread, once per `FILE` param with a value, at Collect Files — never
+  from a render, never an edit (nothing goes into undo; viewing a project never
+  dirties it). Crash-guarded and under the watchdog. The effect's params are
+  the document's (`params[]`, the asset as `file_name`); call `add_file` once
+  per file, `/`-separated and relative to the asset's folder, with the rules of
+  `get_asset_sibling_bytes` (no `..`, no absolute path or drive). The `model3d`
+  sample reads its `.gltf` and lists every `buffers[].uri` and `images[].uri`
+  that is not a `data:` URI (percent-decoded).
+- An SDK 1.0 / 1.1 module, or one that adds nothing, gets its asset carried and
+  nothing beside it. A fault or an error return while listing is reported in
+  Collect Files' list ("the plugin could not list the files beside it … only the
+  file itself is collected") and disables the plugin as any fault does (the
+  frame's layerErrors say so); the asset itself is still collected. A listed
+  file that is not there is reported, never fatal.
+- The collected item records `path: "motion-blob:<sha256>"` and
+  `collected: { name: "box.gltf", siblings: { "box.bin": "motion-blob:…",
+  "tex/albedo.png": "motion-blob:…" } }`. Opening the project (and an export's
+  snapshot) lays the files out again under their names in a content-addressed
+  folder (`<temp>/premation-collected/<key>/`), so `p.<key>.path`,
+  `get_asset_bytes` and `get_asset_sibling_bytes` see the same layout as before
+  the collect. The record travels with every save: a bundle (Save As copies
+  its blobs), the portable `.motion` (`assets/blob-<sha256>`), recovery, an
+  export's snapshot; a collect of a collected project carries the table as it is.
+  A JSON save or a cloud save keeps the record and the references; like every
+  collected footage file, the bytes stay in the bundle they were collected into.
 
-So: ship self-contained assets (`.glb`, embedded textures) — the engine's own
-model import does the same (it repacks a `.gltf` and its files into one
-`.glb`). The order that would make this clean: items carry their `src` / a
-bundle-relative ref through every save (3), `native_file_of` resolves blobs,
-Collect Files collects `FILE` items, then a sibling table (2) filled by a
-command — e.g. the host recording sibling reads made during
-`USER_CHANGED_PARAM` on the param (core thread, one undo entry) — and the
-portable writer learning item files (4).
+Plugin-imported footage (an importer claims it by extension, P7b) is collected
+the same way: its item keeps `collected.name` (`clip.ppm`), and is laid out
+under that name when opened, so the importer still claims it.
 
 ## Scene depth (SDK 1.2)
 

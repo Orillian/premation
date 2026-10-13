@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "anim.hpp"
+#include "collect_files.hpp"
 #include "fail.hpp"
 #include "fxstate.hpp"
 #include "handlers_common.hpp"
@@ -64,8 +65,17 @@ NativeActionRequest::File native_file_of(const Document& d, std::string_view key
     return f;
   }
   f.name = a->at("name").is_string() ? a->at("name").str() : std::string(item);
-  // The live source first (a local-file URL / path), then the recorded path.
-  for (const char* field : {"src", "path"}) {
+  // The live source first (a local-file URL / path), then a collected item laid out under its
+  // name (an export's snapshot: its blobs are absolute paths), then the recorded path.
+  for (const char* field : {"src", "collected", "path"}) {
+    if (std::string_view(field) == "collected") {
+      if (!a->at("collected").is_object()) continue;
+      if (auto laid = materialize_collected(*a, "")) {
+        f.path = std::move(*laid);
+        return f;
+      }
+      continue;
+    }
     if (!a->at(field).is_string()) continue;
     std::string p = jobs::resolve_footage_path(a->at(field).str(), "");
     if (p.empty()) continue;

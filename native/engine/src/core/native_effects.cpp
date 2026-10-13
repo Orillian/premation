@@ -40,6 +40,7 @@ struct State {
   NativeEffects::OverlayFn overlay;
   NativeEffects::DragFn drag;
   NativeEffects::SceneFn scene;  // SDK 1.2
+  NativeEffects::AssetFilesFn assetFiles;  // SDK 1.2 LIST_ASSET_FILES
   /// Plugin ids listed `locked` (no entitlement).
   std::vector<std::string> locked;
 };
@@ -138,6 +139,24 @@ void NativeEffects::clear_handlers() {
   set_rescan_handler({});
   set_overlay_handlers({}, {});
   set_scene_handler({});
+  set_asset_files_handler({});
+}
+
+void NativeEffects::set_asset_files_handler(AssetFilesFn fn) {
+  State& s = state();
+  const std::scoped_lock lock(s.handlerMutex);
+  s.assetFiles = std::move(fn);
+}
+
+std::variant<std::vector<std::string>, NativeFailure> NativeEffects::asset_files(const NativeActionRequest& r, std::string_view key) {
+  State& s = state();
+  AssetFilesFn fn;
+  {
+    const std::scoped_lock lock(s.handlerMutex);
+    fn = s.assetFiles;
+  }
+  if (!fn) return std::vector<std::string>{};
+  return fn(r, key);
 }
 
 void NativeEffects::set_scene_handler(SceneFn fn) {

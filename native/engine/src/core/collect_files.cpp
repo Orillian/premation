@@ -4,13 +4,18 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <system_error>
 #include <utility>
+#include <variant>
 
 #include "bundle_io.hpp"
 #include "fail.hpp"
+#include "fxstate.hpp"
 #include "jobs/job_inputs.hpp"
+#include "native_contrib.hpp"
+#include "native_effects.hpp"
 
 namespace premation::doc {
 
@@ -208,6 +213,8 @@ CollectOutcome collect_files(CollectRequest req, CollectIo& io) {
 
   Collector c(io, out.path, req.sourceBundle);
   std::map<std::string, std::string, std::less<>> itemHash;  // item id → the collected file's hash
+  // Items that keep their file's name (a plugin importer reads them by extension): id → that name.
+  std::map<std::string, std::string, std::less<>> namedItems;
 
   // ── the layers' footage: every src / __src ──
   if (Json* scene = doc.find_mut("scene"); scene != nullptr) {
@@ -241,6 +248,11 @@ CollectOutcome collect_files(CollectRequest req, CollectIo& io) {
               }
               props->set(srcKey, Json::string(std::string(kBlobScheme) + r.hash));
               if (!id.empty()) itemHash.emplace(id, r.hash);
+              // P7b: footage a plugin importer reads is claimed by its extension; the blob has none.
+              // (A collected item's blob ref has no name: its record keeps it.)
+              const std::string named = rec != nullptr && truthy_string(rec->at("collected").at("name")) ? rec->at("collected").at("name").str()
+                                                                                                          : base_name(ref);
+              if (!id.empty() && NativeImporters::claims(named)) namedItems.try_emplace(id, named);
               done = true;
               break;
             }
@@ -248,6 +260,83 @@ CollectOutcome collect_files(CollectRequest req, CollectIo& io) {
               const std::string& first = candidates.front();
               c.report(id.empty() ? first : id, name_of(rec, first) + ": " + why);
             }
+          }
+        }
+      }
+    }
+  }
+
+  // ── SDK FILE params: the item an effect names and the files beside it the plugin lists ──
+  std::set<std::string, std::less<>> fileItems;
+  if (const Json* scene = doc.find("scene"); scene != nullptr && scene->at("nodes").is_array()) {
+    for (const Json& node : scene->at("nodes").arr()) {
+      const std::string layer = node.at("id").is_string() ? node.at("id").str() : std::string();
+      if (!node.at("components").is_array()) continue;
+      for (const Json& comp : node.at("components").arr()) {
+        if (!comp.at("props").at("effects").is_array()) continue;
+        for (const Json& e : comp.at("props").at("effects").arr()) {
+          const NativeEffect* ne = NativeEffects::find(e.at("type").is_string() ? e.at("type").str() : std::string());
+          if (ne == nullptr || ne->files.empty()) continue;
+          const Json params = params_of(e);
+          for (const auto& [key, types] : ne->files) {
+            const std::string id = params.at(key).is_string() ? params.at(key).str() : std::string();
+            Json* rec = record_of(id);
+            if (rec == nullptr || fileItems.contains(id) || !truthy_string(rec->at("path")) || travels_as_is(rec->at("path").str())) continue;
+            fileItems.insert(id);
+            const std::string ref = rec->at("path").str();
+            const Json was = rec->at("collected");
+            const std::string fileName = truthy_string(was.at("name")) ? was.at("name").str() : base_name(ref);
+            const Collector::Read main = c.collect(ref, id, fileName);
+            if (!main.ok) {
+              c.report(id, name_of(rec, ref) + ": " + main.why);
+              continue;
+            }
+            Json siblings = Json::object();
+            const auto add = [&](const std::string& rel, const std::string& sref) {
+              const Collector::Read r = c.collect(sref, std::string(), base_name(rel));
+              if (r.ok) {
+                siblings.set(rel, Json::string(std::string(kBlobScheme) + r.hash));
+              } else {
+                c.report(id + "/" + rel, name_of(rec, ref) + ": '" + rel + "' beside it: " + r.why);
+              }
+            };
+            if (was.at("siblings").is_object()) {
+              // Collected before (a collect of a collected project): its table is the list.
+              for (const auto& m : was.at("siblings").obj()) {
+                if (m.value.is_string()) add(m.key, m.value.str());
+              }
+            } else {
+              // The plugin lists what it reads beside the asset (PR_CMD_LIST_ASSET_FILES).
+              const std::string file = io.file_of(ref, req.sourceBundle);
+              NativeActionRequest ask;
+              ask.layer = layer;
+              ask.effectId = e.at("id").is_string() ? e.at("id").str() : std::string();
+              ask.type = ne->def.type;
+              ask.params = params;
+              NativeActionRequest::File f;
+              f.key = key;
+              f.item = id;
+              f.path = file;
+              f.name = name_of(rec, ref);
+              ask.files.push_back(f);
+              std::variant<std::vector<std::string>, NativeFailure> listed = std::vector<std::string>{};
+              if (!file.empty()) listed = NativeEffects::asset_files(ask, key);
+              if (const auto* failed = std::get_if<NativeFailure>(&listed)) {
+                c.report(id + "/files", name_of(rec, ref) + ": the plugin could not list the files beside it (" + failed->message +
+                                            "); only the file itself is collected");
+              } else {
+                const fs::path dir = fs::path(std::u8string(file.begin(), file.end())).parent_path();
+                for (const std::string& rel : std::get<std::vector<std::string>>(listed)) {
+                  const std::u8string u = (dir / fs::path(std::u8string(rel.begin(), rel.end()))).generic_u8string();
+                  add(rel, std::string(u.begin(), u.end()));
+                }
+              }
+            }
+            rec->set("path", Json::string(std::string(kBlobScheme) + main.hash));
+            Json col = Json::object();
+            col.set("name", Json::string(fileName));
+            if (!siblings.obj().empty()) col.set("siblings", std::move(siblings));
+            rec->set("collected", std::move(col));
           }
         }
       }
@@ -262,7 +351,14 @@ CollectOutcome collect_files(CollectRequest req, CollectIo& io) {
       if (!rec.is_object()) continue;
       const std::string& id = m.key;
       const std::string name = name_of(&rec, truthy_string(rec.at("path")) ? rec.at("path").str() : id);
-      if (itemHash.contains(id)) {
+      if (fileItems.contains(id)) {
+        // An SDK FILE item: its path and table were written above.
+      } else if (const auto named = namedItems.find(id); named != namedItems.end()) {
+        rec.set("path", Json::string(std::string(kBlobScheme) + itemHash.at(id)));
+        Json col = Json::object();
+        col.set("name", Json::string(named->second));
+        rec.set("collected", std::move(col));
+      } else if (itemHash.contains(id)) {
         rec.erase("path");
       } else if (!req.onlyUsed && req.unusedItems.contains(id) && truthy_string(rec.at("path")) &&
                  !travels_as_is(rec.at("path").str())) {
@@ -290,6 +386,84 @@ CollectOutcome collect_files(CollectRequest req, CollectIo& io) {
   out.collected = c.files();
   out.missing = c.take_missing();
   return out;
+}
+
+std::string CollectIo::file_of(std::string_view ref, const std::string& sourceBundle) {
+  return jobs::resolve_footage_path(ref, sourceBundle);
+}
+
+namespace {
+
+/// A relative path a collected item may hold: '/'-separated, inside its folder.
+bool safe_relative(std::string_view rel) {
+  if (rel.empty() || rel.size() > 1024 || rel.front() == '/' || rel.find(':') != std::string_view::npos ||
+      rel.find('\\') != std::string_view::npos) {
+    return false;
+  }
+  std::size_t start = 0;
+  while (start <= rel.size()) {
+    const std::size_t end = std::min(rel.find('/', start), rel.size());
+    const std::string_view part = rel.substr(start, end - start);
+    if (part.empty() || part == "." || part == "..") return false;
+    start = end + 1;
+  }
+  return true;
+}
+
+std::string utf8_of(const fs::path& p) {
+  const std::u8string s = p.generic_u8string();
+  return {s.begin(), s.end()};
+}
+
+}  // namespace
+
+std::optional<std::string> materialize_collected(const Json& record, std::string_view bundleRoot, std::string* why) {
+  const auto failed = [why](std::string w) -> std::optional<std::string> {
+    if (why != nullptr) *why = std::move(w);
+    return std::nullopt;
+  };
+  const Json& col = record.at("collected");
+  if (!col.is_object() || !truthy_string(col.at("name")) || !truthy_string(record.at("path"))) return failed("not a collected item");
+  const std::string name = col.at("name").str();
+  if (!safe_relative(name) || name.find('/') != std::string::npos) return failed("'" + name + "' is not a file name");
+  struct File {
+    std::string rel;
+    fs::path from;
+    std::uintmax_t size = 0;
+  };
+  std::vector<File> files;
+  const auto add = [&](const std::string& rel, const std::string& ref) -> bool {
+    const std::string p = jobs::resolve_footage_path(ref, std::string(bundleRoot));
+    std::error_code ec;
+    const fs::path from(std::u8string(p.begin(), p.end()));
+    if (p.empty() || !fs::is_regular_file(from, ec)) return false;
+    files.push_back({rel, from, fs::file_size(from, ec)});
+    return true;
+  };
+  if (!add(name, record.at("path").str())) return failed("the collected file of '" + name + "' is not there");
+  if (col.at("siblings").is_object()) {
+    for (const auto& m : col.at("siblings").obj()) {
+      // A sibling that is gone, or a table entry that would leave the folder, is left out: the
+      // plugin answers PR_ERR_NOT_FOUND for it, as for any file that is not beside the asset.
+      if (!m.value.is_string() || !safe_relative(m.key) || m.key == name) continue;
+      (void)add(m.key, m.value.str());
+    }
+  }
+  // Content-addressed folder: the names and the blobs (a blob's file name is its hash).
+  std::string key;
+  for (const File& f : files) key += f.rel + "\n" + utf8_of(f.from.filename()) + "\n" + std::to_string(f.size) + "\n";
+  const fs::path dir = fs::temp_directory_path() / "premation-collected" / sha256_hex(key).substr(0, 24);
+  for (const File& f : files) {
+    const fs::path to = dir / fs::path(std::u8string(f.rel.begin(), f.rel.end()));
+    std::error_code ec;
+    if (fs::is_regular_file(to, ec) && fs::file_size(to, ec) == f.size) continue;  // laid out before
+    fs::create_directories(to.parent_path(), ec);
+    const fs::path tmp = to.parent_path() / (utf8_of(to.filename()) + ".part");
+    fs::copy_file(f.from, tmp, fs::copy_options::overwrite_existing, ec);
+    if (!ec) fs::rename(tmp, to, ec);
+    if (ec) return failed("could not lay out '" + f.rel + "': " + ec.message());
+  }
+  return utf8_of(dir / fs::path(std::u8string(name.begin(), name.end())));
 }
 
 // ── on disk ──────────────────────────────────────────────────────────────

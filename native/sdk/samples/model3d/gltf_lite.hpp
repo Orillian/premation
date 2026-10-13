@@ -596,4 +596,54 @@ inline bool load(std::span<const std::uint8_t> file, const SiblingFn& sibling, M
   return true;
 }
 
+/// The files a .glb / .gltf reads beside itself: its buffers' and images' `uri`s that are not
+/// `data:` URIs, percent-decoded (what Collect Files must carry). False + `why` when the file is
+/// not glTF.
+inline bool external_uris(std::span<const std::uint8_t> file, std::vector<std::string>& out, std::string& why) {
+  Json doc;
+  std::string_view text;
+  constexpr std::uint32_t kMagic = 0x46546C67;  // 'glTF'
+  std::uint32_t magic = 0;
+  if (file.size() >= 4) std::memcpy(&magic, file.data(), 4);
+  if (magic == kMagic) {
+    std::size_t o = 12;
+    while (text.empty() && o + 8 <= file.size()) {
+      std::uint32_t len = 0;
+      std::uint32_t type = 0;
+      std::memcpy(&len, file.data() + o, 4);       // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      std::memcpy(&type, file.data() + o + 4, 4);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      o += 8;
+      if (len > file.size() - o) break;
+      if (type == 0x4E4F534A) text = std::string_view(reinterpret_cast<const char*>(file.data() + o), len);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast, cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      o += (len + 3U) & ~std::size_t{3};
+    }
+  } else {
+    text = std::string_view(reinterpret_cast<const char*>(file.data()), file.size());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  }
+  if (text.empty() || !Parser(text).parse(doc)) {
+    why = "not a glTF file";
+    return false;
+  }
+  const auto decode = [](const std::string& uri) {
+    std::string s;
+    for (std::size_t i = 0; i < uri.size(); ++i) {
+      const auto hex = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; };
+      if (uri[i] == '%' && i + 2 < uri.size() && hex(uri[i + 1]) >= 0 && hex(uri[i + 2]) >= 0) {
+        s.push_back(static_cast<char>(hex(uri[i + 1]) * 16 + hex(uri[i + 2])));
+        i += 2;
+      } else {
+        s.push_back(uri[i]);
+      }
+    }
+    return s;
+  };
+  for (const char* list : {"buffers", "images"}) {
+    for (const Json& b : doc[list].arr) {
+      const std::string& uri = b["uri"].str;
+      if (!uri.empty() && !uri.starts_with("data:")) out.push_back(decode(uri));
+    }
+  }
+  return true;
+}
+
 }  // namespace gltf_lite

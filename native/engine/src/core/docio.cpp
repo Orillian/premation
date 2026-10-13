@@ -14,6 +14,7 @@
 
 #include "anim_json.hpp"
 #include "catalog_data.hpp"
+#include "collect_files.hpp"
 #include "engine_ctx.hpp"
 #include "fail.hpp"
 #include "fxstate.hpp"
@@ -373,6 +374,8 @@ Json doc_record_of(const Json& a) {
   if (truthy(a.at("label"))) r.set("label", a.at("label"));
   if (a.at("tags").is_array() && !a.at("tags").arr().empty()) r.set("tags", a.at("tags"));
   if (truthy(a.at("comment"))) r.set("comment", a.at("comment"));
+  // A collected item's file name and the files beside it (collect_files.hpp).
+  if (a.at("collected").is_object()) r.set("collected", a.at("collected"));
   return r;
 }
 
@@ -387,7 +390,7 @@ Json with_doc_record(const Json& a, const Json& r) {
   // The ORGANISATION is stated whole by the record (assetStore.withDocRecord,
   // 674bf37d): absent means none, never what the item carried before.
   next.set("folderId", nullish(r.at("folderId")) ? Json::null() : r.at("folderId"));
-  for (const char* k : {"interpret", "label", "tags", "comment"}) {
+  for (const char* k : {"interpret", "label", "tags", "comment", "collected"}) {
     if (!r.at(k).is_undefined()) next.set(k, r.at(k));
     else next.erase(k);
   }
@@ -1485,6 +1488,7 @@ RestoreResult restore_document(Document& d, EditorView& v, const Json& input, co
       if (truthy(r.at("label"))) p.set("label", r.at("label"));
       if (truthy(r.at("tags"))) p.set("tags", r.at("tags"));
       if (truthy(r.at("comment"))) p.set("comment", r.at("comment"));
+      if (r.at("collected").is_object()) p.set("collected", r.at("collected"));
       placeholders.push_back(std::move(p));
     }
     if (!placeholders.empty() || keep.size() != store.size()) {
@@ -1522,8 +1526,11 @@ std::vector<std::string> relink_missing_footage(Document& d, Ports& ports, std::
       still.push_back(id);
       continue;
     }
-    // The recorded path as a file: absolute as saved, or inside the project's bundle.
-    const std::string file = jobs::resolve_footage_path(it->at("path").str(), bundleRoot);
+    // The recorded path as a file: absolute as saved, or inside the project's bundle. A collected
+    // item (a plugin's FILE asset, plugin-imported footage) is laid out again under its name, with
+    // the files beside it (collect_files.hpp materialize_collected).
+    const std::string file = it->at("collected").is_object() ? materialize_collected(*it, bundleRoot).value_or(std::string())
+                                                              : jobs::resolve_footage_path(it->at("path").str(), bundleRoot);
     std::error_code ec;
     if (file.empty() || !std::filesystem::is_regular_file(std::filesystem::path(std::u8string(file.begin(), file.end())), ec)) {
       still.push_back(id);
@@ -1544,7 +1551,7 @@ std::vector<std::string> relink_missing_footage(Document& d, Ports& ports, std::
     }
     // The probe's facts and live source under what the document says about the item.
     Json next = *probed;
-    for (const char* key : {"name", "folderId", "interpret", "label", "tags", "comment", "path"}) {
+    for (const char* key : {"name", "folderId", "interpret", "label", "tags", "comment", "path", "collected"}) {
       if (!nullish(it->at(key))) next.set(key, it->at(key));
     }
     next.set("id", Json::string(id));

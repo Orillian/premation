@@ -1212,6 +1212,9 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
     doc::NativeEffects::set_scene_handler([this](const doc::SpaceCtx& sc, doc::NativeActionRequest& r) {
       if (const EffectSpec* e = effect(r.type)) overlay_scene(sc, *e, r);
     });
+    // SDK 1.2: Collect Files asks which files beside a FILE param's asset the effect reads.
+    doc::NativeEffects::set_asset_files_handler(
+        [this](const doc::NativeActionRequest& r, std::string_view key) { return asset_files_for(r, key); });
   }
 }
 
@@ -2696,6 +2699,78 @@ std::variant<std::vector<api::EffectParamUi>, doc::NativeFailure> PluginHost::pa
     out.push_back(api::EffectParamUi{std::move(u.key), std::move(u.name), u.enabled, u.hidden});
   }
   return out;
+}
+
+namespace {
+
+/// PrListAssetFilesExtra::add_file: one relative path, as get_asset_sibling_bytes takes it.
+PrErr PR_CALL cb_add_asset_file(void* refcon, const char* relative) {
+  if (refcon == nullptr || relative == nullptr) return PR_ERR_INVALID_PARAM;
+  auto& out = *static_cast<std::vector<std::string>*>(refcon);
+  std::string rel(relative);
+  std::ranges::replace(rel, '\\', '/');
+  const bool bad = rel.empty() || rel.size() > 1024 || rel.front() == '/' || rel.find(':') != std::string::npos ||
+                   rel == ".." || rel.starts_with("../") || rel.ends_with("/..") || rel.find("/../") != std::string::npos;
+  if (bad) return PR_ERR_INVALID_PARAM;
+  if (out.size() >= 4096) return PR_ERR_OUT_OF_MEMORY;
+  if (std::ranges::find(out, rel) == out.end()) out.push_back(std::move(rel));
+  return PR_ERR_NONE;
+}
+
+}  // namespace
+
+std::variant<std::vector<std::string>, doc::NativeFailure> PluginHost::asset_files_for(const doc::NativeActionRequest& req,
+                                                                                         std::string_view key) {
+  Impl& m = *impl_;
+  const EffectSpec* e = effect(req.type);
+  Plugin* p = e != nullptr ? m.plugin_of(e) : nullptr;
+  if (e == nullptr || p == nullptr || p->status != PluginStatus::loaded) return std::vector<std::string>{};
+  if (p->manifest.sdkMajor == 1 && p->manifest.sdkMinor < 2) return std::vector<std::string>{};  // the selector is SDK 1.2
+  std::uint32_t index = 0;
+  for (std::size_t i = 0; i < e->params.size(); ++i) {
+    if (e->params[i].key == key && e->params[i].type == PR_PARAM_FILE) index = static_cast<std::uint32_t>(i + 1);
+  }
+  std::string assetPath;
+  for (const auto& f : req.files) {
+    if (f.key == key) assetPath = f.path;
+  }
+  if (index == 0 || assetPath.empty()) return std::vector<std::string>{};
+  RenderInputs in;
+  in.matchName = e->matchName;
+  in.layerId = req.layer;
+  in.values = values_from_json(*e, req.params);
+  for (const auto& f : req.files) {
+    for (std::size_t i = 0; i < e->params.size(); ++i) {
+      if (e->params[i].key != f.key) continue;
+      in.values[i].fileItem = f.item;
+      in.values[i].filePath = f.path;
+      in.values[i].fileName = f.name;
+      in.values[i].fileMissing = f.missing;
+    }
+  }
+  const std::scoped_lock serial(p->serial);
+  PrHost ctx;
+  ctx.host = this;
+  ctx.cmd = PR_CMD_LIST_ASSET_FILES;
+  ctx.params = &e->params;
+  PrInData d = m.base_in(ctx, *e);
+  m.fill_in_data(d, in);
+  ctx.numParams = d.num_params;
+  std::vector<PrParamDef*> ptrs;
+  ParamDefs defs = m.param_defs(*e, in, ptrs);
+  std::vector<std::string> files;
+  PrListAssetFilesExtra x{};
+  x.struct_size = sizeof(PrListAssetFilesExtra);
+  x.param_index = index;
+  x.asset_path = assetPath.c_str();
+  x.refcon = &files;
+  x.add_file = &cb_add_asset_file;
+  PrOutData out{};
+  Impl::reset_out(out, e->globalData, 0);
+  const CallResult r = m.invoke(p->manifest.id, e->main, PR_CMD_LIST_ASSET_FILES, &d, &out, ptrs.data(), nullptr, &x);
+  if (r.fault) m.on_fault(*p, e, nullptr, r);
+  if (!r.ok) return doc::NativeFailure{r.message};
+  return files;
 }
 
 std::variant<std::vector<ParamUi>, std::string> PluginHost::params_ui(const RenderInputs& in) {

@@ -57,6 +57,10 @@ extern "C" {
  *                                                        1.2: or comp px, overlay_set_space)
  *   OVERLAY_DRAG (1.1)         PrOverlayDragExtra*       a handle was dragged: set_param_value / set_arb_data
  *                                                        (the whole drag is ONE undo step)
+ *   LIST_ASSET_FILES (1.2)     PrListAssetFilesExtra*    the files a FILE param's asset reads beside itself
+ *                                                        (a .gltf's buffers and images): add_file() each,
+ *                                                        relative to the asset's folder. Document side,
+ *                                                        at Collect Files; no render, no instance.
  */
 typedef int32_t PrCmd;
 #define PR_CMD_ABOUT 0
@@ -79,7 +83,8 @@ typedef int32_t PrCmd;
 #define PR_CMD_SMART_RENDER_GPU 17
 #define PR_CMD_DRAW_OVERLAY 18 /* SDK 1.1 */
 #define PR_CMD_OVERLAY_DRAG 19 /* SDK 1.1 */
-#define PR_CMD_COUNT 20
+#define PR_CMD_LIST_ASSET_FILES 20 /* SDK 1.2 */
+#define PR_CMD_COUNT 21
 
 /* ── out flags (GLOBAL_SETUP) ─────────────────────────────────────────────── */
 #define PR_OUT_FLAG_DEEP_COLOR_AWARE (1u << 0)     /* processes 16-bit worlds */
@@ -236,6 +241,22 @@ typedef struct PrOverlayDragExtra {
   uint32_t space;
   uint32_t reserved_1_2; /* 0 */
 } PrOverlayDragExtra;
+
+/* PR_CMD_LIST_ASSET_FILES (SDK 1.2): Collect Files asks which files beside a FILE param's asset
+ * the effect reads with get_asset_sibling_bytes, so the collected project carries them (the
+ * asset itself is always carried). Called on the document side — no render, no instance, the
+ * effect's params as the document holds them — crash-guarded and under the watchdog. Call
+ * add_file(refcon, relative) once per file: '/'-separated, relative to the asset's folder, the
+ * same rules as get_asset_sibling_bytes (no "..", no absolute path or drive). A file that is not
+ * there is reported, never fatal. Not implemented (PR_ERR_NONE without a call, or an SDK 1.0 /
+ * 1.1 module): only the asset is carried. */
+typedef struct PrListAssetFilesExtra {
+  uint32_t struct_size;
+  uint32_t param_index;   /* the FILE param (as in params[]) */
+  const char* asset_path; /* UTF-8, the asset as a file on disk */
+  void* refcon;
+  PrErr(PR_CALL* add_file)(void* refcon, const char* relative);
+} PrListAssetFilesExtra;
 
 typedef PrErr(PR_CALL* PrEffectMainFn)(PrCmd cmd, const PrInData* in_data, PrOutData* out_data,
                                         PrParamDef* const* params, PrWorld* output, void* extra);

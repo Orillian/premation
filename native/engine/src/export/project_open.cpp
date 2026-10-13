@@ -4,6 +4,8 @@
 #include <sstream>
 #include <system_error>
 
+#include "collect_files.hpp"
+
 namespace premation::exporter {
 namespace fs = std::filesystem;
 using js::Json;
@@ -63,6 +65,25 @@ void rewrite_blob_refs(Json& v, const fs::path& bundle) {
     for (auto& m : v.obj_mut()) rewrite_blob_refs(m.value, bundle);
   }
 }
+
+namespace {
+
+/// Collected items (a plugin's FILE asset and the files beside it, plugin-imported footage) laid out
+/// under their names: the item's path becomes that file, so the plugin and the importer read it as
+/// the uncollected project did (collect_files.hpp). References are absolute here (rewrite_blob_refs).
+void lay_out_collected(Json& doc) {
+  Json* footage = doc.find_mut("projectItems") != nullptr ? doc.find_mut("projectItems")->find_mut("footage") : nullptr;
+  if (footage == nullptr || !footage->is_object()) return;
+  for (auto& m : footage->obj_mut()) {
+    if (!m.value.is_object() || !m.value.at("collected").is_object()) continue;
+    if (auto laid = doc::materialize_collected(m.value, "")) {
+      m.value.set("path", Json::string(*laid));
+      m.value.erase("collected");
+    }
+  }
+}
+
+}  // namespace
 
 bool open_project(const fs::path& path, OpenedProject& out, std::string& error) {
   std::error_code ec;
@@ -132,6 +153,7 @@ bool open_project(const fs::path& path, OpenedProject& out, std::string& error) 
       }
     }
     rewrite_blob_refs(doc, path);
+    lay_out_collected(doc);
     for (Json& a : out.sessionAssets) rewrite_blob_refs(a, path);
     out.document = std::move(doc);
     out.mediaBase = path;
@@ -161,6 +183,7 @@ bool open_project(const fs::path& path, OpenedProject& out, std::string& error) 
     out.document = std::move(doc);
   } else {
     out.document = std::move(*parsed);
+    lay_out_collected(out.document);  // a snapshot's blobs are absolute already
   }
   out.mediaBase = path.parent_path();
   return true;

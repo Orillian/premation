@@ -177,6 +177,13 @@ class NativeEffects {
   static void fill_scene(const SpaceCtx& space, NativeActionRequest& r);
   [[nodiscard]] static std::variant<std::vector<NativeOverlayItem>, NativeFailure> draw_overlay(const NativeActionRequest& r);
   [[nodiscard]] static std::variant<NativeEdit, NativeFailure> overlay_drag(const NativeActionRequest& r, const NativeOverlayDrag& d);
+  /// SDK 1.2 PR_CMD_LIST_ASSET_FILES (Collect Files): the files beside FILE param `key`'s asset
+  /// (`r.files`' entry for it holds the asset's path) the effect reads, relative to the asset's
+  /// folder. No handler / no such plugin = none; a fault = a NativeFailure (the asset is still collected).
+  using AssetFilesFn = std::function<std::variant<std::vector<std::string>, NativeFailure>(const NativeActionRequest&, std::string_view key)>;
+  static void set_asset_files_handler(AssetFilesFn fn);
+  [[nodiscard]] static std::variant<std::vector<std::string>, NativeFailure> asset_files(const NativeActionRequest& r,
+                                                                                         std::string_view key);
   static void clear_handlers();
 
   /// addEffect: the initial flat sequence data for a new instance (nullopt = none).

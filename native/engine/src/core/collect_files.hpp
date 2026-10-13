@@ -19,7 +19,16 @@
 // collected src becomes `motion-blob:<sha256>` and each collected item loses
 // its outside `path` (nothing in the copy points outside the folder).
 // `onlyUsed` also drops unused footage items from the copy (removeUnusedItems'
-// rule: an item no layer uses). `data:` / `http(s):` / `/files/` srcs travel as
+// rule: an item no layer uses).
+//
+// Items the content-addressed layout would break keep a name: a native SDK
+// effect's FILE param item (and the files beside it the plugin lists through
+// PR_CMD_LIST_ASSET_FILES — a .gltf's .bin and textures), and footage a plugin
+// importer reads by its extension. Their record becomes
+//   `path: "motion-blob:<sha>"`,
+//   `collected: { name: "<file name with extension>", siblings: { "<relative>": "motion-blob:<sha>" } }`
+// and materialize_collected() lays the files out again under their names when
+// a real path is needed (reopen, an export's snapshot). `data:` / `http(s):` / `/files/` srcs travel as
 // they are (the TypeScript collector leaves them too). A file that cannot be
 // read is reported in `missing` and its reference kept — one bad file never
 // fails the collect. Fonts are not collected (the TypeScript collector does not
@@ -35,6 +44,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -66,6 +76,9 @@ class CollectIo {
   virtual std::uint64_t put_blob(const std::string& bundle, const std::string& hash, std::string_view bytes) = 0;
   /// Write the registry, then the document's chunks (manifest last); the bytes written.
   virtual std::uint64_t write_bundle(const std::string& bundle, const js::Json& doc, const js::Json& registry) = 0;
+  /// The file on disk a reference names ('' when it is not a file) — what a plugin is shown when it
+  /// lists the files beside an asset. Default: the jobs' footage resolution.
+  [[nodiscard]] virtual std::string file_of(std::string_view ref, const std::string& sourceBundle);
 };
 
 struct CollectRequest {
@@ -96,6 +109,15 @@ struct CollectOutcome {
 /// Run a collect. Throws EngineFail: invalidArgument for a refused target, io
 /// when writing fails (the source project is never written).
 [[nodiscard]] CollectOutcome collect_files(CollectRequest req, CollectIo& io);
+
+/// A collected item's files laid out under their names — `<temp>/premation-collected/<key>/<name>`
+/// and its siblings at their relative paths beside it — and the main file's path. `record` is the
+/// item (`path` + `collected`); its references resolve against `bundleRoot` (`motion-blob:`) or as
+/// files (an export's snapshot, already absolute). The folder is content-addressed (the files'
+/// hashes and names), so the same item lands in the same place and is written once. nullopt + `why`
+/// when the record is not a collected item or a file cannot be read.
+[[nodiscard]] std::optional<std::string> materialize_collected(const js::Json& record, std::string_view bundleRoot,
+                                                               std::string* why = nullptr);
 
 /// The disk implementation (std::filesystem, temp + rename — bundle_io.hpp).
 [[nodiscard]] std::unique_ptr<CollectIo> make_disk_collect_io();

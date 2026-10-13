@@ -374,6 +374,10 @@ class PluginHost {
   std::variant<std::vector<ParamUi>, std::string> params_ui(const RenderInputs& in);
   /// getEffectUi for a document effect instance (the document's static params, sequence and arbitrary data).
   std::variant<std::vector<api::EffectParamUi>, doc::NativeFailure> params_ui_for(const doc::NativeActionRequest& r);
+  /// SDK 1.2 LIST_ASSET_FILES (Collect Files): the files beside FILE param `key`'s asset the effect
+  /// reads, '/'-separated and relative to the asset's folder ("..", absolute and drive paths dropped).
+  /// No such plugin, an SDK 1.0 / 1.1 module or no asset = none; a fault or an error = a NativeFailure.
+  std::variant<std::vector<std::string>, doc::NativeFailure> asset_files_for(const doc::NativeActionRequest& r, std::string_view key);
   /// listPlugins.
   [[nodiscard]] std::vector<api::PluginInfo> plugin_infos() const;
 
