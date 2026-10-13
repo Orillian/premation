@@ -21,6 +21,7 @@ import { installFromFilePicker } from './InstallPackageDialog';
 import { NativePluginsList, OpenPluginsFolderButton } from './NativePluginsList';
 import { PluginStoreBrowser } from './PluginStore';
 import { PublishPlugins } from './PublishPlugins';
+import { StoreMessageLine } from './StoreMessageLine';
 import styles from './NativePlugins.module.css';
 
 type Section = 'store' | 'installed' | 'publish';
@@ -42,11 +43,7 @@ export function NativePluginsPage(): JSX.Element {
       <div className={styles.toolbar}>
         <Segmented options={SECTIONS} value={section} onChange={setSection} aria-label="Plugins" />
       </div>
-      {store.message ? (
-        <span className={store.message.error ? styles.error : styles.message} role={store.message.error ? 'alert' : 'status'}>
-          {store.message.text}
-        </span>
-      ) : null}
+      <StoreMessageLine message={store.message} />
 
       {section === 'store' ? <PluginStoreBrowser store={store} /> : null}
 

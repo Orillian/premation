@@ -8,6 +8,7 @@
 import { useNativePlugins } from '@hooks/useNativePlugins';
 import { useInstalledPlugins } from '@hooks/usePluginStore';
 import { NativePluginsList, OpenPluginsFolderButton } from './NativePluginsList';
+import { StoreMessageLine } from './StoreMessageLine';
 import styles from './NativePlugins.module.css';
 
 export function NativePluginsPanel(): JSX.Element {
@@ -19,11 +20,7 @@ export function NativePluginsPanel(): JSX.Element {
         Plugins run inside the engine on this computer. Find more in the plugin store on the dashboard&apos;s
         Plugins page.
       </p>
-      {store.message ? (
-        <span className={store.message.error ? styles.error : styles.message} role={store.message.error ? 'alert' : 'status'}>
-          {store.message.text}
-        </span>
-      ) : null}
+      <StoreMessageLine message={store.message} />
       <div className={styles.toolbar}>
         <OpenPluginsFolderButton />
       </div>

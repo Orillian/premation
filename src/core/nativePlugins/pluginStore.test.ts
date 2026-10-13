@@ -30,6 +30,13 @@ describe('installFromStore', () => {
     expect(await installFromStore({ execute } as never, { id: 'a.b', version: '2.0.0' })).toEqual({ ok: false, message: 'The publisher signature does not verify.' });
   });
 
+  it('a store refusal for want of Premation Cloud says Upgrade (402 plan_required)', async () => {
+    const install = jest.fn(async () => ({ ok: false, code: 'plan-required', reason: 'This plugin is included with Premation Cloud. Upgrade to install it.' }));
+    (window as { motionEditor?: unknown }).motionEditor = { plugins: { install, installed: jest.fn() } };
+    expect(await installFromStore({ execute: jest.fn() } as never, { id: 'premation.saber', version: '1.0.0' }))
+      .toEqual({ ok: false, message: 'This plugin is included with Premation Cloud. Upgrade to install it.', upgrade: true });
+  });
+
   it('outside the desktop app it says so', async () => {
     expect(await installFromStore({ execute: jest.fn() } as never, { id: 'a.b', version: '1' })).toMatchObject({ ok: false });
   });

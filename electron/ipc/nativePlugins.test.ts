@@ -77,4 +77,12 @@ describe('store install asks for this machine\'s package', () => {
     expect(authedFetch).toHaveBeenCalledWith('https://api.test/api/plugins/mine/com.x/versions/1.0.0/download?platform=macos-arm64', { method: 'GET' });
     expect(out).toEqual({ ok: false, code: 'package', reason: 'com.x 1.0.0 has no build for macos-arm64 (it has: windows-x64).' });
   });
+
+  it('a 402 plan_required (a Premation Cloud plugin, a free plan) comes back as plan-required, with the store words', async () => {
+    const body = { statusCode: 402, code: 'plan_required', message: 'This plugin is included with Premation Cloud. Upgrade to install it.' };
+    const authedFetch = jest.fn(async () => ({ ok: false, status: 402, text: async () => JSON.stringify(body) }) as unknown as Response);
+    const h = storeHandlers({ dir: () => DIR, apiBase: () => 'https://api.test/api', authedFetch, platform: 'win32', arch: 'x64' });
+    const out = await h.install({ id: 'premation.saber', version: '1.0.0' });
+    expect(out).toEqual({ ok: false, code: 'plan-required', reason: body.message });
+  });
 });

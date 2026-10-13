@@ -136,7 +136,8 @@ export function PluginStoreBrowser({ store }: { store: InstalledState }): JSX.El
   const browse = useStoreBrowse(q);
   const here = useMemo(() => hostPlatformKeys(), []);
 
-  if (open) return <StorePluginDetailCard id={open} store={store} onBack={() => setOpen(null)} />;
+  // The publisher's own private plugins (listed from `/plugins/mine`) read and install as the owner.
+  if (open) return <StorePluginDetailCard id={open} owner={browse.owned.has(open)} store={store} onBack={() => setOpen(null)} />;
   return (
     <section className={styles.card} aria-label="Plugin store">
       <div className={styles.toolbar}>
@@ -167,7 +168,7 @@ export function PluginStoreBrowser({ store }: { store: InstalledState }): JSX.El
                   {here && !runsHere(p.platforms, here) ? ' — not available for this computer' : ''}
                 </span>
               </button>
-              <InstallButton plugin={p} store={store} />
+              <InstallButton plugin={p} store={store} owner={browse.owned.has(p.id)} />
             </li>
           ))}
         </ul>

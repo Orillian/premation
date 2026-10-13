@@ -225,7 +225,8 @@ export function storeHandlers(deps: StoreDeps): {
             const body = JSON.parse(text) as { message?: unknown };
             if (typeof body.message === 'string') message = body.message;
           } catch { /* not JSON */ }
-          return { ok: false, code: 'package', reason: message };
+          // 402 plan_required: a Premation Cloud plugin on a plan without it — the page offers Upgrade.
+          return { ok: false, code: res.status === 402 ? 'plan-required' : 'package', reason: message };
         }
         record = (await res.json()) as DownloadRecord;
       } catch (e) {

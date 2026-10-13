@@ -97,7 +97,7 @@ export type NativePluginInstallOutcome =
   | {
       ok: false;
       reason: string;
-      code: 'size' | 'hash' | 'signature' | 'key-changed' | 'package' | 'io' | 'revoked' | 'unknown-publisher' | 'platform';
+      code: 'size' | 'hash' | 'signature' | 'key-changed' | 'package' | 'io' | 'revoked' | 'unknown-publisher' | 'platform' | 'plan-required';
     };
 
 /** electron/pluginFileInstall.ts PackagePreview: what the install-from-file dialog shows. */

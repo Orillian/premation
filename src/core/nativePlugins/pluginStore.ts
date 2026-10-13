@@ -29,7 +29,8 @@ export function canInstallFromStore(): boolean {
 
 export type StoreInstallResult =
   | { ok: true; message: string; restartNeeded: boolean; plugins: PluginInfo[] | null }
-  | { ok: false; message: string };
+  /** `upgrade`: the store answered 402 — the plugin is included with Premation Cloud and this plan has not got it. */
+  | { ok: false; message: string; upgrade?: boolean };
 
 /** The engine's plugin list after a rescan; null when the engine has no plugin host. */
 export async function rescanPlugins(client: Pick<EngineClient, 'execute'> & Partial<Pick<EngineClient, 'query'>>): Promise<PluginInfo[] | null> {
@@ -67,7 +68,7 @@ export async function finishInstall(
   client: Pick<EngineClient, 'execute'>,
   out: NativePluginInstallOutcome,
 ): Promise<StoreInstallResult> {
-  if (!out.ok) return { ok: false, message: out.reason };
+  if (!out.ok) return { ok: false, message: out.reason, ...(out.code === 'plan-required' ? { upgrade: true } : {}) };
   if (out.restartNeeded) {
     return {
       ok: true,

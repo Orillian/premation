@@ -98,7 +98,8 @@ export type InstallOutcome =
   | {
       ok: false;
       reason: string;
-      code: 'size' | 'hash' | 'signature' | 'key-changed' | 'package' | 'io' | 'revoked' | 'unknown-publisher' | 'platform';
+      /** `plan-required`: the store answered 402 (a Premation Cloud plugin, a plan without it). */
+      code: 'size' | 'hash' | 'signature' | 'key-changed' | 'package' | 'io' | 'revoked' | 'unknown-publisher' | 'platform' | 'plan-required';
     };
 
 const STATE_FILE = 'state.json';

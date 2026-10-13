@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type StorePluginSummary, type StorePluginUpdate } from '@core/api/client';
+import { hasSession } from '@core/api/session';
 import { pluginEngine } from '@core/engine/engineInstance';
 import {
   checkPremationCloud,
@@ -22,19 +23,55 @@ export interface PluginStoreBrowse {
   total: number;
   error: string | null;
   loading: boolean;
+  /** Ids listed from the signed-in publisher's own private plugins: they install (and read) as the owner. */
+  owned: ReadonlySet<string>;
 }
 
-/** Search the store's native plugins (debounced by the caller's SearchField). */
+const NONE: ReadonlySet<string> = new Set();
+
+export interface StoreMessage {
+  text: string;
+  error: boolean;
+  upgrade?: boolean;
+}
+
+/** Does a summary match the search the way the registry's browse does (name, id, description)? */
+function matches(p: StorePluginSummary, q: string): boolean {
+  const n = q.trim().toLowerCase();
+  return !n || [p.name, p.id, p.description].some((v) => (v ?? '').toLowerCase().includes(n));
+}
+
+/**
+ * The signed-in publisher's own PRIVATE native plugins (docs/PLUGIN_STORE.md: "private means only
+ * the owner can see it in browse"). The registry's browse is the public, cacheable marketplace and
+ * never lists them, so the page adds them from `/plugins/mine/list`. Signed out / offline: none.
+ */
+async function ownPrivatePlugins(q: string): Promise<StorePluginSummary[]> {
+  if (!hasSession()) return [];
+  try {
+    const mine = await api.myPlugins();
+    return mine.filter((p) => p.kind === 'native' && p.visibility === 'private' && matches(p, q));
+  } catch {
+    return [];
+  }
+}
+
+/** Search the store's native plugins (debounced by the caller's SearchField), the publisher's private ones first. */
 export function useStoreBrowse(q: string): PluginStoreBrowse & { reload: () => void } {
-  const [state, setState] = useState<PluginStoreBrowse>({ items: null, total: 0, error: null, loading: true });
+  const [state, setState] = useState<PluginStoreBrowse>({ items: null, total: 0, error: null, loading: true, owned: NONE });
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let alive = true;
     setState((s) => ({ ...s, loading: true }));
-    api.browseNativePlugins({ q: q.trim() || undefined, limit: 50 })
-      .then((page) => { if (alive) setState({ items: page.items, total: page.total, error: null, loading: false }); })
+    Promise.all([api.browseNativePlugins({ q: q.trim() || undefined, limit: 50 }), ownPrivatePlugins(q)])
+      .then(([page, own]) => {
+        if (!alive) return;
+        const listed = new Set(page.items.map((p) => p.id));
+        const extra = own.filter((p) => !listed.has(p.id));
+        setState({ items: [...extra, ...page.items], total: page.total + extra.length, error: null, loading: false, owned: new Set(extra.map((p) => p.id)) });
+      })
       .catch((e: unknown) => {
-        if (alive) setState({ items: null, total: 0, error: e instanceof Error ? e.message : 'The plugin store is unreachable.', loading: false });
+        if (alive) setState({ items: null, total: 0, error: e instanceof Error ? e.message : 'The plugin store is unreachable.', loading: false, owned: NONE });
       });
     return () => { alive = false; };
   }, [q, tick]);
@@ -45,7 +82,8 @@ export interface InstalledState {
   installed: NativePluginStoreState | null;
   updates: Map<string, StorePluginUpdate>;
   busy: string | null;
-  message: { text: string; error: boolean } | null;
+  /** `upgrade`: the store refused for want of Premation Cloud (402): the page offers Upgrade. */
+  message: StoreMessage | null;
   refresh: () => void;
   install: (id: string, version: string, owner?: boolean) => Promise<void>;
   uninstall: (id: string) => Promise<void>;
@@ -60,7 +98,7 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
   const [installed, setInstalled] = useState<NativePluginStoreState | null>(null);
   const [updates, setUpdates] = useState<Map<string, StorePluginUpdate>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [message, setMessage] = useState<StoreMessage | null>(null);
   const alive = useRef(true);
   const onChange = useRef(onEngineChange);
   onChange.current = onEngineChange;
@@ -95,7 +133,7 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
     return () => { alive.current = false; };
   }, [refresh]);
 
-  const run = useCallback(async (id: string, fn: () => Promise<{ text: string; error: boolean }>) => {
+  const run = useCallback(async (id: string, fn: () => Promise<StoreMessage>) => {
     setBusy(id);
     setMessage(null);
     const m = await fn();
@@ -115,7 +153,7 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
     clearMessage: () => setMessage(null),
     install: (id, version, owner) => run(id, async () => {
       const r = await installFromStore(pluginEngine(), { id, version, owner });
-      return { text: r.message, error: !r.ok };
+      return r.ok ? { text: r.message, error: false } : { text: r.message, error: true, ...(r.upgrade ? { upgrade: true } : {}) };
     }),
     uninstall: (id) => run(id, async () => {
       const err = await uninstallPlugin(pluginEngine(), id);
