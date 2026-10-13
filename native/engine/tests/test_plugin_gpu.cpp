@@ -755,6 +755,47 @@ TEST_CASE("plugin GPU (SDK 1.2 S8): model3d on the GPU matches its CPU path; sce
   CHECK(cb[0] < 0.02F);
 }
 
+// 2026-10-13 QA: Roughness and Specular made no visible difference in a comp without lights (the
+// headlight path had no specular term). Both paths now light it with the material's Blinn-Phong.
+TEST_CASE("plugin GPU (SDK 1.2 S8): model3d's Roughness and Specular change the picture without comp lights; GPU = CPU",
+          "[plugins][gpu][sdk12]") {
+  auto r = renderer_or_skip();
+  if (!r) return;
+  if (!r->supports_float32()) return;
+  pl::PluginHost host(options());
+  host.scan();
+  pl::RenderGlue glue(&host);
+  r->set_native_effects(&glue);
+  const auto shaded = [&](double roughness, double specular, bool gpu) {
+    api::RenderEffect e = model3d_effect("fx", 1, false);
+    e.params.push_back(num("p.p9", roughness));
+    e.params.push_back(num("p.p10", specular));
+    glue.set_gpu_enabled(gpu);
+    const Rendered out = render(*r, depth_frame({}, {e}));
+    glue.set_gpu_enabled(true);
+    const float* c = px_at(out, kDW / 2, kDH / 2);
+    return std::array<float, 3>{c[0], c[1], c[2]};
+  };
+  const auto luma = [](const std::array<float, 3>& c) { return (c[0] + c[1] + c[2]) / 3; };
+  for (const bool gpu : {true, false}) {
+    INFO("gpu " << gpu);
+    const auto matte = shaded(90, 0, gpu);
+    const auto rough = shaded(90, 100, gpu);  // broad highlight: the whole face brightens
+    const auto gloss = shaded(8, 100, gpu);   // tight highlight: off the face's normal, nothing
+    INFO("matte " << luma(matte) << " rough " << luma(rough) << " gloss " << luma(gloss));
+    CHECK(luma(rough) - luma(matte) > 0.2F);   // Specular is visible
+    CHECK(luma(rough) - luma(gloss) > 0.2F);   // and Roughness is
+    CHECK(std::abs(luma(gloss) - luma(matte)) < 0.05F);
+  }
+  // The GPU's shade() is the CPU's line for line.
+  for (const auto& [ro, sp] : {std::pair{90.0, 100.0}, std::pair{40.0, 50.0}, std::pair{8.0, 100.0}}) {
+    const auto g = shaded(ro, sp, true);
+    const auto c = shaded(ro, sp, false);
+    INFO("roughness " << ro << " specular " << sp);
+    for (std::size_t k = 0; k < 3; ++k) CHECK(std::abs(g.at(k) - c.at(k)) < 0.03F);
+  }
+}
+
 TEST_CASE("plugin GPU (SDK 1.2 S6): a collapsed 3D precomp's 3D layers are in the scene depth; a sealed one's and a card's are not",
           "[plugins][gpu][sdk12]") {
   auto r = renderer_or_skip();

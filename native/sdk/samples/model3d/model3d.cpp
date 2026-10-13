@@ -11,7 +11,8 @@
 //     depth32float buffer; the comp camera (get_comp_camera) and up to 8 comp
 //     lights (get_comp_lights: ambient, parallel, point, spot) — Lambert diffuse +
 //     Blinn-Phong specular (shininess from Roughness). With no light in the
-//     comp, a headlight from the camera (AE draws unlit layers fully lit).
+//     comp, a headlight from the camera (AE draws unlit layers fully lit), with
+//     the same Blinn-Phong term.
 //   · placement: Position (POINT_3D, comp world px) + Orientation X / Y / Z +
 //     Size (the model's largest extent, px), or a Transform Layer (a LAYER
 //     param's world matrix, get_layer_transform: the model rides the layer).
@@ -433,8 +434,13 @@ V3 shade(const V3& albedo, V3 n, const V3& p, const V3& eye, const Material& mat
   const V3 v = norm({eye[0] - p[0], eye[1] - p[1], eye[2] - p[2]});
   if (dot(n, v) < 0) n = {-n[0], -n[1], -n[2]};  // two-sided
   if (lights.empty()) {
-    const double k = 0.3 + 0.7 * std::max(0.0, dot(n, v));  // no comp light: a headlight
-    return {albedo[0] * k, albedo[1] * k, albedo[2] * k};
+    // No comp light: a headlight at the eye — Lambert plus the material's Blinn-Phong (the light
+    // and the view coincide, so h = v). Without the specular term Roughness and Specular did
+    // nothing in a comp without lights (2026-10-13 QA).
+    const double nv = std::max(0.0, dot(n, v));
+    const double k = 0.3 + 0.7 * nv;
+    const double spec = mat.specular * std::pow(nv, shininess(mat.roughness));
+    return {albedo[0] * k + spec, albedo[1] * k + spec, albedo[2] * k + spec};
   }
   V3 c{};
   const double shin = shininess(mat.roughness);
@@ -708,7 +714,10 @@ fn shade(albedo : vec3f, n0 : vec3f, p : vec3f) -> vec3f {
   var n = normalize(n0);
   if (dot(n, v) < 0.0) { n = -n; }
   let count = u32(u.mat.w + 0.5);
-  if (count == 0u) { return albedo * (0.3 + 0.7 * max(0.0, dot(n, v))); }
+  if (count == 0u) {
+    let nv = max(0.0, dot(n, v));
+    return albedo * (0.3 + 0.7 * nv) + vec3f(u.mat.y * pow(nv, u.misc.y));
+  }
   var c = vec3f(0.0);
   for (var i = 0u; i < count; i++) {
     let l = u.lights[i];

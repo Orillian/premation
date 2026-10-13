@@ -875,7 +875,9 @@ Roughness), two-sided, over up to 8 comp lights: ambient adds `albedo ×
 colour × intensity`, parallel lights along `direction`, point lights from
 `position`, spot lights with a smoothstep over the cone and feather. With no
 light in the comp a headlight from the camera keeps the model readable (AE lights
-unlit layers fully). The WGSL and the C++ are the same function, line for line.
+unlit layers fully), with the same Blinn-Phong term (the light at the eye: `h = v`),
+so Roughness and Specular show without a light too. The WGSL and the C++ are the
+same function, line for line.
 
 **5. The GPU path.** `GPU_DEVICE_SETUP` builds one WGSL module, an explicit bind
 group layout (every texture `unfilterable-float` and read with `textureLoad`:
