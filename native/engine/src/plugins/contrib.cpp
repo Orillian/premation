@@ -587,7 +587,11 @@ bool Contrib::probe(const std::string& path, js::Json& facts, std::string& error
 Contrib::OpenFile* Contrib::open_file(const Entry& e, const std::string& path, std::string& error) {
   std::error_code ec;
   const auto stamp = std::filesystem::last_write_time(std::filesystem::path(std::u8string(path.begin(), path.end())), ec);
-  const std::string key = path + "|" + std::to_string(ec ? 0 : stamp.time_since_epoch().count());
+  // libc++ (macOS) counts file_time_type in __int128, which no std::to_string
+  // overload takes (v1.0.0's macOS build failed on it). A cache key only needs
+  // "changed or not", so 64 bits of ticks is plenty.
+  const long long ticks = ec ? 0LL : static_cast<long long>(stamp.time_since_epoch().count());
+  const std::string key = path + "|" + std::to_string(ticks);
   if (const auto it = files_.find(key); it != files_.end()) {
     it->second->lastUse = ++fileTick_;
     return it->second.get();

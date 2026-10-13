@@ -8,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -17,6 +16,7 @@
 #include <vector>
 
 #include "core/blocking_queue.hpp"
+#include "core/joining_thread.hpp"
 #include "core/session.hpp"
 #include "core/simulated_sink.hpp"
 #if defined(PREMATION_ENGINE_HEADLESS)
@@ -143,7 +143,13 @@ class CoreWatchdog {
  public:
   static constexpr auto kBusyAfter = std::chrono::milliseconds(2000);
 
-  CoreWatchdog() : thread_([this](const std::stop_token& stop) { run(stop); }) {}
+  CoreWatchdog() : thread_([this] { run(); }) {}
+  // Stop first; the thread (declared last) is joined when the members go.
+  ~CoreWatchdog() { stop_.store(true, std::memory_order_release); }
+  CoreWatchdog(const CoreWatchdog&) = delete;
+  CoreWatchdog& operator=(const CoreWatchdog&) = delete;
+  CoreWatchdog(CoreWatchdog&&) = delete;
+  CoreWatchdog& operator=(CoreWatchdog&&) = delete;
 
   /// The core thread starts on `what` (a request's description, `tick`, …).
   void begin(std::string what) {
@@ -175,10 +181,10 @@ class CoreWatchdog {
     const std::scoped_lock lock(mu_);
     return what_;
   }
-  void run(const std::stop_token& stop) {
+  void run() {
     Clock::rep reported = 0;  // the busy episode already reported (its start)
     auto nextReport = Clock::time_point{};
-    while (!stop.stop_requested()) {
+    while (!stop_.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
       const Clock::rep since = since_.load(std::memory_order_acquire);
       if (since == 0) continue;
@@ -197,7 +203,10 @@ class CoreWatchdog {
   std::mutex mu_;
   std::string what_;
   std::atomic<Clock::rep> since_{0};  // 0 = idle
-  std::jthread thread_;  // last: stopped and joined before the members it reads go
+  std::atomic<bool> stop_{false};
+  // Not std::jthread: Apple's libc++ gates it behind -fexperimental-library
+  // (core/joining_thread.hpp). Last: joined before the members it reads go.
+  JoiningThread thread_;
 };
 
 }  // namespace
