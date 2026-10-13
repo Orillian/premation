@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Logo } from '@components/Logo';
 import { TITLE_BAR_ROUTE_SLOT_ID } from './routeSlot';
@@ -13,7 +13,7 @@ import { ClaudeIndicator } from '@components/claude/ClaudeIndicator';
 import { MacWindowControls } from './MacWindowControls';
 import { useTitleBarOverlaySync } from './useTitleBarOverlaySync';
 import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
-import { pluginPanels } from '@core/nativePlugins/pluginContrib';
+import { pluginContribRevision, pluginPanels, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import styles from './TitleBar.module.css';
 
 /**
@@ -98,6 +98,9 @@ function popoutTitle(pathname: string): string | null {
 export function TitleBar(): JSX.Element | null {
   const location = useLocation();
   const isEditor = location.pathname.startsWith('/editor');
+  // A plugin panel's name arrives with the plugin list, which a pop-out window asks for after
+  // its first paint (the panel's usePluginContrib): until then the title is the raw id.
+  useSyncExternalStore(subscribePluginContrib, pluginContribRevision, pluginContribRevision);
   const popout = popoutTitle(location.pathname);
   useTitleBarOverlaySync();
 

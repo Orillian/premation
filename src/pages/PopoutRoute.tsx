@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLayoutStore } from '@stores/layoutStore';
 import { panelDef } from '@layout/EditorLayout/panelDefs';
@@ -9,6 +9,7 @@ import { PresentationModeWindow } from '@layout/Presentation/PresentationModeWin
 
 import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
 import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
+import { pluginContribRevision, pluginPanel, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import { Providers } from '../providers/Providers';
 
 function PopoutContent(): JSX.Element {
@@ -17,6 +18,8 @@ function PopoutContent(): JSX.Element {
   const panelId = segment ? panelIdFromPopoutSegment(segment) : undefined;
   const panels = useLayoutStore((s) => s.panels);
   const panel = panelId ? panels[panelId] : undefined;
+  // A plugin panel is named by its manifest, which arrives with the plugin list.
+  const contrib = useSyncExternalStore(subscribePluginContrib, pluginContribRevision, pluginContribRevision);
 
   useEffect(() => {
     const titleMap: Record<string, string> = {
@@ -27,12 +30,12 @@ function PopoutContent(): JSX.Element {
     // `panel` comes from the layout store, which is EMPTY in a pop-out window
     // (registerPanel only runs in the editor shell), so this always fell through
     // to the generic "Detached Window". The shared registry knows the real name.
-    const name = panel?.title ?? panelDef(panelId ?? '')?.title;
+    const name = panel?.title ?? panelDef(panelId ?? '')?.title ?? pluginPanel(panelId ?? '')?.panel.name;
     document.title = titleMap[panelId ?? ''] ?? (name ? `${name} — Premation` : 'Detached Window');
 
     // The document reaches this window from the engine (windowSync: the page
     // replica refreshes from `exportDocument`, the mirror follows the engine).
-  }, [panelId, panel]);
+  }, [panelId, panel, contrib]);
 
   if (!panelId) {
     return <div style={{ color: '#fff', padding: 20 }}>No panel ID specified.</div>;
