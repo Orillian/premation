@@ -105,6 +105,13 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
    * after the user moves to Create account. Skipped on mount: an error already
    * in the store when the page opens is one the user has not seen yet.
    */
+  /** Unmounted (the gate already moved on): a sign-in that resolves later must not navigate over it. */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   const shownMode = useRef(mode);
   useEffect(() => {
     if (shownMode.current === mode) return;
@@ -167,6 +174,10 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
     try {
       if (isLogin) await login(email, password);
       else await register(email, password, name || undefined);
+      // The store's status flips to authenticated before the post-sign-in steps finish, and this
+      // page's <Navigate> has normally taken the user on already; a late navigate from here would
+      // land on /dashboard over a redirect the gate made since (the welcome question).
+      if (!mounted.current) return;
       const u = useAuthStore.getState().user;
       navigate(u && !u.emailVerified ? '/verify-email' : from, { replace: true });
     } catch {

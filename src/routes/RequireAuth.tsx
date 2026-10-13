@@ -39,14 +39,19 @@ export function RequireAuth({ children }: { children: ReactNode }): JSX.Element 
 
   if (!cloudAccountsEnabled()) return <>{children}</>;
 
+  // Keyed by the location: a <Navigate> navigates once, when it mounts (or when its target
+  // changes). A navigation that lands back on this same path while one is already mounted —
+  // the sign-in page's own navigate('/dashboard') arriving just after this gate sent the user
+  // to /welcome — kept the old element: no redirect, nothing rendered, a blank dashboard
+  // until a reload (2026-10-13 QA, the welcome question owed). A new location is a new gate.
   if (status !== 'authenticated') {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.hash }} />;
+    return <Navigate key={location.key} to="/login" replace state={{ from: location.pathname + location.hash }} />;
   }
   if (!emailVerified) {
-    return <Navigate to="/verify-email" replace />;
+    return <Navigate key={location.key} to="/verify-email" replace />;
   }
   if (needsSignupSource) {
-    return <Navigate to="/welcome" replace />;
+    return <Navigate key={location.key} to="/welcome" replace />;
   }
   return <>{children}</>;
 }
