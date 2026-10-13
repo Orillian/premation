@@ -171,7 +171,8 @@ the WGSL compiled with naga. Everything below did not run.
 - [x] statspanel docked (Layer Stats) and popped out (Undock Panel → its own
       window): it lists the document; "Number selected" from the pop-out is one
       entry ("Number Layers"). The pop-out's title bar shows the raw id
-      `plugin:com.premation.samples.statspanel/stats`.
+      `plugin:com.premation.samples.statspanel/stats` — fixed 5e70dd73 (the title bar
+      follows the plugin list: "Layer Stats"; component test, pop-out not re-run).
 - [x] A `.ppm` through ppmio (File ▸ Import ▸ Files…): probed 320×180, renders.
 - [x] Export through ppmseq (Export ▸ Plugins ▸ PPM Sequence, work area 3 frames,
       Quarter): 3 × 480×270 P6 files; frame 0 against the viewer: mean |Δ| 4.2/255
@@ -180,9 +181,35 @@ the WGSL compiled with naga. Everything below did not run.
 - [x] model3d with a camera: moving the camera moves the box and the overlay
       handle together (handle at the box's projected centre, 609 vs 608 px); the
       material panel edits (Clay/Gloss) are engine edits (Gloss is two entries,
-      Roughness + Specular; Roughness/Specular changed nothing visible here).
+      Roughness + Specular; Roughness/Specular changed nothing visible here) — fixed:
+      Clay / Gloss are one entry (`setParams`, eac31e5e); without comp lights the
+      headlight now applies Roughness / Specular (5908a609, engine_plugins_gpu_tests,
+      GPU = CPU). Not re-run in the app (the app's engine copy predates the fix).
 - [ ] Not run: rings' Debug ▸ Fault in DRAW_OVERLAY, the panel CSP probes, a
       packaged build, P4 lights.
+
+## QA fixes after the 2026-10-13 plugin pass (agent, 2026-10-13)
+
+- [x] First effect after a page load / project open shows its card: the mirror
+      refetches a tree that lists a child it does not hold (132cb352). Real app,
+      second instance, cloud project: reload, select, add Directional Blur → its
+      card in Effect Controls at once.
+- [x] Sign-in with the welcome question owed lands on /welcome, not a blank
+      dashboard (be699897). Real app, localhost backend, a test account reset to
+      owe the question.
+- [x] A plugin-imported `.ppm` has a thumbnail in the Project panel and the details
+      drawer (dfad0642, the engine's getThumbnail). Real app.
+- [x] A locked plugin's viewer notice is headed "Needs Premation Cloud: …"
+      (5ff45492; test only).
+- [ ] Rings overlay on a solid, model3d material, panel Ctrl+Z, pop-out title,
+      Upgrade button, private plugin in the Store: fixed with tests (see the rows
+      above), not re-checked in the app — needs premation-engine rebuilt from
+      75296a76+ and a published test Cloud plugin.
+- Gates (2026-10-13): engine_plugins_tests 49 cases / 883 assertions,
+  engine_plugins_scene_tests 11 / 743, engine_plugins_gpu_tests 16 / 507 (RTX);
+  jest plugin / panel / effects / assets / auth suites on premation-engine-headless
+  46 suites / 275 tests; typecheck clean; lint 0 errors, 433 warnings (budget
+  620); plugin golden scenes 10/10.
 
 ## Plugin platform P6 — STRING / CURVE / GRADIENT / FILE params (2026-10-08, docs/PLUGIN_SDK.md)
 
@@ -228,7 +255,11 @@ tests. Not run (needs the app window and the GPU build):
       (a shape layer) the overlay is drawn one layer-size away from the render —
       Center (0,0) renders at the comp centre but the handle sits at the comp's
       bottom-right corner (+1920,+1080 comp px); after a drag to the viewer
-      centre, Center = (−724,−400) and the rings render at the top-left. Not fixed.)
+      centre, Center = (−724,−400) and the rings render at the top-left. Fixed
+      75296a76: the overlay takes layer px into the layer's local space (anchor out)
+      with the document's layer size; pluginOverlay.native.test checks a solid, a
+      rotated footage layer and a 3D solid with Anchor / Scale moved. Re-run in the
+      app after premation-engine is rebuilt — not done: the agent may not rebuild it.)
 - [ ] A plugin that draws many items (or crashes in DRAW_OVERLAY, rings' Debug
       ▸ Fault): the viewer still draws the frame and the other overlays.
 - [x] Effect card ▸ Open Panel on `rings`: the panel loads (`plugin-ui://`),
@@ -237,7 +268,9 @@ tests. Not run (needs the app window and the GPU build):
       the engine's render; the Spacing slider writes Spacing.
       (2026-10-13, agent, second instance: load, Apply palette = one entry "Rings",
       Edit ▸ Undo restores 6 colours and the swatches; Preview frame and Spacing
-      not exercised. Ctrl+Z while focus is in the panel frame does nothing.)
+      not exercised. Ctrl+Z while focus is in the panel frame does nothing — fixed
+      8ab3436c: the samples forward Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y as a `shortcut`
+      message, honoured only while the frame has the focus; not re-run in the app.)
 - [ ] The panel cannot reach the network or the editor: in the panel's
       DevTools console, `fetch('https://example.com')` is refused by CSP,
       `parent.document` throws, `location = 'https://example.com'` does not
@@ -287,7 +320,9 @@ Not run:
       A test `premation.*` cloud plugin, published by a verified test `premation`
       publisher: Pro → token, Install → "Loaded" with no restart; free → 402
       `plan_required`, the Store shows "This plugin is included with Premation
-      Cloud. Upgrade to install it." — as text, there is no Upgrade button.)
+      Cloud. Upgrade to install it." — as text, there is no Upgrade button. Fixed
+      90547b33: a 402 is `plan-required` and the line carries Upgrade → Plan; tests
+      only — the test cloud plugin was unpublished after the QA pass.)
 - [x] Remove `entitlement.json` (or sign out) and restart: the plugin is
       listed "Requires Premation Cloud", a project using it opens with the
       notice, renders the layer unaffected and keeps the effect after a save.
@@ -364,7 +399,8 @@ Not run (needs Postgres, a real R2 bucket, Windows/macOS):
       (2026-10-13, agent, Windows only, localhost backend + R2: published private
       (`pack-plugin --only-present`; the sample's manifest names three platforms),
       installed from Dashboard ▸ Plugins ▸ Publish ▸ Your plugins (a private plugin
-      is not in the Store tab). Found and fixed: the dashboard install never
+      is not in the Store tab — fixed 90547b33: the Store tab adds the publisher's own
+      private plugins from /plugins/mine/list, installed as the owner; tests only). Found and fixed: the dashboard install never
       reached the engine, so the effect was missing until a restart — 049a70f0;
       after it, Installed → Loaded and Color Grade (GPU) is in the Effects panel.
       macOS not run.)
