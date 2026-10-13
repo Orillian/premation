@@ -776,15 +776,46 @@ export interface StorePluginSummary {
   categories: string[];
   license: string | null;
   iconUrl: string | null;
+  /** The first screenshot (`/plugins/media/<id>`), the card's cover; null without one. */
+  coverUrl?: string | null;
+  screenshotCount?: number;
   visibility?: 'public' | 'private';
 }
 
+/** One published version, newest first in `versionHistory`. */
+export interface StorePluginVersion {
+  version: string;
+  createdAt: string;
+  kind?: 'js' | 'native';
+  platforms?: string[];
+  /** What changed in this version, written by the publisher. */
+  releaseNotes?: string | null;
+  /** Only the publisher sees versions that are not `approved`. */
+  reviewStatus?: 'pending' | 'approved' | 'changes_requested' | 'blocked';
+}
+
 export interface StorePluginDetail extends StorePluginSummary {
+  /** Markdown: what the plugin does, written by the publisher. */
   readme?: string | null;
-  versionHistory?: Array<{ version: string; createdAt: string; kind?: 'js' | 'native' }>;
+  /** Older plugin-wide changelog (free text), from before per-version notes. */
+  changelog?: string | null;
+  /** Up to 3 images, in the publisher's order. */
+  screenshots?: Array<{ id: string; url: string; width: number; height: number }>;
+  versionHistory?: StorePluginVersion[];
+  /** The latest version's release notes, when it has any. */
+  whatsNew?: { version: string; releaseNotes: string } | null;
   blocked?: boolean;
   blockedReason?: string | null;
 }
+
+/** An absolute URL for a store media path (`/plugins/media/<id>`); null for none. */
+export function storeMediaUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return /^https?:\/\//.test(path) ? path : `${apiBaseUrl()}${path}`;
+}
+
+/** Most screenshots a listing shows (motion-back MAX_SCREENSHOTS). */
+export const MAX_PLUGIN_SCREENSHOTS = 3;
 
 export interface StorePluginPage {
   items: StorePluginSummary[];
@@ -820,6 +851,8 @@ export interface StorePluginUpdate {
   blocked: boolean;
   blockedReason?: string | null;
   kind: 'js' | 'native';
+  /** Release notes of the versions this update brings, newest first (only those that have notes). */
+  notes?: Array<{ version: string; releaseNotes: string }>;
 }
 
 export interface PublishPluginResult extends StorePluginSummary {
@@ -1405,14 +1438,32 @@ export const api = {
       body: JSON.stringify({ visibility }),
     }),
   /** Upload a signed `.pplugin` (pack-plugin.mjs --key writes the signature). */
-  publishPlugin: (file: Blob, signature: string, publicKey: string, visibility: 'public' | 'private') => {
+  publishPlugin: (file: Blob, signature: string, publicKey: string, visibility: 'public' | 'private', releaseNotes?: string) => {
     const form = new FormData();
     form.append('file', file, 'plugin.pplugin');
     form.append('signature', signature);
     form.append('publicKey', publicKey);
     form.append('visibility', visibility);
+    if (releaseNotes?.trim()) form.append('releaseNotes', releaseNotes.trim());
     return request<PublishPluginResult>('/plugins', { method: 'POST', body: form });
   },
+  /** The listing text a publisher edits: About (Markdown), categories, licence. */
+  updatePluginListing: (id: string, listing: { readme?: string; categories?: string[]; license?: string }) =>
+    request<StorePluginSummary>(`/plugins/${encodeURIComponent(id)}/listing`, { method: 'PATCH', body: JSON.stringify(listing) }),
+  /** Upload the icon (replaces it) or a screenshot (up to 3). PNG, JPEG or WebP, 2 MB, 2560 px a side. */
+  uploadPluginMedia: (id: string, kind: 'icon' | 'screenshot', file: Blob) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<unknown>(`/plugins/${encodeURIComponent(id)}/media/${kind}`, { method: 'POST', body: form });
+  },
+  deletePluginMedia: (mediaId: string) =>
+    request<unknown>(`/plugins/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }),
+  /** A version's release notes (empty clears them). */
+  setPluginReleaseNotes: (id: string, version: string, releaseNotes: string) =>
+    request<{ version: string; releaseNotes: string | null }>(
+      `/plugins/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/notes`,
+      { method: 'PATCH', body: JSON.stringify({ releaseNotes }) },
+    ),
   /** Newer versions of what is installed (the installed set goes in the body, not the URL). */
   checkPluginUpdates: (installed: Array<{ id: string; version: string }>) =>
     request<StorePluginUpdate[]>('/plugins/updates', { method: 'POST', body: JSON.stringify({ installed }) }),

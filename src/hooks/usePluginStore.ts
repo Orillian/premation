@@ -11,6 +11,7 @@ import { hasSession } from '@core/api/session';
 import { pluginEngine } from '@core/engine/engineInstance';
 import {
   checkPremationCloud,
+  compareVersions,
   installFromStore,
   installedPlugins,
   setPluginEnabled,
@@ -118,7 +119,7 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
         const newer = new Map<string, StorePluginUpdate>();
         for (const u of found) {
           const mine = state?.plugins[u.id];
-          if (mine && u.kind === 'native' && u.latestVersion !== mine.version) newer.set(u.id, u);
+          if (mine && u.kind === 'native' && compareVersions(u.latestVersion, mine.version) > 0) newer.set(u.id, u);
         }
         setUpdates(newer);
       } catch {

@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { Switch } from '@components/Switch';
@@ -63,6 +64,23 @@ function RowActions({ plugin, store }: { plugin: NativePlugin; store: InstalledS
   );
 }
 
+/** What an available update brings, from the publisher's release notes. */
+function UpdateNotes({ notes }: { notes: Array<{ version: string; releaseNotes: string }> | undefined }): JSX.Element | null {
+  const newest = notes?.[0];
+  if (!notes || !newest) return null;
+  return (
+    <details className={styles.updateNotes}>
+      <summary>What&apos;s new in v{newest.version}</summary>
+      {notes.map((n) => (
+        <div key={n.version} className={styles.markdown}>
+          {notes.length > 1 ? <strong>v{n.version}</strong> : null}
+          <ReactMarkdown>{n.releaseNotes}</ReactMarkdown>
+        </div>
+      ))}
+    </details>
+  );
+}
+
 export function NativePluginRows({ plugins, store }: { plugins: readonly NativePlugin[]; store?: InstalledState }): JSX.Element {
   if (plugins.length === 0) {
     return (
@@ -83,6 +101,7 @@ export function NativePluginRows({ plugins, store }: { plugins: readonly NativeP
               {[p.version && `v${p.version}`, p.vendor].filter(Boolean).join(' · ') || p.id}
             </span>
             {p.error ? <span className={styles.rowError}>{p.error}</span> : null}
+            {store ? <UpdateNotes notes={store.updates.get(p.id)?.notes} /> : null}
           </div>
           <span className={statusClass(p.status)}>{nativePluginStatusLabel(p.status)}</span>
           {store ? <RowActions plugin={p} store={store} /> : null}

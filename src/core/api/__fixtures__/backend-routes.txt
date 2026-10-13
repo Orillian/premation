@@ -128,6 +128,7 @@ PATCH /api/admin/lessons/{id}
 PATCH /api/admin/reviews/{id}
 PATCH /api/admin/users/{id}
 PATCH /api/plugins/{id}/listing
+PATCH /api/plugins/{id}/versions/{version}/notes
 PATCH /api/projects/{id}
 POST /api/account/delete/confirm
 POST /api/account/delete/request

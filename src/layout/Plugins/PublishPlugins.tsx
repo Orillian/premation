@@ -7,7 +7,8 @@
  * the signing key never enters the app. This form uploads the `.pplugin` with
  * its `.sig` file. Private plugins install only for their publisher; making a
  * plugin public needs a verified publisher (the store refuses otherwise).
- * Plugins are free — there is no price to set.
+ * Release notes go up with the version; icon, screenshots and About are edited
+ * on the plugin's page (PluginListingEditor), outside the signed package.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,6 +17,7 @@ import { Icon } from '@components/Icon';
 import { Segmented } from '@components/Segmented';
 import { api, type StorePluginSummary } from '@core/api/client';
 import type { InstalledState } from '@hooks/usePluginStore';
+import { PluginIcon } from './PluginIcon';
 import { StorePluginDetailCard } from './PluginStore';
 import styles from './NativePlugins.module.css';
 
@@ -48,6 +50,7 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
   const [pkg, setPkg] = useState<File | null>(null);
   const [sig, setSig] = useState<{ signature: string; publicKey: string } | null>(null);
   const [visibility, setVisibility] = useState<Visibility>('private');
+  const [releaseNotes, setReleaseNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
 
@@ -83,13 +86,14 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
     setError(null);
     setNote(null);
     try {
-      const out = await api.publishPlugin(pkg, sig.signature, sig.publicKey, visibility);
+      const out = await api.publishPlugin(pkg, sig.signature, sig.publicKey, visibility, releaseNotes);
       setNote(
         `Published ${out.id} ${out.latestVersion}${out.reviewStatus === 'pending' ? ' — held for review before it goes live' : ''}.`
         + (out.warnings.length ? ` Warnings: ${out.warnings.join('; ')}` : ''),
       );
       setPkg(null);
       setSig(null);
+      setReleaseNotes('');
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The upload failed.');
@@ -114,10 +118,11 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
         <ul className={styles.list} aria-label="Your published plugins">
           {mine.map((p) => (
             <li key={p.id} className={styles.row}>
-              <Icon name="plugin" size="sm" className={styles.rowIcon} />
+              <PluginIcon plugin={p} size={32} />
               <button type="button" className={styles.rowOpen} onClick={() => setOpen(p.id)} aria-label={`About ${p.name}`}>
                 <span className={styles.rowName}>{p.name}</span>
-                <span className={styles.rowMeta}>{`v${p.latestVersion} · ${p.installs} installs`}</span>
+                <span className={styles.rowMeta}>{`v${p.latestVersion} · ${p.installs} installs · ${p.tier === 'cloud' ? 'Premation Cloud' : 'Free'}`}</span>
+                <span className={styles.rowMeta}>{p.iconUrl && p.coverUrl ? 'Listing: icon and screenshots set' : 'Open to add an icon, screenshots and About'}</span>
               </button>
               <Segmented
                 size="sm"
@@ -161,6 +166,18 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
           />
         </label>
       </div>
+      <label className={styles.editorBlock}>
+        <span className={styles.rowName}>Release notes for this version</span>
+        <span className={styles.rowMeta}>Optional, Markdown. Shown as &quot;What&apos;s new&quot; and with the update offer. The version number comes from the package and must be higher than the one already published.</span>
+        <textarea
+          className={styles.textarea}
+          rows={4}
+          maxLength={5000}
+          value={releaseNotes}
+          onChange={(e) => setReleaseNotes(e.target.value)}
+          placeholder={'- New: …\n- Fixed: …'}
+        />
+      </label>
       <div className={styles.toolbar}>
         <Segmented size="sm" options={VISIBILITY_OPTIONS} value={visibility} onChange={setVisibility} aria-label="Visibility of the new version" />
         <span className={styles.spacer} />
