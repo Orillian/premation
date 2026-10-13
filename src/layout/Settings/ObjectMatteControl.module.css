@@ -6,7 +6,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-width: 320px;
+  /* Fills the row's control column and shrinks with it; a fixed minimum here
+     pushed the URL fields over the info column. */
+  width: 100%;
+  min-width: 0;
 }
 
 .installRow,
@@ -53,10 +56,14 @@
   overflow: hidden;
 }
 
+/* Scaled, not resized: a transform stays on the compositor, a width change
+   re-lays out the dialog on every progress tick. */
 .progressFill {
   height: 100%;
+  width: 100%;
   background: var(--color-primary);
-  transition: width 120ms linear;
+  transform-origin: left center;
+  transition: transform 120ms linear;
 }
 
 /* No Content-Length means no percentage, so the bar says "working" instead of

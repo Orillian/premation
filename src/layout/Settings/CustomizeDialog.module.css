@@ -658,6 +658,28 @@
   flex-shrink: 0;
 }
 
+/* A row whose control needs real width (URL fields, a paragraph of hint).
+   The plain row's control never shrinks, so a wide control squeezed the info
+   column to one word per line. Here both sides take a share of the row, the
+   info keeps a readable minimum, and the control drops under it when the row
+   is too narrow for both. */
+.settingRowWide {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.settingRowWide > .settingInfo {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+
+.settingRowWide > .settingRight {
+  flex: 2 1 320px;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+
 .accentPickerWrap {
   display: flex;
   align-items: center;

@@ -1016,7 +1016,7 @@ export function AppearanceTab(): JSX.Element {
             </div>
           </div>
 
-          <div className={styles.settingRow}>
+          <div className={cn(styles.settingRow, styles.settingRowWide)}>
             <div className={styles.settingInfo}>
               <span className={styles.settingTitle}>AI Object Matte Model</span>
               <span className={styles.settingDesc}>Local neural model powering one-click Roto subject selection.</span>
@@ -1026,7 +1026,7 @@ export function AppearanceTab(): JSX.Element {
             </div>
           </div>
 
-          <div className={styles.settingRow}>
+          <div className={cn(styles.settingRow, styles.settingRowWide)}>
             <div className={styles.settingInfo}>
               <span className={styles.settingTitle}>Face Tracking Model</span>
               <span className={styles.settingDesc}>Face landmarks for the Tracker’s Face tracking (downloaded once, kept on this computer).</span>

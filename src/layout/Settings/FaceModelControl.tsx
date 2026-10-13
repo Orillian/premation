@@ -83,7 +83,7 @@ export function FaceModelControl(): JSX.Element {
           <Button variant="secondary" size="sm" onClick={() => { if (requestId) void bridge()?.cancelDownload(requestId); }}>Cancel</Button>
         </div>
         <div className={styles.progressTrack}>
-          <div className={pct === null ? styles.progressIndeterminate : styles.progressFill} style={pct === null ? undefined : { width: `${pct}%` }} />
+          <div className={pct === null ? styles.progressIndeterminate : styles.progressFill} style={pct === null ? undefined : { transform: `scaleX(${pct / 100})` }} />
         </div>
       </div>
     );

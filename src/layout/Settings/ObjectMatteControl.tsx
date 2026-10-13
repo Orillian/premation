@@ -92,7 +92,7 @@ export function ObjectMatteControl(): JSX.Element {
         <div className={styles.progressTrack}>
           <div
             className={pct === null ? styles.progressIndeterminate : styles.progressFill}
-            style={pct === null ? undefined : { width: `${pct}%` }}
+            style={pct === null ? undefined : { transform: `scaleX(${pct / 100})` }}
           />
         </div>
       </div>
