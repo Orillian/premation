@@ -19,6 +19,7 @@ import { attachVideoSrc, detachVideoSrc } from '@core/assets/local/localBlobSour
 import { getAssetVisualInfo } from './assetVisuals';
 import { formatDuration } from './assetListLogic';
 import { peekVideoPoster, requestVideoPoster } from './videoPosters';
+import { browserDecodes, peekEngineThumb, requestEngineThumb } from './engineThumbs';
 import styles from '@layout/EditorLayout/panels.module.css';
 
 export interface AssetThumbProps {
@@ -44,9 +45,26 @@ function useVideoPoster(asset: ImportedAsset): string | null {
   return wanted ? poster : null;
 }
 
+/**
+ * An image the page cannot decode (a plugin-imported `.ppm`, EXR …) — or one whose `<img>` failed —
+ * is the engine's thumbnail (engineThumbs.ts), through the importer the render uses; null = the glyph.
+ */
+export function useEngineThumb(asset: ImportedAsset | null, failed: boolean): string | null | undefined {
+  const wanted = !!asset && asset.type === 'image' && !asset.thumbSrc && (failed || !browserDecodes(asset.name || asset.src || ''));
+  const id = asset?.id ?? '';
+  const [thumb, setThumb] = useState<string | null | undefined>(() => (wanted ? peekEngineThumb(id) : undefined));
+  useEffect(() => {
+    if (!wanted) return;
+    return requestEngineThumb(id, (url) => setThumb(url));
+  }, [id, wanted]);
+  return wanted ? thumb ?? null : undefined;
+}
+
 export function AssetThumb({ asset, variant, scrub = false }: AssetThumbProps): JSX.Element {
   const poster = useVideoPoster(asset);
-  const src = asset.thumbSrc ?? (asset.type === 'image' ? asset.src : poster);
+  const [imgFailed, setImgFailed] = useState(false);
+  const engineThumb = useEngineThumb(asset, imgFailed);
+  const src = asset.thumbSrc ?? (engineThumb !== undefined ? engineThumb : asset.type === 'image' ? asset.src : poster);
   const visual = getAssetVisualInfo(asset);
   const glyphClass = (styles as Record<string, string>)[visual.className] ?? styles.assetGlyphFile;
   const duration = asset.metadata?.duration;
@@ -91,7 +109,7 @@ export function AssetThumb({ asset, variant, scrub = false }: AssetThumbProps): 
       data-scrubbing={scrubbing || undefined}
     >
       {src ? (
-        <img src={src} alt="" className={styles.assetThumbImg} draggable={false} />
+        <img src={src} alt="" className={styles.assetThumbImg} draggable={false} onError={() => setImgFailed(true)} />
       ) : (
         <Icon name={visual.icon} size={variant === 'row' ? 'sm' : 'md'} className={`${styles.assetGlyph} ${glyphClass}`} />
       )}

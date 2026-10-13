@@ -12,7 +12,7 @@
  * shows a single asset's own facts rather than a row in a list.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Chip } from '@components/Chip';
 import { Icon } from '@components/Icon';
 import { Input } from '@components/Input';
@@ -21,6 +21,7 @@ import type { ImportedAsset } from '@stores/assetStore';
 import { getAssetVisualInfo } from './assetVisuals';
 import { formatBytes, formatDuration, formatImportDate, parseTags } from './assetListLogic';
 import { assetDiskPath } from './assetReveal';
+import { useEngineThumb } from './AssetThumb';
 import styles from '@layout/EditorLayout/panels.module.css';
 
 export interface AssetDrawerProps {
@@ -47,7 +48,11 @@ export function AssetDrawer({ asset, selectionCount, open, onToggle, usedBy, onS
   const label = asset?.label ? LABEL_COLORS.find((c) => c.id === asset.label) : undefined;
   const path = asset ? assetDiskPath(asset) : null;
   // The item's picture, beside its facts — a still's own pixels, a video's poster.
-  const thumb = asset ? asset.thumbSrc ?? (asset.type === 'image' ? asset.src : undefined) : undefined;
+  // A file only the engine decodes (a plugin-imported .ppm): its thumbnail (AssetThumb's useEngineThumb).
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => setImgFailed(false), [asset?.id]);
+  const engineThumb = useEngineThumb(asset ?? null, imgFailed);
+  const thumb = asset ? asset.thumbSrc ?? (engineThumb !== undefined ? engineThumb ?? undefined : asset.type === 'image' ? asset.src : undefined) : undefined;
 
   const commitTags = (): void => {
     if (!asset) return;
@@ -74,7 +79,7 @@ export function AssetDrawer({ asset, selectionCount, open, onToggle, usedBy, onS
       {open && (
         asset ? (
           <div className={styles.assetDrawerBody}>
-            {thumb ? <img src={thumb} alt="" className={styles.assetDrawerThumb} /> : null}
+            {thumb ? <img src={thumb} alt="" className={styles.assetDrawerThumb} onError={() => setImgFailed(true)} /> : null}
             <dl className={styles.assetDrawerGrid}>
               {m.width && m.height ? (
                 <>
