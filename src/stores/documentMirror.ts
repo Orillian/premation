@@ -129,6 +129,15 @@ export interface MirrorComp {
   readonly transitions: readonly Transition[];
 }
 
+/** Does a tree list a child (a root, or a group's child) it holds no node for? */
+export function treeHasHole(t: MirrorTree): boolean {
+  for (const r of t.roots) if (!t.nodes.has(r)) return true;
+  for (const n of t.nodes.values()) {
+    for (const c of n.children) if (!t.nodes.has(c)) return true;
+  }
+  return false;
+}
+
 export interface MirrorTree {
   readonly layer: string;
   /** Every node (groups and properties) of the layer's property tree, by path. */
@@ -878,6 +887,8 @@ export class DocumentMirror {
     const trees = new Map<string, Map<string, PropertyInfo>>();
     const roots = new Map<string, string[]>();
     const keyMaps = new Map<string, Map<string, readonly Keyframe[]>>();
+    /** Layers whose tree SHAPE this batch changed: checked for holes once it is applied. */
+    const reshaped = new Set<string>();
     let items: Map<string, ItemInfo> | null = null;
     let comps: Map<string, MirrorComp> | null = null;
     const treeMap = (layer: string): Map<string, PropertyInfo> | null => {
@@ -1037,6 +1048,7 @@ export class DocumentMirror {
         case 'propertyGroupsChanged': {
           const m = treeMap(e.layer);
           if (!m) break;
+          reshaped.add(e.layer);
           const childPaths = e.children.map((c) => c.path);
           const before = e.parent === '' ? roots.get(e.layer)! : m.get(e.parent)?.children ?? [];
           for (const old of before) {
@@ -1177,6 +1189,12 @@ export class DocumentMirror {
       if (!e || !e.tree) continue;
       e.tree = { layer, nodes: m, roots: roots.get(layer) ?? e.tree.roots };
       e.revision = b.toRevision;
+      // The engine describes a group's new children only for a layer it has described since its
+      // last (re)load: the first edit of a layer after an openProject / documentReset names the
+      // new group in its parent's list and nothing under it. A tree listing a child it does not
+      // hold has a hole — the effect added first after opening a project drew no card — so ask
+      // for the whole tree again (the held one shows until it lands).
+      if (reshaped.has(layer) && !e.loading && treeHasHole(e.tree)) this.fetchTree(layer, e, true);
     }
     for (const [layer, m] of keyMaps) {
       if (m.size === 0) this.keyMap.delete(layer);
