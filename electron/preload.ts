@@ -109,6 +109,23 @@ function installEnginePixelReceiver(): boolean {
   return true;
 }
 
+// ── premation://connections (electron/deepLink.ts) ──────────────────────────
+//
+// Held here, not just forwarded: a COLD start sends it at `did-finish-load`,
+// while the page is still behind AppRouter's boot splash (the stored token's
+// round trip) and nothing has subscribed yet. Listening from the preload means
+// it cannot arrive too early; the first subscriber gets it. One flag, because
+// the link carries no data — it only names a destination.
+const connectionsHandlers = new Set<() => void>();
+let connectionsPending = false;
+ipcRenderer.on('deepLink:connections', () => {
+  if (connectionsHandlers.size === 0) {
+    connectionsPending = true;
+    return;
+  }
+  for (const handler of connectionsHandlers) handler();
+});
+
 const bridge = {
   platform: process.platform,
   version: process.versions.electron,
@@ -439,6 +456,34 @@ const bridge = {
         handler(payload);
       ipcRenderer.on('oauth:result', listener);
       return () => ipcRenderer.removeListener('oauth:result', listener);
+    },
+  },
+
+  /**
+   * premation:// links the page acts on (other than `oauth`). Main has already
+   * restored and focused the window; the page picks the screen — see
+   * src/hooks/useConnectionsDeepLink.ts. A link that arrived before anything
+   * subscribed is delivered to the first subscriber, once.
+   */
+  deepLink: {
+    onOpenConnections: (handler: () => void) => {
+      connectionsHandlers.add(handler);
+      if (connectionsPending) {
+        connectionsPending = false;
+        // After the subscribing effect has returned, not inside it — and to
+        // whoever is subscribed THEN: a StrictMode remount has swapped the
+        // handler by the time this runs.
+        queueMicrotask(() => {
+          if (connectionsHandlers.size === 0) {
+            connectionsPending = true;
+            return;
+          }
+          for (const subscribed of connectionsHandlers) subscribed();
+        });
+      }
+      return () => {
+        connectionsHandlers.delete(handler);
+      };
     },
   },
 

@@ -769,6 +769,15 @@ export interface MotionEditorApi {
     onResult(handler: (result: { code?: string; error?: string }) => void): () => void;
   };
   /**
+   * premation:// links the page acts on, other than `oauth`. Main has already
+   * brought the window forward; the page chooses the screen. A link that came
+   * before anything subscribed (a cold start) reaches the first subscriber.
+   */
+  deepLink?: {
+    /** `premation://connections`. Returns an unsubscribe fn. */
+    onOpenConnections(handler: () => void): () => void;
+  };
+  /**
    * Auto-update, as the renderer sees it.
    *
    * Absent in a browser build — there is nothing to update — which is why the

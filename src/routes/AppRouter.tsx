@@ -27,6 +27,7 @@ import { useAutoUpdate } from '@hooks/useAutoUpdate';
 import { applyPasteboardColor } from '@core/theme/pasteboard';
 import { applyAccentColor } from '@core/theme/accent';
 import { useOAuthDeepLink } from '@hooks/useOAuthDeepLink';
+import { useConnectionsDeepLink } from '@hooks/useConnectionsDeepLink';
 import { useMcpFrontDesk } from '@hooks/useMcpFrontDesk';
 
 import { LoadingScreen } from '@components/LoadingScreen';
@@ -60,6 +61,9 @@ function AppLayout(): JSX.Element {
   // Desktop: catch the OAuth one-time code the system browser hands back through
   // the premation:// deep link and route it to /oauth. No-op on the web.
   useOAuthDeepLink();
+  // Desktop: premation://connections (a web page's "connect your assistant")
+  // shows Dashboard ▸ Connections, or Settings ▸ AI Engine over the editor.
+  useConnectionsDeepLink();
 
   // Mounted beside NotificationHost, and app-wide rather than editor-only: an
   // update that finished downloading while the user sat on the dashboard is

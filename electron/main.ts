@@ -65,6 +65,7 @@ import {
 import { enforceProjectExtension } from './projectSavePath';
 import { vaultEncryptionAvailable } from './vaultCrypto';
 import { McpHost, removeFromApps, removeFromClaude } from './mcp/ipc';
+import { DEEP_LINK_SCHEME, routeDeepLink } from './deepLink';
 
 const isDev = process.env.NODE_ENV === 'development';
 /**
@@ -98,7 +99,11 @@ let engineHost: EngineHost | null = null;
 // the one-time code back by redirecting to this custom scheme, which the OS
 // routes to us: on Windows/Linux as an argument to a second launch (caught by
 // `second-instance`), on macOS via `open-url`. See src/pages/OAuthCallbackPage.
-const OAUTH_SCHEME = 'premation';
+//
+// The same scheme carries `premation://connections`, which a web page opens to
+// bring the app up on its assistant Connections. Which link is which is decided
+// in electron/deepLink.ts.
+const OAUTH_SCHEME = DEEP_LINK_SCHEME;
 
 /** Register this app as the handler for premation:// links. */
 function registerProtocolClient(): void {
@@ -117,29 +122,38 @@ function findDeepLink(argv: string[]): string | undefined {
   return argv.find((a) => a.startsWith(`${OAUTH_SCHEME}://`));
 }
 
+/**
+ * A `premation://connections` link that arrived before the app was ready: on
+ * macOS the link that LAUNCHED the app comes through `open-url` before `ready`,
+ * when there is no window to send it to. The cold-start code in whenReady
+ * delivers it once the page has loaded (Windows / Linux carry it in argv).
+ */
+let connectionsLinkBeforeReady: string | undefined;
+
 /** Parse a premation:// deep link and route it to the renderer. */
 function handleDeepLink(url: string | undefined): void {
-  if (!url || !url.startsWith(`${OAUTH_SCHEME}://`)) return;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
+  const route = routeDeepLink(url);
+  if (!route) return;
+
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) {
+    if (route.kind === 'connections' && !app.isReady()) connectionsLinkBeforeReady = url;
     return;
   }
 
-  const win = mainWindow;
-  if (!win || win.isDestroyed()) return;
-
-  if (parsed.host === 'oauth') {
-    const code = parsed.searchParams.get('code') ?? undefined;
-    const error = parsed.searchParams.get('error') ?? undefined;
-    if (!code && !error) return;
+  if (route.kind === 'oauth') {
+    const { code, error } = route;
     if (win.isMinimized()) win.restore();
     win.focus();
     win.webContents.send('oauth:result', { code, error });
     return;
   }
 
+  // Every other link brings the app forward. `connections` also asks the page
+  // to show them — no payload: the link picks a destination and nothing else.
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  if (route.kind === 'connections') win.webContents.send('deepLink:connections');
 }
 
 // ── Uninstall: take Premation out of Claude's config ─────────────────────
@@ -1435,9 +1449,11 @@ app.whenReady().then(() => {
     void supervisorLoaded.then(() => exportSupervisor?.dispatch());
   });
 
-  // Cold start via a premation:// link (Windows/Linux put it in argv). Wait for
-  // the renderer to be ready to receive before forwarding the code.
-  const coldLink = findDeepLink(process.argv);
+  // Cold start via a premation:// link (Windows/Linux put it in argv; a macOS
+  // `premation://connections` launch was held by handleDeepLink). Wait for the
+  // renderer to be ready to receive before forwarding the code.
+  const coldLink = findDeepLink(process.argv) ?? connectionsLinkBeforeReady;
+  connectionsLinkBeforeReady = undefined;
   if (coldLink) {
     win.webContents.once('did-finish-load', () => handleDeepLink(coldLink));
   }
