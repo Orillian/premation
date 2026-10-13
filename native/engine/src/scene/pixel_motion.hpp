@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -62,6 +63,39 @@ inline constexpr std::size_t kSearchStride = 8;
 /// `warpBlend(a, b, w, h, flow, flowScaleX, flowScaleY, t, out)`; `out` is w·h·4 bytes.
 void warp_blend(std::span<const std::uint8_t> a, std::span<const std::uint8_t> b, int w, int h, const FlowField& flow,
                 double flowScaleX, double flowScaleY, double t, std::span<std::uint8_t> out);
+
+/// Pixel Motion's in-between frames. The block flow above (compute_flow /
+/// warp_blend) stays as the stabilizer, roto and fill jobs use it; it is too
+/// coarse for frame interpolation: one ±11 px search on a ≤384 px raster, its
+/// unmatched cells averaged in as zero motion, the A→B vector read at the
+/// OUTPUT pixel, and a fixed (1−t, t) mix — fast motion and moving edges came
+/// out doubled. This path:
+///   * matches coarse-to-fine on a luma pyramid of a ≤ maxDim raster, each
+///     level seeded from the one above (fast motion is found), with a 3×3
+///     vector median per level (edges stay sharp, outliers go);
+///   * estimates both directions (A→B and B→A);
+///   * resolves the vector of the pixel that passes THROUGH the output pixel
+///     at time t (fixed point of p = x − t·F(p)), per direction;
+///   * per output pixel takes the direction whose two warped samples agree
+///     best, and where neither agrees (an occlusion) leans on the nearer frame
+///     instead of mixing two different surfaces.
+/// Deterministic (single thread, no clock).
+struct PairFlow {
+  int fw = 0;  ///< flow raster size
+  int fh = 0;
+  FlowField fwd;  ///< A→B, flow-raster px
+  FlowField bwd;  ///< B→A
+};
+inline constexpr int kPairFlowMaxDim = 512;
+/// Runs `fn(begin, end)` over rows [0, n), possibly split across threads
+/// (effects::for_rows). Every row reads only the inputs, so the result is the
+/// same however they are split. Empty: inline on the caller.
+using RowRunner = std::function<void(int n, const std::function<void(int, int)>& fn)>;
+[[nodiscard]] PairFlow estimate_pair_flow(std::span<const std::uint8_t> a, std::span<const std::uint8_t> b, int w, int h,
+                                          int maxDim = kPairFlowMaxDim, const RowRunner& rows = {});
+/// The in-between at weight t (0 = a, 1 = b); `out` is w·h·4 bytes.
+void interpolate_pair(std::span<const std::uint8_t> a, std::span<const std::uint8_t> b, int w, int h, const PairFlow& flow,
+                      double t, std::span<std::uint8_t> out, const RowRunner& rows = {});
 
 /// `deinterlaceData(data, w, h, keep)` in place; `keepUpper` = 'upper'.
 void deinterlace_data(std::span<std::uint8_t> rgba, int w, int h, bool keepUpper);

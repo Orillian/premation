@@ -76,10 +76,17 @@
 .aiContainer {
   display: flex;
   flex-direction: column;
-  /* The AI keys section, then the Claude for Premation card. */
   gap: var(--space-6);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding-right: var(--space-2);
+}
+
+.connectionsNote {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
 }

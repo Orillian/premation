@@ -607,7 +607,7 @@ if(MOTION_BUILD_TESTS)
                                          tests/test_height_displacement_parity.cpp tests/test_gltf_model_parity.cpp
                                          tests/test_env_asset_parity.cpp tests/test_styled_surface_parity.cpp
                                          tests/test_corner_pin_parity.cpp tests/test_write_on_trail_parity.cpp
-                                         tests/test_model_deform_parity.cpp tests/test_pixel_motion_parity.cpp
+                                         tests/test_model_deform_parity.cpp tests/test_pixel_motion_parity.cpp tests/test_pixel_motion_quality.cpp
                                          tests/test_extrusion_faces_parity.cpp tests/test_alpha_mesh_parity.cpp
                                          tests/test_frame_hit.cpp tests/test_exr_read.cpp tests/test_rigid_body_parity.cpp)
   target_link_libraries(engine_scene_core_tests PRIVATE engine_scene_core motion::options Catch2::Catch2WithMain)

@@ -1,10 +1,10 @@
 /** The indicator's state, and approvals that answer the waiting tool call. */
 
-import type { ClaudeSetupStatus } from '@app-types/motionEditor';
+import type { ClaudeSetupStatus, McpAppStatus } from '@app-types/motionEditor';
 import { isClaudeEntry } from '@core/ai/mcp/claudeUndo';
 import { claudeMode, useClaudeStore } from './claudeStore';
 
-const setup = (o: { enabled?: boolean; clients?: number; configured?: boolean } = {}): ClaudeSetupStatus => ({
+const setup = (o: { enabled?: boolean; clients?: number; configured?: boolean; apps?: McpAppStatus[] } = {}): ClaudeSetupStatus => ({
   bridge: {
     enabled: o.enabled ?? true,
     listening: true,
@@ -22,6 +22,7 @@ const setup = (o: { enabled?: boolean; clients?: number; configured?: boolean } 
   manualSnippet: '',
   serverName: 'premation',
   devBuild: false,
+  apps: o.apps ?? [],
 });
 const idle = { busy: false, tool: null, group: null, feed: [] };
 
@@ -35,6 +36,12 @@ describe('claudeMode', () => {
     expect(claudeMode(setup({ clients: 1 }), idle, 0)).toBe('connected');
     expect(claudeMode(setup({ clients: 1 }), { ...idle, busy: true, tool: 'create_layer' }, 0)).toBe('working');
     expect(claudeMode(setup({ clients: 1 }), { ...idle, group: 'logo' }, 0)).toBe('working');
+  });
+  it('is ready when another app is connected and Claude is not', () => {
+    expect(claudeMode(setup({
+      configured: false,
+      apps: [{ id: 'cursor', name: 'Cursor', present: true, state: 'ok', configPath: '', restart: '', blurb: '', command: '', snippet: '' }],
+    }), idle, 0)).toBe('ready');
   });
   it('says setup while not installed in Claude, and needs-you over everything', () => {
     expect(claudeMode(setup({ configured: false }), idle, 0)).toBe('setup');

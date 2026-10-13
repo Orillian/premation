@@ -50,6 +50,22 @@ export interface ClaudeSetupStatus {
   manualSnippet: string;
   serverName: string;
   devBuild: boolean;
+  /** Cursor, Antigravity, ChatGPT desktop. Mirrors electron/mcp/appConfigs.ts. */
+  apps: McpAppStatus[];
+}
+
+export type McpAppId = 'cursor' | 'antigravity' | 'chatgpt';
+
+export interface McpAppStatus {
+  id: McpAppId;
+  name: string;
+  present: boolean;
+  state: 'absent' | 'ok' | 'stale' | 'malformed';
+  configPath: string;
+  restart: string;
+  blurb: string;
+  command: string;
+  snippet: string;
 }
 
 /** electron/mcp/ipc.ts ConnectResult. */
@@ -82,6 +98,8 @@ export interface McpBridgeApi {
   enable(): Promise<ClaudeSetupStatus>;
   disconnect(): Promise<{ status: ClaudeSetupStatus; problems: string[]; extensionInstalled: boolean }>;
   repair(): Promise<ClaudeConnectResult>;
+  connectApp(id: McpAppId): Promise<ClaudeConnectResult>;
+  disconnectApp(id: McpAppId): Promise<{ status: ClaudeSetupStatus; problems: string[] }>;
   test(): Promise<ClaudeTestStep[]>;
   getClaude(): Promise<void>;
   onStatus(handler: (status: ClaudeSetupStatus) => void): () => void;
@@ -110,6 +128,8 @@ export interface NativePluginPackagePreview {
   vendor: string;
   sdk: string;
   effects: Array<{ matchName: string; name: string; category: string }>;
+  /** P7: commands, footage importers, export formats and panels the package adds (display names). */
+  contributes?: { commands: string[]; importers: string[]; outputModules: string[]; panels: string[] };
   platforms: string[];
   runsHere: boolean;
   trust: 'store-verified' | 'store' | 'pinned' | 'unknown' | 'unsigned';
@@ -128,8 +148,6 @@ export type NativePluginPackageInspect =
 /** electron/nativePluginStore.ts PluginStoreState. */
 export interface NativePluginStoreState {
   plugins: Record<string, { version: string; publisherKey: string; enabled: boolean; installedAt: number; pending?: boolean }>;
-  /** P7: commands, footage importers, export formats and panels the package adds (display names). */
-  contributes?: { commands: string[]; importers: string[]; outputModules: string[]; panels: string[] };
   uninstall: string[];
 }
 
@@ -202,6 +220,8 @@ export interface ExportJobSpec {
   chapters?: unknown;
   /** Bits per channel handed to the encoder: 16 = the engine's rgba64le path (F1; mov only). */
   bitDepth?: 8 | 16;
+  /** P7c: a plugin output module's option values (JSON), for `plugin:<id>/<module>` formats. */
+  pluginOptions?: string;
   label: string;
   totalFrames: number;
 }
@@ -220,8 +240,6 @@ export interface ExportJobRecord {
   status: ExportJobStatus;
   priority: number;
   createdAt: number;
-  /** P7c: a plugin output module's option values (JSON), for `plugin:<id>/<module>` formats. */
-  pluginOptions?: string;
   startedAt?: number;
   finishedAt?: number;
   progress: ExportJobProgress;

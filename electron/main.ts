@@ -63,7 +63,7 @@ import {
 } from './exportProcess';
 import { enforceProjectExtension } from './projectSavePath';
 import { vaultEncryptionAvailable } from './vaultCrypto';
-import { McpHost, removeFromClaude } from './mcp/ipc';
+import { McpHost, removeFromApps, removeFromClaude } from './mcp/ipc';
 
 const isDev = process.env.NODE_ENV === 'development';
 /**
@@ -146,11 +146,13 @@ function handleDeepLink(url: string | undefined): void {
 // The Windows uninstaller runs `Premation.exe --premation-mcp-uninstall`
 // before it removes the files (build/installer.nsh; skipped on an update), so
 // Claude Desktop is not left launching a program that is gone. Only
-// `mcpServers.premation` is removed. Synchronous, before anything else boots,
+// Premation's own entries are removed (Claude, and Cursor / Antigravity /
+// ChatGPT when those were connected). Synchronous, before anything else boots,
 // and the process leaves straight after (docs/MCP_PLAN.md D9).
 if (process.argv.includes('--premation-mcp-uninstall')) {
   try {
     removeFromClaude();
+    removeFromApps();
   } catch { /* an uninstall must never fail on this */ }
   app.exit(0);
 }

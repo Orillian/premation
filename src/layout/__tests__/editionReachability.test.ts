@@ -73,9 +73,12 @@ describe('the editor shell only links to routes every edition has', () => {
 
   it.each(EDITION_GATED_ROUTES.map((r) => [r.route, r.gate]))(
     'no src/layout file navigates to %s (registered only under %s)',
-    (route) => {
+    (route, gate) => {
       const offenders = files.filter((f) => {
         const code = stripComments(readFileSync(f, 'utf8'));
+        // A file that checks the route's own gate renders the link only in
+        // the edition that registers it.
+        if (code.includes(gate)) return false;
         // Both forms AppRouter can be reached by: a hash href, and a
         // react-router path passed to navigate()/<Navigate to=…>.
         return code.includes(`#${route}`) || new RegExp(`['"\`]${route}(['"\`?])`).test(code);

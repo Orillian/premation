@@ -108,6 +108,7 @@ const NOT_DOCUMENT_MODULES = [
   '@core/plugins/uiTools', // which plugin tool is active (editor state)
   '@core/plugins/uiCanvas', // plugin on-canvas draw lists (overlay, not the document)
   '@core/nativePlugins/pluginStore', // installed plugins (app state in userData), not the document
+  '@core/nativePlugins/pluginContrib', // installed plugins' menu/format/panel contributions (app state), not the document
   '@core/paint/gradientPaintTracks', // pure: a paint value with sampled tracks folded in (moved out of @core/rendering)
 ];
 
@@ -141,6 +142,7 @@ const NOT_WRITES = new Set([
   'insertCaptionLayers', // core/captions/captionLayers: ONE engine edit (deleteLayers + pasteLayers of an off-document build), not a direct write
   'pasteKeyframes', // core/animation/keyframeClipboard: ONE engine batch of `pasteKeyframes` commands, not a direct write
   'createCustomLayerFromMenu', // core/plugins/createCustomLayerFromMenu: ONE engine `pasteLayers` of an off-document build
+  'applyPluginPresetCommand', // core/nativePlugins/pluginPresets: BUILDS the addEffect command for a plugin preset (pure); the caller sends it through edit()
   'importLocalAsset', // core/assets/local: content-addresses a File's bytes into the bundle BLOB store and returns a record + src (storage, dedup by hash); it adds no item — assetStore's importer (also the engine's importFiles port) does
 ]);
 const NOT_WRITE_SHAPE = /^create\w*(Player|Renderer|Painter|Port|Cache|Backend|Store)$|ForTests?$/;

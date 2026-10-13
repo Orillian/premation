@@ -111,6 +111,7 @@ export const TrackHeader = memo(function TrackHeader({
   onRowFocus,
   onReorderStart,
   style,
+  arriving,
 }: {
   track: TimelineTrack;
   index: number;
@@ -157,6 +158,8 @@ export const TrackHeader = memo(function TrackHeader({
   showModes?: boolean;
   onReorderStart?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   style: CSSProperties;
+  /** True for the frame a layer first appears while an assistant is working. */
+  arriving?: boolean;
 }): JSX.Element {
   const hidden = track.muted === true;
   const locked = track.locked === true;
@@ -270,6 +273,7 @@ export const TrackHeader = memo(function TrackHeader({
     <div
       className={cn(styles.trackHeader, selected && styles.trackHeaderSelected)}
       style={{ ...style, '--track-color': track.color ?? 'transparent' } as CSSProperties}
+      data-arrive={arriving || undefined}
       data-track-id={track.id}
       data-whip-layer={track.id}
       data-hidden={hidden || undefined}

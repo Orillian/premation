@@ -86,6 +86,9 @@ function comparisonRows(plans: readonly PlanDto[]): { label: string; cells: (str
     },
     { label: 'The full editor — every effect, local projects and export', cells: plans.map(() => true) },
     { label: 'AI assistant with your own provider key', cells: plans.map(() => true) },
+    { label: 'Connect Claude, ChatGPT, Cursor or Antigravity', cells: plans.map(() => true) },
+    // Premation's own plugins are the paid plan's; third-party plugins stay free.
+    { label: 'Premation plugins', cells: plans.map((p) => p.id !== 'free') },
     {
       label: 'Past the project limit',
       cells: plans.map((p) => (p.limits?.cloudProjects == null ? false : 'Read-only, never deleted')),
@@ -496,7 +499,9 @@ export function BillingSection(): JSX.Element | null {
                           ? 'Active Subscription'
                           : access?.reason === 'staff'
                             ? 'Operator'
-                            : 'Free Plan'}
+                            : access?.reason === 'granted'
+                              ? 'Included by Premation'
+                              : 'Free Plan'}
                 </span>
               </div>
               <p className={blocked ? styles.statusBlocked : styles.intro}>

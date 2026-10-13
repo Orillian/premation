@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { AccountSection, formatRelative } from './AccountSection';
+import { AccountSection, DevicesPanel, formatRelative } from './AccountSection';
 import { api, type AccountRecord, type SessionRecord } from '@core/api/client';
 import { setSession } from '@core/api/session';
 import { useModalStore } from '@stores/modalStore';
@@ -110,13 +110,17 @@ describe('AccountSection', () => {
     jest.mocked(api.getBilling).mockResolvedValue({ hasSubscription: false } as never);
   });
 
-  it('renders the rows from the account and the devices from the server', async () => {
+  it('renders the account rows', () => {
     renderSection();
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Ann');
     expect(screen.getByText('ann@example.com')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Change…' })).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Delete account…' })).toBeInTheDocument();
+    expect(screen.queryByText('This device')).not.toBeInTheDocument();
+  });
 
+  it('lists signed-in devices on their own panel', async () => {
+    render(<DevicesPanel />);
     expect(await screen.findByText('Windows · Premation')).toBeInTheDocument();
     expect(screen.getByText('This device')).toBeInTheDocument();
     expect(screen.getByText('Unknown device')).toBeInTheDocument();
@@ -228,7 +232,7 @@ describe('AccountSection', () => {
   });
 
   it('signs out one device, and every other device at once', async () => {
-    renderSection();
+    render(<DevicesPanel />);
     await screen.findByText('macOS · Premation');
     fireEvent.click(screen.getByRole('button', { name: 'Sign out macOS · Premation' }));
     await waitFor(() => expect(api.revokeSession).toHaveBeenCalledWith('s2'));

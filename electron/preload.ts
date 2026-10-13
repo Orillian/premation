@@ -491,6 +491,8 @@ const bridge = {
     enable: () => ipcRenderer.invoke('mcp:enable'),
     disconnect: () => ipcRenderer.invoke('mcp:disconnect'),
     repair: () => ipcRenderer.invoke('mcp:repair'),
+    connectApp: (id: string) => ipcRenderer.invoke('mcp:connectApp', id),
+    disconnectApp: (id: string) => ipcRenderer.invoke('mcp:disconnectApp', id),
     test: () => ipcRenderer.invoke('mcp:test'),
     getClaude: () => ipcRenderer.invoke('mcp:getClaude'),
     onStatus: (handler: (status: unknown) => void) => {

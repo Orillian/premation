@@ -72,6 +72,7 @@ export function claudeMode(setup: ClaudeSetupStatus | null, desk: FrontDeskState
   if (!setup || !setup.bridge.enabled) return 'off';
   if (desk.busy || desk.group) return 'working';
   if (setup.bridge.clients.length > 0) return 'connected';
-  if (!setup.configured && setup.claude.extension === 'absent') return 'setup';
+  const otherApp = (setup.apps ?? []).some((a) => a.state === 'ok');
+  if (!setup.configured && setup.claude.extension === 'absent' && !otherApp) return 'setup';
   return 'ready';
 }

@@ -12,17 +12,17 @@ import { mcpFrontDesk } from '@core/ai/mcp/frontDesk';
 import { undoLastClaudeStep } from '@core/ai/mcp/claudeUndo';
 import { useClaudeStore, type ClaudeMode } from '@stores/claudeStore';
 import { openCustomizeDialog } from '@layout/Settings/openCustomizeDialog';
-import { agoText, claudeToolLabel } from './claudeLabels';
+import { agoText, assistantName, claudeToolLabel, mcpClientLabel } from './claudeLabels';
 import styles from './Claude.module.css';
 
-function connectionLine(mode: ClaudeMode, clients: ReadonlyArray<{ name: string; since: number }>): string {
+function connectionLine(mode: ClaudeMode, brand: string, clients: ReadonlyArray<{ name: string; since: number }>): string {
   if (clients.length > 0) {
     const c = clients[0]!;
-    const who = /claude-?code/i.test(c.name) ? 'Claude Code' : /claude/i.test(c.name) ? 'Claude Desktop' : c.name;
+    const who = mcpClientLabel(c.name) || brand;
     return `${who} connected ${agoText(c.since)}${clients.length > 1 ? ` (+${clients.length - 1} more)` : ''}`;
   }
-  if (mode === 'setup') return 'Not installed in Claude yet — finish in Settings.';
-  return 'Ready. Open Claude Desktop and ask it to work in Premation.';
+  if (mode === 'setup') return 'Not connected yet — finish in Settings.';
+  return `${brand} can work in Premation. Ask it in a new chat.`;
 }
 
 export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () => void }): JSX.Element {
@@ -32,6 +32,7 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
   const answer = useClaudeStore((s) => s.answerApproval);
   const [note, setNote] = useState('');
   const clients = setup?.bridge.clients ?? [];
+  const brand = assistantName(setup);
   const inEditor = mcpFrontDesk()?.hasEditor() ?? false;
   const working = desk.busy || !!desk.group;
 
@@ -41,12 +42,12 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
   };
 
   return (
-    <div className={styles.panel} role="dialog" aria-label="Claude activity">
+    <div className={styles.panel} role="dialog" aria-label={`${brand} activity`}>
       <header className={styles.panelHead}>
         <span className={styles.dot} data-mode={mode} aria-hidden="true" />
         <div className={styles.panelHeadText}>
-          <span className={styles.panelTitle}>Claude for Premation</span>
-          <span className={styles.panelSub}>{connectionLine(mode, clients)}</span>
+          <span className={styles.panelTitle}>{brand}</span>
+          <span className={styles.panelSub}>{connectionLine(mode, brand, clients)}</span>
         </div>
       </header>
 
@@ -54,7 +55,7 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
         <section key={a.id} className={styles.approval} aria-live="assertive">
           <div className={styles.approvalTitle}>
             <Icon name={a.kind === 'import' ? 'upload' : 'export'} size="sm" />
-            <span>Claude wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
+            <span>{brand} wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
           </div>
           <ul className={styles.approvalDetail}>
             {a.detail.slice(0, 6).map((d) => <li key={d} title={d}>{d}</li>)}
@@ -71,10 +72,10 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
         <section className={styles.now} aria-live="polite">
           <span className={styles.spinner} aria-hidden="true" />
           <div className={styles.nowText}>
-            <span>{desk.tool ? claudeToolLabel(desk.tool) : 'Waiting for Claude’s next step'}</span>
+            <span>{desk.tool ? claudeToolLabel(desk.tool) : `Waiting for ${brand}’s next step`}</span>
             {desk.group ? <span className={styles.panelSub}>Change: “{desk.group}” — one undo step</span> : null}
           </div>
-          <Button size="sm" variant="secondary" onClick={() => void mcpFrontDesk()?.stop()} title="Stop Claude and undo its unfinished change">
+          <Button size="sm" variant="secondary" onClick={() => void mcpFrontDesk()?.stop()} title={`Stop ${brand} and undo its unfinished change`}>
             Stop
           </Button>
         </section>
@@ -83,7 +84,7 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
       <section className={styles.feed}>
         <span className={styles.feedHead}>Recent steps</span>
         {desk.feed.length === 0 ? (
-          <p className={styles.empty}>Nothing yet. Ask Claude, for example: “In Premation, make a 10-second logo reveal.”</p>
+          <p className={styles.empty}>Nothing yet. Ask {brand} to work in this project.</p>
         ) : (
           <ol className={styles.feedList}>
             {desk.feed.slice(0, 14).map((e) => (
@@ -105,7 +106,7 @@ export function ClaudePanel({ mode, onClose }: { mode: ClaudeMode; onClose: () =
       <footer className={styles.row}>
         {inEditor ? (
           <Button size="sm" variant="ghost" leftIcon={<Icon name="undo" size="sm" />} onClick={() => void undo()} disabled={working}>
-            Undo Claude’s last change
+            Undo last change
           </Button>
         ) : <span />}
         <Button size="sm" variant="ghost" leftIcon={<Icon name="settings" size="sm" />} onClick={() => { onClose(); openCustomizeDialog('ai'); }}>

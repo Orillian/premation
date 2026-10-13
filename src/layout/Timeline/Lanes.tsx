@@ -160,6 +160,7 @@ export const TrackContent = memo(function TrackContent({
   onClipDown,
   onClipContextMenu,
   onActivate,
+  arriving,
 }: {
   track: TimelineTrack;
   ghosted: boolean;
@@ -176,10 +177,12 @@ export const TrackContent = memo(function TrackContent({
   onClipDown?: (clip: TimelineClip, mode: 'move' | 'start' | 'end', e: ReactPointerEvent<HTMLDivElement>, locked: boolean) => void;
   onClipContextMenu?: (clipId: string, clientX: number, clientY: number) => void;
   onActivate?: (nodeId: string) => void;
+  /** True for the frame a layer first appears while an assistant is working. */
+  arriving?: boolean;
 }): JSX.Element {
   const locked = track.locked === true;
   return (
-    <LaneRow top={top} trackHeight={trackHeight} ghosted={ghosted}>
+    <LaneRow top={top} trackHeight={trackHeight} ghosted={ghosted} arriving={arriving}>
       {/* Clips — body: move / Alt-slip / Shift+Alt-slide; edges: trim. */}
       {track.clips?.map((clip) => {
         const view = clipPreviews?.find((p) => p.id === clip.id) ?? clip;
@@ -299,16 +302,19 @@ export function LaneRow({
   top,
   trackHeight,
   ghosted,
+  arriving,
   children,
 }: {
   top: number;
   trackHeight: number;
   ghosted?: boolean;
+  arriving?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
     <div
       className={styles.laneRow}
+      data-arrive={arriving || undefined}
       style={{ position: 'absolute', top, left: 0, right: 0, height: trackHeight, opacity: ghosted ? 0.32 : undefined }}
     >
       {children}

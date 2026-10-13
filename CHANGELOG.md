@@ -3,6 +3,33 @@
 Newest first. Each entry is what a person opening the app after an update
 would want to know; the engine-level detail is in `ROADMAP.md`.
 
+## 1.0.0 — 2026-10-13
+
+Premation 1.0. The native engine from 0.9 now carries a full plugin platform,
+sixty more After Effects effects, a much faster 3D renderer, and assistants
+that work in your project from outside the app.
+
+- **Claude, ChatGPT, Cursor and Antigravity in Premation.** Connect any of
+  them from Dashboard ▸ Connections and ask it to build or edit motion
+  graphics in the project you have open — you watch every change, and you can
+  stop it. Free on every plan; the connection stays on your computer.
+- **Plugins that go far beyond effects.** SDK 1.2 plugins can add menu
+  commands, panels (which pop out into their own window), importers, export
+  formats, presets and on-canvas handles; they read other times, scene depth
+  and the comp camera. Premation's own plugins — starting with a full 3D model
+  renderer in the Element 3D class — are included with Premation Cloud; every
+  third-party plugin stays free. A plugin that is not available never breaks a
+  project: it passes through and says why.
+- **Sixty more After Effects effects** (215 → 275), plus ink, Roughen Edges,
+  dither and the bundled font set with per-character OS font fallback.
+- **Faster 3D and playback.** 3D surface chains are cached and sized to the
+  layer, shadow maps, SSAO and reflections are reused between frames, a layer
+  that only moves reuses its effect chain, and Auto resolution no longer
+  pumps. Radiance .hdr skies and an engine-drawn ground grid.
+- **More reliable.** A layer larger than the GPU's texture limit no longer
+  blanks the frame, a busy renderer is not killed as hung, and edits in flight
+  survive an engine restart.
+
 ## 0.9.0 — 2026-10-06
 
 A new engine. Everything you see, play and export is now drawn by a native

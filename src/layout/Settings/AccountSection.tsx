@@ -2,8 +2,9 @@
  * Account — who the signed-in person is and how they get in.
  *
  * Name (inline), email (a two-step change: code to the NEW address), password
- * (change, or set one on a Google-only account), the devices with a live
- * session, and the one irreversible thing: deleting the account.
+ * (change, or set one on a Google-only account), and the one irreversible
+ * thing: deleting the account. Signed-in devices are `DevicesPanel`, on
+ * their own Settings tab.
  *
  * Everything the panel shows is server state (`AccountRecord`, `/auth/sessions`,
  * `/billing/me`); it decides nothing about eligibility. Every write goes
@@ -567,7 +568,8 @@ function openDeleteAccount(account: AccountRecord, onOpenBilling: () => void, on
 
 // ── Sessions ───────────────────────────────────────────────────────────
 
-function SessionsList(): JSX.Element {
+/** Signed-in devices. Its own Settings tab, not a row inside the account form. */
+export function DevicesPanel(): JSX.Element {
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -822,13 +824,6 @@ export function AccountSection({ account, onAccountChanged, onOpenBilling }: Acc
               {account.hasPassword ? t('account.password.change', 'Change…') : t('account.password.setOpen', 'Set a password')}
             </Button>
           </div>
-        </div>
-      </div>
-
-      <div className={styles.row}>
-        <div className={styles.rowLabel}>{t('account.sessions.label', 'Devices')}</div>
-        <div className={styles.rowBody}>
-          <SessionsList />
         </div>
       </div>
 

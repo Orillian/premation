@@ -35,6 +35,8 @@ export function planStatusLabel(account: Pick<AccountRecord, 'access'>): { text:
       return { text: 'Free during beta', tone: 'muted' };
     case 'staff':
       return { text: 'Operator', tone: 'muted' };
+    case 'granted':
+      return { text: 'Included', tone: 'ok' };
     case 'unverified':
       return { text: 'Email not confirmed', tone: 'warn' };
     default:
@@ -61,7 +63,7 @@ export function PlanCard({ account, onOpenBilling }: PlanCardProps): JSX.Element
   }, []);
 
   const { access } = account;
-  const paid = account.plan === 'pro';
+  const paid = account.plan === 'pro' || account.access.reason === 'granted';
   const paidPlan = plans.find((p) => p.priceCents > 0);
   const freeCap = plans.find((p) => p.priceCents === 0)?.limits?.cloudProjects ?? null;
   const salesOpen = paidSalesOpen(plans);
@@ -83,7 +85,7 @@ export function PlanCard({ account, onOpenBilling }: PlanCardProps): JSX.Element
           <p className={styles.sub}>
             {paid
               ? access.writeEndsAt
-                ? `${access.reason === 'grace' ? 'Paid through' : 'Renews'} ${new Date(access.writeEndsAt).toLocaleDateString()}. See Billing for details.`
+                ? `${access.reason === 'grace' ? 'Paid through' : access.reason === 'granted' ? 'Included until' : 'Renews'} ${new Date(access.writeEndsAt).toLocaleDateString()}. See Billing for details.`
                 : 'Unlimited cloud projects and long version history.'
               : isBeta
                 ? 'Cloud saving is free and uncapped while paid plans are not open yet.'

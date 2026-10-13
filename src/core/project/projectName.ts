@@ -46,3 +46,17 @@ export function projectNameFromFilePath(path: string, fallback: string = path): 
 export function displayProjectName(name: string): string {
   return looksLikeFilePath(name) ? projectNameFromFilePath(name) : name;
 }
+
+/**
+ * A cloud project is opened by its backend id, and that id is what
+ * `projectNameFromFilePath` returns when the "path" has no directory. It is
+ * not a title. UUIDs, long hex tokens, and cuid-style ids all qualify; a
+ * short file stem such as "qa1" does not.
+ */
+export function looksLikeProjectId(value: string): boolean {
+  const s = value.trim();
+  if (!s || /[\s\\/]/.test(s)) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return true;
+  if (/^[0-9a-f]{24,}$/i.test(s)) return true;
+  return s.length >= 16 && /^[A-Za-z0-9_-]+$/.test(s) && /\d/.test(s);
+}

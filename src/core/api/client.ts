@@ -491,6 +491,8 @@ export type EntitlementReason =
   /** Was paying; now on the Free allowance again (write: true). */
   | 'lapsed'
   | 'staff'
+  /** Premation Cloud granted by Premation (not billed) until `writeEndsAt`. */
+  | 'granted'
   /** Sent only by servers from before the Free plan (2026-10-05). */
   | 'trial'
   | 'trial_not_started'

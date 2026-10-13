@@ -6,7 +6,9 @@
 // bytes. PARITY_REBLESS=1 writes the C++ answers instead (parity_rebless.hpp).
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -146,4 +148,77 @@ TEST_CASE("extrusion parity: the C++ port builds the editor's extruded meshes", 
                                               {"indicesFnv", Json::string(fnv1a64(idx.data(), idx.size()))}})));
   }
   REQUIRE(fx.finish());
+}
+
+namespace {
+
+double tri_area(const m::Triangulation& tr) {
+  double a = 0;
+  for (std::size_t i = 0; i + 2 < tr.triangles.size(); i += 3) {
+    const m::Pt2 p = tr.vertices[tr.triangles[i]];
+    const m::Pt2 q = tr.vertices[tr.triangles[i + 1]];
+    const m::Pt2 r = tr.vertices[tr.triangles[i + 2]];
+    a += std::abs(((q.x - p.x) * (r.y - p.y)) - ((q.y - p.y) * (r.x - p.x))) / 2;
+  }
+  return a;
+}
+
+/// Area of the triangles of one role, projected on the cap plane.
+double role_area(const m::ExtrudedMesh& mesh, m::MeshRole role) {
+  double a = 0;
+  for (const auto& r : mesh.ranges) {
+    if (r.role != role) continue;
+    for (std::uint32_t i = r.first; i + 2 < r.first + r.count; i += 3) {
+      const auto at = [&](std::uint32_t k) {
+        const std::size_t o = static_cast<std::size_t>(mesh.indices[k]) * m::kMeshVertexFloats;
+        return m::Pt2{mesh.vertices[o], mesh.vertices[o + 1]};
+      };
+      const m::Pt2 p = at(i);
+      const m::Pt2 q = at(i + 1);
+      const m::Pt2 s = at(i + 2);
+      a += std::abs(((q.x - p.x) * (s.y - p.y)) - ((q.y - p.y) * (s.x - p.x))) / 2;
+    }
+  }
+  return a;
+}
+
+}  // namespace
+
+// The traced "T": the two inner corners under the bar sit ON the bar's
+// underside, and the strict-inside ear test clipped the whole bar through them
+// — the back cap spilled a wedge outside the glyph beside the stem.
+TEST_CASE("cap triangulation: collinear reflex corners block an ear (the 3D T)", "[scene][extrude]") {
+  const std::vector<m::Pt2> T{{8.2, 10.8}, {48.0, 10.8}, {48.0, 17.0}, {30.8, 17.0},
+                              {30.8, 56.0}, {24.2, 56.0}, {24.2, 17.0}, {8.2, 17.0}};
+  for (const bool reversed : {false, true}) {
+    std::vector<m::Pt2> ring = T;
+    if (reversed) std::ranges::reverse(ring);
+    const m::Triangulation tr = m::triangulate_rings(ring, {});
+    CHECK(std::abs(tri_area(tr) - std::abs(m::signed_area(ring))) < 1e-6);
+  }
+  // An "E" (three collinear arm roots on the spine).
+  const std::vector<m::Pt2> E{{0, 0},   {30, 0},  {30, 5},  {6, 5},  {6, 12}, {24, 12},
+                              {24, 17}, {6, 17},  {6, 25},  {30, 25}, {30, 30}, {0, 30}};
+  const m::Triangulation te = m::triangulate_rings(E, {});
+  CHECK(std::abs(tri_area(te) - std::abs(m::signed_area(E))) < 1e-6);
+}
+
+// An "o" whose band (4 px) is thinner than twice the asked bevel: the hole's
+// inset used to cross the outer one, the hole was lost and the caps filled the
+// counter. The bevel clamps to the band and the counter stays open.
+TEST_CASE("bevel clamps to the band between an outline and its hole", "[scene][extrude]") {
+  std::vector<m::Ring> rings = m::ellipse_outline(40, 40, 48);
+  std::vector<m::Ring> inner = m::ellipse_outline(32, 32, 48);
+  inner[0].hole = true;
+  rings.push_back(inner[0]);
+  m::ExtrudeOptions o;
+  o.depth = 20;
+  o.bevel = 6;
+  o.frontCap = true;
+  const std::optional<m::ExtrudedMesh> mesh = m::extrude_outline(rings, o);
+  REQUIRE(mesh);
+  CHECK(mesh->bevel < 2);
+  const double band = std::abs(m::signed_area(rings[0].points)) - std::abs(m::signed_area(rings[1].points));
+  CHECK(role_area(*mesh, m::MeshRole::back) <= band + 1e-3);
+  CHECK(role_area(*mesh, m::MeshRole::front) <= band + 1e-3);
 }

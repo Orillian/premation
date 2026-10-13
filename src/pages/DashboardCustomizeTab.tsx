@@ -11,7 +11,8 @@
  */
 
 import { useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
 import { aiEnabled } from '@core/config/edition';
@@ -20,7 +21,6 @@ import { tabsForEdition } from '@layout/Settings/customizeTabs';
 import { AudioHardwareSection } from '@layout/Settings/AudioHardwareSection';
 import { FilesTab } from '@layout/Settings/FilesTab';
 import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
-import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
 import styles from './DashboardCustomizeTab.module.css';
 
 /** Map 'workspaces' URL query parameter alias to the internal 'tabs' id */
@@ -38,6 +38,7 @@ function normalizeSection(raw: string | null): CustomizeTabId {
 }
 
 export function DashboardCustomizeTab(): JSX.Element {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawSection = searchParams.get('section');
   const activeSection = normalizeSection(rawSection);
@@ -101,7 +102,14 @@ export function DashboardCustomizeTab(): JSX.Element {
         ) : activeSection === 'ai' ? (
           <div className={styles.aiContainer}>
             <AiSettingsSection />
-            <ClaudeConnectSection />
+            <p className={styles.connectionsNote}>
+              Claude, Cursor, Antigravity and ChatGPT connect on the Connections page.
+            </p>
+            <div>
+              <Button variant="secondary" onClick={() => navigate('/dashboard?tab=connections')}>
+                Open Connections
+              </Button>
+            </div>
           </div>
         ) : (
           <AppearanceTab />

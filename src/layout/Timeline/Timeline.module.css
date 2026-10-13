@@ -963,6 +963,24 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* A layer an assistant just added. Existing rows are already known, so this
+   does not replay when the list scrolls. */
+.trackHeader[data-arrive],
+.laneRow[data-arrive] {
+  animation: assistantLayerIn 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes assistantLayerIn {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trackHeader[data-arrive],
+  .laneRow[data-arrive] {
+    animation: none;
+  }
+}
+
 /* The layer's LABEL colour, as a 3px bar down the row's left edge — the one
    place the colour was set (`--track-color`) but never read. `transparent`
    for an unlabelled layer draws nothing. */

@@ -8,6 +8,8 @@
  *   mcp:enable         turn on only (Claude Code users, who add it themselves)
  *   mcp:disconnect     remove Premation from Claude's config + turn off
  *   mcp:repair         rewrite a stale entry (the app moved after an update)
+ *   mcp:connectApp     the same listener, written into Cursor, Antigravity or ChatGPT
+ *   mcp:disconnectApp  remove Premation from that one app's config
  *   mcp:test           run the end-to-end self-test
  *   mcp:getClaude      open Claude's download page
  *   mcp:result         the page answers a relayed tool call
@@ -39,6 +41,7 @@ import {
 } from './claudeConfig';
 import { runSelfTest, type TestStep } from './selfTest';
 import { EXTENSION_FILE, inspectExtension, writeExtension, type ExtensionState } from './extension';
+import { appConfigPath, isMcpAppId, listAppStatus, removeApp, writeApp, type McpAppId, type McpAppStatus } from './appConfigs';
 
 export const CLAUDE_DOWNLOAD_URL = 'https://claude.ai/download';
 
@@ -66,6 +69,8 @@ export interface ClaudeSetupStatus {
   serverName: string;
   /** A development build (it replaces an installed Premation's entry in Claude). */
   devBuild: boolean;
+  /** Cursor, Antigravity and ChatGPT desktop — the same pipe, each app's own file. */
+  apps: McpAppStatus[];
 }
 
 export type ConnectResult =
@@ -124,6 +129,16 @@ export function removeFromClaude(p: PlatformInfo = platformInfo(), cfs: ConfigFs
   }));
 }
 
+/** Take Premation out of Cursor, Antigravity and ChatGPT. A missing file is fine. */
+export function removeFromApps(p: PlatformInfo = platformInfo(), cfs: ConfigFs = nodeFs): Array<{ path: string; ok: boolean; message?: string }> {
+  const ids: McpAppId[] = ['cursor', 'antigravity', 'chatgpt'];
+  return ids.map((id) => {
+    const file = appConfigPath(id, p);
+    const r = removeApp(id, p, cfs);
+    return r.ok ? { path: file, ok: true } : { path: file, ok: false, message: r.message };
+  });
+}
+
 export class McpHost {
   readonly bridge: McpBridge;
   private readonly spec: McpLaunchSpec;
@@ -178,6 +193,7 @@ export class McpHost {
       claudeCodeCommand: claudeCodeCommand(this.spec, process.platform, this.key),
       manualSnippet: manualSnippet(this.spec, this.key),
       serverName: this.key,
+      apps: listAppStatus(this.spec, platformInfo(), nodeFs),
     };
   }
 
@@ -198,6 +214,11 @@ export class McpHost {
         const r = upsertEntry(file, this.spec, nodeFs, this.key);
         this.o.log?.(`[mcp] repaired ${file}: ${r.ok ? 'ok' : r.message}`);
       }
+    }
+    for (const app of listAppStatus(this.spec, platformInfo(), nodeFs)) {
+      if (app.state !== 'stale') continue;
+      const r = writeApp(app.id, this.spec, platformInfo(), nodeFs);
+      this.o.log?.(`[mcp] repaired ${app.configPath}: ${r.ok ? 'ok' : r.message}`);
     }
   }
 
@@ -273,6 +294,46 @@ export class McpHost {
     return { status, problems, extensionInstalled: status.claude.extension !== 'absent' };
   }
 
+  /**
+   * Cursor, Antigravity or ChatGPT desktop. Same listener as Claude; only
+   * that app's config file is written. ChatGPT on the web is not reachable
+   * this way — it cannot start a program on this computer.
+   */
+  async connectApp(id: unknown): Promise<ConnectResult> {
+    if (!isMcpAppId(id)) return { ok: false, code: 'io', message: 'Unknown app.', status: this.status() };
+    if (!fs.existsSync(this.script)) {
+      return { ok: false, code: 'no-connector', message: `Premation's connector is missing (${this.script}). Reinstall Premation.`, status: this.status() };
+    }
+    await this.bridge.enable();
+    const r = writeApp(id, this.spec, platformInfo(), nodeFs);
+    if (!r.ok) return { ok: false, code: r.code, message: r.message, status: this.status() };
+    this.pushStatus();
+    return { ok: true, status: this.status(), changed: r.changed, method: 'config' };
+  }
+
+  /**
+   * Remove Premation from one app. The listener stays up while Claude or
+   * another app is still configured; otherwise it turns off and rotates the token.
+   */
+  async disconnectApp(id: unknown): Promise<{ status: ClaudeSetupStatus; problems: string[] }> {
+    if (!isMcpAppId(id)) return { status: this.status(), problems: ['Unknown app.'] };
+    const r = removeApp(id, platformInfo(), nodeFs);
+    const problems = r.ok ? [] : [r.message];
+    let status = this.status();
+    if (r.ok && !this.othersListening(status)) {
+      await this.bridge.disable();
+      status = this.status();
+    } else this.pushStatus();
+    return { status, problems };
+  }
+
+  /** Claude's extension or config, or any other app, still expects the pipe. */
+  private othersListening(status: ClaudeSetupStatus): boolean {
+    if (status.claude.extension !== 'absent') return true;
+    if (status.claude.configs.some((c) => c.state === 'ok' || c.state === 'stale')) return true;
+    return status.apps.some((a) => a.state === 'ok' || a.state === 'stale');
+  }
+
   /** Re-point Claude at this copy of Premation, by the route it uses now. */
   async repair(): Promise<ConnectResult> {
     const s = this.status();
@@ -295,6 +356,8 @@ export class McpHost {
     handle('mcp:enable', () => this.enableOnly());
     handle('mcp:disconnect', () => this.disconnect());
     handle('mcp:repair', () => this.repair());
+    handle('mcp:connectApp', (_event, id: unknown) => this.connectApp(id));
+    handle('mcp:disconnectApp', (_event, id: unknown) => this.disconnectApp(id));
     handle('mcp:test', () => this.test());
     handle('mcp:getClaude', () => shell.openExternal(CLAUDE_DOWNLOAD_URL));
     handle('mcp:result', (event, id: unknown, result: unknown) => {

@@ -146,6 +146,8 @@ class SceneTextures final : public rg::ExternalTextureSource {
   void prepare_refs(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs, PrepareStats& stats);
   std::string media_ref(const TextureRequest& r, PrepareStats& stats, std::optional<api::RenderColorSpace>& space);
   std::string image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats);
+  /// P7b: footage a native plugin importer reads (scene_textures_plugin.cpp).
+  std::string plugin_image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats);
   /// A still carried as a `data:image/…;base64,` URL (a content-aware fill frame).
   std::string data_image_ref(const TextureRequest& r, PrepareStats& stats);
   std::string svg_ref(const TextureRequest& r, PrepareStats& stats);
@@ -159,10 +161,8 @@ class SceneTextures final : public rg::ExternalTextureSource {
   /// A baked video frame: converted, read back, then footage_bake_ref.
   std::string video_bake_ref(const TextureRequest& r, std::uint32_t id, const media::FramePick& pick, PrepareStats& stats);
   /// Pixel Motion (`vfm:`): the flow-warped in-between of frames a and b of
-  /// source `id` at the request's weight, as an `img:pm:` raster — or the
+  /// source `id` at the request's weight, as an `img:pm2:` raster — or the
   /// nearer frame's media hash while either is still decoding.
-  /// P7b: footage a native plugin importer reads (scene_textures_plugin.cpp).
-  std::string plugin_image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats);
   std::string pixel_motion_ref(const TextureRequest& r, std::uint32_t id, const media::FramePick& a,
                                const media::FramePick& b, PrepareStats& stats);
   /// A converted frame's pixels as RGBA8 (premultiplied, as converted), top-down.
@@ -170,9 +170,7 @@ class SceneTextures final : public rg::ExternalTextureSource {
   /// Pixel Motion flow per frame pair (render thread only), most recent first.
   struct FlowEntry {
     std::string key;
-    pixmo::FlowField flow;
-    int fw = 0;
-    int fh = 0;
+    pixmo::PairFlow flow;
   };
   std::list<FlowEntry> flows_;
   /// `gltf:<modelKey>#<image>`: a registered model's image (scene_textures_model.cpp).

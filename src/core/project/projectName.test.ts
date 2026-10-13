@@ -7,7 +7,7 @@
  * (correct) derivation, called the same project "qa1".
  */
 
-import { displayProjectName, looksLikeFilePath, projectNameFromFilePath } from './projectName';
+import { displayProjectName, looksLikeFilePath, looksLikeProjectId, projectNameFromFilePath } from './projectName';
 import { ProjectManager, type ProjectDocumentIO } from './ProjectManager';
 import { RecentProjects, type RecentProjectEntry } from './RecentProjects';
 import type { VersionedDocument } from '@core/types';
@@ -44,6 +44,15 @@ describe('displayProjectName', () => {
     expect(looksLikeFilePath('C:/Users/me/files/qa1')).toBe(true);
     expect(displayProjectName('C:/Users/me/files/qa1')).toBe('qa1');
     expect(displayProjectName('Promo v2')).toBe('Promo v2');
+  });
+});
+
+describe('looksLikeProjectId', () => {
+  it('recognises a cloud id and leaves a file stem alone', () => {
+    expect(looksLikeProjectId('fb29e1dc-5358-43b4-87e5-ba569f5a2f79')).toBe(true);
+    expect(looksLikeProjectId('clx7a9b2c0000abcd')).toBe(true);
+    expect(looksLikeProjectId('qa1')).toBe(false);
+    expect(looksLikeProjectId('Promo v2')).toBe(false);
   });
 });
 

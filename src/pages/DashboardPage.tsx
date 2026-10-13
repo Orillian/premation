@@ -12,14 +12,12 @@ import { Button } from '@components/Button';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { useUIStore } from '@stores/uiStore';
 import { setPendingFootage } from '@core/project/pendingFootage';
-import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
-import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
+import { DashboardSettings } from './DashboardSettings';
+import { DashboardConnections } from './DashboardConnections';
 import { newProjectDocument } from '@core/project/newProjectDocument';
 import { NativePluginsPage } from '@layout/Plugins/NativePluginsPage';
 import { RegistryPluginsNotice } from '@layout/Plugins/RegistryPluginsNotice';
 import { BillingSection } from '@layout/Settings/BillingSection';
-import { AccountSection } from '@layout/Settings/AccountSection';
-import { PlanCard } from '@layout/Settings/PlanCard';
 import { billingEnabled } from '@core/config/edition';
 import { hasDesktopChrome } from '@core/config/uiPlatform';
 import { TITLE_BAR_ROUTE_SLOT_ID } from '@layout/TitleBar/routeSlot';
@@ -173,6 +171,9 @@ function writePref(key: string, value: string): void {
  * "Show me my plan" was a link to a scroll POSITION
  * (`?tab=settings&section=billing`, followed by a `scrollIntoView`), which is
  * what a missing page looks like while something still has to link to it.
+ *
+ * Plan, Connections and Settings are also in the account menu. They are in
+ * the sidebar so they stay visible without opening that menu.
  */
 type TabType =
   | 'home'
@@ -183,10 +184,11 @@ type TabType =
   | 'customize'
   | 'billing'
   | 'plugins'
+  | 'connections'
   | 'settings';
 
 const TABS: readonly TabType[] = [
-  'home', 'projects', 'assets', 'renders', 'trash', 'customize', 'billing', 'plugins', 'settings',
+  'home', 'projects', 'assets', 'renders', 'trash', 'customize', 'billing', 'plugins', 'connections', 'settings',
 ];
 
 /**
@@ -219,11 +221,31 @@ const NAV_LIBRARY: readonly NavItem[] = [
   { tab: 'trash', label: 'Trash', icon: 'trash' },
 ];
 
-/** The app's own setup. Account pages are in the account menu, top right. */
+/** The app's own setup. */
 const NAV_APP: readonly NavItem[] = [
   { tab: 'plugins', label: 'Plugins', icon: 'plugin' },
   { tab: 'customize', label: 'Preferences', icon: 'sliders-h' },
 ];
+
+/** Account pages. Also listed in the profile menu. */
+function accountNav(): NavItem[] {
+  const items: NavItem[] = [];
+  if (billingEnabled()) items.push({ tab: 'billing', label: 'Plan', icon: 'star' });
+  items.push({ tab: 'connections', label: 'Connections', icon: 'link' });
+  items.push({ tab: 'settings', label: 'Settings', icon: 'settings' });
+  return items;
+}
+
+/** One line under the Home greeting: which plan, and how much of it is in use. */
+function planGlance(account: AccountRecord): string {
+  if (account.access.reason === 'beta') return 'Cloud saving is open during beta';
+  if (account.plan === 'pro') return 'Unlimited cloud projects';
+  const cap = account.access.limits?.cloudProjects;
+  if (typeof cap === 'number') {
+    return `${account.projectCount.toLocaleString()} of ${cap.toLocaleString()} cloud projects`;
+  }
+  return 'The editor is free';
+}
 
 /**
  * Render statuses, as a person would say them.
@@ -1578,86 +1600,21 @@ export function DashboardPage(): JSX.Element {
           </div>
         );
 
+      case 'connections':
+        return (
+          <DashboardConnections account={account} onOpenBilling={() => openTab('billing')} />
+        );
+
       case 'settings':
         return (
-          <div className={styles.settingsPanel}>
-            {/*
-              Account: the profile header, then name / email / password /
-              devices / deletion — every write there re-reads /auth/me.
-            */}
-            <div className={styles.settingsCard} id="account-settings">
-              <div className={styles.profileHeaderRow}>
-                <div className={styles.profileAvatarLarge}>
-                  <Icon name="user" size="lg" />
-                </div>
-                <div className={styles.profileMetaInfo}>
-                  <div className={styles.profileDisplayName}>
-                    {user?.name || user?.email?.split('@')[0] || 'Account'}
-                  </div>
-                  <div className={styles.profileEmailText}>{user?.email}</div>
-                  {account && (
-                    <div className={styles.profileNodeBadge}>
-                      {`${account.plan === 'pro' ? 'Premation Cloud' : 'Free plan'} · member since ${new Date(account.createdAt).toLocaleDateString()}`}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Stated once the account has answered — never as "0 B across 0 assets". */}
-              {account && (
-                <div className={styles.storageBarSection}>
-                  <div className={styles.storageBarHeader}>
-                    <span>Storage</span>
-                    <span className={styles.monoValue}>
-                      {formatBytes(account.storageBytes)} across {account.assetCount} {account.assetCount === 1 ? 'asset' : 'assets'}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {account && (
-                <AccountSection
-                  account={account}
-                  onAccountChanged={refreshOverview}
-                  onOpenBilling={() => openTab('billing')}
-                />
-              )}
-            </div>
-
-            {/* The plan and its cloud allowance; checkout itself stays on Billing. */}
-            {account && billingEnabled() && (
-              <div className={styles.settingsCard} id="plan-settings">
-                <PlanCard account={account} onOpenBilling={() => openTab('billing')} />
-              </div>
-            )}
-
-            {/* Assistant — how the AI is powered */}
-            <div className={styles.settingsCard} id="ai-settings">
-              <h3 className={styles.settingsLabel}>Assistant</h3>
-              <AiSettingsSection />
-            </div>
-
-            {/* Claude for Premation — connect Claude Desktop / Claude Code
-                (renders nothing in a browser build). */}
-            <ClaudeConnectSection />
-
-            {/*
-              Editor preferences live on their own first-class Customize page.
-            */}
-            <div className={styles.settingsCard}>
-              <h3 className={styles.settingsLabel}>Editor preferences</h3>
-              <p className={styles.optionDesc} style={{ marginBottom: 'var(--space-3)' }}>
-                Appearance, interface scale, panel layout, editing behaviour and keyboard
-                shortcuts are on the Preferences page.
-              </p>
-              <div className={styles.settingsRow}>
-                <Button variant="secondary" onClick={() => openTab('customize')}>
-                  Open Preferences
-                </Button>
-              </div>
-            </div>
-
-          </div>
+          <DashboardSettings
+            user={user}
+            account={account}
+            onAccountChanged={refreshOverview}
+            onOpenBilling={() => openTab('billing')}
+            onOpenConnections={() => openTab('connections')}
+            onOpenPreferences={() => openTab('customize')}
+          />
         );
     }
   };
@@ -1941,8 +1898,13 @@ export function DashboardPage(): JSX.Element {
         };
       case 'billing':
         return {
-          title: 'Billing',
-          desc: 'Your plan, what’s included, and how to change or cancel.',
+          title: 'Plan',
+          desc: 'What’s included, and how to change or cancel.',
+        };
+      case 'connections':
+        return {
+          title: 'Connections',
+          desc: 'Claude, Cursor, Antigravity and ChatGPT on this computer.',
         };
       case 'plugins':
         return {
@@ -1957,7 +1919,7 @@ export function DashboardPage(): JSX.Element {
       case 'settings':
         return {
           title: 'Settings',
-          desc: 'Your account, plan, storage and the AI assistant.',
+          desc: 'Your account, and the devices signed in to it.',
         };
     }
   }, [activeTab]);
@@ -1979,14 +1941,14 @@ export function DashboardPage(): JSX.Element {
       {item.tab === 'renders' && overview.activeRenders > 0 && (
         <span className={styles.navCount} title="Renders in progress">{overview.activeRenders}</span>
       )}
+      {item.tab === 'billing' && account && (
+        <span className={`${styles.navBadge} ${account.plan === 'pro' ? styles.navBadgePro : ''}`}>
+          {account.plan === 'pro' ? 'Pro' : 'Free'}
+        </span>
+      )}
     </button>
   );
 
-  /*
-    The account's own pages live behind the account, where a desktop app keeps
-    them, instead of as three more rows in the rail. Their addresses are
-    unchanged (`?tab=settings`, `?tab=billing`).
-  */
   const accountMenu: DropdownItem[] = [
     {
       type: 'custom',
@@ -1995,11 +1957,15 @@ export function DashboardPage(): JSX.Element {
         <div className={styles.accountMenuHead}>
           <span className={styles.accountName}>{displayName}</span>
           {user?.email ? <span className={styles.accountEmail}>{user.email}</span> : null}
+          {account && billingEnabled() ? (
+            <span className={styles.accountPlan}>{account.plan === 'pro' ? 'Premation Cloud' : 'Free plan'}</span>
+          ) : null}
         </div>
       ),
     },
     { type: 'separator' },
     { type: 'item', id: 'settings', label: 'Settings', onSelect: () => openTab('settings') },
+    { type: 'item', id: 'connections', label: 'Connections', onSelect: () => openTab('connections') },
     ...(billingEnabled()
       ? [{
           type: 'item' as const,
@@ -2076,6 +2042,8 @@ export function DashboardPage(): JSX.Element {
           {NAV_LIBRARY.map((item) => navButton(item))}
           <div className={styles.navDivider} role="separator" />
           {NAV_APP.map((item) => navButton(item))}
+          <div className={styles.navDivider} role="separator" />
+          {accountNav().map((item) => navButton(item))}
         </nav>
 
         <div className={styles.railFoot}>
@@ -2092,9 +2060,19 @@ export function DashboardPage(): JSX.Element {
       <div className={styles.container}>
         <main className={styles.mainContent}>
           {activeTab === 'home' ? (
-            <h1 className={styles.welcomeTitle}>
-              Welcome to Premation{firstName ? `, ${firstName}` : ''}
-            </h1>
+            <div className={styles.welcomeBlock}>
+              <h1 className={styles.welcomeTitle}>
+                Welcome to Premation{firstName ? `, ${firstName}` : ''}
+              </h1>
+              {account && billingEnabled() && (
+                <button type="button" className={styles.planLine} onClick={() => openTab('billing')}>
+                  <span className={styles.planMark} data-plan={account.plan === 'pro' ? 'pro' : 'free'}>
+                    {account.plan === 'pro' ? 'Pro' : 'Free'}
+                  </span>
+                  <span>{planGlance(account)}</span>
+                </button>
+              )}
+            </div>
           ) : (
             <div className={styles.pageTitleRow}>
               <div className={styles.pageTitleBlock}>

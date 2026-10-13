@@ -118,6 +118,7 @@ import { trackExpressionFacts } from '@core/mirror/memberExpressions';
 import { propRefForTrack } from '@core/engine/propRefs';
 
 import { TrackContent, LaneRow } from './Lanes';
+import { assistantArriving, assistantSeen } from './assistantArrive';
 import { Keyframes } from './KeyframeLayer';
 import { useClipDrag } from './useClipDrag';
 import { useKeyframeDrag } from './useKeyframeDrag';
@@ -1032,6 +1033,22 @@ function Timeline({
   const startRow = Math.max(0, Math.floor(Math.max(0, scrollTop - TIMELINE_TOP_PADDING) / trackHeight) - 4);
   const endRow = Math.min(rows.length, startRow + visibleRowCount);
   const visibleRows = useMemo(() => rows.slice(startRow, endRow), [rows, startRow, endRow]);
+  // First sight of a layer id, and only while an assistant is working. The set
+  // is remembered outside React so a later scroll (virtualized remount) does
+  // not fade a row the user has already seen.
+  const arriving = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of rows) {
+      if (row.type === 'track' && assistantArriving(row.track.id)) ids.add(row.track.id);
+    }
+    return ids;
+  }, [rows]);
+  useEffect(() => {
+    if (arriving.size === 0) return;
+    const ids = [...arriving];
+    const timer = window.setTimeout(() => assistantSeen(ids), 320);
+    return () => window.clearTimeout(timer);
+  }, [arriving]);
 
   // ── Horizontal culling ─────────────────────────────────────────
   // The stretch of the comp worth painting: the visible screen plus one either
@@ -2413,6 +2430,7 @@ function Timeline({
                     onRowFocus={h.onRowFocus}
                     onReorderStart={row.track.locked ? noopReorderStart : h.onReorderStart}
                     style={rowStyle}
+                    arriving={arriving.has(row.track.id)}
                   />
                 );
               }
@@ -2921,6 +2939,7 @@ function Timeline({
                     onClipDown={onClipDown}
                     onClipContextMenu={onClipContextMenu}
                     onActivate={onTrackActivate}
+                    arriving={arriving.has(row.track.id)}
                   />
                 );
               }

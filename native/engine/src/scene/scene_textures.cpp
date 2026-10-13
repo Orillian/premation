@@ -611,6 +611,8 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
   if (p.is_relative() && !opts_.mediaBase.empty()) p = opts_.mediaBase / p;
   // An animated GIF / WebP imported as footage that moves (the probe's `video`)
   // is decoded frame by frame like any video; as a still, its first frame.
+  // P7b: an extension a native plugin importer claims is read by the plugin (still or moving).
+  if (const std::u8string ext = p.extension().u8string(); !ext.empty() && doc::NativeImporters::claims(std::string(ext.begin(), ext.end()))) return r.video ? plugin_image_ref(r, p, stats) : baked_still(plugin_image_ref(r, p, stats));
   if (is_still_image_path(p) && !r.video) return baked_still(image_ref(r, p, stats));
 #if defined(PREMATION_HAVE_MEDIA)
   if (media_ == nullptr) return {};
@@ -699,33 +701,6 @@ float half_bits_to_float(std::uint16_t half) noexcept {
     bits = sign | ((exp + (127 - 15)) << 23U) | (mant << 13U);
   }
   return std::bit_cast<float>(bits);
-}
-
-/// Pixel Motion's flow raster: the frame box-averaged down to fw × fh
-/// (pixelMotion.ts draws it through a canvas at FLOW_MAX_DIM).
-std::vector<std::uint8_t> box_downscale(const std::vector<std::uint8_t>& rgba, int w, int h, int fw, int fh) {
-  std::vector<std::uint8_t> out(static_cast<std::size_t>(fw) * static_cast<std::size_t>(fh) * 4);
-  for (int y = 0; y < fh; ++y) {
-    const int y0 = y * h / fh;
-    const int y1 = std::max(y0 + 1, (y + 1) * h / fh);
-    for (int x = 0; x < fw; ++x) {
-  // P7b: an extension a native plugin importer claims is read by the plugin (still or moving).
-  if (const std::u8string ext = p.extension().u8string(); !ext.empty() && doc::NativeImporters::claims(std::string(ext.begin(), ext.end()))) return r.video ? plugin_image_ref(r, p, stats) : baked_still(plugin_image_ref(r, p, stats));
-      const int x0 = x * w / fw;
-      const int x1 = std::max(x0 + 1, (x + 1) * w / fw);
-      std::array<std::uint32_t, 4> sum{};
-      for (int yy = y0; yy < y1; ++yy) {
-        for (int xx = x0; xx < x1; ++xx) {
-          const std::size_t i = (static_cast<std::size_t>(yy) * static_cast<std::size_t>(w) + static_cast<std::size_t>(xx)) * 4;
-          for (std::size_t c = 0; c < 4; ++c) sum.at(c) += rgba[i + c];
-        }
-      }
-      const auto n = static_cast<std::uint32_t>((y1 - y0) * (x1 - x0));
-      const std::size_t o = (static_cast<std::size_t>(y) * static_cast<std::size_t>(fw) + static_cast<std::size_t>(x)) * 4;
-      for (std::size_t c = 0; c < 4; ++c) out[o + c] = static_cast<std::uint8_t>((sum.at(c) + n / 2) / n);
-    }
-  }
-  return out;
 }
 
 }  // namespace
@@ -833,7 +808,7 @@ std::string SceneTextures::pixel_motion_ref(const TextureRequest& r, std::uint32
   std::string nearest = media::media_hash(id, near.index, near.bottom, r.fields);  // not const: returned by move
   if (a.index == b.index || a.bottom || b.bottom || dev_ == nullptr || mediaFrames_ == nullptr) return nearest;
   std::array<char, 96> sig{};
-  std::snprintf(sig.data(), sig.size(), "img:pm:%u:%lld:%lld:%.4f:%c", id, static_cast<long long>(a.index),  // NOLINT(cppcoreguidelines-pro-type-vararg)
+  std::snprintf(sig.data(), sig.size(), "img:pm2:%u:%lld:%lld:%.4f:%c", id, static_cast<long long>(a.index),  // NOLINT(cppcoreguidelines-pro-type-vararg)
                 static_cast<long long>(b.index), t, r.fields != 0 ? r.fields : '-');
   std::string hash(sig.data());
   if (find(hash)) return hash;
@@ -859,22 +834,20 @@ std::string SceneTextures::pixel_motion_ref(const TextureRequest& r, std::uint32
   }
 
   // The flow is a function of the frame PAIR (every comp frame inside the
-  // bracket reuses it), estimated at ≤ 384 px; the warp runs per weight at
-  // full resolution (pixelMotion.ts). Render thread only, like the feed.
+  // bracket reuses it), estimated both ways on a ≤ 512 px pyramid; the
+  // in-between is resolved per weight at full resolution (pixel_motion.hpp
+  // interpolate_pair). Render thread only; rows split on the bake pool when
+  // no bake holds it (as bake_chain.cpp borrows it), else inline — same bytes.
+  const pixmo::RowRunner rows = [this](int n, const std::function<void(int, int)>& fn) {
+    const std::unique_lock<std::mutex> lock(bakePoolM_, std::try_to_lock);
+    effects::for_rows(lock.owns_lock() ? bakePool_.get() : nullptr, n, fn, 4);
+  };
   const std::string pairKey = std::to_string(id) + "|" + std::to_string(a.index) + "|" + std::to_string(b.index);
   auto flowIt = std::ranges::find(flows_, pairKey, &FlowEntry::key);
   if (flowIt == flows_.end()) {
-    constexpr double kFlowMaxDim = 384;
-    const double scale = std::min(1.0, kFlowMaxDim / std::max(w, h));
-    const int fw = std::max(8, static_cast<int>(std::lround(w * scale)));
-    const int fh = std::max(8, static_cast<int>(std::lround(h * scale)));
-    const std::vector<std::uint8_t> sa = box_downscale(pa, w, h, fw, fh);
-    const std::vector<std::uint8_t> sb = box_downscale(pb, w, h, fw, fh);
     FlowEntry fe;
     fe.key = pairKey;
-    fe.flow = pixmo::compute_flow(pixmo::luma_int_of(sa, fw, fh), pixmo::luma_int_of(sb, fw, fh), fw, fh);
-    fe.fw = fw;
-    fe.fh = fh;
+    fe.flow = pixmo::estimate_pair_flow(pa, pb, w, h, pixmo::kPairFlowMaxDim, rows);
     flows_.push_front(std::move(fe));
     constexpr std::size_t kFlowCacheMax = 4;  // FLOW_CACHE_MAX
     while (flows_.size() > kFlowCacheMax) flows_.pop_back();
@@ -887,8 +860,7 @@ std::string SceneTextures::pixel_motion_ref(const TextureRequest& r, std::uint32
   e->width = static_cast<std::uint32_t>(w);
   e->height = static_cast<std::uint32_t>(h);
   e->rgba.resize(pa.size());
-  pixmo::warp_blend(pa, pb, w, h, flowIt->flow, static_cast<double>(w) / flowIt->fw, static_cast<double>(h) / flowIt->fh, t,
-                    e->rgba);
+  pixmo::interpolate_pair(pa, pb, w, h, flowIt->flow, t, e->rgba, rows);
   // A Fields interpretation treats the in-between as it treats any frame (setFrame's fields).
   if (r.fields != 0) pixmo::deinterlace_data(e->rgba, w, h, r.fields == 'u');
   insert(hash, std::move(e));

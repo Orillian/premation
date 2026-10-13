@@ -10,27 +10,19 @@
   align-items: center;
   gap: 6px;
   z-index: 1;
-  padding: 3px 10px;
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  transition: background var(--motion-duration-fast) var(--motion-ease-standard),
-              border-color var(--motion-duration-fast) var(--motion-ease-standard);
   min-width: 0;
   /* Never wider than the slot a host gives it: the title bar's centre is
      whatever the menu bar and the window controls leave over. */
   max-width: 100%;
   box-sizing: border-box;
   -webkit-app-region: no-drag;
-}
-
-.status:hover {
-  background: var(--color-surface-3);
-  border-color: var(--color-border-strong);
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
 .compact {
-  padding: 2px 8px;
+  padding: 0;
 }
 
 .name {

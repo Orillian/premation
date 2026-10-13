@@ -189,3 +189,59 @@
   color: var(--color-text-tertiary);
   flex: none;
 }
+
+/* Assistant at work: name, the current step, Stop. One line with the rest of the bar. */
+.work {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--color-text-primary);
+}
+
+.workDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.workName {
+  flex: none;
+}
+
+.workTask,
+.workGroup {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary);
+}
+
+.workGroup {
+  max-width: 16em;
+}
+
+.workStop {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.workStop:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-3);
+}
+
+.workStop:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

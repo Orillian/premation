@@ -8,7 +8,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@components/Button';
-import { billingEnabled } from '@core/config/edition';
+import { billingEnabled, cloudProjectsEnabled } from '@core/config/edition';
 import type { StoreMessage } from '@hooks/usePluginStore';
 import styles from './NativePlugins.module.css';
 
@@ -28,7 +28,8 @@ export function StoreMessageLine({ message }: { message: StoreMessage | null }):
       {message.text}
     </span>
   );
-  if (!message.upgrade || !billingEnabled()) return text;
+  // /dashboard exists only under cloudProjectsEnabled() (AppRouter).
+  if (!message.upgrade || !billingEnabled() || !cloudProjectsEnabled()) return text;
   return (
     <div className={styles.toolbar}>
       {text}

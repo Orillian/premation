@@ -57,6 +57,42 @@ const LABELS: Record<string, string> = {
 };
 
 /** "add_kinetic_title" → "Add kinetic title" for anything not listed. */
+/** Who is on the pipe, in words. Cursor, Antigravity and ChatGPT use the same connection. */
+export function mcpClientLabel(name: string): string {
+  const n = name.trim();
+  if (!n) return '';
+  if (/cursor/i.test(n)) return 'Cursor';
+  if (/antigravity|gemini/i.test(n)) return 'Antigravity';
+  if (/codex|chatgpt|openai/i.test(n)) return 'ChatGPT';
+  if (/claude-?code/i.test(n)) return 'Claude Code';
+  if (/claude/i.test(n)) return 'Claude';
+  if (/\s/.test(n)) return n;
+  return n.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * The name on the pill, the panel and the status line.
+ *
+ * A live client wins. Otherwise every app that is actually connected is
+ * named — including Claude, when its extension is installed. Claude is not
+ * the fallback for Cursor, Antigravity or ChatGPT.
+ */
+export function assistantName(setup: {
+  configured: boolean;
+  bridge: { clients: Array<{ name: string }> };
+  apps?: Array<{ name: string; state: string }>;
+} | null | undefined): string {
+  if (!setup) return 'Assistant';
+  const live = [...new Set(setup.bridge.clients.map((c) => mcpClientLabel(c.name)).filter(Boolean))];
+  if (live.length > 0) return live.join(' · ');
+  const ready = (setup.apps ?? []).filter((a) => a.state === 'ok').map((a) => a.name);
+  if (setup.configured) ready.unshift('Claude');
+  const unique = [...new Set(ready)];
+  if (unique.length === 1) return unique[0]!;
+  if (unique.length > 1) return unique.join(' · ');
+  return 'Assistant';
+}
+
 export function claudeToolLabel(tool: string | null | undefined): string {
   if (!tool) return '';
   const known = LABELS[tool];

@@ -695,7 +695,6 @@
   "account.password.setIntro": "Add a password so you can sign in without Google.",
   "account.password.setOpen": "Set a password",
   "account.password.setTitle": "Set a password",
-  "account.sessions.label": "Devices",
   "account.sessions.loading": "Loading devices…",
   "account.sessions.none": "No other devices are signed in.",
   "account.sessions.othersSignedOut": "Signed out of {n} other devices.",

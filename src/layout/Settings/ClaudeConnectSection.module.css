@@ -19,11 +19,6 @@
   gap: 12px;
 }
 
-.logo {
-  flex: none;
-  border-radius: 8px;
-}
-
 .headText {
   flex: 1;
   min-width: 0;
@@ -365,6 +360,36 @@
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+}
+
+.appList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.appRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.appHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.appName {
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .code {

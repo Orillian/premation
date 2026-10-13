@@ -22,6 +22,7 @@ import { getEventBus } from '@core/events/EventBus';
 import { useProjectStore } from '@stores/projectStore';
 import { useMirrorSelect } from '@hooks/useMirror';
 import { useEngineOwnsDocument } from '@hooks/useEngineViewport';
+import { displayProjectName, looksLikeProjectId } from '@core/project/projectName';
 import styles from './ProjectStatus.module.css';
 
 /** Module-level so a remount (route change, pop-out) does not forget it. */
@@ -68,7 +69,7 @@ function useLastSaved(): number | null {
   return at;
 }
 
-export function ProjectStatus({ compact = false }: { compact?: boolean }): JSX.Element {
+export function ProjectStatus({ compact = false }: { compact?: boolean }): JSX.Element | null {
   /*
     TOLERATES AN UNBOOTED CORE, and must.
 
@@ -105,7 +106,11 @@ export function ProjectStatus({ compact = false }: { compact?: boolean }): JSX.E
   const dirty = useEngineOwnsDocument() ? engineDirty : tabDirty;
   const savedAt = useLastSaved();
 
-  const name = current?.name;
+  const raw = current?.name?.trim() ?? '';
+  const name = raw ? displayProjectName(raw) : '';
+  // A cloud open is addressed by its backend id. That id is not a title, and
+  // it used to sit in a bordered chip beside the assistant pill.
+  if (!name || looksLikeProjectId(name)) return null;
   const ago = savedAt !== null ? formatAgo(savedAt, Date.now()) : null;
   // Always carries the FULL name: the chip truncates, and this is where the
   // rest of it can still be read.

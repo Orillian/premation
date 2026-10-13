@@ -118,7 +118,20 @@ std::vector<std::uint32_t> bridge_hole(const std::vector<Pt2>& verts, const std:
   return merged;
 }
 
-/// polygonTriangulate.ts earClipRing.
+/// Inside the triangle or ON one of its edges (corners included).
+bool inside_or_on(Pt2 p, Pt2 a, Pt2 b, Pt2 c) noexcept {
+  const double d1 = cross(b.x - a.x, b.y - a.y, p.x - a.x, p.y - a.y);
+  const double d2 = cross(c.x - b.x, c.y - b.y, p.x - b.x, p.y - b.y);
+  const double d3 = cross(a.x - c.x, a.y - c.y, p.x - c.x, p.y - c.y);
+  return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+}
+
+/// polygonTriangulate.ts earClipRing, with one correction: a REFLEX vertex
+/// lying on the ear's diagonal blocks the ear. The strict-inside test let a
+/// "T" clip its whole bar as one triangle straight through the two inner
+/// corners under it (collinear with the bar's underside); the rest of the ring
+/// then overlapped itself and the next ears fell outside the glyph — the back
+/// cap showed as a wedge beside the stem (T, E, F, H, L, t, 4 …).
 std::vector<std::uint32_t> ear_clip_ring(const std::vector<Pt2>& verts, std::vector<std::uint32_t> ring) {
   std::vector<std::uint32_t> tris;
   const std::size_t n0 = ring.size();
@@ -151,13 +164,16 @@ std::vector<std::uint32_t> ear_clip_ring(const std::vector<Pt2>& verts, std::vec
       continue;
     }
     bool ear = isConvex(i);
+    // A whole lap without an ear: fall back to the strict test so a
+    // degenerate ring still finishes rather than leaving a hole in the cap.
+    const bool relaxed = guard > n;
     if (ear) {
       for (std::size_t j = 0; j < n; ++j) {
         const std::uint32_t ij = ring[j];
         if (ij == ia || ij == ib || ij == ic) continue;
         const Pt2 p = verts[ij];
         if (same_point(p, a) || same_point(p, b) || same_point(p, c)) continue;
-        if (strictly_inside(p, a, b, c)) {
+        if (strictly_inside(p, a, b, c) || (!relaxed && !isConvex(j) && inside_or_on(p, a, b, c))) {
           ear = false;
           break;
         }
@@ -639,6 +655,34 @@ double clamp_mesh_bevel(std::span<const Ring> rings, double depth, double bevel)
     if (per <= 0) continue;
     thinnest = jmin(thinnest, std::abs(signed_area(pts)) / per);
   }
+  // A ring alone says nothing about the stroke between an outline and its
+  // holes: an "o" outer ring is fat, but its band is thin, and a bevel past
+  // half the band pushes the hole's inset out through the outer one (the
+  // counter is lost and the cap fills it). Net area over the group's whole
+  // perimeter is half the band's mean width, as area / perimeter is for a stem.
+  for (const RingGroup& g : group_rings(rings)) {
+    if (g.holes.empty()) continue;
+    const auto perimeter = [](const std::vector<Pt2>& pts) {
+      double per = 0;
+      for (std::size_t i = 0; i < pts.size(); ++i) {
+        const Pt2 a = pts[i];
+        const Pt2 b = pts[wrap(i + 1, pts.size())];
+        per += hyp2(b.x - a.x, b.y - a.y);
+      }
+      return per;
+    };
+    const std::vector<Pt2> outer = dedupe_ring(g.outer);
+    if (outer.size() < 3) continue;
+    double net = std::abs(signed_area(outer));
+    double per = perimeter(outer);
+    for (const auto& h : g.holes) {
+      const std::vector<Pt2> pts = dedupe_ring(h);
+      if (pts.size() < 3) continue;
+      net -= std::abs(signed_area(pts));
+      per += perimeter(pts);
+    }
+    if (per > 0 && net > 0) thinnest = jmin(thinnest, net / per);
+  }
   if (!std::isfinite(thinnest)) return 0;
   return jmax(0, jmin3(bevel, depth / 2, thinnest * 0.8));
 }
@@ -646,7 +690,7 @@ double clamp_mesh_bevel(std::span<const Ring> rings, double depth, double bevel)
 std::optional<ExtrudedMesh> extrude_outline(std::span<const Ring> rings, const ExtrudeOptions& opts) {
   const double depth = jmax(0, opts.depth);
   if (depth <= 0) return std::nullopt;
-  const double bevel = clamp_mesh_bevel(rings, depth, opts.bevel);
+  double bevel = clamp_mesh_bevel(rings, depth, opts.bevel);
   const BevelProfile style = opts.bevelStyle;
   const std::uint32_t segs =
       style == BevelProfile::angular
@@ -657,14 +701,64 @@ std::optional<ExtrudedMesh> extrude_outline(std::span<const Ring> rings, const E
   const bool frontBevel = opts.frontBevel;
   const double holeScale = jmax(0, jmin(1, opts.holeBevelScale));
 
-  std::vector<PreparedRing> prepared;
-  for (const Ring& r : rings) {
-    const double rb = r.hole ? bevel * holeScale : bevel;
-    auto p = prepare_ring(r.points, r.hole, rb, smoothCos);
-    if (p) {
-      p->bevel = rb;
-      prepared.push_back(std::move(*p));
+  const auto prepareAll = [&](double b) {
+    std::vector<PreparedRing> out;
+    for (const Ring& r : rings) {
+      const double rb = r.hole ? b * holeScale : b;
+      auto p = prepare_ring(r.points, r.hole, rb, smoothCos);
+      if (p) {
+        p->bevel = rb;
+        out.push_back(std::move(*p));
+      }
     }
+    return out;
+  };
+  // Every hole's inset must stay inside its outline's inset; where the band
+  // is locally thinner than the clamp's mean, they cross — halve the bevel.
+  const auto insetsCross = [](const std::vector<PreparedRing>& rs) {
+    for (const PreparedRing& h : rs) {
+      if (!h.hole || h.outline.empty()) continue;
+      const PreparedRing* owner = nullptr;
+      double ownerArea = kInf;
+      for (const PreparedRing& o : rs) {
+        if (o.hole || !point_in_ring(h.outline[0], o.outline)) continue;
+        const double a = std::abs(signed_area(o.outline));
+        if (a < ownerArea) {
+          ownerArea = a;
+          owner = &o;
+        }
+      }
+      if (owner == nullptr || (h.bevel <= 0 && owner->bevel <= 0)) continue;
+      const std::vector<Pt2>& hi = h.inset;
+      const std::vector<Pt2>& oi = owner->inset;
+      for (const Pt2& p : hi) {
+        if (!point_in_ring(p, oi)) return true;
+      }
+      // Vertices inside is not enough: an edge can still cut a corner.
+      for (std::size_t i = 0; i < hi.size(); ++i) {
+        const Pt2 a = hi[i];
+        const Pt2 b = hi[wrap(i + 1, hi.size())];
+        for (std::size_t j = 0; j < oi.size(); ++j) {
+          const Pt2 c = oi[j];
+          const Pt2 d = oi[wrap(j + 1, oi.size())];
+          const double d1 = cross(d.x - c.x, d.y - c.y, a.x - c.x, a.y - c.y);
+          const double d2 = cross(d.x - c.x, d.y - c.y, b.x - c.x, b.y - c.y);
+          const double d3 = cross(b.x - a.x, b.y - a.y, c.x - a.x, c.y - a.y);
+          const double d4 = cross(b.x - a.x, b.y - a.y, d.x - a.x, d.y - a.y);
+          if (((d1 > 0) != (d2 > 0)) && d1 != 0 && d2 != 0 && ((d3 > 0) != (d4 > 0)) && d3 != 0 && d4 != 0) return true;
+        }
+      }
+    }
+    return false;
+  };
+  std::vector<PreparedRing> prepared = prepareAll(bevel);
+  for (int tries = 0; tries < 4 && bevel > 0 && insetsCross(prepared); ++tries) {
+    bevel = bevel / 2 <= 0.25 ? 0 : bevel / 2;
+    prepared = prepareAll(bevel);
+  }
+  if (bevel > 0 && insetsCross(prepared)) {
+    bevel = 0;
+    prepared = prepareAll(0);
   }
   if (prepared.empty()) return std::nullopt;
 

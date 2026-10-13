@@ -19,13 +19,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@components/Icon';
-import { Logo } from '@components/Logo';
+import { BrandMark } from '@components/BrandMark';
 import { billingEnabled } from '@core/config/edition';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import { useClaudeStore } from '@stores/claudeStore';
 import { CLAUDE_REQUIRES_PRO, mcpDevPlan } from '@core/ai/mcp/mcpAccess';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import type { ClaudeTestStep } from '@app-types/motionEditor';
+import { mcpClientLabel } from '@components/claude/claudeLabels';
 import styles from './ClaudeConnectSection.module.css';
 
 const EXAMPLES = [
@@ -37,7 +38,7 @@ const EXAMPLES = [
 type Busy = 'connect' | 'config' | 'disconnect' | 'repair' | 'test' | 'enable' | null;
 
 function clientName(name: string): string {
-  return /claude-?code/i.test(name) ? 'Claude Code' : /claude/i.test(name) ? 'Claude Desktop' : name;
+  return /claude/i.test(name) && !/code/i.test(name) ? 'Claude Desktop' : mcpClientLabel(name);
 }
 
 function since(ms: number): string {
@@ -135,13 +136,15 @@ export function ClaudeConnectSection(): JSX.Element | null {
   });
 
   const disconnect = (): Promise<void> => run('disconnect', async () => {
+    const others = (status?.apps ?? []).filter((a) => a.state === 'ok' || a.state === 'stale').map((a) => a.name);
+    const paused = others.length ? ` ${others.join(' and ')} will connect again after you turn Premation back on.` : '';
     const r = await api.disconnect();
     setStatus(r.status);
     setSteps(null);
     setWaitingInstall(false);
     if (r.problems.length) setError(`Premation was turned off, but Claude’s settings could not be edited: ${r.problems.join('; ')}`);
-    else if (r.extensionInstalled) setNote('Premation stopped accepting Claude. To remove it from Claude too: Claude Desktop → Settings → Extensions → Premation → Uninstall.');
-    else setNote('Disconnected.');
+    else if (r.extensionInstalled) setNote(`Premation stopped accepting connections.${paused} To remove it from Claude too: Claude Desktop → Settings → Extensions → Premation → Uninstall.`);
+    else setNote(`Disconnected.${paused}`);
   });
 
   const repair = (): Promise<void> => run('repair', async () => {
@@ -185,7 +188,7 @@ export function ClaudeConnectSection(): JSX.Element | null {
   return (
     <section className={styles.card} aria-labelledby="claude-connect-title">
       <header className={styles.head}>
-        <Logo variant="mark" size={32} className={styles.logo} />
+        <BrandMark brand="claude" size={32} />
         <div className={styles.headText}>
           <h3 id="claude-connect-title" className={styles.title}>Claude for Premation</h3>
           <p className={styles.lede}>Ask Claude to create and edit motion graphics in Premation. Claude works in the project you have open — or makes a new one — and you watch it happen.</p>

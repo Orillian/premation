@@ -936,9 +936,9 @@ int run_export(const std::string& jobPath) {
   // ── audio (exportAudioBytes: the picture's exact range, 48 kHz 16-bit WAV) ──
   std::vector<std::string> warnings;
   std::optional<std::string> audioPath;
-  if (job.audio) {
   std::vector<std::vector<float>> pluginAudio;  // P7c: the mix, for a plugin output module's WRITE_AUDIO
   int pluginAudioRate = 0;
+  if (job.audio) {
     const auto t0 = Clock::now();
     sc::CompAudioMix mix;
     DocCopy& dc = *docs.front();
@@ -956,11 +956,11 @@ int run_export(const std::string& jobPath) {
       ctl.emit(error_line(true, "audio: " + mix.notes.front()));
       return kExitFallback;
     }
-    if (mix.audible) {
     if (mix.audible && job.sequence.starts_with("plugin:")) {
       pluginAudio = mix.channels;
       pluginAudioRate = mix.sampleRate;
     }
+    if (mix.audible) {
       const fs::path wav = u8path(job.workDir) / "audio.wav";
       if (!write_wav16(wav, mix.channels, mix.sampleRate)) {
         ctl.emit(error_line(false, "could not write the audio mix to " + wav.string()));
@@ -1009,8 +1009,8 @@ int run_export(const std::string& jobPath) {
   const bool asZip = job.sequence.size() > 4 && job.sequence.ends_with("-zip");
   const bool asExr = job.sequence == "exr" || job.sequence == "exr-zip";
   const bool asJpg = job.sequence == "jpg" || job.sequence == "jpg-zip";
-  std::string bin = job.encodeBin.value_or("");
   const bool viaPlugin = job.sequence.starts_with("plugin:");  // P7c
+  std::string bin = job.encodeBin.value_or("");
   std::vector<std::string> args = job.encodeArgs;
   if (!sequence && !job.encodeBin && !ctl.wait_encode(bin, args)) return kExitCancelled;
 
@@ -1103,9 +1103,9 @@ int run_export(const std::string& jobPath) {
   const std::int64_t total = plan.frames();
   const auto wpx = static_cast<std::uint32_t>(plan.width);
   const auto hpx = static_cast<std::uint32_t>(plan.height);
+  std::string sinkFailure;  // P7c: why the output module refused a frame
   const auto sink = [&](const OutFrame& f) {
     if (ctl.cancelled()) return false;
-  std::string sinkFailure;  // P7c: why the output module refused a frame
     if (pluginOut) {
       plugins::export_frame_to_float(f.rgba, plan.depth, pluginFrame);
       std::string perr;
@@ -1155,9 +1155,9 @@ int run_export(const std::string& jobPath) {
   std::string failure;
   const int code = pipeline.run(*renderer, textures, job.inFlight, sink, failure);
   stats.renderMs = ms_since(tRender);
+  if (code != kExitOk && !sinkFailure.empty()) failure = sinkFailure;
   if (code != kExitOk) {
     if (child) child->kill();
-  if (code != kExitOk && !sinkFailure.empty()) failure = sinkFailure;
     if (code == kExitCancelled || ctl.cancelled()) return kExitCancelled;
     if (code == kExitFailed) {
       const std::string tail = tail_of(ffLog, 600);

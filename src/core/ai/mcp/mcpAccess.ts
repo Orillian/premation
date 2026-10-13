@@ -11,8 +11,8 @@
  *   • signed out: ask to sign in;
  *   • no decision cached yet: fetch it once, then decide;
  *   • `plan === 'pro'`: allowed; anything else: the upgrade sentence —
- *     only while `CLAUDE_REQUIRES_PRO` is on (it is off for now: any
- *     signed-in account may use it).
+ *     only while `CLAUDE_REQUIRES_PRO` is on (it is off: assistant
+ *     connections are on the Free plan).
  *
  * DEVELOPMENT ONLY: `VITE_MCP_DEV_PLAN=pro` (or `free`) in `.env.local` stands in
  * for the server's answer, so the MCP can be used — or the refusal tested —
@@ -33,8 +33,10 @@ export const NEEDS_SIGN_IN =
   'Sign in to Premation to use Claude for Premation.';
 
 /**
- * Is Claude for Premation a Pro-only feature? OFF for now (owner decision
- * 2026-10-08): every signed-in account may use it, Free included. Turning it
+ * Is Claude for Premation a Pro-only feature? No — assistant connections
+ * (Claude, ChatGPT, Cursor, Antigravity) are on the Free plan (owner decisions
+ * 2026-10-08, confirmed 2026-10-13); Premation's own plugins are what the paid
+ * plan adds. Every signed-in account may use it. Turning it
  * back on is this one line — the gate, its messages, the Settings card notice
  * and the tests all follow it.
  */

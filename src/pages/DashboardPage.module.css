@@ -160,6 +160,12 @@
   white-space: nowrap;
 }
 
+.accountPlan {
+  margin-top: 4px;
+  font-size: var(--font-size-micro);
+  color: var(--color-text-secondary);
+}
+
 /* ── 2. Shell: rail + content ────────────────────────────────────────────── */
 .shell {
   flex: 1;
@@ -309,6 +315,22 @@
   font-variant-numeric: tabular-nums;
 }
 
+.navBadge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: var(--font-size-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.navBadgePro {
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
 .railFoot {
   display: flex;
   flex-direction: column;
@@ -380,13 +402,54 @@
 }
 
 /** Home's greeting: the one line on the dashboard set large and light. */
+.welcomeBlock {
+  margin: 0 0 24px;
+}
+
 .welcomeTitle {
   font-size: var(--font-size-3xl);
   font-weight: 300;
   letter-spacing: -0.005em;
   color: var(--color-text-primary);
-  margin: 0 0 24px;
+  margin: 0;
   text-wrap: balance;
+}
+
+.planLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.planLine:hover {
+  color: var(--color-text-primary);
+}
+
+.planLine:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.planMark {
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: var(--font-size-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.planMark[data-plan='pro'] {
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
 }
 
 .pageSubtitle {

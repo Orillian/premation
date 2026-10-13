@@ -39,6 +39,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import type { KeyChord } from '@app-types/common';
 import { AiSettingsSection } from './AiSettingsSection';
 import { ClaudeConnectSection } from './ClaudeConnectSection';
+import { McpAppsSection } from './McpAppsSection';
 import { ExportSettingsSection } from './ExportSettingsSection';
 import { UpdatesControl } from './UpdatesControl';
 import { ObjectMatteControl } from './ObjectMatteControl';
@@ -1139,6 +1140,7 @@ export function Customize({ initialTab = 'shortcuts' }: { initialTab?: Tab }): J
           <div className={styles.section}>
             <AiSettingsSection />
             <ClaudeConnectSection />
+            <McpAppsSection />
           </div>
         ) : (
           <AppearanceTab />
