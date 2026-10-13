@@ -459,10 +459,16 @@ process. Declare `PR_OUT_FLAG_CUSTOM_OVERLAY` in `GLOBAL_SETUP`, then:
 
 - `PR_CMD_DRAW_OVERLAY` (`PrOverlayExtra`: the layer size): call
   `overlay_line`, `overlay_path` and `overlay_handle` with layer-pixel
-  coordinates. The params are the effect's values at the viewer's time. The
-  engine runs this when it builds overlay geometry (`overlay_geometry.cpp`);
-  the editor maps the list with the layer, as it maps a mask. Limits: 256
-  items, 2048 points per call, 192 per path; extra items are dropped.
+  coordinates — the same layer px the render takes (`(0, 0)` the top-left of
+  the layer's box as drawn, `PrInData.layer_to_world`), so a handle at a
+  POINT param's value sits where the plugin draws it on every layer kind. The
+  params are the effect's values at the viewer's time and the layer size is the
+  document's (an overlay needs no render first). The engine runs this when it
+  builds overlay geometry (`overlay_geometry.cpp`), takes the items into the
+  layer's local space (`handlers_native.hpp` `NativeLayerFrame`: centred on the
+  layer's origin, a 2D layer's anchor out) and the editor maps them with the
+  layer, as it maps a mask. Limits: 256 items, 2048 points per call, 192 per
+  path; extra items are dropped.
 - `PR_CMD_OVERLAY_DRAG` (`PrOverlayDragExtra`: handle id, phase
   `BEGIN`/`MOVE`/`END`, pointer and start in layer px): write params with
   `set_param_value` (an animated param keys at the current time) or

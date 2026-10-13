@@ -11,6 +11,7 @@
 #include <optional>
 #include <set>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "jsmath.hpp"
@@ -390,8 +391,12 @@ const Node* view_camera_node(const std::vector<const Node*>& nodes, const std::s
 /// `seconds`. The effect's params are its static values with its animated tracks (`effect.<id>.<key>`)
 /// evaluated at the frame, so a keyed handle draws where the frame shows it. A plugin that fails
 /// to draw contributes nothing: an overlay never breaks a frame.
-void plugin_overlay_of(const PCtx& pc, const Node& n, const std::string& layer, double seconds, api::OverlayLayerGeometry& g) {
+void plugin_overlay_of(const PCtx& pc, TextQueries* text, const Node& n, const std::string& layer, double seconds,
+                       api::OverlayLayerGeometry& g) {
   std::optional<Values> av;
+  // Layer px (the plugin's: (0, 0) the box's top-left) → the local space `transform` maps.
+  std::optional<NativeLayerFrame> frame;
+  bool framed = false;
   for (const Json& e : read_node_effects(n)) {
     const std::string type = e.at("type").is_string() ? e.at("type").str() : "";
     const NativeEffect* ne = NativeEffects::find(type);
@@ -400,6 +405,11 @@ void plugin_overlay_of(const PCtx& pc, const Node& n, const std::string& layer, 
     const std::string effectId = e.at("id").is_string() ? e.at("id").str() : "";
     NativeActionRequest req = native_request(pc.d, n, layer, effectId, e, *ne, seconds_to_flicks(seconds));
     if (!av) av = values_at(pc, layer, seconds);
+    if (!framed) {
+      frame = native_layer_frame(SpaceCtx{pc.d, pc.view, pc.expr, pc.cache}, text, layer, seconds);
+      framed = true;
+    }
+    native_use_layer_frame(req, frame);
     const std::string prefix = "effect." + effectId + ".";
     for (const auto& [k, v] : *av) {
       if (k.starts_with(prefix)) req.params.set(k.substr(prefix.size()), Json::number(v));
@@ -413,6 +423,11 @@ void plugin_overlay_of(const PCtx& pc, const Node& n, const std::string& layer, 
         o.effect = "effects/" + effectId;
         o.kind = std::move(i.kind);
         o.points = std::move(i.points);
+        if (i.space == 0 && frame) {
+          for (std::size_t k = 0; k + 1 < o.points.size(); k += 2) {
+            std::tie(o.points[k], o.points[k + 1]) = frame->to_local(o.points[k], o.points[k + 1]);
+          }
+        }
         o.closed = i.closed;
         o.color = std::move(i.color);
         o.handle = i.handle;
@@ -656,7 +671,7 @@ std::vector<api::OverlayLayerGeometry> overlay_geometry(const PCtx& pc, TextQuer
     if (wants(api::OverlayKind::text_box)) text_box_of(pc, text, layer, seconds, g);
     // rig (pins / bones): not produced yet — the rig sampler is scene-side (ENGINE_API.md §15.12).
     if (wants(api::OverlayKind::scene3d)) g.scene = scene3d_of(pc, layer, seconds);
-    if (wants(api::OverlayKind::plugin)) plugin_overlay_of(pc, *n, layer, seconds, g);
+    if (wants(api::OverlayKind::plugin)) plugin_overlay_of(pc, text, *n, layer, seconds, g);
     out.push_back(std::move(g));
   }
   return out;

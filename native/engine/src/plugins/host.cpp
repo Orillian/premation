@@ -2500,6 +2500,10 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
       in.layerH = it->second->layerH.load(std::memory_order_relaxed);
     }
   }
+  if (req.layerSize) {  // an overlay call: the layer as the document places it (rendered or not)
+    in.layerW = static_cast<std::int32_t>(std::lround(req.layerSize->first));
+    in.layerH = static_cast<std::int32_t>(std::lround(req.layerSize->second));
+  }
   // SDK 1.2: an overlay call reads the comp camera / lights / LAYER matrices the request carries.
   const bool overlayScene = req.scene.has_value() && (cmd == PR_CMD_DRAW_OVERLAY || cmd == PR_CMD_OVERLAY_DRAG);
   if (overlayScene) decode_overlay_scene(*req.scene, *e, in);

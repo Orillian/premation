@@ -121,6 +121,10 @@ struct NativeActionRequest {
   std::optional<double> layerTimeSeconds;
   /// SDK 1.2: the comp camera / lights / LAYER matrices for DRAW_OVERLAY / OVERLAY_DRAG (fill_scene).
   std::optional<NativeScene> scene;
+  /// The layer's size in layer px as the document places it (DRAW_OVERLAY / OVERLAY_DRAG:
+  /// native_layer_frame). Wins over the size the instance's last render saw, which is none
+  /// before the first render.
+  std::optional<std::pair<double, double>> layerSize;
 };
 
 /// What the plugin changed.

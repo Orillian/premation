@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <system_error>
+#include <tuple>
 #include <variant>
 
 #include "anim.hpp"
@@ -164,6 +167,49 @@ NativeActionRequest native_request(const Document& d, const Node& node, const st
   return request_for(d, node, layer, effectId, e, ne, time);
 }
 
+namespace {
+/// The frame each layer's last measured overlay draw used: a drag (no text measurer in a
+/// command) maps a text layer's pointer the way the viewer drew its handle.
+std::mutex g_frameMutex;                                    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+std::map<std::string, NativeLayerFrame, std::less<>> g_frames;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+}  // namespace
+
+std::optional<NativeLayerFrame> native_layer_frame(const SpaceCtx& c, TextQueries* text, const std::string& layer, double seconds) {
+  std::optional<LayerGeometry> g;
+  try {
+    g = layer_geometry_at(c, text, layer, seconds);
+  } catch (const EngineFail&) {
+    g = std::nullopt;  // a text layer with no measurer here
+  }
+  if (!g) {
+    const std::scoped_lock lock(g_frameMutex);
+    const auto it = g_frames.find(layer);
+    if (it == g_frames.end() || c.d.node(layer) == nullptr) return std::nullopt;
+    return it->second;
+  }
+  NativeLayerFrame f;
+  f.width = g->width;
+  f.height = g->height;
+  f.ox = g->offsetX - g->width / 2;
+  f.oy = g->offsetY - g->height / 2;
+  if (const Node* n = c.d.node(layer); n != nullptr && !is_3d_enabled(*n)) {
+    if (const auto local = local_3d_at(c, *n, seconds)) {
+      f.ox -= local->anchor_x;
+      f.oy -= local->anchor_y;
+    }
+  }
+  if (text != nullptr) {
+    const std::scoped_lock lock(g_frameMutex);
+    if (g_frames.size() > 4096) g_frames.clear();
+    g_frames.insert_or_assign(layer, f);
+  }
+  return f;
+}
+
+void native_use_layer_frame(NativeActionRequest& req, const std::optional<NativeLayerFrame>& frame) {
+  if (frame && frame->width > 0 && frame->height > 0) req.layerSize = std::make_pair(frame->width, frame->height);
+}
+
 api::EffectUi native_effect_ui(const Document& d, const std::string& layer, const std::string& path, api::Time time) {
   const Node& node = require_layer(d, layer);
   const std::vector<std::string> seg = split(path, '/');
@@ -285,7 +331,12 @@ void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c) {
     fail(ErrorCode::not_found, "no plugin effect with a viewer overlay at '" + group.path + "'", {.layer = group.layer, .path = group.path});
   }
   NativeActionRequest req = native_request(d, node, group.layer, seg[1], *e, *ne, x.time);
-  NativeEffects::fill_scene(SpaceCtx{d, x.view, x.expr, x.cache}, req);  // SDK 1.2: the comp camera & co. at the drag's time
+  const SpaceCtx sc{d, x.view, x.expr, x.cache};
+  NativeEffects::fill_scene(sc, req);  // SDK 1.2: the comp camera & co. at the drag's time
+  // A layer-space handle's pointer arrives in the layer's local space (the overlay push's
+  // frame); the plugin takes layer px, sized as the document places the layer.
+  const std::optional<NativeLayerFrame> frame = native_layer_frame(sc, nullptr, group.layer, flicks_to_seconds(x.time));
+  native_use_layer_frame(req, frame);
   NativeOverlayDrag drag;
   drag.handle = c.handle;
   drag.phase = static_cast<std::int32_t>(std::min<std::uint32_t>(c.phase, 2));
@@ -293,6 +344,10 @@ void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c) {
   drag.y = c.y;
   drag.startX = c.start_x;
   drag.startY = c.start_y;
+  if (c.space == 0 && frame) {
+    std::tie(drag.x, drag.y) = frame->to_layer_px(c.x, c.y);
+    std::tie(drag.startX, drag.startY) = frame->to_layer_px(c.start_x, c.start_y);
+  }
   drag.space = c.space;  // SDK 1.2: the handle's space (layer px or comp px)
   const std::variant<NativeEdit, NativeFailure> result = NativeEffects::overlay_drag(req, drag);
   if (const auto* f = std::get_if<NativeFailure>(&result)) {

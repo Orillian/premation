@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "engine_ctx.hpp"
+#include "layer_geometry.hpp"
 #include "native_effects.hpp"
 #include "timeline.hpp"
 
@@ -30,6 +31,27 @@ void apply_native_edit(HCtx& x, const api::PropRef& group, const std::string& ef
 /// The host request for one document effect instance (static params, flat sequence, arbitrary data) at `time`.
 [[nodiscard]] NativeActionRequest native_request(const Document& d, const Node& node, const std::string& layer, const std::string& effectId,
                                                  const Json& e, const NativeEffect& ne, api::Time time);
+
+/// Where a plugin's LAYER px sit in the layer's local space — the space the overlay push's
+/// `transform` matrix maps and its `box` is in. The plugin renders layer px (0, 0) at the
+/// top-left of the layer's box as drawn and (width, height) at its bottom-right
+/// (PrInData.layer_to_world); the local space is centred on the layer's origin (the box's
+/// centre sits at `offset`) and, for a 2D layer, does not hold the anchor: its world
+/// (world_2d_at) draws content at world · T(−anchor). plugins/scene_eval.cpp
+/// SceneEval::layer_world is the same mapping for get_layer_transform.
+struct NativeLayerFrame {
+  double width = 0, height = 0;  ///< the layer's size, layer px
+  double ox = 0, oy = 0;         ///< local of layer px (0, 0)
+  [[nodiscard]] std::pair<double, double> to_local(double px, double py) const { return {px + ox, py + oy}; }
+  [[nodiscard]] std::pair<double, double> to_layer_px(double lx, double ly) const { return {lx - ox, ly - oy}; }
+};
+/// The frame of `layer` at comp `seconds`. `text` measures a text layer; without it a text
+/// layer answers the frame its last overlay draw used (nullopt before one). nullopt for a
+/// layer with no box (audio, adjustment) or a gone node.
+[[nodiscard]] std::optional<NativeLayerFrame> native_layer_frame(const SpaceCtx& c, TextQueries* text, const std::string& layer,
+                                                                 double seconds);
+/// An overlay request in the document's frame (DRAW_OVERLAY / OVERLAY_DRAG): its layer size.
+void native_use_layer_frame(NativeActionRequest& req, const std::optional<NativeLayerFrame>& frame);
 
 /// getEffectUi: a native effect's params through UPDATE_PARAMS_UI, its plugin,
 /// panel and plugin data (SDK 1.1 panels); a builtin effect's params all enabled
