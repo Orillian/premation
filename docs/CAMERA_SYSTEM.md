@@ -1,29 +1,32 @@
 # The camera, end to end
 
 **Audience:** an agent or engineer with no prior context who has to reason about,
-drive, or extend the camera — and who may need to answer "how does this compare
+drive, or extend the camera, and who may need to answer "how does this compare
 to After Effects?" without opening AE.
 
-**Last checked against source: 2026-08-10.** When this file and the code
-disagree, the code decides. Every claim below names the file it came from so it
-can be re-verified rather than trusted.
+**Last checked against source: 2026-10-14** (after the camera program,
+`docs/PROGRAM_CAMERA.md`). When this file and the code disagree, the code
+decides. Every claim names the file it came from so it can be re-verified.
+
+The engine is the C++ `premation-engine` process (`docs/NATIVE_CORE_PLAN.md`).
+The page does not evaluate cameras; it writes camera props through the engine
+API and reads the document mirror. TypeScript files named below are either UI
+(commands, Inspector, dialogs) or pure helpers the C++ port was made from and
+is pinned against (`tests/data/threed_parity.json`).
 
 ---
 
 ## 1. The shape of it, in one paragraph
 
-A camera is an ordinary layer. It is a `SceneNode` of kind `camera` whose
-Transform component carries a handful of extra numeric props (`focalLength`,
-`orbitYaw`, `orbitPitch`, `orientationX/Y/Z`, `poiX/Y/Z`, `dofStrength`,
-`focusDistance`, `dofAperture`, `filmSize`). Nothing about it is a special
-object: it is keyframed by the same animation engine, parented by the same
-parent chain, trimmed by the same clip bar, and inspected by the same property
-rows as a shape layer. At render time `readSceneCamera` resolves the one active
-camera node into a plain `Camera3D` value — an eye position, a focal length, a
-principal point and an optional orientation — and `Project3D.projectPoint`
-pushes every 3D-enabled layer's corners through a pinhole divide. There is no
-scene graph in the GPU sense and no 3D models: "3D" here means 2D layers placed
-and oriented in a 3D space, which is exactly After Effects' model.
+A camera is an ordinary layer: a node of kind `camera` whose Transform
+component carries extra numeric props (§2.1). It is keyframed by the same
+animation engine, parented by the same parent chain, trimmed by the same clip
+bar and inspected by the same property rows as any layer. At render time the
+engine resolves the one active camera into a plain `motion::xf::Camera` (eye,
+focal length, principal point, optional orientation) and projects every
+3D-enabled layer through it. 3D layers are oriented planes plus real meshes
+(extrusions, primitives, imported models, depth-parallax grids); the camera
+model is After Effects'.
 
 ---
 
@@ -31,93 +34,70 @@ and oriented in a 3D space, which is exactly After Effects' model.
 
 ### 2.1 Where the numbers live
 
-Camera props are plain entries on the node's **Transform component**
-(`src/core/scene/sceneInsert.ts` → `insertCamera`). That is the whole storage
-design, and it is why every generic mechanism works on them for free:
+All camera props are scalars on the node's **Transform component**: no
+matrices, no nested objects, so every generic mechanism (keyframes,
+expressions, save/load, timeline tree) works on them unchanged. A prop at its
+neutral value is not stored, so a project that never touched a feature renders
+byte-identically.
 
 | Prop | Unit | Meaning | AE name |
 |---|---|---|---|
 | `x`, `y`, `z` | comp px | Eye position. `z` is negative when pulled back from the comp plane. | Position |
 | `focalLength` | comp px | Distance from eye to the plane that renders 1:1. | Zoom |
-| `filmSize` | mm | Virtual sensor width. **Label only** — see §4.2. | Film Size |
-| `orbitYaw` | deg | Swing about the point of interest, horizontally. | (orbit tool) |
-| `orbitPitch` | deg | Swing about the point of interest, vertically. Clamped ±89. | (orbit tool) |
-| `orientationX` | deg | In-place tilt (pitch offset). Rotates about the eye. | X Rotation |
-| `orientationY` | deg | In-place pan (yaw offset). Rotates about the eye. | Y Rotation |
-| `orientationZ` | deg | Roll — a dutch angle about the view axis. | Z Rotation |
-| `poiX/Y/Z` | comp px | Point of Interest. Presence of ANY of the three makes it a two-node camera. | Point of Interest |
-| `dofStrength` | px | Maximum defocus blur. 0 or absent = DOF off. | Blur Level |
+| `filmSize` | mm | Virtual sensor width. Label only (§4.2). | Film Size |
+| `orbitYaw`, `orbitPitch` | deg | Swing about the point of interest ("Orbit around target"). Pitch clamped ±89. | (orbit tool) |
+| `orientationX/Y/Z` | deg | In-place tilt / pan / roll ("Turn on the spot"). | X / Y / Z Rotation |
+| `poiX/Y/Z` | comp px | Point of Interest. ANY of the three makes it a two-node camera. | Point of Interest |
+| `dofStrength` | px | Maximum defocus. 0 / absent = DOF off. | Blur Level |
 | `focusDistance` | px | Distance that is sharp. | Focus Distance |
-| `dofAperture` | px | Slope of the blur ramp. Defaults to `dofStrength`. | Aperture |
+| `dofAperture` | px | Slope of the Classic blur ramp. | Aperture |
+| `fStop` | — | Present = the Physical (thin-lens) model; absent = Classic. | F-Stop |
+| `irisBlades` … `diffractionFringe` | — | Bokeh shape and highlights (§7). | Iris / Highlight options |
+| `shakeAmount` | px | Procedural shake: eye offset. 0 / absent = no shake. | (Wiggle rig) |
+| `shakeRotation` | deg | Procedural shake: turn. | — |
+| `shakeFrequency` | Hz | Shake rate, default 2. | — |
+| `shakeSeed` | int | Shake pattern. | — |
 
-Nothing is stored as a matrix, a quaternion, or a nested object. Every one of
-these is a scalar the keyframe engine can animate, which is the reason camera
-animation needed no separate system.
+Auto-Orient lives on the layer's `fx` component (`autoOrient`: `off` / `path`
+/ `camera`; `src/core/scene/autoOrient.ts`).
 
 ### 2.2 One-node vs two-node cameras
 
-`src/core/scene/camera3d.ts` → `cameraFromNode` branches on one test:
+The engine branches on one test (`motion::xf::camera_from_props`,
+`native/libs/motion_transform/transform.cpp`): any of `poiX/Y/Z` present.
 
-```
-const hasPOI = poiX !== undefined || poiY !== undefined || poiZ !== undefined;
-```
-
-- **One-node (free) camera** — no POI props. Orbit swings the eye about the comp
-  centre, and the optical axis stays on the comp centre. Removing the POI props
-  is what "Remove target (free camera)" does in the inspector.
-- **Two-node (targeted) camera** — any POI prop present. The eye orbits about
-  the POI and then **always re-aims at it** via `lookAtOrientation`. Move the
-  camera and it re-frames the target; keyframe the POI to lead a shot.
-
-This mirrors AE's one-node/two-node distinction, including the detail that
-converting between them is a property-level change rather than a different
-layer type.
+- **One-node (free).** No POI. Orbit swings the eye about the comp centre. It
+  turns with a rotating parent (§2.3) and can Auto-Orient Along Path (§4.5).
+- **Two-node (targeted).** POI present. The eye orbits the POI and then
+  always re-aims at it (`look_at_orientation`). Choosing Orient Along Path
+  drops the POI in the same command (AE's exclusivity).
 
 ### 2.3 The camera is a layer, so it has a parent
 
-`cameraFromNode` takes a `worldOf` injection that lifts a point from the node's
-parent space into world space, and applies it to **both** the eye and the POI:
-
-> transforming only the eye would swing the camera around a target that stayed
-> pinned in comp space, which reads as the shot sliding off its subject as the
-> rig moves.
-
-This matters because the standard AE camera rig is a camera parented to a null
-that is then animated or orbited. Before this existed the rig moved nothing at
-all: the timeline showed the parent link, the UI let you create it, and the
-render ignored it.
+The parent chain lifts both the eye and the POI into world space (lifting only
+the eye would slide the shot off its subject as the rig moves). Since the
+camera program a **one-node camera also turns with its parents' rotation**
+(`rotate_camera_with_parent`, `native/engine/src/core/worldxf.cpp`; scale and
+shear normalised away; byte-identical when no parent rotates), which is what
+makes a Swing / Pan rig null work on a free camera. A two-node camera keeps
+aiming at its lifted POI.
 
 ---
 
 ## 3. Which camera is active
 
-`activeCameraNode` in `src/core/scene/camera3d.ts` is the single selection rule.
-Every consumer goes through it — renderer, viewport chrome, gizmos, the C-key
-tool. Three conditions, matching AE:
-
-1. **Topmost, not first.** Creation order is paint order and paint order is
-   back-to-front, so "the first camera found" is the *bottom-most* one. The
-   function walks the composition's flattened node list in reverse.
-2. **Enabled.** `node.visible === false` disqualifies it.
-3. **Live now.** An `isLiveAt` filter applies the same in/out clip-bar test
-   ordinary layers get, so a camera trimmed to the second half of the comp does
-   not steer the first half.
-
-It is also **scoped to `rootId`** — the active composition — because comps are
-separate root subtrees and a whole-scene search let one composition's camera
-steer another's render.
-
-`readSceneDof` shares this exact function on purpose: when the two searched
-independently, depth of field could be read off a different camera than the one
-doing the projecting.
+`Scene3D::view_camera_node` (`native/engine/src/scene/threed_port.cpp`) is the
+rule, matching AE: the **topmost** camera that is **enabled** and **live at
+this time** (clip bar), scoped to the composition being rendered. A
+composition layer can override it with `fx.viewCamera` (a camera layer id in
+the nested comp; `comp_instance.cpp`), which the Stereo 3D rig uses to give
+each eye comp its own camera (§9). DOF, scene-depth focus and camera motion
+blur read the same node, so they can never come from a different camera than
+the one projecting.
 
 ---
 
-## 4. The projection
-
-`packages/scene/src/utils/project3d.ts` is pure, framework-free, and is the only
-place the maths lives. Both the CPU path (hit-testing, painter sort) and the GPU
-path (4×4 matrices) are derived here so they cannot drift apart.
+## 4. The projection and the camera evaluation
 
 ### 4.1 The pinhole divide
 
@@ -127,336 +107,317 @@ scale  = cam.focalLength / max(dist, NEAR)
 screen = cam.principal + (p.xy - cam.position.xy) * scale
 ```
 
-Conventions worth internalising:
+- The camera looks down **+z** at the comp plane `z = 0`; comp space is
+  **y-down**. The default camera sits at `z = -focalLength`, so a layer at
+  `z = 0` renders at scale 1.
+- The principal point does not track the camera (otherwise X/Y panning cancels
+  at `z = 0`).
+- `NEAR = 1` is a clamp, not a reject: a clamped point is flagged `clipped`,
+  and geometry callers drop the layer.
 
-- The camera looks **down +z** at the comp plane at `z = 0`. Comp space is
-  **y-down**.
-- The default camera sits at `z = -focalLength`, so a layer at `z = 0` projects
-  at `scale = 1`. Moving a layer to `+z` (further) shrinks it; `-z` enlarges it.
-- **`principal` must not track the camera.** An earlier version used
-  `position.x/y` for both the eye and the principal point, which made the camera
-  term cancel algebraically at `z = 0`: panning the camera in X/Y moved nothing
-  and layers at other depths drifted the wrong way. It looked correct only
-  because the default camera sits at the comp centre, where the two coincide.
-- **`NEAR = 1` is a clamp, not a reject.** A clamped point is not a projection —
-  a layer just behind the camera resolves to a ~1111× scale on a 1920 comp, i.e.
-  one layer smeared opaque over the whole frame. `Projected.clipped` flags it;
-  callers that draw geometry must drop the layer, callers that only need a
-  finite number (overlays, gizmos) can ignore it.
+The maths lives once in `motion_transform` (C++). Its TypeScript twin
+`packages/scene/src/utils/project3d.ts` serves UI overlays and gizmos and is
+pinned to the C++ by the parity fixture.
 
-### 4.2 Zoom, angle of view, and film size
+### 4.2 Zoom, angle of view, film size, lens list
 
-`focalLengthForFov` and `fovForFocalLength` are exact inverses, and the
-inspector edits both as **two views of one value** — editing either updates the
-other. The default is 39.6° horizontal, AE's "50mm" comp-framing feel.
+Zoom and Angle of View are two views of one value (exact inverses). Film size
+only converts the angle of view into a millimetre reading, as a real sensor
+label does. **One lens list** (`src/core/scene/lensPresets.ts`, mm: 15 20 24 28
+35 50 80 135 200) feeds the Inspector's Shot header and the New Camera dialog;
+an off-list zoom reads "Custom · n mm".
 
-Film size is deliberately inert: it converts the angle of view into a millimetre
-reading (`filmSize / (2·tan(fov/2))`) and changes nothing about what the camera
-sees. That is what a real sensor swap does, and the inspector says so in as many
-words.
+### 4.3 Order of evaluation
 
-Lens presets (`CameraSection.tsx`) are stored as fields of view, not millimetres,
-because the millimetre number is derived: 15mm/100°, 24mm/73°, 35mm/54°,
-50mm/39.6°, 80mm/25°, 135mm/15°.
+`camera_from_node` (`worldxf.cpp` for queries/expressions; its render twin
+`Scene3D::camera_from_node` in `threed_port.cpp`) builds the view in this
+order; each step is identity at its neutral value:
 
-### 4.3 Orientation
+1. **Base aim**: orbit angles on a one-node camera, `look_at(eye, poi)` on a
+   two-node one; `orientationY` / `orientationX` added as offsets (so a
+   targeted camera can be turned off its subject and keep tracking);
+   `orientationZ` as roll, applied last so it spins the frame.
+2. **Parent**: eye and POI lifted; a one-node camera's view rotated (§2.3).
+3. **Auto-Orient Along Path** (one-node only, §4.5).
+4. **Shake** (§4.6), after the aim, so a POI or path never cancels it.
 
-`world → camera` is `Rz(−roll) · Rx(−pitch) · Ry(−yaw) · T(−eye)`. Roll is
-applied **last**, which is what makes it spin the frame rather than re-aim the
-camera. A camera with zero orientation takes a separate, simpler code path and
-renders byte-identically to the pre-orientation implementation — that is a
-deliberate guarantee, not an accident, pinned by `cameraRoll.test.ts`.
-
-**Where yaw and pitch come from is the part the matrix cannot tell you.** Three
-sources compose into those two fields, in `cameraFromNode`:
-
-1. the **base aim** — `orbitCamera`'s angles on a one-node camera, or
-   `lookAtOrientation(eye, poi)` on a two-node one;
-2. plus **`orientationY`** (yaw) and **`orientationX`** (pitch), the in-place
-   rotation, added as offsets;
-3. and `orientationZ` as roll, kept separate because it is applied last.
-
-The offset composition is the whole design of in-place rotation: on a targeted
-camera the look-at establishes the aim and these nudge it, so a camera can be
-turned off its subject while still tracking. Set rather than added, the look-at
-would overwrite them every frame and the controls would do nothing — the failure
-mode `cameraOrientation.test.ts` was written to catch, red first.
-
-Because only `orbitCamera` moves the eye, in-place rotation rotates about the
-eye by construction, never about the POI or the comp centre.
+World → camera is `Rz(−roll) · Rx(−pitch) · Ry(−yaw) · T(−eye)`.
 
 ### 4.4 Orbit
 
-`orbitCamera(basePosition, poi, yaw, pitch)` keeps the eye's distance from the
-POI, swings by yaw/pitch, and returns the orientation that keeps the POI
-centred. `yaw = pitch = 0` returns the base configuration untouched.
+`orbitCamera(base, poi, yaw, pitch)` keeps the eye's distance from the POI,
+swings it, and returns the orientation that keeps the POI centred. The
+Inspector labels the two rotation families "Orbit around target" and "Turn on
+the spot"; the Orbit tool's tooltip names which it writes.
+
+### 4.5 Auto-Orient Along Path (R3b)
+
+`camera_path_direction` (`worldxf.cpp`): the world direction of travel of the
+position tracks at the camera's key time (forward difference over 1/120 s,
+backward at the last key, end tangents held outside the keyed span, as AE).
+The camera looks along it with its own X/Y/Z Rotation composed on top. Not
+moving, or two-node, = no change. The Auto-Orient dialog offers it for cameras
+(`AUTO_ORIENT_DEAD_KINDS` no longer contains `camera`).
+
+### 4.6 Procedural shake (R1)
+
+`apply_camera_shake` (`transform.cpp`): per channel, seeded value noise
+(splitmix64 lattice, quintic fade), two fixed octaves at 1× and 2.17× (half
+weight). `shakeAmount` moves the eye along its own right / down / forward axes
+(forward at half weight); `shakeRotation` adds yaw / pitch / half-weight roll.
+Time is the camera's own key time × `shakeFrequency`. Pure in (seed, time), so
+renders are deterministic and export matches preview. A shaking camera counts
+as animated for camera motion blur. UI: the "Shake" twirl
+(`src/layout/Inspector/CameraShakeRows.tsx`); the Handheld preset now sets
+shake instead of baking keys (the old preset id still works,
+`src/core/animation/cameraPresets.ts`).
 
 ---
 
 ## 5. Views: what you are looking through
 
-`Camera3dMode` (`src/stores/guidesStore.ts`) has three families, and the
-renderer treats them very differently:
-
 | Mode | Projection | Reads the scene camera? | Writes to the scene? |
 |---|---|---|---|
-| `active` | Perspective, `projectPoint` | Yes | Yes — nav writes camera props |
-| `front` `back` `left` `right` `top` `bottom` | **Orthographic**, `projectOrtho` | No | **Never** |
-| `custom1` `custom2` `custom3` | Perspective, from stored view params | No | No — writes the view's params |
+| Active Camera / a named camera | Perspective | Yes | Yes: nav writes camera props |
+| Front / Back / Left / Right / Top / Bottom | Orthographic | No | Never |
+| Custom View 1–3 | Perspective, from stored view params | No | No: writes the view's params |
 
-**The axis views are parallel projections.** `scale` is always 1, so a flat comp
-appears edge-on (a line) in any side or top view and only 3D-offset layers spread
-apart. That is the point of an orthographic view: true depth relationships
-without perspective distortion.
+Custom views store `{yaw, pitch, distance, poi}` in `guidesStore`
+(`src/core/workspace/customViews.ts`) and never move the shot camera; orbiting
+an axis view promotes it to Custom View 1. 1 / 2 / 4-view layouts as in AE.
 
-**Custom views are AE parity and never touch the shot camera.** They store
-`{yaw, pitch, distance, poi}` in `guidesStore` and build a projection camera from
-them through the same `Project3D` helpers `camera3d.ts` uses. `distance` and
-`poi` are `null` until navigated, meaning "comp-relative default" (POI = comp
-centre, distance = 1.2 × default focal length), resolved at camera-build time so
-one comp's dimensions never get baked into the store.
-
-Orbiting an **axis** view promotes it to `custom1` — swinging off the axis makes
-it a custom view by definition. This is fixed rather than "last used" so the
-promotion is predictable and the view label visibly changes.
-
-There is a 1 / 2 / 4-pane layout (`ViewLayout`), matching AE's 1 View / 2 Views /
-4 Views. In the 2×2 layout only cell 0 is the interactive stage; cells 1–3 are
-view-only inspection panes.
+While a camera tool is armed or Alt is held, the viewport shows what a drag
+edits (`CameraNavBadge`): "Camera 1 · moves the shot" (+ "· keyframing" when
+the property is animated or Auto-Keyframe is on), or "Custom View 1 · preview
+only".
 
 ---
 
 ## 6. Navigation
 
 `src/core/workspace/cameraNav.ts` is the one home for orbit / track / dolly
-writes. Two input paths drive it and they share every code path below:
+writes. Alt+drag orbits, Shift+Alt+drag (or Alt+middle-drag) tracks XY,
+Alt+wheel dollies; the C-key tool cycles Unified → Orbit → Pan → Dolly (Unified
+maps left / middle / right to orbit / track / dolly). Orbit pivots: Around
+Cursor / Scene / Camera POI (`guidesStore.cameraOrbitPivot`).
 
-- **Modifier nav:** `Alt+drag` orbits, `Shift+Alt+drag` (or `Alt+middle-drag`)
-  tracks XY, `Alt+wheel` dollies.
-- **The C-key camera tool:** cycles **unified → orbit → pan → dolly**, then
-  plain drag. The **Unified Camera** (first, like AE) is one armed tool where
-  the mouse button picks the gesture — left orbits, middle tracks XY, right
-  dollies (`unifiedNavModeFor`); while it is armed, a right-drag swallows the
-  context menu its release would open (and only then), and the wheel dollies.
-  Both it and the cycle command (`tool.cameraCycle`) are palette commands;
-  `tool.cameraUnified` arms it directly and is rebindable in Customize….
+| Gesture | Writes |
+|---|---|
+| Orbit | `orbitYaw += dx·0.4`, `orbitPitch += dy·0.4` |
+| Track XY | `x`, `y` and the POI with them (framing follows the cursor) |
+| Dolly | `z -= delta·2` |
 
-| Gesture | Writes | Feel |
-|---|---|---|
-| Orbit | `orbitYaw += dx·0.4`, `orbitPitch += dy·0.4` (clamped ±89) | 0.4°/px on every path |
-| Track XY | `x -= dx/scale`, `y -= dy/scale`, and the POI with it | Framing follows the cursor, so the camera moves opposite the drag |
-| Dolly | `z -= delta·2` | Drag up / wheel up = dolly in |
-
-**Orbit pivot modes (AE parity, 2026-09-14).** The camera-tool menu carries a
-radio group — **Orbit Around Cursor / Orbit Around Scene / Orbit Around Camera
-POI** (`guidesStore.cameraOrbitPivot`, session state; default POI = the classic
-behaviour above). Cursor and Scene run `orbitCameraAboutPivot`, a RIGID orbit of
-the whole rig about an arbitrary world point: on a two-node camera the eye AND
-the POI rotate about the pivot (the pivot is never written INTO the POI); on a
-one-node camera the eye rotates and the deltas fold additively into
-`orbitYaw`/`orbitPitch`, with the base position solved back through the new
-angles so the resolved eye lands on the rigid rotation. The cursor pivot is
-resolved ONCE at drag start (`resolveOrbitPivot`): the cursor ray
-(`Project3D.unprojectScreenRay`) is intersected with the plane of the frontmost
-3D layer under the cursor (in-bounds hit nearest along the ray), else the
-ground plane (`y = compHeight + groundLevel`, where the 3D ground grid draws),
-else the POI-distance plane facing the camera. Orthographic and custom views
-ignore the pivot entirely and keep their promote-to-custom-view orbit.
-
-Three design points that are easy to get wrong:
-
-1. **Track moves the POI too** on a two-node camera. Without that, tracking
-   would re-aim the camera instead of shifting the framing.
-2. **Nav writes are keyframe-aware.** They go through `applyNodePropsKeyframed`,
-   the same dual path the layer gizmo uses: always the static base prop, plus a
-   keyframe when the prop is already animated or Auto-Keyframe is on. Before
-   this, dragging a layer's gizmo keyframed and dragging the camera did not,
-   which is not a distinction After Effects makes.
-3. **One gesture is one undo entry.** All of a gesture's props go in a single
-   call so orbit (yaw + pitch) and track (x + y + POI) collapse to one history
-   step instead of two or four.
-
-Wheel dollying runs through a `DollyEaser` with a rAF loop so it glides rather
-than steps, and the target is re-resolved every eased frame — switching views
-mid-glide keeps writing to the right place.
-
-### 6.1 When navigation does nothing, and why that is correct
-
-A camera only moves layers whose **3D switch is on**, in AE too. So camera
-navigation requires a camera layer *and* at least one 3D content layer; cameras
-and lights never count as content. `describeNavUnavailable()` exists because the
-inertness being *silent* was the actual bug — a user who adds a camera to a flat
-comp, picks the camera tool and drags cannot tell "this does nothing here" from
-"this is broken", and reported it as the latter. The function returns the next
-step as a sentence, and `CameraSection` shows a live "N of M layers are 3D"
-count with a one-click **Make all 3D**.
+Nav writes are keyframe-aware (static base + a key when animated or
+Auto-Keyframe is on) and one gesture is one undo entry. A camera moves only
+3D layers, so with none the Shot header leads with "No 3D layers" and a
+one-click Make All 3D (`describeNavUnavailable()` gives the next step).
 
 ---
 
 ## 7. Depth of field
 
-`dofBlurPx(depth, dof)` in `camera3d.ts`:
+Rows (camera program U5): On/Off · Focus Distance (with a crosshair that arms
+a one-shot pick on the canvas, `focusPickStore` → `setFocusDistanceToLayer`) ·
+Lens Model **Classic | Physical** · F-Stop (Physical) · Blur Level · ▶ Bokeh
+(iris and highlight rows) · ▶ Advanced (Aperture).
 
-```
-defocus = |depth − focus| / max(1, focus)
-blur    = min(strength, defocus · aperture)
-```
+- **Classic:** `blur = min(strength, |depth − focus| / max(1, focus) · aperture)`.
+- **Physical:** the thin-lens circle of confusion from `fStop` and the zoom
+  (`dof_blur_px`, `native/engine/src/scene/camera3d_port.cpp`).
 
-`strength` is the cap (AE's Blur Level), `aperture` is the slope (AE's
-Aperture), `focus` defaults to the focal length — the comp plane — so a fresh
-camera keeps everything sharp. `aperture` defaults to `strength`, which
-reproduces the older single-scalar ramp exactly.
+3D depth groups render into a colour + depth pair and run the `dof-gather`
+pass (`native/engine/src/render_graph/threed.cpp`): per-pixel CoC from the real
+depth buffer. Layers off the depth path use per-corner CoC across their own
+quad (`plan_dof_coc_corners`). Polygonal bokeh and the highlight trio run in the
+`bokeh` / `coc-blur` / `dof-gather` passes. DOF is off in orthographic and
+custom views and under Draft 3D.
 
-**Be precise about what this is.** DOF is resolved per LAYER, not from a scene
-depth buffer — but within a layer it is no longer flat. The preferred path is
-`planDofCocCorners` (`dofStrips.ts`): four corner CoC radii for the layer's
-projected quad, rendered by the renderer's own `coc-blur` shader
-(`builtin.ts`), which interpolates the blur radius per pixel across the quad —
-a tilted plane crossing the focal region sharpens continuously through it.
-Polygonal iris bokeh is a separate `bokeh` gather pass, and the iris is the
-full AE set of keyframeable camera options (2026-09-14): `irisBlades` /
-`irisRoundness` / `irisRotation` / `irisAspect` (aspect ratio) plus the
-highlight trio `highlightGain` / `highlightThreshold` / `highlightSaturation`
-and `diffractionFringe` (rim-weighted bokeh edge). Every one of them defaults
-to its render-identical neutral (rotation 0, aspect 1, threshold / saturation /
-fringe 0), is threaded through `bokeh`, `coc-blur` AND the depth-buffer
-`dof-gather` pass in both shader dialects (WGSL + GLSL), and surfaces as a
-stopwatched row in CameraSection / the timeline's Camera Options like the rest.
-Strip subdivision (`planDofStrips`, ≤12 strips /
-5×5 grid) remains the fallback when corners can't be planned, and a plain
-`blur` effect entry the fallback below that. The old "no depth-buffer gather
-across layers" gap is closed for the depth-tested path: CompositionPass renders
-a 3D depth group into a single-sample colour+depth pair and runs `dof-gather`
-— per-PIXEL circle of confusion from the real depth buffer, same two CoC
-models as `dofBlurPx`, with the per-layer blurs dropped only for renderables it
-actually gathers (`dofSource`). Layers that fall off the depth path keep the
-per-layer maths above, so those still defocus from their own plane. See
-`docs/EDITOR_REFERENCE.md` §4.
-
-DOF is off entirely in orthographic views (no lens), in custom views (you are
-not looking through the shot camera), and under Draft 3D.
-
-**Camera moves blur.** An animated active camera motion-blurs every 3D layer
-(comp + layer switches still gate it): `buildSnapshot` extends the motion gate
-to 3D layers when any `CAMERA_MOTION_PROPS` track is keyframed on the active
-camera, and each sub-frame sample projects through the camera's own pose at
-that sample's comp time (`cameraFromNode` per sample time, memoized). A static
-card under a keyframed pan now blurs exactly like a moving card under a static
-camera. Time remap retimes the layer's own animation, never the camera's clock.
+**Camera moves blur.** An animated (or shaking) active camera motion-blurs
+every 3D layer: each sub-frame sample projects through the camera's pose at
+that sample time (`Scene3D::matrix_at`, cached per sample time).
 
 ---
 
-## 8. Comparison with After Effects
+## 8. Shot-making tools
 
-### 8.1 What matches, deliberately
+All of these are one undo entry each and go through the engine API.
 
-| Behaviour | Here | After Effects |
+| Tool | Where | Implementation |
 |---|---|---|
-| Camera is a layer with keyframeable props | Yes | Yes |
-| One-node / two-node cameras | Yes, by POI presence | Yes |
+| Shot header: lens, six camera moves (Push In, Pull Out, Orbit Sweep, Drift Parallax, Dolly Zoom, Handheld), Focus on Layer, Distribute in Z, Create Orbit Null, Fly to Layers, Add Rig | top of the camera Inspector | `src/layout/Inspector/CameraShotHeader.tsx` |
+| New Camera dialog: lens, live angle of view, Aim at a target / Free, Make all layers 3D | Layer ▸ New ▸ Camera | `src/layout/Workspace/SceneInsertDialogs.tsx` |
+| Camera rigs: Crane (Base → Boom → Arm), Dolly (Track → Pedestal), Orbit (Pivot → Arm) as `Rig · <Kind> · <Control>` 3D nulls; Inspector sliders Truck / Pedestal / Dolly / Boom / Swing / Arm / Pan / Tilt | Layer ▸ Camera ▸ Add Camera Rig | `src/core/scene/cameraRig.ts`, `CameraRigSection.tsx` |
+| Follow Path: a shape path or mask → Position keys with spatial tangents, roving middle keys, timed by arc length | Layer ▸ Camera ▸ Follow Path… | `src/core/scene/cameraFollowPath.ts` |
+| Fly to Selected Layers: travel / hold per layer in selection order, framed with `framingFor` | Layer ▸ Camera ▸ Fly to Selected Layers… | `src/core/scene/cameraFlyTo.ts` |
+| Shake | camera Inspector ▸ Shake | §4.6 |
+| Stereo 3D rig | Layer ▸ Camera ▸ Create Stereo 3D Rig | §9 |
+
+---
+
+## 9. Depth compositing, flares, parallax, stereo
+
+**Scene depth for ordinary effects (D1).** An effect on an adjustment layer
+above 3D layers can read the scene depth (`render_graph/scene_depth.cpp`, the
+same depth SDK plugins sample):
+
+- **Depth Matte**: keep pixels between Near and Far, Feather, Invert.
+- **Depth Fog**: Fog Color, Start, End, Density, optional Gradient to a Far
+  Color, Fog Background.
+- **Depth Extract**: depth as greyscale between a Black Point (Near) and White
+  Point (Far), Invert.
+- **Camera Lens Blur ▸ Blur Map: Scene Depth**: focus from the active camera's
+  Focus Distance (else its Zoom) when Focus From Camera is on, else Blur Focal
+  Distance.
+
+Shaders: `fx60-depth-matte.wgsl`, `fx60-depth-fog.wgsl`,
+`fx60-depth-extract.wgsl`, `camera-lens-blur-depth.wgsl`. With no 3D layers
+below, the effects see "infinitely far" and pass through.
+
+**Lens flare linked to a 3D light (D2).** Lens Flare ▸ Link to Light: the
+flare centre is the light's comp point through the active camera
+(`snapshot_build.cpp`, placed by `effect_chain.cpp` through the visible world
+rect, not the Centre X / Y offset); it fades out behind the camera
+and dims where scene depth in front of the light's screen point is nearer than
+the light (soft occlusion, `lens-flare-depth.wgsl`). A missing light is
+recorded on `layerErrors` and the flare renders as authored.
+
+**Photo → 3D parallax (D3).** Layer ▸ Camera ▸ Make 3D from Photo/Video…
+(`src/layout/Menu/depthParallaxCommands.ts`, `src/core/scene/depthParallax.ts`):
+the engine's `depthEstimate` job (`native/engine/src/jobs/kind_depth_estimate.cpp`,
+Depth Anything V2 Small, ONNX Runtime via `depth_ort_ffi.cpp`) writes greyscale
+depth PNGs (white = near) next to the project, once for a still and per source
+frame for footage (an on-disk cache a re-run reuses), then sets the layer 3D,
+`layer/depthSource` and `geometry/depthScale` in one entry. The model (99 MB,
+Apache-2.0) is downloaded on first use from a pinned Hugging Face revision and
+checked against a pinned SHA-256 (`electron/depthModel.ts`). Instead of the AI
+estimate, the Depth Parallax Inspector section can use a depth-map layer
+(hidden, it is data). The engine renders the layer as a camera-facing
+displaced grid (`depth_parallax_mesh`, `threed_port.cpp`) with Depth Scale,
+Edge Cut (stretch threshold) and Mesh Detail.
+
+**Stereo 3D rig (D7).** Layer ▸ Camera ▸ Create Stereo 3D Rig
+(`src/core/scene/stereoRig.ts`): a "Stereo Camera Controls" null (Interaxial
+Separation, Convergence Of: Off / Camera POI / Z = 0, Convergence Z Offset,
+Stereo Scene Depth), Left / Right cameras that follow the master by
+expression, Left Eye / Right Eye comps that look through them (`fx.viewCamera`),
+and a Stereo 3D output comp with 3D Glasses (anaglyph by default; side-by-side,
+over-under, interlaced). The rig assumes an unparented master camera, as AE's
+does.
+
+---
+
+## 10. Interchange and expressions
+
+**Camera import (D4).** glTF / GLB perspective cameras (`yfov`, animated node
+TRS) and FBX cameras (ufbx: focal length + film back, animation) import as
+Premation camera layers alongside the model, converted through the model
+importer's Y-up → comp-space basis (`model_convert.cpp`, `model_fbx_ffi.cpp`,
+`src/core/scene/modelImport.ts`). AEP import maps camera options 1:1
+(`aep_plan.cpp`).
+
+**Camera export (D5).** Export Camera… (`src/core/scene/cameraExport.ts`)
+samples the evaluated camera with the engine query `sampleCamera` (shake,
+Auto-Orient, POI, parents and expressions included) per frame over the work
+area and writes glTF 2.0 (an animated camera node, `yfov` from Zoom) or Nuke
+`.chan` (`frame tx ty tz rx ry rz vfov`, ZXY). Conversion
+(`src/core/scene/cameraInterchange.ts`): `C = diag(1, −1, −1)` about the comp
+centre, 1 px = 1 cm (`PX_PER_UNIT = 100`, stored in
+`asset.extras.premationPxPerUnit` so a Premation file comes back in place);
+`yfov = 2·atan(h / 2 / f)`. Round-trip export → import is tested.
+
+**Camera expressions (D6).** `motion_expr` (`native/libs/motion_expr`):
+`thisComp.activeCamera`, a camera's `position` / `pointOfInterest` /
+`cameraOption.zoom | focusDistance | aperture | blurLevel | depthOfField |
+iris* | highlight*`, a light's `lightOption.intensity | color | coneAngle |
+coneFeather | shadowDarkness | shadowDiffusion | falloffDistance | radius`,
+`lookAt(from, to)`, `toCompVec`, `fromCompToSurface`, and the AE match names
+(`ADBE Camera Zoom`, `ADBE Light Intensity`, …).
+
+---
+
+## 11. Comparison with After Effects
+
+### 11.1 What matches
+
+| Behaviour | Here | AE |
+|---|---|---|
+| Camera is a keyframeable layer; one- / two-node | Yes | Yes |
 | Topmost enabled live camera wins | Yes | Yes |
-| Camera follows its parent chain | Yes | Yes |
-| Zoom ↔ Angle of View as one value | Yes | Yes |
-| Film size is a label, not a lens change | Yes | Yes |
-| Unified Camera + Orbit / Track XY / Track Z tools | Yes, C cycles all four (unified first), menu in `SceneControls.tsx`; unified maps left/middle/right to orbit/pan/dolly | Yes, C cycles them |
-| Orbit Around Cursor / Scene / Camera POI | Yes — pivot radio group in the camera-tool menu (§6) | Yes |
-| In-place X / Y / Z rotation (tripod pan, tilt, dutch) | Yes, `orientationX/Y/Z`, offsets onto the base aim | Yes |
-| In-place rotation on a TARGETED camera without losing tracking | Yes, by offset composition (§4.3) | Yes |
-| 1 / 2 / 4 view layouts | Yes | Yes |
-| Six orthographic axis views | Yes | Yes |
-| Custom views that never move the shot camera | Yes, three of them | Yes |
-| Only 3D-enabled layers respond | Yes | Yes |
-| Auto-orient "Towards Camera" | Yes (`autoOrient.ts`, 3D layers only) | Yes |
-| Depth of field with focus distance + aperture | Per-layer, with per-pixel CoC gradients across each quad — see §7 | Real (scene-depth) |
-| Camera moves motion-blur the scene | Yes — sub-frame camera poses, see §7 | Yes |
+| Follows its parent chain, one-node turns with the parent | Yes | Yes |
+| Zoom ↔ Angle of View, Film Size as a label | Yes | Yes |
+| Unified / Orbit / Track XY / Track Z tools, three orbit pivots | Yes | Yes |
+| In-place X/Y/Z rotation on a targeted camera without losing tracking | Yes (offsets) | Yes |
+| 1 / 2 / 4 views, six ortho views, three custom views | Yes | Yes |
+| Auto-Orient Towards Camera / Along Path (cameras too) | Yes | Yes |
+| DOF with Classic or physical F-Stop, iris and highlights | Yes, per-pixel on the depth path | Yes |
+| Camera moves motion-blur the scene | Yes | Yes |
+| Stereo 3D rig | Yes | Yes |
+| Camera expressions (`activeCamera`, `cameraOption`, `lookAt`, …) | Yes | Yes |
 
-### 8.2 Where the models genuinely differ
+### 11.2 Where Premation goes further
 
-Updated 2026-10-07 for AE parity step 4 (docs/AE_PARITY_PLAN.md; what still
-needs the GPU box is in docs/VERIFY_ON_TEST_MACHINE.md).
+Procedural seeded shake, crane / dolly / orbit rigs with plain sliders,
+Follow Path, Fly to Layers, depth matte / fog / extract and scene-depth lens
+blur without plugins, light-linked flares, AI photo → 3D parallax, glTF / FBX
+camera import and glTF / `.chan` export, and AI / MCP coverage of every camera
+move (`add_camera_move`, §12).
 
-- **3D is layers plus real geometry.** Layers are oriented planes; extrusions,
-  curved primitives and imported models (glTF / GLB, OBJ, FBX, USDA / USDZ —
-  normalized to one GLB project item by the `modelImport` job) are meshes with
-  PBR materials, vertex colours and glTF alpha modes, and keep their layer
-  styles and effects. They are lit by scene lights and an image-based
-  Environment Light: band-2 SH irradiance plus a float prefiltered specular
-  atlas from an HDR / EXR sky, drawn as a visible sky on request, or live
-  from a comp / video layer (an animated environment) — without using a light
-  slot. Fog and layer-to-layer reflections (Reflect Layers) are in.
-- **Depth of field is per-pixel on the depth-tested path, per layer elsewhere**
-  (§7): 3D depth groups gather from the real depth buffer (`dof-gather`) like
-  AE's circle-of-confusion over scene depth; layers that fall off the depth
-  path still resolve per-pixel CoC across their own quad only.
-- **Shadows are shadow maps on the depth path**: every shadow-casting light
-  is mapped (up to four float shadow maps per 3D run, PCF filtered,
-  `render_graph/threed.cpp`), casters from every run of the composition cast,
-  floors receive, an environment light casts from its key direction, and
-  Ground Shadows adds a shadow catcher under the scene. Casters are cut out
-  by their own alpha. Shading is per-fragment Lambert plus Blinn-Phong or PBR
-  (`solid3d.wgsl` / `textured3d.wgsl` `shade3d`). Motion blur, advanced blend
-  modes, mattes and glass keep a layer on the depth path (drawn offscreen
-  against the run's depth, then composited).
-- **Camera tracking & planar 3D solve.** The engine's tracking jobs
-  (`native/engine/src/jobs`: point, planar, mask, stabilize, camera solve) key a
-  one-node camera from tracked planes. A full 3D camera tracker with automatic
-  features is parity step 3.5.
-- **Rotation is Orientation plus X/Y/Z Rotation on layers, one set on
-  cameras.** A 3D layer has both AE groups, and the 3D gizmo's Local axes
-  follow the parent chain and Orientation. On a camera, `orientationX/Y/Z` are
-  the single set, composing as offsets onto the base aim (§4.3). The
-  expressible moves are the same — tripod pan, tilt, dutch angle — but a
-  project that distinguishes the two AE groups on a camera does not round-trip
-  that distinction.
+### 11.3 Remaining gaps
+
+- **Ray-traced renderer and VR / 360 output**: out of scope; each would be a
+  program of its own.
+- **Camera tracking.** The engine's tracking jobs solve a one-node camera from
+  tracked planes; a full automatic-feature 3D camera tracker is still open.
+- **One rotation set on cameras.** Layers have Orientation plus X/Y/Z
+  Rotation; a camera has the single `orientationX/Y/Z` set, so an AE project
+  that uses both groups on a camera does not round-trip that split.
+- **Stereo rig with a parented master camera** is not supported (AE has the
+  same limit).
+- **Photo → 3D** fills edges by stretching, not inpainting; Edge Cut hides
+  the worst stretch.
 
 Canonical gap list: `docs/EDITOR_REFERENCE.md` §4.
 
 ---
 
-## 9. Programmatic surface (for an agent driving the editor)
+## 12. Programmatic surface (for an agent driving the editor)
 
-**Creating one.** `insertCamera({ name?, focalLength?, twoNode? })` centres the
-camera on the real comp and pulls it back by its focal length so the comp plane
-renders 1:1 for any chosen lens. `twoNode: true` seeds the POI at the comp
-centre. The AE-style dialog is `openCameraDialog()`.
-
-**AI tool layer.** `CAMERA_PROPS` in `src/core/ai/toolContext.ts` is the
-whitelist: `focalLength`, `orbitYaw`, `orbitPitch`, `orientationX/Y/Z`,
-`poiX/Y/Z`, `dofStrength`, `focusDistance`, `dofAperture`. Use `orientationY`
-for a pan and `orbitYaw` for a dolly-arc — they look alike in a prompt and are
-different shots. Writing one of these to a non-camera node fails
-loudly with a message naming the fix, because a library-emitted camera move that
-lands on a shape layer is otherwise a silent no-op. `add_camera_move` is the
-high-level recipe (`push_in` / `pull_out`).
-
-**Rules an agent must respect:**
-
-1. A camera moves nothing until some content layer has its 3D switch on. Check
-   first, or the work is invisible.
-2. Set `z` relative to `focalLength`, not to an absolute number: `z =
-   -focalLength` is the 1:1 plane for whatever lens is in use.
-3. To animate, keyframe the props — there is no separate camera-animation API.
-   `cameraFromNode` samples animated values **in preference to** the static
-   props (`sample?.(id, prop) ?? staticProp`), so writing a base prop on a prop
-   that already has keyframes has no visible effect. That is precisely why
-   `applyNodePropsKeyframed` writes both.
-4. Do not write camera props while an orthographic or custom view is active
-   expecting to see the result — those views ignore the scene camera.
+- **Create:** `insertCamera({ name?, focalLength?, twoNode? })`
+  (`src/core/scene/sceneInsert.ts`) centres the camera and pulls it back by
+  its focal length, so the comp plane renders 1:1 for any lens.
+- **AI / MCP:** `add_camera_move` (`src/core/ai/cameraMoveTool.ts`) takes
+  `push_in` / `pull_out`, any of the 15 `camera.*` techniques by short name,
+  and the verbs `rig`, `fly_to`, `follow_path`, `shake`;
+  `list_capabilities('camera')` lists them. `CAMERA_PROPS`
+  (`src/core/ai/toolContext.ts`) whitelists raw camera props; writing one to a
+  non-camera fails loudly.
+- **Rules:**
+  1. A camera moves nothing until a content layer is 3D. Check first.
+  2. Set `z` relative to `focalLength` (`z = -focalLength` is the 1:1 plane).
+  3. Animate by keyframing props. Animated values win over static ones, so
+     write through the keyframe-aware path.
+  4. Orthographic and custom views ignore the scene camera.
+  5. Use `orientationY` for a pan and `orbitYaw` for an arc: different shots.
 
 ---
 
-## 10. Files
+## 13. Files
 
 | Concern | File |
 |---|---|
-| Resolve the active camera + DOF from the scene | `src/core/scene/camera3d.ts` |
-| The projection maths, CPU and GPU forms | `packages/scene/src/utils/project3d.ts` |
-| Orbit / track / dolly writes | `src/core/workspace/cameraNav.ts` |
-| Custom-view params and their camera | `src/core/workspace/customViews.ts` |
-| View mode + pane layout state | `src/stores/guidesStore.ts` |
-| Inspector UI | `src/layout/Inspector/CameraSection.tsx` |
-| Creation + defaults | `src/core/scene/sceneInsert.ts` (`insertCamera`) |
-| New Camera dialog | `src/layout/Workspace/SceneInsertDialogs.tsx` |
-| Consumption at render time | `src/core/rendering/buildSnapshot.ts` |
-| Agent-facing prop whitelist | `src/core/ai/toolContext.ts` |
-| Tests | `packages/scene/src/__tests__/project3d.test.ts`, `cameraRoll.test.ts`, `src/core/workspace/cameraNavViews.test.ts` |
+| Camera evaluation (shake, along-path, parent rotation) | `native/libs/motion_transform/transform.cpp`, `native/engine/src/core/worldxf.cpp` |
+| Render-time camera, active camera, camera motion blur, depth parallax mesh | `native/engine/src/scene/threed_port.cpp` |
+| DOF maths | `native/engine/src/scene/camera3d_port.cpp` |
+| Depth buffer, DOF gather, scene depth | `native/engine/src/render_graph/threed.cpp`, `render_graph/scene_depth.cpp` |
+| Depth effects, linked flare | `native/engine/catalog/effects.json`, `native/engine/shaders/wgsl/fx60-depth-*.wgsl`, `lens-flare-depth.wgsl`, `camera-lens-blur-depth.wgsl`, `native/engine/src/scene/snapshot_build.cpp` |
+| Depth estimate job | `native/engine/src/jobs/kind_depth_estimate.cpp`, `depth_ort_ffi.cpp`, `depth_prep.cpp`, `electron/depthModel.ts` |
+| Camera expressions | `native/libs/motion_expr/` |
+| Camera import | `native/engine/src/scene/model_convert.cpp`, `model_fbx_ffi.cpp`, `native/engine/src/core/aep/aep_plan.cpp` |
+| Interchange maths, export | `src/core/scene/cameraInterchange.ts`, `cameraExport.ts` |
+| Projection helpers for UI | `packages/scene/src/utils/project3d.ts`, `src/core/scene/camera3d.ts` |
+| Navigation, views | `src/core/workspace/cameraNav.ts`, `customViews.ts`, `src/stores/guidesStore.ts` |
+| Inspector | `src/layout/Inspector/CameraSection.tsx`, `CameraShotHeader.tsx`, `CameraShakeRows.tsx`, `CameraRigSection.tsx`, `DepthParallaxSection.tsx` |
+| Rigs, path, fly-to, stereo | `src/core/scene/cameraRig.ts`, `cameraFollowPath.ts`, `cameraFlyTo.ts`, `stereoRig.ts` |
+| Lens list, presets | `src/core/scene/lensPresets.ts`, `src/core/animation/cameraPresets.ts` |
+| AI | `src/core/ai/cameraMoveTool.ts`, `src/core/ai/toolContext.ts` |
+| Tracker | `docs/PROGRAM_CAMERA.md` |
