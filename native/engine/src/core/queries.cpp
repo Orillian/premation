@@ -437,6 +437,40 @@ struct Q {
     }
     return query_result_for<api::GetMotionPath>(std::move(s));
   }
+  // Camera program D5: a camera's evaluated view per sample (Export Camera).
+  api::QueryResult operator()(const api::SampleCamera& q) const {
+    const Node& n = require_layer(d, q.layer);
+    if (n.kind() != "camera") fail(ErrorCode::invalid_argument, "layer '" + q.layer + "' is not a camera", {.layer = q.layer});
+    if (q.samples < 1 || q.samples > 100000) fail(ErrorCode::out_of_range, "samples must be 1…100000");
+    double cw = 1920;
+    double ch = 1080;
+    if (const auto comp = comp_of_layer(d, q.layer)) {
+      if (const Json* rec = d.comp(*comp); rec != nullptr && rec->at("width").is_number() && rec->at("height").is_number()) {
+        cw = rec->at("width").num();
+        ch = rec->at("height").num();
+      }
+    }
+    api::CameraSamples out;
+    out.comp_width = cw;
+    out.comp_height = ch;
+    const SpaceCtx sc{d, pc.view, pc.expr, pc.cache};
+    for (std::uint32_t i = 0; i < q.samples; ++i) {
+      const double step = q.samples > 1 ? motion::js::round(static_cast<double>(q.range.duration) * i / (q.samples - 1)) : 0;
+      const api::Time tf = q.range.start + static_cast<api::Time>(step);
+      const motion::xf::Camera cam = camera_at(sc, n, cw, ch, flicks_to_seconds(tf));
+      api::CameraSample s;
+      s.time = tf;
+      s.eye = api::Vec3{cam.position.x, cam.position.y, cam.position.z};
+      if (cam.orientation) {
+        s.yaw = cam.orientation->yaw;
+        s.pitch = cam.orientation->pitch;
+        s.roll = cam.orientation->roll.value_or(0);
+      }
+      s.zoom = cam.focal_length;
+      out.samples.push_back(s);
+    }
+    return query_result_for<api::SampleCamera>(std::move(out));
+  }
   api::QueryResult operator()(const api::GetKeyframes& q) const {
     api::KeyframeSets out;
     for (const auto& p : q.props) {

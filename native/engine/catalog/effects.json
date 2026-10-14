@@ -1536,6 +1536,12 @@
     "label": "Lens Flare",
     "params": [
       {
+        "key": "linkLight",
+        "label": "Link to Light",
+        "type": "layer",
+        "default": ""
+      },
+      {
         "key": "centerX",
         "label": "Flare Centre X",
         "type": "number",
@@ -6942,6 +6948,37 @@
         "min": 0,
         "max": 100,
         "default": 70
+      },
+      {
+        "key": "blurMap",
+        "label": "Blur Map",
+        "type": "enum",
+        "options": [
+          {
+            "value": 0,
+            "label": "None"
+          },
+          {
+            "value": 1,
+            "label": "Scene Depth"
+          }
+        ],
+        "default": 0
+      },
+      {
+        "key": "focusFromCamera",
+        "label": "Focus From Camera",
+        "type": "checkbox",
+        "default": true
+      },
+      {
+        "key": "focusDistance",
+        "label": "Blur Focal Distance",
+        "type": "number",
+        "unit": "px",
+        "min": 1,
+        "max": 100000,
+        "default": 1500
       }
     ]
   },
@@ -12928,6 +12965,12 @@
     "label": "3D Glasses",
     "params": [
       {
+        "key": "rightView",
+        "label": "Right View",
+        "type": "layer",
+        "default": ""
+      },
+      {
         "key": "convergenceOffset",
         "label": "Convergence Offset",
         "type": "number",
@@ -12964,6 +13007,10 @@
           {
             "value": 5,
             "label": "Interlace Upper L Lower R"
+          },
+          {
+            "value": 6,
+            "label": "Over Under"
           }
         ],
         "default": 0
@@ -17778,6 +17825,135 @@
         "max": 86400,
         "precision": 3,
         "default": 0
+      }
+    ]
+  },
+  {
+    "type": "depth-matte",
+    "label": "Depth Matte",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "near",
+        "label": "Near",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 0
+      },
+      {
+        "key": "far",
+        "label": "Far",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 2000
+      },
+      {
+        "key": "feather",
+        "label": "Feather",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 10000,
+        "default": 50
+      },
+      {
+        "key": "invert",
+        "label": "Invert",
+        "type": "checkbox",
+        "default": false
+      }
+    ]
+  },
+  {
+    "type": "depth-fog",
+    "label": "Depth Fog",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "color",
+        "label": "Fog Color",
+        "type": "color",
+        "default": "#c9d3dc"
+      },
+      {
+        "key": "start",
+        "label": "Fog Start",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 1000
+      },
+      {
+        "key": "end",
+        "label": "Fog End",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 5000
+      },
+      {
+        "key": "density",
+        "label": "Density",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 100
+      },
+      {
+        "key": "fogBackground",
+        "label": "Fog Background",
+        "type": "checkbox",
+        "default": true
+      },
+      {
+        "key": "gradient",
+        "label": "Gradient",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "key": "farColor",
+        "label": "Far Color",
+        "type": "color",
+        "default": "#8fa3b8"
+      }
+    ]
+  },
+  {
+    "type": "depth-extract",
+    "label": "Depth Extract",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "near",
+        "label": "Black Point (Near)",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 0
+      },
+      {
+        "key": "far",
+        "label": "White Point (Far)",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 100000,
+        "default": 5000
+      },
+      {
+        "key": "invert",
+        "label": "Invert",
+        "type": "checkbox",
+        "default": false
       }
     ]
   }

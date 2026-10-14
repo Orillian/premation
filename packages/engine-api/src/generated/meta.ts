@@ -213,6 +213,7 @@ export const QUERIES: Readonly<Record<QueryType, QueryInfo>> = {
   checkPrecompose: { id: 1934, family: "Model", result: "PrecomposeCheck", doc: "B4 round 5 — a precompose DRY RUN: why `precompose` would refuse `leaveAttributes` for these layers of `comp` ('' = it would not) — exactly the refusal the command gives (one footage / image / vector / solid layer with a size, no children, not 3D, no deformers, no stretched / reversed / frozen time). Nothing is changed." },
   getTimelineRows: { id: 1937, family: "Model", result: "TimelineRowSets", doc: "B4 round 8 — the timeline's After Effects ROW projection of each layer (both engines' `buildStaticPropertyTree` / `build_static_property_tree`): the rows in AE's twirl order (Text, Contents, Masks, Effects, Transform, Camera / Light Options, Layer Styles, Geometry / Material Options, Audio, Time), each with the legacy track names behind it. `members` = the tracks its stopwatch keys (empty = no stopwatch); `merged` = the pseudo track the members collapse under once keyed (Position); `valueProps` = the tracks its value field edits; `maskTrack` = keyed as a whole-mask track. Unknown ids answer no set." },
   getRigPose: { id: 1900, family: "Model", result: "RigPose", doc: "B4 round 5 — a layer's rig at `time` for what the overlay push does not carry: the pose the Rigging panel shows and its IK/FK switch plans from, pointer input mapped back through the pose (`points`), and one vertex's bind weights. `authoring` picks the Puppet Pin tool's mesh (OverlayRigOptions.authoring). `notFound` for no such layer; a layer with no rig answers empty lists and the points unchanged." },
+  sampleCamera: { id: 1093, family: "Model", result: "CameraSamples", doc: "Camera program D5 (Export Camera): sample a camera layer's evaluated view `samples` times evenly over `range` (both ends included). Not a camera: invalid_argument." },
   getWaveform: { id: 1020, family: "Media", result: "WaveformPeaks", doc: "" },
   listFonts: { id: 1021, family: "Media", result: "FontList", doc: "" },
   getItems: { id: 1022, family: "Media", result: "ItemDetails", doc: "" },
@@ -282,4 +283,4 @@ export const EVENTS: Readonly<Record<EventType, EventInfo>> = {
 };
 
 /** Size of the schema, for docs and tests. */
-export const SCHEMA_COUNTS = {"enums":91,"structs":533,"unions":11,"commands":170,"queries":55,"events":33} as const;
+export const SCHEMA_COUNTS = {"enums":91,"structs":537,"unions":11,"commands":170,"queries":56,"events":33} as const;

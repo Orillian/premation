@@ -607,6 +607,39 @@ const STATIC: Record<string, MetaSpec> = {
     label: 'Iris Diffraction Fringe', group: 'camera', type: 'number', unit: '',
     min: 0, max: 1, step: 0.01, precision: 2, defaultValue: 0, resettable: true, order: ORDER.camera,
   },
+  // Procedural camera shake (camera program R1): seeded smooth noise the
+  // engine adds after the aim. 0 amount and rotation = no shake.
+  shakeAmount: {
+    label: 'Shake Amount', group: 'camera', type: 'number', unit: 'px',
+    min: 0, step: 0.5, precision: 1, defaultValue: 0, resettable: true, order: ORDER.camera,
+  },
+  shakeRotation: {
+    label: 'Shake Rotation', group: 'camera', type: 'angle', unit: '°',
+    min: 0, max: 45, step: 0.1, precision: 1, defaultValue: 0, resettable: true, order: ORDER.camera,
+  },
+  shakeFrequency: {
+    label: 'Shake Frequency', group: 'camera', type: 'number', unit: 'Hz',
+    min: 0, max: 30, step: 0.1, precision: 1, defaultValue: 2, resettable: true, order: ORDER.camera,
+  },
+  shakeSeed: {
+    label: 'Shake Seed', group: 'camera', type: 'number', unit: '',
+    min: 0, step: 1, precision: 0, defaultValue: 0, resettable: true, order: ORDER.camera,
+  },
+
+  // Photo → 3D parallax (camera program D3): an image / video layer's depth
+  // displacement (threed_port.cpp). Depth Scale 0 = flat (nothing stored).
+  depthScale: {
+    label: 'Depth Scale', group: 'geometry', type: 'number', unit: 'px',
+    min: -5000, max: 5000, step: 1, precision: 0, defaultValue: 0, resettable: true, order: ORDER.geometry,
+  },
+  depthMeshDetail: {
+    label: 'Mesh Detail', group: 'geometry', type: 'number', unit: '',
+    min: 2, max: 256, step: 1, precision: 0, defaultValue: 128, resettable: true, order: ORDER.geometry,
+  },
+  depthEdgeCut: {
+    label: 'Edge Cut', group: 'geometry', type: 'number', unit: '',
+    min: 0, max: 1, step: 0.01, precision: 2, defaultValue: 0, resettable: true, order: ORDER.geometry,
+  },
 
   // ── Light Options ──
   //

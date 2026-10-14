@@ -1299,6 +1299,7 @@ add_library(engine_jobs_core STATIC
   src/jobs/saliency.cpp
   src/jobs/reframe_analyse.cpp
   src/jobs/transcribe.cpp
+  src/jobs/depth_prep.cpp
 )
 target_include_directories(engine_jobs_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/jobs)
 target_link_libraries(engine_jobs_core PUBLIC engine_core engine_scene_core motion::jsmath PRIVATE motion::options)
@@ -1331,6 +1332,8 @@ if(FFMPEG_FOUND AND TARGET engine_audio)
     src/jobs/kind_camera_track.cpp
     src/jobs/kind_face_track.cpp
     src/jobs/face_ort_ffi.cpp
+    src/jobs/kind_depth_estimate.cpp
+    src/jobs/depth_ort_ffi.cpp
   )
   target_include_directories(engine_jobs SYSTEM PRIVATE ${FFMPEG_INCLUDE_DIRS})
   target_link_directories(engine_jobs PUBLIC ${FFMPEG_LIBRARY_DIRS})
@@ -1383,6 +1386,14 @@ if(MOTION_BUILD_TESTS)
                                  tests/test_reframe_analyse.cpp tests/test_job_retime.cpp
                                  tests/test_transcribe.cpp tests/test_mask_fit.cpp)
   target_link_libraries(engine_jobs_tests PRIVATE engine_jobs_core motion::options Catch2::Catch2WithMain)
+  # Camera program D3: the depth model's ORT run (the test skips without PREMATION_DEPTH_TEST_MODEL).
+  target_sources(engine_jobs_tests PRIVATE src/jobs/depth_ort_ffi.cpp)
+  if(MSVC)
+    target_compile_definitions(engine_jobs_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+  endif()
+  if(TARGET onnxruntime::onnxruntime)
+    target_link_libraries(engine_jobs_tests PRIVATE onnxruntime::onnxruntime)
+  endif()
   if(MSVC)
     target_compile_options(engine_jobs_tests PRIVATE /bigobj)
   endif()

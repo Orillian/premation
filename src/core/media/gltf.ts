@@ -123,6 +123,21 @@ export interface GltfNode {
   /** Rotation quaternion, x y z w (glTF order). */
   r: [number, number, number, number];
   s: [number, number, number];
+  /** Index into `cameras` (camera program D4), or null. */
+  camera?: number | null;
+}
+
+/** A glTF camera (camera program D4): perspective cameras import as camera layers. */
+export interface GltfCamera {
+  name: string;
+  type: 'perspective' | 'orthographic';
+  /** Vertical field of view, radians (perspective). */
+  yfov: number;
+  aspectRatio: number | null;
+  /** Premation's own export: yfov keys `[t, yfov]` (`extras.yfovKeys`). */
+  yfovKeys: Array<[number, number]> | null;
+  /** The engine's FBX conversion: baked WORLD poses `[t, tx, ty, tz, qx, qy, qz, qw, yfov]` (`extras.premationSamples`). */
+  samples: number[][] | null;
 }
 
 export interface GltfSkin {
@@ -162,6 +177,10 @@ export interface ParsedGltf {
   /** TRS animation clips ('weights' morph channels are skipped for now). */
   animations: GltfAnimation[];
   skins: GltfSkin[];
+  /** Absent on hand-built fixtures (= none). */
+  cameras?: GltfCamera[];
+  /** Premation's camera export: comp px per glTF unit (`asset.extras.premationPxPerUnit`), else null. */
+  pxPerUnit?: number | null;
 }
 
 // ── GLB container ─────────────────────────────────────────────────────
@@ -369,7 +388,12 @@ export function parseGltf(data: ArrayBuffer): ParsedGltf {
 // ── glTF JSON (typed loosely; unknown fields ignored per spec) ───────
 
 interface GltfJson {
-  asset?: { version?: string };
+  asset?: { version?: string; extras?: { premationPxPerUnit?: number } };
+  cameras?: {
+    name?: string; type?: string;
+    perspective?: { yfov?: number; aspectRatio?: number; znear?: number; zfar?: number };
+    extras?: { yfovKeys?: unknown; premationSamples?: unknown };
+  }[];
   /** Extensions a loader MUST understand to read the file correctly. */
   extensionsRequired?: string[];
   buffers?: { byteLength: number; uri?: string }[];
@@ -413,7 +437,7 @@ interface GltfJson {
     extras?: { targetNames?: unknown };
   }[];
   nodes?: {
-    name?: string; children?: number[]; mesh?: number; skin?: number; weights?: number[];
+    name?: string; children?: number[]; mesh?: number; skin?: number; weights?: number[]; camera?: number;
     translation?: number[]; rotation?: number[]; scale?: number[]; matrix?: number[];
   }[];
   skins?: { joints?: number[]; inverseBindMatrices?: number }[];
@@ -748,6 +772,26 @@ function parseJson(g: GltfJson, glbBin: Uint8Array | null): ParsedGltf {
       skin: n.skin ?? null,
       weights: n.weights ?? null,
       t, r, s,
+      camera: typeof n.camera === 'number' ? n.camera : null,
+    };
+  });
+
+  // Cameras (camera program D4).
+  const cameras: GltfCamera[] = (g.cameras ?? []).map((c, i) => {
+    const keys = Array.isArray(c.extras?.yfovKeys)
+      ? (c.extras!.yfovKeys as unknown[]).filter((k): k is [number, number] =>
+        Array.isArray(k) && typeof k[0] === 'number' && typeof k[1] === 'number')
+      : null;
+    return {
+      name: c.name ?? `camera ${i}`,
+      type: c.type === 'orthographic' ? 'orthographic' : 'perspective',
+      yfov: typeof c.perspective?.yfov === 'number' && c.perspective.yfov > 0 ? c.perspective.yfov : 0.7,
+      aspectRatio: typeof c.perspective?.aspectRatio === 'number' ? c.perspective.aspectRatio : null,
+      yfovKeys: keys && keys.length > 0 ? keys : null,
+      samples: Array.isArray(c.extras?.premationSamples)
+        ? (c.extras!.premationSamples as unknown[]).filter((r): r is number[] =>
+          Array.isArray(r) && r.length >= 9 && r.every((v) => typeof v === 'number'))
+        : null,
     };
   });
 
@@ -791,7 +835,9 @@ function parseJson(g: GltfJson, glbBin: Uint8Array | null): ParsedGltf {
     roots = nodes.map((_, i) => i).filter((i) => !claimed.has(i));
   }
 
-  return { meshes, materials, images, nodes, roots, animations, skins };
+  const pxPerUnit = typeof g.asset?.extras?.premationPxPerUnit === 'number' && g.asset.extras.premationPxPerUnit > 0
+    ? g.asset.extras.premationPxPerUnit : null;
+  return { meshes, materials, images, nodes, roots, animations, skins, cameras, pxPerUnit };
 }
 
 /** Area-weighted vertex normals for a mesh that ships none. */

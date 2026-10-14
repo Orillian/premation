@@ -290,7 +290,12 @@
     "fx60-crystallize",
     "fx60-fog",
     "fx60-chrome",
-    "fx60-night-vision"
+    "fx60-night-vision",
+    "fx60-depth-matte",
+    "fx60-depth-fog",
+    "fx60-depth-extract",
+    "camera-lens-blur-depth",
+    "lens-flare-depth"
   ],
   "materials": [
     {
@@ -2860,6 +2865,13 @@
         {
           "binding": 2,
           "type": "sampler",
+          "stages": [
+            "fragment"
+          ]
+        },
+        {
+          "binding": 3,
+          "type": "texture",
           "stages": [
             "fragment"
           ]

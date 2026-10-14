@@ -448,6 +448,50 @@
     }
   },
   {
+    "member": "shakeAmount",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "camera"
+      ]
+    }
+  },
+  {
+    "member": "shakeRotation",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "camera"
+      ]
+    }
+  },
+  {
+    "member": "shakeFrequency",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "camera"
+      ]
+    }
+  },
+  {
+    "member": "shakeSeed",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "camera"
+      ]
+    }
+  },
+  {
     "member": "morph",
     "home": [
       "Transform"
@@ -473,6 +517,42 @@
     ],
     "when": {
       "component": "Text"
+    }
+  },
+  {
+    "member": "depthScale",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "image",
+        "video"
+      ]
+    }
+  },
+  {
+    "member": "depthMeshDetail",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "image",
+        "video"
+      ]
+    }
+  },
+  {
+    "member": "depthEdgeCut",
+    "home": [
+      "Transform"
+    ],
+    "when": {
+      "kinds": [
+        "image",
+        "video"
+      ]
     }
   }
 ]

@@ -152,6 +152,18 @@ const bridge = {
       return () => ipcRenderer.removeListener('faceModel:downloadProgress', listener);
     },
   },
+  // Make 3D from Photo's depth model (electron/depthModel.ts): a PINNED download on first use.
+  depthModel: {
+    status: () => ipcRenderer.invoke('depthModel:status'),
+    install: (request: { requestId: string }) => ipcRenderer.invoke('depthModel:install', request),
+    remove: () => ipcRenderer.invoke('depthModel:remove'),
+    cancelDownload: (requestId: string) => ipcRenderer.invoke('objectMatte:cancelDownload', requestId),
+    onDownloadProgress: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('depthModel:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('depthModel:downloadProgress', listener);
+    },
+  },
   // Export's ffmpeg: health, one-click repair, "choose file" (electron/ffmpegService.ts).
   ffmpeg: {
     status: (force?: boolean) => ipcRenderer.invoke('ffmpeg:status', force === true),

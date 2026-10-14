@@ -48,6 +48,7 @@ const CATEGORY_LABEL_KEY: Record<string, string> = {
   Generate: 'menu.sub.effect.generate',
   Distort: 'menu.sub.effect.distort',
   Perspective: 'menu.sub.effect.perspective',
+  '3D Channel': 'menu.sub.effect.threeDChannel',
   Channel: 'menu.sub.effect.channel',
   Keying: 'menu.sub.effect.keying',
   Simulation: 'menu.sub.effect.simulation',

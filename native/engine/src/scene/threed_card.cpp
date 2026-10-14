@@ -126,7 +126,7 @@ Scene3D::CardPlan Scene3D::comp_card(const doc::Node& group, const Values& gv, c
         // NOLINTNEXTLINE(bugprone-exception-escape): a sampler into std::function, as matrix_at's
         const xf::Camera cam = camera_from_node(*viewCam_, [this, camId, tcomp](std::string_view k) {
           return doc::anim_sample(c_.d, c_.expr, c_.cache, camId, k, tcomp);
-        });
+        }, h_.remap3d(viewCam_->id, tcomp));
         it = subFrameCameras_.emplace(tcomp, cam).first;
       }
       const xf::Camera fixed = it->second;

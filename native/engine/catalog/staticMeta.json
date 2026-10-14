@@ -933,6 +933,40 @@
     "max": 1,
     "defaultValue": 0
   },
+  "shakeAmount": {
+    "label": "Shake Amount",
+    "group": "camera",
+    "type": "number",
+    "unit": "px",
+    "min": 0,
+    "defaultValue": 0
+  },
+  "shakeRotation": {
+    "label": "Shake Rotation",
+    "group": "camera",
+    "type": "angle",
+    "unit": "°",
+    "min": 0,
+    "max": 45,
+    "defaultValue": 0
+  },
+  "shakeFrequency": {
+    "label": "Shake Frequency",
+    "group": "camera",
+    "type": "number",
+    "unit": "Hz",
+    "min": 0,
+    "max": 30,
+    "defaultValue": 2
+  },
+  "shakeSeed": {
+    "label": "Shake Seed",
+    "group": "camera",
+    "type": "number",
+    "unit": "",
+    "min": 0,
+    "defaultValue": 0
+  },
   "falloffDistance": {
     "label": "Falloff Distance",
     "group": "light",
@@ -1020,6 +1054,33 @@
     "group": "transform",
     "type": "group",
     "unit": "px",
+    "defaultValue": 0
+  },
+  "depthScale": {
+    "label": "Depth Scale",
+    "group": "geometry",
+    "type": "number",
+    "unit": "px",
+    "min": -5000,
+    "max": 5000,
+    "defaultValue": 0
+  },
+  "depthMeshDetail": {
+    "label": "Mesh Detail",
+    "group": "geometry",
+    "type": "number",
+    "unit": "",
+    "min": 2,
+    "max": 256,
+    "defaultValue": 128
+  },
+  "depthEdgeCut": {
+    "label": "Edge Cut",
+    "group": "geometry",
+    "type": "number",
+    "unit": "",
+    "min": 0,
+    "max": 1,
     "defaultValue": 0
   }
 }

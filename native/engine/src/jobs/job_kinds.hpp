@@ -38,6 +38,8 @@ void set_ffmpeg_executable(std::string path);
 [[nodiscard]] PreparedJob prepare_track_apply(const api::TrackApplyJob& spec, const JobDocContext& ctx);
 [[nodiscard]] PreparedJob prepare_camera_track(const api::CameraTrackJob& spec, const JobDocContext& ctx);
 [[nodiscard]] PreparedJob prepare_face_track(const api::FaceTrackJob& spec, const JobDocContext& ctx);
+/// Camera program D3 (kind_depth_estimate.cpp).
+[[nodiscard]] PreparedJob prepare_depth_estimate(const api::DepthEstimateJob& spec, const JobDocContext& ctx);
 /// AE parity 4.7 (kind_model_import.cpp).
 [[nodiscard]] PreparedJob prepare_model_import(const api::ModelImportJob& spec, const JobDocContext& ctx);
 /// Transcription through the user's speech provider (kind_transcribe.cpp); the key arrives in the spec from Electron main.
@@ -46,5 +48,6 @@ void set_ffmpeg_executable(std::string path);
 /// The child-process work of the kinds that load a model (child_job.hpp).
 void register_object_matte_child();
 void register_face_track_child();
+void register_depth_child();
 
 }  // namespace premation::jobs

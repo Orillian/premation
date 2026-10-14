@@ -346,6 +346,10 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'chrome': 'Stylize',
   'night-vision': 'Stylize',
   // fx60:b11:end
+  // Camera program D1 (AE's 3D Channel folder).
+  'depth-matte': '3D Channel',
+  'depth-fog': '3D Channel',
+  'depth-extract': '3D Channel',
 };
 
 /**
@@ -357,7 +361,7 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
  */
 export const EFFECT_CATEGORY_ORDER: readonly string[] = [
   'Blur & Sharpen', 'Color Correction', 'Stylize', 'Generate',
-  'Distort', 'Perspective', 'Channel', 'Keying', 'Simulation', 'Time', 'Transition', 'Utility',
+  'Distort', 'Perspective', '3D Channel', 'Channel', 'Keying', 'Simulation', 'Time', 'Transition', 'Utility',
 ];
 
 /** The folder plugin effects go in (the browser's last folder). */

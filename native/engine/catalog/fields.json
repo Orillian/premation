@@ -1282,6 +1282,20 @@
       }
     },
     {
+      "path": "layer/viewCamera",
+      "key": "viewCamera",
+      "label": "View Through Camera",
+      "type": "string",
+      "default": "",
+      "clearAtDefault": true,
+      "store": {
+        "fx": "viewCamera"
+      },
+      "when": {
+        "fx": "precomp"
+      }
+    },
+    {
       "path": "layer/sequenceLoop",
       "key": "loop",
       "label": "Loop Sequence",
@@ -1650,6 +1664,24 @@
       },
       "when": {
         "component": "Model"
+      }
+    },
+    {
+      "path": "layer/depthSource",
+      "key": "depthSource",
+      "label": "Depth Source",
+      "type": "string",
+      "default": "",
+      "clearAtDefault": true,
+      "store": {
+        "component": "Transform",
+        "key": "depthSource"
+      },
+      "when": {
+        "kinds": [
+          "image",
+          "video"
+        ]
       }
     }
   ],

@@ -5,6 +5,7 @@
 // `worldMatrixOf`, motion_transform's `local_matrix`).
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -55,5 +56,25 @@ using LayerSpace = std::variant<motion::xf::LayerSpace2D, motion::xf::LayerSpace
 [[nodiscard]] std::optional<motion::xf::Mat4> node_world_3d_at(const SpaceCtx& c, const Node& n, double seconds);
 /// camera3d.ts `cameraFromNode(node, w, h, sample, toWorldPointAt)` at comp `seconds` (animated values winning).
 [[nodiscard]] motion::xf::Camera camera_at(const SpaceCtx& c, const Node& n, double w, double h, double seconds);
+
+/// Camera program R3b: a ONE-node camera's Auto-Orient "Along Path" — the
+/// world direction of travel at key time `kt` (`animId`'s x / y / z tracks,
+/// forward over 1/120 s, backward at the last key; held before the first and
+/// after the last key, as AE holds the end tangents), lifted through `lift`.
+/// nullopt when the mode is off, the camera has a Point of Interest, or it is
+/// not moving.
+[[nodiscard]] std::optional<motion::xf::Vec3> camera_path_direction(
+    const Document& d, const ExprEnv& expr, ExprCache& cache, const Node& n, std::string_view animId, double kt,
+    const std::function<motion::xf::Vec3(motion::xf::Vec3)>& lift);
+/// Camera program R2b: a ONE-node camera turns with its parents (AE): `cam`'s
+/// view rotated by the rotation part of `parent` (its parent chain's world
+/// matrix; scale and shear normalised away). The eye was already lifted.
+/// Unchanged — byte for byte — when the parent does not rotate.
+[[nodiscard]] motion::xf::Camera rotate_camera_with_parent(const motion::xf::Camera& cam,
+                                                           const std::optional<motion::xf::Mat4>& parent);
+/// `cam` turned to look along `dir`, with the camera's own X/Y/Z Rotation
+/// composed on top exactly as camera_from_props composes them.
+[[nodiscard]] motion::xf::Camera orient_camera_along(const motion::xf::Camera& cam, motion::xf::Vec3 dir, double oriX,
+                                                     double oriY, double roll);
 
 }  // namespace premation::doc

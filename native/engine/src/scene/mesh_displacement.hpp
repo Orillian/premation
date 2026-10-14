@@ -49,6 +49,17 @@ struct DisplacedCarrier {
 /// TypeScript's displaced Uint32Array), ranges left to the caller.
 void displaced_to_api(const DisplacedCarrier& c, api::RenderExtrudedMesh& out);
 
+/// Camera program D3 (Photo → 3D parallax): a camera-facing grid over a
+/// w × h layer (centred local px, u / v over the layer), every vertex pushed
+/// toward the camera by its depth — `z = −(d − 0.5) · scale`, depth 0..1 with
+/// white = near (Depth Anything's relative inverse depth, and the usual depth
+/// map convention). `cols` × `rows` cells (2..256). `edgeCut` (0..1, 0 = off):
+/// a triangle spanning a depth jump wider than it is a stretched edge — it is
+/// textured from its FARTHEST corner instead (edge fill without inpainting:
+/// the background smears into the gap, never the foreground).
+[[nodiscard]] DisplacedMesh depth_parallax_mesh(const HeightField& depth, double layerW, double layerH, double scale,
+                                                double edgeCut, std::uint32_t cols, std::uint32_t rows);
+
 /// Drop the decoded fields (tests).
 void clear_height_fields();
 

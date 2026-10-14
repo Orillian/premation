@@ -498,6 +498,10 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'camera.setFocusToLayer', label: 'Set Focus Distance to Layer' },
           { commandId: 'camera.linkFocusToLayer', label: 'Link Focus Distance to Layer' },
           { commandId: 'camera.linkFocusToPoi', label: 'Link Focus Distance to Point of Interest' },
+          { separator: true },
+          { commandId: 'camera.createStereoRig', label: 'Create Stereo 3D Rig' },
+          { commandId: 'camera.exportCamera', label: 'Export Camera…' },
+          { commandId: 'camera.make3DFromPhoto', label: 'Make 3D from Photo/Video…' },
         ],
       },
       {

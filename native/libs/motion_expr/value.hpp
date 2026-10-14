@@ -58,6 +58,7 @@ enum class Global : std::int8_t {
   kSeedRandom, kGaussRandom, kNoise, kNumKeys, kKey, kNearestKey, kMarker,
   kPosterizeTime, kAdd, kSub, kMul, kDiv, kDot, kCross, kLength, kNormalize, kText,
   kPlugin,
+  kLookAt,  // camera program D6
   kCount_
 };
 
@@ -73,6 +74,8 @@ enum class Fn : std::uint8_t {
   kLoopIn, kSourceRectAtTime, kToComp, kToWorld, kFromComp, kFromWorld, kSeedRandom,
   kGaussRandom, kNoise, kKey, kNearestKey, kPosterizeTime, kAdd, kSub, kMul, kDiv, kDot,
   kCross, kLength, kNormalize, kCompLayer, kMarkerKey, kMarkerNearestKey,
+  // cameras and lights (camera program D6)
+  kLookAt, kToCompVec, kFromCompToSurface,
   // sourceText.ts
   kGetStyleAt, kStyleSetter, kStyleSetText,
   // Math
@@ -139,7 +142,13 @@ enum class ObjKind : std::uint8_t {
 };
 
 /// A lazily computed property (a JavaScript getter in the TypeScript).
-enum class Lazy : std::uint8_t { kNone, kMarkerNumKeys, kSourceText };
+/// D6 (camera program): kLayerProp reads one property of the object's bound
+/// layer (the key names which), kLayerVec a 3-vector (position / point of
+/// interest), kLayerColor a colour; kCameraOption / kLightOption build the
+/// option group of the bound layer.
+enum class Lazy : std::uint8_t {
+  kNone, kMarkerNumKeys, kSourceText, kLayerProp, kLayerVec, kLayerColor, kCameraOption, kLightOption
+};
 
 struct Prop {
   KeyId key = KeyId::kUnknown;

@@ -312,6 +312,15 @@ struct PropertySamples {
   speeds: f64[] = 4;
 }
 
+/// Camera program D5: one evaluated camera view — what the renderer looks through at `time` (procedural shake,
+/// Auto-Orient Along Path, Point of Interest, parents and expressions included). `eye` in comp px; yaw / pitch /
+/// roll in degrees (Premation's orientation: yaw about y, then pitch, then roll about the view axis); `zoom` comp px.
+struct CameraSample { time: Time = 1; eye: Vec3 = 2; yaw: f64 = 3; pitch: f64 = 4; roll: f64 = 5; zoom: f64 = 6; }
+struct CameraSamples { compWidth: f64 = 1; compHeight: f64 = 2; samples: CameraSample[] = 3; }
+/// Camera program D5 (Export Camera): sample a camera layer's evaluated view `samples` times evenly over `range`
+/// (both ends included). Not a camera: invalid_argument.
+query sampleCamera = 1093 { layer: LayerId = 1; range: TimeRange = 2; samples: u32 = 3; } -> CameraSamples;
+
 family "Media";
 
 struct WaveformPeaks {

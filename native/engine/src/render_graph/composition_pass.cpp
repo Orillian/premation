@@ -28,6 +28,7 @@
 #include "fx_keys.hpp"
 #include "passes.hpp"
 #include "render_context.hpp"
+#include "scene_depth.hpp"
 #include "threed.hpp"
 
 namespace premation::rg {
@@ -751,6 +752,22 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     return true;
   }
 
+  /// Camera program D1: the comp's scene depth for a depth-reading effect
+  /// (one pass per frame and placement, shared — scene_depth.cpp).
+  TexRef scene_depth(PassContext& ctx, std::uint32_t w, std::uint32_t h, const std::array<double, 9>& compToWorld,
+                     std::string_view selfId) override {
+    SceneDepth::Request req;
+    req.width = w;
+    req.height = h;
+    req.compToWorld = compToWorld;
+    req.selfId = selfId;
+    const SceneDepth::Result* r = sceneDepth_.render(ctx, req);
+    if (r == nullptr || !r->view) return {};
+    // External identity (high bit): stable per texture object, never a Device id.
+    const auto id = (std::uint64_t{1} << 63U) | static_cast<std::uint64_t>(std::bit_cast<std::uintptr_t>(r->texture.Get()));
+    return TexRef{r->view, id, r->width, r->height, false};
+  }
+
   /// displacementMapTexture: render a referenced layer into MATTE_TARGET.
   TexRef map_layer(PassContext& ctx, const ById& byId, std::string_view mapLayerId, std::string_view selfId) override {
     if (mapLayerId.empty() || mapLayerId == selfId) return {};
@@ -764,6 +781,8 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   }
 
  private:
+  /// D1: the scene depth depth-reading effects sample (render thread only).
+  SceneDepth sceneDepth_;
   /// Mat3 reparent of a renderable list (prepareIsolatedPrecomp `reparent`).
   static std::vector<api::Renderable> reparent(const std::vector<const api::Renderable*>& list, const Mat3& P) {
     std::vector<api::Renderable> out;

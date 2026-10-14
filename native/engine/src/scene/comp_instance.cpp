@@ -276,6 +276,12 @@ std::optional<NestedComp> nested_comp_layers(const BuildContext& c, const Snapsh
   nested.compOverrides = read_comp_overrides(instance);
   nested.transparent = true;  // content, not a backdrop
   nested.camera3dMode = "active";
+  // Camera program D7: a composition layer can look through one of its comp's
+  // cameras (the stereo rig's Left / Right Eye comps) instead of the active one.
+  if (const doc::Component* fx = instance.comp("fx"); fx != nullptr && fx->props.at("viewCamera").is_string() &&
+                                                       !fx->props.at("viewCamera").str().empty()) {
+    nested.camera3dMode = "camera:" + fx->props.at("viewCamera").str();
+  }
   nested.customViewCamera = std::nullopt;
   nested.compStack = stack;
   nested.compStack.push_back(ref);

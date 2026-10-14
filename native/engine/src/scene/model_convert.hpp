@@ -110,7 +110,21 @@ struct NodeDef {
   std::array<double, 4> rotation{0, 0, 0, 1};  ///< quaternion xyzw
   std::array<double, 3> scale{1, 1, 1};
   int mesh = -1;
+  /// Camera program D4: index into SceneModel::cameras, -1 = none.
+  int camera = -1;
   std::vector<int> children;
+};
+
+/// Camera program D4: a perspective camera for the GLB (glTF axes: looks down
+/// −Z, Y up). `samples` bakes a moving camera's WORLD pose per frame —
+/// {t, tx, ty, tz, qx, qy, qz, qw, yfov} — written as the camera's
+/// `extras.premationSamples` (src/core/scene/cameraInterchange.ts reads them);
+/// its node then sits at the scene root with the first pose.
+struct CameraDef {
+  std::string name;
+  double yfov = 0.7;  ///< radians
+  double aspect = 0;  ///< 0 = unknown
+  std::vector<std::array<double, 9>> samples;
 };
 
 struct SceneModel {
@@ -119,6 +133,7 @@ struct SceneModel {
   std::vector<MeshDef> meshes;
   std::vector<MaterialDef> materials;
   std::vector<TextureDef> textures;
+  std::vector<CameraDef> cameras;
   std::vector<std::string> warnings;
 };
 

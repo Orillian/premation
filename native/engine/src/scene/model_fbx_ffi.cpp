@@ -177,6 +177,70 @@ struct Converter {
   }
 };
 
+/// Camera program D4: every perspective camera as a root-level node at its
+/// world pose, its animation (the default take) baked at 30 fps as world poses
+/// — focal length / film back changes included — so the importer needs no FBX
+/// animation model. A camera in the hierarchy keeps its original node too.
+void bake_cameras(const ufbx_scene* sc, SceneModel& scene) {
+  if (sc->cameras.count == 0) return;
+  const ufbx_anim* anim = sc->anim;
+  const double t0 = anim != nullptr ? anim->time_begin : 0;
+  const double t1 = anim != nullptr ? std::max(t0, anim->time_end) : 0;
+  constexpr double kFps = 30;
+  const auto frames = static_cast<std::size_t>(std::lround((t1 - t0) * kFps)) + 1;
+  const std::size_t count = std::min<std::size_t>(frames, 30 * 60 * 10);  // ten minutes at most
+  std::vector<std::pair<const ufbx_node*, std::size_t>> cams;  // node, camera index
+  for (std::size_t i = 0; i < sc->nodes.count; ++i) {
+    const ufbx_node* n = sc->nodes.data[i];
+    if (n->camera == nullptr || n->camera->projection_mode != UFBX_PROJECTION_MODE_PERSPECTIVE) continue;
+    CameraDef c;
+    c.name = str(n->name);
+    c.yfov = n->camera->field_of_view_deg.y * 3.14159265358979323846 / 180;
+    c.aspect = n->camera->aspect_ratio;
+    scene.cameras.push_back(std::move(c));
+    cams.emplace_back(n, scene.cameras.size() - 1);
+  }
+  const auto pose = [](const ufbx_node* n, const ufbx_camera* cam, double t) {
+    const ufbx_transform x = ufbx_matrix_to_transform(&n->geometry_to_world);
+    const double yfov = cam != nullptr ? cam->field_of_view_deg.y * 3.14159265358979323846 / 180 : 0.7;
+    return std::array<double, 9>{t, x.translation.x, x.translation.y, x.translation.z,
+                                 x.rotation.x, x.rotation.y, x.rotation.z, x.rotation.w, yfov};
+  };
+  if (anim != nullptr && count > 1) {
+    for (std::size_t f = 0; f < count; ++f) {
+      const double t = t0 + static_cast<double>(f) / kFps;
+      ufbx_scene* es = ufbx_evaluate_scene(sc, anim, t, nullptr, nullptr);
+      if (es == nullptr) break;
+      for (const auto& [n, ci] : cams) {
+        const ufbx_node* en = es->nodes.data[n->typed_id];
+        scene.cameras[ci].samples.push_back(pose(en, en->camera, t - t0));
+      }
+      ufbx_free_scene(es);
+    }
+  }
+  for (const auto& [n, ci] : cams) {
+    CameraDef& c = scene.cameras[ci];
+    if (c.samples.empty()) c.samples.push_back(pose(n, n->camera, 0));
+    // A camera that never moves keeps one pose (no extras samples).
+    const bool moves = std::ranges::any_of(c.samples, [&](const auto& s) {
+      for (std::size_t k = 1; k < 9; ++k) {
+        if (std::abs(s[k] - c.samples.front()[k]) > 1e-9) return true;
+      }
+      return false;
+    });
+    if (!moves) c.samples.resize(1);
+    NodeDef nd;
+    nd.name = c.name;
+    const auto& s = c.samples.front();
+    nd.translation = {s[1], s[2], s[3]};
+    nd.rotation = {s[4], s[5], s[6], s[7]};
+    nd.camera = static_cast<int>(ci);
+    c.yfov = s[8];
+    scene.nodes.push_back(std::move(nd));
+    scene.roots.push_back(static_cast<int>(scene.nodes.size()) - 1);
+  }
+}
+
 }  // namespace
 
 SceneModel load_fbx(const FileSet& files) {
@@ -184,6 +248,8 @@ SceneModel load_fbx(const FileSet& files) {
   ufbx_load_opts opts{};
   opts.target_axes = ufbx_axes_right_handed_y_up;
   opts.target_unit_meters = 1.0;
+  // Camera program D4: cameras in glTF's own axes (look down −Z, Y up).
+  opts.target_camera_axes = ufbx_axes_right_handed_y_up;
   opts.space_conversion = UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY;
   opts.generate_missing_normals = true;
   // Geometry transforms (FBX pivots) folded into helper nodes, so every node's TRS stays plain.
@@ -199,6 +265,7 @@ SceneModel load_fbx(const FileSet& files) {
   try {
     const ufbx_node* root = sc->root_node;
     for (std::size_t i = 0; root != nullptr && i < root->children.count; ++i) cv.scene.roots.push_back(cv.node(root->children.data[i]));
+    bake_cameras(sc, cv.scene);
     if (sc->skin_deformers.count > 0) cv.scene.warnings.push_back("skinning was not converted (the meshes import in their bind pose)");
     if (sc->blend_deformers.count > 0) cv.scene.warnings.push_back("blend shapes were not converted");
     bool animated = false;

@@ -96,6 +96,16 @@ class Interp {
   Value text_group(const Value& name);
   Value comp_layer(const Value& name, const Value& prop);
 
+  // Cameras and lights (camera program D6)
+  /// The camera / light members every layer object carries (`bound`: the layer
+  /// name or `#id`, null = this layer).
+  void add_layer_members(std::vector<Prop>& props, const Value& bound);
+  Value plain_bound(std::vector<Prop> props, const Value& bound);
+  Value read_layer_lazy(Obj& o, const Prop& p);
+  Value active_camera();
+  Value look_at(Args a);
+  Value space_vec_fn(const Obj& f, Args a);
+
   // Markers
   struct MarkerList {
     bool built = false;
@@ -133,6 +143,8 @@ class Interp {
   std::array<Value, 2> marker_scope_{};
   std::array<MarkerList, 2> markers_{};
   Value own_text_;
+  Value active_camera_;
+  bool active_camera_built_ = false;
   Value plugin_;
   Value math_;
   std::optional<double> velocity_;

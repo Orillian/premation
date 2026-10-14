@@ -139,6 +139,7 @@ bool gpu_blends_effect_opacity(std::string_view t) {
       "chrome",
       "night-vision",
       // fx60:b6:end
+      "depth-matte", "depth-fog", "depth-extract",
       "texturize", "threads", "chromatic-aberration", "hex-tile", "flo-motion", "lens", "griddler",
       "ball-action", "drizzle", "card-dance", "plastic", "ripple-pulse", "3d-glasses", "fractal",
       "polar-coordinates", "wave-warp", "turbulent-displace", "curl-noise", "minimax",

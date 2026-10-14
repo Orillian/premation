@@ -815,6 +815,7 @@ std::vector<std::uint8_t> write_glb(const SceneModel& scene) {
     if (n.rotation != std::array<double, 4>{0, 0, 0, 1}) nj.set("rotation", num_array(n.rotation));
     if (n.scale != std::array<double, 3>{1, 1, 1}) nj.set("scale", num_array(n.scale));
     if (n.mesh >= 0) nj.set("mesh", num(n.mesh));
+    if (n.camera >= 0) nj.set("camera", num(n.camera));
     if (!n.children.empty()) {
       Json c = Json::array();
       for (const int ch : n.children) c.arr_mut().push_back(num(ch));
@@ -838,6 +839,28 @@ std::vector<std::uint8_t> write_glb(const SceneModel& scene) {
   doc.set("scenes", std::move(scenes));
   doc.set("nodes", std::move(nodes));
   doc.set("meshes", std::move(meshes));
+  if (!scene.cameras.empty()) {  // camera program D4
+    Json cams = Json::array();
+    for (const CameraDef& c : scene.cameras) {
+      Json cj = Json::object();
+      cj.set("type", Json::string("perspective"));
+      if (!c.name.empty()) cj.set("name", Json::string(c.name));
+      Json p = Json::object();
+      p.set("yfov", num(c.yfov));
+      if (c.aspect > 0) p.set("aspectRatio", num(c.aspect));
+      p.set("znear", num(0.01));
+      cj.set("perspective", std::move(p));
+      if (c.samples.size() > 1) {
+        Json s = Json::array();
+        for (const auto& row : c.samples) s.arr_mut().push_back(num_array(row));
+        Json ex = Json::object();
+        ex.set("premationSamples", std::move(s));
+        cj.set("extras", std::move(ex));
+      }
+      cams.arr_mut().push_back(std::move(cj));
+    }
+    doc.set("cameras", std::move(cams));
+  }
   if (!materials.arr().empty()) doc.set("materials", std::move(materials));
   if (!textures.arr().empty()) {
     Json samplers = Json::array();

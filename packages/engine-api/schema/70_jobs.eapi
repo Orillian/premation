@@ -257,6 +257,13 @@ struct ParticleBakeJob { layer: LayerId = 1; range: TimeRange = 2; everyNFrames?
 /// Rig Logo for Animation (rigLogo.ts): the selection as ONE riggable layer with a starter puppet — an "Anchor" pin at the bottom centre and a "Wave" pin at the top centre (layer space). One image or shape layer holding nothing is rigged in place; anything else (a group, a precomp, text, several layers) is drawn alone on a transparent comp at `time` (absent = the playhead) by a child engine, cropped to its pixels (+4 px), imported as a PNG (importBytes, source `derived`) and placed as an image layer "<name> (Rigged)" where it drew, above the topmost selected layer — and that is rigged. The layers must share a composition. Result: {mode: 'self' | 'rasterize', layer} (layer = the rigged one, once applied).
 struct RigLogoJob { layers: LayerId[] = 1; time?: Time = 2; }
 
+/// Camera program D3 — Make 3D from Photo / Video: Depth Anything V2 Small (ONNX) estimates the depth of an image
+/// layer (once) or a video layer (each source frame of its span), written as 8-bit greyscale PNGs (near = white) to
+/// `outputFolder` (default: next to the project, `Depth Maps/<layer>/`) — an on-disk cache a re-run reuses. Apply, one
+/// entry: the layer 3D, `layer/depthSource` pointed at the maps, `geometry/depthScale` = `depthScale` (default 300 px).
+/// The model: `model`, else the installed one (Settings ▸ Depth), else unsupported.
+struct DepthEstimateJob { layer: LayerId = 1; model?: string = 2; outputFolder?: string = 3; depthScale?: f64 = 4; }
+
 union JobSpec {
   trackMotion: TrackMotionJob = 1;
   stabilize: StabilizeJob = 2;
@@ -280,6 +287,7 @@ union JobSpec {
   cameraTrack: CameraTrackJob = 1718;
   faceTrack: FaceTrackJob = 1719;
   modelImport: ModelImportJob = 1720;
+  depthEstimate: DepthEstimateJob = 1721;
 }
 
 command startJob = 850 [control] { job: JobSpec = 1; apply: bool = 2; } -> JobRef;

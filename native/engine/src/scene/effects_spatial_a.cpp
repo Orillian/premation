@@ -291,7 +291,17 @@ bool lights_and_colour(std::string_view t, const Params& P, const RLayer& layer,
     FxWriter w("lens-flare");
     w.num("centerX", P.n("centerX"));
     w.num("centerY", P.n("centerY"));
-    w.num("brightness", clamp01n(P.n("brightness") / 100));
+    // Camera program D2: linked to a light — `__linkDepth` is its view depth
+    // (the chain dims it where the scene is nearer), < 0 behind the camera.
+    const Json& linkDepth = P.raw("__linkDepth");
+    const bool linked = linkDepth.is_number();
+    const bool behind = linked && linkDepth.num() < 0;
+    w.num("brightness", behind ? 0.0 : clamp01n(P.n("brightness") / 100));
+    if (linked && !behind) {
+      w.num("linkDepth", linkDepth.num());
+      w.num("linkX", P.raw("__linkX").is_number() ? P.raw("__linkX").num() : 0);
+      w.num("linkY", P.raw("__linkY").is_number() ? P.raw("__linkY").num() : 0);
+    }
     w.num("scale", jmax(0.05, P.n("scale")));
     w.color("color", P.c("color"));
     out.push_back(w.done());

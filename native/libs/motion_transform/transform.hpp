@@ -236,6 +236,24 @@ struct CameraProps {
 using LiftFn = std::function<Vec3(Vec3)>;
 [[nodiscard]] Camera camera_from_props(const CameraProps& p, double width, double height, const LiftFn& lift = {});
 
+/// Procedural camera shake (camera program R1): seeded smooth noise — two fixed
+/// incommensurate octaves per channel — added AFTER the aim (Point of Interest /
+/// orbit / orientation). `amount` moves the eye in its own right/down/forward
+/// axes (px, forward at half weight); `rotation` turns it (°, roll at half
+/// weight). Deterministic: a pure function of (seed, time). Amount and rotation
+/// 0 = the camera unchanged.
+struct CameraShake {
+  double amount = 0;      // px
+  double rotation = 0;    // degrees
+  double frequency = 2;   // Hz
+  double seed = 0;        // integer seed (rounded)
+  double seconds = 0;     // the camera's own time
+};
+/// One shake channel in [-1, 1] at `t` seconds (exposed for tests).
+[[nodiscard]] double camera_shake_noise(std::int64_t seed, int channel, double t) noexcept;
+/// `cam` with `shake` applied (unchanged when amount and rotation are 0).
+[[nodiscard]] Camera apply_camera_shake(const Camera& cam, const CameraShake& shake) noexcept;
+
 // ── layerSpace.ts: toComp / fromComp / toWorld / fromWorld ─────────────────
 
 /// A 2D layer: the composition is the world plane.

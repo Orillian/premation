@@ -1185,6 +1185,7 @@ struct ParticleBakeJob;
 struct CameraTrackJob;
 struct FaceTrackJob;
 struct ModelImportJob;
+struct DepthEstimateJob;
 struct JobSpec;
 struct StartJob;
 struct CancelJob;
@@ -1222,6 +1223,7 @@ struct GetSourceSize;
 struct CheckPrecompose;
 struct GetTimelineRows;
 struct GetRigPose;
+struct SampleCamera;
 struct GetWaveform;
 struct ListFonts;
 struct GetItems;
@@ -1340,6 +1342,8 @@ struct RigBonePose;
 struct RigIkGoal;
 struct RigBoneWeight;
 struct RigPose;
+struct CameraSample;
+struct CameraSamples;
 struct WaveformPeaks;
 struct FontAxisInfo;
 struct FontInfo;
@@ -3412,6 +3416,14 @@ struct ModelImportJob {
   bool operator==(const ModelImportJob&) const = default;
 };
 
+struct DepthEstimateJob {
+  LayerId layer;
+  std::optional<std::string> model;
+  std::optional<std::string> output_folder;
+  std::optional<double> depth_scale;
+  bool operator==(const DepthEstimateJob&) const = default;
+};
+
 struct JobSpec {
   enum class Kind : std::uint32_t {
     track_motion = 1,
@@ -3436,8 +3448,9 @@ struct JobSpec {
     camera_track = 1718,
     face_track = 1719,
     model_import = 1720,
+    depth_estimate = 1721,
   };
-  std::variant<TrackMotionJob, StabilizeJob, AutoTraceJob, SceneDetectJob, ObjectMatteJob, TranscribeJob, AudioAnalysisJob, RenderJob, PrerenderJob, ProxyJob, AudioDuckJob, AudioGateJob, TrackApplyJob, RotoBrushJob, ContentAwareFillJob, AutoReframeJob, RigLogoJob, PhysicsBakeJob, ParticleBakeJob, CameraTrackJob, FaceTrackJob, ModelImportJob> v;
+  std::variant<TrackMotionJob, StabilizeJob, AutoTraceJob, SceneDetectJob, ObjectMatteJob, TranscribeJob, AudioAnalysisJob, RenderJob, PrerenderJob, ProxyJob, AudioDuckJob, AudioGateJob, TrackApplyJob, RotoBrushJob, ContentAwareFillJob, AutoReframeJob, RigLogoJob, PhysicsBakeJob, ParticleBakeJob, CameraTrackJob, FaceTrackJob, ModelImportJob, DepthEstimateJob> v;
   [[nodiscard]] Kind kind() const noexcept;
   bool operator==(const JobSpec&) const = default;
 };
@@ -3831,6 +3844,13 @@ struct GetRigPose {
   bool operator==(const GetRigPose&) const = default;
 };
 
+struct SampleCamera {
+  LayerId layer;
+  TimeRange range;
+  std::uint32_t samples = 0;
+  bool operator==(const SampleCamera&) const = default;
+};
+
 struct GetWaveform {
   std::optional<LayerId> layer;
   std::optional<ItemId> item;
@@ -4045,6 +4065,7 @@ struct Query {
     check_precompose = 1934,
     get_timeline_rows = 1937,
     get_rig_pose = 1900,
+    sample_camera = 1093,
     get_waveform = 1020,
     list_fonts = 1021,
     get_items = 1022,
@@ -4076,7 +4097,7 @@ struct Query {
     get_command_log = 1085,
     get_cache_coverage = 1089,
   };
-  std::variant<GetLayerTrackers, GetCameraSolve, ListPluginCommands, GetDocument, ExportDocument, GetComposition, GetLayers, GetPropertyTree, GetPropertyValues, SampleProperty, GetKeyframes, GetMotionPath, GetMarkers, CopyLayers, CopyKeyframes, GetMemberKeyframes, CopyEffects, GetSearchFacts, GetDocumentColors, GetCaptionCues, MapLayerTime, GetSourceSize, CheckPrecompose, GetTimelineRows, GetRigPose, GetWaveform, ListFonts, GetItems, GetSvgDocument, GetCryptomatte, GetThumbnail, RenderDocumentStill, ListEffects, ListGroupTypes, ListPresets, CapturePreset, GetCapabilities, ListPlugins, GetEffectUi, GetLayerFaces, HitTest, GetLayerBounds, GetLayerTransforms, GetTextLayout, EvaluateExpression, ReadPixels, FindLayers, GetDependencies, GetHistory, GetRenderStats, GetLayerErrors, GetJobs, GetRenderQueue, GetCommandLog, GetCacheCoverage> v;
+  std::variant<GetLayerTrackers, GetCameraSolve, ListPluginCommands, GetDocument, ExportDocument, GetComposition, GetLayers, GetPropertyTree, GetPropertyValues, SampleProperty, GetKeyframes, GetMotionPath, GetMarkers, CopyLayers, CopyKeyframes, GetMemberKeyframes, CopyEffects, GetSearchFacts, GetDocumentColors, GetCaptionCues, MapLayerTime, GetSourceSize, CheckPrecompose, GetTimelineRows, GetRigPose, SampleCamera, GetWaveform, ListFonts, GetItems, GetSvgDocument, GetCryptomatte, GetThumbnail, RenderDocumentStill, ListEffects, ListGroupTypes, ListPresets, CapturePreset, GetCapabilities, ListPlugins, GetEffectUi, GetLayerFaces, HitTest, GetLayerBounds, GetLayerTransforms, GetTextLayout, EvaluateExpression, ReadPixels, FindLayers, GetDependencies, GetHistory, GetRenderStats, GetLayerErrors, GetJobs, GetRenderQueue, GetCommandLog, GetCacheCoverage> v;
   [[nodiscard]] Kind kind() const noexcept;
   bool operator==(const Query&) const = default;
 };
@@ -5007,6 +5028,23 @@ struct RigPose {
   bool operator==(const RigPose&) const = default;
 };
 
+struct CameraSample {
+  Time time = 0;
+  Vec3 eye;
+  double yaw = 0.0;
+  double pitch = 0.0;
+  double roll = 0.0;
+  double zoom = 0.0;
+  bool operator==(const CameraSample&) const = default;
+};
+
+struct CameraSamples {
+  double comp_width = 0.0;
+  double comp_height = 0.0;
+  std::vector<CameraSample> samples;
+  bool operator==(const CameraSamples&) const = default;
+};
+
 struct WaveformPeaks {
   std::vector<float> peaks;
   std::uint32_t channels = 0;
@@ -5422,6 +5460,7 @@ struct QueryResult {
     check_precompose = 1934,
     get_timeline_rows = 1937,
     get_rig_pose = 1900,
+    sample_camera = 1093,
     get_waveform = 1020,
     list_fonts = 1021,
     get_items = 1022,
@@ -5453,7 +5492,7 @@ struct QueryResult {
     get_command_log = 1085,
     get_cache_coverage = 1089,
   };
-  std::variant<LayerTrackers, CameraSolveAnswer, PluginCommandList, DocumentSnapshot, ExportedDocument, CompositionDetails, LayerDetails, PropertyTree, PropertyValues, PropertySamples, KeyframeSets, PropertySamples, MarkerList, DocumentFragment, KeyframeSets, MemberTracks, CopiedEffects, SearchFactsList, DocumentColors, CaptionCues, MappedTime, SourceSizes, PrecomposeCheck, TimelineRowSets, RigPose, WaveformPeaks, FontList, ItemDetails, SvgDocument, CryptomatteInfo, Thumbnail, Thumbnail, EffectCatalog, GroupTypeList, PresetList, CapturedPreset, Capabilities, PluginList, EffectUi, LayerFaces, HitResult, LayerBoundsList, LayerTransformList, TextLayout, ExpressionEvaluation, PixelSamples, LayerList, Dependencies, HistoryState, RenderStats, LayerErrorList, JobList, RenderQueueState, CommandLog, CacheCoverage> v;
+  std::variant<LayerTrackers, CameraSolveAnswer, PluginCommandList, DocumentSnapshot, ExportedDocument, CompositionDetails, LayerDetails, PropertyTree, PropertyValues, PropertySamples, KeyframeSets, PropertySamples, MarkerList, DocumentFragment, KeyframeSets, MemberTracks, CopiedEffects, SearchFactsList, DocumentColors, CaptionCues, MappedTime, SourceSizes, PrecomposeCheck, TimelineRowSets, RigPose, CameraSamples, WaveformPeaks, FontList, ItemDetails, SvgDocument, CryptomatteInfo, Thumbnail, Thumbnail, EffectCatalog, GroupTypeList, PresetList, CapturedPreset, Capabilities, PluginList, EffectUi, LayerFaces, HitResult, LayerBoundsList, LayerTransformList, TextLayout, ExpressionEvaluation, PixelSamples, LayerList, Dependencies, HistoryState, RenderStats, LayerErrorList, JobList, RenderQueueState, CommandLog, CacheCoverage> v;
   [[nodiscard]] Kind kind() const noexcept;
   bool operator==(const QueryResult&) const = default;
 };
@@ -6862,6 +6901,8 @@ void encode(wire::Writer& w, const FaceTrackJob& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, FaceTrackJob& out);
 void encode(wire::Writer& w, const ModelImportJob& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, ModelImportJob& out);
+void encode(wire::Writer& w, const DepthEstimateJob& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, DepthEstimateJob& out);
 void encode(wire::Writer& w, const JobSpec& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, JobSpec& out);
 void encode(wire::Writer& w, const StartJob& v);
@@ -6936,6 +6977,8 @@ void encode(wire::Writer& w, const GetTimelineRows& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetTimelineRows& out);
 void encode(wire::Writer& w, const GetRigPose& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetRigPose& out);
+void encode(wire::Writer& w, const SampleCamera& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, SampleCamera& out);
 void encode(wire::Writer& w, const GetWaveform& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetWaveform& out);
 void encode(wire::Writer& w, const ListFonts& v);
@@ -7172,6 +7215,10 @@ void encode(wire::Writer& w, const RigBoneWeight& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RigBoneWeight& out);
 void encode(wire::Writer& w, const RigPose& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RigPose& out);
+void encode(wire::Writer& w, const CameraSample& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, CameraSample& out);
+void encode(wire::Writer& w, const CameraSamples& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, CameraSamples& out);
 void encode(wire::Writer& w, const WaveformPeaks& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, WaveformPeaks& out);
 void encode(wire::Writer& w, const FontAxisInfo& v);

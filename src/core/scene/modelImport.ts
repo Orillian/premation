@@ -27,6 +27,7 @@
 
 import { parseGltf, packGltfToGlb, type ParsedGltf } from '@core/media/gltf';
 import { bakeClip, bakeWeightTracks } from './modelAnimation';
+import { cameraLayerProps, camerasFromGltf, exportedRootWorld, type ImportedCamera } from './cameraInterchange';
 import { MORPH_NAMES_PROP } from './modelMorph';
 import {
   MODEL_COMPONENT,
@@ -241,6 +242,70 @@ export function buildModelLayout(
   return { rootProps, specs, fitScale };
 }
 
+/** Unwrap a degree sequence so it never jumps by ±360 between samples. */
+function unwrapDeg(values: number[]): number[] {
+  const out: number[] = [];
+  for (const v of values) {
+    const prev = out[out.length - 1];
+    let d = v;
+    if (prev !== undefined) {
+      while (d - prev > 180) d -= 360;
+      while (prev - d > 180) d += 360;
+    }
+    out.push(d);
+  }
+  return out;
+}
+
+/**
+ * Camera program D4: lay a parsed glTF's cameras into `sink` as camera layers
+ * at the comp's top level. A file Premation exported comes back where it was
+ * (its `premationPxPerUnit` frame); any other file rides the model's fit.
+ */
+export function addModelCameras(
+  sink: LayerSink,
+  frame: InsertFrame,
+  parsed: ParsedGltf,
+  rootProps: Record<string, unknown>,
+): string[] {
+  if (!parsed.cameras || parsed.cameras.length === 0) return [];
+  const num = (k: string, d: number): number => (typeof rootProps[k] === 'number' ? (rootProps[k] as number) : d);
+  const fit = num('scaleX', 1);
+  const rootWorld = exportedRootWorld(parsed, frame) ?? ([
+    fit, 0, 0, 0, 0, fit, 0, 0, 0, 0, fit, 0, num('x', frame.width / 2), num('y', frame.height / 2), num('z', 0), 1,
+  ] as Matrix4);
+  const cams: ImportedCamera[] = camerasFromGltf(parsed, rootWorld, frame.height, frame.fps > 0 ? frame.fps : 30);
+  const ids: string[] = [];
+  for (const cam of cams) {
+    const id = freshId('camera');
+    const node: SceneNode = {
+      id,
+      name: cam.name,
+      parent: null,
+      children: [],
+      visible: true,
+      locked: false,
+      transform: { position: { x: cam.samples[0]!.eye.x, y: cam.samples[0]!.eye.y }, rotation: 0, scale: { x: 1, y: 1 } },
+      components: [{ id: `${id}_t`, type: 'Transform', props: { [SCENE_KIND_PROP]: 'camera', ...cameraLayerProps(cam) } }],
+    } as unknown as SceneNode;
+    sink.addChild(frame.comp, node);
+    ids.push(id);
+    if (cam.samples.length > 1) {
+      const s = cam.samples;
+      const tracks: Array<[string, number[]]> = [
+        ['x', s.map((v) => v.eye.x)], ['y', s.map((v) => v.eye.y)], ['z', s.map((v) => v.eye.z)],
+        ['orientationX', unwrapDeg(s.map((v) => v.pitch))], ['orientationY', unwrapDeg(s.map((v) => v.yaw))],
+        ['orientationZ', unwrapDeg(s.map((v) => v.roll))], ['focalLength', s.map((v) => v.focalLength)],
+      ];
+      for (const [prop, values] of tracks) {
+        if (values.every((v) => Math.abs(v - values[0]!) < 1e-9)) continue;
+        sink.setKeyframes(id, prop, values.map((value, i) => ({ t: s[i]!.t, value, easing: 'linear' as const })));
+      }
+    }
+  }
+  return ids;
+}
+
 /** Chunked base64 — String.fromCharCode(...bigArray) blows the call stack. */
 export function bytesToDataUrl(bytes: Uint8Array, mime = 'model/gltf-binary'): string {
   let bin = '';
@@ -339,6 +404,8 @@ export function glbFromModelFiles(files: ReadonlyArray<ModelSourceFile>): ArrayB
 export interface ModelImportResult {
   rootId: string;
   layerCount: number;
+  /** Camera program D4: the file's perspective cameras, made camera layers (ids). */
+  cameraIds?: string[];
   warning: string | null;
   /** First clip baked onto the layers, if the file carried animations. */
   clip: { name: string; duration: number; extraClips: number } | null;
@@ -475,8 +542,14 @@ export function buildGltfModel(
     };
   }
 
+  // Camera program D4: the file's perspective cameras become Premation camera
+  // layers (one-node, in comp space — a camera's world pose does not survive a
+  // parent chain), their animation baked per frame (cameraInterchange.ts).
+  const cameraIds = addModelCameras(sink, frame, parsed, layout.rootProps);
+
   return {
     rootId,
+    cameraIds,
     layerCount: layout.specs.length + 1,
     warning: u8.length > MODEL_SOFT_CAP_BYTES
       ? `“${fileName}” is ${(u8.length / (1024 * 1024)).toFixed(1)} MB — it is stored inside the project, so saves and autosaves will be heavier.`

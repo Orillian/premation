@@ -1,10 +1,16 @@
 // AE parity 3.3: face tracking's crop maths and smoothing (the model has its own runtime).
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 #include <vector>
 
+#include "jobs/depth_ort.hpp"
 #include "jobs/face_mesh.hpp"
 
 namespace fm = premation::jobs::face;
@@ -76,4 +82,47 @@ TEST_CASE("a crop samples the frame inside the rotated square", "[jobs][face]") 
   CHECK(c[(96 * 192 + 150) * 3] < 0.01f);  // right half: none
   const std::vector<float> planar = fm::crop(rgba, W, H, fm::Roi{fm::P2{200, 150}, 192, 0}, true);
   CHECK(planar[96 * 192 + 40] > 0.99f);
+}
+
+// ── Camera program D3: the depth model's pre / post-processing ─────────────
+
+
+TEST_CASE("D3: depth input is 518² NCHW ImageNet-normalised; output maps near to white", "[depth][d3]") {
+  namespace dp = premation::jobs::depth;
+  std::vector<std::uint8_t> rgba(4 * 4 * 4, 255);  // a white 4×4
+  const std::vector<float> in = dp::prepare_input(rgba, 4, 4);
+  REQUIRE(in.size() == std::size_t{3} * dp::kInput * dp::kInput);
+  CHECK(in[0] == Catch::Approx((1 - 0.485) / 0.229).epsilon(1e-5));
+  CHECK(in[std::size_t{dp::kInput} * dp::kInput] == Catch::Approx((1 - 0.456) / 0.224).epsilon(1e-5));
+  // A synthetic inverse depth: rising left to right (the right is nearer).
+  std::vector<float> d(std::size_t{dp::kInput} * dp::kInput);
+  for (std::size_t y = 0; y < dp::kInput; ++y) {
+    for (std::size_t x = 0; x < dp::kInput; ++x) d[y * dp::kInput + x] = static_cast<float>(x);
+  }
+  const std::vector<std::uint8_t> g = dp::depth_to_gray(d, 16, 8);
+  REQUIRE(g.size() == std::size_t{16} * 8 * 4);
+  CHECK(g[0] < 20);              // far left: dark
+  CHECK(g[15 * 4] > 235);        // near right: white
+  CHECK(g[3] == 255);
+  // Flat output: mid grey.
+  std::fill(d.begin(), d.end(), 3.0F);
+  CHECK(dp::depth_to_gray(d, 2, 2)[0] == 128);
+}
+
+TEST_CASE("D3: the ORT depth model runs when it is installed", "[depth][d3][ort]") {
+  namespace dp = premation::jobs::depth;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  const char* path = std::getenv("PREMATION_DEPTH_TEST_MODEL");  // NOLINT(concurrency-mt-unsafe)
+#pragma clang diagnostic pop
+  if (path == nullptr || *path == '\0' || !dp::runtime_available()) {
+    SKIP("no depth model (set PREMATION_DEPTH_TEST_MODEL to the Depth Anything V2 Small .onnx) — fetch pending owner approval");
+  }
+  std::string error;
+  auto model = dp::load(path, error);
+  REQUIRE(model != nullptr);
+  std::vector<std::uint8_t> rgba(64 * 64 * 4, 128);
+  std::vector<float> out;
+  REQUIRE(model->run(dp::prepare_input(rgba, 64, 64), out, error));
+  CHECK(out.size() == std::size_t{dp::kInput} * dp::kInput);
 }

@@ -3,6 +3,7 @@ struct Object { mvp: mat3x3<f32>, uvRect: vec4<f32>, p0: vec4<f32>, p1: vec4<f32
 @group(0) @binding(0) var<uniform> obj : Object;
 @group(0) @binding(1) var tex : texture_2d<f32>;
 @group(0) @binding(2) var smp : sampler;
+@group(0) @binding(3) var texR : texture_2d<f32>;
 struct VOut { @builtin(position) pos : vec4<f32>, @location(0) uv : vec2<f32> };
 @vertex fn vs(@location(0) pos : vec2<f32>) -> VOut {
   var o : VOut; o.pos = vec4<f32>((obj.mvp * vec3<f32>(pos, 1.0)).xy, 0.0, 1.0); o.uv = obj.uvRect.xy + pos * obj.uvRect.zw; return o;
@@ -148,6 +149,22 @@ fn tapStraight(px : vec2<f32>, lwh : vec2<f32>, clampBorder : bool) -> vec4<f32>
   return vec4<f32>(s.rgb / s.a, s.a);
 }
 fn premul(c : vec4<f32>) -> vec4<f32> { return vec4<f32>(c.rgb * c.a, c.a); }
+// Camera program D7: the Right View layer, sampled exactly as the layer itself.
+fn tapStraightR(px : vec2<f32>, lwh : vec2<f32>) -> vec4<f32> {
+  let p = clamp(px, vec2<f32>(0.5, 0.5), lwh - vec2<f32>(0.5, 0.5));
+  let s = textureSampleLevel(texR, smp, layerUv(p, lwh), 0.0);
+  if (s.a <= 0.00001) { return vec4<f32>(0.0, 0.0, 0.0, 0.0); }
+  return vec4<f32>(s.rgb / s.a, s.a);
+}
+// One eye at layer px: with a Right View layer the eyes are two layers (the
+// convergence offset still shifts them apart), else the layer shifted.
+fn eyeTap(px : vec2<f32>, lwh : vec2<f32>, right : bool) -> vec4<f32> {
+  if (obj.p1.y > 0.5) {
+    let useR = right != (obj.p1.z > 0.5);
+    if (useR) { return tapStraightR(px, lwh); }
+  }
+  return tapStraight(px, lwh, true);
+}
 
 @fragment fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
   let lwh = obj.p0.xy;
@@ -160,10 +177,18 @@ fn premul(c : vec4<f32>) -> vec4<f32> { return vec4<f32>(c.rgb * c.a, c.a); }
     let halfW = lwh.x * 0.5;
     let srcX = select(((pp.x - halfW) / halfW) * lwh.x, (pp.x / halfW) * lwh.x, pp.x < halfW);
     let eye = select(sh * 0.5, -sh * 0.5, pp.x < halfW);
-    return tapStraight(vec2<f32>(srcX + eye, pp.y), lwh, true);
+    return eyeTap(vec2<f32>(srcX + eye, pp.y), lwh, pp.x >= halfW);
   }
-  let l = decodeS(tapStraight(vec2<f32>(pp.x - sh * 0.5, pp.y), lwh, true));
-  let r = decodeS(tapStraight(vec2<f32>(pp.x + sh * 0.5, pp.y), lwh, true));
+  if (view == 6) {
+    // Over Under: the left eye on top, the right below, each squeezed to half height.
+    let halfH = lwh.y * 0.5;
+    let top = pp.y < halfH;
+    let srcY = select(((pp.y - halfH) / halfH) * lwh.y, (pp.y / halfH) * lwh.y, top);
+    let eye = select(sh * 0.5, -sh * 0.5, top);
+    return eyeTap(vec2<f32>(pp.x + eye, srcY), lwh, !top);
+  }
+  let l = decodeS(eyeTap(vec2<f32>(pp.x - sh * 0.5, pp.y), lwh, false));
+  let r = decodeS(eyeTap(vec2<f32>(pp.x + sh * 0.5, pp.y), lwh, true));
   if (view == 5) {
     let useLeft = (i32(floor(pp.y)) % 2) == 0;
     let c = select(r, l, useLeft);

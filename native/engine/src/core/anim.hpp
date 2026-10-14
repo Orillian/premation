@@ -99,6 +99,19 @@ class ExprEnv {
   [[nodiscard]] virtual std::array<double, 3> space_convert(std::string_view self, const std::u16string* name,
                                                             double t, motion::expr::SpaceOp op,
                                                             std::array<double, 3> p) const = 0;
+  /// Camera program D6: a property's effective value when nothing is stored
+  /// (a camera's Zoom from the comp width, its Point of Interest at the comp
+  /// centre…); nullopt = no default (reads 0).
+  [[nodiscard]] virtual std::optional<double> prop_default(std::string_view /*node*/, std::string_view /*prop*/) const {
+    return std::nullopt;
+  }
+  /// A colour property (`fill`: a light's Color) as RGBA 0..1 at `t`.
+  [[nodiscard]] virtual std::optional<std::array<double, 4>> color_at(std::string_view /*node*/, std::string_view /*prop*/,
+                                                                     double /*t*/) const {
+    return std::nullopt;
+  }
+  /// `thisComp.activeCamera`: the camera the active composition renders through.
+  [[nodiscard]] virtual std::optional<std::string> active_camera(double /*t*/) const { return std::nullopt; }
   [[nodiscard]] virtual std::optional<motion::expr::SourceTextSample> source_text(std::string_view node,
                                                                                   double t) const = 0;
 };

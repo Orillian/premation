@@ -15,7 +15,10 @@
  * A camera layer's "Orient Towards Point of Interest" is deliberately NOT a
  * mode here: a camera carrying POI props always aims at them already (see
  * camera3d.ts's two-node path), so a switch expressing the same thing would be
- * a second source of truth for one behaviour.
+ * a second source of truth for one behaviour. A camera DOES take Orient Along
+ * Path (camera program R3b): the engine's camera evaluation looks along the
+ * position tangent, and — AE's exclusivity — choosing it makes the camera
+ * one-node (the engine drops the Point of Interest in the same command).
  *
  * Stored on the layer's `fx` component. The legacy boolean `true` reads as
  * `path`, so projects written before the mode existed are unchanged.
@@ -38,7 +41,7 @@ export type AutoOrientMode = 'off' | 'path' | 'camera';
  * the skip list back out of `buildSnapshot.ts` and fails if the two drift.
  */
 export const AUTO_ORIENT_DEAD_KINDS: ReadonlySet<string> = new Set([
-  'group', 'null', 'camera', 'audio', 'light',
+  'group', 'null', 'audio', 'light',
 ]);
 
 /**

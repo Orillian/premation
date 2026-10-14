@@ -1,6 +1,7 @@
 #include "mesh_displacement.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -150,6 +151,64 @@ void displaced_to_api(const DisplacedCarrier& c, api::RenderExtrudedMesh& out) {
   out.indices.resize(c.mesh.indices.size() * sizeof(std::uint32_t));
   std::memcpy(out.indices.data(), c.mesh.indices.data(), out.indices.size());
   out.ranges.clear();
+}
+
+DisplacedMesh depth_parallax_mesh(const HeightField& depth, double layerW, double layerH, double scale, double edgeCut,
+                                  std::uint32_t cols, std::uint32_t rows) {
+  cols = std::clamp(cols, 2U, 256U);
+  rows = std::clamp(rows, 2U, 256U);
+  DisplacedMesh out;
+  const std::size_t nx = std::size_t{cols} + 1;
+  const std::size_t ny = std::size_t{rows} + 1;
+  out.vertices.reserve(nx * ny * kDisplaceStride);
+  std::vector<double> d(nx * ny);
+  for (std::size_t j = 0; j < ny; ++j) {
+    for (std::size_t i = 0; i < nx; ++i) {
+      const double u = static_cast<double>(i) / cols;
+      const double v = static_cast<double>(j) / rows;
+      const double h = sample_height(depth, u, v);
+      d[j * nx + i] = h;
+      const std::array<float, kDisplaceStride> vert{static_cast<float>((u - 0.5) * layerW), static_cast<float>((v - 0.5) * layerH),
+                                                    static_cast<float>(-(h - 0.5) * scale), 0.0F, 0.0F, -1.0F,
+                                                    static_cast<float>(u), static_cast<float>(v)};
+      out.vertices.insert(out.vertices.end(), vert.begin(), vert.end());
+    }
+  }
+  const auto tri = [&](std::size_t a, std::size_t b, std::size_t c) {
+    const double lo = std::min({d[a], d[b], d[c]});
+    const double hi = std::max({d[a], d[b], d[c]});
+    if (edgeCut > 0 && hi - lo > edgeCut) {
+      // Edge fill: the triangle's corners copied, all textured from the farthest one.
+      const std::size_t far = d[a] == lo ? a : d[b] == lo ? b : c;
+      const float fu = out.vertices[far * kDisplaceStride + 6];
+      const float fv = out.vertices[far * kDisplaceStride + 7];
+      for (const std::size_t k : {a, b, c}) {
+        const auto first = static_cast<std::ptrdiff_t>(k * kDisplaceStride);
+        std::array<float, kDisplaceStride> vert{};
+        std::copy(out.vertices.begin() + first, out.vertices.begin() + first + static_cast<std::ptrdiff_t>(kDisplaceStride), vert.begin());
+        vert[6] = fu;
+        vert[7] = fv;
+        out.indices.push_back(static_cast<std::uint32_t>(out.vertices.size() / kDisplaceStride));
+        out.vertices.insert(out.vertices.end(), vert.begin(), vert.end());
+      }
+      return;
+    }
+    out.indices.push_back(static_cast<std::uint32_t>(a));
+    out.indices.push_back(static_cast<std::uint32_t>(b));
+    out.indices.push_back(static_cast<std::uint32_t>(c));
+  };
+  for (std::size_t j = 0; j < rows; ++j) {
+    for (std::size_t i = 0; i < cols; ++i) {
+      const std::size_t p00 = j * nx + i;
+      const std::size_t p10 = p00 + 1;
+      const std::size_t p01 = p00 + nx;
+      const std::size_t p11 = p01 + 1;
+      tri(p00, p01, p10);
+      tri(p10, p01, p11);
+    }
+  }
+  recompute_normals(out.vertices, out.indices);
+  return out;
 }
 
 void clear_height_fields() {

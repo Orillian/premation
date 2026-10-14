@@ -256,6 +256,25 @@ class Host {
   virtual std::optional<SourceTextSample> source_text_at(const std::u16string* /*name*/, double /*t*/) {
     return std::nullopt;
   }
+
+  /// Camera program D6 — cameras and lights.
+  /// One property of a layer at `t` (`name` nullptr = this layer), with the
+  /// engine's effective default when unset (a camera's Zoom, Focus Distance,
+  /// Point of Interest…). `prop` is the document's name (`focalLength`,
+  /// `poiX`, `intensity`…). nullopt = no such layer / property (reads 0).
+  /// May throw HostError (cycle / depth). Default: `layer_at` for a named layer.
+  virtual std::optional<double> layer_prop_at(const std::u16string* name, std::u16string_view prop, double t) {
+    if (name != nullptr && has_layer_at()) return layer_at(*name, prop, t);
+    return std::nullopt;
+  }
+  /// A layer's colour property (a light's Color) as RGBA 0..1 at `t`.
+  virtual std::optional<std::array<double, 4>> layer_color_at(const std::u16string* /*name*/,
+                                                              std::u16string_view /*prop*/, double /*t*/) {
+    return std::nullopt;
+  }
+  /// `thisComp.activeCamera`: the layer reference (`#<id>`) of the camera the
+  /// composition renders through at `t`, nullopt when it has none.
+  virtual std::optional<std::u16string> active_camera_at(double /*t*/) { return std::nullopt; }
 };
 
 /// One evaluation's inputs (`ExprContext`).

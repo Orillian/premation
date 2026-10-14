@@ -346,6 +346,12 @@ Value Interp::read_member(const Value& obj, const Value& key, KeyId kid) {
           case Lazy::kSourceText:
             if (o.memo == nullptr) o.memo = source_text_of(o.bound, ctx_.time).o;
             return Value::object(o.memo);
+          case Lazy::kLayerProp:
+          case Lazy::kLayerVec:
+          case Lazy::kLayerColor:
+          case Lazy::kCameraOption:
+          case Lazy::kLightOption:
+            return read_layer_lazy(o, p);
         }
       }
       break;
@@ -479,6 +485,8 @@ Value Interp::global(const Node& n) {
       // TypeScript's default: a frozen empty object.
       if (plugin_.is_undefined()) plugin_ = plain({});
       return plugin_;
+    case Global::kLookAt:
+      return fn_value(Fn::kLookAt);
   }
   return {};
 }
@@ -510,6 +518,7 @@ Value Interp::this_comp() {
         {.key = KeyId::k_numLayers, .value = Value::number(c.num_layers)},
         {.key = KeyId::k_layer, .value = bound_fn(Fn::kCompLayer, Value{})},
         {.key = KeyId::k_marker, .value = marker_scope(MarkerScope::kComp)},
+        {.key = KeyId::k_activeCamera, .value = {}, .lazy = Lazy::kLayerProp},
     });
   }
   return this_comp_;
@@ -519,7 +528,7 @@ Value Interp::this_layer() {
   if (this_layer_.is_undefined()) {
     const LayerInfo* li = ctx_.layer_info ? &*ctx_.layer_info : nullptr;
     if (own_text_.is_undefined()) own_text_ = text_group(Value::null());
-    this_layer_ = plain({
+    std::vector<Prop> props = {
         {.key = KeyId::k_name, .value = str(li != nullptr ? li->name : Str(u"Layer"))},
         {.key = KeyId::k_width, .value = Value::number(li != nullptr ? li->width : comp_.width)},
         {.key = KeyId::k_height, .value = Value::number(li != nullptr ? li->height : comp_.height)},
@@ -529,7 +538,9 @@ Value Interp::this_layer() {
         {.key = KeyId::k_fromWorld, .value = own_space_fn(Fn::kFromWorld)},
         {.key = KeyId::k_marker, .value = marker_scope(MarkerScope::kLayer)},
         {.key = KeyId::k_text, .value = own_text_},
-    });
+    };
+    add_layer_members(props, Value::null());
+    this_layer_ = plain_bound(std::move(props), Value::null());
   }
   return this_layer_;
 }
@@ -575,7 +586,7 @@ Value Interp::comp_layer(const Value& name, const Value& prop) {
   // Without a prop this is a LAYER OBJECT whose coordinate-space functions are
   // bound to THAT layer.
   if (truthy(prop)) return layer_at(name, prop, Value::number(ctx_.time));
-  return plain({
+  std::vector<Prop> props = {
       {.key = KeyId::k_width, .value = Value::number(comp_.width)},
       {.key = KeyId::k_height, .value = Value::number(comp_.height)},
       {.key = KeyId::k_name, .value = name},
@@ -584,7 +595,224 @@ Value Interp::comp_layer(const Value& name, const Value& prop) {
       {.key = KeyId::k_fromComp, .value = bound_fn(Fn::kFromComp, name)},
       {.key = KeyId::k_fromWorld, .value = bound_fn(Fn::kFromWorld, name)},
       {.key = KeyId::k_text, .value = text_group(name)},
-  });
+  };
+  add_layer_members(props, name);
+  return plain_bound(std::move(props), name);
+}
+
+// ── Cameras and lights (camera program D6) ──────────────────────────────────
+
+namespace {
+
+/// The document property an option key reads (camera / light options and
+/// their AE match names); nullptr when the key is not a scalar option.
+const char16_t* option_prop(KeyId k) {
+  switch (k) {
+    case KeyId::k_zoom:
+    case KeyId::k_adbe_camera_zoom:
+      return u"focalLength";
+    case KeyId::k_focusDistance:
+    case KeyId::k_adbe_camera_focus_distance:
+      return u"focusDistance";
+    case KeyId::k_aperture:
+    case KeyId::k_adbe_camera_aperture:
+      return u"dofAperture";
+    case KeyId::k_blurLevel:
+    case KeyId::k_adbe_camera_blur_level:
+    case KeyId::k_depthOfField:
+      return u"dofStrength";
+    case KeyId::k_irisRotation:
+      return u"irisRotation";
+    case KeyId::k_irisRoundness:
+      return u"irisRoundness";
+    case KeyId::k_irisAspectRatio:
+      return u"irisAspect";
+    case KeyId::k_irisDiffractionFringe:
+      return u"diffractionFringe";
+    case KeyId::k_highlightGain:
+      return u"highlightGain";
+    case KeyId::k_highlightThreshold:
+      return u"highlightThreshold";
+    case KeyId::k_highlightSaturation:
+      return u"highlightSaturation";
+    case KeyId::k_intensity:
+    case KeyId::k_adbe_light_intensity:
+      return u"intensity";
+    case KeyId::k_coneAngle:
+    case KeyId::k_adbe_light_cone_angle:
+      return u"lightCone";
+    case KeyId::k_coneFeather:
+    case KeyId::k_adbe_light_cone_feather:
+      return u"lightConeFeather";
+    case KeyId::k_shadowDarkness:
+    case KeyId::k_adbe_light_shadow_darkness:
+      return u"shadowDarkness";
+    case KeyId::k_shadowDiffusion:
+    case KeyId::k_adbe_light_shadow_diffusion:
+      return u"shadowDiffusion";
+    case KeyId::k_falloffDistance:
+      return u"falloffDistance";
+    case KeyId::k_radius:
+      return u"radius";
+    default:
+      return nullptr;
+  }
+}
+
+constexpr std::array kCameraOptionKeys = {
+    KeyId::k_zoom, KeyId::k_depthOfField, KeyId::k_focusDistance, KeyId::k_aperture, KeyId::k_blurLevel,
+    KeyId::k_irisRotation, KeyId::k_irisRoundness, KeyId::k_irisAspectRatio, KeyId::k_irisDiffractionFringe,
+    KeyId::k_highlightGain, KeyId::k_highlightThreshold, KeyId::k_highlightSaturation,
+    KeyId::k_adbe_camera_zoom, KeyId::k_adbe_camera_focus_distance, KeyId::k_adbe_camera_aperture,
+    KeyId::k_adbe_camera_blur_level};
+constexpr std::array kLightOptionKeys = {
+    KeyId::k_intensity, KeyId::k_coneAngle, KeyId::k_coneFeather, KeyId::k_shadowDarkness, KeyId::k_shadowDiffusion,
+    KeyId::k_falloffDistance, KeyId::k_radius, KeyId::k_adbe_light_intensity, KeyId::k_adbe_light_cone_angle,
+    KeyId::k_adbe_light_cone_feather, KeyId::k_adbe_light_shadow_darkness, KeyId::k_adbe_light_shadow_diffusion};
+
+/// A point argument as three numbers (`[x, y]` reads z = 0); nullopt when it is not one.
+std::optional<std::array<double, 3>> point3(const Value& p) {
+  if (p.tag != Tag::kObject || p.o->kind != ObjKind::kArray || p.o->elems.size() < 2) return std::nullopt;
+  std::array<double, 3> out{0, 0, 0};
+  for (std::size_t i = 0; i < 3 && i < p.o->elems.size(); ++i) {
+    const Value& v = p.o->elems[i];
+    if (!v.is_number() || !is_finite(v.n)) return std::nullopt;
+    out.at(i) = v.n;
+  }
+  return out;
+}
+
+}  // namespace
+
+void Interp::add_layer_members(std::vector<Prop>& props, const Value& bound) {
+  props.push_back({.key = KeyId::k_position, .value = {}, .lazy = Lazy::kLayerVec});
+  props.push_back({.key = KeyId::k_pointOfInterest, .value = {}, .lazy = Lazy::kLayerVec});
+  props.push_back({.key = KeyId::k_cameraOption, .value = {}, .lazy = Lazy::kCameraOption});
+  props.push_back({.key = KeyId::k_lightOption, .value = {}, .lazy = Lazy::kLightOption});
+  props.push_back({.key = KeyId::k_toCompVec, .value = bound_fn(Fn::kToCompVec, bound), .lazy = Lazy::kNone});
+  props.push_back(
+      {.key = KeyId::k_fromCompToSurface, .value = bound_fn(Fn::kFromCompToSurface, bound), .lazy = Lazy::kNone});
+}
+
+Value Interp::plain_bound(std::vector<Prop> props, const Value& bound) {
+  Obj* o = arena_.obj(ObjKind::kPlain);
+  o->props = std::move(props);
+  o->bound = bound;
+  return Value::object(o);
+}
+
+Value Interp::active_camera() {
+  if (!active_camera_built_) {
+    active_camera_built_ = true;
+    std::optional<Str> ref;
+    if (ctx_.host != nullptr) ref = ctx_.host->active_camera_at(ctx_.time);
+    // AE: thisComp.activeCamera with no camera is an error to read through;
+    // undefined makes `.position` etc. fail with the usual message.
+    if (ref) active_camera_ = comp_layer(str(std::move(*ref)), Value{});
+  }
+  return active_camera_;
+}
+
+Value Interp::read_layer_lazy(Obj& o, const Prop& p) {
+  if (p.key == KeyId::k_activeCamera) return active_camera();
+  Host* host = ctx_.host;
+  Str name_storage;
+  const Str* name = nullptr;
+  if (!o.bound.is_nullish()) {
+    name_storage = to_string(o.bound);
+    name = &name_storage;
+  }
+  const double t = ctx_.time;
+  const auto read = [&](const char16_t* prop) {
+    if (host == nullptr) return 0.0;
+    return host->layer_prop_at(name, prop, t).value_or(0);
+  };
+  switch (p.lazy) {
+    case Lazy::kLayerVec: {
+      const bool poi = p.key == KeyId::k_pointOfInterest;
+      const double x = read(poi ? u"poiX" : u"x");
+      const double y = read(poi ? u"poiY" : u"y");
+      const double z = read(poi ? u"poiZ" : u"z");
+      return array({Value::number(x), Value::number(y), Value::number(z)});
+    }
+    case Lazy::kLayerColor: {
+      std::optional<std::array<double, 4>> c;
+      if (host != nullptr) c = host->layer_color_at(name, u"fill", t);
+      const std::array<double, 4> v = c.value_or(std::array<double, 4>{1, 1, 1, 1});
+      return array({Value::number(v[0]), Value::number(v[1]), Value::number(v[2]), Value::number(v[3])});
+    }
+    case Lazy::kCameraOption:
+    case Lazy::kLightOption: {
+      std::vector<Prop> props;
+      if (p.lazy == Lazy::kCameraOption) {
+        for (const KeyId k : kCameraOptionKeys) props.push_back({.key = k, .value = {}, .lazy = Lazy::kLayerProp});
+      } else {
+        for (const KeyId k : kLightOptionKeys) props.push_back({.key = k, .value = {}, .lazy = Lazy::kLayerProp});
+        props.push_back({.key = KeyId::k_color, .value = {}, .lazy = Lazy::kLayerColor});
+        props.push_back({.key = KeyId::k_adbe_light_color, .value = {}, .lazy = Lazy::kLayerColor});
+      }
+      return plain_bound(std::move(props), o.bound);
+    }
+    default:
+      break;
+  }
+  const char16_t* prop = option_prop(p.key);
+  if (prop == nullptr) return {};
+  const double v = read(prop);
+  // AE's Depth of Field is a switch: on when the blur level is above zero.
+  if (p.key == KeyId::k_depthOfField) return Value::number(v > 0 ? 1 : 0);
+  return Value::number(v);
+}
+
+Value Interp::look_at(Args a) {
+  // AE lookAt(fromPoint, atPoint): the orientation that aims a camera at
+  // `fromPoint` toward `atPoint`, in Premation's camera axes —
+  // [X Rotation (tilt), Y Rotation (pan), 0], the values a one-node camera's
+  // orientationX / orientationY take (transform.cpp look_at_orientation).
+  const auto from = point3(a[0]);
+  const auto to = point3(a[1]);
+  if (!from || !to) throw_eval(u"lookAt() needs two points, e.g. lookAt(position, [960, 540, 0]).");
+  const double dx = (*to)[0] - (*from)[0];
+  const double dy = (*to)[1] - (*from)[1];
+  const double dz = (*to)[2] - (*from)[2];
+  const std::array<double, 2> h2{dx, dz};
+  const double h = motion::js::hypot(h2);
+  const double yaw = motion::js::atan2(dx, dz) * 180 / std::numbers::pi;
+  const double pitch = motion::js::atan2(-dy, h) * 180 / std::numbers::pi;
+  return array({Value::number(pitch + 0), Value::number(yaw + 0), Value::number(0)});
+}
+
+Value Interp::space_vec_fn(const Obj& f, Args a) {
+  const bool vec = f.fn == Fn::kToCompVec;
+  const Str fn = vec ? Str(u"toCompVec") : Str(u"fromCompToSurface");
+  const double t = a[1].is_undefined() ? ctx_.time : to_number(a[1]);
+  const bool self = f.bound.is_nullish();
+  Str name_storage;
+  const Str* name = nullptr;
+  if (!self) {
+    name_storage = to_string(f.bound);
+    name = &name_storage;
+  }
+  Host* host = ctx_.host;
+  if (host == nullptr || !host->has_space_at() || !host->space_exists(name, t)) {
+    throw_eval(self ? fn + u"() cannot see this layer’s transform here."
+                    : fn + u"(): no layer named " + lq() + name_storage + rq() + u".");
+  }
+  const auto p = point3(a[0]);
+  if (!p) throw_eval(fn + u"() needs a point, e.g. " + fn + u"([0, 0]).");
+  std::array<double, 2> out{};
+  if (vec) {
+    // A vector, not a point: the layer-space origin's image is subtracted.
+    const std::array<double, 3> q = host->space_convert(name, t, SpaceOp::kToComp, {(*p)[0], (*p)[1], 0});
+    const std::array<double, 3> o0 = host->space_convert(name, t, SpaceOp::kToComp, {0, 0, 0});
+    out = {q[0] - o0[0], q[1] - o0[1]};
+  } else {
+    // The point on the layer's surface (z = 0) the active camera sees at this
+    // comp point: the ray/plane intersection fromComp runs for a 3D layer.
+    const std::array<double, 3> q = host->space_convert(name, t, SpaceOp::kFromComp, {(*p)[0], (*p)[1], 0});
+    out = {q[0], q[1]};
+  }
+  return array({Value::number(out[0]), Value::number(out[1])});
 }
 
 // ── Markers ─────────────────────────────────────────────────────────────────
@@ -1133,6 +1361,11 @@ Value Interp::call_api(const Obj& f, Args a) {
     }
     case Fn::kCompLayer:
       return comp_layer(a[0], a[1]);
+    case Fn::kLookAt:
+      return look_at(a);
+    case Fn::kToCompVec:
+    case Fn::kFromCompToSurface:
+      return space_vec_fn(f, a);
     case Fn::kMarkerKey:
       return marker_key(static_cast<MarkerScope>(f.aux), a[0]);
     case Fn::kMarkerNearestKey:

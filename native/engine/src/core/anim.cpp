@@ -71,8 +71,10 @@ void prune_anim(Document& d, std::string_view node) {
 }  // namespace
 
 std::size_t component_index_of(std::string_view prop) noexcept {
-  if (prop == "y" || prop == "scaleY" || prop == "anchorY") return 1;
-  if (prop == "z" || prop == "rotationZ") return 2;
+  // Camera program D6: Orientation and Point of Interest are AE vectors too,
+  // so lookAt(...) / [x, y, z] land by axis on their X / Y / Z tracks.
+  if (prop == "y" || prop == "scaleY" || prop == "anchorY" || prop == "orientationY" || prop == "poiY") return 1;
+  if (prop == "z" || prop == "rotationZ" || prop == "orientationZ" || prop == "poiZ") return 2;
   return 0;
 }
 
@@ -422,6 +424,10 @@ class ContextHost final : public ex::Host {
   std::vector<ex::MarkerData> markers_at(ex::MarkerScope scope) override;
   [[nodiscard]] bool has_source_text_at() const override { return true; }
   std::optional<ex::SourceTextSample> source_text_at(const std::u16string* name, double t) override;
+  std::optional<double> layer_prop_at(const std::u16string* name, std::u16string_view prop, double t) override;
+  std::optional<std::array<double, 4>> layer_color_at(const std::u16string* name, std::u16string_view prop,
+                                                      double t) override;
+  std::optional<std::u16string> active_camera_at(double t) override;
 
   double time = 0;
 
@@ -634,6 +640,28 @@ std::array<double, 3> ContextHost::space_convert(const std::u16string* name, dou
 std::vector<ex::MarkerData> ContextHost::markers_at(ex::MarkerScope scope) { return s_.env_.markers(node_, scope); }
 std::optional<ex::SourceTextSample> ContextHost::source_text_at(const std::u16string* name, double t) {
   return s_.source_text_for(node_, prop_, name, t, depth_);
+}
+// Camera program D6: a layer's camera / light option, position or point of
+// interest — keyed, expressed or stored, else the engine's effective default.
+std::optional<double> ContextHost::layer_prop_at(const std::u16string* name, std::u16string_view prop, double t) {
+  const std::optional<std::string> target = name != nullptr ? s_.resolve(*name) : std::optional<std::string>(node_);
+  if (!target) return std::nullopt;
+  const std::string p = ex::utf16_to_utf8(prop);
+  if (auto v = s_.internal(*target, p, t, depth_)) return v;
+  // Focus Distance defaults to the Zoom (camera3d.ts readNodeDof).
+  if (p == "focusDistance") return layer_prop_at(name, u"focalLength", t);
+  return s_.env_.prop_default(*target, p);
+}
+std::optional<std::array<double, 4>> ContextHost::layer_color_at(const std::u16string* name, std::u16string_view prop,
+                                                                 double t) {
+  const std::optional<std::string> target = name != nullptr ? s_.resolve(*name) : std::optional<std::string>(node_);
+  if (!target) return std::nullopt;
+  return s_.env_.color_at(*target, ex::utf16_to_utf8(prop), t);
+}
+std::optional<std::u16string> ContextHost::active_camera_at(double t) {
+  const std::optional<std::string> id = s_.env_.active_camera(t);
+  if (!id) return std::nullopt;
+  return u"#" + ex::utf8_to_utf16(*id);
 }
 
 }  // namespace

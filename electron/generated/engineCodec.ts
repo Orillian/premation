@@ -9494,6 +9494,36 @@ function decS_RigLogoJob(r: Reader, end: number, o: any): T.RigLogoJob {
   if (v_time !== undefined) o.time = v_time;
   return o;
 }
+function encS_DepthEstimateJob(w: Writer, v: T.DepthEstimateJob): void {
+  w.byte(10); w.str(v.layer);
+  if (v.model !== undefined) { w.byte(18); w.str(v.model); }
+  if (v.outputFolder !== undefined) { w.byte(26); w.str(v.outputFolder); }
+  if (v.depthScale !== undefined) { w.byte(33); w.f64(v.depthScale); }
+}
+function decS_DepthEstimateJob(r: Reader, end: number, o: any): T.DepthEstimateJob {
+  let h_layer = false;
+  let v_layer: string | undefined;
+  let v_model: string | undefined;
+  let v_outputFolder: string | undefined;
+  let v_depthScale: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 18: v_model = r.str(); break;
+      case 26: v_outputFolder = r.str(); break;
+      case 33: v_depthScale = r.f64(); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('DepthEstimateJob.layer: missing', 'missingField');
+  o.layer = v_layer;
+  if (v_model !== undefined) o.model = v_model;
+  if (v_outputFolder !== undefined) o.outputFolder = v_outputFolder;
+  if (v_depthScale !== undefined) o.depthScale = v_depthScale;
+  return o;
+}
 function encS_StartJob(w: Writer, v: T.StartJob): void {
   w.byte(10); { const s = w.beginLd(); encU_JobSpec(w, v.job); w.endLd(s); }
   w.byte(16); w.bool(v.apply);
@@ -11833,6 +11863,112 @@ function decS_PropertySamples(r: Reader, end: number, o: any): T.PropertySamples
   o.values = l_values;
   o.dimensions = v_dimensions;
   o.speeds = l_speeds;
+  return o;
+}
+function encS_CameraSample(w: Writer, v: T.CameraSample): void {
+  w.byte(8); w.i64(v.time);
+  w.byte(18); { const s = w.beginLd(); encS_Vec3(w, v.eye); w.endLd(s); }
+  w.byte(25); w.f64(v.yaw);
+  w.byte(33); w.f64(v.pitch);
+  w.byte(41); w.f64(v.roll);
+  w.byte(49); w.f64(v.zoom);
+}
+function decS_CameraSample(r: Reader, end: number, o: any): T.CameraSample {
+  let h_time = false;
+  let h_eye = false;
+  let h_yaw = false;
+  let h_pitch = false;
+  let h_roll = false;
+  let h_zoom = false;
+  let v_time: number | undefined;
+  let v_eye: T.Vec3 | undefined;
+  let v_yaw: number | undefined;
+  let v_pitch: number | undefined;
+  let v_roll: number | undefined;
+  let v_zoom: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 8: v_time = r.i64(); h_time = true; break;
+      case 18: v_eye = decS_Vec3(r, r.ldEnd(), {}); h_eye = true; break;
+      case 25: v_yaw = r.f64(); h_yaw = true; break;
+      case 33: v_pitch = r.f64(); h_pitch = true; break;
+      case 41: v_roll = r.f64(); h_roll = true; break;
+      case 49: v_zoom = r.f64(); h_zoom = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_time) throw new DecodeError('CameraSample.time: missing', 'missingField');
+  if (!h_eye) throw new DecodeError('CameraSample.eye: missing', 'missingField');
+  if (!h_yaw) throw new DecodeError('CameraSample.yaw: missing', 'missingField');
+  if (!h_pitch) throw new DecodeError('CameraSample.pitch: missing', 'missingField');
+  if (!h_roll) throw new DecodeError('CameraSample.roll: missing', 'missingField');
+  if (!h_zoom) throw new DecodeError('CameraSample.zoom: missing', 'missingField');
+  o.time = v_time;
+  o.eye = v_eye;
+  o.yaw = v_yaw;
+  o.pitch = v_pitch;
+  o.roll = v_roll;
+  o.zoom = v_zoom;
+  return o;
+}
+function encS_CameraSamples(w: Writer, v: T.CameraSamples): void {
+  w.byte(9); w.f64(v.compWidth);
+  w.byte(17); w.f64(v.compHeight);
+  { const a = v.samples; for (let i = 0; i < a.length; i++) { w.byte(26); { const s = w.beginLd(); encS_CameraSample(w, a[i]!); w.endLd(s); } } }
+}
+function decS_CameraSamples(r: Reader, end: number, o: any): T.CameraSamples {
+  const l_samples: T.CameraSample[] = [];
+  let h_compWidth = false;
+  let h_compHeight = false;
+  let v_compWidth: number | undefined;
+  let v_compHeight: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 9: v_compWidth = r.f64(); h_compWidth = true; break;
+      case 17: v_compHeight = r.f64(); h_compHeight = true; break;
+      case 26: l_samples.push(decS_CameraSample(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_compWidth) throw new DecodeError('CameraSamples.compWidth: missing', 'missingField');
+  if (!h_compHeight) throw new DecodeError('CameraSamples.compHeight: missing', 'missingField');
+  o.compWidth = v_compWidth;
+  o.compHeight = v_compHeight;
+  o.samples = l_samples;
+  return o;
+}
+function encS_SampleCamera(w: Writer, v: T.SampleCamera): void {
+  w.byte(10); w.str(v.layer);
+  w.byte(18); { const s = w.beginLd(); encS_TimeRange(w, v.range); w.endLd(s); }
+  w.byte(24); w.u32(v.samples);
+}
+function decS_SampleCamera(r: Reader, end: number, o: any): T.SampleCamera {
+  let h_layer = false;
+  let h_range = false;
+  let h_samples = false;
+  let v_layer: string | undefined;
+  let v_range: T.TimeRange | undefined;
+  let v_samples: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 18: v_range = decS_TimeRange(r, r.ldEnd(), {}); h_range = true; break;
+      case 24: v_samples = r.u32(); h_samples = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('SampleCamera.layer: missing', 'missingField');
+  if (!h_range) throw new DecodeError('SampleCamera.range: missing', 'missingField');
+  if (!h_samples) throw new DecodeError('SampleCamera.samples: missing', 'missingField');
+  o.layer = v_layer;
+  o.range = v_range;
+  o.samples = v_samples;
   return o;
 }
 function encS_WaveformPeaks(w: Writer, v: T.WaveformPeaks): void {
@@ -17930,6 +18066,7 @@ function encU_JobSpec(w: Writer, v: T.JobSpec): void {
     case 'cameraTrack': w.varint(13746); { const s = w.beginLd(); encS_CameraTrackJob(w, v.value); w.endLd(s); } return;
     case 'faceTrack': w.varint(13754); { const s = w.beginLd(); encS_FaceTrackJob(w, v.value); w.endLd(s); } return;
     case 'modelImport': w.varint(13762); { const s = w.beginLd(); encS_ModelImportJob(w, v.value); w.endLd(s); } return;
+    case 'depthEstimate': w.varint(13770); { const s = w.beginLd(); encS_DepthEstimateJob(w, v.value); w.endLd(s); } return;
     default: throw new RangeError('JobSpec: unknown kind ' + String((v as { kind?: unknown }).kind));
   }
 }
@@ -17961,6 +18098,7 @@ function decU_JobSpec(r: Reader, end: number): T.JobSpec {
       case 13746: out = { kind: 'cameraTrack', value: decS_CameraTrackJob(r, r.ldEnd(), {}) } as T.JobSpec; break;
       case 13754: out = { kind: 'faceTrack', value: decS_FaceTrackJob(r, r.ldEnd(), {}) } as T.JobSpec; break;
       case 13762: out = { kind: 'modelImport', value: decS_ModelImportJob(r, r.ldEnd(), {}) } as T.JobSpec; break;
+      case 13770: out = { kind: 'depthEstimate', value: decS_DepthEstimateJob(r, r.ldEnd(), {}) } as T.JobSpec; break;
       default: r.skip(key);
     }
   }
@@ -18755,6 +18893,7 @@ function encU_Query(w: Writer, v: T.Query): void {
     case 'getLayerTrackers': w.varint(8722); { const s = w.beginLd(); encS_GetLayerTrackers(w, v); w.endLd(s); } return;
     case 'getCameraSolve': w.varint(8730); { const s = w.beginLd(); encS_GetCameraSolve(w, v); w.endLd(s); } return;
     case 'listPluginCommands': w.varint(8738); { const s = w.beginLd(); encS_ListPluginCommands(w, v); w.endLd(s); } return;
+    case 'sampleCamera': w.varint(8746); { const s = w.beginLd(); encS_SampleCamera(w, v); w.endLd(s); } return;
     case 'capturePreset': w.varint(15106); { const s = w.beginLd(); encS_CapturePreset(w, v); w.endLd(s); } return;
     case 'copyKeyframes': w.varint(15114); { const s = w.beginLd(); encS_CopyKeyframes(w, v); w.endLd(s); } return;
     case 'copyEffects': w.varint(15122); { const s = w.beginLd(); encS_CopyEffects(w, v); w.endLd(s); } return;
@@ -18819,6 +18958,7 @@ function decU_Query(r: Reader, end: number): T.Query {
       case 8722: out = decS_GetLayerTrackers(r, r.ldEnd(), { type: 'getLayerTrackers' }) as T.Query; break;
       case 8730: out = decS_GetCameraSolve(r, r.ldEnd(), { type: 'getCameraSolve' }) as T.Query; break;
       case 8738: out = decS_ListPluginCommands(r, r.ldEnd(), { type: 'listPluginCommands' }) as T.Query; break;
+      case 8746: out = decS_SampleCamera(r, r.ldEnd(), { type: 'sampleCamera' }) as T.Query; break;
       case 15106: out = decS_CapturePreset(r, r.ldEnd(), { type: 'capturePreset' }) as T.Query; break;
       case 15114: out = decS_CopyKeyframes(r, r.ldEnd(), { type: 'copyKeyframes' }) as T.Query; break;
       case 15122: out = decS_CopyEffects(r, r.ldEnd(), { type: 'copyEffects' }) as T.Query; break;
@@ -18883,6 +19023,7 @@ function encU_QueryResult(w: Writer, v: T.QueryResult): void {
     case 'getLayerTrackers': w.varint(8722); { const s = w.beginLd(); encS_LayerTrackers(w, v); w.endLd(s); } return;
     case 'getCameraSolve': w.varint(8730); { const s = w.beginLd(); encS_CameraSolveAnswer(w, v); w.endLd(s); } return;
     case 'listPluginCommands': w.varint(8738); { const s = w.beginLd(); encS_PluginCommandList(w, v); w.endLd(s); } return;
+    case 'sampleCamera': w.varint(8746); { const s = w.beginLd(); encS_CameraSamples(w, v); w.endLd(s); } return;
     case 'capturePreset': w.varint(15106); { const s = w.beginLd(); encS_CapturedPreset(w, v); w.endLd(s); } return;
     case 'copyKeyframes': w.varint(15114); { const s = w.beginLd(); encS_KeyframeSets(w, v); w.endLd(s); } return;
     case 'copyEffects': w.varint(15122); { const s = w.beginLd(); encS_CopiedEffects(w, v); w.endLd(s); } return;
@@ -18947,6 +19088,7 @@ function decU_QueryResult(r: Reader, end: number): T.QueryResult {
       case 8722: out = decS_LayerTrackers(r, r.ldEnd(), { type: 'getLayerTrackers' }) as T.QueryResult; break;
       case 8730: out = decS_CameraSolveAnswer(r, r.ldEnd(), { type: 'getCameraSolve' }) as T.QueryResult; break;
       case 8738: out = decS_PluginCommandList(r, r.ldEnd(), { type: 'listPluginCommands' }) as T.QueryResult; break;
+      case 8746: out = decS_CameraSamples(r, r.ldEnd(), { type: 'sampleCamera' }) as T.QueryResult; break;
       case 15106: out = decS_CapturedPreset(r, r.ldEnd(), { type: 'capturePreset' }) as T.QueryResult; break;
       case 15114: out = decS_KeyframeSets(r, r.ldEnd(), { type: 'copyKeyframes' }) as T.QueryResult; break;
       case 15122: out = decS_CopiedEffects(r, r.ldEnd(), { type: 'copyEffects' }) as T.QueryResult; break;
@@ -19363,6 +19505,7 @@ export const codecs = {
   PhysicsBakeJob: mk<T.PhysicsBakeJob>(encS_PhysicsBakeJob, (r, e) => decS_PhysicsBakeJob(r, e, {})),
   ParticleBakeJob: mk<T.ParticleBakeJob>(encS_ParticleBakeJob, (r, e) => decS_ParticleBakeJob(r, e, {})),
   RigLogoJob: mk<T.RigLogoJob>(encS_RigLogoJob, (r, e) => decS_RigLogoJob(r, e, {})),
+  DepthEstimateJob: mk<T.DepthEstimateJob>(encS_DepthEstimateJob, (r, e) => decS_DepthEstimateJob(r, e, {})),
   JobSpec: mk<T.JobSpec>(encU_JobSpec, decU_JobSpec),
   StartJob: mk<T.StartJob>(encS_StartJob, (r, e) => decS_StartJob(r, e, {})),
   CancelJob: mk<T.CancelJob>(encS_CancelJob, (r, e) => decS_CancelJob(r, e, {})),
@@ -19440,6 +19583,9 @@ export const codecs = {
   KeyframeSets: mk<T.KeyframeSets>(encS_KeyframeSets, (r, e) => decS_KeyframeSets(r, e, {})),
   MarkerList: mk<T.MarkerList>(encS_MarkerList, (r, e) => decS_MarkerList(r, e, {})),
   PropertySamples: mk<T.PropertySamples>(encS_PropertySamples, (r, e) => decS_PropertySamples(r, e, {})),
+  CameraSample: mk<T.CameraSample>(encS_CameraSample, (r, e) => decS_CameraSample(r, e, {})),
+  CameraSamples: mk<T.CameraSamples>(encS_CameraSamples, (r, e) => decS_CameraSamples(r, e, {})),
+  SampleCamera: mk<T.SampleCamera>(encS_SampleCamera, (r, e) => decS_SampleCamera(r, e, {})),
   WaveformPeaks: mk<T.WaveformPeaks>(encS_WaveformPeaks, (r, e) => decS_WaveformPeaks(r, e, {})),
   FontInfo: mk<T.FontInfo>(encS_FontInfo, (r, e) => decS_FontInfo(r, e, {})),
   FontAxisInfo: mk<T.FontAxisInfo>(encS_FontAxisInfo, (r, e) => decS_FontAxisInfo(r, e, {})),

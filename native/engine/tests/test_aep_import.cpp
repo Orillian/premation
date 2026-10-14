@@ -13,9 +13,13 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "aep_build.hpp"
+#include "core/aep/aep_plan.hpp"
 #include "core/aep/aep_read.hpp"
 #include "core/aep/riff.hpp"
 #include "session_harness.hpp"
@@ -307,4 +311,60 @@ TEST_CASE("aep: importProject refuses a project with no compositions and a file 
   junk.path = "/p/Junk.aep";
   CHECK_FALSE(t::is_ok(h.run(t::cmd(junk))));
   std::filesystem::remove_all(dir);
+}
+
+// ── Camera program D4: a camera's options carry over 1:1 ────────────────────
+
+TEST_CASE("aep: a camera's Zoom, depth of field, rotation and depth plan 1:1", "[aep][camera][d4]") {
+  b::PropertyOptions zoom;
+  zoom.value = std::vector<double>{1500};
+  b::PropertyOptions dof;
+  dof.value = std::vector<double>{1};
+  b::PropertyOptions focus;
+  focus.value = std::vector<double>{900};
+  b::PropertyOptions aperture;
+  aperture.value = std::vector<double>{40};
+  b::PropertyOptions blur;
+  blur.value = std::vector<double>{100};
+  b::PropertyOptions position;
+  position.dimensions = 3;
+  position.spatial = true;
+  position.value = std::vector<double>{960, 540, -1500};
+  b::PropertyOptions rotY;
+  rotY.value = std::vector<double>{25};
+  std::vector<b::Buf> options;
+  for (const auto& [name, opt] : {std::pair{"ADBE Camera Zoom", zoom}, std::pair{"ADBE Camera Depth of Field", dof},
+                                  std::pair{"ADBE Camera Focus Distance", focus}, std::pair{"ADBE Camera Aperture", aperture},
+                                  std::pair{"ADBE Camera Blur Level", blur}}) {
+    b::append(options, b::property(name, opt));
+  }
+  std::vector<b::Buf> transform;
+  b::append(transform, b::property("ADBE Position", position));
+  b::append(transform, b::property("ADBE Rotate Y", rotY));
+  b::LayerOptions camera;
+  camera.id = 1;
+  camera.type = 2;
+  camera.displayName = "Shot Cam";
+  b::append(camera.properties, b::group("ADBE Transform Group", transform));
+  b::append(camera.properties, b::group("ADBE Camera Options Group", options));
+  b::CompItemOptions c = comp_main();
+  c.layers = {b::layer(camera)};
+  const AepImportPlan plan = plan_aep_import(read_file(b::aep_file({b::comp_item(c)})));
+  REQUIRE(plan.comps.size() == 1);
+  REQUIRE(plan.comps[0].layers.size() == 1);
+  const auto& props = plan.comps[0].layers[0].staticProps;
+  const auto get = [&](const std::string& k) -> std::optional<double> {
+    for (const auto& [key, v] : props) {
+      if (key == k) return v;
+    }
+    return std::nullopt;
+  };
+  CHECK(get("focalLength") == 1500);
+  CHECK(get("focusDistance") == 900);
+  CHECK(get("dofAperture") == 40);
+  CHECK(get("dofStrength") == Catch::Approx(10));
+  CHECK(get("orientationY") == 25);
+  CHECK(get("z") == -1500);  // a camera keeps its depth whatever its 3D switch says
+  CHECK_FALSE(get("anchorX").has_value());
+  CHECK_FALSE(get("rotationY").has_value());
 }

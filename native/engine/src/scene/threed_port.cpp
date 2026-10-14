@@ -1,7 +1,10 @@
 #include "threed_port.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <numbers>
@@ -72,6 +75,24 @@ double t3(const doc::Node& n, std::string_view k) {
 bool auto_oriented_to_camera(const doc::Node& n) {
   const Json& v = fx_props(n).at("autoOrient");
   return v.is_string() && v.str() == "camera";
+}
+
+/// R1: the camera's shake props (static prop, an animated sample wins) at `seconds`.
+xf::CameraShake camera_shake_of(const doc::Node& n, const std::function<std::optional<double>(std::string_view)>& sample,
+                                double seconds) {
+  xf::CameraShake sh;
+  sh.seconds = seconds;
+  const auto read = [&](std::string_view k, double& into) {
+    for (const doc::Component& c : n.components) {
+      if (c.props.at(k).is_number()) into = c.props.at(k).num();
+    }
+    if (const auto v = sample(k)) into = *v;
+  };
+  read("shakeAmount", sh.amount);
+  read("shakeRotation", sh.rotation);
+  read("shakeFrequency", sh.frequency);
+  read("shakeSeed", sh.seed);
+  return sh;
 }
 
 std::array<double, 16> to_arr(const xf::Mat4& m) {
@@ -250,7 +271,8 @@ const doc::Node* Scene3D::view_camera_node(const std::vector<const doc::Node*>& 
   return nullptr;
 }
 
-xf::Camera Scene3D::camera_from_node(const doc::Node& n, const std::function<std::optional<double>(std::string_view)>& sample) {
+xf::Camera Scene3D::camera_from_node(const doc::Node& n, const std::function<std::optional<double>(std::string_view)>& sample,
+                                     double shakeSeconds) {
   // camera3d.ts `cameraFromNode(node, w, h, sample, toWorldPoint)`.
   xf::CameraProps p;
   std::optional<double> roll;
@@ -293,7 +315,24 @@ xf::Camera Scene3D::camera_from_node(const doc::Node& n, const std::function<std
   p.orientation_x = oriX;
   p.orientation_y = oriY;
   // Init-captures: a non-const std::string member keeps the closure nothrow-movable.
-  return xf::camera_from_props(p, comp_.width, comp_.height, [this, id = n.id](xf::Vec3 v) { return to_world_point(id, v); });
+  const xf::Camera cam =
+      xf::camera_from_props(p, comp_.width, comp_.height, [this, id = n.id](xf::Vec3 v) { return to_world_point(id, v); });
+  // Camera program R2b: a one-node camera turns with its parents (AE).
+  const bool twoNode = p.poi_x || p.poi_y || p.poi_z;
+  const xf::Camera parented = twoNode ? cam : doc::rotate_camera_with_parent(cam, parent_world_matrix(n.id));
+  // Camera program R3b: Auto-Orient Along Path (one-node), then R1's shake.
+  xf::Camera aimed = parented;
+  if (const auto dir = doc::camera_path_direction(c_.d, c_.expr, c_.cache, n, h_.anim_id3d(n.id), shakeSeconds,
+                                                  [this, id = n.id](xf::Vec3 v) { return to_world_point(id, v); })) {
+    aimed = doc::orient_camera_along(cam, *dir, oriX.value_or(0), oriY.value_or(0), roll.value_or(0));
+  }
+  // Camera program R1: procedural shake, after the aim.
+  return xf::apply_camera_shake(aimed, camera_shake_of(n, sample, shakeSeconds));
+}
+
+std::optional<xf::Projected> Scene3D::project_light(const doc::Node& light) {
+  if (light.kind() != "light") return std::nullopt;
+  return project(node_world_position(light));
 }
 
 void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
@@ -325,7 +364,8 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
     if (custom) {
       camera_ = *comp_.customViewCamera;
     } else if (viewCam_ != nullptr) {
-      camera_ = camera_from_node(*viewCam_, [this, id = viewCam_->id](std::string_view k) { return h_.values3d(id).get(k); });
+      camera_ = camera_from_node(*viewCam_, [this, id = viewCam_->id](std::string_view k) { return h_.values3d(id).get(k); },
+                                 h_.remap3d(viewCam_->id, t_));
     } else {
       camera_ = xf::default_camera(comp_.width, comp_.height);
     }
@@ -333,6 +373,22 @@ void Scene3D::setup(const std::vector<const doc::Node*>& nodes) {
   // Camera motion blur: an animated active camera blurs every 3D layer.
   if (!ortho_ && !custom && mb_ && viewCam_ != nullptr) {
     cameraAnimated_ = std::ranges::any_of(kCameraMotionProps, [&](std::string_view p) { return doc::anim_is_animated(c_.d, h_.anim_id3d(viewCam_->id), p); });
+    // R1: a shaking camera moves every frame — its motion blurs the shot.
+    if (!cameraAnimated_) {
+      const xf::CameraShake sh = camera_shake_of(*viewCam_, [this, id = viewCam_->id](std::string_view k) { return h_.values3d(id).get(k); }, 0);
+      cameraAnimated_ = sh.amount != 0 || sh.rotation != 0 ||
+                        doc::anim_is_animated(c_.d, h_.anim_id3d(viewCam_->id), "shakeAmount") ||
+                        doc::anim_is_animated(c_.d, h_.anim_id3d(viewCam_->id), "shakeRotation");
+    }
+  }
+  // D1: the focus a scene-depth blur map uses (a camera view, DOF on or off).
+  if (!ortho_ && !custom && viewCam_ != nullptr) {
+    const Values& cv = h_.values3d(viewCam_->id);
+    std::optional<double> focus = cv.get("focusDistance");
+    for (const doc::Component& c : viewCam_->components) {
+      if (!focus && c.props.at("focusDistance").is_number()) focus = c.props.at("focusDistance").num();
+    }
+    viewFocus_ = focus && *focus > 0 ? focus : std::optional<double>(camera_ ? camera_->focal_length : 0);
   }
   // Depth of field (off in ortho / custom views and Draft 3D).
   if (!(ortho_ || custom || comp_.draft3d) && viewCam_ != nullptr) {
@@ -656,7 +712,7 @@ std::function<Scene3D::MotionPose(double, double)> Scene3D::matrix_at(const doc:
       if (it == subFrameCameras_.end()) {
         const xf::Camera cam = camera_from_node(*viewCam_, [this, camId = h_.anim_id3d(viewCam_->id), tc](std::string_view k) {
           return doc::anim_sample(c_.d, c_.expr, c_.cache, camId, k, tc);
-        });
+        }, h_.remap3d(viewCam_->id, tc));
         it = subFrameCameras_.emplace(tc, cam).first;
       }
       const xf::Camera fixed = it->second;
@@ -1480,6 +1536,94 @@ void Scene3D::finish_layer(const doc::Node& n, const Values& a, Layer3D& s, RLay
         m.shade3d = mesh_shade(mMat);
       }
       modelLayer = std::move(m);
+    }
+  }
+
+  // Camera program D3: Photo → 3D parallax — an image / video layer with a
+  // Depth Scale and a depth source renders as a displaced, camera-facing grid
+  // textured with its own picture. An unreadable depth leaves it flat (reported).
+  if (!modelLayer && !modelRef && !primKey && (layer.kind == LayerKind::image || layer.kind == LayerKind::video)) {
+    const double depthScale = a.get("depthScale").value_or(tp.at("depthScale").is_number() ? tp.at("depthScale").num() : 0);
+    const std::string source = tp.at("depthSource").is_string() ? tp.at("depthSource").str() : std::string();
+    if (std::abs(depthScale) > 1e-6 && !source.empty()) {
+      std::string key;
+      std::string src;
+      if (source.starts_with("asset:")) {
+        key = source;
+        if (const Json* as = doc::find_asset(c_.d, source.substr(6)); as != nullptr && as->at("src").is_string()) src = doc::asset_media_src(*as);
+      } else if (source.starts_with("layer:")) {
+        // A user depth-map layer: its own picture (an image layer's source).
+        key = source;
+        if (const doc::Node* dl = h_.node3d(source.substr(6)); dl != nullptr) {
+          for (const doc::Component& comp : dl->components) {
+            if (comp.props.at("assetId").is_string()) {
+              if (const Json* as = doc::find_asset(c_.d, comp.props.at("assetId").str()); as != nullptr && as->at("src").is_string()) {
+                src = doc::asset_media_src(*as);
+              }
+            }
+            if (src.empty() && comp.props.at("src").is_string()) src = comp.props.at("src").str();
+          }
+        }
+      } else if (source.starts_with("seq:")) {
+        // The depth job's per-frame maps: `seq:<fps>:<folder>` → <folder>/depth_<frame>.png.
+        const std::size_t colon = source.find(':', 4);
+        const double fps = colon != std::string::npos ? std::atof(source.substr(4, colon - 4).c_str()) : 0;
+        const std::string dir = colon != std::string::npos ? source.substr(colon + 1) : std::string();
+        const double lt = std::max(0.0, h_.remap3d(n.id, t_));
+        const auto frame = static_cast<long long>(std::floor(lt * (fps > 0 ? fps : 30) + 1e-6));
+        std::array<char, 32> name{};
+        (void)std::snprintf(name.data(), name.size(), "depth_%05lld.png", frame);  // NOLINT(cppcoreguidelines-pro-type-vararg)
+        src = dir + "/" + name.data();
+        key = src;
+      } else {
+        key = source.starts_with("src:") ? source.substr(4) : source;
+        src = key;
+      }
+      std::string why;
+      const std::shared_ptr<const HeightField> field = src.empty() ? nullptr : height_field_for(key, src, why);
+      if (!field) {
+        report("depth parallax (" + (why.empty() ? std::string("the depth source is missing") : why) + ")");
+      } else {
+        const double edgeCut =
+            std::clamp(a.get("depthEdgeCut").value_or(tp.at("depthEdgeCut").is_number() ? tp.at("depthEdgeCut").num() : 0.0), 0.0, 1.0);
+        const double detail = a.get("depthMeshDetail").value_or(tp.at("depthMeshDetail").is_number() ? tp.at("depthMeshDetail").num() : 128);
+        const auto cols = static_cast<std::uint32_t>(std::clamp(std::lround(detail), 2L, 256L));
+        const auto rows = static_cast<std::uint32_t>(
+            std::clamp(std::lround(detail * (layerH > 0 && layerW > 0 ? layerH / layerW : 1)), 2L, 256L));
+        DisplacedCarrier grid;
+        std::array<char, 96> tag{};
+        (void)std::snprintf(tag.data(), tag.size(), "|dpx:%.3f:%.3f:%ux%u:%.1fx%.1f", depthScale, edgeCut, cols, rows, layerW,  // NOLINT(cppcoreguidelines-pro-type-vararg)
+                            layerH);
+        grid.key = key + tag.data();
+        grid.mesh = depth_parallax_mesh(*field, layerW, layerH, depthScale, edgeCut, cols, rows);
+        const Material& mMat = s.mat;
+        const bool mLit = mMat.acceptsLights && (!sceneLights_.empty() || !formRig_.empty());
+        if (mLit && sceneLights_.empty()) formRigUsed_ = true;
+        auto data = std::make_shared<ExtrudedMeshData>();
+        displaced_to_api(grid, data->geometry);
+        MeshRange3D r;
+        r.role = api::RenderMeshRole::front;
+        r.first = 0;
+        r.count = static_cast<std::uint32_t>(grid.mesh.indices.size());
+        r.fill = "#ffffffff";
+        r.gain = 1;
+        r.textured = true;
+        data->ranges.push_back(std::move(r));
+        RLayer m = layer;
+        std::vector<Json> meshFx;
+        for (const Json& e : layer.effects) {
+          if (fx_enabled(e) && !is_dof(e)) meshFx.push_back(e);
+        }
+        data->geometry.surface = api::RenderMeshSurface::uv;
+        scrub_carrier(m);
+        m.effects = std::move(meshFx);
+        m.extrudedMesh = std::move(data);
+        if (mLit) {
+          m.lighting = std::array<double, 3>{1, 1, 1};
+          m.shade3d = mesh_shade(mMat);
+        }
+        modelLayer = std::move(m);
+      }
     }
   }
 

@@ -1,6 +1,8 @@
 #include "docexpr.hpp"
 
 #include <cmath>
+#include <cstdlib>
+#include <functional>
 
 #include "scene.hpp"
 #include "transform.hpp"
@@ -201,6 +203,94 @@ std::array<double, 3> DocExprEnv::space_convert(std::string_view self, const std
         return p;
       },
       *space);
+}
+
+// ── Cameras and lights (camera program D6) ──────────────────────────────
+
+std::optional<double> DocExprEnv::prop_default(std::string_view node, std::string_view prop) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return std::nullopt;
+  const Json* c = comp_record(d_, view_);
+  const double w = rec_num(c, "width", 1920);
+  const double h = rec_num(c, "height", 1080);
+  const std::string kind = n->kind();
+  // A camera's Zoom: camera3d.ts defaultFocalLength (a 39.6° horizontal view).
+  const double focal = w / 2 / std::tan(39.6 * 3.141592653589793 / 360);
+  if (prop == "x" || prop == "y") {
+    if (const auto g = read_geometry_local(*n)) return prop == "x" ? g->x : g->y;
+    return prop == "x" ? w / 2 : h / 2;
+  }
+  if (kind == "camera") {
+    if (prop == "focalLength") return focal;
+    if (prop == "z") return -base_value(node, "focalLength").value_or(focal);
+  }
+  if (kind == "camera" || kind == "light") {
+    // AE reads a Point of Interest even on a one-node device: the comp centre.
+    if (prop == "poiX") return w / 2;
+    if (prop == "poiY") return h / 2;
+    if (prop == "poiZ") return 0.0;
+  }
+  if (kind == "light") {
+    if (prop == "intensity") return 100.0;
+    if (prop == "lightCone") return 90.0;
+    if (prop == "lightConeFeather") return 50.0;
+    if (prop == "shadowDarkness") return 100.0;
+    if (prop == "shadowDiffusion") return 0.0;
+    if (prop == "radius") return 500.0;
+    if (prop == "falloffDistance") return 500.0;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::array<double, 4>> DocExprEnv::color_at(std::string_view node, std::string_view prop, double t) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return std::nullopt;
+  std::array<double, 4> rgba{1, 1, 1, 1};
+  for (const Component& comp : n->components) {
+    const Json& v = comp.props.at(prop);
+    if (!v.is_string()) continue;
+    std::string_view s = v.str();
+    if (!s.empty() && s.front() == '#') s.remove_prefix(1);
+    const auto hex = [&](std::size_t i) {
+      const std::string part(s.substr(i, 2));
+      char* end = nullptr;
+      const long x = std::strtol(part.c_str(), &end, 16);
+      return end == part.c_str() + 2 ? static_cast<double>(x) / 255 : 1.0;
+    };
+    if (s.size() >= 6) rgba = {hex(0), hex(2), hex(4), s.size() >= 8 ? hex(6) : 1.0};
+  }
+  // A keyed colour rides `<prop>_r/_g/_b/_a` (0..1).
+  const std::string base(prop);
+  const std::array<const char*, 4> ch = {"_r", "_g", "_b", "_a"};
+  for (std::size_t i = 0; i < 4; ++i) {
+    if (const auto v = anim_sample(d_, *this, cache_, node, base + ch.at(i), t)) rgba.at(i) = *v;
+  }
+  return rgba;
+}
+
+std::optional<std::string> DocExprEnv::active_camera(double /*t*/) const {
+  // camera3d.ts viewCameraNode, as the expression provider reads it: the LAST
+  // visible camera of the active composition in flattenScene order.
+  const Node* found = nullptr;
+  std::set<std::string> seen;
+  std::function<void(const Node&)> walk = [&](const Node& n) {
+    if (!seen.insert(n.id).second) return;
+    if (n.kind() == "camera" && n.visible) found = &n;
+    for (const auto& ch : n.children) {
+      const Node* child = d_.node(ch);
+      // Nested compositions keep their own cameras.
+      if (child != nullptr && !(child->kind() == "group" && d_.comp(child->id) != nullptr)) walk(*child);
+    }
+  };
+  if (const Node* root = d_.node(view_.tabComp)) {
+    walk(*root);
+  } else {
+    for (const auto& [id, n] : d_.nodes()) {
+      if (!n->parent) walk(*n);
+    }
+  }
+  if (found == nullptr) return std::nullopt;
+  return found->id;
 }
 
 std::optional<ex::SourceTextSample> DocExprEnv::source_text(std::string_view node, double t) const {

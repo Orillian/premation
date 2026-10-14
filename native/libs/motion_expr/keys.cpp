@@ -42,6 +42,7 @@ constexpr std::array<std::u16string_view, static_cast<std::size_t>(Global::kCoun
     u"seedRandom",    u"gaussRandom", u"noise",       u"numKeys",    u"key",          u"nearestKey",
     u"marker",        u"posterizeTime", u"add",       u"sub",        u"mul",          u"div",
     u"dot",           u"cross",       u"length",      u"normalize",  u"text",         u"plugin",
+    u"lookAt",
 };
 
 }  // namespace

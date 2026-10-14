@@ -104,7 +104,7 @@ export interface AnimationPreset {
    * Escape hatch for rigs that genuinely need code, by NAME (the code is in
    * `PRESET_APPLIERS`, run by `applyPreset`). Prefer data.
    */
-  applier?: 'dollyZoom';
+  applier?: 'dollyZoom' | 'handheldShake';
 }
 
 // ── Pure time maths (the tested core) ────────────────────────────────

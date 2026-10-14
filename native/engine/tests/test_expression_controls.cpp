@@ -304,3 +304,98 @@ TEST_CASE("controls: the property tree is the TypeScript engine's (order, kinds,
   // No stored control number is addressed anywhere else (the old `layer/ctrl_…` rows).
   for (const auto& p : all) REQUIRE_FALSE((p.find("ctrl_") != std::string::npos && !p.starts_with("effects/ctrl_")));
 }
+
+// ── Camera program D6: camera / light expressions (AE semantics) ────────────
+
+#include "docexpr.hpp"
+#include "docio.hpp"
+
+using Catch::Approx;
+
+namespace {
+
+const char* kD6Project = R"json({"version":"1.9.0","scene":{"version":"1.0.0","nodes":[
+  {"id":"comp_root","name":"C","parent":null,"children":["cam","key","card","flat"],"visible":true,"locked":false,
+   "transform":{"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}},"components":[{"id":"comp_root_meta","type":"group","props":{"__kind":"group"}}]},
+  {"id":"cam","name":"Camera 1","parent":"comp_root","children":[],"visible":true,"locked":false,"transform":{"position":{"x":240,"y":180},"rotation":0,"scale":{"x":1,"y":1}},
+   "components":[{"id":"cam_t","type":"Transform","props":{"__kind":"camera","x":240,"y":180,"rotation":0,"z":-900,"focalLength":1000,"dofStrength":12,"dofAperture":60,"focusDistance":850}}]},
+  {"id":"key","name":"Key Light","parent":"comp_root","children":[],"visible":true,"locked":false,"transform":{"position":{"x":120,"y":70},"rotation":0,"scale":{"x":1,"y":1}},
+   "components":[{"id":"key_t","type":"Transform","props":{"__kind":"light","x":120,"y":70,"rotation":0,"z":-300,"lightType":"spot","intensity":110,"lightCone":60}},{"id":"key_s","type":"Style","props":{"opacity":100,"fill":"#ff8000"}}]},
+  {"id":"card","name":"Card","parent":"comp_root","children":[],"visible":true,"locked":false,"transform":{"position":{"x":240,"y":180},"rotation":0,"scale":{"x":1,"y":1}},
+   "components":[{"id":"card_t","type":"Transform","props":{"__kind":"shape","x":240,"y":180,"rotation":0,"width":200,"height":120,"z":0,"rotationY":20}},
+     {"id":"card_s","type":"Style","props":{"opacity":100,"fill":"#c9a05a"}}]},
+  {"id":"flat","name":"Flat","parent":"comp_root","children":[],"visible":true,"locked":false,"transform":{"position":{"x":100,"y":100},"rotation":0,"scale":{"x":2,"y":2}},
+   "components":[{"id":"flat_t","type":"Transform","props":{"__kind":"shape","x":100,"y":100,"rotation":0,"scaleX":2,"scaleY":2,"width":50,"height":50}},
+     {"id":"flat_s","type":"Style","props":{"opacity":100,"fill":"#ffffff"}}]}]},
+  "animation":{"tracks":{},"data":{},"expressions":{}},
+  "comps":{"comp_root":{"id":"comp_root","name":"C","width":480,"height":360,"fps":30,"durationSeconds":10,"background":"#101014"}}})json";
+
+struct ExprDoc {
+  doc::Document d;
+  doc::EditorView view;
+  doc::ExprCache cache;
+  ExprDoc() {
+    const auto json = premation::js::parse(kD6Project);
+    REQUIRE(json.has_value());
+    (void)doc::restore_document(d, view, *json, {});
+  }
+  /// `src` as an expression on `node`.`prop`, evaluated at `t`.
+  double eval(const std::string& node, const std::string& prop, const std::string& src, double t = 0) {
+    doc::anim_set_expr_state(d, node, prop, doc::ExprState{src, true, std::nullopt});
+    doc::DocExprEnv env(d, view, cache);
+    const auto v = doc::anim_sample(d, env, cache, node, prop, t);
+    REQUIRE(v.has_value());
+    return *v;
+  }
+};
+
+}  // namespace
+
+TEST_CASE("D6: thisComp.activeCamera and cameraOption read the camera's options", "[expr][camera][d6]") {
+  ExprDoc x;
+  CHECK(x.eval("card", "opacity", "thisComp.activeCamera.cameraOption.zoom") == Approx(1000));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Camera 1').cameraOption.focusDistance") == Approx(850));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Camera 1').cameraOption.aperture") == Approx(60));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Camera 1').cameraOption.blurLevel") == Approx(12));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Camera 1').cameraOption.depthOfField") == Approx(1));
+  CHECK(x.eval("card", "opacity", "thisComp.activeCamera.cameraOption['ADBE Camera Zoom']") == Approx(1000));
+  CHECK(x.eval("card", "opacity", "thisComp.activeCamera.position[2]") == Approx(-900));
+  // A one-node camera's Point of Interest reads the comp centre (AE reads one regardless).
+  CHECK(x.eval("card", "opacity", "thisComp.activeCamera.pointOfInterest[0]") == Approx(240));
+  CHECK(x.eval("card", "opacity", "thisComp.activeCamera.pointOfInterest[1]") == Approx(180));
+  // The camera's own expressions see themselves through thisLayer.
+  CHECK(x.eval("cam", "focusDistance", "thisLayer.cameraOption.zoom / 2") == Approx(500));
+}
+
+TEST_CASE("D6: lightOption reads a light's options and colour", "[expr][light][d6]") {
+  ExprDoc x;
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption.intensity") == Approx(110));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption.coneAngle") == Approx(60));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption['ADBE Light Intensity']") == Approx(110));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption.color[0]") == Approx(1));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption.color[1]") == Approx(128.0 / 255));
+  CHECK(x.eval("card", "opacity", "thisComp.layer('Key Light').lightOption.color[2]") == Approx(0));
+}
+
+TEST_CASE("D6: lookAt aims a camera; orientation results land by axis", "[expr][camera][d6]") {
+  ExprDoc x;
+  // Y Rotation (pan) toward +x+z: 45°; X Rotation (tilt) toward up (−y): 45°.
+  CHECK(x.eval("cam", "orientationY", "lookAt([0, 0, 0], [100, 0, 100])") == Approx(45));
+  CHECK(x.eval("cam", "orientationX", "lookAt([0, 0, 0], [0, -100, 100])") == Approx(45));
+  CHECK(x.eval("cam", "orientationZ", "lookAt([0, 0, 0], [0, -100, 100])") == Approx(0));
+  // A vector on Point of Interest Y / Z takes its own component, as on Position.
+  CHECK(x.eval("cam", "poiY", "[1, 2, 3]") == Approx(2));
+  CHECK(x.eval("cam", "poiZ", "[1, 2, 3]") == Approx(3));
+  // The camera made to look at the card through lookAt faces it: pan 0 straight ahead.
+  CHECK(x.eval("cam", "orientationY", "lookAt(thisLayer.position, thisComp.layer('Card').position)") == Approx(0));
+}
+
+TEST_CASE("D6: toCompVec drops the translation; fromCompToSurface inverts toComp on a 3D layer", "[expr][space][d6]") {
+  ExprDoc x;
+  // A 2D layer scaled 2×: a 10 px layer vector is 20 comp px, wherever the layer sits.
+  CHECK(x.eval("flat", "opacity", "thisLayer.toCompVec([10, 0])[0]") == Approx(20));
+  CHECK(x.eval("flat", "opacity", "thisLayer.toCompVec([0, 0])[1]") == Approx(0));
+  // A 3D layer: the surface point under a comp point is where toComp put it.
+  CHECK(x.eval("card", "opacity", "thisLayer.fromCompToSurface(thisLayer.toComp([30, 40]))[0]") == Approx(30).margin(1e-6));
+  CHECK(x.eval("card", "opacity", "thisLayer.fromCompToSurface(thisLayer.toComp([30, 40]))[1]") == Approx(40).margin(1e-6));
+}

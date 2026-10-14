@@ -13,6 +13,7 @@
 #include "layer_clone.hpp"
 #include "parenting.hpp"
 #include "readmodel.hpp"
+#include "strokes.hpp"
 #include "time_conv.hpp"
 
 namespace premation::doc {
@@ -303,6 +304,11 @@ ResultOf<api::SetLayerSwitches> handle(const api::SetLayerSwitches& c, HCtx& x) 
       } else {
         sg_set_fx(d, id, "autoOrient", Json::boolean(true));
         if (*p.auto_orient == api::AutoOrient::towards_camera) sg_set_fx(d, id, "autoOrient", Json::string("camera"));
+        // Camera program R3b (AE's exclusivity): a camera oriented along its
+        // path is one-node — its Point of Interest goes in the same command.
+        if (*p.auto_orient == api::AutoOrient::along_path && d.node(id)->kind() == "camera") {
+          write_point_of_interest(d, id, v_bool(false));
+        }
       }
     }
     if (p.preserve_transparency) sg_set_fx(d, id, "preserveTransparency", *p.preserve_transparency ? Json::boolean(true) : Json());

@@ -1208,6 +1208,28 @@ bool apply_dolly_zoom(HCtx& x, const std::string& layer, double atTime) {
   return true;
 }
 
+/// Camera program R1: Handheld sets the camera's procedural shake (seeded
+/// noise the engine evaluates) instead of baking wobble keyframes. A keyed
+/// shake prop takes the value as a key at `atTime`; a static one is written.
+bool apply_handheld_shake(HCtx& x, const std::string& layer, double atTime) {
+  const Node* n = x.d.node(layer);
+  if (n == nullptr || n->kind() != "camera") return false;
+  const Component* t = n->comp("Transform");
+  if (t == nullptr) return false;
+  const std::string tid = t->id;
+  const auto put = [&](std::string_view prop, double v) {
+    if (anim_is_animated(x.d, layer, prop)) {
+      anim_set_keyframe(x.d, layer, std::string(prop), atTime, v);
+    } else {
+      (void)sg_write_prop(x.d, layer, tid, prop, Json::number(v));
+    }
+  };
+  put("shakeAmount", 6);
+  put("shakeRotation", 0.6);
+  put("shakeFrequency", 1.5);
+  return true;
+}
+
 /// animationPresets.ts `applyPreset(preset, nodeId, atTime)`.
 bool apply_preset(HCtx& x, const Json& preset, const std::string& layer, double atTime) {
   Document& d = x.d;
@@ -1217,6 +1239,7 @@ bool apply_preset(HCtx& x, const Json& preset, const std::string& layer, double 
   }
   if (truthy(preset.at("hasApplyFn"))) {
     if (preset.at("name").str() == "Dolly Zoom (Vertigo)") return apply_dolly_zoom(x, layer, atTime);
+    if (preset.at("name").str() == "Handheld") return apply_handheld_shake(x, layer, atTime);
     fail(ErrorCode::unsupported, "preset '" + preset.at("name").str() + "' is code this engine has not ported");
   }
   std::vector<PresetTrack> tracks = preset_tracks(preset);

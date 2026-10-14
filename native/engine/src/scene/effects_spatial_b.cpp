@@ -697,7 +697,15 @@ void round_eleven(const std::string& t, const Fx& f, std::vector<api::RenderEffe
   }
   if (t == "3d-glasses") {
     const double shift = f.is_true("swapLeftRight") ? -n("convergenceOffset") : n("convergenceOffset");
-    out.push_back(pfx("3d-glasses", {lw, lh, shift, jround(n("view")), clamp01(n("balance") / 100), 0, 0, 0}));
+    // Camera program D7: a Right View layer makes a true stereo pair (AE's
+    // Left View / Right View); `mapLayerId` binds it at binding 3.
+    const Json rv = f.raw("rightView");
+    const std::string right = rv.is_string() ? rv.str() : std::string();
+    FxWriter w("3d-glasses");
+    w.nums("p", {lw, lh, shift, jround(n("view")), clamp01(n("balance") / 100), right.empty() ? 0.0 : 1.0,
+                 f.is_true("swapLeftRight") ? 1.0 : 0.0, 0});
+    if (!right.empty()) w.text("mapLayerId", right);
+    out.push_back(w.done());
   }
   if (t == "fractal") {
     const Rgba inside = f.c("insideColor");
@@ -940,9 +948,22 @@ void round_twelve(const std::string& t, const Fx& f, const Json& params, std::ve
       } else if (t == "smart-blur") {
         out.push_back(pfx("smart-blur", {lw, lh, r, jmax(0.0, n("threshold")), jround(n("mode")), stride(r), 0, 0}));
       } else {
-        out.push_back(pfx("camera-lens-blur", {lw, lh, r, jround(n("blades")),  //
-                                               rad(n("irisRotation")), jmax(1.0, n("gain")),
-                                               clamp01(n("highlightThreshold") / 100), stride(r)}));
+        if (jround(n("blurMap")) == 1) {
+          // Camera program D1: Blur Map = Scene Depth — the radius per pixel is
+          // the thin-lens CoC about the focus: the active camera's Focus
+          // Distance (`__viewFocus`, set by the snapshot) or Blur Focal Distance.
+          const double camFocus = n("__viewFocus");
+          const double focus = !f.is_false("focusFromCamera") && camFocus > 0 ? camFocus : jmax(1.0, n("focusDistance"));
+          FxWriter w("camera-lens-blur-depth");
+          w.nums("p", {lw, lh, r, jround(n("blades")), rad(n("irisRotation")), jmax(1.0, n("gain")),
+                       clamp01(n("highlightThreshold") / 100), stride(r), focus, 0, 0, 0});
+          w.flag("readsDepth", true);
+          out.push_back(w.done());
+        } else {
+          out.push_back(pfx("camera-lens-blur", {lw, lh, r, jround(n("blades")),  //
+                                                 rad(n("irisRotation")), jmax(1.0, n("gain")),
+                                                 clamp01(n("highlightThreshold") / 100), stride(r)}));
+        }
       }
     }
   }

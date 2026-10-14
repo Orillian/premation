@@ -6,6 +6,7 @@
 // Each entry's passes are scissored to the layer's reach so far (fx_bounds.hpp).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -32,6 +33,14 @@ class MapLayerSource {
   MapLayerSource(MapLayerSource&&) = delete;
   MapLayerSource& operator=(MapLayerSource&&) = delete;
   virtual TexRef map_layer(PassContext& ctx, const ById& byId, std::string_view mapLayerId, std::string_view selfId) = 0;
+  /// Camera program D1: the composition's scene depth (camera-space z of the
+  /// nearest 3D surface other than `selfId`, comp px, +inf where none; an
+  /// r32float read with textureLoad) in a w × h buffer placed by `compToWorld`
+  /// (comp px → buffer px, row-major 3×3). Empty = unavailable.
+  virtual TexRef scene_depth(PassContext& /*ctx*/, std::uint32_t /*w*/, std::uint32_t /*h*/,
+                             const std::array<double, 9>& /*compToWorld*/, std::string_view /*selfId*/) {
+    return {};
+  }
   /// AE parity 4.2: composite a 3D-run layer that needs its own compositing
   /// step (a track matte, an advanced blend / Preserve Transparency, glass, a
   /// backdrop blur) onto `out`, from images already drawn in 3D — `predrawn`

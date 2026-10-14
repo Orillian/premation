@@ -830,6 +830,7 @@ export const addEffectDef: AiToolDef = {
           'old-film', 'anamorphic-streaks', 'starglow', 'sparkle', 'white-balance', 'clarity', 'lens-distortion',
           'heat-haze', 'color-halftone', 'crystallize', 'fog', 'chrome', 'night-vision',
           // fx60:b12:end
+          'depth-matte', 'depth-fog', 'depth-extract',
         ],
       },
       amount: {

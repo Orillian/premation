@@ -159,6 +159,82 @@ void plan_transform(const PlanContext& ctx, PlannedLayer& out) {
   }
 }
 
+/// Camera program D4: a camera layer's options 1:1. AE keeps a camera's Point
+/// of Interest in its Anchor Point (comp px, no centre shift) and its Camera
+/// Options in their own group; X / Y / Z Rotation turn the camera on the spot
+/// (this editor's orientationX / Y / Z, added to the Orientation).
+void plan_camera(const PlanContext& ctx, PlannedLayer& out) {
+  // A camera has no anchor, scale, opacity or 2D rotation of its own here.
+  const auto notCamera = [](const std::string& k) {
+    return k == "anchorX" || k == "anchorY" || k == "scaleX" || k == "scaleY" || k == "opacity" || k == "rotation" ||
+           k == "rotationX" || k == "rotationY";
+  };
+  std::erase_if(out.staticProps, [&](const auto& p) { return notCamera(p.first); });
+  std::erase_if(out.tracks, [&](const PlannedTrack& t) { return notCamera(t.prop); });
+
+  const AepProp* xf = find_group(&ctx.layer.properties, "ADBE Transform Group");
+  const AepProp* options = find_group(&ctx.layer.properties, "ADBE Camera Options Group");
+  const auto take = [&](const AepProp* group, std::string_view matchName, std::size_t dim, const std::string& prop,
+                        double offset, double scale, bool always) {
+    const AepProp* source = find_leaf(group, matchName);
+    if (source == nullptr) return;
+    double value = dim < source->value.size() ? source->value[dim] * scale + offset : offset;
+    if (!source->keyframes.empty()) {
+      ConvertOptions opts;
+      opts.scale = scale;
+      opts.offset = offset;
+      out.tracks.push_back({prop, to_keyframe_track(source->keyframes, dim, opts)});
+      const std::vector<double>& first = source->keyframes[0].value;
+      if (dim < first.size()) value = first[dim] * scale + offset;
+    } else if (!always && value == offset) {
+      return;  // AE's default: nothing stored
+    }
+    set_prop(out.staticProps, prop, value);
+  };
+  // A camera is 3D in AE whatever its 3D switch says: keep its depth.
+  if (!ctx.layer.threeD) {
+    const AepProp* sep = find_leaf(xf, "ADBE Position_0");
+    if (sep != nullptr && !sep->keyframes.empty()) {
+      take(xf, "ADBE Position_2", 0, "z", 0, 1, true);
+    } else {
+      take(xf, "ADBE Position", 2, "z", 0, 1, true);
+    }
+  }
+  // Two-node: AE's auto-orient "towards Point of Interest".
+  if (ctx.layer.autoOrient == 2) {
+    take(xf, "ADBE Anchor Point", 0, "poiX", 0, 1, true);
+    take(xf, "ADBE Anchor Point", 1, "poiY", 0, 1, true);
+    take(xf, "ADBE Anchor Point", 2, "poiZ", 0, 1, true);
+  }
+  double ori[3] = {0, 0, 0};
+  for (const auto& [k, v] : out.staticProps) {
+    if (k == "orientationX") ori[0] = v;
+    if (k == "orientationY") ori[1] = v;
+    if (k == "orientationZ") ori[2] = v;
+  }
+  take(xf, "ADBE Rotate X", 0, "orientationX", ori[0], 1, false);
+  take(xf, "ADBE Rotate Y", 0, "orientationY", ori[1], 1, false);
+  take(xf, "ADBE Rotate Z", 0, "orientationZ", ori[2], 1, false);
+  if (options == nullptr) return;
+  take(options, "ADBE Camera Zoom", 0, "focalLength", 0, 1, true);
+  const AepProp* dof = find_leaf(options, "ADBE Camera Depth of Field");
+  const bool dofOn = dof != nullptr && ((!dof->value.empty() && dof->value[0] != 0) || !dof->keyframes.empty());
+  if (dofOn) {
+    take(options, "ADBE Camera Focus Distance", 0, "focusDistance", 0, 1, true);
+    take(options, "ADBE Camera Aperture", 0, "dofAperture", 0, 1, true);
+    // AE's Blur Level is a percentage of the physical blur (100 %); this
+    // editor's Blur Level is px of the legacy ramp — 100 % reads as 10 px.
+    take(options, "ADBE Camera Blur Level", 0, "dofStrength", 0, 0.1, true);
+    take(options, "ADBE Iris Rotation", 0, "irisRotation", 0, 1, false);
+    take(options, "ADBE Iris Roundness", 0, "irisRoundness", 0, 1, false);
+    take(options, "ADBE Iris Aspect Ratio", 0, "irisAspect", 0, 1, false);
+    take(options, "ADBE Iris Diffraction Fringe", 0, "diffractionFringe", 0, 1, false);
+    take(options, "ADBE Iris Highlight Gain", 0, "highlightGain", 0, 1, false);
+    take(options, "ADBE Iris Highlight Threshold", 0, "highlightThreshold", 0, 1, false);
+    take(options, "ADBE Iris Hightlight Saturation", 0, "highlightSaturation", 0, 1, false);
+  }
+}
+
 void plan_masks(const PlanContext& ctx, PlannedLayer& out) {
   for (const AepMask& mask : ctx.layer.masks) {
     if (!mask.shape || mask.shape->vertices.empty()) continue;
@@ -268,6 +344,7 @@ PlannedLayer plan_layer(const AepLayer& layer, const AepComp& comp, const std::m
   if (layer.parentId != 0) out.parentUid = std::to_string(comp.id) + ":" + std::to_string(layer.parentId);
   if (source != nullptr) out.source = PlannedLayer::Source{source->comp != nullptr, source->id()};
   plan_transform(ctx, out);
+  if (layer.kind == LayerKind::camera) plan_camera(ctx, out);
   collect_expressions(layer.properties, "", out.expressions);
   summary.expressions += static_cast<std::uint32_t>(out.expressions.size());
 

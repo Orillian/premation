@@ -284,16 +284,8 @@ describe('Camera presets', () => {
     }
   });
 
-  test('Handheld starts and ends at rest — relative offsets must return to zero', () => {
+  test('Handheld sets procedural shake (camera program R1) — no baked wobble keys', () => {
     const handheld = CAMERA_PRESETS.find((p) => p.name === 'Handheld')!;
-    for (const t of handheld.tracks) {
-      const first = t.keyframes[0]!;
-      const last = t.keyframes[t.keyframes.length - 1]!;
-      expect({ prop: t.prop, first: first.value, last: last.value }).toEqual({
-        prop: t.prop,
-        first: 0,
-        last: 0,
-      });
-    }
+    expect({ tracks: handheld.tracks.length, applier: handheld.applier }).toEqual({ tracks: 0, applier: 'handheldShake' });
   });
 });

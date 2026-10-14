@@ -1,10 +1,15 @@
 #include "worldxf.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <functional>
 #include <map>
+#include <numbers>
 #include <set>
 #include <vector>
 
+#include "readmodel.hpp"
 #include "scene.hpp"
 #include "timeline.hpp"
 
@@ -57,11 +62,22 @@ namespace {
 
 using AnimValues = std::map<std::string, double, std::less<>>;
 
-/// `defaultAnimation.evaluateNode(node, getRemappedTime(node, seconds))` as a lookup.
+/// The transform props a layer space reads. Only these are sampled: evaluating
+/// every expressed prop of the node would re-enter an expression that asks for
+/// its own layer's space (`thisLayer.toComp(...)` on Opacity) until the step
+/// budget ran out.
+constexpr std::array<std::string_view, 16> kSpaceProps = {
+    "x", "y", "z", "rotation", "rotationX", "rotationY", "orientationX", "orientationY", "orientationZ",
+    "scale", "scaleX", "scaleY", "scaleZ", "anchorX", "anchorY", "anchorZ"};
+
+/// `defaultAnimation.evaluateNode(node, getRemappedTime(node, seconds))` as a
+/// lookup, restricted to kSpaceProps.
 AnimValues evaluate_at(const SpaceCtx& c, std::string_view node, double seconds) {
   const double t = comp_to_keyframe_time(c.d, c.view, node, seconds);
   AnimValues av;
-  for (auto& [prop, v] : anim_evaluate_node(c.d, c.expr, c.cache, node, t)) av.insert_or_assign(prop, v);
+  for (const std::string_view prop : kSpaceProps) {
+    if (const auto v = anim_sample(c.d, c.expr, c.cache, node, prop, t)) av.insert_or_assign(std::string(prop), *v);
+  }
   return av;
 }
 
@@ -241,8 +257,26 @@ motion::xf::Camera camera_from_node(const SpaceCtx& c, const Node& n, double w, 
   p.orientation_x = val("orientationX");
   p.orientation_y = val("orientationY");
   p.orientation_z = val("orientationZ");
-  return motion::xf::camera_from_props(p, w, h,
-                                       [&](motion::xf::Vec3 v) { return to_world_point_at(c, n.id, seconds, v); });
+  const motion::xf::Camera cam =
+      motion::xf::camera_from_props(p, w, h, [&](motion::xf::Vec3 v) { return to_world_point_at(c, n.id, seconds, v); });
+  // Camera program R2b: a one-node camera turns with its parents.
+  const bool twoNode = p.poi_x || p.poi_y || p.poi_z;
+  const motion::xf::Camera parented = twoNode ? cam : rotate_camera_with_parent(cam, parent_world_matrix_at(c, n.id, seconds));
+  // Camera program R3b: Auto-Orient Along Path (one-node), before the shake.
+  motion::xf::Camera aimed = parented;
+  if (const auto dir = camera_path_direction(c.d, c.expr, c.cache, n, n.id, t,
+                                             [&](motion::xf::Vec3 v) { return to_world_point_at(c, n.id, seconds, v); })) {
+    aimed = orient_camera_along(cam, *dir, p.orientation_x.value_or(0), p.orientation_y.value_or(0),
+                                p.orientation_z.value_or(0));
+  }
+  // Camera program R1: procedural shake after the aim (threed_port.cpp's twin).
+  motion::xf::CameraShake sh;
+  sh.seconds = t;
+  if (const auto v = val("shakeAmount")) sh.amount = *v;
+  if (const auto v = val("shakeRotation")) sh.rotation = *v;
+  if (const auto v = val("shakeFrequency")) sh.frequency = *v;
+  if (const auto v = val("shakeSeed")) sh.seed = *v;
+  return motion::xf::apply_camera_shake(aimed, sh);
 }
 
 /// `readSceneCamera(graph, w, h, sample)` with no root (the editor's expression
@@ -265,6 +299,125 @@ motion::xf::Camera read_scene_camera(const SpaceCtx& c, double w, double h, doub
 }
 
 }  // namespace
+
+std::optional<motion::xf::Vec3> camera_path_direction(const Document& d, const ExprEnv& expr, ExprCache& cache,
+                                                      const Node& n, std::string_view animId, double kt,
+                                                      const std::function<motion::xf::Vec3(motion::xf::Vec3)>& lift) {
+  if (n.kind() != "camera" || read_auto_orient_mode(n) != "path") return std::nullopt;
+  std::array<double, 3> base{0, 0, 0};
+  constexpr std::array<std::string_view, 3> kAxes = {"x", "y", "z"};
+  for (const Component& comp : n.components) {
+    for (const std::string_view k : {std::string_view("poiX"), std::string_view("poiY"), std::string_view("poiZ")}) {
+      if (comp.props.at(k).is_number()) return std::nullopt;  // two-node: it aims at its Point of Interest
+    }
+    for (std::size_t i = 0; i < 3; ++i) {
+      if (comp.props.at(kAxes.at(i)).is_number()) base.at(i) = comp.props.at(kAxes.at(i)).num();
+    }
+  }
+  // The keyed span over the position tracks: outside it the tangent is held.
+  std::optional<double> first;
+  std::optional<double> last;
+  for (const std::string_view k : kAxes) {
+    const auto* keys = anim_track(d, animId, k);
+    if (keys == nullptr || keys->empty()) continue;
+    first = first ? std::min(*first, keys->front().t) : keys->front().t;
+    last = last ? std::max(*last, keys->back().t) : keys->back().t;
+  }
+  if (!first || !last || !std::isfinite(kt)) return std::nullopt;
+  const double t = std::clamp(kt, *first, *last);
+  const auto at = [&](double tt) {
+    std::array<double, 3> v = base;
+    for (std::size_t i = 0; i < 3; ++i) {
+      if (const auto s = anim_sample(d, expr, cache, animId, kAxes.at(i), tt)) v.at(i) = *s;
+    }
+    const motion::xf::Vec3 p{v[0], v[1], v[2]};
+    return lift ? lift(p) : p;
+  };
+  constexpr double kH = 1.0 / 120;
+  const auto diff = [](motion::xf::Vec3 a, motion::xf::Vec3 b) { return motion::xf::Vec3{b.x - a.x, b.y - a.y, b.z - a.z}; };
+  const auto zero = [](motion::xf::Vec3 v) { return v.x == 0 && v.y == 0 && v.z == 0; };
+  motion::xf::Vec3 dir = diff(at(t), at(std::min(t + kH, *last)));
+  if (zero(dir)) dir = diff(at(std::max(t - kH, *first)), at(t));
+  if (zero(dir) || !std::isfinite(dir.x) || !std::isfinite(dir.y) || !std::isfinite(dir.z)) return std::nullopt;
+  return dir;
+}
+
+namespace {
+
+/// Camera-local (right, down, forward) → world: the order of transform.cpp
+/// `unproject_screen_ray` (roll, then pitch about x, then yaw about y).
+motion::xf::Vec3 turn_by(motion::xf::Vec3 v, const std::optional<motion::xf::Orientation>& o) {
+  if (!o) return v;
+  constexpr double kDeg = std::numbers::pi / 180;
+  const double roll = o->roll.value_or(0) * kDeg;
+  double vx = v.x;
+  double vy = v.y;
+  const double vz = v.z;
+  if (roll != 0) {
+    const double rx = std::cos(roll) * vx - std::sin(roll) * vy;
+    vy = std::sin(roll) * vx + std::cos(roll) * vy;
+    vx = rx;
+  }
+  const double cx = std::cos(o->pitch * kDeg);
+  const double sx = std::sin(o->pitch * kDeg);
+  const double cy = std::cos(o->yaw * kDeg);
+  const double sy = std::sin(o->yaw * kDeg);
+  const double y1 = cx * vy - sx * vz;
+  const double z1 = sx * vy + cx * vz;
+  return {cy * vx + sy * z1, y1, -sy * vx + cy * z1};
+}
+
+motion::xf::Vec3 unit(motion::xf::Vec3 v) {
+  const double l = std::hypot(v.x, v.y, v.z);
+  return l > 0 ? motion::xf::Vec3{v.x / l, v.y / l, v.z / l} : v;
+}
+
+}  // namespace
+
+motion::xf::Camera rotate_camera_with_parent(const motion::xf::Camera& cam, const std::optional<motion::xf::Mat4>& parent) {
+  if (!parent) return cam;
+  namespace xf = motion::xf;
+  const xf::Vec3 o = xf::transform_point(*parent, {0, 0, 0});
+  const auto axis = [&](xf::Vec3 e) {
+    const xf::Vec3 p = xf::transform_point(*parent, e);
+    return unit(xf::Vec3{p.x - o.x, p.y - o.y, p.z - o.z});
+  };
+  const xf::Vec3 ax = axis({1, 0, 0});
+  const xf::Vec3 ay = axis({0, 1, 0});
+  const xf::Vec3 az = axis({0, 0, 1});
+  // Unrotated parents (translation / uniform or axis scale only): nothing to do.
+  if (ax.y == 0 && ax.z == 0 && ay.x == 0 && ay.z == 0 && az.x == 0 && az.y == 0 && ax.x > 0 && ay.y > 0 && az.z > 0) return cam;
+  const auto rot = [&](xf::Vec3 v) {
+    return xf::Vec3{ax.x * v.x + ay.x * v.y + az.x * v.z, ax.y * v.x + ay.y * v.y + az.y * v.z, ax.z * v.x + ay.z * v.y + az.z * v.z};
+  };
+  const xf::Vec3 f = unit(rot(turn_by({0, 0, 1}, cam.orientation)));
+  const xf::Vec3 d = unit(rot(turn_by({0, 1, 0}, cam.orientation)));
+  const xf::Orientation look = xf::look_at_orientation({0, 0, 0}, f);
+  xf::Orientation base{.yaw = look.yaw, .pitch = look.pitch, .roll = std::nullopt};
+  const xf::Vec3 r0 = turn_by({1, 0, 0}, base);
+  const xf::Vec3 d0 = turn_by({0, 1, 0}, base);
+  // down = cos(roll)·d0 − sin(roll)·r0.
+  const double roll = std::atan2(-(d.x * r0.x + d.y * r0.y + d.z * r0.z), d.x * d0.x + d.y * d0.y + d.z * d0.z) * 180 / std::numbers::pi;
+  xf::Camera out = cam;
+  xf::Orientation turned{.yaw = look.yaw, .pitch = look.pitch, .roll = std::nullopt};
+  if (std::abs(roll) > 1e-9) turned.roll = roll;
+  out.orientation = turned;
+  return out;
+}
+
+motion::xf::Camera orient_camera_along(const motion::xf::Camera& cam, motion::xf::Vec3 dir, double oriX, double oriY,
+                                       double roll) {
+  const motion::xf::Orientation o = motion::xf::look_at_orientation({0, 0, 0}, dir);
+  motion::xf::Orientation composed{.yaw = o.yaw + oriY, .pitch = o.pitch + oriX, .roll = std::nullopt};
+  if (roll != 0) composed.roll = roll;
+  motion::xf::Camera out = cam;
+  if (composed.yaw != 0 || composed.pitch != 0 || composed.roll.value_or(0) != 0) {
+    out.orientation = composed;
+  } else {
+    out.orientation.reset();
+  }
+  return out;
+}
 
 std::optional<motion::xf::Node3DTransform> local_3d_at(const SpaceCtx& c, const Node& n, double seconds) {
   return resolve_node_3d(c, n, seconds);
@@ -334,7 +487,9 @@ std::optional<motion::xf::Local2D> local_transform_at(const PCtx& c, std::string
   if (!g) return std::nullopt;
   const double t = comp_to_keyframe_time(c.d, c.view, node, seconds);
   std::map<std::string, double, std::less<>> av;
-  for (auto& [prop, v] : anim_evaluate_node(c.d, c.expr, c.cache, node, t)) av.insert_or_assign(prop, v);
+  for (const std::string_view prop : kSpaceProps) {  // not every prop: see kSpaceProps
+    if (const auto v = anim_sample(c.d, c.expr, c.cache, node, prop, t)) av.insert_or_assign(std::string(prop), *v);
+  }
   auto get = [&](std::string_view k) -> std::optional<double> {
     const auto it = av.find(k);
     return it == av.end() ? std::nullopt : std::optional<double>(it->second);

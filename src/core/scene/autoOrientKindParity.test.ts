@@ -50,7 +50,8 @@ describe('auto-orient is offered only where it is read', () => {
     expect(canAutoOrient(node(kind))).toBe(false);
   });
 
-  it.each(['shape', 'text', 'image', 'video'])('offers it on a %s layer', (kind) => {
+  // R3b (camera program): the C++ camera evaluation reads Along Path.
+  it.each(['shape', 'text', 'image', 'video', 'camera'])('offers it on a %s layer', (kind) => {
     expect(canAutoOrient(node(kind))).toBe(true);
   });
 

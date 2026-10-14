@@ -108,6 +108,13 @@ class Scene3D {
   [[nodiscard]] std::function<MotionPose(double, double)> matrix_at(const doc::Node& n, const Values& a, double baseX,
                                                                     double baseY, double baseRot, const Layer3D& s);
   [[nodiscard]] bool camera_animated() const noexcept { return cameraAnimated_; }
+  /// Camera program D1: the active camera's Focus Distance (else its Zoom) — what
+  /// Camera Lens Blur's scene-depth blur map focuses on; nullopt without one.
+  [[nodiscard]] std::optional<double> view_focus() const noexcept { return viewFocus_; }
+  /// Camera program D2: a light layer's world position seen through the
+  /// frame's camera (comp px; `depth` = view-space z, `clipped` = behind the
+  /// eye); nullopt when `light` is not a light.
+  [[nodiscard]] std::optional<motion::xf::Projected> project_light(const doc::Node& light);
 
   /// A temporal ghost's matrix / world3d at comp time `ti` (buildSnapshot's ghost
   /// `affineAt`): x / y / rotation offset by `dx/dy/drot`, z and the X / Y
@@ -171,7 +178,9 @@ class Scene3D {
   motion::xf::Vec3 node_world_position(const doc::Node& n);
   std::optional<motion::xf::Node3DTransform> local3d(const std::string& id);
   const doc::Node* view_camera_node(const std::vector<const doc::Node*>& nodes);
-  motion::xf::Camera camera_from_node(const doc::Node& n, const std::function<std::optional<double>(std::string_view)>& sample);
+  /// `shakeSeconds`: the camera's own time, for its procedural shake (R1).
+  motion::xf::Camera camera_from_node(const doc::Node& n, const std::function<std::optional<double>(std::string_view)>& sample,
+                                      double shakeSeconds);
   double node_light_aim_deg(const doc::Node& n, const LightProps& lt);
 
   struct Affine {
@@ -193,6 +202,7 @@ class Scene3D {
   const doc::Node* viewCam_ = nullptr;
   std::optional<DofConfig> dof_;
   bool cameraAnimated_ = false;
+  std::optional<double> viewFocus_;
   std::unordered_map<double, motion::xf::Camera> subFrameCameras_;
 
   std::unordered_map<std::string, std::optional<motion::xf::Mat4>> parent3dCache_;

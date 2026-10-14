@@ -213,9 +213,49 @@ constexpr auto kHandled = std::to_array<std::string_view>({
     "chrome",
     "night-vision",
     // fx60:b4:end
+    // Camera program D1: depth for compositing (scene depth at binding 3).
+    "depth-matte",
+    "depth-fog",
+    "depth-extract",
 });
 
 bool pack(std::string_view t, const Params& P, double lw, double lh, Out& out) {
+  // Camera program D1: the scene-depth effects. Depths are comp px along the
+  // active camera's view; the chain binds the composition's scene depth
+  // (render_graph/scene_depth.cpp) at binding 3 — `readsDepth`.
+  if (t == "depth-matte") {
+    FxWriter w("depth-matte");
+    const double nearZ = jmax(0, P.n("near"));
+    std::vector<double> p{nearZ, jmax(nearZ, P.n("far")), jmax(0, P.n("feather")), P.on("invert") ? 1.0 : 0.0, lw, lh, 0, 0};
+    w.nums("p", std::move(p));
+    w.flag("readsDepth", true);
+    w.num("reachPx", 0);
+    out.push_back(w.done());
+    return true;
+  }
+  if (t == "depth-fog") {
+    FxWriter w("depth-fog");
+    const V3 c = P.u3("color");
+    const V3 c2 = P.u3("farColor");
+    const double start = jmax(0, P.n("start"));
+    std::vector<double> p{c[0], c[1], c[2], clampd(P.pct("density"), 0, 1),
+                          start, jmax(start + 1, P.n("end")), P.on("gradient") ? 1.0 : 0.0, P.on("fogBackground") ? 1.0 : 0.0,
+                          c2[0], c2[1], c2[2], 0,
+                          lw, lh, 0, 0};
+    w.nums("p", std::move(p));
+    w.flag("readsDepth", true);
+    out.push_back(w.done());
+    return true;
+  }
+  if (t == "depth-extract") {
+    FxWriter w("depth-extract");
+    const double nearZ = jmax(0, P.n("near"));
+    std::vector<double> p{nearZ, jmax(nearZ + 1, P.n("far")), P.on("invert") ? 1.0 : 0.0, 0, lw, lh, 0, 0};
+    w.nums("p", std::move(p));
+    w.flag("readsDepth", true);
+    out.push_back(w.done());
+    return true;
+  }
   // fx60:b5:begin
   if (t == "brightness-contrast") {
     FxWriter w("brightness-contrast");

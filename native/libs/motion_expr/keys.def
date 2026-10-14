@@ -60,3 +60,23 @@ K(setLeading) K(setFauxBold) K(setFauxItalic) K(setAllCaps) K(setSmallCaps) K(se
 K(setApplyStroke) K(setBaselineShift) K(setHorizontalScaling) K(setVerticalScaling)
 K(setJustification) K(setFirstLineIndent) K(setLeftMargin) K(setRightMargin) K(setSpaceBefore)
 K(setSpaceAfter) K(setDirection) K(setLeadingType) K(setText)
+
+// Cameras and lights (camera program D6): thisComp.activeCamera, a layer's
+// position / pointOfInterest / cameraOption / lightOption, toCompVec,
+// fromCompToSurface — and the AE match names of the camera / light options.
+K(activeCamera) K(cameraOption) K(lightOption) K(pointOfInterest) K(position) K(toCompVec)
+K(fromCompToSurface)
+K(zoom) K(depthOfField) K(focusDistance) K(aperture) K(blurLevel) K(irisRotation) K(irisRoundness)
+K(irisAspectRatio) K(irisDiffractionFringe) K(highlightGain) K(highlightThreshold) K(highlightSaturation)
+K(intensity) K(color) K(coneAngle) K(coneFeather) K(shadowDarkness) K(shadowDiffusion) K(falloffDistance)
+K(radius)
+KN(k_adbe_camera_zoom, "ADBE Camera Zoom")
+KN(k_adbe_camera_focus_distance, "ADBE Camera Focus Distance")
+KN(k_adbe_camera_aperture, "ADBE Camera Aperture")
+KN(k_adbe_camera_blur_level, "ADBE Camera Blur Level")
+KN(k_adbe_light_intensity, "ADBE Light Intensity")
+KN(k_adbe_light_color, "ADBE Light Color")
+KN(k_adbe_light_cone_angle, "ADBE Light Cone Angle")
+KN(k_adbe_light_cone_feather, "ADBE Light Cone Feather 2")
+KN(k_adbe_light_shadow_darkness, "ADBE Light Shadow Darkness")
+KN(k_adbe_light_shadow_diffusion, "ADBE Light Shadow Diffusion")

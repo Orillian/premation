@@ -93,6 +93,9 @@ import { openTimeStretchDialog } from '@layout/Composition/TimeStretchDialog';
 import { openAutoOrientDialog } from '@layout/Composition/AutoOrientDialog';
 import { buildCameraCommands } from '@core/scene/cameraCommands';
 import { buildCameraShotCommands } from '@layout/Composition/CameraShotDialogs';
+import { buildStereoRigCommands } from '@core/scene/stereoRigCommands';
+import { buildCameraExportCommands } from '@core/scene/cameraExport';
+import { buildDepthParallaxCommands } from '@layout/Menu/depthParallaxCommands';
 import { buildSmartAnimateCommands, installSmartAnimateCommandSync } from './commands/smartAnimateCommands';
 import { buildReframeCommands } from '@core/reframe/reframeCommands';
 import { buildIk3DCommands } from './commands/ikCommands';
@@ -1620,6 +1623,9 @@ export function buildStaticCommands(): ReadonlyArray<Command> {
     ...buildOpenLayerCommands(),
     ...buildCameraCommands(),
     ...buildCameraShotCommands(),
+    ...buildStereoRigCommands(),
+    ...buildCameraExportCommands(),
+    ...buildDepthParallaxCommands(),
     ...buildSmartAnimateCommands(),
     ...buildReframeCommands(),
     ...buildIk3DCommands(),

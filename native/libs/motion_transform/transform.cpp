@@ -599,6 +599,97 @@ Camera camera_from_props(const CameraProps& p, double width, double height, cons
   return out;
 }
 
+// ── camera shake (camera program R1) ───────────────────────────────────────
+
+namespace {
+
+/// splitmix64: a well-mixed 64-bit hash of a lattice point.
+std::uint64_t shake_hash(std::uint64_t x) noexcept {
+  x += 0x9E3779B97F4A7C15ULL;
+  x = (x ^ (x >> 30U)) * 0xBF58476D1CE4E5B9ULL;
+  x = (x ^ (x >> 27U)) * 0x94D049BB133111EBULL;
+  return x ^ (x >> 31U);
+}
+
+/// Value noise in [-1, 1] at lattice coordinate `x` (quintic fade between knots).
+double shake_value_noise(std::uint64_t key, double x) noexcept {
+  const double fl = std::floor(x);
+  const double f = x - fl;
+  const auto i = static_cast<std::int64_t>(fl);
+  const auto knot = [key](std::int64_t k) {
+    const std::uint64_t h = shake_hash(key ^ shake_hash(static_cast<std::uint64_t>(k)));
+    // 53 random bits → [0, 1) → [-1, 1).
+    return static_cast<double>(h >> 11U) * (1.0 / 9007199254740992.0) * 2.0 - 1.0;
+  };
+  const double a = knot(i);
+  const double b = knot(i + 1);
+  const double u = f * f * f * (f * (f * 6 - 15) + 10);
+  return a + (b - a) * u;
+}
+
+/// Camera-local (right, down, forward) → world, the rotation order of
+/// `unproject_screen_ray` (roll, then pitch, then yaw).
+Vec3 rotate_by_orientation(Vec3 v, const std::optional<Orientation>& o) noexcept {
+  if (!o) return v;
+  const double yaw = o->yaw * kDeg;
+  const double pitch = o->pitch * kDeg;
+  const double roll = o->roll.value_or(0) * kDeg;
+  double vx = v.x;
+  double vy = v.y;
+  double vz = v.z;
+  if (roll != 0) {
+    const double cz = js::cos(roll);
+    const double sz = js::sin(roll);
+    const double rx = cz * vx - sz * vy;
+    vy = sz * vx + cz * vy;
+    vx = rx;
+  }
+  const double cx = js::cos(pitch);
+  const double sx = js::sin(pitch);
+  const double cy = js::cos(yaw);
+  const double sy = js::sin(yaw);
+  const double y1 = cx * vy - sx * vz;
+  const double z1 = sx * vy + cx * vz;
+  return {cy * vx + sy * z1, y1, -sy * vx + cy * z1};
+}
+
+}  // namespace
+
+double camera_shake_noise(std::int64_t seed, int channel, double t) noexcept {
+  if (!finite(t)) return 0;
+  const std::uint64_t key = shake_hash(static_cast<std::uint64_t>(seed) * 0x100000001B3ULL + static_cast<std::uint64_t>(channel));
+  // Two fixed octaves at incommensurate rates (1 and 2.17×, half weight), each
+  // phase-shifted by its own key so channels never move in lockstep.
+  const double o1 = shake_value_noise(key, t);
+  const double o2 = shake_value_noise(shake_hash(key ^ 0xA5A5A5A5ULL), t * 2.17 + 0.37);
+  return (o1 + 0.5 * o2) / 1.5;
+}
+
+Camera apply_camera_shake(const Camera& cam, const CameraShake& s) noexcept {
+  const double amount = finite(s.amount) ? s.amount : 0;
+  const double rotation = finite(s.rotation) ? s.rotation : 0;
+  if (amount == 0 && rotation == 0) return cam;
+  const double freq = finite(s.frequency) ? std::max(0.0, s.frequency) : 2;
+  const double t = (finite(s.seconds) ? s.seconds : 0) * freq;
+  const auto seed = static_cast<std::int64_t>(finite(s.seed) ? std::llround(std::clamp(s.seed, -1e15, 1e15)) : 0);
+  Camera out = cam;
+  if (amount != 0) {
+    const Vec3 local{amount * camera_shake_noise(seed, 0, t), amount * camera_shake_noise(seed, 1, t),
+                     amount * 0.5 * camera_shake_noise(seed, 2, t)};
+    const Vec3 w = rotate_by_orientation(local, cam.orientation);
+    out.position = {cam.position.x + w.x, cam.position.y + w.y, cam.position.z + w.z};
+  }
+  if (rotation != 0) {
+    Orientation o = cam.orientation.value_or(Orientation{});
+    o.yaw += rotation * camera_shake_noise(seed, 3, t);
+    o.pitch += rotation * camera_shake_noise(seed, 4, t);
+    const double roll = o.roll.value_or(0) + rotation * 0.5 * camera_shake_noise(seed, 5, t);
+    o.roll = roll != 0 ? std::optional<double>(roll) : std::nullopt;
+    out.orientation = o;
+  }
+  return out;
+}
+
 // ── layerSpace.ts ───────────────────────────────────────────────────────────
 
 Vec3 LayerSpace2D::to_world(Vec2 p) const noexcept {

@@ -44,6 +44,7 @@ import { registerAiProxyIpc, abortAllStreams } from './aiProxy';
 import { registerModelDownloadIpc, abortAllModelDownloads } from './modelDownload';
 import { objectMatteUserDir, registerObjectMatteModelIpc } from './objectMatteModel';
 import { faceModelUserDir, registerFaceModelIpc } from './faceModel';
+import { depthModelUserDir, registerDepthModelIpc } from './depthModel';
 import { registerMediaKeyIpc } from './mediaKeyVault';
 import { registerAiMediaProxyIpc } from './aiMediaProxy';
 import { registerApiProxyIpc, abortAllApiStreams, sendWithAuth } from './apiProxy';
@@ -1306,6 +1307,8 @@ app.whenReady().then(() => {
   registerObjectMatteModelIpc(() => app.getPath('userData'));
   // Face Tracking's landmark model, downloaded on first use (faceModel.ts).
   registerFaceModelIpc(() => app.getPath('userData'));
+  // Make 3D from Photo's depth model, a PINNED download on first use (depthModel.ts).
+  registerDepthModelIpc(() => app.getPath('userData'));
   registerModelDownloadIpc();
   // Export's ffmpeg: health check, one-click repair download, "choose file"
   // (ffmpegService.ts). Ungated for the same reason as the model download.
@@ -1373,6 +1376,7 @@ app.whenReady().then(() => {
     sessionFootageDir: ensureDir(path.join(app.getPath('userData'), 'session-footage')),
     samUserDir: objectMatteUserDir(app.getPath('userData')),
     faceUserDir: faceModelUserDir(app.getPath('userData')),
+    depthUserDir: depthModelUserDir(app.getPath('userData')),
     userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>

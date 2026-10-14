@@ -256,7 +256,7 @@ const std::unordered_map<std::string, Mat>& p_table() {
       {"image-wipe", Mat::IMAGE_WIPE_FX_MATERIAL}, {"color-difference-key", Mat::COLOR_DIFFERENCE_KEY_FX_MATERIAL},
       {"wire-removal", Mat::WIRE_REMOVAL_FX_MATERIAL}, {"broadcast-colors", Mat::BROADCAST_COLORS_FX_MATERIAL},
       {"noise-hls", Mat::NOISE_HLS_FX_MATERIAL}, {"block-load", Mat::BLOCK_LOAD_FX_MATERIAL},
-      {"kernel", Mat::KERNEL_FX_MATERIAL}, {"3d-glasses", Mat::GLASSES_3D_FX_MATERIAL},
+      {"kernel", Mat::KERNEL_FX_MATERIAL},
       {"fractal", Mat::FRACTAL_FX_MATERIAL}, {"particle-systems", Mat::PARTICLE_SYSTEMS_FX_MATERIAL},
       {"cc-bubbles", Mat::BUBBLES_FX_MATERIAL},
       // fx60:b1:begin
@@ -343,9 +343,33 @@ const std::unordered_map<std::string, Mat>& map_table() {
       {"set-channels", Mat::FX60_SET_CHANNELS_MATERIAL},
       {"blend", Mat::FX60_BLEND_MATERIAL},
       {"difference-matte", Mat::FX60_DIFFERENCE_MATTE_MATERIAL},
+      // Camera program D7: the Right View layer (unset: the layer itself, unread).
+      {"3d-glasses", Mat::GLASSES_3D_FX_MATERIAL},
       // fx60:b3:end
   };
   return m;
+}
+
+/// Camera program D1: single-pass effects that read the composition's scene
+/// depth at binding 3 (unfilterable r32float, textureLoad at the fragment) —
+/// Depth Matte / Fog / Extract and Camera Lens Blur's scene-depth blur map.
+/// Drawn through dynamic materials (the depth binding is not a filterable texture).
+const std::unordered_map<std::string, std::string>& depth_table() {
+  static const std::unordered_map<std::string, std::string> m = {
+      {"depth-matte", "fx60-depth-matte"},
+      {"depth-fog", "fx60-depth-fog"},
+      {"depth-extract", "fx60-depth-extract"},
+      {"camera-lens-blur-depth", "camera-lens-blur-depth"},
+  };
+  return m;
+}
+
+/// The builtin WGSL of a depth effect, read once (the render thread is single).
+const std::string& depth_wgsl(const std::string& shader) {
+  static std::unordered_map<std::string, std::string> cache;
+  auto it = cache.find(shader);
+  if (it == cache.end()) it = cache.emplace(shader, builtin_wgsl(shader)).first;
+  return it->second;
 }
 
 double term_value(const Fx& fx, const Term& t) {
@@ -524,7 +548,7 @@ bool effect_ported(const api::RenderEffect& e, std::string& why) {
   if (t == "stamp-field") return true;  // E4: Plexus / Write-on brush (below)
   if (t == "fx-overlay") return true;   // E4 round 2: a drawn Canvas2D effect's own raster (below)
   if (fx_table().count(t) != 0 || p_table().count(t) != 0 || field_table().count(t) != 0 || map_table().count(t) != 0 ||
-      known_single(t)) {
+      depth_table().count(t) != 0 || known_single(t)) {
     return true;
   }
   why = "effect " + t;
@@ -1531,17 +1555,40 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
       if (fx.num("brightness") > 0) {
         const double midX = fxBox.x + fxBox.width * 0.5;
         const double midY = fxBox.y + fxBox.height * 0.5;
-        const double cx = midX + fx.num("centerX") * (kx / pw);
-        const double cy = midY + fx.num("centerY") * (ky / ph);
+        // Camera program D2: a flare linked to a light sits on the light's comp
+        // point (linkX / linkY), mapped through the visible world rect.
+        const bool linkedPoint = fx.num("linkDepth", 0) > 0 && space == nullptr && world.width > 0 && world.height > 0;
+        const double cx = linkedPoint ? (fx.num("linkX", 0) - world.x) / world.width : midX + fx.num("centerX") * (kx / pw);
+        const double cy = linkedPoint ? (fx.num("linkY", 0) - world.y) / world.height : midY + fx.num("centerY") * (ky / ph);
         const double span = std::max(fxBox.width, fxBox.height);
         const double coreR = span * 0.06 * fx.num("scale");
         const double haloR = span * 0.35 * fx.num("scale");
         Color c{1, 1, 1, 1};
         (void)fx.color("color", c);
+        // Camera program D2: a flare linked to a light dims where the scene
+        // depth in front of the light's screen point is nearer than the light
+        // (lens-flare-depth.wgsl, soft over a few px); no depth = unoccluded.
+        TexRef depth;
+        if (fx.num("linkDepth", 0) > 0 && space == nullptr && world.width > 0 && world.height > 0 && pw >= 1 && ph >= 1) {
+          const double sx = pw / world.width;
+          const double sy = ph / world.height;
+          const std::array<double, 9> c2w{sx, 0, -world.x * sx, 0, sy, -world.y * sy, 0, 0, 1};
+          depth = maps.scene_depth(ctx, static_cast<std::uint32_t>(pw), static_cast<std::uint32_t>(ph), c2w, selfId);
+        }
         Packer pk = ctx.packer();
         pk.mat3(mvp).rect(targetUv).vec4(cx, cy, midX, midY);
         pk.vec4(fx.num("brightness"), coreR, haloR, std::max(coreR * 0.12, 1e-6)).working_rgba(c);
-        add(Mat::LENS_FLARE_MATERIAL, pk.span(), ctx.linear_clamp());
+        if (depth) {
+          pk.vec4(fx.num("linkDepth", 0), 6, pw, ph);
+          static constexpr std::array<LayoutEntry, 4> kFlareLayout{{{0, BindingType::uniform, kStageVertex | kStageFragment},
+                                                                    {1, BindingType::texture, kStageFragment},
+                                                                    {2, BindingType::sampler, kStageFragment},
+                                                                    {3, BindingType::unfilterable, kStageFragment}}};
+          const Mat m = ctx.dev.dynamic_material("d2:lens-flare-depth", depth_wgsl("lens-flare-depth"), kFlareLayout);
+          add(m, pk.span(), ctx.linear_clamp()).bind(3, depth);
+        } else {
+          add(Mat::LENS_FLARE_MATERIAL, pk.span(), ctx.linear_clamp());
+        }
       }
     } else if (type == "light-rays") {
       if (fx.num("opacity") > 0 && fx.num("rayLength") > 0) {
@@ -1634,6 +1681,26 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     } else if (const auto p = p_table().find(std::string(type)); p != p_table().end()) {
       const auto rows = p_rows(fx);
       add(p->second, pack_fx_block(ctx.packer(), mvp, targetUv, rows, fxBox), ctx.linear_clamp());
+    } else if (const auto dt = depth_table().find(std::string(type)); dt != depth_table().end()) {
+      // Camera program D1: screen-space chains only (the 3D route's layer
+      // buffer has no comp placement); without a depth the effect draws
+      // nothing and the chain keeps its input (the fail-safe below).
+      TexRef depth;
+      if (space == nullptr && world.width > 0 && world.height > 0 && pw >= 1 && ph >= 1) {
+        const double sx = pw / world.width;
+        const double sy = ph / world.height;
+        const std::array<double, 9> c2w{sx, 0, -world.x * sx, 0, sy, -world.y * sy, 0, 0, 1};
+        depth = maps.scene_depth(ctx, static_cast<std::uint32_t>(pw), static_cast<std::uint32_t>(ph), c2w, selfId);
+      }
+      if (depth) {
+        static constexpr std::array<LayoutEntry, 4> kDepthLayout{{{0, BindingType::uniform, kStageVertex | kStageFragment},
+                                                                  {1, BindingType::texture, kStageFragment},
+                                                                  {2, BindingType::sampler, kStageFragment},
+                                                                  {3, BindingType::unfilterable, kStageFragment}}};
+        const Mat m = ctx.dev.dynamic_material("d1:" + dt->second, depth_wgsl(dt->second), kDepthLayout);
+        const auto rows = p_rows(fx);
+        add(m, pack_fx_block(ctx.packer(), mvp, targetUv, rows, fxBox), ctx.linear_clamp()).bind(3, depth);
+      }
     } else if (const auto mt = map_table().find(std::string(type)); mt != map_table().end()) {
       TexRef map = poolHasMatte ? TexRef{} : maps.map_layer(ctx, byId, fx.text("mapLayerId"), selfId);
       if (!map) map = curTex;

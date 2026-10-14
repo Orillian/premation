@@ -704,6 +704,8 @@ void write_point_of_interest(Document& d, std::string_view layer, const api::Val
   (void)sg_write_prop(d, layer, tid, "poiX", Json::number(w / 2));
   (void)sg_write_prop(d, layer, tid, "poiY", Json::number(h / 2));
   (void)sg_write_prop(d, layer, tid, "poiZ", Json::number(0));
+  // Camera program R3b: aiming at a Point of Interest replaces Orient Along Path.
+  if (const Node* now = d.node(layer); now != nullptr && now->kind() == "camera") sg_set_fx(d, layer, "autoOrient", Json());
 }
 
 // ── latent numeric bindings ──────────────────────────────────────────────

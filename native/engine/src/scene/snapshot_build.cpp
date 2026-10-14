@@ -707,6 +707,46 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
       if (const char* why = effect_unported_reason(e)) unported(*note, n, std::string(why) + " (" + type + ")");
     }
   }
+  // Camera program D2: a Lens Flare linked to a light sits where the light
+  // projects through the active camera (in this layer's own space), goes dark
+  // behind the camera, and carries the light's view depth for the chain's
+  // occlusion test against the scene depth. A missing light is reported and
+  // the flare renders as authored.
+  if (three_) {
+    for (Json& e : resolved) {
+      if (!e.at("type").is_string() || e.at("type").str() != "lens-flare" || !e.at("params").is_object()) continue;
+      const Json& link = e.at("params").at("linkLight");
+      if (!link.is_string() || link.str().empty()) continue;
+      const doc::Node* light = node(link.str());
+      const auto pr = light != nullptr ? three_->project_light(*light) : std::nullopt;
+      if (!pr) {
+        if (note != nullptr) unported(*note, n, "Lens Flare: the linked light '" + link.str() + "' is not a light in this composition");
+        continue;
+      }
+      const xf::Vec2 local = xf::transform_point(xf::invert(world_matrix(n.id)), xf::Vec2{pr->x, pr->y});
+      Json p = e.at("params");
+      p.set("centerX", Json::number(local.x));
+      p.set("centerY", Json::number(local.y));
+      // The chain places the flare from the comp point itself: Centre X / Y are
+      // an offset from the layer box's centre, not a layer-space point.
+      p.set("__linkX", Json::number(pr->x));
+      p.set("__linkY", Json::number(pr->y));
+      p.set("__linkDepth", Json::number(pr->clipped ? -1.0 : pr->depth));
+      e.set("params", std::move(p));
+    }
+  }
+  // Camera program D1: Camera Lens Blur with Blur Map = Scene Depth focuses
+  // where the active camera does (its Focus Distance, else its Zoom).
+  if (three_) {
+    for (Json& e : resolved) {
+      if (!e.at("type").is_string() || e.at("type").str() != "camera-lens-blur" || !e.at("params").is_object()) continue;
+      const auto focus = three_->view_focus();
+      if (!focus) continue;
+      Json p = e.at("params");
+      p.set("__viewFocus", Json::number(*focus));
+      e.set("params", std::move(p));
+    }
+  }
   return resolved;
 }
 

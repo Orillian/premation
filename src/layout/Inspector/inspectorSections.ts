@@ -72,6 +72,7 @@ import { EffectsSection, EffectsSectionActions, hasEffectsSection } from './Effe
 import { AudioControls } from './AudioControls';
 import { PinnedSection, hasPinnedSection } from './PinnedSection';
 import { CameraSection, LensPresetsMenu } from './CameraSection';
+import { DepthParallaxSection } from './DepthParallaxSection';
 import { CameraRigSection, hasCameraRig } from './CameraRigSection';
 import { CompositingSection } from './CompositingSection';
 import { Ik3DSection, isIk3DTip } from './Ik3DSection';
@@ -342,6 +343,17 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     keywords: 'crop trim edges inset left top right bottom',
     appliesTo: hasCropSection,
     Component: CropSection,
+  },
+  // Camera program D3: Photo → 3D parallax (a depth-displaced grid).
+  {
+    id: 'depthParallax',
+    title: 'Depth Parallax',
+    icon: 'camera',
+    category: 'layer',
+    defaultOpen: false,
+    keywords: 'depth parallax 3d photo video ai depth map make 3d',
+    appliesTo: (id) => kindOf(id) === 'image' || kindOf(id) === 'video',
+    Component: DepthParallaxSection,
   },
   // The applied effect stack (AE's Effect Controls), folded into Properties
   // (2026-09-15); Effect Controls is on demand and renders the same body. Open

@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -336,4 +337,54 @@ TEST_CASE("the transform C ABI", "[transform][abi]") {
   std::array<double, 16> proj{};
   motion_transform_camera_matrices(&c, view.data(), proj.data());
   CHECK(proj[11] == 1);
+}
+
+TEST_CASE("camera shake (camera program R1): seeded, smooth, bounded, zero at amount 0", "[transform][camera][shake]") {
+  namespace xf = motion::xf;
+  // Deterministic for a seed; different seeds and channels differ.
+  CHECK(xf::camera_shake_noise(7, 0, 1.37) == xf::camera_shake_noise(7, 0, 1.37));
+  CHECK(xf::camera_shake_noise(7, 0, 1.37) != xf::camera_shake_noise(8, 0, 1.37));
+  CHECK(xf::camera_shake_noise(7, 0, 1.37) != xf::camera_shake_noise(7, 1, 1.37));
+  // Bounded in [-1, 1] and continuous (no jumps between close samples).
+  double prev = xf::camera_shake_noise(3, 2, 0);
+  double peak = 0;
+  for (int i = 1; i <= 4000; ++i) {
+    const double v = xf::camera_shake_noise(3, 2, i * 0.005);
+    CHECK(std::fabs(v) <= 1.0);
+    CHECK(std::fabs(v - prev) < 0.05);
+    peak = std::max(peak, std::fabs(v));
+    prev = v;
+  }
+  CHECK(peak > 0.3);  // it actually moves
+  CHECK(xf::camera_shake_noise(3, 2, std::nan("")) == 0);
+
+  const xf::Camera base = xf::default_camera(1920, 1080);
+  xf::CameraShake off;
+  off.seconds = 1.25;
+  off.seed = 4;
+  const xf::Camera same = xf::apply_camera_shake(base, off);
+  CHECK(same.position.x == base.position.x);
+  CHECK(same.position.y == base.position.y);
+  CHECK(same.position.z == base.position.z);
+  CHECK_FALSE(same.orientation.has_value());
+
+  xf::CameraShake on = off;
+  on.amount = 20;
+  on.rotation = 1.5;
+  const xf::Camera a = xf::apply_camera_shake(base, on);
+  const xf::Camera b = xf::apply_camera_shake(base, on);
+  CHECK(a.position.x == b.position.x);
+  CHECK(a.position.y == b.position.y);
+  CHECK(a.position.z == b.position.z);
+  REQUIRE(a.orientation.has_value());
+  CHECK(a.orientation->yaw == b.orientation->yaw);
+  const double moved = std::hypot(a.position.x - base.position.x, a.position.y - base.position.y, a.position.z - base.position.z);
+  CHECK(moved > 0);
+  CHECK(moved <= 20 * std::sqrt(2.25) + 1e-9);
+  CHECK(std::fabs(a.orientation->yaw) <= 1.5);
+  CHECK(std::fabs(a.orientation->pitch) <= 1.5);
+  xf::CameraShake other = on;
+  other.seed = 5;
+  const xf::Camera c = xf::apply_camera_shake(base, other);
+  CHECK(c.position.x != a.position.x);
 }

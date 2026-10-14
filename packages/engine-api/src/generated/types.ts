@@ -3343,6 +3343,20 @@ export interface RigLogoJob {
   time?: Time;
 }
 
+/**
+ * Camera program D3 — Make 3D from Photo / Video: Depth Anything V2 Small (ONNX) estimates the depth of an image
+ * layer (once) or a video layer (each source frame of its span), written as 8-bit greyscale PNGs (near = white) to
+ * `outputFolder` (default: next to the project, `Depth Maps/<layer>/`) — an on-disk cache a re-run reuses. Apply, one
+ * entry: the layer 3D, `layer/depthSource` pointed at the maps, `geometry/depthScale` = `depthScale` (default 300 px).
+ * The model: `model`, else the installed one (Settings ▸ Depth), else unsupported.
+ */
+export interface DepthEstimateJob {
+  layer: LayerId;
+  model?: string;
+  outputFolder?: string;
+  depthScale?: number;
+}
+
 export type JobSpec =
   | { kind: 'trackMotion'; value: TrackMotionJob }
   | { kind: 'stabilize'; value: StabilizeJob }
@@ -3365,7 +3379,8 @@ export type JobSpec =
   | { kind: 'particleBake'; value: ParticleBakeJob }
   | { kind: 'cameraTrack'; value: CameraTrackJob }
   | { kind: 'faceTrack'; value: FaceTrackJob }
-  | { kind: 'modelImport'; value: ModelImportJob };
+  | { kind: 'modelImport'; value: ModelImportJob }
+  | { kind: 'depthEstimate'; value: DepthEstimateJob };
 export type JobSpecKind = JobSpec['kind'];
 
 export interface StartJob {
@@ -3954,6 +3969,36 @@ export interface PropertySamples {
   dimensions: number;
   /** Speed (units/s) per time when requested. */
   speeds: number[];
+}
+
+/**
+ * Camera program D5: one evaluated camera view — what the renderer looks through at `time` (procedural shake,
+ * Auto-Orient Along Path, Point of Interest, parents and expressions included). `eye` in comp px; yaw / pitch /
+ * roll in degrees (Premation's orientation: yaw about y, then pitch, then roll about the view axis); `zoom` comp px.
+ */
+export interface CameraSample {
+  time: Time;
+  eye: Vec3;
+  yaw: number;
+  pitch: number;
+  roll: number;
+  zoom: number;
+}
+
+export interface CameraSamples {
+  compWidth: number;
+  compHeight: number;
+  samples: CameraSample[];
+}
+
+/**
+ * Camera program D5 (Export Camera): sample a camera layer's evaluated view `samples` times evenly over `range`
+ * (both ends included). Not a camera: invalid_argument.
+ */
+export interface SampleCamera {
+  layer: LayerId;
+  range: TimeRange;
+  samples: number;
 }
 
 export interface WaveformPeaks {
@@ -5894,6 +5939,7 @@ export type Query =
   | ({ type: 'checkPrecompose' } & CheckPrecompose)
   | ({ type: 'getTimelineRows' } & GetTimelineRows)
   | ({ type: 'getRigPose' } & GetRigPose)
+  | ({ type: 'sampleCamera' } & SampleCamera)
   | ({ type: 'getWaveform' } & GetWaveform)
   | ({ type: 'listFonts' } & ListFonts)
   | ({ type: 'getItems' } & GetItems)
@@ -5953,6 +5999,7 @@ export type QueryResult =
   | ({ type: 'checkPrecompose' } & PrecomposeCheck)
   | ({ type: 'getTimelineRows' } & TimelineRowSets)
   | ({ type: 'getRigPose' } & RigPose)
+  | ({ type: 'sampleCamera' } & CameraSamples)
   | ({ type: 'getWaveform' } & WaveformPeaks)
   | ({ type: 'listFonts' } & FontList)
   | ({ type: 'getItems' } & ItemDetails)
@@ -6397,6 +6444,7 @@ export interface QueryArgs {
   checkPrecompose: CheckPrecompose;
   getTimelineRows: GetTimelineRows;
   getRigPose: GetRigPose;
+  sampleCamera: SampleCamera;
   getWaveform: GetWaveform;
   listFonts: ListFonts;
   getItems: GetItems;
@@ -6456,6 +6504,7 @@ export interface QueryResults {
   checkPrecompose: PrecomposeCheck;
   getTimelineRows: TimelineRowSets;
   getRigPose: RigPose;
+  sampleCamera: CameraSamples;
   getWaveform: WaveformPeaks;
   listFonts: FontList;
   getItems: ItemDetails;

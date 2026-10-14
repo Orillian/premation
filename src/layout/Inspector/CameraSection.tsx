@@ -11,6 +11,7 @@
  *   ▶ Orbit around target: Orbit Yaw · Orbit Pitch    (what the Orbit tool writes)
  *   ▶ Turn on the spot: X Rotation · Y Rotation · Z Rotation   (U7: the two
  *     used to read "Orbit" / "Rotation" and looked like one thing twice)
+ *   ▶ Shake: Amount · Rotation · Frequency · Seed   (CameraShakeRows, R1)
  *   Depth of Field  On/Off
  *     Focus Distance [pick on canvas] · Lens Model Classic|Physical ·
  *     F-Stop (Physical) · Blur Level
@@ -52,6 +53,7 @@ import { KeyframeRow } from './KeyframeRow';
 import { FocusPickButton } from './FocusPickButton';
 import { Segmented } from '@components/Segmented';
 import { CameraShotHeader, lensItems } from './CameraShotHeader';
+import { CameraShakeRows } from './CameraShakeRows';
 
 /** The rows' component: the layer's Transform, resolved by the write seam when a row writes (the reads are the mirror's). */
 const TRANSFORM = { type: 'Transform' } as const;
@@ -264,6 +266,8 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
               pitch pair alone could not express. */}
           <KeyframeRow nodeId={nodeId} prop="orientationZ" label="Z Rotation" value={typeof rollRaw === 'number' ? rollRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setRoll(v)} />
         </TwirlGroup>
+
+        <CameraShakeRows nodeId={nodeId} />
 
         {/*
           A real on/off. Depth of field used to be switched on by typing a

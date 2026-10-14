@@ -315,6 +315,10 @@ export type EffectType =
   | 'chrome'
   | 'night-vision'
   // fx60:b8:end
+  // camera program D1: depth for compositing
+  | 'depth-matte'
+  | 'depth-fog'
+  | 'depth-extract'
   | 'threads'
   | 'chromatic-aberration'
   | 'hex-tile'
@@ -1489,6 +1493,8 @@ export const EFFECT_DEFS: EffectDef[] = [
     type: 'lens-flare',
     label: 'Lens Flare',
     params: [
+      // Camera program D2: linked to a 3D light, the centre follows the light through the active camera and the flare dims when the scene hides it.
+      { key: 'linkLight', label: 'Link to Light', type: 'layer', default: '' },
       { key: 'centerX', label: 'Flare Centre X', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
       { key: 'centerY', label: 'Flare Centre Y', type: 'number', unit: 'px', min: -10000, max: 10000, default: 0 },
       { key: 'brightness', label: 'Flare Brightness', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
@@ -3029,6 +3035,11 @@ export const EFFECT_DEFS: EffectDef[] = [
       { key: 'irisRotation', label: 'Iris Rotation', type: 'number', unit: '°', min: -180, max: 180, default: 0 },
       { key: 'gain', label: 'Highlight Gain', type: 'number', min: 1, max: 12, precision: 1, default: 3 },
       { key: 'highlightThreshold', label: 'Highlight Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      // Camera program D1: Blur Map = Scene Depth — the 3D layers' depth sets
+      // the blur per pixel (a thin-lens circle of confusion about the focus).
+      { key: 'blurMap', label: 'Blur Map', type: 'enum', default: 0, options: [{ value: 0, label: 'None' }, { value: 1, label: 'Scene Depth' }] },
+      { key: 'focusFromCamera', label: 'Focus From Camera', type: 'checkbox', default: true },
+      { key: 'focusDistance', label: 'Blur Focal Distance', type: 'number', unit: 'px', min: 1, max: 100000, default: 1500 },
     ],
     css: () => '',
   },
@@ -4728,6 +4739,9 @@ export const EFFECT_DEFS: EffectDef[] = [
     type: '3d-glasses',
     label: '3D Glasses',
     params: [
+      // Camera program D7 (AE parity): a Right View layer makes a true stereo
+      // pair with this layer as the left eye; unset, the layer is shifted.
+      { key: 'rightView', label: 'Right View', type: 'layer', default: '' },
       { key: 'convergenceOffset', label: 'Convergence Offset', type: 'number', unit: 'px', min: -100, max: 100, default: 8 },
       {
         key: 'view',
@@ -4741,6 +4755,7 @@ export const EFFECT_DEFS: EffectDef[] = [
           { value: 3, label: 'Balanced Colored Red Blue' },
           { value: 4, label: 'Stereo Pair' },
           { value: 5, label: 'Interlace Upper L Lower R' },
+          { value: 6, label: 'Over Under' },
         ],
       },
       { key: 'balance', label: 'Balance', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
@@ -5783,6 +5798,50 @@ export const EFFECT_DEFS: EffectDef[] = [
     css: () => '',
   },
   // fx60:b9:end
+  // Camera program D1: depth for compositing — on an adjustment layer above 3D
+  // layers these read the composition's scene depth (comp px from the active
+  // camera; no 3D surface = infinitely far). GPU only.
+  {
+    /* Depth Matte: keeps what lies between Near and Far scene depth, feathered. GPU only. */
+    type: 'depth-matte',
+    label: 'Depth Matte',
+    gpuOnly: true,
+    params: [
+      { key: 'near', label: 'Near', type: 'number', unit: 'px', min: 0, max: 100000, default: 0 },
+      { key: 'far', label: 'Far', type: 'number', unit: 'px', min: 0, max: 100000, default: 2000 },
+      { key: 'feather', label: 'Feather', type: 'number', unit: 'px', min: 0, max: 10000, default: 50 },
+      { key: 'invert', label: 'Invert', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* Depth Fog: fog that thickens from Fog Start to Fog End scene depth. GPU only. */
+    type: 'depth-fog',
+    label: 'Depth Fog',
+    gpuOnly: true,
+    params: [
+      { key: 'color', label: 'Fog Color', type: 'color', default: '#c9d3dc' },
+      { key: 'start', label: 'Fog Start', type: 'number', unit: 'px', min: 0, max: 100000, default: 1000 },
+      { key: 'end', label: 'Fog End', type: 'number', unit: 'px', min: 0, max: 100000, default: 5000 },
+      { key: 'density', label: 'Density', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'fogBackground', label: 'Fog Background', type: 'checkbox', default: true },
+      { key: 'gradient', label: 'Gradient', type: 'checkbox', default: false },
+      { key: 'farColor', label: 'Far Color', type: 'color', default: '#8fa3b8' },
+    ],
+    css: () => '',
+  },
+  {
+    /* Depth Extract: the scene depth as greyscale, near black to far white. GPU only. */
+    type: 'depth-extract',
+    label: 'Depth Extract',
+    gpuOnly: true,
+    params: [
+      { key: 'near', label: 'Black Point (Near)', type: 'number', unit: 'px', min: 0, max: 100000, default: 0 },
+      { key: 'far', label: 'White Point (Far)', type: 'number', unit: 'px', min: 0, max: 100000, default: 5000 },
+      { key: 'invert', label: 'Invert', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
 ];
 
 const BUILTIN_DEF = new Map(EFFECT_DEFS.map((d) => [d.type, d]));
