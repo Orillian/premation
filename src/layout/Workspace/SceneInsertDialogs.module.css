@@ -30,6 +30,7 @@
 
 .select {
   height: 26px;
+  text-align: left;
   font-size: var(--font-size-xs);
   background: var(--color-surface-1);
   color: var(--color-text-primary);
@@ -37,6 +38,17 @@
   border-radius: var(--radius-sm);
   padding: 0 var(--space-2);
   cursor: pointer;
+}
+
+/* A live read-out beside a field (the New Camera angle of view): the field's
+   height, so it lines up with the control next to it. */
+.readout {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
 }
 
 .switchRow {

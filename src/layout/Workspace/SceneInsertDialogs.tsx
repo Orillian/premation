@@ -12,6 +12,9 @@ import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
 import { Switch } from '@components/Switch';
+import { Checkbox } from '@components/Checkbox';
+import { Segmented } from '@components/Segmented';
+import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { ValueField } from '@components/ValueField';
 import { ColorPicker } from '@components/ColorPicker';
 import { openModal } from '@stores/modalStore';
@@ -19,6 +22,8 @@ import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow, useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsWorld } from '@core/mirror/compFacts';
 import { nextDeviceNameIn } from '@core/mirror/deviceNames';
+import { compHas3DContent, flattenCompLayers } from '@core/mirror/compLayers';
+import { mirrorCanBe3D } from '@core/mirror/layerFacts';
 import { DEFAULT_LENS_MM, LENS_PRESETS, focalPxForMm, fovForMm } from '@core/scene/lensPresets';
 import type { Primitive3DKind } from '@core/scene/layerBuilders';
 import { insertCameraEdit, insertLightEdit, insert3DPrimitiveEdit } from '@/engine-client/insertEdits';
@@ -41,20 +46,39 @@ function targetComp(): string {
   return activeCompIdNow() ?? 'comp_root';
 }
 
-function CameraDialog({ close }: { close: () => void }): JSX.Element {
+/**
+ * New Camera, task-led (camera program U4, 2026-10-14): the dialog asks what
+ * the user is DOING, not which AE switch to flip.
+ *
+ *   Lens            the shared list (lensPresets.ts) in the app Dropdown, with
+ *                   the angle of view it gives read out live beside it;
+ *   Aim             "Aim at a target" (two-node: a Point of Interest the camera
+ *                   always faces) or "Free" (one-node: it looks where turned);
+ *   Make all 3D     on by default when no layer of the comp is 3D yet — the
+ *                   #1 "the camera does nothing" trap, fixed before it bites.
+ *
+ * The 3D switches land in the SAME undo entry as the camera (`make3D` rides
+ * the insert's `pasteLayers` batch), so one Undo takes back the whole action.
+ */
+export function CameraDialog({ close }: { close: () => void }): JSX.Element {
+  const compId = targetComp();
   const compWidth = useActiveMirrorComp()?.settings.width ?? 1920;
   const [name, setName] = useState(() => nextDeviceName('camera'));
   const [lensMm, setLensMm] = useState<number>(DEFAULT_LENS_MM);
-  const [twoNode, setTwoNode] = useState(false);
+  const [aim, setAim] = useState<'target' | 'free'>('free');
+  // Read once, when the dialog opens: the default follows the comp as it was.
+  const [make3D, setMake3D] = useState(() => !compHas3DContent(documentMirror(), compId, false));
 
   const fov = fovForMm(lensMm);
   const focalPx = Math.round(focalPxForMm(compWidth, lensMm));
+  const lens = LENS_PRESETS.find((p) => p.mm === lensMm);
 
-  const create = (): void => {
-    // The camera builder (two-node POI, lens → focal length, placement) runs off-document and
-    // lands as ONE pasteLayers entry (engine-client/insertEdits.ts).
-    void insertCameraEdit({ name, focalLength: focalPx, twoNode }, 'New Camera', { comp: targetComp() });
+  const create = async (): Promise<void> => {
     close();
+    const flat = make3D ? await flatLayersOf(compId) : [];
+    // The camera builder (two-node POI, lens → focal length, placement) runs off-document and
+    // lands as ONE pasteLayers entry (engine-client/insertEdits.ts), the 3D switches with it.
+    await insertCameraEdit({ name, focalLength: focalPx, twoNode: aim === 'target' }, 'New Camera', { comp: compId, make3D: flat });
   };
 
   return (
@@ -68,51 +92,78 @@ function CameraDialog({ close }: { close: () => void }): JSX.Element {
 
       <div className={styles.section}>
         <div className={styles.row}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Lens preset</span>
-            <select
-              className={styles.select}
-              value={lensMm}
-              onChange={(e) => setLensMm(Number(e.target.value))}
-              aria-label="Lens preset"
-            >
-              {LENS_PRESETS.map((p) => (
-                <option key={p.mm} value={p.mm}>{p.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Field of view</span>
-            <span className={styles.hint} style={{ lineHeight: '26px' }}>
-              {fov.toFixed(1)}° · {focalPx}px
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Lens</span>
+            <Dropdown
+              trigger={
+                <button type="button" className={styles.select} aria-label="Lens">
+                  {lens?.label ?? `${lensMm}mm`}
+                </button>
+              }
+              items={() => LENS_PRESETS.map((p): DropdownItem => ({
+                type: 'item',
+                id: `lens-${p.mm}`,
+                label: p.label,
+                ...(p.mm === lensMm ? { icon: 'check' as const } : {}),
+                onSelect: () => setLensMm(p.mm),
+              }))}
+            />
+          </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Angle of view</span>
+            <span className={styles.readout} data-testid="camera-angle-of-view">
+              {fov.toFixed(1)}° · {focalPx} px Zoom
             </span>
-          </label>
+          </div>
         </div>
       </div>
 
       <div className={styles.section}>
-        <div className={styles.switchRow}>
-          <Switch
-            checked={twoNode}
-            onChange={(e) => setTwoNode(e.target.checked)}
-            label="Two-node (with Point of Interest)"
-          />
-        </div>
+        <Segmented
+          aria-label="Camera aim"
+          value={aim}
+          onChange={setAim}
+          options={[
+            { value: 'target', label: 'Aim at a target' },
+            { value: 'free', label: 'Free' },
+          ]}
+        />
         <p className={styles.hint}>
-          A two-node camera always aims at its Point of Interest — move the
-          camera and it re-frames the target. A one-node camera looks where it
-          is oriented.
+          {aim === 'target'
+            ? 'Two-node: the camera always faces its Point of Interest — move it and it re-frames the target.'
+            : 'One-node: the camera looks where it is turned, like a camera on a tripod head.'}
         </p>
+      </div>
+
+      <div className={styles.section}>
+        <Checkbox
+          checked={make3D}
+          onChange={(e) => setMake3D(e.target.checked)}
+          label="Make all layers 3D"
+        />
+        <p className={styles.hint}>A camera only moves layers whose 3D switch is on.</p>
       </div>
 
       <div className={styles.footer}>
         <Button variant="ghost" size="md" onClick={close}>Cancel</Button>
-        <Button variant="primary" size="md" leftIcon={<Icon name="check" size="sm" />} onClick={create}>
+        <Button variant="primary" size="md" leftIcon={<Icon name="check" size="sm" />} onClick={() => { void create(); }}>
           Create camera
         </Button>
       </div>
     </div>
   );
+}
+
+/** The layers of `comp` a camera could move that are still 2D (what "Make all layers 3D" switches). */
+async function flatLayersOf(comp: string): Promise<string[]> {
+  const m = documentMirror();
+  const out: string[] = [];
+  for (const id of flattenCompLayers(m, comp)) {
+    const layer = m.layer(id);
+    if (!layer || layer.switches.threeD) continue;
+    if (mirrorCanBe3D(layer, await m.loadTree(id))) out.push(id);
+  }
+  return out;
 }
 
 function LightDialog({ close }: { close: () => void }): JSX.Element {

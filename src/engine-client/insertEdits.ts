@@ -15,6 +15,7 @@ import {
   notify3DPrimitive, notify3DText, notifyAmbientFill, notifyCameraNeeds3D,
   type CameraSeed, type LightSeed, type Primitive3DKind, type ShapeKind,
 } from '@core/scene/layerBuilders';
+import type { Command } from '@motion/engine-api';
 import type { SceneKind } from '@core/scene/sceneKind';
 import type { PrimitiveSpec } from '@core/scene/primitiveLayer';
 import { defaultTextSize } from '@core/scene/textDefaults';
@@ -74,17 +75,30 @@ export async function insert3DPrimitiveEdit(
   return ids;
 }
 
+export interface CameraInsertOptions extends InsertOptions {
+  /**
+   * Existing layers to switch to 3D in the SAME entry as the camera (the New
+   * Camera dialog's "Make all layers 3D", camera program U4): one Undo takes
+   * back the camera and the switches together.
+   */
+  make3D?: readonly string[];
+}
+
 /**
  * A camera (AE New Camera). The name defaults to the comp's next free
  * "Camera N"; after it lands, a scene with no 3D content layer gets the tip
- * that a camera only moves 3D layers.
+ * that a camera only moves 3D layers (not when `make3D` just switched some).
  */
-export async function insertCameraEdit(seed: CameraSeed = {}, label = 'New Camera', opts: InsertOptions = {}): Promise<string[] | null> {
-  const comp = opts.comp ?? activeCompIdNow() ?? 'comp_root';
+export async function insertCameraEdit(seed: CameraSeed = {}, label = 'New Camera', opts: CameraInsertOptions = {}): Promise<string[] | null> {
+  const { make3D = [], ...rest } = opts;
+  const comp = rest.comp ?? activeCompIdNow() ?? 'comp_root';
   const m = documentMirror();
   const name = seed.name?.trim() || nextDeviceNameIn(m, comp, 'camera');
-  const ids = await insertFragment(label, (b, f) => buildCamera(b, f, { ...seed, name }), { ...opts, comp });
-  if (ids && ids.length > 0) {
+  const after: readonly Command[] | undefined = make3D.length > 0
+    ? [...(rest.after ?? []), { type: 'setLayerSwitches', layers: [...make3D], patch: { threeD: true } }]
+    : rest.after;
+  const ids = await insertFragment(label, (b, f) => buildCamera(b, f, { ...seed, name }), { ...rest, comp, ...(after ? { after } : {}) });
+  if (ids && ids.length > 0 && make3D.length === 0) {
     const mine = new Set(ids);
     const anyThreeD = m.layerIds().some((id) => {
       if (mine.has(id)) return false;
