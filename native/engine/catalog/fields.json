@@ -1276,9 +1276,7 @@
         "fx": "__compOverrides"
       },
       "when": {
-        "kinds": [
-          "precomp"
-        ]
+        "fx": "precomp"
       }
     },
     {
@@ -1365,7 +1363,7 @@
         "kinds": [
           "audio",
           "video",
-          "precomp"
+          "comp"
         ]
       }
     },
@@ -1396,7 +1394,7 @@
         "kinds": [
           "audio",
           "video",
-          "precomp"
+          "comp"
         ]
       }
     },
@@ -1418,7 +1416,7 @@
         "kinds": [
           "audio",
           "video",
-          "precomp"
+          "comp"
         ]
       }
     },
