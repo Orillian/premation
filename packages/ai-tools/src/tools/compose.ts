@@ -187,24 +187,64 @@ export const defineStyleDef: AiToolDef = {
   },
 };
 
+/**
+ * The camera techniques `add_camera_move` drives by their short name: every
+ * `camera.*` technique of @motion/technique-library (pinned against its
+ * registry by src/core/ai/cameraMoveTool.native.test.ts — this package holds
+ * schemas only, so the list is written out rather than imported).
+ */
+export const CAMERA_MOVE_TECHNIQUES = [
+  'push_in_slow', 'crash_zoom', 'drift_parallax', 'whip_pan', 'handheld_float',
+  'orbit_reveal', 'particle_parallax',
+  'pull_back_reveal', 'crane_down', 'rack_focus', 'dolly_zoom', 'tilt_reveal', 'arc_around', 'settle_on_rest', 'match_move',
+] as const;
+
+/** The camera-program verbs `add_camera_move` runs on an existing camera (camera program R5). */
+export const CAMERA_MOVE_VERBS = ['shake', 'rig', 'fly_to', 'follow_path'] as const;
+
+/** Every `kind` add_camera_move accepts. */
+export const CAMERA_MOVE_KINDS = ['push_in', 'pull_out', ...CAMERA_MOVE_TECHNIQUES, ...CAMERA_MOVE_VERBS] as const;
+
 export const addCameraMoveDef: AiToolDef = {
   name: 'add_camera_move',
   kind: 'compose',
   description:
-    'Add a slow, cinematic push-in (or pull-out) with a real 3D camera: turns the 3D switch on for ' +
-    'the shape/text/image layers, reuses the comp\'s first camera or creates one, and keyframes the ' +
-    'camera\'s Z plus a gentle orbit. Layer scale is not touched. Call this AFTER the content ' +
-    'layers exist. Parallax comes from DEPTH: layers left at the same z move as one flat plane, so ' +
-    'for a layered hero shot give background/midground/foreground different z values ' +
-    '(update_layer with threeD: true and z; positive z is further from the camera) before or ' +
-    'after this call.',
+    'Move a real 3D camera. kind:\n' +
+    '• push_in / pull_out (default push_in): a slow cinematic dolly with a gentle orbit — turns the 3D switch on for ' +
+    'the shape/text/image layers, reuses the comp\'s first camera or creates one, keys its Z. Call AFTER the content exists.\n' +
+    '• a camera technique (' + CAMERA_MOVE_TECHNIQUES.join(', ') + '): the library move, which stages the layers in ' +
+    'depth itself. targets (role → layer ids, see list_techniques) are inferred from the comp\'s layers when omitted; ' +
+    'params / seed as in apply_technique.\n' +
+    '• shake: procedural camera shake on the camera (shakeAmount px, shakeRotation °, shakeFrequency Hz, shakeSeed) — ' +
+    'seeded, live, rampable; shakeAmount 0 turns it off.\n' +
+    '• rig: build a crane / dolly / orbit rig of parented 3D nulls above the camera (rig) — the shot does not move; ' +
+    'animate the nulls (Truck, Boom, Swing…) afterwards with set_keyframes.\n' +
+    '• fly_to: from startSec, key the camera to frame each of layers in order, travelSec then holdSec on each (1 s / 1 s).\n' +
+    '• follow_path: pathLayer\'s shape path (or first mask) becomes the camera\'s Position keys from startSec over ' +
+    'durationSec, roving at a constant speed.\n' +
+    'Parallax comes from DEPTH: layers left at the same z move as one flat plane, so give background / midground / ' +
+    'foreground different z values (update_layer with threeD: true and z; positive z is further from the camera).',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
     properties: {
-      kind: { type: 'string', enum: ['push_in', 'pull_out'], default: 'push_in' },
+      kind: { type: 'string', enum: [...CAMERA_MOVE_KINDS], default: 'push_in' },
       style: STYLE_PROP,
-      durationSec: { type: 'number', minimum: 0.1, description: 'Move length. Omit to span the whole comp.' },
+      cameraId: { type: 'string', description: 'The camera to move (shake, rig, fly_to, follow_path). Omit for the comp\'s first camera.' },
+      startSec: { type: 'number', minimum: 0, description: 'When the move starts (techniques, fly_to, follow_path). Default 0.' },
+      durationSec: { type: 'number', minimum: 0.1, description: 'Move length. push_in / pull_out / follow_path: omit to span the whole comp; techniques: fitted to their range.' },
+      targets: { type: 'object', description: 'Techniques: role → layer ids, e.g. { "headline": ["layer_2"], "background": ["layer_1"] }.' },
+      params: { type: 'object', description: 'Techniques: their params (list_techniques).' },
+      seed: { type: 'integer', description: 'Techniques: another authored variant. shake: use shakeSeed.' },
+      shakeAmount: { type: 'number', minimum: 0, description: 'shake: positional wobble, px.' },
+      shakeRotation: { type: 'number', minimum: 0, description: 'shake: rotational wobble, degrees.' },
+      shakeFrequency: { type: 'number', minimum: 0.01, description: 'shake: how fast, Hz (default 2).' },
+      shakeSeed: { type: 'integer', description: 'shake: another wobble pattern.' },
+      rig: { type: 'string', enum: ['crane', 'dolly', 'orbit'], default: 'dolly', description: 'rig: which rig.' },
+      layers: { type: 'array', items: { type: 'string' }, description: 'fly_to: the layers to frame, in order.' },
+      travelSec: { type: 'number', minimum: 0.05, default: 1, description: 'fly_to: seconds between framings.' },
+      holdSec: { type: 'number', minimum: 0, default: 1, description: 'fly_to: seconds held on each layer.' },
+      pathLayer: { type: 'string', description: 'follow_path: the shape (or masked) layer whose path the camera follows.' },
     },
   },
 };

@@ -26,7 +26,8 @@
  */
 
 import type { AiTool, ToolContext, ToolResult } from '@motion/ai-tools';
-import { ALL_TOOL_DEFS, PREVIEW_VIDEO_MODEL, bindAlias, mutates, resolveAlias, snapVideoDuration, videoModel } from '@motion/ai-tools';
+import { ALL_TOOL_DEFS, PREVIEW_VIDEO_MODEL, ToolRegistry, bindAlias, mutates, resolveAlias, snapVideoDuration, videoModel } from '@motion/ai-tools';
+import { cameraMoveCapabilities, makeAddCameraMove } from './cameraMoveTool';
 import { EFFECT_DEFS, effectDefFor } from '@core/effects/effects';
 import { ANIMATOR_PARAMS } from '@core/text/textAnimators';
 import { isRiggableKind } from '@core/scene/rigLogo';
@@ -60,7 +61,6 @@ import {
   recipeEmblem,
   recipeCards,
   recipeStaggerIn,
-  recipeCameraMove,
   recipeKineticText,
   recipeLightSweep,
   recipeFloatingOrbs,
@@ -299,6 +299,7 @@ const listCapabilities: AiTool['handler'] = async (input, ctx) => {
       note: 'Pin ids are returned by create_puppet_rig. Rig mesh settings live on the layer fx.puppet block (meshDensity 2-50, meshExpansion px, solver lbs|arap, meshMode grid|silhouette, maxRotationDeg = Mesh Rotation Refinement).',
     };
   }
+  if (want('camera')) payload.cameraMoves = { tool: 'add_camera_move', kinds: cameraMoveCapabilities() };
   if (want('all')) payload.presets = await ctx.anim.listPresets();
   return ok(JSON.stringify(payload), payload);
 };
@@ -2065,20 +2066,13 @@ const defineStyle: AiTool['handler'] = async (input) => {
   );
 };
 
-const addCameraMove: AiTool['handler'] = async (input, ctx) => {
-  const i = input as { kind?: 'push_in' | 'pull_out'; style?: string; durationSec?: number };
-  const move = await recipeCameraMove(ctx, { kind: i.kind, durationSec: i.durationSec });
-  refreshAfterLegacy(ctx);
-  // The camera is named on its own, not counted: it is what moves, not one of
-  // the layers the move is across. The old `targets.length + 1` told the model
-  // it had one more content layer than it made — and hid that a camera layer
-  // was created at all, which the next call needs to know to animate it.
-  return ok(
-    `Added a slow ${i.kind ?? 'push_in'} across ${move.layers} layer(s) (now 3D), driven by ` +
-      `${move.createdCamera ? 'a new' : 'the existing'} 3D camera (id ${move.cameraId}).`,
-    { cameraId: move.cameraId },
-  );
-};
+// add_camera_move (every camera move: recipes, techniques, rig / fly-to / path / shake) — cameraMoveTool.ts.
+// The registry runs a technique's emitted calls through these same handlers.
+const addCameraMove: AiTool['handler'] = makeAddCameraMove(() => {
+  const r = new ToolRegistry();
+  for (const t of buildAiTools()) r.register(t);
+  return r;
+});
 
 const addKineticTitle: AiTool['handler'] = async (input, ctx) => {
   const i = input as { text: string; style?: string; y?: number; fontSize?: number; scene?: number };

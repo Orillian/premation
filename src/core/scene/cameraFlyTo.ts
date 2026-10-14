@@ -106,6 +106,7 @@ function vectorTargets(camId: string, tracks: readonly [string, string, string])
 }
 
 export type FlyToResult = { ok: true; keys: number; end: number } | { ok: false; reason: string };
+export type FlyToPlan = { ok: true; keys: number; end: number; command: Command } | { ok: false; reason: string };
 
 /**
  * Fly to Selected Layers as ONE undo entry: keys on `camId` from `start`
@@ -113,6 +114,14 @@ export type FlyToResult = { ok: true; keys: number; end: number } | { ok: false;
  * when the last hold ends.
  */
 export async function flyToLayersEdit(camId: string, layers: readonly string[], start: number, opts: FlyToOptions = FLY_TO_DEFAULTS): Promise<FlyToResult> {
+  const plan = await planFlyTo(camId, layers, start, opts);
+  if (!plan.ok) return plan;
+  const res = await edit('Fly to Selected Layers', plan.command);
+  return res.ok ? { ok: true, keys: plan.keys, end: plan.end } : { ok: false, reason: res.error.message };
+}
+
+/** The Fly to write, composed but not sent (the AI sends it through its turn). */
+export async function planFlyTo(camId: string, layers: readonly string[], start: number, opts: FlyToOptions = FLY_TO_DEFAULTS): Promise<FlyToPlan> {
   if (layers.length === 0) return { ok: false, reason: 'Select the layers to fly to' };
   if (!(opts.travel > 0) || !(opts.hold >= 0)) return { ok: false, reason: 'Travel must be longer than zero' };
   const m = documentMirror();
@@ -176,7 +185,5 @@ export async function flyToLayersEdit(camId: string, layers: readonly string[], 
   }
   // A zero hold would put two keys at one time: the arrival is enough.
   const unique = keys.filter((k, i) => keys.findIndex((o) => o.prop.path === k.prop.path && o.time === k.time) === i);
-  const cmd: Command = { type: 'addKeyframes', keys: unique };
-  const res = await edit('Fly to Selected Layers', cmd);
-  return res.ok ? { ok: true, keys: unique.length, end } : { ok: false, reason: res.error.message };
+  return { ok: true, keys: unique.length, end, command: { type: 'addKeyframes', keys: unique } };
 }

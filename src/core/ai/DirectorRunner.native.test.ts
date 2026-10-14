@@ -16,7 +16,7 @@
  * wire shape the backend emits and asserts real layers come out the other side.
  */
 
-import { ToolRegistry } from '@motion/ai-tools';
+import { CAMERA_MOVE_KINDS, ToolRegistry } from '@motion/ai-tools';
 import { runBackendDirector } from './DirectorRunner';
 import { buildAiTools } from './toolHandlers';
 import { createToolContext } from './toolContext';
@@ -147,7 +147,9 @@ describe('a backend tool_calls payload executes against the real registry', () =
     // planner must be given the argument contract, not a prose description.
     const camera = cat.find((t: any) => t.name === 'add_camera_move');
     expect(camera.inputSchema).toBeDefined();
-    expect(camera.inputSchema.properties.kind.enum).toEqual(['push_in', 'pull_out']);
+    // Every camera move (camera program R5): the recipes, the library's camera techniques, the verbs.
+    expect(camera.inputSchema.properties.kind.enum).toEqual([...CAMERA_MOVE_KINDS]);
+    expect(camera.inputSchema.properties.kind.enum).toContain('push_in');
     expect(cat.every((t: any) => t.inputSchema && t.inputSchema.type === 'object')).toBe(true);
     expect(names).toContain('add_title');
     expect(names).toContain('define_style');

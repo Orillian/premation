@@ -87,7 +87,7 @@ export const listCapabilitiesDef: AiToolDef = {
   kind: 'read',
   description:
     'The editor\'s real vocabulary: animatable property paths, effect types, text-animator ' +
-    'parameters, easing kinds, and layer kinds. Call this when unsure whether something is ' +
+    'parameters, easing kinds, layer kinds, and the camera moves add_camera_move runs. Call this when unsure whether something is ' +
     'supported, rather than guessing a property name that will be rejected.',
   inputSchema: {
     type: 'object',
@@ -95,7 +95,7 @@ export const listCapabilitiesDef: AiToolDef = {
     properties: {
       area: {
         type: 'string',
-        enum: ['props', 'effects', 'text', 'easing', 'kinds', 'all'],
+        enum: ['props', 'effects', 'text', 'easing', 'kinds', 'camera', 'all'],
         default: 'all',
       },
     },

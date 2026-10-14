@@ -40,7 +40,7 @@
  * follows the eye's real direction from the target, not an axis.
  */
 
-import type { LayerInfo } from '@motion/engine-api';
+import type { Command as EngineCommand, CommandResult, LayerInfo } from '@motion/engine-api';
 import type { Vec3 } from '@motion/scene';
 import { activeCompSize } from '@core/scene/activeComp';
 import { engine } from '@core/engine/engineInstance';
@@ -243,12 +243,19 @@ export function rigLayout(kind: CameraRigKind, eye: Vec3, pivot: Vec3, reach: nu
 }
 
 /**
- * Add Camera Rig as ONE history entry (an engine gesture): the rig's 3D nulls
- * made and chained, the camera parented under the last WITHOUT compensation
- * and re-based into it so nothing moves on screen. Resolves to the null ids
- * (top first), or null when refused.
+ * Sends commands for a multi-step build and resolves to their results (null:
+ * refused). The UI runs it inside an engine gesture (`addCameraRigEdit`); an
+ * AI turn through its session (`ctx.engine.apply`), which is already one
+ * undo entry.
  */
-export async function addCameraRigEdit(camId: string, kind: CameraRigKind, time: number): Promise<string[] | null> {
+export type CommandExec = (commands: EngineCommand[]) => Promise<readonly CommandResult[] | null>;
+
+/**
+ * Build a rig on `camId` through `exec`: the nulls made and chained, the
+ * camera parented under the last WITHOUT compensation and re-based into it so
+ * nothing moves on screen. Resolves to the null ids (top first), or null.
+ */
+export async function buildCameraRig(camId: string, kind: CameraRigKind, time: number, exec: CommandExec): Promise<string[] | null> {
   const rig = await resolveCommandCamera(camId, time);
   const comp = compOfLayer(camId);
   if (!rig || !comp) return null;
@@ -259,42 +266,52 @@ export async function addCameraRigEdit(camId: string, kind: CameraRigKind, time:
   const end = layout.reduce(add, { x: 0, y: 0, z: 0 });
   const rebase = rebaseCommands(camId, rebaseUnder(points, rig.lift, end));
   if (!rebase) return null;
+  const ids: string[] = [];
+  let parent: string | undefined;
+  for (const [i, control] of RIG_NULLS[kind].entries()) {
+    const at = layout[i]!;
+    const made = await exec([{
+      type: 'createLayer', comp, kind: 'null', name: rigNullName(kind, control),
+      ...(parent ? { parent } : {}),
+      init: [{ path: 'transform/position', value: { kind: 'vec2', value: { x: at.x, y: at.y } } }],
+    }]);
+    const id = (made?.[0] as { layer?: string } | undefined)?.layer;
+    if (!id) return null;
+    ids.push(id);
+    const placed = await exec([
+      { type: 'setLayerSwitches', layers: [id], patch: { threeD: true } },
+      { type: 'setProperty', prop: { layer: id, path: 'transform/position' }, value: { kind: 'vec3', value: at } },
+    ]);
+    if (!placed) return null;
+    parent = id;
+  }
+  const parented = await exec([{ type: 'setParent', layers: [camId], parent: parent!, keepWorldTransform: false }]);
+  if (!parented) return null;
+  if (rebase.length > 0 && !(await exec(rebase))) return null;
+  return ids;
+}
+
+/**
+ * Add Camera Rig as ONE history entry (an engine gesture) — `buildCameraRig`
+ * with the camera selected after. Resolves to the null ids (top first), or
+ * null when refused.
+ */
+export async function addCameraRigEdit(camId: string, kind: CameraRigKind, time: number): Promise<string[] | null> {
   const label = `Add Camera Rig (${KIND_LABEL[kind]})`;
   const e = engine();
   const began = await e.execute({ type: 'beginGesture', label });
   if (!began.ok) return null;
-  let ok = false;
-  const ids: string[] = [];
+  let ids: string[] | null = null;
   try {
-    let parent: string | undefined;
-    for (const [i, control] of RIG_NULLS[kind].entries()) {
-      const at = layout[i]!;
-      const made = await e.execute({
-        type: 'createLayer', comp, kind: 'null', name: rigNullName(kind, control),
-        ...(parent ? { parent } : {}),
-        init: [{ path: 'transform/position', value: { kind: 'vec2', value: { x: at.x, y: at.y } } }],
-      });
-      if (!made.ok) return null;
-      const id = made.value.layer;
-      ids.push(id);
-      const three = await e.execute({ type: 'setLayerSwitches', layers: [id], patch: { threeD: true } });
-      if (!three.ok) return null;
-      const placed = await e.execute({ type: 'setProperty', prop: { layer: id, path: 'transform/position' }, value: { kind: 'vec3', value: at } });
-      if (!placed.ok) return null;
-      parent = id;
-    }
-    const parented = await e.execute({ type: 'setParent', layers: [camId], parent: parent!, keepWorldTransform: false });
-    if (!parented.ok) return null;
-    if (rebase.length > 0) {
-      const res = await e.batch(label, rebase);
-      if (!res.ok) return null;
-    }
-    ok = true;
+    ids = await buildCameraRig(camId, kind, time, async (cmds) => {
+      const res = await e.batch(label, cmds);
+      return res.ok ? res.value : null;
+    });
   } finally {
-    await e.execute({ type: 'endGesture', gesture: began.value.gesture, commit: ok });
+    await e.execute({ type: 'endGesture', gesture: began.value.gesture, commit: ids !== null });
   }
-  if (ok) useSelectionStore.getState().set([camId]);
-  return ok ? ids : null;
+  if (ids) useSelectionStore.getState().set([camId]);
+  return ids;
 }
 
 /**

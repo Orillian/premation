@@ -25,7 +25,7 @@
  * reads them).
  */
 
-import type { Keyframe, Value } from '@motion/engine-api';
+import type { Command, Keyframe, Value } from '@motion/engine-api';
 import { Matrix4Math, type Matrix4, type Vec3 } from '@motion/scene';
 import { engine } from '@core/engine/engineInstance';
 import { compTime, propRefForTrack } from '@core/engine/propRefs';
@@ -176,11 +176,23 @@ export type FollowPathResult =
   | { ok: true; keys: number }
   | { ok: false; reason: string };
 
+export type FollowPathPlan =
+  | { ok: true; keys: number; command: Command }
+  | { ok: false; reason: string };
+
 /**
  * Follow Path as ONE undo entry: `pathLayer`'s path (its shape path or first
  * mask) as `camId`'s Position keys from `start` to `end` (comp seconds).
  */
 export async function followPathEdit(camId: string, pathLayer: string, start: number, end: number): Promise<FollowPathResult> {
+  const plan = await planFollowPath(camId, pathLayer, start, end);
+  if (!plan.ok) return plan;
+  const res = await edit('Follow Path', plan.command);
+  return res.ok ? { ok: true, keys: plan.keys } : { ok: false, reason: res.error.message };
+}
+
+/** The Follow Path write, composed but not sent (the AI sends it through its turn). */
+export async function planFollowPath(camId: string, pathLayer: string, start: number, end: number): Promise<FollowPathPlan> {
   const m = documentMirror();
   if (uiKindOf(m.layer(camId)) !== 'camera') return { ok: false, reason: 'Select a camera' };
   if (!(end > start)) return { ok: false, reason: 'The move needs a duration' };
@@ -211,6 +223,5 @@ export async function followPathEdit(camId: string, pathLayer: string, start: nu
   const flat = m.layer(pathLayer)?.switches.threeD !== true;
   const keepZ = flat ? readTrack(m, camId, 'z', start) ?? null : null;
   const keys = pathPositionKeys(path, start, end, flat ? keepZ ?? 0 : null);
-  const res = await edit('Follow Path', { type: 'setKeyframes', prop: pos.ref, keys });
-  return res.ok ? { ok: true, keys: keys.length } : { ok: false, reason: res.error.message };
+  return { ok: true, keys: keys.length, command: { type: 'setKeyframes', prop: pos.ref, keys } };
 }
