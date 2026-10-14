@@ -6,7 +6,7 @@
  *   [No 3D layers — the camera moves nothing yet.]  [Make All 3D]   (when it applies)
  *   Lens        50mm — Standard ▾
  *   [Push In] [Pull Out] [Orbit Sweep] [Drift Parallax] [Dolly Zoom] [Handheld]
- *   [Focus on Layer] [Distribute in Z] [Create Orbit Null] [Add Rig ▾]  (+ fly-to)
+ *   [Focus on Layer] [Distribute in Z] [Create Orbit Null] [Add Rig ▾] [Fly to Layers]
  *
  * Before this the good tools were scattered: the lens list behind the ≡ menu,
  * the camera moves in the Animation Presets panel, Create Orbit Null and
@@ -30,6 +30,7 @@ import { LENS_PRESETS, focalPxForMm, lensPresetForFocalPx, mmForFocalPx } from '
 import { createOrbitNullEdit, distributeLayersInZ } from '@core/scene/cameraCommands';
 import { CAMERA_RIG_KINDS, addCameraRigEdit } from '@core/scene/cameraRig';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
+import { openFlyToDialog } from '@layout/Composition/CameraShotDialogs';
 import { getTime } from '@stores/playbackClockStore';
 import { useUIStore } from '@stores/uiStore';
 import { useFocusPickStore } from '@layout/Workspace/focusPickStore';
@@ -184,6 +185,14 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
             },
           }))}
         />
+        <Button
+          size="sm"
+          variant="secondary"
+          title="Keyframe the camera to frame each selected layer in turn, from the playhead (select the camera, then the layers in order)"
+          onClick={openFlyToDialog}
+        >
+          Fly to Layers
+        </Button>
         {actions}
       </div>
     </>

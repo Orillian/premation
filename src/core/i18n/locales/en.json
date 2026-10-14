@@ -156,6 +156,8 @@
   "menu.camera.addRig.crane": "Crane",
   "menu.camera.addRig.dolly": "Dolly",
   "menu.camera.addRig.orbit": "Orbit",
+  "menu.camera.followPath": "Follow Path…",
+  "menu.camera.flyToLayers": "Fly to Selected Layers…",
   "menu.camera.setFocusToLayer": "Set Focus Distance to Layer",
   "menu.camera.linkFocusToLayer": "Link Focus Distance to Layer",
   "menu.camera.linkFocusToPoi": "Link Focus Distance to Point of Interest",

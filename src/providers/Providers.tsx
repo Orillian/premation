@@ -92,6 +92,7 @@ import { resetTransformEdit } from '@layout/Timeline/resetEdits';
 import { openTimeStretchDialog } from '@layout/Composition/TimeStretchDialog';
 import { openAutoOrientDialog } from '@layout/Composition/AutoOrientDialog';
 import { buildCameraCommands } from '@core/scene/cameraCommands';
+import { buildCameraShotCommands } from '@layout/Composition/CameraShotDialogs';
 import { buildSmartAnimateCommands, installSmartAnimateCommandSync } from './commands/smartAnimateCommands';
 import { buildReframeCommands } from '@core/reframe/reframeCommands';
 import { buildIk3DCommands } from './commands/ikCommands';
@@ -1618,6 +1619,7 @@ export function buildStaticCommands(): ReadonlyArray<Command> {
     ...buildLayerTransformCommands({ openAutoOrient: openAutoOrientDialog, resetTransform: resetTransformEdit }),
     ...buildOpenLayerCommands(),
     ...buildCameraCommands(),
+    ...buildCameraShotCommands(),
     ...buildSmartAnimateCommands(),
     ...buildReframeCommands(),
     ...buildIk3DCommands(),

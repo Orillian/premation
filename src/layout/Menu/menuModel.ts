@@ -492,6 +492,8 @@ export const APP_MENU: MenuGroupModel[] = [
               { commandId: 'camera.addRig.orbit', label: 'Orbit' },
             ],
           },
+          { commandId: 'camera.followPath', label: 'Follow Path…' },
+          { commandId: 'camera.flyToLayers', label: 'Fly to Selected Layers…' },
           { separator: true },
           { commandId: 'camera.setFocusToLayer', label: 'Set Focus Distance to Layer' },
           { commandId: 'camera.linkFocusToLayer', label: 'Link Focus Distance to Layer' },
