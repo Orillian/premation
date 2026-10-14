@@ -39,15 +39,30 @@ import styles from './SceneControls.module.css';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { useFocusPlaneStore } from '@stores/focusPlaneStore';
 
-const CAMERA_TOOLS: ReadonlyArray<{ id: CameraTool; icon: IconName; label: string }> = [
+/**
+ * The camera tools. `writes` names what a drag CHANGES on the camera, in the
+ * words the camera Inspector uses (camera program U7): the Inspector has two
+ * twirls that both read as "rotation" — "Orbit around target" (the eye swings
+ * around what it looks at) and "Turn on the spot" (a tripod pan / tilt) — and
+ * the Orbit tool only ever writes the first, so its tooltip says so.
+ */
+export const CAMERA_TOOLS: ReadonlyArray<{ id: CameraTool; icon: IconName; label: string; writes: string }> = [
   // First, like AE: one armed tool, the mouse button picks the gesture.
-  { id: 'unified', icon: 'camera', label: 'Unified Camera (left orbit · middle pan · right dolly)' },
+  { id: 'unified', icon: 'camera', label: 'Unified Camera (left orbit · middle pan · right dolly)', writes: 'left-drag writes Orbit around target, never Turn on the spot' },
   // The orbit PIVOT (cursor / scene / POI) is the option group below the
   // tools — it steers this tool and the unified tool's left-drag alike.
-  { id: 'orbit', icon: 'orbit', label: 'Orbit Camera' },
-  { id: 'pan', icon: 'pan-camera', label: 'Pan Camera' },
-  { id: 'dolly', icon: 'perspective', label: 'Dolly Camera (towards/away)' },
+  { id: 'orbit', icon: 'orbit', label: 'Orbit Camera', writes: 'writes Orbit around target (the eye swings around the target), never Turn on the spot' },
+  { id: 'pan', icon: 'pan-camera', label: 'Pan Camera', writes: 'moves the camera and its target sideways' },
+  { id: 'dolly', icon: 'perspective', label: 'Dolly Camera (towards/away)', writes: 'moves the camera towards or away from its target' },
 ];
+
+/** The camera-tool trigger's tooltip: the armed tool and what its drag writes. */
+export function cameraToolTitle(tool: CameraTool): string {
+  const t = CAMERA_TOOLS.find((c) => c.id === tool);
+  return t
+    ? `${t.label} (active) — ${t.writes}. Hold Alt to use temporarily, C to cycle`
+    : 'Camera tool — none armed. Hold Alt to use one temporarily, C to cycle';
+}
 
 /** AE's orbit pivot modes. Radio-style: exactly one is in effect. */
 const ORBIT_PIVOTS: ReadonlyArray<{ id: CameraOrbitPivot; label: string }> = [
@@ -117,7 +132,7 @@ export function SceneControls(): JSX.Element {
     ...CAMERA_TOOLS.map((t) => ({
       type: 'item' as const,
       id: `cam-${t.id}`,
-      label: t.label,
+      label: <span title={`${t.label} — ${t.writes}`}>{t.label}</span>,
       icon: t.icon,
       onSelect: () => setCameraTool(t.id),
     })),
@@ -157,11 +172,7 @@ export function SceneControls(): JSX.Element {
             type="button"
             className={armedCamera ? styles.triggerActive : styles.trigger}
             aria-label="Camera tool"
-            title={
-              armedCamera
-                ? `${armedCamera.label} (active) — hold Alt to use temporarily, C to cycle`
-                : 'Camera tool — none armed. Hold Alt to use one temporarily, C to cycle'
-            }
+            title={cameraToolTitle(cameraTool)}
           >
             <Icon name={armedCamera?.icon ?? 'orbit'} size="md" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />

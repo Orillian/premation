@@ -19,6 +19,7 @@
  * layer) gets `onStatic` only and no stopwatch.
  */
 
+import type { ReactNode } from 'react';
 import { ValueField } from '@components/ValueField';
 import { AnimToggle } from './AnimToggle';
 import { useActiveWorkspace } from '@stores/projectStore';
@@ -44,6 +45,8 @@ export interface KeyframeRowProps {
   precision?: number;
   /** Write the static component prop (no track). */
   onStatic: (v: number) => void;
+  /** A small control after the label (Focus Distance's pick-on-canvas crosshair). */
+  trailing?: ReactNode;
 }
 
 export function KeyframeRow({
@@ -56,6 +59,7 @@ export function KeyframeRow({
   max,
   precision = 0,
   onStatic,
+  trailing,
 }: KeyframeRowProps): JSX.Element {
   const time = useActiveWorkspace()?.time ?? 0;
   const autoKeyframe = usePreferenceStore((s) => s.timelineAutoKeyframe);
@@ -93,6 +97,7 @@ export function KeyframeRow({
           }}
         />
         <span className={styles.popoverLabel}>{label}</span>
+        {trailing}
       </div>
       <ValueField
         value={round(display ?? 0)}

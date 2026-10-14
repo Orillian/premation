@@ -2,15 +2,20 @@
  * CameraSection — After Effects' Camera Options for a camera layer
  * (2026-10-08), in the panel grammar LightSection follows:
  *
+ *   Shot: [no-3D warning · Make All 3D] · Lens ▾ · camera-move buttons ·
+ *         Distribute in Z · Create Orbit Null       (CameraShotHeader, U3)
  *   Zoom · Angle of View
  *   ▶ Film Size: Film Size · Focal Length (a read-only value)
  *   Point of Interest X Y Z  [Remove Point of Interest]   (two-node)
  *     — or [Add Point of Interest]                         (one-node)
- *   ▶ Orbit: Orbit Yaw · Orbit Pitch
- *   ▶ Rotation: X Rotation · Y Rotation · Z Rotation
+ *   ▶ Orbit around target: Orbit Yaw · Orbit Pitch    (what the Orbit tool writes)
+ *   ▶ Turn on the spot: X Rotation · Y Rotation · Z Rotation   (U7: the two
+ *     used to read "Orbit" / "Rotation" and looked like one thing twice)
  *   Depth of Field  On/Off
- *     Focus Distance · Aperture · Blur Level · F-Stop · Iris Blades
- *     ▶ Iris and Highlights (5–11 blades)
+ *     Focus Distance [pick on canvas] · Lens Model Classic|Physical ·
+ *     F-Stop (Physical) · Blur Level
+ *     ▶ Bokeh: Iris Blades (+ the iris / highlight rows at 5–11 blades)
+ *     ▶ Advanced: Aperture
  *   ▶ View: [Reset Camera] · 3D Layers  n of m  [Make All 3D]
  *
  * Position X/Y/Z live in the Transform section above; here we own the LENS.
@@ -19,8 +24,10 @@
  * The grammar (typography.css, "Panel type roles"): a twirl only opens and
  * closes, so Depth of Field is a ROW whose value reads On / Off, not a twirl
  * header with a checkbox; explanations are tooltips, not paragraphs — the one
- * help line left is the "no 3D layers" warning; buttons are bordered verbs.
- * Picking a lens is an action on the section, so the lens presets are "Lens
+ * help line left is the "no 3D layers" warning, and it leads the section
+ * when it applies — it is the reason a camera "does nothing"; buttons are
+ * bordered verbs. The lens is picked in the Shot header (camera program U3:
+ * the shot-making verbs were scattered over three menus) and still from "Lens
  * Presets ▸" in the Properties ≡ menu (`LensPresetsMenu`, sectionMenu.tsx).
  */
 
@@ -30,19 +37,21 @@ import { edit } from '@core/engine/uiEdits';
 import { componentOfType, values } from '@core/engine/propRefs';
 import { POI_PATH } from '@core/engine/pointOfInterest';
 import { Project3D } from '@motion/scene';
-import { DEFAULT_FILM_SIZE_MM, LENS_PRESETS, focalPxForMm, lensPresetForFocalPx, mmForFov } from '@core/scene/lensPresets';
+import { DEFAULT_FILM_SIZE_MM, mmForFov } from '@core/scene/lensPresets';
 import { useMirrorLayer, useMirrorProperty } from '@hooks/useMirror';
 import { useActiveCompLayers } from '@hooks/useMirrorFields';
 import { canBe3DLayer, useActiveCompSize } from './inspectorMirror';
 import { ValueField } from '@components/ValueField';
 import { Button } from '@components/Button';
-import type { DropdownItem } from '@components/Dropdown';
 import { TwirlGroup } from './appearance/TwirlGroup';
 import { MultiPropertyPairRow, type PairFieldSpec } from './MultiPropertyPairRow';
 import { OnOffRow } from './OnOffRow';
 import { useSectionMenuRows } from './sectionMenu';
 import styles from './TransformSection.module.css';
 import { KeyframeRow } from './KeyframeRow';
+import { FocusPickButton } from './FocusPickButton';
+import { Segmented } from '@components/Segmented';
+import { CameraShotHeader, lensItems } from './CameraShotHeader';
 
 /** The rows' component: the layer's Transform, resolved by the write seam when a row writes (the reads are the mirror's). */
 const TRANSFORM = { type: 'Transform' } as const;
@@ -67,18 +76,11 @@ function focalOf(focalRaw: unknown, compWidth: number): number {
 export function LensPresetsMenu({ nodeId }: { nodeId: string; nodeIds?: ReadonlyArray<string> }): null {
   const { width: compWidth } = useActiveCompSize();
   const [focalRaw, setFocal] = useComponentProp(nodeId, TRANSFORM, 'focalLength');
-  const active = lensPresetForFocalPx(compWidth, focalOf(focalRaw, compWidth));
   useSectionMenuRows([{
     type: 'item',
     id: 'lens-presets',
     label: 'Lens Presets',
-    submenu: LENS_PRESETS.map((p): DropdownItem => ({
-      type: 'item',
-      id: `lens-preset-${p.mm}`,
-      label: p.label,
-      ...(p === active ? { icon: 'check' as const } : {}),
-      onSelect: () => setFocal(Math.round(focalPxForMm(compWidth, p.mm))),
-    })),
+    submenu: lensItems(compWidth, focalOf(focalRaw, compWidth), (px) => setFocal(px)),
   }]);
   return null;
 }
@@ -157,6 +159,14 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
   return (
     <div className={styles.section}>
       <div className={styles.inlineRows}>
+        <CameraShotHeader
+          nodeId={nodeId}
+          compWidth={compWidth}
+          focal={focal}
+          setFocal={(v) => setFocal(v)}
+          no3D={threeDCount === 0 && contentLayers.length > 0}
+          makeAll3D={enableAll3D}
+        />
         {/* AE calls this Zoom: the distance at which a layer renders 1:1. It
             and Angle of View are two views of ONE value, so editing either has
             to move the other — showing the angle as read-only text (which is
@@ -229,7 +239,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
 
         <TwirlGroup
           prefKey="camera.orbit"
-          label={<span title="Swings the camera around its point of interest, keeping it framed. On canvas: Alt+drag orbits, Shift+Alt+drag (or Alt+middle-drag) tracks XY, Alt+wheel dollies.">Orbit</span>}
+          label={<span title="Swings the camera around its point of interest, keeping it framed (Orbit Yaw / Pitch). The viewer's Orbit tool and Alt+drag write these. On canvas: Alt+drag orbits, Shift+Alt+drag (or Alt+middle-drag) tracks XY, Alt+wheel dollies.">Orbit around target</span>}
           defaultOpen={orbited}
           summary={orbited ? 'Turned' : 'Level'}
         >
@@ -243,7 +253,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
             Conflating them is what made a tripod pan unexpressible. */}
         <TwirlGroup
           prefKey="camera.rotation"
-          label={<span title="Turns the camera on the spot without moving it — a tripod pan or tilt. On a two-node camera these offset the tracked aim, so it keeps following its Point of Interest while looking off to the side.">Rotation</span>}
+          label={<span title="Turns the camera on the spot without moving it — a tripod pan or tilt (X / Y / Z Rotation). No viewer tool writes these. On a two-node camera they offset the tracked aim, so it keeps following its Point of Interest while looking off to the side.">Turn on the spot</span>}
           defaultOpen={rotated}
           summary={rotated ? 'Turned' : 'Level'}
         >
@@ -270,112 +280,153 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
         />
         {dofOn && (
           <>
-            <KeyframeRow nodeId={nodeId} prop="focusDistance" label="Focus Distance" value={typeof focusRaw === 'number' ? focusRaw : focal} unit="px" min={1} onStatic={(v) => setFocusDistance(v)} />
-            <KeyframeRow nodeId={nodeId} prop="dofAperture" label="Aperture" value={typeof apertureRaw === 'number' ? apertureRaw : (typeof dofRaw === 'number' ? dofRaw : 0)} unit="px" min={0} onStatic={(v) => setAperture(v)} />
-            <KeyframeRow nodeId={nodeId} prop="dofStrength" label="Blur Level" value={typeof dofRaw === 'number' ? dofRaw : 0} unit="px" min={0} max={60} onStatic={(v) => setDofStrength(v)} />
+            <KeyframeRow
+              nodeId={nodeId}
+              prop="focusDistance"
+              label="Focus Distance"
+              value={typeof focusRaw === 'number' ? focusRaw : focal}
+              unit="px"
+              min={1}
+              onStatic={(v) => setFocusDistance(v)}
+              trailing={<FocusPickButton nodeId={nodeId} />}
+            />
             {/*
-              F-Stop selects the lens model. Absent or 0 keeps the legacy
-              symmetric ramp — what every existing project uses, and what it
-              must keep looking like. Set it and `dofBlurPx` switches to a real
-              thin-lens circle of confusion: asymmetric, saturating behind the
-              focal plane, and sensitive to focal length. Deliberately NOT
-              given a numeric default, because a default would re-grade every
-              shot anyone has already approved.
+              The lens model, said in words (U5). F-Stop selects it: absent or
+              0 keeps the legacy symmetric ramp — what every existing project
+              uses, and what it must keep looking like; set, `dofBlurPx`
+              switches to a real thin-lens circle of confusion (asymmetric,
+              saturating behind the focal plane, sensitive to focal length).
+              That switch used to be "type a number into F-Stop", which nobody
+              could guess. Physical starts at f/2.8 when F-Stop is 0; Classic
+              writes 0. Nothing is written until a user picks, so an untouched
+              camera stores exactly what it stored before.
             */}
-            <div
-              title={physical
-                ? 'Thin-lens defocus: the foreground blurs harder than the background, distant layers stop getting blurrier, and focal length affects depth of field.'
-                : 'Leave at 0 for the classic ramp — symmetric, and it ignores focal length. Set an f-number for physical lens defocus.'}
-            >
-              <KeyframeRow nodeId={nodeId} prop="fStop" label="F-Stop" value={typeof fStopRaw === 'number' ? fStopRaw : 0} min={0} max={32} onStatic={(v) => setFStop(v)} />
-            </div>
-            <div title="Leave at 0 for a Gaussian blur. Set 5–11 for an iris-shaped bokeh.">
-              <KeyframeRow
-                nodeId={nodeId}
-                prop="irisBlades"
-                label="Iris Blades"
-                value={typeof irisBladesRaw === 'number' ? irisBladesRaw : 0}
-                min={0}
-                max={11}
-                onStatic={(v) => setIrisBlades(v < 3 ? undefined : Math.round(v))}
+            <div className={styles.popoverRow}>
+              <span
+                className={styles.popoverLabel}
+                title={physical
+                  ? 'Physical: thin-lens defocus — the foreground blurs harder than the background, distant layers stop getting blurrier, and focal length affects depth of field.'
+                  : 'Classic: a symmetric blur ramp around the focus plane that ignores focal length (the After Effects look).'}
+              >
+                Lens Model
+              </span>
+              <Segmented
+                size="sm"
+                aria-label="Lens Model"
+                value={physical ? 'physical' : 'classic'}
+                onChange={(v) => {
+                  if (v === 'physical' && !physical) setFStop(2.8);
+                  else if (v === 'classic' && physical) setFStop(0);
+                }}
+                options={[
+                  { value: 'classic', label: 'Classic' },
+                  { value: 'physical', label: 'Physical' },
+                ]}
               />
             </div>
-            {irisShaped && (
-              <TwirlGroup
-                prefKey="camera.iris"
-                label={<span title="Polygonal bokeh. Roundness 1 ≈ circle; rotation spins the polygon and aspect stretches it (anamorphic ovals). Highlight gain blooms speculars above the threshold, saturation keeps their colour, and diffraction fringe brightens the bokeh rim.">Iris and Highlights</span>}
-                defaultOpen={false}
-                summary={`${Math.round(irisBladesRaw as number)} blades`}
-              >
-                {/* After Effects' Camera Options order. Each stores nothing at
-                    its neutral value (rotation 0, aspect 1, fringe 0), so an
-                    untouched camera keeps rendering byte-identically. */}
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="irisRotation"
-                  label="Iris Rotation"
-                  value={typeof irisRotationRaw === 'number' ? irisRotationRaw : 0}
-                  unit="°"
-                  min={-180}
-                  max={180}
-                  onStatic={(v) => setIrisRotation(v === 0 ? undefined : v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="irisRoundness"
-                  label="Iris Roundness"
-                  value={typeof irisRoundnessRaw === 'number' ? irisRoundnessRaw : 0.65}
-                  min={0}
-                  max={1}
-                  onStatic={(v) => setIrisRoundness(v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="irisAspect"
-                  label="Iris Aspect Ratio"
-                  value={typeof irisAspectRaw === 'number' ? irisAspectRaw : 1}
-                  min={0.25}
-                  max={4}
-                  onStatic={(v) => setIrisAspect(v === 1 || v <= 0 ? undefined : v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="diffractionFringe"
-                  label="Iris Diffraction Fringe"
-                  value={typeof diffractionFringeRaw === 'number' ? diffractionFringeRaw : 0}
-                  min={0}
-                  max={1}
-                  onStatic={(v) => setDiffractionFringe(v <= 0 ? undefined : v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="highlightGain"
-                  label="Highlight Gain"
-                  value={typeof highlightGainRaw === 'number' ? highlightGainRaw : 0}
-                  min={0}
-                  max={4}
-                  onStatic={(v) => setHighlightGain(v <= 0 ? undefined : v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="highlightThreshold"
-                  label="Highlight Threshold"
-                  value={typeof highlightThresholdRaw === 'number' ? highlightThresholdRaw : 0}
-                  min={0}
-                  max={1}
-                  onStatic={(v) => setHighlightThreshold(v <= 0 ? undefined : v)}
-                />
-                <KeyframeRow
-                  nodeId={nodeId}
-                  prop="highlightSaturation"
-                  label="Highlight Saturation"
-                  value={typeof highlightSaturationRaw === 'number' ? highlightSaturationRaw : 0}
-                  min={0}
-                  max={4}
-                  onStatic={(v) => setHighlightSaturation(v <= 0 ? undefined : v)}
-                />
-              </TwirlGroup>
+            {physical && (
+              <KeyframeRow nodeId={nodeId} prop="fStop" label="F-Stop" value={fStopRaw as number} min={0.5} max={32} precision={1} onStatic={(v) => setFStop(v)} />
             )}
+            <KeyframeRow nodeId={nodeId} prop="dofStrength" label="Blur Level" value={typeof dofRaw === 'number' ? dofRaw : 0} unit="px" min={0} max={60} onStatic={(v) => setDofStrength(v)} />
+            <TwirlGroup
+              prefKey="camera.bokeh"
+              label={<span title="The shape of out-of-focus highlights. Iris Blades 0 is a Gaussian blur; 5–11 gives an iris-shaped bokeh with its own roundness, rotation, aspect, fringe and highlight bloom.">Bokeh</span>}
+              defaultOpen={irisShaped}
+              summary={irisShaped ? `${Math.round(irisBladesRaw as number)} blades` : 'Gaussian'}
+            >
+              <div title="Leave at 0 for a Gaussian blur. Set 5–11 for an iris-shaped bokeh.">
+                <KeyframeRow
+                  nodeId={nodeId}
+                  prop="irisBlades"
+                  label="Iris Blades"
+                  value={typeof irisBladesRaw === 'number' ? irisBladesRaw : 0}
+                  min={0}
+                  max={11}
+                  onStatic={(v) => setIrisBlades(v < 3 ? undefined : Math.round(v))}
+                />
+              </div>
+              {irisShaped && (
+                <>
+                  {/* After Effects' Camera Options order. Each stores nothing at
+                      its neutral value (rotation 0, aspect 1, fringe 0), so an
+                      untouched camera keeps rendering byte-identically. */}
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="irisRotation"
+                    label="Iris Rotation"
+                    value={typeof irisRotationRaw === 'number' ? irisRotationRaw : 0}
+                    unit="°"
+                    min={-180}
+                    max={180}
+                    onStatic={(v) => setIrisRotation(v === 0 ? undefined : v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="irisRoundness"
+                    label="Iris Roundness"
+                    value={typeof irisRoundnessRaw === 'number' ? irisRoundnessRaw : 0.65}
+                    min={0}
+                    max={1}
+                    onStatic={(v) => setIrisRoundness(v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="irisAspect"
+                    label="Iris Aspect Ratio"
+                    value={typeof irisAspectRaw === 'number' ? irisAspectRaw : 1}
+                    min={0.25}
+                    max={4}
+                    onStatic={(v) => setIrisAspect(v === 1 || v <= 0 ? undefined : v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="diffractionFringe"
+                    label="Iris Diffraction Fringe"
+                    value={typeof diffractionFringeRaw === 'number' ? diffractionFringeRaw : 0}
+                    min={0}
+                    max={1}
+                    onStatic={(v) => setDiffractionFringe(v <= 0 ? undefined : v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="highlightGain"
+                    label="Highlight Gain"
+                    value={typeof highlightGainRaw === 'number' ? highlightGainRaw : 0}
+                    min={0}
+                    max={4}
+                    onStatic={(v) => setHighlightGain(v <= 0 ? undefined : v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="highlightThreshold"
+                    label="Highlight Threshold"
+                    value={typeof highlightThresholdRaw === 'number' ? highlightThresholdRaw : 0}
+                    min={0}
+                    max={1}
+                    onStatic={(v) => setHighlightThreshold(v <= 0 ? undefined : v)}
+                  />
+                  <KeyframeRow
+                    nodeId={nodeId}
+                    prop="highlightSaturation"
+                    label="Highlight Saturation"
+                    value={typeof highlightSaturationRaw === 'number' ? highlightSaturationRaw : 0}
+                    min={0}
+                    max={4}
+                    onStatic={(v) => setHighlightSaturation(v <= 0 ? undefined : v)}
+                  />
+                </>
+              )}
+            </TwirlGroup>
+            {/* Aperture is the same blur as Blur Level seen as a lens opening
+                (AE keeps both, linked); almost nobody needs both, so it waits
+                under Advanced rather than reading as a second blur control. */}
+            <TwirlGroup
+              prefKey="camera.dofAdvanced"
+              label={<span title="Aperture: the blur as a lens opening in px — the twin of Blur Level in After Effects.">Advanced</span>}
+              defaultOpen={false}
+            >
+              <KeyframeRow nodeId={nodeId} prop="dofAperture" label="Aperture" value={typeof apertureRaw === 'number' ? apertureRaw : (typeof dofRaw === 'number' ? dofRaw : 0)} unit="px" min={0} onStatic={(v) => setAperture(v)} />
+            </TwirlGroup>
           </>
         )}
 
@@ -402,15 +453,13 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
               3D Layers
             </span>
             <span className={styles.valueText}>{`${threeDCount} of ${contentLayers.length}`}</span>
-            {!allThreeD && (
+            {/* With NONE 3D the warning and its Make All 3D lead the section (the Shot header). */}
+            {!allThreeD && threeDCount > 0 && (
               <Button size="sm" variant="secondary" onClick={enableAll3D}>
                 Make All 3D
               </Button>
             )}
           </div>
-          {threeDCount === 0 && contentLayers.length > 0 && (
-            <p className={styles.helpWarning} role="note">No 3D layers — the camera moves nothing yet.</p>
-          )}
         </TwirlGroup>
       </div>
     </div>

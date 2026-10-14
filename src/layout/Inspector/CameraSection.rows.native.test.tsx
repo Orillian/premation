@@ -9,7 +9,8 @@
  *     "is poiX a number" called every camera two-node.
  *   • Depth of Field is a ROW whose value reads On / Off — not a twirl header
  *     with a checkbox in it — and its rows follow it.
- *   • The lens presets are "Lens Presets ▸" in the Properties ≡ menu.
+ *   • The lens presets are "Lens Presets ▸" in the Properties ≡ menu (and,
+ *     since U3, the Shot header's Lens picker — CameraShotHeader.native.test).
  *
  * The fixture is the app's engine (B3): the camera is a layer created through
  * the engine API, and the assertions read the engine's own answer back.
@@ -21,7 +22,7 @@ import { CameraSection, LensPresetsMenu } from './CameraSection';
 import { SectionMenuRegistry, SectionMenuSlot } from './sectionMenu';
 import { useSelectionStore } from '@stores/selectionStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
-import { clearHistory, setupAppEngine, historyLabels } from '@core/engine/__testHelpers__/appEngine';
+import { clearHistory, setupAppEngine, historyLabels, storedTrack } from '@core/engine/__testHelpers__/appEngine';
 import type { Harness } from '@core/engine/__testHelpers__/appEngine';
 import { engineIdle } from '@core/engine/engineInstance';
 import { POI_PATH } from '@core/engine/pointOfInterest';
@@ -96,17 +97,63 @@ describe('Depth of Field', () => {
     fireEvent.click(toggle);
     await idle();
     expect(screen.getByRole('button', { name: 'Depth of Field' }).getAttribute('aria-pressed')).toBe('true');
-    for (const row of ['Focus Distance', 'Aperture', 'Blur Level', 'F-Stop', 'Iris Blades']) {
+    for (const row of ['Focus Distance', 'Blur Level', 'Lens Model', 'Pick focus on canvas']) {
       expect({ row, drawn: has(row) }).toEqual({ row, drawn: true });
     }
   });
 });
 
+describe('Depth of Field, simplified (U5)', () => {
+  const twirl = (name: string): HTMLElement => {
+    const b = screen.getAllByRole('button').find((el) => el.getAttribute('data-twirl') !== null && el.textContent?.includes(name));
+    if (!b) throw new Error(`no ${name} twirl`);
+    return b;
+  };
+
+  it('says the lens model in words: F-Stop only for Physical, Bokeh and Advanced twirls, Aperture under Advanced', async () => {
+    render(<CameraSection nodeId={CAM} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Depth of Field' }));
+    await idle();
+    // Classic (F-Stop 0, the stored default): no F-Stop row, no Aperture until Advanced opens.
+    expect(screen.getByRole('radio', { name: 'Classic' }).getAttribute('aria-checked')).toBe('true');
+    expect(has('F-Stop')).toBe(false);
+    expect(has('Aperture')).toBe(false);
+    expect(has('Iris Blades')).toBe(false);
+    fireEvent.click(twirl('Bokeh'));
+    expect(has('Iris Blades')).toBe(true);
+    fireEvent.click(twirl('Advanced'));
+    expect(has('Aperture')).toBe(true);
+
+    // Physical starts at f/2.8; Classic writes 0 back.
+    await clearHistory();
+    fireEvent.click(screen.getByRole('radio', { name: 'Physical' }));
+    await idle();
+    expect(await storedTrack(CAM, 'fStop')).toBeCloseTo(2.8, 6);
+    expect(has('F-Stop')).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: 'Classic' }));
+    await idle();
+    expect(await storedTrack(CAM, 'fStop')).toBe(0);
+    expect(has('F-Stop')).toBe(false);
+    settle();
+    expect(await historyLabels()).toHaveLength(2);
+  });
+
+  it('writes nothing for an untouched camera: drawing the section leaves the document as it was', async () => {
+    const before = await h.doc();
+    render(<CameraSection nodeId={CAM} />);
+    await idle();
+    settle();
+    expect(await h.doc()).toBe(before);
+    expect(await historyLabels()).toEqual([]);
+  });
+});
+
 describe('the section reads as a property list', () => {
-  it('carries no paragraph of help, and the lens picker is not a row', async () => {
+  it('carries no paragraph of help, and the lens is picked in the Shot header (U3), not a row of its own', async () => {
     render(<CameraSection nodeId={CAM} />);
     expect(document.querySelectorAll('p')).toHaveLength(0);
     expect(screen.queryAllByLabelText('Lens preset')).toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Lens' })).toHaveLength(1);
   });
 });
 
@@ -130,5 +177,15 @@ describe('Lens Presets', () => {
     expect(ticked).toEqual(['135mm — Tele']);
     settle();
     expect(await historyLabels()).toHaveLength(1);
+  });
+});
+
+describe('Orbit vs Rotation (U7)', () => {
+  it('the twirls say what each does: "Orbit around target" and "Turn on the spot"', async () => {
+    render(<CameraSection nodeId={CAM} />);
+    const twirls = screen.getAllByRole('button').filter((el) => el.getAttribute('data-twirl') !== null).map((el) => el.textContent ?? '');
+    expect(twirls.some((t) => t.includes('Orbit around target'))).toBe(true);
+    expect(twirls.some((t) => t.includes('Turn on the spot'))).toBe(true);
+    expect(twirls.some((t) => /▶Orbit$|▼Orbit$|▶Rotation$|▼Rotation$/.test(t))).toBe(false);
   });
 });

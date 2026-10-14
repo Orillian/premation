@@ -37,6 +37,7 @@ import { mirrorLabelColor } from '@core/mirror/layerLabels';
 import { isMirrorDescendantOf } from '@core/mirror/layerTree';
 import { hasPositionKeys } from '@core/mirror/motionFacts';
 import { isLookedThroughNow, navTargetNow, navUnavailableNow, orbitPivotNow, requestMainViewCamera, viewProjectorNow } from './viewNav';
+import { useFocusPickStore, completeFocusPick } from './focusPickStore';
 
 
 import { getWorkspaceController, type WorkspaceController } from '@core/workspace/WorkspaceController';
@@ -833,6 +834,11 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
     const cameraToolCursor = (mode: CameraNavMode | 'unified'): string =>
       mode === 'pan' ? 'grab' : mode === 'dolly' ? 'ns-resize' : 'move';
     const restoreCursor = (): void => {
+      // An armed focus pick (U6) owns the cursor: the crosshair says the next click focuses.
+      if (useFocusPickStore.getState().camera) {
+        overlay.style.cursor = 'crosshair';
+        return;
+      }
       const tool = useGuidesStore.getState().cameraTool;
       overlay.style.cursor = tool !== 'none' ? cameraToolCursor(tool) : controller.ws.cursor.css;
     };
@@ -939,6 +945,9 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       // Leaving the camera tool cancels any in-flight eased wheel dolly.
       if (s.cameraTool === 'none' && prev.cameraTool !== 'none') cancelSmoothDolly();
     });
+    const focusPickSub = useFocusPickStore.subscribe((s, prev) => {
+      if (s.camera !== prev.camera && !camNav) restoreCursor();
+    });
     const toolSub = useUIStore.subscribe(
       (s) => s.activeTool,
       () => {
@@ -978,6 +987,13 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       {
         const camTool = useGuidesStore.getState().cameraTool;
         if (camTool !== 'none' && camTool !== 'unified' && startCameraNav(e, camTool)) return;
+      }
+      // Pick focus on canvas (U6): an armed one-shot pick takes this click —
+      // the layer under it gets the camera's focal plane — and never selects.
+      if (useFocusPickStore.getState().camera) {
+        e.preventDefault();
+        void completeFocusPick(controller.ws.hitTestScreen(local(e))?.id, playheadTime());
+        return;
       }
       // Ruler guides: pointer-down inside a ruler strip drags out a NEW guide
       // (top strip → horizontal 'y' guide, left strip → vertical 'x' guide).
@@ -1736,6 +1752,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       window.removeEventListener('keydown', onEscCancel, true);
       window.removeEventListener('keyup', onAltUp);
       guidesSub();
+      focusPickSub();
       toolSub();
       cancelSmoothDolly();
       controller.ws.cancelTransientInput();
