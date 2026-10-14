@@ -30,6 +30,7 @@ import { edit } from '@core/engine/uiEdits';
 import { componentOfType, values } from '@core/engine/propRefs';
 import { POI_PATH } from '@core/engine/pointOfInterest';
 import { Project3D } from '@motion/scene';
+import { DEFAULT_FILM_SIZE_MM, LENS_PRESETS, focalPxForMm, lensPresetForFocalPx, mmForFov } from '@core/scene/lensPresets';
 import { useMirrorLayer, useMirrorProperty } from '@hooks/useMirror';
 import { useActiveCompLayers } from '@hooks/useMirrorFields';
 import { canBe3DLayer, useActiveCompSize } from './inspectorMirror';
@@ -42,19 +43,6 @@ import { OnOffRow } from './OnOffRow';
 import { useSectionMenuRows } from './sectionMenu';
 import styles from './TransformSection.module.css';
 import { KeyframeRow } from './KeyframeRow';
-
-/** AE's default virtual sensor width (35mm full frame). */
-const DEFAULT_FILM_SIZE_MM = 36;
-
-/** Classic lens presets → horizontal field of view (deg). */
-export const LENS_PRESETS: ReadonlyArray<{ label: string; fov: number }> = [
-  { label: '15mm — Ultra Wide', fov: 100 },
-  { label: '24mm — Wide', fov: 73 },
-  { label: '35mm — Reportage', fov: 54 },
-  { label: '50mm — Standard', fov: 39.6 },
-  { label: '80mm — Portrait', fov: 25 },
-  { label: '135mm — Tele', fov: 15 },
-];
 
 /** The rows' component: the layer's Transform, resolved by the write seam when a row writes (the reads are the mirror's). */
 const TRANSFORM = { type: 'Transform' } as const;
@@ -79,18 +67,17 @@ function focalOf(focalRaw: unknown, compWidth: number): number {
 export function LensPresetsMenu({ nodeId }: { nodeId: string; nodeIds?: ReadonlyArray<string> }): null {
   const { width: compWidth } = useActiveCompSize();
   const [focalRaw, setFocal] = useComponentProp(nodeId, TRANSFORM, 'focalLength');
-  const fovDeg = Project3D.fovForFocalLength(compWidth, focalOf(focalRaw, compWidth));
-  const active = LENS_PRESETS.find((p) => Math.abs(p.fov - fovDeg) < 1.5);
+  const active = lensPresetForFocalPx(compWidth, focalOf(focalRaw, compWidth));
   useSectionMenuRows([{
     type: 'item',
     id: 'lens-presets',
     label: 'Lens Presets',
     submenu: LENS_PRESETS.map((p): DropdownItem => ({
       type: 'item',
-      id: `lens-preset-${p.fov}`,
+      id: `lens-preset-${p.mm}`,
       label: p.label,
       ...(p === active ? { icon: 'check' as const } : {}),
-      onSelect: () => setFocal(Math.round(Project3D.focalLengthForFov(compWidth, p.fov))),
+      onSelect: () => setFocal(Math.round(focalPxForMm(compWidth, p.mm))),
     })),
   }]);
   return null;
@@ -136,7 +123,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
   // without touching what the camera actually sees, which is exactly what a
   // real sensor swap does.
   const filmSize = typeof filmSizeRaw === 'number' && filmSizeRaw > 0 ? filmSizeRaw : DEFAULT_FILM_SIZE_MM;
-  const focalMm = filmSize / (2 * Math.tan((fovDeg * Math.PI) / 360));
+  const focalMm = mmForFov(fovDeg, filmSize);
 
   // The #1 "camera does nothing" trap: it only moves layers whose 3D switch
   // is ON. Show the live count and offer the one-click fix right here.

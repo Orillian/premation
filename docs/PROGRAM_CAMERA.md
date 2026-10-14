@@ -54,7 +54,7 @@ Work lands as local commits on `native-core` (no push until the owner says so).
 | id | task | done when |
 |---|---|---|
 | U1 | **Viewport "what a drag edits" badge.** When a camera tool is armed or Alt is held, the viewport shows a small badge: `Camera 1 · moves the shot` (plus `· keyframing` when the property is animated or Auto-Keyframe is on) in Active Camera / camera views, and `Custom View 1 · preview only` in custom/ortho views | component test for both modes + keyframing variant |
-| U2 | **One lens list.** `LENS_PRESETS` (Inspector) and `LENS_PRESETS_MM` (New Camera dialog) become one shared list in mm (15 20 24 28 35 50 80 135 200, labelled "35mm — Reportage" etc.) in `src/core/scene/` | both consumers import it; test the mm↔fov↔px round trip |
+| [x] U2 | **One lens list.** `LENS_PRESETS` (Inspector) and `LENS_PRESETS_MM` (New Camera dialog) become one shared list in mm (15 20 24 28 35 50 80 135 200, labelled "35mm — Reportage" etc.) in `src/core/scene/` | both consumers import it; test the mm↔fov↔px round trip |
 | U3 | **"Shot" header in the camera Inspector.** Top of CameraSection: a lens picker (shared list, current lens ticked, "Custom" when off-list), the camera presets as one-click buttons (Push In, Pull Out, Orbit Sweep, Drift Parallax, Dolly Zoom, Handheld), and action buttons Focus on Layer (pick, U6), Distribute in Z, Create Orbit Null, Fly to Layer (R4), Add Rig (R2). The "No 3D layers — the camera moves nothing" warning + Make All 3D moves to the TOP when it applies | native component test: rows present, preset click = one undo entry |
 | U4 | **New Camera dialog, task-led.** App `Dropdown` lens picker (not a native `<select>`), live angle-of-view readout, segmented "Aim at a target (two-node) / Free (one-node)", and a "Make all layers 3D" checkbox (on by default when the comp has no 3D layers) — applied in the same undo entry as the insert | dialog test: create with checkbox → camera + 3D switches in one entry |
 | U5 | **Depth of Field, simplified.** Rows: On/Off, Focus Distance (with pick button, U6), a "Lens model" segmented `Classic / Physical` (Physical sets F-Stop to 2.8 if 0; Classic sets 0), F-Stop (Physical only), Blur Level, then "Bokeh" twirl (Iris Blades + the iris/highlight rows). Aperture moves into an "Advanced" twirl. No stored-value change for untouched cameras | rows test; goldens unchanged |
@@ -88,3 +88,4 @@ Work lands as local commits on `native-core` (no push until the owner says so).
 ## Progress
 
 - 2026-10-14: program written.
+- 2026-10-14 U2: one lens list in `src/core/scene/lensPresets.ts` (mm, nine presets, mm↔fov↔px helpers); the Inspector ≡ menu and New Camera dialog both import it; round-trip test `lensPresets.test.ts`.

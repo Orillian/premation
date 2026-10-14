@@ -19,7 +19,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow, useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsWorld } from '@core/mirror/compFacts';
 import { nextDeviceNameIn } from '@core/mirror/deviceNames';
-import { Project3D } from '@motion/scene';
+import { DEFAULT_LENS_MM, LENS_PRESETS, focalPxForMm, fovForMm } from '@core/scene/lensPresets';
 import type { Primitive3DKind } from '@core/scene/layerBuilders';
 import { insertCameraEdit, insertLightEdit, insert3DPrimitiveEdit } from '@/engine-client/insertEdits';
 import {
@@ -31,11 +31,6 @@ import {
 import type { LightType } from '@core/scene/light';
 import styles from './SceneInsertDialogs.module.css';
 
-/** AE's camera lens presets (35mm-equivalent focal lengths, mm). The stored
- *  focal length is in comp px: fov = 2·atan(18 / mm) on a 36mm frame, then
- *  Project3D maps that field of view onto the comp width. */
-const LENS_PRESETS_MM = [15, 20, 24, 28, 35, 50, 80, 135, 200] as const;
-
 /** The next free "Camera N" / "Light N" of the active composition (the dialogs' prefill). */
 function nextDeviceName(kind: 'camera' | 'light'): string {
   return nextDeviceNameIn(documentMirror(), activeCompIdNow(), kind);
@@ -46,18 +41,14 @@ function targetComp(): string {
   return activeCompIdNow() ?? 'comp_root';
 }
 
-function fovForMm(mm: number): number {
-  return (2 * Math.atan(18 / mm) * 180) / Math.PI;
-}
-
 function CameraDialog({ close }: { close: () => void }): JSX.Element {
   const compWidth = useActiveMirrorComp()?.settings.width ?? 1920;
   const [name, setName] = useState(() => nextDeviceName('camera'));
-  const [lensMm, setLensMm] = useState<number>(50);
+  const [lensMm, setLensMm] = useState<number>(DEFAULT_LENS_MM);
   const [twoNode, setTwoNode] = useState(false);
 
   const fov = fovForMm(lensMm);
-  const focalPx = Math.round(Project3D.focalLengthForFov(compWidth, fov));
+  const focalPx = Math.round(focalPxForMm(compWidth, lensMm));
 
   const create = (): void => {
     // The camera builder (two-node POI, lens → focal length, placement) runs off-document and
@@ -85,8 +76,8 @@ function CameraDialog({ close }: { close: () => void }): JSX.Element {
               onChange={(e) => setLensMm(Number(e.target.value))}
               aria-label="Lens preset"
             >
-              {LENS_PRESETS_MM.map((mm) => (
-                <option key={mm} value={mm}>{mm}mm</option>
+              {LENS_PRESETS.map((p) => (
+                <option key={p.mm} value={p.mm}>{p.label}</option>
               ))}
             </select>
           </label>
