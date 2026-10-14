@@ -6,7 +6,7 @@
  *   [No 3D layers — the camera moves nothing yet.]  [Make All 3D]   (when it applies)
  *   Lens        50mm — Standard ▾
  *   [Push In] [Pull Out] [Orbit Sweep] [Drift Parallax] [Dolly Zoom] [Handheld]
- *   [Focus on Layer] [Distribute in Z] [Create Orbit Null]  (+ rig / fly-to verbs)
+ *   [Focus on Layer] [Distribute in Z] [Create Orbit Null] [Add Rig ▾]  (+ fly-to)
  *
  * Before this the good tools were scattered: the lens list behind the ≡ menu,
  * the camera moves in the Animation Presets panel, Create Orbit Null and
@@ -28,6 +28,7 @@ import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
 import { LENS_PRESETS, focalPxForMm, lensPresetForFocalPx, mmForFocalPx } from '@core/scene/lensPresets';
 import { createOrbitNullEdit, distributeLayersInZ } from '@core/scene/cameraCommands';
+import { CAMERA_RIG_KINDS, addCameraRigEdit } from '@core/scene/cameraRig';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { getTime } from '@stores/playbackClockStore';
 import { useUIStore } from '@stores/uiStore';
@@ -165,6 +166,24 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
         >
           Create Orbit Null
         </Button>
+        <Dropdown
+          placement="bottom-start"
+          trigger={
+            <Button size="sm" variant="secondary" title="Build a crane, dolly or orbit rig of 3D nulls above this camera — then operate it from Camera Rig">
+              Add Rig
+            </Button>
+          }
+          items={() => CAMERA_RIG_KINDS.map(({ kind, label, description }): DropdownItem => ({
+            type: 'item',
+            id: `rig-${kind}`,
+            label: <span title={description}>{label}</span>,
+            onSelect: () => {
+              void addCameraRigEdit(nodeId, kind, getTime()).then((ids) => {
+                notify(ids ? `${label} rig added — operate it from Camera Rig` : `Could not add the ${label.toLowerCase()} rig`, ids ? 'success' : 'warning');
+              });
+            },
+          }))}
+        />
         {actions}
       </div>
     </>

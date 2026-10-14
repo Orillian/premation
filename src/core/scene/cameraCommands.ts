@@ -70,6 +70,9 @@ import { useSelectionStore } from '@stores/selectionStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useUIStore } from '@stores/uiStore';
 import { useGuidesStore } from '@stores/guidesStore';
+// A cycle by design: cameraRig builds on this module's resolvers, and this
+// module's command list offers its verbs. Neither reads the other at load time.
+import { CAMERA_RIG_KINDS, addCameraRigEdit } from './cameraRig';
 
 // ── Shared readers ──────────────────────────────────────────────────────────
 
@@ -162,7 +165,7 @@ async function parentWorldOf(layer: string, seconds: number): Promise<Matrix4 | 
 }
 
 /** A camera as the renderer resolves it at a time, with what the verbs read off it. */
-interface CameraRig {
+export interface CameraRig {
   camera: Camera3D;
   /** The props the camera sets, evaluated (stored units). */
   values: CameraValues & { focusDistance?: number };
@@ -339,15 +342,22 @@ interface OrbitPlan {
  * and the POI's STORED (base) values move into the null's space, every key by
  * the same delta.
  */
-async function orbitPlan(camId: string, seconds: number): Promise<OrbitPlan | null> {
-  const rig = await resolveCommandCamera(camId, seconds);
-  if (!rig) return null;
-  const m = documentMirror();
-  const tree = m.tree(camId);
-  const { width, height } = activeCompSize();
-  const pivot = orbitPivotFor(rig, width, height);
+/** The eye and Point of Interest a camera STORES (its base values, not its keys), in its parent's space and the eye lifted to world. */
+export interface StoredCameraPoints {
+  localEye: Vec3;
+  worldEye: Vec3;
+  /** Null for a one-node camera. */
+  localPoi: Vec3 | null;
+}
+
+/**
+ * The camera's stored eye / POI — what a rigid re-base under a new parent
+ * (an orbit null, a camera rig) moves: base values and every key by the same
+ * delta, so the shot does not move on screen.
+ */
+export function storedCameraPoints(camId: string, rig: CameraRig, width: number, height: number): StoredCameraPoints {
+  const tree = documentMirror().tree(camId);
   const def = Project3D.defaultCamera(width, height);
-  // The base values the camera stores (the props, not the keys): what the re-base moves.
   const base = (track: string): number | undefined => {
     const r = trackRefIn(tree, track);
     if (!r || r.info.stored !== true) return undefined;
@@ -356,27 +366,44 @@ async function orbitPlan(camId: string, seconds: number): Promise<OrbitPlan | nu
   };
   const focal = base('focalLength') ?? def.focalLength;
   const localEye = { x: base('x') ?? def.position.x, y: base('y') ?? def.position.y, z: base('z') ?? -focal };
-  const worldEye = rig.lift(localEye);
   const px = base('poiX');
   const py = base('poiY');
   const pz = base('poiZ');
   const localPoi = px !== undefined || py !== undefined || pz !== undefined ? { x: px ?? width / 2, y: py ?? height / 2, z: pz ?? 0 } : null;
-  const newEye = { x: worldEye.x - pivot.x, y: worldEye.y - pivot.y, z: worldEye.z - pivot.z };
-  const rebases: TransformRebase[] = [
+  return { localEye, worldEye: rig.lift(localEye), localPoi };
+}
+
+/**
+ * The camera's re-base into a new parent whose world origin is `origin` (and
+ * which neither rotates nor scales at the time): eye and POI become their
+ * world points minus the origin.
+ */
+export function rebaseUnder(points: StoredCameraPoints, lift: (p: Vec3) => Vec3, origin: Vec3): TransformRebase[] {
+  const { localEye, worldEye, localPoi } = points;
+  const newEye = { x: worldEye.x - origin.x, y: worldEye.y - origin.y, z: worldEye.z - origin.z };
+  const out: TransformRebase[] = [
     { prop: 'x', value: newEye.x, delta: newEye.x - localEye.x },
     { prop: 'y', value: newEye.y, delta: newEye.y - localEye.y },
     { prop: 'z', value: newEye.z, delta: newEye.z - localEye.z },
   ];
   if (localPoi) {
-    const worldPoi = rig.lift(localPoi);
-    const newPoi = { x: worldPoi.x - pivot.x, y: worldPoi.y - pivot.y, z: worldPoi.z - pivot.z };
-    rebases.push(
+    const worldPoi = lift(localPoi);
+    const newPoi = { x: worldPoi.x - origin.x, y: worldPoi.y - origin.y, z: worldPoi.z - origin.z };
+    out.push(
       { prop: 'poiX', value: newPoi.x, delta: newPoi.x - localPoi.x },
       { prop: 'poiY', value: newPoi.y, delta: newPoi.y - localPoi.y },
       { prop: 'poiZ', value: newPoi.z, delta: newPoi.z - localPoi.z },
     );
   }
-  return { name: `${nameOf(camId)} Orbit Null`, pivot, rebases };
+  return out;
+}
+
+async function orbitPlan(camId: string, seconds: number): Promise<OrbitPlan | null> {
+  const rig = await resolveCommandCamera(camId, seconds);
+  if (!rig) return null;
+  const { width, height } = activeCompSize();
+  const pivot = orbitPivotFor(rig, width, height);
+  return { name: `${nameOf(camId)} Orbit Null`, pivot, rebases: rebaseUnder(storedCameraPoints(camId, rig, width, height), rig.lift, pivot) };
 }
 
 /** One member of a numeric value shifted by `delta` (API units). */
@@ -664,6 +691,20 @@ export function buildCameraCommands(): ReadonlyArray<Command> {
         );
       },
     },
+    // Add Camera Rig ▸ Crane / Dolly / Orbit (camera program R2, cameraRig.ts).
+    ...CAMERA_RIG_KINDS.map(({ kind, label, description }): Command => ({
+      id: asCommandId(`camera.addRig.${kind}`),
+      label: `Add Camera Rig: ${label}`,
+      description,
+      icon: 'camera',
+      enabled: () => commandCamera() !== null,
+      execute: async () => {
+        const cam = commandCamera();
+        if (!cam) return;
+        const ids = await addCameraRigEdit(cam, kind, playhead());
+        notify(ids ? `${label} rig added to ${nameOf(cam)} — operate it from Camera Rig in the Properties panel` : `Could not add the ${label.toLowerCase()} rig`, ids ? 'success' : 'warning');
+      },
+    })),
     {
       id: asCommandId('camera.setFocusToLayer'),
       label: 'Set Focus Distance to Layer',

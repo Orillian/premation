@@ -483,6 +483,15 @@ export const APP_MENU: MenuGroupModel[] = [
         children: [
           { commandId: 'camera.createOrbitNull', label: 'Create Orbit Null' },
           { commandId: 'camera.distributeZ', label: 'Distribute Layers in Z' },
+          {
+            label: 'Add Camera Rig',
+            labelKey: 'menu.sub.cameraRig',
+            children: [
+              { commandId: 'camera.addRig.crane', label: 'Crane' },
+              { commandId: 'camera.addRig.dolly', label: 'Dolly' },
+              { commandId: 'camera.addRig.orbit', label: 'Orbit' },
+            ],
+          },
           { separator: true },
           { commandId: 'camera.setFocusToLayer', label: 'Set Focus Distance to Layer' },
           { commandId: 'camera.linkFocusToLayer', label: 'Link Focus Distance to Layer' },

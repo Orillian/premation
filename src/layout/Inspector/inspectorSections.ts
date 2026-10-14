@@ -72,6 +72,7 @@ import { EffectsSection, EffectsSectionActions, hasEffectsSection } from './Effe
 import { AudioControls } from './AudioControls';
 import { PinnedSection, hasPinnedSection } from './PinnedSection';
 import { CameraSection, LensPresetsMenu } from './CameraSection';
+import { CameraRigSection, hasCameraRig } from './CameraRigSection';
 import { CompositingSection } from './CompositingSection';
 import { Ik3DSection, isIk3DTip } from './Ik3DSection';
 import { LightSection, LightPresetsMenu } from './LightSection';
@@ -406,6 +407,18 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     Component: CameraSection,
     // The lenses ("Lens Presets ▸"), one pick = one undoable edit.
     menu: LensPresetsMenu,
+  },
+  // A camera rig's sliders (camera program R2): on the rigged camera AND on
+  // each of its nulls, so the shot is operated from whichever was clicked.
+  {
+    id: 'cameraRig',
+    title: 'Camera Rig',
+    icon: 'camera',
+    category: 'layer',
+    defaultOpen: true,
+    keywords: 'camera rig crane dolly orbit truck pedestal boom swing arm pan tilt',
+    appliesTo: hasCameraRig,
+    Component: CameraRigSection,
   },
   {
     id: 'custom',
