@@ -77,6 +77,7 @@ import { TrackPointOverlay } from './TrackPointOverlay';
 import { Gizmo3dOverlay } from './Gizmo3dOverlay';
 import { AxisWidgetOverlay } from './AxisWidgetOverlay';
 import { FocusPlaneOverlay } from './FocusPlaneOverlay';
+import { CameraNavBadge } from './CameraNavBadge';
 import { SmartGuideOverlay } from './SmartGuideOverlay';
 import { GradientHandleOverlay } from './GradientHandleOverlay';
 import { useGizmo3d } from './useGizmo3d';
@@ -717,6 +718,9 @@ export function WorkspaceViewport({
           {/* Snapshot comparison (F5 / Shift+F5). Above the picture, below the
               interactive handles — a wipe must not cover the gizmo you drag. */}
           <CompareOverlay />
+          {/* What a camera drag edits here — the shot or only the preview —
+              while a camera tool is armed or Alt is held (U1). */}
+          <CameraNavBadge />
           {/* fps / frame ms / cache / resolution / backend, top-left. */}
           <ViewportHud />
           {/* What the engine cannot draw yet, named per layer. */}
