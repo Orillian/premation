@@ -322,10 +322,31 @@ export interface SceneScript extends ScriptHeader {
   beats: Beat[];
 }
 
+/**
+ * One of the design call's three candidate concepts, before it commits to one:
+ * distinct on at least two of value, medium and camera, so the choice is real.
+ */
+export interface ConceptOption {
+  name: string;
+  /** The one idea, a sentence. */
+  idea: string;
+  medium: '3d' | 'image' | 'ink' | 'ui' | 'shape' | 'type' | 'mixed';
+  value: 'light' | 'mid' | 'dark';
+  /** The palette in words (warm paper and oxblood, cobalt on pale grey…). */
+  palette: string;
+  /** What the camera does (none, a slow push through layered depth, an orbit…). */
+  camera: string;
+}
+
 /** What the DESIGN call returns: the header, the outline, and the globals. */
 export interface DesignResult extends ScriptHeader {
   globals: LayerSpec[];
   beats: BeatOutline[];
+  /** The candidate concepts it weighed (three), and which it built. */
+  concepts?: ConceptOption[];
+  chosen?: number;
+  /** Why that one, for THIS brief. */
+  why?: string;
 }
 
 // ── Compiler output ────────────────────────────────────────────────────

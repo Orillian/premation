@@ -13,6 +13,7 @@ import { McpCallHost } from '@core/ai/mcp/mcpHost';
 import { editorMcpDeps } from '@core/ai/mcp/mcpDefaults';
 import { mcpFrontDesk, setEditorProjectOps } from '@core/ai/mcp/frontDesk';
 import { useClaudeStore } from '@stores/claudeStore';
+import { aiPieceHistory } from '@stores/aiPieceHistory';
 import { mcpEditorOps, mcpEditorProjectOps } from './mcpEditorOps';
 
 export function useMcpHost(): void {
@@ -23,6 +24,7 @@ export function useMcpHost(): void {
         ...editorMcpDeps(),
         editor: mcpEditorOps,
         approve: (req) => useClaudeStore.getState().requestApproval(req),
+        pieceHistory: aiPieceHistory,
       })
       : null),
     [bridge],

@@ -12,6 +12,7 @@ import { formatRepairs } from './coerce';
 import { selectAuthorExemplar } from './exemplars';
 import { BEATS_SCHEMA, CRITIQUE_SCHEMA, DESIGN_SCHEMA, REVISE_SCHEMA, shapeHint, type CritiqueFinding } from './schema';
 import type { Beat, BeatOutline, DesignResult, Repair, ScriptHeader } from './types';
+import { describeRecent, type PieceFingerprint } from './variety';
 import { vocabularyCard } from './vocabulary';
 
 /** What the host knows about the composition and the user. */
@@ -27,6 +28,8 @@ export interface AuthorBrief {
   assets?: readonly string[];
   /** Images are attached to the design call. */
   imageCount?: number;
+  /** The last pieces made here, newest first (variety.ts): the next one should not be a twin. */
+  recent?: readonly PieceFingerprint[];
 }
 
 const SCRIPT_RULES = `HOW A SCENE SCRIPT WORKS
@@ -82,16 +85,22 @@ export function designPrompt(b: AuthorBrief): string {
     ...briefLines(b),
     ...(b.imageCount ? [`The attached image${b.imageCount > 1 ? 's are' : ' is'} REFERENCE for the look — read palette, type, density and mood from ${b.imageCount > 1 ? 'them' : 'it'}; do not describe ${b.imageCount > 1 ? 'them' : 'it'} back.`] : []),
     '',
-    'First decide the approach for THIS brief, as a designer would before touching a layer: what the one idea is, whether the piece is type-led, image-led, shape-led or 3D-led, what the camera does (if anything), what the signature motion is that a viewer would remember, and which engine capabilities the idea needs (real 3D and a camera, lights, effects with animated params, text animators, trim paths, repeaters, masks and mattes, generated imagery, your own vectors). Put that reasoning in `intent` — a few sentences, not a slogan. Do not default to centred type over a gradient with a fade: that is the result of not deciding.',
-    'Design the piece. Return ONE JSON object: the title, the intent (the approach above), the palette (named swatches you will reference as $name), the grid, the type scale, the globals (piece-wide layers such as a backdrop or a front grain pass, in composition seconds), and the beat outline (2–6 beats that tile the whole duration; each with a name, a purpose and notes that say what the hero is, how it is staged and what the motion idea is). Do NOT write beat layers yet.',
+    'Before choosing, sketch THREE different concepts for this brief in `concepts` — each a name, the one idea, its medium (3d, image, ink, ui, shape, type or mixed), its value (light, mid or dark frame), its palette in words and what its camera does. They must differ on at least two of value, medium and camera: three dark type pieces are one concept three times. Then pick the one that serves THIS brief best (`chosen`, its index) and say why in `why`. Do not reach for a dark frame by habit: a near-black background is right for night, cinema or space, not as a default.',
+    ...(b.recent?.length ? ['', 'The last pieces made in this editor were:', describeRecent(b.recent), 'Unless the brief asks for a series, the concept you choose must not repeat their value, medium and camera together.'] : []),
+    '',
+    'Then decide the approach for the chosen concept, as a designer would before touching a layer: what the one idea is, whether the piece is type-led, image-led, shape-led or 3D-led, what the camera does (if anything), what the signature motion is that a viewer would remember, and which engine capabilities the idea needs (real 3D and a camera, lights, effects with animated params, text animators, trim paths, repeaters, masks and mattes, generated imagery, your own vectors). Put that reasoning in `intent` — a few sentences, not a slogan. Do not default to centred type over a gradient with a fade: that is the result of not deciding.',
+    'Design the piece. Return ONE JSON object: the three concepts, chosen and why, the title, the intent (the approach above), the palette (named swatches you will reference as $name), the grid, the type scale, the globals (piece-wide layers such as a backdrop or a front grain pass, in composition seconds), and the beat outline (2–6 beats that tile the whole duration; each with a name, a purpose and notes that say what the hero is, how it is staged and what the motion idea is). Do NOT write beat layers yet.',
     `Shape: ${shapeHint(DESIGN_SCHEMA)}`,
   ].join('\n');
 }
 
 /** A compact restatement of the design for the later calls. */
 function designDigest(d: DesignResult | ScriptHeader & { beats: BeatOutline[] }): string {
-  const { beats, ...head } = d as DesignResult;
+  // The candidates stay with the design call; the beats need only the concept built.
+  const { beats, concepts, chosen, why, ...head } = d as DesignResult;
+  const picked = chosen !== undefined ? concepts?.[chosen] : undefined;
   return [
+    ...(picked ? [`CONCEPT: ${picked.name} — ${picked.idea} (${picked.medium}-led, ${picked.value} frame, ${picked.palette}; camera: ${picked.camera})${why ? `. Chosen because: ${why}` : ''}`] : []),
     `DESIGN: ${JSON.stringify(head)}`,
     'BEAT OUTLINE:',
     ...beats.map((b, i) => `  ${i}. ${b.name} (${b.startSec}–${b.endSec}s) — ${b.purpose}${b.notes ? ` Notes: ${b.notes}` : ''}`),

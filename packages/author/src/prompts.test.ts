@@ -69,6 +69,27 @@ describe('author prompts', () => {
     expect(p).toContain('attached image is REFERENCE');
   });
 
+  it('the design prompt asks for three concepts and names the last pieces; the beats see only the one chosen', () => {
+    const recent = [{ title: 'Night Signal', value: 'dark' as const, hue: 'blue', medium: 'type' as const, camera: 'none' as const, lit: false }];
+    const p = designPrompt({ ...BRIEF, recent });
+    expect(p).toMatch(/sketch THREE different concepts/);
+    expect(p).toContain('"Night Signal": dark frame, blue accent, type-led, camera none');
+    expect(designPrompt(BRIEF)).not.toMatch(/The last pieces made/);
+    const chosen = {
+      ...DESIGN,
+      concepts: [
+        { name: 'Paper', idea: 'ink on paper', medium: 'ink' as const, value: 'light' as const, palette: 'rice and red', camera: 'none' },
+        { name: 'Orbit', idea: 'a lit planet', medium: '3d' as const, value: 'dark' as const, palette: 'navy and gold', camera: 'slow orbit' },
+        { name: 'Swiss', idea: 'bars on red', medium: 'shape' as const, value: 'mid' as const, palette: 'red, black', camera: 'none' },
+      ],
+      chosen: 1,
+      why: 'the brief is about space',
+    };
+    const beats = beatsPrompt(BRIEF, chosen, [0]);
+    expect(beats).toContain('CONCEPT: Orbit — a lit planet (3d-led, dark frame, navy and gold; camera: slow orbit). Chosen because: the brief is about space');
+    expect(beats).not.toContain('Swiss');
+  });
+
   it('beat, critique and revise prompts carry the outline and the findings', () => {
     expect(beatsPrompt(BRIEF, DESIGN, [1], [])).toMatch(/1\. Out \(3–6s\) — q Notes: fade/);
     const c = critiquePrompt({ brief: BRIEF, design: DESIGN, evidenceNotes: ['whole piece'], mechanical: '- x is offscreen', advice: [], repairs: [{ path: 'beats[0]', message: 'dropped' }] });

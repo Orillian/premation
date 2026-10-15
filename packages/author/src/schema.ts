@@ -51,8 +51,28 @@ export const LAYER_SCHEMA: JsonSchema = {
 
 export const DESIGN_SCHEMA: JsonSchema = {
   type: 'object',
-  required: ['title', 'intent', 'durationSec', 'background', 'palette', 'grid', 'type', 'globals', 'beats'],
+  required: ['concepts', 'chosen', 'why', 'title', 'intent', 'durationSec', 'background', 'palette', 'grid', 'type', 'globals', 'beats'],
   properties: {
+    concepts: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      description: 'Three DIFFERENT concepts for this brief, before you commit: they differ on at least two of value, medium and camera.',
+      items: {
+        type: 'object',
+        required: ['name', 'idea', 'medium', 'value', 'palette', 'camera'],
+        properties: {
+          name: { type: 'string' },
+          idea: { type: 'string' },
+          medium: { type: 'string', enum: ['3d', 'image', 'ink', 'ui', 'shape', 'type', 'mixed'] },
+          value: { type: 'string', enum: ['light', 'mid', 'dark'] },
+          palette: { type: 'string' },
+          camera: { type: 'string' },
+        },
+      },
+    },
+    chosen: { type: 'integer', description: 'Index (0–2) of the concept you build.' },
+    why: { type: 'string', description: 'Why that one serves THIS brief best.' },
     title: { type: 'string' },
     intent: { type: 'string' },
     durationSec: { type: 'number' },

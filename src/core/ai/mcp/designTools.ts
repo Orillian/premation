@@ -41,6 +41,10 @@ import { buildCustomStyle, setRuntimeStyle, type EasingPersonality } from '../de
 import { formatFindings, verifyScene } from '../verify';
 import { formatStructureWarnings, sceneStructureWarnings } from '../structureAdvisors';
 import { renderCritiqueEvidence } from '../filmstrip';
+import { hueFamily, lintVariety, type DepthLayer, type DepthScene, type PieceFingerprint, type VarietyFinding } from '@motion/author';
+import type { PropertyInfo, Value } from '@motion/engine-api';
+import { engine } from '@core/engine/engineInstance';
+import { documentMirror } from '@stores/documentMirror';
 
 // ── Session look ──────────────────────────────────────────────────────
 
@@ -365,20 +369,87 @@ const REVIEW_QUESTIONS = [
   '- Hierarchy: one clear hero per beat, a type scale with real contrast (not everything 48px), tracking set for display sizes.',
   '- Composition: an intentional grid, negative space, not everything centred; nothing clipped or crowding the edges.',
   '- Colour: a deliberate palette, accent on ~10% of the frame, no pure #000/#fff, text legible on what is behind it.',
-  '- Depth and finish: background layers (gradient, texture, grain, light), shadows that agree, not flat fills on flat fills.',
+  '- Value and medium: is the value of the frame (paper, daylight, a colour field, dark) and the medium (type, image, ink, 3D, shapes) chosen from THIS brief, or a habit? Near-black is for night, cinema and space.',
+  '- Depth and finish: background layers (gradient, texture, grain, light), shadows that agree, not flat fills on flat fills. A camera needs layers in 3D at different depths; 3D geometry needs light.',
   '- Motion: in the filmstrip, spacing between cells is velocity — eases out of entrances, overlap and stagger that varies, no simultaneous pops, no linear moves, motion blur on fast moves.',
   '- Rhythm: beats that breathe, transitions that carry something across, a held final frame.',
   'Fix the biggest three problems (begin_edit / end_edit), then review again.',
 ].join('\n');
 
-export async function reviewDesign(ctx: ToolContext): Promise<{ text: string; images: { mimeType: string; data: string }[] }> {
+/** A static value as a number (0 when it is not one). */
+function numberOf(v: Value | undefined): number {
+  if (!v) return 0;
+  switch (v.kind) {
+    case 'scalar': case 'int': return v.value;
+    case 'bool': return v.value ? 1 : 0;
+    default: return 0;
+  }
+}
+
+/**
+ * The composition as variety.ts sees it: each layer's 3D switch and depth,
+ * whether lights shade it, its light type, real geometry (extrusion, a
+ * primitive) — read from the engine's property trees, which hold what the
+ * scene facade does not.
+ */
+async function liveDepthScene(ctx: ToolContext): Promise<DepthScene> {
+  const comp = await ctx.comp.get();
+  const nodes = await ctx.scene.all();
+  const m = documentMirror();
+  const layers: DepthLayer[] = [];
+  let accent: string | undefined;
+  let accentSat = -1;
+  for (const n of nodes) {
+    const res = await engine().query({ type: 'getPropertyTree', layer: n.id, path: '', depth: 3 });
+    const tree = new Map<string, PropertyInfo>(res.ok ? res.value.nodes.map((p) => [p.path, p]) : []);
+    const pos = tree.get('transform/position')?.value;
+    const z = pos?.kind === 'vec3' ? pos.value.z : numberOf(tree.get('transform/zPosition')?.value);
+    const primitive = tree.has('primitive/type');
+    const lightType = tree.get('light/lightType')?.value;
+    layers.push({
+      id: n.id,
+      kind: n.kind,
+      threeD: primitive || m.layer(n.id)?.switches.threeD === true,
+      zs: [z],
+      acceptsLights: numberOf(tree.get('material/acceptsLights')?.value) > 0,
+      solid: primitive || numberOf(tree.get('geometry/extrusionDepth')?.value) > 0,
+      ...(n.kind === 'light' ? { lightType: lightType?.kind === 'choice' || lightType?.kind === 'string' ? lightType.value : 'point' } : {}),
+    });
+    // The accent: the most saturated fill on screen.
+    if (n.fill && /^#[0-9a-f]{6}/i.test(n.fill) && hueFamily(n.fill) !== 'neutral') {
+      const v = parseInt(n.fill.slice(1, 7), 16);
+      const c = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+      const sat = Math.max(...c) - Math.min(...c);
+      if (sat > accentSat) { accentSat = sat; accent = n.fill.slice(0, 7); }
+    }
+  }
+  return { background: comp.background, ...(accent ? { accent } : {}), layers };
+}
+
+function formatVariety(findings: readonly VarietyFinding[]): string {
+  return findings.map((f) => `- [${f.rule}${f.severity === 'warn' ? ', judgement call' : ''}] ${f.message}`).join('\n');
+}
+
+export interface ReviewOptions {
+  /** The brief the client gave (get_author_guide), for DARK_DEFAULT. */
+  brief?: string;
+  /** The last pieces made, newest first, for SAME_AS_LAST. */
+  recent?: readonly PieceFingerprint[];
+}
+
+export async function reviewDesign(ctx: ToolContext, opts: ReviewOptions = {}): Promise<{ text: string; images: { mimeType: string; data: string }[] }> {
   const comp = await ctx.comp.get();
   const findings = formatFindings(await verifyScene(ctx));
   const structure = formatStructureWarnings(await sceneStructureWarnings(ctx));
+  const variety = formatVariety(lintVariety(await liveDepthScene(ctx), {
+    ...(opts.brief !== undefined ? { brief: opts.brief } : {}),
+    ...(opts.recent ? { recent: opts.recent } : {}),
+  }));
   const evidence = await renderCritiqueEvidence(ctx, comp.durationSeconds);
   const text = [
     findings ? `Mechanical checks found problems:\n${findings}` : 'Mechanical checks: nothing off-screen, invisible, past the end, or popping in together.',
     structure ? `\nStructure — fix these FIRST, they make everything else slower and wrong:\n${structure}` : '',
+    variety ? `\nDepth, light and variety:\n${variety}` : '',
     '',
     evidence.length ? `Attached: ${evidence.length === 2 ? 'a filmstrip sampled around the keyframes (cells labelled with time) and speed graphs of the hero properties' : 'a filmstrip sampled around the keyframes'}.` : 'No frames could be rendered for review.',
     '',

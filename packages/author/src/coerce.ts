@@ -29,6 +29,7 @@ import {
   LAYER_KINDS,
   type Beat,
   type BeatOutline,
+  type ConceptOption,
   type DesignResult,
   type Ease,
   type EffectSpec,
@@ -906,7 +907,11 @@ export interface Coerced<T> {
 }
 
 /** The DESIGN call's output: header, beat outline (sorted, inside the comp), globals. */
-export function coerceDesign(raw: unknown, ctx: CoerceContext): Coerced<DesignResult> {
+/**
+ * `concepts`: the design CALL is asked for three candidate concepts and is told
+ * when they are missing; a whole script (author_scene) carries them only if it likes.
+ */
+export function coerceDesign(raw: unknown, ctx: CoerceContext, opts: { concepts?: boolean } = {}): Coerced<DesignResult> {
   const r = new Repairs();
   const o = isObj(raw) ? raw : {};
   const h = header(o, ctx, r);
@@ -918,7 +923,34 @@ export function coerceDesign(raw: unknown, ctx: CoerceContext): Coerced<DesignRe
   const pool = new IdPool(beats.map((_, i) => `beat_${i}`));
   const globals = layers(o.globals, h, pool, 'globals', r);
   fitLayersToTime(globals, 0, ctx, 'globals', r);
-  return { value: { ...h, globals, beats }, repairs: r.list };
+  const c = opts.concepts === false && !Array.isArray(o.concepts) ? {} : concepts(o, r);
+  return { value: { ...h, globals, beats, ...c }, repairs: r.list };
+}
+
+const CONCEPT_MEDIA = ['3d', 'image', 'ink', 'ui', 'shape', 'type', 'mixed'] as const;
+const CONCEPT_VALUES = ['light', 'mid', 'dark'] as const;
+
+/** The design call's three candidate concepts and its pick; what is missing or alike is said, never invented. */
+function concepts(o: Obj, r: Repairs): Pick<DesignResult, 'concepts' | 'chosen' | 'why'> {
+  if (!Array.isArray(o.concepts) || o.concepts.length === 0) {
+    r.add('concepts', 'no candidate concepts — the design was not weighed against alternatives');
+    return {};
+  }
+  const list: ConceptOption[] = [];
+  o.concepts.slice(0, 3).forEach((c, i) => {
+    if (!isObj(c)) return;
+    const medium = CONCEPT_MEDIA.find((m) => m === str(c.medium));
+    const value = CONCEPT_VALUES.find((v) => v === str(c.value));
+    if (!medium || !value) r.add(`concepts[${i}]`, 'a concept needs a medium and a value (light, mid, dark)');
+    list.push({ name: str(c.name) ?? `Concept ${i + 1}`, idea: str(c.idea) ?? '', medium: medium ?? 'mixed', value: value ?? 'mid', palette: str(c.palette) ?? '', camera: str(c.camera) ?? '' });
+  });
+  if (list.length < 3) r.add('concepts', `${list.length} concept(s), not three — fewer real alternatives were weighed`);
+  const alike = list.length >= 2 && list.every((c) => c.value === list[0]!.value) && list.every((c) => c.medium === list[0]!.medium);
+  if (alike) r.add('concepts', 'the concepts share one value and one medium — they are variations, not alternatives');
+  const n = num(o.chosen);
+  const chosen = n !== undefined && Number.isInteger(n) && n >= 0 && n < list.length ? n : undefined;
+  if (chosen === undefined) r.add('chosen', 'no valid chosen concept index');
+  return { concepts: list, ...(chosen !== undefined ? { chosen } : {}), ...(str(o.why) ? { why: str(o.why)! } : {}) };
 }
 
 /**
@@ -1002,7 +1034,7 @@ function precompose(raw: unknown, ls: readonly LayerSpec[], pool: IdPool, path: 
 
 /** A whole script in one object (exemplars, tests, a single-call author). */
 export function coerceScript(raw: unknown, ctx: CoerceContext): Coerced<SceneScript> {
-  const d = coerceDesign(raw, ctx);
+  const d = coerceDesign(raw, ctx, { concepts: false });
   const o = isObj(raw) ? raw : {};
   const rawBeats = Array.isArray(o.beats) ? o.beats : [];
   const pool = new IdPool([...d.value.beats.map((_, i) => `beat_${i}`), ...d.value.globals.map((g) => g.id)]);

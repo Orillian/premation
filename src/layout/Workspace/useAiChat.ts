@@ -24,6 +24,7 @@ import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { casterPacks } from '@core/ai/CasterRunner';
 import { AUTHOR_STAGE_LABELS } from '@core/ai/author/stages';
 import { authorModeDefault } from '@core/config/flags';
+import { aiPieceHistory } from '@stores/aiPieceHistory';
 import { api, isAuthenticated, type AiConversationSummary } from '@core/api/client';
 import { aiRunsThroughBackend } from '@core/config/edition';
 import {
@@ -826,6 +827,8 @@ export function useAiChat(): UseAiChat {
         // behind it. Manual mode holds the transaction open for Apply/Discard;
         // auto mode commits when the run finishes.
         preview: isManualMode,
+        // What the AI made last, so the next piece is not its twin (variety.ts).
+        pieceHistory: aiPieceHistory,
         // Only the fields the user actually pinned. Sending `energy: undefined`
         // and sending nothing are the same to the caster, but building the
         // object conditionally keeps "unset" meaning "the model decides".

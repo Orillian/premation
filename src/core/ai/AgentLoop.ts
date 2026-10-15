@@ -13,6 +13,7 @@
 
 import { ToolRegistry, getAdapter, mutates } from '@motion/ai-tools';
 import type { AiEvent, AiImage, AiMessage, AiRequest, AiToolCall, ProviderId } from '@motion/ai-tools';
+import type { PieceHistory } from '@motion/author';
 import { buildAiTools } from './toolHandlers';
 import { createToolContext } from './toolContext';
 import { beginAiTransaction, type AiTransaction } from './aiTransaction';
@@ -288,6 +289,8 @@ export interface RunAgentOptions {
   history?: readonly AiMessage[];
   /** Reference images attached to THIS prompt (sketches, screenshots, frames). */
   images?: readonly AiImage[];
+  /** The last pieces made (@motion/author variety.ts): the author run reads and extends it. */
+  pieceHistory?: PieceHistory;
   /**
    * Manual mode: don't commit. Apply the run live so the canvas previews it, but
    * return the open transaction so the caller can Apply or Discard. Auto mode
@@ -432,6 +435,7 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
                 provider, dialect, model, prompt, signal, events,
                 ...(opts.images?.length ? { images: opts.images } : {}),
                 ...(opts.direction ? { direction: opts.direction } : {}),
+                ...(opts.pieceHistory ? { history: opts.pieceHistory } : {}),
               },
               ctx, reg, writeNames, tally,
             );

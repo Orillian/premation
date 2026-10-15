@@ -18,6 +18,7 @@ import { grid as gridFor, lintDesign, type LintLayer, type LintScene } from '@mo
 import { lintTiming } from '@motion/technique-library';
 import { lintUiMotion } from '@motion/product-motion';
 import type { CompiledScript, SceneScript } from './types';
+import { depthSceneOfScript, lintVariety, type PieceFingerprint } from './variety';
 
 export interface AdvisorFinding {
   source: 'design' | 'timing' | 'ui';
@@ -39,6 +40,12 @@ export interface AdviseOptions {
   width: number;
   height: number;
   fps: number;
+  /** The brief, for DARK_DEFAULT (variety.ts); absent = the script's own title and intent. */
+  brief?: string;
+  /** The composer's light / dark pick. */
+  mode?: 'dark' | 'light';
+  /** The last pieces made, newest first (SAME_AS_LAST). */
+  recent?: readonly PieceFingerprint[];
 }
 
 /** The accent the design linter measures emphasis against: `$accent`, else the first swatch. */
@@ -147,6 +154,12 @@ export function adviseScript(script: SceneScript, compiled: CompiledScript, o: A
     layers: lintLayers,
   };
   for (const f of lintDesign(scene)) push('design', f);
+  // Depth, light, value and sameness (variety.ts): the template tells.
+  for (const f of lintVariety(depthSceneOfScript(script), {
+    brief: o.brief ?? `${script.title}. ${script.intent}`,
+    ...(o.mode ? { mode: o.mode } : {}),
+    ...(o.recent ? { recent: o.recent } : {}),
+  })) push('design', f);
 
   // ── timing ──
   const cameraBeats = script.beats

@@ -85,3 +85,19 @@ export {
   type CritiqueInput,
 } from './prompts';
 export { AUTHOR_EXEMPLARS, selectAuthorExemplar, type AuthorExemplar } from './exemplars';
+export {
+  depthSceneOfScript,
+  describeRecent,
+  fingerprintOf,
+  fingerprintScript,
+  hueFamily,
+  lintVariety,
+  luminance,
+  valueOf,
+  type DepthLayer,
+  type DepthScene,
+  type PieceFingerprint,
+  type PieceHistory,
+  type VarietyFinding,
+  type VarietyOptions,
+} from './variety';

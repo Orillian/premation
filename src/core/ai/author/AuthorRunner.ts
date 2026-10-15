@@ -40,9 +40,11 @@ import {
   critiquePrompt,
   critiqueSystemPrompt,
   designPrompt,
+  fingerprintScript,
   rebuildCalls,
   revisePrompt,
   type AuthorBrief,
+  type PieceHistory,
   type Beat,
   type CompiledScript,
   type Critique,
@@ -120,6 +122,8 @@ export interface AuthorRunOptions {
   host?: Partial<AuthorHost>;
   /** The reference exemplar's pick (selectAuthorExemplar): Math.random unless a seeded run (the eval harness) passes its own. */
   exemplarRandom?: () => number;
+  /** The last pieces made (variety.ts): fed to the design call and the advisors; this piece is recorded on success. */
+  history?: PieceHistory;
   /** Override MAX_AUTHOR_ROUNDS (tests, the eval harness). */
   maxRounds?: number;
 }
@@ -192,6 +196,13 @@ export async function runAuthorPipeline(
     ...(briefDirection(o.direction) ? { direction: briefDirection(o.direction) } : {}),
     ...(o.assets?.length ? { assets: o.assets } : {}),
     ...(o.images?.length ? { imageCount: o.images.length } : {}),
+    ...(o.history?.recent().length ? { recent: o.history.recent() } : {}),
+  };
+  // The advisors' view of the brief: DARK_DEFAULT reads its cues, SAME_AS_LAST the recent pieces.
+  const adviseOpts = {
+    width: comp.width, height: comp.height, fps: comp.fps, brief: o.prompt,
+    ...(brief.direction?.mode ? { mode: brief.direction.mode } : {}),
+    ...(brief.recent ? { recent: brief.recent } : {}),
   };
   const system = authorSystemPrompt(brief, o.exemplarRandom);
   const result: AuthorRunResult = { ok: false, toolCallCount: 0, changes: [], problems: [], rounds: 0, revised: [] };
@@ -257,7 +268,7 @@ export async function runAuthorPipeline(
   // ── 3. Compile, advise, execute ───────────────────────────────────────
   o.events?.onActivity?.('Building the scene…');
   let compiled = compileScript(script);
-  let advice = adviseScript(script, compiled, { width: comp.width, height: comp.height, fps: comp.fps });
+  let advice = adviseScript(script, compiled, adviseOpts);
   const rejected: Repair[] = [];
   let n = 0;
   const execute = async (calls: readonly ToolCall[], beatOf: (i: number) => number): Promise<void> => {
@@ -343,12 +354,18 @@ export async function runAuthorPipeline(
     // The rebuild's first call wipes; the rest are the revised beats' ranges then the tail.
     await execute(rebuild, () => -1);
     compiled = next;
-    advice = adviseScript(script, compiled, { width: comp.width, height: comp.height, fps: comp.fps });
+    advice = adviseScript(script, compiled, adviseOpts);
     result.rounds++;
     result.revised.push(revisedNow);
   }
 
   if (critique?.overall) result.critique = critique.overall;
+  // What this piece was, for the next run (never fatal: the piece is built).
+  try {
+    o.history?.record(fingerprintScript(script));
+  } catch (err) {
+    recordAiPathFailure('author', `piece history: ${err instanceof Error ? err.message : String(err)}`);
+  }
   result.problems.push(
     ...repairs.slice(0, 12).map((r) => `[repair ${r.path}] ${r.message}`),
     ...rejected.map((r) => `[rejected ${r.path}] ${r.message}`),

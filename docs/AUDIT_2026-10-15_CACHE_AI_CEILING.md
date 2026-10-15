@@ -204,6 +204,15 @@ cheapest valid answer.
 - **Test:** `src/core/ai/threeDTools.native.test.ts`, 25 cases. Each reads the engine's property tree back.
 - **Not in P2:** comp-level SSAO and shadow-catcher settings, and glTF model import from the AI. Changes 2–7 (examples, motion register, divergence, lint rules) are P3–P5.
 
+### P4 landed (2026-10-15): changes 4–5 below
+
+- **Three concepts:** the in-app design call must sketch three concepts (idea, medium, value, palette, camera) that differ on at least two of value, medium and camera, then pick one and say why. The coercer flags concepts that are missing, too few, alike, or not chosen. The beat calls see only the chosen concept. For MCP, `get_author_guide` asks for the same step; `author_scene` scripts don't need concepts.
+- **Fingerprints:** a finished piece's value, accent hue family, medium, camera and lighting (`variety.ts`). The last eight are kept in this machine's local storage (`src/stores/aiPieceHistory.ts`). They are listed in the design prompt and the author guide, with the instruction not to repeat value, medium and camera together.
+- **Lint rules** (`lintVariety`): `CAMERA_OVER_FLAT` (error), `NO_LIGHTING_IN_3D` (warn for unlit geometry; error for lights that shade nothing), `DARK_DEFAULT` (warn, using the brief's cues and the composer's mode), `SAME_AS_LAST` (warn, against the last three pieces).
+  - They run in `adviseScript`, so the critique, the revise calls and `author_scene`'s reply see them.
+  - `review_design` runs them too, on a depth model read from the live document.
+- **Tests:** `variety.test.ts`, prompt tests, and `mcpVariety.native.test.ts`. No exemplar trips the depth, lighting or dark rules.
+
 ### P3 landed (2026-10-15): changes 2–3 below
 
 - **Exemplars:** nine of them, three dark: a lit 3D product in a pale studio, editorial serif on paper, flat Swiss red, dark 3D primitives under an orbit, image-led, ink ensō, product UI on white, dark neon type, and a dark cinematic title. The model is shown one at random among those the brief matches, weighted by keyword hits, or any when none match. `exemplarRandom` on the author run seeds it for eval.

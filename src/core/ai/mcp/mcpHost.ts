@@ -30,11 +30,14 @@ import { isMcpTool, mutates } from '@motion/ai-tools';
 import {
   adviseScript,
   authorSystemPrompt,
+  describeRecent,
+  fingerprintScript,
   coerceScript,
   compileScript,
   sameFrameKeys,
   formatAdvice,
   formatRepairs,
+  type PieceHistory,
 } from '@motion/author';
 import type { AiTransaction } from '../aiTransaction';
 import { beatNameOfRoot, FRONT_GLOBALS_ROOT_NAME } from '../structureAdvisors';
@@ -124,6 +127,8 @@ export interface McpHostDeps {
   editor?: McpEditorOps;
   /** Ask the user in Premation; resolves false on Deny or timeout. Absent = always refused. */
   approve?(request: ApprovalRequest): Promise<boolean>;
+  /** The last pieces made (@motion/author variety.ts): shown in the author guide, checked by the advisors and review_design. */
+  pieceHistory?: PieceHistory;
   setTimer?(fn: () => void, ms: number): unknown;
   clearTimer?(handle: unknown): void;
 }
@@ -202,6 +207,11 @@ export class McpCallHost {
    */
   private readonly casts = new Map<number, string[]>();
   private readonly listeners = new Set<(a: McpActivity) => void>();
+
+  /** The brief the client last gave get_author_guide (DARK_DEFAULT reads its cues). */
+  private lastBrief: string | undefined;
+  /** author_scene recorded the piece on screen: review_design compares against the ones before it. */
+  private recordedPiece = false;
 
   constructor(private readonly deps: McpHostDeps) {}
 
@@ -348,7 +358,7 @@ export class McpCallHost {
         }
         case 'review_design': {
           const ctx = this.deps.context(this.group?.tx.session ?? null, this.abort.signal, this.aliasesFor(call.clientId));
-          const r = await reviewDesign(ctx);
+          const r = await reviewDesign(ctx, { ...(this.lastBrief ? { brief: this.lastBrief } : {}), recent: (this.deps.pieceHistory?.recent() ?? []).slice(this.recordedPiece ? 1 : 0) });
           return { content: [...r.images.map((i) => ({ type: 'image' as const, data: i.data, mimeType: i.mimeType })), { type: 'text', text: r.text }] };
         }
         case 'list_sfx': return text(SFX_ITEMS.map((x) => `${x.id} — ${x.name} (${x.cat}, ${x.duration.toFixed(2)}s)`).join('\n'));
@@ -572,8 +582,13 @@ export class McpCallHost {
 
   private authorGuide(call: McpCall): McpResult {
     const brief = String(obj(call.args).brief ?? '');
+    if (brief.trim()) this.lastBrief = brief;
+    const recent = this.deps.pieceHistory?.recent() ?? [];
     return text([
       authorSystemPrompt({ prompt: brief }),
+      '',
+      'BEFORE THE SCRIPT: sketch three different concepts for this brief — each its one idea, medium (3d, image, ink, ui, shape, type), value (light, mid or dark frame), palette in words and camera — differing on at least two of value, medium and camera. Pick the one that serves the brief best and put the choice and why in the `intent` of the script. A near-black frame is right for night, cinema or space, not as a default.',
+      ...(recent.length ? ['', 'The last pieces made in this editor were:', describeRecent(recent), 'Unless the user asks for a series, this one must not repeat their value, medium and camera together.'] : []),
       '',
       'Pass the script to author_scene as `script`: the header fields, `globals`, and `beats` — each beat with its `startSec`, `endSec` and `layers` — in one object. Premation fits it to the active composition (its size, fps and length).',
       '',
@@ -591,7 +606,12 @@ export class McpCallHost {
       return { result: text(`The script has nothing to build.\n${formatRepairs(coerced.repairs)}`, true), ok: false };
     }
     const compiled = compileScript(coerced.value);
-    const advice = adviseScript(coerced.value, compiled, { width: comp.width, height: comp.height, fps: comp.fps });
+    const recentPieces = this.deps.pieceHistory?.recent() ?? [];
+    const advice = adviseScript(coerced.value, compiled, {
+      width: comp.width, height: comp.height, fps: comp.fps,
+      ...(this.lastBrief ? { brief: this.lastBrief } : {}),
+      recent: recentPieces,
+    });
     const reg = this.deps.registry();
     // A beat that is already in the composition is REPLACED, not built again
     // next to itself (M1): the owner's comp carried every beat twice with
@@ -620,6 +640,11 @@ export class McpCallHost {
     if (rejected.length) lines.push('', 'Rejected by the engine:', ...rejected.slice(0, 20));
     if (advice.findings.length) lines.push('', 'Design advisors:', formatAdvice(advice.findings));
     lines.push('', 'Look at it with render_filmstrip, then refine with the individual tools.');
+    // What this piece is, for the next one (a rebuild of the same script replaces nothing: same title, one entry).
+    const fp = fingerprintScript(coerced.value);
+    const history = this.deps.pieceHistory;
+    if (history && !(fp.title && history.recent()[0]?.title === fp.title)) history.record(fp);
+    this.recordedPiece = !!history;
     return { result: text(lines.join('\n')), ok: true };
   }
 }
