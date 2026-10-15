@@ -6,7 +6,7 @@
 
 import { AUTHOR_EXEMPLARS } from './exemplars';
 import { coerceDesign } from './coerce';
-import { describeRecent, depthSceneOfScript, fingerprintScript, hueFamily, lintVariety, valueOf, type DepthLayer, type DepthScene } from './variety';
+import { describeRecent, depthSceneOfScript, diversityOf, fingerprintScript, hueFamily, lintVariety, valueOf, type DepthLayer, type DepthScene, type PieceFingerprint } from './variety';
 import type { SceneScript } from './types';
 
 const layer = (o: Partial<DepthLayer> & { id: string; kind: string }): DepthLayer => ({
@@ -107,6 +107,41 @@ describe('the design call weighs three concepts', () => {
     expect(msgs({ concepts: [concept('type', 'dark')], chosen: 0 })).toMatch(/1 concept\(s\), not three/);
     expect(msgs({ concepts: [concept('type', 'dark'), concept('type', 'dark'), concept('type', 'dark')], chosen: 0 })).toMatch(/variations, not alternatives/);
     expect(msgs({ concepts: [concept('3d', 'light'), concept('type', 'dark'), concept('ink', 'light')], chosen: 7 })).toMatch(/no valid chosen concept/);
+  });
+});
+
+describe('diversityOf', () => {
+  const piece = (value: 'light' | 'mid' | 'dark', medium: PieceFingerprint['medium'], camera: PieceFingerprint['camera'], hue: string) =>
+    ({ title: 't', value, medium, camera, hue, lit: medium === '3d' });
+
+  it('fails a set that answers every brief with one look — what the old AI made', () => {
+    // The ten pieces the 2026-10-15 audit found: nine near-black type pieces with a flat camera or none, one light.
+    const old = [
+      ...Array.from({ length: 6 }, () => piece('dark', 'type', 'flat', 'blue')),
+      ...Array.from({ length: 3 }, () => piece('dark', 'type', 'none', 'blue')),
+      piece('light', 'ink', 'none', 'red'),
+    ];
+    const r = diversityOf(old);
+    expect(r.pass).toBe(false);
+    expect(r.reasons.join(' | ')).toMatch(/60% of the pieces share one look \(dark · type · camera flat\)/);
+    expect(r.reasons.join(' | ')).toMatch(/90% of the frames are dark/);
+    expect(r.reasons.join(' | ')).toMatch(/0% of the pieces use 3D/);
+  });
+
+  it('passes the exemplar set, and reports its spread', () => {
+    const r = diversityOf(AUTHOR_EXEMPLARS.map((e) => fingerprintScript(e.script)));
+    expect(r.reasons).toEqual([]);
+    expect(r.media).toBeGreaterThanOrEqual(5);
+    expect(r.threeDShare).toBeGreaterThan(0.2);
+  });
+
+  it('judges nothing under five pieces, and names each shortfall it finds', () => {
+    expect(diversityOf([piece('dark', 'type', 'none', 'blue')]).pass).toBe(true);
+    const same = Array.from({ length: 5 }, (_, i) => piece('light', 'shape', 'none', ['red', 'blue', 'green', 'red', 'blue'][i]!));
+    const r = diversityOf(same);
+    expect(r.reasons.join(' | ')).toMatch(/only 1 value/);
+    expect(r.reasons.join(' | ')).toMatch(/only 1 medium/);
+    expect(r.reasons.join(' | ')).toMatch(/only one camera kind/);
   });
 });
 

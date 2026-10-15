@@ -204,6 +204,18 @@ cheapest valid answer.
 - **Test:** `src/core/ai/threeDTools.native.test.ts`, 25 cases. Each reads the engine's property tree back.
 - **Not in P2:** comp-level SSAO and shadow-catcher settings, and glTF model import from the AI. Changes 2–7 (examples, motion register, divergence, lint rules) are P3–P5.
 
+### P5 landed (2026-10-15): change 7 below
+
+- `diversityOf` (`packages/author/src/variety.ts`) measures a set of piece fingerprints: distinct values, hue families, media and camera kinds, plus the 3D share, the dark share, and the most common look with its share.
+- It fails the set when:
+  - one look covers more than half the pieces;
+  - more than 60% of the frames are dark;
+  - there are fewer than 2 values, 3 hues, 3 media or 2 camera kinds;
+  - fewer than one piece in ten uses 3D.
+- Under five pieces it reports but never fails.
+- The eval harness fingerprints every run: the authored script, or the built scene for library mode. A final `diversity · <mode>` case over the ten `DIVERSITY_CASES` writes `diversity.<mode>.json` and fails on those reasons. `scripts/ai-eval/compare.mjs` prints it.
+- Checks: the audit's old ten-piece set fails (60% one look, 90% dark, 0% 3D), and the nine exemplars pass.
+
 ### P4 landed (2026-10-15): changes 4–5 below
 
 - **Three concepts:** the in-app design call must sketch three concepts (idea, medium, value, palette, camera) that differ on at least two of value, medium and camera, then pick one and say why. The coercer flags concepts that are missing, too few, alike, or not chosen. The beat calls see only the chosen concept. For MCP, `get_author_guide` asks for the same step; `author_scene` scripts don't need concepts.

@@ -10,6 +10,8 @@
  * Reads every `<case>.<mode>.json`, pairs them by case, and prints a markdown
  * table of the judges' means (craft, fit), tool calls and path failures, with
  * the mean of each column and how many cases each side won on judge score.
+ * When a folder holds `diversity.<mode>.json` (the eval's DIVERSITY case), it
+ * also prints how varied the pieces were and whether they passed.
  * Exit code 0 always: this is a report, not a gate.
  */
 
@@ -81,6 +83,31 @@ export function summarize(rows) {
   };
 }
 
+/** Each folder's diversity reports (`diversity.<mode>.json`), keyed `<dir> · <mode>`. */
+export function diversities(dirs) {
+  const out = [];
+  for (const dir of dirs) {
+    for (const f of readdirSync(dir)) {
+      const m = /^diversity\.(author|library)\.json$/.exec(f);
+      if (!m) continue;
+      try {
+        out.push({ dir, mode: m[1], ...JSON.parse(readFileSync(join(dir, f), 'utf8')) });
+      } catch {
+        // skipped, as a half-written artifact
+      }
+    }
+  }
+  return out;
+}
+
+const pct = (v) => `${Math.round((v ?? 0) * 100)}%`;
+
+function diversityLines(list) {
+  return list.map(({ dir, mode, report: r }) =>
+    `Diversity ${dir} · ${mode}: ${r.pass ? 'PASS' : 'FAIL'} — ${r.pieces} pieces, ${r.values} values, ${r.hues} hues, ${r.media} media, ${r.cameras} camera kinds, 3D ${pct(r.threeDShare)}, dark ${pct(r.darkShare)}, top look "${r.dominantLook}" ${pct(r.dominantShare)}` +
+    (r.reasons?.length ? `\n  - ${r.reasons.join('\n  - ')}` : ''));
+}
+
 function table(s, [la, lb]) {
   const lines = [
     `| case | craft ${la} | craft ${lb} | fit ${la} | fit ${lb} | calls ${la} | calls ${lb} | failures ${la} | failures ${lb} |`,
@@ -102,5 +129,8 @@ if (isMain) {
   }
   const { rows, labels } = pairs(argv);
   const s = summarize(rows);
-  console.log(argv.includes('--json') ? JSON.stringify(s, null, 2) : table(s, labels));
+  const modeAt = argv.indexOf('--mode');
+  const div = diversities(argv.filter((a, i) => !a.startsWith('--') && !(modeAt >= 0 && i === modeAt + 1)));
+  if (argv.includes('--json')) console.log(JSON.stringify({ ...s, diversity: div }, null, 2));
+  else console.log([table(s, labels), ...(div.length ? ['', ...diversityLines(div)] : [])].join('\n'));
 }

@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import type { TransportRequest } from '../../aiTransport';
 import { anthropicStream } from '../../__testHelpers__/scriptedTransport';
 import { contactSheet, decodePng, sampleTimes } from './contactSheet';
-import { EVAL_CASES } from './evalPrompts';
+import { DIVERSITY_CASES, EVAL_CASES } from './evalPrompts';
 import { coerceVerdict } from './judges';
 import { emptyFixture, recordingTransport, replayTransport, requestKey } from './recordReplay';
 
@@ -106,6 +106,15 @@ describe('eval cases', () => {
     expect(new Set(EVAL_CASES.map((c) => c.id)).size).toBe(15);
     for (const c of EVAL_CASES) expect(c.width > 0 && c.height > 0 && c.durationSec > 0 && c.fps > 0).toBe(true);
   });
+
+  it('the DIVERSITY set is ten distinct real cases, most of them not asking for dark', () => {
+    expect(DIVERSITY_CASES).toHaveLength(10);
+    expect(new Set(DIVERSITY_CASES).size).toBe(10);
+    const byId = new Map(EVAL_CASES.map((c) => [c.id, c]));
+    for (const id of DIVERSITY_CASES) expect([id, byId.has(id)]).toEqual([id, true]);
+    const asksDark = DIVERSITY_CASES.filter((id) => /moody|noir|dark|night/i.test(byId.get(id)!.prompt));
+    expect(asksDark.length).toBeLessThanOrEqual(3);
+  });
 });
 
 describe('scripts/ai-eval/compare.mjs', () => {
@@ -130,5 +139,17 @@ describe('scripts/ai-eval/compare.mjs', () => {
     const table = spawnSync(process.execPath, [script, dir], { encoding: 'utf8' }).stdout;
     expect(table).toContain('| a | 8 | 5 | 7 | 4 | 120 | 60 | 0 | 1 |');
     expect(table).toContain('Wins on mean judge score: author 1, library 1, ties 0.');
+  });
+
+  it('prints the diversity report a run left, pass or fail with its reasons', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-eval-'));
+    fs.writeFileSync(path.join(dir, 'a.author.json'), JSON.stringify(artifact('a', 'author', 8, 7, 120)));
+    const report = { pieces: 10, values: 1, hues: 2, media: 1, cameras: 1, threeDShare: 0, darkShare: 0.9, dominantLook: 'dark · type · camera flat', dominantShare: 0.9, pass: false, reasons: ['90% of the pieces share one look (dark · type · camera flat)'] };
+    fs.writeFileSync(path.join(dir, 'diversity.author.json'), JSON.stringify({ mode: 'author', report }));
+    const table = spawnSync(process.execPath, [script, dir], { encoding: 'utf8' }).stdout;
+    expect(table).toMatch(/Diversity .* · author: FAIL — 10 pieces, 1 values, 2 hues, 1 media, 1 camera kinds, 3D 0%, dark 90%, top look "dark · type · camera flat" 90%/);
+    expect(table).toContain('  - 90% of the pieces share one look (dark · type · camera flat)');
+    const json = JSON.parse(spawnSync(process.execPath, [script, dir, '--json'], { encoding: 'utf8' }).stdout) as { diversity: Array<{ mode: string; report: { pass: boolean } }> };
+    expect(json.diversity.map((d) => [d.mode, d.report.pass])).toEqual([['author', false]]);
   });
 });

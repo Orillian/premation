@@ -281,3 +281,98 @@ export function lintVariety(s: DepthScene, o: VarietyOptions = {}): VarietyFindi
   }
   return out;
 }
+
+// ── Diversity over a set of pieces (the eval harness) ───────────────────
+
+export interface DiversityReport {
+  pieces: number;
+  /** Distinct values (light / mid / dark), accent hue families, media, camera kinds. */
+  values: number;
+  hues: number;
+  media: number;
+  cameras: number;
+  /** Share of pieces that are 3D: 3D-led, or a camera moving through real depth. */
+  threeDShare: number;
+  /** Share of dark frames. */
+  darkShare: number;
+  /** The most common look (value · medium · camera) and its share. */
+  dominantLook: string;
+  dominantShare: number;
+  /** Counts per bucket, for the report. */
+  counts: { value: Record<string, number>; hue: Record<string, number>; medium: Record<string, number>; camera: Record<string, number> };
+  /** False when the set reads as one template; `reasons` says why. Always true under `minPieces`. */
+  pass: boolean;
+  reasons: string[];
+}
+
+export interface DiversityThresholds {
+  /** Fewer pieces than this are reported, never failed (default 5). */
+  minPieces: number;
+  /** Fail when one look covers more than this share (default 0.5: "most pieces share one look"). */
+  maxDominantShare: number;
+  /** Fail when more than this share is dark (default 0.6). */
+  maxDarkShare: number;
+  minValues: number;
+  minHues: number;
+  minMedia: number;
+  minCameras: number;
+  /** Fail when fewer than this share use 3D (default 0.1: at least one in ten). */
+  minThreeDShare: number;
+}
+
+export const DIVERSITY_THRESHOLDS: DiversityThresholds = {
+  minPieces: 5,
+  maxDominantShare: 0.5,
+  maxDarkShare: 0.6,
+  minValues: 2,
+  minHues: 3,
+  minMedia: 3,
+  minCameras: 2,
+  minThreeDShare: 0.1,
+};
+
+const lookOf = (f: PieceFingerprint): string => `${f.value} · ${f.medium} · camera ${f.camera}`;
+
+function tally(xs: readonly string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const x of xs) out[x] = (out[x] ?? 0) + 1;
+  return out;
+}
+
+/** How varied a set of pieces is, and whether it reads as one template. Pure. */
+export function diversityOf(pieces: readonly PieceFingerprint[], t: DiversityThresholds = DIVERSITY_THRESHOLDS): DiversityReport {
+  const n = pieces.length;
+  const counts = {
+    value: tally(pieces.map((p) => p.value)),
+    hue: tally(pieces.map((p) => p.hue)),
+    medium: tally(pieces.map((p) => p.medium)),
+    camera: tally(pieces.map((p) => p.camera)),
+  };
+  const looks = Object.entries(tally(pieces.map(lookOf))).sort((a, b) => b[1] - a[1]);
+  const share = (k: number): number => (n ? k / n : 0);
+  const r: DiversityReport = {
+    pieces: n,
+    values: Object.keys(counts.value).length,
+    hues: Object.keys(counts.hue).length,
+    media: Object.keys(counts.medium).length,
+    cameras: Object.keys(counts.camera).length,
+    threeDShare: share(pieces.filter((p) => p.medium === '3d' || p.camera === 'depth').length),
+    darkShare: share(counts.value.dark ?? 0),
+    dominantLook: looks[0]?.[0] ?? '',
+    dominantShare: share(looks[0]?.[1] ?? 0),
+    counts,
+    pass: true,
+    reasons: [],
+  };
+  if (n < t.minPieces) return r;
+  const fail = (why: string): void => { r.reasons.push(why); };
+  if (r.dominantShare > t.maxDominantShare) fail(`${Math.round(r.dominantShare * 100)}% of the pieces share one look (${r.dominantLook})`);
+  if (r.darkShare > t.maxDarkShare) fail(`${Math.round(r.darkShare * 100)}% of the frames are dark`);
+  if (r.values < t.minValues) fail(`only ${r.values} value(s) across ${n} pieces`);
+  if (r.hues < t.minHues) fail(`only ${r.hues} accent hue famil${r.hues === 1 ? 'y' : 'ies'}`);
+  if (r.media < t.minMedia) fail(`only ${r.media} medi${r.media === 1 ? 'um' : 'a'} (${Object.keys(counts.medium).join(', ')})`);
+  if (r.cameras < t.minCameras) fail(`only one camera kind (${Object.keys(counts.camera).join(', ')})`);
+  if (r.threeDShare < t.minThreeDShare) fail(`${Math.round(r.threeDShare * 100)}% of the pieces use 3D`);
+  r.pass = r.reasons.length === 0;
+  return r;
+}

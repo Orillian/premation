@@ -392,7 +392,7 @@ function numberOf(v: Value | undefined): number {
  * primitive) — read from the engine's property trees, which hold what the
  * scene facade does not.
  */
-async function liveDepthScene(ctx: ToolContext): Promise<DepthScene> {
+export async function liveDepthScene(ctx: ToolContext): Promise<DepthScene> {
   const comp = await ctx.comp.get();
   const nodes = await ctx.scene.all();
   const m = documentMirror();

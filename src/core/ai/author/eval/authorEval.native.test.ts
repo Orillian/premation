@@ -16,6 +16,12 @@
  *   AI_EVAL_JUDGE_MODEL     judge model (default: the authoring model)
  *   AI_EVAL_OUT             artifact folder (default .ai-eval/<timestamp>)
  *
+ * After the cases, one DIVERSITY case per mode fingerprints the pieces of the
+ * ten DIVERSITY_CASES (@motion/author variety.ts: value, accent hue, medium,
+ * camera, light) and FAILS when they read as one template — most pieces one
+ * look, mostly dark, too few media or hues, no 3D (`diversityOf`). It writes
+ * `diversity.<mode>.json`; it runs only when all ten cases ran in this mode.
+ *
  * Per run it writes `<case>.<mode>.json` (what was built, what failed, the
  * judges' verdicts) and `<case>.<mode>.png` (the contact sheet). Compare two
  * folders — or both modes in one — with `node scripts/ai-eval/compare.mjs`.
@@ -37,8 +43,10 @@ import { setTransportOverride } from '../../aiTransport';
 import { runCasterPipeline } from '../../CasterRunner';
 import { createToolContext } from '../../toolContext';
 import { runAuthorPipeline, type AuthorHost } from '../AuthorRunner';
+import { diversityOf, fingerprintOf, fingerprintScript, type PieceFingerprint } from '@motion/author';
+import { liveDepthScene } from '../../mcp/designTools';
 import { contactSheet, sampleTimes, type SheetFrame } from './contactSheet';
-import { EVAL_CASES, type EvalCase } from './evalPrompts';
+import { DIVERSITY_CASES, EVAL_CASES, type EvalCase } from './evalPrompts';
 import { runJudge, type JudgeVerdict } from './judges';
 import { anthropicSend, emptyFixture, recordingTransport, replayTransport, type Fixture } from './recordReplay';
 
@@ -106,6 +114,8 @@ function loadFixture(file: string): Fixture | null {
 suite('AI eval: author vs library', () => {
   jest.setTimeout(45 * 60_000);
   let h: Harness;
+  /** mode → case id → what the piece was (for the DIVERSITY case). */
+  const looks = new Map<string, Map<string, PieceFingerprint>>();
 
   beforeAll(() => {
     fs.mkdirSync(OUT, { recursive: true });
@@ -162,6 +172,11 @@ suite('AI eval: author vs library', () => {
           const r = await runCasterPipeline({ ...target, prompt: c.prompt }, ctx, reg, writeNames);
           Object.assign(run, { ok: r.ok, toolCalls: r.toolCallCount, problems: r.problems, report: { lookPackId: r.report.lookPackId, techniques: r.report.techniques, templates: r.report.templates, designScore: r.report.designScore, craftScore: r.report.craftScore } });
         }
+        // What the piece is: the authored script when there is one, else the built scene.
+        const script = (run.script ?? null) as Parameters<typeof fingerprintScript>[0] | null;
+        const fingerprint: PieceFingerprint = { ...(script ? fingerprintScript(script) : fingerprintOf(await liveDepthScene(ctx))), title: c.id };
+        if (!looks.has(mode)) looks.set(mode, new Map());
+        looks.get(mode)!.set(c.id, fingerprint);
         await tx.commit();
         await settleEdits();
         const wallMs = Date.now() - started;
@@ -192,6 +207,7 @@ suite('AI eval: author vs library', () => {
           frames: shots.length,
           sheet: shots.length >= 3 ? path.basename(sheetFile) : null,
           judges,
+          fingerprint,
           ...run,
         };
         fs.writeFileSync(path.join(OUT, `${c.id}.${mode}.json`), JSON.stringify(artifact, null, 1));
@@ -201,5 +217,21 @@ suite('AI eval: author vs library', () => {
         expect(shots.length).toBeGreaterThanOrEqual(3);
       });
     }
+  }
+
+  // Across the briefs: does the generator vary with the brief, or answer every one with one look?
+  for (const mode of MODES) {
+    it(`diversity · ${mode}`, () => {
+      const got = looks.get(mode) ?? new Map<string, PieceFingerprint>();
+      const missing = DIVERSITY_CASES.filter((id) => !got.has(id));
+      if (missing.length) {
+        console.log(`[ai eval] diversity · ${mode}: not judged — ${missing.length} of the ten cases did not run (${missing.join(', ')})`);
+        return;
+      }
+      const report = diversityOf(DIVERSITY_CASES.map((id) => got.get(id)!));
+      fs.writeFileSync(path.join(OUT, `diversity.${mode}.json`), JSON.stringify({ mode, cases: DIVERSITY_CASES, pieces: DIVERSITY_CASES.map((id) => got.get(id)), report }, null, 1));
+      console.log(`[ai eval] diversity · ${mode}: ${report.pass ? 'pass' : `FAIL — ${report.reasons.join('; ')}`}`);
+      expect(report.reasons).toEqual([]);
+    });
   }
 });

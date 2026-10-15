@@ -86,7 +86,9 @@ export {
 } from './prompts';
 export { AUTHOR_EXEMPLARS, selectAuthorExemplar, type AuthorExemplar } from './exemplars';
 export {
+  DIVERSITY_THRESHOLDS,
   depthSceneOfScript,
+  diversityOf,
   describeRecent,
   fingerprintOf,
   fingerprintScript,
@@ -95,6 +97,8 @@ export {
   luminance,
   valueOf,
   type DepthLayer,
+  type DiversityReport,
+  type DiversityThresholds,
   type DepthScene,
   type PieceFingerprint,
   type PieceHistory,

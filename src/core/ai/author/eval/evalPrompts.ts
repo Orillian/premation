@@ -35,3 +35,15 @@ export const EVAL_CASES: readonly EvalCase[] = [
   { id: 'app_ui_demo', prompt: 'Demo a to-do app: a task gets checked off, the list reorders, a celebration appears. Friendly product motion.', width: 1920, height: 1080, fps: 60, durationSec: 8 },
   { id: 'ident_bumper', prompt: 'A 3 second channel bumper for a cooking channel called Salt & Ember. Warm, appetising, quick.', width: 1920, height: 1080, fps: 30, durationSec: 3 },
 ];
+
+/**
+ * The ten briefs the DIVERSITY check runs over (@motion/author diversityOf):
+ * broad on purpose — product, type, data, social, 3D, a noir title, an
+ * abstract loop, a food ident — so a generator that answers every one with
+ * the same dark, flat, centred piece fails, and one that varies with the
+ * brief passes. Some ask for dark (a moody podcast, a noir title); most do not.
+ */
+export const DIVERSITY_CASES: readonly string[] = [
+  'saas_launch', 'logo_sting', 'kinetic_quote', 'data_story', 'event_promo_vertical',
+  'product_3d', 'title_sequence', 'square_social', 'abstract_loop', 'ident_bumper',
+];
