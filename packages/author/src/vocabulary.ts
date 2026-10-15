@@ -95,12 +95,30 @@ export const ANIMATABLE_PROPS: readonly string[] = [
   // parametric polygon / star
   'polystar.points', 'polystar.rotation', 'polystar.outerRadius', 'polystar.innerRadius',
   'polystar.outerRoundness', 'polystar.innerRoundness',
+  // 3D material + geometry (needs threeD: true)
+  'extrusionDepth', 'bevelDepth', 'ambient', 'diffuse', 'specular', 'shininess',
+  'metal', 'roughness', 'reflectionIntensity', 'reflectionSharpness', 'transparency', 'lightTransmission',
+  // light layers (poiX / poiY / poiZ above aim spot and parallel lights too)
+  'intensity', 'lightCone', 'lightConeFeather', 'shadowDarkness', 'shadowDiffusion', 'falloffDistance',
 ];
 
 export const ANIMATABLE: ReadonlySet<string> = new Set(ANIMATABLE_PROPS);
 
+/** A 3D layer's Material / Geometry Options (update_layer): they exist once the layer is 3D. */
+export const MATERIAL_FIELDS: ReadonlySet<string> = new Set([
+  'acceptsLights', 'ambient', 'diffuse', 'specular', 'shininess', 'shading', 'metal', 'roughness',
+  'reflectionIntensity', 'reflectionSharpness', 'transparency', 'ior', 'lightTransmission',
+  'castsShadows', 'acceptsShadows', 'toonBands', 'extrusionDepth', 'bevelDepth', 'bevelStyle',
+]);
+
 /** Props that need the layer's 3D switch (cameras excepted). */
-export const THREE_D_ONLY: ReadonlySet<string> = new Set(['z', 'rotationX', 'rotationY']);
+export const THREE_D_ONLY: ReadonlySet<string> = new Set(['z', 'rotationX', 'rotationY', ...MATERIAL_FIELDS]);
+
+/** create_layer fields only a `primitive` layer takes (its mesh type and size). */
+export const PRIMITIVE_ONLY: ReadonlySet<string> = new Set(['primitive', 'radius', 'depth', 'tube']);
+
+/** Light-layer tracks: keys only a light has. */
+export const LIGHT_ONLY: ReadonlySet<string> = new Set(['intensity', 'lightCone', 'lightConeFeather', 'shadowDarkness', 'shadowDiffusion', 'falloffDistance']);
 
 /** Camera-only props. */
 export const CAMERA_ONLY: ReadonlySet<string> = new Set([
@@ -207,6 +225,7 @@ export function vocabularyCard(): string {
     '  text: give `text`, then type props (fontFamily, fontSize, fontWeight, letterSpacing, lineHeight, align, fill, width for wrapping).',
     '  solid: a filled rectangle; adjustment: effects on it apply to everything below; null: an invisible parent.',
     '  camera: frames 3D layers (focalLength, poi*, orbit*, dof*); light: lights layers that have threeD and acceptsLights (set `light`).',
+    '  primitive: a real 3D mesh, already 3D, lit and shadow-casting — props.primitive sphere|cylinder|cone|torus|capsule|box|cube|plane, sized by radius / height / width / depth / tube (torus thickness). A planet, a pill, a ring, a pedestal, a product block.',
     '  gradient: full-frame gradient backdrop (set `gradient`: stops = 2–4 COLOUR STRINGS, e.g. ["#050303", "$ember"], spaced evenly (no offsets); kind linear|radial|corners (corners takes exactly 4); angle; centerX/centerY/radius in %).',
     '  image: a generated picture (set `image`: prompt = subject and look, aspect). svg: your own vector (set `svg`: markup).',
     '  video: a generated clip (set `video`: prompt = subject, light and camera with no text, durationSec, aspect, fit contain|cover, model optional) — b-roll or a background plate under authored type.',
@@ -224,6 +243,18 @@ export function vocabularyCard(): string {
     'A line that draws itself on: a shape with props fill "none", stroke, strokeWidth and a trim whose end keys 0 → 100.',
     'Brush ink (calligraphy, ink marks): a layer\'s `paint`: [{ points: [[x, y, pressure], …] in layer px from its top-left, pressure 0..1 tapers the tip down to minSize %, color, size px, hardness %, opacity %, reveal: { from, to } in the layer\'s seconds to draw it on }]. Paint on a transparent shape or solid over the scene.',
     `Text animators: basedOn characters|words|lines, shape square|rampUp|rampDown|triangle|round|smooth, numeric ${TEXT_ANIMATOR_FIELDS.join(', ')}, color; sweep {from,to,fromOffset,toOffset,ease} sweeps the range selector's offset: the selector is Start 0 / End 100, offset o covers characters [o%, o%+100%], so the default 0 → 100 uncovers the text once left to right (a reveal when the animator hides what it covers) and 100 → 0 covers it once; never −100 → 100 (covered only mid-sweep).`,
+    '',
+    'REAL 3D — the engine renders lit, shadowed, reflective 3D; a camera over flat layers is only a zoom.',
+    '  Depth: threeD: true + z on each layer (background z≈+600, subject 0, foreground −300) gives parallax to any camera move.',
+    '  Geometry (3D shape and text layers): extrusionDepth px (a slab, extruded type, a coin), bevelDepth px, bevelStyle angular|convex|concave.',
+    '  Material (3D layers; any of these turns the layer 3D): shading phong|pbr|toon; pbr reads metal % and roughness % (chrome: metal 100, roughness 10; brushed steel: 100/45; glossy plastic: 0/20; clay: 0/85);',
+    '    reflectionIntensity %, reflectionSharpness %, transparency % + ior (glass 1.52), lightTransmission %, toonBands 2..8; castsShadows off|on|only, acceptsShadows, acceptsLights.',
+    '  Light (kind light, its `light`): type point|spot|parallel|ambient|environment, color, intensity %, falloff none|smooth|inverse-square, falloffDistance,',
+    '    coneAngle °, coneFeather %, castsShadows, shadowDarkness %, shadowDiffusion px (soft), pointOfInterest {x,y,z} (where a spot/parallel aims),',
+    '    environment studio|sky|sunset + environmentVisible + environmentBlur (type environment: sky light AND reflections for metal and glass).',
+    '  A lit set: a warm key spot (castsShadows, shadowDiffusion 20–60) high and to one side, a cool low fill (ambient or point, intensity 20–40), a rim behind the subject, an environment light for reflections, and a floor (a 3D solid rotated rotationX 90 with acceptsShadows) for the shadows to land on.',
+    '  Animate it: extrusionDepth growing, metal/roughness shifting, a spot\'s lightCone opening, intensity pulses, poiX/poiY tracking the hero, shadowDiffusion softening.',
+    '',
     'Masks: rectangle|ellipse, mode add|subtract|intersect, width, height, feather, opacity 0..1, expansion, inverted.',
     'Track matte: matte { mode alpha|luma|alpha-inv|luma-inv, source: <layer id> }.',
     'Expressions: expressions { <prop>: "<single JS expression>" } — wiggle(f,a), loopOut("cycle"), time, value, Math.',

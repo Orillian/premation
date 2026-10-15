@@ -80,10 +80,12 @@ import { engineOnly } from './toolContext';
 import { activePlayheadSeconds, trackMatteCommand } from '@core/engine/trackWrites';
 import { componentOfType, fieldWrite, memberWrite } from '@core/engine/propRefs';
 import { maskToBezier } from '@core/engine/props';
+import type { Primitive3DKind } from '@core/scene/layerBuilders';
+import { isPrimitiveMeshType, type PrimitiveSpec } from '@core/scene/primitiveLayer';
 import { parseCssColor } from '@core/text/cssColor';
 import {
   addMaskFromPath, addPathOperator, addTextAnimatorGroup, applyLayerTiming, convertSvgLayer, ensurePathOperator, importAssetBytes,
-  insertAssetLayer, insertModelPlaceholder, insertSvgMarkupLayer, patchLayerStyle, patchPathOperator, patchTextAnimator,
+  insertAssetLayer, insertModelPlaceholder, insertPrimitive3DLayer, insertSvgMarkupLayer, patchLayerStyle, patchPathOperator, patchTextAnimator,
   pathOperators, textAnimators, patchMask, keyMaskPath, removeMask, type LayerTimingSeconds, type MaskPatch,
 } from './hostWrites';
 import { flicksToSeconds, secondsToFlicks, type BezierPath, type Command, type PropertyWrite } from '@motion/engine-api';
@@ -311,13 +313,58 @@ const listPresetsHandler: AiTool['handler'] = async (_input, ctx) => {
 
 // ── Write: structure ──────────────────────────────────────────────
 
+const PRIMITIVE_KINDS: readonly Primitive3DKind[] = ['sphere', 'cylinder', 'cone', 'torus', 'capsule', 'box', 'cube', 'plane'];
+
+/** create_layer { kind: 'primitive' }: the New 3D Primitive insert, sized and placed as asked. */
+async function createPrimitive(
+  i: { id?: string; name: string; x?: number; y?: number; width?: number; height?: number; fill?: string; parent?: string; primitive?: string; radius?: number; depth?: number; tube?: number },
+  ctx: Parameters<AiTool['handler']>[1],
+): Promise<Awaited<ReturnType<AiTool['handler']>>> {
+  const type = (i.primitive ?? 'sphere') as Primitive3DKind;
+  if (!PRIMITIVE_KINDS.includes(type)) return fail(`primitive must be one of ${PRIMITIVE_KINDS.join(', ')}.`);
+  const mesh = isPrimitiveMeshType(type);
+  const spec: Partial<Omit<PrimitiveSpec, 'type'>> = mesh
+    ? {
+      ...(i.radius !== undefined ? { radius: i.radius } : {}),
+      ...(i.height !== undefined ? { height: i.height } : {}),
+      ...(i.width !== undefined ? { width: i.width } : {}),
+      ...(i.depth !== undefined ? { depth: i.depth } : {}),
+      ...(i.tube !== undefined ? { tube: i.tube } : {}),
+    }
+    : {};
+  const comp = await ctx.comp.get();
+  // The mesh's size rides in the insert (the Primitive component is laid with it).
+  const id = await insertPrimitive3DLayer(ctx.engine, type, i.name, { x: i.x ?? comp.width / 2, y: i.y ?? comp.height / 2 }, spec);
+  if (!id) return fail(`Could not create a ${type} primitive — the insert produced no layer.`);
+  bindAlias(ctx, i.id, id);
+  if (!mesh) {
+    // A cube is an extruded square, a plane a flat card: the layer box is their size.
+    const side = i.width ?? (i.radius !== undefined ? i.radius * 2 : undefined);
+    if (side !== undefined) await ctx.scene.setProp(id, 'width', side);
+    const tall = i.height ?? side;
+    if (tall !== undefined) await ctx.scene.setProp(id, 'height', tall);
+    const deep = i.depth ?? side;
+    if (type === 'cube' && deep !== undefined) await ctx.scene.setProp(id, 'extrusionDepth', deep);
+  }
+  if (i.fill) await ctx.scene.setProp(id, 'fill', i.fill);
+  if (i.parent) await ctx.scene.reparent(id, i.parent);
+  const made = await ctx.scene.get(id);
+  return ok(
+    `Created 3D ${type} '${made?.name ?? i.name}' with id ${id}: 3D on, lit, casting shadows. ` +
+    'Give it a material with update_layer (shading "pbr", metal, roughness), light it with set_light, and frame it with a camera.',
+    { id, name: made?.name ?? i.name, primitive: type },
+  );
+}
+
 const createLayer: AiTool['handler'] = async (input, ctx) => {
   const i = input as {
     id?: string; kind: string; name: string; x?: number; y?: number; width?: number; height?: number;
     text?: string; shape?: string; fill?: string; parent?: string;
     points?: number; outerRadius?: number; innerRadius?: number; roundness?: number;
+    primitive?: string; radius?: number; depth?: number; tube?: number;
   } & StrokeToolInput;
   if (i.parent && !await ctx.scene.has(i.parent)) return fail((await unknownNode(ctx, i.parent)));
+  if (i.kind === 'primitive') return createPrimitive(i, ctx);
   // Accept x-only or y-only (the old code discarded BOTH if either was missing,
   // silently centring the layer). Only when NEITHER is given do we hand the
   // facade `undefined`, which fans the layer out instead of stacking at centre.
@@ -588,6 +635,20 @@ const reorderLayer: AiTool['handler'] = async (input, ctx) => {
   return ok(`Moved ${where} (layer 1 is the top of the stack, drawn over everything below it).`);
 };
 
+/** update_layer's numeric Material / Geometry Options rows: field (= the engine track), clamp range (the catalog's). */
+const MATERIAL_TRACKS = [
+  ['metal', 0, 100], ['roughness', 0, 100], ['reflectionIntensity', 0, 100], ['reflectionSharpness', 0, 100],
+  ['transparency', 0, 100], ['ior', 1, 4], ['lightTransmission', 0, 100],
+  ['extrusionDepth', 0, 1000], ['bevelDepth', 0, 200],
+] as const;
+/** AE's Casts Shadows: Off / On / Only. */
+const CASTS_SHADOWS: Readonly<Record<string, number>> = { off: 0, on: 1, only: 2 };
+/** update_layer's choice options: field → the catalog field it sets, and its choices. */
+const MATERIAL_CHOICES = [
+  ['shading', 'shadingModel', ['phong', 'pbr', 'toon']],
+  ['bevelStyle', 'bevelStyle', ['angular', 'concave', 'convex']],
+] as const satisfies ReadonlyArray<readonly [string, string, readonly string[]]>;
+
 const updateLayer: AiTool['handler'] = async (input, ctx) => {
   const i = input as Record<string, unknown> & {
     nodeId: string;
@@ -597,6 +658,20 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     diffuse?: number;
     specular?: number;
     shininess?: number;
+    shading?: string;
+    metal?: number;
+    roughness?: number;
+    reflectionIntensity?: number;
+    reflectionSharpness?: number;
+    transparency?: number;
+    ior?: number;
+    lightTransmission?: number;
+    castsShadows?: string;
+    acceptsShadows?: boolean;
+    toonBands?: number;
+    extrusionDepth?: number;
+    bevelDepth?: number;
+    bevelStyle?: string;
     name?: string;
     visible?: boolean;
     locked?: boolean;
@@ -633,17 +708,39 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
   }
   if (typeof i.specular === 'number') material.push(['specular', Math.max(0, Math.min(100, i.specular))]);
   if (typeof i.shininess === 'number') material.push(['shininess', Math.max(1, i.shininess)]);
+  // The engine's PBR / glass response and the geometry rows (Geometry
+  // Options), each clamped to its catalog range.
+  for (const [key, lo, hi] of MATERIAL_TRACKS) {
+    const v = i[key];
+    if (typeof v === 'number' && Number.isFinite(v)) material.push([key, Math.max(lo, Math.min(hi, v))]);
+  }
+  if (i.castsShadows !== undefined) {
+    const n = CASTS_SHADOWS[i.castsShadows];
+    if (n === undefined) return fail(`castsShadows must be one of ${Object.keys(CASTS_SHADOWS).join(', ')}.`);
+    material.push(['castsShadows', n]);
+  }
+  if (i.acceptsShadows !== undefined) material.push(['acceptsShadows', i.acceptsShadows ? 1 : 0]);
   if (material.length > 0 && node) {
     const at = activePlayheadSeconds();
     const writes = material.map(([track, v]) => memberWrite(i.nodeId, track, v, at));
     const cmds = writes.every((w) => w !== null)
       ? [{ type: 'setProperties', writes: writes.map((w) => ({ prop: w!.prop, value: w!.value, ...(w!.time !== undefined ? { time: w!.time } : {}) })) } as Command]
       : null;
-    await engineOnly(ctx.engine, `update_layer material options: ${i.nodeId} has no Material Options (turn threeD on first)`, cmds, () => undefined);
-    if (i.acceptsLights !== undefined) applied.push(`acceptsLights=${!!i.acceptsLights}`);
-    for (const key of ['ambient', 'diffuse', 'specular', 'shininess'] as const) {
-      if (typeof i[key] === 'number') applied.push(`${key}=${i[key]}`);
-    }
+    await engineOnly(ctx.engine, `update_layer material/geometry options: ${i.nodeId} has none (turn threeD on first; cameras, lights and nulls have no geometry)`, cmds, () => undefined);
+    for (const [track, v] of material) applied.push(`${track}=${track === 'acceptsLights' || track === 'acceptsShadows' ? v === 1 : track === 'castsShadows' ? i.castsShadows : v}`);
+  }
+  // The two choices among them: static catalog fields, the Inspector's dropdowns.
+  for (const [key, field, choices] of MATERIAL_CHOICES) {
+    const v = i[key];
+    if (v === undefined || !node) continue;
+    if (!(choices as readonly string[]).includes(v)) return fail(`${key} must be one of ${choices.join(', ')}.`);
+    if (!await ctx.scene.setProp(i.nodeId, field, v)) return fail(`update_layer ${key}: ${i.nodeId} has no ${key} (turn threeD on first).`);
+    applied.push(`${key}=${v}`);
+  }
+  if (typeof i.toonBands === 'number' && node) {
+    const bands = Math.round(Math.max(2, Math.min(8, i.toonBands)));
+    if (!await ctx.scene.setProp(i.nodeId, 'toonBands', bands)) return fail(`update_layer toonBands: ${i.nodeId} has no toonBands (turn threeD on first).`);
+    applied.push(`toonBands=${bands}`);
   }
   if (i.name !== undefined && node) {
     await ctx.engine.apply([{ type: 'renameLayer', layer: i.nodeId, name: String(i.name) } as Command]);

@@ -148,11 +148,24 @@ export interface MaskSpec {
   inverted?: boolean;
 }
 
+/** set_light, as written (see the set_light tool for each field). */
 export interface LightSpec {
+  type?: 'point' | 'spot' | 'parallel' | 'ambient' | 'environment';
   color?: Colour;
   intensity?: number;
   radius?: number;
+  falloff?: 'none' | 'smooth' | 'inverse-square';
+  falloffDistance?: number;
   coneAngle?: number;
+  coneFeather?: number;
+  castsShadows?: boolean;
+  shadowDarkness?: number;
+  shadowDiffusion?: number;
+  /** Where a spot / parallel light aims, comp px. */
+  pointOfInterest?: { x?: number; y?: number; z?: number };
+  environment?: 'studio' | 'sky' | 'sunset';
+  environmentVisible?: boolean;
+  environmentBlur?: number;
 }
 
 export interface GradientSpec {
@@ -185,10 +198,10 @@ export interface VideoSpec {
 
 export type LayerKind =
   | 'shape' | 'text' | 'solid' | 'null' | 'camera' | 'light' | 'adjustment' | 'particle'
-  | 'image' | 'svg' | 'gradient' | 'video';
+  | 'image' | 'svg' | 'gradient' | 'video' | 'primitive';
 
 export const LAYER_KINDS: readonly LayerKind[] = [
-  'shape', 'text', 'solid', 'null', 'camera', 'light', 'adjustment', 'particle', 'image', 'svg', 'gradient', 'video',
+  'shape', 'text', 'solid', 'null', 'camera', 'light', 'adjustment', 'particle', 'image', 'svg', 'gradient', 'video', 'primitive',
 ];
 
 /** What a layer is FOR. Advisory: the linters read it, the compiler does not. */

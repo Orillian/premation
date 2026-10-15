@@ -177,20 +177,45 @@ export const setLightDef: AiToolDef = {
   name: 'set_light',
   kind: 'write',
   description:
-    'Configure a light layer created with create_layer kind:"light" — colour, intensity, falloff ' +
-    'radius, and cone angle. Without this a light could be positioned but not tuned, so every ' +
-    '3D scene got the same default lighting. Keyframe "intensity" or "radius" with set_keyframes ' +
-    'for a pulse or a reveal.',
+    'Configure a light layer created with create_layer kind:"light": its type (point, spot, ' +
+    'parallel sun, ambient fill, or an environment that lights and reflects from a sky), colour, ' +
+    'intensity, falloff, cone, shadows and where it aims. Lights only shade 3D layers with ' +
+    'acceptsLights on; shadows need castsShadows here AND on the casting layers (update_layer), ' +
+    'and a surface to land on. A classic setup: a warm key spot casting soft shadows, a cool ' +
+    'low fill, a rim behind the subject, and an environment light for reflections. ' +
+    'intensity, coneAngle, coneFeather, shadowDarkness, shadowDiffusion and the point of interest ' +
+    'are keyframeable with set_keyframes (tracks intensity, lightCone, lightConeFeather, ' +
+    'shadowDarkness, shadowDiffusion, poiX, poiY, poiZ).',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
     required: ['nodeId'],
     properties: {
       nodeId: { type: 'string' },
+      type: {
+        type: 'string',
+        enum: ['point', 'spot', 'parallel', 'ambient', 'environment'],
+        description: 'point: a bulb; spot: a cone aimed at the point of interest; parallel: sun-like, aimed, no falloff; ambient: flat fill, no direction or shadows; environment: image-based light from a sky (environment) that also gives metal and glass something to reflect.',
+      },
       color: { type: 'string', description: 'Hex colour of the light.' },
       intensity: { type: 'number', minimum: 0, maximum: 400, description: 'Percent. 100 is neutral.' },
-      radius: { type: 'number', minimum: 0, description: 'Falloff radius in px.' },
-      coneAngle: { type: 'number', minimum: 0, maximum: 180, description: 'For a spot light, degrees.' },
+      radius: { type: 'number', minimum: 0, description: 'Falloff radius in px (falloff "none"/legacy).' },
+      falloff: { type: 'string', enum: ['none', 'smooth', 'inverse-square'], description: 'How light fades with distance: smooth (radius → falloffDistance), inverse-square (physical).' },
+      falloffDistance: { type: 'number', minimum: 1, description: 'Px where smooth / inverse-square falloff reaches its end.' },
+      coneAngle: { type: 'number', minimum: 1, maximum: 179, description: 'Spot cone, degrees.' },
+      coneFeather: { type: 'number', minimum: 0, maximum: 100, description: 'Percent softness of the spot\'s edge.' },
+      castsShadows: { type: 'boolean', description: 'This light casts shadows from 3D layers whose castsShadows is on.' },
+      shadowDarkness: { type: 'number', minimum: 0, maximum: 100, description: 'Percent shadow density.' },
+      shadowDiffusion: { type: 'number', minimum: 0, description: 'Px of shadow softness (0 = hard).' },
+      pointOfInterest: {
+        type: 'object',
+        additionalProperties: false,
+        description: 'Where a spot or parallel light aims, comp px (z: depth, 0 = the comp plane).',
+        properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
+      },
+      environment: { type: 'string', enum: ['studio', 'sky', 'sunset'], description: 'type "environment": the sky that lights and reflects.' },
+      environmentVisible: { type: 'boolean', description: 'type "environment": draw the sky behind the scene as its backdrop.' },
+      environmentBlur: { type: 'number', minimum: 0, maximum: 100, description: 'type "environment": percent blur of the visible sky.' },
     },
   },
 };

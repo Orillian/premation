@@ -131,7 +131,7 @@ function createCall(e: Emitter, l: LayerSpec, props: Record<string, unknown>, of
 }
 
 /** Kinds whose creation call already carried the create-time props. */
-const CREATED_WITH_PROPS = new Set(['shape', 'text', 'solid', 'null', 'camera', 'light', 'adjustment', 'particle']);
+const CREATED_WITH_PROPS = new Set(['shape', 'text', 'solid', 'null', 'camera', 'light', 'adjustment', 'particle', 'primitive']);
 
 /**
  * A sweep's default selector offsets: 0 (every character covered) → 100 (none),

@@ -393,7 +393,7 @@ export function designGuide(topic: string | undefined): string {
   const sections: Record<string, string> = {
     process: [
       'PROCESS — how a designed piece gets made here:',
-      '1. Design the piece yourself: read get_author_guide, write the concept, palette, type scale, grid and beats, then author_scene. Everything the engine can do is yours — 3D, cameras, lights, effects with animated params, text animators, trim paths, repeaters, masks, mattes, blend modes, your own vectors. Nothing is chosen for you.',
+      '1. Design the piece yourself: read get_author_guide, write the concept, palette, type scale, grid and beats, then author_scene. Everything the engine can do is yours — real 3D (primitives, extrusion and bevels, PBR metal / glass materials, spot / sun / environment lights with soft shadows), cameras, effects with animated params, text animators, trim paths, repeaters, masks, mattes, blend modes, your own vectors. Nothing is chosen for you.',
       '2. Instruments, picked up when they serve YOUR idea, never as a starting point: apply_look (a palette/type/pacing pack — list_looks), apply_technique (a hand-authored move for layers you made — list_techniques), cast_piece (a template layout + technique per beat; you must pick both per beat from its menus, menusOnly: true first). A piece that is only a look pack and a template reads as a template.',
       '3. Refine with the individual tools: set_easing, text_animator, add_effect, add_camera_move, set_light, set_keyframes.',
       '4. review_design: fix the three biggest problems, review again. Twice is normal for good work.',

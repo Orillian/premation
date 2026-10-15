@@ -143,8 +143,20 @@ export const createLayerDef: AiToolDef = {
       id: ALIAS_PROP,
       kind: {
         type: 'string',
-        enum: ['shape', 'text', 'solid', 'null', 'group', 'camera', 'light', 'adjustment', 'particle'],
+        enum: ['shape', 'text', 'solid', 'null', 'group', 'camera', 'light', 'adjustment', 'particle', 'primitive'],
       },
+      primitive: {
+        type: 'string',
+        enum: ['sphere', 'cylinder', 'cone', 'torus', 'capsule', 'box', 'cube', 'plane'],
+        description:
+          'For kind=primitive: a real 3D mesh (3D on, lit, casting shadows) — a planet, a pill, a ' +
+          'ring, a pedestal, a product block. Size it with radius (sphere, capsule, cylinder/cone ' +
+          'base, torus ring), height (cylinder, cone, capsule, box), width/depth (box) and tube ' +
+          '(torus thickness). Material via update_layer (shading "pbr", metal, roughness).',
+      },
+      radius: { type: 'number', minimum: 1, description: 'kind=primitive: radius in px (default 100).' },
+      depth: { type: 'number', minimum: 1, description: 'kind=primitive, box: depth in px.' },
+      tube: { type: 'number', minimum: 1, description: 'kind=primitive, torus: tube thickness in px.' },
       name: { type: 'string', description: 'Layer name. Make it descriptive — you will refer to it later.' },
       x: { type: 'number', description: 'Centre X in comp px. Defaults to comp centre.' },
       y: { type: 'number', description: 'Centre Y in comp px. Defaults to comp centre.' },
@@ -398,6 +410,31 @@ export const updateLayerDef: AiToolDef = {
         minimum: 1,
         description: 'Highlight tightness. Low = broad sheen, high = a small hot spot.',
       },
+      // Material Options beyond Phong (3D layers): the engine's PBR, toon and
+      // glass response, and AE's shadow switches.
+      shading: {
+        type: 'string',
+        enum: ['phong', 'pbr', 'toon'],
+        description: 'Shading model (3D). pbr: physically based — metal + roughness decide the surface (chrome, brushed steel, plastic, clay). toon: flat cel bands (toonBands). phong: the classic AE look (ambient/diffuse/specular/shininess).',
+      },
+      metal: { type: 'number', minimum: 0, maximum: 100, description: 'Percent metal (3D). 100 = the surface takes its own colour into its reflections (gold, chrome); 0 = dielectric (plastic, paint).' },
+      roughness: { type: 'number', minimum: 0, maximum: 100, description: 'Percent roughness (3D, pbr). Low = mirror-sharp highlights, high = matte. Default 50.' },
+      reflectionIntensity: { type: 'number', minimum: 0, maximum: 100, description: 'Percent of the environment and other layers reflected (3D). Needs an environment light to have something to reflect.' },
+      reflectionSharpness: { type: 'number', minimum: 0, maximum: 100, description: 'Percent: 100 = mirror reflections, 0 = blurred.' },
+      transparency: { type: 'number', minimum: 0, maximum: 100, description: 'Percent see-through (3D glass). Pair with ior for refraction.' },
+      ior: { type: 'number', minimum: 1, maximum: 4, description: 'Index of refraction for transparency: 1.0 air, 1.33 water, 1.52 glass, 2.4 diamond.' },
+      lightTransmission: { type: 'number', minimum: 0, maximum: 100, description: 'Percent of light passing through the layer (back-lit paper, leaves).' },
+      castsShadows: {
+        type: 'string',
+        enum: ['off', 'on', 'only'],
+        description: 'Whether this 3D layer casts shadows from lights that cast shadows. only = invisible, shadow only.',
+      },
+      acceptsShadows: { type: 'boolean', description: 'Whether shadows fall on this 3D layer (a floor, a wall). On by default.' },
+      toonBands: { type: 'number', minimum: 2, maximum: 8, description: 'Number of cel bands with shading "toon".' },
+      // Geometry Options (3D shape and text layers): real extruded meshes.
+      extrusionDepth: { type: 'number', minimum: 0, maximum: 1000, description: 'Px of real 3D depth (3D shape or text layer): extruded type, a logo slab, a coin. 0 = flat card.' },
+      bevelDepth: { type: 'number', minimum: 0, maximum: 200, description: 'Px of bevel on the extrusion\'s front edges (catches highlights). Needs extrusionDepth > 0.' },
+      bevelStyle: { type: 'string', enum: ['angular', 'concave', 'convex'], description: 'Bevel profile: angular (chamfer), convex (rounded), concave (cove).' },
       motionBlur: { type: 'boolean', description: 'Enable/disable motion blur for smooth movement.' },
       blendMode: {
         type: 'string',

@@ -193,6 +193,17 @@ pushes the next one away from it.
 shape- or 3D-led) but accepts any answer. With C1–C4 behind it, "type-led on dark" is always the
 cheapest valid answer.
 
+### P2 landed (2026-10-15): change 1 below
+
+- **Primitives:** `create_layer { kind: 'primitive', primitive: sphere|cylinder|cone|torus|capsule|box|cube|plane, radius, height, width, depth, tube }`.
+- **Materials and geometry (`update_layer`):** shading `phong|pbr|toon`, metal, roughness, reflection intensity and sharpness, transparency, IOR, light transmission, casts shadows `off|on|only`, accepts shadows, toon bands, extrusion depth, bevel depth and bevel style.
+- **Lights (`set_light`):** type `point|spot|parallel|ambient|environment`, falloff and falloff distance, cone and cone feather, casts shadows, shadow darkness and diffusion, point of interest, and the environment `studio|sky|sunset` with visible and blur options.
+- **Animatable:** extrusion, bevel, the material percentages, and the light's intensity, cone, cone feather, shadows and falloff distance. The point-of-interest tracks were already keyable.
+- **Author scripts:** the `primitive` kind; a light spec with every field above; material props on a 2D layer turn its 3D switch on, with a repair note; primitive-only and light-only fields are dropped on other kinds.
+- **Docs for the model:** the vocabulary card has a REAL 3D section with material recipes and a lit-set recipe, and the MCP instructions name the 3D vocabulary.
+- **Test:** `src/core/ai/threeDTools.native.test.ts`, 25 cases. Each reads the engine's property tree back.
+- **Not in P2:** comp-level SSAO and shadow-catcher settings, and glTF model import from the AI. Changes 2–7 (examples, motion register, divergence, lint rules) are P3–P5.
+
 ### Proposed changes
 
 1. **3D vocabulary (largest lever).** Widen the AI surface to what the engine renders:

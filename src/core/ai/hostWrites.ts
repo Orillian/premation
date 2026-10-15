@@ -22,7 +22,8 @@ import { memberWrites } from '@core/engine/propRefs';
 import { activePlayheadSeconds, apiColorOfHex } from '@core/engine/trackWrites';
 import type { MaskPath } from '@core/effects/mask';
 import { activeCompRootId } from '@core/scene/activeComp';
-import { buildMedia, isSvgAsset, readSvgText } from '@core/scene/layerBuilders';
+import { build3DPrimitive, buildMedia, isSvgAsset, readSvgText, type Primitive3DKind } from '@core/scene/layerBuilders';
+import type { PrimitiveSpec } from '@core/scene/primitiveLayer';
 import { documentMirror } from '@stores/documentMirror';
 import { engineIdle } from '@core/engine/engineInstance';
 import { buildSvgLayerFragment } from '@/engine-client/svgFragment';
@@ -404,6 +405,29 @@ export async function insertAssetLayer(session: AiEngineSession, asset: Imported
   const id = await pasteFragment(session, comp, b.build(), made.id);
   made.report();
   return id;
+}
+
+/**
+ * A 3D primitive (Layer ▸ New ▸ 3D Primitive, layerBuilders.ts
+ * `build3DPrimitive`): a real generated mesh — sphere, cylinder, cone, torus,
+ * capsule, box — or an extruded cube / a plane, 3D on, lit and shadow-casting.
+ * Laid into a fragment, inserted with ONE `pasteLayers`; named and placed as
+ * the model asked. Resolves to the new layer's id.
+ */
+export async function insertPrimitive3DLayer(
+  session: AiEngineSession,
+  type: Primitive3DKind,
+  name: string,
+  at: { x?: number; y?: number },
+  spec: Partial<Omit<PrimitiveSpec, 'type'>> = {},
+): Promise<string | null> {
+  const comp = activeCompRootId() as string;
+  const b = new FragmentBuilder({ idPrefix: 'ai' });
+  const id = build3DPrimitive(b, insertFrame(comp), type, spec);
+  if (name.trim()) b.row(id).name = name.trim();
+  if (at.x !== undefined) b.setProp(id, 'Transform', 'x', at.x);
+  if (at.y !== undefined) b.setProp(id, 'Transform', 'y', at.y);
+  return pasteFragment(session, comp, b.build(), id);
 }
 
 /**

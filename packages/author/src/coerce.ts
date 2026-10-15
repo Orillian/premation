@@ -15,10 +15,13 @@ import {
   ANIMATABLE,
   AUTHOR_EFFECTS,
   CAMERA_ONLY,
+  LIGHT_ONLY,
   PATH_OPS,
+  PRIMITIVE_ONLY,
   PROP_ALIASES,
   STATIC_FIELDS,
   TEXT_ANIMATOR_FIELDS,
+  THREE_D_ONLY,
   authorEffect,
 } from './vocabulary';
 import {
@@ -34,6 +37,7 @@ import {
   type Keys,
   type LayerKind,
   type LayerSpec,
+  type LightSpec,
   type MaskSpec,
   type PaintSpec,
   type PathOpSpec,
@@ -272,6 +276,10 @@ function staticProps(
       r.add(`${path}.${k}`, `'${k}' is a camera property and this is a ${kind} — dropped`);
       continue;
     }
+    if (PRIMITIVE_ONLY.has(k) && kind !== 'primitive') {
+      r.add(`${path}.${k}`, `'${k}' belongs to a primitive layer and this is a ${kind} — dropped`);
+      continue;
+    }
     if (TEXT_ONLY.has(k) && kind !== 'text') {
       r.add(`${path}.${k}`, `'${k}' sets type and this is a ${kind} layer — dropped`);
       continue;
@@ -381,6 +389,40 @@ function numberFields<T extends object>(raw: Obj, fields: readonly string[]): Pa
     if (n !== undefined) out[f] = n;
   }
   return out as Partial<T>;
+}
+
+const LIGHT_TYPES = ['point', 'spot', 'parallel', 'ambient', 'environment'] as const;
+const LIGHT_FALLOFFS = ['none', 'smooth', 'inverse-square'] as const;
+const LIGHT_SKIES = ['studio', 'sky', 'sunset'] as const;
+
+/** A light layer's `light`: set_light's fields, each checked (a bad choice is dropped and said). */
+function lightSpec(raw: Obj, color: string | undefined, path: string, r: Repairs): LightSpec {
+  const out: LightSpec = { ...numberFields<LightSpec>(raw, ['intensity', 'radius', 'falloffDistance', 'coneAngle', 'coneFeather', 'shadowDarkness', 'shadowDiffusion', 'environmentBlur']) };
+  if (color) out.color = color;
+  const pick = <T extends string>(field: string, options: readonly T[]): T | undefined => {
+    const v = str(raw[field]);
+    if (v === undefined) return undefined;
+    const hit = options.find((o) => norm(o) === norm(v));
+    if (!hit) r.add(`${path}.${field}`, `'${v}' is not one of ${options.join(', ')} — dropped`);
+    return hit;
+  };
+  const type = pick('type', LIGHT_TYPES);
+  if (type) out.type = type;
+  const falloff = pick('falloff', LIGHT_FALLOFFS);
+  if (falloff) out.falloff = falloff;
+  const environment = pick('environment', LIGHT_SKIES);
+  if (environment) out.environment = environment;
+  for (const field of ['castsShadows', 'environmentVisible'] as const) {
+    const v = raw[field];
+    if (typeof v === 'boolean') out[field] = v;
+    else if (v !== undefined) r.add(`${path}.${field}`, `'${field}' needs true or false — dropped`);
+  }
+  const poi = raw.pointOfInterest ?? raw.poi;
+  if (isObj(poi)) {
+    const at = numberFields<{ x: number; y: number; z: number }>(poi, ['x', 'y', 'z']);
+    if (Object.keys(at).length) out.pointOfInterest = at;
+  }
+  return out;
 }
 
 function textAnimators(raw: unknown, palette: Readonly<Record<string, string>>, path: string, r: Repairs): TextAnimatorSpec[] | undefined {
@@ -599,9 +641,21 @@ function layers(
         if (CAMERA_ONLY.has(prop) && kind !== 'camera') {
           r.add(`${p}.keys.${prop}`, `'${prop}' is a camera property and this is a ${kind} — dropped`);
           delete keys[prop];
+        } else if (LIGHT_ONLY.has(prop) && kind !== 'light') {
+          r.add(`${p}.keys.${prop}`, `'${prop}' is a light property and this is a ${kind} — dropped`);
+          delete keys[prop];
         }
       }
       if (Object.keys(keys).length) spec.keys = keys;
+    }
+    // z, rotationX/Y and every Material / Geometry option exist only on a 3D
+    // layer: asking for one IS asking for 3D. Said, never silent.
+    if (kind !== 'camera' && kind !== 'light' && kind !== 'primitive' && spec.props?.threeD !== false) {
+      const wants3D = [...Object.keys(spec.props ?? {}), ...Object.keys(spec.keys ?? {})].filter((k) => THREE_D_ONLY.has(k));
+      if (wants3D.length && spec.props?.threeD !== true) {
+        spec.props = { ...(spec.props ?? {}), threeD: true };
+        r.add(`${p}.props.threeD`, `${wants3D.join(', ')} need${wants3D.length === 1 ? 's' : ''} a 3D layer — threeD turned on`);
+      }
     }
     if (isObj(l0.expressions)) {
       const ex: Record<string, string> = {};
@@ -638,7 +692,7 @@ function layers(
 
     if (kind === 'light' && isObj(l0.light)) {
       const c = colour(l0.light.color, header.palette, `${p}.light.color`, r);
-      spec.light = { ...numberFields(l0.light, ['intensity', 'radius', 'coneAngle']), ...(c ? { color: c } : {}) };
+      spec.light = lightSpec(l0.light, c, `${p}.light`, r);
     }
     if (kind === 'gradient') {
       const g = isObj(l0.gradient) ? l0.gradient : undefined;

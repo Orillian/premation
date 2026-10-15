@@ -294,15 +294,26 @@ const updateEffectParamHandler: AiTool['handler'] = async (input, ctx) => {
 
 // ── set_light ─────────────────────────────────────────────────────────
 
-/** Tool field → the engine prop name `readNodeLight` actually reads. */
+/** Tool field → the light's engine track / field (Light Options), in the order they are written. */
 const LIGHT_PROP_MAP: Record<string, string> = {
+  // Choices and switches first: a type decides which of the rest apply.
+  type: 'lightType',
+  falloff: 'falloff',
+  castsShadows: 'castShadows',
+  environment: 'envPreset',
+  environmentVisible: 'envVisible',
+  environmentBlur: 'envSkyBlur',
   intensity: 'intensity',
   radius: 'radius',
+  falloffDistance: 'falloffDistance',
   coneAngle: 'lightCone',
+  coneFeather: 'lightConeFeather',
+  shadowDarkness: 'shadowDarkness',
+  shadowDiffusion: 'shadowDiffusion',
 };
 
 const setLight: AiTool['handler'] = async (input, ctx) => {
-  const i = input as { nodeId: string; color?: string; intensity?: number; radius?: number; coneAngle?: number };
+  const i = input as { nodeId: string; color?: string; pointOfInterest?: { x?: number; y?: number; z?: number } } & Record<string, unknown>;
   if (!await ctx.scene.has(i.nodeId)) return fail((await unknownNode(ctx, i.nodeId)));
   const kind = (await ctx.scene.get(i.nodeId))?.kind;
   if (kind !== 'light') {
@@ -311,16 +322,39 @@ const setLight: AiTool['handler'] = async (input, ctx) => {
     );
   }
   const applied: string[] = [];
-  if (i.color !== undefined && await ctx.scene.setProp(i.nodeId, 'fill', i.color)) applied.push(`color=${i.color}`);
-  for (const [field, prop] of Object.entries(LIGHT_PROP_MAP)) {
-    const v = (i as Record<string, unknown>)[field];
-    if (typeof v === 'number' && await ctx.scene.setProp(i.nodeId, prop, v)) applied.push(`${field}=${v}`);
+  const refused: string[] = [];
+  if (i.color !== undefined) {
+    if (await ctx.scene.setProp(i.nodeId, 'fill', i.color)) applied.push(`color=${i.color}`);
+    else refused.push('color');
   }
-  if (!applied.length) return fail('Nothing to set — pass at least one of color, intensity, radius, coneAngle.');
+  for (const [field, prop] of Object.entries(LIGHT_PROP_MAP)) {
+    const v = i[field];
+    if (v === undefined) continue;
+    if ((typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') && await ctx.scene.setProp(i.nodeId, prop, v)) {
+      applied.push(`${field}=${String(v)}`);
+    } else {
+      refused.push(field);
+    }
+  }
+  const poi = i.pointOfInterest;
+  if (poi) {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      const v = poi[axis];
+      if (typeof v !== 'number') continue;
+      const track = `poi${axis.toUpperCase()}`;
+      if (await ctx.scene.setProp(i.nodeId, track, v)) applied.push(`${track}=${v}`);
+      else refused.push(`pointOfInterest.${axis}`);
+    }
+  }
+  if (refused.length) {
+    refreshAfterLegacy(ctx);
+    return fail(`Light '${i.nodeId}' did not take: ${refused.join(', ')}${applied.length ? ` (it did take ${applied.join(', ')})` : ''}.`);
+  }
+  if (!applied.length) return fail('Nothing to set — pass at least one of type, color, intensity, falloff, coneAngle, castsShadows, pointOfInterest, environment.');
   refreshAfterLegacy(ctx);
   return ok(
     `Configured light '${i.nodeId}': ${applied.join(', ')}. ` +
-    `intensity and radius are keyframeable with set_keyframes for a pulse or a reveal.`,
+    'Keyframe intensity, lightCone, lightConeFeather, shadowDarkness, shadowDiffusion or poiX/poiY/poiZ with set_keyframes for a pulse, a reveal or a moving key.',
   );
 };
 

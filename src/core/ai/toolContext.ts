@@ -159,6 +159,25 @@ export const SAMPLED_LAYER_PROPS = [
   'letterSpacing',
 ] as const;
 
+/**
+ * A 3D layer's Material / Geometry Options that animate (the engine's
+ * `material/…` and `geometry/…` rows, which exist once the layer is 3D):
+ * an extrusion that grows, a surface that turns to chrome, glass that clears.
+ * Held to the engine like the list above (animatableCatalog.native.test.ts).
+ */
+export const MATERIAL_PROPS = [
+  'extrusionDepth', 'bevelDepth',
+  'ambient', 'diffuse', 'specular', 'shininess',
+  'metal', 'roughness', 'reflectionIntensity', 'reflectionSharpness', 'transparency', 'lightTransmission',
+] as const;
+
+/**
+ * A light layer's animatable Light Options (`light/…`): a pulse, a spot that
+ * opens, a shadow that softens, a key that tracks its subject. The point of
+ * interest shares CAMERA_PROPS' names (poiX / poiY / poiZ).
+ */
+export const LIGHT_PROPS = ['intensity', 'lightCone', 'lightConeFeather', 'shadowDarkness', 'shadowDiffusion', 'falloffDistance'] as const;
+
 const isPrefixed = (prop: string): boolean =>
   // 'pathop.' LOWERCASE: that is what `pathOpPropPath` writes and what the
   // renderer samples. This gate said `pathOp.` (camelCase) — a prefix no real
@@ -211,6 +230,8 @@ export function isAnimatableProp(prop: string): boolean {
     (CAMERA_PROPS as readonly string[]).includes(prop) ||
     (GRADIENT_FILL_PROPS as readonly string[]).includes(prop) ||
     (SAMPLED_LAYER_PROPS as readonly string[]).includes(prop) ||
+    (MATERIAL_PROPS as readonly string[]).includes(prop) ||
+    (LIGHT_PROPS as readonly string[]).includes(prop) ||
     isPrefixed(prop) ||
     isPuppetScalar(prop) ||
     isSkeletonScalar(prop) ||
