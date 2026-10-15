@@ -15,8 +15,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { handle } from '../ipcGuard';
 
+/** The packaged app's name (electron-builder `productName`). A dev run's `app.getName()` is "Electron" — every Electron app in development shares that folder. */
+const PRODUCT = 'Premation';
+
 export function defaultDiskCacheFolder(): string {
-  const name = app.getName() || 'Premation';
+  const name = app.isPackaged ? app.getName() || PRODUCT : PRODUCT;
   if (process.platform === 'win32') {
     const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
     return path.join(local, name, 'Disk Cache');
