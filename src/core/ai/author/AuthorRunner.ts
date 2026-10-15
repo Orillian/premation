@@ -118,6 +118,8 @@ export interface AuthorRunOptions {
   /** Imported assets to offer, one line each. */
   assets?: readonly string[];
   host?: Partial<AuthorHost>;
+  /** The reference exemplar's pick (selectAuthorExemplar): Math.random unless a seeded run (the eval harness) passes its own. */
+  exemplarRandom?: () => number;
   /** Override MAX_AUTHOR_ROUNDS (tests, the eval harness). */
   maxRounds?: number;
 }
@@ -191,7 +193,7 @@ export async function runAuthorPipeline(
     ...(o.assets?.length ? { assets: o.assets } : {}),
     ...(o.images?.length ? { imageCount: o.images.length } : {}),
   };
-  const system = authorSystemPrompt(brief);
+  const system = authorSystemPrompt(brief, o.exemplarRandom);
   const result: AuthorRunResult = { ok: false, toolCallCount: 0, changes: [], problems: [], rounds: 0, revised: [] };
   const repairs: Repair[] = [];
 

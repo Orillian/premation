@@ -340,7 +340,7 @@ export const addSceneDef: AiToolDef = {
       index: { type: 'integer', minimum: 1, description: '1-based scene number, in order.' },
       startSec: { type: 'number', minimum: 0, description: 'When this scene begins (comp seconds).' },
       durationSec: { type: 'number', minimum: 0.3, description: 'How long the scene lasts.' },
-      background: { type: 'string', description: 'Hex background for this scene. Make each scene CLEARLY different from the others (distinct hues or deep tints, e.g. #0a1a3a → #1a0a2e → #0a2e1f), not near-identical shades — the background change is how the viewer feels a new scene.' },
+      background: { type: 'string', description: 'Hex background for this scene. Make each scene CLEARLY different from the others (distinct values and hues the brief calls for, e.g. paper #f2ede3 → saturated #e5372a → deep #101a33; not three near-black tints), not near-identical shades — the background change is how the viewer feels a new scene.' },
       transition: { type: 'string', enum: ['dissolve', 'cut'], default: 'dissolve', description: 'How this scene enters over the previous one.' },
       style: STYLE_PROP,
       append: {

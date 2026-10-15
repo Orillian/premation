@@ -272,7 +272,7 @@ function staticProps(
       continue;
     }
     if (k !== k0) r.add(`${path}.${k0}`, `read '${k0}' as '${k}'`);
-    if (CAMERA_ONLY.has(k) && kind !== 'camera') {
+    if (cameraOnly(k, kind)) {
       r.add(`${path}.${k}`, `'${k}' is a camera property and this is a ${kind} — dropped`);
       continue;
     }
@@ -380,6 +380,12 @@ function effects(raw: unknown, palette: Readonly<Record<string, string>>, path: 
     out.push({ id, type: e.type, ...(Object.keys(params).length ? { params } : {}), ...(keys ? { keys } : {}) });
   });
   return out.length ? out : undefined;
+}
+
+/** A camera property on a layer that is not a camera — except the point of interest, which a spot or parallel light aims with too. */
+function cameraOnly(prop: string, kind: LayerKind): boolean {
+  if (!CAMERA_ONLY.has(prop) || kind === 'camera') return false;
+  return !(kind === 'light' && (prop === 'poiX' || prop === 'poiY' || prop === 'poiZ'));
 }
 
 function numberFields<T extends object>(raw: Obj, fields: readonly string[]): Partial<T> {
@@ -638,7 +644,7 @@ function layers(
     const keys = layerKeys(l0.keys, `${p}.keys`, r);
     if (keys) {
       for (const prop of Object.keys(keys)) {
-        if (CAMERA_ONLY.has(prop) && kind !== 'camera') {
+        if (cameraOnly(prop, kind)) {
           r.add(`${p}.keys.${prop}`, `'${prop}' is a camera property and this is a ${kind} — dropped`);
           delete keys[prop];
         } else if (LIGHT_ONLY.has(prop) && kind !== 'light') {

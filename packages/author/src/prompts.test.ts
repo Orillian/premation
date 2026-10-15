@@ -27,6 +27,34 @@ describe('author prompts', () => {
     expect(selectAuthorExemplar('a kinetic typography quote').id).toBe('kinetic_quote');
   });
 
+  it('picks a reference at random among the exemplars the brief matches, weighted by matches', () => {
+    // "3d product launch": product_reveal matches 3 keywords, cosmic_3d 1.
+    const seq = (xs: number[]) => { let i = 0; return () => xs[i++ % xs.length]!; };
+    expect(selectAuthorExemplar('a 3d product launch', seq([0])).id).toBe('product_reveal');
+    expect(selectAuthorExemplar('a 3d product launch', seq([0.99])).id).toBe('cosmic_3d');
+    const seen = new Set(Array.from({ length: 50 }, (_, i) => selectAuthorExemplar('a 3d product launch', () => i / 50).id));
+    expect([...seen].sort()).toEqual(['cosmic_3d', 'product_reveal']);
+    // No keyword matches: any of them.
+    const any = new Set(Array.from({ length: 90 }, (_, i) => selectAuthorExemplar('something for my grandmother', () => i / 90).id));
+    expect(any.size).toBe(AUTHOR_EXEMPLARS.length);
+  });
+
+  it('shows a varied set: at most a third dark, the dark flags true to the backgrounds, every medium present', () => {
+    const lum = (hex: string): number => {
+      const n = parseInt(hex.slice(1, 7), 16);
+      const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+      return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+    };
+    for (const e of AUTHOR_EXEMPLARS) {
+      const bg = e.script.background.startsWith('$') ? e.script.palette[e.script.background.slice(1)]! : e.script.background;
+      expect([e.id, lum(bg) < 0.15]).toEqual([e.id, e.dark]);
+    }
+    expect(AUTHOR_EXEMPLARS.filter((e) => e.dark).length * 3).toBeLessThanOrEqual(AUTHOR_EXEMPLARS.length);
+    const kinds = new Set(AUTHOR_EXEMPLARS.flatMap((e) => [...e.script.globals, ...e.script.beats.flatMap((b) => b.layers)].map((l) => l.kind)));
+    for (const k of ['primitive', 'light', 'camera', 'image', 'text', 'shape'] as const) expect([k, kinds.has(k)]).toEqual([k, true]);
+    expect(AUTHOR_EXEMPLARS.some((e) => e.script.beats.some((b) => b.layers.some((l) => l.paint?.length)))).toBe(true);
+  });
+
   it('the vocabulary card lists every author effect with its params', () => {
     const card = vocabularyCard();
     for (const e of AUTHOR_EFFECTS) expect(card).toContain(`${e.type} (${e.label})`);

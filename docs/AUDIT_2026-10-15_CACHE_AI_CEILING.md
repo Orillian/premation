@@ -204,6 +204,19 @@ cheapest valid answer.
 - **Test:** `src/core/ai/threeDTools.native.test.ts`, 25 cases. Each reads the engine's property tree back.
 - **Not in P2:** comp-level SSAO and shadow-catcher settings, and glTF model import from the AI. Changes 2–7 (examples, motion register, divergence, lint rules) are P3–P5.
 
+### P3 landed (2026-10-15): changes 2–3 below
+
+- **Exemplars:** nine of them, three dark: a lit 3D product in a pale studio, editorial serif on paper, flat Swiss red, dark 3D primitives under an orbit, image-led, ink ensō, product UI on white, dark neon type, and a dark cinematic title. The model is shown one at random among those the brief matches, weighted by keyword hits, or any when none match. `exemplarRandom` on the author run seeds it for eval.
+- **Proven on the engine:** every exemplar coerces with zero repairs, compiles to calls every schema accepts, and builds on the engine (`authorExemplars.native.test.ts`). Stills of all nine were rendered and looked at.
+- **Craft rules:** an ELEMENT register (short, precise) and a CINEMATIC register (3–10 s camera, light and plate moves, parallax, held frames). STAGING IN DEPTH is now a positive section. Two new NEVERs: a camera over flat layers, and defaulting to near-black.
+- **Fixes found while building them:**
+  - The coercer dropped `poiX/Y/Z` keys on lights.
+  - The vocabulary card said to paint on a "transparent shape", which renders nothing; paint now goes on a solid.
+  - The old exemplars named fonts that don't ship (Fraunces, Space Grotesk); the card now lists the fonts that ship.
+- **Still open:**
+  - Variable-font weight: Noto Serif and Inter at weight 800 render lighter than that weight. This is the known variable-font trap.
+  - The engine harness renders without the font manifest unless `PREMATION_FONTS_MANIFEST` is set.
+
 ### Proposed changes
 
 1. **3D vocabulary (largest lever).** Widen the AI surface to what the engine renders:

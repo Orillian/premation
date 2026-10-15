@@ -41,8 +41,8 @@ const SCRIPT_RULES = `HOW A SCENE SCRIPT WORKS
 - Reach for the whole engine where it serves the idea: real 3D (threeD + z + a camera), effects with animated params, text animators, trim paths, repeaters, masks, mattes, blend modes, generated imagery (kind image) and your own vectors (kind svg). A piece made only of fading rectangles is a failure of imagination, not a safe choice.`;
 
 /** The system prompt for the design and beat calls. */
-export function authorSystemPrompt(brief: Pick<AuthorBrief, 'prompt'>): string {
-  const ex = selectAuthorExemplar(brief.prompt);
+export function authorSystemPrompt(brief: Pick<AuthorBrief, 'prompt'>, random?: () => number): string {
+  const ex = selectAuthorExemplar(brief.prompt, random);
   return [
     'You are a senior motion designer authoring a complete motion-graphics composition for a professional animation engine. You design the whole piece — concept, palette, type, layout, staging, choreography, effects — and write it as a scene script the engine compiles exactly.',
     '',
@@ -54,7 +54,7 @@ export function authorSystemPrompt(brief: Pick<AuthorBrief, 'prompt'>): string {
     '',
     vocabularyCard(),
     '',
-    `REFERENCE SCRIPT — "${ex.script.title}". ${ex.lesson} Take its STRUCTURE and level of finish; take none of its colours, words, sizes or timings — those belonged to its brief.`,
+    `REFERENCE SCRIPT — "${ex.script.title}". ${ex.lesson} Take its STRUCTURE and level of finish; take none of its colours, words, sizes, timings, medium or light/dark choice — those belonged to its brief, and yours decides its own.`,
     JSON.stringify(ex.script),
   ].join('\n');
 }
