@@ -61,6 +61,10 @@ class FrameCache {
              wgpu::CommandEncoder& encoder);
 
   [[nodiscard]] bool contains(std::uint64_t key) const { return index_.contains(key); }
+  /// `key`'s cached texture (width × height), without marking it used; null
+  /// on a miss. Copy from it in a submission made now: an evicted texture is
+  /// reused by the next store.
+  [[nodiscard]] wgpu::Texture peek(std::uint64_t key, std::uint32_t width, std::uint32_t height) const;
   /// Drop every frame (fonts changed under the rasters, device reset, budget 0).
   void clear();
   [[nodiscard]] FrameCacheStats stats() const;

@@ -59,6 +59,21 @@ target_include_directories(engine_rg_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
 target_compile_features(engine_rg_core PUBLIC cxx_std_20)
 target_link_libraries(engine_rg_core PUBLIC engine_protocol PRIVATE motion::options)
 
+# ── disk cache (GPU-free): the preview cache's disk tier, AE's Disk Cache ────
+# render/disk_cache.hpp. zstd (the engine feature of native/vcpkg.json) packs
+# the frames; without it they are stored raw (frame_codec_raw.cpp).
+add_library(engine_disk_cache STATIC src/render/disk_cache.cpp)
+target_include_directories(engine_disk_cache PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/render)
+target_link_libraries(engine_disk_cache PUBLIC engine_core PRIVATE motion::options)
+find_package(zstd CONFIG QUIET)
+if(zstd_FOUND)
+  target_sources(engine_disk_cache PRIVATE src/render/frame_codec_zstd_ffi.cpp)
+  target_link_libraries(engine_disk_cache PRIVATE zstd::libzstd)
+else()
+  target_sources(engine_disk_cache PRIVATE src/render/frame_codec_raw.cpp)
+  message(STATUS "premation-engine: zstd not found — the disk cache stores frames uncompressed")
+endif()
+
 # ── GPU + process ───────────────────────────────────────────────────────────
 if(Dawn_FOUND)
   # The renderer WGSL + material table (shaders/wgsl/*.wgsl, shaders/materials.json)
@@ -104,7 +119,7 @@ if(Dawn_FOUND)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     ${ENGINE_WGSL_GENERATED})
-  target_link_libraries(engine_gpu PUBLIC engine_core dawn::webgpu_dawn PRIVATE motion::options)
+  target_link_libraries(engine_gpu PUBLIC engine_core engine_disk_cache dawn::webgpu_dawn PRIVATE motion::options)
 
   # D2: the render graph on Dawn — FrameScene (engine-api 96_render.eapi) in,
   # pixels out; WGSL + material table from shaders/wgsl + shaders/materials.json
@@ -256,9 +271,10 @@ if(MOTION_BUILD_TESTS)
     tests/test_stress.cpp
     tests/test_render_graph.cpp
     tests/test_fx_bounds.cpp
+    tests/test_disk_cache.cpp
   )
   # engine_scene_core: the rig overlay (B4 round 5, tests/test_b4_round5_rig.cpp) — the tests link it, engine_core does not.
-  target_link_libraries(engine_tests PRIVATE engine_core engine_rg_core engine_scene_core motion::options Catch2::Catch2WithMain)
+  target_link_libraries(engine_tests PRIVATE engine_core engine_rg_core engine_scene_core engine_disk_cache motion::options Catch2::Catch2WithMain)
   if(MSVC)
     target_compile_options(engine_tests PRIVATE /bigobj)
     target_compile_definitions(engine_tests PRIVATE _CRT_SECURE_NO_WARNINGS)  # getenv in test setup

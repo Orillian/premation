@@ -27,6 +27,12 @@ bool FrameCache::copy_to(std::uint64_t key, std::uint32_t width, std::uint32_t h
   return true;
 }
 
+wgpu::Texture FrameCache::peek(std::uint64_t key, std::uint32_t width, std::uint32_t height) const {
+  const auto it = index_.find(key);
+  if (it == index_.end() || it->second->width != width || it->second->height != height) return nullptr;
+  return it->second->texture;
+}
+
 void FrameCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t height, const wgpu::Texture& source,
                        wgpu::CommandEncoder& encoder) {
   const std::size_t need = bytes_of(width, height);

@@ -373,7 +373,7 @@ cache). What still references the TypeScript renderer, effects and evaluation
    `compareStore.captureFrom` before `release` closes it; the region callback
    maps the comp rect the same way); a cache-state query for the cache bars
    (done: `getCacheCoverage` — the bars and the Preview readout follow the
-   engine's VRAM frame cache; there is no disk tier); onion skin drawn by the
+   engine's VRAM frame cache, and since 2026-10-14 its disk tier); onion skin drawn by the
    engine (done: `setViewport.onion` — ghosts are built with a transparent
    background and composited over the live frame while playback is stopped).
    **Deleted 2026-10-02:** `packages/renderer`, `src/core/rendering`, the effect
@@ -397,9 +397,19 @@ cache). What still references the TypeScript renderer, effects and evaluation
    - *Cache Work Area Now* — **closed 2026-10-05**: `play { cacheFirst,
      cacheOnly }` stores the span frame by frame, then stops with the playhead
      back where it was (a seek or a pause ends the fill with what is stored).
-   - `setCacheBudget` is accepted and does nothing (the budget is a share of
-     the adapter's VRAM at engine start); there is no disk cache tier, so the
-     disk budget, the disk bar and Purge Disk Cache are gone or hidden.
+   - Disk cache — **closed 2026-10-14**: `setCacheBudget { diskMegabytes,
+     diskPath }` drives the engine's disk tier (`render/disk_cache.hpp`, AE's
+     Disk Cache): exact frames zstd-packed into `<folder>/premation-frames-v1`,
+     LRU at the size limit, kept across sessions (the disk key salts the
+     content key with the engine build, plugin versions and footage file
+     stamps). `diskCacheBytes`, the `disk` coverage ranges, Purge Disk Cache
+     and Preferences ▸ Media & Disk Cache are back; the timeline draws only
+     the green lane (owner, 2026-10-14). A frame goes to disk when its OWN
+     draw (render start → GPU done) costs more than a disk read — decided
+     once it has drawn, read back late from its VRAM copy when the running
+     average had predicted it fast (2026-10-15: the first frame after an
+     open and spikes were otherwise never written). `ramMegabytes` is still
+     ignored (the VRAM budget is a share of the adapter's memory).
    - Focus Mode ghosting — **closed 2026-10-05**: `setViewportFocus` carries the
      working set (`layout/focus/useEngineFocus.ts`); the frame builder draws
      every other layer of that viewport at 12 % of its opacity.

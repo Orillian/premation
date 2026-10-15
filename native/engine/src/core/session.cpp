@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -1128,9 +1129,20 @@ struct ControlVisitor {
     }
     return result_for<api::CloseViewport>();
   }
-  R operator()(const api::SetCacheBudget&) const { return result_for<api::SetCacheBudget>(); }
+  R operator()(const api::SetCacheBudget& c) const {
+    // The disk tier (AE's Media & Disk Cache): its folder and size limit; a
+    // 0 MB limit or no folder turns it off. The VRAM tier sizes itself from
+    // the adapter (render/frame_cache.hpp): `ramMegabytes` is not a setting yet.
+    constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
+    if (c.disk_megabytes > (std::numeric_limits<std::uint64_t>::max() / kMiB)) {
+      fail(ErrorCode::invalid_argument, "diskMegabytes is out of range");
+    }
+    s.sink_.configure_disk_cache(c.disk_path, c.disk_megabytes * kMiB);
+    return result_for<api::SetCacheBudget>();
+  }
   R operator()(const api::PurgeCache& c) const {
     if (c.kind == api::PurgeKind::all || c.kind == api::PurgeKind::ram) s.sink_.purge_frame_cache();
+    if (c.kind == api::PurgeKind::all || c.kind == api::PurgeKind::disk) s.sink_.purge_disk_cache();
     return result_for<api::PurgeCache>();
   }
   R operator()(const api::SetInteracting&) const { return result_for<api::SetInteracting>(); }
@@ -1238,6 +1250,11 @@ api::QueryResult Session::run_query(const api::Query& q) {
     for (const auto& [start, end] : snap.ram) {
       out.ram.push_back(api::CacheRange{doc::frames_to_flicks(static_cast<double>(start), fps),
                                         doc::frames_to_flicks(static_cast<double>(end), fps)});
+    }
+    out.disk.reserve(snap.disk.size());
+    for (const auto& [start, end] : snap.disk) {
+      out.disk.push_back(api::CacheRange{doc::frames_to_flicks(static_cast<double>(start), fps),
+                                         doc::frames_to_flicks(static_cast<double>(end), fps)});
     }
     return out;
   };
@@ -1710,7 +1727,9 @@ api::RenderStats Session::render_stats() {
   st.vram_bytes = c.vramBytes;
   st.dropped_frames = c.dropped + clockDropped_;
   // What the viewport frame cache holds (VRAM; the HUD's cache row and getCacheCoverage agree).
-  st.ram_cache_bytes = sink_.cache_coverage().ramBytes;
+  const CacheCoverageSnap cacheSnap = sink_.cache_coverage();
+  st.ram_cache_bytes = cacheSnap.ramBytes;
+  st.disk_cache_bytes = cacheSnap.diskBytes;
   if (c.slotSwitchEpochUs > 0) {
     // The same clock os::epoch_us reads (engine_core does not link os_ffi).
     const double nowUs = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(

@@ -1,6 +1,5 @@
 /**
- * CacheBars — the green (RAM) and blue (disk) preview-coverage lanes under the
- * timeline ruler.
+ * CacheBars — the green (RAM) preview-coverage line under the timeline ruler.
  *
  * ## Why this is its own component
  *
@@ -44,9 +43,9 @@ interface CacheBarsProps {
 }
 
 function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheBarsProps): JSX.Element | null {
-  const [segments, setSegments] = useState<{ ram: CacheBarSegment[]; disk: CacheBarSegment[] }>(
-    () => ({ ram: [], disk: [] }),
-  );
+  // RAM coverage only: the blue disk lane drew a second line hard against
+  // the green one, read as a stray border (owner 2026-10-14). AE shows green.
+  const [segments, setSegments] = useState<CacheBarSegment[]>(() => []);
 
   // Read the layout inputs through a ref so a zoom change does not tear down
   // and rebuild the subscription — the sampler always sees current values.
@@ -65,16 +64,9 @@ function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheB
         pps,
         off,
       );
-      const disk = layoutCacheBarSegments(
-        coalesceCacheBarRanges(coverage.disk, safeFps, pps),
-        pps,
-        off,
-      );
       // Bail on an unchanged layout: a cache tick that adds a frame too small
       // to move a pixel boundary must not re-render the lanes.
-      setSegments((prev) => (sameSegments(prev.ram, ram) && sameSegments(prev.disk, disk)
-        ? prev
-        : { ram, disk }));
+      setSegments((prev) => (sameSegments(prev, ram) ? prev : ram));
     };
 
     const flush = (): void => {
@@ -99,21 +91,12 @@ function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheB
     };
   }, [fps, pixelsPerSecond, leftOffset]);
 
-  if (segments.ram.length === 0 && segments.disk.length === 0) return null;
+  if (segments.length === 0) return null;
 
   return (
     <>
-      {/* Disk-tier lane */}
-      {segments.disk.map((seg, i) => (
-        <div
-          key={`diskcache_${i}`}
-          className={styles.diskCacheBar}
-          style={{ left: seg.left, width: seg.width, top: rulerHeight - 2 }}
-          aria-hidden
-        />
-      ))}
-      {/* RAM-preview lane — thin green indicator line directly under the progress bar ruler */}
-      {segments.ram.map((seg, i) => (
+      {/* RAM-preview lane — thin green indicator line directly under the ruler */}
+      {segments.map((seg, i) => (
         <div
           key={`cache_${i}`}
           className={styles.cacheBar}

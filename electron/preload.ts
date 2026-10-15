@@ -307,6 +307,11 @@ const bridge = {
     listDir: (dir: string) => ipcRenderer.invoke('fs:listDir', dir),
   },
 
+  /** The preview disk cache's default folder — see electron/ipc/diskCache.ts. */
+  diskCache: {
+    defaultFolder: () => ipcRenderer.invoke('cache:defaultFolder'),
+  },
+
   /** The native plugins folder — see electron/ipc/nativePlugins.ts. */
   plugins: {
     openNativeFolder: () => ipcRenderer.invoke('plugins:openNativeFolder'),

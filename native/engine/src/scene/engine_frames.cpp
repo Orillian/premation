@@ -16,6 +16,7 @@
 #include <optional>
 #include <set>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -54,6 +55,8 @@
 #include "text_query.hpp"
 #include "time_conv.hpp"
 #include "timeline.hpp"
+#include "media_paths.hpp"
+#include "os_ffi.hpp"
 
 #if defined(PREMATION_HAVE_MEDIA)
 #include "media_system.hpp"
@@ -976,6 +979,34 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     return h.value();
   }
 
+  /// The disk cache's key (render/disk_cache.hpp): content_key, salted with
+  /// what a file on disk outlives and content_key cannot see — this engine
+  /// build (the executable's stamp), the loaded plugins (id, version, status,
+  /// bundle stamp), and every footage file's size and modification time. A
+  /// rebuilt engine, an updated plugin or a replaced file is a miss, never a
+  /// stale frame. Stamps are re-read at most every kStampRecheck.
+  [[nodiscard]] std::optional<std::uint64_t> disk_key(const BuiltFrame& frame, std::uint32_t width,
+                                                      std::uint32_t height) override {
+    const std::optional<std::uint64_t> key = content_key(frame, width, height);
+    if (!key) return std::nullopt;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - saltAt_ >= kStampRecheck || salt_ == 0) {
+      saltAt_ = now;
+      salt_ = disk_salt();
+    }
+    if (frame.mediaBase != stampBase_) {
+      stampBase_ = frame.mediaBase;
+      stamps_.clear();
+    }
+    ContentHash h;
+    h.u64(*key);
+    h.u64(salt_);
+    for (const TextureRequest& t : frame.textures) {
+      if (!t.src.empty()) h.u64(footage_stamp(t.src, now));
+    }
+    return h.value();
+  }
+
   [[nodiscard]] bool last_frame_exact() const override { return exact_; }
 
  private:
@@ -1050,6 +1081,64 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
 
 
   explicit ViewportDrawer(const EngineFramesOptions& o) : fonts_(o) {}
+
+  /// A file's size and modification time as one word (0 = missing / unreadable).
+  static std::uint64_t file_stamp(const std::filesystem::path& p) {
+    std::error_code ec;
+    std::uintmax_t size = std::filesystem::file_size(p, ec);
+    if (ec) size = 0;  // a folder (a plugin bundle) has no size; its time still says it changed
+    const auto time = std::filesystem::last_write_time(p, ec);
+    if (ec) return 0;
+    ContentHash h;
+    h.u64(static_cast<std::uint64_t>(size));
+    h.u64(static_cast<std::uint64_t>(time.time_since_epoch().count()));
+    return h.value();
+  }
+
+  /// Everything a cached frame on disk depends on besides the frame itself.
+  static std::uint64_t disk_salt() {
+    ContentHash h;
+    // Bump to orphan every disk cache file (a change in what frames look like
+    // that the executable's stamp would not show, e.g. a shared GPU driver path).
+    h.str("premation-disk-cache-1");
+    h.u64(file_stamp(utf8_path(os::executable_path())));
+    if (const plugins::PluginHost* host = plugins::PluginHost::active()) {
+      for (const plugins::PluginRecord& p : host->plugins()) {
+        h.str(p.id);
+        h.str(p.version);
+        h.u64(static_cast<std::uint64_t>(p.status));
+        h.u64(file_stamp(utf8_path(p.path)));
+      }
+    }
+    return h.value();
+  }
+
+  /// A footage source's file stamp, cached for kStampRecheck (sources that are not files: 0).
+  std::uint64_t footage_stamp(const std::string& src, std::chrono::steady_clock::time_point now) {
+    if (const auto it = stamps_.find(src); it != stamps_.end() && now - it->second.second < kStampRecheck) {
+      return it->second.first;
+    }
+    std::uint64_t stamp = 0;
+    if (!src.starts_with("data:") && !src.starts_with("blob:") && !src.starts_with("http:") &&
+        !src.starts_with("https:")) {
+      // gltf:<file>#… — a model's images: the model file's stamp.
+      std::string file = file_url_path(src.starts_with("gltf:") ? std::string_view(src).substr(5) : std::string_view(src));
+      if (const std::size_t hash = src.starts_with("gltf:") ? file.find('#') : std::string::npos; hash != std::string::npos) {
+        file.resize(hash);
+      }
+      std::filesystem::path p = utf8_path(file);
+      if (p.is_relative() && !stampBase_.empty()) p = utf8_path(stampBase_) / p;
+      stamp = file_stamp(p);
+    }
+    stamps_.insert_or_assign(src, std::make_pair(stamp, now));
+    return stamp;
+  }
+
+  static constexpr std::chrono::seconds kStampRecheck{2};
+  std::uint64_t salt_ = 0;
+  std::chrono::steady_clock::time_point saltAt_{};
+  std::string stampBase_;
+  std::unordered_map<std::string, std::pair<std::uint64_t, std::chrono::steady_clock::time_point>> stamps_;
   mutable wire::Writer keyWriter_;
   bool exact_ = false;
   bool exactMedia_ = false;  // RenderJob::exactMedia of the job being drawn

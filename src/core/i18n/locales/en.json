@@ -608,6 +608,7 @@
   "menu.preview.cacheWorkArea": "Cache Work Area Now",
   "menu.preview.purgeRam": "Purge RAM Preview",
   "menu.preview.purgeDisk": "Purge Disk Cache",
+  "menu.preview.purgeAllCaches": "Purge All Memory & Disk Cache",
   "menu.theme.switch": "Switch Theme",
   "menu.window": "Window",
   "menu.view.commandPalette": "Command Palette",

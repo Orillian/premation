@@ -849,6 +849,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'preview.cacheWorkArea', label: 'Cache Work Area Now' },
           { commandId: 'preview.purgeRam', label: 'Purge RAM Preview' },
           { commandId: 'preview.purgeDisk', label: 'Purge Disk Cache' },
+          { commandId: 'preview.purgeAllCaches', label: 'Purge All Memory & Disk Cache' },
         ],
       },
       { separator: true },

@@ -222,6 +222,18 @@ export interface Preferences {
    */
   autosaveLocation: string | null;
   /**
+   * Preferences ▸ Media & Disk Cache (AE): the engine keeps rendered preview
+   * frames in a folder on disk as well as in video memory, so a frame video
+   * memory dropped — or one drawn in an earlier session — is a file read
+   * instead of a render. Sent to the engine as `setCacheBudget`
+   * (layout/Timeline/diskCacheSync.ts).
+   */
+  diskCacheEnabled: boolean;
+  /** The disk cache's folder; `null` = the app's default (main's `cache:defaultFolder`). */
+  diskCacheFolder: string | null;
+  /** The disk cache's size limit, GB (least recently used frames go first). */
+  diskCacheMaxGb: number;
+  /**
    * Project paths pinned to the top of the start screen. A preference rather
    * than MRU data: the MRU is written by every open and save, and a pin has to
    * survive that churn.
@@ -311,6 +323,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autosaveIntervalSec: 60,
   autosaveKeep: 5,
   autosaveLocation: null,
+  diskCacheEnabled: true,
+  diskCacheFolder: null,
+  diskCacheMaxGb: 20,
   pinnedProjects: [],
   timelineFollowMode: 'page',
   timelineSnap: true,

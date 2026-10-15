@@ -26,6 +26,7 @@ import { shouldStartBackend, startBackend, stopBackend } from './backend';
 import { registerIndexIpc } from './localIndexDb';
 import { registerThumbIpc } from './thumbCache';
 import { registerRevealIpc } from './ipc/reveal';
+import { registerDiskCacheIpc } from './ipc/diskCache';
 import {
   pluginLaunchArgs,
   forgetEntitlement,
@@ -1253,6 +1254,8 @@ app.whenReady().then(() => {
   registerIndexIpc(app);
   registerThumbIpc(app);
   registerRevealIpc();
+  // Preferences ▸ Media & Disk Cache: the default folder for the engine's disk cache.
+  registerDiskCacheIpc();
   // The Plugins page / panel's "Open plugins folder" — the same folder the
   // engine loads native SDK plugins from (nativePluginDir below).
   registerNativePluginIpc({ dir: nativePluginDirPath });

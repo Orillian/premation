@@ -225,6 +225,196 @@ void RenderThread::purge_frame_cache() {
   });
 }
 
+void RenderThread::configure_disk_cache(const std::string& folder, std::uint64_t bytes) {
+  disk_->configure(folder, bytes);
+  post([this] {
+    diskReadMeasured_ = false;  // another folder (another drive): its own read cost
+    publish_coverage();
+  });
+}
+
+void RenderThread::purge_disk_cache() {
+  disk_->purge();
+  post([this] {
+    diskCovered_.clear();
+    publish_coverage();
+  });
+}
+
+void RenderThread::note_disk_coverage(std::int64_t frame, std::uint64_t diskKey) {
+  auto& keys = diskCovered_[frame];
+  if (std::ranges::find(keys, diskKey) != keys.end()) return;
+  keys.push_back(diskKey);
+  constexpr std::size_t kKeysPerFrame = 4;  // as note_coverage
+  if (keys.size() > kKeysPerFrame) keys.erase(keys.begin());
+}
+
+bool RenderThread::load_from_disk(std::uint64_t diskKey, std::uint32_t width, std::uint32_t height,
+                                  const wgpu::Texture& target) {
+  const auto t0 = SteadyClock::now();
+  if (!disk_->load(diskKey, width, height, diskScratch_)) return false;
+  wgpu::TexelCopyTextureInfo dst{};
+  dst.texture = target;
+  wgpu::TexelCopyBufferLayout layout{};
+  layout.bytesPerRow = width * 4U;
+  layout.rowsPerImage = height;
+  const wgpu::Extent3D size{width, height, 1};
+  gpu_->queue.WriteTexture(&dst, diskScratch_.data(), diskScratch_.size(), &layout, &size);
+  const double ms = std::chrono::duration<double, std::milli>(SteadyClock::now() - t0).count();
+  const double mp = static_cast<double>(width) * static_cast<double>(height) / 1e6;
+  if (mp > 0) {
+    // The first hit replaces the guess outright; later ones (or hits after the cache's seed) average in.
+    diskReadMsPerMp_ = diskReadMeasured_ ? 0.8 * diskReadMsPerMp_ + 0.2 * (ms / mp) : ms / mp;
+    diskReadMeasured_ = true;
+  }
+  return true;
+}
+
+bool RenderThread::worth_disk(double drawMs, std::uint32_t width, std::uint32_t height) const {
+  if (options_.diskCacheMinDrawMs >= 0) return drawMs >= options_.diskCacheMinDrawMs;
+  // A frame is worth a file when its draw costs half again what reading it
+  // back would, plus a millisecond: a cheap comp never pays for disk at all.
+  const double mp = static_cast<double>(width) * static_cast<double>(height) / 1e6;
+  return drawMs > 1.5 * diskReadMsPerMp_ * mp + 1.0;
+}
+
+wgpu::Buffer RenderThread::encode_disk_readback(const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
+                                                std::uint32_t& row) {
+  row = (width * 4U + 255U) & ~255U;  // WebGPU's copy rule
+  const std::uint64_t size = std::uint64_t{row} * height;
+  if (diskSpareSize_ != size) {
+    diskSpare_.clear();
+    diskSpareSize_ = size;
+  }
+  wgpu::Buffer buffer;
+  if (!diskSpare_.empty()) {
+    buffer = std::move(diskSpare_.back());
+    diskSpare_.pop_back();
+  } else {
+    wgpu::BufferDescriptor bd{};
+    bd.size = size;
+    bd.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+    buffer = gpu_->device.CreateBuffer(&bd);
+  }
+  wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
+  wgpu::TexelCopyTextureInfo src{};
+  src.texture = source;
+  wgpu::TexelCopyBufferInfo dst{};
+  dst.buffer = buffer;
+  dst.layout.bytesPerRow = row;
+  dst.layout.rowsPerImage = height;
+  const wgpu::Extent3D extent{width, height, 1};
+  enc.CopyTextureToBuffer(&src, &dst, &extent);
+  const wgpu::CommandBuffer cb = enc.Finish();
+  gpu_->queue.Submit(1, &cb);
+  return buffer;
+}
+
+void RenderThread::queue_disk_readback(InFlight& f, std::uint64_t diskKey, const wgpu::Texture& source,
+                                       std::uint32_t width, std::uint32_t height) {
+  f.diskBuffer = encode_disk_readback(source, width, height, f.diskRow);
+  f.diskKey = diskKey;
+}
+
+void RenderThread::spill_to_disk(InFlight& f, std::uint32_t width, std::uint32_t height) {
+  if (f.diskBuffer == nullptr) return;
+  wgpu::Buffer buffer = std::move(f.diskBuffer);
+  f.diskBuffer = nullptr;
+  write_disk_readback(std::move(buffer), f.diskRow, f.diskKey, width, height);
+}
+
+void RenderThread::queue_late_spill(std::uint64_t key, std::uint64_t diskKey, std::uint32_t width, std::uint32_t height) {
+  if (!cache_ || !disk_->reserve(diskKey)) return;
+  // The frame's VRAM copy, not the slot: the slot is the host's now, and may
+  // carry an onion ghost. Evicted already (a small cache, a long fill) = no file.
+  const wgpu::Texture source = cache_->peek(key, width, height);
+  if (source == nullptr) {
+    disk_->release(diskKey);
+    return;
+  }
+  Spill s;
+  s.buffer = encode_disk_readback(source, width, height, s.row);
+  s.done = gpu_->queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {});
+  s.diskKey = diskKey;
+  s.width = width;
+  s.height = height;
+  spills_.push_back(std::move(s));
+  if (spills_.size() > kMaxSpills) drain_spills(true);
+}
+
+void RenderThread::drain_spills(bool block) {
+  while (!spills_.empty()) {
+    Spill& s = spills_.front();
+    const wgpu::WaitStatus st = gpu_->instance.WaitAny(s.done, block ? UINT64_MAX : 0);
+    if (st == wgpu::WaitStatus::TimedOut) break;
+    if (st == wgpu::WaitStatus::Success && !gpu_->device_lost()) {
+      write_disk_readback(std::move(s.buffer), s.row, s.diskKey, s.width, s.height);
+    } else {
+      disk_->release(s.diskKey);
+    }
+    spills_.pop_front();
+    block = false;  // only the oldest is waited for
+  }
+}
+
+void RenderThread::write_disk_readback(wgpu::Buffer buffer, std::uint32_t row, std::uint64_t diskKey,
+                                       std::uint32_t width, std::uint32_t height) {
+  const std::uint64_t size = std::uint64_t{row} * height;
+  bool mapped = false;
+  // The copy is done (complete_frames / drain_spills waited for it): the map is immediate.
+  gpu_->instance.WaitAny(buffer.MapAsync(wgpu::MapMode::Read, 0, size, wgpu::CallbackMode::WaitAnyOnly,
+                                         [&mapped](wgpu::MapAsyncStatus status, wgpu::StringView) {
+                                           mapped = status == wgpu::MapAsyncStatus::Success;
+                                         }),
+                         UINT64_MAX);
+  if (mapped) {
+    const auto* src = static_cast<const std::uint8_t*>(buffer.GetConstMappedRange(0, static_cast<std::size_t>(size)));
+    if (src != nullptr) {
+      // One allocation per frame written, on purpose: the disk cache's writer
+      // thread owns the bytes until they are on disk, and its queue bounds how
+      // many exist (DiskCache::kMaxQueuedBytes). A frame is read back once —
+      // DiskCache::wants refuses one already on disk or queued.
+      const std::size_t rowBytes = std::size_t{width} * 4U;
+      std::vector<std::uint8_t> rgba(rowBytes * height);
+      for (std::uint32_t y = 0; y < height; ++y) {
+        std::memcpy(rgba.data() + rowBytes * y, src + std::size_t{row} * y, rowBytes);
+      }
+      buffer.Unmap();
+      if (disk_->store(diskKey, width, height, std::move(rgba))) diskCoverageStale_ = true;
+    } else {
+      buffer.Unmap();
+      disk_->release(diskKey);
+    }
+  } else {
+    disk_->release(diskKey);
+  }
+  constexpr std::size_t kSpareBuffers = 3;
+  if (mapped && diskSpareSize_ == size && diskSpare_.size() < kSpareBuffers) diskSpare_.push_back(std::move(buffer));
+}
+
+void RenderThread::abandon_disk(InFlight& f) {
+  if (f.diskBuffer == nullptr) return;
+  f.diskBuffer = nullptr;
+  disk_->release(f.diskKey);
+}
+
+void RenderThread::abandon_all_disk() {
+  for (InFlight& f : inflight_) abandon_disk(f);
+  for (const Spill& s : spills_) disk_->release(s.diskKey);
+  spills_.clear();
+}
+
+void RenderThread::seed_disk_read_cost() {
+  if (diskReadMeasured_) return;
+  const double readMsPerMp = disk_->read_ms_per_mp();
+  if (readMsPerMp <= 0) return;
+  // The cache times a file's read + decode; the upload to the GPU (a
+  // WriteTexture of the decoded pixels) comes on top of it here.
+  constexpr double kUploadMsPerMp = 0.25;
+  diskReadMsPerMp_ = readMsPerMp + kUploadMsPerMp;
+  diskReadMeasured_ = true;
+}
+
 void RenderThread::note_coverage(std::int64_t frame, std::uint64_t key) {
   auto& keys = covered_[frame];
   if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
@@ -280,6 +470,12 @@ void RenderThread::publish_coverage() {
   CacheCoverageSnap snap;
   snap.ram = coalesce_frame_indices(std::move(frames));
   snap.ramBytes = cache_ ? static_cast<std::uint64_t>(cache_->stats().bytes) : 0;
+  // The blue lane: frames whose file is on disk (a frame queued for writing joins once written).
+  std::vector<std::int64_t> diskFrames;
+  diskFrames.reserve(diskCovered_.size());
+  disk_->retain_present(diskCovered_, diskFrames);
+  snap.disk = coalesce_frame_indices(std::move(diskFrames));
+  snap.diskBytes = disk_->bytes();
   const std::lock_guard<std::mutex> lock(m_);
   coverage_ = std::move(snap);
 }
@@ -338,6 +534,11 @@ void RenderThread::close_gpu() {
   }
   retired_.clear();
   covered_.clear();
+  // Buffers of this device; the disk cache itself (files) carries on.
+  for (const Spill& s : spills_) disk_->release(s.diskKey);
+  spills_.clear();
+  diskSpare_.clear();
+  diskSpareSize_ = 0;
   onionTex_ = nullptr;
   onionView_ = nullptr;
   onionW_ = 0;
@@ -415,12 +616,19 @@ void RenderThread::run(std::promise<std::string>& ready) {
       if (idle) continue;
     } else {
       // Sleep until work, or the next settle poll (paused footage still decoding).
-      auto until = SteadyClock::now() + std::chrono::milliseconds(500);
+      // Late disk spills in flight: look again shortly (a copy is a millisecond or two).
+      auto until = SteadyClock::now() + (spills_.empty() ? std::chrono::milliseconds(500) : std::chrono::milliseconds(2));
       if (const auto at = nextSettle(); at && *at < until) until = *at;
       cv_.wait_until(lock, until, workReady);
+      if (!spills_.empty() && !quit_ && !gpu_->device_lost()) {
+        lock.unlock();
+        timed("drain_spills", [&] { drain_spills(false); });
+        lock.lock();
+      }
     }
     if (quit_) break;
     if (gpu_->device_lost()) {
+      abandon_all_disk();
       inflight_.clear();  // their slots are rebuilt with the device (a new generation)
       lock.unlock();
       const bool recovered = recover_device();
@@ -493,6 +701,14 @@ void RenderThread::run(std::promise<std::string>& ready) {
     }
     Port* port = next_ready_locked();
     if (port == nullptr) {
+      // Idle: frames the disk cache finished writing join the blue lane (the
+      // last frames of a fill would otherwise wait for the next frame drawn).
+      if (diskCoverageStale_) {
+        lock.unlock();
+        publish_coverage();
+        diskCoverageStale_ = disk_->writing();
+        lock.lock();
+      }
       // Idle: one step of the drawer's warm-up (P7), then look for work again —
       // a frame that arrives waits at most one pipeline compile.
       if (canWarm()) {
@@ -521,6 +737,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
   tasks_.clear();
   lock.unlock();
   if (gpu_ && !gpu_->device_lost()) complete_all();
+  abandon_all_disk();
   inflight_.clear();
   // Tear down on this thread, which created everything.
   close_gpu();
@@ -755,11 +972,23 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
   }
 #endif
   bool drawn = false;
+  InFlight f;
   if (job.built && drawer_) {
     drawer_->set_exact_media(job.exactMedia);
     const wgpu::Texture& slotTexture = set.textures[slot];
     std::optional<std::uint64_t> key;
+    std::optional<std::uint64_t> diskKey;
     if (cache_ && set.copyable) key = drawer_->content_key(*job.built, set.width, set.height);
+    // Every frame the disk tier could hold is keyed (a hash of the content key
+    // and the footage stamps, cached for seconds): whether one is worth a file
+    // is known only once it has drawn — the first frame after an open, or the
+    // one a new raster lands on, is the slow one a prediction never sees.
+    // The prediction is the cheaper of the running average and the last drawn
+    // frame: a slow first frame (pipelines compiling) must not make the next
+    // ones pay for eager read-backs the real draw time then turns down.
+    seed_disk_read_cost();
+    const double predictedMs = std::min(drawMsAvg_, lastDrawMs_);
+    if (key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, set.width, set.height);
     if (key) {
       // D4: the same content was drawn before — a copy instead of the frame.
       wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
@@ -767,12 +996,30 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
         const wgpu::CommandBuffer cb = enc.Finish();
         gpu_->queue.Submit(1, &cb);
         drawn = true;
-        if (job.recordCoverage) note_coverage(job.frame, *key);
+        if (job.recordCoverage) {
+          note_coverage(job.frame, *key);
+          if (diskKey) note_disk_coverage(job.frame, *diskKey);
+        }
+      }
+    }
+    if (!drawn && diskKey && disk_->contains(*diskKey) && load_from_disk(*diskKey, set.width, set.height, slotTexture)) {
+      // The disk tier: a frame VRAM evicted, or one drawn in an earlier
+      // session — a file read instead of the render. Back into VRAM with it,
+      // so the next pass over it is a copy again.
+      wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
+      cache_->store(*key, set.width, set.height, slotTexture, enc);
+      const wgpu::CommandBuffer cb = enc.Finish();
+      gpu_->queue.Submit(1, &cb);
+      drawn = true;
+      if (job.recordCoverage) {
+        note_disk_coverage(job.frame, *diskKey);
+        note_coverage(job.frame, *key);
       }
     }
     if (!drawn) {
       std::string error;
       drawn = drawer_->draw(*job.built, set.views[slot], set.width, set.height, error);
+      f.drawn = drawn;
       if (!drawn) {
         PREMATION_LOG(error, "scene_draw_failed").kv("error", error).kv("frame", job.frame);
       } else if (key && drawer_->last_frame_exact()) {
@@ -780,7 +1027,19 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
         cache_->store(*key, set.width, set.height, slotTexture, enc);
         const wgpu::CommandBuffer cb = enc.Finish();
         gpu_->queue.Submit(1, &cb);
-        if (job.recordCoverage) note_coverage(job.frame, *key);
+        // An exact frame not on disk yet, predicted slow: read it back now
+        // (before any onion ghost lands on the slot) for the writer once the
+        // GPU is done. Predicted fast: complete_frames decides on its real
+        // draw time, and reads a slow one back from its VRAM copy.
+        if (diskKey && worth_disk(predictedMs, set.width, set.height) && disk_->reserve(*diskKey)) {
+          queue_disk_readback(f, *diskKey, slotTexture, set.width, set.height);
+        } else if (diskKey && !disk_->contains(*diskKey)) {
+          f.lateDisk = std::make_pair(*key, *diskKey);
+        }
+        if (job.recordCoverage) {
+          if (diskKey) note_disk_coverage(job.frame, *diskKey);
+          note_coverage(job.frame, *key);
+        }
       }
     }
     if (drawn && !job.onion.empty() && compositor_) composite_onion(job, set.views[slot], set.width, set.height);
@@ -828,7 +1087,6 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
   // (rasters, encoding) runs while this one's GPU work does. Frames are still
   // announced in submission order, each only once its work is done.
   (void)ring;
-  InFlight f;
   f.port = &port;
   f.generation = set.generation;
   f.slot = slot;
@@ -871,6 +1129,7 @@ std::size_t RenderThread::complete_frames(bool block) {
     if (st != wgpu::WaitStatus::Success || gpu_->device_lost() || !sameSet) {
       // The slot holds nothing: never announced; the loop recovers and draws the job again.
       if (sameSet) ring.unacquire(f.slot);
+      abandon_disk(f);
       inflight_.pop_front();
       ++n;
       continue;
@@ -878,6 +1137,7 @@ std::size_t RenderThread::complete_frames(bool block) {
     if (f.copy && !send_copy(*set, f.slot)) {
       // No pixels, no FrameReady: the host pairs the two and would wait for pixels forever.
       ring.unacquire(f.slot);
+      abandon_disk(f);
       inflight_.pop_front();
       ++n;
       continue;
@@ -888,6 +1148,21 @@ std::size_t RenderThread::complete_frames(bool block) {
     if (send_) {
       for (api::FrameGeometry& g : f.geometry) send_(frames::Message{.v = std::move(g)});
       send_(frames::Message{.v = f.ready});
+    }
+    // After the announcement: the viewer never waits for the disk cache.
+    if (f.drawn) {
+      drawMsAvg_ = drawMsAvg_ == 0 ? gpuMs : 0.7 * drawMsAvg_ + 0.3 * gpuMs;
+      lastDrawMs_ = gpuMs;
+    }
+    const bool worth = f.drawn && worth_disk(gpuMs, set->width, set->height);
+    if (f.diskBuffer != nullptr) {
+      if (worth) {
+        spill_to_disk(f, set->width, set->height);
+      } else {
+        abandon_disk(f);  // this one drew fast after all: VRAM is enough for it
+      }
+    } else if (worth && f.lateDisk) {
+      queue_late_spill(f.lateDisk->first, f.lateDisk->second, set->width, set->height);
     }
     {
       const std::lock_guard<std::mutex> lock(m_);
@@ -911,6 +1186,7 @@ std::size_t RenderThread::complete_frames(bool block) {
     inflight_.pop_front();
     ++n;
   }
+  if (!spills_.empty() && !gpu_->device_lost()) drain_spills(false);
   return n;
 }
 

@@ -722,6 +722,13 @@ export interface MotionEditorApi {
     listDir?(dir: string): Promise<Array<{ name: string; path: string; kind: 'dir' | 'file'; size?: number; mtimeMs?: number }> | null>;
   };
   /**
+   * The preview disk cache (electron/ipc/diskCache.ts): the folder the engine
+   * writes frames to when the user chose none. Absent in the browser build.
+   */
+  diskCache?: {
+    defaultFolder?(): Promise<string>;
+  };
+  /**
    * The native SDK plugins folder (electron/ipc/nativePlugins.ts). Plugins are
    * installed in 0.9 by copying a bundle into it; the engine loads them at
    * start. Absent in the browser build.

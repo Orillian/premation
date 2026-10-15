@@ -12,14 +12,16 @@
  * cache they come back from: a frame cache in VIDEO MEMORY, keyed by content,
  * filled by every exact frame the engine draws (playback, a scrub, a parked
  * playhead) and evicted least-recently-used at a budget the engine sizes from
- * the graphics adapter. There is no disk tier. What these commands can do is
- * what the engine API offers (`play { cacheOnly }`, `purgeCache`,
- * `getCacheCoverage`):
+ * the graphics adapter — and below it AE's DISK CACHE, the same frames in a
+ * folder on disk (Preferences ▸ Media & Disk Cache, diskCacheSync.ts), which
+ * outlives the session. What these commands can do is what the engine API
+ * offers (`play { cacheOnly }`, `purgeCache`, `getCacheCoverage`):
  *
- *   Purge RAM Preview     `purgeCache { kind: 'ram' }` — empties that cache.
- *   Purge Disk Cache      `purgeCache { kind: 'disk' }` — nothing to empty
- *                         today; the command is enabled only when the engine
- *                         reports disk bytes, which it never does yet.
+ *   Purge RAM Preview     `purgeCache { kind: 'ram' }` — empties the VRAM cache.
+ *   Purge Disk Cache      `purgeCache { kind: 'disk' }` — deletes the disk
+ *                         cache's frames; enabled while it holds some.
+ *   Purge All Memory & Disk Cache   both (never `kind: 'all'`, which also
+ *                         names the undo history).
  *   Cache Work Area Now   `play { cacheFirst, cacheOnly }` — the engine draws
  *                         every frame of the span into its cache, then stops
  *                         with the playhead back where it was. The transport
@@ -38,6 +40,7 @@ import { formatCacheMb, previewCacheStats } from './previewCacheStats';
 export const PREVIEW_CACHE_WORK_AREA_COMMAND = asCommandId('preview.cacheWorkArea');
 export const PREVIEW_PURGE_RAM_COMMAND = asCommandId('preview.purgeRam');
 export const PREVIEW_PURGE_DISK_COMMAND = asCommandId('preview.purgeDisk');
+export const PREVIEW_PURGE_ALL_COMMAND = asCommandId('preview.purgeAllCaches');
 
 const MB = 1024 * 1024;
 
@@ -49,7 +52,7 @@ const MB = 1024 * 1024;
 export const CACHE_WORK_AREA_UNAVAILABLE = 'The preview cache fills from the viewport — open a composition to cache it.';
 
 /** Why "Purge Disk Cache" has nothing to do. */
-export const DISK_CACHE_UNAVAILABLE = 'The engine keeps its preview cache in video memory — there is no disk cache.';
+export const DISK_CACHE_UNAVAILABLE = 'The disk cache is empty (or off in Preferences ▸ Media & Disk Cache).';
 
 /**
  * Whether the engine can be asked to fill its frame cache now: there is a
@@ -127,6 +130,22 @@ export function purgeDiskCache(): void {
   });
 }
 
+/** AE's Edit ▸ Purge ▸ All Memory & Disk Cache: the VRAM cache and the disk cache. */
+export function purgeAllCaches(): void {
+  const client = engine();
+  void Promise.all([
+    client.execute({ type: 'purgeCache', kind: 'ram' }),
+    client.execute({ type: 'purgeCache', kind: 'disk' }),
+  ]).then(([ram, disk]) => {
+    if (!ram.ok || !disk.ok) {
+      const err = !ram.ok ? ram.error : !disk.ok ? disk.error : null;
+      toast(`Could not purge the caches: ${err?.message ?? 'unknown error'}`, 'warning');
+      return;
+    }
+    toast('Purged the preview cache and the disk cache', 'success');
+  });
+}
+
 export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
   return [
     {
@@ -151,11 +170,20 @@ export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
     {
       id: PREVIEW_PURGE_DISK_COMMAND,
       label: 'Purge Disk Cache',
-      description: `Empty the disk tier of the preview cache. ${DISK_CACHE_UNAVAILABLE}`,
+      description: 'Delete the frames the disk cache holds. They are drawn and written again as the playhead reaches them.',
       icon: 'trash',
       enabled: hasEngineDiskCache,
       execute: () => {
         purgeDiskCache();
+      },
+    },
+    {
+      id: PREVIEW_PURGE_ALL_COMMAND,
+      label: 'Purge All Memory & Disk Cache',
+      description: 'Empty the preview frame cache in video memory and delete the disk cache\'s frames.',
+      icon: 'trash',
+      execute: () => {
+        purgeAllCaches();
       },
     },
   ];

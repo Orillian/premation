@@ -56,6 +56,7 @@ import { AUDIO_LEVEL_DB_PROP, AUDIO_PAN_PROP } from '@core/audio/audioParams';
 import { useFocusContext } from '@layout/focus/useFocusContext';
 import { useResponsiveLayout } from '@hooks/useResponsiveLayout';
 import { usePluginPanels } from '@layout/Plugins/usePluginPanels';
+import { installDiskCacheSync } from '@layout/Timeline/diskCacheSync';
 
 /** The editor UI wrapped in the AI chat provider — chat state must sit above
  *  the dock tree so switching sidebar tabs never cancels a run or rolls back a
@@ -83,6 +84,8 @@ function EditorShellInner(): JSX.Element {
   const registerPanel = useLayoutStore((s) => s.registerPanel);
   // P7d: native plugins' panels in the dock (re-renders the shell when the plugin list changes).
   usePluginPanels();
+  // Preferences ▸ Media & Disk Cache → the engine (setCacheBudget), now and after a restart.
+  useEffect(() => installDiskCacheSync(), []);
   const selectedIds = useSelectionStore((s) => s.ids);
   // NO document-revision subscription here. The shell used to re-render on
   // every revision of the mirror (`useMirrorRevision`), and because it hosts
@@ -526,8 +529,8 @@ function EditorShellInner(): JSX.Element {
   const ruler = useTimelineRuler(activeCompId);
 
   // No preview cache is attached here: the frame cache is the engine's (video
-  // memory, sized from the graphics adapter). It has no disk tier, and it
-  // ignores `setCacheBudget`, so there is no budget or path to send it either.
+  // memory, sized from the graphics adapter, plus the disk tier the
+  // preferences configure through layout/Timeline/diskCacheSync.ts).
 
   // NOTE: preview-coverage (the green RAM lane and blue disk lane under the
   // ruler) is deliberately NOT state here any more. It changes on every

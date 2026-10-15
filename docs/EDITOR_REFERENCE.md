@@ -1175,6 +1175,11 @@ to describe is gone: `gizmo3dSnapping` was deleted with nine sibling symbols and
   the awkward one — it is stored as a hex string but ANIMATED as three channels
   (`fill_r/_g/_b`), so an override has to suppress those too or a keyframed
   colour repaints over it every frame.
+- **2026-10-14: the disk tier is the C++ engine's now** —
+  `native/engine/src/render/disk_cache.hpp`, configured by Preferences ▸ Media
+  & Disk Cache (`setCacheBudget`, `layout/Timeline/diskCacheSync.ts`). The
+  page tier described next (`frameDiskCache.ts`) was deleted with the TS
+  engine on 2026-10-02; the paragraph is kept as history.
 - **The frame cache has a disk tier as of 2026-08-17** (`frameDiskCache.ts`) —
   PNG blobs in a byte-budgeted LRU, read back ahead of the playhead, so a looped
   work area longer than the ~60 frames RAM holds stops re-rendering every pass.

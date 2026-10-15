@@ -89,6 +89,8 @@ struct RenderJob {
 /// Ranges are frame indices, end exclusive. The session turns them into comp time.
 struct CacheCoverageSnap {
   std::vector<std::pair<std::int64_t, std::int64_t>> ram;
+  /// Frames whose pixels are in the disk cache (render/disk_cache.hpp), [start, end).
+  std::vector<std::pair<std::int64_t, std::int64_t>> disk;
   std::uint64_t ramBytes = 0;
   std::uint64_t diskBytes = 0;
 };
@@ -331,6 +333,11 @@ class FrameSink {
   [[nodiscard]] virtual CacheCoverageSnap cache_coverage() const { return {}; }
   /// Drop the viewport frame cache (Purge RAM). The next frames fill it again.
   virtual void purge_frame_cache() {}
+  /// setCacheBudget: the disk cache's folder (UTF-8) and size limit in bytes;
+  /// "" or 0 turns it off (its files stay). Any thread.
+  virtual void configure_disk_cache(const std::string& /*folder*/, std::uint64_t /*bytes*/) {}
+  /// Purge Disk Cache: forget the disk cache's frames and delete its files.
+  virtual void purge_disk_cache() {}
   [[nodiscard]] virtual std::string adapter() const = 0;
   [[nodiscard]] virtual std::string backend() const = 0;
 

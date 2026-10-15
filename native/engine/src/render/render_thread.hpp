@@ -31,9 +31,11 @@
 #include <string>
 #include <unordered_map>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "compositor.hpp"
+#include "disk_cache.hpp"
 #include "frame_cache.hpp"
 #include "frame_ring.hpp"
 #include "frame_scene.hpp"
@@ -70,6 +72,13 @@ class BuiltFrameDrawer {
   /// keys draw identical pixels into a width × height slot. nullopt = do not cache.
   [[nodiscard]] virtual std::optional<std::uint64_t> content_key(const BuiltFrame& /*frame*/, std::uint32_t /*width*/,
                                                                  std::uint32_t /*height*/) const {
+    return std::nullopt;
+  }
+  /// The frame's key in the disk cache (disk_cache.hpp): content_key salted
+  /// with what a file on disk outlives — the engine build, the loaded plugins'
+  /// versions, the footage files' modification stamps. nullopt = never on disk.
+  [[nodiscard]] virtual std::optional<std::uint64_t> disk_key(const BuiltFrame& /*frame*/, std::uint32_t /*width*/,
+                                                              std::uint32_t /*height*/) {
     return std::nullopt;
   }
   /// D4: whether the frame `draw` just drew is final — false when footage on
@@ -121,6 +130,9 @@ struct RenderOptions {
   /// pixel stream, so `frames.copy` is not offered.
   std::function<bool(std::vector<std::uint8_t>)> sendPixels;
   std::uint32_t vendorId = 0;    // Chromium's GPU (PCI vendor id); 0 = power preference decides
+  /// The disk cache takes frames that draw slower than this (ms); negative =
+  /// measured (RenderThread::worth_disk), 0 = every exact frame (tests).
+  double diskCacheMinDrawMs = -1;
   bool highPerformance = false;
 };
 
@@ -160,6 +172,10 @@ class RenderThread final : public FrameSink {
   [[nodiscard]] FrameCacheStats cache_stats() const;
   [[nodiscard]] CacheCoverageSnap cache_coverage() const override;
   void purge_frame_cache() override;
+  void configure_disk_cache(const std::string& folder, std::uint64_t bytes) override;
+  void purge_disk_cache() override;
+  /// The disk cache's counters.
+  [[nodiscard]] DiskCacheStats disk_stats() const { return disk_->stats(); }
   /// Run on the render thread between frames (below).
   [[nodiscard]] std::future<StillImage> render_still(std::shared_ptr<BuiltFrame> frame, std::uint32_t width,
                                                      std::uint32_t height) override;
@@ -216,6 +232,24 @@ class RenderThread final : public FrameSink {
     std::chrono::steady_clock::time_point t0{};
     api::FrameReady ready;
     std::vector<api::FrameGeometry> geometry;
+    /// The drawn frame read back for the disk cache (null = not written).
+    wgpu::Buffer diskBuffer;
+    std::uint64_t diskKey = 0;
+    std::uint32_t diskRow = 0;  // bytes per row in diskBuffer (256-aligned)
+    /// Drawn by the drawer (not a VRAM or disk copy): its time is a draw cost.
+    bool drawn = false;
+    /// An exact frame kept in VRAM with no read-back queued: its keys, so it
+    /// can still go to disk once its own draw time says it is worth it.
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> lateDisk;  // {VRAM key, disk key}
+  };
+  /// A frame on its way to the disk cache from its VRAM copy (queue_late_spill).
+  struct Spill {
+    wgpu::Buffer buffer;
+    wgpu::Future done{};
+    std::uint64_t diskKey = 0;
+    std::uint32_t row = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
   };
   /// Announce finished frames, oldest first (submission order); `block` waits
   /// for the oldest one. Render thread only. Returns how many were finished.
@@ -268,9 +302,64 @@ class RenderThread final : public FrameSink {
   void composite_onion(const RenderJob& job, const wgpu::TextureView& slot, std::uint32_t width, std::uint32_t height);
   /// Render thread only.
   void note_coverage(std::int64_t frame, std::uint64_t key);
+  void note_disk_coverage(std::int64_t frame, std::uint64_t diskKey);
   void publish_coverage();
   /// Render thread only: frame index → content keys still worth counting.
   std::unordered_map<std::int64_t, std::vector<std::uint64_t>> covered_;
+  /// Render thread only: frame index → disk keys (the blue lane).
+  std::unordered_map<std::int64_t, std::vector<std::uint64_t>> diskCovered_;
+
+  /// The disk tier (AE's Disk Cache). Outlives device losses: it holds no GPU objects.
+  std::unique_ptr<DiskCache> disk_ = std::make_unique<DiskCache>();
+  /// Disk hit: the file's pixels into the slot. False = a miss after all.
+  bool load_from_disk(std::uint64_t diskKey, std::uint32_t width, std::uint32_t height, const wgpu::Texture& target);
+  /// Encode and submit a copy of `source` into a read-back buffer (pooled); `row` = its bytes per row.
+  wgpu::Buffer encode_disk_readback(const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
+                                    std::uint32_t& row);
+  /// Encode a copy of the drawn slot into a read-back buffer for the disk cache (onto `f`).
+  void queue_disk_readback(InFlight& f, std::uint64_t diskKey, const wgpu::Texture& source, std::uint32_t width,
+                           std::uint32_t height);
+  /// A finished frame's read-back pixels to the disk cache's writer; the buffer back to the pool.
+  void spill_to_disk(InFlight& f, std::uint32_t width, std::uint32_t height);
+  /// A read-back buffer whose copy is done → the disk cache's writer (`diskKey` is reserved).
+  void write_disk_readback(wgpu::Buffer buffer, std::uint32_t row, std::uint64_t diskKey, std::uint32_t width,
+                           std::uint32_t height);
+  /// A frame that drew slowly with no read-back queued (the prediction said
+  /// fast — a first frame, a spike): read it back from its VRAM copy.
+  void queue_late_spill(std::uint64_t key, std::uint64_t diskKey, std::uint32_t width, std::uint32_t height);
+  /// Hand finished late spills to the writer; `block` waits for the oldest.
+  void drain_spills(bool block);
+  /// A frame dropped before its pixels reached the writer: give up its disk reservation.
+  void abandon_disk(InFlight& f);
+  /// Every read-back in flight (frames and late spills) given up.
+  void abandon_all_disk();
+  /// Render thread only: late spills submitted, oldest first.
+  std::deque<Spill> spills_;
+  /// Late spills in flight past this: wait for the oldest (each holds a frame-sized buffer).
+  static constexpr std::size_t kMaxSpills = 4;
+  /// Render thread only: a disk hit's pixels (reused: a frame is megabytes).
+  std::vector<std::uint8_t> diskScratch_;
+  /// Render thread only: read-back buffers for the disk cache, reused while the slot size holds.
+  std::vector<wgpu::Buffer> diskSpare_;
+  std::uint64_t diskSpareSize_ = 0;
+  /// Render thread only: frames were handed to the writer since the last publish.
+  bool diskCoverageStale_ = false;
+  /// Render thread only — AE writes only frames that are slow to render: a
+  /// frame goes to disk when drawing it costs clearly more than reading it
+  /// back would (worth_disk). Both sides are measured: each drawn frame's own
+  /// cost (render start → GPU done), decided once it is done, and the disk
+  /// read cost per megapixel (file read + decode + upload), as a moving
+  /// average seeded by the disk cache's own measured read (DiskCache::read_ms_per_mp).
+  /// The running averages below only pick frames to read back eagerly, from
+  /// the slot; a frame they miss still goes, late, from its VRAM copy.
+  double drawMsAvg_ = 0;
+  double lastDrawMs_ = 0;
+  double diskReadMsPerMp_ = 2.0;  // ~4 ms for a 1080p hit on an NVMe SSD (read, strip decode, upload), until one is measured
+  /// diskReadMsPerMp_ is a measurement (a hit, or the cache's seed), not the guess above.
+  bool diskReadMeasured_ = false;
+  /// The guess replaced by the disk cache's measured read (+ the upload, which the cache cannot time).
+  void seed_disk_read_cost();
+  [[nodiscard]] bool worth_disk(double drawMs, std::uint32_t width, std::uint32_t height) const;
   CacheCoverageSnap coverage_;
   std::uint64_t windowFrames_ = 0;
   double windowGpuMs_ = 0;

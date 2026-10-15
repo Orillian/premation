@@ -46,6 +46,7 @@ import { ObjectMatteControl } from './ObjectMatteControl';
 import { VideoExportControl } from './VideoExportControl';
 import { FaceModelControl } from './FaceModelControl';
 import { FilesTab } from './FilesTab';
+import { DiskCacheSettings } from './DiskCacheSettings';
 import { AudioHardwareSection } from './AudioHardwareSection';
 import { LanguageSetting } from './LanguageSetting';
 import { isServerEdition } from '@core/config/edition';
@@ -1000,7 +1001,7 @@ export function AppearanceTab(): JSX.Element {
       <div className={styles.sectionGroup}>
         <div className={styles.sectionHeading}>
           <span className={styles.sectionTitle}>Storage, Cache & Intelligence</span>
-          <span className={styles.hint}>Manage the preview cache and optional neural segmentation models.</span>
+          <span className={styles.hint}>Manage the preview and disk caches and optional neural segmentation models.</span>
         </div>
 
         <div className={styles.settingCard}>
@@ -1016,6 +1017,8 @@ export function AppearanceTab(): JSX.Element {
               <PreviewCacheControl />
             </div>
           </div>
+
+          <DiskCacheSettings />
 
           <div className={styles.settingRow}>
             <div className={styles.settingInfo}>
@@ -1081,25 +1084,22 @@ export function AppearanceTab(): JSX.Element {
  * adapter. The readout is `getCacheCoverage` (polled only while this row is
  * mounted); the button is `purgeCache { kind: 'ram' }`.
  *
- * No "Limit" field and no "Empty Disk": the engine has no disk tier, and
- * although its API carries `setCacheBudget`, the engine accepts it and changes
- * nothing. A field that set a number nobody reads would be a lie in a settings
- * dialog, so there is none until the engine honours it.
+ * No "Limit" field: the VRAM budget follows the adapter, and `setCacheBudget`'s
+ * `ramMegabytes` is not honoured by the engine. The disk tier's settings (which
+ * the engine does honour) are the rows below it, DiskCacheSettings.tsx.
  */
 function PreviewCacheControl(): JSX.Element {
   const cache = useSyncExternalStore(subscribeEngineCache, engineCacheSnapshot);
   const MB = 1024 * 1024;
-  const empty = cache.ramBytes <= 0 && cache.diskBytes <= 0;
   return (
     <div className={styles.cacheControlWrap}>
       <span className={styles.cacheSizeReadout}>
         {formatCacheMb(cache.ramBytes / MB)} video memory
-        {cache.diskBytes > 0 ? ` · ${formatCacheMb(cache.diskBytes / MB)} disk` : ''}
       </span>
       <Button
         variant="ghost"
         size="sm"
-        disabled={empty}
+        disabled={cache.ramBytes <= 0}
         onClick={() => {
           // The frame cache only (`ram`), never `all`: that kind also names the
           // undo history. Frames are drawn again as the playhead reaches them;

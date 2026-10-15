@@ -37,6 +37,7 @@ struct RenderOptions {
   std::uint32_t vendorId = 0;
   bool highPerformance = false;
   std::size_t frameCacheBytes = 0;  // --frame-cache-mb parses here; no GPU, no frame cache
+  double diskCacheMinDrawMs = -1;   // --disk-cache-min-draw-ms likewise; nothing is drawn, nothing cached
 };
 }  // namespace premation::render
 #else

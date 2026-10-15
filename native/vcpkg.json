@@ -57,7 +57,8 @@
         "miniaudio",
         "onnxruntime",
         "draco",
-        { "name": "ktx", "default-features": false }
+        { "name": "ktx", "default-features": false },
+        "zstd"
       ]
     }
   }
