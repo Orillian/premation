@@ -72,20 +72,26 @@ export interface NativeEngine {
  * its own copy of `process.env`, which a spawned child does not inherit, so a
  * suite that needs a variable in the engine passes it here.
  */
-export async function startNativeEngine(options: Partial<SupervisorOptions> = {}, env: Record<string, string> = {}): Promise<NativeEngine> {
+export async function startNativeEngine(
+  options: Partial<SupervisorOptions> = {},
+  env: Record<string, string> = {},
+  /** Route A: every viewport frame's pixels arrive on the supervisor's `pixels` event (fd 5). */
+  copyFrames = false,
+): Promise<NativeEngine> {
   const exe = nativeEngineExe();
   if (!exe) throw new Error('premation-engine is not built');
   let child: ChildProcess | null = null;
+  const stdio = copyFrames ? ['pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'];
   const supervisor = new EngineSupervisor(
     {
       spawn: (file, args) => {
-        child = spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, ...env } });
+        child = spawn(file, args, { stdio: stdio as ['pipe', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, ...env } });
         return child as unknown as EngineChild;
       },
       resolveExe: () => exe,
       gpuVendor: async () => undefined,
       hostPid: process.pid,
-      hello: { client: 'premation-test', clientVersion: '0', capabilities: [] },
+      hello: { client: 'premation-test', clientVersion: '0', capabilities: copyFrames ? ['frames.copy'] : [] },
       timers: realTimers,
     },
     { extraArgs: ['--no-gpu'], ...options },

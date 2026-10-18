@@ -148,7 +148,7 @@ export const KIND_ICON: Record<SceneKind, string> = {
   light: 'light',
   adjustment: 'adjustment',
   particle: 'sparkles',
-  comp: 'component',
+  comp: 'composition',
 };
 
 /**

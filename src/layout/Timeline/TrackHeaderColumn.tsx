@@ -313,7 +313,7 @@ export const TrackHeader = memo(function TrackHeader({
           title={hidden ? 'Show (Video)' : 'Hide (Video)'}
           onClick={(e) => { e.stopPropagation(); onToggleVisible(); }}
         >
-          {!hidden ? <Icon name="eye" size="sm" /> : null}
+          {!hidden ? <Icon name="eye" size="md" /> : null}
         </button>
         {/* AE's A/V Features column puts the speaker next to the eye. The clip
             bar has the same glyph; both write the one prop, so a layer scrolled
@@ -330,7 +330,7 @@ export const TrackHeader = memo(function TrackHeader({
             title={audioMuted ? 'Unmute audio' : 'Mute audio'}
             onClick={(e) => { e.stopPropagation(); onToggleAudio(); }}
           >
-            {!audioMuted ? <Icon name="audio" size="sm" /> : null}
+            {!audioMuted ? <Icon name="audio" size="md" /> : null}
           </button>
         ) : (
           <button
@@ -353,7 +353,7 @@ export const TrackHeader = memo(function TrackHeader({
           title={solo ? 'Unsolo' : 'Alt-click to solo only this layer'}
           onClick={(e) => { e.stopPropagation(); onToggleSolo(e.altKey); }}
         >
-          {solo ? <Icon name="circle" size="sm" /> : null}
+          {solo ? <Icon name="circle" size="md" /> : null}
         </button>
         <button
           type="button"
@@ -364,19 +364,39 @@ export const TrackHeader = memo(function TrackHeader({
           title={locked ? 'Unlock' : 'Lock'}
           onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
         >
-          {locked ? <Icon name="lock" size="sm" /> : null}
+          {locked ? <Icon name="lock" size="md" /> : null}
         </button>
       </div>
 
-      <div className={styles.layerInfoCol} style={{ paddingLeft: track.depth ? track.depth * 14 : undefined }}>
-        <div
-          className={styles.dragHandle}
-          title="Drag to reorder"
-          onPointerDown={onReorderStart}
+      <div
+        className={styles.layerInfoCol}
+        style={{ paddingLeft: track.depth ? track.depth * 14 : undefined }}
+        // AE reorders a layer by dragging its NAME. The grip alone hid the
+        // gesture in a hover-only 14px target (owner 2026-10-14). Buttons and
+        // the rename field keep their own pointer: the twirl, the label chip.
+        onPointerDown={(e) => {
+          if (e.button !== 0 || editing) return;
+          if ((e.target as HTMLElement).closest('button, input')) return;
+          onReorderStart?.(e);
+        }}
+      >
+        <button
+          type="button"
+          className={cn(styles.disclosure, !hasProps && styles.disclosureHidden)}
+          aria-label={expanded ? 'Collapse properties' : 'Reveal animated properties'}
+          aria-expanded={expanded}
+          title={
+            expanded
+              ? 'Collapse (Alt+click: this layer and everything under it)'
+              : 'Reveal animated properties (U) — Alt+click for this layer and everything under it'
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasProps) onToggleExpand(e.altKey);
+          }}
         >
-          <Icon name="grip-vertical" size="sm" />
-        </div>
-        <span className={styles.trackIndex}>{index}</span>
+          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="md" />
+        </button>
         {typeof track.nodeColor === 'string' && (
           // AE's label: a swatch whose click opens the NAMED label menu (None,
           // the palette, Select Label Group) — not a free colour field.
@@ -398,29 +418,9 @@ export const TrackHeader = memo(function TrackHeader({
             }}
           />
         )}
-        <button
-          type="button"
-          className={cn(styles.disclosure, !hasProps && styles.disclosureHidden)}
-          aria-label={expanded ? 'Collapse properties' : 'Reveal animated properties'}
-          aria-expanded={expanded}
-          title={
-            expanded
-              ? 'Collapse (Alt+click: this layer and everything under it)'
-              : 'Reveal animated properties (U) — Alt+click for this layer and everything under it'
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasProps) onToggleExpand(e.altKey);
-          }}
-        >
-          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="sm" />
-        </button>
-        <span
-          className={styles.trackIcon}
-          style={{ color: track.color ?? 'var(--color-accent)' }}
-          title={track.kind}
-        >
-          <Icon name={(track.icon as IconName) ?? 'layers'} size="sm" />
+        <span className={styles.trackIndex}>{index}</span>
+        <span className={styles.trackIcon} title={track.kind}>
+          <Icon name={(track.icon as IconName) ?? 'layers'} size="md" />
         </span>
         {editing ? (
           <input
@@ -445,6 +445,15 @@ export const TrackHeader = memo(function TrackHeader({
             {shownName}
           </span>
         )}
+        {/* Reorder grip: AE has none, so it shows only on the hovered row, at
+            the name column's right edge, out of the way of the name. */}
+        <div
+          className={styles.dragHandle}
+          title="Drag to reorder"
+          onPointerDown={onReorderStart}
+        >
+          <Icon name="grip-vertical" size="md" />
+        </div>
       </div>
 
       {showSwitches && (
@@ -458,7 +467,7 @@ export const TrackHeader = memo(function TrackHeader({
             aria-label="Toggle Shy Layer"
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('shy'); }}
           >
-            {track.shy ? <Icon name="shy" size="sm" /> : null}
+            {track.shy ? <Icon name="shy" size="md" /> : null}
           </button>
 
           {/* AE's sunburst: Collapse Transformations on a placed comp,
@@ -474,7 +483,7 @@ export const TrackHeader = memo(function TrackHeader({
               title={collapseKind === 'collapse' ? 'Collapse Transformations' : 'Continuous Rasterize'}
               onClick={(e) => { e.stopPropagation(); toggleCollapseSwitch(track.id); }}
             >
-              {collapseOn ? <Icon name="star" size="sm" /> : null}
+              {collapseOn ? <Icon name="star" size="md" /> : null}
             </button>
           ) : (
             <button
@@ -559,7 +568,7 @@ export const TrackHeader = memo(function TrackHeader({
               title={frameBlendOn ? 'Frame Blending on — click to turn off' : 'Frame Blending'}
               onClick={(e) => { e.stopPropagation(); toggleFrameBlendSwitch(track.id); }}
             >
-              {frameBlendOn ? <Icon name="video" size="sm" /> : null}
+              {frameBlendOn ? <Icon name="video" size="md" /> : null}
             </button>
           ) : (
             <button
@@ -583,7 +592,7 @@ export const TrackHeader = memo(function TrackHeader({
             aria-label="Toggle Motion Blur"
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('motionBlur'); }}
           >
-            {track.motionBlur ? <Icon name="motion-blur" size="sm" /> : null}
+            {track.motionBlur ? <Icon name="motion-blur" size="md" /> : null}
           </button>
           <button
             type="button"
@@ -594,7 +603,7 @@ export const TrackHeader = memo(function TrackHeader({
             aria-label="Toggle Adjustment Layer"
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('adjustment'); }}
           >
-            {track.adjustment ? <Icon name="adjustment" size="sm" /> : null}
+            {track.adjustment ? <Icon name="adjustment" size="md" /> : null}
           </button>
           <button
             type="button"
@@ -606,7 +615,7 @@ export const TrackHeader = memo(function TrackHeader({
             aria-label={track.guide ? 'Guide layer — not rendered on export' : 'Make Guide Layer'}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('guide'); }}
           >
-            {track.guide ? <Icon name="frame" size="sm" /> : null}
+            {track.guide ? <Icon name="frame" size="md" /> : null}
           </button>
           {/* Preserve Underlying Transparency — AE's "T" switch. A glyph rather
               than an icon because that is what it is called and what AE draws;
@@ -647,7 +656,7 @@ export const TrackHeader = memo(function TrackHeader({
               aria-label="Toggle 3D Layer"
               onClick={(e) => { e.stopPropagation(); onToggleFlag?.('threeD'); }}
             >
-              {track.threeD ? <Icon name="3d" size="sm" /> : null}
+              {track.threeD ? <Icon name="3d" size="md" /> : null}
             </button>
           )}
         </div>
@@ -715,48 +724,29 @@ export const TrackHeader = memo(function TrackHeader({
           />
         </div>
 
-        {/*
-          "Parent & Link" — the column's name, and now both halves of it. The
-          whip is the gesture; the dropdown is for a parent that is scrolled out
-          of sight. Both call `onParentChange`, so parenting cannot mean two
-          different things depending on which control was used.
-        */}
-        <div className={styles.parentCol} onClick={(e) => e.stopPropagation()}>
-          <PickWhip
-            label={PARENT_WHIP_LABEL}
-            accept={(target) => mirrorCanBeParentOf(documentMirror(), track.id, target.nodeId)}
-            onPick={(target, m) => onParentChange?.(target.nodeId, parentOptionsFor(m))}
-          />
-          <Dropdown
-            placement="bottom-start"
-            trigger={
-              <button type="button" className={styles.timelineSelectTrigger} aria-label="Parent Layer">
-                {currentParentName}
-              </button>
-            }
-            items={parentItems}
-          />
-        </div>
         </>
       )}
-      {showModes && (track.kind === 'camera' || track.kind === 'light') && (
-        <div className={styles.parentCol} onClick={(e) => e.stopPropagation()}>
-          <PickWhip
-            label={PARENT_WHIP_LABEL}
-            accept={(target) => mirrorCanBeParentOf(documentMirror(), track.id, target.nodeId)}
-            onPick={(target, m) => onParentChange?.(target.nodeId, parentOptionsFor(m))}
-          />
-          <Dropdown
-            placement="bottom-start"
-            trigger={
-              <button type="button" className={styles.timelineSelectTrigger} aria-label="Parent Layer">
-                {currentParentName}
-              </button>
-            }
-            items={parentItems}
-          />
-        </div>
-      )}
+      {/*
+        "Parent & Link" — the column's name, and both halves of it: the whip is
+        the gesture, the dropdown is for a parent scrolled out of sight. In
+        every view, as in AE (F4 swaps switches for modes, never the parent).
+      */}
+      <div className={styles.parentCol} onClick={(e) => e.stopPropagation()}>
+        <PickWhip
+          label={PARENT_WHIP_LABEL}
+          accept={(target) => mirrorCanBeParentOf(documentMirror(), track.id, target.nodeId)}
+          onPick={(target, m) => onParentChange?.(target.nodeId, parentOptionsFor(m))}
+        />
+        <Dropdown
+          placement="bottom-start"
+          trigger={
+            <button type="button" className={styles.timelineSelectTrigger} aria-label="Parent Layer">
+              {currentParentName}
+            </button>
+          }
+          items={parentItems}
+        />
+      </div>
 
       {/*
         In / Out / Duration / Stretch — AE's optional columns, off by default.
@@ -1051,10 +1041,10 @@ export function TrackCategoryHeader({
       }
     >
       <span className={styles.disclosure}>
-        <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="sm" />
+        <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="md" />
       </span>
       <span className={styles.categoryIcon}>
-        <Icon name={icon} size="sm" />
+        <Icon name={icon} size="md" />
       </span>
       <span className={styles.categoryName}>{label}</span>
       {onReset ? (

@@ -1,8 +1,8 @@
 /*
-  The Preview panel, laid out as After Effects': the transport row, then one
-  row per setting — a label-role caption and its value — with the settings
-  grouped under the shared Accordion's group rows. No heading inside: the tab
-  is the panel's title.
+  The Preview panel, on the approved 2026-10-19 sheet: the timecode on a row
+  of its own, the transport centred under it, one label + field row per
+  setting under the shared Accordion's group rows, and the cache readout at
+  the foot. No heading inside: the tab is the panel's title.
 */
 .root {
   display: flex;
@@ -18,40 +18,80 @@
   overflow-y: auto;
 }
 
-/* The rows above the groups, on the Accordion's gutter. */
+/* The timecode and the transport, above the groups. */
 .top {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
 .groups {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
-/* ── Transport ─────────────────────────────────────────────────── */
+/* ── Timecode: the panel's one large figure, centred ─────────────── */
+.timecodeRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: var(--space-1) 0;
+  user-select: none;
+}
+
+.timecode {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--color-primary-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.timecodeSub {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-micro);
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Transport, centred under the timecode ───────────────────────── */
 .transport {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
-  min-height: var(--control-height-lg);
+  min-height: 36px;
 }
 
-.transportDivider {
-  width: 1px;
-  height: 18px;
-  background: var(--color-border-subtle);
-  margin: 0 var(--space-1);
+/* Play is the one filled button; a touch wider so it reads as the centre. */
+.play {
+  min-width: 36px;
+}
+
+/* Between the five transport keys and the two toggles. */
+.transportGap {
+  width: var(--space-3);
+  flex: none;
 }
 
 /* ── A setting: its caption, then its value ─────────────────────── */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .row {
   display: grid;
-  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
-  min-height: var(--control-height-row);
+  gap: var(--space-2);
+  min-height: var(--control-height-md);
 }
 
 .label {
@@ -62,15 +102,16 @@
   user-select: none;
 }
 
-/* A dropdown's current choice is a value (in the text face: it is a word). */
+/* A dropdown's current choice is a value (in the text face: it is a word).
+   The field grammar of the sheet: 24px on the well, one hairline. */
 .select {
   width: 100%;
   min-width: 0;
-  height: var(--control-height-row);
+  height: var(--control-height-md);
   padding: 0 var(--space-2);
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -82,16 +123,62 @@
 }
 
 .select:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
 }
 
 .select:focus-visible {
   border-color: var(--color-primary);
 }
 
-/* Toggles that read as values: the accent while on. */
-.toggles {
+/* A switch with its consequence written beside it. */
+.switchRow {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
+}
+
+.help {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-tertiary);
+}
+
+/* ── The cache readout, at the foot ─────────────────────────────── */
+.cacheRow {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-md);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* The timeline's cache lane, in miniature: green RAM over blue disk. */
+.cacheStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  height: 5px;
+}
+
+.cacheRam,
+.cacheDisk {
+  display: block;
+  height: 2px;
+  min-width: 0;
+  background: var(--color-timeline-cache);
+}
+
+.cacheDisk {
+  background: var(--color-timeline-disk-cache);
+}
+
+.cacheText {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

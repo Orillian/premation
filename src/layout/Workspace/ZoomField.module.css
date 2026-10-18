@@ -1,65 +1,66 @@
-/* The viewport zoom field — see ZoomField.tsx. Sized to the transport bar's
-   own control height so the run of glyphs reads as one row. */
+/*
+ * The viewport zoom field — see ZoomField.tsx. Pinned at the far right of the
+ * transport bar, it is the one FIELD in a row of buttons: a 24px well with a
+ * hairline and the bar's radius, the percentage in mono, the presets' chevron
+ * at its right edge. The same field grammar as the Inspector's values —
+ * dark well, 1px border, value in mono — so it reads as "a number you can
+ * set" and not as one more toggle.
+ */
 
 .zoomGroup {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   flex-wrap: nowrap;
-}
-
-.tool {
-  width: var(--control-height-row);
-  height: var(--control-height-row);
-  display: grid;
-  place-items: center;
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.tool:hover {
+  height: var(--control-height-md);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  box-sizing: border-box;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   color: var(--color-text-primary);
 }
 
-.tool:active {
-  transform: scale(0.92);
+/* The presets' trigger: the chevron alone, in the field's right edge. */
+.tool {
+  display: grid;
+  place-items: center;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.tool:hover {
+  background: var(--color-hover);
 }
 
 .tool:focus-visible {
-  outline: 1px solid var(--color-focus-ring);
-  outline-offset: 1px;
-}
-
-.chevron {
-  opacity: 0.6;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 /* The percentage: scrubs on drag, opens as a field on double-click. */
 .scrubField {
-  min-width: 42px;
+  min-width: 36px;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-secondary);
-  text-align: center;
+  color: var(--color-text-primary);
+  text-align: right;
   cursor: ew-resize;
   user-select: none;
   white-space: nowrap;
 }
 
-.scrubField:hover {
-  color: var(--color-text-primary);
-}
-
 .scrubInput {
-  width: 48px;
-  height: var(--control-height-sm);
+  width: 40px;
+  height: var(--control-height-xs);
   padding: 0 var(--space-1);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
@@ -68,5 +69,5 @@
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-xs);
   outline: none;
-  text-align: center;
+  text-align: right;
 }

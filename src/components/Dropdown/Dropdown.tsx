@@ -20,7 +20,7 @@ export type DropdownItem =
   | { type: 'item'; id: string; label: ReactNode; icon?: IconName; shortcut?: string; disabled?: boolean; danger?: boolean; onSelect?: (modifiers: MenuSelectModifiers) => void; submenu?: DropdownItem[] }
   | { type: 'separator' }
   | { type: 'label'; label: ReactNode }
-  | { type: 'checkbox'; id: string; label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }
+  | { type: 'checkbox'; id: string; label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; shortcut?: string }
   /**
    * A row that is not a command: a slider, a swatch strip, a readout. The
    * node is rendered as-is inside the menu's padding, so it should size
@@ -71,7 +71,7 @@ export function Dropdown({ trigger, items: itemsProp, placement = 'bottom-start'
     if (item.type === 'custom') return <MenuCustomRow key={item.id} id={item.id}>{item.render}</MenuCustomRow>;
     if (item.type === 'checkbox') {
       return (
-        <MenuCheckbox key={item.id} id={item.id} label={item.label} checked={item.checked} onChange={item.onChange} disabled={item.disabled} />
+        <MenuCheckbox key={item.id} id={item.id} label={item.label} checked={item.checked} onChange={item.onChange} disabled={item.disabled} shortcut={item.shortcut} />
       );
     }
     return (

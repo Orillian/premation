@@ -9,23 +9,27 @@
   margin-bottom: 0;
   border-radius: 0;
   background: transparent;
-  border-bottom: 1px solid var(--color-border);
   overflow: hidden;
-}
-
-.item:last-child {
-  border-bottom: 1px solid var(--color-border);
 }
 
 .disabled {
   opacity: 0.5;
 }
 
+/* AE's section band: one step lighter than the panel, a hairline under it.
+   The same band the Effect Controls headers use, so the two panels read as
+   one property list. */
 .headerRow {
   display: flex;
   align-items: center;
   position: relative;
   width: 100%;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  box-shadow: inset 0 -1px 0 var(--color-divider);
+}
+
+.headerRow:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
 }
 
 .header {
@@ -35,10 +39,12 @@
   font: inherit;
 }
 
+/* A section's presets / add controls. Always shown: hidden until hover, the
+   Effects section's "+" could not be found at all (owner 2026-10-14). */
 .actions {
   display: flex;
   align-items: center;
-  padding-right: var(--space-5);
+  padding-right: var(--space-2);
   flex-shrink: 0;
   z-index: 1;
 }
@@ -50,12 +56,12 @@
 .trigger {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   width: 100%;
   /* A section header band inside a panel — same height as the panel headers
      above it, so section rows and panel chrome share one horizontal rhythm. */
   height: var(--bar-height-panel);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-3);
   background: transparent;
   border: none;
   color: var(--color-text-primary);
@@ -76,7 +82,6 @@
 }
 
 .trigger:hover:not(:disabled) {
-  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
@@ -120,14 +125,13 @@
 }
 
 .panel {
-  /* Aligned to the trigger's 12px gutter so labels inside a section line up
-     with the section's own name rather than sitting a couple of pixels off.
-     One step tighter vertically than it was: with every applicable section in
-     one list, the space between sections is what the eye scrolls past. */
-  padding: var(--space-3) var(--space-5) var(--space-4);
+  /* AE's ruled list: property rows sit edge to edge with a hairline each
+     (PropertyRow's `--prop-row-rule`), so the body adds no gap between them,
+     only a small inset and some air before the next section's band. */
+  padding: 0 var(--space-1) var(--space-3) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
   background: transparent;
 }
 

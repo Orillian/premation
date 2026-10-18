@@ -5,7 +5,8 @@
   height: var(--control-height-md);
   min-width: 160px;
   padding: 0 var(--space-1) 0 var(--space-3);
-  background: var(--color-surface-2);
+  /* The dark well, like every field (2026-10-14). */
+  background: var(--color-surface-0);
   border: var(--border-width-control) solid var(--color-field-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);

@@ -354,9 +354,11 @@ export interface MenuCheckboxProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  /** The toggle's chord, printed at the right as a command's is. */
+  shortcut?: string;
 }
 
-export function MenuCheckbox({ id, label, checked, onChange, disabled = false }: MenuCheckboxProps): JSX.Element {
+export function MenuCheckbox({ id, label, checked, onChange, disabled = false, shortcut }: MenuCheckboxProps): JSX.Element {
   const onKey = (e: ReactKeyboardEvent<HTMLButtonElement>): void => {
     if (disabled) return;
     if (e.key === 'Enter' || e.key === ' ') {
@@ -379,6 +381,7 @@ export function MenuCheckbox({ id, label, checked, onChange, disabled = false }:
         {checked ? <Icon name="check" size="sm" /> : null}
       </span>
       <span className={cn(styles.itemLabel, checked && styles.itemLabelActive)}>{label}</span>
+      {shortcut ? <span className={styles.itemShortcut}>{shortcut}</span> : null}
     </button>
   );
 }

@@ -27,6 +27,7 @@ import { useThrottledTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { runPanelShortcut } from './panelShortcut';
+import { PluginEffectHomePanel } from './PluginEffectHomePanel';
 
 export function PluginToolPanel({ panelId }: { panelId: string }): JSX.Element {
   usePluginContrib();
@@ -38,6 +39,7 @@ export function PluginToolPanel({ panelId }: { panelId: string }): JSX.Element {
       </div>
     );
   }
+  if (entry.kind === 'effect') return <PluginEffectHomePanel key={panelId} plugin={entry.plugin} pluginName={entry.pluginName} />;
   return <ToolFrame key={panelId} plugin={entry.plugin} page={entry.panel.page} name={entry.panel.name} />;
 }
 

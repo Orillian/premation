@@ -181,7 +181,9 @@ describe('EffectStack parameter rows', () => {
     await act(async () => { fireEvent.click(disable[disable.length - 1]!); await settleEdits(); });
     expect((await docView()).getNodeEffects(s.A).find((e) => e.id === blur)!.enabled).toBe(false);
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Move Gaussian Blur up' })); await settleEdits(); });
+    // Move / Remove live in the header's ⋯ menu (2026-10-14).
+    fireEvent.click(screen.getByRole('button', { name: 'Effect options for Gaussian Blur' }));
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Move Up' })); await settleEdits(); });
     expect((await docView()).getNodeEffects(s.A).map((e) => e.id)).toEqual([blur, s.fx]);
 
     await act(async () => { await edit('x', paramCommands(s.A, blur, effectDefFor('gaussian-blur')!.params[0]!, 99, 0)); });
@@ -189,7 +191,8 @@ describe('EffectStack parameter rows', () => {
     await act(async () => { await resetEffectEdit(s.A, blur, 'Gaussian Blur'); });
     expect(paramsOf((await docView()).getNodeEffects(s.A).find((e) => e.id === blur)!).blurriness).toBe(10);
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove Gaussian Blur' })); await settleEdits(); });
+    fireEvent.click(screen.getByRole('button', { name: 'Effect options for Gaussian Blur' }));
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' })); await settleEdits(); });
     expect((await docView()).getNodeEffects(s.A).some((e) => e.id === blur)).toBe(false);
     settle();
     expect((await historyLabels())).toEqual(['Reset Gaussian Blur', 'Remove Gaussian Blur']);

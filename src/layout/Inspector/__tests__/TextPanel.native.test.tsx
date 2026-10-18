@@ -128,7 +128,8 @@ describe('Character and Paragraph panels', () => {
     expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toHaveAttribute('aria-valuenow', '48');
     expect(screen.getByRole('spinbutton', { name: 'Leading' })).toHaveAttribute('aria-valuenow', '62.4');
     expect(screen.getByRole('spinbutton', { name: 'Tracking' })).toHaveAttribute('aria-valuenow', '0');
-    expect(screen.getByLabelText('Font Style')).toHaveValue('normal');
+    // One style menu: the weight, upright (`600`) or italic (`600/italic`).
+    expect(screen.getByLabelText('Font Style')).toHaveValue('600');
 
     // AE's synthetic styles — independent of the weight menu and the font's italic.
     for (const name of ['Faux Bold', 'Faux Italic', 'All Caps', 'Small Caps', 'Superscript', 'Subscript']) {

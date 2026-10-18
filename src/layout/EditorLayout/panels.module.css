@@ -190,26 +190,70 @@
  * and a footer of property counts. The same gutter as the section names
  * below, so field and names share one left edge.
  */
+/* One row: the search field takes the rest, the Show filter is a fixed
+   172px (three 86px-grid cells of the panel redesign, 2026-10-19). 12px
+   gutter, 10px below the strip, 6px between the two. */
 .propsToolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 172px;
   align-items: center;
-  gap: var(--space-3);
+  gap: 6px;
   flex: none;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2-5, 10px) var(--space-4) var(--space-2);
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
 }
 
-/* The field takes the row, at the Show filter's height so the two read as
-   one strip (the field's own `sm` is a dialog-row 28px), and types in the
-   panel `value` role's size like every other entry field in the panel. */
+/* The field takes the row at the panel row height so the two read as one
+   strip (the field's own `sm` is a dialog-row 28px), and types in the panel
+   `value` role's size like every other entry field in the panel. */
 .propsToolbar .propsSearch {
-  flex: 1 1 auto;
   min-width: 0;
-  height: var(--control-height-md);
+  height: var(--control-height-row);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-value);
+}
+
+/* The Show filter as a segmented strip on the well: cells share the width,
+   hairlines between, the lit cell carries the selection tint. */
+.propsToolbar [role="radiogroup"] {
+  display: flex;
+  width: 100%;
+  height: var(--control-height-row);
+  padding: 0;
+  gap: 0;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.propsToolbar [role="radiogroup"] button[role="radio"] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+}
+
+.propsToolbar [role="radiogroup"] button[role="radio"]:last-child {
+  border-right: none;
+}
+
+.propsToolbar [role="radiogroup"] button[role="radio"][data-checked] {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
 }
 
 .layerHeadBtn {
@@ -290,6 +334,14 @@
   min-height: 0;
 }
 
+/* In the Layers panel the search row is part of the section head: no rule
+   under it (the column head draws one), and its buttons share one size. */
+.sceneShell .searchRow {
+  gap: var(--space-1);
+  padding: 0 var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: none;
+}
+
 .compSection {
   flex: none;
   border-bottom: 1px solid var(--color-divider);
@@ -300,23 +352,24 @@
 .layerSectionHead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
-  min-height: 28px;
-  padding: 6px var(--space-4) 4px;
+  height: 30px;
+  padding: 0 var(--space-2) 0 var(--space-4);
 }
 
-.layerSectionHead {
-  border-bottom: none;
-  padding-bottom: 0;
+.compSectionHead {
+  justify-content: space-between;
 }
 
+/* Sidebar section titles: the only uppercase text in the panel, so the two
+   sections read as the panel's structure rather than as more rows. */
 .compSectionLabel {
-  /* The panel `group` role (typography.css). */
   font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
+  font-size: var(--font-size-micro);
   font-weight: var(--panel-weight-group);
-  color: var(--color-text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 /* The Project panel's collapsible "Compositions" heading (`CompositionList`). */
@@ -325,6 +378,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  height: 100%;
   padding: 0;
   border: none;
   background: transparent;
@@ -332,32 +386,13 @@
   cursor: pointer;
 }
 
-.compSectionToggle:hover {
+.compSectionToggle:hover .compSectionLabel {
   color: var(--color-text-primary);
 }
 
 .compSectionToggle:focus-visible {
   outline: 1px solid var(--color-focus-ring);
   outline-offset: 1px;
-}
-
-.compAddBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-}
-
-.compAddBtn:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
 }
 
 .compEmpty {
@@ -373,25 +408,25 @@
 .compList {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 0 var(--space-2) 8px;
+  padding: 0 0 var(--space-2);
   max-height: 140px;
   overflow-y: auto;
 }
 
+/* Flat list rows: glyph, name, size · rate in muted figures. Delete lives in
+   the row's context menu, not on a hover button. */
 .compRow {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 6px 4px 8px;
-  border-radius: var(--radius-sm);
+  gap: var(--space-3);
+  height: var(--control-height-md);
+  padding: 0 var(--space-4) 0 calc(var(--space-4) + 20px);
   cursor: pointer;
   color: var(--color-text-secondary);
 }
 
 .compRow:hover {
-  background: var(--color-surface-2);
+  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
@@ -406,7 +441,11 @@
 
 .compGlyph {
   flex: none;
-  color: var(--color-info);
+  color: var(--color-text-tertiary);
+}
+
+.compRowActive .compGlyph {
+  color: var(--color-text-primary);
 }
 
 .compName {
@@ -415,6 +454,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text-primary);
   /* The panel `label` role (typography.css). */
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -424,38 +464,12 @@
 .compMeta {
   flex: none;
   /* The panel `help` role (typography.css). */
-  font-family: var(--panel-font-family);
+  font-family: var(--panel-font-family-value);
   font-size: var(--panel-font-size-help);
   font-weight: var(--panel-weight-help);
   line-height: var(--panel-line-height-help);
   color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
-}
-
-.compDeleteBtn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-tertiary);
-  opacity: 0;
-  cursor: pointer;
-}
-
-.compRow:hover .compDeleteBtn,
-.compRow:focus-within .compDeleteBtn {
-  opacity: 1;
-}
-
-.compDeleteBtn:hover {
-  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
-  color: var(--color-danger);
 }
 
 .body {
@@ -2850,45 +2864,212 @@
   flex: none;
 }
 
-.sceneFilterRow {
+/* ── Layers panel (owner redesign 2026-10-14) ──────────────────────────
+   One button size for every control in a row (IconButton `sm`), glyphs
+   centred; the filter state is spelled as chips, not as lit icons. */
+/* The search field at the buttons' height, so the row is one strip. */
+.sceneSearch {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-height-sm);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+}
+
+/* The Filter button carries a dot when a filter is on. */
+.sceneFilterTrigger {
+  position: relative;
+}
+
+/* "Something is filtered" — visible even when the chips are scrolled away. */
+.sceneToolDot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.sceneChips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 0 var(--space-2) var(--space-1);
-  flex: 0 0 auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-2);
+  flex: none;
 }
 
-.sceneFilterBtn {
+.sceneChip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: var(--control-height-sm);
-  height: var(--control-height-sm);
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+  max-width: 100%;
+  height: var(--control-height-xs);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-label);
   cursor: pointer;
-  flex: 0 0 auto;
+}
+.sceneChip:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
+.sceneChipText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sceneFilterBtn:hover { color: var(--color-text-primary); background: var(--color-hover); }
-.sceneFilterBtn[aria-pressed="true"] {
-  color: var(--color-primary);
-  background: var(--color-primary-subtle);
-  border-color: var(--color-primary);
+.sceneChipClear {
+  height: var(--control-height-xs);
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  cursor: pointer;
 }
-.sceneFilterBtn:focus-visible {
+.sceneChipClear:hover { color: var(--color-text-primary); }
+
+/* AE's A/V switch columns: a fixed gutter at the left of every row, and the
+   same four cells as a column head above them. */
+.avGutter {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-left: var(--space-1);
+  flex: none;
+}
+
+.avCell,
+.avHead {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 100%;
+  min-height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  flex: none;
+}
+
+.avHead { color: var(--color-text-muted); }
+
+button.avCell { cursor: pointer; }
+button.avCell:hover { color: var(--color-text-primary); background: var(--color-hover); }
+button.avCell:focus-visible {
   outline: 1px solid var(--color-focus-ring);
   outline-offset: -1px;
 }
 
-.sceneFilterLabelDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+/* The eye is always drawn. Solo and lock are state: drawn when set, a faint
+   affordance on the row under the pointer, and otherwise an empty cell that
+   still holds the column. */
+button.avCell[data-kind='solo']:not([data-on]),
+button.avCell[data-kind='lock']:not([data-on]) {
+  opacity: 0;
+}
+[role='treeitem']:hover button.avCell[data-kind='solo']:not([data-on]),
+[role='treeitem']:hover button.avCell[data-kind='lock']:not([data-on]),
+button.avCell:focus-visible {
+  opacity: 0.5;
+}
+button.avCell[data-kind='visible'][data-on] { color: var(--color-text-muted); }
+button.avCell[data-kind='audio'][data-on] { color: var(--color-text-muted); }
+button.avCell[data-kind='solo'][data-on] { color: var(--color-accent); }
+button.avCell[data-kind='lock'][data-on] { color: var(--color-text-primary); }
+
+.layerColumns {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  border-top: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+  flex: none;
+}
+
+.layerColumnName {
+  padding-left: var(--space-3);
+  color: var(--color-text-muted);
+  font-family: var(--panel-font-family);
+  font-size: var(--font-size-micro);
+  font-weight: var(--panel-weight-group);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sceneBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  /* TreeView owns the scroll — overflow here would stretch the tree to full
+     content height and defeat row virtualization at 10k layers. */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sceneFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-top: 1px solid var(--color-divider);
+  /* The panel `help` role (typography.css). */
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* Label swatches inside the filter menu. */
+.filterSwatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-4) var(--space-2);
+}
+
+.filterSwatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.filterSwatch[aria-pressed='true'] {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 1px;
+}
+
+.filterSwatchNone {
+  height: 18px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  cursor: pointer;
+}
+.filterSwatchNone[aria-pressed='true'] {
+  border-color: var(--color-text-primary);
+  color: var(--color-text-primary);
 }
 
 /* ── Assets: list columns at narrow panel widths ───────────────────────

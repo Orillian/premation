@@ -595,6 +595,16 @@ export const APP_MENU: MenuGroupModel[] = [
         children: [
           { commandId: 'animation.animateIn', label: 'Animate In' },
           { commandId: 'animation.animateOut', label: 'Animate Out' },
+          {
+            label: 'Create Carousel',
+            labelKey: 'menu.sub.createCarousel',
+            children: [
+              { commandId: 'animation.createCarousel.ring', label: 'Ring' },
+              { commandId: 'animation.createCarousel.vertical', label: 'Ferris Wheel' },
+              { commandId: 'animation.createCarousel.coverflow', label: 'Cover Flow' },
+              { commandId: 'animation.createCarousel.stack', label: 'Card Stack' },
+            ],
+          },
           { separator: true },
           {
             label: 'Motion Feel',

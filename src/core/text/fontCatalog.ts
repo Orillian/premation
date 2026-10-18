@@ -5,6 +5,8 @@
  * families we know nothing about fall back to the standard five.
  */
 
+import { fontFamilyInfo } from '@core/fonts/engineFontList';
+
 interface LocalFontData {
   family?: string;
   style?: string;
@@ -87,11 +89,14 @@ export function onFontCatalogReady(listener: () => void): () => void {
 }
 
 /**
- * The weights a family actually provides, sorted ascending. Regular (400) is
- * always offered so a family that only ships display cuts stays usable, and
- * unknown families get the standard five.
+ * The weights a family actually provides, sorted ascending: what the engine
+ * draws (engineFontList — the shipped families and the installed ones, a
+ * variable face's whole `wght` range), else the local-font scan. Unknown
+ * families get the standard five.
  */
 export function getFontWeights(family: string): number[] {
+  const drawn = fontFamilyInfo(family);
+  if (drawn && drawn.weights.length > 0) return [...drawn.weights];
   const found = catalog?.get(family);
   if (!found || found.size === 0) return [...FALLBACK_WEIGHTS];
   return [...new Set([...found, 400])].sort((a, b) => a - b);

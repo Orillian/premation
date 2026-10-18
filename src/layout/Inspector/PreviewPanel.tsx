@@ -1,21 +1,23 @@
 /**
- * Preview panel — After Effects' Preview panel: the transport row, then the
- * preview settings as labelled rows (2026-10).
+ * Preview panel — After Effects' Preview panel, on the approved 2026-10-19
+ * sheet: the timecode on a row of its own, the transport centred under it,
+ * then the preview settings as label + field rows, and the cache readout at
+ * the foot.
  *
  * Only settings this app actually has, in AE's order — no stand-ins for AE's
  * Shortcut, Cache Before Playback, Play From, Frame Rate or Full Screen,
  * because a control that changes nothing is worse than none:
- *   • Transport  → TimelineController + projectStore (first / step / play / last, loop)
- *   • Include    → audio in the preview (audioEngine master mute)
+ *   • Timecode   → the playhead, written by `LiveTimecode` (no React render per frame)
+ *   • Transport  → TimelineController + projectStore (first / step / play / last, loop, audio)
  *   • Range      → the Work Area (Work Area / Entire Composition / From Current Time)
  *   • Step       → how far the step buttons move (1, 2, 3 or 6 frames)
  *   • Resolution → renderQualityStore (Auto adaptive / Full / Half / Third / Quarter)
  *   • Draft      → renderQualityStore draft flag (skips motion blur for 60fps scrub)
+ *   • Cache      → the timeline's cache lane, as two fractions (RAM, disk)
  *
- * Nothing here follows the playhead: the step buttons read it when pressed
- * (`getTime`), so playback renders this panel not once per frame. The keyboard
- * cheat-sheet and the second master meter are gone — the shortcuts are in each
- * button's tooltip, and the meter is the Audio panel's.
+ * Nothing here follows the playhead through React: the step buttons read it
+ * when pressed (`getTime`), and the timecode is a text node the playhead
+ * subscription rewrites, so playback renders this panel not once per frame.
  */
 
 import { useEffect, useState } from 'react';
@@ -30,9 +32,13 @@ import { isTransportLooping, pauseTransport, playTransport, setTransportLooping 
 import { edit } from '@core/engine/uiEdits';
 import { compTime } from '@core/engine/propRefs';
 import { audioEngine } from '@core/audio/AudioEngine';
+import { framesToTimecode } from '@core/time/timecode';
+import { LiveTimecode } from '@layout/Timeline/LiveTimecode';
+import { usePreviewCacheStats } from '@layout/Timeline/CacheActions';
 import { Accordion, type AccordionItem } from '@components/Accordion';
 import { Icon } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
+import { Switch } from '@components/Switch';
 import styles from './PreviewPanel.module.css';
 
 type PlayRange = 'work-area' | 'entire-comp' | 'current-forward';
@@ -136,6 +142,11 @@ export function PreviewPanel(): JSX.Element {
     setPref('inspectorSections', { ...usePreferenceStore.getState().inspectorSections, [id]: open });
   };
 
+  // The cache lane's two fractions, re-read at 2Hz while coverage changes.
+  const { stats: cache } = usePreviewCacheStats();
+  const ramPct = cache.total > 0 ? Math.round((cache.cached / cache.total) * 100) : 0;
+  const diskPct = cache.total > 0 && cache.diskMb !== null ? Math.round((cache.onDisk / cache.total) * 100) : null;
+
   // Frame navigation handlers — the playhead is read when pressed, not rendered.
   const handleFirstFrame = (): void => {
     setTime(0, 0);
@@ -170,7 +181,7 @@ export function PreviewPanel(): JSX.Element {
       title: 'Playback',
       defaultOpen: true,
       content: (
-        <>
+        <div className={styles.rows}>
           <label className={styles.row}>
             <span className={styles.label}>Range</span>
             <select
@@ -199,7 +210,7 @@ export function PreviewPanel(): JSX.Element {
               ))}
             </select>
           </label>
-        </>
+        </div>
       ),
     },
     {
@@ -207,7 +218,7 @@ export function PreviewPanel(): JSX.Element {
       title: 'Quality',
       defaultOpen: true,
       content: (
-        <>
+        <div className={styles.rows}>
           <label className={styles.row}>
             <span className={styles.label}>Resolution</span>
             <select
@@ -227,21 +238,17 @@ export function PreviewPanel(): JSX.Element {
           </label>
           <div className={styles.row}>
             <span className={styles.label}>Draft</span>
-            <div className={styles.toggles}>
-              <IconButton
-                size="sm"
-                variant="ghost"
-                active={draft}
+            <div className={styles.switchRow}>
+              <Switch
                 aria-label="Draft quality"
-                aria-pressed={draft}
-                tooltip={draft ? 'Draft quality: on — motion blur skipped while previewing' : 'Draft quality: off'}
-                onClick={() => setDraft(!draft)}
-              >
-                <Icon name="draft-3d" size="sm" />
-              </IconButton>
+                checked={draft}
+                title={draft ? 'Draft quality: on — motion blur skipped while previewing' : 'Draft quality: off'}
+                onChange={(e) => setDraft(e.currentTarget.checked)}
+              />
+              <span className={styles.help}>skips motion blur</span>
             </div>
           </div>
-        </>
+        </div>
       ),
     },
   ];
@@ -249,7 +256,20 @@ export function PreviewPanel(): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.top}>
-        {/* ── Transport: first, step back, play, step on, last · loop ── */}
+        {/* ── The timecode, on a row of its own ── */}
+        <div className={styles.timecodeRow} aria-label="Current time">
+          <span className={styles.timecode} data-numeric>
+            {activeTabId
+              ? <LiveTimecode fps={fps} />
+              : framesToTimecode(0, fps)}
+          </span>
+          <span className={styles.timecodeSub} data-numeric>
+            {activeTabId ? <>frame <LiveTimecode fps={fps} format="frames" /></> : 'frame 00000'}
+            {' · '}{fps.toFixed(2).replace(/\.00$/, '')} fps · {framesToTimecode(duration, fps)}
+          </span>
+        </div>
+
+        {/* ── Transport, centred: first, step back, play, step on, last · loop, audio ── */}
         <div className={styles.transport} role="toolbar" aria-label="Preview transport controls">
           <IconButton
             aria-label="First frame (Home)"
@@ -276,6 +296,7 @@ export function PreviewPanel(): JSX.Element {
             tooltip={playing ? 'Pause playback (Space)' : 'Play preview (Space)'}
             variant="primary"
             size="md"
+            className={styles.play}
             onClick={handleTogglePlay}
           >
             <Icon name={playing ? 'pause' : 'play'} size="md" />
@@ -301,7 +322,7 @@ export function PreviewPanel(): JSX.Element {
             <Icon name="skip-forward" size="sm" />
           </IconButton>
 
-          <span className={styles.transportDivider} aria-hidden />
+          <span className={styles.transportGap} aria-hidden />
 
           <IconButton
             aria-label={looping ? 'Disable loop' : 'Enable loop'}
@@ -314,28 +335,34 @@ export function PreviewPanel(): JSX.Element {
           >
             <Icon name="loop" size="sm" />
           </IconButton>
-        </div>
 
-        {/* ── Include: what the preview plays besides the picture ── */}
-        <div className={styles.row}>
-          <span className={styles.label}>Include</span>
-          <div className={styles.toggles}>
-            <IconButton
-              size="sm"
-              variant="ghost"
-              active={!muteAudio}
-              aria-label="Include audio"
-              aria-pressed={!muteAudio}
-              tooltip={muteAudio ? 'Audio: muted in previews' : 'Audio: playing in previews'}
-              onClick={() => setMuteAudio(!muteAudio)}
-            >
-              <Icon name={muteAudio ? 'audio-off' : 'audio'} size="sm" />
-            </IconButton>
-          </div>
+          <IconButton
+            size="sm"
+            variant="ghost"
+            active={!muteAudio}
+            aria-label="Include audio"
+            aria-pressed={!muteAudio}
+            tooltip={muteAudio ? 'Audio: muted in previews' : 'Audio: playing in previews'}
+            onClick={() => setMuteAudio(!muteAudio)}
+          >
+            <Icon name={muteAudio ? 'audio-off' : 'audio'} size="sm" />
+          </IconButton>
         </div>
       </div>
 
       <Accordion className={styles.groups} items={groups} openOverrides={groupsOpen} onToggle={toggleGroup} />
+
+      {/* ── The cache lane's readout: what will play in real time ── */}
+      <div className={styles.cacheRow} title="Preview cache — frames of the comp (or work area) held in memory and on disk">
+        <span className={styles.label}>Cache</span>
+        <div className={styles.cacheStrip} aria-hidden>
+          <span className={styles.cacheRam} style={{ width: `${ramPct}%` }} />
+          <span className={styles.cacheDisk} style={{ width: `${diskPct ?? 0}%` }} />
+        </div>
+        <span className={styles.cacheText} data-numeric>
+          {cache.total > 0 ? `${ramPct}% RAM${diskPct === null ? '' : ` · ${diskPct}% disk`}` : '—'}
+        </span>
+      </div>
     </div>
   );
 }

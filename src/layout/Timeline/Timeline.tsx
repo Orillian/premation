@@ -31,7 +31,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { cn } from '@utils/cn';
-import { CacheBars } from './CacheBars';
 import { Icon, type IconName } from '@components/Icon';
 import { ROW_HEIGHT_PRESETS, ROW_HEIGHT_MIN, ROW_HEIGHT_MAX, rowHeightFromDrag } from './rowHeightDrag';
 import { collectClipSnapTargets, snapClipTime } from './clipSnap';
@@ -147,6 +146,11 @@ function rowExpression(nodeId: string, props: ReadonlyArray<string>): { enabled:
 // The names other files import from here — kept on this module after the
 // split so no importer moves.
 export { TIMELINE_LEFT_OFFSET, TRACK_HEADER_MIN_WIDTH, headerWidthFor } from './timelineShared';
+
+/** How far `time` is through a comp of `duration` seconds, 0–1 (the progress bar's scale). */
+function progressFraction(time: number, duration: number): number {
+  return duration > 0 ? Math.max(0, Math.min(1, time / duration)) : 0;
+}
 export { PropertyHeader } from './TrackHeaderColumn';
 export { areRowPropsEqual } from './rowMemo';
 
@@ -1310,16 +1314,19 @@ function Timeline({
 
   // ── Work-area band drag (edge handles resize in/out; body moves) ──
   const waDrag = useRef<null | { mode: 'in' | 'out' | 'move'; startX: number; s: number; e: number }>(null);
+  // AE always draws a work area: the whole comp until one is set, so the band
+  // is there to drag from the first frame (owner 2026-10-14).
+  const workArea = model.workArea ?? { start: 0, end: model.duration };
   const startWaDrag = useCallback(
     (mode: 'in' | 'out' | 'move') => (ev: ReactPointerEvent<HTMLDivElement>) => {
-      if (!model.workArea || !lanesRef.current) return;
+      if (!lanesRef.current) return;
       ev.stopPropagation();
       const lanesRect = lanesRef.current.getBoundingClientRect();
       waDrag.current = {
         mode,
         startX: ev.clientX - lanesRect.left + scrollLeft,
-        s: model.workArea.start,
-        e: model.workArea.end,
+        s: workArea.start,
+        e: workArea.end,
       };
       try {
         (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
@@ -1328,7 +1335,7 @@ function Timeline({
       }
       document.body.style.userSelect = 'none';
     },
-    [model.workArea, scrollLeft],
+    [workArea.start, workArea.end, scrollLeft],
   );
   useEffect(() => {
     const onMove = (e: PointerEvent): void => {
@@ -2161,10 +2168,11 @@ function Timeline({
   const playheadRef = useRef<HTMLDivElement | null>(null);
   const stickyPlayheadRef = useRef<HTMLDivElement | null>(null);
   const rulerFillRef = useRef<HTMLDivElement | null>(null);
-  const liveGeomRef = useRef({ pps, totalSeconds });
-  liveGeomRef.current = { pps, totalSeconds };
+  const progressFillRef = useRef<HTMLDivElement | null>(null);
+  const liveGeomRef = useRef({ pps, totalSeconds, duration: model.duration });
+  liveGeomRef.current = { pps, totalSeconds, duration: model.duration };
   useLivePlayhead((t) => {
-    const { pps: p, totalSeconds: dur } = liveGeomRef.current;
+    const { pps: p, totalSeconds: dur, duration: compDur } = liveGeomRef.current;
     const transform = `translateX(${TIMELINE_LEFT_OFFSET + t * p}px)`;
     const line = playheadRef.current;
     if (line) {
@@ -2174,6 +2182,7 @@ function Timeline({
     }
     if (stickyPlayheadRef.current) stickyPlayheadRef.current.style.transform = transform;
     if (rulerFillRef.current) rulerFillRef.current.style.transform = `translateX(${rulerProgressWidth(t, dur, p)}px)`;
+    if (progressFillRef.current) progressFillRef.current.style.transform = `scaleX(${progressFraction(t, compDur)})`;
     followTo(t);
   }, livePlayhead);
 
@@ -2299,10 +2308,10 @@ function Timeline({
                 match; the two must stay in step or the legend names the wrong
                 control. */}
             <div className={styles.colHeadPreInfo} aria-hidden>
-              <span className={styles.colHeadItem}><Icon name="eye" size="sm" title="Video Visibility" /></span>
-              <span className={styles.colHeadItem}><Icon name="audio" size="sm" title="Audio" /></span>
-              <span className={styles.colHeadItem}><Icon name="circle" size="sm" title="Solo" /></span>
-              <span className={styles.colHeadItem}><Icon name="lock" size="sm" title="Lock" /></span>
+              <span className={styles.colHeadItem}><Icon name="eye" size="md" title="Video Visibility" /></span>
+              <span className={styles.colHeadItem}><Icon name="audio" size="md" title="Audio" /></span>
+              <span className={styles.colHeadItem}><Icon name="circle" size="md" title="Solo" /></span>
+              <span className={styles.colHeadItem}><Icon name="lock" size="md" title="Lock" /></span>
             </div>
             <span className={styles.colHeadLayer}>
               <span className={styles.colHeadIndex} aria-hidden>#</span>
@@ -2323,7 +2332,7 @@ function Timeline({
                   title="Pop Out Timeline into Separate Window"
                   aria-label="Pop out timeline into a separate window"
                 >
-                  <Icon name="pop-out" size="sm" />
+                  <Icon name="pop-out" size="md" />
                 </button>
               )}
             </span>
@@ -2334,25 +2343,26 @@ function Timeline({
                 live switch is worse than no legend. */}
             {showSwitches && (
               <span className={styles.colHeadAeSwitches} aria-hidden>
-                <span className={styles.colHeadItem}><Icon name="shy" size="sm" title="Shy" /></span>
-                <span className={styles.colHeadItem}><Icon name="star" size="sm" title="Collapse Transformations / Continuous Rasterize" /></span>
+                <span className={styles.colHeadItem}><Icon name="shy" size="md" title="Shy" /></span>
+                <span className={styles.colHeadItem}><Icon name="star" size="md" title="Collapse Transformations / Continuous Rasterize" /></span>
                 <span className={styles.colHeadItem}><span className={styles.fxText} title="Quality">/</span></span>
                 <span className={styles.colHeadItem}><span className={styles.fxText} title="Effects">fx</span></span>
-                <span className={styles.colHeadItem}><Icon name="video" size="sm" title="Frame Blending" /></span>
-                <span className={styles.colHeadItem}><Icon name="motion-blur" size="sm" title="Motion Blur" /></span>
-                <span className={styles.colHeadItem}><Icon name="adjustment" size="sm" title="Adjustment Layer" /></span>
-                <span className={styles.colHeadItem}><Icon name="frame" size="sm" title="Guide Layer (not rendered)" /></span>
+                <span className={styles.colHeadItem}><Icon name="video" size="md" title="Frame Blending" /></span>
+                <span className={styles.colHeadItem}><Icon name="motion-blur" size="md" title="Motion Blur" /></span>
+                <span className={styles.colHeadItem}><Icon name="adjustment" size="md" title="Adjustment Layer" /></span>
+                <span className={styles.colHeadItem}><Icon name="frame" size="md" title="Guide Layer (not rendered)" /></span>
                 <span className={styles.colHeadItem}><span className={styles.fxText} title="Preserve Underlying Transparency">T</span></span>
-                <span className={styles.colHeadItem}><Icon name="3d" size="sm" title="3D Layer" /></span>
+                <span className={styles.colHeadItem}><Icon name="3d" size="md" title="3D Layer" /></span>
               </span>
             )}
             {showModes && (
               <>
                 <span className={styles.colHeadMode}>Mode</span>
                 <span className={styles.colHeadMatte}>TrkMat</span>
-                <span className={styles.colHeadParent}>Parent &amp; Link</span>
               </>
             )}
+            {/* In every view, as on the rows. */}
+            <span className={styles.colHeadParent}>Parent &amp; Link</span>
             {extraColumns.map((id) => {
               const def = TIMELINE_EXTRA_COLUMNS.find((c) => c.id === id)!;
               return (
@@ -2698,6 +2708,28 @@ function Timeline({
               onSeek={onScrub}
             />
 
+            {/* The progress bar: how far the playhead is through the comp. Its
+                fill is scaled from the clock in live mode (`progressFillRef`),
+                from `currentTime` otherwise. */}
+            {model.duration > 0 ? (
+              <div
+                className={styles.progressTrack}
+                // Inside the row above the time labels, 3px clear of its top
+                // and of the labels — never over them. The track sits in the
+                // whole sticky stack, so its height is set, not stretched.
+                style={{ left: TIMELINE_LEFT_OFFSET, width: model.duration * pps, top: 3, height: MARKER_LANE_HEIGHT - 6 }}
+                aria-hidden
+              >
+                <div
+                  ref={progressFillRef}
+                  className={styles.progressFill}
+                  style={livePlayhead ? undefined : { transform: `scaleX(${progressFraction(currentTime, model.duration)})` }}
+                />
+              </div>
+            ) : null}
+
+
+
           <div className={styles.rulerStack} style={{ height: rulerHeight }}>
             <Ruler
               ticks={ticks}
@@ -2711,29 +2743,23 @@ function Timeline({
               fillRef={livePlayhead ? rulerFillRef : undefined}
             />
 
-            {/* Preview-coverage lanes (green = RAM, blue = disk). They
-                SUBSCRIBE THEMSELVES to the frame cache rather than taking
-                coverage as a prop: it changes on every rendered frame, and
-                routing that through this component's model would re-render the
-                whole timeline — and the app shell above it — 60 times a second.
-                See CacheBars for the throttling. */}
-            <CacheBars
-              fps={fps}
-              pixelsPerSecond={pps}
-              leftOffset={TIMELINE_LEFT_OFFSET}
-              rulerHeight={rulerHeight}
-            />
+            {/* The preview-coverage lanes (green = RAM, blue = disk) are the
+                panel's, under the time navigator (`NavCacheStrip`, the
+                2026-10-19 sheet): one strip for the whole comp rather than
+                lines that scroll with the ruler. */}
 
-            {/* Work-area band on the ruler (in/out region for looped playback).
-                Drag the body to move it; drag an edge handle to trim in/out. */}
-            {model.workArea ? (
+            {/* Work-area band (in/out region for looped playback): a slim
+                grey band along the ruler's TOP edge, AE's placement (the
+                2026-10-19 sheet), with a grip at each end. Drag the body to
+                move it; drag an edge handle to trim in/out. */}
+            {model.duration > 0 ? (
               <div
                 className={styles.workAreaBar}
                 style={{
-                  top: 14,
-                  height: Math.max(12, rulerHeight - 17),
-                  left: TIMELINE_LEFT_OFFSET + model.workArea.start * pps,
-                  width: Math.max(2, (model.workArea.end - model.workArea.start) * pps),
+                  top: 2,
+                  height: 5,
+                  left: TIMELINE_LEFT_OFFSET + workArea.start * pps,
+                  width: Math.max(2, (workArea.end - workArea.start) * pps),
                 }}
                 title="Work area — drag to move, drag edges to trim"
                 aria-label="Work area"
@@ -2912,6 +2938,7 @@ function Timeline({
                   key={key}
                   className={cn(
                     styles.lane,
+                    row.type === 'track' && styles.laneLayer,
                     row.type === 'prop' && styles.lanePropBg,
                     realIndex % 2 === 0 && styles.laneAlt,
                   )}

@@ -77,7 +77,7 @@ import {
   presentKinds,
   sceneGraphToTree,
 } from './sceneRows';
-import { SceneRowSwitches } from './SceneRowSwitches';
+import { SceneRowAV, SceneRowSwitches } from './SceneRowSwitches';
 import { deleteLayersWithFeedback, sceneNodeMenuItems } from './sceneMenu';
 import styles from '@layout/EditorLayout/panels.module.css';
 import { CompositionList } from './CompositionList';
@@ -507,6 +507,91 @@ export function ScenePanel(): JSX.Element {
     },
   ];
 
+  /*
+    The filter menu (owner redesign 2026-10-14). Six icon toggles in a row —
+    kind, label, keyframes, effects, 3D, clear — plus a second magnifier for
+    the search fields read as a toy strip; they are one menu now, and what is
+    active is spelled out as chips under the search field.
+  */
+  const filterMenuItems = (): DropdownItem[] => [
+    { type: 'label', label: 'Kind' },
+    ...(kindChoices.length === 0
+      ? [{ type: 'item', id: 'no-kinds', label: 'No layers yet', disabled: true } as DropdownItem]
+      : kindChoices.map((k): DropdownItem => ({
+          type: 'checkbox',
+          id: `kind-${k}`,
+          label: KIND_LABEL[k],
+          checked: kindFilter?.has(k) ?? false,
+          // An empty set collapses back to "every kind" — unchecking the
+          // last box means "stop filtering", not "show nothing".
+          onChange: () => {
+            const next = toggleKind(kindFilter, k);
+            patch({ kinds: next ? [...next] : null });
+          },
+        }))),
+    { type: 'separator' },
+    { type: 'label', label: 'Has' },
+    { type: 'checkbox', id: 'has-keys', label: 'Keyframes', checked: stored.animatedOnly, onChange: () => patch({ animatedOnly: !stored.animatedOnly }) },
+    { type: 'checkbox', id: 'has-fx', label: 'Effects', checked: stored.effectsOnly, onChange: () => patch({ effectsOnly: !stored.effectsOnly }) },
+    // The 3D view (U5): cameras, lights and 3D layers; the active camera is marked.
+    { type: 'checkbox', id: 'has-3d', label: 'Cameras, lights and 3D layers', checked: stored.threeDOnly, onChange: () => patch({ threeDOnly: !stored.threeDOnly }) },
+    { type: 'separator' },
+    { type: 'label', label: 'Label' },
+    {
+      type: 'custom',
+      id: 'labels',
+      render: (
+        <div className={styles.filterSwatches} role="group" aria-label="Label colour">
+          {LABEL_COLORS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={styles.filterSwatch}
+              style={{ background: c.color }}
+              aria-label={c.label}
+              aria-pressed={stored.label === c.color}
+              title={c.label}
+              onClick={() => patch({ label: stored.label === c.color ? null : c.color })}
+            />
+          ))}
+          {/* The set you forgot to tag — the other half of what a label is for. */}
+          <button
+            type="button"
+            className={styles.filterSwatchNone}
+            aria-pressed={stored.label === 'none'}
+            onClick={() => patch({ label: stored.label === 'none' ? null : 'none' })}
+          >
+            None
+          </button>
+        </div>
+      ),
+    },
+    { type: 'separator' },
+    // WHICH fields the box searches — visible here rather than a syntax
+    // ("fx:glow"), because a search that silently looks in four places is as
+    // confusing as one that silently looks in one.
+    { type: 'label', label: 'Search in' },
+    ...SEARCH_FIELDS.map((f): DropdownItem => ({
+      type: 'checkbox',
+      id: `field-${f.id}`,
+      label: f.label,
+      checked: stored.fields.includes(f.id),
+      onChange: () => patch({ fields: toggleField(stored.fields, f.id) }),
+    })),
+  ];
+
+  /** The active filters as removable chips (the search text is in its own field). */
+  const chips: Array<{ id: string; label: string; clear: () => void }> = [];
+  if (kindFilter) chips.push({ id: 'kind', label: [...kindFilter].map((k) => KIND_LABEL[k]).join(', '), clear: () => patch({ kinds: null }) });
+  if (stored.animatedOnly) chips.push({ id: 'keys', label: 'Has keyframes', clear: () => patch({ animatedOnly: false }) });
+  if (stored.effectsOnly) chips.push({ id: 'fx', label: 'Has effects', clear: () => patch({ effectsOnly: false }) });
+  if (stored.threeDOnly) chips.push({ id: '3d', label: '3D only', clear: () => patch({ threeDOnly: false }) });
+  if (stored.label) {
+    const name = stored.label === 'none' ? 'None' : LABEL_COLORS.find((c) => c.color === stored.label)?.label ?? 'Colour';
+    chips.push({ id: 'label', label: `Label: ${name}`, clear: () => patch({ label: null }) });
+  }
+  const menuFilterActive = chips.length > 0;
+
   return (
     <Panel
       id="scene"
@@ -520,229 +605,153 @@ export function ScenePanel(): JSX.Element {
         <CompositionList collapsible />
         <div className={styles.layerSectionHead}>
           <span className={styles.compSectionLabel}>Layers</span>
+          <span className={styles.compMeta}>{itemCount}</span>
+        </div>
+        <div className={styles.searchRow}>
+          <SearchField
+            className={styles.sceneSearch}
+            placeholder={searchPlaceholder(stored.fields)}
+            ariaLabel="Search layers"
+            value={stored.query}
+            onChange={(query) => patch({ query })}
+          />
           <Dropdown
             placement="bottom-end"
             trigger={
-              <button
-                type="button"
-                className={styles.sceneFilterBtn}
-                title="How this panel lists layers"
-                aria-label="Layers panel view options"
+              <IconButton
+                size="sm"
+                className={styles.sceneFilterTrigger}
+                tooltip="Filter layers"
+                aria-label="Layer filters"
+                aria-pressed={menuFilterActive}
               >
-                <Icon name="settings" size="sm" />
-              </button>
+                <Icon name="filter" size="sm" />
+                {menuFilterActive && <span className={styles.sceneToolDot} aria-hidden="true" />}
+              </IconButton>
+            }
+            items={filterMenuItems}
+          />
+          <Dropdown
+            placement="bottom-end"
+            trigger={
+              <IconButton size="sm" tooltip="How this panel lists layers" aria-label="Layers panel view options">
+                <Icon name="tune" size="sm" />
+              </IconButton>
             }
             items={viewMenuItems}
           />
         </div>
-      <div className={styles.searchRow}>
-        <SearchField
-          placeholder={searchPlaceholder(stored.fields)}
-          ariaLabel="Search layers"
-          value={stored.query}
-          onChange={(query) => patch({ query })}
-        />
-        {/* WHICH fields the box searches. A separate control rather than a
-            syntax ("fx:glow") because the answer has to be visible without
-            being typed — a search that silently looks in four places is as
-            confusing as one that silently looks in one. */}
-        <Dropdown
-          placement="bottom-end"
-          trigger={
-            <button
-              type="button"
-              className={styles.sceneFilterBtn}
-              title={`Searching: ${stored.fields.map((f) => SEARCH_FIELDS.find((s) => s.id === f)?.label ?? f).join(', ')}`}
-              aria-label="Choose what the search looks in"
-            >
-              <Icon name="search" size="sm" />
-            </button>
-          }
-          items={SEARCH_FIELDS.map((f): DropdownItem => ({
-            type: 'checkbox',
-            id: `field-${f.id}`,
-            label: f.label,
-            checked: stored.fields.includes(f.id),
-            onChange: () => patch({ fields: toggleField(stored.fields, f.id) }),
-          }))}
-        />
-      </div>
-      <div className={styles.sceneFilterRow} aria-label="Layer filters">
-        <Dropdown
-          placement="bottom-start"
-          trigger={
-            <button
-              type="button"
-              className={styles.sceneFilterBtn}
-              title={kindFilter ? `Showing ${[...kindFilter].map((k) => KIND_LABEL[k]).join(', ')}` : 'Filter by layer kind'}
-              aria-label="Filter by layer kind"
-              aria-pressed={kindFilter !== null}
-              disabled={kindChoices.length === 0}
-            >
-              <Icon name="layers" size="sm" />
-            </button>
-          }
-          items={[
-            { type: 'item', id: 'all-kinds', label: 'All kinds', icon: kindFilter === null ? 'check' : undefined, onSelect: () => patch({ kinds: null }) },
-            { type: 'separator' },
-            ...kindChoices.map((k): DropdownItem => ({
-              type: 'checkbox',
-              id: k,
-              label: KIND_LABEL[k],
-              checked: kindFilter?.has(k) ?? false,
-              // An empty set collapses back to "every kind" — unchecking the
-              // last box means "stop filtering", not "show nothing".
-              onChange: () => {
-                const next = toggleKind(kindFilter, k);
-                patch({ kinds: next ? [...next] : null });
-              },
-            })),
-          ]}
-        />
-        <Dropdown
-          placement="bottom-start"
-          trigger={
-            <button
-              type="button"
-              className={styles.sceneFilterBtn}
-              title="Filter by label colour"
-              aria-label="Filter by label colour"
-              aria-pressed={stored.label !== null}
-            >
-              {stored.label && stored.label !== 'none' ? (
-                <span className={styles.sceneFilterLabelDot} style={{ background: stored.label }} aria-hidden />
-              ) : (
-                <Icon name="palette" size="sm" />
-              )}
-            </button>
-          }
-          items={[
-            { type: 'item', id: 'any-label', label: 'Any label', icon: stored.label === null ? 'check' : undefined, onSelect: () => patch({ label: null }) },
-            // The set you forgot to tag — the other half of what a label is for.
-            { type: 'item', id: 'no-label', label: 'Unlabelled', icon: stored.label === 'none' ? 'check' : undefined, onSelect: () => patch({ label: 'none' }) },
-            { type: 'separator' },
-            ...LABEL_COLORS.map((c): DropdownItem => ({
-              type: 'item',
-              id: c.id,
-              label: (
-                <>
-                  <span aria-hidden="true" className={styles.labelSwatch} style={{ background: c.color }} />
-                  {c.label}
-                </>
-              ),
-              icon: stored.label === c.color ? 'check' : undefined,
-              onSelect: () => patch({ label: stored.label === c.color ? null : c.color }),
-            })),
-          ]}
-        />
-        <button
-          type="button"
-          className={styles.sceneFilterBtn}
-          title="Only layers with keyframes"
-          aria-label="Only layers with keyframes"
-          aria-pressed={stored.animatedOnly}
-          onClick={() => patch({ animatedOnly: !stored.animatedOnly })}
-        >
-          <Icon name="keyframe" size="sm" />
-        </button>
-        <button
-          type="button"
-          className={styles.sceneFilterBtn}
-          title="Only layers with effects"
-          aria-label="Only layers with effects"
-          aria-pressed={stored.effectsOnly}
-          onClick={() => patch({ effectsOnly: !stored.effectsOnly })}
-        >
-          <Icon name="magic-wand" size="sm" />
-        </button>
-        <IconButton
-          size="sm"
-          active={stored.threeDOnly}
-          tooltip="3D view — cameras, lights and 3D layers only; the active camera is marked"
-          aria-label="Only cameras, lights and 3D layers"
-          aria-pressed={stored.threeDOnly}
-          onClick={() => patch({ threeDOnly: !stored.threeDOnly })}
-        >
-          <Icon name="cube" size="sm" />
-        </IconButton>
         {filterActive && (
-          <button
-            type="button"
-            className={styles.sceneFilterBtn}
-            title="Clear layer filters"
-            aria-label="Clear layer filters"
-            onClick={() => clearFilterFor(activeCompId)}
-          >
-            <Icon name="close" size="sm" />
-          </button>
-        )}
-      </div>
-      {/*
-        A pick-whip drop surface. Rows already carry `data-id` from the shared
-        TreeView and that id IS the scene node id here, so scoping the container
-        is the entire integration — see `@core/whip/whipTarget` for why the
-        alternative (teaching TreeView to emit whip attributes) would be worse
-        for a component six panels use with four kinds of id.
-      */}
-      <div className={styles.body} data-whip-scope="layer">
-        {filtered.length ? (
-          <TreeView
-            nodes={filtered}
-            ariaLabel="Layers"
-            rowHeight={rowHeight}
-            selectedIds={selected}
-            onSelect={selectFromTree}
-            defaultExpandedIds={defaultExpandIds}
-            expandedIds={filterActive ? controlledExpandIds : undefined}
-            revealIds={revealIds}
-            scrollToId={scrollToId}
-            onNodeContextMenu={openNodeMenu}
-            onReorder={handleReorder}
-            renamingId={renamingId ?? undefined}
-            onRename={commitRename}
-            onRenameCancel={() => setRenamingId(null)}
-            onRenameRequest={startRename}
-            onDelete={(ids) => { void deleteLayersWithFeedback(ids); }}
-            /*
-              The parent pick-whip, the gesture AE users reach for a hundred
-              times a day. The tree was already a whip TARGET; being only a
-              target meant you could parent a layer TO one of these rows and
-              never FROM one. Composition roots get no whip — they are the
-              document, not a layer that can have a parent.
-            */
-            renderLead={(node) => {
-              // A composition root (no layer record) gets no whip.
-              if (!documentMirror().layer(node.id)) return null;
-              return (
-                <PickWhip
-                  label="Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)"
-                  accept={(target) => mirrorCanBeParentOf(documentMirror(), node.id, target.nodeId)}
-                  // The inspector's writer (`setParent`); a composition root = no parent.
-                  onPick={(target, m) => parentLayer(node.id, isLayer(target.nodeId) ? target.nodeId : null, m)}
-                />
-              );
-            }}
-            renderActions={(node) => <SceneRowSwitches nodeId={node.id} flags={switches} />}
-          />
-        ) : (
-          <div className={styles.empty} role="status">
-            {filterActive
-              ? 'No layers match this filter.'
-              : 'No layers yet. Add one from the “+ New layer” menu in the toolbar.'}
+          <div className={styles.sceneChips} aria-label="Active layer filters">
+            {chips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={styles.sceneChip}
+                aria-label={`Remove filter: ${c.label}`}
+                onClick={c.clear}
+              >
+                <span className={styles.sceneChipText}>{c.label}</span>
+                <Icon name="close" size="sm" />
+              </button>
+            ))}
+            <button
+              type="button"
+              className={styles.sceneChipClear}
+              aria-label="Clear layer filters"
+              onClick={() => clearFilterFor(activeCompId)}
+            >
+              Clear
+            </button>
           </div>
         )}
-      </div>
-      <div className={styles.footer}>
-        <span>{itemCount} {itemCount === 1 ? 'layer' : 'layers'}</span>
-        {filterActive && (
-          <>
-            <span>·</span>
-            <span>{matchCount} {matchCount === 1 ? 'match' : 'matches'}</span>
-          </>
-        )}
-        <span>·</span>
-        <span>{selected.length} selected</span>
-      </div>
+        {/* Column heads over AE's switch columns, so the glyphs name themselves. */}
+        <div className={styles.layerColumns} aria-hidden="true">
+          <span className={styles.avGutter}>
+            <span className={styles.avHead}><Icon name="eye" size="sm" /></span>
+            <span className={styles.avHead}><Icon name="audio" size="sm" /></span>
+            <span className={styles.avHead}><Icon name="circle" size="sm" /></span>
+            <span className={styles.avHead}><Icon name="lock" size="sm" /></span>
+          </span>
+          <span className={styles.layerColumnName}>Layer name</span>
+        </div>
+        {/*
+          A pick-whip drop surface. Rows already carry `data-id` from the shared
+          TreeView and that id IS the scene node id here, so scoping the container
+          is the entire integration — see `@core/whip/whipTarget` for why the
+          alternative (teaching TreeView to emit whip attributes) would be worse
+          for a component six panels use with four kinds of id.
+        */}
+        <div className={styles.sceneBody} data-whip-scope="layer">
+          {filtered.length ? (
+            <TreeView
+              nodes={filtered}
+              ariaLabel="Layers"
+              rowHeight={rowHeight}
+              selectedIds={selected}
+              onSelect={selectFromTree}
+              defaultExpandedIds={defaultExpandIds}
+              expandedIds={filterActive ? controlledExpandIds : undefined}
+              revealIds={revealIds}
+              scrollToId={scrollToId}
+              onNodeContextMenu={openNodeMenu}
+              onReorder={handleReorder}
+              renamingId={renamingId ?? undefined}
+              onRename={commitRename}
+              onRenameCancel={() => setRenamingId(null)}
+              onRenameRequest={startRename}
+              onDelete={(ids) => { void deleteLayersWithFeedback(ids); }}
+              renderGutter={(node) => <SceneRowAV nodeId={node.id} />}
+              /*
+                The parent pick-whip, the gesture AE users reach for a hundred
+                times a day. The tree was already a whip TARGET; being only a
+                target meant you could parent a layer TO one of these rows and
+                never FROM one. Composition roots get no whip — they are the
+                document, not a layer that can have a parent.
+              */
+              renderLead={(node) => {
+                // A composition root (no layer record) gets no whip.
+                if (!documentMirror().layer(node.id)) return null;
+                return (
+                  <PickWhip
+                    label="Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)"
+                    accept={(target) => mirrorCanBeParentOf(documentMirror(), node.id, target.nodeId)}
+                    // The inspector's writer (`setParent`); a composition root = no parent.
+                    onPick={(target, m) => parentLayer(node.id, isLayer(target.nodeId) ? target.nodeId : null, m)}
+                  />
+                );
+              }}
+              renderActions={switches.length ? (node) => <SceneRowSwitches nodeId={node.id} flags={switches} /> : undefined}
+            />
+          ) : (
+            <div className={styles.empty} role="status">
+              {filterActive
+                ? 'No layers match this filter.'
+                : 'No layers yet. Add one from the “+ New layer” menu in the toolbar.'}
+            </div>
+          )}
+        </div>
+        <div className={styles.sceneFooter}>
+          <span>{itemCount} {itemCount === 1 ? 'layer' : 'layers'}</span>
+          {filterActive && (
+            <>
+              <span>·</span>
+              <span>{matchCount} {matchCount === 1 ? 'match' : 'matches'}</span>
+            </>
+          )}
+          <span>·</span>
+          <span>{selected.length} selected</span>
+          <span className={styles.spacer} />
+          <IconButton
+            size="sm"
+            tooltip="Delete the selected layers"
+            aria-label="Delete selected layers"
+            disabled={selected.length === 0}
+            onClick={() => { void deleteLayersWithFeedback(selected); }}
+          >
+            <Icon name="trash" size="sm" />
+          </IconButton>
+        </div>
       </div>
     </Panel>
   );

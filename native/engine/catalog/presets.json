@@ -2023,6 +2023,480 @@
     ]
   },
   {
+    "name": "Flip Up 3D",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "Each character flips up on its baseline, like a split-flap board.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.start",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -60,
+            "easing": "bezier",
+            "bezier": [
+              0.3,
+              0.1,
+              0.5,
+              0.95
+            ]
+          },
+          {
+            "t": 1.6,
+            "value": 140
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": -60,
+            "end": 200,
+            "offset": 0,
+            "amount": 100,
+            "shape": "square",
+            "smoothness": 170,
+            "easeHigh": 0,
+            "easeLow": 50,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "scale": 100,
+        "scaleY": 100,
+        "rotation": 0,
+        "rotationX": -90,
+        "rotationY": 0,
+        "opacity": 0,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
+    "name": "Tumble In 3D",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "Characters tumble out of the space in front of the text and land in place.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.start",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -60,
+            "easing": "bezier",
+            "bezier": [
+              0.35,
+              0.1,
+              0.65,
+              0.9
+            ]
+          },
+          {
+            "t": 1.9,
+            "value": 140
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.z",
+        "unit": "fontSize",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -3
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": -60,
+            "end": 200,
+            "offset": 0,
+            "amount": 100,
+            "shape": "square",
+            "smoothness": 200,
+            "easeHigh": 0,
+            "easeLow": 45,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0,
+        "y": 0,
+        "z": -3,
+        "scale": 80,
+        "scaleY": 80,
+        "rotation": 0,
+        "rotationX": 25,
+        "rotationY": 110,
+        "opacity": 0,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
+    "name": "Rise From Depth",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "Characters travel forward out of the distance, defocused, and come sharp as they arrive.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.start",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -60,
+            "easing": "bezier",
+            "bezier": [
+              0.35,
+              0.1,
+              0.65,
+              0.9
+            ]
+          },
+          {
+            "t": 2,
+            "value": 140
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.z",
+        "unit": "fontSize",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": 12
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.blur",
+        "unit": "fontSize",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": 0.4
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": -60,
+            "end": 200,
+            "offset": 0,
+            "amount": 100,
+            "shape": "square",
+            "smoothness": 220,
+            "easeHigh": 0,
+            "easeLow": 55,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0,
+        "y": 0,
+        "z": 12,
+        "scale": 100,
+        "scaleY": 100,
+        "rotation": 0,
+        "rotationX": 0,
+        "rotationY": 0,
+        "opacity": 0,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0.4,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
+    "name": "Hinge Swing 3D",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "Characters swing shut like little doors, one after another.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.start",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -60,
+            "easing": "bezier",
+            "bezier": [
+              0.3,
+              0.1,
+              0.5,
+              0.95
+            ]
+          },
+          {
+            "t": 1.5,
+            "value": 140
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.x",
+        "unit": "compW",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": 0.02
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": -60,
+            "end": 200,
+            "offset": 0,
+            "amount": 100,
+            "shape": "square",
+            "smoothness": 150,
+            "easeHigh": 0,
+            "easeLow": 35,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0.02,
+        "y": 0,
+        "z": 0,
+        "scale": 100,
+        "scaleY": 100,
+        "rotation": 0,
+        "rotationX": 0,
+        "rotationY": -100,
+        "opacity": 0,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
+    "name": "Flip Away 3D",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "Characters tip backwards over their top edge and are gone.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.end",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -60,
+            "easing": "bezier",
+            "bezier": [
+              0.45,
+              0.05,
+              0.7,
+              0.85
+            ]
+          },
+          {
+            "t": 1.3,
+            "value": 140
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.y",
+        "unit": "compH",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -0.03
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": -200,
+            "end": -60,
+            "offset": 0,
+            "amount": 100,
+            "shape": "square",
+            "smoothness": 170,
+            "easeHigh": 45,
+            "easeLow": 0,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0,
+        "y": -0.03,
+        "z": 0,
+        "scale": 100,
+        "scaleY": 100,
+        "rotation": 0,
+        "rotationX": 90,
+        "rotationY": 0,
+        "opacity": 0,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
+    "name": "3D Wave",
+    "builtin": true,
+    "folder": "Text/3D",
+    "category": "3D",
+    "description": "A rolling wave tips characters toward the camera as it passes through the line.",
+    "requires": "text",
+    "tracks": [
+      {
+        "prop": "ta.0.offset",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -35,
+            "easing": "bezier",
+            "bezier": [
+              0.65,
+              0,
+              0.35,
+              1
+            ]
+          },
+          {
+            "t": 2.2,
+            "value": 100
+          }
+        ]
+      },
+      {
+        "prop": "ta.0.z",
+        "unit": "fontSize",
+        "keyframes": [
+          {
+            "t": 0,
+            "value": -1.2
+          }
+        ]
+      }
+    ],
+    "animators": [
+      {
+        "enabled": true,
+        "selectors": [
+          {
+            "kind": "range",
+            "basedOn": "characters",
+            "units": "percentage",
+            "mode": "add",
+            "start": 0,
+            "end": 35,
+            "offset": 0,
+            "amount": 100,
+            "shape": "smooth",
+            "smoothness": 100,
+            "easeHigh": 0,
+            "easeLow": 0,
+            "randomizeOrder": false,
+            "randomSeed": 0
+          }
+        ],
+        "x": 0,
+        "y": 0,
+        "z": -1.2,
+        "scale": 100,
+        "scaleY": 100,
+        "rotation": 0,
+        "rotationX": 60,
+        "rotationY": 0,
+        "opacity": 100,
+        "fillOpacity": 100,
+        "tracking": 0,
+        "lineSpacing": 0,
+        "characterOffset": 0,
+        "blur": 0,
+        "skew": 0,
+        "strokeWidth": 0
+      }
+    ]
+  },
+  {
     "name": "Fade In+Out",
     "builtin": true,
     "folder": "Behaviors",

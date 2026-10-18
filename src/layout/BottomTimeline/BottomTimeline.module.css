@@ -106,15 +106,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: var(--bar-height-tool);
+  /* The dock strip's height and ground (the 2026-10-19 sheet): every panel
+     in the app opens with the same 28px strip on the darker surface. */
+  height: 28px;
   /* No left padding — the tab strip owns the row and starts at its edge. */
   padding: 0 10px 0 0;
-  background: var(--color-panel);
-  /* No rule here. The tabs and the search row beneath them are one block of
-     panel chrome; a rule between them cut that block in half and left the
-     search row looking like it belonged to the track list rather than to the
-     tabs. The division that matters is BELOW the search row — see
-     `.subHeaderRow`. */
+  background: var(--color-surface-0);
+  box-shadow: inset 0 -1px 0 var(--color-border-structural);
   border-bottom: none;
   flex: none;
   user-select: none;
@@ -316,14 +314,16 @@
   align-items: stretch;
   flex-wrap: nowrap;
   gap: 0;
-  height: 32px;
+  /* AE's header row: room for the two-line timecode at its real size (44px,
+     the 2026-10-19 sheet: an 18px figure and a 10px footnote). */
+  height: 44px;
   /* 2px of clearance above the rule. The timecode's descender and the filter
      field's border were landing on it, which read as the row overflowing its
      own boundary rather than sitting inside one. */
   padding: 0 0 2px;
   box-sizing: border-box;
   background: var(--color-panel);
-  border-bottom: 2px solid var(--color-timeline-ruler-border);
+  border-bottom: 1px solid var(--color-timeline-ruler-border);
   flex: none;
   width: 100%;
   min-width: 0;
@@ -345,7 +345,7 @@
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: var(--space-2);
+  gap: var(--space-4);
   flex: none;
   box-sizing: border-box;
   height: 100%;
@@ -384,38 +384,44 @@
  * thing this corner is for; the frame count stays at micro underneath as its
  * footnote. Two steps of separation is what makes one of them the headline.
  */
+/* AE's timecode: large blue figures in the panel face, the frame count and
+   rate under it in the same blue (2026-10-14). */
 .timecodeMain {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.01em;
-  color: var(--color-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--color-primary-text);
   background: transparent;
   border: none;
   padding: 0;
   margin: 0;
   cursor: pointer;
   text-align: left;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .timecodeMain:hover {
   text-decoration: underline;
 }
 
+/* The frame count and rate: the figure's footnote, in the tertiary grey. */
 .timecodeSub {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-micro);
-  color: color-mix(in srgb, var(--color-primary) 65%, var(--color-text-tertiary));
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
   line-height: 1;
-  margin-top: 1px;
+  margin-top: 3px;
+  white-space: nowrap;
 }
 
 .timelineSwitchesGroup {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 2px;
+  gap: var(--space-2);
   flex: none;
 }
 
@@ -434,11 +440,40 @@
  */
 .navigatorCol {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
   height: 100%;
   padding: 0 8px;
   flex: 1 1 160px;
   min-width: 120px;
+}
+
+/* The cache lanes under the navigator: RAM (green) over disk (blue), 1.5px
+   each, on the navigator's own scale (NavCacheStrip). */
+.navCacheStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  height: 4px;
+  flex: none;
+}
+
+.navCacheLane {
+  position: relative;
+  height: 1.5px;
+}
+
+.navCacheRam,
+.navCacheDisk {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--color-timeline-cache);
+}
+
+.navCacheDisk {
+  background: var(--color-timeline-disk-cache);
 }
 
 .navigatorColPinned {
@@ -472,15 +507,18 @@
  */
 .timeNavigatorTrack {
   position: relative;
-  flex: 1 1 auto;
+  flex: none;
+  width: 100%;
   min-width: 0;
-  height: 14px;
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
+  /* AE's navigator: a dark track with the visible span as a grey bar. 10px,
+     2px corners (the 2026-10-19 sheet): a zoom window, not a progress pill,
+     so nothing in it is blue but the hairline playhead. */
+  height: 10px;
+  background: var(--color-timeline-switch-well);
+  border: none;
+  border-radius: 2px;
   overflow: hidden;
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 /**
@@ -496,16 +534,37 @@
   top: 0;
   bottom: 0;
   min-width: 6px;
-  /* Neutral: it is a scrollbar over time, not a selection. */
-  background: color-mix(in srgb, var(--color-text-secondary) 30%, transparent);
-  border: 1px solid var(--color-text-tertiary);
-  border-radius: var(--radius-sm);
+  /* Neutral grey, a lighter grip at each end — the two things you can drag. */
+  background: var(--color-surface-3);
+  border: none;
+  border-radius: 2px;
   cursor: grab;
   box-sizing: border-box;
 }
 
 .timeNavigatorWindow:active {
   cursor: grabbing;
+}
+
+.timeNavigatorWindow::before,
+.timeNavigatorWindow::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.timeNavigatorWindow::before {
+  left: 0;
+  border-radius: 2px 0 0 2px;
+}
+
+.timeNavigatorWindow::after {
+  right: 0;
+  border-radius: 0 2px 2px 0;
 }
 
 /* The two resize ends. Wider than they look — the visible rule is 1px of
@@ -538,6 +597,10 @@
   width: 100%;
   pointer-events: none;
   will-change: transform;
+  /* Above the window: the window is an opaque grey bar now (AE's), so a
+     playhead drawn under it vanished and the navigator looked dead. It takes
+     no pointer events, so the window's body and ends stay draggable. */
+  z-index: 2;
 }
 
 .timeNavPlayhead::before {
@@ -545,10 +608,9 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -1px;
-  width: 2px;
-  background: var(--color-text-primary);
-  opacity: 0.75;
+  left: 0;
+  width: 1px;
+  background: var(--color-primary-text);
 }
 
 /**
@@ -618,12 +680,14 @@
      narrowest (260px) the icon plus a few characters is what fits beside the
      timecode, Graph Editor and the `⋯`. */
   min-width: 64px;
-  max-width: 320px;
-  height: var(--control-height-sm);
-  padding: 0 var(--space-2);
-  font-size: var(--font-size-xs);
-  background: var(--color-timeline-well);
-  border-color: var(--color-border);
+  /* AE's search: one wide dark field taking what the timecode and the
+     switches leave. */
+  max-width: none;
+  height: var(--control-height-lg);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-md);
+  background: var(--color-timeline-switch-well);
+  border-color: transparent;
   border-radius: var(--radius-sm);
   outline: none;
 }
@@ -939,34 +1003,35 @@ button.play:hover {
   display: none;
 }
 
+/* The dock strip's grammar (DockPanel.module.css, the 2026-10-19 sheet): tabs
+   the full height of the strip, the front one lifted onto the panel surface
+   with a 2px accent along its top edge. */
 .tab {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 8px;
+  gap: 6px;
+  height: 100%;
+  padding: 0 12px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 0;
   color: var(--color-text-tertiary);
-  font-size: var(--font-size-xs);
-  font-family: var(--font-family-sans);
-  font-weight: 500;
+  font-size: var(--panel-font-size);
+  font-family: var(--panel-font-family);
+  font-weight: var(--panel-weight-tab);
   cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
   white-space: nowrap;
 }
 .tab:hover {
-  background: rgba(255, 255, 255, 0.05);
   color: var(--color-text-primary);
 }
 
 .tabActive {
-  background: var(--color-surface-2) !important;
-  color: var(--color-text-primary) !important;
-  font-weight: 600;
-  border-color: transparent !important;
-  box-shadow: none !important;
+  background: var(--color-panel);
+  color: var(--color-text-primary);
+  font-weight: var(--panel-weight-tab-active);
+  box-shadow: inset 0 2px 0 var(--color-primary);
 }
 
 .tabChevron {
@@ -1229,33 +1294,99 @@ button.play:hover {
 }
 
 /* AE's composition switches in the timeline header: Shy, Motion Blur, Draft 3D. */
+/* ── Footer (AE's): render time + Switches / Modes | zoom ── */
+.footer {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  height: 26px;
+  border-top: 1px solid var(--color-timeline-ruler-border);
+  background: var(--color-panel);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  color: var(--color-text-secondary);
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex: none;
+  box-sizing: border-box;
+  padding: 0 var(--space-5);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.footerReadout {
+  font-variant-numeric: tabular-nums;
+}
+
+/* AE prints the figure in green: a readout, not a warning. */
+.footerValue {
+  color: var(--color-success);
+  font-weight: var(--font-weight-medium);
+}
+
+.footerToggle {
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.footerToggle:hover {
+  background: var(--color-hover);
+}
+
+.footerToggle:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+.footerRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-4);
+}
+
+/* AE's comp switches: one size, monochrome; on is the blue glyph alone. */
 .compSwitches {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
   flex: none;
 }
 
 .compSwitch {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 20px;
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
   padding: 0;
   border: none;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .compSwitch:hover {
   color: var(--color-text-primary);
+  background: var(--color-hover);
 }
 
 .compSwitchOn {
-  color: var(--color-primary);
-  background: var(--color-surface-0);
+  color: var(--color-primary-text);
 }
 
 /* Auto-Keyframe while recording: the record colour, as a stopwatch that is armed. */

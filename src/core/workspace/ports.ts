@@ -215,7 +215,7 @@ const KIND_FOR_CREATE: Record<string, SceneKind> = {
 };
 
 /** Kinds that are open strokes (no enclosed area) → render with a stroke, no fill. */
-const STROKED_KINDS = new Set(['line', 'pencil', 'path', 'pen', 'brush', 'curvature']);
+const STROKED_KINDS = new Set(['line', 'pencil', 'path', 'pen', 'curvature']);
 
 /**
  * Point-built shapes that enclose an area — they must be FILLED and CLOSED.
@@ -227,11 +227,11 @@ const STROKED_KINDS = new Set(['line', 'pencil', 'path', 'pen', 'brush', 'curvat
  * the "part of the shape isn't drawn" report. Naming them explicitly is the
  * only reliable signal; the outline itself cannot say whether it encloses.
  */
-const CLOSED_POINT_KINDS = new Set(['polygon', 'star', 'rect', 'rectangle', 'ellipse', 'circle']);
+const CLOSED_POINT_KINDS = new Set(['polygon', 'star', 'rect', 'rectangle', 'ellipse', 'circle', 'brush']);
 
 let createSeq = 0;
 
-function makeNodeAt(
+export function makeNodeAt(
   kind: SceneKind,
   name: string,
   cx: number,

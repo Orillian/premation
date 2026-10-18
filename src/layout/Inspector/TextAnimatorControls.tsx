@@ -62,6 +62,7 @@ import { paths } from '@core/engine/propRefs';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorTreeGroups } from '@hooks/useMirror';
 import { hasTextLayer, mirrorAnimators, mirrorTextMoreOptions, storedFontAxes, textField } from '@layout/Text/textMirror';
+import { plainValue, trackRefIn } from '@core/mirror/trackIndex';
 import {
   addAnimatorEdit,
   addAnimatorPropertiesEdit,
@@ -907,7 +908,8 @@ export function TextAnimatorControls({ nodeId }: { nodeId: string }): JSX.Elemen
 
   const animators = mirrorAnimators(m, nodeId);
   const show3D = layer.switches.threeD;
-  const perChar3D = textField(m, nodeId, 'perCharacter3D') === true;
+  // Stored on Transform (Geometry Options), not under `text/` in the mirror.
+  const perChar3D = plainValue(trackRefIn(m.tree(nodeId), 'perChar3D')?.info.value) === true;
 
   const handleAutoTypewriter = async (): Promise<void> => {
     if (await typewriterEdit(nodeId, time)) {

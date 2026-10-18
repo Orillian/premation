@@ -3,8 +3,9 @@
  * motion-path toggle, shown while the single selected layer has Position
  * keyframes (AE draws the path of the selected layer; Ctrl+Alt+M here).
  *
- * **This renders in the transport bar, right of the play cluster**, before the
- * display controls (`ViewportDisplayControls`).
+ * **This renders in the transport bar, right of the play cluster**, as the
+ * Guides group before the Display group (`ViewportDisplayControls`). It owns
+ * the hairline after it, since it alone knows whether it is there at all.
  *
  * What used to sit beside it and does not any more (2026-10-07), because each
  * had a better home and the row had grown to 24 buttons:
@@ -27,7 +28,9 @@ import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys } from '@hooks/useMirror';
 import { hasPositionKeys } from '@core/mirror/motionFacts';
+import { cn } from '@utils/cn';
 import styles from './ViewportTools.module.css';
+import tool from './viewportToolButton.module.css';
 
 export function ViewportTools(): JSX.Element | null {
   const motionPathVisible = useGuidesStore((s) => s.motionPathVisible);
@@ -43,19 +46,20 @@ export function ViewportTools(): JSX.Element | null {
   if (!singleId || !hasPositionKeys(documentMirror(), singleId)) return null;
 
   return (
-    <div className={styles.tools}>
-      <div className={styles.group}>
+    <div className={styles.tools} role="group" aria-label="Viewport guides">
+      <div className={tool.group}>
         <button
-          className={`${styles.headerBtn} ${motionPathVisible ? styles.headerBtnActive : ''}`}
+          type="button"
+          className={cn(tool.tool, motionPathVisible && tool.toolActive)}
           onClick={toggleMotionPath}
           aria-label="Show motion path"
           aria-pressed={motionPathVisible}
           title={motionPathVisible ? 'Hide Motion Path (Ctrl+Alt+M)' : 'Show Motion Path (Ctrl+Alt+M)'}
         >
-          <Icon name="path" size="md" />
+          <Icon name="path" size="sm" />
         </button>
-        <span className={styles.sep} />
       </div>
+      <div className={tool.divider} />
     </div>
   );
 }

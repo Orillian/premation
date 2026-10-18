@@ -30,8 +30,9 @@ class StubResizeObserver {
   disconnect(): void {}
 }
 
-/** The first effect in the folder that opens by default. */
-const FIRST_FOLDER = 'Blur & Sharpen';
+/** The folder that opens by default (the first A–Z), and its first effect. */
+const FIRST_FOLDER = [...new Set(EFFECT_DEFS.map((d) => EFFECT_CATEGORY[d.type]).filter((c): c is string => !!c))]
+  .sort((a, b) => a.localeCompare(b, 'en'))[0]!;
 const FIRST_EFFECT = EFFECT_DEFS.find((d) => EFFECT_CATEGORY[d.type] === FIRST_FOLDER)!;
 
 beforeAll(() => {

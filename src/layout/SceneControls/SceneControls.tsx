@@ -174,7 +174,7 @@ export function SceneControls(): JSX.Element {
             aria-label="Camera tool"
             title={cameraToolTitle(cameraTool)}
           >
-            <Icon name={armedCamera?.icon ?? 'orbit'} size="md" />
+            <Icon name={armedCamera?.icon ?? 'orbit'} size="sm" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }
@@ -199,7 +199,7 @@ export function SceneControls(): JSX.Element {
             aria-label="Gizmo mode"
             title={`Gizmo mode — ${gizmo.label}`}
           >
-            <Icon name={gizmo.icon} size="md" />
+            <Icon name={gizmo.icon} size="sm" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }
@@ -219,7 +219,7 @@ export function SceneControls(): JSX.Element {
             title={a.label}
             onClick={() => setGizmo3dAxisMode(a.id)}
           >
-            <Icon name={a.icon} size="md" />
+            <Icon name={a.icon} size="sm" />
           </button>
         ))}
       </div>
@@ -235,7 +235,7 @@ export function SceneControls(): JSX.Element {
         title="Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections"
         onClick={() => toggleDraft3d()}
       >
-        <Icon name="draft-3d" size="md" />
+        <Icon name="draft-3d" size="sm" />
       </button>
       <button
         type="button"
@@ -245,7 +245,7 @@ export function SceneControls(): JSX.Element {
         title="3D ground plane"
         onClick={() => toggleGroundGridVisible()}
       >
-        <Icon name="ground-grid" size="md" />
+        <Icon name="ground-grid" size="sm" />
       </button>
 
       {/*
@@ -306,7 +306,7 @@ export function SceneControls(): JSX.Element {
             aria-label="3D view options"
             title="3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane"
           >
-            <Icon name="cube" size="md" />
+            <Icon name="cube" size="sm" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }

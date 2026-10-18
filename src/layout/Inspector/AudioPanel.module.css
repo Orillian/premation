@@ -1,18 +1,19 @@
 /*
-  The Audio panel. A mixer strip, so it reads vertically: the meter and the
-  fader share one dB axis and sit in the same column, because the whole point of
-  the panel is that the measurement and the control that answers it are the same
-  gesture apart.
+  The Audio panel, on the approved 2026-10-19 sheet. A mixer strip, so it
+  reads vertically: each channel is ONE column — an 8px meter beside a 10px
+  fader on the same dB axis, the clip LED above, the channel's level under —
+  and the dB scale with its tick marks sits to the left of both. Below the
+  deck, the pan and the two fades as rows.
 
   Its words take the panel type roles (typography.css): label-role keys,
-  value-role numbers, bordered-verb buttons, one help line. No title — the tab.
+  value-role numbers in the accent, one help line. No title — the tab.
 */
 
 .root {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5) var(--space-4);
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
   height: 100%;
   min-height: 0;
   overflow-y: auto;
@@ -22,28 +23,76 @@
   line-height: var(--panel-line-height);
 }
 
+/* ── Identity: the layer the faders edit ──────────────────────────── */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+
+.labelDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--color-text-muted);
+}
+
+.kindIcon {
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-value);
+}
+
+.kind {
+  flex: none;
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+}
+
 /* ── Meter deck ─────────────────────────────────────────────────────
    A fixed height rather than flex: the dB scale beside it is positioned in
    percentages, so the column has to have a height before the marks can land
    on the right numbers. */
 .deck {
   position: relative;
-  display: flex;
-  align-items: stretch;
-  gap: 10px;
-  height: 190px;
-  padding-left: 30px;
+  display: grid;
+  grid-template-columns: 30px 1fr 1fr;
+  column-gap: var(--space-4);
+  height: 200px;
+  padding-top: var(--space-2);
 }
 
-/* The dB marks: tick numbers, the help size in the value face. */
+/* With no layer selected the deck stays, dimmed: the help line under it
+   says why, and the panel keeps its shape rather than collapsing to a line. */
+.deckIdle .meterBar,
+.deckIdle .fader,
+.deckIdle .scale {
+  opacity: 0.55;
+}
+
+/* The dB marks: tick numbers in the value face, a tick line to each. The
+   bottom inset matches the strip's channel row + gap so 0% of the scale is
+   the meter's floor; the top inset is the LED row. */
 .scale {
-  position: absolute;
-  left: 0;
-  top: 14px;
-  bottom: 18px;
-  width: 28px;
+  position: relative;
+  margin-top: 9px;
+  margin-bottom: 26px;
   font-family: var(--panel-font-family-value);
-  font-size: var(--panel-font-size-help);
+  font-size: var(--font-size-micro);
   font-weight: var(--panel-weight-help);
   color: var(--color-text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -51,17 +100,26 @@
 
 .scale > span {
   position: absolute;
-  right: 2px;
+  right: 8px;
   transform: translateY(50%);
   line-height: 1;
+}
+
+.scale > span::after {
+  content: "";
+  position: absolute;
+  left: calc(100% + 3px);
+  top: 50%;
+  width: 4px;
+  height: 1px;
+  background: var(--color-text-muted);
 }
 
 .strip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  flex: 1;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -69,36 +127,33 @@
    eye goes when the meter slams, rather than somewhere it has to be hunted. */
 .clipLed {
   width: 100%;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border);
+  height: 3px;
+  border-radius: 1px;
+  background: var(--color-timeline-well);
   transition: background-color 0.1s ease;
 }
 
 .clipLedOn {
   background: var(--color-danger);
-  border-color: var(--color-danger);
   box-shadow: 0 0 6px color-mix(in srgb, var(--color-danger) 60%, transparent);
 }
 
+/* Meter beside fader, one dB axis. */
 .meterWrap {
   position: relative;
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 8px 18px;
+  column-gap: var(--space-2);
+  justify-content: center;
   flex: 1;
   min-height: 0;
   width: 100%;
-  justify-content: center;
 }
 
 .meterBar {
   position: relative;
-  width: 10px;
-  border-radius: 2px;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border);
+  border-radius: 1px;
+  background: var(--color-timeline-well);
   overflow: hidden;
 }
 
@@ -122,76 +177,206 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--color-text-primary);
-  opacity: 0.75;
 }
 
-/* Vertical range input. `writing-mode` is the modern spelling; the WebKit
-   appearance pair is kept for the Electron build's older Chromium. */
+/* Vertical range input, drawn as a 2px rail with a 20×12 knob: the fader of
+   the sheet. `writing-mode` is the modern spelling; the WebKit appearance
+   pair is kept for the Electron build's older Chromium. */
 .fader {
   writing-mode: vertical-lr;
   direction: rtl;
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
+  -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   padding: 0;
   margin: 0;
-  accent-color: var(--color-primary);
+  background: transparent;
   cursor: pointer;
 }
 
+.fader::-webkit-slider-runnable-track {
+  width: 2px;
+  height: 100%;
+  background: var(--color-timeline-switch-well);
+  border-radius: 1px;
+  margin: 0 8px;
+}
+
+.fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 12px;
+  margin-left: -9px;
+  border-radius: 2px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-structural);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  background-image: linear-gradient(var(--color-border-structural), var(--color-border-structural));
+  background-size: 14px 1px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.fader::-moz-range-track {
+  width: 2px;
+  background: var(--color-timeline-switch-well);
+  border-radius: 1px;
+}
+
+.fader::-moz-range-thumb {
+  width: 20px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-structural);
+}
+
 .fader:disabled {
-  opacity: 0.4;
   cursor: default;
 }
 
-/* L / R under the strips: labels. */
+.fader:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
+}
+
+/* L / R and the channel's level under each column. */
+.chRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  height: 14px;
+}
+
 .chLabel {
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-label);
-  color: var(--color-text-secondary);
-}
-
-/* ── Readouts ──────────────────────────────────────────────────────── */
-.readout {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-}
-
-.readPair {
-  display: contents;
-}
-
-.readLabel {
-  margin: 0;
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-label);
-  color: var(--color-text-secondary);
-}
-
-.readVal {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--panel-font-family-value);
-  font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-value);
-  font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
 }
 
+.chValue {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-text);
+}
+
+/* ── Rows under the deck ────────────────────────────────────────────── */
+.rowLabel {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.panRow {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 36px;
+  align-items: center;
+  column-gap: var(--space-2);
+  height: var(--control-height-md);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
+  box-sizing: content-box;
+}
+
+/* The pan slider: a 2px rail with a centre mark and a square knob. */
+.pan {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  background:
+    linear-gradient(var(--color-text-muted), var(--color-text-muted)) center / 1px 8px no-repeat,
+    linear-gradient(var(--color-timeline-switch-well), var(--color-timeline-switch-well)) center / 100% 2px no-repeat;
+  cursor: pointer;
+}
+
+.pan::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-structural);
+}
+
+.pan::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-structural);
+}
+
+.pan:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.panValue {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-text);
+  text-align: right;
+}
+
+/* The two fades, as fields: the label inside, the ramp length as the value. */
 .fades {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
+  gap: 6px;
+}
+
+.fadeField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-height-md);
+  padding: 0 var(--space-2);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.fadeField:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+}
+
+.fadeField:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.fadeField:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.fadeValue {
+  margin-left: auto;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-text);
+}
+
+.unit {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-micro);
+  color: var(--color-text-muted);
 }
 
 /* One line of help — a state or an empty-state hint, never a paragraph. */

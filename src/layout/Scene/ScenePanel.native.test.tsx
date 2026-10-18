@@ -106,6 +106,12 @@ const rowIds = (): string[] =>
 const rowFor = (id: string): HTMLElement =>
   document.querySelector<HTMLElement>(`[data-id="${id}"]`)!;
 
+/** Ticks a box in the Filter menu (one menu since the 2026-10-14 redesign). */
+const pickFilter = (name: string): void => {
+  fireEvent.click(screen.getByLabelText('Layer filters'));
+  fireEvent.click(screen.getByRole('menuitemcheckbox', { name }));
+};
+
 const search = (text: string): void => {
   fireEvent.change(screen.getByLabelText('Search layers'), { target: { value: text } });
 };
@@ -150,7 +156,7 @@ describe('the "3D" view (U5)', () => {
     const light = await mk(ROOT, 'light', 'Key');
     await setNodeFlag(N.beta, { threeD: true });
     renderPanel();
-    fireEvent.click(screen.getByLabelText('Only cameras, lights and 3D layers'));
+    pickFilter('Cameras, lights and 3D layers');
     const ids = rowIds();
     expect(ids).toEqual(expect.arrayContaining([cam1, cam2, light, N.beta]));
     expect(ids).not.toContain(N.alpha);
@@ -158,8 +164,9 @@ describe('the "3D" view (U5)', () => {
     // The topmost enabled camera is the active one — one mark, on it.
     expect(within(rowFor(cam2)).getByLabelText('active camera')).toBeInTheDocument();
     expect(within(rowFor(cam1)).queryByLabelText('active camera')).toBeNull();
-    // Pressed state and the clear button: it is a filter like the others.
-    expect(screen.getByLabelText('Only cameras, lights and 3D layers')).toHaveAttribute('aria-pressed', 'true');
+    // Its chip and the clear button: it is a filter like the others.
+    expect(screen.getByLabelText('Remove filter: 3D only')).toBeInTheDocument();
+    expect(screen.getByLabelText('Layer filters')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('Clear layer filters'));
     expect(rowIds()).toContain(N.alpha);
   });
@@ -168,7 +175,7 @@ describe('the "3D" view (U5)', () => {
 describe('"Only layers with keyframes" follows the animation, not the scene revision', () => {
   it('a keyframe added while the filter is on brings the layer in', async () => {
     renderPanel();
-    fireEvent.click(screen.getByLabelText('Only layers with keyframes'));
+    pickFilter('Keyframes');
     expect(screen.getByText('No layers match this filter.')).toBeInTheDocument();
 
     await act(async () => {

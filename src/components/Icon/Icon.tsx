@@ -55,9 +55,10 @@ export type { IconName };
  * draw the outline. `weight="bold"` therefore still means "heavier than usual"
  * even though no stroke is involved.
  *
- * The DEFAULT is solid. An outline set at this weight reads as chrome you look
- * past; the solid grade is what makes a 15px glyph land as an object on the
- * row. Outline is still one prop away where a control wants to recede.
+ * The DEFAULT is the outline (2026-10-14, owner: "serious icons"). The solid
+ * 700 grade made every row look like a toy shelf; the 400 outline reads as a
+ * pro tool's chrome and matches the hand-drawn tool glyphs. `weight="fill"`
+ * still draws the solid where an object really is solid (a filled state).
  */
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 
@@ -92,18 +93,18 @@ const OUTLINE_WEIGHTS = new Set<IconWeight>(['thin', 'light', 'regular']);
  */
 export const ICON_SIZE = {
   /** Row glyphs, tree twisties, inline chips. */
-  sm: 15,
+  sm: 16,
   /** Toolbar and panel buttons, asset type icons. */
-  md: 18,
+  md: 19,
   /** Empty states, section headers. */
-  lg: 25,
+  lg: 26,
 } as const;
 
 /** Compact ladder mirrored by `spacing.css` @media (max-width: 1366px). */
 const ICON_SIZE_COMPACT = {
-  sm: 13,
-  md: 16,
-  lg: 22,
+  sm: 14,
+  md: 17,
+  lg: 23,
 } as const;
 
 export type IconSizeName = keyof typeof ICON_SIZE;
@@ -160,7 +161,7 @@ export interface IconProps {
 function IconInner({
   name,
   size = 'md',
-  weight = 'fill',
+  weight = 'regular',
   className,
   style,
   title,

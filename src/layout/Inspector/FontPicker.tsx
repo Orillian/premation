@@ -1,21 +1,19 @@
 /**
  * FontPicker — searchable font-family dropdown for the text inspector.
  *
- * Enumerates locally installed fonts via the Chromium Local Font Access API
- * (`window.queryLocalFonts`, through the shared `localFontIndex`) lazily on
- * first open (the call may show a permission prompt). On failure or
- * unavailability it falls back to a curated Google-font list plus universal
- * system fonts. Each option renders in its own font family as a live preview.
- * Arrow keys + Enter select, Escape closes (via Popover).
+ * Lists the fonts the ENGINE draws (`engineFontList`): the families Premation
+ * ships plus the ones installed on this computer, as the engine enumerates
+ * them — no permission prompt, the same list in development and in a release
+ * build, and nothing offered that would render as a fallback face. Each option
+ * renders in its own font family as a live preview. Arrow keys + Enter
+ * select, Escape closes (via Popover).
  *
  * AE's font-menu conveniences:
  *   • RECENT fonts — the last ten families picked, above the full list;
  *   • FAVOURITES — a star per row, and a filter that shows only starred ones;
  *   • real STYLES — when the caller takes `onStyleChange`, the highlighted
- *     family's installed faces are listed by their foundry style names
- *     ("Condensed Semibold Italic"), not a fixed nine-weight guess. Families
- *     the index knows nothing about (web fonts, no permission) show no style
- *     strip, and the caller's own weight control stays the fallback.
+ *     family's faces are listed by their foundry style names ("Condensed
+ *     Semibold Italic"); a variable face lists the weights on its axis.
  * Recents and favourites are per-user preferences (`fontPrefs.ts`), never
  * document state.
  */
@@ -28,8 +26,8 @@ import { VirtualList } from '@components/VirtualList';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
 import styles from './FontPicker.module.css';
-import { hasVariableAxes, VARIABLE_PROBE_BYTES } from '@core/text/variableFontProbe';
-import { loadLocalFontIndex, cachedFamilyFaces, type LocalFace, type LocalFontData } from '@core/fonts/localFontIndex';
+import type { LocalFace } from '@core/fonts/localFontIndex';
+import { cachedEngineFontList, fontFamilyInfo, loadEngineFontList } from '@core/fonts/engineFontList';
 import {
   getFavouriteFonts,
   getRecentFonts,
@@ -38,72 +36,28 @@ import {
   toggleFavouriteFont,
 } from '@core/fonts/fontPrefs';
 
-/** Curated Google fonts (the previous hardcoded list) — kept as fallback. */
-const CURATED_FONTS = [
-  'Inter', 'Roboto', 'Outfit', 'Playfair Display', 'Fira Code', 'Montserrat',
-  'Lora', 'Merriweather', 'PT Sans', 'Open Sans',
-];
-
-/** Universal system fonts available on virtually every desktop OS. */
-const SYSTEM_FONTS = [
-  'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
-  'Verdana', 'Tahoma', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Segoe UI',
-];
-
-const FALLBACK_FONTS = [...new Set([...CURATED_FONTS, ...SYSTEM_FONTS])]
-  .sort((a, b) => a.localeCompare(b));
-
-/** Module-level cache so the (possibly permission-prompting) query runs once. */
+/** Module-level cache: the engine enumerates once per session. */
 let fontListCache: string[] | null = null;
 let fontListPromise: Promise<string[]> | null = null;
 
-/**
- * Which families are VARIABLE fonts (AE 26.3's font-list filter). Filled in
- * the background after the list is shown — probing means reading the head of
- * one file per family, and the picker must not wait on a few hundred reads
- * to open. Curated Google families are known up front: every one of them
- * ships as a variable face, which is why they were curated.
- */
-const CURATED_VARIABLE = new Set(['Inter', 'Roboto', 'Outfit', 'Playfair Display', 'Fira Code', 'Montserrat', 'Lora', 'Merriweather', 'Open Sans']);
+/** Which families are VARIABLE fonts (AE 26.3's font-list filter) — from the engine's axes. */
 let variableCache: Set<string> | null = null;
 const variableListeners = new Set<(v: Set<string>) => void>();
-
-async function probeVariableFamilies(fonts: ReadonlyArray<LocalFontData>): Promise<void> {
-  const found = new Set<string>(CURATED_VARIABLE);
-  const seen = new Set<string>();
-  for (const f of fonts) {
-    const family = String(f?.family ?? '').trim();
-    if (!family || seen.has(family) || typeof f.blob !== 'function') continue;
-    seen.add(family);
-    try {
-      const head = await (await f.blob()).slice(0, VARIABLE_PROBE_BYTES).arrayBuffer();
-      if (hasVariableAxes(head)) found.add(family);
-    } catch {
-      // A face that will not read is simply not marked variable.
-    }
-  }
-  variableCache = found;
-  for (const cb of variableListeners) cb(found);
-}
 
 function loadFontList(): Promise<string[]> {
   if (fontListCache) return Promise.resolve(fontListCache);
   if (fontListPromise) return fontListPromise;
 
   fontListPromise = (async () => {
-    const index = await loadLocalFontIndex();
-    let families: string[] = [];
-    if (index) {
-      families = [...index.byFamily.keys()].sort((a, b) => a.localeCompare(b));
-      // Not awaited: the list shows now, the badges arrive when they do.
-      void probeVariableFamilies(index.fonts);
-    } else {
-      variableCache = new Set(CURATED_VARIABLE);
-      for (const cb of variableListeners) cb(variableCache);
-    }
-    const result = families.length > 0 ? families : FALLBACK_FONTS;
-    fontListCache = result;
-    return result;
+    const drawn = await loadEngineFontList();
+    const families = [...drawn.keys()].sort((a, b) => a.localeCompare(b));
+    variableCache = new Set([...drawn.values()].filter((f) => f.variable).map((f) => f.family));
+    for (const cb of variableListeners) cb(variableCache);
+    // Only the engine's full answer is final; the shipped families alone
+    // (engine not up yet) are asked again on the next open.
+    if (cachedEngineFontList()) fontListCache = families;
+    fontListPromise = null;
+    return families;
   })();
 
   return fontListPromise;
@@ -193,8 +147,7 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
     setOpen(next);
     if (next) {
       setSearch('');
-      // Lazy-load local fonts on first open (may show a permission prompt).
-      if (!fonts) void loadFontList().then(setFonts);
+      if (!fontListCache) void loadFontList().then(setFonts);
     }
   };
 
@@ -301,7 +254,7 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
   // The style strip follows the HIGHLIGHT, so arrowing through the list shows
   // each family's faces before committing to one.
   const styleFamily = rows[activeIndex] ?? value;
-  const faces = onStyleChange && fonts ? cachedFamilyFaces(styleFamily) : [];
+  const faces = onStyleChange && fonts ? fontFamilyInfo(styleFamily)?.faces ?? [] : [];
 
   const clearFilters = (): void => {
     setSearch('');

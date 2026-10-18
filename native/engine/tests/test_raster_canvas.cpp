@@ -116,6 +116,83 @@ TEST_CASE("fonts: harness faces load (woff2) and shape with CSS matching", "[ras
   CHECK(a.glyphs.front().face == 2);
 }
 
+TEST_CASE("fonts: a variable face draws weights on its wght axis, not by embolden", "[raster][fonts]") {
+  // The app's shipped Inter (resources/fonts): one variable file, registered at 400.
+  const auto inter = std::filesystem::path(PREMATION_RASTER_FONTS).parent_path() / "../../../../resources/fonts/Inter-opsz-wght.ttf";
+  std::ifstream in(inter, std::ios::binary);
+  REQUIRE(in);
+  const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  FontSet fonts{FontOptions{}};
+  FaceInfo info;
+  info.family = "Inter";
+  info.file = "Inter-opsz-wght.ttf";
+  std::string err;
+  REQUIRE(fonts.add_face(info, bytes, err));
+  const auto axis = [](const ShapedText& s, const char* tag) -> float {
+    const std::uint32_t t = (static_cast<std::uint32_t>(tag[0]) << 24U) | (static_cast<std::uint32_t>(tag[1]) << 16U) |
+                            (static_cast<std::uint32_t>(tag[2]) << 8U) | static_cast<std::uint32_t>(tag[3]);
+    for (const AxisValue& a : s.axes) {
+      if (a.tag == t) return a.value;
+    }
+    return -1;
+  };
+  ShapeRequest r;
+  r.font = *css::parse_font("400 56px Inter");
+  const ShapedText regular = fonts.shape("Motion", r);
+  r.font = *css::parse_font("700 56px Inter");
+  const ShapedText bold = fonts.shape("Motion", r);
+  REQUIRE_FALSE(bold.glyphs.empty());
+  CHECK_FALSE(bold.glyphs.front().fakeBold);
+  CHECK(axis(regular, "wght") == 400);
+  CHECK(axis(bold, "wght") == 700);
+  CHECK(bold.width > regular.width);  // the Bold instance's own, wider advances
+  // Optical size follows the font size, clamped to the axis (Inter: 14–32).
+  CHECK(axis(bold, "opsz") == 32);
+  r.font = *css::parse_font("700 20px Inter");
+  CHECK(axis(fonts.shape("Motion", r), "opsz") == 20);
+  // An explicit axis in font-variation-settings wins.
+  r.variations = "'wght' 300";
+  CHECK(axis(fonts.shape("Motion", r), "wght") == 300);
+}
+
+TEST_CASE("fonts: both glyph backends DRAW a variable face's weights (thin < regular < bold < black)", "[raster][fonts]") {
+  // The app runs Windows with the platform backend (Chromium's profile); a face
+  // made from memory there drew every weight at its default instance, with a
+  // faux-bold smear from 600 up — 100 looked like 400, 700 like 900.
+  const auto inter = std::filesystem::path(PREMATION_RASTER_FONTS).parent_path() / "../../../../resources/fonts/Inter-opsz-wght.ttf";
+  std::ifstream in(inter, std::ios::binary);
+  REQUIRE(in);
+  const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  for (const bool platform : {false, true}) {
+    FontSet fonts{platform ? FontOptions::chromium_windows() : FontOptions{}};
+    FaceInfo info;
+    info.family = "Inter";
+    info.file = "Inter-opsz-wght.ttf";
+    std::string err;
+    REQUIRE(fonts.add_face(info, bytes, err));
+    CanvasOptions co;
+    co.fonts = &fonts;
+    const auto ink = [&co](int weight) {
+      auto c = Canvas2D::make(520, 120, co);
+      c->setFillStyle(color("#000000"));
+      REQUIRE(c->setFont(std::to_string(weight) + " 64px Inter"));
+      c->fillText("Weight", 10, 84);
+      const std::vector<std::uint8_t> px = c->pixels();
+      std::size_t n = 0;
+      for (std::size_t i = 3; i < px.size(); i += 4) n += px[i] > 127 ? 1U : 0U;
+      return static_cast<double>(n);
+    };
+    INFO((platform ? "platform" : "freetype") << " backend");
+    const double thin = ink(100);
+    const double regular = ink(400);
+    const double bold = ink(700);
+    const double black = ink(900);
+    CHECK(thin < regular * 0.75);
+    CHECK(bold > regular * 1.2);
+    CHECK(black > bold * 1.05);
+  }
+}
+
 TEST_CASE("fonts: small caps synthesize on a face without smcp (capitals at 0.7×), the feature draws them when present", "[raster][fonts][smallcaps]") {
   // Audit 2026-10-18: the Character panel's Small Caps did nothing on Inter
   // (the default font): the shaper only asked for the `smcp` feature, which

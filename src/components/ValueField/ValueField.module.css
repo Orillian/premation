@@ -10,7 +10,7 @@
   background: var(--value-field-bg, transparent);
   border: 1px solid var(--value-field-border, transparent);
   border-radius: var(--radius-control);
-  color: var(--value-field-color, var(--color-primary));
+  color: var(--value-field-color, var(--color-primary-text));
   cursor: ew-resize;
   user-select: none;
   transition: var(--motion-hover-transition);
@@ -18,9 +18,8 @@
 }
 
 .field:hover:not(.disabled):not(.editing) {
-  border-color: rgba(45, 140, 240, 0.25);
-  background: rgba(45, 140, 240, 0.12);
-  color: var(--color-primary-hover);
+  background: var(--color-hover);
+  color: var(--color-text-primary);
   text-decoration: none;
 }
 
@@ -31,16 +30,17 @@
   box-shadow: 0 0 0 1px var(--color-primary);
 }
 
-/* Value + input use IBM Plex Mono w/ tabular-nums so scrubbing never jitters. */
+/* Value + input: the panel face with tabular figures, as AE draws its blue
+   values; tabular-nums is what keeps a scrub from jittering. */
 .value,
 .input {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-family-mono);
+  font-family: var(--panel-font-family);
   font-variant-numeric: tabular-nums;
   font-size: var(--font-size-caption); /* 12px minimum */
-  font-weight: var(--font-weight-medium);
-  letter-spacing: -0.01em;
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0;
   color: inherit;
   white-space: nowrap;
   overflow: hidden;

@@ -38,9 +38,9 @@ describe('track-header column model', () => {
     preinfo: 97,
     name: 190,
     switches: 256,
-    mode: 70,
-    matte: 100,
-    parent: 120,
+    mode: 96,
+    matte: 124,
+    parent: 150,
   };
 
   it.each(Object.entries(EXPECTED))('--tl-col-%s matches the width Timeline.tsx sums', (n, px) => {
@@ -73,12 +73,13 @@ describe('TRACK_HEADER_MIN_WIDTH', () => {
 describe('headerWidthFor', () => {
   it('fits the mode columns in the default view', () => {
     // padding 8 + (97 + 16 rule) + 4 + 190
-    //         + 4 + (70 + 16) + 4 + (100 + 16) + 4 + (120 + 16)
-    expect(headerWidthFor('modes')).toBe(665);
+    //         + 4 + (96 + 16) + 4 + (124 + 16) + 4 + (150 + 16)
+    expect(headerWidthFor('modes')).toBe(745);
   });
 
   it('fits the switch column on its own', () => {
-    expect(headerWidthFor('switches')).toBe(8 + (97 + 16) + 4 + 190 + 4 + 256 + 16);
+    // Parent & Link rides along in every view, as in AE.
+    expect(headerWidthFor('switches')).toBe(8 + (97 + 16) + 4 + 190 + 4 + 256 + 16 + 4 + 150 + 16);
   });
 
   it('needs both blocks plus a gap when both are shown', () => {

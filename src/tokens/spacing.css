@@ -50,9 +50,9 @@
      as a bare `width: 16px` in the menu row, the TS scale later moved to 18,
      and menu items with no icon stayed 2px narrower than the ones with icons.
      Nothing failed; the labels just stopped lining up. */
-  --icon-size-sm: 15px;
-  --icon-size-md: 18px;
-  --icon-size-lg: 25px;
+  --icon-size-sm: 16px;
+  --icon-size-md: 19px;
+  --icon-size-lg: 26px;
 
   /* TWO tiers added because the app already had them and this scale did not
      name them, which is worse than having them:
@@ -122,9 +122,9 @@
 */
 @media (max-width: 1366px) {
   :root {
-    --icon-size-sm: 13px;
-    --icon-size-md: 16px;
-    --icon-size-lg: 22px;
+    --icon-size-sm: 14px;
+    --icon-size-md: 17px;
+    --icon-size-lg: 23px;
     --control-height-2xs: 16px;
     --control-height-xs: 18px;
     --control-height-sm: 20px;

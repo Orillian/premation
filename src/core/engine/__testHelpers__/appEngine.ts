@@ -28,6 +28,7 @@ import { resetEngineOwnership, setEngineOwnsDocument } from '../engineOwnership'
 import { resetProcessEngine } from '../process/processEngine';
 import { nativeEngineIsHeadless, startNativeEngine, type NativeEngine } from './nativeEngine';
 import type { EngineFrameMessage } from '../../../../electron/engineFraming';
+import type { PixelFrame } from '../../../../electron/pixelChannel';
 
 export const S = 705_600_000;
 
@@ -64,14 +65,17 @@ let shared: NativeEngine | null = null;
 let starting: Promise<NativeEngine> | null = null;
 /** Whether the running (or starting) engine is the full renderer. */
 let sharedGpu = false;
+/** Whether it sends every viewport frame's pixels (route A, `copyFrames`). */
+let sharedCopy = false;
 
-async function nativeEngine(gpu = false): Promise<NativeEngine> {
-  if ((shared || starting) && sharedGpu !== gpu) await stopShared();
+async function nativeEngine(gpu = false, copy = false): Promise<NativeEngine> {
+  if ((shared || starting) && (sharedGpu !== gpu || sharedCopy !== copy)) await stopShared();
   if (shared) return shared;
   sharedGpu = gpu;
+  sharedCopy = copy;
   // `--test-ports`: the engine's FakePorts — deterministic footage records for
   // any path, projects kept in memory (what the suites import and save).
-  starting ??= startNativeEngine({ extraArgs: gpu ? ['--test-ports'] : ['--no-gpu', '--test-ports'] }).then((n) => {
+  starting ??= startNativeEngine({ extraArgs: gpu ? ['--test-ports'] : ['--no-gpu', '--test-ports'] }, {}, copy).then((n) => {
     forwardFrames(n);
     return (shared = n);
   });
@@ -117,6 +121,38 @@ export function onSharedEngineFrames(listener: (m: EngineFrameMessage) => void):
   if (!n) return () => undefined;
   const off = n.supervisor.on('frame', listener);
   return typeof off === 'function' ? (off as () => void) : () => undefined;
+}
+
+/**
+ * Every viewport frame's pixels, paired with its FrameReady (an engine started
+ * with `copyFrames`). The two arrive on separate pipes, in either order; they
+ * pair per slot, oldest first.
+ */
+export function onSharedEnginePixels(listener: (ready: Extract<EngineFrameMessage, { type: 'frameReady' }>, pixels: PixelFrame) => void): () => void {
+  const n = shared;
+  if (!n) return () => undefined;
+  const readies = new Map<string, Array<Extract<EngineFrameMessage, { type: 'frameReady' }>>>();
+  const pixels = new Map<string, PixelFrame[]>();
+  const pair = (key: string): void => {
+    const r = readies.get(key);
+    const p = pixels.get(key);
+    while (r?.length && p?.length) listener(r.shift()!, p.shift()!);
+  };
+  const offFrame = n.supervisor.on('frame', (m: EngineFrameMessage) => {
+    if (m.type !== 'frameReady') return;
+    const key = `${m.generation}:${m.slot}`;
+    readies.set(key, [...(readies.get(key) ?? []), m]);
+    pair(key);
+  });
+  const offPixels = n.supervisor.on('pixels', (p: PixelFrame) => {
+    const key = `${p.generation}:${p.slot}`;
+    pixels.set(key, [...(pixels.get(key) ?? []), p]);
+    pair(key);
+  });
+  return () => {
+    if (typeof offFrame === 'function') (offFrame as () => void)();
+    if (typeof offPixels === 'function') (offPixels as () => void)();
+  };
 }
 
 /** Open the main viewport the way EngineSurface does, so its frames (and their geometry) flow. */
@@ -191,6 +227,12 @@ export interface AppEngineOptions {
    * Switching between the two restarts the file's engine.
    */
   gpu?: boolean;
+  /**
+   * With `gpu`: the engine sends every viewport frame's pixels (route A),
+   * read with `onSharedEnginePixels` — for suites that check what PLAYBACK
+   * shows, frame by frame. Switching restarts the file's engine.
+   */
+  copyFrames?: boolean;
 }
 
 /** Hold the tree of every layer the mirror knows, as layers appear (`panels`). */
@@ -220,7 +262,7 @@ export async function setupAppEngine(opts: AppEngineOptions = {}): Promise<AppHa
     }
     if (stale) await stopShared();
   }
-  const native = await nativeEngine(opts.gpu === true);
+  const native = await nativeEngine(opts.gpu === true, opts.gpu === true && opts.copyFrames === true);
   (window as unknown as { motionEditor?: unknown }).motionEditor = { engine: native.bridge };
   setCommandSystem(new CommandSystem({ services: {} as CommandServices, getState: () => ({}) }));
   setEngineOwnsDocument(true);

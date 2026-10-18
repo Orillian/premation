@@ -21,6 +21,7 @@ import { PhysicsSection } from '@layout/Inspector/PhysicsSection';
 import { useDockPanelHeader } from '@components/DockPanel';
 import type { DropdownItem } from '@components/Dropdown';
 import { IconButton } from '@components/IconButton';
+import { AddEffectMenu } from './AddEffectMenu';
 import { Icon } from '@components/Icon';
 import { customPrompt } from '@components/Modal/Dialogs';
 import { EffectStack } from './EffectStack';
@@ -202,6 +203,9 @@ export function EffectControlsPanel(): JSX.Element {
           <span className={masterFx ? styles.masterFx : styles.masterFxOff} aria-hidden>fx</span>
         </IconButton>
         <span className={styles.layerName} title={layerName}>{layerName}</span>
+        {/* The searchable "+" add menu — it lived on the Properties Effects
+            section, which is gone (2026-10-14); this is the stack's one home. */}
+        <AddEffectMenu nodeIds={[target]} />
         <IconButton
           size="sm"
           variant="ghost"

@@ -41,6 +41,25 @@
   display: none;
 }
 
+/* The strip scrolls; its controls never squeeze into one another. */
+.bar > *,
+.barInline > * {
+  flex-shrink: 0;
+}
+
+/* Roto's Refine popover: the matte-edge controls that would not fit in the row. */
+.refinePanel {
+  display: grid;
+  grid-template-columns: auto;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  min-width: 200px;
+}
+
+.refinePanel > .opt {
+  justify-content: space-between;
+}
+
 .barInline:empty {
   display: none;
 }

@@ -2,18 +2,24 @@
    Trigger mirrors the shared inspector .select control so the row height
    matches the neighboring selects. All colors via tokens. */
 
+/* The same well as every field in the Character panel: row height, the dark
+   surface, a hairline, the family in the text face, a dim chevron. */
 .trigger {
   width: 100%;
+  height: var(--control-height-row);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-field-border);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
   color: var(--color-text-primary);
-  font-size: var(--font-size-xs);
-  padding: var(--space-2) var(--space-3);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-value);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
+  box-sizing: border-box;
   cursor: pointer;
   text-align: left;
   min-width: 0;

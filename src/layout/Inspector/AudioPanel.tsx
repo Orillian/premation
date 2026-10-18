@@ -1,5 +1,9 @@
 /**
- * The Audio panel — After Effects' Ctrl+4.
+ * The Audio panel — After Effects' Ctrl+4, on the approved 2026-10-19 sheet:
+ * an identity row naming the layer the faders edit, then a mixer deck where
+ * each channel is ONE column — its meter beside its fader on one dB axis,
+ * the clip LED above, the channel's level under — then the pan and the two
+ * fades as rows.
  *
  * What makes this a panel rather than a fourth VU meter: **the faders edit the
  * selected layer.** The three meters this app already had (`InfoAudioPanel`,
@@ -24,7 +28,8 @@
  *    two AE faders can express is lost.
  *
  * Dragging one fader moves level and pan together; the arithmetic and its
- * inverse live in `faderMath.ts`, tested there.
+ * inverse live in `faderMath.ts`, tested there. The Pan row writes the pan
+ * alone.
  *
  * ## Units and floor
  *
@@ -46,14 +51,15 @@ import { audioEngine } from '@core/audio/AudioEngine';
 import { toDb, meterFraction } from '@core/audio/audioLevels';
 import {
   AUDIO_LEVEL_DB_PROP, AUDIO_PAN_PROP,
-  MAX_LEVEL_DB,
+  MAX_LEVEL_DB, MIN_PAN, MAX_PAN,
 } from '@core/audio/audioParams';
 import { DEFAULT_FADE_SEC } from '@core/audio/audioFades';
+import { LABEL_COLORS } from '@core/scene/labelColor';
 import { useEngineEdit } from './useEngineEdit';
 import { valueCommands } from './inspectorEdits';
 import { fadeEdit } from './audioEdits';
 import { channelDb, fromChannelDb, CLIP_DB } from './faderMath';
-import { Button } from '@components/Button';
+import { Icon } from '@components/Icon';
 import { useDockPanelHeader } from '@components/DockPanel';
 import type { DropdownItem } from '@components/Dropdown';
 import { cn } from '@utils/cn';
@@ -111,6 +117,10 @@ export function audioOptionsMenuRows(
 
 interface Target {
   nodeId: string;
+  name: string;
+  kind: 'audio' | 'video';
+  /** The layer's label colour, or undefined when it has none. */
+  labelColor: string | undefined;
   levelDb: number;
   pan: number;
   levelAnimated: boolean;
@@ -139,8 +149,12 @@ function readTarget(nodeId: string | undefined, compSec: number): Target | null 
   const levelDb = readTrack(m, nodeId, AUDIO_LEVEL_DB_PROP, compSec);
   const pan = readTrack(m, nodeId, AUDIO_PAN_PROP, compSec);
   if (levelDb === undefined || pan === undefined) return null;
+  const sw = layer.switches;
   return {
     nodeId,
+    name: layer.name,
+    kind: layer.kind,
+    labelColor: sw.labelColor ?? (sw.label > 0 ? LABEL_COLORS[sw.label - 1]?.color : undefined),
     levelDb,
     pan,
     levelAnimated: isTrackAnimated(m, nodeId, AUDIO_LEVEL_DB_PROP),
@@ -240,6 +254,12 @@ export function AudioPanel(): JSX.Element {
     faderEdit.send('Set Audio Levels', valueCommands([{ nodeId: target.nodeId, values }], { seconds: time, autoKeyframe }));
   };
 
+  /** The Pan row: the balance alone, the level untouched. */
+  const setPan = (pan: number): void => {
+    if (!target) return;
+    faderEdit.send('Set Audio Pan', valueCommands([{ nodeId: target.nodeId, values: { [AUDIO_PAN_PROP]: pan } }], { seconds: time, autoKeyframe }));
+  };
+
   const fmt = (db: number): string =>
     units === 'db'
       // `+ 0` collapses negative zero: an equal-power channel lands a hair
@@ -251,6 +271,7 @@ export function AudioPanel(): JSX.Element {
 
   const lDb = target ? channelDb(target.levelDb, target.pan, 'l') : 0;
   const rDb = target ? channelDb(target.levelDb, target.pan, 'r') : 0;
+  const panText = !target ? '—' : target.pan === 0 ? 'C' : `${Math.abs(Math.round(target.pan))} ${target.pan < 0 ? 'L' : 'R'}`;
 
   return (
     <div className={styles.root}>
@@ -258,11 +279,19 @@ export function AudioPanel(): JSX.Element {
           Units and Slider Minimum are the ≡ menu's (`audioOptionsMenuRows`).
           The pointer readout that sat here is the Info panel's again. */}
 
-      {/* ── Meter + faders, sharing one dB scale ───────────────────── */}
-      <div className={styles.deck}>
+      {/* ── Identity: which layer the faders edit ─────────────────── */}
+      <div className={styles.identity} aria-label="Audio layer">
+        <span className={styles.labelDot} style={target?.labelColor ? { background: target.labelColor } : undefined} aria-hidden />
+        <Icon name={target?.kind === 'video' ? 'video' : 'audio'} size="sm" className={styles.kindIcon} />
+        <span className={styles.name}>{target ? target.name : 'No layer with sound selected'}</span>
+        <span className={styles.kind}>{target ? (target.kind === 'video' ? 'Video layer' : 'Audio layer') : ''}</span>
+      </div>
+
+      {/* ── Meter + faders, each channel one column, one dB scale ─── */}
+      <div className={cn(styles.deck, !target && styles.deckIdle)}>
         <div className={styles.scale} aria-hidden="true">
           {scaleMarks(floorDb).map((db) => (
-            <span key={db} style={{ bottom: `${meterFraction(db, floorDb) * 100}%` }}>{db}</span>
+            <span key={db} style={{ bottom: `${meterFraction(db, floorDb) * 100}%` }}>{db > 0 ? `+${db}` : db}</span>
           ))}
         </div>
 
@@ -294,57 +323,68 @@ export function AudioPanel(): JSX.Element {
                 aria-label={`${ch === 'l' ? 'Left' : 'Right'} level`}
               />
             </div>
-            <span className={styles.chLabel}>{ch.toUpperCase()}</span>
+            <div className={styles.chRow}>
+              <span className={styles.chLabel}>{ch.toUpperCase()}</span>
+              <span className={styles.chValue} data-numeric>{target ? fmt(ch === 'l' ? lDb : rDb) : '—'}</span>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* ── Readout: label-role keys, value-role numbers ───────────── */}
+      {/* ── Pan ───────────────────────────────────────────────────── */}
+      <div className={styles.panRow} {...faderEdit.press('Set Audio Pan', () => target !== null)}>
+        <span className={styles.rowLabel}>Pan</span>
+        <input
+          className={styles.pan}
+          type="range"
+          min={MIN_PAN}
+          max={MAX_PAN}
+          step={1}
+          value={target ? target.pan : 0}
+          disabled={!target}
+          onChange={(e) => setPan(Number(e.currentTarget.value))}
+          onDoubleClick={() => setPan(0)}
+          aria-label="Pan"
+          title="Pan — drag left or right, double-click to centre"
+        />
+        <span className={styles.panValue} data-numeric>{panText}</span>
+      </div>
+
+      {/* ── Fades: one press each, the ramp length written on the field ── */}
+      <div className={styles.fades}>
+        <button
+          type="button"
+          className={styles.fadeField}
+          disabled={!target}
+          onClick={() => { if (target) void fadeEdit([target.nodeId], 'in'); }}
+          title={`Ramp up from silence over ${DEFAULT_FADE_SEC}s`}
+        >
+          <span className={styles.rowLabel}>Fade In</span>
+          <span className={styles.fadeValue} data-numeric>{DEFAULT_FADE_SEC.toFixed(2)}</span>
+          <span className={styles.unit}>s</span>
+        </button>
+        <button
+          type="button"
+          className={styles.fadeField}
+          disabled={!target}
+          onClick={() => { if (target) void fadeEdit([target.nodeId], 'out'); }}
+          title={`Ramp down to silence over ${DEFAULT_FADE_SEC}s`}
+        >
+          <span className={styles.rowLabel}>Fade Out</span>
+          <span className={styles.fadeValue} data-numeric>{DEFAULT_FADE_SEC.toFixed(2)}</span>
+          <span className={styles.unit}>s</span>
+        </button>
+      </div>
+
       {target ? (
-        <>
-          <dl className={styles.readout}>
-            <div className={styles.readPair}>
-              <dt className={styles.readLabel}>L</dt>
-              <dd className={styles.readVal}>{fmt(lDb)}</dd>
-            </div>
-            <div className={styles.readPair}>
-              <dt className={styles.readLabel}>R</dt>
-              <dd className={styles.readVal}>{fmt(rDb)}</dd>
-            </div>
-            <div className={styles.readPair}>
-              <dt className={styles.readLabel}>Pan</dt>
-              <dd className={styles.readVal}>
-                {target.pan === 0 ? 'Centre' : `${Math.abs(target.pan)}% ${target.pan < 0 ? 'L' : 'R'}`}
-              </dd>
-            </div>
-          </dl>
-          <div className={styles.fades}>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => { void fadeEdit([target.nodeId], 'in'); }}
-              title={`Ramp up from silence over ${DEFAULT_FADE_SEC}s`}
-            >
-              Fade In
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => { void fadeEdit([target.nodeId], 'out'); }}
-              title={`Ramp down to silence over ${DEFAULT_FADE_SEC}s`}
-            >
-              Fade Out
-            </Button>
-          </div>
-          {(target.levelAnimated || target.panAnimated) && (
-            <p className={styles.note} role="status">
-              {target.levelAnimated && target.panAnimated
-                ? 'Level and pan are keyframed'
-                : target.levelAnimated ? 'Level is keyframed' : 'Pan is keyframed'}
-              {' '}— a fader move keys at the playhead.
-            </p>
-          )}
-        </>
+        (target.levelAnimated || target.panAnimated) && (
+          <p className={styles.note} role="status">
+            {target.levelAnimated && target.panAnimated
+              ? 'Level and pan are keyframed'
+              : target.levelAnimated ? 'Level is keyframed' : 'Pan is keyframed'}
+            {' '}— a fader move keys at the playhead.
+          </p>
+        )
       ) : (
         <p className={styles.note}>Select a layer with sound to set its level and pan.</p>
       )}
@@ -352,8 +392,10 @@ export function AudioPanel(): JSX.Element {
   );
 }
 
-/** The dB gridlines that fit the chosen floor without crowding. */
+/** The dB gridlines that fit the chosen floor without crowding. Nothing
+ *  above 0: the meter pins everything over unity to its top (`meterFraction`),
+ *  so +6 and +12 would land on the 0 mark. */
 function scaleMarks(floorDb: number): number[] {
-  const all = [MAX_LEVEL_DB, 6, 0, -6, -12, -24, -36, -48, -72, -96];
-  return all.filter((db) => db <= MAX_LEVEL_DB && db >= floorDb);
+  const all = [0, -6, -12, -24, -36, -48, -72, -96];
+  return all.filter((db) => db >= floorDb);
 }

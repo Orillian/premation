@@ -67,6 +67,51 @@
   /* Default — uses default tokens */
 }
 
+/*
+ * The dashboard's call-to-action pair (owner 2026-10-14: Preview / Export, and
+ * every button styled like them, take the "New project" / "New from video"
+ * look): a pill with a 2px edge and semibold text, flat — primary filled with
+ * the accent, secondary an outline. Mirrors `.ctaPrimary` / `.ctaSecondary`
+ * in pages/DashboardPage.module.css.
+ */
+.root[data-variant="primary"],
+.root[data-variant="secondary"] {
+  border-radius: var(--radius-full);
+  border-width: 2px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0;
+  box-shadow: none;
+}
+
+.root[data-variant="primary"] {
+  --btn-bg:        var(--color-primary);
+  --btn-bg-hover:  var(--color-primary-hover);
+  --btn-border:    var(--color-primary);
+  --btn-fg:        var(--color-text-on-accent);
+}
+
+.root[data-variant="primary"]:hover:not(:disabled) {
+  border-color: var(--color-primary-hover);
+  filter: none;
+}
+
+.root[data-variant="secondary"] {
+  --btn-bg:        transparent;
+  --btn-bg-hover:  var(--color-hover);
+  --btn-bg-active: var(--color-active);
+  --btn-border:    var(--color-text-secondary);
+  --btn-fg:        var(--color-text-primary);
+}
+
+.root[data-variant="secondary"]:hover:not(:disabled) {
+  border-color: var(--color-text-primary);
+}
+
+.root[data-variant="primary"]:active:not(:disabled),
+.root[data-variant="secondary"]:active:not(:disabled) {
+  box-shadow: none;
+}
+
 .root[data-variant="ghost"] {
   --btn-bg:        transparent;
   --btn-bg-hover:  var(--color-hover);

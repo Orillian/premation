@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import { Icon } from '@components/Icon';
+import { IconButton } from '@components/IconButton';
 import { customConfirm, customPrompt } from '@components/Modal';
 import { useProjectStore, type TabInfo } from '@stores/projectStore';
 import { openContextMenu } from '@stores/contextMenuStore';
@@ -162,15 +163,9 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
             <span className={styles.compMeta}>{listed.length}</span>
           </button>
         ) : label}
-        <button
-          type="button"
-          className={styles.compAddBtn}
-          title="New Composition…"
-          aria-label="New Composition"
-          onClick={() => openNewCompositionDialog()}
-        >
+        <IconButton size="sm" tooltip="New Composition…" aria-label="New Composition" onClick={() => openNewCompositionDialog()}>
           <Icon name="plus" size="sm" />
-        </button>
+        </IconButton>
       </div>
       {open && (listed.length === 0 ? (
         <div className={styles.compEmpty}>None yet — create one to start</div>
@@ -189,23 +184,9 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
                 onDoubleClick={() => { void promptRename(c.id); }}
                 onContextMenu={(e) => openCompMenu(c.id, e)}
               >
-                <Icon name="component" size="sm" className={styles.compGlyph} />
+                <Icon name="composition" size="sm" className={styles.compGlyph} />
                 <span className={styles.compName}>{c.name}</span>
-                <span className={styles.compMeta}>{c.width}×{c.height}</span>
-                {!c.pristine && (
-                  <button
-                    type="button"
-                    className={styles.compDeleteBtn}
-                    title={`Delete “${c.name}”`}
-                    aria-label={`Delete ${c.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void confirmDeleteComp(c.id);
-                    }}
-                  >
-                    <Icon name="trash" size="sm" />
-                  </button>
-                )}
+                <span className={styles.compMeta}>{c.width}×{c.height} · {c.fps}</span>
               </div>
             );
           })}

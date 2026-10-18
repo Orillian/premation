@@ -52,6 +52,7 @@ import { Slider } from '@components/Slider';
 import { AngleDial } from '@components/AngleDial';
 import { PropertyRow } from '@components/PropertyRow';
 import { ColorPicker } from '@components/ColorPicker';
+import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { CurveEditor } from './CurveEditor';
 
 import { useActiveWorkspace } from '@stores/projectStore';
@@ -765,6 +766,21 @@ function effectHeaderMenuItems(nodeId: string, effectId: string, name: string, i
   ];
 }
 
+/** The header's right-click items as the ⋯ menu's rows (one list, two openers). */
+function asDropdownItems(items: ReadonlyArray<ContextMenuItem>): DropdownItem[] {
+  return items.map((it): DropdownItem => (it.separator
+    ? { type: 'separator' }
+    : {
+        type: 'item',
+        id: it.id,
+        label: it.label ?? '',
+        icon: it.icon,
+        disabled: it.disabled,
+        danger: it.danger,
+        onSelect: it.onSelect ? () => it.onSelect?.() : undefined,
+      }));
+}
+
 /**
  * Liquify's brush (AE parity 5.5): the tool, size and pressure, Paint (arms
  * the canvas brush, LiquifyBrushOverlay) and Reset Mesh (clears the painted
@@ -903,10 +919,9 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
               setDropIndex(null);
             }}
           >
-            {/* AE Effect Controls header: ▾ [fx] Name .......... Reset. The
-                grip, label swatch and ↑ ↓ ✕ only show on hover or focus
-                (2026-10-07): reorder by dragging the header, and Move Up /
-                Move Down / Remove are also on its right-click menu. */}
+            {/* AE Effect Controls header: ▾ fx Name .......... Reset ⋯.
+                Reorder by dragging the header; Move Up / Move Down / Remove
+                and the label colour are in the ⋯ and right-click menus. */}
             <div
               className={cn(
                 panel.effectCardHead,
@@ -927,9 +942,6 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 openContextMenu(ev.clientX, ev.clientY, effectHeaderMenuItems(nodeId, e.id, name, i, effects.length));
               }}
             >
-              <span className={cn(panel.dragGrip, panel.headHover)} aria-hidden title="Drag to reorder">
-                <Icon name="grip-vertical" size="sm" />
-              </span>
               <button
                 type="button"
                 className={panel.disclosureBtn}
@@ -939,30 +951,35 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size="sm" />
               </button>
 
-              <Checkbox
-                checked={!off}
-                onChange={() => { void setEffectEnabledEdit(nodeId, e.id, off, name); }}
-                title={off ? 'Enable effect' : 'Disable effect'}
-                style={{ width: 15, height: 15, flexShrink: 0 }}
-              />
-
+              {/* AE's fx switch: the effect on or off. Struck through when off. */}
               <button
                 type="button"
-                className={cn(panel.labelSwatch, !e.labelColor && panel.headHover)}
-                style={e.labelColor ? { background: e.labelColor } : undefined}
-                title="Label Color"
-                aria-label={`Label color for ${name}`}
-                // Header is the drag handle — keep the swatch from starting a drag.
+                className={panel.fxToggle}
+                data-on={!off || undefined}
+                aria-pressed={!off}
+                aria-label={off ? `Enable ${name}` : `Disable ${name}`}
+                title={off ? 'Enable effect' : 'Disable effect'}
                 onMouseDown={(ev) => ev.stopPropagation()}
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  openContextMenu(
-                    ev.clientX,
-                    ev.clientY,
-                    effectLabelColorMenuItems(nodeId, e.id, e.labelColor),
-                  );
-                }}
-              />
+                onClick={() => { void setEffectEnabledEdit(nodeId, e.id, off, name); }}
+              >
+                fx
+              </button>
+
+              {e.labelColor ? (
+                <button
+                  type="button"
+                  className={panel.labelSwatch}
+                  style={{ background: e.labelColor }}
+                  title="Label Color"
+                  aria-label={`Label color for ${name}`}
+                  // Header is the drag handle — keep the swatch from starting a drag.
+                  onMouseDown={(ev) => ev.stopPropagation()}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    openContextMenu(ev.clientX, ev.clientY, effectLabelColorMenuItems(nodeId, e.id, e.labelColor));
+                  }}
+                />
+              ) : null}
 
               <span
                 className={off ? panel.itemLabelOff : panel.itemLabel}
@@ -978,46 +995,40 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 {name}
               </span>
 
-              <div className={cn(panel.itemActions, panel.headHover)}>
-                <button
-                  type="button"
-                  className={panel.remove}
-                  aria-label={`Move ${name} up`}
-                  disabled={i === 0}
-                  onClick={() => { void nudgeEffectEdit(nodeId, e.id, -1); }}
-                >
-                  <Icon name="arrow-up" size="sm" />
-                </button>
-                <button
-                  type="button"
-                  className={panel.remove}
-                  aria-label={`Move ${name} down`}
-                  disabled={i === effects.length - 1}
-                  onClick={() => { void nudgeEffectEdit(nodeId, e.id, 1); }}
-                >
-                  <Icon name="arrow-down" size="sm" />
-                </button>
-                <button
-                  type="button"
-                  className={panel.remove}
-                  aria-label={`Remove ${name}`}
-                  onClick={() => { void removeEffectEdit(nodeId, e.id, name); }}
-                >
-                  <Icon name="close" size="sm" />
-                </button>
-              </div>
-
-              {/* AE's Reset link. A word, not another icon: the header already
-                  carries five glyphs, and this is the one control here whose
-                  meaning an icon would not carry. Far right, like AE. */}
+              {/* AE's Reset link: a word, far right, always visible. */}
               <button
                 type="button"
                 className={panel.resetLink}
                 title={`Restore every ${name} parameter to its default`}
+                onMouseDown={(ev) => ev.stopPropagation()}
                 onClick={() => { void resetEffectEdit(nodeId, e.id, name); }}
               >
                 Reset
               </button>
+
+              {/* Move, duplicate, copy, label colour and remove: one menu, the
+                  same items as the header's right-click menu (owner redesign
+                  2026-10-14 — the ↑ ↓ ✕ glyphs crowded the header). */}
+              <span onMouseDown={(ev) => ev.stopPropagation()}>
+                <Dropdown
+                  placement="bottom-end"
+                  trigger={
+                    <button type="button" className={panel.fxMenuBtn} aria-label={`Effect options for ${name}`} title="Effect options">
+                      <Icon name="more-horizontal" size="sm" />
+                    </button>
+                  }
+                  items={() => [
+                    ...asDropdownItems(effectHeaderMenuItems(nodeId, e.id, name, i, effects.length)),
+                    { type: 'separator' },
+                    {
+                      type: 'item',
+                      id: 'fx-label',
+                      label: 'Label Color',
+                      submenu: asDropdownItems(effectLabelColorMenuItems(nodeId, e.id, e.labelColor)),
+                    },
+                  ]}
+                />
+              </span>
             </div>
 
             {/* Accordion Body: Effect Parameters + Compositing Options */}

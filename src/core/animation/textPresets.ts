@@ -182,6 +182,8 @@ const OUT = 'Text/Animate Out';
 const EMPH = 'Text/Emphasis';
 const ORGANIC = 'Text/Organic';
 const EXPR = 'Text/Expressions';
+/** Per-character 3D: applying one turns on the layer's 3D and Per-character 3D (the engine's applyPreset). */
+const THREE_D = 'Text/3D';
 
 // ── The library ─────────────────────────────────────────────────────
 
@@ -424,5 +426,82 @@ export const TEXT_PRESETS: ReadonlyArray<AnimationPreset> = [
       ]),
     ],
     tracks: [{ prop: 'ta.0.tracking', unit: 'fontSize', keyframes: [kfb(0, 0.45)] }],
+  }),
+
+  // ── 3D (per-character) ────────────────────────────────────────────
+  // Each glyph is its own plane, so these turn and push characters in depth —
+  // what no flat transform can fake. Depth is in font sizes, so the move is
+  // the same on a 24 px caption and a 200 px title.
+  preset({
+    name: 'Flip Up 3D',
+    folder: THREE_D,
+    description: 'Each character flips up on its baseline, like a split-flap board.',
+    animators: [
+      animator({ opacity: 0, rotationX: -90 }, [range({ ...revealWindow(170), easeLow: 50 })]),
+    ],
+    tracks: revealIn(1.6, GLIDE),
+  }),
+  preset({
+    name: 'Tumble In 3D',
+    folder: THREE_D,
+    description: 'Characters tumble out of the space in front of the text and land in place.',
+    animators: [
+      animator({ opacity: 0, rotationX: 25, rotationY: 110, z: -3, scale: 80, scaleY: 80 }, [
+        range({ ...revealWindow(200), easeLow: 45 }),
+      ]),
+    ],
+    tracks: [
+      ...revealIn(1.9, DRIFT),
+      { prop: 'ta.0.z', unit: 'fontSize', keyframes: [kfb(0, -3)] },
+    ],
+  }),
+  preset({
+    name: 'Rise From Depth',
+    folder: THREE_D,
+    description: 'Characters travel forward out of the distance, defocused, and come sharp as they arrive.',
+    animators: [
+      animator({ opacity: 0, z: 12, blur: 0.4 }, [range({ ...revealWindow(220), easeLow: 55 })]),
+    ],
+    tracks: [
+      ...revealIn(2.0, DRIFT),
+      { prop: 'ta.0.z', unit: 'fontSize', keyframes: [kfb(0, 12)] },
+      { prop: 'ta.0.blur', unit: 'fontSize', keyframes: [kfb(0, 0.4)] },
+    ],
+  }),
+  preset({
+    name: 'Hinge Swing 3D',
+    folder: THREE_D,
+    description: 'Characters swing shut like little doors, one after another.',
+    animators: [
+      animator({ opacity: 0, rotationY: -100, x: 0.02 }, [range({ ...revealWindow(150), easeLow: 35 })]),
+    ],
+    tracks: [
+      ...revealIn(1.5, GLIDE),
+      { prop: 'ta.0.x', unit: 'compW', keyframes: [kfb(0, 0.02)] },
+    ],
+  }),
+  preset({
+    name: 'Flip Away 3D',
+    folder: THREE_D,
+    description: 'Characters tip backwards over their top edge and are gone.',
+    animators: [
+      animator({ opacity: 0, rotationX: 90, y: -0.03 }, [range({ ...concealWindow(170), easeHigh: 45 })]),
+    ],
+    tracks: [
+      ...revealOut(1.3),
+      { prop: 'ta.0.y', unit: 'compH', keyframes: [kfb(0, -0.03)] },
+    ],
+  }),
+  preset({
+    name: '3D Wave',
+    folder: THREE_D,
+    description: 'A rolling wave tips characters toward the camera as it passes through the line.',
+    animators: [
+      animator({ rotationX: 60, z: -1.2 }, [range({ shape: 'smooth', start: 0, end: 35 })]),
+    ],
+    tracks: [
+      ...travel(2.2, 35),
+      { prop: 'ta.0.z', unit: 'fontSize', keyframes: [kfb(0, -1.2)] },
+    ],
   }),
 ];

@@ -1230,6 +1230,17 @@ bool apply_handheld_shake(HCtx& x, const std::string& layer, double atTime) {
   return true;
 }
 
+/// Whether any animator holds a depth or X/Y tumble offset.
+bool animators_use_depth(const Json& animators) {
+  for (const Json& a : animators.arr()) {
+    for (const char* p : {"z", "rotationX", "rotationY"}) {
+      const Json& v = a.at(p);
+      if (v.is_number() && v.num() != 0) return true;
+    }
+  }
+  return false;
+}
+
 /// animationPresets.ts `applyPreset(preset, nodeId, atTime)`.
 bool apply_preset(HCtx& x, const Json& preset, const std::string& layer, double atTime) {
   Document& d = x.d;
@@ -1249,6 +1260,13 @@ bool apply_preset(HCtx& x, const Json& preset, const std::string& layer, double 
     if (n == nullptr || !has_text(*n)) return false;
     const int shift = install_animators(d, layer, animators);
     if (shift < 0) return false;
+    // Depth and X/Y tumble only move glyphs on a 3D layer with Per-character
+    // 3D; on flat text the preset would install and silently do nothing.
+    if (animators_use_depth(animators)) {
+      if (!is_3d_enabled(*d.node(layer))) set_3d_enabled(x, layer, true);
+      const std::string tid = d.node(layer)->comp("Transform")->id;
+      (void)sg_write_prop(d, layer, tid, "perChar3D", Json::boolean(true));
+    }
     tracks = fit_reveal_sweeps(preset, std::move(tracks), node_text(d, layer));
     reindex_animator_tracks(tracks, shift);
   }

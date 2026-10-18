@@ -53,13 +53,14 @@
      too; the row and the legend both put it before the layer name.
      4 × 22px cells + 3 × 3px gaps. */
   --tl-col-preinfo: 97px;
-  --tl-col-mode: 70px;
+  /* Room for the longest blend mode ("Linear Dodge (Add)") — 2026-10-14. */
+  --tl-col-mode: 96px;
   /* The legend reads "TrkMat" now — AE's name for it — rather than a bare "T".
      100px, not 58: the pick-whip takes a 22px square out of the column (as in
      Parent & Link), which left the mode dropdown ~25px — "None" / "Alpha Inv"
      cut to a sliver. Room for the whip plus the longest label, "Alpha Inv". */
-  --tl-col-matte: 100px;
-  --tl-col-parent: 120px;
+  --tl-col-matte: 124px;
+  --tl-col-parent: 150px;
   /* In / Out / Duration, off by default. 72px each — the same number
      `TIMELINE_EXTRA_COLUMNS` in `timelineColumns.ts` carries, and the two have
      to agree or `headerWidthFor` sizes the header for a layout the rows do not
@@ -80,6 +81,10 @@
   --tl-col-switches: 256px;
   /* Clearance between the last switch and Mode's divider rule. */
   --tl-col-divider-space: var(--space-4);
+  /* Where AE starts a property's values and the group's Reset: the switch
+     column's left edge — row padding, the A/V gutter and its rule, the name
+     column and the gaps between them. */
+  --tl-values-x: calc(var(--space-2) + var(--tl-col-preinfo) + var(--tl-col-divider-space) * 3 + var(--tl-col-gap) * 2 + var(--tl-col-name) + 1px);
 }
 
 .headerCol {
@@ -291,13 +296,20 @@
 /* Exactly one hairline per row lives on the background lane; the content
    rows (.laneRow) are transparent so lines never double up. */
 .lane {
-  border-bottom: 1px solid var(--color-timeline-grid);
+  border-bottom: 1px solid var(--color-timeline-row-rule);
   background: transparent;
   pointer-events: none;
 }
 
+/* AE draws no zebra: the row lines and the lighter layer rows are the rhythm. */
 .laneAlt {
-  background: var(--color-timeline-row-alt);
+  background: transparent;
+}
+
+/* A layer's own lane: one shade above the property lanes under it, as its
+   outline row is. */
+.laneLayer {
+  background: var(--color-timeline-layer-row);
 }
 
 .laneRow {
@@ -307,7 +319,8 @@
 
 .clip {
   position: absolute;
-  top: 3px;
+  /* AE's bar fills its row, one pixel clear of each line. */
+  top: 1px;
   border-radius: 0;
   border: none;
   overflow: hidden;
@@ -318,18 +331,6 @@
   /* Flat: a layer bar is a block of its label colour on the lane, not a card
      lifted off it. The drop shadow under every bar blurred the lane lines. */
   transition: filter var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-/* AE-style left-edge label strip on every clip */
-.clip::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3.5px;
-  background: rgba(255, 255, 255, 0.45);
-  opacity: 0.95;
 }
 
 .clip:hover {
@@ -344,12 +345,9 @@
  * An outline rather than a fill change: clip colour is meaningful (layer kind,
  * user-assigned label) and must survive selection intact.
  */
+/* AE's selected bar: the same colour, lighter. No outline (owner 2026-10-14). */
 .clipSelected {
-  /* A light inner edge, not the accent: selection is neutral everywhere in the
-     editor now, and a blue ring on a blue-labelled bar could not be seen. */
-  outline: 1.5px solid rgba(255, 255, 255, 0.7);
-  outline-offset: -1.5px;
-  filter: brightness(1.12);
+  filter: brightness(1.25);
 }
 
 /* A locked layer's bar: still selectable, never draggable. The cursor is the
@@ -503,30 +501,32 @@
   z-index: 3;
   pointer-events: auto;
   cursor: grab;
-  background: #52525b;
-  border-radius: var(--radius-xs);
+  /* AE's work area: a flat grey band along the ruler's top edge, a lighter
+     grip at each end. No blue anywhere in it: the accent in the ruler belongs
+     to the playhead alone (the 2026-10-19 sheet). */
+  background: var(--color-surface-3);
+  border-radius: 1px;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-.workAreaBar:hover {
-  background: #71717a;
+.workAreaBar:hover,
+.workAreaBar:active {
+  background: var(--color-timeline-work-area-hover);
 }
 
 .workAreaBar:active {
   cursor: grabbing;
-  background: #71717a;
 }
 
 /* Edge handles — light bracket tabs on in/out. Neutral: the accent in the
    ruler belongs to the playhead alone. */
 .workAreaHandle {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  background: var(--color-text-secondary);
-  border-radius: var(--radius-xs);
+  top: -1px;
+  bottom: -1px;
+  width: 4px;
+  background: var(--color-text-tertiary);
+  border-radius: 1px;
   cursor: ew-resize;
   transition: transform var(--motion-duration-fast);
 }
@@ -731,10 +731,32 @@
 /* ── The marker LANE, above the ruler ────────────────────────────
    The chips you can grab. The full-height `.marker` guide below stays
    click-through, so nothing in the lanes competes with a gesture on a row. */
+/* The playhead's progress across the comp, in the row above the time labels:
+   a dark track the comp's length, its blue fill scaled to the playhead by a
+   transform written from the clock (no layout, no React render per frame). */
+.progressTrack {
+  position: absolute;
+  /* `top` / `height` inline: inside the row above the labels only. */
+  border-radius: 2px;
+  background: var(--color-timeline-switch-well);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-primary);
+  transform-origin: 0 50%;
+  will-change: transform;
+}
+
 .markerLane {
   position: relative;
-  background: var(--color-surface-1);
-  border-bottom: 1px solid var(--color-border);
+  /* The ruler's own ground: this row holds the work-area band and the
+     markers, one strip with the time labels under it. */
+  background: var(--color-timeline-ruler-bg);
   overflow: hidden;
 }
 
@@ -919,7 +941,8 @@
 /* After Effects-style compact downward shield playhead head */
 .playheadHead {
   position: absolute;
-  top: 0;
+  /* Under the work-area band that runs along the ruler's top edge. */
+  top: 8px;
   left: 50%;
   width: 12px;
   height: 14px;
@@ -951,16 +974,16 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-timeline-row-rule);
   cursor: pointer;
-  background: var(--color-timeline-header);
+  background: var(--color-timeline-layer-row);
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
   min-width: max-content;
   box-sizing: border-box;
 }
 
 .trackHeader:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, var(--color-timeline-layer-row));
 }
 
 /* A layer an assistant just added. Existing rows are already known, so this
@@ -981,20 +1004,6 @@
   }
 }
 
-/* The layer's LABEL colour, as a 3px bar down the row's left edge — the one
-   place the colour was set (`--track-color`) but never read. `transparent`
-   for an unlabelled layer draws nothing. */
-.trackHeader::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--track-color, transparent);
-  pointer-events: none;
-}
-
 .trackHeader[data-locked] .dragHandle {
   cursor: not-allowed;
 }
@@ -1005,8 +1014,10 @@
  * down its left edge; with the accent now kept for values and the playhead,
  * a blue row read as "live" rather than "selected".
  */
-.trackHeaderSelected {
-  background: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+.trackHeaderSelected,
+.trackHeaderSelected:hover {
+  /* AE's slate selected row (2026-10-14). */
+  background: var(--color-timeline-layer-selected);
   color: var(--color-text-primary);
 }
 
@@ -1017,6 +1028,7 @@
   flex: none;
   display: flex;
   align-items: center;
+  height: 100%;
   min-width: 0;
   /* 2px, not 4: five pieces of chrome sit ahead of the name in this column
      (grip · index · colour chip · disclosure · kind glyph), so every gap here
@@ -1025,17 +1037,16 @@
   gap: var(--space-1);
 }
 
-/* Layer number column (AE-style) — quiet mono, fixed width for alignment. */
+/* Layer number column — AE draws it at the row's text size, centred. */
 .trackIndex {
   flex: none;
-  width: 16px;
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-micro);
+  width: 22px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-secondary);
-  text-align: right;
+  color: var(--color-text-primary);
+  text-align: center;
   user-select: none;
-  opacity: 0.6;
 }
 
 /* The divider rule needs air on BOTH sides: 8px was not enough once the 3D
@@ -1126,7 +1137,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 22px;
+  height: 100%;
   margin-left: var(--tl-col-divider-space);
   padding-left: var(--tl-col-divider-space);
   border-left: var(--tl-col-rule);
@@ -1150,14 +1161,18 @@
 }
 
 .timelineSelectTrigger {
-  background: var(--color-timeline-well, #141414);
-  border: 1px solid var(--color-border);
+  position: relative;
+  background: var(--color-timeline-switch-well);
+  border: 1px solid transparent;
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
   cursor: pointer;
-  padding: 0 6px;
-  height: 20px;
+  padding: 0 18px 0 7px;
+  /* The row's height less a 3px inset each side — the same box the row's
+     hover draws, so pickers, switches and the name share one height. */
+  height: calc(100% - 6px);
+  min-height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -1195,31 +1210,18 @@
   color: var(--color-text-primary);
 }
 
-/*
-  At rest the Mode / TrkMat / Parent triggers read as TEXT, like AE's columns:
-  three boxed wells per row, on every row, were most of what made the header
-  look crowded. The well returns when the row is hovered or focused — the same
-  rule the switches follow — so the control is still discoverable.
-*/
-.trackHeader .timelineSelectTrigger {
-  background: transparent;
-  border-color: transparent;
-}
-
-.trackHeader:hover .timelineSelectTrigger,
-.trackHeader:focus-within .timelineSelectTrigger,
-.trackHeader .timelineSelectTrigger[aria-expanded='true'] {
-  background: var(--color-timeline-well, #141414);
-  border-color: var(--color-border);
-}
-
-.trackHeader:hover .timelineSelectTrigger:hover {
-  background: var(--color-timeline-well-hover);
-  border-color: var(--color-timeline-well-border-hover);
-}
-
-.timelineSelectTrigger:active {
-  transform: scale(0.95);
+/* AE's popup chevron, drawn in CSS so every picker gets it without markup. */
+.timelineSelectTrigger::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-right: 1.3px solid var(--color-text-secondary);
+  border-bottom: 1.3px solid var(--color-text-secondary);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
 }
 
 /**
@@ -1301,9 +1303,9 @@
   align-items: center;
   gap: 6px;
   height: 22px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-regular);
   padding-left: 0;
   overflow: hidden;
   line-height: var(--icon-size-sm);
@@ -1312,8 +1314,13 @@
 
 .colHeadIndex {
   flex: none;
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-sm);
+  /* Over the row's index: past the twirl (16), the label slot (11 + 2×4) and
+     the column's 2px gaps, then the same 22px centred cell. */
+  width: 22px;
+  margin-left: 39px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
   line-height: var(--icon-size-sm);
 }
 
@@ -1321,6 +1328,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  /* Starts with the layer NAME, after the row's kind glyph (16 + 2). */
+  margin-left: 12px;
   font-size: inherit;
   line-height: inherit;
 }
@@ -1438,13 +1447,16 @@
    A bare glyph, not a bordered chip: AE's timeline shows the layer's kind as a
    small mark beside the name, and a boxed chip here read as a second control
    the row does not have. Dropping the box also gives 6px back to the name. */
+/* The kind glyph is monochrome, as in AE: the label swatch carries colour.
+   Its own air before the name — at the column's 2px gap the two touched. */
 .trackIcon {
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 100%;
   flex: none;
-  opacity: 0.85;
+  margin: 0 var(--space-3) 0 var(--space-1);
+  color: var(--color-text-secondary);
 }
 
 .trackColorPicker {
@@ -1473,9 +1485,12 @@
 .trackName {
   flex: 1;
   min-width: 80px;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-regular);
   letter-spacing: -0.01em;
   color: var(--color-text-primary);
   overflow: hidden;
@@ -1523,28 +1538,34 @@
   align-items: center;
   justify-content: flex-start;
   gap: 3px;
-  height: 22px;
+  /* The row's full height, so each switch's hover box IS the row's box. */
+  height: 100%;
   margin-right: var(--tl-col-divider-space);
   padding-right: var(--tl-col-divider-space);
   border-right: var(--tl-col-rule);
 }
 
-/* Switch columns — AE-style square checkboxes.
-   Glyphs (SVG icons and .fxText letters) are centred in the same 22×22
-   box so eye / shy / fx / 3D read as one control size, not mixed scales. */
+/* Switch cells — After Effects' grammar (owner redesign 2026-10-14).
+     • on → the glyph, full strength, monochrome (AE colours none of them);
+     • off and available → a small dark well that holds the column, so every
+       row reads eye · well · well like AE and the column never looks empty;
+     • not available for this layer → an empty cell.
+   The well is a background square, not a border, so the 22px hit target and
+   the glyph's position are the same in every state. */
 .trackAction {
   width: 22px;
-  height: 22px;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: none;
   border-radius: 0;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  background: var(--color-timeline-well);
-  border: 1px solid var(--color-border);
-  opacity: 0.85;
-  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease, opacity 0.1s ease;
+  /* The well matches the Mode / Parent pickers' height (the row less 3px
+     each side), so the row's controls are one height (owner 2026-10-14). */
+  background: linear-gradient(var(--color-timeline-switch-well), var(--color-timeline-switch-well)) center / 18px calc(100% - 6px) no-repeat;
+  border-radius: 2px;
   box-sizing: border-box;
   padding: 0;
   flex: none;
@@ -1560,134 +1581,33 @@
 }
 
 .trackAction:hover {
-  opacity: 1;
-  background: var(--color-timeline-well-hover);
-  border-color: var(--color-timeline-well-border-hover);
+  background-color: var(--color-hover);
   color: var(--color-text-primary);
 }
 
-.trackAction:active {
-  transform: scale(0.92);
-}
-
-/*
- * ON is a full-strength glyph on the row — no box. Each lit switch used to be
- * an accent-tinted, accent-bordered square, so a comp of visible layers was a
- * column of blue boxes down the left edge and the eye read as the loudest
- * control on the panel. After Effects draws the glyph and nothing else; the
- * kinds that carry meaning in their colour (solo, lock, fx, motion blur) keep
- * it below.
- */
 .trackAction[data-on] {
-  opacity: 1;
   background: transparent;
-  border-color: transparent;
   color: var(--color-text-primary);
 }
 
 .trackAction[data-on]:hover {
-  background: var(--color-timeline-well-hover);
-  border-color: var(--color-timeline-well-border-hover);
+  background: var(--color-hover);
 }
 
-/* Semantic active-state colors, keyed off data-kind — robust against label
-   wording (the old aria-label substring rules silently shadowed each other). */
-.trackAction[data-kind="lock"][data-on] {
-  color: var(--color-warning);
+.trackAction:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
 }
 
-.trackAction[data-kind="solo"][data-on] {
-  color: var(--color-switch-solo);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--color-switch-solo) 50%, transparent);
-}
-
+/* A switch that cannot apply to this layer: an empty cell, never a well. */
 .trackAction:disabled,
 .trackAction[data-spacer] {
-  background: var(--color-timeline-well);
-  border: 1px solid var(--color-border-subtle);
-  opacity: 0.35;
-  cursor: not-allowed;
+  background: transparent;
+  cursor: default;
   pointer-events: none;
 }
 
-/* ── Quiet at rest ────────────────────────────────────────────────────
-   A row carries ~14 switch cells and most of them are off or do not apply to
-   the layer. Drawn as a bordered well each, every row was a grid of empty
-   boxes and the panel read as a spreadsheet — the loudest thing on screen was
-   the absence of settings. After Effects draws an empty cell as NOTHING: only
-   a switch that is ON has a presence, and the column header says what the
-   column is.
-     • off / unavailable at rest → no fill, no border;
-     • the row under the pointer or holding focus → its wells come back, so the
-       target is visible exactly when you are about to aim at it;
-     • on → always drawn (rules above).
-   Size and position never change, so nothing shifts and nothing is harder to
-   hit than it was. */
-.trackAction:not([data-on]) {
-  background: transparent;
-  border-color: transparent;
-}
-
-.trackHeader:hover .trackAction:not([data-on]):not(:disabled):not([data-spacer]),
-.trackHeader:focus-within .trackAction:not([data-on]):not(:disabled):not([data-spacer]) {
-  background: var(--color-timeline-well);
-  border-color: var(--color-border);
-}
-
-.trackHeader:hover .trackAction:not([data-on]):not(:disabled):not([data-spacer]):hover {
-  background: var(--color-timeline-well-hover);
-  border-color: var(--color-timeline-well-border-hover);
-}
-
-/* A switch that cannot apply to this layer is never a box, hovered or not. */
-.trackAction:disabled,
-.trackAction[data-spacer] {
-  background: transparent;
-  border-color: transparent;
-}
-
-/* Visibility icon is crisp when visible. */
-.trackAction[data-kind="visible"][data-on] {
-  color: var(--color-text-primary);
-  opacity: 1;
-}
-
-/* Speaker icon is crisp when unmuted. */
-.trackAction[data-kind="audio"][data-on] {
-  color: var(--color-text-primary);
-  opacity: 1;
-}
-
-/* FX button on = blue italic, off = desaturated. */
-.trackAction[data-kind="fx"][data-on] {
-  color: var(--color-primary);
-  opacity: 1;
-}
-
-/* Motion blur = cyan accent when on */
-.trackAction[data-kind="motionBlur"][data-on] {
-  color: var(--color-switch-motion-blur);
-  opacity: 1;
-}
-
-/* Adjustment layer = soft purple */
-.trackAction[data-kind="adjustment"][data-on] {
-  color: var(--color-switch-adjustment);
-  opacity: 1;
-}
-
-/* 3D layer = gold */
-.trackAction[data-kind="threeD"][data-on] {
-  color: var(--color-switch-3d);
-  opacity: 1;
-}
-
-/* Shy layer = soft blue */
-.trackAction[data-kind="shy"][data-on] {
-  color: var(--color-switch-shy);
-  opacity: 1;
-}
-
+/* Hidden track — dim the row. */
 /* Hidden track — dim the row. */
 .trackHeader[data-hidden] .trackName,
 .trackHeader[data-hidden] .trackIcon {
@@ -1774,8 +1694,8 @@
   gap: var(--space-2);
   padding-right: var(--space-3);
   padding-left: 88px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-timeline-header);
+  border-bottom: 1px solid var(--color-timeline-row-rule);
+  background: var(--color-timeline-bg);
   min-width: max-content;
   box-sizing: border-box;
   cursor: pointer;
@@ -1795,16 +1715,18 @@
 
 .categoryName {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-regular);
   color: var(--color-text-primary);
 }
 
 /* AE's "Reset" on a group row: a link where the values are, not a chip. */
+/* In the value column, where AE puts it. */
 .categoryReset {
-  margin-left: auto;
+  position: absolute;
+  left: var(--tl-values-x);
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--color-primary-text);
   background: none;
   border: none;
@@ -1826,16 +1748,16 @@
   padding-right: var(--space-2);
   /* Indent inside its parent category accordion so property names start ~10-14px after parent category name. */
   padding-left: 124px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-timeline-header);
+  border-bottom: 1px solid var(--color-timeline-row-rule);
+  background: var(--color-timeline-bg);
   min-width: max-content;
   box-sizing: border-box;
 }
 
 .propName {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1849,13 +1771,17 @@
 /* Live, scrubbable values beside each property (AE keeps them here so an
    animation can be built without crossing to the inspector). They sit between
    the name and the keyframe navigator, and shrink before the name does. */
+/* AE's value column: every property's values start at one x — the switch
+   column's left edge (`--tl-values-x`) — whatever the name's length. */
 .propValues {
+  position: absolute;
+  left: var(--tl-values-x);
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: auto;
+  gap: 0;
   min-width: 0;
-  flex-shrink: 1;
 }
 
 /* Each value gets a real field wrapper — a well with a border, a tinted
@@ -1875,8 +1801,8 @@
   border-radius: 2px;
   background: transparent;
   color: var(--color-primary-text);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-md);
   font-variant-numeric: tabular-nums;
   cursor: ew-resize;
   transition: all 0.1s ease;
@@ -1913,26 +1839,14 @@
 }
 
 /* RAM-preview cache coverage — a thin green indicator line under the progress bar ruler. */
+/* AE's green "cached for playback" line: flat, no glow. */
 .cacheBar {
   position: absolute;
-  height: 2.5px;
-  background: #22c55e;
-  border-radius: 1px;
-  opacity: 0.95;
+  height: 2px;
+  background: var(--color-timeline-cache);
+  border-radius: 0;
   pointer-events: none;
   z-index: 5;
-  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
-}
-
-/* Disk-cached coverage, a second lane UNDER the green one */
-.diskCacheBar {
-  position: absolute;
-  height: 2px;
-  background: var(--color-primary);
-  border-radius: 1px;
-  opacity: 0.7;
-  pointer-events: none;
-  z-index: 4;
 }
 
 /* Static placeholder rows (property tree before any keyframes): slightly
@@ -2001,12 +1915,17 @@
 }
 
 /* ── Keyframe navigator (AE's ◀ ◆ ▶) ───────────────────────────── */
+/* AE's ◀ ◆ ▶ sits at the row's left, under the A/V switch columns. */
 .propNav {
+  position: absolute;
+  left: var(--space-2);
+  top: 0;
+  bottom: 0;
+  width: var(--tl-col-preinfo);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 1px;
-  margin-left: auto;
-  padding-right: var(--space-2);
 }
 
 .propNavBtn {
@@ -2038,12 +1957,9 @@
   color: var(--color-primary);
 }
 
-.lanePropBg {
-  background: var(--color-timeline-bg);
-}
-
+.lanePropBg,
 .lanePropBg.laneAlt {
-  background: var(--color-timeline-row-alt);
+  background: var(--color-timeline-bg);
 }
 
 /* ── Track row drag handle ─────────────────────────────────── */
@@ -2057,6 +1973,7 @@
   opacity: 0;
   transition: opacity 0.15s;
   flex: none;
+  margin-left: auto;
 }
 
 .trackHeader:hover .dragHandle {
@@ -2569,12 +2486,15 @@
 }
 
 /* The layer's label swatch (AE): a flat chip that opens the named label menu. */
+/* AE's label chip: a small solid square in its own slot after the twirl. */
 .labelSwatch {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   flex: none;
+  margin: 0 var(--space-2);
   padding: 0;
-  border: 1px solid var(--color-border-structural);
+  border: none;
+  border-radius: 1px;
   cursor: pointer;
 }
 

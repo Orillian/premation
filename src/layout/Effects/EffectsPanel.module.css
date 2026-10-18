@@ -296,6 +296,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* Fills the panel: the list below takes whatever height the dock gives it. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* The panel's one toolbar row: the search takes the width, the favourites
@@ -453,15 +456,18 @@
 .effectCardItem {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--color-border-subtle);
 }
 
+/* The effect's header is AE's lighter band: one step up from the panel, a
+   hairline under it, the name in the group weight. */
 .effectCardHead {
   display: flex;
   align-items: center;
   gap: 4px;
   min-height: var(--control-height-row);
-  padding: 0 6px 0 4px;
+  padding: 0 4px 0 4px;
+  background: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  box-shadow: inset 0 -1px 0 var(--color-divider);
   user-select: none;
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -477,7 +483,61 @@
 }
 
 .effectCardHead:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+}
+
+/* AE's fx switch: an italic "fx" that is the effect's on/off. Off reads as
+   struck through and dim — the state, not a lit checkbox. */
+.fxToggle {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: var(--font-size-lg);
+  font-style: italic;
+  line-height: 1;
+  text-decoration: line-through;
+  cursor: pointer;
+}
+
+.fxToggle[data-on] {
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.fxToggle:hover {
   background: var(--color-hover);
+}
+
+.fxToggle:focus-visible,
+.fxMenuBtn:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+.fxMenuBtn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.fxMenuBtn:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
 }
 
 /* The effect whose handles are on the canvas. A full-row tint, not a side
@@ -515,7 +575,7 @@
   padding: 0 4px;
   background: transparent;
   border: none;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   /* A verb, drawn as AE's link: the `button` role's face and weight. */
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -524,7 +584,7 @@
 }
 
 .resetLink:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-text-primary);
   text-decoration: underline;
 }
 
@@ -620,22 +680,27 @@
 .effectParamsBody {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 2px 6px 6px 12px;
+  gap: 0;
+  padding: 0 0 0 12px;
   background: transparent;
   min-width: 0;
 
+  /* AE's grid: full-width rows with a hairline each, and every value starting
+     at one column a little left of the middle. */
   --prop-nav-col: 0px;
-  --prop-value-col: clamp(70px, 32%, 92px);
-  --prop-field-width: clamp(48px, 22%, 60px);
+  --prop-value-col: 48%;
+  --prop-field-width: auto;
+  --prop-values-justify: flex-start;
+  --prop-row-rule: var(--color-divider);
 }
 
+/* AE's popup: a dark well with a thin border, as wide as the value column. */
 .paramSelect {
   width: 100%;
-  max-width: 110px;
-  height: 22px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-field-border);
+  max-width: 100%;
+  height: var(--control-height-xs);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-field-border-hover);
   color: var(--color-text-primary);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -670,20 +735,23 @@
 .paramGroup {
   display: flex;
   flex-direction: column;
-  margin-top: 2px;
 }
 
+/* A twirl row like AE's "▸ Main": the same height and hairline as a
+   parameter row, so the list reads as one ruled column. */
 .paramGroupHead {
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px 0;
+  min-height: var(--control-height-row);
+  padding: 0 var(--space-2);
   background: none;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 var(--color-divider);
   cursor: pointer;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-subgroup);
@@ -702,8 +770,8 @@
 .paramGroupBody {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-left: 14px;
+  gap: 0;
+  padding-left: 16px;
 }
 
 /* The browser's own chrome — rows, folders, the `fx` mark — lives in
@@ -818,8 +886,12 @@
    so it needs a box of its OWN height inside the scrolling panel — a
    virtual list cannot size itself to content it does not render. */
 .browserList {
-  height: clamp(180px, 46vh, 460px);
-  min-height: 0;
+  /* The panel's height, not a guess at it (owner 2026-10-14): a fixed
+     clamp(180px, 46vh, 460px) left the list short in a tall sidebar and
+     scrolling the whole panel in a short one. The list virtualises and owns
+     the only scrollbar. */
+  flex: 1 1 auto;
+  min-height: 120px;
   border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
 }

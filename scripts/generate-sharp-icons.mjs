@@ -8,7 +8,7 @@
  * is extracted once, at author time, into one plain data module. The icon
  * package is a devDependency — nothing ships but the 171 paths actually used.
  *
- * WHY MATERIAL SYMBOLS SHARP, WEIGHT 700. "Sharp" is a literal design axis in
+ * WHY MATERIAL SYMBOLS SHARP, WEIGHT 400. "Sharp" is a literal design axis in
  * this family, not a rendering hint: the glyphs are drawn with zero corner
  * radius (`square` is `M95-95v-771h771v771H95Z` — pure orthogonal geometry).
  * That distinction is the whole reason for the switch. Stroke-outline sets like
@@ -17,9 +17,12 @@
  * and 11/16 of their shape glyphs respectively. There is no attribute that turns
  * a rounded icon set sharp. You have to draw from a sharp one.
  *
- * Weight 700 is the family's heaviest grade, so "bold" is the geometry rather
- * than a stroke width the renderer picks. See `Icon.tsx` for what that means for
- * the `weight` prop.
+ * Weight 400 (2026-10-14, owner: "serious icons, not playful", then "too
+ * thin"). The 700 grade read as heavy, toy-like blobs at row size; 300 was a
+ * hairline that faded on the dark panels; 400 is the regular line, matching
+ * the hand-drawn tool glyphs' 1.5-unit outline. The weight is still the
+ * geometry rather than a stroke width the renderer picks. See `Icon.tsx` for
+ * what that means for the `weight` prop.
  *
  * TO REGENERATE: npm run icons:generate
  * TO ADD AN ICON: add the name to `iconNames.ts`, add its mapping to `MAP`
@@ -32,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
-const SRC = join(ROOT, 'node_modules', '@material-symbols', 'svg-700', 'sharp');
+const SRC = join(ROOT, 'node_modules', '@material-symbols', 'svg-400', 'sharp');
 const ICON_DIR = join(ROOT, 'src', 'components', 'Icon');
 const OUT = join(ICON_DIR, 'sharpIconPaths.ts');
 
@@ -49,7 +52,7 @@ const MAP = {
   download: 'download', check: 'check', close: 'close', plus: 'add', minus: 'remove',
   'chevron-down': 'keyboard_arrow_down', 'chevron-up': 'keyboard_arrow_up',
   'chevron-left': 'keyboard_arrow_left', 'chevron-right': 'keyboard_arrow_right',
-  search: 'search', settings: 'settings', menu: 'menu', 'more-horizontal': 'more_horiz', 'more-vertical': 'more_vert',
+  search: 'search', filter: 'filter_alt', tune: 'tune', settings: 'settings', menu: 'menu', 'more-horizontal': 'more_horiz', 'more-vertical': 'more_vert',
   eye: 'visibility', 'eye-off': 'visibility_off', lock: 'lock', unlock: 'lock_open',
   play: 'play_arrow', pause: 'pause', stop: 'stop', 'skip-back': 'skip_previous', 'skip-forward': 'skip_next',
   refresh: 'sync', 'rotate-cw': 'rotate_right', rotate: 'rotate_right', anchor: 'recenter', move: 'open_with',
@@ -72,7 +75,7 @@ const MAP = {
   copy: 'content_copy', group: 'collapse_content', ungroup: 'expand_content', trash: 'delete',
   folder: 'folder', 'folder-open': 'folder_open', 'folder-plus': 'create_new_folder', upload: 'upload',
   file: 'draft', image: 'image', video: 'movie', audio: 'volume_up', 'audio-off': 'volume_off',
-  media: 'photo_library', shape: 'shapes', layers: 'layers', component: 'widgets', zap: 'bolt',
+  media: 'photo_library', shape: 'shapes', layers: 'layers', component: 'widgets', composition: 'theaters', zap: 'bolt',
   'zoom-in': 'zoom_in', 'zoom-out': 'zoom_out', fit: 'fit_screen', maximize: 'open_in_full', minimize: 'close_fullscreen',
   info: 'info', warning: 'warning', error: 'error', success: 'check_circle',
   drag: 'drag_indicator', 'grip-vertical': 'drag_indicator', 'grip-horizontal': 'drag_handle', hand: 'pan_tool',
@@ -292,7 +295,7 @@ function main() {
   const out = `/**
  * GENERATED FILE — do not edit by hand.
  *
- * Source: Material Symbols Sharp, weight 700 (@material-symbols/svg-700).
+ * Source: Material Symbols Sharp, weight 400 (@material-symbols/svg-400).
  * Regenerate with: npm run icons:generate
  * The name→glyph mapping lives in scripts/generate-sharp-icons.mjs.
  *
@@ -325,7 +328,7 @@ ${entries}
   writeFileSync(OUT, out, 'utf8');
   const drawn = rows.filter((r) => r.glyph === 'hand-drawn').length;
   console.log(`wrote ${OUT}`);
-  console.log(`${rows.length} icons (${rows.length - drawn} from Material Symbols Sharp 700, ${drawn} hand-drawn)`);
+  console.log(`${rows.length} icons (${rows.length - drawn} from Material Symbols Sharp 400, ${drawn} hand-drawn)`);
 }
 
 main();

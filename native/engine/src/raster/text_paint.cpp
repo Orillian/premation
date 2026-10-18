@@ -722,6 +722,23 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   specStyle.fontWeight = opt_str(spec["fontWeight"]);
   specStyle.fontStyle = opt_str(spec["fontStyle"]);
   (void)ctx.setFont(font_for(specStyle));
+  // Variable-font axes beyond the weight (which the font set drives from the
+  // CSS weight): width, slant and the layer's other registered axes.
+  {
+    std::string variations;
+    const auto part = [&variations](std::string_view tag, double v) {
+      if (!std::isfinite(v)) return;
+      if (!variations.empty()) variations += ", ";
+      variations += "'" + std::string(tag) + "' " + num_str(v);
+    };
+    if (spec["fontWidth"].is_number()) part("wdth", spec["fontWidth"].num());
+    if (spec["fontSlant"].is_number()) part("slnt", spec["fontSlant"].num());
+    for (const auto& tag : spec["fontAxes"].keys()) {
+      if (tag.size() != 4 || tag == "wght" || tag == "wdth" || tag == "slnt") continue;
+      if (spec["fontAxes"][tag].is_number()) part(tag, spec["fontAxes"][tag].num());
+    }
+    if (!variations.empty()) ctx.setFontVariationSettings(variations);
+  }
   const bool optical = ex.kerningMode == "optical";
   ctx.setSmallCaps(spec["fontVariant"].str_or("") == "small-caps");
   if (optical) ctx.setFontKerning(false);

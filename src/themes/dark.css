@@ -36,10 +36,13 @@
 :root:not([data-theme]) {
   color-scheme: dark;
   /* ── Surface contract ─────────────────────────────────────────── */
+  /* One step lighter (owner 2026-10-14): at #212123 the sidebars read darker
+     than the timeline, whose layer rows sit a shade above the panel. Panels
+     now share the timeline's ground; controls and popovers step up with them. */
   --surface-0:        var(--color-slate-900);   /* #171718 */
-  --surface-1:        var(--color-slate-850);   /* #212123 */
-  --surface-2:        var(--color-slate-800);   /* #2b2b2e */
-  --surface-3:        var(--color-slate-700);   /* #35373d */
+  --surface-1:        var(--color-slate-800);   /* #2b2b2e */
+  --surface-2:        var(--color-slate-700);   /* #35373d */
+  --surface-3:        var(--color-neutral-700); /* #444444 */
   --surface-hover:    var(--color-white-a04);
   --surface-active:   var(--color-white-a08);
   --surface-selected: var(--color-primary-subtle);
@@ -52,7 +55,10 @@
   --color-surface-3:         var(--surface-3);  /* hover step / popovers */
   --color-surface-raised:    var(--surface-3);  /* popovers / overlays  */
   --color-panel:             var(--surface-1);
-  --color-panel-header:      var(--color-neutral-900);
+  /* The panel's own surface (2026-10-14, owner): a darker header band made the
+     sidebars read darker than the rest of the editor. Hierarchy comes from
+     hairlines and type, not from a second grey. */
+  --color-panel-header:      var(--surface-1);
   --color-toolbar:           var(--color-neutral-900);
   --color-statusbar:         var(--color-neutral-900);
   --color-titlebar:          var(--color-slate-925);
@@ -140,7 +146,7 @@
    * readable row on the screen. This is the same blue lifted until it clears
    * AA on the selection tint. Reach for it whenever the accent is the ink.
    */
-  --color-primary-text:      var(--color-azure-400);
+  --color-primary-text:      var(--color-azure-350);
 
   --color-accent:            #1d78e3;
   --color-accent-subtle:     rgba(29, 120, 227, 0.15);
@@ -161,4 +167,20 @@
   --color-overlay-scrim:     rgba(4, 6, 9, 0.7);
   --color-overlay-hover:     var(--surface-hover);
   --color-overlay-active:    var(--surface-active);
+}
+
+/* The editor stands on the dashboard's ground (owner 2026-10-15): sidebars,
+   timeline, top bar, menus and dialogs all take --surface-0 instead of the
+   grey panel step, so leaving Home for a project is not a change of colour.
+   Set on <html> so every alias above (and domain.css) resolves through it;
+   `editor-active` is the body class AppRouter puts on while the editor is
+   mounted, so the dashboard keeps its own steps. Regions are told apart by
+   the structural hairlines, controls keep --surface-2. */
+[data-theme="dark"]:has(> body.editor-active),
+:root:not([data-theme]):has(> body.editor-active) {
+  --surface-1:            var(--surface-0);
+  --color-surface-raised: var(--surface-0);
+  --color-toolbar:        var(--surface-0);
+  --color-statusbar:      var(--surface-0);
+  --color-titlebar:       var(--surface-0);
 }

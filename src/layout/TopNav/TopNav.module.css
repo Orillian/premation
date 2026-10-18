@@ -94,14 +94,18 @@
 }
 
 /* ── Row 2 — tool bar ─────────────────────────────────────────── */
+/* The tool row, on the approved 2026-10-19 sheet: one 36px strip on the
+   darker ground, groups of 24px buttons separated by 16px hairlines, 14px
+   glyphs, a tint (not a filled box) for the armed tool. */
 .toolRow {
   display: flex;
   align-items: center;
-  min-height: 40px;
-  height: 40px;
-  padding: 0 var(--space-3);
-  background: var(--color-toolbar);
+  min-height: var(--bar-height-tool);
+  height: var(--bar-height-tool);
+  padding: 0 var(--space-2);
+  background: var(--color-surface-0);
   border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-structural);
 }
 
 .inner {
@@ -163,11 +167,11 @@
 .toolGroup {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 1px;
   background: none;
   border: none;
   border-radius: 0;
-  padding: 0;
+  padding: 0 var(--space-1);
 }
 
 /* Same two-state pairing as .tool / .toolActive below */
@@ -175,33 +179,53 @@
 .toolDropdownTriggerActive {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  height: var(--control-height-lg);
-  padding: 0;
+  gap: 3px;
+  height: var(--control-height-md);
+  min-width: var(--control-height-md);
+  padding: 0 var(--space-1) 0 var(--space-2);
   background: none;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
-  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .toolDropdownTrigger {
   color: var(--color-text-secondary);
 }
 
+.flyoutLabel {
+  display: block;
+  min-width: 0;
+}
+
 .toolDropdownTrigger:hover {
+  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
 .toolDropdownTriggerActive {
-  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
 
 .toolDropdownTriggerActive:hover {
-  color: var(--color-primary-hover);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+}
+
+/* The flyout chevron: 9px and dim, so it reads as "opens" and not as a glyph.
+   `Icon` sets its box inline, hence the !important. */
+.chevron {
+  width: 9px !important;
+  height: 9px !important;
+  color: var(--color-text-muted);
+  flex: none;
 }
 
 .toolDropdownTrigger:focus-visible,
@@ -224,9 +248,9 @@
    used to reserve. */
 .toolDivider {
   width: 1px;
-  height: 22px;
-  margin: 0 var(--space-3);
-  background: var(--color-border-strong);
+  height: 16px;
+  margin: 0 var(--space-1);
+  background: var(--color-border);
 }
 
 /**
@@ -234,17 +258,18 @@
  */
 .tool,
 .toolActive {
-  width: var(--control-height-lg);
-  height: var(--control-height-lg);
+  min-width: var(--control-height-md);
+  height: var(--control-height-md);
   display: grid;
   place-items: center;
   background: none;
   border: none;
-  border-radius: 0;
-  padding: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
   cursor: pointer;
-  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .tool {
@@ -252,23 +277,20 @@
 }
 
 .tool:hover {
+  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
-/* ON: colour, not a chip. Which is what SceneControls in this same row has
-   always done — the two halves of the toolbar now agree on what "armed" looks
-   like, where before one lit the glyph and the other boxed it. */
+/* ON: a tint and the accent glyph, never a filled blue box — so an armed
+   tool and the Play button stop looking like the same control. */
 .toolActive {
-  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
 
 .toolActive:hover {
-  color: var(--color-primary-hover);
-}
-
-.tool:active,
-.toolActive:active {
-  transform: scale(0.92);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
 
 .tool:focus-visible,

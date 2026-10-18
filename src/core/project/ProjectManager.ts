@@ -122,6 +122,8 @@ export interface EngineOwnedDocument {
   open(path: string): Promise<unknown>;
   save(path: string): Promise<unknown>;
   saveCopy(path: string): Promise<unknown>;
+  /** The export supervisor's snapshot (a bundle for a `.motion` path); `saveCopy` when absent. */
+  saveSnapshot?(path: string): Promise<unknown>;
   /** F2: Save Portable Copy — the engine packs the `.motion` zip (footage embedded). */
   savePortableCopy?(path: string): Promise<unknown>;
   /** Collect Files — the engine copies the project and its files into `folder` (engine-api `collectFiles`). */
@@ -458,7 +460,7 @@ export class ProjectManager {
    */
   async snapshotTo(path: string): Promise<void> {
     if (this.engineDocument) {
-      await this.engineDocument.saveCopy(path);
+      await (this.engineDocument.saveSnapshot ?? this.engineDocument.saveCopy).call(this.engineDocument, path);
       return;
     }
     await this.storage.save(path, this.io.capture());

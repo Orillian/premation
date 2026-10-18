@@ -22,7 +22,7 @@ import { BrowserRow, BrowserTag } from '@components/BrowserTree';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
 import type { EffectDef } from '@core/inspector/effectCatalog';
-import { addEffectAndReveal, revealEffectsInProperties } from './revealEffectControls';
+import { addEffectAndReveal, revealAppliedEffects } from './revealEffectControls';
 import { useAllEffectDefs, useEffectFavorites } from './effectCatalog';
 import { deleteEffectPreset, listEffectPresets, type EffectPreset } from '@core/effects/effectClipboard';
 import { BUILTIN_EFFECT_PRESETS } from '@core/effects/builtinEffectPresets';
@@ -137,6 +137,18 @@ const EFFECT_CATEGORY_ICON: Record<string, IconName> = {
   Keying: 'eraser',
   Time: 'clock',
   Transition: 'wipe',
+  Simulation: 'zap',
+  Utility: 'tune',
+  '3D Channel': 'axis-3d',
+};
+
+/**
+ * An effect row wears its FOLDER's glyph (every Time effect the clock), so a
+ * search result says where it lives; the `fx` mark only where a folder has none.
+ */
+const categoryMark = (folder: string): { icon: IconName } | { fx: true } => {
+  const icon = folder === PLUGIN_EFFECTS_CATEGORY ? 'plugin' : EFFECT_CATEGORY_ICON[folder];
+  return icon ? { icon } : { fx: true };
 };
 
 /** Folder order: A–Z, as After Effects lists its effect categories. */
@@ -386,23 +398,23 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
         break;
       case 'preset':
         void applyEffectPresetEdit(row.name, [primary]);
-        revealEffectsInProperties();
+        revealAppliedEffects();
         break;
       case 'pluginPreset':
         // One addEffect with the preset's values: one undo entry.
         void edit(`Apply ${row.preset.name}`, applyPluginPresetCommand(row.preset, [primary]));
-        revealEffectsInProperties();
+        revealAppliedEffects();
         break;
       case 'shapeOp':
         if (row.taken) return;
         void edit(`Add ${row.label}`, {
           type: 'addPropertyGroup', layer: primary, parent: 'contents', matchName: `pathop:${row.opType}`, init: [],
         });
-        revealEffectsInProperties();
+        revealAppliedEffects();
         break;
       case 'sim':
         void enableSimulationEdit(primary, row.id === 'cloner' ? 'cloner' : 'physics');
-        revealEffectsInProperties();
+        revealAppliedEffects();
         break;
     }
   };
@@ -572,7 +584,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                   <BrowserRow
                     className={styles.fxLeafRow}
                     label={row.label}
-                    fx
+                    icon={EFFECT_CATEGORY_ICON.Shape}
                     selected={active}
                     title={row.taken ? `${row.label} is already on this layer` : `Add ${row.label}`}
                     onClick={(e) => { if (e.detail > 1) return; setFocusIndex(i); activateRow(row); }}
@@ -608,7 +620,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                   <BrowserRow
                     className={styles.fxLeafRow}
                     label={d.label}
-                    fx
+                    {...categoryMark(row.folder)}
                     selected={active}
                     /*
                       A plugin effect on the WebGL2 tier is WGSL with no

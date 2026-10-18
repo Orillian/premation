@@ -8,7 +8,8 @@
  * drawn as one family instead, in the manner of After Effects' own tool bar.
  *
  * THE GRID. 18 x 18, which is the toolbar's `md` icon size, so one unit is one
- * pixel where these are mostly seen. 1.5 outlines with round joins; solid only
+ * pixel where these are mostly seen. 1.5 outlines with round joins (matching
+ * the Material set's weight 400); solid only
  * where the object itself is solid (the selection arrow, the type T, the mask
  * mattes, gizmo handles). The wrapper <svg> in Icon.tsx supplies
  * `fill="none" stroke="currentColor" stroke-width="1.5"` and round caps and
@@ -39,13 +40,13 @@ const GLYPHS = {
   // Pen & paint
   'pen': '<g transform="translate(-.5 .5) rotate(45 9 9)"><path d="M9 16.2 L5.5 9.8 L6.9 5.2 H11.1 L12.5 9.8 Z"/><path d="M9 16.2 V11"/><circle cx="9" cy="9.7" r="1.15"/><path d="M6.9 5.2 V2.6 H11.1 V5.2"/></g>',
   'pencil': '<g transform="translate(-.5 .5) rotate(45 9 9)"><path d="M7 2 H11 V11.8 L9 16.4 L7 11.8 Z"/><path d="M7 4.8 H11"/><path fill="currentColor" stroke="none" d="M8.1 14 L9 16.4 L9.9 14 Z"/></g>',
-  'brush': '<g transform="translate(-.5 .5) rotate(45 9 9)"><path d="M8.1 1.2 H9.9 L10.5 8 H7.5 Z"/><path d="M7.1 8 H10.9 V10.3 H7.1 Z"/><path fill="currentColor" d="M7.1 10.3 C7.1 12.8 8.2 14.2 9 16.8 C9.8 14.2 10.9 12.8 10.9 10.3 Z"/></g>',
-  'paint': '<g transform="translate(1.6 -2.2) scale(.86) rotate(45 9 9)" stroke-width="1.7"><path d="M8.1 1.2 H9.9 L10.5 8 H7.5 Z"/><path d="M7.1 8 H10.9 V10.3 H7.1 Z"/><path fill="currentColor" d="M7.1 10.3 C7.1 12.8 8.2 14.2 9 16.8 C9.8 14.2 10.9 12.8 10.9 10.3 Z"/></g><path d="M2.4 14.6 C4.6 12.8 6.2 16.8 8.6 15.2 C10 14.3 11 14.4 12.2 15.2"/>',
+  'brush': '<g transform="translate(2 -2) scale(.86) rotate(45 9 9)" stroke-width="1.7"><path d="M8.1 1.2 H9.9 L10.5 8 H7.5 Z"/><path d="M7.1 8 H10.9 V10.3 H7.1 Z"/><path fill="currentColor" d="M7.1 10.3 C7.1 12.8 8.2 14.2 9 16.8 C9.8 14.2 10.9 12.8 10.9 10.3 Z"/></g><path fill="currentColor" stroke="none" d="M1.4 16.8 C1.8 13.9 3.6 12.1 5.9 12.1 C6.2 14.9 4.4 16.7 1.4 16.8 Z"/>',
+  'paint': '<rect x="1.75" y="7.25" width="9.5" height="9" rx="1.2"/><g transform="translate(3.4 -3.4) scale(.8) rotate(45 9 9)" stroke-width="1.8"><path d="M8.1 1.2 H9.9 L10.5 8 H7.5 Z"/><path d="M7.1 8 H10.9 V10.3 H7.1 Z"/><path fill="currentColor" d="M7.1 10.3 C7.1 12.8 8.2 14.2 9 16.8 C9.8 14.2 10.9 12.8 10.9 10.3 Z"/></g>',
   'eraser': '<g transform="rotate(-45 9 8.2)"><rect x="3.4" y="5" width="11.2" height="6.4" rx="1"/><path d="M7.6 5 V11.4"/></g><path d="M9.5 15.75 H15.5"/>',
   'curvature': '<path d="M3.5 13.5 C4.5 3 13.5 3 14.5 13.5"/><rect fill="currentColor" stroke="none" x="2" y="12" width="3" height="3"/><rect fill="currentColor" stroke="none" x="13" y="12" width="3" height="3"/><circle cx="9" cy="5.6" r="1.6" fill="currentColor"/>',
   'add-vertex': '<g transform="translate(-0.6 2.6) scale(.84) rotate(45 9 9)" stroke-width="1.75"><path d="M9 16.2 L5.5 9.8 L6.9 5.2 H11.1 L12.5 9.8 Z"/><path d="M9 16.2 V11"/><circle cx="9" cy="9.7" r="1.15"/><path d="M6.9 5.2 V2.6 H11.1 V5.2"/></g><path d="M14 1.9 V6.9 M11.5 4.4 H16.5"/>',
   'delete-vertex': '<g transform="translate(-0.6 2.6) scale(.84) rotate(45 9 9)" stroke-width="1.75"><path d="M9 16.2 L5.5 9.8 L6.9 5.2 H11.1 L12.5 9.8 Z"/><path d="M9 16.2 V11"/><circle cx="9" cy="9.7" r="1.15"/><path d="M6.9 5.2 V2.6 H11.1 V5.2"/></g><path d="M11.5 4.4 H16.5"/>',
-  'convert-vertex': '<path d="M3.2 14.6 L9 4.4 L14.8 14.6"/><rect fill="currentColor" stroke="none" x="7.3" y="2.7" width="3.4" height="3.4"/>',
+  'convert-vertex': '<path d="M2.6 15 L9 4.4 C12.2 4.4 15.4 8.4 15.4 15"/><path d="M4.6 4.4 H13.4" stroke-width="1.1"/><circle cx="4.6" cy="4.4" r="1" fill="currentColor" stroke="none"/><circle cx="13.4" cy="4.4" r="1" fill="currentColor" stroke="none"/><rect fill="currentColor" stroke="none" x="7.3" y="2.7" width="3.4" height="3.4"/>',
   'mask-feather': '<circle cx="9" cy="9" r="3.1" fill="currentColor"/><circle cx="9" cy="9" r="6.6" stroke-dasharray="1.6 2.55" stroke-width="1.4"/>',
   'knife': '<path d="M14.8 2.2 C15.6 7.2 13.2 11.2 8.6 13.4 L6.6 11.4 Z"/><path d="M7.4 12.6 L3.6 16.4" stroke-width="2.6"/>',
 

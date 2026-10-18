@@ -4,6 +4,12 @@
   panel type role (typography.css): label, value, button or help. The tab is
   the only title; the group rows below the Character panel's rows are the
   shared Accordion's, so they read exactly like the Properties sections.
+
+  One field grammar (2026-10-19 redesign): every value is a row-height WELL —
+  the dark surface, a hairline, the label inside at the left in the label
+  colour, the number right-aligned in the mono value face coloured like every
+  editable value, the unit after it in dim mono. Two wells per row; three for
+  the stroke row. Toggles are one segmented strip on the same well.
 */
 
 /* ── The dock panels ── */
@@ -27,7 +33,7 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   background: var(--color-panel);
   color: var(--color-text-primary);
@@ -42,19 +48,19 @@
   overflow-y: auto;
 }
 
-/* The panel's own rows, on the Accordion's gutter so they line up with the
-   group rows under them. */
+/* The panel's own rows: a 12px gutter, 6px between rows, the first row 10px
+   below the tab strip. */
 .panelRows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5) var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-2-5, 10px) var(--space-4) var(--space-3);
   min-width: 0;
 }
 
 /* The Character panel's group rows (Source Text, Text Box …). */
 .groups {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 /* A group's one verb, at its foot (Source Text ▸ Keyframe). */
@@ -77,6 +83,36 @@
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
   line-height: var(--panel-line-height);
+}
+
+/* A twirl group's rows. TwirlGroup indents its body one twirl step (AE's
+   timeline nesting); the fields here read as a form and sit flush with the
+   group's name instead, so the indent is taken back. */
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-left: -14px;
+  min-width: 0;
+}
+
+/* The dim state readout at a group header's right ("Outfit · Extra Bold"). */
+.groupSummary {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-label);
+}
+
+/* The hairline between groups. */
+.sep {
+  height: 1px;
+  background: var(--color-border-subtle);
+  margin: var(--space-1) 0;
 }
 
 /* "More text options" — a twirl inside the section, beside the Character and
@@ -112,7 +148,7 @@
 .sectionCard {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2-5, 10px);
+  gap: var(--space-2);
   padding: 0 0 var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
   background: transparent;
@@ -204,9 +240,9 @@
   box-sizing: border-box;
   min-height: 52px;
   padding: var(--space-2) var(--space-2-5, 10px);
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -220,276 +256,90 @@
 }
 
 .contentTextarea:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
 }
 
 .contentTextarea:focus {
   border-color: var(--color-primary);
-  background: var(--color-surface-1);
 }
 
-/* ── Font family & weight ── */
-.fontRow {
-  display: grid;
-  grid-template-columns: 1fr 100px;
-  gap: var(--space-2);
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-/* A dropdown's current choice is a value (sans: it is a word, not a number). */
-.fontSelect {
-  width: 100%;
-  min-width: 0;
-  height: var(--control-height-row);
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-value);
-  outline: none;
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.fontSelect:hover {
-  border-color: var(--color-border);
-}
-
-.fontSelect:focus {
-  border-color: var(--color-primary);
-}
-
-/* ── Fill & stroke swatches ── */
-.appearanceRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-width: 0;
-}
-
-.swatchPair {
-  position: relative;
-  width: 44px;
-  height: 40px;
-  flex: none;
-}
-
-.fillSwatchWrap {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 26px;
-  height: 26px;
-  z-index: 2;
-}
-
-.strokeSwatchWrap {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 26px;
-  height: 26px;
-  z-index: 1;
-}
-
-.fillSwatchPicker,
-.strokeSwatchPicker {
-  width: 26px !important;
-  height: 26px !important;
-  padding: 0 !important;
-  border-radius: var(--radius-sm) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-  cursor: pointer;
-  display: block !important;
-  transition: transform 100ms ease-out;
-}
-
-.fillSwatchPicker:hover,
-.strokeSwatchPicker:hover {
-  transform: scale(1.05);
-}
-
-.strokeSwatchPicker {
-  border: 2px solid rgba(255, 255, 255, 0.28) !important;
-}
-
-.swapToggle {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-2);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-subtle);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--panel-font-size-help);
-  cursor: pointer;
-  z-index: 3;
-  padding: 0;
-  transition:
-    transform 100ms ease-out,
-    background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.swapToggle:hover {
-  background: var(--color-hover);
-  color: var(--color-primary);
-  border-color: var(--color-border);
-}
-
-.swapToggle:active {
-  transform: scale(0.9);
-}
-
-.appearanceDetails {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  flex: 1;
-  min-width: 0;
-}
-
-/* The face the swatches paint with — a value. */
-.appearanceMeta {
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-value);
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.appearanceSub {
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size-help);
-  font-weight: var(--panel-weight-help);
-  color: var(--color-text-tertiary);
-}
-
-/* ── Toggle strips (faux styles, alignment, None fill / stroke) ──
-   A toggle reads as a VALUE: the same weight on or off; the state is colour. */
-.controlGroup {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.groupItem {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 26px;
-  border: none !important;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-value);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  user-select: none;
-  transition:
-    background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.groupItem:hover:not(:disabled) {
-  background: var(--color-hover);
-  color: var(--color-text-primary);
-}
-
-.groupItem[data-active="true"] {
-  background: var(--color-surface-1);
-  color: var(--color-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-}
-
-.groupItem[data-active="true"]:hover:not(:disabled) {
-  background: var(--color-surface-1);
-  color: var(--color-primary);
-}
-
-.groupItem:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
-/* ── Two-column metric grid: a label, its value, its unit ── */
-.metricGrid {
+/* ── Rows: N wells side by side ── */
+.row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-2);
   width: 100%;
-  box-sizing: border-box;
-}
-
-.metricCell {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
-  height: var(--control-height-row);
   min-width: 0;
   box-sizing: border-box;
-  transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+.rowThree {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* Family (the rest) and style (120px). */
+.rowFont {
+  grid-template-columns: minmax(0, 1fr) 120px;
+}
+
+.rowOne {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ── The well: label inside left, value right in mono, unit dim after it ──
+   `.metricCell` is the same well under its older name (TextFillRows). */
+.field,
+.metricCell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height-row);
+  padding: 0 var(--space-2);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+  box-sizing: border-box;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.field:hover,
 .metricCell:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
 }
 
+.field:focus-within,
 .metricCell:focus-within {
   border-color: var(--color-primary);
-  background: var(--color-surface-1);
 }
 
+/* A well whose value cannot be edited right now (Tsume without a range). */
+.fieldOff {
+  opacity: var(--opacity-disabled);
+}
+
+.fieldLabel,
 .metricLabel {
+  flex: none;
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-label);
   color: var(--color-text-secondary);
   user-select: none;
-  min-width: 20px;
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
+/* A typed number: right-aligned mono in the value colour. */
+.fieldInput,
 .metricInput {
   flex: 1;
   min-width: 0;
   width: 100%;
+  height: 100%;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
   font-family: var(--panel-font-family-value);
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-value);
@@ -499,30 +349,94 @@
   cursor: ew-resize;
   padding: 0;
   box-sizing: border-box;
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
+.fieldInput::-webkit-outer-spin-button,
+.fieldInput::-webkit-inner-spin-button,
+.metricInput::-webkit-outer-spin-button,
+.metricInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fieldInput:focus,
 .metricInput:focus {
   color: var(--color-text-primary);
   cursor: text;
 }
 
-.metricUnit {
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size-help);
-  font-weight: var(--panel-weight-help);
+.fieldInput:disabled,
+.metricInput:disabled {
   color: var(--color-text-tertiary);
-  margin-left: 2px;
-  flex-shrink: 0;
+  cursor: not-allowed;
 }
 
-.metricCellWide {
-  grid-column: span 2;
+/* The unit after a number: dim mono, one size down. */
+.fieldUnit,
+.metricUnit {
+  flex: none;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-micro);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-muted);
+  user-select: none;
 }
 
-/* A dropdown living inside a metric cell (kerning mode, line join, order). */
+/* A ValueField (scrub, arrows, maths) filling the well: it keeps its own
+   editing ring and drag tint, and rests transparent on the well. */
+.fieldValue,
+.metricValue {
+  --value-field-bg: transparent;
+  --value-field-border: transparent;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.fieldValue > [data-numeric],
+.metricValue > [data-numeric] {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.fieldValue > [data-numeric] > span,
+.metricValue > [data-numeric] > span {
+  justify-content: flex-end;
+  text-align: right;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-value);
+}
+
+.fieldValue > [data-numeric] > span > span,
+.metricValue > [data-numeric] > span > span {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-micro);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-muted);
+}
+
+.fieldValue > [data-numeric] > input,
+.metricValue > [data-numeric] > input {
+  text-align: right;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size);
+}
+
+/* A dropdown in the well: the current choice in the text face, a dim chevron
+   at the right edge (the native arrow is hidden; the select still covers the
+   whole well, so the chevron is a click on it). */
+.fieldSelect,
 .metricSelect {
   flex: 1;
   min-width: 0;
+  height: 100%;
   border: none;
   background: transparent;
   color: var(--color-text-primary);
@@ -531,19 +445,39 @@
   font-weight: var(--panel-weight-value);
   outline: none;
   cursor: pointer;
-  padding: 0;
+  padding: 0 14px 0 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
-/* A ValueField sharing a metric cell with a dropdown. */
-.metricValue {
-  flex: 1;
-  min-width: 0;
+.fieldSelect:disabled,
+.metricSelect:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
 }
 
-/* A small switch inside a row ("Auto" leading, the OpenType features): it
+/* A dropdown that is the whole well (the style picker): the choice at the left. */
+.fieldSelectPlain {
+  text-align: left;
+}
+
+.fieldChevron {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+/* A small switch inside a well ("Auto" leading, the OpenType features): it
    reads as a value, and the accent says it is on. */
+.fieldToggle,
 .metricToggle {
-  flex-shrink: 0;
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -551,18 +485,323 @@
   background: transparent;
   color: var(--color-text-tertiary);
   font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
+  font-size: var(--panel-font-size-help);
   font-weight: var(--panel-weight-value);
   padding: 0;
   cursor: pointer;
 }
 
+.fieldToggle:hover,
 .metricToggle:hover {
   color: var(--color-text-primary);
 }
 
+.fieldToggle[data-active="true"],
 .metricToggle[data-active="true"] {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+/* ── Two-column grid under its older name (TextFillRows' stop list) ── */
+.metricGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.metricCellWide {
+  grid-column: span 2;
+}
+
+/* ── The preview line: the swatch pair, the family, its meta ── */
+.swatches {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--space-2-5, 10px);
+  align-items: center;
+  height: 36px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* AE / Illustrator's pair: the fill square over the stroke square. */
+.sw {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+
+.swFill,
+.swStroke {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+}
+
+.swFill {
+  left: 0;
+  top: 0;
+  z-index: 2;
+}
+
+.swStroke {
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+/* The ColorPicker's compact trigger, grown to the square. Its inner swatch
+   carries the colour (an inline background); the frame is drawn here. */
+.swPicker {
+  display: block !important;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.swPicker > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.swPicker:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* The stroke square is a 5px ring: the panel shows through the centre. */
+.swHole {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 12px;
+  height: 12px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* "None": the red diagonal across a square. */
+.swNone {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    var(--color-danger) calc(50% - 1px),
+    var(--color-danger) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* The pair's two small verbs: Swap (top-right, on hover) and None
+   (bottom-left, AE's ⊘ under the fill square). */
+.swSwap,
+.swNoneToggle {
+  position: absolute;
+  width: 14px !important;
+  height: 14px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: var(--radius-xs) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--color-text-tertiary) !important;
+  font-family: var(--panel-font-family);
+  font-size: var(--font-size-micro);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 4;
+}
+
+.swSwap {
+  right: 0;
+  top: 0;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sw:hover .swSwap,
+.swSwap:focus-visible {
+  opacity: 1;
+}
+
+.swNoneToggle {
+  left: 0;
+  bottom: 0;
+}
+
+.swSwap:hover,
+.swNoneToggle:hover {
+  color: var(--color-text-primary) !important;
+}
+
+.swNoneToggle[data-active] {
+  color: var(--color-danger) !important;
+}
+
+.fontline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fontlineName {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fontlineMeta {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── The segmented strips: faux styles, alignment, vertical alignment ──
+   One well; every cell shares the width; hairlines between; the lit cell is
+   the selection tint, the value colour and a 2px accent along the foot. The
+   cells are IconButtons, whose own frame is taken off (`.strip .stripCell`
+   outranks IconButton's `.root` states). */
+.strip {
+  display: flex;
+  align-items: stretch;
+  height: var(--control-height-row);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strip .stripCell {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-value);
+  padding: 0;
+  transform: none;
+  user-select: none;
+}
+
+.strip .stripCell:last-child {
+  border-right: none;
+}
+
+.strip .stripCell:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.strip .stripCell:active:not(:disabled) {
+  transform: none;
+}
+
+.strip .stripCell[data-active],
+.strip .stripCell[data-active]:hover:not(:disabled) {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+  border-color: var(--color-border);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.strip .stripCell:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.strip .stripCell:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+/* The Segmented component (direction, orientation, anchor, point / paragraph,
+   auto-size) in the same strip. `.seg.seg` outranks Segmented's own `.root`
+   and `.root[data-size] .item` rules without !important. */
+.seg.seg {
+  display: flex;
+  width: 100%;
+  height: var(--control-height-row);
+  padding: 0;
+  gap: 0;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.seg.seg button[role="radio"] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-1);
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-value);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seg.seg button[role="radio"]:last-child {
+  border-right: none;
+}
+
+.seg.seg button[role="radio"]:hover:not(:disabled):not([data-checked]) {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.seg.seg button[role="radio"][data-checked] {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+  border-color: var(--color-border);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.seg.seg button[role="radio"]:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-primary);
 }
 
 /* ── Rows: a caption, then its control ── */
@@ -579,7 +818,33 @@
 
 .pathSelect {
   width: 140px;
+}
+
+/* A dropdown standing alone in a row (the mask path): the well itself. */
+.fontSelect {
+  width: 100%;
+  min-width: 0;
   height: var(--control-height-row);
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-value);
+  outline: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.fontSelect:hover {
+  border-color: var(--color-border-strong);
+}
+
+.fontSelect:focus {
+  border-color: var(--color-primary);
 }
 
 /* ── Quick typography presets: bordered verbs ── */
@@ -595,10 +860,11 @@
 }
 
 .presetChip {
-  padding: 4px 8px;
+  height: var(--control-height-row);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
@@ -610,13 +876,12 @@
   text-overflow: ellipsis;
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .presetChip:hover {
   background: var(--color-hover);
-  border-color: var(--color-border);
+  border-color: var(--color-border-strong);
 }
 
 .presetChip:focus-visible {
@@ -626,5 +891,4 @@
 
 .presetChip:active {
   background: var(--color-surface-3);
-  transform: scale(0.96);
 }

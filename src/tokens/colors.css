@@ -59,6 +59,7 @@
   --color-violet-700: #6d28d9;
 
   /* ── Azure (accent v2.1 — selection + primary, spec "pro pass") ─ */
+  --color-azure-350: #80b0ff;  /* dark accent as TEXT on the lifted surfaces */
   --color-azure-400: #6ba1ff;  /* hover */
   --color-azure-500: #4d8dff;  /* accent */
   --color-azure-600: #3b76e0;  /* pressed / light-theme primary */

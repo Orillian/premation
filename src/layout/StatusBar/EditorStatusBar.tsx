@@ -32,7 +32,6 @@ import { StatusBar } from './StatusBar';
 import { FpsMeter } from './FpsMeter';
 import { InfoReadout } from './InfoReadout';
 import { VUMeter } from './VUMeter';
-import { TimelineZoom } from './TimelineZoom';
 import { StatusBarTimecode } from './StatusBarTimecode';
 import { VideoHealth } from './VideoHealth';
 import { JobTray } from './JobTray';
@@ -105,11 +104,8 @@ export function EditorStatusBar({ layerCount }: EditorStatusBarProps): JSX.Eleme
         <>
           <JobTray />
           <span className={cn(styles.passthrough, styles.drop4)}><VUMeter /></span>
-          {/* Timeline zoom. It had a 22px footer row to itself at the
-              bottom of the timeline panel, empty across its whole left
-              half; the status bar is already the strip for readouts you
-              glance at and occasionally poke. */}
-          <TimelineZoom />
+          {/* Timeline zoom: back in the timeline's own footer (2026-10-14),
+              beside the render time and Toggle Switches / Modes, as in AE. */}
           <span className={cn(styles.cluster, styles.drop2)}>
             <Sep />
             <FpsMeter />

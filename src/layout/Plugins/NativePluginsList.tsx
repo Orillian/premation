@@ -7,7 +7,7 @@
  * nothing happened" has an answer on screen.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
@@ -137,11 +137,14 @@ export function NativePluginsList({
   compact = false,
   store,
   native,
+  actions,
 }: {
   compact?: boolean;
   store?: InstalledState;
   /** The engine list, when the owner already holds one (so an install refreshes both). */
   native?: ReturnType<typeof useNativePlugins>;
+  /** The host's own controls, at the start of the toolbar row, before Refresh. */
+  actions?: ReactNode;
 }): JSX.Element {
   const own = useNativePlugins();
   const { plugins, error, loading, refresh } = native ?? own;
@@ -149,6 +152,7 @@ export function NativePluginsList({
     <>
       <div className={styles.toolbar}>
         {!compact ? <h3 className={styles.cardTitle}>Installed native plugins</h3> : null}
+        {actions}
         <span className={styles.spacer} />
         <Button
           variant="ghost"

@@ -4,8 +4,9 @@
  * After Effects' timeline has no edit-tool row, so the five Premiere-style
  * tools (select / razor / slip / slide / roll) and Playhead Follow are rows of
  * the timeline's View ▾ menu (`useTimelineToolsMenu`), and also of the clip's
- * right-click Timeline Tool menu and the command palette. The one switch that
- * stays a button is Snap — a toggle people flip mid-drag.
+ * right-click Timeline Tool menu and the command palette. Snapping joined
+ * them (2026-10-14, owner: the toolbar as AE's — timecode, search, comp
+ * switches); its button is kept for hosts that want one, and S still toggles.
  */
 
 import { useEffect } from 'react';
@@ -70,6 +71,13 @@ export function useTimelineToolsMenu(): {
   useEffect(() => installTimelineSnapCommands(), []);
 
   const items: DropdownItem[] = [
+    {
+      type: 'checkbox',
+      id: 'tl-snap',
+      label: 'Snapping (S)',
+      checked: snapOn,
+      onChange: () => toggleTimelineSnap(),
+    },
     {
       type: 'item',
       id: 'tl-tool-edit',

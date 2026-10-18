@@ -19,7 +19,9 @@ import type { TimelineTrack, TimelinePropertyTrack } from './TimelineModel';
  * it labels, which made the track list look like it started a third of the way
  * down the panel.
  */
-export const RULER_HEIGHT_DEFAULT = 26;
+/* 30 (2026-10-19 sheet): the work-area band sits along the ruler's TOP edge
+   now, and the tick labels need their own room under it. */
+export const RULER_HEIGHT_DEFAULT = 30;
 /**
  * A layer row. 26, not 36: a row holds 22px controls and one line of text, so
  * at 36 nine layers filled the panel and a real comp was mostly scrolling. The
@@ -73,9 +75,9 @@ export const TL_COLUMN_WIDTHS = {
   name: 190,
   /** Ten 22px switches + nine 4px gaps — mirrors `--tl-col-switches`. */
   switches: 256,
-  mode: 70,
-  matte: 100,
-  parent: 120,
+  mode: 96,
+  matte: 124,
+  parent: 150,
   /** Each of In / Out / Duration — mirrors `TIMELINE_EXTRA_COLUMNS`. */
   extra: 72,
 } as const;
@@ -104,8 +106,10 @@ export function headerWidthFor(columns: 'switches' | 'modes' | 'both', extraCoun
   if (columns !== 'switches') {
     total += W.gap + W.mode + W.rule;
     total += W.gap + W.matte + W.rule;
-    total += W.gap + W.parent + W.rule;
   }
+  // Parent & Link is in every view, as in AE (2026-10-14): F4 swaps the
+  // switches for Mode / TrkMat, never the parent column away.
+  total += W.gap + W.parent + W.rule;
   total += extraColumnsWidth(
     TIMELINE_EXTRA_COLUMNS.slice(0, Math.max(0, extraCount)).map((c) => c.id),
     W.gap,

@@ -57,7 +57,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+/* The Plugins panel's "About plugins" popover body. */
+.aboutText {
+  margin: 0;
+  max-width: 260px;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 .steps {
@@ -99,6 +110,23 @@
 
 .row:first-child {
   border-top: none;
+}
+
+/* In the editor's Plugins panel the list is not a boxed card (owner
+   2026-10-14): no frame around it, no box per plugin — each row ends in one
+   hairline that runs the panel's full width, so the list bleeds through the
+   panel's side padding. */
+.panel .list {
+  margin: 0 -12px;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.panel .row {
+  border-top: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
 }
 
 .rowIcon {

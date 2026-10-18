@@ -106,14 +106,14 @@
   display: inline-flex;
   align-items: center;
   height: var(--control-height-2xs);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
+  /* Plain muted text after the name (2026-10-14): a bordered chip read as a
+     second button in a row that already has the name and the swatch. */
+  padding: 0;
   font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
+  font-size: var(--panel-font-size-help);
   font-weight: var(--panel-weight-label);
   line-height: 1;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   white-space: nowrap;
 }
 

@@ -55,14 +55,17 @@
   min-width: 0;
   flex: 0 0 auto;
   height: 26px;
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
+  /* 12px on a 16px line: at 11px with `line-height: 1` the descenders of
+     "Layer" / "Footage" were clipped (owner 2026-10-14). */
+  font-size: var(--font-size-sm);
+  line-height: 16px;
   font-weight: var(--font-weight-medium);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
@@ -78,13 +81,11 @@
   cursor: default;
 }
 
+/* The selected viewer: a dark well, no border or bevel (owner 2026-10-14). */
 .tabActive {
-  background: var(--color-surface-2) !important;
+  background: var(--color-surface-0) !important;
   color: var(--color-text-primary) !important;
   font-weight: 500;
-  border: 1px solid rgba(0, 0, 0, 0.45) !important;
-  border-bottom: 1px solid transparent !important;
-  box-shadow: var(--shadow-bevel), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* Visible keyboard focus, everywhere. */
@@ -128,7 +129,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  line-height: 1;
+  line-height: 16px;
 }
 
 .panelActions {

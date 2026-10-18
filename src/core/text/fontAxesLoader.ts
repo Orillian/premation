@@ -1,5 +1,7 @@
 /**
- * Which variation axes a FAMILY has — read from the installed font's `fvar`.
+ * Which variation axes a FAMILY has — the engine's answer first (the shipped
+ * families' and the installed fonts' axes, engineFontList), else read from the
+ * installed font's `fvar` through Local Font Access.
  *
  * Kept apart from `fontAxes.ts` so the rasterizer's pure axis maths never
  * imports the Local Font Access plumbing. Needs the whole file (the `fvar`
@@ -13,6 +15,7 @@
  */
 
 import { loadLocalFontIndex, cachedLocalFontIndex } from '@core/fonts/localFontIndex';
+import { fontFamilyInfo, loadEngineFontList } from '@core/fonts/engineFontList';
 import { parseFvarAxes, type FvarAxis } from './variableFontProbe';
 import { REGISTERED_AXES } from './fontAxes';
 
@@ -38,6 +41,10 @@ export function loadFamilyAxes(family: string): Promise<FamilyAxes> {
   if (hit) return hit;
   const p = (async (): Promise<FamilyAxes> => {
     try {
+      // What the engine draws: the shipped families' and the installed fonts' own axes.
+      await loadEngineFontList();
+      const drawn = fontFamilyInfo(family.trim());
+      if (drawn) return { axes: drawn.axes, fromFont: true };
       const index = cachedLocalFontIndex() ?? (await loadLocalFontIndex());
       const face = index?.fonts.find((f) => String(f.family ?? '').trim().toLowerCase() === key && typeof f.blob === 'function');
       if (!face?.blob) return registeredAxisFallback();

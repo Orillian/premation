@@ -171,6 +171,13 @@
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 
+/* Editor dialogs sit on the editor's ground (themes/dark.css); the hairline
+   keeps the sheet's edge now that it matches the panels behind the scrim. */
+:global(body.editor-active) .dialog {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-structural);
+}
+
 .dialog.fullscreen {
   border-radius: 0;
 }

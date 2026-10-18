@@ -13,7 +13,7 @@
   padding: 0 var(--space-3) 0 var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   color: var(--color-text-secondary);
   /* The panel `button` role (typography.css). */
   font-family: var(--panel-font-family);

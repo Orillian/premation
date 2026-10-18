@@ -305,7 +305,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
    * now scrolls rather than truncates, so this is a starting point, not a
    * floor.
    */
-  timelineHeaderWidth: 941,
+  timelineHeaderWidth: 1021,
   retainOriginalSvg: true,
   showLayerBounds: true,
   deviceWireframesAll: false,
@@ -353,6 +353,11 @@ export const localStorageBackend: PreferenceBackend = {
       if (parsed.density === undefined && parsed.sidebarDensity !== undefined) {
         parsed.density = parsed.sidebarDensity;
       }
+      // The timeline's pickers widened (2026-10-14) and the header's shipped
+      // width with them, 941 → 1021. Every profile persists the whole object,
+      // so the OLD default is carried by users who never dragged the header;
+      // that exact value moves to the new one, a dragged width is kept.
+      if (parsed.timelineHeaderWidth === 941) parsed.timelineHeaderWidth = DEFAULT_PREFERENCES.timelineHeaderWidth;
       // ONE-TIME migration to the proxies-on default. `write` persists the
       // whole object, so every pre-existing profile carries useProxies:false
       // whether or not the user ever touched the toggle — flipping only the

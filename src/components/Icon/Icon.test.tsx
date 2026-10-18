@@ -42,11 +42,11 @@ describe('the icon vocabulary resolves to geometry', () => {
     expect(pathOf(name, 'fill').length).toBeGreaterThan(20);
   });
 
-  it('draws the solid grade by default', () => {
-    // The default is the whole point of the set reading as solid, and it is a
-    // one-word edit away from silently reverting to outline.
-    expect(pathOf('folder')).toBe(pathOf('folder', 'fill'));
-    expect(pathOf('folder')).not.toBe(pathOf('folder', 'regular'));
+  it('draws the outline grade by default', () => {
+    // Owner decision 2026-10-14: thin outline chrome, not solid glyphs. It is a
+    // one-word edit away from silently reverting to solid.
+    expect(pathOf('folder')).toBe(pathOf('folder', 'regular'));
+    expect(pathOf('folder')).not.toBe(pathOf('folder', 'fill'));
   });
 
   it('buckets the heavy weight names onto the solid grade', () => {

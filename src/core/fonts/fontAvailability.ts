@@ -12,8 +12,8 @@
  *
  * ## The evidence, strongest first
  *
- *   1. CSS generics, web-safe system fonts and the document's own web fonts
- *      (the `doc-fonts` link in index.html) — always available.
+ *   1. CSS generics, web-safe system fonts and the families Premation ships
+ *      (resources/fonts, drawn by the engine everywhere) — always available.
  *   2. The Local Font Access list, when permission is ALREADY granted — an
  *      authoritative installed list. (Never prompted for here: a permission
  *      dialog is the wrong first thing opening a project does.)
@@ -28,12 +28,10 @@
 
 import { GENERIC_FONT_FAMILIES, familyKey } from './missingFonts';
 import { cachedLocalFontIndex, loadLocalFontIndex, localFontPermissionGranted } from './localFontIndex';
+import bundledManifest from '../../../resources/fonts/fonts.json';
 
-/** Loaded by index.html's `doc-fonts` stylesheet — present whenever the app is. */
-export const DOCUMENT_WEB_FONTS: readonly string[] = [
-  'Inter', 'Roboto', 'Outfit', 'Playfair Display', 'Fira Code', 'Montserrat',
-  'Lora', 'Merriweather', 'PT Sans', 'Open Sans',
-];
+/** Shipped with Premation (resources/fonts) — the engine draws them on every machine. */
+export const DOCUMENT_WEB_FONTS: readonly string[] = [...new Set(bundledManifest.faces.map((f) => f.family))];
 
 /** System fonts every supported desktop ships (the picker's system list). */
 export const WEB_SAFE_FONTS: readonly string[] = [

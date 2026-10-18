@@ -178,6 +178,9 @@ export function useClipDrag({
    * the one under the pointer would show the cut opening a gap that the commit
    * then does not produce. Every other gesture pushes a single entry.
    */
+  /** True between a committed drag and the model reflecting it (see onUp). */
+  const holdingPreviews = useRef(false);
+  const holdTimer = useRef<number | undefined>(undefined);
   const [clipPreviews, setClipPreviews] = useState<null | ReadonlyArray<{
     id: string;
     start: number;
@@ -341,6 +344,9 @@ export function useClipDrag({
           compDuration: clipSnapCtx.current.duration,
         }),
       };
+      // A new drag owns the previews: the last drop's hold must not clear them.
+      holdingPreviews.current = false;
+      window.clearTimeout(holdTimer.current);
       setClipPreviews(
         rollState
           ? [
@@ -631,30 +637,59 @@ export function useClipDrag({
       else if (d.mode === 'start') onClipTrim?.(d.id, 'start', start, { ripple: d.ripple });
       else onClipTrim?.(d.id, 'end', start + duration, { ripple: d.ripple });
       clipDrag.current = null;
-      setClipPreviews(null);
+      // Keep the bars where they were dropped until the document says so. The
+      // edit goes to the engine and the model catches up a frame or two later;
+      // clearing the preview here drew the bar back at its OLD place for that
+      // gap, then at the new one — the release flicker (owner 2026-10-14).
+      // The effect below drops the preview when `model.tracks` changes; the
+      // timer covers an edit the engine refused (the model never changes).
+      holdingPreviews.current = true;
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = window.setTimeout(() => {
+        holdingPreviews.current = false;
+        setClipPreviews(null);
+      }, 800);
       setDragHud(null);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    // Re-registering must NOT drop a drag in flight. Pressing a bar that is not
+    // selected selects it, the selection change hands this effect new
+    // dependencies, and a cleanup that cancelled the drag here ended every
+    // first press on an unselected bar — the bar only moved on the SECOND
+    // press (owner report 2026-10-14). The drag lives in `clipDrag` across
+    // re-registrations; the unmount effect below is what abandons it.
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      if (clipDrag.current) {
-        clipDrag.current = null;
-        clipSnapShown.current = null;
-        setClipSnap(null);
-        setDragHud(null);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
     };
   }, [
     pps, totalSeconds, onClipMove, onClipMoveMany, onClipTrim, onClipSlip, onClipSlide, selectTrack, model.frameRate, snapOn,
     // Stable for the life of the composer (refs + a state setter); listed so the array is honest.
     dragScrollBusyRef, edgeScrollerRef, fpsRef, lanesRef, lastDragEventRef, setDragHud,
   ]);
+
+  // The committed edit has reached the model: the real bars now sit where the
+  // preview was, so the preview can go without a frame at the old position.
+  useEffect(() => {
+    if (!holdingPreviews.current) return;
+    holdingPreviews.current = false;
+    window.clearTimeout(holdTimer.current);
+    setClipPreviews(null);
+  }, [model.tracks]);
+
+  // Unmounted mid-drag: abandon it and give the page its cursor back.
+  useEffect(() => () => {
+    window.clearTimeout(holdTimer.current);
+    if (clipDrag.current) {
+      clipDrag.current = null;
+      clipSnapShown.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  }, []);
 
   return { clipSnap, clipPreviews, onClipDown };
 }

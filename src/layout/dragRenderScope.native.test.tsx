@@ -64,7 +64,7 @@ const MUST_STAY_QUIET = [
   'EditorShellInner', 'EditorLayout', 'TopNav', 'LeftSidebar', 'RightInspector', 'PropertiesPanel', 'ScenePanel', 'TreeView',
   'BottomTimeline', 'Timeline', 'TrackHeader', 'EditorStatusBar', 'CommandPalette', 'PresentationMode', 'AppearanceSectionInner',
   'MotionToolsSection', 'ModifierStackSection', 'AudioDriverSection', 'LayerStylesControls', 'EffectControlsBody', 'StrokeRows',
-  'SceneRowSwitches', 'CompositionList',
+  'SceneRowSwitches', 'SceneRowAV', 'CompositionList',
 ];
 
 beforeAll(() => {

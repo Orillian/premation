@@ -17,28 +17,33 @@
 
 .divider {
   width: 1px;
-  height: 22px;
-  background: var(--color-border-strong);
-  margin: 0 var(--space-3);
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 var(--space-1);
 }
 
 /* Matches TopNav .toolDropdownTrigger exactly — this bar sits inside that row
    and its four menus are the same control as the pointer / pen / shape menus
    beside them, so they cannot be a second dialect of it. No chip, no border,
    no radius: the glyph is the control. */
+/* The tool row's button (TopNav.module.css `.tool`, the 2026-10-19 sheet):
+   24px, a tint for the armed state, the same glyph size as its neighbours. */
 .trigger,
 .triggerActive {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  height: var(--control-height-lg);
-  padding: 0;
+  gap: 3px;
+  height: var(--control-height-md);
+  min-width: var(--control-height-md);
+  padding: 0 var(--space-1);
   background: none;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
-  transition: color var(--motion-duration-fast) var(--motion-ease-standard), transform var(--motion-duration-fast) var(--motion-ease-standard);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
   outline: none;
 }
 
@@ -47,20 +52,18 @@
 }
 
 .trigger:hover {
+  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
 .triggerActive {
-  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
 
 .triggerActive:hover {
-  color: var(--color-primary-hover);
-}
-
-.trigger:active,
-.triggerActive:active {
-  transform: scale(0.92);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
 
 .trigger:focus-visible,

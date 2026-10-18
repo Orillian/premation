@@ -27,6 +27,8 @@ const MB = 1024 * 1024;
 export interface PreviewCacheStats {
   /** Frames of the span the engine's frame cache holds right now. */
   cached: number;
+  /** Frames of the span the disk tier holds (0 while the engine reports none). */
+  onDisk: number;
   /** Frames the span has. 0 when there is nothing to cache. */
   total: number;
   /** True when the span is a work area rather than the whole composition. */
@@ -68,16 +70,19 @@ export function previewCacheStats(): PreviewCacheStats {
   const coverage = engineCacheSnapshot();
 
   let cached = 0;
+  let onDisk = 0;
   if (span) {
     const settings = documentMirror().comp(activeCompIdNow() ?? '')?.settings;
     const fps = settingsFps(settings, 30);
     for (let f = span.start; f <= span.end; f++) {
       if (frameInRanges(f, fps, coverage.ram)) cached += 1;
+      if (coverage.disk.length > 0 && frameInRanges(f, fps, coverage.disk)) onDisk += 1;
     }
   }
 
   return {
     cached,
+    onDisk,
     total: span ? span.length : 0,
     // Whether a work area is SET: the API states "none" as the whole composition (settingsHasWorkArea).
     workArea: settingsHasWorkArea(documentMirror().comp(activeCompIdNow() ?? '')?.settings),

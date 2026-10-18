@@ -16,6 +16,7 @@ import type { DropdownItem } from '@components/Dropdown';
 import { Dropdown } from '@components/Dropdown';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import styles from './ZoomField.module.css';
+import tool from './viewportToolButton.module.css';
 
 /** Magnification presets (AE's zoom menu). 100 = 1:1. */
 export const ZOOM_PRESETS = [12.5, 25, 50, 75, 100, 150, 200, 400, 800] as const;
@@ -173,7 +174,7 @@ export function ZoomField(): JSX.Element {
         placement="top-end"
         trigger={
           <button type="button" className={styles.tool} title="Magnification presets — Fit, 12.5% … 800%" aria-label="Magnification presets">
-            <Icon name="chevron-down" size="sm" className={styles.chevron} />
+            <Icon name="chevron-down" size="sm" className={tool.chevron} />
           </button>
         }
         items={zoomMenuItems(zoom)}

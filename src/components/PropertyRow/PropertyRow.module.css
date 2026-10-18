@@ -26,7 +26,11 @@
   width: 100%;
   box-sizing: border-box;
   padding: 2px var(--space-3);
-  border-radius: var(--radius-sm);
+  /* AE's property list: flat full-width rows, a hairline under each where the
+     host turns it on (`--prop-row-rule`; Effect Controls and Properties do).
+     A shadow rather than a border, so the rule never changes a row's height. */
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 var(--prop-row-rule, transparent);
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
   min-width: 0;
 }
@@ -64,7 +68,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  justify-content: flex-end;
+  /* AE starts every value at one column (`flex-start`); hosts that keep the
+     old right-aligned cell leave this unset. */
+  justify-content: var(--prop-values-justify, flex-end);
   min-width: 0;
   width: 100%;
 }
@@ -291,15 +297,17 @@
    exactly as before: label 64px, values the rest. */
 .inspector {
   grid-template-columns:
-    minmax(var(--prop-label-min, 40px), var(--prop-label-col, 78px))
+    minmax(var(--prop-label-min, 40px), var(--prop-label-col, 44%))
     minmax(var(--prop-values-min, 0px), 1fr)
     var(--prop-anim-col, auto);
   column-gap: var(--space-2);
-  /* The field look for this layout, handed to ValueField through its custom
-     properties so its own hover / editing / dragging states still win. */
-  --value-field-bg: var(--color-surface-1);
-  --value-field-border: var(--color-field-border);
-  --value-field-color: var(--color-text-primary);
+  /* AE's values: blue figures you scrub, not boxed wells (owner redesign
+     2026-10-14 — the wells were most of what made the panel read crowded).
+     ValueField's own hover / editing / dragging states still draw the box. */
+  --value-field-bg: transparent;
+  --value-field-border: transparent;
+  --value-field-color: var(--color-primary-text);
+  --prop-row-rule: var(--color-divider);
 }
 
 .inspector .name {
@@ -309,10 +317,12 @@
 
 /* The always-visible stopwatch that leads the label. Narrower than the tray's
    18px and never shrinking, so the label gives way, not the control. */
+/* 18px, not 14 with a -2px pull: with the glyph at 16px the old box clipped
+   its left edge against the section's inset (owner 2026-10-14). */
 .leadStopwatch {
   flex: none;
-  width: 14px;
-  margin-left: -2px;
+  width: 18px;
+  margin-left: 0;
 }
 
 .inspector .values {

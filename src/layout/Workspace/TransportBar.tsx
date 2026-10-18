@@ -1,13 +1,20 @@
 /**
  * TransportBar — the ONE row under the stage.
  *
- * Left to right:
+ * Left to right, in groups with a hairline between them (2026-10-19):
  *
- *   3D view · layout · timecode current / total · snapshot + compare ·
- *   [go to start · previous frame · PLAY · next frame · go to end] ·
- *   the motion-path toggle (`ViewportTools`, with a selected path only) ·
- *   resolution · preview · transparency grid · overlays · channel · exposure
- *   (`ViewportDisplayControls`) · magnification
+ *   View: 3D view · layout | timecode current / total | Capture: snapshot ·
+ *   compare | [go to start · previous frame · PLAY · next frame · go to end]
+ *   | Guides: the motion-path toggle (`ViewportTools`, with a selected path
+ *   only) | Display: resolution · preview · transparency grid · overlays ·
+ *   channel · exposure (`ViewportDisplayControls`) … magnification, pinned at
+ *   the far right.
+ *
+ * Every control in the groups is drawn from the one button in
+ * `viewportToolButton.module.css`: 24px, 14px glyph, a chevron only where a
+ * menu opens, the menu's current value as text, and a lit state that is a
+ * tint plus a blue glyph — never the filled box that would make a toggle
+ * look like Play.
  *
  * That is AE's Composition panel footer plus the transport. What used to sit
  * here as well and was not (2026-10-07): Loop (the Preview panel's), Auto-
@@ -63,13 +70,14 @@ import { useWorkspaceStore } from '@stores/projectStore';
 import { LiveTimecode } from '@layout/Timeline/LiveTimecode';
 import { useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsDurationSeconds, settingsFps, settingsStartFrame } from '@core/mirror/compFacts';
-import { displayLevelFor, isDemoted, type TransportGroup } from './transportOverflow';
+import { displayLevelFor, isDemoted, isDisplayShed, type TransportGroup } from './transportOverflow';
 import { useTransportDemote } from './useTransportDemote';
 import {
   getCompositionShuttle,
   subscribeCompositionShuttleRate,
 } from '@core/timeline/transportController';
 import styles from './TransportBar.module.css';
+import tool from './viewportToolButton.module.css';
 
 /**
  * Memoised: it takes no props and subscribes to everything it draws (workspace
@@ -93,6 +101,13 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
   const displayLevel = displayLevelFor(level);
   const display = useViewportDisplayModel();
   const zoom = useZoomPercent();
+  // Which groups still have a control to show. A group that has shed all of
+  // its controls keeps its place (the shed rows come back into it) but
+  // collapses its padding and loses its hairline.
+  const showView = !isDisplayShed('layout', displayLevel);
+  const showCapture = !isDisplayShed('compare', displayLevel);
+  const showDisplay = (['resolution', 'preview', 'transparency', 'overlays', 'channel', 'exposure'] as const)
+    .some((g) => !isDisplayShed(g, displayLevel));
 
   // Everything the row has shed, as rows of the bar's own `⋯` menu, in row
   // order: the display controls, then the zoom.
@@ -122,21 +137,25 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
       data-transport-bar=""
     >
       {/*
-        Left of play: the views — 3D view, layout, the timecode, snapshots.
-        Right of play: how the frame is shown — resolution, preview,
-        transparency, overlays, channel, exposure — and the magnification.
+        Five groups, hairlines between them (2026-10-19):
+
+          View (3D view, layout) · timecode · Capture (snapshot, compare)
+          [ transport ]
+          Guides (motion path, while a path is selected) · Display
+          (resolution, preview, transparency, overlays, channel, exposure)
+          … and the zoom field pinned at the far right.
 
         The split is what makes the row look balanced: the eye weighs the mass
         either side of the play button, not the geometry, so the two sides are
-        kept roughly even.
+        kept roughly even. (A Scene group — the 3D switch, anchor and gizmo —
+        has no members here: those are the timeline's switch column, Layer ▸
+        3D Layer and the stage's own handles, 2026-10-07.)
       */}
       <div className={styles.sideLeft}>
-        {/* Viewport layout dropdown */}
-        <div className={styles.cluster}>
+        <div className={cn(tool.group, !showView && tool.groupEmpty)}>
           <ViewportDisplayControlsView model={display} level={displayLevel} overflow="host" section="layout" />
         </div>
-
-        <div className={styles.divider} />
+        {showView && <div className={tool.divider} />}
 
         <div
           className={styles.timecode}
@@ -146,10 +165,8 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           <span className={styles.timecodeTotal}>/ {framesToTimecode(duration, fps, startFrame)}</span>
         </div>
 
-        <div className={styles.divider} />
-
-        {/* Snapshot & compare controls */}
-        <div className={styles.cluster}>
+        {showCapture && <div className={tool.divider} />}
+        <div className={cn(tool.group, !showCapture && tool.groupEmpty)}>
           <ViewportDisplayControlsView model={display} level={displayLevel} overflow="host" section="compare" />
         </div>
       </div>
@@ -168,7 +185,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           aria-label="Go to Start"
           onClick={() => goToStart()}
         >
-          <Icon name="skip-back" size="sm" />
+          <Icon name="skip-back" size="md" weight="fill" />
         </button>
         <button
           type="button"
@@ -177,7 +194,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           aria-label="Previous Frame"
           onClick={() => stepBackward()}
         >
-          <Icon name="chevron-left" size="sm" />
+          <Icon name="chevron-left" size="md" weight="bold" />
         </button>
         <button
           type="button"
@@ -186,7 +203,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           aria-label={ws?.playing ? 'Pause' : 'Play'}
           onClick={() => togglePlayTransport()}
         >
-          <Icon name={ws?.playing ? 'pause' : 'play'} size="md" />
+          <Icon name={ws?.playing ? 'pause' : 'play'} size="lg" weight="fill" />
         </button>
         <ShuttleRateBadge />
         <button
@@ -196,7 +213,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           aria-label="Next Frame"
           onClick={() => stepForward()}
         >
-          <Icon name="chevron-right" size="sm" />
+          <Icon name="chevron-right" size="md" weight="bold" />
         </button>
         <button
           type="button"
@@ -205,41 +222,38 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
           aria-label="Go to End"
           onClick={() => goToEnd()}
         >
-          <Icon name="skip-forward" size="sm" />
+          <Icon name="skip-forward" size="md" weight="fill" />
         </button>
       </div>
 
       <div className={styles.sideRight}>
-        {/* The motion-path toggle, while a layer with a path is selected */}
+        {/* Guides: the motion-path toggle, while a layer with a path is
+            selected. It carries its own hairline. */}
         <ViewportTools />
 
-        {/* Resolution · Preview · Transparency Grid · Overlays · Channel · Exposure */}
-        <div className={styles.cluster}>
+        {/* Display: Resolution · Preview · Transparency Grid · Overlays · Channel · Exposure */}
+        <div className={cn(tool.group, !showDisplay && tool.groupEmpty)}>
           <ViewportDisplayControlsView model={display} level={displayLevel} overflow="host" section="right" />
         </div>
 
-        {/* Last to go: the wheel and the +/- keys still reach the viewport's
-            zoom, and the `⋯` menu lists the presets while it is shed. */}
-        {!shed('zoom') && (
-          <>
-            <div className={styles.divider} />
-
-            <div className={styles.cluster}>
-              <ZoomField />
-            </div>
-          </>
-        )}
-
-        {overflowItems.length > 0 && (
-          <Dropdown
-            placement="top-end"
-            trigger={
-              <button type="button" className={styles.btn} title="More transport controls" aria-label={`More transport controls (${overflowItems.length})`}>
-                <Icon name="more-horizontal" size="sm" />
-              </button>
-            }
-            items={overflowItems}
-          />
+        {/* The zoom field, pinned at the far right. Last to go: the wheel
+            and the +/- keys still reach the viewport's zoom, and the `⋯`
+            menu lists the presets while it is shed. */}
+        {(!shed('zoom') || overflowItems.length > 0) && (
+          <div className={styles.zoomSlot}>
+            {!shed('zoom') && <ZoomField />}
+            {overflowItems.length > 0 && (
+              <Dropdown
+                placement="top-end"
+                trigger={
+                  <button type="button" className={tool.tool} title="More transport controls" aria-label={`More transport controls (${overflowItems.length})`}>
+                    <Icon name="more-horizontal" size="sm" />
+                  </button>
+                }
+                items={overflowItems}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>

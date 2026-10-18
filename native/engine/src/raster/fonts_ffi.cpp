@@ -248,9 +248,22 @@ struct FontSet::Impl {
     HbFace face;
     sk_sp<SkTypeface> typeface;
     unsigned upem = 1000;
+    /// The file's `wght` axis range; 0 / 0 = a static face.
+    int wghtMin = 0;
+    int wghtMax = 0;
+    /// The file's optical-size axis range; 0 / 0 = none.
+    float opszMin = 0;
+    float opszMax = 0;
     /// The file has an OpenType `smcp` feature (real small capitals); without
     /// one a small-caps request is synthesized (shape()).
     bool hasSmcp = false;
+    [[nodiscard]] bool has_opsz() const noexcept { return opszMax > opszMin; }
+    /// The weight this face draws a `requested` weight at: a variable face
+    /// covers its whole `wght` range (CSS Fonts 4 §4.5 `font-weight: 100 900`),
+    /// so the request clamped to it; a static face its one weight.
+    [[nodiscard]] int weight_for(int requested) const noexcept {
+      return wghtMax > wghtMin ? std::clamp(requested, wghtMin, wghtMax) : info.weight;
+    }
   };
   std::vector<std::unique_ptr<Face>> faces;
   std::vector<std::pair<std::string, std::string>> aliases;
@@ -288,7 +301,7 @@ struct FontSet::Impl {
     std::vector<int> weights;
     for (const int i : fam) {
       const auto& f = *faces[static_cast<std::size_t>(i)];
-      if (f.info.italic == style) weights.push_back(f.info.weight);
+      if (f.info.italic == style) weights.push_back(f.weight_for(weight));
     }
     std::ranges::sort(weights);
     const auto dup = std::ranges::unique(weights);
@@ -324,7 +337,7 @@ struct FontSet::Impl {
     std::vector<int> out;
     for (const int i : fam) {
       const auto& f = *faces[static_cast<std::size_t>(i)];
-      if (f.info.italic == style && f.info.weight == pick) out.push_back(i);
+      if (f.info.italic == style && f.weight_for(weight) == pick) out.push_back(i);
     }
     return out;
   }
@@ -482,6 +495,16 @@ bool FontSet::add_face(const FaceInfo& info, std::span<const std::uint8_t> bytes
                                   static_cast<unsigned>(face->sfnt.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr));
   face->face.reset(hb_face_create(face->blob.get(), static_cast<unsigned>(info.ttcIndex)));
   face->upem = hb_face_get_upem(face->face.get());
+  hb_ot_var_axis_info_t wght{};
+  if (hb_ot_var_find_axis_info(face->face.get(), HB_OT_TAG_VAR_AXIS_WEIGHT, &wght) != 0 && wght.min_value < wght.max_value) {
+    face->wghtMin = static_cast<int>(std::lround(wght.min_value));
+    face->wghtMax = static_cast<int>(std::lround(wght.max_value));
+  }
+  hb_ot_var_axis_info_t opsz{};
+  if (hb_ot_var_find_axis_info(face->face.get(), HB_OT_TAG_VAR_AXIS_OPTICAL_SIZE, &opsz) != 0 && opsz.min_value < opsz.max_value) {
+    face->opszMin = opsz.min_value;
+    face->opszMax = opsz.max_value;
+  }
   {
     std::array<hb_tag_t, 64> tags{};
     unsigned offset = 0;
@@ -828,9 +851,33 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
     faceOf[i] = found >= 0 ? found : primary;
   }
 
+  // A variable face draws the requested weight on its `wght` axis (as Blink
+  // does for a variable @font-face) instead of embolden on the default
+  // instance, and its optical size at the font size in px (CSS
+  // `font-optical-sizing: auto`). An explicit axis in font-variation-settings
+  // wins; the axes are inert on the static faces of the run.
+  const auto usedFace = [&](auto has) {
+    return has(*impl.faces[static_cast<std::size_t>(primary)]) ||
+           std::ranges::any_of(faceOf, [&](int f) { return has(*impl.faces[static_cast<std::size_t>(f)]); });
+  };
+  const auto setAxis = [&out](std::uint32_t tag) {
+    return std::ranges::none_of(out.axes, [tag](const AxisValue& a) { return a.tag == tag; });
+  };
+  if (setAxis(HB_OT_TAG_VAR_AXIS_WEIGHT) && usedFace([](const Impl::Face& f) { return f.wghtMax > 0; })) {
+    out.axes.push_back({HB_OT_TAG_VAR_AXIS_WEIGHT, static_cast<float>(req.font.weight)});
+  }
+  if (setAxis(HB_OT_TAG_VAR_AXIS_OPTICAL_SIZE) && req.font.sizePx > 0 && usedFace([](const Impl::Face& f) { return f.has_opsz(); })) {
+    // Clamped to the primary's axis and whole units: each value is a typeface
+    // clone in the cache, and an animated font size must not mint one per frame.
+    const auto& p = *impl.faces[static_cast<std::size_t>(primary)];
+    float v = static_cast<float>(std::round(req.font.sizePx));
+    if (p.has_opsz()) v = std::clamp(v, std::ceil(p.opszMin), std::floor(p.opszMax));
+    out.axes.push_back({HB_OT_TAG_VAR_AXIS_OPTICAL_SIZE, std::min(v, 1000.0F)});
+  }
+
   const auto faceSynth = [&](int face) {
-    const auto& fi = impl.faces[static_cast<std::size_t>(face)]->info;
-    return std::make_pair(req.font.weight >= 600 && fi.weight <= 500, req.font.italic && !fi.italic);
+    const auto& f = *impl.faces[static_cast<std::size_t>(face)];
+    return std::make_pair(req.font.weight >= 600 && f.weight_for(req.font.weight) <= 500, req.font.italic && !f.info.italic);
   };
 
   // Font metrics of the primary face (Blink rounds ascent / descent).

@@ -53,7 +53,8 @@ export const ClipBar = memo(function ClipBar({
 }): JSX.Element {
   const wave = useWaveform(clip.assetId);
   const width = Math.max(2, view.duration * pps);
-  const height = trackHeight - 6;
+  // AE's bar fills the row, one pixel clear of each row line.
+  const height = trackHeight - 2;
   // Slice to the bar's own window onto the source. Drawing `wave.peaks`
   // whole squeezed the entire file into the bar, so the peaks under the
   // playhead were not the audio you would hear there.
@@ -83,7 +84,9 @@ export const ClipBar = memo(function ClipBar({
         height,
         // Tinted by the layer's label colour, so the lanes read the same
         // colour code as the header column's bar.
-        background: trackColor ? `color-mix(in srgb, ${baseColor} 62%, ${trackColor})` : baseColor,
+        // Muted toward the lane, as AE draws its label-coloured bars: the full
+        // label colour across every row was the loudest thing in the panel.
+        background: `color-mix(in srgb, ${trackColor ? `color-mix(in srgb, ${baseColor} 62%, ${trackColor})` : baseColor} 78%, var(--color-timeline-bg))`,
         border: 'none',
         cursor: locked ? 'not-allowed' : onClipDown ? 'grab' : undefined,
       }}

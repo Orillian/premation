@@ -79,13 +79,15 @@ it('is the only tool row in the panel, with no edit-tool row or transition chips
   expect(screen.queryAllByRole('button', { name: /transition$/ })).toHaveLength(0);
 });
 
-it('holds timecode · Snap · filter · Graph Editor · View in the left column, the navigator in the right', () => {
+it('holds timecode · search · comp switches · Graph Editor · ≡ in the left column, the navigator in the right', () => {
   const t = toolbar();
   const left = toolsCol(t);
+  // AE's header (2026-10-14): snapping is a row of the ≡ menu, not a button.
+  expect(within(left).queryByRole('button', { name: 'Snap in timeline' })).toBeNull();
   const order = [
     within(left).getByTitle(/^Current timecode/),
-    within(left).getByRole('button', { name: 'Snap in timeline' }),
     within(left).getByRole('searchbox', { name: 'Search layers and properties' }),
+    within(left).getByRole('button', { name: 'Hide Shy Layers' }),
     within(left).getByRole('button', { name: 'Toggle Graph Editor' }),
     within(left).getByRole('button', { name: 'Timeline view options' }),
   ];
@@ -226,7 +228,7 @@ describe('the shed ladder', () => {
     expect(isToolbarShed('more', 1)).toBe(true);
   });
 
-  it('when the header column is too narrow, the left column ends as timecode · Snap · filter · Graph Editor · ⋯ — nothing crosses the seam', () => {
+  it('when the header column is too narrow, the left column ends as timecode · search · switches · Graph Editor · ⋯ — nothing crosses the seam', () => {
     cramped(() => {
       const t = toolbar();
       const left = toolsCol(t);
@@ -235,9 +237,8 @@ describe('the shed ladder', () => {
       expect(within(left).getByTitle(/^Current timecode/)).toBeInTheDocument();
       expect(within(left).getByRole('searchbox', { name: 'Search layers and properties' })).toBeInTheDocument();
       expect(within(left).getByRole('button', { name: 'Toggle Graph Editor' })).toBeInTheDocument();
-      expect(within(left).getByRole('button', { name: 'Snap in timeline' })).toBeInTheDocument();
       const more = within(left).getByRole('button', { name: 'More timeline tools' });
-      expect(within(left).getAllByRole('button')).toHaveLength(8); // timecode, snap, shy, frame blending, motion blur, auto-key, graph editor, ⋯
+      expect(within(left).getAllByRole('button')).toHaveLength(7); // timecode, shy, frame blending, motion blur, auto-key, graph editor, ⋯
       // The navigator never leaves its own column.
       expect(within(navCol(t)).getByRole('scrollbar', { name: 'Time navigator' })).toBeInTheDocument();
 

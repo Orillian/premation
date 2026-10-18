@@ -2290,6 +2290,9 @@ export function paintOverlay(
         // contrast is what keeps them visible over both light and dark artwork.
         // Hovered: 10px, accent-filled, with a soft halo — "grabbable", said
         // by the grip itself rather than only by the cursor.
+        // Edge grips are bars along their edge, turned with the layer, so a
+        // side (one axis) never reads as a corner (both axes).
+        const isEdge = h.id === 'n' || h.id === 's' || h.id === 'e' || h.id === 'w';
         const r = h.hovered ? 5 : 4;
         if (h.hovered) {
           ctx.beginPath();
@@ -2300,9 +2303,30 @@ export function paintOverlay(
         ctx.fillStyle = h.hovered ? handleAccent : '#fff';
         ctx.strokeStyle = h.hovered ? '#fff' : handleAccent;
         ctx.lineWidth = 1;
-        ctx.fillRect(h.position.x - r, h.position.y - r, r * 2, r * 2);
-        ctx.strokeRect(h.position.x - r, h.position.y - r, r * 2, r * 2);
+        if (isEdge) {
+          const c = only?.corners;
+          const along = c ? Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x) : 0;
+          ctx.save();
+          ctx.translate(h.position.x, h.position.y);
+          ctx.rotate(h.id === 'n' || h.id === 's' ? along : along + Math.PI / 2);
+          ctx.beginPath();
+          ctx.roundRect(-r * 1.6, -r * 0.7, r * 3.2, r * 1.4, r * 0.7);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          ctx.fillRect(h.position.x - r, h.position.y - r, r * 2, r * 2);
+          ctx.strokeRect(h.position.x - r, h.position.y - r, r * 2, r * 2);
+        }
       }
+    }
+
+    // Size (and angle, when turned) under a single selected layer, at rest
+    // only — while a drag is live the numbers belong to the Properties panel
+    // and the Info readout, never to a badge over the artwork.
+    const view = controller?.getView().scale ?? 0;
+    if (only && view > 0 && !overlay.dragHud) {
+      paintSelectionSizeLabel(ctx, only.corners, view, handleAccent);
     }
   }
 
@@ -2365,17 +2389,26 @@ export function paintOverlay(
         const next = pts[i + 1]!;
         ctx.bezierCurveTo(curr.outX, curr.outY, next.inX, next.inY, next.x, next.y);
       }
-      if (isPencil) {
-        ctx.strokeStyle = drawToolOptions.pencilColor || ACCENT;
-        const zoom = controller?.getView().scale ?? 1;
-        ctx.lineWidth = Math.max(1, drawToolOptions.pencilWidth * zoom);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+      if (activeTool === 'brush') {
+        const last = pts[pts.length - 1]!;
+        const first = pts[0]!;
+        ctx.bezierCurveTo(last.outX, last.outY, first.inX, first.inY, first.x, first.y);
+        ctx.closePath();
+        ctx.fillStyle = drawToolOptions.brushColor || ACCENT;
+        ctx.fill('nonzero');
       } else {
-        ctx.strokeStyle = ACCENT;
-        ctx.lineWidth = 1.5;
+        if (isPencil) {
+          ctx.strokeStyle = drawToolOptions.pencilColor || ACCENT;
+          const zoom = controller?.getView().scale ?? 1;
+          ctx.lineWidth = Math.max(1, drawToolOptions.pencilWidth * zoom);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+        } else {
+          ctx.strokeStyle = ACCENT;
+          ctx.lineWidth = 1.5;
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.restore();
     }
 
@@ -2950,6 +2983,52 @@ function strokeCorners(
   for (let i = 1; i < 4; i++) ctx.lineTo(c[i]!.x + 0.5, c[i]!.y + 0.5);
   ctx.closePath();
   ctx.stroke();
+}
+
+/**
+ * "640 × 360 · 30°" in a pill just below an oriented selection box. Sizes are
+ * the box's edges in composition pixels (screen length / view scale), so they
+ * include the layer's scale — what the box encloses, not the source size.
+ * Skipped when the box is too small on screen for the label to belong to it.
+ */
+function paintSelectionSizeLabel(
+  ctx: CanvasRenderingContext2D,
+  c: readonly [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }],
+  viewScale: number,
+  accent: string,
+): void {
+  const wScreen = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
+  const hScreen = Math.hypot(c[3].x - c[0].x, c[3].y - c[0].y);
+  if (wScreen < 24 || hScreen < 12) return;
+  const w = Math.round(wScreen / viewScale);
+  const h = Math.round(hScreen / viewScale);
+  let deg = (Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x) * 180) / Math.PI;
+  deg = Math.round(deg * 10) / 10;
+  const text = Math.abs(deg) >= 0.1 ? `${w} × ${h} · ${deg}°` : `${w} × ${h}`;
+
+  const cx = (c[0].x + c[1].x + c[2].x + c[3].x) / 4;
+  const bottom = Math.max(c[0].y, c[1].y, c[2].y, c[3].y);
+  ctx.save();
+  ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const padX = 6;
+  const pillW = Math.ceil(ctx.measureText(text).width) + padX * 2;
+  const pillH = 17;
+  const x = Math.round(cx - pillW / 2);
+  const y = Math.round(bottom + 10);
+  ctx.beginPath();
+  ctx.roundRect(x, y, pillW, pillH, 4);
+  ctx.fillStyle = 'rgba(18,18,20,0.9)';
+  ctx.fill();
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f4f4f5';
+  ctx.fillText(text, x + pillW / 2, y + pillH / 2 + 0.5);
+  ctx.restore();
 }
 
 /**

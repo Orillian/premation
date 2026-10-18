@@ -95,6 +95,15 @@ button.chevron:hover {
   flex: none;
 }
 
+/* Host-supplied fixed cell at the row's left edge (AE's switch columns). Not
+   indented; the indent is its right margin, set inline per depth. */
+.gutter {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  flex: none;
+}
+
 /* Host-supplied control between the triangle and the glyph (a pick-whip). */
 .lead {
   display: inline-flex;

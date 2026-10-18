@@ -34,11 +34,20 @@ export interface PluginOutputFormat {
 }
 
 export interface PluginPanelEntry {
-  /** The dock panel id: `plugin:<plugin id>/<panel id>`. */
+  /** The dock panel id: `plugin:<plugin id>/<panel id>`, or `plugin:<plugin id>` for an effect plugin's own panel. */
   readonly panelId: string;
   readonly plugin: string;
   readonly pluginName: string;
   readonly panel: PluginPanelInfo;
+  /**
+   * `tool`: a manifest `panels` entry (no effect behind it, the tool-panel
+   * protocol). `effect`: the bundle's effect page (`ui/index.html`,
+   * PluginInfo.panel), docked as the plugin's own sidebar panel and bound to
+   * the selected layer's instance of the plugin's effect (the effect-panel
+   * protocol) — Element 3D's Scene Setup with a home of its own instead of a
+   * frame inside the effect card.
+   */
+  readonly kind: 'tool' | 'effect';
 }
 
 let plugins: readonly PluginInfo[] = [];
@@ -113,11 +122,26 @@ export function pluginPanelId(plugin: string, panel: string): string {
   return `plugin:${plugin}/${panel}`;
 }
 
-/** The dockable panels of loaded plugins. */
+/** An effect plugin's own panel: `plugin:<plugin id>` (no `/`, so it never meets a manifest panel id). */
+export function pluginEffectPanelId(plugin: string): string {
+  return `plugin:${plugin}`;
+}
+
+/**
+ * The dockable panels of loaded plugins: each effect plugin's own panel (when
+ * the bundle ships a page) first, then its manifest panels.
+ */
 export function pluginPanels(): readonly PluginPanelEntry[] {
-  return plugins.filter(loaded).flatMap((p) =>
-    (p.panels ?? []).map((panel) => ({ panelId: pluginPanelId(p.id, panel.id), plugin: p.id, pluginName: p.name || p.id, panel })),
-  );
+  return plugins.filter(loaded).flatMap((p) => {
+    const pluginName = p.name || p.id;
+    const own: PluginPanelEntry[] = p.panel && p.effects.length > 0
+      ? [{ panelId: pluginEffectPanelId(p.id), plugin: p.id, pluginName, panel: { id: '', name: pluginName, page: 'index.html' }, kind: 'effect' }]
+      : [];
+    return [
+      ...own,
+      ...(p.panels ?? []).map((panel): PluginPanelEntry => ({ panelId: pluginPanelId(p.id, panel.id), plugin: p.id, pluginName, panel, kind: 'tool' })),
+    ];
+  });
 }
 
 export function pluginPanel(panelId: string): PluginPanelEntry | undefined {

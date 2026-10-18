@@ -1,17 +1,26 @@
 /**
- * A native plugin's panel on its effect card (plan P5): the bundle's
- * `ui/index.html` in a sandboxed frame (`plugin-ui://<id>/`, served by main with
- * a no-network policy; electron/pluginPanelProtocol.ts). The frame talks to
- * this component by postMessage only; each request becomes one engine command
- * or query (src/core/nativePlugins/pluginPanel.ts), so a panel edit is an
- * ordinary undo entry. While open, the panel gets `state` after every document
- * change — undo and redo included.
+ * A native plugin's panel (plan P5): the bundle's `ui/index.html` in a
+ * sandboxed frame (`plugin-ui://<id>/`, served by main with a no-network
+ * policy; electron/pluginPanelProtocol.ts). The frame talks to this component
+ * by postMessage only; each request becomes one engine command or query
+ * (src/core/nativePlugins/pluginPanel.ts), so a panel edit is an ordinary undo
+ * entry. While open, the panel gets `state` after every document change — undo
+ * and redo included.
+ *
+ * Where it shows (owner 2026-10-14, AE's model — Element 3D's Scene Setup is a
+ * window of its own, never a strip inside Effect Controls):
+ *   - the effect card's "Open Panel…" opens it in a floating tool window
+ *     (no scrim, the app stays live, the frame remembered per plugin);
+ *   - the plugin's own sidebar panel (PluginEffectHomePanel) shows it for the
+ *     selected layer's instance of the effect.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EffectUi } from '@motion/engine-api';
 import { secondsToFlicks } from '@motion/engine-api';
 import { Button } from '@components/Button';
+import { Icon } from '@components/Icon';
+import { Modal } from '@components/Modal';
 import { engine } from '@core/engine/engineInstance';
 import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
@@ -43,23 +52,45 @@ interface Props {
   ui: EffectUi | null;
 }
 
-/** "Open Panel" under a plugin effect whose bundle ships one; the frame below it while open. */
+/** "Open Panel…" under a plugin effect whose bundle ships one: the page in a floating window. */
 export function PluginPanel({ nodeId, effect, def, time, ui }: Props): JSX.Element | null {
   const [open, setOpen] = useState(false);
   if (!ui?.panel || !ui.plugin) return null;
   return (
     <div style={{ paddingLeft: 22, paddingRight: 6 }}>
       <div className={row.paramRow}>
-        <Button size="sm" variant="secondary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          {open ? 'Close Panel' : 'Open Panel'}
+        <Button
+          size="sm"
+          variant="secondary"
+          leftIcon={<Icon name="plugin" size="sm" />}
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          Open Panel…
         </Button>
       </div>
-      {open ? <PanelFrame nodeId={nodeId} effect={effect} def={def} time={time} plugin={ui.plugin} /> : null}
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        id={`plugin-panel:${ui.plugin}`}
+        title={def.label}
+        variant="floating"
+        size="lg"
+        resizable
+      >
+        {open ? (
+          <div style={{ height: '100%', minHeight: 240 }}>
+            <PluginEffectFrame nodeId={nodeId} effect={effect} def={def} time={time} plugin={ui.plugin} />
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
 
-function PanelFrame({ nodeId, effect, def, time, plugin }: Omit<Props, 'ui'> & { plugin: string }): JSX.Element {
+/** The plugin's page for one effect instance; fills its container. */
+export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Props, 'ui'> & { plugin: string }): JSX.Element {
   const frame = useRef<HTMLIFrameElement>(null);
   const ready = useRef(false);
   const revision = useMirrorRevision(true);
@@ -131,7 +162,7 @@ function PanelFrame({ nodeId, effect, def, time, plugin }: Omit<Props, 'ui'> & {
       src={panelUrl(plugin)}
       sandbox={PANEL_SANDBOX}
       referrerPolicy="no-referrer"
-      style={{ width: '100%', height: 320, border: '1px solid var(--color-border)', borderRadius: 3, background: 'transparent' }}
+      style={{ width: '100%', height: '100%', minHeight: 200, border: 'none', background: 'transparent', display: 'block' }}
     />
   );
 }

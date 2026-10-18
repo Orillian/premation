@@ -85,7 +85,8 @@ describe('the icon scale is three sizes', () => {
     // Moved up from 13/16/22 with the switch to Material Symbols Sharp, whose
     // glyphs sit inside ~95 units of margin on a 960 grid and so read smaller
     // than the edge-to-edge stroke set before them. See ICON_SIZE in Icon.tsx.
-    expect(ICON_SIZE).toEqual({ sm: 15, md: 18, lg: 25 });
+    // And one step up again (2026-10-14, owner: icons too small and thin).
+    expect(ICON_SIZE).toEqual({ sm: 16, md: 19, lg: 26 });
   });
 
   it('no chrome icon is sized with a raw number', () => {

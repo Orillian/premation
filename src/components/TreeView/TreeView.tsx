@@ -109,6 +109,11 @@ export interface TreeViewProps<T> {
   renderActions?: (node: TreeNode<T>) => ReactNode;
   /** Render UI between the disclosure triangle and the glyph (a pick-whip). */
   renderLead?: (node: TreeNode<T>) => ReactNode;
+  /**
+   * Render a fixed-width cell at the row's LEFT edge, before the indent — AE's
+   * switch columns. It is not indented, so it lines up down the whole list.
+   */
+  renderGutter?: (node: TreeNode<T>) => ReactNode;
   /** Right-click a row. Receives the node id and the mouse event. */
   onNodeContextMenu?: (id: string, e: React.MouseEvent) => void;
   /**
@@ -189,6 +194,7 @@ export function TreeView<T = unknown>({
   scrollToId,
   renderActions,
   renderLead,
+  renderGutter,
   onNodeContextMenu,
   onReorder,
   renamingId,
@@ -541,7 +547,7 @@ export function TreeView<T = unknown>({
               draggable={onReorder ? renamingId !== row.node.id : undefined}
               className={cn(styles.row, styles.virtualRow, isSelected && styles.selected)}
               style={{
-                paddingLeft: 8 + row.depth * indent,
+                paddingLeft: renderGutter ? 0 : 8 + row.depth * indent,
                 top: i * rowHeight,
                 height: rowHeight,
               }}
@@ -601,6 +607,16 @@ export function TreeView<T = unknown>({
               }
               onDragEnd={onReorder ? endDrag : undefined}
             >
+              {renderGutter ? (
+                <span
+                  className={styles.gutter}
+                  style={{ marginRight: 4 + row.depth * indent }}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                >
+                  {renderGutter(row.node)}
+                </span>
+              ) : null}
               {row.hasChildren ? (
                 <button
                   type="button"

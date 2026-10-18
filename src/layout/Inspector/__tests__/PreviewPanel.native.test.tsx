@@ -1,8 +1,9 @@
 /**
- * The Preview panel, laid out as After Effects' (2026-10): the transport row
- * first, then one labelled row per setting this app has — Include, Range,
- * Step, Resolution, Draft — under group rows. No timecode HUD, no keyboard
- * cheat-sheet, no second master meter (the Audio panel has it).
+ * The Preview panel, laid out as After Effects' (2026-10): the timecode, the
+ * transport row (with loop and audio), then one labelled row per setting this
+ * app has — Range, Step, Resolution, Draft — under group rows, and the cache
+ * readout. No keyboard cheat-sheet, no second master meter (the Audio panel
+ * has it).
  */
 
 import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
@@ -66,7 +67,7 @@ describe('PreviewPanel', () => {
     }
     for (const label of ['Range', 'Step', 'Resolution']) expect(screen.getByLabelText(label)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Include audio' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Draft quality' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Draft quality' })).toBeInTheDocument();
     for (const name of ['Playback', 'Quality']) {
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-expanded', 'true');
     }
@@ -124,10 +125,10 @@ describe('PreviewPanel', () => {
     fireEvent.change(resolution, { target: { value: 'auto' } });
     expect(useRenderQualityStore.getState().adaptive).toBe(true);
 
-    const draft = screen.getByRole('button', { name: 'Draft quality' });
+    const draft = screen.getByRole('switch', { name: 'Draft quality' });
     fireEvent.click(draft);
     expect(useRenderQualityStore.getState().draft).toBe(true);
-    expect(draft).toHaveAttribute('aria-pressed', 'true');
+    expect(draft).toBeChecked();
 
     fireEvent.click(draft);
     expect(useRenderQualityStore.getState().draft).toBe(false);

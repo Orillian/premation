@@ -18,6 +18,11 @@
   animation: menuIn var(--motion-duration-fast) var(--motion-ease-emphasized);
 }
 
+/* In the editor a menu is a raised sheet on the editor's ground (themes/dark.css). */
+:global(body.editor-active) .menu {
+  background: var(--color-surface-raised);
+}
+
 /* Override for menus that must show all items without scrolling */
 .noScroll {
   max-height: none;

@@ -1,4 +1,4 @@
-/**
+/*
  * Transport bar — the ONE row under the stage.
  *
  * It drives the VIEWPORT, which is what you are looking at while you press
@@ -10,6 +10,11 @@
  * inside it is `nowrap`; when it runs short it sheds groups into its own
  * overflow menu (`useTransportDemote`) rather than reflowing onto a second
  * line.
+ *
+ * The row's parts (2026-10-19): the groups and their hairlines, and the one
+ * button every control is drawn from, are `viewportToolButton.module.css`;
+ * this sheet is the bar's own geometry, the transport cluster and the
+ * timecode.
  */
 /**
  * `1fr auto 1fr`, not a flex row.
@@ -28,15 +33,17 @@
   grid-auto-flow: column;
   flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-4);
   flex: none;
-  min-height: var(--control-height-row);
-  /* 2px vertical: enough to keep the buttons off the rules above and below,
-     not enough to turn a control strip into a band. 12px horizontal stays —
-     that is the panel's own edge inset, not padding around the buttons. */
-  padding: var(--space-1) var(--space-5);
-  box-sizing: content-box;
-  background: var(--color-panel);
+  /* 32px, like the tab strips above it: a strip of 24px controls with 4px
+     of air either side. --space-9 is the 32px step of the spacing scale. */
+  height: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  box-sizing: border-box;
+  /* The s0 ground, the same the tab strips sit on — the viewport's floor
+     and its header read as one frame around the picture. */
+  background: var(--color-surface-0);
   /* The same dark rule that divides the timeline's chrome from its track list —
      this bar is the viewport's floor, and the division reads as one system. */
   border-top: 2px solid var(--color-timeline-ruler-border);
@@ -53,28 +60,28 @@
   overflow: hidden;
   min-width: 0;
 
-  /* A CONTAINER, so ViewportTools' REC label can drop under width pressure
-     — it reads `tl-toolbar`'s inline size, and that row is this one. */
+  /* A CONTAINER, so a child can drop a label under width pressure by
+     reading `tl-toolbar`'s inline size. */
   container-type: inline-size;
   container-name: tl-toolbar;
 }
 
 /**
- * The side groups lean IN, toward the transport, rather than out to the bar's
- * edges.
+ * The side columns lean IN, toward the transport, rather than out to the
+ * bar's edges — except the zoom field, which is pinned at the far right
+ * (`.zoomSlot`), so the one field in the row has a fixed home.
  *
- * Pinned to the outer edges they were two islands with a lake of empty panel
- * between them and the play button, and a control 400px from the thing it
- * qualifies does not read as related to it. Leaning in keeps the whole row one
- * band of controls with even spacing, and leaves the empty space at the ends
- * where empty space is harmless.
+ * Pinned to the outer edges the groups were two islands with a lake of empty
+ * panel between them and the play button, and a control 400px from the thing
+ * it qualifies does not read as related to it. Leaning in keeps the whole row
+ * one band of controls with even spacing.
  */
 .sideLeft,
 .sideRight {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: var(--space-4);
+  gap: 0;
   min-width: 0;
 }
 
@@ -86,17 +93,28 @@
   justify-content: flex-start;
 }
 
+/* The zoom field's seat: pushed to the far right of the right column. */
+.zoomSlot {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  flex-shrink: 0;
+}
 
+/* The transport cluster in the middle column. */
 .cluster {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 /**
- * The timecode reads out here, beside the controls that move it.
+ * The timecode reads out here, beside the controls that move it, between the
+ * View and Capture groups.
  *
  * Not a duplicate of the timeline's: that one is the SCRUB field over the track
  * headers, and it is the current time alone. This one is current / duration,
@@ -104,6 +122,10 @@
  * show twice — once here, once directly beneath.
  */
 .timecode {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height-md);
+  padding: 0 var(--space-2);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
@@ -111,30 +133,27 @@
   letter-spacing: 0.02em;
   white-space: nowrap;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .timecodeTotal {
   color: var(--color-text-tertiary);
-  margin-left: 6px;
+  margin-left: var(--space-3);
 }
 
-.divider {
-  width: 1px;
-  height: 16px;
-  background: var(--color-border-subtle);
-  flex-shrink: 0;
-}
-
+/* The transport buttons: the five in the middle and the bar's `⋯`. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: var(--control-height-lg);
-  height: var(--control-height-row);
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
+  height: var(--control-height-lg);
+  /* No box (owner 2026-10-14): the glyph is the button, as in AE's preview
+     controls; the hover fill says where the hit area is. */
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
   cursor: pointer;
   padding: 0;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
@@ -142,28 +161,26 @@
 }
 
 .btn:hover {
-  background: var(--color-surface-3);
-  border-color: var(--color-border-strong);
+  background: var(--color-hover);
   color: var(--color-text-primary);
-  transform: translateY(-0.5px);
 }
 
 .btn:active {
   transform: scale(0.94);
 }
 
-.btnActive {
-  background: transparent !important;
-  border-color: transparent !important;
-  color: var(--color-primary) !important;
-  box-shadow: none;
+.btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 /*
  * Play is a transport button like its neighbours, one step brighter. It was a
  * filled accent block — the loudest thing on screen, beside a picture the eye
  * is supposed to be on. The accent is kept for the state: while it plays, the
- * glyph is blue.
+ * glyph is blue. A lit TOGGLE elsewhere in the row is a tint plus a blue
+ * glyph (`viewportToolButton.module.css`), never this, so the two never read
+ * as the same thing.
  */
 .playBtn {
   width: calc(var(--control-height-lg) + 8px);
@@ -200,21 +217,7 @@
   font-size: var(--font-size-micro);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.recLabel {
-  font-size: var(--font-size-micro);
-  font-weight: 700;
-  margin-left: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.autoKeyBtnActive {
-  width: auto !important;
-  padding: 0 var(--space-2) !important;
-  gap: 2px;
 }

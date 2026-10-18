@@ -52,7 +52,7 @@ export function TimelineCompSwitches(): JSX.Element {
         title={globalShy ? 'Shy layers are hidden — click to show them' : 'Hide all layers with the Shy switch on'}
         onClick={() => setGlobalShy(!globalShy)}
       >
-        <Icon name="shy" size="sm" />
+        <Icon name="shy" size="md" />
       </button>
       <button
         type="button"
@@ -62,7 +62,7 @@ export function TimelineCompSwitches(): JSX.Element {
         title={frameBlending ? 'Frame blending on for layers with their Frame Blending switch set — click to turn off' : 'Enable frame blending for all layers with the Frame Blending switch set'}
         onClick={() => setFrameBlending(!frameBlending)}
       >
-        <Icon name="video" size="sm" />
+        <Icon name="video" size="md" />
       </button>
       <button
         type="button"
@@ -72,7 +72,7 @@ export function TimelineCompSwitches(): JSX.Element {
         title={motionBlur ? 'Motion blur on for layers with their Motion Blur switch set — click to turn off' : 'Enable motion blur for all layers with the Motion Blur switch set'}
         onClick={() => setMotionBlur(!motionBlur)}
       >
-        <Icon name="motion-blur" size="sm" />
+        <Icon name="motion-blur" size="md" />
       </button>
       <button
         type="button"
@@ -82,7 +82,7 @@ export function TimelineCompSwitches(): JSX.Element {
         title={autoKeyframe ? 'Auto-Keyframe is ON — every change sets a keyframe (click to turn off)' : 'Auto-Keyframe: set a keyframe whenever a property changes'}
         onClick={() => usePreferenceStore.getState().set('timelineAutoKeyframe', !autoKeyframe)}
       >
-        <Icon name="stopwatch" size="sm" />
+        <Icon name="stopwatch" size="md" />
       </button>
     </span>
   );

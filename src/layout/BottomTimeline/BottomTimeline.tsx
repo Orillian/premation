@@ -20,7 +20,9 @@ import { framesToTimecode } from '@core/time/timecode';
 import { Timeline, type TimelineProps } from '@layout/Timeline';
 import { previewCacheMenuItems, usePreviewCacheStats } from '@layout/Timeline/CacheActions';
 import { GraphEditor } from '@layout/Timeline/GraphEditor';
-import { TimelineSnapButton, useTimelineToolsMenu } from '@layout/Timeline/TimelineTools';
+import { useTimelineToolsMenu } from '@layout/Timeline/TimelineTools';
+import { TimelineFooter } from './TimelineFooter';
+import { installTimelineFitCommands } from '@layout/Timeline/timelineFitCommands';
 import { useTransportDemote } from '@layout/Workspace/useTransportDemote';
 import { cn } from '@utils/cn';
 import { useWorkspaceStore } from '@stores/projectStore';
@@ -61,6 +63,7 @@ import { TIMELINE_LEFT_OFFSET, resolveTrackHeaderWidth } from '@layout/Timeline/
 import { navigatorColumnFor } from './toolbarGeometry';
 import { TimelineToolbarOverflow } from './TimelineToolbarOverflow';
 import { TimelineCompSwitches } from './TimelineCompSwitches';
+import { NavCacheStrip } from './NavCacheStrip';
 import { fitTimelineToComposition } from '@layout/Timeline/timelineFit';
 import { useTranscriptStore } from '@layout/Transcript';
 import { getEventBus } from '@core/events/EventBus';
@@ -88,8 +91,9 @@ const ZOOM_MAX = TIMELINE_PPS_MAX;
  * switches, and since 2026-10-07 so does this one: the Premiere-style edit
  * tools, Playhead Follow and the preview-cache actions are rows of View ▾, and
  * transitions are added from the Library (drag onto a cut or a layer's edge).
- * What is left is timecode · Snap · filter · Graph Editor · View ▾, and the
- * one rung folds View ▾ into a `⋯` when the header column is dragged narrow.
+ * What is left is AE's row — timecode · search · the comp switches · Graph
+ * Editor · the ≡ menu (snapping joined the menu 2026-10-14) — and the one
+ * rung folds the menu into a `⋯` when the header column is dragged narrow.
  *
  * Measured on the column itself (`useTransportDemote`), not a breakpoint: the
  * width is the user's drag.
@@ -424,6 +428,11 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
    * last rung list the very same rows.
    */
   const timelineTools = useTimelineToolsMenu();
+  // The fit commands (fit comp / fit work area) were registered by the zoom
+  // control when it lived in the always-mounted status bar. It now sits in
+  // this panel's footer, which unmounts while the panel is collapsed or showing
+  // the Render Queue — so they are registered here, where they always mount.
+  useEffect(() => installTimelineFitCommands(), []);
   const previewCache = usePreviewCacheStats();
   const viewItems: DropdownItem[] = [
         // The edit tools and Playhead Follow (AE's timeline has no tool row).
@@ -664,9 +673,9 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
         ONE row between the comp tabs and the tracks, in TWO columns that are
         the columns beneath it.
 
-        LEFT, exactly the track-header column's width: timecode · Snap ·
-        filter · Graph Editor · View ▾ — After Effects' timeline header. It
-        never crosses the seam: when the header is dragged narrow View ▾ folds
+        LEFT, exactly the track-header column's width: timecode · search ·
+        comp switches · Graph Editor · ≡ — After Effects' timeline header. It
+        never crosses the seam: when the header is dragged narrow the ≡ folds
         into one `⋯` (`useTransportDemote`, `TIMELINE_TOOLBAR_DEMOTE_ORDER`),
         with the filter giving up its width first.
 
@@ -746,8 +755,6 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
               </span>
             </div>
 
-            <span className={styles.toolbarDivider} aria-hidden="true" />
-            <TimelineSnapButton />
 
             <SearchField
               className={styles.searchContainer}
@@ -769,14 +776,13 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
               */}
               <button
                 type="button"
-                className={graphEditorOpen ? styles.graphToggleActive : styles.graphToggle}
-                title={graphEditorOpen ? 'Back to the layer bars (Shift+F3)' : 'Show curves instead of layer bars (Shift+F3)'}
+                className={cn(styles.compSwitch, graphEditorOpen && styles.compSwitchOn)}
+                title={graphEditorOpen ? 'Back to the layer bars (Shift+F3)' : 'Graph Editor — show curves instead of layer bars (Shift+F3)'}
                 aria-label="Toggle Graph Editor"
                 aria-pressed={graphEditorOpen}
                 onClick={() => setGraphEditorOpen(!graphEditorOpen)}
               >
-                <Icon name="graph-value" size="sm" />
-                <span>Graph Editor</span>
+                <Icon name="graph-value" size="md" />
               </button>
 
               {moreShed ? (
@@ -791,12 +797,11 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                   trigger={
                     <button
                       type="button"
-                      className={styles.toggleBtn}
+                      className={styles.compSwitch}
                       aria-label="Timeline view options"
-                      title="View — timeline tool, playhead follow, shy layers, switches / modes, columns, row height, preview cache"
+                      title="Timeline menu — snapping, timeline tool, playhead follow, switches / modes, columns, row height, preview cache"
                     >
-                      View
-                      <Icon name="chevron-down" size="sm" className={styles.triggerChevron} />
+                      <Icon name="menu" size="md" />
                     </button>
                   }
                   items={viewItems}
@@ -850,6 +855,8 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                 <span className={styles.timeNavGrip} data-edge="end" />
               </div>
             </div>
+            {/* The cache lanes, on the navigator's scale: what will play in real time. */}
+            <NavCacheStrip fps={fps} duration={props.model.duration} />
           </div>
         </div>
       )}
@@ -914,6 +921,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
         )}
       </div>
 
+      {!isCollapsed && !showQueue && <TimelineFooter headerWidth={headerWidth} />}
     </section>
   );
 }

@@ -130,13 +130,14 @@ describe('snap', () => {
     expect(usePreferenceStore.getState().timelineSnap).toBe(true);
   });
 
-  it('offers the switch as a button, not only as a chord', () => {
-    // In the PANEL's toolbar row, not inside <Timeline>: the timeline's tools
-    // have one home, the row between the comp tabs and the tracks.
+  it('offers the switch in the timeline menu, not only as a chord', () => {
+    // In the PANEL's ≡ menu, as in AE (2026-10-14): the toolbar row holds the
+    // timecode, the search and the comp switches.
     render(<BottomTimeline model={MODEL} />);
-    const btn = screen.getByLabelText('Snap in timeline');
-    expect(btn).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(btn);
+    fireEvent.click(screen.getByRole('button', { name: 'Timeline view options' }));
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Snapping (S)' });
+    expect(item).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(item);
     expect(usePreferenceStore.getState().timelineSnap).toBe(false);
   });
 });

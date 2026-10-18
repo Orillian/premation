@@ -30,7 +30,7 @@ import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
 import { EFFECT_DEFS, type EffectDef, type EffectType } from '@core/inspector/effectCatalog';
 import { EFFECT_CATEGORY, EFFECT_CATEGORY_ORDER } from '@layout/Effects/effectCategory';
-import { revealEffectsInProperties } from '@layout/Effects/revealEffectControls';
+import { revealAppliedEffects } from '@layout/Effects/revealEffectControls';
 import { addEffectEdit } from '@layout/Effects/effectEdits';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
@@ -66,7 +66,7 @@ export function applyEffectToSelection(type: EffectType, label: string): void {
   const ids = [...useSelectionStore.getState().ids];
   if (ids.length === 0) return;
   void addEffectEdit(ids, type);
-  revealEffectsInProperties();
+  revealAppliedEffects();
   useUIStore.getState().notify({
     level: 'success',
     message: ids.length === 1 ? `Added ${label}` : `Added ${label} to ${ids.length} layers`,

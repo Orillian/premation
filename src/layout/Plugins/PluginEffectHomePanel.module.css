@@ -1,0 +1,48 @@
+/* An effect plugin's own sidebar panel: one context row (which layer the page
+   edits), then the plugin's page filling the rest. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-primary);
+}
+
+.contextIcon {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+.contextText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextMeta {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-secondary);
+}
+
+.frame {
+  flex: 1;
+  min-height: 0;
+}

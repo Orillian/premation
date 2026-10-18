@@ -1,9 +1,14 @@
 /**
- * The switches on one Layers row.
+ * The switches on one Layers row, in two places.
  *
- * Eye · audio · solo · lock, in the timeline's order and with its glyphs, so
- * the two panels read as one document — plus whichever of AE's layer switches
- * the user has turned on for this panel (`sceneViewStore.switches`).
+ * `SceneRowAV` — eye · audio · solo · lock — is AE's A/V Features column: a
+ * fixed-width gutter on the LEFT of the row (TreeView `renderGutter`), before
+ * the indent, so the four switches line up down the whole list however deep a
+ * layer is nested (owner redesign 2026-10-14). Each switch keeps its cell when
+ * it does not apply, so the columns never shift.
+ *
+ * `SceneRowSwitches` — whichever of AE's layer switches the user has turned on
+ * for this panel (`sceneViewStore.switches`) — stays on the right of the row.
  *
  * All of them are ANCHORED on the clicked row: they act on the whole selection
  * when the row is part of it and on that row alone otherwise, as one undo step.
@@ -39,51 +44,35 @@ function toggleAudioAnchored(id: string): void {
   void toggleAudioAnchoredEdit(id, hasAudio);
 }
 
-export interface SceneRowSwitchesProps {
+export interface SceneRowAVProps {
   nodeId: string;
-  /** Extra AE switches to draw, in `LAYER_FLAGS` order. */
-  flags: ReadonlyArray<LayerFlag>;
 }
 
-export function SceneRowSwitches({ nodeId, flags }: SceneRowSwitchesProps): JSX.Element | null {
-  // B4: the row reads the layer's header from the document mirror. The 3D and
-  // sunburst switches also ask the layer's property tree (a Transform, vector
-  // geometry), so the tree is kept loaded only while one of them is shown.
-  const needsTree = flags.includes('threeD') || flags.includes('collapse');
-  useRetainTree(needsTree ? nodeId : null);
-  // The tree keys are the tree's SHAPE and its `layer/*` group (stroke / corner numbers) — not the whole tree,
-  // which moves on every write of the layer, a viewport drag step included.
-  useMirrorKeys(needsTree ? [`layer:${nodeId}`, `struct:${nodeId}`, `grp:${nodeId}|layer`] : [`layer:${nodeId}`]);
-  const m = documentMirror();
-  const layer = m.layer(nodeId);
-
-  let hidden: boolean;
-  let locked: boolean;
-  let solo: boolean;
-  if (layer) {
-    hidden = !layer.switches.visible;
-    locked = layer.switches.locked;
-    solo = layer.switches.solo;
-  } else {
-    // A composition ROOT is not a layer in the API (it is an item): it has no
-    // eye / lock / solo — the row's switches are a note, never a write (b5-round2).
-    if (!m.comp(nodeId)) return null;
-    hidden = false;
-    locked = false;
-    solo = false;
+/** Eye · audio · solo · lock in fixed cells — the left gutter of a Layers row. */
+export function SceneRowAV({ nodeId }: SceneRowAVProps): JSX.Element {
+  useMirrorKeys([`layer:${nodeId}`]);
+  const layer = documentMirror().layer(nodeId);
+  // A composition ROOT is not a layer in the API (it is an item): it has no
+  // eye / lock / solo, but keeps the empty cells so its name lines up with
+  // the layers under it.
+  if (!layer) {
+    return (
+      <span className={styles.avGutter} aria-hidden="true">
+        <span className={styles.avCell} /><span className={styles.avCell} /><span className={styles.avCell} /><span className={styles.avCell} />
+      </span>
+    );
   }
+  const hidden = !layer.switches.visible;
+  const locked = layer.switches.locked;
+  const solo = layer.switches.solo;
   const audible = mirrorLayerHasAudio(layer);
-  const muted = audible && layer?.switches.audioEnabled === false;
-  // A composition root is the document, not a layer in it: it carries none of
-  // the AE switches, and drawing dead buttons on it would be four more things
-  // in a row that already has to earn its width.
-  const isRoot = !layer;
+  const muted = audible && layer.switches.audioEnabled === false;
 
   return (
-    <>
+    <span className={styles.avGutter}>
       <button
         type="button"
-        className={styles.rowAction}
+        className={styles.avCell}
         data-kind="visible"
         data-on={hidden || undefined}
         aria-label={hidden ? 'Show layer' : 'Hide layer'}
@@ -93,13 +82,11 @@ export function SceneRowSwitches({ nodeId, flags }: SceneRowSwitchesProps): JSX.
         <Icon name={hidden ? 'eye-off' : 'eye'} size="sm" />
       </button>
 
-      {/* AE's A/V Features column puts the speaker next to the eye. Layers that
-          make no sound simply do not get one here — unlike the timeline, this
-          row is not a fixed-width column that has to stay aligned. */}
-      {audible && (
+      {/* Layers that make no sound keep an empty cell, as AE's column does. */}
+      {audible ? (
         <button
           type="button"
-          className={styles.rowAction}
+          className={styles.avCell}
           data-kind="audio"
           data-on={muted || undefined}
           aria-label={muted ? 'Unmute layer audio' : 'Mute layer audio'}
@@ -109,11 +96,11 @@ export function SceneRowSwitches({ nodeId, flags }: SceneRowSwitchesProps): JSX.
         >
           <Icon name={muted ? 'audio-off' : 'audio'} size="sm" />
         </button>
-      )}
+      ) : <span className={styles.avCell} aria-hidden="true" />}
 
       <button
         type="button"
-        className={styles.rowAction}
+        className={styles.avCell}
         data-kind="solo"
         data-on={solo || undefined}
         aria-label={solo ? 'Unsolo layer' : 'Solo layer'}
@@ -125,17 +112,42 @@ export function SceneRowSwitches({ nodeId, flags }: SceneRowSwitchesProps): JSX.
 
       <button
         type="button"
-        className={styles.rowAction}
+        className={styles.avCell}
         data-kind="lock"
         data-on={locked || undefined}
         aria-label={locked ? 'Unlock layer' : 'Lock layer'}
         title={locked ? 'Unlock' : 'Lock'}
         onClick={(e) => { e.stopPropagation(); void toggleLayerSwitchAnchored(nodeId, 'locked'); }}
       >
-        <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
+        <Icon name="lock" size="sm" />
       </button>
+    </span>
+  );
+}
 
-      {!isRoot && flags.map((flag) => {
+export interface SceneRowSwitchesProps {
+  nodeId: string;
+  /** Extra AE switches to draw, in `LAYER_FLAGS` order. */
+  flags: ReadonlyArray<LayerFlag>;
+}
+
+/** The optional AE switches the view menu turned on, on the right of the row. */
+export function SceneRowSwitches({ nodeId, flags }: SceneRowSwitchesProps): JSX.Element | null {
+  // The 3D and sunburst switches ask the layer's property tree (a Transform,
+  // vector geometry), so the tree is kept loaded only while one of them is shown.
+  const needsTree = flags.includes('threeD') || flags.includes('collapse');
+  useRetainTree(needsTree ? nodeId : null);
+  // The tree keys are the tree's SHAPE and its `layer/*` group (stroke / corner numbers) — not the whole tree,
+  // which moves on every write of the layer, a viewport drag step included.
+  useMirrorKeys(needsTree ? [`layer:${nodeId}`, `struct:${nodeId}`, `grp:${nodeId}|layer`] : [`layer:${nodeId}`]);
+  const m = documentMirror();
+  const layer = m.layer(nodeId);
+  // A composition root is the document, not a layer in it: it carries none of the AE switches.
+  if (!layer || flags.length === 0) return null;
+
+  return (
+    <>
+      {flags.map((flag) => {
         // A switch the layer cannot carry is left out rather than drawn dead:
         // unlike the timeline, this row is not a fixed-width column that has to
         // stay aligned, so an absent switch costs nothing and a dead one lies.

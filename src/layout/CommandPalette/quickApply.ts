@@ -15,7 +15,7 @@
 
 import { EFFECT_DEFS, effectDefFor, type EffectType } from '@core/inspector/effectCatalog';
 import { EFFECT_CATEGORY } from '@layout/Effects/effectCategory';
-import { revealEffectsInProperties } from '@layout/Effects/revealEffectControls';
+import { revealAppliedEffects } from '@layout/Effects/revealEffectControls';
 import { addEffectEdit } from '@layout/Effects/effectEdits';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { listPresets, presetFolder, type AnimationPreset } from '@core/animation/animationPresets';
@@ -71,7 +71,7 @@ export function effectHits(term: string, limit: number): QuickApplyHit[] {
         // selection, and a search-to-apply that only hit the first would force
         // the user to repeat the search per layer. ONE engine entry for all.
         void addEffectEdit(sel, d.type as EffectType);
-        revealEffectsInProperties();
+        revealAppliedEffects();
       },
     });
   }

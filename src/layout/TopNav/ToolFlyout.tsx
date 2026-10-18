@@ -28,6 +28,8 @@ export interface ToolFlyoutItem {
    * toolbar used to do and which no menu row anywhere else does.
    */
   shortcut?: string;
+  /** One line on what the tool does; a hover title, so the row stays a short name. */
+  hint?: string;
   /** Draw a rule above this entry. */
   separatorBefore?: boolean;
 }
@@ -90,7 +92,7 @@ export function ToolFlyout({ icon, label, title, shortcut, active, disabled, ite
           disabled={disabled}
           data-tour={dataTour}
         >
-          <Icon name={icon} size="md" />
+          <Icon name={icon} size="sm" />
           <Icon name="chevron-down" size="sm" className={styles.chevron} />
         </button>
       }
@@ -98,7 +100,14 @@ export function ToolFlyout({ icon, label, title, shortcut, active, disabled, ite
       <Menu onItemActivate={() => setOpen(false)}>
         {items.flatMap((it) => [
           it.separatorBefore ? <MenuSeparator key={`sep-${it.id}`} /> : null,
-          <MenuItem key={it.id} id={it.id} label={it.label} icon={it.icon} shortcut={it.shortcut} onSelect={it.onSelect} />,
+          <MenuItem
+            key={it.id}
+            id={it.id}
+            label={it.hint ? <span className={styles.flyoutLabel} title={it.hint}>{it.label}</span> : it.label}
+            icon={it.icon}
+            shortcut={it.shortcut}
+            onSelect={it.onSelect}
+          />,
         ])}
       </Menu>
     </Popover>

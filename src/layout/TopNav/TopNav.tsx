@@ -96,6 +96,8 @@ interface ToolDef {
   id: Tool;
   icon: IconName;
   label: string;
+  /** What the tool does, shown on hover — the menu row itself stays a short name. */
+  hint?: string;
 }
 
 const POINTER_TOOLS: ToolDef[] = [
@@ -108,20 +110,20 @@ const POINTER_TOOLS: ToolDef[] = [
 ];
 
 const PEN_TOOLS: ToolDef[] = [
-  { id: 'pen',      icon: 'pen',        label: 'Pen Tool' },
-  { id: 'pencil',   icon: 'pencil',     label: 'Pencil Tool' },
-  { id: 'brush',    icon: 'brush',      label: 'Brush Tool (pressure ink)' },
+  { id: 'pen',      icon: 'pen',        label: 'Pen',       hint: 'Click for corners, drag for curves' },
+  { id: 'curvature',icon: 'curvature',  label: 'Curvature', hint: 'Every click makes a smooth curve' },
+  { id: 'pencil',   icon: 'pencil',     label: 'Pencil',    hint: 'Freehand line of even width' },
+  { id: 'brush',    icon: 'brush',      label: 'Brush',     hint: 'Filled ink stroke; width follows pen pressure' },
   // Split out of the Brush, which used to turn into this on its own whenever
   // the pointer happened to land on the selected layer.
-  { id: 'paint',    icon: 'paint',      label: 'Paint Tool (paints onto the selected layer)' },
-  { id: 'eraser',   icon: 'eraser',     label: 'Eraser Tool (erases paint on the selected layer)' },
-  { id: 'curvature',icon: 'curvature',  label: 'Curvature Pen' },
+  { id: 'paint',    icon: 'paint',      label: 'Paint',     hint: 'Paint onto the selected layer' },
+  { id: 'eraser',   icon: 'eraser',     label: 'Eraser',    hint: 'Erase paint on the selected layer' },
   // AE's Pen flyout. The Pen does all three on its own (over a segment it
   // adds, over a vertex it converts); these do one thing wherever they land.
-  { id: 'add-vertex',     icon: 'add-vertex',     label: 'Add Vertex Tool' },
-  { id: 'delete-vertex',  icon: 'delete-vertex',  label: 'Delete Vertex Tool' },
-  { id: 'convert-vertex', icon: 'convert-vertex', label: 'Convert Vertex Tool' },
-  { id: 'mask-feather',   icon: 'mask-feather',   label: 'Mask Feather Tool (variable feather points)' },
+  { id: 'add-vertex',     icon: 'add-vertex',     label: 'Add Point',     hint: 'Click a path to add a point' },
+  { id: 'delete-vertex',  icon: 'delete-vertex',  label: 'Delete Point',  hint: 'Click a point to remove it' },
+  { id: 'convert-vertex', icon: 'convert-vertex', label: 'Convert Point', hint: 'Toggle a point between corner and smooth' },
+  { id: 'mask-feather',   icon: 'mask-feather',   label: 'Mask Feather',  hint: 'Add variable feather points to a mask' },
 ];
 
 /**
@@ -135,7 +137,8 @@ const PEN_TOOLS: ToolDef[] = [
 const KNIFE_FLYOUT = {
   tool: 'knife' as Tool,
   icon: 'knife' as IconName,
-  label: 'Knife Tool (Shift+K) — drag across a shape to cut its path',
+  label: 'Knife',
+  hint: 'Drag across a shape to cut its path',
 };
 
 const SHAPE_TOOLS: ToolDef[] = [
@@ -163,7 +166,7 @@ const MASK_TOOLS: ToolDef[] = [
 const BONE_TOOL: ToolDef = { id: 'bone', icon: 'bone', label: 'Bone Tool' };
 
 /** AE parity 3.1: Roto Brush & Object Matte on the toolbar (it was reachable only by Alt+W). */
-const ROTO_TOOL: ToolDef = { id: 'roto', icon: 'magic-wand', label: 'Roto Brush & Object Matte Tool' };
+const ROTO_TOOL: ToolDef = { id: 'roto', icon: 'magic-wand', label: 'Roto Brush' };
 
 /** "Selection Tool (V)" — the ACCESSIBLE name, chord read live from the registry. */
 const withShortcut = (t: ToolDef): string => toolLabelWithShortcut(t.label, t.id);
@@ -179,6 +182,7 @@ const flyoutItems = (tools: ReadonlyArray<ToolDef>, setTool: (t: Tool) => void):
   tools.map((t) => ({
     id: t.id,
     label: t.label,
+    hint: t.hint,
     shortcut: toolShortcut(t.id),
     icon: t.icon,
     onSelect: () => setTool(t.id),
@@ -558,6 +562,7 @@ export function TopNav(): JSX.Element {
     {
       id: KNIFE_FLYOUT.tool,
       label: KNIFE_FLYOUT.label,
+      hint: KNIFE_FLYOUT.hint,
       // The Knife's "(K)" used to be typed into its label alongside a comment
       // saying it had no shortcut. It does: Providers binds `tool.knife` to K.
       // Read live like every other row, so the row and the binding cannot drift
@@ -592,11 +597,11 @@ export function TopNav(): JSX.Element {
             {cloudProjectsEnabled() && (
               <IconButton
                 aria-label="Back to Dashboard"
-                size="md"
+                size="sm"
                 className={styles.back}
                 onClick={() => navigate('/')}
               >
-                <Icon name="arrow-left" size="md" />
+                <Icon name="arrow-left" size="sm" />
               </IconButton>
             )}
 
@@ -663,7 +668,7 @@ export function TopNav(): JSX.Element {
                       aria-pressed={activeTool === ROTO_TOOL.id}
                       onClick={() => setTool(ROTO_TOOL.id)}
                     >
-                      <Icon name={ROTO_TOOL.icon} size="md" />
+                      <Icon name={ROTO_TOOL.icon} size="sm" />
                     </button>
                   )}
 
@@ -700,7 +705,7 @@ export function TopNav(): JSX.Element {
                         disabled={!canRig}
                         onClick={() => setTool(BONE_TOOL.id)}
                       >
-                        <Icon name={BONE_TOOL.icon} size="md" />
+                        <Icon name={BONE_TOOL.icon} size="sm" />
                       </button>
                     </>
                   )}
@@ -717,7 +722,7 @@ export function TopNav(): JSX.Element {
                 noScroll
                 trigger={
                   <button type="button" className={styles.toolDropdownTrigger} aria-label="New layer" aria-haspopup="menu" title="New Layer (Shape, Text, Solid, Null, Camera, Light, 3D…)">
-                    <Icon name="layer-plus" size="md" />
+                    <Icon name="layer-plus" size="sm" />
                     <Icon name="chevron-down" size="sm" className={styles.chevron} />
                   </button>
                 }
@@ -785,7 +790,7 @@ export function TopNav(): JSX.Element {
                       title={selectedId ? 'Animation presets & rigging (Easy Ease, Typewriter, Bounce, Rig)…' : 'Select a layer to apply animation presets'}
                       disabled={!selectedId}
                     >
-                      <Icon name="magic-wand" size="md" />
+                      <Icon name="magic-wand" size="sm" />
                       <Icon name="chevron-down" size="sm" className={styles.chevron} />
                     </button>
                   }
@@ -807,7 +812,7 @@ export function TopNav(): JSX.Element {
                     title={snap ? 'Snapping ON — Magnetically snaps layers & playhead (Click to disable)' : 'Snapping OFF — Click to enable magnetic snapping'}
                     onClick={toggleSnap}
                   >
-                    <Icon name="magnet" size="md" />
+                    <Icon name="magnet" size="sm" />
                   </button>
                 </div>
               </>
@@ -832,7 +837,7 @@ export function TopNav(): JSX.Element {
                     placement="bottom-end"
                     trigger={
                       <button type="button" className={styles.tool} aria-label="More tools" aria-haspopup="menu" title="More tools">
-                        <Icon name="more-horizontal" size="md" />
+                        <Icon name="more-horizontal" size="sm" />
                       </button>
                     }
                     items={overflowItems}
@@ -854,7 +859,7 @@ export function TopNav(): JSX.Element {
                     disabled={!canUndo}
                     onClick={() => performUndo()}
                   >
-                    <Icon name="undo" size="md" />
+                    <Icon name="undo" size="sm" />
                   </button>
                   <button
                     type="button"
@@ -864,7 +869,7 @@ export function TopNav(): JSX.Element {
                     disabled={!canRedo}
                     onClick={() => performRedo()}
                   >
-                    <Icon name="redo" size="md" />
+                    <Icon name="redo" size="sm" />
                   </button>
                 </div>
               </>
@@ -894,7 +899,7 @@ export function TopNav(): JSX.Element {
                   placement="bottom-end"
                   trigger={
                     <IconButton aria-label="Workspaces" size="sm" title="Workspaces & Layout Presets">
-                      <Icon name="layout" size="md" />
+                      <Icon name="layout" size="sm" />
                     </IconButton>
                   }
                   items={buildWorkspaceItems()}
@@ -905,7 +910,7 @@ export function TopNav(): JSX.Element {
                   title="Customize (Shortcuts, Workspaces, Appearance)"
                   onClick={() => openCustomizeDialog()}
                 >
-                  <Icon name="settings" size="md" />
+                  <Icon name="settings" size="sm" />
                 </IconButton>
               </>
             )}

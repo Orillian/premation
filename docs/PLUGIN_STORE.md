@@ -248,9 +248,8 @@ list covers its bundles by id and version like installed ones.
 - Export: the export job starts its own plugin host over the same folders,
   disabled set and revocations (job fields `plugins`, `pluginDisabled`,
   `pluginRevoked`, written by `electron/engineExport.ts` for the app's export
-  queue and the CLI), so plugin effects render in exports. Server renders
-  are refused before submission when the project uses plugin effects, naming
-  the plugins (`src/layout/Export/cloudRender.ts`).
+  queue and the CLI), so plugin effects render in exports. There is no
+  server render: every export runs in the engine on this computer.
 - Revocation: Electron fetches the signed list at start (public, no session),
   verifies it with the operator key pinned in the app, keeps the newest, and
   hands the engine the installed plugins it hits at every launch

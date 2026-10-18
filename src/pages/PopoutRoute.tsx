@@ -8,6 +8,7 @@ import { PopoutTimeline } from '@layout/BottomTimeline/PopoutTimeline';
 import { PresentationModeWindow } from '@layout/Presentation/PresentationModeWindow';
 
 import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
+import { AiChatProvider } from '@layout/AiChat/AiChatContext';
 import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
 import { pluginContribRevision, pluginPanel, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import { Providers } from '../providers/Providers';
@@ -80,7 +81,11 @@ function PopoutContent(): JSX.Element {
     >
       {/* No header row: the window's title bar names the panel (TitleBar). */}
       <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-        {renderContent ? renderContent() : <div style={{ padding: 20 }}>Panel Content ({panelId})</div>}
+        {/* The AI panel reads its chat state from <AiChatProvider>, which only
+            EditorShell mounts — a popped-out AI panel needs its own. */}
+        {renderContent
+          ? (panelId === 'ai' ? <AiChatProvider>{renderContent()}</AiChatProvider> : renderContent())
+          : <div style={{ padding: 20 }}>Panel Content ({panelId})</div>}
       </div>
     </div>
   );

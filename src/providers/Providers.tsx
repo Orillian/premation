@@ -94,6 +94,7 @@ import { openAutoOrientDialog } from '@layout/Composition/AutoOrientDialog';
 import { buildCameraCommands } from '@core/scene/cameraCommands';
 import { buildCameraShotCommands } from '@layout/Composition/CameraShotDialogs';
 import { buildStereoRigCommands } from '@core/scene/stereoRigCommands';
+import { buildCarouselCommands } from '@core/scene/carouselCommands';
 import { buildCameraExportCommands } from '@core/scene/cameraExport';
 import { buildDepthParallaxCommands } from '@layout/Menu/depthParallaxCommands';
 import { buildSmartAnimateCommands, installSmartAnimateCommandSync } from './commands/smartAnimateCommands';
@@ -1624,6 +1625,7 @@ export function buildStaticCommands(): ReadonlyArray<Command> {
     ...buildCameraCommands(),
     ...buildCameraShotCommands(),
     ...buildStereoRigCommands(),
+    ...buildCarouselCommands(),
     ...buildCameraExportCommands(),
     ...buildDepthParallaxCommands(),
     ...buildSmartAnimateCommands(),

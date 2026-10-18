@@ -6,7 +6,7 @@
  * draw time); the local state mirror exists only to re-render the bar.
  */
 
-import { useReducer } from 'react';
+import { useCallback, useReducer, useState } from 'react';
 import { drawToolOptions } from '@motion/workspace';
 import { useUIStore } from '@stores/uiStore';
 import { usePaintStore } from '@stores/paintStore';
@@ -24,6 +24,7 @@ import { SHAPE_PAINT_TOOLS } from '@core/workspace/shapeToolPaint';
 import { pinColor } from '@core/rig/puppet';
 import { Icon } from '@components/Icon';
 import { Badge } from '@components/Badge';
+import { Popover } from '@components/Popover';
 import { useViewportDisplayStore } from '@stores/viewportDisplayStore';
 import { useRotoBrushStore } from '@stores/rotoBrushStore';
 import { propagateObjectMatte, propagateRotoForward, rotoFreezeEdit, rotoMattes } from '@core/workspace/rotoBrushTool';
@@ -65,8 +66,24 @@ export interface ToolOptionsBarProps {
   inline?: boolean;
 }
 
+/**
+ * The strip scrolls sideways with its scrollbar hidden (a scrollbar would add
+ * height to a 30 px row), so a vertical wheel has to scroll it — otherwise
+ * options past the edge are reachable only by Tab.
+ */
+function onBarWheel(e: WheelEvent): void {
+  const el = e.currentTarget as HTMLElement;
+  if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  if ((e.target as HTMLElement).closest('input')) return;
+  el.scrollLeft += e.deltaY;
+  e.preventDefault();
+}
+
 export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JSX.Element | null {
   const barClass = inline ? styles.barInline : styles.bar;
+  const wheelScrollRef = useCallback((el: HTMLDivElement | null) => {
+    el?.addEventListener('wheel', onBarWheel, { passive: false });
+  }, []);
   const activeTool = useUIStore((s) => s.activeTool);
   // Snap-to-pixel is a VIEWPORT mode, not a tool option, which is exactly
   // why its indicator belongs on the tool bar: it changes what every drag in
@@ -347,7 +364,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   // it. AE's tool options never move the Composition panel either.
   if (!content && !snapToPixel) return <div className={barClass} aria-hidden="true" data-tool-options-empty="" />;
   return (
-    <div className={barClass} role="toolbar" aria-label="Tool options">
+    <div className={barClass} role="toolbar" aria-label="Tool options" ref={wheelScrollRef}>
       {content}
       {/* ── VIEWPORT-SNAP-BADGE (unique anchor) ─────────────────────────
           Pushed to the far end so it never moves as tool options change
@@ -395,6 +412,7 @@ function RotoOptions(): JSX.Element {
   const canPropagate = !!nodeId && strokes.some((s) => s.kind === 'fg') && !busy && !frozen;
   const engine = useRotoBrushStore((s) => s.engine);
   const refine = useRotoBrushStore((s) => s.refine);
+  const [refineOpen, setRefineOpen] = useState(false);
 
   /** Object Matte (AE parity 3.1): the subject followed with the model, from the playhead, either way. */
   const propagateMatte = (direction: 'forward' | 'backward' | 'both'): void => {
@@ -510,27 +528,48 @@ function RotoOptions(): JSX.Element {
               <Icon name="skip-forward" size="sm" />
             </button>
           </div>
-          <Row label="Edge">
-            <ValueField aria-label="Refine edge radius" value={refine.edgeRadius} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ edgeRadius: Number(v) })} />
-          </Row>
-          <Row label="Choke">
-            <ValueField aria-label="Choke" value={refine.choke} unit="%" min={-100} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ choke: Number(v) })} />
-          </Row>
-          <Row label="Decontaminate">
-            <ValueField aria-label="Decontaminate" value={refine.decontaminate} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ decontaminate: Number(v) })} />
-          </Row>
-          <Row label="Chatter">
-            <ValueField aria-label="Reduce chatter" value={refine.reduceChatter} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ reduceChatter: Number(v) })} />
-          </Row>
-          <button
-            type="button"
-            className={refine.motionBlur ? styles.kindActive : styles.kind}
-            aria-pressed={refine.motionBlur}
-            title="Blur the matte along the motion, as the camera blurred the subject"
-            onClick={() => useRotoBrushStore.getState().setRefine({ motionBlur: !refine.motionBlur })}
+          <Popover
+            placement="bottom-start"
+            open={refineOpen}
+            onOpenChange={setRefineOpen}
+            trigger={
+              <button
+                type="button"
+                className={refineOpen ? styles.kindActive : styles.kind}
+                aria-haspopup="dialog"
+                aria-expanded={refineOpen}
+                title="Edge radius, choke, decontaminate, chatter and motion blur"
+              >
+                <Icon name="tune" size="sm" />
+                Refine
+                <Icon name="chevron-down" size="sm" />
+              </button>
+            }
           >
-            Motion Blur
-          </button>
+            <div className={styles.refinePanel} role="dialog" aria-label="Refine matte">
+              <Row label="Edge">
+                <ValueField aria-label="Refine edge radius" value={refine.edgeRadius} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ edgeRadius: Number(v) })} />
+              </Row>
+              <Row label="Choke">
+                <ValueField aria-label="Choke" value={refine.choke} unit="%" min={-100} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ choke: Number(v) })} />
+              </Row>
+              <Row label="Decontaminate">
+                <ValueField aria-label="Decontaminate" value={refine.decontaminate} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ decontaminate: Number(v) })} />
+              </Row>
+              <Row label="Chatter">
+                <ValueField aria-label="Reduce chatter" value={refine.reduceChatter} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ reduceChatter: Number(v) })} />
+              </Row>
+              <button
+                type="button"
+                className={refine.motionBlur ? styles.kindActive : styles.kind}
+                aria-pressed={refine.motionBlur}
+                title="Blur the matte along the motion, as the camera blurred the subject"
+                onClick={() => useRotoBrushStore.getState().setRefine({ motionBlur: !refine.motionBlur })}
+              >
+                Motion Blur
+              </button>
+            </div>
+          </Popover>
         </>
       ) : (
         <button

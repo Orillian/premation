@@ -25,7 +25,11 @@
 /* ── The column ────────────────────────────────────────────────────── */
 .column {
   flex-direction: column;
-  background: var(--color-border-structural);
+  /* The panel's colour, not the frame's: space the groups leave (under a
+     collapsed group, at the column's foot) read as a black slab — the
+     "sidebars are still black" report (2026-10-14). The 2px seams carry the
+     dark divider themselves. */
+  background: var(--color-panel);
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -41,7 +45,7 @@
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
-  min-height: calc(var(--bar-height-panel) + 56px);
+  min-height: calc(var(--dock-strip-height) + 56px);
   min-width: 0;
   background: var(--color-panel);
 }
@@ -65,6 +69,7 @@
   flex: none;
   height: 2px;
   min-height: 2px;
+  background: var(--color-border-structural);
 }
 
 /* No gap above the first group: the column starts with a strip. */
@@ -117,15 +122,23 @@
 }
 
 /* ── The strip ─────────────────────────────────────────────────────── */
+/* The approved 2026-10-19 sheet: a 28px strip on the darker ground, the front
+   tab lifted onto the panel's own surface with a 2px accent along its top
+   edge, a dark seam under the strip. One strip for every panel in the app. */
 .strip {
   position: relative;
   display: flex;
   align-items: stretch;
-  height: var(--bar-height-panel);
-  min-height: var(--bar-height-panel);
+  height: var(--dock-strip-height);
+  min-height: var(--dock-strip-height);
   flex: none;
   background: var(--color-surface-0);
+  box-shadow: inset 0 -1px 0 var(--color-border-structural);
   user-select: none;
+}
+
+.root {
+  --dock-strip-height: var(--control-height-lg);
 }
 
 /* The twirl: the group opens and closes, the way a twirl reads everywhere else. */
@@ -222,8 +235,9 @@
   font-weight: var(--panel-weight-tab-active);
 }
 
-/* The focused group's front tab carries the accent along its top edge. */
-.groupFocused .slotActive::before {
+/* The front tab carries the accent along its TOP edge (the sheet): the tab is
+   the panel's lifted top edge, and the line marks which one is lifted. */
+.slotActive::before {
   content: '';
   position: absolute;
   left: 0;
@@ -231,6 +245,10 @@
   top: 0;
   height: 2px;
   background: var(--color-primary);
+}
+
+.groupCollapsed .slotActive::before {
+  display: none;
 }
 
 .tab:focus-visible,
@@ -266,12 +284,12 @@
 
 .fadeLeft {
   left: 0;
-  background: linear-gradient(90deg, var(--color-surface-0), transparent);
+  background: linear-gradient(90deg, var(--color-panel), transparent);
 }
 
 .fadeRight {
   right: 0;
-  background: linear-gradient(270deg, var(--color-surface-0), transparent);
+  background: linear-gradient(270deg, var(--color-panel), transparent);
 }
 
 .stripMoreLeft .fadeLeft,

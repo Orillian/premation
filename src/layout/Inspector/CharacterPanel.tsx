@@ -12,6 +12,7 @@ import { useGesture } from '@hooks/useGesture';
 import { edit } from '@core/engine/uiEdits';
 import { fieldCommands, fieldEdit, sourceTextCommand, sourceTextStopwatchCommand, textPresetEdit } from '@layout/Text/textEdits';
 import { getFontWeights, WEIGHT_LABELS } from '@core/text/fontCatalog';
+import { fontFamilyInfo, loadEngineFontList, onEngineFontListReady } from '@core/fonts/engineFontList';
 import { useTextEditStore, hasRange, TEXT_EDIT_KEEP_ATTR } from '@stores/textEditStore';
 import { applyStyleToRange, styleOverRange, type RunStyleKey, type RichRun } from '@core/text/richText';
 import type { TextStyle } from '@core/text/textLayout';
@@ -239,6 +240,11 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const [fallbackTcyDigits, setFallbackTcyDigits] = useState(TATE_CHU_YOKO_DEFAULT_DIGITS);
   /** The section layout's "More text options" — shut by default: they are the rarer controls. */
   const [moreOpen, setMoreOpen] = useState(false);
+  /**
+   * AE's swatch pair: the square clicked last is "in front", and the ⊘ under
+   * the pair applies None to that one. Editor state, never the document's.
+   */
+  const [frontPaint, setFrontPaint] = useState<'fill' | 'stroke'>('fill');
 
   const hasTarget = Boolean(primary && tComp && layer);
 
@@ -414,7 +420,19 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const currentSpaceBefore = hasTarget ? Number(spaceBefore ?? 0) : fallbackSpaceBefore;
   const currentSpaceAfter = hasTarget ? Number(spaceAfter ?? 0) : fallbackSpaceAfter;
 
-  const availableWeights = getFontWeights(activeFamily);
+  // The weights the engine really draws for this family; the list arrives
+  // once per session (the shipped families answer before it does).
+  const [, setFontListReady] = useState(false);
+  useEffect(() => {
+    const off = onEngineFontListReady(() => setFontListReady(true));
+    void loadEngineFontList();
+    return off;
+  }, []);
+  const realWeights = getFontWeights(activeFamily);
+  // A stored weight the family does not have still shows — as what it is.
+  const activeWeightNum = Number(activeWeight);
+  const weightMissing = Number.isFinite(activeWeightNum) && !realWeights.includes(activeWeightNum);
+  const availableWeights = weightMissing ? [...realWeights, activeWeightNum].sort((a, b) => a - b) : realWeights;
 
   // Manual kerning (AE): a value applies BETWEEN the two characters at the
   // caret — stored on the character before it. With a range selected it
@@ -750,46 +768,58 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
         </div>
   );
 
-  // Font family & weight.
+  // Font family, then ONE style menu — AE's: every weight of the family,
+  // upright and italic ("Extra Bold", "Extra Bold Italic"). An italic the
+  // family lacks is synthesized by the engine, like Faux Italic. The option
+  // value is `<weight>` or `<weight>/italic`.
+  const activeItalic = activeStyle === 'italic';
+  const activeFaceValue = activeItalic ? `${activeWeight}/italic` : activeWeight;
+  const handleFaceChange = (value: string): void => {
+    const [w, st] = value.split('/');
+    const nextWeight = w ?? activeWeight;
+    const nextStyle = st === 'italic' ? 'italic' : 'normal';
+    if (nextWeight !== activeWeight) handleWeightChange(nextWeight);
+    if (nextStyle !== (activeItalic ? 'italic' : 'normal')) handleStyleChange(nextStyle);
+  };
   const fontRow = (
-        <div className={styles.fontRow}>
+        <div className={`${styles.row} ${styles.rowFont}`}>
           <FontPicker
             value={activeFamily}
             onChange={handleFamilyChange}
             // A picked installed FACE carries its real weight and italic.
             onStyleChange={(f) => { handleWeightChange(f.weight); handleStyleChange(f.fontStyle); }}
           />
-          <select
-            value={activeWeight}
-            onChange={(e) => handleWeightChange(e.target.value)}
-            className={styles.fontSelect}
-            aria-label="Font Weight"
-          >
-            {availableWeights.map((w) => (
-              <option key={w} value={String(w)}>{WEIGHT_LABELS[w] ?? String(w)}</option>
-            ))}
-          </select>
-          {/* AE's style menu: the family's upright or italic face (an italic the
-              family lacks is synthesized by the engine, like Faux Italic). */}
-          <select
-            value={activeStyle === 'italic' ? 'italic' : 'normal'}
-            onChange={(e) => handleStyleChange(e.target.value === 'italic' ? 'italic' : 'normal')}
-            className={styles.fontSelect}
-            aria-label="Font Style"
-            title="Regular or the family's italic face (synthesized when it has none)"
-          >
-            <option value="normal">Regular</option>
-            <option value="italic">Italic</option>
-          </select>
+          <div className={styles.field}>
+            <select
+              value={activeFaceValue}
+              onChange={(e) => handleFaceChange(e.target.value)}
+              className={`${styles.fieldSelect} ${styles.fieldSelectPlain}`}
+              aria-label="Font Style"
+              title="The family's weight, upright or italic (an italic it lacks is synthesized)"
+            >
+              {availableWeights.map((w) => (
+                <option key={w} value={String(w)}>
+                  {WEIGHT_LABELS[w] ?? String(w)}
+                  {weightMissing && w === activeWeightNum ? ' — not in this font' : ''}
+                </option>
+              ))}
+              {availableWeights.map((w) => (
+                <option key={`${w}i`} value={`${w}/italic`}>
+                  {`${WEIGHT_LABELS[w] ?? String(w)} Italic`}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
+          </div>
         </div>
   );
 
   // Size · Leading · Tracking are ValueFields (scrub, arrows, Shift ×10,
   // maths), as every numeric row in the app — they were plain number inputs.
   const sizeCell = (
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Font Size (TT)">Size</span>
-            <div className={styles.metricValue}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Font Size (TT)">Size</span>
+            <div className={styles.fieldValue}>
               <ValueField
                 aria-label="Font Size"
                 value={activeSize}
@@ -809,9 +839,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const leadingMultiple = shownLeading !== undefined ? shownLeading : activeLeading;
   const leadingPx = Math.round(leadingMultiple * activeSize * 10) / 10;
   const leadingCell = (
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Leading (A/A), in px. Auto = 120% of the font size.">Leading</span>
-            <div className={styles.metricValue}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Leading (A/A), in px. Auto = 120% of the font size.">Leading</span>
+            <div className={styles.fieldValue}>
               <ValueField
                 aria-label="Leading"
                 value={leadingPx}
@@ -825,7 +855,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             </div>
             <button
               type="button"
-              className={styles.metricToggle}
+              className={styles.fieldToggle}
               data-active={leadingIsAuto && shownLeading === undefined}
               aria-pressed={leadingIsAuto && shownLeading === undefined}
               aria-label="Auto Leading"
@@ -839,14 +869,14 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
 
   // Faux bold / italic, caps, super / subscript, tate-chu-yoko.
   const styleToolbar = (
-        <div className={styles.controlGroup} role="toolbar" aria-label="Character Formatting Styles">
+        <div className={styles.strip} role="toolbar" aria-label="Character Formatting Styles">
           <IconButton
             size="sm"
             variant="ghost"
             active={isFauxBold}
             aria-label="Faux Bold"
             tooltip="Faux Bold"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() =>
               setCharProp('fauxBold', !isFauxBold, (v) => {
                 if (hasTarget) setFauxBold(v === true);
@@ -862,7 +892,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={isFauxItalic}
             aria-label="Faux Italic"
             tooltip="Faux Italic"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() =>
               setCharProp('fauxItalic', !isFauxItalic, (v) => {
                 if (hasTarget) setFauxItalic(v === true);
@@ -878,7 +908,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={isAllCaps}
             aria-label="All Caps"
             tooltip="All Caps"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => toggleRangeFlag('allCaps', !isAllCaps, () => {
               const next = isAllCaps ? 'none' : 'uppercase';
               if (hasTarget) setTextTransform(next);
@@ -893,7 +923,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={isSmallCaps}
             aria-label="Small Caps"
             tooltip="Small Caps"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => toggleRangeFlag('smallCaps', !isSmallCaps, () => {
               const next = isSmallCaps ? 'normal' : 'small-caps';
               if (hasTarget) setFontVariant(next);
@@ -908,7 +938,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={isSuperscript}
             aria-label="Superscript"
             tooltip="Superscript"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => setRangeVerticalAlign(isSuperscript ? undefined : 'super', () => {
               const next = isSuperscript ? 'baseline' : 'super';
               if (hasTarget) setVerticalAlign(next);
@@ -923,7 +953,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={isSubscript}
             aria-label="Subscript"
             tooltip="Subscript"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => setRangeVerticalAlign(isSubscript ? undefined : 'sub', () => {
               const next = isSubscript ? 'baseline' : 'sub';
               if (hasTarget) setVerticalAlign(next);
@@ -939,7 +969,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             disabled={!ranged}
             aria-label="Tate-Chu-Yoko"
             tooltip={ranged ? 'Tate-Chu-Yoko' : 'Tate-Chu-Yoko (select characters in vertical type)'}
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => setCharProp('tateChuYoko', isTateChuYoko ? undefined : true, () => {})}
           >
             TCY
@@ -952,14 +982,14 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
 
   // The seven alignment / justify buttons.
   const alignGroup = (
-        <div className={styles.controlGroup} role="radiogroup" aria-label="Paragraph Alignment">
+        <div className={styles.strip} role="radiogroup" aria-label="Paragraph Alignment">
           <IconButton
             size="sm"
             variant="ghost"
             active={currentAlign === 'left'}
             aria-label="Left Align"
             tooltip="Left Align"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('left')}
           >
             <Icon name="text-left" size="sm" />
@@ -970,7 +1000,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'center'}
             aria-label="Center Align"
             tooltip="Center Align"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('center')}
           >
             <Icon name="text-center" size="sm" />
@@ -981,7 +1011,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'right'}
             aria-label="Right Align"
             tooltip="Right Align"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('right')}
           >
             <Icon name="text-right" size="sm" />
@@ -992,7 +1022,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'justify' || currentAlign === 'justify-left'}
             aria-label="Justify Last Left"
             tooltip="Justify Last Left"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('justify-left')}
           >
             <Icon name="align-left" size="sm" />
@@ -1003,7 +1033,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'justify-center'}
             aria-label="Justify Last Center"
             tooltip="Justify Last Center"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('justify-center')}
           >
             <Icon name="align-center" size="sm" />
@@ -1014,7 +1044,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'justify-right'}
             aria-label="Justify Last Right"
             tooltip="Justify Last Right"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('justify-right')}
           >
             <Icon name="align-right" size="sm" />
@@ -1025,7 +1055,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             active={currentAlign === 'justify-all'}
             aria-label="Justify All Lines"
             tooltip="Justify All Lines"
-            className={styles.groupItem}
+            className={styles.stripCell}
             onClick={() => handleAlignChange('justify-all')}
           >
             <Icon name="distribute-horizontal" size="sm" />
@@ -1040,6 +1070,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <Segmented
             size="sm"
             fullWidth
+            className={styles.seg}
             aria-label="Text Direction"
             value={currentDirection}
             onChange={handleDirectionChange}
@@ -1055,6 +1086,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <Segmented
             size="sm"
             fullWidth
+            className={styles.seg}
             aria-label="Text Orientation"
             value={currentOrientation}
             onChange={handleOrientationChange}
@@ -1070,6 +1102,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <Segmented
             size="sm"
             fullWidth
+            className={styles.seg}
             aria-label="Point Text Anchor"
             value={currentTextAnchor}
             onChange={(v) => {
@@ -1118,126 +1151,112 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   );
 
   // Paragraph spacing & indents.
+  /** A typed px well — the paragraph's spacing and indents. */
+  const pxField = (label: string, title: string, ariaLabel: string, value: number, onChange: (v: number) => void): JSX.Element => (
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title={title}>{label}</span>
+            <input
+              type="number"
+              aria-label={ariaLabel}
+              className={styles.fieldInput}
+              value={value}
+              onChange={(e) => onChange(Number(e.target.value))}
+            />
+            <span className={styles.fieldUnit}>px</span>
+          </div>
+  );
   const spacingGrid = (
-        <div className={styles.metricGrid}>
+    <>
+        <div className={styles.row}>
           {/* Paragraph Spacing (legacy: between every line) */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Extra space between every line (Paragraph Spacing)">¶ Space</span>
-            <input
-              type="number"
-              aria-label="Paragraph Spacing"
-              className={styles.metricInput}
-              value={currentSpacing}
-              onChange={(e) => handleSpacingChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
-
-          {/* First Line Indent */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="First Line Indent (paragraph text; negative = hanging)">1st Line</span>
-            <input
-              type="number"
-              aria-label="First Line Indent"
-              className={styles.metricInput}
-              value={currentFirstLineIndent}
-              onChange={(e) => handleFirstLineIndentChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
-
-          {/* Left Indent */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Indent left margin (paragraph text)">⇤ Left</span>
-            <input
-              type="number"
-              aria-label="Left Indent"
-              className={styles.metricInput}
-              value={currentLeftIndent}
-              onChange={(e) => handleLeftIndentChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
-
-          {/* Right Indent */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Indent right margin (paragraph text)">Right ⇥</span>
-            <input
-              type="number"
-              aria-label="Right Indent"
-              className={styles.metricInput}
-              value={currentRightIndent}
-              onChange={(e) => handleRightIndentChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
-
-          {/* Space Before */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Space before paragraph">↑ Before</span>
-            <input
-              type="number"
-              aria-label="Space Before"
-              className={styles.metricInput}
-              value={currentSpaceBefore}
-              onChange={(e) => handleSpaceBeforeChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
-
-          {/* Space After */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Space after paragraph">↓ After</span>
-            <input
-              type="number"
-              aria-label="Space After"
-              className={styles.metricInput}
-              value={currentSpaceAfter}
-              onChange={(e) => handleSpaceAfterChange(Number(e.target.value))}
-            />
-            <span className={styles.metricUnit}>px</span>
-          </div>
+          {pxField('¶ Space', 'Extra space between every line (Paragraph Spacing)', 'Paragraph Spacing', currentSpacing, handleSpacingChange)}
+          {pxField('1st Line', 'First Line Indent (paragraph text; negative = hanging)', 'First Line Indent', currentFirstLineIndent, handleFirstLineIndentChange)}
         </div>
+        <div className={styles.row}>
+          {pxField('Left', 'Indent left margin (paragraph text)', 'Left Indent', currentLeftIndent, handleLeftIndentChange)}
+          {pxField('Right', 'Indent right margin (paragraph text)', 'Right Indent', currentRightIndent, handleRightIndentChange)}
+        </div>
+        <div className={styles.row}>
+          {pxField('Before', 'Space before paragraph', 'Space Before', currentSpaceBefore, handleSpaceBeforeChange)}
+          {pxField('After', 'Space after paragraph', 'Space After', currentSpaceAfter, handleSpaceAfterChange)}
+        </div>
+    </>
   );
 
-  // The fill / stroke swatch pair with the face readout beside it.
+  // The preview line: AE / Illustrator's swatch pair (fill over stroke, the
+  // swap arrow on hover, None as a red slash), the family, its face meta.
+  const weightLabel = WEIGHT_LABELS[Number(activeWeight)] ?? 'Regular';
+  const isVariableFamily = fontFamilyInfo(activeFamily)?.variable === true;
+  const toggleNone = (which: 'fill' | 'stroke'): void => {
+    if (which === 'fill') {
+      if (hasTarget) setNoFill(!activeNoFill);
+      else setFallbackNoFill(!activeNoFill);
+    } else if (hasTarget) setNoStroke(!activeNoStroke);
+    else setFallbackNoStroke(!activeNoStroke);
+  };
+  const frontIsNone = frontPaint === 'fill' ? activeNoFill : activeNoStroke;
+  const noneLabel = frontPaint === 'fill' ? 'No Fill' : 'No Stroke';
   const swatchDeck = (
-        <div className={styles.appearanceRow}>
-          <div className={styles.swatchPair}>
-            <div className={styles.fillSwatchWrap} title="Character Fill Color">
+        <div className={styles.swatches}>
+          <div className={styles.sw} role="group" aria-label="Fill and Stroke">
+            <div
+              className={styles.swFill}
+              title="Character Fill Color"
+              onPointerDownCapture={() => setFrontPaint('fill')}
+            >
               <ColorPicker
                 value={activeFill}
                 onChange={handleFillChange}
                 compact
                 aria-label="Character Fill Color"
-                className={styles.fillSwatchPicker}
+                className={styles.swPicker}
               />
+              {activeNoFill && <span className={styles.swNone} aria-hidden />}
             </div>
-            <div className={styles.strokeSwatchWrap} title="Character Stroke Color">
+            <div
+              className={styles.swStroke}
+              title="Character Stroke Color"
+              onPointerDownCapture={() => setFrontPaint('stroke')}
+            >
               <ColorPicker
                 value={shownStroke}
                 onChange={handleStrokeChange}
                 compact
                 aria-label="Character Stroke Color"
-                className={styles.strokeSwatchPicker}
+                className={styles.swPicker}
               />
+              <span className={styles.swHole} aria-hidden />
+              {activeNoStroke && <span className={styles.swNone} aria-hidden />}
             </div>
             <IconButton
               size="sm"
               variant="ghost"
               aria-label="Swap Fill and Stroke (Shift+X)"
               tooltip="Swap Fill and Stroke (Shift+X)"
-              className={styles.swapToggle}
+              className={styles.swSwap}
               onClick={handleSwapFillStroke}
             >
               ⇄
             </IconButton>
+            {/* AE's ⊘ under the pair: None for the square in front (the one clicked last). */}
+            <IconButton
+              size="sm"
+              variant="ghost"
+              active={frontIsNone}
+              aria-label={noneLabel}
+              tooltip={`${noneLabel} (the ${frontPaint} square is in front)`}
+              className={styles.swNoneToggle}
+              onClick={() => toggleNone(frontPaint)}
+            >
+              ⊘
+            </IconButton>
           </div>
-          <div className={styles.appearanceDetails}>
-            <span className={styles.appearanceMeta}>{activeFamily}</span>
-            <span className={styles.appearanceSub}>
-              {WEIGHT_LABELS[Number(activeWeight)] ?? 'Regular'} · {activeStyle === 'italic' ? 'Italic' : 'Normal'}
+          <div className={styles.fontline}>
+            <span className={styles.fontlineName}>{activeFamily}</span>
+            <span className={styles.fontlineMeta}>
+              {weightLabel} {activeWeight} · {activeItalic ? 'Italic' : 'Normal'}
               {isFauxBold ? ' · Faux Bold' : ''}{isFauxItalic ? ' · Faux Italic' : ''}
+              {isVariableFamily ? ' · Variable' : ''}
             </span>
           </div>
         </div>
@@ -1246,61 +1265,31 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   // Solid / Linear / Radial — a gradient spans the whole text block.
   const fillRows = hasTarget && primary ? <TextFillRows nodeId={primary} textColor={activeFill} /> : null;
 
-  // AE's "none" swatches.
-  const noneToggles = (
-        <div className={styles.controlGroup} role="group" aria-label="Fill and Stroke None">
-          <IconButton
-            size="sm"
-            variant="ghost"
-            active={activeNoFill}
-            aria-label="No Fill"
-            tooltip="No Fill"
-            className={styles.groupItem}
-            onClick={() => {
-              if (hasTarget) setNoFill(!activeNoFill);
-              else setFallbackNoFill(!activeNoFill);
-            }}
-          >
-            ⊘ Fill
-          </IconButton>
-          <IconButton
-            size="sm"
-            variant="ghost"
-            active={activeNoStroke}
-            aria-label="No Stroke"
-            tooltip="No Stroke"
-            className={styles.groupItem}
-            onClick={() => {
-              if (hasTarget) setNoStroke(!activeNoStroke);
-              else setFallbackNoStroke(!activeNoStroke);
-            }}
-          >
-            ⊘ Stroke
-          </IconButton>
-        </div>
-  );
-
   // Stroke width, line join, fill & stroke order.
+  // The field shows two decimals; the document (and the typing session) keep
+  // the full value — a scrubbed 4.12841796 reads as 4.13, not as overflow.
+  const shownStrokeWidthRounded = Math.round(shownStrokeWidth * 100) / 100;
   const strokeGrid = (
-        <div className={styles.metricGrid}>
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Stroke Width">Stroke</span>
+        <div className={`${styles.row} ${styles.rowThree}`}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Stroke Width">Stroke</span>
             <input
               type="number"
               aria-label="Stroke Width"
               min="0"
-              className={styles.metricInput}
-              value={shownStrokeWidth}
+              step="0.01"
+              className={styles.fieldInput}
+              value={shownStrokeWidthRounded}
               onChange={(e) => { strokeWidthTyping.begin(); handleStrokeWidthChange(Math.max(0, Number(e.target.value))); }}
               onBlur={strokeWidthTyping.onBlur}
             />
-            <span className={styles.metricUnit}>px</span>
+            <span className={styles.fieldUnit}>px</span>
           </div>
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Line Join">Join</span>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Line Join">Join</span>
             <select
               aria-label="Stroke Line Join"
-              className={styles.metricSelect}
+              className={styles.fieldSelect}
               value={activeLineJoin}
               onChange={(e) => {
                 const v = e.target.value as StrokeLineJoin;
@@ -1312,12 +1301,13 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                 <option key={j.value} value={j.value}>{j.label}</option>
               ))}
             </select>
+            <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
           </div>
-          <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
-            <span className={styles.metricLabel} title="Fill and stroke paint order">Order</span>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Fill and stroke paint order">Order</span>
             <select
               aria-label="Fill and Stroke Order"
-              className={styles.metricSelect}
+              className={styles.fieldSelect}
               value={activeStrokeOrder}
               onChange={(e) => handleStrokeOrderChange(e.target.value as StrokeOrder)}
             >
@@ -1325,6 +1315,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
           </div>
         </div>
   );
@@ -1340,14 +1331,15 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       ? Math.round((rangeStyle.letterSpacing / (rangeStyle.fontSize ?? activeSize)) * 1000)
       : undefined;
   const trackingCell = (
-          <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
-            <span className={styles.metricLabel} title="Tracking (VA), in 1/1000 em — After Effects' unit. Negative tightens display type, positive opens small text.">Tracking</span>
-            <div className={styles.metricValue}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Tracking (VA), in 1/1000 em — After Effects' unit. Negative tightens display type, positive opens small text.">Tracking</span>
+            <div className={styles.fieldValue}>
               <ValueField
                 aria-label="Tracking"
                 value={rangeTracking ?? activeTracking}
                 step={5}
                 precision={0}
+                unit="‰"
                 onChange={handleTrackingChange}
                 {...scrubOf(trackingH)}
               />
@@ -1355,20 +1347,20 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           </div>
   );
 
-  // Kerning, vertical / horizontal scale, baseline shift, tsume.
-  const metricsRest = (
-    <>
-          {/* Kerning — mode for the layer, manual value at the text caret */}
-          <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
+  // Kerning — the mode for the layer; the manual value at the text caret
+  // takes its own well only while there IS a caret (AE: it applies between
+  // the two characters at the insertion point).
+  const kerningCell = (
+          <div className={styles.field}>
             <span
-              className={styles.metricLabel}
+              className={styles.fieldLabel}
               title="Kerning (V/A). Metrics uses the font's kerning pairs; Optical spaces each pair from the glyph shapes, ignoring the font's pairs. While editing text, the value applies between the two characters at the caret, in 1/1000 em, on top of either."
             >
               Kerning
             </span>
             <select
               aria-label="Kerning Mode"
-              className={styles.metricSelect}
+              className={styles.fieldSelect}
               value={activeKerningMode}
               onChange={(e) => {
                 const v = e.target.value === 'optical' ? 'optical' : 'metrics';
@@ -1379,81 +1371,92 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               <option value="metrics">Metrics</option>
               <option value="optical">Optical</option>
             </select>
-            <div className={styles.metricValue}>
+            <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
+          </div>
+  );
+  const manualKerningRow = kernRange ? (
+        <div className={`${styles.row} ${styles.rowOne}`}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel} title="Kerning between the two characters at the caret, in 1/1000 em">Kern pair</span>
+            <div className={styles.fieldValue}>
               <ValueField
                 aria-label="Manual Kerning"
                 value={manualKerning}
                 mixed={kerningMixed}
                 step={5}
                 precision={0}
-                disabled={!kernRange}
+                unit="‰"
                 onChange={handleKerningChange}
               />
             </div>
           </div>
+        </div>
+  ) : null;
 
-          {/* Vertical Scale */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Vertical Scale (IT)">↕ Scale</span>
+  /** A typed well with a unit, for the per-range styles and the scales. */
+  const typedField = (
+    label: string,
+    title: string,
+    ariaLabel: string,
+    value: number,
+    unit: string,
+    onChange: (v: number) => void,
+    extra: { disabled?: boolean; min?: string; max?: string } = {},
+  ): JSX.Element => (
+          <div className={`${styles.field}${extra.disabled ? ` ${styles.fieldOff}` : ''}`}>
+            <span className={styles.fieldLabel} title={title}>{label}</span>
             <input
               type="number"
-              aria-label="Vertical Scale"
-              className={styles.metricInput}
-              value={shownVertScale}
-              onChange={(e) => handleRangeNumber('verticalScale', Number(e.target.value), (val) => {
-                if (hasTarget) setVerticalScale(val);
-                else setFallbackVertScale(val);
-              })}
+              aria-label={ariaLabel}
+              className={styles.fieldInput}
+              value={value}
+              disabled={extra.disabled}
+              min={extra.min}
+              max={extra.max}
+              onChange={(e) => onChange(Number(e.target.value))}
             />
-            <span className={styles.metricUnit}>%</span>
+            <span className={styles.fieldUnit}>{unit}</span>
           </div>
+  );
 
-          {/* Horizontal Scale */}
-          <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Horizontal Scale (T-)">↔ Scale</span>
-            <input
-              type="number"
-              aria-label="Horizontal Scale"
-              className={styles.metricInput}
-              value={shownHorizScale}
-              onChange={(e) => handleRangeNumber('horizontalScale', Number(e.target.value), (val) => {
-                if (hasTarget) setHorizontalScale(val);
-                else setFallbackHorizScale(val);
-              })}
-            />
-            <span className={styles.metricUnit}>%</span>
+  // Size · Leading, Tracking · Kerning, the scales, Baseline · Tsume: two
+  // wells a row, in AE's Character panel order.
+  const metricRows = (
+    <>
+          <div className={styles.row}>
+            {sizeCell}
+            {leadingCell}
           </div>
-
-          {/* Baseline Shift */}
-          <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
-            <span className={styles.metricLabel} title="Baseline Shift (A_)">Baseline</span>
-            <input
-              type="number"
-              aria-label="Baseline Shift"
-              className={styles.metricInput}
-              value={shownBaselineShift}
-              onChange={(e) => handleRangeNumber('baselineShift', Number(e.target.value), (val) => {
-                if (hasTarget) setBaselineShift(val);
-                else setFallbackBaselineShift(val);
-              })}
-            />
-            <span className={styles.metricUnit}>px</span>
+          <div className={styles.row}>
+            {trackingCell}
+            {kerningCell}
           </div>
-
-          {/* Tsume — per range only (a selection's side bearings), as in AE */}
-          <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
-            <span className={styles.metricLabel} title="Tsume: tighten the space around the selected characters (select characters in the text to apply)">Tsume</span>
-            <input
-              type="number"
-              aria-label="Tsume"
-              min="0"
-              max="100"
-              disabled={!ranged}
-              className={styles.metricInput}
-              value={shownTsume}
-              onChange={(e) => handleRangeNumber('tsume', Math.max(0, Math.min(100, Number(e.target.value))), () => {})}
-            />
-            <span className={styles.metricUnit}>%</span>
+          {manualKerningRow}
+          <div className={styles.row}>
+            {typedField('Scale ↕', 'Vertical Scale (IT)', 'Vertical Scale', shownVertScale, '%', (v) => handleRangeNumber('verticalScale', v, (val) => {
+              if (hasTarget) setVerticalScale(val);
+              else setFallbackVertScale(val);
+            }))}
+            {typedField('Scale ↔', 'Horizontal Scale (T-)', 'Horizontal Scale', shownHorizScale, '%', (v) => handleRangeNumber('horizontalScale', v, (val) => {
+              if (hasTarget) setHorizontalScale(val);
+              else setFallbackHorizScale(val);
+            }))}
+          </div>
+          <div className={styles.row}>
+            {typedField('Baseline', 'Baseline Shift (A_)', 'Baseline Shift', shownBaselineShift, 'px', (v) => handleRangeNumber('baselineShift', v, (val) => {
+              if (hasTarget) setBaselineShift(val);
+              else setFallbackBaselineShift(val);
+            }))}
+            {/* Tsume — per range only (a selection's side bearings), as in AE */}
+            {typedField(
+              'Tsume',
+              'Tsume: tighten the space around the selected characters (select characters in the text to apply)',
+              'Tsume',
+              shownTsume,
+              '%',
+              (v) => handleRangeNumber('tsume', Math.max(0, Math.min(100, v)), () => {}),
+              { disabled: !ranged, min: '0', max: '100' },
+            )}
           </div>
     </>
   );
@@ -1489,6 +1492,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               <Segmented
                 size="sm"
                 fullWidth
+                className={styles.seg}
                 aria-label="Point or Paragraph Text"
                 value={paraBox ? 'paragraph' : 'point'}
                 disabled={onPath}
@@ -1509,31 +1513,31 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             ) : null}
             {paraBox && (
               <>
-                <div className={styles.metricGrid}>
-                  <div className={styles.metricCell}>
-                    <span className={styles.metricLabel} title="Box width — the text re-wraps">W</span>
+                <div className={styles.row}>
+                  <div className={styles.field}>
+                    <span className={styles.fieldLabel} title="Box width — the text re-wraps">W</span>
                     <input
                       type="number"
                       aria-label="Box Width"
-                      className={styles.metricInput}
+                      className={styles.fieldInput}
                       value={typeof boxWidth === 'number' ? boxWidth : paraBox.boxWidth}
                       onChange={(e) => setBoxWidth(Math.max(MIN_BOX_SIZE, Number(e.target.value)))}
                     />
-                    <span className={styles.metricUnit}>px</span>
+                    <span className={styles.fieldUnit}>px</span>
                   </div>
-                  <div className={styles.metricCell}>
-                    <span className={styles.metricLabel} title="Box height (Auto Height follows the text)">H</span>
+                  <div className={`${styles.field}${fixed ? '' : ` ${styles.fieldOff}`}`}>
+                    <span className={styles.fieldLabel} title="Box height (Auto Height follows the text)">H</span>
                     <input
                       type="number"
                       aria-label="Box Height"
-                      className={styles.metricInput}
+                      className={styles.fieldInput}
                       disabled={!fixed}
                       value={fixed
                         ? (typeof boxHeight === 'number' ? boxHeight : paraBox.boxHeight)
                         : Math.round(measuredBox?.contentHeight ?? 0)}
                       onChange={(e) => setBoxHeight(Math.max(MIN_BOX_SIZE, Number(e.target.value)))}
                     />
-                    <span className={styles.metricUnit}>px</span>
+                    <span className={styles.fieldUnit}>px</span>
                   </div>
                 </div>
                 <div className={styles.controlRow}>
@@ -1550,7 +1554,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                     ]}
                   />
                 </div>
-                <div className={styles.controlGroup} role="radiogroup" aria-label="Vertical Alignment in Box">
+                <div className={styles.strip} role="radiogroup" aria-label="Vertical Alignment in Box">
                   {V_ALIGNS.map((o) => (
                     <IconButton
                       key={o.value}
@@ -1560,7 +1564,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                       disabled={!fixed}
                       aria-label={o.label}
                       tooltip={fixed ? o.label : `${o.label} (needs a fixed box height)`}
-                      className={styles.groupItem}
+                      className={styles.stripCell}
                       onClick={() => setBoxVerticalAlign(o.value)}
                     >
                       <Icon name={o.icon} size="sm" />
@@ -1641,6 +1645,16 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       </div>
   );
 
+  // The group headers' dim state readouts ("Outfit · Extra Bold", "Center · LTR"):
+  // a closed group still tells what it holds.
+  const characterSummary = `${activeFamily} · ${weightLabel}${activeItalic ? ' Italic' : ''}`;
+  const ALIGN_SUMMARY: Readonly<Record<string, string>> = {
+    left: 'Left', center: 'Center', right: 'Right', justify: 'Justify', 'justify-left': 'Justify',
+    'justify-center': 'Justify center', 'justify-right': 'Justify right', 'justify-all': 'Justify all',
+  };
+  const DIRECTION_SUMMARY: Readonly<Record<'ltr' | 'rtl' | 'auto', string>> = { ltr: 'LTR', rtl: 'RTL', auto: 'Auto' };
+  const paragraphSummary = `${ALIGN_SUMMARY[currentAlign] ?? currentAlign} · ${DIRECTION_SUMMARY[currentDirection]}`;
+
   if (variant === 'section') {
     return (
       <TooltipProvider>
@@ -1648,28 +1662,37 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             text editing (and its character selection) alive. */}
         <div className={styles.sectionRoot} {...{ [TEXT_EDIT_KEEP_ATTR]: '' }}>
           {rangeNotice}
-          {/* After Effects' Character panel, in its order (2026-10-07): font,
-              the fill / stroke swatch pair, then size · leading · tracking ·
-              kerning · scales · baseline · tsume as a two-column grid, the
-              stroke settings, and the faux-style buttons. */}
-          <TwirlGroup prefKey="text.character" label="Character" defaultOpen>
-            {fontRow}
-            {swatchDeck}
-            {noneToggles}
-            <div className={styles.metricGrid}>
-              {sizeCell}
-              {leadingCell}
-              {trackingCell}
-              {metricsRest}
+          {/* After Effects' Character panel, in its order (2026-10-07): the
+              fill / stroke pair with the face, the font pickers, then size ·
+              leading · tracking · kerning · scales · baseline · tsume two wells
+              a row, the stroke row, and the faux-style strip. */}
+          <TwirlGroup
+            prefKey="text.character"
+            label="Character"
+            defaultOpen
+            trailing={<span className={styles.groupSummary}>{characterSummary}</span>}
+          >
+            <div className={styles.groupBody}>
+              {swatchDeck}
+              {fontRow}
+              {metricRows}
+              {strokeGrid}
+              {styleToolbar}
             </div>
-            {strokeGrid}
-            {styleToolbar}
           </TwirlGroup>
+          <div className={styles.sep} role="presentation" />
           {/* AE's Paragraph panel: alignment, then indents and spacing. */}
-          <TwirlGroup prefKey="text.paragraph" label="Paragraph" defaultOpen>
-            {alignGroup}
-            {spacingGrid}
-            {directionRows}
+          <TwirlGroup
+            prefKey="text.paragraph"
+            label="Paragraph"
+            defaultOpen
+            trailing={<span className={styles.groupSummary}>{paragraphSummary}</span>}
+          >
+            <div className={styles.groupBody}>
+              {alignGroup}
+              {spacingGrid}
+              {directionRows}
+            </div>
           </TwirlGroup>
           <button
             type="button"
@@ -1792,16 +1815,10 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
         )}
         <div className={styles.panelRows}>
           {rangeNotice}
-          {fontRow}
           {swatchDeck}
+          {fontRow}
           {fillRows}
-          {noneToggles}
-          <div className={styles.metricGrid}>
-            {sizeCell}
-            {leadingCell}
-            {trackingCell}
-            {metricsRest}
-          </div>
+          {metricRows}
           {strokeGrid}
           {strokeRows}
           {styleToolbar}

@@ -54,6 +54,9 @@ import { Icon, type IconName } from '@components/Icon';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { cn } from '@utils/cn';
 import { getCommandSystem } from '@core/commands/CommandSystem';
+import { getCommandRegistry } from '@core/commands/Command';
+import { getShortcutOverrides, resolveChord } from '@core/commands/shortcutOverrides';
+import { formatChord } from '@core/commands/formatChord';
 import { asCommandId } from '@app-types/common';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { CUSTOM_VIEW_IDS } from '@core/workspace/customViews';
@@ -78,6 +81,7 @@ import {
 import { VIEWPORT_COMMAND_IDS } from './viewportCommands';
 import { isDisplayShed, type DisplayGroup } from './transportOverflow';
 import styles from './ViewportDisplayControls.module.css';
+import tool from './viewportToolButton.module.css';
 
 // The ladder lives with the transport bar's, in `transportOverflow.ts` — it is
 // the first rungs of that one now. Re-exported so importers keep reading
@@ -91,6 +95,19 @@ export { DISPLAY_DEMOTE_ORDER, isDisplayShed, type DisplayGroup } from './transp
  */
 function run(id: string): void {
   void getCommandSystem().execute(asCommandId(id));
+}
+
+/**
+ * The chord a command answers to, as the menu prints it — the user's override
+ * over the command's default, the same resolution `ShortcutManager` binds.
+ * `undefined` while the command is not registered (a test, the popout before
+ * the registry is up) or has no key, and the row then shows no hint.
+ */
+function shortcutOf(id: string): string | undefined {
+  const cmd = getCommandRegistry().get(asCommandId(id));
+  if (!cmd) return undefined;
+  const chord = resolveChord(id, cmd.shortcut, getShortcutOverrides());
+  return chord ? formatChord(chord) : undefined;
 }
 
 /** Open the viewport in its own window — the Composition panel menu's Pop Out row. */
@@ -157,9 +174,12 @@ interface TriggerProps {
  * One control in the row: an `aria-label` and a `title` that say the same
  * thing, so the hover matches the announcement — the strip is too dense for
  * a tooltip layer. None of these is a toggle (every setting is a menu row or
- * an action), so there is no `aria-pressed`; `active` only tints the glyph to
- * say the setting is away from its default. `Popover` clones a dropdown
- * trigger with its own `onClick`, which is why nothing here keys off it.
+ * an action), so there is no `aria-pressed`; `active` lights the control
+ * (`viewportToolButton.module.css`) to say the setting is away from its
+ * default — only for a control whose state is not already readable as its
+ * `text`. `chevron` marks the controls that open a menu, and nothing else.
+ * `Popover` clones a dropdown trigger with its own `onClick`, which is why
+ * nothing here keys off it.
  */
 const Trigger = forwardRef<HTMLButtonElement, TriggerProps>(function Trigger(
   { icon, label, text, active, disabled, chevron, onClick },
@@ -172,15 +192,15 @@ const Trigger = forwardRef<HTMLButtonElement, TriggerProps>(function Trigger(
     <button
       ref={ref}
       type="button"
-      className={cn(styles.control, active && styles.controlActive)}
+      className={cn(tool.tool, active && tool.toolActive)}
       aria-label={label}
       title={label}
       disabled={disabled ?? false}
       onClick={onClick}
     >
       {icon ? <Icon name={icon} size="sm" /> : null}
-      {text ? <span className={styles.text}>{text}</span> : null}
-      {chevron ? <Icon name="chevron-down" size="sm" className={styles.chevron} /> : null}
+      {text ? <span className={tool.value}>{text}</span> : null}
+      {chevron ? <Icon name="chevron-down" size="sm" className={tool.chevron} /> : null}
     </button>
   );
 });
@@ -235,7 +255,7 @@ function ExposureControl({ stops, onChange }: { stops: number; onChange: (stops:
     <span className={styles.exposure} role="group" aria-label="Exposure">
       <button
         type="button"
-        className={cn(styles.control, stops !== 0 && styles.controlActive)}
+        className={cn(tool.tool, stops !== 0 && tool.toolActive)}
         aria-label={stops !== 0 ? `Reset Exposure (now ${formatStops(stops)})` : 'Adjust Exposure'}
         title={stops !== 0 ? `Exposure ${formatStops(stops)} stops — click to reset (viewer only)` : 'Adjust Exposure — drag the value; viewer only, never in output'}
         onClick={() => onChange(0)}
@@ -421,19 +441,27 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
     checked: motionPathDots === id,
     onChange: () => setMotionPathDots(id),
   });
+  // The overlay opacity, 20–100 in the store (`clampOverlayOpacity`); the
+  // slider's track fill follows the thumb, so the filled share is passed to
+  // the stylesheet as a custom property rather than drawn with a second element.
+  const opacityPct = Math.round(overlayOpacity * 100);
+  const OPACITY_MIN = 20;
+  const OPACITY_MAX = 100;
+  const opacityFill = `${((opacityPct - OPACITY_MIN) / (OPACITY_MAX - OPACITY_MIN)) * 100}%`;
+  /*
+   * Three hairline groups (2026-10-19): what is SHOWN, how it SNAPS, and how
+   * STRONG it is. The toggles print their chord at the right where the
+   * command has one, the same chord the View menu prints.
+   */
   const overlayItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'vd-grid', label: 'Grid', checked: grid, onChange: toggleGrid },
-    { type: 'checkbox', id: 'vd-rulers', label: 'Rulers', checked: rulers, onChange: toggleRulers },
-    { type: 'checkbox', id: 'vd-safe-area', label: 'Safe Areas', checked: safeArea, onChange: toggleSafeArea },
+    { type: 'checkbox', id: 'vd-grid', label: 'Grid', checked: grid, shortcut: shortcutOf('view.grid'), onChange: toggleGrid },
+    { type: 'checkbox', id: 'vd-rulers', label: 'Rulers', checked: rulers, shortcut: shortcutOf('view.rulers'), onChange: toggleRulers },
+    { type: 'checkbox', id: 'vd-safe-area', label: 'Safe Areas', checked: safeArea, shortcut: shortcutOf('view.safeAreas'), onChange: toggleSafeArea },
+    { type: 'checkbox', id: 'vd-guides', label: 'Guides', checked: guidesVisible, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.guidesShow), onChange: () => run(VIEWPORT_COMMAND_IDS.guidesShow) },
     // Measurement badges, equal-spacing and equal-size snapping while a drag
     // is in flight; Alt-hover measures between two layers.
     { type: 'checkbox', id: 'vd-smart-guides', label: 'Smart Guides', checked: smartGuides, onChange: toggleSmartGuides },
-    { type: 'checkbox', id: 'vd-guides', label: 'Guides', checked: guidesVisible, onChange: () => run(VIEWPORT_COMMAND_IDS.guidesShow) },
-    { type: 'separator' },
-    { type: 'item', id: 'vd-guides-lock', label: 'Lock Guides', icon: 'lock', disabled: !guides.some((g) => !g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesLock) },
-    { type: 'item', id: 'vd-guides-unlock', label: 'Unlock Guides', icon: 'unlock', disabled: !guides.some((g) => g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesUnlock) },
-    { type: 'item', id: 'vd-guides-clear', label: 'Clear Guides', icon: 'trash', disabled: guides.length === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesClear) },
-    { type: 'separator' },
+    { type: 'checkbox', id: 'vd-hud', label: 'HUD', checked: hud, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.hud), onChange: () => run(VIEWPORT_COMMAND_IDS.hud) },
     {
       type: 'item',
       id: 'vd-motion-path-dots',
@@ -466,30 +494,42 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
         })),
       ],
     },
+    // The user's guides, managed where they are switched on.
+    { type: 'item', id: 'vd-guides-lock', label: 'Lock Guides', icon: 'lock', disabled: !guides.some((g) => !g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesLock) },
+    { type: 'item', id: 'vd-guides-unlock', label: 'Unlock Guides', icon: 'unlock', disabled: !guides.some((g) => g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesUnlock) },
+    { type: 'item', id: 'vd-guides-clear', label: 'Clear Guides', icon: 'trash', disabled: guides.length === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesClear) },
     { type: 'separator' },
-    { type: 'checkbox', id: 'vd-hud', label: 'HUD — fps, frame time, cache and backend', checked: hud, onChange: () => run(VIEWPORT_COMMAND_IDS.hud) },
-    { type: 'checkbox', id: 'vd-snap-pixel', label: 'Snap to Pixel', checked: snapToPixel, onChange: () => run(VIEWPORT_COMMAND_IDS.snapToPixel) },
-    { type: 'checkbox', id: 'vd-par', label: 'Pixel Aspect Correction', checked: par, onChange: () => run(VIEWPORT_COMMAND_IDS.pixelAspectCorrection) },
+    { type: 'checkbox', id: 'vd-snap-pixel', label: 'Snap to Pixel', checked: snapToPixel, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.snapToPixel), onChange: () => run(VIEWPORT_COMMAND_IDS.snapToPixel) },
+    { type: 'checkbox', id: 'vd-par', label: 'Pixel Aspect Correction', checked: par, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.pixelAspectCorrection), onChange: () => run(VIEWPORT_COMMAND_IDS.pixelAspectCorrection) },
     { type: 'separator' },
     {
+      // A row of its own at the foot: the label line (value at the right, in
+      // the accent as ink), a 2px track with a 10px thumb, and the scale
+      // under it. A real range input, restyled, so the arrow keys still move
+      // it and the menu's arrow-key walk can land on it.
       type: 'custom',
       id: 'vd-overlay-opacity',
       render: (
-        <label className={styles.opacityRow}>
-          <Icon name="layers" size="sm" />
-          <span className={styles.opacityLabel}>Overlay opacity</span>
+        <div className={styles.opacityRow} style={{ '--vd-opacity-fill': opacityFill } as React.CSSProperties}>
+          <div className={styles.opacityHead}>
+            <span>Overlay opacity</span>
+            <span className={styles.opacityValue}>{opacityPct}%</span>
+          </div>
           <input
             type="range"
             className={styles.opacitySlider}
-            min={20}
-            max={100}
+            min={OPACITY_MIN}
+            max={OPACITY_MAX}
             step={5}
-            value={Math.round(overlayOpacity * 100)}
+            value={opacityPct}
             aria-label="Overlay opacity"
+            aria-valuetext={`${opacityPct}%`}
             onChange={(e) => setOverlayOpacity(Number(e.target.value) / 100)}
           />
-          <span className={styles.text}>{Math.round(overlayOpacity * 100)}%</span>
-        </label>
+          <div className={styles.opacityTicks} aria-hidden="true">
+            {[20, 40, 60, 80, 100].map((t) => <span key={t}>{t}</span>)}
+          </div>
+        </div>
       ),
     },
   ];
@@ -623,7 +663,7 @@ export function ViewportDisplayControlsView({
         <>
           <Dropdown
             placement="top-start"
-            trigger={<Trigger text={cameraViewLabel(m.camera3dMode)} label={`3D View: ${cameraViewLabel(m.camera3dMode)}`} active={m.camera3dMode !== 'active'} chevron />}
+            trigger={<Trigger icon="cube" text={cameraViewLabel(m.camera3dMode)} label={`3D View: ${cameraViewLabel(m.camera3dMode)}`} chevron />}
             items={m.viewItems}
           />
           <Dropdown
@@ -650,17 +690,17 @@ export function ViewportDisplayControlsView({
           {!shed('resolution') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger text={RESOLUTION_LABELS[m.resolution]} label={`Preview resolution: ${RESOLUTION_LABELS[m.resolution]}`} active={m.resolution !== 1} chevron />}
+              trigger={<Trigger text={RESOLUTION_LABELS[m.resolution]} label={`Preview resolution: ${RESOLUTION_LABELS[m.resolution]}`} chevron />}
               items={m.resolutionItems}
             />
           )}
           {!shed('preview') && (
-            <PreviewMenu className={styles.control} activeClassName={cn(styles.control, styles.controlActive)} placement="top-end" />
+            <PreviewMenu className={tool.tool} activeClassName={cn(tool.tool, tool.toolActive)} placement="top-end" />
           )}
           {!shed('transparency') && (
             <button
               type="button"
-              className={cn(styles.control, m.transparencyGrid && styles.controlActive)}
+              className={cn(tool.tool, m.transparencyGrid && tool.toolActive)}
               aria-label="Toggle Transparency Grid"
               aria-pressed={m.transparencyGrid}
               title={m.transparencyGrid ? 'Transparency Grid: on — transparent areas show a checkerboard' : 'Transparency Grid: off — transparent areas show the background colour'}
@@ -679,7 +719,7 @@ export function ViewportDisplayControlsView({
           {!shed('channel') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger icon={CHANNEL_ICON[m.channel]} text={CHANNEL_LABEL[m.channel]} label={`Show channel: ${CHANNEL_LABEL[m.channel]}`} active={m.channel !== 'rgb'} />}
+              trigger={<Trigger icon={CHANNEL_ICON[m.channel]} text={CHANNEL_LABEL[m.channel]} label={`Show channel: ${CHANNEL_LABEL[m.channel]}`} chevron />}
               items={m.channelItems}
             />
           )}

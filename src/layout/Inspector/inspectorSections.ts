@@ -68,7 +68,6 @@ import { canBe3DLayer, inspectorKindOf, is3DLayer, isAbstractLayer, layerExists 
 
 import { AppearanceSection, AppearancePresetAction } from './AppearanceSection';
 import { TextSection, TextPresetAction, hasTextSection } from './TextSection';
-import { EffectsSection, EffectsSectionActions, hasEffectsSection } from './EffectsSection';
 import { AudioControls } from './AudioControls';
 import { PinnedSection, hasPinnedSection } from './PinnedSection';
 import { CameraSection, LensPresetsMenu } from './CameraSection';
@@ -185,11 +184,6 @@ function kindOf(nodeId: string): string | null {
 /** Kinds with no spatial or visual presence of their own. */
 function isAbstract(nodeId: string): boolean {
   return isAbstractLayer(nodeId);
-}
-
-/** Applied effects (the tree's `effects` group), from the mirror. */
-function effectCount(nodeId: string): number {
-  return documentMirror().tree(nodeId)?.nodes.get('effects')?.children.length ?? 0;
 }
 
 function isDrawable(nodeId: string): boolean {
@@ -355,23 +349,9 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     appliesTo: (id) => kindOf(id) === 'image' || kindOf(id) === 'video',
     Component: DepthParallaxSection,
   },
-  // The applied effect stack (AE's Effect Controls), folded into Properties
-  // (2026-09-15); Effect Controls is on demand and renders the same body. Open
-  // by default only when the layer already HAS effects: an open section that
-  // says "No effects" on every plain shape is exactly the clutter this panel
-  // was redesigned to remove, while the header's + stays one click away.
-  // Adding an effect anywhere forces it open (`revealEffectsInProperties`).
-  {
-    id: 'effects',
-    title: 'Effects',
-    icon: 'magic-wand',
-    category: 'style',
-    defaultOpen: (id) => effectCount(id) > 0,
-    keywords: 'effects effect stack fx blur glow color correction distort keying',
-    appliesTo: hasEffectsSection,
-    Component: EffectsSection,
-    actions: EffectsSectionActions,
-  },
+  // No Effects section (owner 2026-10-14): the applied stack lives in ONE
+  // place, the left-sidebar Effect Controls panel. A second copy here meant
+  // every add opened this tab over the Effects & Presets browser.
   {
     id: 'paint',
     title: 'Paint',

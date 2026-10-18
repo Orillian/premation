@@ -1,13 +1,27 @@
 /**
  * FontPicker: Recent fonts, Favourites and the real per-family style strip.
  *
- * The Local Font Access API is faked BEFORE the first open, because the
- * picker's font list is cached for the session (the query can prompt).
+ * The engine's `listFonts` is faked: the picker lists what the engine draws
+ * (the installed fonts it reports plus the shipped families), cached for the
+ * session.
  */
 
 import { render, screen, fireEvent, within, act, cleanup } from '@testing-library/react';
 import { FontPicker } from './FontPicker';
 import { getFavouriteFonts, getRecentFonts, resetFontPrefsCacheForTest, RECENT_FONTS_KEY } from '@core/fonts/fontPrefs';
+
+jest.mock('@core/engine/engineInstance', () => {
+  const face = (family: string, style: string, weight: number, italic = false) =>
+    ({ family, style, postScriptName: `${family}-${style}`, weight, italic, variableAxes: [], scripts: ['Latn'], path: '' });
+  return {
+    engine: () => ({
+      query: async () => ({
+        ok: true,
+        value: { fonts: [face('Brand', 'Regular', 400), face('Brand', 'Bold Italic', 700, true), face('Other', 'Light', 300)] },
+      }),
+    }),
+  };
+});
 
 class StubResizeObserver {
   observe(): void {}
@@ -15,19 +29,10 @@ class StubResizeObserver {
   disconnect(): void {}
 }
 
-const g = globalThis as unknown as { queryLocalFonts?: unknown; ResizeObserver?: unknown };
+const g = globalThis as unknown as { ResizeObserver?: unknown };
 
 beforeAll(() => {
   g.ResizeObserver = StubResizeObserver;
-  g.queryLocalFonts = async () => [
-    { family: 'Brand', style: 'Regular', fullName: 'Brand Regular' },
-    { family: 'Brand', style: 'Bold Italic', fullName: 'Brand Bold Italic' },
-    { family: 'Other', style: 'Light' },
-  ];
-});
-
-afterAll(() => {
-  delete g.queryLocalFonts;
 });
 
 beforeEach(() => {

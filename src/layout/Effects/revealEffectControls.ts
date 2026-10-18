@@ -1,19 +1,18 @@
 /**
- * Open the left-sidebar Effect Controls panel.
+ * Bring the applied-effect stack on screen after an add.
  *
- * Adding an effect used to only mutate the layer, and the stack that lets you
- * actually edit it lived in the same right-sidebar browser you added from —
- * so the library scrolled away under a growing list of cards. The stack now
- * lives on the left (AE's Effect Controls). Calling this after an add is what
- * makes the new effect's parameters appear instead of leaving the user staring
- * at the browser they just clicked.
+ * The stack lives in ONE place: the left-sidebar Effect Controls panel (AE's).
+ * Properties carried a second copy of it as an "Effects" section; that copy is
+ * gone (owner 2026-10-14) — two stacks of the same cards, and opening the
+ * Properties tab after every add pushed the Effects & Presets tab you were
+ * browsing out of its group.
  *
  * `openPanel` is a no-op for an unknown id, so this is safe in tests that
  * never register the panel.
  */
 
 import { useLayoutStore } from '@stores/layoutStore';
-import { usePreferenceStore } from '@stores/preferenceStore';
+import { groupOfPanel } from '@core/layout/dockGroups';
 import type { EffectType } from '@core/inspector/effectCatalog';
 import { addEffectEdit } from './effectEdits';
 
@@ -22,20 +21,21 @@ export function revealEffectControls(): void {
 }
 
 /**
- * Show the selected layer's effect stack where it now lives by default: the
- * Effects section of the Properties panel (2026-09-15). Effect Controls became
- * an on-demand panel, so opening it after every add would dock a panel the
- * user closed. The section's open state is the persisted `inspectorSections`
- * preference, so forcing it open survives the panel remounting.
+ * After an add: bring Effect Controls forward — unless it shares a dock group
+ * with the Effects & Presets browser, where fronting it would hide the browser
+ * mid-browse. Then the add stays put and the stack is one tab away.
  */
-export function revealEffectsInProperties(): void {
-  const prefs = usePreferenceStore.getState();
-  prefs.set('inspectorSections', { ...prefs.inspectorSections, effects: true });
-  useLayoutStore.getState().openPanel('properties');
+export function revealAppliedEffects(): void {
+  const s = useLayoutStore.getState();
+  const groups = [...s.dockGroups.leftSidebar, ...s.dockGroups.rightInspector];
+  const browser = groupOfPanel(groups, 'effects');
+  const controls = groupOfPanel(groups, 'effectControls');
+  if (browser && controls && browser.id === controls.id) return;
+  s.openPanel('effectControls');
 }
 
-/** Add an effect to a layer (ONE engine entry) and bring its parameters on screen in Properties. */
+/** Add an effect to a layer (ONE engine entry) and bring its parameters on screen. */
 export function addEffectAndReveal(nodeId: string, type: EffectType): void {
   void addEffectEdit([nodeId], type);
-  revealEffectsInProperties();
+  revealAppliedEffects();
 }

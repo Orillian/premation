@@ -317,6 +317,17 @@ export function drawPresetFrame(
       if (g.rotation) ctx.rotate((g.rotation * Math.PI) / 180);
       if (g.skew) ctx.transform(1, 0, Math.tan((-g.skew * Math.PI) / 180), 1, 0, 0);
       if (g.scale !== 1 || g.scaleY !== 1) ctx.scale(g.scale, g.scaleY);
+      // Per-character 3D, foreshortened rather than projected: a tumble
+      // narrows the glyph by its cosine and depth shrinks it by a pinhole
+      // factor. Enough for a thumbnail to show the move; the engine renders it.
+      const rx = g.rotationX ?? 0;
+      const ry = g.rotationY ?? 0;
+      const z = g.dz ?? 0;
+      if (rx || ry || z) {
+        const focal = size * 10;
+        const p = focal / Math.max(focal * 0.05, focal + z);
+        ctx.scale(p * Math.cos((ry * Math.PI) / 180), p * Math.cos((rx * Math.PI) / 180));
+      }
       ctx.globalAlpha = ctx.globalAlpha * Math.max(0, g.opacity);
       if (g.blur > 0) ctx.filter = `blur(${g.blur}px)`;
     }

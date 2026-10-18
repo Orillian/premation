@@ -77,7 +77,7 @@ export function buildPluginMenuGroup(): MenuGroupModel | null {
     items.push({
       label: 'Panels',
       children: panels.map((p) => ({
-        label: `${p.panel.name} (${p.pluginName})`,
+        label: p.kind === 'effect' ? p.pluginName : `${p.panel.name} (${p.pluginName})`,
         onSelect: () => useLayoutStore.getState().openPanel(p.panelId),
       })),
     });

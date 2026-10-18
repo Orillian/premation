@@ -87,8 +87,9 @@ select {
   color: inherit;
 }
 
+/* Fields sit in the dark well, not on the panel's grey (owner 2026-10-14). */
 select {
-  background-color: var(--color-surface-2);
+  background-color: var(--color-surface-0);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -96,7 +97,7 @@ select {
 }
 
 select option {
-  background-color: var(--color-surface-2);
+  background-color: var(--color-surface-3);
   color: var(--color-text-primary);
 }
 
