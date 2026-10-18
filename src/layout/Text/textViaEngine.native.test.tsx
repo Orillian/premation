@@ -62,40 +62,54 @@ async function undoRedoExact(before: string): Promise<void> {
 }
 
 describe('Character panel', () => {
-  test('a Font Size typing session (two keystrokes + the spinner) is ONE engine entry; undo/redo exact', async () => {
+  /** Type a number into a ValueField the way a user does: Enter opens the input, blur commits. */
+  function typeInto(label: string, value: string): void {
+    fireEvent.keyDown(screen.getByRole('spinbutton', { name: label }), { key: 'Enter' });
+    const input = screen.getByLabelText(label);
+    fireEvent.change(input, { target: { value } });
+    fireEvent.blur(input);
+  }
+
+  test('a Font Size typing session (a ValueField commit) is ONE engine entry; undo/redo exact', async () => {
     renderPanel();
     const before = (await h.doc());
-    const size = screen.getByLabelText('Font Size');
-    fireEvent.change(size, { target: { value: '7' } });
-    await idle();
-    fireEvent.change(size, { target: { value: '72' } });
-    await idle();
-    fireEvent.blur(size);
+    typeInto('Font Size', '72');
     await idle();
     expect((await textProps(s.T)).fontSize).toBe(72);
     expect((await historyLabels())).toEqual(['Set Font Size']);
     await undoRedoExact(before);
   });
 
-  test('a Tracking session that starts unstored (legacy route) stays ONE entry — it never switches route mid-typing', async () => {
+  test('Tracking writes AE units (1/1000 em) to the `tracking` field, one entry per commit', async () => {
     renderPanel();
     expect((await textProps(s.T)).letterSpacing).toBeUndefined();
-    const field = screen.getByLabelText('Tracking (Letter Spacing)');
-    fireEvent.change(field, { target: { value: '4' } });
-    await idle();
-    fireEvent.change(field, { target: { value: '40' } });
-    await idle();
-    fireEvent.blur(field);
+    expect((await textProps(s.T)).tracking).toBeUndefined();
+    typeInto('Tracking', '40');
     act(() => { jest.advanceTimersByTime(2000); });
     await idle();
-    expect((await textProps(s.T)).letterSpacing).toBe(40);
-    expect((await historyLabels())).toHaveLength(1);
-    // The next session starts on a stored number: the engine route.
-    fireEvent.change(field, { target: { value: '25' } });
-    fireEvent.blur(field);
+    expect((await textProps(s.T)).tracking).toBe(40);
+    expect((await textProps(s.T)).letterSpacing).toBeUndefined();
+    expect((await historyLabels())).toEqual(['Set Tracking']);
+    typeInto('Tracking', '25');
     await idle();
+    expect((await textProps(s.T)).tracking).toBe(25);
     expect((await historyLabels())).toHaveLength(2);
-    expect((await historyLabels()).at(-1)).toBe('Set Letter Spacing');
+    // The field shows the value it stores.
+    expect(screen.getByRole('spinbutton', { name: 'Tracking' })).toHaveAttribute('aria-valuenow', '25');
+  });
+
+  test('a legacy px letter spacing folds into Tracking on its first write (one entry)', async () => {
+    await h.run({ type: 'setProperty', prop: { layer: s.T, path: 'text/letterSpacing' }, value: { kind: 'scalar', value: 6 } } as never);
+    await clearHistory();
+    renderPanel();
+    const size = Number((await textProps(s.T)).fontSize);
+    // 6 px at the layer's size, in 1/1000 em.
+    expect(screen.getByRole('spinbutton', { name: 'Tracking' })).toHaveAttribute('aria-valuenow', String(Math.round((6 / size) * 1000)));
+    typeInto('Tracking', '50');
+    await idle();
+    expect((await textProps(s.T)).tracking).toBe(50);
+    expect(Number((await textProps(s.T)).letterSpacing ?? 0)).toBe(0);
+    expect((await historyLabels())).toEqual(['Set Tracking']);
   });
 
   test('Font Size keys at the playhead when animated (setValueAtTime)', async () => {
@@ -103,9 +117,7 @@ describe('Character panel', () => {
     act(() => { useProjectStore.getState().actions.setTime(1, 30); });
     await clearHistory();
     renderPanel();
-    const size = screen.getByLabelText('Font Size');
-    fireEvent.change(size, { target: { value: '40' } });
-    fireEvent.blur(size);
+    typeInto('Font Size', '40');
     await idle();
     expect((await docView()).getTrackKeyframes(s.T, 'fontSize')).toHaveLength(2);
     expect((await historyLabels())).toEqual(['Set Font Size']);

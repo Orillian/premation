@@ -6,7 +6,8 @@ import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys, useMirrorLayer, useMirrorTreeGroups } from '@hooks/useMirror';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { currentRuns, isSourceTextAnimated, maskIdsOf, mirrorParagraphBox, mirrorTextPresetCapture, SOURCE_TEXT_PATH, sourceTextAt, STYLE_RUNS_PATH, textPathOf } from '@layout/Text/textMirror';
-import { useComponentProp, type ComponentPropHandle } from './useComponentProp';
+import { componentPropCommands, useComponentProp, type ComponentPropHandle } from './useComponentProp';
+import { componentOfType } from '@core/engine/propRefs';
 import { useGesture } from '@hooks/useGesture';
 import { edit } from '@core/engine/uiEdits';
 import { fieldCommands, fieldEdit, sourceTextCommand, sourceTextStopwatchCommand, textPresetEdit } from '@layout/Text/textEdits';
@@ -156,8 +157,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const [fill, setFill] = useComponentProp(primary, tComp, 'fill');
   const [stroke, setStroke] = useComponentProp(primary, tComp, 'stroke');
   const [strokeWidth, setStrokeWidth, strokeWidthH] = useComponentProp(primary, tComp, 'strokeWidth');
-  const [letterSpacing, setLetterSpacing, letterSpacingH] = useComponentProp(primary, tComp, 'letterSpacing');
+  const [letterSpacing] = useComponentProp(primary, tComp, 'letterSpacing');
+  // AE's tracking (1/1000 em, `text/tracking`); `letterSpacing` is the older px field a document may still carry.
+  const [tracking, , trackingH] = useComponentProp(primary, tComp, 'tracking');
   const [lineHeight, setLineHeight, lineHeightH] = useComponentProp(primary, tComp, 'lineHeight');
+  // Point text anchored at the box centre (every older document) or AE's alignment edge.
+  const [textAnchor, setTextAnchor] = useComponentProp(primary, tComp, 'textAnchor');
   const [strokeOverFill] = useComponentProp(primary, tComp, 'strokeOverFill');
   const [strokeOrder] = useComponentProp(primary, tComp, 'strokeOrder');
   const [strokeLineJoin, setStrokeLineJoin] = useComponentProp(primary, tComp, 'strokeLineJoin');
@@ -228,6 +233,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const [fallbackSpaceAfter, setFallbackSpaceAfter] = useState(0);
   const [fallbackDirection, setFallbackDirection] = useState<'ltr' | 'rtl' | 'auto'>('ltr');
   const [fallbackOrientation, setFallbackOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
+  const [fallbackTextAnchor, setFallbackTextAnchor] = useState<'center' | 'alignment'>('alignment');
   const [fallbackRoman, setFallbackRoman] = useState(false);
   const [fallbackTcyAuto, setFallbackTcyAuto] = useState(false);
   const [fallbackTcyDigits, setFallbackTcyDigits] = useState(TATE_CHU_YOKO_DEFAULT_DIGITS);
@@ -333,10 +339,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       },
     };
   };
-  const sizeTyping = typing('fontSize', fontSizeH, setFontSize);
-  const leadingTyping = typing('lineHeight', lineHeightH, setLineHeight);
-  const trackingTyping = typing('letterSpacing', letterSpacingH, setLetterSpacing);
   const strokeWidthTyping = typing('strokeWidth', strokeWidthH, setStrokeWidth);
+  /** A ValueField's scrub is one engine gesture — never for a ranged edit (style runs). */
+  const scrubOf = (h: ComponentPropHandle): { onScrubStart?: () => void; onScrubEnd?: () => void } => (ranged ? {} : h.scrub);
 
   const clearRunStyling = (): void => {
     if (!ranged || !hasTarget || !primary) return;
@@ -359,7 +364,11 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const activeLeading = hasTarget
     ? (typeof lineHeight === 'number' ? lineHeight : AUTO_LEADING)
     : (fallbackLeading ?? AUTO_LEADING);
-  const activeTracking = hasTarget ? Math.round(Number(letterSpacing ?? 0)) : fallbackTracking;
+  // Tracking as AE shows it (1/1000 em): the `tracking` field plus whatever
+  // px letter spacing an older document still carries, at this size.
+  const legacyTrackingEm = hasTarget && typeof letterSpacing === 'number' && activeSize > 0 ? (letterSpacing / activeSize) * 1000 : 0;
+  const activeTracking = hasTarget ? Math.round(Number(tracking ?? 0) + legacyTrackingEm) : fallbackTracking;
+  const currentTextAnchor: 'center' | 'alignment' = hasTarget ? (textAnchor === 'alignment' ? 'alignment' : 'center') : fallbackTextAnchor;
   const activeFill = hasTarget ? String(fill ?? DEFAULT_TEXT_FILL) : fallbackFill;
   const activeStroke = hasTarget ? String(stroke ?? DEFAULT_TEXT_STROKE) : fallbackStroke;
   const activeStrokeWidth = hasTarget ? Number(strokeWidth ?? 0) : fallbackStrokeWidth;
@@ -476,7 +485,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
 
   const handleSizeChange = (s: number) => {
     setCharProp('fontSize', s, (v) => {
-      if (hasTarget) sizeTyping.set(v as number);
+      if (hasTarget) setFontSize(v as number);
       else setFallbackSize(v as number);
     });
   };
@@ -488,15 +497,31 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       restyleRange('Leading', selection.start, selection.end, { lineHeight: l });
       return;
     }
-    if (hasTarget) leadingTyping.set(l);
+    if (hasTarget) setLineHeight(l);
     else setFallbackLeading(l);
   };
 
+  /**
+   * Tracking in 1/1000 em (AE). Layer-wide it is the `tracking` field; a px
+   * `letterSpacing` an older document carries is folded into it on the first
+   * write (one entry), so the value keeps its look when the size changes. A
+   * range stores px on its run, at the run's own size.
+   */
   const handleTrackingChange = (tr: number) => {
-    setCharProp('letterSpacing', tr, (v) => {
-      if (hasTarget) trackingTyping.set(v as number);
-      else setFallbackTracking(v as number);
-    });
+    if (!Number.isFinite(tr)) return;
+    if (ranged && hasTarget && primary) {
+      const size = styleOverRange(currentRuns(primary), selection.start, selection.end, textLen).style.fontSize ?? activeSize;
+      restyleRange('Tracking', selection.start, selection.end, { letterSpacing: tr === 0 ? undefined : (tr * size) / 1000 });
+      return;
+    }
+    if (!hasTarget || !primary) {
+      setFallbackTracking(tr);
+      return;
+    }
+    const cmds = fieldCommands(primary, 'text/tracking', tr);
+    const textComponent = componentOfType(primary, 'Text');
+    if (legacyTrackingEm !== 0 && textComponent) cmds.push(...(componentPropCommands(primary, textComponent, 'letterSpacing', 0, time) ?? []));
+    void edit('Set Tracking', cmds);
   };
 
   const handleFillChange = (c: string) => {
@@ -744,46 +769,65 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               <option key={w} value={String(w)}>{WEIGHT_LABELS[w] ?? String(w)}</option>
             ))}
           </select>
+          {/* AE's style menu: the family's upright or italic face (an italic the
+              family lacks is synthesized by the engine, like Faux Italic). */}
+          <select
+            value={activeStyle === 'italic' ? 'italic' : 'normal'}
+            onChange={(e) => handleStyleChange(e.target.value === 'italic' ? 'italic' : 'normal')}
+            className={styles.fontSelect}
+            aria-label="Font Style"
+            title="Regular or the family's italic face (synthesized when it has none)"
+          >
+            <option value="normal">Regular</option>
+            <option value="italic">Italic</option>
+          </select>
         </div>
   );
 
+  // Size · Leading · Tracking are ValueFields (scrub, arrows, Shift ×10,
+  // maths), as every numeric row in the app — they were plain number inputs.
   const sizeCell = (
           <div className={styles.metricCell}>
             <span className={styles.metricLabel} title="Font Size (TT)">Size</span>
-            <input
-              type="number"
-              aria-label="Font Size"
-              className={styles.metricInput}
-              value={activeSize}
-              onChange={(e) => { sizeTyping.begin(); handleSizeChange(Math.max(1, Number(e.target.value))); }}
-              onBlur={sizeTyping.onBlur}
-            />
-            <span className={styles.metricUnit}>px</span>
+            <div className={styles.metricValue}>
+              <ValueField
+                aria-label="Font Size"
+                value={activeSize}
+                min={1}
+                step={1}
+                precision={0}
+                unit="px"
+                onChange={(v) => handleSizeChange(Math.max(1, v))}
+                {...scrubOf(fontSizeH)}
+              />
+            </div>
           </div>
   );
 
-  // Leading (line height) — Auto or explicit.
+  // Leading in px, as AE's Character panel shows it (the engine stores the
+  // multiple of the font size; Auto = 120 %). A range shows its own leading.
+  const leadingMultiple = shownLeading !== undefined ? shownLeading : activeLeading;
+  const leadingPx = Math.round(leadingMultiple * activeSize * 10) / 10;
   const leadingCell = (
           <div className={styles.metricCell}>
-            <span className={styles.metricLabel} title="Leading / Line Height (A/A). Clear the field or press Auto for 120% of the font size.">Leading</span>
-            <input
-              type="number"
-              aria-label="Leading (Line Height)"
-              step="0.1"
-              className={styles.metricInput}
-              value={shownLeading !== undefined ? shownLeading : leadingIsAuto ? '' : activeLeading}
-              placeholder="Auto"
-              onChange={(e) => {
-                if (e.target.value === '') handleLeadingChange(undefined);
-                else { leadingTyping.begin(); handleLeadingChange(Math.max(0.5, Number(e.target.value))); }
-              }}
-              onBlur={leadingTyping.onBlur}
-            />
+            <span className={styles.metricLabel} title="Leading (A/A), in px. Auto = 120% of the font size.">Leading</span>
+            <div className={styles.metricValue}>
+              <ValueField
+                aria-label="Leading"
+                value={leadingPx}
+                min={0}
+                step={1}
+                precision={1}
+                unit="px"
+                onChange={(px) => handleLeadingChange(activeSize > 0 ? Math.max(0.05, px / activeSize) : AUTO_LEADING)}
+                {...scrubOf(lineHeightH)}
+              />
+            </div>
             <button
               type="button"
               className={styles.metricToggle}
-              data-active={leadingIsAuto}
-              aria-pressed={leadingIsAuto}
+              data-active={leadingIsAuto && shownLeading === undefined}
+              aria-pressed={leadingIsAuto && shownLeading === undefined}
               aria-label="Auto Leading"
               title="Auto leading (120% of the font size)"
               onClick={() => handleLeadingChange(leadingIsAuto ? AUTO_LEADING : undefined)}
@@ -1017,6 +1061,24 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             options={[
               { value: 'horizontal', label: 'Horizontal' },
               { value: 'vertical', label: 'Vertical' },
+            ]}
+          />
+        </div>
+        {/* Where point text anchors: AE puts the anchor at the alignment edge
+            (a left-aligned title grows to the right); older documents centre. */}
+        <div className={styles.controlRow}>
+          <Segmented
+            size="sm"
+            fullWidth
+            aria-label="Point Text Anchor"
+            value={currentTextAnchor}
+            onChange={(v) => {
+              if (hasTarget) setTextAnchor(v);
+              else setFallbackTextAnchor(v);
+            }}
+            options={[
+              { value: 'alignment', label: 'Anchor at alignment' },
+              { value: 'center', label: 'Anchor at centre' },
             ]}
           />
         </div>
@@ -1270,19 +1332,23 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   // Stroke Solid / Linear / Radial — a gradient spans the whole block.
   const strokeRows = hasTarget && primary ? <TextStrokeRows nodeId={primary} strokeColor={shownStroke} /> : null;
 
-  // Tracking (letter spacing).
+  // Tracking in 1/1000 em (AE's unit: 50 = 0.05 em, the same look at every size).
+  const rangeTracking = rangeStyle?.letterSpacing !== undefined
+    ? Math.round((rangeStyle.letterSpacing / (rangeStyle.fontSize ?? activeSize)) * 1000)
+    : undefined;
   const trackingCell = (
           <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
-            <span className={styles.metricLabel} title="Tracking (Letter Spacing) (VA)">Tracking</span>
-            <input
-              type="number"
-              aria-label="Tracking (Letter Spacing)"
-              className={styles.metricInput}
-              value={activeTracking}
-              onChange={(e) => { trackingTyping.begin(); handleTrackingChange(Number(e.target.value)); }}
-              onBlur={trackingTyping.onBlur}
-            />
-            <span className={styles.metricUnit}>px</span>
+            <span className={styles.metricLabel} title="Tracking (VA), in 1/1000 em — After Effects' unit. Negative tightens display type, positive opens small text.">Tracking</span>
+            <div className={styles.metricValue}>
+              <ValueField
+                aria-label="Tracking"
+                value={rangeTracking ?? activeTracking}
+                step={5}
+                precision={0}
+                onChange={handleTrackingChange}
+                {...scrubOf(trackingH)}
+              />
+            </div>
           </div>
   );
 

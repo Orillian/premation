@@ -62,8 +62,9 @@ it('shows the font size and the everyday controls for a text layer', async () =>
   const id = await textLayer({ content: 'Hello', fontSize: 48, letterSpacing: 5, fill: '#ff0000' });
   render(<TextSection nodeId={id} />);
 
-  expect(screen.getByLabelText('Font Size')).toHaveValue(48);
-  expect(screen.getByLabelText('Tracking (Letter Spacing)')).toHaveValue(5);
+  expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toHaveAttribute('aria-valuenow', '48');
+  // A px letter spacing an older document carries reads in AE's unit: 5 px at 48 px = 104 ‰ em.
+  expect(screen.getByRole('spinbutton', { name: 'Tracking' })).toHaveAttribute('aria-valuenow', '104');
   expect(screen.getByLabelText('Character Fill Color')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Center Align' })).toBeInTheDocument();
   // No panel chrome: the section host draws the title.
@@ -93,6 +94,8 @@ it('writes a size edit to the layer — one undo entry that undo reverses', asyn
   render(<TextSection nodeId={id} />);
   const before = (await h.doc());
 
+  // A ValueField: Enter opens the input, blur commits.
+  fireEvent.keyDown(screen.getByRole('spinbutton', { name: 'Font Size' }), { key: 'Enter' });
   const size = screen.getByLabelText('Font Size');
   await act(async () => {
     fireEvent.change(size, { target: { value: '64' } });

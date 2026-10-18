@@ -96,7 +96,7 @@ describe('Character and Paragraph panels', () => {
     expect(screen.queryByText('Text')).not.toBeInTheDocument();
     expect(screen.queryByText('Typography')).not.toBeInTheDocument();
     expect(screen.queryByText('Default Preset')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Font Size')).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Faux Bold' })).toBeInTheDocument();
     for (const name of ALIGN_BUTTONS) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
     for (const label of PARAGRAPH_FIELDS) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
@@ -124,9 +124,11 @@ describe('Character and Paragraph panels', () => {
     expect(textarea.value).toBe('Hello World');
 
     // Typography
-    expect(screen.getByLabelText('Font Size')).toHaveValue(48);
-    expect(screen.getByLabelText('Leading (Line Height)')).toHaveValue(1.3);
-    expect(screen.getByLabelText('Tracking (Letter Spacing)')).toBeInTheDocument();
+    // ValueFields (scrub / type); Leading reads in px (1.3 × 48), Tracking in 1/1000 em.
+    expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toHaveAttribute('aria-valuenow', '48');
+    expect(screen.getByRole('spinbutton', { name: 'Leading' })).toHaveAttribute('aria-valuenow', '62.4');
+    expect(screen.getByRole('spinbutton', { name: 'Tracking' })).toHaveAttribute('aria-valuenow', '0');
+    expect(screen.getByLabelText('Font Style')).toHaveValue('normal');
 
     // AE's synthetic styles — independent of the weight menu and the font's italic.
     for (const name of ['Faux Bold', 'Faux Italic', 'All Caps', 'Small Caps', 'Superscript', 'Subscript']) {
@@ -155,7 +157,7 @@ describe('Character and Paragraph panels', () => {
     expect(screen.getByRole('radiogroup', { name: 'Text Direction' })).toBeInTheDocument();
 
     // No character rows, no Source Text, no heading.
-    expect(screen.queryByLabelText('Font Size')).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton', { name: 'Font Size' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Faux Bold' })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Type text content here...')).not.toBeInTheDocument();
     expect(screen.queryByText('Paragraph & Alignment')).not.toBeInTheDocument();
