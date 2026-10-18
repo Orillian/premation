@@ -3,6 +3,44 @@
 Newest first. Each entry is what a person opening the app after an update
 would want to know; the engine-level detail is in `ROADMAP.md`.
 
+## 1.0.2 — 2026-10-19
+
+- **Linux.** Premation now ships for Linux as an x64 AppImage beside the
+  Windows installer and the macOS dmgs, with the same engine, bundled ffmpeg
+  and fonts, and in-place updates. Mark the file executable and run it; it
+  needs FUSE 2 (`libfuse2`) and a Vulkan-capable GPU driver.
+- **Panels.** One tab strip and one field grammar across the panels, a
+  calmer timeline and tool row.
+- **Text.** Tracking in 1/1000 em per range, the alignment anchor on the
+  first baseline, vertical columns anchored at the top; real italics of
+  system families and synthesized small caps; the Character panel scrubs
+  Size, Leading and Tracking in After Effects units and has a Style menu and
+  an Anchor row. Assistants can set justification, the italic face, tracking
+  and the anchor.
+- **Camera.** Crane, dolly and orbit rigs, Follow Path, Fly to Selected
+  Layers, shake, orient along path, depth compositing, linked flare, photo to
+  3D, camera import/export, camera expressions and a stereo rig; a New Camera
+  dialog that asks what you are doing, one lens list in mm, a Shot header and
+  a simpler Depth of Field.
+- **Cache.** A RAM tier and an After Effects-style native disk cache with
+  honest per-scope bars; the 3D blink is gone.
+- **Export.** Everything renders locally; window-only footage is staged, not
+  refused.
+- **Assistants.** The AI reaches the engine's 3D (primitives, PBR and glass,
+  extrusion, typed lights, shadows, environment), proposes three concepts per
+  brief and remembers recent pieces; `premation://connections` opens the
+  assistant Connections.
+
+## 1.0.1 — 2026-10-13
+
+- **ffmpeg ships in every installer**, pinned by hash, and the app repairs it
+  with one click if it goes missing — before this, export needed an ffmpeg of
+  your own.
+- Plugin publisher listings carry an icon, screenshots, an About and
+  per-version notes.
+- The macOS engine builds again (1.0.0's macOS engine job failed); Settings
+  model rows keep a readable info column.
+
 ## 1.0.0 — 2026-10-13
 
 Premation 1.0. The native engine from 0.9 now carries a full plugin platform,

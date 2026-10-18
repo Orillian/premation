@@ -28,6 +28,7 @@
  * the filesystem queries and the verifier are injected.
  */
 
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
@@ -63,6 +64,26 @@ export interface PinnedBuild {
   bytes: number;
   installedBytes: number;
   entry: string;
+}
+
+/** The archive's container, from the pinned URL: the Linux pin is a .tar.xz (BtbN), every other pin a zip. */
+export function archiveExtension(build: Pick<PinnedBuild, 'urls'>): 'zip' | 'tar.xz' {
+  return /\.tar\.xz$/i.test(build.urls[0] ?? '') ? 'tar.xz' : 'zip';
+}
+
+/**
+ * One member of a .tar.xz, through the system `tar` — Node has no xz. Only the
+ * Linux pin is a tarball, and tar + xz are on every Linux desktop the app runs
+ * on; the zip pins keep the in-process extractor (zipEntry.ts).
+ */
+async function extractTarEntry(archive: string, name: string, outDir: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    execFile('tar', ['-xf', archive, '-C', outDir, name], { windowsHide: true }, (err, _stdout, stderr) => {
+      if (err) reject(new ZipError(`tar could not extract ${name}: ${String(stderr || err.message).trim()}`));
+      else resolve();
+    });
+  });
+  if (!existsSync(path.join(outDir, name))) throw new ZipError(`${name} is not in ${path.basename(archive)}`);
 }
 
 export function pinnedBuild(platform: NodeJS.Platform, arch: string): PinnedBuild | null {
@@ -283,7 +304,15 @@ export async function installFromArchive(archive: string, build: PinnedBuild, de
   try {
     await rm(staging, { recursive: true, force: true });
     await mkdir(staging, { recursive: true });
-    await extractZipEntry(archive, build.entry, path.join(staging, exe));
+    if (archiveExtension(build) === 'tar.xz') {
+      const unpack = path.join(staging, 'unpack');
+      await mkdir(unpack, { recursive: true });
+      await extractTarEntry(archive, build.entry, unpack);
+      await rename(path.join(unpack, build.entry), path.join(staging, exe));
+      await rm(unpack, { recursive: true, force: true });
+    } else {
+      await extractZipEntry(archive, build.entry, path.join(staging, exe));
+    }
     if (deps.platform !== 'win32') await chmod(path.join(staging, exe), 0o755);
   } catch (err) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -328,7 +357,7 @@ export async function repairFfmpeg(deps: RepairDeps): Promise<string> {
   } catch (err) {
     throw new RepairError(classifyFsError(err) ?? 'no-permission', (err as Error).message);
   }
-  const archive = path.join(dir, `${build.sha256.slice(0, 16)}.zip`);
+  const archive = path.join(dir, `${build.sha256.slice(0, 16)}.${archiveExtension(build)}`);
   deps.onProgress?.({ phase: 'checking-space', receivedBytes: 0, totalBytes: build.bytes, attempt: 1 });
   const already = Math.max(await sizeOf(`${archive}.part`), await sizeOf(archive));
   const needed = (build.bytes - Math.min(already, build.bytes)) + build.installedBytes + 50 * MB;

@@ -27,6 +27,7 @@ Per platform:
 | --- | --- | --- |
 | Windows | `npm run dist` (on Windows) | `Premation-Setup-Windows.exe` + `latest.yml` |
 | macOS | `npm run dist` (on macOS) | `Premation-macOS-arm64.dmg`, `Premation-macOS-x64.dmg` + `latest-mac.yml` |
+| Linux | `npm run dist` (on Linux) | `Premation-Linux-x64.AppImage` + `latest-linux.yml` |
 
 **The C++ engine is part of every package.** `scripts/stageEngine.cjs` (the
 electron-builder `beforePack` hook) copies it from the preset build into
@@ -38,6 +39,7 @@ first (`cd native && cmake --preset <preset> && cmake --build --preset <preset>`
 | Windows x64 | `windows-clang-cl-engine` | `dxcompiler.dll`, `dxil.dll` |
 | macOS arm64 dmg | `macos-clang-engine` | `premation-host-bridge.node` |
 | macOS x64 dmg | `macos-clang-engine-x64` (cross-built on Apple silicon) | `premation-host-bridge.node` |
+| Linux x64 AppImage | `linux-clang-engine` | `premation-host-bridge.node` when built (dmabuf viewport; optional), any `*.so*` beside the engine |
 
 The release workflow builds these in its `engine` job (vcpkg binary cache,
 `.github/actions/build-engine`) and the `build` job downloads them. On macOS
@@ -46,8 +48,8 @@ hardened runtime before the app is sealed. `PREMATION_PACKAGE_WITHOUT_ENGINE=1`
 packages without it for a local installer rehearsal only — that app cannot run.
 
 Each platform must be built **on** that platform. That is what the release
-workflow's two-runner matrix is for. There is no Linux row on purpose — see
-"Platform support" below.
+workflow's three-runner matrix is for. Linux joined it in 1.0.2 — see
+"Platform support" below for what it ships and what it does not promise.
 
 `npm run pack` is the fast variant: it produces `win-unpacked/` only, with no
 installer — useful when you just want to run the packaged app.
@@ -173,14 +175,24 @@ later. No re-download from the website, no manual uninstall.
 
 Escape hatches: `MOTION_DISABLE_UPDATES=1` turns it off. Dev builds never check.
 
-### Platform support — Windows and macOS only
+### Platform support — Windows, macOS and Linux
 
-Linux is **deliberately unsupported**, not overlooked. The AppImage target was
-removed from `electron-builder.yml` and the release matrix rather than commented
-out, so nobody re-enables a target nobody tests. Re-adding it costs: a third
-build runner, a third update channel (`latest-linux.yml`) to keep in sync, and a
-platform none of us runs day to day — which is how a target rots into shipping
-broken builds that look fine in CI.
+Linux ships since **1.0.2** (2026-10-19) as one x64 **AppImage**, built on
+`ubuntu-latest` from the `linux-clang-engine` preset with the same engine,
+ffmpeg (BtbN's linux64 GPL build, pinned in `electron/ffmpegManifest.json` as a
+`.tar.xz` that both stagers unpack with the system `tar`), fonts, models and
+MCP server as the other two. AppImage rather than `.deb`/`.rpm` because it is
+the one Linux target `electron-updater` can update in place (`latest-linux.yml`).
+There is no signing step on Linux, so the workflow takes the unsigned path there
+by design (`signing: none` in the matrix) and the summary says so without the
+"no certificate" warning the other two get.
+
+What it does not promise: nobody on the team runs Linux day to day, so the
+AppImage is verified by CI (engine present and x86-64, ffmpeg runs with every
+encoder export needs) and not by a person before publishing. It needs FUSE 2
+(`libfuse2`) and a Vulkan-capable driver (Dawn's Linux backend); Wayland runs
+through XWayland. The viewport takes the route-A copy unless the dmabuf host
+bridge built. Say so in the notes until someone has used it for a day.
 
 macOS ships **both architectures** (`arm64` and `x64`) from one job, sharing a
 single `latest-mac.yml`. Shipping x64-only and letting Apple Silicon users find

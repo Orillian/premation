@@ -89,10 +89,13 @@ async function downloadOnce(url, dest) {
   throw lastErr;
 }
 
+/** The archive's container, from the pinned URL: BtbN's Linux builds are .tar.xz, everything else is a zip. */
+const archiveExt = (build) => (/\.tar\.xz$/i.test(build.urls[0]) ? 'tar.xz' : 'zip');
+
 /** The verified archive in the cache, downloading it from the first mirror that serves the pinned bytes. */
 async function ensureArchive(build, cacheDir) {
   mkdirSync(cacheDir, { recursive: true });
-  const archive = path.join(cacheDir, `${build.sha256}.zip`);
+  const archive = path.join(cacheDir, `${build.sha256}.${archiveExt(build)}`);
   if (existsSync(archive) && (await sha256File(archive)) === build.sha256) return archive;
   const failures = [];
   for (const url of build.urls) {
@@ -111,7 +114,12 @@ async function ensureArchive(build, cacheDir) {
   throw new Error(`[ffmpeg] could not get the pinned ffmpeg for ${build.key}:\n  ${failures.join('\n  ')}`);
 }
 
-/** Extract one zip member to `outFile` with the OS's own tools (bsdtar on Windows — never Git's GNU tar, which cannot read zip). */
+/**
+ * Extract one archive member to `outFile` with the OS's own tools: bsdtar on
+ * Windows (never Git's GNU tar, which cannot read zip; it reads .tar.xz too),
+ * `unzip` for a zip elsewhere, and `tar` for a .tar.xz (GNU tar + xz on the
+ * Linux runner; bsdtar on macOS).
+ */
 function extractEntry(archive, entry, outFile) {
   const tmpDir = `${outFile}.x`;
   rmSync(tmpDir, { recursive: true, force: true });
@@ -119,6 +127,8 @@ function extractEntry(archive, entry, outFile) {
   if (process.platform === 'win32') {
     const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
     execFileSync(tar, ['-xf', archive, '-C', tmpDir, entry], { stdio: 'pipe' });
+  } else if (/\.tar\.xz$/i.test(archive)) {
+    execFileSync('tar', ['-xf', archive, '-C', tmpDir, entry], { stdio: 'pipe' });
   } else {
     execFileSync('unzip', ['-o', '-q', archive, entry, '-d', tmpDir], { stdio: 'pipe' });
   }

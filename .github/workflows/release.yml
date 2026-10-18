@@ -1,6 +1,7 @@
-# Cut a release: build SIGNED installers for Windows and macOS and attach them to
-# a GitHub release that users download from — and that installed apps read to
-# discover updates.
+# Cut a release: build SIGNED installers for Windows and macOS and the Linux
+# AppImage (unsigned: Linux has no signing gate) and attach them to a GitHub
+# release that users download from — and that installed apps read to discover
+# updates.
 #
 #   npm run release:patch        # bumps package.json, commits, tags v0.1.1
 #   git push --follow-tags       # <- this is what starts the workflow
@@ -186,6 +187,10 @@ jobs:
             os: macos-latest
             preset: macos-clang-engine-x64
             triplet: x64-osx
+          - name: Linux x64
+            os: ubuntu-latest
+            preset: linux-clang-engine
+            triplet: x64-linux
     steps:
       - uses: actions/checkout@v4
       - name: Build premation-engine
@@ -205,6 +210,8 @@ jobs:
             ${{ steps.engine.outputs.engine-dir }}/premation-engine.exe
             ${{ steps.engine.outputs.engine-dir }}/premation-host-bridge.node
             ${{ steps.engine.outputs.engine-dir }}/*.dll
+            ${{ steps.engine.outputs.engine-dir }}/*.so
+            ${{ steps.engine.outputs.engine-dir }}/*.so.*
           if-no-files-found: error
           retention-days: 3
       # The plugin SDK for this platform (AE parity 2.2, docs/PLUGIN_STORE.md):
@@ -215,6 +222,7 @@ jobs:
           cmake --install native/build/${{ matrix.preset }} --component sdk --prefix sdk-out
           case "${{ matrix.preset }}" in
             windows-*) name=premation-sdk-windows-x64 ;;
+            linux-*) name=premation-sdk-linux-x64 ;;
             macos-clang-engine-x64) name=premation-sdk-macos-x64 ;;
             *) name=premation-sdk-macos-arm64 ;;
           esac
@@ -227,33 +235,11 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # The Linux SDK: plugin authors build Linux binaries too (the engine itself
-  # ships no Linux app). No Dawn and no tests: the headers, the CMake package
-  # and premation-plugins need neither.
-  sdk-linux:
-    name: Plugin SDK Linux x64
-    needs: verify
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build premation-plugins and install the SDK
-        run: |
-          sudo apt-get update && sudo apt-get install -y ninja-build clang zlib1g-dev
-          cmake -S native -B build-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DMOTION_BUILD_TESTS=OFF -DMOTION_BUILD_BENCH=OFF -DMOTION_BUILD_ENGINE=ON
-          cmake --build build-sdk --target premation-plugins
-          cmake --install build-sdk --component sdk --prefix sdk-out
-      - uses: actions/upload-artifact@v4
-        with:
-          name: premation-sdk-linux-x64
-          path: sdk-out/
-          if-no-files-found: error
-          retention-days: 3
-
-  # The SDK zips go on the draft beside the installers.
+  # The SDK zips go on the draft beside the installers. The Linux SDK comes
+  # from the Linux engine build above, like the other three.
   sdk-release:
     name: Attach the plugin SDKs
-    needs: [engine, sdk-linux, draft]
+    needs: [engine, draft]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -302,17 +288,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `signing` picks which secrets gate the signed path; `none` means the
+          # platform has no signing step and always takes the unsigned path.
           - os: windows-latest
             name: Windows
+            signing: win
             args: --win            # NSIS → Premation-Setup-Windows.exe
           - os: macos-latest
             name: macOS
+            signing: mac
             # BOTH architectures in ONE job, deliberately: two jobs would each
             # publish their own latest-mac.yml and the second would overwrite the
             # first, leaving one architecture unable to update.
             args: --mac --x64 --arm64
-          # LINUX IS DELIBERATELY ABSENT — removed, not commented out.
-          # See RELEASING.md "Platform support".
+          - os: ubuntu-latest
+            name: Linux
+            signing: none
+            args: --linux --x64    # AppImage → Premation-Linux-x64.AppImage + latest-linux.yml
 
     steps:
       - uses: actions/checkout@v4
@@ -346,6 +338,21 @@ jobs:
         with:
           name: engine-macos-clang-engine-x64
           path: native/build/macos-clang-engine-x64/engine
+      - name: Fetch the Linux engine
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: engine-linux-clang-engine
+          path: native/build/linux-clang-engine/engine
+      - name: Check the Linux engine
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x native/build/linux-clang-engine/engine/premation-engine
+          file native/build/linux-clang-engine/engine/premation-engine | grep -q 'x86-64'
+          ls -la native/build/linux-clang-engine/engine
+          echo "engine: x86-64 OK"
       - name: Check the engines' architectures
         if: matrix.os == 'macos-latest'
         shell: bash
@@ -450,7 +457,7 @@ jobs:
       # Notarization is done explicitly below rather than by electron-builder, so
       # submission, stapling and verification are separate inspectable steps.
       - name: Package (SIGNED)
-        if: ${{ (matrix.os == 'macos-latest' && needs.verify.outputs.signMac == 'true') || (matrix.os == 'windows-latest' && needs.verify.outputs.signWin == 'true') }}
+        if: ${{ (matrix.signing == 'mac' && needs.verify.outputs.signMac == 'true') || (matrix.signing == 'win' && needs.verify.outputs.signWin == 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK || secrets.WIN_CSC_LINK }}
@@ -463,12 +470,16 @@ jobs:
       # be — producing an artifact signed by an identity nobody chose. Skipping
       # has to be as deliberate as signing.
       - name: Package (UNSIGNED — no certificate configured)
-        if: ${{ (matrix.os == 'macos-latest' && needs.verify.outputs.signMac != 'true') || (matrix.os == 'windows-latest' && needs.verify.outputs.signWin != 'true') }}
+        if: ${{ (matrix.signing == 'mac' && needs.verify.outputs.signMac != 'true') || (matrix.signing == 'win' && needs.verify.outputs.signWin != 'true') || matrix.signing == 'none' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
-          echo "::warning::Building ${{ matrix.name }} UNSIGNED — no signing certificate is configured."
+          if [ "${{ matrix.signing }}" = "none" ]; then
+            echo "Building ${{ matrix.name }} unsigned — this platform has no signing step."
+          else
+            echo "::warning::Building ${{ matrix.name }} UNSIGNED — no signing certificate is configured."
+          fi
           npx electron-builder ${{ matrix.args }} --publish never
 
       # ── The engine is inside every package ──
@@ -484,6 +495,13 @@ jobs:
             for f in premation-engine.exe dxcompiler.dll dxil.dll; do
               ls release/**/win-unpacked/resources/engine/$f >/dev/null || { echo "::error::$f missing from win-unpacked/resources/engine"; exit 1; }
             done
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            shopt -s globstar nullglob
+            eng=$(ls release/**/linux-unpacked/resources/engine/premation-engine | head -1)
+            [ -n "$eng" ] || { echo "::error::premation-engine missing from linux-unpacked/resources/engine"; exit 1; }
+            test -x "$eng" || { echo "::error::premation-engine is not executable in the package"; exit 1; }
+            ls -la "$(dirname "$eng")"
+            ls release/**/*.AppImage >/dev/null || { echo "::error::no AppImage produced"; exit 1; }
           else
             found=0
             while IFS= read -r app; do
@@ -510,6 +528,17 @@ jobs:
             [ -n "$exe" ] || { echo "::error::ffmpeg.exe missing from win-unpacked/resources/ffmpeg"; exit 1; }
             ls release/**/win-unpacked/resources/ffmpeg/LICENSE.txt >/dev/null || { echo "::error::ffmpeg LICENSE.txt missing"; exit 1; }
             enc=$("$exe" -hide_banner -encoders)
+            for e in libx264 aac libvpx-vp9 libopus prores_ks gif; do
+              grep -qE "^ [VAS][A-Z.]{5} $e " <<<"$enc" || { echo "::error::bundled ffmpeg has no $e encoder"; exit 1; }
+            done
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            shopt -s globstar nullglob
+            ff=$(ls release/**/linux-unpacked/resources/ffmpeg/ffmpeg | head -1)
+            [ -n "$ff" ] || { echo "::error::ffmpeg missing from linux-unpacked/resources/ffmpeg"; exit 1; }
+            test -x "$ff" || { echo "::error::ffmpeg is not executable in the package"; exit 1; }
+            ls release/**/linux-unpacked/resources/ffmpeg/LICENSE.txt >/dev/null || { echo "::error::ffmpeg LICENSE.txt missing"; exit 1; }
+            "$ff" -hide_banner -version | head -1
+            enc=$("$ff" -hide_banner -encoders)
             for e in libx264 aac libvpx-vp9 libopus prores_ks gif; do
               grep -qE "^ [VAS][A-Z.]{5} $e " <<<"$enc" || { echo "::error::bundled ffmpeg has no $e encoder"; exit 1; }
             done
@@ -599,7 +628,7 @@ jobs:
 
       # Publish only AFTER verification passed (when it ran), and only on a tag.
       - name: Publish to the draft release (SIGNED)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && ((matrix.os == 'macos-latest' && needs.verify.outputs.signMac == 'true') || (matrix.os == 'windows-latest' && needs.verify.outputs.signWin == 'true')) }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && ((matrix.signing == 'mac' && needs.verify.outputs.signMac == 'true') || (matrix.signing == 'win' && needs.verify.outputs.signWin == 'true')) }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK || secrets.WIN_CSC_LINK }}
@@ -607,7 +636,7 @@ jobs:
         run: npx electron-builder ${{ matrix.args }} --publish always
 
       - name: Publish to the draft release (UNSIGNED)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && ((matrix.os == 'macos-latest' && needs.verify.outputs.signMac != 'true') || (matrix.os == 'windows-latest' && needs.verify.outputs.signWin != 'true')) }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && ((matrix.signing == 'mac' && needs.verify.outputs.signMac != 'true') || (matrix.signing == 'win' && needs.verify.outputs.signWin != 'true') || matrix.signing == 'none') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -620,9 +649,19 @@ jobs:
         if: always()
         shell: bash
         run: |
-          SIGNED='${{ (matrix.os == 'macos-latest' && needs.verify.outputs.signMac) || needs.verify.outputs.signWin }}'
+          SIGNED='${{ (matrix.signing == 'mac' && needs.verify.outputs.signMac) || (matrix.signing == 'win' && needs.verify.outputs.signWin) || 'false' }}'
           if [ "$SIGNED" = "true" ]; then
             echo "### ${{ matrix.name }}: SIGNED and verified" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ matrix.signing }}" = "none" ]; then
+            {
+              echo "### ${{ matrix.name }}: unsigned (no signing step on this platform)"
+              echo ""
+              echo "Add this to the release notes before publishing:"
+              echo ""
+              echo "> Linux: download the AppImage, mark it executable (\`chmod +x Premation-Linux-x64.AppImage\`"
+              echo "> or Properties ▸ Permissions) and run it. It needs FUSE 2 (\`libfuse2\` on Debian/Ubuntu)"
+              echo "> and a Vulkan-capable GPU driver. Updates install in place."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             {
               echo "### ${{ matrix.name }}: **UNSIGNED**"
@@ -644,10 +683,11 @@ jobs:
       - name: Upload installers as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.name }}${{ ((matrix.os == 'macos-latest' && needs.verify.outputs.signMac == 'true') || (matrix.os == 'windows-latest' && needs.verify.outputs.signWin == 'true')) && '-signed' || '-UNSIGNED' }}
+          name: installers-${{ matrix.name }}${{ ((matrix.signing == 'mac' && needs.verify.outputs.signMac == 'true') || (matrix.signing == 'win' && needs.verify.outputs.signWin == 'true')) && '-signed' || (matrix.signing == 'none' && '-unsigned') || '-UNSIGNED' }}
           path: |
             release/**/*.exe
             release/**/*.dmg
+            release/**/*.AppImage
             release/**/*.yml
             release/**/*.blockmap
           if-no-files-found: error

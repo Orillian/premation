@@ -152,6 +152,8 @@ fileAssociations:
     description: Premation plugin package
     role: Viewer
     rank: Owner
+    # Linux only: the MIME type the .desktop entry claims for the extension.
+    mimeType: application/x-premation-plugin
 
 win:
   target: nsis
@@ -204,9 +206,19 @@ mac:
   # is left ON rather than narrowed for build speed.
   notarize: false # handled explicitly in CI via notarytool; see .github/workflows/release.yml
 
-# LINUX IS DELIBERATELY UNSUPPORTED — not overlooked.
-# Removed rather than commented out so nobody re-enables a target nobody tests.
-# See RELEASING.md "Platform support" for the reasoning and what re-adding costs.
+linux:
+  # One AppImage, x64. AppImage is the target electron-updater can update in
+  # place (latest-linux.yml); a .deb or .rpm would have to be updated by the
+  # user's package manager, which the app cannot drive. The engine ships
+  # inside it unsigned — Linux has no code-signing gate to fail.
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Graphics
+  synopsis: Motion design and animation
+  artifactName: Premation-Linux-${arch}.${ext}
+  # The desktop entry is electron-builder's: it adds x-scheme-handler/premation
+  # from `protocols` and the .pplugin MIME type from `fileAssociations` itself.
 
 # ── Signing ───────────────────────────────────────────────────────────────────
 # Credentials come from CI SECRETS ONLY. Nothing here, nothing in the repo.

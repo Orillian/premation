@@ -1,7 +1,7 @@
 {
-  "$comment": "The ffmpeg every Premation build ships, and the one the app re-downloads when the shipped copy is missing or broken. ONE pin, read by scripts/fetchFfmpeg.cjs (packaging) and electron/ffmpegRepair.ts (in-app repair), so the two can never disagree. A GPL build on purpose: export uses libx264, libx265, libvpx-vp9 and libopus (electron/ffmpegEncodeArgs.ts), none of which an LGPL build has. ffmpeg runs as a separate executable; its licence and source pointer ship beside it (resources/ffmpeg/LICENSE.txt + NOTICE.txt → <resources>/ffmpeg/). Windows: BtbN's month-end autobuild (kept two years; dailies are kept 14 days, so never pin a daily). macOS: martin-riedl.de release builds (signed by the publisher). To bump: pick new archives, put their SHA-256 here, and run `node scripts/fetchFfmpeg.cjs --all`. `urls` is a mirror list tried in order; every mirror must serve the identical bytes (the hash is checked).",
+  "$comment": "The ffmpeg every Premation build ships, and the one the app re-downloads when the shipped copy is missing or broken. ONE pin, read by scripts/fetchFfmpeg.cjs (packaging) and electron/ffmpegRepair.ts (in-app repair), so the two can never disagree. A GPL build on purpose: export uses libx264, libx265, libvpx-vp9 and libopus (electron/ffmpegEncodeArgs.ts), none of which an LGPL build has. ffmpeg runs as a separate executable; its licence and source pointer ship beside it (resources/ffmpeg/LICENSE.txt + NOTICE.txt → <resources>/ffmpeg/). Windows and Linux: BtbN's month-end autobuild (kept two years; dailies are kept 14 days, so never pin a daily); the Linux archive is a .tar.xz, which both stagers extract with the system tar. macOS: martin-riedl.de release builds (signed by the publisher). To bump: pick new archives, put their SHA-256 here, and run `node scripts/fetchFfmpeg.cjs --all`. `urls` is a mirror list tried in order; every mirror must serve the identical bytes (the hash is checked).",
   "version": "9.0.2",
-  "source": "https://ffmpeg.org/download.html#get-sources (FFmpeg 9.0.2; Windows build recipe https://github.com/BtbN/FFmpeg-Builds, macOS build recipe https://ffmpeg.martin-riedl.de)",
+  "source": "https://ffmpeg.org/download.html#get-sources (FFmpeg 9.0.2; Windows and Linux build recipe https://github.com/BtbN/FFmpeg-Builds, macOS build recipe https://ffmpeg.martin-riedl.de)",
   "requiredEncoders": ["libx264", "aac", "libvpx-vp9", "libopus", "prores_ks", "gif", "png"],
   "builds": {
     "win32-x64": {
@@ -30,6 +30,15 @@
       "bytes": 33816391,
       "installedBytes": 94769296,
       "entry": "ffmpeg"
+    },
+    "linux-x64": {
+      "urls": [
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz"
+      ],
+      "sha256": "68ee646831adaae2495618346f3bba94ff207ff83bbd34d643e7004730d66269",
+      "bytes": 151017172,
+      "installedBytes": 172692552,
+      "entry": "ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0/bin/ffmpeg"
     }
   }
 }

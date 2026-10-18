@@ -115,8 +115,8 @@ screen unless you point it at a backend.
   If it finds none, mp4 export fails with a message saying exactly that, and
   nothing else is affected.
 
-Linux, macOS and Windows are all supported by the toolchain. CI currently
-exercises the render tests only.
+Windows, macOS and (since 1.0.2) Linux installers ship from every release:
+an NSIS installer, two dmgs and an x64 AppImage.
 
 ## What's in the box
 
