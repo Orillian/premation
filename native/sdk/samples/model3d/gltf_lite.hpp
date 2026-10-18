@@ -37,6 +37,17 @@ struct Json {
   std::vector<Json> arr;
   std::vector<std::pair<std::string, Json>> obj;
 
+  // Declared here, defined after the class: libstdc++ 14 instantiates
+  // std::pair<std::string, Json> while an implicitly defined constructor is
+  // still being generated and rejects the then-incomplete Json (static_assert
+  // in is_destructible). Out-of-line defaults see the type complete.
+  Json();
+  ~Json();
+  Json(const Json&);
+  Json(Json&&) noexcept;
+  Json& operator=(const Json&);
+  Json& operator=(Json&&) noexcept;
+
   [[nodiscard]] const Json& operator[](std::string_view key) const {
     static const Json none;
     for (const auto& [k, v] : obj) {
@@ -52,6 +63,13 @@ struct Json {
   [[nodiscard]] double number(double def) const { return kind == Kind::number ? num : def; }
   [[nodiscard]] int64_t integer(int64_t def) const { return kind == Kind::number ? static_cast<int64_t>(num) : def; }
 };
+
+inline Json::Json() = default;
+inline Json::~Json() = default;
+inline Json::Json(const Json&) = default;
+inline Json::Json(Json&&) noexcept = default;
+inline Json& Json::operator=(const Json&) = default;
+inline Json& Json::operator=(Json&&) noexcept = default;
 
 class Parser {
  public:
