@@ -98,13 +98,21 @@ struct TextStyle {  // NOLINT(bugprone-exception-escape): implicit special membe
   double fontSize = 0;
   std::optional<std::string> fontFamily, fontWeight, fontStyle, fill, strokeColor, verticalAlign;
   std::optional<double> letterSpacing, kerning, strokeWidth, lineHeight, horizontalScale, verticalScale, baselineShift, tsume;
+  /// Tracking in 1/1000 em (AE's unit). Invariant: `letterSpacing` ALREADY
+  /// holds it, resolved at `fontSize` — the base from the layer's folded
+  /// spacing, a merged run re-resolved at the run's size (`merged`).
+  std::optional<double> tracking;
   bool fauxBold = false, fauxItalic = false, allCaps = false, smallCaps = false, tateChuYoko = false;
   std::optional<std::map<std::string, double>> axisOffsets;
   // ParagraphStyle (base only)
   std::string align;
   std::optional<double> paragraphSpacing, leftIndent, rightIndent, firstLineIndent, spaceBefore, spaceAfter;
 
-  /// `{...this, ...run}` with a run style's JSON.
+  /// `{...this, ...run}` with a run style's JSON. A run's `tracking` (1/1000
+  /// em) resolves to px at the RUN's font size, replacing the base tracking;
+  /// a base tracking follows a run that only changes the size (AE: tracking
+  /// is per character, in em); a run's px `letterSpacing` alone replaces the
+  /// whole spacing, as before.
   [[nodiscard]] TextStyle merged(const json::Value& runStyle) const;
 };
 

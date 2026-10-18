@@ -1107,7 +1107,6 @@ void apply_source_text(RLayer& l, const motion::expr::SourceTextResult& result) 
           if (st.tracking) { s.tracking = *st.tracking; s.hasTracking = true; }
         }
       }
-      const double layerSize = o.font_size ? eff.font_size : l.fontSize;
       std::ptrdiff_t i = 0;
       while (i < n) {
         const Slot& s = per[static_cast<std::size_t>(i)];
@@ -1127,7 +1126,9 @@ void apply_source_text(RLayer& l, const motion::expr::SourceTextResult& result) 
         if (s.hasWeight) style.set("fontWeight", Json::string(s.weight));
         if (s.hasStyle) style.set("fontStyle", Json::string(s.style));
         if (s.hasFill) style.set("fill", Json::string(s.fill));
-        if (s.hasTracking) style.set("letterSpacing", Json::number((s.tracking * (s.hasSize ? s.fontSize : layerSize)) / 1000));
+        // Tracking stays in 1/1000 em on the run: the painter and the measurer
+        // resolve it at the run's size (the layer's when the run sets none).
+        if (s.hasTracking) style.set("tracking", Json::number(s.tracking));
         Json run = Json::object();
         run.set("start", Json::number(static_cast<double>(i)));
         run.set("end", Json::number(static_cast<double>(j)));
@@ -1282,8 +1283,10 @@ void Walk::build_node(const doc::Node& n) {
 
   // Size: measured text, the authored box, or the kind's default.
   std::optional<std::pair<double, double>> measured;
+  std::optional<MeasuredStyle> textStyle;  // kept for the alignment anchor below
   if (layerKind == LayerKind::text) {
-    const auto style = read_measured_text_style(n, a.items());
+    textStyle = read_measured_text_style(n, a.items());
+    const std::optional<MeasuredStyle>& style = textStyle;
     if (style) {
       if (c_.measurer == nullptr) unported(l, n, "text measurement (no fonts)");
       else measured = c_.measurer->measure_text_size(*style);
@@ -1713,6 +1716,7 @@ void Walk::build_node(const doc::Node& n) {
   // so the box and the paint agree. A run's own font size keeps the layer's px.
   if (base.tracking && *base.tracking != 0 && std::isfinite(*base.tracking)) {
     l.letterSpacing = l.letterSpacing.value_or(0) + *base.tracking * l.fontSize / 1000;
+    l.tracking = base.tracking;  // a run at another size re-resolves it (raster TextStyle::merged)
   }
   l.lineHeight = a.get("lineHeight") ? a.get("lineHeight") : base.lineHeight;
   l.align = base.align;
@@ -1796,10 +1800,13 @@ void Walk::build_node(const doc::Node& n) {
     const auto [ax0, ay0] = read_node_anchor(n);
     l.anchorX = a.get("anchorX").value_or(ax0);
     l.anchorY = a.get("anchorY").value_or(ay0);
-    // Point text anchored at its alignment edge (AE): the Anchor Point value is
-    // then relative to that edge, as AE's is to the text origin.
-    if (layerKind == LayerKind::text && measured && base.textAnchor && *base.textAnchor == "alignment") {
-      l.anchorX += point_text_anchor_x(n, measured->first);
+    // Point text anchored at its alignment edge and first baseline (AE: the
+    // text origin; a vertical column at its top): the Anchor Point value is
+    // then relative to that origin, as AE's is.
+    if (layerKind == LayerKind::text && measured && textStyle && c_.measurer != nullptr && base.textAnchor && *base.textAnchor == "alignment") {
+      const PointTextAnchor pa = point_text_anchor(*c_.measurer, n, *textStyle, measured->first, measured->second);
+      l.anchorX += pa.x;
+      l.anchorY += pa.y;
     }
   }
   // Rigs: puppet pins and skeletons → layer.deformedMesh (rig_mesh.cpp).

@@ -167,6 +167,8 @@ std::string_view resolve_paragraph_direction(std::string_view direction, std::st
 TextStyle TextStyle::merged(const json::Value& r) const {
   TextStyle s = *this;
   if (!r.is_object()) return s;
+  bool setLetterSpacing = false;
+  bool setTracking = false;
   for (const auto& k : r.keys()) {
     const json::Value& v = r[k];
     if (k == "fontSize") s.fontSize = v.num(std::nan(""));
@@ -176,8 +178,13 @@ TextStyle TextStyle::merged(const json::Value& r) const {
     else if (k == "fill") s.fill = opt_str(v);
     else if (k == "strokeColor") s.strokeColor = opt_str(v);
     else if (k == "verticalAlign") s.verticalAlign = opt_str(v);
-    else if (k == "letterSpacing") s.letterSpacing = opt_num(v);
-    else if (k == "kerning") s.kerning = opt_num(v);
+    else if (k == "letterSpacing") {
+      s.letterSpacing = opt_num(v);
+      setLetterSpacing = true;
+    } else if (k == "tracking") {
+      s.tracking = opt_num(v);
+      setTracking = true;
+    } else if (k == "kerning") s.kerning = opt_num(v);
     else if (k == "strokeWidth") s.strokeWidth = opt_num(v);
     else if (k == "lineHeight") s.lineHeight = opt_num(v);
     else if (k == "horizontalScale") s.horizontalScale = opt_num(v);
@@ -189,6 +196,23 @@ TextStyle TextStyle::merged(const json::Value& r) const {
     else if (k == "allCaps") s.allCaps = v.truthy();
     else if (k == "smallCaps") s.smallCaps = v.truthy();
     else if (k == "tateChuYoko") s.tateChuYoko = v.truthy();
+  }
+  // Tracking in em (see the header's invariant). A px run alone replaces the
+  // spacing outright, tracking included.
+  if (setLetterSpacing && !setTracking) {
+    s.tracking.reset();
+    return s;
+  }
+  const auto em_px = [](const std::optional<double>& tr, double size) {
+    return tr && std::isfinite(*tr) && std::isfinite(size) ? *tr * size / 1000 : 0.0;
+  };
+  const bool sizeChanged = s.fontSize != fontSize && !(std::isnan(s.fontSize) && std::isnan(fontSize));
+  if (setTracking || (s.tracking && sizeChanged)) {
+    // The px under the tracking: the run's own, or the base's minus what the
+    // base tracking contributed at the base size.
+    const double basePx = setLetterSpacing ? s.letterSpacing.value_or(0) : s.letterSpacing.value_or(0) - em_px(tracking, fontSize);
+    const double px = basePx + em_px(s.tracking, s.fontSize);
+    s.letterSpacing = px != 0 || setLetterSpacing || letterSpacing ? std::optional<double>(px) : std::nullopt;
   }
   return s;
 }

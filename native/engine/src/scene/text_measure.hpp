@@ -58,6 +58,17 @@ struct MeasuredStyle {
     std::optional<double> fontSize, lineHeight;
   };
   std::vector<LineRun> lineRuns;
+  /// Character runs that change the spacing after a grapheme (a px
+  /// `letterSpacing`, or a `tracking` in 1/1000 em resolved at the run's font
+  /// size), in grapheme indices of the content. Point text measures them;
+  /// a wrapped paragraph keeps the uniform `letterSpacing` (its soft breaks
+  /// re-index the text).
+  struct SpacingRun {
+    double start = 0;
+    double end = 0;
+    double px = 0;  ///< the spacing after each grapheme of the run
+  };
+  std::vector<SpacingRun> spacingRuns;
   /// Set by wrapping: the wrapped content's soft-break line numbers.
   std::optional<std::vector<int>> softBreakLines;
   /// Set by wrapping a Fit Text to Box style (measureText.ts fitScaleOf): the
@@ -154,7 +165,25 @@ class TextMeasurer {
     (void)s;
     return std::nullopt;
   }
+  /// How far the alphabetic baseline sits BELOW the line's draw origin (the
+  /// painter draws with `textBaseline = middle`): the first baseline of a point
+  /// text is its first line's centre-origin y plus this. Positive for every
+  /// Latin face (the em box's ascent exceeds its descent). nullopt outside the
+  /// port (no fonts, variable axes).
+  [[nodiscard]] virtual std::optional<double> baseline_below_middle(const MeasuredStyle& s) {
+    (void)s;
+    return std::nullopt;
+  }
 };
+
+/// The spacing the measurer adds after grapheme `index` of `s.content`: the
+/// run's when one covers it (later runs win, as the painter resolves), else
+/// the style's `letterSpacing`.
+[[nodiscard]] double spacing_after(const MeasuredStyle& s, std::size_t index);
+/// The spacing inside a line of `chars` graphemes that starts at grapheme
+/// `lineStart`: the gaps between them (the last grapheme's spacing is not
+/// counted, as measureTextBoxes' `(chars - 1) × letterSpacing`).
+[[nodiscard]] double line_spacing(const MeasuredStyle& s, std::size_t lineStart, std::size_t chars);
 
 /// The Canvas2D-metrics measurer over the E3 raster module (fonts from `opts`).
 [[nodiscard]] std::unique_ptr<TextMeasurer> make_canvas_measurer(const raster::CanvasOptions& opts);

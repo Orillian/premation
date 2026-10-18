@@ -194,6 +194,7 @@ std::optional<Json> text_paint_spec(const RLayer& l, double width, double height
   put("fontStyle", opt_s(l.fontStyle));
   put("align", opt_s(l.align));
   put("letterSpacing", opt_n(l.letterSpacing));
+  put("tracking", opt_n(l.tracking));
   put("lineHeight", opt_n(l.lineHeight));
   put("paragraphSpacing", opt_n(l.paragraphSpacing));
   if (l.strokeOverFill) o.set("strokeOverFill", Json::boolean(*l.strokeOverFill));
@@ -235,7 +236,7 @@ std::string text_spec_key(const Json& s) {
   v.push_back(a("fontSize"));
   v.push_back(a("width"));
   v.push_back(a("height"));
-  for (const char* k : {"fontFamily", "fontWeight", "fontWidth", "fontSlant", "fontStyle", "align", "letterSpacing", "lineHeight",
+  for (const char* k : {"fontFamily", "fontWeight", "fontWidth", "fontSlant", "fontStyle", "align", "letterSpacing", "tracking", "lineHeight",
                         "paragraphSpacing", "textTransform", "fontVariant", "verticalAlign", "verticalScale", "horizontalScale",
                         "baselineShift"}) {
     v.push_back(a(k));

@@ -423,6 +423,7 @@ Json text_spec(const RLayer& l) {
   setS("fontStyle", l.fontStyle);
   setS("align", l.align);
   setN("letterSpacing", l.letterSpacing);
+  setN("tracking", l.tracking);
   setN("lineHeight", l.lineHeight);
   setN("paragraphSpacing", l.paragraphSpacing);
   if (l.strokeOverFill) o.set("strokeOverFill", Json::boolean(*l.strokeOverFill));

@@ -505,13 +505,13 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
    * Tracking in 1/1000 em (AE). Layer-wide it is the `tracking` field; a px
    * `letterSpacing` an older document carries is folded into it on the first
    * write (one entry), so the value keeps its look when the size changes. A
-   * range stores px on its run, at the run's own size.
+   * range stores `tracking` on its run too (the engine resolves it at the
+   * run's own size), and a legacy px `letterSpacing` on the run is dropped.
    */
   const handleTrackingChange = (tr: number) => {
     if (!Number.isFinite(tr)) return;
     if (ranged && hasTarget && primary) {
-      const size = styleOverRange(currentRuns(primary), selection.start, selection.end, textLen).style.fontSize ?? activeSize;
-      restyleRange('Tracking', selection.start, selection.end, { letterSpacing: tr === 0 ? undefined : (tr * size) / 1000 });
+      restyleRange('Tracking', selection.start, selection.end, { tracking: tr === 0 ? undefined : tr, letterSpacing: undefined });
       return;
     }
     if (!hasTarget || !primary) {
@@ -1333,9 +1333,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const strokeRows = hasTarget && primary ? <TextStrokeRows nodeId={primary} strokeColor={shownStroke} /> : null;
 
   // Tracking in 1/1000 em (AE's unit: 50 = 0.05 em, the same look at every size).
-  const rangeTracking = rangeStyle?.letterSpacing !== undefined
-    ? Math.round((rangeStyle.letterSpacing / (rangeStyle.fontSize ?? activeSize)) * 1000)
-    : undefined;
+  // A range shows its run's `tracking`; a legacy px run reads back at the run's size.
+  const rangeTracking = rangeStyle?.tracking !== undefined
+    ? Math.round(rangeStyle.tracking)
+    : rangeStyle?.letterSpacing !== undefined
+      ? Math.round((rangeStyle.letterSpacing / (rangeStyle.fontSize ?? activeSize)) * 1000)
+      : undefined;
   const trackingCell = (
           <div className={`${styles.metricCell} ${styles.metricCellWide}`}>
             <span className={styles.metricLabel} title="Tracking (VA), in 1/1000 em — After Effects' unit. Negative tightens display type, positive opens small text.">Tracking</span>

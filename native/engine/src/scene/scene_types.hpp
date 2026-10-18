@@ -183,6 +183,8 @@ struct RLayer {
   double fontSize = 48;
   std::optional<std::string> fontFamily, fontWeight, fontStyle, align, textTransform, fontVariant, verticalAlign;
   std::optional<double> fontWidth, fontSlant, letterSpacing, lineHeight, paragraphSpacing;
+  /// Tracking in 1/1000 em; `letterSpacing` already holds it at `fontSize` (runs re-resolve it at theirs).
+  std::optional<double> tracking;
   std::optional<double> verticalScale, horizontalScale, baselineShift, textStrokeWidth;
   std::optional<bool> strokeOverFill;
   std::optional<std::string> textStroke;

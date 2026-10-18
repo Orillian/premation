@@ -259,19 +259,37 @@ std::optional<std::pair<double, double>> render_size(TextMeasurer& m, const Meas
 
 }  // namespace
 
-double point_text_anchor_x(const doc::Node& n, double layerWidth) {
-  for (const doc::Component& c : n.components) {
-    const Json& o = c.props.at("orientation");
-    if (o.is_string() && o.str() == "vertical") return 0;  // a column anchors as before
-  }
+PointTextAnchor point_text_anchor(TextMeasurer& m, const doc::Node& n, const MeasuredStyle& s, double layerWidth, double layerHeight) {
   raster::ResolvedAlign a = raster::resolve_align(align_of(n));
+  PointTextAnchor out;
+  if (s.vertical) {
+    // A column runs top to bottom: "left" is its top (layout_vertical_text's
+    // column placement), "right" its bottom. The height is symmetric about the
+    // box centre (measure_vertical).
+    const double half = std::max(0.0, layerHeight - 2 * kTextPadY) / 2;
+    if (a.line == raster::LineAlign::left) out.y = -half;
+    else if (a.line == raster::LineAlign::right) out.y = half;
+    return out;
+  }
   if (first_paragraph_rtl(n) && a.line != raster::LineAlign::center) {
     a.line = a.line == raster::LineAlign::left ? raster::LineAlign::right : raster::LineAlign::left;
   }
   const double half = std::max(0.0, layerWidth - 2 * kTextPadX) / 2;
-  if (a.line == raster::LineAlign::left) return -half;
-  if (a.line == raster::LineAlign::right) return half;
-  return 0;
+  if (a.line == raster::LineAlign::left) out.x = -half;
+  else if (a.line == raster::LineAlign::right) out.x = half;
+  // The first baseline of POINT text (a paragraph box anchors as before: its
+  // lines sit against the box, not the centre). The painter stacks the lines
+  // about the box centre and draws each at its y with `textBaseline = middle`,
+  // under the Character panel's scale about the centre and baseline shift
+  // (text_style_transform), so the baseline is dy + sy × (y0 + below-middle).
+  if (!s.boxWidth) {
+    if (const std::optional<double> below = m.baseline_below_middle(s)) {
+      const LineStack stack = paragraph_line_stack(s);
+      const StyleScale tr = text_style_transform(s);
+      if (!stack.ys.empty() && std::isfinite(*below)) out.y = tr.dy + tr.sy * (stack.ys.front() + *below);
+    }
+  }
+  return out;
 }
 
 api::TextLayout text_layout_of(TextMeasurer& m, const doc::Node& original, const api::TextLayoutOverrides* overrides) {

@@ -44,6 +44,8 @@ export const RUN_STYLE_KEYS = [
   'fontWeight',
   'fontStyle',
   'letterSpacing',
+  // Tracking in 1/1000 em (2026-10-19): the engine resolves it at the run's size.
+  'tracking',
   'fill',
   'kerning',
   'fauxBold',

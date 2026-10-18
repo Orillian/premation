@@ -1173,6 +1173,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
                                       tests/test_rig_coverage.cpp tests/test_gpu_effect_route.cpp
                                       tests/test_text_outlines.cpp tests/test_svg_shapes.cpp
                                       tests/test_b4_round5_text_glyphs.cpp  # B4 round 5: getTextLayout.glyphs over the harness fonts
+                                      tests/test_text_anchor_tracking.cpp  # audit 2026-10-18 §5: alignment anchor y / vertical, per-range tracking
                                       tests/test_viewport_view.cpp  # setViewport view / customView → the snapshot's camera
                                       tests/test_layer_view.cpp  # setViewport layer: the Layer panel's one-layer walk
                                       tests/test_overlay_render_agreement.cpp  # the overlay maths place a 3D layer where the frame drew it

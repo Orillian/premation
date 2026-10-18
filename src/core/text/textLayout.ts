@@ -48,6 +48,13 @@ export interface TextStyle {
   fontStyle?: string;
   /** Extra advance after each glyph, px. */
   letterSpacing?: number;
+  /**
+   * Tracking in 1/1000 em — AE's Character-panel unit. On a run it is
+   * resolved at the RUN's font size by the engine (raster TextStyle::merged
+   * and the scene measurer), so a later size change keeps the look; the px
+   * `letterSpacing` is the older, size-bound field.
+   */
+  tracking?: number;
   /** Glyph colour. Layer-wide `fill` is the default; a run may override it. */
   fill?: string;
   /**

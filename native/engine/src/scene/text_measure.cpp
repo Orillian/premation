@@ -152,6 +152,12 @@ class CanvasMeasurer final : public TextMeasurer {
       opt(r.fontSize);
       opt(r.lineHeight);
     }
+    for (const MeasuredStyle::SpacingRun& r : s.spacingRuns) {
+      k += "sr";
+      num(r.start);
+      num(r.end);
+      num(r.px);
+    }
     opt(s.leftIndent);
     opt(s.rightIndent);
     opt(s.firstLineIndent);
@@ -205,12 +211,14 @@ class CanvasMeasurer final : public TextMeasurer {
     constexpr double kInf = std::numeric_limits<double>::infinity();
     double inkTop = kInf, inkBottom = -kInf, inkHalfW = 0;
     double fontTop = kInf, fontBottom = -kInf, advance = 0;
+    std::size_t lineStart = 0;  // the line's first grapheme index (spacing runs index the content)
     for (std::size_t i = 0; i < lines.size(); ++i) {
       const std::string& line = lines[i];
       const raster::TextMetrics m = g.measureText(line);
-      const double chars = static_cast<double>(raster::split_graphemes(line).size());
+      const std::size_t chars = raster::split_graphemes(line).size();
       // Optical kerning's pair adjustments count as spacing (opticalLineDelta).
-      const double spacing = (chars > 0 ? (chars - 1) * s.letterSpacing : 0) + optical_line_delta(s, style, line);
+      const double spacing = line_spacing(s, lineStart, chars) + optical_line_delta(s, style, line);
+      lineStart += chars + 1;
       const double dy = (static_cast<double>(i) - (n - 1) / 2) * gap;
       inkTop = std::min(inkTop, dy - m.actualBoundingBoxAscent);
       inkBottom = std::max(inkBottom, dy + m.actualBoundingBoxDescent);
@@ -315,11 +323,13 @@ class CanvasMeasurer final : public TextMeasurer {
     };
     constexpr double kInf = std::numeric_limits<double>::infinity();
     double fontTop = kInf, fontBottom = -kInf, inkTop = kInf, inkBottom = -kInf, advance = 0;
+    std::size_t lineStart = 0;
     for (std::size_t i = 0; i < lines.size(); ++i) {
       const std::string& line = lines[i];
       const raster::TextMetrics m = g.measureText(line);
-      const double chars = static_cast<double>(raster::split_graphemes(line).size());
-      const double spacing = (chars > 0 ? (chars - 1) * s.letterSpacing : 0) + optical_line_delta(s, style, line);
+      const std::size_t chars = raster::split_graphemes(line).size();
+      const double spacing = line_spacing(s, lineStart, chars) + optical_line_delta(s, style, line);
+      lineStart += chars + 1;
       const double dy = lineDy(i);
       inkTop = std::min(inkTop, dy - m.actualBoundingBoxAscent);
       inkBottom = std::max(inkBottom, dy + m.actualBoundingBoxDescent);
@@ -350,27 +360,50 @@ class CanvasMeasurer final : public TextMeasurer {
     if (!set_measure_font(g, s)) return std::nullopt;
     g.setTextBaseline(raster::TextBaseline::middle);
     std::vector<GlyphLine> out;
+    std::size_t lineStart = 0;
     for (std::size_t start = 0;;) {
       const std::size_t nl = s.content.find('\n', start);
       const std::string line = s.content.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
       const raster::TextMetrics m = g.measureText(line);
       const std::vector<std::string> gs = raster::split_graphemes(line);
-      const auto chars = static_cast<double>(gs.size());
       GlyphLine l;
-      l.width = m.width + (chars > 0 ? (chars - 1) * s.letterSpacing : 0) + optical_line_delta(s, style, line);
+      l.width = m.width + line_spacing(s, lineStart, gs.size()) + optical_line_delta(s, style, line);
       l.ascent = m.fontBoundingBoxAscent;
       l.descent = m.fontBoundingBoxDescent;
       std::string prefix;
+      double spaced = 0;  // the spacing after the graphemes so far
       l.pens.reserve(gs.size());
       for (std::size_t j = 0; j < gs.size(); ++j) {
         prefix += gs[j];
-        l.pens.push_back(j + 1 == gs.size() ? l.width : g.measureText(prefix).width + static_cast<double>(j + 1) * s.letterSpacing);
+        spaced += spacing_after(s, lineStart + j);
+        l.pens.push_back(j + 1 == gs.size() ? l.width : g.measureText(prefix).width + spaced);
       }
+      lineStart += gs.size() + 1;
       out.push_back(std::move(l));
       if (nl == std::string::npos) break;
       start = nl + 1;
     }
     return out;
+  }
+
+  std::optional<double> baseline_below_middle(const MeasuredStyle& s) override {
+    if (s.hasFontAxes || s.fontWidth || s.fontSlant) return std::nullopt;
+    const std::scoped_lock lock(m_);
+    if (!ctx_) ctx_ = raster::Canvas2D::make(1, 1, opts_);
+    raster::Canvas2D& g = *ctx_;
+    if (!set_measure_font(g, s)) return std::nullopt;
+    // The font box's top is fixed in glyph space; each baseline mode reports
+    // its ascent from its own origin, so the two ascents differ by exactly the
+    // offset between the origins. Probed on the first line's text, which picks
+    // the face the painter shapes it with.
+    const std::string first = s.content.substr(0, s.content.find('\n'));
+    const std::string probe = first.empty() ? std::string("H") : first;
+    g.setTextBaseline(raster::TextBaseline::alphabetic);
+    const double fromBaseline = g.measureText(probe).fontBoundingBoxAscent;
+    g.setTextBaseline(raster::TextBaseline::middle);
+    const double fromMiddle = g.measureText(probe).fontBoundingBoxAscent;
+    if (!std::isfinite(fromBaseline) || !std::isfinite(fromMiddle)) return std::nullopt;
+    return fromBaseline - fromMiddle;
   }
 
   /// Font + variations + kerning of `s` on the measuring canvas (cssFont +
@@ -662,6 +695,7 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
   // Tracking (1/1000 em) at the sampled font size — the snapshot resolves the
   // painter's letter spacing the same way (snapshot_build.cpp), so the measured
   // box and the paint agree.
+  const double rawLetterSpacing = s.letterSpacing;
   if (tracking != 0 && std::isfinite(tracking)) s.letterSpacing += tracking * s.fontSize / 1000;
   if (doc::read_text_path_config(n)) s.boxWidth.reset();
   if (s.boxWidth && *s.boxWidth <= 0) s.boxWidth.reset();
@@ -675,44 +709,72 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
   s.hasFontAxes = axes.is_object() && !axes.obj().empty();
   if (s.vertical && tcyAuto) s.tateChuYokoDigits = static_cast<int>(std::max(1.0, std::min(4.0, std::floor(tcyDigits + 0.5))));
   if (!s.vertical) s.verticalRomanAlignment = false;
-  if (s.boxWidth) {
-    // readLineRuns: runs that change a line's size or leading.
-    // The first Text component (`components.find`), its legacy code-point runs migrated.
-    for (const auto& c : n.components) {
-      if (c.type != "Text") continue;
-      if (!c.props.at("__runs").is_array()) break;
-      const std::string tc = c.props.at("content").is_string() ? c.props.at("content").str() : std::string();
-      const std::vector<std::string> gs = raster::split_graphemes(tc);
-      const bool migrate = !(c.props.at("__runsIndex").is_string() && c.props.at("__runsIndex").str() == "grapheme") &&
-                           gs.size() != raster::code_points(tc).size();
-      // codePointToGraphemeIndex (richText.ts).
-      const auto toG = [&gs](double cp, bool roundUp) {
-        if (cp <= 0) return 0.0;
-        double acc = 0;
-        for (std::size_t i = 0; i < gs.size(); ++i) {
-          const auto len = static_cast<double>(raster::code_points(gs[i]).size());
-          if (cp == acc) return static_cast<double>(i);
-          if (cp < acc + len) return roundUp ? static_cast<double>(i + 1) : static_cast<double>(i);
-          acc += len;
-        }
-        return static_cast<double>(gs.size());
+  // The first Text component's runs (`components.find`), legacy code-point
+  // runs migrated: readLineRuns (size / leading, paragraph text: they restack
+  // its lines) and the spacing runs (px letterSpacing / em tracking, point
+  // text: a wrapped paragraph's soft breaks re-index the content).
+  for (const auto& c : n.components) {
+    if (c.type != "Text") continue;
+    if (!c.props.at("__runs").is_array()) break;
+    const std::string tc = c.props.at("content").is_string() ? c.props.at("content").str() : std::string();
+    const std::vector<std::string> gs = raster::split_graphemes(tc);
+    const bool migrate = !(c.props.at("__runsIndex").is_string() && c.props.at("__runsIndex").str() == "grapheme") &&
+                         gs.size() != raster::code_points(tc).size();
+    // codePointToGraphemeIndex (richText.ts).
+    const auto toG = [&gs](double cp, bool roundUp) {
+      if (cp <= 0) return 0.0;
+      double acc = 0;
+      for (std::size_t i = 0; i < gs.size(); ++i) {
+        const auto len = static_cast<double>(raster::code_points(gs[i]).size());
+        if (cp == acc) return static_cast<double>(i);
+        if (cp < acc + len) return roundUp ? static_cast<double>(i + 1) : static_cast<double>(i);
+        acc += len;
+      }
+      return static_cast<double>(gs.size());
+    };
+    for (const Json& r : c.props.at("__runs").arr()) {
+      const Json& st = r.at("style");
+      if (!r.at("start").is_number() || !r.at("end").is_number() || !st.is_object()) continue;
+      const auto pos = [&st](const char* k) -> std::optional<double> {
+        return st.at(k).is_number() && st.at(k).num() > 0 ? std::optional<double>(st.at(k).num()) : std::nullopt;
       };
-      for (const Json& r : c.props.at("__runs").arr()) {
-        const Json& st = r.at("style");
-        if (!r.at("start").is_number() || !r.at("end").is_number() || !st.is_object()) continue;
-        const auto pos = [&st](const char* k) -> std::optional<double> {
-          return st.at(k).is_number() && st.at(k).num() > 0 ? std::optional<double>(st.at(k).num()) : std::nullopt;
-        };
+      const double start = migrate ? toG(r.at("start").num(), false) : r.at("start").num();
+      const double end = migrate ? toG(r.at("end").num(), true) : r.at("end").num();
+      if (s.boxWidth) {
         MeasuredStyle::LineRun lr;
         lr.fontSize = pos("fontSize");
         lr.lineHeight = pos("lineHeight");
-        if (!lr.fontSize && !lr.lineHeight) continue;
-        lr.start = migrate ? toG(r.at("start").num(), false) : r.at("start").num();
-        lr.end = migrate ? toG(r.at("end").num(), true) : r.at("end").num();
-        s.lineRuns.push_back(lr);
+        if (lr.fontSize || lr.lineHeight) {
+          lr.start = start;
+          lr.end = end;
+          s.lineRuns.push_back(lr);
+        }
+      } else {
+        // As raster TextStyle::merged resolves it: a px run alone replaces the
+        // spacing; a tracking run is that px (the layer's raw px otherwise)
+        // plus the run's tracking at the run's size; a layer tracking follows
+        // a run that only changes the size.
+        const std::optional<double> runPx = num(st.at("letterSpacing"));
+        const std::optional<double> runTracking = num(st.at("tracking"));
+        const std::optional<double> runSize = pos("fontSize");
+        const bool layerTracking = tracking != 0 && std::isfinite(tracking);
+        if (!runPx && !runTracking && !(runSize && layerTracking)) continue;
+        MeasuredStyle::SpacingRun sr;
+        sr.start = start;
+        sr.end = end;
+        if (runPx && !runTracking) {
+          sr.px = *runPx;
+        } else {
+          const double size = runSize.value_or(s.fontSize);
+          const double em = runTracking ? *runTracking : tracking;
+          sr.px = runPx.value_or(rawLetterSpacing) + (std::isfinite(em) ? em * size / 1000 : 0);
+        }
+        s.spacingRuns.push_back(sr);
       }
-      break;
     }
+    break;
+  }
+  if (s.boxWidth) {
     s.hasLineRuns = !s.lineRuns.empty();
     // readParagraphBox (text on a path has none: boxWidth was already dropped above).
     double bw = 0;
@@ -748,6 +810,23 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
     }
   }
   return s;
+}
+
+double spacing_after(const MeasuredStyle& s, std::size_t index) {
+  double px = s.letterSpacing;
+  const auto i = static_cast<double>(index);
+  for (const MeasuredStyle::SpacingRun& r : s.spacingRuns) {
+    if (i >= r.start && i < r.end) px = r.px;
+  }
+  return px;
+}
+
+double line_spacing(const MeasuredStyle& s, std::size_t lineStart, std::size_t chars) {
+  if (chars < 2) return 0;
+  if (s.spacingRuns.empty()) return static_cast<double>(chars - 1) * s.letterSpacing;
+  double sum = 0;
+  for (std::size_t j = 0; j + 1 < chars; ++j) sum += spacing_after(s, lineStart + j);
+  return sum;
 }
 
 std::vector<int> soft_break_lines(std::string_view raw, std::string_view wrapped) {
@@ -872,8 +951,8 @@ std::unique_ptr<TextMeasurer> make_canvas_measurer(const raster::CanvasOptions& 
 
 namespace {
 
-constexpr std::array<std::string_view, 20> kRunStyleKeys = {
-    "fontSize", "fontFamily", "fontWeight", "fontStyle", "letterSpacing", "fill", "kerning", "fauxBold", "fauxItalic",
+constexpr std::array<std::string_view, 21> kRunStyleKeys = {
+    "fontSize", "fontFamily", "fontWeight", "fontStyle", "letterSpacing", "tracking", "fill", "kerning", "fauxBold", "fauxItalic",
     "strokeColor", "strokeWidth", "lineHeight", "horizontalScale", "verticalScale", "baselineShift", "tsume", "allCaps",
     "smallCaps", "verticalAlign", "tateChuYoko"};
 

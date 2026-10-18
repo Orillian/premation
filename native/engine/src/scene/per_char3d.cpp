@@ -50,6 +50,7 @@ std::vector<GlyphPlacement> layout_per_char_3d(const RLayer& layer, double boxWi
   style.fontWeight = layer.fontWeight;
   style.fontStyle = layer.fontStyle;
   style.letterSpacing = layer.letterSpacing;
+  style.tracking = layer.tracking;
   style.fill = layer.fill;
   style.align = layer.align.value_or("");
   style.lineHeight = layer.lineHeight;

@@ -37,11 +37,22 @@ namespace premation::scene {
                                                           const std::vector<std::pair<std::string, double>>& overrides);
 
 /// Where point text anchors when its Text `textAnchor` is "alignment" (After
-/// Effects: the anchor at the alignment edge): the anchor-point offset, in
-/// layer px from the box centre, that puts the content's left edge (left /
-/// justified), centre, or right edge (right) at the layer's position —
-/// mirrored for a right-to-left first paragraph, 0 for vertical type.
-/// `layerWidth` is the measured layer width (content + 2 × kTextPadX).
-[[nodiscard]] double point_text_anchor_x(const doc::Node& n, double layerWidth);
+/// Effects: the anchor at the text origin): the anchor-point offset, in layer
+/// px from the box centre.
+///
+/// Horizontal type: x puts the content's left edge (left / justified), centre,
+/// or right edge (right) at the layer's position — mirrored for a right-to-left
+/// first paragraph; y is the FIRST BASELINE (the first line's centre-origin y
+/// from the line stack plus the face's baseline below the draw origin, under
+/// the Character panel's scale / baseline shift), 0 when the measurer cannot
+/// place it. Vertical type: the column anchors at its top edge (align left /
+/// justified), centre, or bottom edge (right), x stays the column centre.
+/// `layerWidth` / `layerHeight` are the measured layer size (content + 2 × pad).
+struct PointTextAnchor {
+  double x = 0;
+  double y = 0;
+};
+[[nodiscard]] PointTextAnchor point_text_anchor(TextMeasurer& m, const doc::Node& n, const MeasuredStyle& s, double layerWidth,
+                                                double layerHeight);
 
 }  // namespace premation::scene

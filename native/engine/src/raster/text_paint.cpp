@@ -770,6 +770,9 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   base.fontWeight = specStyle.fontWeight;
   base.fontStyle = specStyle.fontStyle;
   base.letterSpacing = letterSpacing;
+  // The layer's tracking (1/1000 em) is already in `letterSpacing` at the layer
+  // size; carried so a run that changes the size or sets its own re-resolves it.
+  base.tracking = opt_num(spec["tracking"]);
   base.fill = layerFill;
   base.fauxBold = ex.fauxBold;
   base.fauxItalic = ex.fauxItalic;
