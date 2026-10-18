@@ -1,7 +1,8 @@
 /**
  * Every rendered file goes to main's export supervisor (the engine export).
  *
- * Pins the gate (`shouldUseSupervisor`: bridge, format, snapshot portability)
+ * Pins the gate (`shouldUseSupervisor`: bridge and format — window-only footage
+ * is staged to disk at queue time, `stageWindowOnlyFootage`, not refused)
  * and the routing shared by the Export dialog's Add to Queue and the Render
  * Queue panel's Add Comp: reserve → snapshotTo → enqueue on main.
  */
@@ -18,6 +19,7 @@ jest.mock('@stores/documentMirror', () => ({
 const portable = jest.fn((_library: unknown) => true);
 jest.mock('@core/export/snapshotPortability', () => ({
   currentProjectSnapshotIsPortable: (library: unknown) => portable(library),
+  uncarriableMedia: (library: unknown) => (portable(library) ? [] : (library as unknown[])),
 }));
 
 import { addToRenderQueue, enqueueSupervisorJob, joinOutputPath, shouldUseSupervisor, type QueueJobInput } from './supervisorQueue';
@@ -109,12 +111,13 @@ describe('shouldUseSupervisor', () => {
     expect(shouldUseSupervisor('mp4')).toBe(false);
   });
 
-  it('a project the snapshot cannot carry (editor-only footage) → refused', () => {
+  it('editor-only footage is no refusal: it is staged to disk when the job is queued', () => {
     portable.mockReturnValue(false);
-    expect(shouldUseSupervisor('mp4')).toBe(false);
+    expect(shouldUseSupervisor('mp4')).toBe(true);
   });
 
-  it('does not walk the scene for a format the engine does not write', () => {
+  it('does not walk the scene at all (footage is the queue step\'s business)', () => {
+    shouldUseSupervisor('mp4');
     shouldUseSupervisor('lottie');
     expect(portable).not.toHaveBeenCalled();
   });

@@ -38,13 +38,11 @@ import { canEncodeLocally, PRORES_PROFILE_LABELS, type ExportQuality, type Prore
 import { chaptersFromMarkers, formatCarriesChapters, type ExportChapter } from '@core/export/chapters';
 import { openHelp } from '@layout/Help/openHelp';
 import { exportSupervisorClient } from '@core/export/exportSupervisorClient';
-import { addToRenderQueue, engineExportRefusal, FfmpegNotReadyError, queueEngineRender, reportQueueFailure, shouldUseSupervisor } from './supervisorQueue';
+import { addToRenderQueue, engineExportRefusal, FfmpegNotReadyError, queueEngineRender, reportQueueFailure, shouldUseSupervisor, stageWindowOnlyFootage } from './supervisorQueue';
 import { ensureFfmpegFor } from '@stores/ffmpegStore';
 import { ExportPreview } from './ExportPreview';
 import { ExportQueueList } from './ExportQueueList';
 import { useExportFormStore } from './exportFormStore';
-import { loadRenderCapabilities, renderOnServer, serverEncodeFor, serverRenderAvailable } from './cloudRender';
-import type { RenderCapabilities } from '@core/api/client';
 import styles from './ExportDialog.module.css';
 import { useState } from 'react';
 import { PluginFormatOptions, isPluginFormat, pluginFormatExt, pluginOptionsField, usePluginExportPresets } from './pluginFormats';
@@ -140,13 +138,6 @@ export interface ExportModel {
   /** Queue the current choices; returns true when a job was added. */
   queueJob: () => boolean;
   cancel: () => void;
-  /**
-   * Render on the server, when this deployment has a render worker and the
-   * project lives in the cloud. `null` when the option does not apply — the
-   * hosts render no button rather than a disabled one, because "why is this
-   * greyed out" has three different answers and none fits a tooltip.
-   */
-  serverRender: { label: string; run: () => Promise<void> } | null;
 }
 
 /**
@@ -245,7 +236,8 @@ export function useExportModel(duration: number, fps: number): ExportModel {
    */
   const exportViaSupervisor = useCallback(async (): Promise<void> => {
     const ui = useUIStore.getState();
-    const refusal = engineExportRefusal();
+    // Window-only footage is written to disk and relinked first (supervisorQueue).
+    const refusal = engineExportRefusal() ?? (await stageWindowOnlyFootage());
     if (refusal) {
       ui.notify({ level: 'error', message: refusal, durationMs: 8000 });
       return;
@@ -327,6 +319,11 @@ export function useExportModel(duration: number, fps: number): ExportModel {
 
   const queueJob = useCallback((): boolean => {
     if (!QUEUEABLE.has(format) && !isPluginFormat(format)) return false;
+    const refusal = engineExportRefusal();
+    if (refusal) {
+      useUIStore.getState().notify({ level: 'error', message: refusal, durationMs: 8000 });
+      return false;
+    }
     const ext = isPluginFormat(format) ? pluginFormatExt(format) : outputExtFor(format as OutputFormat);
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     // Capture the range AT QUEUE TIME. The work area is a live, global value;
@@ -337,7 +334,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     const range = captureRange();
     const chapterMarks = captureChapters();
     // Main's queue: the job starts rendering in the engine — see `addToRenderQueue`.
-    addToRenderQueue({
+    const { done } = addToRenderQueue({
       compositionName: compName ?? 'Comp 1',
       compositionId: baseComp.id,
       background: baseComp.background,
@@ -362,10 +359,15 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       ...pluginOptionsField(format),
     });
     showRenderQueue();
-    useUIStore.getState().notify({
-      level: 'success',
-      message: 'Added to Render Queue (F6) — it renders in the background',
-      durationMs: 2600,
+    // Failures (folder dialog, snapshot, ffmpeg) are reported by the queue
+    // itself; success is said only once the job really exists.
+    void done.then((id) => {
+      if (!id) return;
+      useUIStore.getState().notify({
+        level: 'success',
+        message: 'Added to Render Queue (F6) — it renders in the background',
+        durationMs: 2600,
+      });
     });
     return true;
   }, [format, captureRange, captureChapters, compName, baseComp, width, height, fps, duration, alpha, quality, proresProfile]);
@@ -374,33 +376,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     useExportFormStore.getState().abort?.abort();
   }, []);
 
-  // Server rendering: a deployment fact, read once. Nothing here blocks the
-  // form — the button simply appears when the answer comes back positive.
-  const [caps, setCaps] = useState<RenderCapabilities | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void loadRenderCapabilities().then((c) => { if (alive) setCaps(c); });
-    return () => { alive = false; };
-  }, []);
-  const serverEncode = serverEncodeFor(format, quality, proresProfile, caps);
-  const serverRender = useMemo(() => {
-    if (!serverRenderAvailable(caps) || !serverEncode) return null;
-    return {
-      label: `Render on server (${serverEncode.codec === 'prores4444' ? 'ProRes 4444' : serverEncode.codec.toUpperCase()})`,
-      run: () =>
-        renderOnServer({
-          encode: serverEncode,
-          width,
-          height,
-          fps,
-          duration,
-          transparent: alpha,
-          outputName,
-        }),
-    };
-  }, [caps, serverEncode, width, height, fps, duration, alpha, outputName]);
-
-  return { busy, progress, showQueue: QUEUEABLE.has(format) || isPluginFormat(format), outputName, activePreset, doExport, queueJob, cancel, serverRender };
+  return { busy, progress, showQueue: QUEUEABLE.has(format) || isPluginFormat(format), outputName, activePreset, doExport, queueJob, cancel };
 }
 
 export interface ExportFormProps {

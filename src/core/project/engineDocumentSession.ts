@@ -213,6 +213,17 @@ export class EngineDocumentSession {
     return this.run('saveProject', this.o.engine().execute({ type: 'saveProject', path, copy: true, ...this.format(path) }));
   }
 
+  /**
+   * The export supervisor's snapshot. A `.motion` target is always a bundle,
+   * whatever LOCAL_FIRST says: only a bundle save collects the document's
+   * `motion-blob:` footage, and the export engine resolves those refs against
+   * the snapshot it opens.
+   */
+  async saveSnapshot(path: string): Promise<SaveProjectResult> {
+    const format = path.endsWith('.motion') ? { format: 'bundle' as const } : this.format(path);
+    return this.run('saveProject', this.o.engine().execute({ type: 'saveProject', path, copy: true, ...format }));
+  }
+
   /** Save Portable Copy: the engine packs the `.motion` zip; path and dirty unchanged. */
   async savePortableCopy(path: string): Promise<SaveProjectResult> {
     return this.run('saveProject', this.o.engine().execute({ type: 'saveProject', path, copy: true, format: 'portable' }));

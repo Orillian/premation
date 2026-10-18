@@ -16,7 +16,7 @@
  * touching the page's document IO.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -98,7 +98,8 @@ function processBackend(): Backend {
         },
       };
     },
-    saved: (p) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null),
+    // A `.motion` snapshot is a bundle directory: its manifest stands for it.
+    saved: (p) => (!existsSync(p) ? null : JSON.parse(readFileSync(statSync(p).isDirectory() ? `${p}/manifest.json` : p, 'utf8'))),
     dispose: async () => {
       rmSync(dir, { recursive: true, force: true });
     },

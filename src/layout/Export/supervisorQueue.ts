@@ -19,7 +19,9 @@ import {
   type ExportJobRecord,
   type SupervisorSpecInput,
 } from '@core/export/exportSupervisorClient';
-import { currentProjectSnapshotIsPortable } from '@core/export/snapshotPortability';
+import { uncarriableMedia } from '@core/export/snapshotPortability';
+import { engine } from '@core/engine/engineInstance';
+import { engineCanReadFootage, materializeUnreadableFootage } from '@core/engine/sessionFootage';
 import { getProjectManager } from '@core/services/coreServices';
 import { documentMirror } from '@stores/documentMirror';
 import { useExportQueueStore } from '@stores/exportQueueStore';
@@ -40,17 +42,42 @@ export function isEngineFormat(format: ExportFormat | string): boolean {
 }
 
 /**
- * Why nothing can be rendered right now, or null. Only the desktop app has the
- * engine; and the snapshot must carry the footage — a `blob:` URL only this
- * window can read would render as a black layer.
+ * Why nothing can be rendered right now, or null: only the desktop app has
+ * the engine. Footage is not a refusal any more — see `stageWindowOnlyFootage`.
  */
 export function engineExportRefusal(): string | null {
   if (!exportSupervisorAvailable()) return 'Rendering needs the desktop app: files are rendered by the engine.';
-  // B4: portability is a test on each footage item's media (`ItemInfo.mediaUrl`).
-  if (!currentProjectSnapshotIsPortable(mirrorFootageMedia())) {
-    return 'Some footage in this project lives only in this window (it was never saved to disk), so the engine cannot read it. Re-import it from a file and export again.';
-  }
   return null;
+}
+
+/**
+ * Footage only this window can read — a `blob:` object URL: an import into an
+ * unsaved project, an AI-generated clip — used to REFUSE the export ("lives
+ * only in this window… re-import it"), which is the user's problem turned into
+ * a chore (owner 2026-10-18). The engine process cannot fetch a blob:, but the
+ * page can: each such item's bytes go to the session-footage cache and the
+ * item is relinked to that file (core/engine/sessionFootage — what engine
+ * jobs already do), one undoable entry, so the export, the viewport and every
+ * later job read it like any other file. Resolves what is still unreadable
+ * after that (null = nothing): a message for the user.
+ */
+export async function stageWindowOnlyFootage(): Promise<string | null> {
+  const stuck = uncarriableMedia(mirrorFootageMedia());
+  if (stuck.length === 0) return null;
+  const ids = stuck.map((a) => a.id);
+  const client = engine();
+  try {
+    await materializeUnreadableFootage(client, ids);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    return `Some footage in this project lives only in this window and could not be written to disk (${why}). Save the project or re-import the file, then export again.`;
+  }
+  // The engine's own view of each item, not the mirror's (which follows a beat later).
+  const res = await client.query({ type: 'getItems', items: ids });
+  const left = res.ok ? res.value.items.filter((i) => !engineCanReadFootage(i.path)) : null;
+  if (left !== null && left.length === 0) return null;
+  const names = (left ?? []).map((i) => i.name).filter(Boolean).slice(0, 3).join(', ');
+  return `Some footage in this project lives only in this window (it was never saved to disk)${names ? `: ${names}` : ''}. Re-import it from a file and export again.`;
 }
 
 /** Video export is not set up on this machine and the person closed the repair dialog. */
@@ -128,7 +155,7 @@ export async function queueEngineRender(
   input: Omit<SupervisorSpecInput, 'projectPath'>,
   priority = 0,
 ): Promise<string> {
-  const refusal = engineExportRefusal();
+  const refusal = engineExportRefusal() ?? (await stageWindowOnlyFootage());
   if (refusal) throw new Error(refusal);
   // Can this machine write the format at all? If not, the repair dialog opens
   // and the export waits for it — rather than rendering everything first and

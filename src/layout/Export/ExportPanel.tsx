@@ -19,7 +19,7 @@ export function ExportPanel(): JSX.Element {
   const settings = useActiveMirrorComp()?.settings;
   const duration = settingsDurationSeconds(settings);
   const fps = settingsFps(settings);
-  const { busy, showQueue, outputName, activePreset, doExport, queueJob, serverRender } = useExportModel(duration, fps);
+  const { busy, showQueue, outputName, activePreset, doExport, queueJob } = useExportModel(duration, fps);
 
   return (
     <div className={styles.root} data-tour="export-panel">
@@ -29,18 +29,6 @@ export function ExportPanel(): JSX.Element {
       <div className={styles.actions}>
         <span className={styles.fileName} title={outputName}>{outputName}</span>
         <div className={styles.buttons}>
-          {serverRender ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={<Icon name="upload" size="sm" />}
-              onClick={() => void serverRender.run()}
-              disabled={busy}
-              title="Render on the server from the project's cloud copy"
-            >
-              Server
-            </Button>
-          ) : null}
           {showQueue ? (
             <Button
               variant="secondary"

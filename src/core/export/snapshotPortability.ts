@@ -1,52 +1,24 @@
 /**
- * Can a project snapshot be opened by a window that is not the editor?
+ * Can a project snapshot be rendered by the export engine?
  *
- * The export supervisor renders each job in a hidden window of its own, from a
- * project written by `ProjectManager.snapshotTo`. That window shares nothing
- * with the editor but the disk — in particular it cannot read the editor's
- * `blob:` object URLs, which are only valid in the document that minted them
- * (see missingAssets.ts). So whether a snapshot is renderable elsewhere comes
- * down to where its footage lives:
+ * Every export job runs in `premation-engine --export` from a project written
+ * by `ProjectManager.snapshotTo` (the engine's `saveProject`, a bundle for the
+ * supervisor's `.motion` path). That process shares nothing with the editor
+ * but the disk, so what matters is where each piece of footage lives:
  *
- *  - Off local-first, `snapshotTo` writes a single JSON document and
- *    `collectBundleAssetsForSave` is a no-op, so every imported clip is still a
- *    `blob:` URL in the file. The hidden window would render those layers
- *    black (or not at all). Off local-first the answer is simply no.
- *  - On local-first the snapshot is a `.motion` bundle and the save collects
- *    every LIBRARY asset whose src is a `blob:` into it, then repoints the
- *    layers that name that asset by `assetId`. A layer whose `blob:` src has no
- *    such library entry behind it — no `assetId`, or one the library does not
- *    hold as a `blob:` — is never collected and reaches the window as a dead URL.
- *  - Footage ALREADY collected (`motion-blob:<hash>`) does not travel either.
- *    Those bytes live in the SOURCE project's bundle; `collectAssetsIntoBundle`
- *    skips them as already local, and the hidden window resolves a
- *    `motion-blob:` against the project it opened — the snapshot directory,
- *    which does not hold them (registerCoreServices' blob resolver is scoped to
- *    the current project root). Until the snapshot copies referenced blobs, a
- *    project with collected footage renders in-window.
+ *  - A path, a `file://` URL, an http(s) URL, a `data:` URL: the engine reads
+ *    those itself.
+ *  - `motion-blob:<hash>`: bytes in the source project's bundle. The bundle
+ *    save copies every referenced blob into the snapshot, so they travel.
+ *  - `blob:`: a session object URL, valid only in the window that minted it.
+ *    No process but this window can read it — the one thing that cannot travel.
  *
- * The predicate is the cheap, conservative reading of that: it does not read a
- * single byte. A library `blob:` whose object URL has died since import still
- * counts as carriable (collection would find it unreadable and the layer render
- * offline) — telling the two apart needs a fetch per asset, which is the save's
- * job, not a click handler's.
- *
- * Pure half first (refs + library in, answer out). The live answer takes the
- * project's footage ITEMS as both: a layer reaches its media through an item
- * (`LayerInfo.source`, an Inspector picker's item id), so the items are every
- * media reference the snapshot carries.
+ * The predicate reads no bytes: a file that has gone missing since import
+ * still counts as carriable (the job renders that layer offline and records
+ * it), because telling the two apart needs I/O a click handler should not do.
  */
 
-import { isLocalFirst } from '@core/config/flags';
-import { LOCAL_BLOB_SCHEME } from '@core/assets/local/localBlobSource';
-
-/** One media reference a layer carries: the durable id and the stored src. */
-export interface MediaRef {
-  assetId?: string;
-  src: string;
-}
-
-/** A library entry, in the only shape this needs. */
+/** A footage item, in the only shape this needs. */
 export interface LibraryAsset {
   id: string;
   src: string;
@@ -57,54 +29,16 @@ function isSessionLocal(src: string): boolean {
   return src.trim().startsWith('blob:');
 }
 
-/** A src whose bytes live in the source project's bundle, not the snapshot's. */
-function isSourceBundleLocal(src: string): boolean {
-  return src.trim().startsWith(LOCAL_BLOB_SCHEME);
+/** The footage a snapshot could NOT carry to the export engine. Empty means every piece makes it. */
+export function uncarriableMedia(footage: ReadonlyArray<LibraryAsset>): LibraryAsset[] {
+  return footage.filter((a) => isSessionLocal(a.src));
 }
 
 /**
- * The refs a snapshot could NOT carry to another window, given the library the
- * save will collect from. Empty means every piece of footage makes it.
- */
-export function uncarriableMedia(refs: Iterable<MediaRef>, library: ReadonlyArray<LibraryAsset>): MediaRef[] {
-  // Only a library entry that is itself still a `blob:` gets collected into the
-  // snapshot bundle (and its layers repointed at the copy).
-  const collectable = new Set(library.filter((a) => isSessionLocal(a.src)).map((a) => a.id));
-  const out: MediaRef[] = [];
-  for (const ref of refs) {
-    if (isSourceBundleLocal(ref.src)) {
-      out.push(ref);
-      continue;
-    }
-    if (!isSessionLocal(ref.src)) continue;
-    if (ref.assetId && collectable.has(ref.assetId)) continue;
-    out.push(ref);
-  }
-  return out;
-}
-
-/**
- * Whether a snapshot of this project can be rendered by the export supervisor's
- * hidden window. False off local-first (single-file snapshot, footage stays as
- * editor-only `blob:` URLs); false when any layer holds a `blob:` the bundle
- * save has no library entry to collect from, or a `motion-blob:` whose bytes
- * stay behind in the source bundle.
- */
-export function snapshotIsPortable(input: {
-  localFirst: boolean;
-  refs: Iterable<MediaRef>;
-  library: ReadonlyArray<LibraryAsset>;
-}): boolean {
-  if (!input.localFirst) return false;
-  return uncarriableMedia(input.refs, input.library).length === 0;
-}
-
-/**
- * The live answer: the open project's footage items (id + media URL — the
- * mirror's `ItemInfo.mediaUrl`), the build's flag. The items are an argument
- * (not a store read): core does not reach into the editor's stores.
+ * The live answer for the open project's footage items (id + media URL — the
+ * mirror's `ItemInfo.mediaUrl`). The items are an argument (not a store read):
+ * core does not reach into the editor's stores.
  */
 export function currentProjectSnapshotIsPortable(footage: ReadonlyArray<LibraryAsset>): boolean {
-  if (!isLocalFirst()) return false;
-  return snapshotIsPortable({ localFirst: true, refs: footage.map((a) => ({ assetId: a.id, src: a.src })), library: footage });
+  return uncarriableMedia(footage).length === 0;
 }
