@@ -259,6 +259,21 @@ std::optional<std::pair<double, double>> render_size(TextMeasurer& m, const Meas
 
 }  // namespace
 
+double point_text_anchor_x(const doc::Node& n, double layerWidth) {
+  for (const doc::Component& c : n.components) {
+    const Json& o = c.props.at("orientation");
+    if (o.is_string() && o.str() == "vertical") return 0;  // a column anchors as before
+  }
+  raster::ResolvedAlign a = raster::resolve_align(align_of(n));
+  if (first_paragraph_rtl(n) && a.line != raster::LineAlign::center) {
+    a.line = a.line == raster::LineAlign::left ? raster::LineAlign::right : raster::LineAlign::left;
+  }
+  const double half = std::max(0.0, layerWidth - 2 * kTextPadX) / 2;
+  if (a.line == raster::LineAlign::left) return -half;
+  if (a.line == raster::LineAlign::right) return half;
+  return 0;
+}
+
 api::TextLayout text_layout_of(TextMeasurer& m, const doc::Node& original, const api::TextLayoutOverrides* overrides) {
   const doc::Node n = with_overrides(original, overrides);
   const std::optional<MeasuredStyle> read = read_measured_text_style(n, {});

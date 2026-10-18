@@ -75,6 +75,11 @@ struct MeasuredStyle {
 /// measureText.ts MIN_FIT_SCALE: Fit Text to Box never shrinks below this.
 inline constexpr double kMinFitScale = 0.05;
 
+/// measureText.ts PAD_X / PAD_Y: the padding a text layer's box adds around
+/// the measured content on each side (the layer width = content + 2 × PAD_X).
+inline constexpr double kTextPadX = 12;
+inline constexpr double kTextPadY = 8;
+
 /// `readMeasuredTextStyle(node, overrides)` — nullopt when the node has no text
 /// content. `overrides` are the sampled animated values (fontSize, …) as the
 /// TypeScript passes `evalMap`.

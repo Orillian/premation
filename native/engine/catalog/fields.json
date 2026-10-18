@@ -136,6 +136,22 @@
       "default": 0
     },
     {
+      "key": "tracking",
+      "label": "Tracking",
+      "type": "scalar",
+      "default": 0
+    },
+    {
+      "key": "textAnchor",
+      "label": "Anchor",
+      "type": "choice",
+      "default": "center",
+      "choices": [
+        "center",
+        "alignment"
+      ]
+    },
+    {
       "key": "align",
       "label": "Justification",
       "type": "choice",

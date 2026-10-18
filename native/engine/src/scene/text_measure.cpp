@@ -29,8 +29,8 @@ using js::Json;
 std::optional<double> num(const Json& v) { return v.is_number() ? std::optional<double>(v.num()) : std::nullopt; }
 
 /// measureText.ts PAD_X (textExtras TEXT_PAD_X) / PAD_Y.
-constexpr double kPadX = 12;
-constexpr double kPadY = 8;
+constexpr double kPadX = kTextPadX;
+constexpr double kPadY = kTextPadY;
 constexpr double kSuperSubScale = 0.65;
 constexpr double kSuperShift = 0.35;
 constexpr double kSubShift = 0.15;
@@ -595,6 +595,7 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
   std::optional<std::string> content;
   bool tcyAuto = false;
   double tcyDigits = 2;  // TATE_CHU_YOKO_DEFAULT_DIGITS
+  double tracking = 0;   // 1/1000 em, resolved to px once the (sampled) font size is known
   const auto extras = [&s, &tcyAuto, &tcyDigits](const Json& p) {
     for (const char* k : {"leftIndent", "rightIndent", "firstLineIndent", "spaceBefore", "spaceAfter"}) {
       const Json& v = p.at(k);
@@ -632,6 +633,7 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
     if (auto v = num(p.at("fontWidth"))) s.fontWidth = v;
     if (auto v = num(p.at("fontSlant"))) s.fontSlant = v;
     if (auto v = num(p.at("letterSpacing"))) s.letterSpacing = *v;
+    if (auto v = num(p.at("tracking"))) tracking = *v;
     if (auto v = num(p.at("lineHeight"))) s.lineHeight = *v;
     if (auto v = num(p.at("paragraphSpacing"))) s.paragraphSpacing = *v;
     if (auto v = num(p.at("boxWidth"))) s.boxWidth = v;
@@ -657,6 +659,10 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
   }
   if (!content) return std::nullopt;
   s.content = *content;
+  // Tracking (1/1000 em) at the sampled font size — the snapshot resolves the
+  // painter's letter spacing the same way (snapshot_build.cpp), so the measured
+  // box and the paint agree.
+  if (tracking != 0 && std::isfinite(tracking)) s.letterSpacing += tracking * s.fontSize / 1000;
   if (doc::read_text_path_config(n)) s.boxWidth.reset();
   if (s.boxWidth && *s.boxWidth <= 0) s.boxWidth.reset();
   if (s.textTransform == "none") s.textTransform.reset();

@@ -36,4 +36,12 @@ namespace premation::scene {
 [[nodiscard]] std::optional<TextGeometry> text_geometry_of(TextMeasurer& m, const doc::Node& n,
                                                           const std::vector<std::pair<std::string, double>>& overrides);
 
+/// Where point text anchors when its Text `textAnchor` is "alignment" (After
+/// Effects: the anchor at the alignment edge): the anchor-point offset, in
+/// layer px from the box centre, that puts the content's left edge (left /
+/// justified), centre, or right edge (right) at the layer's position —
+/// mirrored for a right-to-left first paragraph, 0 for vertical type.
+/// `layerWidth` is the measured layer width (content + 2 × kTextPadX).
+[[nodiscard]] double point_text_anchor_x(const doc::Node& n, double layerWidth);
+
 }  // namespace premation::scene

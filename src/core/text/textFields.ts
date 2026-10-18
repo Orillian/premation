@@ -68,6 +68,12 @@ export const TEXT_FIELDS: readonly TextFieldSpec[] = [
   { key: 'verticalScale', label: 'Vertical Scale', type: 'scalar', default: 100, min: 1 },
   { key: 'horizontalScale', label: 'Horizontal Scale', type: 'scalar', default: 100, min: 1 },
   { key: 'baselineShift', label: 'Baseline Shift', type: 'scalar', default: 0 },
+  // AE's tracking unit (1/1000 em): the engine resolves it to px at the font
+  // size, on top of the keyframeable px `letterSpacing`.
+  { key: 'tracking', label: 'Tracking', type: 'scalar', default: 0 },
+  // Where point text anchors: the box centre (every document before 2026-10),
+  // or AE's alignment edge (a left-aligned title grows to the right).
+  { key: 'textAnchor', label: 'Anchor', type: 'choice', default: 'center', choices: ['center', 'alignment'] },
   // ── Paragraph ──
   {
     key: 'align', label: 'Justification', type: 'choice', default: 'left',

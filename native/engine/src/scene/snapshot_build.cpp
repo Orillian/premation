@@ -45,6 +45,7 @@
 #include "temporal_ghosts.hpp"
 #include "sourcetext.hpp"
 #include "text_port.hpp"
+#include "text_query.hpp"
 #include "text_unicode.hpp"
 #include "text_runs.hpp"
 #include "threed_port.hpp"
@@ -153,6 +154,10 @@ struct Base {
   double fontSize = 48;
   std::optional<std::string> fontFamily, fontWeight, fontStyle, align;
   std::optional<double> fontWidth, fontSlant, letterSpacing, lineHeight, paragraphSpacing;
+  /// Tracking in 1/1000 em (AE's Character-panel unit); `letterSpacing` is its px, keyframeable twin.
+  std::optional<double> tracking;
+  /// "alignment": the anchor sits at the alignment edge of point text (AE); absent / "center" = the box centre.
+  std::optional<std::string> textAnchor;
   std::optional<bool> strokeOverFill;
   std::optional<std::string> textTransform, fontVariant, verticalAlign;
   std::optional<double> verticalScale, horizontalScale, baselineShift;
@@ -185,6 +190,8 @@ Base read_base(const doc::Node& node) {
     if (p.at("fontSlant").is_number()) b.fontSlant = p.at("fontSlant").num();
     if (p.at("fontStyle").is_string()) b.fontStyle = p.at("fontStyle").str();
     if (auto v = n("letterSpacing")) b.letterSpacing = v;
+    if (auto v = n("tracking")) b.tracking = v;
+    if (p.at("textAnchor").is_string()) b.textAnchor = p.at("textAnchor").str();
     if (auto v = n("lineHeight")) b.lineHeight = v;
     if (p.at("align").is_string()) b.align = p.at("align").str();
     if (auto v = n("paragraphSpacing")) b.paragraphSpacing = v;
@@ -1701,6 +1708,12 @@ void Walk::build_node(const doc::Node& n) {
   l.fontSlant = a.get("fontSlant") ? a.get("fontSlant") : base.fontSlant;
   l.fontStyle = base.fontStyle;
   l.letterSpacing = a.get("letterSpacing") ? a.get("letterSpacing") : base.letterSpacing;
+  // Tracking (1/1000 em) resolves to px at the layer's font size, on top of the
+  // px letter spacing — the measurer does the same (read_measured_text_style),
+  // so the box and the paint agree. A run's own font size keeps the layer's px.
+  if (base.tracking && *base.tracking != 0 && std::isfinite(*base.tracking)) {
+    l.letterSpacing = l.letterSpacing.value_or(0) + *base.tracking * l.fontSize / 1000;
+  }
   l.lineHeight = a.get("lineHeight") ? a.get("lineHeight") : base.lineHeight;
   l.align = base.align;
   l.paragraphSpacing = a.get("paragraphSpacing") ? a.get("paragraphSpacing") : base.paragraphSpacing;
@@ -1783,6 +1796,11 @@ void Walk::build_node(const doc::Node& n) {
     const auto [ax0, ay0] = read_node_anchor(n);
     l.anchorX = a.get("anchorX").value_or(ax0);
     l.anchorY = a.get("anchorY").value_or(ay0);
+    // Point text anchored at its alignment edge (AE): the Anchor Point value is
+    // then relative to that edge, as AE's is to the text origin.
+    if (layerKind == LayerKind::text && measured && base.textAnchor && *base.textAnchor == "alignment") {
+      l.anchorX += point_text_anchor_x(n, measured->first);
+    }
   }
   // Rigs: puppet pins and skeletons → layer.deformedMesh (rig_mesh.cpp).
   if (rig_present(fx)) {
