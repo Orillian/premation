@@ -33,7 +33,8 @@ export function ownerOf(node: SceneNode, prop: string): SceneNode['components'][
     // Everything typographic belongs to the Text component.
     prop === 'content' || prop === 'fontSize' || prop === 'fontWeight' ||
     prop === 'fontFamily' || prop === 'letterSpacing' || prop === 'lineHeight' ||
-    prop === 'align' || prop === 'paragraphSpacing'
+    prop === 'align' || prop === 'paragraphSpacing' ||
+    prop === 'tracking' || prop === 'fontStyle' || prop === 'textAnchor'
       ? text
       : prop === 'fill'
         // Shapes/solids carry fill on their Style; a text layer has NO Style

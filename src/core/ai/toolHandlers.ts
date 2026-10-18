@@ -783,6 +783,9 @@ const updateLayer: AiTool['handler'] = async (input, ctx) => {
     // so every AI-authored headline shipped at the font's default tracking and a
     // body line-height, which is most of why generated type reads as untypeset.
     'fontFamily', 'letterSpacing', 'lineHeight', 'align',
+    // AE's tracking unit, the italic face, and where point text anchors
+    // (audit 2026-10-18: every AI paragraph was ragged and upright).
+    'tracking', 'fontStyle', 'textAnchor',
     // Paragraph text (boxWidth > 0: the text wraps inside the box and `align`
     // places each line in it), vertical type (tategaki) and RTL paragraphs —
     // the Character / Paragraph panels' fields, unreachable from any tool.

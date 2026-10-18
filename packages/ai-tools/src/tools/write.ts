@@ -254,14 +254,19 @@ export const updateLayerDef: AiToolDef = {
       fontSize: { type: 'number', minimum: 1 },
       fontWeight: { type: 'number' },
       fontFamily: { type: 'string' },
-      letterSpacing: {
+      tracking: {
         type: 'number',
         description:
-          'Tracking in px. NEGATIVE for display sizes (roughly −2 to −4% of the font size) and ' +
-          'POSITIVE for small text (+2 to +6%). A font\'s default spacing is drawn for body copy, so ' +
-          'display type at 0 looks loose and unresolved — this is the single biggest "looks typeset" ' +
-          'lever there is, and leaving it at 0 on a headline is the most common typographic tell.',
+          'Tracking in After Effects units (1/1000 em: 50 = 0.05 em, scales with the font size). NEGATIVE for ' +
+          'display sizes (−20 to −40) and POSITIVE for small text (+20 to +60). A font\'s default spacing is drawn ' +
+          'for body copy, so display type at 0 looks loose and unresolved — this is the single biggest "looks ' +
+          'typeset" lever there is, and leaving it at 0 on a headline is the most common typographic tell.',
       },
+      letterSpacing: {
+        type: 'number',
+        description: 'Extra letter spacing in px (keyframeable). Prefer `tracking`, which keeps its look across sizes.',
+      },
+      fontStyle: { type: 'string', enum: ['normal', 'italic'], description: 'The family\'s italic face (synthesized when it has none).' },
       lineHeight: {
         type: 'number',
         description:
@@ -271,10 +276,18 @@ export const updateLayerDef: AiToolDef = {
       },
       align: {
         type: 'string',
-        enum: ['left', 'center', 'right'],
+        enum: ['left', 'center', 'right', 'justify', 'justify-left', 'justify-center', 'justify-right', 'justify-all'],
         description:
-          'Line alignment INSIDE a paragraph box (boxWidth > 0). Point text (no box) is centred on x / y ' +
-          'whatever this says — give the text a boxWidth to align it to a column edge.',
+          'Line alignment INSIDE a paragraph box (boxWidth > 0); `justify` = justified with the last line left ' +
+          '(AE Justify Last Left), justify-all stretches every line. Point text (no box) is centred on x / y ' +
+          'whatever this says unless textAnchor is "alignment".',
+      },
+      textAnchor: {
+        type: 'string',
+        enum: ['center', 'alignment'],
+        description:
+          'Point text: "alignment" puts the anchor at the alignment edge, as After Effects does — a left-aligned ' +
+          'title starts at x and grows to the right (typewriter reveals, counters). Default "center": centred on x.',
       },
       boxWidth: {
         type: 'number',

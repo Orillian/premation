@@ -634,6 +634,7 @@ export function createSceneFacade(session: AiEngineSession = freeSession()): Sce
 /** The Text component's props, by the legacy routing rule (propOwner.ts `ownerOf`): they need a text layer. */
 const TEXT_OWNED = new Set([
   'content', 'fontSize', 'fontWeight', 'fontFamily', 'letterSpacing', 'lineHeight', 'align', 'paragraphSpacing',
+  'tracking', 'fontStyle', 'textAnchor',
   // Paragraph text (a box that wraps and aligns), vertical type, RTL paragraphs.
   'boxWidth', 'boxHeight', 'orientation', 'direction', 'language',
 ]);
