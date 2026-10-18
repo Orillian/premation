@@ -8,9 +8,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { folderOfPick, initDialogDirs, parseDialogDirs, rememberDir, rememberedDir } from './dialogDirs';
+import { dialogDirsWritten, folderOfPick, initDialogDirs, parseDialogDirs, rememberDir, rememberedDir } from './dialogDirs';
 
-const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 
 describe('dialogDirs', () => {
   let root: string;
@@ -42,7 +41,7 @@ describe('dialogDirs', () => {
     const projects = path.join(root, 'projects');
     mkdirSync(projects);
     rememberDir('project', path.join(projects, 'a.motion'), false);
-    await flush();
+    await dialogDirsWritten();
     expect(JSON.parse(readFileSync(stateFile, 'utf8'))).toEqual({ project: projects });
     initDialogDirs(stateFile);
     expect(rememberedDir('project')).toEqual({ defaultPath: projects });

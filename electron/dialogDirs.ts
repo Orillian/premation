@@ -87,13 +87,20 @@ export function rememberedDir(kind: DialogDirKind): { defaultPath?: string } {
 }
 
 /** Remember where a dialog ended up. A cancelled dialog passes nothing. */
+let lastWrite: Promise<void> = Promise.resolve();
+
 export function rememberDir(kind: DialogDirKind, picked: string | undefined, pickedIsFolder: boolean): void {
   if (!picked || !path.isAbsolute(picked)) return;
   const dir = folderOfPick(picked, pickedIsFolder);
   if (dirs[kind] === dir) return;
   dirs = { ...dirs, [kind]: dir };
   if (!stateFile) return;
-  void writeFileAtomic(stateFile, JSON.stringify(dirs, null, 2)).catch(() => {
+  lastWrite = writeFileAtomic(stateFile, JSON.stringify(dirs, null, 2)).catch(() => {
     /* best-effort: the folder is still remembered for this session */
   });
+}
+
+/** The most recent state-file write, settled — tests wait on it rather than on a timer. */
+export function dialogDirsWritten(): Promise<void> {
+  return lastWrite;
 }
