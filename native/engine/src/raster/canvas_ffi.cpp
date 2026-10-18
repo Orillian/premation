@@ -795,6 +795,7 @@ class SkiaCanvas final : public Canvas2D {
     r.features = st_.features;
     if (st_.smallCaps || st_.font.smallCaps) {
       r.features += r.features.empty() ? "'smcp' 1" : ", 'smcp' 1";
+      r.font.smallCaps = true;  // synthesized by the shaper on a face without `smcp`
     }
     return r;
   }
@@ -841,11 +842,11 @@ class SkiaCanvas final : public Canvas2D {
     while (i < s.glyphs.size()) {
       std::size_t j = i + 1;
       while (j < s.glyphs.size() && s.glyphs[j].face == s.glyphs[i].face && s.glyphs[j].fakeBold == s.glyphs[i].fakeBold &&
-             s.glyphs[j].fakeItalic == s.glyphs[i].fakeItalic) {
+             s.glyphs[j].fakeItalic == s.glyphs[i].fakeItalic && s.glyphs[j].sizeScale == s.glyphs[i].sizeScale) {
         ++j;
       }
-      const SkFont font = ffi::sk_font_for(*opts_.fonts, s.glyphs[i].face, s.axes, s.sizePx, s.glyphs[i].fakeBold,
-                                           s.glyphs[i].fakeItalic);
+      const SkFont font = ffi::sk_font_for(*opts_.fonts, s.glyphs[i].face, s.axes, s.sizePx * s.glyphs[i].sizeScale,
+                                           s.glyphs[i].fakeBold, s.glyphs[i].fakeItalic);
       const auto& run = builder.allocRunPos(font, static_cast<int>(j - i));
       for (std::size_t k = i; k < j; ++k) {
         run.glyphs[k - i] = s.glyphs[k].id;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)

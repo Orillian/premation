@@ -37,6 +37,7 @@
 #include "raster/canvas_replay.hpp"
 #include "raster/fonts.hpp"
 #include "raster/raster_source.hpp"
+#include "raster/text_unicode.hpp"
 
 namespace fs = std::filesystem;
 using premation::api::RenderFrameFile;
@@ -533,6 +534,15 @@ int measure_cmd(int argc, char** argv) {
     std::printf("width %.10g ascent %.10g descent %.10g ink [%.10g %.10g %.10g %.10g]\n", s.width, s.ascent, s.descent,  // NOLINT(cppcoreguidelines-pro-type-vararg)
                 s.inkLeft, s.inkTop, s.inkRight, s.inkBottom);
     for (const auto& g : s.glyphs) std::printf("  glyph %u face %d x %.10g y %.10g adv %.10g\n", g.id, g.face, g.x, g.y, g.advance);  // NOLINT(cppcoreguidelines-pro-type-vararg)
+    // The first cluster's outline: its first contour point tells an italic face from an upright one.
+    if (argc > 4) {
+      const auto clusters = premation::raster::split_graphemes(argv[4]);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      const std::string first = clusters.empty() ? std::string() : clusters.front();
+      if (const auto o = fonts.glyph_outline(first, req.font); o && !o->contours.empty() && !o->contours.front().empty()) {
+        const auto& c = o->contours.front().front();
+        std::printf("  outline upem %.10g adv %.10g first (%.10g, %.10g) contours %zu\n", o->unitsPerEm, o->advance, c.x0, c.y0, o->contours.size());  // NOLINT(cppcoreguidelines-pro-type-vararg)
+      }
+    }
     return 0;
   }
 }

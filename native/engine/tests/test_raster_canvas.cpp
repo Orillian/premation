@@ -3,7 +3,12 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 
 #include "raster/canvas.hpp"
 #include "raster/canvas_replay.hpp"
@@ -110,6 +115,102 @@ TEST_CASE("fonts: harness faces load (woff2) and shape with CSS matching", "[ras
   REQUIRE_FALSE(a.glyphs.empty());
   CHECK(a.glyphs.front().face == 2);
 }
+
+TEST_CASE("fonts: small caps synthesize on a face without smcp (capitals at 0.7×), the feature draws them when present", "[raster][fonts][smallcaps]") {
+  // Audit 2026-10-18: the Character panel's Small Caps did nothing on Inter
+  // (the default font): the shaper only asked for the `smcp` feature, which
+  // Inter's shipped file has no glyphs for. Blink and After Effects synthesize.
+  const auto inter = std::filesystem::path(PREMATION_RASTER_FONTS).parent_path() / "../../../../resources/fonts/Inter-opsz-wght.ttf";
+  std::ifstream in(inter, std::ios::binary);
+  REQUIRE(in);
+  const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  FontSet fonts{FontOptions{}};
+  FaceInfo info;
+  info.family = "Inter";
+  info.file = "Inter-opsz-wght.ttf";
+  std::string err;
+  REQUIRE(fonts.add_face(info, bytes, err));
+  ShapeRequest plain;
+  plain.font = *css::parse_font("400 100px Inter");
+  ShapeRequest small = plain;
+  small.font.smallCaps = true;
+  const ShapedText capital = fonts.shape("A", plain);
+  const ShapedText lower = fonts.shape("a", plain);
+  const ShapedText synth = fonts.shape("a", small);
+  REQUIRE(capital.glyphs.size() == 1);
+  REQUIRE(synth.glyphs.size() == 1);
+  // The lowercase letter became the capital's glyph, drawn at 0.7 of the size.
+  CHECK(synth.glyphs.front().id == capital.glyphs.front().id);
+  CHECK(synth.glyphs.front().id != lower.glyphs.front().id);
+  CHECK(synth.glyphs.front().sizeScale == 0.7);
+  CHECK(std::fabs(synth.width - capital.width * 0.7) < 0.5);
+  // Its ink is the capital's at 0.7 (AE's Preferences ▸ Type small-caps size),
+  // shorter than the full capital — and, in Inter, about the x-height: Inter's
+  // x-height is 0.53 em, its cap height 0.73.
+  CHECK(std::fabs(-synth.inkTop - (-capital.inkTop) * 0.7) < 1.5);
+  CHECK(-synth.inkTop < -capital.inkTop);
+  CHECK(-lower.inkTop < -capital.inkTop);
+  // A capital and punctuation are left alone.
+  const ShapedText mixed = fonts.shape("A.", small);
+  REQUIRE(mixed.glyphs.size() == 2);
+  CHECK(mixed.glyphs[0].sizeScale == 1.0);
+  CHECK(mixed.glyphs[1].sizeScale == 1.0);
+  // Through the canvas: `small-caps` in the font shorthand draws more ink for
+  // "abc" than the lowercase run (capitals, even at 0.7×, carry more ink).
+  CanvasOptions co;
+  co.fonts = &fonts;
+  const auto ink = [&co](const char* font) {
+    auto c = Canvas2D::make(400, 120, co);
+    c->setFillStyle(color("#000000"));
+    REQUIRE(c->setFont(font));
+    c->fillText("hamburg", 10, 84);
+    const std::vector<std::uint8_t> px = c->pixels();
+    std::size_t n = 0;
+    for (std::size_t i = 3; i < px.size(); i += 4) n += px[i] > 127 ? 1U : 0U;
+    return static_cast<double>(n);
+  };
+  CHECK(ink("small-caps 400 64px Inter") != ink("400 64px Inter"));
+}
+
+#if defined(_WIN32)
+TEST_CASE("fonts: a system family's simulated obliques do not shadow its real italic", "[raster][fonts][system]") {
+  // Audit 2026-10-18: DirectWrite lists "Arial Normal Oblique" (arial.ttf +
+  // an italic simulation) beside the real Arial Italic; registered as an
+  // italic face with the upright file's bytes it won the match and every
+  // system italic drew upright. Faces take their style from the file now and
+  // each file registers once.
+  FontSet fonts{FontOptions{}};
+  const std::size_t added = fonts.add_system_family("Arial");
+  if (added == 0) {
+    WARN("Arial is not installed; skipping");
+    return;
+  }
+  // Regular, Italic, Bold, Bold Italic (and Arial Black's file when the
+  // family lists it) — never the three simulated obliques on top.
+  CHECK(added <= 5);
+  const auto upright = fonts.glyph_outline("A", *css::parse_font("400 56px Arial"));
+  const auto italic = fonts.glyph_outline("A", *css::parse_font("italic 400 56px Arial"));
+  REQUIRE(upright.has_value());
+  REQUIRE(italic.has_value());
+  REQUIRE_FALSE(upright->contours.empty());
+  REQUIRE_FALSE(italic->contours.empty());
+  // Arial Italic's A is a different outline from Arial's (its stem leans).
+  const auto& u = upright->contours.front().front();
+  const auto& i = italic->contours.front().front();
+  CHECK((u.x0 != i.x0 || u.y0 != i.y0 || upright->contours.front().size() != italic->contours.front().size()));
+  // And the glyphs come out of different faces.
+  ShapeRequest ru;
+  ru.font = *css::parse_font("400 56px Arial");
+  ShapeRequest ri;
+  ri.font = *css::parse_font("italic 400 56px Arial");
+  const ShapedText su = fonts.shape("A", ru);
+  const ShapedText si = fonts.shape("A", ri);
+  REQUIRE(su.glyphs.size() == 1);
+  REQUIRE(si.glyphs.size() == 1);
+  CHECK(su.glyphs.front().face != si.glyphs.front().face);
+  CHECK_FALSE(si.glyphs.front().fakeItalic);
+}
+#endif
 
 TEST_CASE("replay: a recorded call log draws on canvas 0", "[raster][replay]") {
   const std::string ops = R"([[0,"canvas",8,8],[0,"set","fillStyle","#ff0000"],[0,"call","fillRect",2,2,4,4],

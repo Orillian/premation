@@ -104,6 +104,11 @@ struct Glyph {
   /// Synthetic bold / oblique Blink would apply to this face at this request.
   bool fakeBold = false;
   bool fakeItalic = false;
+  /// The glyph is drawn at `sizePx × sizeScale`: 1 normally, 0.7 for a
+  /// synthesized small capital (a lowercase letter of a `small-caps` request on
+  /// a face without `smcp`, shaped as its capital — Blink's
+  /// kSmallCapsFontSizeMultiplier).
+  double sizeScale = 1.0;
 };
 
 /// One cubic segment of a glyph outline, in font units, y UP.

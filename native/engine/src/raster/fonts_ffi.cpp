@@ -15,6 +15,7 @@
 #include "skia_ffi.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -31,6 +32,7 @@
 #include <utility>
 
 #include "json.hpp"
+#include "text_unicode.hpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -107,6 +109,59 @@ std::string lower(std::string_view s) {
     if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
   }
   return o;
+}
+
+/// FNV-1a over a font file: identifies one file among a family's faces.
+std::uint64_t fnv1a64(std::span<const std::uint8_t> bytes) {
+  std::uint64_t h = 14695981039346656037ULL;
+  for (const std::uint8_t b : bytes) {
+    h ^= b;
+    h *= 1099511628211ULL;
+  }
+  return h;
+}
+
+/// The weight and slant a font FILE declares for itself (OS/2 usWeightClass and
+/// fsSelection, else head.macStyle) — what a platform's simulated faces lack.
+struct SfntStyle {
+  int weight = 400;
+  bool italic = false;
+};
+std::optional<SfntStyle> sfnt_style(std::span<const std::uint8_t> bytes, int ttcIndex) {
+  const HbBlob blob(hb_blob_create(reinterpret_cast<const char*>(bytes.data()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                                   static_cast<unsigned>(bytes.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr));
+  const HbFace face(hb_face_create(blob.get(), static_cast<unsigned>(ttcIndex)));
+  struct Table {
+    HbBlob blob;
+    const unsigned char* data = nullptr;
+    unsigned len = 0;
+  };
+  const auto table = [&face](hb_tag_t tag, unsigned minLen) {
+    Table t;
+    t.blob.reset(hb_face_reference_table(face.get(), tag));
+    const auto* d = reinterpret_cast<const unsigned char*>(hb_blob_get_data(t.blob.get(), &t.len));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    if (d != nullptr && t.len >= minLen) t.data = d;
+    return t;
+  };
+  const auto u16 = [](const unsigned char* d, unsigned o) {
+    return static_cast<unsigned>((static_cast<unsigned>(d[o]) << 8U) | static_cast<unsigned>(d[o + 1]));  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  };
+  if (const Table os2 = table(HB_TAG('O', 'S', '/', '2'), 64); os2.data != nullptr) {
+    SfntStyle s;
+    const unsigned weightClass = u16(os2.data, 4);
+    s.weight = weightClass >= 1 && weightClass <= 1000 ? static_cast<int>(weightClass) : 400;
+    const unsigned fsSelection = u16(os2.data, 62);
+    s.italic = (fsSelection & 0x1U) != 0 || (fsSelection & 0x200U) != 0;  // ITALIC, OBLIQUE
+    return s;
+  }
+  if (const Table head = table(HB_TAG('h', 'e', 'a', 'd'), 46); head.data != nullptr) {
+    SfntStyle s;
+    const unsigned macStyle = u16(head.data, 44);
+    s.weight = (macStyle & 0x1U) != 0 ? 700 : 400;
+    s.italic = (macStyle & 0x2U) != 0;
+    return s;
+  }
+  return std::nullopt;
 }
 
 std::uint32_t tag_of(std::string_view t) {
@@ -193,6 +248,9 @@ struct FontSet::Impl {
     HbFace face;
     sk_sp<SkTypeface> typeface;
     unsigned upem = 1000;
+    /// The file has an OpenType `smcp` feature (real small capitals); without
+    /// one a small-caps request is synthesized (shape()).
+    bool hasSmcp = false;
   };
   std::vector<std::unique_ptr<Face>> faces;
   std::vector<std::pair<std::string, std::string>> aliases;
@@ -424,6 +482,17 @@ bool FontSet::add_face(const FaceInfo& info, std::span<const std::uint8_t> bytes
                                   static_cast<unsigned>(face->sfnt.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr));
   face->face.reset(hb_face_create(face->blob.get(), static_cast<unsigned>(info.ttcIndex)));
   face->upem = hb_face_get_upem(face->face.get());
+  {
+    std::array<hb_tag_t, 64> tags{};
+    unsigned offset = 0;
+    for (;;) {
+      unsigned count = static_cast<unsigned>(tags.size());
+      const unsigned total = hb_ot_layout_table_get_feature_tags(face->face.get(), HB_OT_TAG_GSUB, offset, &count, tags.data());
+      for (unsigned i = 0; i < count; ++i) face->hasSmcp = face->hasSmcp || tags[i] == HB_TAG('s', 'm', 'c', 'p');
+      offset += count;
+      if (count == 0 || offset >= total || face->hasSmcp) break;
+    }
+  }
   face->typeface = impl_->mgr->makeFromData(SkData::MakeWithCopy(face->sfnt.data(), face->sfnt.size()), info.ttcIndex);
   if (!face->typeface) {
     error = "Skia could not load the face: " + info.file;
@@ -452,6 +521,16 @@ std::size_t FontSet::add_system_family(const std::string& family) {
   const sk_sp<SkFontStyleSet> set = sys->matchFamily(real.c_str());
   if (!set) return 0;
   std::size_t added = 0;
+  // DirectWrite lists a family's SIMULATED faces beside the real ones ("Arial
+  // Normal Oblique" = arial.ttf + an italic simulation; a synthetic bold for a
+  // family with no bold file). Taken at their word they registered as italic /
+  // bold faces carrying the upright file's bytes, shadowed the real italic
+  // (the last face of a (weight, style) match wins) and, claiming to be
+  // italic, suppressed the shaper's own slant — every system italic drew
+  // upright (audit 2026-10-18). So a face's style is read from its FILE and
+  // each distinct file (bytes + collection index) is registered once; a style
+  // the family really lacks is synthesized by the shaper, as for bundled faces.
+  std::vector<std::pair<std::uint64_t, int>> seen;
   for (int i = 0; i < set->count(); ++i) {
     const sk_sp<SkTypeface> tf = set->createTypeface(i);
     if (!tf) continue;
@@ -460,10 +539,14 @@ std::size_t FontSet::add_system_family(const std::string& family) {
     if (!stream || !stream->hasLength()) continue;
     std::vector<std::uint8_t> bytes(stream->getLength());
     if (stream->read(bytes.data(), bytes.size()) != bytes.size()) continue;
+    const std::pair<std::uint64_t, int> key{fnv1a64(bytes), ttc};
+    if (std::ranges::find(seen, key) != seen.end()) continue;
+    seen.push_back(key);
     FaceInfo info;
     info.family = family;
-    info.weight = tf->fontStyle().weight();
-    info.italic = tf->fontStyle().slant() != SkFontStyle::kUpright_Slant;
+    const std::optional<SfntStyle> own = sfnt_style(bytes, ttc);
+    info.weight = own ? own->weight : tf->fontStyle().weight();
+    info.italic = own ? own->italic : tf->fontStyle().slant() != SkFontStyle::kUpright_Slant;
     info.file = "system:" + real;
     info.ttcIndex = ttc;
     std::string err;
@@ -697,6 +780,24 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
     }
   }
 
+  // Small caps on a face without `smcp` are synthesized the way Blink (and
+  // After Effects) do: each lowercase letter is shaped as its capital at 0.7×
+  // the size. A face with the feature keeps its own small capitals (the
+  // 'smcp' feature the canvas adds). `small[i]` marks the synthesized ones.
+  constexpr double kSmallCapsScale = 0.7;
+  std::vector<bool> small(cps.size(), false);
+  if (req.font.smallCaps && !impl.faces[static_cast<std::size_t>(primary)]->hasSmcp) {
+    for (std::size_t i = 0; i < cps.size(); ++i) {
+      std::string one;
+      append_utf8(one, cps[i].cp);
+      const std::vector<char32_t> up = code_points(to_upper(one));
+      if (up.size() == 1 && up.front() != cps[i].cp) {
+        cps[i].cp = up.front();
+        small[i] = true;
+      }
+    }
+  }
+
   // Per code point face.
   std::vector<int> faceOf(cps.size(), primary);
   for (std::size_t i = 0; i < cps.size(); ++i) {
@@ -832,7 +933,7 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
     std::vector<std::pair<std::size_t, std::size_t>> segs;
     std::size_t s0 = run.start;
     for (std::size_t i = run.start + 1; i <= run.end; ++i) {
-      if (i == run.end || faceOf[i] != faceOf[s0]) {
+      if (i == run.end || faceOf[i] != faceOf[s0] || small[i] != small[s0]) {
         segs.emplace_back(s0, i);
         s0 = i;
       }
@@ -842,10 +943,12 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
       const int face = faceOf[a];
       const auto& fdata = *impl.faces[static_cast<std::size_t>(face)];
       const auto [fakeBold, fakeItalic] = faceSynth(face);
-      HbFontData data{ffi::sk_font_for(*this, face, out.axes, req.font.sizePx, fakeBold, fakeItalic),
+      const double sizeScale = small[a] ? kSmallCapsScale : 1.0;
+      const double segSizePx = req.font.sizePx * sizeScale;
+      HbFontData data{ffi::sk_font_for(*this, face, out.axes, segSizePx, fakeBold, fakeItalic),
                       opts_.subpixelPositioning};
       const HbFont parent(hb_font_create(fdata.face.get()));
-      const int scale = sk_to_hb(static_cast<SkScalar>(req.font.sizePx));
+      const int scale = sk_to_hb(static_cast<SkScalar>(segSizePx));
       hb_font_set_scale(parent.get(), scale, scale);
       if (!vars.empty()) hb_font_set_variations(parent.get(), vars.data(), static_cast<unsigned>(vars.size()));
       const HbFont font(hb_font_create_sub_font(parent.get()));
@@ -871,6 +974,7 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
         gl.cluster = gi.cluster;
         gl.fakeBold = fakeBold;
         gl.fakeItalic = fakeItalic;
+        gl.sizeScale = sizeScale;
         float adv = static_cast<float>(gp.x_advance) / 65536.0F;
         // Letter spacing: once per cluster, on its last glyph in visual order.
         const bool lastOfCluster = g + 1 == count || info[g + 1].cluster != gi.cluster;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -893,7 +997,7 @@ ShapedText FontSet::shape(std::string_view text, const ShapeRequest& req) const 
 
   // Ink bounds (TextMetrics.actualBoundingBox*): the union of glyph bounds.
   for (const auto& g : out.glyphs) {
-    const SkFont font = ffi::sk_font_for(*this, g.face, out.axes, req.font.sizePx, g.fakeBold, g.fakeItalic);
+    const SkFont font = ffi::sk_font_for(*this, g.face, out.axes, req.font.sizePx * g.sizeScale, g.fakeBold, g.fakeItalic);
     const SkGlyphID id = g.id;
     const SkRect r = cached_bounds(font, id);
     if (r.isEmpty()) continue;
