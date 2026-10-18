@@ -168,15 +168,45 @@ Gates run on this machine (RTX, Windows 11, 2026-10-19):
   face or on small caps.
 - `tsc --noEmit` clean; `npm run lint` within the warning budget.
 
+Closed 2026-10-19 (the three anchoring gaps the first pass left):
+
+- **First baseline.** With `textAnchor: alignment`, horizontal point text now
+  anchors on its first baseline, not the box centre (AE's text origin).
+  `point_text_anchor` (`text_query.cpp`) takes the first line's centre-origin
+  y from `paragraph_line_stack` and adds the face's baseline-below-middle,
+  which the measurer probes as the difference between the alphabetic and
+  middle `fontBoundingBoxAscent` (`TextMeasurer::baseline_below_middle`); the
+  Character panel's vertical scale and baseline shift apply as the painter
+  does. A paragraph box keeps the centre (its lines sit against the box).
+- **Vertical type.** The same anchor puts a vertical column's top edge (align
+  left), centre, or bottom edge (align right) at the layer's position; x stays
+  the column centre.
+- **Per-range tracking.** A run now carries `tracking` (1/1000 em; the key is
+  in both run-key lists), resolved at the RUN's font size: raster
+  `TextStyle::merged` re-resolves the spacing when a run sets `tracking` or
+  changes the size under a layer tracking (a legacy px `letterSpacing` run
+  alone still replaces the spacing outright), and the scene measurer carries
+  `spacingRuns` into point text's widths and glyph pens. The snapshot passes
+  the layer's `tracking` beside its folded `letterSpacing` so a run can undo
+  the fold; Source Text expression ranges store `tracking` on their runs
+  instead of px. The Character panel's ranged Tracking writes `tracking` (and
+  clears a legacy px on the run); a legacy px run still reads back at its
+  size. A wrapped paragraph keeps the uniform spacing in the measurer (its
+  soft breaks re-index the content) — the painter resolves it per glyph.
+
+Gates (2026-10-19): `engine_scene_tests "[anchor],[tracking]"`
+(`tests/test_text_anchor_tracking.cpp`: 7 cases), the GPU suite's T8 (first
+baseline, one and two lines), T9 (vertical top / bottom), T10 (a tracking run
+doubles its px when the size doubles), the native golden gate over the text
+scenes, `tsc` and `npm run lint` — see the hand-over note for the counts.
+
 Left open (not regressions):
 
-- Vertical type keeps the centre anchor whatever `textAnchor` says; AE anchors
-  a column at its top. The vertical anchor of horizontal text stays the box
-  centre (AE: the first baseline).
-- A per-range tracking still stores px on its run (`letterSpacing`), converted
-  at the run's font size when written; it does not follow a later size change
-  of that run.
 - The Leading field shows px but the timeline row stays the multiple of the
   font size; the engine field is unchanged.
+- A paragraph box with `textAnchor: alignment` anchors at its box edge and
+  centre line, not AE's box top-left; a point text with size runs anchors on
+  the layer size's baseline (the painter draws every size on the line's
+  middle).
 - The glyph profile (T11) and miter spikes (§2) are as noted; the test-port
   engine still lists no installed fonts (T10).

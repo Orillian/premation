@@ -9,6 +9,12 @@
  *   T3  `tracking` is 1/1000 em — the same look at 40 px and 120 px;
  *   T5  `textAnchor: alignment` anchors point text at its alignment edge.
  *
+ * And the three gaps §5 of the audit left open, closed 2026-10-19:
+ *
+ *   T8  the alignment anchor sits on the FIRST BASELINE, not the box centre;
+ *   T9  on vertical type it anchors the column at its top / bottom edge;
+ *   T10 a per-range `tracking` run keeps its em when the size changes.
+ *
  * Needs a GPU adapter (PREMATION_GPU_TESTS=1), like the other full-renderer suites.
  */
 
@@ -234,5 +240,109 @@ suite('text quality (audit 2026-10-18)', () => {
     const lines = rows.filter((r) => r.bottom - r.top > 8);  // glyph rows, not a stray descender
     expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(Math.abs(lines[0]!.right - lines[1]!.right)).toBeLessThanOrEqual(3);
+  }, 120_000);
+
+  /** Dark pixels inside a column band × row band. */
+  function inkIn(p: PNG, x0: number, x1: number, y0: number, y1: number): { count: number; left: number; right: number; top: number; bottom: number } {
+    let count = 0;
+    let left = x1;
+    let right = -1;
+    let top = y1;
+    let bottom = -1;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        if (p.data[(y * p.width + x) * 4]! < 110) {
+          count++;
+          left = Math.min(left, x);
+          right = Math.max(right, x);
+          top = Math.min(top, y);
+          bottom = Math.max(bottom, y);
+        }
+      }
+    }
+    return { count, left, right, top, bottom };
+  }
+
+  it('T8: textAnchor "alignment" anchors horizontal point text on its FIRST BASELINE, not the box centre', async () => {
+    const caps = { fontFamily: 'Inter', fontSize: 80, fontWeight: 600, align: 'left' };
+    await tools('baseline anchor', [
+      bg,
+      ...text('c', 'HHH', 320, 90, caps),             // control: the centre anchor straddles y = 90
+      ...text('b', 'HHH', 320, 260, caps),            // one line: its baseline is y = 260
+      ...text('d', 'HHH\nHHH', 960, 120, caps),       // two lines: the FIRST baseline is y = 120
+    ]);
+    await field('b', 'textAnchor', 'alignment');
+    await field('d', 'textAnchor', 'alignment');
+    const p = await frame();
+    const centred = inkIn(p, 0, 640, 0, 170);
+    const one = inkIn(p, 0, 640, 170, 360);
+    const firstLine = inkIn(p, 640, 1280, 0, 150);
+    expect(centred.count).toBeGreaterThan(0);
+    expect(Math.abs((centred.top + centred.bottom) / 2 - 90)).toBeLessThan(10);
+    // Capitals sit ON the baseline: the last ink row is the row above y.
+    expect(one.count).toBeGreaterThan(0);
+    expect(Math.abs(one.bottom - 259)).toBeLessThanOrEqual(2);
+    expect(one.left).toBeGreaterThanOrEqual(320 - 2);
+    expect(one.left).toBeLessThan(320 + 14);
+    expect(firstLine.count).toBeGreaterThan(0);
+    expect(Math.abs(firstLine.bottom - 119)).toBeLessThanOrEqual(2);
+    // Same cap height in all three: only the anchor moved.
+    expect(Math.abs((one.bottom - one.top) - (centred.bottom - centred.top))).toBeLessThanOrEqual(2);
+  }, 120_000);
+
+  it('T9: textAnchor "alignment" on vertical type anchors the column at its top (align left) or bottom (align right)', async () => {
+    const col = { fontFamily: 'Inter', fontSize: 60, fontWeight: 600 };
+    await tools('vertical anchor', [
+      bg,
+      ...text('w', 'HHH', 320, 180, { ...col, align: 'left' }),   // control: centred on y = 180
+      ...text('v', 'HHH', 640, 40, { ...col, align: 'left' }),    // top of the column at y = 40
+      ...text('u', 'HHH', 960, 320, { ...col, align: 'right' }),  // bottom of the column at y = 320
+    ]);
+    for (const id of ['w', 'v', 'u']) await field(id, 'orientation', 'vertical');
+    await field('v', 'textAnchor', 'alignment');
+    await field('u', 'textAnchor', 'alignment');
+    const p = await frame();
+    const control = inkIn(p, 0, 480, 0, 360);
+    const top = inkIn(p, 480, 800, 0, 360);
+    const bottom = inkIn(p, 800, 1280, 0, 360);
+    expect(control.count).toBeGreaterThan(0);
+    expect(Math.abs((control.top + control.bottom) / 2 - 180)).toBeLessThan(8);
+    // The column's em top is at y = 40; the H's cap top sits below it by the
+    // face's ascender − cap height (a quarter em on Inter), never above it.
+    expect(top.count).toBeGreaterThan(0);
+    expect(top.top).toBeGreaterThanOrEqual(40 - 1);
+    expect(top.top).toBeLessThan(40 + 0.35 * 60);
+    expect(Math.abs((top.left + top.right) / 2 - 640)).toBeLessThan(8);
+    expect(bottom.count).toBeGreaterThan(0);
+    expect(bottom.bottom).toBeLessThanOrEqual(320 + 1);
+    expect(bottom.bottom).toBeGreaterThan(320 - 0.35 * 60);
+    expect(Math.abs((bottom.left + bottom.right) / 2 - 960)).toBeLessThan(8);
+    // Same column length everywhere: the anchor moved, the type did not change.
+    expect(Math.abs((top.bottom - top.top) - (control.bottom - control.top))).toBeLessThanOrEqual(2);
+    expect(Math.abs((bottom.bottom - bottom.top) - (control.bottom - control.top))).toBeLessThanOrEqual(2);
+  }, 120_000);
+
+  it('T10: a per-range `tracking` run is 1/1000 em at the run\'s size — doubling the font size doubles its px', async () => {
+    const line = 'HHHHHH';
+    const style = { fontFamily: 'Inter', fontSize: 40, fontWeight: 500 };
+    await tools('range tracking', [
+      bg,
+      ...text('r0', line, 320, 70, style),
+      ...text('r1', line, 320, 190, style),
+    ]);
+    // The Character panel's ranged Tracking write: a run over the first three graphemes.
+    await field('r1', 'styleRuns', [{ start: 0, end: 3, style: { tracking: 500 } }]);
+    const small = await frame();
+    const w = (p: PNG, y0: number, y1: number): number => {
+      const i = inkIn(p, 0, 1280, y0, y1);
+      return i.right - i.left;
+    };
+    // Three gaps × 0.5 em: 60 px at 40 px.
+    expect(Math.abs((w(small, 130, 250) - w(small, 10, 130)) - 60)).toBeLessThanOrEqual(3);
+    // The layer size changes; the run keeps its em, so its px double: 120 px at 80 px.
+    await field('r0', 'fontSize', 80);
+    await field('r1', 'fontSize', 80);
+    const big = await frame();
+    expect(Math.abs((w(big, 130, 250) - w(big, 10, 130)) - 120)).toBeLessThanOrEqual(3);
   }, 120_000);
 });
