@@ -23,6 +23,17 @@ struct Value {
   std::vector<Value> a;
   std::vector<std::pair<std::string, Value>> o;
 
+  // Declared here, defined after the class: libstdc++ 14 instantiates
+  // std::pair<std::string, Value> while an implicitly defined constructor
+  // is still being generated and rejects the then-incomplete Value
+  // (static_assert in is_destructible). Out-of-line defaults see it complete.
+  Value();
+  ~Value();
+  Value(const Value&);
+  Value(Value&&) noexcept;
+  Value& operator=(const Value&);
+  Value& operator=(Value&&) noexcept;
+
   [[nodiscard]] const Value& operator[](std::string_view key) const {
     static const Value kNull;
     for (const auto& [k, v] : o) {
@@ -38,6 +49,13 @@ struct Value {
   [[nodiscard]] double num(double def = 0) const { return kind == Kind::number ? n : def; }
   [[nodiscard]] const std::string& str() const { return s; }
 };
+
+inline Value::Value() = default;
+inline Value::~Value() = default;
+inline Value::Value(const Value&) = default;
+inline Value::Value(Value&&) noexcept = default;
+inline Value& Value::operator=(const Value&) = default;
+inline Value& Value::operator=(Value&&) noexcept = default;
 
 class Parser {
  public:
