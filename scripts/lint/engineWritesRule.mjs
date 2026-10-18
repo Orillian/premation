@@ -144,6 +144,12 @@ const NOT_WRITES = new Set([
   'createCustomLayerFromMenu', // core/plugins/createCustomLayerFromMenu: ONE engine `pasteLayers` of an off-document build
   'applyPluginPresetCommand', // core/nativePlugins/pluginPresets: BUILDS the addEffect command for a plugin preset (pure); the caller sends it through edit()
   'importLocalAsset', // core/assets/local: content-addresses a File's bytes into the bundle BLOB store and returns a record + src (storage, dedup by hash); it adds no item — assetStore's importer (also the engine's importFiles port) does
+  // Camera program (core/scene/cameraCommands, core/scene/cameraRig): each composes engine commands from mirror
+  // reads and sends them through the engine client (execute / batch inside one gesture), not a direct write.
+  'setFocusDistanceToLayer', // Focus on a picked layer: edit() of the camera's focus-distance setProperty
+  'createOrbitNullEdit', // an orbit null at the POI with the camera parented to it: createLayer, setLayerSwitches, setProperty, setParent in one gesture
+  'distributeLayersInZ', // spreads the comp's layers in depth, sizes compensated: setLayerSwitches + one batch of setProperty in one gesture
+  'addCameraRigEdit', // crane / dolly / orbit rig: buildCameraRig's command batches in one gesture
 ]);
 const NOT_WRITE_SHAPE = /^create\w*(Player|Renderer|Painter|Port|Cache|Backend|Store)$|ForTests?$/;
 

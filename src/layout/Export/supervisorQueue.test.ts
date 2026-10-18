@@ -15,6 +15,8 @@ jest.mock('@core/services/coreServices', () => ({
 }));
 jest.mock('@stores/documentMirror', () => ({
   documentMirror: () => ({ items: new Map(), status: 'ready', comp: () => undefined }),
+  // engineInstance.ts wires the mirror to the engine at import time.
+  setAppMirrorSource: jest.fn(),
 }));
 const portable = jest.fn((_library: unknown) => true);
 jest.mock('@core/export/snapshotPortability', () => ({
@@ -169,11 +171,11 @@ describe('addToRenderQueue', () => {
     expect(useUIStore.getState().notifications.some((n) => /disk full/.test(n.message))).toBe(true);
   });
 
-  it('non-portable project → refused with a toast, nothing enqueued', async () => {
+  it('window-only footage is no refusal: it is staged at queue time and the job is queued', async () => {
     portable.mockReturnValue(false);
-    expect(await addToRenderQueue(job()).done).toBeNull();
-    expect(enqueued).toHaveLength(0);
-    expect(useUIStore.getState().notifications.some((n) => /engine cannot read/.test(n.message))).toBe(true);
+    expect(await addToRenderQueue(job()).done).toBe('exp-1');
+    expect(enqueued).toHaveLength(1);
+    expect(useUIStore.getState().notifications.some((n) => /lives only in this window/.test(n.message))).toBe(false);
   });
 });
 
