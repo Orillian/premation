@@ -222,6 +222,7 @@ std::shared_ptr<const RasterEntry> SceneTextures::find(std::string_view hash) {
   const auto it = byHash_.find(hash);
   if (it == byHash_.end()) return nullptr;
   lru_.splice(lru_.begin(), lru_, it->second);
+  it->second->lastUse = frame_;
   return it->second->entry;
 }
 
@@ -235,9 +236,13 @@ void SceneTextures::insert(std::string hash, std::shared_ptr<const RasterEntry> 
   const std::scoped_lock lock(m_);
   if (byHash_.contains(hash)) return;
   bytes_ += e->rgba.size();
-  lru_.push_front(Slot{hash, std::move(e)});
+  lru_.push_front(Slot{hash, std::move(e), frame_});
   byHash_.emplace(std::move(hash), lru_.begin());
-  while (bytes_ > opts_.rasterCacheBytes && lru_.size() > 1) {
+  // Least recently used first — but never a raster of the frame being prepared
+  // (every one of them was found or made under `frame_`, so they sit ahead of
+  // every older entry): a frame that outgrows the budget keeps all its layers
+  // and the cache shrinks back to the budget on the frames after it.
+  while (bytes_ > opts_.rasterCacheBytes && lru_.size() > 1 && lru_.back().lastUse != frame_) {
     Slot& back = lru_.back();
     bytes_ -= back.entry->rgba.size();
     byHash_.erase(back.hash);
@@ -282,7 +287,16 @@ void SceneTextures::prepare(const std::vector<TextureRequest>& reqs, std::vector
                             PrepareStats& stats) {
   const std::size_t first = refs.size();
   svgStandIn_ = false;
+  {
+    // A new frame: its rasters are pinned against eviction until the next one (insert).
+    const std::scoped_lock lock(m_);
+    ++frame_;
+  }
   prepare_refs(reqs, refs, stats);
+  {
+    const std::scoped_lock lock(m_);
+    stats.rasterOverBudget = bytes_ > opts_.rasterCacheBytes ? bytes_ - opts_.rasterCacheBytes : 0;
+  }
   // A raster over the device's 2D limit (frame_build plans to texture_dimension_limit,
   // but a still, a light wash or a particle field is sized by its content) is never
   // handed to the GPU: Dawn would make an error texture and fail the whole frame.

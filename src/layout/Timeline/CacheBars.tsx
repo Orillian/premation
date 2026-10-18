@@ -1,5 +1,11 @@
 /**
- * CacheBars — the green (RAM) preview-coverage line under the timeline ruler.
+ * CacheBars — the preview-coverage lines under the timeline ruler, After
+ * Effects' way: green where a frame is in memory (the engine's VRAM and RAM
+ * tiers), blue where it is in the disk cache. Two rows, the blue one right
+ * above the green (owner 2026-10-18): a frame on disk and in memory shows
+ * both, one only on disk shows blue alone — what each tier holds reads at a
+ * glance, as in AE. Both are the ENGINE's answer (`getCacheCoverage`): the
+ * green is its VRAM + RAM tiers, the blue its disk tier's written files.
  *
  * ## Why this is its own component
  *
@@ -31,6 +37,13 @@ import styles from './Timeline.module.css';
 /** How often the lanes re-read coverage while it is changing. */
 const REFRESH_HZ = 10;
 
+/** AE's disk-cache blue (tokens/domain.css); the theme's primary where a theme leaves it unset. */
+const DISK_CACHE_COLOR = 'var(--color-timeline-disk-cache, var(--color-primary))';
+/** The lines: the green hangs off the ruler's bottom edge, the blue sits right above it. */
+const LINE_HEIGHT = 2;
+const RAM_LINE_TOP = -2.5;
+const DISK_LINE_TOP = RAM_LINE_TOP - LINE_HEIGHT - 1;
+
 interface CacheBarsProps {
   /** Composition frame rate — cache keys are frames, the bar is seconds. */
   fps: number;
@@ -42,10 +55,15 @@ interface CacheBarsProps {
   rulerHeight: number;
 }
 
+interface Lanes {
+  ram: CacheBarSegment[];
+  disk: CacheBarSegment[];
+}
+
+const NO_LANES: Lanes = { ram: [], disk: [] };
+
 function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheBarsProps): JSX.Element | null {
-  // RAM coverage only: the blue disk lane drew a second line hard against
-  // the green one, read as a stray border (owner 2026-10-14). AE shows green.
-  const [segments, setSegments] = useState<CacheBarSegment[]>(() => []);
+  const [lanes, setLanes] = useState<Lanes>(NO_LANES);
 
   // Read the layout inputs through a ref so a zoom change does not tear down
   // and rebuild the subscription — the sampler always sees current values.
@@ -59,14 +77,11 @@ function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheB
       const { fps: f, pixelsPerSecond: pps, leftOffset: off } = layout.current;
       const safeFps = f > 0 ? f : 30;
       const coverage = engineCacheSnapshot();
-      const ram = layoutCacheBarSegments(
-        coalesceCacheBarRanges(coverage.ram, safeFps, pps),
-        pps,
-        off,
-      );
+      const ram = layoutCacheBarSegments(coalesceCacheBarRanges(coverage.ram, safeFps, pps), pps, off);
+      const disk = layoutCacheBarSegments(coalesceCacheBarRanges(coverage.disk, safeFps, pps), pps, off);
       // Bail on an unchanged layout: a cache tick that adds a frame too small
       // to move a pixel boundary must not re-render the lanes.
-      setSegments((prev) => (sameSegments(prev, ram) ? prev : ram));
+      setLanes((prev) => (sameSegments(prev.ram, ram) && sameSegments(prev.disk, disk) ? prev : { ram, disk }));
     };
 
     const flush = (): void => {
@@ -91,16 +106,27 @@ function CacheBarsImpl({ fps, pixelsPerSecond, leftOffset, rulerHeight }: CacheB
     };
   }, [fps, pixelsPerSecond, leftOffset]);
 
-  if (segments.length === 0) return null;
+  if (lanes.ram.length === 0 && lanes.disk.length === 0) return null;
 
   return (
     <>
-      {/* RAM-preview lane — thin green indicator line directly under the ruler */}
-      {segments.map((seg, i) => (
+      {/* Disk cache — blue, its own line right above the green. */}
+      {lanes.disk.map((seg, i) => (
+        <div
+          key={`disk_${i}`}
+          className={styles.cacheBar}
+          data-cache-tier="disk"
+          style={{ left: seg.left, width: seg.width, top: rulerHeight + DISK_LINE_TOP, background: DISK_CACHE_COLOR }}
+          aria-hidden
+        />
+      ))}
+      {/* RAM preview — thin green indicator line directly under the ruler */}
+      {lanes.ram.map((seg, i) => (
         <div
           key={`cache_${i}`}
           className={styles.cacheBar}
-          style={{ left: seg.left, width: seg.width, top: rulerHeight - 2.5 }}
+          data-cache-tier="ram"
+          style={{ left: seg.left, width: seg.width, top: rulerHeight + RAM_LINE_TOP }}
           aria-hidden
         />
       ))}

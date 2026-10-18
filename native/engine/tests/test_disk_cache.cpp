@@ -9,12 +9,14 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "disk_cache.hpp"
 #include "frame_codec.hpp"
+#include "ram_cache.hpp"
 
 namespace fs = std::filesystem;
 using premation::render::DiskCache;
@@ -223,6 +225,22 @@ TEST_CASE("disk cache: a reserved frame counts as on its way until it is written
   CHECK_FALSE(cache.writing());
 }
 
+TEST_CASE("disk cache: presence says written, on its way or absent, per key", "[disk_cache]") {
+  const fs::path dir = fresh_dir("presence");
+  DiskCache cache;
+  std::vector<std::uint8_t> state;
+  cache.presence({1, 2}, state);
+  CHECK(state == std::vector<std::uint8_t>{0, 0});  // off: nothing anywhere
+  cache.configure(utf8(dir), 64ULL * 1024 * 1024);
+  cache.flush();
+  REQUIRE(cache.store(1, kW, kH, flat(1)));
+  cache.flush();
+  REQUIRE(cache.reserve(2));
+  cache.presence({1, 2, 3}, state);
+  CHECK(state == std::vector<std::uint8_t>{2, 1, 0});
+  cache.release(2);
+}
+
 TEST_CASE("disk cache: off takes nothing", "[disk_cache]") {
   const fs::path dir = fresh_dir("off");
   DiskCache cache;
@@ -282,4 +300,109 @@ TEST_CASE("disk cache: 1080p load timing", "[.disk_cache_bench]") {
   for (int i = 0; i < kRuns; ++i) std::memcpy(out.data(), px.data(), px.size());
   const double copy = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t2).count() / kRuns;
   std::printf("[disk_cache_bench] decode %.2f ms, memcpy %.2f ms\n", dec, copy);
+}
+
+// ── the RAM tier (src/render/ram_cache.hpp) ─────────────────────────────────
+
+namespace {
+
+using premation::render::FrameTag;
+using premation::render::ProtectedRange;
+using premation::render::RamFrame;
+using premation::render::RamFrameCache;
+
+RamFrame ram_frame(std::uint64_t scope, std::int64_t frame, std::uint8_t fill = 1, double drawMs = 0, std::uint64_t diskKey = 0) {
+  RamFrame f;
+  f.rgba = std::make_shared<std::vector<std::uint8_t>>(flat(fill));
+  f.width = kW;
+  f.height = kH;
+  f.drawMs = drawMs;
+  f.diskKey = diskKey;
+  f.tag = FrameTag{scope, frame};
+  return f;
+}
+
+}  // namespace
+
+TEST_CASE("ram cache: a stored frame comes back, shared, and re-tagged by the hit", "[ram_cache]") {
+  RamFrameCache ram(10 * kFrameBytes);
+  std::vector<RamFrame> evicted;
+  REQUIRE(ram.store(7, ram_frame(1, 3, 42), ProtectedRange{}, evicted));
+  CHECK(evicted.empty());
+  const auto hit = ram.find(7, kW, kH, FrameTag{2, 3});
+  REQUIRE(hit);
+  CHECK((*hit->rgba)[0] == 42);
+  CHECK(hit->tag.scope == 2);
+  CHECK_FALSE(ram.find(7, kW * 2, kH, FrameTag{}));  // the right key at another size (a resize in flight)
+  CHECK_FALSE(ram.find(8, kW, kH, FrameTag{}));
+  CHECK(ram.stats().hits == 1);
+  CHECK(ram.stats().misses == 2);
+}
+
+TEST_CASE("ram cache: a loop larger than the cache keeps its first frames instead of thrashing", "[ram_cache]") {
+  // Room for 4 frames; the play range is frames 0–9 of scope 1. Plain LRU
+  // would hold 6–9 after the first pass and miss every frame of the next one.
+  RamFrameCache ram(4 * kFrameBytes);
+  const ProtectedRange range{1, 0, 9};
+  std::vector<RamFrame> evicted;
+  for (std::int64_t f = 0; f < 10; ++f) (void)ram.store(static_cast<std::uint64_t>(100 + f), ram_frame(1, f), range, evicted);
+  CHECK(evicted.empty());
+  for (std::int64_t f = 0; f < 4; ++f) CHECK(ram.contains(static_cast<std::uint64_t>(100 + f)));
+  for (std::int64_t f = 4; f < 10; ++f) CHECK_FALSE(ram.contains(static_cast<std::uint64_t>(100 + f)));
+  CHECK(ram.stats().refused == 6);
+  // The second pass hits the four it kept, every time round.
+  int hits = 0;
+  for (std::int64_t f = 0; f < 10; ++f) hits += ram.find(static_cast<std::uint64_t>(100 + f), kW, kH, FrameTag{1, f}) ? 1 : 0;
+  CHECK(hits == 4);
+}
+
+TEST_CASE("ram cache: frames of another scope or outside the range make room first, least recently used first", "[ram_cache]") {
+  RamFrameCache ram(3 * kFrameBytes);
+  std::vector<RamFrame> evicted;
+  const ProtectedRange old{1, 0, 99};
+  REQUIRE(ram.store(1, ram_frame(1, 0, 1, 12.0, 501), old, evicted));  // an older scope (an edit since)
+  REQUIRE(ram.store(2, ram_frame(1, 1, 2, 3.0, 502), old, evicted));
+  REQUIRE(ram.store(3, ram_frame(2, 0), ProtectedRange{2, 0, 9}, evicted));
+  // Scope 2 now plays frames 0–9: scope 1's frames are not protected any more.
+  const ProtectedRange now{2, 0, 9};
+  REQUIRE(ram.store(4, ram_frame(2, 1), now, evicted));
+  REQUIRE(evicted.size() == 1);
+  CHECK(evicted[0].diskKey == 501);  // the least recently used of the unprotected ones
+  CHECK(evicted[0].drawMs == 12.0);  // what it cost travels with it (the disk tier's test)
+  REQUIRE(ram.store(5, ram_frame(2, 2), now, evicted));
+  CHECK(evicted.size() == 2);
+  CHECK_FALSE(ram.contains(1));
+  CHECK_FALSE(ram.contains(2));
+  // Full of the playing range: a frame outside it is refused, nothing evicted.
+  CHECK_FALSE(ram.store(6, ram_frame(2, 50), now, evicted));
+  CHECK(evicted.size() == 2);
+  CHECK(ram.contains(3));
+}
+
+TEST_CASE("ram cache: a smaller budget evicts down to it, protected frames too", "[ram_cache]") {
+  RamFrameCache ram(4 * kFrameBytes);
+  const ProtectedRange range{1, 0, 9};
+  std::vector<RamFrame> evicted;
+  for (std::int64_t f = 0; f < 4; ++f) REQUIRE(ram.store(static_cast<std::uint64_t>(f + 1), ram_frame(1, f), range, evicted));
+  (void)ram.find(1, kW, kH, FrameTag{1, 0});  // 1 is the most recently used now
+  ram.set_budget(2 * kFrameBytes, evicted);    // the machine runs short of memory
+  CHECK(evicted.size() == 2);
+  CHECK(ram.bytes() == 2 * kFrameBytes);
+  CHECK(ram.contains(1));
+  CHECK(ram.contains(4));
+  CHECK_FALSE(ram.store(9, ram_frame(1, 5), range, evicted));  // still full of the range
+  ram.clear();
+  CHECK(ram.bytes() == 0);
+  CHECK_FALSE(ram.contains(1));
+}
+
+TEST_CASE("ram cache: the default size follows the machine", "[ram_cache]") {
+  constexpr std::uint64_t kGiB = std::uint64_t{1} << 30U;
+  using premation::render::auto_ram_budget;
+  CHECK(auto_ram_budget(0) == 2 * kGiB);
+  CHECK(auto_ram_budget(4 * kGiB) == kGiB / 2);   // never below half a GiB
+  CHECK(auto_ram_budget(8 * kGiB) == 4 * kGiB);   // half, leaving 4 GiB
+  CHECK(auto_ram_budget(16 * kGiB) == 8 * kGiB);
+  CHECK(auto_ram_budget(32 * kGiB) == 16 * kGiB);
+  CHECK(auto_ram_budget(512 * kGiB) == 64 * kGiB);  // capped
 }

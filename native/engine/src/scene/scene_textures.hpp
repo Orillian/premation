@@ -72,17 +72,33 @@ struct PrepareStats {
   std::uint32_t contourBuilds = 0;
   /// Rasters over the device's 2D texture limit, not uploaded (their layers draw nothing).
   std::uint32_t oversizeRefused = 0;
+  /// Bytes the raster cache held past its budget after this frame's rasters:
+  /// the frame alone needs more than the budget (nothing of it was evicted).
+  std::size_t rasterOverBudget = 0;
   /// E4: SVG rasters handed to the worker this frame (a stand-in or preview drew meanwhile).
   std::uint32_t svgAsync = 0;
   /// Features the painters could not draw (key → what), for the explicit-fallback report.
   std::vector<std::pair<std::string, std::string>> unsupported;
 };
 
+/// The raster cache's budget on a machine with `physicalBytes` installed: an
+/// eighth of it, within [768 MiB, 4 GiB]; 768 MiB when the OS does not say.
+/// (The RAM tier of the frame cache takes up to half — ram_cache.hpp.)
+[[nodiscard]] inline std::size_t raster_cache_budget(std::uint64_t physicalBytes) noexcept {
+  constexpr std::uint64_t kMiB = std::uint64_t{1} << 20U;
+  const std::uint64_t floor = 768 * kMiB;
+  const std::uint64_t ceiling = 4096 * kMiB;
+  if (physicalBytes == 0) return static_cast<std::size_t>(floor);
+  const std::uint64_t want = physicalBytes / 8;
+  return static_cast<std::size_t>(want < floor ? floor : (want > ceiling ? ceiling : want));
+}
+
 class SceneTextures final : public rg::ExternalTextureSource {
  public:
   struct Options {
     raster::CanvasOptions canvas;
-    /// CPU raster cache budget (bytes of RGBA8).
+    /// CPU raster cache budget (bytes of RGBA8): a steady-state limit. The
+    /// frame being prepared always fits (see `frame_`); raster_cache_budget sizes it.
     std::size_t rasterCacheBytes = std::size_t{768} << 20U;
     /// Baked-content cache budget (bytes of canvas pixels); 0 = off.
     std::size_t contentCacheBytes = std::size_t{256} << 20U;
@@ -141,6 +157,9 @@ class SceneTextures final : public rg::ExternalTextureSource {
   struct Slot {
     std::string hash;
     std::shared_ptr<const RasterEntry> entry;  // shared: a frame in flight keeps its pixels while the LRU evicts
+    /// The prepare (frame_) that last read or made it: eviction never takes a
+    /// raster of the frame being prepared, whatever the budget says (below).
+    std::uint64_t lastUse = 0;
   };
   /// prepare without the device-limit check.
   void prepare_refs(const std::vector<TextureRequest>& reqs, std::vector<api::RenderTextureRef>& refs, PrepareStats& stats);
@@ -195,6 +214,16 @@ class SceneTextures final : public rg::ExternalTextureSource {
   std::list<Slot> lru_;
   std::unordered_map<std::string, std::list<Slot>::iterator, rg::KeyHash, std::equal_to<>> byHash_;
   std::size_t bytes_ = 0;
+  /// The current prepare, counted per `prepare` (guarded by m_). A frame's
+  /// rasters all carry it; `insert` evicts from the LRU's tail only while the
+  /// tail is of an EARLIER frame. Before this, one frame whose rasters
+  /// outgrew the budget (a 3D comp with the camera close: each layer's raster
+  /// follows its projected size, up to 64 MB) evicted its own earlier layers
+  /// while rasterising the later ones — and an evicted raster is not
+  /// re-prepared, so those layers drew nothing on that frame: objects and
+  /// strokes blinking out at the frames where the comp was heaviest. The
+  /// budget is a steady-state limit; one frame may exceed it.
+  std::uint64_t frame_ = 0;
   // The baked content cache: a re-bake whose content key is unchanged (only
   // the stack's params or the fill opacity moved) copies the painted canvas
   // instead of repainting it. Small LRU; guarded by m_.

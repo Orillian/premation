@@ -72,6 +72,17 @@ struct RenderJob {
   /// Composition viewports only: a Layer-panel or held-time viewport draws a
   /// different picture at the same clock frame.
   bool recordCoverage = false;
+  /// The cache scope: the composition plus the document revision and the
+  /// viewport's view state this frame was built for (Session::cache_scope).
+  /// Coverage is kept per scope, so the bars show what is cached for what the
+  /// viewport shows NOW — not frames of another comp or of the document before
+  /// an edit (those stay cached under their content keys and come back on a hit).
+  std::uint64_t cacheScope = 0;
+  /// The play range (work area, custom range or the whole comp), frame
+  /// indices inclusive: the RAM tier never evicts its frames of this scope to
+  /// make room (render/ram_cache.hpp ProtectedRange).
+  std::int64_t rangeFirst = 0;
+  std::int64_t rangeLast = -1;
   /// Ghosts composited over the live frame after it is drawn (onion skins).
   /// The live frame is what the cache stores; the ghosts are not.
   struct OnionGhost {
@@ -260,6 +271,13 @@ struct RenderCounters {
   /// when (epoch µs, 0 = never) and how long the rebuild took (ms).
   double slotSwitchEpochUs = 0;
   double slotSwitchMs = 0;
+  /// Playback frames shown with footage from a nearest decoded frame (decode
+  /// fell behind): not the real frame, and never cached. A looping play that
+  /// had any fills the range at the wrap, as one that dropped frames does.
+  std::uint64_t inexact = 0;
+  /// Of the frames shown in the last second, the share served from a cache
+  /// tier (VRAM, RAM or disk) instead of drawn (RenderStats.cacheHitRate).
+  double cacheHitRate = 0;
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.
@@ -338,6 +356,9 @@ class FrameSink {
   virtual void configure_disk_cache(const std::string& /*folder*/, std::uint64_t /*bytes*/) {}
   /// Purge Disk Cache: forget the disk cache's frames and delete its files.
   virtual void purge_disk_cache() {}
+  /// setCacheBudget `ramMegabytes`: the RAM tier's size limit in bytes
+  /// (render/ram_cache.hpp); 0 = sized from the machine. Any thread.
+  virtual void configure_ram_cache(std::uint64_t /*bytes*/) {}
   [[nodiscard]] virtual std::string adapter() const = 0;
   [[nodiscard]] virtual std::string backend() const = 0;
 

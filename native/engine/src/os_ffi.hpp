@@ -40,4 +40,13 @@ bool write_stdout(const void* data, std::size_t bytes);
 // This process's executable, resolved (engine jobs start child engines from it). Empty when unknown.
 [[nodiscard]] std::string executable_path();
 
+// The machine's memory: installed and free right now (bytes; 0 = unknown).
+// Sizes the RAM tier of the preview cache (render/ram_cache.hpp) and keeps it
+// from pushing the rest of the system into the page file.
+struct MemoryStatus {
+  std::uint64_t physicalBytes = 0;
+  std::uint64_t availableBytes = 0;
+};
+[[nodiscard]] MemoryStatus memory_status();
+
 }  // namespace premation::os

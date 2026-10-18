@@ -34,19 +34,22 @@ wgpu::Texture FrameCache::peek(std::uint64_t key, std::uint32_t width, std::uint
 }
 
 void FrameCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t height, const wgpu::Texture& source,
-                       wgpu::CommandEncoder& encoder) {
+                       wgpu::CommandEncoder& encoder, const FrameMeta& meta, const EvictHook& onEvict) {
   const std::size_t need = bytes_of(width, height);
   if (need == 0 || need > budget_) return;
   if (const auto it = index_.find(key); it != index_.end()) {
     // Same content already here (a re-render of an identical frame): refresh only.
     lru_.splice(lru_.begin(), lru_, it->second);
+    it->second->meta.tag = meta.tag;
+    if (meta.diskKey != 0) it->second->meta.diskKey = meta.diskKey;
     return;
   }
-  while (bytes_ + need > budget_ && !lru_.empty()) evict_one();
+  while (bytes_ + need > budget_ && !lru_.empty()) evict_one(&encoder, onEvict ? &onEvict : nullptr);
   Entry e;
   e.key = key;
   e.width = width;
   e.height = height;
+  e.meta = meta;
   e.texture = take_texture(width, height);
   wgpu::TexelCopyTextureInfo src{};
   src.texture = source;
@@ -60,8 +63,16 @@ void FrameCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t hei
   ++stats_.stores;
 }
 
-void FrameCache::evict_one() {
+FrameMeta* FrameCache::meta(std::uint64_t key) {
+  const auto it = index_.find(key);
+  return it == index_.end() ? nullptr : &it->second->meta;
+}
+
+void FrameCache::evict_one(wgpu::CommandEncoder* encoder, const EvictHook* onEvict) {
   Entry& victim = lru_.back();
+  if (encoder != nullptr && onEvict != nullptr) {
+    (*onEvict)(Evicted{victim.key, victim.width, victim.height, &victim.texture, victim.meta}, *encoder);
+  }
   index_.erase(victim.key);
   bytes_ -= bytes_of(victim.width, victim.height);
   // One spare per size is enough: stores and evictions alternate one-for-one

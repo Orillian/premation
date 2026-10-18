@@ -154,6 +154,57 @@ TEST_CASE("the texture feed refuses a texture over the device's limit; the frame
   CHECK(stats.unsupported[0].second.find("over the GPU limit of 8192") != std::string::npos);
 }
 
+namespace {
+
+/// A 4 × 1 pixel request (16 bytes) whose bytes are all `value` — its own hash per value.
+sc::TextureRequest pixel_req(const std::string& key, std::uint8_t value) {
+  sc::TextureRequest r;
+  r.key = key;
+  r.kind = sc::TexKind::pixels;
+  r.pxWidth = 4;
+  r.pxHeight = 1;
+  r.pixels.assign(std::size_t{4} * 4, value);
+  r.layerId = key;
+  return r;
+}
+
+}  // namespace
+
+TEST_CASE("one frame's rasters all survive its own prepare, however far past the budget; the next frame evicts",
+          "[oversize][raster_cache]") {
+  // Found 2026-10-18: a 3D comp with the camera close rasterised a dozen
+  // layers at their projected size, more than the whole raster budget, and the
+  // insert of the last ones evicted the first ones of the SAME frame — which
+  // then drew nothing (external_texture: an evicted raster is not re-prepared).
+  // Objects and strokes blinked out at the heaviest frames.
+  sc::SceneTextures::Options opts;
+  opts.rasterCacheBytes = 40;  // two and a half 16-byte rasters
+  sc::SceneTextures textures(opts);
+  std::vector<sc::TextureRequest> reqs = {pixel_req("a", 1), pixel_req("b", 2), pixel_req("c", 3), pixel_req("d", 4)};
+  std::vector<premation::api::RenderTextureRef> refs;
+  sc::PrepareStats stats;
+  textures.prepare(reqs, refs, stats);
+  REQUIRE(refs.size() == 4);
+  for (const auto& ref : refs) {
+    INFO(ref.key);
+    CHECK(ref.ready);
+    CHECK(textures.raster(ref.hash) != nullptr);  // every raster of the frame is still here
+  }
+  CHECK(stats.rasterOverBudget == 64 - 40);
+
+  // The next frame reads two of them and makes one more: the budget is enforced
+  // again, and only rasters of the EARLIER frame go (least recently used first).
+  std::vector<sc::TextureRequest> next = {pixel_req("c", 3), pixel_req("d", 4), pixel_req("e", 5)};
+  std::vector<premation::api::RenderTextureRef> refs2;
+  sc::PrepareStats stats2;
+  textures.prepare(next, refs2, stats2);
+  REQUIRE(refs2.size() == 3);
+  for (const auto& ref : refs2) CHECK(textures.raster(ref.hash) != nullptr);
+  CHECK(textures.raster(refs[0].hash) == nullptr);  // "a": the oldest, gone
+  CHECK(textures.raster(refs[1].hash) == nullptr);  // "b"
+  CHECK(stats2.rasterOverBudget == 48 - 40);  // three of this frame's: still one over, kept
+}
+
 // ── E4 (3D perf program): SVG sources at the displayed size ──────────────────
 // An SVG layer's raster is sized by DPR × layer scale × camera magnification
 // (quantised to √2 steps, capped at 4096 / the device limit), cached per

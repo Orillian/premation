@@ -1131,12 +1131,17 @@ struct ControlVisitor {
   }
   R operator()(const api::SetCacheBudget& c) const {
     // The disk tier (AE's Media & Disk Cache): its folder and size limit; a
-    // 0 MB limit or no folder turns it off. The VRAM tier sizes itself from
-    // the adapter (render/frame_cache.hpp): `ramMegabytes` is not a setting yet.
+    // 0 MB limit or no folder turns it off. The RAM tier (render/ram_cache.hpp):
+    // `ramMegabytes`, 0 = sized from the machine. The VRAM tier sizes itself
+    // from the adapter (render/frame_cache.hpp).
     constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
     if (c.disk_megabytes > (std::numeric_limits<std::uint64_t>::max() / kMiB)) {
       fail(ErrorCode::invalid_argument, "diskMegabytes is out of range");
     }
+    if (c.ram_megabytes > (std::numeric_limits<std::uint64_t>::max() / kMiB)) {
+      fail(ErrorCode::invalid_argument, "ramMegabytes is out of range");
+    }
+    s.sink_.configure_ram_cache(c.ram_megabytes * kMiB);
     s.sink_.configure_disk_cache(c.disk_path, c.disk_megabytes * kMiB);
     return result_for<api::SetCacheBudget>();
   }
@@ -1555,7 +1560,41 @@ void Session::rebase_playback(Clock::time_point now) {
   }
 }
 
-std::uint64_t Session::drops_so_far() const { return sink_.counters().dropped + clockDropped_; }
+std::uint64_t Session::drops_so_far() const {
+  const RenderCounters c = sink_.counters();
+  return c.dropped + c.inexact + clockDropped_;
+}
+
+std::uint64_t Session::cache_scope(const ViewportConfig& port, const std::string& comp) {
+  std::uint64_t configId = 0;
+  for (const auto& [config, id] : scopeConfigs_) {
+    if (config == port) {
+      configId = id;
+      break;
+    }
+  }
+  if (configId == 0) {
+    configId = ++scopeConfigSeq_;
+    scopeConfigs_.emplace_back(port, configId);
+    // A handful of recent view states is all a scope switch back needs (a pane, a zoom, a resolution).
+    constexpr std::size_t kConfigsKept = 32;
+    if (scopeConfigs_.size() > kConfigsKept) scopeConfigs_.erase(scopeConfigs_.begin());
+  }
+  // Two halves: the high word names the VIEW (the comp and the view-state id),
+  // the low word the document revision. The render thread carries a view's
+  // coverage over a revision that did not change the frame it draws
+  // (RenderThread::note_coverage), so it can tell the two apart.
+  std::uint64_t view = 0xcbf29ce484222325ULL;  // FNV-1a over the comp id
+  for (const char ch : comp) {
+    view ^= static_cast<unsigned char>(ch);
+    view *= 0x100000001b3ULL;
+  }
+  view ^= configId * 0x9e3779b97f4a7c15ULL;
+  std::uint64_t rev = static_cast<std::uint64_t>(revision_) * 0xff51afd7ed558ccdULL;
+  rev ^= rev >> 32U;
+  const std::uint64_t scope = ((view ^ (view >> 32U)) << 32U) | (rev & 0xffffffffULL);
+  return scope == 0 ? 1 : scope;  // 0 = no scope (ram_cache.hpp ProtectedRange)
+}
 
 void Session::stop_playback() {
   if (!playing_) return;
@@ -1724,6 +1763,7 @@ api::RenderStats Session::render_stats() {
   st.cpu_frame_ms = buildMs_;
   st.fps = c.fps;
   st.decode_ms = c.decodeMs;
+  st.cache_hit_rate = c.cacheHitRate;
   st.vram_bytes = c.vramBytes;
   st.dropped_frames = c.dropped + clockDropped_;
   // What the viewport frame cache holds (VRAM; the HUD's cache row and getCacheCoverage agree).
@@ -1841,6 +1881,12 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
   if (!job.built) doc::build_frame_scene(pctx(), c, t, job.scene);
   job.viewport = port.viewport;
   job.recordCoverage = port.layer.empty() && !port.time;
+  if (job.recordCoverage) {
+    job.cacheScope = cache_scope(port, c);
+    const Range range = play_range();
+    job.rangeFirst = range.first;
+    job.rangeLast = range.last;
+  }
   job.frame = frame_;
   job.time = t;
   job.revision = revision_;

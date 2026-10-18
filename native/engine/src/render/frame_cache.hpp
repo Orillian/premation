@@ -24,11 +24,23 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <unordered_map>
 #include <vector>
 
+#include "ram_cache.hpp"
+
 namespace premation::render {
+
+/// What the render thread knows of a cached frame besides its pixels: where it
+/// sits (the RAM tier's eviction rule), what drawing it cost and its disk key
+/// (the disk tier's), carried along when the frame moves down a tier.
+struct FrameMeta {
+  FrameTag tag;
+  double drawMs = 0;
+  std::uint64_t diskKey = 0;
+};
 
 struct FrameCacheStats {
   std::uint64_t hits = 0;
@@ -54,11 +66,26 @@ class FrameCache {
   bool copy_to(std::uint64_t key, std::uint32_t width, std::uint32_t height, const wgpu::Texture& target,
                wgpu::CommandEncoder& encoder);
 
+  /// A frame about to leave the cache: its texture is reused by the store that
+  /// evicted it, so the hook encodes any copy out of it into the same encoder
+  /// (queue order: the copy reads the old pixels before the store overwrites them).
+  struct Evicted {
+    std::uint64_t key = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    const wgpu::Texture* texture = nullptr;
+    FrameMeta meta;
+  };
+  using EvictHook = std::function<void(const Evicted&, wgpu::CommandEncoder&)>;
+
   /// Keep `source` (width × height, RGBA8Unorm, CopySrc) as `key`'s frame,
-  /// evicting least recently used frames to stay inside the budget. A frame
-  /// larger than the whole budget is not kept. Encodes the copy only.
+  /// evicting least recently used frames to stay inside the budget (each one
+  /// through `onEvict`, when given). A frame larger than the whole budget is
+  /// not kept. Encodes the copies only.
   void store(std::uint64_t key, std::uint32_t width, std::uint32_t height, const wgpu::Texture& source,
-             wgpu::CommandEncoder& encoder);
+             wgpu::CommandEncoder& encoder, const FrameMeta& meta = {}, const EvictHook& onEvict = {});
+  /// `key`'s meta (nullptr on a miss); the render thread fills in the draw time once it is known.
+  [[nodiscard]] FrameMeta* meta(std::uint64_t key);
 
   [[nodiscard]] bool contains(std::uint64_t key) const { return index_.contains(key); }
   /// `key`'s cached texture (width × height), without marking it used; null
@@ -75,9 +102,10 @@ class FrameCache {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     wgpu::Texture texture;
+    FrameMeta meta;
   };
   static std::size_t bytes_of(std::uint32_t w, std::uint32_t h) { return std::size_t{w} * h * 4; }
-  void evict_one();
+  void evict_one(wgpu::CommandEncoder* encoder = nullptr, const EvictHook* onEvict = nullptr);
   wgpu::Texture take_texture(std::uint32_t w, std::uint32_t h);
 
   wgpu::Device device_;

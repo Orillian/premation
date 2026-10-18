@@ -141,7 +141,8 @@ describe('playback auto-quality (A1: no pumping)', () => {
     expect(p.degraded()).toBe(false);
     for (let i = 0; i < 5; i++) p.frame(true);
     expect(p.degraded()).toBe(true);
-    expect(useRenderQualityStore.getState().effectiveResolution()).toBe(2);
+    // Measured, but playback keeps the chosen resolution (AE: the cache, not a softer picture).
+    expect(useRenderQualityStore.getState().effectiveResolution()).toBe(1);
   });
 
   it('ignores the first two seconds after play starts (cold caches)', () => {

@@ -793,6 +793,15 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     set_texture_dimension_limit(d->renderer_->device().max_texture_dimension());
     SceneTextures::Options to;
     to.canvas = d->fonts_.canvas;
+    // Sized from the machine: a 3D comp with the camera close rasterises its
+    // layers at their projected size, and a fixed 768 MB held a dozen of them.
+    // PREMATION_RASTER_CACHE_MB pins it (tests make a frame outgrow it).
+    to.rasterCacheBytes = raster_cache_budget(os::memory_status().physicalBytes);
+    if (const std::optional<std::string> mb = os::env_var("PREMATION_RASTER_CACHE_MB"); mb && !mb->empty()) {
+      char* end = nullptr;
+      const unsigned long long v = std::strtoull(mb->c_str(), &end, 10);  // NOLINT(google-runtime-int)
+      if (end != nullptr && *end == '\0' && v > 0 && v < (1ULL << 24U)) to.rasterCacheBytes = static_cast<std::size_t>(v) << 20U;
+    }
     d->textures_ = std::make_unique<SceneTextures>(to);
     d->textures_->set_device(&d->renderer_->device());
 #if defined(PREMATION_HAVE_MEDIA)
@@ -837,6 +846,22 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     // worker) is not final either: not cached, and drawn again once it is in.
     svgWant_ = textures_->svg_stand_in();
     if (svgWant_) exact_ = false;
+    // A GPU error during the frame (validation, out of memory): what it drew
+    // may be missing a layer. Cached, that frame would come back on every pass
+    // over it — an object blinking out at the same frame each loop. Never
+    // final; a paused frame is drawn again (twice at most: a lasting error
+    // must not redraw forever).
+    if (!st.gpuError.empty()) {
+      exact_ = false;
+      gpuRetry_ = ++gpuErrorStreak_ <= kGpuRetries;
+      std::string reportKey = "gpu|";
+      reportKey += st.gpuError.substr(0, 160);
+      if (reported_.insert(std::move(reportKey)).second) {
+        PREMATION_LOG(warn, "scene_gpu_error").kv("error", st.gpuError);
+      }
+    } else {
+      gpuErrorStreak_ = 0;
+    }
     return ok;
   }
 
@@ -852,6 +877,9 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     // E4: the SVG worker's pending step rides the same settle poll (a sentinel source).
     if (svgWant_) out.emplace_back(kSvgWantSource, 0);
     svgWant_ = false;
+    // A frame a GPU error spoiled: drawn again on the next settle poll (a sentinel, settled at once).
+    if (gpuRetry_) out.emplace_back(kGpuRetrySource, 0);
+    gpuRetry_ = false;
     return out;
   }
   [[nodiscard]] std::uint64_t vram_bytes() override {
@@ -871,6 +899,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   [[nodiscard]] bool media_settled(const render::MediaWants& wants) override {
     return std::ranges::all_of(wants, [this](const auto& w) {
       if (w.first == kSvgWantSource) return !textures_->svg_pending();  // E4
+      if (w.first == kGpuRetrySource) return true;
 #if defined(PREMATION_HAVE_MEDIA)
       return media_->settled(w.first, w.second);
 #else
@@ -1145,6 +1174,11 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   /// E4: the last draw used an SVG stand-in step (take_media_wants reports the sentinel want).
   bool svgWant_ = false;
   static constexpr std::uint32_t kSvgWantSource = 0xFFFFFFFFU;
+  /// The last draw hit a GPU error: draw it again (take_media_wants' sentinel), up to kGpuRetries in a row.
+  bool gpuRetry_ = false;
+  std::uint32_t gpuErrorStreak_ = 0;
+  static constexpr std::uint32_t kGpuRetries = 2;
+  static constexpr std::uint32_t kGpuRetrySource = 0xFFFFFFFEU;
 #if defined(PREMATION_HAVE_MEDIA)
   std::vector<std::pair<media::SourceId, std::int64_t>> wants_;  // the last draw's stand-in footage frames
 #endif

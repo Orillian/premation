@@ -9,6 +9,7 @@
 //                    [--slots N]           frame-slot ring size (default 3, C1's measured value)
 //                    [--frame-cache-mb N]  D4 frame cache budget (default: a quarter of the adapter's VRAM budget; 0 = off)
 //                    [--disk-cache-min-draw-ms N]  frames that draw faster stay off the disk cache
+//                    [--ram-cache-mb N]    the RAM tier's size (default: half the installed memory, leaving 4 GiB)
 //                                          (default: measured — slower than a disk read; 0 = every exact frame)
 //                    [--no-gpu]            no Dawn: frames are simulated (protocol work, CI)
 //                    [--test-ports]        in-memory projects + fake media (cross-engine tests)
@@ -131,6 +132,10 @@ int run(int argc, char** argv) {
       std::uint32_t ms = 0;
       ok = parse_u32(v, ms);
       o.render.diskCacheMinDrawMs = static_cast<double>(ms);
+    } else if (k == "--ram-cache-mb") {
+      std::uint32_t mb = 0;
+      ok = parse_u32(v, mb);
+      o.render.ramCacheBytes = std::uint64_t{mb} << 20U;
     } else if (k == "--power") {
       o.render.highPerformance = v != "low";
     } else if (k == "--plugins") {

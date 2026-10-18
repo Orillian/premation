@@ -86,6 +86,9 @@ class DiskCache {
   /// once its write lands.
   void retain_present(std::unordered_map<std::int64_t, std::vector<std::uint64_t>>& byFrame,
                       std::vector<std::int64_t>& onDisk) const;
+  /// Per key, one lock for the lot: 2 = its file is written, 1 = on its way
+  /// (queued or reserved for a read-back), 0 = not on disk. `out` is resized.
+  void presence(const std::vector<std::uint64_t>& keys, std::vector<std::uint8_t>& out) const;
   /// Bytes on disk (stats().bytes without copying the strings).
   [[nodiscard]] std::uint64_t bytes() const;
   /// Frames handed over and not written yet.

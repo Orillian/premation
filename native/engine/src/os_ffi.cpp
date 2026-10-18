@@ -143,4 +143,30 @@ std::string executable_path() {
 #endif
 }
 
+MemoryStatus memory_status() {
+  MemoryStatus out;
+#ifdef _WIN32
+  MEMORYSTATUSEX ms{};
+  ms.dwLength = sizeof(ms);
+  if (GlobalMemoryStatusEx(&ms) != 0) {
+    out.physicalBytes = ms.ullTotalPhys;
+    out.availableBytes = ms.ullAvailPhys;
+  }
+#elif defined(__APPLE__)
+  // Free pages only: the inactive ones macOS hands back on demand are not
+  // counted, so this errs towards keeping the frame cache small.
+  const long pages = sysconf(_SC_PHYS_PAGES);
+  const long pageSize = sysconf(_SC_PAGESIZE);
+  if (pages > 0 && pageSize > 0) out.physicalBytes = static_cast<std::uint64_t>(pages) * static_cast<std::uint64_t>(pageSize);
+  out.availableBytes = out.physicalBytes / 2;  // no cheap portable query; the budget's own cap applies
+#else
+  const long pages = sysconf(_SC_PHYS_PAGES);
+  const long avail = sysconf(_SC_AVPHYS_PAGES);
+  const long pageSize = sysconf(_SC_PAGESIZE);
+  if (pages > 0 && pageSize > 0) out.physicalBytes = static_cast<std::uint64_t>(pages) * static_cast<std::uint64_t>(pageSize);
+  if (avail > 0 && pageSize > 0) out.availableBytes = static_cast<std::uint64_t>(avail) * static_cast<std::uint64_t>(pageSize);
+#endif
+  return out;
+}
+
 }  // namespace premation::os

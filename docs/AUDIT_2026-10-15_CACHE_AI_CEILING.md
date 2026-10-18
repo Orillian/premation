@@ -96,6 +96,68 @@ late spills run on the render thread (a map and an 8 MB copy per frame written).
 Also, the timeline shows no disk lane: the blue lane was removed on the owner's call on 2026-10-14.
 Even when the cache works, nothing on screen shows it.
 
+### 2026-10-16: the RAM tier, honest bars, no playback degrade
+
+The owner reported that playback stops and drops in quality, that the cache bars do not work,
+and that simple 3D objects sometimes blink. The causes found:
+
+- **The "RAM" cache was VRAM.** It held a quarter of VRAM, capped at 4 GiB: about 4 s of 1080p60
+  on an 8 GB card. Eviction was plain LRU, so a loop longer than that missed on every frame. When a
+  pass drops frames, the P9 fill at the wrap renders the whole range; with this cache the next pass
+  thrashed anyway.
+- **The green bar lied.** Coverage was keyed by frame index only. After an edit, the old frames'
+  keys were still in the cache and the bar stayed green while every frame redrew. Another comp
+  showed this comp's frames.
+- **Playback lowered the resolution.** On a heavy comp, Auto dropped playback to Half. Every switch
+  was a new slot size: the cache missed every frame, and one frame was mis-framed.
+- **A frame spoiled by a GPU error was cached.** It was final as far as the cache knew, so it came
+  back on every pass over it (a blink at the same frame).
+
+The changes:
+
+- `render/ram_cache.hpp`: a system-memory tier between VRAM and disk. By default it takes half the
+  installed RAM, leaving at least 4 GiB, within 512 MiB–64 GiB; `setCacheBudget.ramMegabytes` or
+  `--ram-cache-mb` override it. It shrinks while free memory is under max(1.5 GiB, 10 %).
+- The RAM tier is filled from VRAM evictions, so a range that fits VRAM pays no read-back.
+- Frames of the range being played are never evicted to make room. A loop larger than the cache
+  keeps its cached part and plays it in real time.
+- When the RAM tier evicts a slow frame (draw > disk read) it goes to the disk tier, from memory,
+  with no GPU read-back.
+- Coverage is kept per viewport and per cache scope (comp + document revision + view state;
+  `RenderJob::cacheScope`). The timeline shows the blue disk lane under the green one again, in
+  one row as AE does.
+- `RenderStats.cacheHitRate` is filled in: the share of the last second's frames served from a tier.
+- A frame drawn with a GPU error is not final and is not cached. A paused one is drawn again,
+  twice at most.
+- Frames shown with a stand-in footage frame count toward the P9 fill, as dropped frames do.
+- `renderQualityStore`: playback never degrades the resolution; drags still do (Fast Previews).
+- Tests: `[ram_cache]` in `engine_tests`, `src/core/engine/ramCache.native.test.ts` (GPU), and
+  `__tests__/flicker3d.bench.test.ts`. The bench compares every played frame of a lit 3D scene
+  (cold and cached) with the same frame drawn paused. It found no blink in the engine, simple or
+  rich (extruded type, glow on 3D, DOF, PBR).
+
+### 2026-10-18: the blink's cause was the raster cache, not the frame cache
+
+The 10-16 bench compared played frames with paused ones over a lit and a rich 3D scene and found no
+blink. The owner still saw objects and strokes vanish in a BIG 3D comp. The cause is in the texture
+feed, which no frame-cache test touches: `SceneTextures::insert` evicted least-recently-used rasters
+whenever the cache passed its fixed 768 MB — including rasters of the frame being prepared. A 3D
+layer's raster follows its projected size (`frame_build.cpp screen_per_layer_px`, up to 16 Mpx =
+64 MB each), so a dozen layers near the camera outgrow the budget inside one frame; the last layers'
+inserts evicted the first layers' rasters, and `external_texture` draws nothing for an evicted raster
+("not re-prepared"). The heavier the frame, the more layers blinked out on exactly that frame — and a
+cached copy of such a frame came back the same way every pass.
+
+Fixed: a raster of the frame being prepared is never evicted (`Slot.lastUse` / `frame_`; the budget is
+a steady-state limit one frame may exceed, `PrepareStats.rasterOverBudget` says by how much); the
+budget is sized from the machine (`raster_cache_budget`: an eighth of installed memory within
+768 MiB–4 GiB; `PREMATION_RASTER_CACHE_MB` pins it for tests). Tests: `[raster_cache]` in
+`engine_scene_tests`; `FLICKER_SCENE=big` in `flicker3d.bench.test.ts` (forty stroked shapes under a
+camera push-in with the budget pinned at 8 MB: no blink, cached pass 96 % hits).
+
+The timeline shows the disk tier again: a blue line in its own row right above the green one
+(owner 2026-10-18), both from `getCacheCoverage`.
+
 ### Proposed fix (small, engine-only)
 
 1. **Decide after the draw, from the frame's own measured cost.** When `worth_disk(gpuMs)` holds at

@@ -166,6 +166,19 @@
   --color-timeline-well:          #141414;
   --color-timeline-well-hover:    #252525;
   --color-timeline-well-border-hover: #3e3e3e;
+  /* AE's outline (owner redesign 2026-10-14): layer rows one shade above the
+     property rows under them, row lines DARKER than the ground, the selected
+     layer slate, and an off switch drawn as a small dark well. */
+  --color-timeline-layer-row:     #333336;
+  /* The panel's seam colour: rows ruled like its main borders (2026-10-14). */
+  --color-timeline-row-rule:      var(--color-slate-950);
+  --color-timeline-layer-selected:#3a414e;
+  --color-timeline-switch-well:   #19191a;
+  --color-timeline-work-area:     #4a4a4f;
+  --color-timeline-work-area-hover: #5a5a60;
+  --color-timeline-cache:         #3ccf5a;
+  /* AE's disk-cache blue: the thin line right above the green one. */
+  --color-timeline-disk-cache:    #3d8ff0;
 
   /* ── Scrollbars ─────────────────────────────────────────────────
      Flat, AE-style. Five stylesheets each spelled their own greys; a light
@@ -319,6 +332,14 @@
   --color-timeline-well:          #ffffff;
   --color-timeline-well-hover:    #f2f4f7;
   --color-timeline-well-border-hover: rgba(0, 0, 0, 0.28);
+  --color-timeline-layer-row:     rgba(0, 0, 0, 0.035);
+  --color-timeline-row-rule:      rgba(0, 0, 0, 0.12);
+  --color-timeline-layer-selected:color-mix(in srgb, var(--color-primary) 16%, var(--color-panel));
+  --color-timeline-switch-well:   rgba(0, 0, 0, 0.12);
+  --color-timeline-work-area:     rgba(0, 0, 0, 0.22);
+  --color-timeline-work-area-hover: rgba(0, 0, 0, 0.32);
+  --color-timeline-cache:         #1f9e47;
+  --color-timeline-disk-cache:    #2a6fd0;
 
   --color-scrollbar-track:        #e4e7ec;
   --color-scrollbar-thumb:        #b8bfc9;

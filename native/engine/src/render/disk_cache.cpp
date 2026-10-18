@@ -168,6 +168,20 @@ void DiskCache::retain_present(std::unordered_map<std::int64_t, std::vector<std:
   }
 }
 
+void DiskCache::presence(const std::vector<std::uint64_t>& keys, std::vector<std::uint8_t>& out) const {
+  out.assign(keys.size(), 0);
+  const std::lock_guard<std::mutex> lock(m_);
+  if (dir_.empty()) return;
+  for (std::size_t i = 0; i < keys.size(); ++i) {
+    const std::uint64_t k = keys[i];
+    if (index_.contains(k)) {
+      out[i] = 2;
+    } else if (pending_.contains(k) || reserved_.contains(k)) {
+      out[i] = 1;
+    }
+  }
+}
+
 std::uint64_t DiskCache::bytes() const {
   const std::lock_guard<std::mutex> lock(m_);
   return bytes_;

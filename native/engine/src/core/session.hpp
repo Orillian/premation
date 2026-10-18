@@ -229,6 +229,9 @@ class Session {
     std::int64_t last = 0;   // last frame index (inclusive)
   };
   [[nodiscard]] Range play_range() const;
+  /// RenderJob::cacheScope for a frame of `comp` built with `port`: the comp,
+  /// the document revision and the viewport's view state as one word.
+  [[nodiscard]] std::uint64_t cache_scope(const ViewportConfig& port, const std::string& comp);
   void emit_stats(Clock::time_point now);
   /// A2: the figures getRenderStats and renderStatsUpdated share (VRAM, decode, slot switch).
   [[nodiscard]] api::RenderStats render_stats();
@@ -314,7 +317,13 @@ class Session {
   /// began, and whether this play already switched to a fill once.
   std::uint64_t passDropBase_ = 0;
   bool autoFilled_ = false;
+  /// Frames the viewer did not get right so far: dropped (sink + clock), or
+  /// shown with footage from a nearest decoded frame (RenderCounters::inexact).
   [[nodiscard]] std::uint64_t drops_so_far() const;
+  /// cache_scope's view-state ids: equal configs (operator==) share one, so a
+  /// view put back (a pane, a zoom, a resolution) is the scope it was.
+  std::vector<std::pair<ViewportConfig, std::uint64_t>> scopeConfigs_;
+  std::uint64_t scopeConfigSeq_ = 0;
   std::uint64_t playheadSkipped_ = 0;
   Clock::time_point lastStats_{};
 

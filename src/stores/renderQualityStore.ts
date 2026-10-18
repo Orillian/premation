@@ -76,10 +76,9 @@ interface RenderQualityStore {
   /**
    * True while PLAYBACK cannot keep up — the viewport's render loop reports
    * each frame's cost, and a run of frames over budget flips this on; a run
-   * under budget (at the degraded size) or stopping playback flips it off.
-   * The first pass over a heavy comp then plays at a lower resolution instead
-   * of at a lower frame rate; the RAM preview fills from that pass, and the
-   * second pass is a blit. Driven, not user-set.
+   * under budget or stopping playback flips it off. A measurement only: it
+   * no longer lowers the resolution (see `effectiveResolutionOf`). Driven,
+   * not user-set.
    */
   slowPlayback: boolean;
   setDraft: (v: boolean) => void;
@@ -121,8 +120,15 @@ export function effectiveResolutionOf(s: {
   resolution: PreviewResolution; adaptive: boolean; adaptiveFloor: AdaptiveFloor; interacting: boolean; slowPlayback?: boolean; slowInteract?: boolean;
 }): PreviewResolution {
   // A drag degrades only when interactive rendering is measured slow — a drag
-  // on a comp that renders inside budget keeps full quality.
-  if (!s.adaptive || !((s.interacting && s.slowInteract) || s.slowPlayback)) return s.resolution;
+  // on a comp that renders inside budget keeps full quality. Playback never
+  // degrades (2026-10-16): AE plays a preview at the resolution you chose and
+  // its cache makes the next pass real time. A heavy comp that dropped to
+  // Half mid-play showed a soft picture, and every switch was a new slot size
+  // — a frame cache of the other size missing everything, one mis-framed
+  // frame — which the owner saw as "low quality, broken" playback. The
+  // engine's RAM / disk tiers now hold the range, and a loop that dropped
+  // frames fills it at the wrap (session.cpp P9).
+  if (!s.adaptive || !(s.interacting && s.slowInteract)) return s.resolution;
   return Math.max(s.resolution, s.adaptiveFloor) as PreviewResolution;
 }
 

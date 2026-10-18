@@ -38,6 +38,7 @@
 #include "disk_cache.hpp"
 #include "frame_cache.hpp"
 #include "frame_ring.hpp"
+#include "ram_cache.hpp"
 #include "frame_scene.hpp"
 #include "gpu.hpp"
 #include "premation/protocol/frame_channel.hpp"
@@ -133,6 +134,9 @@ struct RenderOptions {
   /// The disk cache takes frames that draw slower than this (ms); negative =
   /// measured (RenderThread::worth_disk), 0 = every exact frame (tests).
   double diskCacheMinDrawMs = -1;
+  /// The RAM tier's size limit (render/ram_cache.hpp) until setCacheBudget
+  /// says otherwise; 0 = sized from the machine (auto_ram_budget).
+  std::uint64_t ramCacheBytes = 0;
   bool highPerformance = false;
 };
 
@@ -174,8 +178,11 @@ class RenderThread final : public FrameSink {
   void purge_frame_cache() override;
   void configure_disk_cache(const std::string& folder, std::uint64_t bytes) override;
   void purge_disk_cache() override;
+  void configure_ram_cache(std::uint64_t bytes) override;
   /// The disk cache's counters.
   [[nodiscard]] DiskCacheStats disk_stats() const { return disk_->stats(); }
+  /// The RAM tier's counters (as of the last frame).
+  [[nodiscard]] RamCacheStats ram_stats() const;
   /// Run on the render thread between frames (below).
   [[nodiscard]] std::future<StillImage> render_still(std::shared_ptr<BuiltFrame> frame, std::uint32_t width,
                                                      std::uint32_t height) override;
@@ -238,6 +245,12 @@ class RenderThread final : public FrameSink {
     std::uint32_t diskRow = 0;  // bytes per row in diskBuffer (256-aligned)
     /// Drawn by the drawer (not a VRAM or disk copy): its time is a draw cost.
     bool drawn = false;
+    /// Drawn while playing with footage from a nearest decoded frame (RenderCounters::inexact).
+    bool inexact = false;
+    /// Served from a cache tier (VRAM, RAM, disk) instead of drawn.
+    bool cached = false;
+    /// The frame's VRAM cache key when it was stored there: its draw time is filled in once known.
+    std::optional<std::uint64_t> vramKey;
     /// An exact frame kept in VRAM with no read-back queued: its keys, so it
     /// can still go to disk once its own draw time says it is worth it.
     std::optional<std::pair<std::uint64_t, std::uint64_t>> lateDisk;  // {VRAM key, disk key}
@@ -300,14 +313,74 @@ class RenderThread final : public FrameSink {
   std::uint32_t onionW_ = 0;
   std::uint32_t onionH_ = 0;
   void composite_onion(const RenderJob& job, const wgpu::TextureView& slot, std::uint32_t width, std::uint32_t height);
-  /// Render thread only.
-  void note_coverage(std::int64_t frame, std::uint64_t key);
-  void note_disk_coverage(std::int64_t frame, std::uint64_t diskKey);
+  /// Render thread only: `job`'s frame is cached as `key` (VRAM / RAM) and, when
+  /// not 0, `diskKey` (disk) — under its viewport's scope (RenderJob::cacheScope).
+  void note_coverage(const RenderJob& job, std::uint64_t key, std::uint64_t diskKey);
   void publish_coverage();
-  /// Render thread only: frame index → content keys still worth counting.
-  std::unordered_map<std::int64_t, std::vector<std::uint64_t>> covered_;
-  /// Render thread only: frame index → disk keys (the blue lane).
-  std::unordered_map<std::int64_t, std::vector<std::uint64_t>> diskCovered_;
+  /// Publish now unless it was done in the last kCoverageEvery (the timeline samples at 10 Hz).
+  void publish_coverage_soon();
+  static constexpr std::chrono::milliseconds kCoverageEvery{50};
+  bool coverageStale_ = false;
+  std::chrono::steady_clock::time_point coveragePublishedAt_{};
+  /// Render thread only — the bars: per viewport, per cache scope (its current
+  /// scope first, a few recent ones kept so switching back — a comp, a zoom, a
+  /// pane — shows what is still cached for it), frame index → {content key,
+  /// disk key (0 = none)}. A frame counts while its key is still in a tier.
+  struct ScopeCover {
+    std::uint64_t scope = 0;
+    std::unordered_map<std::int64_t, std::pair<std::uint64_t, std::uint64_t>> frames;
+  };
+  std::map<std::uint32_t, std::deque<ScopeCover>> cover_;
+  static constexpr std::size_t kScopesKept = 8;
+
+  /// The RAM tier (AE's RAM cache). Outlives device losses: it holds no GPU objects.
+  RamFrameCache ram_;
+  /// m_: the RAM budget setCacheBudget asked for (0 = auto); the render thread applies it.
+  std::uint64_t ramBudgetAsked_ = 0;
+  bool ramBudgetDirty_ = true;
+  /// Render thread only: the budget in force before memory pressure (auto or asked).
+  std::uint64_t ramBudgetTarget_ = 0;
+  std::chrono::steady_clock::time_point memoryCheckedAt_{};
+  /// Apply a new RAM budget, and shrink it while the machine is short of memory (checked at most once a second).
+  void manage_ram_budget(bool force);
+  /// Render thread only: the play range of the latest coverage job (the RAM tier keeps its frames).
+  ProtectedRange protect_;
+  /// A frame the VRAM cache evicted, on its way into the RAM tier (or, when that
+  /// is full of the range being played, to the disk tier) from a read-back.
+  struct Victim {
+    wgpu::Buffer buffer;
+    wgpu::Future done{};
+    std::uint64_t key = 0;
+    std::uint32_t row = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    FrameMeta meta;
+    /// The RAM tier would not keep it: the read-back is for the disk tier only.
+    bool diskOnly = false;
+  };
+  /// Render thread only: submitted victims, oldest first; and those encoded
+  /// into the store being built (their `done` is set once it is submitted).
+  std::deque<Victim> victims_;
+  std::vector<Victim> victimsEncoding_;
+  static constexpr std::size_t kMaxVictims = 6;
+  /// VRAM eviction hook (FrameCache::EvictHook): read the frame back for the lower tiers when they want it.
+  void on_vram_evict(const FrameCache::Evicted& ev, wgpu::CommandEncoder& encoder);
+  /// Store `source` in the VRAM cache as `key`, its evictions read back for the RAM tier.
+  void store_vram(std::uint64_t key, const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
+                  const FrameMeta& meta);
+  /// Hand finished victim read-backs to the RAM (or disk) tier; `block` waits for the oldest.
+  void drain_victims(bool block);
+  /// A key whose read-back is still in flight: wait for it (true = it was one).
+  bool settle_victim(std::uint64_t key);
+  /// Frames the RAM tier evicted: the slow ones not on disk yet go to the disk tier.
+  void spill_ram_evictions(std::vector<RamFrame>& evicted);
+  /// Encode a copy of `source` into a pooled read-back buffer (onto `encoder`); `row` = its bytes per row.
+  wgpu::Buffer encode_readback(const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
+                               std::uint32_t& row, wgpu::CommandEncoder& encoder);
+  /// A mapped read-back's rows, tightly packed (false = the map failed). The buffer goes back to the pool.
+  bool take_readback(wgpu::Buffer buffer, std::uint32_t row, std::uint32_t width, std::uint32_t height,
+                     std::vector<std::uint8_t>& out);
+  RamCacheStats ramStats_;  // m_
 
   /// The disk tier (AE's Disk Cache). Outlives device losses: it holds no GPU objects.
   std::unique_ptr<DiskCache> disk_ = std::make_unique<DiskCache>();
@@ -362,6 +435,7 @@ class RenderThread final : public FrameSink {
   [[nodiscard]] bool worth_disk(double drawMs, std::uint32_t width, std::uint32_t height) const;
   CacheCoverageSnap coverage_;
   std::uint64_t windowFrames_ = 0;
+  std::uint64_t windowCached_ = 0;
   double windowGpuMs_ = 0;
   std::chrono::steady_clock::time_point windowStart_ = std::chrono::steady_clock::now();
   std::string adapter_;
