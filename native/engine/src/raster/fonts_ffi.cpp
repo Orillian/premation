@@ -111,6 +111,10 @@ std::string lower(std::string_view s) {
   return o;
 }
 
+// Only DirectWrite needs a face's own weight and slant (its simulated bold/oblique
+// faces hide them); CoreText and fontconfig report real faces. Linux builds with
+// -Werror=unused-function, so the two helpers exist only where they are called.
+#if defined(_WIN32)
 /// FNV-1a over a font file: identifies one file among a family's faces.
 std::uint64_t fnv1a64(std::span<const std::uint8_t> bytes) {
   std::uint64_t h = 14695981039346656037ULL;
@@ -163,6 +167,7 @@ std::optional<SfntStyle> sfnt_style(std::span<const std::uint8_t> bytes, int ttc
   }
   return std::nullopt;
 }
+#endif  // _WIN32
 
 std::uint32_t tag_of(std::string_view t) {
   std::uint32_t v = 0;
