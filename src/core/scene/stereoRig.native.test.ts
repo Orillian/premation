@@ -15,8 +15,26 @@ import { createStereoRigEdit, stereoRigSource } from './stereoRig';
 
 const comp = 'comp_root';
 let h: AppHarness;
+/**
+ * The output comp's render runs on the GPU renderer: the harness's default
+ * engine is `--no-gpu` (simulated frames, no renderer: getThumbnail answers
+ * `unsupported`), and `nativeEngineIsHeadless` only says which BINARY runs.
+ * False when this machine's full engine would not start with a GPU.
+ */
+let gpu = !nativeEngineIsHeadless();
 
-beforeEach(async () => { h = await setupAppEngine(); });
+beforeEach(async () => {
+  if (gpu) {
+    try {
+      h = await setupAppEngine({ gpu: true });
+      return;
+    } catch (e) {
+      gpu = false;
+      console.log(`[stereoRig] the engine did not start with a GPU: the render is skipped (${String(e)})`);
+    }
+  }
+  h = await setupAppEngine();
+});
 afterEach(async () => { await h.dispose(); });
 
 async function cameraAt(layer: string, t = 0): Promise<CameraSamples['samples'][number]> {
@@ -75,10 +93,13 @@ describe('Create Stereo 3D Rig', () => {
     const leftLayer = out.layers[0]!;
     expect(m.layer(leftLayer)?.source).toBe(rig!.leftComp);
     expect(m.layer(out.layers[1]!)?.switches.visible).toBe(false);
-    // The output renders (the headless engine has no renderer).
-    if (!nativeEngineIsHeadless()) {
+    // The output renders on the GPU engine (3D Glasses over two nested eye comps,
+    // each looking through its own camera).
+    if (gpu) {
       const th = await h.client.query({ type: 'getThumbnail', item: rig!.outputComp, time: 0, maxSize: 64 });
+      if (!th.ok) throw new Error(`getThumbnail of the output comp: ${th.error.code}: ${th.error.message}`);
       expect(th.ok).toBe(true);
+      expect(th.value.width).toBeGreaterThan(0);
     }
   }, 60_000);
 });
