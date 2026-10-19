@@ -73,12 +73,31 @@ constexpr auto kHandled = std::to_array<std::string_view>({
     "light-trails",
     "datamosh",
     "temporal-denoise",
+    // Batch 6 - simulation (X2) and closed-form particle systems.
+    "fluid-ink",
+    "reaction-diffusion",
+    "crystal-growth",
+    "mr-mercury",
+    "foam",
+    "hair",
+    "rain-on-glass",
+    "particle-world",
+    // Batch 7 - analysis & transitions.
+    "warp-stabilizer",
+    "match-grain",
+    "color-stabilizer",
+    "camera-shake-deblur",
+    "burn-dissolve",
+    "liquid-morph",
+    "bend-it",
+    "bender",
 });
 
 /// The deep effects whose pixels move with the layer clock (`time`) — kept as
 /// small as effects.ts TIME_DEPENDENT (a member re-renders every frame).
 constexpr auto kClock =
-    std::to_array<std::string_view>({"energy-saber", "volumetric-clouds", "starfield", "ocean", "aurora", "timewarp", "datamosh"});
+    std::to_array<std::string_view>({"energy-saber", "volumetric-clouds", "starfield", "ocean", "aurora", "timewarp", "datamosh", "fluid-ink",
+                                     "reaction-diffusion", "crystal-growth", "mr-mercury", "foam", "rain-on-glass", "particle-world", "match-grain"});
 
 struct Box {
   double lw;
@@ -864,6 +883,311 @@ api::RenderEffect temporal_denoise(const Params& P, Box b, const Ctx& c) {
   return g.done(fxg::B);
 }
 
+// ── Batch 6: simulation (X2) and closed-form particle systems ─────────────────
+
+/// FNV-1a over the controls a simulation starts from (not its clock).
+void hash_json(const Json& v, std::uint64_t& h) {
+  const auto mix = [&](const void* p, std::size_t n) {
+    const auto* b = static_cast<const unsigned char*>(p);
+    for (std::size_t i = 0; i < n; ++i) {
+      h ^= b[i];  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): a byte walk
+      h *= 1099511628211ULL;
+    }
+  };
+  if (v.is_number()) {
+    const double d = v.num();
+    mix(&d, sizeof d);
+  } else if (v.is_string()) {
+    mix(v.str().data(), v.str().size());
+  } else if (v.is_bool()) {
+    const unsigned char c = v.b() ? 1 : 2;
+    mix(&c, 1);
+  } else if (v.is_array()) {
+    for (const Json& e : v.arr()) hash_json(e, h);
+  } else if (v.is_object()) {
+    for (const auto& m : v.obj()) {
+      if (m.key == "time" || m.key == "followCompTime" || m.key.starts_with("__")) continue;
+      mix(m.key.data(), m.key.size());
+      hash_json(m.value, h);
+    }
+  }
+}
+double sim_hash(const Params& P, const RLayer& l) {
+  std::uint64_t h = 1469598103934665603ULL;
+  hash_json(P.p, h);
+  const double box[2] = {l.width, l.height};  // NOLINT(cppcoreguidelines-avoid-c-arrays): two values hashed as bytes
+  hash_json(Json::number(box[0]), h);
+  hash_json(Json::number(box[1]), h);
+  return static_cast<double>(h >> 11U);  // exact in a double
+}
+
+/// A simulation over the layer box: `longSide` cells on its longer side.
+Graph::Sim sim_of(const Params& P, Box b, const Ctx& c, double longSide, double sub, std::vector<double> state) {
+  Graph::Sim s;
+  s.key = "sim:" + c.l.id + ":" + effect_id(c.e);
+  const double aspect = b.lw / b.lh;
+  s.w = aspect >= 1 ? longSide : std::max(8.0, std::round(longSide * aspect));
+  s.h = aspect >= 1 ? std::max(8.0, std::round(longSide / aspect)) : longSide;
+  s.fps = fps_of(P);
+  s.frame = std::max(0.0, std::floor((P.n("time") - P.n("startTime")) * s.fps + 1e-6));
+  s.hash = sim_hash(P, c.l);
+  s.sub = std::clamp(sub, 1.0, 64.0);
+  s.every = 30;
+  s.state = std::move(state);
+  return s;
+}
+
+api::RenderEffect fluid_ink(const Params& P, Box b, const Ctx& c) {
+  Graph g("fluid-ink", b.lw, b.lh);
+  static constexpr std::array<double, 4> kRes{192, 320, 448, 640};
+  g.tap(0, time_tap_id(c.l.id, effect_id(c.e), 0));
+  g.sim(sim_of(P, b, c, kRes.at(static_cast<std::size_t>(std::clamp(P.e("resolution"), 0, 3))), 2, {0, 2, 5, 7}));
+  const int S0 = fxg::SIM0;
+  g.init_program();
+  g.pass("fxx-sim-capture", S0 + 7, {fxg::TAP0, -1, -1, -1}, Rows());
+  g.pass("fxx-fluid-init", S0 + 5, {S0 + 7, -1, -1, -1}, Rows().r(clampd(P.pct("dye"), 0, 2), 0, 0, 0));
+  g.pass("fxx-sim-clear", S0, {fxg::IN, -1, -1, -1}, Rows());
+  g.pass("fxx-sim-clear", S0 + 2, {fxg::IN, -1, -1, -1}, Rows());
+  g.step_program();
+  const double speed = clampd(P.n("speed"), 0.1, 8);
+  const double pa = P.rad("pushAngle");
+  g.pass("fxx-fluid-curl", S0 + 4, {S0, -1, -1, -1}, Rows());
+  g.pass("fxx-fluid-force", S0 + 1, {S0, S0 + 4, S0 + 7, -1},
+         Rows()
+             .r(std::cos(pa) * P.n("pushSpeed"), std::sin(pa) * P.n("pushSpeed"), clampd(P.pct("emission"), 0, 2), std::max(0.0, P.pct("turbulence")))
+             .r(std::max(5.0, P.n("turbulenceScale")), std::max(0.0, P.pct("vorticity")), clampd(P.pct("viscosity"), 0, 1), speed)
+             .r(P.e("seed"), 0, 0, 0));
+  g.pass("fxx-fluid-advect", S0, {S0 + 1, S0 + 1, -1, -1}, Rows().r(speed, 0, 0, 0));
+  g.pass("fxx-fluid-div", S0 + 4, {S0, -1, -1, -1}, Rows());
+  const int iters = std::clamp(P.e("pressureIterations"), 8, 80) / 2;
+  for (int i = 0; i < iters; ++i) {
+    g.pass("fxx-fluid-jacobi", S0 + 3, {S0 + 2, S0 + 4, -1, -1}, Rows());
+    g.pass("fxx-fluid-jacobi", S0 + 2, {S0 + 3, S0 + 4, -1, -1}, Rows());
+  }
+  g.pass("fxx-fluid-project", S0 + 1, {S0, S0 + 2, -1, -1}, Rows());
+  g.copy(S0, S0 + 1);
+  g.pass("fxx-fluid-dye", S0 + 6, {S0 + 5, S0, S0 + 7, -1}, Rows().r(speed, clampd(P.pct("emission"), 0, 2), clampd(P.pct("dissipation"), 0, 1), 0));
+  g.copy(S0 + 5, S0 + 6);
+  g.graph_program();
+  g.pass("fxx-fluid-render", fxg::A, {fxg::IN, S0 + 5, -1, -1}, Rows().c3(P.l3("tint", {0.02, 0.15, 1}), P.e("colorMode")).r(P.e("composite"), 0, 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect reaction_diffusion(const Params& P, Box b, const Ctx& c) {
+  Graph g("reaction-diffusion", b.lw, b.lh);
+  static constexpr std::array<double, 4> kRes{256, 384, 512, 768};
+  // Pearson's classes (Gray-Scott feed / kill).
+  static constexpr std::array<std::array<double, 2>, 6> kPreset{{{0, 0}, {0.0545, 0.062}, {0.0367, 0.0649}, {0.029, 0.057}, {0.035, 0.065}, {0.078, 0.061}}};
+  const int preset = std::clamp(P.e("preset"), 0, 5);
+  const double f = preset == 0 ? P.n("feed") : kPreset.at(static_cast<std::size_t>(preset))[0];
+  const double k = preset == 0 ? P.n("kill") : kPreset.at(static_cast<std::size_t>(preset))[1];
+  g.tap(0, time_tap_id(c.l.id, effect_id(c.e), 0));
+  const double steps = clampd(P.n("speed"), 1, 200);
+  g.sim(sim_of(P, b, c, kRes.at(static_cast<std::size_t>(std::clamp(P.e("resolution"), 0, 3))), std::ceil(steps / 2), {0, 7}));
+  const int S0 = fxg::SIM0;
+  g.init_program();
+  g.pass("fxx-sim-capture", S0 + 7, {fxg::TAP0, -1, -1, -1}, Rows());
+  g.pass("fxx-rd-init", S0, {S0 + 7, -1, -1, -1}, Rows().r(P.e("seedFrom"), P.e("seed"), 0, 0));
+  g.step_program();
+  const Rows r = Rows().r(f, k, clampd(P.n("diffusionA"), 0.1, 2), clampd(P.n("diffusionB"), 0.05, 1.5)).r(clampd(P.pct("feedMap"), 0, 1), 0, 0, 0);
+  g.pass("fxx-rd-step", S0 + 1, {S0, S0 + 7, -1, -1}, r);
+  g.pass("fxx-rd-step", S0, {S0 + 1, S0 + 7, -1, -1}, r);
+  g.graph_program();
+  g.pass("fxx-rd-render", fxg::A, {fxg::IN, S0, -1, -1},
+         Rows().c3(P.l3("colorA", {0.007, 0.012, 0.024}), clampd(P.pct("sharpness"), 0, 1)).c3(P.l3("colorB", {0.89, 0.81, 0.62}), P.e("composite")));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect crystal_growth(const Params& P, Box b, const Ctx& c) {
+  Graph g("crystal-growth", b.lw, b.lh);
+  static constexpr std::array<double, 4> kRes{256, 384, 512, 768};
+  g.tap(0, time_tap_id(c.l.id, effect_id(c.e), 0));
+  g.sim(sim_of(P, b, c, kRes.at(static_cast<std::size_t>(std::clamp(P.e("resolution"), 0, 3))), clampd(P.n("speed"), 1, 64), {0, 7}));
+  const int S0 = fxg::SIM0;
+  g.init_program();
+  g.pass("fxx-sim-capture", S0 + 7, {fxg::TAP0, -1, -1, -1}, Rows());
+  g.pass("fxx-xtal-init", S0, {S0 + 7, -1, -1, -1}, Rows());
+  g.step_program();
+  g.pass("fxx-xtal-aux", S0 + 2, {S0, -1, -1, -1}, Rows().r(clampd(P.pct("anisotropy"), 0, 1) * 0.08, std::round(clampd(P.n("symmetry"), 2, 12)), P.rad("angle"), 0));
+  g.pass("fxx-xtal-step", S0 + 1, {S0, S0 + 2, -1, -1}, Rows().r(clampd(P.n("latentHeat"), 0.8, 3), clampd(P.pct("noise"), 0, 1), P.e("seed"), 0));
+  g.copy(S0, S0 + 1);
+  g.graph_program();
+  g.pass("fxx-xtal-render", fxg::A, {fxg::IN, S0, -1, -1}, Rows().c3(P.l3("color", {0.6, 0.8, 1}), std::max(0.0, P.pct("glow"))).r(P.e("composite"), 0, 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect mr_mercury(const Params& P, Box b) {
+  Graph g("mr-mercury", b.lw, b.lh);
+  const double dir = P.rad("direction");
+  const double life = clampd(P.n("longevity"), 0.1, 30);
+  const double rate = clampd(P.n("birthRate"), 0.5, 400);
+  g.pass("fxx-mercury", fxg::A, {fxg::IN, -1, -1, -1},
+         Rows()
+             .r(b.lw / 2 + P.n("producerX"), b.lh / 2 + P.n("producerY"), std::max(0.0, P.n("radiusX")), std::max(0.0, P.n("radiusY")))
+             .r(std::cos(dir), std::sin(dir), clampd(P.pct("spread"), 0, 1), std::max(0.0, P.n("velocity")))
+             .r(rate, life, P.n("gravity"), std::max(0.0, P.pct("resistance")))
+             .r(std::max(0.0, P.pct("turbulence")), std::max(1.0, P.n("birthSize")), std::max(0.0, P.n("deathSize")), std::max(0.01, P.pct("influence")))
+             .r(P.n("time"), P.e("seed"), P.e("colorFrom"), P.e("composite"))
+             .c3(P.l3("color", {0.53, 0.58, 0.63}), P.rad("lightAngle"))
+             .r(std::max(0.0, P.pct("specular")), clampd(P.pct("reflection"), 0, 1), std::min(320.0, std::ceil(rate * life)), 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect foam(const Params& P, Box b) {
+  Graph g("foam", b.lw, b.lh);
+  const double wd = P.rad("windDirection");
+  const double life = clampd(P.n("lifespan"), 0.2, 30);
+  const double rate = clampd(P.n("birthRate"), 0.5, 200);
+  g.pass("fxx-foam", fxg::A, {fxg::IN, -1, -1, -1},
+         Rows()
+             .r(b.lw / 2 + P.n("producerX"), b.lh / 2 + P.n("producerY"), std::max(0.0, P.n("producerWidth")), std::max(0.0, P.n("producerHeight")))
+             .r(rate, life, std::max(2.0, P.n("bubbleSize")), clampd(P.pct("sizeVariance"), 0, 1))
+             .r(std::max(0.0, P.pct("growth")), P.n("riseSpeed"), std::cos(wd) * P.n("windSpeed"), std::sin(wd) * P.n("windSpeed"))
+             .r(std::max(0.0, P.pct("wobble")), std::max(0.0, P.pct("iridescence")), std::max(0.0, P.pct("reflection")), clampd(P.pct("opacity"), 0, 1))
+             .r(P.n("time"), P.e("seed"), P.e("composite"), std::min(320.0, std::ceil(rate * life))));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect hair(const Params& P, Box b) {
+  Graph g("hair", b.lw, b.lh);
+  const double ang = P.rad("hairAngle");
+  g.pass("fxx-hair", fxg::A, {fxg::IN, -1, -1, -1},
+         Rows()
+             .r(std::max(1.0, P.n("length")), clampd(P.pct("lengthVariance"), 0, 1), std::max(0.2, P.n("thickness")), std::max(1.5, P.n("density")))
+             .r(std::cos(ang), std::sin(ang), clampd(P.pct("directionVariance"), 0, 1), P.pct("weight"))
+             .r(std::max(0.0, P.pct("curl")), P.pct("wind"), P.rad("windPhase"), P.e("seed"))
+             .c3(P.l3("color", {0.04, 0.017, 0.006}), P.e("colorFrom"))
+             .r(P.rad("lightAngle"), std::max(0.0, P.pct("specular")), P.on("keepLayer") ? 1 : 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect rain_on_glass(const Params& P, Box b) {
+  Graph g("rain-on-glass", b.lw, b.lh);
+  g.blur(fxg::X0, fxg::IN, std::max(0.5, P.n("fogBlur")), fxg::X1);
+  g.pass("fxx-rain", fxg::A, {fxg::IN, fxg::X0, -1, -1},
+         Rows()
+             .r(std::max(0.0, P.pct("amount")), std::max(2.0, P.n("dropSize")), P.n("time") * P.n("speed"), clampd(P.pct("trails"), 0, 1))
+             .r(clampd(P.pct("fog"), 0, 1), std::max(0.0, P.pct("refraction")), std::max(0.0, P.pct("highlight")), P.e("seed")));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect particle_world(const Params& P, Box b, const Ctx& c) {
+  Graph g("particle-world", b.lw, b.lh);
+  g.data(data_key(c, "particles"));
+  g.pass("fxx-particles", fxg::A, {fxg::IN, fxg::DATA, -1, -1}, Rows().r(P.e("particleType"), P.e("composite"), 0, 0));
+  return g.done(fxg::A);
+}
+
+// ── Batch 7: analysis & transitions ───────────────────────────────────────────
+
+api::RenderEffect warp_stabilizer(const Params& P, Box b, const Ctx& c) {
+  Graph g("warp-stabilizer", b.lw, b.lh);
+  const std::string id = effect_id(c.e);
+  for (int k = 0; k < 4; ++k) g.tap(k, time_tap_id(c.l.id, id, static_cast<std::size_t>(k)));
+  // Each neighbour: the flow from this frame to it, fitted with one transform
+  // (written to its own strip texel k).
+  for (int k = 0; k < 4; ++k) {
+    flow_into(g, fxg::IN, fxg::TAP0 + k, P.pct("vectorDetail"));
+    g.pass("fxx-stab-fit", fxg::STRIP, {fxg::H1, -1, -1, -1}, Rows().r(k, P.e("method"), 0, 0), fxg::kReplace, k == 0 ? 0U : fxg::kKeep);
+  }
+  g.pass("fxx-stab-apply", fxg::A, {fxg::IN, fxg::STRIP, -1, -1},
+         Rows().r(clampd(P.pct("strength"), 0, 1), P.e("framing"), clampd(P.pct("maxScale"), 1, 2), 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect match_grain(const Params& P, Box b) {
+  Graph g("match-grain", b.lw, b.lh);
+  const std::string src = P.layer("sourceLayer");
+  if (!src.empty()) g.map(0, src);
+  const int s = src.empty() ? fxg::IN : fxg::MAP;
+  // The source's grain (its high-pass deviation per channel) and the layer's own.
+  g.blur(fxg::X0, s, 1.5, fxg::X1);
+  g.pass("fxx-grain-stats", fxg::STRIP, {s, fxg::X0, -1, -1}, Rows());
+  g.pass("fxx-grain-reduce", fxg::Q0, {fxg::STRIP, -1, -1, -1}, Rows());
+  g.blur(fxg::X2, fxg::IN, 1.5, fxg::X1);
+  g.pass("fxx-grain-stats", fxg::STRIP, {fxg::IN, fxg::X2, -1, -1}, Rows());
+  g.pass("fxx-grain-reduce", fxg::Q1, {fxg::STRIP, -1, -1, -1}, Rows());
+  const double frame = P.on("animate") ? std::floor(P.n("time") * fps_of(P) + 1e-6) : 0;
+  g.pass("fxx-grain-apply", fxg::A, {fxg::IN, fxg::Q0, fxg::Q1, -1},
+         Rows()
+             .r(std::max(0.0, P.pct("intensity")), std::max(0.3, P.n("size")), clampd(P.pct("softness"), 0, 1), clampd(P.n("aspect"), 0.25, 4))
+             .r(P.on("compensate") ? 1 : 0, P.on("monochrome") ? 1 : 0, clampd(P.pct("saturation"), 0, 2), frame + P.e("seed") * 7919)
+             .r(std::max(0.0, P.pct("shadows")), std::max(0.0, P.pct("midtones")), std::max(0.0, P.pct("highlights")), 0));
+  return g.done(fxg::A, 0.0);
+}
+
+api::RenderEffect color_stabilizer(const Params& P, Box b, const Ctx& c) {
+  Graph g("color-stabilizer", b.lw, b.lh);
+  g.tap(0, time_tap_id(c.l.id, effect_id(c.e), 0));
+  const double cx = b.lw / 2;
+  const double cy = b.lh / 2;
+  g.pass("fxx-colorstab-sample", fxg::STRIP, {fxg::IN, fxg::TAP0, -1, -1},
+         Rows()
+             .r(cx + P.n("blackPointX"), cy + P.n("blackPointY"), cx + P.n("midPointX"), cy + P.n("midPointY"))
+             .r(cx + P.n("whitePointX"), cy + P.n("whitePointY"), std::max(1.0, P.n("sampleSize")), 0));
+  g.pass("fxx-colorstab-apply", fxg::A, {fxg::IN, fxg::STRIP, -1, -1}, Rows().r(P.e("stabilize"), 0, 0, 0));
+  return g.done(fxg::A, 0.0);
+}
+
+api::RenderEffect camera_shake_deblur(const Params& P, Box b, const Ctx& c) {
+  Graph g("camera-shake-deblur", b.lw, b.lh);
+  const std::string id = effect_id(c.e);
+  g.tap(0, time_tap_id(c.l.id, id, 0));
+  g.tap(1, time_tap_id(c.l.id, id, 1));
+  flow_into(g, fxg::IN, fxg::TAP0, P.pct("detail"));
+  g.copy(fxg::X0, fxg::H1);
+  flow_into(g, fxg::IN, fxg::TAP1, P.pct("detail"));
+  g.pass("fxx-flow-pack", fxg::X1, {fxg::X0, fxg::H1, -1, -1}, Rows());
+  g.pass("fxx-deblur", fxg::A, {fxg::IN, fxg::TAP0, fxg::TAP1, fxg::X1}, Rows().r(clampd(P.pct("blurriness"), 0, 1), std::max(2.0, P.n("sampleSize")), 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect burn_dissolve(const Params& P, Box b) {
+  Graph g("burn-dissolve", b.lw, b.lh);
+  const double dir = P.rad("direction");
+  const Rows r = Rows()
+                     .r(clampd(P.pct("completion"), 0, 1), std::max(4.0, P.n("scale")), std::max(0.0, P.pct("warp")), clampd(P.pct("directionality"), 0, 1))
+                     .r(std::cos(dir), std::sin(dir), std::max(0.5, P.n("edgeWidth")), std::max(0.0, P.n("charWidth")))
+                     .c3(P.l3("emberColor", {1, 0.42, 0.06}), P.e("seed"))
+                     .c3(P.l3("hotColor", {1, 0.9, 0.55}), std::max(0.0, P.pct("glow")))
+                     .c3(P.l3("charColor", {0.01, 0.004, 0.002}), 0);
+  g.pass("fxx-burn", fxg::X0, {fxg::IN, -1, -1, -1}, Rows(r).r(1, 0, 0, 0));
+  g.blur(fxg::X1, fxg::X0, std::max(1.0, P.n("glowRadius")), fxg::X2);
+  g.pass("fxx-burn", fxg::A, {fxg::IN, fxg::X1, -1, -1}, Rows(r).r(0, 0, 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect liquid_morph(const Params& P, Box b) {
+  Graph g("liquid-morph", b.lw, b.lh);
+  const std::string target = P.layer("targetLayer");
+  if (!target.empty()) g.map(0, target);
+  const double fa = P.rad("flowAngle");
+  g.pass("fxx-liquid", fxg::A, {fxg::IN, target.empty() ? fxg::IN : fxg::MAP, -1, -1},
+         Rows()
+             .r(clampd(P.pct("completion"), 0, 1), std::max(0.0, P.n("distortion")), std::max(4.0, P.n("scale")), std::max(0.0, P.pct("chroma")))
+             .r(clampd(P.pct("softness"), 0.01, 1), std::cos(fa), std::sin(fa), target.empty() ? 0 : 1)
+             .r(P.e("seed"), 0, 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect bend_it(const Params& P, Box b) {
+  Graph g("bend-it", b.lw, b.lh);
+  const double cx = b.lw / 2;
+  const double cy = b.lh / 2;
+  g.pass("fxx-bendit", fxg::A, {fxg::IN, -1, -1, -1},
+         Rows().r(cx + P.n("startX"), cy + P.n("startY"), cx + P.n("endX"), cy + P.n("endY")).r(P.rad("bend"), P.e("prestart"), 0, 0));
+  return g.done(fxg::A);
+}
+
+api::RenderEffect bender(const Params& P, Box b) {
+  Graph g("bender", b.lw, b.lh);
+  const double cx = b.lw / 2;
+  const double cy = b.lh / 2;
+  g.pass("fxx-bender", fxg::A, {fxg::IN, -1, -1, -1},
+         Rows().r(cx + P.n("topX"), cy + P.n("topY"), cx + P.n("baseX"), cy + P.n("baseY")).r(P.n("amount"), P.e("style"), P.on("adjustToDistance") ? 1 : 0, 0));
+  return g.done(fxg::A);
+}
+
 // ── data tables ───────────────────────────────────────────────────────────────
 
 /// A curve control (`[[x, y], …]` in 0..255) as 256 outputs in 0..1, linear or
@@ -1072,6 +1396,158 @@ std::vector<float> stroke3d_data(const Params& P, const RLayer& l, const Json& p
   return out;
 }
 
+/// A deterministic hash of (i, salt) to [0, 1).
+double h01(double i, double salt) {
+  std::uint64_t x = static_cast<std::uint64_t>(static_cast<std::int64_t>(std::floor(i))) * 0x9E3779B97F4A7C15ULL;
+  x ^= static_cast<std::uint64_t>(static_cast<std::int64_t>(std::floor(salt * 1000))) * 0xC2B2AE3D27D4EB4FULL;
+  x ^= x >> 31U;
+  x *= 0xBF58476D1CE4E5B9ULL;
+  x ^= x >> 27U;
+  x *= 0x94D049BB133111EBULL;
+  x ^= x >> 31U;
+  return static_cast<double>(x >> 11U) / 9007199254740992.0;
+}
+
+/// CC Particle World's particles this frame, in closed form (each a pure
+/// function of its index and the time), projected through the comp camera,
+/// sorted far to near and binned into 32 px screen tiles:
+/// [tiles x, tiles y, tile size, particle base] · per tile [offset, count]
+/// (into the index list) · the index list · per particle 12 numbers
+/// [x, y, radius px, depth, r, g, b, opacity, previous x, y, 0, 0] (comp px).
+std::vector<float> particle_world_data(const Params& P, const RLayer& l) {
+  const std::vector<float> scene = scene_data(P);
+  const double ex = scene[0], ey = scene[1], ez = scene[2], f = scene[3], ppx = scene[4], ppy = scene[5];
+  const std::array<double, 9> r{scene[6], scene[7], scene[8], scene[9], scene[10], scene[11], scene[12], scene[13], scene[14]};
+  const double compW = std::max(1.0, static_cast<double>(scene[15]));
+  const double compH = std::max(1.0, static_cast<double>(scene[16]));
+  const double t = P.n("time");
+  const double fps = fps_of(P);
+  const double rate = clampd(P.n("birthRate"), 1, 2000);
+  const double life = clampd(P.n("longevity"), 0.1, 30);
+  const double seedv = P.n("seed");
+  const double res = std::max(0.0, P.pct("resistance")) * 2;
+  const double grav = P.n("gravity");
+  const double extra = std::max(0.0, P.pct("extra"));
+  const int anim = P.e("animation");
+  const double ax = P.rad("axisX");
+  const double ay = P.rad("axisY");
+  const V3 axis{std::cos(ay) * std::cos(ax), std::sin(ay), std::cos(ay) * std::sin(ax)};
+  const V3 c0{l.x + P.n("producerX"), l.y + P.n("producerY"), P.n("producerZ")};
+  const V3 bc = P.l3("birthColor", {1, 0.9, 0.4});
+  const V3 dc = P.l3("deathColor", {1, 0.05, 0.01});
+  const double bs = std::max(0.1, P.n("birthSize"));
+  const double ds = std::max(0.0, P.n("deathSize"));
+  const double sv = clampd(P.pct("sizeVariation"), 0, 1);
+  const double maxA = clampd(P.pct("maxOpacity"), 0, 1);
+  const double vel = std::max(0.0, P.n("velocity"));
+  const auto project = [&](const V3& w) -> std::array<double, 3> {
+    const double dx = w[0] - ex, dy = w[1] - ey, dz = w[2] - ez;
+    const double vx = r[0] * dx + r[1] * dy + r[2] * dz;
+    const double vy = r[3] * dx + r[4] * dy + r[5] * dz;
+    const double vz = r[6] * dx + r[7] * dy + r[8] * dz;
+    if (vz < 1) return {0, 0, -1};
+    return {ppx + vx * f / vz, ppy + vy * f / vz, vz};
+  };
+  const auto positionAt = [&](double i, double tau) -> V3 {
+    const double u1 = h01(i, seedv + 1), u2 = h01(i, seedv + 2), u3 = h01(i, seedv + 3);
+    // Birth point: inside the producer's ellipsoid.
+    const double th = u1 * 2 * kPi, ph = std::acos(2 * u2 - 1), rr = std::cbrt(u3);
+    const V3 p0{c0[0] + P.n("radiusX") * rr * std::sin(ph) * std::cos(th), c0[1] + P.n("radiusY") * rr * std::cos(ph),
+                c0[2] + P.n("radiusZ") * rr * std::sin(ph) * std::sin(th)};
+    // Direction by the animation: all ways, along the axis, in a cone about it.
+    const double v1 = h01(i, seedv + 4), v2 = h01(i, seedv + 5);
+    const double vth = v1 * 2 * kPi, vph = std::acos(2 * v2 - 1);
+    const V3 rnd{std::sin(vph) * std::cos(vth), std::cos(vph), std::sin(vph) * std::sin(vth)};
+    V3 dir = rnd;
+    if (anim == 1 || anim == 2) {
+      const double spread = anim == 1 ? 0.15 : 0.55;
+      dir = {axis[0] + rnd[0] * spread, axis[1] + rnd[1] * spread, axis[2] + rnd[2] * spread};
+      const double n = std::max(1e-9, std::hypot(dir[0], dir[1], dir[2]));
+      dir = {dir[0] / n, dir[1] / n, dir[2] / n};
+    }
+    const double speed = vel * (0.7 + 0.6 * h01(i, seedv + 6));
+    const V3 v0{dir[0] * speed, dir[1] * speed, dir[2] * speed};
+    V3 p{};
+    if (res < 1e-4) {
+      for (std::size_t a = 0; a < 3; ++a) p.at(a) = p0.at(a) + v0.at(a) * tau + (a == 1 ? 0.5 * grav * tau * tau : 0);
+    } else {
+      // Linear drag in closed form: v' = g - res v.
+      const double e = 1 - std::exp(-res * tau);
+      for (std::size_t a = 0; a < 3; ++a) {
+        const double g = a == 1 ? grav : 0;
+        p.at(a) = p0.at(a) + (v0.at(a) - g / res) * e / res + g * tau / res;
+      }
+    }
+    // Extra: a smooth wander growing with age (Fractal Omni: stronger).
+    const double w = extra * (anim == 3 ? 3 : 1) * 60 * tau;
+    for (std::size_t a = 0; a < 3; ++a) {
+      const auto fa = static_cast<double>(a);
+      p.at(a) += w * std::sin(tau * (1.3 + h01(i, seedv + 7 + fa)) * 2.1 + h01(i, seedv + 11 + fa) * 6.28);
+    }
+    return p;
+  };
+  struct Part {
+    std::array<double, 12> v;
+  };
+  std::vector<Part> parts;
+  const auto n = static_cast<long long>(std::min(4000.0, std::ceil(rate * life)));
+  const auto i0 = static_cast<long long>(std::floor((t - life) * rate));
+  for (long long k = 0; k <= n; ++k) {
+    const auto i = static_cast<double>(i0 + k);
+    const double birth = i / rate;
+    const double age = t - birth;
+    if (birth < 0 || age < 0 || age >= life) continue;
+    const double u = age / life;
+    const auto s = project(positionAt(i, age));
+    if (s[2] <= 0) continue;
+    const auto sp = project(positionAt(i, std::max(0.0, age - 1 / fps)));
+    const double size = (bs + (ds - bs) * u) * (1 - sv * h01(i, seedv + 9)) * f / s[2];
+    const double a = maxA * std::min(1.0, u * 8) * std::min(1.0, (1 - u) * 4);
+    Part q{};
+    q.v = {s[0], s[1], std::max(0.3, size * 0.5), s[2], bc[0] + (dc[0] - bc[0]) * u, bc[1] + (dc[1] - bc[1]) * u, bc[2] + (dc[2] - bc[2]) * u, a,
+           sp[2] > 0 ? sp[0] : s[0], sp[2] > 0 ? sp[1] : s[1], 0, 0};
+    parts.push_back(q);
+  }
+  std::ranges::stable_sort(parts, [](const Part& a, const Part& b2) { return a.v[3] > b2.v[3]; });
+  constexpr double kTile = 32;
+  const auto tx = static_cast<std::size_t>(std::ceil(compW / kTile));
+  const auto ty = static_cast<std::size_t>(std::ceil(compH / kTile));
+  std::vector<std::vector<float>> bins(tx * ty);
+  constexpr std::size_t kPerTile = 96;
+  for (std::size_t pi = 0; pi < parts.size(); ++pi) {
+    const auto& v = parts[pi].v;
+    const double reach = v[2] * 2 + 2;
+    const double x0 = std::min(v[0], v[8]) - reach, x1 = std::max(v[0], v[8]) + reach;
+    const double y0 = std::min(v[1], v[9]) - reach, y1 = std::max(v[1], v[9]) + reach;
+    if (x1 < 0 || y1 < 0 || x0 >= compW || y0 >= compH) continue;
+    const auto cx0 = static_cast<std::size_t>(std::max(0.0, x0) / kTile);
+    const auto cx1 = static_cast<std::size_t>(std::min(compW - 1, x1) / kTile);
+    const auto cy0 = static_cast<std::size_t>(std::max(0.0, y0) / kTile);
+    const auto cy1 = static_cast<std::size_t>(std::min(compH - 1, y1) / kTile);
+    for (std::size_t yy = cy0; yy <= cy1 && yy < ty; ++yy) {
+      for (std::size_t xx = cx0; xx <= cx1 && xx < tx; ++xx) {
+        auto& b2 = bins[yy * tx + xx];
+        if (b2.size() < kPerTile) b2.push_back(static_cast<float>(pi));
+      }
+    }
+  }
+  std::vector<float> out{static_cast<float>(tx), static_cast<float>(ty), static_cast<float>(kTile), 0};
+  const std::size_t idxBase = 4 + bins.size() * 2;
+  out.resize(idxBase, 0);
+  std::size_t off = 0;
+  for (std::size_t k = 0; k < bins.size(); ++k) {
+    out[4 + k * 2] = static_cast<float>(off);
+    out[4 + k * 2 + 1] = static_cast<float>(bins[k].size());
+    off += bins[k].size();
+  }
+  for (const auto& b2 : bins) out.insert(out.end(), b2.begin(), b2.end());
+  out[3] = static_cast<float>(out.size());
+  for (const Part& q : parts) {
+    for (const double x : q.v) out.push_back(static_cast<float>(x));
+  }
+  return out;
+}
+
 bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   if (t == "lens-bloom") out.push_back(lens_bloom(P, b));
   else if (t == "shine") out.push_back(shine(P, b));
@@ -1118,6 +1594,22 @@ bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   else if (t == "light-trails") out.push_back(light_trails(P, b, c));
   else if (t == "datamosh") out.push_back(datamosh(P, b, c));
   else if (t == "temporal-denoise") out.push_back(temporal_denoise(P, b, c));
+  else if (t == "fluid-ink") out.push_back(fluid_ink(P, b, c));
+  else if (t == "reaction-diffusion") out.push_back(reaction_diffusion(P, b, c));
+  else if (t == "crystal-growth") out.push_back(crystal_growth(P, b, c));
+  else if (t == "mr-mercury") out.push_back(mr_mercury(P, b));
+  else if (t == "foam") out.push_back(foam(P, b));
+  else if (t == "hair") out.push_back(hair(P, b));
+  else if (t == "rain-on-glass") out.push_back(rain_on_glass(P, b));
+  else if (t == "particle-world") out.push_back(particle_world(P, b, c));
+  else if (t == "warp-stabilizer") out.push_back(warp_stabilizer(P, b, c));
+  else if (t == "match-grain") out.push_back(match_grain(P, b));
+  else if (t == "color-stabilizer") out.push_back(color_stabilizer(P, b, c));
+  else if (t == "camera-shake-deblur") out.push_back(camera_shake_deblur(P, b, c));
+  else if (t == "burn-dissolve") out.push_back(burn_dissolve(P, b));
+  else if (t == "liquid-morph") out.push_back(liquid_morph(P, b));
+  else if (t == "bend-it") out.push_back(bend_it(P, b));
+  else if (t == "bender") out.push_back(bender(P, b));
   else return false;
   return true;
 }
@@ -1169,6 +1661,8 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
       if (const Json* path = mask_path(l, P, "pathMask", true)) out.push_back({data_key(c, "path"), Json(), saber_path_data(*path)});
     } else if (t == "ps-arbitrary-map") {
       out.push_back({data_key(c, "map"), Json(), arbitrary_map_data(P)});
+    } else if (t == "particle-world") {
+      out.push_back({data_key(c, "particles"), Json(), particle_world_data(P, l)});
     } else if (t == "stroke-3d") {
       if (const Json* path = mask_path(l, P, "pathMask", true)) {
         std::vector<float> d = stroke3d_data(P, l, *path);
@@ -1185,7 +1679,7 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
 
 bool deep_effect_reads_scene(std::string_view type) {
   static constexpr auto k = std::to_array<std::string_view>(
-      {"volumetric-lights", "relight", "volumetric-clouds", "starfield", "cc-environment", "ocean", "aurora", "stroke-3d"});
+      {"volumetric-lights", "relight", "volumetric-clouds", "starfield", "cc-environment", "ocean", "aurora", "stroke-3d", "particle-world"});
   return std::ranges::find(k, type) != k.end();
 }
 
@@ -1240,15 +1734,20 @@ void inject_deep_scene(std::vector<Json>& resolved, const std::optional<motion::
 
 namespace {
 constexpr auto kTemporal = std::to_array<std::string_view>(
-    {"timewarp", "pixel-motion-blur", "time-displacement", "time-difference", "time-blend", "light-trails", "datamosh", "temporal-denoise"});
+    {"timewarp", "pixel-motion-blur", "time-displacement", "time-difference", "time-blend", "light-trails", "datamosh", "temporal-denoise",
+     // X2 simulations: their clock (__fps) and the layer at their start time.
+     "fluid-ink", "reaction-diffusion", "crystal-growth", "particle-world",
+     // Batch 7: the frames around this one, and a reference frame.
+     "warp-stabilizer", "color-stabilizer", "camera-shake-deblur", "match-grain"});
 bool is_temporal_deep(std::string_view t) { return std::ranges::find(kTemporal, t) != kTemporal.end(); }
 }  // namespace
 
-void inject_deep_fps(std::vector<Json>& resolved, double fps) {
+void inject_deep_fps(std::vector<Json>& resolved, double fps, std::optional<double> layerTime) {
   for (Json& e : resolved) {
     if (!e.at("type").is_string() || !is_temporal_deep(e.at("type").str()) || !e.at("params").is_object()) continue;
     Json p = e.at("params");
     p.set("__fps", Json::number(fps > 0 ? fps : 30));
+    if (layerTime) p.set("__time", Json::number(*layerTime));
     e.set("params", std::move(p));
   }
 }
@@ -1284,6 +1783,17 @@ std::vector<double> deep_effect_time_offsets(const Json& effect) {
     return {-s, -2 * s, -3 * s, -4 * s};
   }
   if (t == "datamosh") return {P.n("holdTime") - P.n("time"), -frame};
+  if (t == "fluid-ink" || t == "reaction-diffusion" || t == "crystal-growth") return {P.n("startTime") - P.n("time")};
+  if (t == "warp-stabilizer") {
+    const double n = std::max(1.0, std::round(P.n("window")));
+    const double h = std::max(1.0, std::round(n / 2));
+    return {-n * frame, -h * frame, h * frame, n * frame};
+  }
+  if (t == "camera-shake-deblur") {
+    const double n = std::clamp(std::round(P.n("neighbors")), 1.0, 3.0);
+    return {-n * frame, n * frame};
+  }
+  if (t == "color-stabilizer") return {P.n("referenceTime") - P.n("__time")};
   return {};
 }
 

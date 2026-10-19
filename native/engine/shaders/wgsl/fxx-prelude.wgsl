@@ -266,6 +266,20 @@ fn lightAt(l : Light, p : vec3<f32>) -> vec4<f32> {
 }
 // The scene depth (binding 6, view z in comp px; +inf where no 3D surface) at a buffer uv.
 // Only a pass drawn with the depth flag declares `depthTex`.
+// ── X2 simulations ─────────────────────────────────────────────────────────
+// A simulation pass draws its SIM target over the LAYER box: uv = q (0..1),
+// layer px = q * lwh(); its row 14 = (sim time, step dt, frame, substep). A
+// graph pass reads a SIM slot at q = layerPx(uv) / lwh().
+fn simRow() -> vec4<f32> { return P(14); }
+fn simCell() -> vec2<f32> { return lwh() / outSize(); }
+fn atQ(t : texture_2d<f32>, q : vec2<f32>) -> vec4<f32> { return textureSampleLevel(t, smp, q, 0.0); }
+fn simTexel(t : texture_2d<f32>) -> vec2<f32> { return 1.0 / vec2<f32>(textureDimensions(t)); }
+// A sim slot read from a graph pass (outside the box: nothing).
+fn atSim(t : texture_2d<f32>, uv : vec2<f32>) -> vec4<f32> {
+  let q = layerPx(uv) / lwh();
+  if (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) { return vec4<f32>(0.0); }
+  return atQ(t, q);
+}
 // A 3- or 5-stop colour ramp in p rows (r, g, b, position): `n` stops from row `i0`.
 fn ramp(t : f32, i0 : i32, n : i32) -> vec3<f32> {
   var prev = P(i0);

@@ -43,8 +43,9 @@ struct TimeTap {
   std::string id;  ///< `<layer>__tt_<effect id>_<k>`
   double dt = 0;   ///< seconds from now
 };
-/// The comp frame rate the walk hands temporal deep effects (`__fps`).
-void inject_deep_fps(std::vector<Json>& resolved, double fps);
+/// The comp frame rate and the layer time the walk hands temporal deep
+/// effects (`__fps`, `__time`).
+void inject_deep_fps(std::vector<Json>& resolved, double fps, std::optional<double> layerTime);
 /// A temporal deep effect's tap offsets (seconds from now, at most 4), from its
 /// resolved params (`__fps`, `time`, ...). Empty for any other effect.
 [[nodiscard]] std::vector<double> deep_effect_time_offsets(const Json& effect);

@@ -67,6 +67,21 @@ const EFFECTS: Record<string, Case> = {
   ocean: { params: { seaLevel: 700 } },
   aurora: { params: { altitude: 200, intensity: 400 } },
   'stroke-3d': { params: { thickness: 6, repeater: true, instances: 3 }, host: 'Plate' },
+  // Batch 6 (the simulations step from 0 to the frame at 1 s; the particles are closed form)
+  'fluid-ink': { params: { pushSpeed: 300, resolution: 0 }, host: 'Star' },
+  'reaction-diffusion': { params: { resolution: 0, speed: 40, composite: 1 }, host: 'Star' },
+  'crystal-growth': { params: { resolution: 0, speed: 60, composite: 0 }, host: 'Star' },
+  'mr-mercury': { params: { birthRate: 40, velocity: 200 } },
+  foam: { params: { birthRate: 20, bubbleSize: 18, producerY: 40 } },
+  hair: { params: { length: 18, density: 4 }, host: 'Star' },
+  'rain-on-glass': { params: { amount: 120, dropSize: 16 } },
+  'particle-world': { params: { birthRate: 300, velocity: 200, birthSize: 8 } },
+  // Batch 7 (the analysis effects on a moving picture are in the time cases below)
+  'match-grain': { params: { intensity: 400, compensate: false } },
+  'burn-dissolve': { params: { completion: 50, scale: 40 }, host: 'Box' },
+  'liquid-morph': { params: { completion: 50, distortion: 60, scale: 60 }, host: 'Box' },
+  'bend-it': { params: { bend: 90, startY: -30, endY: 30 }, host: 'Box' },
+  bender: { params: { amount: 40 }, host: 'Box' },
 };
 
 suite('program X deep effects on the full renderer', () => {
@@ -240,6 +255,9 @@ suite('program X deep effects on the full renderer', () => {
         'time-blend': { accumulation: 80, frameStep: 3 },
         'light-trails': { threshold: 30, trailLength: 16, intensity: 300 },
         datamosh: { holdTime: 0.5, intensity: 200 },
+        // Batch 7 on a moving picture.
+        'warp-stabilizer': { window: 6 },
+        'color-stabilizer': { referenceTime: 0, midPointX: 0, midPointY: 0, stabilize: 0 },
       };
       const problems: string[] = [];
       for (const [type, params] of Object.entries(cases)) {

@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <iterator>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +27,9 @@ constexpr unsigned kFlagKeep = 1U;
 constexpr unsigned kFlagDepth = 2U;
 constexpr std::array<std::string_view, 2> kHalf = {"plugin-half1", "plugin-half2"};
 constexpr std::array<std::string_view, 2> kQuarter = {"plugin-quarter1", "plugin-quarter2"};
+/// X2: checkpoints kept per simulation, and the most frames one call steps.
+constexpr std::size_t kMaxCheckpoints = 32;
+constexpr int kMaxStepFrames = 2400;
 
 /// The graph's blend index → the device's (0 none · 1 normal · 2 add · 3 screen
 /// · 4 multiply · 5 lighten · 6 darken · 7 lighter): a pass that accumulates
@@ -61,41 +66,27 @@ struct Slot {
   double scale = 1;  ///< texels per full-resolution texel
 };
 
-}  // namespace
+struct Pass {
+  int op = 0;
+  int arg = 0;
+  int out = 0;
+  double argValue = 0;  ///< the blur ops' sigma (layer px)
+  std::array<int, 4> in{};
+  Blend blend = Blend::none;
+  unsigned flags = 0;
+  std::span<const double> rows;
+};
 
-const std::string& fx_graph_wgsl(std::string_view shader) {
-  // The render thread is the only caller (as depth_wgsl in effect_chain.cpp).
-  static std::unordered_map<std::string, std::string> cache;
-  auto it = cache.find(std::string(shader));
-  if (it == cache.end()) {
-    const std::string body = builtin_wgsl(shader);
-    it = cache.emplace(std::string(shader), body.empty() ? std::string() : builtin_wgsl("fxx-prelude") + body).first;
-  }
-  return it->second;
-}
+bool is_sim(int s) { return s >= kFxgSim0 && s < kFxgSim0 + static_cast<int>(kFxgSimSlots); }
 
-std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const FxGraphIO& io, std::string& why) {
-  const ViewportState& vp = ctx.viewport;
-  const std::uint32_t pw = vp.pixelWidth;
-  const std::uint32_t ph = vp.pixelHeight;
-  const auto mats = split(fx.text("mats"));
-  const auto g = fx.nums("g");
-  const int outSlot = static_cast<int>(fx.num("out", -1));
-
-  // Which slots the graph touches (to resolve maps, and to refuse a bad graph up front).
-  std::array<bool, kFxgSlots> used{};
-  bool needsDepth = false;
-  struct Pass {
-    int op, arg, out;
-    double argValue;  ///< the blur ops' sigma (layer px)
-    std::array<int, 4> in;
-    Blend blend;
-    unsigned flags;
-    std::span<const double> rows;
-  };
+/// One pass list (the graph, or a simulation's init / step program). A graph
+/// pass writes the colour / scratch slots; a simulation pass writes only the
+/// simulation's own slots.
+std::optional<std::vector<Pass>> parse(std::span<const double> g, std::size_t mats, bool simProgram, std::array<bool, kFxgSlots>& used,
+                                       bool& needsDepth, std::string& why) {
   std::vector<Pass> passes;
   for (std::size_t i = 0; i + kHeader <= g.size();) {
-    Pass p{};
+    Pass p;
     p.op = static_cast<int>(g[i]);
     p.argValue = g[i + 1];
     p.arg = static_cast<int>(g[i + 1]);
@@ -110,8 +101,8 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
     }
     p.rows = g.subspan(i + kHeader, nrows * 4);
     i += kHeader + nrows * 4;
-    const auto writable = [](int s) { return (s >= kFxgA && s < kFxgMap) || s == kFxgStrip; };
-    if (!writable(p.out) || p.op < kOpShader || p.op > kOpCopy || (p.op == kOpShader && (p.arg < 0 || static_cast<std::size_t>(p.arg) >= mats.size()))) {
+    const auto writable = [&](int s) { return simProgram ? is_sim(s) : (s >= kFxgA && s < kFxgMap) || s == kFxgStrip; };
+    if (!writable(p.out) || p.op < kOpShader || p.op > kOpCopy || (p.op == kOpShader && (p.arg < 0 || static_cast<std::size_t>(p.arg) >= mats))) {
       why = "fx-graph: a malformed pass";
       return std::nullopt;
     }
@@ -130,9 +121,77 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
     if ((p.flags & kFlagDepth) != 0) needsDepth = true;
     passes.push_back(p);
   }
+  return passes;
+}
+
+/// X2: what a simulation's state holds — the frame it has reached (−1 =
+/// nothing yet), what it was started with, and its checkpoints (frames).
+struct SimRec {
+  double hash = 0;
+  std::uint32_t w = 0;
+  std::uint32_t h = 0;
+  int frame = -1;
+  std::set<int> checkpoints;
+};
+/// The render thread is the only caller (as fx_graph_wgsl's cache).
+std::unordered_map<std::string, SimRec>& sims() {
+  static std::unordered_map<std::string, SimRec> m;
+  if (m.size() > 256) m.clear();  // simulations come and go over a session: bounded
+  return m;
+}
+
+void copy_target(PassContext& ctx, const RenderTarget& from, const RenderTarget& to) {
+  wgpu::TexelCopyTextureInfo a{};
+  a.texture = from.texture;
+  wgpu::TexelCopyTextureInfo b{};
+  b.texture = to.texture;
+  const wgpu::Extent3D size{std::min(from.width, to.width), std::min(from.height, to.height), 1};
+  ctx.dev.encoder().CopyTextureToTexture(&a, &b, &size);
+}
+
+}  // namespace
+
+const std::string& fx_graph_wgsl(std::string_view shader) {
+  // The render thread is the only caller (as depth_wgsl in effect_chain.cpp).
+  static std::unordered_map<std::string, std::string> cache;
+  auto it = cache.find(std::string(shader));
+  if (it == cache.end()) {
+    const std::string body = builtin_wgsl(shader);
+    it = cache.emplace(std::string(shader), body.empty() ? std::string() : builtin_wgsl("fxx-prelude") + body).first;
+  }
+  return it->second;
+}
+
+std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const FxGraphIO& io, std::string& why) {
+  const ViewportState& vp = ctx.viewport;
+  const std::uint32_t pw = vp.pixelWidth;
+  const std::uint32_t ph = vp.pixelHeight;
+  const auto mats = split(fx.text("mats"));
+  const int outSlot = static_cast<int>(fx.num("out", -1));
+
+  // Which slots the graph touches (to resolve maps, and to refuse a bad graph up front).
+  std::array<bool, kFxgSlots> used{};
+  bool needsDepth = false;
+  const std::optional<std::vector<Pass>> parsed = parse(fx.nums("g"), mats.size(), false, used, needsDepth, why);
+  if (!parsed) return std::nullopt;
+  const std::vector<Pass>& passes = *parsed;
   if (passes.empty() || outSlot < kFxgA || outSlot >= kFxgMap) {  // the result is a full-size colour slot
     why = "fx-graph: no passes or no result slot";
     return std::nullopt;
+  }
+  // X2: a simulation's init and step programs.
+  const std::string_view simKey = fx.text("simKey");
+  std::vector<Pass> simInit;
+  std::vector<Pass> simStep;
+  if (!simKey.empty()) {
+    auto a = parse(fx.nums("simInit"), mats.size(), true, used, needsDepth, why);
+    auto b = parse(fx.nums("simStep"), mats.size(), true, used, needsDepth, why);
+    if (!a || !b || a->empty() || b->empty()) {
+      if (why.empty()) why = "fx-graph: a simulation needs an init and a step program";
+      return std::nullopt;
+    }
+    simInit = std::move(*a);
+    simStep = std::move(*b);
   }
 
   // Slots → targets.
@@ -216,6 +275,23 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
     ctx.draw_into(kFxTapTargets.at(k), c, true);
     sl.tex = ctx.target(kFxTapTargets.at(k))->tex();
   }
+  // X2: the simulation's slots — persistent device targets at the
+  // simulation's resolution, named after the simulation (they outlive the frame).
+  std::array<std::string, kFxgSimSlots> simNames{};
+  const auto simW = static_cast<std::uint32_t>(std::clamp(fx.num("simW", 256), 8.0, 2048.0));
+  const auto simH = static_cast<std::uint32_t>(std::clamp(fx.num("simH", 256), 8.0, 2048.0));
+  bool simFresh = false;  // a state slot's target was (re)created: the simulation starts over
+  if (!simKey.empty()) {
+    for (std::size_t k = 0; k < kFxgSimSlots; ++k) {
+      if (!used.at(kFxgSim0 + k)) continue;
+      simNames.at(k) = std::string(simKey) + "/s" + std::to_string(k);
+      bool created = false;
+      RenderTarget& t = ctx.dev.target(simNames.at(k), simW, simH, wgpu::TextureFormat::RGBA16Float, 1, false, &created);
+      ctx.targets.insert_or_assign(simNames.at(k), &t);
+      simFresh = simFresh || created;
+      slot.at(kFxgSim0 + k) = {simNames.at(k), {}, simW, simH, static_cast<double>(simW) / std::max(1U, pw)};
+    }
+  }
   TexRef depth;
   if (needsDepth) {
     depth = io.depth ? io.depth() : TexRef{};
@@ -256,26 +332,32 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
                                                             {4, BindingType::texture, kStageFragment},
                                                             {5, BindingType::texture, kStageFragment},
                                                             {6, BindingType::unfilterable, kStageFragment}}};
-  // Every shader pass's pipeline is validated before anything is drawn: a bad
-  // shader (or layout) skips this effect, never the frame (device.hpp pipeline_error).
-  for (const Pass& p : passes) {
-    if (p.op != kOpShader) continue;
+  const auto materialOf = [&](const Pass& p) -> std::optional<Mat> {
     const std::string_view shader = mats.at(static_cast<std::size_t>(p.arg));
     const std::string& wgsl = fx_graph_wgsl(shader);
     if (wgsl.empty()) {
       why = "fx-graph: no shader named \"" + std::string(shader) + "\"";
       return std::nullopt;
     }
-    const Mat m = (p.flags & kFlagDepth) != 0 ? ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kDepthLayout)
-                                               : ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kLayout);
-    const RenderTarget* target = ctx.target(slot.at(static_cast<std::size_t>(p.out)).name);
-    if (target == nullptr) {
-      why = "fx-graph: a pass's target is missing";
-      return std::nullopt;
-    }
-    if (const std::string& err = ctx.dev.pipeline_error(m, p.blend, target->format); !err.empty()) {
-      why = "fx-graph: " + std::string(shader) + ": " + err.substr(0, 400);
-      return std::nullopt;
+    return (p.flags & kFlagDepth) != 0 ? ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kDepthLayout)
+                                       : ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kLayout);
+  };
+  // Every shader pass's pipeline is validated before anything is drawn: a bad
+  // shader (or layout) skips this effect, never the frame (device.hpp pipeline_error).
+  for (const std::vector<Pass>* list : std::array<const std::vector<Pass>*, 3>{&passes, &simInit, &simStep}) {
+    for (const Pass& p : *list) {
+      if (p.op != kOpShader) continue;
+      const std::optional<Mat> m = materialOf(p);
+      if (!m) return std::nullopt;
+      const RenderTarget* target = ctx.target(slot.at(static_cast<std::size_t>(p.out)).name);
+      if (target == nullptr) {
+        why = "fx-graph: a pass's target is missing";
+        return std::nullopt;
+      }
+      if (const std::string& err = ctx.dev.pipeline_error(*m, p.blend, target->format); !err.empty()) {
+        why = "fx-graph: " + std::string(mats.at(static_cast<std::size_t>(p.arg))) + ": " + err.substr(0, 400);
+        return std::nullopt;
+      }
     }
   }
   const double lw = std::max(1.0, fx.num("lw", 1));
@@ -283,21 +365,16 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
   const double texPerPxX = io.screenSpace ? io.fxBox.width * io.targetUv.width * pw / lw : io.kx;
   const double texPerPxY = io.screenSpace ? io.fxBox.height * io.targetUv.height * ph / lh : io.ky;
 
-  for (const Pass& p : passes) {
+  /// One pass; `simRow` (a simulation pass): its row 14 — (sim time, step dt, frame, substep).
+  const auto runPass = [&](const Pass& p, const std::optional<Vec4>& simRow) {
     const Slot& out = slot.at(static_cast<std::size_t>(p.out));
     Commands cmds;
     if (p.op == kOpShader) {
-      const std::string_view shader = mats.at(static_cast<std::size_t>(p.arg));
-      const std::string& wgsl = fx_graph_wgsl(shader);
-      if (wgsl.empty()) {
-        why = "fx-graph: no shader named \"" + std::string(shader) + "\"";
-        return std::nullopt;
-      }
       const bool readsDepth = (p.flags & kFlagDepth) != 0;
-      const Mat m = readsDepth ? ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kDepthLayout)
-                               : ctx.dev.dynamic_material("fxx:" + std::string(shader), wgsl, kLayout);
+      const Mat m = *materialOf(p);
       std::array<Vec4, kFxgRows + 2> rows{};
       for (std::size_t r = 0; r * 4 < p.rows.size(); ++r) rows.at(r) = {p.rows[r * 4], p.rows[r * 4 + 1], p.rows[r * 4 + 2], p.rows[r * 4 + 3]};
+      if (simRow) rows[kFxgRows - 1] = *simRow;
       rows[kFxgRows] = {lw, lh, static_cast<double>(out.w), static_cast<double>(out.h)};
       rows[kFxgRows + 1] = io.screenSpace ? Vec4{io.world.x, io.world.y, io.world.width, io.world.height} : Vec4{0, 0, 0, 0};
       DrawItem& it = cmds.add(m, p.blend, pack_fx_block(ctx.packer(), io.mvp, io.targetUv, rows, io.fxBox));
@@ -316,13 +393,73 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
       it.texture = texOf(p.in[0]);
       it.sampler = ctx.linear_clamp();
     } else {
-      emit_textured(ctx, cmds, io.mvp, Color::white(), 1, p.blend == Blend::none ? Blend::none : p.blend, texOf(p.in[0]),
-                    ctx.linear_clamp(), io.targetUv, kIdentityColor, true);
+      emit_textured(ctx, cmds, io.mvp, Color::white(), 1, p.blend, texOf(p.in[0]), ctx.linear_clamp(), io.targetUv, kIdentityColor, true);
     }
     const bool clear = (p.flags & kFlagKeep) == 0;
     if (out.w == pw && out.h == ph) ctx.draw_into(out.name, cmds, clear);
     else ctx.draw_into_sized(out.name, cmds, clear, out.w, out.h);
+  };
+
+  // X2: bring the simulation to this frame — from where it is, from the
+  // nearest checkpoint at or before it, or from its init — stepping its program
+  // `sub` times a frame. Every frame of the simulation is the same function of
+  // its controls, reached in any order.
+  if (!simKey.empty()) {
+    const double hash = fx.num("simHash");
+    const int target = static_cast<int>(std::max(0.0, std::floor(fx.num("simFrame") + 1e-6)));
+    const int sub = static_cast<int>(std::clamp(fx.num("simSub", 1), 1.0, 64.0));
+    const int every = static_cast<int>(std::clamp(fx.num("simEvery", 30), 5.0, 1000.0));
+    const double fps = std::max(1.0, fx.num("simFps", 30));
+    std::vector<std::size_t> state;
+    for (const double s : fx.nums("simState")) {
+      if (s >= 0 && s < kFxgSimSlots && !simNames.at(static_cast<std::size_t>(s)).empty()) state.push_back(static_cast<std::size_t>(s));
+    }
+    SimRec& rec = sims()[std::string(simKey)];
+    if (simFresh || rec.hash != hash || rec.w != simW || rec.h != simH) rec = SimRec{hash, simW, simH, -1, {}};
+    // A checkpoint whose targets the device collected is gone.
+    const auto ckName = [&](int frame, std::size_t k) { return std::string(simKey) + "/ck" + std::to_string(frame) + "/" + std::to_string(k); };
+    for (auto it = rec.checkpoints.begin(); it != rec.checkpoints.end();) {
+      bool lost = false;
+      for (const std::size_t k : state) {
+        bool created = false;
+        (void)ctx.dev.target(ckName(*it, k), simW, simH, wgpu::TextureFormat::RGBA16Float, 1, false, &created);
+        lost = lost || created;
+      }
+      it = lost ? rec.checkpoints.erase(it) : std::next(it);
+    }
+    if (rec.frame > target || rec.frame < 0) {
+      const auto ck = rec.checkpoints.upper_bound(target);
+      if (ck != rec.checkpoints.begin()) {
+        const int from = *std::prev(ck);
+        for (const std::size_t k : state) {
+          RenderTarget& src = ctx.dev.target(ckName(from, k), simW, simH, wgpu::TextureFormat::RGBA16Float, 1, false);
+          copy_target(ctx, src, *ctx.target(simNames.at(k)));
+        }
+        rec.frame = from;
+      } else {
+        for (const Pass& p : simInit) runPass(p, Vec4{0, 1 / (fps * sub), 0, 0});
+        rec.frame = 0;
+      }
+    }
+    int stepped = 0;
+    while (rec.frame < target && stepped < kMaxStepFrames) {
+      for (int s = 0; s < sub; ++s) {
+        const Vec4 row{(rec.frame + static_cast<double>(s) / sub) / fps, 1 / (fps * sub), static_cast<double>(rec.frame), static_cast<double>(s)};
+        for (const Pass& p : simStep) runPass(p, row);
+      }
+      ++rec.frame;
+      ++stepped;
+      if (rec.frame % every == 0 && rec.checkpoints.size() < kMaxCheckpoints && !rec.checkpoints.contains(rec.frame)) {
+        for (const std::size_t k : state) {
+          RenderTarget& dst = ctx.dev.target(ckName(rec.frame, k), simW, simH, wgpu::TextureFormat::RGBA16Float, 1, false);
+          copy_target(ctx, *ctx.target(simNames.at(k)), dst);
+        }
+        rec.checkpoints.insert(rec.frame);
+      }
+    }
   }
+
+  for (const Pass& p : passes) runPass(p, std::nullopt);
 
   // The result must live in the chain's pool: copy it to a free target otherwise.
   const Slot& res = slot.at(static_cast<std::size_t>(outSlot));

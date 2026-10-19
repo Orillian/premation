@@ -24,7 +24,7 @@ deterministic (no wall clock, seeded noise, time only from the layer clock).
 |---|---|---|
 | X0 | **FX graph** — a chain entry `fx-graph` that runs a list of passes the packer writes: named slots (the input, the three free pool targets, four float data targets, two half- and two quarter-resolution targets), any registered material with up to four texture inputs, separable Gaussians at any slot's resolution, blend / clear per pass, and the scene depth / a map layer / a mask raster as inputs. Effects become data (packer + shaders), not bespoke chain code. | [x] |
 | X1 | **Time taps** — an effect asks for its layer's pre-effect image at other times (≤ 8 offsets); the scene builder evaluates the layer again at each time (content time included: footage frame, precomp time, shape animation) as hidden map sources the chain binds. Deterministic: pure functions of the document and t. | [x] |
-| X2 | **Simulation state** — effects that integrate over time (fluid, reaction–diffusion, Mr. Mercury, Foam) step from their start time in fixed substeps with checkpoints kept per (layer, effect, params hash), so any frame is reproducible in any order, and scrubbing forward costs one step. | [ ] |
+| X2 | **Simulation state** — effects that integrate over time (fluid, reaction–diffusion, Mr. Mercury, Foam) step from their start time in fixed substeps with checkpoints kept per (layer, effect, params hash), so any frame is reproducible in any order, and scrubbing forward costs one step. | [x] |
 
 ## Effects (56)
 
@@ -93,30 +93,30 @@ Each row: type id · what makes it deep · foundation.
 ### Batch 6 — simulation (X2)
 | # | Effect | Depth | |
 |---|---|---|---|
-| 41 | `fluid-ink` Fluid Ink | stable-fluids 2-D solver (advection, vorticity confinement, pressure Jacobi) driven by the layer's alpha / emitters, dye advected | [ ] |
-| 42 | `reaction-diffusion` Reaction-Diffusion | Gray–Scott with feed / kill maps from the layer, colour ramp | [ ] |
-| 43 | `mr-mercury` CC Mr. Mercury | metaball liquid particles emitted from the layer, gravity, influence map, blob birth / death size, lit mercury shading | [ ] |
-| 44 | `foam` Foam | AE's: bubbles with physics (wind, wobble, zoom, popping), bubble texture from a layer or built-in, flow map | [ ] |
-| 45 | `hair` CC Hair | strands grown from the layer, length / thickness / weight / density, light | [ ] |
-| 46 | `rain-on-glass` Rain on Glass | droplets that grow, merge and run with trails, refracting the layer, fog | [ ] |
-| 47 | `particle-world` CC Particle World | 3-D particles through the active camera, producer box, physics (gravity, resistance, extra), lines / faded spheres / textured | [ ] |
-| 48 | `growth` Growth | differential-growth / DLA crystal growth seeded from the layer's alpha | [ ] |
+| 41 | `fluid-ink` Fluid Ink | stable-fluids 2-D solver (advection, vorticity confinement, pressure Jacobi) driven by the layer's alpha / emitters, dye advected | [x] |
+| 42 | `reaction-diffusion` Reaction-Diffusion | Gray–Scott with feed / kill maps from the layer, colour ramp | [x] |
+| 43 | `mr-mercury` CC Mr. Mercury | metaball liquid particles emitted from the layer, gravity, influence map, blob birth / death size, lit mercury shading | [x] |
+| 44 | `foam` Foam | AE's: bubbles with physics (wind, wobble, zoom, popping), bubble texture from a layer or built-in, flow map | [x] |
+| 45 | `hair` CC Hair | strands grown from the layer, length / thickness / weight / density, light | [x] |
+| 46 | `rain-on-glass` Rain on Glass | droplets that grow, merge and run with trails, refracting the layer, fog | [x] |
+| 47 | `particle-world` CC Particle World | 3-D particles through the active camera, producer box, physics (gravity, resistance, extra), lines / faded spheres / textured | [x] |
+| 48 | `crystal-growth` Crystal Growth | Kobayashi's anisotropic phase-field dendrites (phase + temperature with latent heat), nucleated from the layer at the start time — a deterministic X2 simulation | [x] |
 
 ### Batch 7 — analysis & transitions
 | # | Effect | Depth | |
 |---|---|---|---|
-| 49 | `warp-stabilizer` Warp Stabilizer | analysis over the layer's frames (tracker features) → smoothed path; position / scale / rotation or perspective; crop / auto-scale | [ ] |
-| 50 | `match-grain` Match Grain | AE's: measures a source layer's grain (high-pass variance per channel, frequency) and synthesises matching grain over the layer | [ ] |
-| 51 | `color-stabilizer` Color Stabilizer | AE's: brightness / levels / curves from sample points at a reference frame (time tap) | [ ] |
-| 52 | `camera-shake-deblur` Camera Shake Deblur | AE's: picks / blends the sharpest neighbour frames by local sharpness | [ ] |
-| 53 | `burn-dissolve` Burn Dissolve | transition: noise-driven edge burn with ember glow, char, smoke | [ ] |
-| 54 | `liquid-morph` Liquid Morph Wipe | transition: flow-warp of A into B along a noise field, chromatic split | [ ] |
-| 55 | `bend-it` CC Bend It | AE's: bends the layer along a start / end line | [ ] |
-| 56 | `bender` CC Bender | AE's: marionette / bend / sharp bend between top and base | [ ] |
+| 49 | `warp-stabilizer` Warp Stabilizer | analysis over the layer's frames (tracker features) → smoothed path; position / scale / rotation or perspective; crop / auto-scale | [x] |
+| 50 | `match-grain` Match Grain | AE's: measures a source layer's grain (high-pass variance per channel, frequency) and synthesises matching grain over the layer | [x] |
+| 51 | `color-stabilizer` Color Stabilizer | AE's: brightness / levels / curves from sample points at a reference frame (time tap) | [x] |
+| 52 | `camera-shake-deblur` Camera Shake Deblur | AE's: picks / blends the sharpest neighbour frames by local sharpness | [x] |
+| 53 | `burn-dissolve` Burn Dissolve | transition: noise-driven edge burn with ember glow, char, smoke | [x] |
+| 54 | `liquid-morph` Liquid Morph Wipe | transition: flow-warp of A into B along a noise field, chromatic split | [x] |
+| 55 | `bend-it` CC Bend It | AE's: bends the layer along a start / end line | [x] |
+| 56 | `bender` CC Bender | AE's: marionette / bend / sharp bend between top and base | [x] |
 
 ## Status (2026-10-19)
 
-X0 and X1 landed with batches 1–5 (40 effects). Every one is covered by
+All 56 landed (batches 1–5 with X0 / X1, batches 6–7 with X2). Every one is covered by
 `src/core/engine/deepEffects.native.test.ts` on the GPU (PREMATION_GPU_TESTS=1):
 it reaches the chain, changes the picture, and the key ones are checked for
 what they mean. Engineering notes that came out of it:
@@ -132,6 +132,15 @@ what they mean. Engineering notes that came out of it:
   effect on a precomp (Program E's too) animates.
 - `engine-api:gen` leaves unchanged files alone (a fresh timestamp on the
   protocol headers rebuilt most of the engine).
+- X2 simulations live in persistent device targets at their own resolution
+  over the layer box (view-independent), checkpointed every 30 frames; their
+  inputs are the layer at the start time (a time tap) and their controls, so
+  a frame is the same however it is reached. Data copies in a graph go
+  through `fxx-copy` (the colour textured draw zeroes a velocity stored with
+  alpha 0).
+- The closed-form systems (Mr. Mercury, Foam, Particle World) compute each
+  particle from its index and the time; Particle World projects and depth
+  sorts on the CPU and bins into 32 px screen tiles for the GPU.
 
 ## Wiring checklist (per effect)
 

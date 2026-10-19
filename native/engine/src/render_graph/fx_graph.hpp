@@ -29,7 +29,19 @@
 // MAP2 MAP3 (read only; with two or more maps, MAP lives in X3 and MAP2 in X2,
 // so such a graph leaves those two alone) · 15 DATA (read only) · 16–17
 // MASK0 MASK1 (read only) · 18 STRIP (a 256 × 1 target: a reduction's partials)
-// · 19–22 TAP0..TAP3 (read only: the layer at other times).
+// · 19–22 TAP0..TAP3 (read only: the layer at other times) · 23–30 SIM0..SIM7
+// (Program X2: a simulation's persistent state at its own resolution).
+//
+// Program X2 — a simulation: `simKey` (text, unique per layer + effect) with
+// `simW` / `simH` (its resolution), `simFrame` (the frame to reach), `simHash`
+// (its controls: a change starts it over), `simSub` (steps a frame), `simFps`,
+// `simEvery` (checkpoint interval), `simState` (the SIM slots that ARE its
+// state) and two pass lists in the graph's format — `simInit` (run once) and
+// `simStep` (run `simSub` times a frame) — writing SIM slots only. A sim pass's
+// target covers the LAYER box (uv 0..1 = layer px / lw, lh: view-independent),
+// and its row 14 is (sim time, step dt, frame, substep). The executor keeps the
+// state in persistent device targets with checkpoints, so any frame is the
+// same function of the controls, reached in any order.
 //
 // Every shader pass gets: binding 1 = in0, 3 = in1, 4 = in2, 5 = in3 (an unset
 // input = IN), the rows padded to 15, a `res` row (lw, lh, outW, outH), a
@@ -63,7 +75,9 @@ inline constexpr int kFxgData = 15;
 inline constexpr int kFxgMask0 = 16;
 inline constexpr int kFxgStrip = 18;
 inline constexpr int kFxgTap0 = 19;
-inline constexpr int kFxgSlots = 23;
+inline constexpr int kFxgSim0 = 23;
+inline constexpr std::size_t kFxgSimSlots = 8;
+inline constexpr int kFxgSlots = 31;
 /// The mask rasters' targets (declared in passes.cpp).
 inline constexpr std::array<std::string_view, 2> kFxMaskTargets = {"fx-mask-0", "fx-mask-1"};
 /// The time taps' targets (declared in passes.cpp).

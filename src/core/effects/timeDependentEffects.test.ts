@@ -85,12 +85,15 @@ describe('the TIME_DEPENDENT set', () => {
     // a physical rate, not a keyframe. Shine went the keyframed way instead
     // (its shimmer Phase, as in Trapcode Shine), per the note above. Timewarp
     // and Datamosh read the layer at instants measured from the clock (a speed
-    // times the layer time; frames since the hold), so they join as well.
+    // times the layer time; frames since the hold), so they join as well; so
+    // do the simulations and particle systems of batch 6 (a simulation's frame
+    // IS the clock) and Match Grain's animated grain.
     expect(members).toEqual([
       'timecode', 'strobe-light', 'particle-systems',
       'noise-hls-auto', 'caustics', 'shatter', 'wave-world', 'digital-glitch', 'vhs', 'light-leaks', 'hologram',
       'camera-shake', 'flicker', 'old-film', 'sparkle', 'heat-haze', 'fog', 'night-vision',
       'energy-saber', 'volumetric-clouds', 'starfield', 'ocean', 'aurora', 'timewarp', 'datamosh',
+      'fluid-ink', 'reaction-diffusion', 'crystal-growth', 'mr-mercury', 'foam', 'rain-on-glass', 'particle-world', 'match-grain',
     ]);
   });
 

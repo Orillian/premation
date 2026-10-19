@@ -391,6 +391,22 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'light-trails': 'Time',
   'datamosh': 'Time',
   'temporal-denoise': 'Stylize',
+  'fluid-ink': 'Simulation',
+  'reaction-diffusion': 'Simulation',
+  'crystal-growth': 'Simulation',
+  'mr-mercury': 'Simulation',
+  'foam': 'Simulation',
+  'hair': 'Simulation',
+  'rain-on-glass': 'Simulation',
+  'particle-world': 'Simulation',
+  'warp-stabilizer': 'Distort',
+  'match-grain': 'Stylize',
+  'color-stabilizer': 'Color Correction',
+  'camera-shake-deblur': 'Blur & Sharpen',
+  'burn-dissolve': 'Transition',
+  'liquid-morph': 'Transition',
+  'bend-it': 'Distort',
+  'bender': 'Distort',
   // deepfx:category:end
 };
 

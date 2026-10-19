@@ -39,6 +39,7 @@ inline constexpr int TAP0 = 19;  ///< TAP0..TAP3 = 19..22: the layer at other ti
 inline constexpr int TAP1 = 20;
 inline constexpr int TAP2 = 21;
 inline constexpr int TAP3 = 22;
+inline constexpr int SIM0 = 23;  ///< SIM0..SIM7 = 23..30: a simulation's slots (Program X2)
 inline constexpr int NONE = -1;
 
 // Pass blends (fx_graph.cpp blend_of).
@@ -77,7 +78,36 @@ class Graph {
   Graph& pass(std::string_view shader, int out, Ins in, const Rows& rows, int blend = kReplace, unsigned flags = 0) {
     const std::vector<double>& v = rows.values();
     head(0, mat(shader), out, in, blend, flags, v.size() / 4);
-    g_.insert(g_.end(), v.begin(), v.end());
+    cur_->insert(cur_->end(), v.begin(), v.end());
+    return *this;
+  }
+  /// Program X2: the passes that follow go to the simulation's init program,
+  /// its step program, or (again) the graph.
+  Graph& init_program() {
+    cur_ = &init_;
+    return *this;
+  }
+  Graph& step_program() {
+    cur_ = &step_;
+    return *this;
+  }
+  Graph& graph_program() {
+    cur_ = &g_;
+    return *this;
+  }
+  /// Program X2: the simulation's identity and clock (fx_graph.hpp).
+  struct Sim {
+    std::string key;
+    double w = 256, h = 256;
+    double frame = 0;
+    double hash = 0;
+    double sub = 1;
+    double fps = 30;
+    double every = 30;
+    std::vector<double> state;
+  };
+  Graph& sim(Sim s) {
+    sim_ = std::move(s);
     return *this;
   }
   /// A separable Gaussian of sigma `sigmaPx` (layer px) from `in` into `out`, through `tmp`.
@@ -92,10 +122,11 @@ class Graph {
     head(2, sigmaY, out, {tmp, NONE, NONE, NONE}, kReplace, 0, 0);
     return *this;
   }
-  /// `in` resampled into `out` (a half / quarter slot: a downsample).
+  /// `in` resampled into `out` (a half / quarter slot: a downsample) — raw
+  /// values (fxx-copy): data slots (flow, velocity, pressure) keep their
+  /// negative values and zero alphas, which the colour textured draw would not.
   Graph& copy(int out, int in, int blend = kReplace, unsigned flags = 0) {
-    head(3, 0, out, {in, NONE, NONE, NONE}, blend, flags, 0);
-    return *this;
+    return pass("fxx-copy", out, {in, NONE, NONE, NONE}, Rows(), blend, flags);
   }
   /// The layer a MAP slot reads (`k` 0..2).
   Graph& map(int k, std::string layerId) {
@@ -127,6 +158,14 @@ class Graph {
     }
     w.text("mats", std::move(names));
     w.nums("g", std::move(g_));
+    if (!sim_.key.empty()) {
+      w.text("simKey", sim_.key);
+      w.num("simW", sim_.w).num("simH", sim_.h).num("simFrame", sim_.frame).num("simHash", sim_.hash);
+      w.num("simSub", sim_.sub).num("simFps", sim_.fps).num("simEvery", sim_.every);
+      w.nums("simState", sim_.state);
+      w.nums("simInit", std::move(init_));
+      w.nums("simStep", std::move(step_));
+    }
     w.num("out", out);
     w.num("lw", lw_);
     w.num("lh", lh_);
@@ -153,7 +192,7 @@ class Graph {
     return static_cast<double>(mats_.size() - 1);
   }
   void head(double op, double arg, int out, Ins in, int blend, unsigned flags, std::size_t nrows) {
-    g_.insert(g_.end(), {op, arg, static_cast<double>(out), static_cast<double>(in[0]), static_cast<double>(in[1]),
+    cur_->insert(cur_->end(), {op, arg, static_cast<double>(out), static_cast<double>(in[0]), static_cast<double>(in[1]),
                          static_cast<double>(in[2]), static_cast<double>(in[3]), static_cast<double>(blend),
                          static_cast<double>(flags), static_cast<double>(nrows)});
   }
@@ -163,6 +202,10 @@ class Graph {
   double lh_;
   std::vector<std::string> mats_;
   std::vector<double> g_;
+  std::vector<double> init_;
+  std::vector<double> step_;
+  std::vector<double>* cur_ = &g_;
+  Sim sim_;
   std::array<std::string, 3> maps_{};
   std::array<std::string, 2> masks_{};
   std::array<std::string, 4> taps_{};

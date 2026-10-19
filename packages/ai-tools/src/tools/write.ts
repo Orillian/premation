@@ -888,7 +888,9 @@ export const addEffectDef: AiToolDef = {
           'vr-denoise', 'vr-fractal-noise', 'vr-glow', 'vr-plane-to-sphere', 'vr-sharpen', 'volumetric-lights',
           'relight', 'volumetric-clouds', 'starfield', 'cc-environment', 'ocean', 'aurora', 'stroke-3d', 'timewarp',
           'pixel-motion-blur', 'time-displacement', 'time-difference', 'time-blend', 'light-trails', 'datamosh',
-          'temporal-denoise',
+          'temporal-denoise', 'fluid-ink', 'reaction-diffusion', 'crystal-growth', 'mr-mercury', 'foam', 'hair',
+          'rain-on-glass', 'particle-world', 'warp-stabilizer', 'match-grain', 'color-stabilizer',
+          'camera-shake-deblur', 'burn-dissolve', 'liquid-morph', 'bend-it', 'bender',
           // deepfx:ai:end
         ],
       },

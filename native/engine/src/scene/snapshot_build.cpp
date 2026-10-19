@@ -786,7 +786,7 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
   // AE's default one) and the comp's lights (deep_fx_scene.hpp).
   inject_deep_scene(resolved, three_ ? three_->camera() : std::optional<motion::xf::Camera>{}, three_ ? &three_->scene_lights() : nullptr, comp_.width,
                     comp_.height);
-  inject_deep_fps(resolved, fps_);
+  inject_deep_fps(resolved, fps_, layerTime);
   return resolved;
 }
 
