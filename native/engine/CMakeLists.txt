@@ -132,6 +132,7 @@ if(Dawn_FOUND)
     src/render_graph/composition_pass.cpp
     src/render_graph/effect_chain.cpp
     src/render_graph/fx_distance.cpp
+    src/render_graph/fx_graph.cpp  # Program X0: multi-pass effects as data
     src/render_graph/support.cpp
     src/render_graph/threed.cpp
     src/render_graph/scene_depth.cpp  # plugin SDK 1.2 (S6): checkout_scene_depth
@@ -1089,6 +1090,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
     src/scene/effects_spatial_a.cpp
     src/scene/effects_spatial_b.cpp
     src/scene/effects_spatial_c.cpp
+    src/scene/effects_spatial_x.cpp  # Program X: the deep effects (fx-graph entries)
     src/scene/layer_styles.cpp
     src/scene/path_ops.cpp
     src/scene/snapshot_build.cpp

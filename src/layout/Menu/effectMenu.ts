@@ -54,6 +54,7 @@ const CATEGORY_LABEL_KEY: Record<string, string> = {
   Simulation: 'menu.sub.effect.simulation',
   Time: 'menu.sub.effect.time',
   Transition: 'menu.sub.effect.transition',
+  'Immersive Video': 'menu.sub.effect.immersiveVideo',
   Utility: 'menu.sub.effect.utility',
 };
 

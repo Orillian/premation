@@ -306,7 +306,7 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'reduce-interlace-flicker': 'Blur & Sharpen',
   'basic-3d': 'Perspective',
   'digital-glitch': 'Stylize',
-  'vr-rotate-sphere': 'Distort',
+  'vr-rotate-sphere': 'Immersive Video',
   'color-gradients': 'Generate',
   'vhs': 'Stylize',
   'crt': 'Stylize',
@@ -350,6 +350,48 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'depth-matte': '3D Channel',
   'depth-fog': '3D Channel',
   'depth-extract': '3D Channel',
+  // deepfx:category:begin
+  'lens-bloom': 'Stylize',
+  'shine': 'Stylize',
+  'image-flares': 'Generate',
+  'painterly': 'Stylize',
+  'watercolor': 'Stylize',
+  'ink-outline': 'Stylize',
+  'detail-upscale': 'Distort',
+  'paint-bucket': 'Generate',
+  'light-wrap': 'Keying',
+  'refraction': 'Distort',
+  'compound-arithmetic': 'Channel',
+  'color-link': 'Color Correction',
+  'inner-outer-key': 'Keying',
+  'energy-saber': 'Generate',
+  'ps-arbitrary-map': 'Color Correction',
+  'edge-rays': 'Stylize',
+  'vr-blur': 'Immersive Video',
+  'vr-chromatic-aberrations': 'Immersive Video',
+  'vr-converter': 'Immersive Video',
+  'vr-denoise': 'Immersive Video',
+  'vr-fractal-noise': 'Immersive Video',
+  'vr-glow': 'Immersive Video',
+  'vr-plane-to-sphere': 'Immersive Video',
+  'vr-sharpen': 'Immersive Video',
+  'volumetric-lights': 'Perspective',
+  'relight': 'Perspective',
+  'volumetric-clouds': 'Generate',
+  'starfield': 'Generate',
+  'cc-environment': 'Perspective',
+  'ocean': 'Generate',
+  'aurora': 'Generate',
+  'stroke-3d': 'Generate',
+  'timewarp': 'Time',
+  'pixel-motion-blur': 'Time',
+  'time-displacement': 'Time',
+  'time-difference': 'Time',
+  'time-blend': 'Time',
+  'light-trails': 'Time',
+  'datamosh': 'Time',
+  'temporal-denoise': 'Stylize',
+  // deepfx:category:end
 };
 
 /**
@@ -361,7 +403,7 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
  */
 export const EFFECT_CATEGORY_ORDER: readonly string[] = [
   'Blur & Sharpen', 'Color Correction', 'Stylize', 'Generate',
-  'Distort', 'Perspective', '3D Channel', 'Channel', 'Keying', 'Simulation', 'Time', 'Transition', 'Utility',
+  'Distort', 'Perspective', '3D Channel', 'Channel', 'Keying', 'Simulation', 'Time', 'Transition', 'Immersive Video', 'Utility',
 ];
 
 /** The folder plugin effects go in (the browser's last folder). */

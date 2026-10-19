@@ -259,6 +259,12 @@ class Device {
   /// blend into an rgba16float target, one sample) ahead of its first draw.
   /// P7: compile `material`'s pipeline for a chain pass (one sample, `format` targets) ahead of its first draw.
   void warm_pipeline(Mat material, Blend blend, wgpu::TextureFormat format) { (void)pipeline(material, blend, format, 1); }
+  /// Program X: build `material`'s pipeline (one sample) inside its own
+  /// validation error scope and wait for the verdict: "" = valid, else Dawn's
+  /// message (a WGSL error, a layout mismatch). Kept per pipeline. A caller
+  /// that draws only with valid pipelines cannot invalidate the frame's
+  /// command buffer — a bad dynamic shader skips its own effect, never the frame.
+  [[nodiscard]] const std::string& pipeline_error(Mat material, Blend blend, wgpu::TextureFormat format);
 
  private:
   struct Pipeline {
@@ -303,6 +309,7 @@ class Device {
   };
   std::vector<std::unique_ptr<Dynamic>> dynamic_;
   std::unordered_map<std::string, std::string> dynamicWgsl_;
+  std::unordered_map<std::string, std::string> pipelineErrors_;
 
   struct UniformChunk {
     wgpu::Buffer buffer;

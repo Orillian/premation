@@ -881,6 +881,15 @@ export const addEffectDef: AiToolDef = {
           'heat-haze', 'color-halftone', 'crystallize', 'fog', 'chrome', 'night-vision',
           // fx60:b12:end
           'depth-matte', 'depth-fog', 'depth-extract',
+          // deepfx:ai:begin
+          'lens-bloom', 'shine', 'image-flares', 'painterly', 'watercolor', 'ink-outline', 'detail-upscale',
+          'paint-bucket', 'light-wrap', 'refraction', 'compound-arithmetic', 'color-link', 'inner-outer-key',
+          'energy-saber', 'ps-arbitrary-map', 'edge-rays', 'vr-blur', 'vr-chromatic-aberrations', 'vr-converter',
+          'vr-denoise', 'vr-fractal-noise', 'vr-glow', 'vr-plane-to-sphere', 'vr-sharpen', 'volumetric-lights',
+          'relight', 'volumetric-clouds', 'starfield', 'cc-environment', 'ocean', 'aurora', 'stroke-3d', 'timewarp',
+          'pixel-motion-blur', 'time-displacement', 'time-difference', 'time-blend', 'light-trails', 'datamosh',
+          'temporal-denoise',
+          // deepfx:ai:end
         ],
       },
       amount: {

@@ -673,6 +673,32 @@ void Device::side_draw(const wgpu::TextureView& target, wgpu::TextureFormat form
   ++stats_.draws;
 }
 
+const std::string& Device::pipeline_error(Mat material, Blend blend, wgpu::TextureFormat format) {
+  std::string key;
+  append_u64(key, static_cast<std::uint64_t>(material));
+  key += ':';
+  append_u64(key, static_cast<std::uint64_t>(blend));
+  key += ':';
+  append_u64(key, static_cast<std::uint64_t>(format));
+  if (const auto it = pipelineErrors_.find(key); it != pipelineErrors_.end()) return it->second;
+  device_.PushErrorScope(wgpu::ErrorFilter::Validation);
+  (void)pipeline(material, blend, format, 1);
+  std::string message;
+  instance_.WaitAny(device_.PopErrorScope(wgpu::CallbackMode::WaitAnyOnly,
+                                          [&message](wgpu::PopErrorScopeStatus status, wgpu::ErrorType type, wgpu::StringView msg) {
+                                            if (status != wgpu::PopErrorScopeStatus::Success) {
+                                              message = "error scope lost";
+                                            } else if (type != wgpu::ErrorType::NoError) {
+                                              message = msg.data == nullptr ? std::string("GPU error")
+                                                        : msg.length == wgpu::kStrlen ? std::string(msg.data)
+                                                                                      : std::string(msg.data, msg.length);
+                                              if (message.empty()) message = "GPU error";
+                                            }
+                                          }),
+                    UINT64_MAX);
+  return pipelineErrors_.emplace(std::move(key), std::move(message)).first->second;
+}
+
 Mat Device::dynamic_material(std::string_view name, std::string_view wgsl, std::span<const LayoutEntry> layout) {
   std::string key(name);
   for (const LayoutEntry& e : layout) {

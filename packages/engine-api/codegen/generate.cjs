@@ -1637,6 +1637,11 @@ if (require.main === module) {
     console.log('engine-api: generated files are up to date.');
   } else {
     for (const [path, text] of Object.entries(generateAll(model))) {
+      // An unchanged file is left alone: a fresh timestamp on the protocol
+      // headers rebuilds most of the native engine for nothing.
+      let current = null;
+      try { current = readFileSync(path, 'utf8'); } catch { /* new file */ }
+      if (current !== null && current.replace(/\r\n/g, '\n') === text.replace(/\r\n/g, '\n')) continue;
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, text);
       console.log(`wrote ${relative(ROOT, path).replace(/\\/g, '/')}`);

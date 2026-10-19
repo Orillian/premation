@@ -383,6 +383,48 @@ export type EffectType =
   // unchanged. Both are Canvas2D-only, like Vegas. See `pathStroke.ts` and
   // `scribble.ts`.
   | 'path-stroke'
+  // deepfx:union:begin
+  | 'lens-bloom'
+  | 'shine'
+  | 'image-flares'
+  | 'painterly'
+  | 'watercolor'
+  | 'ink-outline'
+  | 'detail-upscale'
+  | 'paint-bucket'
+  | 'light-wrap'
+  | 'refraction'
+  | 'compound-arithmetic'
+  | 'color-link'
+  | 'inner-outer-key'
+  | 'energy-saber'
+  | 'ps-arbitrary-map'
+  | 'edge-rays'
+  | 'vr-blur'
+  | 'vr-chromatic-aberrations'
+  | 'vr-converter'
+  | 'vr-denoise'
+  | 'vr-fractal-noise'
+  | 'vr-glow'
+  | 'vr-plane-to-sphere'
+  | 'vr-sharpen'
+  | 'volumetric-lights'
+  | 'relight'
+  | 'volumetric-clouds'
+  | 'starfield'
+  | 'cc-environment'
+  | 'ocean'
+  | 'aurora'
+  | 'stroke-3d'
+  | 'timewarp'
+  | 'pixel-motion-blur'
+  | 'time-displacement'
+  | 'time-difference'
+  | 'time-blend'
+  | 'light-trails'
+  | 'datamosh'
+  | 'temporal-denoise'
+  // deepfx:union:end
   | 'scribble';
 
 /** Curve control points: `[inputX, outputY]` pairs in 0–255. */
@@ -759,6 +801,15 @@ const TIME_DEPENDENT: ReadonlyMap<string, string> = new Map<string, string>([
   ['fog', 'time'],
   ['night-vision', 'time'],
   // fx60:b10:end
+  // deepfx:time:begin
+  ['energy-saber', 'time'],
+  ['volumetric-clouds', 'time'],
+  ['starfield', 'time'],
+  ['ocean', 'time'],
+  ['aurora', 'time'],
+  ['timewarp', 'time'],
+  ['datamosh', 'time'],
+  // deepfx:time:end
 ]);
 
 export function isTimeDependentEffect(type: string): boolean {
@@ -5842,6 +5893,758 @@ export const EFFECT_DEFS: EffectDef[] = [
     ],
     css: () => '',
   },
+  // deepfx:defs:begin
+  {
+    /* Physically based bloom: the picture's highlights (soft-knee threshold in linear light) spread through a six-level pyramid, with per-level tint, anamorphic squeeze and lens dirt from another layer. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'lens-bloom',
+    label: 'Lens Bloom',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 400, default: 80 },
+      { key: 'knee', label: 'Soft Knee', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 2000, default: 100 },
+      { key: 'radius', label: 'Radius', type: 'number', unit: 'px', min: 1, max: 4000, default: 220 },
+      { key: 'spread', label: 'Size Bias', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#ffffff' },
+      { key: 'saturation', label: 'Bloom Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 100 },
+      { key: 'anamorphic', label: 'Anamorphic', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'clamp', label: 'Highlight Clamp', type: 'number', unit: '%', min: 100, max: 10000, default: 2000 },
+      { key: 'dirtLayer', label: 'Lens Dirt Layer', type: 'layer', group: 'Lens Dirt', default: '' },
+      { key: 'dirtAmount', label: 'Dirt Intensity', type: 'number', group: 'Lens Dirt', unit: '%', min: 0, max: 1000, default: 150 },
+      { key: 'mode', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* Volumetric light rays streaming from the bright parts of the layer away from a source point (Trapcode Shine class): log-step radial accumulation, shimmer (keyframe its phase), colorize by ray brightness, boost light. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'shine',
+    label: 'Shine',
+    gpuOnly: true,
+    params: [
+      { key: 'sourceX', label: 'Source Point X', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'sourceY', label: 'Source Point Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'rayLength', label: 'Ray Length', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'threshold', label: 'Threshold', type: 'number', group: 'Pre-Process', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'thresholdSoftness', label: 'Threshold Softness', type: 'number', group: 'Pre-Process', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'shimmerAmount', label: 'Shimmer Amount', type: 'number', group: 'Shimmer', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'shimmerDetail', label: 'Shimmer Detail', type: 'number', group: 'Shimmer', min: 1, max: 100, default: 12 },
+      { key: 'shimmerPhase', label: 'Shimmer Phase', type: 'number', group: 'Shimmer', unit: '°', min: -36000, max: 36000, default: 0 },
+      { key: 'boostLight', label: 'Boost Light', type: 'number', min: 0, max: 50, default: 1 },
+      { key: 'decay', label: 'Falloff', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'colorize', label: 'Colorize', type: 'enum', group: 'Colorize', default: 2, options: [{ value: 0, label: 'None' }, { value: 1, label: 'One Color' }, { value: 2, label: '3-Color Gradient' }, { value: 3, label: '5-Color Gradient' }, { value: 4, label: 'Fire' }, { value: 5, label: 'Electric' }, { value: 6, label: 'Spirit' }] },
+      { key: 'baseOn', label: 'Base On', type: 'enum', group: 'Colorize', default: 0, options: [{ value: 0, label: 'Lightness' }, { value: 1, label: 'Luminance' }, { value: 2, label: 'Alpha' }, { value: 3, label: 'Red' }, { value: 4, label: 'Green' }, { value: 5, label: 'Blue' }] },
+      { key: 'highlights', label: 'Highlights', type: 'color', group: 'Colorize', default: '#ffffff' },
+      { key: 'midHigh', label: 'Mid High', type: 'color', group: 'Colorize', default: '#ffe9a0' },
+      { key: 'midtones', label: 'Midtones', type: 'color', group: 'Colorize', default: '#ffb341' },
+      { key: 'midLow', label: 'Mid Low', type: 'color', group: 'Colorize', default: '#d0461c' },
+      { key: 'shadows', label: 'Shadows', type: 'color', group: 'Colorize', default: '#3a0a26' },
+      { key: 'edgeThickness', label: 'Edge Thickness', type: 'number', group: 'Colorize', unit: '%', min: 1, max: 100, default: 50 },
+      { key: 'sourceOpacity', label: 'Source Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'shineOpacity', label: 'Shine Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'mode', label: 'Transfer Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A lens system driven by the picture itself: its highlights become a chain of mirrored ghosts with chromatic dispersion, a halo ring, a starburst and lens dirt — no light position needed. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'image-flares',
+    label: 'Image Flares',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 400, default: 75 },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 2000, default: 100 },
+      { key: 'ghosts', label: 'Ghosts', type: 'number', min: 0, max: 12, precision: 0, default: 5 },
+      { key: 'dispersal', label: 'Ghost Spacing', type: 'number', unit: '%', min: 1, max: 100, default: 35 },
+      { key: 'ghostSize', label: 'Ghost Size', type: 'number', unit: '%', min: 1, max: 300, default: 60 },
+      { key: 'chroma', label: 'Chromatic Dispersion', type: 'number', unit: '%', min: 0, max: 200, default: 40 },
+      { key: 'halo', label: 'Halo Intensity', type: 'number', unit: '%', min: 0, max: 500, default: 60 },
+      { key: 'haloWidth', label: 'Halo Radius', type: 'number', unit: '%', min: 1, max: 100, default: 45 },
+      { key: 'starburst', label: 'Starburst', type: 'number', unit: '%', min: 0, max: 200, default: 40 },
+      { key: 'starPoints', label: 'Starburst Rays', type: 'number', min: 2, max: 64, precision: 0, default: 14 },
+      { key: 'softness', label: 'Softness', type: 'number', unit: 'px', min: 0, max: 200, default: 6 },
+      { key: 'rainbow', label: 'Lens Coating Color', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'dirtLayer', label: 'Lens Dirt Layer', type: 'layer', group: 'Lens Dirt', default: '' },
+      { key: 'dirtAmount', label: 'Dirt Intensity', type: 'number', group: 'Lens Dirt', unit: '%', min: 0, max: 1000, default: 120 },
+      { key: 'centerX', label: 'Optical Center Offset X', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'centerY', label: 'Optical Center Offset Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'mode', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* An anisotropic Kuwahara painting: brush strokes follow the image's structure tensor (smoothed), eight weighted sectors per ellipse, optional colour quantisation. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'painterly',
+    label: 'Painterly',
+    gpuOnly: true,
+    params: [
+      { key: 'brushSize', label: 'Brush Size', type: 'number', unit: 'px', min: 1, max: 40, default: 6 },
+      { key: 'anisotropy', label: 'Stroke Length', type: 'number', unit: '%', min: 0, max: 400, default: 100 },
+      { key: 'sharpness', label: 'Sharpness', type: 'number', min: 1, max: 18, default: 8 },
+      { key: 'flowSmoothing', label: 'Flow Smoothing', type: 'number', unit: 'px', min: 0, max: 20, default: 2 },
+      { key: 'levels', label: 'Color Levels', type: 'number', min: 0, max: 32, precision: 0, default: 0 },
+      { key: 'saturation', label: 'Saturation', type: 'number', unit: '%', min: 0, max: 300, default: 110 },
+      { key: 'detail', label: 'Fine Detail', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Watercolour simulation: an edge-preserving abstraction, colour bleeding through wet areas, pigment density turbulence, darkened wet edges, granulation, hand tremor and paper texture. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'watercolor',
+    label: 'Watercolor',
+    gpuOnly: true,
+    params: [
+      { key: 'abstraction', label: 'Abstraction', type: 'number', unit: 'px', min: 0, max: 30, default: 5 },
+      { key: 'bleed', label: 'Color Bleed', type: 'number', unit: 'px', min: 0, max: 200, default: 10 },
+      { key: 'wetness', label: 'Wet Areas', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'edgeDarkening', label: 'Wet Edge Darkening', type: 'number', unit: '%', min: 0, max: 300, default: 60 },
+      { key: 'pigment', label: 'Pigment Density', type: 'number', unit: '%', min: 0, max: 200, default: 45 },
+      { key: 'pigmentScale', label: 'Pigment Scale', type: 'number', unit: 'px', min: 2, max: 1000, default: 60 },
+      { key: 'granulation', label: 'Granulation', type: 'number', unit: '%', min: 0, max: 200, default: 35 },
+      { key: 'tremor', label: 'Hand Tremor', type: 'number', unit: 'px', min: 0, max: 40, default: 2 },
+      { key: 'paper', label: 'Paper Texture', type: 'number', unit: '%', min: 0, max: 200, default: 40 },
+      { key: 'paperScale', label: 'Paper Scale', type: 'number', unit: 'px', min: 0.5, max: 50, default: 3 },
+      { key: 'paperColor', label: 'Paper Color', type: 'color', default: '#f6f1e6' },
+      { key: 'onPaper', label: 'Composite On Paper', type: 'checkbox', default: false },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Comic / toon rendering: XDoG ink lines (difference of two Gaussians, soft threshold) over a cel-quantised, edge-preserving smoothed fill, with optional halftone shading. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'ink-outline',
+    label: 'Ink & Toon',
+    gpuOnly: true,
+    params: [
+      { key: 'lineWeight', label: 'Line Weight', type: 'number', unit: 'px', min: 0.3, max: 20, default: 1.6 },
+      { key: 'lineSharpness', label: 'Line Sharpness', type: 'number', min: 1, max: 200, default: 30 },
+      { key: 'lineThreshold', label: 'Line Threshold', type: 'number', unit: '%', min: -100, max: 100, default: 10 },
+      { key: 'detail', label: 'Line Detail', type: 'number', unit: '%', min: 50, max: 100, default: 98 },
+      { key: 'lineColor', label: 'Line Color', type: 'color', default: '#141414' },
+      { key: 'lineOpacity', label: 'Line Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'levels', label: 'Shading Levels', type: 'number', min: 2, max: 16, precision: 0, default: 4 },
+      { key: 'smoothing', label: 'Fill Smoothing', type: 'number', unit: 'px', min: 0, max: 20, default: 4 },
+      { key: 'saturation', label: 'Fill Saturation', type: 'number', unit: '%', min: 0, max: 300, default: 120 },
+      { key: 'halftone', label: 'Halftone Shading', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'halftoneSize', label: 'Halftone Size', type: 'number', unit: 'px', min: 2, max: 60, default: 6 },
+      { key: 'halftoneAngle', label: 'Halftone Angle', type: 'number', unit: '°', min: -3600, max: 3600, default: 45 },
+      { key: 'fillOpacity', label: 'Fill Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Detail-preserving Upscale: an edge-directed resample about the layer centre that keeps edges crisp, a halo-limited detail pass and noise reduction. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'detail-upscale',
+    label: 'Detail-preserving Upscale',
+    gpuOnly: true,
+    params: [
+      { key: 'scale', label: 'Scale', type: 'number', unit: '%', min: 100, max: 1000, default: 200 },
+      { key: 'detail', label: 'Detail', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'reduceNoise', label: 'Reduce Noise', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'alpha', label: 'Alpha', type: 'enum', default: 0, options: [{ value: 0, label: 'Detail-preserving' }, { value: 1, label: 'Bicubic' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Paint Bucket: a flood fill from a point through the connected region within tolerance (colour, straight colour, transparency, opacity or alpha), with antialias, feather, spread, choke or stroke. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'paint-bucket',
+    label: 'Paint Bucket',
+    gpuOnly: true,
+    params: [
+      { key: 'fillPointX', label: 'Fill Point X', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'fillPointY', label: 'Fill Point Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'selector', label: 'Fill Selector', type: 'enum', default: 0, options: [{ value: 0, label: 'Color & Alpha' }, { value: 1, label: 'Straight Color' }, { value: 2, label: 'Transparency' }, { value: 3, label: 'Opacity' }, { value: 4, label: 'Alpha Channel' }] },
+      { key: 'tolerance', label: 'Tolerance', type: 'number', unit: '%', min: 0, max: 100, default: 10 },
+      { key: 'viewThreshold', label: 'View Threshold', type: 'checkbox', default: false },
+      { key: 'strokeMode', label: 'Stroke', type: 'enum', default: 0, options: [{ value: 0, label: 'Antialias' }, { value: 1, label: 'Feather' }, { value: 2, label: 'Spread' }, { value: 3, label: 'Choke' }, { value: 4, label: 'Stroke' }] },
+      { key: 'strokeWidth', label: 'Spread Radius / Stroke Width', type: 'number', unit: 'px', min: 0, max: 200, default: 3 },
+      { key: 'feather', label: 'Feather Softness', type: 'number', unit: 'px', min: 0, max: 200, default: 4 },
+      { key: 'invert', label: 'Invert Fill', type: 'checkbox', default: false },
+      { key: 'color', label: 'Color', type: 'color', default: '#e8352a' },
+      { key: 'opacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'blending', label: 'Blending Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Normal' }, { value: 1, label: 'Behind' }, { value: 2, label: 'Fill Only' }, { value: 3, label: 'Multiply' }, { value: 4, label: 'Screen' }, { value: 5, label: 'Color' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* Wraps a blurred background layer's light around the layer's edges so a keyed or cut-out subject sits in its plate: wrap width from the alpha falloff, background blur, luminance bias. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'light-wrap',
+    label: 'Light Wrap',
+    gpuOnly: true,
+    params: [
+      { key: 'backgroundLayer', label: 'Background Layer', type: 'layer', default: '' },
+      { key: 'wrapWidth', label: 'Wrap Width', type: 'number', unit: 'px', min: 1, max: 500, default: 24 },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 500, default: 100 },
+      { key: 'backgroundBlur', label: 'Background Blur', type: 'number', unit: 'px', min: 0, max: 500, default: 16 },
+      { key: 'lumaBias', label: 'Luminance Bias', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'mode', label: 'Wrap Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Screen' }, { value: 1, label: 'Add' }, { value: 2, label: 'Normal' }, { value: 3, label: 'Lighten' }] },
+      { key: 'wrapOnly', label: 'Wrap Only', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* Glass refraction from a height map (another layer, or this one): normals from the smoothed height, Snell refraction per wavelength (six-sample dispersion), frosting, and a specular highlight. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'refraction',
+    label: 'Refraction',
+    gpuOnly: true,
+    params: [
+      { key: 'heightLayer', label: 'Height Layer', type: 'layer', noneLabel: 'None (this layer)', default: '' },
+      { key: 'heightSource', label: 'Height From', type: 'enum', default: 0, options: [{ value: 0, label: 'Luminance' }, { value: 1, label: 'Alpha' }, { value: 2, label: 'Red' }, { value: 3, label: 'Green' }, { value: 4, label: 'Blue' }] },
+      { key: 'invertHeight', label: 'Invert Height', type: 'checkbox', default: false },
+      { key: 'depth', label: 'Depth', type: 'number', unit: 'px', min: 0, max: 500, default: 30 },
+      { key: 'smoothness', label: 'Smoothness', type: 'number', unit: 'px', min: 0, max: 100, default: 4 },
+      { key: 'ior', label: 'Refractive Index', type: 'number', min: 1, max: 3, precision: 2, default: 1.33 },
+      { key: 'dispersion', label: 'Dispersion', type: 'number', unit: '%', min: 0, max: 300, default: 30 },
+      { key: 'frost', label: 'Frost', type: 'number', unit: 'px', min: 0, max: 100, default: 0 },
+      { key: 'specular', label: 'Specular', type: 'number', unit: '%', min: 0, max: 300, default: 40 },
+      { key: 'shininess', label: 'Shininess', type: 'number', min: 1, max: 400, default: 40 },
+      { key: 'lightAngle', label: 'Light Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: -45 },
+      { key: 'lightElevation', label: 'Light Elevation', type: 'number', unit: '°', min: 0, max: 90, default: 45 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Compound Arithmetic: the layer combined with a second layer by one of fifteen operators (bitwise And / Or / Xor included) on RGB, ARGB or alpha, with clip, wrap or scale overflow. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'compound-arithmetic',
+    label: 'Compound Arithmetic',
+    gpuOnly: true,
+    params: [
+      { key: 'secondLayer', label: 'Second Source Layer', type: 'layer', default: '' },
+      { key: 'operator', label: 'Operator', type: 'enum', default: 1, options: [{ value: 0, label: 'Copy' }, { value: 1, label: 'Add' }, { value: 2, label: 'Subtract' }, { value: 3, label: 'Multiply' }, { value: 4, label: 'Difference' }, { value: 5, label: 'And' }, { value: 6, label: 'Or' }, { value: 7, label: 'Xor' }, { value: 8, label: 'Lighten' }, { value: 9, label: 'Darken' }, { value: 10, label: 'Minimum' }, { value: 11, label: 'Maximum' }, { value: 12, label: 'Screen' }, { value: 13, label: 'Overlay' }, { value: 14, label: 'Hard Light' }] },
+      { key: 'channels', label: 'Operate On Channels', type: 'enum', default: 0, options: [{ value: 0, label: 'RGB' }, { value: 1, label: 'ARGB' }, { value: 2, label: 'Alpha' }] },
+      { key: 'overflow', label: 'Overflow Behavior', type: 'enum', default: 0, options: [{ value: 0, label: 'Clip' }, { value: 1, label: 'Wrap' }, { value: 2, label: 'Scale' }] },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Color Link: a colour statistic of a source layer (average, brightest, darkest, max / min RGB, alpha statistics), measured by a GPU reduction every frame, blended over the layer. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'color-link',
+    label: 'Color Link',
+    gpuOnly: true,
+    params: [
+      { key: 'sourceLayer', label: 'Source Layer', type: 'layer', noneLabel: 'None (this layer)', default: '' },
+      { key: 'sample', label: 'Sample', type: 'enum', default: 0, options: [{ value: 0, label: 'Average' }, { value: 1, label: 'Brightest Values' }, { value: 2, label: 'Darkest Values' }, { value: 3, label: 'Maximum RGB' }, { value: 4, label: 'Minimum RGB' }, { value: 5, label: 'Average Alpha' }, { value: 6, label: 'Maximum Alpha' }, { value: 7, label: 'Minimum Alpha' }] },
+      { key: 'stencilAlpha', label: 'Stencil Original Alpha', type: 'checkbox', default: false },
+      { key: 'opacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'blending', label: 'Blending Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'Normal' }, { value: 1, label: 'Add' }, { value: 2, label: 'Multiply' }, { value: 3, label: 'Screen' }, { value: 4, label: 'Overlay' }, { value: 5, label: 'Soft Light' }, { value: 6, label: 'Hard Light' }, { value: 7, label: 'Difference' }, { value: 8, label: 'Color' }, { value: 9, label: 'Hue' }, { value: 10, label: 'Saturation' }, { value: 11, label: 'Luminosity' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Inner/Outer Key: a matte pulled from a foreground (inside) and background (outside) mask: local foreground and background colours by normalized convolution, alpha by projection, colour unmixed from the background. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'inner-outer-key',
+    label: 'Inner/Outer Key',
+    gpuOnly: true,
+    params: [
+      { key: 'foregroundMask', label: 'Foreground (Inside)', type: 'maskPath', default: '' },
+      { key: 'backgroundMask', label: 'Background (Outside)', type: 'maskPath', noneLabel: 'None (single mask)', default: '' },
+      { key: 'highlightRadius', label: 'Single Mask Highlight Radius', type: 'number', unit: 'px', min: 1, max: 500, default: 20 },
+      { key: 'colorReach', label: 'Color Sample Radius', type: 'number', unit: 'px', min: 2, max: 500, default: 24 },
+      { key: 'edgeThreshold', label: 'Edge Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'edgeFeather', label: 'Edge Feather', type: 'number', unit: 'px', min: 0, max: 100, default: 0 },
+      { key: 'invert', label: 'Invert Extraction', type: 'checkbox', default: false },
+      { key: 'blend', label: 'Blend With Original', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* An energy beam (Saber class): a hot core along a mask path or the layer's alpha, trimmed by start / end / offset, distorted by animated noise, flickering, inside a multi-octave glow. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'energy-saber',
+    label: 'Energy Saber',
+    gpuOnly: true,
+    params: [
+      { key: 'coreType', label: 'Core Type', type: 'enum', default: 0, options: [{ value: 0, label: 'Mask Path' }, { value: 1, label: 'Layer Alpha' }] },
+      { key: 'pathMask', label: 'Mask', type: 'maskPath', noneLabel: 'Mask 1 (first mask)', default: '' },
+      { key: 'coreColor', label: 'Core Color', type: 'color', group: 'Core', default: '#ffffff' },
+      { key: 'coreSize', label: 'Core Size', type: 'number', group: 'Core', unit: 'px', min: 0, max: 200, default: 5 },
+      { key: 'coreSoftness', label: 'Core Softness', type: 'number', group: 'Core', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'startOffset', label: 'Start Offset', type: 'number', group: 'Core', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'endOffset', label: 'End Offset', type: 'number', group: 'Core', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'offset', label: 'Offset', type: 'number', group: 'Core', unit: '%', min: -10000, max: 10000, default: 0 },
+      { key: 'glowColor', label: 'Glow Color', type: 'color', group: 'Glow', default: '#2f8cff' },
+      { key: 'glowIntensity', label: 'Glow Intensity', type: 'number', group: 'Glow', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'glowSpread', label: 'Glow Spread', type: 'number', group: 'Glow', unit: '%', min: 0, max: 300, default: 40 },
+      { key: 'glowBias', label: 'Glow Bias', type: 'number', group: 'Glow', min: -100, max: 100, default: 0 },
+      { key: 'flicker', label: 'Flicker Intensity', type: 'number', group: 'Flicker', unit: '%', min: 0, max: 100, default: 15 },
+      { key: 'flickerSpeed', label: 'Flicker Speed', type: 'number', group: 'Flicker', min: 0, max: 60, default: 8 },
+      { key: 'distortion', label: 'Distortion Amount', type: 'number', group: 'Distortion', unit: 'px', min: 0, max: 200, default: 4 },
+      { key: 'distortionScale', label: 'Distortion Scale', type: 'number', group: 'Distortion', unit: 'px', min: 1, max: 2000, default: 40 },
+      { key: 'distortionSpeed', label: 'Distortion Speed', type: 'number', group: 'Distortion', min: 0, max: 30, default: 1 },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Black Background' }, { value: 3, label: 'Transparent' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' PS Arbitrary Map: an arbitrary (non-monotonic) map of each channel through 256-entry tables (a master map then per-channel maps), cycled by Phase, optionally applied to alpha. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'ps-arbitrary-map',
+    label: 'PS Arbitrary Map',
+    gpuOnly: true,
+    params: [
+      { key: 'masterMap', label: 'Map', type: 'curve', default: [[0,0],[255,255]] },
+      { key: 'redMap', label: 'Red Map', type: 'curve', default: [[0,0],[255,255]] },
+      { key: 'greenMap', label: 'Green Map', type: 'curve', default: [[0,0],[255,255]] },
+      { key: 'blueMap', label: 'Blue Map', type: 'curve', default: [[0,0],[255,255]] },
+      { key: 'interpolation', label: 'Interpolation', type: 'enum', default: 0, options: [{ value: 0, label: 'Linear' }, { value: 1, label: 'Smooth' }] },
+      { key: 'phase', label: 'Phase', type: 'number', unit: '°', min: -36000, max: 36000, default: 0 },
+      { key: 'applyToAlpha', label: 'Apply Phase Map to Alpha', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* Light rays cast from the layer's edges (alpha or luminance edges) away from a centre point, shimmering, in the source colours or a tint. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'edge-rays',
+    label: 'Edge Rays',
+    gpuOnly: true,
+    params: [
+      { key: 'centerX', label: 'Center X', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'centerY', label: 'Center Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'rayLength', label: 'Ray Length', type: 'number', unit: '%', min: 0, max: 100, default: 35 },
+      { key: 'edgeSource', label: 'Edges From', type: 'enum', default: 0, options: [{ value: 0, label: 'Alpha' }, { value: 1, label: 'Luminance' }, { value: 2, label: 'Both' }] },
+      { key: 'edgeWidth', label: 'Edge Width', type: 'number', unit: 'px', min: 0.5, max: 50, default: 3 },
+      { key: 'threshold', label: 'Edge Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 10 },
+      { key: 'intensity', label: 'Intensity', type: 'number', min: 0, max: 50, default: 2 },
+      { key: 'falloff', label: 'Falloff', type: 'number', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'colorMode', label: 'Colors', type: 'enum', default: 0, options: [{ value: 0, label: 'Source Colors' }, { value: 1, label: 'Tint' }] },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#ffd27a' },
+      { key: 'shimmerAmount', label: 'Shimmer Amount', type: 'number', group: 'Shimmer', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'shimmerDetail', label: 'Shimmer Detail', type: 'number', group: 'Shimmer', min: 1, max: 100, default: 20 },
+      { key: 'shimmerPhase', label: 'Shimmer Phase', type: 'number', group: 'Shimmer', unit: '°', min: -36000, max: 36000, default: 0 },
+      { key: 'mode', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Blur: a Gaussian on the sphere — the kernel widens toward the poles (1 / cos latitude) and wraps across the seam, so a 360 frame blurs without a seam or polar pinch. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-blur',
+    label: 'VR Blur',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'blurriness', label: 'Blurriness', type: 'number', unit: 'px', min: 0, max: 1000, default: 10 },
+      { key: 'repeatEdges', label: 'Repeat Edge Pixels', type: 'checkbox', default: true },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Chromatic Aberrations: red, green and blue pulled toward or away from a centre direction on the sphere, falling off with angle, seam-correct. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-chromatic-aberrations',
+    label: 'VR Chromatic Aberrations',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'red', label: 'Aberration (Red)', type: 'number', min: -100, max: 100, default: 4 },
+      { key: 'green', label: 'Aberration (Green)', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'blue', label: 'Aberration (Blue)', type: 'number', min: -100, max: 100, default: -4 },
+      { key: 'centerPan', label: 'Center Pan', type: 'number', unit: '°', min: -180, max: 180, default: 0 },
+      { key: 'centerTilt', label: 'Center Tilt', type: 'number', unit: '°', min: -90, max: 90, default: 0 },
+      { key: 'falloff', label: 'Falloff', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'reverseFalloff', label: 'Reverse Falloff', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Converter: re-projects the layer between equirectangular, cube maps (3 x 2, 6 x 1, 4 x 3 cross) and a rectilinear view (field of view, pan, tilt, roll), rotating the sphere on the way. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-converter',
+    label: 'VR Converter',
+    gpuOnly: true,
+    params: [
+      { key: 'sourceLayout', label: 'Source Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Equirectangular' }, { value: 1, label: 'Cube Map 3 x 2' }, { value: 2, label: 'Cube Map 6 x 1' }, { value: 3, label: 'Cube Map 4 x 3 (Cross)' }, { value: 4, label: 'Rectilinear View' }] },
+      { key: 'outputLayout', label: 'Output Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Equirectangular' }, { value: 1, label: 'Cube Map 3 x 2' }, { value: 2, label: 'Cube Map 6 x 1' }, { value: 3, label: 'Cube Map 4 x 3 (Cross)' }, { value: 4, label: 'Rectilinear View' }] },
+      { key: 'pan', label: 'Pan', type: 'number', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'tilt', label: 'Tilt', type: 'number', unit: '°', min: -180, max: 180, default: 0 },
+      { key: 'roll', label: 'Roll', type: 'number', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'fov', label: 'Field of View (Rectilinear)', type: 'number', unit: '°', min: 10, max: 170, default: 90 },
+      { key: 'seamless', label: 'Seam Blend', type: 'checkbox', default: true },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR De-Noise: non-local means (3 x 3 patches over a 7 x 7 search, widened with latitude) that wraps across the seam, preserving detail. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-denoise',
+    label: 'VR De-Noise',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'noiseLevel', label: 'Noise Level', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'searchRadius', label: 'Search Radius', type: 'number', unit: 'px', min: 1, max: 20, default: 3 },
+      { key: 'detail', label: 'Detail Preservation', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Fractal Noise: fractal noise evaluated in 3-D on the unit sphere, so it is seamless at the edges and undistorted at the poles; evolves without repeating. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-fractal-noise',
+    label: 'VR Fractal Noise',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'fractalType', label: 'Fractal Type', type: 'enum', default: 0, options: [{ value: 0, label: 'Basic' }, { value: 1, label: 'Turbulent Smooth' }, { value: 2, label: 'Turbulent Sharp' }, { value: 3, label: 'Max' }, { value: 4, label: 'Rocky' }] },
+      { key: 'invert', label: 'Invert', type: 'checkbox', default: false },
+      { key: 'contrast', label: 'Contrast', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'brightness', label: 'Brightness', type: 'number', min: -200, max: 200, default: 0 },
+      { key: 'scale', label: 'Scale', type: 'number', unit: '%', min: 1, max: 2000, default: 100 },
+      { key: 'pan', label: 'Rotate Pan', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'tilt', label: 'Rotate Tilt', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'complexity', label: 'Complexity', type: 'number', min: 1, max: 10, precision: 1, default: 6 },
+      { key: 'evolution', label: 'Evolution', type: 'number', unit: '°', min: -360000, max: 360000, default: 0 },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'opacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'blending', label: 'Blending Mode', type: 'enum', default: 0, options: [{ value: 0, label: 'None' }, { value: 1, label: 'Normal' }, { value: 2, label: 'Multiply' }, { value: 3, label: 'Screen' }, { value: 4, label: 'Overlay' }, { value: 5, label: 'Soft Light' }, { value: 6, label: 'Add' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Glow: highlights spread through three spherical blurs (seam-wrapping, latitude-correct) and added back, tinted. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-glow',
+    label: 'VR Glow',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'threshold', label: 'Luminance Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'radius', label: 'Glow Radius', type: 'number', unit: 'px', min: 1, max: 1000, default: 40 },
+      { key: 'brightness', label: 'Glow Brightness', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'saturation', label: 'Glow Saturation', type: 'number', unit: '%', min: 0, max: 200, default: 100 },
+      { key: 'tint', label: 'Tint Color', type: 'color', default: '#ffffff' },
+      { key: 'tintEnable', label: 'Use Tint', type: 'checkbox', default: false },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Plane to Sphere: the layer's flat picture projected onto the 360 sphere at a pan, tilt, roll and size, with a feathered edge — the layer becomes the equirectangular frame (use a 2 : 1 precomp of the graphic). GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-plane-to-sphere',
+    label: 'VR Plane to Sphere',
+    gpuOnly: true,
+    params: [
+      { key: 'pan', label: 'Pan', type: 'number', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'tilt', label: 'Tilt', type: 'number', unit: '°', min: -90, max: 90, default: 0 },
+      { key: 'roll', label: 'Roll', type: 'number', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'fov', label: 'Size (Field of View)', type: 'number', unit: '°', min: 1, max: 179, default: 60 },
+      { key: 'aspect', label: 'Aspect', type: 'number', unit: '%', min: 1, max: 1000, default: 100 },
+      { key: 'feather', label: 'Edge Feather', type: 'number', unit: '%', min: 0, max: 50, default: 2 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' VR Sharpen: unsharp masking against a spherical blur, seam- and latitude-correct. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'vr-sharpen',
+    label: 'VR Sharpen',
+    gpuOnly: true,
+    params: [
+      { key: 'frameLayout', label: 'Frame Layout', type: 'enum', default: 0, options: [{ value: 0, label: 'Monoscopic' }, { value: 1, label: 'Stereo - Over/Under' }, { value: 2, label: 'Stereo - Side by Side' }] },
+      { key: 'amount', label: 'Sharpen Amount', type: 'number', unit: '%', min: 0, max: 500, default: 50 },
+      { key: 'radius', label: 'Radius', type: 'number', unit: 'px', min: 0.3, max: 100, default: 2 },
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* God rays from the comp's own 3D point and spot lights: each view ray is marched through a participating medium (density noise, Henyey-Greenstein scattering) up to the scene depth, the light shafts occluded by the 3D layers in front of each light. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'volumetric-lights',
+    label: 'Volumetric Lights',
+    gpuOnly: true,
+    params: [
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 2000, default: 100 },
+      { key: 'density', label: 'Density', type: 'number', unit: '%', min: 0, max: 400, default: 30 },
+      { key: 'scattering', label: 'Forward Scattering', type: 'number', unit: '%', min: -95, max: 95, default: 40 },
+      { key: 'maxDistance', label: 'Max Distance', type: 'number', unit: 'px', min: 100, max: 100000, default: 6000 },
+      { key: 'noise', label: 'Density Noise', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'noiseScale', label: 'Noise Scale', type: 'number', unit: 'px', min: 10, max: 20000, default: 400 },
+      { key: 'evolution', label: 'Evolution', type: 'number', unit: '°', min: -360000, max: 360000, default: 0 },
+      { key: 'shadows', label: 'Occlusion From Depth', type: 'checkbox', default: true },
+      { key: 'quality', label: 'Quality (Steps)', type: 'number', min: 8, max: 96, precision: 0, default: 32 },
+      { key: 'tint', label: 'Tint', type: 'color', default: '#ffffff' },
+      { key: 'mode', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Relights a flat layer with the comp's 3D lights: surface normals from its luminance or alpha (bevelled) or a normal-map layer, Lambert diffuse with wrap, Blinn-Phong specular seen from the camera, ambient from ambient lights. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'relight',
+    label: 'Relight',
+    gpuOnly: true,
+    params: [
+      { key: 'normalsFrom', label: 'Normals From', type: 'enum', default: 0, options: [{ value: 0, label: 'Luminance' }, { value: 1, label: 'Alpha (Bevel)' }, { value: 2, label: 'Normal Map Layer' }] },
+      { key: 'normalLayer', label: 'Normal Map Layer', type: 'layer', default: '' },
+      { key: 'depth', label: 'Bump Depth', type: 'number', unit: 'px', min: 0, max: 400, default: 12 },
+      { key: 'smoothness', label: 'Smoothness', type: 'number', unit: 'px', min: 0, max: 100, default: 2 },
+      { key: 'diffuse', label: 'Diffuse', type: 'number', unit: '%', min: 0, max: 300, default: 100 },
+      { key: 'wrap', label: 'Light Wrap', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'specular', label: 'Specular', type: 'number', unit: '%', min: 0, max: 400, default: 40 },
+      { key: 'shininess', label: 'Shininess', type: 'number', min: 1, max: 400, default: 30 },
+      { key: 'ambient', label: 'Ambient (No Ambient Light)', type: 'number', unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'fallbackType', label: 'Without Comp Lights', type: 'enum', default: 0, options: [{ value: 0, label: 'Built-in Key Light' }, { value: 1, label: 'Unlit' }] },
+      { key: 'lightAngle', label: 'Key Light Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: -45 },
+      { key: 'lightElevation', label: 'Key Light Elevation', type: 'number', unit: '°', min: 0, max: 90, default: 40 },
+      { key: 'lightColor', label: 'Key Light Color', type: 'color', default: '#ffffff' },
+    ],
+    css: () => '',
+  },
+  {
+    /* Ray-marched 3-D clouds seen through the comp camera (they move with it): a slab of fractal density shaped by coverage, lit by a sun (Beer-Lambert with powder, a light march toward the sun), drifting with the wind. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'volumetric-clouds',
+    label: 'Volumetric Clouds',
+    gpuOnly: true,
+    params: [
+      { key: 'coverage', label: 'Coverage', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'density', label: 'Density', type: 'number', unit: '%', min: 0, max: 300, default: 60 },
+      { key: 'altitude', label: 'Cloud Base Altitude', type: 'number', unit: 'px', min: -100000, max: 100000, default: 1500 },
+      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'px', min: 10, max: 50000, default: 1500 },
+      { key: 'scale', label: 'Scale', type: 'number', unit: 'px', min: 10, max: 100000, default: 2500 },
+      { key: 'detail', label: 'Detail', type: 'number', min: 1, max: 8, precision: 0, default: 5 },
+      { key: 'windDirection', label: 'Wind Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 30 },
+      { key: 'windSpeed', label: 'Wind Speed (px/s)', type: 'number', unit: 'px', min: 0, max: 10000, default: 120 },
+      { key: 'sunAzimuth', label: 'Sun Azimuth', type: 'number', unit: '°', min: -3600, max: 3600, default: 40 },
+      { key: 'sunElevation', label: 'Sun Elevation', type: 'number', unit: '°', min: -10, max: 90, default: 25 },
+      { key: 'sunColor', label: 'Sun Color', type: 'color', default: '#fff2dc' },
+      { key: 'skyColor', label: 'Ambient Sky', type: 'color', default: '#8fb6e8' },
+      { key: 'useLight', label: 'Sun From First Parallel Light', type: 'checkbox', default: true },
+      { key: 'quality', label: 'Quality (Steps)', type: 'number', min: 12, max: 128, precision: 0, default: 48 },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Over Layer' }, { value: 1, label: 'Behind Layer' }, { value: 2, label: 'Clouds Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A 3-D star field in world space, seen through the comp camera with true parallax and depth fade (several shells of hashed stars), twinkling, with an optional fractal nebula. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'starfield',
+    label: 'Starfield',
+    gpuOnly: true,
+    params: [
+      { key: 'density', label: 'Star Density', type: 'number', unit: '%', min: 0, max: 300, default: 50 },
+      { key: 'starSize', label: 'Star Size', type: 'number', unit: 'px', min: 0.2, max: 20, default: 1.6 },
+      { key: 'brightness', label: 'Brightness', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'colorVariation', label: 'Color Temperature Spread', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'twinkle', label: 'Twinkle', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'depthRange', label: 'Depth Range', type: 'number', unit: 'px', min: 500, max: 1000000, default: 20000 },
+      { key: 'nebula', label: 'Nebula', type: 'number', unit: '%', min: 0, max: 200, default: 30 },
+      { key: 'nebulaColor1', label: 'Nebula Color 1', type: 'color', default: '#5b2a86' },
+      { key: 'nebulaColor2', label: 'Nebula Color 2', type: 'color', default: '#1d6fa3' },
+      { key: 'nebulaScale', label: 'Nebula Scale', type: 'number', unit: 'px', min: 100, max: 200000, default: 8000 },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 1, options: [{ value: 0, label: 'Behind Layer' }, { value: 1, label: 'Over Layer' }, { value: 2, label: 'Stars Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' CC Environment: an environment layer reflected in the layer — the camera's view ray reflected off the layer's (bumped) surface and looked up in the environment as a sphere map, mirror-ball probe or vertical cross. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'cc-environment',
+    label: 'CC Environment',
+    gpuOnly: true,
+    params: [
+      { key: 'environment', label: 'Environment', type: 'layer', default: '' },
+      { key: 'mapping', label: 'Mapping', type: 'enum', default: 0, options: [{ value: 0, label: 'Spherical' }, { value: 1, label: 'Probe' }, { value: 2, label: 'Vertical Cross' }] },
+      { key: 'horizontalOffset', label: 'Horizontal Offset', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'bump', label: 'Surface Bump', type: 'number', unit: 'px', min: 0, max: 200, default: 0 },
+      { key: 'reflectivity', label: 'Reflectivity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'fresnel', label: 'Fresnel', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'filter', label: 'Filter Environment', type: 'number', unit: 'px', min: 0, max: 100, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* An ocean surface seen through the comp camera: a spectrum of Gerstner waves (height, length, choppiness, wind), Fresnel reflection of a sky gradient and the sun, deep / shallow water colour, foam on the crests, haze to the horizon. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'ocean',
+    label: 'Ocean',
+    gpuOnly: true,
+    params: [
+      { key: 'seaLevel', label: 'Sea Level (World Y)', type: 'number', unit: 'px', min: -100000, max: 100000, default: 600 },
+      { key: 'waveHeight', label: 'Wave Height', type: 'number', unit: 'px', min: 0, max: 1000, default: 30 },
+      { key: 'waveLength', label: 'Wavelength', type: 'number', unit: 'px', min: 10, max: 20000, default: 600 },
+      { key: 'choppiness', label: 'Choppiness', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'windDirection', label: 'Wind Direction', type: 'number', unit: '°', min: -3600, max: 3600, default: 0 },
+      { key: 'speed', label: 'Speed', type: 'number', min: 0, max: 10, default: 1 },
+      { key: 'deepColor', label: 'Deep Color', type: 'color', default: '#08263f' },
+      { key: 'shallowColor', label: 'Shallow Color', type: 'color', default: '#1f6e7a' },
+      { key: 'skyTop', label: 'Sky Top', type: 'color', default: '#2c5c9c' },
+      { key: 'skyHorizon', label: 'Sky Horizon', type: 'color', default: '#c9dcec' },
+      { key: 'sunAzimuth', label: 'Sun Azimuth', type: 'number', unit: '°', min: -3600, max: 3600, default: 20 },
+      { key: 'sunElevation', label: 'Sun Elevation', type: 'number', unit: '°', min: -10, max: 90, default: 12 },
+      { key: 'sunColor', label: 'Sun Color', type: 'color', default: '#fff0d0' },
+      { key: 'foam', label: 'Foam', type: 'number', unit: '%', min: 0, max: 200, default: 40 },
+      { key: 'fogDistance', label: 'Haze Distance', type: 'number', unit: 'px', min: 100, max: 1000000, default: 40000 },
+      { key: 'showSky', label: 'Draw Sky', type: 'checkbox', default: true },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Aurora borealis seen through the comp camera: ray-marched curtains whose folds flow with fractal noise, coloured by altitude (green to magenta), with stars behind. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'aurora',
+    label: 'Aurora',
+    gpuOnly: true,
+    params: [
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'altitude', label: 'Altitude', type: 'number', unit: 'px', min: -100000, max: 100000, default: 3000 },
+      { key: 'height', label: 'Curtain Height', type: 'number', unit: 'px', min: 100, max: 50000, default: 2500 },
+      { key: 'scale', label: 'Fold Scale', type: 'number', unit: 'px', min: 50, max: 100000, default: 3000 },
+      { key: 'speed', label: 'Flow Speed', type: 'number', min: 0, max: 10, default: 1 },
+      { key: 'lowColor', label: 'Lower Color', type: 'color', default: '#3cff9e' },
+      { key: 'highColor', label: 'Upper Color', type: 'color', default: '#b44dff' },
+      { key: 'stars', label: 'Stars', type: 'number', unit: '%', min: 0, max: 200, default: 50 },
+      { key: 'quality', label: 'Quality (Steps)', type: 'number', min: 12, max: 96, precision: 0, default: 40 },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 1, options: [{ value: 0, label: 'Behind Layer' }, { value: 1, label: 'Over Layer' }, { value: 2, label: 'Aurora Only' }] },
+      { key: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 99999, precision: 0, default: 1 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A mask path stroked in 3-D (Trapcode 3D Stroke class) through the comp camera: thickness with taper, start / end / offset trimming with loop, and a repeater of copies stepped in z, scale and rotation, each shaded by depth. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'stroke-3d',
+    label: '3D Stroke',
+    gpuOnly: true,
+    params: [
+      { key: 'pathMask', label: 'Path', type: 'maskPath', noneLabel: 'Mask 1 (first mask)', default: '' },
+      { key: 'color', label: 'Color', type: 'color', default: '#7fd4ff' },
+      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'px', min: 0.1, max: 400, default: 8 },
+      { key: 'feather', label: 'Feather', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'start', label: 'Start', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'end', label: 'End', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'offset', label: 'Offset', type: 'number', unit: '%', min: -10000, max: 10000, default: 0 },
+      { key: 'loop', label: 'Loop', type: 'checkbox', default: false },
+      { key: 'taperStart', label: 'Taper Start', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'taperEnd', label: 'Taper End', type: 'number', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'repeater', label: 'Repeater', type: 'checkbox', group: 'Repeater', default: false },
+      { key: 'instances', label: 'Instances', type: 'number', group: 'Repeater', min: 1, max: 16, precision: 0, default: 4 },
+      { key: 'opacityFade', label: 'Opacity Fade', type: 'number', group: 'Repeater', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'zDisplace', label: 'Z Displace', type: 'number', group: 'Repeater', unit: 'px', min: -10000, max: 10000, default: 120 },
+      { key: 'scaleStep', label: 'Scale', type: 'number', group: 'Repeater', unit: '%', min: 1, max: 400, default: 100 },
+      { key: 'rotateX', label: 'X Rotation', type: 'number', group: 'Repeater', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'rotateY', label: 'Y Rotation', type: 'number', group: 'Repeater', unit: '°', min: -360, max: 360, default: 0 },
+      { key: 'rotateZ', label: 'Z Rotation', type: 'number', group: 'Repeater', unit: '°', min: -360, max: 360, default: 15 },
+      { key: 'depthFade', label: 'Depth Fade', type: 'checkbox', default: true },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Over Layer' }, { value: 1, label: 'On Transparent' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Timewarp: the layer retimed by a speed or a source frame, its in-between frames made by whole frames, frame mix, or pixel motion (GPU pyramidal Lucas-Kanade optical flow, both frames warped to the instant and blended), with motion blur along the flow. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'timewarp',
+    label: 'Timewarp',
+    gpuOnly: true,
+    params: [
+      { key: 'method', label: 'Method', type: 'enum', default: 2, options: [{ value: 0, label: 'Whole Frames' }, { value: 1, label: 'Frame Mix' }, { value: 2, label: 'Pixel Motion' }] },
+      { key: 'adjustBy', label: 'Adjust Time By', type: 'enum', default: 0, options: [{ value: 0, label: 'Speed' }, { value: 1, label: 'Source Frame' }] },
+      { key: 'speed', label: 'Speed', type: 'number', unit: '%', min: -1000, max: 1000, default: 50 },
+      { key: 'sourceFrame', label: 'Source Frame', type: 'number', min: -100000, max: 100000, default: 0 },
+      { key: 'vectorDetail', label: 'Vector Detail', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'motionBlur', label: 'Enable Motion Blur', type: 'checkbox', default: false },
+      { key: 'shutterAngle', label: 'Shutter Angle', type: 'number', unit: '°', min: 0, max: 720, default: 180 },
+      { key: 'shutterSamples', label: 'Shutter Samples', type: 'number', min: 2, max: 32, precision: 0, default: 8 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Pixel Motion Blur: the motion of every pixel (optical flow between the frames before and after) blurs the layer along its path, by a shutter angle. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'pixel-motion-blur',
+    label: 'Pixel Motion Blur',
+    gpuOnly: true,
+    params: [
+      { key: 'shutterAngle', label: 'Shutter Angle', type: 'number', unit: '°', min: 0, max: 720, default: 180 },
+      { key: 'shutterSamples', label: 'Shutter Samples', type: 'number', min: 2, max: 64, precision: 0, default: 12 },
+      { key: 'vectorDetail', label: 'Vector Detail', type: 'number', unit: '%', min: 0, max: 100, default: 50 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Time Displacement: each pixel shows the layer at a time offset read from a map layer's luminance (white = later, black = earlier, by the maximum), blended between five sampled instants, quantised by a time resolution. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'time-displacement',
+    label: 'Time Displacement',
+    gpuOnly: true,
+    params: [
+      { key: 'mapLayer', label: 'Time Displacement Layer', type: 'layer', noneLabel: 'None (this layer)', default: '' },
+      { key: 'maxDisplacement', label: 'Max Displacement Time (sec)', type: 'number', min: -60, max: 60, precision: 2, default: 1 },
+      { key: 'timeResolution', label: 'Time Resolution (fps)', type: 'number', min: 1, max: 120, default: 60 },
+      { key: 'smooth', label: 'Blend Between Frames', type: 'checkbox', default: true },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Time Difference: the difference between the layer and itself at a time offset, absolute or signed, with contrast and its alpha modes. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'time-difference',
+    label: 'Time Difference',
+    gpuOnly: true,
+    params: [
+      { key: 'timeOffset', label: 'Time Offset (sec)', type: 'number', min: -60, max: 60, precision: 3, default: -0.1 },
+      { key: 'contrast', label: 'Contrast', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'absolute', label: 'Absolute Difference', type: 'checkbox', default: true },
+      { key: 'alphaChannel', label: 'Alpha Channel', type: 'enum', default: 0, options: [{ value: 0, label: 'Original' }, { value: 1, label: 'Target' }, { value: 2, label: 'Blend' }, { value: 3, label: 'Max' }, { value: 4, label: 'Full On' }, { value: 5, label: 'Lightness of Result' }, { value: 6, label: 'Max of Result' }, { value: 7, label: 'Alpha Difference' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* CC Time Blend: the layer accumulated with its last four sampled frames (spaced by a frame step), each folded in by the transfer mode and the accumulation persistence. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'time-blend',
+    label: 'CC Time Blend',
+    gpuOnly: true,
+    params: [
+      { key: 'transfer', label: 'Transfer', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Darken' }, { value: 4, label: 'Difference' }, { value: 5, label: 'Blend' }] },
+      { key: 'accumulation', label: 'Accumulation', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'frameStep', label: 'Frame Step', type: 'number', min: 1, max: 30, precision: 0, default: 2 },
+    ],
+    css: () => '',
+  },
+  {
+    /* Light trails: the layer's highlights in its last four sampled frames (over a trail length) streaming behind it, coloured from head to tail and fading. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'light-trails',
+    label: 'Light Trails',
+    gpuOnly: true,
+    params: [
+      { key: 'threshold', label: 'Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'trailLength', label: 'Trail Length (frames)', type: 'number', min: 4, max: 120, precision: 0, default: 12 },
+      { key: 'decay', label: 'Decay', type: 'number', unit: '%', min: 0, max: 100, default: 60 },
+      { key: 'headColor', label: 'Head Color', type: 'color', default: '#fff3c4' },
+      { key: 'tailColor', label: 'Tail Color', type: 'color', default: '#ff3d7f' },
+      { key: 'intensity', label: 'Intensity', type: 'number', unit: '%', min: 0, max: 1000, default: 120 },
+      { key: 'mode', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'Add' }, { value: 1, label: 'Screen' }, { value: 2, label: 'Lighten' }, { value: 3, label: 'Light Only' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* The compression-glitch look: a held frame's pixels dragged by the live footage's block motion (optical flow quantised to macroblocks), bleeding where motion is strong. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'datamosh',
+    label: 'Datamosh',
+    gpuOnly: true,
+    params: [
+      { key: 'holdTime', label: 'Hold Frame Time (sec)', type: 'number', min: -100000, max: 100000, precision: 3, default: 0 },
+      { key: 'intensity', label: 'Mosh Intensity', type: 'number', unit: '%', min: 0, max: 1000, default: 100 },
+      { key: 'blockSize', label: 'Block Size', type: 'number', unit: 'px', min: 2, max: 128, default: 16 },
+      { key: 'bleed', label: 'Bleed', type: 'number', unit: '%', min: 0, max: 100, default: 15 },
+      { key: 'threshold', label: 'Motion Threshold', type: 'number', unit: '%', min: 0, max: 100, default: 5 },
+      { key: 'followCompTime', label: 'Animate With Time', type: 'checkbox', default: true },
+      { key: 'time', label: 'Time', type: 'number', unit: 's', min: -86400, max: 86400, precision: 3, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* A temporal denoiser: the frames before and after, motion-compensated by optical flow, averaged into this one where they agree (occlusions rejected by colour distance), then an edge-preserving spatial pass, with detail kept. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'temporal-denoise',
+    label: 'Denoiser',
+    gpuOnly: true,
+    params: [
+      { key: 'strength', label: 'Temporal Strength', type: 'number', unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'spatial', label: 'Spatial Strength', type: 'number', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'detail', label: 'Detail Preservation', type: 'number', unit: '%', min: 0, max: 100, default: 40 },
+    ],
+    css: () => '',
+  },
+  // deepfx:defs:end
 ];
 
 const BUILTIN_DEF = new Map(EFFECT_DEFS.map((d) => [d.type, d]));

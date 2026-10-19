@@ -77,10 +77,20 @@ describe('the TIME_DEPENDENT set', () => {
     // Leaks, Sparkle, Heat Haze and Fog. Each still has its `time` param and an
     // "Animate With Time" switch: off, the time is an ordinary keyframable
     // value and the layer caches again.
+    //
+    // Program X (2026-10-19, docs/PROGRAM_DEEP_EFFECTS.md) adds Energy Saber
+    // (its flicker and crawling distortion are the effect, as Saber's are) and
+    // the four living environments — Volumetric Clouds (wind), Starfield
+    // (twinkle), Ocean (waves) and Aurora (flowing curtains), whose motion is
+    // a physical rate, not a keyframe. Shine went the keyframed way instead
+    // (its shimmer Phase, as in Trapcode Shine), per the note above. Timewarp
+    // and Datamosh read the layer at instants measured from the clock (a speed
+    // times the layer time; frames since the hold), so they join as well.
     expect(members).toEqual([
       'timecode', 'strobe-light', 'particle-systems',
       'noise-hls-auto', 'caustics', 'shatter', 'wave-world', 'digital-glitch', 'vhs', 'light-leaks', 'hologram',
       'camera-shake', 'flicker', 'old-film', 'sparkle', 'heat-haze', 'fog', 'night-vision',
+      'energy-saber', 'volumetric-clouds', 'starfield', 'ocean', 'aurora', 'timewarp', 'datamosh',
     ]);
   });
 

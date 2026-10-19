@@ -6,6 +6,7 @@
 
 #include "effect_stats.hpp"
 #include "fx_distance.hpp"
+#include "fx_graph.hpp"
 #include "passes.hpp"
 
 #include <algorithm>
@@ -547,6 +548,7 @@ bool effect_ported(const api::RenderEffect& e, std::string& why) {
   if (t == "color-matrix" || t == "channel-lut") return true;  // E4: a grade in stack order (below)
   if (t == "stamp-field") return true;  // E4: Plexus / Write-on brush (below)
   if (t == "fx-overlay") return true;   // E4 round 2: a drawn Canvas2D effect's own raster (below)
+  if (t == "fx-graph") return true;     // Program X0: a multi-pass effect written as data (fx_graph.cpp)
   if (fx_table().count(t) != 0 || p_table().count(t) != 0 || field_table().count(t) != 0 || map_table().count(t) != 0 ||
       depth_table().count(t) != 0 || known_single(t)) {
     return true;
@@ -914,6 +916,41 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
       ctx.draw_into(f0, grade, true);
       curTex = texOf(f0);
       curName = f0;
+      continue;
+    }
+
+    if (type == "fx-graph") {
+      // Program X0 (docs/PROGRAM_DEEP_EFFECTS.md): a deep effect's passes, run
+      // by fx_graph.cpp. Anything it cannot run leaves the chain's input.
+      FxGraphIO io;
+      io.in = curTex;
+      io.inName = curName;
+      io.free = {f0, f1, f2};
+      io.mvp = mvp;
+      io.targetUv = targetUv;
+      io.fxBox = fxBox;
+      io.kx = kx;
+      io.ky = ky;
+      io.screenSpace = space == nullptr;
+      io.world = world;
+      io.mapLayer = [&](std::string_view id) { return poolHasMatte ? TexRef{} : maps.map_layer(ctx, byId, id, selfId); };
+      io.depth = [&]() -> TexRef {
+        if (space != nullptr || !(world.width > 0 && world.height > 0) || pw < 1 || ph < 1) return {};
+        const double sx = pw / world.width;
+        const double sy = ph / world.height;
+        const std::array<double, 9> c2w{sx, 0, -world.x * sx, 0, sy, -world.y * sy, 0, 0, 1};
+        return maps.scene_depth(ctx, static_cast<std::uint32_t>(pw), static_cast<std::uint32_t>(ph), c2w, selfId);
+      };
+      io.maskInto = [&](std::string_view key, std::string_view dest) { return maskInto(key, dest); };
+      std::string why;
+      if (const std::optional<FxGraphResult> r = run_fx_graph(ctx, fx, io, why)) {
+        curTex = r->tex;
+        curName = r->name;
+      } else {
+        ctx.diagnostics.push_back({"fx-graph", std::string(fx.text("fxType")) + ": " + why});
+        note.set(FxPath::skipped);
+        touch.keep();
+      }
       continue;
     }
 

@@ -11,7 +11,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { EngineBridge, EngineHostState, EngineRestartNotice } from '@motion/engine-api';
 // Test-only reach into the Electron main sources: the supervisor is plain Node.
@@ -96,6 +96,10 @@ export async function startNativeEngine(
     },
     { extraArgs: ['--no-gpu'], ...options },
   );
+  // PREMATION_ENGINE_LOG_FILE: the engine's structured log (stderr) appended to
+  // that file — to read GPU validation errors and warnings while debugging.
+  const logFile = process.env.PREMATION_ENGINE_LOG_FILE;
+  if (logFile) supervisor.on('log', (line: string) => appendFileSync(logFile, `${line}\n`));
   const bridge: EngineBridge = {
     request: async (bytes) => {
       try {

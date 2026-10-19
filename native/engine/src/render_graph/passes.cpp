@@ -2,6 +2,8 @@
 // (rendergraph/passes/{ClearPass,BackgroundPass,EffectPass,OverlayPass,index}.ts).
 #include "passes.hpp"
 
+#include "fx_graph.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -266,6 +268,8 @@ std::unique_ptr<RenderGraph> build_default_graph() {
   g->declare_target(std::string(kFxSilhouette), full("rgba16float"));
   g->declare_target(std::string(kFxScopeMask), full("rgba8unorm"));
   g->declare_target(std::string(kFxBlendInput), full("rgba16float"));
+  for (const std::string_view n : kFxMaskTargets) g->declare_target(std::string(n), full("rgba8unorm"));  // Program X: fx-graph masks
+  for (const std::string_view n : kFxTapTargets) g->declare_target(std::string(n), full("rgba16float"));  // Program X1: time taps
   for (const std::string_view n : kFxAux) g->declare_target(std::string(n), full(std::string(kDataTargetFormat)));
   g->declare_target(std::string(kBackdropHalf1), scaled(kBackdropDownscale));
   g->declare_target(std::string(kBackdropHalf2), scaled(kBackdropDownscale));

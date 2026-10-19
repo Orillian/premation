@@ -167,6 +167,8 @@ class Scene3D {
 
   [[nodiscard]] bool has_camera() const noexcept { return camera_.has_value(); }
   [[nodiscard]] const std::optional<motion::xf::Camera>& camera() const noexcept { return camera_; }
+  /// The comp's lights this frame, world placed (Program X: the 3D-aware deep effects read them).
+  [[nodiscard]] const std::vector<SceneLight>& scene_lights() const noexcept { return sceneLights_; }
   /// Anything the port does not produce for this frame (reported on the snapshot).
   [[nodiscard]] const std::vector<std::pair<std::string, std::string>>& unported() const noexcept { return unported_; }
 

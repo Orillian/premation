@@ -862,6 +862,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     } else {
       gpuErrorStreak_ = 0;
     }
+    note_fx_skips(st);
     return ok;
   }
 
@@ -926,12 +927,25 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     return true;
   }
 
+  /// Program X: a deep effect that could not run (a shader that does not
+  /// compile, an input that did not arrive) kept its layer's picture; say
+  /// which and why, once.
+  void note_fx_skips(const rg::FrameStats& st) {
+    for (const auto& d : st.diagnostics) {
+      if (d.code != "fx-graph") continue;
+      if (reported_.insert("fxg|" + d.detail.substr(0, 200)).second) {
+        PREMATION_LOG(warn, "fx_graph_skipped").kv("detail", d.detail);
+      }
+    }
+  }
+
   bool draw_still(BuiltFrame& frame, std::uint32_t width, std::uint32_t height, StillImage& out,
                   std::string& error) override {
     const api::RenderFrameFile& file = prepare(frame, width, height, true);
     rg::Frame px;
     rg::FrameStats st;
     if (!renderer_->render(file, &px, st, error)) return false;
+    note_fx_skips(st);
     if (px.width == 0 || px.height == 0 || px.rgba.size() != std::size_t{px.width} * px.height * 4) {
       error = "the still read back empty";
       return false;

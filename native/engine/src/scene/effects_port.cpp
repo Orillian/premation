@@ -64,7 +64,7 @@ bool follows_clock(std::string_view t) {
       // fx60:b7:end
       "timecode", "strobe-light", "particle-systems",
   };
-  return kClock.contains(t);
+  return kClock.contains(t) || deep_effect_follows_clock(t);
 }
 
 /// effectBake.ts GPU_BLENDED_OPACITY.
@@ -153,7 +153,8 @@ bool gpu_blends_effect_opacity(std::string_view t) {
       "gradient-ramp", "fractal-noise", "checkerboard", "grid", "fill", "four-color-gradient", "stroke",
       "beam", "beam-path", "lens-flare", "circle", "ellipse", "radio-waves", "light-rays", "light-sweep",
       "star-burst", "snowfall", "rainfall", "write-on", "light-burst", "particle-systems", "cc-bubbles"};
-  return k.contains(t) || is_native_effect(t);  // G1: the chain blends a native effect's opacity back
+  // G1: the chain blends a native effect's opacity back; Program X: so it does a deep effect's.
+  return k.contains(t) || is_native_effect(t) || spatial_x_handles(t);
 }
 
 /// The chain entries this port writes (extract_spatial_effects below).

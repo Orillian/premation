@@ -505,6 +505,21 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   }();
   /// Renderables synthesized this frame (reparented precomp children, prepared containers).
   std::vector<std::unique_ptr<std::vector<api::Renderable>>> owned_;
+  /// The list an effect chain runs in (set around run_effects_chain): what
+  /// map_layer needs to draw a precomp source (Program X1 time taps, layer
+  /// controls naming a precomp).
+  ListState* chainList_ = nullptr;
+  /// Sets chainList_ for one chain run.
+  struct ChainListScope {
+    ListState*& slot;
+    ListState* saved;
+    ChainListScope(ListState*& s, ListState& st) : slot(s), saved(s) { slot = &st; }
+    ~ChainListScope() { slot = saved; }
+    ChainListScope(const ChainListScope&) = delete;
+    ChainListScope& operator=(const ChainListScope&) = delete;
+    ChainListScope(ChainListScope&&) = delete;
+    ChainListScope& operator=(ChainListScope&&) = delete;
+  };
 
   TexRef tex_for(PassContext& ctx, const std::optional<std::string>& key) {
     if (!key) return {};
@@ -587,6 +602,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     const std::uint64_t fxKey = layerFxEnabled_ ? layer_fx_key(ctx, r, contentKey, opacity) : 0;
     if (const std::optional<ChainResult> kept = reuse_layer_fx(ctx, fxKey, dest)) return kept->tex;
     const std::array<std::string_view, 4> pool = {dest, kBlur1, kBlur2, kBlur3};
+    const ChainListScope chainList(chainList_, const_cast<ListState&>(st));  // NOLINT(cppcoreguidelines-pro-type-const-cast): read-mostly; the precomp draw flushes it
     const ChainResult res = run_effects_chain(ctx, r.effects, src, pool, st.byId, r.id, *this, nullptr, contentKey,
                                               drawn_box(ctx, r));
     TexRef out = res.tex;
@@ -773,8 +789,16 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     if (mapLayerId.empty() || mapLayerId == selfId) return {};
     const auto it = byId.find(mapLayerId);
     if (it == byId.end()) return {};
+    const api::Renderable* src = it->second;
+    api::Renderable prepared;
+    if (src->precomp) {
+      // A precomp source: its subtree drawn offscreen first (as a matte source's
+      // is), without its own mask — that step borrows the chain's blur targets.
+      if (chainList_ == nullptr || !prepare_isolated_precomp(ctx, *src, *chainList_, chainList_->depth + 1, false, prepared, false)) return {};
+      src = &prepared;
+    }
     Commands cmds;
-    renderable_cmds(ctx, *it->second, 1, cmds);
+    renderable_cmds(ctx, *src, 1, cmds);
     if (cmds.empty()) return {};
     ctx.draw_into(kMatteTarget, cmds, true);
     return ctx.target(kMatteTarget)->tex();
@@ -820,7 +844,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
 
   /// prepareIsolatedPrecomp: render the subtree offscreen and return the container as a textured renderable.
   bool prepare_isolated_precomp(PassContext& ctx, const api::Renderable& r, ListState& st, std::size_t slot,
-                                bool inlineFallback, api::Renderable& prepared) {
+                                bool inlineFallback, api::Renderable& prepared, bool applyMask = true) {
     if (!r.precomp) return false;
     const auto& pre = *r.precomp;
     const bool flat = pre.flat_width.has_value();
@@ -873,7 +897,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     if (pt == nullptr) return false;
     TexRef tex = pt->tex();
 
-    if (r.mask_texture_key) {
+    if (r.mask_texture_key && applyMask) {
       const TexRef maskRes = ctx.texture(*r.mask_texture_key);
       if (maskRes) {
         Commands maskCmds;
@@ -1122,6 +1146,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       TexRef finalTex = ctx.target(kLayerTarget)->tex();
       if (!r.effects.empty()) {
         const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
+        const ChainListScope chainList(chainList_, st);
         finalTex = run_effects_chain(ctx, r.effects, finalTex, pool, st.byId, r.id, *this).tex;
       }
       Commands apply;
@@ -1307,6 +1332,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       return;
     }
     const std::array<std::string_view, 4> pool = {kLayerTarget, kBlur1, kBlur2, kBlur3};
+    const ChainListScope chainList(chainList_, st);
     const ChainResult res = run_effects_chain(ctx, r.effects, layerTex, pool, st.byId, r.id, *this, nullptr, contentKey,
                                               drawn_box(ctx, r));
     keep_layer_fx(ctx, r.id, fxKey, res.tex, res.name, res.covered, &snap);

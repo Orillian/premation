@@ -43,6 +43,7 @@
 #include "corner_pin.hpp"
 #include "svg_layer.hpp"
 #include "temporal_ghosts.hpp"
+#include "deep_fx_scene.hpp"
 #include "sourcetext.hpp"
 #include "text_port.hpp"
 #include "text_query.hpp"
@@ -324,6 +325,7 @@ class Walk final : public Scene3DHost {
   /// `buildPrecompContainer(group, nested?.layers, nested?.scene3d)`.
   RLayer precomp_container(const doc::Node& group, std::optional<NestedComp>* nested = nullptr);
   void emit_stub(const doc::Node& n);
+  void emit_time_taps(const doc::Node& n, const RLayer& now);
   void build_node(const doc::Node& n);
   void unported(RLayer& l, const doc::Node& n, std::string what);
   /// T4: a `font` layer error when none of the text's families is registered.
@@ -652,7 +654,33 @@ void Walk::emit(RLayer l, const doc::Node& n) {
     return;
   }
   precompInner_[pc->id].push_back(std::move(l));
-  if (precompEmitted_.insert(pc->id).second) emit(precomp_container(*pc), *pc);
+  if (precompEmitted_.insert(pc->id).second) {
+    RLayer c = precomp_container(*pc);
+    emit_time_taps(*pc, c);
+    emit(std::move(c), *pc);
+  }
+}
+
+// Program X1: time taps — the layer's content at other times for its temporal
+// deep effects, placed where it is now and hidden (deep_fx_scene.hpp). Each is
+// the layer built alone (with what it holds: a precomp's subtree) at t + dt.
+void Walk::emit_time_taps(const doc::Node& n, const RLayer& now) {
+  if (!c_.timeTaps) return;
+  for (const TimeTap& tap : deep_time_taps(now)) {
+    BuildContext tc = c_;
+    tc.timeTaps = false;
+    tc.isolateLayer = n.id;
+    tc.isolateAlso.clear();
+    tc.layerView.reset();
+    tc.hiddenLayers.clear();
+    tc.focusLayers.clear();
+    Snapshot at = build_snapshot(tc, comp_, std::max(0.0, t_ + tap.dt), std::nullopt);
+    for (RLayer& built : at.layers) {
+      if (built.id != n.id) continue;
+      emit(time_tap_layer(std::move(built), now, tap.id), n);
+      break;
+    }
+  }
 }
 
 void Walk::emit_stub(const doc::Node& n) {
@@ -754,6 +782,11 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
       e.set("params", std::move(p));
     }
   }
+  // Program X batch 4: the 3D-aware deep effects see the frame's camera (or
+  // AE's default one) and the comp's lights (deep_fx_scene.hpp).
+  inject_deep_scene(resolved, three_ ? three_->camera() : std::optional<motion::xf::Camera>{}, three_ ? &three_->scene_lights() : nullptr, comp_.width,
+                    comp_.height);
+  inject_deep_fps(resolved, fps_);
   return resolved;
 }
 
@@ -763,7 +796,8 @@ RLayer Walk::precomp_container(const doc::Node& group, std::optional<NestedComp>
   RLayer l;
   l.id = group.id;
   l.kind = LayerKind::shape;
-  l.effects = effects_of(group, gv, std::nullopt, &l);
+  // The container's layer time (as a layer's): its time-driven effects follow it too.
+  l.effects = effects_of(group, gv, remap(group.id, t_, false), &l);
   // A comp INSTANCE has an intrinsic frame: the referenced comp's size, at the
   // instance's own world transform, cropped to it (comp_instance.cpp).
   const std::optional<std::string> ref = doc::read_comp_ref(group);
@@ -1156,7 +1190,9 @@ void Walk::build_node(const doc::Node& n) {
         if (nested) {
           for (LayerError& e : nested->errors) errors_.push_back(std::move(e));
         }
-        emit(precomp_container(n, &nested), n);
+        RLayer c = precomp_container(n, &nested);
+        emit_time_taps(n, c);
+        emit(std::move(c), n);
       }
     }
     return;
@@ -1913,6 +1949,7 @@ void Walk::build_node(const doc::Node& n) {
       else emit(std::move(g), n);
     }
   }
+  emit_time_taps(n, l);
   // Extrusion / primitive mesh carriers, then the front quad (inset, mesh-drawn, planar DOF).
   RLayer notes;
   notes.id = n.id;

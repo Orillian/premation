@@ -74,6 +74,9 @@ struct BuildContext {
   /// The project folder relative media paths resolve against (the texture
   /// feed's mediaBase); empty = none (a relative path is reported).
   std::filesystem::path mediaBase{};
+  /// Program X1: build the time taps temporal deep effects read (off inside a
+  /// tap's own build, so taps never nest).
+  bool timeTaps = true;
 };
 
 /// The comp-level inputs the editor's viewport hands buildSnapshot for a

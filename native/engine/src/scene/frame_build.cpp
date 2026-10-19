@@ -17,6 +17,7 @@
 #include "bake_chain.hpp"
 #include "corner_pin.hpp"
 #include "effects_port.hpp"
+#include "effects_spatial.hpp"
 #include "stamp_field.hpp"
 #include "lut_port.hpp"
 #include "jsmath.hpp"
@@ -684,6 +685,34 @@ void Flattener::feed(const RLayer& l) {
       r.layerId = l.id;
       textures_.push_back(std::move(r));
     }
+  }
+  // Program X: the deep effects' mask rasters and float tables (effects_spatial_x.cpp),
+  // whichever route the layer's stack takes.
+  for (DeepFxTexture& d : deep_effect_textures(l)) {
+    if (std::ranges::any_of(textures_, [&](const TextureRequest& t) { return t.key == d.key; })) continue;
+    TextureRequest r;
+    r.key = std::move(d.key);
+    r.layerId = l.id;
+    if (d.mask.is_object()) {
+      r.kind = TexKind::mask;
+      r.spec = layer_json(l, "mask");
+      r.spec.set("mask", std::move(d.mask));
+      r.spec.erase("effects");
+      r.spec.erase("fillOpacity");
+    } else {
+      // One float32 per RGBA8 texel, little-endian, 1024 a row (fxx-prelude fetchF).
+      constexpr std::uint32_t kRow = 1024;
+      const auto n = static_cast<std::uint32_t>(d.floats.size());
+      r.kind = TexKind::pixels;
+      r.pxWidth = kRow;
+      r.pxHeight = std::max<std::uint32_t>(1, (n + kRow - 1) / kRow);
+      r.pixels.assign(static_cast<std::size_t>(r.pxWidth) * r.pxHeight * 4, 0);
+      for (std::size_t i = 0; i < d.floats.size(); ++i) {
+        const auto bits = std::bit_cast<std::uint32_t>(d.floats[i]);
+        for (std::size_t b = 0; b < 4; ++b) r.pixels[i * 4 + b] = static_cast<std::uint8_t>((bits >> (8U * b)) & 0xFFU);
+      }
+    }
+    textures_.push_back(std::move(r));
   }
   append_lut_textures(l, textures_);  // lut:<id> / cubelut:<id> (lut_port.cpp)
 }
