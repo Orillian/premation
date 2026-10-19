@@ -474,6 +474,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+        # bash on every runner: the Windows default is pwsh, which does not read the `if`.
+        shell: bash
         run: |
           if [ "${{ matrix.signing }}" = "none" ]; then
             echo "Building ${{ matrix.name }} unsigned — this platform has no signing step."
