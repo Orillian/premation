@@ -304,7 +304,7 @@ jobs:
           - os: ubuntu-latest
             name: Linux
             signing: none
-            args: --linux --x64    # AppImage → Premation-Linux-x64.AppImage + latest-linux.yml
+            args: --linux --x64    # AppImage → Premation-Linux-x86_64.AppImage + latest-linux.yml
 
     steps:
       - uses: actions/checkout@v4
@@ -660,7 +660,7 @@ jobs:
               echo ""
               echo "Add this to the release notes before publishing:"
               echo ""
-              echo "> Linux: download the AppImage, mark it executable (\`chmod +x Premation-Linux-x64.AppImage\`"
+              echo "> Linux: download the AppImage, mark it executable (\`chmod +x Premation-Linux-x86_64.AppImage\`"
               echo "> or Properties ▸ Permissions) and run it. It needs FUSE 2 (\`libfuse2\` on Debian/Ubuntu)"
               echo "> and a Vulkan-capable GPU driver. Updates install in place."
             } >> "$GITHUB_STEP_SUMMARY"

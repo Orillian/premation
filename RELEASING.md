@@ -27,7 +27,7 @@ Per platform:
 | --- | --- | --- |
 | Windows | `npm run dist` (on Windows) | `Premation-Setup-Windows.exe` + `latest.yml` |
 | macOS | `npm run dist` (on macOS) | `Premation-macOS-arm64.dmg`, `Premation-macOS-x64.dmg` + `latest-mac.yml` |
-| Linux | `npm run dist` (on Linux) | `Premation-Linux-x64.AppImage` + `latest-linux.yml` |
+| Linux | `npm run dist` (on Linux) | `Premation-Linux-x86_64.AppImage` + `latest-linux.yml` |
 
 **The C++ engine is part of every package.** `scripts/stageEngine.cjs` (the
 electron-builder `beforePack` hook) copies it from the preset build into
