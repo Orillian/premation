@@ -48,6 +48,9 @@ export interface Key {
 /** Property path → keyframes, at least two per animated property. */
 export type Keys = Record<string, Key[]>;
 
+/** A static prop's value: a scalar, or a stroke structure (strokeDash, strokeTaper, strokeWave — vocabulary.ts STRUCT_FIELDS). */
+export type PropValue = number | string | boolean | readonly number[] | Readonly<Record<string, number | string>>;
+
 export interface GridSystem {
   columns: number;
   /** px between columns. */
@@ -237,7 +240,7 @@ export interface LayerSpec {
    * x, y, width, height, rotation, scale, scaleX, scaleY, opacity, z, … — see
    * the vocabulary card. Colours may be palette references.
    */
-  props?: Record<string, number | string | boolean>;
+  props?: Record<string, PropValue>;
   /** Track matte from another layer in the same beat. */
   matte?: { mode: 'alpha' | 'luma' | 'alpha-inv' | 'luma-inv'; source: string };
 

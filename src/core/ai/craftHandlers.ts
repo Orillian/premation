@@ -139,9 +139,10 @@ const setMotionBlur: AiTool['handler'] = async (input, ctx) => {
       ? ' (shutterAngle/shutterPhase/samples are COMPOSITION settings and were ignored here — ' +
         'call set_motion_blur again without nodeId to set them)'
       : '';
-    const applied = await ctx.scene.setProp(i.nodeId, 'motionBlur', i.enabled);
-    if (!applied) return fail(`Could not set motion blur on '${i.nodeId}'.`);
-    refreshAfterLegacy(ctx);
+    // The layer's Motion Blur switch, the write update_layer motionBlur makes:
+    // a static `motionBlur` prop write is one the catalog does not address,
+    // so this call failed on every layer (In Motion film, 2026-10-15).
+    await ctx.engine.apply([{ type: 'setLayerSwitches', layers: [i.nodeId], patch: { motionBlur: i.enabled } } as Command]);
     const comp = await ctx.comp.motionBlur();
     const dormant = !comp.enabled
       ? ' NOTE: composition motion blur is OFF, so this layer switch has no visible effect until ' +
@@ -262,8 +263,8 @@ const setTimeRemap: AiTool['handler'] = async (input, ctx) => {
  */
 export function clampEffectParam(
   def: EffectParamDef | undefined,
-  value: number | string | boolean,
-): { value: number | string | boolean; note: string | null } {
+  value: number | string | boolean | readonly unknown[],
+): { value: number | string | boolean | readonly unknown[]; note: string | null } {
   if (typeof value !== 'number' || !def || def.type !== 'number') return { value, note: null };
   const lo = def.min ?? -Infinity;
   const hi = def.max ?? Infinity;
@@ -277,7 +278,7 @@ export function clampEffectParam(
 }
 
 const updateEffectParamHandler: AiTool['handler'] = async (input, ctx) => {
-  const i = input as { nodeId: string; effectId: string; key: string; value: number | string | boolean };
+  const i = input as { nodeId: string; effectId: string; key: string; value: number | string | boolean | readonly unknown[] };
   if (!await ctx.scene.has(i.nodeId)) return fail((await unknownNode(ctx, i.nodeId)));
   const effects = await ctx.scene.listEffects(i.nodeId);
   const target = effects.find((e) => e.id === i.effectId);
@@ -289,7 +290,7 @@ const updateEffectParamHandler: AiTool['handler'] = async (input, ctx) => {
   }
   const { value, note } = clampEffectParam(effectDefFor(target.type)?.params.find((p) => p.key === i.key), i.value);
   await ctx.scene.updateEffectParam(i.nodeId, i.effectId, i.key, value);
-  return ok(`Set ${target.type}.${i.key} = ${String(value)} on '${i.nodeId}'.${note ? ` NOTE: ${note}.` : ''}`, note ? { clamped: note } : undefined);
+  return ok(`Set ${target.type}.${i.key} = ${Array.isArray(value) ? JSON.stringify(value) : String(value)} on '${i.nodeId}'.${note ? ` NOTE: ${note}.` : ''}`, note ? { clamped: note } : undefined);
 };
 
 // ── set_light ─────────────────────────────────────────────────────────

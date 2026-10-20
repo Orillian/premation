@@ -168,7 +168,12 @@ export const updateEffectParamDef: AiToolDef = {
       nodeId: { type: 'string' },
       effectId: { type: 'string', description: 'Returned by add_effect.' },
       key: { type: 'string', description: 'Parameter key, e.g. "softness", "angle", "color".' },
-      value: { description: 'Number for numeric params, hex string for colours, boolean for checkboxes.' },
+      value: {
+        description:
+          'Number for numeric params, hex string for colours, boolean for checkboxes, a layer id for a layer ' +
+          'picker, a mask id for a mask path, and for a curve (Curves, Lumetri) its points [[x, y], …] in 0..255 ' +
+          'from [0, 0] to [255, 255].',
+      },
     },
   },
 };

@@ -77,7 +77,7 @@ export function effectParamCommand(
   nodeId: string,
   effectId: string,
   key: string,
-  value: number | string | boolean,
+  value: number | string | boolean | readonly unknown[],
   seconds: number,
 ): Command[] | null {
   // The effect's type from the mirror (the `effects/<id>` group's match name).
@@ -97,6 +97,16 @@ export function effectParamCommand(
   if (def?.type === 'layer') {
     return typeof value === 'string' ? [{ type: 'setProperty', prop: ref, value: { kind: 'layer', value } } as Command] : null;
   }
+  // Point lists (Curves, Lumetri's curves, a mesh / liquify field) and a mask
+  // picker's mask id: static, as the Effect panel writes them (effectEdits.ts
+  // paramValue).
+  if (def?.type === 'curve' || def?.type === 'data') {
+    return Array.isArray(value) ? [{ type: 'setProperty', prop: ref, value: { kind: 'json', value: JSON.stringify(value) } } as Command] : null;
+  }
+  if (def?.type === 'maskPath') {
+    return typeof value === 'string' ? [{ type: 'setProperty', prop: ref, value: { kind: 'string', value } } as Command] : null;
+  }
+  if (typeof value === 'object') return null;
   if (typeof value === 'number') {
     const member = `effect.${effectId}.${key}`;
     const r = propRefForTrack(nodeId, member);

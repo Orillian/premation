@@ -101,7 +101,8 @@ export interface McpEditorOps {
   createComposition(o: { name: string; width: number; height: number; fps: number; durationSeconds: number; background: string }): Promise<{ id: string } | { error: string }>;
   setActiveComposition(compId: string): Promise<{ ok: true; name: string } | { error: string }>;
   save(): Promise<{ ok: true; message: string } | { error: string }>;
-  importMedia(paths: readonly string[], placeOnTimeline: boolean): Promise<{ ok: true; message: string } | { error: string }>;
+  /** `atSec`: where each placed clip starts, comp seconds. */
+  importMedia(paths: readonly string[], placeOnTimeline: boolean, atSec?: number): Promise<{ ok: true; message: string } | { error: string }>;
   /**
    * A built-in sound effect as an audio layer starting at `atSec`; its layer id.
    * `inGroup`: the host holds an open `begin_edit` gesture the insert must join
@@ -473,7 +474,7 @@ export class McpCallHost {
     const ok = await this.approved({ kind: 'import', title: `Import ${paths.length} file${paths.length === 1 ? '' : 's'} into this project`, detail: paths });
     if (!ok) return text('The user did not allow this import. Do not retry it unless they ask; work with the media already in the project (list_assets).', true);
     return this.editorOp(async (ed) => {
-      const r = await ed.importMedia(paths, a.placeOnTimeline !== false);
+      const r = await ed.importMedia(paths, a.placeOnTimeline !== false, Math.max(0, num(a.atSec, 0)));
       return 'error' in r ? text(r.error, true) : text(r.message);
     });
   }
@@ -629,6 +630,16 @@ export class McpCallHost {
     }
     if (applied === 0) {
       return { result: text(`Nothing could be built; every compiled call was rejected.\n${rejected.slice(0, 20).join('\n')}`, true), ok: false };
+    }
+    // A call that adds beats to an earlier build (no front globals of its own)
+    // creates them on top — over the earlier call's letterbox, grain and
+    // captions. Front globals stay in front (The Last Blade, In Motion).
+    if (!coerced.value.globals.some((g) => g.stack === 'front')) {
+      const fronts = (await ctx.scene.all()).filter((n) => n.parent === null && n.name === FRONT_GLOBALS_ROOT_NAME).map((n) => n.id);
+      if (fronts.length) {
+        const r = await reg.execute('reorder_layer', { nodeIds: fronts, position: 'top' }, ctx);
+        if (!r.ok) rejected.push(`- reorder_layer: ${r.content.slice(0, 240)}`);
+      }
     }
     const lines = [
       `Built "${coerced.value.title || 'scene'}": ${coerced.value.beats.length} beats, ${applied} of ${compiled.calls.length} operations applied, in ${comp.width}×${comp.height} at ${comp.fps} fps, ${comp.durationSeconds}s.`,

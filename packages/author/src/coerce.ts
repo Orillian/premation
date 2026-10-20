@@ -10,6 +10,7 @@
  * the critique and the revise call can put it back on purpose.
  */
 
+import { validate } from '@motion/ai-tools';
 import type { CatalogEffect, CatalogEffectParam } from '@motion/engine-api';
 import {
   ANIMATABLE,
@@ -20,6 +21,7 @@ import {
   PRIMITIVE_ONLY,
   PROP_ALIASES,
   STATIC_FIELDS,
+  STRUCT_FIELDS,
   TEXT_ANIMATOR_FIELDS,
   THREE_D_ONLY,
   authorEffect,
@@ -43,6 +45,7 @@ import {
   type PaintSpec,
   type PathOpSpec,
   type PrecomposeSpec,
+  type PropValue,
   type Repair,
   type RepeaterSpec,
   type SceneScript,
@@ -262,11 +265,18 @@ function staticProps(
   kind: LayerKind,
   path: string,
   r: Repairs,
-): Record<string, number | string | boolean> | undefined {
+): Record<string, PropValue> | undefined {
   if (!isObj(raw)) return undefined;
-  const out: Record<string, number | string | boolean> = {};
+  const out: Record<string, PropValue> = {};
   for (const [k0, v] of Object.entries(raw)) {
     const k = STATIC_FIELDS[k0] ? k0 : PROP_FIELD_ALIASES[k0] ?? PROP_ALIASES[k0] ?? k0;
+    const struct = STRUCT_FIELDS[k];
+    if (struct) {
+      const ok = validate(struct, v);
+      if (ok.ok) out[k] = v as PropValue;
+      else r.add(`${path}.${k}`, `'${k}' is not a valid ${k} (${ok.errors.join('; ')}) — dropped`);
+      continue;
+    }
     const f = STATIC_FIELDS[k];
     if (!f) {
       r.add(`${path}.${k0}`, `'${k0}' is not a static property the engine takes — dropped`);

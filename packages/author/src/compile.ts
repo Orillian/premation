@@ -26,7 +26,7 @@
  * the beat is a descendant of its root. Replaying it is its range.
  */
 
-import { CREATE_FIELDS } from './vocabulary';
+import { COLOUR_FIELDS, CREATE_FIELDS } from './vocabulary';
 import type {
   Beat,
   CallRange,
@@ -124,7 +124,7 @@ function createCall(e: Emitter, l: LayerSpec, props: Record<string, unknown>, of
       const args: Record<string, unknown> = { id: l.id, kind: l.kind, name: l.name };
       if (l.kind === 'shape' && l.shape) args.shape = l.shape;
       if (l.kind === 'text' && l.text !== undefined) args.text = l.text;
-      for (const [k, v] of Object.entries(props)) if (CREATE_FIELDS.has(k)) args[k] = k === 'fill' ? e.colour(v) : v;
+      for (const [k, v] of Object.entries(props)) if (CREATE_FIELDS.has(k)) args[k] = COLOUR_FIELDS.has(k) ? e.colour(v) : v;
       e.push('create_layer', args);
     }
   }
@@ -151,7 +151,15 @@ function staticProps(script: SceneScript, l: LayerSpec): Record<string, unknown>
     if (ts.tracking !== undefined) out.letterSpacing = ts.tracking;
     if (ts.leading !== undefined) out.lineHeight = ts.leading;
   }
-  return { ...out, ...(l.props ?? {}) };
+  const own = { ...(l.props ?? {}) };
+  // A text layer's `width` is its paragraph box (the card's "width for
+  // wrapping"): `create_layer` reads `width` as a layer size a text layer
+  // ignores, so the text never wrapped and `align` had no box to align in.
+  if (l.kind === 'text' && typeof own.width === 'number' && own.boxWidth === undefined) {
+    own.boxWidth = own.width;
+    delete own.width;
+  }
+  return { ...out, ...own };
 }
 
 /** Keyframe items for one property track. */
@@ -418,8 +426,14 @@ function emitBeat(e: Emitter, script: SceneScript, b: Beat, i: number): void {
   emitLayers(e, script, b.layers, root, b.startSec, span);
   // Pre-compose groups, once their layers are built: the composition layer
   // then takes its own static props and keys (beat seconds, like a layer's).
+  const precompBars: Array<Record<string, unknown>> = [];
   for (const pc of b.precompose ?? []) {
     e.push('create_precomp', { id: pc.id, nodeIds: [...pc.layers], name: pc.name });
+    // The composition layer belongs to the beat: under its root (a re-run's
+    // wipe takes it with the beat) and on the beat's bar — create_precomp
+    // gives it the whole comp, so it covered every other beat (The Last Blade).
+    e.push('reparent_layer', { nodeId: pc.id, parentId: root });
+    precompBars.push({ nodeId: pc.id, inSec: round(b.startSec), outSec: round(b.endSec) });
     if (pc.props) {
       const { scale, ...rest } = pc.props;
       e.push('update_layer', { nodeId: pc.id, ...rest, ...(scale !== undefined ? { scaleX: scale, scaleY: scale } : {}) });
@@ -430,6 +444,7 @@ function emitBeat(e: Emitter, script: SceneScript, b: Beat, i: number): void {
       for (let k = 0; k < items.length; k += KEY_BATCH) e.push('set_keyframes', { keyframes: items.slice(k, k + KEY_BATCH) });
     }
   }
+  if (precompBars.length) flushTiming(e, precompBars);
   // The root's own bar, appended to the beat's last timing call when it has room.
   const last = e.calls[e.calls.length - 1];
   const item = { nodeId: root, inSec: round(b.startSec), outSec: round(b.endSec) };

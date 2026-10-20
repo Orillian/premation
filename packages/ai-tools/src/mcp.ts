@@ -350,7 +350,8 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
       required: ['paths'],
       properties: {
         paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 20 },
-        placeOnTimeline: { type: 'boolean', default: true, description: 'Also add each as a layer at the playhead.' },
+        placeOnTimeline: { type: 'boolean', default: true, description: 'Also add each as a layer of the active composition.' },
+        atSec: { type: 'number', minimum: 0, default: 0, description: 'Where each placed layer starts, composition seconds (default 0).' },
       },
     },
   },

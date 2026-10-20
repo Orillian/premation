@@ -38,7 +38,7 @@ import {
 import { PRODUCT_TECHNIQUES } from '@motion/product-motion';
 import { runCaster, type CreativeBrief } from '@motion/caster';
 import { buildCustomStyle, setRuntimeStyle, type EasingPersonality } from '../design';
-import { formatFindings, verifyScene } from '../verify';
+import { engineBounds, formatFindings, verifyScene } from '../verify';
 import { formatStructureWarnings, sceneStructureWarnings } from '../structureAdvisors';
 import { renderCritiqueEvidence } from '../filmstrip';
 import { hueFamily, lintVariety, type DepthLayer, type DepthScene, type PieceFingerprint, type VarietyFinding } from '@motion/author';
@@ -439,7 +439,7 @@ export interface ReviewOptions {
 
 export async function reviewDesign(ctx: ToolContext, opts: ReviewOptions = {}): Promise<{ text: string; images: { mimeType: string; data: string }[] }> {
   const comp = await ctx.comp.get();
-  const findings = formatFindings(await verifyScene(ctx));
+  const findings = formatFindings(await verifyScene(ctx, { bounds: engineBounds }));
   const structure = formatStructureWarnings(await sceneStructureWarnings(ctx));
   const variety = formatVariety(lintVariety(await liveDepthScene(ctx), {
     ...(opts.brief !== undefined ? { brief: opts.brief } : {}),

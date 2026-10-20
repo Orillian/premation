@@ -90,15 +90,18 @@ export const mcpEditorOps: McpEditorOps = {
     }
   },
 
-  async importMedia(paths, placeOnTimeline) {
+  async importMedia(paths, placeOnTimeline, atSec = 0) {
     try {
       const r = await importPathsEdit(paths);
       const lines: string[] = [];
       if (r.imported.length) {
         lines.push(`Imported ${r.imported.length}: ${r.imported.map((a) => `${a.name} (${a.id})`).join(', ')}.`);
         if (placeOnTimeline) {
-          const layers = await insertMediaEdit(r.imported, { atPlayhead: true });
-          if (layers?.length) lines.push(`Placed on the active composition as layers ${layers.join(', ')}.`);
+          // At the time the call names (0 by default), not wherever the
+          // user's playhead happens to be (The Last Blade: every import
+          // landed mid-piece and needed set_layer_timing).
+          const layers = await insertMediaEdit(r.imported, { startSec: atSec });
+          if (layers?.length) lines.push(`Placed on the active composition as layers ${layers.join(', ')}, starting at ${atSec}s.`);
         }
       }
       for (const f of r.failed) lines.push(`Could not import ${f}${r.reasons?.[f] ? `: ${r.reasons[f]}` : ''}.`);

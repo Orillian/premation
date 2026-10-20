@@ -29,6 +29,7 @@
  */
 
 import type { ToolContext } from '@motion/ai-tools';
+import { renderedBoxes } from './renderedBounds';
 import { mapSeq } from './asyncList';
 
 export type VerdictKind =
@@ -183,7 +184,23 @@ async function boxAt(
  * Pure over the ToolContext — no mutation, no rendering, no network. Safe to
  * call as often as you like.
  */
-export async function verifyScene(ctx: ToolContext): Promise<Finding[]> {
+/** A comp-space box per layer at a time — the rendered one, when the caller can ask the engine. */
+export type BoundsAt = (nodeIds: readonly string[], t: number) => Promise<ReadonlyMap<string, { x: number; y: number; width: number; height: number }>>;
+
+/** The app engine's rendered comp-space boxes at `t` (through parents and the 3D camera). */
+export const engineBounds: BoundsAt = (nodeIds, t) => renderedBoxes(nodeIds, t);
+
+export interface VerifyOptions {
+  /**
+   * The engine's rendered bounds (`getLayerBounds`, comp space): through the
+   * parent chain and a 3D camera. Without it `offscreen` reads the layer's own
+   * x / y / size, which calls every camera-framed world layer and every child
+   * of a moved parent "outside the frame" (Operand film, 2026-10-20).
+   */
+  bounds?: BoundsAt;
+}
+
+export async function verifyScene(ctx: ToolContext, opts: VerifyOptions = {}): Promise<Finding[]> {
   const findings: Finding[] = [];
   const comp = await ctx.comp.get();
   const layers = (await ctx.scene.all()).filter((n) => n.visible !== false && n.kind !== 'camera');
@@ -216,18 +233,33 @@ export async function verifyScene(ctx: ToolContext): Promise<Finding[]> {
   // is correct and common (light sweeps, slide-ins), so a single static bounds
   // test is not a check — it is a bug generator. Only a layer that is outside
   // the canvas at every sampled time is actually invisible.
-  for (const node of layers) {
-    if (!node.width || !node.height) continue; // nulls, cameras, sizeless layers
+  const sized = layers.filter((n) => n.width && n.height); // not nulls, cameras, sizeless layers
+  const timesOf = new Map<string, number[]>();
+  for (const node of sized) timesOf.set(node.id, await sampleTimes(ctx, node.id, comp.durationSeconds));
+  // Rendered boxes, one engine query per sample time for every layer sampled there.
+  const rendered = new Map<string, Array<{ x: number; y: number; width: number; height: number }>>();
+  if (opts.bounds) {
+    const byTime = new Map<number, string[]>();
+    for (const [id, ts] of timesOf) for (const t of ts) byTime.set(t, [...(byTime.get(t) ?? []), id]);
+    for (const [t, ids] of byTime) {
+      const boxes = await opts.bounds(ids, t).catch(() => new Map());
+      for (const [id, b] of boxes) rendered.set(id, [...(rendered.get(id) ?? []), b]);
+    }
+  }
+  const inFrame = (left: number, top: number, w: number, h: number): boolean =>
+    left + w > OFFSCREEN_SLACK && left < comp.width - OFFSCREEN_SLACK && top + h > OFFSCREEN_SLACK && top < comp.height - OFFSCREEN_SLACK;
+  for (const node of sized) {
     let everOnscreen = false;
-    for (const t of await sampleTimes(ctx, node.id, comp.durationSeconds)) {
-      if (everOnscreen) break;
-      const b = await boxAt(ctx, node, t);
-      const onscreen =
-        b.x + b.w / 2 > OFFSCREEN_SLACK &&
-        b.x - b.w / 2 < comp.width - OFFSCREEN_SLACK &&
-        b.y + b.h / 2 > OFFSCREEN_SLACK &&
-        b.y - b.h / 2 < comp.height - OFFSCREEN_SLACK;
-      if (onscreen) everOnscreen = true;
+    const seen = rendered.get(node.id);
+    if (seen?.length) {
+      // The engine answered: judge what it renders.
+      everOnscreen = seen.some((b) => inFrame(b.x, b.y, b.width, b.height));
+    } else {
+      for (const t of timesOf.get(node.id) ?? []) {
+        if (everOnscreen) break;
+        const b = await boxAt(ctx, node, t);
+        if (inFrame(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h)) everOnscreen = true;
+      }
     }
     if (!everOnscreen) {
       findings.push({

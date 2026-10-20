@@ -442,6 +442,8 @@ export async function insertSvgMarkupLayer(session: AiEngineSession, markup: str
   const made = buildSvgLayerFragment(markup, name, {
     compWidth: settings?.width ?? 1920,
     compHeight: settings?.height ?? 1080,
+    // The author wrote the size into the markup: that is the layer's size.
+    exactSize: true,
     ...(at.x !== undefined ? { x: at.x } : {}),
     ...(at.y !== undefined ? { y: at.y } : {}),
   });

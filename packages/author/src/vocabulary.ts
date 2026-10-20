@@ -65,6 +65,16 @@ export const STATIC_FIELDS: Readonly<Record<string, FieldSpec>> = {
   scale: { type: 'number', via: 'update' },
 };
 
+/**
+ * Static fields whose value is a structure, passed whole and checked against
+ * the `update_layer` schema: the stroke's dash list and its Taper and Wave
+ * groups (AE's shape Stroke). Without them a script could not ask for a
+ * dotted line or a brush-tapered one, though the engine draws both.
+ */
+export const STRUCT_FIELDS: Readonly<Record<string, JsonSchema>> = Object.fromEntries(
+  ['strokeDash', 'strokeTaper', 'strokeWave'].map((k) => [k, (updateLayerDef.inputSchema.properties as Record<string, JsonSchema>)[k]!]),
+);
+
 /** Fields `create_layer` takes directly (the rest go on one `update_layer`). */
 export const CREATE_FIELDS: ReadonlySet<string> = new Set(
   Object.entries(fieldsOf(createLayerDef.inputSchema, 'create')).map(([k]) => k),
@@ -187,14 +197,19 @@ export const PATH_OPS: readonly string[] = ['zigzag', 'pucker', 'twist', 'roundC
 // ── The card ───────────────────────────────────────────────────────────
 
 function effectLine(e: CatalogEffect): string {
+  // Every param a script can set: the point lists (Curves, Lumetri) and the
+  // layer / mask pickers too — a param the card hides is one no author uses.
   const params = e.params
-    .filter((p) => p.type === 'number' || p.type === 'color' || p.type === 'checkbox' || p.type === 'enum')
+    .filter((p) => ['number', 'color', 'checkbox', 'enum', 'curve', 'layer', 'maskPath'].includes(p.type))
     .map((p) => {
       if (p.type === 'number') {
         const range = p.min !== undefined || p.max !== undefined ? ` ${p.min ?? ''}..${p.max ?? ''}` : '';
         return `${p.key}${range}${p.unit ? p.unit : ''}`;
       }
       if (p.type === 'enum') return `${p.key}:${(p.options ?? []).map((o) => o.label).slice(0, 6).join('|')}`;
+      if (p.type === 'curve') return `${p.key}:curve`;
+      if (p.type === 'layer') return `${p.key}:layer id`;
+      if (p.type === 'maskPath') return `${p.key}:mask id`;
       return `${p.key}:${p.type}`;
     });
   return `${e.type} (${e.label}) — ${params.join(', ') || 'no params'}`;
@@ -222,13 +237,13 @@ export function vocabularyCard(): string {
     '',
     `Layer kinds: ${LAYER_KINDS.join(', ')}.`,
     '  shape: give `shape` (rect|ellipse|line|star|polygon) and width/height (polygon/star: outerRadius, points, innerRadius, roundness).',
-    '  text: give `text`, then type props (fontFamily, fontSize, fontWeight, letterSpacing, lineHeight, align, fill, width for wrapping).',
+    '  text: give `text`, then type props (fontFamily, fontSize, fontWeight, letterSpacing, lineHeight, align, fill). `width` makes it paragraph text: it wraps inside a box that wide, centred on x, and align left|right|center|justify sets the lines inside the box (left edge = x − width/2). Without width it is point text: one line per line break, centred on x.',
     '  Fonts that ship with every install: Inter, Noto Sans, Noto Serif (variable weight 100–900), and Noto Sans / Serif JP, Noto Sans KR, SC, TC, Arabic, Hebrew, Devanagari, Thai. Another family renders only if this machine has it, else a plain sans.',
     '  solid: a filled rectangle; adjustment: effects on it apply to everything below; null: an invisible parent.',
     '  camera: frames 3D layers (focalLength, poi*, orbit*, dof*); light: lights layers that have threeD and acceptsLights (set `light`).',
     '  primitive: a real 3D mesh, already 3D, lit and shadow-casting — props.primitive sphere|cylinder|cone|torus|capsule|box|cube|plane, sized by radius / height / width / depth / tube (torus thickness). A planet, a pill, a ring, a pedestal, a product block.',
     '  gradient: full-frame gradient backdrop (set `gradient`: stops = 2–4 COLOUR STRINGS, e.g. ["#050303", "$ember"], spaced evenly (no offsets); kind linear|radial|corners (corners takes exactly 4); angle; centerX/centerY/radius in %).',
-    '  image: a generated picture (set `image`: prompt = subject and look, aspect). svg: your own vector (set `svg`: markup).',
+    '  image: a generated picture (set `image`: prompt = subject and look, aspect). svg: your own vector (set `svg`: markup) — the layer is the size the markup width / height say (else its viewBox), and it rasterises at that size, so write it at the size it shows on screen rather than scaling a small one up.',
     '  video: a generated clip (set `video`: prompt = subject, light and camera with no text, durationSec, aspect, fit contain|cover, model optional) — b-roll or a background plate under authored type.',
     '  particle: a particle emitter with the engine default look — prefer effects (snowfall, rainfall, particle-systems, cc-bubbles) for styled particles.',
     '',
@@ -242,8 +257,10 @@ export function vocabularyCard(): string {
     `Blend modes: ${BLEND_MODES.join(', ')}.`,
     `Path operators (pathOps[].op): ${PATH_OPS.join(', ')} — amount keyable. trim: start/end/offset %, keyable. repeaters: copies, positionX/Y, rotation, scale, anchorX/Y, startOpacity/endOpacity; copies and offset keyable.`,
     'A line that draws itself on: a shape with props fill "none", stroke, strokeWidth and a trim whose end keys 0 → 100.',
+    'Stroke look (update_layer, any shape): strokeCap butt|round|square, strokeJoin miter|round|bevel, miterLimit, strokeDash [dash, gap, …] px, strokeDashOffset, strokeTaper { startLength, endLength, startWidth, endWidth (%), startEase, endEase }, strokeWave { amount, wavelength, phase }. stroke takes hex or $paletteName like fill.',
     'Brush ink (calligraphy, ink marks): a layer\'s `paint`: [{ points: [[x, y, pressure], …] in layer px from its top-left, pressure 0..1 tapers the tip down to minSize %, color, size px, hardness %, opacity %, reveal: { from, to } in the layer\'s seconds to draw it on }]. Paint on a SOLID (filled with the paper or scene colour; a shape with no fill shows nothing).',
     `Text animators: basedOn characters|words|lines, shape square|rampUp|rampDown|triangle|round|smooth, numeric ${TEXT_ANIMATOR_FIELDS.join(', ')}, color; sweep {from,to,fromOffset,toOffset,ease} sweeps the range selector's offset: the selector is Start 0 / End 100, offset o covers characters [o%, o%+100%], so the default 0 → 100 uncovers the text once left to right (a reveal when the animator hides what it covers) and 100 → 0 covers it once; never −100 → 100 (covered only mid-sweep).`,
+    '  A REVEAL (opacity / fillOpacity / scale 0 on the animator) needs shape square — smoothness softens its edge. Ramps and bumps (rampUp, triangle, round, smooth) never select every character fully and select nothing outside their window, so hidden text shows before and after the sweep; use them for a wave through visible text.',
     '',
     'REAL 3D — the engine renders lit, shadowed, reflective 3D; a camera over flat layers is only a zoom.',
     '  Depth: threeD: true + z on each layer (background z≈+600, subject 0, foreground −300) gives parallax to any camera move.',
@@ -258,9 +275,10 @@ export function vocabularyCard(): string {
     '',
     'Masks: rectangle|ellipse, mode add|subtract|intersect, width, height, feather, opacity 0..1, expansion, inverted.',
     'Track matte: matte { mode alpha|luma|alpha-inv|luma-inv, source: <layer id> }.',
-    'Expressions: expressions { <prop>: "<single JS expression>" } — wiggle(f,a), loopOut("cycle"), time, value, Math.',
+    'Expressions: expressions { <prop>: "<AE expression>" } — one expression or an AE-style rig: statements on lines or after `;`, var / let / const and assignment, if / else, functions and arrows (closures), for / while loops, the last expression is the value.',
+    '  Bindings: time, value, wiggle(f,a), loopOut("cycle"|"pingpong"), loopIn, linear / ease (t, t0, t1, v0, v1), Math, random / seedRandom, effect("Name")("Param") or .param("Param"), transform.position / scale / rotation / opacity, inPoint, outPoint, index, parent, hasParent, thisComp.layer(n); vectors add, subtract and scale like AE ([a, b] + [c, d], v * 2).',
     '',
-    `Effects (effects[].type, params by key; ${AUTHOR_EFFECTS.length} available):`,
+    `Effects (effects[].type, params by key; ${AUTHOR_EFFECTS.length} available). Numbers keep their sign where the range is signed; a value outside a range is clamped and the reply says so. A curve param takes its points [[x, y], …] in 0..255 from [0, 0] to [255, 255] (an S-curve: [[0,0],[64,48],[192,208],[255,255]]); a layer param a layer id; a mask param a mask id:`,
     ...AUTHOR_EFFECTS.map((e) => `  ${effectLine(e)}`),
   ].join('\n');
 }

@@ -786,10 +786,11 @@ export function createAnimFacade(session: AiEngineSession = freeSession()): Anim
     removeKeyframe: async (nodeId, prop, t) => {
       await treeOf(nodeId);
       // AE: deleting a property's last key leaves it static at that key's value
-      // (G1). A lone member of an unseparated vector has no key of its own to
-      // delete — its key is the whole vector's.
+      // (G1). A lone member of an unseparated vector (scaleX of Scale) has no
+      // key of its own: its key IS the vector's, so that key goes — what AE's
+      // timeline does when the key under one dimension is deleted.
       const k = keyRefFor(nodeId, prop);
-      if (!k || k.dim !== undefined) throw new AiEngineError('unsupported', `remove_keyframes ${prop}: ${LEGACY_GAPS.perMemberKey}`);
+      if (!k) throw new AiEngineError('unsupported', `remove_keyframes ${prop}: ${LEGACY_GAPS.perMemberKey}`);
       const id = await keyIdAt(session, k.ref, t);
       if (id) await session.apply([{ type: 'deleteKeyframes', ids: [id] } as Command]);
     },

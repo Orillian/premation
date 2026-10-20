@@ -182,6 +182,16 @@ describe('approvals and project operations', () => {
     expect(ed.calls).toEqual(['import:C:/a.png']);
   });
 
+  it('places imported media at the time the call names, 0 by default — not at the user\'s playhead (The Last Blade)', async () => {
+    const seen: Array<number | undefined> = [];
+    const ed = editor();
+    const ops = { ...ed.ops, importMedia: async (_p: readonly string[], _place: boolean, atSec?: number) => { seen.push(atSec); return { ok: true as const, message: 'Imported 1' }; } };
+    const { call } = setup({ editor: ops, approve: async () => true });
+    await call('import_media', { paths: ['C:/a.png'] });
+    await call('import_media', { paths: ['C:/b.png'], atSec: 3.5 });
+    expect(seen).toEqual([0, 3.5]);
+  });
+
   it('never exports without an approver', async () => {
     const { call, executed } = setup();
     expect((await call('export_video', { format: 'mp4' })).isError).toBe(true);

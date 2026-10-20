@@ -118,6 +118,35 @@ function setSurfaces(layers: LintLayer[], frame: { width: number; height: number
   });
 }
 
+/**
+ * A text animator that HIDES what it selects (opacity / fill opacity / scale 0)
+ * swept with a shape other than square. Outside the selector window a
+ * character is unaffected, and a ramp or bump is below full strength at its
+ * edges — so the characters the window has not reached show, before the sweep
+ * and after it, for the layer's whole bar (Operand: `smooth` bled through the
+ * film; The Last Blade: `rampUp` showed the first words early).
+ */
+function leakingSweeps(script: SceneScript): Array<{ rule: string; severity: 'error'; message: string; nodeIds: string[] }> {
+  const out: Array<{ rule: string; severity: 'error'; message: string; nodeIds: string[] }> = [];
+  for (const l of [...script.globals, ...script.beats.flatMap((b) => b.layers)]) {
+    l.textAnimators?.forEach((a, i) => {
+      if (!a.sweep || !a.shape || a.shape === 'square') return;
+      const hides = a.opacity === 0 || a.fillOpacity === 0 || a.scale === 0;
+      if (!hides) return;
+      out.push({
+        rule: 'SWEEP_SHAPE_LEAKS',
+        severity: 'error',
+        nodeIds: [l.id],
+        message:
+          `'${l.name}' text animator ${i} hides its characters with a ${a.shape} selector: characters outside the window are not ` +
+          `selected and a ${a.shape} is below full strength at its edges, so text shows through before and after the sweep. ` +
+          'For a reveal use shape square (smoothness softens the edge); keep ramps and bumps for a wave that passes through visible text.',
+      });
+    });
+  }
+  return out;
+}
+
 /** Run all three linters over a compiled script. Pure. */
 export function adviseScript(script: SceneScript, compiled: CompiledScript, o: AdviseOptions): Advice {
   const findings: AdvisorFinding[] = [];
@@ -182,6 +211,9 @@ export function adviseScript(script: SceneScript, compiled: CompiledScript, o: A
     cameraBeats,
     staticZ,
   })) push('timing', f);
+
+  // ── text reveals the selector shape cannot make ──
+  for (const f of leakingSweeps(script)) push('timing', f);
 
   // ── UI motion: only where the author marked product UI ──
   if (uiNodeIds.length) {

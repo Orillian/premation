@@ -175,7 +175,8 @@ export interface SceneFacade {
    * Set a **named** effect parameter (`updateEffect` only reaches the primary
    * one; a drop shadow has distance / angle / softness / colour / opacity).
    */
-  updateEffectParam(nodeId: string, effectId: string, key: string, value: number | string | boolean): Promise<void>;
+  /** A curve / data param takes its point list (`[[x, y], …]`); a mask-path param a mask id. */
+  updateEffectParam(nodeId: string, effectId: string, key: string, value: number | string | boolean | readonly unknown[]): Promise<void>;
   /** Effects currently on a layer, so a handler can find one it did not create. */
   listEffects(nodeId: string): Promise<readonly { id: string; type: string }[]>;
   removeEffect(nodeId: string, effectId: string): Promise<void>;

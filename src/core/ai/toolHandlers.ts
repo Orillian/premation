@@ -34,6 +34,7 @@ import { isRiggableKind } from '@core/scene/rigLogo';
 import { nextRigIds, usedRigIds } from '@core/rig/rigIds';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { documentMirror } from '@stores/documentMirror';
+import { renderedBoxes } from './renderedBounds';
 import { layerBox, layerInfo, puppetPins } from './mirrorReads';
 
 import { pathOpPropPath, type PathOp } from '@core/scene/pathOps';
@@ -52,7 +53,9 @@ import { generateVideoBytes, generateSpeechBytes, generate3dBytes } from './aiMe
 import { cachedAsset, generationKey, rememberAsset } from './aiMediaCache';
 import { useAiMediaPrefsStore } from '@stores/aiMediaPrefsStore';
 import { exportCompositionVideo } from './aiExport';
-import { useRenderQueueStore } from '@stores/renderQueueStore';
+import { handedOverJobId, useRenderQueueStore } from '@stores/renderQueueStore';
+import { useExportQueueStore } from '@stores/exportQueueStore';
+import type { ExportJobRecord } from '@core/export/exportSupervisorClient';
 import type { AiImageResult, AiMediaResult } from '@app-types/motionEditor';
 import type { EntranceArchetype } from './archetypes';
 import {
@@ -1107,7 +1110,11 @@ const setKeyframes: AiTool['handler'] = async (input, ctx) => {
   const singles = await filterSeq([...touched], async (key) => {
     const [nodeId, ...rest] = key.split('.');
     const prop = rest.join('.');
-    return ((await ctx.anim.tracks(nodeId!)).find((t) => t.prop === prop)?.keyframes.length ?? 0) < 2;
+    const list = await ctx.anim.tracks(nodeId!);
+    // Uniform `scale` keys land on the Scale vector, which tracks report as its
+    // two axes: count those, or every scale gesture reads as one key.
+    const track = list.find((t) => t.prop === prop) ?? (prop === 'scale' ? list.find((t) => t.prop === 'scaleX') : undefined);
+    return (track?.keyframes.length ?? 0) < 2;
   });
   const warn = singles.length
     ? `\nNote: ${singles.join(', ')} now has only ONE keyframe, so it holds a constant. Add a second at a different time to make it move.`
@@ -1268,7 +1275,8 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
   for (const [key, raw] of Object.entries(initial ?? {})) {
     const def = d?.params.find((p) => p.key === key);
     const known = d ? def !== undefined : true;
-    if (!known || !(typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean')) {
+    // A point list is a value too: Curves / Lumetri curves take [[x, y], …].
+    if (!known || !(typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean' || Array.isArray(raw))) {
       unknown.push(key);
       continue;
     }
@@ -1281,7 +1289,7 @@ const addEffectHandler: AiTool['handler'] = async (input, ctx) => {
     // Held to the catalog's range, and said (B4): the engine clamps silently.
     const { value, note } = clampEffectParam(def, resolved);
     await ctx.scene.updateEffectParam(nodeId, id, key, value);
-    set.push(`${key}=${String(value)}${note ? ` (${note})` : ''}`);
+    set.push(`${key}=${Array.isArray(value) ? JSON.stringify(value) : String(value)}${note ? ` (${note})` : ''}`);
   }
   const primary = d?.params.find((p) => p.type === 'number');
   const params = d?.params.map((p) => p.key).join(', ') ?? '';
@@ -1383,6 +1391,14 @@ const textAnimator: AiTool['handler'] = async (input, ctx) => {
     swept = ` Selector offset sweeps ${fromOffset}% → ${toOffset}% between ${sweep.fromSec}s and ${sweep.toSec}s` +
       ' (Start 0 / End 100 covers [offset, offset + 100]% of the characters: offset 0 covers all of them, ±100 none;' +
       ' 0 → 100 uncovers the text once, left to right; 100 → 0 covers it once).';
+    // Only a square window selects every character fully: a ramp or a bump is
+    // below full strength at its edges and selects nothing outside itself, so a
+    // hiding animator leaves those characters showing (Operand, The Last Blade).
+    const shape = typeof i.shape === 'string' ? i.shape : undefined;
+    if (shape && shape !== 'square') {
+      swept += ` NOTE: shape ${shape} never selects every character fully — characters outside the window and at its soft edges keep` +
+        ' (most of) their own look before and after the sweep. For a reveal (opacity / scale 0) use shape square; its smoothness softens the edge.';
+    }
   }
 
   refreshAfterLegacy(ctx);
@@ -1473,7 +1489,8 @@ const inspectLayers: AiTool['handler'] = async (input) => {
     const r = await engine().query({ type: 'getLayerBounds', layers: ids, time, space: 'comp', includeEffects });
     return new Map(r.ok ? r.value.bounds.map((b) => [b.layer, b.bounds] as const) : []);
   };
-  const [plain, withFx] = await Promise.all([box(false), box(true)]);
+  // The plain box as the frame shows it: a 3D layer projected through the camera.
+  const [plain, withFx] = await Promise.all([renderedBoxes(ids, seconds), box(true)]);
   const errorsByComp = new Map<string, readonly { layer: string; stage: string; message: string }[]>();
   const errorsOf = (id: string): string[] => {
     const c = m.layer(id)?.comp ?? comp;
@@ -1821,11 +1838,39 @@ const exportVideoTool: AiTool['handler'] = async (input, ctx) => {
   );
 };
 
+/** A job main's export queue renders (handed over from the page's Render Queue), as a status row. */
+function mainExportRow(j: ExportJobRecord, id: string): { id: string; comp: string; status: string; progress: number; output: string; error?: string } {
+  return {
+    id,
+    comp: j.spec.label,
+    status: j.status,
+    progress: Math.round((j.progress.fraction ?? 0) * 100),
+    output: j.spec.outPath,
+    ...(j.error ? { error: j.error } : {}),
+  };
+}
+
 const getExportStatus: AiTool['handler'] = async (input) => {
   const { jobId } = input as { jobId?: string };
   const q = useRenderQueueStore.getState();
+  const main = useExportQueueStore.getState().jobs;
   const jobs = jobId ? q.jobs.filter((j) => j.id === jobId) : q.jobs;
-  if (jobId && jobs.length === 0) return fail(`No Render Queue job '${jobId}'. Jobs: ${q.jobs.map((j) => j.id).join(', ') || '(none)'}.`);
+  // Started jobs leave the page's list for main's queue (export_video
+  // immediate, In Motion 2026-10-15): follow the id there.
+  if (jobId && jobs.length === 0) {
+    const mainId = handedOverJobId(jobId) ?? jobId;
+    const m = main.find((j) => j.id === mainId);
+    if (m) {
+      const r = mainExportRow(m, jobId);
+      return ok(`- ${r.id} "${r.comp}": ${r.status}${r.status === 'rendering' ? ` ${r.progress}%` : ''} → ${r.output}${r.error ? ` (error: ${r.error})` : ''}`, { jobs: [r] });
+    }
+    return fail(`No Render Queue job '${jobId}'. Jobs: ${[...q.jobs.map((j) => j.id), ...main.map((j) => j.id)].join(', ') || '(none)'}.`);
+  }
+  if (!jobId && main.length > 0) {
+    const rows = main.map((j) => mainExportRow(j, j.id));
+    const pending = q.jobs.length ? `\n${q.jobs.length} more waiting in the Render Queue.` : '';
+    return ok(rows.map((r) => `- ${r.id} "${r.comp}": ${r.status}${r.status === 'rendering' ? ` ${r.progress}%` : ''} → ${r.output}${r.error ? ` (error: ${r.error})` : ''}`).join('\n') + pending, { jobs: rows });
+  }
   if (jobs.length === 0) return ok('The Render Queue is empty.', { jobs: [] });
   const sep = q.outputDir && /\\/.test(q.outputDir) ? '\\' : '/';
   const file = (p: string): string => (q.outputDir ? `${q.outputDir.replace(/[\\/]+$/, '')}${sep}${p}` : p);

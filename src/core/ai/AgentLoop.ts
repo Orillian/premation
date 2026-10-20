@@ -720,8 +720,8 @@ ${casterCritique}` : planSummary) + exportNote;
           // that a naive version produced against correct output.
           let mechanical: string | null = null;
           try {
-            const { verifyScene, formatFindings } = await import('./verify');
-            mechanical = formatFindings(await verifyScene(ctx));
+            const { verifyScene, formatFindings, engineBounds } = await import('./verify');
+            mechanical = formatFindings(await verifyScene(ctx, { bounds: engineBounds }));
           } catch (err) {
             // A broken verifier must never take the run down with it.
 

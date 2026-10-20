@@ -274,7 +274,9 @@ describe('program M7: precompose, frame-snapped keys, gradient stops', () => {
     const pc = names.indexOf('create_precomp');
     expect(pc).toBeGreaterThan(names.lastIndexOf('create_layer'));
     expect(out.calls[pc]!.args).toEqual({ id: 'crowd', nodeIds: ['a', 'b'], name: 'Crowd group' });
-    expect(out.calls[pc + 1]).toEqual({ name: 'update_layer', args: { nodeId: 'crowd', scaleX: 0.5, scaleY: 0.5 } });
+    // Under the beat's root (its wipe takes it), then its own props.
+    expect(out.calls[pc + 1]).toEqual({ name: 'reparent_layer', args: { nodeId: 'crowd', parentId: 'beat_0' } });
+    expect(out.calls[pc + 2]).toEqual({ name: 'update_layer', args: { nodeId: 'crowd', scaleX: 0.5, scaleY: 0.5 } });
     expect(out.beatOfLayer.get('crowd')).toBe(0);
   });
 

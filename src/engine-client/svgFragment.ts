@@ -25,6 +25,12 @@ export interface SvgLayerFragmentOptions {
   capabilities?: SvgCapabilities;
   /** A document the Live SVG path plays time-rasterized. */
   livePlayback?: boolean;
+  /**
+   * Keep the markup's own width / height (a document that states its size).
+   * Default: a menu insert's rule, which blows a small icon up to ~28% of the
+   * comp — right for a dropped file, wrong for markup an author sized.
+   */
+  exactSize?: boolean;
   idPrefix?: string;
 }
 
@@ -63,7 +69,9 @@ export function buildSvgLayerFragment(svgText: string, name: string, opts: SvgLa
   // the layer's life — the texture cache keys on the markup).
   const clean = sanitizeSvg(svgText, id.replace(/[^\w-]/g, '_'), capabilities);
   if (!clean) return null;
-  const { width, height } = placedSize(clean.width, clean.height, opts.compWidth, opts.compHeight);
+  const { width, height } = opts.exactSize && clean.width > 0 && clean.height > 0
+    ? { width: clean.width, height: clean.height }
+    : placedSize(clean.width, clean.height, opts.compWidth, opts.compHeight);
   const x = opts.x ?? opts.compWidth / 2;
   const y = opts.y ?? opts.compHeight / 2;
   b.addChild(null, {

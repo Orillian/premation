@@ -104,6 +104,16 @@ function compositionMissing(job: RenderJobSpec): boolean {
  */
 type Submitter = (job: Omit<RenderJob, 'id' | 'status' | 'progress'>) => Promise<string | null>;
 let submitter: Submitter | null = null;
+
+/**
+ * Page job id → the id main's export queue gave it. A handed-over job leaves
+ * this list, so whoever holds the page id (an assistant's export_video reply)
+ * follows it here into main's queue instead of finding nothing.
+ */
+const handedOverIds = new Map<string, string>();
+export function handedOverJobId(pageJobId: string): string | undefined {
+  return handedOverIds.get(pageJobId);
+}
 export function setRenderQueueSubmitter(fn: Submitter | null): void {
   submitter = fn;
 }
@@ -177,6 +187,7 @@ export const useRenderQueueStore = create<RenderQueueState>((set, get) => {
         void _id; void _s; void _p; void _e; void _err; void _r; void _a;
         const queued = await submit(spec);
         if (queued) {
+          handedOverIds.set(id, queued);
           // Main's record from here on (the queue list shows it).
           set((s) => ({ jobs: s.jobs.filter((j) => j.id !== id) }));
         } else {

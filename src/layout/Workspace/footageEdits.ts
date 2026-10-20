@@ -148,6 +148,8 @@ export interface MediaInsertOptions {
    * even with the transport running.
    */
   atPlayhead?: boolean;
+  /** Start every inserted clip at this comp time, seconds (wins over `atPlayhead`): a caller that names the time. */
+  startSec?: number;
   /**
    * Commands that need the new layers' ids (a source range, overwrite trims):
    * computed after the paste and sent in the SAME entry (one engine gesture).
@@ -182,7 +184,7 @@ export async function insertMediaEdit(
   opts: MediaInsertOptions = {},
 ): Promise<string[] | null> {
   // Captured before the first await (see `atPlayhead`).
-  const startAt = opts.atPlayhead ? playheadSeconds() : null;
+  const startAt = opts.startSec ?? (opts.atPlayhead ? playheadSeconds() : null);
   const prepared = await prepareMedia(assets);
   if (prepared.length === 0) return [];
   const label = opts.label ?? (prepared.length === 1 ? `Insert ${prepared[0]!.asset.name}` : `Insert ${prepared.length} Layers`);

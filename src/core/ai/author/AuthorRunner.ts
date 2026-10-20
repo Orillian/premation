@@ -85,8 +85,8 @@ export interface AuthorHost {
 export const defaultAuthorHost: AuthorHost = {
   async verify(ctx) {
     try {
-      const { verifyScene, formatFindings } = await import('../verify');
-      return formatFindings(await verifyScene(ctx));
+      const { verifyScene, formatFindings, engineBounds } = await import('../verify');
+      return formatFindings(await verifyScene(ctx, { bounds: engineBounds }));
     } catch (err) {
       recordAiPathFailure('author', `verify failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
