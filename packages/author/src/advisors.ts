@@ -133,14 +133,21 @@ function leakingSweeps(script: SceneScript): Array<{ rule: string; severity: 'er
       if (!a.sweep || !a.shape || a.shape === 'square') return;
       const hides = a.opacity === 0 || a.fillOpacity === 0 || a.scale === 0;
       if (!hides) return;
+      // AE ramps hold full strength on one side of the window (Ramp Up past its
+      // end, Ramp Down before its start): swept fully across, they hide every
+      // character before the sweep and none after it — the classic soft reveal.
+      const from = a.sweep.fromOffset ?? 0;
+      const to = a.sweep.toOffset ?? 100;
+      if ((a.shape === 'rampUp' && from <= -100 && to >= 100) || (a.shape === 'rampDown' && from >= 100 && to <= -100)) return;
       out.push({
         rule: 'SWEEP_SHAPE_LEAKS',
         severity: 'error',
         nodeIds: [l.id],
         message:
-          `'${l.name}' text animator ${i} hides its characters with a ${a.shape} selector: characters outside the window are not ` +
-          `selected and a ${a.shape} is below full strength at its edges, so text shows through before and after the sweep. ` +
-          'For a reveal use shape square (smoothness softens the edge); keep ramps and bumps for a wave that passes through visible text.',
+          `'${l.name}' text animator ${i} hides its characters with a ${a.shape} selector swept ${from} → ${to}: a ${a.shape} is ` +
+          'below full strength inside its window (and a bump selects nothing outside it), so text shows through before or after the sweep. ' +
+          'For a reveal use shape square (smoothness softens the edge), or rampUp swept −100 → 100 (rampDown 100 → −100) for a soft one; ' +
+          'keep bumps for a wave that passes through visible text.',
       });
     });
   }

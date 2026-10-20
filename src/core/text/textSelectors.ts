@@ -386,10 +386,16 @@ export function rangeSelectorAt(
   const b = toUnits(sel.end) + off;
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
-  if (hi <= lo) return 0;
+  // AE: Ramp Up holds full strength past the window's end (Ramp Down before
+  // its start), so offset −100 → 100 on a Ramp Up sweeps the whole text.
+  const rampUp = sel.shape === 'rampUp';
+  const ramp = rampUp || sel.shape === 'rampDown';
+  if (hi <= lo && !ramp) return 0;
 
   let w: number;
-  if (sel.shape === 'square') {
+  if (ramp && (hi <= lo || centre < lo || centre > hi)) {
+    w = (centre > hi || (hi <= lo && centre >= hi)) === rampUp ? 1 : 0;
+  } else if (sel.shape === 'square') {
     // Smoothness is the only edge softening a square has; without it the
     // selector is a hard per-character on/off.
     w = softWindow(centre, lo, hi, Math.max(0, sel.smoothness) / 100);

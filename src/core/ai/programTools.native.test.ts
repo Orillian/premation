@@ -251,8 +251,9 @@ describe('set_audio (M6)', () => {
     expect(items.items[0]!.interpretation?.loops).toBe(0);
     const keys = (await h.query({ type: 'getKeyframes', props: [{ layer: s.V, path: 'audio/levels' }] } as never)) as { sets: { keyframes: { time: number; value: { value: number } }[] }[] };
     const ks = keys.sets[0]!.keyframes.map((k) => [Math.round((k.time / sec(1)) * 100) / 100, k.value.value]);
-    // The fade-out's last key is the bar's last frame (the out point is exclusive), as the Inspector's fade.
-    expect(ks).toEqual([[1, -60], [1.5, -6], [3, -6], [3.97, -60]]);
+    // The fade-out's silent key sits at the out point, as the Inspector's fade
+    // writes it (getKeyframes used to clamp it onto the bar's last frame, 3.97).
+    expect(ks).toEqual([[1, -60], [1.5, -6], [3, -6], [4, -60]]);
   });
 });
 

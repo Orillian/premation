@@ -116,6 +116,15 @@ describe('advisor traps', () => {
     });
     expect(adviseScript(wave, compileScript(wave), { width: 1920, height: 1080, fps: 30 }).findings.filter((x) => x.rule === 'SWEEP_SHAPE_LEAKS')).toEqual([]);
   });
+
+  it('leaves an AE soft reveal alone: Ramp Up swept −100 → 100, Ramp Down 100 → −100', () => {
+    for (const [shape, fromOffset, toOffset] of [['rampUp', -100, 100], ['rampDown', 100, -100]] as const) {
+      const s = base({
+        beats: [{ name: 'A', purpose: '', startSec: 0, endSec: 6, layers: [{ id: 't', kind: 'text', name: 'T', text: 'SOFT', textAnimators: [{ shape, opacity: 0, sweep: { from: 0.5, to: 1.5, fromOffset, toOffset } }] }] }],
+      });
+      expect([shape, adviseScript(s, compileScript(s), { width: 1920, height: 1080, fps: 30 }).findings.filter((x) => x.rule === 'SWEEP_SHAPE_LEAKS')]).toEqual([shape, []]);
+    }
+  });
 });
 
 describe('the vocabulary card tells the model what the engine does', () => {

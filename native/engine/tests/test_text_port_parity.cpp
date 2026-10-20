@@ -6,6 +6,7 @@
 // answers instead (parity_rebless.hpp).
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -99,6 +100,46 @@ TEST_CASE("text animator parity: per-glyph transforms equal the editor's", "[sce
     answer_same(fx, c, "glyphs", glyphs, name);
   }
   REQUIRE(fx.finish());
+}
+
+TEST_CASE("text animator: AE Ramp Up holds full strength past the window's end, Ramp Down before its start",
+          "[scene][text]") {
+  // Opacity 0 on 4 characters, window Start 0 / End 100 shifted by `offset`.
+  const auto opacities = [](std::string_view shape, double offset) {
+    Json anim = Json::object();
+    anim.set("id", Json::string("a1"));
+    anim.set("basedOn", Json::string("characters"));
+    anim.set("shape", Json::string(std::string(shape)));
+    anim.set("start", Json::number(0));
+    anim.set("end", Json::number(100));
+    anim.set("offset", Json::number(offset));
+    anim.set("opacity", Json::number(0));
+    Json stored = Json::array();
+    stored.arr_mut().push_back(std::move(anim));
+    const auto resolved = sc::resolve_text_animators_json(stored, sc::Values(std::vector<std::pair<std::string, double>>{}));
+    std::string why;
+    const Json glyphs = sc::evaluate_text_animators("ABCD", resolved, 0, &why);
+    REQUIRE(why.empty());
+    std::vector<double> out;
+    for (const Json& g : glyphs.arr()) out.push_back(g.at("opacity").num());
+    return out;
+  };
+  const std::vector<double> hidden{0, 0, 0, 0};
+  const std::vector<double> shown{1, 1, 1, 1};
+  // The window is before the text: every character is past its end.
+  CHECK(opacities("rampUp", -100) == hidden);
+  CHECK(opacities("rampDown", -100) == shown);
+  // The window is after the text: every character is before its start.
+  CHECK(opacities("rampUp", 100) == shown);
+  CHECK(opacities("rampDown", 100) == hidden);
+  // A bump selects nothing outside its window, on either side.
+  CHECK(opacities("triangle", -100) == shown);
+  CHECK(opacities("triangle", 100) == shown);
+  // Inside the window a ramp still ramps: 1/8, 3/8, 5/8, 7/8 selected.
+  const auto inside = opacities("rampUp", 0);
+  REQUIRE(inside.size() == 4);
+  CHECK(std::abs(inside[0] - 0.875) < 1e-9);
+  CHECK(std::abs(inside[3] - 0.125) < 1e-9);
 }
 
 TEST_CASE("text path parity: masks flatten to the editor's polyline", "[scene][text][parity]") {

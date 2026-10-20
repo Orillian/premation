@@ -897,6 +897,48 @@ TEST_CASE("session: applyPreset keys land at the composition time on an offset l
   REQUIRE(key_times(h, layer, "transform/opacity") == std::vector<api::Time>{2 * kSec, 2 * kSec + kSec / 2});
 }
 
+TEST_CASE("session: a key before the layer's in point reads back at its own time, not the in point", "[session][g2]") {
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h);
+  const auto layer = make_layer(h, comp);
+  REQUIRE(is_ok(add_key(h, layer, "transform/opacity", kSec / 2, scalar(0), api::Easing::linear)));
+  REQUIRE(is_ok(add_key(h, layer, "transform/opacity", 2 * kSec, scalar(100), api::Easing::linear)));
+  api::SetLayerTiming st;
+  st.items = {api::LayerTimingPatch{layer, kSec, std::nullopt, std::nullopt, std::nullopt}};
+  REQUIRE(is_ok(h.run(cmd(st))));
+  // It evaluates at 0.5 s (the in point shows the interpolated 1/3 of the way)
+  // and getKeyframes says so — clamping it to the clip's edge said 1 s.
+  REQUIRE(scalar_of(value_of(h, layer, "transform/opacity", kSec)) == Approx(100.0 / 3));
+  REQUIRE(key_times(h, layer, "transform/opacity") == std::vector<api::Time>{kSec / 2, 2 * kSec});
+}
+
+TEST_CASE("session: a key before the in point of a shifted layer moves by the delta it is given", "[session][g2]") {
+  // The layer starts at 1 s and is trimmed to 2 s, so its key at 1.5 s lies
+  // outside every clip. Read through the clip and written back through the
+  // same clip, it moves by exactly the delta — writing outside the clip
+  // without the clip's offset sent it a whole second away.
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h);
+  const auto layer = make_layer(h, comp);
+  REQUIRE(is_ok(h.run(cmd(api::MoveLayersInTime{{layer}, kSec, false}))));
+  REQUIRE(is_ok(add_key(h, layer, "transform/opacity", 3 * kSec / 2, scalar(0), api::Easing::linear)));
+  REQUIRE(is_ok(add_key(h, layer, "transform/opacity", 3 * kSec, scalar(100), api::Easing::linear)));
+  api::SetLayerTiming st;
+  st.items = {api::LayerTimingPatch{layer, 2 * kSec, std::nullopt, std::nullopt, std::nullopt}};
+  REQUIRE(is_ok(h.run(cmd(st))));
+  REQUIRE(key_times(h, layer, "transform/opacity") == std::vector<api::Time>{3 * kSec / 2, 3 * kSec});
+  REQUIRE(scalar_of(value_of(h, layer, "transform/opacity", 2 * kSec)) == Approx(100.0 / 3));
+  api::GetKeyframes q;
+  q.props = {api::PropRef{layer, "transform/opacity"}};
+  const auto keys = query<api::KeyframeSets>(h, qry(q)).sets.at(0).keyframes;
+  REQUIRE(is_ok(h.run(cmd(api::MoveKeyframes{{keys.at(0).id}, -kSec / 2}))));
+  CHECK(key_times(h, layer, "transform/opacity") == std::vector<api::Time>{kSec, 3 * kSec});
+  // Evaluated before the in point on the layer's own time, as in AE.
+  CHECK(scalar_of(value_of(h, layer, "transform/opacity", kSec)) == Approx(0.0));
+}
+
 TEST_CASE("session: a jump that restores a removed layer AND un-keys it sends the empty list", "[session][events][g2]") {
   Harness h;
   (void)h.hello();

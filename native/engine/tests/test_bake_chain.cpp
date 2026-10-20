@@ -19,6 +19,7 @@
 #include "raster/json.hpp"
 #include "json.hpp"
 #include "parity_rebless.hpp"
+#include "raster/fonts.hpp"
 #include "recording_canvas.hpp"
 
 namespace sc = premation::scene;
@@ -209,5 +210,47 @@ TEST_CASE("B5: the CPU light sweep leaves the layer's transparent box transparen
     // Inside the block: still opaque, and (bar multiply, which darkens) lit.
     CHECK(at(*c, 40, 20, 3) == 255);
     if (mode != 3) CHECK(at(*c, 40, 20, 1) > 64);
+  }
+}
+
+TEST_CASE("Numbers and Timecode draw their readout on the raster canvas", "[scene][bake][numbers]") {
+  // The engine's canvases carry its fonts (engine_frames.cpp Fonts registers
+  // the generic monospace the readout falls back to); a canvas without fonts
+  // draws no text at all.
+  static const raster::FontSet* fonts = [] {
+    static raster::FontSet f{raster::FontOptions{}};
+    std::string err;
+    REQUIRE(f.load_manifest(PREMATION_RASTER_FONTS, err));
+    (void)f.add_system_family("monospace");
+    return &f;
+  }();
+  raster::CanvasOptions opts;
+  opts.fonts = fonts;
+  const auto inked = [](const raster::Canvas2D& c) {
+    std::size_t n = 0;
+    const auto& px = c.pixels();
+    for (std::size_t i = 3; i < px.size(); i += 4) n += px[i] > 0 ? 1 : 0;
+    return n;
+  };
+  SECTION("Numbers: the digits") {
+    auto c = raster::Canvas2D::make(200, 100, opts);
+    raster::json::Value params;
+    std::string err;
+    REQUIRE(raster::json::parse(R"({"value":8888,"size":48,"color":"#ffffff"})", params, err));
+    REQUIRE(premation::effects::run_canvas_effect("numbers", params, *c, 200, 100));
+    CHECK(inked(*c) > 200);
+  }
+  SECTION("Timecode: its box and digits") {
+    auto c = raster::Canvas2D::make(300, 100, opts);
+    raster::json::Value params;
+    std::string err;
+    REQUIRE(raster::json::parse(R"({"time":1.5,"fps":30,"size":32,"color":"#ffffff","showBox":true,"boxColor":"#000000"})", params, err));
+    REQUIRE(premation::effects::run_canvas_effect("timecode", params, *c, 300, 100));
+    // The box alone is ~1350 px; the digits add theirs in white.
+    std::size_t white = 0;
+    const auto& px = c->pixels();
+    for (std::size_t i = 0; i < px.size(); i += 4) white += px[i] > 128 ? 1 : 0;
+    CHECK(inked(*c) > 1000);
+    CHECK(white > 100);
   }
 }

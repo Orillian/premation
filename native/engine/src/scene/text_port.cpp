@@ -693,10 +693,16 @@ double range_selector_at(const Json& sel, int unit, int count) {
   const double b = to_units(jnum(sel.at("end"), 100)) + off;
   const double lo = std::min(a, b);
   const double hi = std::max(a, b);
-  if (hi <= lo) return 0;
   const std::string shape = sel.at("shape").is_string() ? sel.at("shape").str() : "square";
+  const bool rampUp = shape == "rampUp";
+  // AE: Ramp Up holds full strength past the window's end (Ramp Down before
+  // its start), so offset −100 → 100 on a Ramp Up sweeps the whole text.
+  const bool ramp = rampUp || shape == "rampDown";
+  if (hi <= lo && !ramp) return 0;
   double w = 0;
-  if (shape == "square") {
+  if (ramp && (hi <= lo || centre < lo || centre > hi)) {
+    w = (centre > hi || (hi <= lo && centre >= hi)) == rampUp ? 1 : 0;
+  } else if (shape == "square") {
     w = soft_window(centre, lo, hi, std::max(0.0, jnum(sel.at("smoothness"), 100)) / 100);
   } else {
     if (centre < lo || centre > hi) return 0;

@@ -166,6 +166,32 @@ TEST_CASE("gpu route: plexus, an empty scribble and a write-on brush stamp on th
   }
 }
 
+TEST_CASE("gpu route: a drawn effect on a plain rectangle keeps the CPU bake (its raster exists only for the bake)",
+          "[scene][e4][numbers]") {
+  // A solid: a rectangle the GPU draws as a quad. Its raster exists only
+  // because the stack bakes; the route used to take Numbers as an overlay of
+  // that raster, then (gpuEffects unbakes it) found no raster, requested no
+  // overlay and wrote no chain entry — the readout vanished without an error.
+  sc::RLayer l = shape_layer();
+  l.primitive = "rect";
+  for (const char* type : {"numbers", "timecode", "audio-spectrum", "vegas"}) {
+    INFO(type);
+    l.effects = {effect(std::string(R"({"id":"a","type":")") + type + R"(","params":{}})")};
+    l.gpuEffects = false;
+    CHECK(sc::layer_is_baked(l));
+    CHECK_FALSE(sc::gpu_overlay_effect(l, l.effects[0]));
+    CHECK(sc::gpu_effect_route_blocker(l) != nullptr);
+    CHECK_FALSE(sc::gpu_effect_route(l));
+  }
+  // A path keeps a raster of its own: there the overlay route stays.
+  l.primitive = "path";
+  l.effects = {effect(R"({"id":"a","type":"numbers","params":{"value":7}})")};
+  l.gpuEffects = false;
+  REQUIRE(sc::gpu_effect_route(l));
+  l.gpuEffects = true;
+  CHECK(sc::gpu_overlay_requests(l).size() == 1);
+}
+
 TEST_CASE("gpu route: what the chain cannot express keeps the CPU bake", "[scene][e4]") {
   sc::RLayer l = shape_layer();
   l.fillOpacity = 0.5;

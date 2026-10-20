@@ -521,12 +521,25 @@ double comp_to_keyframe_time(const Document& d, const EditorView& v, std::string
       n = parent;
     }
   }
+  // A time outside every clip maps through the NEAREST clip's axis (a layer's
+  // time runs on past its in / out points, as in AE): keyframe_to_comp_time
+  // reports a key outside the clips through that same clip, so a key read and
+  // written back (move, scale, reverse, paste) lands where it was.
+  const Bar* governing = nullptr;
+  double bestDist = std::numeric_limits<double>::infinity();
   for (const Bar* b : clips) {
     if (b->active_at(frame)) {
-      time = b->clip.source_frame_at(g_subFrame > 0 ? time * fps : frame) / fps;
+      governing = b;
       break;
     }
+    const double clamped = std::max(b->clip.start, std::min(b->clip.end() - 1, frame));
+    const double dist = std::fabs(frame - clamped);
+    if (dist < bestDist) {
+      bestDist = dist;
+      governing = b;
+    }
   }
+  if (governing != nullptr) time = governing->clip.source_frame_at(g_subFrame > 0 ? time * fps : frame) / fps;
   const Node* n = d.node(node);
   if (n != nullptr) {
     if (const auto cfg = read_node_layer_time(*n)) {
@@ -578,11 +591,14 @@ double keyframe_to_comp_time(const Document& d, const EditorView& v, std::string
         best = compFrame;
         break;
       }
+      // A key outside every clip maps through the NEAREST clip but keeps its
+      // own time: clamping it to the clip's edge reported a key at 2.8 s as
+      // 3.4 s on a layer whose in point is 3.4 (it evaluates at 2.8).
       const double clamped = std::max(l->clip.start, std::min(l->clip.end() - 1, compFrame));
       const double dist = std::fabs(compFrame - clamped);
       if (dist < bestDist) {
         bestDist = dist;
-        best = clamped;
+        best = compFrame;
       }
     }
     if (best) t = *best / fps;

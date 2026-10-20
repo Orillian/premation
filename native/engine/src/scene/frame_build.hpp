@@ -98,5 +98,9 @@ void set_texture_dimension_limit(std::uint32_t px) noexcept;
 [[nodiscard]] double raster_padding(const RLayer& l);
 /// `needsShapeRaster(layer)`.
 [[nodiscard]] bool needs_shape_raster(const RLayer& l);
+/// needs_shape_raster without its last reason, a CPU-baked effect stack: what
+/// the layer's CONTENT needs, the same before and after the GPU route takes the
+/// stack (`gpuEffects` unbakes the layer, so needs_shape_raster changes then).
+[[nodiscard]] bool shape_content_needs_raster(const RLayer& l);
 
 }  // namespace premation::scene

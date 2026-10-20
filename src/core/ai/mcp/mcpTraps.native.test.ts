@@ -167,11 +167,11 @@ describe('author_scene builds what the script says', () => {
     expect(await value(id, 'transform/opacity', 3.4)).toBeCloseTo(50, 3);
   });
 
-  // OPEN (engine): getKeyframes maps a key outside every clip of the layer to
-  // the clip's edge (native/engine/src/core/timeline.cpp keyframe_to_comp_time
-  // clamps), so read_tracks — and the timeline — show 3.4 for a key that
-  // evaluates at 2.8. The film's "8.75 landed at 9.4" was this readback.
-  it.failing('read_tracks reports a key before the in point at its own time (engine readback)', async () => {
+  // getKeyframes mapped a key outside every clip of the layer to the clip's
+  // edge (native/engine/src/core/timeline.cpp keyframe_to_comp_time clamped),
+  // so read_tracks — and the timeline — showed 3.4 for a key that evaluates at
+  // 2.8. The film's "8.75 landed at 9.4" was this readback.
+  it('read_tracks reports a key before the in point at its own time (engine readback)', async () => {
     await built(lateCard);
     const tr = await tracks(named('Late card'));
     expect(tr.find((t) => t.prop === 'opacity')!.keys.map((k) => k[0])).toEqual([2.8, 4]);
@@ -278,13 +278,12 @@ describe('text animator sweeps say what a shape can do', () => {
     expect(textOf(sq)).not.toMatch(/never selects every character/);
   });
 
-  // OPEN (engine): AE's Ramp Up holds characters PAST the window's end at full
-  // strength (Ramp Down: before its start), which is what makes the classic
-  // "Ramp Up, offset −100 → 100" soft reveal hide the text before it passes.
-  // The engine's selector (native/engine/src/scene/text_port.cpp
-  // range_selector_at, mirrored by src/core/text/textSelectors.ts) gives 0
-  // outside the window on both sides.
-  it.failing('Ramp Up selects characters past the window\'s end fully (AE), so offset −100 hides the whole text', async () => {
+  // AE's Ramp Up holds characters PAST the window's end at full strength (Ramp
+  // Down: before its start), which is what makes the classic "Ramp Up, offset
+  // −100 → 100" soft reveal hide the text before it passes. The selector
+  // (native/engine/src/scene/text_port.cpp range_selector_at, mirrored by
+  // src/core/text/textSelectors.ts) gave 0 outside the window on both sides.
+  it('Ramp Up selects characters past the window\'s end fully (AE), so offset −100 hides the whole text', async () => {
     const { defaultRangeSelector, rangeSelectorAt } = await import('@core/text/textSelectors');
     const sel = { ...defaultRangeSelector(), start: 0, end: 100, offset: -100, shape: 'rampUp' as const };
     expect(Array.from({ length: 7 }, (_, u) => rangeSelectorAt(sel, u, 7))).toEqual(Array(7).fill(1));

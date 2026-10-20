@@ -1391,13 +1391,23 @@ const textAnimator: AiTool['handler'] = async (input, ctx) => {
     swept = ` Selector offset sweeps ${fromOffset}% → ${toOffset}% between ${sweep.fromSec}s and ${sweep.toSec}s` +
       ' (Start 0 / End 100 covers [offset, offset + 100]% of the characters: offset 0 covers all of them, ±100 none;' +
       ' 0 → 100 uncovers the text once, left to right; 100 → 0 covers it once).';
-    // Only a square window selects every character fully: a ramp or a bump is
-    // below full strength at its edges and selects nothing outside itself, so a
-    // hiding animator leaves those characters showing (Operand, The Last Blade).
+    // A bump is below full strength at its edges and selects nothing outside
+    // itself, so a hiding animator leaves those characters showing (Operand).
+    // AE ramps hold full strength on one side (Ramp Up past the window's end,
+    // Ramp Down before its start): swept fully across they hide all, then none.
     const shape = typeof i.shape === 'string' ? i.shape : undefined;
-    if (shape && shape !== 'square') {
+    const rampUp = shape === 'rampUp';
+    if (rampUp || shape === 'rampDown') {
+      const full = rampUp ? fromOffset <= -100 && toOffset >= 100 : fromOffset >= 100 && toOffset <= -100;
+      if (!full) {
+        swept += ` NOTE: shape ${shape} holds full strength only ${rampUp ? 'past the window\'s end' : 'before the window\'s start'} and ramps` +
+          ' inside it, so this sweep leaves some characters part-selected at one end. For a soft reveal (opacity / scale 0) sweep' +
+          ` ${rampUp ? '−100 → 100' : '100 → −100'}; for a hard one use shape square.`;
+      }
+    } else if (shape && shape !== 'square') {
       swept += ` NOTE: shape ${shape} never selects every character fully — characters outside the window and at its soft edges keep` +
-        ' (most of) their own look before and after the sweep. For a reveal (opacity / scale 0) use shape square; its smoothness softens the edge.';
+        ' (most of) their own look before and after the sweep. For a reveal (opacity / scale 0) use shape square (its smoothness softens' +
+        ' the edge) or rampUp swept −100 → 100.';
     }
   }
 

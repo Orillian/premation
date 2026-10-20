@@ -1167,6 +1167,10 @@ double raster_padding(const RLayer& l) {
 }
 
 bool needs_shape_raster(const RLayer& l) {
+  return shape_content_needs_raster(l) || (l.kind == LayerKind::shape && layer_is_baked(l));
+}
+
+bool shape_content_needs_raster(const RLayer& l) {
   if (l.kind != LayerKind::shape) return false;
   if (l.deformedMesh) return true;
   if (l.primitive == "path") return true;
@@ -1194,7 +1198,7 @@ bool needs_shape_raster(const RLayer& l) {
                                          : l.cornerRadius;
     if (biggest > 0) return true;
   }
-  return layer_is_baked(l);
+  return false;
 }
 
 FrameBuild build_frame_scene(const Snapshot& s, double rasterScale, bool svgDisplayScale) {

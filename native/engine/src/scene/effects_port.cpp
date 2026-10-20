@@ -764,7 +764,8 @@ bool gpu_draws_canvas_effect(const RLayer& l, const Json& e) {
   // layer mask, and Vegas first in the stack. Fill opacity is a later chain
   // entry, so the contour is of the unfaded content (contour_request_spec).
   if (t != "vegas") return false;
-  if (l.kind != LayerKind::shape || !needs_shape_raster(l)) return false;
+  // The content's raster, stable across the route's gpuEffects (gpu_overlay_effect).
+  if (!shape_content_needs_raster(l)) return false;
   if (l.mask.is_object() && l.mask.at("paths").is_array() && !l.mask.at("paths").arr().empty()) return false;
   const Json p = doc::params_of(e);
   if (p.at("allMasks").is_bool() && p.at("allMasks").b()) return false;
@@ -813,7 +814,12 @@ bool gpu_overlay_effect(const RLayer& l, const Json& e) {
   }
   // The overlay is painted at the size of the layer's OWN raster (a shape with
   // a path raster, or text), which a layer mask would not shape the same way.
-  const bool ownRaster = (l.kind == LayerKind::shape && needs_shape_raster(l)) || l.kind == LayerKind::text;
+  // The content's raster, not the bake's: a plain rectangle is rasterised only
+  // BECAUSE its stack bakes, and once the route takes the stack (gpuEffects)
+  // it is a quad again — the overlay then had no request and no chain entry,
+  // so Numbers / Timecode on a solid drew nothing and said nothing. Such a
+  // layer keeps the CPU bake, which draws the effect on its raster.
+  const bool ownRaster = shape_content_needs_raster(l) || l.kind == LayerKind::text;
   if (!ownRaster) return false;
   // maskIsActive (mask.ts): only paths with a mode shape the layer; the
   // mode-None paths Path Stroke / Scribble follow do not.

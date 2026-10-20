@@ -82,17 +82,28 @@ suite('MCP film traps on the full renderer', () => {
     expect(inked(await frame(), 60, 120, 420, 150)).toBeGreaterThan(300);
   });
 
-  // OPEN (engine): the draw-only Canvas2D effects (Numbers, Timecode — even
-  // their box) draw nothing on the GPU renderer and record no layer error
-  // (native/engine/src/scene/effects_port.cpp gpu_overlay_effect →
-  // effects/canvas_effects_generate.cpp apply_numbers). The CPU bake path is
-  // what is_canvas2d_only routes them to; the overlay never lands.
-  it.failing('the Numbers effect draws its number (Operand)', async () => {
+  // The draw-only Canvas2D effects (Numbers, Timecode — even its box) drew
+  // nothing on a solid on the GPU renderer and recorded no layer error: the
+  // GPU route took them as overlays of the layer's raster, which exists only
+  // while the stack bakes (native/engine/src/scene/effects_port.cpp
+  // gpu_overlay_effect), so once routed there was no overlay and no chain entry.
+  it('the Numbers effect draws its number (Operand)', async () => {
     await run([
       ['create_layer', { id: 'n', kind: 'solid', name: 'Counter', x: 240, y: 135, width: 400, height: 200, fill: BG }],
       ['add_effect', { nodeId: 'n', type: 'numbers', id: 'num', params: { value: 8888, size: 96, color: '#ffffff' } }],
     ]);
     expect(inked(await frame(), 40, 35, 440, 235)).toBeGreaterThan(200);
+  });
+
+  it('the Timecode effect draws its box and digits on a solid', async () => {
+    await run([
+      ['create_layer', { id: 'tc', kind: 'solid', name: 'Clock', x: 240, y: 135, width: 400, height: 200, fill: BG }],
+      ['add_effect', { nodeId: 'tc', type: 'timecode', id: 'tc1', params: { size: 48, color: '#ffffff' } }],
+    ]);
+    const p = await frame();
+    let white = 0;
+    for (let y = 35; y < 235; y++) for (let x = 40; x < 440; x++) if (px(p, x, y)[0] > 200) white++;
+    expect([inked(p, 40, 35, 440, 235) > 1000, white > 100]).toEqual([true, true]);
   });
 
   it('Linear Wipe removes completion% of the layer, linearly, so its edge can follow a moving layer (In Motion)', async () => {
