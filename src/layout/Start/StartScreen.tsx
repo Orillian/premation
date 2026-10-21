@@ -49,9 +49,7 @@ import { getLocalIndex } from '@core/localIndex/LocalIndex';
 import type { ProjectIndexRow } from '@core/localIndex/types';
 import { thumbUrl } from '@core/localIndex/thumbCache';
 import { isLocalFirst } from '@core/config/flags';
-import { TEMPLATES } from '@core/template/registry';
 import { ProjectCommands } from '@layout/Menu';
-import { useTemplateStore } from '@stores/templateStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { importBrowserFilesEdit, importPathsEdit } from '@layout/Assets/assetEdits';
 import { newCompFromFootageEdit } from '@layout/Workspace/footageEdits';
@@ -62,9 +60,9 @@ import { Input } from '@components/Input';
 import { Segmented } from '@components/Segmented';
 import { EmptyState } from '@components/EmptyState';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { useUIStore } from '@stores/uiStore';
 import { useOnboardingStore } from '@stores/onboardingStore';
-import { noteNextProjectSource } from '@core/analytics/productEvents';
 import styles from './StartScreen.module.css';
 
 /** One card: an index row, an MRU entry, or both — joined on the path. */
@@ -111,7 +109,11 @@ function factsLine(row: ProjectIndexRow): string | null {
   const parts = [`${row.width}×${row.height}`];
   if (row.fps > 0) parts.push(`${row.fps}fps`);
   if (row.durationSeconds > 0) parts.push(`${Math.round(row.durationSeconds * 10) / 10}s`);
-  parts.push(`${row.layerCount} layer${row.layerCount === 1 ? '' : 's'}`);
+  parts.push(
+    row.layerCount === 1
+      ? t('start.card.layersOne', '{n} layer', { n: row.layerCount })
+      : t('start.card.layersOther', '{n} layers', { n: row.layerCount }),
+  );
   if (row.rev > 0) parts.push(`v${row.rev}`);
   return parts.join(' · ');
 }
@@ -130,7 +132,7 @@ function CardThumb({ hash, name }: { hash: string; name: string }): JSX.Element 
     };
   }, [hash]);
   if (!url) return null;
-  return <img className={styles.thumb} src={url} alt={`${name} thumbnail`} />;
+  return <img className={styles.thumb} src={url} alt={t('start.card.thumbAlt', '{name} thumbnail', { name })} />;
 }
 
 export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Element {
@@ -185,7 +187,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
       if (card.row) void getLocalIndex().markMissing(card.row.id, true);
       useUIStore.getState().notify({
         level: 'error',
-        message: `Couldn't open “${card.name}”: ${(err as Error).message}`,
+        message: t('start.toast.openFailed', "Couldn't open “{name}”: {error}", { name: card.name, error: (err as Error).message }),
         durationMs: 4000,
       });
     } finally {
@@ -218,16 +220,6 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
     refreshRows();
   }, [onDismiss, refreshRows]);
 
-  /** New project, then the template built into it — the gallery's own flow, from the start. */
-  const newFromTemplate = useCallback(async (templateId: string) => {
-    noteNextProjectSource('template');
-    await getCommandSystem().execute(asCommandId(ProjectCommands.New));
-    // New can be declined (the unsaved-changes confirmation).
-    if (!getProjectManager().getState().current) return;
-    await useTemplateStore.getState().apply(templateId);
-    onDismiss();
-  }, [onDismiss]);
-
   /** Desktop only: a `.motion` bundle folder, straight to the bundle loader. */
   const openFolder = useCallback(async () => {
     const dir = await chooseBundleDir();
@@ -241,7 +233,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
       }
       useUIStore.getState().notify({
         level: 'error',
-        message: `“${dir}” is not a project bundle.`,
+        message: t('start.toast.notBundle', '“{dir}” is not a project bundle.', { dir }),
         durationMs: 4000,
       });
     } finally {
@@ -277,15 +269,15 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
   const searching = query.trim().length > 0;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Open a project">
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label={t('start.screen.ariaLabel', 'Open a project')}>
       <div className={styles.panel}>
         <div className={styles.head}>
           <h1 className={styles.title}>Premation</h1>
-          <p className={styles.subtitle}>Open a recent project, or start a new one.</p>
+          <p className={styles.subtitle}>{t('start.screen.subtitle', 'Open a recent project, or start a new one.')}</p>
         </div>
 
         <div className={styles.actions}>
-          <Button variant="primary" onClick={() => void run(ProjectCommands.New)}>New Project</Button>
+          <Button variant="primary" onClick={() => void run(ProjectCommands.New)}>{t('start.action.newProject', 'New Project')}</Button>
           {/* AE's second way in, visible at the start: new project, then the
               picked clip imports and the comp conforms to it (size, duration,
               probed fps) via the same New Comp from Footage the Assets panel
@@ -304,7 +296,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
                   if (!getProjectManager().getState().current) return;
                   const asset = (await importPathsEdit([path])).imported[0];
                   if (!asset) {
-                    useUIStore.getState().notify({ level: 'error', message: `Could not import “${path.replace(/^.*[\\/]/, '')}”.`, durationMs: 5000 });
+                    useUIStore.getState().notify({ level: 'error', message: t('start.toast.importFailed', 'Could not import “{file}”.', { file: path.replace(/^.*[\\/]/, '') }), durationMs: 5000 });
                     return;
                   }
                   await newCompFromFootageEdit(asset);
@@ -328,63 +320,43 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
               input.click();
             }}
           >
-            New from Video…
+            {t('start.action.newFromVideo', 'New from Video…')}
           </Button>
-          <Button variant="secondary" onClick={() => void run(ProjectCommands.Open)}>Open…</Button>
+          <Button variant="secondary" onClick={() => void run(ProjectCommands.Open)}>{t('start.action.open', 'Open…')}</Button>
           {bundleDirPickerAvailable() ? (
             <Button
               variant="secondary"
               leftIcon={<Icon name="folder-open" size="sm" />}
               onClick={() => void openFolder()}
               disabled={busy !== null}
-              title="Open a .motion project folder"
+              title={t('start.action.openFolderTitle', 'Open a .motion project folder')}
             >
-              Open folder…
+              {t('start.action.openFolder', 'Open folder…')}
             </Button>
           ) : null}
         </div>
 
-        <div className={styles.sectionLabel}>Templates</div>
-        <div className={styles.templates} role="list" aria-label="Templates">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="listitem"
-              className={styles.template}
-              onClick={() => void newFromTemplate(t.id)}
-              title={t.description ?? `New project from ${t.name}`}
-            >
-              <span className={styles.templateArt} aria-hidden>
-                <Icon name="sparkles" size="sm" />
-              </span>
-              <span className={styles.templateName}>{t.name}</span>
-              {t.aspect ? <span className={styles.templateMeta}>{t.aspect}</span> : null}
-            </button>
-          ))}
-        </div>
-
         <div className={styles.recentHead}>
-          <div className={styles.sectionLabel}>Recent</div>
+          <div className={styles.sectionLabel}>{t('start.recent.label', 'Recent')}</div>
           <div className={styles.recentTools}>
             <Input
               size="sm"
               leftIcon="search"
-              placeholder="Search projects…"
+              placeholder={t('start.recent.searchPlaceholder', 'Search projects…')}
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               clearable
               onClear={() => setQuery('')}
-              aria-label="Search projects"
+              aria-label={t('start.recent.searchLabel', 'Search projects')}
             />
             <Segmented<StartSort>
               size="sm"
-              aria-label="Sort projects"
+              aria-label={t('start.recent.sortLabel', 'Sort projects')}
               value={sort}
               onChange={setSort}
               options={[
-                { value: 'recent', label: 'Recent' },
-                { value: 'name', label: 'Name' },
+                { value: 'recent', label: t('start.recent.sortRecent', 'Recent') },
+                { value: 'name', label: t('start.recent.sortName', 'Name') },
               ]}
             />
           </div>
@@ -396,17 +368,17 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
               {searching ? (
                 <EmptyState
                   icon="search"
-                  title="No projects match"
-                  message={`Nothing named or filed under “${query.trim()}”.`}
-                  action={{ label: 'Clear search', onClick: () => setQuery('') }}
+                  title={t('start.empty.noMatchTitle', 'No projects match')}
+                  message={t('start.empty.noMatchMessage', 'Nothing named or filed under “{query}”.', { query: query.trim() })}
+                  action={{ label: t('start.empty.clearSearch', 'Clear search'), onClick: () => setQuery('') }}
                   compact
                 />
               ) : (
                 <EmptyState
                   icon="folder"
-                  title="Nothing yet"
-                  message="Projects you open or save appear here."
-                  action={{ label: 'New Project', onClick: () => void run(ProjectCommands.New) }}
+                  title={t('start.empty.nothingTitle', 'Nothing yet')}
+                  message={t('start.empty.nothingMessage', 'Projects you open or save appear here.')}
+                  action={{ label: t('start.action.newProject', 'New Project'), onClick: () => void run(ProjectCommands.New) }}
                   compact
                 />
               )}
@@ -430,7 +402,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
                   <span className={styles.name}>{card.name}</span>
                   {facts && <span className={styles.facts}>{facts}</span>}
                   <span className={`${styles.path} ${gone ? styles.missing : ''}`}>
-                    {gone ? 'Missing — moved or deleted' : card.path}
+                    {gone ? t('start.card.missing', 'Missing — moved or deleted') : card.path}
                   </span>
                 </button>
                 <div className={styles.cardTools}>
@@ -438,8 +410,8 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
                     type="button"
                     className={cn(styles.pin, isPinned && styles.pinOn)}
                     aria-pressed={isPinned}
-                    aria-label={isPinned ? `Unpin ${card.name}` : `Pin ${card.name}`}
-                    title={isPinned ? 'Unpin' : 'Pin to the top'}
+                    aria-label={isPinned ? t('start.card.unpinLabel', 'Unpin {name}', { name: card.name }) : t('start.card.pinLabel', 'Pin {name}', { name: card.name })}
+                    title={isPinned ? t('start.card.unpin', 'Unpin') : t('start.card.pin', 'Pin to the top')}
                     onClick={() => togglePin(card.path)}
                   >
                     <Icon name="star" size="sm" />
@@ -447,10 +419,10 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
                   <button
                     type="button"
                     className={styles.remove}
-                    aria-label={`Remove ${card.name} from recent projects`}
+                    aria-label={t('start.card.removeLabel', 'Remove {name} from recent projects', { name: card.name })}
                     onClick={() => removeCard(card)}
                   >
-                    Remove
+                    {t('start.card.remove', 'Remove')}
                   </button>
                 </div>
               </div>
@@ -460,7 +432,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
 
         <div className={styles.footerRow}>
           <button type="button" className={styles.dismiss} onClick={onDismiss}>
-            Continue without a project
+            {t('start.footer.continue', 'Continue without a project')}
           </button>
           {/* The tour runs OVER the editor and spotlights real controls, so it
               cannot start while this screen covers them — dismiss first, then
@@ -474,7 +446,7 @@ export function StartScreen({ onDismiss }: { onDismiss: () => void }): JSX.Eleme
               useOnboardingStore.getState().start();
             }}
           >
-            Take the tour
+            {t('start.footer.tour', 'Take the tour')}
           </button>
         </div>
       </div>

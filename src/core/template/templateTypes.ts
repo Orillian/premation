@@ -18,8 +18,12 @@
  * aspect ratio. `'image'` is the older, policy-less spelling of the same thing,
  * kept so existing templates keep loading; it behaves as `media` with the
  * default policy.
+ *
+ * `'font'` holds a font family name written to a text layer's family, and
+ * `'toggle'` a boolean written to a layer's Video switch (show / hide a part
+ * of the design — a logo bug, a second line).
  */
-export type TemplateFieldKind = 'text' | 'color' | 'number' | 'image' | 'media';
+export type TemplateFieldKind = 'text' | 'color' | 'number' | 'image' | 'media' | 'font' | 'toggle';
 
 /**
  * How a filled source is reconciled with its slot rect.
@@ -59,8 +63,16 @@ export interface TemplateField {
   label: string;
   kind: TemplateFieldKind;
   target: TemplateFieldTarget;
-  /** Default value (also what the template ships authored with). */
+  /** Default value (also what the template ships authored with). A toggle stores 1 / 0. */
   default: string | number;
+  /** A number field's range: with both set the panel draws a slider beside the value. */
+  min?: number;
+  max?: number;
+  step?: number;
+  /** A number field shows `value × displayScale` (Scale is stored as a multiplier and shown in %). */
+  displayScale?: number;
+  /** A number field's unit suffix ('%', '°', 'px'). */
+  unit?: string;
   /** Optional grouping header in the panel (e.g. 'Text', 'Colours'). */
   group?: string;
   /**
@@ -69,6 +81,12 @@ export interface TemplateField {
    * clip in and it is framed the way the design intended.
    */
   fit?: SlotFit;
+  /**
+   * More props the same value is written to — one Accent colour that tints the
+   * rule, the badge and the headline's highlight together. Text and colour
+   * fields only; the panel shows one control.
+   */
+  alsoTargets?: TemplateFieldTarget[];
 }
 
 /** A ready template: an authored scene + its exposed fields. */

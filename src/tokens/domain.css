@@ -302,6 +302,13 @@
      `--color-overlay-handle-halo` on purpose: a controller outline is thin and
      the halo is the only thing separating it from a busy frame. */
   --color-overlay-rig-halo:        rgba(0, 0, 0, 0.55);
+
+  /* Library ▸ the PRO mark on premium items (Premation Cloud). Gold, not the
+     blue accent: blue already means "selected / primary action" everywhere,
+     and a premium item is neither. Dark text on the fill in both themes. */
+  --color-library-pro:        #e5b443;
+  --color-library-pro-text:   #2a1d02;
+  --color-library-pro-ring:   color-mix(in srgb, #e5b443 55%, transparent);
 }
 
 /* Timeline chrome is the one domain group that CANNOT be theme-fixed:
@@ -362,6 +369,11 @@
   --color-filetype-image: var(--color-emerald-600);
   --color-filetype-font:  var(--color-sky-500);
   --color-filetype-other: var(--color-slate-500);
+
+  /* A deeper gold holds its edge on light ground. */
+  --color-library-pro:        #d39b1f;
+  --color-library-pro-text:   #231700;
+  --color-library-pro-ring:   color-mix(in srgb, #d39b1f 60%, transparent);
 }
 
 /*

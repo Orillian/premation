@@ -79,3 +79,51 @@ export async function insertSfxAtEdit(sfxId: string, atSec: number, opts: { join
   });
   return ids?.[0] ?? null;
 }
+
+/**
+ * The project's audio item named `fileName`, importing `bytes()` on first use —
+ * the same reuse-by-name as a synthesised item, so a sound inserted twice is
+ * one item in the project. Premium names carry their id and version, so a
+ * user's own file of the same title is never mistaken for it.
+ */
+async function audioAssetFromBytes(fileName: string, bytes: () => Uint8Array, durationSec: number): Promise<ImportedAsset | null> {
+  const found = [...documentMirror().items.values()].find((i) => i.kind === 'footage' && i.mediaType === 'audio' && i.name === fileName);
+  let asset = found ? itemAsset(found) ?? undefined : undefined;
+  if (!asset) {
+    const file = new File([bytes().slice()], fileName, { type: 'audio/wav' });
+    const { imported: [made] } = await importBrowserFilesEdit([{ file }], `Import ${fileName}`);
+    if (!made) return null;
+    asset = made;
+  }
+  if (!asset.metadata?.duration) asset = { ...asset, metadata: { ...asset.metadata, duration: durationSec } };
+  return asset;
+}
+
+/** The file name a premium sound is kept under in the project. */
+export function premiumSfxFileName(item: { id: string; name: string; version: number }): string {
+  return `${item.name} (${item.id.split('.').pop()} v${item.version}).wav`;
+}
+
+/**
+ * Insert a premium Sound FX payload (WAV bytes) as an audio layer of the
+ * active composition, at the playhead or at `atSec`: one undo entry for the
+ * layer (plus the import's own on first use, as for a synthesised sound).
+ */
+export async function insertSfxBytesEdit(
+  item: { id: string; name: string; version: number; durationSec: number },
+  bytes: Uint8Array,
+  opts: { atSec?: number } = {},
+): Promise<string | null> {
+  const asset = await audioAssetFromBytes(premiumSfxFileName(item), () => bytes, item.durationSec);
+  if (!asset) return null;
+  const at = opts.atSec;
+  const ids = await insertMediaEdit([asset], {
+    label: `Insert ${item.name}`,
+    ...(at === undefined ? {} : {
+      follow: (_selected: readonly string[], layers: readonly string[]) => [
+        { type: 'setLayerTiming' as const, items: layers.map((layer) => ({ layer, startTime: compTime(Math.max(0, at)) })) },
+      ],
+    }),
+  });
+  return ids?.[0] ?? null;
+}

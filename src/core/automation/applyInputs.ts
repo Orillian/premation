@@ -60,7 +60,7 @@ function writeProp(node: SceneNode, componentType: string, prop: string, value: 
 }
 
 function validateValue(field: TemplateField, value: TemplateInputValue): string | null {
-  if (field.kind === 'number') {
+  if (field.kind === 'number' || field.kind === 'toggle') {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return `Input "${field.id}" must be a number.`;
     }

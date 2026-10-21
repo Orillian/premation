@@ -29,6 +29,8 @@ export type CanvasDragPayload =
   | { kind: 'transition'; transId: string; name: string }
   | { kind: 'sfx'; sfxId: string; name: string }
   | { kind: 'lottie'; lottieId: string; name: string }
+  /** A premium library item (catalog id); only an entitled card starts this drag. */
+  | { kind: 'premium'; itemId: string; name: string }
   /**
    * A file on DISK that is not yet an asset — the media browser's rows.
    * `assetId` is pre-minted so a drop target that prefers to wait can look

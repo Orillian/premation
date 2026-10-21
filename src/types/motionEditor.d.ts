@@ -758,6 +758,15 @@ export interface MotionEditorApi {
     onPackageOpened?(handler: () => void): () => void;
     host?: { platform: string; arch: string };
   };
+  /** Premium library payloads (electron/ipc/libraryCache.ts). */
+  library?: {
+    payload?(req: { id: string; version: number; tier: 'free' | 'cloud' }): Promise<
+      | { ok: true; bytes: Uint8Array; cached: boolean }
+      | { ok: false; code: 'plan-required' | 'signed-out' | 'offline' | 'io' | 'bad'; reason: string }
+    >;
+    /** Development only: built packs from the dev folder. */
+    devCatalog?(): Promise<Array<{ meta: unknown; poster?: Uint8Array; preview?: Uint8Array; audio?: Uint8Array }>>;
+  };
   window?: {
     minimize?(): Promise<void>;
     maximize?(): Promise<void>;

@@ -30,13 +30,17 @@ import {   effectPropPath } from '@core/effects/effects';
 import {  addRoot, addShape, type Ease } from '@core/template/templates/builders';
 import { mountPreview, type PreviewSpec } from '@core/template/previewController';
 import type { AnimationEngine } from '@motion/animation';
+import { t } from '@core/i18n';
 
 export type TransitionCategory = 'fade' | 'slide' | 'zoom' | 'whip' | 'glitch' | 'wipe';
 export type TransitionPhase = 'enter' | 'exit';
 
 export interface TransitionItem {
   id: string;
+  /** Display name (translated). */
   name: string;
+  /** English name written into the document (layer / panel names). */
+  layerName: string;
   cat: TransitionCategory;
   /** Card swatch colours (before / after). */
   a: string;
@@ -53,32 +57,45 @@ export interface TransitionItem {
   irisMask?: boolean;
 }
 
+/** Display name for a transition category chip. */
+export function transitionCategoryLabel(cat: string): string {
+  switch (cat) {
+    case 'fade': return t('core.transitionLibrary.catFade', 'Fade');
+    case 'slide': return t('core.transitionLibrary.catSlide', 'Slide');
+    case 'zoom': return t('core.transitionLibrary.catZoom', 'Zoom');
+    case 'whip': return t('core.transitionLibrary.catWhip', 'Whip');
+    case 'glitch': return t('core.transitionLibrary.catGlitch', 'Glitch');
+    case 'wipe': return t('core.transitionLibrary.catWipe', 'Wipe');
+    default: return cat;
+  }
+}
+
 export const TRANSITION_ITEMS: readonly TransitionItem[] = [
-  { id: 'tr-fade',         name: 'Cross Fade',     cat: 'fade',   a: '#1a1a2e', b: '#8b96b8', duration: 0.5 },
-  { id: 'tr-blur-through', name: 'Blur Through',   cat: 'fade',   a: '#3b4a6b', b: '#8b96b8', duration: 0.6 },
-  { id: 'tr-dip-black',    name: 'Dip to Black',   cat: 'fade',   a: '#05060a', b: '#05060a', duration: 1.0, solidOnly: true },
-  { id: 'tr-luma-flash',   name: 'Luma Flash',     cat: 'fade',   a: '#f4f6fb', b: '#ffffff', duration: 0.5, solidOnly: true },
-  { id: 'tr-slide-left',   name: 'Slide Left',     cat: 'slide',  a: '#2988ff', b: '#1a1a2e', duration: 0.6 },
-  { id: 'tr-slide-right',  name: 'Slide Right',    cat: 'slide',  a: '#1a1a2e', b: '#2988ff', duration: 0.6 },
-  { id: 'tr-slide-up',     name: 'Slide Up',       cat: 'slide',  a: '#10b981', b: '#1a1a2e', duration: 0.6 },
-  { id: 'tr-slide-down',   name: 'Slide Down',     cat: 'slide',  a: '#1a1a2e', b: '#10b981', duration: 0.6 },
-  { id: 'tr-scale-bounce', name: 'Scale Bounce',   cat: 'zoom',   a: '#f59e0b', b: '#1a1a2e', duration: 0.7 },
-  { id: 'tr-zoom-through', name: 'Zoom Through',   cat: 'zoom',   a: '#ec4899', b: '#1a1a2e', duration: 0.6 },
-  { id: 'tr-spin-whip',    name: 'Spin Whip',      cat: 'zoom',   a: '#6366f1', b: '#f97316', duration: 0.7 },
-  { id: 'tr-whip-pan',     name: 'Whip Pan',       cat: 'whip',   a: '#22d3ee', b: '#0e7490', duration: 0.5, motionBlur: true },
-  { id: 'tr-whip-up',      name: 'Whip Vertical',  cat: 'whip',   a: '#0e7490', b: '#22d3ee', duration: 0.5, motionBlur: true },
-  { id: 'tr-glitch-cut',   name: 'Glitch Cut',     cat: 'glitch', a: '#fb7185', b: '#22d3ee', duration: 0.5 },
-  { id: 'tr-wipe-right',   name: 'Wipe Right',     cat: 'wipe',   a: '#8b5cf6', b: '#38bdf8', duration: 0.8, solidOnly: true },
-  { id: 'tr-wipe-left',    name: 'Wipe Left',      cat: 'wipe',   a: '#38bdf8', b: '#8b5cf6', duration: 0.8, solidOnly: true },
-  { id: 'tr-wipe-down',    name: 'Wipe Down',      cat: 'wipe',   a: '#14b8a6', b: '#0f766e', duration: 0.8, solidOnly: true },
-  { id: 'tr-wipe-up',      name: 'Wipe Up',        cat: 'wipe',   a: '#0f766e', b: '#14b8a6', duration: 0.8, solidOnly: true },
-  { id: 'tr-venetian',     name: 'Venetian Bars',  cat: 'wipe',   a: '#fb7185', b: '#1a1a2e', duration: 0.9, solidOnly: true, solidCount: 5 },
-  { id: 'tr-iris',         name: 'Iris Circle',    cat: 'wipe',   a: '#05060a', b: '#38bdf8', duration: 0.9, solidOnly: true, irisMask: true },
-  { id: 'tr-slide-diag',   name: 'Diagonal Slide', cat: 'slide',  a: '#a78bfa', b: '#1a1a2e', duration: 0.7 },
-  { id: 'tr-drop-settle',  name: 'Drop & Settle',  cat: 'slide',  a: '#facc15', b: '#1a1a2e', duration: 0.8 },
-  { id: 'tr-flip-card',    name: 'Card Flip',      cat: 'zoom',   a: '#34d399', b: '#1a1a2e', duration: 0.65 },
-  { id: 'tr-shake-cut',    name: 'Shake Cut',      cat: 'glitch', a: '#f87171', b: '#1a1a2e', duration: 0.45, motionBlur: true },
-  { id: 'tr-columns',      name: 'Column Wipe',    cat: 'wipe',   a: '#c084fc', b: '#1a1a2e', duration: 0.9, solidOnly: true, solidCount: 6 },
+  { id: 'tr-fade', layerName: 'Cross Fade', get name() { return t('core.transitionLibrary.fade', 'Cross Fade'); },     cat: 'fade',   a: '#1a1a2e', b: '#8b96b8', duration: 0.5 },
+  { id: 'tr-blur-through', layerName: 'Blur Through', get name() { return t('core.transitionLibrary.blurThrough', 'Blur Through'); },   cat: 'fade',   a: '#3b4a6b', b: '#8b96b8', duration: 0.6 },
+  { id: 'tr-dip-black', layerName: 'Dip to Black', get name() { return t('core.transitionLibrary.dipBlack', 'Dip to Black'); },   cat: 'fade',   a: '#05060a', b: '#05060a', duration: 1.0, solidOnly: true },
+  { id: 'tr-luma-flash', layerName: 'Luma Flash', get name() { return t('core.transitionLibrary.lumaFlash', 'Luma Flash'); },     cat: 'fade',   a: '#f4f6fb', b: '#ffffff', duration: 0.5, solidOnly: true },
+  { id: 'tr-slide-left', layerName: 'Slide Left', get name() { return t('core.transitionLibrary.slideLeft', 'Slide Left'); },     cat: 'slide',  a: '#2988ff', b: '#1a1a2e', duration: 0.6 },
+  { id: 'tr-slide-right', layerName: 'Slide Right', get name() { return t('core.transitionLibrary.slideRight', 'Slide Right'); },    cat: 'slide',  a: '#1a1a2e', b: '#2988ff', duration: 0.6 },
+  { id: 'tr-slide-up', layerName: 'Slide Up', get name() { return t('core.transitionLibrary.slideUp', 'Slide Up'); },       cat: 'slide',  a: '#10b981', b: '#1a1a2e', duration: 0.6 },
+  { id: 'tr-slide-down', layerName: 'Slide Down', get name() { return t('core.transitionLibrary.slideDown', 'Slide Down'); },     cat: 'slide',  a: '#1a1a2e', b: '#10b981', duration: 0.6 },
+  { id: 'tr-scale-bounce', layerName: 'Scale Bounce', get name() { return t('core.transitionLibrary.scaleBounce', 'Scale Bounce'); },   cat: 'zoom',   a: '#f59e0b', b: '#1a1a2e', duration: 0.7 },
+  { id: 'tr-zoom-through', layerName: 'Zoom Through', get name() { return t('core.transitionLibrary.zoomThrough', 'Zoom Through'); },   cat: 'zoom',   a: '#ec4899', b: '#1a1a2e', duration: 0.6 },
+  { id: 'tr-spin-whip', layerName: 'Spin Whip', get name() { return t('core.transitionLibrary.spinWhip', 'Spin Whip'); },      cat: 'zoom',   a: '#6366f1', b: '#f97316', duration: 0.7 },
+  { id: 'tr-whip-pan', layerName: 'Whip Pan', get name() { return t('core.transitionLibrary.whipPan', 'Whip Pan'); },       cat: 'whip',   a: '#22d3ee', b: '#0e7490', duration: 0.5, motionBlur: true },
+  { id: 'tr-whip-up', layerName: 'Whip Vertical', get name() { return t('core.transitionLibrary.whipUp', 'Whip Vertical'); },  cat: 'whip',   a: '#0e7490', b: '#22d3ee', duration: 0.5, motionBlur: true },
+  { id: 'tr-glitch-cut', layerName: 'Glitch Cut', get name() { return t('core.transitionLibrary.glitchCut', 'Glitch Cut'); },     cat: 'glitch', a: '#fb7185', b: '#22d3ee', duration: 0.5 },
+  { id: 'tr-wipe-right', layerName: 'Wipe Right', get name() { return t('core.transitionLibrary.wipeRight', 'Wipe Right'); },     cat: 'wipe',   a: '#8b5cf6', b: '#38bdf8', duration: 0.8, solidOnly: true },
+  { id: 'tr-wipe-left', layerName: 'Wipe Left', get name() { return t('core.transitionLibrary.wipeLeft', 'Wipe Left'); },      cat: 'wipe',   a: '#38bdf8', b: '#8b5cf6', duration: 0.8, solidOnly: true },
+  { id: 'tr-wipe-down', layerName: 'Wipe Down', get name() { return t('core.transitionLibrary.wipeDown', 'Wipe Down'); },      cat: 'wipe',   a: '#14b8a6', b: '#0f766e', duration: 0.8, solidOnly: true },
+  { id: 'tr-wipe-up', layerName: 'Wipe Up', get name() { return t('core.transitionLibrary.wipeUp', 'Wipe Up'); },        cat: 'wipe',   a: '#0f766e', b: '#14b8a6', duration: 0.8, solidOnly: true },
+  { id: 'tr-venetian', layerName: 'Venetian Bars', get name() { return t('core.transitionLibrary.venetian', 'Venetian Bars'); },  cat: 'wipe',   a: '#fb7185', b: '#1a1a2e', duration: 0.9, solidOnly: true, solidCount: 5 },
+  { id: 'tr-iris', layerName: 'Iris Circle', get name() { return t('core.transitionLibrary.iris', 'Iris Circle'); },    cat: 'wipe',   a: '#05060a', b: '#38bdf8', duration: 0.9, solidOnly: true, irisMask: true },
+  { id: 'tr-slide-diag', layerName: 'Diagonal Slide', get name() { return t('core.transitionLibrary.slideDiag', 'Diagonal Slide'); }, cat: 'slide',  a: '#a78bfa', b: '#1a1a2e', duration: 0.7 },
+  { id: 'tr-drop-settle', layerName: 'Drop & Settle', get name() { return t('core.transitionLibrary.dropSettle', 'Drop & Settle'); },  cat: 'slide',  a: '#facc15', b: '#1a1a2e', duration: 0.8 },
+  { id: 'tr-flip-card', layerName: 'Card Flip', get name() { return t('core.transitionLibrary.flipCard', 'Card Flip'); },      cat: 'zoom',   a: '#34d399', b: '#1a1a2e', duration: 0.65 },
+  { id: 'tr-shake-cut', layerName: 'Shake Cut', get name() { return t('core.transitionLibrary.shakeCut', 'Shake Cut'); },      cat: 'glitch', a: '#f87171', b: '#1a1a2e', duration: 0.45, motionBlur: true },
+  { id: 'tr-columns', layerName: 'Column Wipe', get name() { return t('core.transitionLibrary.columns', 'Column Wipe'); },    cat: 'wipe',   a: '#c084fc', b: '#1a1a2e', duration: 0.9, solidOnly: true, solidCount: 6 },
 ] as const;
 
 export function getTransitionItem(id: string): TransitionItem | null {
@@ -781,7 +798,7 @@ export function transitionPreviewSpec(item: TransitionItem): PreviewSpec {
 
   return {
     build: (g) => {
-      addRoot(g, 'tpl_root', item.name);
+      addRoot(g, 'tpl_root', item.layerName);
       // The incoming shot, always present underneath.
       addShape(g, 'under', 'tpl_root', cx, cy, PREVIEW_W, PREVIEW_H, item.b);
       if (item.solidOnly) {

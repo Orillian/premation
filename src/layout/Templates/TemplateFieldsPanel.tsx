@@ -5,165 +5,158 @@
  * field writes straight through the scene graph via the template store, so the
  * design and animation stay locked and only the data changes.
  *
- * Gallery cards go through the shared preview controller: each shows the
- * ENGINE's still of the real scene (off-screen cards ask for nothing) and plays
- * its animation while hovered or focused, so a card shows exactly what
- * applying/inserting produces.
+ * The gallery is the Library's Templates shelf: premium templates (Premation
+ * Cloud, server-delivered — LibraryCards.tsx) beside the bundled scenes and
+ * animated presets, in one searchable, filterable grid. Bundled cards go
+ * through the shared preview controller (the ENGINE's still of the real scene,
+ * playing while hovered or focused); premium cards play the server's rendered
+ * loop. Every scene — bundled or premium — opens in a NEW composition, so
+ * picking one never replaces the work in the current one.
  */
 
-import { useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
 import { EmptyState } from '@components/EmptyState';
 import { Input } from '@components/Input';
-import { ValueField } from '@components/ValueField';
-import { ColorPicker } from '@components/ColorPicker';
-import { customConfirm } from '@components/Modal';
 import { documentMirror } from '@stores/documentMirror';
-import { activeCompIdNow, useActiveMirrorComp, useRetainTrees } from '@hooks/useMirror';
-import { liveComps } from '@core/mirror/compNames';
+import { activeCompIdNow, useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
-import { TEMPLATES } from '@core/template/registry';
-import { createTemplatePlayer } from '@core/template/templatePreview';
-import { ANIM_PRESETS, buildAnimPresetFragment, createAnimPresetPlayer, type AnimPreset } from '@core/template/animPresets';
-import { insertFragment } from '@/engine-client/insertFragment';
-import { getTime as getPlayheadTime } from '@stores/playbackClockStore';
-import type { TemplateDefinition, TemplateField } from '@core/template/templateTypes';
+import type { TemplateField } from '@core/template/templateTypes';
 import { publishCurrentTemplate } from '@core/automation/publishTemplate';
 import { isPublicFieldId } from '@core/automation/fieldIds';
 import { cloudProjectsEnabled } from '@core/config/edition';
 import { customPrompt } from '@components/Modal';
 import { useUIStore } from '@stores/uiStore';
-import { setCanvasDrag } from '@core/dnd/canvasDrag';
-import { useTemplateStore, type TemplateFieldSend } from '@stores/templateStore';
-import { useGesture } from '@hooks/useGesture';
-import { useEngineEdit } from '@layout/Inspector/useEngineEdit';
-import { DataFillSection } from './DataFillSection';
+import { useTemplateStore } from '@stores/templateStore';
+import { useLayoutStore } from '@stores/layoutStore';
+import { TemplateControls } from './EssentialGraphicsPanel';
 import { exposeLayerAsFieldEdit, mirrorAuthoredFields, removeAuthoredFieldEdit, renameAuthoredFieldEdit, renameAuthoredFieldIdEdit } from './templateAuthoringEdits';
 import { useSelectionStore } from '@stores/selectionStore';
 import styles from './TemplateFieldsPanel.module.css';
+import cardStyles from '@layout/EditorLayout/LibraryCards.module.css';
+import { PremiumCard, PremiumSheet, Segmented, ShelfNote, usePremiumSheet, usePremiumShelf } from '@layout/EditorLayout/LibraryCards';
+import { LibraryBrowser } from '@layout/EditorLayout/LibraryBrowser';
+import type { PremiumCatalogItem } from '@core/library/premium/packFormat';
+import { t } from '@core/i18n';
 
 export function TemplateFieldsPanel(): JSX.Element {
   const active = useTemplateStore((s) => s.active);
   return active ? <ActiveTemplateFields /> : <TemplateGallery />;
 }
 
+/** One tile in the Templates grid — a library template (free or Pro). */
+interface TemplateEntry {
+  id: string;
+  name: string;
+  cat: string;
+  tier: 'cloud' | 'free';
+  tags: readonly string[];
+  aspect?: string;
+  item: PremiumCatalogItem;
+}
+
+/** The shelf's category order; a category outside it is appended. */
+const TEMPLATE_CATEGORIES = ['openers', 'titles', 'lower-thirds', 'social', 'promo', 'slideshow', 'logo', 'typography', 'data'] as const;
+
+const categoryId = (label: string): string => label.trim().toLowerCase().replace(/\s+/g, '-');
+
+function templateCategoryLabel(cat: string): string {
+  switch (cat) {
+    case 'openers': return t('templates.gallery.cat.openers', 'Openers');
+    case 'titles': return t('templates.gallery.cat.titles', 'Titles');
+    case 'lower-thirds': return t('templates.gallery.cat.lowerThirds', 'Lower thirds');
+    case 'social': return t('templates.gallery.cat.social', 'Social');
+    case 'promo': return t('templates.gallery.cat.promo', 'Promo');
+    case 'slideshow': return t('templates.gallery.cat.slideshow', 'Slideshow');
+    case 'logo': return t('templates.gallery.cat.logo', 'Logo');
+    case 'typography': return t('templates.gallery.cat.typography', 'Typography');
+    case 'data': return t('templates.gallery.cat.data', 'Data');
+    default: return cat.charAt(0).toUpperCase() + cat.slice(1).replace(/-/g, ' ');
+  }
+}
+
+type AspectFilter = 'all' | '16:9' | '9:16' | '1:1';
+
 function TemplateGallery(): JSX.Element {
-  const apply = useTemplateStore((s) => s.apply);
+  const shelf = usePremiumShelf('template');
+  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
+  const [aspect, setAspect] = useState<AspectFilter>('all');
 
-  // Applying a template REPLACES the current composition. Confirm first when
-  // there's real work in the scene (more than a lone root node) so a stray click
-  // can't wipe it.
-  const pick = async (id: string): Promise<void> => {
-    // B4: the document mirror — any layer, or a second composition, is real work.
-    const m = documentMirror();
-    if (m.layerIds().length + liveComps(m).length > 1) {
-      const ok = await customConfirm(
-        'Apply template?',
-        'This replaces everything in the current composition (Edit ▸ Undo brings it back).',
-        { confirmLabel: 'Apply', isDanger: true },
-      );
-      if (!ok) return;
-    }
-    await apply(id);
-  };
+  const entries = useMemo<TemplateEntry[]>(() => shelf.items.map((item) => ({
+    id: item.id, name: item.name, cat: categoryId(item.category), tier: item.tier, tags: item.tags,
+    // An element (a lower third, a title) fits any composition, so it has no aspect.
+    ...(item.mode === 'element' ? {} : { aspect: item.aspect }), item,
+  })), [shelf.items]);
 
-  return (
-    <div className={styles.root}>
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.groupLabel}>Animated presets</span>
-        </div>
-        <p className={styles.introText}>
-          Click to add at centre, or drag onto the canvas — then just edit the text.
-        </p>
-        <div className={styles.presetGrid}>
-          {ANIM_PRESETS.map((p) => (
-            <AnimPresetCard key={p.id} preset={p} />
-          ))}
-        </div>
-      </section>
+  const categories = useMemo(() => {
+    const known: string[] = [...TEMPLATE_CATEGORIES];
+    for (const e of entries) if (!known.includes(e.cat)) known.push(e.cat);
+    return known.filter((c) => entries.some((e) => e.cat === c));
+  }, [entries]);
 
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.groupLabel}>Full-scene templates</span>
-        </div>
-        <p className={styles.introText}>Replaces the whole composition with an editable, animated scene.</p>
-        <div className={styles.gallery}>
-          {TEMPLATES.map((t) => (
-            <TemplateCard key={t.id} template={t} onPick={() => void pick(t.id)} />
-          ))}
-        </div>
-      </section>
+  const byAspect = useCallback((e: TemplateEntry) => aspect === 'all' || !e.aspect || e.aspect === aspect, [aspect]);
 
-      <TemplateAuthoringSection />
+  const aspectFilter = (
+    <Segmented
+      value={aspect}
+      onChange={setAspect}
+      label={t('templates.gallery.aspect', 'Aspect ratio')}
+      options={[
+        { value: 'all', label: t('templates.gallery.aspectAll', 'Any') },
+        { value: '16:9', label: '16:9' },
+        { value: '9:16', label: '9:16' },
+        { value: '1:1', label: '1:1' },
+      ]}
+    />
+  );
+
+  // No shelf yet: say why instead of an empty grid.
+  const shelfEmpty = entries.length === 0 ? (
+    <div className={cardStyles.shelfNote} role="status">
+      <Icon name="info" size="sm" />
+      <span>
+        {shelf.access === 'local'
+          ? t('templates.gallery.local', 'Templates come with a Premation account — sign in from the Premation app to browse them.')
+          : shelf.status === 'loading' || shelf.status === 'idle'
+            ? t('templates.gallery.loading', 'Loading templates…')
+            : t('templates.gallery.none', 'No templates are available right now.')}
+      </span>
     </div>
-  );
-}
-
-/** A drop-in animated element — full-bleed preview (the engine's still; it plays
- *  on hover); click to add at centre / drag to place at the drop point. */
-function AnimPresetCard({ preset }: { preset: AnimPreset }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const player = createAnimPresetPlayer(canvas, preset);
-    return () => player.stop();
-  }, [preset]);
+  ) : null;
 
   return (
-    <button
-      type="button"
-      className={styles.presetCard}
-      title={`${preset.name} — click to add, drag to place`}
-      draggable
-      onDragStart={(e) => setCanvasDrag(e, { kind: 'animPreset', presetId: preset.id })}
-      // The preset's styled layer tree is laid into a fragment → ONE pasteLayers entry.
-      onClick={() => { void insertFragment(`Insert ${preset.name}`, (b, f) => buildAnimPresetFragment(b, f, preset.id, getPlayheadTime()), { comp: activeCompIdNow() ?? 'comp_root' }); }}
-    >
-      <span className={styles.previewFrame} data-aspect="16:9">
-        <canvas ref={canvasRef} className={styles.previewCanvas} aria-hidden />
-        <span className={styles.addBadge} aria-hidden><Icon name="plus" size="sm" /></span>
-      </span>
-      <span className={styles.cardLabel}>{preset.name}</span>
-    </button>
-  );
-}
-
-/** One scene-template card — full-bleed preview of the real scene (plays on hover). */
-function TemplateCard({ template, onPick }: { template: TemplateDefinition; onPick: () => void }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const player = createTemplatePlayer(canvas, template);
-    return () => player.stop();
-  }, [template]);
-
-  return (
-    <button type="button" className={styles.card} title={template.name} onClick={onPick}>
-      <span className={styles.previewFrame} data-aspect={template.aspect}>
-        <canvas ref={canvasRef} className={styles.previewCanvas} aria-hidden />
-      </span>
-      <span className={styles.cardMeta}>
-        <span className={styles.cardLabel}>{template.name}</span>
-        {template.aspect && <span className={styles.aspectBadge}>{template.aspect}</span>}
-      </span>
-    </button>
+    <div className={cardStyles.section}>
+      <LibraryBrowser
+        items={entries}
+        categories={categories}
+        categoryLabel={templateCategoryLabel}
+        noun="template"
+        showTier={entries.some((e) => e.tier === 'cloud') && entries.some((e) => e.tier !== 'cloud')}
+        filters={aspectFilter}
+        predicate={byAspect}
+        toolbar={<>{shelfEmpty}<ShelfNote shelf={shelf} /></>}
+        after={<TemplateAuthoringSection />}
+      >
+        {(items) => (
+          <div className={cardStyles.grid}>
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} />)}
+          </div>
+        )}
+      </LibraryBrowser>
+      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
+    </div>
   );
 }
 
 function fieldKindLabel(kind: TemplateField['kind']): string {
   switch (kind) {
-    case 'media': return 'Media';
-    case 'image': return 'Image';
-    case 'text': return 'Text';
-    case 'color': return 'Color';
-    case 'number': return 'Number';
+    case 'media': return t('templates.fields.kindMedia', 'Media');
+    case 'image': return t('templates.fields.kindImage', 'Image');
+    case 'text': return t('templates.fields.kindText', 'Text');
+    case 'color': return t('templates.fields.kindColor', 'Color');
+    case 'number': return t('templates.fields.kindNumber', 'Number');
     default: return kind;
   }
 }
@@ -199,10 +192,10 @@ export function TemplateAuthoringSection(): JSX.Element | null {
 
   const publish = async (): Promise<void> => {
     const name = await customPrompt(
-      'Save as Animation Template',
-      'n8n will call this template by name and send the input ids below — not Premation layer ids.',
+      t('templates.authoring.saveAsTemplate', 'Save as Animation Template'),
+      t('templates.authoring.savePrompt', 'n8n will call this template by name and send the input ids below — not Premation layer ids.'),
       'Anime Cooking Reaction',
-      { placeholder: 'Template name', confirmLabel: 'Save template' },
+      { placeholder: t('templates.authoring.templateName', 'Template name'), confirmLabel: t('templates.authoring.saveTemplate', 'Save template') },
     );
     if (!name?.trim()) return;
     // B4: the active composition's fields and settings from the document mirror, read at call time.
@@ -217,7 +210,9 @@ export function TemplateAuthoringSection(): JSX.Element | null {
     });
     notify({
       level: result.ok ? 'success' : 'error',
-      message: result.ok ? `Saved template “${name.trim()}”` : result.error ?? 'Publish failed',
+      message: result.ok
+        ? t('templates.authoring.saved', 'Saved template “{name}”', { name: name.trim() })
+        : result.error ?? t('templates.authoring.publishFailed', 'Publish failed'),
       durationMs: 3200,
     });
   };
@@ -226,11 +221,13 @@ export function TemplateAuthoringSection(): JSX.Element | null {
 
   return (
     <div className={styles.authoring}>
-      <div className={styles.groupLabel}>Make this a template</div>
+      <div className={styles.groupLabel}>{t('templates.authoring.title', 'Make this a template')}</div>
       <div className={styles.introText}>
-        Select a text, image or video layer and expose it as an automation input.
-        n8n sends the <strong>ID</strong> (e.g. <code>character</code>, <code>backgroundVideo</code>) —
-        not Premation layer ids.
+        {t(
+          'templates.authoring.intro',
+          'Select a text, image or video layer and expose it as an automation input. n8n sends the ID (e.g. {example1}, {example2}) — not Premation layer ids.',
+          { example1: 'character', example2: 'backgroundVideo' },
+        )}
       </div>
       <Button
         variant="secondary"
@@ -239,15 +236,15 @@ export function TemplateAuthoringSection(): JSX.Element | null {
         onClick={exposeSelected}
         disabled={!selectedId}
       >
-        {selectedId ? 'Expose selected layer' : 'Select a layer first'}
+        {selectedId ? t('templates.authoring.expose', 'Expose selected layer') : t('templates.authoring.selectFirst', 'Select a layer first')}
       </Button>
 
       {fields.length === 0 && (
         <EmptyState
           compact
           icon="component"
-          title="No fields exposed yet"
-          message="Expose a text, image or video layer above and it becomes an automation input other tools can fill."
+          title={t('templates.authoring.emptyTitle', 'No fields exposed yet')}
+          message={t('templates.authoring.emptyMessage', 'Expose a text, image or video layer above and it becomes an automation input other tools can fill.')}
         />
       )}
 
@@ -264,22 +261,22 @@ export function TemplateAuthoringSection(): JSX.Element | null {
                     onBlur={(e) => {
                       if (e.target.value !== f.label) void renameAuthoredFieldEdit(f.id, e.target.value);
                     }}
-                    aria-label="Field label"
+                    aria-label={t('templates.authoring.fieldLabel', 'Field label')}
                     className={styles.authoredLabel}
                   />
                   <button
                     type="button"
                     className={styles.iconBtn}
-                    title="Remove field"
+                    title={t('templates.authoring.removeField', 'Remove field')}
                     onClick={() => void removeAuthoredFieldEdit(f.id)}
                   >
                     <Icon name="trash" size="sm" />
                   </button>
                 </div>
                 <div className={styles.authoredMeta}>
-                  <span className={styles.authoredMetaLabel}>Automation input</span>
+                  <span className={styles.authoredMetaLabel}>{t('templates.authoring.automationInput', 'Automation input')}</span>
                   <div className={styles.authoredMetaRow}>
-                    <span className={styles.authoredMetaKey}>ID</span>
+                    <span className={styles.authoredMetaKey}>{t('templates.authoring.id', 'ID')}</span>
                     <Input
                       defaultValue={f.id}
                       key={`${f.id}-id`}
@@ -287,12 +284,14 @@ export function TemplateAuthoringSection(): JSX.Element | null {
                         const v = e.target.value.trim();
                         if (v && v !== f.id) void renameAuthoredFieldIdEdit(f.id, v);
                       }}
-                      aria-label="Input id"
-                      title={isPublicFieldId(f.id) ? 'Public input id for n8n' : 'Must be a camelCase slug like character'}
+                      aria-label={t('templates.authoring.inputId', 'Input id')}
+                      title={isPublicFieldId(f.id)
+                        ? t('templates.authoring.inputIdPublic', 'Public input id for n8n')
+                        : t('templates.authoring.inputIdInvalid', 'Must be a camelCase slug like character')}
                     />
                   </div>
                   <div className={styles.authoredMetaRow}>
-                    <span className={styles.authoredMetaKey}>Type</span>
+                    <span className={styles.authoredMetaKey}>{t('templates.authoring.type', 'Type')}</span>
                     <span className={styles.kindBadge}>{fieldKindLabel(f.kind)}</span>
                   </div>
                 </div>
@@ -300,11 +299,11 @@ export function TemplateAuthoringSection(): JSX.Element | null {
             ))}
           </div>
           <Button variant="primary" size="sm" onClick={previewAuthored}>
-            Preview fill-in ({fields.length})
+            {t('templates.authoring.preview', 'Preview fill-in ({n})', { n: fields.length })}
           </Button>
           {cloudProjectsEnabled() && (
             <Button variant="secondary" size="sm" onClick={() => void publish()}>
-              Save as Animation Template
+              {t('templates.authoring.saveAsTemplate', 'Save as Animation Template')}
             </Button>
           )}
         </>
@@ -325,133 +324,25 @@ export function TemplateAuthoringSection(): JSX.Element | null {
 export function ActiveTemplateFields(): JSX.Element {
   const active = useTemplateStore((s) => s.active)!;
   const exit = useTemplateStore((s) => s.exit);
-  // A field edit composes its commands from its layer's property tree: keep them loaded.
-  useRetainTrees(active.fields.map((f) => f.target.nodeId));
+  const openPanel = useLayoutStore((s) => s.openPanel);
 
-  // Group fields by their `group` label, preserving first-seen order.
-  const groups = useMemo(() => {
-    const map = new Map<string, TemplateField[]>();
-    for (const f of active.fields) {
-      const key = f.group ?? 'Fields';
-      const arr = map.get(key) ?? [];
-      arr.push(f);
-      map.set(key, arr);
-    }
-    return [...map.entries()];
-  }, [active]);
-
+  // The controls are the active composition's fields (the mirror), the same
+  // list Essential Graphics edits — one editor, two places to reach it.
   return (
     <div className={styles.root}>
       <div className={styles.header}>
         <div>
           <div className={styles.templateName}>{active.name}</div>
-          <div className={styles.templateHint}>Editing template content</div>
+          <div className={styles.templateHint}>{t('templates.fields.editing', 'Editing template content')}</div>
         </div>
+        <Button variant="ghost" size="sm" leftIcon={<Icon name="layout" size="sm" />} onClick={() => openPanel('essentialGraphics')}>
+          {t('templates.fields.openEg', 'Essential Graphics')}
+        </Button>
         <Button variant="ghost" size="sm" leftIcon={<Icon name="grid" size="sm" />} onClick={exit}>
-          Change
+          {t('templates.fields.change', 'Change')}
         </Button>
       </div>
-
-      {groups.length === 0 && (
-        <EmptyState
-          icon="component"
-          title="This template exposes no fields"
-          message="Nothing here is editable as template content — switch templates, or expose a layer from the authoring section."
-        />
-      )}
-
-      {groups.map(([group, fields]) => (
-        <div key={group} className={styles.group}>
-          <div className={styles.groupLabel}>{group}</div>
-          {fields.map((f) => (
-            <FieldRow key={f.id} field={f} />
-          ))}
-        </div>
-      ))}
-
-      {/* Batch fill sits under the field list because it fills THESE fields —
-          its column report only means anything beside the ids it matches. */}
-      <DataFillSection fields={active.fields} />
+      <TemplateControls onBuild={() => openPanel('essentialGraphics')} />
     </div>
-  );
-}
-
-function FieldRow({ field }: { field: TemplateField }): JSX.Element {
-  const value = useTemplateStore((s) => s.values[field.id]);
-  const setField = useTemplateStore((s) => s.setField);
-  const fillMediaField = useTemplateStore((s) => s.fillMediaField);
-  const fileRef = useRef<HTMLInputElement>(null);
-  // Engine route (templateFieldEdits.ts): a colour drag / number scrub is ONE
-  // gesture, a typing session (first keystroke → blur) is ONE undo entry; a
-  // typed number or a click is one `edit`.
-  const eng = useEngineEdit();
-  const typing = useGesture();
-  const label = `Edit ${field.label}`;
-  const typeInto: TemplateFieldSend = (l, cmds) => {
-    if (!typing.isActive()) typing.begin(l);
-    typing.send(cmds);
-  };
-
-  const onPickImage = (e: ChangeEvent<HTMLInputElement>): void => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = ''; // allow re-picking the same file
-    // Imported into the project (it saves with it), then the slot is refilled.
-    void fillMediaField(field.id, file);
-  };
-
-  return (
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{field.label}</span>
-      {field.kind === 'text' && (
-        <Input
-          value={String(value ?? '')}
-          onChange={(e) => setField(field.id, e.target.value, typeInto)}
-          onBlur={() => { void typing.end(); }}
-          aria-label={field.label}
-        />
-      )}
-      {field.kind === 'color' && (
-        <span style={{ display: 'contents' }} {...eng.press(label)}>
-          <ColorPicker
-            value={String(value ?? '#000000')}
-            onChange={(hex) => setField(field.id, hex, eng.send)}
-            className={styles.colorTrigger}
-            aria-label={field.label}
-          />
-        </span>
-      )}
-      {field.kind === 'number' && (
-        <ValueField
-          value={Number(value ?? 0)}
-          {...eng.scrub(label)}
-          onChange={(v) => setField(field.id, v, eng.send)}
-          aria-label={field.label}
-        />
-      )}
-      {field.kind === 'image' && (
-        <div className={styles.imageField}>
-          <span className={styles.imageThumb} aria-hidden>
-            {value ? <img src={String(value)} alt="" /> : <Icon name="media" size="md" />}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Icon name="media" size="sm" />}
-            onClick={() => fileRef.current?.click()}
-          >
-            {value ? 'Replace image' : 'Choose image'}
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={onPickImage}
-            aria-label={field.label}
-          />
-        </div>
-      )}
-    </label>
   );
 }

@@ -59,7 +59,8 @@ export async function publishCurrentTemplate(
       inputs: fields.map((f) => ({
         id: f.id,
         label: f.label,
-        kind: f.kind,
+        // The Automation API's kinds: a font name is text, a show / hide switch is 1 / 0.
+        kind: f.kind === 'font' ? 'text' : f.kind === 'toggle' ? 'number' : f.kind,
         required: f.kind === 'image' || f.kind === 'media',
       })),
       width: comp.width,

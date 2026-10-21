@@ -17,7 +17,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useSelectionStore } from '@stores/selectionStore';
 import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { LOTTIE_DESIGN_CENTER, getLottieItem, prepareLottieFile, previewLottieItem } from '@core/library/lottieLibrary';
-import { planLottieImport, type ImportPlan } from '@core/lottie/lottieImport';
+import { planLottieImport, type ImportPlan, type LottieJson } from '@core/lottie/lottieImport';
 import { reportLottieImport, reportLottieImportFailure } from '@core/lottie/lottieImportReport';
 import { buildLottieFragment } from '@/engine-client/lottieFragment';
 import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
@@ -63,6 +63,21 @@ export async function insertLottieItemEdit(lottieId: string, x?: number, y?: num
   const ids = await pasteLottie(`Insert ${item.name}`, comp, planLottieImport(item.doc), { x: px - LOTTIE_DESIGN_CENTER, y: py - LOTTIE_DESIGN_CENTER });
   if (ids && ids.length > 0) previewLottieItem(lottieId);
   return ids;
+}
+
+/**
+ * Insert a Lottie document that arrived as data (a premium library item),
+ * centred at (x, y) — comp centre when omitted. The same plan → fragment →
+ * one `pasteLayers` as a bundled item or a file. Resolves to the new layer ids
+ * ([] when nothing landed, null on a refusal).
+ */
+export async function insertLottieDocEdit(label: string, doc: LottieJson, x?: number, y?: number): Promise<string[] | null> {
+  const comp = activeCompIdNow() ?? 'comp_root';
+  const settings = documentMirror().comp(comp)?.settings;
+  const px = x ?? (settings?.width ?? 1920) / 2;
+  const py = y ?? (settings?.height ?? 1080) / 2;
+  const plan = planLottieImport(doc);
+  return pasteLottie(label, comp, plan, { x: px - plan.comp.width / 2, y: py - plan.comp.height / 2 });
 }
 
 /** Import a user's .json / .lottie file into the active comp and report the outcome. */

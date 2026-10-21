@@ -1,0 +1,420 @@
+/**
+ * Library cards — the one card system every library section draws with.
+ *
+ * The chrome stays quiet (panel type roles, neutral greys, blue only for
+ * focus / selection / progress) so the THUMBNAILS carry the colour: a library
+ * is browsed by what its items look like. The one exception is the PRO mark,
+ * gold on purpose (tokens/domain.css `--color-library-pro`).
+ */
+
+/* A section that can show the Premium sheet over itself. */
+.section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── Filters ─────────────────────────────────────────────── */
+
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 6px;
+  flex-wrap: wrap;
+  background: var(--color-surface-1);
+}
+
+/* ── Grid cards ──────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 12px 8px;
+  padding: 2px 0 10px;
+}
+.gridTight {
+  composes: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.card:focus-visible { outline: none; }
+.card:focus-visible .thumb {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border-subtle);
+  background: #0c0c0f;
+  overflow: hidden;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.thumbSquare {
+  composes: thumb;
+  aspect-ratio: 1 / 1;
+}
+.card:hover .thumb,
+.card:hover .thumbSquare {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+.card[data-premium='true']:hover .thumb,
+.card[data-premium='true']:hover .thumbSquare {
+  border-color: var(--color-library-pro-ring);
+}
+
+/* Video, canvas or poster image — letterboxed, never cropped: a 9:16 template
+   in a 16:9 tile shows all of itself. */
+.media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.mediaHidden {
+  composes: media;
+  visibility: hidden;
+}
+
+.thumbEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.metaText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.name {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-label);
+  line-height: var(--panel-line-height);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── The PRO mark ────────────────────────────────────────── */
+
+.pro {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-lg);
+  background: var(--color-library-pro);
+  color: var(--color-library-pro-text);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  font-weight: var(--panel-weight-group);
+  letter-spacing: 0.06em;
+  line-height: 1;
+  flex: none;
+  pointer-events: none;
+}
+.proOnThumb {
+  composes: pro;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* A free mark is just a word — free is the default, it needs no badge. */
+.free {
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-muted);
+  flex: none;
+}
+
+/* Downloading for an insert: the card shows it and refuses a second click. */
+.busy {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f2f2f4;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+}
+.spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  animation: libSpin 0.8s linear infinite;
+}
+@keyframes libSpin { to { transform: rotate(360deg); } }
+
+/* ── Sound rows ──────────────────────────────────────────── */
+
+.soundList {
+  display: flex;
+  flex-direction: column;
+}
+.soundRow {
+  display: grid;
+  grid-template-columns: 24px minmax(56px, 88px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 6px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.soundRow:hover,
+.soundRow:focus-within { background: var(--color-hover); }
+.soundRow[data-playing='true'] { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+
+.play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.play:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
+.play[aria-pressed='true'] { color: var(--color-primary); border-color: var(--color-primary); }
+.play:focus-visible { outline: 1px solid var(--color-focus-ring); outline-offset: 1px; }
+
+.wave {
+  display: block;
+  width: 100%;
+  height: 24px;
+}
+.waveBase { fill: var(--color-text-tertiary); opacity: 0.55; }
+.wavePlayed { fill: var(--color-primary); }
+
+.rowAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+.soundRow:hover .add,
+.soundRow:focus-within .add,
+.add:focus-visible { opacity: 1; }
+.add:hover { color: var(--color-text-primary); background: var(--color-hover); }
+.add:focus-visible { outline: 1px solid var(--color-focus-ring); outline-offset: -1px; }
+
+/* ── Section headings inside a tab ───────────────────────── */
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 2px 6px;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  font-weight: var(--panel-weight-subgroup);
+  color: var(--color-text-secondary);
+}
+.groupHead:first-child { padding-top: 2px; }
+.groupCount {
+  font-weight: var(--panel-weight-help);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-muted);
+}
+
+/* One quiet line when the premium shelf could not load. */
+.shelfNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-text-secondary);
+}
+.shelfNote button {
+  margin-left: auto;
+  flex: none;
+}
+
+/* ── The Premium sheet ───────────────────────────────────── */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-index-overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px 8px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.55);
+  animation: libFade var(--motion-duration-base) var(--motion-ease-standard);
+}
+.sheet {
+  width: 100%;
+  max-width: 420px;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: libRise var(--motion-duration-slow) var(--motion-ease-emphasized);
+}
+.sheet:focus { outline: none; }
+.sheetPreview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #0c0c0f;
+}
+.sheetPreviewSquare {
+  composes: sheetPreview;
+  aspect-ratio: 1 / 1;
+  max-height: 260px;
+  margin: 0 auto;
+}
+.sheetClose {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #f2f2f4;
+  cursor: pointer;
+}
+.sheetClose:focus-visible { outline: 1px solid var(--color-focus-ring); outline-offset: 1px; }
+.sheetBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.sheetTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sheetTitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--panel-font-family);
+  font-size: var(--font-size-md, var(--panel-font-size));
+  font-weight: var(--panel-weight-group);
+  color: var(--color-text-primary);
+}
+.sheetText {
+  margin: 0;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+  color: var(--color-text-secondary);
+}
+.sheetHelp {
+  margin: 0;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-text-muted);
+}
+.sheetActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.sheetActions > :first-child { flex: 1; }
+
+@keyframes libFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes libRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim, .sheet { animation: none; }
+  .spinner { animation-duration: 2.4s; }
+}
+
+/* The Lottie tab's file import, above the grid. */
+.importRow {
+  padding: 0 0 10px;
+}

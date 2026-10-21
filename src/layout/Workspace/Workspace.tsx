@@ -53,6 +53,7 @@ import { getTransitionItem } from '@core/library/transitionLibrary';
 import { applyTransitionEdit } from '@layout/EditorLayout/transitionInsertEdits';
 import { insertSfxEdit } from '@layout/EditorLayout/sfxInsertEdits';
 import { insertLottieItemEdit } from '@layout/EditorLayout/lottieInsertEdits';
+import { insertPremiumWithToast, premiumItemById } from '@layout/EditorLayout/premiumInsertEdits';
 import { assetRecordNow } from '@stores/assetSession';
 import { useComponentStore } from '@stores/componentStore';
 import { useSelectionStore } from '@stores/selectionStore';
@@ -101,6 +102,7 @@ import { edit } from '@core/engine/uiEdits';
 import { compTime } from '@core/engine/propRefs';
 import styles from './Workspace.module.css';
 import { withUserPresetBody } from '@core/animation/animationPresets';
+import { t } from '@core/i18n';
 
 export interface WorkspaceViewportProps {
   topLeft?: ReactNode;
@@ -469,7 +471,7 @@ export function WorkspaceViewport({
       const media = Array.from(files).filter((f) =>
         /^(video|image|audio)\//.test(f.type) || /\.(mp4|mov|webm|m4v|png|jpe?g|gif|svg|webp|exr|hdr|mp3|wav|m4a|aac|ogg|mxf|avi|wmv|flv|mts|m2ts|mpg|mpeg|vob|ts|mkv)$/i.test(f.name));
       if (media.length === 0) {
-        useUIStore.getState().notify({ level: 'info', message: 'Drop video, image or audio files.', durationMs: 2600 });
+        useUIStore.getState().notify({ level: 'info', message: t('workspace.drop.mediaOnly', 'Drop video, image or audio files.'), durationMs: 2600 });
         return;
       }
       // An OS drop hands the renderer browser `File`s (no path): imported from their bytes.
@@ -547,7 +549,7 @@ export function WorkspaceViewport({
         // Effects apply to a layer — target the one under the cursor (AE-style).
         const node = controller.ws.hitTestScreen(local);
         if (node) addEffectAndReveal(node.id, payload.effectType);
-        else useUIStore.getState().notify({ level: 'warning', message: 'Drop an effect onto a layer.', durationMs: 2400 });
+        else useUIStore.getState().notify({ level: 'warning', message: t('workspace.drop.effectOnLayer', 'Drop an effect onto a layer.'), durationMs: 2400 });
         break;
       }
       case 'motionPreset': {
@@ -560,7 +562,7 @@ export function WorkspaceViewport({
             ...withUserPresetBody(payload.name),
           });
         } else {
-          useUIStore.getState().notify({ level: 'warning', message: 'Drop a motion preset onto a layer.', durationMs: 2400 });
+          useUIStore.getState().notify({ level: 'warning', message: t('workspace.drop.presetOnLayer', 'Drop a motion preset onto a layer.'), durationMs: 2400 });
         }
         break;
       }
@@ -595,6 +597,12 @@ export function WorkspaceViewport({
       case 'lottie':
         void insertLottieItemEdit(payload.lottieId, world.x, world.y);
         break;
+      case 'premium': {
+        // A premium library item: downloaded (or kept), then its kind's own insert path.
+        const item = premiumItemById(payload.itemId);
+        if (item) void insertPremiumWithToast(item, { at: world });
+        break;
+      }
     }
   }, []);
 
@@ -677,7 +685,7 @@ export function WorkspaceViewport({
           {renderError && (
             <div className={styles.loading} data-workspace-render-error="">
               <div className={styles.renderError} role="alert">
-                <strong>Preview unavailable</strong>
+                <strong>{t('workspace.canvas.previewUnavailable', 'Preview unavailable')}</strong>
                 <span>{renderError}</span>
               </div>
             </div>

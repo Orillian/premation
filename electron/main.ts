@@ -37,7 +37,8 @@ import {
   registerPluginFileIpc,
   registerPluginStoreIpc,
 } from './ipc/nativePlugins';
-import { machinePluginDir } from './nativePluginStore';
+import { machinePluginDir, readEntitlement } from './nativePluginStore';
+import { registerLibraryIpc } from './ipc/libraryCache';
 import { PANEL_SCHEME, panelNavigationAllowed, readPanelFile } from './pluginPanelProtocol';
 import { packagePathsIn } from './pluginFileInstall';
 import { getKeyForProvider, registerAiKeyIpc, VAULT_PROVIDERS, type VaultProvider } from './aiKeyVault';
@@ -1283,6 +1284,21 @@ app.whenReady().then(() => {
   // before loading one — at start, at every sign-in, and every 24 h; dropped at sign-out.
   const entitlementDeps = { dir: nativePluginDirPath, apiBase: apiBaseUrl, authedFetch: sendWithAuth };
   registerEntitlementIpc(entitlementDeps);
+  // Premium library payloads (electron/ipc/libraryCache.ts): gated by the same
+  // plan, kept on disk, usable offline while the entitlement token above holds.
+  registerLibraryIpc({
+    dir: () => path.join(app.getPath('userData'), 'library-cache'),
+    apiBase: apiBaseUrl,
+    authedFetch: sendWithAuth,
+    entitlementValidUntil: async () => (await readEntitlement(nativePluginDirPath()))?.validUntil ?? null,
+    // Dev builds read built packs from PREMATION_LIBRARY_DEV_DIR, else the sibling
+    // private library repo (its dist/packs and */pack folders). Never in a packaged app.
+    devPackDir: () => {
+      if (app.isPackaged) return null;
+      const dir = process.env.PREMATION_LIBRARY_DEV_DIR || path.join(__dirname, '..', '..', 'premation-library');
+      return existsSync(dir) ? dir : null;
+    },
+  });
   if (hasSession()) void refreshEntitlement(entitlementDeps, { force: true });
   onSessionChange((event) => {
     if (event === 'signedIn') void refreshEntitlement(entitlementDeps);

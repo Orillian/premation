@@ -41,6 +41,7 @@ import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { joinOutputPath, renderAndWait } from '@layout/Export/supervisorQueue';
 import { engineBatchFieldOps, fillDataRowEdit } from './templateFieldEdits';
 import styles from './DataFillSection.module.css';
+import { t } from '@core/i18n';
 
 /**
  * The default naming pattern.
@@ -104,11 +105,13 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
     // ONE engine batch for the row (templateFieldEdits.ts) — one undo entry.
     void fillDataRowEdit(fields, r, `Fill row ${index + 1}`, getTime()).then((result) => {
       if (result.filled.length === 0) {
-        notify('Nothing in that row matched a field', 'warning');
+        notify(t('templates.dataFill.noMatch', 'Nothing in that row matched a field'), 'warning');
       } else if (result.failed.length > 0) {
-        notify(`Filled ${result.filled.length}, ${result.failed.length} could not be read`, 'warning');
+        notify(t('templates.dataFill.filledPartial', 'Filled {filled}, {failed} could not be read', { filled: result.filled.length, failed: result.failed.length }), 'warning');
       } else {
-        notify(`Filled ${result.filled.length} field${result.filled.length === 1 ? '' : 's'}`);
+        notify(result.filled.length === 1
+          ? t('templates.dataFill.filledOne', 'Filled {n} field', { n: result.filled.length })
+          : t('templates.dataFill.filledOther', 'Filled {n} fields', { n: result.filled.length }));
       }
     });
   };
@@ -125,8 +128,10 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
     if (!first) return { name: '' };
     if (!patternVariesPerRow(pattern)) {
       return {
-        problem: 'This name is the same for every row, so each render would land on the last one. '
-          + 'Add {index} or a column name.',
+        problem: t(
+          'templates.dataFill.patternSame',
+          'This name is the same for every row, so each render would land on the last one. Add {index} or a column name.',
+        ),
       };
     }
     try {
@@ -165,7 +170,7 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
         renderFile: async (fileName, onProgress, signal) => {
           const compId = activeCompIdNow();
           const s = activeCompSettingsNow();
-          if (!compId || !s) throw new Error('There is no active composition to render.');
+          if (!compId || !s) throw new Error(t('templates.dataFill.noComp', 'There is no active composition to render.'));
           await renderAndWait({
             compositionId: compId,
             compositionName: s.name,
@@ -188,17 +193,19 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
       if (abort.signal.aborted) {
         notify(
           summary.nextRow === null
-            ? `Stopped after ${summary.rendered} of ${table.rows.length} rows`
-            : `Stopped at row ${summary.nextRow + 1} — Resume picks up there`,
+            ? t('templates.dataFill.stoppedAfter', 'Stopped after {n} of {total} rows', { n: summary.rendered, total: table.rows.length })
+            : t('templates.dataFill.stoppedAt', 'Stopped at row {row} — Resume picks up there', { row: summary.nextRow + 1 }),
           'warning',
         );
       } else if (summary.failed > 0) {
         // The first failure's own message, not just a count: that is what tells
         // someone whether the batch is worth re-running or the project is wrong.
         const firstError = summary.rows.find((r) => r.error)?.error ?? '';
-        notify(`Rendered ${summary.rendered}, ${summary.failed} failed — ${firstError}`, 'error');
+        notify(t('templates.dataFill.renderedFailed', 'Rendered {n}, {failed} failed — {error}', { n: summary.rendered, failed: summary.failed, error: firstError }), 'error');
       } else {
-        notify(`Rendered ${summary.rendered} file${summary.rendered === 1 ? '' : 's'}`);
+        notify(summary.rendered === 1
+          ? t('templates.dataFill.renderedOne', 'Rendered {n} file', { n: summary.rendered })
+          : t('templates.dataFill.renderedOther', 'Rendered {n} files', { n: summary.rendered }));
       }
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err), 'error');
@@ -212,11 +219,11 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
 
   return (
     <div className={styles.root}>
-      <div className={styles.label}>Data</div>
+      <div className={styles.label}>{t('templates.dataFill.data', 'Data')}</div>
 
       <label className={styles.picker}>
         <Icon name="grid" size="sm" />
-        <span>{table ? 'Choose another file…' : 'Load CSV or JSON…'}</span>
+        <span>{table ? t('templates.dataFill.chooseAnother', 'Choose another file…') : t('templates.dataFill.load', 'Load CSV or JSON…')}</span>
         <input
           type="file"
           accept=".csv,.json,.tsv,text/csv,application/json"
@@ -235,37 +242,38 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
               disabled={row === 0}
               onClick={() => apply(row - 1)}
             >
-              Previous
+              {t('templates.dataFill.previous', 'Previous')}
             </Button>
             <span className={styles.rowCount}>
-              Row {row + 1} of {table.rows.length}
+              {t('templates.dataFill.rowOf', 'Row {row} of {total}', { row: row + 1, total: table.rows.length })}
             </span>
             <Button
               variant="secondary" size="sm"
               disabled={row >= table.rows.length - 1}
               onClick={() => apply(row + 1)}
             >
-              Next
+              {t('templates.dataFill.next', 'Next')}
             </Button>
           </div>
 
           <Button variant="primary" size="sm" fullWidth onClick={() => apply(row)}>
-            Apply this row
+            {t('templates.dataFill.applyRow', 'Apply this row')}
           </Button>
 
           {report.unfilledFields.length > 0 && (
             <div className={styles.warn}>
-              No column for: {report.unfilledFields.join(', ')} — these keep their
-              current value on every row.
+              {t('templates.dataFill.noColumn', 'No column for: {fields} — these keep their current value on every row.', {
+                fields: report.unfilledFields.join(', '),
+              })}
             </div>
           )}
           {report.unusedColumns.length > 0 && (
             <div className={styles.hint}>
-              Ignored columns: {report.unusedColumns.join(', ')}
+              {t('templates.dataFill.ignored', 'Ignored columns: {columns}', { columns: report.unusedColumns.join(', ') })}
             </div>
           )}
           <div className={styles.batch}>
-            <div className={styles.label}>Render every row</div>
+            <div className={styles.label}>{t('templates.dataFill.renderEvery', 'Render every row')}</div>
 
             <div className={styles.batchRow}>
               <Input
@@ -273,7 +281,7 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
                 fullWidth
                 value={pattern}
                 onChange={(e) => { setPattern(e.target.value); setResumeFrom(null); }}
-                aria-label="File name pattern"
+                aria-label={t('templates.dataFill.patternAria', 'File name pattern')}
                 placeholder={DEFAULT_PATTERN}
                 disabled={!!batch}
               />
@@ -297,8 +305,11 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
               <div className={styles.warn}>{namePreview.problem}</div>
             ) : (
               <div className={styles.hint}>
-                {'{index}'} is the row number; {'{' + (table.columns[0] ?? 'name') + '}'} is a column.
-                {' '}Row 1 → <code>{namePreview.name}</code>
+                {t('templates.dataFill.patternHint', '{token} is the row number; {column} is a column.', {
+                  token: '{index}',
+                  column: '{' + (table.columns[0] ?? 'name') + '}',
+                })}
+                {' '}{t('templates.dataFill.rowOnePreview', 'Row 1 →')} <code>{namePreview.name}</code>
               </div>
             )}
 
@@ -312,10 +323,10 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
                 </div>
                 <div className={styles.rowNav}>
                   <span className={styles.rowCount}>
-                    Rendering {Math.min(batch.done + 1, batch.total)} of {batch.total}
+                    {t('templates.dataFill.rendering', 'Rendering {n} of {total}', { n: Math.min(batch.done + 1, batch.total), total: batch.total })}
                   </span>
                   <Button variant="secondary" size="sm" onClick={() => abortRef.current?.abort()}>
-                    Stop
+                    {t('templates.dataFill.stop', 'Stop')}
                   </Button>
                 </div>
               </>
@@ -329,12 +340,14 @@ export function DataFillSection({ fields }: { fields: ReadonlyArray<TemplateFiel
                   onClick={() => { void startBatch(); }}
                 >
                   {resumeFrom === null
-                    ? `Render ${table.rows.length} file${table.rows.length === 1 ? '' : 's'}`
-                    : `Resume from row ${resumeFrom + 1}`}
+                    ? table.rows.length === 1
+                      ? t('templates.dataFill.renderOne', 'Render {n} file', { n: table.rows.length })
+                      : t('templates.dataFill.renderOther', 'Render {n} files', { n: table.rows.length })
+                    : t('templates.dataFill.resumeFrom', 'Resume from row {row}', { row: resumeFrom + 1 })}
                 </Button>
                 {resumeFrom === null ? null : (
                   <Button variant="secondary" size="sm" onClick={() => setResumeFrom(null)}>
-                    Start over
+                    {t('templates.dataFill.startOver', 'Start over')}
                   </Button>
                 )}
               </div>

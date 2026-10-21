@@ -337,6 +337,12 @@ const bridge = {
     host: { platform: process.platform, arch: process.arch },
   },
 
+  /** Premium library payloads — main downloads, verifies and keeps them (electron/ipc/libraryCache.ts). */
+  library: {
+    payload: (req: { id: string; version: number; tier: 'free' | 'cloud' }) => ipcRenderer.invoke('library:payload', req),
+    devCatalog: () => ipcRenderer.invoke('library:devCatalog'),
+  },
+
   popout: {
     spawnWindow: (panelId: string) => ipcRenderer.invoke('popout:spawnWindow', panelId),
   },

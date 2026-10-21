@@ -22,14 +22,15 @@
 
 import type { Command } from '@motion/engine-api';
 import { edit } from '@core/engine/uiEdits';
-import { compTime, values as apiValues } from '@core/engine/propRefs';
+import { compTime, paths, values as apiValues } from '@core/engine/propRefs';
 import { hexToColor } from '@core/engine/model';
 import { coerceCell, type FillResult } from '@core/template/dataFill';
 import type { DataRow } from '@core/template/dataTable';
 import type { BatchFieldOps } from '@core/template/batchRender';
 import type { TemplateField } from '@core/template/templateTypes';
-import { sourceTextCommand } from '@layout/Text/textEdits';
-import { scalarValueCommands, trackRef } from '@layout/Inspector/inspectorEdits';
+import { fieldCommands, sourceTextCommand } from '@layout/Text/textEdits';
+import { textField } from '@layout/Text/textMirror';
+import { scalarValueCommands, trackRef, valueCommands } from '@layout/Inspector/inspectorEdits';
 import { importBrowserFilesEdit } from '@layout/Assets/assetEdits';
 import { fittedBoxFor } from '@core/template/mediaSlots';
 import type { SlotFit } from '@core/template/templateTypes';
@@ -44,7 +45,7 @@ import type { ImportedAsset } from '@stores/assetStore';
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 /** Field kinds Batch Fill writes (dataFill.ts: media columns are reported, not filled). */
-const FILLABLE_KINDS: ReadonlySet<string> = new Set(['text', 'color', 'number']);
+const FILLABLE_KINDS: ReadonlySet<string> = new Set(['text', 'color', 'number', 'font', 'toggle']);
 
 /** True for a field that swaps a layer's SOURCE (templateFields.isMediaField, without its module's scene reads). */
 export function isMediaField(field: TemplateField): boolean {
@@ -62,21 +63,69 @@ export function templateFieldCommands(field: TemplateField, value: string | numb
   if (componentType === 'Text' && prop === 'content') {
     return sourceTextCommand(nodeId, String(value), seconds);
   }
-  if (prop === 'fill') {
+  if (field.kind === 'toggle' || (componentType === 'Layer' && prop === 'visible')) {
+    if (!documentMirror().layer(nodeId)) return null;
+    return [{ type: 'setLayerSwitches', layers: [nodeId], patch: { visible: Number(value) !== 0 } } as Command];
+  }
+  if (field.kind === 'font' || (componentType === 'Text' && prop === 'fontFamily')) {
+    const family = String(value).trim();
+    if (!family) return null;
+    const cmds = fieldCommands(nodeId, paths.textProp('fontFamily'), family);
+    return cmds.length > 0 ? cmds : null;
+  }
+  if (field.kind === 'color' || prop === 'fill') {
     if (typeof value !== 'string' || !HEX.test(value.trim())) return null;
-    // Present only while the layer's fill is a solid colour (a gradient fill has no Fill Color).
-    const r = trackRef(nodeId, 'layer/fill');
-    if (!r) return null;
+    // `fill` is the layer's Fill Color — present only while the fill is a solid
+    // colour (a gradient fill has none). Any other colour field names its property.
+    const r = trackRef(nodeId, prop === 'fill' ? 'layer/fill' : prop);
+    if (!r || r.valueType !== 'color') return null;
     const c = hexToColor(value);
     return [{ type: 'setProperty', prop: r.ref, value: apiValues.color(c.r, c.g, c.b, c.a), time: compTime(seconds) }];
   }
   if (typeof value === 'number' && Number.isFinite(value)) {
     const r = trackRef(nodeId, prop);
-    if (!r || r.members.length !== 1 || r.valueType === 'color') return null;
-    const cmds = scalarValueCommands(prop, [{ nodeId, value }], { seconds });
-    return cmds.length > 0 ? cmds : null;
+    if (r && r.valueType !== 'color') {
+      // One member of a vector (Position X, Scale Y) keeps the other members' values.
+      const cmds = scalarValueCommands(prop, [{ nodeId, value }], { seconds });
+      return cmds.length > 0 ? cmds : null;
+    }
+    // A static text setting (Font Size when it is not keyframeable on this layer).
+    if (componentType === 'Text') {
+      const cmds = fieldCommands(nodeId, paths.textProp(prop), value);
+      return cmds.length > 0 ? cmds : null;
+    }
   }
   return null;
+}
+
+/**
+ * "field := value" for the field's every target (its `alsoTargets` too), as one
+ * command list — the panel sends it as one entry. Null when nothing is addressable.
+ */
+export function templateFieldEditCommands(field: TemplateField, value: string | number, seconds: number): Command[] | null {
+  // Members of one vector (Scale X + Y) go as ONE write: two writes of the same
+  // property would each carry the other member's old value.
+  if (typeof value === 'number' && Number.isFinite(value) && field.alsoTargets?.length) {
+    const byLayer = new Map<string, Record<string, number>>();
+    for (const tg of [field.target, ...field.alsoTargets]) {
+      const r = trackRef(tg.nodeId, tg.prop);
+      if (!r || r.valueType === 'color') return templateFieldCommandsEach(field, value, seconds);
+      byLayer.set(tg.nodeId, { ...byLayer.get(tg.nodeId), [tg.prop]: value });
+    }
+    const cmds = valueCommands([...byLayer].map(([nodeId, values]) => ({ nodeId, values })), { seconds });
+    return cmds.length > 0 ? cmds : null;
+  }
+  return templateFieldCommandsEach(field, value, seconds);
+}
+
+function templateFieldCommandsEach(field: TemplateField, value: string | number, seconds: number): Command[] | null {
+  const cmds = templateFieldCommands(field, value, seconds);
+  if (!cmds) return null;
+  for (const target of field.alsoTargets ?? []) {
+    const more = templateFieldCommands({ ...field, target, alsoTargets: undefined }, value, seconds);
+    if (more) cmds.push(...more);
+  }
+  return cmds;
 }
 
 /**
@@ -207,14 +256,29 @@ export async function templateFieldValues(fields: readonly TemplateField[], seco
       asks.push({ field, ref: { layer: nodeId, path: 'text/sourceText' }, read: (v) => (v.kind === 'textDocument' ? v.value.text : undefined) });
       continue;
     }
-    if (prop === 'fill') {
-      const r = trackRef(nodeId, 'layer/fill');
-      if (r) asks.push({ field, ref: r.ref, read: (v) => (v.kind === 'color' ? channelsToHex(v.value) : undefined) });
+    if (field.kind === 'toggle' || (componentType === 'Layer' && prop === 'visible')) {
+      const layer = m.layer(nodeId);
+      if (layer) out[field.id] = layer.switches.visible ? 1 : 0;
+      continue;
+    }
+    if (field.kind === 'font' || (componentType === 'Text' && prop === 'fontFamily')) {
+      const family = textField(m, nodeId, 'fontFamily');
+      if (typeof family === 'string') out[field.id] = family;
+      continue;
+    }
+    if (field.kind === 'color' || prop === 'fill') {
+      const r = trackRef(nodeId, prop === 'fill' ? 'layer/fill' : prop);
+      if (r && r.valueType === 'color') asks.push({ field, ref: r.ref, read: (v) => (v.kind === 'color' ? channelsToHex(v.value) : undefined) });
       continue;
     }
     const r = trackRef(nodeId, prop);
-    if (r && r.members.length === 1 && r.valueType !== 'color') {
-      asks.push({ field, ref: r.ref, read: (v) => { const n = numbersOfValue(v)[0]; return n === undefined ? undefined : n / apiUnitFactor(prop); } });
+    if (r && r.valueType !== 'color') {
+      asks.push({ field, ref: r.ref, read: (v) => { const n = numbersOfValue(v)[r.member]; return n === undefined ? undefined : n / apiUnitFactor(prop); } });
+      continue;
+    }
+    if (componentType === 'Text') {
+      const n = textField(m, nodeId, prop);
+      if (typeof n === 'number' && Number.isFinite(n)) out[field.id] = n;
     }
   }
   for (const a of asks) {

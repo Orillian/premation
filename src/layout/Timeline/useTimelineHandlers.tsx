@@ -89,6 +89,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { openInterpretFootage } from '@layout/Assets/InterpretFootageModal';
 import { itemAsset } from '@core/mirror/itemAssets';
 import { customPrompt, customAlert } from '@components/Modal';
+import { t } from '@core/i18n';
 
 import type { MutableRefObject } from 'react';
 import { applyTransitionEdit } from '@layout/EditorLayout/transitionInsertEdits';
@@ -97,6 +98,7 @@ import { hasPositionKeys, hasPositionTangents } from '@core/mirror/motionFacts';
 import { cutTransitionEffects } from '@layout/Timeline/cutTransitionEffects';
 import { openTransitionSettings } from '@layout/Timeline/TransitionSettingsDialog';
 import { myTransitions, presetSpanSeconds, saveSelectionAsTransition, USER_TRANSITION_PREFIX } from '@layout/EditorLayout/MyTransitions';
+import { applyPremiumTransitionDrop, PREMIUM_TRANSITION_PREFIX } from '@layout/EditorLayout/premiumInsertEdits';
 import { smoothPositionPath, straightenPositionPath } from '@core/mirror/positionTracks';
 import { editPositionKeys } from '@layout/Workspace/viewportEdits';
 import { motionPathKeyframeMenuItems } from '@layout/Workspace/viewportPrecisionMenus';
@@ -188,7 +190,9 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
         const n = result.repaired.length;
         useUIStore.getState().notify({
           level: 'info',
-          message: `${n} expression${n === 1 ? '' : 's'} updated to follow the new name.`,
+          message: n === 1
+            ? t('timeline.rename.repairedOne', '{n} expression updated to follow the new name.', { n })
+            : t('timeline.rename.repairedOther', '{n} expressions updated to follow the new name.', { n }),
           durationMs: 4000,
         });
       }
@@ -196,13 +200,15 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
         const n = result.captured.length;
         useUIStore.getState().notify({
           level: 'warning',
-          message: `${n} expression${n === 1 ? '' : 's'} naming “${newName.trim()}” now read this layer instead of the previous layer.`,
+          message: n === 1
+            ? t('timeline.rename.capturedOne', '{n} expression naming “{name}” now read this layer instead of the previous layer.', { n, name: newName.trim() })
+            : t('timeline.rename.capturedOther', '{n} expressions naming “{name}” now read this layer instead of the previous layer.', { n, name: newName.trim() }),
           durationMs: 10000,
         });
       } else if (result.nameAlreadyInUse) {
         useUIStore.getState().notify({
           level: 'warning',
-          message: `Another layer is already called “${newName.trim()}”; expressions can reach only one of them by name.`,
+          message: t('timeline.rename.nameInUse', 'Another layer is already called “{name}”; expressions can reach only one of them by name.', { name: newName.trim() }),
           durationMs: 6000,
         });
       }
@@ -476,9 +482,9 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
     };
 
     openContextMenu(x, y, [
-      { id: 'easy-ease', label: 'Easy Ease', shortcut: 'F9', onSelect: ease('Ease') },
-      { id: 'ease-in', label: 'Easy Ease In', shortcut: 'Shift+F9', onSelect: ease('EaseIn') },
-      { id: 'ease-out', label: 'Easy Ease Out', shortcut: 'Ctrl+Shift+F9', onSelect: ease('EaseOut') },
+      { id: 'easy-ease', label: t('timeline.keyframeMenu.easyEase', 'Easy Ease'), shortcut: 'F9', onSelect: ease('Ease') },
+      { id: 'ease-in', label: t('timeline.keyframeMenu.easyEaseIn', 'Easy Ease In'), shortcut: 'Shift+F9', onSelect: ease('EaseIn') },
+      { id: 'ease-out', label: t('timeline.keyframeMenu.easyEaseOut', 'Easy Ease Out'), shortcut: 'Ctrl+Shift+F9', onSelect: ease('EaseOut') },
       {
         /**
          * AE's Keyframe Interpolation submenu. The inspector row menu has had
@@ -494,14 +500,14 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
          * is how a user ends up thinking they are two different things.
          */
         id: 'interpolation',
-        label: 'Keyframe Interpolation',
+        label: t('timeline.keyframeMenu.interpolation', 'Keyframe Interpolation'),
         children: [
-          { id: 'interp-linear', label: 'Linear', onSelect: setInterp('linear', 'Linear interpolation') },
-          { id: 'interp-bezier', label: 'Bezier', onSelect: setInterp('bezier', 'Bezier interpolation') },
-          { id: 'interp-auto', label: 'Auto Bezier', onSelect: setInterp('autoBezier', 'Auto bezier interpolation') },
+          { id: 'interp-linear', label: t('timeline.keyframeMenu.linear', 'Linear'), onSelect: setInterp('linear', 'Linear interpolation') },
+          { id: 'interp-bezier', label: t('timeline.keyframeMenu.bezier', 'Bezier'), onSelect: setInterp('bezier', 'Bezier interpolation') },
+          { id: 'interp-auto', label: t('timeline.keyframeMenu.autoBezier', 'Auto Bezier'), onSelect: setInterp('autoBezier', 'Auto bezier interpolation') },
           {
             id: 'interp-continuous',
-            label: 'Continuous Bezier',
+            label: t('timeline.keyframeMenu.continuousBezier', 'Continuous Bezier'),
             onSelect: setInterp('continuousBezier', 'Continuous bezier interpolation'),
           },
           {
@@ -509,7 +515,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
             // choosing Hold on a keyframe that already holds is how you get
             // back to interpolating.
             id: 'interp-hold',
-            label: isHold ? 'Hold ✓' : 'Hold',
+            label: isHold ? t('timeline.keyframeMenu.holdOn', 'Hold ✓') : t('timeline.keyframeMenu.hold', 'Hold'),
             onSelect: isHold
               ? setInterp('linear', 'Disable hold keyframe')
               : setInterp('hold', 'Enable hold keyframe'),
@@ -517,7 +523,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
           { id: 'interp-sep', separator: true },
           {
             id: 'interp-roving',
-            label: isRoving ? 'Rove Across Time ✓' : 'Rove Across Time',
+            label: isRoving ? t('timeline.keyframeMenu.roveOn', 'Rove Across Time ✓') : t('timeline.keyframeMenu.rove', 'Rove Across Time'),
             onSelect: () => {
               // The engine re-times the roving run for constant speed.
               void setKeyRovingEdit(easeTargets, !isRoving);
@@ -534,7 +540,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
                * Position key, Straighten drops the spatial tangents. One undo each.
                */
               id: 'motion-path',
-              label: 'Motion Path',
+              label: t('timeline.keyframeMenu.motionPath', 'Motion Path'),
               children: [
                 // AE's Keyframe Interpolation ▸ Spatial, on the Position key that
                 // was clicked (the motion path's own vertex menu, reused).
@@ -543,7 +549,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
                   : []),
                 {
                   id: 'motion-path-smooth',
-                  label: 'Smooth (Auto-Bezier)',
+                  label: t('timeline.keyframeMenu.smoothPath', 'Smooth (Auto-Bezier)'),
                   onSelect: () => {
                     const layer = hit.sel.layer;
                     void editPositionKeys(layer, 'Smooth motion path', (scratch) => smoothPositionPath(layer, scratch));
@@ -551,7 +557,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
                 },
                 {
                   id: 'motion-path-straighten',
-                  label: 'Straighten',
+                  label: t('timeline.keyframeMenu.straightenPath', 'Straighten'),
                   disabled: !hasPositionTangents(documentMirror(), hit.sel.layer),
                   onSelect: () => {
                     const layer = hit.sel.layer;
@@ -566,14 +572,14 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
         // The speed-graph maths was drag-only. A number you can type is the
         // whole reason AE ships this dialog — see KeyframeVelocityDialog.
         id: 'velocity',
-        label: 'Keyframe Velocity…',
+        label: t('timeline.keyframeMenu.velocity', 'Keyframe Velocity…'),
         onSelect: () => {
           // The dialog shapes the row's member curve(s) on the stored axis (keyframeVelocity).
           const layer = hit.sel.layer;
           if (!openKeyframeVelocityDialog(layer, hit.rowProp, storedTimeOf(layer)(hit.key))) {
             useUIStore.getState().notify({
               level: 'info',
-              message: 'A lone keyframe has no segment to shape.',
+              message: t('timeline.keyframeMenu.velocityLone', 'A lone keyframe has no segment to shape.'),
               durationMs: 2600,
             });
           }
@@ -584,26 +590,26 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
         // Navigation from the menu that is already open on a keyframe: the J/K
         // chords do this, but nothing said so anywhere a pointer can reach.
         id: 'goto-prev-kf',
-        label: 'Go to Previous Keyframe',
+        label: t('timeline.keyframeMenu.goPrev', 'Go to Previous Keyframe'),
         shortcut: 'J',
         onSelect: () => goToPrevKeyframe(),
       },
       {
         id: 'goto-next-kf',
-        label: 'Go to Next Keyframe',
+        label: t('timeline.keyframeMenu.goNext', 'Go to Next Keyframe'),
         shortcut: 'K',
         onSelect: () => goToNextKeyframe(),
       },
       { id: 'sep-nav', separator: true },
       {
         id: 'copy',
-        label: `Copy Keyframe${easeTargets.length > 1 ? 's' : ''}`,
+        label: easeTargets.length > 1 ? t('timeline.keyframeMenu.copyOther', 'Copy Keyframes') : t('timeline.keyframeMenu.copyOne', 'Copy Keyframe'),
         shortcut: 'Ctrl+C',
         onSelect: () => { void copyKeyframes(new Set(easeTargets)); },
       },
       {
         id: 'paste',
-        label: 'Paste at Playhead',
+        label: t('timeline.keyframeMenu.pasteAtPlayhead', 'Paste at Playhead'),
         shortcut: 'Ctrl+V',
         onSelect: () => {
           const targets = useSelectionStore.getState().ids;
@@ -612,7 +618,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'delete',
-        label: `Delete Keyframe${easeTargets.length > 1 ? 's' : ''}`,
+        label: easeTargets.length > 1 ? t('timeline.keyframeMenu.deleteOther', 'Delete Keyframes') : t('timeline.keyframeMenu.deleteOne', 'Delete Keyframe'),
         danger: true,
         onSelect: () => { void deleteKeyframesUi(easeTargets); },
       },
@@ -733,7 +739,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
     openContextMenu(x, y, [
       {
         id: 'split',
-        label: 'Split Layer at Playhead (Ctrl+Shift+D)',
+        label: t('timeline.clipMenu.split', 'Split Layer at Playhead (Ctrl+Shift+D)'),
         onSelect: () => {
           // Every bar has a layer behind it (syncFromScene seeds bars only from
           // layers, and removes a bar whose layer goes), so there is no bar-only path.
@@ -742,21 +748,21 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'trim-in',
-        label: 'Trim In to Playhead (Alt+[)',
+        label: t('timeline.clipMenu.trimIn', 'Trim In to Playhead (Alt+[)'),
         onSelect: () => {
           if (nodeId) void trimSelectedStartToPlayhead([nodeId]);
         },
       },
       {
         id: 'trim-out',
-        label: 'Trim Out to Playhead (Alt+])',
+        label: t('timeline.clipMenu.trimOut', 'Trim Out to Playhead (Alt+])'),
         onSelect: () => {
           if (nodeId) void trimSelectedEndToPlayhead([nodeId]);
         },
       },
       {
         id: 'ripple-trim-out',
-        label: 'Ripple Trim Out to Playhead',
+        label: t('timeline.clipMenu.rippleTrimOut', 'Ripple Trim Out to Playhead'),
         onSelect: () => {
           // A composition has ONE track, so the clip's track IS the comp: the
           // engine's ripple set (every later layer) is the legacy one.
@@ -765,14 +771,14 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'ripple-trim-in',
-        label: 'Ripple Trim In to Playhead',
+        label: t('timeline.clipMenu.rippleTrimIn', 'Ripple Trim In to Playhead'),
         onSelect: () => {
           void rippleTrimToPlayhead(clipId, 'start');
         },
       },
       {
         id: 'ripple-insert',
-        label: 'Ripple Insert 1s Gap at Playhead',
+        label: t('timeline.clipMenu.rippleInsertGap', 'Ripple Insert 1s Gap at Playhead'),
         onSelect: () => {
           void rippleInsertGapAtPlayhead(clipId, 1);
         },
@@ -791,11 +797,15 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       { id: 'sep-time', separator: true },
       {
         id: 'time-stretch',
-        label: 'Time Stretch…',
+        label: t('timeline.clipMenu.timeStretch', 'Time Stretch…'),
         disabled: !nodeId,
         onSelect: async () => {
           if (!nodeId || !time) return;
-          const raw = await customPrompt('Time Stretch', 'Enter new stretch percentage (100% = original speed):', String(mirrorStretchPercent(documentMirror(), nodeId)));
+          const raw = await customPrompt(
+            t('timeline.clipMenu.timeStretchTitle', 'Time Stretch'),
+            t('timeline.clipMenu.timeStretchPrompt', 'Enter new stretch percentage (100% = original speed):'),
+            String(mirrorStretchPercent(documentMirror(), nodeId)),
+          );
           if (raw !== null) {
             const parsed = parseFloat(raw);
             // The shared path: footage changes rate; any other layer bakes bar,
@@ -809,7 +819,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'time-reverse',
-        label: time?.reverse ? 'Restore Forward Playback' : 'Time-Reverse Layer',
+        label: time?.reverse ? t('timeline.clipMenu.restoreForward', 'Restore Forward Playback') : t('timeline.clipMenu.timeReverse', 'Time-Reverse Layer'),
         disabled: !nodeId,
         onSelect: () => {
           if (!nodeId || !time) return;
@@ -818,7 +828,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'freeze-frame',
-        label: time?.freeze ? 'Unfreeze Frame' : 'Freeze Frame at Playhead',
+        label: time?.freeze ? t('timeline.clipMenu.unfreeze', 'Unfreeze Frame') : t('timeline.clipMenu.freeze', 'Freeze Frame at Playhead'),
         disabled: !nodeId,
         onSelect: () => {
           if (!nodeId || !time) return;
@@ -834,7 +844,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
             { id: 'sep-footage', separator: true },
             {
               id: 'interpret-footage',
-              label: 'Interpret Footage… (Ctrl+Alt+G)',
+              label: t('timeline.clipMenu.interpretFootage', 'Interpret Footage… (Ctrl+Alt+G)'),
               onSelect: () => openInterpretFootage(asset),
             },
             // AE's Layer ▸ Scene Edit Detection. Video only: a still has no cuts.
@@ -843,12 +853,12 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
               ? [
                   {
                     id: 'scene-edit-markers',
-                    label: 'Scene Edit Detection → Markers',
+                    label: t('timeline.clipMenu.sceneEditMarkers', 'Scene Edit Detection → Markers'),
                     onSelect: () => void runSceneEditDetection(nodeId, 'markers'),
                   },
                   {
                     id: 'scene-edit-split',
-                    label: 'Scene Edit Detection → Split Clips',
+                    label: t('timeline.clipMenu.sceneEditSplit', 'Scene Edit Detection → Split Clips'),
                     onSelect: () => void runSceneEditDetection(nodeId, 'split'),
                   },
                 ]
@@ -872,7 +882,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
        */
       ...(['in', 'out'] as const).map((edge) => ({
         id: `layer-transition-${edge}`,
-        label: edge === 'in' ? 'Transition In' : 'Transition Out',
+        label: edge === 'in' ? t('timeline.clipMenu.transitionIn', 'Transition In') : t('timeline.clipMenu.transitionOut', 'Transition Out'),
         disabled: !nodeId,
         children: TRANSITION_ITEMS.filter((t) => !t.solidOnly).map((t) => ({
           id: `layer-transition-${edge}-${t.id}`,
@@ -885,7 +895,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       {
         // This layer's own animation, kept as a reusable transition (My Transitions in the Library).
         id: 'save-as-transition',
-        label: 'Save Animation as Transition…',
+        label: t('timeline.clipMenu.saveAsTransition', 'Save Animation as Transition…'),
         disabled: !nodeId,
         onSelect: () => {
           if (!nodeId) return;
@@ -895,7 +905,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'add-transition',
-        label: 'Transition at Cut',
+        label: t('timeline.clipMenu.transitionAtCut', 'Transition at Cut'),
         disabled: !cut,
         children: [
           ...TRANSITION_KINDS.map((kind) => ({
@@ -910,7 +920,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
                 DEFAULT_TRANSITION_FRAMES,
                 'centred',
               ).then((res) => {
-                if (!res.ok) void customAlert('Transition', res.reason);
+                if (!res.ok) void customAlert(t('timeline.clipMenu.transitionAlert', 'Transition'), res.reason);
               });
             },
           })),
@@ -918,14 +928,14 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
             // Any Transition effect with a Transition Completion, ramped on the
             // incoming layer (the engine's addTransition{effect}).
             id: 'add-transition-effects',
-            label: 'Effect Wipes',
+            label: t('timeline.clipMenu.effectWipes', 'Effect Wipes'),
             children: cutTransitionEffects().map((fx) => ({
               id: `add-transition-fx-${fx.type}`,
               label: fx.label,
               onSelect: () => {
                 if (!cut) return;
                 void addTransitionEdit(cut.leftNodeId, cut.rightNodeId, 'wipe', DEFAULT_TRANSITION_FRAMES, 'centred', { effect: fx.type }).then((res) => {
-                  if (!res.ok) void customAlert('Transition', res.reason);
+                  if (!res.ok) void customAlert(t('timeline.clipMenu.transitionAlert', 'Transition'), res.reason);
                 });
               },
             })),
@@ -936,7 +946,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
         ? [
             {
               id: 'transition-settings',
-              label: 'Transition Settings…',
+              label: t('timeline.clipMenu.transitionSettings', 'Transition Settings…'),
               onSelect: () => openTransitionSettings(existingTransition.id, existingTransition.leftNodeId),
             },
             /*
@@ -952,7 +962,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
              */
             {
               id: 'transition-alignment',
-              label: 'Alignment',
+              label: t('timeline.clipMenu.alignment', 'Alignment'),
               children: TRANSITION_ALIGNMENTS.map((alignment) => ({
                 id: `transition-alignment-${alignment}`,
                 label: `${TRANSITION_ALIGNMENT_LABEL[alignment]}${
@@ -963,14 +973,14 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
                   void setTransitionEdit(existingTransition.leftNodeId, existingTransition.id, {
                     alignment,
                   }).then((res) => {
-                    if (!res.ok) void customAlert('Transition', res.reason);
+                    if (!res.ok) void customAlert(t('timeline.clipMenu.transitionAlert', 'Transition'), res.reason);
                   });
                 },
               })),
             },
             {
               id: 'remove-transition',
-              label: `Remove ${TRANSITION_LABEL[existingTransition.kind]}`,
+              label: t('timeline.clipMenu.removeTransition', 'Remove {kind}', { kind: TRANSITION_LABEL[existingTransition.kind] }),
               onSelect: () => {
                 void removeTransitionsEdit([existingTransition.id]);
               },
@@ -988,7 +998,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
        */
       {
         id: 'edit-mode',
-        label: 'Timeline Tool',
+        label: t('timeline.clipMenu.timelineTool', 'Timeline Tool'),
         children: TIMELINE_EDIT_MODES.map((def) => ({
           id: `edit-mode-${def.mode}`,
           label: `${def.label}${getTimelineEditMode() === def.mode ? '  ✓' : ''}`,
@@ -1012,7 +1022,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
        */
       {
         id: 'delete',
-        label: 'Delete Layer (Del)',
+        label: t('timeline.clipMenu.deleteLayer', 'Delete Layer (Del)'),
         danger: true,
         onSelect: () => {
           void deleteClipLayerEdit(nodeId, false);
@@ -1020,7 +1030,7 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       },
       {
         id: 'ripple-delete',
-        label: 'Delete Layer and Close Gap',
+        label: t('timeline.clipMenu.deleteLayerCloseGap', 'Delete Layer and Close Gap'),
         danger: true,
         // Only meaningful when something later on the track can move left into
         // the space. Otherwise it is the entry above under a longer name.
@@ -1078,9 +1088,20 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
       const at = edge === 'in' ? inS : Math.max(inS, outS - presetSpanSeconds(preset));
       void applyAnimationPresetEdit([trackId], name, at).then((ok) => {
         useUIStore.getState().notify(ok
-          ? { level: 'success', message: `${name} ${edge === 'in' ? 'entrance' : 'exit'} on ${target.name}`, durationMs: 1800 }
-          : { level: 'warning', message: `Could not apply ${name}`, durationMs: 2400 });
+          ? {
+            level: 'success',
+            message: edge === 'in'
+              ? t('timeline.layerTransition.entranceOn', '{name} entrance on {layer}', { name, layer: target.name })
+              : t('timeline.layerTransition.exitOn', '{name} exit on {layer}', { name, layer: target.name }),
+            durationMs: 1800,
+          }
+          : { level: 'warning', message: t('timeline.layerTransition.couldNotApply', 'Could not apply {name}', { name }), durationMs: 2400 });
       });
+      return;
+    }
+    // A premium transition (Library ▸ Transitions, Pro): its spec, downloaded or kept.
+    if (transId.startsWith(PREMIUM_TRANSITION_PREFIX)) {
+      applyPremiumTransitionDrop(transId, trackId, edge);
       return;
     }
     const item = getTransitionItem(transId);
@@ -1092,10 +1113,22 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
     void applyTransitionEdit(transId, `Apply ${item.name}`, { layer: trackId, time }).then((result) => {
       const notify = useUIStore.getState().notify;
       if (!result) {
-        notify({ level: 'warning', message: item.solidOnly ? `${item.name} inserts a solid — click it in the Library instead` : `Could not apply ${item.name}`, durationMs: 2600 });
+        notify({
+          level: 'warning',
+          message: item.solidOnly
+            ? t('timeline.layerTransition.insertsSolid', '{name} inserts a solid — click it in the Library instead', { name: item.name })
+            : t('timeline.layerTransition.couldNotApply', 'Could not apply {name}', { name: item.name }),
+          durationMs: 2600,
+        });
         return;
       }
-      notify({ level: 'success', message: `${item.name} ${edge === 'in' ? 'entrance' : 'exit'} on ${layer.name}`, durationMs: 1800 });
+      notify({
+        level: 'success',
+        message: edge === 'in'
+          ? t('timeline.layerTransition.entranceOn', '{name} entrance on {layer}', { name: item.name, layer: layer.name })
+          : t('timeline.layerTransition.exitOn', '{name} exit on {layer}', { name: item.name, layer: layer.name }),
+        durationMs: 1800,
+      });
     });
   };
 

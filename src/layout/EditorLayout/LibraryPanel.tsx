@@ -1,21 +1,23 @@
 /**
  * LibraryPanel — one left-rail tab holding every insertable library.
  *
- * Seven sections, one tab: Motion GFX, Transitions, Sound FX, Lottie UI,
- * Components, Shapes and Text. They were seven ideas for the same gesture —
- * pick a thing, drop it in the composition — and as seven tabs they filled the
- * rail with surfaces most users opened once.
+ * Seven sections, one tab: Templates, Transitions, Sound FX, Lottie,
+ * Components, Shapes and Text — seven ideas for the same gesture: pick a thing,
+ * drop it in the composition. (Motion GFX was an eighth; its elements left the
+ * panel when Templates became the premium shelf.)
  *
- * Every card here PLAYS OR DRAWS ITS OWN CONTENT rather than illustrating it:
- * the mograph cards are the same build and choreography the insert writes and
- * the transition cards the real keyframe recipe — each drawn by the ENGINE from
- * an isolated preview document (a still; the motion plays while the card is
- * hovered or focused, core/template/previewController.ts) — the component
- * thumbnails are the engine's stills too,
- * the SFX bars are the synthesized clip's actual peak envelope, and the Lottie
- * cards render the document `applyImportPlan` will realise. A hand-drawn
- * impression of an item can keep looking right long after the item stopped
- * behaving that way; a card driven by the real thing cannot.
+ * Templates, Transitions, Sound FX and Lottie each list bundled (free) items
+ * beside the premium shelf (Premation Cloud, server-delivered — LibraryCards.tsx
+ * and core/library/premium/). Every card PLAYS OR DRAWS ITS OWN CONTENT rather
+ * than illustrating it: bundled transition and template cards are the real
+ * recipe drawn by the ENGINE from an isolated preview document (a still; the
+ * motion plays while hovered or focused, core/template/previewController.ts),
+ * Lottie cards render the document `applyImportPlan` will realise, sound
+ * waveforms are the clip's actual peaks and every sound auditions before it is
+ * added, and premium cards play the loop the server rendered from the same
+ * payload the insert applies. A hand-drawn impression of an item can keep
+ * looking right long after the item stopped behaving that way; a card driven
+ * by the real thing cannot.
  *
  * `ComponentsPanel`, `ShapesPanel` and `TextPanel` are exported as components
  * but are NOT registered panels — they render as sections inside this one.
@@ -36,30 +38,31 @@ import { useComponentStore } from '@stores/componentStore';
 import { useUIStore } from '@stores/uiStore';
 import { getEventBus } from '@core/events/EventBus';
 import { insertShapeEdit, insertTextEdit } from '@/engine-client/insertEdits';
-import { insertFragment } from '@/engine-client/insertFragment';
-import { getTime as getPlayheadTime } from '@stores/playbackClockStore';
-import { activeCompIdNow } from '@hooks/useMirror';
 import { setCanvasDrag } from '@core/dnd/canvasDrag';
 import { componentThumb, onComponentThumbReady } from '@core/library/componentThumbs';
-import { MOGRAPH_ITEMS, buildMographFragment, previewMographItem, createMographPlayer, mographDuration, type MographItem, type MographCategory } from '@core/library/mographLibrary';
-import { TRANSITION_ITEMS, createTransitionPlayer, type TransitionItem, type TransitionCategory } from '@core/library/transitionLibrary';
-import { applyTransitionEdit } from './transitionInsertEdits';
-import { SFX_ITEMS, sfxWaveform, type SfxItem, type SfxCategory } from '@core/library/sfxLibrary';
-import { insertSfxEdit } from './sfxInsertEdits';
-import { LOTTIE_ITEMS, type LottieCategory } from '@core/library/lottieLibrary';
-import { importLottieFileEdit, insertLottieItemEdit } from './lottieInsertEdits';
-import { prepareLottiePreview, drawLottiePreview } from '@core/library/lottiePreview';
-import type { LottieJson } from '@core/lottie/lottieImport';
+import { transitionCategoryLabel } from '@core/library/transitionLibrary';
+import { importLottieFileEdit } from './lottieInsertEdits';
 import { TemplateFieldsPanel } from '@layout/Templates/TemplateFieldsPanel';
 import { LibraryBrowser, FavoriteStar } from './LibraryBrowser';
+import {
+  PremiumCard, PremiumSheet, ProMark, ShelfNote, Waveform,
+  useAuditioning, usePremiumActivate, usePremiumSheet, usePremiumShelf,
+} from './LibraryCards';
+import cardStyles from './LibraryCards.module.css';
+import { auditionState, auditionUrl, stopAudition } from '@core/library/audition';
+import { libraryMediaUrl } from '@core/library/premium/catalog';
+import type { PremiumCatalogItem } from '@core/library/premium/packFormat';
+import type { PremiumAccess } from '@hooks/usePremiumAccess';
+import { usePremiumLibraryStore } from '@stores/premiumLibraryStore';
 import { TRANSITION_KINDS, TRANSITION_LABEL } from '@core/timeline/transitionModel';
-import { markLayerTransitionDrag, startCutTransitionDrag } from '@layout/Timeline/transitionDrag';
+import { startCutTransitionDrag } from '@layout/Timeline/transitionDrag';
 import { cutTransitionEffects } from '@layout/Timeline/cutTransitionEffects';
 import { MyTransitions } from './MyTransitions';
 import { TRANSITION_COMMAND_PREFIX } from '@layout/Timeline/transitionCommands';
 import { getCommandSystem } from '@core/commands/CommandSystem';
 import { asCommandId } from '@app-types/common';
 import styles from './panels.module.css';
+import { t } from '@core/i18n';
 
 const SHAPE_PRESETS = [
   { id: 'rect',     label: 'Rectangle', svg: <rect x="4" y="4" width="24" height="24" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />, primitive: 'rect' },
@@ -88,6 +91,42 @@ const TEXT_PRESETS = [
   { id: 'mono',         label: 'Code Monospace',    fontSize: 28,  weight: 500,  extra: { fontFamily: 'monospace', fill: '#10b981' } },
 ] as const;
 
+/*
+ * Display names of the presets above, translated at render time. The `label`
+ * fields stay English: they are what the insert writes (the shape layer's
+ * name, the text layer's starting text), i.e. document content.
+ */
+function shapePresetLabel(id: typeof SHAPE_PRESETS[number]['id']): string {
+  switch (id) {
+    case 'rect': return t('editor.library.shape.rect', 'Rectangle');
+    case 'ellipse': return t('editor.library.shape.ellipse', 'Ellipse');
+    case 'line': return t('editor.library.shape.line', 'Line');
+    case 'triangle': return t('editor.library.shape.triangle', 'Triangle');
+    case 'arrow': return t('editor.library.shape.arrow', 'Arrow');
+    case 'heart': return t('editor.library.shape.heart', 'Heart');
+    case 'cross': return t('editor.library.shape.cross', 'Cross');
+    case 'diamond': return t('editor.library.shape.diamond', 'Diamond');
+    case 'crescent': return t('editor.library.shape.crescent', 'Crescent');
+    case 'star': return t('editor.library.shape.star', 'Star');
+    case 'polygon': return t('editor.library.shape.polygon', 'Polygon');
+  }
+}
+
+function textPresetLabel(id: typeof TEXT_PRESETS[number]['id']): string {
+  switch (id) {
+    case 'title': return t('editor.library.textPreset.title', 'Title');
+    case 'subtitle': return t('editor.library.textPreset.subtitle', 'Subtitle');
+    case 'body': return t('editor.library.textPreset.body', 'Body');
+    case 'caption': return t('editor.library.textPreset.caption', 'Caption');
+    case 'neon': return t('editor.library.textPreset.neon', 'Neon Glow');
+    case 'display': return t('editor.library.textPreset.display', 'Poster Headline');
+    case 'tag': return t('editor.library.textPreset.tag', 'Uppercase Tag');
+    case 'quote': return t('editor.library.textPreset.quote', 'Quote');
+    case 'cyberpunk': return t('editor.library.textPreset.cyberpunk', 'Cyber Accent');
+    case 'mono': return t('editor.library.textPreset.mono', 'Code Monospace');
+  }
+}
+
 export function ComponentsPanel(): JSX.Element {
   const savedComponents = useComponentStore((s) => s.components);
   const saveComponent = useComponentStore((s) => s.saveFromSelection);
@@ -95,7 +134,7 @@ export function ComponentsPanel(): JSX.Element {
   const removeComponent = useComponentStore((s) => s.remove);
   const hasSelection = useSelectionStore((s) => s.ids.length > 0);
   const [showSaveInput, setShowSaveInput] = useState(false);
-  const [componentName, setComponentName] = useState('My Component');
+  const [componentName, setComponentName] = useState(() => t('editor.library.components.defaultName', 'My Component'));
   // Thumbnails are the engine's stills, answered asynchronously — repaint the grid as each lands.
   const [, setThumbTick] = useState(0);
   useEffect(() => onComponentThumbReady(() => setThumbTick((t) => t + 1)), []);
@@ -107,12 +146,12 @@ export function ComponentsPanel(): JSX.Element {
     void saveComponent(name).then((id) => {
       useUIStore.getState().notify(
         id
-          ? { level: 'success', message: `Saved “${name}”`, durationMs: 1800 }
-          : { level: 'warning', message: 'Select layer(s) to save first', durationMs: 2000 },
+          ? { level: 'success', message: t('editor.library.components.saved', 'Saved “{name}”', { name }), durationMs: 1800 }
+          : { level: 'warning', message: t('editor.library.components.selectFirst', 'Select layer(s) to save first'), durationMs: 2000 },
       );
     });
     setShowSaveInput(false);
-    setComponentName('My Component');
+    setComponentName(t('editor.library.components.defaultName', 'My Component'));
   };
 
   return (
@@ -125,10 +164,12 @@ export function ComponentsPanel(): JSX.Element {
             fullWidth
             leftIcon={<Icon name="plus" size="sm" />}
             disabled={!hasSelection}
-            title={hasSelection ? 'Save the current selection as a reusable component' : 'Select layer(s) first'}
+            title={hasSelection
+              ? t('editor.library.components.saveTitle', 'Save the current selection as a reusable component')
+              : t('editor.library.components.selectLayersFirst', 'Select layer(s) first')}
             onClick={() => setShowSaveInput(true)}
           >
-            Save selection as component
+            {t('editor.library.components.saveSelection', 'Save selection as component')}
           </Button>
         ) : (
           <div className={styles.componentsSaveRow}>
@@ -138,17 +179,17 @@ export function ComponentsPanel(): JSX.Element {
               autoFocus
               size="sm"
               fullWidth
-              placeholder="Component name"
+              placeholder={t('editor.library.components.namePlaceholder', 'Component name')}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') setShowSaveInput(false);
               }}
             />
             <Button size="sm" variant="primary" onClick={handleSave}>
-              Save
+              {t('editor.library.components.save', 'Save')}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setShowSaveInput(false)}>
-              Cancel
+              {t('editor.library.components.cancel', 'Cancel')}
             </Button>
           </div>
         )}
@@ -158,7 +199,7 @@ export function ComponentsPanel(): JSX.Element {
         <EmptyState
           compact
           icon="component"
-          message="No components yet. Select a layer or group and save it to reuse anywhere."
+          message={t('editor.library.components.empty', 'No components yet. Select a layer or group and save it to reuse anywhere.')}
         />
       ) : (
         <div className={styles.libGrid}>
@@ -167,12 +208,12 @@ export function ComponentsPanel(): JSX.Element {
               <button
                 type="button"
                 className={styles.libChip}
-                title={`Insert a copy of “${c.name}” — or drag onto the canvas`}
+                title={t('editor.library.components.insertTitle', 'Insert a copy of “{name}” — or drag onto the canvas', { name: c.name })}
                 draggable
                 onDragStart={(e) => setCanvasDrag(e, { kind: 'component', componentId: c.id })}
                 onClick={() => {
                   insertComponent(c.id);
-                  useUIStore.getState().notify({ level: 'success', message: `Inserted ${c.name}`, durationMs: 1500 });
+                  useUIStore.getState().notify({ level: 'success', message: t('editor.library.components.inserted', 'Inserted {name}', { name: c.name }), durationMs: 1500 });
                 }}
               >
                 {(() => {
@@ -194,8 +235,8 @@ export function ComponentsPanel(): JSX.Element {
               <button
                 type="button"
                 className={styles.componentDeleteBtn}
-                aria-label={`Delete ${c.name}`}
-                title="Delete component"
+                aria-label={t('editor.library.components.deleteNamed', 'Delete {name}', { name: c.name })}
+                title={t('editor.library.components.delete', 'Delete component')}
                 onClick={() => removeComponent(c.id)}
               >
                 <Icon name="close" size="sm" />
@@ -223,7 +264,7 @@ export function ShapesPanel(): JSX.Element {
             key={p.id}
             type="button"
             className={styles.libChip}
-            title={`Insert ${p.label} — or drag onto the canvas`}
+            title={t('editor.library.shape.insertTitle', 'Insert {name} — or drag onto the canvas', { name: shapePresetLabel(p.id) })}
             draggable
             onDragStart={(e) => setCanvasDrag(e, { kind: 'shape', primitive: p.primitive, label: p.label })}
             onClick={() => handleShapeInsert(p)}
@@ -233,7 +274,7 @@ export function ShapesPanel(): JSX.Element {
                 {p.svg}
               </svg>
             </span>
-            <span className={styles.libChipLabel}>{p.label}</span>
+            <span className={styles.libChipLabel}>{shapePresetLabel(p.id)}</span>
           </button>
         ))}
       </div>
@@ -256,7 +297,7 @@ export function TextPanel(): JSX.Element {
             key={p.id}
             type="button"
             className={styles.libTextItem}
-            title={`Insert ${p.label} text layer — or drag onto the canvas`}
+            title={t('editor.library.textPreset.insertTitle', 'Insert {name} text layer — or drag onto the canvas', { name: textPresetLabel(p.id) })}
             draggable
             onDragStart={(e) => setCanvasDrag(e, { kind: 'text', label: p.label, fontSize: p.fontSize, weight: p.weight, extra: (p as any).extra ?? {} })}
             onClick={() => handleTextInsert(p)}
@@ -272,11 +313,11 @@ export function TextPanel(): JSX.Element {
                 textTransform: (p as any).extra?.transform || 'none',
               }}
             >
-              {p.label}
+              {textPresetLabel(p.id)}
             </span>
             <span className={styles.libTextMeta}>
               {p.fontSize}px · w{p.weight}
-              {(p as any).extra?.fill && ' · styled'}
+              {(p as any).extra?.fill && ` ${t('editor.library.textPreset.styled', '· styled')}`}
             </span>
           </button>
         ))}
@@ -286,360 +327,277 @@ export function TextPanel(): JSX.Element {
 }
 
 
-// ── Motion Graphics Panel ─────────────────────────────────────────
-// Real programmatic mograph elements — the card previews are the same build +
-// choreography the insert writes, drawn by the engine (a still; the motion
-// plays on hover / focus — the shared gallery controller).
+// ── Shared shelf helpers ──────────────────────────────────────────
 
-function MographCard({ item }: { item: MographItem }): JSX.Element {
-  const notify = useUIStore((s) => s.notify);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const player = createMographPlayer(canvas, item);
-    return () => player.stop();
-  }, [item]);
+/** A shelf row as LibraryBrowser filters it. */
+interface ShelfEntry {
+  id: string;
+  name: string;
+  cat: string;
+  tier: 'cloud' | 'free';
+  tags: readonly string[];
+  item: PremiumCatalogItem;
+}
+
+const catId = (label: string): string => label.trim().toLowerCase().replace(/\s+/g, '-');
+const titleCase = (cat: string): string => cat.charAt(0).toUpperCase() + cat.slice(1).replace(/-/g, ' ');
+
+function shelfEntries(items: readonly PremiumCatalogItem[]): ShelfEntry[] {
+  return items.map((item) => ({ id: item.id, name: item.name, cat: catId(item.category), tier: item.tier, tags: item.tags, item }));
+}
+
+/** The shelf's categories in a preferred order, then any others it brings. */
+function orderedCategories(order: readonly string[], entries: readonly ShelfEntry[]): string[] {
+  const out = [...order];
+  for (const e of entries) if (!out.includes(e.cat)) out.push(e.cat);
+  return out.filter((c) => entries.some((e) => e.cat === c));
+}
+
+/** Says why a shelf is empty instead of showing an empty grid. */
+function ShelfEmpty({ shelf, noun }: { shelf: ReturnType<typeof usePremiumShelf>; noun: 'transitions' | 'sounds' | 'animations' }): JSX.Element | null {
+  if (shelf.items.length > 0) return null;
+  const loading = shelf.status === 'loading' || shelf.status === 'idle';
+  const text = shelf.access === 'local'
+    ? t('editor.library.shelf.local', 'The library comes with a Premation account — sign in from the Premation app to browse it.')
+    : loading
+      ? t('editor.library.shelf.loading', 'Loading the library…')
+      : noun === 'transitions'
+        ? t('editor.library.shelf.noneTransitions', 'No transitions are available right now.')
+        : noun === 'sounds'
+          ? t('editor.library.shelf.noneSounds', 'No sounds are available right now.')
+          : t('editor.library.shelf.noneAnimations', 'No animations are available right now.');
   return (
-    <button
-      type="button"
-      className={styles.libMotionItem}
-      title={`${item.name} — Drag onto canvas or click to insert`}
-      draggable
-      onDragStart={(e) => setCanvasDrag(e, { kind: 'mograph', mographId: item.id, name: item.name })}
-      onClick={async () => {
-        // The item's rigged layer set (shapes, styled text, keys, expressions) is laid into a
-        // fragment and lands as ONE pasteLayers entry; then its choreography previews.
-        const ids = await insertFragment(`Insert ${item.name}`, (b, f) => buildMographFragment(b, f, item.id, getPlayheadTime()), { comp: activeCompIdNow() ?? 'comp_root' });
-        if (ids === null) return; // refused — already toasted
-        const id = ids[0];
-        if (id) previewMographItem(item.id);
-        if (id) notify({ level: 'success', message: `Inserted motion graphic: ${item.name}`, durationMs: 1500 });
-        else notify({ level: 'warning', message: `Could not insert ${item.name}`, durationMs: 2000 });
-      }}>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
-        <canvas
-          ref={canvasRef}
-          width={224}
-          height={126}
-          style={{ width: '100%', aspectRatio: '16 / 9', borderRadius: 6, background: '#101016', display: 'block' }}
-        />
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 3, height: 22, borderRadius: 2, background: item.color, flexShrink: 0 }} />
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-            <span className={styles.libCardName}>{item.name}</span>
-            <span className={styles.libCardMeta}>
-              {item.cat} · {item.loop ? '∞ loop' : `${mographDuration(item).toFixed(1)}s`}
-            </span>
-          </span>
-          <FavoriteStar id={item.id} label={item.name} />
-        </span>
-      </span>
-    </button>
+    <p className={cardStyles.shelfNote} role="status">
+      <Icon name="info" size="sm" />
+      <span>{text}</span>
+    </p>
   );
 }
 
-const MOGRAPH_CATEGORIES: readonly MographCategory[] =
-  ['lower-thirds', 'callouts', 'titles', 'data', 'shapes', 'loops'];
+// ── Transitions ───────────────────────────────────────────────────
+// The library's transitions are Pro specs keyed onto layers (one undo entry
+// through the engine). The cut transitions and effect wipes above them are
+// timeline TOOLS, not library items, and are always here.
 
-function MotionGFXContent(): JSX.Element {
-  return (
-    <LibraryBrowser
-      items={MOGRAPH_ITEMS}
-      categories={MOGRAPH_CATEGORIES}
-      categoryLabel={(c) => (c === 'lower-thirds' ? 'Lower 3rds' : c.charAt(0).toUpperCase() + c.slice(1))}
-      noun="preset"
-    >
-      {(items) => (
-        <div className={styles.libList}>
-          {items.map((item) => (
-            <MographCard key={item.id} item={item} />
-          ))}
-        </div>
-      )}
-    </LibraryBrowser>
-  );
+const TRANSITION_CATEGORIES: readonly string[] = ['seamless', 'zoom', 'whip', 'slide', 'glitch', 'light', 'shape', 'wipe', 'fade'];
+
+function transitionChipLabel(cat: string): string {
+  return ['fade', 'slide', 'zoom', 'whip', 'glitch', 'wipe'].includes(cat) ? transitionCategoryLabel(cat) : titleCase(cat);
 }
 
-// ── Transitions Panel ─────────────────────────────────────────────
-// Real keyframe recipes: with a selection the recipe is keyframed onto the
-// selected layers at the playhead; otherwise a choreographed solid covers
-// the cut. Every write goes through the normal animation engine (undoable).
-
-/** A transition card that PLAYS ITS OWN RECIPE.
- *
- *  The card used to be two colour swatches, which made "Whip Pan" and "Cross
- *  Fade" visually identical — you had to apply an item and undo it to find out
- *  what it did. This keys the real recipe into an isolated preview document the
- *  engine draws (a still at rest, the move while hovered or focused), so the
- *  card shows the move it will write. */
-function TransitionCard({ item, onApply }: { item: TransitionItem; onApply: () => void }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const player = createTransitionPlayer(canvas, item);
-    return () => player.stop();
-  }, [item]);
-
+function TransitionTools(): JSX.Element {
   return (
-    <button
-      type="button"
-      className={styles.libMotionItem}
-      title={item.solidOnly
-        ? `${item.name} — inserts a choreographed solid at the playhead`
-        : `${item.name} — drag onto a layer's start or end in the timeline, or click to apply to the selected layers`}
-      draggable
-      onDragStart={(e) => {
-        setCanvasDrag(e, { kind: 'transition', transId: item.id, name: item.name });
-        // Droppable on a timeline bar's start / end (its entrance / exit).
-        if (!item.solidOnly) markLayerTransitionDrag(e.dataTransfer, item.id);
-      }}
-      onClick={onApply}>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
-        <canvas
-          ref={canvasRef}
-          width={320}
-          height={180}
-          style={{ width: '100%', aspectRatio: '16 / 9', borderRadius: 6, background: '#101016', display: 'block' }}
-        />
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 3, height: 22, borderRadius: 2, background: item.a, flexShrink: 0 }} />
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-            <span className={styles.libCardName}>{item.name}</span>
-            <span className={styles.libCardMeta}>
-              {item.cat} · {item.duration.toFixed(1)}s{item.solidOnly ? ' · solid' : ''}
-            </span>
-          </span>
-          <FavoriteStar id={item.id} label={item.name} />
-        </span>
-      </span>
-    </button>
+    <>
+      {/* Cut transitions: engine transition records between two
+          adjacent bars. Drag one onto a cut in the timeline; a click adds
+          it at the cut nearest the playhead. */}
+      <div className={cardStyles.groupHead}>{t('editor.library.transition.cutSection', 'Cut Transitions — drag onto a cut')}</div>
+      <div className={styles.libCutRow}>
+        {TRANSITION_KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            draggable
+            className={styles.libCutItem}
+            title={t('editor.library.transition.cutTitle', '{name} — drag onto the cut between two layers in the timeline, or click to add it at the cut nearest the playhead', { name: TRANSITION_LABEL[kind] })}
+            aria-label={t('editor.library.transition.cutLabel', '{name} cut transition', { name: TRANSITION_LABEL[kind] })}
+            onDragStart={(e) => startCutTransitionDrag(e.dataTransfer, kind)}
+            onClick={() => { void getCommandSystem().execute(asCommandId(`${TRANSITION_COMMAND_PREFIX}add.${kind}`)); }}
+          >
+            {TRANSITION_LABEL[kind]}
+          </button>
+        ))}
+      </div>
+      {/* Effect wipes: any Transition effect with a Transition Completion,
+          ramped across the cut on the incoming layer. Drag onto a cut;
+          its direction, softness and ease are in Transition Settings. */}
+      <div className={styles.libCutRow} aria-label={t('editor.library.transition.effectWipes', 'Effect wipes')}>
+        {cutTransitionEffects().map((fx) => (
+          <button
+            key={fx.type}
+            type="button"
+            draggable
+            className={styles.libCutItem}
+            title={t('editor.library.transition.wipeTitle', '{name} — drag onto the cut between two layers; double-click the bracket afterwards for direction, softness and ease', { name: fx.label })}
+            aria-label={t('editor.library.transition.cutLabel', '{name} cut transition', { name: fx.label })}
+            onDragStart={(e) => startCutTransitionDrag(e.dataTransfer, 'wipe', fx.type)}
+          >
+            {fx.label}
+          </button>
+        ))}
+      </div>
+      <MyTransitions />
+      <div className={cardStyles.groupHead}>{t('editor.library.transition.layerSection', "Layer Transitions — drag onto a layer's start or end")}</div>
+    </>
   );
 }
-
-const TRANSITION_CATEGORIES: readonly TransitionCategory[] =
-  ['fade', 'slide', 'zoom', 'whip', 'glitch', 'wipe'];
 
 function TransitionsContent(): JSX.Element {
-  const notify = useUIStore((s) => s.notify);
-  const apply = async (id: string, name: string): Promise<void> => {
-    // Solid panels: built off-document, one pasteLayers; layer mode stays legacy (transitionInsertEdits).
-    const result = await applyTransitionEdit(id, `Apply ${name}`);
-    if (!result) {
-      notify({ level: 'warning', message: `Could not apply ${name}`, durationMs: 2000 });
-    } else if (result.mode === 'layer') {
-      const n = result.nodeIds.length;
-      const kinds = new Set(result.phases ?? []);
-      const variant = kinds.size === 1 ? ` (${kinds.has('exit') ? 'exit' : 'entrance'})` : kinds.size > 1 ? ' (entrance + exit)' : '';
-      notify({ level: 'success', message: `Keyframed ${name}${variant} onto ${n} layer${n > 1 ? 's' : ''}`, durationMs: 1800 });
-    } else {
-      const n = result.nodeIds.length;
-      notify({ level: 'success', message: n > 1 ? `Inserted ${n} ${name} solids at the playhead` : `Inserted ${name} solid at the playhead`, durationMs: 1800 });
-    }
-  };
+  const shelf = usePremiumShelf('transition');
+  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
+  const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
+  const categories = useMemo(() => orderedCategories(TRANSITION_CATEGORIES, entries), [entries]);
   return (
-    <LibraryBrowser items={TRANSITION_ITEMS} categories={TRANSITION_CATEGORIES} noun="transition">
-      {(items) => (
-        <>
-          {/* Cut transitions: engine transition records between two
-              adjacent bars. Drag one onto a cut in the timeline; a click adds
-              it at the cut nearest the playhead. */}
-          <div className={styles.libSectionTitle}>Cut Transitions — drag onto a cut</div>
-          <div className={styles.libCutRow}>
-            {TRANSITION_KINDS.map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                draggable
-                className={styles.libCutItem}
-                title={`${TRANSITION_LABEL[kind]} — drag onto the cut between two layers in the timeline, or click to add it at the cut nearest the playhead`}
-                aria-label={`${TRANSITION_LABEL[kind]} cut transition`}
-                onDragStart={(e) => startCutTransitionDrag(e.dataTransfer, kind)}
-                onClick={() => { void getCommandSystem().execute(asCommandId(`${TRANSITION_COMMAND_PREFIX}add.${kind}`)); }}
-              >
-                {TRANSITION_LABEL[kind]}
-              </button>
-            ))}
+    <div className={cardStyles.section}>
+      <LibraryBrowser
+        items={entries}
+        categories={categories}
+        categoryLabel={transitionChipLabel}
+        noun="transition"
+        toolbar={<><TransitionTools /><ShelfEmpty shelf={shelf} noun="transitions" /><ShelfNote shelf={shelf} /></>}
+      >
+        {(items) => (
+          <div className={cardStyles.grid}>
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} />)}
           </div>
-          {/* Effect wipes: any Transition effect with a Transition Completion,
-              ramped across the cut on the incoming layer. Drag onto a cut;
-              its direction, softness and ease are in Transition Settings. */}
-          <div className={styles.libCutRow} aria-label="Effect wipes">
-            {cutTransitionEffects().map((fx) => (
-              <button
-                key={fx.type}
-                type="button"
-                draggable
-                className={styles.libCutItem}
-                title={`${fx.label} — drag onto the cut between two layers; double-click the bracket afterwards for direction, softness and ease`}
-                aria-label={`${fx.label} cut transition`}
-                onDragStart={(e) => startCutTransitionDrag(e.dataTransfer, 'wipe', fx.type)}
-              >
-                {fx.label}
-              </button>
-            ))}
-          </div>
-          <MyTransitions />
-          <div className={styles.libSectionTitle}>Layer Transitions — drag onto a layer's start or end</div>
-          <div className={styles.libList}>
-            {items.map((item) => (
-              <TransitionCard key={item.id} item={item} onApply={() => { void apply(item.id, item.name); }} />
-            ))}
-          </div>
-        </>
-      )}
-    </LibraryBrowser>
+        )}
+      </LibraryBrowser>
+      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
+    </div>
   );
 }
 
-// ── Sound FX Panel ────────────────────────────────────────────────
-// Deterministic synthesized SFX — every item renders a real WAV through the
-// normal asset pipeline and lands as a real audio layer at the playhead.
+// ── Sound FX ──────────────────────────────────────────────────────
+// Mixed stereo sound design from the library; every sound auditions (its
+// public preview) before it is added, one at a time.
 
-/** The item's REAL peak envelope, not a decorative bar pattern.
- *  Memoised per id: the synth is deterministic, so this is computed once and
- *  the same shape is reused for the life of the session. */
-const waveformCache = new Map<string, number[]>();
-function sfxBars(id: string): number[] {
-  let bars = waveformCache.get(id);
-  if (!bars) {
-    bars = sfxWaveform(id, 26) ?? [];
-    waveformCache.set(id, bars);
+const formatSeconds = (s: number): string => (s < 1 ? `${s.toFixed(2)} s` : `${s.toFixed(1)} s`);
+
+const SFX_CATEGORIES: readonly string[] = ['impact', 'whoosh', 'riser', 'ui', 'glitch', 'foley', 'magic'];
+
+function sfxCategoryLabel(cat: string): string {
+  switch (cat) {
+    case 'whoosh': return t('editor.library.sfx.catWhoosh', 'Whoosh');
+    case 'impact': return t('editor.library.sfx.catImpact', 'Impact');
+    case 'riser': return t('editor.library.sfx.catRiser', 'Riser');
+    case 'ui': return t('editor.library.sfx.catUi', 'UI');
+    case 'glitch': return t('editor.library.sfx.catGlitch', 'Glitch');
+    case 'foley': return t('editor.library.sfx.catFoley', 'Foley');
+    case 'magic': return t('editor.library.sfx.catMagic', 'Magic');
+    default: return titleCase(cat);
   }
-  return bars;
 }
 
-function SfxCard({ item, busy, onInsert }: { item: SfxItem; busy: string | null; onInsert: () => void }): JSX.Element {
-  const bars = sfxBars(item.id);
+function SoundRow({ item, access, onLocked, onAudition }: {
+  item: PremiumCatalogItem;
+  access: PremiumAccess;
+  onLocked: (item: PremiumCatalogItem) => void;
+  onAudition: () => void;
+}): JSX.Element {
+  const playing = useAuditioning(item.id);
+  const busy = usePremiumLibraryStore((s) => s.busy.has(item.id));
+  const add = usePremiumActivate(item, access, onLocked);
+  const locked = access !== 'pro';
+  const name = item.name;
   return (
-    <button
-      type="button"
-      className={styles.libMotionItem}
-      disabled={busy !== null}
-      style={busy === item.id ? { opacity: 0.6 } : undefined}
-      title={`${item.name} — synthesized ${item.duration.toFixed(2)}s WAV, added as an audio layer`}
-      draggable
-      onDragStart={(e) => setCanvasDrag(e, { kind: 'sfx', sfxId: item.id, name: item.name })}
-      onClick={onInsert}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-        {/* The envelope of the actual audio — a click reads as a spike, an
-            ambient pad as a slow swell. Every item used to draw the same
-            seven bars. */}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 1, height: 26, width: 72, flexShrink: 0 }} aria-hidden>
-          {bars.map((v, i) => (
-            <span key={i} style={{
-              flex: 1,
-              height: `${Math.max(8, v * 100)}%`,
-              borderRadius: 1,
-              background: item.color,
-              opacity: 0.45 + v * 0.55,
-              display: 'block',
-            }} />
-          ))}
-        </span>
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-          <span className={styles.libCardName}>{busy === item.id ? 'Rendering…' : item.name}</span>
-          <span className={styles.libCardMeta}>
-            {item.cat} · {item.duration.toFixed(2)}s
-          </span>
-        </span>
-        <FavoriteStar id={item.id} label={item.name} />
+    <div
+      className={cardStyles.soundRow}
+      data-playing={playing}
+      title={t('editor.library.sfx.rowTitle', '{name} — click to listen; + or drag to add at the playhead', { name })}
+      draggable={access === 'pro'}
+      onDragStart={(e) => { if (access === 'pro') setCanvasDrag(e, { kind: 'premium', itemId: item.id, name }); }}
+      onClick={onAudition}
+      onDoubleClick={() => { if (!busy) add(); }}
+    >
+      <button
+        type="button"
+        className={cardStyles.play}
+        aria-pressed={playing}
+        aria-label={playing
+          ? t('editor.library.sfx.stop', 'Stop {name}', { name })
+          : t('editor.library.sfx.play', 'Play {name}', { name })}
+        onClick={(e) => { e.stopPropagation(); onAudition(); }}
+      >
+        <Icon name={playing ? 'stop' : 'play'} size={12} />
+      </button>
+      <Waveform id={item.id} peaks={item.peaks ?? []} />
+      <span className={cardStyles.metaText}>
+        <span className={cardStyles.name}>{busy ? t('editor.library.sfx.adding', 'Adding…') : name}</span>
+        <span className={cardStyles.meta}>{`${sfxCategoryLabel(catId(item.category))} · ${formatSeconds(item.durationSec)}`}</span>
       </span>
-    </button>
+      <span className={cardStyles.rowAction}>
+        <ProMark locked={locked} />
+        <FavoriteStar id={item.id} label={name} />
+        <button
+          type="button"
+          className={cardStyles.add}
+          aria-label={t('editor.library.sfx.add', 'Add {name} at the playhead', { name })}
+          title={t('editor.library.sfx.add', 'Add {name} at the playhead', { name })}
+          disabled={busy}
+          onClick={(e) => { e.stopPropagation(); if (!busy) add(); }}
+        >
+          <Icon name="plus" size="sm" />
+        </button>
+      </span>
+    </div>
   );
 }
-
-const SFX_CATEGORIES: readonly SfxCategory[] = ['click', 'whoosh', 'impact', 'ambient'];
 
 function SoundFXContent(): JSX.Element {
-  const [busy, setBusy] = useState<string | null>(null);
   const notify = useUIStore((s) => s.notify);
-  const insert = async (id: string, name: string): Promise<void> => {
-    if (busy) return;
-    setBusy(id);
-    try {
-      // The audio layer is one pasteLayers entry; the first insert's item import stays a B3-gap (sfxInsertEdits).
-      const nodeId = await insertSfxEdit(id);
-      if (nodeId) notify({ level: 'success', message: `Added Sound FX: ${name}`, durationMs: 1500 });
-      else notify({ level: 'warning', message: `Could not add ${name}`, durationMs: 2000 });
-    } finally {
-      setBusy(null);
+  const shelf = usePremiumShelf('sfx');
+  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
+  const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
+  const categories = useMemo(() => orderedCategories(SFX_CATEGORIES, entries), [entries]);
+
+  // Leaving the tab (or the panel) stops the audition.
+  useEffect(() => () => stopAudition(), []);
+
+  const toggle = (item: PremiumCatalogItem): void => {
+    if (auditionState().id === item.id) {
+      stopAudition();
+      return;
     }
+    const audio = libraryMediaUrl(item.audio);
+    if (!audio) return;
+    auditionUrl(item.id, audio, item.durationSec, () => notify({ level: 'warning', message: t('editor.library.sfx.previewFailed', 'Could not play the preview of {name}', { name: item.name }), durationMs: 2400 }));
   };
+
   return (
-    <LibraryBrowser items={SFX_ITEMS} categories={SFX_CATEGORIES} noun="sound">
-      {(items) => (
-        <div className={styles.libList}>
-          {items.map((item) => (
-            <SfxCard key={item.id} item={item} busy={busy}
-              onInsert={() => { void insert(item.id, item.name); }} />
-          ))}
-        </div>
-      )}
-    </LibraryBrowser>
+    <div className={cardStyles.section}>
+      <LibraryBrowser
+        items={entries}
+        categories={categories}
+        categoryLabel={sfxCategoryLabel}
+        noun="sound"
+        toolbar={<><ShelfEmpty shelf={shelf} noun="sounds" /><ShelfNote shelf={shelf} /></>}
+      >
+        {(items) => (
+          <div className={cardStyles.soundList}>
+            {items.map((e) => (
+              <SoundRow key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} onAudition={() => toggle(e.item)} />
+            ))}
+          </div>
+        )}
+      </LibraryBrowser>
+      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
+    </div>
   );
 }
 
-// ── Lottie Micro UI Panel ─────────────────────────────────────────
-// Advanced Apple-style UI micro-interactions (Pill Stepper, Dynamic Island, Fluid Switch, Face ID, etc.)
+// ── Lottie ────────────────────────────────────────────────────────
+// Vector micro-interactions from the library, landing as editable shape
+// layers; plus importing the user's own .json / .lottie file.
 
-/**
- * A library card that PLAYS ITS OWN DOCUMENT.
- *
- * Each card used to be a hand-drawn SVG impression of its item, with nothing
- * tying it to the Lottie document the card actually inserts — so a card could
- * keep looking right long after the document stopped landing that way. This
- * draws the same plan applyImportPlan realises, which is why inserting an item
- * now reproduces its card.
- *
- * Still by default (one frame is the honest contract for "what you get"), and
- * it plays while hovered so the motion is still visible before you commit.
- */
-function LottieCardPreview({ doc, playing }: { doc: LottieJson; playing: boolean }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Planning is pure and cheap, but it is per-document work — do it once.
-  const scene = useMemo(() => prepareLottiePreview(doc), [doc]);
-  const restT = scene.restSec;
+const LOTTIE_CATEGORIES: readonly string[] = ['feedback', 'loaders', 'icons', 'social', 'celebration'];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = canvas.clientWidth || 44;
-    const h = canvas.clientHeight || 30;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Resizing the canvas above CLEARS it, so paint before yielding: an rAF
-    // that never arrives (hidden pane, background window) would otherwise leave
-    // the card blank for as long as the throttle lasts.
-    drawLottiePreview(ctx, scene, playing ? 0 : restT, w, h);
-    if (!playing) return;
-
-    let raf = 0;
-    const started = performance.now();
-    const tick = (): void => {
-      const elapsed = (performance.now() - started) / 1000;
-      drawLottiePreview(ctx, scene, scene.durationSec > 0 ? elapsed % scene.durationSec : 0, w, h);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [scene, playing, restT]);
-
-  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />;
+function lottieCategoryLabel(cat: string): string {
+  switch (cat) {
+    case 'feedback': return t('editor.library.lottie.catFeedback', 'Feedback');
+    case 'loaders': return t('editor.library.lottie.catLoaders', 'Loaders');
+    case 'icons': return t('editor.library.lottie.catIcons', 'Icons');
+    case 'social': return t('editor.library.lottie.catSocial', 'Social');
+    case 'celebration': return t('editor.library.lottie.catCelebration', 'Celebration');
+    default: return titleCase(cat);
+  }
 }
 
-const LOTTIE_CATEGORIES: readonly LottieCategory[] = ['micro-ui', 'widgets', 'controls'];
-
 function LottieContent(): JSX.Element {
-  const notify = useUIStore((s) => s.notify);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const shelf = usePremiumShelf('lottie');
+  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
+  const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
+  const categories = useMemo(() => orderedCategories(LOTTIE_CATEGORIES, entries), [entries]);
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = e.target.files?.[0];
@@ -649,88 +607,71 @@ function LottieContent(): JSX.Element {
     await importLottieFileEdit(file);
   };
 
-  const importButton = (
-    <div style={{ padding: '6px 8px 2px' }}>
-      <Button size="sm" variant="secondary" style={{ width: '100%' }}
-        leftIcon={<Icon name="download" size="sm" />}
-        onClick={() => fileRef.current?.click()}>
-        Import .json / .lottie File…
-      </Button>
-      <input ref={fileRef} type="file" accept=".json,.lottie,application/json,application/x-lottie" style={{ display: 'none' }}
-        onChange={(e) => { void onPickFile(e); }} />
-    </div>
+  const toolbar = (
+    <>
+      <div className={cardStyles.importRow}>
+        <Button size="sm" variant="secondary" fullWidth
+          leftIcon={<Icon name="download" size="sm" />}
+          onClick={() => fileRef.current?.click()}>
+          {t('editor.library.lottie.import', 'Import .json / .lottie File…')}
+        </Button>
+        <input ref={fileRef} type="file" accept=".json,.lottie,application/json,application/x-lottie" hidden
+          onChange={(e) => { void onPickFile(e); }} />
+      </div>
+      <ShelfEmpty shelf={shelf} noun="animations" />
+      <ShelfNote shelf={shelf} />
+    </>
   );
 
   return (
-    <LibraryBrowser
-      items={LOTTIE_ITEMS}
-      categories={LOTTIE_CATEGORIES}
-      categoryLabel={(c) => (c === 'micro-ui' ? 'Micro UI' : c.charAt(0).toUpperCase() + c.slice(1))}
-      noun="animation"
-      toolbar={importButton}
-    >
-      {(items) => (
-        <div className={styles.libGrid}>
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={styles.libChip}
-              title={`${item.name} — ${item.frames}f @ 30fps. Hover to play, drag onto canvas or click to insert`}
-              draggable
-              onDragStart={(e) => setCanvasDrag(e, { kind: 'lottie', lottieId: item.id, name: item.name })}
-              onMouseEnter={() => setHovered(item.id)}
-              onMouseLeave={() => setHovered((h) => (h === item.id ? null : h))}
-              onClick={async () => {
-                // The importer's layer tree lands as ONE pasteLayers entry (lottieInsertEdits.ts).
-                const ids = await insertLottieItemEdit(item.id);
-                if (ids === null) return; // refused — already toasted
-                if (ids.length > 0) notify({ level: 'success', message: `Inserted ${item.name} (${ids.length} layer${ids.length > 1 ? 's' : ''})`, durationMs: 1800 });
-                else notify({ level: 'warning', message: `Could not insert ${item.name}`, durationMs: 2000 });
-              }}>
-              <span className={styles.libChipThumb}
-                style={{ background: `radial-gradient(circle at 50% 45%, ${item.color}22 0%, transparent 70%), #09090b`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <LottieCardPreview doc={item.doc} playing={hovered === item.id} />
-                <span className={styles.libThumbBadge}>Lottie</span>
-                <span className={styles.libChipStar}>
-                  <FavoriteStar id={item.id} label={item.name} />
-                </span>
-              </span>
-              <span className={styles.libChipLabel}>{item.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </LibraryBrowser>
+    <div className={cardStyles.section}>
+      <LibraryBrowser
+        items={entries}
+        categories={categories}
+        categoryLabel={lottieCategoryLabel}
+        noun="animation"
+        toolbar={toolbar}
+      >
+        {(items) => (
+          <div className={cardStyles.gridTight}>
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} square />)}
+          </div>
+        )}
+      </LibraryBrowser>
+      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
+    </div>
   );
 }
 
 // ── Library Panel — ONE home for asset libraries ──────────────────
-// Motion GFX / Transitions / Sound FX / Lottie live as sections inside a single sidebar tab.
+// Templates / Transitions / Sound FX / Lottie / Components / Shapes / Text live as sections inside a single sidebar tab.
 
 type LibrarySection =
-  | 'mograph' | 'transitions' | 'sfx' | 'lottie' | 'components' | 'shapes' | 'text'
-  | 'templates';
+  | 'templates' | 'transitions' | 'sfx' | 'lottie' | 'components' | 'shapes' | 'text';
 
-const LIBRARY_SECTIONS: ReadonlyArray<{ id: LibrarySection; label: string; icon: IconName }> = [
-  { id: 'mograph',     label: 'Motion GFX',  icon: 'sparkles' },
-  { id: 'transitions', label: 'Transitions', icon: 'scissors' },
-  { id: 'sfx',         label: 'Sound FX',    icon: 'voice' },
-  { id: 'lottie',      label: 'Lottie UI',   icon: 'video' },
-  { id: 'components',  label: 'Components',  icon: 'component' },
-  { id: 'shapes',      label: 'Shapes',      icon: 'shape' },
-  { id: 'text',        label: 'Text',        icon: 'type' },
-  /*
-    Templates is the one library with no other home: it was reachable only
-    through a document already using one.
-  */
-  { id: 'templates',   label: 'Templates',   icon: 'layout' },
-];
+/** A function, not a constant: `t()` must run at render time, never at module scope. */
+function librarySections(): ReadonlyArray<{ id: LibrarySection; label: string; icon: IconName }> {
+  return [
+    /*
+      Templates leads: it is the library's premium shelf. Motion GFX used to
+      sit here; its elements are no longer offered in the panel (the AI recipes
+      and documents that already use them still resolve through
+      mographLibrary.ts).
+    */
+    { id: 'templates',   label: t('editor.library.section.templates', 'Templates'),     icon: 'layout' },
+    { id: 'transitions', label: t('editor.library.section.transitions', 'Transitions'), icon: 'scissors' },
+    { id: 'sfx',         label: t('editor.library.section.sfx', 'Sound FX'),            icon: 'voice' },
+    { id: 'lottie',      label: t('editor.library.section.lottie', 'Lottie'),           icon: 'video' },
+    { id: 'components',  label: t('editor.library.section.components', 'Components'),   icon: 'component' },
+    { id: 'shapes',      label: t('editor.library.section.shapes', 'Shapes'),           icon: 'shape' },
+    { id: 'text',        label: t('editor.library.section.text', 'Text'),               icon: 'type' },
+  ];
+}
 
 export function LibraryPanel(): JSX.Element {
-  const [section, setSection] = useState<LibrarySection>('mograph');
+  const [section, setSection] = useState<LibrarySection>('templates');
   return (
-    <Panel id="library" title="Library" icon="sparkles" hideHeader
+    <Panel id="library" title={t('panel.library', 'Library')} icon="sparkles" hideHeader
       onClose={() => getEventBus().emit('PanelClosed', { panelId: 'library' })}>
       {/* The bottom rule lives in `.libTabs`. The inline copy that was here
           drew a SECOND hairline under the stylesheet's, and carried a
@@ -738,11 +679,11 @@ export function LibraryPanel(): JSX.Element {
           that has always been defined — a white-ish line hardcoded for dark. */}
       <ScrollableStrip
         role="tablist"
-        ariaLabel="Library sections"
+        ariaLabel={t('editor.library.sections', 'Library sections')}
         className={styles.libTabsWrap}
         scrollClassName={styles.libTabs}
       >
-        {LIBRARY_SECTIONS.map((s) => (
+        {librarySections().map((s) => (
           <button key={s.id} type="button"
             role="tab"
             aria-selected={section === s.id}
@@ -756,7 +697,6 @@ export function LibraryPanel(): JSX.Element {
           </button>
         ))}
       </ScrollableStrip>
-      {section === 'mograph' && <MotionGFXContent />}
       {section === 'transitions' && <TransitionsContent />}
       {section === 'sfx' && <SoundFXContent />}
       {section === 'lottie' && <LottieContent />}

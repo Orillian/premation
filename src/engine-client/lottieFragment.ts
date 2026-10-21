@@ -182,6 +182,13 @@ export function buildLottieFragment(plan: ImportPlan, opts: LottieFragmentOption
         ...(L.fill.composite === 'above' ? { composite: 'above' as const } : {}),
       });
     }
+    if (!L.fill && L.kind === 'shape' && !('fill' in L.staticProps)) {
+      // A Lottie shape with no fill item draws NO fill — a stroke-only ring or
+      // an open check mark. The new-layer default fill left on it painted
+      // stroked outlines as solid discs (a ring above its own badge hid the badge).
+      b.setProp(id, 'Style', 'fill', 'rgba(0,0,0,0)');
+      b.setFx(id, 'fill', { type: 'solid', color: 'rgba(0,0,0,0)' });
+    }
     if (L.stroke && L.stroke.width > 0) {
       const st = L.stroke;
       b.setFx(id, 'stroke', {

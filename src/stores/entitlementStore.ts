@@ -83,6 +83,16 @@ export function canWriteCloud(access: CloudAccess | null): boolean {
   return access ? access.write : true;
 }
 
+/**
+ * Whether the cached decision includes Premation Cloud (plan `pro`) — premium
+ * library items and Cloud plugins. Unlike `canWriteCloud`, a missing answer is
+ * NOT a yes: callers that need "unknown" read `access` themselves. The server
+ * maps paid, granted and staff accounts to `pro`, so this one field is the rule.
+ */
+export function isPaidPlan(access: CloudAccess | null): boolean {
+  return access?.plan === 'pro';
+}
+
 export function messageAfterEntitlementRefresh(current: string, access: CloudAccess): string {
   return access.write ? '' : current;
 }

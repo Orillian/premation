@@ -42,7 +42,8 @@ export type CacheTag =
   | 'automation-templates'
   | 'animation-templates'
   | 'render-capabilities'
-  | 'review';
+  | 'review'
+  | 'library';
 
 /**
  * Every tag, as a value.
@@ -65,6 +66,7 @@ const ALL_TAGS = [
   'animation-templates',
   'render-capabilities',
   'review',
+  'library',
 ] as const satisfies readonly CacheTag[];
 
 interface Entry<T = unknown> {
