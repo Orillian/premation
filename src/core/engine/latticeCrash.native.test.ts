@@ -58,9 +58,12 @@ suite('a 3D layer as the camera moves in', () => {
       { name: 'add_repeater', args: { nodeId: 'l', copies: 5, positionX: 100, rotation: 0 } },
       { name: 'add_repeater', args: { nodeId: 'l', copies: 3, positionY: 100, rotation: 0 } },
     ]],
+    // The lattice's footprint as one layer. Filled: Fill Opacity 0 (AE Blending
+    // Options) fades a shape's stroke with its fill, and this rect's edges
+    // project outside the frame at every depth, so an outline alone shows nothing.
     ['big rect, no repeater', [
       { name: 'create_layer', args: { id: 'l', kind: 'shape', shape: 'rect', name: 'L', width: 4500, height: 2700, fill: '#ece8df' } },
-      { name: 'update_layer', args: { nodeId: 'l', threeD: true, z: 1400, fillOpacity: 0, stroke: '#ffffff', strokeWidth: 6 } },
+      { name: 'update_layer', args: { nodeId: 'l', threeD: true, z: 1400, stroke: '#ffffff', strokeWidth: 6 } },
     ]],
   ];
 
