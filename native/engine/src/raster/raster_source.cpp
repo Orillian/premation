@@ -16,6 +16,12 @@ namespace {
 
 constexpr double kSupersample = 2;
 constexpr double kMaxRasterDim = 4096;
+/// The most texels a raster is supersampled to (128 MB of RGBA8): the tier
+/// ladder caps a raster at 16 M px (frame_build.cpp kMaxRasterPixels) and the
+/// 2× supersample quadrupled that past the GPU's 256 MB upload limit — a text
+/// layer scaled up came back 16384 × 4761 (312 MB), the upload failed, and
+/// the frame's whole command buffer with it.
+constexpr double kMaxSupersampledTexels = 32.0 * 1024 * 1024;
 constexpr double kDefaultMaxRasterDimension = 8192;
 
 /// Canvas2DVectorRasterizer.supersampleFor.
@@ -23,7 +29,8 @@ double supersample_for(double tier, double boxW, double boxH, bool bake, double 
   const double want = bake ? tier : tier * kSupersample;
   const double longest = std::max({1.0, boxW, boxH});
   const double cap = bake ? std::min(kMaxRasterDim, deviceMax) : deviceMax;
-  return std::min(want, cap / longest);
+  const double area = std::max(1.0, boxW) * std::max(1.0, boxH);
+  return std::min({want, cap / longest, std::sqrt(kMaxSupersampledTexels / area)});
 }
 
 }  // namespace
