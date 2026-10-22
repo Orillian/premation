@@ -299,3 +299,30 @@ TEST_CASE("a PNG sequence frame is a readable RGBA PNG, and a zip of frames stor
   REQUIRE(zip.finish());
   CHECK(fs::file_size(d / "frames.zip") > png.size());
 }
+
+TEST_CASE("a 16-bit EXR frame converts the writer's RGBA64 integers, not half bits", "[export]") {
+  // The 16-bit export frame is half_surface_to_rgba64's output: straight RGBA64 integers.
+  // Read as binary16 bits, 65535 is a NaN and 32768 is -0; read as v / 65535 they are 1 and ~0.5.
+  const std::vector<std::uint16_t> px = {65535, 32768, 0, 65535};
+  std::vector<std::uint8_t> src(px.size() * 2);
+  std::memcpy(src.data(), px.data(), src.size());
+  std::vector<std::uint8_t> half(4 * 2);
+  ex::target_to_half_rgba(src, 1, 1, 8, ex::LinearFormat::unorm16, half);
+  std::vector<std::uint16_t> out(4);
+  std::memcpy(out.data(), half.data(), half.size());
+  CHECK(out[0] == 0x3C00);  // 1.0
+  CHECK(out[1] == ex::float_to_half(32768.0 / 65535.0));
+  CHECK(out[2] == 0);
+  CHECK(out[3] == 0x3C00);
+  CHECK((out[1] & 0x7C00U) != 0x7C00U);  // not NaN/inf
+  CHECK((out[1] & 0x8000U) == 0);        // not negative
+
+  // The 8-bit path is unchanged: v / 255.
+  const std::vector<std::uint8_t> px8 = {255, 128, 0, 255};
+  std::vector<std::uint8_t> half8(4 * 2);
+  ex::target_to_half_rgba(px8, 1, 1, 4, ex::LinearFormat::unorm8, half8);
+  std::vector<std::uint16_t> out8(4);
+  std::memcpy(out8.data(), half8.data(), half8.size());
+  CHECK(out8[0] == 0x3C00);
+  CHECK(out8[1] == ex::float_to_half(128.0 / 255.0));
+}

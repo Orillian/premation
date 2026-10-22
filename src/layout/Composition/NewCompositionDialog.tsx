@@ -14,6 +14,7 @@ import { createCompositionEdit } from './compositionEdits';
 import {
   SIZE_PRESETS,
   SIZE_GROUPS,
+  sizeGroupLabel,
   findSizePreset,
   MAX_DURATION,
   aspectRatioLabel,
@@ -24,14 +25,17 @@ import {
 } from '@core/composition/presets';
 import { framesToTimecode } from '@core/time/timecode';
 import styles from './NewCompositionDialog.module.css';
+import { t } from '@core/i18n';
 
 /* eslint-disable design-system/no-hex-color -- Studio background hex values are composition document presets, not UI theme chrome */
-const STUDIO_COLOR_SWATCHES = [
-  { label: 'Studio Dark', hex: '#101014' },
-  { label: 'Deep Black', hex: '#000000' },
-  { label: 'Slate Charcoal', hex: '#1c1c22' },
-  { label: 'Clean White', hex: '#ffffff' },
-];
+function studioColorSwatches(): Array<{ label: string; hex: string }> {
+  return [
+    { label: t('composition.newComp.swatchStudioDark', 'Studio Dark'), hex: '#101014' },
+    { label: t('composition.newComp.swatchDeepBlack', 'Deep Black'), hex: '#000000' },
+    { label: t('composition.newComp.swatchSlateCharcoal', 'Slate Charcoal'), hex: '#1c1c22' },
+    { label: t('composition.newComp.swatchCleanWhite', 'Clean White'), hex: '#ffffff' },
+  ];
+}
 /* eslint-enable design-system/no-hex-color */
 
 /*
@@ -70,7 +74,11 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
     return match ? match.id : 'custom';
   }, [width, height]);
 
-  const orientation = width > height ? 'Landscape' : height > width ? 'Portrait' : 'Square';
+  const orientation = width > height
+    ? t('composition.newComp.landscape', 'Landscape')
+    : height > width
+      ? t('composition.newComp.portrait', 'Portrait')
+      : t('composition.newComp.square', 'Square');
 
   const handleSelectPreset = (preset: SizePreset): void => {
     setWidth(preset.width);
@@ -144,27 +152,27 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.grid}>
-        <span className={styles.label}>Composition name</span>
+        <span className={styles.label}>{t('composition.newComp.name', 'Composition name')}</span>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Comp 1"
-          aria-label="Composition name"
+          aria-label={t('composition.newComp.name', 'Composition name')}
           autoFocus
         />
 
         <div className={styles.rule} />
 
-        <span className={styles.label}>Preset</span>
+        <span className={styles.label}>{t('composition.newComp.preset', 'Preset')}</span>
         <select
           value={activePreset}
           onChange={(e) => handlePresetChange(e.target.value)}
           className={styles.select}
-          aria-label="Preset"
+          aria-label={t('composition.newComp.preset', 'Preset')}
         >
-          <option value="custom">Custom</option>
+          <option value="custom">{t('composition.newComp.custom', 'Custom')}</option>
           {SIZE_GROUPS.map((group) => (
-            <optgroup key={group} label={group}>
+            <optgroup key={group} label={sizeGroupLabel(group)}>
               {SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label} · {p.width} × {p.height}
@@ -174,34 +182,34 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
           ))}
         </select>
 
-        <span className={styles.label}>Width</span>
+        <span className={styles.label}>{t('composition.newComp.width', 'Width')}</span>
         <div className={styles.inline}>
           <div className={styles.number}>
-            <ValueField value={width} onChange={handleWidthChange} min={16} max={7680} step={1} unit="px" aria-label="Width" />
+            <ValueField value={width} onChange={handleWidthChange} min={16} max={7680} step={1} unit="px" aria-label={t('composition.newComp.width', 'Width')} />
           </div>
           <IconButton
             size="sm"
             variant="secondary"
             onClick={handleSwapDimensions}
-            tooltip="Swap width and height (flip orientation)"
-            aria-label="Swap width and height"
+            tooltip={t('composition.newComp.swapTooltip', 'Swap width and height (flip orientation)')}
+            aria-label={t('composition.newComp.swap', 'Swap width and height')}
           >
             <Icon name="rotate" size="sm" />
           </IconButton>
         </div>
 
-        <span className={styles.label}>Height</span>
+        <span className={styles.label}>{t('composition.newComp.height', 'Height')}</span>
         <div className={styles.inline}>
           <div className={styles.number}>
-            <ValueField value={height} onChange={handleHeightChange} min={16} max={7680} step={1} unit="px" aria-label="Height" />
+            <ValueField value={height} onChange={handleHeightChange} min={16} max={7680} step={1} unit="px" aria-label={t('composition.newComp.height', 'Height')} />
           </div>
           <IconButton
             size="sm"
             variant="secondary"
             active={aspectLocked}
             onClick={toggleAspectLock}
-            tooltip={aspectLocked ? 'Aspect ratio locked (click to unlock)' : 'Lock aspect ratio'}
-            aria-label={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+            tooltip={aspectLocked ? t('composition.newComp.aspectLocked', 'Aspect ratio locked (click to unlock)') : t('composition.newComp.lockAspect', 'Lock aspect ratio')}
+            aria-label={aspectLocked ? t('composition.newComp.unlockAspect', 'Unlock aspect ratio') : t('composition.newComp.lockAspect', 'Lock aspect ratio')}
           >
             <Icon name="link" size="sm" />
           </IconButton>
@@ -211,28 +219,28 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
           </span>
         </div>
 
-        <span className={styles.label}>Frame rate</span>
+        <span className={styles.label}>{t('composition.newComp.frameRate', 'Frame rate')}</span>
         <div className={styles.inline}>
           <div className={styles.number}>
-            <ValueField value={fps} onChange={setFps} min={1} max={240} step={1} unit="fps" aria-label="Frame rate" />
+            <ValueField value={fps} onChange={setFps} min={1} max={240} step={1} unit="fps" aria-label={t('composition.newComp.frameRate', 'Frame rate')} />
           </div>
-          <span className={styles.hint}>frames per second</span>
+          <span className={styles.hint}>{t('composition.newComp.fpsHint', 'frames per second')}</span>
         </div>
 
-        <span className={styles.label}>Duration</span>
+        <span className={styles.label}>{t('composition.newComp.duration', 'Duration')}</span>
         <div className={styles.inline}>
           <div className={styles.number}>
-            <ValueField value={duration} onChange={setDuration} min={0.1} max={MAX_DURATION} step={0.5} unit="s" aria-label="Duration" />
+            <ValueField value={duration} onChange={setDuration} min={0.1} max={MAX_DURATION} step={0.5} unit="s" aria-label={t('composition.newComp.duration', 'Duration')} />
           </div>
           <span className={styles.hint}>
-            <span>{timecodeString}</span> · <span>{totalFrames} frames at {fps} fps</span>
+            <span>{timecodeString}</span> · <span>{t('composition.newComp.framesAt', '{frames} frames at {fps} fps', { frames: totalFrames, fps })}</span>
           </span>
         </div>
 
-        <span className={styles.label}>Background colour</span>
+        <span className={styles.label}>{t('composition.newComp.background', 'Background colour')}</span>
         <div className={styles.inline}>
-          <div className={styles.swatches} role="group" aria-label="Background swatches">
-            {STUDIO_COLOR_SWATCHES.map((swatch) => {
+          <div className={styles.swatches} role="group" aria-label={t('composition.newComp.swatches', 'Background swatches')}>
+            {studioColorSwatches().map((swatch) => {
               const isSelected = !transparent && background.toLowerCase() === swatch.hex.toLowerCase();
               return (
                 <button
@@ -258,25 +266,25 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
                 setBackground(color);
                 setTransparent(false);
               }}
-              aria-label="Custom background color"
+              aria-label={t('composition.newComp.customBackground', 'Custom background color')}
             />
           </div>
-          <Switch checked={transparent} onChange={(e) => setTransparent(e.target.checked)} label="Transparent" />
+          <Switch checked={transparent} onChange={(e) => setTransparent(e.target.checked)} label={t('composition.newComp.transparent', 'Transparent')} />
         </div>
       </div>
 
       {/* `data-dialog-actions`: the dialog frame styles this row's buttons as its footer's. */}
       <div className={styles.actions} data-dialog-actions>
         <DialogFooter
-          note="You can change these later in composition settings."
+          note={t('composition.newComp.note', 'You can change these later in composition settings.')}
           secondary={
             <Button variant="secondary" size="md" onClick={close}>
-              Cancel
+              {t('composition.dialog.cancel', 'Cancel')}
             </Button>
           }
           primary={
             <Button variant="primary" size="md" onClick={handleCreate}>
-              Create
+              {t('composition.newComp.create', 'Create')}
             </Button>
           }
         />
@@ -288,7 +296,7 @@ export function NewComposition({ close }: { close: () => void }): JSX.Element {
 export function openNewCompositionDialog(): void {
   openModal({
     id: 'new-composition',
-    title: 'New Composition',
+    title: t('composition.newComp.title', 'New Composition'),
     size: 'md',
     className: styles.dialogWindow,
     render: (close) => <NewComposition close={close} />,

@@ -12,6 +12,7 @@
  * one meter (and the one that can do something about what it shows).
  */
 
+import { t } from '@core/i18n';
 import { useInfoStore } from '@stores/infoStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
@@ -54,7 +55,7 @@ export function InfoReadout(): JSX.Element {
   return (
     <>
       {/* ── Under the pointer: colour on the left, position on the right ── */}
-      <section className={styles.group} aria-label="Pointer">
+      <section className={styles.group} aria-label={t('inspector.infoReadout.pointer', 'Pointer')}>
         <dl className={styles.pointerGrid}>
           <Pair k="R" v={channel(rgba?.r)} />
           <Pair k="X" v={present ? String(x) : '—'} />
@@ -62,7 +63,7 @@ export function InfoReadout(): JSX.Element {
           <Pair k="Y" v={present ? String(y) : '—'} />
           <Pair k="B" v={channel(rgba?.b)} />
           <div className={styles.pair}>
-            <dt className={styles.srOnly}>Colour</dt>
+            <dt className={styles.srOnly}>{t('inspector.infoReadout.colour', 'Colour')}</dt>
             <dd className={styles.swatchValue}>
               {rgba ? <span className={styles.swatch} style={{ background: swatch }} /> : null}
             </dd>
@@ -73,16 +74,16 @@ export function InfoReadout(): JSX.Element {
 
       {/* ── The selected layer ── */}
       {layer && (
-        <section className={styles.group} aria-label="Selected layer">
+        <section className={styles.group} aria-label={t('inspector.infoReadout.selectedLayer', 'Selected layer')}>
           {count > 1 ? (
-            <div className={styles.subject}>{`${count} layers`}</div>
+            <div className={styles.subject}>{t('inspector.infoReadout.layerCount', '{n} layers', { n: count })}</div>
           ) : (
             <>
               <div className={styles.subject} title={layer.name}>{layer.name}</div>
               <dl className={styles.rows}>
-                <Pair k="In" v={framesToTimecode(inSec, fps, startFrame)} />
-                <Pair k="Out" v={framesToTimecode(outSec, fps, startFrame)} />
-                <Pair k="Duration" v={framesToTimecode(Math.max(0, outSec - inSec), fps)} />
+                <Pair k={t('inspector.infoReadout.in', 'In')} v={framesToTimecode(inSec, fps, startFrame)} />
+                <Pair k={t('inspector.infoReadout.out', 'Out')} v={framesToTimecode(outSec, fps, startFrame)} />
+                <Pair k={t('inspector.infoReadout.duration', 'Duration')} v={framesToTimecode(Math.max(0, outSec - inSec), fps)} />
               </dl>
             </>
           )}

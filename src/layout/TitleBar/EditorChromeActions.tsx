@@ -10,6 +10,7 @@ import { useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { openExportDialog } from '@layout/Export/ExportDialog';
 import { ClaudeIndicator } from '@components/claude/ClaudeIndicator';
+import { t } from '@core/i18n';
 import styles from './TitleBar.module.css';
 
 /**
@@ -35,31 +36,31 @@ export function EditorChromeActions({ showCustomize = true }: { showCustomize?: 
     <div className={styles.editorControls}>
       <ClaudeIndicator />
       <IconButton
-        aria-label="Toggle Left Sidebar"
+        aria-label={t('titleBar.actions.toggleLeft', 'Toggle Left Sidebar')}
         size="sm"
         className={styles.layoutToggle}
         active={!leftCollapsed}
-        title="Toggle Left Sidebar"
+        title={t('titleBar.actions.toggleLeft', 'Toggle Left Sidebar')}
         onClick={() => useLayoutStore.getState().toggleRegion('leftSidebar')}
       >
         <Icon name="panel-left" size="md" />
       </IconButton>
       <IconButton
-        aria-label="Toggle Bottom Timeline"
+        aria-label={t('titleBar.actions.toggleBottom', 'Toggle Bottom Timeline')}
         size="sm"
         className={styles.layoutToggle}
         active={!bottomCollapsed}
-        title="Toggle Bottom Timeline"
+        title={t('titleBar.actions.toggleBottom', 'Toggle Bottom Timeline')}
         onClick={() => useLayoutStore.getState().toggleRegion('bottomTimeline')}
       >
         <Icon name="panel-bottom" size="md" />
       </IconButton>
       <IconButton
-        aria-label="Toggle Right Inspector"
+        aria-label={t('titleBar.actions.toggleRight', 'Toggle Right Inspector')}
         size="sm"
         className={styles.layoutToggle}
         active={!rightCollapsed}
-        title="Toggle Right Inspector"
+        title={t('titleBar.actions.toggleRight', 'Toggle Right Inspector')}
         onClick={() => useLayoutStore.getState().toggleRegion('rightInspector')}
       >
         <Icon name="panel-right" size="md" />
@@ -69,10 +70,10 @@ export function EditorChromeActions({ showCustomize = true }: { showCustomize?: 
         placement="bottom-end"
         trigger={
           <IconButton
-            aria-label="Workspaces"
+            aria-label={t('titleBar.actions.workspaces', 'Workspaces')}
             size="sm"
             className={styles.layoutToggle}
-            title="Workspaces & Layout Presets"
+            title={t('titleBar.actions.workspacesTitle', 'Workspaces & Layout Presets')}
           >
             <Icon name="layout" size="md" />
           </IconButton>
@@ -81,10 +82,10 @@ export function EditorChromeActions({ showCustomize = true }: { showCustomize?: 
       />
       {showCustomize && (
         <IconButton
-          aria-label="Customize"
+          aria-label={t('titleBar.actions.customize', 'Customize')}
           size="sm"
           className={styles.layoutToggle}
-          title="Customize (Shortcuts, Workspaces, Appearance)"
+          title={t('titleBar.actions.customizeTitle', 'Customize (Shortcuts, Workspaces, Appearance)')}
           onClick={() => openCustomizeDialog()}
         >
           <Icon name="settings" size="md" />
@@ -96,21 +97,21 @@ export function EditorChromeActions({ showCustomize = true }: { showCustomize?: 
         variant="secondary"
         className={styles.titleBarBtn}
         leftIcon={<Icon name="play" size="sm" weight="fill" />}
-        title="Preview presentation (Fullscreen)"
+        title={t('titleBar.actions.previewTitle', 'Preview presentation (Fullscreen)')}
         onClick={() => enterPresentation()}
       >
-        Preview
+        {t('titleBar.actions.preview', 'Preview')}
       </Button>
       <Button
         size="sm"
         variant="primary"
         className={styles.titleBarBtn}
         leftIcon={<Icon name="export" size="sm" weight="bold" />}
-        title="Export composition…"
+        title={t('titleBar.actions.exportTitle', 'Export composition…')}
         data-tour="export"
         onClick={() => openExportDialog(compDuration, compFps)}
       >
-        Export
+        {t('titleBar.actions.export', 'Export')}
       </Button>
     </div>
   );

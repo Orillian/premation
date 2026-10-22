@@ -29,6 +29,7 @@ import { canChooseOutputDir, setRenderQueueSubmitter, useRenderQueueStore, type 
 import { useUIStore } from '@stores/uiStore';
 import { ensureFfmpegFor, useFfmpegStore } from '@stores/ffmpegStore';
 import { isPluginFormat } from '@core/nativePlugins/pluginContrib';
+import { t } from '@core/i18n';
 
 /** The formats the engine export writes. The document exports (Lottie, JSON, the cut lists) are `runDataExport`'s. */
 const ENGINE_FORMATS: ReadonlySet<string> = new Set<ExportFormat>([
@@ -46,7 +47,7 @@ export function isEngineFormat(format: ExportFormat | string): boolean {
  * the engine. Footage is not a refusal any more — see `stageWindowOnlyFootage`.
  */
 export function engineExportRefusal(): string | null {
-  if (!exportSupervisorAvailable()) return 'Rendering needs the desktop app: files are rendered by the engine.';
+  if (!exportSupervisorAvailable()) return t('export.supervisor.needsDesktop', 'Rendering needs the desktop app: files are rendered by the engine.');
   return null;
 }
 
@@ -70,20 +71,22 @@ export async function stageWindowOnlyFootage(): Promise<string | null> {
     await materializeUnreadableFootage(client, ids);
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
-    return `Some footage in this project lives only in this window and could not be written to disk (${why}). Save the project or re-import the file, then export again.`;
+    return t('export.supervisor.footageWriteFailed', 'Some footage in this project lives only in this window and could not be written to disk ({why}). Save the project or re-import the file, then export again.', { why });
   }
   // The engine's own view of each item, not the mirror's (which follows a beat later).
   const res = await client.query({ type: 'getItems', items: ids });
   const left = res.ok ? res.value.items.filter((i) => !engineCanReadFootage(i.path)) : null;
   if (left !== null && left.length === 0) return null;
   const names = (left ?? []).map((i) => i.name).filter(Boolean).slice(0, 3).join(', ');
-  return `Some footage in this project lives only in this window (it was never saved to disk)${names ? `: ${names}` : ''}. Re-import it from a file and export again.`;
+  return names
+    ? t('export.supervisor.footageWindowOnlyNamed', 'Some footage in this project lives only in this window (it was never saved to disk): {names}. Re-import it from a file and export again.', { names })
+    : t('export.supervisor.footageWindowOnly', 'Some footage in this project lives only in this window (it was never saved to disk). Re-import it from a file and export again.');
 }
 
 /** Video export is not set up on this machine and the person closed the repair dialog. */
 export class FfmpegNotReadyError extends Error {
   constructor() {
-    super("Video export isn't set up on this computer yet. Press Fix to repair it.");
+    super(t('export.supervisor.ffmpegNotReady', "Video export isn't set up on this computer yet. Press Fix to repair it."));
     this.name = 'FfmpegNotReadyError';
   }
 }
@@ -92,7 +95,7 @@ export class FfmpegNotReadyError extends Error {
  * Say why a render could not be queued. The ffmpeg case gets its Fix button
  * (the dialog was just closed — the way back must be one click, not a hunt).
  */
-export function reportQueueFailure(err: unknown, fallback = 'The render could not be queued'): void {
+export function reportQueueFailure(err: unknown, fallback = t('export.supervisor.queueFailed', 'The render could not be queued')): void {
   const ui = useUIStore.getState();
   if (err instanceof FfmpegNotReadyError) {
     ui.notify({
@@ -100,7 +103,7 @@ export function reportQueueFailure(err: unknown, fallback = 'The render could no
       message: err.message,
       durationMs: 0,
       group: 'ffmpeg-health',
-      action: { label: 'Fix', onSelect: () => useFfmpegStore.getState().openDialog() },
+      action: { label: t('export.ffmpegHealth.fix', 'Fix'), onSelect: () => useFfmpegStore.getState().openDialog() },
     });
     return;
   }
@@ -231,7 +234,7 @@ export async function renderAndWait(
       opts.signal?.removeEventListener('abort', onAbort);
       if (job.status === 'completed') resolve(job);
       else if (job.status === 'cancelled') reject(new DOMException('Render cancelled', 'AbortError'));
-      else reject(new Error(job.error ?? 'The render failed.'));
+      else reject(new Error(job.error ?? t('export.supervisor.renderFailed', 'The render failed.')));
       return true;
     };
     if (check(useExportQueueStore.getState().jobs)) return;

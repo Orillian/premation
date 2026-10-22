@@ -27,6 +27,7 @@ import { buildSettingsSolid } from '@core/scene/layerBuilders';
 import { insertFragment } from '@/engine-client/insertFragment';
 import { layerSettingsEdit } from './compositionEdits';
 import styles from './LayerSettingsDialog.module.css';
+import { t } from '@core/i18n';
 
 type Mode = { mode: 'new' } | { mode: 'edit'; nodeId: string };
 
@@ -66,7 +67,7 @@ function LayerSettingsBody({ target, kind, initial, close }: BodyProps): JSX.Ele
       const nodeId = target.nodeId;
       void layerSettingsEdit(nodeId, values).then((r) => {
         if (r === 'gone') {
-          useUIStore.getState().notify({ level: 'warning', message: 'That layer no longer exists.', durationMs: 3000 });
+          useUIStore.getState().notify({ level: 'warning', message: t('composition.layerSettings.gone', 'That layer no longer exists.'), durationMs: 3000 });
         }
       });
     } else {
@@ -81,17 +82,17 @@ function LayerSettingsBody({ target, kind, initial, close }: BodyProps): JSX.Ele
   return (
     <div className={styles.root}>
       <label className={styles.field}>
-        <span className={styles.label}>Name</span>
-        <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Layer name" autoFocus onFocus={(e) => e.currentTarget.select()} />
+        <span className={styles.label}>{t('composition.layerSettings.name', 'Name')}</span>
+        <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={t('composition.layerSettings.nameAria', 'Layer name')} autoFocus onFocus={(e) => e.currentTarget.select()} />
       </label>
 
       {hasSize && (
         <fieldset className={styles.group}>
-          <legend className={styles.label}>Size</legend>
+          <legend className={styles.label}>{t('composition.layerSettings.size', 'Size')}</legend>
           <div className={styles.sizeRow}>
-            <Input value={width} onChange={(e) => setWidth(e.target.value)} aria-label="Width" inputMode="numeric" suffix="px" error={w === null ? 'Width' : undefined} />
+            <Input value={width} onChange={(e) => setWidth(e.target.value)} aria-label={t('composition.layerSettings.width', 'Width')} inputMode="numeric" suffix="px" error={w === null ? t('composition.layerSettings.width', 'Width') : undefined} />
             <span className={styles.times} aria-hidden>×</span>
-            <Input value={height} onChange={(e) => setHeight(e.target.value)} aria-label="Height" inputMode="numeric" suffix="px" error={h === null ? 'Height' : undefined} />
+            <Input value={height} onChange={(e) => setHeight(e.target.value)} aria-label={t('composition.layerSettings.height', 'Height')} inputMode="numeric" suffix="px" error={h === null ? t('composition.layerSettings.height', 'Height') : undefined} />
           </div>
           <Button
             variant="secondary"
@@ -101,29 +102,29 @@ function LayerSettingsBody({ target, kind, initial, close }: BodyProps): JSX.Ele
               setHeight(String(compH));
             }}
           >
-            Make Comp Size
+            {t('composition.layerSettings.makeCompSize', 'Make Comp Size')}
           </Button>
         </fieldset>
       )}
 
       {kind === 'solid' && (
         <label className={styles.colorRow}>
-          <span className={styles.label}>Color</span>
-          <input type="color" className={styles.colorInput} value={color} onChange={(e) => setColor(e.target.value)} aria-label="Solid color" />
+          <span className={styles.label}>{t('composition.layerSettings.color', 'Color')}</span>
+          <input type="color" className={styles.colorInput} value={color} onChange={(e) => setColor(e.target.value)} aria-label={t('composition.layerSettings.solidColor', 'Solid color')} />
           <span className={styles.hex}>{color.toUpperCase()}</span>
         </label>
       )}
 
       {target.mode === 'edit' && (
         <div className={styles.colorRow}>
-          <span className={styles.label}>Label</span>
-          <div className={styles.swatches} role="radiogroup" aria-label="Label color">
+          <span className={styles.label}>{t('composition.layerSettings.label', 'Label')}</span>
+          <div className={styles.swatches} role="radiogroup" aria-label={t('composition.layerSettings.labelColor', 'Label color')}>
             <button
               type="button"
               role="radio"
               aria-checked={label === undefined}
-              aria-label="None (default)"
-              title="None (default)"
+              aria-label={t('composition.layerSettings.labelNone', 'None (default)')}
+              title={t('composition.layerSettings.labelNone', 'None (default)')}
               className={cn(styles.swatch, styles.swatchNone, label === undefined && styles.swatchOn)}
               onClick={() => setLabel(undefined)}
             />
@@ -147,12 +148,12 @@ function LayerSettingsBody({ target, kind, initial, close }: BodyProps): JSX.Ele
       <DialogFooter
         secondary={
           <Button variant="secondary" size="md" onClick={close}>
-            Cancel
+            {t('composition.dialog.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" size="md" onClick={submit} disabled={!valid}>
-            {target.mode === 'new' ? 'OK' : 'Apply'}
+            {target.mode === 'new' ? t('composition.dialog.ok', 'OK') : t('composition.dialog.apply', 'Apply')}
           </Button>
         }
       />
@@ -169,7 +170,7 @@ export function openSolidSettings(opts: { mode: 'new' } | { mode: 'edit'; nodeId
     const comp = documentMirror().comp(activeCompIdNow() ?? '')?.settings;
     openModal({
       id: 'solid-settings',
-      title: 'Solid Settings',
+      title: t('composition.layerSettings.solidTitle', 'Solid Settings'),
       size: 'sm',
       render: (close) => (
         <LayerSettingsBody
@@ -192,12 +193,12 @@ export function openLayerSettings(nodeId?: string): void {
   // B4: the dialog's starting values from the mirror.
   const read = id ? mirrorLayerSettings(documentMirror(), id) : null;
   if (!id || !read) {
-    useUIStore.getState().notify({ level: 'info', message: 'Select one layer to open its settings.', durationMs: 3000 });
+    useUIStore.getState().notify({ level: 'info', message: t('composition.layerSettings.selectOne', 'Select one layer to open its settings.'), durationMs: 3000 });
     return;
   }
   openModal({
     id: 'layer-settings',
-    title: read.kind === 'solid' ? 'Solid Settings' : 'Layer Settings',
+    title: read.kind === 'solid' ? t('composition.layerSettings.solidTitle', 'Solid Settings') : t('composition.layerSettings.title', 'Layer Settings'),
     size: 'sm',
     render: (close) => <LayerSettingsBody target={{ mode: 'edit', nodeId: id }} kind={read.kind} initial={read.values} close={close} />,
   });

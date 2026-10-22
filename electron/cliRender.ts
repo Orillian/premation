@@ -19,7 +19,9 @@ import { machinePluginDir } from './nativePluginStore';
 import { app } from 'electron';
 import path from 'node:path';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import type { CliOutputOptions, CliRenderJob } from './cliArgs';
+import type { CliOutputOptions, CliRenderItemJob, CliRenderJob } from './cliArgs';
+import { runRenderItem } from './cliRenderItem';
+import { bundledFontsManifest } from './engineHost';
 import { runCliEngineBatch, runCliEngineRender } from './cliEngineRender';
 import { describeComposition, formatCaptions, runEnginePrepare } from './cliPrepare';
 import { getKeyForProvider } from './aiKeyVault';
@@ -48,7 +50,8 @@ export interface CliTask {
   request:
     | { kind: 'render'; job: CliRenderRequestWithData }
     | { kind: 'comps'; projectPath: string }
-    | { kind: 'captions'; projectPath: string; outPath: string; comp?: string; language?: string };
+    | { kind: 'captions'; projectPath: string; outPath: string; comp?: string; language?: string }
+    | { kind: 'renderItem'; job: CliRenderItemJob };
   output: CliOutputOptions;
 }
 
@@ -99,6 +102,21 @@ function absolute(p: string): string {
  * ready to run.
  */
 export function prepareTask(task: CliTask): string | null {
+  if (task.request.kind === 'renderItem') {
+    const job = task.request.job;
+    job.packDir = absolute(job.packDir);
+    if (!existsSync(job.packDir) || !statSync(job.packDir).isDirectory()) return `No pack folder at "${job.packDir}".`;
+    job.outPath = absolute(job.outPath);
+    job.posterPath = absolute(job.posterPath);
+    for (const dir of new Set([path.dirname(job.outPath), path.dirname(job.posterPath)])) {
+      try {
+        mkdirSync(dir, { recursive: true });
+      } catch (e) {
+        return `Could not create the output directory "${dir}": ${(e as Error).message}`;
+      }
+    }
+    return null;
+  }
   const projectPath =
     task.request.kind === 'render' ? task.request.job.projectPath : task.request.projectPath;
   const resolved = absolute(projectPath);
@@ -211,6 +229,50 @@ export async function runCliTask(task: CliTask): Promise<number> {
     exists: existsSync,
   });
   const workDirFor = (id: string): string => path.join(app.getPath('temp'), 'premation-cli', id);
+
+  if (task.request.kind === 'renderItem') {
+    const job = task.request.job;
+    print.line(`Rendering ${path.basename(job.packDir)} → ${job.outPath}`);
+    const t0 = Date.now();
+    let lastPct = -1;
+    const ffmpegPath = resolveFfmpegBinary({ vars: process.env, resourcesPath: process.resourcesPath ?? '', platform: process.platform, exists: existsSync });
+    const out = await runRenderItem(job, {
+      enginePath,
+      ffmpegPath,
+      bundlePath: app.isPackaged ? path.join(process.resourcesPath ?? '', 'cli', 'render-item.cjs') : path.join(app.getAppPath(), 'build', 'cli', 'render-item.cjs'),
+      fontsDir: app.isPackaged ? path.join(process.resourcesPath ?? '', 'fonts') : path.join(app.getAppPath(), 'resources', 'fonts'),
+      engineEnv: { PREMATION_FFMPEG: ffmpegPath, ...bundledFontsManifest({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath ?? '', appPath: app.getAppPath() }) },
+      log: (m) => print.event({ event: 'engine', message: `  ${m}` }),
+      progress: (f) => {
+        // Every tenth: a frame-by-frame line per percent is noise in a build log.
+        const pct = Math.round(Math.max(0, Math.min(1, f)) * 10) * 10;
+        if (pct === lastPct) return;
+        lastPct = pct;
+        print.progress(`  ${String(pct).padStart(3)}%`, { fraction: f, percent: pct });
+      },
+    });
+    if (out.kind === 'failed') {
+      print.event({ event: 'error', message: out.message });
+      return 1;
+    }
+    const elapsedMs = Date.now() - t0;
+    print.event({
+      event: 'done',
+      message: `Wrote ${job.outPath} + ${path.basename(job.posterPath)} — ${out.id}, ${out.frames} frame(s), ${out.width}×${out.height} @ ${out.fps}fps, poster at ${out.posterTime.toFixed(2)}s, in ${(elapsedMs / 1000).toFixed(1)}s`,
+      outPath: job.outPath,
+      posterPath: job.posterPath,
+      id: out.id,
+      kind: out.itemKind,
+      frames: out.frames,
+      width: out.width,
+      height: out.height,
+      fps: out.fps,
+      durationSec: out.durationSec,
+      posterTime: out.posterTime,
+      elapsedMs,
+    });
+    return 0;
+  }
 
   if (task.request.kind === 'comps') {
     const out = await runEnginePrepare({ projectPath: task.request.projectPath, listComps: true }, { enginePath, workDir: workDirFor(`comps-${Date.now().toString(36)}`) });

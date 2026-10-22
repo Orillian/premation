@@ -25,7 +25,7 @@ import { COMMANDS, type Command, type EngineClient, type Query } from '@motion/e
 import { AiEngineError } from '@motion/ai-tools';
 import { engine } from '@core/engine/engineInstance';
 import { beginAiTransaction, type AiTurnOutcome } from '@core/ai/aiTransaction';
-import { declaredPermissions, type ScriptHostMessage, type ScriptPermission, type ScriptWorkerMessage } from './protocol';
+import { declaredPermissions, type ScriptHostMessage, type ScriptPermission, type ScriptRunContext, type ScriptWorkerMessage } from './protocol';
 
 /** What the host needs of a worker (a real `Worker`, or the in-process test worker). */
 export interface ScriptWorkerLike {
@@ -56,6 +56,8 @@ export interface RunScriptOptions {
   /** Tests inject a worker; default: the real sandbox Worker. */
   workerFactory?: () => ScriptWorkerLike | Promise<ScriptWorkerLike>;
   onLog?: (level: 'log' | 'warn' | 'error', text: string) => void;
+  /** Editor state the `app` object model reads (active composition, current time). */
+  context?: ScriptRunContext;
 }
 
 export interface ScriptRunResult {
@@ -63,6 +65,8 @@ export interface ScriptRunResult {
   /** The script's return value (JSON-safe). */
   value?: unknown;
   error?: string;
+  /** The script line the error was thrown at, when known (1-based). */
+  errorLine?: number;
   /**
    * `engine` / `snapshot` / `empty` — the run committed (see AiTurnOutcome);
    * `rolledBack` — it failed and the document is unchanged;
@@ -137,9 +141,9 @@ export async function runScript(source: string, opts: RunScriptOptions = {}): Pr
     );
   };
 
-  const finished = new Promise<{ ok: boolean; value?: unknown; error?: string }>((resolve) => {
+  const finished = new Promise<{ ok: boolean; value?: unknown; error?: string; line?: number }>((resolve) => {
     const timer = setTimeout(() => resolve({ ok: false, error: `The script ran longer than ${Math.round((opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000)} s and was stopped.` }), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    const settle = (r: { ok: boolean; value?: unknown; error?: string }): void => {
+    const settle = (r: { ok: boolean; value?: unknown; error?: string; line?: number }): void => {
       clearTimeout(timer);
       resolve(r);
     };
@@ -152,7 +156,7 @@ export async function runScript(source: string, opts: RunScriptOptions = {}): Pr
           opts.onLog?.(msg.level, msg.text);
           return;
         case 'done':
-          settle(msg.ok ? { ok: true, value: msg.value } : { ok: false, error: msg.error });
+          settle(msg.ok ? { ok: true, value: msg.value } : { ok: false, error: msg.error, ...(msg.line !== undefined ? { line: msg.line } : {}) });
           return;
         case 'call': {
           const why = refusal(msg.method, msg.args, grantedSet);
@@ -188,13 +192,13 @@ export async function runScript(source: string, opts: RunScriptOptions = {}): Pr
     };
   });
 
-  worker.postMessage({ k: 'run', name, source, permissions });
+  worker.postMessage({ k: 'run', name, source, permissions, ...(opts.context ? { context: opts.context } : {}) });
   const end = await finished;
   events.unsubscribe?.();
   worker.terminate();
   if (!end.ok) {
     await tx.rollback();
-    return { ok: false, error: end.error, outcome: 'rolledBack', logs };
+    return { ok: false, error: end.error, ...(end.line !== undefined ? { errorLine: end.line } : {}), outcome: 'rolledBack', logs };
   }
   const outcome = await tx.commit();
   return { ok: true, value: end.value, outcome: outcome.kind, logs };

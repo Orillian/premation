@@ -18,10 +18,14 @@ import type { LayerError } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
 import { useActiveCompId, useMirrorKeys, useMirror } from '@hooks/useMirror';
 import styles from './EngineUnportedNotice.module.css';
+import { t } from '@core/i18n';
 
 export interface Group {
   what: string;
+  /** Stage 'unported': a feature the C++ engine does not render. */
   unported: boolean;
+  /** Stage 'warning': something the layer draws without (a missing plugin, an unreadable asset …); exports complete. */
+  warning?: boolean;
   layers: number;
   names: string[];
 }
@@ -29,11 +33,14 @@ export interface Group {
 function groupErrors(errors: readonly LayerError[], nameOf: (id: string) => string): Group[] {
   const by = new Map<string, Group & { ids: Set<string> }>();
   for (const e of errors) {
+    // Failing expressions have their own bar (ExpressionErrorBar): the frame is not drawn without anything.
+    if (e.stage === 'expression') continue;
     const unported = e.stage === 'unported';
-    const what = unported ? e.message : `${e.stage}: ${e.message}`;
+    const warning = e.stage === 'warning';
+    const what = unported || warning ? e.message : `${e.stage}: ${e.message}`;
     let g = by.get(what);
     if (!g) {
-      g = { what, unported, layers: 0, names: [], ids: new Set() };
+      g = { what, unported, warning, layers: 0, names: [], ids: new Set() };
       by.set(what, g);
     }
     if (!g.ids.has(e.layer)) {
@@ -58,18 +65,30 @@ const MISSING_PLUGIN = /^missing plugin /;
  * was), nor is a plugin that is not installed.
  */
 export function noticeHeading(groups: readonly Group[], layerCount: number): string {
-  const layers = `(${layerCount} layer${layerCount === 1 ? '' : 's'})`;
+  const layers = layerCount === 1
+    ? t('workspace.unportedNotice.layerCountOne', '({n} layer)', { n: layerCount })
+    : t('workspace.unportedNotice.layerCountOther', '({n} layers)', { n: layerCount });
   const n = groups.length;
-  if (n > 0 && groups.every((g) => g.unported && CLOUD_LOCKED.test(g.what))) {
-    return `Needs Premation Cloud: ${n === 1 ? 'an effect' : `${n} effects`} drawn without ${n === 1 ? 'its' : 'their'} plugin ${layers}`;
+  // The engine's own words (stage 'unported' or 'warning'), not another stage's prefixed message.
+  const engineSaid = (g: Group): boolean => g.unported || g.warning === true;
+  if (n > 0 && groups.every((g) => engineSaid(g) && CLOUD_LOCKED.test(g.what))) {
+    return n === 1
+      ? t('workspace.unportedNotice.cloudOne', 'Needs Premation Cloud: an effect drawn without its plugin {layers}', { layers })
+      : t('workspace.unportedNotice.cloudOther', 'Needs Premation Cloud: {n} effects drawn without their plugin {layers}', { n, layers });
   }
-  if (n > 0 && groups.every((g) => g.unported && MISSING_PLUGIN.test(g.what))) {
-    return `Missing plugin: ${n === 1 ? 'an effect' : `${n} effects`} drawn without ${n === 1 ? 'it' : 'them'} ${layers}`;
+  if (n > 0 && groups.every((g) => engineSaid(g) && MISSING_PLUGIN.test(g.what))) {
+    return n === 1
+      ? t('workspace.unportedNotice.missingPluginOne', 'Missing plugin: an effect drawn without it {layers}', { layers })
+      : t('workspace.unportedNotice.missingPluginOther', 'Missing plugin: {n} effects drawn without them {layers}', { n, layers });
   }
   if (n > 0 && groups.every((g) => g.unported && !CLOUD_LOCKED.test(g.what) && !MISSING_PLUGIN.test(g.what))) {
-    return `Drawn without ${n === 1 ? 'one feature' : `${n} features`} the C++ engine does not render yet ${layers}`;
+    return n === 1
+      ? t('workspace.unportedNotice.unportedOne', 'Drawn without one feature the C++ engine does not render yet {layers}', { layers })
+      : t('workspace.unportedNotice.unportedOther', 'Drawn without {n} features the C++ engine does not render yet {layers}', { n, layers });
   }
-  return `Drawn without ${n === 1 ? 'one feature' : `${n} features`} ${layers}`;
+  return n === 1
+    ? t('workspace.unportedNotice.genericOne', 'Drawn without one feature {layers}', { layers })
+    : t('workspace.unportedNotice.genericOther', 'Drawn without {n} features {layers}', { n, layers });
 }
 
 export function EngineUnportedNotice(): JSX.Element | null {
@@ -102,23 +121,26 @@ export function EngineUnportedNotice(): JSX.Element | null {
   const signature = groups.map((g) => `${g.what}×${g.layers}`).join('|');
   if (groups.length === 0 || dismissed === signature) return null;
 
-  const layerCount = new Set(errors.map((e) => e.layer)).size;
+  const layerCount = new Set(errors.filter((e) => e.stage !== 'expression').map((e) => e.layer)).size;
   return (
     <div className={styles.notice} role="status" data-engine-unported="">
       <div className={styles.head}>
         <span className={styles.title}>{noticeHeading(groups, layerCount)}</span>
-        <button type="button" className={styles.close} onClick={() => setDismissed(signature)} aria-label="Dismiss">×</button>
+        <button type="button" className={styles.close} onClick={() => setDismissed(signature)} aria-label={t('workspace.unportedNotice.dismiss', 'Dismiss')}>×</button>
       </div>
       <ul className={styles.list}>
         {groups.slice(0, 6).map((g) => (
           <li key={g.what}>
             <span className={styles.what}>{g.what}</span>
             <span className={styles.layers}>
-              {g.layers} layer{g.layers === 1 ? '' : 's'}: {g.names.join(', ')}{g.layers > g.names.length ? ', …' : ''}
+              {g.layers === 1
+                ? t('workspace.unportedNotice.layersListOne', '{n} layer: {names}', { n: g.layers, names: g.names.join(', ') })
+                : t('workspace.unportedNotice.layersListOther', '{n} layers: {names}', { n: g.layers, names: g.names.join(', ') })}
+              {g.layers > g.names.length ? ', …' : ''}
             </span>
           </li>
         ))}
-        {groups.length > 6 && <li className={styles.layers}>and {groups.length - 6} more</li>}
+        {groups.length > 6 && <li className={styles.layers}>{t('workspace.unportedNotice.andMore', 'and {n} more', { n: groups.length - 6 })}</li>}
       </ul>
     </div>
   );

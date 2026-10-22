@@ -23,15 +23,16 @@
  * the `sidebarRenderers`, `inspectorRenderers`, and `timeline` props.
  */
 
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { SplitPane } from '@components/SplitPane';
 import { LeftSidebar } from '@layout/LeftSidebar';
 import { RightInspector } from '@layout/RightInspector';
 import { WorkspaceViewport, type WorkspaceViewportProps } from '@layout/Workspace';
 import { EditorTabs } from '@layout/Tabs/EditorTabs';
 import { Icon } from '@components/Icon';
-import { useLayoutStore, COLLAPSED_SIDEBAR_SIZE, type RegionId } from '@stores/layoutStore';
+import { useLayoutStore, COLLAPSED_SIDEBAR_SIZE, MIN_VIEWER_PX, type RegionId } from '@stores/layoutStore';
 import styles from './EditorLayout.module.css';
+import { t } from '@core/i18n';
 
 export interface EditorLayoutProps {
   /** Full-width top chrome: the AE-style menu bar + tool row. */
@@ -45,6 +46,17 @@ export interface EditorLayoutProps {
   /** Top-of-inspector chrome (primary actions). */
   inspectorHeader?: ReactNode;
   workspaceExtras?: WorkspaceViewportProps;
+}
+
+/** The window's width, re-read on resize (the sidebar caps depend on it). */
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : Number.POSITIVE_INFINITY));
+  useEffect(() => {
+    const onResize = (): void => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
 }
 
 export function EditorLayout({
@@ -85,6 +97,17 @@ export function EditorLayout({
   const resizeRegionLive = (region: RegionId, size: number, isCollapsed: boolean): void => {
     if (isCollapsed) setRegionSize(region, size);
   };
+
+  /*
+    Neither sidebar may take the viewer below MIN_VIEWER_PX: with docked columns
+    a side can be wide, and a layout saved on a bigger screen would otherwise
+    leave the composition viewer at zero width ("the new column took over").
+  */
+  const windowWidth = useWindowWidth();
+  const leftWidth = left.collapsed ? COLLAPSED_SIDEBAR_SIZE : left.size;
+  const rightWidth = right.collapsed ? COLLAPSED_SIDEBAR_SIZE : right.size;
+  const leftMax = Math.max(left.minSize, Math.min(left.maxSize, windowWidth - rightWidth - MIN_VIEWER_PX));
+  const rightMax = Math.max(right.minSize, Math.min(right.maxSize, windowWidth - leftWidth - MIN_VIEWER_PX));
 
   /**
    * Which edge each dock sits on.
@@ -131,9 +154,9 @@ export function EditorLayout({
       {isViewportExternal ? (
           <div className={styles.detached}>
             <Icon name="export" size="lg" />
-            <span className={styles.detachedLabel}>Preview Canvas is open in an external window</span>
+            <span className={styles.detachedLabel}>{t('editor.layout.previewExternal', 'Preview Canvas is open in an external window')}</span>
             <button className={styles.detachedAction} onClick={() => dockPanel('viewport')}>
-              Re-dock preview
+              {t('editor.layout.redockPreview', 'Re-dock preview')}
             </button>
           </div>
         ) : (
@@ -159,8 +182,8 @@ export function EditorLayout({
       primary={sidebarFirst ? 'first' : 'last'}
       defaultSize={left.size}
       minSize={left.collapsed ? COLLAPSED_SIDEBAR_SIZE : left.minSize}
-      maxSize={Math.min(left.maxSize, typeof window !== 'undefined' ? window.innerWidth - 100 : left.maxSize)}
-      size={left.collapsed ? COLLAPSED_SIDEBAR_SIZE : left.size}
+      maxSize={leftMax}
+      size={left.collapsed ? COLLAPSED_SIDEBAR_SIZE : Math.min(left.size, leftMax)}
       collapsed={left.collapsed}
       storageKey="leftSidebar"
       onResize={(s) => resizeRegionLive('leftSidebar', s, left.collapsed)}
@@ -175,9 +198,9 @@ export function EditorLayout({
       {isTimelineExternal ? (
         <div className={`${styles.detached} ${styles.detachedRow}`}>
           <Icon name="export" size="md" />
-          <span className={styles.detachedLabel}>Timeline is open in an external window</span>
+          <span className={styles.detachedLabel}>{t('editor.layout.timelineExternal', 'Timeline is open in an external window')}</span>
           <button className={styles.detachedAction} onClick={() => dockPanel('timeline')}>
-            Re-dock timeline
+            {t('editor.layout.redockTimeline', 'Re-dock timeline')}
           </button>
         </div>
       ) : (
@@ -221,15 +244,15 @@ export function EditorLayout({
       {topNav}
 
       {/* Body row: full-height right inspector with main center area beside it */}
-      <div className={styles.body}>
+      <div className={styles.body} data-dock-maximize-bounds="">
         <SplitPane
           className={styles.split}
           direction="horizontal"
           primary={inspectorLast ? 'last' : 'first'}
           defaultSize={right.size}
           minSize={right.collapsed ? COLLAPSED_SIDEBAR_SIZE : right.minSize}
-          maxSize={Math.min(right.maxSize, typeof window !== 'undefined' ? window.innerWidth - 100 : right.maxSize)}
-          size={right.collapsed ? COLLAPSED_SIDEBAR_SIZE : right.size}
+          maxSize={rightMax}
+          size={right.collapsed ? COLLAPSED_SIDEBAR_SIZE : Math.min(right.size, rightMax)}
           collapsed={right.collapsed}
           storageKey="rightInspector"
           onResize={(s) => resizeRegionLive('rightInspector', s, right.collapsed)}

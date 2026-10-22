@@ -153,6 +153,54 @@ TEST_CASE("E4: a distance-field stroke lands outside the shape and its field is 
   CHECK(px(11, 24, 0) > 200);
 }
 
+TEST_CASE("E4/P8b: a moved layer's stroke follows it — its distance field is rebuilt for the new placement") {
+  // Under P8b the chain's content key leaves the layer's whole-pixel place out
+  // (a layer that only moves reuses its chain), but a distance field is of the
+  // BUFFER. Keyed by content alone, the second frame of a drag read the field
+  // built where the layer WAS and drew the stroke there: a stroked text layer's
+  // outline fell behind the fill as it was dragged (2026-10-19).
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  renderer->set_effect_fields(true);
+  auto file = solid_scene(0, 0, 1);
+  file.view.css_width = 256;
+  file.view.css_height = 160;
+  file.view.camera_center_x = 128;
+  file.view.camera_center_y = 80;
+  file.scene.width = 256;
+  file.scene.height = 160;
+  file.scene.renderables[0].model_matrix = {32, 0, 0, 0, 24, 0, 100, 60, 1};
+  file.scene.renderables[0].bounds = {100, 60, 32, 24};
+  api::RenderEffect stroke;
+  stroke.type = "stroke";
+  stroke.params.push_back(num_param("widthPx", 4));
+  stroke.params.push_back(color_param("color", 1, 0, 0, 1));
+  file.scene.renderables[0].effects.push_back(stroke);
+  Frame frame;
+  FrameStats s1;
+  REQUIRE(renderer->render(file, &frame, s1, err));
+  CHECK(s1.gpuError.empty());
+  CHECK(s1.effects.sdfBuilt == 1);
+  const auto px = [&](std::uint32_t x, std::uint32_t y, std::size_t c) { return frame.rgba.at((std::size_t{y} * 256 + x) * 4 + c); };
+  // The band sits outside the left edge (x = 100): 96–100.
+  CHECK(px(98, 72, 0) > 200);
+  CHECK(px(110, 72, 2) > 200);
+  // The layer moves 3 px right (a whole pixel: the chain's buffer placement
+  // changes while the translation-free content key holds).
+  file.scene.renderables[0].model_matrix[6] += 3;
+  file.scene.renderables[0].bounds.x += 3;
+  FrameStats s2;
+  REQUIRE(renderer->render(file, &frame, s2, err));
+  CHECK(s2.gpuError.empty());
+  CHECK(s2.effects.sdfReused == 0);
+  CHECK(s2.effects.sdfBuilt == 1);
+  // The band moved with the fill: 99–103 now, and nothing where it was.
+  CHECK(px(101, 72, 0) > 200);
+  CHECK(px(97, 72, 0) < 20);
+  CHECK(px(113, 72, 2) > 200);
+}
+
 TEST_CASE("P8: a static layer's effect chain runs once; moving it or changing a parameter runs it again") {
   std::string err;
   auto renderer = SceneRenderer::create({}, err);
@@ -195,7 +243,7 @@ TEST_CASE("P8: a static layer's effect chain runs once; moving it or changing a 
   CHECK(moved.rgba != sharper.rgba);
 }
 
-TEST_CASE("P8b: a layer that only moves reuses its effect chain, pixel for pixel a fresh render") {
+TEST_CASE("P8b: a layer that only moves by whole pixels reuses its effect chain, pixel for pixel a fresh render") {
   std::string err;
   auto renderer = SceneRenderer::create({}, err);
   if (!renderer) return;
@@ -230,20 +278,36 @@ TEST_CASE("P8b: a layer that only moves reuses its effect chain, pixel for pixel
     REQUIRE(other->render(file, &out, s, e));
     return out.rgba;
   };
-  for (const double dx : {7.0, 2.5, -11.25}) {
+  // A whole-pixel move is a moved copy; a move to another sub-pixel phase runs
+  // the chain there (the input is drawn at the layer's own phase — never a
+  // resampled result, which softened every effected layer on a fraction).
+  for (const auto& [dx, reused] : {std::pair{7.0, 1U}, std::pair{2.5, 0U}, std::pair{-11.25, 0U}}) {
     file.scene.renderables[0].model_matrix[6] += dx;
     file.scene.renderables[0].bounds.x += dx;
     Frame moved;
     FrameStats s;
     REQUIRE(renderer->render(file, &moved, s, err));
-    CHECK(s.effects.layerChainsReused == 1);  // moved, not re-run
-    CHECK(moved.rgba == fresh());  // a moved copy, texel for texel the frame a fresh render draws
+    CHECK(s.effects.layerChainsReused == reused);
+    CHECK(moved.rgba == fresh());  // texel for texel the frame a fresh render draws
+  }
+  // Held a frame at the new phase (kept), then moved by whole pixels: a moved copy.
+  {
+    Frame held;
+    FrameStats sh;
+    REQUIRE(renderer->render(file, &held, sh, err));
+    file.scene.renderables[0].model_matrix[6] += 4;
+    file.scene.renderables[0].bounds.x += 4;
+    Frame moved;
+    FrameStats s;
+    REQUIRE(renderer->render(file, &moved, s, err));
+    CHECK(s.effects.layerChainsReused == 1);
+    CHECK(moved.rgba == fresh());
   }
   // Moved until the blur's reach leaves the frame: the chain's buffer holds the
   // layer where its whole reach fits, so the kept result still moves there —
-  // and draws what a fresh render draws.
-  file.scene.renderables[0].model_matrix[6] = 2;
-  file.scene.renderables[0].bounds.x = 2;
+  // and draws what a fresh render draws. (Phase .25, the one kept above.)
+  file.scene.renderables[0].model_matrix[6] = 2.25;
+  file.scene.renderables[0].bounds.x = 2.25;
   Frame edge;
   FrameStats se;
   REQUIRE(renderer->render(file, &edge, se, err));

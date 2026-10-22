@@ -25,6 +25,7 @@ import type { Value } from '@motion/engine-api';
 import { MultiPropertyRow } from './MultiPropertyRow';
 import panels from '@layout/EditorLayout/panels.module.css';
 import tStyles from './TransformSection.module.css';
+import { t } from '@core/i18n';
 
 export type PropertyShow = 'all' | 'animated' | 'modified';
 
@@ -88,8 +89,12 @@ export function FilteredPropertyList({ nodeId, show, query = '' }: FilteredPrope
     return (
       <p className={panels.sectionNote}>
         {q && all.length > 0
-          ? `No ${show === 'animated' ? 'keyed' : 'changed'} properties match “${query.trim()}”.`
-          : show === 'animated' ? 'No keyed properties on this layer.' : 'Every property is at its default.'}
+          ? (show === 'animated'
+            ? t('inspector.propertyShowFilter.noKeyedMatch', 'No keyed properties match “{query}”.', { query: query.trim() })
+            : t('inspector.propertyShowFilter.noChangedMatch', 'No changed properties match “{query}”.', { query: query.trim() }))
+          : show === 'animated'
+            ? t('inspector.propertyShowFilter.noKeyed', 'No keyed properties on this layer.')
+            : t('inspector.propertyShowFilter.allDefault', 'Every property is at its default.')}
       </p>
     );
   }
@@ -104,7 +109,7 @@ export function FilteredPropertyList({ nodeId, show, query = '' }: FilteredPrope
             compact
             layout="inspector"
           >
-            <span className={panels.groupCount}>Edit in its own section</span>
+            <span className={panels.groupCount}>{t('inspector.propertyShowFilter.editInSection', 'Edit in its own section')}</span>
           </PropertyRow>
         )))}
     </div>

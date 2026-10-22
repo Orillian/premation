@@ -16,6 +16,7 @@
  */
 
 import type { KeyChord } from '@app-types/common';
+import { t } from '@core/i18n';
 
 export type PaletteContext = 'viewport' | 'timeline' | 'global';
 
@@ -26,11 +27,14 @@ export interface HintCommand {
   shortcut?: KeyChord;
 }
 
-export const CONTEXT_LABEL: Record<PaletteContext, string> = {
-  viewport: 'Viewport',
-  timeline: 'Timeline',
-  global: 'Everywhere',
-};
+/** The context's display name. A function: `t()` must run at call time, not at import. */
+export function contextLabel(context: PaletteContext): string {
+  switch (context) {
+    case 'viewport': return t('commandPalette.context.viewport', 'Viewport');
+    case 'timeline': return t('commandPalette.context.timeline', 'Timeline');
+    default: return t('commandPalette.context.global', 'Everywhere');
+  }
+}
 
 /**
  * Which command-id prefixes belong to which context. A family listed under

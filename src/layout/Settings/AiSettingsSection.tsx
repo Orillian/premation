@@ -43,6 +43,7 @@ import {
 import { useAiProviderStore } from '@stores/aiProviderStore';
 import { useAiMediaPrefsStore } from '@stores/aiMediaPrefsStore';
 import { VIDEO_MODELS } from '@motion/ai-tools';
+import { t } from '@core/i18n';
 import styles from './AiSettingsSection.module.css';
 
 interface ProviderMeta {
@@ -67,30 +68,32 @@ const PROVIDERS: readonly ProviderMeta[] = [
   { id: 'gemini', label: 'Gemini (Google)', href: 'https://aistudio.google.com/app/apikey', placeholder: 'AIza…' },
 ];
 
-/** Video / speech / 3D — separate vault from chat LLMs. */
-const MEDIA_PROVIDERS: readonly MediaProviderMeta[] = [
+/** Video / speech / 3D — separate vault from chat LLMs. A function: `purpose` is translated at call time. */
+function mediaProviders(): readonly MediaProviderMeta[] {
+  return [
   {
     id: 'fal',
     label: 'fal.ai',
-    purpose: 'Text-to-video',
+    purpose: t('settings.ai.purpose.video', 'Text-to-video'),
     href: 'https://fal.ai/dashboard/keys',
     placeholder: 'fal-…',
   },
   {
     id: 'elevenlabs',
     label: 'ElevenLabs',
-    purpose: 'Voice-over',
+    purpose: t('settings.ai.purpose.voice', 'Voice-over'),
     href: 'https://elevenlabs.io/app/settings/api-keys',
     placeholder: 'sk_…',
   },
   {
     id: 'tripo',
     label: 'Tripo',
-    purpose: 'Text-to-3D',
+    purpose: t('settings.ai.purpose.model3d', 'Text-to-3D'),
     href: 'https://platform.tripo3d.ai',
     placeholder: 'tsk_…',
   },
-];
+  ];
+}
 
 const EMPTY: AiKeyStatus = { present: false, hint: '' };
 
@@ -183,7 +186,7 @@ export function AiSettingsSection(): JSX.Element {
     return (
       <div className={styles.section}>
         <p className={styles.intro}>
-          Sign in to set up the assistant.
+          {t('settings.ai.signIn', 'Sign in to set up the assistant.')}
         </p>
       </div>
     );
@@ -200,8 +203,9 @@ export function AiSettingsSection(): JSX.Element {
       // server takes any string, so the mistake would surface as an auth error
       // from a provider the user did not think they were using.
       setError(
-        `That looks like a ${PROVIDERS.find((p) => p.id === looksLike)?.label ?? looksLike} key. ` +
-          `Paste it in that provider's field instead.`,
+        t('settings.ai.wrongProvider', "That looks like a {provider} key. Paste it in that provider's field instead.", {
+          provider: PROVIDERS.find((p) => p.id === looksLike)?.label ?? looksLike,
+        }),
       );
       return;
     }
@@ -215,12 +219,12 @@ export function AiSettingsSection(): JSX.Element {
       if (!res.ok) {
         setError(
           res.reason === 'unavailable'
-            ? 'Keys can’t be stored right now (encryption is not configured). It has NOT been saved.'
+            ? t('settings.ai.error.unavailable', 'Keys can’t be stored right now (encryption is not configured). It has NOT been saved.')
             : res.reason === 'network'
-              ? 'Could not reach the server to save the key.'
+              ? t('settings.ai.error.networkSave', 'Could not reach the server to save the key.')
               : res.reason === 'unsupported'
-                ? 'This chat provider can’t be connected in this build.'
-                : 'Could not save that key.',
+                ? t('settings.ai.error.chatUnsupported', 'This chat provider can’t be connected in this build.')
+                : t('settings.ai.error.save', 'Could not save that key.'),
         );
         return;
       }
@@ -238,7 +242,7 @@ export function AiSettingsSection(): JSX.Element {
     setError('');
     try {
       const res = await clearKey(id);
-      if (!res.ok) setError('Could not reach the server to remove the key.');
+      if (!res.ok) setError(t('settings.ai.error.networkRemove', 'Could not reach the server to remove the key.'));
     } finally {
       setBusy(null);
     }
@@ -249,7 +253,7 @@ export function AiSettingsSection(): JSX.Element {
     if (!key) return;
     setError('');
     if (!supportsMediaProviderLocally(id) && keyStorageRequiresAccount() === false) {
-      setError('This media provider can’t be connected in this build.');
+      setError(t('settings.ai.error.mediaUnsupported', 'This media provider can’t be connected in this build.'));
       return;
     }
     setBusy(id);
@@ -258,10 +262,10 @@ export function AiSettingsSection(): JSX.Element {
       if (!res.ok) {
         setError(
           res.reason === 'unsupported'
-            ? 'This media provider can’t be connected in this build.'
+            ? t('settings.ai.error.mediaUnsupported', 'This media provider can’t be connected in this build.')
             : res.reason === 'network'
-              ? 'Could not reach the server to save the key.'
-              : 'Could not save that media key.',
+              ? t('settings.ai.error.networkSave', 'Could not reach the server to save the key.')
+              : t('settings.ai.error.mediaSave', 'Could not save that media key.'),
         );
         return;
       }
@@ -288,7 +292,10 @@ export function AiSettingsSection(): JSX.Element {
   return (
     <div className={styles.section}>
       <p className={styles.intro}>
-        Connect your own AI API keys (Anthropic, OpenAI, or Gemini). Your prompts go straight to your provider account with no added fees.
+        {t(
+          'settings.ai.intro',
+          'Connect your own AI API keys (Anthropic, OpenAI, or Gemini). Your prompts go straight to your provider account with no added fees.',
+        )}
       </p>
 
       {/*
@@ -299,8 +306,8 @@ export function AiSettingsSection(): JSX.Element {
       */}
       <p className={styles.subtle}>
         {runsLocally
-          ? 'Your key is encrypted with your operating system’s keystore and never leaves this device.'
-          : 'Your key is encrypted on our server and never sent back to any app.'}
+          ? t('settings.ai.protectedLocal', 'Your key is encrypted with your operating system’s keystore and never leaves this device.')
+          : t('settings.ai.protectedServer', 'Your key is encrypted on our server and never sent back to any app.')}
       </p>
 
       {/*
@@ -311,8 +318,10 @@ export function AiSettingsSection(): JSX.Element {
       */}
       {runsLocally && !persistent && (
         <p className={styles.warning}>
-          This device has no secure keystore, so a key you add will work now but be
-          forgotten when you quit. You’ll re-enter it next launch.
+          {t(
+            'settings.ai.noKeystore',
+            'This device has no secure keystore, so a key you add will work now but be forgotten when you quit. You’ll re-enter it next launch.',
+          )}
         </p>
       )}
 
@@ -336,11 +345,11 @@ export function AiSettingsSection(): JSX.Element {
                     {p.label}
                   </span>
                   {s.present ? (
-                    <span className={styles.hint} title="Encrypted at rest">
-                      Connected · {s.hint || '••••'}
+                    <span className={styles.hint} title={t('settings.ai.encryptedAtRest', 'Encrypted at rest')}>
+                      {t('settings.ai.connected', 'Connected · {hint}', { hint: s.hint || '••••' })}
                     </span>
                   ) : (
-                    <span className={styles.notConnectedHint}>Not configured</span>
+                    <span className={styles.notConnectedHint}>{t('settings.ai.notConfigured', 'Not configured')}</span>
                   )}
                 </div>
 
@@ -349,26 +358,26 @@ export function AiSettingsSection(): JSX.Element {
                     <>
                       <select
                         className={styles.select}
-                        aria-label={`${p.label} model`}
+                        aria-label={t('settings.ai.modelAria', '{provider} model', { provider: p.label })}
                         value={models[p.id] ?? ''}
                         onChange={(e) => setModel(p.id, e.target.value)}
                       >
-                        <option value="">Default Model</option>
+                        <option value="">{t('settings.ai.defaultModel', 'Default Model')}</option>
                         {modelsFor(p.id).map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
                       </select>
                       {isActive ? (
                         <span className={styles.activeMark}>
-                          <span className={styles.greenDot} /> Active
+                          <span className={styles.greenDot} /> {t('settings.ai.active', 'Active')}
                         </span>
                       ) : (
                         <Button variant="secondary" size="sm" onClick={() => setProvider(p.id)}>
-                          Use this
+                          {t('settings.ai.useThis', 'Use this')}
                         </Button>
                       )}
                       <Button variant="ghost" size="sm" disabled={busy === p.id} onClick={() => void remove(p.id)}>
-                        Remove
+                        {t('settings.ai.remove', 'Remove')}
                       </Button>
                     </>
                   ) : (
@@ -378,7 +387,7 @@ export function AiSettingsSection(): JSX.Element {
                         className={styles.input}
                         value={draft}
                         placeholder={p.placeholder}
-                        aria-label={`${p.label} API key`}
+                        aria-label={t('settings.ai.keyAria', '{provider} API key', { provider: p.label })}
                         autoComplete="off"
                         spellCheck={false}
                         onChange={(e) => setDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
@@ -390,7 +399,7 @@ export function AiSettingsSection(): JSX.Element {
                         disabled={!draft.trim() || busy === p.id}
                         onClick={() => void save(p.id)}
                       >
-                        Save
+                        {t('settings.ai.save', 'Save')}
                       </Button>
                     </>
                   )}
@@ -400,7 +409,7 @@ export function AiSettingsSection(): JSX.Element {
           })}
 
           <p className={styles.links}>
-            Chat keys power the assistant’s planning. Get a key: {PROVIDERS.map((p, i) => (
+            {t('settings.ai.chatKeysLinks', 'Chat keys power the assistant’s planning. Get a key:')} {PROVIDERS.map((p, i) => (
               <span key={p.id}>
                 {i > 0 ? ' · ' : ''}
                 <a href={p.href} target="_blank" rel="noreferrer">{p.label.split(' ')[0]}</a>
@@ -410,13 +419,27 @@ export function AiSettingsSection(): JSX.Element {
         </div>
 
       <p className={styles.intro} style={{ marginTop: 8 }}>
-        Media generation (video, voice, 3D) uses separate keys. These are only spent when the
-        assistant calls <code>generate_video</code>, <code>generate_speech</code>, or{' '}
-        <code>generate_3d_model</code>.
+        {/* Placeholders are split out so the tool names keep their <code> styling in any word order. */}
+        {t(
+          'settings.ai.mediaIntro',
+          'Media generation (video, voice, 3D) uses separate keys. These are only spent when the assistant calls {video}, {speech}, or {model3d}.',
+        )
+          .split(/(\{video\}|\{speech\}|\{model3d\})/)
+          .map((part, i) =>
+            part === '{video}' ? (
+              <code key={i}>generate_video</code>
+            ) : part === '{speech}' ? (
+              <code key={i}>generate_speech</code>
+            ) : part === '{model3d}' ? (
+              <code key={i}>generate_3d_model</code>
+            ) : (
+              part
+            ),
+          )}
       </p>
 
       <div className={styles.providers}>
-        {MEDIA_PROVIDERS.map((p) => {
+        {mediaProviders().map((p) => {
           const s = mediaStatus[p.id] ?? EMPTY;
           const draft = mediaDrafts[p.id] ?? '';
           return (
@@ -430,17 +453,19 @@ export function AiSettingsSection(): JSX.Element {
                   {p.label}
                 </span>
                 {s.present ? (
-                  <span className={styles.hint} title="Encrypted at rest">
-                    Connected · {p.purpose} · {s.hint || '••••'}
+                  <span className={styles.hint} title={t('settings.ai.encryptedAtRest', 'Encrypted at rest')}>
+                    {t('settings.ai.mediaConnected', 'Connected · {purpose} · {hint}', { purpose: p.purpose, hint: s.hint || '••••' })}
                   </span>
                 ) : (
-                  <span className={styles.notConnectedHint}>{p.purpose} · Not configured</span>
+                  <span className={styles.notConnectedHint}>
+                    {t('settings.ai.mediaNotConfigured', '{purpose} · Not configured', { purpose: p.purpose })}
+                  </span>
                 )}
               </div>
               <div className={styles.rowRight}>
                 {s.present ? (
                   <Button variant="ghost" size="sm" disabled={busy === p.id} onClick={() => void removeMedia(p.id)}>
-                    Remove
+                    {t('settings.ai.remove', 'Remove')}
                   </Button>
                 ) : (
                   <>
@@ -449,7 +474,7 @@ export function AiSettingsSection(): JSX.Element {
                       className={styles.input}
                       value={draft}
                       placeholder={p.placeholder}
-                      aria-label={`${p.label} API key`}
+                      aria-label={t('settings.ai.keyAria', '{provider} API key', { provider: p.label })}
                       autoComplete="off"
                       spellCheck={false}
                       onChange={(e) => setMediaDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
@@ -461,7 +486,7 @@ export function AiSettingsSection(): JSX.Element {
                       disabled={!draft.trim() || busy === p.id}
                       onClick={() => void saveMedia(p.id)}
                     >
-                      Save
+                      {t('settings.ai.save', 'Save')}
                     </Button>
                   </>
                 )}
@@ -475,16 +500,16 @@ export function AiSettingsSection(): JSX.Element {
             when someone picks a paid model here. */}
         <div className={styles.row}>
           <div className={styles.rowInfo}>
-            <span className={styles.rowLabel}>Default video model</span>
+            <span className={styles.rowLabel}>{t('settings.ai.defaultVideoModel', 'Default video model')}</span>
             <span className={styles.hint}>
               {VIDEO_MODELS.find((m) => m.id === videoModelId)?.note ?? ''}
-              {VIDEO_MODELS.find((m) => m.id === videoModelId)?.paid && !(mediaStatus.fal ?? EMPTY).present ? ' Needs a fal.ai key.' : ''}
+              {VIDEO_MODELS.find((m) => m.id === videoModelId)?.paid && !(mediaStatus.fal ?? EMPTY).present ? ` ${t('settings.ai.needsFal', 'Needs a fal.ai key.')}` : ''}
             </span>
           </div>
           <div className={styles.rowRight}>
             <select
               className={styles.select}
-              aria-label="Default video model"
+              aria-label={t('settings.ai.defaultVideoModel', 'Default video model')}
               value={videoModelId}
               onChange={(e) => setVideoModelId(e.target.value)}
             >
@@ -496,7 +521,7 @@ export function AiSettingsSection(): JSX.Element {
         </div>
 
         <p className={styles.links}>
-          Get a media key: {MEDIA_PROVIDERS.map((p, i) => (
+          {t('settings.ai.mediaKeysLinks', 'Get a media key:')} {mediaProviders().map((p, i) => (
             <span key={p.id}>
               {i > 0 ? ' · ' : ''}
               <a href={p.href} target="_blank" rel="noreferrer">{p.label}</a>

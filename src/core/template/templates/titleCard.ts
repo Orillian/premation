@@ -5,6 +5,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addShape, addText, addGradientShape, radialFill,  type SetKf } from './builders';
 
 const CW = 1920, CH = 1080, CX = CW / 2, CY = CH / 2;
@@ -33,25 +34,25 @@ export function animateTitleCard(set: SetKf): void {
 
 export const titleCardTemplate: TemplateDefinition = {
   id: 'title-card',
-  name: 'Title Card',
+  get name() { return t('core.template.titleCardName', 'Title Card'); },
   aspect: '16:9',
   width: CW,
   height: CH,
-  description: 'A bold centered headline with subtitle and an animated accent bar.',
+  get description() { return t('core.template.titleCardDescription', 'A bold centered headline with subtitle and an animated accent bar.'); },
   layout: layoutTitleCard,
   settings: { fps: 60, durationSeconds: 5, background: '#0e0e1c' },
   animate: animateTitleCard,
   previewTime: 1.3,
   fields: [
-    { id: 'headline', label: 'Headline', kind: 'text', group: 'Text', default: 'Your Headline Here',
+    { id: 'headline', get label() { return t('core.template.fieldHeadline', 'Headline'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Your Headline Here',
       target: { nodeId: 'tpl_headline', componentType: 'Text', prop: 'content' } },
-    { id: 'subtitle', label: 'Subtitle', kind: 'text', group: 'Text', default: 'Your subtitle goes here',
+    { id: 'subtitle', get label() { return t('core.template.fieldSubtitle', 'Subtitle'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Your subtitle goes here',
       target: { nodeId: 'tpl_subtitle', componentType: 'Text', prop: 'content' } },
-    { id: 'headlineColor', label: 'Headline colour', kind: 'color', group: 'Colours', default: '#ffffff',
+    { id: 'headlineColor', get label() { return t('core.template.fieldHeadlineColour', 'Headline colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#ffffff',
       target: { nodeId: 'tpl_headline', componentType: 'Text', prop: 'fill' } },
-    { id: 'accentColor', label: 'Accent colour', kind: 'color', group: 'Colours', default: '#635bff',
+    { id: 'accentColor', get label() { return t('core.template.fieldAccentColour', 'Accent colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#635bff',
       target: { nodeId: 'tpl_accent', componentType: 'Style', prop: 'fill' } },
-    { id: 'background', label: 'Background', kind: 'color', group: 'Colours', default: '#0e0e1c',
+    { id: 'background', get label() { return t('core.template.fieldBackground', 'Background'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#0e0e1c',
       target: { nodeId: 'tpl_bg', componentType: 'Style', prop: 'fill' } },
   ],
 };

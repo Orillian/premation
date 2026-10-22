@@ -37,6 +37,7 @@ import {
   type IntermediateBitDepth,
   type WorkingSpace,
 } from '@stores/colorManagementStore';
+import { t } from '@core/i18n';
 import styles from './ColorPicker.module.css';
 
 /*
@@ -83,13 +84,13 @@ function ColorManagementReadout(): JSX.Element {
   return (
     <div
       className={styles.cmReadout}
-      title={
-        `Values are authored in ${WORKING_SPACE_LABEL[workingSpace]} and viewed through the `
-        + `${DISPLAY_TRANSFORM_LABEL[displayTransform]} display transform at ${bitDepth}-bit float. `
-        + 'Change these in Project Settings › Color.'
-      }
+      title={t(
+        'ui.colorPicker.cmTitle',
+        'Values are authored in {space} and viewed through the {transform} display transform at {bits}-bit float. Change these in Project Settings › Color.',
+        { space: WORKING_SPACE_LABEL[workingSpace], transform: DISPLAY_TRANSFORM_LABEL[displayTransform], bits: bitDepth },
+      )}
     >
-      <span className={styles.cmLabel}>Color</span>
+      <span className={styles.cmLabel}>{t('ui.colorPicker.cmLabel', 'Color')}</span>
       <span className={styles.cmValue}>{summary}</span>
     </div>
   );
@@ -265,7 +266,7 @@ export function ColorPicker({
       }}
     >
       <Popover.Trigger asChild>
-        <button type="button" className={cn(compact ? styles.compactTrigger : styles.trigger, className)} aria-label={ariaLabel ?? 'Pick a color'}>
+        <button type="button" className={cn(compact ? styles.compactTrigger : styles.trigger, className)} aria-label={ariaLabel ?? t('ui.colorPicker.pick', 'Pick a color')}>
           <span className={cn(styles.swatch, compact && styles.compactSwatch)} style={{ background: color }} />
           {!compact && <span className={styles.hex}>{color.toUpperCase()}</span>}
         </button>
@@ -280,7 +281,7 @@ export function ColorPicker({
 
             <div className={styles.inputsRow}>
               {hasEyeDropper && (
-                <button type="button" className={styles.eyedropBtn} onClick={eyedrop} title="Pick a color from the screen" aria-label="Eyedropper">
+                <button type="button" className={styles.eyedropBtn} onClick={eyedrop} title={t('ui.colorPicker.eyedropperTitle', 'Pick a color from the screen')} aria-label={t('ui.colorPicker.eyedropper', 'Eyedropper')}>
                   <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
                     <path
                       d="M10.3 1.9a2.1 2.1 0 0 1 3 3l-1.2 1.2.7.7a.75.75 0 1 1-1.06 1.06l-.35-.35-5.6 5.6c-.2.2-.45.33-.72.4l-2.02.5a.6.6 0 0 1-.73-.73l.5-2.02c.07-.27.2-.52.4-.72l5.6-5.6-.35-.35A.75.75 0 0 1 9.53 3.5l.7.7 1.2-1.2Zm-1.72 3.98-5.5 5.5-.3 1.2 1.2-.3 5.5-5.5-.9-.9Z"
@@ -291,7 +292,7 @@ export function ColorPicker({
               )}
               <div className={styles.hexRow}>
                 <span className={styles.hexHash}>#</span>
-                <HexColorInput color={color} onChange={onChange} prefixed={false} alpha={alpha} className={styles.hexInput} aria-label="Hex value" />
+                <HexColorInput color={color} onChange={onChange} prefixed={false} alpha={alpha} className={styles.hexInput} aria-label={t('ui.colorPicker.hex', 'Hex value')} />
               </div>
             </div>
 
@@ -305,7 +306,7 @@ export function ColorPicker({
             {/* ── Project palette ────────────────────────────────────── */}
             <div className={styles.section}>
               <div className={styles.sectionHead}>
-                <span className={styles.sectionLabel}>Project swatches</span>
+                <span className={styles.sectionLabel}>{t('ui.colorPicker.projectSwatches', 'Project swatches')}</span>
                 <button
                   type="button"
                   className={styles.sectionAdd}
@@ -313,22 +314,22 @@ export function ColorPicker({
                     const added = addSwatch(color);
                     if (added) openEditor(added.id, added.name);
                   }}
-                  title="Save this color to the project palette"
-                  aria-label="Add current color to project swatches"
+                  title={t('ui.colorPicker.addSwatchTitle', 'Save this color to the project palette')}
+                  aria-label={t('ui.colorPicker.addSwatch', 'Add current color to project swatches')}
                 >
                   +
                 </button>
               </div>
               {swatches.length > 0 ? (
-                <div className={styles.recents} role="listbox" aria-label="Project swatches">
+                <div className={styles.recents} role="listbox" aria-label={t('ui.colorPicker.projectSwatches', 'Project swatches')}>
                   {swatches.map((sw) => (
                     <button
                       key={sw.id}
                       type="button"
                       className={cn(styles.recentSwatch, sw.id === editingId && styles.recentSwatchActive)}
                       style={{ background: sw.hex }}
-                      title={`${sw.name} — ${sw.hex.toUpperCase()} (right-click to rename or delete)`}
-                      aria-label={`Use ${sw.name}`}
+                      title={t('ui.colorPicker.swatchTitle', '{name} — {hex} (right-click to rename or delete)', { name: sw.name, hex: sw.hex.toUpperCase() })}
+                      aria-label={t('ui.colorPicker.use', 'Use {color}', { color: sw.name })}
                       onClick={() => onChange(sw.hex)}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -338,7 +339,7 @@ export function ColorPicker({
                   ))}
                 </div>
               ) : (
-                <p className={styles.sectionEmpty}>No project swatches yet — + saves this color.</p>
+                <p className={styles.sectionEmpty}>{t('ui.colorPicker.noSwatches', 'No project swatches yet — + saves this color.')}</p>
               )}
               {editing && (
                 <div className={styles.editRow}>
@@ -347,7 +348,7 @@ export function ColorPicker({
                     className={styles.editInput}
                     value={draftName}
                     autoFocus
-                    aria-label="Swatch name"
+                    aria-label={t('ui.colorPicker.swatchName', 'Swatch name')}
                     onChange={(e) => setDraftName(e.target.value)}
                     onBlur={commitRename}
                     onKeyDown={(e) => {
@@ -358,8 +359,8 @@ export function ColorPicker({
                   <button
                     type="button"
                     className={styles.editDelete}
-                    title="Delete this swatch"
-                    aria-label={`Delete ${editing.name}`}
+                    title={t('ui.colorPicker.deleteSwatchTitle', 'Delete this swatch')}
+                    aria-label={t('ui.colorPicker.deleteSwatch', 'Delete {name}', { name: editing.name })}
                     // `onMouseDown`, not `onClick`: the input's blur commits a
                     // rename and re-renders this row away before a click on a
                     // sibling ever lands.
@@ -379,9 +380,9 @@ export function ColorPicker({
             {documentColors.length > 0 && (
               <div className={styles.section}>
                 <div className={styles.sectionHead}>
-                  <span className={styles.sectionLabel}>Document</span>
+                  <span className={styles.sectionLabel}>{t('ui.colorPicker.document', 'Document')}</span>
                 </div>
-                <div className={styles.recents} role="listbox" aria-label="Document colors">
+                <div className={styles.recents} role="listbox" aria-label={t('ui.colorPicker.documentColors', 'Document colors')}>
                   {documentColors.map((c) => (
                     <button
                       key={c}
@@ -389,7 +390,7 @@ export function ColorPicker({
                       className={styles.recentSwatch}
                       style={{ background: c }}
                       title={c.toUpperCase()}
-                      aria-label={`Use ${c}`}
+                      aria-label={t('ui.colorPicker.use', 'Use {color}', { color: c })}
                       onClick={() => onChange(c)}
                     />
                   ))}
@@ -400,9 +401,9 @@ export function ColorPicker({
             {recent.length > 0 && (
               <div className={styles.section}>
                 <div className={styles.sectionHead}>
-                  <span className={styles.sectionLabel}>Recent</span>
+                  <span className={styles.sectionLabel}>{t('ui.colorPicker.recent', 'Recent')}</span>
                 </div>
-                <div className={styles.recents} role="listbox" aria-label="Recent colors">
+                <div className={styles.recents} role="listbox" aria-label={t('ui.colorPicker.recentColors', 'Recent colors')}>
                   {recent.map((c) => (
                     <button
                       key={c}
@@ -410,7 +411,7 @@ export function ColorPicker({
                       className={styles.recentSwatch}
                       style={{ background: c }}
                       title={c.toUpperCase()}
-                      aria-label={`Use ${c}`}
+                      aria-label={t('ui.colorPicker.use', 'Use {color}', { color: c })}
                       onClick={() => onChange(c)}
                     />
                   ))}

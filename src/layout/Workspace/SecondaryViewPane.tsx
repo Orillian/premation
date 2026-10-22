@@ -50,6 +50,7 @@ import { useGizmo3d } from './useGizmo3d';
 import { Gizmo3dOverlay } from './Gizmo3dOverlay';
 import { FocusPlaneOverlay } from './FocusPlaneOverlay';
 import paneStyles from './SecondaryViewPane.module.css';
+import { t } from '@core/i18n';
 
 export interface SecondaryViewPaneProps {
   /** View mode to render. Omit to bind to the store's `secondaryViewMode`. */
@@ -69,12 +70,27 @@ export interface SecondaryViewPaneProps {
   className?: string;
 }
 
-/** Labels for the pane's compact view selector. */
-const VIEW_OPTIONS: ReadonlyArray<{ id: Camera3dMode; label: string }> = [
-  { id: 'active', label: 'Active Camera' },
-  ...CAMERA_ORTHO_VIEWS.map((v) => ({ id: v as Camera3dMode, label: v[0]!.toUpperCase() + v.slice(1) })),
-  ...CUSTOM_VIEW_IDS.map((v) => ({ id: v as Camera3dMode, label: CUSTOM_VIEW_LABEL[v] })),
-];
+/** Display names of the orthographic views (translated at call time). */
+function orthoViewLabel(v: (typeof CAMERA_ORTHO_VIEWS)[number]): string {
+  switch (v) {
+    case 'front': return t('workspace.secondaryView.front', 'Front');
+    case 'left': return t('workspace.secondaryView.left', 'Left');
+    case 'top': return t('workspace.secondaryView.top', 'Top');
+    case 'back': return t('workspace.secondaryView.back', 'Back');
+    case 'right': return t('workspace.secondaryView.right', 'Right');
+    case 'bottom': return t('workspace.secondaryView.bottom', 'Bottom');
+    default: return v;
+  }
+}
+
+/** Labels for the pane's compact view selector. A function: `t()` must not run at module scope. */
+function viewOptionsBase(): ReadonlyArray<{ id: Camera3dMode; label: string }> {
+  return [
+    { id: 'active', label: t('workspace.secondaryView.activeCamera', 'Active Camera') },
+    ...CAMERA_ORTHO_VIEWS.map((v) => ({ id: v as Camera3dMode, label: orthoViewLabel(v) })),
+    ...CUSTOM_VIEW_IDS.map((v) => ({ id: v as Camera3dMode, label: CUSTOM_VIEW_LABEL[v] })),
+  ];
+}
 
 export function SecondaryViewPane({ mode: modeProp, onModeChange, style, className }: SecondaryViewPaneProps = {}): JSX.Element {
   const wireframeCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -98,7 +114,10 @@ export function SecondaryViewPane({ mode: modeProp, onModeChange, style, classNa
   const compRootId = useActiveCompRootId();
   const cameraViews = useCompCameraViews(compRootId);
   const viewOptions = useMemo<ReadonlyArray<{ id: Camera3dMode; label: string }>>(
-    () => [VIEW_OPTIONS[0]!, ...cameraViews.map((c) => ({ id: c.mode, label: c.label })), ...VIEW_OPTIONS.slice(1)],
+    () => {
+      const base = viewOptionsBase();
+      return [base[0]!, ...cameraViews.map((c) => ({ id: c.mode, label: c.label })), ...base.slice(1)];
+    },
     [cameraViews],
   );
   const shownMode = effectiveViewMode(mode, compRootId);
@@ -314,9 +333,9 @@ export function SecondaryViewPane({ mode: modeProp, onModeChange, style, classNa
       <select
         value={shownMode}
         onChange={(e) => setMode(e.target.value as Camera3dMode)}
-        title="Secondary pane view"
+        title={t('workspace.secondaryView.title', 'Secondary pane view')}
         onPointerDown={(e) => e.stopPropagation()}
-        aria-label={`${shownLabel} view`}
+        aria-label={t('workspace.secondaryView.aria', '{view} view', { view: shownLabel })}
         style={{
           position: 'absolute',
           top: 6,

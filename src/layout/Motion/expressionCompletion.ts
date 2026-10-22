@@ -22,7 +22,7 @@
  * whose example happens to read `thisComp.width`.
  */
 
-import { EXPRESSION_API } from '@motion/animation';
+import { EDITOR_EXPRESSION_API } from '@motion/animation';
 
 /** One entry of the language reference — the shape `EXPRESSION_API` holds. */
 export interface ApiItem {
@@ -323,7 +323,7 @@ function rank(name: string, prefix: string): { match: MatchKind; score: number }
  */
 export function completions(
   prefix: string,
-  api: readonly ApiItem[] = EXPRESSION_API,
+  api: readonly ApiItem[] = EDITOR_EXPRESSION_API,
   context: CompletionContext = {},
 ): CompletionItem[] {
   const object = context.object ?? '';
@@ -386,7 +386,7 @@ export function applyCompletion(text: string, caret: number, item: Pick<ApiItem,
 export function completionsAt(
   text: string,
   caret: number,
-  api: readonly ApiItem[] = EXPRESSION_API,
+  api: readonly ApiItem[] = EDITOR_EXPRESSION_API,
   limit: number = MAX_COMPLETIONS,
 ): { word: CaretWord; items: CompletionItem[] } {
   const word = wordAtCaret(text, caret);

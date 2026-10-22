@@ -113,6 +113,8 @@ import { mirrorCanResetProperties } from '@core/mirror/resetFacts';
 import { activeCompSize, resetPropertiesEdit, resetTransformEdit } from './resetEdits';
 import { expressionRowMenuItems } from './expressionRowMenu';
 import { openTimelineExpressionEditor } from './timelineExpressionEditor';
+import { altClickStopwatchEdit } from '@providers/commands/expressionCommands';
+import { requestExpressionEditor } from '@core/animation/expressionEditorRequests';
 import { trackExpressionFacts } from '@core/mirror/memberExpressions';
 import { propRefForTrack } from '@core/engine/propRefs';
 
@@ -122,6 +124,7 @@ import { Keyframes } from './KeyframeLayer';
 import { useClipDrag } from './useClipDrag';
 import { useKeyframeDrag } from './useKeyframeDrag';
 import { useMarquee } from './useMarquee';
+import { t } from '@core/i18n';
 
 /**
  * A property row's expression for its `=` badge: the first member track that
@@ -138,7 +141,8 @@ function rowExpression(nodeId: string, props: ReadonlyArray<string>): { enabled:
     const err = comp
       ? m.layerErrors(comp).find((e) => e.layer === nodeId && e.stage === 'expression' && (!e.path || e.path === path))
       : undefined;
-    return { enabled: facts.enabled, error: err?.message ?? null };
+    // The render-time error first; else the compile error the property itself carries.
+    return { enabled: facts.enabled, error: err?.message ?? (facts.error || null) };
   }
   return null;
 }
@@ -1711,7 +1715,7 @@ function Timeline({
       }
       e.preventDefault();
       const cut = lanesCutAt(e.clientX, e.clientY);
-      setTransitionError(cut ? null : 'Drop a transition on a cut — the point where one clip ends and the next begins.');
+      setTransitionError(cut ? null : t('timeline.transition.dropOnCut', 'Drop a transition on a cut — the point where one clip ends and the next begins.'));
       if (cut) applyTransition(cut, kind, effect);
     },
     [lanesCutAt, applyTransition, lanesTrackIdAt, lanesEdgeAt, onLayerTransitionDrop],
@@ -1778,7 +1782,12 @@ function Timeline({
       setDragHud({
         x: e.clientX,
         y: e.clientY,
-        lines: [`${TRANSITION_LABEL[rec.kind]}`, `${frames} ${frames === 1 ? 'frame' : 'frames'}`],
+        lines: [
+          `${TRANSITION_LABEL[rec.kind]}`,
+          frames === 1
+            ? t('timeline.transition.framesOne', '{n} frame', { n: frames })
+            : t('timeline.transition.framesOther', '{n} frames', { n: frames }),
+        ],
       });
     };
     const onUp = (): void => {
@@ -2171,6 +2180,9 @@ function Timeline({
   const progressFillRef = useRef<HTMLDivElement | null>(null);
   const liveGeomRef = useRef({ pps, totalSeconds, duration: model.duration });
   liveGeomRef.current = { pps, totalSeconds, duration: model.duration };
+  // Resolved per render, never per tick: the callback below runs on every
+  // played frame and only fills the placeholder (no `t()` in that path).
+  const playheadValueTemplate = t('timeline.playhead.valueText', '{seconds} seconds');
   useLivePlayhead((t) => {
     const { pps: p, totalSeconds: dur, duration: compDur } = liveGeomRef.current;
     const transform = `translateX(${TIMELINE_LEFT_OFFSET + t * p}px)`;
@@ -2178,7 +2190,7 @@ function Timeline({
     if (line) {
       line.style.transform = transform;
       line.setAttribute('aria-valuenow', String(t));
-      line.setAttribute('aria-valuetext', `${t.toFixed(2)} seconds`);
+      line.setAttribute('aria-valuetext', playheadValueTemplate.replace('{seconds}', t.toFixed(2)));
     }
     if (stickyPlayheadRef.current) stickyPlayheadRef.current.style.transform = transform;
     if (rulerFillRef.current) rulerFillRef.current.style.transform = `translateX(${rulerProgressWidth(t, dur, p)}px)`;
@@ -2277,7 +2289,7 @@ function Timeline({
           className={styles.transitionError}
           role="status"
           onClick={() => setTransitionError(null)}
-          title="Click to dismiss"
+          title={t('timeline.panel.clickToDismiss', 'Click to dismiss')}
         >
           {transitionError}
         </div>
@@ -2308,10 +2320,10 @@ function Timeline({
                 match; the two must stay in step or the legend names the wrong
                 control. */}
             <div className={styles.colHeadPreInfo} aria-hidden>
-              <span className={styles.colHeadItem}><Icon name="eye" size="md" title="Video Visibility" /></span>
-              <span className={styles.colHeadItem}><Icon name="audio" size="md" title="Audio" /></span>
-              <span className={styles.colHeadItem}><Icon name="circle" size="md" title="Solo" /></span>
-              <span className={styles.colHeadItem}><Icon name="lock" size="md" title="Lock" /></span>
+              <span className={styles.colHeadItem}><Icon name="eye" size="md" title={t('timeline.colHead.video', 'Video Visibility')} /></span>
+              <span className={styles.colHeadItem}><Icon name="audio" size="md" title={t('timeline.colHead.audio', 'Audio')} /></span>
+              <span className={styles.colHeadItem}><Icon name="circle" size="md" title={t('timeline.colHead.solo', 'Solo')} /></span>
+              <span className={styles.colHeadItem}><Icon name="lock" size="md" title={t('timeline.colHead.lock', 'Lock')} /></span>
             </div>
             <span className={styles.colHeadLayer}>
               <span className={styles.colHeadIndex} aria-hidden>#</span>
@@ -2320,17 +2332,19 @@ function Timeline({
                 type="button"
                 className={cn(styles.colHeadLayerLabel, styles.colHeadNameToggle)}
                 onClick={toggleNameColumn}
-                title={nameColumn === 'layer' ? 'Layer Name — click for Source Name' : 'Source Name — click for Layer Name'}
+                title={nameColumn === 'layer'
+                  ? t('timeline.colHead.layerNameTitle', 'Layer Name — click for Source Name')
+                  : t('timeline.colHead.sourceNameTitle', 'Source Name — click for Layer Name')}
               >
-                {nameColumn === 'layer' ? 'Layer Name' : 'Source Name'}
+                {nameColumn === 'layer' ? t('timeline.colHead.layerName', 'Layer Name') : t('timeline.colHead.sourceName', 'Source Name')}
               </button>
               {!inPopoutWindow() && (
                 <button
                   type="button"
                   className={styles.colHeadPopOut}
                   onClick={popOutTimeline}
-                  title="Pop Out Timeline into Separate Window"
-                  aria-label="Pop out timeline into a separate window"
+                  title={t('timeline.colHead.popOutTitle', 'Pop Out Timeline into Separate Window')}
+                  aria-label={t('timeline.colHead.popOut', 'Pop out timeline into a separate window')}
                 >
                   <Icon name="pop-out" size="md" />
                 </button>
@@ -2343,26 +2357,26 @@ function Timeline({
                 live switch is worse than no legend. */}
             {showSwitches && (
               <span className={styles.colHeadAeSwitches} aria-hidden>
-                <span className={styles.colHeadItem}><Icon name="shy" size="md" title="Shy" /></span>
-                <span className={styles.colHeadItem}><Icon name="star" size="md" title="Collapse Transformations / Continuous Rasterize" /></span>
-                <span className={styles.colHeadItem}><span className={styles.fxText} title="Quality">/</span></span>
-                <span className={styles.colHeadItem}><span className={styles.fxText} title="Effects">fx</span></span>
-                <span className={styles.colHeadItem}><Icon name="video" size="md" title="Frame Blending" /></span>
-                <span className={styles.colHeadItem}><Icon name="motion-blur" size="md" title="Motion Blur" /></span>
-                <span className={styles.colHeadItem}><Icon name="adjustment" size="md" title="Adjustment Layer" /></span>
-                <span className={styles.colHeadItem}><Icon name="frame" size="md" title="Guide Layer (not rendered)" /></span>
-                <span className={styles.colHeadItem}><span className={styles.fxText} title="Preserve Underlying Transparency">T</span></span>
-                <span className={styles.colHeadItem}><Icon name="3d" size="md" title="3D Layer" /></span>
+                <span className={styles.colHeadItem}><Icon name="shy" size="md" title={t('timeline.colHead.shy', 'Shy')} /></span>
+                <span className={styles.colHeadItem}><Icon name="star" size="md" title={t('timeline.colHead.collapse', 'Collapse Transformations / Continuous Rasterize')} /></span>
+                <span className={styles.colHeadItem}><span className={styles.fxText} title={t('timeline.colHead.quality', 'Quality')}>/</span></span>
+                <span className={styles.colHeadItem}><span className={styles.fxText} title={t('timeline.colHead.effects', 'Effects')}>fx</span></span>
+                <span className={styles.colHeadItem}><Icon name="video" size="md" title={t('timeline.colHead.frameBlending', 'Frame Blending')} /></span>
+                <span className={styles.colHeadItem}><Icon name="motion-blur" size="md" title={t('timeline.colHead.motionBlur', 'Motion Blur')} /></span>
+                <span className={styles.colHeadItem}><Icon name="adjustment" size="md" title={t('timeline.colHead.adjustment', 'Adjustment Layer')} /></span>
+                <span className={styles.colHeadItem}><Icon name="frame" size="md" title={t('timeline.colHead.guide', 'Guide Layer (not rendered)')} /></span>
+                <span className={styles.colHeadItem}><span className={styles.fxText} title={t('timeline.colHead.preserveTransparency', 'Preserve Underlying Transparency')}>T</span></span>
+                <span className={styles.colHeadItem}><Icon name="3d" size="md" title={t('timeline.colHead.threeD', '3D Layer')} /></span>
               </span>
             )}
             {showModes && (
               <>
-                <span className={styles.colHeadMode}>Mode</span>
-                <span className={styles.colHeadMatte}>TrkMat</span>
+                <span className={styles.colHeadMode}>{t('timeline.colHead.mode', 'Mode')}</span>
+                <span className={styles.colHeadMatte}>{t('timeline.colHead.trackMatte', 'TrkMat')}</span>
               </>
             )}
             {/* In every view, as on the rows. */}
-            <span className={styles.colHeadParent}>Parent &amp; Link</span>
+            <span className={styles.colHeadParent}>{t('timeline.colHead.parent', 'Parent & Link')}</span>
             {extraColumns.map((id) => {
               const def = TIMELINE_EXTRA_COLUMNS.find((c) => c.id === id)!;
               return (
@@ -2392,7 +2406,7 @@ function Timeline({
           */}
           <div
             role="listbox"
-            aria-label="Timeline layers"
+            aria-label={t('timeline.panel.layers', 'Timeline layers')}
             aria-multiselectable="true"
             style={{ height: effectiveLanesHeight, position: 'relative' }}
             onKeyDown={onRowListKey}
@@ -2482,6 +2496,13 @@ function Timeline({
                     const first = props.find((p) => trackExpressionFacts(documentMirror(), row.track.id, p) !== null) ?? props[0]!;
                     openTimelineExpressionEditor(row.track.id, first);
                   }}
+                  onAltStopwatch={() => {
+                    const props = row.prop.stopwatchProps ?? row.prop.valueProps ?? [row.prop.prop];
+                    void altClickStopwatchEdit(props.map((p) => ({ nodeId: row.track.id, prop: p })), (ref) => {
+                      requestExpressionEditor(ref);
+                      openTimelineExpressionEditor(ref.nodeId, ref.prop);
+                    });
+                  }}
                   label={row.prop.label}
                   style={propStyle}
                   keyframes={row.prop.keyframes}
@@ -2540,7 +2561,7 @@ function Timeline({
                     return [
                       {
                         id: 'reset',
-                        label: 'Reset',
+                        label: t('timeline.category.reset', 'Reset'),
                         disabled: !mirrorCanResetProperties(documentMirror(), row.track.id, props),
                         onSelect: () => {
                           void resetPropertiesEdit(row.track.id, props, activeCompSize(), `Reset ${row.prop.label}`);
@@ -2553,7 +2574,9 @@ function Timeline({
                             const separated = documentMirror().property(row.track.id, 'transform/position')?.separated === true;
                             return {
                               id: 'separate-dimensions',
-                              label: separated ? 'Separate Dimensions ✓' : 'Separate Dimensions',
+                              label: separated
+                                ? t('timeline.property.separateDimensionsOn', 'Separate Dimensions ✓')
+                                : t('timeline.property.separateDimensions', 'Separate Dimensions'),
                               onSelect: () => {
                                 void edit(separated ? 'Join Dimensions' : 'Separate Dimensions', {
                                   type: 'setDimensionsSeparated', layer: row.track.id, path: 'transform/position', separated: !separated,
@@ -2623,12 +2646,12 @@ function Timeline({
         className={styles.headerResizer}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize track header column"
+        aria-label={t('timeline.panel.resizeHeader', 'Resize track header column')}
         onPointerDown={onHeaderResizeDown}
         onPointerMove={onHeaderResizeMove}
         onPointerUp={onHeaderResizeUp}
         onDoubleClick={() => setPref('timelineHeaderWidth', minHeaderWidth)}
-        title="Drag to resize · double-click to reset"
+        title={t('timeline.panel.resizeHeaderTitle', 'Drag to resize · double-click to reset')}
       >
         {/* ── Row height ──────────────────────────────────────────────
             A grip where the header column meets the lanes, dragged VERTICALLY.
@@ -2646,11 +2669,11 @@ function Timeline({
           className={styles.rowHeightGrip}
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Row height"
+          aria-label={t('timeline.panel.rowHeight', 'Row height')}
           aria-valuemin={ROW_HEIGHT_MIN}
           aria-valuemax={ROW_HEIGHT_MAX}
           aria-valuenow={trackHeight}
-          title={`Row height ${trackHeight}px — drag up/down · double-click to reset`}
+          title={t('timeline.panel.rowHeightTitle', 'Row height {px}px — drag up/down · double-click to reset', { px: trackHeight })}
           onPointerDown={onRowHeightDown}
           onPointerMove={onRowHeightMove}
           onPointerUp={onRowHeightUp}
@@ -2761,20 +2784,20 @@ function Timeline({
                   left: TIMELINE_LEFT_OFFSET + workArea.start * pps,
                   width: Math.max(2, (workArea.end - workArea.start) * pps),
                 }}
-                title="Work area — drag to move, drag edges to trim"
-                aria-label="Work area"
+                title={t('timeline.workArea.title', 'Work area — drag to move, drag edges to trim')}
+                aria-label={t('timeline.workArea.aria', 'Work area')}
                 onPointerDown={onWorkAreaChange ? startWaDrag('move') : undefined}
               >
                 <div
                   className={styles.workAreaHandle}
                   data-edge="in"
-                  aria-label="Work area in"
+                  aria-label={t('timeline.workArea.in', 'Work area in')}
                   onPointerDown={onWorkAreaChange ? startWaDrag('in') : undefined}
                 />
                 <div
                   className={styles.workAreaHandle}
                   data-edge="out"
-                  aria-label="Work area out"
+                  aria-label={t('timeline.workArea.out', 'Work area out')}
                   onPointerDown={onWorkAreaChange ? startWaDrag('out') : undefined}
                 />
               </div>
@@ -2826,7 +2849,7 @@ function Timeline({
                 cursor: 'ew-resize',
                 zIndex: 25,
               }}
-              title="Drag to adjust composition duration"
+              title={t('timeline.panel.durationHandle', 'Drag to adjust composition duration')}
               onPointerDown={startDurationDrag}
             >
               {/* The visual line */}
@@ -3061,8 +3084,11 @@ function Timeline({
                     top: TIMELINE_TOP_PADDING + box.topRow * trackHeight,
                     height: (box.bottomRow - box.topRow + 1) * trackHeight,
                   }}
-                  title={`${kindLabel} — drag an end to change its length, double-click for its settings, Delete to remove`}
-                  aria-label={`${kindLabel} transition, ${TRANSITION_ALIGNMENT_LABEL[alignment].toLowerCase()}`}
+                  title={t('timeline.transition.boxTitle', '{kind} — drag an end to change its length, double-click for its settings, Delete to remove', { kind: kindLabel })}
+                  aria-label={t('timeline.transition.boxAria', '{kind} transition, {alignment}', {
+                    kind: kindLabel,
+                    alignment: TRANSITION_ALIGNMENT_LABEL[alignment].toLowerCase(),
+                  })}
                   onPointerDown={(e) => {
                     // Stopped so the press does not also start a clip drag or a
                     // marquee on the lane beneath.
@@ -3088,7 +3114,10 @@ function Timeline({
                     type="button"
                     className={cn(styles.transitionLabel, styles.transitionAlign)}
                     data-alignment={alignment}
-                    title={`${kindLabel} · ${TRANSITION_ALIGNMENT_LABEL[alignment]} — click to change alignment`}
+                    title={t('timeline.transition.alignTitle', '{kind} · {alignment} — click to change alignment', {
+                      kind: kindLabel,
+                      alignment: TRANSITION_ALIGNMENT_LABEL[alignment],
+                    })}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -3191,12 +3220,12 @@ function Timeline({
               onKeyDown={onPlayheadKey}
               tabIndex={0}
               role="slider"
-              aria-label="Playhead"
+              aria-label={t('timeline.playhead.aria', 'Playhead')}
               aria-orientation="horizontal"
               aria-valuemin={0}
               aria-valuemax={model.duration}
               aria-valuenow={livePlayhead ? undefined : currentTime}
-              aria-valuetext={livePlayhead ? undefined : `${currentTime.toFixed(2)} seconds`}
+              aria-valuetext={livePlayhead ? undefined : t('timeline.playhead.valueText', '{seconds} seconds', { seconds: currentTime.toFixed(2) })}
             >
               <div className={styles.playheadHead} />
             </div>

@@ -80,6 +80,7 @@ import {
   type FocusRingKind,
 } from './focusPlane';
 import styles from './FocusPlaneOverlay.module.css';
+import { t } from '@core/i18n';
 
 /**
  * The circle of confusion, in comp px, at which the near/far bands are drawn.
@@ -364,7 +365,7 @@ export function FocusPlaneOverlay({ mode: modeProp, getView, viewRev, drawnCusto
   return (
     <svg
       ref={svgRef}
-      aria-label="Camera focus plane"
+      aria-label={t('workspace.focusPlane.label', 'Camera focus plane')}
       className={styles.overlay}
     >
       {target.rings.map((ring) => {
@@ -423,7 +424,7 @@ export function FocusPlaneOverlay({ mode: modeProp, getView, viewRev, drawnCusto
             >
               <div className={styles.hud}>
                 <span className={styles.hudDot} />
-                Focus {Math.round(dragDistance)} px
+                {t('workspace.focusPlane.hud', 'Focus {distance} px', { distance: Math.round(dragDistance) })}
               </div>
             </foreignObject>
           )}

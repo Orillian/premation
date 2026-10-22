@@ -27,6 +27,8 @@ type Behaviour = {
   hello?: 'welcome' | 'mismatch' | 'silent';
   /** Answer pings. */
   pong?: boolean;
+  /** Answer pings as the engine's watchdog does while the core thread is deep in one item. */
+  busy?: { what: string; ms: number };
   /** Exit with this code right after spawning. */
   exitAtOnce?: number;
   /** Ignore Goodbye (forces the shutdown kill). */
@@ -89,7 +91,8 @@ class FakeEngine extends EventEmitter implements EngineChild {
   }
 
   pong(nonce: number) {
-    this.fd3.write(frame(codecs.FrameChannelMessage.encode({ type: 'pong', nonce, revision: 0, playing: false, queued: 0 })));
+    const busy = this.b.busy ? { busyMs: this.b.busy.ms, busy: this.b.busy.what } : {};
+    this.fd3.write(frame(codecs.FrameChannelMessage.encode({ type: 'pong', nonce, revision: 0, playing: false, queued: 0, ...busy })));
   }
 
   frameReady(generation: number, slot: number) {
@@ -267,6 +270,33 @@ describe('EngineSupervisor', () => {
     expect(spawned[0]!.killed).toBe(false);
     await timers.advance(6000);
     expect(spawned[0]!.killed).toBe(true);
+  });
+
+  it('an engine busy on one item answers through its watchdog: reported, never killed', async () => {
+    const b: Behaviour = { busy: { what: 'tick (playing)', ms: 3000 } };
+    const { sup, timers, spawned } = setup([b]);
+    const busy: Array<{ what: string; ms: number } | null> = [];
+    sup.on('busy', (x) => busy.push(x));
+    await sup.start();
+    await timers.advance(20_000);  // well past hangMs
+    expect(spawned[0]!.killed).toBe(false);
+    expect(sup.state).toBe('running');
+    expect(busy[0]).toEqual({ what: 'tick (playing)', ms: 3000 });
+    // Back to its queue: the core answers itself (no busy fields) and the report clears, once.
+    delete b.busy;
+    await timers.advance(2000);
+    expect(busy[busy.length - 1]).toBeNull();
+    expect(busy.filter((x) => x === null)).toHaveLength(1);
+  });
+
+  it('an engine stuck on one item past stuckMs is killed as a hang', async () => {
+    const { sup, timers, spawned, restarts } = setup([{ busy: { what: 'batch Build the scene', ms: 31_000 } }, {}]);
+    await sup.start();
+    await timers.advance(1500);
+    expect(spawned[0]!.killed).toBe(true);
+    await timers.advance(500);
+    expect(sup.state).toBe('running');
+    expect(restarts[0]!.cause).toBe('hang');
   });
 
   it('a healthy engine answering pings is never killed', async () => {

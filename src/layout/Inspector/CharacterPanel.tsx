@@ -38,6 +38,7 @@ import { useDockPanelHeader } from '@components/DockPanel';
 import { TextFillRows, TextStrokeRows } from './TextFillRows';
 import { VariableAxesSection, TextPathOptions, OpenTypeControls } from './TextOptionControls';
 import { TwirlGroup } from './appearance/TwirlGroup';
+import { t } from '@core/i18n';
 import styles from './CharacterPanel.module.css';
 
 /* eslint-disable design-system/no-hex-color */
@@ -45,20 +46,23 @@ const DEFAULT_TEXT_FILL = '#ffffff';
 const DEFAULT_TEXT_STROKE = '#000000';
 /* eslint-enable design-system/no-hex-color */
 
-const PRESETS = [
-  { label: 'Display', fontSize: 96, fontWeight: '800', fontStyle: 'normal' },
-  { label: 'Title (L)', fontSize: 72, fontWeight: '700', fontStyle: 'normal' },
-  { label: 'Headline', fontSize: 56, fontWeight: '700', fontStyle: 'normal' },
-  { label: 'Subtitle', fontSize: 48, fontWeight: '600', fontStyle: 'normal' },
-  { label: 'Body', fontSize: 36, fontWeight: '400', fontStyle: 'normal' },
-  { label: 'Lower 3rd', fontSize: 28, fontWeight: '600', fontStyle: 'normal' },
-  { label: 'Caption', fontSize: 24, fontWeight: '400', fontStyle: 'normal' },
-  { label: 'Label', fontSize: 20, fontWeight: '500', fontStyle: 'normal' },
-  { label: 'Overline', fontSize: 14, fontWeight: '500', fontStyle: 'normal' },
-  { label: 'Quote', fontSize: 32, fontWeight: '300', fontStyle: 'italic' },
-  { label: 'Mono', fontSize: 36, fontWeight: '500', fontStyle: 'normal', fontFamily: 'Fira Code' },
-  { label: 'Button', fontSize: 16, fontWeight: '600', fontStyle: 'normal' },
-];
+/** Quick typography presets; labels are translated, so this runs at render time. */
+function presets() {
+  return [
+    { label: t('inspector.character.presetDisplay', 'Display'), fontSize: 96, fontWeight: '800', fontStyle: 'normal' },
+    { label: t('inspector.character.presetTitleL', 'Title (L)'), fontSize: 72, fontWeight: '700', fontStyle: 'normal' },
+    { label: t('inspector.character.presetHeadline', 'Headline'), fontSize: 56, fontWeight: '700', fontStyle: 'normal' },
+    { label: t('inspector.character.presetSubtitle', 'Subtitle'), fontSize: 48, fontWeight: '600', fontStyle: 'normal' },
+    { label: t('inspector.character.presetBody', 'Body'), fontSize: 36, fontWeight: '400', fontStyle: 'normal' },
+    { label: t('inspector.character.presetLower3rd', 'Lower 3rd'), fontSize: 28, fontWeight: '600', fontStyle: 'normal' },
+    { label: t('inspector.character.presetCaption', 'Caption'), fontSize: 24, fontWeight: '400', fontStyle: 'normal' },
+    { label: t('inspector.character.presetLabel', 'Label'), fontSize: 20, fontWeight: '500', fontStyle: 'normal' },
+    { label: t('inspector.character.presetOverline', 'Overline'), fontSize: 14, fontWeight: '500', fontStyle: 'normal' },
+    { label: t('inspector.character.presetQuote', 'Quote'), fontSize: 32, fontWeight: '300', fontStyle: 'italic' },
+    { label: t('inspector.character.presetMono', 'Mono'), fontSize: 36, fontWeight: '500', fontStyle: 'normal', fontFamily: 'Fira Code' },
+    { label: t('inspector.character.presetButton', 'Button'), fontSize: 16, fontWeight: '600', fontStyle: 'normal' },
+  ];
+}
 
 /**
  * A stored alignment seen from the other edge. The Paragraph panel's buttons
@@ -80,11 +84,14 @@ function mirrorAlign(a: string): string {
 /** The Text component, resolved at write time (the mirror has no component ids — useComponentProp's ComponentRef). */
 const TEXT_COMPONENT = { type: 'Text' } as const;
 
-const LINE_JOINS: ReadonlyArray<{ value: StrokeLineJoin; label: string }> = [
-  { value: 'miter', label: 'Miter' },
-  { value: 'round', label: 'Round' },
-  { value: 'bevel', label: 'Bevel' },
-];
+/** Stroke line joins; labels are translated, so this runs at render time. */
+function lineJoins(): ReadonlyArray<{ value: StrokeLineJoin; label: string }> {
+  return [
+    { value: 'miter', label: t('inspector.character.joinMiter', 'Miter') },
+    { value: 'round', label: t('inspector.character.joinRound', 'Round') },
+    { value: 'bevel', label: t('inspector.character.joinBevel', 'Bevel') },
+  ];
+}
 
 /**
  * AE's Character panel: the selection's text layer, or the defaults a new text
@@ -385,7 +392,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       )
     : fallbackStrokeOrder;
   const activeLineJoin: StrokeLineJoin = hasTarget
-    ? (LINE_JOINS.some((j) => j.value === strokeLineJoin) ? (strokeLineJoin as StrokeLineJoin) : 'round')
+    ? (lineJoins().some((j) => j.value === strokeLineJoin) ? (strokeLineJoin as StrokeLineJoin) : 'round')
     : fallbackLineJoin;
   const activeNoFill = hasTarget ? noFill === true : fallbackNoFill;
   const activeNoStroke = hasTarget ? noStroke === true : fallbackNoStroke;
@@ -664,7 +671,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
     else setFallbackSpaceAfter(v);
   };
 
-  const applyPreset = (preset: typeof PRESETS[number]) => {
+  const applyPreset = (preset: ReturnType<typeof presets>[number]) => {
     const bag = {
       fontSize: preset.fontSize,
       fontWeight: preset.fontWeight,
@@ -720,15 +727,17 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const rangeNotice = ranged && (
         <div className={styles.rangeNotice} role="status">
           <span className={styles.rangeNoticeText}>
-            {`Styling ${selection.end - selection.start} character${selection.end - selection.start === 1 ? '' : 's'}`}
+            {selection.end - selection.start === 1
+              ? t('inspector.character.stylingOne', 'Styling {n} character', { n: selection.end - selection.start })
+              : t('inspector.character.stylingOther', 'Styling {n} characters', { n: selection.end - selection.start })}
           </span>
           <Button
             size="xs"
             variant="secondary"
             onClick={clearRunStyling}
-            title="Reset per-character styling for selected range"
+            title={t('inspector.character.resetRangeTitle', 'Reset per-character styling for selected range')}
           >
-            Reset
+            {t('inspector.character.reset', 'Reset')}
           </Button>
         </div>
   );
@@ -740,20 +749,20 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               size="xs"
               variant={sourceAnimated ? 'primary' : 'secondary'}
               icon={<Icon name="keyframe" size="sm" />}
-              title={sourceAnimated ? 'Remove Source Text keyframes' : 'Keyframe Source Text across timeline'}
+              title={sourceAnimated ? t('inspector.character.removeSourceKeys', 'Remove Source Text keyframes') : t('inspector.character.keyframeSource', 'Keyframe Source Text across timeline')}
               onClick={toggleSourceStopwatch}
             >
-              {sourceAnimated ? 'Animated' : 'Keyframe'}
+              {sourceAnimated ? t('inspector.character.animated', 'Animated') : t('inspector.character.keyframe', 'Keyframe')}
             </Button>
   );
   const contentBox = hasTarget && (
           <textarea
             className={styles.contentTextarea}
-            aria-label="Source Text"
+            aria-label={t('inspector.character.sourceText', 'Source Text')}
             value={contentStr}
             onChange={(e) => onContentEdit(e.target.value)}
             onBlur={() => { void sourceTyping.end(); }}
-            placeholder="Type text content here..."
+            placeholder={t('inspector.character.contentPlaceholder', 'Type text content here...')}
             rows={2}
           />
   );
@@ -761,7 +770,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const contentCard = hasTarget && (
         <div className={styles.sectionCard}>
           <div className={styles.contentHead}>
-            <span className={styles.sectionHeader}>Content</span>
+            <span className={styles.sectionHeader}>{t('inspector.character.content', 'Content')}</span>
             {sourceKeyButton}
           </div>
           {contentBox}
@@ -794,18 +803,19 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               value={activeFaceValue}
               onChange={(e) => handleFaceChange(e.target.value)}
               className={`${styles.fieldSelect} ${styles.fieldSelectPlain}`}
-              aria-label="Font Style"
-              title="The family's weight, upright or italic (an italic it lacks is synthesized)"
+              aria-label={t('inspector.character.fontStyle', 'Font Style')}
+              title={t('inspector.character.fontStyleTitle', 'The family\'s weight, upright or italic (an italic it lacks is synthesized)')}
             >
               {availableWeights.map((w) => (
                 <option key={w} value={String(w)}>
-                  {WEIGHT_LABELS[w] ?? String(w)}
-                  {weightMissing && w === activeWeightNum ? ' — not in this font' : ''}
+                  {weightMissing && w === activeWeightNum
+                    ? t('inspector.character.weightNotInFont', '{weight} — not in this font', { weight: WEIGHT_LABELS[w] ?? String(w) })
+                    : WEIGHT_LABELS[w] ?? String(w)}
                 </option>
               ))}
               {availableWeights.map((w) => (
                 <option key={`${w}i`} value={`${w}/italic`}>
-                  {`${WEIGHT_LABELS[w] ?? String(w)} Italic`}
+                  {t('inspector.character.weightItalic', '{weight} Italic', { weight: WEIGHT_LABELS[w] ?? String(w) })}
                 </option>
               ))}
             </select>
@@ -818,10 +828,10 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   // maths), as every numeric row in the app — they were plain number inputs.
   const sizeCell = (
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Font Size (TT)">Size</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.sizeTitle', 'Font Size (TT)')}>{t('inspector.character.size', 'Size')}</span>
             <div className={styles.fieldValue}>
               <ValueField
-                aria-label="Font Size"
+                aria-label={t('inspector.character.fontSize', 'Font Size')}
                 value={activeSize}
                 min={1}
                 step={1}
@@ -840,10 +850,10 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const leadingPx = Math.round(leadingMultiple * activeSize * 10) / 10;
   const leadingCell = (
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Leading (A/A), in px. Auto = 120% of the font size.">Leading</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.leadingTitle', 'Leading (A/A), in px. Auto = 120% of the font size.')}>{t('inspector.character.leading', 'Leading')}</span>
             <div className={styles.fieldValue}>
               <ValueField
-                aria-label="Leading"
+                aria-label={t('inspector.character.leading', 'Leading')}
                 value={leadingPx}
                 min={0}
                 step={1}
@@ -858,24 +868,24 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               className={styles.fieldToggle}
               data-active={leadingIsAuto && shownLeading === undefined}
               aria-pressed={leadingIsAuto && shownLeading === undefined}
-              aria-label="Auto Leading"
-              title="Auto leading (120% of the font size)"
+              aria-label={t('inspector.character.autoLeading', 'Auto Leading')}
+              title={t('inspector.character.autoLeadingTitle', 'Auto leading (120% of the font size)')}
               onClick={() => handleLeadingChange(leadingIsAuto ? AUTO_LEADING : undefined)}
             >
-              Auto
+              {t('inspector.character.auto', 'Auto')}
             </button>
           </div>
   );
 
   // Faux bold / italic, caps, super / subscript, tate-chu-yoko.
   const styleToolbar = (
-        <div className={styles.strip} role="toolbar" aria-label="Character Formatting Styles">
+        <div className={styles.strip} role="toolbar" aria-label={t('inspector.character.formattingStyles', 'Character Formatting Styles')}>
           <IconButton
             size="sm"
             variant="ghost"
             active={isFauxBold}
-            aria-label="Faux Bold"
-            tooltip="Faux Bold"
+            aria-label={t('inspector.character.fauxBold', 'Faux Bold')}
+            tooltip={t('inspector.character.fauxBold', 'Faux Bold')}
             className={styles.stripCell}
             onClick={() =>
               setCharProp('fauxBold', !isFauxBold, (v) => {
@@ -890,8 +900,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={isFauxItalic}
-            aria-label="Faux Italic"
-            tooltip="Faux Italic"
+            aria-label={t('inspector.character.fauxItalic', 'Faux Italic')}
+            tooltip={t('inspector.character.fauxItalic', 'Faux Italic')}
             className={styles.stripCell}
             onClick={() =>
               setCharProp('fauxItalic', !isFauxItalic, (v) => {
@@ -906,8 +916,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={isAllCaps}
-            aria-label="All Caps"
-            tooltip="All Caps"
+            aria-label={t('inspector.character.allCaps', 'All Caps')}
+            tooltip={t('inspector.character.allCaps', 'All Caps')}
             className={styles.stripCell}
             onClick={() => toggleRangeFlag('allCaps', !isAllCaps, () => {
               const next = isAllCaps ? 'none' : 'uppercase';
@@ -921,8 +931,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={isSmallCaps}
-            aria-label="Small Caps"
-            tooltip="Small Caps"
+            aria-label={t('inspector.character.smallCaps', 'Small Caps')}
+            tooltip={t('inspector.character.smallCaps', 'Small Caps')}
             className={styles.stripCell}
             onClick={() => toggleRangeFlag('smallCaps', !isSmallCaps, () => {
               const next = isSmallCaps ? 'normal' : 'small-caps';
@@ -936,8 +946,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={isSuperscript}
-            aria-label="Superscript"
-            tooltip="Superscript"
+            aria-label={t('inspector.character.superscript', 'Superscript')}
+            tooltip={t('inspector.character.superscript', 'Superscript')}
             className={styles.stripCell}
             onClick={() => setRangeVerticalAlign(isSuperscript ? undefined : 'super', () => {
               const next = isSuperscript ? 'baseline' : 'super';
@@ -951,8 +961,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={isSubscript}
-            aria-label="Subscript"
-            tooltip="Subscript"
+            aria-label={t('inspector.character.subscript', 'Subscript')}
+            tooltip={t('inspector.character.subscript', 'Subscript')}
             className={styles.stripCell}
             onClick={() => setRangeVerticalAlign(isSubscript ? undefined : 'sub', () => {
               const next = isSubscript ? 'baseline' : 'sub';
@@ -967,8 +977,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             variant="ghost"
             active={isTateChuYoko}
             disabled={!ranged}
-            aria-label="Tate-Chu-Yoko"
-            tooltip={ranged ? 'Tate-Chu-Yoko' : 'Tate-Chu-Yoko (select characters in vertical type)'}
+            aria-label={t('inspector.character.tateChuYoko', 'Tate-Chu-Yoko')}
+            tooltip={ranged ? t('inspector.character.tateChuYoko', 'Tate-Chu-Yoko') : t('inspector.character.tateChuYokoHint', 'Tate-Chu-Yoko (select characters in vertical type)')}
             className={styles.stripCell}
             onClick={() => setCharProp('tateChuYoko', isTateChuYoko ? undefined : true, () => {})}
           >
@@ -982,13 +992,13 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
 
   // The seven alignment / justify buttons.
   const alignGroup = (
-        <div className={styles.strip} role="radiogroup" aria-label="Paragraph Alignment">
+        <div className={styles.strip} role="radiogroup" aria-label={t('inspector.character.paragraphAlignment', 'Paragraph Alignment')}>
           <IconButton
             size="sm"
             variant="ghost"
             active={currentAlign === 'left'}
-            aria-label="Left Align"
-            tooltip="Left Align"
+            aria-label={t('inspector.character.alignLeft', 'Left Align')}
+            tooltip={t('inspector.character.alignLeft', 'Left Align')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('left')}
           >
@@ -998,8 +1008,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'center'}
-            aria-label="Center Align"
-            tooltip="Center Align"
+            aria-label={t('inspector.character.alignCenter', 'Center Align')}
+            tooltip={t('inspector.character.alignCenter', 'Center Align')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('center')}
           >
@@ -1009,8 +1019,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'right'}
-            aria-label="Right Align"
-            tooltip="Right Align"
+            aria-label={t('inspector.character.alignRight', 'Right Align')}
+            tooltip={t('inspector.character.alignRight', 'Right Align')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('right')}
           >
@@ -1020,8 +1030,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'justify' || currentAlign === 'justify-left'}
-            aria-label="Justify Last Left"
-            tooltip="Justify Last Left"
+            aria-label={t('inspector.character.justifyLeft', 'Justify Last Left')}
+            tooltip={t('inspector.character.justifyLeft', 'Justify Last Left')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('justify-left')}
           >
@@ -1031,8 +1041,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'justify-center'}
-            aria-label="Justify Last Center"
-            tooltip="Justify Last Center"
+            aria-label={t('inspector.character.justifyCenter', 'Justify Last Center')}
+            tooltip={t('inspector.character.justifyCenter', 'Justify Last Center')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('justify-center')}
           >
@@ -1042,8 +1052,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'justify-right'}
-            aria-label="Justify Last Right"
-            tooltip="Justify Last Right"
+            aria-label={t('inspector.character.justifyRight', 'Justify Last Right')}
+            tooltip={t('inspector.character.justifyRight', 'Justify Last Right')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('justify-right')}
           >
@@ -1053,8 +1063,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             variant="ghost"
             active={currentAlign === 'justify-all'}
-            aria-label="Justify All Lines"
-            tooltip="Justify All Lines"
+            aria-label={t('inspector.character.justifyAll', 'Justify All Lines')}
+            tooltip={t('inspector.character.justifyAll', 'Justify All Lines')}
             className={styles.stripCell}
             onClick={() => handleAlignChange('justify-all')}
           >
@@ -1071,14 +1081,14 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             fullWidth
             className={styles.seg}
-            aria-label="Text Direction"
+            aria-label={t('inspector.character.textDirection', 'Text Direction')}
             value={currentDirection}
             onChange={handleDirectionChange}
             options={[
-              { value: 'ltr', label: 'Left to Right' },
-              { value: 'rtl', label: 'Right to Left' },
+              { value: 'ltr', label: t('inspector.character.ltr', 'Left to Right') },
+              { value: 'rtl', label: t('inspector.character.rtl', 'Right to Left') },
               // Each paragraph follows its first strong character (UAX #9 P2/P3).
-              { value: 'auto', label: 'Auto' },
+              { value: 'auto', label: t('inspector.character.auto', 'Auto') },
             ]}
           />
         </div>
@@ -1087,12 +1097,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             fullWidth
             className={styles.seg}
-            aria-label="Text Orientation"
+            aria-label={t('inspector.character.textOrientation', 'Text Orientation')}
             value={currentOrientation}
             onChange={handleOrientationChange}
             options={[
-              { value: 'horizontal', label: 'Horizontal' },
-              { value: 'vertical', label: 'Vertical' },
+              { value: 'horizontal', label: t('inspector.character.horizontal', 'Horizontal') },
+              { value: 'vertical', label: t('inspector.character.vertical', 'Vertical') },
             ]}
           />
         </div>
@@ -1103,22 +1113,22 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             size="sm"
             fullWidth
             className={styles.seg}
-            aria-label="Point Text Anchor"
+            aria-label={t('inspector.character.pointTextAnchor', 'Point Text Anchor')}
             value={currentTextAnchor}
             onChange={(v) => {
               if (hasTarget) setTextAnchor(v);
               else setFallbackTextAnchor(v);
             }}
             options={[
-              { value: 'alignment', label: 'Anchor at alignment' },
-              { value: 'center', label: 'Anchor at centre' },
+              { value: 'alignment', label: t('inspector.character.anchorAlignment', 'Anchor at alignment') },
+              { value: 'center', label: t('inspector.character.anchorCentre', 'Anchor at centre') },
             ]}
           />
         </div>
         {currentOrientation === 'vertical' && (
           <div className={styles.controlRow}>
             <Checkbox
-              label="Standard Vertical Roman Alignment"
+              label={t('inspector.character.verticalRoman', 'Standard Vertical Roman Alignment')}
               checked={currentRoman}
               onChange={(e) => handleRomanChange(e.target.checked)}
             />
@@ -1127,14 +1137,14 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
         {currentOrientation === 'vertical' && (
           <div className={styles.controlRow}>
             <Checkbox
-              label="Auto Tate-Chu-Yoko"
+              label={t('inspector.character.autoTcy', 'Auto Tate-Chu-Yoko')}
               checked={currentTcyAuto}
               onChange={(e) => handleTcyAutoChange(e.target.checked)}
             />
             {currentTcyAuto && (
               <Segmented
                 size="sm"
-                aria-label="Tate-Chu-Yoko Digits"
+                aria-label={t('inspector.character.tcyDigits', 'Tate-Chu-Yoko Digits')}
                 value={String(currentTcyDigits)}
                 onChange={handleTcyDigitsChange}
                 options={[
@@ -1151,41 +1161,44 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   );
 
   // Paragraph spacing & indents.
-  /** A typed px well — the paragraph's spacing and indents. */
+  /**
+   * A typed px well — the paragraph's spacing and indents. A ValueField, like
+   * Size / Leading / Tracking: a plain controlled `<input type="number">` wrote
+   * on EVERY keystroke and was re-rendered from the mirror between them, so
+   * typing "20" landed "2", then showed the field a value the next keystroke
+   * had not typed (2026-10-19: "the value does not change but the effect
+   * does"). The ValueField keeps a draft while you type and commits on
+   * Enter / blur, scrubs, and takes arrows and maths.
+   */
   const pxField = (label: string, title: string, ariaLabel: string, value: number, onChange: (v: number) => void): JSX.Element => (
           <div className={styles.field}>
             <span className={styles.fieldLabel} title={title}>{label}</span>
-            <input
-              type="number"
-              aria-label={ariaLabel}
-              className={styles.fieldInput}
-              value={value}
-              onChange={(e) => onChange(Number(e.target.value))}
-            />
-            <span className={styles.fieldUnit}>px</span>
+            <div className={styles.fieldValue}>
+              <ValueField aria-label={ariaLabel} value={value} step={1} precision={1} unit="px" onChange={onChange} />
+            </div>
           </div>
   );
   const spacingGrid = (
     <>
         <div className={styles.row}>
           {/* Paragraph Spacing (legacy: between every line) */}
-          {pxField('¶ Space', 'Extra space between every line (Paragraph Spacing)', 'Paragraph Spacing', currentSpacing, handleSpacingChange)}
-          {pxField('1st Line', 'First Line Indent (paragraph text; negative = hanging)', 'First Line Indent', currentFirstLineIndent, handleFirstLineIndentChange)}
+          {pxField(t('inspector.character.paraSpace', '¶ Space'), t('inspector.character.paraSpaceTitle', 'Extra space between every line (Paragraph Spacing)'), t('inspector.character.paragraphSpacing', 'Paragraph Spacing'), currentSpacing, handleSpacingChange)}
+          {pxField(t('inspector.character.firstLine', '1st Line'), t('inspector.character.firstLineTitle', 'First Line Indent (paragraph text; negative = hanging)'), t('inspector.character.firstLineIndent', 'First Line Indent'), currentFirstLineIndent, handleFirstLineIndentChange)}
         </div>
         <div className={styles.row}>
-          {pxField('Left', 'Indent left margin (paragraph text)', 'Left Indent', currentLeftIndent, handleLeftIndentChange)}
-          {pxField('Right', 'Indent right margin (paragraph text)', 'Right Indent', currentRightIndent, handleRightIndentChange)}
+          {pxField(t('inspector.character.left', 'Left'), t('inspector.character.leftIndentTitle', 'Indent left margin (paragraph text)'), t('inspector.character.leftIndent', 'Left Indent'), currentLeftIndent, handleLeftIndentChange)}
+          {pxField(t('inspector.character.right', 'Right'), t('inspector.character.rightIndentTitle', 'Indent right margin (paragraph text)'), t('inspector.character.rightIndent', 'Right Indent'), currentRightIndent, handleRightIndentChange)}
         </div>
         <div className={styles.row}>
-          {pxField('Before', 'Space before paragraph', 'Space Before', currentSpaceBefore, handleSpaceBeforeChange)}
-          {pxField('After', 'Space after paragraph', 'Space After', currentSpaceAfter, handleSpaceAfterChange)}
+          {pxField(t('inspector.character.before', 'Before'), t('inspector.character.spaceBeforeTitle', 'Space before paragraph'), t('inspector.character.spaceBefore', 'Space Before'), currentSpaceBefore, handleSpaceBeforeChange)}
+          {pxField(t('inspector.character.after', 'After'), t('inspector.character.spaceAfterTitle', 'Space after paragraph'), t('inspector.character.spaceAfter', 'Space After'), currentSpaceAfter, handleSpaceAfterChange)}
         </div>
     </>
   );
 
   // The preview line: AE / Illustrator's swatch pair (fill over stroke, the
   // swap arrow on hover, None as a red slash), the family, its face meta.
-  const weightLabel = WEIGHT_LABELS[Number(activeWeight)] ?? 'Regular';
+  const weightLabel = WEIGHT_LABELS[Number(activeWeight)] ?? t('inspector.character.regular', 'Regular');
   const isVariableFamily = fontFamilyInfo(activeFamily)?.variable === true;
   const toggleNone = (which: 'fill' | 'stroke'): void => {
     if (which === 'fill') {
@@ -1195,34 +1208,34 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
     else setFallbackNoStroke(!activeNoStroke);
   };
   const frontIsNone = frontPaint === 'fill' ? activeNoFill : activeNoStroke;
-  const noneLabel = frontPaint === 'fill' ? 'No Fill' : 'No Stroke';
+  const noneLabel = frontPaint === 'fill' ? t('inspector.character.noFill', 'No Fill') : t('inspector.character.noStroke', 'No Stroke');
   const swatchDeck = (
         <div className={styles.swatches}>
-          <div className={styles.sw} role="group" aria-label="Fill and Stroke">
+          <div className={styles.sw} role="group" aria-label={t('inspector.character.fillAndStroke', 'Fill and Stroke')}>
             <div
               className={styles.swFill}
-              title="Character Fill Color"
+              title={t('inspector.character.fillColor', 'Character Fill Color')}
               onPointerDownCapture={() => setFrontPaint('fill')}
             >
               <ColorPicker
                 value={activeFill}
                 onChange={handleFillChange}
                 compact
-                aria-label="Character Fill Color"
+                aria-label={t('inspector.character.fillColor', 'Character Fill Color')}
                 className={styles.swPicker}
               />
               {activeNoFill && <span className={styles.swNone} aria-hidden />}
             </div>
             <div
               className={styles.swStroke}
-              title="Character Stroke Color"
+              title={t('inspector.character.strokeColor', 'Character Stroke Color')}
               onPointerDownCapture={() => setFrontPaint('stroke')}
             >
               <ColorPicker
                 value={shownStroke}
                 onChange={handleStrokeChange}
                 compact
-                aria-label="Character Stroke Color"
+                aria-label={t('inspector.character.strokeColor', 'Character Stroke Color')}
                 className={styles.swPicker}
               />
               <span className={styles.swHole} aria-hidden />
@@ -1231,8 +1244,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             <IconButton
               size="sm"
               variant="ghost"
-              aria-label="Swap Fill and Stroke (Shift+X)"
-              tooltip="Swap Fill and Stroke (Shift+X)"
+              aria-label={t('inspector.character.swapFillStroke', 'Swap Fill and Stroke (Shift+X)')}
+              tooltip={t('inspector.character.swapFillStroke', 'Swap Fill and Stroke (Shift+X)')}
               className={styles.swSwap}
               onClick={handleSwapFillStroke}
             >
@@ -1244,7 +1257,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               variant="ghost"
               active={frontIsNone}
               aria-label={noneLabel}
-              tooltip={`${noneLabel} (the ${frontPaint} square is in front)`}
+              tooltip={frontPaint === 'fill'
+                ? t('inspector.character.noFillFront', 'No Fill (the fill square is in front)')
+                : t('inspector.character.noStrokeFront', 'No Stroke (the stroke square is in front)')}
               className={styles.swNoneToggle}
               onClick={() => toggleNone(frontPaint)}
             >
@@ -1254,9 +1269,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <div className={styles.fontline}>
             <span className={styles.fontlineName}>{activeFamily}</span>
             <span className={styles.fontlineMeta}>
-              {weightLabel} {activeWeight} · {activeItalic ? 'Italic' : 'Normal'}
-              {isFauxBold ? ' · Faux Bold' : ''}{isFauxItalic ? ' · Faux Italic' : ''}
-              {isVariableFamily ? ' · Variable' : ''}
+              {weightLabel} {activeWeight} · {activeItalic ? t('inspector.character.italic', 'Italic') : t('inspector.character.normal', 'Normal')}
+              {isFauxBold ? ` · ${t('inspector.character.fauxBold', 'Faux Bold')}` : ''}{isFauxItalic ? ` · ${t('inspector.character.fauxItalic', 'Faux Italic')}` : ''}
+              {isVariableFamily ? ` · ${t('inspector.character.variable', 'Variable')}` : ''}
             </span>
           </div>
         </div>
@@ -1272,23 +1287,25 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const strokeGrid = (
         <div className={`${styles.row} ${styles.rowThree}`}>
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Stroke Width">Stroke</span>
-            <input
-              type="number"
-              aria-label="Stroke Width"
-              min="0"
-              step="0.01"
-              className={styles.fieldInput}
-              value={shownStrokeWidthRounded}
-              onChange={(e) => { strokeWidthTyping.begin(); handleStrokeWidthChange(Math.max(0, Number(e.target.value))); }}
-              onBlur={strokeWidthTyping.onBlur}
-            />
-            <span className={styles.fieldUnit}>px</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.strokeWidth', 'Stroke Width')}>{t('inspector.character.stroke', 'Stroke')}</span>
+            <div className={styles.fieldValue}>
+              {/* A ValueField (see pxField): a draft while typing, one commit, a scrub gesture. */}
+              <ValueField
+                aria-label={t('inspector.character.strokeWidth', 'Stroke Width')}
+                value={shownStrokeWidthRounded}
+                min={0}
+                step={1}
+                precision={2}
+                unit="px"
+                onChange={(v) => handleStrokeWidthChange(Math.max(0, v))}
+                {...scrubOf(strokeWidthH)}
+              />
+            </div>
           </div>
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Line Join">Join</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.lineJoin', 'Line Join')}>{t('inspector.character.join', 'Join')}</span>
             <select
-              aria-label="Stroke Line Join"
+              aria-label={t('inspector.character.strokeLineJoin', 'Stroke Line Join')}
               className={styles.fieldSelect}
               value={activeLineJoin}
               onChange={(e) => {
@@ -1297,16 +1314,16 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                 else setFallbackLineJoin(v);
               }}
             >
-              {LINE_JOINS.map((j) => (
+              {lineJoins().map((j) => (
                 <option key={j.value} value={j.value}>{j.label}</option>
               ))}
             </select>
             <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
           </div>
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Fill and stroke paint order">Order</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.orderTitle', 'Fill and stroke paint order')}>{t('inspector.character.order', 'Order')}</span>
             <select
-              aria-label="Fill and Stroke Order"
+              aria-label={t('inspector.character.fillStrokeOrder', 'Fill and Stroke Order')}
               className={styles.fieldSelect}
               value={activeStrokeOrder}
               onChange={(e) => handleStrokeOrderChange(e.target.value as StrokeOrder)}
@@ -1332,10 +1349,10 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       : undefined;
   const trackingCell = (
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Tracking (VA), in 1/1000 em — After Effects' unit. Negative tightens display type, positive opens small text.">Tracking</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.trackingTitle', 'Tracking (VA), in 1/1000 em — After Effects\' unit. Negative tightens display type, positive opens small text.')}>{t('inspector.character.tracking', 'Tracking')}</span>
             <div className={styles.fieldValue}>
               <ValueField
-                aria-label="Tracking"
+                aria-label={t('inspector.character.tracking', 'Tracking')}
                 value={rangeTracking ?? activeTracking}
                 step={5}
                 precision={0}
@@ -1354,12 +1371,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <div className={styles.field}>
             <span
               className={styles.fieldLabel}
-              title="Kerning (V/A). Metrics uses the font's kerning pairs; Optical spaces each pair from the glyph shapes, ignoring the font's pairs. While editing text, the value applies between the two characters at the caret, in 1/1000 em, on top of either."
+              title={t('inspector.character.kerningTitle', 'Kerning (V/A). Metrics uses the font\'s kerning pairs; Optical spaces each pair from the glyph shapes, ignoring the font\'s pairs. While editing text, the value applies between the two characters at the caret, in 1/1000 em, on top of either.')}
             >
-              Kerning
+              {t('inspector.character.kerning', 'Kerning')}
             </span>
             <select
-              aria-label="Kerning Mode"
+              aria-label={t('inspector.character.kerningMode', 'Kerning Mode')}
               className={styles.fieldSelect}
               value={activeKerningMode}
               onChange={(e) => {
@@ -1368,8 +1385,8 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                 else setFallbackKerningMode(v);
               }}
             >
-              <option value="metrics">Metrics</option>
-              <option value="optical">Optical</option>
+              <option value="metrics">{t('inspector.character.metrics', 'Metrics')}</option>
+              <option value="optical">{t('inspector.character.optical', 'Optical')}</option>
             </select>
             <Icon name="chevron-down" size="sm" className={styles.fieldChevron} />
           </div>
@@ -1377,10 +1394,10 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const manualKerningRow = kernRange ? (
         <div className={`${styles.row} ${styles.rowOne}`}>
           <div className={styles.field}>
-            <span className={styles.fieldLabel} title="Kerning between the two characters at the caret, in 1/1000 em">Kern pair</span>
+            <span className={styles.fieldLabel} title={t('inspector.character.kernPairTitle', 'Kerning between the two characters at the caret, in 1/1000 em')}>{t('inspector.character.kernPair', 'Kern pair')}</span>
             <div className={styles.fieldValue}>
               <ValueField
-                aria-label="Manual Kerning"
+                aria-label={t('inspector.character.manualKerning', 'Manual Kerning')}
                 value={manualKerning}
                 mixed={kerningMixed}
                 step={5}
@@ -1405,17 +1422,20 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   ): JSX.Element => (
           <div className={`${styles.field}${extra.disabled ? ` ${styles.fieldOff}` : ''}`}>
             <span className={styles.fieldLabel} title={title}>{label}</span>
-            <input
-              type="number"
-              aria-label={ariaLabel}
-              className={styles.fieldInput}
-              value={value}
-              disabled={extra.disabled}
-              min={extra.min}
-              max={extra.max}
-              onChange={(e) => onChange(Number(e.target.value))}
-            />
-            <span className={styles.fieldUnit}>{unit}</span>
+            <div className={styles.fieldValue}>
+              {/* A ValueField (see pxField): a draft while typing, one commit on Enter / blur. */}
+              <ValueField
+                aria-label={ariaLabel}
+                value={value}
+                disabled={extra.disabled}
+                {...(extra.min !== undefined ? { min: Number(extra.min) } : {})}
+                {...(extra.max !== undefined ? { max: Number(extra.max) } : {})}
+                step={1}
+                precision={1}
+                unit={unit}
+                onChange={onChange}
+              />
+            </div>
           </div>
   );
 
@@ -1433,25 +1453,25 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           </div>
           {manualKerningRow}
           <div className={styles.row}>
-            {typedField('Scale ↕', 'Vertical Scale (IT)', 'Vertical Scale', shownVertScale, '%', (v) => handleRangeNumber('verticalScale', v, (val) => {
+            {typedField(t('inspector.character.scaleV', 'Scale ↕'), t('inspector.character.scaleVTitle', 'Vertical Scale (IT)'), t('inspector.character.verticalScale', 'Vertical Scale'), shownVertScale, '%', (v) => handleRangeNumber('verticalScale', v, (val) => {
               if (hasTarget) setVerticalScale(val);
               else setFallbackVertScale(val);
             }))}
-            {typedField('Scale ↔', 'Horizontal Scale (T-)', 'Horizontal Scale', shownHorizScale, '%', (v) => handleRangeNumber('horizontalScale', v, (val) => {
+            {typedField(t('inspector.character.scaleH', 'Scale ↔'), t('inspector.character.scaleHTitle', 'Horizontal Scale (T-)'), t('inspector.character.horizontalScale', 'Horizontal Scale'), shownHorizScale, '%', (v) => handleRangeNumber('horizontalScale', v, (val) => {
               if (hasTarget) setHorizontalScale(val);
               else setFallbackHorizScale(val);
             }))}
           </div>
           <div className={styles.row}>
-            {typedField('Baseline', 'Baseline Shift (A_)', 'Baseline Shift', shownBaselineShift, 'px', (v) => handleRangeNumber('baselineShift', v, (val) => {
+            {typedField(t('inspector.character.baseline', 'Baseline'), t('inspector.character.baselineTitle', 'Baseline Shift (A_)'), t('inspector.character.baselineShift', 'Baseline Shift'), shownBaselineShift, 'px', (v) => handleRangeNumber('baselineShift', v, (val) => {
               if (hasTarget) setBaselineShift(val);
               else setFallbackBaselineShift(val);
             }))}
             {/* Tsume — per range only (a selection's side bearings), as in AE */}
             {typedField(
-              'Tsume',
-              'Tsume: tighten the space around the selected characters (select characters in the text to apply)',
-              'Tsume',
+              t('inspector.character.tsume', 'Tsume'),
+              t('inspector.character.tsumeTitle', 'Tsume: tighten the space around the selected characters (select characters in the text to apply)'),
+              t('inspector.character.tsume', 'Tsume'),
               shownTsume,
               '%',
               (v) => handleRangeNumber('tsume', Math.max(0, Math.min(100, v)), () => {}),
@@ -1482,9 +1502,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
         const vAlign: BoxVerticalAlign =
           boxVerticalAlign === 'center' || boxVerticalAlign === 'bottom' ? boxVerticalAlign : 'top';
         const V_ALIGNS: ReadonlyArray<{ value: BoxVerticalAlign; label: string; icon: 'align-top' | 'align-middle' | 'align-bottom' }> = [
-          { value: 'top', label: 'Align Top in Box', icon: 'align-top' },
-          { value: 'center', label: 'Align Center in Box', icon: 'align-middle' },
-          { value: 'bottom', label: 'Align Bottom in Box', icon: 'align-bottom' },
+          { value: 'top', label: t('inspector.character.boxAlignTop', 'Align Top in Box'), icon: 'align-top' },
+          { value: 'center', label: t('inspector.character.boxAlignCenter', 'Align Center in Box'), icon: 'align-middle' },
+          { value: 'bottom', label: t('inspector.character.boxAlignBottom', 'Align Bottom in Box'), icon: 'align-bottom' },
         ];
         return (
           <>
@@ -1493,7 +1513,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                 size="sm"
                 fullWidth
                 className={styles.seg}
-                aria-label="Point or Paragraph Text"
+                aria-label={t('inspector.character.pointOrParagraph', 'Point or Paragraph Text')}
                 value={paraBox ? 'paragraph' : 'point'}
                 disabled={onPath}
                 onChange={(v) => {
@@ -1501,60 +1521,66 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                   else void convertToPointText([primary]);
                 }}
                 options={[
-                  { value: 'point', label: 'Point' },
-                  { value: 'paragraph', label: 'Paragraph' },
+                  { value: 'point', label: t('inspector.character.point', 'Point') },
+                  { value: 'paragraph', label: t('inspector.character.paragraph', 'Paragraph') },
                 ]}
               />
             </div>
             {onPath ? (
               <p className={styles.help} role="note">
-                Text on a path is point text — the paragraph box is ignored until the path is removed.
+                {t('inspector.character.onPathNote', 'Text on a path is point text — the paragraph box is ignored until the path is removed.')}
               </p>
             ) : null}
             {paraBox && (
               <>
                 <div className={styles.row}>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel} title="Box width — the text re-wraps">W</span>
-                    <input
-                      type="number"
-                      aria-label="Box Width"
-                      className={styles.fieldInput}
-                      value={typeof boxWidth === 'number' ? boxWidth : paraBox.boxWidth}
-                      onChange={(e) => setBoxWidth(Math.max(MIN_BOX_SIZE, Number(e.target.value)))}
-                    />
-                    <span className={styles.fieldUnit}>px</span>
+                    <span className={styles.fieldLabel} title={t('inspector.character.boxWidthTitle', 'Box width — the text re-wraps')}>{t('inspector.character.boxW', 'W')}</span>
+                    <div className={styles.fieldValue}>
+                      <ValueField
+                        aria-label={t('inspector.character.boxWidth', 'Box Width')}
+                        value={typeof boxWidth === 'number' ? boxWidth : paraBox.boxWidth}
+                        min={MIN_BOX_SIZE}
+                        step={1}
+                        precision={0}
+                        unit="px"
+                        onChange={(v) => setBoxWidth(Math.max(MIN_BOX_SIZE, v))}
+                      />
+                    </div>
                   </div>
                   <div className={`${styles.field}${fixed ? '' : ` ${styles.fieldOff}`}`}>
-                    <span className={styles.fieldLabel} title="Box height (Auto Height follows the text)">H</span>
-                    <input
-                      type="number"
-                      aria-label="Box Height"
-                      className={styles.fieldInput}
-                      disabled={!fixed}
-                      value={fixed
-                        ? (typeof boxHeight === 'number' ? boxHeight : paraBox.boxHeight)
-                        : Math.round(measuredBox?.contentHeight ?? 0)}
-                      onChange={(e) => setBoxHeight(Math.max(MIN_BOX_SIZE, Number(e.target.value)))}
-                    />
-                    <span className={styles.fieldUnit}>px</span>
+                    <span className={styles.fieldLabel} title={t('inspector.character.boxHeightTitle', 'Box height (Auto Height follows the text)')}>{t('inspector.character.boxH', 'H')}</span>
+                    <div className={styles.fieldValue}>
+                      <ValueField
+                        aria-label={t('inspector.character.boxHeight', 'Box Height')}
+                        disabled={!fixed}
+                        value={fixed
+                          ? (typeof boxHeight === 'number' ? boxHeight : paraBox.boxHeight)
+                          : Math.round(measuredBox?.contentHeight ?? 0)}
+                        min={MIN_BOX_SIZE}
+                        step={1}
+                        precision={0}
+                        unit="px"
+                        onChange={(v) => setBoxHeight(Math.max(MIN_BOX_SIZE, v))}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className={styles.controlRow}>
                   <Segmented
                     size="sm"
                     fullWidth
-                    aria-label="Box Auto-Size"
+                    aria-label={t('inspector.character.boxAutoSize', 'Box Auto-Size')}
                     value={autoSize}
                     onChange={(v) => { void setBoxAutoSize(primary, v); }}
                     options={[
-                      { value: 'off', label: 'Off' },
-                      { value: 'height', label: 'Auto Height' },
-                      { value: 'fit', label: 'Fit Text' },
+                      { value: 'off', label: t('inspector.character.off', 'Off') },
+                      { value: 'height', label: t('inspector.character.autoHeight', 'Auto Height') },
+                      { value: 'fit', label: t('inspector.character.fitText', 'Fit Text') },
                     ]}
                   />
                 </div>
-                <div className={styles.strip} role="radiogroup" aria-label="Vertical Alignment in Box">
+                <div className={styles.strip} role="radiogroup" aria-label={t('inspector.character.boxVerticalAlign', 'Vertical Alignment in Box')}>
                   {V_ALIGNS.map((o) => (
                     <IconButton
                       key={o.value}
@@ -1563,7 +1589,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                       active={fixed && vAlign === o.value}
                       disabled={!fixed}
                       aria-label={o.label}
-                      tooltip={fixed ? o.label : `${o.label} (needs a fixed box height)`}
+                      tooltip={fixed ? o.label : t('inspector.character.needsFixedHeight', '{label} (needs a fixed box height)', { label: o.label })}
                       className={styles.stripCell}
                       onClick={() => setBoxVerticalAlign(o.value)}
                     >
@@ -1571,7 +1597,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
                     </IconButton>
                   ))}
                   {measuredBox?.overflow ? (
-                    <span className={styles.statusText} title="Some text does not fit the box" role="status">Overflow</span>
+                    <span className={styles.statusText} title={t('inspector.character.overflowTitle', 'Some text does not fit the box')} role="status">{t('inspector.character.overflow', 'Overflow')}</span>
                   ) : null}
                 </div>
               </>
@@ -1584,7 +1610,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
     const rows = renderTextBoxRows();
     return rows && (
       <div className={styles.sectionCard}>
-        <div className={styles.sectionHeader}>Text Box</div>
+        <div className={styles.sectionHeader}>{t('inspector.character.textBox', 'Text Box')}</div>
         {rows}
       </div>
     );
@@ -1596,7 +1622,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const pathSelect = (
             <select
               value={activePathId}
-              aria-label="Mask Path"
+              aria-label={t('inspector.character.maskPath', 'Mask Path')}
               onChange={(e) => {
                 if (!primary) return;
                 // AE's Path Options ▸ Path: '' detaches (G1 `text/pathOptions/path`).
@@ -1604,9 +1630,9 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               }}
               className={`${styles.fontSelect} ${styles.pathSelect}`}
             >
-              <option value="">None</option>
+              <option value="">{t('inspector.character.none', 'None')}</option>
               {maskPaths.map((p, i) => (
-                <option key={p.id} value={p.id}>{`Mask ${i + 1}`}</option>
+                <option key={p.id} value={p.id}>{t('inspector.character.maskN', 'Mask {n}', { n: i + 1 })}</option>
               ))}
             </select>
   );
@@ -1615,7 +1641,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   const pathCard = hasPathOptions && (
         <div className={styles.sectionCard}>
           <div className={styles.controlRow}>
-            <span className={styles.sectionHeader}>Mask Path</span>
+            <span className={styles.sectionHeader}>{t('inspector.character.maskPath', 'Mask Path')}</span>
             {pathSelect}
           </div>
           {pathOptions}
@@ -1625,12 +1651,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   // Quick typography presets.
   const presetGrid = (
         <div className={styles.presetGrid}>
-          {PRESETS.map((p) => (
+          {presets().map((p) => (
             <button
               key={p.label}
               type="button"
               className={styles.presetChip}
-              title={`${p.label} — ${p.fontSize}px / ${p.fontWeight}`}
+              title={t('inspector.character.presetTitle', '{label} — {size}px / {weight}', { label: p.label, size: p.fontSize, weight: p.fontWeight })}
               onClick={() => applyPreset(p)}
             >
               {p.label}
@@ -1640,19 +1666,25 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   );
   const presetsCard = (
       <div className={styles.sectionCard}>
-        <div className={styles.sectionHeader}>Presets</div>
+        <div className={styles.sectionHeader}>{t('inspector.character.presets', 'Presets')}</div>
         {presetGrid}
       </div>
   );
 
   // The group headers' dim state readouts ("Outfit · Extra Bold", "Center · LTR"):
   // a closed group still tells what it holds.
-  const characterSummary = `${activeFamily} · ${weightLabel}${activeItalic ? ' Italic' : ''}`;
+  const characterSummary = activeItalic
+    ? t('inspector.character.summaryItalic', '{family} · {weight} Italic', { family: activeFamily, weight: weightLabel })
+    : `${activeFamily} · ${weightLabel}`;
   const ALIGN_SUMMARY: Readonly<Record<string, string>> = {
-    left: 'Left', center: 'Center', right: 'Right', justify: 'Justify', 'justify-left': 'Justify',
-    'justify-center': 'Justify center', 'justify-right': 'Justify right', 'justify-all': 'Justify all',
+    left: t('inspector.character.left', 'Left'), center: t('inspector.character.center', 'Center'), right: t('inspector.character.right', 'Right'),
+    justify: t('inspector.character.justify', 'Justify'), 'justify-left': t('inspector.character.justify', 'Justify'),
+    'justify-center': t('inspector.character.justifyCenterSummary', 'Justify center'), 'justify-right': t('inspector.character.justifyRightSummary', 'Justify right'),
+    'justify-all': t('inspector.character.justifyAllSummary', 'Justify all'),
   };
-  const DIRECTION_SUMMARY: Readonly<Record<'ltr' | 'rtl' | 'auto', string>> = { ltr: 'LTR', rtl: 'RTL', auto: 'Auto' };
+  const DIRECTION_SUMMARY: Readonly<Record<'ltr' | 'rtl' | 'auto', string>> = {
+    ltr: t('inspector.character.ltrShort', 'LTR'), rtl: t('inspector.character.rtlShort', 'RTL'), auto: t('inspector.character.auto', 'Auto'),
+  };
   const paragraphSummary = `${ALIGN_SUMMARY[currentAlign] ?? currentAlign} · ${DIRECTION_SUMMARY[currentDirection]}`;
 
   if (variant === 'section') {
@@ -1668,7 +1700,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
               a row, the stroke row, and the faux-style strip. */}
           <TwirlGroup
             prefKey="text.character"
-            label="Character"
+            label={t('inspector.character.character', 'Character')}
             defaultOpen
             trailing={<span className={styles.groupSummary}>{characterSummary}</span>}
           >
@@ -1684,7 +1716,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           {/* AE's Paragraph panel: alignment, then indents and spacing. */}
           <TwirlGroup
             prefKey="text.paragraph"
-            label="Paragraph"
+            label={t('inspector.character.paragraph', 'Paragraph')}
             defaultOpen
             trailing={<span className={styles.groupSummary}>{paragraphSummary}</span>}
           >
@@ -1701,14 +1733,14 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
             onClick={() => setMoreOpen((v) => !v)}
           >
             <Icon name={moreOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
-            <span>More text options</span>
+            <span>{t('inspector.character.moreOptions', 'More text options')}</span>
           </button>
           {moreOpen && (
             <div className={styles.moreBody}>
               {contentCard}
               {(fillRows || strokeRows || openType) && (
                 <div className={styles.sectionCard}>
-                  <div className={styles.sectionHeader}>Gradient, stroke stack and OpenType</div>
+                  <div className={styles.sectionHeader}>{t('inspector.character.gradientStrokeOpenType', 'Gradient, stroke stack and OpenType')}</div>
                   {fillRows}
                   {strokeRows}
                   {openType}
@@ -1758,7 +1790,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   if (hasTarget) {
     characterGroups.push({
       id: 'character.sourceText',
-      title: 'Source Text',
+      title: t('inspector.character.sourceText', 'Source Text'),
       defaultOpen: true,
       content: (
         <>
@@ -1771,7 +1803,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   if (hasTarget && isText) {
     characterGroups.push({
       id: 'character.textBox',
-      title: 'Text Box',
+      title: t('inspector.character.textBox', 'Text Box'),
       defaultOpen: true,
       // It measures the text: only while it is open.
       mountOnOpen: true,
@@ -1781,12 +1813,12 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
   if (hasPathOptions) {
     characterGroups.push({
       id: 'character.pathOptions',
-      title: 'Path Options',
+      title: t('inspector.character.pathOptions', 'Path Options'),
       defaultOpen: true,
       content: (
         <>
           <div className={styles.controlRow}>
-            <span className={styles.rowLabel}>Path</span>
+            <span className={styles.rowLabel}>{t('inspector.character.path', 'Path')}</span>
             {pathSelect}
           </div>
           {pathOptions}
@@ -1794,7 +1826,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
       ),
     });
   }
-  characterGroups.push({ id: 'character.presets', title: 'Presets', defaultOpen: true, content: presetGrid });
+  characterGroups.push({ id: 'character.presets', title: t('inspector.character.presets', 'Presets'), defaultOpen: true, content: presetGrid });
 
   return (
     <TooltipProvider>
@@ -1806,7 +1838,7 @@ export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: Tex
           <SectionMenuSlot registry={presetMenu} slotKey="text-presets" order={0}>
             <SectionPresetMenu
               sectionId="text"
-              label="Text style presets"
+              label={t('inspector.character.textStylePresets', 'Text style presets')}
               // B4: the props the layer STORES (PropertyInfo.stored), from the mirror at call time.
               capture={() => (primary ? mirrorTextPresetCapture(documentMirror(), primary) : {})}
               apply={(values) => textPresetEdit(selected, values)}

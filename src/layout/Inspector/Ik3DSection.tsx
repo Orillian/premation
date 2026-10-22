@@ -27,6 +27,7 @@ import { Button } from '@components/Button';
 import { ValueField } from '@components/ValueField';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { PickWhip } from '@components/PickWhip';
+import { t } from '@core/i18n';
 import { useUIStore } from '@stores/uiStore';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
@@ -50,18 +51,22 @@ async function bakeChain(chain: string[], target: string, opts: IkOptions): Prom
   const settings = documentMirror().comp(activeCompIdNow() ?? '')?.settings;
   const frames = await bakeIk3DEdit(chain, target, 0, Math.max(0, settingsDurationSeconds(settings)), opts);
   if (frames === 0) {
-    notify('warning', 'Could not bake — chain or target failed to resolve.');
+    notify('warning', t('inspector.ik3d.bakeFailed', 'Could not bake — chain or target failed to resolve.'));
     return;
   }
   const joints = chain.length - 1;
-  notify('success', `Baked IK: ${frames} frames of rotation keyframes on ${joints} joint${joints === 1 ? '' : 's'}.`);
+  notify('success', joints === 1
+    ? t('inspector.ik3d.bakedOne', 'Baked IK: {frames} frames of rotation keyframes on {n} joint.', { frames, n: joints })
+    : t('inspector.ik3d.bakedOther', 'Baked IK: {frames} frames of rotation keyframes on {n} joints.', { frames, n: joints }));
 }
 
 /** Pose the chain at `target` once, at the playhead: one engine command, one undo entry. */
 async function poseAt(chain: string[], target: string, opts: IkOptions): Promise<void> {
   const ok = await poseIk3DEdit(chain, target, getTime(), opts);
   const joints = chain.length - 1;
-  if (ok) useUIStore.getState().notify({ level: 'success', message: `Posed ${joints} joint${joints === 1 ? '' : 's'} toward the target.`, durationMs: 4500 });
+  if (ok) useUIStore.getState().notify({ level: 'success', message: joints === 1
+    ? t('inspector.ik3d.posedOne', 'Posed {n} joint toward the target.', { n: joints })
+    : t('inspector.ik3d.posedOther', 'Posed {n} joints toward the target.', { n: joints }), durationMs: 4500 });
 }
 
 /** True when this layer can be the tip of a solvable 3D chain. */
@@ -96,7 +101,7 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
   const inChain = new Set(chain);
   const options = mirrorEligibleParents(m, nodeId).filter((o) => !inChain.has(o.id));
   const target = targetId && m.layer(targetId) ? targetId : null;
-  const targetName = target ? options.find((o) => o.id === target)?.name ?? 'Target' : 'None';
+  const targetName = target ? options.find((o) => o.id === target)?.name ?? t('inspector.ik3d.target', 'Target') : t('inspector.ik3d.none', 'None');
 
   const opts: IkOptions = {
     iterations: Math.max(1, Math.round(iterations)),
@@ -115,23 +120,25 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
   return (
     <div className={s.stack}>
       <div className={s.row}>
-        <span className={s.label}>Chain</span>
+        <span className={s.label}>{t('inspector.ik3d.chain', 'Chain')}</span>
         <span className={s.chain}>
-          {ancestors} 3D parent{ancestors === 1 ? '' : 's'} ({chain.length} joints)
+          {ancestors === 1
+            ? t('inspector.ik3d.chainSummaryOne', '{n} 3D parent ({joints} joints)', { n: ancestors, joints: chain.length })
+            : t('inspector.ik3d.chainSummaryOther', '{n} 3D parents ({joints} joints)', { n: ancestors, joints: chain.length })}
         </span>
       </div>
 
       <div className={s.row}>
-        <span className={s.label}>Target</span>
+        <span className={s.label}>{t('inspector.ik3d.target', 'Target')}</span>
         <PickWhip
-          label="IK target pick-whip — drag onto the layer the chain should reach for"
-          accept={(t) => options.some((o) => o.id === t.nodeId)}
-          onPick={(t) => setTargetId(t.nodeId)}
+          label={t('inspector.ik3d.pickWhip', 'IK target pick-whip — drag onto the layer the chain should reach for')}
+          accept={(pick) => options.some((o) => o.id === pick.nodeId)}
+          onPick={(pick) => setTargetId(pick.nodeId)}
         />
         <Dropdown
           placement="left-start"
           trigger={
-            <button type="button" className={s.trigger} aria-label="IK target layer">
+            <button type="button" className={s.trigger} aria-label={t('inspector.ik3d.targetLayer', 'IK target layer')}>
               <span className={s.triggerValue}>{targetName}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
@@ -140,20 +147,20 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
         />
       </div>
 
-      <span className={s.groupHeader}>Solver</span>
+      <span className={s.groupHeader}>{t('inspector.ik3d.solver', 'Solver')}</span>
       <div className={s.row}>
-        <span className={s.label}>Iterations</span>
+        <span className={s.label}>{t('inspector.ik3d.iterations', 'Iterations')}</span>
         <ValueField
           value={iterations}
           min={1}
           max={64}
           step={1}
           onChange={setIterations}
-          aria-label="IK iterations"
+          aria-label={t('inspector.ik3d.iterationsAria', 'IK iterations')}
         />
       </div>
       <div className={s.row}>
-        <span className={s.label}>Damping</span>
+        <span className={s.label}>{t('inspector.ik3d.damping', 'Damping')}</span>
         <ValueField
           value={dampingDeg}
           min={1}
@@ -161,11 +168,11 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
           step={1}
           unit="°"
           onChange={setDampingDeg}
-          aria-label="IK damping"
+          aria-label={t('inspector.ik3d.dampingAria', 'IK damping')}
         />
       </div>
       <div className={s.row}>
-        <span className={s.label}>Tolerance</span>
+        <span className={s.label}>{t('inspector.ik3d.tolerance', 'Tolerance')}</span>
         <ValueField
           value={tolerance}
           min={0}
@@ -174,7 +181,7 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
           precision={1}
           unit="px"
           onChange={setTolerance}
-          aria-label="IK tolerance"
+          aria-label={t('inspector.ik3d.toleranceAria', 'IK tolerance')}
         />
       </div>
 
@@ -184,25 +191,25 @@ export function Ik3DSection({ nodeId }: { nodeId: string }): JSX.Element | null 
           variant="secondary"
           disabled={!target}
           onClick={() => { if (target) void poseAt(chain, target, opts); }}
-          title="Solve once at the playhead and write the pose onto the joints"
+          title={t('inspector.ik3d.poseHint', 'Solve once at the playhead and write the pose onto the joints')}
         >
-          Pose at target
+          {t('inspector.ik3d.pose', 'Pose at target')}
         </Button>
         <Button
           size="sm"
           variant="secondary"
           disabled={!target}
           onClick={() => { if (target) void bakeChain(chain, target, opts); }}
-          title="Solve every frame of the composition and bake rotation keyframes onto the joints"
+          title={t('inspector.ik3d.bakeHint', 'Solve every frame of the composition and bake rotation keyframes onto the joints')}
         >
-          Bake to target
+          {t('inspector.ik3d.bake', 'Bake to target')}
         </Button>
       </div>
 
       <p className={s.hint}>
         {target
-          ? 'Bake writes real rotation keyframes on every joint but the tip — the graph editor and The Smoother work on them like any other animation.'
-          : 'Pick the layer the chain should reach for. Damping is the largest turn one joint takes per solver step.'}
+          ? t('inspector.ik3d.bakeHelp', 'Bake writes real rotation keyframes on every joint but the tip — the graph editor and The Smoother work on them like any other animation.')
+          : t('inspector.ik3d.pickHelp', 'Pick the layer the chain should reach for. Damping is the largest turn one joint takes per solver step.')}
       </p>
     </div>
   );

@@ -35,6 +35,7 @@ import { useMirrorKeys, useRetainTree } from '@hooks/useMirror';
 import { mirrorStrokeAt, mirrorStrokes } from '@core/mirror/paintFields';
 import { isTrackAnimated } from '@core/mirror/selection';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { isLayer } from '@core/mirror/docFacts';
 import { convertFill, type FillType } from '@core/paint/fill';
 import {
@@ -163,12 +164,24 @@ function strokeAccess(index: number, key: string, read: (s: Stroke, nodeId: stri
 }
 
 /** How a closed stroke row names its alignment. */
-const ALIGN_LABEL: Record<StrokeAlign, string> = { center: 'Center', inside: 'Inside', outside: 'Outside' };
+function alignLabel(align: StrokeAlign): string {
+  return align === 'inside'
+    ? t('inspector.stroke.alignInside', 'Inside')
+    : align === 'outside'
+      ? t('inspector.stroke.alignOutside', 'Outside')
+      : t('inspector.stroke.alignCenter', 'Center');
+}
 
 /** A dash slot's AE label: Dash, Gap, Dash 2, Gap 2, … */
 function dashLabel(k: number): string {
   const pair = Math.floor(k / 2) + 1;
-  return `${k % 2 === 0 ? 'Dash' : 'Gap'}${pair > 1 ? ` ${pair}` : ''}`;
+  const dash = k % 2 === 0;
+  if (pair > 1) {
+    return dash
+      ? t('inspector.stroke.dashN', 'Dash {n}', { n: pair })
+      : t('inspector.stroke.gapN', 'Gap {n}', { n: pair });
+  }
+  return dash ? t('inspector.stroke.dash', 'Dash') : t('inspector.stroke.gap', 'Gap');
 }
 
 function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number; stroke: Stroke }): JSX.Element {
@@ -183,6 +196,8 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
   const armedTarget = useGradientEditStore((s) => s.target);
   const armedIndex = useGradientEditStore((s) => s.fillIndex);
   const gradientArmed = armedId === nodeId && armedTarget === 'shapeStroke' && armedIndex === index;
+  const n = index + 1;
+  const strokeName = t('inspector.stroke.nth', 'Stroke {n}', { n });
   const update = (patch: Partial<Stroke>, label = `Stroke ${index + 1}`): void => { void strokeEdit(label, nodeId, index, patch); };
   /** The gradient point / highlight rows: a static write sends the whole point set the stroke shows. */
   const gradientPoint = (field: keyof StrokeGradientGeometry, radialOnly: boolean) =>
@@ -197,8 +212,8 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
     if (!s || s.dash.length >= MAX_STROKE_DASH_ENTRIES) return;
     // A new Dash copies the previous dash, a new Gap the dash it follows, so the
     // pattern changes shape only when the new value is edited.
-    const n = s.dash.length;
-    const seed = n === 0 ? 10 : n % 2 === 0 ? (s.dash[n - 2] ?? 10) : (s.dash[n - 1] ?? 10);
+    const count = s.dash.length;
+    const seed = count === 0 ? 10 : count % 2 === 0 ? (s.dash[count - 2] ?? 10) : (s.dash[count - 1] ?? 10);
     update({ dash: [...s.dash, seed] }, 'Add Dash');
   };
   const removeDash = (): void => {
@@ -212,67 +227,67 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <PaintOpRows
-        label={`Stroke ${index + 1}`}
+        label={strokeName}
         value={{ composite: stroke.composite, blendMode: stroke.blendMode }}
-        onChange={(next) => update({ composite: next.composite, blendMode: next.blendMode }, `Stroke ${index + 1} Compositing`)}
+        onChange={(next) => update({ composite: next.composite, blendMode: next.blendMode }, `Stroke ${n} Compositing`)}
       />
 
-      <AnimatablePaintRow nodeId={nodeId} prop={path('width')} label="Width" access={acc('width', (s) => s.width)} />
+      <AnimatablePaintRow nodeId={nodeId} prop={path('width')} label={t('inspector.stroke.width', 'Width')} access={acc('width', (s) => s.width)} />
 
       <ColorKfRow
         nodeId={nodeId}
         propPrefix={path('color')}
-        label="Color"
+        label={t('inspector.stroke.color', 'Color')}
         value={stroke.color}
-        setValue={(color) => update({ color }, `Stroke ${index + 1} Color`)}
+        setValue={(color) => update({ color }, `Stroke ${n} Color`)}
       />
 
       {/* A real opacity track since 2026-09-15 — it multiplies the colour's own
           alpha, so an alpha keyed through the colour row still reads. */}
-      <AnimatablePaintRow nodeId={nodeId} prop={path('opacity')} label="Opacity" access={acc('opacity', (s) => s.opacity)} />
+      <AnimatablePaintRow nodeId={nodeId} prop={path('opacity')} label={t('inspector.stroke.opacity', 'Opacity')} access={acc('opacity', (s) => s.opacity)} />
 
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Align</span>
+        <span className={styles.popoverLabel}>{t('inspector.stroke.align', 'Align')}</span>
         <select
           value={stroke.align}
-          onChange={(e) => update({ align: e.target.value as StrokeAlign }, `Stroke ${index + 1} Align`)}
+          onChange={(e) => update({ align: e.target.value as StrokeAlign }, `Stroke ${n} Align`)}
           className={styles.select}
           style={{ width: 100 }}
-          aria-label={`Stroke ${index + 1} align`}
+          aria-label={t('inspector.stroke.nthAlignAria', 'Stroke {n} align', { n })}
         >
-          <option value="center">Center</option>
-          <option value="inside">Inside</option>
-          <option value="outside">Outside</option>
+          <option value="center">{t('inspector.stroke.alignCenter', 'Center')}</option>
+          <option value="inside">{t('inspector.stroke.alignInside', 'Inside')}</option>
+          <option value="outside">{t('inspector.stroke.alignOutside', 'Outside')}</option>
         </select>
       </div>
 
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Cap</span>
+        <span className={styles.popoverLabel}>{t('inspector.stroke.cap', 'Cap')}</span>
         <select
           value={stroke.cap}
-          onChange={(e) => update({ cap: e.target.value as StrokeCap }, `Stroke ${index + 1} Cap`)}
+          onChange={(e) => update({ cap: e.target.value as StrokeCap }, `Stroke ${n} Cap`)}
           className={styles.select}
           style={{ width: 100 }}
-          aria-label={`Stroke ${index + 1} cap`}
+          aria-label={t('inspector.stroke.nthCapAria', 'Stroke {n} cap', { n })}
         >
-          <option value="butt">Butt</option>
-          <option value="round">Round</option>
-          <option value="square">Projecting</option>
+          <option value="butt">{t('inspector.stroke.capButt', 'Butt')}</option>
+          <option value="round">{t('inspector.stroke.round', 'Round')}</option>
+          <option value="square">{t('inspector.stroke.capProjecting', 'Projecting')}</option>
         </select>
       </div>
 
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Join</span>
+        <span className={styles.popoverLabel}>{t('inspector.stroke.join', 'Join')}</span>
         <select
           value={stroke.join}
-          onChange={(e) => update({ join: e.target.value as StrokeJoin }, `Stroke ${index + 1} Join`)}
+          onChange={(e) => update({ join: e.target.value as StrokeJoin }, `Stroke ${n} Join`)}
           className={styles.select}
           style={{ width: 100 }}
-          aria-label={`Stroke ${index + 1} join`}
+          aria-label={t('inspector.stroke.nthJoinAria', 'Stroke {n} join', { n })}
         >
-          <option value="miter">Miter</option>
-          <option value="round">Round</option>
-          <option value="bevel">Bevel</option>
+          <option value="miter">{t('inspector.stroke.joinMiter', 'Miter')}</option>
+          <option value="round">{t('inspector.stroke.round', 'Round')}</option>
+          <option value="bevel">{t('inspector.stroke.joinBevel', 'Bevel')}</option>
         </select>
       </div>
 
@@ -281,7 +296,7 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
           4 is the Canvas2D default the rasterizer has always run with. */}
       {stroke.join === 'miter' && (
         <AnimatablePaintRow
-          nodeId={nodeId} prop={path('miterLimit')} label="Miter Limit" precision={1}
+          nodeId={nodeId} prop={path('miterLimit')} label={t('inspector.stroke.miterLimit', 'Miter Limit')} precision={1}
           access={acc('miterLimit', (s) => s.miterLimit ?? 4)}
         />
       )}
@@ -289,9 +304,9 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
       {/* ── Dashes: AE's "+" / "−" on the group row, up to three Dash/Gap pairs ── */}
       <TwirlGroup
         prefKey={`contents.stroke.${index}.dashes`}
-        label="Dashes"
+        label={t('inspector.stroke.dashes', 'Dashes')}
         defaultOpen={stroke.dash.length > 0}
-        summary={stroke.dash.length > 0 ? stroke.dash.map((d) => Math.round(d * 10) / 10).join(', ') : 'none'}
+        summary={stroke.dash.length > 0 ? stroke.dash.map((d) => Math.round(d * 10) / 10).join(', ') : t('inspector.stroke.none', 'none')}
         trailing={(
           <>
             <button
@@ -299,8 +314,8 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
               className={effStyles.addChip}
               onClick={addDash}
               disabled={stroke.dash.length >= MAX_STROKE_DASH_ENTRIES}
-              aria-label={`Add dash or gap to stroke ${index + 1}`}
-              title="Add a Dash (then a Gap) — up to three pairs"
+              aria-label={t('inspector.stroke.addDashAria', 'Add dash or gap to stroke {n}', { n })}
+              title={t('inspector.stroke.addDashHint', 'Add a Dash (then a Gap) — up to three pairs')}
             >
               <Icon name="plus" size="sm" />
             </button>
@@ -309,8 +324,8 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
               className={effStyles.addChip}
               onClick={removeDash}
               disabled={stroke.dash.length === 0}
-              aria-label={`Remove last dash or gap from stroke ${index + 1}`}
-              title="Remove the last Dash or Gap"
+              aria-label={t('inspector.stroke.removeDashAria', 'Remove last dash or gap from stroke {n}', { n })}
+              title={t('inspector.stroke.removeDashHint', 'Remove the last Dash or Gap')}
             >
               <Icon name="minus" size="sm" />
             </button>
@@ -330,7 +345,7 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
       {/* Offset is only meaningful against a pattern, so it appears with one. */}
       {stroke.dash.length > 0 && (
         <AnimatablePaintRow
-          nodeId={nodeId} prop={path('dashOffset')} label="Dash Offset"
+          nodeId={nodeId} prop={path('dashOffset')} label={t('inspector.stroke.dashOffset', 'Dash Offset')}
           access={acc('dashOffset', (s) => s.dashOffset ?? 0)}
         />
       )}
@@ -344,64 +359,64 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
           whole stack (it may have to seed the ramp, see taperPatch). */}
       <TwirlGroup
         prefKey={`contents.stroke.${index}.taper`}
-        label="Taper"
+        label={t('inspector.stroke.taper', 'Taper')}
         defaultOpen={hasTaper}
         summary={hasTaper
           ? `${Math.round((stroke.taper?.startWidth ?? 1) * 100)}% → ${Math.round((stroke.taper?.endWidth ?? 1) * 100)}%`
-          : 'off'}
+          : t('inspector.stroke.off', 'off')}
       >
       <AnimatablePaintRow
-        nodeId={nodeId} prop={path('taperStartWidth')} label="Taper Start"
+        nodeId={nodeId} prop={path('taperStartWidth')} label={t('inspector.stroke.taperStart', 'Taper Start')}
         access={acc('taperStartWidth', (s) => s.taper?.startWidth ?? 1)}
         staticCommands={taperCommands(index, (v) => ({ startWidth: v }))}
       />
       <AnimatablePaintRow
-        nodeId={nodeId} prop={path('taperEndWidth')} label="Taper End"
+        nodeId={nodeId} prop={path('taperEndWidth')} label={t('inspector.stroke.taperEnd', 'Taper End')}
         access={acc('taperEndWidth', (s) => s.taper?.endWidth ?? 1)}
         staticCommands={taperCommands(index, (v) => ({ endWidth: v }))}
       />
       {hasTaper && (
         <>
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>Length Units</span>
+            <span className={styles.popoverLabel}>{t('inspector.stroke.lengthUnits', 'Length Units')}</span>
             <select
               className={styles.select}
               style={{ width: 100 }}
               value={stroke.taper?.lengthUnits ?? 'percent'}
-              aria-label={`Stroke ${index + 1} taper length units`}
+              aria-label={t('inspector.stroke.taperUnitsAria', 'Stroke {n} taper length units', { n })}
               onChange={(e) => {
-                const t = stroke.taper;
-                if (!t) return;
+                const taper = stroke.taper;
+                if (!taper) return;
                 const toPx = e.target.value === 'pixels';
-                if (toPx === (t.lengthUnits === 'pixels')) return;
+                if (toPx === (taper.lengthUnits === 'pixels')) return;
                 const conv = (v: number): number => (toPx ? v * 100 : Math.min(1, v / 100));
                 update(taperPatch(nodeId, index, {
-                  startLength: conv(t.startLength), endLength: conv(t.endLength),
+                  startLength: conv(taper.startLength), endLength: conv(taper.endLength),
                   lengthUnits: toPx ? 'pixels' : undefined,
                 }), 'Taper Length Units');
               }}
             >
-              <option value="percent">Percentage</option>
-              <option value="pixels">Pixels</option>
+              <option value="percent">{t('inspector.stroke.percentage', 'Percentage')}</option>
+              <option value="pixels">{t('inspector.stroke.pixels', 'Pixels')}</option>
             </select>
           </div>
           <AnimatablePaintRow
-            nodeId={nodeId} prop={path('taperStartLength')} label="Start Length"
+            nodeId={nodeId} prop={path('taperStartLength')} label={t('inspector.stroke.startLength', 'Start Length')}
             access={acc('taperStartLength', (s) => s.taper?.startLength ?? 0)}
             staticCommands={taperCommands(index, (v) => ({ startLength: v }))}
           />
           <AnimatablePaintRow
-            nodeId={nodeId} prop={path('taperEndLength')} label="End Length"
+            nodeId={nodeId} prop={path('taperEndLength')} label={t('inspector.stroke.endLength', 'End Length')}
             access={acc('taperEndLength', (s) => s.taper?.endLength ?? 0)}
             staticCommands={taperCommands(index, (v) => ({ endLength: v }))}
           />
           <AnimatablePaintRow
-            nodeId={nodeId} prop={path('taperStartEase')} label="Start Ease"
+            nodeId={nodeId} prop={path('taperStartEase')} label={t('inspector.stroke.startEase', 'Start Ease')}
             access={acc('taperStartEase', (s) => s.taper?.startEase ?? 0)}
             staticCommands={taperCommands(index, (v) => ({ startEase: v }))}
           />
           <AnimatablePaintRow
-            nodeId={nodeId} prop={path('taperEndEase')} label="End Ease"
+            nodeId={nodeId} prop={path('taperEndEase')} label={t('inspector.stroke.endEase', 'End Ease')}
             access={acc('taperEndEase', (s) => s.taper?.endEase ?? 0)}
             staticCommands={taperCommands(index, (v) => ({ endEase: v }))}
           />
@@ -412,12 +427,12 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
       {/* ── Wave ── */}
       <TwirlGroup
         prefKey={`contents.stroke.${index}.wave`}
-        label="Wave"
+        label={t('inspector.stroke.wave', 'Wave')}
         defaultOpen={hasWave}
-        summary={hasWave ? `${Math.round((stroke.wave?.amount ?? 0) * 10) / 10}` : 'off'}
+        summary={hasWave ? `${Math.round((stroke.wave?.amount ?? 0) * 10) / 10}` : t('inspector.stroke.off', 'off')}
       >
       <AnimatablePaintRow
-        nodeId={nodeId} prop={path('waveAmount')} label="Wave Amount"
+        nodeId={nodeId} prop={path('waveAmount')} label={t('inspector.stroke.waveAmount', 'Wave Amount')}
         access={acc('waveAmount', (s) => s.wave?.amount ?? 0)}
         staticCommands={waveCommands(index, (v) => ({ amount: v }))}
       />
@@ -425,12 +440,12 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
       {hasWave && (
         <>
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>Units</span>
+            <span className={styles.popoverLabel}>{t('inspector.stroke.units', 'Units')}</span>
             <select
               className={styles.select}
               style={{ width: 100 }}
               value={stroke.wave?.units ?? 'pixels'}
-              aria-label={`Stroke ${index + 1} wave units`}
+              aria-label={t('inspector.stroke.waveUnitsAria', 'Stroke {n} wave units', { n })}
               onChange={(e) => {
                 const cycles = e.target.value === 'cycles';
                 if (cycles === (stroke.wave?.units === 'cycles')) return;
@@ -443,13 +458,13 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
                 }), 'Wave Units');
               }}
             >
-              <option value="pixels">Pixels</option>
-              <option value="cycles">Cycles</option>
+              <option value="pixels">{t('inspector.stroke.pixels', 'Pixels')}</option>
+              <option value="cycles">{t('inspector.stroke.cycles', 'Cycles')}</option>
             </select>
           </div>
           <AnimatablePaintRow
             nodeId={nodeId} prop={path('waveWavelength')}
-            label={stroke.wave?.units === 'cycles' ? 'Cycles' : 'Wavelength'}
+            label={stroke.wave?.units === 'cycles' ? t('inspector.stroke.cycles', 'Cycles') : t('inspector.stroke.wavelength', 'Wavelength')}
             precision={stroke.wave?.units === 'cycles' ? 1 : undefined}
             access={acc('waveWavelength', (s) => s.wave?.wavelength ?? 0)}
             staticCommands={waveCommands(index, (v) => ({ wavelength: v }))}
@@ -457,7 +472,7 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
           {/* Phase wraps 0–360 for a typed value, as AE's field does; keyframes
               keep their raw value so a 0 → 720 ramp still turns twice. */}
           <AnimatablePaintRow
-            nodeId={nodeId} prop={path('wavePhase')} label="Wave Phase"
+            nodeId={nodeId} prop={path('wavePhase')} label={t('inspector.stroke.wavePhase', 'Wave Phase')}
             access={acc('wavePhase', (s) => s.wave?.phase ?? 0)}
             staticCommands={waveCommands(index, (v) => ({ phase: wrapPhase(v) }))}
           />
@@ -468,21 +483,22 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
       {/* ── Gradient Stroke ──
           An optional paint that overrides the solid colour. */}
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Paint</span>
+        <span className={styles.popoverLabel}>{t('inspector.stroke.paint', 'Paint')}</span>
         <select
           className={styles.select}
           style={{ width: 100 }}
           value={gradient ? gradient.type : 'solid'}
           onChange={(e) => {
-            const t = e.target.value as FillType;
-            if (t === 'solid') update({ paint: undefined, gradient: undefined }, 'Stroke Paint Type');
-            else update({ paint: convertFill(stroke.paint, t) }, 'Stroke Paint Type');
+            const type = e.target.value as FillType;
+            const label = 'Stroke Paint Type';
+            if (type === 'solid') update({ paint: undefined, gradient: undefined }, label);
+            else update({ paint: convertFill(stroke.paint, type) }, label);
           }}
-          aria-label={index === 0 ? 'Stroke paint type' : `Stroke ${index + 1} paint type`}
+          aria-label={index === 0 ? t('inspector.stroke.paintTypeAria', 'Stroke paint type') : t('inspector.stroke.nthPaintTypeAria', 'Stroke {n} paint type', { n })}
         >
-          <option value="solid">Solid color</option>
-          <option value="linear">Linear gradient</option>
-          <option value="radial">Radial gradient</option>
+          <option value="solid">{t('inspector.stroke.solidColor', 'Solid color')}</option>
+          <option value="linear">{t('inspector.stroke.linearGradient', 'Linear gradient')}</option>
+          <option value="radial">{t('inspector.stroke.radialGradient', 'Radial gradient')}</option>
         </select>
       </div>
       {gradient && (
@@ -493,7 +509,12 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
               the whole point set the stroke shows). */}
           {(['gradientStartX', 'gradientStartY', 'gradientEndX', 'gradientEndY'] as const).map((key) => {
             const field = ({ gradientStartX: 'startX', gradientStartY: 'startY', gradientEndX: 'endX', gradientEndY: 'endY' } as const)[key];
-            const label = ({ gradientStartX: 'Start X', gradientStartY: 'Start Y', gradientEndX: 'End X', gradientEndY: 'End Y' } as const)[key];
+            const label = {
+              gradientStartX: t('inspector.stroke.startX', 'Start X'),
+              gradientStartY: t('inspector.stroke.startY', 'Start Y'),
+              gradientEndX: t('inspector.stroke.endX', 'End X'),
+              gradientEndY: t('inspector.stroke.endY', 'End Y'),
+            }[key];
             return (
               <AnimatablePaintRow
                 key={key} nodeId={nodeId} prop={path(key)} label={label}
@@ -505,12 +526,12 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
           {gradient.type === 'radial' && (
             <>
               <AnimatablePaintRow
-                nodeId={nodeId} prop={path('highlightLength')} label="Highlight Length"
+                nodeId={nodeId} prop={path('highlightLength')} label={t('inspector.stroke.highlightLength', 'Highlight Length')}
                 access={acc('highlightLength', (s, id) => (s.paint?.type === 'radial' ? gradientOf(id, s).highlightLength ?? 0 : undefined))}
                 staticCommands={gradientPoint('highlightLength', true)}
               />
               <AnimatablePaintRow
-                nodeId={nodeId} prop={path('highlightAngle')} label="Highlight Angle"
+                nodeId={nodeId} prop={path('highlightAngle')} label={t('inspector.stroke.highlightAngle', 'Highlight Angle')}
                 access={acc('highlightAngle', (s, id) => (s.paint?.type === 'radial' ? gradientOf(id, s).highlightAngle ?? 0 : undefined))}
                 staticCommands={gradientPoint('highlightAngle', true)}
               />
@@ -522,8 +543,8 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
             style={{ gap: 5, ...(gradientArmed ? { color: 'var(--color-primary, #4c8dff)' } : {}) }}
             aria-pressed={gradientArmed}
             title={gradientArmed
-              ? 'Editing this stroke gradient on the canvas — click to put the handles away (or press Escape)'
-              : 'Drag the stroke gradient’s Start and End points directly on the canvas'}
+              ? t('inspector.stroke.editingOnCanvasHint', 'Editing this stroke gradient on the canvas — click to put the handles away (or press Escape)')
+              : t('inspector.stroke.editOnCanvasHint', 'Drag the stroke gradient’s Start and End points directly on the canvas')}
             onClick={() => {
               const store = useGradientEditStore.getState();
               if (gradientArmed) store.disarm();
@@ -531,7 +552,7 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
             }}
           >
             <Icon name="gradient" size="sm" />
-            <span>{gradientArmed ? 'Editing on canvas' : 'Edit on canvas'}</span>
+            <span>{gradientArmed ? t('inspector.stroke.editingOnCanvas', 'Editing on canvas') : t('inspector.stroke.editOnCanvas', 'Edit on canvas')}</span>
           </button>
           {/* The full stop list, not two lone end-pickers. */}
           <StopList nodeId={nodeId} paint={gradient} target="stroke" strokeIndex={index} />
@@ -554,28 +575,28 @@ export function StrokeRows({ nodeId }: { nodeId: string }): JSX.Element | null {
   const animatedAt = (i: number): boolean => strokeTrackPathsFor(i).some((p) => isTrackAnimated(m, nodeId, p));
 
   const summaryOf = (st: Stroke | undefined): ReactNode => (st?.enabled
-    ? <><SummaryChip stroke color={st.color} />{`${Math.round(st.width * 10) / 10} · ${ALIGN_LABEL[st.align]}${st.dash.length > 0 ? ' · dashed' : ''}`}</>
-    : 'off');
+    ? <><SummaryChip stroke color={st.color} />{`${Math.round(st.width * 10) / 10} · ${alignLabel(st.align)}${st.dash.length > 0 ? ` · ${t('inspector.stroke.dashed', 'dashed')}` : ''}`}</>
+    : t('inspector.stroke.off', 'off'));
 
   return (
     <>
         {/* AE's Stroke group: one twirl row per stroke, summarised while closed. */}
         <TwirlGroup
           prefKey="contents.stroke.0"
-          label={<>Stroke 1{animatedAt(0) && <span className={styles.animatedDot} />}</>}
+          label={<>{t('inspector.stroke.nth', 'Stroke {n}', { n: 1 })}{animatedAt(0) && <span className={styles.animatedDot} />}</>}
           defaultOpen
           summary={summaryOf(primary)}
           trailing={(
             <Checkbox
               checked={primary?.enabled ?? false}
               onChange={() => { void strokeEdit((primary?.enabled ?? false) ? 'Disable Stroke' : 'Enable Stroke', nodeId, 0, { enabled: !(primary?.enabled ?? false) }); }}
-              aria-label="Stroke 1 enabled"
+              aria-label={t('inspector.stroke.nthEnabledAria', 'Stroke {n} enabled', { n: 1 })}
             />
           )}
         >
           {primary?.enabled
             ? <StrokeBlock nodeId={nodeId} index={0} stroke={primary} />
-            : <span className={styles.popoverLabel}>Tick the box to draw a stroke.</span>}
+            : <span className={styles.popoverLabel}>{t('inspector.stroke.tickToDraw', 'Tick the box to draw a stroke.')}</span>}
         </TwirlGroup>
 
         {/* Strokes 2+ — full citizens, each with every row the first one has,
@@ -586,7 +607,7 @@ export function StrokeRows({ nodeId }: { nodeId: string }): JSX.Element | null {
             <TwirlGroup
               key={`xstroke_${index}`}
               prefKey={`contents.stroke.${index}`}
-              label={<>Stroke {index + 1}{animatedAt(index) && <span className={styles.animatedDot} />}</>}
+              label={<>{t('inspector.stroke.nth', 'Stroke {n}', { n: index + 1 })}{animatedAt(index) && <span className={styles.animatedDot} />}</>}
               defaultOpen={false}
               summary={summaryOf(st)}
               trailing={(
@@ -594,12 +615,12 @@ export function StrokeRows({ nodeId }: { nodeId: string }): JSX.Element | null {
                   <Checkbox
                     checked={st.enabled}
                     onChange={() => { void strokeEdit(st.enabled ? `Disable Stroke ${index + 1}` : `Enable Stroke ${index + 1}`, nodeId, index, { enabled: !st.enabled }); }}
-                    aria-label={`Stroke ${index + 1} enabled`}
+                    aria-label={t('inspector.stroke.nthEnabledAria', 'Stroke {n} enabled', { n: index + 1 })}
                   />
                   <button
                     type="button"
                     className={effStyles.remove}
-                    aria-label={`Remove stroke ${index + 1}`}
+                    aria-label={t('inspector.stroke.removeNthAria', 'Remove stroke {n}', { n: index + 1 })}
                     // The engine drops its tracks and re-keys the strokes above it.
                     onClick={() => { if (isLayer(nodeId)) void edit(`Remove Stroke ${index + 1}`, { type: 'removeStroke', layer: nodeId, index }); }}
                   >
@@ -621,7 +642,7 @@ export function StrokeRows({ nodeId }: { nodeId: string }): JSX.Element | null {
               void edit('Add Stroke', strokesCommands(nodeId, [...(strokes.length ? strokes : [defaultStroke()]), normalizeStroke({ ...defaultStroke('#ffffff'), width: 2 })]));
             }}
           >
-            <Icon name="plus" size="sm" /> Add stroke
+            <Icon name="plus" size="sm" /> {t('inspector.stroke.add', 'Add stroke')}
           </button>
         )}
     </>

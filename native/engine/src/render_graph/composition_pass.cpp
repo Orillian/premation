@@ -64,11 +64,17 @@ Rect uv_or_full(const api::Renderable& r) { return r.uv_rect ? rect_of(*r.uv_rec
 }  // namespace
 
 // fx_keys.hpp (KeyMix lives there: the 3D surface path keys its chains the same way).
-std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity, bool translationFree) {
+std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity,
+                                std::optional<std::array<double, 2>> placePhase) {
   if (r.precomp || !r.precomp_children.empty() || r.deformed_mesh) return 0;
+  const bool translationFree = placePhase.has_value();
   KeyMix k;
-  // P8b: a key without the layer's (whole-pixel) place on screen — the slot keeps where it was drawn.
+  // P8b: a key without the layer's place on screen but its sub-pixel phase — the slot keeps where it was drawn.
   k.u64(translationFree ? 0x7038625ULL : 0);
+  if (placePhase) {
+    k.f64((*placePhase)[0]);
+    k.f64((*placePhase)[1]);
+  }
   k.u64(static_cast<std::uint64_t>(r.kind));
   k.u64(static_cast<std::uint64_t>(r.blend));
   k.u64(static_cast<std::uint64_t>(r.sampling));
@@ -123,20 +129,30 @@ std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r
 namespace {
 
 /// P8b: a 2D layer's chain run in a buffer placement of its own. The layer is
-/// drawn with its origin on a WHOLE buffer pixel — and, when the chain's reach
-/// would leave the buffer, moved inside it — under a view shifted by that
+/// drawn at its own sub-pixel phase — and, when the chain's reach would leave
+/// the buffer, moved inside it by whole pixels — under a view shifted by that
 /// offset (ViewShift: every position the chain reads moves with it). The
-/// result is then a function of the layer's content alone, not of where it is
-/// on screen: a layer that only MOVES reuses it (AE runs effects in layer space
-/// for the same reason), composited where the layer is — the fraction by a
-/// bilinear shift.
+/// result is then a function of the layer's content and phase, not of where
+/// it is on screen: a layer that only moves by WHOLE pixels reuses it (AE runs
+/// effects in layer space for the same reason), composited where the layer is
+/// by a whole-pixel shift — an exact copy. (Drawing on a whole pixel and
+/// shifting the result back by the fraction let every move reuse the chain,
+/// but the bilinear shift softened every effected layer on a fractional place,
+/// static ones included: a centred title with an odd height lost its edges.)
 struct PixelSnap {
   bool on = false;
   double px = 0;  // the layer origin on screen (viewport px, top-left origin)
   double py = 0;
-  double bx = 0;  // where it is drawn in the chain's buffer (whole px)
+  double bx = 0;  // where it is drawn in the chain's buffer: px's phase (kPhaseSteps) + whole px
   double by = 0;
 };
+
+/// The phase grid of a buffer placement: 1/1024 px — far under a visible
+/// shift, and a power of two, so a placement and its whole-pixel moves are
+/// exact doubles (equal phases key and compare equal).
+constexpr double kPhaseSteps = 1024;
+
+double phase_of(double v) noexcept { return v - std::floor(v); }
 
 PxBox unite_box(const PxBox& a, const PxBox& b) noexcept {
   return {std::min(a.x0, b.x0), std::min(a.y0, b.y0), std::max(a.x1, b.x1), std::max(a.y1, b.y1)};
@@ -174,8 +190,8 @@ PixelSnap pixel_snap(const PassContext& ctx, const api::Renderable& r) {
   s.px = (c.x + 1) * 0.5 * pw;
   s.py = (1 - c.y) * 0.5 * ph;
   if (!std::isfinite(s.px) || !std::isfinite(s.py)) return s;
-  s.bx = std::round(s.px);
-  s.by = std::round(s.py);
+  s.bx = std::round(s.px * kPhaseSteps) / kPhaseSteps;
+  s.by = std::round(s.py * kPhaseSteps) / kPhaseSteps;
   // A reach that would leave the buffer is moved inside it (when it fits), so
   // the kept result is whole and may be moved anywhere later. (Whatever the
   // grow-bounds switch: the result must not depend on it.)
@@ -346,19 +362,59 @@ bool transparent_is_noop(Blend b) {
          b == Blend::lighter || b == Blend::atop;
 }
 
+/// The device-pixel lengths of an affine quad's two sides (the unit quad's x
+/// and y through `mvp`); 0 × 0 for a projective or degenerate draw.
+MipFootprint quad_footprint(const ViewportState& vp, const Mat3& mvp) {
+  const auto& m = mvp.m;
+  const double w = m[8];
+  if (std::abs(m[2]) > 1e-7 || std::abs(m[5]) > 1e-7 || !(std::abs(w) > 1e-7)) return {};
+  const double hw = 0.5 * vp.pixelWidth / w;
+  const double hh = 0.5 * vp.pixelHeight / w;
+  const double ax = std::hypot(m[0] * hw, m[1] * hh);
+  const double ay = std::hypot(m[3] * hw, m[4] * hh);
+  if (!std::isfinite(ax) || !std::isfinite(ay) || !(ax > 1e-6) || !(ay > 1e-6)) return {};
+  return {ax, ay};
+}
+
+/// AE's layer-edge antialiasing for a layer quad drawn with `mvp` (uniforms.hpp
+/// LayerEdge): one device pixel of margin, in local units along each axis, and
+/// coverage on. Without it a solid, a still, a filled shape or a precomp drawn
+/// rotated, scaled or at a fraction of a pixel had a hard stair-stepped edge,
+/// and a circle's antialiased fringe was clipped flat at the box. Off for a
+/// projective quad (no affine pixel metric), a degenerate one, and a blend under
+/// which the margin's transparent texels — or a partly covered edge texel —
+/// would not blend as coverage (multiply's src × dst, darken / lighten's min /
+/// max, none's replace).
+LayerEdge layer_edge(const ViewportState& vp, const Mat3& mvp, Blend blend) {
+  if (!transparent_is_noop(blend)) return {};
+  // Device pixels per local unit along the quad's x and y.
+  const MipFootprint px = quad_footprint(vp, mvp);
+  if (!(px.width > 0)) return {};
+  return {1 / px.width, 1 / px.height, 1, 0};
+}
+
+/// A layer texture's mip-level gradient scale (LayerEdge::lodScale): ½, so the
+/// level sampled is one finer than the footprint — up to a 2:1 minification
+/// bilinear reads level 0, as it always did (crisp: a vector raster is
+/// supersampled 2× and already antialiased, a still or SVG shown 1:1 stays
+/// sharp), and past it the mip chain averages what bilinear skipped. The plain
+/// footprint level would add a second pixel of blur to every edge.
+constexpr double kLayerLodScale = 0.5;
+
 }  // namespace
 
 // ── emit helpers (passUtils.ts) ─────────────────────────────────────────────
 
 void emit_solid(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& c, double opacity, Blend blend,
-                const SolidShape& shape) {
-  cmds.add(Mat::SOLID_MATERIAL, blend, pack_solid(ctx.packer(), mvp, c, opacity, shape));
+                const SolidShape& shape, const LayerEdge& edge = {}) {
+  cmds.add(Mat::SOLID_MATERIAL, blend, pack_solid(ctx.packer(), mvp, c, opacity, shape, edge));
 }
 
 void emit_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
-                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear) {
+                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear,
+                   const LayerEdge& edge) {
   DrawItem& it = cmds.add(sampleLinear ? Mat::TEXTURED_LINEAR_MATERIAL : Mat::TEXTURED_MATERIAL, blend,
-                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear));
+                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear, edge));
   it.texture = tex;
   it.sampler = smp;
 }
@@ -372,9 +428,9 @@ void emit_silhouette(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Co
 
 void emit_masked_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity,
                           Blend blend, const TexRef& tex, const SamplerRef& smp, const TexRef& mask, const Rect& uv,
-                          const ColorTransform& ct, bool sampleLinear) {
+                          const ColorTransform& ct, bool sampleLinear, const LayerEdge& edge = {}) {
   DrawItem& it = cmds.add(sampleLinear ? Mat::MASKED_TEXTURED_LINEAR_MATERIAL : Mat::MASKED_TEXTURED_MATERIAL, blend,
-                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear));
+                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear, edge));
   it.texture = tex;
   it.sampler = smp;
   it.mask = mask;
@@ -382,9 +438,9 @@ void emit_masked_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, con
 
 void emit_lut_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
                        const TexRef& tex, const SamplerRef& smp, const TexRef& lut, const Rect& uv,
-                       const ColorTransform& ct, bool sampleLinear) {
+                       const ColorTransform& ct, bool sampleLinear, const LayerEdge& edge = {}) {
   DrawItem& it = cmds.add(sampleLinear ? Mat::LUT_TEXTURED_LINEAR_MATERIAL : Mat::LUT_TEXTURED_MATERIAL, blend,
-                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear));
+                          pack_textured(ctx.packer(), mvp, uv, tint, opacity, ct, sampleLinear, edge));
   it.texture = tex;
   it.sampler = smp;
   it.mask = lut;
@@ -409,7 +465,7 @@ void emit_blend_combine(PassContext& ctx, Commands& cmds, const Mat3& mvp, Blend
 /// emitLayerTexture: a deformed mesh if present, else a textured quad.
 void emit_layer_texture(PassContext& ctx, Commands& cmds, const api::Renderable& r, const TexRef& tex,
                         const SamplerRef& smp, const Rect& uv, double opacity, const Mat3* modelOverride,
-                        const Blend* blendOverride, bool sampleLinear) {
+                        const Blend* blendOverride, bool sampleLinear, bool edgeAA, double lodScale) {
   const Blend blend = blendOverride != nullptr ? *blendOverride : blend_of(r.blend);
   const Mat3 mvp = mvp_for(ctx.viewport, modelOverride != nullptr ? *modelOverride : mat3_of(r.model_matrix));
   if (r.deformed_mesh) {
@@ -432,8 +488,10 @@ void emit_layer_texture(PassContext& ctx, Commands& cmds, const api::Renderable&
     it.indexFormat = wgpu::IndexFormat::Uint16;
     return;
   }
+  LayerEdge edge = edgeAA ? layer_edge(ctx.viewport, mvp, blend) : LayerEdge{};
+  edge.lodScale = lodScale;
   emit_textured(ctx, cmds, mvp, color_or_white(r), opacity, blend, tex, smp, r.uv_rect ? rect_of(*r.uv_rect) : uv,
-                color_transform(r.color_matrix), sampleLinear);
+                color_transform(r.color_matrix), sampleLinear, edge);
 }
 
 namespace {
@@ -538,33 +596,65 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     return r.sampling == api::RenderSampling::nearest ? ctx.nearest_clamp() : ctx.linear_clamp();
   }
 
+  /// A layer's content texture as drawn on screen, with its sampler: a layer
+  /// drawn smaller than its raster — a scaled-down or squashed shape, text,
+  /// stroke, paint stroke or still — samples a mip chain, trilinear and 16×
+  /// anisotropic, averaging its texels instead of skipping them (thin strokes
+  /// broke into dashes, edges and small type stair-stepped). `mvp` gives the
+  /// quad's device size: the chain is built only as deep as that samples
+  /// (Device::mip_texture) — none at up to 2:1, most layers — and the sampler
+  /// never reads past it. The plain texture stays for Draft quality (nearest),
+  /// a precomp's offscreen (a render target: no chain) and a sub-rect (uv_rect:
+  /// its coarse levels would bleed the neighbouring content in).
+  std::pair<TexRef, SamplerRef> layer_texture(PassContext& ctx, const api::Renderable& r, const std::string& key, const Mat3& mvp) {
+    const bool plain = r.sampling == api::RenderSampling::nearest || precompTex_.contains(key) || r.uv_rect.has_value();
+    if (!plain) {
+      // No second try at the plain texture when this one is missing: the same
+      // pixels (not ready, or over the device's size limit — refused once).
+      TexRef t = ctx.texture_mipmapped(key, quad_footprint(ctx.viewport, mvp));
+      return {t, ctx.linear_clamp_levels(t.mipLevels, true)};
+    }
+    return {tex_for(ctx, key), sampler_for(ctx, r)};
+  }
+
   /// renderableCmds: one renderable (solid / textured / masked / LUT) at `opacity`.
   void renderable_cmds(PassContext& ctx, const api::Renderable& r, double opacity, Commands& cmds,
                        const Mat3* modelOverride = nullptr, const Blend* blendOverride = nullptr) {
     const Blend blend = blendOverride != nullptr ? *blendOverride : Blend::normal;
-    const SamplerRef smp = sampler_for(ctx, r);
     const Rect uv = uv_or_full(r);
     const Mat3 mvp = mvp_for(ctx.viewport, modelOverride != nullptr ? *modelOverride : mat3_of(r.model_matrix));
+    LayerEdge edge = layer_edge(ctx.viewport, mvp, blend);
+    edge.lodScale = kLayerLodScale;
     const bool solid = is_solid_kind(r.kind);
     const bool textured = is_textured_kind(r.kind);
     if (r.mask_texture_key) {
-      const TexRef mask = ctx.texture(*r.mask_texture_key);
-      TexRef tex = textured && r.texture_key ? tex_for(ctx, r.texture_key) : TexRef{};
-      if (solid && !tex) tex = ctx.texture("texture:white");
+      const TexRef mask = ctx.texture_mipmapped(*r.mask_texture_key, quad_footprint(ctx.viewport, mvp));
+      auto [tex, smp] = textured && r.texture_key ? layer_texture(ctx, r, *r.texture_key, mvp) : std::pair<TexRef, SamplerRef>{};
+      if (solid && !tex) {
+        tex = ctx.texture("texture:white");
+        smp = r.sampling == api::RenderSampling::nearest ? ctx.nearest_clamp() : ctx.linear_clamp_levels(mask.mipLevels, true);
+      } else if (tex && r.sampling != api::RenderSampling::nearest && (tex.mipLevels > 1 || mask.mipLevels > 1)) {
+        // One sampler reads both: never past the shallower of the two chains.
+        smp = ctx.linear_clamp_levels(std::min(std::max(1U, tex.mipLevels), std::max(1U, mask.mipLevels)), true);
+      }
       if (mask && tex) {
         emit_masked_textured(ctx, cmds, mvp, color_or_white(r), opacity, blend, tex, smp, mask, uv,
-                             color_transform(r.color_matrix), tex.sampleLinear);
+                             color_transform(r.color_matrix), tex.sampleLinear, edge);
       }
     } else if (solid && r.color) {
-      emit_solid(ctx, cmds, mvp, color_of(*r.color), opacity, blend, to_solid_shape(r.sdf));
+      emit_solid(ctx, cmds, mvp, color_of(*r.color), opacity, blend, to_solid_shape(r.sdf), edge);
     } else if (textured && r.texture_key) {
-      const TexRef tex = tex_for(ctx, r.texture_key);
+      const auto [tex, smp] = layer_texture(ctx, r, *r.texture_key, mvp);
       const TexRef lut = r.lut_texture_key ? ctx.texture(*r.lut_texture_key) : TexRef{};
       if (tex && lut) {
-        emit_lut_textured(ctx, cmds, mvp, color_or_white(r), opacity, blend, tex, smp, lut, uv,
-                          color_transform(r.color_matrix), tex.sampleLinear);
+        // The LUT is looked up through the same sampler: trilinear, never
+        // anisotropic (its taps would spread along the colour's gradient).
+        const SamplerRef lutSmp = tex.mipLevels > 1 ? ctx.linear_clamp_levels(tex.mipLevels, false) : smp;
+        emit_lut_textured(ctx, cmds, mvp, color_or_white(r), opacity, blend, tex, lutSmp, lut, uv,
+                          color_transform(r.color_matrix), tex.sampleLinear, edge);
       } else if (tex) {
-        emit_layer_texture(ctx, cmds, r, tex, smp, uv, opacity, modelOverride, blendOverride, tex.sampleLinear);
+        emit_layer_texture(ctx, cmds, r, tex, smp, uv, opacity, modelOverride, blendOverride, tex.sampleLinear, true,
+                           edge.lodScale);
       }
     }
   }
@@ -659,9 +749,10 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     double dy = 0;
   };
 
-  /// P8b: an earlier frame's chain result under the translation-free `fxKey`,
-  /// moved to where the layer is now. A result the buffer's edge cut (not
-  /// `movable`) is reused only where it was drawn.
+  /// P8b: an earlier frame's chain result under the translation-free `fxKey`
+  /// (which holds the placement's phase), moved by whole pixels to where the
+  /// layer is now. A result the buffer's edge cut (not `movable`) is reused
+  /// only where it was drawn.
   std::optional<KeptFx> reuse_layer_fx_moved(PassContext& ctx, std::uint64_t fxKey, const PixelSnap& snap) {
     if (fxKey == 0 || !snap.on) return std::nullopt;
     const std::uint32_t w = ctx.viewport.pixelWidth;
@@ -669,8 +760,12 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     LayerFxCache::Slot* s = layerFx_.find(fxKey, w, h);
     if (s == nullptr || !s->at) return std::nullopt;
     if (!s->movable && ((*s->at)[0] != snap.bx || (*s->at)[1] != snap.by)) return std::nullopt;
-    const double dx = snap.px - (*s->at)[0];
-    const double dy = snap.py - (*s->at)[1];
+    // Equal phases (the key) make the move whole; a stray fraction is a re-run, never a resample.
+    const double mx = snap.bx - (*s->at)[0];
+    const double my = snap.by - (*s->at)[1];
+    if (mx != std::round(mx) || my != std::round(my)) return std::nullopt;
+    const double dx = mx + std::round(snap.px - snap.bx);
+    const double dy = my + std::round(snap.py - snap.by);
     bool created = false;
     RenderTarget& t = ctx.dev.target(s->name, w, h, s->format, 1, false, &created);
     if (created) {
@@ -781,7 +876,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     if (r == nullptr || !r->view) return {};
     // External identity (high bit): stable per texture object, never a Device id.
     const auto id = (std::uint64_t{1} << 63U) | static_cast<std::uint64_t>(std::bit_cast<std::uintptr_t>(r->texture.Get()));
-    return TexRef{r->view, id, r->width, r->height, false};
+    return TexRef{r->view, id, r->width, r->height, false, 0, 0};
   }
 
   /// displacementMapTexture: render a referenced layer into MATTE_TARGET.
@@ -1251,48 +1346,27 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
 
     const bool hasEffects = !r.effects.empty();
     const bool hasMotion = r.motion_samples.size() > 1;
-    const bool solid = is_solid_kind(r.kind);
-    const bool textured = is_textured_kind(r.kind);
 
     if (!hasEffects && !hasMotion) {
-      const Mat3 mvp = mvp_for(ctx.viewport, mat3_of(r.model_matrix));
-      if (r.mask_texture_key) {
-        const TexRef mask = ctx.texture(*r.mask_texture_key);
-        if (mask) {
-          TexRef tex = textured && r.texture_key ? tex_for(ctx, r.texture_key) : TexRef{};
-          if (solid && !tex) tex = ctx.texture("texture:white");
-          if (tex) {
-            emit_masked_textured(ctx, st.main, mvp, color_or_white(r), r.opacity, blend_of(r.blend), tex, ctx.linear_clamp(),
-                                 mask, uv_or_full(r), color_transform(r.color_matrix), tex.sampleLinear);
-          }
-        }
-      } else if (solid && r.color) {
-        emit_solid(ctx, st.main, mvp, color_of(*r.color), r.opacity, blend_of(r.blend), to_solid_shape(r.sdf));
-      } else if (textured && r.texture_key) {
-        const TexRef tex = tex_for(ctx, r.texture_key);
-        if (tex) {
-          const Rect uv = uv_or_full(r);
-          const TexRef lut = r.lut_texture_key ? ctx.texture(*r.lut_texture_key) : TexRef{};
-          if (lut) {
-            emit_lut_textured(ctx, st.main, mvp, color_or_white(r), r.opacity, blend_of(r.blend), tex, ctx.linear_clamp(), lut,
-                              uv, color_transform(r.color_matrix), tex.sampleLinear);
-          } else {
-            emit_layer_texture(ctx, st.main, r, tex, ctx.linear_clamp(), uv, r.opacity, nullptr, nullptr, tex.sampleLinear);
-          }
-        }
-      }
+      // Straight into the list under the layer's own blend (the same draw a
+      // chain input gets: layer-edge antialiasing, the mip-filtered texture).
+      const Blend blend = blend_of(r.blend);
+      renderable_cmds(ctx, r, r.opacity, st.main, nullptr, &blend);
       return;
     }
 
     flush(ctx, st);
     // P8: a layer whose chain input and parameters match a kept result is a copy of it.
-    // P8b: the input is drawn at a whole pixel and keyed without its place, so a
-    // layer that only moves reuses its chain — the result composited where the
-    // layer is (the fraction by a bilinear shift).
+    // P8b: the input is drawn at its own sub-pixel phase and keyed without its
+    // place (with the phase), so a layer that only moves by whole pixels reuses
+    // its chain — the result composited where the layer is by a whole-pixel shift.
     const PixelSnap snap = hasEffects && layerFxEnabled_ ? pixel_snap(ctx, r) : PixelSnap{};
     // The layer's draw and its chain see the view moved to its buffer placement (restored at scope end).
     const ViewShift shiftView(ctx, snap.on ? snap.bx - snap.px : 0, snap.on ? snap.by - snap.py : 0);
-    const std::uint64_t contentKey = hasEffects ? chain_content_key(ctx, r, 1, snap.on) : 0;
+    const std::uint64_t contentKey =
+        hasEffects ? chain_content_key(ctx, r, 1,
+                                       snap.on ? std::optional(std::array<double, 2>{phase_of(snap.bx), phase_of(snap.by)}) : std::nullopt)
+                   : 0;
     const std::uint64_t fxKey = hasEffects && layerFxEnabled_ ? layer_fx_key(ctx, r, contentKey, 1) : 0;
     const double vw = ctx.viewport.pixelWidth;
     const double vh = ctx.viewport.pixelHeight;
@@ -1337,7 +1411,8 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
                                               drawn_box(ctx, r));
     keep_layer_fx(ctx, r.id, fxKey, res.tex, res.name, res.covered, &snap);
     // Outside the chain's reach its result is transparent: the composite covers the reach, not the frame.
-    composite(res.tex, res.covered, snap.on ? snap.px - snap.bx : 0, snap.on ? snap.py - snap.by : 0);
+    // Drawn at the layer's own phase: the way back is whole pixels (an exact copy).
+    composite(res.tex, res.covered, snap.on ? std::round(snap.px - snap.bx) : 0, snap.on ? std::round(snap.py - snap.by) : 0);
   }
 
 };

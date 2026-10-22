@@ -27,9 +27,10 @@
 //
 // ── Exit codes ─────────────────────────────────────────────────────────────
 //   0 done · 1 failed (the export itself failed: the encoder, the disk) ·
-//   3 fall back (a frame uses a feature the scene builder has not ported, the
-//   GPU could not start, a pass could not be honoured — the supervisor renders
-//   the job on the Chromium path instead) · 4 cancelled · 64 bad job.
+//   3 refused (a frame uses a feature the scene builder has not ported, the
+//   GPU could not start, a pass could not be honoured — the engine is the only
+//   renderer, so the supervisor reports the export as failed with the reason;
+//   electron/exportProcess.ts) · 4 cancelled · 64 bad job.
 //
 // ── Threads ────────────────────────────────────────────────────────────────
 //   build workers (N)  each owns a copy of the document, its expression cache,

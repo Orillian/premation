@@ -204,8 +204,8 @@ describe('workspaces', () => {
       panelOrder: { rightInspector: ['properties', 'info', 'audio'] },
       dockGroups: {
         rightInspector: [
-          { id: 'top', panels: ['properties', 'audio'], active: 'audio', collapsed: false, weight: 2 },
-          { id: 'low', panels: ['info'], active: 'info', collapsed: true, weight: 1 },
+          { id: 'top', panels: ['properties', 'audio'], active: 'audio', collapsed: false, weight: 2, column: 0 },
+          { id: 'low', panels: ['info'], active: 'info', collapsed: true, weight: 1, column: 0 },
         ],
       },
     });

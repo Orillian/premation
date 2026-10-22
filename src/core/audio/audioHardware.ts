@@ -26,6 +26,7 @@
  */
 
 import { getSettingsManager } from '@core/services/coreServices';
+import { t } from '@core/i18n';
 
 /** `setSinkId`'s value for "follow the OS". Empty string is the spec's own. */
 export const SYSTEM_DEFAULT_SINK = '';
@@ -84,7 +85,7 @@ export interface AudioOutputDevice {
  */
 export async function listAudioOutputs(): Promise<AudioOutputDevice[]> {
   const out: AudioOutputDevice[] = [
-    { deviceId: SYSTEM_DEFAULT_SINK, label: 'System Default' },
+    { deviceId: SYSTEM_DEFAULT_SINK, label: t('core.audioHardware.systemDefault', 'System Default') },
   ];
   const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
   if (!md || typeof md.enumerateDevices !== 'function') return out;
@@ -101,7 +102,7 @@ export async function listAudioOutputs(): Promise<AudioOutputDevice[]> {
         // Labels are empty until microphone permission is granted. Numbering
         // them at least lets a user try each in turn rather than seeing a list
         // of identical blanks.
-        label: d.label || `Output ${unnamed}`,
+        label: d.label || t('core.audioHardware.outputN', 'Output {n}', { n: unnamed }),
       });
     }
   } catch {

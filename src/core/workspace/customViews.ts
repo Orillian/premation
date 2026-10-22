@@ -13,6 +13,7 @@
  */
 
 import { Project3D, type Camera3D, type OrthoView } from '@motion/scene';
+import { t } from '@core/i18n';
 
 export const CUSTOM_VIEW_IDS = ['custom1', 'custom2', 'custom3'] as const;
 export type CustomViewId = (typeof CUSTOM_VIEW_IDS)[number];
@@ -23,9 +24,9 @@ export function isCustomViewId(mode: string): mode is CustomViewId {
 
 /** Human labels, shared by the 3D View dropdown and the viewport header. */
 export const CUSTOM_VIEW_LABEL: Record<CustomViewId, string> = {
-  custom1: 'Custom View 1',
-  custom2: 'Custom View 2',
-  custom3: 'Custom View 3',
+  get custom1() { return t('core.customViews.custom1', 'Custom View 1'); },
+  get custom2() { return t('core.customViews.custom2', 'Custom View 2'); },
+  get custom3() { return t('core.customViews.custom3', 'Custom View 3'); },
 };
 
 /**

@@ -43,6 +43,11 @@ constexpr std::array<std::u16string_view, static_cast<std::size_t>(Global::kCoun
     u"marker",        u"posterizeTime", u"add",       u"sub",        u"mul",          u"div",
     u"dot",           u"cross",       u"length",      u"normalize",  u"text",         u"plugin",
     u"lookAt",
+    u"effect",        u"transform",   u"inPoint",     u"outPoint",   u"index",        u"parent",
+    u"hasParent",     u"position",    u"anchorPoint", u"scale",      u"rotation",     u"opacity",
+    u"startTime",
+    u"degreesToRadians", u"radiansToDegrees", u"hslToRgb", u"rgbToHsl", u"smooth", u"temporalWiggle",
+    u"comp",          u"timeToTimecode", u"timeToCurrentFormat",
 };
 
 }  // namespace

@@ -24,7 +24,7 @@
   flex: none;
   height: var(--control-height-row);
   padding: 0 8px;
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -35,7 +35,7 @@
 }
 
 .addBtn:hover {
-  background: var(--color-surface-3);
+  background: var(--color-surface-0);
   border-color: var(--color-border-strong);
   color: var(--color-text-primary);
 }

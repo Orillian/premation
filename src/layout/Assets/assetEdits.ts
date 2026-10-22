@@ -28,6 +28,7 @@ import { itemAsset } from '@core/mirror/itemAssets';
 import { useUIStore } from '@stores/uiStore';
 import { documentMirror } from '@stores/documentMirror';
 import { LABEL_COLORS } from '@core/scene/labelColor';
+import { t } from '@core/i18n';
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
@@ -60,10 +61,10 @@ export interface ImportPathsResult {
  */
 export function importFailureReason(message: string | undefined): string {
   const m = (message ?? '').toLowerCase();
-  if (/no decoder|has no picture|not a readable svg|unsupported|invalid data/.test(m)) return 'this file type or codec cannot be read';
-  if (/cannot open|could not read|did not open|no such file|not found/.test(m)) return 'the file could not be opened';
-  if (/out of memory/.test(m)) return 'the file is too large to open';
-  return 'the file could not be read';
+  if (/no decoder|has no picture|not a readable svg|unsupported|invalid data/.test(m)) return t('assets.import.reasonCodec', 'this file type or codec cannot be read');
+  if (/cannot open|could not read|did not open|no such file|not found/.test(m)) return t('assets.import.reasonOpen', 'the file could not be opened');
+  if (/out of memory/.test(m)) return t('assets.import.reasonTooLarge', 'the file is too large to open');
+  return t('assets.import.reasonRead', 'the file could not be read');
 }
 
 /**
@@ -156,7 +157,7 @@ export async function importBrowserFilesEdit(items: readonly BrowserFileImport[]
   if (items.length === 1) {
     const only = items[0]!.file.name;
     const reason = importFailureReason(all.error.message);
-    useUIStore.getState().notify({ level: 'warning', message: `Could not import “${only}”: ${reason}.`, durationMs: 6000 });
+    useUIStore.getState().notify({ level: 'warning', message: t('assets.import.failedOne', 'Could not import “{name}”: {reason}.', { name: only, reason }), durationMs: 6000 });
     return { imported: [], failed: [only], failedFiles: [items[0]!.file], reasons: { [only]: reason } };
   }
 
@@ -184,7 +185,9 @@ export async function importBrowserFilesEdit(items: readonly BrowserFileImport[]
   if (failedFiles.length > 0) {
     useUIStore.getState().notify({
       level: 'warning',
-      message: `Could not import ${failedFiles.map((f) => `“${f.name}” (${reasons[f.name]})`).join(', ')}`,
+      message: t('assets.import.failedMany', 'Could not import {files}', {
+        files: failedFiles.map((f) => t('assets.import.failedItem', '“{name}” ({reason})', { name: f.name, reason: reasons[f.name] ?? '' })).join(', '),
+      }),
       durationMs: 6000,
     });
   }
@@ -305,7 +308,7 @@ export async function setItemTagsEdit(changes: ReadonlyArray<{ id: string; tags:
   for (const c of changes) {
     const item = documentMirror().item(c.id);
     const cur = item?.kind === 'footage' ? item.tags : [];
-    if (cur.length === c.tags.length && cur.every((t, i) => t === c.tags[i])) continue;
+    if (cur.length === c.tags.length && cur.every((tag, i) => tag === c.tags[i])) continue;
     cmds.push({ type: 'setItemTags', item: c.id, tags: [...c.tags] });
   }
   await edit('Edit Tags', cmds);

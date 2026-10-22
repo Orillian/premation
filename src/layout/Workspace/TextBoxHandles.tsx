@@ -31,6 +31,7 @@ import { mirrorParagraphBox } from '@layout/Text/textMirror';
 import { BOX_HANDLES, handleLocalPosition, type BoxHandle } from '@core/text/paragraphBox';
 import { beginBoxReflow, type BoxReflowSession } from './textBoxReflow';
 import styles from './TextBoxHandles.module.css';
+import { t } from '@core/i18n';
 
 const HANDLE_CURSOR: Record<BoxHandle, string> = {
   n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
@@ -184,7 +185,7 @@ export function TextBoxHandles({ overflow: liveOverflow }: {
           onLostPointerCapture={(e) => finish(e.pointerId)}
         >
           {hid === 'se' && overflow ? (
-            <svg className={styles.overflowGlyph} viewBox="0 0 10 10" aria-label="Text overflows the box">
+            <svg className={styles.overflowGlyph} viewBox="0 0 10 10" aria-label={t('workspace.textBox.overflow', 'Text overflows the box')}>
               <path d="M5 2.2v5.6M2.2 5h5.6" stroke="var(--color-overlay-text)" strokeWidth="1.4" fill="none" />
             </svg>
           ) : null}

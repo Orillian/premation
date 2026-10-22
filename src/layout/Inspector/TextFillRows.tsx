@@ -23,6 +23,7 @@ import {
   type LinearFill,
   type RadialFill,
 } from '@core/paint/fill';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorTree } from '@hooks/useMirror';
 import { mirrorFill } from '@core/mirror/paintFields';
@@ -95,26 +96,26 @@ export function TextFillRows({ nodeId, textColor }: { nodeId: string; textColor:
   return (
     <div>
       <div className={styles.controlRow}>
-        <span className={styles.metricLabel} title="Fill type — a gradient spans the whole text block">Fill</span>
+        <span className={styles.metricLabel} title={t('inspector.textFill.fillTypeTitle', 'Fill type — a gradient spans the whole text block')}>{t('inspector.textFill.fill', 'Fill')}</span>
         <select
-          aria-label="Text Fill Type"
+          aria-label={t('inspector.textFill.fillType', 'Text Fill Type')}
           className={styles.metricSelect}
           value={type}
           onChange={(e) => setType(e.target.value as TextFillType)}
         >
-          <option value="solid">Solid</option>
-          <option value="linear">Linear Gradient</option>
-          <option value="radial">Radial Gradient</option>
+          <option value="solid">{t('inspector.textFill.solid', 'Solid')}</option>
+          <option value="linear">{t('inspector.textFill.linearGradient', 'Linear Gradient')}</option>
+          <option value="radial">{t('inspector.textFill.radialGradient', 'Radial Gradient')}</option>
         </select>
       </div>
       {gradient?.type === 'linear' && (
-        <AnimatablePaintRow nodeId={nodeId} prop="fillAngle" label="Angle" access={ANGLE} />
+        <AnimatablePaintRow nodeId={nodeId} prop="fillAngle" label={t('inspector.textFill.angle', 'Angle')} access={ANGLE} />
       )}
       {gradient?.type === 'radial' && (
         <>
-          <AnimatablePaintRow nodeId={nodeId} prop="fillCenterX" label="Center X" access={CX} />
-          <AnimatablePaintRow nodeId={nodeId} prop="fillCenterY" label="Center Y" access={CY} />
-          <AnimatablePaintRow nodeId={nodeId} prop="fillRadius" label="Radius" access={RADIUS} />
+          <AnimatablePaintRow nodeId={nodeId} prop="fillCenterX" label={t('inspector.textFill.centerX', 'Center X')} access={CX} />
+          <AnimatablePaintRow nodeId={nodeId} prop="fillCenterY" label={t('inspector.textFill.centerY', 'Center Y')} access={CY} />
+          <AnimatablePaintRow nodeId={nodeId} prop="fillRadius" label={t('inspector.textFill.radius', 'Radius')} access={RADIUS} />
         </>
       )}
       {gradient && (
@@ -124,11 +125,11 @@ export function TextFillRows({ nodeId, textColor }: { nodeId: string; textColor:
             className={styles.metricToggle}
             data-active={armed}
             aria-pressed={armed}
-            title={armed ? 'Put the gradient handles away (Escape)' : 'Drag the gradient axis and stops on the canvas'}
+            title={armed ? t('inspector.textFill.handlesAway', 'Put the gradient handles away (Escape)') : t('inspector.textFill.dragGradient', 'Drag the gradient axis and stops on the canvas')}
             onClick={() => (armed ? disarm() : arm(nodeId, 0))}
           >
             <Icon name="gradient" size="sm" />
-            <span>{armed ? 'Editing on canvas' : 'Edit on canvas'}</span>
+            <span>{armed ? t('inspector.textFill.editingOnCanvas', 'Editing on canvas') : t('inspector.textFill.editOnCanvas', 'Edit on canvas')}</span>
           </button>
           <StopList nodeId={nodeId} paint={gradient} />
         </>
@@ -206,29 +207,29 @@ export function TextStrokeRows({ nodeId, strokeColor }: { nodeId: string; stroke
   return (
     <div>
       <div className={styles.controlRow}>
-        <span className={styles.metricLabel} title="Stroke type — a gradient spans the whole text block">Stroke</span>
+        <span className={styles.metricLabel} title={t('inspector.textFill.strokeTypeTitle', 'Stroke type — a gradient spans the whole text block')}>{t('inspector.textFill.stroke', 'Stroke')}</span>
         <select
-          aria-label="Text Stroke Type"
+          aria-label={t('inspector.textFill.strokeType', 'Text Stroke Type')}
           className={styles.metricSelect}
           value={type}
           onChange={(e) => setType(e.target.value as TextFillType)}
         >
-          <option value="solid">Solid</option>
-          <option value="linear">Linear Gradient</option>
-          <option value="radial">Radial Gradient</option>
+          <option value="solid">{t('inspector.textFill.solid', 'Solid')}</option>
+          <option value="linear">{t('inspector.textFill.linearGradient', 'Linear Gradient')}</option>
+          <option value="radial">{t('inspector.textFill.radialGradient', 'Radial Gradient')}</option>
         </select>
       </div>
       {/* Geometry is keyframeable — `strokeAngle` / `strokeCenterX|Y` /
           `strokeRadius`, the fill's four mirrored — through the same row the
           fill uses, so this and the timeline agree on units and keys. */}
       {paint?.type === 'linear' && (
-        <AnimatablePaintRow nodeId={nodeId} prop="strokeAngle" label="Angle" access={STROKE_ANGLE} />
+        <AnimatablePaintRow nodeId={nodeId} prop="strokeAngle" label={t('inspector.textFill.angle', 'Angle')} access={STROKE_ANGLE} />
       )}
       {paint?.type === 'radial' && (
         <>
-          <AnimatablePaintRow nodeId={nodeId} prop="strokeCenterX" label="Center X" access={STROKE_CX} />
-          <AnimatablePaintRow nodeId={nodeId} prop="strokeCenterY" label="Center Y" access={STROKE_CY} />
-          <AnimatablePaintRow nodeId={nodeId} prop="strokeRadius" label="Radius" access={STROKE_RADIUS} />
+          <AnimatablePaintRow nodeId={nodeId} prop="strokeCenterX" label={t('inspector.textFill.centerX', 'Center X')} access={STROKE_CX} />
+          <AnimatablePaintRow nodeId={nodeId} prop="strokeCenterY" label={t('inspector.textFill.centerY', 'Center Y')} access={STROKE_CY} />
+          <AnimatablePaintRow nodeId={nodeId} prop="strokeRadius" label={t('inspector.textFill.radius', 'Radius')} access={STROKE_RADIUS} />
         </>
       )}
       {paint && (
@@ -237,11 +238,11 @@ export function TextStrokeRows({ nodeId, strokeColor }: { nodeId: string; stroke
           className={styles.metricToggle}
           data-active={strokeArmed}
           aria-pressed={strokeArmed}
-          title={strokeArmed ? 'Put the gradient handles away (Escape)' : 'Drag the stroke gradient’s axis and stops on the canvas'}
+          title={strokeArmed ? t('inspector.textFill.handlesAway', 'Put the gradient handles away (Escape)') : t('inspector.textFill.dragStrokeGradient', 'Drag the stroke gradient’s axis and stops on the canvas')}
           onClick={() => (strokeArmed ? disarm() : arm(nodeId, 0, 'stroke'))}
         >
           <Icon name="gradient" size="sm" />
-          <span>{strokeArmed ? 'Editing on canvas' : 'Edit on canvas'}</span>
+          <span>{strokeArmed ? t('inspector.textFill.editingOnCanvas', 'Editing on canvas') : t('inspector.textFill.editOnCanvas', 'Edit on canvas')}</span>
         </button>
       )}
       {paint && (
@@ -252,13 +253,13 @@ export function TextStrokeRows({ nodeId, strokeColor }: { nodeId: string; stroke
                 <ColorPicker
                   value={s.color}
                   compact
-                  aria-label="Stroke Gradient Stop Color"
+                  aria-label={t('inspector.textFill.strokeStopColor', 'Stroke Gradient Stop Color')}
                   onChange={(color) => setStops(stops.map((o) => (o.id === s.id ? { ...o, color } : o)))}
                 />
               </span>
               <input
                 type="number"
-                aria-label="Stroke Gradient Stop Position"
+                aria-label={t('inspector.textFill.strokeStopPosition', 'Stroke Gradient Stop Position')}
                 className={styles.metricInput}
                 min="0"
                 max="100"

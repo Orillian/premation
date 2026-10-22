@@ -18,6 +18,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow, useMirrorSelect } from '@hooks/useMirror';
 import { useActiveMotionBlur } from '@hooks/useMirrorFrame';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import styles from './BottomTimeline.module.css';
 
 export function TimelineCompSwitches(): JSX.Element {
@@ -43,13 +44,15 @@ export function TimelineCompSwitches(): JSX.Element {
     void edit(on ? 'Enable Motion Blur' : 'Disable Motion Blur', { type: 'setCompositionSettings', comp, patch: { motionBlur: { ...mb, enabled: on } } });
   };
   return (
-    <span className={styles.compSwitches} role="group" aria-label="Composition switches">
+    <span className={styles.compSwitches} role="group" aria-label={t('timeline.compSwitches.group', 'Composition switches')}>
       <button
         type="button"
         className={cn(styles.compSwitch, globalShy && styles.compSwitchOn)}
         aria-pressed={globalShy}
-        aria-label="Hide Shy Layers"
-        title={globalShy ? 'Shy layers are hidden — click to show them' : 'Hide all layers with the Shy switch on'}
+        aria-label={t('timeline.compSwitches.shy', 'Hide Shy Layers')}
+        title={globalShy
+          ? t('timeline.compSwitches.shyOnTitle', 'Shy layers are hidden — click to show them')
+          : t('timeline.compSwitches.shyOffTitle', 'Hide all layers with the Shy switch on')}
         onClick={() => setGlobalShy(!globalShy)}
       >
         <Icon name="shy" size="md" />
@@ -58,8 +61,10 @@ export function TimelineCompSwitches(): JSX.Element {
         type="button"
         className={cn(styles.compSwitch, frameBlending && styles.compSwitchOn)}
         aria-pressed={frameBlending}
-        aria-label="Enable Frame Blending"
-        title={frameBlending ? 'Frame blending on for layers with their Frame Blending switch set — click to turn off' : 'Enable frame blending for all layers with the Frame Blending switch set'}
+        aria-label={t('timeline.compSwitches.frameBlending', 'Enable Frame Blending')}
+        title={frameBlending
+          ? t('timeline.compSwitches.frameBlendingOnTitle', 'Frame blending on for layers with their Frame Blending switch set — click to turn off')
+          : t('timeline.compSwitches.frameBlendingOffTitle', 'Enable frame blending for all layers with the Frame Blending switch set')}
         onClick={() => setFrameBlending(!frameBlending)}
       >
         <Icon name="video" size="md" />
@@ -68,8 +73,10 @@ export function TimelineCompSwitches(): JSX.Element {
         type="button"
         className={cn(styles.compSwitch, motionBlur && styles.compSwitchOn)}
         aria-pressed={motionBlur}
-        aria-label="Enable Motion Blur"
-        title={motionBlur ? 'Motion blur on for layers with their Motion Blur switch set — click to turn off' : 'Enable motion blur for all layers with the Motion Blur switch set'}
+        aria-label={t('timeline.compSwitches.motionBlur', 'Enable Motion Blur')}
+        title={motionBlur
+          ? t('timeline.compSwitches.motionBlurOnTitle', 'Motion blur on for layers with their Motion Blur switch set — click to turn off')
+          : t('timeline.compSwitches.motionBlurOffTitle', 'Enable motion blur for all layers with the Motion Blur switch set')}
         onClick={() => setMotionBlur(!motionBlur)}
       >
         <Icon name="motion-blur" size="md" />
@@ -78,8 +85,10 @@ export function TimelineCompSwitches(): JSX.Element {
         type="button"
         className={cn(styles.compSwitch, autoKeyframe && styles.compSwitchOn, autoKeyframe && styles.compSwitchRec)}
         aria-pressed={autoKeyframe}
-        aria-label="Auto-Keyframe mode"
-        title={autoKeyframe ? 'Auto-Keyframe is ON — every change sets a keyframe (click to turn off)' : 'Auto-Keyframe: set a keyframe whenever a property changes'}
+        aria-label={t('timeline.compSwitches.autoKeyframe', 'Auto-Keyframe mode')}
+        title={autoKeyframe
+          ? t('timeline.compSwitches.autoKeyframeOnTitle', 'Auto-Keyframe is ON — every change sets a keyframe (click to turn off)')
+          : t('timeline.compSwitches.autoKeyframeOffTitle', 'Auto-Keyframe: set a keyframe whenever a property changes')}
         onClick={() => usePreferenceStore.getState().set('timelineAutoKeyframe', !autoKeyframe)}
       >
         <Icon name="stopwatch" size="md" />

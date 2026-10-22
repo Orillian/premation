@@ -1557,6 +1557,22 @@ a hidden window, unchanged. These fall back:
 - an engine crash. ffmpeg dies with it through a Windows job object, and nothing
   is delivered.
 
+**2026-10-20 (unported features ported):** the layer-style, path-operator and
+polystar refusals were dead code (the converter, chain and outline always
+applied); variable font axes and vertical optical kerning are measured
+(`text_measure.cpp`) as the painter always drew them; text animators evaluate
+Font Axis offsets, Character Value / Range and expression selectors
+(`text_port.cpp`, parity fixture reblessed). What a layer genuinely draws
+without — a missing plugin effect, an unreadable sky asset, a rig on an image
+the engine cannot read, a clone stroke from another time, an SVG under an older
+sanitize policy, a waveform with no audio engine — is a layer error of stage
+**`warning`** (`scene_types.hpp`): the viewer notice lists it, the golden gate
+still compares the frame, and an export completes, returning the warnings on
+its preflight `ok` line (`export_job.cpp`) to the queue row
+(`exportProcess.ts` → `ExportJobRecord.warnings`). `unported` remains for the
+Cloud-locked plugin pass-through and the 3D mesh bodies `finish_layer` cannot
+build (a refused glTF, a missing depth source).
+
 An image-sequence job (`sequence`: `png`, `exr`, `png-zip`, or `exr-zip`) writes
 numbered frames, or one STORE zip, instead of spawning an encoder. Chapters on the
 job are written to `chapters.ffmeta` (FFMETADATA1, the same text as the editor)

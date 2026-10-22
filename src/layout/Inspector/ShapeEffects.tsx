@@ -16,6 +16,7 @@ import { edit } from '@core/engine/uiEdits';
 import { audioWaveformCommands } from './audioEdits';
 import { AudioWaveformSection } from './AudioWaveformSection';
 import { InspectorSection } from './InspectorSection';
+import { t } from '@core/i18n';
 import styles from './TextAnimatorControls.module.css';
 
 export function ShapeEffects({ nodeId }: { nodeId: string }): JSX.Element | null {
@@ -30,7 +31,7 @@ export function ShapeEffects({ nodeId }: { nodeId: string }): JSX.Element | null
     {
       type: 'item',
       id: 'add-audiowave',
-      label: 'Audio Waveform',
+      label: t('inspector.shapeEffects.audioWaveform', 'Audio Waveform'),
       icon: 'audio',
       disabled: hasAudioWave,
       onSelect: () => { void edit('Add Audio Waveform', audioWaveformCommands(nodeId, defaultAudioWaveform())); },
@@ -48,9 +49,9 @@ export function ShapeEffects({ nodeId }: { nodeId: string }): JSX.Element | null
         <Dropdown
           placement="left-start"
           trigger={
-            <button type="button" className={styles.add} aria-label="Add audio waveform">
+            <button type="button" className={styles.add} aria-label={t('inspector.shapeEffects.addLabel', 'Add audio waveform')}>
               <Icon name="plus" size="sm" />
-              <span>Add</span>
+              <span>{t('inspector.shapeEffects.add', 'Add')}</span>
             </button>
           }
           items={items}
@@ -58,7 +59,7 @@ export function ShapeEffects({ nodeId }: { nodeId: string }): JSX.Element | null
       }
     >
       {!hasAudioWave && (
-        <div className={styles.empty}>Draw an audio waveform from a soundtrack on this shape.</div>
+        <div className={styles.empty}>{t('inspector.shapeEffects.empty', 'Draw an audio waveform from a soundtrack on this shape.')}</div>
       )}
       <AudioWaveformSection nodeId={nodeId} />
     </InspectorSection>

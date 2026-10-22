@@ -17,6 +17,8 @@
 
 import { useEffect, useState } from 'react';
 
+import { SLOT, t, tAround } from '@core/i18n';
+
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
@@ -80,41 +82,51 @@ import {
 } from '@layout/Text/textEdits';
 import styles from './TextAnimatorControls.module.css';
 
-const BASED_ON: { id: RangeBasedOn; label: string }[] = [
-  { id: 'characters', label: 'Characters' },
-  { id: 'charactersExcludingSpaces', label: 'Characters Excluding Spaces' },
-  { id: 'words', label: 'Words' },
-  { id: 'lines', label: 'Lines' },
-];
+function basedOnOptions(): { id: RangeBasedOn; label: string }[] {
+  return [
+    { id: 'characters', label: t('inspector.textAnimator.basedOn.characters', 'Characters') },
+    { id: 'charactersExcludingSpaces', label: t('inspector.textAnimator.basedOn.charactersExcludingSpaces', 'Characters Excluding Spaces') },
+    { id: 'words', label: t('inspector.textAnimator.basedOn.words', 'Words') },
+    { id: 'lines', label: t('inspector.textAnimator.basedOn.lines', 'Lines') },
+  ];
+}
 
-const SHAPES: { id: SelectorShape; label: string }[] = [
-  { id: 'square', label: 'Square' },
-  { id: 'rampUp', label: 'Ramp Up' },
-  { id: 'rampDown', label: 'Ramp Down' },
-  { id: 'triangle', label: 'Triangle' },
-  { id: 'round', label: 'Round' },
-  { id: 'smooth', label: 'Smooth' },
-];
+function shapeOptions(): { id: SelectorShape; label: string }[] {
+  return [
+    { id: 'square', label: t('inspector.textAnimator.shape.square', 'Square') },
+    { id: 'rampUp', label: t('inspector.textAnimator.shape.rampUp', 'Ramp Up') },
+    { id: 'rampDown', label: t('inspector.textAnimator.shape.rampDown', 'Ramp Down') },
+    { id: 'triangle', label: t('inspector.textAnimator.shape.triangle', 'Triangle') },
+    { id: 'round', label: t('inspector.textAnimator.shape.round', 'Round') },
+    { id: 'smooth', label: t('inspector.textAnimator.shape.smooth', 'Smooth') },
+  ];
+}
 
-const UNITS: { id: SelectorUnits; label: string }[] = [
-  { id: 'percentage', label: 'Percentage' },
-  { id: 'index', label: 'Index' },
-];
+function unitOptions(): { id: SelectorUnits; label: string }[] {
+  return [
+    { id: 'percentage', label: t('inspector.textAnimator.units.percentage', 'Percentage') },
+    { id: 'index', label: t('inspector.textAnimator.units.index', 'Index') },
+  ];
+}
 
-const COMBINE: { id: SelectorCombineMode; label: string }[] = [
-  { id: 'add', label: 'Add' },
-  { id: 'subtract', label: 'Subtract' },
-  { id: 'intersect', label: 'Intersect' },
-  { id: 'min', label: 'Min' },
-  { id: 'max', label: 'Max' },
-  { id: 'difference', label: 'Difference' },
-];
+function combineOptions(): { id: SelectorCombineMode; label: string }[] {
+  return [
+    { id: 'add', label: t('inspector.textAnimator.combine.add', 'Add') },
+    { id: 'subtract', label: t('inspector.textAnimator.combine.subtract', 'Subtract') },
+    { id: 'intersect', label: t('inspector.textAnimator.combine.intersect', 'Intersect') },
+    { id: 'min', label: t('inspector.textAnimator.combine.min', 'Min') },
+    { id: 'max', label: t('inspector.textAnimator.combine.max', 'Max') },
+    { id: 'difference', label: t('inspector.textAnimator.combine.difference', 'Difference') },
+  ];
+}
 
-const KINDS: { id: SelectorKind; label: string }[] = [
-  { id: 'range', label: 'Range' },
-  { id: 'wiggly', label: 'Wiggly' },
-  { id: 'expression', label: 'Expression' },
-];
+function kindOptions(): { id: SelectorKind; label: string }[] {
+  return [
+    { id: 'range', label: t('inspector.textAnimator.kind.range', 'Range') },
+    { id: 'wiggly', label: t('inspector.textAnimator.kind.wiggly', 'Wiggly') },
+    { id: 'expression', label: t('inspector.textAnimator.kind.expression', 'Expression') },
+  ];
+}
 
 function pickTrigger(label: string): JSX.Element {
   return (
@@ -280,13 +292,16 @@ function SelectorPanel({
     <div className={styles.group} style={{ marginLeft: 8, borderLeft: '1px solid var(--color-border-subtle)', paddingLeft: 8 }}>
       <div className={styles.groupHead}>
         <span className={styles.groupTitle}>
-          {KINDS.find((k) => k.id === sel.kind)?.label ?? 'Range'} Selector {selIndex + 1}
+          {t('inspector.textAnimator.selectorTitle', '{kind} Selector {n}', {
+            kind: kindOptions().find((k) => k.id === sel.kind)?.label ?? t('inspector.textAnimator.kind.range', 'Range'),
+            n: selIndex + 1,
+          })}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Checkbox
             checked={sel.enabled !== false}
             onChange={() => { void setSelectorEnabledEdit(nodeId, animatorId, sel.id, sel.enabled === false); }}
-            title="Enable selector"
+            title={t('inspector.textAnimator.enableSelector', 'Enable selector')}
             style={{ width: 14, height: 14 }}
           />
           {removable && (
@@ -294,8 +309,8 @@ function SelectorPanel({
               type="button"
               className={styles.remove}
               onClick={() => { void removeSelectorEdit(nodeId, animatorId, sel.id); }}
-              aria-label={`Remove selector ${selIndex + 1}`}
-              title="Remove selector"
+              aria-label={t('inspector.textAnimator.removeSelectorN', 'Remove selector {n}', { n: selIndex + 1 })}
+              title={t('inspector.textAnimator.removeSelector', 'Remove selector')}
             >
               <Icon name="minus" size="sm" />
             </button>
@@ -304,23 +319,23 @@ function SelectorPanel({
       </div>
 
       <PickRow
-        label="Selector"
+        label={t('inspector.textAnimator.selector', 'Selector')}
         value={sel.kind}
-        options={KINDS}
+        options={kindOptions()}
         onSelect={(kind) => patch({ kind })}
       />
       <PickRow
-        label="Based on"
+        label={t('inspector.textAnimator.basedOn', 'Based on')}
         value={sel.basedOn}
-        options={BASED_ON}
+        options={basedOnOptions()}
         onSelect={(basedOn) => patch({ basedOn })}
       />
       {/* The first selector has nothing to combine with, so its mode is noise. */}
       {selIndex > 0 && (
         <PickRow
-          label="Mode"
+          label={t('inspector.textAnimator.mode', 'Mode')}
           value={sel.mode}
-          options={COMBINE}
+          options={combineOptions()}
           onSelect={(mode) => patch({ mode })}
         />
       )}
@@ -372,26 +387,26 @@ function RangeSelectorBody({
   const unit = sel.units === 'index' ? '' : '%';
   return (
     <>
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="start" label="Start" value={sel.start} unit={unit} />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="end" label="End" value={sel.end} unit={unit} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="start" label={t('inspector.textAnimator.start', 'Start')} value={sel.start} unit={unit} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="end" label={t('inspector.textAnimator.end', 'End')} value={sel.end} unit={unit} />
       {/* The one you keyframe: sweeping Offset staggers the whole string. */}
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="offset" label="Offset" value={sel.offset} unit={unit} />
-      <PickRow label="Units" value={sel.units} options={UNITS} onSelect={(units) => patch({ units })} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="offset" label={t('inspector.textAnimator.offset', 'Offset')} value={sel.offset} unit={unit} />
+      <PickRow label={t('inspector.textAnimator.units', 'Units')} value={sel.units} options={unitOptions()} onSelect={(units) => patch({ units })} />
 
-      <div className={styles.subhead}>Advanced</div>
-      <PickRow label="Shape" value={sel.shape} options={SHAPES} onSelect={(shape) => patch({ shape })} />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="amount" label="Amount" value={sel.amount} unit="%" />
+      <div className={styles.subhead}>{t('inspector.textAnimator.advanced', 'Advanced')}</div>
+      <PickRow label={t('inspector.textAnimator.shape', 'Shape')} value={sel.shape} options={shapeOptions()} onSelect={(shape) => patch({ shape })} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="amount" label={t('inspector.textAnimator.amount', 'Amount')} value={sel.amount} unit="%" />
       {sel.shape === 'square' && (
-        <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="smoothness" label="Smoothness" value={sel.smoothness} unit="%" min={0} />
+        <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="smoothness" label={t('inspector.textAnimator.smoothness', 'Smoothness')} value={sel.smoothness} unit="%" min={0} />
       )}
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="easeHigh" label="Ease High" value={sel.easeHigh} unit="%" min={-100} max={100} />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="easeLow" label="Ease Low" value={sel.easeLow} unit="%" min={-100} max={100} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="easeHigh" label={t('inspector.textAnimator.easeHigh', 'Ease High')} value={sel.easeHigh} unit="%" min={-100} max={100} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="easeLow" label={t('inspector.textAnimator.easeLow', 'Ease Low')} value={sel.easeLow} unit="%" min={-100} max={100} />
       <div className={styles.selectorRow}>
-        <span className={styles.paramLabel}>Randomize Order</span>
+        <span className={styles.paramLabel}>{t('inspector.textAnimator.randomizeOrder', 'Randomize Order')}</span>
         <Checkbox
           checked={sel.randomizeOrder}
           onChange={() => patch({ randomizeOrder: !sel.randomizeOrder })}
-          title="Randomize Order"
+          title={t('inspector.textAnimator.randomizeOrder', 'Randomize Order')}
           style={{ width: 14, height: 14 }}
         />
       </div>
@@ -401,12 +416,12 @@ function RangeSelectorBody({
               the animation-toggle gutter the rows above reserve. Now it is the
               gutter itself, so the two labels cannot drift apart. */}
           <span className={styles.rowToggle} />
-          <span className={styles.paramLabel}>Random Seed</span>
+          <span className={styles.paramLabel}>{t('inspector.textAnimator.randomSeed', 'Random Seed')}</span>
           <ValueField
             value={sel.randomSeed}
             onChange={(v) => patch({ randomSeed: Math.round(v) })}
             step={1}
-            aria-label="Random Seed"
+            aria-label={t('inspector.textAnimator.randomSeed', 'Random Seed')}
           />
         </div>
       )}
@@ -429,30 +444,30 @@ function WigglySelectorBody({
 }): JSX.Element {
   return (
     <>
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="maxAmount" label="Max Amount" value={sel.maxAmount} unit="%" />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="minAmount" label="Min Amount" value={sel.minAmount} unit="%" />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="wigglesPerSecond" label="Wiggles/Second" value={sel.wigglesPerSecond} unit="Hz" min={0} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="maxAmount" label={t('inspector.textAnimator.maxAmount', 'Max Amount')} value={sel.maxAmount} unit="%" />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="minAmount" label={t('inspector.textAnimator.minAmount', 'Min Amount')} value={sel.minAmount} unit="%" />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="wigglesPerSecond" label={t('inspector.textAnimator.wigglesPerSecond', 'Wiggles/Second')} value={sel.wigglesPerSecond} unit="Hz" min={0} />
       {/* High correlation is a wave, low is noise — this single control is what
           decides whether wiggly reads as organic or as static. */}
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="correlation" label="Correlation" value={sel.correlation} unit="%" min={0} max={100} />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="temporalPhase" label="Temporal Phase" value={sel.temporalPhase} unit="°" />
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="spatialPhase" label="Spatial Phase" value={sel.spatialPhase} unit="°" />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="correlation" label={t('inspector.textAnimator.correlation', 'Correlation')} value={sel.correlation} unit="%" min={0} max={100} />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="temporalPhase" label={t('inspector.textAnimator.temporalPhase', 'Temporal Phase')} value={sel.temporalPhase} unit="°" />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="spatialPhase" label={t('inspector.textAnimator.spatialPhase', 'Spatial Phase')} value={sel.spatialPhase} unit="°" />
       <div className={styles.selectorRow}>
-        <span className={styles.paramLabel}>Lock Dimensions</span>
+        <span className={styles.paramLabel}>{t('inspector.textAnimator.lockDimensions', 'Lock Dimensions')}</span>
         <Checkbox
           checked={sel.lockDimensions}
           onChange={() => patch({ lockDimensions: !sel.lockDimensions })}
-          title="Lock Dimensions"
+          title={t('inspector.textAnimator.lockDimensions', 'Lock Dimensions')}
           style={{ width: 14, height: 14 }}
         />
       </div>
       <div className={styles.paramRow}>
-        <span className={styles.paramLabel}>Random Seed</span>
+        <span className={styles.paramLabel}>{t('inspector.textAnimator.randomSeed', 'Random Seed')}</span>
         <ValueField
           value={sel.randomSeed}
           onChange={(v) => patch({ randomSeed: Math.round(v) })}
           step={1}
-          aria-label="Random Seed"
+          aria-label={t('inspector.textAnimator.randomSeed', 'Random Seed')}
         />
       </div>
     </>
@@ -473,9 +488,10 @@ function ExpressionSelectorBody({
   patch: (p: Record<string, unknown>) => void;
 }): JSX.Element {
   const [draft, setDraft] = useState(sel.expression);
+  const exprHint = tAround(t('inspector.textAnimator.exprHint', 'Returns 0–100. Sees {names}.', { names: SLOT }));
   return (
     <>
-      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="amount" label="Amount" value={sel.amount} unit="%" />
+      <SelectorParamRow nodeId={nodeId} index={index} selIndex={selIndex} param="amount" label={t('inspector.textAnimator.amount', 'Amount')} value={sel.amount} unit="%" />
       <div style={{ padding: '4px 0' }}>
         <textarea
           value={draft}
@@ -483,28 +499,31 @@ function ExpressionSelectorBody({
           onBlur={() => patch({ expression: draft })}
           spellCheck={false}
           rows={3}
-          aria-label="Selector expression"
+          aria-label={t('inspector.textAnimator.selectorExpression', 'Selector expression')}
           className={styles.exprInput}
         />
         <div className={styles.exprHint}>
-          Returns 0–100. Sees <code>textIndex</code>, <code>textTotal</code>,{' '}
-          <code>selectorValue</code>, <code>time</code>, <code>Math</code>.
+          {exprHint[0]}<code>textIndex</code>, <code>textTotal</code>, <code>selectorValue</code>, <code>time</code>, <code>Math</code>{exprHint[1]}
         </div>
       </div>
     </>
   );
 }
 
-const CHARACTER_RANGES: { id: CharacterRange; label: string }[] = [
-  { id: 'preserve', label: 'Preserve Case & Digits' },
-  { id: 'full', label: 'Full Unicode' },
-];
+function characterRangeOptions(): { id: CharacterRange; label: string }[] {
+  return [
+    { id: 'preserve', label: t('inspector.textAnimator.characterRange.preserve', 'Preserve Case & Digits') },
+    { id: 'full', label: t('inspector.textAnimator.characterRange.full', 'Full Unicode') },
+  ];
+}
 
-const TRACKING_TYPES: { id: TrackingType; label: string }[] = [
-  { id: 'after', label: 'After' },
-  { id: 'before', label: 'Before' },
-  { id: 'beforeAfter', label: 'Before & After' },
-];
+function trackingTypeOptions(): { id: TrackingType; label: string }[] {
+  return [
+    { id: 'after', label: t('inspector.textAnimator.trackingType.after', 'After') },
+    { id: 'before', label: t('inspector.textAnimator.trackingType.before', 'Before') },
+    { id: 'beforeAfter', label: t('inspector.textAnimator.trackingType.beforeAfter', 'Before & After') },
+  ];
+}
 
 /**
  * The optional properties of one group that this animator has ADDED, each
@@ -568,8 +587,8 @@ function OptionalParamRows({
             type="button"
             className={styles.remove}
             onClick={() => { void animatorEdit(nodeId, data.id, { op: 'removeProperty', param: o.param }); }}
-            aria-label={`Remove ${o.label}`}
-            title="Remove property"
+            aria-label={t('inspector.textAnimator.removeNamed', 'Remove {name}', { name: o.label })}
+            title={t('inspector.textAnimator.removeProperty', 'Remove property')}
           >
             <Icon name="minus" size="sm" />
           </button>
@@ -604,7 +623,7 @@ function AnimatorGroup({
     {
       type: 'item',
       id: 'allTransform',
-      label: 'All Transform Properties',
+      label: t('inspector.textAnimator.allTransform', 'All Transform Properties'),
       onSelect: () => { void animatorEdit(nodeId, data.id, { op: 'addProperties', params: ALL_TRANSFORM_OPTIONAL }); },
     },
     { type: 'separator' },
@@ -619,7 +638,7 @@ function AnimatorGroup({
     {
       type: 'item',
       id: 'fontAxis',
-      label: 'Font Axis',
+      label: t('inspector.textAnimator.fontAxis', 'Font Axis'),
       submenu: axisTags.map((tag): DropdownItem => ({
         type: 'item',
         id: `axis_${tag}`,
@@ -627,22 +646,22 @@ function AnimatorGroup({
         disabled: !!data.axes && tag in data.axes,
         onSelect: () => {
           void animatorEdit(nodeId, data.id, { op: 'addAxis', tag }).then((ok) => {
-            if (!ok) notify({ level: 'warning', message: `A text layer's animators can drive at most ${MAX_ANIMATED_AXES} font axes.`, durationMs: 2400 });
+            if (!ok) notify({ level: 'warning', message: t('inspector.textAnimator.maxAxes', "A text layer's animators can drive at most {n} font axes.", { n: MAX_ANIMATED_AXES }), durationMs: 2400 });
           });
         },
       })),
     },
   ];
   const addItems: DropdownItem[] = [
-    { type: 'item', id: 'property', label: 'Property', submenu: propertyItems },
+    { type: 'item', id: 'property', label: t('inspector.textAnimator.property', 'Property'), submenu: propertyItems },
     {
       type: 'item',
       id: 'selector',
-      label: 'Selector',
-      submenu: KINDS.map((k): DropdownItem => ({
+      label: t('inspector.textAnimator.selector', 'Selector'),
+      submenu: kindOptions().map((k): DropdownItem => ({
         type: 'item',
         id: k.id,
-        label: `${k.label} Selector`,
+        label: t('inspector.textAnimator.kindSelector', '{kind} Selector', { kind: k.label }),
         onSelect: () => { void addSelectorEdit(nodeId, data.id, k.id); },
       })),
     },
@@ -651,18 +670,18 @@ function AnimatorGroup({
   return (
     <div className={styles.group}>
       <div className={styles.groupHead}>
-        <span className={styles.groupTitle}>{data.name ?? `Animator ${index + 1}`}</span>
+        <span className={styles.groupTitle}>{data.name ?? t('inspector.textAnimator.animatorN', 'Animator {n}', { n: index + 1 })}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Checkbox
             checked={data.enabled !== false}
             onChange={() => { void setAnimatorEnabledEdit(nodeId, data.id, data.enabled === false); }}
-            title="Enable animator"
+            title={t('inspector.textAnimator.enableAnimator', 'Enable animator')}
             style={{ width: 14, height: 14 }}
           />
           <Dropdown
             placement="left-start"
             trigger={
-              <button type="button" className={styles.remove} title="Add property or selector" aria-label="Add property or selector">
+              <button type="button" className={styles.remove} title={t('inspector.textAnimator.addPropertyOrSelector', 'Add property or selector')} aria-label={t('inspector.textAnimator.addPropertyOrSelector', 'Add property or selector')}>
                 <Icon name="plus" size="sm" />
               </button>
             }
@@ -672,8 +691,8 @@ function AnimatorGroup({
             type="button"
             className={styles.remove}
             onClick={() => { void removeAnimatorEdit(nodeId, data.id); }}
-            aria-label={`Remove animator ${index + 1}`}
-            title="Remove animator"
+            aria-label={t('inspector.textAnimator.removeAnimatorN', 'Remove animator {n}', { n: index + 1 })}
+            title={t('inspector.textAnimator.removeAnimator', 'Remove animator')}
           >
             <Icon name="minus" size="sm" />
           </button>
@@ -692,45 +711,45 @@ function AnimatorGroup({
         />
       ))}
 
-      <div className={styles.subhead}>Transform</div>
-      <AnimatorParamRow nodeId={nodeId} index={index} param="x" label="Position X" value={data.x} unit="px" />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="y" label="Position Y" value={data.y} unit="px" />
+      <div className={styles.subhead}>{t('inspector.textAnimator.transform', 'Transform')}</div>
+      <AnimatorParamRow nodeId={nodeId} index={index} param="x" label={t('inspector.textAnimator.positionX', 'Position X')} value={data.x} unit="px" />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="y" label={t('inspector.textAnimator.positionY', 'Position Y')} value={data.y} unit="px" />
       {show3D && (
-        <AnimatorParamRow nodeId={nodeId} index={index} param="z" label="Position Z" value={data.z ?? 0} unit="px" />
+        <AnimatorParamRow nodeId={nodeId} index={index} param="z" label={t('inspector.textAnimator.positionZ', 'Position Z')} value={data.z ?? 0} unit="px" />
       )}
-      <AnimatorParamRow nodeId={nodeId} index={index} param="scale" label="Scale X" value={data.scale} unit="%" min={0} />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="scaleY" label="Scale Y" value={data.scaleY ?? data.scale} unit="%" min={0} />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="rotation" label="Rotation" value={data.rotation} unit="°" />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="scale" label={t('inspector.textAnimator.scaleX', 'Scale X')} value={data.scale} unit="%" min={0} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="scaleY" label={t('inspector.textAnimator.scaleY', 'Scale Y')} value={data.scaleY ?? data.scale} unit="%" min={0} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="rotation" label={t('inspector.textAnimator.rotation', 'Rotation')} value={data.rotation} unit="°" />
       {show3D && (
         <>
-          <AnimatorParamRow nodeId={nodeId} index={index} param="rotationX" label="Rotation X" value={data.rotationX ?? 0} unit="°" />
-          <AnimatorParamRow nodeId={nodeId} index={index} param="rotationY" label="Rotation Y" value={data.rotationY ?? 0} unit="°" />
+          <AnimatorParamRow nodeId={nodeId} index={index} param="rotationX" label={t('inspector.textAnimator.rotationX', 'Rotation X')} value={data.rotationX ?? 0} unit="°" />
+          <AnimatorParamRow nodeId={nodeId} index={index} param="rotationY" label={t('inspector.textAnimator.rotationY', 'Rotation Y')} value={data.rotationY ?? 0} unit="°" />
         </>
       )}
-      <AnimatorParamRow nodeId={nodeId} index={index} param="skew" label="Skew" value={data.skew ?? 0} unit="°" />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="skew" label={t('inspector.textAnimator.skew', 'Skew')} value={data.skew ?? 0} unit="°" />
       <OptionalParamRows nodeId={nodeId} index={index} data={data} group="transform" show3D={show3D} />
       {show3D && !perChar3D && (
         <div className={styles.empty} style={{ padding: '4px 0 8px' }}>
-          Position Z / Rotation X·Y apply when Per-character 3D is on (Geometry Options).
+          {t('inspector.textAnimator.perChar3DHint', 'Position Z / Rotation X·Y apply when Per-character 3D is on (Geometry Options).')}
         </div>
       )}
 
-      <div className={styles.subhead}>Typography</div>
-      <AnimatorParamRow nodeId={nodeId} index={index} param="tracking" label="Tracking" value={data.tracking} unit="px" />
+      <div className={styles.subhead}>{t('inspector.textAnimator.typography', 'Typography')}</div>
+      <AnimatorParamRow nodeId={nodeId} index={index} param="tracking" label={t('inspector.textAnimator.tracking', 'Tracking')} value={data.tracking} unit="px" />
       <PickRow
-        label="Tracking Type"
+        label={t('inspector.textAnimator.trackingType', 'Tracking Type')}
         value={data.trackingType ?? 'after'}
-        options={TRACKING_TYPES}
+        options={trackingTypeOptions()}
         onSelect={(id) => { void animatorEdit(nodeId, data.id, { op: 'field', key: 'trackingType', value: id, label: 'Tracking Type' }); }}
       />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="lineSpacing" label="Line Spacing" value={data.lineSpacing ?? 0} unit="px" />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="lineSpacing" label={t('inspector.textAnimator.lineSpacing', 'Line Spacing')} value={data.lineSpacing ?? 0} unit="px" />
       {/* Character Offset walks each glyph through its own alphabet — the
           decode / scramble reveal, which no transform can fake. */}
-      <AnimatorParamRow nodeId={nodeId} index={index} param="characterOffset" label="Character Offset" value={data.characterOffset ?? 0} step={1} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="characterOffset" label={t('inspector.textAnimator.characterOffset', 'Character Offset')} value={data.characterOffset ?? 0} step={1} />
       <PickRow
-        label="Character Range"
+        label={t('inspector.textAnimator.characterRange', 'Character Range')}
         value={data.characterRange ?? 'preserve'}
-        options={CHARACTER_RANGES}
+        options={characterRangeOptions()}
         onSelect={(id) => { void animatorEdit(nodeId, data.id, { op: 'field', key: 'characterRange', value: id, label: 'Character Range' }); }}
       />
       <OptionalParamRows nodeId={nodeId} index={index} data={data} group="typography" show3D={show3D} />
@@ -740,7 +759,7 @@ function AnimatorGroup({
             <ParamRow
               nodeId={nodeId}
               path={animatorAxisPropPath(index, tag)}
-              label={`Font Axis ${tag}`}
+              label={t('inspector.textAnimator.fontAxisTag', 'Font Axis {tag}', { tag })}
               value={value}
             />
           </div>
@@ -748,33 +767,33 @@ function AnimatorGroup({
             type="button"
             className={styles.remove}
             onClick={() => { void animatorEdit(nodeId, data.id, { op: 'removeProperty', param: `axis${tag}` }); }}
-            aria-label={`Remove Font Axis ${tag}`}
-            title="Remove property"
+            aria-label={t('inspector.textAnimator.removeFontAxisTag', 'Remove Font Axis {tag}', { tag })}
+            title={t('inspector.textAnimator.removeProperty', 'Remove property')}
           >
             <Icon name="minus" size="sm" />
           </button>
         </div>
       ))}
 
-      <div className={styles.subhead}>Appearance</div>
-      <AnimatorParamRow nodeId={nodeId} index={index} param="opacity" label="Opacity" value={data.opacity} unit="%" min={0} max={100} />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="fillOpacity" label="Fill Opacity" value={data.fillOpacity ?? 100} unit="%" min={0} max={100} />
+      <div className={styles.subhead}>{t('inspector.textAnimator.appearance', 'Appearance')}</div>
+      <AnimatorParamRow nodeId={nodeId} index={index} param="opacity" label={t('inspector.textAnimator.opacity', 'Opacity')} value={data.opacity} unit="%" min={0} max={100} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="fillOpacity" label={t('inspector.textAnimator.fillOpacity', 'Fill Opacity')} value={data.fillOpacity ?? 100} unit="%" min={0} max={100} />
       {/* AE's animator Blur is 2-D. Same X/Y pair as Scale: the Y row shows
           the X value until it is edited (linked), and writing it stores the
           animator's own blurY — from then on the axes are unlinked. */}
-      <AnimatorParamRow nodeId={nodeId} index={index} param="blur" label="Blur X" value={data.blur ?? 0} unit="px" min={0} />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="blurY" label="Blur Y" value={data.blurY ?? data.blur ?? 0} unit="px" min={0} />
-      <AnimatorParamRow nodeId={nodeId} index={index} param="strokeWidth" label="Stroke Width" value={data.strokeWidth ?? 0} unit="px" min={0} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="blur" label={t('inspector.textAnimator.blurX', 'Blur X')} value={data.blur ?? 0} unit="px" min={0} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="blurY" label={t('inspector.textAnimator.blurY', 'Blur Y')} value={data.blurY ?? data.blur ?? 0} unit="px" min={0} />
+      <AnimatorParamRow nodeId={nodeId} index={index} param="strokeWidth" label={t('inspector.textAnimator.strokeWidth', 'Stroke Width')} value={data.strokeWidth ?? 0} unit="px" min={0} />
       <OptionalParamRows nodeId={nodeId} index={index} data={data} group="fill" show3D={show3D} />
       <OptionalParamRows nodeId={nodeId} index={index} data={data} group="stroke" show3D={show3D} />
 
       <ColorRow
-        label="Fill colour"
+        label={t('inspector.textAnimator.fillColour', 'Fill colour')}
         value={data.color}
         onSet={(hex) => { void animatorEdit(nodeId, data.id, { op: 'color', key: 'color', hex, present: data.color !== undefined }); }}
       />
       <ColorRow
-        label="Stroke colour"
+        label={t('inspector.textAnimator.strokeColour', 'Stroke colour')}
         value={data.strokeColor}
         onSet={(hex) => { void animatorEdit(nodeId, data.id, { op: 'color', key: 'strokeColor', hex, present: data.strokeColor !== undefined }); }}
       />
@@ -804,15 +823,15 @@ function ColorRow({
               type="button"
               className={styles.remove}
               onClick={() => onSet(undefined)}
-              aria-label={`Clear ${label}`}
-              title="Clear colour"
+              aria-label={t('inspector.textAnimator.clearNamed', 'Clear {name}', { name: label })}
+              title={t('inspector.textAnimator.clearColour', 'Clear colour')}
             >
               <Icon name="close" size="sm" />
             </button>
           </>
         ) : (
           <button type="button" className={styles.pick} onClick={() => onSet(defaultAnimatorColor())}>
-            <span>Add colour</span>
+            <span>{t('inspector.textAnimator.addColour', 'Add colour')}</span>
           </button>
         )}
       </div>
@@ -851,24 +870,24 @@ function MoreOptionsGroup({ nodeId }: { nodeId: string }): JSX.Element | null {
   return (
     <div className={styles.group}>
       <div className={styles.groupHead}>
-        <span className={styles.groupTitle}>More Options</span>
+        <span className={styles.groupTitle}>{t('inspector.textAnimator.moreOptions', 'More Options')}</span>
       </div>
       <PickRow<AnchorGrouping>
-        label="Anchor Point Grouping"
+        label={t('inspector.textAnimator.anchorGrouping', 'Anchor Point Grouping')}
         value={o.anchorGrouping}
         options={ANCHOR_GROUPINGS.map((g) => ({ id: g.value, label: g.label }))}
         onSelect={(v) => write('Anchor Point Grouping', 'anchorGrouping', v)}
       />
-      <ParamRow nodeId={nodeId} path="groupingAlignX" label="Grouping Alignment X" value={o.groupingAlignX} unit="%" />
-      <ParamRow nodeId={nodeId} path="groupingAlignY" label="Grouping Alignment Y" value={o.groupingAlignY} unit="%" />
+      <ParamRow nodeId={nodeId} path="groupingAlignX" label={t('inspector.textAnimator.groupingAlignX', 'Grouping Alignment X')} value={o.groupingAlignX} unit="%" />
+      <ParamRow nodeId={nodeId} path="groupingAlignY" label={t('inspector.textAnimator.groupingAlignY', 'Grouping Alignment Y')} value={o.groupingAlignY} unit="%" />
       <PickRow<FillStrokeMode>
-        label="Fill & Stroke"
+        label={t('inspector.textAnimator.fillStroke', 'Fill & Stroke')}
         value={o.fillStrokeMode}
         options={FILL_STROKE_MODES.map((m) => ({ id: m.value, label: m.label }))}
         onSelect={(v) => write('Fill & Stroke', 'fillStrokeMode', v)}
       />
       <PickRow
-        label="Inter-Character Blending"
+        label={t('inspector.textAnimator.interCharacterBlending', 'Inter-Character Blending')}
         value={o.interCharacterBlending}
         options={INTER_CHARACTER_BLEND_MODES.map((m) => ({ id: m.value, label: m.label }))}
         onSelect={(v) => write('Inter-Character Blending', 'interCharacterBlending', v)}
@@ -915,7 +934,7 @@ export function TextAnimatorControls({ nodeId }: { nodeId: string }): JSX.Elemen
     if (await typewriterEdit(nodeId, time)) {
       useUIStore.getState().notify({
         level: 'success',
-        message: 'Created typewriter typing motion!',
+        message: t('inspector.textAnimator.typewriterCreated', 'Created typewriter typing motion!'),
         durationMs: 1800,
       });
     }
@@ -928,11 +947,11 @@ export function TextAnimatorControls({ nodeId }: { nodeId: string }): JSX.Elemen
           type="button"
           className={styles.add}
           onClick={() => { void addAnimatorEdit(nodeId); }}
-          aria-label="Add text animator"
-          title="Add animator"
+          aria-label={t('inspector.textAnimator.addTextAnimator', 'Add text animator')}
+          title={t('inspector.textAnimator.addAnimator', 'Add animator')}
         >
           <Icon name="plus" size="sm" />
-          <span>Add</span>
+          <span>{t('inspector.textAnimator.add', 'Add')}</span>
         </button>
       </div>
 
@@ -943,16 +962,15 @@ export function TextAnimatorControls({ nodeId }: { nodeId: string }): JSX.Elemen
           icon="type"
           fullWidth
           onClick={() => { void handleAutoTypewriter(); }}
-          title="Auto-creates typewriter rig keyframed over 1.5s"
+          title={t('inspector.textAnimator.autoTypingTitle', 'Auto-creates typewriter rig keyframed over 1.5s')}
         >
-          Auto-Animate Typing
+          {t('inspector.textAnimator.autoTyping', 'Auto-Animate Typing')}
         </Button>
       </div>
 
       {animators.length === 0 ? (
         <div className={styles.empty}>
-          No animators. Add one to animate characters, words, or lines — then keyframe its
-          selector Offset to stagger them.
+          {t('inspector.textAnimator.empty', 'No animators. Add one to animate characters, words, or lines — then keyframe its selector Offset to stagger them.')}
         </div>
       ) : (
         <>

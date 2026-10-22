@@ -28,6 +28,7 @@ import { openModal } from '@stores/modalStore';
 import { useUIStore } from '@stores/uiStore';
 import type { NativePluginPackageInspect, NativePluginPackagePreview } from '@/types/motionEditor';
 import styles from './InstallPackageDialog.module.css';
+import { t } from '@core/i18n';
 
 export type PackageChoice = 'install' | 'anyway' | null;
 
@@ -36,10 +37,10 @@ function Contributions({ p }: { p: NativePluginPackagePreview }): JSX.Element | 
   const c = p.contributes;
   if (!c) return null;
   const rows: Array<[string, string[]]> = [
-    ['Commands (Plugins menu)', c.commands],
-    ['Imports', c.importers],
-    ['Export formats', c.outputModules],
-    ['Panels', c.panels],
+    [t('plugins.install.commands', 'Commands (Plugins menu)'), c.commands],
+    [t('plugins.install.imports', 'Imports'), c.importers],
+    [t('plugins.install.exportFormats', 'Export formats'), c.outputModules],
+    [t('plugins.install.panels', 'Panels'), c.panels],
   ];
   const shown = rows.filter(([, list]) => list.length > 0);
   if (shown.length === 0) return null;
@@ -62,7 +63,7 @@ function PreviewBody({ p }: { p: NativePluginPackagePreview }): JSX.Element {
       <div className={styles.headline}>
         <span className={styles.name}>{p.name}</span>
         <span className={styles.version}>{p.version}</span>
-        {p.installedVersion ? <Badge size="sm">installed: {p.installedVersion}</Badge> : null}
+        {p.installedVersion ? <Badge size="sm">{t('plugins.install.installedVersion', 'installed: {version}', { version: p.installedVersion })}</Badge> : null}
       </div>
       <div className={styles.id}>{p.id}</div>
       <div className={trust.tone === 'ok' ? styles.trustOk : styles.trustWarn} role={trust.tone === 'warn' ? 'alert' : undefined}>
@@ -82,8 +83,11 @@ function PreviewBody({ p }: { p: NativePluginPackagePreview }): JSX.Element {
       ) : null}
       <Contributions p={p} />
       <p className={styles.muted}>
-        SDK {p.sdk} · builds for {p.platforms.join(', ') || 'no platform'}
-        {p.entitlement === 'premation-cloud' ? ' · loads with Premation Cloud' : ''}
+        {t('plugins.install.sdkLine', 'SDK {sdk} · builds for {platforms}', {
+          sdk: p.sdk,
+          platforms: p.platforms.join(', ') || t('plugins.install.noPlatform', 'no platform'),
+        })}
+        {p.entitlement === 'premation-cloud' ? t('plugins.install.cloudSuffix', ' · loads with Premation Cloud') : ''}
       </p>
       {p.problem ? <p className={styles.problem} role="alert">{p.problem}</p> : null}
     </div>
@@ -102,7 +106,7 @@ export function confirmPackageInstall(p: NativePluginPackagePreview): Promise<Pa
     };
     const confirm: PackageChoice = trust.needsAnyway ? 'anyway' : 'install';
     openModal({
-      title: p.problem ? 'This plugin cannot be installed' : `Install ${p.name}?`,
+      title: p.problem ? t('plugins.install.cannotInstall', 'This plugin cannot be installed') : t('plugins.install.title', 'Install {name}?', { name: p.name }),
       size: 'sm',
       persistent: true,
       onClose: () => {
@@ -116,14 +120,14 @@ export function confirmPackageInstall(p: NativePluginPackagePreview): Promise<Pa
         <DialogFooter
           secondary={
             <Button variant="ghost" onClick={() => settle(null, close)}>
-              {p.problem ? 'Close' : 'Cancel'}
+              {p.problem ? t('plugins.install.close', 'Close') : t('plugins.install.cancel', 'Cancel')}
             </Button>
           }
           {...(p.problem
             ? {}
             : trust.needsAnyway
-              ? { destructive: <Button variant="danger" onClick={() => settle(confirm, close)}>Install anyway</Button> }
-              : { primary: <Button variant="primary" onClick={() => settle(confirm, close)}>Install</Button> })}
+              ? { destructive: <Button variant="danger" onClick={() => settle(confirm, close)}>{t('plugins.install.installAnyway', 'Install anyway')}</Button> }
+              : { primary: <Button variant="primary" onClick={() => settle(confirm, close)}>{t('plugins.install.install', 'Install')}</Button> })}
         />
       ),
       // Enter installs only a package from a known publisher: "Install anyway" is never one keystroke.
@@ -135,7 +139,7 @@ export function confirmPackageInstall(p: NativePluginPackagePreview): Promise<Pa
 /** Show, ask, install. Resolves the outcome to report; null when nothing was attempted. */
 export async function runPackageInstall(r: NativePluginPackageInspect): Promise<StoreInstallResult | null> {
   if (!r.ok) {
-    await customAlert('Not a plugin package', r.fileName ? `${r.fileName}: ${r.reason}` : r.reason, { isDanger: true });
+    await customAlert(t('plugins.install.notPackage', 'Not a plugin package'), r.fileName ? `${r.fileName}: ${r.reason}` : r.reason, { isDanger: true });
     return null;
   }
   const choice = await confirmPackageInstall(r.preview);

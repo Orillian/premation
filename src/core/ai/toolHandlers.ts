@@ -1199,7 +1199,7 @@ const setExpression: AiTool['handler'] = async (input, ctx) => {
   const err = await ctx.anim.getExpressionError(nodeId, prop);
   if (err) {
     await ctx.anim.setExpression(nodeId, prop, '');
-    return fail(`Expression rejected and not applied: ${err}. It must be a single expression returning a number — no 'return', no statements.`);
+    return fail(`Expression rejected and not applied: ${err}. Fix that and send the whole expression again; the last expression statement must give the property's value.`);
   }
   // Presence stopped being the same question as enablement. `setExpression`
   // preserves a disabled expression's state, so writing a formula onto a

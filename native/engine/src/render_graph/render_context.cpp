@@ -1,6 +1,9 @@
 #include "render_context.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 
 #include "color/color_system.hpp"
 
@@ -74,19 +77,30 @@ wgpu::TextureFormat blob_format(api::RenderTextureFormat f) {
 }
 }  // namespace
 
-TexRef PassContext::texture_mipmapped(std::string_view key) {
+TexRef PassContext::texture_mipmapped(std::string_view key, const MipFootprint& fp) {
   const ResolvedBlob rb = textures.resolve(key);
   if (colorSystem != nullptr && colorSystem->active() && rb.inputSpace) return texture(key);
   if (rb.blob == nullptr) {
     if (external == nullptr || rb.hash.empty()) return {};
-    TexRef t = external->external_texture_mipmapped(rb.hash);
+    TexRef t = external->external_texture_mipmapped(rb.hash, fp);
     if (t) t.sampleLinear = rb.sampleLinear;
     return t;
   }
   const api::RenderBlob& b = *rb.blob;
-  TexRef t = dev.texture(b.hash + "#mip", b.width, b.height, blob_format(b.format), b.pixels, true);
+  TexRef t = dev.mip_texture(b.hash + "#mip", b.width, b.height, blob_format(b.format), b.pixels,
+                             mip_levels_needed(b.width, b.height, fp));
   if (t) t.sampleLinear = rb.sampleLinear;
   return t;
+}
+
+SamplerRef PassContext::linear_clamp_levels(std::uint32_t levels, bool aniso) {
+  const std::uint32_t n = std::clamp(levels, 1U, 32U);
+  const bool a = aniso && n > 1;
+  // A stack key: no allocation per draw (the pool copies it once, on a miss).
+  std::array<char, 32> key{};
+  const int len = std::snprintf(key.data(), key.size(), "linear-clamp-l%u%s", n, a ? "a" : "");  // NOLINT(cppcoreguidelines-pro-type-vararg)
+  return dev.sampler(std::string_view(key.data(), static_cast<std::size_t>(std::max(0, len))), wgpu::FilterMode::Linear,
+                     wgpu::AddressMode::ClampToEdge, a ? 16 : 1, static_cast<float>(n - 1));
 }
 
 TexRef PassContext::texture(std::string_view key) {

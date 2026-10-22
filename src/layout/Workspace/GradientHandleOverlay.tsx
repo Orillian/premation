@@ -103,6 +103,7 @@ import {
   type Pt,
 } from './gradientHandles';
 import styles from './GradientHandleOverlay.module.css';
+import { t } from '@core/i18n';
 
 /** Half-diagonal of a stop diamond, in screen px. */
 const STOP_R = 6;
@@ -659,7 +660,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
     if (!Number.isFinite(centre.x) || !Number.isFinite(centre.y)) return null;
     const gid = `gradchip_${nodeId}`;
     return (
-      <svg className={styles.overlay} aria-label="Gradient fill">
+      <svg className={styles.overlay} aria-label={t('workspace.gradient.fillChip', 'Gradient fill')}>
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
             {sortedStops(stops).map((s) => (
@@ -671,7 +672,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
           className={styles.chip}
           onDoubleClick={() => useGradientEditStore.getState().arm(nodeId, fillIndex, channel)}
         >
-          <title>Double-click to edit this gradient on the canvas</title>
+          <title>{t('workspace.gradient.chipHint', 'Double-click to edit this gradient on the canvas')}</title>
           <circle cx={centre.x} cy={centre.y} r={11} fill="rgba(0,0,0,0.55)" />
           <circle
             cx={centre.x}
@@ -693,9 +694,11 @@ export function GradientHandleOverlay(): JSX.Element | null {
 
   const gripNode = (kind: GradientGripKind, p: Pt): JSX.Element => {
     const on = hovered === `grip:${kind}`;
-    const label = paint.type === 'radial' ? (kind === 'start' ? 'Center' : 'Radius') : kind === 'start' ? 'Start' : 'End';
+    const label = paint.type === 'radial'
+      ? (kind === 'start' ? t('workspace.gradient.gripCenter', 'Gradient Center handle') : t('workspace.gradient.gripRadius', 'Gradient Radius handle'))
+      : kind === 'start' ? t('workspace.gradient.gripStart', 'Gradient Start handle') : t('workspace.gradient.gripEnd', 'Gradient End handle');
     return (
-      <g aria-label={`Gradient ${label} handle`}>
+      <g aria-label={label}>
         <circle cx={p.x} cy={p.y} r={GRIP_R + 2} fill="rgba(0,0,0,0.55)" />
         <circle
           cx={p.x}
@@ -711,7 +714,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
 
   return (
     <>
-      <svg ref={svgRef} className={styles.overlay} aria-label="Gradient handles">
+      <svg ref={svgRef} className={styles.overlay} aria-label={t('workspace.gradient.handles', 'Gradient handles')}>
         {/* The line the ramp runs along, dark under light so it stays legible
             over whatever the gradient itself is painting. */}
         <line
@@ -770,7 +773,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
           const color = stops.find((x) => x.id === s.id)?.color ?? '#ffffff';
           const d = `M ${s.at.x} ${s.at.y - STOP_R} L ${s.at.x + STOP_R} ${s.at.y} L ${s.at.x} ${s.at.y + STOP_R} L ${s.at.x - STOP_R} ${s.at.y} Z`;
           return (
-            <g key={s.id} aria-label={`Gradient stop ${Math.round(s.offset * 100)}%`}>
+            <g key={s.id} aria-label={t('workspace.gradient.stop', 'Gradient stop {percent}%', { percent: Math.round(s.offset * 100) })}>
               {/* A dark halo UNDER the diamond, so a stop whose colour matches
                   the artwork behind it is still visible — the same trick every
                   other handle in this viewport uses. */}
@@ -797,7 +800,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
           className={styles.fillChips}
           style={{ left: Math.round(view.end.x), top: Math.round(view.end.y) }}
           role="group"
-          aria-label="Which paint to edit"
+          aria-label={t('workspace.gradient.whichPaint', 'Which paint to edit')}
         >
           {(['fill', 'stroke'] as const).map((c) => (
             <button
@@ -806,10 +809,12 @@ export function GradientHandleOverlay(): JSX.Element | null {
               className={`${styles.fillChip} ${styles.paintChip}${c === channel ? ` ${styles.fillChipOn}` : ''}`}
               aria-pressed={c === channel}
               disabled={c === 'fill' && !fillPaint}
-              title={c === 'fill' ? (fillPaint ? 'Edit the fill gradient' : 'The fill is not a gradient') : 'Edit the stroke gradient'}
+              title={c === 'fill'
+                ? (fillPaint ? t('workspace.gradient.editFill', 'Edit the fill gradient') : t('workspace.gradient.fillNotGradient', 'The fill is not a gradient'))
+                : t('workspace.gradient.editStroke', 'Edit the stroke gradient')}
               onClick={() => useGradientEditStore.getState().setTarget(c)}
             >
-              {c === 'fill' ? 'Fill' : 'Stroke'}
+              {c === 'fill' ? t('workspace.gradient.fill', 'Fill') : t('workspace.gradient.stroke', 'Stroke')}
             </button>
           ))}
         </div>
@@ -819,7 +824,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
           className={styles.fillChips}
           style={{ left: Math.round(view.start.x), top: Math.round(view.start.y) }}
           role="group"
-          aria-label="Which fill to edit"
+          aria-label={t('workspace.gradient.whichFill', 'Which fill to edit')}
         >
           {fills.map((f, i) => (
             <button
@@ -828,7 +833,9 @@ export function GradientHandleOverlay(): JSX.Element | null {
               className={i === fillIndex ? `${styles.fillChip} ${styles.fillChipOn}` : styles.fillChip}
               aria-pressed={i === fillIndex}
               disabled={!isGradient(f)}
-              title={isGradient(f) ? `Edit fill ${i + 1}` : `Fill ${i + 1} is not a gradient`}
+              title={isGradient(f)
+                ? t('workspace.gradient.editFillN', 'Edit fill {n}', { n: i + 1 })
+                : t('workspace.gradient.fillNNotGradient', 'Fill {n} is not a gradient', { n: i + 1 })}
               onClick={() => useGradientEditStore.getState().setFillIndex(i)}
             >
               {i + 1}
@@ -852,7 +859,7 @@ export function GradientHandleOverlay(): JSX.Element | null {
           <ColorPicker
             compact
             value={editingColor}
-            aria-label="Gradient stop color"
+            aria-label={t('workspace.gradient.stopColor', 'Gradient stop color')}
             onChange={(color) => {
               const t = stateRef.current.target;
               if (!t) return;

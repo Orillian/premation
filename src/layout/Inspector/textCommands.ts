@@ -17,6 +17,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { componentOfType } from '@core/engine/propRefs';
 import { colorValueHex } from '@core/mirror/paintFields';
@@ -145,8 +146,8 @@ export function buildTextCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TEXT_TOGGLE_ORIENTATION_COMMAND,
-      label: 'Convert to Vertical/Horizontal Text',
-      description: 'Switch the selected text layers between horizontal and vertical type.',
+      label: t('inspector.textCommands.toggleOrientation', 'Convert to Vertical/Horizontal Text'),
+      description: t('inspector.textCommands.toggleOrientationDesc', 'Switch the selected text layers between horizontal and vertical type.'),
       enabled: () => selectedTextLayerIds().length > 0,
       execute: () => {
         toggleTextOrientation(selectedTextLayerIds());
@@ -154,8 +155,8 @@ export function buildTextCommands(): ReadonlyArray<Command> {
     },
     {
       id: TEXT_SWAP_FILL_STROKE_COMMAND,
-      label: 'Swap Fill and Stroke',
-      description: 'Exchange the fill and stroke colours of the selected text layers.',
+      label: t('inspector.textCommands.swapFillStroke', 'Swap Fill and Stroke'),
+      description: t('inspector.textCommands.swapFillStrokeDesc', 'Exchange the fill and stroke colours of the selected text layers.'),
       shortcut: { key: 'x', shift: true },
       enabled: () => !isTypingInField() && selectedTextLayerIds().length > 0,
       execute: () => {

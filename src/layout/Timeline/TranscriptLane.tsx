@@ -26,6 +26,7 @@
 
 import { memo, useMemo, useState } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { useTranscriptStore } from '@layout/Transcript';
 import { idsBetween } from '@core/captions/transcriptEdit';
 import { deleteSelectedWords } from '@layout/Transcript/transcriptOps';
@@ -78,7 +79,7 @@ function TranscriptLaneImpl({
       className={styles.transcriptLane}
       style={{ top, height: TRANSCRIPT_LANE_HEIGHT, width }}
       role="group"
-      aria-label="Transcript"
+      aria-label={t('timeline.transcript.lane', 'Transcript')}
     >
       {boxes.map((box) => (
         <button
@@ -90,7 +91,7 @@ function TranscriptLaneImpl({
             box.estimated && styles.transcriptWordEstimated,
           )}
           style={{ left: box.left, width: box.width }}
-          title={box.estimated ? `${box.text} — timing estimated` : box.text}
+          title={box.estimated ? t('timeline.transcript.timingEstimated', '{word} — timing estimated', { word: box.text }) : box.text}
           aria-pressed={selectedSet.has(box.id)}
           // Stopped so the press does not scrub the ruler underneath: this
           // lane sits inside the sticky ruler stack, whose pointerdown is the
@@ -131,9 +132,11 @@ function TranscriptLaneImpl({
             setBusy(true);
             void deleteSelectedWords(rootId).finally(() => setBusy(false));
           }}
-          title={`Delete ${(span.end - span.start).toFixed(2)}s of time and close the gap`}
+          title={t('timeline.transcript.deleteTitle', 'Delete {seconds}s of time and close the gap', { seconds: (span.end - span.start).toFixed(2) })}
         >
-          {busy ? 'Deleting…' : `Delete range (${(span.end - span.start).toFixed(2)}s)`}
+          {busy
+            ? t('timeline.transcript.deleting', 'Deleting…')
+            : t('timeline.transcript.deleteRange', 'Delete range ({seconds}s)', { seconds: (span.end - span.start).toFixed(2) })}
         </button>
       ) : null}
     </div>

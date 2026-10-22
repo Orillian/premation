@@ -21,6 +21,7 @@ import { api, type ProjectVersionSummary } from '@core/api/client';
 import type { EditorDocument } from '@core/api/cloudDocument';
 import { engineCompStill, engineDocumentStill } from '@core/engine/engineStill';
 import { activeCompIdNow } from '@hooks/useMirror';
+import { t } from '@core/i18n';
 import { restoreVersionAsOneEdit } from './versionRestore';
 import styles from './VersionCompareDialog.module.css';
 
@@ -43,7 +44,7 @@ const COMPARE_SIZE = 1920;
 async function renderLiveFrame(): Promise<string> {
   const comp = activeCompIdNow();
   const blob = comp ? await engineCompStill(comp, playheadSeconds(), COMPARE_SIZE) : null;
-  if (!blob) throw new Error('The renderer could not produce a frame.');
+  if (!blob) throw new Error(t('history.compare.liveFrameFailed', 'The renderer could not produce a frame.'));
   return URL.createObjectURL(blob);
 }
 
@@ -55,8 +56,13 @@ export async function renderVersionFrame(doc: EditorDocument): Promise<string> {
   const comp = activeCompIdNow();
   const comps = (doc as { comps?: Record<string, unknown> }).comps;
   const blob = await engineDocumentStill(doc, playheadSeconds(), COMPARE_SIZE, comp && comps && comp in comps ? comp : undefined);
-  if (!blob) throw new Error('The renderer could not produce a frame of this version.');
+  if (!blob) throw new Error(t('history.compare.versionFrameFailed', 'The renderer could not produce a frame of this version.'));
   return URL.createObjectURL(blob);
+}
+
+/** The version's own label, or "Revision N" when it has none. */
+function versionName(version: ProjectVersionSummary): string {
+  return version.label || t('history.versions.revision', 'Revision {n}', { n: version.revision });
 }
 
 interface CompareProps {
@@ -67,7 +73,7 @@ interface CompareProps {
 type Phase = { kind: 'loading'; step: string } | { kind: 'ready' } | { kind: 'error'; message: string };
 
 function VersionCompare({ version, close }: CompareProps): JSX.Element {
-  const [phase, setPhase] = useState<Phase>({ kind: 'loading', step: 'Rendering the current composition…' });
+  const [phase, setPhase] = useState<Phase>(() => ({ kind: 'loading', step: t('history.compare.renderingCurrent', 'Rendering the current composition…') }));
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [versionUrl, setVersionUrl] = useState<string | null>(null);
   const [wipe, setWipe] = useState(50);
@@ -78,12 +84,17 @@ function VersionCompare({ version, close }: CompareProps): JSX.Element {
     let alive = true;
     const run = async (): Promise<void> => {
       const projectId = getCloudProjectId();
-      if (!projectId) throw new Error('Open a cloud project to compare its versions.');
+      if (!projectId) throw new Error(t('history.compare.needCloudProject', 'Open a cloud project to compare its versions.'));
       const live = await renderLiveFrame();
       urls.current.push(live);
       if (!alive) return;
       setLiveUrl(live);
-      setPhase({ kind: 'loading', step: `Rendering ${version.label || `revision ${version.revision}`}…` });
+      setPhase({
+        kind: 'loading',
+        step: version.label
+          ? t('history.compare.renderingNamed', 'Rendering {name}…', { name: version.label })
+          : t('history.compare.renderingRevision', 'Rendering revision {n}…', { n: version.revision }),
+      });
       const record = await api.getVersion(projectId, version.id);
       if (!alive) return;
       const ver = await renderVersionFrame(record.document as EditorDocument);
@@ -115,12 +126,12 @@ function VersionCompare({ version, close }: CompareProps): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.stage} data-testid="compare-stage">
-        {liveUrl ? <img className={styles.frame} src={liveUrl} alt="Current composition at the playhead" /> : null}
+        {liveUrl ? <img className={styles.frame} src={liveUrl} alt={t('history.compare.currentAlt', 'Current composition at the playhead')} /> : null}
         {versionUrl ? (
           <img
             className={styles.frame}
             src={versionUrl}
-            alt={`${version.label || `Revision ${version.revision}`} at the playhead`}
+            alt={t('history.compare.versionAlt', '{name} at the playhead', { name: versionName(version) })}
             // The wipe: the version covers the current frame from the left edge
             // to the slider. A number, not a design decision, so inline.
             style={{ clipPath: `inset(0 ${100 - wipe}% 0 0)` }}
@@ -137,11 +148,11 @@ function VersionCompare({ version, close }: CompareProps): JSX.Element {
             <span className={styles.veilError}>{phase.message}</span>
           </div>
         ) : null}
-        <span className={styles.tagLeft}>{version.label || `Revision ${version.revision}`}</span>
-        <span className={styles.tagRight}>Current</span>
+        <span className={styles.tagLeft}>{versionName(version)}</span>
+        <span className={styles.tagRight}>{t('history.compare.current', 'Current')}</span>
       </div>
       <label className={styles.wipeRow}>
-        <span className={styles.wipeLabel}>Wipe</span>
+        <span className={styles.wipeLabel}>{t('history.compare.wipe', 'Wipe')}</span>
         <input
           className={styles.wipe}
           type="range"
@@ -149,17 +160,17 @@ function VersionCompare({ version, close }: CompareProps): JSX.Element {
           max={100}
           value={wipe}
           onChange={(e) => setWipe(Number(e.currentTarget.value))}
-          aria-label="Wipe between the saved version and the current composition"
+          aria-label={t('history.compare.wipeAria', 'Wipe between the saved version and the current composition')}
           disabled={phase.kind !== 'ready'}
           data-enter-safe=""
         />
       </label>
       <DialogFooter
-        note={`At the playhead · ${playheadSeconds().toFixed(2)}s`}
-        secondary={<Button variant="ghost" onClick={close}>Close</Button>}
+        note={t('history.compare.note', 'At the playhead · {time}s', { time: playheadSeconds().toFixed(2) })}
+        secondary={<Button variant="ghost" onClick={close}>{t('history.compare.close', 'Close')}</Button>}
         primary={
           <Button variant="primary" onClick={() => void restore()} disabled={phase.kind !== 'ready' || restoring}>
-            {restoring ? 'Restoring…' : 'Restore this version'}
+            {restoring ? t('history.versions.restoring', 'Restoring…') : t('history.compare.restore', 'Restore this version')}
           </Button>
         }
       />
@@ -170,8 +181,8 @@ function VersionCompare({ version, close }: CompareProps): JSX.Element {
 export function openVersionCompare(version: ProjectVersionSummary): void {
   openModal({
     id: 'version-compare',
-    title: 'Compare with current',
-    description: `${version.label || `Revision ${version.revision}`} against the composition as it is now`,
+    title: t('history.compare.title', 'Compare with current'),
+    description: t('history.compare.description', '{name} against the composition as it is now', { name: versionName(version) }),
     size: 'lg',
     render: (close) => <VersionCompare version={version} close={close} />,
   });

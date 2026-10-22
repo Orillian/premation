@@ -215,7 +215,10 @@ fn sstep(e0 : f32, e1 : f32, x : f32) -> f32 {
       if (samplePx(pp + vec2<f32>(cos(ang), sin(ang)) * r, lwh).a < 0.5) { d = r - border / 12.0; found = true; break; }
     }
   }
-  var a1 = s0.a * clamp(d - n * border + 0.5, 0.0, 1.0);
+  // A pixel no ring found the outside from lies deeper than the border: whole
+  // (scoring it at depth `border` cut it wherever n > 1 - 0.5 / border, which
+  // speckled the interior under a border of ~10 px).
+  var a1 = select(s0.a, s0.a * clamp(d - n * border + 0.5, 0.0, 1.0), found);
   if (obj.p1.w > 0.0) { a1 = clamp((a1 - 0.5) * (1.0 + obj.p1.w * 2.0) + 0.5, 0.0, 1.0); }
   let a0 = max(s0.a, 0.00001);
   return s0 * (a1 / a0);

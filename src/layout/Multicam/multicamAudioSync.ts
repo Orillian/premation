@@ -14,6 +14,7 @@ import { bestLagSeconds, ENVELOPE_HZ, mixToMonoChannels, rmsEnvelope } from '@co
 import { mirrorMulticamAngles } from '@core/mirror/multicam';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
+import { t } from '@core/i18n';
 
 /** Below this correlation the match is not trusted (the angle stays put). */
 const SYNC_MIN_SCORE = 0.3;
@@ -40,7 +41,7 @@ export async function planMulticamAudioSync(): Promise<{ moves: Array<{ clipId: 
   const m = documentMirror();
   const comp = activeCompIdNow();
   const angles = comp ? mirrorMulticamAngles(m, comp) : [];
-  if (angles.length < 2) return { moves: [], report: { shifted: 0, angles: [], note: 'Need at least two multicam angles.' } };
+  if (angles.length < 2) return { moves: [], report: { shifted: 0, angles: [], note: t('multicam.sync.needTwo', 'Need at least two multicam angles.') } };
   const fps = (() => {
     const r = comp ? m.comp(comp)?.settings.frameRate : undefined;
     return r && r.den > 0 ? r.num / r.den : 30;
@@ -54,7 +55,7 @@ export async function planMulticamAudioSync(): Promise<{ moves: Array<{ clipId: 
   const refEnv = envs[0];
   const refStart = startOf(angles[0]!.id);
   if (!refEnv || refStart === null) {
-    return { moves: [], report: { shifted: 0, angles: [], note: 'Angle 1 has no decodable audio — nothing to align against.' } };
+    return { moves: [], report: { shifted: 0, angles: [], note: t('multicam.sync.noReferenceAudio', 'Angle 1 has no decodable audio — nothing to align against.') } };
   }
   const report: MulticamSyncReport['angles'] = [{ angle: angles[0]!.angle, name: angles[0]!.name, offsetSec: 0, score: 1 }];
   const targets = new Map<string, number>([[angles[0]!.id, refStart]]);
@@ -89,7 +90,15 @@ export async function planMulticamAudioSync(): Promise<{ moves: Array<{ clipId: 
   const shifted = moves.length;
   const misses = report.filter((r) => r.note).length;
   const note = shifted === 0
-    ? misses > 0 ? 'No angles moved — audio failed to match. Align manually via a clap/slate frame.' : 'Angles already in sync.'
-    : `Synced ${shifted} angle${shifted === 1 ? '' : 's'} by audio${misses ? ` (${misses} not matched)` : ''}.`;
+    ? misses > 0
+      ? t('multicam.sync.noMatch', 'No angles moved — audio failed to match. Align manually via a clap/slate frame.')
+      : t('multicam.sync.alreadyInSync', 'Angles already in sync.')
+    : misses > 0
+      ? shifted === 1
+        ? t('multicam.sync.syncedOneMisses', 'Synced {n} angle by audio ({misses} not matched).', { n: shifted, misses })
+        : t('multicam.sync.syncedOtherMisses', 'Synced {n} angles by audio ({misses} not matched).', { n: shifted, misses })
+      : shifted === 1
+        ? t('multicam.sync.syncedOne', 'Synced {n} angle by audio.', { n: shifted })
+        : t('multicam.sync.syncedOther', 'Synced {n} angles by audio.', { n: shifted });
   return { moves, report: { shifted, angles: report, note } };
 }

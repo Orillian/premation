@@ -139,6 +139,11 @@ typedef struct PrParamDef {
   const char* file_name;
   /** FILE (render): 1 = an asset is chosen but its file is not on disk (the layer reports it). */
   int32_t file_missing;
+
+  /* ── SDK 1.2 addition (check struct_size; a module built before it simply has none) ── */
+  /** PARAMS_SETUP: a one-line UTF-8 description, shown as the param's tooltip in Effect Controls (on a
+   *  GROUP_START: the group's). NULL / "" = none. The host copies it; at render time it is NULL. */
+  const char* description;
 } PrParamDef;
 
 #ifdef __cplusplus

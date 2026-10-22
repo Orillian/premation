@@ -41,22 +41,34 @@ import { useViewerLutStore } from '@stores/viewerLutStore';
 import { useViewportDisplayStore, DISPLAY_MODE_LABEL, type DisplayMode } from '@stores/viewportDisplayStore';
 import { getCommandSystem } from '@core/commands/CommandSystem';
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import styles from './TopNav.module.css';
 
 /**
  * Human labels for the FIXED 3D view modes. A camera view has no fixed label —
  * it is named after its camera layer — so it is not a key here; go through
  * `cameraViewLabel`, which covers every mode.
+ *
+ * Getters, so the translation is looked up when a label is READ (render time),
+ * never at module load — the catalogue is not there yet then.
  */
 export const CAMERA_VIEW_LABEL: Record<Exclude<Camera3dMode, CameraViewMode>, string> = {
-  active: 'Active Camera', front: 'Front', back: 'Back',
-  left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom',
-  ...CUSTOM_VIEW_LABEL,
+  get active() { return t('topNav.view.activeCamera', 'Active Camera'); },
+  get front() { return t('topNav.view.front', 'Front'); },
+  get back() { return t('topNav.view.back', 'Back'); },
+  get left() { return t('topNav.view.left', 'Left'); },
+  get right() { return t('topNav.view.right', 'Right'); },
+  get top() { return t('topNav.view.top', 'Top'); },
+  get bottom() { return t('topNav.view.bottom', 'Bottom'); },
+  // Getters, not a spread: a spread would copy the English at import time.
+  get custom1() { return CUSTOM_VIEW_LABEL.custom1; },
+  get custom2() { return CUSTOM_VIEW_LABEL.custom2; },
+  get custom3() { return CUSTOM_VIEW_LABEL.custom3; },
 };
 
 /** A camera layer's name as a menu shows it — a blank name is still a row. */
 function cameraName(name: string | undefined): string {
-  return name && name.trim() ? name : 'Camera';
+  return name && name.trim() ? name : t('topNav.view.camera', 'Camera');
 }
 
 function compRootOr(rootId?: string): string | undefined {
@@ -199,7 +211,7 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'item',
       id: 'preview-cache-now',
-      label: 'Cache Work Area Now',
+      label: t('topNav.preview.cacheWorkArea', 'Cache Work Area Now'),
       icon: 'refresh',
       // Enabled while there is a composition to cache (previewCacheCommands.ts).
       disabled: !canCacheWorkArea(),
@@ -215,14 +227,14 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
       */
       type: 'checkbox',
       id: 'res-auto',
-      label: `Auto resolution — drop to ${RESOLUTION_LABELS[adaptiveFloor]} while dragging or when playback is slow`,
+      label: t('topNav.preview.autoResolution', 'Auto resolution — drop to {floor} while dragging or when playback is slow', { floor: RESOLUTION_LABELS[adaptiveFloor] }),
       checked: adaptive,
       onChange: setAdaptive,
     },
     {
       type: 'item',
       id: 'res-floor',
-      label: `Auto floor: ${RESOLUTION_LABELS[adaptiveFloor]}`,
+      label: t('topNav.preview.autoFloor', 'Auto floor: {floor}', { floor: RESOLUTION_LABELS[adaptiveFloor] }),
       disabled: !adaptive,
       submenu: ([2, 3, 4] as AdaptiveFloor[]).map<DropdownItem>((f) => ({
         type: 'checkbox',
@@ -237,7 +249,7 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
       // decodes the original, by construction (see proxyManager).
       type: 'checkbox',
       id: 'preview-use-proxies',
-      label: 'Use proxies — faster scrubbing, never in output',
+      label: t('topNav.preview.useProxies', 'Use proxies — faster scrubbing, never in output'),
       checked: useProxies,
       onChange: (v) => setPreference('useProxies', v),
     },
@@ -245,7 +257,7 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'checkbox',
       id: 'preview-motion-blur',
-      label: 'Motion Blur',
+      label: t('topNav.preview.motionBlur', 'Motion Blur'),
       checked: motionBlur,
       onChange: setMotionBlur,
     },
@@ -257,14 +269,14 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
       */
       type: 'checkbox',
       id: 'preview-draft-quality',
-      label: 'Draft Quality — skip motion-blur samples',
+      label: t('topNav.preview.draftQuality', 'Draft Quality — skip motion-blur samples'),
       checked: draftQuality,
       onChange: setDraftQuality,
     },
     {
       type: 'checkbox',
       id: 'preview-draft-3d',
-      label: 'Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections',
+      label: t('topNav.preview.draft3d', 'Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections'),
       checked: draft3d,
       onChange: () => toggleDraft3d(),
     },
@@ -272,7 +284,7 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'item',
       id: 'preview-display-mode',
-      label: `Display: ${DISPLAY_MODE_LABEL[displayMode]}`,
+      label: t('topNav.preview.display', 'Display: {mode}', { mode: DISPLAY_MODE_LABEL[displayMode] }),
       submenu: (Object.keys(DISPLAY_MODE_LABEL) as DisplayMode[]).map<DropdownItem>((m) => ({
         type: 'checkbox',
         id: `preview-display-${m}`,
@@ -284,19 +296,21 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'item',
       id: 'preview-viewer-lut',
-      label: lut ? `Viewer LUT: ${lutName ?? 'loaded'}` : 'Viewer LUT',
+      label: lut
+        ? t('topNav.preview.viewerLutNamed', 'Viewer LUT: {name}', { name: lutName ?? t('topNav.preview.lutLoaded', 'loaded') })
+        : t('topNav.preview.viewerLut', 'Viewer LUT'),
       submenu: [
-        { type: 'item', id: 'preview-lut-load', label: 'Load .cube LUT…', icon: 'upload', onSelect: () => runCommand('view.viewerLut.load') },
-        { type: 'item', id: 'preview-lut-clear', label: 'Clear Viewer LUT', disabled: !lut, onSelect: () => runCommand('view.viewerLut.clear') },
+        { type: 'item', id: 'preview-lut-load', label: t('topNav.preview.loadLut', 'Load .cube LUT…'), icon: 'upload', onSelect: () => runCommand('view.viewerLut.load') },
+        { type: 'item', id: 'preview-lut-clear', label: t('topNav.preview.clearLut', 'Clear Viewer LUT'), disabled: !lut, onSelect: () => runCommand('view.viewerLut.clear') },
         { type: 'separator' },
-        { type: 'label', label: 'A monitor look for the viewer only — never in output.' },
+        { type: 'label', label: t('topNav.preview.lutNote', 'A monitor look for the viewer only — never in output.') },
       ],
     },
     { type: 'separator' },
     {
       type: 'checkbox',
       id: 'preview-onion-skin',
-      label: 'Onion Skin — ghosts of nearby frames, while paused',
+      label: t('topNav.preview.onionSkin', 'Onion Skin — ghosts of nearby frames, while paused'),
       checked: onionEnabled,
       onChange: () => toggleOnion(),
     },
@@ -304,13 +318,13 @@ export function usePreviewMenuItems(): { items: DropdownItem[]; degraded: boolea
     {
       type: 'item',
       id: 'preview-roi',
-      label: roi ? 'Region of Interest: on' : 'Region of Interest',
+      label: roi ? t('topNav.preview.roiOn', 'Region of Interest: on') : t('topNav.preview.roi', 'Region of Interest'),
       submenu: [
         // Drag the region on the canvas after setting it (the handles are
         // painted by the renderer); these are the quick set/clear entries.
-        { type: 'checkbox', id: 'roi-on', label: 'Restrict to Region', checked: !!roi, onChange: (on: boolean) => (on ? setCentreRoi() : setRoi(null)) },
-        { type: 'item', id: 'roi-centre', label: 'Region to Centre', onSelect: setCentreRoi },
-        { type: 'item', id: 'roi-clear', label: 'Clear Region', disabled: !roi, onSelect: () => setRoi(null) },
+        { type: 'checkbox', id: 'roi-on', label: t('topNav.preview.roiRestrict', 'Restrict to Region'), checked: !!roi, onChange: (on: boolean) => (on ? setCentreRoi() : setRoi(null)) },
+        { type: 'item', id: 'roi-centre', label: t('topNav.preview.roiCentre', 'Region to Centre'), onSelect: setCentreRoi },
+        { type: 'item', id: 'roi-clear', label: t('topNav.preview.roiClear', 'Clear Region'), disabled: !roi, onSelect: () => setRoi(null) },
       ],
     },
   ];
@@ -348,8 +362,8 @@ export function PreviewMenu({ className, activeClassName, placement = 'bottom-st
           <button
             type="button"
             className={degraded ? (activeClassName ?? styles.toolDropdownTriggerActive) : (className ?? styles.toolDropdownTrigger)}
-            title="Preview quality, motion blur, onion skin, region of interest"
-            aria-label="Preview"
+            title={t('topNav.preview.menuTitle', 'Preview quality, motion blur, onion skin, region of interest')}
+            aria-label={t('topNav.preview.menuAria', 'Preview')}
           >
             <Icon name="tv" size="sm" />
             <Icon name="chevron-down" size="sm" className={styles.triggerChevron} />

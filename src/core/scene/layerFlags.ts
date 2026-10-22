@@ -32,6 +32,7 @@ import { readNodeKind } from './sceneDerive';
 import {   supportsContinuousRaster } from './continuousRaster';
 import {  readNodeQuality,  type LayerQuality } from '@core/effects/layerQuality';
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 /** Every switch this module speaks. */
 export type LayerFlag =
@@ -81,19 +82,19 @@ export interface LayerFlagDef {
 
 /** The three positions of the Quality switch, as AE draws them. */
 export const QUALITY_FACE: Readonly<Record<LayerQuality, LayerFlagFace>> = {
-  best: { label: 'Quality: Best', title: 'Quality: Best — click for Draft', glyph: '/' },
-  draft: { label: 'Quality: Draft', title: 'Quality: Draft — click for Wireframe', glyph: '\\' },
+  best: { get label() { return t('core.layerFlags.qualityBest', 'Quality: Best'); }, get title() { return t('core.layerFlags.titleQualityBestClickForDraft', 'Quality: Best — click for Draft'); }, glyph: '/' },
+  draft: { get label() { return t('core.layerFlags.qualityDraft', 'Quality: Draft'); }, get title() { return t('core.layerFlags.titleQualityDraftClickForWireframe', 'Quality: Draft — click for Wireframe'); }, glyph: '\\' },
   wireframe: {
-    label: 'Quality: Wireframe',
-    title: 'Quality: Wireframe (viewport only — exports as Best) — click for Best',
+    get label() { return t('core.layerFlags.qualityWireframe', 'Quality: Wireframe'); },
+    get title() { return t('core.layerFlags.titleQualityWireframeViewportOnlyExports', 'Quality: Wireframe (viewport only — exports as Best) — click for Best'); },
     glyph: '□',
   },
 };
 
 /** The sunburst's two names: Collapse Transformations on a placed comp, Continuous Rasterize on a vector layer. */
 export const COLLAPSE_FACE: Readonly<Record<'collapse' | 'raster', LayerFlagFace>> = {
-  collapse: { label: 'Collapse Transformations', title: 'Collapse Transformations', icon: 'star' },
-  raster: { label: 'Continuous Rasterize', title: 'Continuous Rasterize', icon: 'star' },
+  collapse: { get label() { return t('core.layerFlags.collapseTransformations', 'Collapse Transformations'); }, get title() { return t('core.layerFlags.titleCollapseTransformations', 'Collapse Transformations'); }, icon: 'star' },
+  raster: { get label() { return t('core.layerFlags.continuousRasterize', 'Continuous Rasterize'); }, get title() { return t('core.layerFlags.titleContinuousRasterize', 'Continuous Rasterize'); }, icon: 'star' },
 };
 
 /** What AE's single sunburst means on this layer, or null when it means nothing. */
@@ -110,12 +111,12 @@ export function collapseSwitchKind(node: SceneNode | undefined): 'collapse' | 'r
  * One list, so the two panels cannot end up offering different switches.
  */
 export const LAYER_FLAGS: readonly LayerFlagDef[] = [
-  { id: 'shy', label: 'Shy', icon: 'shy', title: 'Shy — hidden while "Hide Shy Layers" is on' },
+  { id: 'shy', get label() { return t('core.layerFlags.shy', 'Shy'); }, icon: 'shy', get title() { return t('core.layerFlags.titleShyHiddenWhileHideShy', 'Shy — hidden while "Hide Shy Layers" is on'); } },
   {
     id: 'collapse',
-    label: 'Collapse Transformations',
+    get label() { return t('core.layerFlags.collapseTransformations', 'Collapse Transformations'); },
     icon: 'star',
-    title: 'Collapse Transformations / Continuous Rasterize',
+    get title() { return t('core.layerFlags.titleCollapseTransformationsContinuousRasterize', 'Collapse Transformations / Continuous Rasterize'); },
     // ONE switch, one meaning per layer type — see `collapseSwitchKind`. It is
     // the reason this def needs `describe`: calling it "Collapse
     // Transformations" on a text layer would name something that layer cannot do.
@@ -123,24 +124,24 @@ export const LAYER_FLAGS: readonly LayerFlagDef[] = [
   },
   {
     id: 'quality',
-    label: 'Quality',
+    get label() { return t('core.layerFlags.quality', 'Quality'); },
     glyph: '/',
-    title: 'Quality: Best / Draft / Wireframe',
+    get title() { return t('core.layerFlags.titleQualityBestDraftWireframe', 'Quality: Best / Draft / Wireframe'); },
     cycles: true,
     describe: (node) => QUALITY_FACE[readNodeQuality(node)],
   },
-  { id: 'fxEnabled', label: 'Effects', glyph: 'fx', title: 'Toggle Effects (fx)' },
-  { id: 'frameBlend', label: 'Frame Blending', icon: 'video', title: 'Frame Blending' },
-  { id: 'motionBlur', label: 'Motion Blur', icon: 'motion-blur', title: 'Toggle Motion Blur' },
-  { id: 'adjustment', label: 'Adjustment Layer', icon: 'adjustment', title: 'Toggle Adjustment Layer' },
-  { id: 'guide', label: 'Guide Layer', icon: 'frame', title: 'Guide layer — visible while editing, omitted from export' },
+  { id: 'fxEnabled', get label() { return t('core.layerFlags.effects', 'Effects'); }, glyph: 'fx', get title() { return t('core.layerFlags.titleToggleEffectsFx', 'Toggle Effects (fx)'); } },
+  { id: 'frameBlend', get label() { return t('core.layerFlags.frameBlending', 'Frame Blending'); }, icon: 'video', get title() { return t('core.layerFlags.titleFrameBlending', 'Frame Blending'); } },
+  { id: 'motionBlur', get label() { return t('core.layerFlags.motionBlur', 'Motion Blur'); }, icon: 'motion-blur', get title() { return t('core.layerFlags.titleToggleMotionBlur', 'Toggle Motion Blur'); } },
+  { id: 'adjustment', get label() { return t('core.layerFlags.adjustmentLayer', 'Adjustment Layer'); }, icon: 'adjustment', get title() { return t('core.layerFlags.titleToggleAdjustmentLayer', 'Toggle Adjustment Layer'); } },
+  { id: 'guide', get label() { return t('core.layerFlags.guideLayer', 'Guide Layer'); }, icon: 'frame', get title() { return t('core.layerFlags.titleGuideLayerVisibleWhileEditing', 'Guide layer — visible while editing, omitted from export'); } },
   {
     id: 'preserveTransparency',
-    label: 'Preserve Underlying Transparency',
+    get label() { return t('core.layerFlags.preserveUnderlyingTransparency', 'Preserve Underlying Transparency'); },
     glyph: 'T',
-    title: 'Preserve Underlying Transparency — visible only where layers beneath are opaque',
+    get title() { return t('core.layerFlags.titlePreserveUnderlyingTransparencyVisibleOnly', 'Preserve Underlying Transparency — visible only where layers beneath are opaque'); },
   },
-  { id: 'threeD', label: '3D Layer', icon: '3d', title: 'Toggle 3D Layer' },
+  { id: 'threeD', get label() { return t('core.layerFlags.n3dLayer', '3D Layer'); }, icon: '3d', get title() { return t('core.layerFlags.titleToggle3dLayer', 'Toggle 3D Layer'); } },
 ];
 
 const FLAG_BY_ID = new Map(LAYER_FLAGS.map((f) => [f.id, f]));

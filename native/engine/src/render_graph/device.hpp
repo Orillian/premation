@@ -43,6 +43,12 @@ struct TexRef {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
   bool sampleLinear = false;
+  /// Mip levels built and sampleable from level 0 (0 or 1: level 0 alone) —
+  /// Device::mip_texture builds a chain lazily, so a sampler for it must clamp
+  /// its LOD to `mipLevels - 1` (PassContext::linear_clamp_levels).
+  std::uint32_t mipLevels = 0;
+  /// Mip levels the texture was allocated with (0 or 1: no chain).
+  std::uint32_t mipAlloc = 0;
   explicit operator bool() const noexcept { return view != nullptr; }
 };
 
@@ -64,7 +70,7 @@ struct RenderTarget {
   std::uint32_t height = 0;
   std::uint32_t samples = 1;
   std::uint64_t id = 0;
-  [[nodiscard]] TexRef tex() const { return {view, id, width, height, true}; }
+  [[nodiscard]] TexRef tex() const { return {view, id, width, height, true, 0, 0}; }
 };
 
 /// Graph targets by name (a frame's resolved set; looked up by string_view, no allocation).
@@ -213,7 +219,16 @@ class Device {
   /// A texture holding `pixels` (rows top-down, tightly packed), keyed by content hash.
   TexRef texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
                  std::span<const std::uint8_t> pixels, bool mipmapped);
-  SamplerRef sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy = 1);
+  /// The texture `hash` with its mip chain built `levels` deep (clamped to the
+  /// full chain): built lazily — level 0 at upload, deeper levels the first time
+  /// a draw asks for them (mip_levels_needed), never rebuilt. One texture per
+  /// picture: one first made single-level is made again, once, with room for
+  /// the whole chain when a draw first needs one. TexRef::mipLevels = built.
+  TexRef mip_texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
+                     std::span<const std::uint8_t> pixels, std::uint32_t levels);
+  /// `lodMaxClamp`: the deepest level sampled (32 = all, WebGPU's default).
+  SamplerRef sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy = 1,
+                     float lodMaxClamp = 32.0F);
   /// The shared unit quad (Geometry.ts UNIT_QUAD).
   [[nodiscard]] const wgpu::Buffer& quad() const noexcept { return quad_; }
   /// A vertex/index buffer holding `bytes`, keyed. Uploaded on creation only,
@@ -276,9 +291,12 @@ class Device {
                            std::uint8_t depthWrite = DrawItem::kDepthWriteMaterial);
   wgpu::BindGroup make_bind_group(const Pipeline& p, const MaterialDesc& m, const DrawItem& it, const wgpu::Buffer& uniforms,
                                   std::uint64_t size);
-  /// Fill levels 1… of `tex` from level 0 (side draws, kMipWgsl).
+  /// Fill levels [from, to) of `tex` (w × h at level 0), each from the one above (kMipWgsl).
   void generate_mips(const wgpu::Texture& tex, wgpu::TextureFormat format, std::uint32_t w, std::uint32_t h,
-                     std::uint32_t levels);
+                     std::uint32_t from, std::uint32_t to);
+  /// texture() with `levels` allocated; `build`: the chain filled now (else level 0 only).
+  TexRef make_texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
+                      std::span<const std::uint8_t> pixels, std::uint32_t levels, bool build);
   wgpu::ShaderModule& shader(std::string_view name);
   /// Reserve `bytes` of uniform space; returns (chunk, byte offset).
   std::pair<std::uint32_t, std::uint32_t> uniform_alloc(std::span<const float> data);
@@ -291,6 +309,7 @@ class Device {
   std::uint64_t frame_ = 0;
   std::uint64_t nextId_ = 1;
   std::uint32_t maxTexture2D_ = 8192;  // the WebGPU default, until the device says
+  std::uint64_t maxBufferSize_ = 268435456;  // the WebGPU default (256 MB), until the device says
 
   MemoryMeter meter_;
   Pool<RenderTarget> targets_{&meter_};
@@ -332,5 +351,16 @@ wgpu::TextureFormat texture_format(std::string_view tsName) noexcept;
 
 /// A full mip chain's level count for w × h (WebGPUBackend `mipCount`).
 std::uint32_t mip_levels(std::uint32_t w, std::uint32_t h) noexcept;
+/// The quad a texture is drawn over, in device pixels (0 × 0: unknown).
+struct MipFootprint {
+  double width = 0, height = 0;
+};
+/// The mip levels a w × h texture drawn over `fp` samples with the 2D layers'
+/// ½ gradient scale (composition_pass.cpp kLayerLodScale): 1 up to a 2:1
+/// minification on both axes (most layers: rasters are supersampled 2×), else
+/// the levels its LOD reaches plus one (trilinear's upper level, and room for
+/// a GPU's LOD approximation); the whole chain for an unknown footprint (a 3D
+/// quad, a projective draw).
+std::uint32_t mip_levels_needed(std::uint32_t w, std::uint32_t h, const MipFootprint& fp) noexcept;
 
 }  // namespace premation::rg

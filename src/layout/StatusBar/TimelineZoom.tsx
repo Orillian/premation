@@ -34,6 +34,7 @@ import {
   TIMELINE_ZOOM_MAX,
 } from '@layout/Timeline/timelineFit';
 import { installTimelineFitCommands } from '@layout/Timeline/timelineFitCommands';
+import { t } from '@core/i18n';
 import styles from './TimelineZoom.module.css';
 
 const ZOOM_STEP = 1.4;
@@ -80,7 +81,7 @@ export function TimelineZoom(): JSX.Element {
       <button
         type="button"
         className={styles.iconBtn}
-        title="Zoom Out"
+        title={t('statusBar.zoom.out', 'Zoom Out')}
         disabled={pps <= TIMELINE_ZOOM_MIN}
         onClick={() => setZoom(pps / ZOOM_STEP)}
       >
@@ -93,13 +94,13 @@ export function TimelineZoom(): JSX.Element {
         value={clamp(pps)}
         onChange={(e) => setZoom(Number(e.target.value))}
         className={styles.range}
-        aria-label="Timeline zoom"
-        title={`Timeline Zoom: ${pct}%`}
+        aria-label={t('statusBar.zoom.ariaLabel', 'Timeline zoom')}
+        title={t('statusBar.zoom.title', 'Timeline Zoom: {pct}%', { pct })}
       />
       <button
         type="button"
         className={styles.label}
-        title="Reset zoom to 100%"
+        title={t('statusBar.zoom.reset', 'Reset zoom to 100%')}
         onClick={() => setZoom(ZOOM_DEFAULT)}
       >
         {pct}%
@@ -107,7 +108,7 @@ export function TimelineZoom(): JSX.Element {
       <button
         type="button"
         className={styles.iconBtn}
-        title="Zoom In"
+        title={t('statusBar.zoom.in', 'Zoom In')}
         disabled={pps >= TIMELINE_ZOOM_MAX}
         onClick={() => setZoom(pps * ZOOM_STEP)}
       >
@@ -117,8 +118,8 @@ export function TimelineZoom(): JSX.Element {
       <button
         type="button"
         className={styles.iconBtn}
-        title="Fit Composition to Timeline  (;)"
-        aria-label="Fit composition to timeline"
+        title={t('statusBar.zoom.fitCompTitle', 'Fit Composition to Timeline  ({chord})', { chord: ';' })}
+        aria-label={t('statusBar.zoom.fitComp', 'Fit composition to timeline')}
         disabled={!fitReady}
         onClick={() => {
           fitTimelineToComposition();
@@ -130,8 +131,8 @@ export function TimelineZoom(): JSX.Element {
       <button
         type="button"
         className={styles.iconBtn}
-        title="Fit Work Area to Timeline  (Alt+;)"
-        aria-label="Fit work area to timeline"
+        title={t('statusBar.zoom.fitWorkAreaTitle', 'Fit Work Area to Timeline  ({chord})', { chord: 'Alt+;' })}
+        aria-label={t('statusBar.zoom.fitWorkArea', 'Fit work area to timeline')}
         disabled={!fitReady || !workAreaSet}
         onClick={() => {
           fitTimelineToWorkArea();

@@ -370,9 +370,10 @@ TEST_CASE("expressions match the TypeScript engine bit for bit", "[expr][golden]
     if (!ok) {
       ++bad;
       if (bad <= 40) {
-        UNSCOPED_INFO("ctx " << ci << " t=" << from_bits(tb) << " src: " << narrow(src) << "\n  want kind " << kind
-                             << " v0=" << from_bits(v[0]) << " err='" << narrow(want_err) << "'\n  got  kind "
-                             << static_cast<int>(r.kind) << " v0=" << r.number << " err='" << narrow(got_err) << "'");
+        // Printed, not INFO'd: the message would be dropped at the lambda's end.
+        std::fprintf(stderr, "golden mismatch ctx %d t=%g src: %s\n  want kind %d v0=%.17g err='%s'\n  got  kind %d v0=%.17g err='%s'\n",
+                     ci, from_bits(tb), narrow(src).c_str(), kind, from_bits(v[0]), narrow(want_err).c_str(),
+                     static_cast<int>(r.kind), r.number, narrow(got_err).c_str());
       }
     }
   };
@@ -390,9 +391,9 @@ TEST_CASE("expressions match the TypeScript engine bit for bit", "[expr][golden]
     if (!ok) {
       ++bad;
       if (bad <= 40) {
-        UNSCOPED_INFO("TEXT ctx " << ci << " src: " << narrow(src) << "\n  want '" << narrow(canon) << "' err '"
-                                  << narrow(err) << "'\n  got  '" << narrow(got_canon) << "' err '" << narrow(got_err)
-                                  << "'");
+        std::fprintf(stderr, "golden mismatch TEXT ctx %d src: %s\n  want '%s' err '%s'\n  got  '%s' err '%s'\n", ci,
+                     narrow(src).c_str(), narrow(canon).c_str(), narrow(err).c_str(), narrow(got_canon).c_str(),
+                     narrow(got_err).c_str());
       }
     }
   };

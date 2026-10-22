@@ -47,6 +47,7 @@ import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
 import { useDisplayedCamera2D } from './useOverlayView';
 import styles from './RotoBrushOverlay.module.css';
+import { t } from '@core/i18n';
 
 /** How long a click waits for its second press (Windows' default is 500 ms). */
 const DOUBLE_CLICK_MS = 350;
@@ -99,7 +100,7 @@ export function RotoBrushOverlay(): JSX.Element | null {
     // Re-segment from the WHOLE set, not the one stroke just painted — a
     // background stroke only means anything relative to the foreground ones.
     store.setBusy(true);
-    store.setStatus('Segmenting…');
+    store.setStatus(t('workspace.rotoBrush.segmenting', 'Segmenting…'));
     // Only this frame's strokes segment it: a stroke on another frame is that
     // frame's correction (it re-seeds propagation there).
     void segmentStrokesToMask(nodeId, strokesAt(useRotoBrushStore.getState().strokes, time), time, {
@@ -109,11 +110,11 @@ export function RotoBrushOverlay(): JSX.Element | null {
       .then((pathId) => {
         const s = useRotoBrushStore.getState();
         s.setMaskPathId(pathId);
-        s.setStatus(pathId ? null : 'Nothing to segment there — paint over the subject.');
+        s.setStatus(pathId ? null : t('workspace.rotoBrush.nothing', 'Nothing to segment there — paint over the subject.'));
         getWorkspaceController().requestRender();
       })
       .catch((err: unknown) => {
-        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : 'Segmentation failed.');
+        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : t('workspace.rotoBrush.failed', 'Segmentation failed.'));
       })
       .finally(() => useRotoBrushStore.getState().setBusy(false));
   }, [nodeId, time]);
@@ -257,7 +258,7 @@ export function RotoBrushOverlay(): JSX.Element | null {
       </svg>
       {(status || !nodeId) && (
         <div className={styles.status} role="status">
-          {nodeId ? status : 'Select one footage layer to roto.'}
+          {nodeId ? status : t('workspace.rotoBrush.selectLayer', 'Select one footage layer to roto.')}
         </div>
       )}
     </div>

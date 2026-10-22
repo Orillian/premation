@@ -35,6 +35,7 @@ import { trackRefIn } from '@core/mirror/trackIndex';
 import { cameraViewNodeId, isSceneCameraView } from '@core/scene/cameraViewMode';
 import { cameraViewLabel } from '@layout/TopNav/ViewControls';
 import styles from './CameraNavBadge.module.css';
+import { t } from '@core/i18n';
 
 /**
  * The camera tracks a viewport camera drag writes: orbit (yaw / pitch),
@@ -56,10 +57,12 @@ export interface CameraNavBadgeInput {
 
 /** The badge's text, or null when a drag here moves nothing (no camera to look through). Pure. */
 export function cameraNavBadgeText({ mode, cameraName, keyframing, viewLabel }: CameraNavBadgeInput): string | null {
-  if (!isSceneCameraView(mode)) return `${viewLabel} · preview only`;
+  if (!isSceneCameraView(mode)) return t('workspace.cameraNav.previewOnly', '{view} · preview only', { view: viewLabel });
   if (cameraName === null) return null;
-  const name = cameraName.trim() ? cameraName : 'Camera';
-  return keyframing ? `${name} · moves the shot · keyframing` : `${name} · moves the shot`;
+  const name = cameraName.trim() ? cameraName : t('workspace.cameraNav.camera', 'Camera');
+  return keyframing
+    ? t('workspace.cameraNav.movesShotKeyframing', '{name} · moves the shot · keyframing', { name })
+    : t('workspace.cameraNav.movesShot', '{name} · moves the shot', { name });
 }
 
 /** Alt held (any window focus loss lets go — a keyup in another window never arrives). */

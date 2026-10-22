@@ -256,8 +256,10 @@ interface GuidesStore extends GuidesSettings {
    * pink hatch bars over equal-spacing runs, and equal-size highlights, drawn
    * only while a gesture is in flight (or an Alt-hover is measuring).
    *
-   * On by default — it is the measuring half of snapping and costs nothing when
-   * nothing is being dragged. Session state, deliberately NOT part of
+   * OFF by default (owner decision 2026-10-19): the pink measuring chrome over
+   * every drag is more than most moves want, and After Effects draws none. The
+   * Guides group of the transport bar has the toggle (`ViewportTools`), as does
+   * the Overlays menu. Session state, deliberately NOT part of
    * `GuidesSettings`: it is a preference about the CHROME, not project data, so
    * opening someone else's document must not silently turn a user's guides off.
    */
@@ -427,7 +429,7 @@ export const useGuidesStore = create<GuidesStore>((set, get) => ({
   groundGridVisible: true,
   draft3d: false,
   extendedViewer: false,
-  smartGuides: true,
+  smartGuides: false,
   cameraTool: 'none',
   // 'scene', not 'poi': a one-node camera's POI is wherever it happens to be
   // looking, so after any pan the first orbit swung the artwork out of frame.

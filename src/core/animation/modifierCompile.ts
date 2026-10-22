@@ -48,6 +48,7 @@
 
 import { compileExpression, tokenizeExpression } from '@motion/animation';
 import type { Modifier } from './modifierStack';
+import { t } from '@core/i18n';
 
 /** The identifier the engine binds to the keyframed/base value. */
 export const BASE_VALUE = 'value';
@@ -234,13 +235,13 @@ export function modifierCompileError(modifiers: readonly Modifier[]): string | n
  */
 export function modifierWarning(m: Modifier): string | null {
   if (m.kind === 'audio' && m.band !== 'full') {
-    return 'the `audio` identifier is broadband — a frequency band needs the baked FFT, so use the Audio Driver section for that';
+    return t('core.modifierCompile.audioBand', 'the `audio` identifier is broadband — a frequency band needs the baked FFT, so use the Audio Driver section for that');
   }
   if (m.kind === 'wiggle' && m.octaves > 8) {
-    return 'the engine caps wiggle at 8 octaves';
+    return t('core.modifierCompile.wiggleOctaves', 'the engine caps wiggle at 8 octaves');
   }
   if (m.kind === 'spring' && m.frequency <= 0) {
-    return 'a spring needs a frequency above zero to oscillate';
+    return t('core.modifierCompile.springFrequency', 'a spring needs a frequency above zero to oscillate');
   }
   return null;
 }

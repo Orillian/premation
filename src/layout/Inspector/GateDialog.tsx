@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@components/Button';
 import { Slider } from '@components/Slider';
+import { t } from '@core/i18n';
 import { openModal } from '@stores/modalStore';
 import { useUIStore } from '@stores/uiStore';
 import { documentMirror } from '@stores/documentMirror';
@@ -89,9 +90,9 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
     setBusy(true);
     try {
       const viaEngine = await runEngineJob<{ keyframes: number }>({ kind: 'audioGate', value: { layer: nodeId, params: JSON.stringify(params) } });
-      if (!viaEngine) notify('The noise gate runs in the engine, and this engine does not run it.', 'warning');
-      else if (viaEngine.status === 'done') notify(`Gated — ${viaEngine.result?.keyframes ?? 0} level keyframes written.`);
-      else if (viaEngine.status === 'failed') notify(viaEngine.error?.message ?? 'The gate could not be written.', 'warning');
+      if (!viaEngine) notify(t('inspector.gate.unsupported', 'The noise gate runs in the engine, and this engine does not run it.'), 'warning');
+      else if (viaEngine.status === 'done') notify(t('inspector.gate.done', 'Gated — {n} level keyframes written.', { n: viaEngine.result?.keyframes ?? 0 }));
+      else if (viaEngine.status === 'failed') notify(viaEngine.error?.message ?? t('inspector.gate.failed', 'The gate could not be written.'), 'warning');
       onDone();
     } finally {
       setBusy(false);
@@ -101,7 +102,7 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
   const drop = async (): Promise<void> => {
     setBusy(true);
     try {
-      if (await removeGateEdit(nodeId)) notify('Noise gate removed.');
+      if (await removeGateEdit(nodeId)) notify(t('inspector.gate.removed', 'Noise gate removed.'));
       onDone();
     } finally {
       setBusy(false);
@@ -111,13 +112,11 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
   return (
     <div className={styles.body}>
       <p className={styles.intro}>
-        Pull this layer down wherever it is quieter than the threshold — room
-        tone between phrases, hiss under a take. Written as level keyframes, so
-        every one of them can be reshaped afterwards.
+        {t('inspector.gate.intro', 'Pull this layer down wherever it is quieter than the threshold — room tone between phrases, hiss under a take. Written as level keyframes, so every one of them can be reshaped afterwards.')}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.label}>Threshold</span>
+        <span className={styles.label}>{t('inspector.gate.threshold', 'Threshold')}</span>
         <div className={styles.control}>
           <Slider
             value={params.thresholdDb}
@@ -125,14 +124,14 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
             max={0}
             step={1}
             onChange={(v) => set('thresholdDb', v)}
-            aria-label="Gate threshold"
+            aria-label={t('inspector.gate.thresholdAria', 'Gate threshold')}
           />
           <span className={styles.value}>{`${params.thresholdDb} dB`}</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Range</span>
+        <span className={styles.label}>{t('inspector.gate.range', 'Range')}</span>
         <div className={styles.control}>
           <Slider
             value={params.rangeDb}
@@ -140,14 +139,14 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
             max={0}
             step={1}
             onChange={(v) => set('rangeDb', v)}
-            aria-label="Gate range"
+            aria-label={t('inspector.gate.rangeAria', 'Gate range')}
           />
-          <span className={styles.value}>{params.rangeDb <= -60 ? 'Silence' : `${params.rangeDb} dB`}</span>
+          <span className={styles.value}>{params.rangeDb <= -60 ? t('inspector.gate.silence', 'Silence') : `${params.rangeDb} dB`}</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Attack</span>
+        <span className={styles.label}>{t('inspector.gate.attack', 'Attack')}</span>
         <div className={styles.control}>
           <Slider
             value={params.attackMs}
@@ -155,14 +154,14 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
             max={200}
             step={1}
             onChange={(v) => set('attackMs', v)}
-            aria-label="Gate attack"
+            aria-label={t('inspector.gate.attackAria', 'Gate attack')}
           />
           <span className={styles.value}>{`${params.attackMs} ms`}</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Hold</span>
+        <span className={styles.label}>{t('inspector.gate.hold', 'Hold')}</span>
         <div className={styles.control}>
           <Slider
             value={params.holdMs}
@@ -170,14 +169,14 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
             max={1000}
             step={10}
             onChange={(v) => set('holdMs', v)}
-            aria-label="Gate hold"
+            aria-label={t('inspector.gate.holdAria', 'Gate hold')}
           />
           <span className={styles.value}>{`${params.holdMs} ms`}</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Release</span>
+        <span className={styles.label}>{t('inspector.gate.release', 'Release')}</span>
         <div className={styles.control}>
           <Slider
             value={params.releaseMs}
@@ -185,7 +184,7 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
             max={2000}
             step={5}
             onChange={(v) => set('releaseMs', v)}
-            aria-label="Gate release"
+            aria-label={t('inspector.gate.releaseAria', 'Gate release')}
           />
           <span className={styles.value}>{`${params.releaseMs} ms`}</span>
         </div>
@@ -193,25 +192,24 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
 
       <p className={styles.readout}>
         {analysing
-          ? 'Listening…'
+          ? t('inspector.gate.listening', 'Listening…')
           : preview
-            ? `${preview.keyframes} keyframes · closed for ${Math.round(preview.closedFraction * 100)}% of the range`
-            : 'Nothing to analyse in this range.'}
+            ? t('inspector.gate.preview', '{n} keyframes · closed for {pct}% of the range', { n: preview.keyframes, pct: Math.round(preview.closedFraction * 100) })
+            : t('inspector.gate.nothing', 'Nothing to analyse in this range.')}
       </p>
       {preview && preview.closedFraction > 0.9 && (
         <p className={styles.warn}>
-          The gate is shut almost the whole time — the threshold is probably
-          above the take itself. Try lowering it.
+          {t('inspector.gate.shutWarn', 'The gate is shut almost the whole time — the threshold is probably above the take itself. Try lowering it.')}
         </p>
       )}
 
       <div className={styles.actions}>
-        <Button variant="ghost" onClick={onDone} disabled={busy}>Cancel</Button>
+        <Button variant="ghost" onClick={onDone} disabled={busy}>{t('inspector.gate.cancel', 'Cancel')}</Button>
         {stored && (
-          <Button variant="ghost" onClick={() => void drop()} disabled={busy}>Remove</Button>
+          <Button variant="ghost" onClick={() => void drop()} disabled={busy}>{t('inspector.gate.remove', 'Remove')}</Button>
         )}
         <Button onClick={() => void run()} disabled={busy || !preview}>
-          {stored ? 'Re-gate' : 'Apply'}
+          {stored ? t('inspector.gate.regate', 'Re-gate') : t('inspector.gate.apply', 'Apply')}
         </Button>
       </div>
     </div>
@@ -221,7 +219,7 @@ export function GateDialog({ nodeId, onDone }: Props): JSX.Element {
 /** Open the dialog for one layer. Registered below so the command can call it. */
 export function openGateDialog(nodeId: string): void {
   openModal({
-    title: 'Noise gate',
+    title: t('inspector.gate.title', 'Noise gate'),
     size: 'sm',
     render: (close) => <GateDialog nodeId={nodeId} onDone={close} />,
   });

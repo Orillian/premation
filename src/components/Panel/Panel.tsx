@@ -16,6 +16,7 @@ import { type ReactNode } from 'react';
 import { cn } from '@utils/cn';
 import { Icon, type IconName } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
+import { t } from '@core/i18n';
 import styles from './Panel.module.css';
 
 export interface PanelProps {
@@ -64,7 +65,7 @@ export function Panel({
           <div className={styles.actions}>
             {actions}
             {onClose ? (
-              <IconButton aria-label="Close panel" size="xs" onClick={onClose}>
+              <IconButton aria-label={t('ui.panel.close', 'Close panel')} size="xs" onClick={onClose}>
                 <Icon name="close" size="sm" />
               </IconButton>
             ) : null}

@@ -24,6 +24,7 @@
 import { cn } from '@utils/cn';
 import type { CompletionItem } from './expressionCompletion';
 import styles from './ExpressionEditor.module.css';
+import { t } from '@core/i18n';
 
 /** Stable id for row `i` — the textarea points `aria-activedescendant` at it. */
 export function completionOptionId(listId: string, i: number): string {
@@ -67,7 +68,7 @@ export function ExpressionCompletionPopup({
         left: `calc(var(--space-3) + ${Math.min(column, 32)}ch)`,
       }}
     >
-      <ul className={styles.completeList} id={listId} role="listbox" aria-label="Expression completions">
+      <ul className={styles.completeList} id={listId} role="listbox" aria-label={t('motion.expression.completions', 'Expression completions')}>
         {items.map((item, i) => (
           <li
             key={item.label}

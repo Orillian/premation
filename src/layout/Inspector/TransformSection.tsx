@@ -61,6 +61,7 @@ import {
   type UnitDisplay,
 } from '@core/scene/transformUnits';
 
+import { t } from '@core/i18n';
 import styles from './TransformSection.module.css';
 
 /** Rotation-flavored props get a purpose-built dial next to their number —
@@ -72,17 +73,19 @@ const ROTATION_PROPS = new Set([
   'rotationY',
 ]);
 
-const ANCHOR_PRESETS: Array<{ id: string; label: string; getOffset: (w: number, h: number) => { x: number; y: number } }> = [
-  { id: 'tl', label: 'Top Left', getOffset: (w: number, h: number) => ({ x: -w / 2, y: -h / 2 }) },
-  { id: 'tc', label: 'Top Center', getOffset: (_w: number, h: number) => ({ x: 0, y: -h / 2 }) },
-  { id: 'tr', label: 'Top Right', getOffset: (w: number, h: number) => ({ x: w / 2, y: -h / 2 }) },
-  { id: 'ml', label: 'Middle Left', getOffset: (w: number, _h: number) => ({ x: -w / 2, y: 0 }) },
-  { id: 'mc', label: 'Center', getOffset: (_w: number, _h: number) => ({ x: 0, y: 0 }) },
-  { id: 'mr', label: 'Middle Right', getOffset: (w: number, _h: number) => ({ x: w / 2, y: 0 }) },
-  { id: 'bl', label: 'Bottom Left', getOffset: (w: number, h: number) => ({ x: -w / 2, y: h / 2 }) },
-  { id: 'bc', label: 'Bottom Center', getOffset: (_w: number, h: number) => ({ x: 0, y: h / 2 }) },
-  { id: 'br', label: 'Bottom Right', getOffset: (w: number, h: number) => ({ x: w / 2, y: h / 2 }) },
-];
+function anchorPresetList(): Array<{ id: string; label: string; getOffset: (w: number, h: number) => { x: number; y: number } }> {
+  return [
+    { id: 'tl', label: t('inspector.transform.anchorPreset.topLeft', 'Top Left'), getOffset: (w: number, h: number) => ({ x: -w / 2, y: -h / 2 }) },
+    { id: 'tc', label: t('inspector.transform.anchorPreset.topCenter', 'Top Center'), getOffset: (_w: number, h: number) => ({ x: 0, y: -h / 2 }) },
+    { id: 'tr', label: t('inspector.transform.anchorPreset.topRight', 'Top Right'), getOffset: (w: number, h: number) => ({ x: w / 2, y: -h / 2 }) },
+    { id: 'ml', label: t('inspector.transform.anchorPreset.middleLeft', 'Middle Left'), getOffset: (w: number, _h: number) => ({ x: -w / 2, y: 0 }) },
+    { id: 'mc', label: t('inspector.transform.anchorPreset.center', 'Center'), getOffset: (_w: number, _h: number) => ({ x: 0, y: 0 }) },
+    { id: 'mr', label: t('inspector.transform.anchorPreset.middleRight', 'Middle Right'), getOffset: (w: number, _h: number) => ({ x: w / 2, y: 0 }) },
+    { id: 'bl', label: t('inspector.transform.anchorPreset.bottomLeft', 'Bottom Left'), getOffset: (w: number, h: number) => ({ x: -w / 2, y: h / 2 }) },
+    { id: 'bc', label: t('inspector.transform.anchorPreset.bottomCenter', 'Bottom Center'), getOffset: (_w: number, h: number) => ({ x: 0, y: h / 2 }) },
+    { id: 'br', label: t('inspector.transform.anchorPreset.bottomRight', 'Bottom Right'), getOffset: (w: number, h: number) => ({ x: w / 2, y: h / 2 }) },
+  ];
+}
 
 /**
  * The "More" disclosure's remembered state. Kept in the accordion's own
@@ -183,7 +186,7 @@ export function TransformPresetAction({
   return (
     <SectionPresetMenu
       sectionId="transform"
-      label="Transform presets"
+      label={t('inspector.transform.presets', 'Transform presets')}
       capture={capturePreset}
       apply={applyPreset}
     />
@@ -209,7 +212,7 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
 
   const rotationDial = useCallback(
     (label: string) => ({ value, setValue }: { value: number; setValue: (v: number) => void }): ReactNode => (
-      <AngleDial value={value} onChange={setValue} aria-label={`${label} dial`} />
+      <AngleDial value={value} onChange={setValue} aria-label={t('inspector.transform.dial', '{name} dial', { name: label })} />
     ),
     [],
   );
@@ -256,7 +259,7 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
   const anchorX = read('anchorX');
   const anchorY = read('anchorY');
 
-  const applyAnchorPreset = (preset: typeof ANCHOR_PRESETS[number]): void => {
+  const applyAnchorPreset = (preset: ReturnType<typeof anchorPresetList>[number]): void => {
     // One entry for the lot; each layer snaps against its OWN bounds.
     const mm = documentMirror();
     const writes = nodeIds.flatMap((id) => {
@@ -268,21 +271,36 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
     if (writes.length > 0) void edit('Set Anchor Point', { type: 'setProperties', writes });
   };
 
-  const isPresetActive = (preset: typeof ANCHOR_PRESETS[number]): boolean => {
+  const isPresetActive = (preset: ReturnType<typeof anchorPresetList>[number]): boolean => {
     const target = preset.getOffset(bounds.width, bounds.height);
     return Math.abs(anchorX - target.x) < 1.5 && Math.abs(anchorY - target.y) < 1.5;
   };
 
   // Units switch on Position (px | % of composition) and Anchor Point (px | %
   // of layer). Scale has none — it is a percentage in every unit mode.
-  const unitToggle = (key: keyof TransformUnits, label: string, ofWhat: string): JSX.Element => {
+  const unitToggle = (key: keyof TransformUnits): JSX.Element => {
     const pct = units[key] === '%';
+    const anchor = key === 'anchor';
+    const title = anchor
+      ? (pct
+        ? t('inspector.transform.anchorUnitsPct', 'Anchor Point shown as % of layer — switch to pixels')
+        : t('inspector.transform.anchorUnitsPx', 'Anchor Point shown in pixels — switch to % of layer'))
+      : (pct
+        ? t('inspector.transform.positionUnitsPct', 'Position shown as % of composition — switch to pixels')
+        : t('inspector.transform.positionUnitsPx', 'Position shown in pixels — switch to % of composition'));
+    const aria = anchor
+      ? (pct
+        ? t('inspector.transform.anchorUnitsPctLabel', 'Anchor Point units: percent of layer')
+        : t('inspector.transform.anchorUnitsPxLabel', 'Anchor Point units: pixels'))
+      : (pct
+        ? t('inspector.transform.positionUnitsPctLabel', 'Position units: percent of composition')
+        : t('inspector.transform.positionUnitsPxLabel', 'Position units: pixels'));
     return (
       <button
         type="button"
         className={`${styles.lockToggle} ${pct ? styles.lockToggleActive : ''}`}
-        title={pct ? `${label} shown as % of ${ofWhat} — switch to pixels` : `${label} shown in pixels — switch to % of ${ofWhat}`}
-        aria-label={`${label} units: ${pct ? `percent of ${ofWhat}` : 'pixels'}`}
+        title={title}
+        aria-label={aria}
         aria-pressed={pct}
         onClick={(e) => {
           e.stopPropagation();
@@ -318,10 +336,10 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
           type="button"
           className={styles.anchorButton}
           data-open={anchorMenuOpen || undefined}
-          aria-label="Anchor presets"
+          aria-label={t('inspector.transform.anchorPresets', 'Anchor presets')}
           aria-haspopup="true"
           aria-expanded={anchorMenuOpen}
-          title="Snap anchor to a corner, edge or the centre"
+          title={t('inspector.transform.anchorPresetsHint', 'Snap anchor to a corner, edge or the centre')}
         >
           <Icon name="grid" size="sm" />
         </button>
@@ -329,17 +347,17 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
     >
       <div
         className={styles.anchorOriginBox}
-        title="Quick Snap Anchor Origin (3x3 Matrix)"
+        title={t('inspector.transform.anchorMatrixHint', 'Quick Snap Anchor Origin (3x3 Matrix)')}
         role="group"
-        aria-label="Anchor Origin Matrix"
+        aria-label={t('inspector.transform.anchorMatrix', 'Anchor Origin Matrix')}
       >
-        {ANCHOR_PRESETS.map((p) => (
+        {anchorPresetList().map((p) => (
           <button
             key={p.id}
             type="button"
             className={`${styles.anchorDot} ${isPresetActive(p) ? styles.anchorDotActive : ''}`}
             title={p.label}
-            aria-label={`Snap anchor to ${p.label}`}
+            aria-label={t('inspector.transform.snapAnchorTo', 'Snap anchor to {name}', { name: p.label })}
             aria-pressed={isPresetActive(p)}
             onClick={() => {
               applyAnchorPreset(p);
@@ -367,34 +385,34 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
           {!isDevice && (
             <MultiPropertyPairRow
               nodeId={nodeId}
-              label="Anchor"
-              srLabel="Anchor Point"
+              label={t('inspector.transform.anchor', 'Anchor')}
+              srLabel={t('inspector.transform.anchorPoint', 'Anchor Point')}
               props={[field('anchorX', 'X', ancX), field('anchorY', 'Y', ancY), ...(is3D ? [field('anchorZ', 'Z')] : [])]}
-              trailing={unitToggle('anchor', 'Anchor Point', 'layer')}
+              trailing={unitToggle('anchor')}
               after={anchorPresets}
             />
           )}
 
           <MultiPropertyPairRow
             nodeId={nodeId}
-            label="Position"
+            label={t('inspector.transform.position', 'Position')}
             props={[field('x', 'X', posX), field('y', 'Y', posY), ...(hasDepth ? [field('z', 'Z')] : [])]}
-            trailing={unitToggle('position', 'Position', 'composition')}
+            trailing={unitToggle('position')}
           />
 
           {!isDevice && (
             <MultiPropertyPairRow
               nodeId={nodeId}
-              label="Scale"
+              label={t('inspector.transform.scale', 'Scale')}
               props={[field('scaleX', 'W', SCALE_PERCENT), field('scaleY', 'H', SCALE_PERCENT)]}
-              linked={{ value: linkedScale, onToggle: () => setLinkedScale((v) => !v), label: 'Scale dimensions' }}
+              linked={{ value: linkedScale, onToggle: () => setLinkedScale((v) => !v), label: t('inspector.transform.scaleDimensions', 'Scale dimensions') }}
             />
           )}
 
           {hasSize && !isDevice && (
             <MultiPropertyPairRow
               nodeId={nodeId}
-              label="Size"
+              label={t('inspector.transform.size', 'Size')}
               props={[field('width', 'W'), field('height', 'H')]}
             />
           )}
@@ -405,7 +423,7 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
             <>
               <MultiPropertyPairRow
                 nodeId={nodeId}
-                label="Orientation"
+                label={t('inspector.transform.orientation', 'Orientation')}
                 props={[field('orientationX', 'X'), field('orientationY', 'Y'), field('orientationZ', 'Z')]}
               />
               {row('rotationX')}
@@ -424,7 +442,7 @@ function TransformSectionInner({ nodeId }: { nodeId: string }): JSX.Element | nu
             onClick={toggleMore}
           >
             <Icon name={moreOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
-            More
+            {t('inspector.transform.more', 'More')}
           </button>)}
           {moreOpen && !isDevice && (
             <div className={styles.moreBody}>

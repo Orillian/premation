@@ -10,6 +10,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
+import { t } from '@core/i18n';
 import type { TimelineTrack } from './TimelineModel';
 
 const expandable = (t: TimelineTrack): boolean =>
@@ -89,8 +90,8 @@ export function buildTimelineExpandCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_EXPAND_ALL_COMMAND,
-      label: 'Expand All Layers',
-      description: 'Reveal every layer’s property tree in the timeline.',
+      label: t('timeline.expand.expandAll', 'Expand All Layers'),
+      description: t('timeline.expand.expandAllDescription', 'Reveal every layer’s property tree in the timeline.'),
       icon: 'expand',
       shortcut: { key: '`', ctrl: true, shift: true },
       enabled: () => actions !== null,
@@ -98,8 +99,8 @@ export function buildTimelineExpandCommands(): ReadonlyArray<Command> {
     },
     {
       id: TIMELINE_COLLAPSE_ALL_COMMAND,
-      label: 'Collapse All Layers',
-      description: 'Close every expanded layer in the timeline.',
+      label: t('timeline.expand.collapseAll', 'Collapse All Layers'),
+      description: t('timeline.expand.collapseAllDescription', 'Close every expanded layer in the timeline.'),
       icon: 'collapse',
       shortcut: { key: '`', ctrl: true },
       enabled: () => actions !== null,

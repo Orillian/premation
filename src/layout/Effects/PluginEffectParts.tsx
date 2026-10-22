@@ -24,6 +24,7 @@ import { pluginOfType } from '@core/project/missingPluginContent';
 import { pluginContribRevision, pluginForEffect, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import panel from './EffectsPanel.module.css';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
+import { t } from '@core/i18n';
 
 /** The plugin's UI state: `byKey` (key → that param's state) and the whole answer (panel, plugin). Null until the engine answers (or when it cannot). */
 export function usePluginEffectUi(
@@ -47,40 +48,44 @@ export function usePluginEffectUi(
   return ui;
 }
 
-/** The plugin's buttons, under its params (a button the plugin hides — one only its panel presses — is not drawn). */
-export function PluginEffectActions({
+/**
+ * One plugin button (PR_PARAM_BUTTON), drawn at its place in the param list —
+ * AE's Effect Controls puts a plugin's button on its own row where the plugin
+ * declared it, label in the value column. A press is ONE undo entry.
+ */
+export function PluginEffectButton({
   nodeId,
   effect,
   def,
-  ui,
+  action,
+  label,
+  disabled = false,
 }: {
   nodeId: string;
   effect: Effect;
   def: PluginEffectDef;
-  ui?: Map<string, EffectParamUi> | null;
-}): JSX.Element | null {
+  action: string;
+  label: string;
+  disabled?: boolean;
+}): JSX.Element {
   const [error, setError] = useState<string | null>(null);
-  const actions = def.actions.filter((a) => !ui?.get(a.key)?.hidden);
-  if (actions.length === 0) return null;
   return (
     <div className={row.paramRow} style={{ flexWrap: 'wrap', gap: 6, paddingLeft: 22 }}>
-      {actions.map((a) => (
-        <Button
-          key={a.key}
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            setError(null);
-            void edit(`${def.label}: ${a.label}`, {
-              type: 'invokeEffectAction',
-              group: ref(nodeId, paths.effectGroup(effect.id)),
-              action: a.key,
-            }).then((r) => { if (!r.ok) setError(r.error.message); });
-          }}
-        >
-          {a.label}
-        </Button>
-      ))}
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => {
+          setError(null);
+          void edit(`${def.label}: ${label}`, {
+            type: 'invokeEffectAction',
+            group: ref(nodeId, paths.effectGroup(effect.id)),
+            action,
+          }).then((r) => { if (!r.ok) setError(r.error.message); });
+        }}
+      >
+        {label}
+      </Button>
       {error ? <span className={panel.hint} role="alert">{error}</span> : null}
     </div>
   );
@@ -91,19 +96,38 @@ export function PluginEffectActions({
  * but not loaded (requires Premation Cloud, turned off, failed), or missing.
  */
 export function missingPluginReason(type: string, plugin: PluginInfo | undefined): string {
-  const kept = 'The effect is kept and passes the layer through';
-  if (!plugin) return `Missing plugin ${pluginOfType(type)}. ${kept} until the plugin is installed (Dashboard ▸ Plugins).`;
+  if (!plugin) {
+    return t(
+      'effects.missingPlugin.missing',
+      'Missing plugin {plugin}. The effect is kept and passes the layer through until the plugin is installed (Dashboard ▸ Plugins).',
+      { plugin: pluginOfType(type) },
+    );
+  }
   const who = plugin.name || plugin.id;
   switch (plugin.status) {
     case 'locked':
-      return `${who} requires Premation Cloud. ${kept} until the plan is active (Dashboard ▸ Plugins ▸ Installed ▸ Check plan).`;
+      return t(
+        'effects.missingPlugin.locked',
+        '{plugin} requires Premation Cloud. The effect is kept and passes the layer through until the plan is active (Dashboard ▸ Plugins ▸ Installed ▸ Check plan).',
+        { plugin: who },
+      );
     case 'disabled':
-      return `${who} is turned off. ${kept} until it is turned on (Dashboard ▸ Plugins ▸ Installed).`;
+      return t(
+        'effects.missingPlugin.disabled',
+        '{plugin} is turned off. The effect is kept and passes the layer through until it is turned on (Dashboard ▸ Plugins ▸ Installed).',
+        { plugin: who },
+      );
     case 'loaded':
       // Loaded, yet this effect is not one of its own (an older version's effect).
-      return `${who} does not provide this effect. ${kept}.`;
+      return t(
+        'effects.missingPlugin.notProvided',
+        '{plugin} does not provide this effect. The effect is kept and passes the layer through.',
+        { plugin: who },
+      );
     default:
-      return `${who} did not load${plugin.error ? `: ${plugin.error}` : ''}. ${kept}.`;
+      return plugin.error
+        ? t('effects.missingPlugin.failedReason', '{plugin} did not load: {error}. The effect is kept and passes the layer through.', { plugin: who, error: plugin.error })
+        : t('effects.missingPlugin.failed', '{plugin} did not load. The effect is kept and passes the layer through.', { plugin: who });
   }
 }
 

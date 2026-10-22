@@ -43,11 +43,13 @@ import { openCompositionSettings } from '@layout/Composition/CompositionSettings
 import { deleteCompositionEdit, deleteCompositionWarning } from '@layout/Scene/sceneEdits';
 import { customConfirm } from '@components/Modal';
 import { popOutViewport } from '@layout/Workspace/ViewportDisplayControls';
+import { t } from '@core/i18n';
 import styles from './EditorTabs.module.css';
 
 /**
  * The × on an open Layer / Footage tab. A span with a button role: the tab is
  * itself a <button>, and a button inside a button is not valid markup.
+ * `label` is the whole accessible name ("Close the Footage viewer").
  */
 function TabClose({ label, onClose }: { label: string; onClose: () => void }): JSX.Element {
   return (
@@ -55,8 +57,8 @@ function TabClose({ label, onClose }: { label: string; onClose: () => void }): J
       role="button"
       tabIndex={0}
       className={styles.tabClose}
-      aria-label={`Close the ${label}`}
-      title={`Close the ${label}`}
+      aria-label={label}
+      title={label}
       onClick={(e) => {
         e.stopPropagation();
         onClose();
@@ -164,7 +166,7 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
 
   return (
     <div className={styles.root}>
-      <div className={styles.strip} role="tablist" aria-label="Editor tabs">
+      <div className={styles.strip} role="tablist" aria-label={t('tabs.editor.strip', 'Editor tabs')}>
         <div className={styles.tabs}>
         {/*
           Composition's tab, labelled with the COMPOSITION's name like After Effects:
@@ -175,7 +177,9 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           role="tab"
           aria-selected={compActive}
           className={cn(styles.tab, compActive && styles.tabActive)}
-          title={`Composition: ${compName || 'none'}${activeDirty ? ' — unsaved changes' : ''}`}
+          title={activeDirty
+            ? t('tabs.editor.compTitleDirty', 'Composition: {name} — unsaved changes', { name: compName || t('tabs.editor.none', 'none') })
+            : t('tabs.editor.compTitle', 'Composition: {name}', { name: compName || t('tabs.editor.none', 'none') })}
           onClick={() => {
             // Back to the composition from the Layer or Footage viewer.
             closeViewerTabs();
@@ -185,22 +189,24 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
             // open comps from here (each also has a Timeline tab).
             e.preventDefault();
             const st = useProjectStore.getState();
-            const open = st.tabOrder.map((id) => st.tabs[id]).filter((t): t is NonNullable<typeof t> => !!t);
+            const open = st.tabOrder.map((id) => st.tabs[id]).filter((tab): tab is NonNullable<typeof tab> => !!tab);
             if (open.length === 0) return;
             const active = st.activeTabId ? st.tabs[st.activeTabId] : undefined;
             openContextMenu(e.clientX, e.clientY, [
-              ...open.map((t) => ({
-                id: `open-${t.id}`,
-                label: st.comps[t.compositionId]?.name ?? documentMirror().layer(t.compositionId)?.name ?? t.title,
-                icon: t.id === st.activeTabId ? ('check' as const) : undefined,
+              ...open.map((tab) => ({
+                id: `open-${tab.id}`,
+                label: st.comps[tab.compositionId]?.name ?? documentMirror().layer(tab.compositionId)?.name ?? tab.title,
+                icon: tab.id === st.activeTabId ? ('check' as const) : undefined,
                 onSelect: () => {
-                  useProjectStore.getState().actions.setActiveTab(t.id);
+                  useProjectStore.getState().actions.setActiveTab(tab.id);
                 },
               })),
               { id: 'sep-open', separator: true },
               {
                 id: 'close-comp',
-                label: active ? `Close ${st.comps[active.compositionId]?.name ?? active.title}` : 'Close Composition',
+                label: active
+                  ? t('tabs.editor.closeNamed', 'Close {name}', { name: st.comps[active.compositionId]?.name ?? active.title })
+                  : t('tabs.editor.closeComposition', 'Close Composition'),
                 disabled: !active || open.length < 2,
                 onSelect: () => { if (active) useProjectStore.getState().actions.closeTab(active.id); },
               },
@@ -208,11 +214,13 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           }}
         >
           <Icon name="shape" size="sm" />
-          <span className={styles.tabLabel}>{compName ? `Composition: ${compName}` : 'Composition: (none)'}</span>
+          <span className={styles.tabLabel}>
+            {compName ? t('tabs.editor.compTitle', 'Composition: {name}', { name: compName }) : t('tabs.editor.compNone', 'Composition: (none)')}
+          </span>
           {/* The dirty dot. Decorative for AT: the tab's `title` and the
               accessible name below carry it as words. */}
           {activeDirty ? (
-            <span className={styles.dirtyDot} data-testid="comp-dirty-dot" role="img" aria-label="Unsaved changes" />
+            <span className={styles.dirtyDot} data-testid="comp-dirty-dot" role="img" aria-label={t('tabs.editor.unsaved', 'Unsaved changes')} />
           ) : null}
         </button>
 
@@ -234,8 +242,12 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           disabled={!footageAsset}
           title={
             footageAsset
-              ? `Footage: ${footageAsset.name}${footageAsset.type === 'image' ? ' (still)' : footageAsset.type === 'audio' ? ' (audio)' : ''}`
-              : 'Footage (none) — double-click a clip in Assets, or select a media layer'
+              ? footageAsset.type === 'image'
+                ? t('tabs.editor.footageStill', 'Footage: {name} (still)', { name: footageAsset.name })
+                : footageAsset.type === 'audio'
+                  ? t('tabs.editor.footageAudio', 'Footage: {name} (audio)', { name: footageAsset.name })
+                  : t('tabs.editor.footage', 'Footage: {name}', { name: footageAsset.name })
+              : t('tabs.editor.footageNoneTitle', 'Footage (none) — double-click a clip in Assets, or select a media layer')
           }
           onClick={() => {
             if (footageOpen) return;
@@ -247,7 +259,7 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
             openContextMenu(e.clientX, e.clientY, [
               {
                 id: 'clear-footage',
-                label: 'Clear Footage Viewer',
+                label: t('tabs.editor.clearFootage', 'Clear Footage Viewer'),
                 onSelect: () => {
                   useFootageViewerStore.getState().close();
                   clearLastFootagePreview();
@@ -260,8 +272,12 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           }}
         >
           <Icon name="media" size="sm" />
-          <span className={styles.tabLabel}>{footageAsset ? `Footage: ${footageAsset.name}` : 'Footage: (none)'}</span>
-          {footageOpen && <TabClose label="Footage viewer" onClose={() => useFootageViewerStore.getState().close()} />}
+          <span className={styles.tabLabel}>
+            {footageAsset ? t('tabs.editor.footage', 'Footage: {name}', { name: footageAsset.name }) : t('tabs.editor.footageNone', 'Footage: (none)')}
+          </span>
+          {footageOpen && (
+            <TabClose label={t('tabs.editor.closeFootageViewer', 'Close the Footage viewer')} onClose={() => useFootageViewerStore.getState().close()} />
+          )}
         </button>
 
         {/*
@@ -278,10 +294,10 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           disabled={!layerViewerOpen && !selectedViewable}
           title={
             layerViewerOpen
-              ? `Layer: ${layerTabName ?? ''}`
+              ? t('tabs.editor.layer', 'Layer: {name}', { name: layerTabName ?? '' })
               : selectedViewable
-                ? `Open “${layerTabName ?? ''}” in the Layer panel`
-                : 'Layer (none) — select a footage, solid or composition layer'
+                ? t('tabs.editor.openInLayerPanel', 'Open “{name}” in the Layer panel', { name: layerTabName ?? '' })
+                : t('tabs.editor.layerNoneTitle', 'Layer (none) — select a footage, solid or composition layer')
           }
           onClick={() => {
             if (layerViewerOpen) return;
@@ -289,8 +305,12 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           }}
         >
           <Icon name="layers" size="sm" />
-          <span className={styles.tabLabel}>{layerTabName ? `Layer: ${layerTabName}` : 'Layer: (none)'}</span>
-          {layerViewerOpen && <TabClose label="Layer viewer" onClose={() => useLayerViewerStore.getState().close()} />}
+          <span className={styles.tabLabel}>
+            {layerTabName ? t('tabs.editor.layer', 'Layer: {name}', { name: layerTabName }) : t('tabs.editor.layerNone', 'Layer: (none)')}
+          </span>
+          {layerViewerOpen && (
+            <TabClose label={t('tabs.editor.closeLayerViewer', 'Close the Layer viewer')} onClose={() => useLayerViewerStore.getState().close()} />
+          )}
         </button>
 
         </div>
@@ -309,8 +329,10 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           <button
             type="button"
             className={viewMode === 'fixed' ? `${styles.panelActionBtn} ${styles.panelActionBtnOn}` : styles.panelActionBtn}
-            title={viewMode === 'fixed' ? 'View locked (comp framed & centred) — click to unlock' : 'Lock view — frame the comp and disable panning'}
-            aria-label="Lock view"
+            title={viewMode === 'fixed'
+              ? t('tabs.editor.viewLockedTitle', 'View locked (comp framed & centred) — click to unlock')
+              : t('tabs.editor.lockViewTitle', 'Lock view — frame the comp and disable panning')}
+            aria-label={t('tabs.editor.lockView', 'Lock view')}
             aria-pressed={viewMode === 'fixed'}
             onClick={() => useWorkspaceViewStore.getState().toggleMode()}
           >
@@ -319,17 +341,17 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
           <button
             type="button"
             className={styles.panelActionBtn}
-            title="Composition panel menu"
-            aria-label="Composition panel menu"
+            title={t('tabs.editor.panelMenu', 'Composition panel menu')}
+            aria-label={t('tabs.editor.panelMenu', 'Composition panel menu')}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               openContextMenu(r.left, r.bottom + 4, [
-                { id: 'new-comp', label: 'New Composition…', onSelect: () => openNewCompositionDialog() },
-                { id: 'settings', label: 'Composition Settings…', onSelect: () => openCompositionSettings() },
+                { id: 'new-comp', label: t('tabs.editor.newComposition', 'New Composition…'), onSelect: () => openNewCompositionDialog() },
+                { id: 'settings', label: t('tabs.editor.compositionSettings', 'Composition Settings…'), onSelect: () => openCompositionSettings() },
                 { id: 'sep', separator: true },
                 {
                   id: 'fit',
-                  label: 'Fit Composition in View',
+                  label: t('tabs.editor.fitInView', 'Fit Composition in View'),
                   onSelect: () => {
                     try { getWorkspaceController().fitComposition(); getWorkspaceController().requestRender(); } catch { /* engine not ready */ }
                   },
@@ -337,11 +359,11 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
                 // Pop the viewer into its own window — AE's panel-menu Undock;
                 // it was a button in the transport row (2026-10-07). The lock
                 // is the button beside this menu, so it is not a row here too.
-                { id: 'pop-out', label: 'Pop Out Viewer', icon: 'pop-out', onSelect: popOutViewport },
+                { id: 'pop-out', label: t('tabs.editor.popOut', 'Pop Out Viewer'), icon: 'pop-out', onSelect: popOutViewport },
                 { id: 'sep2', separator: true },
                 {
                   id: 'delete-comp',
-                  label: 'Delete Composition',
+                  label: t('tabs.editor.deleteComposition', 'Delete Composition'),
                   icon: 'trash',
                   danger: true,
                   // "(none)" — the pristine empty state — has nothing to
@@ -353,8 +375,8 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
                     const compId = st.activeTabId ? st.tabs[st.activeTabId]?.compositionId : undefined;
                     if (!compId) return;
                     const comp = st.comps[compId];
-                    const warn = deleteCompositionWarning(comp?.name ?? 'this composition', compId);
-                    if (await customConfirm('Delete Composition', warn, { isDanger: true, confirmLabel: 'Delete' })) {
+                    const warn = deleteCompositionWarning(comp?.name ?? t('tabs.editor.thisComposition', 'this composition'), compId);
+                    if (await customConfirm(t('tabs.editor.deleteComposition', 'Delete Composition'), warn, { isDanger: true, confirmLabel: t('tabs.editor.delete', 'Delete') })) {
                       await deleteCompositionEdit(compId);
                     }
                   },
@@ -384,7 +406,7 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
         {/* AE's Layer panel, over the composition viewer — which stays mounted
             and is only hidden. */}
         {layerViewerOpen && (
-          <div className={styles.tabPane} role="tabpanel" aria-label="Layer panel" data-testid="layer-pane">
+          <div className={styles.tabPane} role="tabpanel" aria-label={t('tabs.editor.layerPanel', 'Layer panel')} data-testid="layer-pane">
             <LayerViewer />
           </div>
         )}
@@ -392,7 +414,7 @@ export function EditorTabs({ scene }: EditorTabsProps): JSX.Element {
         {/* AE's Footage panel: the source file on its own, likewise over the
             (still mounted) composition viewer. */}
         {footageOpen && footageAsset && (
-          <div className={styles.tabPane} role="tabpanel" aria-label="Footage panel" data-testid="footage-pane">
+          <div className={styles.tabPane} role="tabpanel" aria-label={t('tabs.editor.footagePanel', 'Footage panel')} data-testid="footage-pane">
             <FootageViewer asset={footageAsset} />
           </div>
         )}

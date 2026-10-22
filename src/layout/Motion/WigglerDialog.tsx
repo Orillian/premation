@@ -28,17 +28,20 @@ import { fetchMemberTracks, memberTracksNow, type MemberKeys } from '@stores/mem
 import { wiggleTrackKeyframes } from '@core/animation/keyframeAssistants';
 import { beginTrackPreview } from './assistantPreview';
 import styles from './AssistantDialog.module.css';
+import { t } from '@core/i18n';
 
 /** A wobble needs a segment to live in, so a track needs two keyframes. */
 const MIN_KEYFRAMES = 2;
 
 export type WiggleDimension = 'both' | 'x' | 'y';
 
-const DIMENSIONS: ReadonlyArray<{ id: WiggleDimension; label: string }> = [
-  { id: 'both', label: 'X and Y' },
-  { id: 'x', label: 'X only' },
-  { id: 'y', label: 'Y only' },
-];
+function dimensions(): ReadonlyArray<{ id: WiggleDimension; label: string }> {
+  return [
+    { id: 'both', label: t('motion.wiggler.both', 'X and Y') },
+    { id: 'x', label: t('motion.wiggler.xOnly', 'X only') },
+    { id: 'y', label: t('motion.wiggler.yOnly', 'Y only') },
+  ];
+}
 
 /** The position axes The Wiggler can act on (x and y are wiggled as MEMBER tracks), from the engine's member key lists. */
 export function wigglerTracksOf(members: ReadonlyArray<MemberKeys>): Map<PropPath, ReadonlyArray<Keyframe>> {
@@ -131,8 +134,8 @@ function WigglerBody({ nodeId, tracks, originals, close, onDone }: WigglerBodyPr
       return;
     }
     void p.commit();
-    const what = targets.length === 2 ? 'x and y' : `${targets[0]}`;
-    onDone(`Wiggled ${what} — ${added} keyframes added`);
+    const what = targets.length === 2 ? t('motion.wiggler.xAndY', 'x and y') : `${targets[0]}`;
+    onDone(t('motion.wiggler.done', 'Wiggled {what} — {n} keyframes added', { what, n: added }));
     close();
   };
 
@@ -143,37 +146,38 @@ function WigglerBody({ nodeId, tracks, originals, close, onDone }: WigglerBodyPr
   return (
     <div className={styles.body}>
       <p className={styles.blurb}>
-        Bake a deterministic wobble into the animated position. Authored keyframes keep their times
-        and values, and the endpoints never move — the motion still departs and lands exactly where
-        it did.
+        {t(
+          'motion.wiggler.blurb',
+          'Bake a deterministic wobble into the animated position. Authored keyframes keep their times and values, and the endpoints never move — the motion still departs and lands exactly where it did.',
+        )}
       </p>
 
       <div className={styles.fields}>
         <div className={styles.field}>
-          <span className={styles.label}>Frequency (per second)</span>
+          <span className={styles.label}>{t('motion.wiggler.frequency', 'Frequency (per second)')}</span>
           <ValueField
             value={frequency}
             onChange={setFrequency}
             min={0.1}
             step={0.5}
             precision={2}
-            aria-label="Frequency in wobbles per second"
+            aria-label={t('motion.wiggler.frequencyAria', 'Frequency in wobbles per second')}
           />
         </div>
         <div className={styles.field}>
-          <span className={styles.label}>Amplitude (px)</span>
+          <span className={styles.label}>{t('motion.wiggler.amplitude', 'Amplitude (px)')}</span>
           <ValueField
             value={amplitude}
             onChange={setAmplitude}
             step={1}
             precision={2}
-            aria-label="Amplitude in pixels"
+            aria-label={t('motion.wiggler.amplitudeAria', 'Amplitude in pixels')}
           />
         </div>
         <div className={styles.field}>
-          <span className={styles.label}>Dimension</span>
-          <div className={styles.segmented} role="group" aria-label="Dimension">
-            {DIMENSIONS.map((d) => (
+          <span className={styles.label}>{t('motion.wiggler.dimension', 'Dimension')}</span>
+          <div className={styles.segmented} role="group" aria-label={t('motion.wiggler.dimension', 'Dimension')}>
+            {dimensions().map((d) => (
               <Button
                 key={d.id}
                 size="sm"
@@ -189,34 +193,36 @@ function WigglerBody({ nodeId, tracks, originals, close, onDone }: WigglerBodyPr
           </div>
         </div>
         <div className={styles.field}>
-          <span className={styles.label}>Random Seed</span>
+          <span className={styles.label}>{t('motion.stagger.seed', 'Random Seed')}</span>
           <ValueField
             value={seed}
             onChange={(v) => setSeed(Math.max(1, Math.round(v)))}
             min={1}
             step={1}
             precision={0}
-            aria-label="Random seed"
+            aria-label={t('motion.stagger.seedAria', 'Random seed')}
           />
         </div>
       </div>
 
       <p className={styles.result}>
         {valid
-          ? `${added} keyframes added across ${targets.length} track${targets.length === 1 ? '' : 's'}.`
-          : 'Frequency must be above 0 and amplitude must not be 0.'}
+          ? targets.length === 1
+            ? t('motion.wiggler.resultOne', '{n} keyframes added across {tracks} track.', { n: added, tracks: targets.length })
+            : t('motion.wiggler.resultOther', '{n} keyframes added across {tracks} tracks.', { n: added, tracks: targets.length })
+          : t('motion.wiggler.invalid', 'Frequency must be above 0 and amplitude must not be 0.')}
       </p>
 
       <DialogFooter
-        note="Previewing on the composition"
+        note={t('motion.smoother.previewing', 'Previewing on the composition')}
         secondary={
           <Button variant="ghost" onClick={cancel}>
-            Cancel
+            {t('motion.smoother.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" onClick={confirm} disabled={!valid}>
-            Wiggle
+            {t('motion.wiggler.wiggle', 'Wiggle')}
           </Button>
         }
       />
@@ -242,7 +248,7 @@ export async function openWigglerDialog(nodeId: string): Promise<string | null> 
     };
     openModal({
       id: 'wiggler',
-      title: 'The Wiggler',
+      title: t('motion.wiggler.title', 'The Wiggler'),
       size: 'sm',
       // A tool window, like the Smoother: the preview is on the comp.
       variant: 'floating',

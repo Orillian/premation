@@ -23,9 +23,10 @@
   width: 100%;
 }
 
+/* Hover lifts the border only: the body stays the dark well (owner
+   2026-10-21) — a field that turned grey under the pointer read as a button. */
 .field:hover:not(.disabled):not(:focus-within) {
   border-color: var(--color-field-border-hover);
-  background: var(--color-surface-3);
 }
 
 .field:focus-within,

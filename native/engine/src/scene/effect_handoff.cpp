@@ -341,7 +341,7 @@ std::optional<TracedText> traced_text_of(const doc::Node& n, TextMeasurer& measu
   const raster::CanvasOptions* canvas = measurer.canvas_options();
   const std::optional<std::pair<double, double>> size = canvas != nullptr ? measurer.measure_text_size(*style) : std::nullopt;
   if (!size) {
-    why = "the engine has no fonts for this text style (vertical type, paragraph boxes and variable axes are outside the text port)";
+    why = "the engine could not measure this text style (no fonts, or a vertical paragraph box)";
     return std::nullopt;
   }
   TracedText out;

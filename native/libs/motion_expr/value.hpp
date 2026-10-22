@@ -31,7 +31,7 @@ using Str = std::u16string;
 
 // ── Property names ──────────────────────────────────────────────────────────
 
-enum class KeyId : std::uint8_t {
+enum class KeyId : std::uint16_t {
   kUnknown = 0,
 #define K(id) k_##id,      // NOLINT(cppcoreguidelines-macro-usage) — X-macro over keys.def
 #define KN(id, name) id,  // NOLINT(cppcoreguidelines-macro-usage)
@@ -40,7 +40,7 @@ enum class KeyId : std::uint8_t {
 #undef KN
   kCount_
 };
-static_assert(static_cast<unsigned>(KeyId::kCount_) <= 255, "KeyId outgrew a byte: widen its base type");
+static_assert(static_cast<unsigned>(KeyId::kCount_) <= 65535, "KeyId outgrew two bytes: widen its base type");
 
 /// Resolve a property name (UTF-16) to its KeyId, kUnknown if not a known name.
 [[nodiscard]] KeyId key_of(std::u16string_view name) noexcept;
@@ -59,6 +59,12 @@ enum class Global : std::int8_t {
   kPosterizeTime, kAdd, kSub, kMul, kDiv, kDot, kCross, kLength, kNormalize, kText,
   kPlugin,
   kLookAt,  // camera program D6
+  // AE-style rigs: thisLayer's members in scope by their bare names
+  kEffect, kTransform, kInPoint, kOutPoint, kIndex, kParent, kHasParent, kPosition, kAnchorPoint, kScale,
+  kRotation, kOpacity, kStartTime,
+  // AE globals (2026-10-21)
+  kDegreesToRadians, kRadiansToDegrees, kHslToRgb, kRgbToHsl, kSmooth, kTemporalWiggle, kComp,
+  kTimeToTimecode, kTimeToCurrentFormat,
   kCount_
 };
 
@@ -76,6 +82,13 @@ enum class Fn : std::uint8_t {
   kCross, kLength, kNormalize, kCompLayer, kMarkerKey, kMarkerNearestKey,
   // cameras and lights (camera program D6)
   kLookAt, kToCompVec, kFromCompToSurface,
+  // AE-style rigs: layer.effect("Name"), the effect object (callable), its .param()
+  kEffect, kEffectParam, kEffectParamMethod,
+  // AE globals and property objects (2026-10-21): conversions, smooth / temporalWiggle,
+  // comp("Name") and its layer(), and the methods of a layer / effect property object
+  kDegreesToRadians, kRadiansToDegrees, kHslToRgb, kRgbToHsl, kSmooth, kTemporalWiggle, kComp, kCompByNameLayer,
+  kTimeToTimecode, kTimeToCurrentFormat,
+  kPropValueAtTime, kPropVelocityAtTime, kPropKey, kPropNearestKey, kPropSmooth,
   // sourceText.ts
   kGetStyleAt, kStyleSetter, kStyleSetText,
   // Math
@@ -109,6 +122,10 @@ enum class Fn : std::uint8_t {
 enum class Tag : std::uint8_t { kUndefined, kNull, kBool, kNumber, kString, kObject };
 
 struct Obj;
+struct Env;
+
+/// "No node" — a Node link that points nowhere (program.hpp uses the same).
+inline constexpr std::uint32_t kNoNode = 0xffffffffU;
 
 struct Value {
   Tag tag = Tag::kUndefined;
@@ -139,6 +156,16 @@ enum class ObjKind : std::uint8_t {
   kMath,         // the Math object
   kStringObject, // text.sourceText: a String object (str) carrying style state
   kStyle,        // the chainable style object (state)
+  kNumberObject, // a scalar PROPERTY (`transform.rotation`, a slider): a number (`num`) with members
+};
+
+/// What property a property object stands for (AE's Property): its value is
+/// the object itself (an array, or a kNumberObject), and `.valueAtTime(t)`,
+/// `.velocity`, `.numKeys`, `.key(n)`… sample the same property at other times.
+enum class PropKind : std::uint8_t {
+  kNone,
+  kLayer,   // a layer property: `bound` = the layer (null = this one), `pkey` = which (position, rotation…)
+  kEffect,  // an effect parameter: `bound` = the layer, `str` = the effect name, `arg` = the parameter (name or index)
 };
 
 /// A lazily computed property (a JavaScript getter in the TypeScript).
@@ -147,13 +174,21 @@ enum class ObjKind : std::uint8_t {
 /// interest), kLayerColor a colour; kCameraOption / kLightOption build the
 /// option group of the bound layer.
 enum class Lazy : std::uint8_t {
-  kNone, kMarkerNumKeys, kSourceText, kLayerProp, kLayerVec, kLayerColor, kCameraOption, kLightOption
+  kNone, kMarkerNumKeys, kSourceText, kLayerProp, kLayerVec, kLayerColor, kCameraOption, kLightOption,
+  // AE-style rigs: the `transform` group, and inPoint / outPoint / index /
+  // parent / hasParent / enabled (Host::layer_facts_at)
+  kLayerTransform, kLayerFact,
+  // `thisComp.name` (Host::comp_facts)
+  kCompName
 };
 
 struct Prop {
   KeyId key = KeyId::kUnknown;
   Value value;
   Lazy lazy = Lazy::kNone;
+  /// An object literal's own key that is not a known name (`{ foo: 1 }`):
+  /// `key` is kUnknown and this holds the name.
+  const Str* name = nullptr;
 };
 
 struct Obj {
@@ -167,6 +202,30 @@ struct Obj {
   std::size_t state = 0;       // kStringObject / kStyle / kGetStyleAt / setters: index into Arena::styles
   Obj* memo = nullptr;         // lazy memo (marker list, sourceText value)
   int lazy_arg = 0;            // marker scope for kMarkerNumKeys
+  // A function the expression itself declared (`function f() {}`, `x => x`):
+  // the kFunction node and the environment it closed over. `fn` is kNone.
+  std::uint32_t node = kNoNode;
+  Env* env = nullptr;
+  // A property object (kArray / kNumberObject with `pkind` set): see PropKind.
+  double num = 0;              // kNumberObject: the value
+  PropKind pkind = PropKind::kNone;
+  KeyId pkey = KeyId::kUnknown;
+  Value arg;                   // kEffect: the parameter's name or 1-based index
+};
+
+/// A property object's plain value: a kNumberObject reads as its number,
+/// anything else as itself.
+[[nodiscard]] inline Value unwrap_prop(const Value& v) noexcept {
+  if (v.tag == Tag::kObject && v.o->kind == ObjKind::kNumberObject) return Value::number(v.o->num);
+  return v;
+}
+
+/// One activation's local variables (a function call, or the program itself):
+/// slot-indexed, resolved at parse time; `parent` is the defining function's
+/// environment (the closure chain).
+struct Env {
+  std::vector<Value> slots;
+  Env* parent = nullptr;
 };
 
 // ── Source Text style state (sourceText.ts StyleState) ──────────────────────
@@ -187,12 +246,19 @@ struct Arena {
   std::deque<Obj> objects;
   std::deque<StyleState> styles;
   std::deque<SourceTextSample> samples;  // samples fetched from the host during the evaluation
+  std::deque<Env> envs;                  // activations (closures keep theirs alive)
 
   const Str* str(Str s) { return &strings.emplace_back(std::move(s)); }
   Obj* obj(ObjKind k) {
     Obj& o = objects.emplace_back();
     o.kind = k;
     return &o;
+  }
+  Env* env(std::size_t slots, Env* parent) {
+    Env& e = envs.emplace_back();
+    e.slots.resize(slots);
+    e.parent = parent;
+    return &e;
   }
 };
 

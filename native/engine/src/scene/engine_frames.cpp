@@ -346,7 +346,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
     if (dir != mediaBase_) mediaBase_ = std::string(dir);
   }
 
-  // B4 round 2: text measured on the same fonts the frames are built with (core thread, like build()).
+  // B4 round 2: text measured on the same fonts the frames are built with (under the session's build lock, like build()).
   TextQueries* text_queries() noexcept override { return this; }
   // B4 round 5: the overlay push's rig records and getRigPose (scene/rig_overlay.cpp).
   RigQueries* rig_queries() noexcept override { return &rig_; }
@@ -536,6 +536,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
         le.layer = std::move(e.layerId);
         le.stage = std::move(e.stage);
         le.message = std::move(e.message);
+        if (!e.path.empty()) le.path = std::move(e.path);  // stage `expression`: the property
         errors.push_back(std::move(le));
       }
     } catch (const std::exception& e) {
@@ -762,7 +763,8 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
 
   static constexpr std::uint64_t kIdleInstanceFrames = 600;
   /// attach_viewer_lut's memo: the table it last parsed (held, so a new table
-  /// can never reuse its address) and what it made of it. Core thread only, like build().
+  /// can never reuse its address) and what it made of it. Under the session's
+  /// build lock, like build() (core/session.hpp "the build worker").
   std::shared_ptr<const ViewerLut> viewerLutSrc_;
   std::optional<TextureRequest> viewerLutStrip_;
   api::RenderViewerLut viewerLutMeta_;
@@ -924,6 +926,10 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
                                        : p == rg::IntermediatePrecision::float16 ? wgpu::TextureFormat::RGBA16Float
                                                                                   : wgpu::TextureFormat::RGBA8Unorm;
     for (const auto& [m, blend] : rg::effect_warm_passes(type)) renderer_->device().warm_pipeline(m, blend, format);
+    // The field passes of a style draw into rgba16float field targets (fx_distance.cpp).
+    for (const auto& [m, blend] : rg::effect_field_warm_passes(type)) {
+      renderer_->device().warm_pipeline(m, blend, wgpu::TextureFormat::RGBA16Float);
+    }
     return true;
   }
 

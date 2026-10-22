@@ -96,7 +96,7 @@
 .renameInput {
   flex: 1;
   min-width: 0;
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-selection);
   border-radius: var(--radius-xs);
   color: var(--color-text-primary);

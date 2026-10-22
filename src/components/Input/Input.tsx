@@ -15,6 +15,7 @@ import {
 import { cn } from '@utils/cn';
 import { Icon, type IconName } from '@components/Icon';
 import type { Size } from '@app-types/common';
+import { t } from '@core/i18n';
 import styles from './Input.module.css';
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'prefix'> {
@@ -83,7 +84,7 @@ function InputInner(
         {showClear ? (
           <button
             type="button"
-            aria-label="Clear"
+            aria-label={t('ui.input.clear', 'Clear')}
             className={styles.clear}
             onClick={onClear}
           >

@@ -73,7 +73,7 @@ export const ENGINE_IPC_CHANNELS = [
 ] as const;
 
 /** Pushes to the renderer. */
-export const ENGINE_PUSH_CHANNELS = ['engine:events', 'engine:state', 'engine:restarted', 'engine:unavailable', 'engine:pixels'] as const;
+export const ENGINE_PUSH_CHANNELS = ['engine:events', 'engine:state', 'engine:busy', 'engine:restarted', 'engine:unavailable', 'engine:pixels'] as const;
 
 /** Most route-A frames with the page at once (each holds an engine ring slot). */
 export const MAX_COPY_FRAMES_IN_PAGE = 2;
@@ -800,6 +800,8 @@ export class EngineHost {
     sup.on('events', (b) => this.relayEvents(b.bytes, b.causedBy));
     sup.on('log-record', (edit) => this.commandLog.absorbJobEdit(edit.bytes, edit.revisionAfter, edit.job));
     sup.on('state', (s) => this.push('engine:state', s));
+    // The core thread deep in one item (what, how long) — the viewport's status line says so instead of going quiet.
+    sup.on('busy', (b) => this.push('engine:busy', b));
     sup.on('engine-restarted', (info: EngineRestartedInfo) => void this.recoverRestarted(info));
     sup.on('unavailable', (info: UnavailableInfo) => {
       this.unavailableReason = info.reason;

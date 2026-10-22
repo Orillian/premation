@@ -22,8 +22,18 @@
   overflow: hidden;
 }
 
+/* ── The side: columns left to right (After Effects docking) ─────────── */
+.side {
+  flex-direction: row;
+  background: var(--color-border-structural);
+}
+
 /* ── The column ────────────────────────────────────────────────────── */
 .column {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   /* The panel's colour, not the frame's: space the groups leave (under a
      collapsed group, at the column's foot) read as a black slab — the
@@ -195,13 +205,10 @@
   cursor: grabbing;
 }
 
-/* The front tab takes the panel's own surface, so it reads as its top edge. */
-.slotActive {
-  background: var(--color-panel);
-}
-
-.groupCollapsed .slotActive {
-  background: transparent;
+/* The front tab is marked by its text alone (.tabActive): no fill, no rule,
+   so the strip's bottom line runs unbroken under every tab (owner 2026-10-21). */
+.slot:not(.slotActive):hover {
+  background: var(--color-hover);
 }
 
 .slotDragging {
@@ -227,29 +234,18 @@
 }
 
 .tab:hover {
+  color: var(--color-text-secondary);
+}
+
+/* Colour only, never weight: a bolder front tab grew wider and pushed every
+   tab after it along the strip when the front one changed. */
+.tabActive,
+.tabActive:hover {
   color: var(--color-text-primary);
 }
 
-.tabActive {
-  color: var(--color-text-primary);
-  font-weight: var(--panel-weight-tab-active);
-}
-
-/* The front tab carries the accent along its TOP edge (the sheet): the tab is
-   the panel's lifted top edge, and the line marks which one is lifted. */
-.slotActive::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  background: var(--color-primary);
-}
-
-.groupCollapsed .slotActive::before {
-  display: none;
-}
+/* No accent bar or underline on the front tab (2026-10-19, 2026-10-21): a
+   blue mark over each panel read as a row of selected things. */
 
 .tab:focus-visible,
 .twirl:focus-visible,
@@ -444,4 +440,142 @@
   .iconBtn {
     transition: none;
   }
+}
+
+/* ── Columns: the divider between two, and the drop strips at a side's ends ── */
+.columnSeam {
+  position: relative;
+  flex: none;
+  width: 2px;
+  background: var(--color-border-structural);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.columnSeam::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+  z-index: 2;
+}
+
+.columnSeam:hover {
+  background: var(--color-primary);
+}
+
+/* While a tab is dragged: a strip that makes a new column. */
+.edgeDrop {
+  flex: none;
+  width: 10px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      var(--color-dock-zone-edge) 0 6px,
+      transparent 6px 10px
+    )
+    center / 2px 100% no-repeat;
+  opacity: 0.6;
+}
+
+.edgeDropOver {
+  width: var(--control-height-lg);
+  background: var(--color-dock-zone);
+  box-shadow: inset 0 0 0 1px var(--color-dock-zone-edge);
+  opacity: 1;
+}
+
+/* ── The five drop zones over a group's body ─────────────────────────── */
+.group {
+  position: relative;
+}
+
+.zones {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--dock-strip-height);
+  bottom: 0;
+  z-index: 6;
+}
+
+.zoneSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zoneIdle {
+  fill: none;
+  stroke: var(--color-dock-zone-edge);
+  stroke-opacity: 0.45;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.zoneLit {
+  fill: var(--color-dock-zone);
+  stroke: var(--color-dock-zone-edge);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── Tab chrome: grip, close, menu (After Effects) ───────────────────── */
+.tabMenu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-height-xs);
+  height: var(--control-height-xs);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.tabMenu {
+  margin-left: calc(-1 * var(--space-3));
+  margin-right: var(--space-1);
+}
+
+.tabMenu:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.tabMenu:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+/* The group grip: drags the whole group. */
+.groupGrip {
+  flex: none;
+  /* A real hit area around the dots: the strip's height, a little wider than them. */
+  width: 14px;
+  height: var(--dock-strip-height);
+  margin-left: var(--space-1);
+  background-image: radial-gradient(var(--color-text-tertiary) 1px, transparent 1.3px);
+  background-size: 3px 3px;
+  background-position: center;
+  background-clip: content-box;
+  padding: 8px 3px;
+  cursor: grab;
+}
+
+.groupGrip:hover {
+  background-image: radial-gradient(var(--color-text-primary) 1px, transparent 1.3px);
+}
+
+/* ── Maximize Frame: the group over the editor body ──────────────────── */
+.groupMaximized {
+  position: fixed;
+  z-index: 40;
+  box-shadow: 0 0 0 1px var(--color-primary), 0 12px 40px rgb(0 0 0 / 0.55);
 }

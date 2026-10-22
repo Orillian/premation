@@ -42,6 +42,7 @@ import { LABEL_COLORS } from '@core/scene/labelColor';
 import { edit } from '@core/engine/uiEdits';
 import { useMirrorLayers } from '@hooks/useMirror';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { activeMirrorCompId, canBe3DLayer, inspectorKindOf, is3DLayer, isRenderableLayer } from './inspectorMirror';
 import { useComponentProp } from './useComponentProp';
 import styles from './SelectionHeader.module.css';
@@ -76,31 +77,31 @@ function effectCount(id: string): number {
 
 export const LAYER_SWITCHES: ReadonlyArray<LayerSwitchSpec> = [
   {
-    id: 'visible', icon: 'eye', label: 'Visible',
+    id: 'visible', icon: 'eye', get label() { return t('inspector.selectionHeader.switch.visible', 'Visible'); },
     applies: () => true,
     read: (id) => switchesOf(id)?.visible !== false,
     patch: (on) => ({ visible: on }),
   },
   {
-    id: 'solo', icon: 'circle', label: 'Solo',
+    id: 'solo', icon: 'circle', get label() { return t('inspector.selectionHeader.switch.solo', 'Solo'); },
     applies: () => true,
     read: (id) => switchesOf(id)?.solo === true,
     patch: (on) => ({ solo: on }),
   },
   {
-    id: 'locked', icon: 'lock', label: 'Lock',
+    id: 'locked', icon: 'lock', get label() { return t('inspector.selectionHeader.switch.lock', 'Lock'); },
     applies: () => true,
     read: (id) => switchesOf(id)?.locked === true,
     patch: (on) => ({ locked: on }),
   },
   {
-    id: '3d', icon: '3d', label: '3D layer',
+    id: '3d', icon: '3d', get label() { return t('inspector.selectionHeader.switch.threeD', '3D layer'); },
     applies: canBe3DLayer,
     read: is3DLayer,
     patch: (on) => ({ threeD: on }),
   },
   {
-    id: 'motionBlur', icon: 'motion-blur', label: 'Motion blur',
+    id: 'motionBlur', icon: 'motion-blur', get label() { return t('inspector.selectionHeader.switch.motionBlur', 'Motion blur'); },
     applies: isRenderable,
     read: (id) => switchesOf(id)?.motionBlur === true,
     patch: (on) => ({ motionBlur: on }),
@@ -108,13 +109,13 @@ export const LAYER_SWITCHES: ReadonlyArray<LayerSwitchSpec> = [
     after: (_ids, on) => { if (on) motionBlurFeedback(); },
   },
   {
-    id: 'adjustment', icon: 'adjustment', label: 'Adjustment layer',
+    id: 'adjustment', icon: 'adjustment', get label() { return t('inspector.selectionHeader.switch.adjustment', 'Adjustment layer'); },
     applies: isRenderable,
     read: (id) => switchesOf(id)?.adjustment === true,
     patch: (on) => ({ adjustment: on }),
     after: (ids, on) => {
       if (on && ids.some((id) => effectCount(id) === 0)) {
-        notify('info', 'Adjustment layer is on — add effects to grade layers beneath it', 3200);
+        notify('info', t('inspector.selectionHeader.adjustmentOn', 'Adjustment layer is on — add effects to grade layers beneath it'), 3200);
       }
     },
   },
@@ -153,10 +154,10 @@ let masterTurnedOn = false;
 function motionBlurFeedback(): void {
   if (masterTurnedOn) {
     masterTurnedOn = false;
-    notify('info', 'Motion Blur enabled for this layer and the composition', 3200);
+    notify('info', t('inspector.selectionHeader.motionBlurEnabled', 'Motion Blur enabled for this layer and the composition'), 3200);
   }
   if (useRenderQualityStore.getState().draft) {
-    notify('warning', 'Draft preview is on — motion blur samples are paused until draft is off', 3200);
+    notify('warning', t('inspector.selectionHeader.draftPaused', 'Draft preview is on — motion blur samples are paused until draft is off'), 3200);
   }
 }
 
@@ -181,17 +182,32 @@ export function layerSwitchState(nodeIds: ReadonlyArray<string>, t: LayerSwitchS
  * Flip a switch for the whole selection: all on → all off, otherwise (none or
  * mixed) → all on. ONE undo entry however many layers it writes.
  */
-export async function applyLayerSwitch(nodeIds: ReadonlyArray<string>, t: LayerSwitchSpec): Promise<void> {
-  const targets = switchTargets(nodeIds, t);
+export async function applyLayerSwitch(nodeIds: ReadonlyArray<string>, sw: LayerSwitchSpec): Promise<void> {
+  const targets = switchTargets(nodeIds, sw);
   if (targets.length === 0) return;
-  const next = layerSwitchState(targets, t) !== 'all';
+  const next = layerSwitchState(targets, sw) !== 'all';
   // One command per layer (`setLayerSwitches` takes ONE composition's layers
   // and a selection may span a precomp and its parent), one batch = one entry.
-  const cmds = targets.map((id) => ({ type: 'setLayerSwitches', layers: [id], patch: t.patch(next) }) as Command);
-  cmds.push(...(t.alsoSend?.(next) ?? []));
-  const res = await edit(`${next ? 'Enable' : 'Disable'} ${t.label}`, cmds);
-  if (res.ok) t.after?.(targets, next);
+  const cmds = targets.map((id) => ({ type: 'setLayerSwitches', layers: [id], patch: sw.patch(next) }) as Command);
+  cmds.push(...(sw.alsoSend?.(next) ?? []));
+  const res = await edit(
+    next
+      ? `Enable ${SWITCH_UNDO_NAME[sw.id] ?? sw.label}`
+      : `Disable ${SWITCH_UNDO_NAME[sw.id] ?? sw.label}`,
+    cmds,
+  );
+  if (res.ok) sw.after?.(targets, next);
 }
+
+/** The switch names in undo labels — English always (history labels are not translated). */
+const SWITCH_UNDO_NAME: Readonly<Record<string, string>> = {
+  visible: 'Visible',
+  solo: 'Solo',
+  locked: 'Lock',
+  '3d': '3D layer',
+  motionBlur: 'Motion blur',
+  adjustment: 'Adjustment layer',
+};
 
 /** The switches that apply to at least one selected layer, in display order. */
 function applicableSwitches(nodeIds: ReadonlyArray<string>): LayerSwitchSpec[] {
@@ -224,55 +240,63 @@ export function layerSwitchMenuItems(nodeIds: ReadonlyArray<string>): DropdownIt
 // ── Identity ───────────────────────────────────────────────────────
 
 /** What a single layer is called, in the header's kind chip. */
-const KIND_NOUN: Readonly<Record<string, string>> = {
-  shape: 'Shape layer',
-  text: 'Text layer',
-  image: 'Image layer',
-  video: 'Video layer',
-  svg: 'SVG layer',
-  audio: 'Audio layer',
-  camera: 'Camera',
-  light: 'Light',
-  group: 'Group',
-  null: 'Null object',
-  adjustment: 'Adjustment layer',
-  particle: 'Particle layer',
-  comp: 'Composition layer',
-};
+function kindNouns(): Readonly<Record<string, string>> {
+  return {
+    shape: t('inspector.selectionHeader.kind.shape', 'Shape layer'),
+    text: t('inspector.selectionHeader.kind.text', 'Text layer'),
+    image: t('inspector.selectionHeader.kind.image', 'Image layer'),
+    video: t('inspector.selectionHeader.kind.video', 'Video layer'),
+    svg: t('inspector.selectionHeader.kind.svg', 'SVG layer'),
+    audio: t('inspector.selectionHeader.kind.audio', 'Audio layer'),
+    camera: t('inspector.selectionHeader.kind.camera', 'Camera'),
+    light: t('inspector.selectionHeader.kind.light', 'Light'),
+    group: t('inspector.selectionHeader.kind.group', 'Group'),
+    null: t('inspector.selectionHeader.kind.null', 'Null object'),
+    adjustment: t('inspector.selectionHeader.kind.adjustment', 'Adjustment layer'),
+    particle: t('inspector.selectionHeader.kind.particle', 'Particle layer'),
+    comp: t('inspector.selectionHeader.kind.comp', 'Composition layer'),
+  };
+}
 
-/** [one, many] for the multi-selection breakdown — "2 shapes, 1 text". */
-const KIND_COUNT: Readonly<Record<string, readonly [string, string]>> = {
-  shape: ['shape', 'shapes'],
-  text: ['text', 'text'],
-  image: ['image', 'images'],
-  video: ['video', 'videos'],
-  svg: ['SVG', 'SVGs'],
-  audio: ['audio', 'audio'],
-  camera: ['camera', 'cameras'],
-  light: ['light', 'lights'],
-  group: ['group', 'groups'],
-  null: ['null', 'nulls'],
-  adjustment: ['adjustment', 'adjustments'],
-  particle: ['particle layer', 'particle layers'],
-  comp: ['comp', 'comps'],
-};
+/** One count phrase of the multi-selection breakdown — "2 shapes", "1 text". */
+function kindCount(kind: string, n: number): string {
+  const one = n === 1;
+  switch (kind) {
+    case 'shape': return one ? t('inspector.selectionHeader.count.shapeOne', '{n} shape', { n }) : t('inspector.selectionHeader.count.shapeOther', '{n} shapes', { n });
+    case 'text': return one ? t('inspector.selectionHeader.count.textOne', '{n} text', { n }) : t('inspector.selectionHeader.count.textOther', '{n} text', { n });
+    case 'image': return one ? t('inspector.selectionHeader.count.imageOne', '{n} image', { n }) : t('inspector.selectionHeader.count.imageOther', '{n} images', { n });
+    case 'video': return one ? t('inspector.selectionHeader.count.videoOne', '{n} video', { n }) : t('inspector.selectionHeader.count.videoOther', '{n} videos', { n });
+    case 'svg': return one ? t('inspector.selectionHeader.count.svgOne', '{n} SVG', { n }) : t('inspector.selectionHeader.count.svgOther', '{n} SVGs', { n });
+    case 'audio': return one ? t('inspector.selectionHeader.count.audioOne', '{n} audio', { n }) : t('inspector.selectionHeader.count.audioOther', '{n} audio', { n });
+    case 'camera': return one ? t('inspector.selectionHeader.count.cameraOne', '{n} camera', { n }) : t('inspector.selectionHeader.count.cameraOther', '{n} cameras', { n });
+    case 'light': return one ? t('inspector.selectionHeader.count.lightOne', '{n} light', { n }) : t('inspector.selectionHeader.count.lightOther', '{n} lights', { n });
+    case 'group': return one ? t('inspector.selectionHeader.count.groupOne', '{n} group', { n }) : t('inspector.selectionHeader.count.groupOther', '{n} groups', { n });
+    case 'null': return one ? t('inspector.selectionHeader.count.nullOne', '{n} null', { n }) : t('inspector.selectionHeader.count.nullOther', '{n} nulls', { n });
+    case 'adjustment': return one ? t('inspector.selectionHeader.count.adjustmentOne', '{n} adjustment', { n }) : t('inspector.selectionHeader.count.adjustmentOther', '{n} adjustments', { n });
+    case 'particle': return one ? t('inspector.selectionHeader.count.particleOne', '{n} particle layer', { n }) : t('inspector.selectionHeader.count.particleOther', '{n} particle layers', { n });
+    case 'comp': return one ? t('inspector.selectionHeader.count.compOne', '{n} comp', { n }) : t('inspector.selectionHeader.count.compOther', '{n} comps', { n });
+    default: return one ? t('inspector.selectionHeader.count.layerOne', '{n} layer', { n }) : t('inspector.selectionHeader.count.layerOther', '{n} layers', { n });
+  }
+}
 
 function kindNoun(kind: string): string {
-  return KIND_NOUN[kind] ?? 'Layer';
+  return kindNouns()[kind] ?? t('inspector.selectionHeader.kind.layer', 'Layer');
 }
 
 /** A light's chip: its Light Type, as After Effects' Light Settings name it. */
-const LIGHT_NOUN: Readonly<Record<string, string>> = {
-  parallel: 'Parallel light',
-  spot: 'Spot light',
-  point: 'Point light',
-  ambient: 'Ambient light',
-  environment: 'Environment light',
-};
+function lightNouns(): Readonly<Record<string, string>> {
+  return {
+    parallel: t('inspector.selectionHeader.light.parallel', 'Parallel light'),
+    spot: t('inspector.selectionHeader.light.spot', 'Spot light'),
+    point: t('inspector.selectionHeader.light.point', 'Point light'),
+    ambient: t('inspector.selectionHeader.light.ambient', 'Ambient light'),
+    environment: t('inspector.selectionHeader.light.environment', 'Environment light'),
+  };
+}
 
 /** An unset or unknown type reads as a point light, as `readNodeLight` coerces it. */
 export function lightNoun(lightType: unknown): string {
-  return (typeof lightType === 'string' ? LIGHT_NOUN[lightType] : undefined) ?? 'Point light';
+  return (typeof lightType === 'string' ? lightNouns()[lightType] : undefined) ?? t('inspector.selectionHeader.light.point', 'Point light');
 }
 
 const TRANSFORM = { type: 'Transform' } as const;
@@ -304,10 +328,7 @@ export function kindBreakdown(nodeIds: ReadonlyArray<string>): string {
     if (kind === null) continue;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  return [...counts].map(([kind, n]) => {
-    const [one, many] = KIND_COUNT[kind] ?? ['layer', 'layers'];
-    return `${n} ${n === 1 ? one : many}`;
-  }).join(', ');
+  return [...counts].map(([kind, n]) => kindCount(kind, n)).join(', ');
 }
 
 function notify(level: 'info' | 'warning', message: string, durationMs: number): void {
@@ -326,13 +347,17 @@ async function commitLayerRename(id: string, name: string): Promise<void> {
   if (!result.ok) return;
   if (result.repaired.length > 0) {
     const n = result.repaired.length;
-    notify('info', n === 1 ? '1 expression updated to follow the new name.' : `${n} expressions updated to follow the new name.`, 4000);
+    notify('info', n === 1
+      ? t('inspector.selectionHeader.rename.repairedOne', '1 expression updated to follow the new name.')
+      : t('inspector.selectionHeader.rename.repairedOther', '{n} expressions updated to follow the new name.', { n }), 4000);
   }
   if (result.captured.length > 0) {
     const n = result.captured.length;
-    notify('warning', `${n} expression${n === 1 ? '' : 's'} naming “${name.trim()}” now read this layer instead of the one they read before.`, 10000);
+    notify('warning', n === 1
+      ? t('inspector.selectionHeader.rename.capturedOne', '{n} expression naming “{name}” now read this layer instead of the one they read before.', { n, name: name.trim() })
+      : t('inspector.selectionHeader.rename.capturedOther', '{n} expressions naming “{name}” now read this layer instead of the one they read before.', { n, name: name.trim() }), 10000);
   } else if (result.nameAlreadyInUse) {
-    notify('warning', `Another layer is already called “${name.trim()}”. An expression naming it can only reach one of them.`, 6000);
+    notify('warning', t('inspector.selectionHeader.rename.nameInUse', 'Another layer is already called “{name}”. An expression naming it can only reach one of them.', { name: name.trim() }), 6000);
   }
 }
 
@@ -357,7 +382,7 @@ function LayerName({ nodeId, name, locked }: { nodeId: string; name: string; loc
 
   const begin = (): void => {
     if (locked) {
-      notify('info', `“${name}” is locked — unlock it to rename it.`, 3000);
+      notify('info', t('inspector.selectionHeader.rename.locked', '“{name}” is locked — unlock it to rename it.', { name }), 3000);
       return;
     }
     settled.current = false;
@@ -377,7 +402,7 @@ function LayerName({ nodeId, name, locked }: { nodeId: string; name: string; loc
       <input
         ref={inputRef}
         className={styles.nameInput}
-        aria-label="Layer name"
+        aria-label={t('inspector.selectionHeader.layerName', 'Layer name')}
         value={draft}
         autoFocus
         onChange={(e) => setDraft(e.currentTarget.value)}
@@ -401,7 +426,7 @@ function LayerName({ nodeId, name, locked }: { nodeId: string; name: string; loc
       className={styles.name}
       role="button"
       tabIndex={0}
-      title={`${name} — double-click to rename`}
+      title={t('inspector.selectionHeader.renameHint', '{name} — double-click to rename', { name })}
       onDoubleClick={begin}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === 'F2') {
@@ -442,7 +467,7 @@ function SelectionHeaderInner({ nodeIds = [], actions }: SelectionHeaderProps): 
   };
   const colorItems: DropdownItem[] = [
     {
-      type: 'item', id: 'default', label: 'Default (by kind)',
+      type: 'item', id: 'default', label: t('inspector.selectionHeader.labelDefault', 'Default (by kind)'),
       icon: current === undefined ? 'check' : undefined,
       onSelect: () => setLabel(undefined),
     },
@@ -469,7 +494,7 @@ function SelectionHeaderInner({ nodeIds = [], actions }: SelectionHeaderProps): 
         items={colorItems}
         placement="bottom-start"
         trigger={
-          <button type="button" className={styles.swatchBtn} aria-label="Label colour" title="Label colour">
+          <button type="button" className={styles.swatchBtn} aria-label={t('inspector.selectionHeader.labelColour', 'Label colour')} title={t('inspector.selectionHeader.labelColour', 'Label colour')}>
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <circle cx="5" cy="5" r="5" fill={current ?? 'currentColor'} />
             </svg>
@@ -479,7 +504,7 @@ function SelectionHeaderInner({ nodeIds = [], actions }: SelectionHeaderProps): 
       {live.length > 1 ? (
         <>
           <Icon name="layers" size="sm" className={styles.kindIcon} />
-          <span className={cn(styles.name, styles.nameCount)}>{live.length} layers</span>
+          <span className={cn(styles.name, styles.nameCount)}>{t('inspector.selectionHeader.layerCount', '{n} layers', { n: live.length })}</span>
           {/* A breakdown can run long ("2 shapes, 1 text, 3 lights"): this one
               chip may give way, with the whole of it in its tooltip. */}
           <KindChip text={kindBreakdown(live)} shrink />

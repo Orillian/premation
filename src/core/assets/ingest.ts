@@ -27,6 +27,7 @@
  */
 
 import { canProbe, probeMedia } from './mediaProbe';
+import { t } from '@core/i18n';
 
 /** Containers the browser's <video> cannot open regardless of codec. */
 const INGEST_CONTAINERS = new Set([
@@ -152,29 +153,29 @@ export async function maybeIngestForImport(
   // in every edition. Failure falls through to importing the original bytes,
   // which surfaces as a broken image rather than a crashed import.
   if (/\.exr$/i.test(file.name)) {
-    onStatus?.(`Decoding “${file.name}” (EXR → float + sRGB preview)…`);
+    onStatus?.(t('core.ingest.decodingExr', 'Decoding “{name}” (EXR → float + sRGB preview)…', { name: file.name }));
     try {
       // Asset id is not known yet at ingest — float cache is filled after add.
       // Keep PNG preview path; float planes attach in assetStore post-import.
       const { convertExrToPngFile } = await import('@core/media/exrImport');
       return await convertExrToPngFile(file);
     } catch (e) {
-      onStatus?.(`EXR import failed: ${e instanceof Error ? e.message : String(e)}`);
+      onStatus?.(t('core.ingest.exrFailed', 'EXR import failed: {error}', { error: e instanceof Error ? e.message : String(e) }));
       return null;
     }
   }
   if (/\.psd$/i.test(file.name)) {
-    onStatus?.(`Decoding “${file.name}” (PSD layers)…`);
+    onStatus?.(t('core.ingest.decodingPsd', 'Decoding “{name}” (PSD layers)…', { name: file.name }));
     // PSD expands to multiple PNGs — handled specially in assetStore.addFiles.
     return null;
   }
   if (/\.dpx$/i.test(file.name)) {
-    onStatus?.(`Decoding “${file.name}” (DPX → sRGB)…`);
+    onStatus?.(t('core.ingest.decodingDpx', 'Decoding “{name}” (DPX → sRGB)…', { name: file.name }));
     const { convertDpxToPngFile } = await import('@core/media/dpxImport');
     try {
       return await convertDpxToPngFile(file);
     } catch (e) {
-      onStatus?.(`DPX import failed: ${e instanceof Error ? e.message : String(e)}`);
+      onStatus?.(t('core.ingest.dpxFailed', 'DPX import failed: {error}', { error: e instanceof Error ? e.message : String(e) }));
       return null;
     }
   }
@@ -183,10 +184,10 @@ export async function maybeIngestForImport(
   if (isCameraRawStill(file.name)) {
     const bridge = typeof window !== 'undefined' ? window.motionEditor?.media : undefined;
     if (!bridge?.generateProxy) {
-      onStatus?.(`Camera raw “${file.name}” needs the desktop app (ffmpeg).`);
+      onStatus?.(t('core.ingest.rawNeedsDesktop', 'Camera raw “{name}” needs the desktop app (ffmpeg).', { name: file.name }));
       return null;
     }
-    onStatus?.(`Decoding camera raw “${file.name}”…`);
+    onStatus?.(t('core.ingest.decodingRaw', 'Decoding camera raw “{name}”…', { name: file.name }));
     const { args, outExt, mime } = rawStillEncodeArgs();
     const bytes = new Uint8Array(await file.arrayBuffer());
     const out = await bridge.generateProxy(
@@ -198,7 +199,7 @@ export async function maybeIngestForImport(
     ).catch(() => null);
     if (!out) {
       onStatus?.(
-        `Camera raw decode failed for “${file.name}”. Host ffmpeg may lack libraw — convert to DNG/EXR externally.`,
+        t('core.ingest.rawFailed', 'Camera raw decode failed for “{name}”. Host ffmpeg may lack libraw — convert to DNG/EXR externally.', { name: file.name }),
       );
       return null;
     }
@@ -213,7 +214,7 @@ export async function maybeIngestForImport(
   const facts = await probeMedia(file);
   if (!needsIngest(file.name, facts.videoCodec)) return null;
 
-  onStatus?.(`Transcoding “${file.name}” for editing (${facts.videoCodec ?? extOf(file.name)})…`);
+  onStatus?.(t('core.ingest.transcoding', 'Transcoding “{name}” for editing ({codec})…', { name: file.name, codec: facts.videoCodec ?? extOf(file.name) }));
   const { args, outExt, mime } = ingestEncodeArgs(facts.hasAlpha === true);
   const bytes = new Uint8Array(await file.arrayBuffer());
   const out = await bridge.generateProxy(

@@ -4,6 +4,10 @@
 #include <cstdlib>
 #include <functional>
 
+#include "catalog_data.hpp"
+#include "controls.hpp"
+#include "fxstate.hpp"
+#include "props.hpp"
 #include "scene.hpp"
 #include "transform.hpp"
 #include "worldxf.hpp"
@@ -307,6 +311,220 @@ std::optional<ex::SourceTextSample> DocExprEnv::source_text(std::string_view nod
   const Json& family = text->props.at("fontFamily");
   if (family.is_string()) s.style.font_family = to_u16(family.str());
   return s;
+}
+
+// ── AE-style rigs (docs/EXPRESSION_LANGUAGE.md) ──────────────────────────
+
+namespace {
+
+bool same_name(std::string_view a, std::string_view b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    const char x = a[i];
+    const char y = b[i];
+    const char lx = (x >= 'A' && x <= 'Z') ? static_cast<char>(x + 32) : x;
+    const char ly = (y >= 'A' && y <= 'Z') ? static_cast<char>(y + 32) : y;
+    if (lx != ly) return false;
+  }
+  return true;
+}
+
+/// `effect("Name")` on the layer: an expression control (by its name), else
+/// an effect instance (by its own name, its definition's label, or its match
+/// name) — case-insensitively, as AE users type them.
+struct EffectHit {
+  const LayerControl* control = nullptr;
+  std::optional<Json> effect;
+  const EffectDef* def = nullptr;
+};
+
+EffectHit find_effect(const Node& n, const std::vector<LayerControl>& controls, std::string_view name) {
+  EffectHit hit;
+  for (const LayerControl& c : controls) {
+    if (same_name(c.name, name)) {
+      hit.control = &c;
+      return hit;
+    }
+  }
+  for (const Json& e : read_node_effects(n)) {
+    const std::string type = e.at("type").is_string() ? e.at("type").str() : std::string();
+    const EffectDef* def = registry().effect(type);
+    const Json& own = e.at("name");
+    const bool match = (own.is_string() && same_name(own.str(), name)) || (def != nullptr && same_name(def->label, name)) ||
+                       same_name(type, name);
+    if (!match) continue;
+    hit.effect = e;
+    hit.def = def;
+    return hit;
+  }
+  return hit;
+}
+
+}  // namespace
+
+std::optional<ex::LayerFacts> DocExprEnv::layer_facts(std::string_view node, double /*t*/) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return std::nullopt;
+  ex::LayerFacts f;
+  f.enabled = n->visible;
+  f.name = to_u16(n->name);
+  f.out_point = rec_num(comp_record(d_, view_), "durationSeconds", 10);
+  if (const auto comp = comp_of_layer(d_, node)) {
+    const Timeline* tl = d_.timeline(*comp);
+    const double fps = tl != nullptr && tl->fps > 0 ? tl->fps : 30;
+    if (tl != nullptr) f.out_point = tl->duration / fps;
+    const auto bars = bars_of(d_, node, *comp);
+    if (!bars.empty()) {
+      f.in_point = bars.front()->clip.start / fps;
+      f.out_point = bars.back()->clip.end() / fps;
+    }
+    const std::vector<std::string> ids = layer_ids_of_comp(d_, *comp);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+      if (ids[i] == node) {
+        f.index = static_cast<double>(i + 1);
+        break;
+      }
+    }
+  }
+  if (const auto p = api_parent_of(d_, node)) f.parent = to_u16(*p);
+  return f;
+}
+
+std::optional<std::string> DocExprEnv::layer_by_index(std::string_view self, double index) const {
+  const auto comp = comp_of_layer(d_, self);
+  if (!comp || !(index >= 1) || std::floor(index) != index) return std::nullopt;
+  const std::vector<std::string> ids = layer_ids_of_comp(d_, *comp);
+  const auto i = static_cast<std::size_t>(index);
+  if (i > ids.size()) return std::nullopt;
+  return ids[i - 1];
+}
+
+bool DocExprEnv::effect_exists(std::string_view node, std::string_view effect) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return false;
+  const EffectHit hit = find_effect(*n, read_controls(*n), effect);
+  return hit.control != nullptr || hit.effect.has_value();
+}
+
+std::optional<std::vector<ExprEnv::EffectMember>> DocExprEnv::effect_param_members(std::string_view node,
+                                                                                   std::string_view effect,
+                                                                                   const std::string* param,
+                                                                                   double index) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return std::nullopt;
+  const std::vector<LayerControl> controls = read_controls(*n);
+  const EffectHit hit = find_effect(*n, controls, effect);
+  std::vector<EffectMember> out;
+  if (hit.control != nullptr) {
+    // A control has one value: `("Slider")`, `("Point")`, `("Color")`… or (1).
+    const ControlSpec& spec = *hit.control->spec;
+    const bool wanted = param == nullptr ? index == 1
+                                         : same_name(*param, spec.propName) || same_name(*param, spec.param) ||
+                                               same_name(*param, spec.propMatchName);
+    if (!wanted) return std::nullopt;
+    const std::vector<std::string> members = control_members(*hit.control);
+    const bool colour = spec.valueType == api::ValueType::color;
+    for (std::size_t i = 0; i < members.size(); ++i) {
+      // A colour control stores 0–255 channels; AE reads 0..1.
+      out.push_back({.key = members[i], .scale = colour && i < 3 ? 1.0 / 255.0 : 1.0, .offset = 0});
+    }
+    // AE's colour is [r, g, b, a]; the control keeps no alpha (opaque).
+    if (colour && members.size() == 3) out.push_back({.key = {}, .scale = 1, .offset = 1});
+    return out;
+  }
+  if (!hit.effect || hit.def == nullptr) return std::nullopt;
+  const EffectParamDef* pd = nullptr;
+  if (param != nullptr) {
+    for (const EffectParamDef& p : hit.def->params) {
+      if (same_name(p.label, *param) || same_name(p.key, *param)) {
+        pd = &p;
+        break;
+      }
+    }
+  } else if (index >= 1 && std::floor(index) == index && static_cast<std::size_t>(index) <= hit.def->params.size()) {
+    pd = &hit.def->params[static_cast<std::size_t>(index) - 1];
+  }
+  if (pd == nullptr) return std::nullopt;
+  const std::string id = hit.effect->at("id").is_string() ? hit.effect->at("id").str() : std::string("undefined");
+  const std::string base = "effect." + id + "." + pd->key;
+  if (pd->type == "number" || pd->type == "checkbox" || pd->type == "enum") {
+    out.push_back({.key = base, .scale = 1});
+    return out;
+  }
+  if (pd->type == "color") {
+    for (const char* ch : {"_r", "_g", "_b", "_a"}) out.push_back({.key = base + ch, .scale = 1});
+    return out;
+  }
+  return std::nullopt;  // a curve, layer, text or file parameter has no number to read
+}
+
+std::optional<double> DocExprEnv::static_value(std::string_view node, std::string_view prop) const {
+  return read_static_property_value(d_, node, prop);
+}
+
+// ── AE property objects (2026-10-21) ─────────────────────────────────────
+
+bool DocExprEnv::effect_enabled(std::string_view node, std::string_view effect) const {
+  const Node* n = d_.node(node);
+  if (n == nullptr) return true;
+  const EffectHit hit = find_effect(*n, read_controls(*n), effect);
+  if (!hit.effect) return true;  // an expression control has no switch of its own
+  const Json& en = hit.effect->at("enabled");
+  return !(en.is_bool() && !en.b());
+}
+
+namespace {
+
+ex::CompFacts comp_facts_of(const Document& d, const std::string& id, const Json& rec) {
+  ex::CompFacts f;
+  f.info.width = rec_num(&rec, "width", 1920);
+  f.info.height = rec_num(&rec, "height", 1080);
+  f.info.duration = rec_num(&rec, "durationSeconds", 10);
+  f.info.fps = rec_num(&rec, "fps", 30);
+  f.info.num_layers = static_cast<double>(layer_ids_of_comp(d, id).size());
+  const Json& name = rec.at("name");
+  f.name = to_u16(name.is_string() ? std::string_view(name.str()) : std::string_view(id));
+  return f;
+}
+
+/// A composition by its name (AE: exact), else nullopt.
+std::optional<std::string> comp_by_name(const Document& d, std::string_view name) {
+  for (const auto& [id, rec] : d.comps()) {
+    const Json& n = rec->at("name");
+    if (n.is_string() && n.str() == name) return id;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<ex::CompFacts> DocExprEnv::comp_facts(std::string_view self, const std::string* name) const {
+  std::optional<std::string> id;
+  if (name != nullptr) {
+    id = comp_by_name(d_, *name);
+  } else {
+    id = comp_of_layer(d_, self);
+    if (!id) id = view_.tabComp;
+  }
+  if (!id) return std::nullopt;
+  const Json* rec = d_.comp(*id);
+  if (rec == nullptr) return std::nullopt;
+  return comp_facts_of(d_, *id, *rec);
+}
+
+std::optional<std::string> DocExprEnv::comp_layer(const std::string& comp, const std::string* name, double index) const {
+  const std::optional<std::string> id = comp_by_name(d_, comp);
+  if (!id) return std::nullopt;
+  const std::vector<std::string> ids = layer_ids_of_comp(d_, *id);
+  if (name != nullptr) {
+    for (const std::string& l : ids) {
+      const Node* n = d_.node(l);
+      if (n != nullptr && n->name == *name) return l;
+    }
+    return std::nullopt;
+  }
+  if (!(index >= 1) || std::floor(index) != index || static_cast<std::size_t>(index) > ids.size()) return std::nullopt;
+  return ids[static_cast<std::size_t>(index) - 1];
 }
 
 }  // namespace premation::doc

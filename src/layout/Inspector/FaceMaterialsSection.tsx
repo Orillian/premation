@@ -16,6 +16,7 @@ import { ColorPicker } from '@components/ColorPicker';
 import { ValueField } from '@components/ValueField';
 import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorLayer, useMirrorTree, type MirrorTree } from '@hooks/useMirror';
 import { mirrorFaceMaterials, mirrorMaterial, mirrorOverlayStyles } from '@core/mirror/layerFacts';
@@ -41,11 +42,14 @@ import sides from './FaceMaterialsSection.module.css';
 
 type EditableKind = Exclude<FaceKind, 'front'>;
 
-const KINDS: ReadonlyArray<{ kind: EditableKind; label: string; hint: string }> = [
-  { kind: 'bevel', label: 'Bevel', hint: 'The chamfer rings — only visible with a bevel depth' },
-  { kind: 'side', label: 'Side', hint: 'The extruded walls' },
-  { kind: 'back', label: 'Back', hint: 'The rear cap' },
-];
+/** The editable faces, labelled at call time (t() must not run at module scope). */
+function kinds(): ReadonlyArray<{ kind: EditableKind; label: string; hint: string }> {
+  return [
+    { kind: 'bevel', label: t('inspector.faceMaterials.bevel', 'Bevel'), hint: t('inspector.faceMaterials.bevelHint', 'The chamfer rings — only visible with a bevel depth') },
+    { kind: 'side', label: t('inspector.faceMaterials.side', 'Side'), hint: t('inspector.faceMaterials.sideHint', 'The extruded walls') },
+    { kind: 'back', label: t('inspector.faceMaterials.back', 'Back'), hint: t('inspector.faceMaterials.backHint', 'The rear cap') },
+  ];
+}
 
 /**
  * The colour a face without a fill of its own is shaded FROM — what the
@@ -102,6 +106,7 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
   // With Accepts Lights on, real per-fragment shading replaces the flat gain, so
   // say so rather than showing a knob that does nothing.
   const lit = mirrorMaterial(tree).acceptsLights;
+  const faceKinds = kinds();
 
   return (
     // AE-style "Sides" group (2026-10-07): one twirl row, then Front, Bevel,
@@ -109,9 +114,9 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
     // layer fill (with its brightness) until it is given a colour of its own.
     <TwirlGroup
       prefKey="material.sides"
-      label="Sides"
+      label={t('inspector.faceMaterials.sides', 'Sides')}
       defaultOpen
-      summary={anyOverride ? 'custom colours' : 'follow the fill'}
+      summary={anyOverride ? t('inspector.faceMaterials.summaryCustom', 'custom colours') : t('inspector.faceMaterials.summaryFollow', 'follow the fill')}
       trailing={(
         <>
           <Button
@@ -119,32 +124,32 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
             variant={pickMode ? 'primary' : 'ghost'}
             onClick={() => faceSel.setEnabled(!pickMode)}
             title={pickMode
-              ? 'Stop picking faces on canvas — clicks select layers again'
-              : 'Click a side of the object on canvas to select it'}
+              ? t('inspector.faceMaterials.pickStop', 'Stop picking faces on canvas — clicks select layers again')
+              : t('inspector.faceMaterials.pickStart', 'Click a side of the object on canvas to select it')}
             aria-pressed={pickMode}
             leftIcon={<Icon name="mouse-pointer" size="sm" />}
           >
-            Pick
+            {t('inspector.faceMaterials.pick', 'Pick')}
           </Button>
           {anyOverride && (
             <Button
               size="xs"
               variant="ghost"
               onClick={() => e.send('Reset Face Materials', fieldCommands([nodeId], 'material/faceMaterials', values.json(null)))}
-              title="Back to one colour for the whole object"
+              title={t('inspector.faceMaterials.resetHint', 'Back to one colour for the whole object')}
             >
-              Reset
+              {t('inspector.faceMaterials.reset', 'Reset')}
             </Button>
           )}
         </>
       )}
     >
       <div className={styles.row}>
-        <span className={styles.label}>Front</span>
-        <span className={sides.note}>Layer fill</span>
+        <span className={styles.label}>{t('inspector.faceMaterials.front', 'Front')}</span>
+        <span className={sides.note}>{t('inspector.faceMaterials.layerFill', 'Layer fill')}</span>
       </div>
 
-      {KINDS.map(({ kind, label, hint }) => {
+      {faceKinds.map(({ kind, label, hint }) => {
         const m = mats[kind];
         const custom = typeof m?.fill === 'string';
         const picked = pickedKind === kind;
@@ -161,17 +166,17 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
                 compact
                 value={custom ? m!.fill! : layerFill}
                 onChange={(hex) => e.send(`Set ${label} face colour`, faceCommands(nodeId, kind, { fill: hex }))}
-                aria-label={`${label} face color`}
+                aria-label={t('inspector.faceMaterials.faceColor', '{face} face color', { face: label })}
               />
               {custom ? (
                 <Button
                   size="xs"
                   variant="ghost"
                   onClick={() => e.send(`Reset ${label} face colour`, faceCommands(nodeId, kind, null))}
-                  title={`Track the layer fill again instead of a fixed ${label.toLowerCase()} colour`}
-                  aria-label={`Reset ${label.toLowerCase()} face colour`}
+                  title={t('inspector.faceMaterials.sameAsFillHint', 'Track the layer fill again instead of a fixed {face} colour', { face: label.toLowerCase() })}
+                  aria-label={t('inspector.faceMaterials.resetFace', 'Reset {face} face colour', { face: label.toLowerCase() })}
                 >
-                  Same as fill
+                  {t('inspector.faceMaterials.sameAsFill', 'Same as fill')}
                 </Button>
               ) : (
                 // Derived from the layer fill: the gain is what shades it.
@@ -182,7 +187,7 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
                   max={200}
                   onChange={(v) => e.send(`Set ${label} face brightness`, faceCommands(nodeId, kind, { gain: Number(v) / 100 }))}
                   {...e.scrub(`Set ${label} face brightness`, on)}
-                  aria-label={`${label} face brightness`}
+                  aria-label={t('inspector.faceMaterials.faceBrightness', '{face} face brightness', { face: label })}
                 />
               )}
             </span>
@@ -193,13 +198,15 @@ export function FaceMaterialsSection({ nodeId }: { nodeId: string }): JSX.Elemen
       {pickMode && (
         <p className={sides.hint}>
           {pickedKind
-            ? `${pickedKind[0]!.toUpperCase()}${pickedKind.slice(1)} face selected — click another side, or Pick again to leave.`
-            : 'Click a side of the object on canvas.'}
+            ? t('inspector.faceMaterials.faceSelected', '{face} face selected — click another side, or Pick again to leave.', {
+              face: faceKinds.find((k) => k.kind === pickedKind)?.label ?? t('inspector.faceMaterials.front', 'Front'),
+            })
+            : t('inspector.faceMaterials.clickSide', 'Click a side of the object on canvas.')}
         </p>
       )}
       {lit && (
         <p className={sides.hint}>
-          Scene lights shade these sides: the colours apply, the brightness percentages do not.
+          {t('inspector.faceMaterials.litNote', 'Scene lights shade these sides: the colours apply, the brightness percentages do not.')}
         </p>
       )}
     </TwirlGroup>

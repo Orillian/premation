@@ -403,6 +403,8 @@ struct EffectParamInfo {
   kind: string = 14;
   /// 'file': the extensions the picker offers, '|'-separated without dots ('' = any).
   fileTypes: string = 15;
+  /// Plugin SDK 1.2 — a native plugin param's one-line description (PrParamDef.description): Effect Controls shows it as the label's tooltip. '' = none.
+  description?: string = 16;
 }
 
 struct EffectInfo {
@@ -417,8 +419,15 @@ struct EffectInfo {
   audio: bool = 8;
   /// AE parity 2.9 — a native plugin effect's buttons (PR_PARAM_BUTTON): invokeEffectAction takes `key` as its action. Empty for builtins.
   actions: EffectActionInfo[] = 9;
+  /// A native plugin effect's twirl-down groups (PR_PARAM_GROUP_START), in declaration order. Empty for builtins.
+  groups: EffectGroupInfo[] = 10;
+  /// A native plugin effect's PR_CMD_ABOUT text (name, version, credits): the card's About. '' for builtins.
+  about?: string = 11;
 }
-struct EffectActionInfo { key: string = 1; label: string = 2; }
+/// `group`: the enclosing group path, as `EffectParamInfo.group` spells it ('' = top level). `at`: how many of `params` come before the button — the card draws it there, in the plugin's own order.
+struct EffectActionInfo { key: string = 1; label: string = 2; group: string = 3; at: u32 = 4; }
+/// `name`: the group's path as its params' `EffectParamInfo.group` spells it ("Glow / Advanced" for a nested one). `key`: the GROUP_START param's key (`p4`) — getEffectUi reports it hidden when the plugin hides the whole group. `collapsed`: PR_PARAM_FLAG_START_COLLAPSED (the card opens it twirled up).
+struct EffectGroupInfo { name: string = 1; key: string = 2; collapsed: bool = 3; description?: string = 4; }
 
 query listEffects = 1040 { category: string = 1; } -> EffectCatalog;
 /// Which group match names can be added under a parent path (the Add ▸ menus).
@@ -459,6 +468,10 @@ struct PluginInfo {
   panels: PluginPanelInfo[] = 14;
   /// Plugin SDK 1.2 — the presets the bundle ships (manifest `presets`, `presets/*.json`), listed under the plugin in Effects & Presets. Empty until the plugin is loaded (the values are checked against its params).
   presets: PluginPresetInfo[] = 15;
+  /// The manifest's `icon`: a PNG / SVG / JPEG / WebP inside the bundle's `ui/` folder, bundle-relative ("ui/icon.png"; the editor shows it as `plugin-ui://<id>/icon.png`). '' = none (or not a file under `ui/`).
+  icon?: string = 16;
+  /// The manifest's `panelTitle`: the label of the effect card's button to the bundle's panel ("Studio"; absent = "Panel").
+  panelTitle?: string = 17;
 }
 struct PluginList { plugins: PluginInfo[] = 1; }
 /// Plugin SDK 1.2 — one preset a plugin ships (AE's .ffx): applying it is `addEffect` of `effect` with `values` as its `params`, ONE undo entry. `values` are the effect's own property paths (`p2`, `p1X`, `p4`) with values in the API's encoding.

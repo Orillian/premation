@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import { t } from '@core/i18n';
 import type { ContentAwareFillMode, ContentAwareLighting, ContentAwareReference } from '@core/tracking/contentAwareFill';
 
 export type FillRange = 'workArea' | 'entire' | 'layer';
@@ -61,7 +62,7 @@ export const useContentAwareFillStore = create<ContentAwareFillState>((set) => (
     set((s) => ({
       references: { ...s.references, [layer]: (s.references[layer] ?? []).filter((r) => Math.abs(r.time - time) > 1e-6) },
     })),
-  begin: (cancel) => set({ running: true, progress: 0, status: 'Starting…', cancel }),
+  begin: (cancel) => set({ running: true, progress: 0, status: t('stores.contentAwareFill.starting', 'Starting…'), cancel }),
   setProgress: (progress, status) => set({ progress, status }),
   finish: (status) => set({ running: false, progress: 0, status, cancel: null }),
 }));

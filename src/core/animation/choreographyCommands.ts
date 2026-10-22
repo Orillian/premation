@@ -72,7 +72,7 @@ const ARCHETYPE_LABELS: Record<(typeof CHOREOGRAPHY_ARCHETYPES)[number], string>
   scale_pop: 'Pop',
   slide_settle: 'Slide',
   mask_wipe: 'Wipe',
-  blur_resolve: 'Blur In',
+  blur_resolve: 'Blur', // not 'Blur In': it also labels Animate Out
   char_cascade: 'Character Cascade',
 };
 

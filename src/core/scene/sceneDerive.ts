@@ -9,6 +9,7 @@ import type { SceneNode } from '../types';
 import type SceneGraph from './SceneGraph';
 import { renderComponentsOf } from './SceneGraph';
 import { SCENE_KIND_PROP, type SceneKind } from './sceneKind';
+import { t } from '@core/i18n';
 
 /**
  * Read a node's kind from whichever component carries the meta prop.
@@ -156,19 +157,19 @@ export const KIND_ICON: Record<SceneKind, string> = {
  * which is the whole reason this is a table and not `capitalize(kind)`.
  */
 export const KIND_LABEL: Record<SceneKind, string> = {
-  group: 'Group',
-  null: 'Null',
-  shape: 'Shape',
-  text: 'Text',
-  image: 'Image',
-  video: 'Video',
-  svg: 'SVG',
-  audio: 'Audio',
-  camera: 'Camera',
-  light: 'Light',
-  adjustment: 'Adjustment',
-  particle: 'Particles',
-  comp: 'Composition',
+  get group() { return t('core.sceneDerive.kindGroup', 'Group'); },
+  get null() { return t('core.sceneDerive.kindNull', 'Null'); },
+  get shape() { return t('core.sceneDerive.kindShape', 'Shape'); },
+  get text() { return t('core.sceneDerive.kindText', 'Text'); },
+  get image() { return t('core.sceneDerive.kindImage', 'Image'); },
+  get video() { return t('core.sceneDerive.kindVideo', 'Video'); },
+  get svg() { return t('core.sceneDerive.kindSvg', 'SVG'); },
+  get audio() { return t('core.sceneDerive.kindAudio', 'Audio'); },
+  get camera() { return t('core.sceneDerive.kindCamera', 'Camera'); },
+  get light() { return t('core.sceneDerive.kindLight', 'Light'); },
+  get adjustment() { return t('core.sceneDerive.kindAdjustment', 'Adjustment'); },
+  get particle() { return t('core.sceneDerive.kindParticle', 'Particles'); },
+  get comp() { return t('core.sceneDerive.kindComp', 'Composition'); },
 };
 
 /**

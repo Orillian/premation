@@ -30,6 +30,7 @@ import { ColorKfRow } from '../ColorKfRow';
 import { setFillPaintEdit, setFillsEdit } from './paintEdits';
 import { AnimatablePaintRow } from './AnimatablePaintRow';
 import { PaintOpRows } from './PaintOpRows';
+import { t } from '@core/i18n';
 
 /**
  * A fill with its Composite/Blend Mode replaced — defaults normalised AWAY, so a
@@ -115,23 +116,30 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
   };
 
   const handleFillColorChange = (color: string) => {
+    const label = 'Fill Color';
     if (fill && fill.type === 'solid') {
-      void setFillPaintEdit('Fill Color', nodeId, { ...fill, color });
+      void setFillPaintEdit(label, nodeId, { ...fill, color });
     } else if (fill) {
       const newStops = [...fill.stops];
       if (newStops[0]) {
         newStops[0] = { ...newStops[0], color };
       }
-      void setFillPaintEdit('Fill Color', nodeId, { ...fill, stops: newStops });
+      void setFillPaintEdit(label, nodeId, { ...fill, stops: newStops });
     } else {
-      void setFillPaintEdit('Fill Color', nodeId, { type: 'solid', color });
+      void setFillPaintEdit(label, nodeId, { type: 'solid', color });
     }
   };
 
-  const isFillAnimated = ['fill', 'fill_r', 'fill_g', 'fill_b'].some((t) => isTrackAnimated(m, nodeId, t));
+  const isFillAnimated = ['fill', 'fill_r', 'fill_g', 'fill_b'].some((tr) => isTrackAnimated(m, nodeId, tr));
 
   const typeLabel = (f: FillPaint | undefined): string =>
-    !f ? 'None' : f.type === 'solid' ? 'Solid' : f.type === 'linear' ? 'Linear' : 'Radial';
+    !f
+      ? t('inspector.fill.none', 'None')
+      : f.type === 'solid'
+        ? t('inspector.fill.solid', 'Solid')
+        : f.type === 'linear'
+          ? t('inspector.fill.linear', 'Linear')
+          : t('inspector.fill.radial', 'Radial');
   const chipColor = (f: FillPaint): string =>
     f.type === 'solid' ? f.color : sortedStops(f.stops)[0]?.color ?? '#ffffff';
   const blendNote = (f: FillPaint): string => {
@@ -144,31 +152,31 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
       {/* AE's Fill group: one twirl row, its paint summarised while closed. */}
       <TwirlGroup
         prefKey="contents.fill.0"
-        label={<>Fill 1{isFillAnimated && <span className={styles.animatedDot} />}</>}
+        label={<>{t('inspector.fill.nth', 'Fill {n}', { n: 1 })}{isFillAnimated && <span className={styles.animatedDot} />}</>}
         defaultOpen
         summary={fill
           ? <><SummaryChip color={chipColor(fill)} />{typeLabel(fill)}{blendNote(fill)}</>
-          : 'None'}
+          : t('inspector.fill.none', 'None')}
       >
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Type</span>
+              <span className={styles.popoverLabel}>{t('inspector.fill.type', 'Type')}</span>
               <select
                 value={fill?.type ?? 'none'}
                 onChange={(e) => handleFillTypeChange(e.target.value as FillType | 'none')}
                 className={styles.select}
                 style={{ width: 110 }}
-                aria-label="Fill type"
+                aria-label={t('inspector.fill.typeAria', 'Fill type')}
               >
-                <option value="none">None</option>
-                <option value="solid">Solid</option>
-                <option value="linear">Linear</option>
-                <option value="radial">Radial</option>
+                <option value="none">{t('inspector.fill.none', 'None')}</option>
+                <option value="solid">{t('inspector.fill.solid', 'Solid')}</option>
+                <option value="linear">{t('inspector.fill.linear', 'Linear')}</option>
+                <option value="radial">{t('inspector.fill.radial', 'Radial')}</option>
               </select>
             </div>
 
             {fill && (
               <PaintOpRows
-                label="Fill 1"
+                label={t('inspector.fill.nth', 'Fill {n}', { n: 1 })}
                 value={fill as PaintOpOptions}
                 onChange={(next) => { void setFillPaintEdit('Fill Compositing', nodeId, withPaintOp(fill, next)); }}
               />
@@ -178,21 +186,21 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
               <ColorKfRow
                 nodeId={nodeId}
                 propPrefix="fill"
-                label="Color"
+                label={t('inspector.fill.color', 'Color')}
                 value={fill.color}
                 setValue={handleFillColorChange}
               />
             )}
 
             {fill && fill.type === 'linear' && (
-              <AnimatablePaintRow nodeId={nodeId} prop="fillAngle" label="Angle" access={FILL_ANGLE} />
+              <AnimatablePaintRow nodeId={nodeId} prop="fillAngle" label={t('inspector.fill.angle', 'Angle')} access={FILL_ANGLE} />
             )}
 
             {fill && fill.type === 'radial' && (
               <>
-                <AnimatablePaintRow nodeId={nodeId} prop="fillCenterX" label="Center X" access={FILL_CX} />
-                <AnimatablePaintRow nodeId={nodeId} prop="fillCenterY" label="Center Y" access={FILL_CY} />
-                <AnimatablePaintRow nodeId={nodeId} prop="fillRadius" label="Radius" access={FILL_RADIUS} />
+                <AnimatablePaintRow nodeId={nodeId} prop="fillCenterX" label={t('inspector.fill.centerX', 'Center X')} access={FILL_CX} />
+                <AnimatablePaintRow nodeId={nodeId} prop="fillCenterY" label={t('inspector.fill.centerY', 'Center Y')} access={FILL_CY} />
+                <AnimatablePaintRow nodeId={nodeId} prop="fillRadius" label={t('inspector.fill.radius', 'Radius')} access={FILL_RADIUS} />
               </>
             )}
 
@@ -204,14 +212,14 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
                   style={{ gap: 5, ...(gradientArmed ? { color: 'var(--color-primary)' } : {}) }}
                   aria-pressed={gradientArmed}
                   title={gradientArmed
-                    ? 'Editing this gradient on the canvas — click to put the handles away (or press Escape)'
-                    : 'Drag the gradient axis and its stops directly on the canvas'}
+                    ? t('inspector.fill.editingOnCanvasHint', 'Editing this gradient on the canvas — click to put the handles away (or press Escape)')
+                    : t('inspector.fill.editOnCanvasHint', 'Drag the gradient axis and its stops directly on the canvas')}
                   onClick={() => (gradientArmed ? disarmGradient() : armGradient(nodeId, 0))}
                 >
                   <Icon name="gradient" size="sm" />
-                  <span>{gradientArmed ? 'Editing on canvas' : 'Edit on canvas'}</span>
+                  <span>{gradientArmed ? t('inspector.fill.editingOnCanvas', 'Editing on canvas') : t('inspector.fill.editOnCanvas', 'Edit on canvas')}</span>
                 </button>
-                <span className={styles.popoverLabel}>Stops</span>
+                <span className={styles.popoverLabel}>{t('inspector.fill.stops', 'Stops')}</span>
                 <StopList nodeId={nodeId} paint={fill} />
               </div>
             )}
@@ -224,14 +232,14 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
           <TwirlGroup
             key={`xfill_${i}`}
             prefKey={`contents.fill.${i + 1}`}
-            label={`Fill ${i + 2}`}
+            label={t('inspector.fill.nth', 'Fill {n}', { n: i + 2 })}
             defaultOpen={false}
             summary={<><SummaryChip color={chipColor(f)} />{typeLabel(f)}{blendNote(f)}</>}
             trailing={(
               <button
                 type="button"
                 className={effStyles.remove}
-                aria-label={`Remove fill ${i + 2}`}
+                aria-label={t('inspector.fill.removeNth', 'Remove fill {n}', { n: i + 2 })}
                 onClick={() => { void setFillsEdit('Remove Fill', nodeId, fills.filter((_, fi) => fi !== i + 1)); }}
               >
                 <Icon name="close" size="sm" />
@@ -239,7 +247,7 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
             )}
           >
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>Type</span>
+            <span className={styles.popoverLabel}>{t('inspector.fill.type', 'Type')}</span>
             <select
               className={styles.select}
               style={{ width: 74 }}
@@ -249,11 +257,11 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
                 next[i + 1] = convertFill(f, e.target.value as FillType);
                 void setFillsEdit(`Fill ${i + 2} Type`, nodeId, next);
               }}
-              aria-label={`Fill ${i + 2} type`}
+              aria-label={t('inspector.fill.nthTypeAria', 'Fill {n} type', { n: i + 2 })}
             >
-              <option value="solid">Solid</option>
-              <option value="linear">Linear</option>
-              <option value="radial">Radial</option>
+              <option value="solid">{t('inspector.fill.solid', 'Solid')}</option>
+              <option value="linear">{t('inspector.fill.linear', 'Linear')}</option>
+              <option value="radial">{t('inspector.fill.radial', 'Radial')}</option>
             </select>
             <ColorPicker
               compact
@@ -266,11 +274,11 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
                     : { ...f, stops: f.stops.map((s, si) => (si === 0 ? { ...s, color: hex } : s)) };
                 void setFillsEdit(`Fill ${i + 2} Color`, nodeId, next);
               }}
-              aria-label={`Fill ${i + 2} color`}
+              aria-label={t('inspector.fill.nthColorAria', 'Fill {n} color', { n: i + 2 })}
             />
           </div>
           <PaintOpRows
-            label={`Fill ${i + 2}`}
+            label={t('inspector.fill.nth', 'Fill {n}', { n: i + 2 })}
             value={f as PaintOpOptions}
             onChange={(opts) => {
               const next = [...fills];
@@ -288,7 +296,7 @@ export function FillRows({ nodeId }: { nodeId: string }): JSX.Element | null {
             onClick={() => { void setFillsEdit('Add Fill', nodeId, [...fills, solidFill('#ffffff')]); }}
           >
             <Icon name="plus" size="sm" />
-            <span>Add fill</span>
+            <span>{t('inspector.fill.add', 'Add fill')}</span>
           </button>
         )}
     </>

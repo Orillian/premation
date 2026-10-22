@@ -3,6 +3,7 @@
 #include <premation_sdk/pr_types.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 
 #include "json.hpp"
@@ -255,6 +256,21 @@ std::optional<Manifest> parse_manifest(std::string_view json, std::span<const st
     }
     m.entitlement = ent.str();
   }
+  // `"icon"`: a picture in the bundle's ui/ folder (served as plugin-ui://<id>/…). Cosmetic: a value
+  // that is not one is ignored rather than failing the plugin.
+  if (const js::Json& icon = j.at("icon"); icon.is_string()) {
+    std::string rel = icon.str();
+    std::ranges::replace(rel, '\\', '/');
+    const auto dot = rel.rfind('.');
+    std::string ext = dot == std::string::npos ? std::string() : rel.substr(dot);
+    std::ranges::transform(ext, ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const bool picture = ext == ".png" || ext == ".svg" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp";
+    const bool inUi = rel.starts_with("ui/") && rel.size() > 3 && rel.size() <= 256 && rel.find("/.") == std::string::npos &&
+                      rel.find(':') == std::string::npos && rel.find("//") == std::string::npos;
+    if (picture && inUi) m.icon = std::move(rel);
+  }
+  // `"panelTitle"`: what the effect card's button to the bundle's panel (ui/index.html) says ("Studio").
+  if (const js::Json& t = j.at("panelTitle"); t.is_string() && !t.str().empty() && t.str().size() <= 40) m.panelTitle = t.str();
   if (!parse_contributions(j, m, error)) return std::nullopt;
   if (m.effects.empty() && m.commands.empty() && m.importers.empty() && m.outputModules.empty() && m.panels.empty()) {
     error = "the manifest lists no effects, commands, importers, output modules or panels";

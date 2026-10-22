@@ -22,6 +22,8 @@
  * `src/core` does not import zustand (docs/NATIVE_CORE_PLAN.md §4 T0).
  */
 
+import { t } from '@core/i18n';
+
 /**
  * A suggested model, not a bundled one: the same SlimSAM pair the app bundles,
  * offered as the field default so the common case is one click, and editable
@@ -51,7 +53,9 @@ export const OBJECT_MATTE_MISSING_MESSAGE =
 
 /** An Object Matte failure in people's words. */
 export function explainObjectMatteError(message: string): string {
-  return isObjectMatteModelMissing(message) ? OBJECT_MATTE_MISSING_MESSAGE : message;
+  return isObjectMatteModelMissing(message)
+    ? t('core.samModel.missing', "Object Matte's AI model isn't on this computer. Press Download model (about 14 MB, one time) and try again.")
+    : message;
 }
 
 export type ModelStatus =
@@ -103,12 +107,16 @@ export function checkUrls(encoderUrl: string, decoderUrl: string): string | null
     try {
       parsed = new URL(value);
     } catch {
-      return `The ${label} URL is not a valid URL.`;
+      return label === 'encoder'
+        ? t('core.samModel.encoderInvalid', 'The encoder URL is not a valid URL.')
+        : t('core.samModel.decoderInvalid', 'The decoder URL is not a valid URL.');
     }
     if (parsed.protocol !== 'https:') {
       // Plain HTTP would let anything on the path substitute the model that is
       // about to be run on the user's footage.
-      return `Only https:// model URLs are accepted (the ${label} URL is not).`;
+      return label === 'encoder'
+        ? t('core.samModel.encoderNotHttps', 'Only https:// model URLs are accepted (the encoder URL is not).')
+        : t('core.samModel.decoderNotHttps', 'Only https:// model URLs are accepted (the decoder URL is not).');
     }
   }
   return null;
@@ -143,7 +151,7 @@ export async function installSamModel(encoderUrl: string, decoderUrl: string, se
   }
   const bridge = installBridge();
   if (!bridge) {
-    set({ kind: 'failed', message: 'Installing a model needs the desktop app: the engine reads it from this computer.' });
+    set({ kind: 'failed', message: t('core.samModel.needsDesktop', 'Installing a model needs the desktop app: the engine reads it from this computer.') });
     return;
   }
   if (inFlight) void bridge.cancelDownload(inFlight);

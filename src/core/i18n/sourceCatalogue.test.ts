@@ -3,7 +3,8 @@
  *
  * It lists every translatable string with its current English:
  *   1. the menu bar, in menu order (keys from `layout/Menu/menuI18n.ts`);
- *   2. every literal `t('key', 'English')` call under `src/`, sorted by key.
+ *   2. every literal `t('key', 'English')` call under `src/`, sorted by key;
+ *   3. every built-in command's label as `command.<id>`.
  *
  * This suite fails when the file drifts — a string added, reworded or removed —
  * so a translator never works from a stale list, and a reworded string shows
@@ -17,6 +18,8 @@ import fs from 'fs';
 import path from 'path';
 import { APP_MENU, type MenuGroupModel } from '@layout/Menu/menuModel';
 import { collectMenuKeys } from '@layout/Menu/menuI18n';
+import { getCommandRegistry } from '@core/commands/Command';
+import { ensureCommandsRegistered } from '@core/commands/ensureCommandsRegistered';
 import { extractTCalls } from './extractT';
 
 const SRC = path.resolve(__dirname, '../..');
@@ -43,6 +46,21 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 
 interface Entry { key: string; english: string; where: string }
 
+/**
+ * Every built-in command, keyed `command.<id>` (see `commands/commandLabel.ts`).
+ * A label that is already a `t()` getter would list its English twice under
+ * two keys; that is harmless (the getter's own key wins at runtime only when
+ * `command.<id>` is untranslated) and keeps this list complete.
+ */
+function commandEntries(): Entry[] {
+  ensureCommandsRegistered();
+  return getCommandRegistry()
+    .all()
+    .filter((c) => c.label)
+    .map((c) => ({ key: `command.${String(c.id)}`, english: c.label, where: `command ${String(c.id)}` }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
 function collect(): { catalogue: Record<string, string>; clashes: string[] } {
   const entries: Entry[] = collectMenuKeys(menuGroups()).map((e) => ({ ...e, where: `menu ${e.path}` }));
   const calls: Entry[] = [];
@@ -52,6 +70,7 @@ function collect(): { catalogue: Record<string, string>; clashes: string[] } {
   }
   calls.sort((a, b) => a.key.localeCompare(b.key));
   entries.push(...calls);
+  entries.push(...commandEntries());
 
   const catalogue: Record<string, string> = {};
   const origin: Record<string, string> = {};

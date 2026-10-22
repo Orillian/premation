@@ -55,8 +55,10 @@ struct RigInputs {
 
 struct RigResult {
   std::optional<DeformedMeshData> mesh;
-  /// Rig features this port does not produce (the layer is reported, not faked).
-  std::vector<std::string> unported;
+  /// What the rig was built WITHOUT (a malformed density read as the default, a
+  /// fractional density floored, a weight paint with no bones map ignored): the
+  /// caller reports these as `warning` layer errors; the mesh still deforms.
+  std::vector<std::string> warnings;
 };
 
 /// `hasPuppet || hasSkel` (pins / bones non-empty).
@@ -149,8 +151,8 @@ class RigModel {
 };
 
 /// The model for `in` (fx, the layer's box, pad, path, coverage; `rigT` the keyframe-axis time).
-/// nullopt: no pins and no bones and not `authoring`, or a mesh this port cannot build (`unported` says why).
+/// nullopt: no pins and no bones and not `authoring`. `warnings` says what the mesh was built without (RigResult).
 [[nodiscard]] std::optional<RigModel> build_rig_model(const RigInputs& in, const RigSampler& anim, bool authoring,
-                                                      bool previewSilhouette, std::vector<std::string>& unported);
+                                                      bool previewSilhouette, std::vector<std::string>& warnings);
 
 }  // namespace premation::scene

@@ -26,6 +26,7 @@ import { useMirrorStructRevision } from '@hooks/useMirror';
 import { documentMirror } from '@stores/documentMirror';
 import panel from './EffectsPanel.module.css';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
+import { t } from '@core/i18n';
 
 /** A multi-line string; written on blur (or Ctrl/Cmd+Enter), not per keystroke. */
 export function PluginTextField({ label, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }): JSX.Element {
@@ -69,7 +70,7 @@ export function PluginGradientField({
         <div key={i} className={row.paramRow} style={{ gap: 4 }}>
           <input
             type="number"
-            aria-label={`${label} stop ${i + 1} position`}
+            aria-label={t('effects.pluginParams.stopPosition', '{label} stop {n} position', { label, n: i + 1 })}
             min={0}
             max={100}
             step={1}
@@ -82,13 +83,13 @@ export function PluginGradientField({
           />
           <input
             type="color"
-            aria-label={`${label} stop ${i + 1} colour`}
+            aria-label={t('effects.pluginParams.stopColour', '{label} stop {n} colour', { label, n: i + 1 })}
             value={stopHex(s)}
             onChange={(e) => write(stops.map((x, k) => (k === i ? withHex(x, e.currentTarget.value) : x)))}
           />
           <input
             type="number"
-            aria-label={`${label} stop ${i + 1} opacity`}
+            aria-label={t('effects.pluginParams.stopOpacity', '{label} stop {n} opacity', { label, n: i + 1 })}
             min={0}
             max={100}
             step={1}
@@ -100,13 +101,13 @@ export function PluginGradientField({
             style={{ width: 52 }}
           />
           <Button size="sm" variant="ghost" disabled={stops.length <= 1} onClick={() => write(stops.filter((_, k) => k !== i))}>
-            Remove
+            {t('effects.pluginParams.remove', 'Remove')}
           </Button>
         </div>
       ))}
       <div>
         <Button size="sm" variant="secondary" disabled={stops.length >= 256} onClick={() => write(withStopAdded(stops))}>
-          Add Stop
+          {t('effects.pluginParams.addStop', 'Add Stop')}
         </Button>
       </div>
     </div>
@@ -142,7 +143,7 @@ export function PluginFileField({
     const path = paths?.[0];
     if (!path) return;
     if (!fileTypeMatches(path, fileTypes)) {
-      setError(`${label} takes ${types.map((t) => `.${t}`).join(', ')} files.`);
+      setError(t('effects.pluginParams.fileTypes', '{label} takes {types} files.', { label, types: types.map((ext) => `.${ext}`).join(', ') }));
       return;
     }
     const client = engine();
@@ -159,20 +160,24 @@ export function PluginFileField({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
       <div className={row.paramRow} style={{ gap: 4 }}>
         <select value={value} onChange={(e) => onChange(e.currentTarget.value)} aria-label={label} className={panel.paramSelect}>
-          <option value="">None</option>
-          {stale ? <option value={value}>{current ? `${current.name} (missing)` : 'Missing file'}</option> : null}
+          <option value="">{t('effects.pluginParams.none', 'None')}</option>
+          {stale ? (
+            <option value={value}>
+              {current ? t('effects.pluginParams.missingNamed', '{name} (missing)', { name: current.name }) : t('effects.pluginParams.missingFile', 'Missing file')}
+            </option>
+          ) : null}
           {items.map((i) => (
-            <option key={i.id} value={i.id}>{i.missing ? `${i.name} (missing)` : i.name}</option>
+            <option key={i.id} value={i.id}>{i.missing ? t('effects.pluginParams.missingNamed', '{name} (missing)', { name: i.name }) : i.name}</option>
           ))}
         </select>
         {pick ? (
           <Button size="sm" variant="secondary" onClick={() => void choose()}>
-            Choose…
+            {t('effects.pluginParams.choose', 'Choose…')}
           </Button>
         ) : null}
       </div>
       {current && 'missing' in current && current.missing ? (
-        <span className={panel.hint} role="alert">The file is missing — relink it in the Project panel.</span>
+        <span className={panel.hint} role="alert">{t('effects.pluginParams.fileMissing', 'The file is missing — relink it in the Project panel.')}</span>
       ) : null}
       {error ? <span className={panel.hint} role="alert">{error}</span> : null}
     </div>

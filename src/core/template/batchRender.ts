@@ -32,6 +32,7 @@
 import type { DataRow, DataTable } from './dataTable';
 import type { TemplateField } from './templateTypes';
 import type { FillResult } from './dataFill';
+import { t } from '@core/i18n';
 
 /**
  * Characters no mainstream filesystem accepts in a name, plus control codes.
@@ -97,10 +98,13 @@ export function resolveOutputName(
     }
     const cell = row[token];
     if (cell === undefined) {
-      throw new OutputPatternError(
-        `"{${token}}" is not a column in this table. Available: ${Object.keys(row).join(', ')}`
-        + ' (plus {index}).',
-      );
+      // `{{token}}` interpolates to the literal `{name}`; `{index}` has no var
+      // and so stays written as-is.
+      throw new OutputPatternError(t(
+        'core.batchRender.unknownToken',
+        '"{{token}}" is not a column in this table. Available: {columns} (plus {index}).',
+        { token, columns: Object.keys(row).join(', ') },
+      ));
     }
     // An empty or punctuation-only cell would collapse the name; the row number
     // keeps every output distinct, which matters more than the name being pretty.

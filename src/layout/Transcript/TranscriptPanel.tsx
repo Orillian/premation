@@ -79,15 +79,16 @@ import {
 } from './transcriptOps';
 import { useTranscriptStore, type CompTranscript } from './transcriptStore';
 import styles from './TranscriptPanel.module.css';
+import { t } from '@core/i18n';
 
 /** Playhead poll rate. The ceiling the task set, and the Scopes panel's rate. */
 export const PLAYHEAD_HZ = 10;
 
 /** `M:SS.s` — short enough to sit on a segment header without wrapping. */
 export function formatShortTime(seconds: number): string {
-  const t = Math.max(0, seconds);
-  const minutes = Math.floor(t / 60);
-  const rest = t - minutes * 60;
+  const s = Math.max(0, seconds);
+  const minutes = Math.floor(s / 60);
+  const rest = s - minutes * 60;
   return `${minutes}:${rest.toFixed(1).padStart(4, '0')}`;
 }
 
@@ -99,13 +100,13 @@ export function progressText(
   const secs = Math.floor(elapsedMs / 1000);
   switch (phase) {
     case 'mixing':
-      return `Mixing the composition's audio… ${secs}s`;
+      return t('transcript.progress.mixing', "Mixing the composition's audio… {secs}s", { secs });
     case 'transcribing':
       // No percentage, because there is no percentage to report — one upload,
       // one wait. Saying "47%" would be inventing a number.
-      return `Transcribing… ${secs}s`;
+      return t('transcript.progress.transcribing', 'Transcribing… {secs}s', { secs });
     case 'editing':
-      return 'Cutting the timeline…';
+      return t('transcript.progress.cutting', 'Cutting the timeline…');
     default:
       return '';
   }
@@ -360,7 +361,7 @@ export function TranscriptPanel(): JSX.Element {
     const ids = findFillerWordIds(words, parseFillerList(fillerText));
     select(ids, 'replace');
     if (ids.length === 0) {
-      useTranscriptStore.getState().setError('No filler words from that list are in this transcript.');
+      useTranscriptStore.getState().setError(t('transcript.panel.noFillers', 'No filler words from that list are in this transcript.'));
       return;
     }
     useTranscriptStore.getState().setError(null);
@@ -391,17 +392,17 @@ export function TranscriptPanel(): JSX.Element {
       ref={rootRef}
       tabIndex={0}
       role="region"
-      aria-label="Transcript"
+      aria-label={t('transcript.panel.transcript', 'Transcript')}
       onKeyDown={onKeyDown}
     >
       <div className={styles.searchRow}>
         <SearchField
           size="sm"
           fullWidth
-          placeholder="Find a word in the transcript…"
+          placeholder={t('transcript.panel.findAWordInThe', 'Find a word in the transcript…')}
           value={query}
           onChange={setQuery}
-          ariaLabel="Find a word in the transcript"
+          ariaLabel={t('transcript.panel.findAWordInThe2', 'Find a word in the transcript')}
         />
       </div>
 
@@ -418,11 +419,11 @@ export function TranscriptPanel(): JSX.Element {
             onClick={() => { void runTranscribe(); }}
             title={
               available
-                ? `Transcribe the ${scope.label}`
-                : 'This build cannot transcribe audio — the desktop app holds the provider key.'
+                ? t('transcript.panel.transcribeScope', 'Transcribe the {scope}', { scope: scope.label })
+                : t('transcript.panel.unavailable', 'This build cannot transcribe audio — the desktop app holds the provider key.')
             }
           >
-            {transcript ? 'Re-transcribe' : 'Transcribe'}
+            {transcript ? t('transcript.panel.retranscribe', 'Re-transcribe') : t('transcript.panel.transcribe', 'Transcribe')}
           </Button>
           <Button
             size="xs"
@@ -430,9 +431,9 @@ export function TranscriptPanel(): JSX.Element {
             leftIcon={<Icon name="trash" size="sm" />}
             disabled={busy || selected.length === 0}
             onClick={() => { void runDelete(); }}
-            title="Remove the selected words' time from the composition and close the gap (Delete)"
+            title={t('transcript.panel.removeTheSelectedWordsTime', "Remove the selected words' time from the composition and close the gap (Delete)")}
           >
-            Delete selection
+            {t('transcript.panel.deleteSelection', 'Delete selection')}
           </Button>
           <button
             type="button"
@@ -441,11 +442,11 @@ export function TranscriptPanel(): JSX.Element {
             onClick={() => setRestrictToSelection(!restrictToSelection)}
             title={
               restrictToSelection
-                ? 'Cutting only the layers selected in the scene. The gap still closes for every layer.'
-                : 'Cutting every layer the selection crosses — including a video’s separate audio layer.'
+                ? t('transcript.panel.scopeSelectedHint', 'Cutting only the layers selected in the scene. The gap still closes for every layer.')
+                : t('transcript.panel.scopeAllHint', 'Cutting every layer the selection crosses — including a video’s separate audio layer.')
             }
           >
-            {restrictToSelection ? 'Selected layers only' : 'All layers'}
+            {restrictToSelection ? t('transcript.panel.scopeSelected', 'Selected layers only') : t('transcript.panel.scopeAll', 'All layers')}
           </button>
         </div>
 
@@ -456,18 +457,18 @@ export function TranscriptPanel(): JSX.Element {
             leftIcon={<Icon name="magic-wand" size="sm" />}
             disabled={words.length === 0}
             onClick={selectFillers}
-            title="Select every filler word, ready to delete"
+            title={t('transcript.panel.selectEveryFillerWordReady', 'Select every filler word, ready to delete')}
           >
-            Select fillers
+            {t('transcript.panel.selectFillers', 'Select fillers')}
           </Button>
           <Button
             size="xs"
             variant={showFillers ? 'secondary' : 'ghost'}
             aria-expanded={showFillers}
             onClick={() => setShowFillers((v) => !v)}
-            title="Configure custom filler word list"
+            title={t('transcript.panel.configureCustomFillerWordList', 'Configure custom filler word list')}
           >
-            {showFillers ? 'Hide list' : 'Edit list'}
+            {showFillers ? t('transcript.panel.hideList', 'Hide list') : t('transcript.panel.editList', 'Edit list')}
           </Button>
           <Dropdown
             placement="bottom-end"
@@ -475,8 +476,8 @@ export function TranscriptPanel(): JSX.Element {
               <button
                 type="button"
                 className={styles.toolbarBtn}
-                title="More actions (Captions, Export)"
-                aria-label="More transcript actions"
+                title={t('transcript.panel.moreActionsCaptionsExport', 'More actions (Captions, Export)')}
+                aria-label={t('transcript.panel.moreTranscriptActions', 'More transcript actions')}
               >
                 <Icon name="more-horizontal" size="sm" />
               </button>
@@ -485,7 +486,7 @@ export function TranscriptPanel(): JSX.Element {
               {
                 type: 'item',
                 id: 'captions',
-                label: 'Add as captions',
+                label: t('transcript.panel.addAsCaptions', 'Add as captions'),
                 icon: 'type',
                 disabled: busy || words.length === 0,
                 onSelect: () => addTranscriptAsCaptions(rootId),
@@ -493,12 +494,12 @@ export function TranscriptPanel(): JSX.Element {
               { type: 'separator' },
               {
                 type: 'label',
-                label: 'Export',
+                label: t('transcript.panel.export', 'Export'),
               },
               {
                 type: 'item',
                 id: 'export-srt',
-                label: 'Export as SRT (.srt)',
+                label: t('transcript.panel.exportAsSrtSrt', 'Export as SRT (.srt)'),
                 icon: 'download',
                 disabled: words.length === 0,
                 onSelect: () => exportTranscript('srt', rootId),
@@ -506,7 +507,7 @@ export function TranscriptPanel(): JSX.Element {
               {
                 type: 'item',
                 id: 'export-vtt',
-                label: 'Export as WebVTT (.vtt)',
+                label: t('transcript.panel.exportAsWebvttVtt', 'Export as WebVTT (.vtt)'),
                 icon: 'download',
                 disabled: words.length === 0,
                 onSelect: () => exportTranscript('vtt', rootId),
@@ -519,20 +520,20 @@ export function TranscriptPanel(): JSX.Element {
       {showFillers && (
         <div className={styles.fillerEditorCard}>
           <div className={styles.fillerEditorHeader}>
-            <span>Custom filler words</span>
+            <span>{t('transcript.panel.customFillerWords', 'Custom filler words')}</span>
             <button
               type="button"
               className={styles.linkButton}
               onClick={() => setShowFillers(false)}
             >
-              Done
+              {t('transcript.panel.done', 'Done')}
             </button>
           </div>
           <textarea
             className={styles.fillerList}
             value={fillerText}
             spellCheck={false}
-            aria-label="Filler words, comma separated"
+            aria-label={t('transcript.panel.fillerWordsCommaSeparated', 'Filler words, comma separated')}
             onChange={(e) => setFillerText(e.target.value)}
           />
         </div>
@@ -550,17 +551,17 @@ export function TranscriptPanel(): JSX.Element {
       {transcript && (
         <div className={styles.meta}>
           {transcript.source === 'captions'
-            ? 'Rebuilt from this composition’s caption layers'
-            : `Transcribed ${formatShortTime(transcript.range.start)}–${formatShortTime(transcript.range.end)}`}
-          {transcript.edited ? ' · edited' : ''}
+            ? t('transcript.panel.metaFromCaptions', 'Rebuilt from this composition’s caption layers')
+            : t('transcript.panel.metaTranscribed', 'Transcribed {start}–{end}', { start: formatShortTime(transcript.range.start), end: formatShortTime(transcript.range.end) })}
+          {transcript.edited ? ` · ${t('transcript.panel.metaEdited', 'edited')}` : ''}
           {' · '}
-          {words.length} words
+          {t('transcript.panel.metaWords', '{n} words', { n: words.length })}
           {estimatedCount > 0
             ? estimatedCount === words.length
-              ? ' · word timings are estimated within each segment'
-              : ` · ${estimatedCount} word timings are estimated within their segment`
+              ? ` · ${t('transcript.panel.metaEstimatedAll', 'word timings are estimated within each segment')}`
+              : ` · ${t('transcript.panel.metaEstimatedSome', '{n} word timings are estimated within their segment', { n: estimatedCount })}`
             : ''}
-          {' · not saved with the project'}
+          {` · ${t('transcript.panel.metaNotSaved', 'not saved with the project')}`}
         </div>
       )}
 
@@ -568,12 +569,17 @@ export function TranscriptPanel(): JSX.Element {
         <div className={styles.selectionBar}>
           <div className={styles.selectionBarText}>
             <span>
-              {selected.length} word{selected.length === 1 ? '' : 's'} selected ·{' '}
-              {selectedSeconds.toFixed(2)}s in {ranges.length} range{ranges.length === 1 ? '' : 's'}
+              {selected.length === 1
+                ? t('transcript.panel.selectedWordsOne', '{n} word selected', { n: selected.length })
+                : t('transcript.panel.selectedWordsOther', '{n} words selected', { n: selected.length })}
+              {' · '}
+              {ranges.length === 1
+                ? t('transcript.panel.selectedRangesOne', '{seconds}s in {n} range', { seconds: selectedSeconds.toFixed(2), n: ranges.length })
+                : t('transcript.panel.selectedRangesOther', '{seconds}s in {n} ranges', { seconds: selectedSeconds.toFixed(2), n: ranges.length })}
             </span>
           </div>
           <button type="button" className={styles.linkButton} onClick={clearSelection}>
-            Clear
+            {t('transcript.panel.clear', 'Clear')}
           </button>
         </div>
       )}
@@ -582,19 +588,15 @@ export function TranscriptPanel(): JSX.Element {
         {words.length === 0 && phase === 'idle' && (
           <EmptyState
             icon="mic"
-            title="No transcript yet"
+            title={t('transcript.panel.noTranscriptYet', 'No transcript yet')}
             message={
               available
-                ? `Transcribe the ${scope.label} `
-                  + `(${(scope.end - scope.start).toFixed(1)}s of audio), `
-                  + 'then click a word to seek, drag or shift-click to select a run, and press '
-                  + 'Delete to cut that time out of every layer.'
-                : 'Transcription runs in the desktop app, which holds your provider key. '
-                  + 'This build cannot reach one.'
+                ? t('transcript.panel.emptyMessage', 'Transcribe the {scope} ({seconds}s of audio), then click a word to seek, drag or shift-click to select a run, and press Delete to cut that time out of every layer.', { scope: scope.label, seconds: (scope.end - scope.start).toFixed(1) })
+                : t('transcript.panel.emptyUnavailable', 'Transcription runs in the desktop app, which holds your provider key. This build cannot reach one.')
             }
             action={
               available
-                ? { label: 'Transcribe', onClick: () => { void runTranscribe(); }, disabled: busy }
+                ? { label: t('transcript.panel.transcribe', 'Transcribe'), onClick: () => { void runTranscribe(); }, disabled: busy }
                 : undefined
             }
           />
@@ -604,8 +606,8 @@ export function TranscriptPanel(): JSX.Element {
           <EmptyState
             compact
             icon="search"
-            message={`No word matches “${query}”.`}
-            action={{ label: 'Show the whole transcript', onClick: () => setQuery('') }}
+            message={t('transcript.panel.noMatch', 'No word matches “{query}”.', { query })}
+            action={{ label: t('transcript.panel.showAll', 'Show the whole transcript'), onClick: () => setQuery('') }}
           />
         )}
 
@@ -615,7 +617,7 @@ export function TranscriptPanel(): JSX.Element {
               type="button"
               className={styles.segmentTime}
               onClick={() => seekPlayhead(group.start)}
-              title="Seek to this segment"
+              title={t('transcript.panel.seekToThisSegment', 'Seek to this segment')}
             >
               {formatShortTime(group.start)}
             </button>

@@ -6,6 +6,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addShape, addText, addGradientShape, radialFill,  type SetKf } from './builders';
 
 const CW = 1080, CH = 1920, CX = CW / 2, CY = CH / 2;
@@ -35,27 +36,27 @@ export function animateReelIntro(set: SetKf): void {
 
 export const reelIntroTemplate: TemplateDefinition = {
   id: 'reel-intro',
-  name: 'Reel Intro',
+  get name() { return t('core.template.reelIntroName', 'Reel Intro'); },
   aspect: '9:16',
   width: CW,
   height: CH,
-  description: 'A vertical social intro with a kicker pill and a bold two-line headline.',
+  get description() { return t('core.template.reelIntroDescription', 'A vertical social intro with a kicker pill and a bold two-line headline.'); },
   layout: layoutReelIntro,
   settings: { fps: 60, durationSeconds: 5, background: '#111827' },
   animate: animateReelIntro,
   previewTime: 1.8,
   fields: [
-    { id: 'kicker', label: 'Kicker', kind: 'text', group: 'Text', default: 'NEW DROP',
+    { id: 'kicker', get label() { return t('core.template.fieldKicker', 'Kicker'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'NEW DROP',
       target: { nodeId: 'tpl_kicker', componentType: 'Text', prop: 'content' } },
-    { id: 'line1', label: 'Headline line 1', kind: 'text', group: 'Text', default: 'BIG',
+    { id: 'line1', get label() { return t('core.template.fieldHeadlineLine1', 'Headline line 1'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'BIG',
       target: { nodeId: 'tpl_line1', componentType: 'Text', prop: 'content' } },
-    { id: 'line2', label: 'Headline line 2', kind: 'text', group: 'Text', default: 'NEWS',
+    { id: 'line2', get label() { return t('core.template.fieldHeadlineLine2', 'Headline line 2'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'NEWS',
       target: { nodeId: 'tpl_line2', componentType: 'Text', prop: 'content' } },
-    { id: 'handle', label: 'Handle', kind: 'text', group: 'Text', default: '@yourhandle',
+    { id: 'handle', get label() { return t('core.template.fieldHandle', 'Handle'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: '@yourhandle',
       target: { nodeId: 'tpl_handle', componentType: 'Text', prop: 'content' } },
-    { id: 'accentColor', label: 'Accent colour', kind: 'color', group: 'Colours', default: '#f472b6',
+    { id: 'accentColor', get label() { return t('core.template.fieldAccentColour', 'Accent colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#f472b6',
       target: { nodeId: 'tpl_pill', componentType: 'Style', prop: 'fill' } },
-    { id: 'background', label: 'Background', kind: 'color', group: 'Colours', default: '#111827',
+    { id: 'background', get label() { return t('core.template.fieldBackground', 'Background'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#111827',
       target: { nodeId: 'tpl_bg', componentType: 'Style', prop: 'fill' } },
   ],
 };

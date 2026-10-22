@@ -49,6 +49,27 @@ export const PSEUDO_LOCALE: LocaleCode = 'en-XA';
 
 export const LOCALES: ReadonlyArray<LocaleInfo> = [
   { code: 'en', nativeName: 'English', systemMatches: ['en'] },
+  {
+    code: 'zh-CN',
+    nativeName: '简体中文',
+    // Never a bare `zh`: a Traditional-script system (zh-TW, zh-HK) stays in English.
+    systemMatches: ['zh-CN', 'zh-SG', 'zh-Hans'],
+    load: () => import('./locales/zh-CN.json').then((m) => m.default),
+  },
+  {
+    code: 'es',
+    nativeName: 'Español',
+    // Neutral Latin-American Spanish; the closest we ship for every `es-*`.
+    systemMatches: ['es'],
+    load: () => import('./locales/es.json').then((m) => m.default),
+  },
+  {
+    code: 'pt-BR',
+    nativeName: 'Português (Brasil)',
+    // Brazilian Portuguese, also offered to `pt-PT` — closer than English.
+    systemMatches: ['pt'],
+    load: () => import('./locales/pt-BR.json').then((m) => m.default),
+  },
   /*
     Pseudo-localisation: every string that went through `t()` is accented,
     bracketed and ~35% longer — "[Ñéŵ Ƥŕöĵéçţ ···]". Two things become visible

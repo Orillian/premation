@@ -73,6 +73,8 @@
  * earliest comp frame that reaches it.
  */
 
+import { t } from '@core/i18n';
+
 /**
  * A comp-time span in seconds, HALF-OPEN: `[start, end)`.
  *
@@ -91,10 +93,9 @@ export interface BakeRange {
 export type BakeRefusal = 'no-expression' | 'expression-disabled' | 'empty-range';
 
 export const BAKE_REFUSAL_TEXT: Record<BakeRefusal, string> = {
-  'no-expression': 'Convert Expression to Keyframes needs a property with an expression on it.',
-  'expression-disabled':
-    'That expression is disabled, so it is not driving the property — enable it first, or use its keyframes as they are.',
-  'empty-range': 'Convert Expression to Keyframes needs a layer with some duration to bake across.',
+  get 'no-expression'() { return t('core.bakeExpression.noExpression', 'Convert Expression to Keyframes needs a property with an expression on it.'); },
+  get 'expression-disabled'() { return t('core.bakeExpression.expressionDisabled', 'That expression is disabled, so it is not driving the property — enable it first, or use its keyframes as they are.'); },
+  get 'empty-range'() { return t('core.bakeExpression.emptyRange', 'Convert Expression to Keyframes needs a layer with some duration to bake across.'); },
 };
 
 export interface BakeResult {

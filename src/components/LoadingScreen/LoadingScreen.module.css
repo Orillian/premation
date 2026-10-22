@@ -1,3 +1,10 @@
+/*
+ * LoadingScreen — the app frame's own ground, the mark and wordmark, a 2px
+ * progress line, the stage in words and the four stage names under it. No
+ * gradient border, no pulse: the only motion is the line filling (or
+ * sweeping, before the boot has said where it is).
+ */
+
 .root {
   position: absolute;
   inset: 0;
@@ -5,108 +12,126 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
   background-color: var(--color-surface-0);
   color: var(--color-text-primary);
+  font-family: var(--panel-font-family);
   z-index: 999;
   user-select: none;
   overflow: hidden;
 }
 
-.wrapper {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px; /* Border thickness */
-  border-radius: 20px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-/* Conic gradient rotating element simulating Google-like gradient border */
-.wrapper::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: conic-gradient(
-    from 0deg,
-    #4285f4 0%,
-    #9b72cb 20%,
-    #d96570 40%,
-    #fbbc05 60%,
-    #34a853 80%,
-    #4285f4 100%
-  );
-  animation: rotateBorder 4s linear infinite;
-  z-index: 1;
-}
-
-.inner {
-  position: relative;
-  z-index: 2;
-  background-color: var(--color-surface-0);
-  padding: 24px 36px; /* Padding inside the border */
-  border-radius: 18px; /* nested border-radius logic: outer - border thickness = inner */
+.mark {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 .logo {
-  animation: pulseLogo 1.8s ease-in-out infinite alternate;
+  display: block;
 }
 
-.message {
-  margin-top: 24px;
-  font-size: var(--font-size-md);
-  font-weight: 500;
+.word {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.line {
+  position: relative;
+  width: 240px;
+  max-width: 70vw;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+
+/* The fill is a full-width bar scaled from the left (a transform, never a
+   width animation), so the line fills without a layout pass. */
+.line i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  background: var(--color-primary);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 240ms var(--motion-ease-standard);
+}
+
+/* Before the boot reports a stage: a sweep, so the line is never a dead bar. */
+.lineSweep i {
+  width: 36%;
+  transform: none;
+  animation: loadingSweep 1.4s ease-in-out infinite;
+}
+
+@keyframes loadingSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(280%); }
+}
+
+.stage {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
-  letter-spacing: 0.02em;
-  font-family: var(--font-family-sans);
-  animation: pulseMessage 2s ease-in-out infinite alternate;
+  white-space: nowrap;
 }
 
-@keyframes rotateBorder {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+.count {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
-@keyframes pulseLogo {
-  0% {
-    opacity: 0.8;
-    transform: scale(0.98);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1.02);
-  }
+.stages {
+  display: flex;
+  gap: 14px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
 }
 
-@keyframes pulseMessage {
-  0% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.85;
-  }
+.stageDone {
+  color: var(--color-text-secondary);
+}
+
+.stageNow {
+  color: var(--color-text-primary);
+}
+
+.corner,
+.corner2 {
+  position: absolute;
+  bottom: 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.corner {
+  left: 16px;
+  font-family: var(--panel-font-family-value);
+}
+
+.corner2 {
+  right: 16px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wrapper::before {
+  .lineSweep i {
     animation: none;
-    transform: rotate(45deg); /* static beautiful angle */
+    width: 60%;
+    transform: none;
   }
-  .logo, .message {
-    animation: none;
-    opacity: 1;
+  .line i {
+    transition: none;
+  }
+  .lineSweep i {
     transform: none;
   }
 }

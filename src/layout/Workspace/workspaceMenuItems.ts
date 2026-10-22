@@ -4,6 +4,7 @@ import { getWorkspaceManager } from '@core/layout/workspaceManager';
 import { customPrompt } from '@components/Modal/Dialogs';
 import { useUIStore } from '@stores/uiStore';
 import { useLayoutStore } from '@stores/layoutStore';
+import { t } from '@core/i18n';
 
 export const WORKSPACE_ICONS: Record<string, IconName> = {
   default: 'layout',
@@ -40,8 +41,8 @@ export function buildWorkspaceItems(): DropdownItem[] {
         label: w.name,
         icon: 'layout',
         submenu: [
-          { type: 'item', id: `ws-apply-${w.id}`, label: 'Apply', icon: 'check', onSelect: () => manager.applyWorkspace(w.id) },
-          { type: 'item', id: `ws-del-${w.id}`, label: 'Delete', icon: 'trash', onSelect: () => manager.deleteWorkspace(w.id) },
+          { type: 'item', id: `ws-apply-${w.id}`, label: t('workspace.layoutMenu.apply', 'Apply'), icon: 'check', onSelect: () => manager.applyWorkspace(w.id) },
+          { type: 'item', id: `ws-del-${w.id}`, label: t('workspace.layoutMenu.delete', 'Delete'), icon: 'trash', onSelect: () => manager.deleteWorkspace(w.id) },
         ],
       });
     }
@@ -51,26 +52,26 @@ export function buildWorkspaceItems(): DropdownItem[] {
   items.push({
     type: 'item',
     id: 'ws-save',
-    label: 'Save Current Workspace…',
+    label: t('workspace.layoutMenu.saveCurrent', 'Save Current Workspace…'),
     icon: 'download',
     onSelect: () => {
       void (async () => {
         const name = await customPrompt(
-          'Save Workspace',
-          'Name this layout. It will appear in this menu and in Customize ▸ Workspaces.',
+          t('workspace.layoutMenu.saveTitle', 'Save Workspace'),
+          t('workspace.layoutMenu.saveMessage', 'Name this layout. It will appear in this menu and in Customize ▸ Workspaces.'),
           '',
-          { placeholder: 'My layout', confirmLabel: 'Save' },
+          { placeholder: t('workspace.layoutMenu.savePlaceholder', 'My layout'), confirmLabel: t('workspace.layoutMenu.save', 'Save') },
         );
         if (!name?.trim()) return;
         getWorkspaceManager().saveCurrentWorkspace(name.trim());
-        useUIStore.getState().notify({ level: 'success', message: `Saved workspace “${name.trim()}”`, durationMs: 2600 });
+        useUIStore.getState().notify({ level: 'success', message: t('workspace.layoutMenu.saved', 'Saved workspace “{name}”', { name: name.trim() }), durationMs: 2600 });
       })();
     },
   });
   items.push({
     type: 'item',
     id: 'ws-reset',
-    label: 'Reset Layout to Default',
+    label: t('workspace.layoutMenu.reset', 'Reset Layout to Default'),
     icon: 'undo',
     onSelect: () => useLayoutStore.getState().resetLayout(),
   });

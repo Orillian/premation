@@ -13,6 +13,7 @@ import { setViewerEmpty } from '@stores/onboardingStore';
 import { importBrowserFilesEdit, importPathsEdit } from '@layout/Assets/assetEdits';
 import { newCompFromFootageEdit } from './footageEdits';
 import styles from './EmptyCompositionView.module.css';
+import { t } from '@core/i18n';
 
 /** After Effects Composition icon: comp screen frame with circle and triangle shapes */
 export function AeCompIcon({ size = 72, className }: { size?: number; className?: string }): JSX.Element {
@@ -154,7 +155,7 @@ export function EmptyCompositionView(): JSX.Element {
       else {
         useUIStore.getState().notify({
           level: 'error',
-          message: `Could not create composition from footage: “${path.replace(/^.*[\\/]/, '')}” could not be imported.`,
+          message: t('workspace.emptyComp.importFailed', 'Could not create composition from footage: “{file}” could not be imported.', { file: path.replace(/^.*[\\/]/, '') }),
           durationMs: 4000,
         });
       }
@@ -171,7 +172,7 @@ export function EmptyCompositionView(): JSX.Element {
     } catch (err) {
       useUIStore.getState().notify({
         level: 'error',
-        message: `Could not create composition from footage: ${(err as Error).message}`,
+        message: t('workspace.emptyComp.createFailed', 'Could not create composition from footage: {error}', { error: (err as Error).message }),
         durationMs: 4000,
       });
     }
@@ -205,7 +206,7 @@ export function EmptyCompositionView(): JSX.Element {
     if (file && !isFootageFile(file)) {
       useUIStore.getState().notify({
         level: 'error',
-        message: `“${file.name}” is not a media file this editor can use as footage.`,
+        message: t('workspace.emptyComp.notMedia', '“{file}” is not a media file this editor can use as footage.', { file: file.name }),
         durationMs: 4000,
       });
       return;
@@ -217,7 +218,7 @@ export function EmptyCompositionView(): JSX.Element {
       } catch (err) {
         useUIStore.getState().notify({
           level: 'error',
-          message: `Could not create composition from footage: ${(err as Error).message}`,
+          message: t('workspace.emptyComp.createFailed', 'Could not create composition from footage: {error}', { error: (err as Error).message }),
           durationMs: 4000,
         });
       }
@@ -240,14 +241,14 @@ export function EmptyCompositionView(): JSX.Element {
           type="button"
           className={styles.card}
           onClick={() => openNewCompositionDialog()}
-          title="Set up a blank composition — size, frame rate, duration"
+          title={t('workspace.emptyComp.newTitle', 'Set up a blank composition — size, frame rate, duration')}
         >
           <div className={styles.iconContainer}>
             <AeCompIcon size={76} className={styles.vectorIcon} />
           </div>
           <div className={styles.cardContent}>
-            <h3 className={styles.cardTitle}>New Composition</h3>
-            <span className={styles.cardDesc}>Set up a blank composition — resolution, frame rate, and duration</span>
+            <h3 className={styles.cardTitle}>{t('workspace.emptyComp.new', 'New Composition')}</h3>
+            <span className={styles.cardDesc}>{t('workspace.emptyComp.newDesc', 'Set up a blank composition — resolution, frame rate, and duration')}</span>
           </div>
         </button>
 
@@ -259,14 +260,14 @@ export function EmptyCompositionView(): JSX.Element {
           onDragOver={onDragOverFootage}
           onDragLeave={onDragLeaveFootage}
           onDrop={(e) => void onDropFootage(e)}
-          title="Create a composition that matches your footage dimensions and duration"
+          title={t('workspace.emptyComp.fromFootageTitle', 'Create a composition that matches your footage dimensions and duration')}
         >
           <div className={styles.iconContainer}>
             <AeFootageIcon size={76} className={styles.vectorIcon} />
           </div>
           <div className={styles.cardContent}>
-            <h3 className={styles.cardTitle}>New Composition From Footage</h3>
-            <span className={styles.cardDesc}>Import media to automatically match composition size and length</span>
+            <h3 className={styles.cardTitle}>{t('workspace.emptyComp.fromFootage', 'New Composition From Footage')}</h3>
+            <span className={styles.cardDesc}>{t('workspace.emptyComp.fromFootageDesc', 'Import media to automatically match composition size and length')}</span>
           </div>
         </button>
       </div>

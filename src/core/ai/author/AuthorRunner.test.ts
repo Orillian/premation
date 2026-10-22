@@ -140,8 +140,8 @@ describe('runAuthorPipeline', () => {
     expect(h.executed.slice(wipe).filter((c) => c.name === 'create_layer').map((c) => c.args.id)).toEqual(['beat_1', 't1_Bigger']);
     expect(h.executed.slice(wipe).find((c) => c.name === 'update_layer' && c.args.nodeId === 't1_Bigger')!.args.fontSize).toBe(160);
 
-    // The checklist: every stage, in order.
-    expect(activity.map((a) => AUTHOR_STAGE_LABELS.findIndex((s) => a.startsWith(s)))).toEqual([0, 1, 2, 3, 4, 3]);
+    // The checklist: every stage, in order (no concept gate here, so 'Proposing concepts' is skipped).
+    expect(activity.map((a) => AUTHOR_STAGE_LABELS.findIndex((s) => a.startsWith(s)))).toEqual([1, 2, 3, 4, 5, 4]);
   });
 
   it('fails cleanly — nothing built — when the design is unusable, so the caster can run', async () => {

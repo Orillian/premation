@@ -35,11 +35,13 @@ export function LanguageSetting(): JSX.Element | null {
   const offered = availableLocales(isDev);
   // Local state: `getLocalePreference` reads storage, which is not reactive.
   const [preference, setPreference] = useState<LocaleCode | null>(() => getLocalePreference());
+  const [switched, setSwitched] = useState(false);
 
   if (offered.length < 2) return null;
 
   const systemName = findLocale(matchSystemLocale(systemLocales, isDev), isDev)?.nativeName ?? 'English';
   const choose = (code: LocaleCode | null): void => {
+    if (code !== preference) setSwitched(true);
     setPreference(code);
     void setLocalePreference(code);
   };
@@ -66,15 +68,23 @@ export function LanguageSetting(): JSX.Element | null {
       <div className={styles.sectionHeading}>
         <span className={styles.sectionTitle}>{t('settings.language.title', 'Language')}</span>
         <span className={styles.hint}>
-          {t('settings.language.hint', 'Menus are translated first; more of the interface follows as translations land. Anything not yet translated stays in English.')}
+          {t('settings.language.hint', 'Anything not yet translated stays in English.')}
         </span>
       </div>
       <div className={styles.settingCard}>
         <div className={styles.settingRow}>
           <div className={styles.settingInfo}>
             <span className={styles.settingTitle}>{t('settings.language.label', 'Interface Language')}</span>
-            <span className={styles.settingDesc}>{t('settings.language.desc', 'Applies immediately. Project content, expressions and effect names are never translated.')}</span>
+            <span className={styles.settingDesc}>{t('settings.language.desc', 'Project content, expressions and effect names are never translated.')}</span>
           </div>
+          {/* Menus and this row redraw on the switch; the panels read t() once per
+              render and do not subscribe (no per-string hooks across the editor),
+              so a reload finishes the switch everywhere. */}
+          {switched && (
+            <Button size="sm" onClick={() => window.location.reload()}>
+              {t('settings.language.reload', 'Reload interface')}
+            </Button>
+          )}
           <Dropdown
             placement="bottom-end"
             items={items}

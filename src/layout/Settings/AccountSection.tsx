@@ -27,7 +27,7 @@ import { useAuthStore } from '@stores/authStore';
 import { useUIStore } from '@stores/uiStore';
 import { api, type AccountRecord, type AuthResult, type BillingRefundState, type SessionRecord } from '@core/api/client';
 import { setSession } from '@core/api/session';
-import { t } from '@core/i18n/t';
+import { SLOT, t, tAround } from '@core/i18n/t';
 import { PasswordRules } from '../../pages/AuthShell';
 import { cn } from '@utils/cn';
 import styles from './AccountSection.module.css';
@@ -458,13 +458,14 @@ function DeleteAccountDialog({ account, close, onOpenBilling, onDeleted }: Delet
     }
     if (billing === 'unknown' || !billing.hasSubscription) return null;
     if (billing.refund?.eligible) {
+      const refundNote = tAround(t('account.delete.refundNote', 'You can still get a refund for your subscription — {link}. Deleting the account now forfeits it.', { link: SLOT }));
       return (
         <p className={cn(styles.note, styles.noteWarning)}>
-          {t('account.delete.refundFirst', 'You can still get a refund for your subscription — ')}
+          {refundNote[0]}
           <button type="button" className={styles.inlineLink} onClick={() => { close(); onOpenBilling(); }}>
             {t('account.delete.goToBilling', 'go to Billing first')}
           </button>
-          {t('account.delete.refundFirstTail', '. Deleting the account now forfeits it.')}
+          {refundNote[1]}
         </p>
       );
     }

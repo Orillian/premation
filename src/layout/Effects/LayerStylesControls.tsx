@@ -69,12 +69,15 @@ import {
   unbindGlobalLightCommands,
 } from './effectEdits';
 import styles from './EffectsPanel.module.css';
+import { t } from '@core/i18n';
 
-const STROKE_POSITIONS: { id: StrokeStylePosition; label: string }[] = [
-  { id: 'outside', label: 'Outside' },
-  { id: 'inside', label: 'Inside' },
-  { id: 'center', label: 'Center' },
-];
+function strokePositions(): { id: StrokeStylePosition; label: string }[] {
+  return [
+    { id: 'outside', label: t('effects.styles.outside', 'Outside') },
+    { id: 'inside', label: t('effects.styles.inside', 'Inside') },
+    { id: 'center', label: t('effects.styles.center', 'Center') },
+  ];
+}
 
 /** Animation prop path for one numeric layer-style field. */
 function stylePath(style: keyof LayerStyles, field: string): string | null {
@@ -252,19 +255,22 @@ const STYLES_ROOT: readonly string[] = ['styles'];
  * unavailable while the layer has a geometric 3D bevel: both would draw a
  * bevel on the front face.
  */
-const ADDABLE_STYLES: ReadonlyArray<{ key: keyof LayerStyles; label: string } | 'sep'> = [
-  { key: 'dropShadow', label: 'Drop Shadow' },
-  { key: 'innerShadow', label: 'Inner Shadow' },
-  { key: 'outerGlow', label: 'Outer Glow' },
-  { key: 'innerGlow', label: 'Inner Glow' },
-  { key: 'bevel', label: 'Bevel and Emboss' },
-  { key: 'satin', label: 'Satin' },
-  { key: 'colorOverlay', label: 'Color Overlay' },
-  { key: 'gradientOverlay', label: 'Gradient Overlay' },
-  { key: 'stroke', label: 'Stroke' },
-  'sep',
-  { key: 'glass', label: 'Glass' },
-];
+/** `label` is shown; `undo` names the undo entry (kept English, like every undo label). */
+function addableStyles(): ReadonlyArray<{ key: keyof LayerStyles; label: string; undo: string } | 'sep'> {
+  return [
+    { key: 'dropShadow', label: t('effects.styles.menuDropShadow', 'Drop Shadow'), undo: 'Drop Shadow' },
+    { key: 'innerShadow', label: t('effects.styles.menuInnerShadow', 'Inner Shadow'), undo: 'Inner Shadow' },
+    { key: 'outerGlow', label: t('effects.styles.menuOuterGlow', 'Outer Glow'), undo: 'Outer Glow' },
+    { key: 'innerGlow', label: t('effects.styles.menuInnerGlow', 'Inner Glow'), undo: 'Inner Glow' },
+    { key: 'bevel', label: t('effects.styles.menuBevel', 'Bevel and Emboss'), undo: 'Bevel and Emboss' },
+    { key: 'satin', label: t('effects.styles.menuSatin', 'Satin'), undo: 'Satin' },
+    { key: 'colorOverlay', label: t('effects.styles.menuColorOverlay', 'Color Overlay'), undo: 'Color Overlay' },
+    { key: 'gradientOverlay', label: t('effects.styles.menuGradientOverlay', 'Gradient Overlay'), undo: 'Gradient Overlay' },
+    { key: 'stroke', label: t('effects.styles.menuStroke', 'Stroke'), undo: 'Stroke' },
+    'sep',
+    { key: 'glass', label: t('effects.styles.menuGlass', 'Glass'), undo: 'Glass' },
+  ];
+}
 
 function AddLayerStyleMenu({
   nodeId,
@@ -276,7 +282,7 @@ function AddLayerStyleMenu({
   geometricBevel: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const items = ADDABLE_STYLES.filter((it) => it === 'sep' || !applied[it.key]);
+  const items = addableStyles().filter((it) => it === 'sep' || !applied[it.key]);
   const none = items.every((it) => it === 'sep');
   return (
     <div className={styles.blendRow}>
@@ -290,22 +296,22 @@ function AddLayerStyleMenu({
             variant="ghost"
             leftIcon={<Icon name="plus" size="sm" />}
             disabled={none}
-            aria-label="Add layer style"
+            aria-label={t('effects.styles.addLayerStyle', 'Add layer style')}
           >
-            Add layer style
+            {t('effects.styles.addLayerStyle', 'Add layer style')}
           </Button>
         )}
       >
-        <Menu ariaLabel="Add layer style" onItemActivate={() => setOpen(false)}>
+        <Menu ariaLabel={t('effects.styles.addLayerStyle', 'Add layer style')} onItemActivate={() => setOpen(false)}>
           {items.map((it, i) => (it === 'sep'
             ? <MenuSeparator key={`sep${i}`} />
             : (
               <MenuItem
                 key={it.key}
                 id={it.key}
-                label={it.key === 'bevel' && geometricBevel ? `${it.label} (3D bevel is on)` : it.label}
+                label={it.key === 'bevel' && geometricBevel ? t('effects.styles.bevelDisabled', '{name} (3D bevel is on)', { name: it.label }) : it.label}
                 disabled={it.key === 'bevel' && geometricBevel}
-                onSelect={() => { void setLayerStyleOnEdit(nodeId, it.key, true, it.label); }}
+                onSelect={() => { void setLayerStyleOnEdit(nodeId, it.key, true, it.undo); }}
               />
             )))}
         </Menu>
@@ -358,12 +364,12 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
             opts in. This is what a layer style has and the equivalent effect does
             not: re-light the whole scene from one control. */}
         <div className={styles.blendRow}>
-          <span className={styles.blendLabel}>Global light</span>
+          <span className={styles.blendLabel}>{t('effects.styles.globalLight', 'Global light')}</span>
           <span style={{ display: 'contents' }} {...e.press('Global Light')}>
             <AngleDial
               value={light.angle}
               onChange={(angle) => setLight({ globalLightAngle: angle })}
-              aria-label="Global light angle"
+              aria-label={t('effects.styles.globalLightAngle', 'Global light angle')}
             />
           </span>
           <ValueField
@@ -372,9 +378,9 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
             precision={0}
             unit="°"
             onChange={(angle) => setLight({ globalLightAngle: angle })}
-            aria-label="Global light angle value"
+            aria-label={t('effects.styles.globalLightAngleValue', 'Global light angle value')}
           />
-          <span className={styles.blendLabel} style={{ marginLeft: 8 }}>Altitude</span>
+          <span className={styles.blendLabel} style={{ marginLeft: 8 }}>{t('effects.styles.altitude', 'Altitude')}</span>
           <ValueField
             {...e.scrub('Global Light')}
             value={light.altitude}
@@ -383,7 +389,7 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
             precision={0}
             unit="°"
             onChange={(altitude) => setLight({ globalLightAltitude: altitude })}
-            aria-label="Global light altitude"
+            aria-label={t('effects.styles.globalLightAltitude', 'Global light altitude')}
           />
         </div>
         </>
@@ -394,47 +400,47 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'dropShadow', !ds, 'Drop Shadow'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Drop shadow</span>}
-          aria-label="Drop shadow"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.dropShadow', 'Drop shadow')}</span>}
+          aria-label={t('effects.styles.dropShadow', 'Drop shadow')}
         />
       </div>
       ) : null}
       {ds ? (
         <>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Color</span>
+            <span className={styles.blendLabel}>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('dropShadow', 'color')}
-              label="Shadow color" value={ds.color}
+              label={t('effects.styles.shadowColor', 'Shadow color')} value={ds.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'dropShadow', { color })} />
           </div>
           <div className={styles.blendRow}>
             <Checkbox
               checked={boundToLight}
               onChange={() => void patchLayerStyleEdit(nodeId, 'dropShadow', { useGlobalLight: !boundToLight })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Use global light</span>}
-              aria-label="Use global light"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.useGlobalLight', 'Use global light')}</span>}
+              aria-label={t('effects.styles.useGlobalLight', 'Use global light')}
             />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('dropShadow', 'distance')}
-              label="Distance" value={ds.distance} min={0} max={200} unit="px"
+              label={t('effects.styles.distance', 'Distance')} value={ds.distance} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'dropShadow', { distance: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('dropShadow', 'angle')}
-              label="Angle" value={boundToLight ? light.angle : ds.angle} unit="°"
+              label={t('effects.styles.angle', 'Angle')} value={boundToLight ? light.angle : ds.angle} unit="°"
               unbind={boundToLight ? 'dropShadow' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'dropShadow', { angle: v, useGlobalLight: false })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('dropShadow', 'blur')}
-              label="Blur" value={ds.blur} min={0} max={200} unit="px"
+              label={t('effects.styles.blur', 'Blur')} value={ds.blur} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'dropShadow', { blur: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('dropShadow', 'spread')}
-              label="Spread" value={ds.spread ?? 0} min={0} max={100} unit="%"
+              label={t('effects.styles.spread', 'Spread')} value={ds.spread ?? 0} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'dropShadow', { spread: v })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('dropShadow', 'opacity')}
-              label="Opacity" value={Math.round(ds.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(ds.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'dropShadow', { opacity: v / 100 })} />
           </div>
         </>
@@ -446,42 +452,42 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'innerShadow', !ish, 'Inner Shadow'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Inner shadow</span>}
-          aria-label="Inner shadow"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.innerShadow', 'Inner shadow')}</span>}
+          aria-label={t('effects.styles.innerShadow', 'Inner shadow')}
         />
       </div>
       ) : null}
       {ish ? (
         <>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Color</span>
+            <span className={styles.blendLabel}>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('innerShadow', 'color')}
-              label="Inner shadow color" value={ish.color}
+              label={t('effects.styles.innerShadowColor', 'Inner shadow color')} value={ish.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'innerShadow', { color })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('innerShadow', 'distance')}
-              label="Distance" value={ish.distance} min={0} max={200} unit="px"
+              label={t('effects.styles.distance', 'Distance')} value={ish.distance} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerShadow', { distance: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('innerShadow', 'angle')}
-              label="Angle" value={ish.useGlobalLight ? light.angle : ish.angle} unit="°"
+              label={t('effects.styles.angle', 'Angle')} value={ish.useGlobalLight ? light.angle : ish.angle} unit="°"
               unbind={ish.useGlobalLight ? 'innerShadow' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerShadow', { angle: v, useGlobalLight: false })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('innerShadow', 'size')}
-              label="Size" value={ish.size} min={0} max={200} unit="px"
+              label={t('effects.styles.size', 'Size')} value={ish.size} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerShadow', { size: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('innerShadow', 'opacity')}
-              label="Opacity" value={Math.round(ish.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(ish.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerShadow', { opacity: v / 100 })} />
           </div>
           <div className={styles.blendRow}>
             <Checkbox
               checked={ish.useGlobalLight !== false}
               onChange={() => void patchLayerStyleEdit(nodeId, 'innerShadow', { useGlobalLight: ish.useGlobalLight === false })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Use global light</span>}
-              aria-label="Inner shadow use global light"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.useGlobalLight', 'Use global light')}</span>}
+              aria-label={t('effects.styles.innerShadowUseGlobalLight', 'Inner shadow use global light')}
             />
           </div>
         </>
@@ -492,30 +498,30 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'outerGlow', !og, 'Outer Glow'); }} 
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Outer glow</span>} 
-          aria-label="Outer glow" 
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.outerGlow', 'Outer glow')}</span>} 
+          aria-label={t('effects.styles.outerGlow', 'Outer glow')} 
         />
       </div>
       ) : null}
       {og ? (
         <>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Color</span>
+            <span className={styles.blendLabel}>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('outerGlow', 'color')}
-              label="Glow color" value={og.color}
+              label={t('effects.styles.glowColor', 'Glow color')} value={og.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'outerGlow', { color })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('outerGlow', 'size')}
-              label="Size" value={og.size} min={0} max={200} unit="px"
+              label={t('effects.styles.size', 'Size')} value={og.size} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'outerGlow', { size: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('outerGlow', 'spread')}
-              label="Spread" value={og.spread ?? 0} min={0} max={100} unit="%"
+              label={t('effects.styles.spread', 'Spread')} value={og.spread ?? 0} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'outerGlow', { spread: v })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('outerGlow', 'opacity')}
-              label="Opacity" value={Math.round(og.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(og.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'outerGlow', { opacity: v / 100 })} />
           </div>
         </>
@@ -527,24 +533,24 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'innerGlow', !igl, 'Inner Glow'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Inner glow</span>}
-          aria-label="Inner glow"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.innerGlow', 'Inner glow')}</span>}
+          aria-label={t('effects.styles.innerGlow', 'Inner glow')}
         />
       </div>
       ) : null}
       {igl ? (
         <div className={styles.maskControls}>
           <label className={styles.maskField}>
-            <span>Color</span>
+            <span>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('innerGlow', 'color')}
-              label="Inner glow color" value={igl.color}
+              label={t('effects.styles.innerGlowColor', 'Inner glow color')} value={igl.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'innerGlow', { color })} />
           </label>
           <StyleNum nodeId={nodeId} path={stylePath('innerGlow', 'size')}
-            label="Size" value={igl.size} min={0} max={200} unit="px"
+            label={t('effects.styles.size', 'Size')} value={igl.size} min={0} max={200} unit="px"
             onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerGlow', { size: v })} />
           <StyleNum nodeId={nodeId} path={stylePath('innerGlow', 'opacity')}
-            label="Opacity" value={Math.round(igl.opacity * 100)} min={0} max={100} unit="%"
+            label={t('effects.styles.opacity', 'Opacity')} value={Math.round(igl.opacity * 100)} min={0} max={100} unit="%"
             onChange={(v) => void patchLayerStyleEdit(nodeId, 'innerGlow', { opacity: v / 100 })} />
         </div>
       ) : null}
@@ -555,8 +561,8 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'bevel', !bev, 'Bevel & Emboss'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Bevel &amp; emboss</span>}
-          aria-label="Bevel and emboss"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.bevelAmpEmboss', 'Bevel & emboss')}</span>}
+          aria-label={t('effects.styles.bevelAndEmboss', 'Bevel and emboss')}
         />
       </div>
       ) : null}
@@ -564,39 +570,39 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'size')}
-              label="Size" value={bev.size} min={1} max={100} unit="px"
+              label={t('effects.styles.size', 'Size')} value={bev.size} min={1} max={100} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { size: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'depth')}
-              label="Depth" value={bev.depth} min={0} max={500} unit="%"
+              label={t('effects.styles.depth', 'Depth')} value={bev.depth} min={0} max={500} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { depth: v })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'angle')}
-              label="Angle" value={bev.useGlobalLight ? light.angle : bev.angle} unit="°"
+              label={t('effects.styles.angle', 'Angle')} value={bev.useGlobalLight ? light.angle : bev.angle} unit="°"
               unbind={bev.useGlobalLight ? 'bevel' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { angle: v, useGlobalLight: false })} />
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'altitude')}
-              label="Altitude" value={bev.useGlobalLight ? light.altitude : bev.altitude} min={0} max={90} unit="°"
+              label={t('effects.styles.altitude', 'Altitude')} value={bev.useGlobalLight ? light.altitude : bev.altitude} min={0} max={90} unit="°"
               unbind={bev.useGlobalLight ? 'bevel' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { altitude: v, useGlobalLight: false })} />
           </div>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Highlight</span>
+            <span className={styles.blendLabel}>{t('effects.styles.highlight', 'Highlight')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('bevel', 'highlightColor')}
-              label="Bevel highlight color" value={bev.highlightColor}
+              label={t('effects.styles.bevelHighlightColor', 'Bevel highlight color')} value={bev.highlightColor}
               onChange={(highlightColor) => void patchLayerStyleEdit(nodeId, 'bevel', { highlightColor })} />
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'highlightOpacity')} bare
-              label="Bevel highlight opacity" value={Math.round(bev.highlightOpacity * 100)}
+              label={t('effects.styles.bevelHighlightOpacity', 'Bevel highlight opacity')} value={Math.round(bev.highlightOpacity * 100)}
               min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { highlightOpacity: v / 100 })} />
           </div>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Shadow</span>
+            <span className={styles.blendLabel}>{t('effects.styles.shadow', 'Shadow')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('bevel', 'shadowColor')}
-              label="Bevel shadow color" value={bev.shadowColor}
+              label={t('effects.styles.bevelShadowColor', 'Bevel shadow color')} value={bev.shadowColor}
               onChange={(shadowColor) => void patchLayerStyleEdit(nodeId, 'bevel', { shadowColor })} />
             <StyleNum nodeId={nodeId} path={stylePath('bevel', 'shadowOpacity')} bare
-              label="Bevel shadow opacity" value={Math.round(bev.shadowOpacity * 100)}
+              label={t('effects.styles.bevelShadowOpacity', 'Bevel shadow opacity')} value={Math.round(bev.shadowOpacity * 100)}
               min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'bevel', { shadowOpacity: v / 100 })} />
           </div>
@@ -604,16 +610,16 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
             <Checkbox
               checked={bev.direction === 'down'}
               onChange={() => void patchLayerStyleEdit(nodeId, 'bevel', { direction: bev.direction === 'down' ? 'up' : 'down' })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Carve (down)</span>}
-              aria-label="Bevel direction down"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.carveDown', 'Carve (down)')}</span>}
+              aria-label={t('effects.styles.bevelDirectionDown', 'Bevel direction down')}
             />
           </div>
           <div className={styles.blendRow}>
             <Checkbox
               checked={bev.useGlobalLight !== false}
               onChange={() => void patchLayerStyleEdit(nodeId, 'bevel', { useGlobalLight: bev.useGlobalLight === false })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Use global light</span>}
-              aria-label="Bevel use global light"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.useGlobalLight', 'Use global light')}</span>}
+              aria-label={t('effects.styles.bevelUseGlobalLight', 'Bevel use global light')}
             />
           </div>
         </>
@@ -625,41 +631,41 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'satin', !sat, 'Satin'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Satin</span>}
-          aria-label="Satin"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.satin', 'Satin')}</span>}
+          aria-label={t('effects.styles.satin', 'Satin')}
         />
       </div>
       ) : null}
       {sat ? (
         <>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Color</span>
+            <span className={styles.blendLabel}>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('satin', 'color')}
-              label="Satin color" value={sat.color}
+              label={t('effects.styles.satinColor', 'Satin color')} value={sat.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'satin', { color })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('satin', 'distance')}
-              label="Distance" value={sat.distance} min={0} max={200} unit="px"
+              label={t('effects.styles.distance', 'Distance')} value={sat.distance} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'satin', { distance: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('satin', 'angle')}
-              label="Angle" value={sat.angle} unit="°"
+              label={t('effects.styles.angle', 'Angle')} value={sat.angle} unit="°"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'satin', { angle: v })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('satin', 'size')}
-              label="Size" value={sat.size} min={0} max={200} unit="px"
+              label={t('effects.styles.size', 'Size')} value={sat.size} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'satin', { size: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('satin', 'opacity')}
-              label="Opacity" value={Math.round(sat.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(sat.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'satin', { opacity: v / 100 })} />
           </div>
           <div className={styles.blendRow}>
             <Checkbox
               checked={sat.invert === true}
               onChange={() => void patchLayerStyleEdit(nodeId, 'satin', { invert: !sat.invert })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Invert</span>}
-              aria-label="Satin invert"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.invert', 'Invert')}</span>}
+              aria-label={t('effects.styles.satinInvert', 'Satin invert')}
             />
           </div>
         </>
@@ -671,21 +677,21 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'colorOverlay', !co, 'Color Overlay'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Color overlay</span>}
-          aria-label="Color overlay"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.colorOverlay', 'Color overlay')}</span>}
+          aria-label={t('effects.styles.colorOverlay', 'Color overlay')}
         />
       </div>
       ) : null}
       {co ? (
         <div className={styles.maskControls}>
           <label className={styles.maskField}>
-            <span>Color</span>
+            <span>{t('effects.styles.color', 'Color')}</span>
             <StyleColor nodeId={nodeId} path={styleColorPath('colorOverlay', 'color')}
-              label="Overlay color" value={co.color}
+              label={t('effects.styles.overlayColor', 'Overlay color')} value={co.color}
               onChange={(color) => void patchLayerStyleEdit(nodeId, 'colorOverlay', { color })} />
           </label>
           <StyleNum nodeId={nodeId} path={stylePath('colorOverlay', 'opacity')}
-            label="Opacity" value={Math.round(co.opacity * 100)} min={0} max={100} unit="%"
+            label={t('effects.styles.opacity', 'Opacity')} value={Math.round(co.opacity * 100)} min={0} max={100} unit="%"
             onChange={(v) => void patchLayerStyleEdit(nodeId, 'colorOverlay', { opacity: v / 100 })} />
         </div>
       ) : null}
@@ -696,8 +702,8 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'gradientOverlay', !go, 'Gradient Overlay'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Gradient overlay</span>}
-          aria-label="Gradient overlay"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.gradientOverlay', 'Gradient overlay')}</span>}
+          aria-label={t('effects.styles.gradientOverlay', 'Gradient overlay')}
         />
       </div>
       ) : null}
@@ -705,33 +711,33 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <>
           <div className={styles.maskControls}>
             <label className={styles.maskField}>
-              <span>From</span>
+              <span>{t('effects.styles.from', 'From')}</span>
               <StyleColor nodeId={nodeId} path={styleColorPath('gradientOverlay', 'from')}
-                label="Gradient from" value={go.from}
+                label={t('effects.styles.gradientFrom', 'Gradient from')} value={go.from}
                 onChange={(from) => void patchLayerStyleEdit(nodeId, 'gradientOverlay', { from })} />
             </label>
             <label className={styles.maskField}>
-              <span>To</span>
+              <span>{t('effects.styles.to', 'To')}</span>
               <StyleColor nodeId={nodeId} path={styleColorPath('gradientOverlay', 'to')}
-                label="Gradient to" value={go.to}
+                label={t('effects.styles.gradientTo', 'Gradient to')} value={go.to}
                 onChange={(to) => void patchLayerStyleEdit(nodeId, 'gradientOverlay', { to })} />
             </label>
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={stylePath('gradientOverlay', 'angle')}
-              label="Angle" value={go.useGlobalLight ? light.angle : go.angle} unit="°"
+              label={t('effects.styles.angle', 'Angle')} value={go.useGlobalLight ? light.angle : go.angle} unit="°"
               unbind={go.useGlobalLight ? 'gradientOverlay' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'gradientOverlay', { angle: v, useGlobalLight: false })} />
             <StyleNum nodeId={nodeId} path={stylePath('gradientOverlay', 'opacity')}
-              label="Opacity" value={Math.round(go.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(go.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'gradientOverlay', { opacity: v / 100 })} />
           </div>
           <div className={styles.blendRow}>
             <Checkbox
               checked={go.useGlobalLight === true}
               onChange={() => void patchLayerStyleEdit(nodeId, 'gradientOverlay', { useGlobalLight: !go.useGlobalLight })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Use global light</span>}
-              aria-label="Gradient use global light"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.useGlobalLight', 'Use global light')}</span>}
+              aria-label={t('effects.styles.gradientUseGlobalLight', 'Gradient use global light')}
             />
           </div>
         </>
@@ -743,8 +749,8 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'stroke', !stk, 'Stroke'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Stroke</span>}
-          aria-label="Stroke style"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.stroke', 'Stroke')}</span>}
+          aria-label={t('effects.styles.strokeStyle', 'Stroke style')}
         />
       </div>
       ) : null}
@@ -752,22 +758,22 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <>
           <div className={styles.maskControls}>
             <label className={styles.maskField}>
-              <span>Color</span>
+              <span>{t('effects.styles.color', 'Color')}</span>
               <StyleColor nodeId={nodeId} path={styleColorPath('stroke', 'color')}
-                label="Stroke style color" value={stk.color}
+                label={t('effects.styles.strokeStyleColor', 'Stroke style color')} value={stk.color}
                 onChange={(color) => void patchLayerStyleEdit(nodeId, 'stroke', { color })} />
             </label>
             <StyleNum nodeId={nodeId} path={stylePath('stroke', 'size')}
-              label="Size" value={stk.size} min={0} max={200} unit="px"
+              label={t('effects.styles.size', 'Size')} value={stk.size} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'stroke', { size: v })} />
             <StyleNum nodeId={nodeId} path={stylePath('stroke', 'opacity')}
-              label="Opacity" value={Math.round(stk.opacity * 100)} min={0} max={100} unit="%"
+              label={t('effects.styles.opacity', 'Opacity')} value={Math.round(stk.opacity * 100)} min={0} max={100} unit="%"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'stroke', { opacity: v / 100 })} />
           </div>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Position</span>
+            <span className={styles.blendLabel}>{t('effects.styles.position', 'Position')}</span>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {STROKE_POSITIONS.map((p) => (
+              {strokePositions().map((p) => (
                 <button
                   key={p.id}
                   type="button"
@@ -801,8 +807,8 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <Checkbox
           checked
           onChange={() => { void setLayerStyleOnEdit(nodeId, 'glass', !gl, 'Glass'); }}
-          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Glass</span>}
-          aria-label="Glass"
+          label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.glass', 'Glass')}</span>}
+          aria-label={t('effects.styles.glass', 'Glass')}
         />
       </div>
       ) : null}
@@ -810,47 +816,47 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
         <>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={glassPropPath('blur' as GlassParam)}
-              label="Blur" value={gl.blur} min={0} max={200} unit="px"
+              label={t('effects.styles.blur', 'Blur')} value={gl.blur} min={0} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { blur: v })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('saturation' as GlassParam)}
-              label="Saturation" value={gl.saturation} min={0} max={4} step={0.05} precision={2}
+              label={t('effects.styles.saturation', 'Saturation')} value={gl.saturation} min={0} max={4} step={0.05} precision={2}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { saturation: v })} />
           </div>
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Tint</span>
+            <span className={styles.blendLabel}>{t('effects.styles.tint', 'Tint')}</span>
             <StyleColor nodeId={nodeId} path={glassPropPath('tintColor')}
-              label="Glass tint" value={gl.tintColor}
+              label={t('effects.styles.glassTint', 'Glass tint')} value={gl.tintColor}
               onChange={(tintColor) => void patchLayerStyleEdit(nodeId, 'glass', { tintColor })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('tintOpacity')} bare
-              label="Glass tint opacity" value={Math.round(gl.tintOpacity * 100)}
+              label={t('effects.styles.glassTintOpacity', 'Glass tint opacity')} value={Math.round(gl.tintOpacity * 100)}
               min={0} max={100} unit="%" trackFactor={0.01}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { tintOpacity: v / 100 })} />
           </div>
 
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={glassPropPath('refraction' as GlassParam)}
-              label="Refraction" value={gl.refraction} min={-200} max={200} unit="px"
+              label={t('effects.styles.refraction', 'Refraction')} value={gl.refraction} min={-200} max={200} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { refraction: v })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('edgeWidth' as GlassParam)}
-              label="Edge width" value={gl.edgeWidth} min={0} max={64} unit="px"
+              label={t('effects.styles.edgeWidth', 'Edge width')} value={gl.edgeWidth} min={0} max={64} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { edgeWidth: v })} />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={glassPropPath('chromaticAberration' as GlassParam)}
-              label="Aberration" value={gl.chromaticAberration} min={-32} max={32} unit="px"
+              label={t('effects.styles.aberration', 'Aberration')} value={gl.chromaticAberration} min={-32} max={32} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { chromaticAberration: v })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('grain' as GlassParam)}
-              label="Grain" value={Math.round(gl.grain * 100)} min={0} max={100} unit="%" trackFactor={0.01}
+              label={t('effects.styles.grain', 'Grain')} value={Math.round(gl.grain * 100)} min={0} max={100} unit="%" trackFactor={0.01}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { grain: v / 100 })} />
           </div>
 
           <div className={styles.blendRow}>
-            <span className={styles.blendLabel}>Rim</span>
+            <span className={styles.blendLabel}>{t('effects.styles.rim', 'Rim')}</span>
             <StyleColor nodeId={nodeId} path={glassPropPath('rimColor')}
-              label="Glass rim colour" value={gl.rimColor}
+              label={t('effects.styles.glassRimColour', 'Glass rim colour')} value={gl.rimColor}
               onChange={(rimColor) => void patchLayerStyleEdit(nodeId, 'glass', { rimColor })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('rimOpacity')} bare
-              label="Glass rim opacity" value={Math.round(gl.rimOpacity * 100)}
+              label={t('effects.styles.glassRimOpacity', 'Glass rim opacity')} value={Math.round(gl.rimOpacity * 100)}
               min={0} max={100} unit="%" trackFactor={0.01}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { rimOpacity: v / 100 })} />
           </div>
@@ -858,38 +864,38 @@ export function LayerStylesControls({ nodeId }: { nodeId: string }): JSX.Element
             <Checkbox
               checked={gl.useGlobalLight === true}
               onChange={() => void patchLayerStyleEdit(nodeId, 'glass', { useGlobalLight: gl.useGlobalLight !== true })}
-              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>Use global light</span>}
-              aria-label="Glass use global light"
+              label={<span className={styles.blendLabel} style={{ marginLeft: 6 }}>{t('effects.styles.useGlobalLight', 'Use global light')}</span>}
+              aria-label={t('effects.styles.glassUseGlobalLight', 'Glass use global light')}
             />
           </div>
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={glassPropPath('rimWidth' as GlassParam)}
-              label="Rim width" value={gl.rimWidth} min={0} max={64} unit="px"
+              label={t('effects.styles.rimWidth', 'Rim width')} value={gl.rimWidth} min={0} max={64} unit="px"
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { rimWidth: v })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('rimAngle' as GlassParam)}
-              label="Rim angle" value={gl.useGlobalLight ? light.angle : gl.rimAngle} unit="°"
+              label={t('effects.styles.rimAngle', 'Rim angle')} value={gl.useGlobalLight ? light.angle : gl.rimAngle} unit="°"
               unbind={gl.useGlobalLight ? 'glass' : undefined}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { rimAngle: v, useGlobalLight: false })} />
           </div>
 
           <div className={styles.maskControls}>
             <StyleNum nodeId={nodeId} path={glassPropPath('specularIntensity' as GlassParam)}
-              label="Specular" value={Math.round(gl.specularIntensity * 100)} min={0} max={200} unit="%" trackFactor={0.01}
+              label={t('effects.styles.specular', 'Specular')} value={Math.round(gl.specularIntensity * 100)} min={0} max={200} unit="%" trackFactor={0.01}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { specularIntensity: v / 100 })} />
             <StyleNum nodeId={nodeId} path={glassPropPath('specularFalloff' as GlassParam)}
-              label="Falloff" value={gl.specularFalloff} min={0.1} max={64} precision={1}
+              label={t('effects.styles.falloff', 'Falloff')} value={gl.specularFalloff} min={0.1} max={64} precision={1}
               onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { specularFalloff: v })} />
           </div>
           {!gl.useGlobalLight && (
             <div className={styles.blendRow}>
-              <span className={styles.blendLabel}>Specular angle</span>
+              <span className={styles.blendLabel}>{t('effects.styles.specularAngle', 'Specular angle')}</span>
               <AngleDial
                 value={gl.specularAngle}
                 onChange={(specularAngle) => void patchLayerStyleEdit(nodeId, 'glass', { specularAngle })}
-                aria-label="Glass specular angle"
+                aria-label={t('effects.styles.glassSpecularAngle', 'Glass specular angle')}
               />
               <ValueField value={gl.specularAngle} precision={0} unit="°"
-                onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { specularAngle: v })} aria-label="Glass specular angle value" />
+                onChange={(v) => void patchLayerStyleEdit(nodeId, 'glass', { specularAngle: v })} aria-label={t('effects.styles.glassSpecularAngleValue', 'Glass specular angle value')} />
             </div>
           )}
         </>

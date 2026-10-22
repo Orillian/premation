@@ -11,6 +11,7 @@
  *   processEngine()              that client, or null when none was created
  *   subscribeProcessEngine(l)    told when the client appears or a notice arrives
  *   lastProcessEngineNotice()    the last restart / unavailable notice (the surface shows it)
+ *   processEngineBusy()          what the engine's core thread is busy on right now, or null
  *
  * The client itself (@motion/engine-api `ProcessEngineClient`) needs nothing
  * from src/: this module only binds it to the window's bridge.
@@ -27,6 +28,7 @@
 import {
   createProcessEngineClient,
   type EngineBridge,
+  type EngineBusyNotice,
   type ProcessEngineClient,
   type ProcessEngineNotice,
 } from '@motion/engine-api';
@@ -41,6 +43,9 @@ interface State {
   instance: ProcessEngineClient | null;
   noticeHook: ((n: ProcessEngineNotice) => void) | null;
   lastNotice: ProcessEngineNotice | null;
+  /** The engine's core thread on one long item (main's engine:busy), or null. */
+  busy: EngineBusyNotice | null;
+  stopBusy: (() => void) | null;
   listeners: Set<() => void>;
 }
 
@@ -50,7 +55,7 @@ type WindowWithEngine = {
   __premationProcessEngine?: ProcessEngineClient;
 };
 
-const fresh = (): State => ({ instance: null, noticeHook: null, lastNotice: null, listeners: new Set() });
+const fresh = (): State => ({ instance: null, noticeHook: null, lastNotice: null, busy: null, stopBusy: null, listeners: new Set() });
 let local: State | null = null;
 
 function state(): State {
@@ -115,12 +120,28 @@ export function createAppProcessEngine(options: AppProcessEngineOptions = {}): P
       notify();
     },
   });
+  s.stopBusy = bridge.onBusy?.((b) => {
+    const st = state();
+    const next = b && b.ms > 0 ? b : null;
+    if (st.busy === next) return;
+    if ((st.busy === null) !== (next === null)) {
+      if (next) console.warn(`[engine] premation-engine busy: ${next.what} (${next.ms} ms so far)`);
+      else console.info('[engine] premation-engine is back from its busy item');
+    }
+    st.busy = next;
+    notify();
+  }) ?? null;
   if (isDevBuild()) {
     // The real-app harness drives the process backend through this (dev only).
     (window as unknown as WindowWithEngine).__premationProcessEngine = s.instance;
   }
   notify();
   return s.instance;
+}
+
+/** What the engine's core thread is busy on right now (nothing answers until it is done), or null. */
+export function processEngineBusy(): EngineBusyNotice | null {
+  return state().busy;
 }
 
 export function processEngine(): ProcessEngineClient | null {
@@ -142,6 +163,7 @@ export async function resetProcessEngine(): Promise<void> {
   const s = state();
   const i = s.instance;
   const listeners = s.listeners;
+  s.stopBusy?.();
   Object.assign(s, fresh(), { listeners });
   await i?.close();
   notify();

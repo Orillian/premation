@@ -60,13 +60,14 @@ import {
 } from '@layout/Timeline/timeNavigator';
 import { getTimelineViewport, scrollTimelineTo, subscribeTimelineViewport } from '@layout/Timeline/timelineViewport';
 import { TIMELINE_LEFT_OFFSET, resolveTrackHeaderWidth } from '@layout/Timeline/timelineShared';
-import { navigatorColumnFor } from './toolbarGeometry';
+import { navigatorColumnFor, toolsColumnWidth } from './toolbarGeometry';
 import { TimelineToolbarOverflow } from './TimelineToolbarOverflow';
 import { TimelineCompSwitches } from './TimelineCompSwitches';
 import { NavCacheStrip } from './NavCacheStrip';
 import { fitTimelineToComposition } from '@layout/Timeline/timelineFit';
 import { useTranscriptStore } from '@layout/Transcript';
 import { getEventBus } from '@core/events/EventBus';
+import { t } from '@core/i18n';
 import styles from './BottomTimeline.module.css';
 
 export interface BottomTimelineProps extends Omit<TimelineProps, 'className'> {
@@ -140,7 +141,15 @@ function useClientLeft(ref: RefObject<HTMLElement | null>, key: unknown): { left
   return edge;
 }
 
-const ROW_HEIGHT_LABEL: Record<number, string> = { 28: 'Compact', 36: 'Normal', 46: 'Tall' };
+/** The row-height presets' names. A function: `t()` must not run at import. */
+function rowHeightLabel(h: number): string | undefined {
+  switch (h) {
+    case 28: return t('timeline.view.rowCompact', 'Compact');
+    case 36: return t('timeline.view.rowNormal', 'Normal');
+    case 46: return t('timeline.view.rowTall', 'Tall');
+    default: return undefined;
+  }
+}
 
 /**
  * The navigator playhead's position as a `transform`: the element spans the
@@ -317,7 +326,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
     const bus = getEventBus();
     const offGoTo = bus.on('TimelineGoToTime', () => setGoToOpen(true));
     const offFind = bus.on('TimelineFocusSearch', () => {
-      const input = toolbarRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search layers and properties"]');
+      const input = toolbarRef.current?.querySelector<HTMLInputElement>('input[role="searchbox"]');
       input?.focus();
       input?.select();
     });
@@ -441,7 +450,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
         {
           type: 'checkbox',
           id: 'tl-view-proportional',
-          label: 'Proportional Scrubbing — a drag on one selected property ramps across the selection',
+          label: t('timeline.view.proportionalScrub', 'Proportional Scrubbing — a drag on one selected property ramps across the selection'),
           checked: proportionalScrub,
           onChange: setProportionalScrub,
         },
@@ -451,11 +460,15 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
           type: 'item',
           id: 'tl-view-heat',
           icon: 'sparkles',
-          label: `Highlight what changed: ${heatSource === 'off' ? 'Off' : heatSource === 'save' ? 'since last save' : 'last AI run'}`,
+          label: heatSource === 'off'
+            ? t('timeline.view.heatOffRow', 'Highlight what changed: Off')
+            : heatSource === 'save'
+              ? t('timeline.view.heatSaveRow', 'Highlight what changed: since last save')
+              : t('timeline.view.heatAiRow', 'Highlight what changed: last AI run'),
           submenu: [
-            { type: 'checkbox', id: 'tl-view-heat-off', label: 'Off', checked: heatSource === 'off', onChange: () => setTimelineHeatSource('off') },
-            { type: 'checkbox', id: 'tl-view-heat-save', label: 'Since the last save', checked: heatSource === 'save', onChange: () => setTimelineHeatSource('save') },
-            { type: 'checkbox', id: 'tl-view-heat-ai', label: 'The last AI run', checked: heatSource === 'ai', onChange: () => setTimelineHeatSource('ai') },
+            { type: 'checkbox', id: 'tl-view-heat-off', label: t('timeline.view.heatOff', 'Off'), checked: heatSource === 'off', onChange: () => setTimelineHeatSource('off') },
+            { type: 'checkbox', id: 'tl-view-heat-save', label: t('timeline.view.heatSave', 'Since the last save'), checked: heatSource === 'save', onChange: () => setTimelineHeatSource('save') },
+            { type: 'checkbox', id: 'tl-view-heat-ai', label: t('timeline.view.heatAi', 'The last AI run'), checked: heatSource === 'ai', onChange: () => setTimelineHeatSource('ai') },
           ],
         },
         {
@@ -464,7 +477,9 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
              broken. */
           type: 'checkbox',
           id: 'tl-view-transcript',
-          label: hasTranscript ? 'Transcript lane' : 'Transcript lane — transcribe this composition first (Transcript panel)',
+          label: hasTranscript
+            ? t('timeline.view.transcriptLane', 'Transcript lane')
+            : t('timeline.view.transcriptLaneDisabled', 'Transcript lane — transcribe this composition first (Transcript panel)'),
           checked: transcriptLaneOn,
           disabled: !hasTranscript,
           onChange: setTimelineTranscriptLane,
@@ -476,11 +491,17 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
           type: 'item',
           id: 'tl-view-columns-mode',
           icon: 'layout',
-          label: `Switches / Modes: ${timelineColumns === 'switches' ? 'Switches' : timelineColumns === 'modes' ? 'Modes' : 'Both'}`,
+          label: t('timeline.view.switchesModesRow', 'Switches / Modes: {mode}', {
+            mode: timelineColumns === 'switches'
+              ? t('timeline.view.switches', 'Switches')
+              : timelineColumns === 'modes'
+                ? t('timeline.view.modes', 'Modes')
+                : t('timeline.view.both', 'Both'),
+          }),
           submenu: [
-            { type: 'checkbox', id: 'tl-view-cols-switches', label: 'Switches', checked: timelineColumns === 'switches', onChange: () => setTimelineColumns('switches') },
-            { type: 'checkbox', id: 'tl-view-cols-modes', label: 'Modes', checked: timelineColumns === 'modes', onChange: () => setTimelineColumns('modes') },
-            { type: 'checkbox', id: 'tl-view-cols-both', label: 'Both', checked: timelineColumns === 'both', onChange: () => setTimelineColumns('both') },
+            { type: 'checkbox', id: 'tl-view-cols-switches', label: t('timeline.view.switches', 'Switches'), checked: timelineColumns === 'switches', onChange: () => setTimelineColumns('switches') },
+            { type: 'checkbox', id: 'tl-view-cols-modes', label: t('timeline.view.modes', 'Modes'), checked: timelineColumns === 'modes', onChange: () => setTimelineColumns('modes') },
+            { type: 'checkbox', id: 'tl-view-cols-both', label: t('timeline.view.both', 'Both'), checked: timelineColumns === 'both', onChange: () => setTimelineColumns('both') },
           ],
         },
         {
@@ -490,8 +511,10 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
           id: 'tl-view-columns',
           icon: 'sliders-h',
           label: extraColumns.length > 0
-            ? `Columns: ${extraColumns.map((c) => TIMELINE_EXTRA_COLUMNS.find((d) => d.id === c)?.label).join(', ')}`
-            : 'Columns',
+            ? t('timeline.view.columnsRow', 'Columns: {list}', {
+              list: extraColumns.map((c) => TIMELINE_EXTRA_COLUMNS.find((d) => d.id === c)?.label).join(', '),
+            })
+            : t('timeline.view.columns', 'Columns'),
           submenu: TIMELINE_EXTRA_COLUMNS.map<DropdownItem>((c) => ({
             type: 'checkbox',
             id: `tl-view-col-${c.id}`,
@@ -506,11 +529,11 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
           type: 'item',
           id: 'tl-view-row-height',
           icon: 'expand',
-          label: `Row height: ${ROW_HEIGHT_LABEL[rowTrackHeight] ?? `${rowTrackHeight}px`}`,
+          label: t('timeline.view.rowHeightRow', 'Row height: {height}', { height: rowHeightLabel(rowTrackHeight) ?? `${rowTrackHeight}px` }),
           submenu: ROW_HEIGHT_PRESETS.map<DropdownItem>((h) => ({
             type: 'checkbox',
             id: `tl-view-row-${h}`,
-            label: `${ROW_HEIGHT_LABEL[h] ?? 'Custom'} (${h}px)`,
+            label: t('timeline.view.rowHeightPreset', '{name} ({px}px)', { name: rowHeightLabel(h) ?? t('timeline.view.rowCustom', 'Custom'), px: h }),
             checked: rowTrackHeight === h,
             onChange: () => setPref('timelineRowHeight', h),
           })),
@@ -518,7 +541,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
         { type: 'separator' },
         // The preview cache's state and actions (AE keeps these in the
         // Composition / Edit ▸ Purge menus, not as timeline buttons).
-        { type: 'item', id: 'tl-view-cache', icon: 'refresh', label: 'Preview cache', submenu: previewCacheMenuItems(previewCache.stats, previewCache.refresh) },
+        { type: 'item', id: 'tl-view-cache', icon: 'refresh', label: t('timeline.view.previewCache', 'Preview cache'), submenu: previewCacheMenuItems(previewCache.stats, previewCache.refresh) },
       ];
 
   return (
@@ -537,16 +560,16 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                 className={cn(styles.tab, showQueue && styles.tabActive)}
                 aria-pressed={showQueue}
                 onClick={() => setPanelView('renderQueue')}
-                title="Render Queue (F6)"
+                title={t('timeline.panel.renderQueueTitle', 'Render Queue (F6)')}
               >
                 <Icon name="queue" size="sm" />
-                <span>Render Queue</span>
+                <span>{t('timeline.panel.renderQueue', 'Render Queue')}</span>
               </button>
               <span className={styles.tabDivider} aria-hidden />
               {tabOrder.length === 0 ? (
                 // No composition is open: a label, not a button that does nothing.
-                <span className={cn(styles.tab, styles.tabActive)} title="No composition open">
-                  <span>(none)</span>
+                <span className={cn(styles.tab, styles.tabActive)} title={t('timeline.panel.noComposition', 'No composition open')}>
+                  <span>{t('timeline.panel.none', '(none)')}</span>
                 </span>
               ) : (
                 tabOrder.map((tid) => {
@@ -574,7 +597,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                     openContextMenu(e.clientX, e.clientY, [
                       {
                         id: 'settings',
-                        label: 'Composition Settings…',
+                        label: t('timeline.panel.compositionSettings', 'Composition Settings…'),
                         icon: 'settings',
                         onSelect: () => {
                           setActiveTab(tid);
@@ -582,19 +605,23 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                         },
                       },
                       ...(isGroupTab ? [] : [
-                      { id: 'duplicate', label: 'Duplicate', icon: 'copy' as const, onSelect: () => {
+                      { id: 'duplicate', label: t('timeline.panel.duplicate', 'Duplicate'), icon: 'copy' as const, onSelect: () => {
                         // `duplicateComposition` + `renameItem` ("<name> copy") in one entry.
                         void duplicateCompositionEdit(compId);
                       } },
                       { id: 'sep', separator: true },
                       {
                         id: 'delete',
-                        label: 'Delete Composition',
+                        label: t('timeline.panel.deleteComposition', 'Delete Composition'),
                         icon: 'trash' as const,
                         danger: true,
                         onSelect: async () => {
                           const warn = deleteCompositionWarning(label, compId);
-                          if (await customConfirm('Delete Composition', warn, { isDanger: true, confirmLabel: 'Delete' })) {
+                          if (await customConfirm(
+                            t('timeline.panel.deleteComposition', 'Delete Composition'),
+                            warn,
+                            { isDanger: true, confirmLabel: t('timeline.panel.delete', 'Delete') },
+                          )) {
                             // `removeItems` (+ its tabs closed); the LAST comp keeps the legacy re-seed (see there).
                             await deleteCompositionEdit(compId);
                           }
@@ -622,8 +649,8 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                             className={styles.tabClose}
                             role="button"
                             tabIndex={0}
-                            aria-label={`Close ${label}`}
-                            title={`Close ${label}`}
+                            aria-label={t('timeline.panel.closeTab', 'Close {name}', { name: label })}
+                            title={t('timeline.panel.closeTab', 'Close {name}', { name: label })}
                             onClick={(e) => {
                               e.stopPropagation();
                               closeTab(tid);
@@ -695,14 +722,14 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
           ref={toolbarRef}
           className={styles.subHeaderRow}
           role="toolbar"
-          aria-label="Timeline tools"
+          aria-label={t('timeline.toolbar.aria', 'Timeline tools')}
           data-timeline-toolbar=""
         >
           {/* ── Left column: the buttons, the header column's width ── */}
           <div
             ref={toolsColRef}
             className={styles.toolsCol}
-            style={{ width: headerWidth }}
+            style={{ width: toolsColumnWidth(headerWidth, lanes, rowLeft) }}
             data-timeline-toolbar-tools=""
           >
             <div className={styles.timecodeBlock}>
@@ -719,7 +746,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                   ref={goToRef}
                   type="text"
                   className={styles.timecodeInput}
-                  aria-label="Go to time"
+                  aria-label={t('timeline.toolbar.goToTime', 'Go to time')}
                   defaultValue={framesToTimecode(ws ? getPlayheadTime() : playheadTime, fps, startFrame)}
                   onBlur={() => setGoToOpen(false)}
                   onKeyDown={(e) => {
@@ -744,7 +771,7 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                 <button
                   type="button"
                   className={styles.timecodeMain}
-                  title="Current timecode — click to type a time (1:04, 320f, 2.5s, +10)"
+                  title={t('timeline.toolbar.timecodeTitle', 'Current timecode — click to type a time (1:04, 320f, 2.5s, +10)')}
                   onClick={() => setGoToOpen(true)}
                 >
                   {ws ? <LiveTimecode fps={fps} startFrame={startFrame} /> : framesToTimecode(playheadTime, fps, startFrame)}
@@ -759,8 +786,8 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
             <SearchField
               className={styles.searchContainer}
               size="sm"
-              placeholder="Filter layers & props…"
-              ariaLabel="Search layers and properties"
+              placeholder={t('timeline.toolbar.searchPlaceholder', 'Filter layers & props…')}
+              ariaLabel={t('timeline.toolbar.search', 'Search layers and properties')}
               value={searchQuery}
               onChange={setSearchQuery}
             />
@@ -777,8 +804,10 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
               <button
                 type="button"
                 className={cn(styles.compSwitch, graphEditorOpen && styles.compSwitchOn)}
-                title={graphEditorOpen ? 'Back to the layer bars (Shift+F3)' : 'Graph Editor — show curves instead of layer bars (Shift+F3)'}
-                aria-label="Toggle Graph Editor"
+                title={graphEditorOpen
+                  ? t('timeline.toolbar.graphEditorOnTitle', 'Back to the layer bars (Shift+F3)')
+                  : t('timeline.toolbar.graphEditorOffTitle', 'Graph Editor — show curves instead of layer bars (Shift+F3)')}
+                aria-label={t('timeline.toolbar.graphEditor', 'Toggle Graph Editor')}
                 aria-pressed={graphEditorOpen}
                 onClick={() => setGraphEditorOpen(!graphEditorOpen)}
               >
@@ -798,8 +827,8 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
                     <button
                       type="button"
                       className={styles.compSwitch}
-                      aria-label="Timeline view options"
-                      title="Timeline menu — snapping, timeline tool, playhead follow, switches / modes, columns, row height, preview cache"
+                      aria-label={t('timeline.toolbar.viewOptions', 'Timeline view options')}
+                      title={t('timeline.toolbar.viewOptionsTitle', 'Timeline menu — snapping, timeline tool, playhead follow, switches / modes, columns, row height, preview cache')}
                     >
                       <Icon name="menu" size="md" />
                     </button>
@@ -823,9 +852,9 @@ export function BottomTimeline(props: BottomTimelineProps): JSX.Element {
             <div
               ref={navRef}
               className={styles.timeNavigatorTrack}
-              title="Time Navigator — drag the box to pan, its ends to zoom, double-click to fit the comp; click outside it to seek"
+              title={t('timeline.toolbar.navigatorTitle', 'Time Navigator — drag the box to pan, its ends to zoom, double-click to fit the comp; click outside it to seek')}
               role="scrollbar"
-              aria-label="Time navigator"
+              aria-label={t('timeline.toolbar.navigator', 'Time navigator')}
               aria-orientation="horizontal"
               aria-valuemin={0}
               aria-valuemax={100}

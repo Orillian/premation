@@ -102,24 +102,47 @@ std::vector<std::string> all_keyframe_ids(const Document& d) {
 // ── key index ────────────────────────────────────────────────────────────
 
 void KeyIndex::build(const Document& d) {
-  auto map = std::make_unique<std::unordered_map<std::string, KeyLoc>>();
-  for (const auto& [layer, a] : d.anims()) {
+  map_ = std::make_unique<std::unordered_map<std::string, KeyLoc>>();
+  byLayer_.clear();
+  // Layer by layer (its tracks, its data tracks, its mask keys); key ids are
+  // unique across the document (stamp_missing_key_ids mints them), so the
+  // order layers are indexed in does not matter.
+  for (const auto& [layer, a] : d.anims()) index_layer(d, layer);
+  for (const auto& [id, np] : d.nodes()) {
+    if (d.anim(id) == nullptr) index_layer(d, id);  // a node with mask keys and no animation
+  }
+}
+
+void KeyIndex::index_layer(const Document& d, const std::string& layer) {
+  std::unordered_map<std::string, KeyLoc>& map = *map_;
+  if (const auto held = byLayer_.find(layer); held != byLayer_.end()) {
+    for (const std::string& id : held->second) map.erase(id);
+    byLayer_.erase(held);
+  }
+  std::vector<std::string> ids;
+  const auto put = [&map, &ids](const std::string& id, KeyLoc loc, bool replace) {
+    if (replace) {
+      map.insert_or_assign(id, std::move(loc));
+      ids.push_back(id);
+    } else if (map.try_emplace(id, std::move(loc)).second) {
+      ids.push_back(id);
+    }
+  };
+  if (const NodeAnim* a = d.anim(layer)) {
     for (const auto& [member, keys] : a->tracks) {
       for (const Key& k : keys) {
-        if (k.id && !k.id->empty()) map->try_emplace(*k.id, KeyLoc{layer, member, k.t, KeyLoc::Kind::scalar, std::nullopt});
+        if (k.id && !k.id->empty()) put(*k.id, KeyLoc{layer, member, k.t, KeyLoc::Kind::scalar, std::nullopt}, false);
       }
     }
-  }
-  for (const auto& [layer, a] : d.anims()) {
     for (const auto& [member, t] : a->data) {
       for (const DataKey& k : t.keys) {
-        if (k.id && !k.id->empty()) map->try_emplace(*k.id, KeyLoc{layer, member, k.t, KeyLoc::Kind::data, std::nullopt});
+        if (k.id && !k.id->empty()) put(*k.id, KeyLoc{layer, member, k.t, KeyLoc::Kind::data, std::nullopt}, false);
       }
     }
   }
   // Mask shape keys: `<entry>@<maskId>` per path, and the bare entry id.
-  for (const auto& [id, np] : d.nodes()) {
-    for (const Json& k : read_node_mask_anim(*np)) {
+  if (const Node* n = d.node(layer)) {
+    for (const Json& k : read_node_mask_anim(*n)) {
       const Json& kid = k.at("id");
       if (!kid.is_string() || kid.str().empty()) continue;
       const double t = k.at("t").num();
@@ -127,22 +150,47 @@ void KeyIndex::build(const Document& d) {
       if (paths.is_array()) {
         for (const Json& p : paths.arr()) {
           const std::string pid = p.at("id").is_string() ? p.at("id").str() : "undefined";
-          (*map)[kid.str() + "@" + pid] = KeyLoc{id, "mask:" + pid, t, KeyLoc::Kind::mask, pid};
+          put(kid.str() + "@" + pid, KeyLoc{layer, "mask:" + pid, t, KeyLoc::Kind::mask, pid}, true);
         }
       }
-      map->try_emplace(kid.str(), KeyLoc{id, "mask:", t, KeyLoc::Kind::mask, std::nullopt});
+      put(kid.str(), KeyLoc{layer, "mask:", t, KeyLoc::Kind::mask, std::nullopt}, false);
     }
   }
-  map_ = std::move(map);
+  if (!ids.empty()) byLayer_[layer] = std::move(ids);
+}
+
+void KeyIndex::settle(const Document& d, const Parts& written) {
+  // What this transaction wrote after its last lookup would otherwise be
+  // reconciled against the NEXT transaction's journal, which does not name it.
+  if (!stale_) return;
+  if (map_) refresh(d, written);
+  stale_ = false;
+}
+
+void KeyIndex::ensure(const Document& d) {
+  if (!map_) {
+    build(d);
+  } else if (stale_) {
+    if (const Parts* journal = d.journal()) refresh(d, *journal);
+    else build(d);
+  }
+  stale_ = false;
+}
+
+void KeyIndex::refresh(const Document& d, const Parts& written) {
+  for (const auto& [layer, before] : written.anims) index_layer(d, layer);
+  for (const auto& [layer, before] : written.nodes) {
+    if (!written.anims.contains(layer)) index_layer(d, layer);  // its mask keys
+  }
 }
 
 bool KeyIndex::has(const Document& d, const std::string& id) {
-  if (!map_) build(d);
+  ensure(d);
   return map_->contains(id);
 }
 
 std::optional<KeyLoc> KeyIndex::resolve(const Document& d, const std::string& id) {
-  if (!map_) build(d);
+  ensure(d);
   if (const auto it = map_->find(id); it != map_->end()) return it->second;
   const auto fb = parse_fallback_key_id(id);
   if (!fb) return std::nullopt;

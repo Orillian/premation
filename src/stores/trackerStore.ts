@@ -25,6 +25,7 @@
 
 import type { MaskTrackMethod } from '@motion/engine-api';
 import { create } from 'zustand';
+import { t } from '@core/i18n';
 import type { CompTrackSample } from '@core/tracking/trackVideoLayer';
 
 /**
@@ -215,6 +216,12 @@ interface TrackerStore {
   result: TrackerResult | null;
   /** Human-readable outcome/error line for the section. */
   note: string | null;
+  /**
+   * The note reports a success (something was applied or created) even with no
+   * result held. The section's tone reads this flag, never the note's wording,
+   * which is translated.
+   */
+  noteOk: boolean;
 
   /**
    * True while the "Advanced tracking" disclosure is open. The overlay keys
@@ -268,7 +275,7 @@ interface TrackerStore {
   setDense: (dense: boolean) => void;
   beginTracking: () => void;
   setProgress: (p: number) => void;
-  finishTracking: (result: TrackerResult | null, note: string | null) => void;
+  finishTracking: (result: TrackerResult | null, note: string | null, noteOk?: boolean) => void;
   /** Arm (or disarm) the viewport for the one-click target pick. */
   setAdvancedOpen: (open: boolean) => void;
   setAutoPhase: (phase: AutoPhase, intent?: 'track' | 'object') => void;
@@ -301,6 +308,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
   progress: 0,
   result: null,
   note: null,
+  noteOk: false,
   advancedOpen: false,
   pickIntent: 'track',
   autoPhase: 'idle',
@@ -357,21 +365,21 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
       // With a held track, moving a handle CORRECTS that frame's sample (AE:
       // fix the frame, then track on from it) instead of discarding the track.
       if (s.result && s.cursorTime !== null && s.result.tracks[index]) {
-        const t = s.cursorTime;
+        const at = s.cursorTime;
         const track = s.result.tracks[index]!;
         let hit = -1;
         for (let i = 0; i < track.length; i++) {
-          if (Math.abs(track[i]!.compTime - t) <= 0.021 && (hit < 0 || Math.abs(track[i]!.compTime - t) < Math.abs(track[hit]!.compTime - t))) hit = i;
+          if (Math.abs(track[i]!.compTime - at) <= 0.021 && (hit < 0 || Math.abs(track[i]!.compTime - at) < Math.abs(track[hit]!.compTime - at))) hit = i;
         }
         if (hit >= 0) {
           const fixed = track.slice();
           fixed[hit] = { ...fixed[hit]!, x, y, confidence: 1, coasted: false };
           const tracks = s.result.tracks.slice();
           tracks[index] = fixed;
-          const corrections = s.corrections.includes(t) ? s.corrections : [...s.corrections, t];
+          const corrections = s.corrections.includes(at) ? s.corrections : [...s.corrections, at];
           return {
             ...s, points, result: { ...s.result, tracks }, corrections,
-            note: 'Corrected this frame. Track forward or backward to re-track from here.',
+            note: t('stores.tracker.corrected', 'Corrected this frame. Track forward or backward to re-track from here.'),
           };
         }
       }
@@ -379,10 +387,10 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     }),
   setSizes: (featureHalf, searchHalf) => set({ featureHalf, searchHalf }),
   setDense: (dense) => set({ dense }),
-  beginTracking: () => set({ tracking: true, progress: 0, result: null, note: null }),
+  beginTracking: () => set({ tracking: true, progress: 0, result: null, note: null, noteOk: false }),
   setProgress: (p) => set({ progress: p }),
-  finishTracking: (result, note) =>
-    set({ tracking: false, progress: 0, result, note, autoPhase: 'idle' }),
+  finishTracking: (result, note, noteOk = false) =>
+    set({ tracking: false, progress: 0, result, note, noteOk, autoPhase: 'idle' }),
   setAdvancedOpen: (advancedOpen) => set({ advancedOpen }),
   // Intent defaults to 'track' whenever a pick is armed WITHOUT naming one:
   // a stale 'object' intent surviving into the next plain pick would silently
@@ -441,7 +449,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     set({ points: at, cursorTime: time });
   },
   restore: ({ mode, points, attach, featureHalf, searchHalf, result }) =>
-    set({ mode, points, attach, featureHalf, searchHalf, result, note: result ? 'Restored the track saved on this layer.' : null, corrections: [], cursorTime: null }),
+    set({ mode, points, attach, featureHalf, searchHalf, result, note: result ? t('stores.tracker.restored', 'Restored the track saved on this layer.') : null, corrections: [], cursorTime: null }),
   clear: () =>
     set({
       nodeId: null, armed: false, points: [], result: null, note: null,

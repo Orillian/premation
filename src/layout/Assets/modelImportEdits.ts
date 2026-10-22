@@ -12,6 +12,7 @@ import { insertFragment, type InsertFrame } from '@/engine-client/insertFragment
 import { diskPathOf } from '@core/assets/local/diskPathOf';
 import { runEngineJob } from '@core/engine/engineJobs';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 
 /** Run `build` (buildGltfModel / buildModelFiles) as one engine entry. Null when it failed or the engine refused (toasted). */
 export async function importModelEdit(
@@ -68,7 +69,7 @@ export async function importModelSelection(
   // The model first: the job converts files[0] with the rest as its sidecars.
   // A .gltf beats a .bin-less .glb only by order; a selection holds one model.
   const model = files.find((f) => ANY_MODEL_FILE_PATTERN.test(f.name));
-  if (!model) throw new Error('Select a 3D model: .glb, .gltf, .obj, .fbx, .usda or .usdz (with its sidecar files, if it has them).');
+  if (!model) throw new Error(t('assets.model.selectModel', 'Select a 3D model: .glb, .gltf, .obj, .fbx, .usda or .usdz (with its sidecar files, if it has them).'));
   const paths = files.map((f) => diskPathOf(f));
   const ordered = [model, ...files.filter((f) => f !== model)];
   const orderedPaths = ordered.map((f) => paths[files.indexOf(f)]);
@@ -80,13 +81,13 @@ export async function importModelSelection(
     );
     if (outcome) {
       if (outcome.status !== 'done' || !outcome.result) {
-        throw new Error(outcome.error?.message ?? (outcome.status === 'cancelled' ? 'cancelled' : 'the model could not be converted'));
+        throw new Error(outcome.error?.message ?? (outcome.status === 'cancelled' ? t('assets.model.cancelled', 'cancelled') : t('assets.model.convertFailed', 'the model could not be converted')));
       }
       const { glb, warnings } = outcome.result;
       const readBytes = window.motionEditor?.file?.readBytes;
-      if (typeof readBytes !== 'function') throw new Error('the converted model could not be read back');
+      if (typeof readBytes !== 'function') throw new Error(t('assets.model.readBackFailed', 'the converted model could not be read back'));
       const raw = (await readBytes(glb)) as Uint8Array | ArrayBuffer | null;
-      if (!raw) throw new Error(`the converted model could not be read back (${glb})`);
+      if (!raw) throw new Error(t('assets.model.readBackFailedPath', 'the converted model could not be read back ({path})', { path: glb }));
       const u8 = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
       const bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
       const imported = await edit(`Import ${model.name}`, {
@@ -94,16 +95,16 @@ export async function importModelSelection(
         files: [{ path: glb, asSequence: false, createComposition: false }],
       }, { quiet: true });
       const itemId = imported.ok ? (imported.value[0] as { items?: string[] } | undefined)?.items?.[0] : undefined;
-      if (!itemId) throw new Error(imported.ok ? 'the engine did not take the model' : imported.error.message);
+      if (!itemId) throw new Error(imported.ok ? t('assets.model.notTaken', 'the engine did not take the model') : imported.error.message);
       const result = await importModelEdit(`Import ${model.name}`, (b, f) => buildGltfModel(b, f, bytes, model.name, { modelAsset: itemId }));
-      if (!result) throw new Error('the engine did not take the model');
+      if (!result) throw new Error(t('assets.model.notTaken', 'the engine did not take the model'));
       return { result, name: model.name, warnings };
     }
   }
 
   // No disk paths (or an engine without the converter): glTF only, packed into the document.
   if (!MODEL_FILE_PATTERN.test(model.name)) {
-    throw new Error(`.${extOf(model.name)} models are converted by the desktop app's engine; import the file from disk there, or export it as .glb.`);
+    throw new Error(t('assets.model.desktopOnly', '.{ext} models are converted by the desktop app\'s engine; import the file from disk there, or export it as .glb.', { ext: extOf(model.name) }));
   }
   const sources = await Promise.all(files.map(async (f) => ({
     name: f.name,
@@ -113,17 +114,28 @@ export async function importModelSelection(
     bytes: await f.arrayBuffer(),
   })));
   const result = await importModelEdit(`Import ${model.name}`, (b, f) => buildModelFiles(b, f, sources));
-  if (!result) throw new Error('the engine did not take the model');
+  if (!result) throw new Error(t('assets.model.notTaken', 'the engine did not take the model'));
   return { result, name: model.name, warnings: [] };
 }
 
 /** The toast line for a finished import. */
 export function modelImportMessage(o: ModelSelectionOutcome): { level: 'success' | 'warning'; message: string } {
   const { result } = o;
-  const clip = result.clip
-    ? ` · clip “${result.clip.name}” baked as keyframes (${result.clip.duration.toFixed(1)}s${result.clip.extraClips > 0 ? `, ${result.clip.extraClips} more clip${result.clip.extraClips === 1 ? '' : 's'} in file` : ''})`
-    : '';
+  const c = result.clip;
+  const clipVars = c ? { name: c.name, duration: c.duration.toFixed(1), n: c.extraClips } : undefined;
+  const clip = !c || !clipVars
+    ? ''
+    : c.extraClips <= 0
+      ? t('assets.model.clipBaked', ' · clip “{name}” baked as keyframes ({duration}s)', clipVars)
+      : c.extraClips === 1
+        ? t('assets.model.clipBakedMoreOne', ' · clip “{name}” baked as keyframes ({duration}s, {n} more clip in file)', clipVars)
+        : t('assets.model.clipBakedMoreOther', ' · clip “{name}” baked as keyframes ({duration}s, {n} more clips in file)', clipVars);
   const notes = [result.warning, ...o.warnings].filter((w): w is string => !!w);
-  if (notes.length > 0) return { level: 'warning', message: `Imported “${o.name}” — ${notes.join(' · ')}` };
-  return { level: 'success', message: `Imported “${o.name}” — ${result.layerCount} layer${result.layerCount === 1 ? '' : 's'}${clip}` };
+  if (notes.length > 0) return { level: 'warning', message: t('assets.model.importedNotes', 'Imported “{name}” — {notes}', { name: o.name, notes: notes.join(' · ') }) };
+  return {
+    level: 'success',
+    message: result.layerCount === 1
+      ? t('assets.model.importedOne', 'Imported “{name}” — {n} layer{clip}', { name: o.name, n: result.layerCount, clip })
+      : t('assets.model.importedOther', 'Imported “{name}” — {n} layers{clip}', { name: o.name, n: result.layerCount, clip }),
+  };
 }

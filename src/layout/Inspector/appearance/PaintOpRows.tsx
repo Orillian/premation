@@ -16,6 +16,7 @@ import {
   type PaintComposite,
   type PaintOpOptions,
 } from '@core/paint/stroke';
+import { t } from '@core/i18n';
 import styles from '../TransformSection.module.css';
 
 export function PaintOpRows({
@@ -31,13 +32,13 @@ export function PaintOpRows({
   return (
     <>
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Composite</span>
+        <span className={styles.popoverLabel}>{t('inspector.paintOps.composite', 'Composite')}</span>
         <select
           className={styles.select}
           style={{ width: 110 }}
           value={value.composite ?? 'below'}
-          aria-label={`${label} composite`}
-          title="Render this paint below or above the previous paint in the layer (AE: Composite)"
+          aria-label={t('inspector.paintOps.compositeAria', '{label} composite', { label })}
+          title={t('inspector.paintOps.compositeHint', 'Render this paint below or above the previous paint in the layer (AE: Composite)')}
           onChange={(e) => onChange({ ...value, composite: e.target.value as PaintComposite })}
         >
           {PAINT_COMPOSITES.map((c) => (
@@ -46,13 +47,13 @@ export function PaintOpRows({
         </select>
       </div>
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Blend Mode</span>
+        <span className={styles.popoverLabel}>{t('inspector.paintOps.blendMode', 'Blend Mode')}</span>
         <select
           className={styles.select}
           style={{ width: 110 }}
           value={value.blendMode ?? 'normal'}
-          aria-label={`${label} blend mode`}
-          title="Blend with the paints already drawn in this layer"
+          aria-label={t('inspector.paintOps.blendModeAria', '{label} blend mode', { label })}
+          title={t('inspector.paintOps.blendModeHint', 'Blend with the paints already drawn in this layer')}
           onChange={(e) => onChange({ ...value, blendMode: e.target.value as PaintBlendMode })}
         >
           {PAINT_BLEND_MODES.map((m) => (

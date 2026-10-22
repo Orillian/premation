@@ -1,7 +1,8 @@
 /**
- * Preview panel — After Effects' Preview panel, on the approved 2026-10-19
- * sheet: the timecode on a row of its own, the transport centred under it,
- * then the preview settings as label + field rows, and the cache readout at
+ * Preview panel — After Effects' Preview panel (2026-10-21 redesign): the
+ * timecode with the frame / rate / duration beside it and a playhead strip
+ * under both, one transport row, then the preview settings as label +
+ * segmented rows (every choice visible, one click), and the cache meter at
  * the foot.
  *
  * Only settings this app actually has, in AE's order — no stand-ins for AE's
@@ -16,11 +17,12 @@
  *   • Cache      → the timeline's cache lane, as two fractions (RAM, disk)
  *
  * Nothing here follows the playhead through React: the step buttons read it
- * when pressed (`getTime`), and the timecode is a text node the playhead
- * subscription rewrites, so playback renders this panel not once per frame.
+ * when pressed (`getTime`), the timecode is a text node and the playhead
+ * strip a transform the playhead subscription rewrites, so playback renders
+ * this panel not once per frame.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@stores/projectStore';
 import { getTime, setTime as setPlayheadTime } from '@stores/playbackClockStore';
 import { useRenderQualityStore, type PreviewResolution } from '@stores/renderQualityStore';
@@ -33,38 +35,49 @@ import { edit } from '@core/engine/uiEdits';
 import { compTime } from '@core/engine/propRefs';
 import { audioEngine } from '@core/audio/AudioEngine';
 import { framesToTimecode } from '@core/time/timecode';
+import { t } from '@core/i18n';
+import { cn } from '@utils/cn';
 import { LiveTimecode } from '@layout/Timeline/LiveTimecode';
+import { useLivePlayhead } from '@layout/Timeline/useLivePlayhead';
 import { usePreviewCacheStats } from '@layout/Timeline/CacheActions';
 import { Accordion, type AccordionItem } from '@components/Accordion';
 import { Icon } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
+import { Segmented, type SegmentedOption } from '@components/Segmented';
 import { Switch } from '@components/Switch';
 import styles from './PreviewPanel.module.css';
 
 type PlayRange = 'work-area' | 'entire-comp' | 'current-forward';
-type ResolutionChoice = 'auto' | PreviewResolution;
+/** The Segmented control's values are strings: 'auto' or the divisor ('1'…'4'). */
+type ResolutionChoice = 'auto' | `${PreviewResolution}`;
 
-const RANGES: ReadonlyArray<{ value: PlayRange; label: string }> = [
-  { value: 'work-area', label: 'Work Area' },
-  { value: 'entire-comp', label: 'Entire Composition' },
-  { value: 'current-forward', label: 'From Current Time' },
-];
+function ranges(): ReadonlyArray<SegmentedOption<PlayRange>> {
+  return [
+    { value: 'work-area', label: t('inspector.preview.rangeWorkAreaShort', 'Work area') },
+    { value: 'entire-comp', label: t('inspector.preview.rangeCompShort', 'Comp') },
+    { value: 'current-forward', label: t('inspector.preview.rangeFromNowShort', 'From now') },
+  ];
+}
 
-/** Frames the step buttons skip over (0 = the next frame). */
-const STEPS: ReadonlyArray<{ skip: number; label: string }> = [
-  { skip: 0, label: '1 frame' },
-  { skip: 1, label: '2 frames' },
-  { skip: 2, label: '3 frames' },
-  { skip: 5, label: '6 frames' },
-];
+/** Frames the step buttons skip over (0 = the next frame), as option values. */
+function steps(): ReadonlyArray<SegmentedOption<string>> {
+  return [
+    { value: '0', label: '1', ariaLabel: t('inspector.preview.stepOne', '1 frame') },
+    { value: '1', label: '2', ariaLabel: t('inspector.preview.stepMany', '{n} frames', { n: 2 }) },
+    { value: '2', label: '3', ariaLabel: t('inspector.preview.stepMany', '{n} frames', { n: 3 }) },
+    { value: '5', label: '6', ariaLabel: t('inspector.preview.stepMany', '{n} frames', { n: 6 }) },
+  ];
+}
 
-const RESOLUTIONS: ReadonlyArray<{ value: ResolutionChoice; label: string }> = [
-  { value: 'auto', label: 'Auto' },
-  { value: 1, label: 'Full' },
-  { value: 2, label: 'Half' },
-  { value: 3, label: 'Third' },
-  { value: 4, label: 'Quarter' },
-];
+function resolutions(): ReadonlyArray<SegmentedOption<ResolutionChoice>> {
+  return [
+    { value: 'auto', label: t('inspector.preview.resAuto', 'Auto') },
+    { value: '1', label: t('inspector.preview.resFull', 'Full') },
+    { value: '2', label: '½', ariaLabel: t('inspector.preview.resHalf', 'Half') },
+    { value: '3', label: '⅓', ariaLabel: t('inspector.preview.resThird', 'Third') },
+    { value: '4', label: '¼', ariaLabel: t('inspector.preview.resQuarter', 'Quarter') },
+  ];
+}
 
 export function PreviewPanel(): JSX.Element {
   const activeTabId = useProjectStore((s) => s.activeTabId);
@@ -116,7 +129,7 @@ export function PreviewPanel(): JSX.Element {
   const draft = useRenderQualityStore((s) => s.draft);
   const setDraft = useRenderQualityStore((s) => s.setDraft);
 
-  const resolutionChoice: ResolutionChoice = adaptive ? 'auto' : resolution;
+  const resolutionChoice: ResolutionChoice = adaptive ? 'auto' : `${resolution}`;
   const setResolutionChoice = (next: ResolutionChoice): void => {
     const rq = useRenderQualityStore.getState();
     if (next === 'auto') {
@@ -124,9 +137,20 @@ export function PreviewPanel(): JSX.Element {
       rq.setResolution(1);
     } else {
       rq.setAdaptive(false);
-      rq.setResolution(next);
+      rq.setResolution(Number(next) as PreviewResolution);
     }
   };
+
+  // The playhead strip under the timecode: a transform the playhead
+  // subscription writes, never a React render.
+  const headRef = useRef<HTMLSpanElement | null>(null);
+  const applyHead = useCallback((time: number): void => {
+    const el = headRef.current;
+    if (!el) return;
+    const f = duration > 0 ? Math.min(1, Math.max(0, time / duration)) : 0;
+    el.style.transform = `scaleX(${f})`;
+  }, [duration]);
+  useLivePlayhead(applyHead, !!activeTabId);
 
   // Audio in the preview (the master mute)
   const [muteAudio, setMuteAudioState] = useState(() => audioEngine.isMasterMuted());
@@ -173,81 +197,77 @@ export function PreviewPanel(): JSX.Element {
     setTime(duration, Math.round(duration * fps));
   };
 
-  const stepWord = skip > 0 ? `${skip + 1} frames` : 'one frame';
+  const backTip = skip > 0
+    ? t('inspector.preview.backMany', 'Back {n} frames (Page Up)', { n: skip + 1 })
+    : t('inspector.preview.backOne', 'Back one frame (Page Up)');
+  const forwardTip = skip > 0
+    ? t('inspector.preview.forwardMany', 'Forward {n} frames (Page Down)', { n: skip + 1 })
+    : t('inspector.preview.forwardOne', 'Forward one frame (Page Down)');
 
   const groups: AccordionItem[] = [
     {
       id: 'preview.playback',
-      title: 'Playback',
+      title: t('inspector.preview.playback', 'Playback'),
       defaultOpen: true,
       content: (
         <div className={styles.rows}>
-          <label className={styles.row}>
-            <span className={styles.label}>Range</span>
-            <select
-              className={styles.select}
-              aria-label="Range"
-              title="What a preview plays — and loops"
+          <div className={styles.row} title={t('inspector.preview.rangeTitle', 'What a preview plays — and loops')}>
+            <span className={styles.label}>{t('inspector.preview.range', 'Range')}</span>
+            <Segmented
+              className={styles.seg}
+              size="sm"
+              fullWidth
+              aria-label={t('inspector.preview.range', 'Range')}
+              options={ranges()}
               value={range}
-              onChange={(e) => setRange(e.currentTarget.value as PlayRange)}
-            >
-              {RANGES.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.row}>
-            <span className={styles.label}>Step</span>
-            <select
-              className={styles.select}
-              aria-label="Step"
-              title="How far the previous and next frame buttons move"
+              onChange={setRange}
+            />
+          </div>
+          <div className={styles.row} title={t('inspector.preview.stepTitle', 'How far the previous and next frame buttons move')}>
+            <span className={styles.label}>{t('inspector.preview.step', 'Step')}</span>
+            <Segmented
+              className={styles.seg}
+              size="sm"
+              fullWidth
+              aria-label={t('inspector.preview.step', 'Step')}
+              options={steps()}
               value={String(skip)}
-              onChange={(e) => setSkip(Number(e.currentTarget.value))}
-            >
-              {STEPS.map((s) => (
-                <option key={s.skip} value={s.skip}>{s.label}</option>
-              ))}
-            </select>
-          </label>
+              onChange={(v) => setSkip(Number(v))}
+            />
+          </div>
         </div>
       ),
     },
     {
       id: 'preview.quality',
-      title: 'Quality',
+      title: t('inspector.preview.quality', 'Quality'),
       defaultOpen: true,
       content: (
         <div className={styles.rows}>
+          <div className={styles.row} title={t('inspector.preview.resolutionTitle', 'Pixels the viewer renders: Auto drops while a drag or playback cannot keep up')}>
+            <span className={styles.label}>{t('inspector.preview.resolution', 'Resolution')}</span>
+            <Segmented
+              className={styles.seg}
+              size="sm"
+              fullWidth
+              aria-label={t('inspector.preview.resolution', 'Resolution')}
+              options={resolutions()}
+              value={resolutionChoice}
+              onChange={setResolutionChoice}
+            />
+          </div>
           <label className={styles.row}>
-            <span className={styles.label}>Resolution</span>
-            <select
-              className={styles.select}
-              aria-label="Resolution"
-              title="Pixels the viewer renders: Auto drops while a drag or playback cannot keep up"
-              value={String(resolutionChoice)}
-              onChange={(e) => {
-                const v = e.currentTarget.value;
-                setResolutionChoice(v === 'auto' ? 'auto' : (Number(v) as PreviewResolution));
-              }}
-            >
-              {RESOLUTIONS.map((r) => (
-                <option key={String(r.value)} value={String(r.value)}>{r.label}</option>
-              ))}
-            </select>
-          </label>
-          <div className={styles.row}>
-            <span className={styles.label}>Draft</span>
-            <div className={styles.switchRow}>
+            <span className={styles.label}>{t('inspector.preview.draft', 'Draft')}</span>
+            <span className={styles.switchRow}>
               <Switch
-                aria-label="Draft quality"
+                aria-label={t('inspector.preview.draftAria', 'Draft quality')}
                 checked={draft}
-                title={draft ? 'Draft quality: on — motion blur skipped while previewing' : 'Draft quality: off'}
+                title={draft ? t('inspector.preview.draftOn', 'Draft quality: on — motion blur skipped while previewing') : t('inspector.preview.draftOff', 'Draft quality: off')}
                 onChange={(e) => setDraft(e.currentTarget.checked)}
               />
-              <span className={styles.help}>skips motion blur</span>
-            </div>
-          </div>
+              <span className={styles.help}>{t('inspector.preview.draftHelpLong', 'Skip motion blur while previewing')}</span>
+            </span>
+          </label>
         </div>
       ),
     },
@@ -256,24 +276,30 @@ export function PreviewPanel(): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.top}>
-        {/* ── The timecode, on a row of its own ── */}
-        <div className={styles.timecodeRow} aria-label="Current time">
+        {/* ── The timecode, with frame / rate / duration beside it ── */}
+        <div className={styles.timecodeRow} aria-label={t('inspector.preview.currentTime', 'Current time')}>
           <span className={styles.timecode} data-numeric>
             {activeTabId
               ? <LiveTimecode fps={fps} />
               : framesToTimecode(0, fps)}
           </span>
-          <span className={styles.timecodeSub} data-numeric>
-            {activeTabId ? <>frame <LiveTimecode fps={fps} format="frames" /></> : 'frame 00000'}
-            {' · '}{fps.toFixed(2).replace(/\.00$/, '')} fps · {framesToTimecode(duration, fps)}
+          <span className={styles.timecodeMeta} data-numeric>
+            <span>
+              {t('inspector.preview.frameWord', 'frame')}{' '}
+              {activeTabId ? <LiveTimecode fps={fps} format="frames" /> : '00000'}
+            </span>
+            <span>{fps.toFixed(2).replace(/\.00$/, '')} fps · {framesToTimecode(duration, fps)}</span>
           </span>
         </div>
+        <div className={styles.headTrack} aria-hidden>
+          <span ref={headRef} className={styles.headFill} />
+        </div>
 
-        {/* ── Transport, centred: first, step back, play, step on, last · loop, audio ── */}
-        <div className={styles.transport} role="toolbar" aria-label="Preview transport controls">
+        {/* ── Transport: first, step back, play, step on, last · loop, audio ── */}
+        <div className={styles.transport} role="toolbar" aria-label={t('inspector.preview.transportAria', 'Preview transport controls')}>
           <IconButton
-            aria-label="First frame (Home)"
-            tooltip="First frame (Home)"
+            aria-label={t('inspector.preview.firstFrame', 'First frame (Home)')}
+            tooltip={t('inspector.preview.firstFrame', 'First frame (Home)')}
             variant="ghost"
             size="sm"
             onClick={handleFirstFrame}
@@ -282,8 +308,8 @@ export function PreviewPanel(): JSX.Element {
           </IconButton>
 
           <IconButton
-            aria-label="Previous frame"
-            tooltip={`Back ${stepWord} (Page Up)`}
+            aria-label={t('inspector.preview.prevFrame', 'Previous frame')}
+            tooltip={backTip}
             variant="ghost"
             size="sm"
             onClick={handlePrevFrame}
@@ -292,9 +318,9 @@ export function PreviewPanel(): JSX.Element {
           </IconButton>
 
           <IconButton
-            aria-label={playing ? 'Pause' : 'Play'}
-            tooltip={playing ? 'Pause playback (Space)' : 'Play preview (Space)'}
-            variant="primary"
+            aria-label={playing ? t('inspector.preview.pause', 'Pause') : t('inspector.preview.play', 'Play')}
+            tooltip={playing ? t('inspector.preview.pauseTip', 'Pause playback (Space)') : t('inspector.preview.playTip', 'Play preview (Space)')}
+            variant="ghost"
             size="md"
             className={styles.play}
             onClick={handleTogglePlay}
@@ -303,8 +329,8 @@ export function PreviewPanel(): JSX.Element {
           </IconButton>
 
           <IconButton
-            aria-label="Next frame"
-            tooltip={`Forward ${stepWord} (Page Down)`}
+            aria-label={t('inspector.preview.nextFrame', 'Next frame')}
+            tooltip={forwardTip}
             variant="ghost"
             size="sm"
             onClick={handleNextFrame}
@@ -313,8 +339,8 @@ export function PreviewPanel(): JSX.Element {
           </IconButton>
 
           <IconButton
-            aria-label="Last frame (End)"
-            tooltip="Last frame (End)"
+            aria-label={t('inspector.preview.lastFrame', 'Last frame (End)')}
+            tooltip={t('inspector.preview.lastFrame', 'Last frame (End)')}
             variant="ghost"
             size="sm"
             onClick={handleLastFrame}
@@ -325,8 +351,9 @@ export function PreviewPanel(): JSX.Element {
           <span className={styles.transportGap} aria-hidden />
 
           <IconButton
-            aria-label={looping ? 'Disable loop' : 'Enable loop'}
-            tooltip={looping ? 'Loop: on' : 'Loop: off — play once'}
+            className={styles.toggle}
+            aria-label={looping ? t('inspector.preview.disableLoop', 'Disable loop') : t('inspector.preview.enableLoop', 'Enable loop')}
+            tooltip={looping ? t('inspector.preview.loopOn', 'Loop: on') : t('inspector.preview.loopOff', 'Loop: off — play once')}
             variant="ghost"
             active={looping}
             aria-pressed={looping}
@@ -337,12 +364,13 @@ export function PreviewPanel(): JSX.Element {
           </IconButton>
 
           <IconButton
+            className={styles.toggle}
             size="sm"
             variant="ghost"
             active={!muteAudio}
-            aria-label="Include audio"
+            aria-label={t('inspector.preview.includeAudio', 'Include audio')}
             aria-pressed={!muteAudio}
-            tooltip={muteAudio ? 'Audio: muted in previews' : 'Audio: playing in previews'}
+            tooltip={muteAudio ? t('inspector.preview.audioMuted', 'Audio: muted in previews') : t('inspector.preview.audioPlaying', 'Audio: playing in previews')}
             onClick={() => setMuteAudio(!muteAudio)}
           >
             <Icon name={muteAudio ? 'audio-off' : 'audio'} size="sm" />
@@ -352,16 +380,31 @@ export function PreviewPanel(): JSX.Element {
 
       <Accordion className={styles.groups} items={groups} openOverrides={groupsOpen} onToggle={toggleGroup} />
 
-      {/* ── The cache lane's readout: what will play in real time ── */}
-      <div className={styles.cacheRow} title="Preview cache — frames of the comp (or work area) held in memory and on disk">
-        <span className={styles.label}>Cache</span>
+      {/* ── The cache lane's meter: what will play in real time ── */}
+      <div className={styles.cache} title={t('inspector.preview.cacheTitle', 'Preview cache — frames of the comp (or work area) held in memory and on disk')}>
+        <div className={styles.cacheHead}>
+          <span className={styles.label}>{t('inspector.preview.cache', 'Cache')}</span>
+          <span className={styles.cacheLegend} data-numeric>
+            {cache.total > 0 ? (
+              <>
+                <span className={styles.legendItem}>
+                  <span className={cn(styles.dot, styles.dotRam)} aria-hidden />
+                  {t('inspector.preview.cacheRamOnly', 'RAM {ram}%', { ram: ramPct })}
+                </span>
+                {diskPct !== null ? (
+                  <span className={styles.legendItem}>
+                    <span className={cn(styles.dot, styles.dotDisk)} aria-hidden />
+                    {t('inspector.preview.cacheDiskOnly', 'Disk {disk}%', { disk: diskPct })}
+                  </span>
+                ) : null}
+              </>
+            ) : '—'}
+          </span>
+        </div>
         <div className={styles.cacheStrip} aria-hidden>
           <span className={styles.cacheRam} style={{ width: `${ramPct}%` }} />
           <span className={styles.cacheDisk} style={{ width: `${diskPct ?? 0}%` }} />
         </div>
-        <span className={styles.cacheText} data-numeric>
-          {cache.total > 0 ? `${ramPct}% RAM${diskPct === null ? '' : ` · ${diskPct}% disk`}` : '—'}
-        </span>
       </div>
     </div>
   );

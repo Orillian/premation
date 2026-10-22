@@ -7,6 +7,7 @@
 
 import { useMemo } from 'react';
 import type { TrackerResult } from '@stores/trackerStore';
+import { t } from '@core/i18n';
 import styles from '../TrackMotionSection.module.css';
 
 const W = 240;
@@ -38,7 +39,7 @@ export function TrackConfidenceGraph({ result, time, corrections, minConfidence 
     <figure className={styles.group} style={{ margin: 0 }}>
       <svg
         role="img"
-        aria-label={`Track confidence: ${low} weak or coasted samples`}
+        aria-label={t('inspector.trackConfidence.aria', 'Track confidence: {n} weak or coasted samples', { n: low })}
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         height={H}
@@ -57,7 +58,9 @@ export function TrackConfidenceGraph({ result, time, corrections, minConfidence 
         {playX !== null ? <line x1={playX} x2={playX} y1={0} y2={H} stroke="var(--color-text-primary)" strokeWidth={1} vectorEffect="non-scaling-stroke" /> : null}
       </svg>
       <figcaption className={styles.cardHint}>
-        Confidence per point{low > 0 ? ` · ${low} weak or coasted frames (shaded)` : ''}. Drag a point on a weak frame to correct it, then track on.
+        {low > 0
+          ? t('inspector.trackConfidence.captionWeak', 'Confidence per point · {n} weak or coasted frames (shaded). Drag a point on a weak frame to correct it, then track on.', { n: low })
+          : t('inspector.trackConfidence.caption', 'Confidence per point. Drag a point on a weak frame to correct it, then track on.')}
       </figcaption>
     </figure>
   );

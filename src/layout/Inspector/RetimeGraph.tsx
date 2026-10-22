@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Command } from '@motion/engine-api';
 import { useGesture } from '@hooks/useGesture';
+import { t } from '@core/i18n';
 import styles from './RetimeSection.module.css';
 
 export interface RetimeGraphKey {
@@ -253,7 +254,7 @@ export function RetimeGraph(props: RetimeGraphProps): JSX.Element {
             x={xOf(runsOutAtSec)} y={PAD_TOP}
             width={Math.max(0, xOf(outSec) - xOf(runsOutAtSec))} height={plotH}
           >
-            <title>No footage left — the last frame holds</title>
+            <title>{t('inspector.retimeGraph.runout', 'No footage left — the last frame holds')}</title>
           </rect>
         )}
         <path className={styles.area} d={area} />
@@ -274,8 +275,8 @@ export function RetimeGraph(props: RetimeGraphProps): JSX.Element {
             tabIndex={0}
             role="button"
             aria-label={kind === 'speed'
-              ? `Speed point ${Math.round(k.value)}% at ${formatSec(k.compT)}`
-              : `Source frame ${Math.round(k.value)} at ${formatSec(k.compT)}`}
+              ? t('inspector.retimeGraph.speedPointAria', 'Speed point {value}% at {time}', { value: Math.round(k.value), time: formatSec(k.compT) })
+              : t('inspector.retimeGraph.framePointAria', 'Source frame {value} at {time}', { value: Math.round(k.value), time: formatSec(k.compT) })}
             onFocus={() => onSelect(k.id)}
             onKeyDown={(e) => onKeyDown(e, k)}
           />
@@ -283,7 +284,7 @@ export function RetimeGraph(props: RetimeGraphProps): JSX.Element {
       </svg>
       <div className={styles.graphFoot}>
         <span>{formatSec(inSec)}</span>
-        <span>{kind === 'speed' ? 'Drag points · double-click to add' : 'Drag keys · double-click to add'}</span>
+        <span>{kind === 'speed' ? t('inspector.retimeGraph.dragPoints', 'Drag points · double-click to add') : t('inspector.retimeGraph.dragKeys', 'Drag keys · double-click to add')}</span>
         <span>{formatSec(outSec)}</span>
       </div>
     </div>

@@ -75,6 +75,10 @@ struct Manifest {
   /// `"entitlement"`: the bundle loads only with a valid token for it
   /// (entitlement.hpp; today only `premation-cloud`). Empty = free.
   std::string entitlement;
+  /// `"icon"`: bundle-relative, under `ui/` ("ui/icon.png"; png / svg / jpg / webp). Empty = none.
+  std::string icon;
+  /// `"panelTitle"`: the label of the effect card's button to the bundle's panel ("Studio"). Empty = "Panel".
+  std::string panelTitle;
   // P7 — contributions that are not effects (docs/PLUGIN_SDK.md "Commands", "Importers", …).
   std::vector<ManifestCommand> commands;
   std::vector<ManifestImporter> importers;

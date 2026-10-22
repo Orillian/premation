@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { t } from '@core/i18n';
 
 export function FpsMeter(): JSX.Element {
   const [on, setOn] = useState(false);
@@ -33,7 +34,7 @@ export function FpsMeter(): JSX.Element {
     <button
       type="button"
       onClick={() => setOn((v) => !v)}
-      title={on ? 'Hide FPS' : 'Show FPS'}
+      title={on ? t('statusBar.fps.hide', 'Hide FPS') : t('statusBar.fps.show', 'Show FPS')}
       style={{
         font: 'inherit',
         fontFamily: 'var(--font-family-mono)',

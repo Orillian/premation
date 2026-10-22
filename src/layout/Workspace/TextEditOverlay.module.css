@@ -1,0 +1,24 @@
+/*
+ * The on-canvas text editor (TextEditOverlay.tsx). Its geometry, font and
+ * colour are inline (they follow the layer); this is the chrome around them.
+ */
+
+/* Hidden until the first placement lands: before the layer's matrix reaches
+   the page the box has no position and would show at the stage's top-left,
+   then jump to the layer — which read as the text "coming from the corner"
+   on every Type-tool click (2026-10-19). */
+.editor {
+  visibility: hidden;
+}
+
+.editorPlaced {
+  visibility: visible;
+}
+
+/* The selected characters: the accent as a tint, not the browser's pale
+   highlight, which read as a white box behind the text. */
+.editor::selection,
+.editor *::selection {
+  background: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: inherit;
+}

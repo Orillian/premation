@@ -32,6 +32,7 @@ import { useCustomEaseStore, type CustomEase } from '@stores/customEaseStore';
 import { useEaseClipboardStore } from '@stores/easeClipboardStore';
 import { easeCurvePath, easeCurveGuides, EASE_THUMB } from './easeCurvePath';
 import styles from './EaseLibrarySection.module.css';
+import { t } from '@core/i18n';
 
 export interface EaseLibrarySectionProps {
   /** Every keyframe a click applies to — the caller's current selection. */
@@ -76,12 +77,12 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
 
   return (
     <>
-      <h3 className={styles.sectionLabel}>Ease Curves</h3>
+      <h3 className={styles.sectionLabel}>{t('motion.ease.curves', 'Ease Curves')}</h3>
       <div className={styles.families}>
         {families.map((row) => (
           <div key={row.family} className={styles.family}>
             <span className={styles.familyLabel}>{row.label}</span>
-            <div className={styles.curves} role="group" aria-label={`${row.label} easing curves`}>
+            <div className={styles.curves} role="group" aria-label={t('motion.ease.familyAria', '{family} easing curves', { family: row.label })}>
               {row.presets.map((preset) => {
                 const active = sameCurve(bezier, preset.bezier);
                 return (
@@ -94,12 +95,12 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
                     onClick={() => apply(preset)}
                     title={
                       preset.overshoots
-                        ? `${preset.label} — passes the target before settling`
+                        ? t('motion.ease.overshoots', '{name} — passes the target before settling', { name: preset.label })
                         : preset.label
                     }
                   >
                     <CurveThumb bezier={preset.bezier} guides={guides} />
-                    <span className={styles.curveName}>{DIRECTION_SHORT[preset.direction]}</span>
+                    <span className={styles.curveName}>{directionShort(preset.direction)}</span>
                   </button>
                 );
               })}
@@ -109,8 +110,8 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
 
         {curves.length > 0 && (
           <div className={styles.family}>
-            <span className={styles.familyLabel}>Saved</span>
-            <div className={styles.curves} role="group" aria-label="Saved easing curves">
+            <span className={styles.familyLabel}>{t('motion.ease.saved', 'Saved')}</span>
+            <div className={styles.curves} role="group" aria-label={t('motion.ease.savedAria', 'Saved easing curves')}>
               {curves.map((curve) => {
                 const active = sameCurve(bezier, curve.bezier);
                 return (
@@ -127,7 +128,7 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
                       e.preventDefault();
                       removeCurve(curve.id);
                     }}
-                    title={`${curve.label} — right-click to remove`}
+                    title={t('motion.ease.savedTitle', '{name} — right-click to remove', { name: curve.label })}
                   >
                     <CurveThumb bezier={curve.bezier} guides={guides} />
                     <span className={styles.curveName}>{curve.label}</span>
@@ -148,8 +149,8 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
             className={styles.saveInput}
             type="text"
             value={name}
-            placeholder="Name this curve"
-            aria-label="New ease curve name"
+            placeholder={t('motion.ease.namePlaceholder', 'Name this curve')}
+            aria-label={t('motion.ease.nameAria', 'New ease curve name')}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -163,15 +164,15 @@ export function EaseLibrarySection({ keyframeIds, bezier }: EaseLibrarySectionPr
             className={styles.saveButton}
             disabled={name.trim().length === 0}
             onClick={saveCurrent}
-            title="Save the selected keyframe's curve to the library"
+            title={t('motion.ease.saveTitle', 'Save the selected keyframe\'s curve to the library')}
           >
-            Save
+            {t('motion.ease.save', 'Save')}
           </button>
         </div>
       )}
 
       <p className={styles.note}>
-        Elastic and Bounce are generators, not curves — find them in the Bounce tab.
+        {t('motion.ease.note', 'Elastic and Bounce are generators, not curves — find them in the Bounce tab.')}
       </p>
     </>
   );
@@ -201,8 +202,11 @@ function CurveThumb({
 }
 
 /** The family name is already on the row, so the chip only needs the direction. */
-const DIRECTION_SHORT: Record<EasePreset['direction'], string> = {
-  in: 'In',
-  out: 'Out',
-  inOut: 'InOut',
-};
+function directionShort(direction: EasePreset['direction']): string {
+  switch (direction) {
+    case 'in': return t('motion.ease.in', 'In');
+    case 'out': return t('motion.ease.out', 'Out');
+    case 'inOut': return t('motion.ease.inOut', 'InOut');
+    default: return direction;
+  }
+}

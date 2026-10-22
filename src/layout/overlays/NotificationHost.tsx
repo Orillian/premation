@@ -8,6 +8,7 @@
 import { Toast } from '@components/Toast';
 import { useUIStore } from '@stores/uiStore';
 import styles from './overlays.module.css';
+import { t } from '@core/i18n';
 
 export function NotificationHost(): JSX.Element | null {
   const notifications = useUIStore((s) => s.notifications);
@@ -16,7 +17,7 @@ export function NotificationHost(): JSX.Element | null {
   if (notifications.length === 0) return null;
 
   return (
-    <div className={styles.toaster} role="region" aria-label="Notifications">
+    <div className={styles.toaster} role="region" aria-label={t('overlay.notifications.label', 'Notifications')}>
       {notifications.map((n) => (
         <Toast
           key={n.id}

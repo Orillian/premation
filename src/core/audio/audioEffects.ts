@@ -61,6 +61,7 @@
  */
 
 import {  type PropPath } from '@motion/animation';
+import { t } from '@core/i18n';
 
 /** Every audio effect. See the header for what each is built from. */
 export type AudioEffectType =
@@ -145,17 +146,17 @@ export function hasFlag(fx: AudioEffect, flag: string): boolean {
  */
 export const AUDIO_EFFECT_FLAGS: Partial<Record<AudioEffectType, ReadonlyArray<{ key: string; label: string; hint?: string }>>> = {
   backwards: [
-    { key: 'swapChannels', label: 'Swap Channels', hint: 'Play the left channel on the right, and vice versa.' },
+    { key: 'swapChannels', get label() { return t('core.audioEffects.swapChannels', 'Swap Channels'); }, get hint() { return t('core.audioEffects.hintPlayTheLeftChannelOn', 'Play the left channel on the right, and vice versa.'); } },
   ],
   'stereo-mixer': [
-    { key: 'invertPhase', label: 'Invert Phase', hint: 'Flip both channels, so two sounds at one frequency stop cancelling.' },
+    { key: 'invertPhase', get label() { return t('core.audioEffects.invertPhase', 'Invert Phase'); }, get hint() { return t('core.audioEffects.hintFlipBothChannelsSoTwo', 'Flip both channels, so two sounds at one frequency stop cancelling.'); } },
   ],
   'flange-chorus': [
-    { key: 'invertPhase', label: 'Invert Phase', hint: 'Emphasises the high frequencies rather than the low.' },
-    { key: 'stereoVoices', label: 'Stereo Voices', hint: 'Alternate the voices left and right across the image.' },
+    { key: 'invertPhase', get label() { return t('core.audioEffects.invertPhase', 'Invert Phase'); }, get hint() { return t('core.audioEffects.hintEmphasisesTheHighFrequenciesRather', 'Emphasises the high frequencies rather than the low.'); } },
+    { key: 'stereoVoices', get label() { return t('core.audioEffects.stereoVoices', 'Stereo Voices'); }, get hint() { return t('core.audioEffects.hintAlternateTheVoicesLeftAnd', 'Alternate the voices left and right across the image.'); } },
   ],
   'de-esser': [
-    { key: 'sibilanceOnly', label: 'Sibilance Only', hint: 'Monitor just the band being treated, to find the right frequency.' },
+    { key: 'sibilanceOnly', get label() { return t('core.audioEffects.sibilanceOnly', 'Sibilance Only'); }, get hint() { return t('core.audioEffects.hintMonitorJustTheBandBeing', 'Monitor just the band being treated, to find the right frequency.'); } },
   ],
 };
 
@@ -172,77 +173,77 @@ export const AUDIO_EFFECT_DEFS: Record<AudioEffectType, {
     of sync with the gain beside it.
   */
   'parametric-eq': {
-    label: 'Parametric EQ',
+    get label() { return t('core.audioEffects.parametricEq', 'Parametric EQ'); },
     params: [
-      { key: 'frequency', label: 'Band 1 Frequency', unit: 'Hz', min: 20, max: 20000, default: 1000 },
-      { key: 'gain', label: 'Band 1 Gain', unit: 'dB', min: -40, max: 40, default: 0 },
+      { key: 'frequency', get label() { return t('core.audioEffects.band1Frequency', 'Band 1 Frequency'); }, unit: 'Hz', min: 20, max: 20000, default: 1000 },
+      { key: 'gain', get label() { return t('core.audioEffects.band1Gain', 'Band 1 Gain'); }, unit: 'dB', min: -40, max: 40, default: 0 },
       // Q below 0.0001 is rejected by the spec; the floor keeps a swept Q safe.
-      { key: 'q', label: 'Band 1 Q', min: 0.1, max: 20, default: 1 },
-      { key: 'frequency2', label: 'Band 2 Frequency', unit: 'Hz', min: 20, max: 20000, default: 3000 },
-      { key: 'gain2', label: 'Band 2 Gain', unit: 'dB', min: -40, max: 40, default: 0 },
-      { key: 'q2', label: 'Band 2 Q', min: 0.1, max: 20, default: 1 },
-      { key: 'frequency3', label: 'Band 3 Frequency', unit: 'Hz', min: 20, max: 20000, default: 8000 },
-      { key: 'gain3', label: 'Band 3 Gain', unit: 'dB', min: -40, max: 40, default: 0 },
-      { key: 'q3', label: 'Band 3 Q', min: 0.1, max: 20, default: 1 },
+      { key: 'q', get label() { return t('core.audioEffects.band1Q', 'Band 1 Q'); }, min: 0.1, max: 20, default: 1 },
+      { key: 'frequency2', get label() { return t('core.audioEffects.band2Frequency', 'Band 2 Frequency'); }, unit: 'Hz', min: 20, max: 20000, default: 3000 },
+      { key: 'gain2', get label() { return t('core.audioEffects.band2Gain', 'Band 2 Gain'); }, unit: 'dB', min: -40, max: 40, default: 0 },
+      { key: 'q2', get label() { return t('core.audioEffects.band2Q', 'Band 2 Q'); }, min: 0.1, max: 20, default: 1 },
+      { key: 'frequency3', get label() { return t('core.audioEffects.band3Frequency', 'Band 3 Frequency'); }, unit: 'Hz', min: 20, max: 20000, default: 8000 },
+      { key: 'gain3', get label() { return t('core.audioEffects.band3Gain', 'Band 3 Gain'); }, unit: 'dB', min: -40, max: 40, default: 0 },
+      { key: 'q3', get label() { return t('core.audioEffects.band3Q', 'Band 3 Q'); }, min: 0.1, max: 20, default: 1 },
     ],
   },
   'bass-treble': {
-    label: 'Bass & Treble',
+    get label() { return t('core.audioEffects.bassTreble', 'Bass & Treble'); },
     params: [
-      { key: 'bass', label: 'Bass', unit: 'dB', min: -40, max: 40, default: 0 },
-      { key: 'treble', label: 'Treble', unit: 'dB', min: -40, max: 40, default: 0 },
+      { key: 'bass', get label() { return t('core.audioEffects.bass', 'Bass'); }, unit: 'dB', min: -40, max: 40, default: 0 },
+      { key: 'treble', get label() { return t('core.audioEffects.treble', 'Treble'); }, unit: 'dB', min: -40, max: 40, default: 0 },
     ],
   },
   'high-low-pass': {
-    label: 'High-Low Pass',
+    get label() { return t('core.audioEffects.highLowPass', 'High-Low Pass'); },
     params: [
-      { key: 'cutoff', label: 'Cutoff', unit: 'Hz', min: 20, max: 20000, default: 1000 },
-      { key: 'q', label: 'Resonance', min: 0.1, max: 20, default: 0.707 },
+      { key: 'cutoff', get label() { return t('core.audioEffects.cutoff', 'Cutoff'); }, unit: 'Hz', min: 20, max: 20000, default: 1000 },
+      { key: 'q', get label() { return t('core.audioEffects.resonance', 'Resonance'); }, min: 0.1, max: 20, default: 0.707 },
     ],
   },
   delay: {
-    label: 'Delay',
+    get label() { return t('core.audioEffects.delay', 'Delay'); },
     params: [
-      { key: 'time', label: 'Delay Time', unit: 's', min: 0, max: 5, default: 0.25 },
-      { key: 'feedback', label: 'Feedback', unit: '%', min: 0, max: 95, default: 30 },
-      { key: 'mix', label: 'Dry/Wet', unit: '%', min: 0, max: 100, default: 40 },
+      { key: 'time', get label() { return t('core.audioEffects.delayTime', 'Delay Time'); }, unit: 's', min: 0, max: 5, default: 0.25 },
+      { key: 'feedback', get label() { return t('core.audioEffects.feedback', 'Feedback'); }, unit: '%', min: 0, max: 95, default: 30 },
+      { key: 'mix', get label() { return t('core.audioEffects.dryWet', 'Dry/Wet'); }, unit: '%', min: 0, max: 100, default: 40 },
     ],
   },
   reverb: {
-    label: 'Reverb',
+    get label() { return t('core.audioEffects.reverb', 'Reverb'); },
     params: [
-      { key: 'decay', label: 'Decay Time', unit: 's', min: 0.1, max: 10, default: 1.8 },
-      { key: 'preDelay', label: 'Pre-Delay', unit: 'ms', min: 0, max: 200, default: 20 },
+      { key: 'decay', get label() { return t('core.audioEffects.decayTime', 'Decay Time'); }, unit: 's', min: 0.1, max: 10, default: 1.8 },
+      { key: 'preDelay', get label() { return t('core.audioEffects.preDelay', 'Pre-Delay'); }, unit: 'ms', min: 0, max: 200, default: 20 },
       // Reverb without a dry path is a wash with no transient, so the default
       // leans dry — AE's Reverb defaults to 20% wet for the same reason.
-      { key: 'mix', label: 'Dry/Wet', unit: '%', min: 0, max: 100, default: 20 },
+      { key: 'mix', get label() { return t('core.audioEffects.dryWet', 'Dry/Wet'); }, unit: '%', min: 0, max: 100, default: 20 },
       // Both shape the IR rather than a live param — see the graph case.
-      { key: 'diffusion', label: 'Diffusion', unit: '%', min: 0, max: 100, default: 70 },
-      { key: 'brightness', label: 'Brightness', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'diffusion', get label() { return t('core.audioEffects.diffusion', 'Diffusion'); }, unit: '%', min: 0, max: 100, default: 70 },
+      { key: 'brightness', get label() { return t('core.audioEffects.brightness', 'Brightness'); }, unit: '%', min: 0, max: 100, default: 50 },
     ],
   },
   'flange-chorus': {
-    label: 'Flange & Chorus',
+    get label() { return t('core.audioEffects.flangeChorus', 'Flange & Chorus'); },
     params: [
       // Voice separation IS the difference between the two effects: a few
       // milliseconds comb-filters (flange), tens of milliseconds detunes
       // (chorus). One effect with one control rather than two effects, which is
       // how AE ships it.
-      { key: 'separation', label: 'Voice Separation', unit: 'ms', min: 0.1, max: 40, default: 3 },
-      { key: 'depth', label: 'Modulation Depth', unit: '%', min: 0, max: 100, default: 50 },
-      { key: 'rate', label: 'Modulation Rate', unit: 'Hz', min: 0.05, max: 10, default: 0.4 },
+      { key: 'separation', get label() { return t('core.audioEffects.voiceSeparation', 'Voice Separation'); }, unit: 'ms', min: 0.1, max: 40, default: 3 },
+      { key: 'depth', get label() { return t('core.audioEffects.modulationDepth', 'Modulation Depth'); }, unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'rate', get label() { return t('core.audioEffects.modulationRate', 'Modulation Rate'); }, unit: 'Hz', min: 0.05, max: 10, default: 0.4 },
       // Feedback is what makes a flange ring. Chorus uses none.
-      { key: 'feedback', label: 'Feedback', unit: '%', min: -95, max: 95, default: 0 },
-      { key: 'mix', label: 'Dry/Wet', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'feedback', get label() { return t('core.audioEffects.feedback', 'Feedback'); }, unit: '%', min: -95, max: 95, default: 0 },
+      { key: 'mix', get label() { return t('core.audioEffects.dryWet', 'Dry/Wet'); }, unit: '%', min: 0, max: 100, default: 50 },
       /*
         VOICES is what separates the two halves of this effect's name. One
         delayed copy comb-filters (flange); several, at different LFO phases,
         read as a small choir (chorus). Defaulting to 1 keeps every project
         saved before this exactly as it sounded.
       */
-      { key: 'voices', label: 'Voices', min: 1, max: 8, default: 1 },
+      { key: 'voices', get label() { return t('core.audioEffects.voices', 'Voices'); }, min: 1, max: 8, default: 1 },
       // AE's advice: 360 ÷ voices spreads them evenly around the cycle.
-      { key: 'phase', label: 'Voice Phase Change', unit: '°', min: 0, max: 360, default: 90 },
+      { key: 'phase', get label() { return t('core.audioEffects.voicePhaseChange', 'Voice Phase Change'); }, unit: '°', min: 0, max: 360, default: 90 },
     ],
   },
   /*
@@ -251,14 +252,14 @@ export const AUDIO_EFFECT_DEFS: Record<AudioEffectType, {
     and keeps an existing single-tone project sounding identical.
   */
   tone: {
-    label: 'Tone',
+    get label() { return t('core.audioEffects.tone', 'Tone'); },
     params: [
-      { key: 'frequency', label: 'Frequency 1', unit: 'Hz', min: 0, max: 20000, default: 440 },
-      { key: 'frequency2', label: 'Frequency 2', unit: 'Hz', min: 0, max: 20000, default: 0 },
-      { key: 'frequency3', label: 'Frequency 3', unit: 'Hz', min: 0, max: 20000, default: 0 },
-      { key: 'frequency4', label: 'Frequency 4', unit: 'Hz', min: 0, max: 20000, default: 0 },
-      { key: 'frequency5', label: 'Frequency 5', unit: 'Hz', min: 0, max: 20000, default: 0 },
-      { key: 'level', label: 'Level', unit: 'dB', min: -60, max: 0, default: -12 },
+      { key: 'frequency', get label() { return t('core.audioEffects.frequency1', 'Frequency 1'); }, unit: 'Hz', min: 0, max: 20000, default: 440 },
+      { key: 'frequency2', get label() { return t('core.audioEffects.frequency2', 'Frequency 2'); }, unit: 'Hz', min: 0, max: 20000, default: 0 },
+      { key: 'frequency3', get label() { return t('core.audioEffects.frequency3', 'Frequency 3'); }, unit: 'Hz', min: 0, max: 20000, default: 0 },
+      { key: 'frequency4', get label() { return t('core.audioEffects.frequency4', 'Frequency 4'); }, unit: 'Hz', min: 0, max: 20000, default: 0 },
+      { key: 'frequency5', get label() { return t('core.audioEffects.frequency5', 'Frequency 5'); }, unit: 'Hz', min: 0, max: 20000, default: 0 },
+      { key: 'level', get label() { return t('core.audioEffects.level', 'Level'); }, unit: 'dB', min: -60, max: 0, default: -12 },
     ],
   },
   /*
@@ -268,22 +269,22 @@ export const AUDIO_EFFECT_DEFS: Record<AudioEffectType, {
     the vibrato, defaulting to 0 so nothing already built changes.
   */
   modulator: {
-    label: 'Modulator',
+    get label() { return t('core.audioEffects.modulator', 'Modulator'); },
     params: [
-      { key: 'rate', label: 'Modulation Rate', unit: 'Hz', min: 0.1, max: 5000, default: 30 },
-      { key: 'depth', label: 'Amplitude Modulation', unit: '%', min: 0, max: 100, default: 50 },
-      { key: 'fmDepth', label: 'Modulation Depth', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'rate', get label() { return t('core.audioEffects.modulationRate', 'Modulation Rate'); }, unit: 'Hz', min: 0.1, max: 5000, default: 30 },
+      { key: 'depth', get label() { return t('core.audioEffects.amplitudeModulation', 'Amplitude Modulation'); }, unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'fmDepth', get label() { return t('core.audioEffects.modulationDepth', 'Modulation Depth'); }, unit: '%', min: 0, max: 100, default: 0 },
     ],
   },
   'stereo-mixer': {
-    label: 'Stereo Mixer',
+    get label() { return t('core.audioEffects.stereoMixer', 'Stereo Mixer'); },
     params: [
-      { key: 'leftLevel', label: 'Left Level', unit: '%', min: 0, max: 200, default: 100 },
-      { key: 'rightLevel', label: 'Right Level', unit: '%', min: 0, max: 200, default: 100 },
+      { key: 'leftLevel', get label() { return t('core.audioEffects.leftLevel', 'Left Level'); }, unit: '%', min: 0, max: 200, default: 100 },
+      { key: 'rightLevel', get label() { return t('core.audioEffects.rightLevel', 'Right Level'); }, unit: '%', min: 0, max: 200, default: 100 },
       // −100 is hard left, +100 hard right. A channel panned to the far side
       // is how you swap the stereo image, which is what this effect is for.
-      { key: 'leftPan', label: 'Left Pan', unit: '%', min: -100, max: 100, default: -100 },
-      { key: 'rightPan', label: 'Right Pan', unit: '%', min: -100, max: 100, default: 100 },
+      { key: 'leftPan', get label() { return t('core.audioEffects.leftPan', 'Left Pan'); }, unit: '%', min: -100, max: 100, default: -100 },
+      { key: 'rightPan', get label() { return t('core.audioEffects.rightPan', 'Right Pan'); }, unit: '%', min: -100, max: 100, default: 100 },
     ],
   },
   /*
@@ -296,41 +297,41 @@ export const AUDIO_EFFECT_DEFS: Record<AudioEffectType, {
     see the graph cases for exactly which, and why.
   */
   compressor: {
-    label: 'Compressor',
+    get label() { return t('core.audioEffects.compressor', 'Compressor'); },
     params: [
-      { key: 'threshold', label: 'Threshold', unit: 'dB', min: -60, max: 0, default: -16 },
-      { key: 'ratio', label: 'Ratio', unit: ':1', min: 1, max: 20, default: 3 },
-      { key: 'knee', label: 'Knee', unit: 'dB', min: 0, max: 30, default: 15 },
-      { key: 'attack', label: 'Attack', unit: 'ms', min: 0, max: 400, default: 6 },
-      { key: 'release', label: 'Release', unit: 'ms', min: 1, max: 1000, default: 440 },
+      { key: 'threshold', get label() { return t('core.audioEffects.threshold', 'Threshold'); }, unit: 'dB', min: -60, max: 0, default: -16 },
+      { key: 'ratio', get label() { return t('core.audioEffects.ratio', 'Ratio'); }, unit: ':1', min: 1, max: 20, default: 3 },
+      { key: 'knee', get label() { return t('core.audioEffects.knee', 'Knee'); }, unit: 'dB', min: 0, max: 30, default: 15 },
+      { key: 'attack', get label() { return t('core.audioEffects.attack', 'Attack'); }, unit: 'ms', min: 0, max: 400, default: 6 },
+      { key: 'release', get label() { return t('core.audioEffects.release', 'Release'); }, unit: 'ms', min: 1, max: 1000, default: 440 },
       // Compression lowers everything; makeup puts the level back.
-      { key: 'makeupGain', label: 'Makeup Gain', unit: 'dB', min: -30, max: 30, default: 0 },
-      { key: 'outputLimit', label: 'Output Limit', unit: 'dB', min: -30, max: 0, default: 0 },
+      { key: 'makeupGain', get label() { return t('core.audioEffects.makeupGain', 'Makeup Gain'); }, unit: 'dB', min: -30, max: 30, default: 0 },
+      { key: 'outputLimit', get label() { return t('core.audioEffects.outputLimit', 'Output Limit'); }, unit: 'dB', min: -30, max: 0, default: 0 },
     ],
   },
   distortion: {
-    label: 'Distortion',
+    get label() { return t('core.audioEffects.distortion', 'Distortion'); },
     params: [
-      { key: 'drive', label: 'Drive', unit: '%', min: 0, max: 100, default: 25 },
-      { key: 'gain', label: 'Gain', min: 0, max: 300, default: 25 },
-      { key: 'mix', label: 'Mix', unit: '%', min: 0, max: 100, default: 100 },
-      { key: 'volume', label: 'Volume', min: 0, max: 100, default: 11 },
+      { key: 'drive', get label() { return t('core.audioEffects.drive', 'Drive'); }, unit: '%', min: 0, max: 100, default: 25 },
+      { key: 'gain', get label() { return t('core.audioEffects.gain', 'Gain'); }, min: 0, max: 300, default: 25 },
+      { key: 'mix', get label() { return t('core.audioEffects.mix', 'Mix'); }, unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'volume', get label() { return t('core.audioEffects.volume', 'Volume'); }, min: 0, max: 100, default: 11 },
       // The bitcrusher half. 16 bits is transparent; 4 is a ring tone.
-      { key: 'resolution', label: 'Resolution', unit: 'bit', min: 1, max: 16, default: 16 },
+      { key: 'resolution', get label() { return t('core.audioEffects.resolution', 'Resolution'); }, unit: 'bit', min: 1, max: 16, default: 16 },
     ],
   },
   'de-esser': {
-    label: 'De-esser',
+    get label() { return t('core.audioEffects.deEsser', 'De-esser'); },
     params: [
-      { key: 'threshold', label: 'Threshold', unit: 'dB', min: -60, max: 0, default: -20 },
-      { key: 'frequency', label: 'Frequency', unit: 'Hz', min: 2000, max: 16000, default: 7000 },
-      { key: 'bandwidth', label: 'Bandwidth', unit: 'Hz', min: 500, max: 8000, default: 3000 },
-      { key: 'attack', label: 'Attack', unit: 'ms', min: 0, max: 50, default: 1 },
-      { key: 'release', label: 'Release', unit: 'ms', min: 5, max: 500, default: 50 },
+      { key: 'threshold', get label() { return t('core.audioEffects.threshold', 'Threshold'); }, unit: 'dB', min: -60, max: 0, default: -20 },
+      { key: 'frequency', get label() { return t('core.audioEffects.frequency', 'Frequency'); }, unit: 'Hz', min: 2000, max: 16000, default: 7000 },
+      { key: 'bandwidth', get label() { return t('core.audioEffects.bandwidth', 'Bandwidth'); }, unit: 'Hz', min: 500, max: 8000, default: 3000 },
+      { key: 'attack', get label() { return t('core.audioEffects.attack', 'Attack'); }, unit: 'ms', min: 0, max: 50, default: 1 },
+      { key: 'release', get label() { return t('core.audioEffects.release', 'Release'); }, unit: 'ms', min: 5, max: 500, default: 50 },
     ],
   },
   backwards: {
-    label: 'Backwards',
+    get label() { return t('core.audioEffects.backwards', 'Backwards'); },
     // No parameters. It is a buffer transform, not a filter — see
     // `reverseBuffer`, and note that `connectAudioEffects` deliberately passes
     // it through untouched.
@@ -350,11 +351,11 @@ export const OSC_WAVES: readonly OscillatorType[] = ['sine', 'triangle', 'sawtoo
 /** Every waveform a generator offers, including the one that is not an
  *  oscillator. See {@link AudioWaveform}. */
 export const AUDIO_WAVEFORMS: ReadonlyArray<{ value: AudioWaveform; label: string }> = [
-  { value: 'sine', label: 'Sine' },
-  { value: 'triangle', label: 'Triangle' },
-  { value: 'sawtooth', label: 'Saw' },
-  { value: 'square', label: 'Square' },
-  { value: 'white-noise', label: 'White Noise' },
+  { value: 'sine', get label() { return t('core.audioEffects.sine', 'Sine'); } },
+  { value: 'triangle', get label() { return t('core.audioEffects.triangle', 'Triangle'); } },
+  { value: 'sawtooth', get label() { return t('core.audioEffects.saw', 'Saw'); } },
+  { value: 'square', get label() { return t('core.audioEffects.square', 'Square'); } },
+  { value: 'white-noise', get label() { return t('core.audioEffects.whiteNoise', 'White Noise'); } },
 ];
 
 /** AE's six distortion characters. */
@@ -362,12 +363,12 @@ export type DistortionCurve =
   | 'soft-clip' | 'hard-clip' | 'saturation-1' | 'saturation-2' | 'tube' | 'fuzz';
 
 export const DISTORTION_CURVES: ReadonlyArray<{ value: DistortionCurve; label: string }> = [
-  { value: 'soft-clip', label: 'Soft Clip' },
-  { value: 'hard-clip', label: 'Hard Clip' },
-  { value: 'saturation-1', label: 'Saturation 1' },
-  { value: 'saturation-2', label: 'Saturation 2' },
-  { value: 'tube', label: 'Tube' },
-  { value: 'fuzz', label: 'Fuzz' },
+  { value: 'soft-clip', get label() { return t('core.audioEffects.softClip', 'Soft Clip'); } },
+  { value: 'hard-clip', get label() { return t('core.audioEffects.hardClip', 'Hard Clip'); } },
+  { value: 'saturation-1', get label() { return t('core.audioEffects.saturation1', 'Saturation 1'); } },
+  { value: 'saturation-2', get label() { return t('core.audioEffects.saturation2', 'Saturation 2'); } },
+  { value: 'tube', get label() { return t('core.audioEffects.tube', 'Tube'); } },
+  { value: 'fuzz', get label() { return t('core.audioEffects.fuzz', 'Fuzz'); } },
 ];
 
 /** Samples in a WaveShaper lookup table. 2048 is smooth enough that the

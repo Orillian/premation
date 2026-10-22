@@ -14,12 +14,14 @@
 
 import { ADD_EXPRESSION_COMMAND, DEFAULT_EXPRESSION, requestExpressionEditor } from '@core/animation/expressionCommands';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { trackExpressionFacts } from '@core/mirror/memberExpressions';
 import type { ContextMenuItem } from '@stores/contextMenuStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useSelectionStore } from '@stores/selectionStore';
 import { expressionCommands } from '@layout/Inspector/inspectorEdits';
 import { openTimelineExpressionEditor } from './timelineExpressionEditor';
+import { copyExpressionOnlyEdit } from '@providers/clipboardEdits';
 
 type Pair = { nodeId: string; track: string; source: string };
 
@@ -50,13 +52,13 @@ export function expressionRowMenuItems(nodeId: string, props: ReadonlyArray<stri
   return [
     {
       id: 'expr-edit',
-      label: 'Edit Expression…',
+      label: t('timeline.expression.edit', 'Edit Expression…'),
       disabled: had.length === 0,
       onSelect: () => revealEditor(nodeId, had[0]!.track),
     },
     {
       id: 'expr-add',
-      label: 'Add Expression',
+      label: t('timeline.expression.add', 'Add Expression'),
       commandId: ADD_EXPRESSION_COMMAND,
       disabled: rows.length === 0 || allHave,
       onSelect: () => {
@@ -68,7 +70,9 @@ export function expressionRowMenuItems(nodeId: string, props: ReadonlyArray<stri
     },
     {
       id: 'expr-toggle',
-      label: had.length > 0 && anyOff ? 'Enable Expression' : 'Disable Expression',
+      label: had.length > 0 && anyOff
+        ? t('timeline.expression.enable', 'Enable Expression')
+        : t('timeline.expression.disable', 'Disable Expression'),
       disabled: had.length === 0,
       onSelect: () => {
         // Enable every attached expression if any is off, else disable them all; the source is kept.
@@ -76,8 +80,14 @@ export function expressionRowMenuItems(nodeId: string, props: ReadonlyArray<stri
       },
     },
     {
+      id: 'expr-copy',
+      label: t('timeline.expression.copy', 'Copy Expression Only'),
+      disabled: had.length === 0,
+      onSelect: () => { void copyExpressionOnlyEdit({ nodeId, prop: had[0]!.track }); },
+    },
+    {
       id: 'expr-remove',
-      label: 'Remove Expression',
+      label: t('timeline.expression.remove', 'Remove Expression'),
       disabled: had.length === 0,
       onSelect: () => {
         send(plural(had.length, 'Remove Expression', 'Remove Expressions'), had.map((r) => ({ nodeId, track: r.track, source: '' })), false);

@@ -26,6 +26,7 @@ import {
   THREE_D_ONLY,
   authorEffect,
 } from './vocabulary';
+import { cleanSwatches, ensureReadable } from './palette';
 import {
   EASES,
   LAYER_KINDS,
@@ -940,6 +941,53 @@ export function coerceDesign(raw: unknown, ctx: CoerceContext, opts: { concepts?
 const CONCEPT_MEDIA = ['3d', 'image', 'ink', 'ui', 'shape', 'type', 'mixed'] as const;
 const CONCEPT_VALUES = ['light', 'mid', 'dark'] as const;
 
+/**
+ * One concept as the model wrote it: medium and value from their enums (said
+ * when missing), the swatches kept only when they are hex and made readable
+ * (palette.ts), the type pairing and motion language as given.
+ */
+function conceptOf(c: Obj, i: number, r: Repairs): ConceptOption {
+  const medium = CONCEPT_MEDIA.find((m) => m === str(c.medium));
+  const value = CONCEPT_VALUES.find((v) => v === str(c.value));
+  if (!medium || !value) r.add(`concepts[${i}]`, 'a concept needs a medium and a value (light, mid, dark)');
+  const rawSwatches = cleanSwatches(c.swatches);
+  if (Array.isArray(c.swatches) && rawSwatches.length < Math.min(3, c.swatches.length)) r.add(`concepts[${i}].swatches`, 'swatches must be #rrggbb hex colours');
+  const swatches = ensureReadable(rawSwatches);
+  if (rawSwatches.length >= 2 && swatches[swatches.length - 1] !== rawSwatches[rawSwatches.length - 1]) {
+    r.add(`concepts[${i}].swatches`, `the text colour ${rawSwatches[rawSwatches.length - 1]} did not read on ${rawSwatches[0]} — pushed to ${swatches[swatches.length - 1]}`);
+  }
+  return {
+    name: str(c.name) ?? `Concept ${i + 1}`,
+    idea: str(c.idea) ?? '',
+    medium: medium ?? 'mixed',
+    value: value ?? 'mid',
+    palette: str(c.palette) ?? '',
+    camera: str(c.camera) ?? '',
+    ...(swatches.length >= 3 ? { swatches } : {}),
+    ...(str(c.type) ? { type: str(c.type)! } : {}),
+    ...(str(c.motion) ? { motion: str(c.motion)! } : {}),
+  };
+}
+
+/**
+ * The concept stage's answer (CONCEPTS_SCHEMA): every well-formed concept,
+ * in the order given, up to five. Nothing is invented for a missing one.
+ */
+export function coerceConcepts(raw: unknown): Coerced<ConceptOption[]> {
+  const r = new Repairs();
+  const o = isObj(raw) ? raw : {};
+  const items = Array.isArray(o.concepts) ? o.concepts : Array.isArray(raw) ? raw : [];
+  const list: ConceptOption[] = [];
+  items.slice(0, 5).forEach((c, i) => {
+    if (!isObj(c)) return;
+    const concept = conceptOf(c, i, r);
+    if (!concept.idea && !concept.name) return;
+    list.push(concept);
+  });
+  if (list.length < 3) r.add('concepts', `${list.length} concept(s), not five — fewer directions were offered`);
+  return { value: list, repairs: r.list };
+}
+
 /** The design call's three candidate concepts and its pick; what is missing or alike is said, never invented. */
 function concepts(o: Obj, r: Repairs): Pick<DesignResult, 'concepts' | 'chosen' | 'why'> {
   if (!Array.isArray(o.concepts) || o.concepts.length === 0) {
@@ -949,12 +997,10 @@ function concepts(o: Obj, r: Repairs): Pick<DesignResult, 'concepts' | 'chosen' 
   const list: ConceptOption[] = [];
   o.concepts.slice(0, 3).forEach((c, i) => {
     if (!isObj(c)) return;
-    const medium = CONCEPT_MEDIA.find((m) => m === str(c.medium));
-    const value = CONCEPT_VALUES.find((v) => v === str(c.value));
-    if (!medium || !value) r.add(`concepts[${i}]`, 'a concept needs a medium and a value (light, mid, dark)');
-    list.push({ name: str(c.name) ?? `Concept ${i + 1}`, idea: str(c.idea) ?? '', medium: medium ?? 'mixed', value: value ?? 'mid', palette: str(c.palette) ?? '', camera: str(c.camera) ?? '' });
+    list.push(conceptOf(c, i, r));
   });
-  if (list.length < 3) r.add('concepts', `${list.length} concept(s), not three — fewer real alternatives were weighed`);
+  // One concept is the whole answer when the user already chose it (the brief's `concept`).
+  if (list.length < 3 && list.length !== 1) r.add('concepts', `${list.length} concept(s), not three — fewer real alternatives were weighed`);
   const alike = list.length >= 2 && list.every((c) => c.value === list[0]!.value) && list.every((c) => c.medium === list[0]!.medium);
   if (alike) r.add('concepts', 'the concepts share one value and one medium — they are variations, not alternatives');
   const n = num(o.chosen);

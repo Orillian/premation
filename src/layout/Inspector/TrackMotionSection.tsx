@@ -52,6 +52,7 @@ import {
   useMirrorTree,
 } from '@hooks/useMirror';
 import { canParentTo, footageDisplaySize, maskVertexCount, siblingSourceIds } from '@core/mirror/tracking';
+import { t } from '@core/i18n';
 import { qualityOf } from './trackMotion/trackMotionCopy';
 import { trackMotionActions, type StabVariant, type TrackComp, type TrackMotionContext } from './trackMotion/trackMotionActions';
 import { AdvancedTracking } from './trackMotion/AdvancedTracking';
@@ -75,6 +76,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
   const progress = useTrackerStore((s) => s.progress);
   const result = useTrackerStore((s) => s.result);
   const note = useTrackerStore((s) => s.note);
+  const noteOk = useTrackerStore((s) => s.noteOk);
   const autoPhase = useTrackerStore((s) => s.autoPhase);
   const pickIntent = useTrackerStore((s) => s.pickIntent);
   const autoPlan = useTrackerStore((s) => s.autoPlan);
@@ -209,19 +211,19 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
   // deliberately absent: its content is where the motion CAME from, so
   // parenting it to the null plays that motion twice.
   const attachCandidates = createdNullId
-    ? targets.filter((t) => t.id !== createdNullId && t.id !== nodeId && canParentTo(m, t.id, createdNullId))
+    ? targets.filter((tg) => tg.id !== createdNullId && tg.id !== nodeId && canParentTo(m, tg.id, createdNullId))
     : [];
   const attachValue = attachId ?? attachCandidates[0]?.id ?? '';
 
   const canTrack = mode === 'mask' || mode === 'face' ? maskPoints > 0 : mode === 'smooth' || mode === 'camera' ? true : points.length > 0;
   const applyLabel =
     mode === 'follow'
-      ? 'Apply as position keyframes'
+      ? t('inspector.trackMotion.applyPosition', 'Apply as position keyframes')
       : mode === 'transform'
-        ? 'Apply position, rotation & scale'
+        ? t('inspector.trackMotion.applyTransform', 'Apply position, rotation & scale')
         : mode === 'stabilize'
-          ? 'Stabilize this layer'
-          : 'Pin target to corners';
+          ? t('inspector.trackMotion.applyStabilize', 'Stabilize this layer')
+          : t('inspector.trackMotion.applyCorners', 'Pin target to corners');
   const analyzing = autoPhase === 'analyzing';
   const picking = autoPhase === 'picking';
   const quality = autoPlan ? qualityOf(autoPlan) : null;
@@ -231,7 +233,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
     <div className={styles.root}>
       <section className={styles.card} data-armed={picking}>
         <div className={styles.cardTitle}>
-          <span>Track an object</span>
+          <span>{t('inspector.trackMotion.cardTitle', 'Track an object')}</span>
           {quality && (
             <span className={styles.quality} data-level={quality.level}>
               {quality.label}
@@ -245,7 +247,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
               <div
                 className={styles.progressTrack}
                 role="progressbar"
-                aria-label="Tracking progress"
+                aria-label={t('inspector.trackMotion.progressAria', 'Tracking progress')}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(progress * 100)}
@@ -257,7 +259,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
               <span className={styles.progressValue}>{Math.round(progress * 100)}%</span>
             </div>
             <Button size="sm" variant="secondary" onClick={onCancel} fullWidth>
-              Cancel
+              {t('inspector.trackMotion.cancel', 'Cancel')}
             </Button>
           </>
         ) : (
@@ -265,12 +267,12 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
             <p className={styles.cardHint}>
               {picking
                 ? pickIntent === 'object'
-                  ? 'Draw a box around the object (or click it) and it becomes a mask path — cut from this exact frame. Esc to cancel.'
-                  : 'Click the thing to follow — or drag a box around it. It locks onto the best trackable detail there, then tracks the whole clip both ways from the playhead. Esc to cancel. Spinning objects (wheels, fans): pick the hub — details on the rim rotate away mid-track.'
-                : 'Point at anything in the shot, or draw a box around it. The feature, both window sizes and the direction are measured from the footage.'}
+                  ? t('inspector.trackMotion.hintPickObject', 'Draw a box around the object (or click it) and it becomes a mask path — cut from this exact frame. Esc to cancel.')
+                  : t('inspector.trackMotion.hintPickTrack', 'Click the thing to follow — or drag a box around it. It locks onto the best trackable detail there, then tracks the whole clip both ways from the playhead. Esc to cancel. Spinning objects (wheels, fans): pick the hub — details on the rim rotate away mid-track.')
+                : t('inspector.trackMotion.hintIdle', 'Point at anything in the shot, or draw a box around it. The feature, both window sizes and the direction are measured from the footage.')}
             </p>
             <Button size="sm" variant={picking && pickIntent === 'track' ? 'secondary' : 'primary'} onClick={onArmPick} fullWidth>
-              {picking && pickIntent === 'track' ? 'Cancel pick (Esc)' : 'Pick target in viewport'}
+              {picking && pickIntent === 'track' ? t('inspector.trackMotion.cancelPick', 'Cancel pick (Esc)') : t('inspector.trackMotion.pickTarget', 'Pick target in viewport')}
             </Button>
             <Button
               size="sm"
@@ -280,13 +282,13 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
                 'object',
               )}
               fullWidth
-              title="Draw a box around (or click) an object; the bundled segmentation model traces it into a mask path. Track mask makes the path follow; Write-on and Vegas can draw along it via their Path option."
+              title={t('inspector.trackMotion.objectMaskHint', 'Draw a box around (or click) an object; the bundled segmentation model traces it into a mask path. Track mask makes the path follow; Write-on and Vegas can draw along it via their Path option.')}
             >
-              {picking && pickIntent === 'object' ? 'Cancel object mask (Esc)' : 'Draw around object → mask'}
+              {picking && pickIntent === 'object' ? t('inspector.trackMotion.cancelObjectMask', 'Cancel object mask (Esc)') : t('inspector.trackMotion.objectMask', 'Draw around object → mask')}
             </Button>
             {autoPlan && (
               <Button size="sm" variant="secondary" onClick={onTrackAgain} fullWidth>
-                Track again from this feature
+                {t('inspector.trackMotion.trackAgain', 'Track again from this feature')}
               </Button>
             )}
           </>
@@ -297,7 +299,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
             className={styles.note}
             role="status"
             data-tone={
-              result || note.startsWith('Applied') || note.startsWith('Created')
+              result || noteOk
                 ? quality?.level === 'poor'
                   ? 'warn'
                   : undefined
@@ -311,14 +313,14 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
         {autoPlan && !analyzing && (
           <p className={styles.stats}>
             <span className={styles.stat}>
-              feature <b>{Math.round(autoPlan.featureHalf) * 2 + 1}px</b>
+              {t('inspector.trackMotion.statFeature', 'feature')} <b>{Math.round(autoPlan.featureHalf) * 2 + 1}px</b>
             </span>
             <span className={styles.stat}>
-              search <b>±{Math.round(autoPlan.searchHalf)}px</b>
+              {t('inspector.trackMotion.statSearch', 'search')} <b>±{Math.round(autoPlan.searchHalf)}px</b>
             </span>
             {autoPlan.motionPerFrame !== null && (
               <span className={styles.stat}>
-                motion <b>{autoPlan.motionPerFrame.toFixed(1)}px/f</b>
+                {t('inspector.trackMotion.statMotion', 'motion')} <b>{autoPlan.motionPerFrame.toFixed(1)}px/f</b>
               </span>
             )}
           </p>
@@ -327,7 +329,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
         {autoResult && (
           <div className={styles.actions}>
             <Button size="sm" variant="primary" onClick={() => onCreateNullAndApply()} fullWidth>
-              Create null &amp; apply
+              {t('inspector.trackMotion.createNullApply', 'Create null & apply')}
             </Button>
             {result.tracks.length > 1 && (
               <Button
@@ -335,26 +337,28 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
                 variant="secondary"
                 onClick={() => onCreateNullAndApply(true)}
                 fullWidth
-                title="Uses the second feature tracked alongside the first: the angle and length of the line between them carry rotation and scale."
+                title={t('inspector.trackMotion.withRotationScaleHint', 'Uses the second feature tracked alongside the first: the angle and length of the line between them carry rotation and scale.')}
               >
-                &hellip; with rotation &amp; scale
+                {t('inspector.trackMotion.withRotationScale', '… with rotation & scale')}
               </Button>
             )}
             <div className={styles.actionRow}>
               <select
                 className={styles.select}
                 value={targetId}
-                aria-label="Layer to receive the track"
+                aria-label={t('inspector.trackMotion.receiveLayer', 'Layer to receive the track')}
                 onChange={(e) => setTargetId(e.target.value)}
               >
-                {targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id === nodeId ? `${t.name || 'this layer'} (this layer)` : t.name || t.id}
+                {targets.map((tg) => (
+                  <option key={tg.id} value={tg.id}>
+                    {tg.id === nodeId
+                      ? t('inspector.trackMotion.thisLayerSuffix', '{name} (this layer)', { name: tg.name || t('inspector.trackMotion.thisLayer', 'this layer') })
+                      : tg.name || tg.id}
                   </option>
                 ))}
               </select>
               <Button size="sm" variant="secondary" onClick={onApply}>
-                Apply
+                {t('inspector.trackMotion.apply', 'Apply')}
               </Button>
             </div>
             {createdNullId && attachCandidates.length > 0 && (
@@ -365,12 +369,12 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
                 <select
                   className={styles.select}
                   value={attachValue}
-                  aria-label="Layer to parent to the tracked null"
+                  aria-label={t('inspector.trackMotion.attachLayer', 'Layer to parent to the tracked null')}
                   onChange={(e) => setAttachId(e.target.value)}
                 >
-                  {attachCandidates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name || t.id}
+                  {attachCandidates.map((tg) => (
+                    <option key={tg.id} value={tg.id}>
+                      {tg.name || tg.id}
                     </option>
                   ))}
                 </select>
@@ -378,9 +382,9 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
                   size="sm"
                   variant="secondary"
                   onClick={() => attachValue && onAttachToNull(attachValue, createdNullId)}
-                  title="Parents the chosen layer to the tracked null without moving it — it starts following the motion from here on."
+                  title={t('inspector.trackMotion.parentToNullHint', 'Parents the chosen layer to the tracked null without moving it — it starts following the motion from here on.')}
                 >
-                  Parent to null
+                  {t('inspector.trackMotion.parentToNull', 'Parent to null')}
                 </Button>
               </div>
             )}
@@ -389,7 +393,7 @@ export function TrackMotionSection({ nodeId }: { nodeId: string }): JSX.Element 
                 Deliberate still needs SAYING, or the short squiggle reads as
                 a track that quit after a second. */}
             <p className={styles.cardHint}>
-              The viewport shows the path near the playhead — scrub to review it. Applying writes every frame.
+              {t('inspector.trackMotion.pathHint', 'The viewport shows the path near the playhead — scrub to review it. Applying writes every frame.')}
             </p>
           </div>
         )}

@@ -29,6 +29,7 @@ import { Switch } from '@components/Switch';
 import { ValueField } from '@components/ValueField';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorLayer, useMirrorTree } from '@hooks/useMirror';
@@ -230,7 +231,7 @@ function MaterialRow({
         step={step}
         value={value}
         onChange={(ev) => write(Number(ev.currentTarget.value))}
-        aria-label={`${name ?? label} slider`}
+        aria-label={t('inspector.material.sliderAria', '{name} slider', { name: name ?? label })}
       />
       <span className={s.value}>
         <ValueField
@@ -269,8 +270,8 @@ function MaterialChip({
         type="button"
         className={s.chip}
         onClick={onApply}
-        title={`Apply ${material.name} to the selected layers`}
-        aria-label={`Apply material ${material.name}`}
+        title={t('inspector.material.applyTitle', 'Apply {name} to the selected layers', { name: material.name })}
+        aria-label={t('inspector.material.applyAria', 'Apply material {name}', { name: material.name })}
       >
         <span
           className={s.chipBall}
@@ -290,7 +291,7 @@ function MaterialChip({
             if (e.key === 'Enter') { onRename(draft); setRenaming(false); }
             if (e.key === 'Escape') { setDraft(material.name); setRenaming(false); }
           }}
-          aria-label={`Rename material ${material.name}`}
+          aria-label={t('inspector.material.renameAria', 'Rename material {name}', { name: material.name })}
         />
       )}
       {!material.builtin && !renaming && (
@@ -299,8 +300,8 @@ function MaterialChip({
             type="button"
             className={s.iconBtn}
             onClick={() => { setDraft(material.name); setRenaming(true); }}
-            title={`Rename ${material.name}`}
-            aria-label={`Rename material ${material.name}`}
+            title={t('inspector.material.renameTitle', 'Rename {name}', { name: material.name })}
+            aria-label={t('inspector.material.renameAria', 'Rename material {name}', { name: material.name })}
           >
             <Icon name="pencil" size="sm" />
           </button>
@@ -308,8 +309,8 @@ function MaterialChip({
             type="button"
             className={s.iconBtn}
             onClick={onDelete}
-            title={`Delete ${material.name}`}
-            aria-label={`Delete material ${material.name}`}
+            title={t('inspector.material.deleteTitle', 'Delete {name}', { name: material.name })}
+            aria-label={t('inspector.material.deleteAria', 'Delete material {name}', { name: material.name })}
           >
             <Icon name="trash" size="sm" />
           </button>
@@ -355,7 +356,7 @@ export function MaterialPresetAction({
   return (
     <SectionPresetMenu
       sectionId="material"
-      label="Material presets"
+      label={t('inspector.material.presets', 'Material presets')}
       capture={capturePreset}
       apply={applyPreset}
     />
@@ -412,76 +413,74 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
           they read with their neighbours. No sub-headings: the order is the
           grouping, as in AE's timeline. */}
       <div className={s.row}>
-        <span className={s.label}>Casts Shadows</span>
+        <span className={s.label}>{t('inspector.material.castsShadows', 'Casts Shadows')}</span>
         <select
           className={s.select}
           value={material.castsShadowsMode}
           // `material/castsShadows` (0 Off / 1 On / 2 Only; keyed at the playhead when animated).
           onChange={(e) => { void edit('Set Casts Shadows', scalarValueCommands('castsShadows', [{ nodeId, value: shadowModeValue(e.currentTarget.value as 'off' | 'on' | 'only') }], { seconds: getTime() })); }}
-          aria-label="Casts shadows"
+          aria-label={t('inspector.material.castsShadowsAria', 'Casts shadows')}
         >
-          <option value="off">Off</option>
-          <option value="on">On</option>
-          <option value="only">Only</option>
+          <option value="off">{t('inspector.material.off', 'Off')}</option>
+          <option value="on">{t('inspector.material.on', 'On')}</option>
+          <option value="only">{t('inspector.material.only', 'Only')}</option>
         </select>
       </div>
       <MaterialRow
-        label="Light Transmission"
+        label={t('inspector.material.lightTransmission', 'Light Transmission')}
         value={material.lightTransmission}
         engineProp={{ nodeId, prop: 'lightTransmission' }}
       />
       <div className={s.row}>
-        <span className={s.label}>Accepts Shadows</span>
+        <span className={s.label}>{t('inspector.material.acceptsShadows', 'Accepts Shadows')}</span>
         <select
           className={s.select}
           value={material.acceptsShadowsMode}
           // `material/acceptsShadows` (0 Off / 1 On / 2 Only).
           onChange={(e) => { void edit('Set Accepts Shadows', scalarValueCommands('acceptsShadows', [{ nodeId, value: shadowModeValue(e.currentTarget.value as 'off' | 'on' | 'only') }], { seconds: getTime() })); }}
-          aria-label="Accepts shadows"
+          aria-label={t('inspector.material.acceptsShadowsAria', 'Accepts shadows')}
         >
-          <option value="off">Off</option>
-          <option value="on">On</option>
-          <option value="only">Only</option>
+          <option value="off">{t('inspector.material.off', 'Off')}</option>
+          <option value="on">{t('inspector.material.on', 'On')}</option>
+          <option value="only">{t('inspector.material.only', 'Only')}</option>
         </select>
       </div>
       {material.shadowOnly && (
         <p className={s.hint}>
-          “Only” hides the layer itself — it stays in the scene purely as a
-          shadow caster or catcher.
+          {t('inspector.material.onlyHint', '“Only” hides the layer itself — it stays in the scene purely as a shadow caster or catcher.')}
         </p>
       )}
       <span className={s.row}>
-        <span className={s.label}>Accepts Lights</span>
+        <span className={s.label}>{t('inspector.material.acceptsLights', 'Accepts Lights')}</span>
         <Switch
           checked={material.acceptsLights}
           // `material/acceptsLights` (0 / 1; keyed at the playhead when animated).
           onChange={(e) => {
             void edit('Set Accepts Lights', scalarValueCommands('acceptsLights', [{ nodeId, value: e.currentTarget.checked ? 1 : 0 }], { seconds: getTime() }));
           }}
-          aria-label="Accepts lights"
+          aria-label={t('inspector.material.acceptsLightsAria', 'Accepts lights')}
         />
       </span>
       {!material.acceptsLights && (
         <p className={s.hint}>
-          Accepts Lights is off: scene lights do not shade this layer, and
-          nothing below changes the picture until it is on.
+          {t('inspector.material.lightsOffHint', 'Accepts Lights is off: scene lights do not shade this layer, and nothing below changes the picture until it is on.')}
         </p>
       )}
       {material.shading !== 'toon' && (
         <span className={s.row}>
-          <span className={s.label}>Reflect Layers</span>
+          <span className={s.label}>{t('inspector.material.reflectLayers', 'Reflect Layers')}</span>
           <Switch
             checked={reflectsLayers}
             disabled={!hasPath(nodeId, 'material/reflectsLayers')}
             onChange={(ev) => {
               void edit('Set Reflect Layers', fieldCommands([nodeId], 'material/reflectsLayers', values.bool(ev.currentTarget.checked)));
             }}
-            aria-label="Reflect layers"
+            aria-label={t('inspector.material.reflectLayersAria', 'Reflect layers')}
           />
         </span>
       )}
       <span className={s.row}>
-        <span className={s.label}>Shading</span>
+        <span className={s.label}>{t('inspector.material.shading', 'Shading')}</span>
         <select
           className={s.select}
           value={material.shading}
@@ -490,27 +489,27 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
             const v = e.currentTarget.value === 'pbr' ? 'pbr' : e.currentTarget.value === 'toon' ? 'toon' : 'phong';
             void edit('Set Shading', fieldCommands([nodeId], 'material/shading', values.choice(v)));
           }}
-          aria-label="Shading model"
+          aria-label={t('inspector.material.shadingAria', 'Shading model')}
         >
-          <option value="phong">Phong</option>
-          <option value="pbr">Physical (PBR)</option>
-          <option value="toon">Toon (Cel)</option>
+          <option value="phong">{t('inspector.material.phong', 'Phong')}</option>
+          <option value="pbr">{t('inspector.material.pbr', 'Physical (PBR)')}</option>
+          <option value="toon">{t('inspector.material.toon', 'Toon (Cel)')}</option>
         </select>
       </span>
 
       <MaterialRow
-        label="Ambient"
+        label={t('inspector.material.ambient', 'Ambient')}
         value={material.ambient}
         engineProp={{ nodeId, prop: 'ambient' }}
       />
       <MaterialRow
-        label="Diffuse"
+        label={t('inspector.material.diffuse', 'Diffuse')}
         value={material.diffuse}
         engineProp={{ nodeId, prop: 'diffuse' }}
       />
       <MaterialRow
-        label="Specular Intensity"
-        name="Specular"
+        label={t('inspector.material.specularIntensity', 'Specular Intensity')}
+        name={t('inspector.material.specular', 'Specular')}
         value={material.specular}
         engineProp={{ nodeId, prop: 'specular' }}
       />
@@ -519,8 +518,8 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
           offering a knob the shader never reads. */}
       {material.shading !== 'pbr' && (
         <MaterialRow
-          label="Specular Shininess"
-          name="Shininess"
+          label={t('inspector.material.specularShininess', 'Specular Shininess')}
+          name={t('inspector.material.shininess', 'Shininess')}
           value={material.shininess}
           min={1}
           max={128}
@@ -530,20 +529,20 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       )}
       {material.shading === 'pbr' && (
         <MaterialRow
-          label="Roughness"
+          label={t('inspector.material.roughness', 'Roughness')}
           value={material.roughness}
           engineProp={{ nodeId, prop: 'roughness' }}
         />
       )}
       {/* Phong reads metal too — it tints the highlight — so the row stays. */}
       <MaterialRow
-        label="Metal"
+        label={t('inspector.material.metal', 'Metal')}
         value={material.metal}
         engineProp={{ nodeId, prop: 'metal' }}
       />
       {material.shading === 'toon' && (
         <MaterialRow
-          label="Bands"
+          label={t('inspector.material.bands', 'Bands')}
           value={material.toonBands}
           min={2}
           max={8}
@@ -553,7 +552,7 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       )}
       {material.shading === 'toon' && material.specular === 0 && (
         <p className={s.hint}>
-          Metal tints the specular highlight — raise Specular Intensity to see it.
+          {t('inspector.material.metalToonHint', 'Metal tints the specular highlight — raise Specular Intensity to see it.')}
         </p>
       )}
 
@@ -562,17 +561,17 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       {material.shading !== 'toon' && (
         <>
           <MaterialRow
-            label="Reflection Intensity"
+            label={t('inspector.material.reflectionIntensity', 'Reflection Intensity')}
             value={material.reflectionIntensity}
             engineProp={{ nodeId, prop: 'reflectionIntensity' }}
           />
           <MaterialRow
-            label="Reflection Sharpness"
+            label={t('inspector.material.reflectionSharpness', 'Reflection Sharpness')}
             value={material.reflectionSharpness}
             engineProp={{ nodeId, prop: 'reflectionSharpness' }}
           />
           <MaterialRow
-            label="Reflection Rolloff"
+            label={t('inspector.material.reflectionRolloff', 'Reflection Rolloff')}
             value={material.reflectionRolloff}
             engineProp={{ nodeId, prop: 'reflectionRolloff' }}
           />
@@ -582,17 +581,17 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       {/* Transparency (AE Advanced 3D): view-dependent alpha at the shading
           stage; IOR only shapes the Fresnel falloff. */}
       <MaterialRow
-        label="Transparency"
+        label={t('inspector.material.transparency', 'Transparency')}
         value={material.transparency}
         engineProp={{ nodeId, prop: 'transparency' }}
       />
       <MaterialRow
-        label="Transparency Rolloff"
+        label={t('inspector.material.transparencyRolloff', 'Transparency Rolloff')}
         value={material.transparencyRolloff}
         engineProp={{ nodeId, prop: 'transparencyRolloff' }}
       />
       <MaterialRow
-        label="Index of Refraction"
+        label={t('inspector.material.ior', 'Index of Refraction')}
         value={material.ior}
         min={1}
         max={4}
@@ -602,23 +601,22 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       />
       {material.transparency > 0 && !material.acceptsLights && (
         <p className={s.hint}>
-          Transparency applies at the shading stage — turn Accepts Lights on
-          (with at least one light in the comp) for it to render.
+          {t('inspector.material.transparencyHint', 'Transparency applies at the shading stage — turn Accepts Lights on (with at least one light in the comp) for it to render.')}
         </p>
       )}
 
       {/* Displacement (AE 26.2): a height map's luma pushes the mesh along its
           normals — 50 % grey is flat, white rises, black sinks. */}
       <div className={s.row}>
-        <span className={s.label}>Height Map</span>
+        <span className={s.label}>{t('inspector.material.heightMap', 'Height Map')}</span>
         <select
           className={s.select}
           value={material.heightMapAssetId ?? ''}
           // `material/heightMap` (a layer field: the item id, '' = none).
           onChange={(e) => { void edit('Set Height Map', fieldCommands([nodeId], 'material/heightMap', values.string(e.target.value))); }}
-          aria-label="Height map asset"
+          aria-label={t('inspector.material.heightMapAria', 'Height map asset')}
         >
-          <option value="">None</option>
+          <option value="">{t('inspector.material.none', 'None')}</option>
           {/* B4: the project's still images (`ItemInfo.mediaType`), from the mirror at render. */}
           {[...documentMirror().items.values()].filter((a) => a.kind === 'footage' && a.mediaType === 'image').map((a) => (
             <option key={a.id} value={a.id}>{a.name}</option>
@@ -628,7 +626,7 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       {(material.heightMapAssetId || material.heightMapSrc) && (
         <>
           <MaterialRow
-            label="Displacement"
+            label={t('inspector.material.displacement', 'Displacement')}
             value={material.displacement}
             min={-200}
             max={200}
@@ -636,7 +634,7 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
             engineProp={{ nodeId, prop: 'displacement' }}
           />
           <MaterialRow
-            label="Subdivide"
+            label={t('inspector.material.subdivide', 'Subdivide')}
             value={material.displacementSubdivisions}
             min={0}
             max={3}
@@ -654,15 +652,15 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
       {/* Saved materials: ours, not AE's, so last — below everything AE has. */}
       <div className={s.divider} />
       <span className={s.groupHeader}>
-        Saved Materials
+        {t('inspector.material.savedMaterials', 'Saved Materials')}
         <Button
           size="xs"
           variant="ghost"
           onClick={() => { setDraftName(''); setSaving((v) => !v); }}
           leftIcon={<Icon name="plus" size="sm" />}
-          title="Save this layer's material options as a reusable material"
+          title={t('inspector.material.saveAsTitle', "Save this layer's material options as a reusable material")}
         >
-          Save as material…
+          {t('inspector.material.saveAs', 'Save as material…')}
         </Button>
       </span>
 
@@ -671,17 +669,17 @@ export function MaterialSection({ nodeId }: { nodeId: string }): JSX.Element | n
           <input
             className={s.nameInput}
             autoFocus
-            placeholder="Material name"
+            placeholder={t('inspector.material.namePlaceholder', 'Material name')}
             value={draftName}
             onChange={(e) => setDraftName(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commitSave();
               if (e.key === 'Escape') setSaving(false);
             }}
-            aria-label="New material name"
+            aria-label={t('inspector.material.newNameAria', 'New material name')}
           />
           <Button size="xs" variant="primary" onClick={commitSave} disabled={!draftName.trim()}>
-            Save
+            {t('inspector.material.save', 'Save')}
           </Button>
         </div>
       )}

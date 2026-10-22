@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <vector>
 
 #include "kernels.hpp"
@@ -250,8 +251,9 @@ void roughen_edges(RgbaView img, double border, double scale, double complexity,
     return alpha[static_cast<std::size_t>(iy) * static_cast<std::size_t>(w) + static_cast<std::size_t>(ix)] >= 128;
   };
   // How deep (px, up to the border) a pixel sits inside the shape: the first
-  // of six rings (eight taps each) that reaches outside it.
-  const auto depth = [&](int x, int y) {
+  // of six rings (eight taps each) that reaches outside it; none when every
+  // ring stays inside (deeper than the border).
+  const auto depth = [&](int x, int y) -> std::optional<double> {
     for (int k = 1; k <= 6; ++k) {
       const double r = border * k / 6;
       for (int j = 0; j < 8; ++j) {
@@ -259,14 +261,17 @@ void roughen_edges(RgbaView img, double border, double scale, double complexity,
         if (!inside(x + 0.5 + std::cos(ang) * r, y + 0.5 + std::sin(ang) * r)) return r - border / 12;
       }
     }
-    return border;
+    return std::nullopt;
   };
   for_rows(pool, h, [&](int y0, int y1) {
     for (int y = y0; y < y1; ++y) {
       for (int x = 0; x < w; ++x) {
         std::uint8_t* p = data + idx4(x, y, w);
         const double a = p[3];
-        if (a != 0) {
+        // Deeper than the border: whole (scoring it at depth `border` cut it
+        // wherever n > 1 - 0.5 / border — a speckled interior under ~10 px).
+        const std::optional<double> dep = a != 0 ? depth(x, y) : std::nullopt;
+        if (dep) {
           double n = 0;
           double amp = 1;
           double f = freq;
@@ -282,7 +287,7 @@ void roughen_edges(RgbaView img, double border, double scale, double complexity,
           // A pixel survives when it lies deeper than n of the border (a 1 px
           // anti-aliased band); the interior beyond the border is untouched —
           // the old per-pixel `alpha − noise` shredded whole shapes.
-          const double keep = std::clamp(depth(x, y) - n * border + 0.5, 0.0, 1.0);
+          const double keep = std::clamp(*dep - n * border + 0.5, 0.0, 1.0);
           p[3] = u8c(js::round(a * keep));
         }
         // applyRoughenEdges' Edge Sharpness, over every pixel of the result.

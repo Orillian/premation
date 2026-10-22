@@ -37,6 +37,7 @@ export type {
   EngineHostState,
   EngineHostStatus,
   EngineWireReply,
+  EngineBusyNotice,
   EngineRestartNotice,
   EngineUnavailableNotice,
   EngineFrameMeta,

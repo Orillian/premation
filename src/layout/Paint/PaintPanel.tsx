@@ -36,51 +36,62 @@ import { Segmented } from '@components/Segmented';
 import { Icon } from '@components/Icon';
 import { currentPaintTool, setPaintTool, type PaintToolKind } from './paintTool';
 import styles from './Paint.module.css';
+import { t } from '@core/i18n';
 
-export const PAINT_BLENDS: ReadonlyArray<{ value: PaintBlend; label: string }> = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'darken', label: 'Darken' },
-  { value: 'multiply', label: 'Multiply' },
-  { value: 'color-burn', label: 'Color Burn' },
-  { value: 'add', label: 'Add' },
-  { value: 'lighten', label: 'Lighten' },
-  { value: 'screen', label: 'Screen' },
-  { value: 'color-dodge', label: 'Color Dodge' },
-  { value: 'overlay', label: 'Overlay' },
-  { value: 'soft-light', label: 'Soft Light' },
-  { value: 'hard-light', label: 'Hard Light' },
-  { value: 'difference', label: 'Difference' },
-  { value: 'exclusion', label: 'Exclusion' },
-  { value: 'hue', label: 'Hue' },
-  { value: 'saturation', label: 'Saturation' },
-  { value: 'color', label: 'Color' },
-  { value: 'luminosity', label: 'Luminosity' },
-];
+export function paintBlends(): ReadonlyArray<{ value: PaintBlend; label: string }> {
+  return [
+    { value: 'normal', label: t('paint.panel.normal', 'Normal') },
+    { value: 'darken', label: t('paint.panel.darken', 'Darken') },
+    { value: 'multiply', label: t('paint.panel.multiply', 'Multiply') },
+    { value: 'color-burn', label: t('paint.panel.colorBurn', 'Color Burn') },
+    { value: 'add', label: t('paint.panel.add', 'Add') },
+    { value: 'lighten', label: t('paint.panel.lighten', 'Lighten') },
+    { value: 'screen', label: t('paint.panel.screen', 'Screen') },
+    { value: 'color-dodge', label: t('paint.panel.colorDodge', 'Color Dodge') },
+    { value: 'overlay', label: t('paint.panel.overlay', 'Overlay') },
+    { value: 'soft-light', label: t('paint.panel.softLight', 'Soft Light') },
+    { value: 'hard-light', label: t('paint.panel.hardLight', 'Hard Light') },
+    { value: 'difference', label: t('paint.panel.difference', 'Difference') },
+    { value: 'exclusion', label: t('paint.panel.exclusion', 'Exclusion') },
+    { value: 'hue', label: t('paint.panel.hue', 'Hue') },
+    { value: 'saturation', label: t('paint.panel.saturation', 'Saturation') },
+    { value: 'color', label: t('paint.panel.color', 'Color') },
+    { value: 'luminosity', label: t('paint.panel.luminosity', 'Luminosity') },
+  ];
+}
 
-const CHANNELS: ReadonlyArray<{ value: PaintChannels; label: string }> = [
-  { value: 'rgba', label: 'RGBA' },
-  { value: 'rgb', label: 'RGB' },
-  { value: 'alpha', label: 'Alpha' },
-];
+function channels(): ReadonlyArray<{ value: PaintChannels; label: string }> {
+  return [
+    { value: 'rgba', label: 'RGBA' },
+    { value: 'rgb', label: 'RGB' },
+    { value: 'alpha', label: t('paint.panel.alpha', 'Alpha') },
+  ];
+}
 
-const DURATIONS: ReadonlyArray<{ value: PaintDuration; label: string }> = [
-  { value: 'constant', label: 'Constant' },
-  { value: 'writeOn', label: 'Write On' },
-  { value: 'single', label: 'Single Frame' },
-  { value: 'custom', label: 'Custom' },
-];
+function durations(): ReadonlyArray<{ value: PaintDuration; label: string }> {
+  return [
+    { value: 'constant', label: t('paint.panel.constant', 'Constant') },
+    { value: 'writeOn', label: t('paint.panel.writeOn', 'Write On') },
+    { value: 'single', label: t('paint.panel.singleFrame', 'Single Frame') },
+    { value: 'custom', label: t('paint.panel.custom', 'Custom') },
+  ];
+}
 
-const ERASE_MODES: ReadonlyArray<{ value: EraseMode; label: string }> = [
-  { value: 'layerAndPaint', label: 'Layer Source & Paint' },
-  { value: 'paintOnly', label: 'Paint Only' },
-  { value: 'lastStroke', label: 'Last Stroke Only' },
-];
+function eraseModes(): ReadonlyArray<{ value: EraseMode; label: string }> {
+  return [
+    { value: 'layerAndPaint', label: t('paint.panel.layerSourcePaint', 'Layer Source & Paint') },
+    { value: 'paintOnly', label: t('paint.panel.paintOnly', 'Paint Only') },
+    { value: 'lastStroke', label: t('paint.panel.lastStrokeOnly', 'Last Stroke Only') },
+  ];
+}
 
-const TOOLS: ReadonlyArray<{ value: PaintToolKind; label: string }> = [
-  { value: 'brush', label: 'Brush' },
-  { value: 'clone', label: 'Clone' },
-  { value: 'eraser', label: 'Eraser' },
-];
+function tools(): ReadonlyArray<{ value: PaintToolKind; label: string }> {
+  return [
+    { value: 'brush', label: t('paint.panel.brush', 'Brush') },
+    { value: 'clone', label: t('paint.panel.clone', 'Clone') },
+    { value: 'eraser', label: t('paint.panel.eraser', 'Eraser') },
+  ];
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -121,7 +132,7 @@ export function PaintStrokeList({ layerId }: { layerId: string }): JSX.Element |
   if (strokes.length === 0) return null;
   return (
     <>
-      <div className={styles.strokeList} role="listbox" aria-label="Paint strokes">
+      <div className={styles.strokeList} role="listbox" aria-label={t('paint.panel.paintStrokes', 'Paint strokes')}>
         {strokes.map((s) => {
           const selected = paint.selectedStroke?.nodeId === layerId && paint.selectedStroke.strokeId === s.id;
           const keyed = s.pathKeyed;
@@ -136,8 +147,8 @@ export function PaintStrokeList({ layerId }: { layerId: string }): JSX.Element |
               <button
                 type="button"
                 className={styles.iconButton}
-                aria-label={s.visible === false ? 'Show stroke' : 'Hide stroke'}
-                title="Video switch"
+                aria-label={s.visible === false ? t('paint.panel.showStroke', 'Show stroke') : t('paint.panel.hideStroke', 'Hide stroke')}
+                title={t('paint.panel.videoSwitch', 'Video switch')}
                 onClick={(e) => {
                   e.stopPropagation();
                   void setPaintStrokeVisible(layerId, s.id, s.visible === false);
@@ -149,9 +160,9 @@ export function PaintStrokeList({ layerId }: { layerId: string }): JSX.Element |
               <button
                 type="button"
                 className={styles.iconButton}
-                aria-label={keyed ? 'Stop animating path' : 'Animate path'}
+                aria-label={keyed ? t('paint.panel.stopAnimatingPath', 'Stop animating path') : t('paint.panel.animatePath', 'Animate path')}
                 aria-pressed={keyed}
-                title={keyed ? 'Path is keyframed — click to remove its keyframes' : 'Key the Path at the current time'}
+                title={keyed ? t('paint.panel.pathIsKeyframedClickTo', 'Path is keyframed — click to remove its keyframes') : t('paint.panel.keyThePathAtThe', 'Key the Path at the current time')}
                 onClick={(e) => {
                   e.stopPropagation();
                   void setPaintPathAnimated(layerId, s.id, !keyed, playheadSeconds());
@@ -162,7 +173,7 @@ export function PaintStrokeList({ layerId }: { layerId: string }): JSX.Element |
               <button
                 type="button"
                 className={styles.iconButton}
-                aria-label="Delete stroke"
+                aria-label={t('paint.panel.deleteStroke', 'Delete stroke')}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (selected) paint.set({ selectedStroke: null });
@@ -176,10 +187,10 @@ export function PaintStrokeList({ layerId }: { layerId: string }): JSX.Element |
         })}
       </div>
       {paint.selectedStroke?.nodeId === layerId && (
-        <span className={styles.hint}>Drawing now replaces the selected stroke's Path. Click it again to deselect.</span>
+        <span className={styles.hint}>{t('paint.panel.drawingNowReplacesTheSelected', "Drawing now replaces the selected stroke's Path. Click it again to deselect.")}</span>
       )}
       <Checkbox
-        label="Paint on Transparent"
+        label={t('paint.panel.paintOnTransparent', 'Paint on Transparent')}
         checked={onTransparent}
         onChange={() => {
           void setPaintOnTransparent(layerId, !onTransparent);
@@ -219,125 +230,125 @@ export function PaintPanel(): JSX.Element {
     .filter((l): l is NonNullable<typeof l> => !!l && !l.parent && isPaintableLayer(l));
 
   return (
-    <div className={styles.panelRoot} aria-label="Paint">
+    <div className={styles.panelRoot} aria-label={t('paint.panel.paint', 'Paint')}>
       <div className={styles.group}>
         <Segmented
           size="sm"
           fullWidth
-          aria-label="Paint tool"
-          options={TOOLS}
+          aria-label={t('paint.panel.paintTool', 'Paint tool')}
+          options={tools()}
           value={tool ?? (activeTool === 'eraser' ? 'eraser' : 'brush')}
           onChange={(v) => setPaintTool(v)}
         />
-        {!tool && <span className={styles.hint}>Pick a paint tool (Ctrl+B cycles them) to paint on the selected layer.</span>}
+        {!tool && <span className={styles.hint}>{t('paint.panel.pickAPaintToolCtrl', 'Pick a paint tool (Ctrl+B cycles them) to paint on the selected layer.')}</span>}
       </div>
 
       <div className={styles.group}>
         <div className={styles.inline}>
-          <ColorPicker compact value={drawToolOptions.brushColor} aria-label="Foreground color" onChange={(hex) => { drawToolOptions.brushColor = hex; bump(); }} />
-          <ColorPicker compact value={paint.backgroundColor} aria-label="Background color" onChange={(hex) => paint.set({ backgroundColor: hex })} />
-          <button type="button" className={styles.iconButton} title="Swap colors (X)" aria-label="Swap colors" onClick={() => { paint.swapColors(); bump(); }}>
+          <ColorPicker compact value={drawToolOptions.brushColor} aria-label={t('paint.panel.foregroundColor', 'Foreground color')} onChange={(hex) => { drawToolOptions.brushColor = hex; bump(); }} />
+          <ColorPicker compact value={paint.backgroundColor} aria-label={t('paint.panel.backgroundColor', 'Background color')} onChange={(hex) => paint.set({ backgroundColor: hex })} />
+          <button type="button" className={styles.iconButton} title={t('paint.panel.swapColorsX', 'Swap colors (X)')} aria-label={t('paint.panel.swapColors', 'Swap colors')} onClick={() => { paint.swapColors(); bump(); }}>
             <Icon name="refresh" size="sm" />
           </button>
-          <button type="button" className={styles.button} title="Default colors (D)" onClick={() => { paint.resetColors(); bump(); }}>
-            Default
+          <button type="button" className={styles.button} title={t('paint.panel.defaultColorsD', 'Default colors (D)')} onClick={() => { paint.resetColors(); bump(); }}>
+            {t('paint.panel.default', 'Default')}
           </button>
         </div>
-        <Row label="Opacity">
+        <Row label={t('paint.panel.opacity', 'Opacity')}>
           <ValueField value={pct(paint.opacity)} unit="%" min={0} max={100} precision={1} onChange={(v) => paint.set({ opacity: Number(v) / 100 })} />
         </Row>
-        <Row label="Flow">
+        <Row label={t('paint.panel.flow', 'Flow')}>
           <ValueField value={pct(paint.flow)} unit="%" min={0} max={100} precision={1} onChange={(v) => paint.set({ flow: Number(v) / 100 })} />
         </Row>
-        <Row label="Mode">
-          <Select label="Mode" value={paint.blend} options={PAINT_BLENDS} onChange={(v) => paint.set({ blend: v })} />
+        <Row label={t('paint.panel.mode', 'Mode')}>
+          <Select label={t('paint.panel.mode', 'Mode')} value={paint.blend} options={paintBlends()} onChange={(v) => paint.set({ blend: v })} />
         </Row>
-        <Row label="Channels">
-          <Select label="Channels" value={paint.channels} options={CHANNELS} onChange={(v) => paint.set({ channels: v })} />
+        <Row label={t('paint.panel.channels', 'Channels')}>
+          <Select label={t('paint.panel.channels', 'Channels')} value={paint.channels} options={channels()} onChange={(v) => paint.set({ channels: v })} />
         </Row>
-        <Row label="Duration">
+        <Row label={t('paint.panel.duration', 'Duration')}>
           <div className={styles.inline}>
-            <Select label="Duration" value={paint.duration} options={DURATIONS} onChange={(v) => paint.set({ duration: v })} />
+            <Select label={t('paint.panel.duration', 'Duration')} value={paint.duration} options={durations()} onChange={(v) => paint.set({ duration: v })} />
             {paint.duration === 'custom' && (
-              <ValueField value={paint.customFrames} unit="f" min={1} max={100000} precision={0} aria-label="Duration frames" onChange={(v) => paint.set({ customFrames: Math.max(1, Math.round(Number(v))) })} />
+              <ValueField value={paint.customFrames} unit="f" min={1} max={100000} precision={0} aria-label={t('paint.panel.durationFrames', 'Duration frames')} onChange={(v) => paint.set({ customFrames: Math.max(1, Math.round(Number(v))) })} />
             )}
           </div>
         </Row>
         {tool === 'eraser' && (
-          <Row label="Erase">
-            <Select label="Erase" value={paint.eraseMode} options={ERASE_MODES} onChange={(v) => paint.set({ eraseMode: v })} />
+          <Row label={t('paint.panel.erase', 'Erase')}>
+            <Select label={t('paint.panel.erase', 'Erase')} value={paint.eraseMode} options={eraseModes()} onChange={(v) => paint.set({ eraseMode: v })} />
           </Row>
         )}
       </div>
 
       {tool === 'clone' && (
         <div className={styles.group}>
-          <span className={styles.groupLabel}>Clone Options</span>
-          <div className={styles.inline} role="group" aria-label="Clone presets">
+          <span className={styles.groupLabel}>{t('paint.panel.cloneOptions', 'Clone Options')}</span>
+          <div className={styles.inline} role="group" aria-label={t('paint.panel.clonePresets', 'Clone presets')}>
             {paint.clonePresets.map((_, i) => (
               <button
                 key={i}
                 type="button"
                 className={paint.activeClonePreset === i ? styles.buttonActive : styles.button}
                 aria-pressed={paint.activeClonePreset === i}
-                title={`Clone preset ${i + 1} (${i + 3})`}
+                title={t('paint.panel.clonePreset', 'Clone preset {n} ({key})', { n: i + 1, key: i + 3 })}
                 onClick={() => paint.selectClonePreset(i)}
               >
                 {i + 1}
               </button>
             ))}
           </div>
-          <Row label="Source">
+          <Row label={t('paint.panel.source', 'Source')}>
             <select
               className={styles.select}
-              aria-label="Clone source layer"
+              aria-label={t('paint.panel.cloneSourceLayer', 'Clone source layer')}
               value={paint.cloneSourceLayerId ?? ''}
               onChange={(e) => paint.set({ cloneSourceLayerId: e.target.value || null, cloneSource: null, alignedOffset: null })}
             >
-              <option value="">Current Layer</option>
+              <option value="">{t('paint.panel.currentLayer', 'Current Layer')}</option>
               {compLayers.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
             </select>
           </Row>
-          <Checkbox label="Aligned" checked={paint.cloneAligned} onChange={() => paint.set({ cloneAligned: !paint.cloneAligned, alignedOffset: null })} />
-          <Checkbox label="Lock Source Time" checked={paint.cloneLockTime} onChange={() => paint.set({ cloneLockTime: !paint.cloneLockTime })} />
+          <Checkbox label={t('paint.panel.aligned', 'Aligned')} checked={paint.cloneAligned} onChange={() => paint.set({ cloneAligned: !paint.cloneAligned, alignedOffset: null })} />
+          <Checkbox label={t('paint.panel.lockSourceTime', 'Lock Source Time')} checked={paint.cloneLockTime} onChange={() => paint.set({ cloneLockTime: !paint.cloneLockTime })} />
           {paint.cloneLockTime ? (
-            <Row label="Source Time">
+            <Row label={t('paint.panel.sourceTime', 'Source Time')}>
               <ValueField value={paint.cloneSourceTime} unit="s" step={0.01} precision={2} onChange={(v) => paint.set({ cloneSourceTime: Number(v) })} />
             </Row>
           ) : (
-            <Row label="Source Time Shift">
+            <Row label={t('paint.panel.sourceTimeShift', 'Source Time Shift')}>
               <ValueField value={paint.cloneTimeShift} unit="s" step={0.01} precision={2} onChange={(v) => paint.set({ cloneTimeShift: Number(v) })} />
             </Row>
           )}
-          <Row label="Offset">
+          <Row label={t('paint.panel.offset', 'Offset')}>
             <div className={styles.inline}>
               <span className={styles.hint}>
                 {paint.alignedOffset
                   ? `${Math.round(paint.alignedOffset.x)}, ${Math.round(paint.alignedOffset.y)}`
-                  : paint.cloneSource ? 'set on first stroke' : 'Alt-click to set source'}
+                  : paint.cloneSource ? t('paint.panel.offsetOnFirstStroke', 'set on first stroke') : t('paint.panel.offsetAltClick', 'Alt-click to set source')}
               </span>
               <button type="button" className={styles.button} disabled={!paint.alignedOffset && !paint.cloneSource} onClick={() => paint.set({ alignedOffset: null, cloneSource: null })}>
-                Reset
+                {t('paint.panel.reset', 'Reset')}
               </button>
             </div>
           </Row>
-          <Checkbox label="Clone Source Overlay" checked={paint.cloneOverlay} onChange={() => paint.set({ cloneOverlay: !paint.cloneOverlay })} />
+          <Checkbox label={t('paint.panel.cloneSourceOverlay', 'Clone Source Overlay')} checked={paint.cloneOverlay} onChange={() => paint.set({ cloneOverlay: !paint.cloneOverlay })} />
           {paint.cloneOverlay && (
             <>
-              <Row label="Overlay Opacity">
+              <Row label={t('paint.panel.overlayOpacity', 'Overlay Opacity')}>
                 <ValueField value={pct(paint.cloneOverlayOpacity)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.set({ cloneOverlayOpacity: Number(v) / 100 })} />
               </Row>
-              <Checkbox label="Difference" checked={paint.cloneOverlayDifference} onChange={() => paint.set({ cloneOverlayDifference: !paint.cloneOverlayDifference })} />
+              <Checkbox label={t('paint.panel.difference', 'Difference')} checked={paint.cloneOverlayDifference} onChange={() => paint.set({ cloneOverlayDifference: !paint.cloneOverlayDifference })} />
             </>
           )}
         </div>
       )}
 
       <div className={styles.group}>
-        <span className={styles.groupLabel}>Strokes{layer ? ` — ${layer.name}` : ''}</span>
-        {!layerId && <span className={styles.hint}>Select one layer to see its paint.</span>}
-        {layerId && !paintable && <span className={styles.hint}>This layer cannot be painted on.</span>}
-        {layerId && paintable && strokes.length === 0 && <span className={styles.hint}>No strokes yet.</span>}
+        <span className={styles.groupLabel}>{layer ? t('paint.panel.strokesOf', 'Strokes — {name}', { name: layer.name }) : t('paint.panel.strokes', 'Strokes')}</span>
+        {!layerId && <span className={styles.hint}>{t('paint.panel.selectOneLayerToSee', 'Select one layer to see its paint.')}</span>}
+        {layerId && !paintable && <span className={styles.hint}>{t('paint.panel.thisLayerCannotBePainted', 'This layer cannot be painted on.')}</span>}
+        {layerId && paintable && strokes.length === 0 && <span className={styles.hint}>{t('paint.panel.noStrokesYet', 'No strokes yet.')}</span>}
         {layerId && strokes.length > 0 && <PaintStrokeList layerId={layerId} />}
       </div>
     </div>

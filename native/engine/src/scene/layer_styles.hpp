@@ -7,7 +7,6 @@
 #pragma once
 
 #include <functional>
-#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -15,9 +14,10 @@
 
 namespace premation::scene {
 
-/// The compiled style effects, in the TypeScript's order; nullopt when the
-/// styles use something outside the port (the caller reports "layer styles").
-[[nodiscard]] std::optional<std::vector<Json>> layer_styles_to_effects(
-    const Json& styles, double globalAngle, double globalAltitude, const std::function<bool(std::string_view)>& animated);
+/// The compiled style effects, in the TypeScript's order (empty for no styles).
+/// Every style the document can hold compiles: drop / inner shadow, outer /
+/// inner glow, satin, bevel, colour / gradient overlay, stroke.
+[[nodiscard]] std::vector<Json> layer_styles_to_effects(const Json& styles, double globalAngle, double globalAltitude,
+                                                        const std::function<bool(std::string_view)>& animated);
 
 }  // namespace premation::scene

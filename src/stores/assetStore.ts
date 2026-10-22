@@ -14,6 +14,7 @@ import { useUIStore } from '@stores/uiStore';
 import { bumpScene } from '@stores/sceneStore';
 import { failureReason, mediaKindOf, track as trackEvent } from '@core/analytics/productEvents';
 import { publishAssetSessions } from './assetSession';
+import { t } from '@core/i18n';
 
 export interface ImportedAsset {
   id: string;
@@ -589,7 +590,7 @@ function releaseAsset(asset: ImportedAsset): void {
   void AssetDatabase.deleteAsset(asset.id).catch(() => {
     useUIStore.getState().notify({
       level: 'warning',
-      message: `“${asset.name}” was removed from the project but could not be deleted from local storage — it may reappear after a reload.`,
+      message: t('stores.asset.localDeleteFailed', '“{name}” was removed from the project but could not be deleted from local storage — it may reappear after a reload.', { name: asset.name }),
       durationMs: 5000,
     });
   });
@@ -597,7 +598,7 @@ function releaseAsset(asset: ImportedAsset): void {
     void api.deleteAsset(asset.id).catch(() => {
       useUIStore.getState().notify({
         level: 'warning',
-        message: `“${asset.name}” was removed locally but the cloud copy could not be deleted — it may reappear after a reload.`,
+        message: t('stores.asset.cloudDeleteFailed', '“{name}” was removed locally but the cloud copy could not be deleted — it may reappear after a reload.', { name: asset.name }),
         durationMs: 5000,
       });
     });
@@ -880,11 +881,11 @@ export const useAssetStore = create<AssetStoreState & AssetStoreActions>()(
             if (a && !first) first = a;
           }
           if (first) return first;
-          throw new Error('PSD had no raster layers');
+          throw new Error(t('stores.asset.psdNoLayers', 'PSD had no raster layers'));
         } catch (e) {
           useUIStore.getState().notify({
             level: 'error',
-            message: `PSD import failed: ${e instanceof Error ? e.message : String(e)}`,
+            message: t('stores.asset.psdImportFailed', 'PSD import failed: {error}', { error: e instanceof Error ? e.message : String(e) }),
             durationMs: 6000,
           });
           throw e;

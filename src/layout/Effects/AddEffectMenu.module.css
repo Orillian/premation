@@ -16,7 +16,7 @@
 
 .trigger:hover:not(:disabled) {
   color: var(--color-text-primary);
-  background: var(--color-surface-3);
+  background: var(--color-surface-0);
   border-color: var(--color-border);
 }
 

@@ -23,6 +23,7 @@ import { usePaintStore } from '@stores/paintStore';
 import { useUIStore } from '@stores/uiStore';
 import { localToScreen, type ViewFit } from './maskEditing';
 import styles from './LayerViewer.module.css';
+import { t } from '@core/i18n';
 
 export interface LayerPaintSelectProps {
   nodeId: string;
@@ -162,7 +163,7 @@ export function LayerPaintSelect({ nodeId, frameWidth: w, frameHeight: h, view, 
       width={stageWidth}
       height={stageHeight}
       tabIndex={-1}
-      aria-label="Paint strokes"
+      aria-label={t('layerViewer.paintSelect.paintStrokes', 'Paint strokes')}
       data-shortcut-claim="delete backspace escape"
       onKeyDown={onKeyDown}
     >

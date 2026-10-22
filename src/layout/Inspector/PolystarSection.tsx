@@ -28,11 +28,14 @@ import {
 import styles from './TextAnimatorControls.module.css';
 import { AnimToggle } from './AnimToggle';
 import { useKeyedParam } from './useKeyedParam';
+import { t } from '@core/i18n';
 
-const TYPES: { id: PolystarType; label: string }[] = [
-  { id: 'star', label: 'Star' },
-  { id: 'polygon', label: 'Polygon' },
-];
+function polystarTypes(): { id: PolystarType; label: string }[] {
+  return [
+    { id: 'star', label: t('inspector.polystar.type.star', 'Star') },
+    { id: 'polygon', label: t('inspector.polystar.type.polygon', 'Polygon') },
+  ];
+}
 
 function PolystarRow({
   nodeId,
@@ -75,15 +78,15 @@ export function PolystarSection({ nodeId }: { nodeId: string }): JSX.Element | n
   const ps = mirrorPolystar(tree);
   if (!ps) return null;
 
-  const typeLabel = TYPES.find((t) => t.id === ps.starType)?.label ?? 'Star';
-  const items: DropdownItem[] = TYPES.map((t) => ({
+  const typeLabel = polystarTypes().find((ty) => ty.id === ps.starType)?.label ?? t('inspector.polystar.type.star', 'Star');
+  const items: DropdownItem[] = polystarTypes().map((ty) => ({
     type: 'item',
-    id: t.id,
-    label: t.label,
-    icon: t.id === ps.starType ? 'check' : undefined,
+    id: ty.id,
+    label: ty.label,
+    icon: ty.id === ps.starType ? 'check' : undefined,
     onSelect: () => {
       void edit('Set Polystar Type', {
-        type: 'setProperty', prop: { layer: nodeId, path: 'contents/polystar/type' }, value: values.choice(t.id),
+        type: 'setProperty', prop: { layer: nodeId, path: 'contents/polystar/type' }, value: values.choice(ty.id),
       });
     },
   }));
@@ -91,7 +94,7 @@ export function PolystarSection({ nodeId }: { nodeId: string }): JSX.Element | n
   return (
     <>
       <div className={styles.selectorRow}>
-        <span className={styles.paramLabel}>Type</span>
+        <span className={styles.paramLabel}>{t('inspector.polystar.typeLabel', 'Type')}</span>
         <Dropdown
           placement="left-start"
           trigger={

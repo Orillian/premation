@@ -15,15 +15,18 @@ import { cn } from '@utils/cn';
 import { openModal } from '@stores/modalStore';
 import { useVersionHistoryStore } from '@stores/versionHistoryStore';
 import type { VersionKind } from '@core/api/client';
+import { t } from '@core/i18n';
 import { openVersionCompare } from './VersionCompareDialog';
 import { restoreVersionAsOneEdit } from './versionRestore';
 import styles from './VersionHistoryPanel.module.css';
 
-const KIND_LABEL: Record<VersionKind, string> = {
-  manual: 'Checkpoint',
-  autosave: 'Autosave',
-  recovery: 'Recovery',
-};
+function kindLabels(): Record<VersionKind, string> {
+  return {
+    manual: t('history.versions.kindCheckpoint', 'Checkpoint'),
+    autosave: t('history.versions.kindAutosave', 'Autosave'),
+    recovery: t('history.versions.kindRecovery', 'Recovery'),
+  };
+}
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -58,7 +61,7 @@ function VersionHistory(): JSX.Element {
       <div className={styles.saveRow}>
         <input
           className={styles.input}
-          placeholder="Name this checkpoint (optional)…"
+          placeholder={t('history.versions.namePlaceholder', 'Name this checkpoint (optional)…')}
           value={label}
           onChange={(e) => setLabel(e.currentTarget.value)}
           onKeyDown={(e) => {
@@ -67,18 +70,18 @@ function VersionHistory(): JSX.Element {
         />
         <button type="button" className={styles.saveBtn} onClick={() => void onSave()}>
           <Icon name="marker" size="sm" />
-          Save version
+          {t('history.versions.save', 'Save version')}
         </button>
       </div>
 
-      {status === 'loading' && <p className={styles.note}>Loading history…</p>}
+      {status === 'loading' && <p className={styles.note}>{t('history.versions.loading', 'Loading history…')}</p>}
       {status === 'error' && <p className={styles.error}>{error}</p>}
       {status === 'ready' && versions.length === 0 && (
         <EmptyState
           icon="history"
-          title="No versions yet"
-          message="Autosave captures snapshots as you work — or name a checkpoint above to keep one deliberately."
-          action={{ label: 'Save a version', onClick: () => void onSave() }}
+          title={t('history.versions.emptyTitle', 'No versions yet')}
+          message={t('history.versions.emptyMessage', 'Autosave captures snapshots as you work — or name a checkpoint above to keep one deliberately.')}
+          action={{ label: t('history.versions.saveAVersion', 'Save a version'), onClick: () => void onSave() }}
         />
       )}
 
@@ -88,25 +91,25 @@ function VersionHistory(): JSX.Element {
           return (
             <div key={v.id} className={styles.row}>
               <div className={cn(styles.badge, styles[`kind_${v.kind}`])}>
-                {KIND_LABEL[v.kind] ?? v.kind}
+                {kindLabels()[v.kind] ?? v.kind}
               </div>
               <div className={styles.body}>
                 <span className={styles.name}>
-                  {v.label || `Revision ${v.revision}`}
+                  {v.label || t('history.versions.revision', 'Revision {n}', { n: v.revision })}
                 </span>
                 <span className={styles.meta}>
-                  {formatWhen(v.createdAt)} · rev {v.revision} · {v.time.toFixed(1)}s
+                  {t('history.versions.meta', '{when} · rev {rev} · {time}s', { when: formatWhen(v.createdAt), rev: v.revision, time: v.time.toFixed(1) })}
                 </span>
               </div>
               <button
                 type="button"
                 className={styles.compare}
                 disabled={isRestoring}
-                title="Wipe between this version and the current composition"
+                title={t('history.versions.compareTitle', 'Wipe between this version and the current composition')}
                 onClick={() => openVersionCompare(v)}
               >
                 <Icon name="wipe" size="sm" />
-                Compare
+                {t('history.versions.compare', 'Compare')}
               </button>
               <button
                 type="button"
@@ -114,7 +117,7 @@ function VersionHistory(): JSX.Element {
                 disabled={isRestoring}
                 onClick={() => void restoreVersionAsOneEdit(v.id)}
               >
-                {isRestoring ? 'Restoring…' : 'Restore'}
+                {isRestoring ? t('history.versions.restoring', 'Restoring…') : t('history.versions.restore', 'Restore')}
               </button>
             </div>
           );
@@ -127,7 +130,7 @@ function VersionHistory(): JSX.Element {
         offset={offset}
         busy={status === 'loading'}
         onChange={(page) => void load(page)}
-        itemLabel="version"
+        itemLabel={t('history.versions.itemLabel', 'version')}
         pageSizes={[10, 20, 50]}
       />
     </div>
@@ -137,7 +140,7 @@ function VersionHistory(): JSX.Element {
 export function openVersionHistory(): void {
   openModal({
     id: 'version-history',
-    title: 'Version History',
+    title: t('history.versions.title', 'Version History'),
     size: 'md',
     render: () => <VersionHistory />,
   });

@@ -43,6 +43,10 @@ jest.mock('./AiChatContext', () => ({
 jest.mock('@core/engine/engineStill', () => ({ engineCompStill: jest.fn(async () => null) }));
 
 import { AiChatPanel } from './AiChatPanel';
+import { TooltipProvider } from '@components/Tooltip';
+
+/** The panel's buttons are the system's (<Button>), whose tooltips need the provider the editor shell mounts. */
+const renderPanel = () => render(<TooltipProvider><AiChatPanel /></TooltipProvider>);
 
 beforeEach(() => {
   direction = { variants: 1 };
@@ -51,12 +55,12 @@ beforeEach(() => {
 
 describe('the mode chip', () => {
   it('shows the default mode when the user has not picked one', () => {
-    render(<AiChatPanel />);
+    renderPanel();
     expect(screen.getByTestId('ai-mode-chip').textContent).toContain(authorModeDefault() === 'author' ? 'Author' : 'Library');
   });
 
   it('writes the pick into the direction', () => {
-    render(<AiChatPanel />);
+    renderPanel();
     fireEvent.click(screen.getByTestId('ai-mode-chip'));
     fireEvent.click(screen.getByRole('button', { name: /^Library/ }));
     expect(setDirection).toHaveBeenCalledWith({ mode: 'library' });
@@ -64,11 +68,11 @@ describe('the mode chip', () => {
 
   it('offers alternatives only in Library mode', () => {
     direction = { variants: 1, mode: 'author' };
-    const { unmount } = render(<AiChatPanel />);
+    const { unmount } = renderPanel();
     expect(screen.queryByText('1 direction')).toBeNull();
     unmount();
     direction = { variants: 1, mode: 'library' };
-    render(<AiChatPanel />);
+    renderPanel();
     expect(screen.getByText('1 direction')).toBeTruthy();
   });
 });

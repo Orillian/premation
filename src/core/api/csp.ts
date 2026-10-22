@@ -106,7 +106,8 @@ export function buildAppCsp(options: CspOptions = {}): string {
     ...media,
     'blob:',
   ]);
-  const img = unique(["'self'", ...local, backend, ...media, 'blob:', 'data:']);
+  // `plugin-ui:`: a native plugin's icon on its effect card, served by main from the bundle's ui/ folder.
+  const img = unique(["'self'", ...local, backend, ...media, 'blob:', 'data:', 'plugin-ui:']);
   const mediaSrc = unique(["'self'", ...local, backend, ...media, 'blob:', 'data:']);
 
   return [

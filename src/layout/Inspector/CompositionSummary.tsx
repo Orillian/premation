@@ -13,6 +13,7 @@
  * never disagree about whether there is a composition.
  */
 
+import { t } from '@core/i18n';
 import { Button } from '@components/Button';
 import { EmptyState } from '@components/EmptyState';
 import { flicksToSeconds } from '@motion/engine-api';
@@ -22,7 +23,10 @@ import { framesToTimecode } from '@core/time/timecode';
 import { openCompositionSettings } from '@layout/Composition/CompositionSettingsDialog';
 import styles from './CompositionSummary.module.css';
 
-const HINT = 'Select a layer to edit its properties';
+/** Read at render time: the catalogue loads after module import. */
+function hint(): string {
+  return t('inspector.compSummary.hint', 'Select a layer to edit its properties');
+}
 
 /** 30 → "30", 29.97 → "29.97": NTSC rates are real and must not round. */
 function formatFps(fps: number): string {
@@ -43,26 +47,26 @@ export function CompositionSummary(): JSX.Element {
   const pristine = settings?.pristine === true && (comp?.layers.length ?? 0) === 0;
 
   if (pristine) {
-    return <EmptyState icon="mouse-pointer" title="No selection" message={`${HINT}.`} />;
+    return <EmptyState icon="mouse-pointer" title={t('inspector.compSummary.noSelection', 'No selection')} message={t('inspector.compSummary.hintSentence', 'Select a layer to edit its properties.')} />;
   }
 
   return (
     <div className={styles.root} data-composition-summary>
       <div className={styles.head}>
-        <span className={styles.eyebrow}>Composition</span>
+        <span className={styles.eyebrow}>{t('inspector.compSummary.composition', 'Composition')}</span>
         <span className={styles.name} title={name}>{name}</span>
       </div>
       <dl className={styles.facts}>
-        <dt>Size</dt>
+        <dt>{t('inspector.compSummary.size', 'Size')}</dt>
         <dd>{width} × {height}</dd>
-        <dt>Frame rate</dt>
+        <dt>{t('inspector.compSummary.frameRate', 'Frame rate')}</dt>
         <dd>{formatFps(fps)} fps</dd>
-        <dt>Duration</dt>
+        <dt>{t('inspector.compSummary.duration', 'Duration')}</dt>
         <dd>{framesToTimecode(duration, fps)}</dd>
-        <dt>Background</dt>
+        <dt>{t('inspector.compSummary.background', 'Background')}</dt>
         <dd className={styles.background}>
           {transparent ? (
-            'Transparent'
+            t('inspector.compSummary.transparent', 'Transparent')
           ) : (
             <>
               <span className={styles.swatch} style={{ background }} aria-hidden="true" />
@@ -72,9 +76,9 @@ export function CompositionSummary(): JSX.Element {
         </dd>
       </dl>
       <Button size="sm" variant="secondary" fullWidth onClick={() => openCompositionSettings()}>
-        Composition settings…
+        {t('inspector.compSummary.settings', 'Composition settings…')}
       </Button>
-      <p className={styles.hint}>{HINT}</p>
+      <p className={styles.hint}>{hint()}</p>
     </div>
   );
 }

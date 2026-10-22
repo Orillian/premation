@@ -22,6 +22,7 @@ import {
 } from '@core/workspace/guideGeometry';
 import { cn } from '@utils/cn';
 import styles from './GuideEditorDialog.module.css';
+import { t } from '@core/i18n';
 
 const round = (v: number): number => Math.round(v * 1000) / 1000;
 
@@ -61,31 +62,44 @@ function GuideEditor({ guideId, close }: { guideId: string; close: () => void })
   useDialogPrimaryAction(valid ? submit : null);
 
   if (!guide) {
-    return <p className={styles.hint}>This guide no longer exists.</p>;
+    return <p className={styles.hint}>{t('workspace.guideEditor.gone', 'This guide no longer exists.')}</p>;
   }
 
-  const startLabel = axis === 'x' ? 'Left' : 'Top';
-  const endLabel = axis === 'x' ? 'Right' : 'Bottom';
+  const startLabel = axis === 'x' ? t('workspace.guideEditor.left', 'Left') : t('workspace.guideEditor.top', 'Top');
+  const endLabel = axis === 'x' ? t('workspace.guideEditor.right', 'Right') : t('workspace.guideEditor.bottom', 'Bottom');
+  // The pin hint names the edge in a full sentence per edge (no fragment splicing).
+  const pinnedEdge = edge === 'end' ? (axis === 'x' ? 'right' : 'bottom') : (axis === 'x' ? 'left' : 'top');
+  const distanceHint = pinnedEdge === 'left'
+    ? t('workspace.guideEditor.keepsLeft', 'Keeps its distance from the left edge when the composition is resized.')
+    : pinnedEdge === 'top'
+      ? t('workspace.guideEditor.keepsTop', 'Keeps its distance from the top edge when the composition is resized.')
+      : pinnedEdge === 'right'
+        ? t('workspace.guideEditor.keepsRight', 'Keeps its distance from the right edge when the composition is resized.')
+        : t('workspace.guideEditor.keepsBottom', 'Keeps its distance from the bottom edge when the composition is resized.');
 
   return (
     <div className={styles.root}>
       <label className={styles.field}>
-        <span className={styles.label}>{axis === 'x' ? 'Vertical guide position' : 'Horizontal guide position'}</span>
+        <span className={styles.label}>
+          {axis === 'x'
+            ? t('workspace.guideEditor.verticalPosition', 'Vertical guide position')
+            : t('workspace.guideEditor.horizontalPosition', 'Horizontal guide position')}
+        </span>
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          aria-label="Guide position"
+          aria-label={t('workspace.guideEditor.position', 'Guide position')}
           inputMode="decimal"
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
-          error={valid ? undefined : 'Enter a number'}
+          error={valid ? undefined : t('workspace.guideEditor.enterNumber', 'Enter a number')}
           suffix={unit === '%' ? '%' : 'px'}
         />
       </label>
 
       <div className={styles.row}>
-        <span className={styles.label}>Units</span>
-        <div className={styles.segmented} role="radiogroup" aria-label="Guide units">
+        <span className={styles.label}>{t('workspace.guideEditor.units', 'Units')}</span>
+        <div className={styles.segmented} role="radiogroup" aria-label={t('workspace.guideEditor.unitsGroup', 'Guide units')}>
           {(['px', '%'] as const).map((u) => (
             <button
               key={u}
@@ -95,15 +109,15 @@ function GuideEditor({ guideId, close }: { guideId: string; close: () => void })
               className={cn(styles.segment, unit === u && styles.segmentOn)}
               onClick={() => reexpress(u, edge)}
             >
-              {u === 'px' ? 'Pixels' : '% of composition'}
+              {u === 'px' ? t('workspace.guideEditor.pixels', 'Pixels') : t('workspace.guideEditor.percentOfComp', '% of composition')}
             </button>
           ))}
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Pin to</span>
-        <div className={styles.segmented} role="radiogroup" aria-label="Pin guide to edge">
+        <span className={styles.label}>{t('workspace.guideEditor.pinTo', 'Pin to')}</span>
+        <div className={styles.segmented} role="radiogroup" aria-label={t('workspace.guideEditor.pinGroup', 'Pin guide to edge')}>
           {(['start', 'end'] as const).map((ed) => (
             <button
               key={ed}
@@ -120,8 +134,8 @@ function GuideEditor({ guideId, close }: { guideId: string; close: () => void })
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Colour</span>
-        <div className={styles.swatches} role="radiogroup" aria-label="Guide colour">
+        <span className={styles.label}>{t('workspace.guideEditor.colour', 'Colour')}</span>
+        <div className={styles.swatches} role="radiogroup" aria-label={t('workspace.guideEditor.colourGroup', 'Guide colour')}>
           {GUIDE_COLOR_PRESETS.map((p) => (
             <button
               key={p.id}
@@ -139,22 +153,20 @@ function GuideEditor({ guideId, close }: { guideId: string; close: () => void })
       </div>
 
       <p className={styles.hint}>
-        {edge === 'end'
-          ? `Keeps its distance from the ${endLabel.toLowerCase()} edge when the composition is resized.`
-          : unit === '%'
-            ? 'Keeps its proportion when the composition is resized.'
-            : `Keeps its distance from the ${startLabel.toLowerCase()} edge when the composition is resized.`}
+        {edge !== 'end' && unit === '%'
+          ? t('workspace.guideEditor.keepsProportion', 'Keeps its proportion when the composition is resized.')
+          : distanceHint}
       </p>
 
       <DialogFooter
         secondary={
           <Button variant="secondary" size="md" onClick={close}>
-            Cancel
+            {t('workspace.guideEditor.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" size="md" onClick={submit} disabled={!valid}>
-            OK
+            {t('workspace.guideEditor.ok', 'OK')}
           </Button>
         }
       />
@@ -166,7 +178,7 @@ function GuideEditor({ guideId, close }: { guideId: string; close: () => void })
 export function openGuideEditor(guideId: string): void {
   openModal({
     id: 'guide-editor',
-    title: 'Edit Guide',
+    title: t('workspace.guideEditor.title', 'Edit Guide'),
     size: 'sm',
     render: (close) => <GuideEditor guideId={guideId} close={close} />,
   });

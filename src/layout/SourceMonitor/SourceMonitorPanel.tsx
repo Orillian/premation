@@ -46,6 +46,7 @@ import { audioEngine } from '@core/audio/AudioEngine';
 import { waveformPath } from '@core/audio/waveform';
 import { FootageStage } from '@layout/Assets/FootageStage';
 import styles from './SourceMonitorPanel.module.css';
+import { t } from '@core/i18n';
 
 /**
  * The chords this panel takes for itself while focused, as `chordKey` strings.
@@ -95,12 +96,12 @@ function AudioWave({ asset, progress }: { asset: ImportedAsset; progress: number
   if (!path) {
     // A decode that failed stays failed (the engine remembers it): say so, not "reading" forever.
     return audioEngine.decodeState(asset.id) === 'silent'
-      ? <div className={styles.dead}>No waveform: the audio in this file could not be read.</div>
-      : <div className={styles.dead}>Reading the waveform…</div>;
+      ? <div className={styles.dead}>{t('sourceMonitor.waveform.unreadable', 'No waveform: the audio in this file could not be read.')}</div>
+      : <div className={styles.dead}>{t('sourceMonitor.waveform.reading', 'Reading the waveform…')}</div>;
   }
   const played = Math.max(0, Math.min(1, progress)) * WAVE_W;
   return (
-    <svg className={styles.wave} viewBox={`0 0 ${WAVE_W} ${WAVE_H}`} preserveAspectRatio="none" role="img" aria-label={`Waveform of ${asset.name}`}>
+    <svg className={styles.wave} viewBox={`0 0 ${WAVE_W} ${WAVE_H}`} preserveAspectRatio="none" role="img" aria-label={t('sourceMonitor.waveform.aria', 'Waveform of {name}', { name: asset.name })}>
       <path className={styles.waveRest} d={path} />
       <clipPath id="source-wave-played"><rect x={0} y={0} width={played} height={WAVE_H} /></clipPath>
       <path className={styles.wavePlayed} d={path} clipPath="url(#source-wave-played)" />
@@ -124,8 +125,8 @@ export function SourceMonitorPanel(): JSX.Element {
       <div className={styles.root}>
         <EmptyState
           icon="tv"
-          title="No clip loaded"
-          message="Open a clip from the Assets panel — “Open in Source Monitor” — to mark in and out points before it reaches the timeline."
+          title={t('sourceMonitor.empty.title', 'No clip loaded')}
+          message={t('sourceMonitor.empty.message', 'Open a clip from the Assets panel — “Open in Source Monitor” — to mark in and out points before it reaches the timeline.')}
         />
       </div>
     );
@@ -266,8 +267,8 @@ function SourceMonitorBody({
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     // A text field inside the panel (there is none today, but panels grow)
     // keeps its own keys.
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
     const shift = e.shiftKey;
     const step = shift ? 10 : 1;
     switch (e.key.toLowerCase()) {
@@ -309,7 +310,7 @@ function SourceMonitorBody({
 
   const rangeLabel = range
     ? `${framesToTimecode(range.inSec, fps)} → ${framesToTimecode(range.outSec, fps)} (${(range.outSec - range.inSec).toFixed(2)}s)`
-    : 'no usable range';
+    : t('sourceMonitor.range.none', 'no usable range');
 
   return (
     <div
@@ -318,7 +319,7 @@ function SourceMonitorBody({
       data-shortcut-claim={CLAIMED_CHORDS}
       onKeyDown={onKeyDown}
       role="group"
-      aria-label="Source monitor"
+      aria-label={t('sourceMonitor.panel.sourceMonitor', 'Source monitor')}
     >
       <div className={styles.header}>
         <span className={styles.name} title={asset.name}>{asset.name}</span>
@@ -352,7 +353,7 @@ function SourceMonitorBody({
       ) : (
       <div className={styles.stage}>
         {failed ? (
-          <div className={styles.dead}>Preview unavailable — the source may need relinking.</div>
+          <div className={styles.dead}>{t('sourceMonitor.panel.previewUnavailableTheSourceMay', 'Preview unavailable — the source may need relinking.')}</div>
         ) : asset.type === 'audio' ? (
           <>
             <audio ref={audioRef} className={styles.audio} src={asset.src} onError={() => setFailed(true)} />
@@ -369,7 +370,7 @@ function SourceMonitorBody({
         ref={scrubRef}
         className={styles.scrub}
         role="slider"
-        aria-label="Source playhead"
+        aria-label={t('sourceMonitor.panel.sourcePlayhead', 'Source playhead')}
         aria-valuemin={0}
         aria-valuemax={duration || 0}
         aria-valuenow={time}
@@ -387,10 +388,10 @@ function SourceMonitorBody({
           />
         )}
         {inPoint !== null && (
-          <div className={styles.markIn} style={{ left: pct(inPoint) }} title={`In ${framesToTimecode(inPoint, fps)}`} />
+          <div className={styles.markIn} style={{ left: pct(inPoint) }} title={t('sourceMonitor.mark.inTitle', 'In {tc}', { tc: framesToTimecode(inPoint, fps) })} />
         )}
         {outPoint !== null && (
-          <div className={styles.markOut} style={{ left: pct(outPoint) }} title={`Out ${framesToTimecode(outPoint, fps)}`} />
+          <div className={styles.markOut} style={{ left: pct(outPoint) }} title={t('sourceMonitor.mark.outTitle', 'Out {tc}', { tc: framesToTimecode(outPoint, fps) })} />
         )}
         <div className={styles.playhead} style={{ left: pct(time) }} />
       </div>
@@ -398,13 +399,13 @@ function SourceMonitorBody({
       <div className={styles.readout}>
         <span
           className={styles.timecode}
-          title={asset.metadata?.fps ? `${asset.metadata.fps} fps (probed)` : 'Rate not probed — timecode shown at 30 fps'}
+          title={asset.metadata?.fps ? t('sourceMonitor.rate.probed', '{fps} fps (probed)', { fps: asset.metadata.fps }) : t('sourceMonitor.rate.notProbed', 'Rate not probed — timecode shown at 30 fps')}
         >
           {framesToTimecode(time, fps)}
         </span>
         <span className={styles.dim}>/ {duration > 0 ? framesToTimecode(duration, fps) : '--:--:--'}</span>
         {inFrames && (
-          <span className={styles.dim}>{`frame ${stepper.frameIdx + 1} / ${stepper.frameCount}`}</span>
+          <span className={styles.dim}>{t('sourceMonitor.frameOf', 'frame {n} / {count}', { n: stepper.frameIdx + 1, count: stepper.frameCount })}</span>
         )}
         <span className={styles.spacer} />
         <span className={styles.dim}>{rangeLabel}</span>
@@ -425,17 +426,17 @@ function SourceMonitorBody({
         "to the end") resolve the same way in both viewers.
       */}
       {threePoint && (
-        <div className={styles.threePoint} role="group" aria-label="Three-point edit">
+        <div className={styles.threePoint} role="group" aria-label={t('sourceMonitor.panel.threePointEdit', 'Three-point edit')}>
           <span className={styles.threePointCell}>
-            <span className={styles.threePointKey}>IN</span>
+            <span className={styles.threePointKey}>{t('sourceMonitor.threePoint.in', 'IN')}</span>
             {framesToTimecode(threePoint.inSec, fps)}
           </span>
           <span className={styles.threePointCell}>
-            <span className={styles.threePointKey}>OUT</span>
+            <span className={styles.threePointKey}>{t('sourceMonitor.threePoint.out', 'OUT')}</span>
             {framesToTimecode(threePoint.outSec, fps)}
           </span>
           <span className={styles.threePointCell}>
-            <span className={styles.threePointKey}>DUR</span>
+            <span className={styles.threePointKey}>{t('sourceMonitor.threePoint.duration', 'DUR')}</span>
             {framesToTimecode(threePoint.durationSec, fps)}
           </span>
         </div>
@@ -443,55 +444,55 @@ function SourceMonitorBody({
 
       {/* ── Transport ────────────────────────────────────────────────── */}
       <div className={styles.transport}>
-        <button type="button" className={styles.btn} onClick={shuttleReverse} title="Reverse shuttle (J) — press again for 2× and 4×">
+        <button type="button" className={styles.btn} onClick={shuttleReverse} title={t('sourceMonitor.panel.reverseShuttleJPressAgain', 'Reverse shuttle (J) — press again for 2× and 4×')}>
           <Icon name="skip-back" size="sm" />
         </button>
-        <button type="button" className={styles.btn} onClick={() => stepFrames(-1)} title="Previous frame (←)">
+        <button type="button" className={styles.btn} onClick={() => stepFrames(-1)} title={t('sourceMonitor.panel.previousFrame', 'Previous frame (←)')}>
           <Icon name="chevron-left" size="sm" />
         </button>
-        <button type="button" className={styles.btn} onClick={togglePlay} title="Play / pause (Space, K)">
+        <button type="button" className={styles.btn} onClick={togglePlay} title={t('sourceMonitor.panel.playPauseSpaceK', 'Play / pause (Space, K)')}>
           <Icon name={shuttle !== 0 ? 'pause' : 'play'} size="sm" />
         </button>
-        <button type="button" className={styles.btn} onClick={() => stepFrames(1)} title="Next frame (→)">
+        <button type="button" className={styles.btn} onClick={() => stepFrames(1)} title={t('sourceMonitor.panel.nextFrame', 'Next frame (→)')}>
           <Icon name="chevron-right" size="sm" />
         </button>
-        <button type="button" className={styles.btn} onClick={shuttleForward} title="Forward shuttle (L) — press again for 2× and 4×">
+        <button type="button" className={styles.btn} onClick={shuttleForward} title={t('sourceMonitor.panel.forwardShuttleLPressAgain', 'Forward shuttle (L) — press again for 2× and 4×')}>
           <Icon name="skip-forward" size="sm" />
         </button>
 
         <span className={styles.divider} />
 
-        <button type="button" className={styles.btn} onClick={() => useSourceMonitorStore.getState().setIn()} title="Mark In (I)">
-          <Icon name="trim-in" size="sm" /> In
+        <button type="button" className={styles.btn} onClick={() => useSourceMonitorStore.getState().setIn()} title={t('sourceMonitor.panel.markInI', 'Mark In (I)')}>
+          <Icon name="trim-in" size="sm" /> {t('sourceMonitor.transport.in', 'In')}
         </button>
-        <button type="button" className={styles.btn} onClick={() => useSourceMonitorStore.getState().setOut()} title="Mark Out (O)">
-          <Icon name="trim-out" size="sm" /> Out
+        <button type="button" className={styles.btn} onClick={() => useSourceMonitorStore.getState().setOut()} title={t('sourceMonitor.panel.markOutO', 'Mark Out (O)')}>
+          <Icon name="trim-out" size="sm" /> {t('sourceMonitor.transport.out', 'Out')}
         </button>
         <button
           type="button"
           className={styles.btn}
           onClick={() => useSourceMonitorStore.getState().clearInOut()}
           disabled={inPoint === null && outPoint === null}
-          title="Clear both marks"
+          title={t('sourceMonitor.panel.clearBothMarks', 'Clear both marks')}
         >
-          Clear
+          {t('sourceMonitor.panel.clear', 'Clear')}
         </button>
 
         {isVideo && webCodecsAvailable() && !inFrames && !failed && (
-          <button type="button" className={styles.btn} onClick={stepper.enter} title="Exact stepping on true frame boundaries (WebCodecs decode)">
-            Frame by frame
+          <button type="button" className={styles.btn} onClick={stepper.enter} title={t('sourceMonitor.panel.exactSteppingOnTrueFrame', 'Exact stepping on true frame boundaries (WebCodecs decode)')}>
+            {t('sourceMonitor.panel.frameByFrame', 'Frame by frame')}
           </button>
         )}
         {inFrames && (
-          <button type="button" className={styles.btn} onClick={stepper.exit} title="Back to the realtime player">
-            Player
+          <button type="button" className={styles.btn} onClick={stepper.exit} title={t('sourceMonitor.panel.backToTheRealtimePlayer', 'Back to the realtime player')}>
+            {t('sourceMonitor.panel.player', 'Player')}
           </button>
         )}
       </div>
 
       {stepper.note && <div className={styles.note}>{stepper.note}</div>}
 
-      <div className={styles.facts}>{factsOf(asset) || 'No metadata probed for this file.'}</div>
+      <div className={styles.facts}>{factsOf(asset) || t('sourceMonitor.noMetadata', 'No metadata probed for this file.')}</div>
 
       {/* ── The verbs ────────────────────────────────────────────────── */}
       <div className={styles.actions}>
@@ -500,36 +501,36 @@ function SourceMonitorBody({
           className={cn(styles.action, styles.actionPrimary)}
           disabled={!range || busy}
           onClick={() => range && run(() => insertFromSource(asset, range, { at: 'playhead' }))}
-          title="Overlay edit: a new layer on top, starting at the current time. Nothing else moves"
+          title={t('sourceMonitor.panel.overlayEditANewLayer', 'Overlay edit: a new layer on top, starting at the current time. Nothing else moves')}
         >
-          Overlay edit
+          {t('sourceMonitor.panel.overlayEdit', 'Overlay edit')}
         </button>
         <button
           type="button"
           className={styles.action}
           disabled={!range || busy}
           onClick={() => range && run(() => insertFromSource(asset, range, { at: 'playhead' }, { ripple: true }))}
-          title="Ripple insert edit: a new layer at the current time; every other layer is split there and pushed later to make room"
+          title={t('sourceMonitor.panel.rippleInsertEditANew', 'Ripple insert edit: a new layer at the current time; every other layer is split there and pushed later to make room')}
         >
-          Ripple insert edit
+          {t('sourceMonitor.panel.rippleInsertEdit', 'Ripple insert edit')}
         </button>
         <button
           type="button"
           className={styles.action}
           disabled={!range || busy}
           onClick={() => range && run(() => insertFromSource(asset, range, { at: 'playhead' }, { overwrite: true }))}
-          title="Insert at the playhead and trim the clips it lands on"
+          title={t('sourceMonitor.panel.insertAtThePlayheadAnd', 'Insert at the playhead and trim the clips it lands on')}
         >
-          Overwrite
+          {t('sourceMonitor.panel.overwrite', 'Overwrite')}
         </button>
         <button
           type="button"
           className={styles.action}
           disabled={!range || busy}
           onClick={() => range && run(() => insertFromSource(asset, range, { at: 'end' }))}
-          title="Append the marked range after everything already in the comp"
+          title={t('sourceMonitor.panel.appendTheMarkedRangeAfter', 'Append the marked range after everything already in the comp')}
         >
-          Add to end
+          {t('sourceMonitor.panel.addToEnd', 'Add to end')}
         </button>
         {asset.type !== 'audio' && (
           <button
@@ -537,9 +538,9 @@ function SourceMonitorBody({
             className={styles.action}
             disabled={!range || busy}
             onClick={() => range && run(() => newCompFromRange(asset, range))}
-            title="New composition sized and paced to this clip, as long as the marked range"
+            title={t('sourceMonitor.panel.newCompositionSizedAndPaced', 'New composition sized and paced to this clip, as long as the marked range')}
           >
-            New comp from range
+            {t('sourceMonitor.panel.newCompFromRange', 'New comp from range')}
           </button>
         )}
       </div>

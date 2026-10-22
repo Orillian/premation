@@ -16,6 +16,7 @@ import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { failureAction, useExportQueueStore } from '@stores/exportQueueStore';
 import { describeProgress, isFinishedStatus, type ExportJobRecord } from '@core/export/exportSupervisorClient';
+import { t } from '@core/i18n';
 import styles from './ExportDialog.module.css';
 
 /**
@@ -26,6 +27,11 @@ import styles from './ExportDialog.module.css';
  */
 export const SUPERVISOR_RESTART_NOTE =
   'Renders in the background, in its own window. An interrupted render starts again from the first frame.';
+
+/** `SUPERVISOR_RESTART_NOTE`, translated — call at render time. */
+export function supervisorRestartNote(): string {
+  return t('export.queue.restartNote', 'Renders in the background, in its own window. An interrupted render starts again from the first frame.');
+}
 
 /**
  * Display order: live jobs first — the running one(s), then the waiting ones in
@@ -63,7 +69,7 @@ export function ExportQueueRow({ job, priorityControls = false }: ExportQueueRow
         <span className={styles.queueLabel} title={job.spec.outPath}>{job.spec.label}</span>
         <span className={styles.queueStatus}>
           {describeProgress(job)}
-          {priorityControls && job.priority !== 0 ? ` · priority ${job.priority > 0 ? '+' : ''}${job.priority}` : ''}
+          {priorityControls && job.priority !== 0 ? t('export.queue.priority', ' · priority {n}', { n: `${job.priority > 0 ? '+' : ''}${job.priority}` }) : ''}
         </span>
       </div>
       {live ? (
@@ -73,10 +79,10 @@ export function ExportQueueRow({ job, priorityControls = false }: ExportQueueRow
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
-          aria-label={`Export ${job.spec.label}`}
+          aria-label={t('export.queue.progressLabel', 'Export {name}', { name: job.spec.label })}
         >
           <div className={styles.progressBar} style={{ width: `${pct}%` }} />
-          <span className={styles.progressText}>{waiting ? 'Waiting' : `${pct}%`}</span>
+          <span className={styles.progressText}>{waiting ? t('export.queue.waiting', 'Waiting') : `${pct}%`}</span>
         </div>
       ) : null}
       {live ? (
@@ -88,44 +94,51 @@ export function ExportQueueRow({ job, priorityControls = false }: ExportQueueRow
                 size="sm"
                 iconOnly
                 icon={<Icon name="chevron-up" size="sm" />}
-                title="Raise priority — runs before lower-priority waiting renders"
+                title={t('export.queue.raisePriorityTitle', 'Raise priority — runs before lower-priority waiting renders')}
                 onClick={() => void setPriority(job.id, job.priority + 1)}
               >
-                Raise priority
+                {t('export.queue.raisePriority', 'Raise priority')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 iconOnly
                 icon={<Icon name="chevron-down" size="sm" />}
-                title="Lower priority — runs after higher-priority waiting renders"
+                title={t('export.queue.lowerPriorityTitle', 'Lower priority — runs after higher-priority waiting renders')}
                 onClick={() => void setPriority(job.id, job.priority - 1)}
               >
-                Lower priority
+                {t('export.queue.lowerPriority', 'Lower priority')}
               </Button>
             </>
           ) : null}
-          <Button variant="secondary" size="sm" onClick={() => void cancel(job.id)} title="Stop this export — nothing is written">
-            Cancel
+          <Button variant="secondary" size="sm" onClick={() => void cancel(job.id)} title={t('export.queue.cancelTitle', 'Stop this export — nothing is written')}>
+            {t('export.queue.cancel', 'Cancel')}
           </Button>
         </span>
       ) : (
         <span className={styles.queueActions}>
           {job.errorCode === 'ffmpeg-unavailable' ? (
-            <Button variant="primary" size="sm" onClick={() => failureAction(job).action?.onSelect()} title="Repair video export, then render this again">
-              Fix
+            <Button variant="primary" size="sm" onClick={() => failureAction(job).action?.onSelect()} title={t('export.queue.fixTitle', 'Repair video export, then render this again')}>
+              {t('export.queue.fix', 'Fix')}
             </Button>
           ) : null}
           {job.status !== 'completed' ? (
-            <Button variant="secondary" size="sm" onClick={() => void retry(job.id)} title="Render this export again, from the first frame">
-              Retry
+            <Button variant="secondary" size="sm" onClick={() => void retry(job.id)} title={t('export.queue.retryTitle', 'Render this export again, from the first frame')}>
+              {t('export.queue.retry', 'Retry')}
             </Button>
           ) : null}
-          <Button variant="secondary" size="sm" onClick={() => void remove(job.id)} title="Remove from the list">
-            Remove
+          <Button variant="secondary" size="sm" onClick={() => void remove(job.id)} title={t('export.queue.removeTitle', 'Remove from the list')}>
+            {t('export.queue.remove', 'Remove')}
           </Button>
         </span>
       )}
+      {/* What the frames were drawn without (the engine's preflight warnings): the file is complete. */}
+      {job.status === 'completed' && job.warnings && job.warnings.length > 0 ? (
+        <ul className={styles.queueStatus} title={job.warnings.join('\n')} aria-label={t('export.queue.warnings', 'Export warnings')}>
+          {job.warnings.slice(0, 3).map((w) => <li key={w}>{w}</li>)}
+          {job.warnings.length > 3 ? <li>{t('export.queue.moreWarnings', 'and {n} more', { n: job.warnings.length - 3 })}</li> : null}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -141,8 +154,8 @@ export function ExportQueueList({ priorityControls = false }: ExportQueueListPro
   useEffect(() => { void connect(); }, [connect]);
   if (jobs.length === 0) return null;
   return (
-    <div className={styles.queueList} aria-label="Export queue">
-      <p className={styles.fieldNote}>{SUPERVISOR_RESTART_NOTE}</p>
+    <div className={styles.queueList} aria-label={t('export.queue.label', 'Export queue')}>
+      <p className={styles.fieldNote}>{supervisorRestartNote()}</p>
       {orderForDisplay(jobs).map((job) => <ExportQueueRow key={job.id} job={job} priorityControls={priorityControls} />)}
     </div>
   );

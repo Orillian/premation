@@ -22,6 +22,7 @@
  */
 
 import { Project3D } from '@motion/scene';
+import { t } from '@core/i18n';
 
 /** AE's default virtual sensor width (35mm full frame), mm. */
 export const DEFAULT_FILM_SIZE_MM = 36;
@@ -35,15 +36,15 @@ export interface LensPreset {
 
 /** AE's New Camera lens list, short to long. */
 export const LENS_PRESETS: ReadonlyArray<LensPreset> = [
-  { mm: 15, label: '15mm — Ultra Wide' },
-  { mm: 20, label: '20mm — Super Wide' },
-  { mm: 24, label: '24mm — Wide' },
-  { mm: 28, label: '28mm — Moderate Wide' },
-  { mm: 35, label: '35mm — Reportage' },
-  { mm: 50, label: '50mm — Standard' },
-  { mm: 80, label: '80mm — Portrait' },
-  { mm: 135, label: '135mm — Tele' },
-  { mm: 200, label: '200mm — Long Tele' },
+  { mm: 15, get label() { return t('core.lens.n15mmUltraWide', '15mm — Ultra Wide'); } },
+  { mm: 20, get label() { return t('core.lens.n20mmSuperWide', '20mm — Super Wide'); } },
+  { mm: 24, get label() { return t('core.lens.n24mmWide', '24mm — Wide'); } },
+  { mm: 28, get label() { return t('core.lens.n28mmModerateWide', '28mm — Moderate Wide'); } },
+  { mm: 35, get label() { return t('core.lens.n35mmReportage', '35mm — Reportage'); } },
+  { mm: 50, get label() { return t('core.lens.n50mmStandard', '50mm — Standard'); } },
+  { mm: 80, get label() { return t('core.lens.n80mmPortrait', '80mm — Portrait'); } },
+  { mm: 135, get label() { return t('core.lens.n135mmTele', '135mm — Tele'); } },
+  { mm: 200, get label() { return t('core.lens.n200mmLongTele', '200mm — Long Tele'); } },
 ];
 
 /** The lens the New Camera dialog opens on. */

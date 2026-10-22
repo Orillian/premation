@@ -92,17 +92,28 @@ class Packer {
 
 inline const ColorTransform kIdentityColor{};
 
-/// packSolid: mat3 mvp + colour + shape.
+/// Layer-edge antialiasing (solid.wgsl / textured*.wgsl `edge`): the unit quad
+/// grows by (marginX, marginY) local units each side — one device pixel — and,
+/// `on`, the shader keeps each edge pixel's covered fraction. All zero: the quad
+/// as it is, no coverage (full-screen copies, chain passes, guides).
+/// `lodScale` scales the texture's screen gradients (0 = 1): ½ picks a layer
+/// texture's mip level one finer (composition_pass.cpp kLayerLodScale).
+struct LayerEdge {
+  double marginX = 0, marginY = 0, on = 0, lodScale = 0;
+};
+
+/// packSolid: mat3 mvp + colour + shape + edge.
 inline std::span<const float> pack_solid(Packer p, const Mat3& mvp, const Color& c, double opacity,
-                                         const SolidShape& s = {}) {
-  return p.mat3(mvp).color(c, opacity).vec4(s.kind, s.radiusPx, s.width, s.height).span();
+                                         const SolidShape& s = {}, const LayerEdge& e = {}) {
+  return p.mat3(mvp).color(c, opacity).vec4(s.kind, s.radiusPx, s.width, s.height).vec4(e.marginX, e.marginY, e.on, e.lodScale).span();
 }
 
-/// packTextured: mat3 mvp + uvRect + tint + 3 colour rows + srcSpace.
+/// packTextured: mat3 mvp + uvRect + tint + 3 colour rows + srcSpace + edge
+/// (shaders without the edge field ignore its trailing vec4).
 inline std::span<const float> pack_textured(Packer p, const Mat3& mvp, const Rect& uv, const Color& tint,
                                             double opacity, const ColorTransform& ct = kIdentityColor,
-                                            bool sampleLinear = false) {
-  return p.mat3(mvp).rect(uv).color(tint, opacity).color_rows(ct).src_space(sampleLinear).span();
+                                            bool sampleLinear = false, const LayerEdge& e = {}) {
+  return p.mat3(mvp).rect(uv).color(tint, opacity).color_rows(ct).src_space(sampleLinear).vec4(e.marginX, e.marginY, e.on, e.lodScale).span();
 }
 
 /// packBlur.

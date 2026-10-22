@@ -21,9 +21,8 @@
 namespace premation::scene {
 
 enum class GeometryStatus : std::uint8_t {
-  none,      ///< the node has no such geometry: nothing changed
-  applied,   ///< ported and applied to the layer
-  unported,  ///< present, outside the port: the caller reports it
+  none,     ///< the node has no such geometry: nothing changed
+  applied,  ///< applied to the layer
 };
 
 /// buildSnapshot's `fx.pathOps` chain over a SHAPE layer that already carries

@@ -28,6 +28,7 @@ import { activeCompIdNow } from '@hooks/useMirror';
 import { useRenderQualityStore } from '@stores/renderQualityStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 export type LayerSwitch = 'visible' | 'locked' | 'solo' | 'shy';
 
@@ -68,7 +69,7 @@ export async function toggleLayerSwitchAnchored(anchorId: string, sw: LayerSwitc
   if (!m.layer(anchorId) && !m.comp(anchorId)) return;
   if (!isLayer(anchorId)) {
     // A composition root's row: a composition has no layer switches (see the header).
-    notify('A composition has no layer switches — select its layers.');
+    notify(t('scene.switches.compHasNone', 'A composition has no layer switches — select its layers.'));
     return;
   }
   const ids = anchoredLayerIds(anchorId);
@@ -133,7 +134,9 @@ export async function toggleLayerFlagsEdit(ids: ReadonlyArray<string>, flag: Lay
   const def = layerFlagDef(flag);
   const refused = ids.length - targets.length;
   if (refused > 0) {
-    notify(refused === 1 ? `${def.label} isn't available for that layer` : `${def.label} isn't available for ${refused} of the selected layers`, 'warning', 2600);
+    notify(refused === 1
+      ? t('scene.switches.unavailableOne', "{flag} isn't available for that layer", { flag: def.label })
+      : t('scene.switches.unavailableSome', "{flag} isn't available for {n} of the selected layers", { flag: def.label, n: refused }), 'warning', 2600);
   }
   if (targets.length === 0) return;
   const anchor = m.layer(anchorId && targets.includes(anchorId) ? anchorId : targets[0]!);
@@ -153,12 +156,12 @@ export async function toggleLayerFlagsEdit(ids: ReadonlyArray<string>, flag: Lay
   if (flag === 'guide') notifyGuideLayerChange(next, targets.length > 1);
   else if (flag === 'threeD' && next) notifyCameraTipIfMissingIn(documentMirror(), activeCompIdNow(), (message, level) => notify(message, level));
   else if (flag === 'motionBlur' && next) {
-    if (master.length > 0) notify('Motion Blur enabled for this layer and the composition', 'success');
+    if (master.length > 0) notify(t('scene.switches.motionBlurMaster', 'Motion Blur enabled for this layer and the composition'), 'success');
     if (useRenderQualityStore.getState().draft) {
-      notify('Draft preview is on — motion blur samples are paused until draft is off', 'warning');
+      notify(t('scene.switches.motionBlurDraft', 'Draft preview is on — motion blur samples are paused until draft is off'), 'warning');
     }
   } else if (flag === 'adjustment' && next && targets.some((id) => (m.layer(id)?.effectCount ?? 0) === 0)) {
-    notify('Adjustment layer is on — add effects to grade layers beneath it');
+    notify(t('scene.switches.adjustmentOn', 'Adjustment layer is on — add effects to grade layers beneath it'));
   }
 }
 

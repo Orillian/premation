@@ -23,14 +23,17 @@ import { PluginStoreBrowser } from './PluginStore';
 import { PublishPlugins } from './PublishPlugins';
 import { StoreMessageLine } from './StoreMessageLine';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
 type Section = 'store' | 'installed' | 'publish';
 
-const SECTIONS = [
-  { value: 'store' as const, label: 'Store' },
-  { value: 'installed' as const, label: 'Installed' },
-  { value: 'publish' as const, label: 'Publish' },
-];
+function sections(): { value: Section; label: string }[] {
+  return [
+    { value: 'store', label: t('plugins.page.store', 'Store') },
+    { value: 'installed', label: t('plugins.page.installed', 'Installed') },
+    { value: 'publish', label: t('plugins.page.publish', 'Publish') },
+  ];
+}
 
 export function NativePluginsPage(): JSX.Element {
   const native = useNativePlugins();
@@ -41,7 +44,7 @@ export function NativePluginsPage(): JSX.Element {
   return (
     <div className={styles.page}>
       <div className={styles.toolbar}>
-        <Segmented options={SECTIONS} value={section} onChange={setSection} aria-label="Plugins" />
+        <Segmented options={sections()} value={section} onChange={setSection} aria-label={t('plugins.page.aria', 'Plugins')} />
       </div>
       <StoreMessageLine message={store.message} />
 
@@ -51,11 +54,12 @@ export function NativePluginsPage(): JSX.Element {
         <>
           <NativePluginsList store={store} native={native} />
           <section className={styles.card} aria-labelledby="plugins-folder">
-            <h3 id="plugins-folder" className={styles.cardTitle}>Plugins folder</h3>
+            <h3 id="plugins-folder" className={styles.cardTitle}>{t('plugins.page.folderTitle', 'Plugins folder')}</h3>
             <p className={styles.text}>
-              Plugins from the store are installed here. A plugin you got as a <code>.pplugin</code> file installs with
-              Install from file (or a double-click on the file). A bundle folder copied into this folder, or into the
-              machine-wide plug-ins folder a vendor&apos;s installer uses, loads on Rescan without a restart.
+              {t(
+                'plugins.page.folderText',
+                'Plugins from the store are installed here. A plugin you got as a .pplugin file installs with Install from file (or a double-click on the file). A bundle folder copied into this folder, or into the machine-wide plug-ins folder a vendor\'s installer uses, loads on Rescan without a restart.',
+              )}
             </p>
             <div className={styles.toolbar}>
               {canInstallFromFile() ? (
@@ -71,7 +75,7 @@ export function NativePluginsPage(): JSX.Element {
                     });
                   }}
                 >
-                  Install from file…
+                  {t('plugins.page.installFromFile', 'Install from file…')}
                 </Button>
               ) : null}
               <OpenPluginsFolderButton size="md" />
@@ -82,13 +86,19 @@ export function NativePluginsPage(): JSX.Element {
                 onClick={() => {
                   setRescanNote(null);
                   void rescanPlugins(pluginEngine()).then((list) => {
-                    setRescanNote(list ? `${list.length} plugin${list.length === 1 ? '' : 's'} found.` : 'The engine has no plugins folder.');
+                    setRescanNote(
+                      list
+                        ? list.length === 1
+                          ? t('plugins.page.foundOne', '{n} plugin found.', { n: list.length })
+                          : t('plugins.page.foundOther', '{n} plugins found.', { n: list.length })
+                        : t('plugins.page.noFolder', 'The engine has no plugins folder.'),
+                    );
                     native.refresh();
                     store.refresh();
                   });
                 }}
               >
-                Rescan
+                {t('plugins.page.rescan', 'Rescan')}
               </Button>
               {rescanNote ? <span className={styles.message} role="status">{rescanNote}</span> : null}
             </div>

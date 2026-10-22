@@ -152,6 +152,6 @@ describe('it is reachable, and there is still only ONE Wiggle Paths', () => {
     const union = /export type PathOpType =([\s\S]*?);/.exec(src)?.[1] ?? '';
     expect(union).not.toContain('wigglePaths');
     const ui = readSource('layout/Inspector/PathOpControls.tsx');
-    expect([...ui.matchAll(/label: 'Wiggle Paths'/g)]).toHaveLength(1);
+    expect([...ui.matchAll(/label: (?:t\('[\w.]+', )?'Wiggle Paths'/g)]).toHaveLength(1);
   });
 });

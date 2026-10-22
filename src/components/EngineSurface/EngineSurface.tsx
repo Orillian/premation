@@ -29,6 +29,7 @@ import { flicksToSeconds, type ChannelView, type EngineFrameMeta, type EventBatc
 import {
   createAppProcessEngine,
   lastProcessEngineNotice,
+  processEngineBusy,
   processEngine,
   processEngineBridge,
   processEngineEnabled,
@@ -55,6 +56,7 @@ import { extendedViewerActive } from '@core/workspace/extendedViewer';
 import { compUvRect, parseCssRgb } from './pasteboard';
 import { BOARD_FLOATS, createFrameBlitter } from './frameBlit';
 import { subscribeEngineFrames } from './engineFrameHub';
+import { t } from '@core/i18n';
 import styles from './EngineSurface.module.css';
 
 /**
@@ -154,6 +156,7 @@ const RESOLUTION: Record<PreviewResolution, EnginePreviewResolution> = { 1: 'ful
 export function EngineSurface({ mode = 'viewport' }: { mode?: EngineSurfaceMode }): JSX.Element | null {
   const client = useSyncExternalStore(subscribeProcessEngine, processEngine, () => null);
   const notice = useSyncExternalStore(subscribeProcessEngine, lastProcessEngineNotice, () => null);
+  const busy = useSyncExternalStore(subscribeProcessEngine, processEngineBusy, () => null);
   useEffect(() => {
     // The client is normally created at boot (engineInstance); creating it here
     // where there is an engine bridge is idempotent and keeps the surface self-sufficient.
@@ -169,12 +172,34 @@ export function EngineSurface({ mode = 'viewport' }: { mode?: EngineSurfaceMode 
     };
   }, []);
   if (!client) return null;
-  return <EngineSurfaceInner key={mode} client={client} mode={mode} notice={notice ? noticeText(notice) : null} />;
+  // The busy line wins while it lasts: it is what is happening now; a restart notice is history.
+  const text = busy ? busyText(busy) : notice ? noticeText(notice) : null;
+  return <EngineSurfaceInner key={mode} client={client} mode={mode} notice={text} />;
 }
 
 function noticeText(n: NonNullable<ReturnType<typeof lastProcessEngineNotice>>): string {
-  if (n.kind === 'unavailable') return `Engine unavailable (${n.reason})`;
-  return `Engine restarted (${n.cause}) · ${n.replayed} requests replayed in ${n.ms} ms`;
+  if (n.kind === 'unavailable') return t('ui.engineSurface.unavailable', 'Engine unavailable ({reason})', { reason: n.reason });
+  return t('ui.engineSurface.restarted', 'Engine restarted ({cause}) · {n} requests replayed in {ms} ms', { cause: n.cause, n: n.replayed, ms: n.ms });
+}
+
+/**
+ * The engine's core thread deep in one item, in the user's words: the engine
+ * names it as its watchdog sees it (`command createLayer`, `batch Build the
+ * scene`, `tick (playing)`, `query 1000`, `message`).
+ */
+function busyText(b: NonNullable<ReturnType<typeof processEngineBusy>>): string {
+  const w = b.what;
+  const time = b.ms >= 1000 ? `${Math.round(b.ms / 1000)} s` : `${b.ms} ms`;
+  if (w.startsWith('tick')) return t('ui.engineSurface.busy.frame', 'Engine busy · building the frame · {time}', { time });
+  if (w.startsWith('batch ')) {
+    const name = w.slice(6).trim() || t('ui.engineSurface.busy.batchDefault', 'a batch of edits');
+    return t('ui.engineSurface.busy.batch', 'Engine busy · applying “{name}” · {time}', { name, time });
+  }
+  if (w.startsWith('command ')) return t('ui.engineSurface.busy.command', 'Engine busy · running {command} · {time}', { command: w.slice(8).trim(), time });
+  if (w.startsWith('query')) return t('ui.engineSurface.busy.query', 'Engine busy · answering a query · {time}', { time });
+  // An item the engine named some other way: its own words, as the watchdog reports them.
+  if (w) return t('ui.engineSurface.busy.other', 'Engine busy · {what} · {time}', { what: w, time });
+  return t('ui.engineSurface.busy.working', 'Engine busy · working · {time}', { time });
 }
 
 function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineClient; mode: EngineSurfaceMode; notice: string | null }): JSX.Element {
@@ -653,7 +678,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       <canvas ref={canvasRef} className={styles.viewportCanvas} style={displayMode !== 'shaded' ? { visibility: 'hidden' } : undefined} />
       {!firstFrame && (
         <div className={styles.waiting} role="status">
-          {notice ?? (waitingLong ? 'Waiting for the C++ engine’s first frame…' : '')}
+          {notice ?? (waitingLong ? t('ui.engineSurface.waiting', 'Waiting for the C++ engine’s first frame…') : '')}
         </div>
       )}
       {firstFrame && notice && <div className={styles.viewportNotice} role="status">{notice}</div>}

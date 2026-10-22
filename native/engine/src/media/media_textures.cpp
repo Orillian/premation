@@ -146,7 +146,7 @@ rg::TexRef MediaTextures::external_texture(std::string_view hash) {
   if (it != byHash_.end() && it->second->exact) {
     touch(it->second);
     const Entry& e = *it->second;
-    return {e.tex.view, e.id, e.tex.width, e.tex.height, false};
+    return {e.tex.view, e.id, e.tex.width, e.tex.height, false, 0, 0};
   }
 
   bool exactA = true;
@@ -164,7 +164,7 @@ rg::TexRef MediaTextures::external_texture(std::string_view hash) {
     ++misses_.approximate;
     touch(it->second);
     const Entry& e = *it->second;
-    return {e.tex.view, e.id, e.tex.width, e.tex.height, false};
+    return {e.tex.view, e.id, e.tex.width, e.tex.height, false, 0, 0};
   }
   if (it == byHash_.end()) {
     lru_.push_front(Entry{std::string(hash), {}, 0, -1, false, frame_, 0});
@@ -215,7 +215,7 @@ rg::TexRef MediaTextures::external_texture(std::string_view hash) {
   e.heldFrame = a->index;
   e.exact = exact;
   if (!exact) ++misses_.approximate;
-  const rg::TexRef out{e.tex.view, e.id, e.tex.width, e.tex.height, false};
+  const rg::TexRef out{e.tex.view, e.id, e.tex.width, e.tex.height, false, 0, 0};
   trim();
   return out;
 }

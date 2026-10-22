@@ -8,6 +8,9 @@
  * that no longer existed, and nothing noticed.
  */
 export const AUTHOR_STAGE_LABELS = [
+  // Only when the run has a concept gate (the chat panel always does): five
+  // directions, three shown, one picked.
+  'Proposing concepts',
   'Designing the piece',
   'Writing the beats',
   'Building the scene',

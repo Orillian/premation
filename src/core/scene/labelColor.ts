@@ -13,6 +13,7 @@
  */
 
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 export interface LabelColor {
   id: string;
@@ -22,18 +23,18 @@ export interface LabelColor {
 
 /** Curated medium, eye-relaxing pastel/matte label palette. */
 export const LABEL_COLORS: ReadonlyArray<LabelColor> = [
-  { id: 'slate',      label: 'Slate Blue',     color: '#5282b8' },
-  { id: 'teal',       label: 'Sage Teal',      color: '#4ea885' },
-  { id: 'coral',      label: 'Warm Coral',     color: '#d0705a' },
-  { id: 'lavender',   label: 'Soft Lavender',  color: '#8b75c8' },
-  { id: 'steel',      label: 'Steel Blue',     color: '#5692a8' },
-  { id: 'amber',      label: 'Muted Amber',    color: '#b87e4c' },
-  { id: 'olive',      label: 'Soft Olive',     color: '#7b9c6a' },
-  { id: 'magenta',    label: 'Muted Magenta',  color: '#a86b96' },
-  { id: 'aqua',       label: 'Dusty Aqua',     color: '#4b9e99' },
-  { id: 'terracotta', label: 'Terracotta',     color: '#a2775f' },
-  { id: 'royal',      label: 'Soft Royal',     color: '#587db8' },
-  { id: 'coolgray',   label: 'Cool Slate',     color: '#7d8ca3' },
+  { id: 'slate',      get label() { return t('core.labelColor.slateBlue', 'Slate Blue'); },     color: '#5282b8' },
+  { id: 'teal',       get label() { return t('core.labelColor.sageTeal', 'Sage Teal'); },      color: '#4ea885' },
+  { id: 'coral',      get label() { return t('core.labelColor.warmCoral', 'Warm Coral'); },     color: '#d0705a' },
+  { id: 'lavender',   get label() { return t('core.labelColor.softLavender', 'Soft Lavender'); },  color: '#8b75c8' },
+  { id: 'steel',      get label() { return t('core.labelColor.steelBlue', 'Steel Blue'); },     color: '#5692a8' },
+  { id: 'amber',      get label() { return t('core.labelColor.mutedAmber', 'Muted Amber'); },    color: '#b87e4c' },
+  { id: 'olive',      get label() { return t('core.labelColor.softOlive', 'Soft Olive'); },     color: '#7b9c6a' },
+  { id: 'magenta',    get label() { return t('core.labelColor.mutedMagenta', 'Muted Magenta'); },  color: '#a86b96' },
+  { id: 'aqua',       get label() { return t('core.labelColor.dustyAqua', 'Dusty Aqua'); },     color: '#4b9e99' },
+  { id: 'terracotta', get label() { return t('core.labelColor.terracotta', 'Terracotta'); },     color: '#a2775f' },
+  { id: 'royal',      get label() { return t('core.labelColor.softRoyal', 'Soft Royal'); },     color: '#587db8' },
+  { id: 'coolgray',   get label() { return t('core.labelColor.coolSlate', 'Cool Slate'); },     color: '#7d8ca3' },
 ];
 
 /** Pure read — the node's explicit label color, or undefined for kind default. */

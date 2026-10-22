@@ -1,10 +1,14 @@
 /*
-  The Preview panel, on the approved 2026-10-19 sheet: the timecode on a row
-  of its own, the transport centred under it, one label + field row per
-  setting under the shared Accordion's group rows, and the cache readout at
-  the foot. No heading inside: the tab is the panel's title.
+  The Preview panel (2026-10-21 redesign): the timecode with its frame / rate
+  / duration beside it and a playhead strip under both, one transport row,
+  one label + segmented row per setting under the shared Accordion's group
+  rows, and the cache meter at the foot. One 12px inset and one label column
+  throughout. No heading inside: the tab is the panel's title.
 */
 .root {
+  --preview-inset: var(--space-3);
+  --preview-label-col: 72px;
+
   display: flex;
   flex-direction: column;
   background: var(--color-panel);
@@ -15,86 +19,139 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
-/* The timecode and the transport, above the groups. */
+/* The timecode, the playhead strip and the transport, above the groups. */
 .top {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-4) var(--space-2);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--preview-inset) var(--space-2);
 }
 
 .groups {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-/* ── Timecode: the panel's one large figure, centred ─────────────── */
+/* ── Timecode left, frame / rate / duration right ───────────────── */
 .timecodeRow {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: var(--space-1) 0;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
   user-select: none;
 }
 
 .timecode {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.02em;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: -0.01em;
   line-height: 1;
-  color: var(--color-primary-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.timecodeSub {
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-micro);
-  line-height: 1;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-/* ── Transport, centred under the timecode ───────────────────────── */
+.timecodeMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Where the playhead is in the comp: a scaled fill, rewritten per tick. */
+.headTrack {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-border-subtle);
+  overflow: hidden;
+}
+
+.headFill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* ── Transport: five keys, a divider, two toggles ───────────────── */
 .transport {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  min-height: 36px;
+  gap: 2px;
+  min-height: 32px;
 }
 
-/* Play is the one filled button; a touch wider so it reads as the centre. */
-.play {
+/* Play is the centre: a tinted key, wider, not a filled block. */
+.transport .play {
   min-width: 36px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+}
+
+.transport .play:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  color: var(--color-primary-text);
 }
 
 /* Between the five transport keys and the two toggles. */
 .transportGap {
-  width: var(--space-3);
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-2);
   flex: none;
+  background: var(--color-border);
 }
 
-/* ── A setting: its caption, then its value ─────────────────────── */
+/* Loop / audio: on is the glyph in the accent, not a grey well that reads
+   as "disabled". */
+.transport .toggle[data-active] {
+  background: transparent;
+  color: var(--color-primary-text);
+}
+
+.transport .toggle[data-active]:hover:not(:disabled) {
+  background: var(--color-hover);
+  color: var(--color-primary-text);
+}
+
+/* ── A setting: its caption, then its control ───────────────────── */
 .rows {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* The Accordion body sits flush under its band and 4px from the right:
+     these make up the panel's one inset on both sides. */
+  padding: var(--space-2) calc(var(--preview-inset) - var(--space-1)) 0 0;
 }
 
 .row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: var(--preview-label-col) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-2);
   min-height: var(--control-height-md);
 }
 
 .label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-label);
@@ -102,32 +159,20 @@
   user-select: none;
 }
 
-/* A dropdown's current choice is a value (in the text face: it is a word).
-   The field grammar of the sheet: 24px on the well, one hairline. */
-.select {
-  width: 100%;
+/* Segments share the row; on a narrow panel a label ellipsizes rather than
+   pushing the control past the edge. */
+.seg {
   min-width: 0;
-  height: var(--control-height-md);
-  padding: 0 var(--space-2);
-  background: var(--color-surface-0);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-family: var(--panel-font-family);
-  font-size: var(--panel-font-size);
-  font-weight: var(--panel-weight-value);
-  outline: none;
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.select:hover {
-  border-color: var(--color-border-strong);
+.seg button {
+  min-width: 0;
+  padding: 0 var(--space-1);
 }
 
-.select:focus-visible {
-  border-color: var(--color-primary);
+.seg button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* A switch with its consequence written beside it. */
@@ -135,50 +180,84 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .help {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--panel-font-family);
   font-size: var(--panel-font-size-help);
   font-weight: var(--panel-weight-help);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
-/* ── The cache readout, at the foot ─────────────────────────────── */
-.cacheRow {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
-  align-items: center;
+/* ── The cache meter, at the foot ───────────────────────────────── */
+.cache {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-  min-height: var(--control-height-md);
-  padding: var(--space-2) var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--preview-inset);
   border-top: 1px solid var(--color-border-subtle);
 }
 
-/* The timeline's cache lane, in miniature: green RAM over blue disk. */
+.cacheHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cacheLegend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* The timeline's cache lane, larger: green RAM over blue disk on one track. */
 .cacheStrip {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  height: 5px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border-subtle);
+  overflow: hidden;
 }
 
 .cacheRam,
 .cacheDisk {
   display: block;
-  height: 2px;
+  height: 3px;
   min-width: 0;
+}
+
+.cacheRam,
+.dotRam {
   background: var(--color-timeline-cache);
 }
 
-.cacheDisk {
+.cacheDisk,
+.dotDisk {
   background: var(--color-timeline-disk-cache);
-}
-
-.cacheText {
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }

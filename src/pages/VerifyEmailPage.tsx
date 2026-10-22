@@ -18,6 +18,7 @@ import { api } from '@core/api/client';
 import { useAuthStore } from '@stores/authStore';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import { Icon } from '@components/Icon';
+import { SLOT, t, tAround } from '@core/i18n';
 import { AuthShell } from './AuthShell';
 import styles from './AuthPage.module.css';
 
@@ -51,8 +52,8 @@ export function VerifyEmailPage(): JSX.Element {
   // Count the resend cooldown down to zero, one second at a time.
   useEffect(() => {
     if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
   }, [cooldown]);
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export function VerifyEmailPage(): JSX.Element {
       await useEntitlementStore.getState().refresh({ force: true });
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(messageOf(err, 'That code did not work. Check it and try again.'));
+      setError(messageOf(err, t('auth.verify.codeFailed', 'That code did not work. Check it and try again.')));
       setCode('');
       boxRefs.current[0]?.focus();
     } finally {
@@ -106,25 +107,29 @@ export function VerifyEmailPage(): JSX.Element {
     setNotice('');
     try {
       await api.resendVerification();
-      setNotice('A new code is on its way.');
+      setNotice(t('auth.verify.resent', 'A new code is on its way.'));
       setCooldown(RESEND_COOLDOWN_S);
     } catch (err) {
-      setError(messageOf(err, 'Could not send a new code just now.'));
+      setError(messageOf(err, t('auth.verify.resendFailed', 'Could not send a new code just now.')));
     }
   };
 
+  const [sentBefore, sentAfter] = tAround(
+    t('auth.verify.subtitle', 'We sent a 6-digit code to {slot}. Enter it to start your trial.', { slot: SLOT }),
+  );
+
   return (
     <AuthShell
-      title="Check your inbox"
+      title={t('auth.verify.title', 'Check your inbox')}
       subtitle={
         <>
-          We sent a 6-digit code to <strong>{user?.email}</strong>. Enter it to start your trial.
+          {sentBefore}<strong>{user?.email}</strong>{sentAfter}
         </>
       }
     >
       <form className={styles.form} onSubmit={onSubmit}>
         <fieldset className={styles.codeGroup}>
-          <legend className={styles.label}>Confirmation code</legend>
+          <legend className={styles.label}>{t('auth.verify.codeLabel', 'Confirmation code')}</legend>
           <div className={styles.codeBoxes}>
             {BOXES.map((i) => (
               <input
@@ -136,7 +141,7 @@ export function VerifyEmailPage(): JSX.Element {
                 inputMode="numeric"
                 // The whole code is offered to the first box; applyCode spreads it.
                 autoComplete={i === 0 ? 'one-time-code' : 'off'}
-                aria-label={`Digit ${i + 1} of ${CODE_LENGTH}`}
+                aria-label={t('auth.verify.digitAria', 'Digit {n} of {total}', { n: i + 1, total: CODE_LENGTH })}
                 value={code[i] ?? ''}
                 disabled={submitting}
                 onChange={(e) => applyCode(code.slice(0, i) + e.target.value + code.slice(i + 1))}
@@ -173,7 +178,7 @@ export function VerifyEmailPage(): JSX.Element {
           className={styles.primaryBtn}
           disabled={submitting || code.length !== CODE_LENGTH}
         >
-          {submitting ? 'Confirming…' : 'Confirm email'}
+          {submitting ? t('auth.verify.confirming', 'Confirming…') : t('auth.verify.confirm', 'Confirm email')}
         </button>
       </form>
 
@@ -184,10 +189,10 @@ export function VerifyEmailPage(): JSX.Element {
           onClick={() => void resend()}
           disabled={cooldown > 0}
         >
-          {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+          {cooldown > 0 ? t('auth.verify.resendIn', 'Resend code in {seconds}s', { seconds: cooldown }) : t('auth.verify.resend', 'Resend code')}
         </button>
         <button type="button" className={styles.linkBtn} onClick={() => void logout()}>
-          Sign out
+          {t('auth.verify.signOut', 'Sign out')}
         </button>
       </div>
     </AuthShell>

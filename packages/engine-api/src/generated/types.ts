@@ -4133,6 +4133,8 @@ export interface EffectParamInfo {
   kind: string;
   /** 'file': the extensions the picker offers, '|'-separated without dots ('' = any). */
   fileTypes: string;
+  /** Plugin SDK 1.2 — a native plugin param's one-line description (PrParamDef.description): Effect Controls shows it as the label's tooltip. '' = none. */
+  description?: string;
 }
 
 export interface EffectInfo {
@@ -4147,11 +4149,26 @@ export interface EffectInfo {
   audio: boolean;
   /** AE parity 2.9 — a native plugin effect's buttons (PR_PARAM_BUTTON): invokeEffectAction takes `key` as its action. Empty for builtins. */
   actions: EffectActionInfo[];
+  /** A native plugin effect's twirl-down groups (PR_PARAM_GROUP_START), in declaration order. Empty for builtins. */
+  groups: EffectGroupInfo[];
+  /** A native plugin effect's PR_CMD_ABOUT text (name, version, credits): the card's About. '' for builtins. */
+  about?: string;
 }
 
+/** `group`: the enclosing group path, as `EffectParamInfo.group` spells it ('' = top level). `at`: how many of `params` come before the button — the card draws it there, in the plugin's own order. */
 export interface EffectActionInfo {
   key: string;
   label: string;
+  group: string;
+  at: number;
+}
+
+/** `name`: the group's path as its params' `EffectParamInfo.group` spells it ("Glow / Advanced" for a nested one). `key`: the GROUP_START param's key (`p4`) — getEffectUi reports it hidden when the plugin hides the whole group. `collapsed`: PR_PARAM_FLAG_START_COLLAPSED (the card opens it twirled up). */
+export interface EffectGroupInfo {
+  name: string;
+  key: string;
+  collapsed: boolean;
+  description?: string;
 }
 
 export interface ListEffects {
@@ -4208,6 +4225,10 @@ export interface PluginInfo {
   panels: PluginPanelInfo[];
   /** Plugin SDK 1.2 — the presets the bundle ships (manifest `presets`, `presets/*.json`), listed under the plugin in Effects & Presets. Empty until the plugin is loaded (the values are checked against its params). */
   presets: PluginPresetInfo[];
+  /** The manifest's `icon`: a PNG / SVG / JPEG / WebP inside the bundle's `ui/` folder, bundle-relative ("ui/icon.png"; the editor shows it as `plugin-ui://<id>/icon.png`). '' = none (or not a file under `ui/`). */
+  icon?: string;
+  /** The manifest's `panelTitle`: the label of the effect card's button to the bundle's panel ("Studio"; absent = "Panel"). */
+  panelTitle?: string;
 }
 
 export interface PluginList {
@@ -4996,6 +5017,15 @@ export interface FramePong {
   playing: boolean;
   /** Messages waiting in the core queue when the ping was served. */
   queued: number;
+  /**
+   * Liveness is not idleness: when the core thread has been inside ONE item
+   * (a request, a tick's frame build) for a while, the engine's watchdog
+   * thread answers the ping instead, with how long the core has been on it.
+   * 0 from the core thread itself (it drained its queue to this ping).
+   */
+  busyMs?: number;
+  /** What the core is on when busyMs > 0 (`command createLayer`, `tick (playing)`); "" otherwise. */
+  busy?: string;
 }
 
 /** Host → engine. Chromium is done with a slot. A stale generation is ignored. */

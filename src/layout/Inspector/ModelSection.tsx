@@ -38,6 +38,7 @@ import { isTrackAnimated, readTrack, trackRef as mirrorTrackRef } from '@core/mi
 import { mirrorHasTransform } from '@core/mirror/layerFacts';
 import { storedNumber, tracksIn } from '@core/mirror/trackIndex';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { MORPH_PROP_PREFIX } from '@core/scene/modelMorph';
 import { scalarValueCommands, stopwatchCommands, trackRef, valueCommands } from './inspectorEdits';
 import { useEngineEdit, type EngineEdit } from './useEngineEdit';
@@ -63,7 +64,7 @@ export function mirrorMorphLabels(names: unknown[] | undefined, morphTracks: Rea
   const list = Array.isArray(names) ? names.map((x) => (typeof x === 'string' ? x : '')) : [];
   return Array.from({ length: Math.max(n, list.length) }, (_, i) => {
     const given = list[i];
-    return given && given.trim() !== '' ? given : `Target ${i + 1}`;
+    return given && given.trim() !== '' ? given : t('inspector.model.targetDefault', 'Target {n}', { n: i + 1 });
   });
 }
 
@@ -122,7 +123,7 @@ function MorphRow({ nodeId, index, label, time, autoKeyframe, e }: MorphRowProps
         step={STEP}
         value={value}
         onChange={(e) => write(Number(e.currentTarget.value))}
-        aria-label={`${label} slider`}
+        aria-label={t('inspector.model.sliderAria', '{label} slider', { label })}
       />
       <span className={s.value}>
         <ValueField
@@ -175,15 +176,17 @@ export function ModelSection({ nodeId }: { nodeId: string }): JSX.Element | null
     <div className={s.stack}>
       <div className={s.header}>
         <span className={s.count}>
-          {labels.length} target{labels.length === 1 ? '' : 's'}
+          {labels.length === 1
+            ? t('inspector.model.targetCountOne', '{n} target', { n: labels.length })
+            : t('inspector.model.targetCountOther', '{n} targets', { n: labels.length })}
         </span>
         <Button
           size="xs"
           variant="ghost"
           onClick={resetAll}
-          title="Set every morph weight back to 0 (keyframed where a target is animated)"
+          title={t('inspector.model.resetAllTitle', 'Set every morph weight back to 0 (keyframed where a target is animated)')}
         >
-          Reset all
+          {t('inspector.model.resetAll', 'Reset all')}
         </Button>
       </div>
       <div className={s.list}>
@@ -200,8 +203,7 @@ export function ModelSection({ nodeId }: { nodeId: string }): JSX.Element | null
         ))}
       </div>
       <p className={s.hint}>
-        Blend shapes from the imported model. Weights stack, so several targets
-        can be held at once.
+        {t('inspector.model.hint', 'Blend shapes from the imported model. Weights stack, so several targets can be held at once.')}
       </p>
     </div>
   );

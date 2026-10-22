@@ -34,6 +34,7 @@ export {
   tokenizeExpression,
   matchBracket,
   EXPRESSION_API,
+  EDITOR_EXPRESSION_API,
   // The host's hook for `plugin.<namespace>.<fn>()` — see `expressions.ts`.
   setPluginExpressionScope,
 } from './expressions';

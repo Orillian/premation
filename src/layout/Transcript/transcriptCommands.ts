@@ -39,6 +39,7 @@ import {
   transcriptionAvailable,
 } from './transcriptOps';
 import { useTranscriptStore } from './transcriptStore';
+import { t } from '@core/i18n';
 
 /** The panel id. Kept beside the commands that open it. */
 export const TRANSCRIPT_PANEL_ID = 'transcript';
@@ -52,18 +53,18 @@ export function buildTranscriptCommands(): ReadonlyArray<Command> {
   return [
     {
       id: asCommandId('view.transcript'),
-      label: 'Transcript',
-      description: 'Edit the composition by editing its words.',
+      // Getters: these commands register at module load (bottom of this file),
+      // before the catalogue loads, so `t()` runs when the label is read.
+      get label() { return t('transcript.commands.panel', 'Transcript'); },
+      get description() { return t('transcript.commands.panelDescription', 'Edit the composition by editing its words.'); },
       icon: 'mic',
       enabled: () => true,
       execute: () => useLayoutStore.getState().openPanel(TRANSCRIPT_PANEL_ID),
     },
     {
       id: asCommandId('transcript.transcribe'),
-      label: 'Transcribe for Transcript',
-      description:
-        'Transcribe the selected layers, the work area, or the whole composition, '
-        + 'and show the result as editable words.',
+      get label() { return t('transcript.commands.transcribe', 'Transcribe for Transcript'); },
+      get description() { return t('transcript.commands.transcribeDescription', 'Transcribe the selected layers, the work area, or the whole composition, and show the result as editable words.'); },
       icon: 'mic',
       // Disabled rather than hidden where the shell cannot transcribe — the
       // same call `captions.generate` makes, for the same reason.
@@ -75,18 +76,16 @@ export function buildTranscriptCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId('transcript.deleteSelection'),
-      label: 'Delete Transcript Selection',
-      description:
-        'Cut the selected words’ time out of every overlapping clip and close the gap. '
-        + 'One undo entry.',
+      get label() { return t('transcript.commands.deleteSelection', 'Delete Transcript Selection'); },
+      get description() { return t('transcript.commands.deleteSelectionDescription', 'Cut the selected words’ time out of every overlapping clip and close the gap. One undo entry.'); },
       icon: 'trash',
       enabled: () => useTranscriptStore.getState().selected.length > 0,
       execute: () => { void deleteSelectedWords(); },
     },
     {
       id: asCommandId('transcript.selectFillers'),
-      label: 'Select Filler Words',
-      description: 'Select every um, uh and like in the transcript, ready to delete.',
+      get label() { return t('transcript.commands.selectFillers', 'Select Filler Words'); },
+      get description() { return t('transcript.commands.selectFillersDescription', 'Select every um, uh and like in the transcript, ready to delete.'); },
       icon: 'magic-wand',
       enabled: () => currentWords().length > 0,
       execute: () => {
@@ -98,22 +97,22 @@ export function buildTranscriptCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId('transcript.addCaptions'),
-      label: 'Add Transcript as Captions',
-      description: 'One text layer per segment, timed to the edited transcript.',
+      get label() { return t('transcript.commands.addCaptions', 'Add Transcript as Captions'); },
+      get description() { return t('transcript.commands.addCaptionsDescription', 'One text layer per segment, timed to the edited transcript.'); },
       icon: 'type',
       enabled: () => currentWords().length > 0,
       execute: () => { void addTranscriptAsCaptions(); },
     },
     {
       id: asCommandId('transcript.exportSrt'),
-      label: 'Export Transcript (.srt)…',
+      get label() { return t('transcript.commands.exportSrt', 'Export Transcript (.srt)…'); },
       icon: 'download',
       enabled: () => currentWords().length > 0,
       execute: () => { exportTranscript('srt'); },
     },
     {
       id: asCommandId('transcript.exportVtt'),
-      label: 'Export Transcript (.vtt)…',
+      get label() { return t('transcript.commands.exportVtt', 'Export Transcript (.vtt)…'); },
       icon: 'download',
       enabled: () => currentWords().length > 0,
       execute: () => { exportTranscript('vtt'); },

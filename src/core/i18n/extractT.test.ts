@@ -23,6 +23,12 @@ describe('extractTCalls', () => {
     expect(extractTCalls(`t('help.whatsNew', 'What\\'s New')`)).toEqual([{ key: 'help.whatsNew', english: "What's New" }]);
   });
 
+  it('decodes JS escapes the way the runtime string does', () => {
+    expect(extractTCalls(`t('a.b', 'One\\nTwo\\t\\u2026\\x41\\u{1F600}\\\\')`)).toEqual([
+      { key: 'a.b', english: 'One\nTwo\t…A\u{1F600}\\' },
+    ]);
+  });
+
   it('ignores non-literal calls, other functions named *t, and interpolated templates', () => {
     const src = [
       't(key, item.label)',

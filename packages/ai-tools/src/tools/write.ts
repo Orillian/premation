@@ -584,10 +584,12 @@ export const setExpressionDef: AiToolDef = {
   name: 'set_expression',
   kind: 'write',
   description:
-    'Attach an expression to a property. It must be a single JS EXPRESSION returning a number ' +
-    '(not a statement body, no return). Available: time, value, wiggle(freq,amp), ' +
-    'loopOut("cycle"|"pingpong"|"offset"), valueAtTime(t), velocity, speed, linear/ease/easeIn/easeOut, ' +
-    'clamp, random(seed), Math, layer(name, prop), thisComp, thisLayer, audio, ctrl(name). ' +
+    'Attach an After Effects-style expression to a property. A program of statements is fine ' +
+    '(var/let/const, if/else, for/while, functions, arrows); its LAST expression statement is the value, ' +
+    'as in AE. Available: time, value, wiggle(freq,amp), loopOut("cycle"|"pingpong"|"offset"|"continue"), ' +
+    'loopIn, valueAtTime(t), velocity, speed, linear/ease/easeIn/easeOut, clamp, random, seedRandom, noise, ' +
+    'Math, posterizeTime, thisComp.layer("Name").transform.position, effect("Name")("Param"), ' +
+    'thisLayer, inPoint/outPoint, index, parent, marker, audio, ctrl(name). ' +
     'Expressions OVERRIDE keyframed values. Pass an empty string to remove.',
   inputSchema: {
     type: 'object',
@@ -596,7 +598,7 @@ export const setExpressionDef: AiToolDef = {
     properties: {
       nodeId: { type: 'string' },
       prop: { type: 'string', description: PROP_HINT },
-      expression: { type: 'string', description: 'e.g. wiggle(2, 30)  or  value + Math.sin(time * 4) * 10' },
+      expression: { type: 'string', description: 'e.g. wiggle(2, 30)  or  var f = 4; value + Math.sin(time * f) * 10' },
     },
   },
 };

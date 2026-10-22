@@ -45,6 +45,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { cn } from '@utils/cn';
 import { clamp } from '@utils/lang';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import styles from './SplitPane.module.css';
 
 export type SplitDirection = 'horizontal' | 'vertical';
@@ -378,7 +379,7 @@ export function SplitPane({
         className={cn(styles.splitter, isH ? styles.splitterH : styles.splitterV)}
         aria-expanded={collapsible ? !isCollapsed : undefined}
         data-collapsible={collapsible || undefined}
-        title={collapsible ? (isCollapsed ? 'Double-click to restore' : 'Double-click to collapse') : undefined}
+        title={collapsible ? (isCollapsed ? t('ui.splitPane.restore', 'Double-click to restore') : t('ui.splitPane.collapse', 'Double-click to collapse')) : undefined}
         onPointerDown={onPointerDown}
         onDoubleClick={collapsible ? () => setCollapsed(!isCollapsed) : undefined}
         onKeyDown={(e) => {

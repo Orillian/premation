@@ -50,6 +50,7 @@
 import { fftInPlace } from '@motion/audio';
 import type { SceneNode } from '@core/types';
 import { previewEngineJob } from '@core/engine/engineJobs';
+import { t } from '@core/i18n';
 
 // ── Analysis ────────────────────────────────────────────────────────
 
@@ -74,10 +75,10 @@ export const BAND_RANGES: Readonly<Record<'full' | 'low' | 'mid' | 'high', { lo:
 };
 
 export const BAND_LABELS: Readonly<Record<'full' | 'low' | 'mid' | 'high', string>> = {
-  full: 'Full range',
-  low: 'Low (20–250 Hz)',
-  mid: 'Mid (250 Hz–2 kHz)',
-  high: 'High (2–16 kHz)',
+  get full() { return t('core.audioDriver.bandFull', 'Full range'); },
+  get low() { return t('core.audioDriver.bandLow', 'Low (20–250 Hz)'); },
+  get mid() { return t('core.audioDriver.bandMid', 'Mid (250 Hz–2 kHz)'); },
+  get high() { return t('core.audioDriver.bandHigh', 'High (2–16 kHz)'); },
 };
 
 /** Resolve a band to Hz edges. */
@@ -243,11 +244,11 @@ export type EnvelopeCurve = 'linear' | 'easeIn' | 'easeOut' | 'sCurve' | 'invert
 export const CURVES: readonly EnvelopeCurve[] = ['linear', 'easeIn', 'easeOut', 'sCurve', 'invert'];
 
 export const CURVE_LABELS: Readonly<Record<EnvelopeCurve, string>> = {
-  linear: 'Linear',
-  easeIn: 'Ease in (soft quiet)',
-  easeOut: 'Ease out (punchy)',
-  sCurve: 'S-curve',
-  invert: 'Invert',
+  get linear() { return t('core.audioDriver.curveLinear', 'Linear'); },
+  get easeIn() { return t('core.audioDriver.curveEaseIn', 'Ease in (soft quiet)'); },
+  get easeOut() { return t('core.audioDriver.curveEaseOut', 'Ease out (punchy)'); },
+  get sCurve() { return t('core.audioDriver.curveSCurve', 'S-curve'); },
+  get invert() { return t('core.audioDriver.curveInvert', 'Invert'); },
 };
 
 /** Shape a 0..1 envelope value. Every curve maps 0..1 → 0..1. */
@@ -432,14 +433,14 @@ function num(v: number): string {
  */
 export function expressionBlocker(d: AudioDriver): string | null {
   if (d.sourceLayerId !== MIX_SOURCE) {
-    return 'the `audio` identifier reads the whole comp’s live level, so it cannot follow one layer';
+    return t('core.audioDriver.blockerLayer', 'the `audio` identifier reads the whole comp’s live level, so it cannot follow one layer');
   }
-  if (d.band !== 'full') return '`audio` is broadband — a band needs the baked FFT';
+  if (d.band !== 'full') return t('core.audioDriver.blockerBand', '`audio` is broadband — a band needs the baked FFT');
   if (d.attackMs > 0 || d.releaseMs > 0) {
-    return 'attack/release remembers the previous frame, which an expression cannot';
+    return t('core.audioDriver.blockerAttack', 'attack/release remembers the previous frame, which an expression cannot');
   }
-  if (d.smoothFrames > 1) return 'smoothing reads neighbouring frames, which an expression cannot';
-  if (d.normalize) return 'normalising needs the clip’s peak, which is only known after analysis';
+  if (d.smoothFrames > 1) return t('core.audioDriver.blockerSmooth', 'smoothing reads neighbouring frames, which an expression cannot');
+  if (d.normalize) return t('core.audioDriver.blockerNormalize', 'normalising needs the clip’s peak, which is only known after analysis');
   return null;
 }
 

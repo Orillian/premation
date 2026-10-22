@@ -59,6 +59,7 @@ import { svgContextMenuItems } from '@layout/Inspector/svgLayerActions';
 import { openPrecomposeDialog } from '@layout/Composition/PrecomposeDialog';
 import { useUIStore } from '@stores/uiStore';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 /** Run a registered command by id — the menu bar's route, so the enabled gate,
  *  the undo entry and the shortcut all stay one implementation. */
@@ -84,7 +85,7 @@ export function labelColorMenuItems(targetId: string): ContextMenuItem[] {
   return [
     {
       id: 'label-none',
-      label: 'None (Default)',
+      label: t('scene.menu.noneDefault', 'None (Default)'),
       icon: current === undefined ? 'check' : undefined,
       onSelect: () => { void setLabelColorEdit(ids, undefined); },
     },
@@ -108,7 +109,7 @@ export function labelColorMenuItems(targetId: string): ContextMenuItem[] {
       // if you can then act on the group; without this the palette is
       // decoration. Matches the UNLABELLED set too, which is how you find the
       // layers you forgot to tag.
-      label: 'Select All with This Label',
+      label: t('scene.menu.selectAllWithThisLabel', 'Select All with This Label'),
       onSelect: () => {
         const matches = mirrorLayersWithLabel(documentMirror(), targetId);
         if (matches.length) useSelectionStore.getState().set(matches);
@@ -184,7 +185,7 @@ function parentMenuItems(targetId: string): ContextMenuItem[] {
   return [
     {
       id: 'parent-none',
-      label: 'None',
+      label: t('scene.menu.none', 'None'),
       icon: current === null ? 'check' : undefined,
       onSelect: () => parentLayer(targetId, null),
     },
@@ -198,19 +199,21 @@ function parentMenuItems(targetId: string): ContextMenuItem[] {
   ];
 }
 
-const ALIGN_ITEMS: ReadonlyArray<{ id: AlignMode; label: string }> = [
-  { id: 'left', label: 'Left Edges' },
-  { id: 'center-h', label: 'Horizontal Centres' },
-  { id: 'right', label: 'Right Edges' },
-  { id: 'top', label: 'Top Edges' },
-  { id: 'middle-v', label: 'Vertical Centres' },
-  { id: 'bottom', label: 'Bottom Edges' },
-];
+function alignItems(): ReadonlyArray<{ id: AlignMode; label: string }> {
+  return [
+    { id: 'left', label: t('scene.menu.leftEdges', 'Left Edges') },
+    { id: 'center-h', label: t('scene.menu.horizontalCentres', 'Horizontal Centres') },
+    { id: 'right', label: t('scene.menu.rightEdges', 'Right Edges') },
+    { id: 'top', label: t('scene.menu.topEdges', 'Top Edges') },
+    { id: 'middle-v', label: t('scene.menu.verticalCentres', 'Vertical Centres') },
+    { id: 'bottom', label: t('scene.menu.bottomEdges', 'Bottom Edges') },
+  ];
+}
 
 function alignMenuItems(ids: ReadonlyArray<string>): ContextMenuItem[] {
   const comp = activeCompSize();
   return [
-    ...ALIGN_ITEMS.map((a): ContextMenuItem => ({
+    ...alignItems().map((a): ContextMenuItem => ({
       id: `align-${a.id}`,
       label: a.label,
       onSelect: () => { void alignLayers(ids, a.id, 'selection', comp.width, comp.height); },
@@ -218,7 +221,7 @@ function alignMenuItems(ids: ReadonlyArray<string>): ContextMenuItem[] {
     { id: 'align-sep', separator: true },
     ...(['distribute-h', 'distribute-v'] as const).map((mode): ContextMenuItem => ({
       id: `align-${mode}`,
-      label: mode === 'distribute-h' ? 'Distribute Horizontally' : 'Distribute Vertically',
+      label: mode === 'distribute-h' ? t('scene.menu.distributeH', 'Distribute Horizontally') : t('scene.menu.distributeV', 'Distribute Vertically'),
       // AE greys distribution out below three layers, because two layers are
       // already evenly distributed and the command would be a no-op.
       disabled: ids.length < 3,
@@ -261,9 +264,9 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
   const isRoot = !layer;
   if (isRoot) {
     return [
-      { id: 'rename', label: 'Rename', onSelect: () => deps.startRename(targetId) },
+      { id: 'rename', label: t('scene.menu.rename', 'Rename'), onSelect: () => deps.startRename(targetId) },
       { id: 'sep-root', separator: true },
-      { id: 'settings', label: 'Composition Settings…', onSelect: () => run('comp.settings') },
+      { id: 'settings', label: t('scene.menu.compositionSettings', 'Composition Settings…'), onSelect: () => run('comp.settings') },
     ];
   }
   const hidden = !layer.switches.visible;
@@ -282,46 +285,46 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
      of comp verbs. (Handled above, before the layer's facts are read.) */
 
   return [
-    { id: 'rename', label: 'Rename', shortcut: 'F2', onSelect: () => deps.startRename(targetId) },
-    { id: 'duplicate', label: 'Duplicate', shortcut: 'Ctrl+D', onSelect: () => { void duplicateSelectedLayersEdit(); } },
+    { id: 'rename', label: t('scene.menu.rename', 'Rename'), shortcut: 'F2', onSelect: () => deps.startRename(targetId) },
+    { id: 'duplicate', label: t('scene.menu.duplicate', 'Duplicate'), shortcut: 'Ctrl+D', onSelect: () => { void duplicateSelectedLayersEdit(); } },
     // `arrangeLayersEdit` over the WHOLE selection, never a loop over it — the
     // loop moved a multi-selection one layer at a time and the members
     // leapfrogged each other (see `reorderSiblings`). Same call the Layer ▸
     // Arrange commands and the viewport's context menu make.
-    { id: 'arrange', label: 'Arrange', children: [
-      { id: 'arr-front', label: 'Bring to Front', onSelect: () => { void arrangeLayersEdit(ids, 'front'); } },
-      { id: 'arr-forward', label: 'Bring Forward', onSelect: () => { void arrangeLayersEdit(ids, 'forward'); } },
-      { id: 'arr-backward', label: 'Send Backward', onSelect: () => { void arrangeLayersEdit(ids, 'backward'); } },
-      { id: 'arr-back', label: 'Send to Back', onSelect: () => { void arrangeLayersEdit(ids, 'back'); } },
+    { id: 'arrange', label: t('scene.menu.arrange', 'Arrange'), children: [
+      { id: 'arr-front', label: t('scene.menu.bringToFront', 'Bring to Front'), onSelect: () => { void arrangeLayersEdit(ids, 'front'); } },
+      { id: 'arr-forward', label: t('scene.menu.bringForward', 'Bring Forward'), onSelect: () => { void arrangeLayersEdit(ids, 'forward'); } },
+      { id: 'arr-backward', label: t('scene.menu.sendBackward', 'Send Backward'), onSelect: () => { void arrangeLayersEdit(ids, 'backward'); } },
+      { id: 'arr-back', label: t('scene.menu.sendToBack', 'Send to Back'), onSelect: () => { void arrangeLayersEdit(ids, 'back'); } },
     ] },
     { id: 'sep1', separator: true },
 
     // Anchored on the clicked row, so the label ("Unlock") and the action
     // agree even when the rest of the selection is in the other state.
-    { id: 'toggle', label: hidden ? 'Show' : 'Hide', onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'visible'); } },
-    { id: 'lock', label: locked ? 'Unlock' : 'Lock', onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'locked'); } },
-    { id: 'solo', label: solo ? 'Unsolo' : 'Solo', onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'solo'); } },
-    { id: 'switches', label: 'Switches', children: switchesMenuItems(targetId, ids) },
-    { id: 'labelColor', label: 'Label Color', children: labelColorMenuItems(targetId) },
+    { id: 'toggle', label: hidden ? t('scene.menu.show', 'Show') : t('scene.menu.hide', 'Hide'), onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'visible'); } },
+    { id: 'lock', label: locked ? t('scene.menu.unlock', 'Unlock') : t('scene.menu.lock', 'Lock'), onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'locked'); } },
+    { id: 'solo', label: solo ? t('scene.menu.unsolo', 'Unsolo') : t('scene.menu.solo', 'Solo'), onSelect: () => { void toggleLayerSwitchAnchored(targetId, 'solo'); } },
+    { id: 'switches', label: t('scene.menu.switches', 'Switches'), children: switchesMenuItems(targetId, ids) },
+    { id: 'labelColor', label: t('scene.menu.labelColor', 'Label Color'), children: labelColorMenuItems(targetId) },
     { id: 'sep2', separator: true },
 
     // ── Compositing: what this layer does to the ones under it ──────────
-    { id: 'blend', label: `Blending Mode — ${blendModeLabel(layer.blendMode as LayerBlendMode)}`, children: blendMenuItems(targetId, ids) },
-    { id: 'matte', label: 'Track Matte', children: matteMenuItems(targetId) },
-    { id: 'parent', label: 'Parent', children: parentMenuItems(targetId) },
+    { id: 'blend', label: t('scene.menu.blendingMode', 'Blending Mode — {mode}', { mode: blendModeLabel(layer.blendMode as LayerBlendMode) }), children: blendMenuItems(targetId, ids) },
+    { id: 'matte', label: t('scene.menu.trackMatte', 'Track Matte'), children: matteMenuItems(targetId) },
+    { id: 'parent', label: t('scene.menu.parent', 'Parent'), children: parentMenuItems(targetId) },
     { id: 'sep3', separator: true },
 
     // ── Transform: the AE Layer ▸ Transform verbs, through their commands ──
-    { id: 'transform', label: 'Transform', children: [
-      { id: 'fit', label: 'Fit to Comp', shortcut: 'Ctrl+Alt+F', onSelect: () => run('layer.fitToComp') },
-      { id: 'fit-w', label: 'Fit to Comp Width', onSelect: () => run('layer.fitToCompWidth') },
-      { id: 'fit-h', label: 'Fit to Comp Height', onSelect: () => run('layer.fitToCompHeight') },
-      { id: 'fill', label: 'Fill Comp (crop to frame)', onSelect: () => run('layer.fillComp') },
-      { id: 'native', label: 'Set to Native Size', onSelect: () => run('layer.nativeSize') },
+    { id: 'transform', label: t('scene.menu.transform', 'Transform'), children: [
+      { id: 'fit', label: t('scene.menu.fitToComp', 'Fit to Comp'), shortcut: 'Ctrl+Alt+F', onSelect: () => run('layer.fitToComp') },
+      { id: 'fit-w', label: t('scene.menu.fitToCompWidth', 'Fit to Comp Width'), onSelect: () => run('layer.fitToCompWidth') },
+      { id: 'fit-h', label: t('scene.menu.fitToCompHeight', 'Fit to Comp Height'), onSelect: () => run('layer.fitToCompHeight') },
+      { id: 'fill', label: t('scene.menu.fillCompCropToFrame', 'Fill Comp (crop to frame)'), onSelect: () => run('layer.fillComp') },
+      { id: 'native', label: t('scene.menu.setToNativeSize', 'Set to Native Size'), onSelect: () => run('layer.nativeSize') },
       { id: 'tr-sep', separator: true },
-      { id: 'centre-anchor', label: 'Centre Anchor Point in Layer Content', onSelect: () => run('layer.centreAnchor') },
+      { id: 'centre-anchor', label: t('scene.menu.centreAnchorPointInLayer', 'Centre Anchor Point in Layer Content'), onSelect: () => run('layer.centreAnchor') },
     ] },
-    ...(many ? [{ id: 'align', label: 'Align & Distribute', children: alignMenuItems(ids) } as ContextMenuItem] : []),
+    ...(many ? [{ id: 'align', label: t('scene.menu.alignDistribute', 'Align & Distribute'), children: alignMenuItems(ids) } as ContextMenuItem] : []),
 
     /*
       Time. TWO gates, not one, because `layerTimeCommands` draws the line
@@ -334,20 +337,20 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
     */
     {
       id: 'time',
-      label: 'Time',
+      label: t('scene.menu.time', 'Time'),
       children: [
-        { id: 'split', label: 'Split Layer at Playhead', shortcut: 'Ctrl+Shift+D', onSelect: () => splitAtPlayhead(ids) },
-        { id: 'stretch', label: 'Time Stretch…', onSelect: () => run('time.timeStretch') },
+        { id: 'split', label: t('scene.menu.splitLayerAtPlayhead', 'Split Layer at Playhead'), shortcut: 'Ctrl+Shift+D', onSelect: () => splitAtPlayhead(ids) },
+        { id: 'stretch', label: t('scene.menu.timeStretch', 'Time Stretch…'), onSelect: () => run('time.timeStretch') },
         { id: 'time-sep', separator: true },
         {
           id: 'reverse',
-          label: 'Time-Reverse Layer',
+          label: t('scene.menu.timeReverseLayer', 'Time-Reverse Layer'),
           disabled: !retimable,
           onSelect: () => { void reverseLayersEdit(ids); },
         },
         {
           id: 'freeze',
-          label: 'Freeze Frame at Playhead',
+          label: t('scene.menu.freezeFrameAtPlayhead', 'Freeze Frame at Playhead'),
           disabled: !retimable,
           onSelect: () => {
             const at = getTime();
@@ -364,28 +367,28 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
     // ── Create: turn this layer into other layers ───────────────────────
     {
       id: 'group',
-      label: 'Group Selection',
+      label: t('scene.menu.groupSelection', 'Group Selection'),
       onSelect: () => {
         void groupSelectedLayersEdit().then((handled) => {
           // Layers of different compositions: a layer cannot move between
           // compositions, so there is no one group to put them in.
-          if (!handled) notify('Group Selection needs layers of one composition.');
+          if (!handled) notify(t('scene.menu.groupNeedsOneComp', 'Group Selection needs layers of one composition.'));
         });
       },
     },
-    ...(isGroup ? [{ id: 'ungroup', label: 'Ungroup', onSelect: () => { void ungroupSelectedEdit(); } }] : []),
-    { id: 'precompose', label: 'Pre-compose…', shortcut: 'Ctrl+Shift+C', onSelect: () => openPrecomposeDialog() },
+    ...(isGroup ? [{ id: 'ungroup', label: t('scene.menu.ungroup', 'Ungroup'), onSelect: () => { void ungroupSelectedEdit(); } }] : []),
+    { id: 'precompose', label: t('scene.menu.preCompose', 'Pre-compose…'), shortcut: 'Ctrl+Shift+C', onSelect: () => openPrecomposeDialog() },
     ...(isText
       ? [
           {
             id: 'shapes-from-text',
-            label: 'Create Shapes from Text',
+            label: t('scene.menu.createShapesFromText', 'Create Shapes from Text'),
             // A client macro: outlines in the editor, the shape built off-document, one pasteLayers.
-            onSelect: () => { void shapesFromTextEdit(targetId, getTime()).then((r) => { if (!r) notify('That text could not be traced to shapes', 'warning'); }); },
+            onSelect: () => { void shapesFromTextEdit(targetId, getTime()).then((r) => { if (!r) notify(t('scene.menu.shapesFromTextFailed', 'That text could not be traced to shapes'), 'warning'); }); },
           },
           {
             id: 'masks-from-text',
-            label: 'Create Masks from Text',
+            label: t('scene.menu.createMasksFromText', 'Create Masks from Text'),
             onSelect: () => { void masksFromTextEdit(targetId, getTime()); },
           },
         ]
@@ -393,17 +396,17 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
     ...(isShape
       ? [{
           id: 'nulls-from-paths',
-          label: 'Create Nulls from Path Points',
+          label: t('scene.menu.createNullsFromPathPoints', 'Create Nulls from Path Points'),
           onSelect: () => {
             void nullsFromPathEdit(targetId, getTime()).then((made) => {
-              if (made.length === 0) notify('That layer has no path points to bind nulls to', 'warning');
+              if (made.length === 0) notify(t('scene.menu.noPathPoints', 'That layer has no path points to bind nulls to'), 'warning');
             });
           },
         }]
       : []),
     // B4-gap: Rig Logo rasterizes the selection and writes puppet pins itself — an engine job (G-phase) with
     // legacy writes, not a display read.
-    { id: 'rig-logo', label: 'Rig Logo for Animation', onSelect: () => { void rigLogoForAnimation(); } },
+    { id: 'rig-logo', label: t('scene.menu.rigLogoForAnimation', 'Rig Logo for Animation'), onSelect: () => { void rigLogoForAnimation(); } },
     ...svgContextMenuItems(targetId),
 
     ...(many
@@ -411,30 +414,30 @@ export function sceneNodeMenuItems(targetId: string, deps: SceneMenuDeps): Conte
           { id: 'sep_merge', separator: true },
           {
             id: 'merge-paths',
-            label: 'Merge Paths',
+            label: t('scene.menu.mergePaths', 'Merge Paths'),
             children: [
-              { id: 'merge-live-union', label: 'Live Union (Add)', onSelect: () => { void liveMergePathsEdit('union'); } },
-              { id: 'merge-live-subtract', label: 'Live Subtract', onSelect: () => { void liveMergePathsEdit('subtract'); } },
-              { id: 'merge-live-intersect', label: 'Live Intersect', onSelect: () => { void liveMergePathsEdit('intersect'); } },
-              { id: 'merge-live-exclude', label: 'Live Exclude (XOR)', onSelect: () => { void liveMergePathsEdit('exclude'); } },
+              { id: 'merge-live-union', label: t('scene.menu.liveUnionAdd', 'Live Union (Add)'), onSelect: () => { void liveMergePathsEdit('union'); } },
+              { id: 'merge-live-subtract', label: t('scene.menu.liveSubtract', 'Live Subtract'), onSelect: () => { void liveMergePathsEdit('subtract'); } },
+              { id: 'merge-live-intersect', label: t('scene.menu.liveIntersect', 'Live Intersect'), onSelect: () => { void liveMergePathsEdit('intersect'); } },
+              { id: 'merge-live-exclude', label: t('scene.menu.liveExcludeXor', 'Live Exclude (XOR)'), onSelect: () => { void liveMergePathsEdit('exclude'); } },
               { id: 'merge-sep', separator: true },
               // The boolean runs off-document; deleteLayers + pasteLayers, one entry.
-              { id: 'merge-union', label: 'Bake Union', onSelect: () => { void bakeMergePathsEdit('union'); } },
-              { id: 'merge-subtract', label: 'Bake Subtract', onSelect: () => { void bakeMergePathsEdit('subtract'); } },
-              { id: 'merge-intersect', label: 'Bake Intersect', onSelect: () => { void bakeMergePathsEdit('intersect'); } },
-              { id: 'merge-exclude', label: 'Bake Exclude', onSelect: () => { void bakeMergePathsEdit('exclude'); } },
+              { id: 'merge-union', label: t('scene.menu.bakeUnion', 'Bake Union'), onSelect: () => { void bakeMergePathsEdit('union'); } },
+              { id: 'merge-subtract', label: t('scene.menu.bakeSubtract', 'Bake Subtract'), onSelect: () => { void bakeMergePathsEdit('subtract'); } },
+              { id: 'merge-intersect', label: t('scene.menu.bakeIntersect', 'Bake Intersect'), onSelect: () => { void bakeMergePathsEdit('intersect'); } },
+              { id: 'merge-exclude', label: t('scene.menu.bakeExclude', 'Bake Exclude'), onSelect: () => { void bakeMergePathsEdit('exclude'); } },
             ],
           },
         ]
       : []),
 
     { id: 'sep5', separator: true },
-    { id: 'select-all', label: 'Select All', shortcut: 'Ctrl+A', onSelect: () => run('edit.selectAll') },
-    { id: 'invert', label: 'Invert Selection', onSelect: () => invertSelection() },
+    { id: 'select-all', label: t('scene.menu.selectAll', 'Select All'), shortcut: 'Ctrl+A', onSelect: () => run('edit.selectAll') },
+    { id: 'invert', label: t('scene.menu.invertSelection', 'Invert Selection'), onSelect: () => invertSelection() },
     { id: 'sep6', separator: true },
     {
       id: 'delete',
-      label: many ? `Delete ${ids.length} Layers` : 'Delete',
+      label: many ? t('scene.menu.deleteMany', 'Delete {n} Layers', { n: ids.length }) : t('scene.menu.delete', 'Delete'),
       danger: true,
       shortcut: 'Del',
       onSelect: () => { void deleteLayersWithFeedback(ids); },
@@ -485,8 +488,12 @@ export async function deleteLayersWithFeedback(ids: ReadonlyArray<string>): Prom
   if (lockedCount > 0) {
     notify(
       lockedCount === ids.length
-        ? lockedCount === 1 ? 'That layer is locked — unlock it to delete it.' : 'Those layers are locked — unlock them to delete them.'
-        : `${lockedCount} locked layer${lockedCount === 1 ? ' was' : 's were'} left in place.`,
+        ? lockedCount === 1
+          ? t('scene.menu.lockedOne', 'That layer is locked — unlock it to delete it.')
+          : t('scene.menu.lockedAll', 'Those layers are locked — unlock them to delete them.')
+        : lockedCount === 1
+          ? t('scene.menu.lockedLeftOne', '{n} locked layer was left in place.', { n: lockedCount })
+          : t('scene.menu.lockedLeftOther', '{n} locked layers were left in place.', { n: lockedCount }),
       'warning',
     );
   }

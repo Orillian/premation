@@ -6,12 +6,13 @@
  */
 import { openModal } from '@stores/modalStore';
 import { aiEnabled } from '@core/config/edition';
+import { t } from '@core/i18n';
 import { Customize, type Tab } from './CustomizeDialog';
 
 export function openCustomizeDialog(initialTab?: Tab): void {
   openModal({
     id: 'customize',
-    title: 'Studio Preferences & Customization',
+    title: t('settings.customize.title', 'Studio Preferences & Customization'),
     size: 'lg',
     render: () => <Customize {...(initialTab ? { initialTab } : {})} />,
   });

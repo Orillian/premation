@@ -10,6 +10,7 @@
 
 import type { ReactNode } from 'react';
 import { Logo } from '@components/Logo';
+import { t } from '@core/i18n';
 import { cn } from '@utils/cn';
 import styles from './AuthPage.module.css';
 
@@ -55,8 +56,8 @@ export function AuthShell({ title, subtitle, children, className }: AuthShellPro
       <div className={styles.art}>
         <AuthArtwork />
         <div className={styles.artCaption}>
-          <span className={styles.artTagline}>Make it move.</span>
-          <span className={styles.artSub}>Motion graphics and compositing</span>
+          <span className={styles.artTagline}>{t('auth.shell.tagline', 'Make it move.')}</span>
+          <span className={styles.artSub}>{t('auth.shell.taglineSub', 'Motion graphics and compositing')}</span>
         </div>
       </div>
 
@@ -84,11 +85,11 @@ export function PasswordRules({ password }: { password: string }): JSX.Element {
     <div className={styles.passwordRules} aria-live="polite">
       <span className={cn(styles.ruleChip, long && styles.ruleChipValid)}>
         <span className={styles.ruleDot} />
-        <span>8 or more characters</span>
+        <span>{t('auth.passwordRules.length', '8 or more characters')}</span>
       </span>
       <span className={cn(styles.ruleChip, mixed && styles.ruleChipValid)}>
         <span className={styles.ruleDot} />
-        <span>A letter and a number</span>
+        <span>{t('auth.passwordRules.mixed', 'A letter and a number')}</span>
       </span>
     </div>
   );

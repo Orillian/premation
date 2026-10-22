@@ -16,6 +16,7 @@
 import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
+import { t } from '@core/i18n';
 import { ColorPicker } from '@components/ColorPicker';
 import { flicksToSeconds, secondsToFlicks, type Command } from '@motion/engine-api';
 import { documentMirror } from '@stores/documentMirror';
@@ -53,7 +54,7 @@ export function MographParamsSection(): JSX.Element | null {
 
   const itemId = documentMirror().layer(root)?.mographId || null;
   const item = itemId ? getMographItem(itemId) : null;
-  const name = documentMirror().layer(root)?.name ?? item?.name ?? 'Motion graphic';
+  const name = documentMirror().layer(root)?.name ?? item?.name ?? t('inspector.mograph.defaultName', 'Motion graphic');
 
   // Replay the element's own choreography from wherever it was written. The
   // keyframes carry that start time; the item carries the length.
@@ -66,7 +67,7 @@ export function MographParamsSection(): JSX.Element | null {
 
   const groups = new Map<string, TemplateField[]>();
   for (const f of fields) {
-    const key = f.group ?? 'Fields';
+    const key = f.group ?? t('inspector.mograph.fieldsGroup', 'Fields');
     const arr = groups.get(key) ?? [];
     arr.push(f);
     groups.set(key, arr);
@@ -77,11 +78,11 @@ export function MographParamsSection(): JSX.Element | null {
       <div className={styles.header}>
         <div className={styles.titleBlock}>
           <span className={styles.title}>{name}</span>
-          <span className={styles.subtitle}>{item ? `${item.cat} · motion graphic` : 'motion graphic'}</span>
+          <span className={styles.subtitle}>{item ? t('inspector.mograph.subtitleCat', '{cat} · motion graphic', { cat: item.cat }) : t('inspector.mograph.subtitle', 'motion graphic')}</span>
         </div>
         {item && (
           <Button variant="ghost" size="sm" leftIcon={<Icon name="play" size="sm" />} onClick={replay}>
-            Replay
+            {t('inspector.mograph.replay', 'Replay')}
           </Button>
         )}
       </div>

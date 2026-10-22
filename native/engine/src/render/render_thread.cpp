@@ -109,12 +109,14 @@ void RenderThread::submit(RenderJob job) {
     const auto it = ports_.find(job.viewport);
     if (it == ports_.end() || !it->second->config.open) {
       ++counters_.dropped;  // its viewport closed meanwhile: nowhere to show it
+      if (job.cachedKey) ++counters_.cacheDropped;
       return;
     }
     Port& p = *it->second;
     if (p.pending) {
       ++counters_.dropped;  // superseded before it started: the newest frame wins
       if (p.pending->playing) ++p.droppedPending;  // a frame of playback lost (an edit's is not)
+      if (p.pending->cachedKey) ++counters_.cacheDropped;
     }
     p.droppedPending += job.clockDropped;
     p.pending = std::move(job);
@@ -218,6 +220,7 @@ CacheCoverageSnap RenderThread::cache_coverage() const {
 }
 
 void RenderThread::purge_frame_cache() {
+  prebuild_.clear();  // nothing it names is held any more
   post([this] {
     if (cache_) cache_->clear();
     ram_.clear();
@@ -225,6 +228,39 @@ void RenderThread::purge_frame_cache() {
     victims_.clear();
     publish_coverage();
   });
+}
+
+void RenderThread::note_frames_changed(FrameRevision rev) {
+  const std::lock_guard<std::mutex> lock(m_);
+  revisionsIn_.push_back(std::move(rev));
+  if (revisionsIn_.size() > 2 * CoverageLedger::kRevisionsKept) revisionsIn_.pop_front();
+}
+
+std::vector<std::uint32_t> RenderThread::take_build_requests() {
+  const std::lock_guard<std::mutex> lock(m_);
+  std::vector<std::uint32_t> out;
+  out.swap(buildWanted_);
+  return out;
+}
+
+void RenderThread::take_revisions() {
+  std::deque<FrameRevision> in;
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    in.swap(revisionsIn_);
+  }
+  for (FrameRevision& r : in) ledger_.note_revision(std::move(r));
+}
+
+void RenderThread::want_build(std::uint32_t viewport) {
+  const std::lock_guard<std::mutex> lock(m_);
+  if (std::ranges::find(buildWanted_, viewport) == buildWanted_.end()) buildWanted_.push_back(viewport);
+}
+
+bool RenderThread::tier_holds(const CachedKeys& keys) const {
+  if (cache_ && cache_->contains(keys.content)) return true;
+  if (ram_.contains(keys.content)) return true;
+  return keys.disk != 0 && disk_->contains(keys.disk);
 }
 
 void RenderThread::configure_ram_cache(std::uint64_t bytes) {
@@ -563,35 +599,12 @@ void RenderThread::seed_disk_read_cost() {
 }
 
 void RenderThread::note_coverage(const RenderJob& job, std::uint64_t key, std::uint64_t diskKey) {
-  std::deque<ScopeCover>& scopes = cover_[job.viewport];
-  if (scopes.empty() || scopes.front().scope != job.cacheScope) {
-    // Another comp, an edit, another view: the bars follow what the viewport
-    // shows now. A scope seen lately comes back with what it still has cached.
-    const auto it = std::ranges::find_if(scopes, [&job](const ScopeCover& c) { return c.scope == job.cacheScope; });
-    ScopeCover current;
-    if (it != scopes.end()) {
-      current = std::move(*it);
-      scopes.erase(it);
-    } else {
-      current.scope = job.cacheScope;
-      // The same view at a new revision (Session::cache_scope: view in the high
-      // word): when this frame drew under the key it had before, the change did
-      // not touch it — a background update (a footage probe), an edit that
-      // reaches no pixel — and the view's coverage carries over. Changed here,
-      // the bar starts again from what is drawn now.
-      if (!scopes.empty() && (scopes.front().scope >> 32U) == (job.cacheScope >> 32U)) {
-        const auto& prev = scopes.front().frames;
-        if (const auto at = prev.find(job.frame); at != prev.end() && at->second.first == key) current.frames = prev;
-      }
-    }
-    scopes.push_front(std::move(current));
-    if (scopes.size() > kScopesKept) scopes.pop_back();
+  // The ledger carries a view's bar across a document revision frame by frame
+  // (the session says which frames each step changed; a changed frame comes
+  // back when the pre-build map knows its new key and a tier holds it).
+  if (ledger_.note(job, CachedKeys{key, diskKey}, prebuild_, [this](const CachedKeys& k) { return tier_holds(k); })) {
     coverageStale_ = true;
   }
-  auto& entry = scopes.front().frames[job.frame];
-  if (entry.first != key || (diskKey != 0 && entry.second != diskKey)) coverageStale_ = true;
-  entry.first = key;
-  if (diskKey != 0) entry.second = diskKey;
   publish_coverage_soon();
 }
 
@@ -639,12 +652,13 @@ void RenderThread::publish_coverage() {
   std::vector<std::int64_t> diskFrames;
   std::vector<std::uint64_t> diskKeys;
   // Per disk key: its frame, and its scope when only the disk may still hold it (pruned if not).
-  std::vector<std::pair<ScopeCover*, std::int64_t>> diskOf;
-  for (auto& [viewport, scopes] : cover_) {
+  std::vector<std::pair<CoverageLedger::ScopeCover*, std::int64_t>> diskOf;
+  for (auto& [viewport, scopes] : ledger_.viewports()) {
     if (scopes.empty()) continue;
-    ScopeCover& cur = scopes.front();
+    CoverageLedger::ScopeCover& cur = scopes.front();
     for (auto it = cur.frames.begin(); it != cur.frames.end();) {
-      const auto [key, diskKey] = it->second;
+      const std::uint64_t key = it->second.content;
+      const std::uint64_t diskKey = it->second.disk;
       // A frame VRAM just evicted is on its way into RAM (a read-back in flight): still in memory.
       const bool inMemory = (cache_ != nullptr && cache_->contains(key)) || ram_.contains(key) ||
                             std::ranges::any_of(victims_, [key](const Victim& v) { return v.key == key && !v.diskOnly; });
@@ -739,6 +753,9 @@ void RenderThread::close_gpu() {
   onionView_ = nullptr;
   onionW_ = 0;
   onionH_ = 0;
+  // The VRAM tier goes with the device: entries naming frames only it held
+  // would miss (and heal) one by one — start over instead.
+  prebuild_.clear();
   cache_.reset();
   drawer_.reset();
   compositor_.reset();
@@ -873,7 +890,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
         // Forget a viewport that is (still) closed once its ring is retired; its
         // late releases name a generation no ring has any more.
         if (!p.config.open && !p.dirty) {
-          cover_.erase(it->first);
+          ledger_.forget_viewport(it->first);
           coverageStale_ = true;
           it = ports_.erase(it);
         } else {
@@ -1038,6 +1055,12 @@ std::future<WorkingPixels> RenderThread::read_pixels(std::uint32_t viewport, Pix
     if (last == nullptr || !*last || slots == nullptr) {
       out.answer = HookAnswer::pending;
       out.error = "viewport " + std::to_string(viewport) + " has shown no frame yet";
+    } else if (!(*last)->built && (*last)->cachedKey) {
+      // Presented from a cache tier without a build: ask the session for the
+      // built frame (take_build_requests) and answer once it has drawn.
+      want_build(viewport);
+      out.answer = HookAnswer::pending;
+      out.error = "viewport " + std::to_string(viewport) + " shows a cached frame: building it";
     } else if (!(*last)->built || !drawer_) {
       out.answer = HookAnswer::unsupported;
       out.error = "the viewport shows C2 quads: there is no working-space frame to read";
@@ -1182,12 +1205,22 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
 #endif
   bool drawn = false;
   InFlight f;
-  if (job.built && drawer_) {
-    drawer_->set_exact_media(job.exactMedia);
+  take_revisions();
+  // A cached job (RenderJob::cachedKey): the session built nothing, the keys
+  // name a frame a tier held when it asked. Presented from VRAM, RAM or disk
+  // below; found in no tier after all, the session is asked for a built frame.
+  const bool cachedJob = job.cachedKey.has_value() && !job.built;
+  if ((job.built || cachedJob) && drawer_) {
+    if (!cachedJob) drawer_->set_exact_media(job.exactMedia);
     const wgpu::Texture& slotTexture = set.textures[slot];
     std::optional<std::uint64_t> key;
     std::optional<std::uint64_t> diskKey;
-    if (cache_ && set.copyable) key = drawer_->content_key(*job.built, set.width, set.height);
+    if (cachedJob) {
+      if (cache_ && set.copyable) key = job.cachedKey;
+      if (key && job.cachedDiskKey != 0 && disk_->enabled()) diskKey = job.cachedDiskKey;
+    } else if (cache_ && set.copyable) {
+      key = drawer_->content_key(*job.built, set.width, set.height);
+    }
     // Every frame the disk tier could hold is keyed (a hash of the content key
     // and the footage stamps, cached for seconds): whether one is worth a file
     // is known only once it has drawn — the first frame after an open, or the
@@ -1201,7 +1234,7 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
     manage_ram_budget(false);
     const FrameTag tag{job.recordCoverage ? job.cacheScope : 0, job.frame};
     const double predictedMs = std::min(drawMsAvg_, lastDrawMs_);
-    if (key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, set.width, set.height);
+    if (!cachedJob && key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, set.width, set.height);
     const std::uint64_t dk = diskKey.value_or(0);
     if (key) {
       // D4: the same content was drawn before — a copy instead of the frame.
@@ -1249,6 +1282,21 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
       drawn = true;
       if (job.recordCoverage) note_coverage(job, *key, *diskKey);
     }
+    if (!drawn && cachedJob) {
+      // No tier holds it any more (evicted, purged, a lost device): forget the
+      // entry, give the slot back and ask for a built frame — never a blank one.
+      if (job.prebuildKey) prebuild_.forget(*job.prebuildKey);
+      {
+        const std::lock_guard<std::mutex> lock(m_);
+        ++counters_.cacheMissed;
+        if (std::ranges::find(buildWanted_, job.viewport) == buildWanted_.end()) buildWanted_.push_back(job.viewport);
+      }
+#if defined(PREMATION_SHARED_TEXTURE)
+      if (shared != nullptr) (void)set.pool->end_access(*shared);
+#endif
+      ring.unacquire(slot);
+      return;
+    }
     if (!drawn) {
       std::string error;
       drawn = drawer_->draw(*job.built, set.views[slot], set.width, set.height, error);
@@ -1274,9 +1322,16 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
       }
     }
     f.cached = drawn && !f.drawn;
+    // The pre-build map learns the frame once a tier holds it (served from one,
+    // or drawn exact and stored): the next job with this pre-build key skips the build.
+    if (!cachedJob && key && job.prebuildKey && (f.cached || f.vramKey)) prebuild_.learn(*job.prebuildKey, CachedKeys{*key, dk});
+    if (cachedJob && drawn) {
+      const std::lock_guard<std::mutex> lock(m_);
+      ++counters_.cacheServed;
+    }
     if (drawn && !job.onion.empty() && compositor_) composite_onion(job, set.views[slot], set.width, set.height);
     // A paused frame whose footage came from a stand-in: wait for the decode, then draw it again.
-    MediaWants wants = drawer_->take_media_wants();
+    MediaWants wants = cachedJob ? MediaWants{} : drawer_->take_media_wants();
     if (job.playing || job.exactMedia || wants.empty()) {
       port.settling.clear();
       port.settleTries = 0;

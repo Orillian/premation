@@ -3,58 +3,63 @@
  * panel read these instead of raw tool names.
  */
 
-const LABELS: Record<string, string> = {
-  get_app_state: 'Looking at Premation',
-  list_projects: 'Listing projects',
-  create_project: 'Creating a project',
-  open_project: 'Opening a project',
-  list_compositions: 'Reading compositions',
-  create_composition: 'Adding a composition',
-  set_active_composition: 'Switching composition',
-  save_project: 'Saving',
-  import_media: 'Importing media',
-  export_video: 'Rendering video',
-  describe_scene: 'Reading the scene',
-  get_selection: 'Reading the selection',
-  list_capabilities: 'Checking what Premation can do',
-  evaluate_at: 'Measuring a layer',
-  read_tracks: 'Reading animation',
-  list_assets: 'Listing media',
-  list_presets: 'Listing presets',
-  render_frame: 'Looking at a frame',
-  render_filmstrip: 'Watching the motion',
-  begin_edit: 'Starting a change',
-  end_edit: 'Finishing a change',
-  get_author_guide: 'Reading the design guide',
-  author_scene: 'Building the scene',
-  create_layer: 'Adding a layer',
-  update_layer: 'Editing a layer',
-  delete_layer: 'Deleting a layer',
-  set_keyframes: 'Animating',
-  remove_keyframes: 'Removing keyframes',
-  set_easing: 'Easing the motion',
-  set_expression: 'Writing an expression',
-  add_effect: 'Adding an effect',
-  update_effect: 'Tuning an effect',
-  update_effect_param: 'Tuning an effect',
-  text_animator: 'Animating text',
-  add_camera_move: 'Moving the camera',
-  set_light: 'Lighting the scene',
-  create_precomp: 'Nesting a composition',
-  update_composition: 'Changing composition settings',
-  get_design_guide: 'Reading the design guide',
-  list_looks: 'Choosing a look',
-  apply_look: 'Applying a look',
-  list_techniques: 'Choosing motion',
-  apply_technique: 'Animating with a technique',
-  cast_piece: 'Designing the piece',
-  review_design: 'Reviewing the design',
-  list_sfx: 'Choosing sound effects',
-  add_sfx: 'Adding a sound effect',
-  set_audio_levels: 'Mixing audio',
-  duck_audio: 'Ducking the music',
-  generate_speech: 'Recording a voice-over',
-};
+import { t } from '@core/i18n';
+
+/** Called at use time: `t()` must not run at module scope. */
+function labels(): Record<string, string> {
+  return {
+    get_app_state: t('ui.claude.tool.getAppState', 'Looking at Premation'),
+    list_projects: t('ui.claude.tool.listProjects', 'Listing projects'),
+    create_project: t('ui.claude.tool.createProject', 'Creating a project'),
+    open_project: t('ui.claude.tool.openProject', 'Opening a project'),
+    list_compositions: t('ui.claude.tool.listCompositions', 'Reading compositions'),
+    create_composition: t('ui.claude.tool.createComposition', 'Adding a composition'),
+    set_active_composition: t('ui.claude.tool.setActiveComposition', 'Switching composition'),
+    save_project: t('ui.claude.tool.saveProject', 'Saving'),
+    import_media: t('ui.claude.tool.importMedia', 'Importing media'),
+    export_video: t('ui.claude.tool.exportVideo', 'Rendering video'),
+    describe_scene: t('ui.claude.tool.describeScene', 'Reading the scene'),
+    get_selection: t('ui.claude.tool.getSelection', 'Reading the selection'),
+    list_capabilities: t('ui.claude.tool.listCapabilities', 'Checking what Premation can do'),
+    evaluate_at: t('ui.claude.tool.evaluateAt', 'Measuring a layer'),
+    read_tracks: t('ui.claude.tool.readTracks', 'Reading animation'),
+    list_assets: t('ui.claude.tool.listAssets', 'Listing media'),
+    list_presets: t('ui.claude.tool.listPresets', 'Listing presets'),
+    render_frame: t('ui.claude.tool.renderFrame', 'Looking at a frame'),
+    render_filmstrip: t('ui.claude.tool.renderFilmstrip', 'Watching the motion'),
+    begin_edit: t('ui.claude.tool.beginEdit', 'Starting a change'),
+    end_edit: t('ui.claude.tool.endEdit', 'Finishing a change'),
+    get_author_guide: t('ui.claude.tool.readDesignGuide', 'Reading the design guide'),
+    author_scene: t('ui.claude.tool.authorScene', 'Building the scene'),
+    create_layer: t('ui.claude.tool.createLayer', 'Adding a layer'),
+    update_layer: t('ui.claude.tool.updateLayer', 'Editing a layer'),
+    delete_layer: t('ui.claude.tool.deleteLayer', 'Deleting a layer'),
+    set_keyframes: t('ui.claude.tool.setKeyframes', 'Animating'),
+    remove_keyframes: t('ui.claude.tool.removeKeyframes', 'Removing keyframes'),
+    set_easing: t('ui.claude.tool.setEasing', 'Easing the motion'),
+    set_expression: t('ui.claude.tool.setExpression', 'Writing an expression'),
+    add_effect: t('ui.claude.tool.addEffect', 'Adding an effect'),
+    update_effect: t('ui.claude.tool.updateEffect', 'Tuning an effect'),
+    update_effect_param: t('ui.claude.tool.updateEffect', 'Tuning an effect'),
+    text_animator: t('ui.claude.tool.textAnimator', 'Animating text'),
+    add_camera_move: t('ui.claude.tool.addCameraMove', 'Moving the camera'),
+    set_light: t('ui.claude.tool.setLight', 'Lighting the scene'),
+    create_precomp: t('ui.claude.tool.createPrecomp', 'Nesting a composition'),
+    update_composition: t('ui.claude.tool.updateComposition', 'Changing composition settings'),
+    get_design_guide: t('ui.claude.tool.readDesignGuide', 'Reading the design guide'),
+    list_looks: t('ui.claude.tool.listLooks', 'Choosing a look'),
+    apply_look: t('ui.claude.tool.applyLook', 'Applying a look'),
+    list_techniques: t('ui.claude.tool.listTechniques', 'Choosing motion'),
+    apply_technique: t('ui.claude.tool.applyTechnique', 'Animating with a technique'),
+    cast_piece: t('ui.claude.tool.castPiece', 'Designing the piece'),
+    review_design: t('ui.claude.tool.reviewDesign', 'Reviewing the design'),
+    list_sfx: t('ui.claude.tool.listSfx', 'Choosing sound effects'),
+    add_sfx: t('ui.claude.tool.addSfx', 'Adding a sound effect'),
+    set_audio_levels: t('ui.claude.tool.setAudioLevels', 'Mixing audio'),
+    duck_audio: t('ui.claude.tool.duckAudio', 'Ducking the music'),
+    generate_speech: t('ui.claude.tool.generateSpeech', 'Recording a voice-over'),
+  };
+}
 
 /** "add_kinetic_title" → "Add kinetic title" for anything not listed. */
 /** Who is on the pipe, in words. Cursor, Antigravity and ChatGPT use the same connection. */
@@ -82,7 +87,7 @@ export function assistantName(setup: {
   bridge: { clients: Array<{ name: string }> };
   apps?: Array<{ name: string; state: string }>;
 } | null | undefined): string {
-  if (!setup) return 'Assistant';
+  if (!setup) return t('ui.claude.assistant', 'Assistant');
   const live = [...new Set(setup.bridge.clients.map((c) => mcpClientLabel(c.name)).filter(Boolean))];
   if (live.length > 0) return live.join(' · ');
   const ready = (setup.apps ?? []).filter((a) => a.state === 'ok').map((a) => a.name);
@@ -90,12 +95,12 @@ export function assistantName(setup: {
   const unique = [...new Set(ready)];
   if (unique.length === 1) return unique[0]!;
   if (unique.length > 1) return unique.join(' · ');
-  return 'Assistant';
+  return t('ui.claude.assistant', 'Assistant');
 }
 
 export function claudeToolLabel(tool: string | null | undefined): string {
   if (!tool) return '';
-  const known = LABELS[tool];
+  const known = labels()[tool];
   if (known) return known;
   const words = tool.replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -104,7 +109,7 @@ export function claudeToolLabel(tool: string | null | undefined): string {
 /** "12s ago", "3 min ago", "2 h ago". */
 export function agoText(at: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
-  if (s < 45) return s < 5 ? 'just now' : `${s}s ago`;
+  if (s < 45) return s < 5 ? t('ui.claude.ago.justNow', 'just now') : t('ui.claude.ago.seconds', '{n}s ago', { n: s });
   const m = Math.round(s / 60);
-  return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+  return m < 60 ? t('ui.claude.ago.minutes', '{n} min ago', { n: m }) : t('ui.claude.ago.hours', '{n} h ago', { n: Math.round(m / 60) });
 }

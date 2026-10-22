@@ -30,6 +30,7 @@ import {
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { markLayerTransitionDrag } from '@layout/Timeline/transitionDrag';
 import styles from './panels.module.css';
+import { t } from '@core/i18n';
 
 /** The preset folder the user's transitions live in. */
 export const MY_TRANSITIONS_FOLDER = 'My Transitions';
@@ -53,10 +54,15 @@ export async function saveSelectionAsTransition(): Promise<string | null> {
   const notify = useUIStore.getState().notify;
   const layer = useSelectionStore.getState().ids[0];
   if (!layer) {
-    notify({ level: 'warning', message: 'Select the layer whose animation should become a transition', durationMs: 2400 });
+    notify({ level: 'warning', message: t('editor.myTransitions.selectLayer', 'Select the layer whose animation should become a transition'), durationMs: 2400 });
     return null;
   }
-  const name = (await customPrompt('Save as Transition', 'Name the transition. It is saved to My Transitions in the Library.', '', { placeholder: 'e.g. Soft Push In', confirmLabel: 'Save' }))?.trim();
+  const name = (await customPrompt(
+    t('editor.myTransitions.saveTitle', 'Save as Transition'),
+    t('editor.myTransitions.saveMessage', 'Name the transition. It is saved to My Transitions in the Library.'),
+    '',
+    { placeholder: t('editor.myTransitions.savePlaceholder', 'e.g. Soft Push In'), confirmLabel: t('editor.myTransitions.save', 'Save') },
+  ))?.trim();
   if (!name) return null;
   const res = await engine().query({ type: 'capturePreset', layer });
   let body: CapturedPresetBody | null = null;
@@ -68,11 +74,13 @@ export async function saveSelectionAsTransition(): Promise<string | null> {
     }
   }
   if (!body || (body.tracks ?? []).length === 0) {
-    notify({ level: 'warning', message: res.ok ? 'Nothing to save — keyframe the layer first' : `Could not capture the layer: ${res.error.message}`, durationMs: 2600 });
+    notify({ level: 'warning', message: res.ok
+      ? t('editor.myTransitions.nothingToSave', 'Nothing to save — keyframe the layer first')
+      : t('editor.myTransitions.captureFailed', 'Could not capture the layer: {error}', { error: res.error.message }), durationMs: 2600 });
     return null;
   }
   saveUserPreset(name, body, MY_TRANSITIONS_FOLDER);
-  notify({ level: 'success', message: `Saved “${name}” to My Transitions`, durationMs: 2200 });
+  notify({ level: 'success', message: t('editor.myTransitions.saved', 'Saved “{name}” to My Transitions', { name }), durationMs: 2200 });
   return name;
 }
 
@@ -85,27 +93,27 @@ export function MyTransitions(): JSX.Element {
 
   return (
     <>
-      <div className={styles.libSectionTitle}>My Transitions — your own, built from any animation</div>
+      <div className={styles.libSectionTitle}>{t('editor.myTransitions.sectionTitle', 'My Transitions — your own, built from any animation')}</div>
       <div className={styles.libCutRow}>
         <button
           type="button"
           className={styles.libCutItem}
-          title="Animate a layer (any properties, effects or expressions), select it, then save its animation as a reusable transition"
+          title={t('editor.myTransitions.saveSelectedTitle', 'Animate a layer (any properties, effects or expressions), select it, then save its animation as a reusable transition')}
           onClick={() => { void saveSelectionAsTransition().then((n) => { if (n) bump(); }); }}
         >
-          <Icon name="plus" size="sm" /> Save Selected as Transition
+          <Icon name="plus" size="sm" /> {t('editor.myTransitions.saveSelected', 'Save Selected as Transition')}
         </button>
       </div>
       {items.length > 0 && (
-        <div className={styles.libCutRow} aria-label="My transitions">
+        <div className={styles.libCutRow} aria-label={t('editor.myTransitions.list', 'My transitions')}>
           {items.map((p) => (
             <button
               key={p.name}
               type="button"
               draggable
               className={styles.libCutItem}
-              title={`${p.name} (${presetSpanSeconds(p).toFixed(2)}s) — drag onto a layer's start or end, or click to apply at the playhead. Alt-click deletes it.`}
-              aria-label={`${p.name} — my transition`}
+              title={t('editor.myTransitions.itemTitle', "{name} ({seconds}s) — drag onto a layer's start or end, or click to apply at the playhead. Alt-click deletes it.", { name: p.name, seconds: presetSpanSeconds(p).toFixed(2) })}
+              aria-label={t('editor.myTransitions.itemLabel', '{name} — my transition', { name: p.name })}
               onDragStart={(e) => markLayerTransitionDrag(e.dataTransfer, `${USER_TRANSITION_PREFIX}${p.name}`)}
               onClick={(e) => {
                 if (e.altKey) {
@@ -115,7 +123,7 @@ export function MyTransitions(): JSX.Element {
                 }
                 const layers = useSelectionStore.getState().ids;
                 if (layers.length === 0) {
-                  notify({ level: 'warning', message: 'Select a layer, or drag the transition onto one in the timeline', durationMs: 2400 });
+                  notify({ level: 'warning', message: t('editor.myTransitions.selectOrDrag', 'Select a layer, or drag the transition onto one in the timeline'), durationMs: 2400 });
                   return;
                 }
                 void applyAnimationPresetEdit(layers, p.name, getPlayheadTime());

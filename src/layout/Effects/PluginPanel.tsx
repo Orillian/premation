@@ -9,17 +9,16 @@
  *
  * Where it shows (owner 2026-10-14, AE's model — Element 3D's Scene Setup is a
  * window of its own, never a strip inside Effect Controls):
- *   - the effect card's "Open Panel…" opens it in a floating tool window
+ *   - the effect card header's panel button (manifest `panelTitle`, default
+ *     "Panel"; PluginCardHeader) opens it in a floating tool window
  *     (no scrim, the app stays live, the frame remembered per plugin);
  *   - the plugin's own sidebar panel (PluginEffectHomePanel) shows it for the
  *     selected layer's instance of the effect.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { EffectUi } from '@motion/engine-api';
 import { secondsToFlicks } from '@motion/engine-api';
-import { Button } from '@components/Button';
-import { Icon } from '@components/Icon';
 import { Modal } from '@components/Modal';
 import { engine } from '@core/engine/engineInstance';
 import { edit } from '@core/engine/uiEdits';
@@ -39,8 +38,9 @@ import {
   type PanelRequest,
 } from '@core/nativePlugins/pluginPanel';
 import { useMirrorRevision } from '@hooks/useMirror';
+import { useActiveWorkspace } from '@stores/projectStore';
 import { runPanelShortcut } from '@layout/Plugins/panelShortcut';
-import row from '@layout/Inspector/TextAnimatorControls.module.css';
+import { t } from '@core/i18n';
 
 interface Props {
   nodeId: string;
@@ -52,40 +52,29 @@ interface Props {
   ui: EffectUi | null;
 }
 
-/** "Open Panel…" under a plugin effect whose bundle ships one: the page in a floating window. */
-export function PluginPanel({ nodeId, effect, def, time, ui }: Props): JSX.Element | null {
-  const [open, setOpen] = useState(false);
-  if (!ui?.panel || !ui.plugin) return null;
+/**
+ * The plugin's panel in its floating tool window (remembered per plugin), opened
+ * from the effect card header's panel button (PluginCardHeader); `time`
+ * defaults to the editor's.
+ */
+export function PluginPanelWindow({
+  nodeId,
+  effect,
+  def,
+  plugin,
+  open,
+  onClose,
+  time,
+}: Omit<Props, 'ui' | 'time'> & { plugin: string; open: boolean; onClose: () => void; time?: number }): JSX.Element {
+  const now = useActiveWorkspace()?.time ?? 0;
   return (
-    <div style={{ paddingLeft: 22, paddingRight: 6 }}>
-      <div className={row.paramRow}>
-        <Button
-          size="sm"
-          variant="secondary"
-          leftIcon={<Icon name="plugin" size="sm" />}
-          onClick={() => setOpen(true)}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-        >
-          Open Panel…
-        </Button>
-      </div>
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        id={`plugin-panel:${ui.plugin}`}
-        title={def.label}
-        variant="floating"
-        size="lg"
-        resizable
-      >
-        {open ? (
-          <div style={{ height: '100%', minHeight: 240 }}>
-            <PluginEffectFrame nodeId={nodeId} effect={effect} def={def} time={time} plugin={ui.plugin} />
-          </div>
-        ) : null}
-      </Modal>
-    </div>
+    <Modal open={open} onClose={onClose} id={`plugin-panel:${plugin}`} title={def.label} variant="floating" size="lg" resizable>
+      {open ? (
+        <div style={{ height: '100%', minHeight: 240 }}>
+          <PluginEffectFrame nodeId={nodeId} effect={effect} def={def} time={time ?? now} plugin={plugin} />
+        </div>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -158,7 +147,7 @@ export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Pr
   return (
     <iframe
       ref={frame}
-      title={`${def.label} panel`}
+      title={t('effects.pluginPanel.frameTitle', '{name} panel', { name: def.label })}
       src={panelUrl(plugin)}
       sandbox={PANEL_SANDBOX}
       referrerPolicy="no-referrer"

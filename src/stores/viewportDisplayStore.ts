@@ -13,13 +13,15 @@
  */
 
 import { create } from 'zustand';
+import { t } from '@core/i18n';
 
 export type DisplayMode = 'shaded' | 'wireframe' | 'bounds';
 
+// Getters: `t()` runs when a menu reads a label, never at module scope.
 export const DISPLAY_MODE_LABEL: Record<DisplayMode, string> = {
-  shaded: 'Shaded',
-  wireframe: 'Wireframe',
-  bounds: 'Bounding box',
+  get shaded() { return t('stores.viewportDisplay.shaded', 'Shaded'); },
+  get wireframe() { return t('stores.viewportDisplay.wireframe', 'Wireframe'); },
+  get bounds() { return t('stores.viewportDisplay.bounds', 'Bounding box'); },
 };
 
 const SNAP_PIXEL_KEY = 'motion-editor.snapToPixel.v1';

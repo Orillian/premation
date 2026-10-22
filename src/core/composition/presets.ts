@@ -11,6 +11,8 @@
  * actually picks: "this is an Instagram reel", not "this is 1080×1920".
  */
 
+import { t } from '@core/i18n';
+
 export interface SizePreset {
   id: string;
   /** What it is, in the user's terms. */
@@ -41,34 +43,143 @@ export const MAX_FPS = 240;
 
 export const SIZE_PRESETS: readonly SizePreset[] = [
   // ── Social ──────────────────────────────────────────────────────────
-  { id: 'ig_reel', label: 'Instagram Reel / Story', group: 'Social', width: 1080, height: 1920, note: '9:16 · also TikTok, YouTube Shorts' },
-  { id: 'ig_post', label: 'Instagram Post', group: 'Social', width: 1080, height: 1080, note: '1:1 square feed' },
-  { id: 'ig_portrait', label: 'Instagram Portrait', group: 'Social', width: 1080, height: 1350, note: '4:5 · takes the most feed height' },
-  { id: 'tiktok', label: 'TikTok', group: 'Social', width: 1080, height: 1920, note: '9:16 full screen' },
-  { id: 'x_post', label: 'X / Twitter Post', group: 'Social', width: 1600, height: 900, note: '16:9 timeline video' },
-  { id: 'li_post', label: 'LinkedIn Post', group: 'Social', width: 1200, height: 1200, note: '1:1 · safe for feed crops' },
+  {
+    id: 'ig_reel',
+    get label() { return t('core.compPresets.igReel', 'Instagram Reel / Story'); },
+    group: 'Social', width: 1080, height: 1920,
+    get note() { return t('core.compPresets.igReelNote', '9:16 · also TikTok, YouTube Shorts'); },
+  },
+  {
+    id: 'ig_post',
+    get label() { return t('core.compPresets.igPost', 'Instagram Post'); },
+    group: 'Social', width: 1080, height: 1080,
+    get note() { return t('core.compPresets.igPostNote', '1:1 square feed'); },
+  },
+  {
+    id: 'ig_portrait',
+    get label() { return t('core.compPresets.igPortrait', 'Instagram Portrait'); },
+    group: 'Social', width: 1080, height: 1350,
+    get note() { return t('core.compPresets.igPortraitNote', '4:5 · takes the most feed height'); },
+  },
+  {
+    id: 'tiktok',
+    get label() { return t('core.compPresets.tiktok', 'TikTok'); },
+    group: 'Social', width: 1080, height: 1920,
+    get note() { return t('core.compPresets.tiktokNote', '9:16 full screen'); },
+  },
+  {
+    id: 'x_post',
+    get label() { return t('core.compPresets.xPost', 'X / Twitter Post'); },
+    group: 'Social', width: 1600, height: 900,
+    get note() { return t('core.compPresets.xPostNote', '16:9 timeline video'); },
+  },
+  {
+    id: 'li_post',
+    get label() { return t('core.compPresets.liPost', 'LinkedIn Post'); },
+    group: 'Social', width: 1200, height: 1200,
+    get note() { return t('core.compPresets.liPostNote', '1:1 · safe for feed crops'); },
+  },
 
   // ── YouTube ─────────────────────────────────────────────────────────
-  { id: 'yt_1080', label: 'YouTube 1080p', group: 'YouTube', width: 1920, height: 1080, note: '16:9 · the standard upload' },
-  { id: 'yt_1440', label: 'YouTube 1440p', group: 'YouTube', width: 2560, height: 1440, note: '16:9 · better bitrate than 1080p' },
-  { id: 'yt_4k', label: 'YouTube 4K', group: 'YouTube', width: 3840, height: 2160, note: '16:9 · best quality tier' },
-  { id: 'yt_shorts', label: 'YouTube Shorts', group: 'YouTube', width: 1080, height: 1920, note: '9:16 vertical' },
+  {
+    id: 'yt_1080',
+    get label() { return t('core.compPresets.yt1080', 'YouTube 1080p'); },
+    group: 'YouTube', width: 1920, height: 1080,
+    get note() { return t('core.compPresets.yt1080Note', '16:9 · the standard upload'); },
+  },
+  {
+    id: 'yt_1440',
+    get label() { return t('core.compPresets.yt1440', 'YouTube 1440p'); },
+    group: 'YouTube', width: 2560, height: 1440,
+    get note() { return t('core.compPresets.yt1440Note', '16:9 · better bitrate than 1080p'); },
+  },
+  {
+    id: 'yt_4k',
+    get label() { return t('core.compPresets.yt4k', 'YouTube 4K'); },
+    group: 'YouTube', width: 3840, height: 2160,
+    get note() { return t('core.compPresets.yt4kNote', '16:9 · best quality tier'); },
+  },
+  {
+    id: 'yt_shorts',
+    get label() { return t('core.compPresets.ytShorts', 'YouTube Shorts'); },
+    group: 'YouTube', width: 1080, height: 1920,
+    get note() { return t('core.compPresets.ytShortsNote', '9:16 vertical'); },
+  },
 
   // ── Big screen ──────────────────────────────────────────────────────
-  { id: 'uhd_4k', label: '4K UHD', group: 'Big screen', width: 3840, height: 2160, note: '16:9 · TVs, displays, digital signage' },
-  { id: 'uhd_8k', label: '8K UHD', group: 'Big screen', width: 7680, height: 4320, note: '16:9 · heavy; only if you need it' },
-  { id: 'dci_2k', label: 'DCI 2K (Cinema)', group: 'Big screen', width: 2048, height: 1080, note: '256:135 · digital cinema' },
-  { id: 'dci_4k', label: 'DCI 4K (Cinema)', group: 'Big screen', width: 4096, height: 2160, note: '256:135 · digital cinema' },
-  { id: 'ultrawide', label: 'Ultrawide / Cinematic', group: 'Big screen', width: 2560, height: 1080, note: '21:9 · banners, LED walls' },
+  {
+    id: 'uhd_4k',
+    get label() { return t('core.compPresets.uhd4k', '4K UHD'); },
+    group: 'Big screen', width: 3840, height: 2160,
+    get note() { return t('core.compPresets.uhd4kNote', '16:9 · TVs, displays, digital signage'); },
+  },
+  {
+    id: 'uhd_8k',
+    get label() { return t('core.compPresets.uhd8k', '8K UHD'); },
+    group: 'Big screen', width: 7680, height: 4320,
+    get note() { return t('core.compPresets.uhd8kNote', '16:9 · heavy; only if you need it'); },
+  },
+  {
+    id: 'dci_2k',
+    get label() { return t('core.compPresets.dci2k', 'DCI 2K (Cinema)'); },
+    group: 'Big screen', width: 2048, height: 1080,
+    get note() { return t('core.compPresets.dci2kNote', '256:135 · digital cinema'); },
+  },
+  {
+    id: 'dci_4k',
+    get label() { return t('core.compPresets.dci4k', 'DCI 4K (Cinema)'); },
+    group: 'Big screen', width: 4096, height: 2160,
+    get note() { return t('core.compPresets.dci4kNote', '256:135 · digital cinema'); },
+  },
+  {
+    id: 'ultrawide',
+    get label() { return t('core.compPresets.ultrawide', 'Ultrawide / Cinematic'); },
+    group: 'Big screen', width: 2560, height: 1080,
+    get note() { return t('core.compPresets.ultrawideNote', '21:9 · banners, LED walls'); },
+  },
 
   // ── Web & other ─────────────────────────────────────────────────────
-  { id: 'hd_720', label: 'HD 720p', group: 'Web & other', width: 1280, height: 720, note: '16:9 · light web embeds' },
-  { id: 'web_banner', label: 'Web Banner', group: 'Web & other', width: 1456, height: 816, note: '16:9 · hero / landing loops' },
-  { id: 'classic_43', label: 'Classic 4:3', group: 'Web & other', width: 1440, height: 1080, note: '4:3 · retro / archival' },
-  { id: 'presentation', label: 'Presentation', group: 'Web & other', width: 1920, height: 1080, note: '16:9 · slides, keynotes' },
+  {
+    id: 'hd_720',
+    get label() { return t('core.compPresets.hd720', 'HD 720p'); },
+    group: 'Web & other', width: 1280, height: 720,
+    get note() { return t('core.compPresets.hd720Note', '16:9 · light web embeds'); },
+  },
+  {
+    id: 'web_banner',
+    get label() { return t('core.compPresets.webBanner', 'Web Banner'); },
+    group: 'Web & other', width: 1456, height: 816,
+    get note() { return t('core.compPresets.webBannerNote', '16:9 · hero / landing loops'); },
+  },
+  {
+    id: 'classic_43',
+    get label() { return t('core.compPresets.classic43', 'Classic 4:3'); },
+    group: 'Web & other', width: 1440, height: 1080,
+    get note() { return t('core.compPresets.classic43Note', '4:3 · retro / archival'); },
+  },
+  {
+    id: 'presentation',
+    get label() { return t('core.compPresets.presentation', 'Presentation'); },
+    group: 'Web & other', width: 1920, height: 1080,
+    get note() { return t('core.compPresets.presentationNote', '16:9 · slides, keynotes'); },
+  },
 ];
 
 export const SIZE_GROUPS: readonly SizeGroup[] = ['Social', 'YouTube', 'Big screen', 'Web & other'];
+
+/**
+ * A size group's heading as the UI shows it. `SizeGroup` values are compared
+ * (`p.group === group`) and used as React keys, so they stay English; render
+ * this instead of the raw value.
+ */
+export function sizeGroupLabel(group: SizeGroup): string {
+  switch (group) {
+    case 'Social': return t('core.compPresets.groupSocial', 'Social');
+    case 'YouTube': return t('core.compPresets.groupYouTube', 'YouTube');
+    case 'Big screen': return t('core.compPresets.groupBigScreen', 'Big screen');
+    case 'Web & other': return t('core.compPresets.groupWebOther', 'Web & other');
+  }
+}
 
 /** Reduced W:H, e.g. 1920x1080 -> "16:9". Shared with `describeSize`. */
 export function aspectRatioLabel(width: number, height: number): string {
@@ -86,14 +197,14 @@ export interface FpsPreset {
  * delivery specs ask for, and rounding them to 24/30 is a real sync bug.
  */
 export const FPS_PRESETS: readonly FpsPreset[] = [
-  { value: 23.976, label: '23.976 — film (NTSC pulldown)' },
-  { value: 24, label: '24 — film / cinematic' },
-  { value: 25, label: '25 — PAL broadcast' },
-  { value: 29.97, label: '29.97 — NTSC broadcast' },
-  { value: 30, label: '30 — standard digital / social' },
-  { value: 50, label: '50 — PAL high frame rate' },
-  { value: 60, label: '60 — smooth motion, gaming' },
-  { value: 120, label: '120 — slow-motion source' },
+  { value: 23.976, get label() { return t('core.compPresets.fps23976', '23.976 — film (NTSC pulldown)'); } },
+  { value: 24, get label() { return t('core.compPresets.fps24', '24 — film / cinematic'); } },
+  { value: 25, get label() { return t('core.compPresets.fps25', '25 — PAL broadcast'); } },
+  { value: 29.97, get label() { return t('core.compPresets.fps2997', '29.97 — NTSC broadcast'); } },
+  { value: 30, get label() { return t('core.compPresets.fps30', '30 — standard digital / social'); } },
+  { value: 50, get label() { return t('core.compPresets.fps50', '50 — PAL high frame rate'); } },
+  { value: 60, get label() { return t('core.compPresets.fps60', '60 — smooth motion, gaming'); } },
+  { value: 120, get label() { return t('core.compPresets.fps120', '120 — slow-motion source'); } },
 ];
 
 export interface DurationPreset {

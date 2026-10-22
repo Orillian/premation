@@ -11,6 +11,7 @@
 import { useEffect, useRef } from 'react';
 import { useFfmpegStore } from '@stores/ffmpegStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { FfmpegRepairDialog } from './FfmpegRepairDialog';
 
 export function FfmpegRepairHost(): JSX.Element {
@@ -28,11 +29,11 @@ export function FfmpegRepairHost(): JSX.Element {
     noticed.current = true;
     useUIStore.getState().notify({
       level: 'warning',
-      message: "Video export needs a quick repair",
-      detail: 'Images and WAV still export. Press Fix to set up video export — about a minute.',
+      message: t('export.ffmpegHealth.message', "Video export needs a quick repair"),
+      detail: t('export.ffmpegHealth.detail', 'Images and WAV still export. Press Fix to set up video export — about a minute.'),
       durationMs: 0,
       group: 'ffmpeg-health',
-      action: { label: 'Fix', onSelect: () => useFfmpegStore.getState().openDialog() },
+      action: { label: t('export.ffmpegHealth.fix', 'Fix'), onSelect: () => useFfmpegStore.getState().openDialog() },
     });
   }, [status]);
 

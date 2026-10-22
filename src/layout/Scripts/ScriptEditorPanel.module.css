@@ -1,0 +1,196 @@
+/*
+ * The Script Editor panel (ScriptEditorPanel.tsx): a file bar, the code with
+ * a line-number gutter, and the console. Panel typography roles only; the
+ * code and the console are set in the value face (monospace).
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+}
+
+/* The file bar: name (and its unsaved dot), then New / Open / Save / Run. */
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-sm);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.fileName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-primary);
+}
+
+.dirty {
+  color: var(--color-text-tertiary);
+}
+
+.editor {
+  flex: 3 1 0;
+  min-height: 80px;
+  display: flex;
+  overflow: hidden;
+  background: var(--color-surface-0);
+}
+
+.gutter,
+.code {
+  margin: 0;
+  padding: var(--space-3) 0;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size);
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.gutter {
+  flex: none;
+  min-width: 3.5ch;
+  padding-right: var(--space-2);
+  padding-left: var(--space-3);
+  overflow: hidden;
+  text-align: right;
+  color: var(--color-text-muted);
+  border-right: 1px solid var(--color-border);
+  user-select: none;
+  white-space: pre;
+}
+
+.gutterLine[data-error] {
+  color: var(--color-danger);
+  font-weight: var(--panel-weight-value);
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  white-space: pre;
+  overflow: auto;
+}
+
+.code:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-focus-ring);
+}
+
+/* The console's header: its name and Clear. */
+.consoleBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-xs);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+  user-select: none;
+}
+
+.consoleTitle {
+  flex: 1;
+}
+
+.console {
+  flex: 2 1 0;
+  min-height: 60px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.line[data-kind='error'] {
+  color: var(--color-danger);
+}
+
+.line[data-kind='warn'] {
+  color: var(--color-warning);
+}
+
+.line[data-kind='result'] {
+  color: var(--color-success);
+}
+
+.line[data-kind='info'] {
+  color: var(--color-text-tertiary);
+}
+
+.consoleEmpty {
+  color: var(--color-text-muted);
+}
+
+/* The consent dialog (scriptConsent.tsx). */
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.consentMessage,
+.consentNote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.consentNote {
+  color: var(--color-text-tertiary);
+}
+
+.consentList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.consentItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.consentItemTitle {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.consentItemDetail {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}

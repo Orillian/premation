@@ -17,6 +17,7 @@
  * animated as three separate channels.
  */
 
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { ColorPicker } from '@components/ColorPicker';
 import { Input } from '@components/Input';
@@ -53,10 +54,25 @@ import ta from './TextAnimatorControls.module.css';
 import tStyles from './TransformSection.module.css';
 import { Button } from '@components/Button';
 
-const LABEL: Record<OverridableProp, string> = {
+/** The English property name, for undo labels only (undo labels stay English). */
+const UNDO_LABEL: Record<OverridableProp, string> = {
   x: 'X', y: 'Y', rotation: 'Rotation', scaleX: 'Scale X', scaleY: 'Scale Y', opacity: 'Opacity',
   text: 'Source Text', fill: 'Fill', color: 'Color',
 };
+
+/** The display name of an overridable property (a function: `t()` must run at render time). */
+function labels(): Record<OverridableProp, string> {
+  return {
+    x: 'X', y: 'Y',
+    rotation: t('inspector.compOverrides.rotation', 'Rotation'),
+    scaleX: t('inspector.compOverrides.scaleX', 'Scale X'),
+    scaleY: t('inspector.compOverrides.scaleY', 'Scale Y'),
+    opacity: t('inspector.compOverrides.opacity', 'Opacity'),
+    text: t('inspector.compOverrides.sourceText', 'Source Text'),
+    fill: t('inspector.compOverrides.fill', 'Fill'),
+    color: t('inspector.compOverrides.color', 'Color'),
+  };
+}
 
 /** Sensible identity for a property no component declares. */
 const FALLBACK: Record<OverridableProp, OverrideValue> = {
@@ -73,7 +89,7 @@ const WATCHED_TRACKS = ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fi
  * What this property would be WITHOUT an override: the source layer's value
  * (animated or static) from the document mirror, else the identity.
  *
- * `t` is the host's playhead, read as a time on the source layer's own
+ * `at` is the host's playhead, read as a time on the source layer's own
  * keyframe axis (as the section always has) and converted to the source
  * composition's time, which is the axis the mirror's values are on.
  *
@@ -81,8 +97,8 @@ const WATCHED_TRACKS = ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fi
  * has one colour property for them, so a keyframed colour reads its animated
  * value and the field agrees with the canvas.
  */
-function inheritedValue(m: DocumentMirror, source: LayerInfo, prop: OverridableProp, t: number): OverrideValue {
-  return inheritedOverrideValue(m, source.id, prop, layerToCompSeconds(source, t)) ?? FALLBACK[prop];
+function inheritedValue(m: DocumentMirror, source: LayerInfo, prop: OverridableProp, at: number): OverrideValue {
+  return inheritedOverrideValue(m, source.id, prop, layerToCompSeconds(source, at)) ?? FALLBACK[prop];
 }
 
 type LayerRow = { source: LayerInfo; props: OverridableProp[] };
@@ -161,21 +177,22 @@ export function CompOverridesSection({ nodeId }: { nodeId: string }): JSX.Elemen
   if (rows.length === 0) return null;
 
   const overrides = mirrorCompOverrides(m, nodeId);
+  const LABEL = labels();
 
   return (
     <>
       <div className={styles.row}>
-        <span className={styles.label}>Essential Properties</span>
+        <span className={styles.label}>{t('inspector.compOverrides.essentialProperties', 'Essential Properties')}</span>
         <span className={tStyles.readout}>
           {overrides.size > 0
-            ? `${overrides.size} overridden`
+            ? t('inspector.compOverrides.overridden', '{n} overridden', { n: overrides.size })
             : promoted.size > 0
-              ? `${promoted.size} published`
-              : 'inheriting'}
+              ? t('inspector.compOverrides.published', '{n} published', { n: promoted.size })
+              : t('inspector.compOverrides.inheriting', 'inheriting')}
         </span>
       </div>
       {promoted.size === 0 && (
-        <p className={tStyles.helpLine}>Right-click a property in the source composition to publish it here.</p>
+        <p className={tStyles.helpLine}>{t('inspector.compOverrides.publishHint', 'Right-click a property in the source composition to publish it here.')}</p>
       )}
 
       {rows.map(({ source, props }) => {
@@ -200,9 +217,9 @@ export function CompOverridesSection({ nodeId }: { nodeId: string }): JSX.Elemen
                       for (const k of Object.keys(next)) if (parseOverrideKey(k)?.origNodeId === source.id) delete next[k];
                     }));
                   }}
-                  aria-label={`Reset all overrides on ${source.name || source.id}`}
+                  aria-label={t('inspector.compOverrides.resetAllOn', 'Reset all overrides on {layer}', { layer: source.name || source.id })}
                 >
-                  Reset
+                  {t('inspector.compOverrides.reset', 'Reset')}
                 </Button>
               )}
             </div>
@@ -220,8 +237,10 @@ export function CompOverridesSection({ nodeId }: { nodeId: string }): JSX.Elemen
                     onClick={() => {
                       void edit(overridden ? 'Clear Override' : 'Override Property', overrideCommands(nodeId, source.id, prop, overridden ? undefined : value));
                     }}
-                    title={overridden ? 'Clear override (inherit from the source comp)' : 'Override for this instance only'}
-                    aria-label={`${overridden ? 'Clear' : 'Set'} ${LABEL[prop]} override on ${source.name || source.id}`}
+                    title={overridden ? t('inspector.compOverrides.clearTip', 'Clear override (inherit from the source comp)') : t('inspector.compOverrides.overrideTip', 'Override for this instance only')}
+                    aria-label={overridden
+                      ? t('inspector.compOverrides.clearOn', 'Clear {prop} override on {layer}', { prop: LABEL[prop], layer: source.name || source.id })
+                      : t('inspector.compOverrides.setOn', 'Set {prop} override on {layer}', { prop: LABEL[prop], layer: source.name || source.id })}
                     style={{
                       width: 14, height: 14, padding: 0, borderRadius: '50%', cursor: 'pointer',
                       border: '1px solid var(--color-border)',
@@ -232,24 +251,24 @@ export function CompOverridesSection({ nodeId }: { nodeId: string }): JSX.Elemen
                   {kind === 'number' ? (
                     <ValueField
                       value={value as number}
-                      {...eng.scrub(`Override ${LABEL[prop]}`)}
-                      onChange={(v) => eng.send(`Override ${LABEL[prop]}`, overrideCommands(nodeId, source.id, prop, v))}
+                      {...eng.scrub(`Override ${UNDO_LABEL[prop]}`)}
+                      onChange={(v) => eng.send(`Override ${UNDO_LABEL[prop]}`, overrideCommands(nodeId, source.id, prop, v))}
                       unit={UNIT[prop]}
                       precision={2}
-                      aria-label={`${LABEL[prop]} on ${source.name || source.id}`}
+                      aria-label={t('inspector.compOverrides.propOn', '{prop} on {layer}', { prop: LABEL[prop], layer: source.name || source.id })}
                     />
                   ) : kind === 'color' ? (
-                    <div {...eng.press(`Override ${LABEL[prop]}`)} style={{ display: 'contents' }}>
+                    <div {...eng.press(`Override ${UNDO_LABEL[prop]}`)} style={{ display: 'contents' }}>
                     <ColorPicker
                       value={String(value)}
-                      onChange={(hex) => eng.send(`Override ${LABEL[prop]}`, overrideCommands(nodeId, source.id, prop, hex))}
+                      onChange={(hex) => eng.send(`Override ${UNDO_LABEL[prop]}`, overrideCommands(nodeId, source.id, prop, hex))}
                       compact
                       // No alpha: the override is written back as the layer's
                       // colour string, and the renderer's colour channels carry
                       // no alpha of their own — an 8-digit hex would set an
                       // opacity that nothing reads.
                       alpha={false}
-                      aria-label={`${LABEL[prop]} on ${source.name || source.id}`}
+                      aria-label={t('inspector.compOverrides.propOn', '{prop} on {layer}', { prop: LABEL[prop], layer: source.name || source.id })}
                     />
                     </div>
                   ) : (
@@ -257,12 +276,12 @@ export function CompOverridesSection({ nodeId }: { nodeId: string }): JSX.Elemen
                       size="sm"
                       value={String(value)}
                       onChange={(e) => {
-                        if (!typing.isActive()) typing.begin(`Override ${LABEL[prop]}`);
+                        if (!typing.isActive()) typing.begin(`Override ${UNDO_LABEL[prop]}`);
                         typing.send(overrideCommands(nodeId, source.id, prop, e.target.value));
                       }}
                       onBlur={() => { void typing.end(); }}
                       fullWidth
-                      aria-label={`${LABEL[prop]} on ${source.name || source.id}`}
+                      aria-label={t('inspector.compOverrides.propOn', '{prop} on {layer}', { prop: LABEL[prop], layer: source.name || source.id })}
                     />
                   )}
                 </div>

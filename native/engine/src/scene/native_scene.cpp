@@ -9,6 +9,8 @@
 #include <string_view>
 
 #include "color_settings.hpp"
+#include "anim.hpp"
+#include "props.hpp"
 #include "effects_port.hpp"
 #include "raster_source.hpp"
 
@@ -201,6 +203,43 @@ NativeFrame native_frame_of(const doc::Document& d, Snapshot snap, const ViewSpe
   return nf;
 }
 
+namespace {
+
+/// One `expression` layer error per failing property: the message is the
+/// expression's own, prefixed `Line N: ` when its position is known; `path`
+/// is the property's API path (the Timeline matches its row by layer + path).
+void append_expression_errors(const doc::Document& d, const std::vector<doc::ExprRuntimeError>& errs,
+                              std::vector<LayerError>& out) {
+  for (const doc::ExprRuntimeError& e : errs) {
+    std::string path;
+    try {
+      const doc::Catalog cat = doc::catalog_for(d, e.node);
+      if (const doc::PropBinding* b = cat.by_member(e.prop)) {
+        path = b->path;
+      } else {
+        for (const doc::PropBinding& binding : cat.props) {
+          if (binding.dataTrack && *binding.dataTrack == e.prop) {
+            path = binding.path;
+            break;
+          }
+        }
+      }
+    } catch (const std::exception&) {
+      path.clear();  // a node outside the catalogue (not a layer): reported without a path
+    }
+    if (path.empty()) path = e.prop;
+    const bool dup = std::any_of(out.begin(), out.end(), [&](const LayerError& x) {
+      return x.stage == "expression" && x.layerId == e.node && x.path == path;
+    });
+    if (dup) continue;  // the other members of a vector failed the same way
+    const doc::Node* n = d.node(e.node);
+    std::string msg = e.line > 0 ? "Line " + std::to_string(e.line) + ": " + e.message : e.message;
+    out.push_back(LayerError{e.node, n != nullptr ? n->name : std::string(), "expression", std::move(msg), std::move(path)});
+  }
+}
+
+}  // namespace
+
 NativeFrame build_native_frame(const BuildContext& c, std::string_view comp, double t, const ViewSpec& view,
                                bool motionBlur, const std::string& sceneId, std::int64_t frame,
                                const CompOverrides& overrides) {
@@ -215,9 +254,14 @@ NativeFrame build_native_frame(const BuildContext& c, std::string_view comp, dou
   if (overrides.transparencyGrid) sc.transparencyGrid = true;
   std::optional<MotionBlurCfg> mb;
   if (motionBlur) mb = motion_blur_of(c.d, comp);
+  // Expressions that fail while the frame evaluates fall back to their
+  // pre-expression value; the frame reports each (stage `expression`).
+  doc::ExprErrorCapture capture(c.cache);
   Snapshot snap = build_snapshot(c, sc, t, mb);
+  const std::vector<doc::ExprRuntimeError> exprErrors = capture.take();
   const double snapshotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
   NativeFrame nf = native_frame_of(c.d, std::move(snap), view, sc.width, sc.height, sceneId, frame);
+  append_expression_errors(c.d, exprErrors, nf.errors);
   nf.snapshotMs = snapshotMs;
   if (view.groundGrid && nf.file.scene.camera3d) {
     // E8: the viewport's ground grid — the floor at the comp's Ground Level

@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { AnimToggle } from './AnimToggle';
 import {
@@ -138,103 +139,103 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
     <div className={styles.section}>
       <div className={styles.inlineRows}>
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Emitter</span>
-          <select className={styles.select} style={{ width: 110 }} value={cfg.emitterType} onChange={(e) => set('emitterType', e.target.value as ParticleConfig['emitterType'])} aria-label="Emitter type">
-            <option value="point">Point</option>
-            <option value="box">Box</option>
-            <option value="circle">Circle</option>
-            <option value="sphere">Sphere</option>
+          <span className={styles.popoverLabel}>{t('inspector.particle.emitter', 'Emitter')}</span>
+          <select className={styles.select} style={{ width: 110 }} value={cfg.emitterType} onChange={(e) => set('emitterType', e.target.value as ParticleConfig['emitterType'])} aria-label={t('inspector.particle.emitterType', 'Emitter type')}>
+            <option value="point">{t('inspector.particle.point', 'Point')}</option>
+            <option value="box">{t('inspector.particle.box', 'Box')}</option>
+            <option value="circle">{t('inspector.particle.circle', 'Circle')}</option>
+            <option value="sphere">{t('inspector.particle.sphere', 'Sphere')}</option>
           </select>
         </div>
         {cfg.emitterType !== 'point' && (
           <>
-            {Num('emitterWidth', cfg.emitterType === 'circle' || cfg.emitterType === 'sphere' ? 'Diameter' : 'Width', 'px', 0)}
-            {cfg.emitterType === 'box' && Num('emitterHeight', 'Height', 'px', 0)}
+            {Num('emitterWidth', cfg.emitterType === 'circle' || cfg.emitterType === 'sphere' ? t('inspector.particle.diameter', 'Diameter') : t('inspector.particle.width', 'Width'), 'px', 0)}
+            {cfg.emitterType === 'box' && Num('emitterHeight', t('inspector.particle.height', 'Height'), 'px', 0)}
           </>
         )}
-        {Num('birthRate', 'Birth Rate', '/s', 0)}
-        {StaticNum('maxParticles', 'Max Particles', 1)}
-        {Num('lifetime', 'Lifetime', 's', 0)}
-        {Num('lifetimeRandom', 'Life Random', '', 0, 1)}
+        {Num('birthRate', t('inspector.particle.birthRate', 'Birth Rate'), '/s', 0)}
+        {StaticNum('maxParticles', t('inspector.particle.maxParticles', 'Max Particles'), 1)}
+        {Num('lifetime', t('inspector.particle.lifetime', 'Lifetime'), 's', 0)}
+        {Num('lifetimeRandom', t('inspector.particle.lifeRandom', 'Life Random'), '', 0, 1)}
 
-        {Num('speed', 'Speed', 'px/s')}
-        {Num('speedRandom', 'Speed Random', '', 0, 1)}
-        {Num('direction', 'Direction', '°')}
-        {Num('spread', 'Spread', '°', 0, 360)}
-        {Num('gravityX', 'Gravity X', 'px/s²')}
-        {Num('gravityY', 'Gravity Y', 'px/s²')}
+        {Num('speed', t('inspector.particle.speed', 'Speed'), 'px/s')}
+        {Num('speedRandom', t('inspector.particle.speedRandom', 'Speed Random'), '', 0, 1)}
+        {Num('direction', t('inspector.particle.direction', 'Direction'), '°')}
+        {Num('spread', t('inspector.particle.spread', 'Spread'), '°', 0, 360)}
+        {Num('gravityX', t('inspector.particle.gravityX', 'Gravity X'), 'px/s²')}
+        {Num('gravityY', t('inspector.particle.gravityY', 'Gravity Y'), 'px/s²')}
         {/* Wind is constant acceleration like gravity — a separate pair rather
             than "just add it to gravity" because wind is the thing you animate
             and zero out, and gravity is the thing you set once. */}
-        {Num('windX', 'Wind X', 'px/s²')}
-        {Num('windY', 'Wind Y', 'px/s²')}
+        {Num('windX', t('inspector.particle.windX', 'Wind X'), 'px/s²')}
+        {Num('windY', t('inspector.particle.windY', 'Wind Y'), 'px/s²')}
         {/* Linear drag, folded into the closed form exactly — scrubs free. */}
-        {Num('drag', 'Drag', '/s', 0)}
+        {Num('drag', t('inspector.particle.drag', 'Drag'), '/s', 0)}
         {/* Velocity streaks: a fraction of the comp shutter, applied only when
             this layer's motion-blur switch is on (buildSnapshot hands the
             shutter to the field). */}
-        {Num('motionBlur', 'Motion Blur', '', 0, 1)}
+        {Num('motionBlur', t('inspector.particle.motionBlur', 'Motion Blur'), '', 0, 1)}
         {/* One amplitude, two characters: ballistic mode wanders (closed-form,
             scrub-free), stateful mode swirls (real curl-noise force). Scale is
             stateful-only — the wander has no spatial field to scale. */}
-        {Num('turbulence', 'Turbulence', cfg.simMode === 'stateful' ? 'px/s²' : 'px')}
+        {Num('turbulence', t('inspector.particle.turbulence', 'Turbulence'), cfg.simMode === 'stateful' ? 'px/s²' : 'px')}
         {/* Depth axis — simulated always, PROJECTED only when Perspective is
             on, so flipping perspective changes the look, never the motion. */}
-        {Num('emitterDepth', 'Depth', 'px')}
-        {Num('speedZ', 'Speed Z', 'px/s')}
-        {Num('perspective', 'Perspective', 'px')}
+        {Num('emitterDepth', t('inspector.particle.depth', 'Depth'), 'px')}
+        {Num('speedZ', t('inspector.particle.speedZ', 'Speed Z'), 'px/s')}
+        {Num('perspective', t('inspector.particle.perspective', 'Perspective'), 'px')}
         {/* Collisions and sub-emit are plain rows like the bounce params —
             both shape the stateful HISTORY, and their toggles/selects have no
             meaningful in-between to keyframe anyway. */}
         {cfg.simMode === 'stateful' && (
           <div className={styles.popoverRow}>
             <div style={{ width: 13 }} />
-            <span className={styles.popoverLabel}>Collide</span>
+            <span className={styles.popoverLabel}>{t('inspector.particle.collide', 'Collide')}</span>
             <input
               type="checkbox"
               checked={cfg.collide ?? false}
               onChange={(e) => set('collide', e.target.checked)}
-              aria-label="Particle collisions"
+              aria-label={t('inspector.particle.particleCollisions', 'Particle collisions')}
             />
           </div>
         )}
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Sub-Emit</span>
+          <span className={styles.popoverLabel}>{t('inspector.particle.subEmit', 'Sub-Emit')}</span>
           <select
             className={styles.select}
             style={{ width: 110 }}
             value={cfg.subEmit ?? 'off'}
             onChange={(e) => set('subEmit', e.target.value as ParticleConfig['subEmit'])}
-            aria-label="Sub-emitter trigger"
+            aria-label={t('inspector.particle.subEmitterTrigger', 'Sub-emitter trigger')}
           >
-            <option value="off">Off</option>
-            <option value="death">On Death</option>
+            <option value="off">{t('inspector.particle.off', 'Off')}</option>
+            <option value="death">{t('inspector.particle.onDeath', 'On Death')}</option>
             {/* A bounce is history — the closed-form emitter has none;
                 continuous shedding is a closed form and so ballistic-only. */}
-            {cfg.simMode === 'stateful' && <option value="bounce">On Bounce</option>}
-            {cfg.simMode !== 'stateful' && <option value="continuous">Continuous</option>}
+            {cfg.simMode === 'stateful' && <option value="bounce">{t('inspector.particle.onBounce', 'On Bounce')}</option>}
+            {cfg.simMode !== 'stateful' && <option value="continuous">{t('inspector.particle.continuous', 'Continuous')}</option>}
           </select>
         </div>
-        {cfg.subEmit === 'continuous' && Num('subRate', 'Sub Rate', '/s', 0)}
+        {cfg.subEmit === 'continuous' && Num('subRate', t('inspector.particle.subRate', 'Sub Rate'), '/s', 0)}
         {(cfg.subEmit ?? 'off') !== 'off' && (
           <>
             {cfg.subEmit !== 'continuous' && (
               <div className={styles.popoverRow}>
                 <div style={{ width: 13 }} />
-                <span className={styles.popoverLabel}>Burst</span>
-                <ValueField value={cfg.subCount ?? 8} min={0} max={16} precision={0} {...scrub} onChange={(v) => set('subCount', Number(v))} aria-label="Children per burst" />
+                <span className={styles.popoverLabel}>{t('inspector.particle.burst', 'Burst')}</span>
+                <ValueField value={cfg.subCount ?? 8} min={0} max={16} precision={0} {...scrub} onChange={(v) => set('subCount', Number(v))} aria-label={t('inspector.particle.childrenPerBurst', 'Children per burst')} />
               </div>
             )}
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Burst Speed</span>
-              <ValueField value={cfg.subSpeed ?? 120} min={0} precision={0} unit="px/s" {...scrub} onChange={(v) => set('subSpeed', Number(v))} aria-label="Child speed" />
+              <span className={styles.popoverLabel}>{t('inspector.particle.burstSpeed', 'Burst Speed')}</span>
+              <ValueField value={cfg.subSpeed ?? 120} min={0} precision={0} unit="px/s" {...scrub} onChange={(v) => set('subSpeed', Number(v))} aria-label={t('inspector.particle.childSpeed', 'Child speed')} />
             </div>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Burst Life</span>
-              <ValueField value={cfg.subLifetime ?? 0.6} min={0.05} precision={2} unit="s" {...scrub} onChange={(v) => set('subLifetime', Number(v))} aria-label="Child lifetime" />
+              <span className={styles.popoverLabel}>{t('inspector.particle.burstLife', 'Burst Life')}</span>
+              <ValueField value={cfg.subLifetime ?? 0.6} min={0.05} precision={2} unit="s" {...scrub} onChange={(v) => set('subLifetime', Number(v))} aria-label={t('inspector.particle.childLifetime', 'Child lifetime')} />
             </div>
           </>
         )}
@@ -244,7 +245,7 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
             frame of the ramp. Same reasoning as the bounce params above. */}
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Trail</span>
+          <span className={styles.popoverLabel}>{t('inspector.particle.trail', 'Trail')}</span>
           <ValueField
             value={cfg.trailLength ?? 0}
             min={0}
@@ -252,13 +253,13 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
             precision={0}
             {...scrub}
             onChange={(v) => set('trailLength', Number(v))}
-            aria-label="Trail points"
+            aria-label={t('inspector.particle.trailPoints', 'Trail points')}
           />
         </div>
         {(cfg.trailLength ?? 0) > 0 && (
           <div className={styles.popoverRow}>
             <div style={{ width: 13 }} />
-            <span className={styles.popoverLabel}>Trail Gap</span>
+            <span className={styles.popoverLabel}>{t('inspector.particle.trailGap', 'Trail Gap')}</span>
             <ValueField
               value={cfg.trailSpacing ?? 1 / 30}
               min={1 / 240}
@@ -266,22 +267,22 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
               unit="s"
               {...scrub}
               onChange={(v) => set('trailSpacing', Number(v))}
-              aria-label="Trail spacing seconds"
+              aria-label={t('inspector.particle.trailSpacingSeconds', 'Trail spacing seconds')}
             />
           </div>
         )}
-        {cfg.simMode === 'stateful' && Num('turbulenceScale', 'Turb. Scale', 'px')}
-        {Num('turbulenceSpeed', 'Turb. Speed', '×')}
-        {Num('spin', 'Spin', '°/s')}
+        {cfg.simMode === 'stateful' && Num('turbulenceScale', t('inspector.particle.turbScale', 'Turb. Scale'), 'px')}
+        {Num('turbulenceSpeed', t('inspector.particle.turbSpeed', 'Turb. Speed'), '×')}
+        {Num('spin', t('inspector.particle.spin', 'Spin'), '°/s')}
         {/* Plexus over the live particles: 0 distance = off. */}
-        {Num('plexusDistance', 'Plexus Dist.', 'px', 0)}
+        {Num('plexusDistance', t('inspector.particle.plexusDist', 'Plexus Dist.'), 'px', 0)}
         {(cfg.plexusDistance ?? 0) > 0 && (
           <>
-            {Num('plexusWidth', 'Plexus Width', 'px', 0)}
-            {Num('plexusOpacity', 'Plexus Opacity', '', 0, 1)}
+            {Num('plexusWidth', t('inspector.particle.plexusWidth', 'Plexus Width'), 'px', 0)}
+            {Num('plexusOpacity', t('inspector.particle.plexusOpacity', 'Plexus Opacity'), '', 0, 1)}
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Plexus Color</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.plexusColor', 'Plexus Color')}</span>
               <input
                 type="color"
                 value={cfg.plexusColor ?? DEFAULT_PARTICLE_CONFIG.plexusColor}
@@ -291,139 +292,139 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
                   picking.send(jsonFieldCommands(nodeId, 'layer/particle', { ...cfg, plexusColor: e.target.value }));
                 }}
                 onBlur={() => { void picking.end(); }}
-                aria-label="Plexus line colour"
+                aria-label={t('inspector.particle.plexusLineColour', 'Plexus line colour')}
               />
             </div>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Triangles</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.triangles', 'Triangles')}</span>
               <input
                 type="checkbox"
                 checked={cfg.plexusTriangles ?? false}
                 onChange={(e) => set('plexusTriangles', e.target.checked)}
-                aria-label="Plexus triangles"
+                aria-label={t('inspector.particle.plexusTriangles', 'Plexus triangles')}
               />
             </div>
-            {cfg.plexusTriangles && Num('plexusTriangleOpacity', 'Tri. Opacity', '', 0, 1)}
+            {cfg.plexusTriangles && Num('plexusTriangleOpacity', t('inspector.particle.triOpacity', 'Tri. Opacity'), '', 0, 1)}
           </>
         )}
 
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Shape</span>
-          <select className={styles.select} style={{ width: 110 }} value={cfg.shape} onChange={(e) => set('shape', e.target.value as ParticleConfig['shape'])} aria-label="Particle shape">
-            <option value="circle">Circle</option>
-            <option value="square">Square</option>
-            <option value="line">Line</option>
-            <option value="star">Star</option>
-            <option value="sprite">Sprite (image)</option>
+          <span className={styles.popoverLabel}>{t('inspector.particle.shape', 'Shape')}</span>
+          <select className={styles.select} style={{ width: 110 }} value={cfg.shape} onChange={(e) => set('shape', e.target.value as ParticleConfig['shape'])} aria-label={t('inspector.particle.particleShape', 'Particle shape')}>
+            <option value="circle">{t('inspector.particle.circle', 'Circle')}</option>
+            <option value="square">{t('inspector.particle.square', 'Square')}</option>
+            <option value="line">{t('inspector.particle.line', 'Line')}</option>
+            <option value="star">{t('inspector.particle.star', 'Star')}</option>
+            <option value="sprite">{t('inspector.particle.spriteImage', 'Sprite (image)')}</option>
           </select>
         </div>
         {cfg.shape === 'sprite' && (
           <>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Image</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.image', 'Image')}</span>
               <select
                 className={styles.select}
                 style={{ width: 110 }}
                 value={cfg.spriteAssetId ?? ''}
                 onChange={(e) => set('spriteAssetId', e.target.value)}
-                aria-label="Sprite image asset"
+                aria-label={t('inspector.particle.spriteImageAsset', 'Sprite image asset')}
               >
-                <option value="">(none — circles)</option>
+                <option value="">{t('inspector.particle.noneCircles', '(none — circles)')}</option>
                 {imageAssets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Sheet Frames</span>
-              <ValueField value={cfg.spriteFrames ?? 1} min={1} max={256} precision={0} {...scrub} onChange={(v) => set('spriteFrames', Number(v))} aria-label="Sprite sheet frames" />
+              <span className={styles.popoverLabel}>{t('inspector.particle.sheetFrames', 'Sheet Frames')}</span>
+              <ValueField value={cfg.spriteFrames ?? 1} min={1} max={256} precision={0} {...scrub} onChange={(v) => set('spriteFrames', Number(v))} aria-label={t('inspector.particle.spriteSheetFrames', 'Sprite sheet frames')} />
             </div>
             {(cfg.spriteFrames ?? 1) > 1 && (
               <div className={styles.popoverRow}>
                 <div style={{ width: 13 }} />
-                <span className={styles.popoverLabel}>Sheet FPS</span>
-                <ValueField value={cfg.spriteFps ?? 0} min={0} max={120} precision={0} unit="fps" {...scrub} onChange={(v) => set('spriteFps', Number(v))} aria-label="Sprite sheet frames per second (0 = by age)" />
+                <span className={styles.popoverLabel}>{t('inspector.particle.sheetFps', 'Sheet FPS')}</span>
+                <ValueField value={cfg.spriteFps ?? 0} min={0} max={120} precision={0} unit="fps" {...scrub} onChange={(v) => set('spriteFps', Number(v))} aria-label={t('inspector.particle.spriteFpsAria', 'Sprite sheet frames per second (0 = by age)')} />
               </div>
             )}
           </>
         )}
-        {Num('sizeStart', 'Size Birth', 'px', 0)}
+        {Num('sizeStart', t('inspector.particle.sizeBirth', 'Size Birth'), 'px', 0)}
         {/* The mid-point rows: unset until touched, so old systems keep their
             straight two-point ramps byte for byte. */}
-        {Num('sizeMid', 'Size Mid', 'px', 0)}
-        {Num('sizeEnd', 'Size Death', 'px', 0)}
-        {Num('midAge', 'Mid Age', '', 0.01, 0.99)}
-        {Color('colorStart', 'Color Birth')}
-        {Color('colorMid', 'Color Mid')}
-        {Color('colorEnd', 'Color Death')}
-        {Num('opacityStart', 'Opacity Birth', '', 0, 1)}
-        {Num('opacityMid', 'Opacity Mid', '', 0, 1)}
-        {Num('opacityEnd', 'Opacity Death', '', 0, 1)}
+        {Num('sizeMid', t('inspector.particle.sizeMid', 'Size Mid'), 'px', 0)}
+        {Num('sizeEnd', t('inspector.particle.sizeDeath', 'Size Death'), 'px', 0)}
+        {Num('midAge', t('inspector.particle.midAge', 'Mid Age'), '', 0.01, 0.99)}
+        {Color('colorStart', t('inspector.particle.colorBirth', 'Color Birth'))}
+        {Color('colorMid', t('inspector.particle.colorMid', 'Color Mid'))}
+        {Color('colorEnd', t('inspector.particle.colorDeath', 'Color Death'))}
+        {Num('opacityStart', t('inspector.particle.opacityBirth', 'Opacity Birth'), '', 0, 1)}
+        {Num('opacityMid', t('inspector.particle.opacityMid', 'Opacity Mid'), '', 0, 1)}
+        {Num('opacityEnd', t('inspector.particle.opacityDeath', 'Opacity Death'), '', 0, 1)}
 
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Transfer</span>
-          <select className={styles.select} style={{ width: 110 }} value={cfg.blend} onChange={(e) => set('blend', e.target.value as ParticleConfig['blend'])} aria-label="Transfer mode">
-            <option value="add">Add (glow)</option>
-            <option value="normal">Normal</option>
+          <span className={styles.popoverLabel}>{t('inspector.particle.transfer', 'Transfer')}</span>
+          <select className={styles.select} style={{ width: 110 }} value={cfg.blend} onChange={(e) => set('blend', e.target.value as ParticleConfig['blend'])} aria-label={t('inspector.particle.transferMode', 'Transfer mode')}>
+            <option value="add">{t('inspector.particle.addGlow', 'Add (glow)')}</option>
+            <option value="normal">{t('inspector.particle.normal', 'Normal')}</option>
           </select>
         </div>
-        {StaticNum('seed', 'Random Seed', 0)}
+        {StaticNum('seed', t('inspector.particle.randomSeed', 'Random Seed'), 0)}
 
         <div className={styles.popoverRow}>
           <span
             className={styles.popoverLabel}
-            title={`${(cfg.simMode ?? 'ballistic') === 'stateful'
-              ? 'Stateful emitter with floor bounce — scrubbing replays from snapshots, identical every time.'
-              : 'Deterministic ballistic emitter — scrubbing is stable. Switch to Stateful for floor bounce.'} The layer transform moves the whole system.`}
+            title={(cfg.simMode ?? 'ballistic') === 'stateful'
+              ? t('inspector.particle.simStatefulTitle', 'Stateful emitter with floor bounce — scrubbing replays from snapshots, identical every time. The layer transform moves the whole system.')
+              : t('inspector.particle.simBallisticTitle', 'Deterministic ballistic emitter — scrubbing is stable. Switch to Stateful for floor bounce. The layer transform moves the whole system.')}
           >
-            Sim
+            {t('inspector.particle.sim', 'Sim')}
           </span>
           <select
             className={styles.select}
             style={{ width: 110 }}
             value={cfg.simMode ?? 'ballistic'}
             onChange={(e) => set('simMode', e.target.value as ParticleConfig['simMode'])}
-            aria-label="Simulation mode"
+            aria-label={t('inspector.particle.simulationMode', 'Simulation mode')}
           >
-            <option value="ballistic">Ballistic</option>
-            <option value="stateful">Stateful</option>
+            <option value="ballistic">{t('inspector.particle.ballistic', 'Ballistic')}</option>
+            <option value="stateful">{t('inspector.particle.stateful', 'Stateful')}</option>
           </select>
         </div>
         {(cfg.simMode ?? 'ballistic') === 'stateful' && (
           <>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Floor Y</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.floorY', 'Floor Y')}</span>
               <ValueField
                 value={cfg.bounceFloor ?? 160}
                 {...scrub}
                 onChange={(v) => set('bounceFloor', Number(v))}
-                aria-label="Floor Y"
+                aria-label={t('inspector.particle.floorY', 'Floor Y')}
               />
             </div>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Bounce</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.bounce', 'Bounce')}</span>
               <ValueField
                 value={cfg.bounceRestitution ?? 0.65}
                 min={0}
                 max={1}
                 {...scrub}
                 onChange={(v) => set('bounceRestitution', Number(v))}
-                aria-label="Bounce restitution"
+                aria-label={t('inspector.particle.bounceRestitution', 'Bounce restitution')}
               />
             </div>
             <div className={styles.popoverRow}>
               <div style={{ width: 13 }} />
-              <span className={styles.popoverLabel}>Damping</span>
+              <span className={styles.popoverLabel}>{t('inspector.particle.damping', 'Damping')}</span>
               <ValueField
                 value={cfg.bounceDamping ?? 0.998}
                 min={0}
                 max={1}
                 {...scrub}
                 onChange={(v) => set('bounceDamping', Number(v))}
-                aria-label="Air damping"
+                aria-label={t('inspector.particle.airDamping', 'Air damping')}
               />
             </div>
           </>
@@ -433,15 +434,15 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
             silent trim — see `bakeParticlesToLayers`. */}
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Bake</span>
+          <span className={styles.popoverLabel}>{t('inspector.particle.bake', 'Bake')}</span>
           <button
             type="button"
             className={styles.select}
             style={{ width: 110, textAlign: 'left', cursor: 'pointer' }}
             onClick={() => setBakeOpen(true)}
-            title="Convert each particle into its own keyframed layer and hide the emitter"
+            title={t('inspector.particle.bakeTitle', 'Convert each particle into its own keyframed layer and hide the emitter')}
           >
-            Bake to keyframes…
+            {t('inspector.particle.bakeToKeyframes', 'Bake to keyframes…')}
           </button>
         </div>
 
@@ -449,7 +450,7 @@ export function ParticleSection({ nodeId }: { nodeId: string }): JSX.Element | n
           <BakeDialog
             open
             onClose={() => setBakeOpen(false)}
-            title="Bake Particles to Layers"
+            title={t('inspector.particle.bakeDialogTitle', 'Bake Particles to Layers')}
             withParticleCap
             onBake={(opts) => { void runParticleBake(nodeId, opts); }}
           />

@@ -33,6 +33,7 @@ import {
   type ProtectedRegion,
 } from '@core/template/responsiveTime';
 import styles from './CompositionSettingsDialog.module.css';
+import { t } from '@core/i18n';
 
 export function ResponsiveTimeSection(): JSX.Element {
   // B4: the active composition's settings (duration, `responsiveTime`) from the document mirror.
@@ -91,14 +92,12 @@ export function ResponsiveTimeSection(): JSX.Element {
   if (!cfg) {
     return (
       <div className={styles.section}>
-        <div className={styles.label}>Responsive Time</div>
+        <div className={styles.label}>{t('composition.responsiveTime.title', 'Responsive Time')}</div>
         <p className={styles.hint}>
-          Mark spans that must keep their duration when this composition is
-          stretched — an intro and an outro, typically. Everything outside them
-          absorbs the change, so one lower-third works at any length.
+          {t('composition.responsiveTime.intro', 'Mark spans that must keep their duration when this composition is stretched — an intro and an outro, typically. Everything outside them absorbs the change, so one lower-third works at any length.')}
         </p>
         <button type="button" className={styles.segmentBtn} onClick={enable}>
-          <Icon name="plus" size="sm" /> Mark a protected region
+          <Icon name="plus" size="sm" /> {t('composition.responsiveTime.mark', 'Mark a protected region')}
         </button>
       </div>
     );
@@ -108,34 +107,33 @@ export function ResponsiveTimeSection(): JSX.Element {
 
   return (
     <div className={styles.section}>
-      <div className={styles.label}>Responsive Time</div>
+      <div className={styles.label}>{t('composition.responsiveTime.title', 'Responsive Time')}</div>
 
       {/* The invisible number, made visible. */}
       <div className={styles.rowThree}>
         <div className={styles.field}>
-          <div className={styles.fieldLabel}>Authored at</div>
+          <div className={styles.fieldLabel}>{t('composition.responsiveTime.authoredAt', 'Authored at')}</div>
           <div className={styles.readout}>{authored.toFixed(2)}s</div>
         </div>
         <div className={styles.field}>
-          <div className={styles.fieldLabel}>Current</div>
+          <div className={styles.fieldLabel}>{t('composition.responsiveTime.current', 'Current')}</div>
           <div className={styles.readout}>{current.toFixed(2)}s</div>
         </div>
         <div className={styles.field}>
-          <div className={styles.fieldLabel}>Middle stretch</div>
+          <div className={styles.fieldLabel}>{t('composition.responsiveTime.middleStretch', 'Middle stretch')}</div>
           <div className={styles.readout}>{stretch.toFixed(2)}×</div>
         </div>
       </div>
 
       <p className={styles.hint}>
-        {protectedSec.toFixed(2)}s protected · {flexAuthored.toFixed(2)}s flexible,
-        playing at {stretch.toFixed(2)}×.
-        {current < protectedSec && ' Shorter than the protected total, so the composition runs long rather than crushing marked animation.'}
+        {t('composition.responsiveTime.summary', '{protected}s protected · {flexible}s flexible, playing at {stretch}×.', { protected: protectedSec.toFixed(2), flexible: flexAuthored.toFixed(2), stretch: stretch.toFixed(2) })}
+        {current < protectedSec && ` ${t('composition.responsiveTime.runsLong', 'Shorter than the protected total, so the composition runs long rather than crushing marked animation.')}`}
       </p>
 
       {regions.map((r, i) => (
         <div key={`${i}-${r.startSec}`} className={styles.row}>
           <div className={styles.field}>
-            <div className={styles.fieldLabel}>Start</div>
+            <div className={styles.fieldLabel}>{t('composition.responsiveTime.start', 'Start')}</div>
             <ValueField
               value={r.startSec}
               onChange={(v) => editEdge(i, 'start', v)}
@@ -143,11 +141,11 @@ export function ResponsiveTimeSection(): JSX.Element {
               max={authored}
               step={0.05}
               unit="s"
-              aria-label={`Protected region ${i + 1} start`}
+              aria-label={t('composition.responsiveTime.regionStart', 'Protected region {n} start', { n: i + 1 })}
             />
           </div>
           <div className={styles.field}>
-            <div className={styles.fieldLabel}>End</div>
+            <div className={styles.fieldLabel}>{t('composition.responsiveTime.end', 'End')}</div>
             <ValueField
               value={r.endSec}
               onChange={(v) => editEdge(i, 'end', v)}
@@ -155,14 +153,14 @@ export function ResponsiveTimeSection(): JSX.Element {
               max={authored}
               step={0.05}
               unit="s"
-              aria-label={`Protected region ${i + 1} end`}
+              aria-label={t('composition.responsiveTime.regionEnd', 'Protected region {n} end', { n: i + 1 })}
             />
           </div>
           <button
             type="button"
             className={styles.segmentBtn}
             onClick={() => removeRegion(i)}
-            aria-label={`Remove protected region ${i + 1}`}
+            aria-label={t('composition.responsiveTime.regionRemove', 'Remove protected region {n}', { n: i + 1 })}
           >
             <Icon name="trash" size="sm" />
           </button>
@@ -174,9 +172,9 @@ export function ResponsiveTimeSection(): JSX.Element {
         className={styles.segmentBtn}
         onClick={addRegion}
         disabled={noRoom}
-        title={noRoom ? 'No unprotected gap large enough for another region' : undefined}
+        title={noRoom ? t('composition.responsiveTime.noRoom', 'No unprotected gap large enough for another region') : undefined}
       >
-        <Icon name="plus" size="sm" /> Add region
+        <Icon name="plus" size="sm" /> {t('composition.responsiveTime.addRegion', 'Add region')}
       </button>
     </div>
   );

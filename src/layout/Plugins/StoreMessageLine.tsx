@@ -11,12 +11,13 @@ import { Button } from '@components/Button';
 import { billingEnabled, cloudProjectsEnabled } from '@core/config/edition';
 import type { StoreMessage } from '@hooks/usePluginStore';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
 function UpgradeButton(): JSX.Element {
   const navigate = useNavigate();
   return (
     <Button size="sm" variant="primary" onClick={() => navigate('/dashboard?tab=billing')}>
-      Upgrade
+      {t('plugins.store.upgrade', 'Upgrade')}
     </Button>
   );
 }

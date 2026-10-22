@@ -19,6 +19,7 @@ import { ReadOnlyBanner } from '../components/ReadOnlyBanner';
 import { ClaudeActivityBadge } from '../components/ClaudeActivityBadge';
 import { ApiFileAdapter } from '@core/files/ApiFileAdapter';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { useCloudProjectStore } from '@stores/cloudProjectStore';
 import { baselineHistoryEdit } from '@core/engine/historyBaseline';
 import { useWorkspaceStore } from '@stores/index';
@@ -59,7 +60,7 @@ function ProjectLoader({ projectId }: { projectId: string }): null {
           getFileManager().setAdapter(new ApiFileAdapter());
         }
         const ref = await getProjectManager().openPath(projectId);
-        if (!ref) throw new Error('Project not found');
+        if (!ref) throw new Error(t('pages.editor.notFound', 'Project not found'));
         // Everything below is deliberately NOT gated on `cancelled`. The load
         // is one-shot by construction (`doneFor`), and under React StrictMode
         // the dev double-mount runs cleanup (cancelled = true) on the FIRST
@@ -92,14 +93,14 @@ function ProjectLoader({ projectId }: { projectId: string }): null {
           try {
             // The parked footage is a browser `File` (no path): imported from its bytes.
             const { imported: [asset] } = await importBrowserFilesEdit([{ file: footage }], 'Import Footage');
-            if (!asset) throw new Error('the file could not be read or decoded');
+            if (!asset) throw new Error(t('pages.editor.footageUnreadable', 'the file could not be read or decoded'));
             await insertMediaEdit([asset]);
             const probedFps = asset.metadata?.fps;
             if (probedFps && probedFps > 0) await setActiveCompFrameRateEdit(probedFps);
           } catch (err) {
             useUIStore.getState().notify({
               level: 'warning',
-              message: `The project opened, but the video could not be imported: ${(err as Error).message}`,
+              message: t('pages.editor.videoImportFailed', 'The project opened, but the video could not be imported: {error}', { error: (err as Error).message }),
               durationMs: 5000,
             });
           }
@@ -108,7 +109,7 @@ function ProjectLoader({ projectId }: { projectId: string }): null {
         if (cancelled) return;
         useUIStore.getState().notify({
           level: 'error',
-          message: `Couldn't open project: ${(err as Error).message}`,
+          message: t('pages.editor.openFailed', "Couldn't open project: {error}", { error: (err as Error).message }),
           durationMs: 4000,
         });
       }
@@ -185,7 +186,7 @@ export function EditorPage(): JSX.Element {
   const { projectId } = useParams<{ projectId: string }>();
   return (
     <Providers>
-      <Suspense fallback={<LoadingScreen message="Loading editor…" />}>
+      <Suspense fallback={<LoadingScreen message={t('pages.editor.loading', 'Loading editor…')} />}>
         {projectId ? <ProjectLoader projectId={projectId} /> : null}
         {projectId ? <CloudAutosave projectId={projectId} /> : null}
         {projectId ? <CloudThumbnailWorker projectId={projectId} /> : null}

@@ -44,6 +44,13 @@ binary it names for each platform.
   `<userData>/native-plugins`) plus every folder in `PREMATION_PLUGIN_PATH`
   (`;`-separated). Each folder may be a bundle itself or a folder of bundles.
   Load order is sorted, so it is deterministic.
+- Optional, cosmetic (a bad value is ignored, never fails the plugin):
+  `"icon": "ui/icon.png"` — a PNG / SVG / JPEG / WebP inside the bundle's
+  `ui/` folder, shown 16 px in the effect card's header (served like panel
+  files, as `plugin-ui://<id>/icon.png`; without one, a plugin installed from
+  the store shows its store icon); `"panelTitle": "Studio"` — the label of
+  the header button that opens the bundle's panel (`ui/index.html`; default
+  "Panel", at most 40 characters).
 
 The module exports one symbol:
 
@@ -93,14 +100,39 @@ copy/paste, save/open and change events all work as they do for a builtin.
 | `LAYER` | a layer reference (id, `""` = none) |
 | `PATH` | a mask of the layer (its bezier at the frame time, 6 doubles per vertex) |
 | `ARBITRARY_DATA` | bytes in the document (`fx.pluginData`), written by the plugin or `setPluginData` |
-| `BUTTON` | an action (`invokeEffectAction`, `p<id>`) |
-| `GROUP_START` / `GROUP_END` | a twirl-down section |
+| `BUTTON` | an action (`invokeEffectAction`, `p<id>`); Effect Controls draws it on its own row where it was declared, inside its group |
+| `GROUP_START` / `GROUP_END` | a twirl-down section, open unless `START_COLLAPSED` |
 | `STRING` (1.1) | text (`text`; a multi-line field) |
 | `CURVE` (1.1) | the Curves effect's point list `[[x, y]…]` in 0..255; the plugin gets `curve` / `curve_count`, x, y in 0..1 |
 | `GRADIENT` (1.1) | stops `[[position, r, g, b, a]…]` in 0..1 (colours sRGB-encoded); the plugin gets `gradient` / `gradient_count`, the stops' r, g, b in linear light (SDK 1.2) |
 | `FILE` (1.1) | a project item id (`file_types` filters the picker); the plugin gets `file_name`, `file_missing` and the file through `get_asset_path` / `get_asset_bytes` |
 
 Flags: `CANNOT_ANIMATE`, `SUPERVISE`, `HIDDEN`, `START_COLLAPSED`, `DISABLED`.
+
+How Effect Controls draws a plugin effect (as AE does): params and buttons in
+declaration order; a group open unless `START_COLLAPSED`; no stopwatch on a
+`CANNOT_ANIMATE` param (the engine refuses its keyframes: `notAnimatable`).
+`set_param_ui` applies to every row it names: hiding a `GROUP_START` hides the
+whole group (nested groups included), and a `POINT`'s state (hidden, disabled,
+renamed) applies to both its axis rows. `listEffects` carries the layout:
+`EffectInfo.groups` (each group's path, key, `collapsed`) and each action's
+`group` and `at` (how many params come before it). The card's ⋯ menu and its
+header's **Presets ▾** offer the plugin's presets for that effect (Apply
+Preset): the preset's values, every other param back to its default, one undo
+entry.
+
+**Descriptions (SDK 1.2).** `PrParamDef.description` (the struct's last field;
+check `struct_size` — a module built against an older header simply has none) is
+a one-line UTF-8 description, copied at `PARAMS_SETUP` (up to 1024 bytes). Effect
+Controls shows it as the param label's tooltip (a dotted underline on hover and
+keyboard focus); on a `GROUP_START` it is the group header's tooltip; a `POINT`'s
+applies to both axis rows. `listEffects` carries it as
+`EffectParamInfo.description` / `EffectGroupInfo.description`.
+
+**The card header.** A plugin effect's header shows the manifest `icon`, its
+presets (**Presets ▾**), a button to the bundle's panel labelled `panelTitle`
+when it ships `ui/index.html`, and **ⓘ** with the effect's `PR_CMD_ABOUT` text
+(`EffectInfo.about`).
 
 **Colours are linear (SDK 1.2).** Every world a plugin reads and writes is linear
 working space, and so are its colours: a `COLOR` value (the frame's `params[]`,
@@ -511,8 +543,9 @@ sits in the wrong place under any camera that is not the default. So:
 
 Optical Flares' editor or Element 3D's scene setup, without plugin code in the
 editor: a bundle may ship `ui/index.html` (and its scripts, styles, images and
-fonts beside it in `ui/`). The effect card then shows **Open Panel**, and the
-editor shows the page in a frame:
+fonts beside it in `ui/`). The effect card's header then shows a button to it
+(labelled with the manifest's `panelTitle`, default **Panel**), and the editor
+shows the page in a floating window's frame:
 
 - served by the app as `plugin-ui://<plugin id>/…` from the bundle's `ui/`
   folder only (no `..`, hidden files or symlinks out);

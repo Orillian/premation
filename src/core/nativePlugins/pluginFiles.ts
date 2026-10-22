@@ -11,6 +11,7 @@
 import type { EngineClient } from '@motion/engine-api';
 import type { NativePluginPackageInspect, NativePluginPackagePreview } from '@/types/motionEditor';
 import { finishInstall, type StoreInstallResult } from './pluginStore';
+import { t } from '@core/i18n';
 
 type PluginsBridge = NonNullable<NonNullable<Window['motionEditor']>['plugins']>;
 
@@ -35,48 +36,66 @@ export interface TrustLine {
 }
 
 export function trustLine(p: NativePluginPackagePreview): TrustLine {
-  const who = p.publisher || p.vendor || 'an unnamed publisher';
+  const who = p.publisher || p.vendor || t('core.pluginFiles.unnamedPublisher', 'an unnamed publisher');
   switch (p.trust) {
     case 'store-verified':
-      return { label: `Verified publisher: ${who}`, tone: 'ok', needsAnyway: false, detail: 'Signed with the key this plugin is published with in the Premation plugin store.' };
+      return {
+        label: t('core.pluginFiles.verifiedPublisher', 'Verified publisher: {who}', { who }),
+        tone: 'ok',
+        needsAnyway: false,
+        detail: t('core.pluginFiles.verifiedDetail', 'Signed with the key this plugin is published with in the Premation plugin store.'),
+      };
     case 'store':
-      return { label: `Store publisher: ${who}`, tone: 'ok', needsAnyway: false, detail: 'Signed with the key this plugin is published with in the plugin store. The publisher is not verified.' };
+      return {
+        label: t('core.pluginFiles.storePublisher', 'Store publisher: {who}', { who }),
+        tone: 'ok',
+        needsAnyway: false,
+        detail: t('core.pluginFiles.storeDetail', 'Signed with the key this plugin is published with in the plugin store. The publisher is not verified.'),
+      };
     case 'pinned':
-      return { label: `Same publisher as your installed copy: ${who}`, tone: 'ok', needsAnyway: false, detail: 'Signed with the key you trusted when you first installed this plugin.' };
+      return {
+        label: t('core.pluginFiles.pinnedPublisher', 'Same publisher as your installed copy: {who}', { who }),
+        tone: 'ok',
+        needsAnyway: false,
+        detail: t('core.pluginFiles.pinnedDetail', 'Signed with the key you trusted when you first installed this plugin.'),
+      };
     case 'unknown':
       return {
-        label: `Unknown publisher${p.vendor ? ` (says it is from ${p.vendor})` : ''}`,
+        label: p.vendor
+          ? t('core.pluginFiles.unknownPublisherVendor', 'Unknown publisher (says it is from {vendor})', { vendor: p.vendor })
+          : t('core.pluginFiles.unknownPublisher', 'Unknown publisher'),
         tone: 'warn',
         needsAnyway: true,
         detail: p.storeUnreachable
-          ? 'The plugin store could not be reached to check who signed it. Install it only if you trust where you got the file. Its key will be remembered, and later versions must be signed with it.'
-          : 'Signed, but not by a publisher the plugin store knows for this plugin. Install it only if you trust where you got the file. Its key will be remembered, and later versions must be signed with it.',
+          ? t('core.pluginFiles.unknownUnreachableDetail', 'The plugin store could not be reached to check who signed it. Install it only if you trust where you got the file. Its key will be remembered, and later versions must be signed with it.')
+          : t('core.pluginFiles.unknownDetail', 'Signed, but not by a publisher the plugin store knows for this plugin. Install it only if you trust where you got the file. Its key will be remembered, and later versions must be signed with it.'),
       };
     case 'unsigned':
     default:
       return {
-        label: 'Unsigned',
+        label: t('core.pluginFiles.unsigned', 'Unsigned'),
         tone: 'warn',
         needsAnyway: true,
-        detail: 'Nothing proves who made this package or that it was not changed. Install it only if you built it yourself or fully trust where you got it.',
+        detail: t('core.pluginFiles.unsignedDetail', 'Nothing proves who made this package or that it was not changed. Install it only if you built it yourself or fully trust where you got it.'),
       };
   }
 }
 
 /** What the plugin can do once installed: native code is not sandboxed. */
 export function accessLine(p: NativePluginPackagePreview): string {
-  const effects = p.effects.length === 1 ? `1 effect (${p.effects[0]!.name})` : `${p.effects.length} effects`;
-  return `Adds ${effects}. It runs as native code inside the Premation engine, with the same access to your computer as Premation itself.`;
+  return p.effects.length === 1
+    ? t('core.pluginFiles.accessOne', 'Adds 1 effect ({name}). It runs as native code inside the Premation engine, with the same access to your computer as Premation itself.', { name: p.effects[0]!.name })
+    : t('core.pluginFiles.accessOther', 'Adds {n} effects. It runs as native code inside the Premation engine, with the same access to your computer as Premation itself.', { n: p.effects.length });
 }
 
 /** Show the open dialog and have main inspect the chosen file; null when cancelled. */
 export async function pickPackageFile(): Promise<NativePluginPackageInspect | null> {
   const pick = bridge()?.pickPackageFile;
-  if (!pick) return { ok: false, fileName: '', reason: 'Installing from a file needs the desktop app.' };
+  if (!pick) return { ok: false, fileName: '', reason: t('core.pluginFiles.needsDesktop', 'Installing from a file needs the desktop app.') };
   try {
     return await pick();
   } catch (e) {
-    return { ok: false, fileName: '', reason: e instanceof Error ? e.message : 'Could not open the file.' };
+    return { ok: false, fileName: '', reason: e instanceof Error ? e.message : t('core.pluginFiles.openFailed', 'Could not open the file.') };
   }
 }
 
@@ -101,10 +120,10 @@ export async function installPackageFile(
   allowUnknown: boolean,
 ): Promise<StoreInstallResult> {
   const install = bridge()?.installPackageFile;
-  if (!install) return { ok: false, message: 'Installing from a file needs the desktop app.' };
+  if (!install) return { ok: false, message: t('core.pluginFiles.needsDesktop', 'Installing from a file needs the desktop app.') };
   try {
     return await finishInstall(client, await install({ token, allowUnknown }));
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : 'The install failed.' };
+    return { ok: false, message: e instanceof Error ? e.message : t('core.pluginFiles.installFailed', 'The install failed.') };
   }
 }

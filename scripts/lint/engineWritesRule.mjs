@@ -103,6 +103,7 @@ const NOT_DOCUMENT_MODULES = [
   '@core/timeline/transportController', // transport (§6), not the document
   '@core/timeline/timelineView', // transport (§6) + ruler zoom/scroll (editor view state), not the document
   '@core/audio/audioHardware', // device selection
+  '@core/audio/recording/', // Record Audio: mic capture, meter state, take DSP (pure); takes reach the document only via importBytes
   '@core/tracking/samModelInstall', // model download cache
   '@core/workspace/cameraBookmarks', // viewport view state
   '@core/plugins/uiTools', // which plugin tool is active (editor state)
@@ -119,6 +120,7 @@ const NOT_WRITES = new Set([
   'keyframeToCompTime', // time conversion (compToKeyframeTime is listed on its own: B3 deletes the UI calls)
   'clearRestMeshCache', // render cache
   'setFocusedExpressionRow', // which row has keyboard focus (editor state)
+  'setScriptConsentPrompt', // core/scripting/scriptHost: registers the consent dialog callback (UI wiring)
   'mergeRanges', // pure range arithmetic
   'mergeIntervals', // core/audio/silenceRemoval: unions comp-time intervals (pure; audioEdits sends the cuts)
   'fitSpeedFactor', // core/animation/retimeCommands: returns Fit to Footage's scale factor (pure; retimeEdits sends the keys)

@@ -253,6 +253,7 @@ bool has_own(const Value& t, const Value& key) {
     case ObjKind::kStyle:
       return kid >= KeyId::k_font && kid <= KeyId::k_setText;
     case ObjKind::kFunction:
+    case ObjKind::kNumberObject:
       return false;
   }
   return false;
@@ -1230,6 +1231,7 @@ std::u16string_view html_name(const Obj& f) { return key_name(static_cast<KeyId>
 }  // namespace
 
 std::u16string_view function_name(const Obj& f, const Context& ctx) {
+  if (f.fn == Fn::kNone && f.node != kNoNode && f.str != nullptr) return *f.str;  // the expression's own function
   if (f.fn == Fn::kCtrl) return (ctx.host != nullptr && ctx.host->has_ctrl()) ? u"ctrl" : u"";
   if (f.fn == Fn::kStrHtml) return html_name(f);
   for (const FnMeta& m : kMeta) {
@@ -1239,6 +1241,7 @@ std::u16string_view function_name(const Obj& f, const Context& ctx) {
 }
 
 double function_length(const Obj& f, const Context& ctx) {
+  if (f.fn == Fn::kNone && f.node != kNoNode) return f.aux;  // the expression's own function: its parameter count
   if (f.fn == Fn::kCtrl) return (ctx.host != nullptr && ctx.host->has_ctrl()) ? 1 : 0;
   if (f.fn == Fn::kStrHtml) {
     const auto k = static_cast<KeyId>(f.state);

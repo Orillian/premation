@@ -2022,17 +2022,18 @@ std::optional<RestMesh> resolve_rest_mesh(const RigInputs& in, bool hasPuppet, M
   rig.expansion = meshSrc.at("meshExpansion");
   rig.silhouette = meshSrc.at("meshMode").is_string() && meshSrc.at("meshMode").str() == "silhouette";
 
-  // `rig.meshDensity ?? 22` / `rig.meshExpansion ?? 0`: integer grid densities only
-  // (a fractional density makes the TS index a typed array at fractional offsets).
+  // `rig.meshDensity ?? 22` / `rig.meshExpansion ?? 0`. A non-numeric value reads
+  // as the default and a fractional density is floored (the TS indexed a typed
+  // array at fractional offsets there — garbage, never a mesh worth matching).
   double density = 22;
   if (rig.density.is_number()) density = rig.density.num();
-  else if (!rig.density.is_undefined() && !rig.density.is_null()) res.unported.emplace_back("non-numeric rig mesh density");
+  else if (!rig.density.is_undefined() && !rig.density.is_null()) res.warnings.emplace_back("rig mesh density is not a number — the default (22) is used");
   double expansion = 0;
   if (rig.expansion.is_number()) expansion = rig.expansion.num();
-  else if (!rig.expansion.is_undefined() && !rig.expansion.is_null()) res.unported.emplace_back("non-numeric rig mesh expansion");
-  if (!res.unported.empty()) return std::nullopt;
+  else if (!rig.expansion.is_undefined() && !rig.expansion.is_null()) res.warnings.emplace_back("rig mesh expansion is not a number — 0 is used");
   const double gridD = jmax(2, jmin(50, density));
-  const std::optional<int> cells = std::floor(gridD) == gridD ? std::optional<int>(static_cast<int>(gridD)) : std::nullopt;
+  if (std::floor(gridD) != gridD) res.warnings.emplace_back("fractional rig mesh density — floored to " + std::to_string(static_cast<int>(std::floor(gridD))));
+  const std::optional<int> cells = static_cast<int>(std::floor(gridD));
 
   // silhouetteFromPathPoints → resolvePuppetSilhouette: a closed path of ≥ 3 points.
   std::optional<std::vector<V2>> silhouette;
@@ -2043,7 +2044,7 @@ std::optional<RestMesh> resolve_rest_mesh(const RigInputs& in, bool hasPuppet, M
   }
 
   std::optional<RestMesh> built = build_rest_mesh(in.width, in.height, in.pad, rig, silhouette, cells, expansion, density, in.coverage);
-  if (!built) res.unported.emplace_back("fractional rig mesh density (grid mesh)");
+  if (!built) res.warnings.emplace_back("the rig's rest mesh could not be built — the layer draws undeformed");
   return built;
 }
 
@@ -2107,8 +2108,7 @@ RigResult build_rig_mesh(const RigInputs& in, const RigSampler& anim) {
       if (matches && sk.weightPaint->at("bones").is_object()) {
         for (std::size_t i = 0; i < weights.size(); ++i) weights[i] = apply_weight_paint(weights[i], i, sk.weightPaint->at("bones"));
       } else if (matches) {
-        res.unported.emplace_back("skeleton weight paint without a bones map");
-        return res;
+        res.warnings.emplace_back("skeleton weight paint without a bones map — the automatic weights are used");
       }
     }
     deformed = skin_rig_vertices(weights, poseWorld, bindInverse, deformed);
@@ -2387,7 +2387,7 @@ std::optional<std::array<double, 2>> RigModel::rest_from_deformed(double x, doub
 }
 
 std::optional<RigModel> build_rig_model(const RigInputs& in, const RigSampler& anim, bool authoring, bool previewSilhouette,
-                                        std::vector<std::string>& unported) {
+                                        std::vector<std::string>& warnings) {
   const Json& fx = *in.fx;
   const Json& puppet = fx.at("puppet");
   const Json& skel = fx.at("skeleton");
@@ -2416,15 +2416,16 @@ std::optional<RigModel> build_rig_model(const RigInputs& in, const RigSampler& a
     rig.expansion = skel.at("meshExpansion");
     rig.silhouette = skel.at("meshMode").is_string() && skel.at("meshMode").str() == "silhouette";
   }
+  // As resolve_rest_mesh: malformed values read as the defaults, a fractional density floors.
   double density = 22;
   if (rig.density.is_number()) density = rig.density.num();
-  else if (!rig.density.is_undefined() && !rig.density.is_null()) unported.emplace_back("non-numeric rig mesh density");
+  else if (!rig.density.is_undefined() && !rig.density.is_null()) warnings.emplace_back("rig mesh density is not a number — the default (22) is used");
   double expansion = 0;
   if (rig.expansion.is_number()) expansion = rig.expansion.num();
-  else if (!rig.expansion.is_undefined() && !rig.expansion.is_null()) unported.emplace_back("non-numeric rig mesh expansion");
-  if (!unported.empty()) return std::nullopt;
+  else if (!rig.expansion.is_undefined() && !rig.expansion.is_null()) warnings.emplace_back("rig mesh expansion is not a number — 0 is used");
   const double gridD = jmax(2, jmin(50, density));
-  const std::optional<int> cells = std::floor(gridD) == gridD ? std::optional<int>(static_cast<int>(gridD)) : std::nullopt;
+  if (std::floor(gridD) != gridD) warnings.emplace_back("fractional rig mesh density — floored to " + std::to_string(static_cast<int>(std::floor(gridD))));
+  const std::optional<int> cells = static_cast<int>(std::floor(gridD));
   std::optional<std::vector<V2>> silhouette;
   if (!in.pathOpen && in.pathPoints != nullptr && in.pathPoints->is_array() && in.pathPoints->arr().size() >= 3) {
     std::vector<V2> pts;
@@ -2433,7 +2434,7 @@ std::optional<RigModel> build_rig_model(const RigInputs& in, const RigSampler& a
   }
   std::optional<RestMesh> built = build_rest_mesh(in.width, in.height, in.pad, rig, silhouette, cells, expansion, density, in.coverage);
   if (!built) {
-    unported.emplace_back("fractional rig mesh density (grid mesh)");
+    warnings.emplace_back("the rig's rest mesh could not be built — the layer draws undeformed");
     return std::nullopt;
   }
 
@@ -2484,8 +2485,7 @@ std::optional<RigModel> build_rig_model(const RigInputs& in, const RigSampler& a
       if (matches && sk.weightPaint->at("bones").is_object()) {
         for (std::size_t i = 0; i < impl->weights.size(); ++i) impl->weights[i] = apply_weight_paint(impl->weights[i], i, sk.weightPaint->at("bones"));
       } else if (matches) {
-        unported.emplace_back("skeleton weight paint without a bones map");
-        return std::nullopt;
+        warnings.emplace_back("skeleton weight paint without a bones map — the automatic weights are used");
       }
     }
     impl->skinned = true;

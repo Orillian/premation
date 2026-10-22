@@ -13,15 +13,17 @@
 
 import { create } from 'zustand';
 import { playbackBlitPolicy } from '@core/perf/playbackBlitPolicy';
+import { t } from '@core/i18n';
 
 /** 1 = Full, 2 = Half, 3 = Third, 4 = Quarter. */
 export type PreviewResolution = 1 | 2 | 3 | 4;
 
+// Getters: `t()` runs when a menu reads a label, never at module scope.
 export const RESOLUTION_LABELS: Record<PreviewResolution, string> = {
-  1: 'Full',
-  2: 'Half',
-  3: 'Third',
-  4: 'Quarter',
+  get 1() { return t('stores.renderQuality.full', 'Full'); },
+  get 2() { return t('stores.renderQuality.half', 'Half'); },
+  get 3() { return t('stores.renderQuality.third', 'Third'); },
+  get 4() { return t('stores.renderQuality.quarter', 'Quarter'); },
 };
 
 /** The pixel fraction each resolution renders — shown next to the label so it's

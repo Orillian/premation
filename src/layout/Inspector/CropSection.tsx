@@ -7,6 +7,7 @@
  * removes it. One entry per edit.
  */
 
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { PropertyRow } from '@components/PropertyRow';
 import { Button } from '@components/Button';
@@ -50,11 +51,11 @@ export function insetsOf(mask: Pick<MaskPath, 'points'>, w: number, h: number): 
 export function cropMask(insets: CropInsets, w: number, h: number): MaskPath {
   const l = Math.max(0, Math.min(w - 1, insets.left));
   const r = Math.max(0, Math.min(w - 1 - l, insets.right));
-  const t = Math.max(0, Math.min(h - 1, insets.top));
-  const b = Math.max(0, Math.min(h - 1 - t, insets.bottom));
-  const m = rectangleMask(w - l - r, h - t - b);
+  const tp = Math.max(0, Math.min(h - 1, insets.top));
+  const b = Math.max(0, Math.min(h - 1 - tp, insets.bottom));
+  const m = rectangleMask(w - l - r, h - tp - b);
   const dx = (l - r) / 2;
-  const dy = (t - b) / 2;
+  const dy = (tp - b) / 2;
   return { ...m, name: CROP_MASK_NAME, points: m.points.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy })) };
 }
 
@@ -92,20 +93,20 @@ export function CropSection({ nodeId }: { nodeId: string }): JSX.Element {
       type: 'setProperty', prop: ref(nodeId, paths.mask(crop.id, 'path')), value: { kind: 'path', value: maskToBezier(next) }, time: compTime(time),
     });
   };
-  const row = (label: string, key: keyof CropInsets, max: number) => (
+  const row = (label: string, aria: string, key: keyof CropInsets, max: number) => (
     <PropertyRow label={label} compact>
       <ValueField value={Math.round(insets[key])} min={0} max={Math.round(max)} precision={0} unit="px"
-        onChange={(v) => setInset(key, v)} aria-label={`Crop ${label.toLowerCase()}`} />
+        onChange={(v) => setInset(key, v)} aria-label={aria} />
     </PropertyRow>
   );
   return (
     <div data-crop-section="">
-      {row('Left', 'left', w)}
-      {row('Top', 'top', h)}
-      {row('Right', 'right', w)}
-      {row('Bottom', 'bottom', h)}
-      <PropertyRow label="Edge Feather" compact>
-        <ValueField value={crop ? Math.round(crop.feather) : 0} min={0} max={500} precision={0} unit="px" aria-label="Crop edge feather"
+      {row(t('inspector.crop.left', 'Left'), t('inspector.crop.leftAria', 'Crop left'), 'left', w)}
+      {row(t('inspector.crop.top', 'Top'), t('inspector.crop.topAria', 'Crop top'), 'top', h)}
+      {row(t('inspector.crop.right', 'Right'), t('inspector.crop.rightAria', 'Crop right'), 'right', w)}
+      {row(t('inspector.crop.bottom', 'Bottom'), t('inspector.crop.bottomAria', 'Crop bottom'), 'bottom', h)}
+      <PropertyRow label={t('inspector.crop.edgeFeather', 'Edge Feather')} compact>
+        <ValueField value={crop ? Math.round(crop.feather) : 0} min={0} max={500} precision={0} unit="px" aria-label={t('inspector.crop.edgeFeatherAria', 'Crop edge feather')}
           onChange={(v) => {
             if (!crop) return;
             const cmds = maskValueCommands(nodeId, crop.id, 'feather', v, time);
@@ -114,7 +115,7 @@ export function CropSection({ nodeId }: { nodeId: string }): JSX.Element {
       </PropertyRow>
       {crop && (
         <PropertyRow label="" compact>
-          <Button size="sm" variant="secondary" onClick={() => { void removeMaskEdit(nodeId, crop.id, 'Reset Crop'); }}>Reset Crop</Button>
+          <Button size="sm" variant="secondary" onClick={() => { void removeMaskEdit(nodeId, crop.id, 'Reset Crop'); }}>{t('inspector.crop.reset', 'Reset Crop')}</Button>
         </PropertyRow>
       )}
     </div>

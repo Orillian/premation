@@ -450,6 +450,15 @@ export type UpdateStatus =
   | { kind: 'unsupported'; reason: string }
   | { kind: 'error'; message: string };
 
+/** A script file read for File ▸ Scripts / the Script Editor (electron/ipc/scripts.ts). */
+export interface ScriptFileInfo {
+  name: string;
+  path: string;
+  source: string;
+  /** In the user Scripts folder (Save writes it by name). */
+  inScriptsFolder: boolean;
+}
+
 export interface MotionEditorApi {
   readonly platform: string;
   readonly version: string;
@@ -645,6 +654,13 @@ export interface MotionEditorApi {
     ): Promise<Uint8Array | null>;
     /** Kill a running proxy encode. True if one was actually running. */
     cancelProxy?(assetId: string): Promise<boolean>;
+    /**
+     * The OS microphone switch (electron/ipc/mediaAccess.ts), without a prompt:
+     * macOS / Windows privacy settings; 'granted' where the OS has none.
+     */
+    microphoneStatus?(): Promise<'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'>;
+    /** Ask the OS for the microphone (macOS prompts once); resolves to the status after. */
+    requestMicrophone?(): Promise<'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'>;
   };
 
   /** What is left of the render IPC: the files are rendered by the engine (exportSupervisor). */
@@ -727,6 +743,24 @@ export interface MotionEditorApi {
    */
   diskCache?: {
     defaultFolder?(): Promise<string>;
+  };
+  /**
+   * File ▸ Scripts and the Script Editor (electron/ipc/scripts.ts): the user
+   * Scripts folder (`<userData>/Scripts`, created on demand), a script the
+   * user picks, and saving. Absent in the browser build.
+   */
+  scripts?: {
+    folderPath?(): Promise<string>;
+    list?(): Promise<{ folder: string; scripts: Array<{ name: string; path: string }> }>;
+    openFolder?(): Promise<{ ok: boolean; path: string; error?: string }>;
+    /** A script in the Scripts folder by file name; null when it cannot be read. */
+    read?(name: string): Promise<ScriptFileInfo | null>;
+    /** A native open dialog; null when cancelled. */
+    pick?(): Promise<ScriptFileInfo | null>;
+    /** By `name` in the Scripts folder, or back to a `path` the user picked this session. */
+    save?(req: { name?: string; path?: string; source: string }): Promise<{ ok: boolean; name?: string; path?: string; error?: string }>;
+    /** A native save dialog; null when cancelled. */
+    saveAs?(req: { name?: string; source: string }): Promise<{ ok: boolean; name?: string; path?: string; error?: string } | null>;
   };
   /**
    * The native SDK plugins folder (electron/ipc/nativePlugins.ts). Plugins are
@@ -827,7 +861,7 @@ export interface MotionEditorApi {
    * Hand main the menu model serialised by `layout/Menu/nativeMenuTemplate.ts`;
    * the native menu is rebuilt from it. Absent in a browser build.
    */
-  setMenuTemplate?(template: unknown): Promise<{ ok: boolean }>;
+  setMenuTemplate?(template: unknown, strings?: { checkForUpdates: string; settings: string; version: string }): Promise<{ ok: boolean }>;
   /**
    * Report the RENDERER's edition to the shell, which resolved its own from a
    * different build input. Diagnostic only — main compares and logs, and never

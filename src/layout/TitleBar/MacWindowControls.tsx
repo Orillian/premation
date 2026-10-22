@@ -1,4 +1,5 @@
 import { getWindowControls } from '@core/config/uiPlatform';
+import { t } from '@core/i18n';
 import styles from './TitleBar.module.css';
 
 /**
@@ -22,7 +23,7 @@ export function MacWindowControls(): JSX.Element {
           <button
             type="button"
             className={`${styles.light} ${styles.lightClose}`}
-            aria-label="Close window"
+            aria-label={t('titleBar.window.close', 'Close window')}
             onClick={() => void win?.close?.()}
           >
             <svg viewBox="0 0 8 8" aria-hidden><path d="M2.2 2.2l3.6 3.6M5.8 2.2L2.2 5.8" /></svg>
@@ -30,7 +31,7 @@ export function MacWindowControls(): JSX.Element {
           <button
             type="button"
             className={`${styles.light} ${styles.lightMinimize}`}
-            aria-label="Minimize window"
+            aria-label={t('titleBar.window.minimize', 'Minimize window')}
             onClick={() => void win?.minimize?.()}
           >
             <svg viewBox="0 0 8 8" aria-hidden><path d="M1.6 4h4.8" /></svg>
@@ -38,7 +39,7 @@ export function MacWindowControls(): JSX.Element {
           <button
             type="button"
             className={`${styles.light} ${styles.lightZoom}`}
-            aria-label="Zoom window"
+            aria-label={t('titleBar.window.zoom', 'Zoom window')}
             onClick={() => void win?.maximize?.()}
           >
             <svg viewBox="0 0 8 8" aria-hidden><path d="M4 1.6v4.8M1.6 4h4.8" /></svg>

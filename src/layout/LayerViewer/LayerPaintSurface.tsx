@@ -38,6 +38,7 @@ import { cn } from '@utils/cn';
 import { appendPoint } from './layerPaint';
 import { localToScreen, screenToLocal, type ViewFit } from './maskEditing';
 import styles from './LayerViewer.module.css';
+import { t } from '@core/i18n';
 
 export interface LayerPaintSurfaceProps {
   nodeId: string;
@@ -124,7 +125,7 @@ export function LayerPaintSurface({
     const done = store.end();
     if (!done) return;
     store.setBusy(true);
-    store.setStatus('Segmenting…');
+    store.setStatus(t('layerViewer.paint.segmenting', 'Segmenting…'));
     void segmentStrokesToMask(nodeId, useRotoBrushStore.getState().strokes, compTime, {
       featherPx: store.featherPx,
       replacePathId: store.maskPathId,
@@ -132,11 +133,11 @@ export function LayerPaintSurface({
       .then((pathId) => {
         const s = useRotoBrushStore.getState();
         s.setMaskPathId(pathId);
-        s.setStatus(pathId ? null : 'Nothing to segment there — paint over the subject.');
+        s.setStatus(pathId ? null : t('layerViewer.paint.nothingToSegment', 'Nothing to segment there — paint over the subject.'));
         bumpScene();
       })
       .catch((err: unknown) => {
-        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : 'Segmentation failed.');
+        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : t('layerViewer.paint.segmentationFailed', 'Segmentation failed.'));
       })
       .finally(() => useRotoBrushStore.getState().setBusy(false));
   }, [nodeId, compTime]);
@@ -175,7 +176,7 @@ export function LayerPaintSurface({
     if (rotoBusy || !rotoable) return;
     // A frozen matte takes no strokes (Tool Options ▸ Freeze).
     if (isRotoFrozen(nodeId)) {
-      useRotoBrushStore.getState().setStatus('Roto Brush is frozen on this layer. Unfreeze it to change the matte.');
+      useRotoBrushStore.getState().setStatus(t('layerViewer.paint.rotoFrozen', 'Roto Brush is frozen on this layer. Unfreeze it to change the matte.'));
       return;
     }
     svgRef.current?.setPointerCapture?.(e.pointerId);
@@ -237,10 +238,10 @@ export function LayerPaintSurface({
   const brushPx = Math.max(1, drawToolOptions.brushSize * view.scale);
   const rotoAll: RotoStroke[] = rotoLive ? [...rotoStrokes, rotoLive] : rotoStrokes;
   const message = painting
-    ? (!paintable ? 'This layer cannot be painted on.' : locked ? 'This layer is locked.' : notice)
+    ? (!paintable ? t('layerViewer.paint.notPaintable', 'This layer cannot be painted on.') : locked ? t('layerViewer.paint.locked', 'This layer is locked.') : notice)
     : !rotoable
-      ? 'Roto Brush works on footage — open a video or image layer.'
-      : locked ? 'This layer is locked.' : rotoStatus;
+      ? t('layerViewer.paint.rotoFootageOnly', 'Roto Brush works on footage — open a video or image layer.')
+      : locked ? t('layerViewer.paint.locked', 'This layer is locked.') : rotoStatus;
   const cloneMark = cloneSource && cloneSource.nodeId === nodeId ? toScreen(cloneSource) : null;
   const sizeMark = sizeDrag ? toScreen(sizeDrag.at) : null;
   const hardness = usePaintStore.getState().hardness;
@@ -252,7 +253,7 @@ export function LayerPaintSurface({
         className={cn(styles.paintSurface)}
         width={stageWidth}
         height={stageHeight}
-        aria-label={roto ? 'Roto Brush' : erasing ? 'Eraser' : 'Paint'}
+        aria-label={roto ? t('layerViewer.paint.rotoBrush', 'Roto Brush') : erasing ? t('layerViewer.paint.eraser', 'Eraser') : t('layerViewer.paint.paint', 'Paint')}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

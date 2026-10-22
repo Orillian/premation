@@ -40,22 +40,23 @@ import {
   type EasingKind,
 } from '@motion/animation';
 import type { EasingPreset } from '@core/animation/keyframeAssistants';
+import { t } from '@core/i18n';
 
 /**
  * Every kind, with the name the UI shows. A `Record` over the union rather than
  * a list, so a kind added to the engine fails to compile until it is named.
  */
 export const EASING_KIND_LABEL: Record<EasingKind, string> = {
-  linear: 'Linear',
-  easeIn: 'Ease In',
-  easeOut: 'Ease Out',
-  easeInOut: 'In-Out',
-  ease: 'Smooth',
-  bezier: 'Custom',
-  autoBezier: 'Auto Bezier',
-  continuousBezier: 'Continuous Bezier',
-  step: 'Step',
-  hold: 'Hold',
+  get linear() { return t('core.easing.linear', 'Linear'); },
+  get easeIn() { return t('core.easing.easeIn', 'Ease In'); },
+  get easeOut() { return t('core.easing.easeOut', 'Ease Out'); },
+  get easeInOut() { return t('core.easing.easeInOut', 'In-Out'); },
+  get ease() { return t('core.easing.ease', 'Smooth'); },
+  get bezier() { return t('core.easing.bezier', 'Custom'); },
+  get autoBezier() { return t('core.easing.autoBezier', 'Auto Bezier'); },
+  get continuousBezier() { return t('core.easing.continuousBezier', 'Continuous Bezier'); },
+  get step() { return t('core.easing.step', 'Step'); },
+  get hold() { return t('core.easing.hold', 'Hold'); },
 };
 
 /** Display order for the kind selector — gentlest first, discontinuous last. */
@@ -72,7 +73,7 @@ export const EASING_KINDS: ReadonlyArray<{ kind: EasingKind; label: string }> = 
     'step',
     'hold',
   ] as const
-).map((kind) => ({ kind, label: EASING_KIND_LABEL[kind] }));
+).map((kind) => ({ kind, get label() { return EASING_KIND_LABEL[kind]; } }));
 
 /** True for both spellings of "hold this value until the next keyframe". */
 export function isHoldKind(easing: string | undefined): boolean {

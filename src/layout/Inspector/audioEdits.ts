@@ -66,6 +66,7 @@ import type { AudioWaveformConfig } from '@core/mirror/audioWaveform';
 import { jsonFieldCommands } from './layerFieldEdits';
 import { runEngineJob } from '@core/engine/engineJobs';
 import { clearExpressionCommands, removeAnimationCommands, spliceKeysEdit, type KeySplice, type SpliceKey } from './keySpliceEdits';
+import { t } from '@core/i18n';
 
 /** The layer's Audio Levels property, or null when the engine does not address it. */
 export function levelRef(nodeId: string): PropRef | null {
@@ -107,8 +108,8 @@ export async function duckEdit(musicId: string, voiceId: string, params: Ducking
   const viaEngine = await runEngineJob<{ keyframes: number; peakDuckDb?: number }>({
     kind: 'audioDuck', value: { music: musicId, voices: [voiceId], params: JSON.stringify(params) },
   });
-  if (!viaEngine) return { keyframes: 0, peakDuckDb: 0, error: 'Ducking runs in the engine, and this engine does not run it.' };
-  if (viaEngine.status !== 'done') return { keyframes: 0, peakDuckDb: 0, error: viaEngine.error?.message ?? 'The ducking could not be written.' };
+  if (!viaEngine) return { keyframes: 0, peakDuckDb: 0, error: t('inspector.audioEdits.duckNoEngine', 'Ducking runs in the engine, and this engine does not run it.') };
+  if (viaEngine.status !== 'done') return { keyframes: 0, peakDuckDb: 0, error: viaEngine.error?.message ?? t('inspector.audioEdits.duckFailed', 'The ducking could not be written.') };
   return { keyframes: viaEngine.result?.keyframes ?? 0, peakDuckDb: viaEngine.result?.peakDuckDb ?? 0 };
 }
 
@@ -116,7 +117,7 @@ export async function duckEdit(musicId: string, voiceId: string, params: Ducking
 export async function reduckEdit(musicId: string): Promise<ApplyDuckingResult> {
   const m = documentMirror();
   const record = m.layer(musicId) ? duckingOf(m, musicId) : null;
-  if (!record) return { keyframes: 0, peakDuckDb: 0, error: 'This layer has no ducking to redo.' };
+  if (!record) return { keyframes: 0, peakDuckDb: 0, error: t('inspector.audioEdits.noDucking', 'This layer has no ducking to redo.') };
   return duckEdit(musicId, record.voiceNodeId, record);
 }
 
@@ -185,7 +186,7 @@ function drivenHasExpression(nodeId: string, path: string, member: number): bool
  */
 export async function driverEdit(nodeId: string, d: AudioDriver): Promise<ApplyDriverResult> {
   const r = propRefForTrack(nodeId, d.prop);
-  if (!r || !isLayer(nodeId)) return { mode: 'baked', keyframes: 0, error: 'That property cannot be driven through the engine.' };
+  if (!r || !isLayer(nodeId)) return { mode: 'baked', keyframes: 0, error: t('inspector.audioEdits.cannotDrive', 'That property cannot be driven through the engine.') };
   const blocker = d.mode === 'expression' ? expressionBlocker(d) : null;
   const expr = d.mode === 'expression' ? audioDriverExpression(d) : null;
   const member = r.members.length > 1 ? { member: r.member } : {};
@@ -198,7 +199,7 @@ export async function driverEdit(nodeId: string, d: AudioDriver): Promise<ApplyD
       ...(await removeAnimationCommands(r.ref)),
       { type: 'setExpression', prop: r.ref, source: expr, enabled: true, ...member },
     ]);
-    return res.ok ? { mode: 'expression', keyframes: 0 } : { mode: 'expression', keyframes: 0, error: 'The expression could not be set.' };
+    return res.ok ? { mode: 'expression', keyframes: 0 } : { mode: 'expression', keyframes: 0, error: t('inspector.audioEdits.expressionFailed', 'The expression could not be set.') };
   }
 
   // The bake range of the active composition (its work area, else all of it).
@@ -212,8 +213,8 @@ export async function driverEdit(nodeId: string, d: AudioDriver): Promise<ApplyD
       keyframes: 0,
       ...(blocker ? { fellBackBecause: blocker } : {}),
       error: d.sourceLayerId === MIX_SOURCE
-        ? 'No audible audio in this range — import audio, or check the layer is not muted.'
-        : 'That layer’s audio has not decoded (or has no sound in this range).',
+        ? t('inspector.audioEdits.noAudibleMix', 'No audible audio in this range — import audio, or check the layer is not muted.')
+        : t('inspector.audioEdits.notDecoded', 'That layer’s audio has not decoded (or has no sound in this range).'),
     };
   }
   const keys: SpliceKey[] = [];
@@ -224,7 +225,7 @@ export async function driverEdit(nodeId: string, d: AudioDriver): Promise<ApplyD
     const nums = await memberKeyValue(r.ref, r.member, d.prop, r.members.length, v, seconds);
     keys.push({ seconds, value: r.members.length > 1 ? valueOf(r.valueType, nums) : values.scalar(nums[0]!) });
   }
-  if (keys.length === 0) return { mode: 'baked', keyframes: 0, error: 'Nothing to write in this range.' };
+  if (keys.length === 0) return { mode: 'baked', keyframes: 0, error: t('inspector.audioEdits.nothingToWrite', 'Nothing to write in this range.') };
   const hadExpr = drivenHasExpression(nodeId, r.ref.path, r.member);
   const ok = await spliceKeysEdit(
     'Audio driver',
@@ -234,7 +235,7 @@ export async function driverEdit(nodeId: string, d: AudioDriver): Promise<ApplyD
       ...(hadExpr ? [{ type: 'setExpression', prop: r.ref, source: '', enabled: true, ...member } as Command] : []),
     ],
   );
-  if (!ok) return { mode: 'baked', keyframes: 0, error: 'The driver could not be written.' };
+  if (!ok) return { mode: 'baked', keyframes: 0, error: t('inspector.audioEdits.driverFailed', 'The driver could not be written.') };
   return { mode: 'baked', keyframes: keys.length, ...(blocker ? { fellBackBecause: blocker } : {}) };
 }
 

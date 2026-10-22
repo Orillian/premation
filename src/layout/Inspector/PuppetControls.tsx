@@ -27,6 +27,7 @@ import {
   type PuppetRig,
 } from '@core/rig/puppet';
 import { maxExactMeshDensity, SMOOTH_PLAYBACK_MAX_DENSITY } from '@core/rig/arap';
+import { t } from '@core/i18n';
 import { useEngineEdit } from './useEngineEdit';
 import { deletePinCommands, pinKindCommands, pinPropCommands, puppetMeshCommands } from './rigEdits';
 import styles from './BoneControls.module.css';
@@ -42,7 +43,7 @@ const selectStyle: React.CSSProperties = {
 };
 
 function pinCountLabel(n: number): string {
-  return n === 1 ? '1 pin' : `${n} pins`;
+  return n === 1 ? t('inspector.puppet.pinCountOne', '1 pin') : t('inspector.puppet.pinCountOther', '{n} pins', { n });
 }
 
 export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | null {
@@ -53,10 +54,12 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
   const rig = useMirrorJson<PuppetRig>(nodeId, 'layer/puppet');
   if (!layer) return null;
 
+  const meshLabel = 'Edit Puppet Mesh';
+  const pinLabel = 'Edit Puppet Pin';
   const mesh = (label: string, patch: Parameters<typeof puppetMeshCommands>[1]): void =>
     eng.send(label, puppetMeshCommands(nodeId, patch));
   const pinProp = (pinId: string, prop: Parameters<typeof pinPropCommands>[2], v: number): void =>
-    eng.send('Edit Puppet Pin', pinPropCommands(nodeId, pinId, prop, v, time));
+    eng.send(pinLabel, pinPropCommands(nodeId, pinId, prop, v, time));
 
   const density = rig?.meshDensity ?? 22;
   const expansion = rig?.meshExpansion ?? 0;
@@ -74,7 +77,7 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
       <div className={styles.headerCard}>
         <div className={styles.headerTitle}>
           <Icon name="puppet-pin" size="sm" />
-          <span>Puppet</span>
+          <span>{t('inspector.puppet.title', 'Puppet')}</span>
           <span className={styles.badge}>{pinCountLabel(pins.length)}</span>
         </div>
         <Button
@@ -82,7 +85,7 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
           variant="secondary"
           onClick={() => useUIStore.getState().setActiveTool('puppet-pin')}
         >
-          <Icon name="plus" size="sm" /> Add Pin
+          <Icon name="plus" size="sm" /> {t('inspector.puppet.addPin', 'Add Pin')}
         </Button>
       </div>
 
@@ -92,46 +95,46 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             <button
               type="button"
               className={`${styles.presetButton} ${meshMode === 'silhouette' ? styles.presetButtonActive : ''}`}
-              title="Traces the artwork's outline and fills it with triangles (AE's Puppet mesh) — a limb becomes its own strip, so pinning a hand bends the arm instead of dragging the body."
+              title={t('inspector.puppet.characterHint', "Traces the artwork's outline and fills it with triangles (AE's Puppet mesh) — a limb becomes its own strip, so pinning a hand bends the arm instead of dragging the body.")}
               onClick={() =>
                 // Density 20, not 22: the ⚓ Anchor toggle gives a pin stiffness
                 // 10, and any stiffness lowers the ARAP exact-solve cap to 21 —
                 // a 22 preset silently landed every anchored character in the
                 // approximate Gauss–Seidel solve.
-                mesh('Edit Puppet Mesh', { expansion: 0, density: 20, mode: 'silhouette' })
+                mesh(meshLabel, { expansion: 0, density: 20, mode: 'silhouette' })
               }
             >
               <Icon name="user" size="sm" />
-              <span>Character (Tight)</span>
+              <span>{t('inspector.puppet.character', 'Character (Tight)')}</span>
             </button>
             <button
               type="button"
               className={`${styles.presetButton} ${meshMode !== 'silhouette' ? styles.presetButtonActive : ''}`}
-              title="Softer mesh with padding — ideal for shapes and banners"
+              title={t('inspector.puppet.graphicHint', 'Softer mesh with padding — ideal for shapes and banners')}
               onClick={() =>
-                mesh('Edit Puppet Mesh', { expansion: 6, density: 16, mode: 'grid' })
+                mesh(meshLabel, { expansion: 6, density: 16, mode: 'grid' })
               }
             >
               <Icon name="shape" size="sm" />
-              <span>Graphic (Smooth)</span>
+              <span>{t('inspector.puppet.graphic', 'Graphic (Smooth)')}</span>
             </button>
           </div>
         </div>
 
         <div className={styles.paramRow}>
           <span className={styles.paramLabel}>
-            Density
+            {t('inspector.puppet.density', 'Density')}
             {solver === 'arap' && (
               <span
                 className={styles.subText}
                 style={{ marginLeft: 6 }}
-                title={`Exact solve up to ${exactMax}. Smooth playback up to ${SMOOTH_PLAYBACK_MAX_DENSITY} — beyond that the solve cost per frame climbs steeply.`}
+                title={t('inspector.puppet.densityHint', 'Exact solve up to {exact}. Smooth playback up to {fast} — beyond that the solve cost per frame climbs steeply.', { exact: exactMax, fast: SMOOTH_PLAYBACK_MAX_DENSITY })}
               >
-                (exact ≤ {exactMax} · fast ≤ {SMOOTH_PLAYBACK_MAX_DENSITY})
+                {t('inspector.puppet.densityRange', '(exact ≤ {exact} · fast ≤ {fast})', { exact: exactMax, fast: SMOOTH_PLAYBACK_MAX_DENSITY })}
               </span>
             )}
           </span>
-          <span style={{ display: 'contents' }} {...eng.press('Edit Puppet Mesh')}>
+          <span style={{ display: 'contents' }} {...eng.press(meshLabel)}>
           <Slider
             value={density}
             min={2}
@@ -139,50 +142,53 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             step={1}
             showValue
             size="sm"
-            label="Mesh density"
-            onChange={(v) => mesh('Edit Puppet Mesh', { density: Math.round(v) })}
+            label={t('inspector.puppet.meshDensity', 'Mesh density')}
+            onChange={(v) => mesh(meshLabel, { density: Math.round(v) })}
           />
           </span>
         </div>
 
         {costly && (
           <div className={styles.warningBox} role="note">
-            Density {density} is heavy to solve — roughly{' '}
-            {density >= 33 ? '35–45 ms' : '10–20 ms'} per frame. Around {SMOOTH_PLAYBACK_MAX_DENSITY} keeps playback smooth.
+            {t('inspector.puppet.costly', 'Density {density} is heavy to solve — roughly {ms} per frame. Around {fast} keeps playback smooth.', {
+              density,
+              ms: density >= 33 ? '35–45 ms' : '10–20 ms',
+              fast: SMOOTH_PLAYBACK_MAX_DENSITY,
+            })}
           </div>
         )}
 
         {pastExact && (
           <div className={styles.warningBox} role="note">
-            Density {density} is above {exactMax}
-            {hasStiffness ? ' (lowered because a pin has stiffness)' : ''} — ARAP falls
-            back from exact solve to an approximate one. Lower density for maximum fidelity.
+            {hasStiffness
+              ? t('inspector.puppet.pastExactStiff', 'Density {density} is above {exact} (lowered because a pin has stiffness) — ARAP falls back from exact solve to an approximate one. Lower density for maximum fidelity.', { density, exact: exactMax })
+              : t('inspector.puppet.pastExact', 'Density {density} is above {exact} — ARAP falls back from exact solve to an approximate one. Lower density for maximum fidelity.', { density, exact: exactMax })}
           </div>
         )}
 
         <div className={styles.paramRow}>
-          <span className={styles.paramLabel} title="Grid culls a uniform mesh against the artwork; Silhouette triangulates the outline (or a PNG's alpha).">
-            Mesh
+          <span className={styles.paramLabel} title={t('inspector.puppet.meshHint', "Grid culls a uniform mesh against the artwork; Silhouette triangulates the outline (or a PNG's alpha).")}>
+            {t('inspector.puppet.mesh', 'Mesh')}
           </span>
           <select
             value={rig?.meshMode ?? 'grid'}
-            aria-label="Puppet mesh mode"
-            onChange={(e) => mesh('Edit Puppet Mesh', { mode: e.target.value as 'grid' | 'silhouette' })}
+            aria-label={t('inspector.puppet.meshMode', 'Puppet mesh mode')}
+            onChange={(e) => mesh(meshLabel, { mode: e.target.value as 'grid' | 'silhouette' })}
             style={selectStyle}
           >
-            <option value="grid">Grid</option>
-            <option value="silhouette">Outline</option>
+            <option value="grid">{t('inspector.puppet.grid', 'Grid')}</option>
+            <option value="silhouette">{t('inspector.puppet.outline', 'Outline')}</option>
           </select>
         </div>
 
         <div className={styles.paramRow}>
           <span
             className={styles.paramLabel}
-            title="How far past the artwork's edge the mesh reaches, in pixels. A few px catches a soft or antialiased edge the alpha trace clips."
+            title={t('inspector.puppet.expansionHint', "How far past the artwork's edge the mesh reaches, in pixels. A few px catches a soft or antialiased edge the alpha trace clips.")}
           >
-            Expansion
+            {t('inspector.puppet.expansion', 'Expansion')}
           </span>
-          <span style={{ display: 'contents' }} {...eng.press('Edit Puppet Mesh')}>
+          <span style={{ display: 'contents' }} {...eng.press(meshLabel)}>
           <Slider
             value={expansion}
             min={0}
@@ -190,18 +196,18 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             step={1}
             showValue
             size="sm"
-            label="Mesh expansion"
-            onChange={(v) => mesh('Edit Puppet Mesh', { expansion: Math.round(v) })}
+            label={t('inspector.puppet.meshExpansion', 'Mesh expansion')}
+            onChange={(v) => mesh(meshLabel, { expansion: Math.round(v) })}
           />
           </span>
         </div>
 
         <div className={styles.paramRow}>
-          <span className={styles.paramLabel}>Solver</span>
+          <span className={styles.paramLabel}>{t('inspector.puppet.solver', 'Solver')}</span>
           <select
             value={solver}
-            aria-label="Puppet deform solver"
-            onChange={(e) => mesh('Edit Puppet Mesh', { solver: e.target.value as 'lbs' | 'arap' })}
+            aria-label={t('inspector.puppet.solverLabel', 'Puppet deform solver')}
+            onChange={(e) => mesh(meshLabel, { solver: e.target.value as 'lbs' | 'arap' })}
             style={selectStyle}
           >
             <option value="arap">ARAP</option>
@@ -210,17 +216,17 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
         </div>
 
         <div className={styles.paramRow}>
-          <span className={styles.paramLabel} title="Caps how far any one pin may rotate the mesh. 0 = unlimited.">
-            Rotation Limit
+          <span className={styles.paramLabel} title={t('inspector.puppet.rotationLimitHint', 'Caps how far any one pin may rotate the mesh. 0 = unlimited.')}>
+            {t('inspector.puppet.rotationLimit', 'Rotation Limit')}
           </span>
           <ValueField
             value={rig?.maxRotationDeg ?? 0}
             min={0}
             unit="°"
-            {...eng.scrub('Edit Puppet Mesh')}
+            {...eng.scrub(meshLabel)}
             // 0 = unlimited (stored as absent).
-            onChange={(v) => mesh('Edit Puppet Mesh', { rotationRefinement: Math.max(0, v) })}
-            aria-label="Mesh rotation refinement"
+            onChange={(v) => mesh(meshLabel, { rotationRefinement: Math.max(0, v) })}
+            aria-label={t('inspector.puppet.rotationRefinement', 'Mesh rotation refinement')}
           />
         </div>
       </div>
@@ -229,21 +235,21 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
         <div className={styles.tipCard}>
           <Icon name="info" size="sm" style={{ flexShrink: 0, marginTop: 1, color: '#60a5fa' }} />
           <span>
-            <strong>Tip:</strong> Add anchor pins to the <em>chest</em> & <em>shoulders</em> to keep the body in place when moving limbs.
+            <strong>{t('inspector.puppet.tipLabel', 'Tip:')}</strong> {t('inspector.puppet.tip', 'Add anchor pins to the chest & shoulders to keep the body in place when moving limbs.')}
           </span>
         </div>
       )}
 
       {pins.length === 0 && (
         <div className={styles.card} style={{ textAlign: 'center', padding: '16px 12px' }}>
-          <span className={styles.subText}>Click the layer to place pins.</span>
+          <span className={styles.subText}>{t('inspector.puppet.empty', 'Click the layer to place pins.')}</span>
           <Button
             size="sm"
             variant="primary"
             onClick={() => useUIStore.getState().setActiveTool('puppet-pin')}
             style={{ marginTop: 8 }}
           >
-            <Icon name="puppet-pin" size="sm" style={{ color: '#ffffff' }} /> Puppet Pin Tool (Ctrl+P)
+            <Icon name="puppet-pin" size="sm" style={{ color: '#ffffff' }} /> {t('inspector.puppet.pinTool', 'Puppet Pin Tool ({shortcut})', { shortcut: 'Ctrl+P' })}
           </Button>
         </div>
       )}
@@ -276,7 +282,7 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
                 <button
                   type="button"
                   className={`${styles.anchorToggle} ${isAnchored ? styles.anchorToggleActive : ''}`}
-                  title={isAnchored ? 'Anchor lock active (body stays rigid)' : 'Lock as rigid anchor (Stiffness: 10)'}
+                  title={isAnchored ? t('inspector.puppet.anchorActive', 'Anchor lock active (body stays rigid)') : t('inspector.puppet.anchorLock', 'Lock as rigid anchor (Stiffness: 10)')}
                   onClick={() => pinProp(pin.id, 'stiffness', isAnchored ? 0 : 10)}
                 >
                   <Icon
@@ -284,14 +290,14 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
                     size="sm"
                     style={{ color: isAnchored ? '#f5b041' : 'inherit' }}
                   />
-                  <span>{isAnchored ? 'Locked' : 'Anchor'}</span>
+                  <span>{isAnchored ? t('inspector.puppet.locked', 'Locked') : t('inspector.puppet.anchor', 'Anchor')}</span>
                 </button>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => { void edit('Delete Puppet Pin', deletePinCommands(nodeId, pin.id)); }}
-                  aria-label={`Delete pin ${pin.name || pin.id}`}
-                  title="Delete pin"
+                  aria-label={t('inspector.puppet.deletePinNamed', 'Delete pin {name}', { name: pin.name || pin.id })}
+                  title={t('inspector.puppet.deletePin', 'Delete pin')}
                 >
                   <Icon name="trash" size="sm" />
                 </Button>
@@ -299,11 +305,11 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             </div>
 
             <div className={styles.paramRow}>
-              <span className={styles.paramLabel}>Type</span>
+              <span className={styles.paramLabel}>{t('inspector.puppet.type', 'Type')}</span>
               <select
                 value={kind}
-                aria-label={`${pin.name || pin.id} pin type`}
-                onChange={(e) => { void edit('Edit Puppet Pin', pinKindCommands(nodeId, pin.id, e.target.value as PinKind)); }}
+                aria-label={t('inspector.puppet.pinTypeLabel', '{name} pin type', { name: pin.name || pin.id })}
+                onChange={(e) => { void edit(pinLabel, pinKindCommands(nodeId, pin.id, e.target.value as PinKind)); }}
                 style={selectStyle}
               >
                 {PIN_KIND_CATALOG.map((k) => (
@@ -314,57 +320,55 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
 
             {kind === 'bend' && (
               <div className={styles.subText} style={{ margin: '2px 0 6px' }}>
-                Position is derived from the advanced pins around it. Rotation and
-                scale act on the motion they already produce — at 0° and 1× this
-                pin does nothing.
+                {t('inspector.puppet.bendHint', 'Position is derived from the advanced pins around it. Rotation and scale act on the motion they already produce — at 0° and 1× this pin does nothing.')}
               </div>
             )}
             {kind === 'starch' && (
               <div className={styles.subText} style={{ margin: '2px 0 6px' }}>
-                Keeps this region rigid so nearby pins cannot fold it.
+                {t('inspector.puppet.starchHint', 'Keeps this region rigid so nearby pins cannot fold it.')}
               </div>
             )}
             {kind === 'overlap' && (
               <div className={styles.subText} style={{ margin: '2px 0 6px' }}>
-                Sets which part draws in front when the mesh folds over itself.
+                {t('inspector.puppet.overlapKindHint', 'Sets which part draws in front when the mesh folds over itself.')}
               </div>
             )}
 
             {showRotate && (
               <div className={styles.paramRow}>
-                <span className={styles.paramLabel}>Rotation</span>
+                <span className={styles.paramLabel}>{t('inspector.puppet.rotation', 'Rotation')}</span>
                 <ValueField
                   value={pin.rotation ?? 0}
                   unit="°"
-                  {...eng.scrub('Edit Puppet Pin')}
+                  {...eng.scrub(pinLabel)}
                   onChange={(v) => pinProp(pin.id, 'rotation', v)}
-                  aria-label={`${pin.name || pin.id} rotation`}
+                  aria-label={t('inspector.puppet.pinRotationLabel', '{name} rotation', { name: pin.name || pin.id })}
                 />
               </div>
             )}
 
             {showStiffness && (
               <div className={styles.paramRow}>
-                <span className={styles.paramLabel}>Stiffness</span>
+                <span className={styles.paramLabel}>{t('inspector.puppet.stiffness', 'Stiffness')}</span>
                 <ValueField
                   value={pin.stiffness ?? 0}
                   min={0}
-                  {...eng.scrub('Edit Puppet Pin')}
+                  {...eng.scrub(pinLabel)}
                   onChange={(v) => pinProp(pin.id, 'stiffness', Math.max(0, v))}
-                  aria-label={`${pin.name || pin.id} stiffness`}
+                  aria-label={t('inspector.puppet.pinStiffnessLabel', '{name} stiffness', { name: pin.name || pin.id })}
                 />
               </div>
             )}
 
             {showScale && (
               <div className={styles.paramRow}>
-                <span className={styles.paramLabel}>Scale</span>
+                <span className={styles.paramLabel}>{t('inspector.puppet.scale', 'Scale')}</span>
                 <ValueField
                   value={pin.scale ?? 1}
                   min={0.01}
-                  {...eng.scrub('Edit Puppet Pin')}
+                  {...eng.scrub(pinLabel)}
                   onChange={(v) => pinProp(pin.id, 'scale', Math.max(0.01, v))}
-                  aria-label={`${pin.name || pin.id} scale`}
+                  aria-label={t('inspector.puppet.pinScaleLabel', '{name} scale', { name: pin.name || pin.id })}
                 />
               </div>
             )}
@@ -373,30 +377,30 @@ export function PuppetControls({ nodeId }: { nodeId: string }): JSX.Element | nu
               <div className={styles.paramRow}>
                 <span
                   className={styles.paramLabel}
-                  title="Depth ordering where the mesh folds over itself — positive draws this region in front."
+                  title={t('inspector.puppet.overlapHint', 'Depth ordering where the mesh folds over itself — positive draws this region in front.')}
                 >
-                  Overlap
+                  {t('inspector.puppet.overlap', 'Overlap')}
                 </span>
                 <ValueField
                   value={pin.overlap ?? 0}
                   min={-100}
                   max={100}
-                  {...eng.scrub('Edit Puppet Pin')}
+                  {...eng.scrub(pinLabel)}
                   onChange={(v) => pinProp(pin.id, 'overlap', Math.max(-100, Math.min(100, v)))}
-                  aria-label={`${pin.name || pin.id} overlap`}
+                  aria-label={t('inspector.puppet.pinOverlapLabel', '{name} overlap', { name: pin.name || pin.id })}
                 />
               </div>
             )}
 
             {showOverlap && (pin.overlap ?? 0) !== 0 && (
               <div className={styles.paramRow}>
-                <span className={styles.paramLabel}>Overlap Extent</span>
+                <span className={styles.paramLabel}>{t('inspector.puppet.overlapExtent', 'Overlap Extent')}</span>
                 <ValueField
                   value={pin.overlapExtent ?? 1}
                   min={0.05}
-                  {...eng.scrub('Edit Puppet Pin')}
+                  {...eng.scrub(pinLabel)}
                   onChange={(v) => pinProp(pin.id, 'overlapExtent', Math.max(0.05, v))}
-                  aria-label={`${pin.name || pin.id} overlap extent`}
+                  aria-label={t('inspector.puppet.pinOverlapExtentLabel', '{name} overlap extent', { name: pin.name || pin.id })}
                 />
               </div>
             )}

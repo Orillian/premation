@@ -80,3 +80,11 @@ KN(k_adbe_light_cone_angle, "ADBE Light Cone Angle")
 KN(k_adbe_light_cone_feather, "ADBE Light Cone Feather 2")
 KN(k_adbe_light_shadow_darkness, "ADBE Light Shadow Darkness")
 KN(k_adbe_light_shadow_diffusion, "ADBE Light Shadow Diffusion")
+
+// AE-style rigs (docs/EXPRESSION_LANGUAGE.md): a layer's transform group and
+// its members, timing facts, parenting, and effect("Name")("Param").
+K(transform) K(anchorPoint) K(scale) K(rotation) K(opacity) K(xRotation) K(yRotation) K(zRotation)
+K(orientation) K(inPoint) K(outPoint) K(parent) K(hasParent) K(effect) K(param) K(enabled) K(active)
+K(startTime)
+// AE property objects and the language additions (2026-10-21)
+K(smooth) K(temporalWiggle) K(message) K(wiggle)

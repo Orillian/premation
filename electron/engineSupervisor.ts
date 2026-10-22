@@ -17,6 +17,14 @@
  *    engine's document core thread (so a pong proves the core drains its
  *    queue, not just that the process exists). No pong for `hangMs` = hung:
  *    killed and treated as a crash.
+ *    Liveness is not idleness: a core thread deep in ONE item (a heavy comp's
+ *    first frame, a batch of hundreds of edits) cannot reach the ping, so the
+ *    engine's watchdog thread answers it instead with `busyMs` / `busy` (what
+ *    the core is on, for how long — native/engine/src/engine_process.cpp
+ *    CoreWatchdog). Such an engine is alive: it is reported (`busy`) and left
+ *    alone, until one item outlasts `stuckMs` — then it is a hang (a deadlock
+ *    looks exactly like this, and nothing that holds the core 30 s is work the
+ *    editor can wait for).
  *  - **crash** (any exit we did not ask for, a hang, a lost GPU device):
  *    restart after a backoff (250 ms, 1 s, 4 s). Each successful restart
  *    emits `engine-restarted`: the engine came back EMPTY, so the UI must
@@ -79,6 +87,8 @@ export interface SupervisorDeps {
 export interface SupervisorOptions {
   heartbeatMs: number;
   hangMs: number;
+  /** An engine busy on ONE core item this long is stuck (killed as a hang). */
+  stuckMs: number;
   handshakeMs: number;
   backoffMs: readonly number[];
   crashLoop: { count: number; windowMs: number };
@@ -101,6 +111,7 @@ export interface SupervisorOptions {
 export const DEFAULT_SUPERVISOR_OPTIONS: SupervisorOptions = {
   heartbeatMs: 1000,
   hangMs: 5000,
+  stuckMs: 30_000,
   handshakeMs: 10_000,
   backoffMs: [250, 1000, 4000],
   crashLoop: { count: 3, windowMs: 60_000 },
@@ -125,6 +136,12 @@ export interface EngineRestartedInfo {
   logTail: string[];
 }
 
+/** What the engine's core thread is on and for how long (a busy pong); null once it is back to its queue. */
+export interface EngineBusyInfo {
+  what: string;
+  ms: number;
+}
+
 export interface UnavailableInfo {
   reason: string;
   /**
@@ -140,6 +157,8 @@ export interface SupervisorEvents {
   state: [SupervisorState];
   ready: [WelcomeInfo];
   'engine-restarted': [EngineRestartedInfo];
+  /** The core thread went busy on one item (its description, how long so far) or came back (null). */
+  busy: [EngineBusyInfo | null];
   unavailable: [UnavailableInfo];
   events: [EventBatchBytes];
   'log-record': [AppliedJobEdit];
@@ -163,6 +182,7 @@ export class EngineSupervisor {
   private heartbeat: unknown = null;
   private lastPong = 0;
   private lastTick = 0;
+  private busy: EngineBusyInfo | null = null;
   private nonce = 0;
   private crashes: number[] = [];
   private pendingCause: EngineRestartedInfo['cause'] | null = null;
@@ -390,6 +410,7 @@ export class EngineSupervisor {
   private onFrame(m: EngineFrameMessage): void {
     if (m.type === 'pong') {
       this.lastPong = this.timers.now();
+      this.onBusy(m.busyMs ?? 0, m.busy ?? '');
       return;
     }
     if (m.type === 'frameReady' && this.opts.autoReleaseWithoutListeners && this.emitter.listenerCount('frame') === 0) {
@@ -434,8 +455,31 @@ export class EngineSupervisor {
     }
   }
 
+  /** A pong's busy report: alive, on `what` for `ms` (0 = the core answered itself, idle between items). */
+  private onBusy(ms: number, what: string): void {
+    if (ms <= 0) {
+      this.setBusy(null);
+      return;
+    }
+    if (!this.busy) this.log('warn', 'engine_busy', { what, ms });
+    this.setBusy({ what, ms });
+    if (ms > this.opts.stuckMs && this.state_ === 'running') {
+      this.log('error', 'engine_stuck', { what, ms });
+      this.pendingCause = 'hang';
+      this.stopHeartbeat();
+      this.child?.kill();
+    }
+  }
+
+  private setBusy(b: EngineBusyInfo | null): void {
+    if (b === null && this.busy === null) return;
+    this.busy = b;
+    this.emitter.emit('busy', b);
+  }
+
   private startHeartbeat(gen: number): void {
     this.stopHeartbeat();
+    this.setBusy(null);
     this.lastTick = this.timers.now();
     this.heartbeat = this.timers.setInterval(() => {
       if (gen !== this.generation || this.state_ !== 'running') return;
@@ -458,6 +502,7 @@ export class EngineSupervisor {
   private stopHeartbeat(): void {
     if (this.heartbeat) this.timers.clearInterval(this.heartbeat);
     this.heartbeat = null;
+    this.setBusy(null);
   }
 
   private onExit(gen: number, code: number | null, signal: string | null): void {

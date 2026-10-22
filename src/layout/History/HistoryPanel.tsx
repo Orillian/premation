@@ -13,6 +13,7 @@ import { EmptyState } from '@components/EmptyState';
 import { cn } from '@utils/cn';
 import { historyView, performJumpTo, subscribeHistory } from '@stores/historyStore';
 import { engine } from '@core/engine/engineInstance';
+import { t } from '@core/i18n';
 import styles from './HistoryPanel.module.css';
 
 /**
@@ -56,25 +57,25 @@ export function HistoryPanel(): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        <span className={styles.title}>History</span>
+        <span className={styles.title}>{t('history.panel.title', 'History')}</span>
         <button
           type="button"
           className={styles.snapshot}
-          title="Snapshot current state"
-          aria-label="Snapshot current state"
+          title={t('history.panel.snapshot', 'Snapshot current state')}
+          aria-label={t('history.panel.snapshot', 'Snapshot current state')}
           onClick={snapshot}
         >
           <Icon name="marker" size="sm" />
         </button>
       </div>
 
-      <div className={styles.list} role="listbox" aria-label="History states">
+      <div className={styles.list} role="listbox" aria-label={t('history.panel.states', 'History states')}>
         {entries.length === 0 ? (
           <EmptyState
             icon="undo"
-            title="Nothing to undo yet"
-            message="Every edit lands here as a state you can click back to — including the ones you have already undone."
-            action={{ label: 'Snapshot current state', onClick: snapshot }}
+            title={t('history.panel.emptyTitle', 'Nothing to undo yet')}
+            message={t('history.panel.emptyMessage', 'Every edit lands here as a state you can click back to — including the ones you have already undone.')}
+            action={{ label: t('history.panel.snapshot', 'Snapshot current state'), onClick: snapshot }}
           />
         ) : (
           entries.map((e, i) => {

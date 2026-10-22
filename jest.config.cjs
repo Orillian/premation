@@ -54,6 +54,9 @@ module.exports = {
     // `import.meta.glob` (Vite) over docs/*.md for the palette's `?` mode —
     // same CommonJS parse problem, same answer: a stub with an empty index.
     '^(\\.|@layout/CommandPalette)/docsGlob$': '<rootDir>/src/layout/CommandPalette/docsGlob.stub.ts',
+    // `new URL('./captureWorklet.js', import.meta.url)` — the recording worklet's
+    // asset URL; same parse problem, so any suite that boots the editor loads a stub.
+    '^(\\.|@core/audio/recording)/captureWorkletUrl$': '<rootDir>/src/core/audio/recording/captureWorkletUrl.stub.ts',
     // Path aliases — keep in sync with tsconfig.json "paths".
     '^@motion/scene$': '<rootDir>/packages/scene/src/index.ts',
     '^@motion/animation$': '<rootDir>/packages/animation/src/index.ts',

@@ -14,6 +14,7 @@ import { mirrorPaintStrokes } from '@core/mirror/paintStrokes';
 import { PaintStrokeList } from '@layout/Paint/PaintPanel';
 import { setPaintTool } from '@layout/Paint/paintTool';
 import { PropertyRow } from '@components/PropertyRow';
+import { t } from '@core/i18n';
 
 /** A paintable layer that has strokes (a fresh layer gets the section from the Paint panel / Brush tool). */
 export function hasPaintSection(nodeId: string): boolean {
@@ -28,8 +29,8 @@ export function PaintSection({ nodeId }: { nodeId: string }): JSX.Element {
       <PaintStrokeList layerId={nodeId} />
       <PropertyRow label="" compact>
         <span style={{ display: 'flex', gap: 6 }}>
-          <Button size="sm" variant="secondary" onClick={() => setPaintTool('brush')}>Brush Tool</Button>
-          <Button size="sm" variant="secondary" onClick={() => useLayoutStore.getState().openPanel('paint')}>Paint Panel</Button>
+          <Button size="sm" variant="secondary" onClick={() => setPaintTool('brush')}>{t('inspector.paint.brushTool', 'Brush Tool')}</Button>
+          <Button size="sm" variant="secondary" onClick={() => useLayoutStore.getState().openPanel('paint')}>{t('inspector.paint.paintPanel', 'Paint Panel')}</Button>
         </span>
       </PropertyRow>
     </div>

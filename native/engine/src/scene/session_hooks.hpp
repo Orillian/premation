@@ -108,9 +108,12 @@ class FrameBuilder {
   FrameBuilder(FrameBuilder&&) = delete;
   FrameBuilder& operator=(FrameBuilder&&) = delete;
 
-  /// Build on the core thread (the document is read here, never on the render
-  /// thread). `errors` receives the frame's per-layer errors — build failures
-  /// and features outside the port — as `layerErrors` event records.
+  /// Build on the session's build worker, under its build lock (the document
+  /// is read there while no edit runs, never on the render thread; the
+  /// builder's other entry points are called from the core thread under the
+  /// same lock, so one build or one query runs at a time). `errors` receives
+  /// the frame's per-layer errors — build failures and features outside the
+  /// port — as `layerErrors` event records.
   // shared_ptr: the frame changes hands once, core thread → render thread, and
   // the RenderJob that carries it is destroyed in translation units that only
   // see the forward declaration (shared_ptr type-erases the deleter).

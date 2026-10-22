@@ -106,8 +106,8 @@ Json n(double d) { return Json::number(d); }
 
 }  // namespace
 
-std::optional<std::vector<Json>> layer_styles_to_effects(const Json& styles, double globalAngle, double globalAltitude,
-                                                         const std::function<bool(std::string_view)>& animated) {
+std::vector<Json> layer_styles_to_effects(const Json& styles, double globalAngle, double globalAltitude,
+                                          const std::function<bool(std::string_view)>& animated) {
   std::vector<Json> out;
   // `if (!styles) return []` — and a non-object has no style members to read.
   if (!styles.is_object()) return out;

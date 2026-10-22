@@ -39,7 +39,12 @@ class ExternalTextureSource {
   /// The same picture with a full mip chain (a 3D layer seen at a steep angle
   /// samples it minified: without mips a 1 px stroke breaks into dots). The
   /// default has none to offer.
-  [[nodiscard]] virtual TexRef external_texture_mipmapped(std::string_view hash) { return external_texture(hash); }
+  /// `fp`: the quad it is drawn over — the chain is built as deep as that
+  /// draw samples (Device::mip_texture, mip_levels_needed).
+  [[nodiscard]] virtual TexRef external_texture_mipmapped(std::string_view hash, const MipFootprint& fp = {}) {
+    (void)fp;
+    return external_texture(hash);
+  }
 };
 
 /// Viewport + Camera2D (viewport/Viewport.ts, camera/Camera2D.ts).
@@ -162,7 +167,9 @@ struct PassContext {
   /// texture(), mipmapped where the source can be (3D quads: trilinear +
   /// anisotropic sampling keeps thin strokes whole when minified). A colour-
   /// managed texture keeps its single-level working-space conversion.
-  [[nodiscard]] TexRef texture_mipmapped(std::string_view key);
+  /// `fp`: the device-px quad it is drawn over; the chain is built as deep as
+  /// that draw samples (TexRef::mipLevels; sample it with linear_clamp_levels).
+  [[nodiscard]] TexRef texture_mipmapped(std::string_view key, const MipFootprint& fp = {});
   /// Whether `key` resolved to real (ready) pixels when the frame was captured.
   [[nodiscard]] bool texture_ready(std::string_view key) const { return textures.resolve(key).ready; }
   [[nodiscard]] SamplerRef linear_clamp() { return dev.sampler("linear-clamp", wgpu::FilterMode::Linear, wgpu::AddressMode::ClampToEdge); }
@@ -170,6 +177,10 @@ struct PassContext {
   [[nodiscard]] SamplerRef linear_clamp_aniso() {
     return dev.sampler("linear-clamp-aniso16", wgpu::FilterMode::Linear, wgpu::AddressMode::ClampToEdge, 16);
   }
+  /// Linear clamp-to-edge that never reads past level `levels - 1` (a lazily
+  /// built chain, TexRef::mipLevels: 0 or 1 = level 0 only); 16× anisotropic
+  /// when `aniso` and there is a chain.
+  [[nodiscard]] SamplerRef linear_clamp_levels(std::uint32_t levels, bool aniso);
   [[nodiscard]] SamplerRef nearest_clamp() { return dev.sampler("nearest-clamp", wgpu::FilterMode::Nearest, wgpu::AddressMode::ClampToEdge); }
   [[nodiscard]] SamplerRef linear_repeat() { return dev.sampler("linear-repeat", wgpu::FilterMode::Linear, wgpu::AddressMode::Repeat); }
 

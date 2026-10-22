@@ -91,6 +91,7 @@ import { TransportBar } from './TransportBar';
 import { ViewportHud } from './ViewportHud';
 import { EngineSurface } from '@components/EngineSurface/EngineSurface';
 import { EngineUnportedNotice } from './EngineUnportedNotice';
+import { ExpressionErrorBar } from './ExpressionErrorBar';
 import { CompareOverlay } from './CompareOverlay';
 import { RotoBrushOverlay } from './RotoBrushOverlay';
 import { InlineAiPrompt } from './InlineAiPrompt';
@@ -733,6 +734,8 @@ export function WorkspaceViewport({
           <ViewportHud />
           {/* What the engine cannot draw yet, named per layer. */}
           <EngineUnportedNotice />
+          {/* After Effects' expression error bar: failing expressions, ◀ ▶, Edit. */}
+          <ExpressionErrorBar />
           {/* Ctrl+Enter: an AI prompt anchored to the selection's screen rect. */}
           <InlineAiPrompt />
         </div>

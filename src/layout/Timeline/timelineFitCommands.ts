@@ -13,6 +13,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
+import { t } from '@core/i18n';
 import { getTimelineViewport } from './timelineViewport';
 import { fitTimelineToComposition, fitTimelineToRange, fitTimelineToWorkArea, hasWorkArea } from './timelineFit';
 import { getTimelineFitSource, selectionTimeRange } from './fitSelection';
@@ -40,8 +41,8 @@ export function buildTimelineFitCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_FIT_COMP_COMMAND,
-      label: 'Fit Composition to Timeline',
-      description: 'Zoom the timeline so the whole composition fills the visible lanes.',
+      label: t('timeline.fit.composition', 'Fit Composition to Timeline'),
+      description: t('timeline.fit.compositionDescription', 'Zoom the timeline so the whole composition fills the visible lanes.'),
       icon: 'fit',
       // AE binds `;` to exactly this.
       shortcut: { key: ';' },
@@ -52,8 +53,8 @@ export function buildTimelineFitCommands(): ReadonlyArray<Command> {
     },
     {
       id: TIMELINE_FIT_WORK_AREA_COMMAND,
-      label: 'Fit Work Area to Timeline',
-      description: 'Zoom the timeline so the work area fills the visible lanes.',
+      label: t('timeline.fit.workArea', 'Fit Work Area to Timeline'),
+      description: t('timeline.fit.workAreaDescription', 'Zoom the timeline so the work area fills the visible lanes.'),
       icon: 'frame',
       shortcut: { key: ';', alt: true },
       enabled: () => timelineMeasured() && hasWorkArea(),
@@ -63,8 +64,8 @@ export function buildTimelineFitCommands(): ReadonlyArray<Command> {
     },
     {
       id: TIMELINE_FIT_SELECTION_COMMAND,
-      label: 'Fit Selection to Timeline',
-      description: 'Zoom the timeline so the selected keyframes — or, with none, the selected layers’ bars — fill the visible lanes.',
+      label: t('timeline.fit.selection', 'Fit Selection to Timeline'),
+      description: t('timeline.fit.selectionDescription', 'Zoom the timeline so the selected keyframes — or, with none, the selected layers’ bars — fill the visible lanes.'),
       icon: 'select-all',
       shortcut: { key: ';', shift: true },
       enabled: () => timelineMeasured() && selectionRange() !== null,

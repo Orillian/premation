@@ -27,10 +27,24 @@ import { mountPreview, type PreviewSpec } from '@core/template/previewController
 import { previewChoreography } from './insertPreview';
 import { MOGRAPH_ID_PROP } from './mographParams';
 import type { SceneNode, Transform } from '@core/types';
+import { t } from '@core/i18n';
 
 
 
 export type MographCategory = 'lower-thirds' | 'callouts' | 'titles' | 'data' | 'shapes' | 'loops';
+
+/** Display name for a mograph category (`item.cat` is the id and stays as stored). */
+export function mographCategoryLabel(cat: string): string {
+  switch (cat) {
+    case 'lower-thirds': return t('core.mographLibrary.catLowerThirds', 'Lower Thirds');
+    case 'callouts': return t('core.mographLibrary.catCallouts', 'Callouts');
+    case 'titles': return t('core.mographLibrary.catTitles', 'Titles');
+    case 'data': return t('core.mographLibrary.catData', 'Data');
+    case 'shapes': return t('core.mographLibrary.catShapes', 'Shapes');
+    case 'loops': return t('core.mographLibrary.catLoops', 'Loops');
+    default: return cat;
+  }
+}
 
 /** Non-keyframe engine writes a design may author: expressions for infinite
  *  loops, and text.source hold keyframes for counters / word swaps. One

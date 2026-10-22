@@ -23,6 +23,7 @@ import type { ReactNode } from 'react';
 import type { IconName } from '@components/Icon';
 import { getCommandRegistry } from '@core/commands/Command';
 import { getCommandSystem } from '@core/commands/CommandSystem';
+import { commandLabel } from '@core/commands/commandLabel';
 import { resolveChord, getShortcutOverrides } from '@core/commands/shortcutOverrides';
 import { formatChord } from '@core/commands/formatChord';
 import { asCommandId } from '@app-types/common';
@@ -59,7 +60,7 @@ export function resolveContextMenuItems(items: ReadonlyArray<ContextMenuItem>): 
       out = {
         ...it,
         ...(it.shortcut === undefined && chord ? { shortcut: formatChord(chord) } : {}),
-        ...(it.label === undefined && cmd ? { label: cmd.label } : {}),
+        ...(it.label === undefined && cmd ? { label: commandLabel(cmd) } : {}),
         ...(it.onSelect === undefined
           ? { onSelect: () => { void getCommandSystem().execute(asCommandId(commandId)); } }
           : {}),

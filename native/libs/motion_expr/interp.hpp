@@ -24,10 +24,17 @@ namespace motion::expr::detail {
 /// `throw new Error(...)`, and the V8 TypeErrors/RangeErrors the TypeScript
 /// would raise). `message` is pre-humanize, as the TypeScript's `e.message`.
 struct EvalError : std::exception {
-  explicit EvalError(Str m) : message(std::move(m)) {}
+  explicit EvalError(Str m, bool f = false) : message(std::move(m)), fatal(f) {}
   [[nodiscard]] const char* what() const noexcept override { return "motion::expr::EvalError"; }
   Str message;
+  /// A budget (steps, depth, loop count): `try … catch` in the language
+  /// cannot catch it, so a rig can never turn a runaway into a value.
+  bool fatal;
 };
+
+/// Thrown by a `?.` whose object is null / undefined; the enclosing kOptChain
+/// turns it into `undefined`. Never leaves the interpreter.
+struct ShortCircuit {};
 
 /// Arguments of one call. Missing arguments read as `undefined`.
 class Args {
@@ -47,6 +54,9 @@ class Interp {
 
   /// exprLang.ts `evaluateExpression`: the shared budget + the root node.
   Value run();
+  /// After `run` threw: the source offset of the innermost node that failed
+  /// (kNoPos when none is known).
+  [[nodiscard]] std::uint32_t error_pos() const noexcept { return err_pos_; }
 
   // ── Used by stdlib.cpp / sourcetext.cpp ──
   [[nodiscard]] Arena& arena() noexcept { return arena_; }
@@ -65,10 +75,45 @@ class Interp {
 
  private:
   Value eval(std::uint32_t id);
-  Value eval_inner(const Node& n);
+  Value eval_inner(std::uint32_t id);
   Value eval_call(const Node& n);
   Value global(const Node& n);
   Value binary(Op op, const Value& l, const Value& r);
+  /// AE's vector arithmetic on `+ - * /`: array ⊕ array, array ⊕ number.
+  std::optional<Value> vector_binary(Op op, const Value& l, const Value& r);
+
+  // Statements, locals and functions (docs/EXPRESSION_LANGUAGE.md)
+  enum class Flow : std::uint8_t { kNormal, kBreak, kContinue, kReturn };
+  /// An assignment target: a local slot or an object member, evaluated once.
+  struct Ref {
+    Env* env = nullptr;  // local: the frame
+    std::uint32_t slot = 0;
+    bool is_const = false;
+    bool local = false;
+    Value obj;           // member: the object…
+    Value key;           // … and the key
+    KeyId kid = KeyId::kUnknown;
+  };
+  Ref ref_of(const Node& target);
+  Value ref_get(const Ref& r);
+  void ref_set(const Ref& r, const Value& v);
+  Env& frame(std::uint16_t depth);
+  Value exec_block(const Node& n);
+  Value exec_loop(const Node& n);
+  Value exec_do_while(const Node& n);
+  Value exec_for_of(const Node& n);
+  Value exec_switch(const Node& n);
+  Value exec_try(const Node& n);
+  Value eval_object(const Node& n);
+  Value eval_template(const Node& n);
+  /// Run one loop body; true when the loop must stop (break / return).
+  bool loop_body(std::uint32_t body, Value& last);
+  void note_pos(std::uint32_t id) noexcept {
+    if (err_pos_ == kNoPos) err_pos_ = prog_.nodes[id].pos;
+  }
+  Value closure(std::uint32_t id);
+  Value call_user(const Obj& f, Args args);
+  Value type_of(const Value& v);
 
   // expressions.ts API
   Value call_api(const Obj& f, Args a);
@@ -105,6 +150,30 @@ class Interp {
   Value active_camera();
   Value look_at(Args a);
   Value space_vec_fn(const Obj& f, Args a);
+  // AE-style rigs: layer facts, the transform group, effect("Name")("Param")
+  Value layer_fact(const Obj& o, KeyId key);
+  Value transform_group(const Value& bound);
+  Value effect_fn(const Obj& f, Args a);
+  Value effect_param(const Obj& f, Args a);
+
+  // AE property objects and globals (2026-10-21)
+  /// Turn a sampled value (a fresh array or a number) into a property object.
+  Value prop_object(const Value& v, PropKind kind, const Value& bound, KeyId pkey, const Str* effect, const Value& arg);
+  /// A layer property (position, rotation…) of `bound` (null = this layer) at `t`, as a plain value.
+  Value sample_layer(const Value& bound, KeyId key, double t);
+  /// A property object's plain value at `t` (`prop` nullptr = the expression's own property).
+  Value sample_prop(const Obj* prop, double t);
+  Value prop_velocity(const Obj* prop, double t);
+  std::optional<Value> prop_member(Obj& o, KeyId kid);
+  std::vector<double> prop_key_times(const Obj& o);
+  Value prop_key(const Obj& o, const Value& n);
+  Value prop_nearest_key(const Obj& o, Args a);
+  Value smooth(const Obj* prop, Args a);
+  Value temporal_wiggle(Args a);
+  Value comp_fn(Args a);
+  Value comp_layer_by_name(const Obj& f, Args a);
+  Value color_convert(bool to_rgb, const Value& v);
+  Value timecode(const Value& t, const Value& base);
 
   // Markers
   struct MarkerList {
@@ -138,13 +207,11 @@ class Interp {
   Value this_layer_;
   Value this_property_;
   Value property_value_;
-  bool property_value_built_ = false;
   std::array<Value, 4> own_space_{};
   std::array<Value, 2> marker_scope_{};
   std::array<MarkerList, 2> markers_{};
   Value own_text_;
   Value active_camera_;
-  bool active_camera_built_ = false;
   Value plugin_;
   Value math_;
   std::optional<double> velocity_;
@@ -152,8 +219,31 @@ class Interp {
   // AE's random sequence: (seed, call index) → value; see expressions.ts.
   Value random_seed_ = ctx_.prop_seed ? Value::number(*ctx_.prop_seed) : Value::number(0);
   double random_counter_ = 0;
+
+  // Statements: the current frame, the pending return value, and (below)
+  // the control flow and whether the statement just run produced a
+  // completion value (`stmt_empty_` false).
+  Env* env_ = nullptr;
+  Value return_value_;
+  // `throw v`: the value, for the `catch (e)` that receives it.
+  Value thrown_;
+  std::uint32_t err_pos_ = kNoPos;
+
+  // The flags, together (padding).
+  bool property_value_built_ = false;
+  bool active_camera_built_ = false;
   bool random_timeless_ = false;  // seedRandom(s, true)
+  bool stmt_empty_ = false;
+  bool has_thrown_ = false;
+  Flow flow_ = Flow::kNormal;
 };
+
+/// Most times one loop may iterate in an evaluation; past it the expression
+/// fails with a stated error. Below half the step budget (kMaxEvalSteps), so
+/// even an empty loop body reports the loop, not "too expensive".
+inline constexpr int kMaxLoopIterations = 50000;
+/// Most elements an expression may give an array by index assignment.
+inline constexpr std::size_t kMaxArrayLength = 1U << 20U;
 
 // stdlib.cpp — Math and the Object/Function/Number/Boolean/String/Array prototypes.
 [[nodiscard]] Value read_math(Interp& in, KeyId kid);
@@ -168,6 +258,8 @@ class Interp {
 // Helpers shared by the builtins.
 [[nodiscard]] double integer_or_infinity(double d) noexcept;  // ToIntegerOrInfinity
 [[noreturn]] void throw_eval(Str message);
+/// A budget error: not catchable by the language's `try`.
+[[noreturn]] void throw_fatal(Str message);
 /// JS hash01 / smoothNoise (expressions.ts), on motion::js::sin.
 [[nodiscard]] double hash01(double n) noexcept;
 [[nodiscard]] double smooth_noise(double x) noexcept;

@@ -461,7 +461,7 @@ function TransitionsContent(): JSX.Element {
 
 const formatSeconds = (s: number): string => (s < 1 ? `${s.toFixed(2)} s` : `${s.toFixed(1)} s`);
 
-const SFX_CATEGORIES: readonly string[] = ['impact', 'whoosh', 'riser', 'ui', 'glitch', 'foley', 'magic'];
+const SFX_CATEGORIES: readonly string[] = ['impact', 'whoosh', 'riser', 'ui', 'glitch', 'foley', 'magic', 'music'];
 
 function sfxCategoryLabel(cat: string): string {
   switch (cat) {
@@ -471,6 +471,7 @@ function sfxCategoryLabel(cat: string): string {
     case 'ui': return t('editor.library.sfx.catUi', 'UI');
     case 'glitch': return t('editor.library.sfx.catGlitch', 'Glitch');
     case 'foley': return t('editor.library.sfx.catFoley', 'Foley');
+    case 'music': return t('editor.library.sfx.catMusic', 'Music');
     case 'magic': return t('editor.library.sfx.catMagic', 'Magic');
     default: return titleCase(cat);
   }
@@ -505,7 +506,7 @@ function SoundRow({ item, access, onAudition }: {
           : t('editor.library.sfx.play', 'Play {name}', { name })}
         onClick={(e) => { e.stopPropagation(); onAudition(); }}
       >
-        <Icon name={playing ? 'stop' : 'play'} size={12} />
+        <Icon name={playing ? 'stop' : 'play'} size="sm" />
       </button>
       <Waveform id={item.id} peaks={item.peaks ?? []} />
       <span className={cardStyles.metaText}>

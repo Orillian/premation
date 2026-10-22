@@ -27,6 +27,7 @@
 
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
+import { t } from '@core/i18n';
 import { flicksToSeconds } from '@motion/engine-api';
 import { playheadSeconds } from '@core/timeline/timelineView';
 import { mirrorCompIdForTransition, mirrorTransitionAtCut } from '@core/mirror/transitions';
@@ -88,10 +89,12 @@ export function cutNearestPlayhead(): PlayheadCut | null {
 export function buildTransitionCommands(): ReadonlyArray<Command> {
   const add: Command[] = TRANSITION_KINDS.map((kind: TransitionKind) => ({
     id: asCommandId(`${TRANSITION_COMMAND_PREFIX}add.${kind}`),
-    label: `Add ${TRANSITION_LABEL[kind]} at Nearest Cut`,
-    description:
-      `Apply a ${DEFAULT_TRANSITION_FRAMES}-frame ${TRANSITION_LABEL[kind]} to the cut nearest the playhead. ` +
-      `Drag the chip from the timeline's transition palette to choose a different cut.`,
+    label: t('timeline.transition.addAtCut', 'Add {kind} at Nearest Cut', { kind: TRANSITION_LABEL[kind] }),
+    description: t(
+      'timeline.transition.addAtCutDescription',
+      "Apply a {frames}-frame {kind} to the cut nearest the playhead. Drag the chip from the timeline's transition palette to choose a different cut.",
+      { frames: DEFAULT_TRANSITION_FRAMES, kind: TRANSITION_LABEL[kind] },
+    ),
     icon: 'scissors',
     enabled: () => cutNearestPlayhead() !== null,
     execute: () => {
@@ -105,8 +108,8 @@ export function buildTransitionCommands(): ReadonlyArray<Command> {
     ...add,
     {
       id: asCommandId(`${TRANSITION_COMMAND_PREFIX}remove`),
-      label: 'Remove Transition at Nearest Cut',
-      description: 'Take the transition off the cut nearest the playhead and restore what it held before.',
+      label: t('timeline.transition.removeAtCut', 'Remove Transition at Nearest Cut'),
+      description: t('timeline.transition.removeAtCutDescription', 'Take the transition off the cut nearest the playhead and restore what it held before.'),
       icon: 'trash',
       enabled: () => {
         const cut = cutNearestPlayhead();

@@ -63,6 +63,7 @@ import { useViewportDisplayStore, DISPLAY_MODE_LABEL, type DisplayMode } from '@
 import { useViewerLutStore } from '@stores/viewerLutStore';
 import { openViewerLutPicker } from './viewerLutPicker';
 import { openInlineAiPrompt } from './inlineAiPromptStore';
+import { t } from '@core/i18n';
 
 export const VIEWPORT_COMMAND_IDS = {
   shuttleReverse: 'transport.shuttleReverse',
@@ -172,8 +173,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Transport ────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.shuttleReverse),
-      label: 'Shuttle Reverse',
-      description: 'J — reverse; again for 2× and 4×. With K held, step one frame back.',
+      label: t('workspace.command.shuttleReverse', 'Shuttle Reverse'),
+      description: t('workspace.command.shuttleReverseDescription', 'J — reverse; again for 2× and 4×. With K held, step one frame back.'),
       icon: 'skip-back',
       shortcut: { key: 'j' },
       enabled: transportChordsActive,
@@ -181,8 +182,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.shuttleStop),
-      label: 'Shuttle Stop',
-      description: 'K — stop the shuttle. Hold with J / L to step frames.',
+      label: t('workspace.command.shuttleStop', 'Shuttle Stop'),
+      description: t('workspace.command.shuttleStopDescription', 'K — stop the shuttle. Hold with J / L to step frames.'),
       icon: 'pause',
       shortcut: { key: 'k' },
       enabled: transportChordsActive,
@@ -190,8 +191,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.shuttleForward),
-      label: 'Shuttle Forward',
-      description: 'L — forward; again for 2× and 4×. With K held, step one frame forward.',
+      label: t('workspace.command.shuttleForward', 'Shuttle Forward'),
+      description: t('workspace.command.shuttleForwardDescription', 'L — forward; again for 2× and 4×. With K held, step one frame forward.'),
       icon: 'skip-forward',
       shortcut: { key: 'l' },
       // With a layer selected and no shuttle running, L is AE's "reveal Audio
@@ -204,7 +205,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.markIn),
-      label: 'Mark In at Playhead',
+      label: t('workspace.command.markIn', 'Mark In at Playhead'),
       icon: 'trim-in',
       shortcut: { key: 'i' },
       enabled: () => true,
@@ -212,7 +213,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.markOut),
-      label: 'Mark Out at Playhead',
+      label: t('workspace.command.markOut', 'Mark Out at Playhead'),
       icon: 'trim-out',
       shortcut: { key: 'o' },
       enabled: () => true,
@@ -220,7 +221,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.goToIn),
-      label: 'Go to In Point',
+      label: t('workspace.command.goToIn', 'Go to In Point'),
       icon: 'skip-back',
       shortcut: { key: 'i', shift: true },
       enabled: hasInOut,
@@ -228,7 +229,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.goToOut),
-      label: 'Go to Out Point',
+      label: t('workspace.command.goToOut', 'Go to Out Point'),
       icon: 'skip-forward',
       shortcut: { key: 'o', shift: true },
       enabled: hasInOut,
@@ -236,7 +237,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.clearInOut),
-      label: 'Clear In and Out',
+      label: t('workspace.command.clearInOut', 'Clear In and Out'),
       enabled: hasInOut,
       execute: () => clearInOut(),
     },
@@ -252,8 +253,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
      */
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.previewAudioOnly),
-      label: 'Preview Only Audio',
-      description: 'Play the sound from the playhead in real time, without drawing the picture.',
+      label: t('workspace.command.previewAudioOnly', 'Preview Only Audio'),
+      description: t('workspace.command.previewAudioOnlyDescription', 'Play the sound from the playhead in real time, without drawing the picture.'),
       icon: 'audio',
       shortcut: { key: 'Numpad.' },
       enabled: () => true,
@@ -261,8 +262,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.previewAudioOnlyWorkArea),
-      label: 'Preview Only Audio in Work Area',
-      description: 'Play the work area’s sound in real time, without drawing the picture.',
+      label: t('workspace.command.previewAudioOnlyWorkArea', 'Preview Only Audio in Work Area'),
+      description: t('workspace.command.previewAudioOnlyWorkAreaDescription', 'Play the work area’s sound in real time, without drawing the picture.'),
       icon: 'audio',
       shortcut: { key: 'Numpad.', alt: true },
       enabled: () => true,
@@ -270,8 +271,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.includeVideo),
-      label: 'Include Video in Preview',
-      description: 'Draw the picture while previewing. Off is an audio-only preview.',
+      label: t('workspace.command.includeVideo', 'Include Video in Preview'),
+      description: t('workspace.command.includeVideoDescription', 'Draw the picture while previewing. Off is an audio-only preview.'),
       enabled: () => true,
       isChecked: () => usePreviewBehaviorStore.getState().includeVideo,
       execute: () => {
@@ -281,8 +282,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.includeAudio),
-      label: 'Include Audio in Preview',
-      description: 'Play the composition’s sound while previewing.',
+      label: t('workspace.command.includeAudio', 'Include Audio in Preview'),
+      description: t('workspace.command.includeAudioDescription', 'Play the composition’s sound while previewing.'),
       enabled: () => true,
       isChecked: () => usePreviewBehaviorStore.getState().includeAudio,
       execute: () => {
@@ -292,8 +293,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.audioScrub),
-      label: 'Audio Scrub While Dragging',
-      description: 'Sound a short slice of the audio under the playhead as it is dragged.',
+      label: t('workspace.command.audioScrub', 'Audio Scrub While Dragging'),
+      description: t('workspace.command.audioScrubDescription', 'Sound a short slice of the audio under the playhead as it is dragged.'),
       enabled: () => true,
       isChecked: isAudioScrubEnabled,
       execute: () => setAudioScrubEnabled(!isAudioScrubEnabled()),
@@ -301,8 +302,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Snapshot compare ─────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.snapshot),
-      label: 'Take Snapshot',
-      description: 'Store the frame on screen for A/B, wipe or difference comparison. Show Snapshot (Shift+F5) displays it.',
+      label: t('workspace.command.snapshot', 'Take Snapshot'),
+      description: t('workspace.command.snapshotDescription', 'Store the frame on screen for A/B, wipe or difference comparison. Show Snapshot (Shift+F5) displays it.'),
       icon: 'camera',
       shortcut: { key: 'F5' },
       enabled: () => true,
@@ -314,15 +315,15 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
         // The view does not change (the snapshot is stored, not shown), so say it happened.
         useUIStore.getState().notify({
           level: 'info',
-          message: 'Snapshot taken — Shift+F5 (Show Snapshot) to compare it with the live view.',
+          message: t('workspace.command.snapshotTaken', 'Snapshot taken — Shift+F5 (Show Snapshot) to compare it with the live view.'),
           durationMs: 3000,
         });
       },
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.compareToggle),
-      label: 'Show Snapshot',
-      description: 'Show or hide the comparison with the last snapshot.',
+      label: t('workspace.command.showSnapshot', 'Show Snapshot'),
+      description: t('workspace.command.showSnapshotDescription', 'Show or hide the comparison with the last snapshot.'),
       icon: 'eye',
       // Shift+F5, beside Take Snapshot's F5 — NOT F6. F6 is the Render Queue,
       // and the queue says so in three tooltips and a toast. Sharing it on an
@@ -336,19 +337,19 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.compareFlip),
-      label: 'Flip A/B',
+      label: t('workspace.command.compareFlip', 'Flip A/B'),
       enabled: () => canCompare() && useCompareStore.getState().visible,
       execute: () => useCompareStore.getState().flip(),
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.compareClear),
-      label: 'Clear Snapshots',
+      label: t('workspace.command.compareClear', 'Clear Snapshots'),
       enabled: canCompare,
       execute: () => useCompareStore.getState().clear(),
     },
     ...(Object.keys(COMPARE_MODE_LABEL) as CompareMode[]).map<Command>((m) => ({
       id: asCommandId(VIEWPORT_COMMAND_IDS.compareMode(m)),
-      label: `Compare: ${COMPARE_MODE_LABEL[m]}`,
+      label: t('workspace.command.compareMode', 'Compare: {mode}', { mode: COMPARE_MODE_LABEL[m] }),
       enabled: () => true,
       isChecked: () => useCompareStore.getState().mode === m,
       execute: () => useCompareStore.getState().setMode(m),
@@ -356,7 +357,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Camera bookmarks ─────────────────────────────────────────────
     ...BOOKMARK_SLOTS.map<Command>((n) => ({
       id: asCommandId(VIEWPORT_COMMAND_IDS.bookmarkRecall(n)),
-      label: `Recall Camera Bookmark ${n}`,
+      label: t('workspace.command.bookmarkRecall', 'Recall Camera Bookmark {n}', { n }),
       icon: 'camera',
       shortcut: { key: String(n), meta: true, alt: true },
       enabled: () => bookmarkAt(n) !== null,
@@ -364,32 +365,32 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     })),
     ...BOOKMARK_SLOTS.map<Command>((n) => ({
       id: asCommandId(VIEWPORT_COMMAND_IDS.bookmarkSave(n)),
-      label: `Save Camera Bookmark ${n}`,
+      label: t('workspace.command.bookmarkSave', 'Save Camera Bookmark {n}', { n }),
       icon: 'camera',
       shortcut: { key: String(n), meta: true, alt: true, shift: true },
       enabled: () => true,
       execute: () => {
         const b = saveCameraBookmark(n);
-        useUIStore.getState().notify({ level: 'success', message: `Saved “${b.name}” (Ctrl+Alt+${n} recalls it)`, durationMs: 2400 });
+        useUIStore.getState().notify({ level: 'success', message: t('workspace.command.bookmarkSaved', 'Saved “{name}” (Ctrl+Alt+{n} recalls it)', { name: b.name, n }), durationMs: 2400 });
       },
     })),
     // ── Guides ───────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.guidesLock),
-      label: 'Lock Guides',
+      label: t('workspace.command.guidesLock', 'Lock Guides'),
       enabled: () => getWorkspaceController().ws.guides.list().some((g) => g.kind === 'user' && !g.locked),
       execute: () => setAllGuidesLocked(true),
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.guidesUnlock),
-      label: 'Unlock Guides',
+      label: t('workspace.command.guidesUnlock', 'Unlock Guides'),
       enabled: () => getWorkspaceController().ws.guides.list().some((g) => g.kind === 'user' && g.locked),
       execute: () => setAllGuidesLocked(false),
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.guidesClear),
-      label: 'Clear Guides',
-      description: 'Remove every unlocked guide.',
+      label: t('workspace.command.guidesClear', 'Clear Guides'),
+      description: t('workspace.command.guidesClearDescription', 'Remove every unlocked guide.'),
       enabled: () => getWorkspaceController().ws.guides.list().some((g) => g.kind === 'user'),
       execute: () => {
         getWorkspaceController().ws.guides.clear(false);
@@ -398,7 +399,7 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.guidesShow),
-      label: 'Show Guides',
+      label: t('workspace.command.guidesShow', 'Show Guides'),
       shortcut: { key: ';', meta: true },
       enabled: () => true,
       isChecked: () => useGuidesStore.getState().guidesVisible,
@@ -410,15 +411,15 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Display modes ────────────────────────────────────────────────
     ...(Object.keys(DISPLAY_MODE_LABEL) as DisplayMode[]).map<Command>((m) => ({
       id: asCommandId(VIEWPORT_COMMAND_IDS.displayMode(m)),
-      label: `Display: ${DISPLAY_MODE_LABEL[m]}`,
+      label: t('workspace.command.displayMode', 'Display: {mode}', { mode: DISPLAY_MODE_LABEL[m] }),
       enabled: () => true,
       isChecked: () => useViewportDisplayStore.getState().displayMode === m,
       execute: () => useViewportDisplayStore.getState().setDisplayMode(m),
     })),
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.displayModeCycle),
-      label: 'Cycle Display Mode',
-      description: 'Shaded → Wireframe → Bounding box.',
+      label: t('workspace.command.displayModeCycle', 'Cycle Display Mode'),
+      description: t('workspace.command.displayModeCycleDescription', 'Shaded → Wireframe → Bounding box.'),
       shortcut: { key: 'F4', shift: true },
       enabled: () => true,
       execute: () => useViewportDisplayStore.getState().cycleDisplayMode(),
@@ -426,8 +427,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── HUD / snap / PAR ─────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.hud),
-      label: 'Viewport HUD',
-      description: 'fps, frame time, cache hits, resolution and backend in the viewport corner.',
+      label: t('workspace.command.hud', 'Viewport HUD'),
+      description: t('workspace.command.hudDescription', 'fps, frame time, cache hits, resolution and backend in the viewport corner.'),
       shortcut: { key: 'h', meta: true, alt: true },
       enabled: () => true,
       isChecked: () => useViewportDisplayStore.getState().hud,
@@ -435,8 +436,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.snapToPixel),
-      label: 'Snap to Pixel',
-      description: 'Round positions and sizes to whole pixels while dragging or nudging.',
+      label: t('workspace.command.snapToPixel', 'Snap to Pixel'),
+      description: t('workspace.command.snapToPixelDescription', 'Round positions and sizes to whole pixels while dragging or nudging.'),
       shortcut: { key: 'p', meta: true, alt: true, shift: true },
       enabled: () => true,
       isChecked: () => useViewportDisplayStore.getState().snapToPixel,
@@ -444,8 +445,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.pixelAspectCorrection),
-      label: 'Pixel Aspect Ratio Correction',
-      description: 'Stretch the preview by the composition’s pixel aspect so non-square pixels look right.',
+      label: t('workspace.command.pixelAspect', 'Pixel Aspect Ratio Correction'),
+      description: t('workspace.command.pixelAspectDescription', 'Stretch the preview by the composition’s pixel aspect so non-square pixels look right.'),
       enabled: () => true,
       isChecked: () => useViewportDisplayStore.getState().pixelAspectCorrection,
       execute: () => useViewportDisplayStore.getState().togglePixelAspectCorrection(),
@@ -453,22 +454,22 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Viewer LUT ───────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.viewerLutLoad),
-      label: 'Load Viewer LUT…',
-      description: 'A .cube monitor look for the viewport only — never in output.',
+      label: t('workspace.command.viewerLutLoad', 'Load Viewer LUT…'),
+      description: t('workspace.command.viewerLutLoadDescription', 'A .cube monitor look for the viewport only — never in output.'),
       enabled: () => true,
       execute: () => { openViewerLutPicker(); },
     },
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.viewerLutClear),
-      label: 'Clear Viewer LUT',
+      label: t('workspace.command.viewerLutClear', 'Clear Viewer LUT'),
       enabled: () => useViewerLutStore.getState().lut !== null,
       execute: () => useViewerLutStore.getState().clear(),
     },
     // ── Tools ────────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.rotoTool),
-      label: 'Roto Brush Tool',
-      description: 'Paint over the subject to cut a matte; Alt-paint marks background.',
+      label: t('workspace.command.rotoTool', 'Roto Brush Tool'),
+      description: t('workspace.command.rotoToolDescription', 'Paint over the subject to cut a matte; Alt-paint marks background.'),
       icon: 'brush',
       shortcut: { key: 'w', alt: true },
       enabled: () => true,
@@ -479,10 +480,10 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // Rotate tool (W) shows the rotation gizmo whatever is picked, as AE's
     // Rotation tool does on a 3D layer.
     ...([
-      ['gizmoUniversal', 'universal', 'Universal Gizmo', 'Move, scale and rotate from one gizmo.', '1'],
-      ['gizmoPosition', 'position', 'Position Gizmo', 'Move along an axis or a plane.', '2'],
-      ['gizmoRotation', 'rotation', 'Rotation Gizmo', 'Rotate about an axis, the view, or freely (trackball).', '3'],
-      ['gizmoScale', 'scale', 'Scale Gizmo', 'Scale along an axis, or uniformly from the centre.', '4'],
+      ['gizmoUniversal', 'universal', t('workspace.command.gizmoUniversal', 'Universal Gizmo'), t('workspace.command.gizmoUniversalDescription', 'Move, scale and rotate from one gizmo.'), '1'],
+      ['gizmoPosition', 'position', t('workspace.command.gizmoPosition', 'Position Gizmo'), t('workspace.command.gizmoPositionDescription', 'Move along an axis or a plane.'), '2'],
+      ['gizmoRotation', 'rotation', t('workspace.command.gizmoRotation', 'Rotation Gizmo'), t('workspace.command.gizmoRotationDescription', 'Rotate about an axis, the view, or freely (trackball).'), '3'],
+      ['gizmoScale', 'scale', t('workspace.command.gizmoScale', 'Scale Gizmo'), t('workspace.command.gizmoScaleDescription', 'Scale along an axis, or uniformly from the centre.'), '4'],
     ] as const).map(([key, state, label, description, digit]) => ({
       id: asCommandId(VIEWPORT_COMMAND_IDS[key]),
       label,
@@ -496,8 +497,8 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── AI ───────────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.inlineAiPrompt),
-      label: 'Ask AI About Selection…',
-      description: 'An inline prompt anchored to the selected layers.',
+      label: t('workspace.command.inlineAiPrompt', 'Ask AI About Selection…'),
+      description: t('workspace.command.inlineAiPromptDescription', 'An inline prompt anchored to the selected layers.'),
       icon: 'sparkles',
       shortcut: { key: 'Enter', meta: true },
       enabled: () => aiEnabled() && useSelectionStore.getState().ids.length > 0,

@@ -22,6 +22,7 @@ import { rectOutline } from '@core/geometry/extrudeMesh';
 import type { SceneNode } from '@core/types';
 import { repeaterCopies, defaultRepeater, type Repeater, type RepeaterComposite } from '@core/scene/repeater';
 import { renderComponentsOf } from '@core/scene/SceneGraph';
+import { t } from '@core/i18n';
 
 export type PathOpType =
   | 'none' | 'zigzag' | 'roundCorners' | 'pucker' | 'twist' | 'offset' | 'roughen' | 'trim' | 'repeater'
@@ -263,17 +264,17 @@ export interface PathOpParamSpec {
 function paramLabels(type: PathOpType): { amount: string; detail: string | null } {
   switch (type) {
     case 'roundCorners':
-      return { amount: 'Radius', detail: 'Steps' };
+      return { amount: t('core.pathOps.paramRadius', 'Radius'), detail: t('core.pathOps.paramSteps', 'Steps') };
     case 'pucker':
-      return { amount: 'Amount', detail: null };
+      return { amount: t('core.pathOps.paramAmount', 'Amount'), detail: null };
     case 'twist':
-      return { amount: 'Angle', detail: null };
+      return { amount: t('core.pathOps.paramAngle', 'Angle'), detail: null };
     case 'offset':
-      return { amount: 'Offset', detail: null };
+      return { amount: t('core.pathOps.paramOffset', 'Offset'), detail: null };
     case 'roughen':
-      return { amount: 'Size', detail: 'Detail' };
+      return { amount: t('core.pathOps.paramSize', 'Size'), detail: t('core.pathOps.paramDetail', 'Detail') };
     default:
-      return { amount: 'Amount', detail: 'Ridges' };
+      return { amount: t('core.pathOps.paramAmount', 'Amount'), detail: t('core.pathOps.paramRidges', 'Ridges') };
   }
 }
 
@@ -289,9 +290,9 @@ function paramLabels(type: PathOpType): { amount: string; detail: string | null 
 export function pathOpParamSpecs(type: PathOpType): ReadonlyArray<PathOpParamSpec> {
   if (type === 'trim') {
     return [
-      { param: 'start', label: 'Start', unit: '%' },
-      { param: 'end', label: 'End', unit: '%' },
-      { param: 'offset', label: 'Offset', unit: '%' },
+      { param: 'start', label: t('core.pathOps.paramStart', 'Start'), unit: '%' },
+      { param: 'end', label: t('core.pathOps.paramEnd', 'End'), unit: '%' },
+      { param: 'offset', label: t('core.pathOps.paramOffset', 'Offset'), unit: '%' },
     ];
   }
   if (type === 'repeater') {
@@ -304,15 +305,15 @@ export function pathOpParamSpecs(type: PathOpType): ReadonlyArray<PathOpParamSpe
     // rotation and anchors are all signed — a repeater marching left is as
     // ordinary as one marching right.
     return [
-      { param: 'copies', label: 'Copies', min: 1, max: 200, step: 1 },
-      { param: 'offset', label: 'Offset', step: 0.1, signed: true },
-      { param: 'anchorX', label: 'Anchor X', unit: 'px', signed: true },
-      { param: 'anchorY', label: 'Anchor Y', unit: 'px', signed: true },
-      { param: 'offsetX', label: 'Position X', unit: 'px', signed: true },
-      { param: 'offsetY', label: 'Position Y', unit: 'px', signed: true },
-      { param: 'offsetRotation', label: 'Rotation', unit: '°', signed: true },
-      { param: 'offsetScale', label: 'Scale', min: 0, step: 0.02 },
-      { param: 'offsetOpacity', label: 'Opacity', min: 0, max: 1, step: 0.02 },
+      { param: 'copies', label: t('core.pathOps.paramCopies', 'Copies'), min: 1, max: 200, step: 1 },
+      { param: 'offset', label: t('core.pathOps.paramOffset', 'Offset'), step: 0.1, signed: true },
+      { param: 'anchorX', label: t('core.pathOps.paramAnchorX', 'Anchor X'), unit: 'px', signed: true },
+      { param: 'anchorY', label: t('core.pathOps.paramAnchorY', 'Anchor Y'), unit: 'px', signed: true },
+      { param: 'offsetX', label: t('core.pathOps.paramPositionX', 'Position X'), unit: 'px', signed: true },
+      { param: 'offsetY', label: t('core.pathOps.paramPositionY', 'Position Y'), unit: 'px', signed: true },
+      { param: 'offsetRotation', label: t('core.pathOps.paramRotation', 'Rotation'), unit: '°', signed: true },
+      { param: 'offsetScale', label: t('core.pathOps.paramScale', 'Scale'), min: 0, step: 0.02 },
+      { param: 'offsetOpacity', label: t('core.pathOps.paramOpacity', 'Opacity'), min: 0, max: 1, step: 0.02 },
     ];
   }
   if (type === 'wiggleTransform') {
@@ -320,26 +321,26 @@ export function pathOpParamSpecs(type: PathOpType): ReadonlyArray<PathOpParamSpe
     // amplitudes are magnitudes (the noise is signed), so their floor is 0;
     // the pivot is a position and goes both ways.
     return [
-      { param: 'amount', label: 'Position', unit: 'px', min: 0 },
-      { param: 'wiggleRotation', label: 'Rotation', unit: '°', min: 0 },
-      { param: 'wiggleScale', label: 'Scale', unit: '%', min: 0 },
-      { param: 'anchorX', label: 'Anchor X', unit: 'px', signed: true },
-      { param: 'anchorY', label: 'Anchor Y', unit: 'px', signed: true },
-      ...WIGGLE_TIME_ROWS,
+      { param: 'amount', label: t('core.pathOps.paramPosition', 'Position'), unit: 'px', min: 0 },
+      { param: 'wiggleRotation', label: t('core.pathOps.paramRotation', 'Rotation'), unit: '°', min: 0 },
+      { param: 'wiggleScale', label: t('core.pathOps.paramScale', 'Scale'), unit: '%', min: 0 },
+      { param: 'anchorX', label: t('core.pathOps.paramAnchorX', 'Anchor X'), unit: 'px', signed: true },
+      { param: 'anchorY', label: t('core.pathOps.paramAnchorY', 'Anchor Y'), unit: 'px', signed: true },
+      ...wiggleTimeRows(),
     ];
   }
   if (type === 'offset') {
     // AE's Offset Paths rows: Amount and Miter Limit (both animatable there,
     // both here). Line Join is a discrete picker on the card, not a row.
     return [
-      { param: 'amount', label: 'Amount', unit: 'px', signed: true },
-      { param: 'miterLimit', label: 'Miter Limit', min: 1, step: 0.1 },
+      { param: 'amount', label: t('core.pathOps.paramAmount', 'Amount'), unit: 'px', signed: true },
+      { param: 'miterLimit', label: t('core.pathOps.paramMiterLimit', 'Miter Limit'), min: 1, step: 0.1 },
     ];
   }
   const { amount, detail } = paramLabels(type);
   const rows: PathOpParamSpec[] = [{ param: 'amount', label: amount }];
   if (detail) rows.push({ param: 'detail', label: detail });
-  if (type === 'roughen') rows.push(...WIGGLE_TIME_ROWS);
+  if (type === 'roughen') rows.push(...wiggleTimeRows());
   return rows;
 }
 
@@ -349,10 +350,12 @@ export function pathOpParamSpecs(type: PathOpType): ReadonlyArray<PathOpParamSpe
  * points (runs) move. Keyframeable properties like the rest — the engine
  * catalog lists them under `contents/<opId>/` (native/engine/catalog/pathOps.json).
  */
-const WIGGLE_TIME_ROWS: ReadonlyArray<PathOpParamSpec> = [
-  { param: 'wigglesPerSecond', label: 'Wiggles/Second', min: 0 },
-  { param: 'correlation', label: 'Correlation', unit: '%', min: 0, max: 100 },
-];
+function wiggleTimeRows(): ReadonlyArray<PathOpParamSpec> {
+  return [
+    { param: 'wigglesPerSecond', label: t('core.pathOps.paramWigglesPerSecond', 'Wiggles/Second'), min: 0 },
+    { param: 'correlation', label: t('core.pathOps.paramCorrelation', 'Correlation'), unit: '%', min: 0, max: 100 },
+  ];
+}
 
 /**
  * The keyframe path for one operator's parameter.
@@ -439,15 +442,15 @@ export function defaultPathOpOf(type: PathOpType): PathOp {
 
 /** Browser entries for path operators (Trim Paths, Zig-Zag, …). */
 export const PATH_OP_CATALOG: ReadonlyArray<{ type: PathOpType; label: string }> = [
-  { type: 'trim', label: 'Trim Paths' },
-  { type: 'zigzag', label: 'Zig-Zag' },
-  { type: 'roundCorners', label: 'Round Corners' },
-  { type: 'pucker', label: 'Pucker & Bloat' },
-  { type: 'twist', label: 'Twist' },
-  { type: 'offset', label: 'Offset Paths' },
-  { type: 'roughen', label: 'Wiggle Paths' },
-  { type: 'wiggleTransform', label: 'Wiggle Transform' },
-  { type: 'repeater', label: 'Repeater' },
+  { type: 'trim', get label() { return t('core.pathOps.opTrim', 'Trim Paths'); } },
+  { type: 'zigzag', get label() { return t('core.pathOps.opZigzag', 'Zig-Zag'); } },
+  { type: 'roundCorners', get label() { return t('core.pathOps.opRoundCorners', 'Round Corners'); } },
+  { type: 'pucker', get label() { return t('core.pathOps.opPucker', 'Pucker & Bloat'); } },
+  { type: 'twist', get label() { return t('core.pathOps.opTwist', 'Twist'); } },
+  { type: 'offset', get label() { return t('core.pathOps.opOffset', 'Offset Paths'); } },
+  { type: 'roughen', get label() { return t('core.pathOps.opRoughen', 'Wiggle Paths'); } },
+  { type: 'wiggleTransform', get label() { return t('core.pathOps.opWiggleTransform', 'Wiggle Transform'); } },
+  { type: 'repeater', get label() { return t('core.pathOps.opRepeater', 'Repeater'); } },
 ];
 
 /** The chain's repeater entry for a node, or null. AE allows one; so do we. */

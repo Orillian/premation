@@ -7,6 +7,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import { openModal } from '@stores/modalStore';
+import { t } from '@core/i18n';
 import type { DocSection } from './docsIndex';
 import styles from './DocsSectionDialog.module.css';
 
@@ -18,7 +19,7 @@ export function openDocSection(section: DocSection): void {
     size: 'lg',
     render: () => (
       <div className={styles.body}>
-        <ReactMarkdown>{`${heading}\n\n${section.body || '_This section has no body text._'}`}</ReactMarkdown>
+        <ReactMarkdown>{`${heading}\n\n${section.body || t('commandPalette.docs.emptySection', '_This section has no body text._')}`}</ReactMarkdown>
         <p className={styles.source}>{section.file}</p>
       </div>
     ),

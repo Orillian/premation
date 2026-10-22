@@ -43,3 +43,20 @@ export function navigatorColumnFor(
   if (!(width > 0)) return null;
   return { left: lanes.left - rowLeft + leftOffset, width };
 }
+
+/**
+ * The buttons column's width: the resolved header width, but never past the
+ * lanes' measured left edge. The two are computed from the same inputs and
+ * agree in the common case, yet the header below can come out narrower (its
+ * own cap against the panel) — and a buttons column wider than it ran the
+ * comp switches under the navigator. The measurement wins when there is one.
+ */
+export function toolsColumnWidth(
+  headerWidth: number,
+  lanes: TimelineViewportState,
+  rowLeft: number,
+): number {
+  if (!(lanes.width > 0)) return headerWidth;
+  const lanesLeft = lanes.left - rowLeft;
+  return lanesLeft > 0 ? Math.min(headerWidth, lanesLeft) : headerWidth;
+}

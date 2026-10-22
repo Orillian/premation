@@ -78,24 +78,36 @@ import {
   runChoreography,
 } from '@core/animation/choreographyCommands';
 import styles from './ChoreographySection.module.css';
+import { t } from '@core/i18n';
 
-const FEELS: ReadonlyArray<{ value: ChoreographyFeel; label: string; hint: string }> = [
-  { value: 'snappy', label: 'Snappy', hint: 'Short, tight, close together' },
-  { value: 'smooth', label: 'Smooth', hint: 'Longer travel with a soft landing' },
-  { value: 'bouncy', label: 'Bouncy', hint: 'Overshoots and settles' },
-];
+function feels(): ReadonlyArray<{ value: ChoreographyFeel; label: string; hint: string }> {
+  return [
+    { value: 'snappy', label: t('motion.choreo.snappy', 'Snappy'), hint: t('motion.choreo.snappyHint', 'Short, tight, close together') },
+    { value: 'smooth', label: t('motion.choreo.smooth', 'Smooth'), hint: t('motion.choreo.smoothHint', 'Longer travel with a soft landing') },
+    { value: 'bouncy', label: t('motion.choreo.bouncy', 'Bouncy'), hint: t('motion.choreo.bouncyHint', 'Overshoots and settles') },
+  ];
+}
 
 /** Plain-language names for the orders — nobody sorts "byPositionX". */
-const ORDER_LABEL: Record<StaggerOrder, string> = {
-  timeline: 'Selection order',
-  reverse: 'Reverse order',
-  byPositionX: 'Left to right',
-  byPositionY: 'Top to bottom',
-  byDistanceFromCenter: 'Outward from centre',
-  random: 'Shuffled (seeded)',
-};
+function orderLabel(order: StaggerOrder): string {
+  switch (order) {
+    case 'timeline': return t('motion.choreo.orderSelection', 'Selection order');
+    case 'reverse': return t('motion.choreo.orderReverse', 'Reverse order');
+    case 'byPositionX': return t('motion.choreo.orderLeftRight', 'Left to right');
+    case 'byPositionY': return t('motion.choreo.orderTopBottom', 'Top to bottom');
+    case 'byDistanceFromCenter': return t('motion.choreo.orderOutward', 'Outward from centre');
+    case 'random': return t('motion.choreo.orderShuffled', 'Shuffled (seeded)');
+    default: return order;
+  }
+}
 
-const KIND_LABEL = { in: 'Animate in', out: 'Animate out', stagger: 'Stagger' } as const;
+function kindLabel(kind: 'in' | 'out' | 'stagger'): string {
+  switch (kind) {
+    case 'in': return t('motion.choreo.kindIn', 'Animate in');
+    case 'out': return t('motion.choreo.kindOut', 'Animate out');
+    default: return t('motion.choreo.kindStagger', 'Stagger');
+  }
+}
 
 /** Buttons shown before the rest are left to the palette. A board list can be
  *  long, and this section sits above the preset library it must not crowd. */
@@ -211,21 +223,21 @@ export function ChoreographySection(): JSX.Element {
     <div className={styles.root}>
       <div className={styles.heading}>
         <Icon name="sparkles" size="sm" />
-        <span>Animate selection</span>
+        <span>{t('motion.choreo.heading', 'Animate selection')}</span>
       </div>
 
       {/* The feel belongs to THIS gesture, not to the project. The global
           Motion Feel preference still governs the palette commands; a panel
           with the numbers in front of you should not need a trip to a menu to
           change one of them. */}
-      <div className={styles.feelRow} role="group" aria-label="Motion feel">
-        {FEELS.map((option) => (
+      <div className={styles.feelRow} role="group" aria-label={t('motion.choreo.feelAria', 'Motion feel')}>
+        {feels().map((option) => (
           <button
             key={option.value}
             type="button"
             className={styles.feelButton}
             data-active={draft.feel === option.value}
-            title={`${option.hint} — about ${feelDurationSec(option.value).toFixed(2)}s per layer`}
+            title={t('motion.choreo.feelTitle', '{hint} — about {seconds}s per layer', { hint: option.hint, seconds: feelDurationSec(option.value).toFixed(2) })}
             aria-pressed={draft.feel === option.value}
             onClick={() => patch({
               feel: option.value,
@@ -245,34 +257,34 @@ export function ChoreographySection(): JSX.Element {
       </div>
 
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Order</span>
+        <span className={styles.fieldLabel}>{t('motion.choreo.order', 'Order')}</span>
         <select
           className={styles.select}
           value={draft.order}
           onChange={(e) => patch({ order: e.target.value as StaggerOrder })}
         >
           {STAGGER_ORDERS.map((order) => (
-            <option key={order} value={order}>{ORDER_LABEL[order]}</option>
+            <option key={order} value={order}>{orderLabel(order)}</option>
           ))}
         </select>
       </label>
 
       <div className={styles.fieldRow}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Offset</span>
+          <span className={styles.fieldLabel}>{t('motion.choreo.offset', 'Offset')}</span>
           <input
             className={styles.number}
             type="number"
             min={0}
             step={1}
             value={draft.baseOffsetFrames}
-            title="Frames between arrivals. 0 brings every layer in together."
+            title={t('motion.choreo.offsetTitle', 'Frames between arrivals. 0 brings every layer in together.')}
             onChange={(e) => patch({ baseOffsetFrames: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
           />
           <span className={styles.unit}>fr</span>
         </label>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Swing</span>
+          <span className={styles.fieldLabel}>{t('motion.choreo.swing', 'Swing')}</span>
           <input
             className={styles.number}
             type="number"
@@ -280,7 +292,7 @@ export function ChoreographySection(): JSX.Element {
             max={100}
             step={5}
             value={draft.swingPct}
-            title="How much each gap varies. 0 is a metronome; the variation is never smaller than one frame."
+            title={t('motion.choreo.swingTitle', 'How much each gap varies. 0 is a metronome; the variation is never smaller than one frame.')}
             onChange={(e) => patch({ swingPct: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
           />
           <span className={styles.unit}>%</span>
@@ -289,21 +301,21 @@ export function ChoreographySection(): JSX.Element {
 
       <div className={styles.fieldRow}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Seed</span>
+          <span className={styles.fieldLabel}>{t('motion.choreo.seed', 'Seed')}</span>
           <input
             className={styles.number}
             type="number"
             step={1}
             value={draft.seed}
-            title="Same seed, same rhythm and same shuffle."
+            title={t('motion.choreo.seedTitle', 'Same seed, same rhythm and same shuffle.')}
             onChange={(e) => patch({ seed: Math.round(Number(e.target.value) || 0) })}
           />
         </label>
         <button
           type="button"
           className={styles.iconButton}
-          title="Reroll the seed"
-          aria-label="Reroll the seed"
+          title={t('motion.choreo.reroll', 'Reroll the seed')}
+          aria-label={t('motion.choreo.reroll', 'Reroll the seed')}
           onClick={() => patch({ seed: 1 + Math.floor(Math.random() * 0xffffff) })}
         >
           <Icon name="rotate-cw" size="sm" />
@@ -311,11 +323,11 @@ export function ChoreographySection(): JSX.Element {
       </div>
 
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Ease</span>
+        <span className={styles.fieldLabel}>{t('motion.choreo.ease', 'Ease')}</span>
         <select
           className={styles.select}
           value={draft.easeCurve ?? ''}
-          title="Overrides the feel's own entrance curve."
+          title={t('motion.choreo.easeTitle', 'Overrides the feel\'s own entrance curve.')}
           onChange={(e) => {
             const value = e.target.value;
             setDraft((d) => {
@@ -327,7 +339,7 @@ export function ChoreographySection(): JSX.Element {
             });
           }}
         >
-          <option value="">Feel default</option>
+          <option value="">{t('motion.choreo.feelDefault', 'Feel default')}</option>
           {EASE_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id}>{preset.label}</option>
           ))}
@@ -340,31 +352,31 @@ export function ChoreographySection(): JSX.Element {
           className={styles.action}
           disabled={!hasSelection}
           title={hasSelection
-            ? 'Stagger the selected layers in, one after another'
-            : 'Select some layers first'}
+            ? t('motion.choreo.animateInTitle', 'Stagger the selected layers in, one after another')
+            : t('motion.choreo.selectFirst', 'Select some layers first')}
           onClick={() => apply('in')}
         >
-          Animate In
+          {t('motion.choreo.animateIn', 'Animate In')}
         </button>
         <button
           type="button"
           className={styles.action}
           disabled={!hasSelection}
-          title={hasSelection ? 'Stagger the selected layers out' : 'Select some layers first'}
+          title={hasSelection ? t('motion.choreo.animateOutTitle', 'Stagger the selected layers out') : t('motion.choreo.selectFirst', 'Select some layers first')}
           onClick={() => apply('out')}
         >
-          Animate Out
+          {t('motion.choreo.animateOut', 'Animate Out')}
         </button>
         <button
           type="button"
           className={styles.action}
           disabled={!canStagger}
           title={canStagger
-            ? 'Offset the keyframes these layers already have'
-            : 'Select 2+ layers that are already animated'}
+            ? t('motion.choreo.staggerTitle', 'Offset the keyframes these layers already have')
+            : t('motion.choreo.staggerNeed', 'Select 2+ layers that are already animated')}
           onClick={() => apply('stagger')}
         >
-          Stagger
+          {t('motion.choreo.kindStagger', 'Stagger')}
         </button>
       </div>
 
@@ -375,7 +387,7 @@ export function ChoreographySection(): JSX.Element {
       {plan.length > 0 && (
         <>
           <div className={styles.subheading}>
-            {record ? 'Layers in this choreography' : 'Planned offsets'}
+            {record ? t('motion.choreo.layersIn', 'Layers in this choreography') : t('motion.choreo.planned', 'Planned offsets')}
           </div>
           <ul className={styles.layerList}>
             {plan.slice(0, MAX_LAYER_ROWS).map((entry, i) => (
@@ -387,7 +399,7 @@ export function ChoreographySection(): JSX.Element {
                   className={styles.number}
                   type="number"
                   step={1}
-                  aria-label={`Offset for ${layers[i]?.name ?? entry.nodeId}`}
+                  aria-label={t('motion.choreo.offsetFor', 'Offset for {name}', { name: layers[i]?.name ?? entry.nodeId })}
                   data-overridden={entry.overridden}
                   value={entry.offsetFrames}
                   onChange={(e) => setOverride(entry.nodeId, e.target.value)}
@@ -398,7 +410,9 @@ export function ChoreographySection(): JSX.Element {
           </ul>
           {plan.length > MAX_LAYER_ROWS && (
             <p className={styles.hint}>
-              {plan.length - MAX_LAYER_ROWS} more layer{plan.length - MAX_LAYER_ROWS === 1 ? '' : 's'} not listed.
+              {plan.length - MAX_LAYER_ROWS === 1
+                ? t('motion.choreo.moreOne', '{n} more layer not listed.', { n: plan.length - MAX_LAYER_ROWS })
+                : t('motion.choreo.moreOther', '{n} more layers not listed.', { n: plan.length - MAX_LAYER_ROWS })}
             </p>
           )}
         </>
@@ -406,33 +420,33 @@ export function ChoreographySection(): JSX.Element {
 
       {record && (
         <>
-          <div className={styles.subheading}>Last choreography</div>
+          <div className={styles.subheading}>{t('motion.choreo.last', 'Last choreography')}</div>
           <p className={styles.hint}>{describe(record)}</p>
           <div className={styles.actions}>
             <button
               type="button"
               className={styles.action}
-              title="Put the previous keyframes back and write the plan above — one undo step"
+              title={t('motion.choreo.reapplyTitle', 'Put the previous keyframes back and write the plan above — one undo step')}
               onClick={() => { void reapplyChoreography(draft); }}
             >
-              Re-apply
+              {t('motion.choreo.reapply', 'Re-apply')}
             </button>
             <button
               type="button"
               className={styles.action}
               disabled={Object.keys(draft.perLayerOverrides).length === 0}
-              title="Drop every per-layer offset and go back to the computed rhythm"
+              title={t('motion.choreo.resetTitle', 'Drop every per-layer offset and go back to the computed rhythm')}
               onClick={() => patch({ perLayerOverrides: {} })}
             >
-              Reset to plan
+              {t('motion.choreo.reset', 'Reset to plan')}
             </button>
             <button
               type="button"
               className={styles.action}
-              title="Restore the keyframes as they were before this choreography"
+              title={t('motion.choreo.removeTitle', 'Restore the keyframes as they were before this choreography')}
               onClick={() => { void revertChoreography(); }}
             >
-              Remove
+              {t('motion.choreo.remove', 'Remove')}
             </button>
           </div>
         </>
@@ -447,38 +461,38 @@ export function ChoreographySection(): JSX.Element {
             className={styles.action}
             disabled={!canRun('animation.animateInOnBeats')}
             title={hasSelection
-              ? 'One layer per beat of the audio layer'
-              : 'Select some layers first'}
+              ? t('motion.choreo.onBeatTitle', 'One layer per beat of the audio layer')
+              : t('motion.choreo.selectFirst', 'Select some layers first')}
             onClick={() => run('animation.animateInOnBeats')}
           >
-            In, on the beat
+            {t('motion.choreo.onBeat', 'In, on the beat')}
           </button>
           <button
             type="button"
             className={styles.action}
-            title="Mark every beat of the audio layer on the timeline"
+            title={t('motion.choreo.markBeatsTitle', 'Mark every beat of the audio layer on the timeline')}
             onClick={() => run('audio.markBeats')}
           >
-            Mark beats
+            {t('motion.choreo.markBeats', 'Mark beats')}
           </button>
         </div>
       )}
 
       {canRamp && (
         <>
-          <div className={styles.subheading}>Speed ramp</div>
+          <div className={styles.subheading}>{t('motion.choreo.speedRamp', 'Speed ramp')}</div>
           <div className={styles.actions}>
             {[
               { id: 'quarter', label: '25%' },
               { id: 'half', label: '50%' },
               { id: 'normal', label: '100%' },
-              { id: 'freeze', label: 'Freeze' },
+              { id: 'freeze', label: t('motion.choreo.freeze', 'Freeze') },
             ].map((step) => (
               <button
                 key={step.id}
                 type="button"
                 className={styles.action}
-                title={`Ease to ${step.label} at the playhead`}
+                title={t('motion.choreo.rampTitle', 'Ease to {speed} at the playhead', { speed: step.label })}
                 onClick={() => run(`time.speedRamp.${step.id}`)}
               >
                 {step.label}
@@ -490,9 +504,9 @@ export function ChoreographySection(): JSX.Element {
 
       {targets.length > 0 && (
         <>
-          <div className={styles.subheading}>Smart Animate</div>
+          <div className={styles.subheading}>{t('motion.choreo.smartAnimate', 'Smart Animate')}</div>
           <p className={styles.hint}>
-            Build a transition to another board. Layers pair up by name.
+            {t('motion.choreo.smartAnimateHint', 'Build a transition to another board. Layers pair up by name.')}
           </p>
           <div className={styles.actions}>
             {targets.slice(0, MAX_TARGETS).map((target) => (
@@ -500,7 +514,7 @@ export function ChoreographySection(): JSX.Element {
                 key={target.id}
                 type="button"
                 className={styles.action}
-                title={`Animate this composition into “${target.name}”`}
+                title={t('motion.choreo.smartAnimateTitle', 'Animate this composition into “{name}”', { name: target.name })}
                 onClick={() => run(`comp.smartAnimate.${target.id}`)}
               >
                 → {target.name}
@@ -511,7 +525,7 @@ export function ChoreographySection(): JSX.Element {
               boards looks like the complete list unless it says otherwise. */}
           {targets.length > MAX_TARGETS && (
             <p className={styles.hint}>
-              {targets.length - MAX_TARGETS} more — search “Smart Animate” in the command palette.
+              {t('motion.choreo.smartAnimateMore', '{n} more — search “Smart Animate” in the command palette.', { n: targets.length - MAX_TARGETS })}
             </p>
           )}
         </>
@@ -522,11 +536,14 @@ export function ChoreographySection(): JSX.Element {
 
 /** One line saying what was applied, so "Re-apply" is not a leap of faith. */
 function describe(record: ChoreographyRecord): string {
-  const layers = `${record.nodeIds.length} layer${record.nodeIds.length === 1 ? '' : 's'}`;
+  const n = record.nodeIds.length;
+  const layers = n === 1
+    ? t('motion.choreo.layersOne', '{n} layer', { n })
+    : t('motion.choreo.layersOther', '{n} layers', { n });
   const span = record.range
     ? ` · ${record.range.start.toFixed(2)}–${record.range.end.toFixed(2)}s`
     : '';
-  return `${KIND_LABEL[record.kind]} · ${layers} · ${ORDER_LABEL[record.params.order]}`
+  return `${kindLabel(record.kind)} · ${layers} · ${orderLabel(record.params.order)}`
     + ` · ${record.params.baseOffsetFrames}fr${span}`;
 }
 

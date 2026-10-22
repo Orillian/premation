@@ -27,6 +27,7 @@ import {
 } from '@core/persistence/AutosaveController';
 import { getProjectManager } from '@core/services/coreServices';
 import { AUTOSAVE_KEEP_MAX, AUTOSAVE_KEEP_MIN } from '@core/persistence/recovery';
+import { t } from '@core/i18n';
 import styles from './CustomizeDialog.module.css';
 
 type IntervalChoice = '30' | '60' | '120' | '300';
@@ -41,12 +42,12 @@ const INTERVALS: ReadonlyArray<{ value: IntervalChoice; label: string }> = [
 /** "2 minutes ago", "just now" — relative, because the absolute time is in the title. */
 export function formatAgo(at: number, now: number): string {
   const sec = Math.max(0, Math.round((now - at) / 1000));
-  if (sec < 10) return 'just now';
-  if (sec < 60) return `${sec} s ago`;
+  if (sec < 10) return t('settings.files.justNow', 'just now');
+  if (sec < 60) return t('settings.files.secondsAgo', '{n} s ago', { n: sec });
   const min = Math.round(sec / 60);
-  if (min < 60) return `${min} min ago`;
+  if (min < 60) return t('settings.files.minutesAgo', '{n} min ago', { n: min });
   const hr = Math.round(min / 60);
-  return `${hr} h ago`;
+  return t('settings.files.hoursAgo', '{n} h ago', { n: hr });
 }
 
 function pickerAvailable(): boolean {
@@ -63,8 +64,8 @@ export function FilesTab(): JSX.Element {
   // The "ago" line ticks, so a dialog left open does not say "just now" for an hour.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 10_000);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const intervalChoice = (INTERVALS.find((i) => Number(i.value) === intervalSec)?.value ?? null);
@@ -86,20 +87,19 @@ export function FilesTab(): JSX.Element {
 
   return (
     <div className={styles.section} data-testid="files-tab">
-      <h3 className={styles.sectionTitle}>Autosave</h3>
+      <h3 className={styles.sectionTitle}>{t('settings.files.autosave', 'Autosave')}</h3>
       <p className={styles.hint}>
-        A crash-recovery snapshot of the open project, written in the background while there are
-        unsaved edits. It never replaces Save: the unsaved dot stays until you save for real.
+        {t('settings.files.autosaveHint', 'A crash-recovery snapshot of the open project, written in the background while there are unsaved edits. It never replaces Save: the unsaved dot stays until you save for real.')}
       </p>
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Interval</span>
-          <span className={styles.settingDesc}>How often a snapshot is written while the project is dirty.</span>
+          <span className={styles.settingTitle}>{t('settings.files.interval', 'Interval')}</span>
+          <span className={styles.settingDesc}>{t('settings.files.intervalDesc', 'How often a snapshot is written while the project is dirty.')}</span>
         </div>
         <div className={styles.settingRight}>
           <Segmented<IntervalChoice>
-            aria-label="Autosave interval"
+            aria-label={t('settings.files.intervalAria', 'Autosave interval')}
             options={INTERVALS}
             value={(intervalChoice ?? '60') as IntervalChoice}
             onChange={(v) => setPref('autosaveIntervalSec', Number(v))}
@@ -115,7 +115,7 @@ export function FilesTab(): JSX.Element {
             onBlur={(e) => commitInterval(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commitInterval(e.currentTarget.value); }}
             suffix="s"
-            aria-label="Autosave interval in seconds"
+            aria-label={t('settings.files.intervalSecondsAria', 'Autosave interval in seconds')}
             data-enter-safe=""
           />
         </div>
@@ -123,10 +123,9 @@ export function FilesTab(): JSX.Element {
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Keep</span>
+          <span className={styles.settingTitle}>{t('settings.files.keep', 'Keep')}</span>
           <span className={styles.settingDesc}>
-            How many snapshots to keep. The newest is the one offered after a crash; the rest are there
-            in case it captured a mistake.
+            {t('settings.files.keepDesc', 'How many snapshots to keep. The newest is the one offered after a crash; the rest are there in case it captured a mistake.')}
           </span>
         </div>
         <div className={styles.settingRight}>
@@ -141,8 +140,8 @@ export function FilesTab(): JSX.Element {
               const n = Number.parseInt(e.currentTarget.value, 10);
               if (Number.isFinite(n)) setPref('autosaveKeep', Math.min(AUTOSAVE_KEEP_MAX, Math.max(AUTOSAVE_KEEP_MIN, n)));
             }}
-            suffix="snapshots"
-            aria-label="Snapshots to keep"
+            suffix={t('settings.files.snapshotsSuffix', 'snapshots')}
+            aria-label={t('settings.files.keepAria', 'Snapshots to keep')}
             data-enter-safe=""
           />
         </div>
@@ -150,13 +149,13 @@ export function FilesTab(): JSX.Element {
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Location</span>
+          <span className={styles.settingTitle}>{t('settings.files.location', 'Location')}</span>
           <span className={styles.settingDesc}>
             {location
-              ? 'A JSON copy of every snapshot also lands in this folder.'
+              ? t('settings.files.locationSet', 'A JSON copy of every snapshot also lands in this folder.')
               : pickerAvailable()
-                ? 'Snapshots live in the app’s settings. Choose a folder to also keep a JSON copy on disk.'
-                : 'Snapshots live in the app’s settings. A folder copy needs the desktop app.'}
+                ? t('settings.files.locationPick', 'Snapshots live in the app’s settings. Choose a folder to also keep a JSON copy on disk.')
+                : t('settings.files.locationNoPicker', 'Snapshots live in the app’s settings. A folder copy needs the desktop app.')}
           </span>
           {location ? <code className={styles.kbd} title={location}>{location}</code> : null}
         </div>
@@ -164,12 +163,12 @@ export function FilesTab(): JSX.Element {
           {pickerAvailable() ? (
             <Button variant="secondary" size="sm" onClick={() => void chooseFolder()}>
               <Icon name="folder-open" size="sm" />
-              <span>{location ? 'Change…' : 'Choose folder…'}</span>
+              <span>{location ? t('settings.files.change', 'Change…') : t('settings.files.chooseFolder', 'Choose folder…')}</span>
             </Button>
           ) : null}
           {location ? (
             <Button variant="ghost" size="sm" onClick={() => setPref('autosaveLocation', null)}>
-              Clear
+              {t('settings.files.clear', 'Clear')}
             </Button>
           ) : null}
         </div>
@@ -177,13 +176,13 @@ export function FilesTab(): JSX.Element {
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Last autosave</span>
+          <span className={styles.settingTitle}>{t('settings.files.lastAutosave', 'Last autosave')}</span>
           <span
             className={styles.settingDesc}
             title={lastAutosaveAt ? new Date(lastAutosaveAt).toLocaleString() : undefined}
             data-testid="last-autosave"
           >
-            {lastAutosaveAt ? formatAgo(lastAutosaveAt, now) : 'Not yet this session — it writes once there are unsaved edits.'}
+            {lastAutosaveAt ? formatAgo(lastAutosaveAt, now) : t('settings.files.notYet', 'Not yet this session — it writes once there are unsaved edits.')}
           </span>
         </div>
         <div className={styles.settingRight}>
@@ -199,14 +198,14 @@ export function FilesTab(): JSX.Element {
               else {
                 useUIStore.getState().notify({
                   level: 'warning',
-                  message: 'Nothing to autosave — open a project first.',
+                  message: t('settings.files.nothingToAutosave', 'Nothing to autosave — open a project first.'),
                   durationMs: 3000,
                 });
               }
             }}
           >
             <Icon name="clock" size="sm" />
-            <span>Autosave now</span>
+            <span>{t('settings.files.autosaveNow', 'Autosave now')}</span>
           </Button>
         </div>
       </div>

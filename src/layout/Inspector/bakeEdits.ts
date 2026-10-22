@@ -14,6 +14,7 @@ import { requireEngineJob, runEngineJob } from '@core/engine/engineJobs';
 import { useUIStore } from '@stores/uiStore';
 import { compFps, type MirrorComp } from '@hooks/useMirror';
 import { DEFAULT_PARTICLE_BAKE_CAP } from '@core/simulation/bakeDynamics';
+import { t } from '@core/i18n';
 
 /** The range a bake covers: composition seconds (`to` inclusive), sampled every `everyNFrames`th frame. */
 export interface BakeRange {
@@ -58,7 +59,7 @@ const rangeOf = (r: BakeRange) => ({
 });
 
 const failed = (err: unknown): void => {
-  toast('warning', `Bake failed: ${err instanceof Error ? err.message : String(err)}`);
+  toast('warning', t('inspector.bakeEdits.failed', 'Bake failed: {reason}', { reason: err instanceof Error ? err.message : String(err) }));
 };
 
 export interface PhysicsBakeSummary { layers: string[]; frames: number; tracks: number; keyframes: number }
@@ -71,12 +72,14 @@ export async function runPhysicsBake(layers: ReadonlyArray<string>, opts: BakeRa
       'Bake Physics to Keyframes',
     );
     if (out.status !== 'done' || !out.result) {
-      if (out.status === 'failed') failed(new Error(out.error?.message ?? 'the engine could not bake'));
+      if (out.status === 'failed') failed(new Error(out.error?.message ?? t('inspector.bakeEdits.engineFailed', 'the engine could not bake')));
       return null;
     }
     const n = out.result.layers.length;
-    toast('success', `Baked ${n} layer${n === 1 ? '' : 's'} to ${out.result.keyframes} keyframes over ${out.result.frames} frames. `
-      + `Physics is now off on ${n === 1 ? 'it' : 'them'}.`);
+    const vars = { n, keyframes: out.result.keyframes, frames: out.result.frames };
+    toast('success', n === 1
+      ? t('inspector.bakeEdits.physicsDoneOne', 'Baked {n} layer to {keyframes} keyframes over {frames} frames. Physics is now off on it.', vars)
+      : t('inspector.bakeEdits.physicsDoneOther', 'Baked {n} layers to {keyframes} keyframes over {frames} frames. Physics is now off on them.', vars));
     return out.result;
   } catch (err) {
     failed(err);
@@ -97,15 +100,14 @@ export async function runParticleBake(emitter: string, opts: BakeRange & { maxPa
       'Bake Particles to Layers',
     );
     if (out.status !== 'done' || !out.result) {
-      if (out.status === 'failed') failed(new Error(out.error?.message ?? 'the engine could not bake'));
+      if (out.status === 'failed') failed(new Error(out.error?.message ?? t('inspector.bakeEdits.engineFailed', 'the engine could not bake')));
       return null;
     }
     const r = out.result;
-    const capped = r.capped
-      ? ` ${r.seen} particles were alive in this range and only the first ${r.layerIds.length} were baked — raise the cap or shorten the range.`
-      : '';
-    toast(r.capped ? 'warning' : 'success', `Baked ${r.layerIds.length} particle layers (${r.keyframes} keyframes). `
-      + `The emitter is hidden and the layers are parented under a new null.${capped}`);
+    const vars = { n: r.layerIds.length, keyframes: r.keyframes, seen: r.seen };
+    toast(r.capped ? 'warning' : 'success', r.capped
+      ? t('inspector.bakeEdits.particlesDoneCapped', 'Baked {n} particle layers ({keyframes} keyframes). The emitter is hidden and the layers are parented under a new null. {seen} particles were alive in this range and only the first {n} were baked — raise the cap or shorten the range.', vars)
+      : t('inspector.bakeEdits.particlesDone', 'Baked {n} particle layers ({keyframes} keyframes). The emitter is hidden and the layers are parented under a new null.', vars));
     return r;
   } catch (err) {
     failed(err);

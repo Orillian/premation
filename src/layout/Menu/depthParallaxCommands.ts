@@ -6,6 +6,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import type { Command } from '@core/commands/Command';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
@@ -30,7 +31,7 @@ export function buildDepthParallaxCommands(): ReadonlyArray<Command> {
         const layer = target();
         const ui = useUIStore.getState();
         if (!layer) {
-          ui.notify({ level: 'info', message: 'Select an image or video layer', durationMs: 4000 });
+          ui.notify({ level: 'info', message: t('menuBar.depthParallax.selectLayer', 'Select an image or video layer'), durationMs: 4000 });
           return;
         }
         const r = await makeDepthFromModel(layer);
@@ -41,9 +42,9 @@ export function buildDepthParallaxCommands(): ReadonlyArray<Command> {
         const cam = commandCamera();
         ui.notify({
           level: 'success',
-          message: 'The layer is 3D now — a camera move shows the parallax',
+          message: t('menuBar.depthParallax.done', 'The layer is 3D now — a camera move shows the parallax'),
           durationMs: 8000,
-          ...(cam ? { action: { label: 'Push In', onSelect: () => { void applyAnimationPresetEdit([cam], 'Push In', getTime()); } } } : {}),
+          ...(cam ? { action: { label: t('menuBar.depthParallax.pushIn', 'Push In'), onSelect: () => { void applyAnimationPresetEdit([cam], 'Push In', getTime()); } } } : {}),
         });
       },
     },

@@ -159,6 +159,11 @@
   flex: none;
   pointer-events: none;
 }
+/* The lock rides inside a 16px pill: the icon scale's smallest step fills it. */
+.pro svg {
+  width: 11px;
+  height: 11px;
+}
 .proOnThumb {
   composes: pro;
   position: absolute;

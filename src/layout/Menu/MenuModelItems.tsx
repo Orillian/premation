@@ -19,6 +19,7 @@
 import { MenuItem, MenuSeparator } from '@components/Menu';
 import { getCommandSystem } from '@core/commands/CommandSystem';
 import { getCommandRegistry } from '@core/commands/Command';
+import { commandLabel } from '@core/commands/commandLabel';
 import { asCommandId } from '@app-types/common';
 import { formatChord } from '@core/commands/formatChord';
 import { resolveChord, getShortcutOverrides } from '@core/commands/shortcutOverrides';
@@ -64,7 +65,7 @@ export function MenuModelItems({ items, onActivate, keyPrefix = '' }: MenuModelI
         // A toggle's CURRENT state. `undefined` for a non-toggle keeps
         // role="menuitem" rather than menuitemcheckbox.
         const checked = cmd ? cmd.isChecked?.() : it.checked?.();
-        const label = it.label ?? cmd?.label ?? it.commandId ?? '';
+        const label = it.label ?? (cmd ? commandLabel(cmd) : undefined) ?? it.commandId ?? '';
         const resolvedChord = cmd
           ? resolveChord(cmd.id as unknown as string, cmd.shortcut, getShortcutOverrides())
           : undefined;

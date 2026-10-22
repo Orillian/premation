@@ -6,6 +6,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addShape, addText, addImage, addGradientShape, linearFill,  type SetKf } from './builders';
 
 const CW = 1920, CH = 1080, CY = CH / 2;
@@ -38,25 +39,25 @@ export function animatePhotoPromo(set: SetKf): void {
 
 export const photoPromoTemplate: TemplateDefinition = {
   id: 'photo-promo',
-  name: 'Photo Promo',
+  get name() { return t('core.template.photoPromoName', 'Photo Promo'); },
   aspect: '16:9',
   width: CW,
   height: CH,
-  description: 'A swappable photo in an accent frame with headline, subhead and price.',
+  get description() { return t('core.template.photoPromoDescription', 'A swappable photo in an accent frame with headline, subhead and price.'); },
   layout: layoutPhotoPromo,
   settings: { fps: 60, durationSeconds: 5, background: '#0b1020' },
   animate: animatePhotoPromo,
   previewTime: 1.7,
   fields: [
-    { id: 'photo', label: 'Photo', kind: 'image', group: 'Media', default: '',
+    { id: 'photo', get label() { return t('core.template.fieldPhoto', 'Photo'); }, kind: 'image', get group() { return t('core.template.groupMedia', 'Media'); }, default: '',
       target: { nodeId: 'tpl_photo', componentType: 'Transform', prop: 'src' } },
-    { id: 'headline', label: 'Headline', kind: 'text', group: 'Text', default: 'New Arrival',
+    { id: 'headline', get label() { return t('core.template.fieldHeadline', 'Headline'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'New Arrival',
       target: { nodeId: 'tpl_headline', componentType: 'Text', prop: 'content' } },
-    { id: 'subhead', label: 'Subhead', kind: 'text', group: 'Text', default: 'Describe your product in a line.',
+    { id: 'subhead', get label() { return t('core.template.fieldSubhead', 'Subhead'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Describe your product in a line.',
       target: { nodeId: 'tpl_sub', componentType: 'Text', prop: 'content' } },
-    { id: 'price', label: 'Price', kind: 'text', group: 'Text', default: '$49',
+    { id: 'price', get label() { return t('core.template.fieldPrice', 'Price'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: '$49',
       target: { nodeId: 'tpl_price', componentType: 'Text', prop: 'content' } },
-    { id: 'accentColor', label: 'Frame colour', kind: 'color', group: 'Colours', default: '#635bff',
+    { id: 'accentColor', get label() { return t('core.template.fieldFrameColour', 'Frame colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#635bff',
       target: { nodeId: 'tpl_frame', componentType: 'Style', prop: 'fill' } },
   ],
 };

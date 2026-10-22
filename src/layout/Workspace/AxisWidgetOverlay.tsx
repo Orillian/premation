@@ -30,6 +30,7 @@ import { MAIN_VIEWPORT, overlayView } from '@stores/overlayGeometry';
 import { secondsToFlicks } from '@motion/engine-api';
 import { Project3D, type Camera3D, type OrthoView, type Vec3 } from '@motion/scene';
 import { navTargetNow } from './viewNav';
+import { t } from '@core/i18n';
 
 /**
  * Red=X, Green=Y, Blue=Z - the AE / Blender convention, through the TOKENS so
@@ -62,14 +63,26 @@ type FaceMode = Extract<Camera3dMode, 'front' | 'back' | 'left' | 'right' | 'top
  * The six faces: their outward normal in comp space (x right, y DOWN, z away
  * from the default camera) and the orthographic view that looks at them.
  */
-const FACES: ReadonlyArray<{ mode: FaceMode; label: string; n: Vec3; axis: 'x' | 'y' | 'z' }> = [
-  { mode: 'front', label: 'Front', n: { x: 0, y: 0, z: -1 }, axis: 'z' },
-  { mode: 'back', label: 'Back', n: { x: 0, y: 0, z: 1 }, axis: 'z' },
-  { mode: 'right', label: 'Right', n: { x: 1, y: 0, z: 0 }, axis: 'x' },
-  { mode: 'left', label: 'Left', n: { x: -1, y: 0, z: 0 }, axis: 'x' },
-  { mode: 'top', label: 'Top', n: { x: 0, y: -1, z: 0 }, axis: 'y' },
-  { mode: 'bottom', label: 'Bottom', n: { x: 0, y: 1, z: 0 }, axis: 'y' },
+const FACES: ReadonlyArray<{ mode: FaceMode; n: Vec3; axis: 'x' | 'y' | 'z' }> = [
+  { mode: 'front', n: { x: 0, y: 0, z: -1 }, axis: 'z' },
+  { mode: 'back', n: { x: 0, y: 0, z: 1 }, axis: 'z' },
+  { mode: 'right', n: { x: 1, y: 0, z: 0 }, axis: 'x' },
+  { mode: 'left', n: { x: -1, y: 0, z: 0 }, axis: 'x' },
+  { mode: 'top', n: { x: 0, y: -1, z: 0 }, axis: 'y' },
+  { mode: 'bottom', n: { x: 0, y: 1, z: 0 }, axis: 'y' },
 ];
+
+/** A face's display name — at render time, never at module scope (`t()` needs the loaded catalogue). */
+function faceLabel(mode: FaceMode): string {
+  switch (mode) {
+    case 'front': return t('workspace.viewCube.front', 'Front');
+    case 'back': return t('workspace.viewCube.back', 'Back');
+    case 'right': return t('workspace.viewCube.right', 'Right');
+    case 'left': return t('workspace.viewCube.left', 'Left');
+    case 'top': return t('workspace.viewCube.top', 'Top');
+    case 'bottom': return t('workspace.viewCube.bottom', 'Bottom');
+  }
+}
 
 export const AxisWidgetOverlay: React.FC = () => {
   const sceneRev = useMirrorRevisionFrame();
@@ -149,7 +162,7 @@ export const AxisWidgetOverlay: React.FC = () => {
       return { x: p.x, y: p.y };
     };
     const c = toScreen(n);
-    return { ...f, depth: c.d, center: { x: c.x, y: c.y }, pts: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] };
+    return { ...f, label: faceLabel(f.mode), depth: c.d, center: { x: c.x, y: c.y }, pts: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] };
   })
     .filter((f) => f.depth < 0.02)
     .sort((a, b) => b.depth - a.depth);
@@ -237,7 +250,7 @@ export const AxisWidgetOverlay: React.FC = () => {
         cursor: 'grab',
         touchAction: 'none',
       }}
-      title="View cube — click a face for that view, drag to orbit"
+      title={t('workspace.viewCube.title', 'View cube — click a face for that view, drag to orbit')}
       data-axis-widget=""
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -264,14 +277,18 @@ export const AxisWidgetOverlay: React.FC = () => {
               // A view-cube face is a BUTTON: it changes the camera.
               role="button"
               tabIndex={0}
-              aria-label={`${f.label} view`}
+              aria-label={t('workspace.viewCube.faceView', '{face} view', { face: f.label })}
               aria-pressed={active}
               data-cube-face={f.mode}
               onClick={clickGuard(() => snapTo(f.mode))}
               onKeyDown={keyActivate(() => snapTo(f.mode))}
               style={{ cursor: 'pointer' }}
             >
-              <title>{active ? `${f.label} view (click for the Active Camera)` : `${f.label} view`}</title>
+              <title>
+                {active
+                  ? t('workspace.viewCube.faceViewActive', '{face} view (click for the Active Camera)', { face: f.label })
+                  : t('workspace.viewCube.faceView', '{face} view', { face: f.label })}
+              </title>
               <polygon
                 points={f.pts.map((p) => `${p.x},${p.y}`).join(' ')}
                 style={{
@@ -313,13 +330,13 @@ export const AxisWidgetOverlay: React.FC = () => {
         <g
           role="button"
           tabIndex={0}
-          aria-label="Reset to the Active Camera view"
+          aria-label={t('workspace.viewCube.reset', 'Reset to the Active Camera view')}
           data-cube-home=""
           onClick={clickGuard(handleHome)}
           onKeyDown={keyActivate(handleHome)}
           style={{ cursor: 'pointer' }}
         >
-          <title>Active Camera view</title>
+          <title>{t('workspace.viewCube.activeCamera', 'Active Camera view')}</title>
           <circle cx={SIZE - 12} cy={12} r={8} style={{ fill: 'var(--color-overlay-panel-bg)', stroke: 'var(--color-overlay-panel-border)' }} strokeWidth={1} />
           <path
             d={`M ${SIZE - 16} ${13} L ${SIZE - 12} ${9} L ${SIZE - 8} ${13} M ${SIZE - 15} ${12.5} L ${SIZE - 15} ${16} L ${SIZE - 9} ${16} L ${SIZE - 9} ${12.5}`}

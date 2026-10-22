@@ -25,15 +25,18 @@ import { mirrorStretchPercent, retimableLayerIds } from '@core/mirror/motionAssi
 import { framesToTimecode } from '@core/time/timecode';
 import { parseGoToTime } from '@layout/Timeline/goToTime';
 import styles from './PrecomposeDialog.module.css';
+import { t } from '@core/i18n';
 
 /** Remembered for the session, as AE does. */
 const remembered: { hold: StretchHold } = { hold: 'in' };
 
-const HOLDS: ReadonlyArray<{ id: StretchHold; title: string; hint: string }> = [
-  { id: 'in', title: 'Layer In-point', hint: 'The first frame stays where it is; the out-point moves.' },
-  { id: 'current', title: 'Current Frame', hint: 'The frame under the playhead stays put; both ends move around it.' },
-  { id: 'out', title: 'Layer Out-point', hint: 'The last frame stays where it is; the in-point moves.' },
-];
+function holds(): ReadonlyArray<{ id: StretchHold; title: string; hint: string }> {
+  return [
+    { id: 'in', title: t('composition.timeStretch.holdIn', 'Layer In-point'), hint: t('composition.timeStretch.holdInHint', 'The first frame stays where it is; the out-point moves.') },
+    { id: 'current', title: t('composition.timeStretch.holdCurrent', 'Current Frame'), hint: t('composition.timeStretch.holdCurrentHint', 'The frame under the playhead stays put; both ends move around it.') },
+    { id: 'out', title: t('composition.timeStretch.holdOut', 'Layer Out-point'), hint: t('composition.timeStretch.holdOutHint', 'The last frame stays where it is; the in-point moves.') },
+  ];
+}
 
 /**
  * Duration in frames at 100 % for the first layer — the base both fields are
@@ -102,7 +105,7 @@ function TimeStretchDialog({ ids, close }: { ids: string[]; close: () => void })
 
   const submit = (): void => {
     if (!valid) {
-      const message = allowNegative ? 'Enter a stretch factor other than 0 %.' : 'Enter a stretch factor above 0 %.';
+      const message = allowNegative ? t('composition.timeStretch.nonZero', 'Enter a stretch factor other than 0 %.') : t('composition.timeStretch.positive', 'Enter a stretch factor above 0 %.');
       useUIStore.getState().notify({ level: 'warning', message, durationMs: 3500 });
       return;
     }
@@ -119,9 +122,9 @@ function TimeStretchDialog({ ids, close }: { ids: string[]; close: () => void })
       <label className={styles.field}>
         <span
           className={styles.label}
-          title={allowNegative ? 'A negative factor reverses the layer’s keyframes (−100 % keeps its length)' : undefined}
+          title={allowNegative ? t('composition.timeStretch.negativeHint', 'A negative factor reverses the layer’s keyframes (−100 % keeps its length)') : undefined}
         >
-          Stretch Factor (%)
+          {t('composition.timeStretch.factor', 'Stretch Factor (%)')}
         </span>
         <Input
           type="number"
@@ -129,25 +132,27 @@ function TimeStretchDialog({ ids, close }: { ids: string[]; close: () => void })
           max={1000}
           value={percentText}
           onChange={(e) => onPercent(e.target.value)}
-          aria-label="Stretch factor"
+          aria-label={t('composition.timeStretch.factorAria', 'Stretch factor')}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
         />
       </label>
       <label className={styles.field}>
         <span className={styles.label}>
-          New Duration{newFrames !== null ? ` — ${newFrames} frames` : ''}
+          {newFrames !== null
+            ? t('composition.timeStretch.newDurationFrames', 'New Duration — {n} frames', { n: newFrames })
+            : t('composition.timeStretch.newDuration', 'New Duration')}
         </span>
         <Input
           value={durationText}
           onChange={(e) => onDuration(e.target.value)}
-          aria-label="New duration"
+          aria-label={t('composition.timeStretch.newDurationAria', 'New duration')}
         />
       </label>
 
       <fieldset className={styles.modes}>
-        <legend className={styles.label}>Hold in Place</legend>
-        {HOLDS.map((h) => (
+        <legend className={styles.label}>{t('composition.timeStretch.holdInPlace', 'Hold in Place')}</legend>
+        {holds().map((h) => (
           <label key={h.id} className={styles.option}>
             <input
               type="radio"
@@ -165,8 +170,8 @@ function TimeStretchDialog({ ids, close }: { ids: string[]; close: () => void })
       </fieldset>
 
       <DialogFooter
-        secondary={<Button variant="secondary" size="md" onClick={close}>Cancel</Button>}
-        primary={<Button variant="primary" size="md" onClick={submit} disabled={!valid}>OK</Button>}
+        secondary={<Button variant="secondary" size="md" onClick={close}>{t('composition.dialog.cancel', 'Cancel')}</Button>}
+        primary={<Button variant="primary" size="md" onClick={submit} disabled={!valid}>{t('composition.dialog.ok', 'OK')}</Button>}
       />
     </div>
   );
@@ -175,12 +180,12 @@ function TimeStretchDialog({ ids, close }: { ids: string[]; close: () => void })
 /** Open Time Stretch for `ids` (the retimable layers of the selection). */
 export function openTimeStretchDialog(ids: ReadonlyArray<string>): void {
   if (ids.length === 0) {
-    useUIStore.getState().notify({ level: 'info', message: 'Select a layer to time-stretch.', durationMs: 4000 });
+    useUIStore.getState().notify({ level: 'info', message: t('composition.timeStretch.selectFirst', 'Select a layer to time-stretch.'), durationMs: 4000 });
     return;
   }
   openModal({
     id: 'time-stretch',
-    title: 'Time Stretch',
+    title: t('composition.timeStretch.title', 'Time Stretch'),
     render: (close) => <TimeStretchDialog ids={[...ids]} close={close} />,
   });
 }

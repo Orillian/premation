@@ -11,6 +11,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { flicksToSeconds, type Command as EngineCommand } from '@motion/engine-api';
 import type { Command } from '@core/commands/Command';
 import { engine } from '@core/engine/engineInstance';
@@ -99,9 +100,14 @@ async function importCaptions(): Promise<void> {
   }
   // Replacing, not adding: a second import over an unremoved first is doubled text.
   const r = await replaceCaptions(cues);
-  const skipped = r.skipped > 0 ? `, ${r.skipped} overlapping cue(s) dropped` : '';
-  const replaced = r.removed > 0 ? ` (replaced ${r.removed})` : '';
-  notify(`Added ${r.added.length} caption layer(s) from ${picked.name}${replaced}${skipped}`);
+  const vars = { n: r.added.length, file: picked.name, replaced: r.removed, skipped: r.skipped };
+  notify(r.removed > 0
+    ? r.skipped > 0
+      ? t('providers.captions.importedReplacedSkipped', 'Added {n} caption layer(s) from {file} (replaced {replaced}), {skipped} overlapping cue(s) dropped', vars)
+      : t('providers.captions.importedReplaced', 'Added {n} caption layer(s) from {file} (replaced {replaced})', vars)
+    : r.skipped > 0
+      ? t('providers.captions.importedSkipped', 'Added {n} caption layer(s) from {file}, {skipped} overlapping cue(s) dropped', vars)
+      : t('providers.captions.imported', 'Added {n} caption layer(s) from {file}', vars));
 }
 
 async function generateCaptions(): Promise<void> {
@@ -110,15 +116,15 @@ async function generateCaptions(): Promise<void> {
   const { startSec, endSec } = captionRange(comp);
   // A JOB rather than a timed toast: the transcription can run for a while.
   const ui = useUIStore.getState();
-  ui.startJob({ id: 'transcribe', label: `Transcribing ${(endSec - startSec).toFixed(1)}s of audio…` });
+  ui.startJob({ id: 'transcribe', label: t('providers.captions.transcribing', 'Transcribing {seconds}s of audio…', { seconds: (endSec - startSec).toFixed(1) }) });
   try {
     const cues = await transcribeComposition({ startSec, endSec, rootId: comp });
     const r = await replaceCaptions(cues);
-    useUIStore.getState().finishJob('transcribe', { status: 'done', message: `Generated ${r.added.length} caption layer(s)` });
+    useUIStore.getState().finishJob('transcribe', { status: 'done', message: t('providers.captions.generated', 'Generated {n} caption layer(s)', { n: r.added.length }) });
   } catch (err) {
     useUIStore.getState().finishJob('transcribe', {
       status: 'failed',
-      message: err instanceof TranscribeError ? err.message : `Transcription failed: ${String(err)}`,
+      message: err instanceof TranscribeError ? err.message : t('providers.captions.transcribeFailed', 'Transcription failed: {error}', { error: String(err) }),
     });
   }
 }
@@ -126,14 +132,14 @@ async function generateCaptions(): Promise<void> {
 async function exportCaptions(format: 'srt' | 'vtt'): Promise<void> {
   const cues = await captionCues();
   if (cues.length === 0) {
-    notify('There are no caption layers in this composition to export.', 'warning');
+    notify(t('providers.captions.noneToExport', 'There are no caption layers in this composition to export.'), 'warning');
     return;
   }
   const text = format === 'srt' ? toSrt(cues) : toVtt(cues);
   const comp = activeCompIdNow();
   const stem = (comp ? documentMirror().comp(comp)?.settings.name?.trim() : '') || 'captions';
   downloadBlob(new Blob([text], { type: format === 'srt' ? 'application/x-subrip' : 'text/vtt' }), `${stem}.${format}`);
-  notify(`Exported ${cues.length} caption(s)`);
+  notify(t('providers.captions.exported', 'Exported {n} caption(s)', { n: cues.length }));
 }
 
 /** Remove every caption layer of the active composition, as one entry. Resolves to the count removed. */
@@ -146,7 +152,7 @@ export async function removeCaptions(): Promise<number> {
 
 async function clearCaptions(): Promise<void> {
   const removed = await removeCaptions();
-  notify(removed === 0 ? 'There were no caption layers to remove.' : `Removed ${removed} caption layer(s)`, removed === 0 ? 'info' : 'success');
+  notify(removed === 0 ? t('providers.captions.noneToRemove', 'There were no caption layers to remove.') : t('providers.captions.removed', 'Removed {n} caption layer(s)', { n: removed }), removed === 0 ? 'info' : 'success');
 }
 
 /** Every caption command, for `buildStaticCommands`. */

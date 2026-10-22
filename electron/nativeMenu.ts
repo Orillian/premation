@@ -93,10 +93,40 @@ export function sanitizeMenuGroups(raw: unknown): NativeMenuGroupSpec[] | null {
   return out;
 }
 
+/**
+ * The few labels main writes itself, in the UI language. Main has no
+ * catalogue; the renderer sends these with the template (English until it does).
+ */
+export interface NativeMenuStrings {
+  checkForUpdates: string;
+  settings: string;
+  /** Holds `{version}`. */
+  version: string;
+}
+
+export const ENGLISH_MENU_STRINGS: NativeMenuStrings = {
+  checkForUpdates: 'Check for Updates…',
+  settings: 'Settings…',
+  version: 'Version {version}',
+};
+
+/** Field-by-field: a bad or missing entry falls back to its English, never fails the menu. */
+export function sanitizeMenuStrings(raw: unknown): NativeMenuStrings {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const pick = (k: keyof NativeMenuStrings): string => {
+    const v = r[k];
+    if (typeof v !== 'string' || v.trim() === '' || v.length > 80) return ENGLISH_MENU_STRINGS[k];
+    if (k === 'version' && !v.includes('{version}')) return ENGLISH_MENU_STRINGS[k];
+    return v;
+  };
+  return { checkForUpdates: pick('checkForUpdates'), settings: pick('settings'), version: pick('version') };
+}
+
 export interface NativeMenuOptions {
   platform: NodeJS.Platform;
   isDev: boolean;
   version: string;
+  strings?: NativeMenuStrings;
   /** A click handler that forwards `commandId` to the renderer. */
   cmd: (commandId: string) => () => void;
   checkForUpdates: () => void;
@@ -107,7 +137,8 @@ function toOptions(items: ReadonlyArray<NativeMenuItemSpec>, opts: NativeMenuOpt
     if (it.type === 'separator') return { type: 'separator' };
     if (it.submenu) return { label: it.label, submenu: toOptions(it.submenu, opts) };
     const role = it.commandId ? ROLE_BY_COMMAND[it.commandId] : undefined;
-    if (role) return { role };
+    // The renderer's label is the translated one; a role alone shows Electron's English.
+    if (role) return it.label ? { role, label: it.label } : { role };
     const base: MenuItemConstructorOptions = {
       label: it.label,
       click: opts.cmd(it.commandId!),
@@ -126,6 +157,7 @@ export function nativeTemplateFromGroups(
   opts: NativeMenuOptions,
 ): MenuItemConstructorOptions[] {
   const mac = opts.platform === 'darwin';
+  const strings = opts.strings ?? ENGLISH_MENU_STRINGS;
   const template: MenuItemConstructorOptions[] = [];
   // Spelled out rather than `role: 'appMenu'` so it can hold Settings… (⌘,) and
   // Check for Updates…, which is where a Mac user looks for both — the macOS
@@ -135,9 +167,9 @@ export function nativeTemplateFromGroups(
       label: 'Premation',
       submenu: [
         { role: 'about' },
-        { label: 'Check for Updates…', click: opts.checkForUpdates },
+        { label: strings.checkForUpdates, click: opts.checkForUpdates },
         { type: 'separator' },
-        { label: 'Settings…', accelerator: 'Cmd+,', click: opts.cmd('view.customize') },
+        { label: strings.settings, accelerator: 'Cmd+,', click: opts.cmd('view.customize') },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -170,8 +202,8 @@ export function nativeTemplateFromGroups(
         // Not a command forwarded to the renderer: updating is the shell's
         // job, and the renderer is what gets replaced.
         // On a Mac it is in the app menu instead, where Mac apps keep it.
-        if (!mac) submenu.unshift({ label: 'Check for Updates…', click: opts.checkForUpdates }, { type: 'separator' });
-        submenu.push({ type: 'separator' }, { label: `Version ${opts.version}`, enabled: false });
+        if (!mac) submenu.unshift({ label: strings.checkForUpdates, click: opts.checkForUpdates }, { type: 'separator' });
+        submenu.push({ type: 'separator' }, { label: strings.version.replace('{version}', opts.version), enabled: false });
         break;
       default:
         break;

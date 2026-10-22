@@ -49,19 +49,21 @@
   box-shadow: var(--shadow-focus-ring);
 }
 
-/* Toggled/active state — recessed tool latch */
+/* Toggled/active: After Effects' pressed tool — a grey well, the glyph in ink.
+   Not the accent: a blue glyph on a dark well read as a selected item, and a
+   row of them as a row of selected items. */
 .root[data-active] {
-  background: var(--color-surface-0);
-  color: var(--color-primary);
-  border-color: rgba(0, 0, 0, 0.35);
-  box-shadow: var(--shadow-well);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .root[data-active]:hover:not(:disabled) {
-  background: var(--color-surface-0);
-  color: var(--color-primary-hover);
-  border-color: rgba(0, 0, 0, 0.45);
-  box-shadow: var(--shadow-well);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .root[data-variant="primary"] {

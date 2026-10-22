@@ -86,7 +86,7 @@ export function buildTransitionPanels(b: FragmentBuilder, frame: InsertFrame, tr
   const count = item.solidCount ?? 1;
   const panels: string[] = [];
   for (let i = 0; i < count; i++) {
-    const id = addPanel(b, frame.comp, item.a, box, count > 1 ? `${item.name} ${i + 1}` : item.name);
+    const id = addPanel(b, frame.comp, item.a, box, count > 1 ? `${item.layerName} ${i + 1}` : item.layerName);
     if (!id) continue;
     let blurTrack: string | null | undefined;
     for (const kf of panelRecipe(transId, box, i, count)) {

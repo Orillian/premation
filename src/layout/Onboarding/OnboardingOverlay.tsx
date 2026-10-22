@@ -39,6 +39,7 @@ import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '@components/Icon';
 import { Button } from '@components/Button';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { positionPopover, type Placement } from '@hooks/positionPopover';
 import {
   useOnboardingStore,
@@ -249,7 +250,7 @@ function TourLayer({ onDone }: { onDone: () => void }): JSX.Element {
     : undefined;
 
   return (
-    <div className={styles.layer} role="dialog" aria-label="Welcome tour" aria-live="polite">
+    <div className={styles.layer} role="dialog" aria-label={t('onboarding.tour.ariaLabel', 'Welcome tour')} aria-live="polite">
       {anchored && rect ? <Spotlight rect={rect} /> : <div className={styles.plainScrim} aria-hidden="true" />}
 
       <div
@@ -260,7 +261,7 @@ function TourLayer({ onDone }: { onDone: () => void }): JSX.Element {
       >
         <div className={styles.head}>
           <span className={styles.badge}><Icon name="tour" size="sm" /></span>
-          <span className={styles.count}>Step {index + 1} of {TOUR_STEPS.length}</span>
+          <span className={styles.count}>{t('onboarding.tour.stepCount', 'Step {n} of {total}', { n: index + 1, total: TOUR_STEPS.length })}</span>
         </div>
 
         <h2 className={styles.title}>{step.title}</h2>
@@ -288,7 +289,7 @@ function TourLayer({ onDone }: { onDone: () => void }): JSX.Element {
                 setDontShowAgain(e.target.checked);
               }}
             />
-            Don&rsquo;t show this again
+            {t('onboarding.tour.dontShowAgain', 'Don’t show this again')}
           </label>
         ) : null}
 
@@ -299,11 +300,11 @@ function TourLayer({ onDone }: { onDone: () => void }): JSX.Element {
         </div>
 
         <div className={styles.footer}>
-          <button type="button" className={styles.skip} onClick={close}>Skip tour</button>
+          <button type="button" className={styles.skip} onClick={close}>{t('onboarding.tour.skip', 'Skip tour')}</button>
           <div className={styles.nav}>
-            {!isFirst ? <Button variant="secondary" size="sm" onClick={back}>Back</Button> : null}
+            {!isFirst ? <Button variant="secondary" size="sm" onClick={back}>{t('onboarding.tour.back', 'Back')}</Button> : null}
             <Button variant="primary" size="sm" onClick={advance}>
-              {isLast ? 'Done' : 'Next'}
+              {isLast ? t('onboarding.tour.done', 'Done') : t('onboarding.tour.next', 'Next')}
             </Button>
           </div>
         </div>

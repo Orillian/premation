@@ -29,6 +29,7 @@ import { Button } from '@components/Button';
 import { EmptyState } from '@components/EmptyState';
 import { moveBars } from '@layout/Timeline/timelineEdits';
 import styles from './MulticamViewer.module.css';
+import { t } from '@core/i18n';
 
 interface AngleView {
   id: string;
@@ -69,12 +70,12 @@ function collectAngleViews(): AngleView[] {
  * shows. From the document mirror at the THROTTLED display time: never a
  * value query per played frame.
  */
-function liveAngleAt(views: ReadonlyArray<AngleView>, t: number): number | null {
+function liveAngleAt(views: ReadonlyArray<AngleView>, time: number): number | null {
   const m = documentMirror();
   let best: number | null = null;
   let bestOpacity = -1;
   for (const v of views) {
-    const opacity = readTrack(m, v.id, 'opacity', t) ?? 100;
+    const opacity = readTrack(m, v.id, 'opacity', time) ?? 100;
     if (opacity > bestOpacity) {
       bestOpacity = opacity;
       best = v.angle;
@@ -164,8 +165,8 @@ export function MulticamViewerBody(): JSX.Element {
     return (
       <EmptyState
         icon="video"
-        title="No multicam angles"
-        message="A multicam group needs at least two angles. Build one from the Library with “New Multicam from Library…”."
+        title={t('multicam.viewer.emptyTitle', 'No multicam angles')}
+        message={t('multicam.viewer.emptyMessage', 'A multicam group needs at least two angles. Build one from the Library with “New Multicam from Library…”.')}
       />
     );
   }
@@ -174,7 +175,7 @@ export function MulticamViewerBody(): JSX.Element {
     <div>
       <div className={styles.row}>
         <Button size="sm" onClick={() => void onSync()} disabled={syncing}>
-          {syncing ? 'Syncing…' : 'Sync by Audio'}
+          {syncing ? t('multicam.viewer.syncing', 'Syncing…') : t('multicam.viewer.sync', 'Sync by Audio')}
         </Button>
         {syncNote && <span className={styles.syncNote}>{syncNote}</span>}
       </div>
@@ -184,7 +185,7 @@ export function MulticamViewerBody(): JSX.Element {
             key={v.id}
             type="button"
             className={cn(styles.cell, live === v.angle && styles.cellLive)}
-            title={`Cut to angle ${v.angle} (Alt+${v.angle})`}
+            title={t('multicam.viewer.cutTo', 'Cut to angle {angle} (Alt+{angle})', { angle: v.angle })}
             onClick={() => { void switchMulticamAngleEdit(v.angle, views); }}
           >
             {v.src ? (
@@ -209,8 +210,7 @@ export function MulticamViewerBody(): JSX.Element {
         ))}
       </div>
       <div className={styles.hint}>
-        Click an angle to cut at the playhead. Alt+1…9 cuts without the viewer.
-        Live angle plays audio; others stay muted.
+        {t('multicam.viewer.hint', 'Click an angle to cut at the playhead. Alt+1…9 cuts without the viewer. Live angle plays audio; others stay muted.')}
       </div>
     </div>
   );
@@ -220,7 +220,7 @@ export function MulticamViewerBody(): JSX.Element {
 export function openMulticamViewer(): void {
   openModal({
     id: 'multicam-viewer',
-    title: 'Multicam Viewer',
+    title: t('multicam.viewer.title', 'Multicam Viewer'),
     size: 'lg',
     render: () => <MulticamViewerBody />,
   });

@@ -28,6 +28,7 @@ import { openFindReplaceTextDialog } from './FindReplaceTextDialog';
 import { openFindAndReplaceFonts } from './ReplaceFontsDialog';
 import { openSourceTextExpressionEditor } from './SourceTextExpressionDialog';
 import { installMissingFontsWatcher } from './missingFontsWatcher';
+import { t } from '@core/i18n';
 
 export const TEXT_FIND_REPLACE_COMMAND = asCommandId('text.findReplace');
 export const TEXT_REPLACE_FONTS_COMMAND = asCommandId('text.replaceFonts');
@@ -50,8 +51,8 @@ export function buildTextToolCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TEXT_FIND_REPLACE_COMMAND,
-      label: 'Find and Replace Text…',
-      description: 'Find text in the selected layers, this comp or every comp — Source Text keyframes included — and replace it in one undo.',
+      label: t('text.commands.findAndReplaceText', 'Find and Replace Text…'),
+      description: t('text.commands.findTextInTheSelected', 'Find text in the selected layers, this comp or every comp — Source Text keyframes included — and replace it in one undo.'),
       icon: 'search',
       shortcut: { key: 'h', meta: true, shift: true },
       enabled: () => true,
@@ -61,8 +62,8 @@ export function buildTextToolCommands(): ReadonlyArray<Command> {
     },
     {
       id: TEXT_REPLACE_FONTS_COMMAND,
-      label: 'Find and Replace Fonts…',
-      description: 'List every font the project uses, flag the missing ones, and swap any of them on every layer and styled run.',
+      label: t('text.commands.findAndReplaceFonts', 'Find and Replace Fonts…'),
+      description: t('text.commands.listEveryFontTheProject', 'List every font the project uses, flag the missing ones, and swap any of them on every layer and styled run.'),
       icon: 'type',
       enabled: () => true,
       execute: async () => {
@@ -71,8 +72,8 @@ export function buildTextToolCommands(): ReadonlyArray<Command> {
     },
     {
       id: LAYER_MASKS_FROM_TEXT_COMMAND,
-      label: 'Create Masks from Text',
-      description: 'A comp-sized solid in the text colour with one mask per glyph outline; the text layer is hidden.',
+      label: t('text.commands.createMasksFromText', 'Create Masks from Text'),
+      description: t('text.commands.aCompSizedSolidIn', 'A comp-sized solid in the text colour with one mask per glyph outline; the text layer is hidden.'),
       icon: 'type',
       enabled: () => {
         const id = selectedTextLayer();
@@ -83,21 +84,21 @@ export function buildTextToolCommands(): ReadonlyArray<Command> {
         if (!id) return;
         const made = await masksFromTextEdit(id);
         if (!made) {
-          notify('Could not outline this text — is it empty?', 'warning');
+          notify(t('text.commands.outlineFailed', 'Could not outline this text — is it empty?'), 'warning');
           return;
         }
         notify(
           made.source === 'outlines'
-            ? `Created ${made.masks} masks from the font’s own outlines`
-            : `Created ${made.masks} masks from traced outlines (allow local fonts for exact curves)`,
+            ? t('text.commands.masksFromOutlines', 'Created {n} masks from the font’s own outlines', { n: made.masks })
+            : t('text.commands.masksFromTraced', 'Created {n} masks from traced outlines (allow local fonts for exact curves)', { n: made.masks }),
           'success',
         );
       },
     },
     {
       id: TEXT_SOURCE_EXPRESSION_COMMAND,
-      label: 'Source Text Expression…',
-      description: 'Drive the selected text layer’s Source Text with an expression — text.sourceText, the text style API and per-character styling.',
+      label: t('text.commands.sourceTextExpression', 'Source Text Expression…'),
+      description: t('text.commands.driveTheSelectedTextLayer', 'Drive the selected text layer’s Source Text with an expression — text.sourceText, the text style API and per-character styling.'),
       icon: 'track',
       enabled: () => selectedTextLayer() !== null,
       execute: () => {

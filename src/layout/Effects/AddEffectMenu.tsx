@@ -19,6 +19,7 @@ import { addEffectEdit } from './effectEdits';
 import { effectCategoryOf } from './effectCategory';
 import { useAllEffectDefs, useEffectFavorites } from './effectCatalog';
 import styles from './AddEffectMenu.module.css';
+import { t } from '@core/i18n';
 
 export interface AddEffectMenuGroup {
   label: string;
@@ -38,11 +39,11 @@ export function addEffectMenuGroups(
   const q = query.trim().toLowerCase();
   if (q) {
     const matches = defs.filter((d) => d.label.toLowerCase().includes(q));
-    return matches.length > 0 ? [{ label: 'Results', defs: matches }] : [];
+    return matches.length > 0 ? [{ label: t('effects.addMenu.results', 'Results'), defs: matches }] : [];
   }
   const groups: AddEffectMenuGroup[] = [];
   const favs = defs.filter((d) => favorites.has(d.type));
-  if (favs.length > 0) groups.push({ label: 'Favourites', defs: favs });
+  if (favs.length > 0) groups.push({ label: t('effects.addMenu.favourites', 'Favourites'), defs: favs });
   const byCategory = new Map<string, EffectDef[]>();
   for (const d of defs) {
     const cat = effectCategoryOf(d);
@@ -84,20 +85,20 @@ export function AddEffectMenu({ nodeIds }: { nodeIds: ReadonlyArray<string> }): 
         <button
           type="button"
           className={styles.trigger}
-          aria-label="Add effect"
-          title="Add effect"
+          aria-label={t('effects.addMenu.addEffect', 'Add effect')}
+          title={t('effects.addMenu.addEffect', 'Add effect')}
           disabled={nodeIds.length === 0}
         >
           <Icon name="plus" size="sm" />
         </button>
       }
     >
-      <div className={styles.menu} role="dialog" aria-label="Add effect">
+      <div className={styles.menu} role="dialog" aria-label={t('effects.addMenu.addEffect', 'Add effect')}>
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder="Search effects…"
-          ariaLabel="Search effects to add"
+          placeholder={t('effects.addMenu.searchPlaceholder', 'Search effects…')}
+          ariaLabel={t('effects.addMenu.searchAria', 'Search effects to add')}
           size="sm"
           autoFocus
           onKeyDown={(e) => {
@@ -109,7 +110,7 @@ export function AddEffectMenu({ nodeIds }: { nodeIds: ReadonlyArray<string> }): 
           }}
         />
         {groups.length === 0 ? (
-          <p className={styles.empty}>No effects match “{query.trim()}”.</p>
+          <p className={styles.empty}>{t('effects.addMenu.noMatch', 'No effects match “{query}”.', { query: query.trim() })}</p>
         ) : (
           <div className={styles.list}>
             {groups.map((g) => (
@@ -120,7 +121,7 @@ export function AddEffectMenu({ nodeIds }: { nodeIds: ReadonlyArray<string> }): 
                     key={`${g.label}:${d.type}`}
                     type="button"
                     className={styles.item}
-                    title={`Add ${d.label}`}
+                    title={t('effects.addMenu.addNamed', 'Add {name}', { name: d.label })}
                     onClick={() => apply(d.type)}
                   >
                     {d.label}

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -47,9 +48,19 @@ double js_min2(double a, double b) noexcept {
   return motion::js::min_of(v);
 }
 
+/// ECMAScript ToInt32 / ToUint32 (the bitwise operators).
+std::uint32_t to_uint32(double d) noexcept {
+  if (!std::isfinite(d)) return 0;
+  double m = std::fmod(std::trunc(d), 4294967296.0);
+  if (m < 0) m += 4294967296.0;
+  return static_cast<std::uint32_t>(m);
+}
+std::int32_t to_int32(double d) noexcept { return static_cast<std::int32_t>(to_uint32(d)); }
+
 }  // namespace
 
 void throw_eval(Str message) { throw EvalError{std::move(message)}; }
+void throw_fatal(Str message) { throw EvalError{std::move(message), true}; }
 
 double integer_or_infinity(double d) noexcept {
   if (std::isnan(d) || d == 0) return 0;
@@ -122,14 +133,18 @@ Value Interp::run() {
     Leave& operator=(Leave&&) = delete;
     ~Leave() { --g_budget.depth; }
   } const leave;
-  return eval(prog_.root);
+  // The program's own frame (top-level var/let/const), only when it has one.
+  if (prog_.top_slots > 0) env_ = arena_.env(prog_.top_slots, nullptr);
+  const Value out = eval(prog_.root);
+  // A top-level `return x` ends the program with x (AE lets rigs do this).
+  return flow_ == Flow::kReturn ? return_value_ : out;
 }
 
 Value Interp::eval(std::uint32_t id) {
   Budget& b = g_budget;
   b.steps += 1;
-  if (b.steps > kMaxEvalSteps) throw_eval(u"This expression is too expensive to evaluate.");
-  if (b.node_depth >= kMaxEvalDepth) throw_eval(u"This expression is nested too deeply.");
+  if (b.steps > kMaxEvalSteps) throw_fatal(u"This expression is too expensive to evaluate.");
+  if (b.node_depth >= kMaxEvalDepth) throw_fatal(u"This expression is nested too deeply.");
   b.node_depth += 1;
   struct Leave {
     Leave() = default;
@@ -139,7 +154,18 @@ Value Interp::eval(std::uint32_t id) {
     Leave& operator=(Leave&&) = delete;
     ~Leave() { g_budget.node_depth -= 1; }
   } const leave;
-  return eval_inner(prog_.nodes[id]);
+  stmt_empty_ = false;  // an expression always completes with a value
+  // The innermost node that fails names the error's line and column. (Table-
+  // based unwinding: nothing runs here unless something throws.)
+  try {
+    return eval_inner(id);
+  } catch (const EvalError&) {
+    note_pos(id);
+    throw;
+  } catch (const HostError&) {
+    note_pos(id);
+    throw;
+  }
 }
 
 namespace {
@@ -157,7 +183,8 @@ KeyId kid_of(const Value& key) {
 
 }  // namespace
 
-Value Interp::eval_inner(const Node& n) {
+Value Interp::eval_inner(std::uint32_t id) {
+  const Node& n = prog_.nodes[id];
   switch (n.kind) {
     case NodeKind::kNum:
       return Value::number(n.num);
@@ -177,6 +204,7 @@ Value Interp::eval_inner(const Node& n) {
     }
     case NodeKind::kMember: {
       const Value object = eval(n.a);
+      if (n.optional && object.is_nullish()) throw ShortCircuit{};
       Value key;
       KeyId kid = n.key;
       if (n.computed) {
@@ -193,15 +221,23 @@ Value Interp::eval_inner(const Node& n) {
     case NodeKind::kCall:
       return eval_call(n);
     case NodeKind::kUnary: {
+      if (n.op == Op::kTypeof) {
+        // `typeof name` of a name nothing defines is "undefined", not an error.
+        const Node& arg = prog_.nodes[n.a];
+        if (arg.kind == NodeKind::kIdent && arg.global == Global::kNone) return str(u"undefined");
+        return type_of(eval(n.a));
+      }
       const Value v = eval(n.a);
       if (n.op == Op::kNot) return Value::boolean(!truthy(v));
       const double d = to_number(v);
+      if (n.op == Op::kBitNot) return Value::number(static_cast<double>(~to_int32(d)));
       return Value::number(n.op == Op::kNeg ? -d : +d);
     }
     case NodeKind::kLogical: {
       // Short-circuit, like JS — the right side must not evaluate.
       const Value left = eval(n.a);
       if (n.op == Op::kAnd) return truthy(left) ? eval(n.b) : left;
+      if (n.op == Op::kNullish) return left.is_nullish() ? eval(n.b) : left;
       return truthy(left) ? left : eval(n.b);
     }
     case NodeKind::kBinary: {
@@ -211,8 +247,506 @@ Value Interp::eval_inner(const Node& n) {
     }
     case NodeKind::kConditional:
       return truthy(eval(n.a)) ? eval(n.b) : eval(n.c);
+
+    // ── statements, locals and functions ──
+    case NodeKind::kLocal:
+      return frame(n.depth).slots[n.slot];
+    case NodeKind::kAssign: {
+      const Ref target = ref_of(prog_.nodes[n.a]);
+      Value v;
+      if (n.op == Op::kNone) {
+        v = eval(n.b);
+      } else {
+        const Value cur = ref_get(target);
+        v = binary(n.op, cur, eval(n.b));
+      }
+      ref_set(target, v);
+      return v;
+    }
+    case NodeKind::kUpdate: {
+      const Ref target = ref_of(prog_.nodes[n.a]);
+      const double old = to_number(ref_get(target));
+      const double now = n.op == Op::kAdd ? old + 1 : old - 1;
+      ref_set(target, Value::number(now));
+      return Value::number(n.prefix ? now : old);
+    }
+    case NodeKind::kFunction:
+      if (n.decl) {  // hoisted by its block; as a statement it completes empty
+        stmt_empty_ = true;
+        return {};
+      }
+      return closure(id);
+    case NodeKind::kBlock:
+      return exec_block(n);
+    case NodeKind::kVarList: {
+      for (std::uint32_t i = 0; i < n.count; ++i) {
+        const Node& d = prog_.nodes[prog_.lists[n.list + i]];
+        if (d.a != kNoNode) frame(0).slots[d.slot] = eval(d.a);
+      }
+      stmt_empty_ = true;
+      return {};
+    }
+    case NodeKind::kVarDecl:  // only ever reached through kVarList
+      stmt_empty_ = true;
+      return {};
+    case NodeKind::kIf: {
+      const std::uint32_t branch = truthy(eval(n.a)) ? n.b : n.c;
+      Value v;
+      if (branch != kNoNode) {
+        v = eval(branch);
+        if (stmt_empty_) v = {};
+      }
+      stmt_empty_ = false;  // UpdateEmpty(…, undefined)
+      return v;
+    }
+    case NodeKind::kWhile:
+    case NodeKind::kFor:
+      return exec_loop(n);
+    case NodeKind::kReturn:
+      return_value_ = n.a == kNoNode ? Value{} : eval(n.a);
+      flow_ = Flow::kReturn;
+      stmt_empty_ = true;
+      return {};
+    case NodeKind::kBreak:
+      flow_ = Flow::kBreak;
+      stmt_empty_ = true;
+      return {};
+    case NodeKind::kContinue:
+      flow_ = Flow::kContinue;
+      stmt_empty_ = true;
+      return {};
+    case NodeKind::kEmpty:
+      stmt_empty_ = true;
+      return {};
+    // ── 2026-10-21 ──
+    case NodeKind::kObject:
+      return eval_object(n);
+    case NodeKind::kTemplate:
+      return eval_template(n);
+    case NodeKind::kOptChain:
+      try {
+        return eval(n.a);
+      } catch (const ShortCircuit&) {
+        return {};
+      }
+    case NodeKind::kDoWhile:
+      return exec_do_while(n);
+    case NodeKind::kForOf:
+      return exec_for_of(n);
+    case NodeKind::kSwitch:
+      return exec_switch(n);
+    case NodeKind::kCase:  // only ever reached through kSwitch
+      stmt_empty_ = true;
+      return {};
+    case NodeKind::kTry:
+      return exec_try(n);
+    case NodeKind::kThrow: {
+      const Value v = eval(n.a);
+      thrown_ = v;
+      has_thrown_ = true;
+      // The message an uncaught throw reports: an Error-like object's
+      // `message`, else the value itself.
+      Str msg;
+      if (v.is_object() && v.o->kind == ObjKind::kPlain) {
+        const Value m = read_member(v, str(u"message"), KeyId::k_message);
+        msg = m.is_undefined() ? to_string(v) : to_string(m);
+      } else {
+        msg = to_string(v);
+      }
+      throw_eval(std::move(msg));
+    }
   }
   return {};
+}
+
+// ── Statements, locals and functions ────────────────────────────────────────
+
+Env& Interp::frame(std::uint16_t depth) {
+  Env* e = env_;
+  for (std::uint16_t i = 0; i < depth && e != nullptr; ++i) e = e->parent;
+  if (e == nullptr) throw_eval(u"Internal: a local variable has no frame.");
+  return *e;
+}
+
+Interp::Ref Interp::ref_of(const Node& target) {
+  Ref r;
+  if (target.kind == NodeKind::kLocal) {
+    r.local = true;
+    r.env = &frame(target.depth);
+    r.slot = target.slot;
+    r.is_const = target.boolean;
+    return r;
+  }
+  if (target.kind != NodeKind::kMember) throw_eval(u"Invalid assignment target.");
+  r.obj = eval(target.a);
+  r.kid = target.key;
+  if (target.computed) {
+    r.key = eval(target.b);
+    if (r.key.tag != Tag::kString && r.key.tag != Tag::kNumber) throw_eval(u"Property names must be a string or number.");
+    r.kid = kid_of(r.key);
+  } else {
+    r.key = Value::string(&prog_.strings[target.str]);
+  }
+  return r;
+}
+
+Value Interp::ref_get(const Ref& r) {
+  if (r.local) return r.env->slots[r.slot];
+  return read_member(r.obj, r.key, r.kid);
+}
+
+void Interp::ref_set(const Ref& r, const Value& v) {
+  if (r.local) {
+    if (r.is_const) throw_eval(u"Assignment to constant variable.");
+    r.env->slots[r.slot] = v;
+    return;
+  }
+  if (r.obj.is_nullish()) {
+    throw_eval(u"Cannot set " + lq() + to_string(r.key) + rq() + u" of " + (r.obj.is_null() ? u"null" : u"undefined") +
+               u".");
+  }
+  if (r.obj.tag != Tag::kObject) return;  // a primitive's property: silently dropped, as in sloppy JS
+  Obj& o = *r.obj.o;
+  if (o.kind == ObjKind::kArray) {
+    const std::optional<std::size_t> idx = array_index_of(r.key);
+    if (!idx) {
+      if (r.kid == KeyId::k_length) {
+        const double len = to_number(v);
+        if (!(len >= 0) || len > static_cast<double>(kMaxArrayLength) || std::trunc(len) != len) {
+          throw_eval(u"Invalid array length.");
+        }
+        o.elems.resize(static_cast<std::size_t>(len));
+      }
+      return;
+    }
+    if (*idx >= kMaxArrayLength) throw_fatal(u"This expression is too expensive to evaluate.");
+    if (*idx >= o.elems.size()) o.elems.resize(*idx + 1);
+    o.elems[*idx] = v;
+    return;
+  }
+  if (o.kind == ObjKind::kPlain) {
+    if (r.kid == KeyId::kUnknown) {
+      // A key of the expression's own (`o.foo = 1`).
+      const Str name = to_string(r.key);
+      for (Prop& p : o.props) {
+        if (p.key == KeyId::kUnknown && p.name != nullptr && *p.name == name) {
+          p.value = v;
+          return;
+        }
+      }
+      o.props.push_back({.key = KeyId::kUnknown, .value = v, .lazy = Lazy::kNone, .name = arena_.str(name)});
+      return;
+    }
+    for (Prop& p : o.props) {
+      if (p.key != r.kid) continue;
+      p.value = v;
+      p.lazy = Lazy::kNone;
+      return;
+    }
+    o.props.push_back({.key = r.kid, .value = v, .lazy = Lazy::kNone});
+    return;
+  }
+  throw_eval(u"Cannot set " + lq() + to_string(r.key) + rq() + u" on that value.");
+}
+
+Value Interp::exec_block(const Node& n) {
+  // Function declarations hoist: every one in the block is bound before any
+  // statement runs, so a helper may be used above its definition.
+  for (std::uint32_t i = 0; i < n.count; ++i) {
+    const std::uint32_t sid = prog_.lists[n.list + i];
+    const Node& s = prog_.nodes[sid];
+    if (s.kind == NodeKind::kFunction && s.decl) frame(0).slots[s.slot] = closure(sid);
+  }
+  Value last;
+  bool any = false;
+  for (std::uint32_t i = 0; i < n.count; ++i) {
+    const std::uint32_t sid = prog_.lists[n.list + i];
+    const Node& s = prog_.nodes[sid];
+    if (s.kind == NodeKind::kFunction && s.decl) continue;
+    const Value v = eval(sid);
+    if (!stmt_empty_) {
+      last = v;
+      any = true;
+    }
+    if (flow_ != Flow::kNormal) break;
+  }
+  stmt_empty_ = !any;
+  return last;
+}
+
+Value Interp::exec_loop(const Node& n) {
+  const bool is_for = n.kind == NodeKind::kFor;
+  if (is_for && n.a != kNoNode) (void)eval(n.a);
+  const std::uint32_t test = is_for ? n.b : n.a;
+  const std::uint32_t body = is_for ? n.d : n.b;
+  Value last;
+  for (int iterations = 0;; ++iterations) {
+    if (iterations >= kMaxLoopIterations) {
+      throw_fatal(u"This loop ran more than 50000 times — expressions must finish in bounded time.");
+    }
+    if (test != kNoNode && !truthy(eval(test))) break;
+    if (loop_body(body, last)) break;
+    if (is_for && n.c != kNoNode) (void)eval(n.c);
+  }
+  stmt_empty_ = false;
+  return last;
+}
+
+bool Interp::loop_body(std::uint32_t body, Value& last) {
+  const Value v = eval(body);
+  if (!stmt_empty_) last = v;
+  if (flow_ == Flow::kBreak) {
+    flow_ = Flow::kNormal;
+    return true;
+  }
+  if (flow_ == Flow::kContinue) flow_ = Flow::kNormal;
+  return flow_ == Flow::kReturn;
+}
+
+Value Interp::exec_do_while(const Node& n) {
+  Value last;
+  for (int iterations = 0;; ++iterations) {
+    if (iterations >= kMaxLoopIterations) {
+      throw_fatal(u"This loop ran more than 50000 times — expressions must finish in bounded time.");
+    }
+    if (loop_body(n.b, last)) break;
+    if (!truthy(eval(n.a))) break;
+  }
+  stmt_empty_ = false;
+  return last;
+}
+
+Value Interp::exec_for_of(const Node& n) {
+  const bool of = n.boolean;
+  const Value src = eval(n.b);
+  // The values to visit, taken up front (the body may change the array).
+  std::vector<Value> items;
+  if (src.is_nullish()) {
+    if (of) throw_eval(to_string(src) + u" is not iterable.");
+  } else if (src.is_string()) {
+    for (std::size_t i = 0; i < src.s->size(); ++i) {
+      items.push_back(of ? str(Str(1, (*src.s)[i])) : str(number_to_str(static_cast<double>(i))));
+    }
+  } else if (is_array(src)) {
+    if (of) {
+      items = src.o->elems;
+    } else {
+      for (std::size_t i = 0; i < src.o->elems.size(); ++i) items.push_back(str(number_to_str(static_cast<double>(i))));
+    }
+  } else if (!of && src.is_object() && src.o->kind == ObjKind::kPlain) {
+    for (const Prop& p : src.o->props) {
+      items.push_back(p.name != nullptr ? Value::string(p.name) : str(Str(key_name(p.key))));
+    }
+  } else if (of) {
+    throw_eval(u"That value is not iterable — for…of walks an array or a string.");
+  }
+  const Node& target = prog_.nodes[n.a];
+  Value last;
+  for (std::size_t i = 0; i < items.size(); ++i) {
+    if (std::cmp_greater_equal(i, kMaxLoopIterations)) {
+      throw_fatal(u"This loop ran more than 50000 times — expressions must finish in bounded time.");
+    }
+    if (target.kind == NodeKind::kVarDecl) {
+      frame(0).slots[target.slot] = items[i];
+    } else {
+      ref_set(ref_of(target), items[i]);
+    }
+    if (loop_body(n.d, last)) break;
+  }
+  stmt_empty_ = false;
+  return last;
+}
+
+Value Interp::exec_switch(const Node& n) {
+  const Value d = unwrap_prop(eval(n.a));
+  std::uint32_t start = kNoNode;
+  std::uint32_t fallback = kNoNode;
+  for (std::uint32_t i = 0; i < n.count; ++i) {
+    const Node& c = prog_.nodes[prog_.lists[n.list + i]];
+    if (c.a == kNoNode) {
+      fallback = i;
+      continue;
+    }
+    if (strict_equals(d, unwrap_prop(eval(c.a)))) {
+      start = i;
+      break;
+    }
+  }
+  if (start == kNoNode) start = fallback;
+  Value last;
+  if (start != kNoNode) {
+    for (std::uint32_t i = start; i < n.count && flow_ == Flow::kNormal; ++i) {
+      const Node& c = prog_.nodes[prog_.lists[n.list + i]];
+      for (std::uint32_t k = 0; k < c.count; ++k) {
+        const Value v = eval(prog_.lists[c.list + k]);
+        if (!stmt_empty_) last = v;
+        if (flow_ != Flow::kNormal) break;
+      }
+    }
+  }
+  if (flow_ == Flow::kBreak) flow_ = Flow::kNormal;
+  stmt_empty_ = false;
+  return last;
+}
+
+Value Interp::exec_try(const Node& n) {
+  std::exception_ptr pending;
+  Value v;
+  try {
+    v = eval(n.a);
+  } catch (const EvalError& e) {
+    if (e.fatal || n.b == kNoNode) {
+      pending = std::current_exception();
+    } else {
+      // Caught: the error no longer has a position, and `e` is an Error-like
+      // object (or the value a `throw` threw).
+      err_pos_ = kNoPos;
+      flow_ = Flow::kNormal;
+      const Value caught = has_thrown_ ? thrown_
+                                       : plain({{.key = KeyId::k_message, .value = str(e.message)},
+                                                {.key = KeyId::k_name, .value = str(u"Error")}});
+      has_thrown_ = false;
+      thrown_ = {};
+      if (n.decl) frame(0).slots[n.slot] = caught;
+      try {
+        v = eval(n.b);
+      } catch (const EvalError&) {
+        pending = std::current_exception();
+      } catch (const HostError&) {
+        pending = std::current_exception();
+      }
+    }
+  } catch (const HostError&) {
+    pending = std::current_exception();  // a cycle is the engine's to report, never the rig's to catch
+  }
+  if (n.c != kNoNode) {
+    const Flow f = flow_;
+    const Value rv = return_value_;
+    const bool empty = stmt_empty_;
+    flow_ = Flow::kNormal;
+    (void)eval(n.c);
+    // A `return` / `break` in the finally block wins over everything before it.
+    if (flow_ != Flow::kNormal) {
+      stmt_empty_ = true;
+      return {};
+    }
+    flow_ = f;
+    return_value_ = rv;
+    stmt_empty_ = empty;
+  }
+  if (pending) std::rethrow_exception(pending);
+  return v;
+}
+
+Value Interp::eval_object(const Node& n) {
+  Obj* o = arena_.obj(ObjKind::kPlain);
+  o->props.reserve(n.count / 2);
+  for (std::uint32_t i = 0; i + 1 < n.count; i += 2) {
+    const Node& k = prog_.nodes[prog_.lists[n.list + i]];
+    const Value v = eval(prog_.lists[n.list + i + 1]);
+    const Str* name = k.key == KeyId::kUnknown ? &prog_.strings[k.str] : nullptr;
+    bool found = false;
+    for (Prop& p : o->props) {
+      if (p.key == k.key && (name == nullptr || (p.name != nullptr && *p.name == *name))) {
+        p.value = v;  // a repeated key: the last one wins
+        found = true;
+        break;
+      }
+    }
+    if (!found) o->props.push_back({.key = k.key, .value = v, .lazy = Lazy::kNone, .name = name});
+  }
+  return Value::object(o);
+}
+
+Value Interp::eval_template(const Node& n) {
+  Str out;
+  for (std::uint32_t i = 0; i < n.count; ++i) {
+    const std::uint32_t id = prog_.lists[n.list + i];
+    const Node& part = prog_.nodes[id];
+    if ((i % 2) == 0) {
+      out += prog_.strings[part.str];
+    } else {
+      out += to_string(eval(id));
+    }
+  }
+  return str(std::move(out));
+}
+
+Value Interp::closure(std::uint32_t id) {
+  const Node& fn = prog_.nodes[id];
+  Obj* o = arena_.obj(ObjKind::kFunction);
+  o->fn = Fn::kNone;
+  o->node = id;
+  o->env = env_;
+  o->str = &prog_.strings[fn.str];
+  // `f.length`: the parameters before the first default.
+  std::uint32_t length = fn.count;
+  if (fn.has_defaults) {
+    for (std::uint32_t i = 0; i < fn.count; ++i) {
+      if (prog_.lists[fn.list + i] != kNoNode) {
+        length = i;
+        break;
+      }
+    }
+  }
+  o->aux = static_cast<std::uint8_t>(std::min<std::uint32_t>(length, 255));
+  return Value::object(o);
+}
+
+Value Interp::call_user(const Obj& f, Args args) {
+  const Node& fn = prog_.nodes[f.node];
+  Env* e = arena_.env(fn.nslots, f.env);
+  for (std::uint32_t i = 0; i < fn.count; ++i) e->slots[i] = args[i];
+  // The caller's frame comes back however the call ends — a `try` in the
+  // caller may catch what the callee threw.
+  struct Restore {
+    Env*& env;  // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members) — scoped RAII restore
+    Env* saved;
+    Restore(Env*& e, Env* s) : env(e), saved(s) {}
+    Restore(const Restore&) = delete;
+    Restore(Restore&&) = delete;
+    Restore& operator=(const Restore&) = delete;
+    Restore& operator=(Restore&&) = delete;
+    ~Restore() { env = saved; }
+  } const restore{env_, env_};
+  env_ = e;
+  // Default parameters, left to right (a default may read the ones before it).
+  if (fn.has_defaults) {
+    for (std::uint32_t i = 0; i < fn.count; ++i) {
+      const std::uint32_t d = prog_.lists[fn.list + i];
+      if (d != kNoNode && e->slots[i].is_undefined()) e->slots[i] = eval(d);
+    }
+  }
+  Value out;
+  if (fn.expr_body) {
+    out = eval(fn.a);
+  } else {
+    (void)eval(fn.a);
+    if (flow_ == Flow::kReturn) out = return_value_;
+    flow_ = Flow::kNormal;
+  }
+  // The call is an expression: whatever its body's statements left behind,
+  // the statement that contains the call completes with a value.
+  stmt_empty_ = false;
+  return out;
+}
+
+Value Interp::type_of(const Value& v) {
+  switch (v.tag) {
+    case Tag::kUndefined:
+      return str(u"undefined");
+    case Tag::kNull:
+      return str(u"object");
+    case Tag::kBool:
+      return str(u"boolean");
+    case Tag::kNumber:
+      return str(u"number");
+    case Tag::kString:
+      return str(u"string");
+    case Tag::kObject:
+      break;
+  }
+  return str(v.o->kind == ObjKind::kFunction ? u"function" : u"object");
 }
 
 Value Interp::eval_call(const Node& n) {
@@ -222,6 +756,7 @@ Value Interp::eval_call(const Node& n) {
   if (callee.kind == NodeKind::kMember) {
     // Member calls need their receiver as `this`.
     this_arg = eval(callee.a);
+    if (callee.optional && this_arg.is_nullish()) throw ShortCircuit{};
     Value key;
     KeyId kid = callee.key;
     if (callee.computed) {
@@ -234,9 +769,11 @@ Value Interp::eval_call(const Node& n) {
       key = Value::string(&prog_.strings[callee.str]);
     }
     fn = read_member(this_arg, key, kid);
+    if (n.optional && fn.is_nullish()) throw ShortCircuit{};
     if (!is_callable(fn)) throw_eval(to_string(key) + u" is not a function");
   } else {
     fn = eval(n.a);
+    if (n.optional && fn.is_nullish()) throw ShortCircuit{};
     if (!is_callable(fn)) {
       const Str name = callee.kind == NodeKind::kIdent ? prog_.strings[callee.str] : Str(u"That");
       throw_eval(name + u" is not a function");
@@ -256,11 +793,49 @@ Value Interp::eval_call(const Node& n) {
   return call(fn, this_arg, Args(args));
 }
 
+std::optional<Value> Interp::vector_binary(Op op, const Value& l, const Value& r) {
+  const bool la = is_array(l);
+  const bool ra = is_array(r);
+  if (!la && !ra) return std::nullopt;
+  // The other operand must be an array or a number: `[1, 2] + ""` stays
+  // JavaScript's "1,2" (the TypeScript parity rows).
+  if (!la && !l.is_number()) return std::nullopt;
+  if (!ra && !r.is_number()) return std::nullopt;
+  const auto size_of = [](const Value& v, bool arr) { return arr && v.o != nullptr ? v.o->elems.size() : std::size_t{1}; };
+  const std::size_t n = std::max(size_of(l, la), size_of(r, ra));
+  const auto at = [](const Value& v, bool arr, std::size_t i) {
+    if (!arr || v.o == nullptr) return to_number(v);
+    const std::vector<Value>& e = v.o->elems;
+    return i < e.size() ? to_number(e[i]) : 0.0;  // a shorter vector reads 0 past its end
+  };
+  std::vector<Value> out;
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const double x = at(l, la, i);
+    const double y = at(r, ra, i);
+    double z = 0;
+    switch (op) {
+      case Op::kAdd: z = x + y; break;
+      case Op::kSub: z = x - y; break;
+      case Op::kMul: z = x * y; break;
+      default: z = x / y; break;
+    }
+    out.push_back(Value::number(z));
+  }
+  return array(std::move(out));
+}
+
 Value Interp::binary(Op op, const Value& l, const Value& r) {
+  // AE's vector arithmetic: `position + [10, 0]`, `scale * 2`, `[1, 2] - [1, 1]`.
+  if (op == Op::kAdd || op == Op::kSub || op == Op::kMul || op == Op::kDiv) {
+    if (const std::optional<Value> v = vector_binary(op, l, r)) return *v;
+  }
   switch (op) {
     // `+` stays polymorphic so string concat works ('a' + 'b').
     case Op::kAdd:
       return js_add(l, r, arena_);
+    case Op::kPow:
+      return Value::number(motion::js::pow(to_number(l), to_number(r)));
     case Op::kSub:
       return Value::number(to_number(l) - to_number(r));
     case Op::kMul:
@@ -289,6 +864,22 @@ Value Interp::binary(Op op, const Value& l, const Value& r) {
       return Value::boolean(strict_equals(l, r));
     case Op::kStrictNe:
       return Value::boolean(!strict_equals(l, r));
+    case Op::kBitAnd:
+      return Value::number(static_cast<double>(to_int32(to_number(l)) & to_int32(to_number(r))));
+    case Op::kBitOr:
+      return Value::number(static_cast<double>(to_int32(to_number(l)) | to_int32(to_number(r))));
+    case Op::kBitXor:
+      return Value::number(static_cast<double>(to_int32(to_number(l)) ^ to_int32(to_number(r))));
+    case Op::kShl: {
+      const std::uint32_t shifted = to_uint32(to_number(l)) << (to_uint32(to_number(r)) & 31U);
+      return Value::number(static_cast<double>(static_cast<std::int32_t>(shifted)));
+    }
+    case Op::kShr: {
+      // An arithmetic shift of a negative int32 is defined (C++20).
+      return Value::number(static_cast<double>(to_int32(to_number(l)) >> (to_uint32(to_number(r)) & 31U)));
+    }
+    case Op::kUShr:
+      return Value::number(static_cast<double>(to_uint32(to_number(l)) >> (to_uint32(to_number(r)) & 31U)));
     default:
       break;
   }
@@ -331,10 +922,26 @@ Value Interp::read_member(const Value& obj, const Value& key, KeyId kid) {
         if (*idx < o.elems.size()) return o.elems[*idx];
         return {};
       }
+      // A vector property object (`thisComp.layer("A").position`): its members.
+      if (o.pkind != PropKind::kNone) {
+        if (std::optional<Value> m = prop_member(o, kid)) return *m;
+      }
       break;
     }
+    case ObjKind::kNumberObject: {
+      if (std::optional<Value> m = prop_member(o, kid)) return *m;
+      return read_proto(*this, Value::number(o.num), kid).value_or(Value{});
+    }
     case ObjKind::kPlain: {
-      if (kid == KeyId::kUnknown) break;
+      if (kid == KeyId::kUnknown) {
+        // An object literal's own key (`{ foo: 1 }.foo`).
+        Str storage;
+        const Str* name = key.tag == Tag::kString ? key.s : &(storage = to_string(key));
+        for (const Prop& p : o.props) {
+          if (p.key == KeyId::kUnknown && p.name != nullptr && *p.name == *name) return p.value;
+        }
+        break;
+      }
       for (Prop& p : o.props) {
         if (p.key != kid) continue;
         switch (p.lazy) {
@@ -352,6 +959,15 @@ Value Interp::read_member(const Value& obj, const Value& key, KeyId kid) {
           case Lazy::kCameraOption:
           case Lazy::kLightOption:
             return read_layer_lazy(o, p);
+          case Lazy::kLayerTransform:
+            return transform_group(o.bound);
+          case Lazy::kLayerFact:
+            return layer_fact(o, p.key);
+          case Lazy::kCompName: {
+            std::optional<CompFacts> f;
+            if (ctx_.host != nullptr) f = ctx_.host->comp_facts(nullptr);
+            return str(f ? f->name : Str(u"Comp 1"));
+          }
         }
       }
       break;
@@ -369,6 +985,10 @@ Value Interp::read_member(const Value& obj, const Value& key, KeyId kid) {
       break;
     }
     case ObjKind::kFunction:
+      // An effect object (`effect("Name")`) is callable AND has members.
+      for (const Prop& p : o.props) {
+        if (p.key == kid) return p.value;
+      }
       if (kid == KeyId::k_name) return str(Str(function_name(o, ctx_)));
       if (kid == KeyId::k_length) return Value::number(function_length(o, ctx_));
       break;
@@ -487,6 +1107,41 @@ Value Interp::global(const Node& n) {
       return plugin_;
     case Global::kLookAt:
       return fn_value(Fn::kLookAt);
+    // AE: thisLayer's members by their bare names.
+    case Global::kEffect:
+    case Global::kTransform:
+    case Global::kInPoint:
+    case Global::kOutPoint:
+    case Global::kIndex:
+    case Global::kParent:
+    case Global::kHasParent:
+    case Global::kPosition:
+    case Global::kAnchorPoint:
+    case Global::kScale:
+    case Global::kRotation:
+    case Global::kOpacity:
+    case Global::kStartTime: {
+      const Str& name = prog_.strings[n.str];
+      return read_member(this_layer(), Value::string(&name), key_of(name));
+    }
+    case Global::kDegreesToRadians:
+      return fn_value(Fn::kDegreesToRadians);
+    case Global::kRadiansToDegrees:
+      return fn_value(Fn::kRadiansToDegrees);
+    case Global::kHslToRgb:
+      return fn_value(Fn::kHslToRgb);
+    case Global::kRgbToHsl:
+      return fn_value(Fn::kRgbToHsl);
+    case Global::kSmooth:
+      return fn_value(Fn::kSmooth);
+    case Global::kTemporalWiggle:
+      return fn_value(Fn::kTemporalWiggle);
+    case Global::kComp:
+      return fn_value(Fn::kComp);
+    case Global::kTimeToTimecode:
+      return fn_value(Fn::kTimeToTimecode);
+    case Global::kTimeToCurrentFormat:
+      return fn_value(Fn::kTimeToCurrentFormat);
   }
   return {};
 }
@@ -519,6 +1174,7 @@ Value Interp::this_comp() {
         {.key = KeyId::k_layer, .value = bound_fn(Fn::kCompLayer, Value{})},
         {.key = KeyId::k_marker, .value = marker_scope(MarkerScope::kComp)},
         {.key = KeyId::k_activeCamera, .value = {}, .lazy = Lazy::kLayerProp},
+        {.key = KeyId::k_name, .value = {}, .lazy = Lazy::kCompName},
     });
   }
   return this_comp_;
@@ -557,6 +1213,12 @@ Value Interp::this_property() {
         {.key = KeyId::k_velocityAtTime, .value = fn_value(Fn::kVelocityAtTime)},
         {.key = KeyId::k_loopOut, .value = fn_value(Fn::kLoopOut)},
         {.key = KeyId::k_loopIn, .value = fn_value(Fn::kLoopIn)},
+        {.key = KeyId::k_smooth, .value = fn_value(Fn::kSmooth)},
+        {.key = KeyId::k_temporalWiggle, .value = fn_value(Fn::kTemporalWiggle)},
+        {.key = KeyId::k_wiggle, .value = fn_value(Fn::kWiggle)},
+        {.key = KeyId::k_numKeys, .value = Value::number(static_cast<double>(ctx_.key_times.size()))},
+        {.key = KeyId::k_key, .value = fn_value(Fn::kKey)},
+        {.key = KeyId::k_nearestKey, .value = fn_value(Fn::kNearestKey)},
     });
   }
   return this_property_;
@@ -582,14 +1244,22 @@ Value Interp::text_group(const Value& name) {
   return g;
 }
 
-Value Interp::comp_layer(const Value& name, const Value& prop) {
+Value Interp::comp_layer(const Value& name_arg, const Value& prop) {
+  // `thisComp.layer(3)`: by 1-based stack index, through the host. A host
+  // that cannot answer leaves the number to resolve as a name, as before.
+  Value name = name_arg;
+  if (name.is_number() && ctx_.host != nullptr) {
+    if (std::optional<Str> ref = ctx_.host->layer_ref_by_index(name.n)) name = str(std::move(*ref));
+  }
   // Without a prop this is a LAYER OBJECT whose coordinate-space functions are
   // bound to THAT layer.
   if (truthy(prop)) return layer_at(name, prop, Value::number(ctx_.time));
   std::vector<Prop> props = {
       {.key = KeyId::k_width, .value = Value::number(comp_.width)},
       {.key = KeyId::k_height, .value = Value::number(comp_.height)},
-      {.key = KeyId::k_name, .value = name},
+      // The layer's own name when the host knows it (a layer found by index
+      // or as a parent), else the name it was asked by.
+      {.key = KeyId::k_name, .value = {}, .lazy = Lazy::kLayerFact},
       {.key = KeyId::k_toComp, .value = bound_fn(Fn::kToComp, name)},
       {.key = KeyId::k_toWorld, .value = bound_fn(Fn::kToWorld, name)},
       {.key = KeyId::k_fromComp, .value = bound_fn(Fn::kFromComp, name)},
@@ -654,6 +1324,16 @@ const char16_t* option_prop(KeyId k) {
       return u"falloffDistance";
     case KeyId::k_radius:
       return u"radius";
+    // AE-style rigs: the transform scalars (Premation's document names).
+    case KeyId::k_rotation:
+    case KeyId::k_zRotation:
+      return u"rotation";
+    case KeyId::k_xRotation:
+      return u"rotationX";
+    case KeyId::k_yRotation:
+      return u"rotationY";
+    case KeyId::k_opacity:
+      return u"opacity";
     default:
       return nullptr;
   }
@@ -692,6 +1372,20 @@ void Interp::add_layer_members(std::vector<Prop>& props, const Value& bound) {
   props.push_back({.key = KeyId::k_toCompVec, .value = bound_fn(Fn::kToCompVec, bound), .lazy = Lazy::kNone});
   props.push_back(
       {.key = KeyId::k_fromCompToSurface, .value = bound_fn(Fn::kFromCompToSurface, bound), .lazy = Lazy::kNone});
+  // AE-style rigs: transform.<member> (and the members directly on the
+  // layer, as AE allows), timing facts, parenting, effect("Name").
+  props.push_back({.key = KeyId::k_transform, .value = {}, .lazy = Lazy::kLayerTransform});
+  for (const KeyId k : {KeyId::k_anchorPoint, KeyId::k_scale, KeyId::k_orientation}) {
+    props.push_back({.key = k, .value = {}, .lazy = Lazy::kLayerVec});
+  }
+  for (const KeyId k : {KeyId::k_rotation, KeyId::k_xRotation, KeyId::k_yRotation, KeyId::k_zRotation, KeyId::k_opacity}) {
+    props.push_back({.key = k, .value = {}, .lazy = Lazy::kLayerProp});
+  }
+  for (const KeyId k : {KeyId::k_inPoint, KeyId::k_outPoint, KeyId::k_startTime, KeyId::k_index, KeyId::k_parent,
+                        KeyId::k_hasParent, KeyId::k_enabled, KeyId::k_active}) {
+    props.push_back({.key = k, .value = {}, .lazy = Lazy::kLayerFact});
+  }
+  props.push_back({.key = KeyId::k_effect, .value = bound_fn(Fn::kEffect, bound), .lazy = Lazy::kNone});
 }
 
 Value Interp::plain_bound(std::vector<Prop> props, const Value& bound) {
@@ -723,18 +1417,12 @@ Value Interp::read_layer_lazy(Obj& o, const Prop& p) {
     name = &name_storage;
   }
   const double t = ctx_.time;
-  const auto read = [&](const char16_t* prop) {
-    if (host == nullptr) return 0.0;
-    return host->layer_prop_at(name, prop, t).value_or(0);
-  };
   switch (p.lazy) {
-    case Lazy::kLayerVec: {
-      const bool poi = p.key == KeyId::k_pointOfInterest;
-      const double x = read(poi ? u"poiX" : u"x");
-      const double y = read(poi ? u"poiY" : u"y");
-      const double z = read(poi ? u"poiZ" : u"z");
-      return array({Value::number(x), Value::number(y), Value::number(z)});
-    }
+    case Lazy::kLayerVec:
+    case Lazy::kLayerProp:
+      if (p.lazy == Lazy::kLayerProp && option_prop(p.key) == nullptr) return {};
+      // A property object: its value now, and .valueAtTime(t), .velocity, .key(n)…
+      return prop_object(sample_layer(o.bound, p.key, t), PropKind::kLayer, o.bound, p.key, nullptr, Value{});
     case Lazy::kLayerColor: {
       std::optional<std::array<double, 4>> c;
       if (host != nullptr) c = host->layer_color_at(name, u"fill", t);
@@ -756,12 +1444,7 @@ Value Interp::read_layer_lazy(Obj& o, const Prop& p) {
     default:
       break;
   }
-  const char16_t* prop = option_prop(p.key);
-  if (prop == nullptr) return {};
-  const double v = read(prop);
-  // AE's Depth of Field is a switch: on when the blur level is above zero.
-  if (p.key == KeyId::k_depthOfField) return Value::number(v > 0 ? 1 : 0);
-  return Value::number(v);
+  return {};
 }
 
 Value Interp::look_at(Args a) {
@@ -1225,7 +1908,9 @@ Value Interp::zip(const Value& a, const Value& b, Op op) {
 
 Value Interp::call(const Value& fn, const Value& this_arg, Args args) {
   const Obj& f = *fn.o;
-  if (f.fn >= Fn::kMathAbs) return call_std(*this, f, this_arg, args);
+  if (f.fn == Fn::kNone && f.node != kNoNode) return call_user(f, args);
+  // A scalar property object answers the Number methods as its number.
+  if (f.fn >= Fn::kMathAbs) return call_std(*this, f, unwrap_prop(this_arg), args);
   if (f.fn >= Fn::kGetStyleAt) return call_style(f, args);
   return call_api(f, args);
 }
@@ -1370,10 +2055,505 @@ Value Interp::call_api(const Obj& f, Args a) {
       return marker_key(static_cast<MarkerScope>(f.aux), a[0]);
     case Fn::kMarkerNearestKey:
       return marker_nearest(static_cast<MarkerScope>(f.aux), a);
+    case Fn::kEffect:
+      return effect_fn(f, a);
+    case Fn::kEffectParam:
+    case Fn::kEffectParamMethod:
+      return effect_param(f, a);
+    // AE globals and property objects (2026-10-21)
+    case Fn::kDegreesToRadians:
+      return Value::number(to_number(a[0]) * std::numbers::pi / 180);
+    case Fn::kRadiansToDegrees:
+      return Value::number(to_number(a[0]) * 180 / std::numbers::pi);
+    case Fn::kHslToRgb:
+      return color_convert(true, a[0]);
+    case Fn::kRgbToHsl:
+      return color_convert(false, a[0]);
+    case Fn::kSmooth:
+      return smooth(nullptr, a);
+    case Fn::kTemporalWiggle:
+      return temporal_wiggle(a);
+    case Fn::kComp:
+      return comp_fn(a);
+    case Fn::kCompByNameLayer:
+      return comp_layer_by_name(f, a);
+    case Fn::kTimeToTimecode:
+      return timecode(a[0], a[1]);
+    case Fn::kTimeToCurrentFormat:
+      return timecode(a[0], a[1].is_undefined() ? Value::number(comp_.fps) : a[1]);
+    case Fn::kPropValueAtTime:
+      need_time(a[0], u"valueAtTime");
+      return sample_prop(f.bound.o, to_number(a[0]));
+    case Fn::kPropVelocityAtTime:
+      need_time(a[0], u"velocityAtTime");
+      return prop_velocity(f.bound.o, to_number(a[0]));
+    case Fn::kPropKey:
+      return prop_key(*f.bound.o, a[0]);
+    case Fn::kPropNearestKey:
+      return prop_nearest_key(*f.bound.o, a);
+    case Fn::kPropSmooth:
+      return smooth(f.bound.o, a);
     default:
       break;
   }
   return {};
 }
 
+// ── AE-style rigs: layer facts, the transform group, effects ────────────────
+
+namespace {
+
+/// The layer reference a bound object carries, as the Host wants it
+/// (nullptr = this layer).
+struct BoundName {
+  Str storage;
+  const Str* name = nullptr;
+  explicit BoundName(const Value& bound) {
+    if (bound.is_nullish()) return;
+    storage = to_string(bound);
+    name = &storage;
+  }
+};
+
+}  // namespace
+
+Value Interp::layer_fact(const Obj& o, KeyId key) {
+  const BoundName bn(o.bound);
+  std::optional<LayerFacts> facts;
+  if (ctx_.host != nullptr) facts = ctx_.host->layer_facts_at(bn.name, ctx_.time);
+  // No provider (or a layer the host cannot see): AE's defaults for a layer
+  // that spans the composition.
+  LayerFacts f;
+  f.out_point = comp_.duration;
+  if (facts) f = *facts;
+  switch (key) {
+    case KeyId::k_inPoint:
+    case KeyId::k_startTime:
+      return Value::number(f.in_point);
+    case KeyId::k_outPoint:
+      return Value::number(f.out_point);
+    case KeyId::k_index:
+      return Value::number(f.index);
+    case KeyId::k_hasParent:
+      return Value::boolean(f.parent.has_value());
+    case KeyId::k_enabled:
+    case KeyId::k_active:
+      return Value::boolean(f.enabled);
+    case KeyId::k_parent:
+      if (!f.parent) return Value::null();
+      return comp_layer(str(*f.parent), Value{});
+    case KeyId::k_name:
+      if (facts && !facts->name.empty()) return str(facts->name);
+      return o.bound;
+    default:
+      return {};
+  }
+}
+
+Value Interp::transform_group(const Value& bound) {
+  std::vector<Prop> props = {
+      {.key = KeyId::k_position, .value = {}, .lazy = Lazy::kLayerVec},
+      {.key = KeyId::k_anchorPoint, .value = {}, .lazy = Lazy::kLayerVec},
+      {.key = KeyId::k_scale, .value = {}, .lazy = Lazy::kLayerVec},
+      {.key = KeyId::k_orientation, .value = {}, .lazy = Lazy::kLayerVec},
+      {.key = KeyId::k_rotation, .value = {}, .lazy = Lazy::kLayerProp},
+      {.key = KeyId::k_xRotation, .value = {}, .lazy = Lazy::kLayerProp},
+      {.key = KeyId::k_yRotation, .value = {}, .lazy = Lazy::kLayerProp},
+      {.key = KeyId::k_zRotation, .value = {}, .lazy = Lazy::kLayerProp},
+      {.key = KeyId::k_opacity, .value = {}, .lazy = Lazy::kLayerProp},
+      {.key = KeyId::k_pointOfInterest, .value = {}, .lazy = Lazy::kLayerVec},
+  };
+  return plain_bound(std::move(props), bound);
+}
+
+Value Interp::effect_fn(const Obj& f, Args a) {
+  Host* host = ctx_.host;
+  if (host == nullptr || !host->has_effects()) throw_eval(u"effect() cannot see this layer’s effects here.");
+  const Value name_v = a[0];
+  if (!name_v.is_string() || name_v.s == nullptr) {
+    throw_eval(u"effect() needs the effect’s name, e.g. effect(\"Slider Control\").");
+  }
+  const BoundName bn(f.bound);
+  const Str& name = *name_v.s;
+  if (!host->effect_exists(bn.name, name)) {
+    const Str where = bn.name != nullptr ? u" on layer " + lq() + *bn.name + rq() : Str(u" on this layer");
+    throw_eval(u"No effect named " + lq() + name + rq() + where + u".");
+  }
+  // The effect object: callable (`effect("X")("Param")`), with `.param("…")`
+  // and `.name`.
+  Obj* e = arena_.obj(ObjKind::kFunction);
+  e->fn = Fn::kEffectParam;
+  e->bound = f.bound;
+  e->str = name_v.s;
+  Obj* method = arena_.obj(ObjKind::kFunction);
+  method->fn = Fn::kEffectParamMethod;
+  method->bound = f.bound;
+  method->str = name_v.s;
+  // `.active` / `.enabled`: the effect's on/off switch (AE's Effect.active).
+  const Value on = Value::boolean(host->effect_active(bn.name, name));
+  e->props = {{.key = KeyId::k_name, .value = name_v, .lazy = Lazy::kNone},
+              {.key = KeyId::k_param, .value = Value::object(method), .lazy = Lazy::kNone},
+              {.key = KeyId::k_active, .value = on, .lazy = Lazy::kNone},
+              {.key = KeyId::k_enabled, .value = on, .lazy = Lazy::kNone}};
+  return Value::object(e);
+}
+
+Value Interp::effect_param(const Obj& f, Args a) {
+  Host* host = ctx_.host;
+  if (host == nullptr) return Value::number(0);
+  const Str& effect = *f.str;
+  if (!a[0].is_string() && !a[0].is_number()) {
+    throw_eval(u"effect(" + lq() + effect + rq() + u")(…) needs a parameter name or number, e.g. (\"Slider\").");
+  }
+  // The parameter as a property object: its value now, and `.value`,
+  // `.valueAtTime(t)`, `.velocity`, `.numKeys`, `.key(n)` on it.
+  Obj probe;
+  probe.pkind = PropKind::kEffect;
+  probe.bound = f.bound;
+  probe.str = f.str;
+  probe.arg = a[0];
+  const Value v = sample_prop(&probe, ctx_.time);
+  return prop_object(v, PropKind::kEffect, f.bound, KeyId::kUnknown, f.str, a[0]);
+}
+
+// ── AE property objects (2026-10-21) ────────────────────────────────────────
+
+Value Interp::prop_object(const Value& v, PropKind kind, const Value& bound, KeyId pkey, const Str* effect,
+                          const Value& arg) {
+  Obj* o = nullptr;
+  if (is_array(v)) {
+    o = v.o;  // a fresh array the sampler built: it carries the members itself
+  } else {
+    o = arena_.obj(ObjKind::kNumberObject);
+    o->num = to_number(v);
+  }
+  o->pkind = kind;
+  o->bound = bound;
+  o->pkey = pkey;
+  o->str = effect;
+  o->arg = arg;
+  return Value::object(o);
+}
+
+Value Interp::sample_layer(const Value& bound, KeyId key, double t) {
+  Host* host = ctx_.host;
+  const BoundName bn(bound);
+  const auto read = [&](const char16_t* prop, double fallback = 0.0) {
+    if (host == nullptr) return fallback;
+    return host->layer_prop_at(bn.name, prop, t).value_or(fallback);
+  };
+  switch (key) {
+    case KeyId::k_position:
+      return array({Value::number(read(u"x")), Value::number(read(u"y")), Value::number(read(u"z"))});
+    case KeyId::k_pointOfInterest:
+      return array({Value::number(read(u"poiX")), Value::number(read(u"poiY")), Value::number(read(u"poiZ"))});
+    case KeyId::k_anchorPoint:
+      return array({Value::number(read(u"anchorX")), Value::number(read(u"anchorY")), Value::number(read(u"anchorZ"))});
+    case KeyId::k_scale:
+      // Stored as a multiplier (1 = 100 %); AE reads percent.
+      return array({Value::number(read(u"scaleX", 1) * 100), Value::number(read(u"scaleY", 1) * 100),
+                    Value::number(read(u"scaleZ", 1) * 100)});
+    case KeyId::k_orientation:
+      return array({Value::number(read(u"orientationX")), Value::number(read(u"orientationY")),
+                    Value::number(read(u"orientationZ"))});
+    default:
+      break;
+  }
+  const char16_t* prop = option_prop(key);
+  if (prop == nullptr) return {};
+  const double v = read(prop, key == KeyId::k_opacity ? 100.0 : 0.0);
+  // AE's Depth of Field is a switch: on when the blur level is above zero.
+  if (key == KeyId::k_depthOfField) return Value::number(v > 0 ? 1 : 0);
+  return Value::number(v);
+}
+
+Value Interp::sample_prop(const Obj* p, double t) {
+  if (p == nullptr) return Value::number(self_at(Value::number(t)));
+  if (p->pkind == PropKind::kLayer) return sample_layer(p->bound, p->pkey, t);
+  Host* host = ctx_.host;
+  if (host == nullptr) return Value::number(0);
+  const BoundName bn(p->bound);
+  const Str& effect = *p->str;
+  const std::optional<EffectParam> v = p->arg.is_string()
+                                           ? host->effect_param_at(bn.name, effect, p->arg.s, 0, t)
+                                           : host->effect_param_at(bn.name, effect, nullptr, to_number(p->arg), t);
+  if (!v) {
+    throw_eval(u"Effect " + lq() + effect + rq() + u" has no parameter " + lq() + to_string(p->arg) + rq() + u".");
+  }
+  if (v->size <= 1) return Value::number(v->v[0]);
+  std::vector<Value> out;
+  out.reserve(v->size);
+  for (std::size_t i = 0; i < v->size && i < v->v.size(); ++i) out.push_back(Value::number(v->v[i]));
+  return array(std::move(out));
+}
+
+Value Interp::prop_velocity(const Obj* p, double t) {
+  if (p == nullptr) return Value::number(velocity_at(Value::number(t)));
+  constexpr double dt = 0.001;
+  const Value a = sample_prop(p, t - dt);
+  const Value b = sample_prop(p, t + dt);
+  if (!is_array(a) || !is_array(b)) return Value::number((to_number(b) - to_number(a)) / (2 * dt));
+  const std::size_t n = std::min(a.o->elems.size(), b.o->elems.size());
+  std::vector<Value> out;
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    out.push_back(Value::number((to_number(b.o->elems[i]) - to_number(a.o->elems[i])) / (2 * dt)));
+  }
+  return array(std::move(out));
+}
+
+std::optional<Value> Interp::prop_member(Obj& o, KeyId kid) {
+  const Value self = Value::object(&o);
+  switch (kid) {
+    case KeyId::k_value:
+      return sample_prop(&o, ctx_.time);
+    case KeyId::k_valueAtTime:
+      return bound_fn(Fn::kPropValueAtTime, self);
+    case KeyId::k_velocityAtTime:
+      return bound_fn(Fn::kPropVelocityAtTime, self);
+    case KeyId::k_velocity:
+      return prop_velocity(&o, ctx_.time);
+    case KeyId::k_speed: {
+      const Value v = prop_velocity(&o, ctx_.time);
+      if (!is_array(v)) return Value::number(std::fabs(to_number(v)));
+      return Value::number(hypot_of(v.o->elems));
+    }
+    case KeyId::k_numKeys:
+      return Value::number(static_cast<double>(prop_key_times(o).size()));
+    case KeyId::k_key:
+      return bound_fn(Fn::kPropKey, self);
+    case KeyId::k_nearestKey:
+      return bound_fn(Fn::kPropNearestKey, self);
+    case KeyId::k_smooth:
+      return bound_fn(Fn::kPropSmooth, self);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::vector<double> Interp::prop_key_times(const Obj& o) {
+  Host* host = ctx_.host;
+  if (host == nullptr) return {};
+  const BoundName bn(o.bound);
+  if (o.pkind == PropKind::kEffect) {
+    return o.arg.is_string() ? host->effect_param_key_times(bn.name, *o.str, o.arg.s, 0)
+                             : host->effect_param_key_times(bn.name, *o.str, nullptr, to_number(o.arg));
+  }
+  // A vector's keys are its first member's (the API keys the members together).
+  const char16_t* prop = nullptr;
+  switch (o.pkey) {
+    case KeyId::k_position: prop = u"x"; break;
+    case KeyId::k_pointOfInterest: prop = u"poiX"; break;
+    case KeyId::k_anchorPoint: prop = u"anchorX"; break;
+    case KeyId::k_scale: prop = u"scaleX"; break;
+    case KeyId::k_orientation: prop = u"orientationX"; break;
+    default: prop = option_prop(o.pkey); break;
+  }
+  if (prop == nullptr) return {};
+  return host->layer_key_times(bn.name, prop);
+}
+
+Value Interp::prop_key(const Obj& o, const Value& n) {
+  const std::vector<double> kt = prop_key_times(o);
+  if (kt.empty()) throw_eval(u"key() needs a keyframe — this property has none.");
+  const double i = clamp_key_index(n, static_cast<double>(kt.size()));
+  const double t = kt[static_cast<std::size_t>(i) - 1];
+  return plain({
+      {.key = KeyId::k_index, .value = Value::number(i)},
+      {.key = KeyId::k_time, .value = Value::number(t)},
+      {.key = KeyId::k_value, .value = sample_prop(&o, t)},
+  });
+}
+
+Value Interp::prop_nearest_key(const Obj& o, Args a) {
+  const std::vector<double> kt = prop_key_times(o);
+  if (kt.empty()) {
+    return plain({
+        {.key = KeyId::k_index, .value = Value::number(0)},
+        {.key = KeyId::k_time, .value = Value::number(0)},
+        {.key = KeyId::k_value, .value = sample_prop(&o, ctx_.time)},
+    });
+  }
+  const double t = a[0].is_undefined() ? ctx_.time : to_number(a[0]);
+  std::size_t best = 0;
+  for (std::size_t i = 1; i < kt.size(); ++i) {
+    if (std::fabs(kt[i] - t) < std::fabs(kt[best] - t)) best = i;
+  }
+  return prop_key(o, Value::number(static_cast<double>(best + 1)));
+}
+
+Value Interp::smooth(const Obj* prop, Args a) {
+  // AE smooth(width = .2, samples = 5, t = time): the mean of `samples`
+  // values spread evenly over [t - width/2, t + width/2].
+  const double width = a[0].is_undefined() ? 0.2 : to_number(a[0]);
+  double samples = a[1].is_undefined() ? 5 : std::floor(to_number(a[1]));
+  if (!(samples >= 1)) samples = 1;
+  samples = js_min2(samples, 256);  // bounded: the source picks the count
+  const double t = a[2].is_undefined() ? ctx_.time : to_number(a[2]);
+  if (samples <= 1 || !(width > 0)) return sample_prop(prop, t);
+  const auto count = static_cast<std::size_t>(samples);
+  std::vector<double> sum;
+  bool vector = false;
+  for (std::size_t i = 0; i < count; ++i) {
+    const double ti = t - width / 2 + width * static_cast<double>(i) / static_cast<double>(count - 1);
+    const Value v = sample_prop(prop, ti);
+    if (is_array(v)) {
+      vector = true;
+      if (sum.size() < v.o->elems.size()) sum.resize(v.o->elems.size(), 0.0);
+      for (std::size_t k = 0; k < v.o->elems.size(); ++k) sum[k] += to_number(v.o->elems[k]);
+    } else {
+      if (sum.empty()) sum.push_back(0);
+      sum[0] += to_number(v);
+    }
+  }
+  if (!vector) return Value::number(sum.empty() ? 0 : sum[0] / samples);
+  std::vector<Value> out;
+  out.reserve(sum.size());
+  for (const double s : sum) out.push_back(Value::number(s / samples));
+  return array(std::move(out));
+}
+
+Value Interp::temporal_wiggle(Args a) {
+  // AE temporalWiggle(freq, amp, octaves = 1, amp_mult = .5, t = time): the
+  // property sampled at a time wiggled by up to `amp` seconds.
+  const double freq = to_number(a[0]);
+  const double amp = to_number(a[1]);
+  double floored = a[2].is_undefined() ? 1 : std::floor(to_number(a[2]));
+  if (floored == 0 || std::isnan(floored)) floored = 1;
+  const auto octaves = static_cast<int>(js_min2(kMaxWiggleOctaves, js_max2(1, floored)));
+  const double mult = a[3].is_undefined() ? 0.5 : to_number(a[3]);
+  const double t = a[4].is_undefined() ? ctx_.time : to_number(a[4]);
+  const double seed = ctx_.prop_seed.value_or(0) + 101.3;  // a phase of its own, apart from wiggle()'s
+  double total = 0;
+  double max_a = 0;
+  double f = freq;
+  double am = amp;
+  for (int i = 0; i < octaves; ++i) {
+    total += (smooth_noise(t * f + seed) * 2 - 1) * am;
+    max_a += am;
+    f *= 2;
+    am *= mult;
+  }
+  const double offset = max_a > 0 ? (total / max_a) * amp : 0;
+  return sample_prop(nullptr, t + offset);
+}
+
+Value Interp::comp_fn(Args a) {
+  if (!a[0].is_string()) throw_eval(u"comp() needs a composition name, e.g. comp(\"Main\").");
+  std::optional<CompFacts> f;
+  if (ctx_.host != nullptr) f = ctx_.host->comp_facts(a[0].s);
+  if (!f) throw_eval(u"No composition named " + lq() + *a[0].s + rq() + u".");
+  const CompInfo& c = f->info;
+  return plain({
+      {.key = KeyId::k_name, .value = str(f->name)},
+      {.key = KeyId::k_width, .value = Value::number(c.width)},
+      {.key = KeyId::k_height, .value = Value::number(c.height)},
+      {.key = KeyId::k_duration, .value = Value::number(c.duration)},
+      {.key = KeyId::k_frameDuration, .value = Value::number(1 / js_max2(1, c.fps))},
+      {.key = KeyId::k_fps, .value = Value::number(c.fps)},
+      {.key = KeyId::k_numLayers, .value = Value::number(c.num_layers)},
+      {.key = KeyId::k_layer, .value = bound_fn(Fn::kCompByNameLayer, a[0])},
+  });
+}
+
+Value Interp::comp_layer_by_name(const Obj& f, Args a) {
+  const Str comp = to_string(f.bound);
+  std::optional<Str> ref;
+  if (ctx_.host != nullptr) {
+    if (a[0].is_string()) {
+      ref = ctx_.host->comp_layer_ref(comp, a[0].s, 0);
+    } else if (a[0].is_number()) {
+      ref = ctx_.host->comp_layer_ref(comp, nullptr, a[0].n);
+    } else {
+      throw_eval(u"layer() needs a layer name or number, e.g. layer(\"Title\").");
+    }
+  }
+  if (!ref) {
+    throw_eval(u"No layer " + lq() + to_string(a[0]) + rq() + u" in composition " + lq() + comp + rq() + u".");
+  }
+  return comp_layer(str(std::move(*ref)), Value{});
+}
+
+namespace {
+
+double hue_to_rgb(double p, double q, double t) noexcept {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+  if (t < 1.0 / 2) return q;
+  if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+  return p;
+}
+
+}  // namespace
+
+Value Interp::color_convert(bool to_rgb, const Value& v) {
+  if (!is_array(v) || v.o->elems.size() < 3) {
+    throw_eval(to_rgb ? Str(u"hslToRgb() needs a colour, e.g. hslToRgb([0.5, 1, 0.5, 1]).")
+                      : Str(u"rgbToHsl() needs a colour, e.g. rgbToHsl([1, 0, 0, 1])."));
+  }
+  const std::vector<Value>& e = v.o->elems;
+  const double x = to_number(e[0]);
+  const double y = to_number(e[1]);
+  const double z = to_number(e[2]);
+  const double alpha = e.size() > 3 ? to_number(e[3]) : 1.0;
+  std::array<double, 3> out{};
+  if (to_rgb) {
+    const double h = x;
+    const double s = y;
+    const double l = z;
+    if (s == 0) {
+      out = {l, l, l};
+    } else {
+      const double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const double p = 2 * l - q;
+      out = {hue_to_rgb(p, q, h + 1.0 / 3), hue_to_rgb(p, q, h), hue_to_rgb(p, q, h - 1.0 / 3)};
+    }
+  } else {
+    const double mx = std::max({x, y, z});
+    const double mn = std::min({x, y, z});
+    const double l = (mx + mn) / 2;
+    double h = 0;
+    double s = 0;
+    if (mx != mn) {
+      const double d = mx - mn;
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      if (mx == x) {
+        h = (y - z) / d + (y < z ? 6 : 0);
+      } else if (mx == y) {
+        h = (z - x) / d + 2;
+      } else {
+        h = (x - y) / d + 4;
+      }
+      h /= 6;
+    }
+    out = {h, s, l};
+  }
+  return array({Value::number(out[0]), Value::number(out[1]), Value::number(out[2]), Value::number(alpha)});
+}
+
+Value Interp::timecode(const Value& tv, const Value& base) {
+  // AE timeToTimecode: "H:MM:SS:FF" on a whole-frame base (29.97 counts as 30).
+  const double t = tv.is_undefined() ? ctx_.time : to_number(tv);
+  double fps = base.is_undefined() ? 30 : motion::js::round(to_number(base));
+  if (!(fps >= 1)) fps = 30;
+  double total = motion::js::round(t * fps);
+  if (!is_finite(total)) total = 0;
+  const bool negative = total < 0;
+  total = std::fabs(total);
+  const double frames = std::fmod(total, fps);
+  const double seconds_total = std::floor(total / fps);
+  const double ss = std::fmod(seconds_total, 60);
+  const double mm = std::fmod(std::floor(seconds_total / 60), 60);
+  const double hh = std::floor(seconds_total / 3600);
+  const auto pad = [](double n, std::size_t width) {
+    Str s = number_to_str(n);
+    while (s.size() < width) s.insert(s.begin(), u'0');
+    return s;
+  };
+  const std::size_t frame_width = std::max<std::size_t>(2, number_to_str(fps - 1).size());
+  Str out = negative ? Str(u"-") : Str();
+  out += number_to_str(hh) + u":" + pad(mm, 2) + u":" + pad(ss, 2) + u":" + pad(frames, frame_width);
+  return str(std::move(out));
+}
 }  // namespace motion::expr::detail

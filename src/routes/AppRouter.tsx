@@ -31,9 +31,10 @@ import { useConnectionsDeepLink } from '@hooks/useConnectionsDeepLink';
 import { useMcpFrontDesk } from '@hooks/useMcpFrontDesk';
 
 import { LoadingScreen } from '@components/LoadingScreen';
+import { t } from '@core/i18n';
 
 function BootSplash(): JSX.Element {
-  return <LoadingScreen message="Loading…" fullScreen />;
+  return <LoadingScreen message={t('routes.bootSplash.loading', 'Loading…')} fullScreen />;
 }
 
 // ── Route-level code splitting ───────────────────────────────────────

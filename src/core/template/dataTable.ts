@@ -21,6 +21,8 @@
  * expression layer for related reasons.
  */
 
+import { t } from '@core/i18n';
+
 /** One row: field id → the value to write. */
 export type DataRow = Readonly<Record<string, string>>;
 
@@ -92,26 +94,26 @@ function splitCsvRows(text: string): string[] {
 /** Parse CSV with a header row. Throws `DataTableError` on unusable input. */
 export function parseCsv(text: string): DataTable {
   const lines = splitCsvRows(text);
-  if (lines.length === 0) throw new DataTableError('The file is empty.');
+  if (lines.length === 0) throw new DataTableError(t('core.dataTable.empty', 'The file is empty.'));
 
   const columns = splitCsvLine(lines[0]!);
   if (columns.some((c) => c === '')) {
-    throw new DataTableError('One of the header cells is blank — every column needs a name.');
+    throw new DataTableError(t('core.dataTable.blankHeader', 'One of the header cells is blank — every column needs a name.'));
   }
   const dupe = columns.find((c, i) => columns.indexOf(c) !== i);
   if (dupe !== undefined) {
     // Silently keeping the last would drop a column the user can see in their
     // file, which is the worst kind of wrong: invisible.
-    throw new DataTableError(`Two columns are both named “${dupe}”.`);
+    throw new DataTableError(t('core.dataTable.duplicateColumn', 'Two columns are both named “{name}”.', { name: dupe }));
   }
-  if (lines.length === 1) throw new DataTableError('The file has headers but no rows.');
+  if (lines.length === 1) throw new DataTableError(t('core.dataTable.noRows', 'The file has headers but no rows.'));
 
   const rows: DataRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cells = splitCsvLine(lines[i]!);
     if (cells.length !== columns.length) {
       throw new DataTableError(
-        `Row ${i} has ${cells.length} cells but there are ${columns.length} columns.`,
+        t('core.dataTable.cellCount', 'Row {row} has {cells} cells but there are {columns} columns.', { row: i, cells: cells.length, columns: columns.length }),
       );
     }
     const row: Record<string, string> = {};
@@ -127,21 +129,21 @@ export function parseJsonTable(text: string): DataTable {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new DataTableError(`That isn't valid JSON: ${(err as Error).message}`);
+    throw new DataTableError(t('core.dataTable.invalidJson', "That isn't valid JSON: {message}", { message: (err as Error).message }));
   }
-  if (!Array.isArray(parsed)) throw new DataTableError('Expected a JSON array of rows.');
-  if (parsed.length === 0) throw new DataTableError('The array is empty.');
+  if (!Array.isArray(parsed)) throw new DataTableError(t('core.dataTable.notArray', 'Expected a JSON array of rows.'));
+  if (parsed.length === 0) throw new DataTableError(t('core.dataTable.emptyArray', 'The array is empty.'));
 
   const rows: DataRow[] = [];
   const columns: string[] = [];
   for (const [i, entry] of parsed.entries()) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new DataTableError(`Row ${i + 1} is not an object.`);
+      throw new DataTableError(t('core.dataTable.rowNotObject', 'Row {row} is not an object.', { row: i + 1 }));
     }
     const row: Record<string, string> = {};
     for (const [k, v] of Object.entries(entry as Record<string, unknown>)) {
       if (v !== null && typeof v === 'object') {
-        throw new DataTableError(`Row ${i + 1}, “${k}” is nested — rows must be flat.`);
+        throw new DataTableError(t('core.dataTable.rowNested', 'Row {row}, “{key}” is nested — rows must be flat.', { row: i + 1, key: k }));
       }
       // Everything becomes a string here and is coerced per FIELD KIND at fill
       // time. The table cannot know that `fontSize` wants a number, and a JSON

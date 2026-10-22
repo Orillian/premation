@@ -38,6 +38,25 @@
 
 namespace premation::doc {
 
+/// A button (PR_PARAM_BUTTON): the action name invokeEffectAction takes (`p<id>`), its label, and
+/// where the effect card draws it — inside `group` (EffectParamDef::group's spelling, "" = top
+/// level), before `def.params[at]`.
+struct NativeAction {
+  std::string key;
+  std::string label;
+  std::string group;
+  std::uint32_t at = 0;
+};
+
+/// A twirl-down group (PR_PARAM_GROUP_START): its path as its params' `group` spells it, the
+/// GROUP_START param's key, and whether it starts twirled up (PR_PARAM_FLAG_START_COLLAPSED).
+struct NativeGroup {
+  std::string path;
+  std::string key;
+  bool collapsed = false;
+  std::string description;  ///< the GROUP_START's PrParamDef.description (SDK 1.2): the header's tooltip
+};
+
 struct NativeEffect {
   EffectDef def;         ///< type = the plugin's match name
   std::string provider;  ///< the plugin id
@@ -45,8 +64,12 @@ struct NativeEffect {
   bool gpu = false;
   bool supportsFloat = false;
   bool generator = false;
-  /// Buttons (PR_PARAM_BUTTON): the action names invokeEffectAction takes (`p<id>`), with labels.
-  std::vector<std::pair<std::string, std::string>> actions;
+  /// Buttons, in declaration order.
+  std::vector<NativeAction> actions;
+  /// Groups, in declaration order.
+  std::vector<NativeGroup> groups;
+  /// PR_CMD_ABOUT's text (name, version, vendor, credits) — the effect card's About.
+  std::string about;
   /// Supervised params (PR_PARAM_FLAG_SUPERVISE): the document keys whose change the plugin reacts to.
   std::vector<std::string> supervised;
   /// Arbitrary-data params (PR_PARAM_ARBITRARY_DATA): not properties — bytes in fx.pluginData

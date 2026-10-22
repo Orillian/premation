@@ -237,6 +237,10 @@ const bridge = {
       ipcRenderer.invoke('proxy:generate', assetId, bytes, ext, args, outExt),
     /** Kill a running proxy encode. True if one was actually running. */
     cancelProxy: (assetId: string) => ipcRenderer.invoke('proxy:cancel', assetId),
+    /** The OS microphone switch (electron/ipc/mediaAccess.ts) — no prompt. */
+    microphoneStatus: () => ipcRenderer.invoke('mic:status'),
+    /** Ask the OS for the microphone (macOS prompts once); resolves to the status after. */
+    requestMicrophone: () => ipcRenderer.invoke('mic:request'),
   },
 
   render: {
@@ -305,6 +309,17 @@ const bridge = {
     pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
     pickFiles: () => ipcRenderer.invoke('dialog:pickFiles'),
     listDir: (dir: string) => ipcRenderer.invoke('fs:listDir', dir),
+  },
+
+  /** File ▸ Scripts and the Script Editor — see electron/ipc/scripts.ts. */
+  scripts: {
+    folderPath: () => ipcRenderer.invoke('scripts:folderPath'),
+    list: () => ipcRenderer.invoke('scripts:list'),
+    openFolder: () => ipcRenderer.invoke('scripts:openFolder'),
+    read: (name: string) => ipcRenderer.invoke('scripts:read', name),
+    pick: () => ipcRenderer.invoke('scripts:pick'),
+    save: (req: { name?: string; path?: string; source: string }) => ipcRenderer.invoke('scripts:save', req),
+    saveAs: (req: { name?: string; source: string }) => ipcRenderer.invoke('scripts:saveAs', req),
   },
 
   /** The preview disk cache's default folder — see electron/ipc/diskCache.ts. */
@@ -520,7 +535,7 @@ const bridge = {
    * The renderer's serialised menu model — main rebuilds the native menu from
    * it (see `electron/nativeMenu.ts`). Plain data only; main validates it.
    */
-  setMenuTemplate: (template: unknown) => ipcRenderer.invoke('menu:setTemplate', template),
+  setMenuTemplate: (template: unknown, strings?: unknown) => ipcRenderer.invoke('menu:setTemplate', template, strings),
 
   /**
    * Auto-update, as the renderer sees it.
@@ -630,6 +645,12 @@ const bridge = {
       const listener = (_event: unknown, info: unknown): void => handler(info);
       ipcRenderer.on('engine:restarted', listener);
       return () => ipcRenderer.removeListener('engine:restarted', listener);
+    },
+    /** The engine's core thread is busy on one item ({ what, ms }), or back (null). */
+    onBusy: (handler: (info: unknown) => void) => {
+      const listener = (_event: unknown, info: unknown): void => handler(info);
+      ipcRenderer.on('engine:busy', listener);
+      return () => ipcRenderer.removeListener('engine:busy', listener);
     },
     onUnavailable: (handler: (info: unknown) => void) => {
       const listener = (_event: unknown, info: unknown): void => handler(info);

@@ -19,6 +19,7 @@ import type { EngineClient, EngineError, EventBatch, JobInfo, JobSpec } from '@m
 import { engine } from './engineInstance';
 import { engineOwnsDocumentNow } from './engineOwnership';
 import { materializeSessionFootage } from './sessionFootage';
+import { t } from '@core/i18n';
 
 export interface EngineJobOutcome<R = unknown> {
   status: 'done' | 'failed' | 'cancelled';
@@ -114,7 +115,7 @@ export async function startEngineJob<R = unknown>(spec: JobSpec, opts: StartEngi
  * run `what` (the jest harness; the app's engine runs every job kind).
  */
 export function requireEngineJob<T>(value: T | null, what: string): T {
-  if (value === null) throw new Error(`${what} runs in the engine, and this engine does not run it.`);
+  if (value === null) throw new Error(t('core.engineJobs.unsupported', '{feature} runs in the engine, and this engine does not run it.', { feature: what }));
   return value;
 }
 

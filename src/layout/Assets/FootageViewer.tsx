@@ -33,8 +33,16 @@ import { replaceTargetLayer } from './replaceTarget';
 import { formatBytes } from './assetListLogic';
 import { FootageStage } from './FootageStage';
 import styles from './FootageViewer.module.css';
+import { t } from '@core/i18n';
 
-const KIND: Readonly<Record<string, string>> = { image: 'still', video: 'video', audio: 'audio' };
+function kindLabel(type: string): string {
+  switch (type) {
+    case 'image': return t('assets.viewer.kindStill', 'still');
+    case 'video': return t('assets.viewer.kindVideo', 'video');
+    case 'audio': return t('assets.viewer.kindAudio', 'audio');
+    default: return type;
+  }
+}
 
 export function FootageViewer({ asset }: { asset: ImportedAsset }): JSX.Element {
   const timed = asset.type === 'video' || asset.type === 'audio';
@@ -49,7 +57,7 @@ export function FootageViewer({ asset }: { asset: ImportedAsset }): JSX.Element 
   // A different file starts at Fit with no guides.
   useEffect(() => { useFootageViewStore.getState().reset(); }, [asset.id]);
 
-  const facts = [KIND[asset.type] ?? asset.type, factsOf(asset), asset.size > 0 ? formatBytes(asset.size) : '']
+  const facts = [kindLabel(asset.type), factsOf(asset), asset.size > 0 ? formatBytes(asset.size) : '']
     .filter(Boolean)
     .join(' · ');
 
@@ -87,7 +95,7 @@ function StillBody({ asset }: { asset: ImportedAsset }): JSX.Element {
         // A dead URL (source file moved, session restored) must say so — an
         // empty stage reads as "the picture is empty".
         <div className={styles.stage}>
-          <div className={styles.dead}>The file for this footage cannot be shown. It may have moved; relink it from the Project panel.</div>
+          <div className={styles.dead}>{t('assets.viewer.dead', 'The file for this footage cannot be shown. It may have moved; relink it from the Project panel.')}</div>
         </div>
       ) : (
         <FootageStage natural={natural} checker>
@@ -110,19 +118,19 @@ function StillBody({ asset }: { asset: ImportedAsset }): JSX.Element {
             variant="secondary"
             // `replaceLayerSource` (keep size): keyframes, effects and masks survive.
             onClick={() => { void replaceSourceWithAsset(target.id, asset.id); }}
-            title="Point the selected layer at this footage — keyframes, effects and masks survive"
+            title={t('assets.viewer.replaceTitle', 'Point the selected layer at this footage — keyframes, effects and masks survive')}
           >
-            {`Replace “${target.name}”`}
+            {t('assets.viewer.replace', 'Replace “{name}”', { name: target.name })}
           </Button>
         )}
-        <Button size="sm" variant="secondary" onClick={() => { void newCompFromFootageEdit(asset); }} title="New composition sized to this picture">
-          New comp from footage
+        <Button size="sm" variant="secondary" onClick={() => { void newCompFromFootageEdit(asset); }} title={t('assets.viewer.newCompTitle', 'New composition sized to this picture')}>
+          {t('assets.viewer.newComp', 'New comp from footage')}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => { void insertMediaEdit([asset], { atPlayhead: true }); }} title="Add it starting at the current time">
-          Add at playhead
+        <Button size="sm" variant="secondary" onClick={() => { void insertMediaEdit([asset], { atPlayhead: true }); }} title={t('assets.viewer.atPlayheadTitle', 'Add it starting at the current time')}>
+          {t('assets.viewer.atPlayhead', 'Add at playhead')}
         </Button>
-        <Button size="sm" variant="primary" onClick={() => { void insertMediaEdit([asset]); }} title="Add it to the composition">
-          Add to composition
+        <Button size="sm" variant="primary" onClick={() => { void insertMediaEdit([asset]); }} title={t('assets.viewer.addTitle', 'Add it to the composition')}>
+          {t('assets.viewer.add', 'Add to composition')}
         </Button>
       </div>
     </>
@@ -143,7 +151,7 @@ function ViewControls(): JSX.Element {
   const setGuides = useFootageViewStore((s) => s.setGuides);
 
   const zoomItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'fit', label: 'Fit', checked: zoom === null, onChange: () => setZoom(null) },
+    { type: 'checkbox', id: 'fit', label: t('assets.viewer.fit', 'Fit'), checked: zoom === null, onChange: () => setZoom(null) },
     { type: 'separator' },
     ...ZOOM_STEPS.map((z): DropdownItem => ({
       type: 'checkbox',
@@ -154,9 +162,9 @@ function ViewControls(): JSX.Element {
     })),
   ];
   const viewItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'rulers', label: 'Rulers and Guides', checked: showRulers, onChange: (on) => setRulers(on) },
+    { type: 'checkbox', id: 'rulers', label: t('assets.viewer.rulers', 'Rulers and Guides'), checked: showRulers, onChange: (on) => setRulers(on) },
     ...(guides.x.length + guides.y.length > 0
-      ? [{ type: 'item', id: 'clear-guides', label: 'Clear Guides', onSelect: () => setGuides({ x: [], y: [] }) } as DropdownItem]
+      ? [{ type: 'item', id: 'clear-guides', label: t('assets.viewer.clearGuides', 'Clear Guides'), onSelect: () => setGuides({ x: [], y: [] }) } as DropdownItem]
       : []),
   ];
 
@@ -166,24 +174,24 @@ function ViewControls(): JSX.Element {
         placement="bottom-end"
         items={zoomItems}
         trigger={
-          <button type="button" className={styles.select} title="Zoom — the wheel zooms, the middle button or the Hand tool moves the view">
-            <span>{zoom === null ? 'Fit' : `${Math.round(zoom * 100)} %`}</span>
+          <button type="button" className={styles.select} title={t('assets.viewer.zoomTitle', 'Zoom — the wheel zooms, the middle button or the Hand tool moves the view')}>
+            <span>{zoom === null ? t('assets.viewer.fit', 'Fit') : `${Math.round(zoom * 100)} %`}</span>
             <Icon name="chevron-down" size="sm" />
           </button>
         }
       />
-      <span className={styles.exposure} title="Exposure, in stops: how this viewer shows the picture. It does not change the file. Double-click to reset.">
-        <span className={styles.viewLabel}>Exposure</span>
+      <span className={styles.exposure} title={t('assets.viewer.exposureTitle', 'Exposure, in stops: how this viewer shows the picture. It does not change the file. Double-click to reset.')}>
+        <span className={styles.viewLabel}>{t('assets.viewer.exposure', 'Exposure')}</span>
         <span onDoubleClick={() => setExposure(0)}>
-          <ValueField value={exposure} onChange={setExposure} min={-8} max={8} step={0.05} precision={1} aria-label="Exposure (stops)" />
+          <ValueField value={exposure} onChange={setExposure} min={-8} max={8} step={0.05} precision={1} aria-label={t('assets.viewer.exposureAria', 'Exposure (stops)')} />
         </span>
       </span>
       <Dropdown
         placement="bottom-end"
         items={viewItems}
         trigger={
-          <button type="button" className={styles.select} title="Rulers in the file’s pixels; drag a guide out of a ruler">
-            <span>View</span>
+          <button type="button" className={styles.select} title={t('assets.viewer.viewTitle', 'Rulers in the file’s pixels; drag a guide out of a ruler')}>
+            <span>{t('assets.viewer.view', 'View')}</span>
             <Icon name="chevron-down" size="sm" />
           </button>
         }

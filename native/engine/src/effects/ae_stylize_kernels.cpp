@@ -388,7 +388,11 @@ void burn_film(RgbaView img, double burn, double center_x, double center_y, cons
         const double d = js::hypot(dv);
         const double n = (hash2(x + sd, y - sd) - 0.5) * jitter * max_r * 0.18;
         const double front = d - n;
-        const double cook = t * 0.55;
+        // CC Burn Film: the burnt area is a hole. Its rim glows Burn Color,
+        // char rings it, and the film is scorched just beyond (the heat fades
+        // out by 1.6x the hole) — the rest of the layer is untouched.
+        const double cook = t * 0.55 * (1 - clamp01((front - hot) / std::max(1e-6, hot * 0.6)));
+        const double rim = std::max(1.5, hot * 0.05);
         if (cook > 0) {
           const Hsl c = rgb_to_hsl(p[0], p[1], p[2]);
           const auto rgb = hsl_to_rgb(c.h, c.s * (1 - cook * 0.7), clamp01(c.l + cook * 0.25));
@@ -400,7 +404,7 @@ void burn_film(RgbaView img, double burn, double center_x, double center_y, cons
           p[0] = u8c(bc[0]);
           p[1] = u8c(bc[1]);
           p[2] = u8c(bc[2]);
-          p[3] = u8c(clamp255(p[3] * clamp01((front / std::max(1e-6, hot)) * 0.35)));
+          p[3] = u8c(clamp255(p[3] * clamp01((front - (hot - rim)) / rim)));
         } else if (front <= hot * 1.18) {
           const double k = 1 - clamp01((front - hot) / std::max(1e-6, hot * 0.18));
           for (std::size_t c = 0; c < 3; ++c) p[c] = u8c(p[c] + (cc[c] - p[c]) * k);

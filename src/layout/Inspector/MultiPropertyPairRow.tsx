@@ -30,7 +30,10 @@ import { PropertyRow, KeyframeLane } from '@components/PropertyRow';
 import { PickWhip } from '@components/PickWhip';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { whipExpression } from '@core/whip/whipTarget';
+import { whipEffectNames } from '@core/whip/whipEffectNames';
+import { altClickStopwatchEdit } from '@providers/commands/expressionCommands';
 import type { PropertyAccess } from '@core/inspector/multiSelection';
 import { openContextMenu } from '@stores/contextMenuStore';
 import { documentMirror } from '@stores/documentMirror';
@@ -153,7 +156,7 @@ function MultiPropertyPairRowInner({
     // ONE undo step for the whole row. A drop on a layer links each member to
     // the same-named property there; a drop on a property links every member
     // to that one property.
-    const list = memberProps.flatMap((p) => nodeIds.map((id) => ({ nodeId: id, prop: p, src: whipExpression(name, target.prop ?? p) })));
+    const list = memberProps.flatMap((p) => nodeIds.map((id) => ({ nodeId: id, prop: p, src: whipExpression(name, target.prop ?? p, whipEffectNames(target.nodeId, target.prop ?? p)) })));
     linkExpressions(`Link ${group}`, list);
     for (const s of slots) s.field.setExprOpen(true);
   };
@@ -168,8 +171,12 @@ function MultiPropertyPairRowInner({
           className={cn(rowStyles.exprToggle, rowStyles.exprOn, error && rowStyles.exprErr)}
           data-persist
           aria-pressed={anyOpen}
-          aria-label={`${anyOpen ? 'Hide' : 'Show'} ${group} expressions`}
-          title={error ?? `${withExpr.map((s) => s.field.label).join(', ')} — click to ${anyOpen ? 'hide' : 'edit'}`}
+          aria-label={anyOpen
+            ? t('inspector.multiPropertyPair.hideExprAria', 'Hide {group} expressions', { group })
+            : t('inspector.multiPropertyPair.showExprAria', 'Show {group} expressions', { group })}
+          title={error ?? (anyOpen
+            ? t('inspector.multiPropertyPair.exprHideTitle', '{names} — click to hide', { names: withExpr.map((s) => s.field.label).join(', ') })
+            : t('inspector.multiPropertyPair.exprEditTitle', '{names} — click to edit', { names: withExpr.map((s) => s.field.label).join(', ') }))}
           onClick={(e) => {
             e.stopPropagation();
             for (const s of withExpr) s.field.setExprOpen(!anyOpen);
@@ -179,7 +186,7 @@ function MultiPropertyPairRowInner({
         </button>
       )}
       <PickWhip
-        label={`${group} pick-whip — drag onto a layer or property to link`}
+        label={t('inspector.multiPropertyPair.pickWhip', '{group} pick-whip — drag onto a layer or property to link', { group })}
         className={rowStyles.whip}
         accept={(t) => !(t.nodeId === nodeId && (t.prop === undefined || memberProps.includes(t.prop)))}
         onPick={onWhip}
@@ -242,6 +249,11 @@ function MultiPropertyPairRowInner({
       compact
       className={cn(rowStyles.row, anyOpen && rowStyles.rowExprOpen, styles.pairRow, className)}
       onStopwatch={() => toggleAnimationGroupEach(nodeIds, members, time, group)}
+      // AE's Alt-click: every member's expression off, or `value` on each and their editors open.
+      onAltStopwatch={() => {
+        const refs = memberProps.flatMap((prop) => nodeIds.map((id) => ({ nodeId: id, prop })));
+        void altClickStopwatchEdit(refs, () => { for (const s of slots) s.field.setExprOpen(true); });
+      }}
       navigator={{
         hasPrev: nav.hasPrev,
         hasNext: nav.hasNext,
@@ -270,8 +282,12 @@ function MultiPropertyPairRowInner({
               className={styles.link}
               data-on={linked.value || undefined}
               aria-pressed={linked.value}
-              aria-label={`${linked.value ? 'Unlink' : 'Link'} ${linked.label}`}
-              title={`${linked.value ? 'Unlink' : 'Link'} ${linked.label}`}
+              aria-label={linked.value
+                ? t('inspector.multiPropertyPair.unlink', 'Unlink {label}', { label: linked.label })
+                : t('inspector.multiPropertyPair.link', 'Link {label}', { label: linked.label })}
+              title={linked.value
+                ? t('inspector.multiPropertyPair.unlink', 'Unlink {label}', { label: linked.label })
+                : t('inspector.multiPropertyPair.link', 'Link {label}', { label: linked.label })}
               onClick={(e) => {
                 e.stopPropagation();
                 linked.onToggle();

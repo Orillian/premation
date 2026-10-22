@@ -7,12 +7,27 @@
  * timing; this file only says where to scroll to.
  */
 
+import { t } from '@core/i18n';
+
 export type FollowMode = 'off' | 'page' | 'continuous';
 
-export const FOLLOW_MODES: ReadonlyArray<{ mode: FollowMode; label: string; description: string }> = [
-  { mode: 'off', label: 'Off', description: 'The lanes never scroll on their own.' },
-  { mode: 'page', label: 'Page', description: 'Jump one screen when the playhead leaves the visible lanes (After Effects).' },
-  { mode: 'continuous', label: 'Continuous', description: 'Keep the playhead a third of the way across the lanes while playing.' },
+/** Labels are getters: `t()` must run when a menu reads them, not at import (the catalogue loads later). */
+export const FOLLOW_MODES: ReadonlyArray<{ mode: FollowMode; readonly label: string; readonly description: string }> = [
+  {
+    mode: 'off',
+    get label() { return t('timeline.follow.off', 'Off'); },
+    get description() { return t('timeline.follow.offDescription', 'The lanes never scroll on their own.'); },
+  },
+  {
+    mode: 'page',
+    get label() { return t('timeline.follow.page', 'Page'); },
+    get description() { return t('timeline.follow.pageDescription', 'Jump one screen when the playhead leaves the visible lanes (After Effects).'); },
+  },
+  {
+    mode: 'continuous',
+    get label() { return t('timeline.follow.continuous', 'Continuous'); },
+    get description() { return t('timeline.follow.continuousDescription', 'Keep the playhead a third of the way across the lanes while playing.'); },
+  },
 ];
 
 export interface FollowInput {

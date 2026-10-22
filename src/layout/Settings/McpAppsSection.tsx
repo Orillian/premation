@@ -9,16 +9,17 @@ import { BrandMark } from '@components/BrandMark';
 import { Icon } from '@components/Icon';
 import type { McpAppId, McpAppStatus } from '@app-types/motionEditor';
 import { useClaudeStore } from '@stores/claudeStore';
+import { t } from '@core/i18n';
 import styles from './ClaudeConnectSection.module.css';
 
 type Busy = { id: McpAppId; kind: 'connect' | 'disconnect' } | null;
 
 function pillFor(app: McpAppStatus, listening: boolean): { label: string; tone: string | undefined } {
-  if (app.state === 'malformed') return { label: 'Needs a look', tone: styles.pillWarn };
-  if (app.state === 'stale') return { label: 'Needs repair', tone: styles.pillWarn };
-  if (app.state === 'ok' && listening) return { label: 'Ready', tone: styles.pillReady };
-  if (app.state === 'ok') return { label: 'Paused', tone: styles.pillOff };
-  return { label: 'Not connected', tone: styles.pillOff };
+  if (app.state === 'malformed') return { label: t('settings.mcpApps.pillNeedsLook', 'Needs a look'), tone: styles.pillWarn };
+  if (app.state === 'stale') return { label: t('settings.mcpApps.pillNeedsRepair', 'Needs repair'), tone: styles.pillWarn };
+  if (app.state === 'ok' && listening) return { label: t('settings.mcpApps.pillReady', 'Ready'), tone: styles.pillReady };
+  if (app.state === 'ok') return { label: t('settings.mcpApps.pillPaused', 'Paused'), tone: styles.pillOff };
+  return { label: t('settings.mcpApps.pillNotConnected', 'Not connected'), tone: styles.pillOff };
 }
 
 export function McpAppsSection(): JSX.Element | null {
@@ -57,7 +58,7 @@ export function McpAppsSection(): JSX.Element | null {
     setNote('');
     void api.connectApp(app.id).then((r) => {
       setStatus(r.status);
-      if (!r.ok) setError(r.code === 'malformed' ? `${r.message} Premation did not change it.` : r.message);
+      if (!r.ok) setError(r.code === 'malformed' ? t('settings.mcpApps.malformed', '{message} Premation did not change it.', { message: r.message }) : r.message);
       else setNote(`${app.name}: ${app.restart}`);
     }).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
@@ -71,7 +72,7 @@ export function McpAppsSection(): JSX.Element | null {
     void api.disconnectApp(app.id).then((r) => {
       setStatus(r.status);
       if (r.problems.length) setError(r.problems.join('; '));
-      else setNote(`${app.name} no longer starts Premation. Restart ${app.name} to drop it from the tool list.`);
+      else setNote(t('settings.mcpApps.disconnected', '{app} no longer starts Premation. Restart {app} to drop it from the tool list.', { app: app.name }));
     }).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
     }).finally(() => setBusy(null));
@@ -81,20 +82,19 @@ export function McpAppsSection(): JSX.Element | null {
     <section className={styles.card} aria-labelledby="mcp-apps-title">
       <header className={styles.head}>
         <div className={styles.headText}>
-          <h3 id="mcp-apps-title" className={styles.title}>Cursor, Antigravity and ChatGPT</h3>
+          <h3 id="mcp-apps-title" className={styles.title}>{t('settings.mcpApps.title', 'Cursor, Antigravity and ChatGPT')}</h3>
           <p className={styles.lede}>
-            The same Premation connection as Claude. Each app gets its own local setup on this computer.
-            Ask it to work in Premation the way you would ask Claude.
+            {t('settings.mcpApps.lede', 'The same Premation connection as Claude. Each app gets its own local setup on this computer. Ask it to work in Premation the way you would ask Claude.')}
           </p>
         </div>
       </header>
 
       {status?.devBuild ? (
-        <p className={styles.dev}>Development build: connecting here replaces an installed Premation in that app.</p>
+        <p className={styles.dev}>{t('settings.mcpApps.devBuild', 'Development build: connecting here replaces an installed Premation in that app.')}</p>
       ) : null}
 
       {!status?.connectorInstalled ? (
-        <p className={styles.error}>Premation’s connector is missing from this installation. Reinstall Premation.</p>
+        <p className={styles.error}>{t('settings.mcpApps.connectorMissing', 'Premation’s connector is missing from this installation. Reinstall Premation.')}</p>
       ) : null}
 
       <ul className={styles.appList}>
@@ -109,34 +109,34 @@ export function McpAppsSection(): JSX.Element | null {
                 <BrandMark brand={app.id} size={28} />
                 <div className={styles.headText}>
                   <div className={styles.appName}>{app.name}</div>
-                  <p className={styles.subtle}>{app.blurb}{app.present ? '' : ` ${app.name} has not been opened on this computer yet; Connect still writes its setup, and it picks Premation up on first launch.`}</p>
+                  <p className={styles.subtle}>{app.blurb}{app.present ? '' : ` ${t('settings.mcpApps.notOpened', '{app} has not been opened on this computer yet; Connect still writes its setup, and it picks Premation up on first launch.', { app: app.name })}`}</p>
                 </div>
                 <span className={`${styles.pill} ${pill.tone}`}>{pill.label}</span>
               </div>
               {app.state === 'malformed' ? (
                 <p className={styles.error}>
-                  {app.configPath} could not be read. Premation will not change it. Add Premation by hand with the snippet below.
+                  {t('settings.mcpApps.unreadable', '{path} could not be read. Premation will not change it. Add Premation by hand with the snippet below.', { path: app.configPath })}
                 </p>
               ) : null}
               <div className={styles.actions}>
                 {app.state === 'stale' || (app.state === 'ok' && !listening) ? (
                   <button type="button" className={styles.primary} disabled={busy !== null || !status?.connectorInstalled} onClick={() => connect(app)}>
-                    {working && busy?.kind === 'connect' ? 'Repairing…' : app.state === 'stale' ? 'Repair' : 'Turn on'}
+                    {working && busy?.kind === 'connect' ? t('settings.mcpApps.repairing', 'Repairing…') : app.state === 'stale' ? t('settings.mcpApps.repair', 'Repair') : t('settings.mcpApps.turnOn', 'Turn on')}
                   </button>
                 ) : null}
                 {app.state === 'absent' || app.state === 'malformed' ? (
                   <button type="button" className={styles.primary} disabled={busy !== null || !status?.connectorInstalled || app.state === 'malformed'} onClick={() => connect(app)}>
-                    {working && busy?.kind === 'connect' ? 'Connecting…' : `Connect ${app.name}`}
+                    {working && busy?.kind === 'connect' ? t('settings.mcpApps.connecting', 'Connecting…') : t('settings.mcpApps.connect', 'Connect {app}', { app: app.name })}
                   </button>
                 ) : null}
                 {installed ? (
                   <button type="button" className={styles.secondary} disabled={busy !== null} onClick={() => disconnect(app)}>
-                    {working && busy?.kind === 'disconnect' ? 'Removing…' : 'Disconnect'}
+                    {working && busy?.kind === 'disconnect' ? t('settings.mcpApps.removing', 'Removing…') : t('settings.mcpApps.disconnect', 'Disconnect')}
                   </button>
                 ) : null}
                 <button type="button" className={styles.secondary} aria-expanded={open === app.id} onClick={() => setOpen(open === app.id ? null : app.id)}>
                   <Icon name={open === app.id ? 'chevron-down' : 'chevron-right'} size="sm" />
-                  Setup details
+                  {t('settings.mcpApps.setupDetails', 'Setup details')}
                 </button>
               </div>
               {open === app.id ? (
@@ -145,11 +145,11 @@ export function McpAppsSection(): JSX.Element | null {
                   {app.command ? (
                     <div className={styles.codeRow}>
                       <code className={styles.code}>{app.command}</code>
-                      <button type="button" className={styles.secondary} onClick={() => void copy(app.command)}>{copied === app.command ? 'Copied' : 'Copy'}</button>
+                      <button type="button" className={styles.secondary} onClick={() => void copy(app.command)}>{copied === app.command ? t('settings.mcpApps.copied', 'Copied') : t('settings.mcpApps.copy', 'Copy')}</button>
                     </div>
                   ) : null}
                   <pre className={styles.code}>{app.snippet}</pre>
-                  <button type="button" className={styles.secondary} onClick={() => void copy(app.snippet)}>{copied === app.snippet ? 'Copied' : 'Copy snippet'}</button>
+                  <button type="button" className={styles.secondary} onClick={() => void copy(app.snippet)}>{copied === app.snippet ? t('settings.mcpApps.copied', 'Copied') : t('settings.mcpApps.copySnippet', 'Copy snippet')}</button>
                 </div>
               ) : null}
             </li>

@@ -21,6 +21,7 @@ import {
   applyOutputTemplate,
 } from '@core/export/outputTemplates';
 import { customPrompt } from '@components/Modal/Dialogs';
+import { t } from '@core/i18n';
 import styles from './OutputModuleDialog.module.css';
 
 export interface OutputSettings {
@@ -41,17 +42,20 @@ export interface OutputSettings {
 const PRORES_PROFILES: ReadonlyArray<ProresProfile> = ['4444', 'hq', '422', 'lt', 'proxy'];
 
 /** Every queueable format, with the formats only ffmpeg can produce marked. */
-const FORMATS: ReadonlyArray<{ value: OutputFormat; label: string; desktopOnly?: boolean }> = [
-  { value: 'mp4', label: 'H.264 MP4', desktopOnly: true },
-  { value: 'hdr10', label: 'HDR10 MP4 (PQ)', desktopOnly: true },
-  { value: 'hlg', label: 'HLG MP4', desktopOnly: true },
-  { value: 'webm', label: 'WebM VP9' },
-  { value: 'mov', label: 'ProRes MOV', desktopOnly: true },
-  { value: 'gif', label: 'Animated GIF' },
-  { value: 'png-sequence', label: 'PNG Sequence' },
-  { value: 'jpg-sequence', label: 'JPEG Sequence' },
-  { value: 'exr-sequence', label: 'EXR Sequence' },
-];
+/** Called at render time: `t()` must not run at module scope. */
+function outputFormats(): ReadonlyArray<{ value: OutputFormat; label: string; desktopOnly?: boolean }> {
+  return [
+    { value: 'mp4', label: 'H.264 MP4', desktopOnly: true },
+    { value: 'hdr10', label: 'HDR10 MP4 (PQ)', desktopOnly: true },
+    { value: 'hlg', label: 'HLG MP4', desktopOnly: true },
+    { value: 'webm', label: 'WebM VP9' },
+    { value: 'mov', label: 'ProRes MOV', desktopOnly: true },
+    { value: 'gif', label: t('renderQueue.format.gif', 'Animated GIF') },
+    { value: 'png-sequence', label: t('renderQueue.format.pngSequence', 'PNG Sequence') },
+    { value: 'jpg-sequence', label: t('renderQueue.format.jpgSequence', 'JPEG Sequence') },
+    { value: 'exr-sequence', label: t('renderQueue.format.exrSequence', 'EXR Sequence') },
+  ];
+}
 
 /** Formats that carry an alpha channel — the rest cannot honour "transparent". */
 const ALPHA_FORMATS: ReadonlySet<OutputFormat> = new Set(['webm', 'mov', 'gif', 'png-sequence', 'exr-sequence']);
@@ -77,7 +81,7 @@ export function OutputModuleDialog({
   // browser would fail at encode time, after the whole render had run.
   const formats = useMemo(() => {
     const local = canEncodeLocally();
-    return FORMATS.filter((f) => local || !f.desktopOnly);
+    return outputFormats().filter((f) => local || !f.desktopOnly);
   }, []);
 
   const [format, setFormat] = useState<OutputFormat>(formats[0]?.value ?? 'webm');
@@ -114,12 +118,12 @@ export function OutputModuleDialog({
 
   const applyTemplate = (name: string): void => {
     setSelectedTemplate(name);
-    const t = templates.find((x) => x.name === name);
-    if (!t) return;
+    const tpl = templates.find((x) => x.name === name);
+    if (!tpl) return;
     // Resolved against the COMP's size and rate (the initial values), not the
     // dialog's current fields — a template means "half of the comp", not "half
     // of whatever was last typed here".
-    const out = applyOutputTemplate(t, { width: initialWidth, height: initialHeight, fps: initialFps });
+    const out = applyOutputTemplate(tpl, { width: initialWidth, height: initialHeight, fps: initialFps });
     // Skip formats this build cannot encode (mp4 in the browser) rather than
     // silently queueing a render that fails at encode time.
     if (formats.some((f) => f.value === out.format)) setFormat(out.format);
@@ -133,7 +137,11 @@ export function OutputModuleDialog({
   const saveAsTemplate = async (): Promise<void> => {
     // customPrompt, not window.prompt — the latter does not exist in Electron,
     // so Save would silently do nothing in the packaged app.
-    const name = await customPrompt('Save Template', 'Template name', selectedTemplate || 'My Template');
+    const name = await customPrompt(
+      t('renderQueue.outputModule.saveTemplateTitle', 'Save Template'),
+      t('renderQueue.outputModule.templateName', 'Template name'),
+      selectedTemplate || t('renderQueue.outputModule.defaultTemplateName', 'My Template'),
+    );
     if (!name) return;
     saveOutputTemplate({
       name,
@@ -196,43 +204,43 @@ export function OutputModuleDialog({
     <div className={styles.overlay}>
       <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="output-module-title" onKeyDown={onKeyDown}>
         <div className={styles.header}>
-          <h2 id="output-module-title">Output Module Settings</h2>
-          <button type="button" className={styles.closeBtn} onClick={onCancel}>
+          <h2 id="output-module-title">{t('renderQueue.outputModule.title', 'Output Module Settings')}</h2>
+          <button type="button" className={styles.closeBtn} onClick={onCancel} aria-label={t('renderQueue.outputModule.close', 'Close')}>
             <Icon name="close" size="sm" />
           </button>
         </div>
 
         <div className={styles.body}>
           <div className={styles.fieldRow}>
-            <label>Template</label>
+            <label>{t('renderQueue.outputModule.template', 'Template')}</label>
             <div className={styles.multiInput}>
               <select
                 value={selectedTemplate}
                 onChange={(e) => applyTemplate(e.target.value)}
-                aria-label="Output template"
+                aria-label={t('renderQueue.outputModule.templateLabel', 'Output template')}
               >
-                <option value="">— choose —</option>
-                {templates.map((t) => (
-                  <option key={t.name} value={t.name}>{t.name}</option>
+                <option value="">{t('renderQueue.outputModule.choose', '— choose —')}</option>
+                {templates.map((tpl) => (
+                  <option key={tpl.name} value={tpl.name}>{tpl.name}</option>
                 ))}
               </select>
-              <button type="button" className={styles.cancelBtn} onClick={saveAsTemplate} title="Save the current settings as a named template">
-                Save…
+              <button type="button" className={styles.cancelBtn} onClick={saveAsTemplate} title={t('renderQueue.outputModule.saveTitle', 'Save the current settings as a named template')}>
+                {t('renderQueue.outputModule.save', 'Save…')}
               </button>
               <button
                 type="button"
                 className={styles.cancelBtn}
                 onClick={removeTemplate}
                 disabled={!selectedTemplate}
-                title={isBuiltinOutputTemplate(selectedTemplate) ? 'Reset this built-in to its shipped settings' : 'Delete this template'}
+                title={isBuiltinOutputTemplate(selectedTemplate) ? t('renderQueue.outputModule.resetTitle', 'Reset this built-in to its shipped settings') : t('renderQueue.outputModule.deleteTitle', 'Delete this template')}
               >
-                {isBuiltinOutputTemplate(selectedTemplate) ? 'Reset' : 'Delete'}
+                {isBuiltinOutputTemplate(selectedTemplate) ? t('renderQueue.outputModule.reset', 'Reset') : t('renderQueue.outputModule.delete', 'Delete')}
               </button>
             </div>
           </div>
 
           <div className={styles.fieldRow}>
-            <label>Format</label>
+            <label>{t('renderQueue.outputModule.format', 'Format')}</label>
             <select value={format} onChange={(e) => setFormat(e.target.value as OutputFormat)}>
               {formats.map((f) => (
                 <option key={f.value} value={f.value}>{f.label}</option>
@@ -242,11 +250,11 @@ export function OutputModuleDialog({
 
           {format === 'mov' ? (
             <div className={styles.fieldRow}>
-              <label>ProRes Profile</label>
+              <label>{t('renderQueue.outputModule.proresProfile', 'ProRes Profile')}</label>
               <select
                 value={proresProfile}
                 onChange={(e) => setProresProfile(e.target.value as ProresProfile)}
-                aria-label="ProRes profile"
+                aria-label={t('export.form.proresProfile', 'ProRes profile')}
               >
                 {PRORES_PROFILES.map((p) => (
                   <option key={p} value={p}>{PRORES_PROFILE_LABELS[p]}</option>
@@ -257,23 +265,23 @@ export function OutputModuleDialog({
 
           {offerBitDepth ? (
             <div className={styles.fieldRow}>
-              <label>Bits per Channel</label>
+              <label>{t('renderQueue.outputModule.bitsPerChannel', 'Bits per Channel')}</label>
               <select
                 value={bitDepth}
                 onChange={(e) => setBitDepth(e.target.value === '16' ? 16 : 8)}
-                aria-label="Bits per channel"
+                aria-label={t('export.form.bitsPerChannel', 'Bits per channel')}
                 title={bitDepth === 16
-                  ? 'Rendered by the engine into a half-float surface (rgba64le). A job the engine cannot render is delivered at 8 bits, with a warning.'
-                  : '8 bits per channel, as every renderer writes it.'}
+                  ? t('export.form.bitDepth16Note', 'Rendered by the engine into a half-float surface (rgba64le). A job the engine cannot render is delivered at 8 bits, with a warning.')
+                  : t('export.form.bitDepth8Note', '8 bits per channel, as every renderer writes it.')}
               >
-                <option value="8">8 bits</option>
-                <option value="16">16 bits</option>
+                <option value="8">{t('renderQueue.outputModule.bits', '{n} bits', { n: 8 })}</option>
+                <option value="16">{t('renderQueue.outputModule.bits', '{n} bits', { n: 16 })}</option>
               </select>
             </div>
           ) : null}
 
           <div className={styles.fieldRow}>
-            <label>Resolution</label>
+            <label>{t('renderQueue.outputModule.resolution', 'Resolution')}</label>
             <div className={styles.multiInput}>
               <input 
                 type="number" 
@@ -292,7 +300,7 @@ export function OutputModuleDialog({
           </div>
 
           <div className={styles.fieldRow}>
-            <label>Frame Rate</label>
+            <label>{t('renderQueue.outputModule.frameRate', 'Frame Rate')}</label>
             <input 
               type="number" 
               value={fps} 
@@ -302,7 +310,7 @@ export function OutputModuleDialog({
           </div>
 
           <div className={styles.fieldRow}>
-            <label>Duration (s)</label>
+            <label>{t('renderQueue.outputModule.duration', 'Duration (s)')}</label>
             <input 
               type="number" 
               value={duration} 
@@ -313,16 +321,16 @@ export function OutputModuleDialog({
           </div>
 
           <div className={styles.fieldRow}>
-            <label>Quality</label>
+            <label>{t('renderQueue.outputModule.quality', 'Quality')}</label>
             <select value={quality} onChange={(e) => setQuality(e.target.value as ExportQuality)}>
-              <option value="high">High — best quality, slowest</option>
-              <option value="medium">Medium — balanced</option>
-              <option value="draft">Draft — fast, visibly compressed</option>
+              <option value="high">{t('renderQueue.outputModule.qualityHigh', 'High — best quality, slowest')}</option>
+              <option value="medium">{t('renderQueue.outputModule.qualityMedium', 'Medium — balanced')}</option>
+              <option value="draft">{t('renderQueue.outputModule.qualityDraft', 'Draft — fast, visibly compressed')}</option>
             </select>
           </div>
 
           <div className={styles.fieldRow}>
-            <label>Channels</label>
+            <label>{t('renderQueue.outputModule.channels', 'Channels')}</label>
             <label className={styles.checkboxLabel}>
               <input
                 type="checkbox"
@@ -331,9 +339,9 @@ export function OutputModuleDialog({
                 onChange={(e) => setTransparent(e.target.checked)}
                 // Offering alpha for MP4 or JPEG would promise transparency the
                 // container cannot carry, and silently flatten it instead.
-                title={supportsAlpha ? undefined : `${format} has no alpha channel`}
+                title={supportsAlpha ? undefined : t('renderQueue.outputModule.noAlpha', '{format} has no alpha channel', { format })}
               />
-              RGB + Alpha (Transparent)
+              {t('renderQueue.outputModule.rgbAlpha', 'RGB + Alpha (Transparent)')}
             </label>
           </div>
         </div>
@@ -342,12 +350,12 @@ export function OutputModuleDialog({
           <DialogFooter
             secondary={
               <Button variant="secondary" size="sm" onClick={onCancel}>
-                Cancel
+                {t('renderQueue.outputModule.cancel', 'Cancel')}
               </Button>
             }
             primary={
               <Button variant="primary" size="sm" onClick={confirm}>
-                OK
+                {t('renderQueue.outputModule.ok', 'OK')}
               </Button>
             }
           />

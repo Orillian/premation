@@ -4,6 +4,7 @@ import { Icon } from '@components/Icon';
 import { openHelp } from '@layout/Help/openHelp';
 import { popoutHash } from '@core/layout/popoutPath';
 import styles from './PanelHeader.module.css';
+import { t } from '@core/i18n';
 
 interface PanelHeaderProps {
   panelId: string;
@@ -85,8 +86,8 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
           type="button"
           className={styles.actionBtn}
           onClick={() => { void openHelp(panelId); }}
-          title={`Help for ${title}`}
-          aria-label={`Help for ${title}`}
+          title={t('editor.panelHeader.help', 'Help for {title}', { title })}
+          aria-label={t('editor.panelHeader.help', 'Help for {title}', { title })}
           data-tour="panel-help"
         >
           <Icon name="info" size="sm" />
@@ -102,7 +103,7 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
             type="button"
             className={styles.actionBtn}
             onClick={() => setMenuOpen(!menuOpen)}
-            title="Panel Options"
+            title={t('editor.panelHeader.options', 'Panel Options')}
           >
             <Icon name="more-horizontal" size="sm" />
           </button>
@@ -114,7 +115,7 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
             type="button"
             className={styles.actionBtn}
             onClick={() => closePanel(panelId)}
-            title="Close Panel"
+            title={t('editor.panelHeader.close', 'Close Panel')}
           >
             <Icon name="close" size="sm" />
           </button>
@@ -125,14 +126,14 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
           <div ref={menuRef} className={styles.menuDropdown}>
             {placement !== 'external' && (
               <button type="button" className={styles.menuItem} onClick={handlePopout}>
-                <Icon name="export" size="sm" /> Pop Out into Window
+                <Icon name="export" size="sm" /> {t('editor.panelHeader.popOut', 'Pop Out into Window')}
               </button>
             )}
 
             <div className={styles.menuSeparator} />
 
             <div style={{ fontSize: 'var(--font-size-micro)', color: 'var(--color-text-tertiary)', padding: '2px 8px', textTransform: 'uppercase' }}>
-              Dock Position
+              {t('editor.panelHeader.dockPosition', 'Dock Position')}
             </div>
 
             {/*
@@ -150,10 +151,10 @@ export function PanelHeader({ panelId, title, icon, closable = true, isPopout = 
               genuinely works; there is no third destination to offer.
             */}
             <button type="button" className={styles.menuItem} onClick={() => handleDock('leftSidebar')}>
-              <Icon name="panel-left" size="sm" /> Dock Left Sidebar
+              <Icon name="panel-left" size="sm" /> {t('editor.panelHeader.dockLeft', 'Dock Left Sidebar')}
             </button>
             <button type="button" className={styles.menuItem} onClick={() => handleDock('rightInspector')}>
-              <Icon name="sliders-h" size="sm" /> Dock Right Inspector
+              <Icon name="sliders-h" size="sm" /> {t('editor.panelHeader.dockRight', 'Dock Right Inspector')}
             </button>
           </div>
         )}

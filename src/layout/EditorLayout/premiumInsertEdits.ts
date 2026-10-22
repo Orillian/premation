@@ -28,6 +28,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { isPaidPlan, useEntitlementStore } from '@stores/entitlementStore';
 import { usePremiumLibraryStore } from '@stores/premiumLibraryStore';
 import { promptForPro } from '@stores/proPromptStore';
+import { useLayoutStore } from '@stores/layoutStore';
 import { useTemplateStore } from '@stores/templateStore';
 import { useUIStore } from '@stores/uiStore';
 import { insertLottieDocEdit } from './lottieInsertEdits';
@@ -121,10 +122,12 @@ export async function insertPremiumItem(item: PremiumCatalogItem, opts: PremiumI
       case 'template': {
         const ok = await useTemplateStore.getState().applyPayload(item, payload.payload);
         if (!ok) return failed;
+        // Fields are edited in their own panel, not under the Library shelf.
+        useLayoutStore.getState().openPanel('essentialGraphics');
         return {
           ok: true,
           message: payload.payload.mode === 'scene'
-            ? t('editor.library.premium.newScene', 'Opened {name} in a new composition — edit its fields in Templates', { name: item.name })
+            ? t('editor.library.premium.newScene', 'Opened {name} in a new composition — edit its fields in Essential Graphics', { name: item.name })
             : t('editor.library.premium.inserted', 'Inserted {name}', { name: item.name }),
         };
       }

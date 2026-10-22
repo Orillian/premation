@@ -33,6 +33,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useWorkspaceStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { isLayer } from '@core/mirror/docFacts';
 
 // ── Reads (display facts a write needs) ──────────────────────────────
@@ -515,17 +516,23 @@ export async function replaceSourceWithAsset(nodeId: string | null, assetId: str
   const m = documentMirror();
   const asset = m.item(assetId);
   if (!nodeId || !isReplaceableLayerNow(nodeId)) {
-    notify({ level: 'info', message: 'Alt-drop onto an image or video layer (or select one) to replace its source.', durationMs: 3200 });
+    notify({ level: 'info', message: t('timeline.replaceSource.needLayer', 'Alt-drop onto an image or video layer (or select one) to replace its source.'), durationMs: 3200 });
     return false;
   }
   // Image and video footage (audio footage has no picture).
   if (!asset || asset.kind !== 'footage' || !asset.hasVideo) {
-    notify({ level: 'info', message: 'Only image and video footage can replace a layer’s source.', durationMs: 3200 });
+    notify({ level: 'info', message: t('timeline.replaceSource.needFootage', 'Only image and video footage can replace a layer’s source.'), durationMs: 3200 });
     return false;
   }
   const name = m.layer(nodeId)?.name || 'layer';
   const res = await edit(`Replace Source of “${name}”`, { type: 'replaceLayerSource', layer: nodeId, source: asset.id, keepSize: true });
-  if (res.ok) notify({ level: 'info', message: `Replaced the source of “${name}” with “${asset.name}”.`, durationMs: 2600 });
+  if (res.ok) {
+    notify({
+      level: 'info',
+      message: t('timeline.replaceSource.done', 'Replaced the source of “{layer}” with “{asset}”.', { layer: name, asset: asset.name }),
+      durationMs: 2600,
+    });
+  }
   return res.ok;
 }
 

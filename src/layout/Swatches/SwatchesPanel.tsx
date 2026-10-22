@@ -25,6 +25,7 @@ import { solidFill } from '@core/paint/fill';
 import { edit } from '@core/engine/uiEdits';
 import { fieldCommands } from '@layout/Text/textEdits';
 import styles from './SwatchesPanel.module.css';
+import { t } from '@core/i18n';
 
 /**
  * Paint every selected layer with `hex`.
@@ -88,7 +89,7 @@ export function SwatchesPanel(): JSX.Element {
   return (
     <div className={styles.panelRoot}>
       <div className={styles.addRow}>
-        <ColorPicker value={draft} onChange={setDraft} aria-label="New swatch color" />
+        <ColorPicker value={draft} onChange={setDraft} aria-label={t('swatches.panel.newColor', 'New swatch color')} />
         <button
           type="button"
           className={styles.addBtn}
@@ -99,23 +100,23 @@ export function SwatchesPanel(): JSX.Element {
               setDraftName(added.name);
             }
           }}
-          title="Add this color to the project palette"
+          title={t('swatches.panel.addTitle', 'Add this color to the project palette')}
         >
           <Icon name="plus" size="sm" />
-          <span>Add</span>
+          <span>{t('swatches.panel.add', 'Add')}</span>
         </button>
       </div>
 
-      <div className={styles.sectionLabel}>Project Swatches</div>
+      <div className={styles.sectionLabel}>{t('swatches.panel.projectSwatches', 'Project Swatches')}</div>
 
       {swatches.length === 0 ? (
         <EmptyState
           compact
           icon="palette"
-          title="No swatches yet"
-          message="Pick a colour above and add it, or promote one of the document colours below."
+          title={t('swatches.panel.emptyTitle', 'No swatches yet')}
+          message={t('swatches.panel.emptyMessage', 'Pick a colour above and add it, or promote one of the document colours below.')}
           action={{
-            label: 'Add the picked colour',
+            label: t('swatches.panel.addPicked', 'Add the picked colour'),
             onClick: () => {
               const added = addSwatch(draft);
               if (added) {
@@ -133,8 +134,8 @@ export function SwatchesPanel(): JSX.Element {
                 type="button"
                 className={styles.rowSwatch}
                 style={{ background: sw.hex }}
-                title={`Apply ${sw.name} to the selected layers`}
-                aria-label={`Apply ${sw.name} to selection`}
+                title={t('swatches.panel.applyTitle', 'Apply {name} to the selected layers', { name: sw.name })}
+                aria-label={t('swatches.panel.applyAria', 'Apply {name} to selection', { name: sw.name })}
                 disabled={!canApply}
                 onClick={() => applyToSelection(selectedIds, sw.hex)}
               />
@@ -143,7 +144,7 @@ export function SwatchesPanel(): JSX.Element {
                   className={styles.rowInput}
                   value={draftName}
                   autoFocus
-                  aria-label="Swatch name"
+                  aria-label={t('swatches.panel.swatchName', 'Swatch name')}
                   onChange={(e) => setDraftName(e.target.value)}
                   onBlur={commitRename}
                   onKeyDown={(e) => {
@@ -155,7 +156,7 @@ export function SwatchesPanel(): JSX.Element {
                 <button
                   type="button"
                   className={styles.rowName}
-                  title="Rename"
+                  title={t('swatches.panel.rename', 'Rename')}
                   onClick={() => {
                     setEditingId(sw.id);
                     setDraftName(sw.name);
@@ -169,8 +170,8 @@ export function SwatchesPanel(): JSX.Element {
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  title="Move up"
-                  aria-label={`Move ${sw.name} up`}
+                  title={t('swatches.panel.moveUp', 'Move up')}
+                  aria-label={t('swatches.panel.moveUpAria', 'Move {name} up', { name: sw.name })}
                   disabled={i === 0}
                   onClick={() => moveSwatch(sw.id, i - 1)}
                 >
@@ -179,8 +180,8 @@ export function SwatchesPanel(): JSX.Element {
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  title="Move down"
-                  aria-label={`Move ${sw.name} down`}
+                  title={t('swatches.panel.moveDown', 'Move down')}
+                  aria-label={t('swatches.panel.moveDownAria', 'Move {name} down', { name: sw.name })}
                   disabled={i === swatches.length - 1}
                   onClick={() => moveSwatch(sw.id, i + 1)}
                 >
@@ -189,8 +190,8 @@ export function SwatchesPanel(): JSX.Element {
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  title="Delete swatch"
-                  aria-label={`Delete ${sw.name}`}
+                  title={t('swatches.panel.delete', 'Delete swatch')}
+                  aria-label={t('swatches.panel.deleteAria', 'Delete {name}', { name: sw.name })}
                   onClick={() => {
                     removeSwatch(sw.id);
                     if (editingId === sw.id) setEditingId(null);
@@ -207,28 +208,30 @@ export function SwatchesPanel(): JSX.Element {
       {swatches.length > 0 && (
         <p className={styles.hint}>
           {canApply
-            ? `Click a swatch to fill ${selectedIds.length} selected layer${selectedIds.length === 1 ? '' : 's'}.`
-            : 'Select layers to apply a swatch as their fill.'}
+            ? selectedIds.length === 1
+              ? t('swatches.panel.hintOne', 'Click a swatch to fill {n} selected layer.', { n: selectedIds.length })
+              : t('swatches.panel.hintOther', 'Click a swatch to fill {n} selected layers.', { n: selectedIds.length })
+            : t('swatches.panel.hintNone', 'Select layers to apply a swatch as their fill.')}
         </p>
       )}
 
-      <div className={styles.sectionLabel}>Document Colors</div>
+      <div className={styles.sectionLabel}>{t('swatches.panel.documentColors', 'Document Colors')}</div>
       {documentColors.length === 0 ? (
         <EmptyState
           compact
           icon="brush"
-          message="Nothing in this composition is painted yet."
+          message={t('swatches.panel.documentEmpty', 'Nothing in this composition is painted yet.')}
         />
       ) : (
-        <div className={styles.grid} role="listbox" aria-label="Document colors">
+        <div className={styles.grid} role="listbox" aria-label={t('swatches.panel.documentColorsAria', 'Document colors')}>
           {documentColors.map((hex) => (
             <button
               key={hex}
               type="button"
               className={styles.gridSwatch}
               style={{ background: hex }}
-              title={`${hex.toUpperCase()} — click to add to the project palette`}
-              aria-label={`Add ${hex} to project swatches`}
+              title={t('swatches.panel.docColorTitle', '{hex} — click to add to the project palette', { hex: hex.toUpperCase() })}
+              aria-label={t('swatches.panel.docColorAria', 'Add {hex} to project swatches', { hex })}
               onClick={() => addSwatch(hex)}
             />
           ))}

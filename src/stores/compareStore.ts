@@ -31,17 +31,19 @@
  */
 
 import { create } from 'zustand';
+import { t } from '@core/i18n';
 
 export type CompareMode = 'toggle' | 'side-by-side' | 'wipe' | 'difference';
 
 /** What a snapshot is captured from: the page's content canvas, or the engine's VideoFrame. */
 export type CompareSource = HTMLCanvasElement | VideoFrame;
 
+// Getters: `t()` runs when a menu reads a label, never at module scope.
 export const COMPARE_MODE_LABEL: Record<CompareMode, string> = {
-  toggle: 'Toggle (A/B)',
-  'side-by-side': 'Side by side',
-  wipe: 'Wipe',
-  difference: 'Difference',
+  get toggle() { return t('stores.compare.toggle', 'Toggle (A/B)'); },
+  get 'side-by-side'() { return t('stores.compare.sideBySide', 'Side by side'); },
+  get wipe() { return t('stores.compare.wipe', 'Wipe'); },
+  get difference() { return t('stores.compare.difference', 'Difference'); },
 };
 
 /**
@@ -165,7 +167,7 @@ export const useCompareStore = create<CompareStore>((set, get) => ({
     const copy = copyCanvas(canvas);
     if (!copy) return null;
     const id = `snap_${++seq}`;
-    const label = pending.label ?? `Snapshot ${get().snapshots.length + 1}`;
+    const label = pending.label ?? t('stores.compare.snapshot', 'Snapshot {n}', { n: get().snapshots.length + 1 });
     // Insert a placeholder immediately with the 2D copy standing in for the
     // bitmap, so Show Snapshot works on the very next frame; the real bitmap
     // swaps in when it resolves.
@@ -227,7 +229,7 @@ export const useCompareStore = create<CompareStore>((set, get) => ({
   setVisible: (v) => set((s) => ({ visible: v && s.snapshots.length > 0 })),
   toggleVisible: () => set((s) => ({ visible: !s.visible && s.snapshots.length > 0 })),
   setMode: (m) => set({ mode: m }),
-  setWipe: (t) => set({ wipe: Math.max(0, Math.min(1, t)) }),
+  setWipe: (w) => set({ wipe: Math.max(0, Math.min(1, w)) }),
   flip: () => set((s) => ({ showingSnapshot: !s.showingSnapshot })),
   key: () => {
     const s = get();

@@ -38,6 +38,7 @@ import {
 } from 'react';
 import { cn } from '@utils/cn';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './SearchField.module.css';
 
 export interface SearchFieldProps {
@@ -76,7 +77,7 @@ export interface SearchFieldProps {
 export function SearchField({
   value,
   onChange,
-  placeholder = 'Search…',
+  placeholder = t('ui.searchField.placeholder', 'Search…'),
   ariaLabel,
   size = 'sm',
   shortcut,
@@ -162,7 +163,7 @@ export function SearchField({
   );
 
   const hasText = draft !== '';
-  const label = ariaLabel ?? (placeholder.replace(/…|\.\.\./g, '').trim() || 'Search');
+  const label = ariaLabel ?? (placeholder.replace(/…|\.\.\./g, '').trim() || t('ui.searchField.label', 'Search'));
 
   return (
     <div
@@ -211,8 +212,8 @@ export function SearchField({
           // can be a whole sentence ("Search by command name, action, or
           // shortcut key…"), and a clear button called that is worse than one
           // called nothing.
-          aria-label="Clear search"
-          title="Clear"
+          aria-label={t('ui.searchField.clearLabel', 'Clear search')}
+          title={t('ui.searchField.clear', 'Clear')}
           tabIndex={-1}
           onClick={clear}
         >

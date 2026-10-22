@@ -98,6 +98,33 @@ enum class MarkerScope : std::uint8_t { kComp, kLayer };
 
 enum class SpaceOp : std::uint8_t { kToComp, kFromComp, kToWorld, kFromWorld };
 
+/// AE's layer facts (`inPoint`, `outPoint`, `index`, `parent`, `enabled`), in
+/// composition seconds; `index` is 1 at the top of the stack. `parent` is the
+/// parent layer's reference (`#<id>` or its name), absent for a layer parented
+/// to the composition.
+struct LayerFacts {
+  double in_point = 0;
+  double out_point = 0;
+  double index = 1;
+  bool enabled = true;
+  std::optional<std::u16string> parent;
+  /// The layer's own name (`thisComp.layer(2).name`); empty = not known.
+  std::u16string name{};
+};
+
+/// A composition as `comp("Name")` / `thisComp.name` see it.
+struct CompFacts {
+  CompInfo info;
+  std::u16string name{};
+};
+
+/// An effect parameter's value: a scalar, a point `[x, y]`, or a colour
+/// `[r, g, b, a]` in 0..1.
+struct EffectParam {
+  std::array<double, 4> v{};
+  std::size_t size = 1;
+};
+
 // ── Source Text data (sourceText.ts) ────────────────────────────────────────
 
 /// A text layer's layer-wide style, in the APP's units.
@@ -275,6 +302,50 @@ class Host {
   /// `thisComp.activeCamera`: the layer reference (`#<id>`) of the camera the
   /// composition renders through at `t`, nullopt when it has none.
   virtual std::optional<std::u16string> active_camera_at(double /*t*/) { return std::nullopt; }
+
+  /// AE-style rigs (docs/EXPRESSION_LANGUAGE.md).
+  /// A layer's facts (`name` nullptr = this layer); nullopt = no such layer.
+  virtual std::optional<LayerFacts> layer_facts_at(const std::u16string* /*name*/, double /*t*/) {
+    return std::nullopt;
+  }
+  /// `thisComp.layer(index)`: the reference (`#<id>`) of the layer at that
+  /// 1-based stack index (1 = top), nullopt when there is none.
+  virtual std::optional<std::u16string> layer_ref_by_index(double /*index*/) { return std::nullopt; }
+  /// `effect("Name")`: whether the layer carries an effect or expression control
+  /// of that name (display name, then match name). `has_effects()` false means
+  /// no provider: every `effect()` call is then a stated error.
+  [[nodiscard]] virtual bool has_effects() const { return false; }
+  virtual bool effect_exists(const std::u16string* /*layer*/, std::u16string_view /*effect*/) { return false; }
+  /// `effect("Name")("Param")` / `effect("Name")(1)`: the parameter by name
+  /// (its label, then its key) when `param` is set, else by 1-based index, at
+  /// `t`; nullopt = no such parameter.
+  virtual std::optional<EffectParam> effect_param_at(const std::u16string* /*layer*/, std::u16string_view /*effect*/,
+                                                     const std::u16string* /*param*/, double /*index*/, double /*t*/) {
+    return std::nullopt;
+  }
+
+  /// AE property objects (2026-10-21).
+  /// `effect("Name").active`: whether the effect is switched on.
+  virtual bool effect_active(const std::u16string* /*layer*/, std::u16string_view /*effect*/) { return true; }
+  /// Key times (seconds, ascending) of a layer property's track (`prop` is the
+  /// document's name: `x`, `rotation`…), for `.numKeys` / `.key(n)`. Empty = not keyed.
+  virtual std::vector<double> layer_key_times(const std::u16string* /*name*/, std::u16string_view /*prop*/) {
+    return {};
+  }
+  /// The same for an effect parameter (its first member's track).
+  virtual std::vector<double> effect_param_key_times(const std::u16string* /*layer*/, std::u16string_view /*effect*/,
+                                                     const std::u16string* /*param*/, double /*index*/) {
+    return {};
+  }
+  /// `comp("Name")` (`name` nullptr = the expression's own composition, for
+  /// `thisComp.name`); nullopt = no such composition.
+  virtual std::optional<CompFacts> comp_facts(const std::u16string* /*name*/) { return std::nullopt; }
+  /// `comp("Name").layer("Layer")` / `.layer(index)`: the reference (`#<id>`)
+  /// of that layer of that composition, nullopt when it has none.
+  virtual std::optional<std::u16string> comp_layer_ref(const std::u16string& /*comp*/, const std::u16string* /*name*/,
+                                                       double /*index*/) {
+    return std::nullopt;
+  }
 };
 
 /// One evaluation's inputs (`ExprContext`).
@@ -300,11 +371,18 @@ struct Result {
   std::array<double, 4> vec{};
   std::size_t size = 0;
   std::optional<std::u16string> error;
+  /// Where `error` happened: 1-based line and column (UTF-16 units) of the
+  /// node that failed in the expression's source; 0 = not known (or no error).
+  /// Never part of the message text.
+  std::uint32_t line = 0;
+  std::uint32_t column = 0;
 };
 
 struct TextResult {
   std::optional<SourceTextResult> result;
   std::optional<std::u16string> error;
+  std::uint32_t line = 0;    // as Result::line
+  std::uint32_t column = 0;  // as Result::column
 };
 
 namespace detail {
@@ -331,6 +409,9 @@ class Expression {
   ~Expression();
 
   [[nodiscard]] const std::optional<std::u16string>& compile_error() const noexcept { return compile_error_; }
+  /// 1-based line / column of the compile error in the source (0 = none).
+  [[nodiscard]] std::uint32_t compile_error_line() const noexcept { return error_line_; }
+  [[nodiscard]] std::uint32_t compile_error_column() const noexcept { return error_column_; }
   /// True for an empty/blank source: run() then returns {null, no error}.
   [[nodiscard]] bool empty() const noexcept { return program_ == nullptr && !compile_error_; }
 
@@ -341,8 +422,14 @@ class Expression {
 
  private:
   Expression() = default;
+  /// Line / column of an offset into the parsed (trimmed) source.
+  void locate(std::uint32_t pos, std::uint32_t& line, std::uint32_t& column) const noexcept;
   std::unique_ptr<const detail::Program> program_;
   std::optional<std::u16string> compile_error_;
+  std::vector<std::uint32_t> line_starts_;  // offsets (into the original source) where each line begins
+  std::uint32_t base_ = 0;                  // the trimmed source's offset in the original
+  std::uint32_t error_line_ = 0;
+  std::uint32_t error_column_ = 0;
 };
 
 /// AnimationEngine's `stringSeed(nodeId + ':' + prop)` — the per-property

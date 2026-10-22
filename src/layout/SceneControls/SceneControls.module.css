@@ -27,14 +27,15 @@
    beside them, so they cannot be a second dialect of it. No chip, no border,
    no radius: the glyph is the control. */
 /* The tool row's button (TopNav.module.css `.tool`, the 2026-10-19 sheet):
-   24px, a tint for the armed state, the same glyph size as its neighbours. */
+   28px with the `md` glyph, AE's pressed well for the armed state, the same
+   size as its neighbours. */
 .trigger,
 .triggerActive {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: var(--control-height-md);
-  min-width: var(--control-height-md);
+  height: var(--control-height-lg);
+  min-width: var(--control-height-lg);
   padding: 0 var(--space-1);
   background: none;
   border: none;
@@ -56,14 +57,15 @@
   color: var(--color-text-primary);
 }
 
+/* Armed: AE's pressed-tool well, the glyph in ink (TopNav .toolActive). */
 .triggerActive {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .triggerActive:hover {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .trigger:focus-visible,

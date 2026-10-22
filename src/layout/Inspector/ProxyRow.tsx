@@ -34,6 +34,7 @@ import {
   REFUSAL_TEXT,
 } from '@core/assets/proxyManager';
 import shared from './TransformSection.module.css';
+import { t } from '@core/i18n';
 import styles from './ProxyRow.module.css';
 
 export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
@@ -85,26 +86,26 @@ export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
     if (generating) {
       return (
         <span className={`${styles.badge} ${styles.generating}`} role="status">
-          Generating…
+          {t('inspector.proxy.generating', 'Generating…')}
         </span>
       );
     }
     if (proxy?.status === 'failed') {
       return (
         <span className={`${styles.badge} ${styles.failed}`} title={proxy.error}>
-          Failed
+          {t('inspector.proxy.failed', 'Failed')}
         </span>
       );
     }
     if (proxy?.status === 'ready') {
       return inUse ? (
         // Loud on purpose: this is the state that otherwise reads as a bug.
-        <span className={`${styles.badge} ${styles.inUse}`}>Proxy in use</span>
+        <span className={`${styles.badge} ${styles.inUse}`}>{t('inspector.proxy.inUse', 'Proxy in use')}</span>
       ) : (
-        <span className={styles.badge}>Proxy ready</span>
+        <span className={styles.badge}>{t('inspector.proxy.ready', 'Proxy ready')}</span>
       );
     }
-    return <span className={styles.badge}>Full resolution</span>;
+    return <span className={styles.badge}>{t('inspector.proxy.fullRes', 'Full resolution')}</span>;
   };
 
   /** What the badge does not say: the size, or why there is no proxy. */
@@ -112,12 +113,12 @@ export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
     if (generating) return `→ ${wouldBe ? `${wouldBe.width}×${wouldBe.height}` : ''}`;
     if (proxy?.status === 'failed') return proxy.error ?? '';
     if (proxy?.status === 'ready') {
-      const size = proxy.width && proxy.height ? `${proxy.width}×${proxy.height}` : 'attached file';
-      return proxy.userSupplied ? `${size} · yours` : size;
+      const size = proxy.width && proxy.height ? `${proxy.width}×${proxy.height}` : t('inspector.proxy.attachedFile', 'attached file');
+      return proxy.userSupplied ? t('inspector.proxy.yours', '{size} · yours', { size }) : size;
     }
     // No proxy: say what one WOULD be, so the action is a known quantity.
     if (refusal === 'too-small' || refusal === 'unknown-size') return REFUSAL_TEXT[refusal];
-    return wouldBe ? `Would be ${wouldBe.width}×${wouldBe.height}` : '';
+    return wouldBe ? t('inspector.proxy.wouldBe', 'Would be {w}×{h}', { w: wouldBe.width, h: wouldBe.height }) : '';
   };
 
   return (
@@ -132,7 +133,7 @@ export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
       <div className={styles.actions}>
         {generating ? (
           <button type="button" className={shared.presetChip} onClick={() => void cancelProxy(assetId)}>
-            Cancel
+            {t('inspector.proxy.cancel', 'Cancel')}
           </button>
         ) : (
           <>
@@ -144,18 +145,18 @@ export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
                 className={shared.presetChip}
                 onClick={() => void onCreate()}
                 disabled={busy || (refusal !== null && refusal !== 'no-ffmpeg')}
-                title={refusal ? REFUSAL_TEXT[refusal] : 'Transcode a low-resolution copy for scrubbing'}
+                title={refusal ? REFUSAL_TEXT[refusal] : t('inspector.proxy.createHint', 'Transcode a low-resolution copy for scrubbing')}
               >
-                {proxy?.status === 'ready' ? 'Regenerate' : 'Create Proxy'}
+                {proxy?.status === 'ready' ? t('inspector.proxy.regenerate', 'Regenerate') : t('inspector.proxy.create', 'Create Proxy')}
               </button>
             )}
             <button
               type="button"
               className={shared.presetChip}
               onClick={onAttach}
-              title="Use a low-resolution file you already have"
+              title={t('inspector.proxy.attachHint', 'Use a low-resolution file you already have')}
             >
-              Attach…
+              {t('inspector.proxy.attach', 'Attach…')}
             </button>
             {proxy && (
               <button
@@ -164,29 +165,29 @@ export function ProxyRow({ assetId }: { assetId: string }): JSX.Element | null {
                 onClick={() => detachProxy(assetId)}
                 title={
                   proxy.userSupplied
-                    ? 'Stop using your file as a proxy (the file is left alone)'
-                    : 'Discard this proxy and go back to full resolution'
+                    ? t('inspector.proxy.detachUserHint', 'Stop using your file as a proxy (the file is left alone)')
+                    : t('inspector.proxy.detachHint', 'Discard this proxy and go back to full resolution')
                 }
               >
-                Detach
+                {t('inspector.proxy.detach', 'Detach')}
               </button>
             )}
           </>
         )}
       </div>
 
-      <InspectorRow label="Use Proxies" align="center">
+      <InspectorRow label={t('inspector.proxy.useProxies', 'Use Proxies')} align="center">
         <Switch
           checked={useProxies}
           onChange={(e) => setPref('useProxies', e.currentTarget.checked)}
-          aria-label="Use proxies in the viewport (global; never affects export)"
+          aria-label={t('inspector.proxy.useProxiesLabel', 'Use proxies in the viewport (global; never affects export)')}
         />
       </InspectorRow>
 
       {/* Stated in the UI, not just in a doc comment: this is the promise the
           whole feature rests on, and the user has to be able to trust it. */}
       <p className={styles.hint}>
-        Global, and viewport only — exports and renders always use the original.
+        {t('inspector.proxy.globalHint', 'Global, and viewport only — exports and renders always use the original.')}
       </p>
 
       {!canGenerateProxy() && <p className={styles.hint}>{REFUSAL_TEXT['no-ffmpeg']}</p>}

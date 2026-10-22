@@ -5,6 +5,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addShape, addText, addGradientShape, linearFill,  type SetKf } from './builders';
 
 const CW = 1920, CH = 1080;
@@ -35,23 +36,23 @@ export function animateLowerThird(set: SetKf): void {
 
 export const lowerThirdTemplate: TemplateDefinition = {
   id: 'lower-third',
-  name: 'Lower Third',
+  get name() { return t('core.template.lowerThirdName', 'Lower Third'); },
   aspect: '16:9',
   width: CW,
   height: CH,
-  description: 'A broadcast name-and-role caption that slides in from the left.',
+  get description() { return t('core.template.lowerThirdDescription', 'A broadcast name-and-role caption that slides in from the left.'); },
   layout: layoutLowerThird,
   settings: { fps: 60, durationSeconds: 5, background: '#0b1020' },
   animate: animateLowerThird,
   previewTime: 1.3,
   fields: [
-    { id: 'name', label: 'Name', kind: 'text', group: 'Text', default: 'Jane Doe',
+    { id: 'name', get label() { return t('core.template.fieldName', 'Name'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Jane Doe',
       target: { nodeId: 'tpl_name', componentType: 'Text', prop: 'content' } },
-    { id: 'role', label: 'Role', kind: 'text', group: 'Text', default: 'Product Designer',
+    { id: 'role', get label() { return t('core.template.fieldRole', 'Role'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Product Designer',
       target: { nodeId: 'tpl_role', componentType: 'Text', prop: 'content' } },
-    { id: 'barColor', label: 'Bar colour', kind: 'color', group: 'Colours', default: '#635bff',
+    { id: 'barColor', get label() { return t('core.template.fieldBarColour', 'Bar colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#635bff',
       target: { nodeId: 'tpl_bar', componentType: 'Style', prop: 'fill' } },
-    { id: 'accentColor', label: 'Accent tick', kind: 'color', group: 'Colours', default: '#22d3ee',
+    { id: 'accentColor', get label() { return t('core.template.fieldAccentTick', 'Accent tick'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#22d3ee',
       target: { nodeId: 'tpl_tick', componentType: 'Style', prop: 'fill' } },
   ],
 };

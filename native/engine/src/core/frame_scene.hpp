@@ -83,6 +83,20 @@ struct RenderJob {
   /// make room (render/ram_cache.hpp ProtectedRange).
   std::int64_t rangeFirst = 0;
   std::int64_t rangeLast = -1;
+  /// The frame's PRE-BUILD key (render/coverage_ledger.hpp prebuild_key: the
+  /// viewport's view and the document's key for this frame, core/frame_keys.hpp),
+  /// when the session could derive one. The render thread learns which content
+  /// key a build of it produced, so the next job with this key needs no build.
+  /// Absent = never learned (a Layer view, a held time, inputs outside the document).
+  std::optional<std::uint64_t> prebuildKey;
+  /// Built nothing: the session found `prebuildKey` in the sink's map, so
+  /// `cachedKey` names a frame a cache tier holds (`cachedDiskKey` its disk
+  /// key, 0 = none) and the job carries no built frame and no scene. The
+  /// render thread presents it without a build or a draw; when no tier has it
+  /// after all, it forgets the entry and asks the session for a built frame
+  /// (FrameSink::take_build_requests) — never a blank slot.
+  std::optional<std::uint64_t> cachedKey;
+  std::uint64_t cachedDiskKey = 0;
   /// Ghosts composited over the live frame after it is drawn (onion skins).
   /// The live frame is what the cache stores; the ghosts are not.
   struct OnionGhost {
@@ -94,6 +108,27 @@ struct RenderJob {
     float tintStrength = 0;
   };
   std::vector<OnionGhost> onion;
+};
+
+/// The keys a cache tier holds a frame under: its content key
+/// (render/frame_cache.hpp) and its disk key (render/disk_cache.hpp; 0 = never on disk).
+struct CachedKeys {
+  std::uint64_t content = 0;
+  std::uint64_t disk = 0;
+  bool operator==(const CachedKeys&) const = default;
+};
+
+/// One step of the document revision as the session saw it: which frames of
+/// the active composition the edit could have changed (core/frame_keys.hpp),
+/// so the coverage bars keep the rest (render/coverage_ledger.hpp) — and the
+/// changed frames' new document keys, so a frame the cache still holds under
+/// its new key (an undo) comes back to the bar at once.
+struct FrameRevision {
+  std::uint32_t fromRev = 0;  ///< Session::cache_scope's revision words
+  std::uint32_t toRev = 0;
+  bool all = true;                   ///< every frame changed (or the session cannot tell)
+  std::vector<std::int64_t> frames;  ///< the changed frames, sorted, when !all
+  std::vector<std::uint64_t> keys;   ///< their new document frame keys (parallel to `frames`); empty = unknown
 };
 
 /// getCacheCoverage: which composition frames the viewport frame cache holds.
@@ -258,6 +293,11 @@ enum class HookAnswer : std::uint8_t {
   pending,      ///< not ready yet — a source still decoding (`busy`, ask again)
   ready,        ///< answered
   failed,       ///< tried and failed (`internal`, with why)
+  /// Owed by another thread (the render thread's still or pixel read): the
+  /// request's response waits for it off the core thread (Session::poll_deferred)
+  /// instead of the core thread waiting on it — a query never holds the
+  /// document core, so edits, playback and the heartbeat go on meanwhile.
+  deferred,
 };
 
 struct RenderCounters {
@@ -278,6 +318,13 @@ struct RenderCounters {
   /// Of the frames shown in the last second, the share served from a cache
   /// tier (VRAM, RAM or disk) instead of drawn (RenderStats.cacheHitRate).
   double cacheHitRate = 0;
+  /// Jobs the session submitted without a build (RenderJob::cachedKey): presented
+  /// from a tier, found in no tier after all (the session builds them), or
+  /// dropped before they were looked at. The session polls these to know when
+  /// every such job has been answered.
+  std::uint64_t cacheServed = 0;
+  std::uint64_t cacheMissed = 0;
+  std::uint64_t cacheDropped = 0;
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.
@@ -359,6 +406,18 @@ class FrameSink {
   /// setCacheBudget `ramMegabytes`: the RAM tier's size limit in bytes
   /// (render/ram_cache.hpp); 0 = sized from the machine. Any thread.
   virtual void configure_ram_cache(std::uint64_t /*bytes*/) {}
+  /// The keys a build of the frame with pre-build key `key` produced, when the
+  /// sink learned them and a tier may still hold the frame (render/coverage_ledger.hpp
+  /// PrebuildMap). The session then submits the job without building it. Any thread.
+  [[nodiscard]] virtual std::optional<CachedKeys> cached_frame(std::uint64_t /*key*/) const { return std::nullopt; }
+  /// A document revision step: which frames of the active composition it could
+  /// have changed. The coverage bars keep the other frames. Core thread, in revision order.
+  virtual void note_frames_changed(FrameRevision /*rev*/) {}
+  /// Viewports whose last job the sink could not present from a tier (a cached
+  /// job whose frame was evicted meanwhile; a pixel read of a frame it has no
+  /// build of): the session builds their current frame. Taken, so each is
+  /// answered once. Any thread.
+  [[nodiscard]] virtual std::vector<std::uint32_t> take_build_requests() { return {}; }
   [[nodiscard]] virtual std::string adapter() const = 0;
   [[nodiscard]] virtual std::string backend() const = 0;
 

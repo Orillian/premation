@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plugin docking mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --app:#121212; --gutter:#0b0b0b; --panel:#232323; --panel-2:#1d1d1d; --well:#161616;
+  --row-hover:#2c2c2c; --sel:#3a3a3a; --hair:#333; --hair-2:#2a2a2a;
+  --text:#b9b9b9; --text-hi:#e6e6e6; --text-dim:#7d7d7d; --text-faint:#5c5c5c;
+  --blue:#3a8ee6; --blue-dim:rgba(58,142,230,.18); --zone:rgba(116,104,232,.42); --zone-edge:#8e83f5;
+  --yellow:#e3c45a;
+  font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#0d0d0d;color:var(--text);font-size:12px;padding:32px 32px 64px}
+h1{font-size:20px;font-weight:500;color:var(--text-hi);margin:0 0 4px}
+.lede{color:var(--text-dim);margin:0 0 28px;font-size:13px;max-width:900px;line-height:1.55}
+.sheet{display:flex;flex-direction:column;gap:44px}
+.frame-title{display:flex;align-items:baseline;gap:12px;margin:0 0 10px}
+.frame-title b{font-size:14px;font-weight:500;color:var(--text-hi)}
+.frame-title span{color:var(--text-dim);font-size:12px}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 28px;margin-top:12px;color:var(--text-dim);font-size:12px;line-height:1.5}
+.notes div b{color:var(--text);font-weight:500}
+.num{display:inline-flex;width:16px;height:16px;border-radius:50%;background:var(--yellow);color:#1a1a1a;font-size:10px;font-weight:600;align-items:center;justify-content:center;margin-right:6px;vertical-align:1px}
+.pin{position:absolute;z-index:20}
+
+/* app chrome */
+.app{position:relative;background:var(--app);border:1px solid #2b2b2b;border-radius:6px;overflow:hidden;width:1280px;user-select:none}
+.menubar{height:26px;display:flex;align-items:center;gap:14px;padding:0 10px;background:#1a1a1a;border-bottom:1px solid #000;font-size:12px}
+.menubar .logo{width:16px;height:16px;border-radius:3px;background:#2b1f5c;color:#b9a8ff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.menubar .m{color:var(--text)}
+.menubar .m.open{background:#3a3a3a;color:var(--text-hi);padding:3px 6px;margin:0 -6px;border-radius:3px}
+.toolbar{height:34px;display:flex;align-items:center;padding:0 8px;background:var(--panel);border-bottom:3px solid var(--gutter)}
+.tools{display:flex;gap:2px;align-items:center}
+.tool{width:26px;height:24px;display:flex;align-items:center;justify-content:center;color:var(--text);font-size:15px;border-radius:3px}
+.tool.on{background:#3d3d3d;color:var(--blue)}
+.tsep{width:1px;height:18px;background:var(--hair);margin:0 6px}
+.wsbar{margin-left:auto;display:flex;align-items:center;height:100%;border-left:1px solid var(--hair);padding-left:6px}
+.ws{padding:0 12px;height:100%;display:flex;align-items:center;color:var(--text-dim);font-size:11.5px;position:relative}
+.ws.on{color:var(--text-hi)}
+.ws.on:after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;background:var(--blue)}
+.ws .ham{margin-left:6px;color:var(--text-dim)}
+
+.body{display:flex;height:620px;gap:3px;padding:0 3px 3px;background:var(--gutter)}
+.vstack{display:flex;flex-direction:column;gap:3px;min-width:0}
+.grp{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0;position:relative;border:1px solid transparent}
+.grp.active{border-color:var(--blue)}
+.tabs{height:26px;display:flex;align-items:stretch;background:var(--panel);border-bottom:1px solid var(--hair-2);flex:0 0 auto;padding-left:2px;position:relative}
+.tab{display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--text-dim);font-size:11.5px;white-space:nowrap;position:relative}
+.tab .x{font-size:11px;color:var(--text-dim)}
+.tab .ham{font-size:13px;color:var(--text-dim)}
+.tab.on{color:var(--text-hi)}
+.tab.on:after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:1px;background:var(--text-hi)}
+.grp.active .tab.on:after{background:var(--blue);height:2px}
+.tab .grip{width:6px;height:10px;background-image:radial-gradient(var(--text-faint) 1px,transparent 1.3px);background-size:3px 3px;opacity:.9}
+.tabs .ggrip{margin-left:auto;display:flex;align-items:center;padding:0 8px;color:var(--text-faint)}
+.pbody{flex:1;min-height:0;overflow:hidden;position:relative}
+
+/* stacked headers (AE stacked panel layout) */
+.shead{height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;background:var(--panel);border-bottom:1px solid var(--hair-2);color:var(--text);font-size:11.5px}
+.shead .tw{font-size:11px;color:var(--text-dim);width:10px}
+.shead .ham{margin-left:4px;color:var(--text-dim);font-size:13px}
+.shead.new{color:var(--text-hi)}
+
+/* list rows */
+.search{margin:6px 6px 4px;height:22px;background:var(--well);border:1px solid #2e2e2e;border-radius:3px;display:flex;align-items:center;gap:6px;padding:0 6px;color:var(--text-faint);font-size:11px}
+.row{height:20px;display:flex;align-items:center;gap:6px;padding:0 8px;white-space:nowrap;overflow:hidden;font-size:11.5px}
+.row .tw{width:10px;color:var(--text-dim);font-size:10px;flex:0 0 auto}
+.row i.ti{font-size:13px;color:var(--text-dim);flex:0 0 auto}
+.row.sel{background:var(--sel);color:var(--text-hi)}
+.row.hover{background:var(--row-hover)}
+.row .meta{margin-left:auto;color:var(--text-faint);font-size:10.5px}
+.ind1{padding-left:24px}.ind2{padding-left:40px}
+.dim{color:var(--text-dim)}.faint{color:var(--text-faint)}.hi{color:var(--text-hi)}.blue{color:var(--blue)}
+.colhead{height:20px;display:flex;align-items:center;padding:0 8px;border-bottom:1px solid var(--hair-2);color:var(--text-dim);font-size:10.5px;gap:4px}
+.colhead span{flex:1}
+.btnrow{display:flex;gap:6px;padding:6px 8px;border-top:1px solid var(--hair-2)}
+.abtn{height:22px;padding:0 8px;border:1px solid #3c3c3c;border-radius:3px;display:inline-flex;align-items:center;gap:5px;color:var(--text);font-size:11px;background:#2a2a2a}
+.iconbtn{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:14px}
+
+/* viewer */
+.viewer{flex:1;display:flex;flex-direction:column}
+.viewer .canvas{flex:1;margin:6px;background:#0f0f10;display:flex;align-items:center;justify-content:center;position:relative}
+.comp{width:62%;aspect-ratio:16/9;background:#06060a;position:relative;overflow:hidden;outline:1px solid #222}
+.comp .glow{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:700;letter-spacing:4px;color:#ffe7f6;text-shadow:0 0 6px #ff7ad9,0 0 22px #ff3fb8,0 0 48px #b42cff}
+.vbar{height:26px;display:flex;align-items:center;gap:10px;padding:0 8px;border-top:1px solid var(--hair-2);color:var(--text-dim);font-size:11px}
+.vbar .blue{font-family:Consolas,monospace}
+
+/* timeline */
+.timeline{height:180px}
+.tlrow{height:20px;display:flex;align-items:center;font-size:11.5px;border-bottom:1px solid #1e1e1e}
+.tlrow .l{width:330px;display:flex;gap:8px;padding:0 8px;align-items:center}
+.tlrow .bar{flex:1;position:relative;height:100%}
+.tlrow .bar i{position:absolute;top:4px;height:12px;border-radius:2px}
+.ruler{height:22px;display:flex;border-bottom:1px solid var(--hair-2)}
+.ruler .l{width:330px;padding:0 8px;display:flex;align-items:center;font-family:Consolas,monospace;color:var(--blue);font-size:13px}
+.ruler .r{flex:1;position:relative;background:repeating-linear-gradient(90deg,transparent 0 59px,#3a3a3a 59px 60px)}
+.playhead{position:absolute;top:0;bottom:0;width:1px;background:var(--blue)}
+
+/* plugin panel (Deep Glow's own UI, page of the plugin) */
+.pp{padding:8px;display:flex;flex-direction:column;gap:8px;height:100%}
+.ppctx{display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;background:var(--panel-2);border:1px solid var(--hair-2);border-radius:3px;font-size:11px}
+.presets{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.preset{aspect-ratio:1.4;border-radius:3px;background:#08080c;border:1px solid #2c2c2c;position:relative;overflow:hidden}
+.preset.on{border-color:var(--blue)}
+.preset span{position:absolute;left:4px;bottom:2px;font-size:9.5px;color:#cfcfcf}
+.preset em{position:absolute;inset:0;margin:auto;width:40%;height:22%;border-radius:2px}
+.prop{display:flex;align-items:center;height:20px;font-size:11.5px}
+.prop .k{flex:1;color:var(--text)}
+.prop .v{color:var(--blue);font-family:Consolas,monospace}
+.slider{height:3px;background:#3a3a3a;border-radius:2px;position:relative;margin:2px 0 6px}
+.slider b{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:2px}
+.slider u{position:absolute;top:-4px;width:9px;height:9px;border-radius:50%;background:#d8d8d8}
+
+/* drop zones */
+.zones{position:absolute;inset:0;z-index:5;pointer-events:none}
+.zones svg{width:100%;height:100%;display:block}
+.ghost{position:absolute;z-index:9;display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;background:#2f2f2f;border:1px solid var(--zone-edge);color:var(--text-hi);font-size:11.5px;border-radius:2px;box-shadow:0 6px 18px rgba(0,0,0,.6)}
+.cursor{position:absolute;z-index:10;font-size:18px;color:#fff;text-shadow:0 0 2px #000}
+.tabzone{position:absolute;left:0;right:0;top:0;height:26px;background:var(--zone);outline:1px solid var(--zone-edge);z-index:6}
+
+/* menus */
+.menu{position:absolute;z-index:30;background:#2b2b2b;border:1px solid #444;border-radius:4px;padding:4px 0;min-width:230px;box-shadow:0 10px 28px rgba(0,0,0,.65);font-size:12px}
+.mi{height:24px;display:flex;align-items:center;gap:8px;padding:0 14px 0 26px;color:var(--text-hi);position:relative;white-space:nowrap}
+.mi .ck{position:absolute;left:8px;font-size:12px;color:var(--text-hi)}
+.mi .sc{margin-left:auto;padding-left:24px;color:var(--text-dim);font-size:11px}
+.mi .arr{margin-left:auto;padding-left:24px;color:var(--text-dim)}
+.mi.hl{background:var(--blue);color:#fff}
+.mi.hl .sc,.mi.hl .arr{color:#e8f1ff}
+.mi.off{color:var(--text-faint)}
+.msep{height:1px;background:#444;margin:4px 0}
+.mlabel{padding:4px 14px 2px 26px;font-size:10.5px;color:var(--text-dim)}
+
+.stage{position:relative;background:var(--gutter);padding:3px;display:flex;gap:3px}
+.cap{position:absolute;font-size:11px;color:var(--yellow);z-index:21;white-space:nowrap}
+</style>
+</head>
+<body>
+<h1>Plugin panels, docked the After Effects way</h1>
+<p class="lede">Proposal for review, not built yet. The goal is that panels and plugins work like After Effects: every panel, including Plugins and each plugin's own panel, is a normal tab. You can group it with other tabs, dock it beside another group to make a new column, or float it in its own window. Yellow numbers point to the notes under each frame.</p>
+
+<div class="sheet">
+
+<!-- ═══════════════ FRAME 1 — the workspace ═══════════════ -->
+<section>
+  <div class="frame-title"><b>1 · Workspace with a plugin column</b><span>Default workspace, after "Open panel" on Deep Glow, which was then docked left of the right column</span></div>
+  <div class="app">
+    <div class="menubar">
+      <span class="logo">Pr</span>
+      <span class="m">File</span><span class="m">Edit</span><span class="m">Composition</span><span class="m">Layer</span><span class="m">Effect</span><span class="m">Animation</span><span class="m">View</span><span class="m">Window</span><span class="m">Help</span>
+    </div>
+    <div class="toolbar">
+      <div class="tools">
+        <span class="tool"><i class="ti ti-home"></i></span><span class="tsep"></span>
+        <span class="tool on"><i class="ti ti-pointer"></i></span><span class="tool"><i class="ti ti-hand-stop"></i></span><span class="tool"><i class="ti ti-zoom-in"></i></span><span class="tsep"></span>
+        <span class="tool"><i class="ti ti-rotate-clockwise"></i></span><span class="tool"><i class="ti ti-square"></i></span><span class="tool"><i class="ti ti-pen"></i></span><span class="tool"><i class="ti ti-letter-t"></i></span><span class="tool"><i class="ti ti-brush"></i></span><span class="tool"><i class="ti ti-eraser"></i></span><span class="tool"><i class="ti ti-pin"></i></span>
+      </div>
+      <div class="wsbar">
+        <span class="ws on">Default<i class="ti ti-menu-2 ham"></i></span><span class="ws">Review</span><span class="ws">Animation</span><span class="ws">Effects</span><span class="ws">Small Screen</span><span class="ws"><i class="ti ti-chevrons-right"></i></span>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- left column -->
+      <div class="vstack" style="width:300px">
+        <div class="grp" style="flex:1.25">
+          <div class="tabs">
+            <span class="tab on"><i class="ti ti-x x"></i>Project<i class="ti ti-menu-2 ham"></i></span>
+            <span class="tab">Effect Controls: Title</span>
+          </div>
+          <div class="pbody">
+            <div class="search"><i class="ti ti-search"></i>Search</div>
+            <div class="colhead"><span style="flex:2">Name</span><span>Type</span><span>Size</span></div>
+            <div class="row"><span class="tw">▾</span><i class="ti ti-folder"></i>Footage</div>
+            <div class="row ind1"><i class="ti ti-photo"></i>bg_noise.png<span class="meta">PNG · 2.1 MB</span></div>
+            <div class="row sel"><span class="tw"></span><i class="ti ti-movie"></i>Glow Title<span class="meta">Composition</span></div>
+            <div class="row"><span class="tw"></span><i class="ti ti-music"></i>whoosh.wav<span class="meta">WAV</span></div>
+          </div>
+        </div>
+        <div class="grp" style="flex:1">
+          <div class="tabs"><span class="tab on"><i class="ti ti-x x"></i>Layers<i class="ti ti-menu-2 ham"></i></span></div>
+          <div class="pbody">
+            <div class="row sel"><span class="tw">▸</span><i class="ti ti-letter-t"></i>NEON</div>
+            <div class="row"><span class="tw">▸</span><i class="ti ti-square"></i>Backplate</div>
+            <div class="row"><span class="tw">▸</span><i class="ti ti-camera"></i>Camera 1</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- centre column: viewer + timeline -->
+      <div class="vstack" style="flex:1">
+        <div class="grp viewer" style="flex:1">
+          <div class="tabs"><span class="tab on"><i class="ti ti-x x"></i><i class="ti ti-lock-open" style="font-size:12px"></i>Composition: Glow Title<i class="ti ti-menu-2 ham"></i></span></div>
+          <div class="canvas"><div class="comp"><div class="glow">NEON</div></div></div>
+          <div class="vbar"><span>50%</span><span>Full</span><span class="blue">0:00:02:14</span><span>Active Camera</span><span>1 View</span></div>
+        </div>
+      </div>
+
+      <!-- NEW plugin column (docked left of the right column) -->
+      <div class="vstack" style="width:268px;position:relative">
+        <div class="grp active" style="flex:1">
+          <div class="tabs">
+            <span class="tab on"><span class="grip"></span><i class="ti ti-x x"></i>Deep Glow<i class="ti ti-menu-2 ham"></i></span>
+            <span class="tab">Plugins</span>
+            <span class="ggrip"><span class="grip"></span></span>
+          </div>
+          <div class="pbody pp">
+            <div class="ppctx"><i class="ti ti-letter-t dim"></i><span class="hi">NEON</span><span class="faint" style="margin-left:auto">Deep Glow 1</span></div>
+            <div class="presets">
+              <div class="preset on"><em style="background:#ff4fc3;box-shadow:0 0 14px #ff4fc3"></em><span>Neon</span></div>
+              <div class="preset"><em style="background:#ffd27a;box-shadow:0 0 14px #ffb347"></em><span>Warm</span></div>
+              <div class="preset"><em style="background:#7ad8ff;box-shadow:0 0 14px #3fb4ff"></em><span>Ice</span></div>
+              <div class="preset"><em style="background:#fff;box-shadow:0 0 10px #fff"></em><span>Soft</span></div>
+              <div class="preset"><em style="background:#9aff8a;box-shadow:0 0 14px #5bff3f"></em><span>Toxic</span></div>
+              <div class="preset"><em style="background:#c7a2ff;box-shadow:0 0 14px #9b5cff"></em><span>Violet</span></div>
+            </div>
+            <div>
+              <div class="prop"><span class="k">Radius</span><span class="v">180.0</span></div><div class="slider"><b style="width:46%"></b><u style="left:44%"></u></div>
+              <div class="prop"><span class="k">Exposure</span><span class="v">1.25</span></div><div class="slider"><b style="width:31%"></b><u style="left:29%"></u></div>
+              <div class="prop"><span class="k">Threshold</span><span class="v">0.62</span></div><div class="slider"><b style="width:62%"></b><u style="left:60%"></u></div>
+              <div class="prop"><span class="k">Chromatic aberration</span><span class="v">8%</span></div><div class="slider"><b style="width:8%"></b><u style="left:6%"></u></div>
+            </div>
+          </div>
+        </div>
+        <span class="pin" style="left:116px;top:-2px"><span class="num">1</span></span>
+        <span class="pin" style="left:244px;top:6px"><span class="num">2</span></span>
+      </div>
+
+      <!-- right column: AE stacked layout -->
+      <div class="vstack" style="width:262px;position:relative">
+        <div class="grp" style="flex:1">
+          <div class="shead"><span class="tw">▸</span>Info<i class="ti ti-menu-2 ham"></i></div>
+          <div class="shead"><span class="tw">▸</span>Audio<i class="ti ti-menu-2 ham"></i></div>
+          <div class="shead"><span class="tw">▸</span>Preview<i class="ti ti-menu-2 ham"></i></div>
+          <div class="shead"><span class="tw">▾</span><span class="hi">Effects &amp; Presets</span><i class="ti ti-menu-2 ham"></i></div>
+          <div class="pbody" style="flex:1">
+            <div class="search"><i class="ti ti-search"></i>Search effects and presets</div>
+            <div class="row"><span class="tw">▸</span>* Animation Presets</div>
+            <div class="row"><span class="tw">▸</span>3D Channel</div>
+            <div class="row"><span class="tw">▸</span>Blur &amp; Sharpen</div>
+            <div class="row"><span class="tw">▸</span>Channel</div>
+            <div class="row"><span class="tw">▸</span>Color Correction</div>
+            <div class="row"><span class="tw">▸</span>Distort</div>
+            <div class="row"><span class="tw">▸</span>Generate</div>
+            <div class="row"><span class="tw">▸</span>Keying</div>
+            <div class="row"><span class="tw">▸</span>Perspective</div>
+            <div class="row"><span class="tw">▸</span>Simulation</div>
+            <div class="row"><span class="tw">▸</span>Stylize</div>
+            <div class="row"><span class="tw">▸</span>Time</div>
+            <div class="row"><span class="tw">▸</span>Transition</div>
+          </div>
+          <div class="shead"><span class="tw">▸</span>Align<i class="ti ti-menu-2 ham"></i></div>
+          <div class="shead"><span class="tw">▸</span>Character<i class="ti ti-menu-2 ham"></i></div>
+          <div class="shead"><span class="tw">▸</span>Paragraph<i class="ti ti-menu-2 ham"></i></div>
+        </div>
+        <span class="pin" style="left:150px;top:78px"><span class="num">3</span></span>
+      </div>
+    </div>
+
+    <!-- timeline -->
+    <div style="background:var(--gutter);padding:0 3px 3px">
+      <div class="grp timeline">
+        <div class="tabs"><span class="tab on"><i class="ti ti-x x"></i>Glow Title<i class="ti ti-menu-2 ham"></i></span><span class="tab">Render Queue</span></div>
+        <div class="ruler"><div class="l">0:00:02:14</div><div class="r"><span class="playhead" style="left:31%"></span></div></div>
+        <div class="tlrow"><div class="l"><span class="faint">1</span><i class="ti ti-letter-t dim"></i><span class="hi">NEON</span><span class="faint" style="margin-left:auto">fx</span></div><div class="bar"><i style="left:4%;width:80%;background:#8b6a2c"></i><span class="playhead" style="left:31%"></span></div></div>
+        <div class="tlrow"><div class="l"><span class="faint">2</span><i class="ti ti-square dim"></i>Backplate</div><div class="bar"><i style="left:0;width:100%;background:#4c6a8a"></i><span class="playhead" style="left:31%"></span></div></div>
+        <div class="tlrow"><div class="l"><span class="faint">3</span><i class="ti ti-camera dim"></i>Camera 1</div><div class="bar"><i style="left:0;width:100%;background:#6b4f7a"></i><span class="playhead" style="left:31%"></span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <div><span class="num">1</span><b>A plugin's panel is a normal tab.</b> Deep Glow's own page sits in a group like any other tab, with the same tab grammar: × on the front tab, its name, and the ≡ panel menu. It is grouped with Plugins here because the user dragged it there.</div>
+    <div><span class="num">2</span><b>Grippers.</b> Dragging the dotted grip on a tab moves that panel. The grip at the far right of the tab strip moves the whole group. A thin blue frame marks the active group, as in AE.</div>
+    <div><span class="num">3</span><b>Effects &amp; Presets lists built-in effects only.</b> Plugin effects appear in the Plugins panel and in search results. The right column keeps AE's stacked layout, with headers that collapse on click.</div>
+    <div><b>Columns are just docking.</b> The plugin column above is not a special sidebar. It was made by dropping a panel on the left docking zone of the right column (frame 2). Any panel can make a column this way, on either side.</div>
+  </div>
+</section>
+
+<!-- ═══════════════ FRAME 2 — dragging: dock vs group ═══════════════ -->
+<section>
+  <div class="frame-title"><b>2 · Dragging a panel: docking zones and grouping zones</b><span>The Plugins tab is being dragged over the right column, shown at the same scale as frame 1</span></div>
+  <div style="display:flex;gap:28px;align-items:flex-start">
+    <!-- 2a: dock (left edge) -->
+    <div>
+      <div class="dim" style="margin-bottom:6px">2a · Over the left edge: <span class="hi">dock</span>, which makes a new column</div>
+      <div class="stage" style="width:420px;height:360px">
+        <div class="grp" style="width:150px;flex:0 0 auto"><div class="tabs"><span class="tab on">Composition</span></div><div class="pbody" style="background:#0f0f10"></div></div>
+        <div class="grp" style="flex:1;position:relative">
+          <div class="shead"><span class="tw">▸</span>Info</div><div class="shead"><span class="tw">▸</span>Audio</div><div class="shead"><span class="tw">▾</span><span class="hi">Effects &amp; Presets</span></div>
+          <div class="pbody"><div class="row"><span class="tw">▸</span>Blur &amp; Sharpen</div><div class="row"><span class="tw">▸</span>Color Correction</div><div class="row"><span class="tw">▸</span>Distort</div><div class="row"><span class="tw">▸</span>Generate</div></div>
+          <div class="zones"><svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polygon points="0,0 100,0 70,30 30,30" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="100,0 100,100 70,70 70,30" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="0,100 100,100 70,70 30,70" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="0,0 30,30 30,70 0,100" fill="rgba(116,104,232,.45)" stroke="#8e83f5" stroke-width="1" vector-effect="non-scaling-stroke"/>
+            <rect x="30" y="30" width="40" height="40" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+          </svg></div>
+          <div class="ghost" style="left:8px;top:166px"><i class="ti ti-plug"></i>Plugins</div>
+          <i class="ti ti-pointer cursor" style="left:16px;top:180px"></i>
+        </div>
+      </div>
+      <div class="dim" style="margin:10px 0 6px">After the drop</div>
+      <div class="stage" style="width:420px;height:120px">
+        <div class="grp" style="width:110px;flex:0 0 auto"><div class="tabs"><span class="tab on">Composition</span></div><div class="pbody" style="background:#0f0f10"></div></div>
+        <div class="grp active" style="flex:1"><div class="tabs"><span class="tab on">Plugins<i class="ti ti-menu-2 ham"></i></span></div></div>
+        <div class="grp" style="flex:1"><div class="shead"><span class="tw">▸</span>Info</div><div class="shead"><span class="tw">▸</span>Audio</div><div class="shead"><span class="tw">▸</span>Effects &amp; Presets</div></div>
+      </div>
+    </div>
+
+    <!-- 2b: group (centre) -->
+    <div>
+      <div class="dim" style="margin-bottom:6px">2b · Over the centre or the tab strip: <span class="hi">group</span>, which adds a tab</div>
+      <div class="stage" style="width:420px;height:360px">
+        <div class="grp" style="width:150px;flex:0 0 auto"><div class="tabs"><span class="tab on">Composition</span></div><div class="pbody" style="background:#0f0f10"></div></div>
+        <div class="grp" style="flex:1;position:relative">
+          <div class="tabs"><span class="tab on">Effects &amp; Presets<i class="ti ti-menu-2 ham"></i></span><span class="tab">Align</span></div>
+          <div class="pbody"><div class="search"><i class="ti ti-search"></i>Search</div><div class="row"><span class="tw">▸</span>Blur &amp; Sharpen</div><div class="row"><span class="tw">▸</span>Color Correction</div><div class="row"><span class="tw">▸</span>Distort</div><div class="row"><span class="tw">▸</span>Generate</div></div>
+          <div class="tabzone" style="opacity:.55"></div>
+          <div class="zones"><svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polygon points="0,0 100,0 70,30 30,30" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="100,0 100,100 70,70 70,30" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="0,100 100,100 70,70 30,70" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <polygon points="0,0 30,30 30,70 0,100" fill="none" stroke="#5a52a8" stroke-width=".4" vector-effect="non-scaling-stroke"/>
+            <rect x="30" y="30" width="40" height="40" fill="rgba(116,104,232,.45)" stroke="#8e83f5" stroke-width="1" vector-effect="non-scaling-stroke"/>
+          </svg></div>
+          <div class="ghost" style="left:96px;top:166px"><i class="ti ti-plug"></i>Plugins</div>
+          <i class="ti ti-pointer cursor" style="left:104px;top:180px"></i>
+        </div>
+      </div>
+      <div class="dim" style="margin:10px 0 6px">After the drop</div>
+      <div class="stage" style="width:420px;height:120px">
+        <div class="grp" style="width:150px;flex:0 0 auto"><div class="tabs"><span class="tab on">Composition</span></div><div class="pbody" style="background:#0f0f10"></div></div>
+        <div class="grp active" style="flex:1"><div class="tabs"><span class="tab">Effects &amp; Presets</span><span class="tab">Align</span><span class="tab on">Plugins<i class="ti ti-menu-2 ham"></i></span></div></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:220px;color:var(--text-dim);line-height:1.6;padding-top:22px">
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Five zones on every group.</b> Four trapezoids along the edges dock the panel beside the group: left or right makes a new column, top or bottom splits the column. The rectangle in the middle, and the tab strip, put it into the group as a tab.</p>
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Only the zone under the cursor lights up</b>, in AE's violet. The others are faint outlines, so you can see what the other choices are.</p>
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Window edges.</b> The far left and right edges of the window get the same strip zone, so a panel can make a full-height column at the window edge.</p>
+      <p style="margin:0"><b class="hi" style="font-weight:500">Ctrl-drag, or dragging outside the window, floats the panel</b> in its own window. Esc cancels a drag.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FRAME 3 — menus ═══════════════ -->
+<section>
+  <div class="frame-title"><b>3 · Panel menu and Window menu</b><span>The ≡ menu on the Deep Glow tab, and Window with its Extensions submenu</span></div>
+  <div style="display:flex;gap:40px;align-items:flex-start">
+    <div style="position:relative;width:300px;height:330px">
+      <div class="grp active" style="width:268px;height:110px;border-color:var(--blue)">
+        <div class="tabs"><span class="tab on"><span class="grip"></span><i class="ti ti-x x"></i>Deep Glow<i class="ti ti-menu-2 ham" style="color:var(--text-hi)"></i></span><span class="tab">Plugins</span></div>
+      </div>
+      <div class="menu" style="left:96px;top:26px">
+        <div class="mi">Undock Panel</div>
+        <div class="mi">Undock Frame</div>
+        <div class="mi">Close Panel</div>
+        <div class="mi">Close Other Panels in Group</div>
+        <div class="mi">Close Frame</div>
+        <div class="mi">Maximize Frame<span class="sc">`</span></div>
+        <div class="msep"></div>
+        <div class="mi">Panel Group Settings<span class="arr">▸</span></div>
+        <div class="msep"></div>
+        <div class="mlabel">Deep Glow</div>
+        <div class="mi hl">Reveal in Plugins panel</div>
+        <div class="mi">Follow selected layer<span class="ck" style="left:8px">✓</span></div>
+      </div>
+    </div>
+
+    <div style="position:relative;width:560px;height:460px">
+      <div class="menubar" style="width:520px;border:1px solid #2b2b2b;border-radius:4px 4px 0 0">
+        <span class="logo">Pr</span><span class="m">Composition</span><span class="m">Layer</span><span class="m">Effect</span><span class="m">View</span><span class="m open">Window</span><span class="m">Help</span>
+      </div>
+      <div class="menu" style="left:150px;top:26px;min-width:250px">
+        <div class="mi">Workspace<span class="arr">▸</span></div>
+        <div class="mi">Find Extensions on Exchange…</div>
+        <div class="mi hl">Extensions<span class="arr">▸</span></div>
+        <div class="msep"></div>
+        <div class="mi">Align</div>
+        <div class="mi">Audio</div>
+        <div class="mi">Character</div>
+        <div class="mi">Effect Controls<span class="sc">F3</span><span class="ck">✓</span></div>
+        <div class="mi">Effects &amp; Presets<span class="sc">Ctrl+5</span><span class="ck">✓</span></div>
+        <div class="mi">Info<span class="sc">Ctrl+2</span><span class="ck">✓</span></div>
+        <div class="mi">Plugins<span class="ck">✓</span></div>
+        <div class="mi">Preview<span class="sc">Ctrl+3</span><span class="ck">✓</span></div>
+        <div class="mi">Tracker</div>
+        <div class="mi off">…</div>
+      </div>
+      <div class="menu" style="left:398px;top:78px;min-width:200px">
+        <div class="mlabel">Installed plugins</div>
+        <div class="mi">Deep Glow<span class="ck">✓</span></div>
+        <div class="mi">Element 3D: Scene Setup</div>
+        <div class="mi">Silk Waves</div>
+        <div class="msep"></div>
+        <div class="mi">Manage Plugins…</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:220px;color:var(--text-dim);line-height:1.6">
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">The ≡ panel menu</b> carries AE's own items: Undock, Close, Maximize Frame (` key), and Panel Group Settings (Stacked or Tabbed). Below them come the panel's own items.</p>
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Window ▸ Extensions</b> lists every installed plugin's panel, as AE does for extension panels. A check means it is open. Choosing one brings it to the front, or opens it where it was last docked.</p>
+      <p style="margin:0">The Window menu lists panels A–Z with their shortcuts, and Plugins is one of them.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FRAME 4 — the Plugins panel ═══════════════ -->
+<section>
+  <div class="frame-title"><b>4 · The Plugins panel</b><span>Built like AE's list panels: twirls, hairline rows, a search field, and a small button row at the foot</span></div>
+  <div style="display:flex;gap:40px;align-items:flex-start">
+    <div class="grp active" style="width:320px;height:470px">
+      <div class="tabs"><span class="tab on"><span class="grip"></span><i class="ti ti-x x"></i>Plugins<i class="ti ti-menu-2 ham"></i></span><span class="tab">Deep Glow</span></div>
+      <div class="search"><i class="ti ti-search"></i>Search installed plugins</div>
+      <div class="colhead"><span style="flex:3">Name</span><span style="text-align:right">Status</span></div>
+      <div class="pbody">
+        <div class="row hi"><span class="tw">▾</span><i class="ti ti-plug"></i>Deep Glow<span class="meta" style="color:#7fbf6a">Loaded</span></div>
+        <div class="row ind1 faint" style="height:16px;font-size:10.5px">Premation · v1.0.0 · Premation Cloud</div>
+        <div class="row ind1 hover"><i class="ti ti-wand"></i>Deep Glow<span class="meta">Effect</span></div>
+        <div class="row ind2"><i class="ti ti-bolt"></i>Neon<span class="meta">Preset</span></div>
+        <div class="row ind2"><i class="ti ti-bolt"></i>Soft<span class="meta">Preset</span></div>
+        <div class="row ind1"><i class="ti ti-layout-sidebar-right"></i><span class="blue">Deep Glow</span><span class="meta">Panel · open</span></div>
+        <div class="row"><span class="tw">▾</span><i class="ti ti-plug"></i>Element 3D<span class="meta" style="color:#7fbf6a">Loaded</span></div>
+        <div class="row ind1 faint" style="height:16px;font-size:10.5px">Desktop · v2.2.3</div>
+        <div class="row ind1"><i class="ti ti-wand"></i>Element<span class="meta">Effect</span></div>
+        <div class="row ind1"><i class="ti ti-layout-sidebar-right"></i>Scene Setup<span class="meta">Panel</span></div>
+        <div class="row"><span class="tw">▸</span><i class="ti ti-plug"></i>Silk Waves<span class="meta" style="color:#e0a34a">Update 1.3</span></div>
+        <div class="row"><span class="tw">▸</span><i class="ti ti-plug"></i>Grade Lab<span class="meta faint">Disabled</span></div>
+      </div>
+      <div class="btnrow">
+        <span class="abtn"><i class="ti ti-building-store"></i>Browse Store</span>
+        <span class="iconbtn" style="margin-left:auto"><i class="ti ti-folder-open"></i></span>
+        <span class="iconbtn"><i class="ti ti-refresh"></i></span>
+      </div>
+    </div>
+
+    <div style="flex:1;color:var(--text-dim);line-height:1.6;max-width:560px">
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">One row per plugin</b>, twirled open to show what it adds:</p>
+      <ul style="margin:0 0 12px;padding-left:18px">
+        <li><b class="hi" style="font-weight:500">Effects:</b> double-click applies to the selected layers, or drag onto a layer or the viewer, as in Effects &amp; Presets.</li>
+        <li><b class="hi" style="font-weight:500">Presets:</b> the same gestures.</li>
+        <li><b class="hi" style="font-weight:500">Panels:</b> double-click opens them, and blue means already open.</li>
+      </ul>
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Status is a word</b> on the right (Loaded, Disabled, Update 1.3, Failed), not a button. Right-click a plugin for Enable or Disable, Update, Uninstall, and Show in Folder. Nothing on the row is a large button.</p>
+      <p style="margin:0 0 10px"><b class="hi" style="font-weight:500">Browse Store</b> opens the store page. Install there, and the plugin appears here with no restart.</p>
+      <p style="margin:0">Plugins is closed by default, like AE's extra panels. It opens the first time a plugin is installed, and from Window ▸ Plugins.</p>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

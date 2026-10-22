@@ -165,7 +165,29 @@ TEST_CASE("plugin host: the sample bundles load and register with the document",
   // Rings' button is exposed as an action on the document side.
   const doc::NativeEffect* rings = doc::NativeEffects::find(kRings);
   REQUIRE(rings != nullptr);
-  CHECK(std::ranges::any_of(rings->actions, [](const auto& a) { return a.first == "p8"; }));
+  CHECK(std::ranges::any_of(rings->actions, [](const auto& a) { return a.key == "p8"; }));
+  // Where Effect Controls draws it: top level, after Center X/Y … Opacity (8 document params).
+  CHECK(rings->actions.front().group.empty());
+  CHECK(rings->actions.front().at == 8);
+  // The samples' Debug group: its GROUP_START key, START_COLLAPSED; its Fault popup CANNOT_ANIMATE.
+  REQUIRE(rings->groups.size() == 1);
+  CHECK(rings->groups.front().path == "Debug");
+  CHECK(rings->groups.front().key == "p900");
+  CHECK(rings->groups.front().collapsed);
+  const doc::EffectParamDef* fault = rings->def.param("p901");
+  REQUIRE(fault != nullptr);
+  CHECK(fault->fixed);
+  CHECK_FALSE(rings->def.param("p2")->fixed);
+  // SDK 1.2 descriptions (tooltips), PR_CMD_ABOUT, and the manifest's icon / panelTitle.
+  CHECK(rings->groups.front().description.starts_with("Host crash-isolation tests"));
+  CHECK(fault->description.starts_with("Makes this effect fail"));
+  CHECK(rings->def.param("p2")->description.empty());
+  CHECK(rings->about.starts_with("Rings 1.1"));
+  const auto records = host.plugins();
+  const auto rec = std::ranges::find_if(records, [](const pl::PluginRecord& r) { return r.id == kRings; });
+  REQUIRE(rec != records.end());
+  CHECK(rec->icon == "ui/icon.svg");
+  CHECK(rec->panelTitle == "Palette");
 }
 
 TEST_CASE("plugin host: a disabled plugin leaves new instances, keeps documents resolving", "[plugins]") {
@@ -398,6 +420,26 @@ TEST_CASE("plugin manifest: the most specific binary key for this machine wins",
   CHECK(err.find("linux-arm64") != std::string::npos);
   // This machine's own list ends with the generic key.
   CHECK(pl::platform_keys().back() == pl::platform_key());
+}
+
+TEST_CASE("plugin manifest: an icon is a picture under ui/, else ignored; panelTitle labels the panel button", "[plugins]") {
+  const auto icon_of = [](const std::string& icon) {
+    const std::string json = R"({"manifestVersion":1,"id":"com.x.glow","sdk":{"major":1,"minor":2},"binary":{"windows":"w.dll"},
+      "effects":[{"matchName":"com.x.glow"}],"panelTitle":"Studio","icon":)" + icon + "}";
+    std::string err;
+    const std::string_view win[] = {"windows"};
+    const auto m = pl::parse_manifest(json, std::span<const std::string_view>(win), err);
+    REQUIRE(m);  // a bad icon never fails the plugin
+    CHECK(m->panelTitle == "Studio");
+    return m->icon;
+  };
+  CHECK(icon_of(R"("ui/icon.png")") == "ui/icon.png");
+  CHECK(icon_of(R"("ui\\img\\Logo.SVG")") == "ui/img/Logo.SVG");
+  CHECK(icon_of(R"("icon.png")").empty());          // outside ui/: not served
+  CHECK(icon_of(R"("ui/../deepglow.dll")").empty());  // not a picture, and climbs out
+  CHECK(icon_of(R"("ui/../x.png")").empty());
+  CHECK(icon_of(R"("ui/.hidden.png")").empty());
+  CHECK(icon_of("42").empty());
 }
 
 TEST_CASE("plugin host: a plugin disabled at start is listed but not loaded; enabling loads it", "[plugins][store]") {

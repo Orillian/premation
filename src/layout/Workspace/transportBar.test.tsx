@@ -110,12 +110,15 @@ it('balances controls across the left and right sides of the centered play butto
     'Previous Frame',
   ]);
 
-  // Right: next-frame, go-to-end, then AE's footer — resolution, preview,
-  // transparency, overlays, channel, exposure (reset) — and the magnification
-  // presets: 9 in all (the exposure value is a spinbutton, not a button).
+  // Right: next-frame, go-to-end, the Guides group's Smart Guides toggle (the
+  // motion-path toggle joins it only with a keyframed layer selected), then
+  // AE's footer — resolution, preview, transparency, overlays, channel,
+  // exposure (reset) — and the magnification presets: 10 in all (the exposure
+  // value is a spinbutton, not a button).
   expect(rightButtons.map((btn) => btn.getAttribute('aria-label'))).toEqual([
     'Next Frame',
     'Go to End',
+    'Smart guides',
     expect.stringMatching(/^Preview resolution:/),
     'Preview',
     'Toggle Transparency Grid',

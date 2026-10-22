@@ -26,6 +26,7 @@ import {
 import { readPersisted, writePersisted } from '@core/settings/persistedValue';
 import { documentMirror, type DocumentMirror } from './documentMirror';
 import { useUIStore } from './uiStore';
+import { t } from '@core/i18n';
 
 // Re-exported so the panels, the Export dialog and the AI export tool keep
 // importing the queue's vocabulary from the queue.
@@ -166,7 +167,7 @@ export const useRenderQueueStore = create<RenderQueueState>((set, get) => {
     if (get().isRunning) return;
     const submit = submitter;
     if (!submit) {
-      useUIStore.getState().notify({ level: 'error', message: 'Rendering needs the desktop app: files are rendered by the engine.', durationMs: 6000 });
+      useUIStore.getState().notify({ level: 'error', message: t('stores.renderQueue.needsDesktop', 'Rendering needs the desktop app: files are rendered by the engine.'), durationMs: 6000 });
       return;
     }
     set({ isRunning: true, _stop: false });
@@ -202,8 +203,8 @@ export const useRenderQueueStore = create<RenderQueueState>((set, get) => {
       useUIStore.getState().notify({
         level: 'warning',
         message: leftBehind === 1
-          ? '1 queued render was skipped: its composition is not in the open project'
-          : `${leftBehind} queued renders were skipped: their compositions are not in the open project`,
+          ? t('stores.renderQueue.skippedOne', '{n} queued render was skipped: its composition is not in the open project', { n: leftBehind })
+          : t('stores.renderQueue.skippedOther', '{n} queued renders were skipped: their compositions are not in the open project', { n: leftBehind }),
         durationMs: 5000,
       });
     }

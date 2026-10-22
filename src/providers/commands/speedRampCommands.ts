@@ -19,6 +19,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { flicksToSeconds, type Command as EngineCommand, type Keyframe, type PropRef } from '@motion/engine-api';
 import type { Command } from '@core/commands/Command';
 import { engine } from '@core/engine/engineInstance';
@@ -122,8 +123,8 @@ async function rampTo(target: number): Promise<void> {
   if (nodeIds.length === 0) {
     notify(
       useSelectionStore.getState().ids.length > 0
-        ? 'Speed ramps need a layer with a source to retime — video, audio, or a pre-comp.'
-        : 'Select a video, audio or pre-composed layer to ramp.',
+        ? t('providers.speedRamp.needsSource', 'Speed ramps need a layer with a source to retime — video, audio, or a pre-comp.')
+        : t('providers.speedRamp.selectLayer', 'Select a video, audio or pre-composed layer to ramp.'),
       'warning',
     );
     return;
@@ -133,7 +134,7 @@ async function rampTo(target: number): Promise<void> {
   const dur = comp ? documentMirror().comp(comp)?.settings.duration : undefined;
   const compEnd = dur ? flicksToSeconds(dur) : at + TRANSITION_SEC + 1;
   if (compEnd <= at + TRANSITION_SEC) {
-    notify('Not enough time left after the playhead for a ramp.', 'warning');
+    notify(t('providers.speedRamp.notEnoughTime', 'Not enough time left after the playhead for a ramp.'), 'warning');
     return;
   }
   const cmds = await speedRampCommands(nodeIds, at, target, compEnd);
@@ -142,9 +143,16 @@ async function rampTo(target: number): Promise<void> {
   if (blend.length > 0) cmds.push({ type: 'setLayerSwitches', layers: blend, patch: { frameBlend: 'pixelMotion' } });
   const res = await edit(`Speed ramp to ${Math.round(target * 100)}%`, cmds);
   if (!res.ok) return;
+  const vars = { n: nodeIds.length, percent: Math.round(target * 100), seconds: TRANSITION_SEC };
+  const one = nodeIds.length === 1;
   notify(
-    `Ramped ${nodeIds.length} layer${nodeIds.length === 1 ? '' : 's'} to ${Math.round(target * 100)}% over ${TRANSITION_SEC}s.`
-    + (blend.length > 0 ? ' Pixel Motion frame blending turned on for smooth slow motion.' : ''),
+    blend.length > 0
+      ? one
+        ? t('providers.speedRamp.rampedBlendOne', 'Ramped {n} layer to {percent}% over {seconds}s. Pixel Motion frame blending turned on for smooth slow motion.', vars)
+        : t('providers.speedRamp.rampedBlendOther', 'Ramped {n} layers to {percent}% over {seconds}s. Pixel Motion frame blending turned on for smooth slow motion.', vars)
+      : one
+        ? t('providers.speedRamp.rampedOne', 'Ramped {n} layer to {percent}% over {seconds}s.', vars)
+        : t('providers.speedRamp.rampedOther', 'Ramped {n} layers to {percent}% over {seconds}s.', vars),
     'success',
   );
 }

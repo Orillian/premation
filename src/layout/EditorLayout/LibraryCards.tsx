@@ -52,7 +52,7 @@ export function ProMark({ locked, onThumb = false }: { locked: boolean; onThumb?
         ? t('editor.library.pro.lockedTitle', 'Included with Premation Cloud')
         : t('editor.library.pro.title', 'Premation Cloud')}
     >
-      {locked && <Icon name="lock" size={11} />}
+      {locked && <Icon name="lock" size="sm" />}
       {t('editor.library.pro.mark', 'PRO')}
     </span>
   );

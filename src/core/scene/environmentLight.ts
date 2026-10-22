@@ -25,6 +25,7 @@
  */
 
 import { LruCache, envAtlasKey, hashEnvPixels } from './envAtlasCache';
+import { t } from '@core/i18n';
 
 export interface EnvPixels {
   width: number;
@@ -191,9 +192,9 @@ export function environmentRig(sh: Float32Array, intensityPct: number, rotationD
 export type EnvironmentPresetId = 'studio' | 'sky' | 'sunset';
 
 export const ENVIRONMENT_PRESETS: ReadonlyArray<{ id: EnvironmentPresetId; label: string }> = [
-  { id: 'studio', label: 'Studio (soft top light)' },
-  { id: 'sky', label: 'Day sky (blue above, warm ground)' },
-  { id: 'sunset', label: 'Sunset (warm west horizon)' },
+  { id: 'studio', get label() { return t('core.environment.studioSoftTopLight', 'Studio (soft top light)'); } },
+  { id: 'sky', get label() { return t('core.environment.daySkyBlueAboveWarm', 'Day sky (blue above, warm ground)'); } },
+  { id: 'sunset', get label() { return t('core.environment.sunsetWarmWestHorizon', 'Sunset (warm west horizon)'); } },
 ];
 
 const mix = (a: number, b: number, t: number): number => a + (b - a) * t;

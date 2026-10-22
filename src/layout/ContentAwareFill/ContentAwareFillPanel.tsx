@@ -28,12 +28,15 @@ import {
   type ContentAwareLighting,
 } from '@core/tracking/contentAwareFill';
 import styles from './ContentAwareFillPanel.module.css';
+import { t } from '@core/i18n';
 
-const RANGES: ReadonlyArray<{ value: FillRange; label: string }> = [
-  { value: 'workArea', label: 'Work Area' },
-  { value: 'layer', label: 'Layer' },
-  { value: 'entire', label: 'Entire Duration' },
-];
+function ranges(): ReadonlyArray<{ value: FillRange; label: string }> {
+  return [
+    { value: 'workArea', label: t('contentAwareFill.panel.workArea', 'Work Area') },
+    { value: 'layer', label: t('contentAwareFill.panel.layer', 'Layer') },
+    { value: 'entire', label: t('contentAwareFill.panel.entireDuration', 'Entire Duration') },
+  ];
+}
 
 function timecode(seconds: number, fps: number): string {
   const f = Math.round(seconds * fps);
@@ -56,8 +59,7 @@ export function ContentAwareFillPanel(): JSX.Element {
     return (
       <div className={styles.panel}>
         <p className={styles.text}>
-          Content-Aware Fill removes an object from footage. Add a video layer to the composition, draw a mask around what to
-          remove, then generate the fill here.
+          {t('contentAwareFill.panel.intro', 'Content-Aware Fill removes an object from footage. Add a video layer to the composition, draw a mask around what to remove, then generate the fill here.')}
         </p>
       </div>
     );
@@ -102,8 +104,8 @@ export function ContentAwareFillPanel(): JSX.Element {
       const job = await startContentAwareFill(request(createReference), (f, msg) => s.setProgress(f, msg));
       s.begin(job.cancel);
       const out = await job.done;
-      if (out.status === 'failed') s.finish(out.error?.message ?? 'Content-Aware Fill failed.');
-      else if (out.status === 'cancelled') s.finish('Content-Aware Fill cancelled. Nothing was changed.');
+      if (out.status === 'failed') s.finish(out.error?.message ?? t('contentAwareFill.panel.failed', 'Content-Aware Fill failed.'));
+      else if (out.status === 'cancelled') s.finish(t('contentAwareFill.panel.cancelled', 'Content-Aware Fill cancelled. Nothing was changed.'));
       else {
         const summary = out.result;
         if (createReference && summary?.files?.[0] && layerId) {
@@ -120,7 +122,7 @@ export function ContentAwareFillPanel(): JSX.Element {
   const addReference = async (): Promise<void> => {
     const pick = window.motionEditor?.shell?.pickFiles;
     if (!pick) {
-      st.finish('Adding a reference frame needs the desktop app.');
+      st.finish(t('contentAwareFill.panel.needsDesktop', 'Adding a reference frame needs the desktop app.'));
       return;
     }
     const files = await pick();
@@ -136,8 +138,8 @@ export function ContentAwareFillPanel(): JSX.Element {
     <div className={styles.panel}>
       {source.layers.length > 1 && !source.selectedId ? (
         <label className={styles.field}>
-          <span className={styles.label}>Layer</span>
-          <select aria-label="Fill layer" className={styles.select} value={layerId} onChange={(e) => source.choose(e.target.value)}>
+          <span className={styles.label}>{t('contentAwareFill.panel.layer', 'Layer')}</span>
+          <select aria-label={t('contentAwareFill.panel.fillLayer', 'Fill layer')} className={styles.select} value={layerId} onChange={(e) => source.choose(e.target.value)}>
             {source.layers.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </label>
@@ -145,23 +147,23 @@ export function ContentAwareFillPanel(): JSX.Element {
         <p className={styles.text}><strong>{layer.name || layerId}</strong></p>
       )}
 
-      <section className={styles.section} aria-label="Fill Target">
-        <h3 className={styles.title}>Fill Target</h3>
-        <p className={styles.text}>The layer’s masks are the hole. A Subtract mask keeps an area out; mode None is ignored.</p>
+      <section className={styles.section} aria-label={t('contentAwareFill.panel.fillTarget', 'Fill Target')}>
+        <h3 className={styles.title}>{t('contentAwareFill.panel.fillTarget', 'Fill Target')}</h3>
+        <p className={styles.text}>{t('contentAwareFill.panel.theLayerSMasksAre', 'The layer’s masks are the hole. A Subtract mask keeps an area out; mode None is ignored.')}</p>
         <label className={styles.field}>
-          <span className={styles.label}>Expansion</span>
-          <ValueField aria-label="Expansion" value={st.expansion} onChange={st.setExpansion} min={-100} max={100} step={1} unit="px" />
+          <span className={styles.label}>{t('contentAwareFill.panel.expansion', 'Expansion')}</span>
+          <ValueField aria-label={t('contentAwareFill.panel.expansion', 'Expansion')} value={st.expansion} onChange={st.setExpansion} min={-100} max={100} step={1} unit="px" />
         </label>
       </section>
 
-      <section className={styles.section} aria-label="Fill Method">
-        <h3 className={styles.title}>Fill Method</h3>
-        <Segmented aria-label="Fill Method" size="sm" fullWidth options={FILL_MODES.map((m) => ({ value: m.value, label: m.label }))} value={st.mode} onChange={st.setMode} />
+      <section className={styles.section} aria-label={t('contentAwareFill.panel.fillMethod', 'Fill Method')}>
+        <h3 className={styles.title}>{t('contentAwareFill.panel.fillMethod', 'Fill Method')}</h3>
+        <Segmented aria-label={t('contentAwareFill.panel.fillMethod', 'Fill Method')} size="sm" fullWidth options={FILL_MODES.map((m) => ({ value: m.value, label: m.label }))} value={st.mode} onChange={st.setMode} />
         <p className={styles.hint}>{modeHint}</p>
         <label className={styles.field}>
-          <span className={styles.label}>Lighting Correction</span>
+          <span className={styles.label}>{t('contentAwareFill.panel.lightingCorrection', 'Lighting Correction')}</span>
           <select
-            aria-label="Lighting Correction"
+            aria-label={t('contentAwareFill.panel.lightingCorrection', 'Lighting Correction')}
             className={styles.select}
             value={st.lighting}
             disabled={st.mode === 'edgeBlend'}
@@ -172,39 +174,41 @@ export function ContentAwareFillPanel(): JSX.Element {
         </label>
       </section>
 
-      <section className={styles.section} aria-label="Range">
-        <h3 className={styles.title}>Range</h3>
-        <Segmented aria-label="Range" size="sm" fullWidth options={RANGES} value={st.range} onChange={st.setRange} />
-        <p className={styles.hint}>{`${timecode(start, fps)} – ${timecode(end, fps)} · ${frames} frame${frames === 1 ? '' : 's'}`}</p>
+      <section className={styles.section} aria-label={t('contentAwareFill.panel.range', 'Range')}>
+        <h3 className={styles.title}>{t('contentAwareFill.panel.range', 'Range')}</h3>
+        <Segmented aria-label={t('contentAwareFill.panel.range', 'Range')} size="sm" fullWidth options={ranges()} value={st.range} onChange={st.setRange} />
+        <p className={styles.hint}>{frames === 1
+          ? t('contentAwareFill.panel.rangeOne', '{start} – {end} · {n} frame', { start: timecode(start, fps), end: timecode(end, fps), n: frames })
+          : t('contentAwareFill.panel.rangeOther', '{start} – {end} · {n} frames', { start: timecode(start, fps), end: timecode(end, fps), n: frames })}</p>
       </section>
 
-      <section className={styles.section} aria-label="Reference Frames">
-        <h3 className={styles.title}>Reference Frames</h3>
+      <section className={styles.section} aria-label={t('contentAwareFill.panel.referenceFrames', 'Reference Frames')}>
+        <h3 className={styles.title}>{t('contentAwareFill.panel.referenceFrames', 'Reference Frames')}</h3>
         <p className={styles.text}>
-          A painted clean plate for a frame fills that frame exactly and guides the frames around it.
+          {t('contentAwareFill.panel.aPaintedCleanPlateFor', 'A painted clean plate for a frame fills that frame exactly and guides the frames around it.')}
         </p>
         {refs.length > 0 ? (
-          <ul className={styles.list} aria-label="Reference frames">
+          <ul className={styles.list} aria-label={t('contentAwareFill.panel.referenceFrames2', 'Reference frames')}>
             {refs.map((r) => (
               <li key={r.time} className={styles.row}>
                 <span className={styles.time}>{timecode(r.time, fps)}</span>
                 <span className={styles.path} title={r.src}>{r.src.split(/[\\/]/).pop()}</span>
-                <Button size="sm" variant="ghost" onClick={() => st.removeReference(layerId, r.time)} aria-label={`Remove reference at ${timecode(r.time, fps)}`}>
-                  Remove
+                <Button size="sm" variant="ghost" onClick={() => st.removeReference(layerId, r.time)} aria-label={t('contentAwareFill.panel.removeReference', 'Remove reference at {time}', { time: timecode(r.time, fps) })}>
+                  {t('contentAwareFill.panel.remove', 'Remove')}
                 </Button>
               </li>
             ))}
           </ul>
         ) : null}
         <div className={styles.actions}>
-          <Button size="sm" variant="secondary" disabled={st.running} onClick={() => void run(true)}>Create Reference Frame</Button>
-          <Button size="sm" variant="secondary" disabled={st.running} onClick={() => void addReference()}>Add Reference…</Button>
+          <Button size="sm" variant="secondary" disabled={st.running} onClick={() => void run(true)}>{t('contentAwareFill.panel.createReferenceFrame', 'Create Reference Frame')}</Button>
+          <Button size="sm" variant="secondary" disabled={st.running} onClick={() => void addReference()}>{t('contentAwareFill.panel.addReference', 'Add Reference…')}</Button>
         </div>
       </section>
 
       <div className={styles.actions}>
-        <Button variant="primary" disabled={st.running || frames === 0} onClick={() => void run(false)}>Generate Fill</Button>
-        {st.running ? <Button variant="secondary" onClick={() => st.cancel?.()}>Cancel</Button> : null}
+        <Button variant="primary" disabled={st.running || frames === 0} onClick={() => void run(false)}>{t('contentAwareFill.panel.generateFill', 'Generate Fill')}</Button>
+        {st.running ? <Button variant="secondary" onClick={() => st.cancel?.()}>{t('contentAwareFill.panel.cancel', 'Cancel')}</Button> : null}
       </div>
       {st.running ? <Progress value={st.progress} label={st.status} showValue size="sm" /> : null}
       {!st.running && st.status ? <p className={styles.text} role="status">{st.status}</p> : null}

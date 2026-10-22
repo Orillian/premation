@@ -32,6 +32,7 @@
  * Presets ▸" in the Properties ≡ menu (`LensPresetsMenu`, sectionMenu.tsx).
  */
 
+import { t } from '@core/i18n';
 import { useComponentProp, writeComponentProps } from './useComponentProp';
 import { setLayersSwitch } from './inspectorEdits';
 import { edit } from '@core/engine/uiEdits';
@@ -81,7 +82,7 @@ export function LensPresetsMenu({ nodeId }: { nodeId: string; nodeIds?: Readonly
   useSectionMenuRows([{
     type: 'item',
     id: 'lens-presets',
-    label: 'Lens Presets',
+    label: t('inspector.camera.lensPresets', 'Lens Presets'),
     submenu: lensItems(compWidth, focalOf(focalRaw, compWidth), (px) => setFocal(px)),
   }]);
   return null;
@@ -153,8 +154,8 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
   const rotated = [oriXRaw, oriYRaw, rollRaw].some((v) => typeof v === 'number' && v !== 0);
   const allThreeD = contentLayers.length === 0 || threeDCount === contentLayers.length;
   const threeDStatus = threeDCount === 0
-    ? 'No 3D layers — the camera moves nothing yet'
-    : `${threeDCount} of ${contentLayers.length} layers are 3D`;
+    ? t('inspector.camera.no3dLayers', 'No 3D layers — the camera moves nothing yet')
+    : t('inspector.camera.layersAre3d', '{count} of {total} layers are 3D', { count: threeDCount, total: contentLayers.length });
   const physical = typeof fStopRaw === 'number' && fStopRaw > 0;
   const irisShaped = typeof irisBladesRaw === 'number' && irisBladesRaw >= 3;
 
@@ -173,9 +174,9 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
             and Angle of View are two views of ONE value, so editing either has
             to move the other — showing the angle as read-only text (which is
             what this was) makes it look like a separate, broken control. */}
-        <KeyframeRow nodeId={nodeId} prop="focalLength" label="Zoom" value={focal} unit="px" min={50} onStatic={(v) => setFocal(v)} />
+        <KeyframeRow nodeId={nodeId} prop="focalLength" label={t('inspector.camera.zoom', 'Zoom')} value={focal} unit="px" min={50} onStatic={(v) => setFocal(v)} />
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Angle of View</span>
+          <span className={styles.popoverLabel}>{t('inspector.camera.angleOfView', 'Angle of View')}</span>
           <ValueField
             value={Number(fovDeg.toFixed(2))}
             min={1}
@@ -184,44 +185,44 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
             unit="°"
             onChange={(v) => setFocal(Math.round(Project3D.focalLengthForFov(compWidth, v)))}
             {...focalField.scrub}
-            aria-label="Angle of View"
+            aria-label={t('inspector.camera.angleOfView', 'Angle of View')}
           />
         </div>
         <TwirlGroup
           prefKey="camera.film"
-          label={<span title="Film Size is the virtual sensor width. It changes the millimetre reading only — the view itself is set by Zoom / Angle of View.">Film Size</span>}
+          label={<span title={t('inspector.camera.filmSizeTip', 'Film Size is the virtual sensor width. It changes the millimetre reading only — the view itself is set by Zoom / Angle of View.')}>{t('inspector.camera.filmSize', 'Film Size')}</span>}
           defaultOpen={false}
-          summary={`${filmSize} mm · ${focalMm.toFixed(1)} mm lens`}
+          summary={t('inspector.camera.filmSummary', '{film} mm · {focal} mm lens', { film: filmSize, focal: focalMm.toFixed(1) })}
         >
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>Film Size</span>
+            <span className={styles.popoverLabel}>{t('inspector.camera.filmSize', 'Film Size')}</span>
             <ValueField
               value={filmSize}
               min={1}
               step={1}
               unit="mm"
               onChange={(v) => setFilmSize(v !== DEFAULT_FILM_SIZE_MM ? v : undefined)}
-              aria-label="Film Size"
+              aria-label={t('inspector.camera.filmSize', 'Film Size')}
             />
           </div>
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>Focal Length</span>
+            <span className={styles.popoverLabel}>{t('inspector.camera.focalLength', 'Focal Length')}</span>
             <span className={styles.valueText}>{`${focalMm.toFixed(1)} mm`}</span>
           </div>
         </TwirlGroup>
 
         {hasPOI ? (
           <>
-            <MultiPropertyPairRow nodeId={nodeId} label="Point of Interest" props={POI_FIELDS} />
+            <MultiPropertyPairRow nodeId={nodeId} label={t('inspector.camera.pointOfInterest', 'Point of Interest')} props={POI_FIELDS} />
             <div className={styles.actionRow}>
               <Button
                 size="sm"
                 variant="secondary"
-                title="Make this a one-node camera: it stops aiming at a target and looks where it is turned"
+                title={t('inspector.camera.removePoiTip', 'Make this a one-node camera: it stops aiming at a target and looks where it is turned')}
                 // AE's Orient Towards Point of Interest off (`transform/orientTowardsPointOfInterest`).
                 onClick={() => { void edit('Remove Point of Interest', { type: 'setProperty', prop: { layer: nodeId, path: POI_PATH }, value: values.bool(false) }); }}
               >
-                Remove Point of Interest
+                {t('inspector.camera.removePoi', 'Remove Point of Interest')}
               </Button>
             </div>
           </>
@@ -230,23 +231,23 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
             <Button
               size="sm"
               variant="secondary"
-              title="Make this a two-node camera: it always aims at a Point of Interest, so moving it re-frames the target. Keyframe the point to lead a shot across the scene."
+              title={t('inspector.camera.addPoiTip', 'Make this a two-node camera: it always aims at a Point of Interest, so moving it re-frames the target. Keyframe the point to lead a shot across the scene.')}
               // On: the target lands at the composition centre (w/2, h/2, 0).
               onClick={() => { void edit('Enable Point of Interest', { type: 'setProperty', prop: { layer: nodeId, path: POI_PATH }, value: values.bool(true) }); }}
             >
-              Add Point of Interest
+              {t('inspector.camera.addPoi', 'Add Point of Interest')}
             </Button>
           </div>
         )}
 
         <TwirlGroup
           prefKey="camera.orbit"
-          label={<span title="Swings the camera around its point of interest, keeping it framed (Orbit Yaw / Pitch). The viewer's Orbit tool and Alt+drag write these. On canvas: Alt+drag orbits, Shift+Alt+drag (or Alt+middle-drag) tracks XY, Alt+wheel dollies.">Orbit around target</span>}
+          label={<span title={t('inspector.camera.orbitTip', "Swings the camera around its point of interest, keeping it framed (Orbit Yaw / Pitch). The viewer's Orbit tool and Alt+drag write these. On canvas: Alt+drag orbits, Shift+Alt+drag (or Alt+middle-drag) tracks XY, Alt+wheel dollies.")}>{t('inspector.camera.orbitAroundTarget', 'Orbit around target')}</span>}
           defaultOpen={orbited}
-          summary={orbited ? 'Turned' : 'Level'}
+          summary={orbited ? t('inspector.camera.turned', 'Turned') : t('inspector.camera.level', 'Level')}
         >
-          <KeyframeRow nodeId={nodeId} prop="orbitYaw" label="Orbit Yaw" value={typeof yawRaw === 'number' ? yawRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setYaw(v)} />
-          <KeyframeRow nodeId={nodeId} prop="orbitPitch" label="Orbit Pitch" value={typeof pitchRaw === 'number' ? pitchRaw : 0} unit="°" min={-89} max={89} onStatic={(v) => setPitch(v)} />
+          <KeyframeRow nodeId={nodeId} prop="orbitYaw" label={t('inspector.camera.orbitYaw', 'Orbit Yaw')} value={typeof yawRaw === 'number' ? yawRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setYaw(v)} />
+          <KeyframeRow nodeId={nodeId} prop="orbitPitch" label={t('inspector.camera.orbitPitch', 'Orbit Pitch')} value={typeof pitchRaw === 'number' ? pitchRaw : 0} unit="°" min={-89} max={89} onStatic={(v) => setPitch(v)} />
         </TwirlGroup>
 
         {/* IN-PLACE rotation, its own twirl and NOT mixed in with Orbit above:
@@ -255,16 +256,16 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
             Conflating them is what made a tripod pan unexpressible. */}
         <TwirlGroup
           prefKey="camera.rotation"
-          label={<span title="Turns the camera on the spot without moving it — a tripod pan or tilt (X / Y / Z Rotation). No viewer tool writes these. On a two-node camera they offset the tracked aim, so it keeps following its Point of Interest while looking off to the side.">Turn on the spot</span>}
+          label={<span title={t('inspector.camera.turnTip', 'Turns the camera on the spot without moving it — a tripod pan or tilt (X / Y / Z Rotation). No viewer tool writes these. On a two-node camera they offset the tracked aim, so it keeps following its Point of Interest while looking off to the side.')}>{t('inspector.camera.turnOnSpot', 'Turn on the spot')}</span>}
           defaultOpen={rotated}
-          summary={rotated ? 'Turned' : 'Level'}
+          summary={rotated ? t('inspector.camera.turned', 'Turned') : t('inspector.camera.level', 'Level')}
         >
-          <KeyframeRow nodeId={nodeId} prop="orientationX" label="X Rotation" value={typeof oriXRaw === 'number' ? oriXRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setOriX(v)} />
-          <KeyframeRow nodeId={nodeId} prop="orientationY" label="Y Rotation" value={typeof oriYRaw === 'number' ? oriYRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setOriY(v)} />
+          <KeyframeRow nodeId={nodeId} prop="orientationX" label={t('inspector.camera.xRotation', 'X Rotation')} value={typeof oriXRaw === 'number' ? oriXRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setOriX(v)} />
+          <KeyframeRow nodeId={nodeId} prop="orientationY" label={t('inspector.camera.yRotation', 'Y Rotation')} value={typeof oriYRaw === 'number' ? oriYRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setOriY(v)} />
           {/* Roll spins the frame about the view axis (a dutch angle) without
               re-aiming the camera — the third orientation axis, which the yaw +
               pitch pair alone could not express. */}
-          <KeyframeRow nodeId={nodeId} prop="orientationZ" label="Z Rotation" value={typeof rollRaw === 'number' ? rollRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setRoll(v)} />
+          <KeyframeRow nodeId={nodeId} prop="orientationZ" label={t('inspector.camera.zRotation', 'Z Rotation')} value={typeof rollRaw === 'number' ? rollRaw : 0} unit="°" min={-180} max={180} onStatic={(v) => setRoll(v)} />
         </TwirlGroup>
 
         <CameraShakeRows nodeId={nodeId} />
@@ -277,17 +278,17 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
           is strength 0, which is what "off" has always meant to the renderer.
         */}
         <OnOffRow
-          label="Depth of Field"
+          label={t('inspector.camera.depthOfField', 'Depth of Field')}
           on={dofOn}
           onToggle={() => setDofStrength(dofOn ? 0 : 20)}
-          title="Blur layers by their distance from the focus plane. Layers must be 3D."
+          title={t('inspector.camera.dofTip', 'Blur layers by their distance from the focus plane. Layers must be 3D.')}
         />
         {dofOn && (
           <>
             <KeyframeRow
               nodeId={nodeId}
               prop="focusDistance"
-              label="Focus Distance"
+              label={t('inspector.camera.focusDistance', 'Focus Distance')}
               value={typeof focusRaw === 'number' ? focusRaw : focal}
               unit="px"
               min={1}
@@ -309,40 +310,40 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
               <span
                 className={styles.popoverLabel}
                 title={physical
-                  ? 'Physical: thin-lens defocus — the foreground blurs harder than the background, distant layers stop getting blurrier, and focal length affects depth of field.'
-                  : 'Classic: a symmetric blur ramp around the focus plane that ignores focal length (the After Effects look).'}
+                  ? t('inspector.camera.physicalTip', 'Physical: thin-lens defocus — the foreground blurs harder than the background, distant layers stop getting blurrier, and focal length affects depth of field.')
+                  : t('inspector.camera.classicTip', 'Classic: a symmetric blur ramp around the focus plane that ignores focal length (the After Effects look).')}
               >
-                Lens Model
+                {t('inspector.camera.lensModel', 'Lens Model')}
               </span>
               <Segmented
                 size="sm"
-                aria-label="Lens Model"
+                aria-label={t('inspector.camera.lensModel', 'Lens Model')}
                 value={physical ? 'physical' : 'classic'}
                 onChange={(v) => {
                   if (v === 'physical' && !physical) setFStop(2.8);
                   else if (v === 'classic' && physical) setFStop(0);
                 }}
                 options={[
-                  { value: 'classic', label: 'Classic' },
-                  { value: 'physical', label: 'Physical' },
+                  { value: 'classic', label: t('inspector.camera.classic', 'Classic') },
+                  { value: 'physical', label: t('inspector.camera.physical', 'Physical') },
                 ]}
               />
             </div>
             {physical && (
-              <KeyframeRow nodeId={nodeId} prop="fStop" label="F-Stop" value={fStopRaw as number} min={0.5} max={32} precision={1} onStatic={(v) => setFStop(v)} />
+              <KeyframeRow nodeId={nodeId} prop="fStop" label={t('inspector.camera.fStop', 'F-Stop')} value={fStopRaw as number} min={0.5} max={32} precision={1} onStatic={(v) => setFStop(v)} />
             )}
-            <KeyframeRow nodeId={nodeId} prop="dofStrength" label="Blur Level" value={typeof dofRaw === 'number' ? dofRaw : 0} unit="px" min={0} max={60} onStatic={(v) => setDofStrength(v)} />
+            <KeyframeRow nodeId={nodeId} prop="dofStrength" label={t('inspector.camera.blurLevel', 'Blur Level')} value={typeof dofRaw === 'number' ? dofRaw : 0} unit="px" min={0} max={60} onStatic={(v) => setDofStrength(v)} />
             <TwirlGroup
               prefKey="camera.bokeh"
-              label={<span title="The shape of out-of-focus highlights. Iris Blades 0 is a Gaussian blur; 5–11 gives an iris-shaped bokeh with its own roundness, rotation, aspect, fringe and highlight bloom.">Bokeh</span>}
+              label={<span title={t('inspector.camera.bokehTip', 'The shape of out-of-focus highlights. Iris Blades 0 is a Gaussian blur; 5–11 gives an iris-shaped bokeh with its own roundness, rotation, aspect, fringe and highlight bloom.')}>{t('inspector.camera.bokeh', 'Bokeh')}</span>}
               defaultOpen={irisShaped}
-              summary={irisShaped ? `${Math.round(irisBladesRaw as number)} blades` : 'Gaussian'}
+              summary={irisShaped ? t('inspector.camera.blades', '{n} blades', { n: Math.round(irisBladesRaw as number) }) : t('inspector.camera.gaussian', 'Gaussian')}
             >
-              <div title="Leave at 0 for a Gaussian blur. Set 5–11 for an iris-shaped bokeh.">
+              <div title={t('inspector.camera.irisBladesTip', 'Leave at 0 for a Gaussian blur. Set 5–11 for an iris-shaped bokeh.')}>
                 <KeyframeRow
                   nodeId={nodeId}
                   prop="irisBlades"
-                  label="Iris Blades"
+                  label={t('inspector.camera.irisBlades', 'Iris Blades')}
                   value={typeof irisBladesRaw === 'number' ? irisBladesRaw : 0}
                   min={0}
                   max={11}
@@ -357,7 +358,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="irisRotation"
-                    label="Iris Rotation"
+                    label={t('inspector.camera.irisRotation', 'Iris Rotation')}
                     value={typeof irisRotationRaw === 'number' ? irisRotationRaw : 0}
                     unit="°"
                     min={-180}
@@ -367,7 +368,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="irisRoundness"
-                    label="Iris Roundness"
+                    label={t('inspector.camera.irisRoundness', 'Iris Roundness')}
                     value={typeof irisRoundnessRaw === 'number' ? irisRoundnessRaw : 0.65}
                     min={0}
                     max={1}
@@ -376,7 +377,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="irisAspect"
-                    label="Iris Aspect Ratio"
+                    label={t('inspector.camera.irisAspect', 'Iris Aspect Ratio')}
                     value={typeof irisAspectRaw === 'number' ? irisAspectRaw : 1}
                     min={0.25}
                     max={4}
@@ -385,7 +386,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="diffractionFringe"
-                    label="Iris Diffraction Fringe"
+                    label={t('inspector.camera.diffractionFringe', 'Iris Diffraction Fringe')}
                     value={typeof diffractionFringeRaw === 'number' ? diffractionFringeRaw : 0}
                     min={0}
                     max={1}
@@ -394,7 +395,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="highlightGain"
-                    label="Highlight Gain"
+                    label={t('inspector.camera.highlightGain', 'Highlight Gain')}
                     value={typeof highlightGainRaw === 'number' ? highlightGainRaw : 0}
                     min={0}
                     max={4}
@@ -403,7 +404,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="highlightThreshold"
-                    label="Highlight Threshold"
+                    label={t('inspector.camera.highlightThreshold', 'Highlight Threshold')}
                     value={typeof highlightThresholdRaw === 'number' ? highlightThresholdRaw : 0}
                     min={0}
                     max={1}
@@ -412,7 +413,7 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                   <KeyframeRow
                     nodeId={nodeId}
                     prop="highlightSaturation"
-                    label="Highlight Saturation"
+                    label={t('inspector.camera.highlightSaturation', 'Highlight Saturation')}
                     value={typeof highlightSaturationRaw === 'number' ? highlightSaturationRaw : 0}
                     min={0}
                     max={4}
@@ -426,41 +427,41 @@ export function CameraSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                 under Advanced rather than reading as a second blur control. */}
             <TwirlGroup
               prefKey="camera.dofAdvanced"
-              label={<span title="Aperture: the blur as a lens opening in px — the twin of Blur Level in After Effects.">Advanced</span>}
+              label={<span title={t('inspector.camera.advancedTip', 'Aperture: the blur as a lens opening in px — the twin of Blur Level in After Effects.')}>{t('inspector.camera.advanced', 'Advanced')}</span>}
               defaultOpen={false}
             >
-              <KeyframeRow nodeId={nodeId} prop="dofAperture" label="Aperture" value={typeof apertureRaw === 'number' ? apertureRaw : (typeof dofRaw === 'number' ? dofRaw : 0)} unit="px" min={0} onStatic={(v) => setAperture(v)} />
+              <KeyframeRow nodeId={nodeId} prop="dofAperture" label={t('inspector.camera.aperture', 'Aperture')} value={typeof apertureRaw === 'number' ? apertureRaw : (typeof dofRaw === 'number' ? dofRaw : 0)} unit="px" min={0} onStatic={(v) => setAperture(v)} />
             </TwirlGroup>
           </>
         )}
 
-        <TwirlGroup prefKey="camera.view" label="View" defaultOpen={!allThreeD} summary={threeDStatus}>
+        <TwirlGroup prefKey="camera.view" label={t('inspector.camera.view', 'View')} defaultOpen={!allThreeD} summary={threeDStatus}>
           <div className={styles.actionRow}>
             <Button
               size="sm"
               variant="secondary"
-              title="Back to the default framing: the comp centre, pulled back by the focal length so the comp plane renders 1:1, no orbit"
+              title={t('inspector.camera.resetTip', 'Back to the default framing: the comp centre, pulled back by the focal length so the comp plane renders 1:1, no orbit')}
               onClick={() => {
                 // Back to the default framing: comp centre, pulled back by the
                 // focal length so the comp plane renders exactly 1:1, no orbit.
                 writeComponentProps(nodeId, componentOfType(nodeId, 'Transform') ?? '', { x: compWidth / 2, y: compHeight / 2, z: -Math.round(focal), orbitYaw: 0, orbitPitch: 0 }, 'Reset Camera');
               }}
             >
-              Reset Camera
+              {t('inspector.camera.reset', 'Reset Camera')}
             </Button>
           </div>
           <div className={styles.popoverRow}>
             <span
               className={styles.popoverLabel}
-              title="The camera moves layers with the 3D switch on (also per layer in the timeline's switch column). Position and Z live in Transform; a shorter focal length gives a wider, more dramatic perspective."
+              title={t('inspector.camera.threeDLayersTip', "The camera moves layers with the 3D switch on (also per layer in the timeline's switch column). Position and Z live in Transform; a shorter focal length gives a wider, more dramatic perspective.")}
             >
-              3D Layers
+              {t('inspector.camera.threeDLayers', '3D Layers')}
             </span>
-            <span className={styles.valueText}>{`${threeDCount} of ${contentLayers.length}`}</span>
+            <span className={styles.valueText}>{t('inspector.camera.countOf', '{count} of {total}', { count: threeDCount, total: contentLayers.length })}</span>
             {/* With NONE 3D the warning and its Make All 3D lead the section (the Shot header). */}
             {!allThreeD && threeDCount > 0 && (
               <Button size="sm" variant="secondary" onClick={enableAll3D}>
-                Make All 3D
+                {t('inspector.camera.makeAll3d', 'Make All 3D')}
               </Button>
             )}
           </div>

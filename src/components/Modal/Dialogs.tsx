@@ -19,6 +19,7 @@ import { useDialogPrimaryAction } from './Modal';
 // TODO(ds): DialogFooter is being added by the design-system pass; this file
 // consumes it with the `secondary` / `destructive` / `primary` slot API.
 import { DialogFooter } from './DialogFooter';
+import { t } from '@core/i18n';
 import styles from './Dialogs.module.css';
 
 function DialogTitle({ icon, danger, children }: { icon: IconName; danger?: boolean; children: string }): JSX.Element {
@@ -71,7 +72,7 @@ export function customConfirm(
   message: string,
   options?: { confirmLabel?: string; cancelLabel?: string; isDanger?: boolean }
 ): Promise<boolean> {
-  const { confirmLabel = 'Confirm', cancelLabel = 'Cancel', isDanger = false } = options ?? {};
+  const { confirmLabel = t('ui.modal.confirm', 'Confirm'), cancelLabel = t('ui.modal.cancel', 'Cancel'), isDanger = false } = options ?? {};
   return new Promise((resolve) => {
     let resolved = false;
     const settle = (value: boolean, close: () => void): void => {
@@ -142,7 +143,7 @@ export function customSaveChoice(
   message: string,
   options?: { saveLabel?: string; discardLabel?: string; cancelLabel?: string },
 ): Promise<SaveChoice> {
-  const { saveLabel = 'Save', discardLabel = 'Don’t Save', cancelLabel = 'Cancel' } = options ?? {};
+  const { saveLabel = t('ui.modal.save', 'Save'), discardLabel = t('ui.modal.dontSave', 'Don’t Save'), cancelLabel = t('ui.modal.cancel', 'Cancel') } = options ?? {};
   return new Promise((resolve) => {
     let resolved = false;
     const settle = (value: SaveChoice, close: () => void): void => {
@@ -207,7 +208,7 @@ export function customAlert(
   message: string,
   options?: { isDanger?: boolean; confirmLabel?: string },
 ): Promise<void> {
-  const { isDanger = false, confirmLabel = 'OK' } = options ?? {};
+  const { isDanger = false, confirmLabel = t('ui.modal.ok', 'OK') } = options ?? {};
   return new Promise((resolve) => {
     let resolved = false;
     const done = (): void => {
@@ -256,7 +257,7 @@ export function customPrompt(
   defaultValue = '',
   options?: { placeholder?: string; confirmLabel?: string; cancelLabel?: string }
 ): Promise<string | null> {
-  const { placeholder = '', confirmLabel = 'OK', cancelLabel = 'Cancel' } = options ?? {};
+  const { placeholder = '', confirmLabel = t('ui.modal.ok', 'OK'), cancelLabel = t('ui.modal.cancel', 'Cancel') } = options ?? {};
   return new Promise((resolve) => {
     let resolved = false;
     // The body owns the value, so the footer's OK reaches it through this

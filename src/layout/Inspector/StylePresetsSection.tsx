@@ -26,6 +26,7 @@ import { fieldCommands } from '@layout/Text/textEdits';
 import { strokesCommands } from './appearance/paintEdits';
 import { trackRef, valueCommands } from './inspectorEdits';
 import { componentPropsCommands } from './useComponentProp';
+import { t } from '@core/i18n';
 import styles from './StylePresetsSection.module.css';
 
 /** A paint as a CSS background, for the swatch preview only — the renderer has
@@ -51,25 +52,28 @@ function paintToCss(paint: FillPaint): string {
  * As a Record, adding a category to `StylePresetCategory` without giving it a
  * label is a compile error instead of six silently invisible presets.
  */
-const GROUP_LABELS: Record<StylePresetCategory, string> = {
-  surface: 'Surfaces',
-  outline: 'Outlines',
-  text: 'Text',
-  depth: 'Depth',
-  material: 'Materials',
-};
+function groupLabels(): Record<StylePresetCategory, string> {
+  return {
+    surface: t('inspector.stylePresets.group.surface', 'Surfaces'),
+    outline: t('inspector.stylePresets.group.outline', 'Outlines'),
+    text: t('inspector.stylePresets.group.text', 'Text'),
+    depth: t('inspector.stylePresets.group.depth', 'Depth'),
+    material: t('inspector.stylePresets.group.material', 'Materials'),
+  };
+}
 
 /** Display order; anything not listed still renders, after these. */
 const GROUP_ORDER: StylePresetCategory[] = ['surface', 'outline', 'text', 'depth', 'material'];
 
-const GROUPS: Array<{ id: StylePresetCategory; label: string }> = (
-  Object.keys(GROUP_LABELS) as StylePresetCategory[]
-)
-  .sort((a, b) => {
-    const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
-    return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
-  })
-  .map((id) => ({ id, label: GROUP_LABELS[id] }));
+function groups(): Array<{ id: StylePresetCategory; label: string }> {
+  const labels = groupLabels();
+  return (Object.keys(labels) as StylePresetCategory[])
+    .sort((a, b) => {
+      const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+      return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
+    })
+    .map((id) => ({ id, label: labels[id] }));
+}
 
 export function StylePresetsSection({ nodeId }: { nodeId: string }): JSX.Element | null {
   // B4: the layer's header and its fill colour from the document mirror (the
@@ -85,7 +89,7 @@ export function StylePresetsSection({ nodeId }: { nodeId: string }): JSX.Element
   if (!layer) return null;
 
   const applied = (label: string): void => {
-    useUIStore.getState().notify({ level: 'success', message: `Applied “${label}”`, durationMs: 2000 });
+    useUIStore.getState().notify({ level: 'success', message: t('inspector.stylePresets.applied', 'Applied “{name}”', { name: label }), durationMs: 2000 });
   };
   const apply = (id: string, label: string): void => {
     const preset = STYLE_PRESETS.find((p) => p.id === id);
@@ -94,7 +98,7 @@ export function StylePresetsSection({ nodeId }: { nodeId: string }): JSX.Element
     const styleId = componentOfType(nodeId, 'Style') ?? componentOfType(nodeId, 'Text');
     const plan = stylePresetCommands(nodeId, styleId ? { id: styleId } : undefined, preset, accent, getTime());
     if (plan.cmds.length === 0) {
-      useUIStore.getState().notify({ level: 'warning', message: `“${label}” does not apply to this layer`, durationMs: 3000 });
+      useUIStore.getState().notify({ level: 'warning', message: t('inspector.stylePresets.notApplicable', '“{name}” does not apply to this layer', { name: label }), durationMs: 3000 });
       return;
     }
     // What the layer cannot carry (an image layer has no fill stack…) is left out.
@@ -103,7 +107,7 @@ export function StylePresetsSection({ nodeId }: { nodeId: string }): JSX.Element
 
   return (
     <div className={styles.root}>
-      {GROUPS.map((group) => {
+      {groups().map((group) => {
         const items = STYLE_PRESETS.filter((p) => p.category === group.id);
         if (items.length === 0) return null;
         return (

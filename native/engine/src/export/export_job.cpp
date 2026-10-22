@@ -322,7 +322,8 @@ bool make_plan(const doc::Document& d, const JobSpec& job, Plan& p, std::string&
 
 struct Built {
   sc::NativeFrame nf;
-  std::vector<std::string> reasons;  // why this frame cannot be rendered by the engine
+  std::vector<std::string> reasons;   // why this frame cannot be rendered by the engine
+  std::vector<std::string> warnings;  // what this frame draws without (stage `warning`): told, not refused
 };
 
 std::unique_ptr<Built> build_frame(DocCopy& dc, const Plan& p, std::int64_t frame) {
@@ -347,6 +348,17 @@ std::unique_ptr<Built> build_frame(DocCopy& dc, const Plan& p, std::int64_t fram
     // A Premation Cloud plugin without a valid token passes its layer through,
     // in an export as in the viewer (PLUGIN_STORE.md §4b) — not a refusal.
     if (sc::is_plugin_locked_error(e.stage, e.message)) continue;
+    // Stage `warning` (scene_types.hpp): the layer draws without something it
+    // could not resolve. The export completes and lists it on its preflight line.
+    // Stage `expression` (2026-10-21): an expression that failed fell back to
+    // its pre-expression value, as After Effects renders it — listed, not refused.
+    if (e.stage == "warning" || e.stage == "expression") {
+      std::string w = e.stage == "expression" ? "expression (" + e.path + "): " + e.message : e.message;
+      if (!e.layerName.empty()) w += " (" + e.layerName + ")";
+      else if (!e.layerId.empty()) w += " (" + e.layerId + ")";
+      b->warnings.push_back(std::move(w));
+      continue;
+    }
     std::string r = e.stage == "snapshot" ? "snapshot error: " : "";
     r += e.message;
     if (!e.layerId.empty()) r += " (" + e.layerId + ")";
@@ -394,16 +406,29 @@ class Pipeline {
       : plan_(plan), docs_(docs), ctl_(ctl), stats_(stats) {}
 
   /// Preflight: every frame of the range built once (in parallel), stopping at the
-  /// first frames that are outside the port.
-  bool preflight(std::vector<std::pair<std::int64_t, std::string>>& unported) {
+  /// first frames that are outside the port. `warnings` collects, once each and
+  /// with the first frame that raised it, what the frames draw without.
+  bool preflight(std::vector<std::pair<std::int64_t, std::string>>& unported, std::vector<std::string>& warnings) {
     std::atomic<std::int64_t> next{plan_.start};
     std::atomic<bool> stop{false};
     std::mutex m;
+    std::map<std::string, std::int64_t> warned;  // message → first frame
     std::vector<JoiningThread> pool;
     for (auto& dc : docs_) {
       pool.emplace_back([&, d = dc.get()] {
         for (std::int64_t i = next.fetch_add(1); i <= plan_.end && !stop.load() && !ctl_.cancelled(); i = next.fetch_add(1)) {
           const auto b = build_frame(*d, plan_, i);
+          if (!b->warnings.empty()) {
+            const std::lock_guard lock(m);
+            for (const auto& w : b->warnings) {
+              const auto it = warned.find(w);
+              if (it == warned.end()) {
+                if (warned.size() < 24) warned.emplace(w, i);
+              } else if (i < it->second) {
+                it->second = i;
+              }
+            }
+          }
           if (b->reasons.empty()) continue;
           const std::lock_guard lock(m);
           for (const auto& r : b->reasons) {
@@ -415,6 +440,10 @@ class Pipeline {
     }
     pool.clear();
     std::ranges::sort(unported);
+    std::vector<std::pair<std::int64_t, std::string>> ordered;
+    for (const auto& [w, f] : warned) ordered.emplace_back(f, w);
+    std::ranges::sort(ordered);
+    for (const auto& [f, w] : ordered) warnings.push_back("frame " + std::to_string(f) + ": " + w);
     return unported.empty();
   }
 
@@ -908,10 +937,12 @@ int run_export(const std::string& jobPath) {
   Pipeline pipeline(plan, docs, ctl, stats);
 
   // ── preflight (an audio-only job renders no picture: nothing to check) ──
+  // What the frames draw without (stage `warning`), told on the preflight line.
+  std::vector<std::string> warnings;
   if (!job.audioOnly) {
     const auto t0 = Clock::now();
     std::vector<std::pair<std::int64_t, std::string>> unported;
-    const bool ok = pipeline.preflight(unported);
+    const bool ok = pipeline.preflight(unported, warnings);
     stats.preflightMs = ms_since(t0);
     if (ctl.cancelled()) return kExitCancelled;
     if (!ok) {
@@ -934,7 +965,6 @@ int run_export(const std::string& jobPath) {
   }
 
   // ── audio (exportAudioBytes: the picture's exact range, 48 kHz 16-bit WAV) ──
-  std::vector<std::string> warnings;
   std::optional<std::string> audioPath;
   std::vector<std::vector<float>> pluginAudio;  // P7c: the mix, for a plugin output module's WRITE_AUDIO
   int pluginAudioRate = 0;
@@ -1122,7 +1152,9 @@ int run_export(const std::string& jobPath) {
       if (asExr) {
         const auto row = wpx * (plan.depth == 16 ? 8U : 4U);
         std::vector<std::uint8_t> half(std::size_t{wpx} * hpx * 8);
-        target_to_half_rgba(f.rgba, wpx, hpx, row, plan.depth == 16 ? LinearFormat::float16 : LinearFormat::unorm8, half);
+        // f.rgba is the writer's frame: straight RGBA8, or at depth 16 straight RGBA64
+        // integers (half_surface_to_rgba64) — not the half-float surface itself.
+        target_to_half_rgba(f.rgba, wpx, hpx, row, plan.depth == 16 ? LinearFormat::unorm16 : LinearFormat::unorm8, half);
         bytes = encode_exr_half(half, wpx, hpx);
       } else if (asJpg) {
         if (!encode_jpeg_rgba8(f.rgba, wpx, hpx, 0.92F, bytes)) return false;

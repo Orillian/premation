@@ -218,6 +218,19 @@
   color: var(--color-danger);
 }
 
+/* A name with a description (a native plugin param's tooltip): a dotted
+   underline on hover / keyboard focus says there is more to read. */
+.nameDescribed {
+  cursor: help;
+  text-decoration: underline dotted transparent;
+  text-underline-offset: 2px;
+}
+
+.nameDescribed:hover,
+.nameDescribed:focus-visible {
+  text-decoration-color: currentColor;
+}
+
 .pin {
   flex: none;
   color: var(--color-primary);

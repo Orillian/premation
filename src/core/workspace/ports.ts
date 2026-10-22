@@ -768,9 +768,10 @@ function createNode(payload: CreateNodePayload): void {
   const text = kind === 'text';
   void insertDrawnLayers(drawnLayerLabel(payload), [payload]).then((ids) => {
     // AE: creating text with the Type tool (click or drag) puts you straight
-    // into typing it.
+    // into typing it — an empty editor with a caret where you clicked, not
+    // the placeholder "Text" selected (`fresh`, TextEditOverlay).
     const id = ids?.[0];
-    if (text && id) useTextEditStore.getState().begin(id);
+    if (text && id) useTextEditStore.getState().begin(id, { fresh: true });
   });
 }
 

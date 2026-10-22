@@ -20,6 +20,7 @@ import {
   MAIN_VIEWPORT, overlayLayer, requestOverlayLayers, setOverlayRigFocus, subscribeOverlayGeometry,
 } from '@stores/overlayGeometry';
 import { rigRestPoints, RigPointerQueue } from './rigPointer';
+import { t } from '@core/i18n';
 
 /** Radius (screen px) of the advanced-pin gizmo ring. */
 const GIZMO_R = 26;
@@ -738,14 +739,14 @@ export function PuppetOverlay({ host }: { host?: TrackPointHost } = {}): JSX.Ele
         <g pointerEvents="none">
           <circle cx={20} cy={20} r={6} fill="#ff3b30" />
           <text x={34} y={24} fontSize={12} fill="#ff3b30" style={{ userSelect: 'none' }}>
-            Recording — release to reduce to keyframes
+            {t('workspace.puppet.recording', 'Recording — release to reduce to keyframes')}
           </text>
         </g>
       ) : (
         pins.length > 0 && (
           <g transform="translate(12, 12)" onPointerDown={(e) => e.stopPropagation()}>
             <text x={0} y={12} fontSize={10} fill="rgba(255,255,255,0.7)" style={{ userSelect: 'none' }}>
-              Ctrl-drag a pin to sketch · tolerance {sketchTolerance}px
+              {t('workspace.puppet.sketchHint', 'Ctrl-drag a pin to sketch · tolerance {tolerance}px', { tolerance: sketchTolerance })}
             </text>
             {([-1, 1] as const).map((dir, i) => (
               <g

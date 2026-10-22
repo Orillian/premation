@@ -25,7 +25,7 @@
 
 .trigger:hover {
   color: var(--color-text-primary);
-  background: var(--color-surface-3);
+  background: var(--color-surface-0);
   border-color: var(--color-border);
 }
 
@@ -45,7 +45,7 @@
   padding: 0 var(--space-2);
   border: 1px solid var(--color-field-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   color: var(--color-text-primary);
   /* An entry field: the panel `value` role's size and weight. */
   font-family: var(--panel-font-family);

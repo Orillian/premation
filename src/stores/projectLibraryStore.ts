@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 import { api, type ProjectSummary } from '@core/api/client';
 import { trackProjectCreated } from '@core/analytics/productEvents';
+import { t } from '@core/i18n';
 
 /** Default rows per page. The user can change it from the page control. */
 export const DEFAULT_PAGE_SIZE = 24;
@@ -119,7 +120,7 @@ export const useProjectLibrary = create<LibraryState & LibraryActions>((set, get
       set({
         status: 'error',
         busy: false,
-        error: (err as Error).message || 'Could not load projects',
+        error: (err as Error).message || t('stores.projectLibrary.loadFailed', 'Could not load projects'),
       });
     }
   },

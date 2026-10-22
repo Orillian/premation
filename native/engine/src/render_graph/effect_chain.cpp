@@ -7,6 +7,7 @@
 #include "effect_stats.hpp"
 #include "fx_distance.hpp"
 #include "fx_graph.hpp"
+#include "fx_keys.hpp"
 #include "passes.hpp"
 
 #include <algorithm>
@@ -530,7 +531,22 @@ std::vector<std::pair<Mat, Blend>> effect_warm_passes(std::string_view type) {
     out.emplace_back(Mat::DEEP_GLOW_ACC_FX_MATERIAL, Blend::add);
     out.emplace_back(Mat::DEEP_GLOW_COMPOSITE_FX_MATERIAL, Blend::normal);
   }
+  // E4: the passes a style draws off its distance field (into the chain
+  // buffer; the field's own passes are `effect_field_warm_passes`). Without
+  // these the first DRAG of a stroked text layer paid five pipeline compiles
+  // at once — a half-second stall mid-gesture (2026-10-19).
+  if (type == "stroke") out.emplace_back(Mat::STROKE_SDF_FX_MATERIAL, Blend::none);
+  if (type == "glow" || type == "drop-shadow") out.emplace_back(Mat::SDF_DILATE_FX_MATERIAL, Blend::none);
   return out;
+}
+
+bool effect_uses_fields(std::string_view type) {
+  return type == "stroke" || type == "glow" || type == "drop-shadow";
+}
+
+std::vector<std::pair<Mat, Blend>> effect_field_warm_passes(std::string_view type) {
+  if (!effect_uses_fields(type)) return {};
+  return {{Mat::SDF_SEED_FX_MATERIAL, Blend::none}, {Mat::SDF_FLOOD_FX_MATERIAL, Blend::none}, {Mat::SDF_RESOLVE_FX_MATERIAL, Blend::none}};
 }
 
 bool effect_ported(const api::RenderEffect& e, std::string& why) {
@@ -607,9 +623,29 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
   const api::Renderable* selfR = self == byId.end() ? nullptr : self->second;
   /// A key for a distance field of `shape`: the silhouette is the input by
   /// construction; the current buffer only while nothing has changed it.
+  ///
+  /// The content key may be TRANSLATION-FREE (composition_pass.cpp P8b: a
+  /// layer that only moves reuses its whole chain), but a field is of the
+  /// BUFFER — distances from where the content was drawn in it. Under P8b the
+  /// layer lands at its own phase (in the content key) on whole buffer pixels
+  /// that move with it, so two frames of a drag share the content key and
+  /// differ in placement; keyed by content
+  /// alone, the second frame read the field built where the layer WAS and its
+  /// stroke stayed behind the fill (a text layer's stroke "dropped" as it was
+  /// dragged). The placement is mixed in, so a moved layer rebuilds its field
+  /// and a static one still reuses it across parameter changes.
   const auto fieldKey = [&](bool fromSilhouette) -> std::uint64_t {
     // Under fill opacity every field is the silhouette's (never the faded buffer's).
-    return contentKey != 0 && (fromSilhouette || (pristine && !silhouette)) ? contentKey : 0;
+    if (contentKey == 0 || !(fromSilhouette || (pristine && !silhouette))) return 0;
+    // In whole buffer pixels: the placement's fraction is the content key's
+    // phase, and the UV box behind it is a quotient whose last bits move with the drag.
+    KeyMix k;
+    k.u64(contentKey);
+    k.f64(std::round(fxBox.x * pw));
+    k.f64(std::round(fxBox.y * ph));
+    k.f64(std::round(fxBox.width * pw));
+    k.f64(std::round(fxBox.height * ph));
+    return k.value();
   };
 
   struct BlendBack {

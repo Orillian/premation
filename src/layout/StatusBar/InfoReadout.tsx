@@ -7,6 +7,7 @@
  */
 
 import { useInfoStore } from '@stores/infoStore';
+import { t } from '@core/i18n';
 
 const mono: React.CSSProperties = {
   fontFamily: 'var(--font-family-mono)',
@@ -17,7 +18,7 @@ export function InfoReadout(): JSX.Element {
   const { x, y, rgba, present } = useInfoStore();
 
   if (!present) {
-    return <span style={{ ...mono, color: 'var(--color-text-muted)' }} title="Info: cursor color + position">—</span>;
+    return <span style={{ ...mono, color: 'var(--color-text-muted)' }} title={t('statusBar.info.idleTitle', 'Info: cursor color + position')}>—</span>;
   }
 
   const swatch =
@@ -28,7 +29,7 @@ export function InfoReadout(): JSX.Element {
   return (
     <span
       style={{ ...mono, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)' }}
-      title="Info: pixel color (RGBA) and composition position under the cursor"
+      title={t('statusBar.info.title', 'Info: pixel color (RGBA) and composition position under the cursor')}
     >
       <span
         aria-hidden

@@ -1,4 +1,5 @@
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Switch } from '@components/Switch';
 import { ValueField } from '@components/ValueField';
@@ -40,20 +41,20 @@ const percent = (factor: number): number => Math.round(factor * 100 * 1e6) / 1e6
  * and a baked Time Stretch's percentage on a layer with no source (100 when none).
  */
 function timeConfigOf(layer: LayerInfo | undefined): { stretch: number; reverse: boolean; freeze: boolean; freezeTime: number; frameBlend: FrameBlend; baked: number } {
-  const t = layer?.timing;
+  const tm = layer?.timing;
   return {
-    stretch: t ? percent(Math.abs(t.stretch)) || 100 : 100,
-    reverse: (t?.stretch ?? 1) < 0,
-    freeze: t?.freeze !== undefined,
-    freezeTime: t?.freeze !== undefined ? flicksToSeconds(t.freeze) : 0,
+    stretch: tm ? percent(Math.abs(tm.stretch)) || 100 : 100,
+    reverse: (tm?.stretch ?? 1) < 0,
+    freeze: tm?.freeze !== undefined,
+    freezeTime: tm?.freeze !== undefined ? flicksToSeconds(tm.freeze) : 0,
     frameBlend: STORED_FRAME_BLEND[layer?.switches.frameBlend ?? 'off'] ?? 'none',
-    baked: t?.bakedStretch !== undefined ? percent(t.bakedStretch) : 100,
+    baked: tm?.bakedStretch !== undefined ? percent(tm.bakedStretch) : 100,
   };
 }
 
 /** Set a switch from THIS section's Switch (its own on/off, not the selection-wide flip). */
 function setSwitch(nodeId: string, id: 'adjustment' | 'motionBlur', on: boolean): void {
-  const spec = LAYER_SWITCHES.find((t) => t.id === id)!;
+  const spec = LAYER_SWITCHES.find((sw) => sw.id === id)!;
   if (spec.read(nodeId) === on) return;
   void applyLayerSwitch([nodeId], spec);
 }
@@ -70,7 +71,9 @@ function idMatteItems(nodeId: string, crypto: CryptomatteInfo | null): DropdownI
       items.push({
         type: 'item',
         id: `crypto:${layer.name}:${obj}`,
-        label: `ID matte: ${obj}${crypto.layers.length > 1 ? ` (${layer.name})` : ''}`,
+        label: crypto.layers.length > 1
+          ? t('inspector.compositing.idMatteIn', 'ID matte: {object} ({layer})', { object: obj, layer: layer.name })
+          : t('inspector.compositing.idMatte', 'ID matte: {object}', { object: obj }),
         // Import + insert + reorder + matte through the engine, one entry (idMatteEdits.ts).
         onSelect: () => { void createIdMatteLayerEdit(nodeId, layer.name, [obj]); },
       });
@@ -105,14 +108,14 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
   const currentParent = !isRoot ? mirrorParentOf(m, nodeId) : null;
   const parentOptions = !isRoot ? mirrorEligibleParents(m, nodeId) : [];
   const currentParentName = currentParent
-    ? parentOptions.find((o) => o.id === currentParent)?.name ?? 'Parent'
-    : 'None';
+    ? parentOptions.find((o) => o.id === currentParent)?.name ?? t('inspector.compositing.parent', 'Parent')
+    : t('inspector.compositing.none', 'None');
 
   const parentItems: DropdownItem[] = [
     {
       type: 'item',
       id: '__none__',
-      label: 'None',
+      label: t('inspector.compositing.none', 'None'),
       icon: currentParent === null ? 'check' : undefined,
       onSelect: (m) => parentLayer(nodeId, null, m),
     },
@@ -135,7 +138,7 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
   const currentMatteOption = matteOptionId(matte);
   const currentSourceId = matte?.sourceId;
 
-  const matteLabel = MATTE_OPTIONS.find((m) => m.id === currentMatteOption)?.label ?? 'No matte';
+  const matteLabel = MATTE_OPTIONS.find((m) => m.id === currentMatteOption)?.label ?? t('inspector.compositing.noMatte', 'No matte');
   const matteItems: DropdownItem[] = MATTE_OPTIONS.map((m) => ({
     type: 'item',
     id: m.id,
@@ -145,14 +148,14 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
   }));
 
   const sourceLabel = currentSourceId && matte
-    ? siblings.find((s) => s.id === currentSourceId)?.name ?? 'Layer Above'
-    : 'Layer Above';
+    ? siblings.find((s) => s.id === currentSourceId)?.name ?? t('inspector.compositing.layerAbove', 'Layer Above')
+    : t('inspector.compositing.layerAbove', 'Layer Above');
 
   const sourceItems: DropdownItem[] = [
     {
       type: 'item',
       id: 'layer-above',
-      label: 'Layer Above (Default)',
+      label: t('inspector.compositing.layerAboveDefault', 'Layer Above (Default)'),
       icon: !currentSourceId ? 'check' : undefined,
       onSelect: () => setLayerMatte(nodeId, setMatteSource(matte, undefined)),
     },
@@ -191,17 +194,17 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
       <div className={styles.group}>
         {!isRoot && (
           <div className={styles.row}>
-            <span className={styles.label}>Parent</span>
+            <span className={styles.label}>{t('inspector.compositing.parent', 'Parent')}</span>
             <div className={styles.rowRight}>
               <PickWhip
-                label="Parent pick-whip — drag onto a layer (Alt: keep values, layer jumps)"
+                label={t('inspector.compositing.parentPickWhip', 'Parent pick-whip — drag onto a layer (Alt: keep values, layer jumps)')}
                 accept={(target) => parentOptions.some((o) => o.id === target.nodeId)}
                 onPick={(target, m) => parentLayer(nodeId, target.nodeId, m)}
               />
               <Dropdown
                 placement="bottom-end"
                 trigger={
-                  <button type="button" className={styles.trigger} aria-label="Parent layer">
+                  <button type="button" className={styles.trigger} aria-label={t('inspector.compositing.parentLayer', 'Parent layer')}>
                     <span className={styles.triggerText}>{currentParentName}</span>
                     <Icon name="chevron-down" size="sm" />
                   </button>
@@ -213,7 +216,7 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
         )}
 
         <div className={styles.row}>
-          <span className={styles.label}>Blend Mode</span>
+          <span className={styles.label}>{t('inspector.compositing.blendMode', 'Blend Mode')}</span>
           <Dropdown
             placement="bottom-end"
             trigger={
@@ -227,7 +230,7 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Track Matte</span>
+          <span className={styles.label}>{t('inspector.compositing.trackMatte', 'Track Matte')}</span>
           <Dropdown
             placement="bottom-end"
             trigger={
@@ -242,7 +245,7 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
 
         {matte && (
           <div className={styles.row}>
-            <span className={styles.label}>Matte Source</span>
+            <span className={styles.label}>{t('inspector.compositing.matteSource', 'Matte Source')}</span>
             <Dropdown
               placement="bottom-end"
               trigger={
@@ -260,11 +263,11 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
       {/* -- Layer Switches -- */}
       <div className={styles.group}>
         <div className={styles.row}>
-          <span className={styles.label}>Adjustment Layer</span>
+          <span className={styles.label}>{t('inspector.compositing.adjustmentLayer', 'Adjustment Layer')}</span>
           <Switch
             checked={isAdjustment}
             onChange={(e) => setSwitch(nodeId, 'adjustment', e.currentTarget.checked)}
-            aria-label="Adjustment layer"
+            aria-label={t('inspector.compositing.adjustmentLayerAria', 'Adjustment layer')}
           />
         </div>
 
@@ -275,53 +278,53 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
           <div className={styles.row}>
             <span
               className={styles.label}
-              title="Draft: nearest-neighbour sampling. Wireframe: the viewport shows only the layer outline (exports as Best)."
+              title={t('inspector.compositing.qualityTip', 'Draft: nearest-neighbour sampling. Wireframe: the viewport shows only the layer outline (exports as Best).')}
             >
-              Quality
+              {t('inspector.compositing.quality', 'Quality')}
             </span>
             <Segmented<LayerQuality>
               size="sm"
               value={(layer?.switches.quality ?? 'best') as LayerQuality}
               onChange={(q) => { void setLayersSwitch([nodeId], { quality: q }, q === 'best' ? 'Best Quality' : q === 'draft' ? 'Draft Quality' : 'Wireframe Quality'); }}
               options={[
-                { value: 'best', label: 'Best' },
-                { value: 'draft', label: 'Draft' },
-                { value: 'wireframe', label: 'Wireframe' },
+                { value: 'best', label: t('inspector.compositing.best', 'Best') },
+                { value: 'draft', label: t('inspector.compositing.draft', 'Draft') },
+                { value: 'wireframe', label: t('inspector.compositing.wireframe', 'Wireframe') },
               ]}
-              aria-label="Layer quality"
+              aria-label={t('inspector.compositing.layerQuality', 'Layer quality')}
             />
           </div>
         )}
 
         <div className={styles.row}>
-          <span className={styles.label}>Motion Blur</span>
+          <span className={styles.label}>{t('inspector.compositing.motionBlur', 'Motion Blur')}</span>
           <Switch
             checked={motionBlur}
             onChange={(e) => setSwitch(nodeId, 'motionBlur', e.currentTarget.checked)}
-            aria-label="Motion blur"
+            aria-label={t('inspector.compositing.motionBlurAria', 'Motion blur')}
           />
         </div>
 
         {motionBlur && (
           <div className={styles.nestedCard}>
             <div className={styles.row}>
-              <span className={styles.label}>Comp Enabled</span>
-              <Switch checked={mb.enabled} onChange={(ev) => e.send('Motion Blur', mbCommands({ enabled: ev.currentTarget.checked }))} aria-label="Comp enabled motion blur" />
+              <span className={styles.label}>{t('inspector.compositing.compEnabled', 'Comp Enabled')}</span>
+              <Switch checked={mb.enabled} onChange={(ev) => e.send('Motion Blur', mbCommands({ enabled: ev.currentTarget.checked }))} aria-label={t('inspector.compositing.compEnabledAria', 'Comp enabled motion blur')} />
             </div>
             <div className={styles.fieldGrid}>
               <label className={styles.fieldLabel}>
-                <span>Shutter</span>
-                <ValueField value={mb.shutterAngle} min={0} max={360} precision={0} unit="°" onChange={(v) => e.send('Shutter Angle', mbCommands({ shutterAngle: v }))} {...e.scrub('Shutter Angle')} aria-label="Shutter angle" />
+                <span>{t('inspector.compositing.shutter', 'Shutter')}</span>
+                <ValueField value={mb.shutterAngle} min={0} max={360} precision={0} unit="°" onChange={(v) => e.send('Shutter Angle', mbCommands({ shutterAngle: v }))} {...e.scrub('Shutter Angle')} aria-label={t('inspector.compositing.shutterAngle', 'Shutter angle')} />
               </label>
               <label className={styles.fieldLabel}>
-                <span>Phase</span>
-                <ValueField value={mb.shutterPhase ?? -90} min={-360} max={360} precision={0} unit="°" onChange={(v) => e.send('Shutter Phase', mbCommands({ shutterPhase: v }))} {...e.scrub('Shutter Phase')} aria-label="Shutter phase" />
+                <span>{t('inspector.compositing.phase', 'Phase')}</span>
+                <ValueField value={mb.shutterPhase ?? -90} min={-360} max={360} precision={0} unit="°" onChange={(v) => e.send('Shutter Phase', mbCommands({ shutterPhase: v }))} {...e.scrub('Shutter Phase')} aria-label={t('inspector.compositing.shutterPhase', 'Shutter phase')} />
               </label>
             </div>
             <div className={styles.fieldGrid}>
               <label className={styles.fieldLabel}>
-                <span>Samples</span>
-                <ValueField value={mb.samples} min={2} max={32} precision={0} onChange={(v) => e.send('Motion Blur Samples', mbCommands({ samplesPerFrame: Math.round(v) }))} {...e.scrub('Motion Blur Samples')} aria-label="Motion blur samples" />
+                <span>{t('inspector.compositing.samples', 'Samples')}</span>
+                <ValueField value={mb.samples} min={2} max={32} precision={0} onChange={(v) => e.send('Motion Blur Samples', mbCommands({ samplesPerFrame: Math.round(v) }))} {...e.scrub('Motion Blur Samples')} aria-label={t('inspector.compositing.motionBlurSamples', 'Motion blur samples')} />
               </label>
             </div>
           </div>
@@ -334,10 +337,10 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
           <span
             className={styles.label}
             title={retimable
-              ? 'Playback speed of the source: 200 % plays at half speed'
-              : 'Stretches this layer’s bar, keyframes and markers about its in-point (negative reverses them). Applied on release.'}
+              ? t('inspector.compositing.stretchSourceTip', 'Playback speed of the source: 200 % plays at half speed')
+              : t('inspector.compositing.stretchBakeTip', 'Stretches this layer’s bar, keyframes and markers about its in-point (negative reverses them). Applied on release.')}
           >
-            Time Stretch
+            {t('inspector.compositing.timeStretch', 'Time Stretch')}
           </span>
           <div style={{ width: 120 }}>
             {retimable ? (
@@ -350,7 +353,7 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
                 // `setLayerTiming` stretch is signed (negative = reversed): keep the Reverse switch as it is.
                 onChange={(v) => e.send('Time Stretch', layerStretchCommands(nodeId, v, time.reverse))}
                 {...e.scrub('Time Stretch')}
-                aria-label="Time stretch"
+                aria-label={t('inspector.compositing.timeStretchAria', 'Time stretch')}
               />
             ) : (
               <ValueField
@@ -369,35 +372,35 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
                   // `timeStretchLayers` bakes bar + keyframes + layer markers about the in-point (AE Hold in Place: Layer In-point); one entry.
                   if (pct !== 100 && pct !== 0) void edit('Time Stretch', { type: 'timeStretchLayers', layers: [nodeId], stretch: pct / 100, hold: 'inPoint' });
                 }}
-                aria-label="Time stretch"
+                aria-label={t('inspector.compositing.timeStretchAria', 'Time stretch')}
               />
             )}
           </div>
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Reverse</span>
+          <span className={styles.label}>{t('inspector.compositing.reverse', 'Reverse')}</span>
           <Switch
             checked={time.reverse}
             // `timeReverseLayers` FLIPS the flag: sent only when the switch changes it.
             onChange={(e) => { if (e.currentTarget.checked !== time.reverse) void edit('Reverse Playback', { type: 'timeReverseLayers', layers: [nodeId] }); }}
-            aria-label="Reverse playback"
+            aria-label={t('inspector.compositing.reversePlayback', 'Reverse playback')}
           />
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Freeze Frame</span>
+          <span className={styles.label}>{t('inspector.compositing.freezeFrame', 'Freeze Frame')}</span>
           <Switch
             checked={time.freeze}
             // On holds the frame at the playhead (`freezeFrame`, AE), off is `unfreezeLayers` — as the Effects panel's switch.
             onChange={(ev) => { if (ev.currentTarget.checked !== time.freeze) void setFreezeFrameEdit(nodeId, ev.currentTarget.checked, getTime()); }}
-            aria-label="Freeze frame"
+            aria-label={t('inspector.compositing.freezeFrameAria', 'Freeze frame')}
           />
         </div>
 
         {time.freeze && (
           <div className={styles.row}>
-            <span className={styles.label}>Freeze Time</span>
+            <span className={styles.label}>{t('inspector.compositing.freezeTime', 'Freeze Time')}</span>
             <div style={{ width: 120 }}>
               <ValueField
                 value={time.freezeTime}
@@ -406,19 +409,19 @@ export function CompositingSection({ nodeId }: { nodeId: string }): JSX.Element 
                 unit="s"
                 // A typed SOURCE time: `[unfreezeLayers, freezeFrame{comp time of v}]` in one entry (on a frozen layer `freezeFrame` alone re-holds the frame it already shows).
                 onChange={(v) => { void setFreezeTimeEdit(nodeId, v); }}
-                aria-label="Freeze time"
+                aria-label={t('inspector.compositing.freezeTimeAria', 'Freeze time')}
               />
             </div>
           </div>
         )}
 
         <div className={styles.row}>
-          <span className={styles.label}>Frame Blend</span>
+          <span className={styles.label}>{t('inspector.compositing.frameBlend', 'Frame Blend')}</span>
           <Dropdown
             placement="bottom-end"
             trigger={
               <button type="button" className={styles.trigger}>
-                <span className={styles.triggerText}>{FRAME_BLENDS.find((b) => b.value === time.frameBlend)?.label ?? 'Off'}</span>
+                <span className={styles.triggerText}>{FRAME_BLENDS.find((b) => b.value === time.frameBlend)?.label ?? t('inspector.compositing.off', 'Off')}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
             }

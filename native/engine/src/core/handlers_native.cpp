@@ -289,7 +289,7 @@ void native_invoke_action(HCtx& x, const api::PropRef& group, const std::string&
   const std::string type = e->at("type").is_string() ? e->at("type").str() : "";
   const NativeEffect* ne = NativeEffects::find(type);
   if (ne == nullptr) not_native();
-  const bool isButton = std::ranges::any_of(ne->actions, [&](const auto& a) { return a.first == action; });
+  const bool isButton = std::ranges::any_of(ne->actions, [&](const auto& a) { return a.key == action; });
   const bool isSupervised = action.starts_with("changed:") &&
                             std::ranges::find(ne->supervised, std::string_view(action).substr(8)) != ne->supervised.end();
   if (!isButton && !isSupervised) {
@@ -310,8 +310,8 @@ void native_invoke_action(HCtx& x, const api::PropRef& group, const std::string&
     fail(ErrorCode::internal, "plugin '" + ne->provider + "': " + f->message, {.layer = group.layer, .path = group.path});
   }
   x.label = [&]() -> std::string {
-    for (const auto& [name, label] : ne->actions) {
-      if (name == action) return label;
+    for (const NativeAction& a : ne->actions) {
+      if (a.key == action) return a.label;
     }
     return ne->def.label;
   }();

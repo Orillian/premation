@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorTree } from '@hooks/useMirror';
 import { plainValue } from '@core/mirror/trackIndex';
@@ -130,16 +131,16 @@ export function VariableAxesSection({ nodeId }: { nodeId: string }): JSX.Element
 
   return (
     <div className={styles.sectionCard}>
-      <div className={styles.sectionHeader}>Variable Axes</div>
+      <div className={styles.sectionHeader}>{t('inspector.textOptions.variableAxes', 'Variable Axes')}</div>
       {nominal && axes.length === 0 ? (
         <div className={styles.controlRow}>
           <button
             type="button"
             className={styles.metricToggle}
-            title="This font's file could not be read (no Local Font Access, or a web font), so its axes are unknown. Show the registered axes with nominal ranges."
+            title={t('inspector.textOptions.showRegisteredTitle', "This font's file could not be read (no Local Font Access, or a web font), so its axes are unknown. Show the registered axes with nominal ranges.")}
             onClick={() => setShowNominal(true)}
           >
-            Show registered axes
+            {t('inspector.textOptions.showRegistered', 'Show registered axes')}
           </button>
         </div>
       ) : (
@@ -150,7 +151,9 @@ export function VariableAxesSection({ nodeId }: { nodeId: string }): JSX.Element
               nodeId={nodeId}
               path={axisPropPath(a.tag)}
               label={axisLabel(a.tag)}
-              title={`${a.tag} ${a.min}–${a.max}${nominal ? ' (nominal range — the font file was not read)' : ''}. Canvas draws axes through an installed-font alias; web fonts keep their defaults.`}
+              title={nominal
+                ? t('inspector.textOptions.axisTitleNominal', '{tag} {min}–{max} (nominal range — the font file was not read). Canvas draws axes through an installed-font alias; web fonts keep their defaults.', { tag: a.tag, min: a.min, max: a.max })
+                : t('inspector.textOptions.axisTitle', '{tag} {min}–{max}. Canvas draws axes through an installed-font alias; web fonts keep their defaults.', { tag: a.tag, min: a.min, max: a.max })}
               value={staticValue(a)}
               min={a.min}
               max={a.max}
@@ -165,11 +168,13 @@ export function VariableAxesSection({ nodeId }: { nodeId: string }): JSX.Element
 
 // ── Path Options ─────────────────────────────────────────────────────
 
-const SWITCHES: ReadonlyArray<{ param: TextPathParam; label: string; title: string }> = [
-  { param: 'reversed', label: 'Reverse Path', title: 'Walk the path backwards' },
-  { param: 'perpendicular', label: 'Perpendicular', title: 'Perpendicular To Path — turn each character to the path heading' },
-  { param: 'forceAlignment', label: 'Force Alignment', title: 'Spread the characters from First Margin to Last Margin' },
-];
+function pathSwitches(): ReadonlyArray<{ param: TextPathParam; label: string; title: string }> {
+  return [
+    { param: 'reversed', label: t('inspector.textOptions.reversePath', 'Reverse Path'), title: t('inspector.textOptions.reversePathTitle', 'Walk the path backwards') },
+    { param: 'perpendicular', label: t('inspector.textOptions.perpendicular', 'Perpendicular'), title: t('inspector.textOptions.perpendicularTitle', 'Perpendicular To Path — turn each character to the path heading') },
+    { param: 'forceAlignment', label: t('inspector.textOptions.forceAlignment', 'Force Alignment'), title: t('inspector.textOptions.forceAlignmentTitle', 'Spread the characters from First Margin to Last Margin') },
+  ];
+}
 
 /** Path Options' defaults (textPath.ts `defaultTextPath`) for a param the tree does not report. */
 const PATH_DEFAULTS: Readonly<Record<TextPathParam, number>> = {
@@ -187,8 +192,8 @@ export function TextPathOptions({ nodeId }: { nodeId: string }): JSX.Element | n
   };
   const cfg = { firstMargin: param('firstMargin'), lastMargin: param('lastMargin') };
   return (
-    <div className={styles.metricGrid} role="group" aria-label="Path Options">
-      {SWITCHES.map((s) => (
+    <div className={styles.metricGrid} role="group" aria-label={t('inspector.textOptions.pathOptions', 'Path Options')}>
+      {pathSwitches().map((s) => (
         <KeyframeableSwitch
           key={s.param}
           nodeId={nodeId}
@@ -201,14 +206,14 @@ export function TextPathOptions({ nodeId }: { nodeId: string }): JSX.Element | n
       <KeyframeableNumberCell
         nodeId={nodeId}
         path={textPathPropPath('firstMargin')}
-        label="First Margin"
+        label={t('inspector.textOptions.firstMargin', 'First Margin')}
         unit="px"
         value={cfg.firstMargin}
       />
       <KeyframeableNumberCell
         nodeId={nodeId}
         path={textPathPropPath('lastMargin')}
-        label="Last Margin"
+        label={t('inspector.textOptions.lastMargin', 'Last Margin')}
         unit="px"
         value={cfg.lastMargin}
       />
@@ -233,33 +238,33 @@ export function OpenTypeControls({ nodeId }: { nodeId: string }): JSX.Element | 
   const write = (label: string, key: string, value: unknown): void => {
     void fieldEdit(label, nodeId, `text/${key}`, value);
   };
-  const NOTE = 'Applied through an installed-font alias (canvas has no font-feature API); a web font keeps its defaults.';
+  const NOTE = t('inspector.textOptions.featureNote', 'Applied through an installed-font alias (canvas has no font-feature API); a web font keeps its defaults.');
   const setItems: DropdownItem[] = Array.from({ length: 20 }, (_, i) => i + 1).map((n) => ({
     type: 'checkbox',
     id: `ss${n}`,
-    label: `Stylistic Set ${n}`,
+    label: t('inspector.textOptions.stylisticSetN', 'Stylistic Set {n}', { n }),
     checked: sets.includes(n),
     onChange: (on: boolean) =>
       write(`Stylistic Set ${n}`, 'stylisticSets', on ? [...new Set([...sets, n])].sort((a, b) => a - b) : sets.filter((s) => s !== n)),
   }));
   return (
-    <div className={styles.controlGroup} role="group" aria-label="OpenType Features">
+    <div className={styles.controlGroup} role="group" aria-label={t('inspector.textOptions.openTypeFeatures', 'OpenType Features')}>
       <button type="button" className={styles.metricToggle} data-active={ligatures} aria-pressed={ligatures}
-        title={`Standard Ligatures. ${NOTE}`} onClick={() => write('Standard Ligatures', 'ligatures', ligatures ? false : undefined)}>
+        title={t('inspector.textOptions.standardLigaturesTitle', 'Standard Ligatures. {note}', { note: NOTE })} onClick={() => write('Standard Ligatures', 'ligatures', ligatures ? false : undefined)}>
         fi
       </button>
       <button type="button" className={styles.metricToggle} data-active={dlig} aria-pressed={dlig}
-        title={`Discretionary Ligatures. ${NOTE}`} onClick={() => write('Discretionary Ligatures', 'discretionaryLigatures', dlig ? undefined : true)}>
+        title={t('inspector.textOptions.discretionaryLigaturesTitle', 'Discretionary Ligatures. {note}', { note: NOTE })} onClick={() => write('Discretionary Ligatures', 'discretionaryLigatures', dlig ? undefined : true)}>
         st
       </button>
       <button type="button" className={styles.metricToggle} data-active={calt} aria-pressed={calt}
-        title={`Contextual Alternates. ${NOTE}`} onClick={() => write('Contextual Alternates', 'contextualAlternates', calt ? false : undefined)}>
+        title={t('inspector.textOptions.contextualAlternatesTitle', 'Contextual Alternates. {note}', { note: NOTE })} onClick={() => write('Contextual Alternates', 'contextualAlternates', calt ? false : undefined)}>
         Alt
       </button>
       <Dropdown
         placement="bottom-end"
         trigger={
-          <button type="button" className={styles.metricToggle} data-active={sets.length > 0} title={`Stylistic Sets. ${NOTE}`}>
+          <button type="button" className={styles.metricToggle} data-active={sets.length > 0} title={t('inspector.textOptions.stylisticSetsTitle', 'Stylistic Sets. {note}', { note: NOTE })}>
             <span>{sets.length > 0 ? `ss ×${sets.length}` : 'ss'}</span>
             <Icon name="chevron-down" size="sm" />
           </button>

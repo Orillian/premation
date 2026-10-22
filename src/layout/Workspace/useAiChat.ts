@@ -13,7 +13,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiMessage, AiToolCall } from '@motion/ai-tools';
+import type { ConceptChoice, ConceptOption, CritiqueAxis } from '@motion/author';
 import { AiError, runAgent } from '@core/ai/AgentLoop';
+import { engineCompStill } from '@core/engine/engineStill';
+import { activeCompIdNow } from '@hooks/useMirror';
 import { type AiTransaction } from '@core/ai/aiTransaction';
 import type { PendingImage } from '@core/ai/imageAttachment';
 import { useAiProviderStore } from '@stores/aiProviderStore';
@@ -33,6 +36,7 @@ import {
   getLocalConversation,
   listLocalConversations,
 } from '@core/ai/localConversations';
+import { t } from '@core/i18n';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -82,99 +86,113 @@ function pruneImageTurns(history: AiMessage[]): AiMessage[] {
  * that no longer existed, and no branch at all for tools that did — which showed
  * the user "Working" through the most interesting part of a run.
  * `activityFor.test.ts` now checks both directions against the live registry.
+ *
+ * A function returning the table (not a module constant): the labels are
+ * translated, and `t()` must run when a label is shown, never at module scope.
+ * Keys sharing an English label share its translation key.
  */
-const TOOL_ACTIVITY: Record<string, string> = {
-  // ── Read ──
-  describe_scene: 'Reading the scene',
-  read_tracks: 'Reading the scene',
-  evaluate_at: 'Reading the scene',
-  get_selection: 'Reading the scene',
-  list_capabilities: 'Reading the scene',
-  list_presets: 'Reading the scene',
-  analyse_audio: 'Reading the scene',
-  inspect_layers: 'Reading the scene',
-  list_fonts: 'Reading the scene',
-  get_export_status: 'Reading the scene',
+function toolActivity(): Record<string, string> {
+  const reading = t('workspace.aiActivity.reading', 'Reading the scene');
+  const editingLayers = t('workspace.aiActivity.editingLayers', 'Editing layers');
+  const animating = t('workspace.aiActivity.animating', 'Animating');
+  const applyingEffects = t('workspace.aiActivity.applyingEffects', 'Applying effects');
+  const placingMedia = t('workspace.aiActivity.placingMedia', 'Placing media');
+  const masking = t('workspace.aiActivity.masking', 'Masking');
+  const repeaterBurst = t('workspace.aiActivity.repeaterBurst', 'Adding shape repeater burst');
+  const pathDistortion = t('workspace.aiActivity.pathDistortion', 'Morphing vector path distortion');
+  return {
+    // ── Read ──
+    describe_scene: reading,
+    read_tracks: reading,
+    evaluate_at: reading,
+    get_selection: reading,
+    list_capabilities: reading,
+    list_presets: reading,
+    analyse_audio: reading,
+    inspect_layers: reading,
+    list_fonts: reading,
+    get_export_status: reading,
 
-  // ── Structure ──
-  create_layer: 'Creating layers',
-  delete_layer: 'Removing layers',
-  update_layer: 'Editing layers',
-  reparent_layer: 'Editing layers',
-  reorder_layer: 'Arranging layers',
-  update_composition: 'Editing layers',
-  create_precomp: 'Nesting a precomp',
+    // ── Structure ──
+    create_layer: t('workspace.aiActivity.creatingLayers', 'Creating layers'),
+    delete_layer: t('workspace.aiActivity.removingLayers', 'Removing layers'),
+    update_layer: editingLayers,
+    reparent_layer: editingLayers,
+    reorder_layer: t('workspace.aiActivity.arrangingLayers', 'Arranging layers'),
+    update_composition: editingLayers,
+    create_precomp: t('workspace.aiActivity.nestingPrecomp', 'Nesting a precomp'),
 
-  // ── Animation ──
-  set_keyframes: 'Animating',
-  set_easing: 'Animating',
-  remove_keyframes: 'Animating',
-  apply_preset: 'Animating',
-  text_animator: 'Animating type',
-  set_spring: 'Solving spring physics',
-  set_time_remap: 'Retiming',
-  set_expression: 'Writing expressions',
-  set_motion_blur: 'Setting the shutter',
-  set_layer_timing: 'Timing the beats',
+    // ── Animation ──
+    set_keyframes: animating,
+    set_easing: animating,
+    remove_keyframes: animating,
+    apply_preset: animating,
+    text_animator: t('workspace.aiActivity.animatingType', 'Animating type'),
+    set_spring: t('workspace.aiActivity.springPhysics', 'Solving spring physics'),
+    set_time_remap: t('workspace.aiActivity.retiming', 'Retiming'),
+    set_expression: t('workspace.aiActivity.expressions', 'Writing expressions'),
+    set_motion_blur: t('workspace.aiActivity.shutter', 'Setting the shutter'),
+    set_layer_timing: t('workspace.aiActivity.timingBeats', 'Timing the beats'),
 
-  // ── Look ──
-  add_effect: 'Applying effects',
-  update_effect: 'Applying effects',
-  update_effect_param: 'Tuning effects',
-  set_shadow_stack: 'Building depth',
-  add_surface_treatment: 'Adding grain and vignette',
-  create_gradient: 'Painting the backdrop',
-  set_light: 'Lighting the scene',
-  apply_layer_style: 'Styling layers',
-  recolor_lottie_vector: 'Recolouring vectors',
+    // ── Look ──
+    add_effect: applyingEffects,
+    update_effect: applyingEffects,
+    update_effect_param: t('workspace.aiActivity.tuningEffects', 'Tuning effects'),
+    set_shadow_stack: t('workspace.aiActivity.buildingDepth', 'Building depth'),
+    add_surface_treatment: t('workspace.aiActivity.grainVignette', 'Adding grain and vignette'),
+    create_gradient: t('workspace.aiActivity.paintingBackdrop', 'Painting the backdrop'),
+    set_light: t('workspace.aiActivity.lighting', 'Lighting the scene'),
+    apply_layer_style: t('workspace.aiActivity.styling', 'Styling layers'),
+    recolor_lottie_vector: t('workspace.aiActivity.recolouring', 'Recolouring vectors'),
 
-  // ── Media and masks ──
-  create_media: 'Placing media',
-  // Named, and named honestly: this one takes seconds and costs credits, so
-  // "Working" would leave the user watching a spinner with no idea why.
-  generate_image: 'Generating imagery',
-  generate_video: 'Generating video',
-  generate_speech: 'Generating voice-over',
-  generate_3d_model: 'Generating a 3D model',
-  export_video: 'Queueing export',
-  import_svg: 'Drawing vectors',
-  create_media_from_attachment: 'Placing media',
-  create_mask: 'Masking',
-  update_mask: 'Masking',
-  paint_strokes: 'Painting strokes',
-  set_audio: 'Mixing audio',
+    // ── Media and masks ──
+    create_media: placingMedia,
+    // Named, and named honestly: this one takes seconds and costs credits, so
+    // "Working" would leave the user watching a spinner with no idea why.
+    generate_image: t('workspace.aiActivity.generatingImagery', 'Generating imagery'),
+    generate_video: t('workspace.aiActivity.generatingVideo', 'Generating video'),
+    generate_speech: t('workspace.aiActivity.generatingVoice', 'Generating voice-over'),
+    generate_3d_model: t('workspace.aiActivity.generating3d', 'Generating a 3D model'),
+    export_video: t('workspace.aiActivity.queueingExport', 'Queueing export'),
+    import_svg: t('workspace.aiActivity.drawingVectors', 'Drawing vectors'),
+    create_media_from_attachment: placingMedia,
+    create_mask: masking,
+    update_mask: masking,
+    paint_strokes: t('workspace.aiActivity.paintingStrokes', 'Painting strokes'),
+    set_audio: t('workspace.aiActivity.mixingAudio', 'Mixing audio'),
 
-  // ── Shapes and rigs ──
-  merge_paths: 'Merging paths',
-  set_trim_path: 'Revealing trim-path outlines',
-  add_repeater: 'Adding shape repeater burst',
-  add_path_operator: 'Morphing vector path distortion',
-  create_puppet_rig: 'Rigging puppet pins',
-  set_puppet_pin_keyframes: 'Animating the rig',
-  create_skeleton_rig: 'Building a skeleton',
-  pose_skeleton: 'Posing the skeleton',
+    // ── Shapes and rigs ──
+    merge_paths: t('workspace.aiActivity.mergingPaths', 'Merging paths'),
+    set_trim_path: t('workspace.aiActivity.trimPaths', 'Revealing trim-path outlines'),
+    add_repeater: repeaterBurst,
+    add_path_operator: pathDistortion,
+    create_puppet_rig: t('workspace.aiActivity.puppetPins', 'Rigging puppet pins'),
+    set_puppet_pin_keyframes: t('workspace.aiActivity.animatingRig', 'Animating the rig'),
+    create_skeleton_rig: t('workspace.aiActivity.buildingSkeleton', 'Building a skeleton'),
+    pose_skeleton: t('workspace.aiActivity.posingSkeleton', 'Posing the skeleton'),
 
-  // ── Compose recipes ──
-  add_scene: 'Setting up a scene',
-  add_transition: 'Adding a transition',
-  add_background: 'Painting the background',
-  add_title: 'Adding a title',
-  add_kinetic_title: 'Animating kinetic type',
-  add_emblem: 'Building the emblem',
-  add_cards: 'Laying out cards',
-  add_lower_third: 'Adding a lower third',
-  add_ambient_orbs: 'Adding ambient depth',
-  add_light_sweep: 'Adding a light sweep',
-  add_camera_move: 'Adding a camera move',
-  add_logo_reveal: 'Revealing the logo',
-  add_radial_burst: 'Adding shape repeater burst',
-  add_path_morph: 'Morphing vector path distortion',
-  stagger_in: 'Staggering entrances',
-};
+    // ── Compose recipes ──
+    add_scene: t('workspace.aiActivity.settingUpScene', 'Setting up a scene'),
+    add_transition: t('workspace.aiActivity.addingTransition', 'Adding a transition'),
+    add_background: t('workspace.aiActivity.paintingBackground', 'Painting the background'),
+    add_title: t('workspace.aiActivity.addingTitle', 'Adding a title'),
+    add_kinetic_title: t('workspace.aiActivity.kineticType', 'Animating kinetic type'),
+    add_emblem: t('workspace.aiActivity.buildingEmblem', 'Building the emblem'),
+    add_cards: t('workspace.aiActivity.layingOutCards', 'Laying out cards'),
+    add_lower_third: t('workspace.aiActivity.addingLowerThird', 'Adding a lower third'),
+    add_ambient_orbs: t('workspace.aiActivity.ambientDepth', 'Adding ambient depth'),
+    add_light_sweep: t('workspace.aiActivity.lightSweep', 'Adding a light sweep'),
+    add_camera_move: t('workspace.aiActivity.cameraMove', 'Adding a camera move'),
+    add_logo_reveal: t('workspace.aiActivity.logoReveal', 'Revealing the logo'),
+    add_radial_burst: repeaterBurst,
+    add_path_morph: pathDistortion,
+    stagger_in: t('workspace.aiActivity.staggering', 'Staggering entrances'),
+  };
+}
 
 /** A human label for the tool the model is running, shown while it works. */
 function activityFor(toolName: string): string {
-  return TOOL_ACTIVITY[toolName] ?? 'Working';
+  return toolActivity()[toolName] ?? t('workspace.aiActivity.working', 'Working');
 }
 
 /** Maps a cloud project to its most recent AI thread, for the initial load. */
@@ -225,28 +243,30 @@ function describeError(err: unknown): string {
       case 'no_key':
         // Dashboard → Settings → Assistant. It is deliberately not a dialog —
         // see the note in CustomizeDialog.tsx — so name the page it is on.
-        return 'No API key for this provider yet — add one in Settings → Assistant.';
+        return t('workspace.aiChat.errorNoKey', 'No API key for this provider yet — add one in Settings → Assistant.');
       case 'auth':
-        return 'That provider rejected the stored key. Re-enter it in Settings → Assistant.';
+        return t('workspace.aiChat.errorAuth', 'That provider rejected the stored key. Re-enter it in Settings → Assistant.');
       case 'coming_soon':
-        return 'Connect your own API key in Settings → Assistant to use the assistant.';
+        return t('workspace.aiChat.errorConnectKey', 'Connect your own API key in Settings → Assistant to use the assistant.');
       case 'upgrade_required':
-        return 'Connect your own API key in Settings → Assistant to use the assistant.';
+        return t('workspace.aiChat.errorConnectKey', 'Connect your own API key in Settings → Assistant to use the assistant.');
       case 'no_credits':
         return err.message; // the server explains the credit balance
       case 'rate_limit':
-        return `Rate limited by the provider.${err.retryAfterMs ? ` Try again in ${Math.ceil(err.retryAfterMs / 1000)}s.` : ' Try again shortly.'}`;
+        return err.retryAfterMs
+          ? t('workspace.aiChat.errorRateLimitRetry', 'Rate limited by the provider. Try again in {seconds}s.', { seconds: Math.ceil(err.retryAfterMs / 1000) })
+          : t('workspace.aiChat.errorRateLimit', 'Rate limited by the provider. Try again shortly.');
       case 'overloaded':
-        return 'The provider is overloaded right now. Try again in a moment.';
+        return t('workspace.aiChat.errorOverloaded', 'The provider is overloaded right now. Try again in a moment.');
       case 'context_length':
-        return 'This conversation got too long for the model. Start a new one.';
+        return t('workspace.aiChat.errorContextLength', 'This conversation got too long for the model. Start a new one.');
       case 'cancelled':
-        return 'Cancelled — nothing was changed.';
+        return t('workspace.aiChat.errorCancelled', 'Cancelled — nothing was changed.');
       default:
         return err.message;
     }
   }
-  return err instanceof Error ? err.message : 'The assistant could not complete that.';
+  return err instanceof Error ? err.message : t('workspace.aiChat.errorGeneric', 'The assistant could not complete that.');
 }
 
 export type PipelineStageStatus = 'pending' | 'active' | 'done';
@@ -254,6 +274,10 @@ export type PipelineStageStatus = 'pending' | 'active' | 'done';
 export interface PipelineStage {
   label: string;
   status: PipelineStageStatus;
+  /** performance.now() when the stage went active; the ledger ticks its time from it. */
+  startedAt?: number;
+  /** How long a done stage took, ms. */
+  ms?: number;
 }
 
 /** One concrete build step (a tool call) shown as a live checklist item. */
@@ -296,6 +320,47 @@ export const PIPELINE_STAGE_LABELS_BY_MODE: Readonly<Record<'library' | 'author'
   author: AUTHOR_STAGE_LABELS,
 };
 
+/** The four stages of the run card's rail (AiChatPanel): the detailed stage lists fold into these. */
+export type RailStage = 'Plan' | 'Build' | 'Review' | 'Revise';
+export interface RailStep {
+  label: RailStage;
+  status: PipelineStageStatus;
+}
+
+/** Which rail stage each detailed stage belongs to, per mode. */
+const RAIL_OF: Readonly<Record<'library' | 'author', readonly RailStage[]>> = {
+  // Writing the creative brief, casting layouts, casting motion, building, reviewing.
+  library: ['Plan', 'Plan', 'Plan', 'Build', 'Review'],
+  // Proposing concepts, designing, writing beats, building, reviewing, revising.
+  author: ['Plan', 'Plan', 'Plan', 'Build', 'Review', 'Revise'],
+};
+
+/**
+ * The rail from the detailed stages: a rail stage is done when every stage
+ * in it is done, active when any is, else pending. Library mode has no
+ * Revise stage, so its rail is three steps.
+ */
+export function railStages(stages: readonly PipelineStage[] | null, mode: 'library' | 'author'): RailStep[] {
+  const map = RAIL_OF[mode];
+  const order: RailStage[] = mode === 'author' ? ['Plan', 'Build', 'Review', 'Revise'] : ['Plan', 'Build', 'Review'];
+  return order.map((label) => {
+    const mine = (stages ?? []).filter((_, i) => map[i] === label);
+    const status: PipelineStageStatus = !mine.length
+      ? 'pending'
+      : mine.every((s) => s.status === 'done')
+        ? 'done'
+        : mine.some((s) => s.status === 'active' || s.status === 'done')
+          ? 'active'
+          : 'pending';
+    return { label, status };
+  });
+}
+
+/** How many cells the live filmstrip of a run in progress has. */
+export const LIVE_FRAME_CELLS = 6;
+/** How often a cell of the live filmstrip is re-rendered while a run builds, ms. */
+const LIVE_FRAME_EVERY_MS = 2500;
+
 /** Map an onActivity label to its canonical stage index (-1 if not a stage). */
 function matchStageIndex(label: string, mode: 'library' | 'author' = 'library'): number {
   const l = label.toLowerCase();
@@ -326,8 +391,33 @@ export interface UseAiChat {
   /** Stored threads for this project, newest activity first. */
   conversations: AiConversationSummary[];
   activeConversationId: string | null;
-  submit: (prompt: string, images?: readonly PendingImage[]) => Promise<void>;
+  submit: (prompt: string, images?: readonly PendingImage[], opts?: SubmitOptions) => Promise<void>;
   cancel: () => void;
+  /** The generative mode of the run in flight (or the last one). */
+  runMode: 'library' | 'author';
+  /** The run card's four-stage rail, folded from `pipelineStages`. */
+  rail: RailStep[];
+  /** performance.now() when the run in flight started; null between runs. */
+  runStartedAt: number | null;
+  /** The name of the piece being built (the chosen concept), once known. */
+  runTitle: string | null;
+  /** Frames of the piece as it is built (object URLs, LIVE_FRAME_CELLS cells; '' = not yet). */
+  liveFrames: string[];
+  /**
+   * The concept stage, waiting on the user: the three candidates and which
+   * round of "three more" this is. Null when no choice is pending.
+   */
+  concepts: { concepts: ConceptOption[]; round: number } | null;
+  /** Answer the concept stage (a pick, "three more" or "surprise me"). */
+  pickConcept: (choice: ConceptChoice) => void;
+  /** The last run's critique scores (1–10 per axis), when the critic gave them. */
+  resultScores: Record<CritiqueAxis, number> | null;
+  /** The concept the last run built, when it ran a concept stage. */
+  resultConcept: ConceptOption | null;
+  /** Discard the pending result and build the same brief on a different concept. */
+  anotherTake: () => void;
+  /** What Apply last committed: how many changes, for the line under the result. */
+  lastApplied: { changes: number; title: string | null } | null;
   /** Start a fresh thread. The old one stays in the history list. */
   newChat: () => void;
   /** Reopen a stored thread. */
@@ -356,6 +446,11 @@ export interface UseAiChat {
   packs: readonly { id: string; displayName: string; intent: string }[];
   /** Frames sampled across the last result, for the preview strip. */
   filmstrip: string[];
+}
+
+export interface SubmitOptions {
+  /** Concept names the concept stage must not offer again ("Another take"). */
+  avoidConcepts?: readonly string[];
 }
 
 /** What the composer can pin. Every field is optional — unset means "you decide". */
@@ -405,11 +500,22 @@ export function useAiChat(): UseAiChat {
     }
     if (idx === -1) return false;
     setPipelineStages((prev) => {
-      const stages: PipelineStage[] = PIPELINE_STAGE_LABELS_BY_MODE[mode].map((stLabel, i) => ({
-        label: stLabel,
-        status: i < idx ? 'done' : i === idx ? 'active' : 'pending',
-      }));
-      void prev; // suppress unused warning
+      // Each stage keeps its clock: a stage that was active ends now (its
+      // duration is kept), the one going active starts now, a stage already
+      // active stays on its own start.
+      const now = performance.now();
+      const stages: PipelineStage[] = PIPELINE_STAGE_LABELS_BY_MODE[mode].map((stLabel, i) => {
+        const was = prev?.[i];
+        const status: PipelineStageStatus = i < idx ? 'done' : i === idx ? 'active' : 'pending';
+        const stage: PipelineStage = { label: stLabel, status };
+        if (status === 'done') {
+          const ms = was?.status === 'done' ? was.ms : was?.status === 'active' && was.startedAt !== undefined ? now - was.startedAt : undefined;
+          if (ms !== undefined) stage.ms = ms;
+        } else if (status === 'active') {
+          stage.startedAt = was?.status === 'active' && was.startedAt !== undefined ? was.startedAt : now;
+        }
+        return stage;
+      });
       return stages;
     });
     return true;
@@ -455,6 +561,25 @@ export function useAiChat(): UseAiChat {
 
   /** Frames sampled across the last result. Cleared when a new run starts. */
   const [filmstrip, setFilmstrip] = useState<string[]>([]);
+  const [runMode, setRunMode] = useState<'library' | 'author'>(() => authorModeDefault());
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [runTitle, setRunTitle] = useState<string | null>(null);
+  const [liveFrames, setLiveFrames] = useState<string[]>([]);
+  const [concepts, setConcepts] = useState<{ concepts: ConceptOption[]; round: number } | null>(null);
+  const [resultScores, setResultScores] = useState<Record<CritiqueAxis, number> | null>(null);
+  const [resultConcept, setResultConcept] = useState<ConceptOption | null>(null);
+  const [lastApplied, setLastApplied] = useState<{ changes: number; title: string | null } | null>(null);
+  /** The concept gate's resolver while the stage waits on the user. */
+  const conceptResolveRef = useRef<((c: ConceptChoice) => void) | null>(null);
+  /** The last brief sent, for "Another take". */
+  const lastSubmitRef = useRef<{ text: string; images?: readonly PendingImage[] } | null>(null);
+  /** Object URLs of the live frames, revoked when the strip resets. */
+  const liveUrlsRef = useRef<string[]>([]);
+  const resetLiveFrames = useCallback(() => {
+    for (const u of liveUrlsRef.current) if (u) URL.revokeObjectURL(u);
+    liveUrlsRef.current = [];
+    setLiveFrames([]);
+  }, []);
 
   const [isManualMode, setIsManualMode] = useState<boolean>(() => {
     try {
@@ -525,7 +650,7 @@ export function useAiChat(): UseAiChat {
     setConversations(
       local.map((c) => ({
         id: c.id,
-        title: c.title ?? c.messages.find((m) => m.role === 'user')?.content.slice(0, 60) ?? 'Chat',
+        title: c.title ?? c.messages.find((m) => m.role === 'user')?.content.slice(0, 60) ?? t('workspace.aiChat.untitled', 'Chat'),
         projectId: bound ?? 'local',
         createdAt: new Date(c.updatedAt).toISOString(),
         updatedAt: new Date(c.updatedAt).toISOString(),
@@ -657,7 +782,10 @@ export function useAiChat(): UseAiChat {
     void pendingTxRef.current.commit();
     pendingTxRef.current = null;
     setHasPendingTx(false);
-    setPendingChanges([]);
+    setPendingChanges((c) => {
+      setLastApplied({ changes: c.length, title: resultConcept?.name ?? null });
+      return [];
+    });
 
     if (pendingProseRef.current) {
       const { user, assistant } = pendingProseRef.current;
@@ -672,7 +800,7 @@ export function useAiChat(): UseAiChat {
       ]);
       pendingProseRef.current = null;
     }
-  }, [persist]);
+  }, [persist, resultConcept]);
 
   const discardPending = useCallback(() => {
     if (!pendingTxRef.current) return;
@@ -699,10 +827,31 @@ export function useAiChat(): UseAiChat {
     });
   }, []);
 
-  const cancel = useCallback(() => abort.current?.abort(), []);
+  const cancel = useCallback(() => {
+    // A concept stage waiting on the user is part of the run: cancelling
+    // the run answers it so the runner can unwind.
+    conceptResolveRef.current?.({ kind: 'surprise' });
+    conceptResolveRef.current = null;
+    setConcepts(null);
+    abort.current?.abort();
+  }, []);
+
+  const pickConcept = useCallback((choice: ConceptChoice) => {
+    const resolve = conceptResolveRef.current;
+    conceptResolveRef.current = null;
+    setConcepts(null);
+    resolve?.(choice);
+  }, []);
 
   const newChat = useCallback(() => {
     abort.current?.abort();
+    conceptResolveRef.current?.({ kind: 'surprise' });
+    conceptResolveRef.current = null;
+    setConcepts(null);
+    setLastApplied(null);
+    setResultScores(null);
+    setResultConcept(null);
+    resetLiveFrames();
     if (pendingTxRef.current) {
       void pendingTxRef.current.rollback();
       pendingTxRef.current = null;
@@ -719,7 +868,7 @@ export function useAiChat(): UseAiChat {
     setActiveId(null);
     const bound = useCloudProjectStore.getState().projectId;
     writeLocal(convKey(bound ?? 'local'), null);
-  }, []);
+  }, [resetLiveFrames]);
 
   const openConversation = useCallback(async (id: string) => {
     if (busy) return;
@@ -746,9 +895,10 @@ export function useAiChat(): UseAiChat {
     void refreshConversations();
   }, [newChat, refreshConversations]);
 
-  const submit = useCallback(async (prompt: string, images?: readonly PendingImage[]) => {
+  const submit = useCallback(async (prompt: string, images?: readonly PendingImage[], opts: SubmitOptions = {}) => {
     const text = prompt.trim();
     if ((!text && !images?.length) || busy) return;
+    lastSubmitRef.current = { text, ...(images?.length ? { images } : {}) };
 
     if (hasPendingTx) {
       acceptPending();
@@ -780,8 +930,8 @@ export function useAiChat(): UseAiChat {
           {
             role: 'assistant',
             text: useAiProviderStore.getState().anyReady()
-              ? 'That provider is not connected on this account. Pick another one in the model menu below.'
-              : 'Connect an AI provider first — Dashboard → Settings → Assistant.',
+              ? t('workspace.aiChat.providerNotConnected', 'That provider is not connected on this account. Pick another one in the model menu below.')
+              : t('workspace.aiChat.connectProvider', 'Connect an AI provider first — Dashboard → Settings → Assistant.'),
             error: true,
           },
         ]);
@@ -797,6 +947,7 @@ export function useAiChat(): UseAiChat {
     const pinned = directionRef.current;
     const runMode = pinned.mode ?? authorModeDefault();
     runModeRef.current = runMode;
+    setRunMode(runMode);
     const boundProjectId = useCloudProjectStore.getState().projectId;
 
     const attachments = (images ?? []).map((i) => ({ mediaType: i.mediaType, dataBase64: i.dataBase64 }));
@@ -807,17 +958,61 @@ export function useAiChat(): UseAiChat {
     setMessages((m) => [...m, { role: 'user', text, images: images?.map((i) => i.dataUrl) }]);
     setBusy(true);
     setStreaming('');
-    setActivity('Reading the scene');
+    setActivity(t('workspace.aiActivity.reading', 'Reading the scene'));
     setPipelineStages(null); // reset from any prior run
     setPlanItems([]);
     setFilmstrip([]);
+    setRunStartedAt(performance.now());
+    setRunTitle(null);
+    setResultScores(null);
+    setResultConcept(null);
+    setLastApplied(null);
+    resetLiveFrames();
 
     const controller = new AbortController();
     abort.current = controller;
 
+    // The live filmstrip: once the build has started writing layers, one cell
+    // of the strip is re-rendered every few seconds (round-robin over the
+    // piece's duration), so a tool-heavy run shows what it is making rather
+    // than a spinner. Stills come from the engine (engineCompStill); a cell
+    // that cannot render stays as it was.
+    let liveCell = 0;
+    let liveBusy = false;
+    let liveStarted = false;
+    const liveTimer = window.setInterval(() => {
+      if (!liveStarted || liveBusy || controller.signal.aborted) return;
+      const comp = activeCompIdNow();
+      if (!comp) return;
+      const c = activeCompSettingsNow();
+      const d = settingsDurationSeconds(c, DEFAULT_COMPOSITION.durationSeconds);
+      const cell = liveCell;
+      liveCell = (liveCell + 1) % LIVE_FRAME_CELLS;
+      liveBusy = true;
+      void engineCompStill(comp, (d * (cell + 0.5)) / LIVE_FRAME_CELLS, 320)
+        .then((blob) => {
+          if (!blob || controller.signal.aborted) return;
+          const url = URL.createObjectURL(blob);
+          const old = liveUrlsRef.current[cell];
+          if (old) URL.revokeObjectURL(old);
+          liveUrlsRef.current[cell] = url;
+          setLiveFrames(Array.from({ length: LIVE_FRAME_CELLS }, (_, i) => liveUrlsRef.current[i] ?? ''));
+        })
+        .catch(() => { /* a cell that did not render keeps its last frame */ })
+        .finally(() => { liveBusy = false; });
+    }, LIVE_FRAME_EVERY_MS);
+
     try {
       const ai = useAiProviderStore.getState();
       const result = await runAgent(text || 'Use the attached image as the reference.', {
+        // The concept stage (author mode): the panel shows the three candidates
+        // and this promise waits for the user's answer.
+        chooseConcept: (list, round) => new Promise<ConceptChoice>((resolve) => {
+          conceptResolveRef.current = resolve;
+          setConcepts({ concepts: list, round });
+          setActivity(t('workspace.aiActivity.waitingForPick', 'Waiting for your pick'));
+        }),
+        ...(opts.avoidConcepts?.length ? { avoidConcepts: opts.avoidConcepts } : {}),
         provider: ai.provider,
         dialect: ai.dialect(),
         model: ai.model(),
@@ -864,6 +1059,7 @@ export function useAiChat(): UseAiChat {
           onToolStart: (call: AiToolCall) => {
             const label = activityFor(call.name);
             setActivity(label);
+            liveStarted = true;
             setPlanItems((items) => [...items, { id: call.id, label, status: 'active' }]);
           },
           onToolEnd: (call: AiToolCall, ok: boolean) => {
@@ -879,9 +1075,12 @@ export function useAiChat(): UseAiChat {
         },
       });
 
-      const answer = result.text || 'Done.';
+      const answer = result.text || t('workspace.aiChat.done', 'Done.');
       setStreaming('');
       setMessages((m) => [...m, { role: 'assistant', text: answer }]);
+      setResultScores(result.scores ?? null);
+      setResultConcept(result.concept ?? null);
+      if (result.concept) setRunTitle(result.concept.name);
 
       // A filmstrip, not a snapshot. `renderCritiqueEvidence` has built one for
       // the fit critic since the caster landed and the user has never seen it —
@@ -933,18 +1132,40 @@ export function useAiChat(): UseAiChat {
         { role: 'assistant', content: reason, isError: true },
       ]);
     } finally {
+      window.clearInterval(liveTimer);
+      conceptResolveRef.current = null;
+      setConcepts(null);
+      setRunStartedAt(null);
       setStreaming('');
       setActivity('');
       setBusy(false);
       abort.current = null;
       // Mark all pipeline stages as done once finished
-      setPipelineStages((prev) =>
-        prev ? prev.map((s) => ({ ...s, status: 'done' as PipelineStageStatus })) : null
-      );
+      setPipelineStages((prev) => {
+        if (!prev) return null;
+        const now = performance.now();
+        return prev.map((s) => {
+          const done: PipelineStage = { label: s.label, status: 'done' };
+          const ms = s.status === 'done' ? s.ms : s.status === 'active' && s.startedAt !== undefined ? now - s.startedAt : undefined;
+          if (ms !== undefined) done.ms = ms;
+          return done;
+        });
+      });
       // A run that ended (success or abort) has no in-flight steps left.
       setPlanItems((items) => items.map((it) => (it.status === 'active' ? { ...it, status: 'done' } : it)));
     }
-  }, [busy, hasPendingTx, isManualMode, persist]);
+  }, [busy, hasPendingTx, isManualMode, persist, resetLiveFrames]);
+
+  /** The same brief again, on a concept other than the one just built. */
+  const anotherTake = useCallback(() => {
+    const last = lastSubmitRef.current;
+    if (!last || busy) return;
+    const avoid = resultConcept ? [resultConcept.name] : [];
+    if (pendingTxRef.current) discardPending();
+    void submit(last.text, last.images, avoid.length ? { avoidConcepts: avoid } : {});
+  }, [busy, resultConcept, discardPending, submit]);
+
+  const rail = railStages(pipelineStages, runMode);
 
   return {
     messages,
@@ -973,12 +1194,25 @@ export function useAiChat(): UseAiChat {
     setDirection,
     packs: PACKS,
     filmstrip,
+
+    runMode,
+    rail,
+    runStartedAt,
+    runTitle,
+    liveFrames,
+    concepts,
+    pickConcept,
+    resultScores,
+    resultConcept,
+    anotherTake,
+    lastApplied,
   };
 }
 
 /** Internals exposed so the registry-drift test can read the mapping. */
 export const __testables = {
   activityFor,
-  MAPPED_TOOL_NAMES: Object.keys(TOOL_ACTIVITY),
+  // A getter: building the table runs `t()`, which must not happen at module scope.
+  get MAPPED_TOOL_NAMES(): string[] { return Object.keys(toolActivity()); },
   matchStageIndex,
 };

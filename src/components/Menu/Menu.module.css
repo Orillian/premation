@@ -151,6 +151,16 @@
   font-weight: 600;
 }
 
+/* A ticked row under the pointer: the band is the accent, so the tick and
+   label take the band's foreground — in the accent they vanished into it and
+   the row read as an empty orange bar (2026-10-21). */
+.item:hover:not(:disabled) .itemLabelActive,
+.item:focus-visible .itemLabelActive,
+.item:hover:not(:disabled) .itemIconActive,
+.item:focus-visible .itemIconActive {
+  color: var(--color-primary-foreground) !important;
+}
+
 .itemLabel {
   flex: 1;
   min-width: 0;

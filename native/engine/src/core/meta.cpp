@@ -63,6 +63,7 @@ PropertyMeta from_effect_param(std::string_view effectLabel, const EffectParamDe
     m.type = "path";
     m.defaultValue = Json::null();
   }
+  if (p.fixed) m.keyframeable = false;
   return m;
 }
 

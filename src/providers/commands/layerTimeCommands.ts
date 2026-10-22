@@ -12,6 +12,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import type { Command as EngineCommand, FrameBlend, LayerInfo } from '@motion/engine-api';
 import type { Command } from '@core/commands/Command';
 import { compTime } from '@core/engine/propRefs';
@@ -121,14 +122,18 @@ export function buildLayerTimeCommands(deps: LayerTimeCommandDeps = {}): Readonl
         if (ids.length === 0) return;
         if (deps.openTimeStretch) { deps.openTimeStretch(ids); return; }
         // Headless (no dialog host): the one-field prompt.
-        const t = layerOf(ids[0]!)?.timing;
-        const current = Math.round(((t?.bakedStretch ?? t?.stretch) ?? 1) * 100);
-        const raw = await customPrompt('Time Stretch', 'Stretch factor (% of original duration — 200 = half speed, 50 = double speed)', String(current));
+        const timing = layerOf(ids[0]!)?.timing;
+        const current = Math.round(((timing?.bakedStretch ?? timing?.stretch) ?? 1) * 100);
+        const raw = await customPrompt(
+          t('providers.layerTime.stretchTitle', 'Time Stretch'),
+          t('providers.layerTime.stretchPrompt', 'Stretch factor (% of original duration — 200 = half speed, 50 = double speed)'),
+          String(current),
+        );
         if (raw === null) return;
         const pct = Number(raw);
         const footage = ids.some(isRetimable);
         if (!Number.isFinite(pct) || pct === 0 || (footage && pct < 0)) {
-          notify(footage ? 'Enter a percentage above 0.' : 'Enter a percentage other than 0.');
+          notify(footage ? t('providers.layerTime.percentAboveZero', 'Enter a percentage above 0.') : t('providers.layerTime.percentNonZero', 'Enter a percentage other than 0.'));
           return;
         }
         await edit('Time Stretch', { type: 'timeStretchLayers', layers: ids, stretch: pct / 100, hold: 'inPoint' });
@@ -157,7 +162,7 @@ export function buildLayerTimeCommands(deps: LayerTimeCommandDeps = {}): Readonl
         if (ids.length === 0) return;
         const converted = mode === 'speed' && ids.some((id) => layerOf(id)?.timing.retime === 'frames');
         void edit(label, ids.map((layer): EngineCommand => ({ type: 'setRetime', layer, mode }))).then((r) => {
-          if (r.ok && converted) notify('Converted to Speed %. The frames at your old keys are kept; check the curve between them.');
+          if (r.ok && converted) notify(t('providers.layerTime.convertedToSpeed', 'Converted to Speed %. The frames at your old keys are kept; check the curve between them.'));
         });
       },
     })),
@@ -170,7 +175,7 @@ export function buildLayerTimeCommands(deps: LayerTimeCommandDeps = {}): Readonl
       execute: () => {
         const plans = timeTargets().map((id) => speedPresetCommands(id, p.id)).filter((x) => x !== null);
         if (plans.length === 0) {
-          notify('The selected layers have no clip bar to shape a preset across.');
+          notify(t('providers.layerTime.noClipBar', 'The selected layers have no clip bar to shape a preset across.'));
           return;
         }
         void edit(plans[0]!.label, plans.flatMap((x) => x.commands));

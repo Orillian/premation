@@ -31,6 +31,7 @@ import {
 import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@utils/cn';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './Combobox.module.css';
 
 export interface ComboboxOption {
@@ -76,7 +77,7 @@ export function Combobox({
   size = 'md',
   disabled = false,
   fullWidth = false,
-  emptyText = 'No matches',
+  emptyText = t('ui.combobox.noMatches', 'No matches'),
   filter = defaultFilter,
   className,
 }: ComboboxProps): JSX.Element {
@@ -210,7 +211,7 @@ export function Combobox({
           <button
             type="button"
             tabIndex={-1}
-            aria-label={open ? 'Close list' : 'Open list'}
+            aria-label={open ? t('ui.combobox.closeList', 'Close list') : t('ui.combobox.openList', 'Open list')}
             className={styles.toggle}
             disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}

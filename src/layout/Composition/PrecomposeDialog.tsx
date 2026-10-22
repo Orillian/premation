@@ -25,6 +25,7 @@ import { mirrorPrecomposeTargets } from '@core/mirror/compLayers';
 import { precomposeEdit } from './compositionEdits';
 import { cn } from '@utils/cn';
 import styles from './PrecomposeDialog.module.css';
+import { t } from '@core/i18n';
 
 /** The last choices, reused next time within the session. */
 const remembered: { mode: PrecomposeMode; adjustDuration: boolean; openNew: boolean } = {
@@ -35,7 +36,7 @@ const remembered: { mode: PrecomposeMode; adjustDuration: boolean; openNew: bool
 
 function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }): JSX.Element {
   // B4: names from the document mirror.
-  const hostName = useActiveMirrorComp()?.settings.name ?? 'this composition';
+  const hostName = useActiveMirrorComp()?.settings.name ?? t('composition.precompose.thisComposition', 'this composition');
   // B4: "Leave all attributes" availability is the engine's own refusal, asked as a dry run
   // (`checkPrecompose`); `undefined` while it is being asked (the option stays off until then).
   const [leaveBlocked, setLeaveBlocked] = useState<string | null | undefined>(undefined);
@@ -45,7 +46,7 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
     let live = true;
     void engine().query({ type: 'checkPrecompose', comp: activeCompIdNow() ?? '', layers: [...ids] }).then((r) => {
       if (!live) return;
-      const reason = r.ok ? r.value.leaveAttributesReason || null : 'Only available when a single layer is selected.';
+      const reason = r.ok ? r.value.leaveAttributesReason || null : t('composition.precompose.leaveSingleOnly', 'Only available when a single layer is selected.');
       setLeaveBlocked(reason);
       if (remembered.mode === 'leave' && !reason) setMode('leave');
     });
@@ -55,7 +56,7 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
   const [openNew, setOpenNew] = useState(remembered.openNew);
   const [busy, setBusy] = useState(false);
 
-  const layerName = ids.length === 1 ? documentMirror().layer(ids[0]!)?.name ?? 'the layer' : '';
+  const layerName = ids.length === 1 ? documentMirror().layer(ids[0]!)?.name ?? t('composition.precompose.theLayer', 'the layer') : '';
   const count = ids.length;
 
   const submit = (): void => {
@@ -72,10 +73,10 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
       openNew,
     })
       .then((result) => {
-        if ('error' in result) notify({ level: 'warning', message: `Pre-compose: ${result.error}`, durationMs: 5000 });
+        if ('error' in result) notify({ level: 'warning', message: t('composition.precompose.error', 'Pre-compose: {error}', { error: result.error }), durationMs: 5000 });
       })
       .catch((err: unknown) => {
-        notify({ level: 'error', message: `Pre-compose failed: ${err instanceof Error ? err.message : String(err)}`, durationMs: 8000 });
+        notify({ level: 'error', message: t('composition.precompose.failed', 'Pre-compose failed: {error}', { error: err instanceof Error ? err.message : String(err) }), durationMs: 8000 });
       })
       .finally(close);
   };
@@ -84,18 +85,18 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
   return (
     <div className={styles.root}>
       <label className={styles.field}>
-        <span className={styles.label}>New composition name</span>
+        <span className={styles.label}>{t('composition.precompose.name', 'New composition name')}</span>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          aria-label="New composition name"
+          aria-label={t('composition.precompose.name', 'New composition name')}
           autoFocus
           onFocus={(e) => e.currentTarget.select()}
         />
       </label>
 
       <fieldset className={styles.modes}>
-        <legend className={styles.srOnly}>Attributes</legend>
+        <legend className={styles.srOnly}>{t('composition.precompose.attributes', 'Attributes')}</legend>
         <label className={cn(styles.option, leaveBlocked !== null && styles.optionDisabled)}>
           <input
             type="radio"
@@ -106,10 +107,10 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
             onChange={() => setMode('leave')}
           />
           <span className={styles.optionText}>
-            <span className={styles.optionTitle}>Leave all attributes in “{hostName}”</span>
+            <span className={styles.optionTitle}>{t('composition.precompose.leave', 'Leave all attributes in “{host}”', { host: hostName })}</span>
             <span className={styles.optionHint}>
               {leaveBlocked
-                ?? `Only the content of “${layerName}” moves into the new composition, which is sized to it. Its transform, effects, masks and keyframes stay on the layer here.`}
+                ?? t('composition.precompose.leaveHint', 'Only the content of “{layer}” moves into the new composition, which is sized to it. Its transform, effects, masks and keyframes stay on the layer here.', { layer: layerName })}
             </span>
           </span>
         </label>
@@ -122,10 +123,11 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
             onChange={() => setMode('move')}
           />
           <span className={styles.optionText}>
-            <span className={styles.optionTitle}>Move all attributes into the new composition</span>
+            <span className={styles.optionTitle}>{t('composition.precompose.move', 'Move all attributes into the new composition')}</span>
             <span className={styles.optionHint}>
-              {count === 1 ? 'The selected layer moves' : `The ${count} selected layers move`} into the new
-              composition with everything on them. It is the same size as “{hostName}”, so nothing moves on screen.
+              {count === 1
+                ? t('composition.precompose.moveHintOne', 'The selected layer moves into the new composition with everything on them. It is the same size as “{host}”, so nothing moves on screen.', { host: hostName })
+                : t('composition.precompose.moveHintOther', 'The {n} selected layers move into the new composition with everything on them. It is the same size as “{host}”, so nothing moves on screen.', { n: count, host: hostName })}
             </span>
           </span>
         </label>
@@ -136,24 +138,24 @@ function PrecomposeDialog({ ids, close }: { ids: string[]; close: () => void }):
           checked={mode === 'move' && adjustDuration}
           disabled={mode !== 'move'}
           onChange={(e) => setAdjustDuration(e.target.checked)}
-          label="Adjust composition duration to the time span of the selected layers"
+          label={t('composition.precompose.adjustDuration', 'Adjust composition duration to the time span of the selected layers')}
         />
         <Checkbox
           checked={openNew}
           onChange={(e) => setOpenNew(e.target.checked)}
-          label="Open New Composition"
+          label={t('composition.precompose.openNew', 'Open New Composition')}
         />
       </div>
 
       <DialogFooter
         secondary={
           <Button variant="secondary" size="md" onClick={close}>
-            Cancel
+            {t('composition.dialog.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" size="md" onClick={submit} disabled={busy}>
-            OK
+            {t('composition.dialog.ok', 'OK')}
           </Button>
         }
       />
@@ -167,12 +169,12 @@ export function openPrecomposeDialog(ids: ReadonlyArray<string> = useSelectionSt
   // pattern flags `precompose…` names — see the B3 report's false positives.
   const targets = mirrorPrecomposeTargets(documentMirror(), ids, activeCompIdNow());
   if (targets.length === 0) {
-    useUIStore.getState().notify({ level: 'info', message: 'Select the layers to pre-compose first.', durationMs: 4000 });
+    useUIStore.getState().notify({ level: 'info', message: t('composition.precompose.selectFirst', 'Select the layers to pre-compose first.'), durationMs: 4000 });
     return;
   }
   openModal({
     id: 'precompose',
-    title: 'Pre-compose',
+    title: t('composition.precompose.title', 'Pre-compose'),
     render: (close) => <PrecomposeDialog ids={targets} close={close} />,
   });
 }

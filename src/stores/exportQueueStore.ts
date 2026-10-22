@@ -22,6 +22,7 @@ import {
 } from '@core/export/exportSupervisorClient';
 import { useUIStore, type JobOutcome } from './uiStore';
 import { ensureFfmpegFor } from './ffmpegStore';
+import { t } from '@core/i18n';
 
 const TRAY_PREFIX = 'export-job:';
 
@@ -44,7 +45,7 @@ export interface ExportQueueState {
 function mirrorToTray(prev: ExportJobRecord | undefined, next: ExportJobRecord): void {
   const ui = useUIStore.getState();
   const trayId = `${TRAY_PREFIX}${next.id}`;
-  const label = `Exporting ${next.spec.label}`;
+  const label = t('stores.exportQueue.exporting', 'Exporting {name}', { name: next.spec.label });
   const wasLive = prev ? !isFinishedStatus(prev.status) : false;
   const isLive = !isFinishedStatus(next.status);
 
@@ -61,11 +62,11 @@ function mirrorToTray(prev: ExportJobRecord | undefined, next: ExportJobRecord):
   }
   if (!wasLive) return;
   if (next.status === 'completed') {
-    ui.finishJob(trayId, { status: 'done', message: `Export complete — ${next.spec.outPath}` });
+    ui.finishJob(trayId, { status: 'done', message: t('stores.exportQueue.complete', 'Export complete — {path}', { path: next.spec.outPath }) });
   } else if (next.status === 'cancelled') {
-    ui.finishJob(trayId, { status: 'cancelled', message: 'Export cancelled' });
+    ui.finishJob(trayId, { status: 'cancelled', message: t('stores.exportQueue.cancelled', 'Export cancelled') });
   } else {
-    ui.finishJob(trayId, { status: 'failed', message: next.error ?? 'Export failed', ...failureAction(next) });
+    ui.finishJob(trayId, { status: 'failed', message: next.error ?? t('stores.exportQueue.failed', 'Export failed'), ...failureAction(next) });
   }
 }
 
@@ -80,7 +81,7 @@ export function failureAction(job: ExportJobRecord): Pick<JobOutcome, 'action'> 
     case 'ffmpeg-unavailable':
       return {
         action: {
-          label: 'Fix',
+          label: t('stores.exportQueue.fix', 'Fix'),
           onSelect: () => {
             void ensureFfmpegFor(job.spec.format).then((ready) => {
               if (ready) void useExportQueueStore.getState().retry(job.id);
@@ -90,7 +91,7 @@ export function failureAction(job: ExportJobRecord): Pick<JobOutcome, 'action'> 
       };
     case 'disk-full':
     case 'output-busy':
-      return { action: { label: 'Retry', onSelect: () => { void useExportQueueStore.getState().retry(job.id); } } };
+      return { action: { label: t('stores.exportQueue.retry', 'Retry'), onSelect: () => { void useExportQueueStore.getState().retry(job.id); } } };
     default:
       return {};
   }

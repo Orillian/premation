@@ -1,6 +1,7 @@
 /*
- * The Guides group of the transport bar (`ViewportTools.tsx`): the motion-path
- * toggle, while a layer with a path is selected.
+ * The Guides group of the transport bar (`ViewportTools.tsx`): the Smart
+ * Guides toggle, and the motion-path toggle while a layer with a path is
+ * selected.
  *
  * The button itself is the bar's one button (`viewportToolButton.module.css`
  * — `.tool`, `.group`, `.divider`); what used to be here — a pill of its own

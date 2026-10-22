@@ -53,6 +53,7 @@ import { AngleDial } from '@components/AngleDial';
 import { PropertyRow } from '@components/PropertyRow';
 import { ColorPicker } from '@components/ColorPicker';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
+import { Tooltip, TooltipProvider } from '@components/Tooltip';
 import { CurveEditor } from './CurveEditor';
 
 import { useActiveWorkspace } from '@stores/projectStore';
@@ -94,13 +95,20 @@ import {
   resetEffectEdit,
   setEffectEnabledEdit,
   copyEffectsEdit,
+  applyPresetToEffectEdit,
 } from './effectEdits';
 import panel from './EffectsPanel.module.css';
-import { MissingPluginCard, PluginEffectActions, usePluginEffectUi } from './PluginEffectParts';
-import { PluginPanel } from './PluginPanel';
+import { ParamExpression } from './ParamExpression';
+import { altClickStopwatchEdit } from '@providers/commands/expressionCommands';
+import { requestExpressionEditor } from '@core/animation/expressionEditorRequests';
+import { MissingPluginCard, PluginEffectButton, usePluginEffectUi } from './PluginEffectParts';
+import { pluginCardSections } from '@core/inspector/pluginCardLayout';
+import { pluginPresetsFor, type PluginPreset } from '@core/nativePlugins/pluginPresets';
+import { PluginHeaderActions, PluginHeaderIcon } from './PluginCardHeader';
 import { PluginFileField, PluginGradientField, PluginTextField } from './PluginParamControls';
 import { isPluginEffectDef, pluginEffectDefsRevision, subscribePluginEffectDefs, type PluginEffectDef } from '@core/inspector/pluginEffectDefs';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
+import { t } from '@core/i18n';
 
 /**
  * One parameter line: AE's disclosure gutter, then the row, then whatever the
@@ -133,6 +141,16 @@ function ParamLine({
   );
 }
 
+/** A param row's name; with a native plugin's description, a focusable label showing it as a tooltip. */
+function ParamLabel({ text, description }: { text: string; description?: string }): JSX.Element {
+  if (!description) return <span className={row.paramLabel}>{text}</span>;
+  return (
+    <Tooltip label={description}>
+      <span className={cn(row.paramLabel, panel.paramDescribed)} tabIndex={0}>{text}</span>
+    </Tooltip>
+  );
+}
+
 /**
  * Split a param list into the sections AE draws.
  *
@@ -157,31 +175,39 @@ export function splitParamGroups(
 /**
  * One collapsible section of an effect's controls — AE's "▸ Output Cycle".
  *
- * Collapsed by DEFAULT. A grouped effect has groups precisely because it has
- * too many controls to show at once; opening all five of Colorama's sections
- * on selection would defeat the reason they were grouped.
+ * Collapsed by DEFAULT for built-ins. A grouped effect has groups precisely
+ * because it has too many controls to show at once; opening all five of
+ * Colorama's sections on selection would defeat the reason they were grouped.
+ * A native plugin says per group (PR_PARAM_FLAG_START_COLLAPSED), so its
+ * groups open unless it asked otherwise — AE's rule for plugins.
  */
 function ParamGroup({
   name,
   children,
   defaultOpen = false,
+  description,
 }: {
   name: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  /** A native plugin group's description (SDK 1.2): the header's tooltip. */
+  description?: string;
 }): JSX.Element {
   const [open, setOpen] = useLocalState(defaultOpen);
+  const head = (
+    <button
+      type="button"
+      className={panel.paramGroupHead}
+      aria-expanded={open}
+      onClick={() => setOpen(!open)}
+    >
+      <Icon name={open ? 'chevron-down' : 'chevron-right'} size="sm" />
+      <span className={description ? panel.paramDescribed : undefined}>{name}</span>
+    </button>
+  );
   return (
     <div className={panel.paramGroup}>
-      <button
-        type="button"
-        className={panel.paramGroupHead}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <Icon name={open ? 'chevron-down' : 'chevron-right'} size="sm" />
-        <span>{name}</span>
-      </button>
+      {description ? <Tooltip label={description} placement="left">{head}</Tooltip> : head}
       {open ? <div className={panel.paramGroupBody}>{children}</div> : null}
     </div>
   );
@@ -233,7 +259,7 @@ function EffectOpacityRow({ nodeId, effect }: { nodeId: string; effect: Effect }
   return (
     <ParamLine>
       <PropertyRow
-        label="Effect Opacity"
+        label={t('effects.stack.effectOpacity', 'Effect Opacity')}
         animated={animated}
         onStopwatch={toggle}
         navigator={navigator}
@@ -249,7 +275,7 @@ function EffectOpacityRow({ nodeId, effect }: { nodeId: string; effect: Effect }
           precision={0}
           unit="%"
           onChange={onChange}
-          aria-label={`${effect.type} effect opacity`}
+          aria-label={t('effects.stack.effectOpacityAria', '{type} effect opacity', { type: effect.type })}
         />
       </PropertyRow>
     </ParamLine>
@@ -269,20 +295,20 @@ function EffectMaskRow({ nodeId, effect }: { nodeId: string; effect: Effect }): 
       <ParamLine>
         <div className={row.paramRow}>
           <div style={{ width: 14 }} />
-          <span className={row.paramLabel}>Effect Mask</span>
+          <span className={row.paramLabel}>{t('effects.stack.effectMask', 'Effect Mask')}</span>
           <select
             value={current}
             onChange={(ev) => { void setEffectMaskEdit(nodeId, effect.id, ev.currentTarget.value || undefined); }}
-            aria-label={`${effect.type} effect mask`}
-            title="Restrict this effect to a mask path. Prefer a path with mode None so it scopes the effect without also cutting the layer."
+            aria-label={t('effects.stack.effectMaskAria', '{type} effect mask', { type: effect.type })}
+            title={t('effects.stack.effectMaskTitle', 'Restrict this effect to a mask path. Prefer a path with mode None so it scopes the effect without also cutting the layer.')}
             className={panel.paramSelect}
           >
-            <option value="">None</option>
-            {stale && <option value={current}>Missing mask ({current})</option>}
+            <option value="">{t('effects.stack.none', 'None')}</option>
+            {stale && <option value={current}>{t('effects.stack.missingMask', 'Missing mask ({id})', { id: current })}</option>}
             {paths.map((p, i) => (
               <option key={p.id} value={p.id}>
-                {p.name.trim() || `Mask ${i + 1}`}
-                {p.cuts ? ' · also clips layer' : ''}
+                {p.name.trim() || t('effects.stack.maskN', 'Mask {n}', { n: i + 1 })}
+                {p.cuts ? t('effects.stack.alsoClips', ' · also clips layer') : ''}
               </option>
             ))}
           </select>
@@ -290,7 +316,7 @@ function EffectMaskRow({ nodeId, effect }: { nodeId: string; effect: Effect }): 
       </ParamLine>
       {paths.length === 0 && (
         <p className={panel.hint} style={{ margin: '4px 8px 8px', opacity: 0.65, fontSize: 'var(--font-size-micro)' }}>
-          Add a mask on this layer (mode None recommended) to scope the effect.
+          {t('effects.stack.addMaskHint', 'Add a mask on this layer (mode None recommended) to scope the effect.')}
         </p>
       )}
     </>
@@ -309,7 +335,7 @@ function EffectMaskRow({ nodeId, effect }: { nodeId: string; effect: Effect }): 
 function CompositingOptions({ nodeId, effect }: { nodeId: string; effect: Effect }): JSX.Element {
   const inUse = effect.maskId !== undefined || effect.opacity !== undefined;
   return (
-    <ParamGroup name="Compositing Options" defaultOpen={inUse}>
+    <ParamGroup name={t('effects.stack.compositingOptions', 'Compositing Options')} defaultOpen={inUse}>
       <EffectOpacityRow nodeId={nodeId} effect={effect} />
       <EffectMaskRow nodeId={nodeId} effect={effect} />
     </ParamGroup>
@@ -317,41 +343,69 @@ function CompositingOptions({ nodeId, effect }: { nodeId: string; effect: Effect
 }
 
 /**
- * A native plugin effect's params, as the plugin wants them shown right now
- * (UPDATE_PARAMS_UI: hidden / renamed / disabled), then its buttons.
+ * A native plugin effect's params and buttons in the plugin's declared order,
+ * as the plugin wants them shown right now (UPDATE_PARAMS_UI: hidden / renamed
+ * / disabled — a hidden group hides everything in it). A plugin group opens
+ * unless the plugin declared it START_COLLAPSED: the author grouped the
+ * controls and said which ones to tuck away (pluginCardLayout.ts).
  */
 function PluginEffectBody({ nodeId, effect, def }: { nodeId: string; effect: Effect; def: PluginEffectDef }): JSX.Element {
   const time = useActiveWorkspace()?.time ?? 0;
   const answer = usePluginEffectUi(nodeId, effect, time);
-  const ui = answer?.byKey ?? null;
-  const shown = def.params
-    .filter((p) => !ui?.get(p.key)?.hidden)
-    .map((p) => {
-      const u = ui?.get(p.key);
-      return u && u.name && u.name !== p.label ? { ...p, label: u.name } : p;
-    });
+  // Keyed by the group and its occurrence, not the section index: a section the
+  // plugin hides above must not remount (and re-twirl) the groups below it.
+  const seen = new Map<string, number>();
+  // Its own tooltip provider (descriptions): the stack must not need the app root's (see TransformSection).
   return (
-    <>
-      {splitParamGroups(shown).map((section, si) => {
-        const rows = section.params.map((p) => {
-          const disabled = ui?.get(p.key)?.enabled === false;
-          const r = <EffectParamRow key={p.key} nodeId={nodeId} effect={effect} def={def} param={p} />;
-          return disabled
-            ? <div key={p.key} aria-disabled style={{ opacity: 0.45, pointerEvents: 'none' }}>{r}</div>
+    <TooltipProvider>
+      {pluginCardSections(def, answer?.byKey ?? null).map((section, si) => {
+        const nth = seen.get(section.group ?? '') ?? 0;
+        seen.set(section.group ?? '', nth + 1);
+        const rows = section.items.map((it) => {
+          if (it.kind === 'button') {
+            return <PluginEffectButton key={it.key} nodeId={nodeId} effect={effect} def={def} action={it.key} label={it.label} disabled={it.disabled} />;
+          }
+          const r = <EffectParamRow key={it.param.key} nodeId={nodeId} effect={effect} def={def} param={it.param} />;
+          return it.disabled
+            ? <div key={it.param.key} aria-disabled style={{ opacity: 0.45, pointerEvents: 'none' }}>{r}</div>
             : r;
         });
         return section.group
-          ? <ParamGroup key={`g:${section.group}:${si}`} name={section.group}>{rows}</ParamGroup>
+          ? (
+            <ParamGroup key={`g:${section.group}:${nth}`} name={section.group} defaultOpen={!section.collapsed} description={section.description || undefined}>
+              {rows}
+            </ParamGroup>
+          )
           : <Fragment key={`u:${si}`}>{rows}</Fragment>;
       })}
-      <PluginEffectActions nodeId={nodeId} effect={effect} def={def} ui={ui} />
-      <PluginPanel nodeId={nodeId} effect={effect} def={def} time={time} ui={answer?.ui ?? null} />
+    </TooltipProvider>
+  );
+}
+
+/** One parameter of one effect, with its expression (if any) under it. */
+function EffectParamRow(props: {
+  nodeId: string;
+  effect: Effect;
+  def: EffectDef;
+  param: EffectParamDef;
+}): JSX.Element | null {
+  const { nodeId, effect, param } = props;
+  if (param.type === 'resolved' || param.type === 'data') return null;
+  return (
+    <>
+      <EffectParamControl {...props} />
+      <ParamExpression nodeId={nodeId} track={effectPropPath(effect.id, param.key)} label={param.label} />
     </>
   );
 }
 
+/** AE's Alt-click on an effect parameter's stopwatch: its editor opens here, in Effect Controls. */
+function altStopwatch(nodeId: string, track: string): void {
+  void altClickStopwatchEdit([{ nodeId, prop: track }], requestExpressionEditor);
+}
+
 /** One parameter of one effect: a stopwatch (numbers only) plus its control. */
-function EffectParamRow({
+function EffectParamControl({
   nodeId,
   effect,
   def,
@@ -371,6 +425,11 @@ function EffectParamRow({
 
   const value = effectParam(effect, param.key);
   const label = `${def.label} ${param.label}`;
+  // A plugin param declared CANNOT_ANIMATE has no stopwatch — unless keys reached
+  // it anyway (an older project), so the stopwatch can still take them off.
+  const fixed = isPluginEffectDef(def) && def.fixed.has(param.key);
+  // SDK 1.2: what the plugin says the param does — the label's tooltip.
+  const description = isPluginEffectDef(def) ? def.descriptions.get(param.key) : undefined;
   /** One write of this param: into the open gesture (a drag), else ONE entry. */
   const send = (raw: EffectParamValue): void => {
     e.send(`Set ${label}`, paramCommands(nodeId, effect.id, param, raw, time));
@@ -414,7 +473,7 @@ function EffectParamRow({
       : String(value);
     return (
       <ParamLine>
-        <PropertyRow label={param.label} animated={animated} onStopwatch={() => toggleAnim(animated)} navigator={navigator} compact>
+        <PropertyRow label={param.label} description={description} animated={animated} onStopwatch={fixed && !animated ? undefined : () => toggleAnim(animated)} onAltStopwatch={() => altStopwatch(nodeId, chPrefix)} navigator={navigator} compact>
           {/* A picker drag (press → release) is one gesture: one undo entry. */}
           <span style={{ display: 'contents' }} {...e.press(`Set ${label}`)}>
             <ColorPicker value={displayed} onChange={send} aria-label={label} compact />
@@ -429,7 +488,7 @@ function EffectParamRow({
       <ParamLine>
         <div className={row.paramRow}>
           <div style={{ width: 14 }} />
-          <span className={row.paramLabel}>{param.label}</span>
+          <ParamLabel text={param.label} description={description} />
           <Checkbox
             checked={value === true}
             onChange={(ev) => send(ev.currentTarget.checked)}
@@ -452,15 +511,15 @@ function EffectParamRow({
       <ParamLine>
         <div className={row.paramRow}>
         <div style={{ width: 14 }} />
-        <span className={row.paramLabel}>{param.label}</span>
+        <ParamLabel text={param.label} description={description} />
         <select
           value={current}
           onChange={(ev) => send(ev.currentTarget.value)}
           aria-label={label}
           className={panel.paramSelect}
         >
-          <option value="">None (self)</option>
-          {stale && <option value={current}>Missing layer ({current})</option>}
+          <option value="">{t('effects.stack.noneSelf', 'None (self)')}</option>
+          {stale && <option value={current}>{t('effects.stack.missingLayer', 'Missing layer ({id})', { id: current })}</option>}
           {siblings.map((s) => (
             <option key={s.id} value={s.id}>{s.name || s.id}</option>
           ))}
@@ -483,17 +542,17 @@ function EffectParamRow({
       <ParamLine>
         <div className={row.paramRow}>
         <div style={{ width: 14 }} />
-        <span className={row.paramLabel}>{param.label}</span>
+        <ParamLabel text={param.label} description={description} />
         <select
           value={current}
           onChange={(ev) => send(ev.currentTarget.value)}
           aria-label={label}
           className={panel.paramSelect}
         >
-          <option value="">{param.noneLabel ?? 'None'}</option>
-          {stale && <option value={current}>Missing mask ({current})</option>}
+          <option value="">{param.noneLabel ?? t('effects.stack.none', 'None')}</option>
+          {stale && <option value={current}>{t('effects.stack.missingMask', 'Missing mask ({id})', { id: current })}</option>}
           {paths.map((mp, i) => (
-            <option key={mp.id} value={mp.id}>{mp.name || `Mask ${i + 1}`}</option>
+            <option key={mp.id} value={mp.id}>{mp.name || t('effects.stack.maskN', 'Mask {n}', { n: i + 1 })}</option>
           ))}
         </select>
         </div>
@@ -521,7 +580,7 @@ function EffectParamRow({
       <ParamLine>
         <div className={row.paramRow}>
           <div style={{ width: 14 }} />
-          <span className={row.paramLabel}>{param.label}</span>
+          <ParamLabel text={param.label} description={description} />
           <select
             value={known ? String(current) : String(param.default)}
             onChange={(ev) => send(Number(ev.currentTarget.value))}
@@ -543,7 +602,7 @@ function EffectParamRow({
       <ParamLine>
         <div className={row.paramRow} style={{ alignItems: 'flex-start' }}>
           <div style={{ width: 14 }} />
-          <span className={row.paramLabel}>{param.label}</span>
+          <ParamLabel text={param.label} description={description} />
           {param.type === 'text' ? (
             <PluginTextField label={label} value={typeof value === 'string' ? value : typeof param.default === 'string' ? param.default : ''} onCommit={send} />
           ) : param.type === 'gradient' ? (
@@ -560,7 +619,7 @@ function EffectParamRow({
     return (
       <ParamLine>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0' }}>
-          <span className={row.paramLabel}>{param.label}</span>
+          <ParamLabel text={param.label} description={description} />
           {/* A point drag (press → release) is one gesture: one undo entry. */}
           <div {...e.press(`Set ${label}`)}>
             <CurveEditor
@@ -606,8 +665,10 @@ function EffectParamRow({
       type="button"
       className={panel.paramExpander}
       aria-expanded={sliderOpen}
-      aria-label={`${sliderOpen ? 'Hide' : 'Show'} ${label} slider`}
-      title={sliderOpen ? 'Hide slider' : 'Show slider'}
+      aria-label={sliderOpen
+        ? t('effects.stack.hideSliderAria', 'Hide {label} slider', { label })
+        : t('effects.stack.showSliderAria', 'Show {label} slider', { label })}
+      title={sliderOpen ? t('effects.stack.hideSlider', 'Hide slider') : t('effects.stack.showSlider', 'Show slider')}
       onClick={() => setSliderOpen((v) => !v)}
     >
       <Icon name={sliderOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
@@ -640,8 +701,10 @@ function EffectParamRow({
     >
       <PropertyRow
         label={param.label}
+        description={description}
         animated={animated}
-        onStopwatch={toggle}
+        onStopwatch={fixed && !animated ? undefined : toggle}
+        onAltStopwatch={() => altStopwatch(nodeId, path)}
         navigator={navigator}
         onReset={
           typeof meta.defaultValue === 'number' && meta.resettable
@@ -722,7 +785,7 @@ function effectLabelColorMenuItems(
   return [
     {
       id: 'fx-label-none',
-      label: 'None (Default)',
+      label: t('effects.stack.labelNone', 'None (Default)'),
       icon: current === undefined ? 'check' : undefined,
       onSelect: () => { void setEffectLabelColorEdit(nodeId, effectId, undefined); },
     },
@@ -752,17 +815,42 @@ function effectLabelColorMenuItems(
   ];
 }
 
-/** Right-click on an effect's header: AE's Duplicate (Ctrl+D) and Copy, plus Reset / Remove. */
-function effectHeaderMenuItems(nodeId: string, effectId: string, name: string, index: number, count: number): ContextMenuItem[] {
+/**
+ * A plugin effect's Apply Preset submenu: the presets its plugin ships for this
+ * effect type (SDK 1.2), applied onto THIS instance. Grouped by the plugin's
+ * categories when it uses more than one. Empty when there are none.
+ */
+export function effectPresetMenuItems(nodeId: string, effectId: string, type: string, name: string): ContextMenuItem[] {
+  const presets = pluginPresetsFor(type);
+  if (presets.length === 0) return [];
+  const item = (p: PluginPreset, i: number): ContextMenuItem => ({
+    id: `fx-preset-${i}`,
+    label: p.name,
+    onSelect: () => { void applyPresetToEffectEdit(nodeId, effectId, p, name); },
+  });
+  const categories = [...new Set(presets.map((p) => p.category))];
+  const children = categories.length > 1
+    ? categories.map((c, ci): ContextMenuItem => ({
+        id: `fx-preset-cat-${ci}`,
+        label: c || t('effects.stack.otherCategory', 'Other'),
+        children: presets.map((p, i) => (p.category === c ? item(p, i) : null)).filter((x): x is ContextMenuItem => x !== null),
+      }))
+    : presets.map(item);
+  return [{ id: 'fx-presets', label: t('effects.stack.applyPreset', 'Apply Preset'), children }];
+}
+
+/** Right-click on an effect's header: AE's Duplicate (Ctrl+D) and Copy, Reset / Remove, and a plugin's presets. */
+function effectHeaderMenuItems(nodeId: string, effectId: string, type: string, name: string, index: number, count: number): ContextMenuItem[] {
   return [
-    { id: 'fx-up', label: 'Move Up', icon: 'arrow-up', disabled: index === 0, onSelect: () => { void nudgeEffectEdit(nodeId, effectId, -1); } },
-    { id: 'fx-down', label: 'Move Down', icon: 'arrow-down', disabled: index === count - 1, onSelect: () => { void nudgeEffectEdit(nodeId, effectId, 1); } },
+    { id: 'fx-up', label: t('effects.stack.moveUp', 'Move Up'), icon: 'arrow-up', disabled: index === 0, onSelect: () => { void nudgeEffectEdit(nodeId, effectId, -1); } },
+    { id: 'fx-down', label: t('effects.stack.moveDown', 'Move Down'), icon: 'arrow-down', disabled: index === count - 1, onSelect: () => { void nudgeEffectEdit(nodeId, effectId, 1); } },
     { id: 'fx-sep0', separator: true },
-    { id: 'fx-duplicate', label: 'Duplicate', icon: 'copy', onSelect: () => { void duplicateEffectEdit(nodeId, effectId, name); } },
-    { id: 'fx-copy', label: 'Copy', onSelect: () => { void copyEffectsEdit(nodeId, [effectId]); } },
+    { id: 'fx-duplicate', label: t('effects.stack.duplicate', 'Duplicate'), icon: 'copy', onSelect: () => { void duplicateEffectEdit(nodeId, effectId, name); } },
+    { id: 'fx-copy', label: t('effects.stack.copy', 'Copy'), onSelect: () => { void copyEffectsEdit(nodeId, [effectId]); } },
     { id: 'fx-sep', separator: true },
-    { id: 'fx-reset', label: 'Reset', onSelect: () => { void resetEffectEdit(nodeId, effectId, name); } },
-    { id: 'fx-remove', label: 'Remove', danger: true, onSelect: () => { void removeEffectEdit(nodeId, effectId, name); } },
+    ...effectPresetMenuItems(nodeId, effectId, type, name),
+    { id: 'fx-reset', label: t('effects.stack.reset', 'Reset'), onSelect: () => { void resetEffectEdit(nodeId, effectId, name); } },
+    { id: 'fx-remove', label: t('effects.stack.remove', 'Remove'), danger: true, onSelect: () => { void removeEffectEdit(nodeId, effectId, name); } },
   ];
 }
 
@@ -778,6 +866,7 @@ function asDropdownItems(items: ReadonlyArray<ContextMenuItem>): DropdownItem[] 
         disabled: it.disabled,
         danger: it.danger,
         onSelect: it.onSelect ? () => it.onSelect?.() : undefined,
+        ...(it.children && it.children.length > 0 ? { submenu: asDropdownItems(it.children) } : {}),
       }));
 }
 
@@ -793,33 +882,35 @@ function LiquifyBrushControls({ nodeId, effectId }: { nodeId: string; effectId: 
   const pressure = useLiquifyBrushStore((st) => st.pressure);
   const brush = useLiquifyBrushStore.getState();
   return (
-    <ParamGroup name="Liquify Brush">
-      <PropertyRow label="Tool" compact>
-        <select aria-label="Liquify tool" value={tool} onChange={(ev) => brush.setTool(ev.target.value as LiquifyTool)}>
+    <ParamGroup name={t('effects.liquify.brush', 'Liquify Brush')}>
+      <PropertyRow label={t('effects.liquify.tool', 'Tool')} compact>
+        <select aria-label={t('effects.liquify.toolAria', 'Liquify tool')} value={tool} onChange={(ev) => brush.setTool(ev.target.value as LiquifyTool)}>
           {LIQUIFY_TOOLS.map((t) => <option key={t.tool} value={t.tool}>{t.label}</option>)}
         </select>
       </PropertyRow>
-      <PropertyRow label="Brush Size" compact>
-        <ValueField value={size} min={2} max={2000} precision={0} unit="px" onChange={brush.setSize} aria-label="Liquify brush size" />
+      <PropertyRow label={t('effects.liquify.size', 'Brush Size')} compact>
+        <ValueField value={size} min={2} max={2000} precision={0} unit="px" onChange={brush.setSize} aria-label={t('effects.liquify.sizeAria', 'Liquify brush size')} />
       </PropertyRow>
-      <PropertyRow label="Brush Pressure" compact>
-        <ValueField value={pressure} min={1} max={100} precision={0} unit="%" onChange={brush.setPressure} aria-label="Liquify brush pressure" />
+      <PropertyRow label={t('effects.liquify.pressure', 'Brush Pressure')} compact>
+        <ValueField value={pressure} min={1} max={100} precision={0} unit="%" onChange={brush.setPressure} aria-label={t('effects.liquify.pressureAria', 'Liquify brush pressure')} />
       </PropertyRow>
       <PropertyRow label="" compact>
         <span style={{ display: 'flex', gap: 6 }}>
           <Button size="sm" variant={painting ? 'primary' : 'secondary'}
             onClick={() => (painting ? brush.stop() : brush.start(nodeId, effectId))}
-            title={painting ? 'Stop painting (Esc)' : 'Paint the distortion on the canvas with the brush'}>
-            {painting ? 'Painting… (Esc)' : 'Paint'}
+            title={painting
+              ? t('effects.liquify.stopTitle', 'Stop painting ({key})', { key: 'Esc' })
+              : t('effects.liquify.paintTitle', 'Paint the distortion on the canvas with the brush')}>
+            {painting ? t('effects.liquify.painting', 'Painting… ({key})', { key: 'Esc' }) : t('effects.liquify.paint', 'Paint')}
           </Button>
-          <Button size="sm" variant="secondary" title="Clear the painted distortion"
+          <Button size="sm" variant="secondary" title={t('effects.liquify.resetTitle', 'Clear the painted distortion')}
             onClick={() => {
               void edit('Reset Liquify Mesh', [
                 { type: 'setProperty', prop: ref(nodeId, paths.effectParam(effectId, 'field')), value: values.json([]) },
                 { type: 'setProperty', prop: ref(nodeId, paths.effectParam(effectId, 'fieldGrid')), value: values.json([]) },
               ]);
             }}>
-            Reset Mesh
+            {t('effects.liquify.resetMesh', 'Reset Mesh')}
           </Button>
         </span>
       </PropertyRow>
@@ -861,7 +952,7 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
   if (effects.length === 0) {
     return (
       <div className={panel.hint}>
-        No active effects on this layer. Add one from the Effects panel on the right.
+        {t('effects.stack.empty', 'No active effects on this layer. Add one from the Effects panel on the right.')}
       </div>
     );
   }
@@ -939,14 +1030,14 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
               onDragEnd={() => { setDragId(null); setDropIndex(null); }}
               onContextMenu={(ev) => {
                 ev.preventDefault();
-                openContextMenu(ev.clientX, ev.clientY, effectHeaderMenuItems(nodeId, e.id, name, i, effects.length));
+                openContextMenu(ev.clientX, ev.clientY, effectHeaderMenuItems(nodeId, e.id, e.type, name, i, effects.length));
               }}
             >
               <button
                 type="button"
                 className={panel.disclosureBtn}
                 onClick={() => toggleEffectCard(e.id, isCollapsed)}
-                title={isCollapsed ? 'Expand effect parameters' : 'Collapse effect parameters'}
+                title={isCollapsed ? t('effects.stack.expand', 'Expand effect parameters') : t('effects.stack.collapse', 'Collapse effect parameters')}
               >
                 <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size="sm" />
               </button>
@@ -957,21 +1048,23 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 className={panel.fxToggle}
                 data-on={!off || undefined}
                 aria-pressed={!off}
-                aria-label={off ? `Enable ${name}` : `Disable ${name}`}
-                title={off ? 'Enable effect' : 'Disable effect'}
+                aria-label={off ? t('effects.stack.enableNamed', 'Enable {name}', { name }) : t('effects.stack.disableNamed', 'Disable {name}', { name })}
+                title={off ? t('effects.stack.enable', 'Enable effect') : t('effects.stack.disable', 'Disable effect')}
                 onMouseDown={(ev) => ev.stopPropagation()}
                 onClick={() => { void setEffectEnabledEdit(nodeId, e.id, off, name); }}
               >
                 fx
               </button>
 
+              {isPluginEffectDef(def) ? <PluginHeaderIcon type={e.type} /> : null}
+
               {e.labelColor ? (
                 <button
                   type="button"
                   className={panel.labelSwatch}
                   style={{ background: e.labelColor }}
-                  title="Label Color"
-                  aria-label={`Label color for ${name}`}
+                  title={t('effects.stack.labelColor', 'Label Color')}
+                  aria-label={t('effects.stack.labelColorFor', 'Label color for {name}', { name })}
                   // Header is the drag handle — keep the swatch from starting a drag.
                   onMouseDown={(ev) => ev.stopPropagation()}
                   onClick={(ev) => {
@@ -995,15 +1088,24 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 {name}
               </span>
 
+              {isPluginEffectDef(def) ? (
+                <PluginHeaderActions
+                  nodeId={nodeId}
+                  effect={e}
+                  def={def}
+                  presetItems={() => asDropdownItems(effectPresetMenuItems(nodeId, e.id, e.type, name)[0]?.children ?? [])}
+                />
+              ) : null}
+
               {/* AE's Reset link: a word, far right, always visible. */}
               <button
                 type="button"
                 className={panel.resetLink}
-                title={`Restore every ${name} parameter to its default`}
+                title={t('effects.stack.resetTitle', 'Restore every {name} parameter to its default', { name })}
                 onMouseDown={(ev) => ev.stopPropagation()}
                 onClick={() => { void resetEffectEdit(nodeId, e.id, name); }}
               >
-                Reset
+                {t('effects.stack.reset', 'Reset')}
               </button>
 
               {/* Move, duplicate, copy, label colour and remove: one menu, the
@@ -1013,17 +1115,17 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                 <Dropdown
                   placement="bottom-end"
                   trigger={
-                    <button type="button" className={panel.fxMenuBtn} aria-label={`Effect options for ${name}`} title="Effect options">
+                    <button type="button" className={panel.fxMenuBtn} aria-label={t('effects.stack.optionsFor', 'Effect options for {name}', { name })} title={t('effects.stack.options', 'Effect options')}>
                       <Icon name="more-horizontal" size="sm" />
                     </button>
                   }
                   items={() => [
-                    ...asDropdownItems(effectHeaderMenuItems(nodeId, e.id, name, i, effects.length)),
+                    ...asDropdownItems(effectHeaderMenuItems(nodeId, e.id, e.type, name, i, effects.length)),
                     { type: 'separator' },
                     {
                       type: 'item',
                       id: 'fx-label',
-                      label: 'Label Color',
+                      label: t('effects.stack.labelColor', 'Label Color'),
                       submenu: asDropdownItems(effectLabelColorMenuItems(nodeId, e.id, e.labelColor)),
                     },
                   ]}

@@ -169,6 +169,15 @@ Origin quad_origin(const RLayer& l, double pad) {
   return {-0.5 - (W > 0 ? l.anchorX / W : 0), -0.5 - (H > 0 ? l.anchorY / H : 0)};
 }
 
+/// The device scale a flatten's parent matrix adds to its layers: the longer
+/// of its two axes (1 at the root, a precomp's own scale inside it).
+double parent_scale(const Mat3& parent) {
+  const double sx = std::hypot(static_cast<double>(parent.m[0]), static_cast<double>(parent.m[1]));
+  const double sy = std::hypot(static_cast<double>(parent.m[3]), static_cast<double>(parent.m[4]));
+  const double s = std::max(sx, sy);
+  return std::isfinite(s) && s > 0 ? s : 1;
+}
+
 Mat3 center_model(const RLayer& l) {
   const double rad = (l.rotation * std::numbers::pi) / 180;
   const double pad = raster_padding(l);
@@ -278,11 +287,12 @@ class Flattener {
   api::Renderable precomp_to_renderable(const RLayer& l, const Mat3& parent, double parentOpacity, const Mat3* placement);
   api::Renderable particles_to_renderable(const RLayer& l, const Mat3& parent, double parentOpacity);
   std::optional<api::Renderable> adjustment_to_renderable(const RLayer& l, const Mat3& parent);
-  void feed(const RLayer& l);
+  /// `parentScale`: the device scale the flatten's parent adds (parent_scale).
+  void feed(const RLayer& l, double parentScale);
   static bool needs_isolation(const RLayer& l);
   /// E4: screen texels per layer px at the layer's centre — the view's raster
   /// scale × the layer's own scale, or × its projected size under the 3D camera.
-  [[nodiscard]] double screen_per_layer_px(const RLayer& l) const;
+  [[nodiscard]] double screen_per_layer_px(const RLayer& l, double parentScale) const;
   double rasterScale_;
   double fps_;
   double time_;  ///< snapshot.time (a particle field's clock)
@@ -291,8 +301,9 @@ class Flattener {
   double compLong_ = 0;  ///< the comp's long edge (px): an SVG never needs more texels than the comp shows
 };
 
-double Flattener::screen_per_layer_px(const RLayer& l) const {
-  const double layerScale = std::max({1.0, std::abs(l.scaleX != 0 ? l.scaleX : 1), std::abs(l.scaleY != 0 ? l.scaleY : 1)});
+double Flattener::screen_per_layer_px(const RLayer& l, double parentScale) const {
+  const double layerScale = std::max({1.0, parentScale * std::abs(l.scaleX != 0 ? l.scaleX : 1),
+                                      parentScale * std::abs(l.scaleY != 0 ? l.scaleY : 1)});
   if (!l.world3d || camera3d_ == nullptr || camera3d_->view.size() != 16 || camera3d_->projection.size() != 16) {
     return rasterScale_ * layerScale;
   }
@@ -460,9 +471,18 @@ Json text_spec(const RLayer& l) {
   return o;
 }
 
-void Flattener::feed(const RLayer& l) {
+void Flattener::feed(const RLayer& l, double parentScale) {
   // MotionRendererBackend's per-layer texture feed (the keys layerToRenderable names).
-  const double layerScale = std::max({1.0, std::abs(l.scaleX != 0 ? l.scaleX : 1), std::abs(l.scaleY != 0 ? l.scaleY : 1)});
+  // A precomp's children draw through its transform (collapsed or isolated, the
+  // flatten's parent): a shape in a precomp scaled 300 % is three times its own
+  // size on screen and rasterises for that, not blurred up from its own scale.
+  // Never below 100 %: a layer shown smaller keeps its full-size raster and the
+  // composition filters it down through the mip chain (composition_pass.cpp
+  // layer_texture). Rasterising at the small size measured no sharper, and each
+  // rung a scale-in crossed re-rasterised every layer at once (multi-second
+  // stalls with 60 layers).
+  const double layerScale = std::max({1.0, parentScale * std::abs(l.scaleX != 0 ? l.scaleX : 1),
+                                      parentScale * std::abs(l.scaleY != 0 ? l.scaleY : 1)});
   // A 3D layer's scaleX / scaleY are its PROJECTED footprint (threed_port.cpp
   // set_pose: the camera's magnification included), so a vector / text raster
   // already follows the camera through the tier ladder; only an SVG source's
@@ -519,7 +539,7 @@ void Flattener::feed(const RLayer& l) {
       // Capped at the comp's displayed long edge: a card pushed past the frame
       // shows no more texels than the frame has (the 4096 cap is the feed's).
       const double cap = compLong_ > 0 ? compLong_ * rasterScale_ : std::numeric_limits<double>::infinity();
-      if (longEdge > 0) r.svgDisplayLong = std::min(cap, longEdge * screen_per_layer_px(l));
+      if (longEdge > 0) r.svgDisplayLong = std::min(cap, longEdge * screen_per_layer_px(l, parentScale));
     }
     if (l.kind == LayerKind::video) {
       r.pulldownPhase = l.pulldownSource;
@@ -550,14 +570,17 @@ void Flattener::feed(const RLayer& l) {
       r.spec = std::move(spec);
       if (l.kind == LayerKind::video && !cafVideo) {
         // Device px per layer unit this frame: the view's raster scale × the layer's own.
-        r.bakeTargetScale = rasterScale_ * std::max(std::abs(l.scaleX), std::abs(l.scaleY));
+        r.bakeTargetScale = rasterScale_ * parentScale * std::max(std::abs(l.scaleX), std::abs(l.scaleY));
         // The bake decodes one frame and cannot weave: a pulldown source is bobbed.
         if (r.pulldownPhase) {
           r.pulldownPhase.reset();
           if (r.fields == 0) r.fields = 'l';
         }
       } else {
-        r.resolutionScale = bake_resolution_tier(rasterScale_);
+        // Paint strokes are vector until the bake: a painted still scaled up
+        // bakes at the size it shows (the tier ladder and the bake's 4096 cap
+        // bound it), or the brush and pencil marks are a stretched bitmap.
+        r.resolutionScale = bake_resolution_tier(rasterScale_ * (has_paint_strokes(l) ? layerScale : 1));
       }
     }
     if (l.kind == LayerKind::video && l.contentAwareFillSrc) {
@@ -1032,11 +1055,12 @@ std::optional<api::Renderable> Flattener::adjustment_to_renderable(const RLayer&
 
 void Flattener::flatten(const std::vector<RLayer>& layers, const Mat3& parent, double parentOpacity,
                         std::vector<api::Renderable>& out, const Mat3* placement) {
+  const double parentScale = parent_scale(parent);
   for (const RLayer& l : layers) {
     const std::size_t mark = out.size();
     try {
       if (!l.visible) continue;
-      feed(l);
+      feed(l, parentScale);
       if (l.isMatteSource) {
         api::Renderable src = !l.particles.is_undefined() ? particles_to_renderable(l, parent, parentOpacity)
                               : l.precompLayers && !l.precompLayers->empty() && needs_isolation(l)

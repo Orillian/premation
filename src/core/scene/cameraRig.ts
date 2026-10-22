@@ -55,13 +55,14 @@ import {
   resolveCommandCamera,
   storedCameraPoints,
 } from './cameraCommands';
+import { t } from '@core/i18n';
 
 export type CameraRigKind = 'crane' | 'dolly' | 'orbit';
 
 export const CAMERA_RIG_KINDS: ReadonlyArray<{ kind: CameraRigKind; label: string; description: string }> = [
-  { kind: 'crane', label: 'Crane', description: 'Base → Boom → Arm: boom up and swing the camera through an arc' },
-  { kind: 'dolly', label: 'Dolly', description: 'Track → Pedestal: truck and dolly on the floor, rise on the pedestal' },
-  { kind: 'orbit', label: 'Orbit', description: 'Pivot → Arm: swing and tilt the camera around its target' },
+  { kind: 'crane', get label() { return t('core.cameraRig.crane', 'Crane'); }, get description() { return t('core.cameraRig.descriptionBaseBoomArmBoomUp', 'Base → Boom → Arm: boom up and swing the camera through an arc'); } },
+  { kind: 'dolly', get label() { return t('core.cameraRig.dolly', 'Dolly'); }, get description() { return t('core.cameraRig.descriptionTrackPedestalTruckAndDolly', 'Track → Pedestal: truck and dolly on the floor, rise on the pedestal'); } },
+  { kind: 'orbit', get label() { return t('core.cameraRig.orbit', 'Orbit'); }, get description() { return t('core.cameraRig.descriptionPivotArmSwingAndTilt', 'Pivot → Arm: swing and tilt the camera around its target'); } },
 ];
 
 /** The nulls of each rig, top of the chain first (the camera hangs under the last). */
@@ -92,6 +93,21 @@ export type RigControl = 'Truck' | 'Pedestal' | 'Dolly' | 'Boom' | 'Swing' | 'Ar
 /** Every control, in the order the Inspector lists them. */
 export const RIG_CONTROL_ORDER: readonly RigControl[] = ['Truck', 'Pedestal', 'Dolly', 'Boom', 'Swing', 'Arm', 'Pan', 'Tilt'];
 
+/** Display name of a control (the `RigControl` value itself is an id and a null name). */
+export function rigControlLabel(control: RigControl): string {
+  switch (control) {
+    case 'Truck': return t('core.cameraRig.controlTruck', 'Truck');
+    case 'Pedestal': return t('core.cameraRig.controlPedestal', 'Pedestal');
+    case 'Dolly': return t('core.cameraRig.controlDolly', 'Dolly');
+    case 'Boom': return t('core.cameraRig.controlBoom', 'Boom');
+    case 'Swing': return t('core.cameraRig.controlSwing', 'Swing');
+    case 'Arm': return t('core.cameraRig.controlArm', 'Arm');
+    case 'Pan': return t('core.cameraRig.controlPan', 'Pan');
+    case 'Tilt': return t('core.cameraRig.controlTilt', 'Tilt');
+    default: return control;
+  }
+}
+
 /**
  * What a control writes: a null of the rig (by its control name) — or the
  * rigged `camera` itself — and a track, or `arm`: the null's position length.
@@ -111,35 +127,35 @@ export interface RigControlTarget {
  * null turns a two-node camera's aim but not a one-node camera's — the
  * camera's own orientation turns both.
  */
-const PAN: RigControlTarget = { null: 'camera', track: 'orientationY', unit: '°', hint: 'Pan the camera head left or right (Turn on the spot)' };
-const TILT: RigControlTarget = { null: 'camera', track: 'orientationX', unit: '°', hint: 'Tilt the camera head up or down (Turn on the spot)' };
+const PAN: RigControlTarget = { null: 'camera', track: 'orientationY', unit: '°', get hint() { return t('core.cameraRig.hintPanTheCameraHeadLeft', 'Pan the camera head left or right (Turn on the spot)'); } };
+const TILT: RigControlTarget = { null: 'camera', track: 'orientationX', unit: '°', get hint() { return t('core.cameraRig.hintTiltTheCameraHeadUp', 'Tilt the camera head up or down (Turn on the spot)'); } };
 
 export const RIG_CONTROLS: Readonly<Record<CameraRigKind, Partial<Record<RigControl, RigControlTarget>>>> = {
   crane: {
-    Truck: { null: 'Base', track: 'x', unit: 'px', hint: 'Slide the whole crane sideways' },
-    Pedestal: { null: 'Base', track: 'y', unit: 'px', hint: 'Raise or lower the whole crane' },
-    Dolly: { null: 'Base', track: 'z', unit: 'px', hint: 'Roll the whole crane towards or away from the scene' },
-    Boom: { null: 'Boom', track: 'y', unit: 'px', hint: 'Boom height: lift the arm (and the camera) up or down' },
-    Swing: { null: 'Boom', track: 'rotationY', unit: '°', hint: 'Swing the arm around the base — the camera travels an arc' },
-    Arm: { null: 'Arm', track: 'arm', unit: 'px', hint: 'Arm length: how far the camera reaches out from the base' },
+    Truck: { null: 'Base', track: 'x', unit: 'px', get hint() { return t('core.cameraRig.hintSlideTheWholeCraneSideways', 'Slide the whole crane sideways'); } },
+    Pedestal: { null: 'Base', track: 'y', unit: 'px', get hint() { return t('core.cameraRig.hintRaiseOrLowerTheWhole', 'Raise or lower the whole crane'); } },
+    Dolly: { null: 'Base', track: 'z', unit: 'px', get hint() { return t('core.cameraRig.hintRollTheWholeCraneTowards', 'Roll the whole crane towards or away from the scene'); } },
+    Boom: { null: 'Boom', track: 'y', unit: 'px', get hint() { return t('core.cameraRig.hintBoomHeightLiftTheArm', 'Boom height: lift the arm (and the camera) up or down'); } },
+    Swing: { null: 'Boom', track: 'rotationY', unit: '°', get hint() { return t('core.cameraRig.hintSwingTheArmAroundThe', 'Swing the arm around the base — the camera travels an arc'); } },
+    Arm: { null: 'Arm', track: 'arm', unit: 'px', get hint() { return t('core.cameraRig.hintArmLengthHowFarThe', 'Arm length: how far the camera reaches out from the base'); } },
     Pan: PAN,
     Tilt: TILT,
   },
   dolly: {
-    Truck: { null: 'Track', track: 'x', unit: 'px', hint: 'Truck: slide the dolly sideways along the track' },
-    Dolly: { null: 'Track', track: 'z', unit: 'px', hint: 'Dolly: roll towards or away from the scene' },
-    Pedestal: { null: 'Pedestal', track: 'y', unit: 'px', hint: 'Pedestal: raise or lower the camera on its column' },
+    Truck: { null: 'Track', track: 'x', unit: 'px', get hint() { return t('core.cameraRig.hintTruckSlideTheDollySideways', 'Truck: slide the dolly sideways along the track'); } },
+    Dolly: { null: 'Track', track: 'z', unit: 'px', get hint() { return t('core.cameraRig.hintDollyRollTowardsOrAway', 'Dolly: roll towards or away from the scene'); } },
+    Pedestal: { null: 'Pedestal', track: 'y', unit: 'px', get hint() { return t('core.cameraRig.hintPedestalRaiseOrLowerThe', 'Pedestal: raise or lower the camera on its column'); } },
     Pan: PAN,
     Tilt: TILT,
   },
   orbit: {
-    Truck: { null: 'Pivot', track: 'x', unit: 'px', hint: 'Move the target sideways (the camera follows)' },
-    Pedestal: { null: 'Pivot', track: 'y', unit: 'px', hint: 'Move the target up or down (the camera follows)' },
-    Dolly: { null: 'Pivot', track: 'z', unit: 'px', hint: 'Move the target in depth (the camera follows)' },
-    Swing: { null: 'Pivot', track: 'rotationY', unit: '°', hint: 'Swing the camera around its target' },
-    Boom: { null: 'Pivot', track: 'rotationX', unit: '°', hint: 'Boom the camera up over (or down under) its target' },
+    Truck: { null: 'Pivot', track: 'x', unit: 'px', get hint() { return t('core.cameraRig.hintMoveTheTargetSidewaysThe', 'Move the target sideways (the camera follows)'); } },
+    Pedestal: { null: 'Pivot', track: 'y', unit: 'px', get hint() { return t('core.cameraRig.hintMoveTheTargetUpOr', 'Move the target up or down (the camera follows)'); } },
+    Dolly: { null: 'Pivot', track: 'z', unit: 'px', get hint() { return t('core.cameraRig.hintMoveTheTargetInDepth', 'Move the target in depth (the camera follows)'); } },
+    Swing: { null: 'Pivot', track: 'rotationY', unit: '°', get hint() { return t('core.cameraRig.hintSwingTheCameraAroundIts', 'Swing the camera around its target'); } },
+    Boom: { null: 'Pivot', track: 'rotationX', unit: '°', get hint() { return t('core.cameraRig.hintBoomTheCameraUpOver', 'Boom the camera up over (or down under) its target'); } },
     Pan: PAN,
-    Arm: { null: 'Arm', track: 'arm', unit: 'px', hint: 'Distance from the camera to its target' },
+    Arm: { null: 'Arm', track: 'arm', unit: 'px', get hint() { return t('core.cameraRig.hintDistanceFromTheCameraTo', 'Distance from the camera to its target'); } },
   },
 };
 

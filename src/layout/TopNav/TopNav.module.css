@@ -175,13 +175,17 @@
 }
 
 /* Same two-state pairing as .tool / .toolActive below */
+/* 28px tall with the `md` (19px) glyph — After Effects' tool size. The row
+   drew its tools at 24px with 16px glyphs, a step smaller than AE's, and the
+   difference showed (2026-10-19). The transport bar scopes these back down
+   to its own row height (the container query at the foot). */
 .toolDropdownTrigger,
 .toolDropdownTriggerActive {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: var(--control-height-md);
-  min-width: var(--control-height-md);
+  height: var(--control-height-lg);
+  min-width: var(--control-height-lg);
   padding: 0 var(--space-1) 0 var(--space-2);
   background: none;
   border: none;
@@ -209,14 +213,15 @@
   color: var(--color-text-primary);
 }
 
+/* Armed: After Effects' pressed tool — a grey well, the glyph in ink. */
 .toolDropdownTriggerActive {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .toolDropdownTriggerActive:hover {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 /* The flyout chevron: 9px and dim, so it reads as "opens" and not as a glyph.
@@ -258,8 +263,8 @@
  */
 .tool,
 .toolActive {
-  min-width: var(--control-height-md);
-  height: var(--control-height-md);
+  min-width: var(--control-height-lg);
+  height: var(--control-height-lg);
   display: grid;
   place-items: center;
   background: none;
@@ -281,16 +286,17 @@
   color: var(--color-text-primary);
 }
 
-/* ON: a tint and the accent glyph, never a filled blue box — so an armed
-   tool and the Play button stop looking like the same control. */
+/* ON: After Effects' pressed tool — a grey well with the glyph in ink. Never
+   the accent (2026-10-19): a blue tint and a blue glyph read as a selected
+   item, and an armed tool is not a selection. */
 .toolActive {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .toolActive:hover {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .tool:focus-visible,
@@ -314,14 +320,14 @@
 }
 
 .layoutToggle[data-active] {
-  background: transparent !important;
-  color: var(--color-primary) !important;
+  background: var(--color-tool-pressed) !important;
+  color: var(--color-text-primary) !important;
   border: none !important;
 }
 
 .layoutToggle[data-active]:hover {
-  background: transparent !important;
-  color: var(--color-primary-hover) !important;
+  background: var(--color-tool-pressed) !important;
+  color: var(--color-text-primary) !important;
   border: none !important;
 }
 

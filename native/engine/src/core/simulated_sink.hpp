@@ -11,11 +11,14 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "frame_scene.hpp"
 #include "overlay_geometry.hpp"
 #include "premation/protocol/frame_channel.hpp"
+#include "render/coverage_ledger.hpp"
 #include "render/frame_ring.hpp"
 
 namespace premation {
@@ -33,12 +36,34 @@ class SimulatedSink final : public FrameSink {
     const auto it = ports_.find(job.viewport);
     if (it == ports_.end() || !it->second->config.open) {
       ++counters_.dropped;  // no such viewport (closed meanwhile): nowhere to put it
+      if (job.cachedKey) ++counters_.cacheDropped;
       return;
+    }
+    // The cache tiers, simulated: a content key is "held" once a built frame
+    // with it was submitted (tests evict by erasing from `held`). A cached
+    // job (no build) is presented when its key is held, else it is a miss the
+    // session answers with a build — as the render thread does.
+    if (job.cachedKey) {
+      if (!held.contains(*job.cachedKey)) {
+        ++counters_.cacheMissed;
+        if (job.prebuildKey) prebuild.forget(*job.prebuildKey);
+        buildWanted_.push_back(job.viewport);
+        return;
+      }
+      ++counters_.cacheServed;
+      if (job.recordCoverage) ledger.note(job, CachedKeys{*job.cachedKey, job.cachedDiskKey}, prebuild, held_pred());
+    } else if (contentKeyOf) {
+      if (const std::optional<std::uint64_t> key = contentKeyOf(job)) {
+        held.insert(*key);
+        if (job.prebuildKey) prebuild.learn(*job.prebuildKey, CachedKeys{*key, 0});
+        if (job.recordCoverage) ledger.note(job, CachedKeys{*key, 0}, prebuild, held_pred());
+      }
     }
     Port& p = *it->second;
     if (p.pending) {
       ++counters_.dropped;
       if (p.pending->playing) ++p.droppedPending;  // as RenderThread::submit: only playback frames are drops
+      if (p.pending->cachedKey) ++counters_.cacheDropped;
     }
     p.droppedPending += job.clockDropped;
     p.pending = std::move(job);
@@ -89,6 +114,44 @@ class SimulatedSink final : public FrameSink {
     const std::lock_guard<std::mutex> lock(m_);
     return counters_;
   }
+
+  // ── the simulated cache tiers (render/coverage_ledger.hpp) ──
+  /// Tests: the content key a submitted BUILT job's frame has (null = never cached).
+  std::function<std::optional<std::uint64_t>(const RenderJob&)> contentKeyOf;
+  /// Content keys a tier "holds" (every built frame's, until a test erases it).
+  std::unordered_set<std::uint64_t> held;
+  render::PrebuildMap prebuild;
+  render::CoverageLedger ledger;  // under m_
+  [[nodiscard]] std::optional<CachedKeys> cached_frame(std::uint64_t key) const override { return prebuild.find(key); }
+  void note_frames_changed(FrameRevision rev) override {
+    const std::lock_guard<std::mutex> lock(m_);
+    ledger.note_revision(std::move(rev));
+  }
+  [[nodiscard]] std::vector<std::uint32_t> take_build_requests() override {
+    const std::lock_guard<std::mutex> lock(m_);
+    std::vector<std::uint32_t> out;
+    out.swap(buildWanted_);
+    return out;
+  }
+  /// The bars: the current scope's frames of every viewport whose key is still held.
+  [[nodiscard]] CacheCoverageSnap cache_coverage() const override {
+    const std::lock_guard<std::mutex> lock(m_);
+    std::vector<std::int64_t> frames;
+    for (const auto& [viewport, scopes] : ledger.viewports()) {
+      if (scopes.empty()) continue;
+      for (const auto& [frame, keys] : scopes.front().frames) {
+        if (held.contains(keys.content)) frames.push_back(frame);
+      }
+    }
+    CacheCoverageSnap snap;
+    snap.ram = coalesce_frame_indices(std::move(frames));
+    return snap;
+  }
+  void purge_frame_cache() override {
+    const std::lock_guard<std::mutex> lock(m_);
+    held.clear();
+    prebuild.clear();
+  }
   /// Tests: what a render thread would have measured (VRAM, the last slot-size switch).
   void set_counters(const RenderCounters& c) {
     const std::lock_guard<std::mutex> lock(m_);
@@ -101,8 +164,12 @@ class SimulatedSink final : public FrameSink {
   /// FrameSink defaults). Called on the caller's thread.
   std::function<StillImage(std::uint32_t width, std::uint32_t height)> onStill;
   std::function<WorkingPixels(std::uint32_t viewport, PixelRegion region)> onReadPixels;
+  /// Tests: a render thread that answers LATER (the future the test resolves
+  /// itself). Wins over onStill when set.
+  std::function<std::future<StillImage>(std::uint32_t width, std::uint32_t height)> onStillLater;
   [[nodiscard]] std::future<StillImage> render_still(std::shared_ptr<BuiltFrame> frame, std::uint32_t width,
                                                      std::uint32_t height) override {
+    if (onStillLater) return onStillLater(width, height);
     if (!onStill) return FrameSink::render_still(std::move(frame), width, height);
     return ready_future(onStill(width, height));
   }
@@ -176,6 +243,11 @@ class SimulatedSink final : public FrameSink {
     ++counters_.rendered;
     if (send_) send_(frames::Message{.v = f});
   }
+
+  [[nodiscard]] render::CoverageLedger::Held held_pred() const {
+    return [this](const CachedKeys& k) { return held.contains(k.content); };
+  }
+  std::vector<std::uint32_t> buildWanted_;  // m_
 
   SendFrames send_;
   std::uint32_t slots_;

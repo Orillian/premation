@@ -60,6 +60,8 @@
   --color-selected-hover:    var(--color-selection-hover);
   --color-pressed:           var(--color-black-a16);
   --color-drop-target:       rgba(59, 118, 224, 0.12);
+  /* An armed tool / on toggle: a grey well, the glyph in ink (see dark.css). */
+  --color-tool-pressed:      var(--color-black-a16);
 
   /* ── Selection (azure — never purple, never amber) ─────────── */
   --color-selection:         var(--color-azure-600);
@@ -107,6 +109,9 @@
 
   /* ── Focus / accessibility ─────────────────────────────────── */
   --color-focus-ring:        rgba(59, 118, 224, 0.5);
+  /* Dock drop zones while a panel is dragged (After Effects' violet). */
+  --color-dock-zone:         rgba(104, 92, 220, 0.28);
+  --color-dock-zone-edge:    #6a5fe0;
 
   /* ── Overlays ──────────────────────────────────────────────── */
   --color-overlay-scrim:     rgba(15, 20, 30, 0.4);

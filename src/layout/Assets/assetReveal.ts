@@ -18,6 +18,7 @@ import { useUIStore } from '@stores/uiStore';
 import { getProjectManager } from '@core/services/coreServices';
 import { isBundlePath } from '@core/project/bundle/bundleProjectIO';
 import { isLocalBlobRef, LOCAL_BLOB_SCHEME } from '@core/assets/local/localBlobSource';
+import { t } from '@core/i18n';
 
 /** Whether this build can show a file in the OS file manager at all. */
 export function canRevealAssets(): boolean {
@@ -49,7 +50,7 @@ export async function revealAsset(asset: Pick<ImportedAsset, 'name' | 'path' | '
   if (!reveal || !path) {
     useUIStore.getState().notify({
       level: 'info',
-      message: `“${asset.name}” has no file on disk to reveal — it lives in the project's local store.`,
+      message: t('assets.reveal.noFile', '“{name}” has no file on disk to reveal — it lives in the project\'s local store.', { name: asset.name }),
       durationMs: 4000,
     });
     return false;
@@ -63,7 +64,7 @@ export async function revealAsset(asset: Pick<ImportedAsset, 'name' | 'path' | '
   if (!ok) {
     useUIStore.getState().notify({
       level: 'warning',
-      message: `The file for “${asset.name}” is no longer at ${path}.`,
+      message: t('assets.reveal.moved', 'The file for “{name}” is no longer at {path}.', { name: asset.name, path }),
       durationMs: 5000,
     });
   }

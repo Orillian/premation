@@ -221,16 +221,20 @@ fn hsl2rgb(h : f32, sat : f32, l : f32) -> vec3<f32> {
   let nz = (hash2u(i32(xy.x) + sd, i32(xy.y) - sd) - 0.5) * obj.p1.w * obj.p1.y * 0.18;
   let front = d - nz;
   let hot = obj.p1.z;
-  let cook = obj.p0.z * 0.55;
+  // CC Burn Film: the burnt area is a hole. Its rim glows Burn Color, char
+  // rings it, and the film is scorched just beyond (the heat fades out by
+  // 1.6x the hole) — the rest of the layer is untouched.
+  let cook = obj.p0.z * 0.55 * (1.0 - clamp((front - hot) / max(0.000001, hot * 0.6), 0.0, 1.0));
   let c = decodeS(s0);
   var rgb = c.rgb; var a = c.a;
   if (cook > 0.0) {
     let hsl = rgb2hsl(rgb);
     rgb = hsl2rgb(hsl.x, hsl.y * (1.0 - cook * 0.7), clamp(hsl.z + cook * 0.25, 0.0, 1.0));
   }
+  let rim = max(1.5, hot * 0.05);
   if (front <= hot) {
     rgb = obj.p2.xyz;
-    a = a * clamp((front / max(0.000001, hot)) * 0.35, 0.0, 1.0);
+    a = a * clamp((front - (hot - rim)) / rim, 0.0, 1.0);
   } else if (front <= hot * 1.18) {
     let k = 1.0 - clamp((front - hot) / max(0.000001, hot * 0.18), 0.0, 1.0);
     rgb = mix(rgb, obj.p3.xyz, k);

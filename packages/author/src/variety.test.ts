@@ -104,7 +104,9 @@ describe('the design call weighs three concepts', () => {
   it('says so when the concepts are missing, too few, alike, or none was chosen', () => {
     const msgs = (raw: object) => coerceDesign({ ...base, ...raw }, CTX).repairs.map((r) => r.message).join(' | ');
     expect(msgs({})).toMatch(/no candidate concepts/);
-    expect(msgs({ concepts: [concept('type', 'dark')], chosen: 0 })).toMatch(/1 concept\(s\), not three/);
+    expect(msgs({ concepts: [concept('type', 'dark'), concept('3d', 'light')], chosen: 0 })).toMatch(/2 concept\(s\), not three/);
+    // One concept is the whole answer when the user already chose it (the brief's `concept`).
+    expect(msgs({ concepts: [concept('type', 'dark')], chosen: 0 })).not.toMatch(/not three/);
     expect(msgs({ concepts: [concept('type', 'dark'), concept('type', 'dark'), concept('type', 'dark')], chosen: 0 })).toMatch(/variations, not alternatives/);
     expect(msgs({ concepts: [concept('3d', 'light'), concept('type', 'dark'), concept('ink', 'light')], chosen: 7 })).toMatch(/no valid chosen concept/);
   });

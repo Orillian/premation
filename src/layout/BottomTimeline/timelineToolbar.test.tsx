@@ -15,7 +15,7 @@
 
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { BottomTimeline, TIMELINE_TOOLBAR_DEMOTE_ORDER, isToolbarShed } from './BottomTimeline';
-import { navigatorColumnFor } from './toolbarGeometry';
+import { navigatorColumnFor, toolsColumnWidth } from './toolbarGeometry';
 import type { TimelineModel } from '@layout/Timeline/TimelineModel';
 import { headerWidthFor, TIMELINE_LEFT_OFFSET } from '@layout/Timeline/timelineShared';
 import { setTimelineViewportWidth } from '@layout/Timeline/timelineViewport';
@@ -168,6 +168,15 @@ describe('the two columns are the columns beneath them', () => {
     expect(navigatorColumnFor({ width: 0, left: 0, gutter: 0 }, 20)).toBeNull();
     // A lane area narrower than its own gutter is nothing to align to.
     expect(navigatorColumnFor({ width: 6, left: 500, gutter: 0 }, 20)).toBeNull();
+  });
+
+  it('toolsColumnWidth: the buttons never run past the lanes\' left edge', () => {
+    // The header resolved wider than the lanes leave: the measurement wins.
+    expect(toolsColumnWidth(560, { width: 600, left: 500, gutter: 0 }, 20)).toBe(480);
+    // Narrower than the lanes leave: the header width stands.
+    expect(toolsColumnWidth(400, { width: 600, left: 500, gutter: 0 }, 20)).toBe(400);
+    // Nothing measured yet: the header width stands.
+    expect(toolsColumnWidth(560, { width: 0, left: 0, gutter: 0 }, 20)).toBe(560);
   });
 });
 

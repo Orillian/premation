@@ -38,6 +38,7 @@ import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import styles from './SceneControls.module.css';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { useFocusPlaneStore } from '@stores/focusPlaneStore';
+import { t } from '@core/i18n';
 
 /**
  * The camera tools. `writes` names what a drag CHANGES on the camera, in the
@@ -46,37 +47,63 @@ import { useFocusPlaneStore } from '@stores/focusPlaneStore';
  * around what it looks at) and "Turn on the spot" (a tripod pan / tilt) — and
  * the Orbit tool only ever writes the first, so its tooltip says so.
  */
-export const CAMERA_TOOLS: ReadonlyArray<{ id: CameraTool; icon: IconName; label: string; writes: string }> = [
+// Labels are getters: `t()` must run at render time, never at module load
+// (the catalogue loads after modules are imported).
+export const CAMERA_TOOLS: ReadonlyArray<{ id: CameraTool; icon: IconName; readonly label: string; readonly writes: string }> = [
   // First, like AE: one armed tool, the mouse button picks the gesture.
-  { id: 'unified', icon: 'camera', label: 'Unified Camera (left orbit · middle pan · right dolly)', writes: 'left-drag writes Orbit around target, never Turn on the spot' },
+  {
+    id: 'unified',
+    icon: 'camera',
+    get label() { return t('sceneControls.camera.unified', 'Unified Camera (left orbit · middle pan · right dolly)'); },
+    get writes() { return t('sceneControls.camera.unifiedWrites', 'left-drag writes Orbit around target, never Turn on the spot'); },
+  },
   // The orbit PIVOT (cursor / scene / POI) is the option group below the
   // tools — it steers this tool and the unified tool's left-drag alike.
-  { id: 'orbit', icon: 'orbit', label: 'Orbit Camera', writes: 'writes Orbit around target (the eye swings around the target), never Turn on the spot' },
-  { id: 'pan', icon: 'pan-camera', label: 'Pan Camera', writes: 'moves the camera and its target sideways' },
-  { id: 'dolly', icon: 'perspective', label: 'Dolly Camera (towards/away)', writes: 'moves the camera towards or away from its target' },
+  {
+    id: 'orbit',
+    icon: 'orbit',
+    get label() { return t('sceneControls.camera.orbit', 'Orbit Camera'); },
+    get writes() { return t('sceneControls.camera.orbitWrites', 'writes Orbit around target (the eye swings around the target), never Turn on the spot'); },
+  },
+  {
+    id: 'pan',
+    icon: 'pan-camera',
+    get label() { return t('sceneControls.camera.pan', 'Pan Camera'); },
+    get writes() { return t('sceneControls.camera.panWrites', 'moves the camera and its target sideways'); },
+  },
+  {
+    id: 'dolly',
+    icon: 'perspective',
+    get label() { return t('sceneControls.camera.dolly', 'Dolly Camera (towards/away)'); },
+    get writes() { return t('sceneControls.camera.dollyWrites', 'moves the camera towards or away from its target'); },
+  },
 ];
 
 /** The camera-tool trigger's tooltip: the armed tool and what its drag writes. */
 export function cameraToolTitle(tool: CameraTool): string {
-  const t = CAMERA_TOOLS.find((c) => c.id === tool);
-  return t
-    ? `${t.label} (active) — ${t.writes}. Hold Alt to use temporarily, C to cycle`
-    : 'Camera tool — none armed. Hold Alt to use one temporarily, C to cycle';
+  const armed = CAMERA_TOOLS.find((c) => c.id === tool);
+  return armed
+    ? t('sceneControls.camera.titleArmed', '{label} (active) — {writes}. Hold Alt to use temporarily, C to cycle', { label: armed.label, writes: armed.writes })
+    : t('sceneControls.camera.titleNone', 'Camera tool — none armed. Hold Alt to use one temporarily, C to cycle');
 }
 
 /** AE's orbit pivot modes. Radio-style: exactly one is in effect. */
-const ORBIT_PIVOTS: ReadonlyArray<{ id: CameraOrbitPivot; label: string }> = [
-  { id: 'cursor', label: 'Orbit Around Cursor' },
-  { id: 'scene', label: 'Orbit Around Scene' },
-  { id: 'poi', label: 'Orbit Around Camera POI' },
-];
+function orbitPivots(): ReadonlyArray<{ id: CameraOrbitPivot; label: string }> {
+  return [
+    { id: 'cursor', label: t('sceneControls.pivot.cursor', 'Orbit Around Cursor') },
+    { id: 'scene', label: t('sceneControls.pivot.scene', 'Orbit Around Scene') },
+    { id: 'poi', label: t('sceneControls.pivot.poi', 'Orbit Around Camera POI') },
+  ];
+}
 
-const GIZMO_MODES: ReadonlyArray<{ id: Gizmo3dState; icon: IconName; label: string }> = [
-  { id: 'universal', icon: 'gizmo-universal', label: 'Universal Gizmo (move · rotate · scale)' },
-  { id: 'position', icon: 'gizmo-position', label: 'Position Gizmo (move along X, Y, Z axes)' },
-  { id: 'scale', icon: 'gizmo-scale', label: 'Scale Gizmo (scale along X, Y, Z axes)' },
-  { id: 'rotation', icon: 'gizmo-rotation', label: 'Rotation Gizmo (rotate around X, Y, Z axes)' },
-];
+function gizmoModes(): ReadonlyArray<{ id: Gizmo3dState; icon: IconName; label: string }> {
+  return [
+    { id: 'universal', icon: 'gizmo-universal', label: t('sceneControls.gizmo.universal', 'Universal Gizmo (move · rotate · scale)') },
+    { id: 'position', icon: 'gizmo-position', label: t('sceneControls.gizmo.position', 'Position Gizmo (move along X, Y, Z axes)') },
+    { id: 'scale', icon: 'gizmo-scale', label: t('sceneControls.gizmo.scale', 'Scale Gizmo (scale along X, Y, Z axes)') },
+    { id: 'rotation', icon: 'gizmo-rotation', label: t('sceneControls.gizmo.rotation', 'Rotation Gizmo (rotate around X, Y, Z axes)') },
+  ];
+}
 
 /**
  * Which axes the gizmo aligns to.
@@ -91,11 +118,13 @@ const GIZMO_MODES: ReadonlyArray<{ id: Gizmo3dState; icon: IconName; label: stri
  * That is true, and it is why the glyphs do not differ in orientation: one
  * tripod, three frames around it. See `axis-local` in the icon generator.
  */
-const AXIS_MODES: ReadonlyArray<{ id: Gizmo3dAxisMode; icon: IconName; label: string }> = [
-  { id: 'local', icon: 'axis-local', label: 'Local axes — aligned to the layer' },
-  { id: 'world', icon: 'axis-world', label: 'World axes — aligned to the composition' },
-  { id: 'view', icon: 'axis-view', label: 'View axes — aligned to the camera' },
-];
+function axisModes(): ReadonlyArray<{ id: Gizmo3dAxisMode; icon: IconName; label: string }> {
+  return [
+    { id: 'local', icon: 'axis-local', label: t('sceneControls.axis.local', 'Local axes — aligned to the layer') },
+    { id: 'world', icon: 'axis-world', label: t('sceneControls.axis.world', 'World axes — aligned to the composition') },
+    { id: 'view', icon: 'axis-view', label: t('sceneControls.axis.view', 'View axes — aligned to the camera') },
+  ];
+}
 
 export function SceneControls(): JSX.Element {
   const cameraTool = useGuidesStore((s) => s.cameraTool);
@@ -119,8 +148,9 @@ export function SceneControls(): JSX.Element {
   const deviceWireframesAll = usePreferenceStore((s) => s.deviceWireframesAll);
   const toggleDeviceWireframesAll = (): void => setPreference('deviceWireframesAll', !deviceWireframesAll);
 
-  const armedCamera = CAMERA_TOOLS.find((t) => t.id === cameraTool);
-  const gizmo = GIZMO_MODES.find((g) => g.id === gizmo3dState) ?? GIZMO_MODES[0]!;
+  const armedCamera = CAMERA_TOOLS.find((c) => c.id === cameraTool);
+  const gizmos = gizmoModes();
+  const gizmo = gizmos.find((g) => g.id === gizmo3dState) ?? gizmos[0]!;
   const focusPlaneVisibility = useFocusPlaneStore((s) => s.visibility);
   const setFocusPlaneVisibility = useFocusPlaneStore((s) => s.setVisibility);
   const focusPlaneOn = focusPlaneVisibility !== 'off';
@@ -129,17 +159,17 @@ export function SceneControls(): JSX.Element {
   const viewOnCount = [layerBoxesVisible, deviceWireframesAll, extendedViewer].filter(Boolean).length;
 
   const cameraItems: DropdownItem[] = [
-    ...CAMERA_TOOLS.map((t) => ({
+    ...CAMERA_TOOLS.map((c) => ({
       type: 'item' as const,
-      id: `cam-${t.id}`,
-      label: <span title={`${t.label} — ${t.writes}`}>{t.label}</span>,
-      icon: t.icon,
-      onSelect: () => setCameraTool(t.id),
+      id: `cam-${c.id}`,
+      label: <span title={t('sceneControls.camera.itemTitle', '{label} — {writes}', { label: c.label, writes: c.writes })}>{c.label}</span>,
+      icon: c.icon,
+      onSelect: () => setCameraTool(c.id),
     })),
     { type: 'separator' },
     // Orbit pivot — a radio group in checkbox rows (exactly one is on;
     // picking one re-points the orbit gesture, it does not arm a tool).
-    ...ORBIT_PIVOTS.map((p) => ({
+    ...orbitPivots().map((p) => ({
       type: 'checkbox' as const,
       id: `cam-pivot-${p.id}`,
       label: p.label,
@@ -154,7 +184,7 @@ export function SceneControls(): JSX.Element {
     {
       type: 'item',
       id: 'cam-none',
-      label: 'Release camera tool',
+      label: t('sceneControls.toolbar.releaseCameraTool', 'Release camera tool'),
       icon: 'close',
       disabled: cameraTool === 'none',
       onSelect: () => setCameraTool('none'),
@@ -171,10 +201,10 @@ export function SceneControls(): JSX.Element {
           <button
             type="button"
             className={armedCamera ? styles.triggerActive : styles.trigger}
-            aria-label="Camera tool"
+            aria-label={t('sceneControls.toolbar.cameraTool', 'Camera tool')}
             title={cameraToolTitle(cameraTool)}
           >
-            <Icon name={armedCamera?.icon ?? 'orbit'} size="sm" />
+            <Icon name={armedCamera?.icon ?? 'orbit'} size="md" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }
@@ -185,7 +215,7 @@ export function SceneControls(): JSX.Element {
       {/* 3D gizmo mode for the selection. */}
       <Dropdown
         placement="bottom-start"
-        items={GIZMO_MODES.map((g) => ({
+        items={gizmos.map((g) => ({
           type: 'item' as const,
           id: `gizmo-${g.id}`,
           label: g.label,
@@ -196,10 +226,10 @@ export function SceneControls(): JSX.Element {
           <button
             type="button"
             className={styles.trigger}
-            aria-label="Gizmo mode"
-            title={`Gizmo mode — ${gizmo.label}`}
+            aria-label={t('sceneControls.toolbar.gizmoMode', 'Gizmo mode')}
+            title={t('sceneControls.gizmo.title', 'Gizmo mode — {label}', { label: gizmo.label })}
           >
-            <Icon name={gizmo.icon} size="sm" />
+            <Icon name={gizmo.icon} size="md" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }
@@ -207,8 +237,8 @@ export function SceneControls(): JSX.Element {
 
       {/* Axis space for the gizmo above — AE's Local / World / View Axis Mode,
           three buttons side by side as in AE's toolbar (exactly one is lit). */}
-      <div className={styles.axisModes} role="radiogroup" aria-label="Axis space">
-        {AXIS_MODES.map((a) => (
+      <div className={styles.axisModes} role="radiogroup" aria-label={t('sceneControls.toolbar.axisSpace', 'Axis space')}>
+        {axisModes().map((a) => (
           <button
             key={a.id}
             type="button"
@@ -219,7 +249,7 @@ export function SceneControls(): JSX.Element {
             title={a.label}
             onClick={() => setGizmo3dAxisMode(a.id)}
           >
-            <Icon name={a.icon} size="sm" />
+            <Icon name={a.icon} size="md" />
           </button>
         ))}
       </div>
@@ -230,22 +260,22 @@ export function SceneControls(): JSX.Element {
       <button
         type="button"
         className={draft3d ? styles.triggerActive : styles.trigger}
-        aria-label="Draft 3D"
+        aria-label={t('sceneControls.toolbar.draft3d', 'Draft 3D')}
         aria-pressed={draft3d}
-        title="Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections"
+        title={t('sceneControls.toolbar.draft3dAmbientKeyLight', 'Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections')}
         onClick={() => toggleDraft3d()}
       >
-        <Icon name="draft-3d" size="sm" />
+        <Icon name="draft-3d" size="md" />
       </button>
       <button
         type="button"
         className={groundGridVisible ? styles.triggerActive : styles.trigger}
-        aria-label="3D ground plane"
+        aria-label={t('sceneControls.toolbar.n3dGroundPlane', '3D ground plane')}
         aria-pressed={groundGridVisible}
-        title="3D ground plane"
+        title={t('sceneControls.toolbar.n3dGroundPlane', '3D ground plane')}
         onClick={() => toggleGroundGridVisible()}
       >
-        <Icon name="ground-grid" size="sm" />
+        <Icon name="ground-grid" size="md" />
       </button>
 
       {/*
@@ -260,7 +290,7 @@ export function SceneControls(): JSX.Element {
             // Active Camera) draw layers outside the comp frame, outline on top.
             type: 'checkbox',
             id: 'view-extended-viewer',
-            label: 'Extended Viewer — draw layers outside the comp frame',
+            label: t('sceneControls.toolbar.extendedViewerDrawLayersOutside', 'Extended Viewer — draw layers outside the comp frame'),
             checked: extendedViewer,
             onChange: () => toggleExtendedViewer(),
           },
@@ -268,14 +298,14 @@ export function SceneControls(): JSX.Element {
           {
             type: 'checkbox',
             id: 'view-layer-boxes',
-            label: 'Layer bounding boxes',
+            label: t('sceneControls.toolbar.layerBoundingBoxes', 'Layer bounding boxes'),
             checked: layerBoxesVisible,
             onChange: () => toggleLayerBoxesVisible(),
           },
           {
             type: 'checkbox',
             id: 'view-device-wireframes',
-            label: 'Camera & light wireframes for unselected layers',
+            label: t('sceneControls.toolbar.cameraLightWireframesForUnselected', 'Camera & light wireframes for unselected layers'),
             checked: deviceWireframesAll,
             onChange: () => toggleDeviceWireframesAll(),
           },
@@ -286,14 +316,14 @@ export function SceneControls(): JSX.Element {
           {
             type: 'checkbox',
             id: 'view-focus-plane',
-            label: 'Camera focus plane',
+            label: t('sceneControls.toolbar.cameraFocusPlane', 'Camera focus plane'),
             checked: focusPlaneOn,
             onChange: (on) => setFocusPlaneVisibility(on ? 'always' : 'off'),
           },
           {
             type: 'checkbox',
             id: 'view-focus-plane-selected-only',
-            label: 'Focus plane only for the selected camera',
+            label: t('sceneControls.toolbar.focusPlaneOnlyForThe', 'Focus plane only for the selected camera'),
             checked: focusPlaneVisibility === 'selected',
             disabled: !focusPlaneOn,
             onChange: (only) => setFocusPlaneVisibility(only ? 'selected' : 'always'),
@@ -303,10 +333,10 @@ export function SceneControls(): JSX.Element {
           <button
             type="button"
             className={viewOnCount > 0 ? styles.triggerActive : styles.trigger}
-            aria-label="3D view options"
-            title="3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane"
+            aria-label={t('sceneControls.toolbar.n3dViewOptions', '3D view options')}
+            title={t('sceneControls.toolbar.n3dViewExtendedViewerLayer', '3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane')}
           >
-            <Icon name="cube" size="sm" />
+            <Icon name="cube" size="md" />
             <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
           </button>
         }

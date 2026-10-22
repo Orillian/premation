@@ -18,6 +18,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { mirrorCompositionRootOf, mirrorIsEssentialProp } from '@core/mirror/compOverrides';
 import { isOverridableProp } from '@core/scene/compInstanceOverrides';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 
 export interface PropertyMenuContext {
   nodeId: string;
@@ -62,7 +63,9 @@ export function essentialPropMenuItems(nodeId: string, prop: string): ContextMen
     { id: 'sep-essential', separator: true },
     {
       id: 'essential-toggle',
-      label: promoted ? 'Remove from Essential Properties' : 'Add to Essential Properties',
+      label: promoted
+        ? t('core.propertyMenu.removeEssential', 'Remove from Essential Properties')
+        : t('core.propertyMenu.addEssential', 'Add to Essential Properties'),
       // The engine's command (one entry) — the scene-graph write reached the page's replica only.
       onSelect: () => {
         void edit(promoted ? 'Remove from Essential Properties' : 'Add to Essential Properties', [

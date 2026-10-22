@@ -1063,14 +1063,11 @@ void Scene3D::finish_layer(const doc::Node& n, const Values& a, Layer3D& s, RLay
     const std::string wallFill = styled_surface_fill(styles, wallBase);
     std::vector<Json> faceStyles;
     if (anyStyle) {
-      const auto compiled = layer_styles_to_effects(styles, comp_.globalLightAngle, comp_.globalLightAltitude,
-                                                    [](std::string_view) { return false; });
-      if (compiled) {
-        static constexpr std::array<std::string_view, 5> kFace = {"layerstyle:innerShadow", "layerstyle:innerGlow",
-                                                                  "layerstyle:satin", "layerstyle:bevel", "layerstyle:stroke"};
-        for (const Json& e : *compiled) {
-          if (e.at("id").is_string() && std::ranges::find(kFace, e.at("id").str()) != kFace.end()) faceStyles.push_back(e);
-        }
+      static constexpr std::array<std::string_view, 5> kFace = {"layerstyle:innerShadow", "layerstyle:innerGlow",
+                                                                "layerstyle:satin", "layerstyle:bevel", "layerstyle:stroke"};
+      for (const Json& e : layer_styles_to_effects(styles, comp_.globalLightAngle, comp_.globalLightAltitude,
+                                                   [](std::string_view) { return false; })) {
+        if (e.at("id").is_string() && std::ranges::find(kFace, e.at("id").str()) != kFace.end()) faceStyles.push_back(e);
       }
     }
     const double meshBevel = std::max(0.0, a.get("bevelDepth").value_or(std::max(0.0, t3(n, "bevelDepth"))));

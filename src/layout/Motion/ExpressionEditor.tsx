@@ -30,7 +30,7 @@ import {
   suggestExpression,
   tokenizeExpression,
   matchBracket,
-  EXPRESSION_API,
+  EDITOR_EXPRESSION_API,
   SOURCE_TEXT_PROP,
   type TokenKind,
 } from '@motion/animation';
@@ -41,9 +41,12 @@ import { edit } from '@core/engine/uiEdits';
 import { propRefForTrack } from '@core/engine/propRefs';
 import { PickWhip } from '@components/PickWhip';
 import { insertAtCaret, whipExpression } from '@core/whip/whipTarget';
+import { whipEffectNames } from '@core/whip/whipEffectNames';
 import { applyCompletion, completionsAt, wordAtCaret, type CompletionItem } from './expressionCompletion';
 import { ExpressionCompletionPopup, completionOptionId } from './ExpressionCompletionPopup';
+import { indent, newline, outdent, toggleLineComment, type CodeEdit } from './codeEditing';
 import styles from './ExpressionEditor.module.css';
+import { t } from '@core/i18n';
 
 /** Chars that, once typed, mean the caret is inside a name worth completing. */
 const OPENS_COMPLETION = /[A-Za-z0-9_$.]/;
@@ -55,8 +58,16 @@ function describeTextResult(r: SourceTextPreview | undefined): string {
   const shown = r.text.length > 60 ? `${r.text.slice(0, 57)}…` : r.text;
   const styled = r.styleKeys.length;
   const extras = [
-    styled > 0 ? `${styled} style override${styled === 1 ? '' : 's'}` : '',
-    r.ranges > 0 ? `${r.ranges} character range${r.ranges === 1 ? '' : 's'}` : '',
+    styled > 0
+      ? styled === 1
+        ? t('motion.expression.styleOverridesOne', '{n} style override', { n: styled })
+        : t('motion.expression.styleOverridesOther', '{n} style overrides', { n: styled })
+      : '',
+    r.ranges > 0
+      ? r.ranges === 1
+        ? t('motion.expression.rangesOne', '{n} character range', { n: r.ranges })
+        : t('motion.expression.rangesOther', '{n} character ranges', { n: r.ranges })
+      : '',
   ].filter(Boolean).join(', ');
   return `“${shown}”${extras ? ` · ${extras}` : ''}`;
 }
@@ -68,8 +79,9 @@ function describeValue(v: Value | undefined): string {
   return n ? `[${n.map((x) => x.toFixed(2)).join(', ')}]` : '—';
 }
 
-interface Preview { error: string | null; shown: string; note: string | null }
-const NO_PREVIEW: Preview = { error: null, shown: '—', note: null };
+/** `errorLine`: the 1-based source line the engine blamed, null when it named none. */
+interface Preview { error: string | null; errorLine: number | null; shown: string; note: string | null }
+const NO_PREVIEW: Preview = { error: null, errorLine: null, shown: '—', note: null };
 
 /**
  * The draft's value from the engine (`evaluateExpression`): the property is
@@ -96,22 +108,26 @@ function useExpressionPreview(nodeId: string, prop: string, draft: string, time:
     void engine().query({ type: 'evaluateExpression', prop: target.ref, time: secondsToFlicks(time), source: draft, ...(target.member !== undefined ? { member: target.member } : {}) }).then((res) => {
       if (!live) return;
       if (!res.ok) {
-        setAnswer({ key, preview: { error: res.error.message, shown: '—', note: null } });
+        setAnswer({ key, preview: { error: res.error.message, errorLine: null, shown: '—', note: null } });
         return;
       }
       const e = res.value.diagnostics[0]?.message ?? null;
+      const errorLine = res.value.diagnostics[0]?.line || null;
       if (isSourceText) {
         const unsupported = unsupportedRangeKeyNames(res.value.text?.rangeKeys ?? []);
         setAnswer({
           key,
           preview: {
             error: e,
+            errorLine,
             shown: describeTextResult(res.value.text),
-            note: unsupported.length > 0 ? `Per-character ${unsupported.join(', ')} can’t be drawn per character and are ignored.` : null,
+            note: unsupported.length > 0
+              ? t('motion.expression.unsupportedRanges', 'Per-character {keys} can’t be drawn per character and are ignored.', { keys: unsupported.join(', ') })
+              : null,
           },
         });
       } else {
-        setAnswer({ key, preview: { error: e, shown: e ? '—' : describeValue(res.value.value), note: null } });
+        setAnswer({ key, preview: { error: e, errorLine, shown: e ? '—' : describeValue(res.value.value), note: null } });
       }
     });
     return () => {
@@ -129,7 +145,12 @@ const TOKEN_CLASS: Record<TokenKind, string | undefined> = {
   op: styles.tOp,
   paren: styles.tParen,
   ws: '',
+  kw: styles.tKw,
+  comment: styles.tComment,
 };
+
+/** The textarea grows with the rig up to this many lines, then scrolls. */
+const MAX_VISIBLE_LINES = 14;
 
 /**
  * The expression the row's track carries, from the document mirror (B4): per
@@ -143,7 +164,8 @@ function trackExpressionFacts(nodeId: string, prop: string): MemberExpressionFac
   return r ? memberExpressionOf(r.info, r.member) : null;
 }
 
-export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: string }): JSX.Element {
+/** `label`: what the header calls the property (Effect Controls passes the parameter's name); default the track id. */
+export function ExpressionEditor({ nodeId, prop, label }: { nodeId: string; prop: string; label?: string }): JSX.Element {
   // The property's record in the document mirror: the enable/disable toggle
   // changes ONLY the expression state, and without this subscription the
   // switch would stay visually on after turning it off.
@@ -156,9 +178,23 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
   // Re-seed when switching property/layer.
   const key = `${nodeId}:${prop}`;
   const lastKey = useRef(key);
+  // The sources this editor sent (each keystroke commits): an answer from the
+  // engine that is one of them is our own echo, possibly behind the newest
+  // keystroke, and must not roll the draft back.
+  const sent = useRef<string[]>([]);
+  const lastStored = useRef(stored);
   if (lastKey.current !== key) {
     lastKey.current = key;
+    lastStored.current = stored;
+    sent.current = [];
     setDraft(stored);
+  } else if (lastStored.current !== stored) {
+    // Changed from OUTSIDE the editor — a pick-whip, Paste, undo, a script:
+    // show it, or the next keystroke would write the stale text back over it.
+    lastStored.current = stored;
+    const echo = sent.current.indexOf(stored);
+    if (echo >= 0) sent.current = sent.current.slice(echo + 1);
+    else if (stored !== draft) setDraft(stored);
   }
 
   const [intent, setIntent] = useState('');
@@ -167,9 +203,12 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
   const [activeCompletion, setActiveCompletion] = useState(0);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
+  const tabLeaves = useRef(false);
 
   // Syntax tokens + matching-bracket pair for the highlight overlay.
   const tokens = useMemo(() => tokenizeExpression(draft), [draft]);
+  const lineCount = useMemo(() => draft.split('\n').length, [draft]);
   const matched = useMemo(() => matchBracket(draft, caret), [draft, caret]);
   const syncCaret = (el: HTMLTextAreaElement): void => setCaret(el.selectionStart ?? 0);
 
@@ -193,6 +232,7 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
 
   const commit = (src: string): void => {
     setDraft(src);
+    sent.current = [...sent.current.slice(-31), src];
     const t = expressionTarget(nodeId, prop);
     if (!t) return;
     // A new expression starts on; an edited one keeps its switch (a failing one
@@ -269,7 +309,27 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
       openCompletions();
       return;
     }
-    if (!showCompletions) return;
+    if (!showCompletions) {
+      const el = e.currentTarget;
+      const s = el.selectionStart ?? 0;
+      const en = el.selectionEnd ?? s;
+      let next: CodeEdit | null = null;
+      // Tab indents instead of leaving the field; keyboard users leave with
+      // Escape then Tab, as in other code editors.
+      const leaving = tabLeaves.current;
+      tabLeaves.current = e.key === 'Escape';
+      if (e.key === 'Tab' && !leaving) next = e.shiftKey ? outdent(draft, s, en) : indent(draft, s, en);
+      else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) next = newline(draft, s, en);
+      else if ((e.ctrlKey || e.metaKey) && e.key === '/') next = toggleLineComment(draft, s, en);
+      if (!next) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const done = next;
+      commit(done.text);
+      setCaret(done.start);
+      requestAnimationFrame(() => el.setSelectionRange(done.start, done.end));
+      return;
+    }
     const step = (d: number): void => {
       e.preventDefault();
       e.stopPropagation();
@@ -309,7 +369,7 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
     // layer's text — the numeric `layer(name, prop)` form cannot carry a string.
     const reference = isSourceText && (target.prop === undefined || target.prop === SOURCE_TEXT_PROP)
       ? `thisComp.layer(${JSON.stringify(name)}).text.sourceText`
-      : whipExpression(name, target.prop ?? prop);
+      : whipExpression(name, target.prop ?? prop, whipEffectNames(target.nodeId, target.prop ?? prop));
     const next = insertAtCaret(draft, at, reference);
     commit(next.text);
     setCaret(next.caret);
@@ -330,11 +390,11 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
     <div className={styles.root}>
       <div className={styles.header}>
         <span className={styles.title}>
-          <Icon name="track" size="sm" className={styles.fx} /> Expression · {prop}
+          <Icon name="track" size="sm" className={styles.fx} /> {t('motion.expression.header', 'Expression · {prop}', { prop: label ?? prop })}
         </span>
         <span className={styles.headerActions}>
           <PickWhip
-            label="Expression pick-whip — drag onto a layer or property"
+            label={t('motion.expression.pickWhip', 'Expression pick-whip — drag onto a layer or property')}
             // Itself excluded: an expression that reads its own property is a
             // cycle, and the evaluator would refuse it after the fact.
             accept={(target) => !(target.nodeId === nodeId && (target.prop ?? prop) === prop)}
@@ -347,9 +407,9 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
               type="button"
               role="switch"
               aria-checked={enabled}
-              aria-label="Expression enabled"
+              aria-label={t('motion.expression.enabledAria', 'Expression enabled')}
               className={cn(styles.toggle, !enabled && styles.toggleOff)}
-              title={enabled ? 'Disable expression (keeps the formula)' : 'Enable expression'}
+              title={enabled ? t('motion.expression.disable', 'Disable expression (keeps the formula)') : t('motion.expression.enable', 'Enable expression')}
               onClick={() => {
                 const t = expressionTarget(nodeId, prop);
                 if (!t) return;
@@ -363,8 +423,8 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
             <button
               type="button"
               className={styles.remove}
-              title="Remove expression"
-              aria-label="Remove expression"
+              title={t('motion.expression.remove', 'Remove expression')}
+              aria-label={t('motion.expression.remove', 'Remove expression')}
               onClick={() => {
                 setDraft('');
                 const t = expressionTarget(nodeId, prop);
@@ -379,6 +439,13 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
       </div>
 
       <div className={styles.codeWrap}>
+        {/* Line numbers; the line the engine blamed is marked, as AE's error bar points at it. */}
+        <div className={styles.gutter} aria-hidden ref={gutterRef} data-expression-gutter="">
+          {Array.from({ length: lineCount }, (_, i) => (
+            <div key={i} className={cn(styles.gutterLine, preview.error && preview.errorLine === i + 1 && styles.gutterError)}>{i + 1}</div>
+          ))}
+        </div>
+        <div className={styles.codeArea}>
         {/* Highlighted mirror behind the transparent-text textarea. */}
         <pre className={styles.highlight} aria-hidden ref={preRef}>
           {tokens.map((t, i) => {
@@ -400,12 +467,13 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
           placeholder={isSourceText
             ? 'e.g. value + "!"  ·  Math.round(time)  ·  value.style.setFontSize(80)'
             : 'e.g. wiggle(2, 30)  ·  time * 90  ·  value + Math.sin(time*3)*40'}
-          rows={2}
+          rows={Math.min(Math.max(lineCount, 2), MAX_VISIBLE_LINES)}
+          wrap="off"
           // Combobox rather than plain textbox while the list can appear, so a
           // screen reader announces the highlighted row as it changes. The list
           // itself never takes focus — see the popup's header comment.
           role="combobox"
-          aria-label={`Expression for ${prop}`}
+          aria-label={t('motion.expression.editorAria', 'Expression for {prop}', { prop })}
           aria-autocomplete="list"
           aria-expanded={showCompletions}
           aria-controls={COMPLETION_LIST_ID}
@@ -437,6 +505,7 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
               preRef.current.scrollTop = e.currentTarget.scrollTop;
               preRef.current.scrollLeft = e.currentTarget.scrollLeft;
             }
+            if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
           }}
         />
         {showCompletions ? (
@@ -450,6 +519,7 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
             onHover={setActiveCompletion}
           />
         ) : null}
+        </div>
       </div>
 
       {/* Live value + inline error.
@@ -462,19 +532,23 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
       <div className={styles.status}>
         {attached && !enabled ? (
           <span className={styles.muted}>
-            Disabled — the property uses its keyframes. Would be{' '}
-            {preview.error ? '—' : preview.shown}{' '}
+            {t('motion.expression.disabledWouldBe', 'Disabled — the property uses its keyframes. Would be {value}', { value: preview.error ? '—' : preview.shown })}{' '}
             <span className={styles.at}>@ {time.toFixed(2)}s</span>
           </span>
         ) : preview.error ? (
-          <span className={styles.error}><Icon name="warning" size="sm" /> {preview.error}</span>
+          <span className={styles.error}>
+            <Icon name="warning" size="sm" />{' '}
+            {preview.errorLine
+              ? t('motion.expression.errorAtLine', 'Line {line}: {message}', { line: preview.errorLine, message: preview.error })
+              : preview.error}
+          </span>
         ) : draft.trim() ? (
           <span className={styles.value}>
             = {preview.shown} <span className={styles.at}>@ {time.toFixed(2)}s</span>
             {preview.note ? <span className={styles.muted}> {preview.note}</span> : null}
           </span>
         ) : (
-          <span className={styles.muted}>No expression — the property uses its keyframes.</span>
+          <span className={styles.muted}>{t('motion.expression.none', 'No expression — the property uses its keyframes.')}</span>
         )}
       </div>
 
@@ -486,11 +560,11 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
           should be the code and its value, not a wall of names. */}
       <details className={styles.reference}>
         <summary className={styles.referenceSummary}>
-          Reference · {EXPRESSION_API.length} names
-          <span className={styles.referenceHint}>type to complete · Ctrl+Space</span>
+          {t('motion.expression.reference', 'Reference · {n} names', { n: EDITOR_EXPRESSION_API.length })}
+          <span className={styles.referenceHint}>{t('motion.expression.referenceHint', 'type to complete · {shortcut}', { shortcut: 'Ctrl+Space' })}</span>
         </summary>
         <div className={styles.api}>
-          {EXPRESSION_API.map((a) => (
+          {EDITOR_EXPRESSION_API.map((a) => (
             <button key={a.label} type="button" className={styles.apiChip} title={a.hint} onClick={() => insert(a.insert)}>
               {a.label}
             </button>
@@ -504,12 +578,12 @@ export function ExpressionEditor({ nodeId, prop }: { nodeId: string; prop: strin
         <input
           className={styles.assistInput}
           value={intent}
-          placeholder="Describe motion → expression"
+          placeholder={t('motion.expression.assistPlaceholder', 'Describe motion → expression')}
           onChange={(e) => setIntent(e.currentTarget.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') generate(); }}
         />
         <button type="button" className={cn(styles.assistBtn, !intent.trim() && styles.assistBtnOff)} onClick={generate}>
-          Generate
+          {t('motion.expression.generate', 'Generate')}
         </button>
       </div>
     </div>

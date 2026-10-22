@@ -40,6 +40,7 @@ import { create } from 'zustand';
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
+import { t } from '@core/i18n';
 import type { IconName } from '@components/Icon';
 
 export type TimelineEditMode = 'select' | 'razor' | 'slip' | 'slide' | 'roll';
@@ -88,35 +89,36 @@ export interface TimelineEditModeDef {
   icon: IconName;
 }
 
+/** Labels are getters: `t()` must run when a menu reads them, not at import (the catalogue loads later). */
 export const TIMELINE_EDIT_MODES: ReadonlyArray<TimelineEditModeDef> = [
   {
     mode: 'select',
-    label: 'Selection',
-    description: 'Drag clip bars to move them; drag an edge to trim. Alt-drag still slips, Alt+Shift-drag still slides.',
+    get label() { return t('timeline.editMode.select', 'Selection'); },
+    get description() { return t('timeline.editMode.selectDescription', 'Drag clip bars to move them; drag an edge to trim. Alt-drag still slips, Alt+Shift-drag still slides.'); },
     icon: 'select-arrow',
   },
   {
     mode: 'razor',
-    label: 'Razor',
-    description: 'Click a clip to split it at the pointer. Shift+click splits every clip on every track at that frame.',
+    get label() { return t('timeline.editMode.razor', 'Razor'); },
+    get description() { return t('timeline.editMode.razorDescription', 'Click a clip to split it at the pointer. Shift+click splits every clip on every track at that frame.'); },
     icon: 'scissors',
   },
   {
     mode: 'slip',
-    label: 'Slip',
-    description: 'Drag a clip to move the source under a fixed bar — its position and length never change.',
+    get label() { return t('timeline.editMode.slip', 'Slip'); },
+    get description() { return t('timeline.editMode.slipDescription', 'Drag a clip to move the source under a fixed bar — its position and length never change.'); },
     icon: 'grip-horizontal',
   },
   {
     mode: 'slide',
-    label: 'Slide',
-    description: 'Drag a clip to move the bar between its neighbours, trimming them so no gap opens.',
+    get label() { return t('timeline.editMode.slide', 'Slide'); },
+    get description() { return t('timeline.editMode.slideDescription', 'Drag a clip to move the bar between its neighbours, trimming them so no gap opens.'); },
     icon: 'distribute-horizontal',
   },
   {
     mode: 'roll',
-    label: 'Roll',
-    description: 'Drag a cut between two adjacent clips to move it — the out-point and the in-point travel together.',
+    get label() { return t('timeline.editMode.roll', 'Roll'); },
+    get description() { return t('timeline.editMode.rollDescription', 'Drag a cut between two adjacent clips to move it — the out-point and the in-point travel together.'); },
     icon: 'grip-vertical',
   },
 ];
@@ -126,7 +128,7 @@ export const TIMELINE_EDIT_MODE_COMMAND_PREFIX = 'timeline.editMode.';
 export function buildTimelineEditModeCommands(): ReadonlyArray<Command> {
   const modes: Command[] = TIMELINE_EDIT_MODES.map((def) => ({
     id: asCommandId(`${TIMELINE_EDIT_MODE_COMMAND_PREFIX}${def.mode}`),
-    label: `Timeline: ${def.label} Tool`,
+    label: t('timeline.editMode.command', 'Timeline: {tool} Tool', { tool: def.label }),
     description: def.description,
     icon: def.icon,
     // No chord (2026-10-07): Shift+S / Shift+R / Shift+U are AE's "add Scale
@@ -149,8 +151,8 @@ export function buildTimelineEditModeCommands(): ReadonlyArray<Command> {
       // (and to the camera tool's exit) exactly as before. Same shape as
       // `tool.cameraExit`, deliberately.
       id: asCommandId('timeline.editMode.exit'),
-      label: 'Timeline: Exit Edit Tool',
-      description: 'Return the timeline to the Selection tool.',
+      label: t('timeline.editMode.exit', 'Timeline: Exit Edit Tool'),
+      description: t('timeline.editMode.exitDescription', 'Return the timeline to the Selection tool.'),
       icon: 'select-arrow',
       shortcut: { key: 'Escape' },
       enabled: () => getTimelineEditMode() !== 'select',

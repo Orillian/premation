@@ -48,6 +48,7 @@
  */
 
 import { useEffect } from 'react';
+import { t } from '@core/i18n';
 import { useMirrorFootage, useMirrorLayer, useMirrorProperty } from '@hooks/useMirror';
 import { useActiveCompLayers } from '@hooks/useMirrorFields';
 import { uiKindOf } from '@core/mirror/layerKinds';
@@ -93,7 +94,12 @@ import { KeyframeRow as KfRow } from './KeyframeRow';
  * so "warm practical" is literally 2700 K.
  */
 interface LightPreset {
-  label: string;
+  /** Stable id (menu row ids); never shown. */
+  id: string;
+  /** English name: the undo label and the original menu row id (undo labels stay English). */
+  name: string;
+  /** Display name, translated when called (never at module load). */
+  label: () => string;
   type: LightType;
   /** Percent, matching Light.intensity. */
   intensity: number;
@@ -107,19 +113,19 @@ interface LightPreset {
 
 export const LIGHT_PRESETS: readonly LightPreset[] = [
   // The main source: a daylight-balanced spot at full energy.
-  { label: 'Key', type: 'spot', intensity: 100, kelvin: 5600, falloff: 'smooth', cone: 45, coneFeather: 45 },
+  { id: 'key', name: 'Key', label: () => t('inspector.light.presetKey', 'Key'), type: 'spot', intensity: 100, kelvin: 5600, falloff: 'smooth', cone: 45, coneFeather: 45 },
   // A soft, low-energy wash opposite the key to open the shadows.
-  { label: 'Fill', type: 'point', intensity: 45, kelvin: 6500, falloff: 'smooth' },
+  { id: 'fill', name: 'Fill', label: () => t('inspector.light.presetFill', 'Fill'), type: 'point', intensity: 45, kelvin: 6500, falloff: 'smooth' },
   // Hot, slightly cool and narrow — separates the subject from the background.
-  { label: 'Rim / Back', type: 'spot', intensity: 140, kelvin: 7000, falloff: 'smooth', cone: 30, coneFeather: 30 },
+  { id: 'rim', name: 'Rim / Back', label: () => t('inspector.light.presetRim', 'Rim / Back'), type: 'spot', intensity: 140, kelvin: 7000, falloff: 'smooth', cone: 30, coneFeather: 30 },
   // An even overhead light, like a bounced ceiling.
-  { label: 'Soft top', type: 'parallel', intensity: 65, kelvin: 6000, falloff: 'none' },
+  { id: 'softTop', name: 'Soft top', label: () => t('inspector.light.presetSoftTop', 'Soft top'), type: 'parallel', intensity: 65, kelvin: 6000, falloff: 'none' },
   // A tungsten lamp in shot: warm, and falling off physically.
-  { label: 'Warm practical', type: 'point', intensity: 80, kelvin: 2700, falloff: 'inverse-square' },
+  { id: 'warmPractical', name: 'Warm practical', label: () => t('inspector.light.presetWarmPractical', 'Warm practical'), type: 'point', intensity: 80, kelvin: 2700, falloff: 'inverse-square' },
   // A dim, very blue directional light.
-  { label: 'Cool moonlight', type: 'parallel', intensity: 55, kelvin: 10000, falloff: 'none' },
+  { id: 'coolMoonlight', name: 'Cool moonlight', label: () => t('inspector.light.presetCoolMoonlight', 'Cool moonlight'), type: 'parallel', intensity: 55, kelvin: 10000, falloff: 'none' },
   // Low, wide and orange — a sun near the horizon.
-  { label: 'Sunset key', type: 'spot', intensity: 110, kelvin: 2200, falloff: 'smooth', cone: 70, coneFeather: 70 },
+  { id: 'sunsetKey', name: 'Sunset key', label: () => t('inspector.light.presetSunsetKey', 'Sunset key'), type: 'spot', intensity: 110, kelvin: 2200, falloff: 'smooth', cone: 70, coneFeather: 70 },
 ];
 
 /** A new light's colour when its Style carries no fill (readNodeLight's default). */
@@ -152,12 +158,12 @@ const POI_FIELDS: readonly PairFieldSpec[] = [
  * one undo entry for one menu pick. Refused whole when any prop is not an
  * engine property of this light (nothing half-applied).
  */
-function sendLightLook(nodeId: string, label: string, t: Record<string, unknown>, fill?: string): void {
+function sendLightLook(nodeId: string, label: string, props: Record<string, unknown>, fill?: string): void {
   const seconds = getTime();
   // The components the batch lands on, from the write seam at write time.
   const tId = componentOfType(nodeId, 'Transform') ?? '';
   const sId = componentOfType(nodeId, 'Style');
-  const { cmds, rest } = componentPropsCommands(nodeId, tId, t, seconds);
+  const { cmds, rest } = componentPropsCommands(nodeId, tId, props, seconds);
   const fillCmds = fill !== undefined && sId ? componentPropCommands(nodeId, sId, 'fill', fill, seconds) : [];
   const missing = [...Object.keys(rest), ...(fillCmds === null ? ['fill'] : [])];
   if (missing.length > 0) {
@@ -173,7 +179,7 @@ function sendLightLook(nodeId: string, label: string, t: Record<string, unknown>
  * playhead where animated), and the colour (`layer/fill`).
  */
 export function applyLightPreset(nodeId: string, p: LightPreset): void {
-  sendLightLook(nodeId, `Light Preset: ${p.label}`, {
+  sendLightLook(nodeId, `Light Preset: ${p.name}`, {
     lightType: p.type,
     intensity: p.intensity,
     // Stored explicitly, `none` included: an ABSENT falloff is what the
@@ -211,11 +217,11 @@ export function LightPresetsMenu({ nodeId }: { nodeId: string; nodeIds?: Readonl
   useSectionMenuRows([{
     type: 'item',
     id: 'light-presets',
-    label: 'Light Presets',
+    label: t('inspector.light.presets', 'Light Presets'),
     submenu: LIGHT_PRESETS.map((p): DropdownItem => ({
       type: 'item',
-      id: `light-preset-${p.label}`,
-      label: p.label,
+      id: `light-preset-${p.name}`,
+      label: p.label(),
       ...(p === active ? { icon: 'check' as const } : {}),
       onSelect: () => applyLightPreset(nodeId, p),
     })),
@@ -338,11 +344,11 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
       <div className={styles.inlineRows}>
         {lightLayerCount > MAX_LIGHTS3D && (
           <p className={styles.helpWarning} role="note">
-            {`Only the first ${MAX_LIGHTS3D} lights in layer order shade 3D layers — this comp has ${lightLayerCount}.`}
+            {t('inspector.light.tooMany', 'Only the first {max} lights in layer order shade 3D layers — this comp has {n}.', { max: MAX_LIGHTS3D, n: lightLayerCount })}
           </p>
         )}
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Light Type</span>
+          <span className={styles.popoverLabel}>{t('inspector.light.lightType', 'Light Type')}</span>
           <select
             className={cn(styles.select, styles.rowSelect)}
             value={type}
@@ -366,19 +372,19 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                   : {}),
               });
             }}
-            aria-label="Light Type"
+            aria-label={t('inspector.light.lightType', 'Light Type')}
           >
-            <option value="parallel">Parallel</option>
-            <option value="spot">Spot</option>
-            <option value="point">Point</option>
-            <option value="ambient">Ambient</option>
-            <option value="environment">Environment</option>
+            <option value="parallel">{t('inspector.light.typeParallel', 'Parallel')}</option>
+            <option value="spot">{t('inspector.light.typeSpot', 'Spot')}</option>
+            <option value="point">{t('inspector.light.typePoint', 'Point')}</option>
+            <option value="ambient">{t('inspector.light.typeAmbient', 'Ambient')}</option>
+            <option value="environment">{t('inspector.light.typeEnvironment', 'Environment')}</option>
           </select>
         </div>
         {isEnv && (
           <>
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Sky</span>
+              <span className={styles.popoverLabel}>{t('inspector.light.sky', 'Sky')}</span>
               <select
                 className={cn(styles.select, styles.rowSelect)}
                 value={skyMenuValue}
@@ -395,26 +401,26 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                     setEnvPreset(v);
                   }
                 }}
-                aria-label="Environment preset"
+                aria-label={t('inspector.light.envPreset', 'Environment preset')}
               >
                 {ENVIRONMENT_PRESETS.map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
-                <option value="image">Image…</option>
+                <option value="image">{t('inspector.light.skyImage', 'Image…')}</option>
               </select>
             </div>
             {envAssetId !== null && (
               <div className={styles.popoverRow}>
-                <span className={styles.popoverLabel}>Image</span>
+                <span className={styles.popoverLabel}>{t('inspector.light.image', 'Image')}</span>
                 <select
                   className={cn(styles.select, styles.rowSelect)}
                   value={envAssetId}
                   onChange={(e) => setEnvPreset(environmentSkyForAsset(e.target.value))}
-                  aria-label="Environment image"
-                  title="An equirectangular (2:1 lat-long) image or HDRI. An imported EXR is projected from its LINEAR float planes; an 8-bit file is linearised from sRGB first."
+                  aria-label={t('inspector.light.envImage', 'Environment image')}
+                  title={t('inspector.light.envImageTip', 'An equirectangular (2:1 lat-long) image or HDRI. An imported EXR is projected from its LINEAR float planes; an 8-bit file is linearised from sRGB first.')}
                 >
-                  <option value="">Choose an image…</option>
-                  {envAssetMissing && <option value={envAssetId}>{`${envAssetId} (missing)`}</option>}
+                  <option value="">{t('inspector.light.chooseImage', 'Choose an image…')}</option>
+                  {envAssetMissing && <option value={envAssetId}>{t('inspector.light.missingAsset', '{id} (missing)', { id: envAssetId })}</option>}
                   {imageAssets.map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
@@ -426,11 +432,11 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
         {!isEnv && (
           <>
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Color</span>
-              <ColorPicker value={color} onChange={(hex) => setFill(hex)} aria-label="Light color" />
+              <span className={styles.popoverLabel}>{t('inspector.light.color', 'Color')}</span>
+              <ColorPicker value={color} onChange={(hex) => setFill(hex)} aria-label={t('inspector.light.lightColor', 'Light color')} />
             </div>
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Color Temperature</span>
+              <span className={styles.popoverLabel}>{t('inspector.light.colorTemp', 'Color Temperature')}</span>
               <ValueField
                 value={nearestKelvin(color)}
                 min={KELVIN_MIN}
@@ -438,18 +444,18 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                 step={100}
                 unit="K"
                 onChange={(v) => setFill(kelvinToHex(v))}
-                aria-label="Color Temperature"
+                aria-label={t('inspector.light.colorTemp', 'Color Temperature')}
               />
             </div>
           </>
         )}
-        <KfRow nodeId={nodeId} prop="intensity" label="Intensity" value={intensity} unit="%" min={0} onStatic={(v) => setIntensity(v)} />
+        <KfRow nodeId={nodeId} prop="intensity" label={t('inspector.light.intensity', 'Intensity')} value={intensity} unit="%" min={0} onStatic={(v) => setIntensity(v)} />
         {isEnv && (
           <>
             <KfRow
               nodeId={nodeId}
               prop="envRotation"
-              label="Sky Rotation"
+              label={t('inspector.light.skyRotation', 'Sky Rotation')}
               value={envRotation}
               unit="°"
               onStatic={(v) => setEnvRotation(v)}
@@ -465,21 +471,21 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
             <KfRow
               nodeId={nodeId}
               prop="envReflections"
-              label="Reflections"
+              label={t('inspector.light.reflections', 'Reflections')}
               value={envReflections}
               unit="%"
               min={0}
               onStatic={(v) => setEnvRefl(v !== LIGHT_DEFAULTS.envReflections ? v : undefined)}
             />
             <OnOffRow
-              label="Show Environment"
+              label={t('inspector.light.showEnv', 'Show Environment')}
               on={envVisible}
               onToggle={() => setEnvVisible(!envVisible)}
-              title="Draw the sky behind every layer of the composition, rotated with this light"
+              title={t('inspector.light.showEnvTip', 'Draw the sky behind every layer of the composition, rotated with this light')}
             />
             {envVisible && (
               <div className={styles.popoverRow}>
-                <span className={styles.popoverLabel}>Background Blur</span>
+                <span className={styles.popoverLabel}>{t('inspector.light.bgBlur', 'Background Blur')}</span>
                 <ValueField
                   value={envSkyBlur}
                   min={0}
@@ -487,49 +493,49 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                   step={1}
                   unit="%"
                   onChange={(v) => setEnvSkyBlur(v > 0 ? v : undefined)}
-                  aria-label="Environment background blur"
+                  aria-label={t('inspector.light.envBgBlur', 'Environment background blur')}
                 />
               </div>
             )}
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Source Layer</span>
+              <span className={styles.popoverLabel}>{t('inspector.light.sourceLayer', 'Source Layer')}</span>
               <select
                 className={cn(styles.select, styles.rowSelect)}
                 value={envLayer}
                 onChange={(e) => setEnvLayer(e.target.value || undefined)}
-                aria-label="Environment source layer"
-                title="A composition or footage layer (equirectangular) that drives the environment's reflections and sky live, frame by frame. Set its Opacity to 0 to hide it; a hidden layer renders nothing."
+                aria-label={t('inspector.light.envSourceLayer', 'Environment source layer')}
+                title={t('inspector.light.envSourceTip', "A composition or footage layer (equirectangular) that drives the environment's reflections and sky live, frame by frame. Set its Opacity to 0 to hide it; a hidden layer renders nothing.")}
               >
-                <option value="">Sky image (above)</option>
+                <option value="">{t('inspector.light.skyImageAbove', 'Sky image (above)')}</option>
                 {envLayerChoices.map((l) => (
                   <option key={l.id} value={l.id}>{l.name || l.id}</option>
                 ))}
                 {envLayer && !envLayerChoices.some((l) => l.id === envLayer) ? (
-                  <option value={envLayer}>(missing layer)</option>
+                  <option value={envLayer}>{t('inspector.light.missingLayer', '(missing layer)')}</option>
                 ) : null}
               </select>
             </div>
             <OnOffRow
-              label="Casts Shadows"
+              label={t('inspector.light.castsShadows', 'Casts Shadows')}
               on={castsShadows}
               onToggle={() => setShadows(!castsShadows)}
-              title="The environment's brightest direction casts a soft shadow map (the sky's key light)"
+              title={t('inspector.light.envShadowTip', "The environment's brightest direction casts a soft shadow map (the sky's key light)")}
             />
             {castsShadows && (
               <>
-                <KfRow nodeId={nodeId} prop="shadowDarkness" label="Shadow Darkness" value={darkness} unit="%" min={0} max={100} onStatic={(v) => setDarkness(v)} />
-                <KfRow nodeId={nodeId} prop="shadowSoftness" label="Shadow Softness" value={shadowSoftness} unit="tx" min={0} onStatic={(v) => setShadowSoft(v)} />
+                <KfRow nodeId={nodeId} prop="shadowDarkness" label={t('inspector.light.shadowDarkness', 'Shadow Darkness')} value={darkness} unit="%" min={0} max={100} onStatic={(v) => setDarkness(v)} />
+                <KfRow nodeId={nodeId} prop="shadowSoftness" label={t('inspector.light.shadowSoftness', 'Shadow Softness')} value={shadowSoftness} unit="tx" min={0} onStatic={(v) => setShadowSoft(v)} />
               </>
             )}
           </>
         )}
         {type === 'spot' && (
           <>
-            <KfRow nodeId={nodeId} prop="lightCone" label="Cone Angle" value={cone} unit="°" min={1} onStatic={(v) => setCone(v)} />
+            <KfRow nodeId={nodeId} prop="lightCone" label={t('inspector.light.coneAngle', 'Cone Angle')} value={cone} unit="°" min={1} onStatic={(v) => setCone(v)} />
             <KfRow
               nodeId={nodeId}
               prop="lightConeFeather"
-              label="Cone Feather"
+              label={t('inspector.light.coneFeather', 'Cone Feather')}
               value={feather}
               unit="%"
               min={0}
@@ -541,27 +547,27 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
         {hasFalloff && (
           <>
             <div className={styles.popoverRow}>
-              <span className={styles.popoverLabel}>Falloff</span>
+              <span className={styles.popoverLabel}>{t('inspector.light.falloff', 'Falloff')}</span>
               <select
                 className={cn(styles.select, styles.rowSelect)}
                 value={falloff}
                 onChange={(e) => setFalloff(e.target.value)}
-                aria-label="Falloff"
+                aria-label={t('inspector.light.falloff', 'Falloff')}
               >
-                <option value="none">None</option>
-                <option value="smooth">Smooth</option>
-                <option value="inverse-square">Inverse Square Clamped</option>
-                <option value="legacy">Radius ramp (legacy)</option>
+                <option value="none">{t('inspector.light.falloffNone', 'None')}</option>
+                <option value="smooth">{t('inspector.light.falloffSmooth', 'Smooth')}</option>
+                <option value="inverse-square">{t('inspector.light.falloffInvSq', 'Inverse Square Clamped')}</option>
+                <option value="legacy">{t('inspector.light.falloffLegacy', 'Radius ramp (legacy)')}</option>
               </select>
             </div>
             {showRadius && (
-              <KfRow nodeId={nodeId} prop="radius" label="Radius" value={radius} unit="px" min={1} onStatic={(v) => setRadius(v)} />
+              <KfRow nodeId={nodeId} prop="radius" label={t('inspector.light.radius', 'Radius')} value={radius} unit="px" min={1} onStatic={(v) => setRadius(v)} />
             )}
             {falloff === 'smooth' && (
               <KfRow
                 nodeId={nodeId}
                 prop="falloffDistance"
-                label="Falloff Distance"
+                label={t('inspector.light.falloffDistance', 'Falloff Distance')}
                 value={falloffDistance}
                 unit="px"
                 min={1}
@@ -573,15 +579,15 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
         {positional && (
           <>
             <OnOffRow
-              label="Casts Shadows"
+              label={t('inspector.light.castsShadows', 'Casts Shadows')}
               on={castsShadows}
               onToggle={() => setShadows(!castsShadows)}
-              title="Content layers drop a soft shadow away from this light"
+              title={t('inspector.light.shadowTip', 'Content layers drop a soft shadow away from this light')}
             />
             {castsShadows && (
               <>
-                <KfRow nodeId={nodeId} prop="shadowDarkness" label="Shadow Darkness" value={darkness} unit="%" min={0} max={100} onStatic={(v) => setDarkness(v)} />
-                <KfRow nodeId={nodeId} prop="shadowDiffusion" label="Shadow Diffusion" value={diffusion} unit="px" min={0} onStatic={(v) => setDiffusion(v)} />
+                <KfRow nodeId={nodeId} prop="shadowDarkness" label={t('inspector.light.shadowDarkness', 'Shadow Darkness')} value={darkness} unit="%" min={0} max={100} onStatic={(v) => setDarkness(v)} />
+                <KfRow nodeId={nodeId} prop="shadowDiffusion" label={t('inspector.light.shadowDiffusion', 'Shadow Diffusion')} value={diffusion} unit="px" min={0} onStatic={(v) => setDiffusion(v)} />
                 {/*
                   AE parity 4.3: every shadow-casting light renders a shadow MAP (up
                   to four per 3D run) — geometry-aware, landing on floors and any
@@ -591,12 +597,12 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                 */}
                 <TwirlGroup
                   prefKey="light.shadowMap"
-                  label={<span title="Shadows are depth-mapped (up to four lights per 3D scene); further lights project a soft copy.">Shadow Map</span>}
+                  label={<span title={t('inspector.light.shadowMapTip', 'Shadows are depth-mapped (up to four lights per 3D scene); further lights project a soft copy.')}>{t('inspector.light.shadowMap', 'Shadow Map')}</span>}
                   defaultOpen={false}
                   summary={`${mapSize}`}
                 >
                   <div className={styles.popoverRow}>
-                    <span className={styles.popoverLabel}>Resolution</span>
+                    <span className={styles.popoverLabel}>{t('inspector.light.resolution', 'Resolution')}</span>
                     <select
                       className={cn(styles.select, styles.rowSelect)}
                       value={String(mapSize)}
@@ -604,7 +610,7 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                         const v = Number(e.target.value);
                         setMapSize(v === LIGHT_DEFAULTS.shadowMapSize ? undefined : v);
                       }}
-                      aria-label="Shadow Map Resolution"
+                      aria-label={t('inspector.light.shadowMapRes', 'Shadow Map Resolution')}
                     >
                       <option value="512">512</option>
                       <option value="1024">1024</option>
@@ -615,8 +621,8 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
                       and a lit surface stripes itself with its own depth
                       quantization, too much and the shadow lifts off the foot of
                       its caster. Both are visible, so this is a real control. */}
-                  <KfRow nodeId={nodeId} prop="shadowBias" label="Shadow Bias" value={shadowBias} unit="px" min={0} onStatic={(v) => setShadowBias(v)} />
-                  <KfRow nodeId={nodeId} prop="shadowSoftness" label="Map Softness" value={shadowSoftness} unit="tx" min={0} onStatic={(v) => setShadowSoft(v)} />
+                  <KfRow nodeId={nodeId} prop="shadowBias" label={t('inspector.light.shadowBias', 'Shadow Bias')} value={shadowBias} unit="px" min={0} onStatic={(v) => setShadowBias(v)} />
+                  <KfRow nodeId={nodeId} prop="shadowSoftness" label={t('inspector.light.mapSoftness', 'Map Softness')} value={shadowSoftness} unit="tx" min={0} onStatic={(v) => setShadowSoft(v)} />
                 </TwirlGroup>
               </>
             )}
@@ -624,43 +630,43 @@ export function LightSection({ nodeId }: { nodeId: string }): JSX.Element | null
         )}
         {aimable && hasPOI && (
           <>
-            <MultiPropertyPairRow nodeId={nodeId} label="Point of Interest" props={POI_FIELDS} />
+            <MultiPropertyPairRow nodeId={nodeId} label={t('inspector.light.poi', 'Point of Interest')} props={POI_FIELDS} />
             <div className={styles.actionRow}>
               <Button
                 size="sm"
                 variant="secondary"
-                title="Remove the target and aim this light by its Direction angle"
+                title={t('inspector.light.aimByAngleTip', 'Remove the target and aim this light by its Direction angle')}
                 // AE's Orient Towards Point of Interest off (`transform/orientTowardsPointOfInterest`).
                 onClick={() => { void edit('Remove Point of Interest', { type: 'setProperty', prop: { layer: nodeId, path: POI_PATH }, value: values.bool(false) }); }}
               >
-                Aim by Angle
+                {t('inspector.light.aimByAngle', 'Aim by Angle')}
               </Button>
             </div>
           </>
         )}
         {aimable && !hasPOI && (
           <>
-            <KfRow nodeId={nodeId} prop="lightAngle" label="Direction" value={angle} unit="°" onStatic={(v) => setAngle(v)} />
+            <KfRow nodeId={nodeId} prop="lightAngle" label={t('inspector.light.direction', 'Direction')} value={angle} unit="°" onStatic={(v) => setAngle(v)} />
             <div className={styles.actionRow}>
               <Button
                 size="sm"
                 variant="secondary"
-                title="Direction can only swing this light within the comp plane — a target aims it at a point in 3D"
+                title={t('inspector.light.addTargetTip', 'Direction can only swing this light within the comp plane — a target aims it at a point in 3D')}
                 // On: the target lands at the composition centre (w/2, h/2, 0).
                 onClick={() => { void edit('Enable Point of Interest', { type: 'setProperty', prop: { layer: nodeId, path: POI_PATH }, value: values.bool(true) }); }}
               >
-                Add Target
+                {t('inspector.light.addTarget', 'Add Target')}
               </Button>
             </div>
           </>
         )}
         {showGlow && (
-          <TwirlGroup prefKey="light.viewer" label="Viewer" defaultOpen={hasGlow} summary={hasGlow ? 'Glow On' : 'Glow Off'}>
+          <TwirlGroup prefKey="light.viewer" label={t('inspector.light.viewer', 'Viewer')} defaultOpen={hasGlow} summary={hasGlow ? t('inspector.light.glowOn', 'Glow On') : t('inspector.light.glowOff', 'Glow Off')}>
             <OnOffRow
-              label="Show Glow in Viewer"
+              label={t('inspector.light.showGlow', 'Show Glow in Viewer')}
               on={hasGlow}
               onToggle={() => setGlow(!hasGlow)}
-              title="Also draw a soft bloom over the frame. It brightens everything beneath it, 2D layers included — leave off for lighting that only affects 3D layers"
+              title={t('inspector.light.showGlowTip', 'Also draw a soft bloom over the frame. It brightens everything beneath it, 2D layers included — leave off for lighting that only affects 3D layers')}
             />
           </TwirlGroup>
         )}

@@ -13,6 +13,7 @@ import { importBrowserFilesEdit } from '@layout/Assets/assetEdits';
 import { edit } from '@core/engine/uiEdits';
 import type { MissingAssetRef } from '@core/project/missingAssets';
 import { useState } from 'react';
+import { t } from '@core/i18n';
 
 /** Exported so the relinked-everything state can be asserted directly. */
 /**
@@ -57,8 +58,8 @@ export function RelinkBody({
       <EmptyState
         compact
         icon="success"
-        title="Nothing left to relink"
-        message="Every missing asset now points at a file on this machine."
+        title={t('project.relink.doneTitle', 'Nothing left to relink')}
+        message={t('project.relink.doneMessage', 'Every missing asset now points at a file on this machine.')}
       />
     );
   }
@@ -66,9 +67,10 @@ export function RelinkBody({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)', lineHeight: 1.5 }}>
-        This project references files that are not in the package. Relink them
-        to keep the animation; skipping leaves those layers as Media Offline
-        (colour bars). Export will refuse until they are relinked or removed.
+        {t(
+          'project.relink.intro',
+          'This project references files that are not in the package. Relink them to keep the animation; skipping leaves those layers as Media Offline (colour bars). Export will refuse until they are relinked or removed.',
+        )}
       </p>
       {left.map((m) => (
         <div
@@ -97,17 +99,17 @@ export function RelinkBody({
               }}
               title={m.src}
             >
-              {m.src || '(empty)'}
+              {m.src || t('project.relink.emptyPath', '(empty)')}
             </div>
           </div>
           <Button size="sm" variant="secondary" onClick={() => pick(m)}>
-            Relink…
+            {t('project.relink.relink', 'Relink…')}
           </Button>
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button size="sm" variant="ghost" onClick={close}>
-          {left.length ? 'Skip for now' : 'Done'}
+          {left.length ? t('project.relink.skip', 'Skip for now') : t('project.relink.done', 'Done')}
         </Button>
       </div>
     </div>
@@ -118,7 +120,7 @@ export function offerRelink(missing: MissingAssetRef[]): void {
   if (!missing.length) return;
   openModal({
     id: 'relink-assets',
-    title: 'Relink missing assets',
+    title: t('project.relink.title', 'Relink missing assets'),
     size: 'md',
     render: (close) => <RelinkBody missing={missing} close={close} />,
   });

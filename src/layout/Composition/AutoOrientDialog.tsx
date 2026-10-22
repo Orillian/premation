@@ -21,6 +21,7 @@ import type { AutoOrientMode } from '@core/scene/autoOrient';
 import { cn } from '@utils/cn';
 import { autoOrientModesFor, setAutoOrientEdit } from './compositionEdits';
 import styles from './PrecomposeDialog.module.css';
+import { t } from '@core/i18n';
 
 export { autoOrientModesFor };
 
@@ -29,21 +30,23 @@ export function autoOrientTargets(ids: ReadonlyArray<string>): string[] {
   return ids.filter((id) => autoOrientModesFor(id).size > 0);
 }
 
-const MODES: ReadonlyArray<{ id: AutoOrientMode; title: string; hint: string; unavailable: string }> = [
-  { id: 'off', title: 'Off', hint: 'The layer keeps its own rotation.', unavailable: '' },
-  {
-    id: 'path',
-    title: 'Orient Along Path',
-    hint: 'The layer rotates to face its direction of travel. Needs position keyframes. A camera becomes one-node and looks along its path.',
-    unavailable: 'Applies to 2D layers and cameras only.',
-  },
-  {
-    id: 'camera',
-    title: 'Orient Towards Camera',
-    hint: 'A 3D layer always faces the active camera.',
-    unavailable: 'Needs a 3D layer.',
-  },
-];
+function modes(): ReadonlyArray<{ id: AutoOrientMode; title: string; hint: string; unavailable: string }> {
+  return [
+    { id: 'off', title: t('composition.autoOrient.off', 'Off'), hint: t('composition.autoOrient.offHint', 'The layer keeps its own rotation.'), unavailable: '' },
+    {
+      id: 'path',
+      title: t('composition.autoOrient.path', 'Orient Along Path'),
+      hint: t('composition.autoOrient.pathHint', 'The layer rotates to face its direction of travel. Needs position keyframes. A camera becomes one-node and looks along its path.'),
+      unavailable: t('composition.autoOrient.pathUnavailable', 'Applies to 2D layers and cameras only.'),
+    },
+    {
+      id: 'camera',
+      title: t('composition.autoOrient.camera', 'Orient Towards Camera'),
+      hint: t('composition.autoOrient.cameraHint', 'A 3D layer always faces the active camera.'),
+      unavailable: t('composition.autoOrient.cameraUnavailable', 'Needs a 3D layer.'),
+    },
+  ];
+}
 
 function AutoOrientDialog({ ids, close }: { ids: string[]; close: () => void }): JSX.Element {
   // B4: the first layer's switches from the document mirror.
@@ -61,8 +64,8 @@ function AutoOrientDialog({ ids, close }: { ids: string[]; close: () => void }):
   return (
     <div className={styles.root}>
       <fieldset className={styles.modes}>
-        <legend className={styles.srOnly}>Auto-Orientation</legend>
-        {MODES.map((m) => {
+        <legend className={styles.srOnly}>{t('composition.autoOrient.title', 'Auto-Orientation')}</legend>
+        {modes().map((m) => {
           const ok = available(m.id);
           return (
             <label key={m.id} className={cn(styles.option, !ok && styles.optionDisabled)}>
@@ -83,8 +86,8 @@ function AutoOrientDialog({ ids, close }: { ids: string[]; close: () => void }):
         })}
       </fieldset>
       <DialogFooter
-        secondary={<Button variant="secondary" size="md" onClick={close}>Cancel</Button>}
-        primary={<Button variant="primary" size="md" onClick={submit}>OK</Button>}
+        secondary={<Button variant="secondary" size="md" onClick={close}>{t('composition.dialog.cancel', 'Cancel')}</Button>}
+        primary={<Button variant="primary" size="md" onClick={submit}>{t('composition.dialog.ok', 'OK')}</Button>}
       />
     </div>
   );
@@ -95,14 +98,14 @@ export function openAutoOrientDialog(ids: ReadonlyArray<string> = useSelectionSt
   if (targets.length === 0) {
     useUIStore.getState().notify({
       level: 'info',
-      message: 'Auto-Orient applies to visible layers and cameras — not lights, nulls, groups or audio.',
+      message: t('composition.autoOrient.noTargets', 'Auto-Orient applies to visible layers and cameras — not lights, nulls, groups or audio.'),
       durationMs: 4000,
     });
     return;
   }
   openModal({
     id: 'auto-orient',
-    title: 'Auto-Orientation',
+    title: t('composition.autoOrient.title', 'Auto-Orientation'),
     render: (close) => <AutoOrientDialog ids={targets} close={close} />,
   });
 }

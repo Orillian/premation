@@ -9,6 +9,7 @@
  * closes) and a bare checkbox beside a label (a toggle reads as a value).
  */
 
+import { t } from '@core/i18n';
 import styles from './TransformSection.module.css';
 
 export interface OnOffRowProps {
@@ -25,7 +26,7 @@ export function OnOffRow({ label, on, onToggle, title }: OnOffRowProps): JSX.Ele
     <div className={styles.popoverRow}>
       <span className={styles.popoverLabel} title={title}>{label}</span>
       <button type="button" className={styles.onOffValue} aria-pressed={on} aria-label={label} title={title} onClick={onToggle}>
-        {on ? 'On' : 'Off'}
+        {on ? t('inspector.onOff.on', 'On') : t('inspector.onOff.off', 'Off')}
       </button>
     </div>
   );

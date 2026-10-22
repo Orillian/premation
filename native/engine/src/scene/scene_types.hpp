@@ -251,9 +251,16 @@ struct RLayer {
 struct LayerError {
   std::string layerId;
   std::string layerName;
-  /// 'snapshot' (the build threw) or 'unported' (a feature not in the C++ port yet).
+  /// 'snapshot' (the build threw), 'unported' (a feature not in the C++ port:
+  /// the frame draws without it and an export refuses the frame), or 'warning'
+  /// (the frame draws without something it could not resolve — a missing
+  /// plugin, an unreadable sky asset, a rig on an unreachable image …; the
+  /// viewer says so and an export completes, listing it).
   std::string stage;
   std::string message;
+  /// Stage `expression`: the API path of the property whose expression failed
+  /// (`transform/position`, `effects/<id>/<param>`…); empty otherwise.
+  std::string path{};
 };
 
 /// RenderSnapshot — the fields the port carries.

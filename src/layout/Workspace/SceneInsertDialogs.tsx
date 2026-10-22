@@ -35,6 +35,7 @@ import {
 } from '@core/scene/primitiveLayer';
 import type { LightType } from '@core/scene/light';
 import styles from './SceneInsertDialogs.module.css';
+import { t } from '@core/i18n';
 
 /** The next free "Camera N" / "Light N" of the active composition (the dialogs' prefill). */
 function nextDeviceName(kind: 'camera' | 'light'): string {
@@ -85,18 +86,18 @@ export function CameraDialog({ close }: { close: () => void }): JSX.Element {
     <div className={styles.root}>
       <div className={styles.section}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Name</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Camera name" />
+          <span className={styles.fieldLabel}>{t('workspace.sceneInsert.name', 'Name')}</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={t('workspace.sceneInsert.cameraName', 'Camera name')} />
         </label>
       </div>
 
       <div className={styles.section}>
         <div className={styles.row}>
           <div className={styles.field}>
-            <span className={styles.fieldLabel}>Lens</span>
+            <span className={styles.fieldLabel}>{t('workspace.sceneInsert.lens', 'Lens')}</span>
             <Dropdown
               trigger={
-                <button type="button" className={styles.select} aria-label="Lens">
+                <button type="button" className={styles.select} aria-label={t('workspace.sceneInsert.lens', 'Lens')}>
                   {lens?.label ?? `${lensMm}mm`}
                 </button>
               }
@@ -110,9 +111,9 @@ export function CameraDialog({ close }: { close: () => void }): JSX.Element {
             />
           </div>
           <div className={styles.field}>
-            <span className={styles.fieldLabel}>Angle of view</span>
+            <span className={styles.fieldLabel}>{t('workspace.sceneInsert.angleOfView', 'Angle of view')}</span>
             <span className={styles.readout} data-testid="camera-angle-of-view">
-              {fov.toFixed(1)}° · {focalPx} px Zoom
+              {t('workspace.sceneInsert.angleReadout', '{fov}° · {zoom} px Zoom', { fov: fov.toFixed(1), zoom: focalPx })}
             </span>
           </div>
         </div>
@@ -120,18 +121,18 @@ export function CameraDialog({ close }: { close: () => void }): JSX.Element {
 
       <div className={styles.section}>
         <Segmented
-          aria-label="Camera aim"
+          aria-label={t('workspace.sceneInsert.cameraAim', 'Camera aim')}
           value={aim}
           onChange={setAim}
           options={[
-            { value: 'target', label: 'Aim at a target' },
-            { value: 'free', label: 'Free' },
+            { value: 'target', label: t('workspace.sceneInsert.aimTarget', 'Aim at a target') },
+            { value: 'free', label: t('workspace.sceneInsert.aimFree', 'Free') },
           ]}
         />
         <p className={styles.hint}>
           {aim === 'target'
-            ? 'Two-node: the camera always faces its Point of Interest — move it and it re-frames the target.'
-            : 'One-node: the camera looks where it is turned, like a camera on a tripod head.'}
+            ? t('workspace.sceneInsert.twoNodeHint', 'Two-node: the camera always faces its Point of Interest — move it and it re-frames the target.')
+            : t('workspace.sceneInsert.oneNodeHint', 'One-node: the camera looks where it is turned, like a camera on a tripod head.')}
         </p>
       </div>
 
@@ -139,15 +140,15 @@ export function CameraDialog({ close }: { close: () => void }): JSX.Element {
         <Checkbox
           checked={make3D}
           onChange={(e) => setMake3D(e.target.checked)}
-          label="Make all layers 3D"
+          label={t('workspace.sceneInsert.make3D', 'Make all layers 3D')}
         />
-        <p className={styles.hint}>A camera only moves layers whose 3D switch is on.</p>
+        <p className={styles.hint}>{t('workspace.sceneInsert.make3DHint', 'A camera only moves layers whose 3D switch is on.')}</p>
       </div>
 
       <div className={styles.footer}>
-        <Button variant="ghost" size="md" onClick={close}>Cancel</Button>
+        <Button variant="ghost" size="md" onClick={close}>{t('workspace.sceneInsert.cancel', 'Cancel')}</Button>
         <Button variant="primary" size="md" leftIcon={<Icon name="check" size="sm" />} onClick={() => { void create(); }}>
-          Create camera
+          {t('workspace.sceneInsert.createCamera', 'Create camera')}
         </Button>
       </div>
     </div>
@@ -204,36 +205,36 @@ function LightDialog({ close }: { close: () => void }): JSX.Element {
     <div className={styles.root}>
       <div className={styles.section}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Name</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Light name" />
+          <span className={styles.fieldLabel}>{t('workspace.sceneInsert.name', 'Name')}</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={t('workspace.sceneInsert.lightName', 'Light name')} />
         </label>
       </div>
 
       <div className={styles.section}>
         <div className={styles.row}>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Type</span>
+            <span className={styles.fieldLabel}>{t('workspace.sceneInsert.type', 'Type')}</span>
             <select
               className={styles.select}
               value={type}
               onChange={(e) => setType(e.target.value as LightType)}
-              aria-label="Light type"
+              aria-label={t('workspace.sceneInsert.lightType', 'Light type')}
             >
-              <option value="point">Point (radiates everywhere)</option>
-              <option value="spot">Spot (directional cone)</option>
+              <option value="point">{t('workspace.sceneInsert.lightPoint', 'Point (radiates everywhere)')}</option>
+              <option value="spot">{t('workspace.sceneInsert.lightSpot', 'Spot (directional cone)')}</option>
               {/* Parallel was the one LightType the dialog could not create,
                   so the only way to get sunlight was to insert some other kind
                   of light and re-type it in the inspector. It needs no extra
                   seed of its own: like a spot it is aimed, but by `lightAngle`
                   / Point of Interest, both of which readNodeLight defaults. */}
-              <option value="parallel">Parallel (directional, like sunlight)</option>
-              <option value="ambient">Ambient (uniform wash)</option>
-              <option value="environment">Environment (image-based sky)</option>
+              <option value="parallel">{t('workspace.sceneInsert.lightParallel', 'Parallel (directional, like sunlight)')}</option>
+              <option value="ambient">{t('workspace.sceneInsert.lightAmbient', 'Ambient (uniform wash)')}</option>
+              <option value="environment">{t('workspace.sceneInsert.lightEnvironment', 'Environment (image-based sky)')}</option>
             </select>
           </label>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Intensity</span>
-            <ValueField value={intensity} onChange={setIntensity} min={0} max={500} unit="%" aria-label="Intensity" />
+            <span className={styles.fieldLabel}>{t('workspace.sceneInsert.intensity', 'Intensity')}</span>
+            <ValueField value={intensity} onChange={setIntensity} min={0} max={500} unit="%" aria-label={t('workspace.sceneInsert.intensity', 'Intensity')} />
           </label>
         </div>
       </div>
@@ -241,36 +242,36 @@ function LightDialog({ close }: { close: () => void }): JSX.Element {
       <div className={styles.section}>
         <div className={styles.row}>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Color</span>
+            <span className={styles.fieldLabel}>{t('workspace.sceneInsert.color', 'Color')}</span>
             <div className={styles.colorRow}>
-              <ColorPicker value={color} onChange={setColor} aria-label="Light color" />
+              <ColorPicker value={color} onChange={setColor} aria-label={t('workspace.sceneInsert.lightColor', 'Light color')} />
               <span className={styles.hint}>{color}</span>
             </div>
           </label>
           {type === 'spot' && (
             <>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Cone angle</span>
-                <ValueField value={coneAngleDeg} onChange={setConeAngleDeg} min={1} max={179} unit="°" aria-label="Cone angle" />
+                <span className={styles.fieldLabel}>{t('workspace.sceneInsert.coneAngle', 'Cone angle')}</span>
+                <ValueField value={coneAngleDeg} onChange={setConeAngleDeg} min={1} max={179} unit="°" aria-label={t('workspace.sceneInsert.coneAngle', 'Cone angle')} />
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Cone feather</span>
-                <ValueField value={coneFeather} onChange={setConeFeather} min={0} max={100} unit="%" aria-label="Cone feather" />
+                <span className={styles.fieldLabel}>{t('workspace.sceneInsert.coneFeather', 'Cone feather')}</span>
+                <ValueField value={coneFeather} onChange={setConeFeather} min={0} max={100} unit="%" aria-label={t('workspace.sceneInsert.coneFeather', 'Cone feather')} />
               </label>
             </>
           )}
           {type === 'environment' && (
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Sky</span>
+              <span className={styles.fieldLabel}>{t('workspace.sceneInsert.sky', 'Sky')}</span>
               <select
                 className={styles.select}
                 value={envPreset}
                 onChange={(e) => setEnvPreset(e.target.value as 'studio' | 'sky' | 'sunset')}
-                aria-label="Environment preset"
+                aria-label={t('workspace.sceneInsert.envPreset', 'Environment preset')}
               >
-                <option value="studio">Studio (soft top light)</option>
-                <option value="sky">Day sky (blue above)</option>
-                <option value="sunset">Sunset (warm horizon)</option>
+                <option value="studio">{t('workspace.sceneInsert.envStudio', 'Studio (soft top light)')}</option>
+                <option value="sky">{t('workspace.sceneInsert.envSky', 'Day sky (blue above)')}</option>
+                <option value="sunset">{t('workspace.sceneInsert.envSunset', 'Sunset (warm horizon)')}</option>
               </select>
             </label>
           )}
@@ -282,15 +283,15 @@ function LightDialog({ close }: { close: () => void }): JSX.Element {
           <Switch
             checked={castShadows}
             onChange={(e) => setCastShadows(e.target.checked)}
-            label="Casts shadows"
+            label={t('workspace.sceneInsert.castsShadows', 'Casts shadows')}
           />
         </div>
       </div>
 
       <div className={styles.footer}>
-        <Button variant="ghost" size="md" onClick={close}>Cancel</Button>
+        <Button variant="ghost" size="md" onClick={close}>{t('workspace.sceneInsert.cancel', 'Cancel')}</Button>
         <Button variant="primary" size="md" leftIcon={<Icon name="check" size="sm" />} onClick={create}>
-          Create light
+          {t('workspace.sceneInsert.createLight', 'Create light')}
         </Button>
       </div>
     </div>
@@ -314,16 +315,19 @@ function LightDialog({ close }: { close: () => void }): JSX.Element {
  */
 type DialogKind = Primitive3DKind;
 
-const DIALOG_KINDS: ReadonlyArray<{ id: DialogKind; label: string }> = [
-  { id: 'sphere', label: 'Sphere' },
-  { id: 'cylinder', label: 'Cylinder' },
-  { id: 'cone', label: 'Cone' },
-  { id: 'torus', label: 'Torus' },
-  { id: 'capsule', label: 'Capsule' },
-  { id: 'box', label: 'Box (mesh)' },
-  { id: 'cube', label: 'Cube (extruded — bevels, per-face colours)' },
-  { id: 'plane', label: 'Plane (flat quad)' },
-];
+/** A function, not a constant: `t()` must run at render time, never at module scope. */
+function dialogKinds(): ReadonlyArray<{ id: DialogKind; label: string }> {
+  return [
+    { id: 'sphere', label: t('workspace.sceneInsert.primSphere', 'Sphere') },
+    { id: 'cylinder', label: t('workspace.sceneInsert.primCylinder', 'Cylinder') },
+    { id: 'cone', label: t('workspace.sceneInsert.primCone', 'Cone') },
+    { id: 'torus', label: t('workspace.sceneInsert.primTorus', 'Torus') },
+    { id: 'capsule', label: t('workspace.sceneInsert.primCapsule', 'Capsule') },
+    { id: 'box', label: t('workspace.sceneInsert.primBox', 'Box (mesh)') },
+    { id: 'cube', label: t('workspace.sceneInsert.primCube', 'Cube (extruded — bevels, per-face colours)') },
+    { id: 'plane', label: t('workspace.sceneInsert.primPlane', 'Plane (flat quad)') },
+  ];
+}
 
 function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
   const [type, setType] = useState<DialogKind>('sphere');
@@ -356,14 +360,14 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
     <div className={styles.root}>
       <div className={styles.section}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Shape</span>
+          <span className={styles.fieldLabel}>{t('workspace.sceneInsert.shape', 'Shape')}</span>
           <select
             className={styles.select}
             value={type}
             onChange={(e) => onType(e.target.value as DialogKind)}
-            aria-label="Primitive shape"
+            aria-label={t('workspace.sceneInsert.primitiveShape', 'Primitive shape')}
           >
-            {DIALOG_KINDS.map((k) => (
+            {dialogKinds().map((k) => (
               <option key={k.id} value={k.id}>{k.label}</option>
             ))}
           </select>
@@ -376,38 +380,42 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
             <div className={styles.row}>
               {uses('radius') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>{mesh === 'torus' ? 'Ring radius' : 'Radius'}</span>
-                  <ValueField value={Math.round(spec.radius)} onChange={set('radius')} min={1} max={4000} unit="px" aria-label="Radius" />
+                  <span className={styles.fieldLabel}>
+                    {mesh === 'torus' ? t('workspace.sceneInsert.ringRadius', 'Ring radius') : t('workspace.sceneInsert.radius', 'Radius')}
+                  </span>
+                  <ValueField value={Math.round(spec.radius)} onChange={set('radius')} min={1} max={4000} unit="px" aria-label={t('workspace.sceneInsert.radius', 'Radius')} />
                 </label>
               )}
               {uses('radiusTop') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Top radius</span>
-                  <ValueField value={Math.round(spec.radiusTop)} onChange={set('radiusTop')} min={0} max={4000} unit="px" aria-label="Top radius" />
+                  <span className={styles.fieldLabel}>{t('workspace.sceneInsert.topRadius', 'Top radius')}</span>
+                  <ValueField value={Math.round(spec.radiusTop)} onChange={set('radiusTop')} min={0} max={4000} unit="px" aria-label={t('workspace.sceneInsert.topRadius', 'Top radius')} />
                 </label>
               )}
               {uses('tube') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Tube radius</span>
-                  <ValueField value={Math.round(spec.tube)} onChange={set('tube')} min={1} max={2000} unit="px" aria-label="Tube radius" />
+                  <span className={styles.fieldLabel}>{t('workspace.sceneInsert.tubeRadius', 'Tube radius')}</span>
+                  <ValueField value={Math.round(spec.tube)} onChange={set('tube')} min={1} max={2000} unit="px" aria-label={t('workspace.sceneInsert.tubeRadius', 'Tube radius')} />
                 </label>
               )}
               {uses('width') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Width</span>
-                  <ValueField value={Math.round(spec.width)} onChange={set('width')} min={1} max={8000} unit="px" aria-label="Width" />
+                  <span className={styles.fieldLabel}>{t('workspace.sceneInsert.width', 'Width')}</span>
+                  <ValueField value={Math.round(spec.width)} onChange={set('width')} min={1} max={8000} unit="px" aria-label={t('workspace.sceneInsert.width', 'Width')} />
                 </label>
               )}
               {uses('height') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>{mesh === 'capsule' ? 'Height (total)' : 'Height'}</span>
-                  <ValueField value={Math.round(spec.height)} onChange={set('height')} min={1} max={8000} unit="px" aria-label="Height" />
+                  <span className={styles.fieldLabel}>
+                    {mesh === 'capsule' ? t('workspace.sceneInsert.heightTotal', 'Height (total)') : t('workspace.sceneInsert.height', 'Height')}
+                  </span>
+                  <ValueField value={Math.round(spec.height)} onChange={set('height')} min={1} max={8000} unit="px" aria-label={t('workspace.sceneInsert.height', 'Height')} />
                 </label>
               )}
               {uses('depth') && (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Depth</span>
-                  <ValueField value={Math.round(spec.depth)} onChange={set('depth')} min={1} max={8000} unit="px" aria-label="Depth" />
+                  <span className={styles.fieldLabel}>{t('workspace.sceneInsert.depth', 'Depth')}</span>
+                  <ValueField value={Math.round(spec.depth)} onChange={set('depth')} min={1} max={8000} unit="px" aria-label={t('workspace.sceneInsert.depth', 'Depth')} />
                 </label>
               )}
             </div>
@@ -418,23 +426,28 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
               <div className={styles.row}>
                 {uses('radialSegments') && (
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{mesh === 'torus' ? 'Ring segments' : 'Segments (around)'}</span>
-                    <ValueField value={spec.radialSegments} onChange={(v) => set('radialSegments')(Math.round(v))} min={3} max={256} aria-label="Radial segments" />
+                    <span className={styles.fieldLabel}>
+                      {mesh === 'torus' ? t('workspace.sceneInsert.ringSegments', 'Ring segments') : t('workspace.sceneInsert.segmentsAround', 'Segments (around)')}
+                    </span>
+                    <ValueField value={spec.radialSegments} onChange={(v) => set('radialSegments')(Math.round(v))} min={3} max={256} aria-label={t('workspace.sceneInsert.radialSegments', 'Radial segments')} />
                   </label>
                 )}
                 {uses('heightSegments') && (
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
-                      {mesh === 'torus' ? 'Tube segments' : mesh === 'capsule' ? 'Cap rows' : 'Segments (rows)'}
+                      {mesh === 'torus'
+                        ? t('workspace.sceneInsert.tubeSegments', 'Tube segments')
+                        : mesh === 'capsule' ? t('workspace.sceneInsert.capRows', 'Cap rows') : t('workspace.sceneInsert.segmentsRows', 'Segments (rows)')}
                     </span>
-                    <ValueField value={spec.heightSegments} onChange={(v) => set('heightSegments')(Math.round(v))} min={3} max={256} aria-label="Height segments" />
+                    <ValueField value={spec.heightSegments} onChange={(v) => set('heightSegments')(Math.round(v))} min={3} max={256} aria-label={t('workspace.sceneInsert.heightSegments', 'Height segments')} />
                   </label>
                 )}
               </div>
               <p className={styles.hint}>
-                More segments means a rounder silhouette and more triangles. The
-                defaults look smooth at typical comp sizes; raise them for a
-                close-up, lower them for a deliberately faceted look.
+                {t(
+                  'workspace.sceneInsert.segmentsHint',
+                  'More segments means a rounder silhouette and more triangles. The defaults look smooth at typical comp sizes; raise them for a close-up, lower them for a deliberately faceted look.',
+                )}
               </p>
             </div>
           )}
@@ -445,7 +458,7 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
                 <Switch
                   checked={spec.capped}
                   onChange={(e) => setSpec((p) => ({ ...p, capped: e.target.checked }))}
-                  label="End caps"
+                  label={t('workspace.sceneInsert.endCaps', 'End caps')}
                 />
               </div>
             </div>
@@ -454,9 +467,9 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
       )}
 
       <div className={styles.footer}>
-        <Button variant="ghost" size="md" onClick={close}>Cancel</Button>
+        <Button variant="ghost" size="md" onClick={close}>{t('workspace.sceneInsert.cancel', 'Cancel')}</Button>
         <Button variant="primary" size="md" leftIcon={<Icon name="check" size="sm" />} onClick={create}>
-          Create
+          {t('workspace.sceneInsert.create', 'Create')}
         </Button>
       </div>
     </div>
@@ -467,7 +480,7 @@ function PrimitiveDialog({ close }: { close: () => void }): JSX.Element {
 export function openPrimitiveDialog(): void {
   openModal({
     id: 'insert-3d-primitive',
-    title: 'New 3D primitive',
+    title: t('workspace.sceneInsert.primitiveTitle', 'New 3D primitive'),
     size: 'sm',
     render: (close) => <PrimitiveDialog close={close} />,
   });
@@ -477,7 +490,7 @@ export function openPrimitiveDialog(): void {
 export function openCameraDialog(): void {
   openModal({
     id: 'insert-camera',
-    title: 'New camera',
+    title: t('workspace.sceneInsert.cameraTitle', 'New camera'),
     size: 'sm',
     render: (close) => <CameraDialog close={close} />,
   });
@@ -487,7 +500,7 @@ export function openCameraDialog(): void {
 export function openLightDialog(): void {
   openModal({
     id: 'insert-light',
-    title: 'New light',
+    title: t('workspace.sceneInsert.lightTitle', 'New light'),
     size: 'sm',
     render: (close) => <LightDialog close={close} />,
   });

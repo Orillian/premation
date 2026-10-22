@@ -20,6 +20,7 @@ const grade: EffectInfo = {
   supportsFloat: true,
   audio: false,
   actions: [],
+  groups: [],
 };
 
 afterEach(() => setPluginEffectDefs([]));

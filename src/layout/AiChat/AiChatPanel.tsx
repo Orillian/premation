@@ -1,31 +1,63 @@
 /**
- * AiChatPanel — the AI assistant, docked as a left-sidebar tab.
+ * AiChatPanel — the assistant, docked as a panel (Window ▸ Panels ▸ Assistant).
  *
- * Layout (top → bottom): header (new chat / history), scrolling thread
- * (messages, live plan checklist, result preview with Apply/Decline), and a
- * composer pinned at the bottom with the prompt textarea and a provider/model
- * picker row — the ChatGPT/Claude-style arrangement.
+ * Layout (top → bottom): the 28px strip (Assistant / History, new chat), the
+ * scrolling thread, and the composer pinned at the bottom.
+ *
+ * The thread draws, in the order a run produces them:
+ *   • the starting briefs on an empty thread (briefs.ts) — a brief seeds the
+ *     concept stage, it never pins a look;
+ *   • the user's brief (a quoted block with a rule, never a chat bubble) and
+ *     the assistant's prose;
+ *   • the CONCEPT STAGE while the run waits for a pick: three directions as
+ *     rows of one list — name, swatches, the idea, type / motion / camera —
+ *     then Build / Three more / Surprise me;
+ *   • the RUN LEDGER while it works: the piece's name, the elapsed time, Stop;
+ *     every stage of the run as a row with its own clock (done · active ·
+ *     pending), the tool steps in flight folded under the active stage, and
+ *     the live filmstrip once frames exist;
+ *   • the RESULT: the still, a scrubber, the critique's five scores as a
+ *     meter row, Apply / Another take / Decline.
+ *
+ * The composer is one well: the brief, then a row of key · value chips (Mode,
+ * Look, Shape, and Alternatives in Library mode) with Send at its end. The
+ * model and the review setting are quiet menus on the line under it — they
+ * are session settings, not part of the brief.
  *
  * All chat state lives in AiChatContext (hoisted above the dock tree), so
- * switching sidebar tabs mid-run neither cancels the run nor rolls back a
- * pending preview transaction.
+ * switching panels mid-run neither cancels the run nor rolls back a pending
+ * preview transaction. Hairline rows, the grey pressed state, mono values and
+ * blue only for the primary action and the live stage are the editor's own
+ * panel grammar (the 2026-10-19 sheet): a panel like the others, not a chat
+ * app pasted into one.
  */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useDismissOnOutside } from '@hooks/useDismissOnOutside';
 import ReactMarkdown from 'react-markdown';
+import type { ConceptOption } from '@motion/author';
+import { CRITIQUE_AXES } from '@motion/author';
 import { Icon } from '@components/Icon';
+import { Button } from '@components/Button';
+import { IconButton } from '@components/IconButton';
 import { useAiProviderStore } from '@stores/aiProviderStore';
 
 import type { GatewayProviderId, AiProviderId } from '@core/api/client';
 import { processImageFile, type PendingImage } from '@core/ai/imageAttachment';
-import { goToStart, isTransportPlaying, pauseTransport, playheadSeconds, playTransport } from '@core/timeline/timelineView';
+import { goToStart, isTransportPlaying, pauseTransport, playheadSeconds, playTransport, seekPlayhead } from '@core/timeline/timelineView';
 import { useAiChatContext } from './AiChatContext';
 import { openAiSettings } from '@layout/Settings/openCustomizeDialog';
 import styles from './AiChatPanel.module.css';
 import { engineCompStill } from '@core/engine/engineStill';
 import { activeCompIdNow } from '@hooks/useMirror';
+import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
+import { settingsDurationSeconds } from '@core/mirror/compFacts';
+import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
 import { authorModeDefault } from '@core/config/flags';
+import { LIVE_FRAME_CELLS, type PipelineStage, type PlanItem } from '@layout/Workspace/useAiChat';
+import { BRIEFS_SHOWN, startingBriefs } from './briefs';
+import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 
 /** BYOK providers offered in the picker, in display order. */
 const PROVIDER_OPTIONS: { id: GatewayProviderId; label: string }[] = [
@@ -33,10 +65,6 @@ const PROVIDER_OPTIONS: { id: GatewayProviderId; label: string }[] = [
   { id: 'openai', label: 'OpenAI' },
   { id: 'gemini', label: 'Gemini' },
 ];
-
-/** Fixed preview snapshot size (16:9), independent of sidebar width. */
-const PREVIEW_W = 240;
-const PREVIEW_H = 135;
 
 const MAX_IMAGES = 3;
 
@@ -69,7 +97,7 @@ function renderProviderIcon(provider: GatewayProviderId): JSX.Element {
     case 'openai':
       return (
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ flex: 'none', color: '#10a37f' }}>
-          <path d="M22.28 9.82a5.984 5.984 0 0 0-.52-4.91 6.046 6.046 0 0 0-6.51-2.9 6.065 6.065 0 0 0-4.73-2.01 6.015 6.015 0 0 0-5.76 4.19 6.05 6.05 0 0 0-4.3 2.92 5.986 5.986 0 0 0 .74 6.55 5.984 5.984 0 0 0 .52 4.91 6.046 6.046 0 0 0 6.51 2.9 6.06 6.06 0 0 0 4.73 2.01 6.014 6.014 0 0 0 5.76-4.19 6.05 6.05 0 0 0 4.3-2.92 5.985 5.985 0 0 0-.74-6.55Zm-9.52 11.66a4.47 4.47 0 0 1-2.61-.84c.03-.02.09-.05.13-.08l3.41-1.97a.78.78 0 0 0 .39-.68v-4.8l1.44.83a.74.74 0 0 0 .38.1v4.06a4.502 4.502 0 0 1-3.14 3.38Zm-7.39-3.26a4.48 4.48 0 0 1-.58-2.67c.03.02.08.05.13.08l3.41 1.97a.78.78 0 0 0 .78 0l4.16-2.4v1.67a.77.77 0 0 0 .19.55l-3.52 2.03a4.505 4.505 0 0 1-4.57-.23Zm-1.46-8.03a4.48 4.48 0 0 1 2.03-1.83v4.11a.76.76 0 0 0 .39.67l4.16 2.4-1.44.83a.78.78 0 0 0-.39.68v4.06a4.5 4.5 0 0 1-4.75-1.49 4.46 4.46 0 0 1 0-9.43Zm14.62 3.26-4.16-2.4 1.44-.83a.78.78 0 0 0 .39-.68V5.48a4.5 4.5 0 0 1 4.75 1.49 4.46 4.46 0 0 1 0 9.43 4.48 4.48 0 0 1-2.03 1.83V14.1a.76.76 0 0 0-.39-.67Zm1.46-4.77c-.03-.02-.08-.05-.13-.08l-3.41-1.97a.78.78 0 0 0-.78 0l-4.16 2.4V7.59a.77.77 0 0 0-.19-.55l3.52-2.03a4.505 4.505 0 0 1 4.57.23 4.48 4.48 0 0 1 .58 2.67Zm-8.49-5.18a4.47 4.47 0 0 1 2.61.84c-.03.02-.09.05-.13.08l-3.41 1.97a.78.78 0 0 0-.39.68v4.8l-1.44-.83a.74.74 0 0 0-.38-.1V4.93a4.502 4.502 0 0 1 3.14-3.38Zm-1.5 6.27 2.5-1.44 2.5 1.44v2.89l-2.5 1.44-2.5-1.44V9.52Z" />
+          <path d="M22.28 9.82a5.984 5.984 0 0 0-.52-4.91 6.046 6.046 0 0 0-6.51-2.9 6.065 6.065 0 0 0-4.73-2.01 6.015 6.015 0 0 0-5.76 4.19 6.05 6.05 0 0 0-4.3 2.92 5.98 5.98 0 0 0 .74 7.04 5.98 5.98 0 0 0 .51 4.91 6.051 6.051 0 0 0 6.52 2.9 5.985 5.985 0 0 0 4.73 2.01 6.05 6.05 0 0 0 5.77-4.2 5.98 5.98 0 0 0 4.3-2.92 6.008 6.008 0 0 0-.75-7.03Zm-9 12.61a4.48 4.48 0 0 1-2.88-1.04l.14-.08 4.78-2.76a.78.78 0 0 0 .39-.68v-6.74l2.02 1.17a.07.07 0 0 1 .04.05v5.58a4.5 4.5 0 0 1-4.49 4.5Zm-9.66-4.12a4.47 4.47 0 0 1-.54-3.01l.14.09 4.78 2.76a.77.77 0 0 0 .78 0l5.84-3.37v2.33a.08.08 0 0 1-.03.06L9.74 19.95a4.5 4.5 0 0 1-6.12-1.64ZM2.36 7.9a4.49 4.49 0 0 1 2.35-1.97v5.68a.77.77 0 0 0 .39.67l5.84 3.37-2.02 1.17a.08.08 0 0 1-.07 0L4.02 14.1A4.5 4.5 0 0 1 2.36 7.9Zm16.6 3.86-5.84-3.38 2.02-1.16a.08.08 0 0 1 .07 0l4.83 2.79a4.49 4.49 0 0 1-.69 8.1v-5.68a.78.78 0 0 0-.39-.67Zm2.01-3.03-.14-.09-4.78-2.76a.78.78 0 0 0-.78 0L9.43 9.25V6.92a.07.07 0 0 1 .03-.06l4.83-2.79a4.5 4.5 0 0 1 6.68 4.66Zm-12.64 4.16-2.02-1.17a.08.08 0 0 1-.04-.06V6.08a4.5 4.5 0 0 1 7.38-3.45l-.14.08-4.78 2.76a.78.78 0 0 0-.39.68v6.74Zm1.1-2.36 2.6-1.5 2.6 1.5v3l-2.6 1.5-2.6-1.5Z" />
         </svg>
       );
     case 'motion':
@@ -87,13 +115,8 @@ function renderProviderIcon(provider: GatewayProviderId): JSX.Element {
  *
  * Ordered LONGEST-PREFIX-FIRST, because these are substring tests: `claude-opus-5`
  * must be checked before any shorter `claude-opus` prefix, and `gpt-4o-mini`
- * before `gpt-4o`. The list had no entry at all for `claude-opus-5` — the default
- * model — so the most common case fell through and displayed its raw id, while
- * three retired 1.5/3.5 models it can no longer reach still had labels.
- *
- * The ids come from the backend's capability matrix (with `MODEL_SUGGESTIONS` as
- * the offline fallback); a label for a model the server cannot route to is a
- * label nobody can see.
+ * before `gpt-4o`. The ids come from the backend's capability matrix (with
+ * `MODEL_SUGGESTIONS` as the offline fallback).
  */
 const MODEL_LABELS: readonly [match: string, label: string][] = [
   ['claude-fable-5-1', 'Claude Fable 5.1'],
@@ -121,13 +144,188 @@ const MODEL_LABELS: readonly [match: string, label: string][] = [
 function getModelLabel(val: string): string {
   if (val === 'motion') return 'Motion AI';
   const [, m] = val.split(':');
-  if (!m) return 'Select model';
+  if (!m) return t('aiChat.model.select', 'Select model');
   for (const [match, label] of MODEL_LABELS) {
     if (m.includes(match)) return label;
   }
   // The raw id, which is at least honest — a model this app offers should have
   // an entry above, and seeing the id is how that omission gets noticed.
   return m;
+}
+
+/** "00:14" from milliseconds. */
+function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** "03:02" from seconds, with a fraction as frames of a 30-frame second. */
+function timecode(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const whole = Math.floor(s);
+  const frac = Math.round((s - whole) * 100);
+  return `${String(whole).padStart(2, '0')}:${String(frac).padStart(2, '0')}`;
+}
+
+/** The elapsed time of the run in flight, ticking once a second. */
+
+/** A clock that ticks once a second while `on`; the ledger and the elapsed time read it. */
+function useNow(on: boolean): number {
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    if (!on) return undefined;
+    setNow(performance.now());
+    const id = window.setInterval(() => setNow(performance.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [on]);
+  return now;
+}
+
+/** The playhead, sampled ten times a second while a result is on screen. */
+function usePlayhead(on: boolean): number {
+  const [sec, setSec] = useState(0);
+  useEffect(() => {
+    if (!on) return undefined;
+    const id = window.setInterval(() => setSec(playheadSeconds()), 100);
+    return () => window.clearInterval(id);
+  }, [on]);
+  return sec;
+}
+
+/** Called at render time: `t()` must not run at module scope. */
+function axisLabels(): Record<(typeof CRITIQUE_AXES)[number], string> {
+  return {
+    contrast: t('aiChat.axis.contrast', 'Contrast'),
+    hierarchy: t('aiChat.axis.hierarchy', 'Hierarchy'),
+    rhythm: t('aiChat.axis.rhythm', 'Rhythm'),
+    novelty: t('aiChat.axis.novelty', 'Novelty'),
+    brief: t('aiChat.axis.brief', 'Brief'),
+  };
+}
+
+/**
+ * A translated sentence with one value drawn in bold: the template is resolved
+ * with a marker in place of `{n}`, then split around it, so the sentence stays
+ * whole for the translator and the number keeps its mono weight.
+ */
+const BOLD_MARK = '\u0001';
+function boldSplit(sentence: string): [string, string] {
+  const at = sentence.indexOf(BOLD_MARK);
+  return at < 0 ? [sentence, ''] : [sentence.slice(0, at), sentence.slice(at + 1)];
+}
+
+/** The number of tool steps the active stage shows before folding the older ones. */
+const STEPS_SHOWN = 3;
+
+/** One concept as a row of the list: name, swatches, the idea, its language. */
+function ConceptRow({ concept, selected, onSelect }: { concept: ConceptOption; selected: boolean; onSelect: () => void }): JSX.Element {
+  return (
+    <button type="button" role="radio" aria-checked={selected} className={cn(styles.concept, selected && styles.conceptPicked)} onClick={onSelect}>
+      <span className={styles.conceptHead}>
+        <span className={styles.conceptName}>{concept.name}</span>
+        {concept.swatches && concept.swatches.length > 0 && (
+          <span className={styles.swatches} aria-hidden>
+            {concept.swatches.map((hex, i) => <i key={i} style={{ background: hex }} />)}
+          </span>
+        )}
+      </span>
+      <span className={styles.conceptIdea}>{concept.idea}</span>
+      <span className={styles.conceptMeta}>
+        {concept.type && <span><em>{t('aiChat.concept.type', 'Type')}</em>{concept.type}</span>}
+        {concept.motion && <span><em>{t('aiChat.concept.motion', 'Motion')}</em>{concept.motion}</span>}
+        {concept.camera && <span><em>{t('aiChat.concept.camera', 'Camera')}</em>{concept.camera}</span>}
+        {!concept.type && !concept.motion && <span><em>{t('aiChat.concept.frame', 'Frame')}</em>{t('aiChat.concept.frameValue', '{medium}-led, {value}', { medium: concept.medium, value: concept.value })}</span>}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The run ledger: every stage of the run as a row with its own clock, the
+ * tool steps in flight under the active stage, the live filmstrip once the
+ * build draws frames.
+ */
+function RunLedger({
+  title, now, startedAt, stages, planItems, activity, streaming, liveFrames, onStop,
+}: {
+  title: string | null;
+  now: number;
+  startedAt: number | null;
+  stages: PipelineStage[] | null;
+  planItems: PlanItem[];
+  activity: string;
+  streaming: string;
+  liveFrames: string[];
+  onStop: () => void;
+}): JSX.Element {
+  const rows = stages ?? [];
+  const activeIndex = rows.findIndex((s) => s.status === 'active');
+  const doneSteps = planItems.filter((it) => it.status !== 'active');
+  const activeStep = planItems.find((it) => it.status === 'active');
+  const failed = doneSteps.filter((it) => it.status === 'error').length;
+  const recent = doneSteps.slice(-STEPS_SHOWN);
+  const earlier = doneSteps.length - recent.length;
+  const building = rows.some((s, i) => i >= 3 && s.status !== 'pending');
+  const showFilm = liveFrames.some(Boolean) || (building && planItems.length > 0);
+  const cells = liveFrames.length ? liveFrames : Array.from({ length: LIVE_FRAME_CELLS }, () => '');
+  const working = streaming ? t('aiChat.run.writing', 'Writing') : activity || t('aiChat.run.working', 'Working');
+  const earlierText = earlier === 1
+    ? (failed > 0 ? t('aiChat.run.earlierOneFailed', '{n} earlier step · {failed} failed', { n: earlier, failed }) : t('aiChat.run.earlierOne', '{n} earlier step', { n: earlier }))
+    : (failed > 0 ? t('aiChat.run.earlierOtherFailed', '{n} earlier steps · {failed} failed', { n: earlier, failed }) : t('aiChat.run.earlierOther', '{n} earlier steps', { n: earlier }));
+  const [callsBefore, callsAfter] = boldSplit(planItems.length === 1
+    ? t('aiChat.run.toolCallsOne', '{n} tool call', { n: BOLD_MARK })
+    : t('aiChat.run.toolCallsOther', '{n} tool calls', { n: BOLD_MARK }));
+  const steps = (
+    <div className={styles.steps}>
+      {earlier > 0 && <div className={cn(styles.step, styles.stepEarlier)}><span className={styles.stepMark} /><span className={styles.stepLabel}>{earlierText}</span></div>}
+      {recent.map((it) => (
+        <div key={it.id} className={cn(styles.step, it.status === 'error' && styles.stepError)}>
+          <span className={cn(styles.stepMark, it.status === 'error' ? styles.stepMarkError : styles.stepMarkDone)}><Icon name={it.status === 'error' ? 'close' : 'check'} size="sm" /></span>
+          <span className={styles.stepLabel}>{it.label}</span>
+        </div>
+      ))}
+      <div className={cn(styles.step, styles.stepNow)}>
+        <span className={cn(styles.stepMark, styles.stepMarkNow)} />
+        <span className={styles.stepLabel}>{activeStep?.label ?? working}</span>
+      </div>
+    </div>
+  );
+  return (
+    <section className={styles.run} aria-live="polite" aria-label={t('aiChat.run.label', 'Run')}>
+      <div className={styles.runHead}>
+        <span className={styles.runName}>{title ?? t('aiChat.run.working', 'Working')}</span>
+        <span className={styles.runTime}>{startedAt === null ? '00:00' : clock(now - startedAt)}</span>
+        <Button size="xs" variant="ghost" onClick={onStop}>{t('aiChat.run.stop', 'Stop')}</Button>
+      </div>
+      {rows.length > 0 ? (
+        <ol className={styles.ledger}>
+          {rows.map((s, i) => (
+            <li key={s.label} className={styles.stage} data-status={s.status}>
+              <span className={styles.stageMark}>{s.status === 'done' && <Icon name="check" size="sm" />}</span>
+              <span className={styles.stageLabel}>{s.label}</span>
+              <span className={styles.stageTime}>
+                {s.status === 'done' && s.ms !== undefined ? clock(s.ms) : s.status === 'active' && s.startedAt !== undefined ? clock(now - s.startedAt) : ''}
+              </span>
+              {i === activeIndex && steps}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        steps
+      )}
+      {showFilm && (
+        <div className={styles.film} aria-label={t('aiChat.run.framesSoFar', 'Frames so far')}>
+          {cells.map((src, i) => (
+            <span key={i} className={styles.filmCell}>{src ? <img src={src} alt="" /> : null}</span>
+          ))}
+        </div>
+      )}
+      <div className={styles.runFoot}>
+        <span className={styles.runFootText}>{working}</span>
+        <span>{callsBefore}<b className={styles.mono}>{planItems.length}</b>{callsAfter}</span>
+      </div>
+    </section>
+  );
 }
 
 export function AiChatPanel(): JSX.Element {
@@ -156,71 +354,62 @@ export function AiChatPanel(): JSX.Element {
     setDirection,
     packs,
     filmstrip,
+    runStartedAt,
+    runTitle,
+    liveFrames,
+    concepts,
+    pickConcept,
+    resultScores,
+    resultConcept,
+    anotherTake,
+    lastApplied,
   } = useAiChatContext();
 
   const [value, setValue] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [allBriefs, setAllBriefs] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [canvasSnapshot, setCanvasSnapshot] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [conceptPick, setConceptPick] = useState(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const now = useNow(busy);
+  const playhead = usePlayhead(!!hasPendingTx);
 
-  // Provider + model selection (bottom of the composer, like other AI apps).
+  // Provider + model selection (the line under the composer).
   const aiProvider = useAiProviderStore((s) => s.provider);
   const setAiProvider = useAiProviderStore((s) => s.setProvider);
   const aiModels = useAiProviderStore((s) => s.models);
   const setAiModel = useAiProviderStore((s) => s.setModel);
   const aiStatus = useAiProviderStore((s) => s.status);
   const aiMotion = useAiProviderStore((s) => s.motion);
-  // False until a live /ai/keys answer has landed this session. Used to keep the
-  // "connect a provider" banner off the screen while the answer is still in
-  // flight — telling someone to set up a key and then withdrawing it a moment
-  // later is how the setup prompt came to feel like it never went away.
+  // False until a live /ai/keys answer has landed this session: the "connect
+  // a provider" banner stays off the screen while the answer is in flight.
   const aiVerified = useAiProviderStore((s) => s.verified);
-  // The backend's capability matrix when it has answered, MODEL_SUGGESTIONS
-  // until then — see the store. Never the constant directly.
   const modelsFor = useAiProviderStore((s) => s.modelsFor);
 
   const providerReady = (id: GatewayProviderId): boolean =>
     id === 'motion' ? !!aiMotion?.present : !!aiStatus?.[id as AiProviderId]?.present;
 
   /** Whether the account has ANY usable provider, not just the selected one. */
-  const anyProviderReady =
-    !!aiMotion?.present || PROVIDER_OPTIONS.some((p) => providerReady(p.id));
+  const anyProviderReady = !!aiMotion?.present || PROVIDER_OPTIONS.some((p) => providerReady(p.id));
 
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
-  /** Which direction chip has its popover open, if any. */
-  const [openChip, setOpenChip] = useState<'mode' | 'look' | 'shape' | 'variants' | null>(null);
+  /** Which menu is open: a composer chip, the model, the review setting. */
+  const [openMenu, setOpenMenu] = useState<'mode' | 'look' | 'shape' | 'variants' | 'review' | 'model' | null>(null);
   /** The generative mode the next run takes: the user's pick, else the default. */
   const mode = direction.mode ?? authorModeDefault();
-  const modelPickerRef = useRef<HTMLDivElement | null>(null);
-  const modePickerRef = useRef<HTMLDivElement | null>(null);
-  const directionBarRef = useRef<HTMLDivElement | null>(null);
-  const closeChip = useCallback(() => setOpenChip(null), []);
-  // The three direction-chip popovers render INSIDE their chips, so one ref on
-  // the bar covers every chip and every popover: a click on another chip is
-  // "inside" (its own onClick swaps which chip is open), anything else closes.
-  useDismissOnOutside(openChip !== null, [directionBarRef], closeChip);
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
-        setModelDropdownOpen(false);
-      }
-      if (modePickerRef.current && !modePickerRef.current.contains(e.target as Node)) {
-        setModeDropdownOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handleOutsideClick);
-    return () => window.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const closeMenu = useCallback(() => setOpenMenu(null), []);
+  // Every menu renders INSIDE its trigger, and every trigger is inside the
+  // composer: one ref covers them all. A click on another trigger is "inside"
+  // (its own onClick swaps which menu is open); anything else closes.
+  useDismissOnOutside(openMenu !== null, [composerRef], closeMenu);
+  const toggleMenu = (m: NonNullable<typeof openMenu>) => (): void => setOpenMenu((c) => (c === m ? null : m));
 
   const dropdownValue =
-    aiProvider === 'motion'
-      ? 'motion'
-      : `${aiProvider}:${aiModels[aiProvider] || modelsFor(aiProvider)[0] || ''}`;
+    aiProvider === 'motion' ? 'motion' : `${aiProvider}:${aiModels[aiProvider] || modelsFor(aiProvider)[0] || ''}`;
 
   const onChangeModel = (val: string): void => {
     if (val === 'motion') {
@@ -238,7 +427,22 @@ export function AiChatPanel(): JSX.Element {
   useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming, planItems, pipelineStages, hasPendingTx]);
+  }, [messages, streaming, planItems, pipelineStages, hasPendingTx, concepts, liveFrames]);
+
+  // A fresh concept stage starts on its first card.
+  useEffect(() => { setConceptPick(0); }, [concepts]);
+
+  // The brief grows with its text, to six lines; a sent brief shrinks back.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 17;
+    const max = line * 6;
+    const h = Math.max(line * 2, Math.min(el.scrollHeight, max));
+    el.style.height = `${h}px`;
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
+  }, [value]);
 
   // Capture a canvas snapshot when a preview transaction opens.
   useEffect(() => {
@@ -247,9 +451,8 @@ export function AiChatPanel(): JSX.Element {
       setIsPlayingPreview(false);
       return undefined;
     }
-    // The engine's still of the composition at the playhead (the page has no
-    // pixels of its own: the viewport is the engine's). A short wait lets the
-    // transaction's edits land first.
+    // The engine's still of the composition at the playhead. A short wait
+    // lets the transaction's edits land first.
     let cancelled = false;
     let url: string | null = null;
     const timer = setTimeout(() => {
@@ -312,63 +515,68 @@ export function AiChatPanel(): JSX.Element {
   const formatTime = (iso: string): string => {
     const d = new Date(iso);
     const diff = Date.now() - d.getTime();
-    if (diff < 60_000) return 'now';
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    if (diff < 60_000) return t('aiChat.history.now', 'now');
+    if (diff < 3_600_000) return t('aiChat.history.minutesAgo', '{n}m ago', { n: Math.floor(diff / 60_000) });
+    if (diff < 86_400_000) return t('aiChat.history.hoursAgo', '{n}h ago', { n: Math.floor(diff / 3_600_000) });
     return d.toLocaleDateString();
   };
 
-  const showPlan = (busy || hasPendingTx) && planItems.length > 0;
+  const duration = settingsDurationSeconds(activeCompSettingsNow(), DEFAULT_COMPOSITION.durationSeconds);
+  const showRun = busy && !concepts && (pipelineStages !== null || planItems.length > 0 || !!activity);
+  const allStartingBriefs = startingBriefs();
+  const briefsShown = allBriefs ? allStartingBriefs : allStartingBriefs.slice(0, BRIEFS_SHOWN);
+  const lookLabel = packs.find((pk) => pk.id === direction.lookPackId)?.displayName ?? t('aiChat.look.propose', 'Propose');
+  const shapeSet = direction.energy !== undefined || !!direction.totalDurationMs || !!direction.accent;
+  const shapeLabel = direction.totalDurationMs ? `${Math.round(direction.totalDurationMs / 1000)} s` : direction.energy !== undefined ? t('aiChat.shape.energyValue', 'Energy {n}', { n: Math.round(direction.energy * 100) }) : null;
+  const AXIS_LABEL = axisLabels();
+  const canSend = busy || !!value.trim() || pendingImages.length > 0;
 
   return (
     <div className={styles.root}>
-      {/* ── Header: title + new chat + history ─────────────────────── */}
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>
-          <Icon name="sparkles" size="sm" /> Assistant
-        </span>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.iconButton}
-            title="New chat"
-            onClick={() => {
-              setShowHistory(false);
-              newChat();
-            }}
-          >
-            <Icon name="plus" size="md" />
-          </button>
-          <button
-            type="button"
-            className={`${styles.iconButton} ${showHistory ? styles.iconButtonActive : ''}`}
-            title="Chat history"
-            onClick={() => setShowHistory((v) => !v)}
-          >
-            <Icon name="history" size="md" />
-          </button>
-        </div>
+      {/* ── The strip: Assistant / History, new chat ───────────────── */}
+      <div className={styles.strip} role="tablist" aria-label={t('aiChat.strip.assistant', 'Assistant')}>
+        <button type="button" role="tab" aria-selected={!showHistory} className={cn(styles.stripTab, !showHistory && styles.stripTabActive)} onClick={() => setShowHistory(false)}>
+          {t('aiChat.strip.assistant', 'Assistant')}
+        </button>
+        <button type="button" role="tab" aria-selected={showHistory} className={cn(styles.stripTab, showHistory && styles.stripTabActive)} onClick={() => setShowHistory(true)}>
+          {t('aiChat.strip.history', 'History')}
+        </button>
+        <span className={styles.stripSpacer} />
+        {busy && <span className={styles.stripLive} title={t('aiChat.strip.running', 'A run is in progress')} aria-hidden />}
+        <button
+          type="button"
+          className={styles.stripButton}
+          title={t('aiChat.strip.newChat', 'New chat')}
+          aria-label={t('aiChat.strip.newChat', 'New chat')}
+          onClick={() => {
+            setShowHistory(false);
+            newChat();
+          }}
+        >
+          <Icon name="plus" size="sm" />
+        </button>
       </div>
 
       {showHistory ? (
         /* ── History list ─────────────────────────────────────────── */
         <div className={styles.history}>
-          {conversations.length === 0 && <div className={styles.emptyNote}>No conversations yet.</div>}
+          {conversations.length === 0 && <div className={styles.quiet}>{t('aiChat.history.empty', 'No conversations yet.')}</div>}
           {conversations.map((c) => (
             <div
               key={c.id}
-              className={`${styles.historyRow} ${c.id === activeConversationId ? styles.historyRowActive : ''}`}
+              className={cn(styles.historyRow, c.id === activeConversationId && styles.historyRowActive)}
               onClick={() => {
                 setShowHistory(false);
                 void openConversation(c.id);
               }}
             >
-              <span className={styles.historyTitle}>{c.title || 'Untitled chat'}</span>
+              <span className={styles.historyTitle}>{c.title || t('aiChat.history.untitled', 'Untitled chat')}</span>
               <span className={styles.historyTime}>{formatTime(c.updatedAt)}</span>
               <button
                 type="button"
-                className={styles.iconButton}
-                title="Delete"
+                className={styles.stripButton}
+                title={t('aiChat.history.delete', 'Delete')}
+                aria-label={t('aiChat.history.deleteLabel', 'Delete conversation')}
                 onClick={(e) => {
                   e.stopPropagation();
                   void removeConversation(c.id);
@@ -382,147 +590,110 @@ export function AiChatPanel(): JSX.Element {
       ) : (
         /* ── Thread ───────────────────────────────────────────────── */
         <div className={styles.thread} ref={threadRef}>
-          {/* No "coming soon" banner: when this panel mounts, the assistant is
-              available. Key connection is the only setup gate — see keyBanner. */}
-          {/* Only once the gateway / vault has actually answered. Before that we do not
-              know, and guessing "no key" is what made this read as a setup
-              prompt that ignored the keys the user had already saved. */}
           {!ready && aiVerified && (
             <div className={styles.keyBanner}>
               {anyProviderReady ? (
-                <>Pick a connected provider in the model menu below to start.</>
+                <>{t('aiChat.banner.pickProvider', 'Pick a connected provider in the model menu below to start.')}</>
               ) : (
                 <>
-                  Connect an AI provider to start.{' '}
-                  {/* Was `#/dashboard?tab=settings` — a route the local edition
-                      never registers, so this bounced off the router's
-                      catch-all back to the editor and the OSS build had no way
-                      to enter a key at all. Opens the in-editor tab now, which
-                      exists in both editions. */}
+                  {t('aiChat.banner.connect', 'Connect an AI provider to start.')}{' '}
                   <button type="button" className={styles.keyBannerLink} onClick={() => openAiSettings()}>
-                    Open AI settings →
+                    {t('aiChat.banner.openSettings', 'Open AI settings →')}
                   </button>
                 </>
               )}
             </div>
           )}
+
           {messages.length === 0 && ready && (
-            <div>
-              <div className={styles.betaNotice}>
-                <Icon name="sparkles" size="md" />
-                <span>
-                  <strong>The AI assistant is still experimental.</strong> Right now it can
-                  handle simple actions reliably, but not complex, multi-step scenes yet. Feel
-                  free to try it — just expect the occasional miss while it improves.
-                </span>
+            <>
+              <p className={styles.hello}>
+                {t('aiChat.hello.lead', 'Describe the piece.')} <b>{t('aiChat.hello.body', 'Three concepts come back; pick one and it is built and shown frame by frame.')}</b>
+              </p>
+              <div className={styles.section}>
+                <span>{t('aiChat.briefs.heading', 'Start from a brief')}</span>
+                <button type="button" className={styles.sectionLink} onClick={() => setAllBriefs((v) => !v)}>
+                  {allBriefs ? t('aiChat.briefs.fewer', 'Fewer') : t('aiChat.briefs.all', 'All {n}', { n: allStartingBriefs.length })}
+                </button>
               </div>
-              <div className={styles.emptyNote}>
-                Describe the motion video you want — I plan it, build it, review it, and show you a
-                preview to apply or decline.
+              <div className={styles.list} role="list">
+                {briefsShown.map((b) => (
+                  <button key={b.id} type="button" role="listitem" className={styles.brief} onClick={() => void submit(b.prompt)} title={b.prompt}>
+                    <span className={styles.swatches} aria-hidden>
+                      {b.swatches.map((hex, i) => <i key={i} style={{ background: hex }} />)}
+                    </span>
+                    <span className={styles.briefText}>
+                      <span className={styles.briefTitle}>{b.title}</span>
+                      <span className={styles.briefBlurb}>{b.blurb}</span>
+                    </span>
+                    <span className={styles.briefLen}>{b.seconds}<em>s</em></span>
+                  </button>
+                ))}
               </div>
-              <div className={styles.presetContainer}>
-                <div className={styles.presetTitle}>Quick Motion Presets</div>
-                <div className={styles.presetGrid}>
-                  {[
-                    {
-                      name: '🚀 SaaS Explainer',
-                      desc: '3-scene SaaS promo with indigo cards & floating orbs',
-                      prompt: 'Create a 3-scene SaaS promo video in saas style with indigo cards, floating ambient orbs, and clean kinetic text.',
-                    },
-                    {
-                      name: '🍎 Apple Minimal Reveal',
-                      desc: 'Product reveal with background depth & camera sweeps',
-                      prompt: 'Create an elegant Apple-style product reveal in premium style with deep background depth, subtle camera sweeps, and crisp typography.',
-                    },
-                    {
-                      name: '⚡ Cyberpunk Kinetic',
-                      desc: 'High-energy cyberpunk promo with neon glow & snappy motion',
-                      prompt: 'Create a high-energy cyberpunk promo in cyberpunk style with neon accent glow, word-by-word kinetic text, and snappy motion physics.',
-                    },
-                    {
-                      name: '🎬 Broadcast Lower Third',
-                      desc: 'Broadcast lower third with accent bar & slide-in title',
-                      prompt: 'Create a professional broadcast lower third with an accent bar and slide-in text for NextGen Motion.',
-                    },
-                    {
-                      name: '✨ Trim-Path Logo Reveal',
-                      desc: 'AE-style stroke trim-path outline reveal & glowing emblem',
-                      prompt: 'Build a trim-path stroke outline logo reveal for NextGen AI with glowing emblem pop and title entrance in cyberpunk style.',
-                    },
-                    {
-                      name: '💥 Radial Repeater Burst',
-                      desc: '12-copy radial repeater burst accent (HUD / particle ring)',
-                      prompt: 'Add a 12-copy radial repeater burst accent at the center of the frame in saas style.',
-                    },
-                    {
-                      name: '🌀 Organic Path Morph',
-                      desc: 'Liquid shape distortion with pucker/bloat morphing',
-                      prompt: 'Add an organic liquid pucker-bloat shape path morph with rotation in saas style.',
-                    },
-                  ].map((p, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={styles.presetChip}
-                      onClick={() => void submit(p.prompt)}
-                    >
-                      <span className={styles.presetChipName}>{p.name}</span>
-                      <span className={styles.presetChipDesc}>{p.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </>
           )}
+
           {messages.map((m, i) =>
             m.role === 'user' ? (
-              <div key={i} className={styles.userMsg}>
-                {m.images?.map((src, j) => (
-                  <img key={j} src={src} className={styles.msgThumb} alt="" />
-                ))}
+              <blockquote key={i} className={styles.userMsg}>
+                {m.images && m.images.length > 0 && (
+                  <span className={styles.msgThumbs}>
+                    {m.images.map((src, j) => <img key={j} src={src} className={styles.msgThumb} alt="" />)}
+                  </span>
+                )}
                 {m.text}
-              </div>
+              </blockquote>
             ) : (
-              <div key={i} className={`${styles.assistantMsg} ${m.error ? styles.errorMsg : ''}`}>
+              <div key={i} className={cn(styles.assistantMsg, m.error && styles.errorMsg)}>
                 <ReactMarkdown>{m.text}</ReactMarkdown>
               </div>
             ),
           )}
 
-          {/* Director pipeline stages (generative prompts). */}
-          {busy && pipelineStages && (
-            <div className={styles.planCard}>
-              <div className={styles.planTitle}>Production plan</div>
-              {pipelineStages.map((s, i) => (
-                <div key={i} className={styles.planRow} data-status={s.status}>
-                  <span className={styles.planMark}>
-                    {s.status === 'done' ? <Icon name="check" size="sm" /> : s.status === 'active' ? <span className={styles.spinner} /> : ''}
-                  </span>
-                  {s.label}
-                </div>
-              ))}
-            </div>
+          {/* The concept stage: three directions, the user's pick. */}
+          {concepts && (
+            <section className={styles.conceptsBlock} aria-label={t('aiChat.concepts.label', 'Concepts')}>
+              <p className={styles.assistantMsg}>
+                {concepts.round === 0 ? t('aiChat.concepts.first', 'Three directions.') : t('aiChat.concepts.more', 'Three more.')} {t('aiChat.concepts.explain', 'Each has its own palette, type and motion language, and none repeats what was made here before.')}
+              </p>
+              <div className={styles.list} role="radiogroup" aria-label={t('aiChat.concepts.label', 'Concepts')}>
+                {concepts.concepts.map((c, i) => (
+                  <ConceptRow key={`${concepts.round}-${i}`} concept={c} selected={conceptPick === i} onSelect={() => setConceptPick(i)} />
+                ))}
+              </div>
+              <div className={styles.row}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  aria-label={concepts.concepts[conceptPick]?.name ? t('aiChat.concepts.buildNamed', 'Build {name}', { name: concepts.concepts[conceptPick]?.name ?? '' }) : t('aiChat.concepts.buildPick', 'Build the pick')}
+                  title={concepts.concepts[conceptPick]?.name ? t('aiChat.concepts.buildNamed', 'Build {name}', { name: concepts.concepts[conceptPick]?.name ?? '' }) : t('aiChat.concepts.buildPick', 'Build the pick')}
+                  onClick={() => pickConcept({ kind: 'pick', index: conceptPick })}
+                >
+                  {t('aiChat.concepts.build', 'Build')}
+                </Button>
+                <Button size="sm" onClick={() => pickConcept({ kind: 'more' })} disabled={concepts.round >= 2} title={concepts.round >= 2 ? t('aiChat.concepts.roundLimit', 'Three rounds is the limit for one brief') : t('aiChat.concepts.freshTitle', 'Three fresh directions')}>
+                  {t('aiChat.concepts.threeMore', 'Three more')}
+                </Button>
+                <span className={styles.spacer} />
+                <Button size="sm" variant="ghost" onClick={() => pickConcept({ kind: 'surprise' })}>
+                  {t('aiChat.concepts.surprise', 'Surprise me')}
+                </Button>
+              </div>
+            </section>
           )}
 
-          {/* Concrete build steps — each flips to ✓ as the tool completes. */}
-          {showPlan && (
-            <div className={styles.planCard}>
-              <div className={styles.planTitle}>Build steps</div>
-              {planItems.map((it) => (
-                <div key={it.id} className={styles.planRow} data-status={it.status}>
-                  <span className={styles.planMark}>
-                    {it.status === 'done' ? (
-                      <Icon name="check" size="sm" />
-                    ) : it.status === 'error' ? (
-                      <Icon name="close" size="sm" />
-                    ) : (
-                      <span className={styles.spinner} />
-                    )}
-                  </span>
-                  {it.label}
-                </div>
-              ))}
-            </div>
+          {showRun && (
+            <RunLedger
+              title={runTitle}
+              now={now}
+              startedAt={runStartedAt ?? null}
+              stages={pipelineStages}
+              planItems={planItems}
+              activity={activity}
+              streaming={streaming}
+              liveFrames={liveFrames}
+              onStop={cancel}
+            />
           )}
 
           {busy && streaming && (
@@ -530,241 +701,91 @@ export function AiChatPanel(): JSX.Element {
               <ReactMarkdown>{streaming}</ReactMarkdown>
             </div>
           )}
-          {/* Always show a live "working" line while busy and no prose is
-              streaming — so a tool-heavy turn (which emits no text) never looks
-              frozen. The pipeline/build cards above show the detail. */}
-          {busy && !streaming && (
-            <div className={styles.activityRow}>
-              <span className={styles.spinner} />
-              <span className={styles.activityText}>{activity || 'Working'}…</span>
-            </div>
-          )}
 
-          {/* Result preview: Apply commits the transaction, Decline rolls it back. */}
+          {/* The result: the still, a scrubber, the scores, Apply / Another take / Decline. */}
           {hasPendingTx && (
-            <div className={styles.previewCard}>
-              <div className={styles.previewHeader}>Result preview</div>
-              <div className={styles.previewFrame} style={{ width: PREVIEW_W, height: PREVIEW_H }}>
-                {canvasSnapshot ? (
-                  <img src={canvasSnapshot} alt="Result preview" />
-                ) : (
-                  <div className={styles.previewEmpty}>Preview on canvas</div>
-                )}
-                <button
-                  type="button"
-                  className={styles.previewPlay}
-                  title={isPlayingPreview ? 'Pause' : 'Play preview'}
-                  onClick={togglePlayPreview}
-                >
-                  <Icon name={isPlayingPreview ? 'pause' : 'play'} size="md" />
-                </button>
+            <section className={styles.result} aria-label={t('aiChat.result.label', 'Result')}>
+              <div className={styles.resultFrame}>
+                {canvasSnapshot ? <img src={canvasSnapshot} alt={t('aiChat.result.preview', 'Result preview')} /> : <div className={styles.resultEmpty}>{t('aiChat.result.onCanvas', 'Preview on canvas')}</div>}
               </div>
               {filmstrip.length > 1 && (
                 <div className={styles.filmstrip}>
-                  {filmstrip.map((src, i) => (
-                    <img key={i} src={src} alt={`Frame ${i + 1}`} />
+                  {filmstrip.map((src, i) => <img key={i} src={src} alt={t('aiChat.result.frame', 'Frame {n}', { n: i + 1 })} />)}
+                </div>
+              )}
+              <div className={styles.scrub}>
+                <button type="button" className={styles.scrubPlay} title={isPlayingPreview ? t('aiChat.result.pause', 'Pause') : t('aiChat.result.play', 'Play preview')} aria-label={isPlayingPreview ? t('aiChat.result.pause', 'Pause') : t('aiChat.result.play', 'Play preview')} onClick={togglePlayPreview}>
+                  <Icon name={isPlayingPreview ? 'pause' : 'play'} size="sm" />
+                </button>
+                <div
+                  className={styles.scrubTrack}
+                  role="slider"
+                  aria-label={t('aiChat.result.time', 'Preview time')}
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round(duration * 100) / 100}
+                  aria-valuenow={Math.round(Math.min(playhead, duration) * 100) / 100}
+                  tabIndex={0}
+                  onPointerDown={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const f = r.width > 0 ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) : 0;
+                    try { seekPlayhead(f * duration); } catch { /* timeline not booted yet */ }
+                  }}
+                >
+                  <i style={{ width: `${duration > 0 ? Math.min(100, (playhead / duration) * 100) : 0}%` }} />
+                </div>
+                <span className={styles.mono}>{timecode(playhead)} / {timecode(duration)}</span>
+              </div>
+              {resultScores && (
+                <div className={styles.scores} aria-label={t('aiChat.result.scores', 'Review scores')}>
+                  {CRITIQUE_AXES.map((a) => (
+                    <span key={a} className={styles.score} data-low={resultScores[a] < 7 || undefined}>
+                      <em>{AXIS_LABEL[a]}</em>
+                      <b>{resultScores[a]}</b>
+                      <i style={{ width: `${Math.max(0, Math.min(10, resultScores[a])) * 10}%` }} />
+                    </span>
                   ))}
                 </div>
               )}
-              {pendingChanges.length > 0 && (
-                <div className={styles.previewChanges}>
-                  {pendingChanges.length} change{pendingChanges.length > 1 ? 's' : ''} pending
-                </div>
-              )}
-              <div className={styles.previewActions}>
-                <button type="button" className={styles.applyButton} onClick={acceptPending}>
-                  <Icon name="check" size="sm" /> Apply
-                </button>
-                <button type="button" className={styles.declineButton} onClick={discardPending}>
-                  <Icon name="close" size="sm" /> Decline
-                </button>
+              <div className={styles.resultActions}>
+                <Button size="sm" variant="primary" onClick={acceptPending}>{t('aiChat.result.apply', 'Apply')}</Button>
+                <Button size="sm" onClick={anotherTake} title={resultConcept ? t('aiChat.result.anotherTakeNamed', 'Build the brief again on a concept other than {name}', { name: resultConcept.name }) : t('aiChat.result.anotherTakeTitle', 'Build the brief again on another concept')}>
+                  {t('aiChat.result.anotherTake', 'Another take')}
+                </Button>
+                <span className={styles.spacer} />
+                <Button size="sm" variant="ghost" onClick={discardPending}>{t('aiChat.result.decline', 'Decline')}</Button>
               </div>
-            </div>
+              {pendingChanges.length > 0 && (() => {
+                const [before, after] = boldSplit(pendingChanges.length === 1
+                  ? t('aiChat.result.pendingOne', '{n} change pending · one undo step', { n: BOLD_MARK })
+                  : t('aiChat.result.pendingOther', '{n} changes pending · one undo step', { n: BOLD_MARK }));
+                return <div className={styles.resultMeta}>{before}<b className={styles.mono}>{pendingChanges.length}</b>{after}</div>;
+              })()}
+            </section>
           )}
+
+          {!busy && !hasPendingTx && lastApplied && (() => {
+            const one = lastApplied.changes === 1;
+            const sentence = lastApplied.title
+              ? (one
+                ? t('aiChat.applied.titledOne', 'Applied “{title}” as one undo step · {n} change · Edit ▸ Undo takes it back', { title: lastApplied.title, n: BOLD_MARK })
+                : t('aiChat.applied.titledOther', 'Applied “{title}” as one undo step · {n} changes · Edit ▸ Undo takes it back', { title: lastApplied.title, n: BOLD_MARK }))
+              : (one
+                ? t('aiChat.applied.one', 'Applied as one undo step · {n} change · Edit ▸ Undo takes it back', { n: BOLD_MARK })
+                : t('aiChat.applied.other', 'Applied as one undo step · {n} changes · Edit ▸ Undo takes it back', { n: BOLD_MARK }));
+            const [before, after] = boldSplit(sentence);
+            return (
+              <div className={styles.applied}>
+                {before}<b className={styles.mono}>{lastApplied.changes}</b>{after}
+              </div>
+            );
+          })()}
         </div>
       )}
 
-      {/* ── Composer (Pill Container matching screenshot) ────────── */}
+      {/* ── Composer ─────────────────────────────────────────────────── */}
       {!showHistory && (
-        <div className={styles.composer}>
-          {/* Direction. Every control is optional and unset by default - the
-              caster has always been able to take a pack, an accent, an energy and
-              a duration, and nothing in the product could supply them, so the
-              model guessed all four on every run. */}
-          <div ref={directionBarRef} className={styles.directionBar}>
-            {/* Mode first: it decides what the other chips mean. In Author mode
-                the model writes the composition and a pinned look becomes a
-                mood for it; in Library mode the caster casts from the libraries. */}
-            <div
-              className={`${styles.directionChip} ${direction.mode ? styles.directionChipSet : ''}`}
-              title="Author: the model designs and animates the whole piece, then reviews and revises it. Library: picks from hand-made templates and techniques."
-              data-testid="ai-mode-chip"
-              onClick={() => setOpenChip((c) => (c === 'mode' ? null : 'mode'))}
-            >
-              <Icon name={mode === 'author' ? 'brush' : 'layers'} size="sm" />
-              {mode === 'author' ? 'Author' : 'Library'}
-              {openChip === 'mode' && (
-                <div className={styles.directionPopover} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.popoverHeader}>How the piece is made</div>
-                  {([
-                    ['author', 'Author', 'The model designs the whole composition in the engine\'s own vocabulary — 3D, effects, type, motion — then looks at the frames and revises what fails.'],
-                    ['library', 'Library', 'Casts layouts and techniques from the hand-made libraries. Faster and predictable; the range is the library\'s.'],
-                  ] as const).map(([id, label, intent]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`${styles.directionOption} ${mode === id ? styles.directionOptionActive : ''}`}
-                      onClick={() => { setDirection({ mode: id }); setOpenChip(null); }}
-                    >
-                      <span>{label}</span>
-                      <span className={styles.directionOptionIntent}>{intent}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div
-              className={`${styles.directionChip} ${direction.lookPackId ? styles.directionChipSet : ''}`}
-              title="Look pack - fixes palette, type, shape language, pacing and motion vocabulary"
-              onClick={() => setOpenChip((c) => (c === 'look' ? null : 'look'))}
-            >
-              <Icon name="sparkles" size="sm" />
-              {packs.find((pk) => pk.id === direction.lookPackId)?.displayName ?? 'Any look'}
-              {direction.lookPackId && (
-                <span
-                  className={styles.directionClear}
-                  role="button"
-                  aria-label="Clear look"
-                  onClick={(e) => { e.stopPropagation(); setDirection({ lookPackId: undefined }); }}
-                >
-                  <Icon name="close" size="sm" />
-                </span>
-              )}
-              {openChip === 'look' && (
-                <div className={styles.directionPopover} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.popoverHeader}>Look pack</div>
-                  <button
-                    type="button"
-                    className={`${styles.directionOption} ${!direction.lookPackId ? styles.directionOptionActive : ''}`}
-                    onClick={() => { setDirection({ lookPackId: undefined }); setOpenChip(null); }}
-                  >
-                    <span>Let the AI choose</span>
-                    <span className={styles.directionOptionIntent}>
-                      It reads the brief and picks the pack that fits.
-                    </span>
-                  </button>
-                  {packs.map((pk) => (
-                    <button
-                      key={pk.id}
-                      type="button"
-                      className={`${styles.directionOption} ${direction.lookPackId === pk.id ? styles.directionOptionActive : ''}`}
-                      onClick={() => { setDirection({ lookPackId: pk.id }); setOpenChip(null); }}
-                    >
-                      <span>{pk.displayName}</span>
-                      <span className={styles.directionOptionIntent}>{pk.intent}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div
-              className={`${styles.directionChip} ${
-                direction.energy !== undefined || direction.totalDurationMs || direction.accent
-                  ? styles.directionChipSet
-                  : ''
-              }`}
-              title="Energy, length and brand colour"
-              onClick={() => setOpenChip((c) => (c === 'shape' ? null : 'shape'))}
-            >
-              <Icon name="settings" size="sm" />
-              Shape
-              {openChip === 'shape' && (
-                <div className={styles.directionPopover} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.popoverHeader}>Energy</div>
-                  <div className={styles.directionRow}>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={Math.round((direction.energy ?? 0.5) * 100)}
-                      onChange={(e) => setDirection({ energy: Number(e.target.value) / 100 })}
-                    />
-                    <span className={styles.directionValue}>
-                      {direction.energy === undefined ? 'auto' : direction.energy.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className={styles.popoverHeader}>Length</div>
-                  <div className={styles.directionRow}>
-                    <input
-                      type="range"
-                      min={4}
-                      max={60}
-                      value={Math.round((direction.totalDurationMs ?? 12000) / 1000)}
-                      onChange={(e) => setDirection({ totalDurationMs: Number(e.target.value) * 1000 })}
-                    />
-                    <span className={styles.directionValue}>
-                      {direction.totalDurationMs ? `${Math.round(direction.totalDurationMs / 1000)}s` : 'auto'}
-                    </span>
-                  </div>
-
-                  <div className={styles.popoverHeader}>Brand colour</div>
-                  <div className={styles.directionRow}>
-                    <input
-                      type="color"
-                      value={direction.accent ?? '#2b7eff'}
-                      onChange={(e) => setDirection({ accent: e.target.value })}
-                    />
-                    <span className={styles.directionValue}>{direction.accent ?? 'auto'}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={styles.directionOption}
-                    onClick={() => {
-                      setDirection({ energy: undefined, totalDurationMs: undefined, accent: undefined });
-                      setOpenChip(null);
-                    }}
-                  >
-                    <span>Reset to automatic</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Alternatives are re-seeded caster emits; an authored piece has none. */}
-            {mode === 'library' && <div
-              className={`${styles.directionChip} ${direction.variants > 1 ? styles.directionChipSet : ''}`}
-              title="Emit several alternatives and rank them - costs no extra model calls"
-              onClick={() => setOpenChip((c) => (c === 'variants' ? null : 'variants'))}
-            >
-              <Icon name="copy" size="sm" />
-              {direction.variants > 1 ? `${direction.variants} directions` : '1 direction'}
-              {openChip === 'variants' && (
-                <div className={styles.directionPopover} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.popoverHeader}>Alternatives</div>
-                  {[1, 2, 3, 5].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`${styles.directionOption} ${direction.variants === n ? styles.directionOptionActive : ''}`}
-                      onClick={() => { setDirection({ variants: n }); setOpenChip(null); }}
-                    >
-                      <span>{n === 1 ? 'One' : `${n} alternatives`}</span>
-                      <span className={styles.directionOptionIntent}>
-                        {n === 1
-                          ? 'Emit a single piece.'
-                          : 'Same brief and casting, re-seeded. No extra model calls - the strongest by the linters is applied.'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>}
-          </div>
-
-          <div className={styles.composerPill}>
+        <div className={styles.composer} ref={composerRef}>
+          <div className={styles.composerBox}>
             {pendingImages.length > 0 && (
               <div className={styles.attachStrip}>
                 {pendingImages.map((img, i) => (
@@ -773,6 +794,7 @@ export function AiChatPanel(): JSX.Element {
                     <button
                       type="button"
                       className={styles.attachRemove}
+                      aria-label={t('aiChat.composer.removeImage', 'Remove image')}
                       onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
                     >
                       <Icon name="close" size="sm" />
@@ -781,18 +803,21 @@ export function AiChatPanel(): JSX.Element {
                 ))}
               </div>
             )}
+            <div className={styles.composerMain}>
             <textarea
+              ref={textareaRef}
               className={styles.textarea}
               placeholder={
                 ready || !aiVerified
-                  ? 'Create a cinematic trailer for my brand…'
+                  ? t('aiChat.composer.placeholder', 'Describe the piece: subject, length, tone, the one thing that must land…')
                   : anyProviderReady
-                    ? 'Pick a connected provider below'
-                    : 'Connect an AI provider first'
+                    ? t('aiChat.composer.pickProvider', 'Pick a connected provider below')
+                    : t('aiChat.composer.connectFirst', 'Connect an AI provider first')
               }
               value={value}
               rows={2}
               disabled={busy}
+              aria-label={t('aiChat.composer.brief', 'Brief')}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={onKeyDown}
               onPaste={(e) => {
@@ -803,136 +828,254 @@ export function AiChatPanel(): JSX.Element {
                 }
               }}
             />
-            <div className={styles.composerControls}>
-              <div className={styles.controlsLeft}>
-                <button
-                  type="button"
-                  className={styles.plusBtn}
-                  title="Attach reference image"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Icon name="plus" size="md" />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    if (e.target.files) void addFiles(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
+            <button
+              type="button"
+              className={cn(styles.send, busy && styles.sendStop)}
+              title={busy ? t('aiChat.run.stop', 'Stop') : t('aiChat.composer.sendTitle', 'Send (Enter)')}
+              aria-label={busy ? t('aiChat.run.stop', 'Stop') : t('aiChat.composer.send', 'Send')}
+              onClick={busy ? cancel : send}
+              disabled={!canSend}
+            >
+              <Icon name={busy ? 'stop' : 'arrow-up'} size="sm" />
+            </button>
+            </div>
+            <div className={styles.composerBar}>
+              <IconButton size="sm" title={t('aiChat.composer.attach', 'Attach a reference image')} aria-label={t('aiChat.composer.attach', 'Attach a reference image')} onClick={() => fileRef.current?.click()}>
+                <Icon name="image" size="sm" />
+              </IconButton>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files) void addFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
 
+              {/* Mode first: it decides what the other chips mean. In Author mode
+                  the model writes the composition and a pinned look becomes a
+                  mood for it; in Library mode the caster casts from the libraries. */}
+              <div
+                className={cn(styles.chip, direction.mode && styles.chipSet, openMenu === 'mode' && styles.chipOpen)}
+                title={t('aiChat.mode.title', 'Author: the model proposes concepts, designs and animates the whole piece, then reviews and revises it. Library: picks from hand-made templates and techniques.')}
+                data-testid="ai-mode-chip"
+                onClick={toggleMenu('mode')}
+              >
+                <span className={styles.chipKey}>{t('aiChat.mode.key', 'Mode')}</span>
+                <span className={styles.chipValue}>{mode === 'author' ? t('aiChat.mode.author', 'Author') : t('aiChat.mode.library', 'Library')}</span>
+                <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                {openMenu === 'mode' && (
+                  <div className={styles.popover} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.popoverHeader}>{t('aiChat.mode.header', 'How the piece is made')}</div>
+                    {([
+                      ['author', t('aiChat.mode.author', 'Author'), t('aiChat.mode.authorIntent', 'Proposes three concepts, designs the whole composition in the engine\'s own vocabulary — 3D, effects, type, motion — then looks at the frames and revises what fails.')],
+                      ['library', t('aiChat.mode.library', 'Library'), t('aiChat.mode.libraryIntent', 'Casts layouts and techniques from the hand-made libraries. Faster and predictable; the range is the library\'s.')],
+                    ] as const).map(([id, label, intent]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={cn(styles.option, mode === id && styles.optionActive)}
+                        onClick={() => { setDirection({ mode: id }); setOpenMenu(null); }}
+                      >
+                        <span>{label}</span>
+                        <span className={styles.optionIntent}>{intent}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={cn(styles.chip, direction.lookPackId && styles.chipSet, openMenu === 'look' && styles.chipOpen)}
+                title={t('aiChat.look.title', 'Look: Propose lets the concept stage decide; a pack fixes palette, type, shape language, pacing and motion vocabulary')}
+                onClick={toggleMenu('look')}
+              >
+                <span className={styles.chipKey}>{t('aiChat.look.key', 'Look')}</span>
+                <span className={styles.chipValue}>{lookLabel}</span>
+                <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                {openMenu === 'look' && (
+                  <div className={styles.popover} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.popoverHeader}>{t('aiChat.look.key', 'Look')}</div>
+                    <button
+                      type="button"
+                      className={cn(styles.option, !direction.lookPackId && styles.optionActive)}
+                      onClick={() => { setDirection({ lookPackId: undefined }); setOpenMenu(null); }}
+                    >
+                      <span>{t('aiChat.look.propose', 'Propose')}</span>
+                      <span className={styles.optionIntent}>{t('aiChat.look.proposeIntent', 'Three concepts from the brief, each with its own palette, type and motion. Pick one.')}</span>
+                    </button>
+                    {packs.map((pk) => (
+                      <button
+                        key={pk.id}
+                        type="button"
+                        className={cn(styles.option, direction.lookPackId === pk.id && styles.optionActive)}
+                        onClick={() => { setDirection({ lookPackId: pk.id }); setOpenMenu(null); }}
+                      >
+                        <span>{pk.displayName}</span>
+                        <span className={styles.optionIntent}>{pk.intent}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={cn(styles.chip, shapeSet && styles.chipSet, openMenu === 'shape' && styles.chipOpen)}
+                title={t('aiChat.shape.title', 'Energy, length and brand colour')}
+                onClick={toggleMenu('shape')}
+              >
+                <span className={shapeLabel ? styles.chipKey : styles.chipValue}>{t('aiChat.shape.key', 'Shape')}</span>
+                {shapeLabel && <span className={styles.chipValue}>{shapeLabel}</span>}
+                {direction.accent && <i className={styles.chipDot} style={{ background: direction.accent }} aria-hidden />}
+                <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                {openMenu === 'shape' && (
+                  <div className={styles.popover} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.popoverHeader}>{t('aiChat.shape.energy', 'Energy')}</div>
+                    <div className={styles.popoverRow}>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        aria-label={t('aiChat.shape.energy', 'Energy')}
+                        value={Math.round((direction.energy ?? 0.5) * 100)}
+                        onChange={(e) => setDirection({ energy: Number(e.target.value) / 100 })}
+                      />
+                      <span className={styles.popoverValue}>{direction.energy === undefined ? t('aiChat.shape.auto', 'auto') : direction.energy.toFixed(2)}</span>
+                    </div>
+                    <div className={styles.popoverHeader}>{t('aiChat.shape.length', 'Length')}</div>
+                    <div className={styles.popoverRow}>
+                      <input
+                        type="range"
+                        min={4}
+                        max={60}
+                        aria-label={t('aiChat.shape.length', 'Length')}
+                        value={Math.round((direction.totalDurationMs ?? 12000) / 1000)}
+                        onChange={(e) => setDirection({ totalDurationMs: Number(e.target.value) * 1000 })}
+                      />
+                      <span className={styles.popoverValue}>{direction.totalDurationMs ? `${Math.round(direction.totalDurationMs / 1000)} s` : t('aiChat.shape.auto', 'auto')}</span>
+                    </div>
+                    <div className={styles.popoverHeader}>{t('aiChat.shape.brandColour', 'Brand colour')}</div>
+                    <div className={styles.popoverRow}>
+                      <input type="color" aria-label={t('aiChat.shape.brandColour', 'Brand colour')} value={direction.accent ?? '#2b7eff'} onChange={(e) => setDirection({ accent: e.target.value })} />
+                      <span className={styles.popoverValue}>{direction.accent ?? t('aiChat.shape.auto', 'auto')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.option}
+                      onClick={() => {
+                        setDirection({ energy: undefined, totalDurationMs: undefined, accent: undefined });
+                        setOpenMenu(null);
+                      }}
+                    >
+                      <span>{t('aiChat.shape.reset', 'Reset to automatic')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Alternatives are re-seeded caster emits; an authored piece has none. */}
+              {mode === 'library' && (
                 <div
-                  ref={modelPickerRef}
-                  className={styles.modelPickerWrap}
-                  title={`AI Model: ${getModelLabel(dropdownValue)}`}
-                  onClick={() => setModelDropdownOpen((o) => !o)}
+                  className={cn(styles.chip, direction.variants > 1 && styles.chipSet, openMenu === 'variants' && styles.chipOpen)}
+                  title={t('aiChat.variants.title', 'Emit several alternatives and rank them — costs no extra model calls')}
+                  onClick={toggleMenu('variants')}
                 >
-                  {renderProviderIcon(aiProvider)}
-                  <span className={styles.modelPickerLabel}>{getModelLabel(dropdownValue)}</span>
-                  <Icon name="chevron-down" size="sm" className={`${styles.chevron} ${modelDropdownOpen ? styles.chevronOpen : ''}`} />
-
-                  {modelDropdownOpen && (
-                    <div className={styles.customPopoverMenu} onClick={(e) => e.stopPropagation()}>
-                      <div className={styles.popoverHeader}>Select AI Model</div>
-                      {/* A "Motion AI" group stood here, gated on
-                          `aiMotion?.present`. Hosted AI is gone — the assistant is
-                          BYOK in both editions — so that flag is permanently false
-                          and the group could never render. Deleted rather than left
-                          as an option that looks selectable and 400s. */}
-                      {PROVIDER_OPTIONS.map((p) => {
-                        const ready = providerReady(p.id);
-                        const suggestions = modelsFor(p.id as AiProviderId);
-                        return (
-                          <div key={p.id} className={styles.popoverGroup}>
-                            <div className={styles.groupLabel}>
-                              {p.label} {!ready && <span className={styles.noKeyTag}>no key</span>}
-                            </div>
-                            {suggestions.map((m) => {
-                              const val = `${p.id}:${m}`;
-                              const active = dropdownValue === val;
-                              return (
-                                <button
-                                  key={val}
-                                  type="button"
-                                  className={`${styles.popoverOption} ${active ? styles.popoverOptionActive : ''}`}
-                                  disabled={!ready}
-                                  onClick={() => {
-                                    onChangeModel(val);
-                                    setModelDropdownOpen(false);
-                                  }}
-                                >
-                                  <span className={styles.optionLabel}>{getModelLabel(val)}</span>
-                                  {active && <Icon name="check" size="sm" className={styles.optionCheck} />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
+                  <span className={styles.chipValue}>{direction.variants > 1 ? t('aiChat.variants.directionsOther', '{n} directions', { n: direction.variants }) : t('aiChat.variants.directionsOne', '1 direction')}</span>
+                  <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                  {openMenu === 'variants' && (
+                    <div className={styles.popover} onClick={(e) => e.stopPropagation()}>
+                      <div className={styles.popoverHeader}>{t('aiChat.variants.header', 'Alternatives')}</div>
+                      {[1, 2, 3, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={cn(styles.option, direction.variants === n && styles.optionActive)}
+                          onClick={() => { setDirection({ variants: n }); setOpenMenu(null); }}
+                        >
+                          <span>{n === 1 ? t('aiChat.variants.one', 'One') : t('aiChat.variants.alternatives', '{n} alternatives', { n })}</span>
+                          <span className={styles.optionIntent}>
+                            {n === 1 ? t('aiChat.variants.oneIntent', 'Emit a single piece.') : t('aiChat.variants.manyIntent', 'Same brief and casting, re-seeded. No extra model calls — the strongest by the linters is applied.')}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              <div className={styles.controlsRight}>
-                <div
-                  ref={modePickerRef}
-                  className={styles.modePickerWrap}
-                  title={`Execution mode: ${isManualMode ? 'Manual (Review preview)' : 'Auto (Direct apply)'}`}
-                  onClick={() => setModeDropdownOpen((o) => !o)}
-                >
-                  <Icon name={isManualMode ? 'eye' : 'sparkles'} size="sm" className={styles.modeIcon} />
-                  <span className={styles.modePickerLabel}>{isManualMode ? 'Manual' : 'Auto'}</span>
-                  <Icon name="chevron-down" size="sm" className={`${styles.chevron} ${modeDropdownOpen ? styles.chevronOpen : ''}`} />
+            </div>
+          </div>
 
-                  {modeDropdownOpen && (
-                    <div className={styles.customPopoverMenuRight} onClick={(e) => e.stopPropagation()}>
-                      <div className={styles.popoverHeader}>Execution Mode</div>
-                      <button
-                        type="button"
-                        className={`${styles.popoverOption} ${!isManualMode ? styles.popoverOptionActive : ''}`}
-                        onClick={() => {
-                          toggleManualMode(false);
-                          setModeDropdownOpen(false);
-                        }}
-                      >
-                        <div>
-                          <div className={styles.optionLabel}>Auto (Direct apply)</div>
-                          <div className={styles.optionSub}>AI changes apply immediately</div>
+          {/* Session settings, not part of the brief: the model, and when a result lands. */}
+          <div className={styles.foot}>
+            <div
+              className={cn(styles.footMenu, openMenu === 'model' && styles.footMenuOpen)}
+              title={t('aiChat.model.title', 'AI model: {model}', { model: getModelLabel(dropdownValue) })}
+              onClick={toggleMenu('model')}
+            >
+              {renderProviderIcon(aiProvider)}
+              <span className={styles.footLabel}>{getModelLabel(dropdownValue)}</span>
+              <Icon name="chevron-down" size="sm" className={styles.chevron} />
+              {openMenu === 'model' && (
+                <div className={styles.popover} onClick={(e) => e.stopPropagation()}>
+                  <div className={styles.popoverHeader}>{t('aiChat.model.header', 'Model')}</div>
+                  {PROVIDER_OPTIONS.map((p) => {
+                    const pr = providerReady(p.id);
+                    const suggestions = modelsFor(p.id as AiProviderId);
+                    return (
+                      <div key={p.id} className={styles.popoverGroup}>
+                        <div className={styles.groupLabel}>
+                          {p.label} {!pr && <span className={styles.noKeyTag}>{t('aiChat.model.noKey', 'no key')}</span>}
                         </div>
-                        {!isManualMode && <Icon name="check" size="sm" className={styles.optionCheck} />}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.popoverOption} ${isManualMode ? styles.popoverOptionActive : ''}`}
-                        onClick={() => {
-                          toggleManualMode(true);
-                          setModeDropdownOpen(false);
-                        }}
-                      >
-                        <div>
-                          <div className={styles.optionLabel}>Manual (Review preview)</div>
-                          <div className={styles.optionSub}>Review preview before applying</div>
-                        </div>
-                        {isManualMode && <Icon name="check" size="sm" className={styles.optionCheck} />}
-                      </button>
-                    </div>
-                  )}
+                        {suggestions.map((m) => {
+                          const val = `${p.id}:${m}`;
+                          const active = dropdownValue === val;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              className={cn(styles.option, styles.optionRow, active && styles.optionActive)}
+                              disabled={!pr}
+                              onClick={() => {
+                                onChangeModel(val);
+                                setOpenMenu(null);
+                              }}
+                            >
+                              <span>{getModelLabel(val)}</span>
+                              {active && <Icon name="check" size="sm" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
-                <button
-                  type="button"
-                  className={styles.neonSendBtn}
-                  title={busy ? 'Stop' : 'Send prompt'}
-                  onClick={busy ? cancel : send}
-                  disabled={!busy && !value.trim() && pendingImages.length === 0}
-                >
-                  <Icon name={busy ? 'stop' : 'arrow-up'} size="md" />
-                </button>
-              </div>
+              )}
+            </div>
+            <span className={styles.spacer} />
+            <div
+              className={cn(styles.footMenu, openMenu === 'review' && styles.footMenuOpen)}
+              title={isManualMode ? t('aiChat.review.manualTitle', 'The result waits on the canvas for Apply') : t('aiChat.review.autoTitle', 'The result is applied when the run finishes, as one undo step')}
+              onClick={toggleMenu('review')}
+            >
+              <span className={styles.footLabel}>{isManualMode ? t('aiChat.review.manual', 'Review first') : t('aiChat.review.auto', 'Apply as it lands')}</span>
+              <Icon name="chevron-down" size="sm" className={styles.chevron} />
+              {openMenu === 'review' && (
+                <div className={cn(styles.popover, styles.popoverRight)} onClick={(e) => e.stopPropagation()}>
+                  <div className={styles.popoverHeader}>{t('aiChat.review.header', 'When it lands')}</div>
+                  <button type="button" className={cn(styles.option, isManualMode && styles.optionActive)} onClick={() => { toggleManualMode(true); setOpenMenu(null); }}>
+                    <span>{t('aiChat.review.manual', 'Review first')}</span>
+                    <span className={styles.optionIntent}>{t('aiChat.review.manualIntent', 'The result waits on the canvas with Apply, Another take and Decline.')}</span>
+                  </button>
+                  <button type="button" className={cn(styles.option, !isManualMode && styles.optionActive)} onClick={() => { toggleManualMode(false); setOpenMenu(null); }}>
+                    <span>{t('aiChat.review.auto', 'Apply as it lands')}</span>
+                    <span className={styles.optionIntent}>{t('aiChat.review.autoIntent', 'One undo step; Edit ▸ Undo takes it back.')}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

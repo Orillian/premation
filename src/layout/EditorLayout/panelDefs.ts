@@ -15,6 +15,7 @@
 import type { IconName } from '@components/Icon';
 import type { RegionId } from '@stores/layoutStore';
 import { isPanelAvailable } from '@core/config/panelAvailability';
+import { t } from '@core/i18n';
 
 export interface PanelDef {
   id: string;
@@ -32,6 +33,12 @@ export interface PanelDef {
    */
   shortTitle?: string;
 }
+
+/*
+ * Titles are GETTERS so `t()` runs when a title is read (render / registration
+ * time), never at module scope — the locale catalogue loads after this module
+ * is imported. Ids, icons and regions stay plain values.
+ */
 
 /**
  * Icons are deliberately all distinct GLYPHS, not just distinct names: several
@@ -91,21 +98,21 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    * media, with the selected item's details on top. It is the first tab because
    * it is where a session starts. The compositions are listed in Layers.
    */
-  { id: 'assets',      title: 'Project',   icon: 'folder',      region: 'leftSidebar', weight: 11,  closable: false },
+  { id: 'assets',      get title() { return t('panel.assets', 'Project'); },   icon: 'folder',      region: 'leftSidebar', weight: 11,  closable: false },
   // AE's Effect Controls: the applied-effect stack for the selected layer —
   // the second tab of the left group, as in After Effects (2026-10; it was on
   // demand while the left rail held five panels). F3, Window ▸ Effect Controls
   // and every "edit this effect" route (`revealEffectControls`, the Properties
   // panel) still bring it forward. `stopwatch` is the glyph AE uses on every
   // animatable parameter in it.
-  { id: 'effectControls', title: 'Effect Controls', shortTitle: 'Controls', icon: 'stopwatch', region: 'leftSidebar', weight: 9, closable: true },
+  { id: 'effectControls', get title() { return t('panel.effectControls', 'Effect Controls'); }, get shortTitle() { return t('panel.effectControls.short', 'Controls'); }, icon: 'stopwatch', region: 'leftSidebar', weight: 9, closable: true },
   // Layers: the project's compositions and the layer hierarchy tree. Permanent:
   // it is the one place the compositions are listed (the Project panel carried
   // a second copy of that list for a few days in 2026-10; one list is enough).
-  { id: 'scene',       title: 'Layers',    icon: 'layers',      region: 'leftSidebar', weight: 8.5, closable: true },
+  { id: 'scene',       get title() { return t('panel.scene', 'Layers'); },   icon: 'layers',      region: 'leftSidebar', weight: 8.5, closable: true },
   // ── Left sidebar, on demand (Window ▸ Panels, the tab strip's "+") ──
   // The built-in library (templates, transitions, sound effects).
-  { id: 'library',     title: 'Library',   icon: 'component',   region: 'leftSidebar', weight: 6,   closable: true, onDemand: true },
+  { id: 'library',     get title() { return t('panel.library', 'Library'); },  icon: 'component',   region: 'leftSidebar', weight: 6,   closable: true, onDemand: true },
   /**
    * Text-based editing: the composition's spoken words, as chips you can seek
    * to, select in runs and DELETE — which cuts that time out of every layer and
@@ -115,7 +122,7 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    * the Text tab's, `audio` and `waves` name a waveform rather than words, and
    * `voice` aliases the same Phosphor component as `mic`.
    */
-  { id: 'transcript',  title: 'Transcript', icon: 'mic',        region: 'leftSidebar', weight: 7,   closable: true, onDemand: true },
+  { id: 'transcript',  get title() { return t('panel.transcript', 'Transcript'); }, icon: 'mic',        region: 'leftSidebar', weight: 7,   closable: true, onDemand: true },
   // ── Right inspector ──────────────────────────────────────────────
   /**
    * Merged 2026-08-03: `style` (Style) and `misc` (Settings) folded into this
@@ -133,21 +140,29 @@ export const PANEL_DEFS: readonly PanelDef[] = [
   // PANEL_DEFS): a closed panel costs one bar, so the panels every After
   // Effects layout carries no longer have to be asked for.
   // Properties stays FIRST: with no saved layout the first panel is the open one.
-  { id: 'properties',  title: 'Properties', icon: 'sliders-h',  region: 'rightInspector', weight: 5,    closable: false },
+  { id: 'properties',  get title() { return t('panel.properties', 'Properties'); }, icon: 'sliders-h',  region: 'rightInspector', weight: 5,    closable: false },
   // The pointer / composition readout, as AE's Info panel.
-  { id: 'info',        title: 'Info',      icon: 'info',        region: 'rightInspector', weight: 4.98, closable: true },
+  { id: 'info',        get title() { return t('panel.info', 'Info'); },    icon: 'info',        region: 'rightInspector', weight: 4.98, closable: true },
   /**
    * AE's Audio panel (Ctrl+4): the master meter, the selected layer's level and
    * pan faders, and — since 2026-09-15 — the pointer / composition readout that
    * used to be a separate "Info & Audio" tab beside it (`InfoReadout`). Two
    * tabs that both drew a master meter was one too many.
    */
-  { id: 'audio',       title: 'Audio',     icon: 'audio',       region: 'rightInspector', weight: 4.95, closable: false },
-  { id: 'preview',     title: 'Preview',   icon: 'play',        region: 'rightInspector', weight: 4.9,  closable: true },
+  { id: 'audio',       get title() { return t('panel.audio', 'Audio'); },   icon: 'audio',       region: 'rightInspector', weight: 4.95, closable: false },
+  /**
+   * Record Audio: a voice-over from a microphone — input, meter, takes, a
+   * non-destructive edit, then into the project or the composition at the
+   * playhead (layout/RecordAudio). On demand beside Audio: Window ▸ Panels,
+   * the palette and the Project panel's Import ▾ menu open it. `voice`
+   * (level bars) because `mic` is the Transcript tab's glyph.
+   */
+  { id: 'recordAudio', get title() { return t('panel.recordAudio', 'Record Audio'); }, get shortTitle() { return t('panel.recordAudio.short', 'Record'); }, icon: 'voice', region: 'rightInspector', weight: 4.94, closable: true, onDemand: true },
+  { id: 'preview',     get title() { return t('panel.preview', 'Preview'); }, icon: 'play',        region: 'rightInspector', weight: 4.9,  closable: true },
   // AE's Effects & Presets: the effect browser and the effect presets (one
   // search). Animation Presets are their own on-demand panel below.
-  { id: 'effects',     title: 'Effects & Presets', shortTitle: 'Effects', icon: 'magic-wand',  region: 'rightInspector', weight: 4.8,  closable: true },
-  { id: 'presets',     title: 'Animation Presets', shortTitle: 'Presets', icon: 'zap',         region: 'rightInspector', weight: 4.7,  closable: true, onDemand: true },
+  { id: 'effects',     get title() { return t('panel.effects', 'Effects & Presets'); }, get shortTitle() { return t('panel.effects.short', 'Effects'); }, icon: 'magic-wand',  region: 'rightInspector', weight: 4.8,  closable: true },
+  { id: 'presets',     get title() { return t('panel.presets', 'Animation Presets'); }, get shortTitle() { return t('panel.presets.short', 'Presets'); }, icon: 'zap',         region: 'rightInspector', weight: 4.7,  closable: true, onDemand: true },
   /**
    * Native SDK plugins: what the engine found in the plugins folder (loaded,
    * or failed with why) and the button that opens that folder. Where the old
@@ -156,10 +171,10 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    * `plugins` was once the id of the JS plugin-panel host; a persisted layout
    * that still lists it now shows this panel, which is the right successor.
    */
-  { id: 'plugins',     title: 'Plugins',   icon: 'plugin',      region: 'rightInspector', weight: 4.6,  closable: true, onDemand: true },
-  { id: 'align',       title: 'Align',     icon: 'align-center', region: 'rightInspector', weight: 4.55, closable: true },
+  { id: 'plugins',     get title() { return t('panel.plugins', 'Plugins'); },  icon: 'plugin',      region: 'rightInspector', weight: 4.6,  closable: true, onDemand: true },
+  { id: 'align',       get title() { return t('panel.align', 'Align'); },    icon: 'align-center', region: 'rightInspector', weight: 4.55, closable: true },
   // AE's Character panel, permanent as in AE's Default.
-  { id: 'character',   title: 'Character', icon: 'type',        region: 'rightInspector', weight: 4.5,  closable: true },
+  { id: 'character',   get title() { return t('panel.character', 'Character'); }, icon: 'type',        region: 'rightInspector', weight: 4.5,  closable: true },
   /**
    * AE's Paragraph panel, right under Character as in AE's Default column
    * (2026-10): alignment, indents, space before / after, direction. Its rows
@@ -170,21 +185,28 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    * that names a PARAGRAPH: `type` is Character's, and the `align-*` glyphs
    * name the Align panel's layer edges.
    */
-  { id: 'paragraph',   title: 'Paragraph', icon: 'text-left',   region: 'rightInspector', weight: 4.48, closable: true },
+  { id: 'paragraph',   get title() { return t('panel.paragraph', 'Paragraph'); }, icon: 'text-left',   region: 'rightInspector', weight: 4.48, closable: true },
+  /**
+   * AE's Essential Graphics: the active composition's template controls —
+   * Edit fills them (text, font, colour, size, show / hide, media), Build makes
+   * them from the selected layer's properties. Inserting a template from the
+   * Library opens it; Window ▸ Essential Graphics does too.
+   */
+  { id: 'essentialGraphics', get title() { return t('panel.essentialGraphics', 'Essential Graphics'); }, get shortTitle() { return t('panel.essentialGraphics.short', 'Graphics'); }, icon: 'layout', region: 'rightInspector', weight: 4.47, closable: true, onDemand: true },
   // The assistant: on demand (Window ▸ Panels ▸ Assistant), as AE has none.
   // Both editions — see PANEL_AVAILABILITY / `aiEnabled()`: local runs BYOK,
   // server runs through the hosted gateway.
-  { id: 'ai',          title: 'Assistant', icon: 'ai',          region: 'rightInspector', weight: 4.45, closable: true, onDemand: true },
+  { id: 'ai',          get title() { return t('panel.ai', 'Assistant'); }, icon: 'ai',          region: 'rightInspector', weight: 4.45, closable: true, onDemand: true },
   // ── Right inspector, on demand (Window ▸ Panels, the rail's "+") ─────
   // Each of these is a specialist surface; the workspaces that need one open
   // it (Color → Scopes, Animation → Graph + Rigging).
   // The project palette. The swatches are document state and the colour picker
   // offers them wherever a colour is edited, so the panel is the bulk editor.
-  { id: 'swatches',    title: 'Swatches',  icon: 'palette',     region: 'rightInspector', weight: 4.25, closable: true, onDemand: true },
+  { id: 'swatches',    get title() { return t('panel.swatches', 'Swatches'); },  icon: 'palette',     region: 'rightInspector', weight: 4.25, closable: true, onDemand: true },
   // Video scopes: waveform, RGB parade, vectorscope, histogram. The Color
   // workspaces lead with it. `waves` is the one unclaimed glyph that reads as a
   // signal trace; `graph-value` / `graph-speed` are the Graph panel's.
-  { id: 'scopes',      title: 'Scopes',    icon: 'waves',       region: 'rightInspector', weight: 4.15, closable: true, onDemand: true },
+  { id: 'scopes',      get title() { return t('panel.scopes', 'Scopes'); },    icon: 'waves',       region: 'rightInspector', weight: 4.15, closable: true, onDemand: true },
   /**
    * The SOURCE viewer — one clip, before it is in the edit, with in/out points
    * and the four verbs that put the marked range into a comp. Every route that
@@ -195,20 +217,23 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    * `tv` because a monitor is what this is: `video` and `image` name media
    * KINDS, and `play` is the Preview panel's.
    */
-  { id: 'tracker',     title: 'Tracker',   icon: 'crosshair',   region: 'rightInspector', weight: 4.0,  closable: true, onDemand: true },
+  { id: 'tracker',     get title() { return t('panel.tracker', 'Tracker'); },   icon: 'crosshair',   region: 'rightInspector', weight: 4.0,  closable: true, onDemand: true },
   // AE's Content-Aware Fill panel (AE parity 3.7): its own panel, as in AE, so
   // the fill's options are not buried in the Tracker.
-  { id: 'contentAwareFill', title: 'Content-Aware Fill', icon: 'magic-wand', region: 'rightInspector', weight: 3.9, closable: true, onDemand: true },
-  { id: 'rig',         title: 'Rigging',   icon: 'bone',        region: 'rightInspector', weight: 3.5,  closable: true, onDemand: true },
+  { id: 'contentAwareFill', get title() { return t('panel.contentAwareFill', 'Content-Aware Fill'); }, icon: 'magic-wand', region: 'rightInspector', weight: 3.9, closable: true, onDemand: true },
+  { id: 'rig',         get title() { return t('panel.rig', 'Rigging'); },   icon: 'bone',        region: 'rightInspector', weight: 3.5,  closable: true, onDemand: true },
   // The graph + EXPRESSION editor. On demand beside the timeline's own Graph
   // Editor (Shift+G); the Animation and Motion Design workspaces open it.
-  { id: 'motion',      title: 'Graph',     icon: 'graph-value', region: 'rightInspector', weight: 1.4,  closable: true, onDemand: true },
-  { id: 'history',     title: 'History',   icon: 'history',     region: 'rightInspector', weight: 0.8,  closable: true, onDemand: true },
+  { id: 'motion',      get title() { return t('panel.motion', 'Graph'); },    icon: 'graph-value', region: 'rightInspector', weight: 1.4,  closable: true, onDemand: true },
+  { id: 'history',     get title() { return t('panel.history', 'History'); },   icon: 'history',     region: 'rightInspector', weight: 0.8,  closable: true, onDemand: true },
+  // File ▸ Scripts ▸ Open Script Editor (`view.scriptEditor`): write, open,
+  // save and run user scripts, with their console (layout/Scripts).
+  { id: 'scriptEditor', get title() { return t('panel.scriptEditor', 'Script Editor'); }, get shortTitle() { return t('panel.scriptEditor.short', 'Scripts'); }, icon: 'code', region: 'rightInspector', weight: 0.79, closable: true, onDemand: true },
   // AE's Paint (Ctrl+8) and Brushes (Ctrl+9). On demand like AE's own: the
   // compact Tool Options bar covers everyday painting, and both commands plus
   // the Window menu open them (`layout/Paint/paintCommands.ts`).
-  { id: 'paint',       title: 'Paint',     icon: 'brush',       region: 'rightInspector', weight: 0.78, closable: true, onDemand: true },
-  { id: 'brushes',     title: 'Brushes',   icon: 'circle',      region: 'rightInspector', weight: 0.76, closable: true, onDemand: true },
+  { id: 'paint',       get title() { return t('panel.paint', 'Paint'); },    icon: 'brush',       region: 'rightInspector', weight: 0.78, closable: true, onDemand: true },
+  { id: 'brushes',     get title() { return t('panel.brushes', 'Brushes'); },   icon: 'circle',      region: 'rightInspector', weight: 0.76, closable: true, onDemand: true },
   // `closable: true` like every other on-demand panel. It was the one exception,
   // so PanelHeader drew no ✕ and the only way to dismiss it was F6 or the Window
   // menu — for a panel that opens on demand and is empty most of the time.
@@ -218,7 +243,7 @@ export const PANEL_DEFS: readonly PanelDef[] = [
   // for the button. On demand (Window ▸ Export, `window.exportPanel`) because
   // the toolbar button is the discoverable route and a permanent tab would
   // duplicate it in the rail.
-  { id: 'export',      title: 'Export',    icon: 'export',      region: 'rightInspector', weight: 0.65, closable: true, onDemand: true },
+  { id: 'export',      get title() { return t('panel.export', 'Export'); },   icon: 'export',      region: 'rightInspector', weight: 0.65, closable: true, onDemand: true },
   // NOTE: there is deliberately no 'comments' panel. Review comments, the
   // approval flow and shareable review links were removed outright — not gated,
   // not hidden behind a plan. Collaboration is not what this app is for, and a

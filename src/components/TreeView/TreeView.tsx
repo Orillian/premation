@@ -43,6 +43,7 @@ import {
 } from 'react';
 import { cn } from '@utils/cn';
 import { Icon, type IconName } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './TreeView.module.css';
 
 /** Matches `--control-height-row` (26px). Fixed for O(1) window math. */
@@ -600,8 +601,8 @@ export function TreeView<T = unknown>({
                   ? (e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const t = dropTarget;
-                      commitDrop(t?.id ?? row.node.id, t?.pos ?? 'inside');
+                      const target = dropTarget;
+                      commitDrop(target?.id ?? row.node.id, target?.pos ?? 'inside');
                     }
                   : undefined
               }
@@ -621,7 +622,7 @@ export function TreeView<T = unknown>({
                 <button
                   type="button"
                   className={styles.chevron}
-                  aria-label={row.expanded ? 'Collapse' : 'Expand'}
+                  aria-label={row.expanded ? t('ui.treeView.collapse', 'Collapse') : t('ui.treeView.expand', 'Expand')}
                   tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -659,7 +660,7 @@ export function TreeView<T = unknown>({
                 <input
                   className={styles.renameInput}
                   autoFocus
-                  aria-label="Rename"
+                  aria-label={t('ui.treeView.rename', 'Rename')}
                   defaultValue={renameSeed(row.node)}
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}

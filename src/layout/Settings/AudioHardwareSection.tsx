@@ -21,16 +21,19 @@ import {
   type AudioOutputDevice,
 } from '@core/audio/audioHardware';
 import { audioEngine } from '@core/audio/AudioEngine';
+import { t } from '@core/i18n';
 import styles from './CustomizeDialog.module.css';
 
-/** Latency choices, in ms. 0 is "let the platform decide". */
-const LATENCIES: ReadonlyArray<{ ms: number; label: string }> = [
-  { ms: 0, label: 'Automatic' },
-  { ms: 10, label: '10 ms — lowest' },
-  { ms: 25, label: '25 ms' },
-  { ms: 50, label: '50 ms' },
-  { ms: 100, label: '100 ms — most stable' },
-];
+/** Latency choices, in ms. 0 is "let the platform decide". A function: t() runs at render. */
+function latencies(): ReadonlyArray<{ ms: number; label: string }> {
+  return [
+    { ms: 0, label: t('settings.audio.latencyAuto', 'Automatic') },
+    { ms: 10, label: t('settings.audio.latencyLowest', '10 ms — lowest') },
+    { ms: 25, label: '25 ms' },
+    { ms: 50, label: '50 ms' },
+    { ms: 100, label: t('settings.audio.latencyStable', '100 ms — most stable') },
+  ];
+}
 
 export function AudioHardwareSection(): JSX.Element {
   const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
@@ -58,16 +61,16 @@ export function AudioHardwareSection(): JSX.Element {
 
   return (
     <div className={styles.section}>
-      <h3 className={styles.sectionTitle}>Audio Hardware</h3>
+      <h3 className={styles.sectionTitle}>{t('settings.audio.title', 'Audio Hardware')}</h3>
 
       <div className={styles.row}>
-        <span className={styles.rowLabel}>Output device</span>
+        <span className={styles.rowLabel}>{t('settings.audio.outputDevice', 'Output device')}</span>
         <select
           className={styles.select}
           value={settings.outputDeviceId}
           disabled={!supported}
           onChange={(e) => update({ outputDeviceId: e.currentTarget.value })}
-          aria-label="Audio output device"
+          aria-label={t('settings.audio.outputDeviceAria', 'Audio output device')}
         >
           {devices.map((d) => (
             <option key={d.deviceId || 'default'} value={d.deviceId}>{d.label}</option>
@@ -76,46 +79,40 @@ export function AudioHardwareSection(): JSX.Element {
       </div>
       {!supported && (
         <p className={styles.rowHint}>
-          This build cannot route audio to a chosen device, so previews follow
-          the system default.
+          {t('settings.audio.noRouting', 'This build cannot route audio to a chosen device, so previews follow the system default.')}
         </p>
       )}
       {supported && unlabelled && (
         <p className={styles.rowHint}>
-          Device names are hidden until this app has been granted microphone
-          access — an operating-system privacy rule, not a fault. The outputs are
-          still listed and still work; pick by number if you need a specific one.
+          {t('settings.audio.namesHidden', 'Device names are hidden until this app has been granted microphone access — an operating-system privacy rule, not a fault. The outputs are still listed and still work; pick by number if you need a specific one.')}
         </p>
       )}
 
       <div className={styles.row}>
-        <span className={styles.rowLabel}>Latency</span>
+        <span className={styles.rowLabel}>{t('settings.audio.latency', 'Latency')}</span>
         <select
           className={styles.select}
           value={String(Math.round(settings.latencySec * 1000))}
           onChange={(e) => update({ latencySec: Number(e.currentTarget.value) / 1000 })}
-          aria-label="Audio latency"
+          aria-label={t('settings.audio.latencyAria', 'Audio latency')}
         >
-          {LATENCIES.map((l) => (
+          {latencies().map((l) => (
             <option key={l.ms} value={l.ms}>{l.label}</option>
           ))}
         </select>
       </div>
       <p className={styles.rowHint}>
-        A larger buffer is steadier on a busy machine and responds to the
-        transport a little later. Latency is fixed when the audio engine starts,
-        so a change here applies from the next playback.
+        {t('settings.audio.latencyHint', 'A larger buffer is steadier on a busy machine and responds to the transport a little later. Latency is fixed when the audio engine starts, so a change here applies from the next playback.')}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.rowLabel}>Sample rate</span>
+        <span className={styles.rowLabel}>{t('settings.audio.sampleRate', 'Sample rate')}</span>
         <span className={styles.rowValue}>
-          {audioEngine.sampleRate() ? `${audioEngine.sampleRate()} Hz` : 'Not started'}
+          {audioEngine.sampleRate() ? `${audioEngine.sampleRate()} Hz` : t('settings.audio.notStarted', 'Not started')}
         </span>
       </div>
       <p className={styles.rowHint}>
-        Reported by the audio device. Exported audio is rendered at its own fixed
-        rate, so this affects monitoring only.
+        {t('settings.audio.sampleRateHint', 'Reported by the audio device. Exported audio is rendered at its own fixed rate, so this affects monitoring only.')}
       </p>
     </div>
   );

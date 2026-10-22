@@ -16,6 +16,7 @@
 import type { Keyframe } from '@motion/animation';
 import type { Effect } from '@core/effects/effects';
 import type { ClipGeometry } from '@core/commands/snapshotSharing';
+import { t } from '@core/i18n';
 
 export type TransitionKind = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'wipe';
 
@@ -64,18 +65,18 @@ export interface TransitionRecord {
 }
 
 export const TRANSITION_LABEL: Readonly<Record<TransitionKind, string>> = {
-  crossDissolve: 'Cross Dissolve',
-  dipToBlack: 'Dip to Black',
-  dipToWhite: 'Dip to White',
-  wipe: 'Wipe',
+  get crossDissolve() { return t('core.transition.crossDissolve', 'Cross Dissolve'); },
+  get dipToBlack() { return t('core.transition.dipToBlack', 'Dip to Black'); },
+  get dipToWhite() { return t('core.transition.dipToWhite', 'Dip to White'); },
+  get wipe() { return t('core.transition.wipe', 'Wipe'); },
 };
 
 /** Short form for the label drawn on the bracket in the timeline. */
 export const TRANSITION_SHORT: Readonly<Record<TransitionKind, string>> = {
-  crossDissolve: 'Dissolve',
-  dipToBlack: 'Dip Black',
-  dipToWhite: 'Dip White',
-  wipe: 'Wipe',
+  get crossDissolve() { return t('core.transition.shortDissolve', 'Dissolve'); },
+  get dipToBlack() { return t('core.transition.shortDipBlack', 'Dip Black'); },
+  get dipToWhite() { return t('core.transition.shortDipWhite', 'Dip White'); },
+  get wipe() { return t('core.transition.wipe', 'Wipe'); },
 };
 
 /** The order the palette chips and the Add Transition submenu are drawn in. */

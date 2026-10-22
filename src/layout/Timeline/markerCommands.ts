@@ -24,6 +24,7 @@
 
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
+import { t } from '@core/i18n';
 import { playheadSeconds } from '@core/timeline/timelineView';
 import { documentMirror } from '@stores/documentMirror';
 import { settingsFps, framesOfTime } from '@core/mirror/compFacts';
@@ -127,11 +128,11 @@ export function buildTimelineMarkerCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_ADD_MARKER_COMMAND,
-      label: 'Add Marker at Playhead',
-      description:
-        'Drop a composition marker on the current frame. With the timeline focused the chord is M, '
-        + 'or Numpad * anywhere — including mid-playback, which is how you tap markers to a beat; '
-        + 'drag the chip to move it, double-click to name and colour it.',
+      label: t('timeline.marker.addAtPlayhead', 'Add Marker at Playhead'),
+      description: t(
+        'timeline.marker.addAtPlayheadDescription',
+        'Drop a composition marker on the current frame. With the timeline focused the chord is M, or Numpad * anywhere — including mid-playback, which is how you tap markers to a beat; drag the chip to move it, double-click to name and colour it.',
+      ),
       icon: 'marker',
       /**
        * AE's Numpad `*`, and the reason it is bound GLOBALLY rather than to the
@@ -147,10 +148,11 @@ export function buildTimelineMarkerCommands(): ReadonlyArray<Command> {
     },
     {
       id: TIMELINE_ADD_LAYER_MARKER_COMMAND,
-      label: 'Add Layer Marker at Playhead',
-      description:
-        'Drop a marker on each selected layer. Layer markers are stored relative to the layer, '
-        + 'so they travel with it when it is trimmed or slid.',
+      label: t('timeline.marker.addLayerAtPlayhead', 'Add Layer Marker at Playhead'),
+      description: t(
+        'timeline.marker.addLayerAtPlayheadDescription',
+        'Drop a marker on each selected layer. Layer markers are stored relative to the layer, so they travel with it when it is trimmed or slid.',
+      ),
       icon: 'marker',
       // Reports disabled rather than falling back to a comp marker: a chord
       // that quietly does a DIFFERENT thing when nothing is selected is worse

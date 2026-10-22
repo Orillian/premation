@@ -17,6 +17,7 @@
  */
 
 import type { EngineClient, PluginInfo } from '@motion/engine-api';
+import { t } from '@core/i18n';
 
 export type NativePlugin = PluginInfo;
 
@@ -38,13 +39,13 @@ export async function listNativePlugins(client: Pick<EngineClient, 'query'>): Pr
 /** One status word per plugin, as a person would say it. */
 export function nativePluginStatusLabel(status: NativePlugin['status']): string {
   switch (status) {
-    case 'loaded': return 'Loaded';
-    case 'disabled': return 'Disabled';
-    case 'failed': return 'Failed';
-    case 'quarantined': return 'Quarantined';
-    case 'revoked': return 'Revoked';
+    case 'loaded': return t('core.nativePlugins.loaded', 'Loaded');
+    case 'disabled': return t('core.nativePlugins.disabled', 'Disabled');
+    case 'failed': return t('core.nativePlugins.failed', 'Failed');
+    case 'quarantined': return t('core.nativePlugins.quarantined', 'Quarantined');
+    case 'revoked': return t('core.nativePlugins.revoked', 'Revoked');
     // Premation Cloud plugin without an active plan (plan §3.2): its effects pass through, nothing is lost.
-    case 'locked': return 'Requires Premation Cloud';
+    case 'locked': return t('core.nativePlugins.locked', 'Requires Premation Cloud');
   }
 }
 
@@ -62,12 +63,15 @@ export function canOpenNativePluginFolder(): boolean {
 /** Open the plugins folder in Explorer / Finder. Resolves the error to show, or null. */
 export async function openNativePluginFolder(): Promise<string | null> {
   const open = pluginsBridge()?.openNativeFolder;
-  if (!open) return 'The plugins folder is only available in the desktop app.';
+  if (!open) return t('core.nativePlugins.folderDesktopOnly', 'The plugins folder is only available in the desktop app.');
   try {
     const res = await open();
-    return res.ok ? null : `Could not open the plugins folder${res.error ? `: ${res.error}` : ''}.`;
+    if (res.ok) return null;
+    return res.error
+      ? t('core.nativePlugins.folderOpenFailedReason', 'Could not open the plugins folder: {error}.', { error: res.error })
+      : t('core.nativePlugins.folderOpenFailed', 'Could not open the plugins folder.');
   } catch (err) {
-    return err instanceof Error ? err.message : 'Could not open the plugins folder.';
+    return err instanceof Error ? err.message : t('core.nativePlugins.folderOpenFailed', 'Could not open the plugins folder.');
   }
 }
 

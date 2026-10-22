@@ -56,6 +56,12 @@ meant.
 - Dropped on a **layer**, it references *the same property this expression is
   on* — "follow that layer's Y", which is what the gesture means when you drag
   from Y, and what After Effects produces for it.
+- The reference is written **as After Effects writes it** (2026-10-21,
+  `whipExpression` in `src/core/whip/whipTarget.ts`):
+  `thisComp.layer("Hero").transform.position[1]`, `.transform.opacity`,
+  `.transform.scale[0]`, and `thisComp.layer("Hero").effect("Gaussian Blur")("Blurriness")`
+  for an effect parameter — so a whipped expression pastes into AE and back.
+  A property AE has no accessor for keeps the `layer('Hero', 'prop')` form.
 
 The reference is inserted at the caret and the caret lands after it, so you can
 keep typing. A layer name containing a quote is escaped rather than emitted as

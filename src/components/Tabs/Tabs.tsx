@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import styles from './Tabs.module.css';
 
 export interface TabsProps {
@@ -98,7 +99,7 @@ export function Tabs({
             {item.closable ? (
               <span
                 role="button"
-                aria-label={`Close ${typeof item.label === 'string' ? item.label : item.id}`}
+                aria-label={t('ui.tabs.close', 'Close {name}', { name: typeof item.label === 'string' ? item.label : item.id })}
                 className={styles.close}
                 onClick={(e) => { e.stopPropagation(); item.onClose?.(); }}
               >

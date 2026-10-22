@@ -5,7 +5,7 @@
  * the tab.
  */
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { DockPanel, useDockPanelHeader } from './DockPanel';
 import { TooltipProvider } from '@components/Tooltip';
@@ -30,6 +30,8 @@ function resetLayoutStore(): void {
     },
     activePanelByRegion: {},
     dockGroups: { leftSidebar: [], rightInspector: [] },
+    dockColumns: { leftSidebar: [1], rightInspector: [1] },
+    maximizedGroup: null,
   });
   useLayoutStore.getState().setCollapsed('rightInspector', false);
 }
@@ -72,6 +74,19 @@ function mount(): void {
 
 const panelGroups = (): string[][] => useLayoutStore.getState().dockGroups.rightInspector.map((g) => g.panels);
 
+/** A drag event at a point: jsdom's drag events drop clientX / clientY. */
+function dragAt(kind: 'dragOver' | 'drop', el: HTMLElement, dt: DataTransfer, x: number, y: number): void {
+  const ev = createEvent[kind](el, { dataTransfer: dt });
+  Object.defineProperty(ev, 'clientX', { value: x });
+  Object.defineProperty(ev, 'clientY', { value: y });
+  fireEvent(el, ev);
+}
+
+/** The dock shows its drop targets one tick after a drag starts (Chromium aborts drags that relayout in dragstart). */
+async function afterDragStart(): Promise<void> {
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+}
+
 /** A minimal DataTransfer: jsdom has none. */
 function dataTransfer(): DataTransfer {
   const data = new Map<string, string>();
@@ -87,7 +102,10 @@ describe('a dock column of panel groups', () => {
   beforeAll(() => {
     (globalThis as { ResizeObserver?: unknown }).ResizeObserver = StubResizeObserver;
   });
-  beforeEach(resetLayoutStore);
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2560 });
+    resetLayoutStore();
+  });
 
   it('draws tabs and stacked groups at once: [Info | Audio] is one strip under Properties', () => {
     mount();
@@ -140,26 +158,65 @@ describe('a dock column of panel groups', () => {
     expect(screen.queryByText('preview body')).not.toBeInTheDocument();
   });
 
-  it('dragging a tab onto another strip makes it a tab of that group', () => {
+  it('dragging a tab onto another strip makes it a tab of that group', async () => {
     mount();
     const dt = dataTransfer();
     const effects = screen.getByRole('tab', { name: 'Effects & Presets' }).parentElement!;
     const previewStrip = screen.getByRole('tab', { name: 'Preview' }).closest('[role="tablist"]')!.parentElement!.parentElement!;
     fireEvent.dragStart(effects, { dataTransfer: dt });
+    await afterDragStart();
     fireEvent.dragOver(previewStrip, { dataTransfer: dt, clientX: 0 });
     fireEvent.drop(previewStrip, { dataTransfer: dt, clientX: 0 });
     expect(panelGroups()).toEqual([['properties'], ['info', 'audio'], ['preview', 'effects']]);
   });
 
-  it('dragging a tab into a gap between groups gives it a group of its own', () => {
+  it('dragging a tab into a gap between groups gives it a group of its own', async () => {
     mount();
     const dt = dataTransfer();
     fireEvent.dragStart(screen.getByRole('tab', { name: 'Audio' }).parentElement!, { dataTransfer: dt });
+    await afterDragStart();
     // While dragging, every gap is a drop zone; gap 1 is between Properties and [Info | Audio].
     const gap = document.querySelector('[data-dock-seam="1"]')!;
     fireEvent.dragOver(gap, { dataTransfer: dt });
     fireEvent.drop(gap, { dataTransfer: dt });
     expect(panelGroups()).toEqual([['properties'], ['audio'], ['info'], ['preview'], ['effects']]);
+  });
+
+  it('dragging a tab over an open group shows its five zones; the left zone makes a new column', async () => {
+    mount();
+    const dt = dataTransfer();
+    fireEvent.dragStart(screen.getByRole('tab', { name: 'Effects & Presets' }).parentElement!, { dataTransfer: dt });
+    await afterDragStart();
+    const zones = document.querySelector<HTMLElement>('[data-dock-zones="g-properties"]')!;
+    expect(zones).toBeTruthy();
+    zones.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400, right: 200, bottom: 400, x: 0, y: 0, toJSON: () => ({}) });
+    dragAt('dragOver', zones, dt, 10, 200);
+    dragAt('drop', zones, dt, 10, 200);
+    const cols = useLayoutStore.getState().dockGroups.rightInspector.map((g) => [g.column, g.panels]);
+    expect(cols).toEqual([[0, ['effects']], [1, ['properties']], [1, ['info', 'audio']], [1, ['preview']]]);
+    expect(document.querySelectorAll('[data-dock-column]')).toHaveLength(2);
+  });
+
+  it('the centre zone makes the dragged tab a tab of that group', async () => {
+    mount();
+    const dt = dataTransfer();
+    fireEvent.dragStart(screen.getByRole('tab', { name: 'Preview' }).parentElement!, { dataTransfer: dt });
+    await afterDragStart();
+    const zones = document.querySelector<HTMLElement>('[data-dock-zones="g-properties"]')!;
+    zones.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 400, right: 200, bottom: 400, x: 0, y: 0, toJSON: () => ({}) });
+    dragAt('drop', zones, dt, 100, 200);
+    expect(panelGroups()).toEqual([['properties', 'preview'], ['info', 'audio'], ['effects']]);
+  });
+
+  it('the front tab carries only the panel menu, which closes the panel', () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Preview' }));
+    const slot = screen.getByRole('tab', { name: 'Preview' }).parentElement!;
+    // No ✕ beside the tab: Close Panel lives in the ≡ menu.
+    expect(within(slot).queryByRole('button', { name: 'Close Preview' })).not.toBeInTheDocument();
+    fireEvent.click(within(slot).getByRole('button', { name: 'Panel options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Close Panel/ }));
+    expect(useLayoutStore.getState().panelOrder.rightInspector).not.toContain('preview');
   });
 
   it('shows a » listing every tab of a group whose tabs do not fit', () => {
@@ -193,11 +250,13 @@ describe('a dock column of panel groups', () => {
     act(() => useLayoutStore.getState().openPanel('audio'));
     const audioGroup = screen.getByRole('tab', { name: 'Audio' }).closest('section')!;
     fireEvent.click(within(audioGroup).getByRole('button', { name: 'Panel options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Panel Group Settings' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Move to New Group' }));
     expect(panelGroups()).toEqual([['properties'], ['info'], ['audio'], ['preview'], ['effects']]);
 
     const audioAlone = screen.getByRole('tab', { name: 'Audio' }).closest('section')!;
     fireEvent.click(within(audioAlone).getByRole('button', { name: 'Panel options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Panel Group Settings' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Merge with Group Above' }));
     expect(panelGroups()).toEqual([['properties'], ['info', 'audio'], ['preview'], ['effects']]);
   });

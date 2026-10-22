@@ -44,6 +44,7 @@ import { getTime as playheadSeconds } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 // ── Media insert ──────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ interface PreparedMedia {
 }
 
 function notifyUnreadable(name: string): void {
-  useUIStore.getState().notify({ level: 'warning', message: `Could not read “${name}”.`, durationMs: 4000 });
+  useUIStore.getState().notify({ level: 'warning', message: t('workspace.footage.unreadable', 'Could not read “{name}”.', { name }), durationMs: 4000 });
 }
 
 /** Read every SVG's markup up front (the build cannot await); an unreadable one is skipped with a notice. */

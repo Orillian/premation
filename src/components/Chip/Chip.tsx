@@ -13,6 +13,7 @@
 import { type ReactNode, type KeyboardEvent } from 'react';
 import { cn } from '@utils/cn';
 import { Icon, type IconName } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './Chip.module.css';
 
 export interface ChipProps {
@@ -45,7 +46,7 @@ export function Chip({
 }: ChipProps): JSX.Element {
   const selectable = typeof onSelect === 'function';
   const labelText = typeof children === 'string' ? children : undefined;
-  const removeName = removeLabel ?? (labelText ? `Remove ${labelText}` : 'Remove');
+  const removeName = removeLabel ?? (labelText ? t('ui.chip.removeNamed', 'Remove {name}', { name: labelText }) : t('ui.chip.remove', 'Remove'));
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>): void => {
     if (disabled) return;

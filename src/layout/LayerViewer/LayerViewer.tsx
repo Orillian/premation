@@ -66,6 +66,7 @@ import { useSelectionStore } from '@stores/selectionStore';
 import { usePaintStore } from '@stores/paintStore';
 import { useEffectHandleStore } from '@stores/effectHandleStore';
 import styles from './LayerViewer.module.css';
+import { t } from '@core/i18n';
 
 /** HH:MM:SS:FF for a time in seconds. */
 function timecode(seconds: number, fps: number): string {
@@ -106,15 +107,18 @@ const MASK_TOOL_OF: Readonly<Record<string, LayerMaskTool>> = {
 };
 
 /** The Paint panel's stroke durations, as the options line names them. */
-const PAINT_DURATION_LABEL: Readonly<Record<string, string>> = {
-  constant: 'Constant',
-  writeOn: 'Write On',
-  'write-on': 'Write On',
-  single: 'Single Frame',
-  singleFrame: 'Single Frame',
-  'single-frame': 'Single Frame',
-  custom: 'Custom',
-};
+function paintDurationLabel(id: string): string | undefined {
+  switch (id) {
+    case 'constant': return t('layerViewer.paintDuration.constant', 'Constant');
+    case 'writeOn':
+    case 'write-on': return t('layerViewer.paintDuration.writeOn', 'Write On');
+    case 'single':
+    case 'singleFrame':
+    case 'single-frame': return t('layerViewer.paintDuration.singleFrame', 'Single Frame');
+    case 'custom': return t('layerViewer.paintDuration.custom', 'Custom');
+    default: return undefined;
+  }
+}
 
 /** The tools the bone overlay answers to (BoneOverlay's own `active` test decides the rest). */
 const BONE_TOOLS: ReadonlySet<string> = new Set(['bone']);
@@ -126,21 +130,25 @@ const ZOOM_MAX = 64;
 const ZOOM_STEPS: readonly number[] = [0.25, 0.5, 1, 2, 4];
 
 /** After Effects' matte views of the Layer panel. */
-const ALPHA_VIEWS: ReadonlyArray<{ id: Exclude<LayerAlphaView, 'off'>; label: string }> = [
-  { id: 'alpha', label: 'Alpha' },
-  { id: 'boundary', label: 'Alpha Boundary' },
-  { id: 'overlay', label: 'Alpha Overlay' },
-];
+function alphaViews(): ReadonlyArray<{ id: Exclude<LayerAlphaView, 'off'>; label: string }> {
+  return [
+    { id: 'alpha', label: t('layerViewer.alpha.alpha', 'Alpha') },
+    { id: 'boundary', label: t('layerViewer.alpha.boundary', 'Alpha Boundary') },
+    { id: 'overlay', label: t('layerViewer.alpha.overlay', 'Alpha Overlay') },
+  ];
+}
 
-const MASK_MODES: ReadonlyArray<{ id: MaskMode; label: string }> = [
-  { id: 'add', label: 'Add' },
-  { id: 'subtract', label: 'Subtract' },
-  { id: 'intersect', label: 'Intersect' },
-  { id: 'lighten', label: 'Lighten' },
-  { id: 'darken', label: 'Darken' },
-  { id: 'difference', label: 'Difference' },
-  { id: 'none', label: 'None' },
-];
+function maskModes(): ReadonlyArray<{ id: MaskMode; label: string }> {
+  return [
+    { id: 'add', label: t('layerViewer.maskMode.add', 'Add') },
+    { id: 'subtract', label: t('layerViewer.maskMode.subtract', 'Subtract') },
+    { id: 'intersect', label: t('layerViewer.maskMode.intersect', 'Intersect') },
+    { id: 'lighten', label: t('layerViewer.maskMode.lighten', 'Lighten') },
+    { id: 'darken', label: t('layerViewer.maskMode.darken', 'Darken') },
+    { id: 'difference', label: t('layerViewer.maskMode.difference', 'Difference') },
+    { id: 'none', label: t('layerViewer.maskMode.none', 'None') },
+  ];
+}
 
 type Drag = 'in' | 'out' | 'scrub';
 
@@ -461,18 +469,24 @@ export function LayerViewer(): JSX.Element | null {
     void deleteMaskEdit(nodeId, pathId);
   };
 
-  const shown = [showMasks && 'Masks', showAnchor && 'Anchor', showTracker && trackedHere && 'Tracker', showEffectPoints && effectHere && 'Effect'].filter(Boolean);
-  const alphaLabel = ALPHA_VIEWS.find((a) => a.id === alphaView)?.label;
-  const viewLabel = [...(alphaLabel ? [alphaLabel] : []), ...(shown.length === 0 && !alphaLabel ? ['None'] : shown)].join(', ');
+  const shown = [
+    showMasks && t('layerViewer.view.shownMasks', 'Masks'),
+    showAnchor && t('layerViewer.view.shownAnchor', 'Anchor'),
+    showTracker && trackedHere && t('layerViewer.view.shownTracker', 'Tracker'),
+    showEffectPoints && effectHere && t('layerViewer.view.shownEffect', 'Effect'),
+  ].filter(Boolean);
+  const alphaList = alphaViews();
+  const alphaLabel = alphaList.find((a) => a.id === alphaView)?.label;
+  const viewLabel = [...(alphaLabel ? [alphaLabel] : []), ...(shown.length === 0 && !alphaLabel ? [t('layerViewer.view.shownNone', 'None')] : shown)].join(', ');
   const viewItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'masks', label: 'Masks', checked: showMasks, onChange: (on) => setView({ showMasks: on }) },
-    { type: 'checkbox', id: 'anchor', label: 'Anchor Point', checked: showAnchor, onChange: (on) => setView({ showAnchor: on }) },
-    { type: 'checkbox', id: 'tracker', label: 'Motion Tracker Points', checked: showTracker, onChange: (on) => setView({ showTracker: on }) },
-    { type: 'checkbox', id: 'effect', label: 'Effect Controls', checked: showEffectPoints, onChange: (on) => setView({ showEffectPoints: on }) },
+    { type: 'checkbox', id: 'masks', label: t('layerViewer.viewer.masks', 'Masks'), checked: showMasks, onChange: (on) => setView({ showMasks: on }) },
+    { type: 'checkbox', id: 'anchor', label: t('layerViewer.viewer.anchorPoint', 'Anchor Point'), checked: showAnchor, onChange: (on) => setView({ showAnchor: on }) },
+    { type: 'checkbox', id: 'tracker', label: t('layerViewer.viewer.motionTrackerPoints', 'Motion Tracker Points'), checked: showTracker, onChange: (on) => setView({ showTracker: on }) },
+    { type: 'checkbox', id: 'effect', label: t('layerViewer.viewer.effectControls', 'Effect Controls'), checked: showEffectPoints, onChange: (on) => setView({ showEffectPoints: on }) },
     { type: 'separator' },
     // How the matte reads (Roto Brush, masks): one at a time; picking the
     // current one again goes back to the layer as it is.
-    ...ALPHA_VIEWS.map((a): DropdownItem => ({
+    ...alphaList.map((a): DropdownItem => ({
       type: 'checkbox',
       id: `alpha-${a.id}`,
       label: a.label,
@@ -480,15 +494,15 @@ export function LayerViewer(): JSX.Element | null {
       onChange: (on) => setView({ alphaView: on ? a.id : 'off' }),
     })),
     { type: 'separator' },
-    { type: 'checkbox', id: 'rulers', label: 'Rulers and Guides', checked: showRulers, onChange: (on) => setRulers(on) },
+    { type: 'checkbox', id: 'rulers', label: t('layerViewer.viewer.rulersAndGuides', 'Rulers and Guides'), checked: showRulers, onChange: (on) => setRulers(on) },
     ...(guides.x.length + guides.y.length > 0
-      ? [{ type: 'item', id: 'clear-guides', label: 'Clear Guides', onSelect: () => setGuides({ x: [], y: [] }) } as DropdownItem]
+      ? [{ type: 'item', id: 'clear-guides', label: t('layerViewer.viewer.clearGuides', 'Clear Guides'), onSelect: () => setGuides({ x: [], y: [] }) } as DropdownItem]
       : []),
     { type: 'separator' },
-    { type: 'checkbox', id: 'render', label: 'Render (masks and effects)', checked: renderOn, onChange: (on) => setView({ render: on }) },
+    { type: 'checkbox', id: 'render', label: t('layerViewer.viewer.renderMasksAndEffects', 'Render (masks and effects)'), checked: renderOn, onChange: (on) => setView({ render: on }) },
   ];
   const zoomItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'fit', label: 'Fit', checked: zoom === null, onChange: () => { setZoom(null); setPan({ x: 0, y: 0 }); } },
+    { type: 'checkbox', id: 'fit', label: t('layerViewer.viewer.fit', 'Fit'), checked: zoom === null, onChange: () => { setZoom(null); setPan({ x: 0, y: 0 }); } },
     { type: 'separator' },
     ...ZOOM_STEPS.map((z): DropdownItem => ({
       type: 'checkbox',
@@ -500,19 +514,19 @@ export function LayerViewer(): JSX.Element | null {
   ];
 
   const hint = activeTool === 'roto'
-    ? 'Roto Brush: paint over the subject. Alt-drag marks the background.'
+    ? t('layerViewer.hint.roto', 'Roto Brush: paint over the subject. Alt-drag marks the background.')
     : activeTool === 'paint'
-      ? 'Brush: drag to paint on the layer. Size and colour are in the tool options.'
+      ? t('layerViewer.hint.paint', 'Brush: drag to paint on the layer. Size and colour are in the tool options.')
       : activeTool === 'eraser'
-        ? 'Eraser: drag to erase the layer’s paint.'
+        ? t('layerViewer.hint.eraser', 'Eraser: drag to erase the layer’s paint.')
         : activeTool === 'hand'
-          ? 'Hand: drag to move the view. The wheel zooms.'
+          ? t('layerViewer.hint.hand', 'Hand: drag to move the view. The wheel zooms.')
           : maskTool === 'pen'
-            ? 'Pen: click for corners, drag for curves. Click the first point or press Enter to close the mask.'
+            ? t('layerViewer.hint.pen', 'Pen: click for corners, drag for curves. Click the first point or press Enter to close the mask.')
             : maskTool === 'rect'
-              ? 'Rectangle: drag to draw a mask.'
+              ? t('layerViewer.hint.rect', 'Rectangle: drag to draw a mask.')
               : maskTool === 'ellipse'
-                ? 'Ellipse: drag to draw a mask.'
+                ? t('layerViewer.hint.ellipse', 'Ellipse: drag to draw a mask.')
                 : null;
   const options = pickedMask && !paintToolOn;
   const paintOptions = activeTool === 'paint';
@@ -525,9 +539,9 @@ export function LayerViewer(): JSX.Element | null {
     <div className={styles.root} data-testid="layer-viewer">
       {opensAsComposition ? (
         <div className={styles.notice} role="note">
-          <span>This layer is a composition. Its parts cannot be selected here.</span>
-          <Button variant="primary" size="sm" onClick={() => { openLayerComposition(nodeId); }} title="Open the composition this layer shows: each part is its own layer there">
-            Open composition
+          <span>{t('layerViewer.viewer.thisLayerIsAComposition', 'This layer is a composition. Its parts cannot be selected here.')}</span>
+          <Button variant="primary" size="sm" onClick={() => { openLayerComposition(nodeId); }} title={t('layerViewer.viewer.openTheCompositionThisLayer', 'Open the composition this layer shows: each part is its own layer there')}>
+            {t('layerViewer.viewer.openComposition', 'Open composition')}
           </Button>
         </div>
       ) : null}
@@ -536,16 +550,16 @@ export function LayerViewer(): JSX.Element | null {
       {options || hint || paintOptions ? (
         <div className={styles.options}>
           {options && pickedMask ? (
-            <div className={styles.maskControls} aria-label="Selected mask">
-              <span className={styles.optLabel}>Mask</span>
+            <div className={styles.maskControls} aria-label={t('layerViewer.viewer.selectedMask', 'Selected mask')}>
+              <span className={styles.optLabel}>{t('layerViewer.viewer.mask', 'Mask')}</span>
               <select
                 className={styles.modeSelect}
-                aria-label="Mask mode"
+                aria-label={t('layerViewer.viewer.maskMode', 'Mask mode')}
                 value={pickedMask.mode}
                 disabled={node.switches.locked}
                 onChange={(e) => editMask('Mask Mode', { mode: e.target.value as MaskMode })}
               >
-                {MASK_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+                {maskModes().map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
               </select>
               <label className={styles.check}>
                 <input
@@ -554,7 +568,7 @@ export function LayerViewer(): JSX.Element | null {
                   disabled={node.switches.locked}
                   onChange={(e) => editMask('Invert Mask', { inverted: e.target.checked })}
                 />
-                Inverted
+                {t('layerViewer.viewer.inverted', 'Inverted')}
               </label>
               <Button
                 variant="ghost"
@@ -563,42 +577,42 @@ export function LayerViewer(): JSX.Element | null {
                 icon={<Icon name="trash" size="sm" />}
                 onClick={deleteMask}
                 disabled={node.switches.locked}
-                title="Delete this mask (Delete)"
+                title={t('layerViewer.viewer.deleteThisMaskDelete', 'Delete this mask (Delete)')}
               >
-                Delete mask
+                {t('layerViewer.viewer.deleteMask', 'Delete mask')}
               </Button>
             </div>
           ) : paintOptions ? (
             // The Paint tool: Brush or Clone Stamp, and what matters for each.
             // Size and colour stay in the tool bar's own options; the Paint and
             // Brushes panels hold the rest.
-            <div className={styles.maskControls} aria-label="Paint options">
+            <div className={styles.maskControls} aria-label={t('layerViewer.viewer.paintOptions', 'Paint options')}>
               <select
                 className={styles.modeSelect}
-                aria-label="Paint tool"
+                aria-label={t('layerViewer.viewer.paintTool', 'Paint tool')}
                 value={paintMode === 'clone' ? 'clone' : 'paint'}
                 onChange={(e) => setPaint({ mode: e.target.value as typeof paintMode })}
               >
-                <option value="paint">Brush</option>
-                <option value="clone">Clone Stamp</option>
+                <option value="paint">{t('layerViewer.viewer.brush', 'Brush')}</option>
+                <option value="clone">{t('layerViewer.viewer.cloneStamp', 'Clone Stamp')}</option>
               </select>
-              <span className={styles.optLabel}>Opacity <b className={styles.optValue}>{Math.round(paintOpacity * 100)} %</b></span>
-              <span className={styles.optLabel}>Hardness <b className={styles.optValue}>{Math.round(paintHardness * 100)} %</b></span>
-              <span className={styles.optLabel}>Duration <b className={styles.optText}>{PAINT_DURATION_LABEL[paintDuration] ?? paintDuration}</b></span>
+              <span className={styles.optLabel}>{t('layerViewer.paintOptions.opacity', 'Opacity')} <b className={styles.optValue}>{Math.round(paintOpacity * 100)} %</b></span>
+              <span className={styles.optLabel}>{t('layerViewer.paintOptions.hardness', 'Hardness')} <b className={styles.optValue}>{Math.round(paintHardness * 100)} %</b></span>
+              <span className={styles.optLabel}>{t('layerViewer.paintOptions.duration', 'Duration')} <b className={styles.optText}>{paintDurationLabel(paintDuration) ?? paintDuration}</b></span>
               {paintMode === 'clone' ? (
                 <>
-                  <label className={styles.check} title="Keep the source at the same offset from the brush between strokes">
+                  <label className={styles.check} title={t('layerViewer.viewer.keepTheSourceAtThe', 'Keep the source at the same offset from the brush between strokes')}>
                     <input type="checkbox" checked={cloneAligned} onChange={(e) => setPaint({ cloneAligned: e.target.checked })} />
-                    Aligned
+                    {t('layerViewer.viewer.aligned', 'Aligned')}
                   </label>
-                  <label className={styles.check} title="Copy from one fixed frame of the source instead of the current time">
+                  <label className={styles.check} title={t('layerViewer.viewer.copyFromOneFixedFrame', 'Copy from one fixed frame of the source instead of the current time')}>
                     <input type="checkbox" checked={cloneLockTime} onChange={(e) => setPaint({ cloneLockTime: e.target.checked })} />
-                    Lock source time
+                    {t('layerViewer.viewer.lockSourceTime', 'Lock source time')}
                   </label>
-                  <span className={styles.hintText}>{cloneSourceSet ? 'Source set. Alt-click to move it.' : 'Alt-click the layer to set the source.'}</span>
+                  <span className={styles.hintText}>{cloneSourceSet ? t('layerViewer.paintOptions.sourceSet', 'Source set. Alt-click to move it.') : t('layerViewer.paintOptions.setSource', 'Alt-click the layer to set the source.')}</span>
                 </>
               ) : (
-                <span className={styles.hintText}>Drag to paint on the layer.</span>
+                <span className={styles.hintText}>{t('layerViewer.viewer.dragToPaintOnThe', 'Drag to paint on the layer.')}</span>
               )}
             </div>
           ) : (
@@ -719,7 +733,7 @@ export function LayerViewer(): JSX.Element | null {
           ref={rulerRef}
           className={styles.ruler}
           role="slider"
-          aria-label="Layer time"
+          aria-label={t('layerViewer.viewer.layerTime', 'Layer time')}
           aria-valuemin={0}
           aria-valuemax={Number(span.toFixed(3))}
           aria-valuenow={Number(layerT.toFixed(3))}
@@ -732,13 +746,13 @@ export function LayerViewer(): JSX.Element | null {
           <div
             className={cn(styles.bracket, styles.bracketIn)}
             style={{ left: pct(shownIn) }}
-            title="Drag to trim the In point"
+            title={t('layerViewer.viewer.dragToTrimTheIn', 'Drag to trim the In point')}
             onPointerDown={(e) => onRulerDown(e, 'in')}
           />
           <div
             className={cn(styles.bracket, styles.bracketOut)}
             style={{ left: pct(shownOut) }}
-            title="Drag to trim the Out point"
+            title={t('layerViewer.viewer.dragToTrimTheOut', 'Drag to trim the Out point')}
             onPointerDown={(e) => onRulerDown(e, 'out')}
           />
           <div className={styles.playhead} style={{ left: pct(layerT) }} />
@@ -750,50 +764,50 @@ export function LayerViewer(): JSX.Element | null {
           placement="top-start"
           items={zoomItems}
           trigger={
-            <button type="button" className={styles.select} title="Zoom — the wheel zooms, the middle button or the Hand tool moves the view">
-              <span>{zoom === null ? 'Fit' : `${Math.round(scale * 100)} %`}</span>
+            <button type="button" className={styles.select} title={t('layerViewer.viewer.zoomTheWheelZoomsThe', 'Zoom — the wheel zooms, the middle button or the Hand tool moves the view')}>
+              <span>{zoom === null ? t('layerViewer.zoom.fit', 'Fit') : `${Math.round(scale * 100)} %`}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
           }
         />
         <span className={styles.sep} aria-hidden />
-        <span className={styles.timecode} title="Current time, in layer time">{timecode(layerT, fps)}</span>
+        <span className={styles.timecode} title={t('layerViewer.viewer.currentTimeInLayerTime', 'Current time, in layer time')}>{timecode(layerT, fps)}</span>
         {clip ? (
           <>
-            <Button variant="ghost" size="xs" title="Set the In point to the current time" onClick={() => commitTrim('start', clampIn(layerT))}>
+            <Button variant="ghost" size="xs" title={t('layerViewer.viewer.setTheInPointTo', 'Set the In point to the current time')} onClick={() => commitTrim('start', clampIn(layerT))}>
               {'{'}
             </Button>
-            <span className={styles.readout} title="In point">{timecode(shownIn, fps)}</span>
-            <Button variant="ghost" size="xs" title="Set the Out point to the current time" onClick={() => commitTrim('end', clampOut(layerT))}>
+            <span className={styles.readout} title={t('layerViewer.viewer.inPoint', 'In point')}>{timecode(shownIn, fps)}</span>
+            <Button variant="ghost" size="xs" title={t('layerViewer.viewer.setTheOutPointTo', 'Set the Out point to the current time')} onClick={() => commitTrim('end', clampOut(layerT))}>
               {'}'}
             </Button>
-            <span className={styles.readout} title="Out point">{timecode(shownOut, fps)}</span>
-            <span className={styles.readout} title="Duration">Δ {timecode(shownOut - shownIn, fps)}</span>
+            <span className={styles.readout} title={t('layerViewer.viewer.outPoint', 'Out point')}>{timecode(shownOut, fps)}</span>
+            <span className={styles.readout} title={t('layerViewer.viewer.duration', 'Duration')}>Δ {timecode(shownOut - shownIn, fps)}</span>
           </>
         ) : (
-          <span className={styles.readout}>This layer has no bar of its own in the timeline (it is inside a group).</span>
+          <span className={styles.readout}>{t('layerViewer.viewer.thisLayerHasNoBar', 'This layer has no bar of its own in the timeline (it is inside a group).')}</span>
         )}
         <span className={styles.spacer} />
-        <span className={styles.exposure} title="Exposure, in stops: how this viewer shows the picture. It does not change the render. Double-click to reset.">
-          <span className={styles.optLabel}>Exposure</span>
+        <span className={styles.exposure} title={t('layerViewer.viewer.exposureInStopsHowThis', 'Exposure, in stops: how this viewer shows the picture. It does not change the render. Double-click to reset.')}>
+          <span className={styles.optLabel}>{t('layerViewer.viewer.exposure', 'Exposure')}</span>
           <span onDoubleClick={() => setExposure(0)}>
-            <ValueField value={exposure} onChange={setExposure} min={-8} max={8} step={0.05} precision={1} aria-label="Exposure (stops)" />
+            <ValueField value={exposure} onChange={setExposure} min={-8} max={8} step={0.05} precision={1} aria-label={t('layerViewer.viewer.exposureStops', 'Exposure (stops)')} />
           </span>
         </span>
-        <span className={styles.readout} title="The layer’s own size">{Math.round(frame.width)} × {Math.round(frame.height)}</span>
+        <span className={styles.readout} title={t('layerViewer.viewer.theLayerSOwnSize', 'The layer’s own size')}>{Math.round(frame.width)} × {Math.round(frame.height)}</span>
         <Dropdown
           placement="top-end"
           items={viewItems}
           trigger={
-            <button type="button" className={styles.select} title="What is drawn over the layer">
-              <span>View: {viewLabel}</span>
+            <button type="button" className={styles.select} title={t('layerViewer.viewer.whatIsDrawnOverThe', 'What is drawn over the layer')}>
+              <span>{t('layerViewer.view.label', 'View: {view}', { view: viewLabel })}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
           }
         />
-        <label className={styles.check} title="Show the layer with its masks and effects. Off shows the untouched source.">
+        <label className={styles.check} title={t('layerViewer.viewer.showTheLayerWithIts', 'Show the layer with its masks and effects. Off shows the untouched source.')}>
           <input type="checkbox" checked={renderOn} onChange={(e) => setView({ render: e.target.checked })} />
-          Render
+          {t('layerViewer.viewer.render', 'Render')}
         </label>
       </div>
     </div>

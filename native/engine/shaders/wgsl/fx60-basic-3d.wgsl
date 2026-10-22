@@ -164,10 +164,14 @@ fn blendMode(a : vec3<f32>, b : vec3<f32>, m : i32) -> vec3<f32> {
   let q = vec2<f32>(dot(hit, ex), dot(hit, ey)) + c;
   var col = samplePx(q);
   if (P.spec > 0.5 && col.a > 0.0) {
+    // AE's Specular Highlight: a glint from a light above-left behind the
+    // viewer that crosses the layer as it turns toward the light. A tight lobe
+    // (the rays across a flat layer span ~0.3 rad, so a broad one washed the
+    // whole layer even at rest).
     let ld = normalize(vec3<f32>(-0.5, -0.6, -1.0));
     let n = select(nz, -nz, dot(nz, rd) > 0.0);
     let hv = normalize(ld - rd);
-    let sp = pow(max(dot(n, hv), 0.0), 60.0) * 0.8;
+    let sp = pow(max(dot(n, hv), 0.0), 600.0) * 0.8;
     col = vec4<f32>(col.rgb + vec3<f32>(sp) * col.a, col.a);
   }
   return col;

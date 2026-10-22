@@ -5,6 +5,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addShape, addText, addGradientShape, linearFill, radialFill,  type SetKf } from './builders';
 
 const CW = 1920, CH = 1080, CX = CW / 2, CY = CH / 2;
@@ -37,25 +38,25 @@ export function animateGradientHero(set: SetKf): void {
 
 export const gradientHeroTemplate: TemplateDefinition = {
   id: 'gradient-hero',
-  name: 'Gradient Hero',
+  get name() { return t('core.template.gradientHeroName', 'Gradient Hero'); },
   aspect: '16:9',
   width: CW,
   height: CH,
-  description: 'A full-bleed gradient hero with eyebrow, big two-line headline and CTA.',
+  get description() { return t('core.template.gradientHeroDescription', 'A full-bleed gradient hero with eyebrow, big two-line headline and CTA.'); },
   layout: layoutGradientHero,
   settings: { fps: 60, durationSeconds: 5, background: '#0b1020' },
   animate: animateGradientHero,
   previewTime: 1.7,
   fields: [
-    { id: 'eyebrow', label: 'Eyebrow', kind: 'text', group: 'Text', default: 'INTRODUCING',
+    { id: 'eyebrow', get label() { return t('core.template.fieldEyebrow', 'Eyebrow'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'INTRODUCING',
       target: { nodeId: 'tpl_eyebrow', componentType: 'Text', prop: 'content' } },
-    { id: 'head1', label: 'Headline line 1', kind: 'text', group: 'Text', default: 'Build something',
+    { id: 'head1', get label() { return t('core.template.fieldHeadlineLine1', 'Headline line 1'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Build something',
       target: { nodeId: 'tpl_head1', componentType: 'Text', prop: 'content' } },
-    { id: 'head2', label: 'Headline line 2', kind: 'text', group: 'Text', default: 'unforgettable',
+    { id: 'head2', get label() { return t('core.template.fieldHeadlineLine2', 'Headline line 2'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'unforgettable',
       target: { nodeId: 'tpl_head2', componentType: 'Text', prop: 'content' } },
-    { id: 'cta', label: 'Button label', kind: 'text', group: 'Text', default: 'Get started',
+    { id: 'cta', get label() { return t('core.template.fieldButtonLabel', 'Button label'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Get started',
       target: { nodeId: 'tpl_ctaLabel', componentType: 'Text', prop: 'content' } },
-    { id: 'accentColor', label: 'Accent colour', kind: 'color', group: 'Colours', default: '#22d3ee',
+    { id: 'accentColor', get label() { return t('core.template.fieldAccentColour', 'Accent colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#22d3ee',
       target: { nodeId: 'tpl_cta', componentType: 'Style', prop: 'fill' } },
   ],
 };

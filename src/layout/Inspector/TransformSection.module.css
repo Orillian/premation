@@ -68,7 +68,7 @@
 .select,
 .textInput {
   width: 100%;
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-field-border);
   color: var(--color-text-primary);
   font-family: var(--panel-font-family);

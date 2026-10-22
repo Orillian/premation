@@ -26,6 +26,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
 import { EFFECT_DEFS, type EffectDef, type EffectType } from '@core/inspector/effectCatalog';
@@ -70,7 +71,9 @@ export function applyEffectToSelection(type: EffectType, label: string): void {
   revealAppliedEffects();
   useUIStore.getState().notify({
     level: 'success',
-    message: ids.length === 1 ? `Added ${label}` : `Added ${label} to ${ids.length} layers`,
+    message: ids.length === 1
+      ? t('menuBar.effect.addedOne', 'Added {name}', { name: label })
+      : t('menuBar.effect.addedOther', 'Added {name} to {n} layers', { name: label, n: ids.length }),
     durationMs: 2400,
   });
 }

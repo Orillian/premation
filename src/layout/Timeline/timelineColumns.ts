@@ -8,6 +8,8 @@
  * numbers here so they cannot drift.
  */
 
+import { t } from '@core/i18n';
+
 export type TimelineExtraColumn = 'in' | 'out' | 'duration' | 'stretch';
 
 export interface ExtraColumnDef {
@@ -18,11 +20,32 @@ export interface ExtraColumnDef {
   description: string;
 }
 
+/** Labels are getters: `t()` must run when the header reads them, not at import (the catalogue loads later). */
 export const TIMELINE_EXTRA_COLUMNS: ReadonlyArray<ExtraColumnDef> = [
-  { id: 'in', label: 'In', width: 72, description: 'The layer’s in-point, in frames. Editing it trims the head.' },
-  { id: 'out', label: 'Out', width: 72, description: 'The layer’s out-point, in frames. Editing it trims the tail.' },
-  { id: 'duration', label: 'Duration', width: 72, description: 'Frames from in to out. Editing it moves the out-point.' },
-  { id: 'stretch', label: 'Stretch', width: 64, description: 'Time stretch, percent. 200 plays at half speed.' },
+  {
+    id: 'in',
+    get label() { return t('timeline.columns.in', 'In'); },
+    width: 72,
+    get description() { return t('timeline.columns.inDescription', 'The layer’s in-point, in frames. Editing it trims the head.'); },
+  },
+  {
+    id: 'out',
+    get label() { return t('timeline.columns.out', 'Out'); },
+    width: 72,
+    get description() { return t('timeline.columns.outDescription', 'The layer’s out-point, in frames. Editing it trims the tail.'); },
+  },
+  {
+    id: 'duration',
+    get label() { return t('timeline.columns.duration', 'Duration'); },
+    width: 72,
+    get description() { return t('timeline.columns.durationDescription', 'Frames from in to out. Editing it moves the out-point.'); },
+  },
+  {
+    id: 'stretch',
+    get label() { return t('timeline.columns.stretch', 'Stretch'); },
+    width: 64,
+    get description() { return t('timeline.columns.stretchDescription', 'Time stretch, percent. 200 plays at half speed.'); },
+  },
 ];
 
 const ORDER: ReadonlyArray<TimelineExtraColumn> = TIMELINE_EXTRA_COLUMNS.map((c) => c.id);

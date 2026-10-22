@@ -20,15 +20,37 @@
  * sum to zero and the selection fans out around its own centre, staying put.
  */
 
-export type StaggerMode = 'cascade' | 'zigzag' | 'center' | 'wave' | 'random';
+import { t } from '@core/i18n';
+
+export type StaggerMode ='cascade' | 'zigzag' | 'center' | 'wave' | 'random';
 
 /** The modes in menu order, with the labels the UI shows. */
 export const STAGGER_MODES: ReadonlyArray<{ id: StaggerMode; label: string; hint: string }> = [
-  { id: 'cascade', label: 'Cascade', hint: 'Each row one step after the row above' },
-  { id: 'zigzag', label: 'Zigzag', hint: 'Alternate rows forward and back' },
-  { id: 'center', label: 'From Center', hint: 'Fan out from the middle row' },
-  { id: 'wave', label: 'Wave', hint: 'Ease out and back across the selection' },
-  { id: 'random', label: 'Random', hint: 'Scattered, but the same every time' },
+  {
+    id: 'cascade',
+    get label() { return t('core.stagger.cascade', 'Cascade'); },
+    get hint() { return t('core.stagger.cascadeHint', 'Each row one step after the row above'); },
+  },
+  {
+    id: 'zigzag',
+    get label() { return t('core.stagger.zigzag', 'Zigzag'); },
+    get hint() { return t('core.stagger.zigzagHint', 'Alternate rows forward and back'); },
+  },
+  {
+    id: 'center',
+    get label() { return t('core.stagger.center', 'From Center'); },
+    get hint() { return t('core.stagger.centerHint', 'Fan out from the middle row'); },
+  },
+  {
+    id: 'wave',
+    get label() { return t('core.stagger.wave', 'Wave'); },
+    get hint() { return t('core.stagger.waveHint', 'Ease out and back across the selection'); },
+  },
+  {
+    id: 'random',
+    get label() { return t('core.stagger.random', 'Random'); },
+    get hint() { return t('core.stagger.randomHint', 'Scattered, but the same every time'); },
+  },
 ];
 
 export interface StaggerOptions {

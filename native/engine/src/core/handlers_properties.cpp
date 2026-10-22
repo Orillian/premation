@@ -507,10 +507,11 @@ ResultOf<api::SetExpression> handle(const api::SetExpression& c, HCtx& x) {
   }
   // B5 `owner`: the plugin that wrote it (`authoredBy`); absent = the user's (a plugin's mark is cleared).
   for (const auto& m : members) anim_set_expr_state(x.d, layer, m, ExprState{c.source, c.enabled, c.owner});
-  if (const auto err = anim_expr_error(x.d, x.cache, layer, members[0])) {
-    // After Effects (since CC 2019): stored as given and left on; the error is reported.
+  if (const auto err = anim_expr_diagnostic(x.d, x.cache, layer, members[0])) {
+    // After Effects (since CC 2019): stored as given and left on; the error is reported,
+    // with the 1-based line and column of what failed (0 = unknown).
     r.ok = false;
-    r.diagnostics.push_back(api::ExpressionDiagnostic{*err, 0, 0});
+    r.diagnostics.push_back(api::ExpressionDiagnostic{err->message, err->line, err->column});
     return r;
   }
   r.ok = true;

@@ -19,6 +19,7 @@ import type {
   ExportQueueEvent,
 } from '@app-types/motionEditor';
 import type { RenderJobSpec } from '@core/export/renderSpec';
+import { t } from '@core/i18n';
 
 export type { ExportJobRecord, ExportJobSpec, ExportJobStatus, ExportQueueEvent };
 
@@ -150,18 +151,24 @@ export function buildSupervisorSpec(input: SupervisorSpecInput): ExportJobSpec {
 export function describeProgress(job: ExportJobRecord): string {
   const p = job.progress;
   switch (job.status) {
-    case 'queued': return job.attempts > 0 ? 'Queued again' : 'Queued';
-    case 'preparing': return 'Opening the project…';
+    case 'queued': return job.attempts > 0 ? t('core.exportSupervisor.queuedAgain', 'Queued again') : t('core.exportSupervisor.queued', 'Queued');
+    case 'preparing': return t('core.exportSupervisor.preparing', 'Opening the project…');
     case 'rendering': {
-      const parts = [`Frame ${p.frame} / ${p.totalFrames}`];
+      const parts = [t('core.exportSupervisor.frame', 'Frame {frame} / {total}', { frame: p.frame, total: p.totalFrames })];
       if (p.fps !== null) parts.push(`${p.fps.toFixed(1)} fps`);
-      if (p.etaSec !== null) parts.push(`${formatEta(p.etaSec)} left`);
+      if (p.etaSec !== null) parts.push(t('core.exportSupervisor.left', '{eta} left', { eta: formatEta(p.etaSec) }));
       return parts.join(' · ');
     }
-    case 'encoding': return 'Finishing the encode…';
-    case 'completed': return `Done · ${p.totalFrames} frames`;
-    case 'failed': return job.error ?? 'Failed';
-    case 'cancelled': return 'Cancelled';
+    case 'encoding': return t('core.exportSupervisor.encoding', 'Finishing the encode…');
+    case 'completed': {
+      const n = job.warnings?.length ?? 0;
+      if (n === 0) return t('core.exportSupervisor.done', 'Done · {frames} frames', { frames: p.totalFrames });
+      return n === 1
+        ? t('core.exportSupervisor.doneWarningOne', 'Done · {frames} frames · {n} warning', { frames: p.totalFrames, n })
+        : t('core.exportSupervisor.doneWarningOther', 'Done · {frames} frames · {n} warnings', { frames: p.totalFrames, n });
+    }
+    case 'failed': return job.error ?? t('core.exportSupervisor.failed', 'Failed');
+    case 'cancelled': return t('core.exportSupervisor.cancelled', 'Cancelled');
   }
 }
 

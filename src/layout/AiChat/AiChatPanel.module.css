@@ -1,5 +1,14 @@
-/* AiChatPanel — docked left-sidebar assistant. Squared panel look (radius
-   tokens), full-height column: header / thread / composer. */
+/*
+ * AiChatPanel — the assistant as a PANEL (the 2026-10-19 sheet).
+ *
+ * The editor's own grammar throughout: a 28px strip on the darker ground with
+ * the front tab lifted onto the panel surface, hairline rows, one well for the
+ * composer, the grey pressed state for an armed chip, mono for values and
+ * times, and blue only for the one primary action (Build / Apply / Send) and
+ * the stage in flight. No bubbles, no cards inside cards, no neon, no emoji.
+ *
+ * Type: the panel roles (--panel-*) only; sizes never leave the token scale.
+ */
 
 .root {
   display: flex;
@@ -8,73 +17,112 @@
   min-height: 0;
   background: var(--color-panel);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
 }
 
-/* ── Header ─────────────────────────────────────────────────────── */
+.mono {
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+}
 
-.header {
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* ── The strip ─────────────────────────────────────────────────────── */
+
+.strip {
+  display: flex;
+  align-items: stretch;
+  height: var(--control-height-lg);
+  flex: none;
+  background: var(--color-surface-0);
+  box-shadow: inset 0 -1px 0 var(--color-border-structural);
+  user-select: none;
+}
+
+.stripTab {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  background: var(--color-panel-header);
-  border-bottom: 1px solid var(--color-border);
-  flex: 0 0 auto;
-}
-
-.headerTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.02em;
-}
-
-.headerActions {
-  display: inline-flex;
-  gap: 2px;
-}
-
-.iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
+  padding: 0 var(--space-4);
   border: none;
   background: transparent;
-  color: var(--color-text-muted);
-  border-radius: var(--radius-control);
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-weight: var(--panel-weight-tab);
   cursor: pointer;
 }
 
-.iconButton:hover {
-  background: var(--color-hover);
+.stripTab:hover {
   color: var(--color-text-primary);
 }
 
-.iconButtonActive {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
+/* Active = whiter, bolder text, never a blue bar or fill (owner 2026-10-21). */
+.stripTabActive {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
-/* ── History ────────────────────────────────────────────────────── */
+.stripSpacer {
+  flex: 1 1 auto;
+}
+
+/* A run in flight: a small live dot at the strip's end (visible from any tab). */
+.stripLive {
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: aiPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes aiPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.stripButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-lg);
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.stripButton:hover {
+  color: var(--color-text-primary);
+  background: var(--color-hover);
+}
+
+.stripTab:focus-visible,
+.stripButton:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+/* ── History ───────────────────────────────────────────────────────── */
 
 .history {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--space-2) 0;
 }
 
 .historyRow {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: var(--radius-control);
+  gap: var(--space-2);
+  height: var(--control-height-row);
+  padding: 0 var(--space-2) 0 var(--space-4);
   cursor: pointer;
 }
 
@@ -83,7 +131,17 @@
 }
 
 .historyRowActive {
-  background: var(--color-accent-subtle);
+  background: var(--color-tool-pressed);
+}
+
+.historyRow .stripButton {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  opacity: 0;
+}
+
+.historyRow:hover .stripButton {
+  opacity: 1;
 }
 
 .historyTitle {
@@ -94,12 +152,19 @@
 }
 
 .historyTime {
-  flex: 0 0 auto;
+  flex: none;
   color: var(--color-text-tertiary);
-  font-size: var(--font-size-micro);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── Thread ─────────────────────────────────────────────────────── */
+.quiet {
+  color: var(--color-text-tertiary);
+  padding: var(--space-2) var(--space-4);
+}
+
+/* ── Thread ────────────────────────────────────────────────────────── */
 
 .thread {
   flex: 1 1 auto;
@@ -107,32 +172,23 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 8px;
+  gap: var(--space-4);
+  padding: var(--space-4);
 }
 
 .keyBanner {
-  padding: 8px 10px;
-  background: var(--color-accent-subtle);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-dialog);
-  line-height: 1.5;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
 }
 
-.keyBanner a {
-  color: var(--color-accent);
-  text-decoration: none;
-}
-
-/* The settings deep link is a <button>, not an <a>: it opens an in-app modal
-   rather than navigating, and the route it used to point at does not exist in
-   every edition. Styled to read as the link it replaces. */
 .keyBannerLink {
-  padding: 0;
-  border: 0;
+  border: none;
   background: none;
+  padding: 0;
+  color: var(--color-primary-text);
   font: inherit;
-  color: var(--color-accent);
   cursor: pointer;
 }
 
@@ -140,60 +196,165 @@
   text-decoration: underline;
 }
 
-/* First-run heads-up: the assistant is early and only does simple actions. */
-.betaNotice {
-  display: flex;
-  gap: 8px;
-  padding: 9px 11px;
-  margin-bottom: 4px;
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
-  border-radius: var(--radius-dialog);
-  line-height: 1.5;
+.hello {
+  margin: var(--space-1) 0 0;
   color: var(--color-text-secondary);
 }
 
-.betaNotice svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--color-warning);
-}
-
-.betaNotice strong {
+.hello b {
   color: var(--color-text-primary);
-  font-weight: 600;
+  font-weight: var(--panel-weight-subgroup);
 }
 
-.emptyNote {
+/* A section head inside the thread: a micro label, an action at its end. */
+.section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: var(--space-2);
   color: var(--color-text-tertiary);
-  line-height: 1.55;
-  padding: 8px 4px;
+  font-size: var(--font-size-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
+.sectionLink {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sectionLink:hover {
+  color: var(--color-text-primary);
+}
+
+/* One list of hairline rows (the briefs, the concepts). */
+.list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.list > * + * {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Three to five swatches as one strip, background first. */
+.swatches {
+  display: inline-flex;
+  flex: none;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--color-white-a08);
+}
+
+.swatches i {
+  display: block;
+  width: 11px;
+  height: 100%;
+}
+
+.brief {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brief:hover {
+  background: var(--color-hover);
+}
+
+.brief:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+.brief .swatches {
+  height: 28px;
+}
+
+.briefText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.briefTitle {
+  font-weight: var(--panel-weight-subgroup);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.briefBlurb {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.briefLen {
+  color: var(--color-text-secondary);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.briefLen em {
+  font-style: normal;
+  color: var(--color-text-tertiary);
+}
+
+/* The user's brief: a quoted block with a rule, not a bubble. */
 .userMsg {
-  align-self: flex-end;
-  max-width: 92%;
-  background: var(--color-accent);
-  color: var(--color-text-on-accent);
-  padding: 6px 10px;
-  border-radius: var(--radius-dialog);
+  margin: 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-4);
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.5;
 }
 
-/* AI responses read as plain prose — no bubble, no background box. */
+.msgThumbs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.msgThumb {
+  display: block;
+  max-width: 96px;
+  max-height: 64px;
+  border-radius: var(--radius-sm);
+}
+
 .assistantMsg {
-  align-self: stretch;
-  max-width: 100%;
-  padding: 2px 2px 6px;
-  line-height: 1.55;
+  margin: 0;
+  color: var(--color-text-primary);
   word-break: break-word;
-  color: var(--color-text-secondary);
 }
 
 .assistantMsg :global(p) {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-3);
 }
 
 .assistantMsg :global(p:last-child) {
@@ -202,14 +363,15 @@
 
 .assistantMsg :global(ul),
 .assistantMsg :global(ol) {
-  margin: 4px 0;
-  padding-left: 18px;
+  margin: var(--space-2) 0;
+  padding-left: var(--space-6);
 }
 
 .assistantMsg :global(code) {
   background: var(--color-surface-2);
-  padding: 1px 4px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-sm);
+  font-family: var(--panel-font-family-value);
   font-size: var(--font-size-xs);
 }
 
@@ -217,757 +379,868 @@
   color: var(--color-danger);
 }
 
-.msgThumb {
-  display: block;
-  max-width: 120px;
-  max-height: 80px;
-  border-radius: var(--radius-control);
-  margin-bottom: 4px;
-}
-
-/* ── Plan checklists ────────────────────────────────────────────── */
-
-.planCard {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-dialog);
-  background: var(--color-panel-header);
-  padding: 8px 10px;
-}
-
-.planTitle {
-  font-size: var(--font-size-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-tertiary);
-  margin-bottom: 6px;
-}
-
-.planRow {
+.row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 3px 0;
-  color: var(--color-text-muted);
-  line-height: 1.4;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
-.planRow[data-status='done'] {
+/* ── Concepts ──────────────────────────────────────────────────────── */
+
+.conceptsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.concept {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: none;
+  box-shadow: inset 2px 0 0 transparent;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.concept:hover {
+  background: var(--color-hover);
+}
+
+.concept:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: -1px;
+}
+
+/* Picked: the pressed well and the blue rule, as a selected row anywhere in the editor. */
+.conceptPicked,
+.conceptPicked:hover {
+  background: var(--color-tool-pressed);
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.conceptHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.conceptName {
+  font-weight: var(--panel-weight-group);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conceptIdea {
+  color: var(--color-text-secondary);
+}
+
+/* Type · motion · camera: dim keys, plain values, one per line. */
+.conceptMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.conceptMeta em {
+  display: inline-block;
+  width: 52px;
+  font-style: normal;
+  color: var(--color-text-tertiary);
+}
+
+/* ── The run ledger ────────────────────────────────────────────────── */
+
+.run {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  margin: 0 calc(-1 * var(--space-4));
+  padding: 0 var(--space-4);
+}
+
+.runHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-height-lg);
+}
+
+.runName {
+  flex: 1 1 auto;
+  font-weight: var(--panel-weight-group);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runTime {
+  color: var(--color-text-secondary);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every stage, one row each with its own clock. */
+.ledger {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  grid-template-areas: 'mark label time' '. steps steps';
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: var(--control-height-sm);
+  color: var(--color-text-tertiary);
+}
+
+.stage[data-status='done'] {
+  color: var(--color-text-secondary);
+}
+
+.stage[data-status='active'] {
   color: var(--color-text-primary);
 }
 
-.planRow[data-status='done'] .planMark {
-  color: var(--color-accent);
-}
-
-.planRow[data-status='active'] {
-  color: var(--color-text-primary);
-}
-
-.planRow[data-status='error'] {
-  color: var(--color-danger);
-}
-
-.planMark {
+.stageMark {
+  grid-area: mark;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
   height: 14px;
-  flex: 0 0 auto;
-}
-
-.spinner {
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--color-text-tertiary);
-  border-top-color: var(--color-accent);
+  margin: 0 auto;
   border-radius: 50%;
-  animation: aiSpin 0.7s linear infinite;
-}
-
-@keyframes aiSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.activityRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-muted);
-  padding: 2px;
-}
-
-/* Gently pulse the working label so it's obviously live, never "paused". */
-.activityText {
-  animation: aiPulse 1.4s ease-in-out infinite;
-}
-
-@keyframes aiPulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-/* ── Result preview ─────────────────────────────────────────────── */
-
-.previewCard {
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-dialog);
-  background: var(--color-panel-header);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.previewHeader {
-  font-size: var(--font-size-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-tertiary);
-}
-
-/* Black in both themes: this is a video frame's letterbox, not chrome. */
-.previewFrame {
-  position: relative;
-  background: #000;
-  border-radius: var(--radius-control);
-  overflow: hidden;
-  align-self: center;
-}
-
-.previewFrame img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-.previewEmpty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-xs);
-}
-
-.previewPlay {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: rgba(0, 0, 0, 0.6);
-  color: var(--color-slate-0);
-  cursor: pointer;
-}
-
-.previewPlay:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
-.previewChanges {
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-micro);
-}
-
-.previewActions {
-  display: flex;
-  gap: 6px;
-}
-
-.applyButton,
-.declineButton {
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 6px 0;
-  border-radius: var(--radius-control);
-  border: 1px solid transparent;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.applyButton {
-  background: var(--color-accent);
   color: var(--color-text-on-accent);
 }
 
-.applyButton:hover {
-  filter: brightness(1.1);
+.stage[data-status='done'] .stageMark {
+  border-color: var(--color-text-secondary);
+  background: var(--color-text-secondary);
 }
 
-.declineButton {
-  background: transparent;
-  border-color: var(--color-border-strong);
+.stageMark > svg,
+.stageMark > span > svg {
+  width: 10px;
+  height: 10px;
+}
+
+.stage[data-status='active'] .stageMark {
+  border: 1.5px solid var(--color-primary);
+  border-top-color: transparent;
+  animation: aiSpin 0.9s linear infinite;
+}
+
+.stageLabel {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage[data-status='active'] .stageLabel {
+  font-weight: var(--panel-weight-subgroup);
+}
+
+.stageTime {
+  grid-area: time;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+
+.stage[data-status='active'] .stageTime {
+  color: var(--color-text-secondary);
+}
+
+/* The tool steps under the active stage, folded to the last few. */
+.steps {
+  grid-area: steps;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.stepEarlier {
   color: var(--color-text-muted);
 }
 
-.declineButton:hover {
+.stepNow {
   color: var(--color-text-primary);
-  background: var(--color-hover);
 }
 
-/* ── Composer (Screenshot Pixel-Perfect Design) ───────────────────── */
+.stepError {
+  color: var(--color-danger);
+}
+
+.stepLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.stepMarkDone {
+  color: var(--color-text-tertiary);
+}
+
+.stepMarkError {
+  color: var(--color-danger);
+}
+
+.stepMarkDone > svg,
+.stepMarkDone > span > svg,
+.stepMarkError > svg,
+.stepMarkError > span > svg {
+  width: 9px;
+  height: 9px;
+}
+
+.stepMarkNow {
+  width: 8px;
+  height: 8px;
+  margin: 0 auto;
+  border: 1.5px solid var(--color-primary);
+  border-top-color: transparent;
+  animation: aiSpin 0.9s linear infinite;
+}
+
+@keyframes aiSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* The live filmstrip: six cells in a well, a cell fills in as its frame renders. */
+.film {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  padding: 0 0 var(--space-3);
+}
+
+.filmCell {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.filmCell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.runFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: var(--control-height-md);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.runFootText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── The result ────────────────────────────────────────────────────── */
+
+.result {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Black in both themes: this is a video frame's letterbox, not chrome. */
+.resultFrame {
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.resultFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.resultEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.filmstrip {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 2px var(--space-4) 0;
+}
+
+.filmstrip img {
+  height: 36px;
+  width: auto;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: #000;
+  display: block;
+}
+
+.scrub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-height-row);
+  padding: 0 var(--space-4);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.scrubPlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-xs);
+  height: var(--control-height-xs);
+  margin-left: calc(-1 * var(--space-1));
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.scrubPlay:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.scrubTrack {
+  flex: 1 1 auto;
+  height: 12px;
+  position: relative;
+  cursor: pointer;
+}
+
+.scrubTrack::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5px;
+  height: 2px;
+  background: var(--color-surface-3);
+}
+
+.scrubTrack i {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  height: 2px;
+  background: var(--color-primary);
+}
+
+.scrubTrack:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* The critique's five axes as one meter row. */
+.scores {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.score {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding-bottom: var(--space-2);
+  font-size: var(--font-size-micro);
+  color: var(--color-text-tertiary);
+}
+
+.score em {
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score b {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.score::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--color-surface-3);
+}
+
+.score i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--color-text-secondary);
+}
+
+.score[data-low] b {
+  color: var(--color-warning);
+}
+
+.score[data-low] i {
+  background: var(--color-warning);
+}
+
+.resultActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.resultMeta,
+.applied {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.resultMeta {
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+/* ── Composer ──────────────────────────────────────────────────────── */
 
 .composer {
-  flex: 0 0 auto;
-  padding: 10px 10px 12px 10px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-3);
+  border-top: 1px solid var(--color-border-structural);
   background: var(--color-panel);
 }
 
-.composerPill {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 20px;
-  padding: 12px 12px 10px 14px;
+.composerBox {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-0);
 }
 
-.composerPill:focus-within {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent-subtle), 0 4px 20px rgba(0, 0, 0, 0.35);
+.composerBox:focus-within {
+  border-color: var(--color-primary);
 }
 
 .attachStrip {
   display: flex;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
 }
 
 .attachThumbWrap {
   position: relative;
+  display: inline-block;
 }
 
 .attachThumb {
-  width: 40px;
-  height: 40px;
-  object-fit: cover;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-border);
   display: block;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
 }
 
 .attachRemove {
   position: absolute;
   top: -5px;
   right: -5px;
-  width: 14px;
-  height: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 16px;
+  height: 16px;
   border: none;
-  border-radius: var(--radius-full);
+  border-radius: 50%;
   background: var(--color-surface-3);
   color: var(--color-text-primary);
   cursor: pointer;
 }
 
+.composerMain {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
 .textarea {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
+  min-height: calc(2 * var(--panel-line-height) * 1em);
+  padding: 0 var(--space-1);
   resize: none;
   border: none;
   background: transparent;
   color: var(--color-text-primary);
-  font-family: inherit;
-  font-size: var(--font-size-md);
-  line-height: 1.5;
-  padding: 0;
+  font: inherit;
+  line-height: var(--panel-line-height);
   outline: none;
-  min-height: 36px;
-  max-height: 140px;
+  overflow-y: auto;
 }
 
 .textarea::placeholder {
   color: var(--color-text-tertiary);
 }
 
-.composerControls {
+.textarea:disabled {
+  opacity: var(--opacity-disabled);
+}
+
+.composerBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 2px;
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }
 
-.controlsLeft {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.plusBtn {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-surface-2);
-  color: var(--color-text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex: none;
-  transition: var(--motion-hover-transition);
-}
-
-.plusBtn:hover {
-  background: var(--color-surface-3);
-  color: var(--color-text-primary);
-}
-
-.modelPickerWrap {
+/* A chip: key · value, a dim chevron where a menu opens; set = the pressed well. */
+.chip {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-primary);
+  gap: var(--space-2);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
-  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
-  transition: var(--motion-hover-transition);
-  min-width: 0;
-  max-width: 150px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  flex: none;
 }
 
-.modelPickerWrap:hover {
-  background: var(--color-surface-3);
-  border-color: var(--color-border-strong);
+.chip:hover,
+.chipOpen {
+  color: var(--color-text-primary);
+  background: var(--color-hover);
+}
+
+.chipSet {
+  background: var(--color-tool-pressed);
   color: var(--color-text-primary);
 }
 
-.modelPickerLabel {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 95px;
-  letter-spacing: -0.01em;
+.chipSet:hover {
+  background: var(--color-tool-pressed);
+}
+
+.chipKey {
+  color: var(--color-text-tertiary);
+}
+
+.chipValue {
+  color: var(--color-text-primary);
+  font-weight: var(--panel-weight-value);
+}
+
+.chipDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--color-black-a24);
 }
 
 .chevron {
-  color: var(--color-text-secondary);
+  width: 9px !important;
+  height: 9px !important;
+  min-width: 9px !important;
+  min-height: 9px !important;
+  color: var(--color-text-muted);
   flex: none;
-  transition: transform 150ms ease;
 }
 
-.modelPickerWrap:hover .chevron,
-.modePickerWrap:hover .chevron {
+.chevron > svg {
+  width: 9px;
+  height: 9px;
+}
+
+.send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  flex: none;
+}
+
+.send:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.send:disabled {
+  background: var(--color-surface-2);
+  color: var(--color-text-tertiary);
+  cursor: default;
+}
+
+.sendStop {
+  background: var(--color-surface-3);
   color: var(--color-text-primary);
 }
 
-.chevronOpen {
-  transform: rotate(180deg);
-  color: var(--color-text-primary);
+.sendStop:hover:not(:disabled) {
+  background: var(--color-tool-pressed);
 }
 
-.customPopoverMenu,
-.customPopoverMenuRight {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  width: 220px;
-  max-height: 280px;
-  overflow-y: auto;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--color-border-subtle);
-  z-index: 100;
+/* Under the well: the model and the review setting as quiet menus. */
+.foot {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  animation: popoverFadeIn 140ms ease-out;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-xs);
 }
 
-.customPopoverMenuRight {
+.footMenu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-height-xs);
+  padding: 0 var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+  max-width: 60%;
+}
+
+.footMenu:hover,
+.footMenuOpen {
+  color: var(--color-text-primary);
+  background: var(--color-hover);
+}
+
+.footLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Popovers (the chips', the foot menus') ────────────────────────── */
+
+.popover {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 40;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.45));
+  cursor: default;
+  white-space: normal;
+  text-align: left;
+  font-weight: var(--panel-weight-label);
+}
+
+.popoverRight {
   left: auto;
   right: 0;
-  width: 210px;
-}
-
-@keyframes popoverFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .popoverHeader {
+  padding: var(--space-2) var(--space-2) var(--space-1);
   font-size: var(--font-size-micro);
-  font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--color-text-tertiary);
-  padding: 4px 8px 2px 8px;
 }
 
 .popoverGroup {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
-  border-top: 1px solid var(--color-border-subtle);
-  padding-top: 4px;
+  gap: 1px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
 }
 
 .groupLabel {
-  font-size: var(--font-size-micro);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  padding: 2px 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-micro);
+  color: var(--color-text-secondary);
 }
 
 .noKeyTag {
-  font-size: var(--font-size-micro);
   color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.12);
-  padding: 1px 4px;
-  border-radius: 4px;
-  font-weight: 500;
+  font-size: var(--font-size-micro);
 }
 
-.popoverOption {
+.option {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
-  padding: 6px 8px;
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-2);
   border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-primary);
-  font-family: inherit;
+  font: inherit;
   font-size: var(--font-size-xs);
-  font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: var(--motion-hover-transition);
 }
 
-.popoverOption:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.popoverOption:not(:disabled):hover {
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
-}
-
-.popoverOptionActive {
-  background: rgba(41, 136, 255, 0.15) !important;
-  color: var(--color-primary) !important;
-  font-weight: 600;
-}
-
-.optionIcon {
-  display: inline-flex;
+.optionRow {
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  flex: none;
+  justify-content: space-between;
 }
 
-.optionLabel {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.optionSub {
-  font-size: var(--font-size-micro);
-  color: var(--color-text-tertiary);
-  margin-top: 1px;
-}
-
-.optionCheck {
-  color: var(--color-primary);
-  flex: none;
-}
-
-.controlsRight {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-}
-
-.modePickerWrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 12px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
-  transition: var(--motion-hover-transition);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  flex: none;
-}
-
-.modePickerWrap:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-3);
-  border-color: var(--color-border-strong);
-}
-
-.modePickerLabel {
-  letter-spacing: -0.01em;
-}
-
-.neonSendBtn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-accent);
-  color: var(--color-text-on-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex: none;
-  transition: transform 120ms ease, background-color 120ms ease, opacity 120ms ease;
-}
-
-.neonSendBtn:disabled {
-  background: var(--color-surface-3);
-  color: var(--color-text-disabled);
-  cursor: default;
-}
-
-.neonSendBtn:not(:disabled):hover {
-  filter: brightness(1.12);
-  transform: scale(1.04);
-}
-
-.neonSendBtn:not(:disabled):active {
-  transform: scale(0.95);
-}
-
-.presetContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.presetTitle {
-  font-size: var(--font-size-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-tertiary);
-}
-
-.presetGrid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.presetChip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  cursor: pointer;
-  text-align: left;
-  transition: var(--motion-hover-transition);
-}
-
-.presetChip:hover {
+.option:hover:not(:disabled) {
   background: var(--color-hover);
-  border-color: var(--color-accent);
 }
 
-.presetChipName {
-  font-weight: 600;
-  font-size: var(--font-size-xs);
-  color: var(--color-accent);
-}
-
-.presetChipDesc {
-  font-size: var(--font-size-micro);
-  color: var(--color-text-muted);
-}
-
-
-/* ── Direction controls ─────────────────────────────────────────────
-   The composer's second row: look pack, energy, length, brand colour and how
-   many alternatives to compare. Every one of them is OPTIONAL — unset means the
-   model decides, which is what happened for every run before these existed. */
-
-.directionBar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 0 4px 6px;
-}
-
-.directionChip {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 3px 8px;
-  border-radius: 12px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
-  transition: var(--motion-hover-transition);
-  flex: none;
-  white-space: nowrap;
-}
-
-.directionChip:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-3);
-  border-color: var(--color-border-strong);
-}
-
-/* A pinned value has to look different from an unset one at a glance, or the
-   user cannot tell what the model is deciding and what they are. */
-.directionChipSet {
-  color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-}
-
-.directionClear {
-  display: flex;
-  align-items: center;
-  opacity: 0.65;
-}
-
-.directionClear:hover { opacity: 1; }
-
-.directionPopover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 40;
-  min-width: 232px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 6px;
-  border-radius: var(--radius-dialog);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-panel);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+.option:disabled {
+  opacity: var(--opacity-disabled);
   cursor: default;
 }
 
-.directionOption {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text-primary);
-  text-align: left;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
+.optionActive {
+  background: var(--color-tool-pressed);
 }
 
-.directionOption:hover { background: var(--color-hover); }
-
-.directionOptionActive {
-  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
-}
-
-.directionOptionIntent {
-  font-size: var(--font-size-micro);
-  line-height: 1.35;
+.optionIntent {
   color: var(--color-text-tertiary);
-  white-space: normal;
+  font-size: var(--font-size-micro);
+  line-height: var(--panel-line-height-help);
 }
 
-.directionRow {
+.popoverRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
 }
 
-.directionRow input[type="range"] { flex: 1; accent-color: var(--color-accent); }
-.directionRow input[type="color"] {
-  width: 28px; height: 22px; padding: 0; border: none;
-  background: none; cursor: pointer;
+.popoverRow input[type='range'] {
+  flex: 1;
+  accent-color: var(--color-primary);
 }
 
-.directionValue {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+.popoverRow input[type='color'] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.popoverValue {
   min-width: 42px;
   text-align: right;
+  color: var(--color-text-tertiary);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Filmstrip ──────────────────────────────────────────────────────
-   A still frame is a poor preview of a moving piece. These are sampled across
-   the result so the spacing between them IS the pacing. */
-
-.filmstrip {
-  display: flex;
-  gap: 3px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.filmstrip img {
-  height: 52px;
-  width: auto;
-  flex: none;
-  border-radius: var(--radius-sm);
-  background: #000;
-  display: block;
+@media (prefers-reduced-motion: reduce) {
+  .stageMark,
+  .stepMarkNow,
+  .stripLive {
+    animation: none;
+  }
 }

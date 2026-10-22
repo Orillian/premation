@@ -85,16 +85,25 @@ describe('resolveWhipTargetAt', () => {
 });
 
 describe('whipExpression', () => {
-  it('reads another layer property by name', () => {
-    expect(whipExpression('Hero', 'y')).toBe("layer('Hero', 'y')");
+  it('writes After Effects syntax for a transform property', () => {
+    expect(whipExpression('Hero', 'y')).toBe('thisComp.layer("Hero").transform.position[1]');
+    expect(whipExpression('Hero', 'opacity')).toBe('thisComp.layer("Hero").transform.opacity');
+    expect(whipExpression('Hero', 'scaleX')).toBe('thisComp.layer("Hero").transform.scale[0]');
   });
 
-  it('escapes a quote in a layer name rather than emitting broken syntax', () => {
-    expect(whipExpression("Ada's title", 'x')).toBe("layer('Ada\\'s title', 'x')");
+  it('escapes quotes and backslashes in a layer name rather than emitting broken syntax', () => {
+    expect(whipExpression('Ada "A" title', 'x')).toBe('thisComp.layer("Ada \\"A\\" title").transform.position[0]');
+    expect(whipExpression('back\\slash', 'x')).toBe('thisComp.layer("back\\\\slash").transform.position[0]');
   });
 
-  it('escapes a backslash', () => {
-    expect(whipExpression('back\\slash', 'x')).toBe("layer('back\\\\slash', 'x')");
+  it('addresses an effect parameter by its AE names', () => {
+    expect(whipExpression('Hero', 'effect.fx1.radius', { effect: 'Gaussian Blur', param: 'Blurriness' }))
+      .toBe('thisComp.layer("Hero").effect("Gaussian Blur")("Blurriness")');
+  });
+
+  it('keeps the layer() form for a property AE has no accessor for', () => {
+    expect(whipExpression("Ada's title", 'focalLength')).toBe("layer('Ada\\'s title', 'focalLength')");
+    expect(whipExpression('back\\slash', 'focalLength')).toBe("layer('back\\\\slash', 'focalLength')");
   });
 });
 

@@ -77,6 +77,11 @@ export function pluginCommands(): readonly PluginCommandInfo[] {
   return plugins.filter(loaded).flatMap((p) => (p.commands ?? []).filter((c) => c.enabled));
 }
 
+/** Whether the engine has any plugin loaded (the Plugins tab docks itself the first time). */
+export function hasLoadedPlugins(): boolean {
+  return plugins.some(loaded);
+}
+
 /** The plugin's display name. */
 export function pluginName(id: string): string {
   return plugins.find((p) => p.id === id)?.name || id;

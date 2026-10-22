@@ -49,6 +49,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { layerScreenMapping, type LayerScreenMapping } from './layerScreen';
 import { useDisplayedCamera2D } from './useOverlayView';
 import { holdViewportPicture, viewportPicture } from '@core/engine/viewportPicture';
+import { t } from '@core/i18n';
 
 const POINT_R = 5;
 const PICK_R = 12;
@@ -592,7 +593,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
   return (
     <svg
       ref={svgRef}
-      aria-label="Track points"
+      aria-label={t('workspace.trackPoints.label', 'Track points')}
       // `none` at the svg level: the overlay spans the whole stage, and an
       // `auto` svg swallowed every viewport gesture (pan, zoom, layer drags)
       // whenever the tracker was armed. Only the per-point hit circles are
@@ -651,7 +652,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
             strokeWidth={i === 0 ? 1.5 : 1}
             {...(i === 0 ? {} : { strokeDasharray: '2 4' })}
           >
-            {i > 0 && <title>Companion feature — carries rotation &amp; scale</title>}
+            {i > 0 && <title>{t('workspace.trackPoints.companion', 'Companion feature — carries rotation & scale')}</title>}
           </polyline>
         ) : null,
       )}
@@ -703,7 +704,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
         const colour = c.error < 1 ? '#66d984' : c.error < 2 ? '#ffd166' : '#ff6b6b';
         const r = sel ? 4.5 : 2.5;
         return (
-          <g key={`cam-${c.index}`} aria-label={sel ? `Track point ${c.index + 1}, selected` : undefined}>
+          <g key={`cam-${c.index}`} aria-label={sel ? t('workspace.trackPoints.pointSelected', 'Track point {n}, selected', { n: c.index + 1 }) : undefined}>
             <line x1={c.sc.x - r} y1={c.sc.y - r} x2={c.sc.x + r} y2={c.sc.y + r} stroke={colour} strokeWidth={sel ? 2 : 1.25} />
             <line x1={c.sc.x - r} y1={c.sc.y + r} x2={c.sc.x + r} y2={c.sc.y - r} stroke={colour} strokeWidth={sel ? 2 : 1.25} />
             {sel && <circle cx={c.sc.x} cy={c.sc.y} r={r + 3} fill="none" stroke="#ffffff" strokeWidth={1} />}
@@ -807,7 +808,7 @@ export function TrackPointOverlay({ host }: { host?: TrackPointHost } = {}): JSX
         </foreignObject>
       )}
       {manualVisible && screenPts.map((s, i) => (
-        <g key={`pt-${i}`} aria-label={`Track point ${i + 1}`}>
+        <g key={`pt-${i}`} aria-label={t('workspace.trackPoints.point', 'Track point {n}', { n: i + 1 })}>
           {/* Invisible fat hit target at the pick radius — the one interactive
               part of the overlay. Events bubble to the svg's own listeners. */}
           <circle cx={s.x} cy={s.y} r={PICK_R} fill="transparent" style={{ pointerEvents: 'all', cursor: 'move' }} />

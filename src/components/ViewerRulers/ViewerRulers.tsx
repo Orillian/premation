@@ -13,6 +13,7 @@
  */
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { t } from '@core/i18n';
 import styles from './ViewerRulers.module.css';
 
 export interface ViewerGuides {
@@ -157,26 +158,26 @@ export function ViewerRulers({ width, height, scale, originX, originY, guides, o
 
       <div
         className={styles.rulerX}
-        title="Drag down from the ruler to add a guide"
+        title={t('ui.viewerRulers.dragDown', 'Drag down from the ruler to add a guide')}
         onPointerDown={(e) => begin(e, 'y', null)}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
       >
-        {xTicks.map((t) => (
-          <span key={t.at} className={styles.tickX} style={{ left: t.at }}>{t.label}</span>
+        {xTicks.map((tick) => (
+          <span key={tick.at} className={styles.tickX} style={{ left: tick.at }}>{tick.label}</span>
         ))}
       </div>
       <div
         className={styles.rulerY}
-        title="Drag right from the ruler to add a guide"
+        title={t('ui.viewerRulers.dragRight', 'Drag right from the ruler to add a guide')}
         onPointerDown={(e) => begin(e, 'x', null)}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
       >
-        {yTicks.map((t) => (
-          <span key={t.at} className={styles.tickY} style={{ top: t.at }}><span>{t.label}</span></span>
+        {yTicks.map((tick) => (
+          <span key={tick.at} className={styles.tickY} style={{ top: tick.at }}><span>{tick.label}</span></span>
         ))}
       </div>
       <div className={styles.corner} aria-hidden />

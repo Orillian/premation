@@ -44,6 +44,7 @@ import {
 import { hasPath } from './materialEdits';
 import { trackWrites } from './inspectorEdits';
 import { useEngineEdit } from './useEngineEdit';
+import { t } from '@core/i18n';
 import s from './PrimitiveSection.module.css';
 
 /**
@@ -84,17 +85,36 @@ type SizeField = 'radius' | 'radiusTop' | 'height' | 'width' | 'depth' | 'tube';
 type SegField = 'radialSegments' | 'heightSegments';
 
 /** Row label + range per parameter, per type where the meaning shifts. */
-const SIZE_ROWS: Record<SizeField, { label: string; max: number }> = {
-  radius: { label: 'Radius', max: 4000 },
-  radiusTop: { label: 'Top Radius', max: 4000 },
-  height: { label: 'Height', max: 8000 },
-  width: { label: 'Width', max: 8000 },
-  depth: { label: 'Depth', max: 8000 },
-  tube: { label: 'Tube', max: 2000 },
-};
+function sizeRows(): Record<SizeField, { label: string; max: number }> {
+  return {
+    radius: { label: t('inspector.primitive.size.radius', 'Radius'), max: 4000 },
+    radiusTop: { label: t('inspector.primitive.size.topRadius', 'Top Radius'), max: 4000 },
+    height: { label: t('inspector.primitive.size.height', 'Height'), max: 8000 },
+    width: { label: t('inspector.primitive.size.width', 'Width'), max: 8000 },
+    depth: { label: t('inspector.primitive.size.depth', 'Depth'), max: 8000 },
+    tube: { label: t('inspector.primitive.size.tube', 'Tube'), max: 2000 },
+  };
+}
 
 /** The segment rows mean different things per shape — say which. */
-const SEG_LABELS: Record<PrimitiveMeshType, { radialSegments: string; heightSegments: string }> = {
+function segLabels(): Record<PrimitiveMeshType, { radialSegments: string; heightSegments: string }> {
+  const around = t('inspector.primitive.seg.around', 'Segments (around)');
+  const sides = t('inspector.primitive.seg.sides', 'Sides');
+  return {
+    sphere: { radialSegments: around, heightSegments: t('inspector.primitive.seg.rows', 'Segments (rows)') },
+    cylinder: { radialSegments: sides, heightSegments: '' },
+    cone: { radialSegments: sides, heightSegments: '' },
+    torus: { radialSegments: t('inspector.primitive.seg.ring', 'Ring Segments'), heightSegments: t('inspector.primitive.seg.tube', 'Tube Segments') },
+    capsule: { radialSegments: around, heightSegments: t('inspector.primitive.seg.capRows', 'Cap Rows') },
+    box: { radialSegments: '', heightSegments: '' },
+  };
+}
+
+/** Row names in undo labels — English always (history labels are not translated). */
+const SIZE_UNDO_NAME: Record<SizeField, string> = {
+  radius: 'Radius', radiusTop: 'Top Radius', height: 'Height', width: 'Width', depth: 'Depth', tube: 'Tube',
+};
+const SEG_UNDO_NAME: Record<PrimitiveMeshType, { radialSegments: string; heightSegments: string }> = {
   sphere: { radialSegments: 'Segments (around)', heightSegments: 'Segments (rows)' },
   cylinder: { radialSegments: 'Sides', heightSegments: '' },
   cone: { radialSegments: 'Sides', heightSegments: '' },
@@ -103,14 +123,16 @@ const SEG_LABELS: Record<PrimitiveMeshType, { radialSegments: string; heightSegm
   box: { radialSegments: '', heightSegments: '' },
 };
 
-const HINTS: Record<PrimitiveMeshType, string> = {
-  sphere: 'A real UV sphere — smooth per-vertex normals, not an extruded circle.',
-  cylinder: 'Set a different Top Radius for a truncated cone; uncap it for an open tube.',
-  cone: 'A cylinder whose top radius is zero. Its wall normals tilt with the slope.',
-  torus: 'Ring Segments rounds the donut; Tube Segments rounds its cross-section.',
-  capsule: 'Height is the TOTAL extent, caps included — set it to 2 × Radius for a sphere.',
-  box: 'Flat shaded, so the edges stay crisp. For bevels and per-face colours use a 3D Cube (extruded).',
-};
+function hints(): Record<PrimitiveMeshType, string> {
+  return {
+    sphere: t('inspector.primitive.hint.sphere', 'A real UV sphere — smooth per-vertex normals, not an extruded circle.'),
+    cylinder: t('inspector.primitive.hint.cylinder', 'Set a different Top Radius for a truncated cone; uncap it for an open tube.'),
+    cone: t('inspector.primitive.hint.cone', 'A cylinder whose top radius is zero. Its wall normals tilt with the slope.'),
+    torus: t('inspector.primitive.hint.torus', 'Ring Segments rounds the donut; Tube Segments rounds its cross-section.'),
+    capsule: t('inspector.primitive.hint.capsule', 'Height is the TOTAL extent, caps included — set it to 2 × Radius for a sphere.'),
+    box: t('inspector.primitive.hint.box', 'Flat shaded, so the edges stay crisp. For bevels and per-face colours use a 3D Cube (extruded).'),
+  };
+}
 
 export function PrimitiveSection({ nodeId }: { nodeId: string }): JSX.Element | null {
   const e = useEngineEdit();
@@ -121,66 +143,69 @@ export function PrimitiveSection({ nodeId }: { nodeId: string }): JSX.Element | 
   const uses = (f: keyof PrimitiveSpec): boolean => fields.includes(f);
   const send = (label: string, patch: Partial<PrimitiveSpec>): void => e.send(label, primitiveCommands(nodeId, patch, getTime()));
   const on = (): boolean => hasPath(nodeId, 'primitive/type');
+  const rows = sizeRows();
+  const segs = segLabels()[spec.type];
+
 
   return (
     <div className={s.stack}>
       <div className={s.row}>
-        <span className={s.label}>Shape</span>
+        <span className={s.label}>{t('inspector.primitive.shape', 'Shape')}</span>
         <select
           className={s.select}
           value={spec.type}
           onChange={(ev) => send('Set Shape', { type: ev.currentTarget.value as PrimitiveMeshType })}
-          aria-label="Primitive shape"
+          aria-label={t('inspector.primitive.shapeLabel', 'Primitive shape')}
         >
-          {PRIMITIVE_MESH_TYPES.map((t) => (
-            <option key={t} value={t}>{PRIMITIVE_LABELS[t]}</option>
+          {PRIMITIVE_MESH_TYPES.map((type) => (
+            <option key={type} value={type}>{PRIMITIVE_LABELS[type]}</option>
           ))}
         </select>
       </div>
 
-      {(Object.keys(SIZE_ROWS) as SizeField[]).filter(uses).map((f) => (
+      {(Object.keys(rows) as SizeField[]).filter(uses).map((f) => (
         <div className={s.row} key={f}>
-          <span className={s.label}>{SIZE_ROWS[f].label}</span>
+          <span className={s.label}>{rows[f].label}</span>
           <ValueField
             value={Math.round(spec[f] * 100) / 100}
             min={1}
-            max={SIZE_ROWS[f].max}
+            max={rows[f].max}
             step={1}
             unit="px"
-            onChange={(v) => send(`Set ${SIZE_ROWS[f].label}`, { [f]: v })}
-            {...e.scrub(`Set ${SIZE_ROWS[f].label}`, on)}
-            aria-label={SIZE_ROWS[f].label}
+            onChange={(v) => send(`Set ${SIZE_UNDO_NAME[f]}`, { [f]: v })}
+            {...e.scrub(`Set ${SIZE_UNDO_NAME[f]}`, on)}
+            aria-label={rows[f].label}
           />
         </div>
       ))}
 
       {(['radialSegments', 'heightSegments'] as SegField[]).filter(uses).map((f) => (
         <div className={s.row} key={f}>
-          <span className={s.label}>{SEG_LABELS[spec.type][f]}</span>
+          <span className={s.label}>{segs[f]}</span>
           <ValueField
             value={spec[f]}
             min={3}
             max={256}
             step={1}
-            onChange={(v) => send(`Set ${SEG_LABELS[spec.type][f]}`, { [f]: Math.round(v) })}
-            {...e.scrub(`Set ${SEG_LABELS[spec.type][f]}`, on)}
-            aria-label={SEG_LABELS[spec.type][f]}
+            onChange={(v) => send(`Set ${SEG_UNDO_NAME[spec.type][f]}`, { [f]: Math.round(v) })}
+            {...e.scrub(`Set ${SEG_UNDO_NAME[spec.type][f]}`, on)}
+            aria-label={segs[f]}
           />
         </div>
       ))}
 
       {uses('capped') && (
         <div className={s.row}>
-          <span className={s.label}>End Caps</span>
+          <span className={s.label}>{t('inspector.primitive.endCaps', 'End Caps')}</span>
           <Switch
             checked={spec.capped}
             onChange={(ev) => send('Set End Caps', { capped: ev.currentTarget.checked })}
-            aria-label="End caps"
+            aria-label={t('inspector.primitive.endCapsLabel', 'End caps')}
           />
         </div>
       )}
 
-      <p className={s.hint}>{HINTS[spec.type]}</p>
+      <p className={s.hint}>{hints()[spec.type]}</p>
     </div>
   );
 }

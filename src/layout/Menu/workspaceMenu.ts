@@ -19,6 +19,7 @@
 import { getWorkspaceManager } from '@core/layout/workspaceManager';
 import { getSettingsManager } from '@core/services/coreServices';
 import { BuiltinCommands } from '@core/commands/Command';
+import { t } from '@core/i18n';
 import type { MenuItemModel } from './menuModel';
 
 /** Where `WorkspaceManager.applyWorkspace` records what it last applied. */
@@ -54,10 +55,13 @@ export function buildWorkspaceMenuItems(): MenuItemModel[] {
   }));
 
   if (items.length > 0) items.push({ separator: true });
-  items.push({ commandId: 'workspace.saveAs', label: 'Save Layout as…' });
+  items.push({ commandId: 'workspace.saveAs', label: t('menuBar.workspace.saveAs', 'Save Layout as…') });
   // The SAME command the View menu offers. Two entries for one action is the
   // right call here — this submenu is where a user who is switching layouts is
   // already looking, and "put it back" is the other half of that thought.
-  items.push({ commandId: BuiltinCommands.ResetLayout, label: 'Reset Layout' });
+  items.push({ commandId: BuiltinCommands.ResetLayout, label: t('menuBar.workspace.reset', 'Reset Layout') });
+  // Shortcuts, toolbars and the workspace list: AE's Workspace ▸ Edit
+  // Workspaces sits here too. Moved from Window's top level (menuModel).
+  items.push({ separator: true }, { commandId: 'view.customize', label: t('menuBar.workspace.customize', 'Customize…') });
   return items;
 }

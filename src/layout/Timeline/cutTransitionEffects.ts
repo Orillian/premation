@@ -11,6 +11,7 @@
 
 import { EFFECT_DEFS } from '@core/effects/effects';
 import { EFFECT_CATEGORY } from '@layout/Effects/effectCategory';
+import { t } from '@core/i18n';
 
 export interface CutTransitionEffect {
   type: string;
@@ -49,5 +50,5 @@ export function cutTransitionEffect(type: string | undefined): CutTransitionEffe
 
 /** What a wipe transition is called: its effect's label, or plain "Wipe". */
 export function wipeLabel(effect: string | undefined): string {
-  return cutTransitionEffect(effect)?.label ?? 'Wipe';
+  return cutTransitionEffect(effect)?.label ?? t('timeline.transition.wipe', 'Wipe');
 }

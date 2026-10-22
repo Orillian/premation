@@ -249,6 +249,15 @@ export interface FramePong {
   playing: boolean;
   /** Messages waiting in the core queue when the ping was served. */
   queued: number;
+  /**
+   * Liveness is not idleness: when the core thread has been inside ONE item
+   * (a request, a tick's frame build) for a while, the engine's watchdog
+   * thread answers the ping instead, with how long the core has been on it.
+   * 0 from the core thread itself (it drained its queue to this ping).
+   */
+  busyMs?: number;
+  /** What the core is on when busyMs > 0 (`command createLayer`, `tick (playing)`); "" otherwise. */
+  busy?: string;
 }
 
 /** Host → engine. Chromium is done with a slot. A stale generation is ignored. */
@@ -962,6 +971,8 @@ function encS_FramePong(w: Writer, v: FramePong): void {
   w.byte(16); w.u64(v.revision);
   w.byte(24); w.bool(v.playing);
   w.byte(32); w.u32(v.queued);
+  if (v.busyMs !== undefined) { w.byte(40); w.u32(v.busyMs); }
+  if (v.busy !== undefined) { w.byte(50); w.str(v.busy); }
 }
 function decS_FramePong(r: Reader, end: number, o: any): FramePong {
   let h_nonce = false;
@@ -972,6 +983,8 @@ function decS_FramePong(r: Reader, end: number, o: any): FramePong {
   let v_revision: number | undefined;
   let v_playing: boolean | undefined;
   let v_queued: number | undefined;
+  let v_busyMs: number | undefined;
+  let v_busy: string | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -979,6 +992,8 @@ function decS_FramePong(r: Reader, end: number, o: any): FramePong {
       case 16: v_revision = r.u64(); h_revision = true; break;
       case 24: v_playing = r.bool(); h_playing = true; break;
       case 32: v_queued = r.u32(); h_queued = true; break;
+      case 40: v_busyMs = r.u32(); break;
+      case 50: v_busy = r.str(); break;
       default: r.skip(key);
     }
   }
@@ -991,6 +1006,8 @@ function decS_FramePong(r: Reader, end: number, o: any): FramePong {
   o.revision = v_revision;
   o.playing = v_playing;
   o.queued = v_queued;
+  if (v_busyMs !== undefined) o.busyMs = v_busyMs;
+  if (v_busy !== undefined) o.busy = v_busy;
   return o;
 }
 function encS_FrameRelease(w: Writer, v: FrameRelease): void {

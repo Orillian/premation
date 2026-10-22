@@ -11,6 +11,7 @@
 
 import { renderComponentsOf } from '@core/scene/SceneGraph';
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 export type FrameBlend = 'none' | 'mix' | 'pixelMotion';
 
@@ -43,12 +44,12 @@ export const DEFAULT_LAYER_TIME: LayerTime = {
 };
 
 export const FRAME_BLENDS: ReadonlyArray<{ value: FrameBlend; label: string }> = [
-  { value: 'none', label: 'Off' },
-  { value: 'mix', label: 'Frame Mix' },
+  { value: 'none', get label() { return t('core.layerTime.off', 'Off'); } },
+  { value: 'mix', get label() { return t('core.layerTime.frameMix', 'Frame Mix'); } },
   // Optical-flow warp between the bracket frames — the smooth-slow-motion
   // mode. Deterministic CPU flow + warp (see video/pixelMotionFlow.ts);
   // costs real per-frame work, which is why it is a mode and not the default.
-  { value: 'pixelMotion', label: 'Pixel Motion' },
+  { value: 'pixelMotion', get label() { return t('core.layerTime.pixelMotion', 'Pixel Motion'); } },
 ];
 
 /** True when the config leaves time unchanged (lets callers skip remapping). */

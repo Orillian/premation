@@ -1070,7 +1070,14 @@ export function suggestExpression(intent: string): string {
 
 // ── Syntax tokenizing (for the editor's highlighting + bracket matching) ──
 
-export type TokenKind = 'num' | 'str' | 'api' | 'ident' | 'op' | 'paren' | 'ws';
+export type TokenKind = 'num' | 'str' | 'api' | 'ident' | 'op' | 'paren' | 'ws' | 'kw' | 'comment';
+
+/** The statement words of the language (docs/EXPRESSION_LANGUAGE.md), coloured apart from names. */
+const KEYWORDS = new Set([
+  'var', 'let', 'const', 'if', 'else', 'for', 'while', 'do', 'break', 'continue', 'return', 'function',
+  'typeof', 'switch', 'case', 'default', 'try', 'catch', 'finally', 'throw', 'of', 'in', 'new',
+  'true', 'false', 'null', 'undefined',
+]);
 export interface SyntaxToken {
   text: string;
   kind: TokenKind;
@@ -1102,7 +1109,7 @@ function apiNames(): Set<string> {
   // — `Math.sin()` must register the name `Math`. Deriving the full label
   // instead silently un-highlighted `Math`, which the API test caught.
   apiNamesCache ??= new Set(
-    EXPRESSION_API.map((a) => a.label.replace(/\(\)$/, '').split('.')[0]!),
+    EDITOR_EXPRESSION_API.map((a) => a.label.replace(/\(\)$/, '').split('.')[0]!),
   );
   return apiNamesCache;
 }
@@ -1115,9 +1122,19 @@ export function tokenizeExpression(src: string): SyntaxToken[] {
   while (i < src.length) {
     const c = src[i]!;
     if (/\s/.test(c)) { let j = i; while (j < src.length && /\s/.test(src[j]!)) j++; push(src.slice(i, j), 'ws'); continue; }
-    if (c === '"' || c === "'") {
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i);
+      push(src.slice(i, nl < 0 ? src.length : nl), 'comment');
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2);
+      push(src.slice(i, end < 0 ? src.length : end + 2), 'comment');
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
       let j = i + 1;
-      while (j < src.length && src[j] !== c) j++;
+      while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
       push(src.slice(i, Math.min(src.length, j + 1)), 'str');
       continue;
     }
@@ -1130,7 +1147,7 @@ export function tokenizeExpression(src: string): SyntaxToken[] {
     if (/[A-Za-z_$]/.test(c)) {
       let j = i; while (j < src.length && /[A-Za-z0-9_$.]/.test(src[j]!)) j++;
       const word = src.slice(i, j);
-      push(word, apiNames().has(word.split('.')[0]!) ? 'api' : 'ident');
+      push(word, KEYWORDS.has(word) ? 'kw' : apiNames().has(word.split('.')[0]!) ? 'api' : 'ident');
       continue;
     }
     if (c === '(' || c === ')' || c === '[' || c === ']') { push(c, 'paren'); continue; }
@@ -1230,3 +1247,25 @@ export const EXPRESSION_API: { insert: string; label: string; hint: string }[] =
   { insert: 'text.sourceText', label: 'text.sourceText', hint: 'this layer’s Source Text — a string: .length .split(" ") .style .getStyleAt(i)' },
   { insert: 'text.sourceText.style.setFontSize(80)', label: 'text.sourceText.style', hint: 'text style: .fontSize .font .fillColor… and chainable setFontSize(v[, start, count]) setFillColor([r,g,b]) setText("…")' },
 ];
+
+/**
+ * Names the NATIVE engine binds that this module's leftover TypeScript
+ * interpreter does not (added 2026-10-21, docs/EXPRESSION_LANGUAGE.md). Kept
+ * apart so `expressionApi.test.ts` can keep pinning EXPRESSION_API to the
+ * names `run` binds; the editor offers both (`EDITOR_EXPRESSION_API`).
+ */
+export const NATIVE_EXPRESSION_API: { insert: string; label: string; hint: string }[] = [
+  { insert: 'degreesToRadians(90)', label: 'degreesToRadians()', hint: 'degrees → radians' },
+  { insert: 'radiansToDegrees(Math.PI)', label: 'radiansToDegrees()', hint: 'radians → degrees' },
+  { insert: 'hslToRgb([0.5, 1, 0.5, 1])', label: 'hslToRgb()', hint: 'HSLA (0–1) → RGBA (0–1)' },
+  { insert: 'rgbToHsl(value)', label: 'rgbToHsl()', hint: 'RGBA (0–1) → HSLA (0–1)' },
+  { insert: 'smooth(0.2, 5)', label: 'smooth()', hint: 'average the property over a window (width, samples)' },
+  { insert: 'temporalWiggle(2, 0.2)', label: 'temporalWiggle()', hint: 'sample the property at a wiggled time' },
+  { insert: 'comp("Comp 1").layer("Name")', label: 'comp()', hint: 'another composition by name: .layer() .width .height .duration' },
+  { insert: 'effect("Slider Control")("Slider").valueAtTime(time - 0.5)', label: 'effect()', hint: 'an effect parameter: .value .valueAtTime(t) .velocity .numKeys .key(n)' },
+  { insert: 'timeToTimecode(time)', label: 'timeToTimecode()', hint: 'seconds → "0:00:01:12"' },
+  { insert: 'timeToCurrentFormat(time)', label: 'timeToCurrentFormat()', hint: 'seconds in the project’s time display' },
+];
+
+/** Everything the expression editor highlights, completes and lists. */
+export const EDITOR_EXPRESSION_API = [...EXPRESSION_API, ...NATIVE_EXPRESSION_API];

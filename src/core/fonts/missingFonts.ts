@@ -20,6 +20,7 @@
 import type { SceneNode } from '@core/types';
 import { readNodeKind } from '@core/scene/sceneDerive';
 import { readRuns } from '@core/text/richText';
+import { t } from '@core/i18n';
 
 /** CSS generic families — always drawable. */
 export const GENERIC_FONT_FAMILIES: ReadonlySet<string> = new Set([
@@ -89,5 +90,7 @@ export function findMissingFonts(
 
 /** "3 fonts missing" / "1 font missing". */
 export function missingFontsMessage(count: number): string {
-  return `${count} font${count === 1 ? '' : 's'} missing`;
+  return count === 1
+    ? t('core.missingFonts.countOne', '{n} font missing', { n: count })
+    : t('core.missingFonts.countOther', '{n} fonts missing', { n: count });
 }

@@ -13,8 +13,10 @@
 #include <set>
 
 #include "core/catalog_data.hpp"
+#include "core/frame_keys.hpp"
 #include "core/props.hpp"
 #include "core/ptree.hpp"
+#include "core/timeline.hpp"
 #include "invariants.hpp"
 #include "session_harness.hpp"
 
@@ -1301,4 +1303,211 @@ TEST_CASE("session: getRenderStats answers the render thread's VRAM and the last
   CHECK(none.vram_bytes == 0);
   CHECK_FALSE(none.last_slot_switch_ago_ms.has_value());
   CHECK_FALSE(none.slot_switch_ms.has_value());
+}
+
+// ── cached playback without a build (core/frame_keys.hpp, render/coverage_ledger.hpp) ──
+
+namespace {
+
+/// A frame builder that only counts: the Session draws C2's quads for its frames.
+class CountingBuilder final : public FrameBuilder {
+ public:
+  std::shared_ptr<BuiltFrame> build(const doc::Document& /*d*/, const doc::EditorView& /*view*/, const doc::ExprEnv& /*expr*/,
+                                    doc::ExprCache& /*cache*/, std::string_view /*comp*/, api::Time /*time*/,
+                                    const ViewportConfig& /*viewport*/, bool /*playing*/,
+                                    std::vector<api::LayerError>& /*errors*/) override {
+    ++built;
+    return nullptr;
+  }
+  int built = 0;
+};
+
+constexpr api::Time kFrame30 = kSec / 30;
+
+/// The cached frames of the active comp as frame indices (getCacheCoverage, 30 fps).
+std::vector<std::int64_t> cached_frames(Harness& h) {
+  const api::CacheCoverage c = query<api::CacheCoverage>(h, qry(api::GetCacheCoverage{}));
+  std::vector<std::int64_t> out;
+  for (const api::CacheRange& r : c.ram) {
+    for (api::Time t = r.start; t < r.end; t += kFrame30) out.push_back(t / kFrame30);
+  }
+  return out;
+}
+
+bool cached_range(Harness& h, std::int64_t first, std::int64_t end) {
+  const std::vector<std::int64_t> frames = cached_frames(h);
+  for (std::int64_t f = first; f < end; ++f) {
+    if (std::find(frames.begin(), frames.end(), f) == frames.end()) return false;
+  }
+  return true;
+}
+
+bool none_cached(Harness& h, std::int64_t first, std::int64_t end) {
+  const std::vector<std::int64_t> frames = cached_frames(h);
+  for (std::int64_t f = first; f < end; ++f) {
+    if (std::find(frames.begin(), frames.end(), f) != frames.end()) return false;
+  }
+  return true;
+}
+
+/// Plays the custom range [0, seconds) once, a millisecond per tick, releasing every slot.
+void play_once(Harness& h, double seconds) {
+  REQUIRE(is_ok(h.run(cmd(api::SetLoop{api::LoopMode::once}))));
+  api::Play play;
+  play.rate = 1;
+  play.range = api::PlayRange::custom;
+  play.custom = api::TimeRange{0, static_cast<api::Time>(seconds * static_cast<double>(kSec))};
+  REQUIRE(is_ok(h.run(cmd(play))));
+  const int ticks = static_cast<int>(seconds * 1000) + 100;
+  for (int i = 0; i < ticks; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  REQUIRE_FALSE(h.session.playing());
+}
+
+}  // namespace
+
+TEST_CASE("frame keys: the index's layer clock is comp_to_keyframe_time's, bars and stretch included", "[session][cache][keys]") {
+  Harness h(64);
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  const api::LayerId plain = make_layer(h, comp);
+  const api::LayerId timed = make_layer(h, comp);
+  const api::LayerId stretched = make_layer(h, comp);
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  // Keys on every layer (a stretched layer's clock is anchored on its keys' span).
+  for (const api::LayerId& l : {plain, timed, stretched}) {
+    api::AddKeyframes a;
+    for (int k = 0; k < 3; ++k) {
+      api::KeyframeInsert ins;
+      ins.prop = {l, "transform/position"};
+      ins.time = k * kSec;
+      ins.value = vec2(100.0 * k, 0);
+      ins.easing = api::Easing::linear;
+      a.keys.push_back(std::move(ins));
+    }
+    REQUIRE(is_ok(h.run(cmd(a))));
+  }
+  api::SetLayerTiming timing;
+  api::LayerTimingPatch p;
+  p.layer = timed;
+  p.in_point = 2 * kSec;
+  p.out_point = 7 * kSec;
+  p.start_time = kSec / 2;
+  timing.items.push_back(p);
+  REQUIRE(is_ok(h.run(cmd(timing))));
+  api::TimeStretchLayers stretch;
+  stretch.layers = {stretched};
+  stretch.stretch = 2;  // a factor: the layer plays at half speed
+  REQUIRE(is_ok(h.run(cmd(stretch))));
+
+  doc::FrameKeyIndex index;
+  REQUIRE(index.rebuild(h.session.document(), h.session.view(), comp, ""));
+  REQUIRE(index.indexed());
+  REQUIRE(index.frames() == 300);
+  for (const api::LayerId& l : {plain, timed, stretched}) {
+    for (std::int64_t f = 0; f < 300; f += 7) {
+      const std::optional<double> mine = index.layer_time(l, f);
+      REQUIRE(mine.has_value());
+      const double theirs = doc::comp_to_keyframe_time(h.session.document(), h.session.view(), l, static_cast<double>(f) / 30.0);
+      CHECK(*mine == Approx(theirs).margin(1e-9));
+    }
+  }
+  // Keys are content: the same document gives the same keys; another frame another key.
+  const std::uint64_t k10 = index.key(10);
+  CHECK(k10 != 0);
+  CHECK(k10 != index.key(11));
+  doc::FrameKeyIndex again;
+  REQUIRE(again.rebuild(h.session.document(), h.session.view(), comp, ""));
+  CHECK(again.key(10) == k10);
+  CHECK(index.key(300) == 0);  // outside the comp
+}
+
+TEST_CASE("cached playback: the second pass over a range builds nothing; an edit invalidates its span; undo returns the bars",
+          "[session][cache][playback]") {
+  Harness h(64);
+  CountingBuilder builder;
+  h.session.set_frame_builder(&builder);
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  const api::LayerId layer = make_layer(h, comp);
+  // 21 keys, one every 0.2 s over 4 s.
+  api::AddKeyframes a;
+  for (int k = 0; k <= 20; ++k) {
+    api::KeyframeInsert ins;
+    ins.prop = {layer, "transform/position"};
+    ins.time = static_cast<api::Time>(k) * (kSec / 5);
+    ins.value = vec2(10.0 * k, 0);
+    ins.easing = api::Easing::linear;
+    a.keys.push_back(std::move(ins));
+  }
+  REQUIRE(is_ok(h.run(cmd(a))));
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  // The simulated tiers: a frame's content is its index (the builder draws nothing the test can hash).
+  h.sink.contentKeyOf = [](const RenderJob& j) { return std::optional<std::uint64_t>(0x1000 + static_cast<std::uint64_t>(j.frame)); };
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 640;
+  v.height = 360;
+  v.device_pixel_ratio = 1.0;
+  REQUIRE(is_ok(h.run(cmd(v))));
+
+  // Pass 1: every frame builds, and the bar fills.
+  play_once(h, 4.0);
+  const int firstPass = builder.built;
+  REQUIRE(firstPass >= 120);
+  REQUIRE(cached_range(h, 0, 120));
+  REQUIRE(h.sink.counters().cacheServed <= 2);  // frame 0 again after the viewport opened on it
+
+  // Pass 2: every frame is presented from the tiers — not one build.
+  REQUIRE(is_ok(h.run(cmd(api::Seek{0, api::SeekMode::exact}))));
+  const int afterSeek = builder.built;
+  play_once(h, 4.0);
+  CHECK(builder.built == afterSeek);
+  CHECK(h.sink.counters().cacheServed >= 120);
+  CHECK(h.sink.counters().cacheMissed == 0);
+  CHECK(cached_range(h, 0, 120));
+
+  // An edit to the key at 2.0 s (frame 60): the frames its segments and the
+  // blur reach decide — [44, 76) — leave the bar; the rest stays.
+  REQUIRE(is_ok(set_prop(h, layer, "transform/position", vec2(999, 0), 2 * kSec)));
+  CHECK(cached_range(h, 0, 44));
+  CHECK(none_cached(h, 44, 76));
+  CHECK(cached_range(h, 76, 120));
+
+  // Undo: the keys are the content they were, every frame is back without a build.
+  const int beforeUndo = builder.built;
+  REQUIRE(is_ok(h.run(cmd(api::Undo{}))));
+  CHECK(cached_range(h, 0, 120));
+  CHECK(builder.built <= beforeUndo + 1);  // the undo's own frame at the playhead, at most
+
+  // Redo, then play through: only the changed span builds.
+  REQUIRE(is_ok(h.run(cmd(api::Redo{}))));
+  REQUIRE(is_ok(h.run(cmd(api::Seek{0, api::SeekMode::exact}))));
+  const int beforeRedoPass = builder.built;
+  play_once(h, 4.0);
+  CHECK(builder.built - beforeRedoPass <= 34);  // [44, 76) is 32 frames (+ the seek's and play's own)
+  CHECK(builder.built - beforeRedoPass >= 30);
+  CHECK(cached_range(h, 0, 120));
+
+  SECTION("a frame the tiers lost meanwhile is built again, never shown blank") {
+    REQUIRE(is_ok(h.run(cmd(api::Seek{0, api::SeekMode::exact}))));
+    h.release_all();
+    h.sink.held.erase(0x1000 + 10);  // evicted
+    const int before = builder.built;
+    const auto frames = h.frames_ready().size();
+    REQUIRE(is_ok(h.run(cmd(api::Seek{10 * kFrame30, api::SeekMode::exact}))));
+    // The cached job missed; the request's tick took the sink's build request and built the frame.
+    CHECK(h.sink.counters().cacheMissed == 1);
+    CHECK(builder.built == before + 1);
+    REQUIRE(h.frames_ready().size() == frames + 1);
+    CHECK(h.frames_ready().back().frame == 10);
+    CHECK(cached_range(h, 0, 120));
+  }
+  h.session.set_frame_builder(nullptr);
 }

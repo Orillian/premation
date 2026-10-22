@@ -547,14 +547,18 @@ rg::TexRef SceneTextures::external_texture(std::string_view hash) {
   return {};
 }
 
-rg::TexRef SceneTextures::external_texture_mipmapped(std::string_view hash) {
+rg::TexRef SceneTextures::external_texture_mipmapped(std::string_view hash, const rg::MipFootprint& fp) {
   if (!hash.starts_with("rs:") && !hash.starts_with("img:")) return external_texture(hash);
   if (dev_ == nullptr) return {};
   const std::shared_ptr<const RasterEntry> e = find(hash);
   if (!e) return {};
+  // Built as deep as the draw samples (rg::Device::mip_texture): a raster shown
+  // at up to 2:1 — most of them, rasters are supersampled 2× — keeps level 0
+  // alone, and an animating layer's re-rasters build no chain they never read.
   std::string key(hash);
   key += "#mip";
-  return dev_->texture(key, e->width, e->height, wgpu::TextureFormat::RGBA8Unorm, std::span<const std::uint8_t>(e->rgba), true);
+  return dev_->mip_texture(key, e->width, e->height, wgpu::TextureFormat::RGBA8Unorm, std::span<const std::uint8_t>(e->rgba),
+                           rg::mip_levels_needed(e->width, e->height, fp));
 }
 
 std::string SceneTextures::image_ref(const TextureRequest& r, const std::filesystem::path& p, PrepareStats& stats) {

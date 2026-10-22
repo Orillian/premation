@@ -48,6 +48,7 @@ import { BounceSection } from './BounceSection';
 import { MotionControls } from '@layout/Inspector/MotionControls';
 import { useMemberTracks } from '@hooks/useMemberTracks';
 import styles from './MotionEditorPanel.module.css';
+import { t } from '@core/i18n';
 
 /**
  * Motion-path options (auto-orient, smooth/straighten, separate dimensions).
@@ -57,7 +58,7 @@ import styles from './MotionEditorPanel.module.css';
 function MotionPathBlock({ nodeId }: { nodeId: string }): JSX.Element {
   return (
     <details className={styles.fold}>
-      <summary className={styles.foldSummary}>Motion Path &amp; Orientation</summary>
+      <summary className={styles.foldSummary}>{t('motion.panel.motionPath', 'Motion Path & Orientation')}</summary>
       <div className={styles.foldBody}>
         <MotionControls nodeId={nodeId} />
       </div>
@@ -86,7 +87,7 @@ export function MotionEditorPanel(): JSX.Element {
   // lists (`getMemberKeyframes`) — the API's own lists are per property (ENGINE_API.md §3.3).
   const members = useMemberTracks(primary);
   const propList = useMemo(
-    () => (members ?? []).map((t) => t.member as string),
+    () => (members ?? []).map((m) => m.member as string),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [members, rev],
   );
@@ -110,8 +111,8 @@ export function MotionEditorPanel(): JSX.Element {
     return (
       <EmptyState
         icon="graph-value"
-        title="No selection"
-        message="Select a layer to shape its keyframe curves, or generate a bounce."
+        title={t('motion.panel.noSelection', 'No selection')}
+        message={t('motion.panel.noSelectionMessage', 'Select a layer to shape its keyframe curves, or generate a bounce.')}
       />
     );
   }
@@ -125,17 +126,17 @@ export function MotionEditorPanel(): JSX.Element {
         variant="bordered"
         className={styles.workspaceTabs}
         items={[
-          { id: 'curve', label: 'Curve', icon: <Icon name="graph-value" size="sm" />, ariaLabel: 'Keyframe curve' },
-          { id: 'bounce', label: 'Bounce', icon: <Icon name="ease" size="sm" />, ariaLabel: 'Bounce generator' },
+          { id: 'curve', label: t('motion.panel.curve', 'Curve'), icon: <Icon name="graph-value" size="sm" />, ariaLabel: t('motion.panel.keyframeCurve', 'Keyframe curve') },
+          { id: 'bounce', label: t('motion.panel.bounce', 'Bounce'), icon: <Icon name="ease" size="sm" />, ariaLabel: t('motion.panel.bounceGenerator', 'Bounce generator') },
         ]}
       />
 
       {workspace === 'bounce' ? (
-        <div className={styles.bounceBody} role="tabpanel" aria-label="Bounce">
+        <div className={styles.bounceBody} role="tabpanel" aria-label={t('motion.panel.bounce', 'Bounce')}>
           <BounceSection nodeId={primary} />
         </div>
       ) : (
-        <div className={styles.body} role="tabpanel" aria-label="Keyframe curve">
+        <div className={styles.body} role="tabpanel" aria-label={t('motion.panel.keyframeCurve', 'Keyframe curve')}>
           {/* The shared editor. Same component, same toolbar, same keyframe
               selection as the timeline's — only the viewport is local. */}
           <div className={styles.graphHost} ref={graphHostRef}>
@@ -159,8 +160,8 @@ export function MotionEditorPanel(): JSX.Element {
               {/* Which property the expression below drives. The graph plots
                   every animated property at once, so this is no longer the
                   graph's subject — only the expression's. */}
-              <h3 className={styles.sectionLabel}>Expression</h3>
-              <div className={styles.props} role="radiogroup" aria-label="Animated property">
+              <h3 className={styles.sectionLabel}>{t('motion.panel.expression', 'Expression')}</h3>
+              <div className={styles.props} role="radiogroup" aria-label={t('motion.panel.animatedProperty', 'Animated property')}>
                 {propList.map((p) => (
                   <button
                     key={p}
@@ -180,8 +181,8 @@ export function MotionEditorPanel(): JSX.Element {
             <EmptyState
               compact
               icon="keyframe"
-              title="No keyframes"
-              message="Add a keyframe on the timeline, apply a preset, or switch to Bounce to generate motion from scratch."
+              title={t('motion.panel.noKeyframes', 'No keyframes')}
+              message={t('motion.panel.noKeyframesMessage', 'Add a keyframe on the timeline, apply a preset, or switch to Bounce to generate motion from scratch.')}
             />
           )}
         </div>

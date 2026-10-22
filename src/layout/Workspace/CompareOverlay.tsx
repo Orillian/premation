@@ -41,6 +41,7 @@ import {
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { Icon } from '@components/Icon';
 import styles from './CompareOverlay.module.css';
+import { t } from '@core/i18n';
 
 /** How much |live − snapshot| is amplified so a subtle drift is visible. */
 const DIFFERENCE_GAIN = 4;
@@ -156,11 +157,11 @@ export function CompareOverlay(): JSX.Element | null {
           className={styles.divider}
           style={{ left: `${wipe * 100}%` }}
           role="slider"
-          aria-label="Comparison wipe"
+          aria-label={t('workspace.compare.wipe', 'Comparison wipe')}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(wipe * 100)}
-          aria-valuetext={`${Math.round(wipe * 100)}% snapshot`}
+          aria-valuetext={t('workspace.compare.wipeValue', '{percent}% snapshot', { percent: Math.round(wipe * 100) })}
           onPointerDown={onDividerDown}
           onKeyDown={(e) => {
             if (e.key === 'ArrowLeft') { setWipe(wipe - WIPE_KEY_STEP); e.preventDefault(); }
@@ -180,8 +181,8 @@ export function CompareOverlay(): JSX.Element | null {
         <button
           type="button"
           className={styles.chipClose}
-          aria-label="Hide snapshot (Esc)"
-          title="Hide snapshot — back to the live view (Esc / Shift+F5)"
+          aria-label={t('workspace.compare.hide', 'Hide snapshot (Esc)')}
+          title={t('workspace.compare.hideTitle', 'Hide snapshot — back to the live view (Esc / Shift+F5)')}
           onClick={hide}
         >
           <Icon name="close" size="sm" />
@@ -207,7 +208,9 @@ function describeFraming(snap: CompareSnapshot): string {
   const panned =
     Math.abs(view.offsetX - snap.view.offsetX) > 0.5 || Math.abs(view.offsetY - snap.view.offsetY) > 0.5;
   if (!zoomed && !panned) return '';
-  return zoomed ? '· taken at a different zoom' : '· taken at a different pan';
+  return zoomed
+    ? t('workspace.compare.differentZoom', '· taken at a different zoom')
+    : t('workspace.compare.differentPan', '· taken at a different pan');
 }
 
 /**

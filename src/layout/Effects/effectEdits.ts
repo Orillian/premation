@@ -72,6 +72,7 @@ import { mirrorEffectHeaders } from '@core/mirror/effects';
 import { isTrackAnimated } from '@core/mirror/selection';
 import { getTime } from '@stores/playbackClockStore';
 import { scalarValueCommands, stopwatchCommands, trackRef, valueCommands } from '@layout/Inspector/inspectorEdits';
+import { t } from '@core/i18n';
 
 // ── Addressing ─────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export async function addEffectEdit(nodeIds: ReadonlyArray<string>, type: Effect
     // A composition (its root) takes no effects — After Effects' rule too:
     // an Adjustment Layer is how an effect reaches a whole composition.
     if (nodeIds.length > 0) {
-      useUIStore.getState().notify({ level: 'info', message: 'Effects apply to layers — add an Adjustment Layer to affect the whole composition.', durationMs: 4000 });
+      useUIStore.getState().notify({ level: 'info', message: t('effects.edits.needsLayer', 'Effects apply to layers — add an Adjustment Layer to affect the whole composition.'), durationMs: 4000 });
     }
     return [];
   }
@@ -268,6 +269,40 @@ export async function resetEffectEdit(nodeId: string, effectId: string, name: st
     if (v) writes.push({ prop: ref(nodeId, paths.effectParam(effectId, p.key)), value: v });
   }
   if (writes.length > 0) await edit(`Reset ${name}`, { type: 'setProperties', writes });
+}
+
+/**
+ * Plugin SDK 1.2 presets on an effect already in the stack (AE's Animation
+ * Presets applied onto a selected effect): every param the preset names takes
+ * its value, every other param goes back to its default — the preset is a
+ * whole look, not a partial overlay. ONE entry. Like Reset, a keyed param
+ * keeps its keys. `values` are the preset's own (`p2`, `p1X`, API encoding).
+ */
+export async function applyPresetToEffectEdit(
+  nodeId: string,
+  effectId: string,
+  preset: { readonly name: string; readonly values: readonly PropertyInit[] },
+  name: string,
+): Promise<void> {
+  const effect = effectsOf(nodeId).find((e) => e.id === effectId);
+  const def = effect ? effectDefFor(effect.type) : undefined;
+  if (!effect || !def) return;
+  const given = new Map(preset.values.map((v) => [v.path, v.value]));
+  const defaults = newInstanceParamsOf(def);
+  const writes: PropertyWrite[] = [];
+  for (const p of def.params) {
+    if (p.type === 'resolved' || paramAnimated(nodeId, effectId, p)) continue;
+    const prop = ref(nodeId, paths.effectParam(effectId, p.key));
+    const v = given.get(p.key);
+    if (v) {
+      writes.push({ prop, value: v });
+      continue;
+    }
+    const raw = defaults[p.key];
+    const d = raw === undefined ? null : paramValue(nodeId, effectId, p, raw);
+    if (d) writes.push({ prop, value: d });
+  }
+  if (writes.length > 0) await edit(`${name}: ${preset.name}`, { type: 'setProperties', writes });
 }
 
 // ── Compositing Options › Effect Opacity ───────────────────────────────

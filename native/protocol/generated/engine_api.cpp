@@ -18424,6 +18424,8 @@ void encode(wire::Writer& w, const PluginInfo& v) {
   for (const auto& e : v.output_modules) { w.varint(106U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
   for (const auto& e : v.panels) { w.varint(114U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
   for (const auto& e : v.presets) { w.varint(122U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  if (v.icon.has_value()) { w.varint(130U); w.str(*v.icon); }
+  if (v.panel_title.has_value()) { w.varint(138U); w.str(*v.panel_title); }
 }
 
 Status decode(wire::Reader& r, PluginInfo& out) {
@@ -18513,6 +18515,18 @@ Status decode(wire::Reader& r, PluginInfo& out) {
       case 122U: {
         auto& e = out.presets.emplace_back();
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 130U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.icon = std::move(e);
+        break;
+      }
+      case 138U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.panel_title = std::move(e);
         break;
       }
       default:
@@ -23720,6 +23734,7 @@ void encode(wire::Writer& w, const EffectParamInfo& v) {
   if (v.precision.has_value()) { w.varint(104U); w.varint(*v.precision); }
   w.varint(114U); w.str(v.kind);
   w.varint(122U); w.str(v.file_types);
+  if (v.description.has_value()) { w.varint(130U); w.str(*v.description); }
 }
 
 Status decode(wire::Reader& r, EffectParamInfo& out) {
@@ -23816,6 +23831,12 @@ Status decode(wire::Reader& r, EffectParamInfo& out) {
         has_file_types = true;
         break;
       }
+      case 130U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.description = std::move(e);
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
@@ -23835,11 +23856,15 @@ Status decode(wire::Reader& r, EffectParamInfo& out) {
 void encode(wire::Writer& w, const EffectActionInfo& v) {
   w.varint(10U); w.str(v.key);
   w.varint(18U); w.str(v.label);
+  w.varint(26U); w.str(v.group);
+  w.varint(32U); w.varint(v.at);
 }
 
 Status decode(wire::Reader& r, EffectActionInfo& out) {
   bool has_key = false;
   bool has_label = false;
+  bool has_group = false;
+  bool has_at = false;
   while (!r.at_end()) {
     std::uint64_t key = 0;
     if (!r.varint(key)) return Status::truncated;
@@ -23854,6 +23879,16 @@ Status decode(wire::Reader& r, EffectActionInfo& out) {
         has_label = true;
         break;
       }
+      case 26U: {
+        if (!r.str(out.group)) return Status::truncated;
+        has_group = true;
+        break;
+      }
+      case 32U: {
+        if (!r.u32(out.at)) return Status::bad_value;
+        has_at = true;
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
@@ -23861,6 +23896,55 @@ Status decode(wire::Reader& r, EffectActionInfo& out) {
   }
   if (!has_key) return Status::missing_field;
   if (!has_label) return Status::missing_field;
+  if (!has_group) return Status::missing_field;
+  if (!has_at) return Status::missing_field;
+  return Status::ok;
+}
+
+void encode(wire::Writer& w, const EffectGroupInfo& v) {
+  w.varint(10U); w.str(v.name);
+  w.varint(18U); w.str(v.key);
+  w.varint(24U); w.boolean(v.collapsed);
+  if (v.description.has_value()) { w.varint(34U); w.str(*v.description); }
+}
+
+Status decode(wire::Reader& r, EffectGroupInfo& out) {
+  bool has_name = false;
+  bool has_key = false;
+  bool has_collapsed = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.name)) return Status::truncated;
+        has_name = true;
+        break;
+      }
+      case 18U: {
+        if (!r.str(out.key)) return Status::truncated;
+        has_key = true;
+        break;
+      }
+      case 24U: {
+        if (!r.boolean(out.collapsed)) return Status::truncated;
+        has_collapsed = true;
+        break;
+      }
+      case 34U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.description = std::move(e);
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_name) return Status::missing_field;
+  if (!has_key) return Status::missing_field;
+  if (!has_collapsed) return Status::missing_field;
   return Status::ok;
 }
 
@@ -23874,6 +23958,8 @@ void encode(wire::Writer& w, const EffectInfo& v) {
   w.varint(56U); w.boolean(v.supports_float);
   w.varint(64U); w.boolean(v.audio);
   for (const auto& e : v.actions) { w.varint(74U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  for (const auto& e : v.groups) { w.varint(82U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  if (v.about.has_value()) { w.varint(90U); w.str(*v.about); }
 }
 
 Status decode(wire::Reader& r, EffectInfo& out) {
@@ -23931,6 +24017,17 @@ Status decode(wire::Reader& r, EffectInfo& out) {
       case 74U: {
         auto& e = out.actions.emplace_back();
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 82U: {
+        auto& e = out.groups.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 90U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.about = std::move(e);
         break;
       }
       default:
@@ -28534,6 +28631,8 @@ void encode(wire::Writer& w, const FramePong& v) {
   w.varint(16U); w.varint(v.revision);
   w.varint(24U); w.boolean(v.playing);
   w.varint(32U); w.varint(v.queued);
+  if (v.busy_ms.has_value()) { w.varint(40U); w.varint(*v.busy_ms); }
+  if (v.busy.has_value()) { w.varint(50U); w.str(*v.busy); }
 }
 
 Status decode(wire::Reader& r, FramePong& out) {
@@ -28563,6 +28662,18 @@ Status decode(wire::Reader& r, FramePong& out) {
       case 32U: {
         if (!r.u32(out.queued)) return Status::bad_value;
         has_queued = true;
+        break;
+      }
+      case 40U: {
+        std::uint32_t e = 0;
+        if (!r.u32(e)) return Status::bad_value;
+        out.busy_ms = std::move(e);
+        break;
+      }
+      case 50U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.busy = std::move(e);
         break;
       }
       default:
@@ -31592,7 +31703,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 548> kNames = {
+constexpr std::array<std::string_view, 549> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -31989,6 +32100,7 @@ constexpr std::array<std::string_view, 548> kNames = {
     "EffectParamInfo",
     "EffectInfo",
     "EffectActionInfo",
+    "EffectGroupInfo",
     "ListEffects",
     "ListGroupTypes",
     "ListPresets",
@@ -32543,6 +32655,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "EffectParamInfo") return roundtrip<EffectParamInfo>(bytes, out);
   if (type == "EffectInfo") return roundtrip<EffectInfo>(bytes, out);
   if (type == "EffectActionInfo") return roundtrip<EffectActionInfo>(bytes, out);
+  if (type == "EffectGroupInfo") return roundtrip<EffectGroupInfo>(bytes, out);
   if (type == "ListEffects") return roundtrip<ListEffects>(bytes, out);
   if (type == "ListGroupTypes") return roundtrip<ListGroupTypes>(bytes, out);
   if (type == "ListPresets") return roundtrip<ListPresets>(bytes, out);

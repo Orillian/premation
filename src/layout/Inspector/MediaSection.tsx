@@ -36,6 +36,7 @@ import { KeyframeRow } from './KeyframeRow';
 import { RetimeSection } from './RetimeSection';
 import { ProxyRow } from './ProxyRow';
 import { customPrompt } from '@components/Modal';
+import { t } from '@core/i18n';
 import styles from './TransformSection.module.css';
 
 /**
@@ -151,7 +152,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
       }
     } else {
       // Browser fallback: trigger a prompt/alert
-      const path = await customPrompt('Replace Media Source', 'Enter image/video URL or file path:', String(src ?? ''));
+      const path = await customPrompt(t('inspector.media.replacePromptTitle', 'Replace Media Source'), t('inspector.media.replacePromptBody', 'Enter image/video URL or file path:'), String(src ?? ''));
       if (path !== null) {
         applyReplace(path);
       }
@@ -159,20 +160,20 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
   };
 
   const getFileName = (pathStr: string) => {
-    if (!pathStr) return 'No file selected';
+    if (!pathStr) return t('inspector.media.noFile', 'No file selected');
     return pathStr.split(/[\\/]/).pop() ?? pathStr;
   };
 
   return (
     <div className={styles.section}>
-      <h4 className={styles.title}>{isVideo ? 'Video Source' : 'Image Source'}</h4>
+      <h4 className={styles.title}>{isVideo ? t('inspector.media.videoSource', 'Video Source') : t('inspector.media.imageSource', 'Image Source')}</h4>
       
       <div className={styles.mediaSrcRow}>
         <span className={styles.mediaFileName} title={String(src ?? '')}>
           {getFileName(String(src ?? ''))}
         </span>
         <button type="button" onClick={handleReplace} className={styles.presetChip}>
-          Replace
+          {t('inspector.media.replace', 'Replace')}
         </button>
       </div>
 
@@ -194,7 +195,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
         using that file at once — including layers in other compositions.
       */}
       {showAlpha && alphaAssetId && (
-        <InspectorRow label="Alpha">
+        <InspectorRow label={t('inspector.media.alpha', 'Alpha')}>
           <select
             className={styles.presetChip}
             value={alphaMode}
@@ -205,17 +206,17 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
                 patch: { alpha: e.currentTarget.value as AlphaInterpretation },
               });
             }}
-            aria-label="How this footage's colour relates to its alpha"
-            title="Premultiplied = the file's colour is already multiplied by its alpha (rendered elements, TGA). Straight = it is not (PNG, ProRes 4444, WebM)."
+            aria-label={t('inspector.media.alphaAria', "How this footage's colour relates to its alpha")}
+            title={t('inspector.media.alphaTitle', "Premultiplied = the file's colour is already multiplied by its alpha (rendered elements, TGA). Straight = it is not (PNG, ProRes 4444, WebM).")}
           >
-            <option value="straight">Straight (Unmatted)</option>
-            <option value="premultiplied">Premultiplied (Matted With Black)</option>
+            <option value="straight">{t('inspector.media.alphaStraight', 'Straight (Unmatted)')}</option>
+            <option value="premultiplied">{t('inspector.media.alphaPremultiplied', 'Premultiplied (Matted With Black)')}</option>
           </select>
         </InspectorRow>
       )}
 
       {sequenceLoop && (
-        <InspectorRow label="Loop Sequence" align="center">
+        <InspectorRow label={t('inspector.media.loopSequence', 'Loop Sequence')} align="center">
           <Switch
             checked={plainValue(sequenceLoop.value) === true}
             // The per-LAYER loop flag (`layer/sequenceLoop`, a B3z layer field).
@@ -226,7 +227,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
                 value: values.bool(e.currentTarget.checked),
               });
             }}
-            aria-label="Loop image sequence"
+            aria-label={t('inspector.media.loopSequenceAria', 'Loop image sequence')}
           />
         </InspectorRow>
       )}
@@ -235,7 +236,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
           — a still has no seek cost to avoid. */}
       {isVideo && alphaAssetId && (
         <>
-          <h4 className={styles.title} style={{ marginTop: 12 }}>Proxy</h4>
+          <h4 className={styles.title} style={{ marginTop: 12 }}>{t('inspector.media.proxy', 'Proxy')}</h4>
           <ProxyRow assetId={alphaAssetId} />
         </>
       )}
@@ -249,25 +250,25 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
               <h4
                 className={styles.title}
                 style={{ marginTop: 12 }}
-                title="Plays and exports with the layer's timeline bar — keyframe Level to duck under a voiceover."
+                title={t('inspector.media.audioTitle', "Plays and exports with the layer's timeline bar — keyframe Level to duck under a voiceover.")}
               >
-                Audio
+                {t('inspector.media.audio', 'Audio')}
               </h4>
               {speedAltered ? (
                 // A real warning, so one help line stays on screen; the why is its tooltip.
                 <p
                   className={styles.helpWarning}
                   role="note"
-                  title="A held picture has no continuous soundtrack. Time remap, stretch and reverse keep audio in sync (varispeed)."
+                  title={t('inspector.media.freezeTitle', 'A held picture has no continuous soundtrack. Time remap, stretch and reverse keep audio in sync (varispeed).')}
                 >
-                  Audio is muted while freeze frame is on — clear freeze to hear sound.
+                  {t('inspector.media.freezeMuted', 'Audio is muted while freeze frame is on — clear freeze to hear sound.')}
                 </p>
               ) : (
                 <>
                   <KeyframeRow
                     nodeId={nodeId}
                     prop={AUDIO_LEVEL_DB_PROP}
-                    label="Level"
+                    label={t('inspector.media.level', 'Level')}
                     value={audioLevelDb}
                     unit="dB"
                     min={MIN_LEVEL_DB}
@@ -278,7 +279,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
                   <KeyframeRow
                     nodeId={nodeId}
                     prop={AUDIO_PAN_PROP}
-                    label="Pan"
+                    label={t('inspector.media.pan', 'Pan')}
                     value={audioPan}
                     unit="%"
                     min={MIN_PAN}
@@ -286,7 +287,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
                     // A centred pan is stored as ABSENT by the engine's audio seam.
                     onStatic={(v) => writeStatic(AUDIO_PAN_PROP, v)}
                   />
-                  <InspectorRow label="Mute" align="center">
+                  <InspectorRow label={t('inspector.media.mute', 'Mute')} align="center">
                     <Switch
                       checked={audioMuted}
                       // AE's Audio switch (`setLayerSwitches` audioEnabled — stored as this mute flag).
@@ -296,7 +297,7 @@ export function MediaSection({ nodeId }: { nodeId: string }): JSX.Element | null
                           type: 'setLayerSwitches', layers: [nodeId], patch: { audioEnabled: !e.currentTarget.checked },
                         });
                       }}
-                      aria-label="Mute this video's audio track"
+                      aria-label={t('inspector.media.muteAria', "Mute this video's audio track")}
                     />
                   </InspectorRow>
                 </>

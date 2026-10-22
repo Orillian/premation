@@ -22,6 +22,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useActiveCompFps, useMirrorTrackWatch } from '@hooks/useMirror';
 import { isTrackAnimated, navigatorFor, type MirrorRead, type NavState } from '@core/mirror/selection';
 import { edit } from '@core/engine/uiEdits';
+import { altClickStopwatchEdit } from '@providers/commands/expressionCommands';
 import { allAddressable, keyToggleCommands } from './inspectorEdits';
 
 export type TrackNavigator = Omit<KeyframeNavigatorProps, 'label'>;
@@ -106,7 +107,13 @@ export function AnimToggle({ nodeId, tracks = [], label, animated, onToggle, val
   const nav = useTrackNavigator(nodeId, tracks, label, values);
   return (
     <span className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-      <StopwatchButton animated={animated} label={label} onToggle={onToggle} />
+      <StopwatchButton
+        animated={animated}
+        label={label}
+        onToggle={onToggle}
+        // A colour's four channel tracks are one property: its first track addresses it.
+        onAltToggle={tracks[0] !== undefined ? () => { void altClickStopwatchEdit([{ nodeId, prop: tracks[0]! }]); } : undefined}
+      />
       {animated && <KeyframeNavigator label={label} {...nav} />}
     </span>
   );

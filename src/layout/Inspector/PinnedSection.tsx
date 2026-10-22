@@ -28,6 +28,7 @@ import { MultiPropertyRow } from './MultiPropertyRow';
 import styles from '@layout/EditorLayout/panels.module.css';
 import tStyles from './TransformSection.module.css';
 import rowStyles from './MultiPropertyRow.module.css';
+import { t } from '@core/i18n';
 
 /** A track's label on this layer (the registry, fed mirror facts). */
 function labelOf(nodeId: string, prop: string): string {
@@ -63,8 +64,8 @@ function UnpinButton({ nodeId, prop }: { nodeId: string; prop: string }): JSX.El
     <button
       type="button"
       className={rowStyles.exprToggle}
-      aria-label={`Unpin ${labelOf(nodeId, prop)}`}
-      title="Unpin"
+      aria-label={t('inspector.pinned.unpinNamed', 'Unpin {name}', { name: labelOf(nodeId, prop) })}
+      title={t('inspector.pinned.unpin', 'Unpin')}
       onClick={(e) => {
         e.stopPropagation();
         setPinnedPropEdit(nodeId, prop, false);
@@ -78,7 +79,7 @@ function UnpinButton({ nodeId, prop }: { nodeId: string; prop: string }): JSX.El
 function PinnedRow({ nodeId, entry, time }: { nodeId: string; entry: PinnedEntry; time: number }): JSX.Element {
   const numeric = readTrack(documentMirror(), nodeId, entry.prop, time) !== undefined;
   const label = labelOf(nodeId, entry.prop);
-  const hint = entry.essential ? 'Essential' : undefined;
+  const hint = entry.essential ? t('inspector.pinned.essential', 'Essential') : undefined;
   if (numeric) {
     return (
       <MultiPropertyRow
@@ -101,7 +102,7 @@ function PinnedRow({ nodeId, entry, time }: { nodeId: string; entry: PinnedEntry
       layout="inspector"
       trailing={entry.pinned ? <UnpinButton nodeId={nodeId} prop={entry.prop} /> : undefined}
     >
-      <span className={styles.groupCount}>Edit in its own section</span>
+      <span className={styles.groupCount}>{t('inspector.pinned.editInSection', 'Edit in its own section')}</span>
     </PropertyRow>
   );
 }
@@ -115,7 +116,7 @@ export function PinnedSection({ nodeId }: { nodeId: string }): JSX.Element | nul
   if (!documentMirror().layer(nodeId)) return null;
   const entries = pinnedEntriesOf(nodeId);
   if (entries.length === 0) {
-    return <p className={styles.sectionNote}>Nothing pinned. Right-click any property and choose “Pin to Pinned tab”.</p>;
+    return <p className={styles.sectionNote}>{t('inspector.pinned.empty', 'Nothing pinned. Right-click any property and choose “Pin to Pinned tab”.')}</p>;
   }
   return (
     <div className={tStyles.inlineRows}>

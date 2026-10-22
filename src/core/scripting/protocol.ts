@@ -15,9 +15,17 @@ export const SCRIPT_PERMISSIONS: readonly ScriptPermission[] = ['document.read',
 
 export type ScriptCallMethod = 'execute' | 'batch' | 'query' | 'subscribe';
 
+/** Editor state a script reads through `app` (it is not in the document): fixed for the run. */
+export interface ScriptRunContext {
+  /** The active composition (`app.project.activeItem`); null = none. */
+  activeItem?: string | null;
+  /** The current time, flicks (`comp.time`, `prop.value`). */
+  time?: number;
+}
+
 /** Host → worker. */
 export type ScriptHostMessage =
-  | { k: 'run'; name: string; source: string; permissions: ScriptPermission[] }
+  | { k: 'run'; name: string; source: string; permissions: ScriptPermission[]; context?: ScriptRunContext }
   | { k: 'reply'; id: number; ok: true; value: unknown }
   | { k: 'reply'; id: number; ok: false; error: { code: string; message: string; commandIndex?: number } }
   | { k: 'events'; batch: unknown };
@@ -27,7 +35,8 @@ export type ScriptWorkerMessage =
   | { k: 'call'; id: number; method: ScriptCallMethod; args: unknown[] }
   | { k: 'log'; level: 'log' | 'warn' | 'error'; text: string }
   | { k: 'done'; ok: true; value: unknown }
-  | { k: 'done'; ok: false; error: string };
+  /** `line`: the script line the error was thrown at, when known (1-based). */
+  | { k: 'done'; ok: false; error: string; line?: number };
 
 /**
  * `// @permissions document.read, document.write` in the first lines of a
@@ -35,9 +44,18 @@ export type ScriptWorkerMessage =
  * Unknown words are ignored; absent = read only.
  */
 export function declaredPermissions(source: string): ScriptPermission[] {
-  const head = source.split(/\r?\n/).slice(0, 20).join('\n');
-  const m = /@permissions\s+([^\n]*)/.exec(head);
+  const m = permissionsHeader(source);
   if (!m) return ['document.read'];
   const words = m[1]!.split(/[\s,]+/).filter(Boolean);
   return SCRIPT_PERMISSIONS.filter((p) => words.includes(p));
+}
+
+function permissionsHeader(source: string): RegExpExecArray | null {
+  const head = source.split(/\r?\n/).slice(0, 20).join('\n');
+  return /@permissions\s+([^\n]*)/.exec(head);
+}
+
+/** Whether the script declares its permissions (After Effects scripts never do). */
+export function hasPermissionsHeader(source: string): boolean {
+  return permissionsHeader(source) !== null;
 }

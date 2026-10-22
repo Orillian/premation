@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@core/api/client';
+import { t } from '@core/i18n';
 import { setSession } from '@core/api/session';
 import { useAuthStore } from '@stores/authStore';
 import { LoadingScreen } from '@components/LoadingScreen';
@@ -65,7 +66,7 @@ export function OAuthCallbackPage(): JSX.Element {
         // Re-arm so "Back to sign in" → try again can spend a fresh code; the
         // one that just failed is single-use and already dead.
         claimed.current = false;
-        setError(err.message || 'Could not complete sign-in.');
+        setError(err.message || t('auth.oauth.couldNotComplete', 'Could not complete sign-in.'));
       });
   }, [code, navigate]);
 
@@ -75,25 +76,25 @@ export function OAuthCallbackPage(): JSX.Element {
   if (error || !code) {
     return (
       <AuthShell
-        title="Sign-in did not finish"
-        subtitle="Nothing was changed on your account. Try again, or sign in with your email and password."
+        title={t('auth.oauth.failedTitle', 'Sign-in did not finish')}
+        subtitle={t('auth.oauth.failedSubtitle', 'Nothing was changed on your account. Try again, or sign in with your email and password.')}
       >
         <p className={styles.errorAlert} role="alert">
-          {error || 'That sign-in link is missing its code.'}
+          {error || t('auth.oauth.missingCode', 'That sign-in link is missing its code.')}
         </p>
         <button type="button" className={styles.primaryBtn} onClick={() => startSocialAuth('google')}>
-          Try Google again
+          {t('auth.oauth.tryGoogle', 'Try Google again')}
         </button>
         <div className={styles.footerLink}>
           <Link to="/login" replace>
-            Sign in with email instead
+            {t('auth.oauth.useEmail', 'Sign in with email instead')}
           </Link>
         </div>
       </AuthShell>
     );
   }
 
-  return <LoadingScreen message="Completing sign-in…" fullScreen />;
+  return <LoadingScreen message={t('auth.oauth.completing', 'Completing sign-in…')} fullScreen />;
 }
 
 export default OAuthCallbackPage;

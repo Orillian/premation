@@ -21,6 +21,7 @@ import { pairedSoundLayersIn } from '@core/mirror/audio';
 import { setAudioToolOpener } from './audioCommands';
 import { totalSilenceSec, DEFAULT_SILENCE_OPTIONS, type SilenceRange } from '@core/audio/silenceRemoval';
 import { previewEngineJob, runEngineJob } from '@core/engine/engineJobs';
+import { t } from '@core/i18n';
 import styles from './AudioToolDialog.module.css';
 
 interface Props {
@@ -66,6 +67,19 @@ function useEngineSilences(nodeId: string, o: { thresholdDb: number; minSilenceM
   return state;
 }
 
+/** "Removed 3 gaps (1.20s) from 2 layers." — whole sentences per plural form. */
+function removedMessage(gaps: number, sec: string, layers: number): string {
+  const vars = { gaps, sec, layers };
+  if (gaps === 1) {
+    return layers === 1
+      ? t('inspector.silenceRemoval.removedOneOne', 'Removed {gaps} gap ({sec}s) from {layers} layer.', vars)
+      : t('inspector.silenceRemoval.removedOneOther', 'Removed {gaps} gap ({sec}s) from {layers} layers.', vars);
+  }
+  return layers === 1
+    ? t('inspector.silenceRemoval.removedOtherOne', 'Removed {gaps} gaps ({sec}s) from {layers} layer.', vars)
+    : t('inspector.silenceRemoval.removedOtherOther', 'Removed {gaps} gaps ({sec}s) from {layers} layers.', vars);
+}
+
 export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
   const [thresholdDb, setThresholdDb] = useState(DEFAULT_SILENCE_OPTIONS.thresholdDb);
   const [minSilenceMs, setMinSilenceMs] = useState(DEFAULT_SILENCE_OPTIONS.minSilenceMs);
@@ -94,19 +108,16 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
     try {
       const out = await runEngineJob<EngineSilence>(silenceJob(nodeId, { thresholdDb, minSilenceMs, paddingMs }, true));
       const result: { gaps: number; secondsRemoved: number; error?: string } = !out
-        ? { gaps: 0, secondsRemoved: 0, error: 'Silence removal runs in the engine, and this engine does not run it.' }
+        ? { gaps: 0, secondsRemoved: 0, error: t('inspector.silenceRemoval.noEngine', 'Silence removal runs in the engine, and this engine does not run it.') }
         : out.status === 'done'
           ? { gaps: out.result?.silence?.gaps ?? 0, secondsRemoved: out.result?.silence?.secondsRemoved ?? 0 }
-          : { gaps: 0, secondsRemoved: 0, error: out.error?.message ?? 'The silences could not be removed.' };
+          : { gaps: 0, secondsRemoved: 0, error: out.error?.message ?? t('inspector.silenceRemoval.failed', 'The silences could not be removed.') };
       useUIStore.getState().notify(
         result.error
           ? { level: 'warning', message: result.error, durationMs: 5000 }
           : {
               level: 'success',
-              message:
-                `Removed ${result.gaps} gap${result.gaps === 1 ? '' : 's'} `
-                + `(${result.secondsRemoved.toFixed(2)}s) from `
-                + `${paired.length} layer${paired.length === 1 ? '' : 's'}.`,
+              message: removedMessage(result.gaps, result.secondsRemoved.toFixed(2), paired.length),
               durationMs: 4000,
             },
       );
@@ -119,12 +130,12 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
   return (
     <div className={styles.body}>
       <p className={styles.intro}>
-        Finds stretches quieter than the threshold, cuts them out and closes the gap.
-        {paired.length > 1 ? ` Applies to ${pairedNames.join(' and ')} together — they share a source file.` : null}
+        {t('inspector.silenceRemoval.intro', 'Finds stretches quieter than the threshold, cuts them out and closes the gap.')}
+        {paired.length > 1 ? ` ${t('inspector.silenceRemoval.paired', 'Applies to {names} together — they share a source file.', { names: pairedNames.join(t('inspector.silenceRemoval.and', ' and ')) })}` : null}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.label}>Threshold</span>
+        <span className={styles.label}>{t('inspector.silenceRemoval.threshold', 'Threshold')}</span>
         <div className={styles.control}>
           <Slider
             value={thresholdDb}
@@ -132,14 +143,14 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
             max={-10}
             step={1}
             onChange={setThresholdDb}
-            aria-label="Silence threshold"
+            aria-label={t('inspector.silenceRemoval.thresholdLabel', 'Silence threshold')}
           />
           <span className={styles.value}>{thresholdDb} dB</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Min silence</span>
+        <span className={styles.label}>{t('inspector.silenceRemoval.minSilence', 'Min silence')}</span>
         <div className={styles.control}>
           <Slider
             value={minSilenceMs}
@@ -147,14 +158,14 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
             max={3000}
             step={50}
             onChange={setMinSilenceMs}
-            aria-label="Minimum silence"
+            aria-label={t('inspector.silenceRemoval.minSilenceLabel', 'Minimum silence')}
           />
           <span className={styles.value}>{minSilenceMs} ms</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Padding</span>
+        <span className={styles.label}>{t('inspector.silenceRemoval.padding', 'Padding')}</span>
         <div className={styles.control}>
           <Slider
             value={paddingMs}
@@ -162,7 +173,7 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
             max={500}
             step={10}
             onChange={setPaddingMs}
-            aria-label="Padding kept at each end"
+            aria-label={t('inspector.silenceRemoval.paddingLabel', 'Padding kept at each end')}
           />
           <span className={styles.value}>{paddingMs} ms</span>
         </div>
@@ -170,20 +181,22 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
 
       <div className={styles.readout} role="status">
         {loading ? (
-          <span>Analysing audio…</span>
+          <span>{t('inspector.silenceRemoval.analysing', 'Analysing audio…')}</span>
 ) : engineRanges === null ? (
-          <span className={styles.warn}>This layer&rsquo;s audio could not be analysed.</span>
+          <span className={styles.warn}>{t('inspector.silenceRemoval.notAnalysed', 'This layer’s audio could not be analysed.')}</span>
         ) : ranges.length === 0 ? (
-          <span>Nothing quiet enough, or long enough, to remove.</span>
+          <span>{t('inspector.silenceRemoval.nothing', 'Nothing quiet enough, or long enough, to remove.')}</span>
         ) : (
           <>
             <span>
-              Will remove <strong>{ranges.length}</strong> gap{ranges.length === 1 ? '' : 's'} totalling{' '}
-              <strong>{total.toFixed(2)}</strong> s
+              {ranges.length === 1
+                ? t('inspector.silenceRemoval.willRemoveOne', 'Will remove {n} gap totalling {sec} s', { n: ranges.length, sec: total.toFixed(2) })
+                : t('inspector.silenceRemoval.willRemoveOther', 'Will remove {n} gaps totalling {sec} s', { n: ranges.length, sec: total.toFixed(2) })}
             </span>
             <span className={styles.readoutNote}>
-              Keeping {paddingMs} ms at each end
-              {paired.length > 1 ? `, across ${paired.length} layers` : ''}.
+              {paired.length > 1
+                ? t('inspector.silenceRemoval.keepingAcross', 'Keeping {ms} ms at each end, across {n} layers.', { ms: paddingMs, n: paired.length })
+                : t('inspector.silenceRemoval.keeping', 'Keeping {ms} ms at each end.', { ms: paddingMs })}
             </span>
           </>
         )}
@@ -191,7 +204,7 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
 
       <div className={styles.actions}>
         <Button size="sm" variant="ghost" onClick={onDone} disabled={busy}>
-          Cancel
+          {t('inspector.silenceRemoval.cancel', 'Cancel')}
         </Button>
         <Button
           size="sm"
@@ -200,7 +213,7 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
           disabled={busy || ranges.length === 0}
           onClick={() => void apply()}
         >
-          {busy ? 'Removing…' : 'Apply'}
+          {busy ? t('inspector.silenceRemoval.removing', 'Removing…') : t('inspector.silenceRemoval.apply', 'Apply')}
         </Button>
       </div>
     </div>
@@ -210,7 +223,7 @@ export function SilenceRemovalDialog({ nodeId, onDone }: Props): JSX.Element {
 /** Open the dialog for a layer. Also the shape the command calls. */
 export function openSilenceRemovalDialog(nodeId: string): void {
   openModal({
-    title: 'Remove silence',
+    title: t('inspector.silenceRemoval.title', 'Remove silence'),
     size: 'sm',
     render: (close) => <SilenceRemovalDialog nodeId={nodeId} onDone={close} />,
   });

@@ -39,6 +39,7 @@ import {
 import { MESH_VERTEX_FLOATS } from '@core/geometry/extrudeMesh';
 import type { ModelPrimitiveEntry } from './modelMesh';
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 /** Component type carried by parametric-primitive layers. */
 export const PRIMITIVE_COMPONENT = 'Primitive';
@@ -49,12 +50,12 @@ export type PrimitiveMeshType = (typeof PRIMITIVE_MESH_TYPES)[number];
 
 /** Menu labels — the union above stays the source of truth. */
 export const PRIMITIVE_LABELS: Record<PrimitiveMeshType, string> = {
-  sphere: 'Sphere',
-  cylinder: 'Cylinder',
-  cone: 'Cone',
-  torus: 'Torus',
-  capsule: 'Capsule',
-  box: 'Box',
+  get sphere() { return t('core.primitive.sphere', 'Sphere'); },
+  get cylinder() { return t('core.primitive.cylinder', 'Cylinder'); },
+  get cone() { return t('core.primitive.cone', 'Cone'); },
+  get torus() { return t('core.primitive.torus', 'Torus'); },
+  get capsule() { return t('core.primitive.capsule', 'Capsule'); },
+  get box() { return t('core.primitive.box', 'Box'); },
 };
 
 export function isPrimitiveMeshType(v: unknown): v is PrimitiveMeshType {

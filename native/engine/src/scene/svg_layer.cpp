@@ -61,11 +61,13 @@ SvgLayerSource svg_layer_source(const doc::Node& n) {
   const doc::Json& policy = p.at("sanitizePolicy");
   const bool current = policy.is_number() && policy.num() == kSanitizePolicy;
   if (!current && p.at("sourceMarkup").is_string() && !p.at("sourceMarkup").str().empty()) {
-    // readSvgLayer re-sanitizes an old layer from its source; the sanitizer is not ported.
-    out.unported.emplace_back("SVG layer stored under an older sanitize policy");
+    // readSvgLayer re-sanitizes an old layer from its source (policy 2 keeps
+    // <animate> / <set>, which this renderer does not play anyway): the stored
+    // markup draws as it is.
+    out.unported.emplace_back("SVG layer stored under an older sanitize policy — drawn from the stored markup");
   }
   if (p.at("livePlayback").is_bool() && p.at("livePlayback").b()) {
-    out.unported.emplace_back("live SVG playback (SMIL / CSS animation)");
+    out.unported.emplace_back("live SVG playback (SMIL / CSS animation) — drawn as a still");
   }
   out.src = "data:image/svg+xml;base64," + base64(stored.str());
   return out;

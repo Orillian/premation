@@ -241,6 +241,13 @@ struct FramePong {
   playing: bool = 3;
   /// Messages waiting in the core queue when the ping was served.
   queued: u32 = 4;
+  /// Liveness is not idleness: when the core thread has been inside ONE item
+  /// (a request, a tick's frame build) for a while, the engine's watchdog
+  /// thread answers the ping instead, with how long the core has been on it.
+  /// 0 from the core thread itself (it drained its queue to this ping).
+  busyMs?: u32 = 5;
+  /// What the core is on when busyMs > 0 (`command createLayer`, `tick (playing)`); "" otherwise.
+  busy?: string = 6;
 }
 
 /// Host → engine. Chromium is done with a slot. A stale generation is ignored.

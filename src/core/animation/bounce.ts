@@ -32,6 +32,7 @@ import {
   type Keyframe,
 } from '@motion/animation';
 import { getEventBus } from '@core/events/EventBus';
+import { t } from '@core/i18n';
 import { nodeBaseValue, type PresetTrack } from '@core/animation/animationPresets';
 
 // ── Options ──────────────────────────────────────────────────────────
@@ -78,26 +79,26 @@ export interface BounceStyle {
 export const BOUNCE_STYLES: readonly BounceStyle[] = [
   {
     id: 'drop',
-    label: 'Drop',
-    description: 'Falls, lands firmly, settles in three.',
+    get label() { return t('core.bounce.drop', 'Drop'); },
+    get description() { return t('core.bounce.dropDescription', 'Falls, lands firmly, settles in three.'); },
     options: DEFAULT_BOUNCE,
   },
   {
     id: 'elastic',
-    label: 'Elastic',
-    description: 'One big rebound past the landing, then done.',
+    get label() { return t('core.bounce.elastic', 'Elastic'); },
+    get description() { return t('core.bounce.elasticDescription', 'One big rebound past the landing, then done.'); },
     options: { bounces: 1, decay: 0.5, elasticity: 0.7 },
   },
   {
     id: 'rubber',
-    label: 'Rubber',
-    description: 'Many small, fast rebounds — a ball on a hard floor.',
+    get label() { return t('core.bounce.rubber', 'Rubber'); },
+    get description() { return t('core.bounce.rubberDescription', 'Many small, fast rebounds — a ball on a hard floor.'); },
     options: { bounces: 6, decay: 0.62, elasticity: 0.22 },
   },
   {
     id: 'spring',
-    label: 'Spring',
-    description: 'Damped oscillation — overshoots both ways before settling.',
+    get label() { return t('core.bounce.spring', 'Spring'); },
+    get description() { return t('core.bounce.springDescription', 'Damped oscillation — overshoots both ways before settling.'); },
     options: { bounces: 4, decay: 0.6, elasticity: 0.45, oscillate: true },
   },
 ];
@@ -621,14 +622,15 @@ export function applyBounce(nodeId: string, req: BounceRequest, engine: Animatio
 export function describeBounce(r: BounceResult): string {
   const span = `${r.from.toFixed(2)}–${r.to.toFixed(2)}s`;
   const rowName = (p: string): string => {
-    if (p === 'x' || p === 'y' || p === 'z') return 'Position';
-    if (p === 'scale' || p === 'scaleX' || p === 'scaleY') return 'Scale';
+    if (p === 'x' || p === 'y' || p === 'z') return t('core.bounce.rowPosition', 'Position');
+    if (p === 'scale' || p === 'scaleX' || p === 'scaleY') return t('core.bounce.rowScale', 'Scale');
     return p;
   };
   const where = r.props.map(rowName).filter((p, i, a) => a.indexOf(p) === i);
+  const vars = { n: r.added, rows: where.join(' + '), span };
   return r.mode === 'dropped'
-    ? `Dropped in with a bounce — ${r.added} keyframes on ${where.join(' + ')}, ${span}`
-    : `Bounce added — ${r.added} keyframes on ${where.join(' + ')}, ${span}`;
+    ? t('core.bounce.droppedSummary', 'Dropped in with a bounce — {n} keyframes on {rows}, {span}', vars)
+    : t('core.bounce.addedSummary', 'Bounce added — {n} keyframes on {rows}, {span}', vars);
 }
 
 /**

@@ -12,7 +12,17 @@
  * hit-test (or the reverse) fails here rather than in someone's hands.
  */
 
-import { RULER_CSS_PX, inStrip, rulerStrips } from './rulerGeometry';
+import {
+  RULER_CSS_PX,
+  RULER_MIN_LABEL_PX,
+  RULER_MIN_TICK_PX,
+  formatRulerValue,
+  inRulerCorner,
+  inStrip,
+  rulerSteps,
+  rulerStrips,
+  toRulerValue,
+} from './rulerGeometry';
 
 const W = 1200;
 const H = 800;
@@ -70,5 +80,51 @@ describe('ruler strips match the drawn bar', () => {
     const tiny = rulerStrips(10, 10);
     expect(tiny.top.width).toBe(0);
     expect(tiny.left.height).toBe(0);
+  });
+});
+
+describe('ruler ticks, units and origin (AE rulers)', () => {
+  it('walks the 1-2-5 series: labels never closer than the minimum', () => {
+    for (const ppu of [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 3.3, 8, 16, 64]) {
+      const s = rulerSteps(ppu);
+      expect(s.major * ppu).toBeGreaterThanOrEqual(RULER_MIN_LABEL_PX - 1e-6);
+      const lead = s.major / 10 ** Math.floor(Math.log10(s.major) + 1e-9);
+      expect([1, 2, 5]).toContain(Math.round(lead));
+      // The next step down would have crowded the labels.
+      expect(s.major * ppu).toBeLessThan(RULER_MIN_LABEL_PX * 2.5 + 1e-6);
+    }
+  });
+
+  it('at 100% a labelled tick every 100 px, tenths between them', () => {
+    expect(rulerSteps(1)).toEqual({ major: 100, minor: 10, subdivisions: 10 });
+  });
+
+  it('thins the minor ticks before they crowd', () => {
+    for (const ppu of [0.03, 0.4, 0.7, 1.3, 5]) {
+      const s = rulerSteps(ppu);
+      if (s.subdivisions > 1) expect(s.minor * ppu).toBeGreaterThanOrEqual(RULER_MIN_TICK_PX);
+    }
+  });
+
+  it('labels whole numbers whole and fractions only as deep as the step', () => {
+    expect(formatRulerValue(1200, 100)).toBe('1200');
+    expect(formatRulerValue(-50, 50)).toBe('-50');
+    expect(formatRulerValue(2.5, 0.5)).toBe('2.5');
+    expect(formatRulerValue(1e-12, 0.1)).toBe('0.0');
+  });
+
+  it('reads from the origin, in pixels or percent of the side', () => {
+    expect(toRulerValue(960, 0, 'px', 1920)).toBe(960);
+    expect(toRulerValue(960, 960, 'px', 1920)).toBe(0);
+    expect(toRulerValue(960, 0, 'percent', 1920)).toBe(50);
+    expect(toRulerValue(0, 960, 'percent', 1920)).toBe(-50);
+  });
+
+  it('the corner is the zero-point handle, and neither strip', () => {
+    const { top, left } = rulerStrips(W, H);
+    const p = { x: RULER_CSS_PX / 2, y: RULER_CSS_PX / 2 };
+    expect(inRulerCorner(p)).toBe(true);
+    expect(inStrip(top, p) || inStrip(left, p)).toBe(false);
+    expect(inRulerCorner({ x: RULER_CSS_PX + 1, y: 2 })).toBe(false);
   });
 });

@@ -13,6 +13,7 @@
  * its X / Y / Z together.
  */
 
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { useMirrorLayersShapeWatch, useMirrorTrackWatch } from '@hooks/useMirror';
 import { documentMirror } from '@stores/documentMirror';
@@ -21,7 +22,7 @@ import { useActiveWorkspace } from '@stores/projectStore';
 import { edit } from '@core/engine/uiEdits';
 import { isTrackAnimated, readTrack } from '@core/mirror/selection';
 import { trackValueCommands } from '@core/workspace/toolEdits';
-import { RIG_CONTROL_ORDER, RIG_CONTROLS, armValues, rigOf, type RigControl, type RigControlTarget, type RigInfo } from '@core/scene/cameraRig';
+import { RIG_CONTROL_ORDER, RIG_CONTROLS, armValues, rigControlLabel, rigOf, type RigControl, type RigControlTarget, type RigInfo } from '@core/scene/cameraRig';
 import { AnimToggle } from './AnimToggle';
 import { KeyframeRow } from './KeyframeRow';
 import { stopwatchCommands } from './inspectorEdits';
@@ -44,7 +45,7 @@ function RigTrackRow({ nodeId, control, target }: { nodeId: string; control: Rig
       <KeyframeRow
         nodeId={nodeId}
         prop={target.track}
-        label={control}
+        label={rigControlLabel(control)}
         value={value}
         unit={target.unit}
         precision={target.unit === '°' ? 1 : 0}
@@ -61,10 +62,10 @@ function RigArmRow({ nodeId, target }: { nodeId: string; target: RigControlTarge
   const autoKeyframe = usePreferenceStore((s) => s.timelineAutoKeyframe);
   useMirrorTrackWatch([nodeId], [...ARM_TRACKS]);
   const m = documentMirror();
-  const at = (t: string): number => readTrack(m, nodeId, t, time) ?? 0;
+  const at = (track: string): number => readTrack(m, nodeId, track, time) ?? 0;
   const current = { x: at('x'), y: at('y'), z: at('z') };
   const length = Math.hypot(current.x, current.y, current.z);
-  const animated = ARM_TRACKS.some((t) => isTrackAnimated(m, nodeId, t));
+  const animated = ARM_TRACKS.some((track) => isTrackAnimated(m, nodeId, track));
   const e = useEngineEdit();
   return (
     <div className={styles.popoverRow} title={target.hint}>
@@ -72,12 +73,12 @@ function RigArmRow({ nodeId, target }: { nodeId: string; target: RigControlTarge
         <AnimToggle
           nodeId={nodeId}
           tracks={ARM_TRACKS}
-          label="Arm"
+          label={t('inspector.cameraRig.arm', 'Arm')}
           animated={animated}
           values={() => [current.x, current.y, current.z]}
           onToggle={() => { void edit(animated ? 'Remove Arm animation' : 'Animate Arm', stopwatchCommands([nodeId], [...ARM_TRACKS], time)); }}
         />
-        <span className={styles.popoverLabel}>Arm</span>
+        <span className={styles.popoverLabel}>{t('inspector.cameraRig.arm', 'Arm')}</span>
       </div>
       <ValueField
         value={Math.round(length)}
@@ -88,7 +89,7 @@ function RigArmRow({ nodeId, target }: { nodeId: string; target: RigControlTarge
           if (cmds) e.send('Set Arm', cmds);
         }}
         {...e.scrub('Set Arm')}
-        aria-label="Arm"
+        aria-label={t('inspector.cameraRig.arm', 'Arm')}
       />
     </div>
   );

@@ -13,6 +13,18 @@ describe('tokenizeExpression', () => {
     const src = 'clamp(value, 0, 100) * 1.5';
     expect(tokenizeExpression(src).map((t) => t.text).join('')).toBe(src);
   });
+  it('colours a rig: keywords, comments, escaped and template strings', () => {
+    const src = 'var s = "a\\"b"; // speed\n/* note */ if (time > 1) { `t` }';
+    const toks = tokenizeExpression(src);
+    expect(toks.map((t) => t.text).join('')).toBe(src);
+    const kinds = toks.filter((t) => t.kind !== 'ws').map((t) => `${t.kind}:${t.text}`);
+    expect(kinds).toContain('kw:var');
+    expect(kinds).toContain('kw:if');
+    expect(kinds).toContain('str:"a\\"b"');
+    expect(kinds).toContain('comment:// speed');
+    expect(kinds).toContain('comment:/* note */');
+    expect(kinds).toContain('str:`t`');
+  });
 });
 
 describe('matchBracket', () => {

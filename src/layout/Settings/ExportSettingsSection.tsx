@@ -17,6 +17,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { canEncodeLocally } from '@core/export/renderSpec';
 import { exportSupervisorAvailable } from '@core/export/exportSupervisorClient';
 import { VIDEO_ENCODER_LABELS, isVideoEncoderId, type VideoEncoderId } from '@core/export/renderSpec';
+import { t } from '@core/i18n';
 import styles from './CustomizeDialog.module.css';
 
 /** Hardware encoders main vouched for; null while the probe is still running. */
@@ -55,54 +56,53 @@ export function ExportSettingsSection(): JSX.Element | null {
   return (
     <div className={styles.sectionGroup}>
       <div className={styles.sectionHeading}>
-        <span className={styles.sectionTitle}>Export Pipeline</span>
-        <span className={styles.hint}>How rendered frames reach the video encoder on this machine.</span>
+        <span className={styles.sectionTitle}>{t('settings.exportPipeline.title', 'Export Pipeline')}</span>
+        <span className={styles.hint}>{t('settings.exportPipeline.hint', 'How rendered frames reach the video encoder on this machine.')}</span>
       </div>
 
       <div className={styles.settingCard}>
         <div className={styles.switchRow}>
           <div className={styles.settingInfo}>
-            <span className={styles.settingTitle}>Stream frames to the encoder</span>
+            <span className={styles.settingTitle}>{t('settings.exportPipeline.rawPipe', 'Stream frames to the encoder')}</span>
             <span className={styles.settingDesc}>
-              Pipe raw RGBA straight into ffmpeg and encode while the composition renders.
-              Off stages every frame as an image file first — slower, and MP4/WebM lose a JPEG generation.
+              {t('settings.exportPipeline.rawPipeDesc', 'Pipe raw RGBA straight into ffmpeg and encode while the composition renders. Off stages every frame as an image file first — slower, and MP4/WebM lose a JPEG generation.')}
             </span>
           </div>
           <Switch
             checked={rawPipe}
             onChange={(e) => setPref('exportRawPipe', e.target.checked)}
-            aria-label="Stream frames to the encoder"
+            aria-label={t('settings.exportPipeline.rawPipe', 'Stream frames to the encoder')}
           />
         </div>
 
         {supervisor ? (
           <div className={styles.switchRow}>
             <div className={styles.settingInfo}>
-              <span className={styles.settingTitle}>Render exports in the editor window</span>
+              <span className={styles.settingTitle}>{t('settings.exportPipeline.inProcess', 'Render exports in the editor window')}</span>
               <span className={styles.settingDesc}>
-                Off: each export renders in a hidden window the app owns, so closing or crashing the
-                editor cannot lose it and a failed render cannot take the editor down.
-                On: the export runs inside this window, as it did before.
+                {t('settings.exportPipeline.inProcessDesc', 'Off: each export renders in a hidden window the app owns, so closing or crashing the editor cannot lose it and a failed render cannot take the editor down. On: the export runs inside this window, as it did before.')}
               </span>
             </div>
             <Switch
               checked={inProcess}
               onChange={(e) => setPref('exportInProcess', e.target.checked)}
-              aria-label="Render exports in the editor window"
+              aria-label={t('settings.exportPipeline.inProcess', 'Render exports in the editor window')}
             />
           </div>
         ) : null}
 
         <div className={styles.settingRow}>
           <div className={styles.settingInfo}>
-            <span className={styles.settingTitle}>MP4 video encoder</span>
+            <span className={styles.settingTitle}>{t('settings.exportPipeline.encoder', 'MP4 video encoder')}</span>
             <span className={styles.settingDesc}>
-              Software is the reference encode. A hardware encoder is faster at the same quality tier and
-              falls back to software, with a notice, if it cannot start.
-              {hardware === null ? ' Checking this machine…' : hardware.length === 0 ? ' No working hardware encoder was found here.' : ''}
+              {hardware === null
+                ? t('settings.exportPipeline.encoderDescChecking', 'Software is the reference encode. A hardware encoder is faster at the same quality tier and falls back to software, with a notice, if it cannot start. Checking this machine…')
+                : hardware.length === 0
+                  ? t('settings.exportPipeline.encoderDescNone', 'Software is the reference encode. A hardware encoder is faster at the same quality tier and falls back to software, with a notice, if it cannot start. No working hardware encoder was found here.')
+                  : t('settings.exportPipeline.encoderDesc', 'Software is the reference encode. A hardware encoder is faster at the same quality tier and falls back to software, with a notice, if it cannot start.')}
             </span>
           </div>
-          <div className={styles.segmented} role="radiogroup" aria-label="MP4 video encoder">
+          <div className={styles.segmented} role="radiogroup" aria-label={t('settings.exportPipeline.encoder', 'MP4 video encoder')}>
             {choices.map((id) => (
               <button
                 key={id}
@@ -111,7 +111,7 @@ export function ExportSettingsSection(): JSX.Element | null {
                 aria-checked={encoder === id}
                 className={cn(styles.segItem, encoder === id && styles.segItemActive)}
                 onClick={() => setPref('exportVideoEncoder', id)}
-                title={hardware && id !== 'libx264' && !hardware.includes(id) ? 'Not available on this machine — exports will use software' : undefined}
+                title={hardware && id !== 'libx264' && !hardware.includes(id) ? t('settings.exportPipeline.encoderUnavailable', 'Not available on this machine — exports will use software') : undefined}
               >
                 {VIDEO_ENCODER_LABELS[id]}
               </button>

@@ -12,6 +12,8 @@
  * we stripped, has to SAY so, because the user cannot tell by looking.
  */
 
+import { t } from '@core/i18n';
+
 /** What an SVG contains. Every field is a reason to warn, gate, or route. */
 export interface SvgCapabilities {
   /** `<animate>`, `<animateTransform>`, `<animateMotion>`, `<set>`. */
@@ -223,10 +225,10 @@ export function isAnimatedSvg(caps: SvgCapabilities): boolean {
  */
 export function svgCapabilityWarnings(caps: SvgCapabilities): string[] {
   const out: string[] = [];
-  if (caps.hasScript) out.push('Contains script, which was removed for security.');
-  if (caps.hasForeignObject) out.push('Contains foreignObject content, which was removed.');
-  if (caps.hasExternalRefs) out.push('References remote files, which were blocked — those parts may be missing.');
-  if (caps.hasText) out.push('Contains text — it may render differently on another machine.');
-  if (caps.hasEventTiming) out.push('Contains interaction-triggered animation, which cannot be played on a timeline.');
+  if (caps.hasScript) out.push(t('core.svg.warnScript', 'Contains script, which was removed for security.'));
+  if (caps.hasForeignObject) out.push(t('core.svg.warnForeignObject', 'Contains foreignObject content, which was removed.'));
+  if (caps.hasExternalRefs) out.push(t('core.svg.warnExternalRefs', 'References remote files, which were blocked — those parts may be missing.'));
+  if (caps.hasText) out.push(t('core.svg.warnText', 'Contains text — it may render differently on another machine.'));
+  if (caps.hasEventTiming) out.push(t('core.svg.warnEventTiming', 'Contains interaction-triggered animation, which cannot be played on a timeline.'));
   return out;
 }

@@ -11,12 +11,22 @@ import { useCatalogueRevision } from '@hooks/useLocale';
 import { localizeMenuGroups } from './menuI18n';
 import { usePluginContrib } from '@hooks/usePluginContrib';
 import { buildPluginMenuGroup, installPluginMenuCommands } from './pluginMenu';
+import { dockedPluginPanelsKey } from './extensionsMenu';
+import { useLayoutStore } from '@stores/layoutStore';
+import { useScriptsStore } from '@stores/scriptsStore';
 
 export function useAppMenuGroups(): MenuGroupModel[] {
   const i18nRevision = useCatalogueRevision();
   // P7a: the native plugins' commands and panels (pluginMenu.ts) — a new revision on every
   // install, rescan or enable / disable, so the native menu is re-sent too.
   const pluginRevision = usePluginContrib();
+  // Window ▸ Extensions checks the docked plugin panels: a new key when one is
+  // docked or closed, so the native menu's checks are re-sent (the in-app menu
+  // reads `checked()` per draw anyway).
+  const dockedPanels = useLayoutStore((s) => dockedPluginPanelsKey(s.panelOrder));
+  // File ▸ Scripts lists the Scripts folder (scriptsMenu.ts): a new revision when
+  // the listing changes, so the native menu is re-sent with it.
+  const scriptsRevision = useScriptsStore((s) => s.revision);
   useEffect(() => installPluginMenuCommands(), []);
   return useMemo(
     () => {
@@ -26,7 +36,7 @@ export function useAppMenuGroups(): MenuGroupModel[] {
     },
     // The catalogue is read by `t()` inside, not by this closure — hence the rule.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [i18nRevision, pluginRevision],
+    [i18nRevision, pluginRevision, dockedPanels, scriptsRevision],
   );
 }
 

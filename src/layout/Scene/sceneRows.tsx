@@ -28,6 +28,7 @@ import type { SceneScope, SearchField } from '@stores/sceneViewStore';
 import type { SceneKind } from '@core/scene/sceneKind';
 import type { SceneNodeFacts } from './sceneFilters';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 /** What the TreeView carries per row beyond its label — used for the glyph. */
 export interface SceneNodeData {
@@ -125,14 +126,14 @@ function layerToTreeNode(m: DocumentMirror, id: string, opts: RowOptions): TreeN
   let label: React.ReactNode = name;
   if (owner) {
     label = (
-      <span className={styles.pluginManagedRow} title={`Managed by ${owner}. Editing it takes it over.`}>
+      <span className={styles.pluginManagedRow} title={t('scene.rows.managedBy', 'Managed by {owner}. Editing it takes it over.', { owner })}>
         {label}
         <Icon name="plugin" size="sm" />
       </span>
     );
   } else if (inert) {
     label = (
-      <span className={styles.pluginInertRow} title={`"${layer.generator}" came from a JavaScript plugin, which this version no longer runs.`}>
+      <span className={styles.pluginInertRow} title={t('scene.rows.inertPlugin', '"{generator}" came from a JavaScript plugin, which this version no longer runs.', { generator: layer.generator })}>
         {label}
         <Icon name="warning" size="sm" />
       </span>
@@ -142,9 +143,9 @@ function layerToTreeNode(m: DocumentMirror, id: string, opts: RowOptions): TreeN
   // The active camera (U5): the camera the comp renders through right now.
   if (opts.activeCameraId && id === opts.activeCameraId && kind === 'camera') {
     label = (
-      <span className={styles.activeCameraRow} title="Active camera — the topmost enabled camera at the playhead">
+      <span className={styles.activeCameraRow} title={t('scene.rows.activeCameraTheTopmostEnabled', 'Active camera — the topmost enabled camera at the playhead')}>
         {label}
-        <span className={styles.activeCameraBadge} aria-label="active camera">Active</span>
+        <span className={styles.activeCameraBadge} aria-label={t('scene.rows.activeCamera', 'active camera')}>{t('scene.rows.active', 'Active')}</span>
       </span>
     );
   }

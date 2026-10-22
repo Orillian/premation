@@ -25,12 +25,14 @@ Mat3 affine(float a, float b, float c, float d, float e, float f) {
 struct TexturedU {
   Mat3 mvp;
   std::array<float, 4> uvRect, tint, cr0, cr1, cr2, srcSpace;
+  /// textured.wgsl's layer edge (uniforms.hpp LayerEdge): zero, the quad as it is.
+  std::array<float, 4> edge;
 };
 struct PresentU {
   std::array<float, 4> dst, color;
   std::array<std::uint32_t, 4> info;
 };
-static_assert(sizeof(TexturedU) == 144 && sizeof(PresentU) == 48);
+static_assert(sizeof(TexturedU) == 160 && sizeof(PresentU) == 48);
 
 double srgb_to_linear(double c) {
   if (c <= 0.04045) return c / 12.92;

@@ -1355,6 +1355,7 @@ struct CryptomatteInfo;
 struct Thumbnail;
 struct EffectParamInfo;
 struct EffectActionInfo;
+struct EffectGroupInfo;
 struct EffectInfo;
 struct EffectCatalog;
 struct GroupTypeInfo;
@@ -4342,6 +4343,8 @@ struct PluginInfo {
   std::vector<PluginOutputModuleInfo> output_modules;
   std::vector<PluginPanelInfo> panels;
   std::vector<PluginPresetInfo> presets;
+  std::optional<std::string> icon;
+  std::optional<std::string> panel_title;
   bool operator==(const PluginInfo&) const = default;
 };
 
@@ -5133,13 +5136,24 @@ struct EffectParamInfo {
   std::optional<std::uint32_t> precision;
   std::string kind;
   std::string file_types;
+  std::optional<std::string> description;
   bool operator==(const EffectParamInfo&) const = default;
 };
 
 struct EffectActionInfo {
   std::string key;
   std::string label;
+  std::string group;
+  std::uint32_t at = 0;
   bool operator==(const EffectActionInfo&) const = default;
+};
+
+struct EffectGroupInfo {
+  std::string name;
+  std::string key;
+  bool collapsed = false;
+  std::optional<std::string> description;
+  bool operator==(const EffectGroupInfo&) const = default;
 };
 
 struct EffectInfo {
@@ -5152,6 +5166,8 @@ struct EffectInfo {
   bool supports_float = false;
   bool audio = false;
   std::vector<EffectActionInfo> actions;
+  std::vector<EffectGroupInfo> groups;
+  std::optional<std::string> about;
   bool operator==(const EffectInfo&) const = default;
 };
 
@@ -5925,6 +5941,8 @@ struct FramePong {
   Revision revision = 0;
   bool playing = false;
   std::uint32_t queued = 0;
+  std::optional<std::uint32_t> busy_ms;
+  std::optional<std::string> busy;
   bool operator==(const FramePong&) const = default;
 };
 
@@ -7241,6 +7259,8 @@ void encode(wire::Writer& w, const EffectParamInfo& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, EffectParamInfo& out);
 void encode(wire::Writer& w, const EffectActionInfo& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, EffectActionInfo& out);
+void encode(wire::Writer& w, const EffectGroupInfo& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, EffectGroupInfo& out);
 void encode(wire::Writer& w, const EffectInfo& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, EffectInfo& out);
 void encode(wire::Writer& w, const EffectCatalog& v);

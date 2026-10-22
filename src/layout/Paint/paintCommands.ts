@@ -9,6 +9,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { useLayoutStore } from '@stores/layoutStore';
+import { t } from '@core/i18n';
 
 export const PAINT_PANEL_ID = 'paint';
 export const BRUSHES_PANEL_ID = 'brushes';
@@ -17,7 +18,8 @@ export function buildPaintCommands(): Command[] {
   return [
     {
       id: asCommandId('view.paint'),
-      label: 'Paint',
+      // A getter: these commands register at module load, before the catalogue loads.
+      get label() { return t('paint.commands.paint', 'Paint'); },
       icon: 'brush',
       shortcut: { key: '8', ctrl: true },
       enabled: () => true,
@@ -25,7 +27,7 @@ export function buildPaintCommands(): Command[] {
     },
     {
       id: asCommandId('view.brushes'),
-      label: 'Brushes',
+      get label() { return t('paint.commands.brushes', 'Brushes'); },
       icon: 'circle',
       shortcut: { key: '9', ctrl: true },
       enabled: () => true,

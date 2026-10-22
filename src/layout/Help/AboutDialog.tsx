@@ -16,6 +16,7 @@ import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { Logo } from '@components/Logo';
 import { openModal } from '@stores/modalStore';
+import { t } from '@core/i18n';
 import { APP_VERSION } from './whatsNew';
 import styles from './AboutDialog.module.css';
 
@@ -23,14 +24,14 @@ const MODAL_ID = 'about';
 
 /** The line the dialog shows. Exported so the test pins the text, not the markup. */
 export function aboutVersionLine(version: string = APP_VERSION): string {
-  return `Version ${version}`;
+  return t('help.about.version', 'Version {version}', { version });
 }
 
 export function AboutContent(): JSX.Element {
   return (
     <div className={styles.body}>
       <Logo variant="lockup" size={34} />
-      <p className={styles.tagline}>Professional AI-native motion design application.</p>
+      <p className={styles.tagline}>{t('help.about.tagline', 'Professional AI-native motion design application.')}</p>
       <p className={styles.version}>{aboutVersionLine()}</p>
     </div>
   );
@@ -52,7 +53,7 @@ export const HELP_ABOUT_COMMAND = asCommandId('help.about');
 export function buildAboutCommand(): Command {
   return {
     id: HELP_ABOUT_COMMAND,
-    label: 'About Premation',
+    label: t('help.about.command', 'About Premation'),
     enabled: () => true,
     execute: () => {
       openAbout();

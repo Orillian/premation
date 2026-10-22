@@ -43,6 +43,21 @@ class DocExprEnv final : public ExprEnv {
   [[nodiscard]] std::optional<std::array<double, 4>> color_at(std::string_view node, std::string_view prop,
                                                              double t) const override;
   [[nodiscard]] std::optional<std::string> active_camera(double t) const override;
+  // AE-style rigs (docs/EXPRESSION_LANGUAGE.md)
+  [[nodiscard]] std::optional<motion::expr::LayerFacts> layer_facts(std::string_view node, double t) const override;
+  [[nodiscard]] std::optional<std::string> layer_by_index(std::string_view self, double index) const override;
+  [[nodiscard]] bool effect_exists(std::string_view node, std::string_view effect) const override;
+  [[nodiscard]] std::optional<std::vector<EffectMember>> effect_param_members(std::string_view node,
+                                                                              std::string_view effect,
+                                                                              const std::string* param,
+                                                                              double index) const override;
+  [[nodiscard]] std::optional<double> static_value(std::string_view node, std::string_view prop) const override;
+  // AE property objects (2026-10-21)
+  [[nodiscard]] bool effect_enabled(std::string_view node, std::string_view effect) const override;
+  [[nodiscard]] std::optional<motion::expr::CompFacts> comp_facts(std::string_view self,
+                                                                  const std::string* name) const override;
+  [[nodiscard]] std::optional<std::string> comp_layer(const std::string& comp, const std::string* name,
+                                                      double index) const override;
 
  private:
   [[nodiscard]] std::optional<std::string> space_node(std::string_view self, const std::u16string* name) const;

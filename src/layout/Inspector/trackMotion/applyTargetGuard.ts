@@ -15,6 +15,7 @@
  */
 
 import type { TrackerMode } from '@stores/trackerStore';
+import { t } from '@core/i18n';
 
 /** Modes whose Apply writes the FORWARD track onto the chosen target. */
 const TARGETED_MODES: ReadonlySet<TrackerMode> = new Set<TrackerMode>(['follow', 'transform', 'corner']);
@@ -38,18 +39,18 @@ export function selfApplyConfirmCopy(args: { mode: TrackerMode; layerName: strin
   message: string;
   confirmLabel: string;
 } {
-  const what =
+  // One whole sentence per mode: the clause is not spliced into a shared
+  // template, because word order differs between languages.
+  const name = args.layerName;
+  const message =
     args.mode === 'corner'
-      ? 'Corner-pin keyframes on it pin the footage to a region of itself'
+      ? t('inspector.applyTarget.messageCorner', '“{name}” is the layer this track was measured on. Corner-pin keyframes on it pin the footage to a region of itself, so the object you picked drifts away from where you picked it. The usual choice is a null that carries the motion — anything parented to it follows the track. Create one instead?', { name })
       : args.mode === 'transform'
-        ? 'Position, rotation and scale keyframes on it move the footage under its own track'
-        : 'Position keyframes on it move the footage under its own track';
+        ? t('inspector.applyTarget.messageTransform', '“{name}” is the layer this track was measured on. Position, rotation and scale keyframes on it move the footage under its own track, so the object you picked drifts away from where you picked it. The usual choice is a null that carries the motion — anything parented to it follows the track. Create one instead?', { name })
+        : t('inspector.applyTarget.messageFollow', '“{name}” is the layer this track was measured on. Position keyframes on it move the footage under its own track, so the object you picked drifts away from where you picked it. The usual choice is a null that carries the motion — anything parented to it follows the track. Create one instead?', { name });
   return {
-    title: 'Apply to the tracked footage?',
-    message:
-      `“${args.layerName}” is the layer this track was measured on. ${what}, so the object ` +
-      'you picked drifts away from where you picked it. The usual choice is a null that carries ' +
-      'the motion — anything parented to it follows the track. Create one instead?',
-    confirmLabel: 'Create null & apply',
+    title: t('inspector.applyTarget.title', 'Apply to the tracked footage?'),
+    message,
+    confirmLabel: t('inspector.applyTarget.confirm', 'Create null & apply'),
   };
 }

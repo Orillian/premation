@@ -29,6 +29,7 @@ import { getCommandSystem } from '@core/commands/CommandSystem';
 import { useSelectionStore } from '@stores/selectionStore';
 import { bumpScene } from '@stores/sceneStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { documentMirror, type DocumentMirror } from '@stores/documentMirror';
 import type { ContextMenuItem } from '@stores/contextMenuStore';
 import type { RangeSeconds } from '@core/timeline/rangeEdits';
@@ -125,8 +126,9 @@ async function runRangeEdit(kind: 'lift' | 'extract'): Promise<void> {
   const range = workAreaRange();
   if (!range) {
     notify(
-      `${kind === 'lift' ? 'Lift' : 'Extract'} removes the work area, and this composition has none. `
-      + 'Set it with B and N, then try again.',
+      kind === 'lift'
+        ? t('timeline.clipEdit.liftNoWorkArea', 'Lift removes the work area, and this composition has none. Set it with B and N, then try again.')
+        : t('timeline.clipEdit.extractNoWorkArea', 'Extract removes the work area, and this composition has none. Set it with B and N, then try again.'),
       'warning',
     );
     return;
@@ -151,13 +153,22 @@ async function runRangeEdit(kind: 'lift' | 'extract'): Promise<void> {
     const res = await edit('Lift', { type: 'liftRange', comp, range: apiRange, layers });
     if (!res.ok) return;
     const r = res.value[0] as TimeRangeEdit;
-    notify(`Lifted ${removedSeconds.toFixed(2)}s — ${r.deleted} clip piece(s) removed, ${r.splits} split`);
+    notify(t('timeline.clipEdit.lifted', 'Lifted {seconds}s — {deleted} clip piece(s) removed, {splits} split', {
+      seconds: removedSeconds.toFixed(2),
+      deleted: r.deleted,
+      splits: r.splits,
+    }));
     return;
   }
   const counts = rangeCounts(m, comp, layers, apiRange);
   const res = await edit('Extract', { type: 'rippleDeleteRange', comp, range: apiRange, layers });
   if (!res.ok) return;
-  notify(`Extracted ${removedSeconds.toFixed(2)}s — ${counts.deleted} clip piece(s) removed, ${counts.splits} split, ${counts.rippled} shifted`);
+  notify(t('timeline.clipEdit.extracted', 'Extracted {seconds}s — {deleted} clip piece(s) removed, {splits} split, {rippled} shifted', {
+    seconds: removedSeconds.toFixed(2),
+    deleted: counts.deleted,
+    splits: counts.splits,
+    rippled: counts.rippled,
+  }));
 }
 
 /**
@@ -194,8 +205,8 @@ export function buildTimelineClipEditCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_RIPPLE_DELETE_COMMAND,
-      label: 'Ripple Delete Layer',
-      description: 'Delete the selected layers and close the gap they leave on their own track.',
+      label: t('timeline.clipEdit.rippleDelete', 'Ripple Delete Layer'),
+      description: t('timeline.clipEdit.rippleDeleteDescription', 'Delete the selected layers and close the gap they leave on their own track.'),
       icon: 'trash',
       enabled: () => useSelectionStore.getState().ids.length > 0,
       execute: () => {
@@ -204,16 +215,16 @@ export function buildTimelineClipEditCommands(): ReadonlyArray<Command> {
     },
     {
       id: TIMELINE_LIFT_COMMAND,
-      label: 'Lift Work Area',
-      description: 'Remove what is inside the work area and leave the hole — later clips stay put.',
+      label: t('timeline.clipEdit.lift', 'Lift Work Area'),
+      description: t('timeline.clipEdit.liftDescription', 'Remove what is inside the work area and leave the hole — later clips stay put.'),
       icon: 'scissors',
       enabled: () => workAreaRange() !== null,
       execute: () => runRangeEdit('lift'),
     },
     {
       id: TIMELINE_EXTRACT_COMMAND,
-      label: 'Extract Work Area',
-      description: 'Remove what is inside the work area and close the hole — later clips slide left.',
+      label: t('timeline.clipEdit.extract', 'Extract Work Area'),
+      description: t('timeline.clipEdit.extractDescription', 'Remove what is inside the work area and close the hole — later clips slide left.'),
       icon: 'scissors',
       enabled: () => workAreaRange() !== null,
       execute: () => runRangeEdit('extract'),
@@ -236,7 +247,7 @@ export function clipRippleMenuItems(clipId: string, onDone?: () => void): Contex
   return [
     {
       id: 'ripple-delete',
-      label: 'Ripple Delete Layer (Shift+Delete)',
+      label: t('timeline.clipEdit.rippleDeleteMenu', 'Ripple Delete Layer (Shift+Delete)'),
       danger: true,
       onSelect: () => {
         rippleDeleteClip(clipId);
@@ -245,7 +256,7 @@ export function clipRippleMenuItems(clipId: string, onDone?: () => void): Contex
     },
     {
       id: 'lift-work-area',
-      label: 'Lift Work Area',
+      label: t('timeline.clipEdit.lift', 'Lift Work Area'),
       disabled: workAreaRange() === null,
       onSelect: () => {
         void runRangeEdit('lift').then(finish);
@@ -253,7 +264,7 @@ export function clipRippleMenuItems(clipId: string, onDone?: () => void): Contex
     },
     {
       id: 'extract-work-area',
-      label: 'Extract Work Area',
+      label: t('timeline.clipEdit.extract', 'Extract Work Area'),
       disabled: workAreaRange() === null,
       onSelect: () => {
         void runRangeEdit('extract').then(finish);

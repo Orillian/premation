@@ -11,6 +11,7 @@
 import { useLayoutStore, type DockGroupState, type DockSide, type RegionId } from '@stores/layoutStore';
 import { getSettingsManager } from '@core/services/coreServices';
 import { isPanelAvailable } from '@core/config/panelAvailability';
+import { t } from '@core/i18n';
 
 export interface WorkspaceSnapshot {
   id: string;
@@ -31,6 +32,8 @@ export interface WorkspaceSnapshot {
    * forms the default groups for its panel lists.
    */
   dockGroups?: Partial<Record<DockSide, ReadonlyArray<DockGroupState>>>;
+  /** Each side's column widths (shares, left to right). Absent: equal columns. */
+  dockColumns?: Partial<Record<DockSide, ReadonlyArray<number>>>;
   createdAt?: number;
   /**
    * A panel this preset exists FOR. When the build does not have it, the whole
@@ -89,7 +92,7 @@ const ACTIVE_WORKSPACE_KEY = 'workspace.activeId';
 export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   {
     id: 'default',
-    name: 'Default',
+    get name() { return t('core.workspace.default', 'Default'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 340, collapsed: false },
@@ -110,7 +113,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'motion-design',
-    name: 'Motion Design',
+    get name() { return t('core.workspace.motionDesign', 'Motion Design'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 360, collapsed: false },
@@ -129,7 +132,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'ai-focus',
-    name: 'AI Focus',
+    get name() { return t('core.workspace.aiFocus', 'AI Focus'); },
     builtin: true,
     // Withheld entirely in editions with no assistant. Stripping it instead
     // would leave a preset called "AI Focus" that opens the Scene panel.
@@ -149,7 +152,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'animation',
-    name: 'Animation',
+    get name() { return t('core.workspace.animation', 'Animation'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 300, collapsed: false },
@@ -168,7 +171,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'color-grading',
-    name: 'Color & VFX',
+    get name() { return t('core.workspace.colorVfx', 'Color & VFX'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 300, collapsed: false },
@@ -193,7 +196,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
     // outliner, it needs the horizontal room. Distinct from "Color & VFX",
     // which is an effects-tuning layout (Effect Controls left, library right).
     id: 'color',
-    name: 'Color',
+    get name() { return t('core.workspace.color', 'Color'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 300, collapsed: true },
@@ -210,7 +213,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'dual-monitor-studio',
-    name: 'Dual Monitor Studio',
+    get name() { return t('core.workspace.dualMonitor', 'Dual Monitor Studio'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 340, collapsed: false },
@@ -224,7 +227,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'presentation',
-    name: 'Presentation Mode',
+    get name() { return t('core.workspace.presentation', 'Presentation Mode'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 340, collapsed: true },
@@ -237,7 +240,7 @@ export const BUILTIN_WORKSPACES: ReadonlyArray<WorkspaceSnapshot> = [
   },
   {
     id: 'minimal',
-    name: 'Minimal Canvas',
+    get name() { return t('core.workspace.minimal', 'Minimal Canvas'); },
     builtin: true,
     regions: {
       leftSidebar: { size: 340, collapsed: true },
@@ -381,6 +384,7 @@ export class WorkspaceManager {
       rightInspectorPosition: store.rightInspectorPosition,
       timelinePosition: store.timelinePosition,
       dockGroups: store.dockGroups,
+      dockColumns: store.dockColumns,
       externalPanels: store.externalPanels.map((pId) => ({ id: pId })),
     };
 
@@ -410,6 +414,10 @@ export class WorkspaceManager {
       rightInspectorPosition: target.rightInspectorPosition,
       timelinePosition: target.timelinePosition,
       dockGroups: target.dockGroups,
+      dockColumns: target.dockColumns ? {
+        ...(target.dockColumns.leftSidebar ? { leftSidebar: [...target.dockColumns.leftSidebar] } : {}),
+        ...(target.dockColumns.rightInspector ? { rightInspector: [...target.dockColumns.rightInspector] } : {}),
+      } : undefined,
     });
 
     // Apply external popouts if defined

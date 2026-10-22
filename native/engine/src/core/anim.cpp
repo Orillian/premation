@@ -388,6 +388,24 @@ const ex::Expression& ExprCache::get(const std::string& src) {
   return *it->second;
 }
 
+void ExprCache::note_runtime_error(std::string_view node, std::string_view prop, const std::u16string& message,
+                                   std::uint32_t line, std::uint32_t column) {
+  if (captureDepth_ == 0) return;
+  for (const ExprRuntimeError& e : errors_) {
+    if (e.node == node && e.prop == prop) return;  // one entry per property (motion blur samples it again)
+  }
+  errors_.push_back({std::string(node), std::string(prop), ex::utf16_to_utf8(message), line, column});
+}
+
+std::optional<ExprDiagnostic> anim_expr_diagnostic(const Document& d, ExprCache& cache, std::string_view node,
+                                                   std::string_view prop) {
+  const ExprState* e = anim_expr(d, node, prop);
+  if (e == nullptr) return std::nullopt;
+  const ex::Expression& x = cache.get(e->src);
+  if (!x.compile_error()) return std::nullopt;
+  return ExprDiagnostic{ex::utf16_to_utf8(*x.compile_error()), x.compile_error_line(), x.compile_error_column()};
+}
+
 std::optional<std::string> anim_expr_error(const Document& d, ExprCache& cache, std::string_view node,
                                            std::string_view prop) {
   const ExprState* e = anim_expr(d, node, prop);
@@ -403,10 +421,20 @@ namespace {
 
 class Sampler;
 
+/// What an expression sees of a member, in After Effects' units: the
+/// document keeps transform scale as a multiplier (1 = 100 %), AE and the API
+/// in percent. `value`, keyframe reads and the result cross this factor, so
+/// `thisComp.layer("A").transform.scale` (percent) on another layer's scale
+/// means the same thing as that layer's own `value`.
+double expr_unit_factor(std::string_view prop) noexcept {
+  return (prop == "scale" || prop == "scaleX" || prop == "scaleY" || prop == "scaleZ") ? 100.0 : 1.0;
+}
+
 /// The Host of one evaluation: `exprContext(nodeId, prop, t, base, visited, depth)`.
 class ContextHost final : public ex::Host {
  public:
-  ContextHost(Sampler& s, std::string node, std::string prop, int depth) : s_(s), node_(std::move(node)), prop_(std::move(prop)), depth_(depth) {}
+  ContextHost(Sampler& s, std::string node, std::string prop, int depth)
+      : s_(s), node_(std::move(node)), prop_(std::move(prop)), depth_(depth), factor_(expr_unit_factor(prop_)) {}
 
   [[nodiscard]] bool has_ctrl() const override { return true; }
   double ctrl(std::u16string_view name) override;
@@ -428,14 +456,31 @@ class ContextHost final : public ex::Host {
   std::optional<std::array<double, 4>> layer_color_at(const std::u16string* name, std::u16string_view prop,
                                                       double t) override;
   std::optional<std::u16string> active_camera_at(double t) override;
+  // AE-style rigs
+  std::optional<ex::LayerFacts> layer_facts_at(const std::u16string* name, double t) override;
+  std::optional<std::u16string> layer_ref_by_index(double index) override;
+  [[nodiscard]] bool has_effects() const override { return true; }
+  bool effect_exists(const std::u16string* layer, std::u16string_view effect) override;
+  std::optional<ex::EffectParam> effect_param_at(const std::u16string* layer, std::u16string_view effect,
+                                                 const std::u16string* param, double index, double t) override;
+  // AE property objects (2026-10-21)
+  bool effect_active(const std::u16string* layer, std::u16string_view effect) override;
+  std::vector<double> layer_key_times(const std::u16string* name, std::u16string_view prop) override;
+  std::vector<double> effect_param_key_times(const std::u16string* layer, std::u16string_view effect,
+                                             const std::u16string* param, double index) override;
+  std::optional<ex::CompFacts> comp_facts(const std::u16string* name) override;
+  std::optional<std::u16string> comp_layer_ref(const std::u16string& comp, const std::u16string* name,
+                                               double index) override;
 
   double time = 0;
 
  private:
+  [[nodiscard]] std::optional<std::string> target_of(const std::u16string* name) const;
   Sampler& s_;
   std::string node_;
   std::string prop_;
   int depth_;
+  double factor_;  // expr_unit_factor(prop_)
 };
 
 class Sampler {
@@ -446,7 +491,14 @@ class Sampler {
     const auto* keys = anim_track(d_, node, prop);
     return keys != nullptr ? sample_keys(*keys, t) : std::nullopt;
   }
-  std::optional<double> base_of(std::string_view node, std::string_view prop) const { return env_.base_value(node, prop); }
+  /// The property's own static value. A component prop first; else the document's
+  /// static reader — an effect parameter (`effect.<id>.<key>`) lives in its
+  /// instance, defaults merged, so `value` on an untouched Blurriness is its 10 px,
+  /// not 0 (2026-10-21 QA).
+  std::optional<double> base_of(std::string_view node, std::string_view prop) const {
+    if (auto v = env_.base_value(node, prop)) return v;
+    return env_.static_value(node, prop);
+  }
   std::optional<double> plain(std::string_view node, std::string_view prop, double t) const {
     if (auto v = track_at(node, prop, t)) return v;
     return base_of(node, prop);
@@ -500,6 +552,7 @@ class Sampler {
     const ex::TextResult tr = cache_.get(entry->src).run_text(c);
     if (tr.error) {
       const std::u16string& m = *tr.error;
+      cache_.note_runtime_error(node, kSourceTextProp, m, tr.line, tr.column);
       if (m.find(u"Cycle detected") != std::u16string::npos || m.find(u"Maximum cross-layer") != std::u16string::npos) {
         throw ex::HostError{m};
       }
@@ -553,12 +606,17 @@ class Sampler {
       const ex::Result r = run(node, prop, t, base, depth + 1, cache_.get(entry->src));
       if (r.error) {
         const std::u16string& m = *r.error;
+        // A frame build reports it (layerErrors, stage `expression`); the
+        // property falls back to its pre-expression value either way.
+        cache_.note_runtime_error(node, prop, m, r.line, r.column);
         if (m.find(u"Cycle detected") != std::u16string::npos || m.find(u"Maximum cross-layer") != std::u16string::npos) {
           throw ex::HostError{m};
         }
       }
-      if (r.kind == ex::Result::Kind::kVector) return r.vec.at(std::min(component_index_of(prop), r.size - 1));
-      if (r.kind == ex::Result::Kind::kNumber) return r.number;
+      // The result is in AE units (expr_unit_factor); the document's back.
+      const double factor = expr_unit_factor(prop);
+      if (r.kind == ex::Result::Kind::kVector) return r.vec.at(std::min(component_index_of(prop), r.size - 1)) / factor;
+      if (r.kind == ex::Result::Kind::kNumber) return r.number / factor;
     }
     if (base) return base;
     return base_of(node, prop);
@@ -597,7 +655,7 @@ class Sampler {
     ex::Context c;
     c.time = t;
     const auto rest = [&]() { return base_of(node, prop).value_or(0); };
-    c.value = base ? *base : rest();
+    c.value = (base ? *base : rest()) * expr_unit_factor(prop);
     c.audio = env_.audio_level();
     std::vector<double> keyTimes;
     if (const auto* keys = anim_track(d_, node, prop)) {
@@ -621,8 +679,8 @@ class Sampler {
 
 double ContextHost::ctrl(std::u16string_view name) { return s_.env_.ctrl(name, time); }
 double ContextHost::self_at(double t) {
-  if (auto v = s_.track_at(node_, prop_, t)) return *v;
-  return s_.base_of(node_, prop_).value_or(0);
+  if (auto v = s_.track_at(node_, prop_, t)) return *v * factor_;
+  return s_.base_of(node_, prop_).value_or(0) * factor_;
 }
 std::optional<double> ContextHost::layer_at(std::u16string_view name, std::u16string_view prop, double t) {
   const auto target = s_.resolve(name);
@@ -660,6 +718,100 @@ std::optional<std::array<double, 4>> ContextHost::layer_color_at(const std::u16s
 }
 std::optional<std::u16string> ContextHost::active_camera_at(double t) {
   const std::optional<std::string> id = s_.env_.active_camera(t);
+  if (!id) return std::nullopt;
+  return u"#" + ex::utf8_to_utf16(*id);
+}
+
+// AE-style rigs (docs/EXPRESSION_LANGUAGE.md): the facts and effect parameters
+// of a layer. A parameter's members are sampled through `internal`, so a
+// keyed or expressed slider evaluates with the usual cycle and depth guards.
+std::optional<ex::LayerFacts> ContextHost::layer_facts_at(const std::u16string* name, double t) {
+  const std::optional<std::string> target = name != nullptr ? s_.resolve(*name) : std::optional<std::string>(node_);
+  if (!target) return std::nullopt;
+  std::optional<ex::LayerFacts> f = s_.env_.layer_facts(*target, t);
+  if (f && f->parent) f->parent = u"#" + *f->parent;  // the env answers an id; the language wants a reference
+  return f;
+}
+std::optional<std::u16string> ContextHost::layer_ref_by_index(double index) {
+  const std::optional<std::string> id = s_.env_.layer_by_index(node_, index);
+  if (!id) return std::nullopt;
+  return u"#" + ex::utf8_to_utf16(*id);
+}
+bool ContextHost::effect_exists(const std::u16string* layer, std::u16string_view effect) {
+  const std::optional<std::string> target = layer != nullptr ? s_.resolve(*layer) : std::optional<std::string>(node_);
+  return target && s_.env_.effect_exists(*target, ex::utf16_to_utf8(effect));
+}
+std::optional<ex::EffectParam> ContextHost::effect_param_at(const std::u16string* layer, std::u16string_view effect,
+                                                            const std::u16string* param, double index, double t) {
+  const std::optional<std::string> target = layer != nullptr ? s_.resolve(*layer) : std::optional<std::string>(node_);
+  if (!target) return std::nullopt;
+  std::optional<std::string> pname;
+  if (param != nullptr) pname = ex::utf16_to_utf8(*param);
+  const auto members = s_.env_.effect_param_members(*target, ex::utf16_to_utf8(effect), pname ? &*pname : nullptr, index);
+  if (!members || members->empty()) return std::nullopt;
+  ex::EffectParam out;
+  out.size = std::min<std::size_t>(members->size(), out.v.size());
+  for (std::size_t i = 0; i < out.size; ++i) {
+    const ExprEnv::EffectMember& m = (*members)[i];
+    if (m.key.empty()) {  // a constant member (a control colour's alpha)
+      out.v.at(i) = m.offset;
+      continue;
+    }
+    std::optional<double> v = s_.internal(*target, m.key, t, depth_);
+    if (!v) v = s_.env_.static_value(*target, m.key);
+    out.v.at(i) = v.value_or(0) * m.scale + m.offset;
+  }
+  return out;
+}
+
+// AE property objects (2026-10-21): key times for `.numKeys` / `.key(n)`,
+// an effect's switch, other compositions.
+std::optional<std::string> ContextHost::target_of(const std::u16string* name) const {
+  return name != nullptr ? s_.resolve(*name) : std::optional<std::string>(node_);
+}
+bool ContextHost::effect_active(const std::u16string* layer, std::u16string_view effect) {
+  const std::optional<std::string> target = target_of(layer);
+  return !target || s_.env_.effect_enabled(*target, ex::utf16_to_utf8(effect));
+}
+std::vector<double> ContextHost::layer_key_times(const std::u16string* name, std::u16string_view prop) {
+  std::vector<double> out;
+  const std::optional<std::string> target = target_of(name);
+  if (!target) return out;
+  if (const auto* keys = anim_track(s_.d_, *target, ex::utf16_to_utf8(prop))) {
+    out.reserve(keys->size());
+    for (const Key& k : *keys) out.push_back(k.t);
+  }
+  return out;
+}
+std::vector<double> ContextHost::effect_param_key_times(const std::u16string* layer, std::u16string_view effect,
+                                                        const std::u16string* param, double index) {
+  std::vector<double> out;
+  const std::optional<std::string> target = target_of(layer);
+  if (!target) return out;
+  std::optional<std::string> pname;
+  if (param != nullptr) pname = ex::utf16_to_utf8(*param);
+  const auto members = s_.env_.effect_param_members(*target, ex::utf16_to_utf8(effect), pname ? &*pname : nullptr, index);
+  if (!members) return out;
+  for (const ExprEnv::EffectMember& m : *members) {
+    if (m.key.empty()) continue;
+    if (const auto* keys = anim_track(s_.d_, *target, m.key)) {
+      out.reserve(keys->size());
+      for (const Key& k : *keys) out.push_back(k.t);
+      break;
+    }
+  }
+  return out;
+}
+std::optional<ex::CompFacts> ContextHost::comp_facts(const std::u16string* name) {
+  if (name == nullptr) return s_.env_.comp_facts(node_, nullptr);
+  const std::string n = ex::utf16_to_utf8(*name);
+  return s_.env_.comp_facts(node_, &n);
+}
+std::optional<std::u16string> ContextHost::comp_layer_ref(const std::u16string& comp, const std::u16string* name,
+                                                          double index) {
+  std::optional<std::string> n;
+  if (name != nullptr) n = ex::utf16_to_utf8(*name);
+  const std::optional<std::string> id = s_.env_.comp_layer(ex::utf16_to_utf8(comp), n ? &*n : nullptr, index);
   if (!id) return std::nullopt;
   return u"#" + ex::utf8_to_utf16(*id);
 }

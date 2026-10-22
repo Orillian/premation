@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Badge } from '@components/Badge';
 import { Button } from '@components/Button';
+import { Dropdown } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
 import { Modal } from '@components/Modal';
 import { SearchField } from '@components/SearchField';
@@ -27,12 +28,13 @@ import {
 } from '@core/api/client';
 import { billingEnabled, cloudProjectsEnabled } from '@core/config/edition';
 import { canInstallFromStore, compareVersions, hostPlatformKeys, runsHere } from '@core/nativePlugins/pluginStore';
-import type { InstalledState } from '@hooks/usePluginStore';
+import type { InstalledState, StoreSort } from '@hooks/usePluginStore';
 import { useStoreBrowse } from '@hooks/usePluginStore';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import { PluginIcon } from './PluginIcon';
 import { PluginListingEditor } from './PluginListingEditor';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
 /**
  * Whether this account can run Premation Cloud plugins: true / false once the
@@ -64,7 +66,7 @@ function TierBadge({ plugin }: { plugin: StorePluginSummary }): JSX.Element {
   return plugin.tier === 'cloud' ? (
     <Badge variant="accent" size="sm" className={styles.inlineBadge}>Premation Cloud</Badge>
   ) : (
-    <Badge variant="neutral" size="sm" className={styles.inlineBadge}>Free</Badge>
+    <Badge variant="neutral" size="sm" className={styles.inlineBadge}>{t('plugins.store.free', 'Free')}</Badge>
   );
 }
 
@@ -83,18 +85,27 @@ function InstallButton({
   const here = hostPlatformKeys();
   const mine = store.installed?.plugins[plugin.id];
   const busy = store.busy === plugin.id;
-  if (!canInstallFromStore()) return <span className={styles.status}>Desktop app only</span>;
+  if (!canInstallFromStore()) return <span className={styles.status}>{t('plugins.store.desktopOnly', 'Desktop app only')}</span>;
   if (here && !runsHere(plugin.platforms, here)) {
-    return <span className={styles.status} title={`Ships for: ${plugin.platforms.join(', ') || 'no platform'}`}>Not for this computer</span>;
+    return (
+      <span
+        className={styles.status}
+        title={t('plugins.store.shipsFor', 'Ships for: {platforms}', {
+          platforms: plugin.platforms.join(', ') || t('plugins.store.noPlatform', 'no platform'),
+        })}
+      >
+        {t('plugins.store.notForThisComputer', 'Not for this computer')}
+      </span>
+    );
   }
   if (mine && compareVersions(mine.version, plugin.latestVersion) >= 0) {
-    return <span className={styles.statusLoaded}>{mine.pending ? 'Restart to finish' : 'Installed'}</span>;
+    return <span className={styles.statusLoaded}>{mine.pending ? t('plugins.store.restartToFinish', 'Restart to finish') : t('plugins.store.installed', 'Installed')}</span>;
   }
   // The publisher can always install their own; anyone else on Free is shown the way to get it.
   if (plugin.tier === 'cloud' && hasCloud === false && !owner) {
     return openBilling ? (
       <Button size="sm" variant="primary" leftIcon={<Icon name="lock" size="sm" />} onClick={openBilling}>
-        Get Premation Cloud
+        {t('plugins.store.getCloud', 'Get Premation Cloud')}
       </Button>
     ) : (
       <span className={styles.status}>Premation Cloud</span>
@@ -107,7 +118,11 @@ function InstallButton({
       disabled={busy || store.busy !== null}
       onClick={() => void store.install(plugin.id, plugin.latestVersion, owner)}
     >
-      {busy ? 'Installing…' : mine ? `Update to ${plugin.latestVersion}` : 'Install'}
+      {busy
+        ? t('plugins.store.installing', 'Installing…')
+        : mine
+          ? t('plugins.store.updateTo', 'Update to {version}', { version: plugin.latestVersion })
+          : t('plugins.store.install', 'Install')}
     </Button>
   );
 }
@@ -116,13 +131,13 @@ function PublisherLine({ plugin }: { plugin: StorePluginSummary }): JSX.Element 
   const name = plugin.publisher.displayName || plugin.publisher.namespace;
   return (
     <span className={styles.rowMeta}>
-      {[name || null, `v${plugin.latestVersion}`, plugin.installs ? `${plugin.installs.toLocaleString()} installs` : null]
+      {[name || null, `v${plugin.latestVersion}`, plugin.installs ? t('plugins.store.installs', '{n} installs', { n: plugin.installs.toLocaleString() }) : null]
         .filter(Boolean)
         .join(' · ')}
       {plugin.publisher.verified ? (
-        <Badge variant="success" size="sm" className={styles.inlineBadge}>Verified</Badge>
+        <Badge variant="success" size="sm" className={styles.inlineBadge}>{t('plugins.store.verified', 'Verified')}</Badge>
       ) : null}
-      {plugin.visibility === 'private' ? <Badge variant="neutral" size="sm" className={styles.inlineBadge}>Private</Badge> : null}
+      {plugin.visibility === 'private' ? <Badge variant="neutral" size="sm" className={styles.inlineBadge}>{t('plugins.store.private', 'Private')}</Badge> : null}
     </span>
   );
 }
@@ -134,15 +149,17 @@ function CloudPitch({ plugin }: { plugin: StorePluginSummary }): JSX.Element {
     <div className={styles.pitch}>
       <Icon name="sparkles" size="md" className={styles.pitchIcon} />
       <div className={styles.pitchBody}>
-        <strong>{plugin.name} comes with Premation Cloud</strong>
+        <strong>{t('plugins.store.comesWithCloud', '{name} comes with Premation Cloud', { name: plugin.name })}</strong>
         <span>
-          Premation Cloud includes every Premation plugin, unlimited cloud projects and 90 days of version history.
-          Plugins run on your computer; you keep your projects if you stop.
+          {t(
+            'plugins.store.cloudPitch',
+            'Premation Cloud includes every Premation plugin, unlimited cloud projects and 90 days of version history. Plugins run on your computer; you keep your projects if you stop.',
+          )}
         </span>
       </div>
       {openBilling ? (
         <Button size="sm" variant="primary" onClick={openBilling}>
-          See plans
+          {t('plugins.store.seePlans', 'See plans')}
         </Button>
       ) : null}
     </div>
@@ -157,11 +174,11 @@ function Gallery({ shots, name }: { shots: NonNullable<StorePluginDetail['screen
   const src = storeMediaUrl(current.url) ?? '';
   return (
     <div className={styles.gallery}>
-      <button type="button" className={styles.galleryMain} onClick={() => setZoom(true)} aria-label={`Enlarge screenshot ${active + 1} of ${name}`}>
-        <img src={src} alt={`${name} — screenshot ${active + 1}`} />
+      <button type="button" className={styles.galleryMain} onClick={() => setZoom(true)} aria-label={t('plugins.store.enlargeScreenshot', 'Enlarge screenshot {n} of {name}', { n: active + 1, name })}>
+        <img src={src} alt={t('plugins.store.screenshotOf', '{name} — screenshot {n}', { name, n: active + 1 })} />
       </button>
       {shots.length > 1 ? (
-        <div className={styles.galleryThumbs} role="tablist" aria-label="Screenshots">
+        <div className={styles.galleryThumbs} role="tablist" aria-label={t('plugins.store.screenshots', 'Screenshots')}>
           {shots.map((s, i) => (
             <button
               key={s.id}
@@ -171,13 +188,13 @@ function Gallery({ shots, name }: { shots: NonNullable<StorePluginDetail['screen
               className={i === active ? styles.galleryThumbActive : styles.galleryThumb}
               onClick={() => setActive(i)}
             >
-              <img src={storeMediaUrl(s.url) ?? ''} alt={`Screenshot ${i + 1}`} />
+              <img src={storeMediaUrl(s.url) ?? ''} alt={t('plugins.store.screenshotN', 'Screenshot {n}', { n: i + 1 })} />
             </button>
           ))}
         </div>
       ) : null}
       <Modal open={zoom} onClose={() => setZoom(false)} size="fullscreen" title={name}>
-        <img className={styles.galleryZoom} src={src} alt={`${name} — screenshot ${active + 1}`} />
+        <img className={styles.galleryZoom} src={src} alt={t('plugins.store.screenshotOf', '{name} — screenshot {n}', { name, n: active + 1 })} />
       </Modal>
     </div>
   );
@@ -194,7 +211,7 @@ function ReleaseNotes({ text }: { text: string }): JSX.Element {
 function Versions({ versions, owner }: { versions: StorePluginVersion[]; owner?: boolean }): JSX.Element | null {
   if (versions.length === 0) return null;
   return (
-    <ul className={styles.versions} aria-label="Versions">
+    <ul className={styles.versions} aria-label={t('plugins.store.versions', 'Versions')}>
       {versions.map((v, i) => (
         <li key={v.version}>
           <details open={i === 0 && !!v.releaseNotes}>
@@ -205,7 +222,7 @@ function Versions({ versions, owner }: { versions: StorePluginVersion[]; owner?:
                 <Badge variant="warning" size="sm" className={styles.inlineBadge}>{v.reviewStatus.replace('_', ' ')}</Badge>
               ) : null}
             </summary>
-            {v.releaseNotes ? <ReleaseNotes text={v.releaseNotes} /> : <span className={styles.text}>No release notes.</span>}
+            {v.releaseNotes ? <ReleaseNotes text={v.releaseNotes} /> : <span className={styles.text}>{t('plugins.store.noReleaseNotes', 'No release notes.')}</span>}
           </details>
         </li>
       ))}
@@ -232,7 +249,7 @@ export function StorePluginDetailCard({
     let alive = true;
     (owner ? api.myPluginDetail(id) : api.storePluginDetail(id))
       .then((d) => { if (alive) setDetail(d); })
-      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : 'Could not load the plugin.'); });
+      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : t('plugins.store.loadFailed', 'Could not load the plugin.')); });
     return () => { alive = false; };
   }, [id, owner, revision]);
 
@@ -241,14 +258,14 @@ export function StorePluginDetailCard({
   const about = detail?.readme?.trim() || '';
 
   return (
-    <section className={styles.card} aria-label="Plugin details">
+    <section className={styles.card} aria-label={t('plugins.store.detailsAria', 'Plugin details')}>
       <div className={styles.toolbar}>
         <Button variant="ghost" size="sm" leftIcon={<Icon name="chevron-left" size="sm" />} onClick={onBack}>
-          All plugins
+          {t('plugins.store.allPlugins', 'All plugins')}
         </Button>
       </div>
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
-      {!detail && !error ? <span className={styles.text} role="status">Loading…</span> : null}
+      {!detail && !error ? <span className={styles.text} role="status">{t('plugins.store.loading', 'Loading…')}</span> : null}
       {detail ? (
         <>
           <div className={styles.detailHead}>
@@ -264,7 +281,11 @@ export function StorePluginDetailCard({
             <InstallButton plugin={detail} store={store} owner={owner} hasCloud={hasCloud} />
           </div>
           {detail.blocked ? (
-            <span className={styles.error} role="alert">Withdrawn{detail.blockedReason ? `: ${detail.blockedReason}` : ''}</span>
+            <span className={styles.error} role="alert">
+              {detail.blockedReason
+                ? t('plugins.store.withdrawnReason', 'Withdrawn: {reason}', { reason: detail.blockedReason })
+                : t('plugins.store.withdrawn', 'Withdrawn')}
+            </span>
           ) : null}
           {detail.tier === 'cloud' && hasCloud !== true && !owner ? <CloudPitch plugin={detail} /> : null}
 
@@ -272,14 +293,14 @@ export function StorePluginDetailCard({
 
           {detail.whatsNew ? (
             <div className={styles.section}>
-              <h4 className={styles.sectionTitle}>What&apos;s new in v{detail.whatsNew.version}</h4>
+              <h4 className={styles.sectionTitle}>{t('plugins.store.whatsNew', 'What\'s new in v{version}', { version: detail.whatsNew.version })}</h4>
               <ReleaseNotes text={detail.whatsNew.releaseNotes} />
             </div>
           ) : null}
 
           {about ? (
             <div className={styles.section}>
-              <h4 className={styles.sectionTitle}>About</h4>
+              <h4 className={styles.sectionTitle}>{t('plugins.store.about', 'About')}</h4>
               <div className={styles.markdown}>
                 <ReactMarkdown>{about}</ReactMarkdown>
               </div>
@@ -288,7 +309,7 @@ export function StorePluginDetailCard({
 
           {detail.effects.length > 0 ? (
             <div className={styles.section}>
-              <h4 className={styles.sectionTitle}>What it adds</h4>
+              <h4 className={styles.sectionTitle}>{t('plugins.store.whatItAdds', 'What it adds')}</h4>
               <div className={styles.chips}>
                 {detail.effects.map((e) => (
                   <span key={e.matchName} className={styles.chip} title={e.category}>{e.name}</span>
@@ -298,35 +319,35 @@ export function StorePluginDetailCard({
           ) : null}
 
           <div className={styles.section}>
-            <h4 className={styles.sectionTitle}>Details</h4>
+            <h4 className={styles.sectionTitle}>{t('plugins.store.details', 'Details')}</h4>
             <dl className={styles.facts}>
-              <dt>Runs on</dt>
+              <dt>{t('plugins.store.runsOn', 'Runs on')}</dt>
               <dd>{detail.platforms.join(', ') || '—'}</dd>
-              <dt>Built for SDK</dt>
+              <dt>{t('plugins.store.builtForSdk', 'Built for SDK')}</dt>
               <dd>{detail.sdk ? `${detail.sdk.major}.${detail.sdk.minor}` : '—'}</dd>
-              <dt>Price</dt>
-              <dd>{detail.tier === 'cloud' ? 'Included with Premation Cloud' : 'Free'}</dd>
-              <dt>Licence</dt>
+              <dt>{t('plugins.store.price', 'Price')}</dt>
+              <dd>{detail.tier === 'cloud' ? t('plugins.store.includedWithCloud', 'Included with Premation Cloud') : t('plugins.store.free', 'Free')}</dd>
+              <dt>{t('plugins.store.licence', 'Licence')}</dt>
               <dd>{detail.license ?? '—'}</dd>
               {detail.categories.length > 0 ? (
                 <>
-                  <dt>Categories</dt>
+                  <dt>{t('plugins.store.categories', 'Categories')}</dt>
                   <dd>{detail.categories.join(', ')}</dd>
                 </>
               ) : null}
               {detail.homepage ? (
                 <>
-                  <dt>Homepage</dt>
+                  <dt>{t('plugins.store.homepage', 'Homepage')}</dt>
                   <dd className={styles.path}>{detail.homepage}</dd>
                 </>
               ) : null}
-              <dt>Updated</dt>
+              <dt>{t('plugins.store.updated', 'Updated')}</dt>
               <dd>{new Date(detail.updatedAt).toLocaleDateString()}</dd>
             </dl>
           </div>
 
           <div className={styles.section}>
-            <h4 className={styles.sectionTitle}>Versions</h4>
+            <h4 className={styles.sectionTitle}>{t('plugins.store.versions', 'Versions')}</h4>
             <Versions versions={versions} owner={owner} />
             {versions.length === 0 ? <span className={styles.text}>v{detail.latestVersion}</span> : null}
             {detail.changelog?.trim() && !versions.some((v) => v.releaseNotes) ? (
@@ -337,8 +358,10 @@ export function StorePluginDetailCard({
           {owner ? <PluginListingEditor detail={detail} onChanged={() => setRevision((r) => r + 1)} /> : null}
 
           <p className={styles.text}>
-            Plugins run inside the Premation engine on this computer, with the same access as Premation itself.
-            The package is checked against the publisher&apos;s signature before it is installed.
+            {t(
+              'plugins.store.safetyNote',
+              'Plugins run inside the Premation engine on this computer, with the same access as Premation itself. The package is checked against the publisher\'s signature before it is installed.',
+            )}
           </p>
         </>
       ) : null}
@@ -363,7 +386,7 @@ function PluginCard({
   const cover = storeMediaUrl(plugin.coverUrl);
   return (
     <li className={styles.storeCard}>
-      <button type="button" className={styles.storeCardOpen} onClick={onOpen} aria-label={`About ${plugin.name}`}>
+      <button type="button" className={styles.storeCardOpen} onClick={onOpen} aria-label={t('plugins.store.aboutPlugin', 'About {name}', { name: plugin.name })}>
         <span className={styles.storeCover}>
           {cover ? <img src={cover} alt="" loading="lazy" /> : <PluginIcon plugin={plugin} size={56} />}
         </span>
@@ -376,7 +399,7 @@ function PluginCard({
         </span>
         <span className={styles.storeCardText}>
           {plugin.description}
-          {here && !runsHere(plugin.platforms, here) ? ' — not available for this computer' : ''}
+          {here && !runsHere(plugin.platforms, here) ? t('plugins.store.notAvailableSuffix', ' — not available for this computer') : ''}
         </span>
       </button>
       <span className={styles.storeCardFoot}>
@@ -388,11 +411,23 @@ function PluginCard({
   );
 }
 
+const SORT_KEYS: readonly StoreSort[] = ['installs', 'new', 'updated'];
+
+function sortLabel(sort: StoreSort): string {
+  switch (sort) {
+    case 'installs': return t('plugins.store.sortInstalls', 'Most installed');
+    case 'new': return t('plugins.store.sortNew', 'Newest');
+    case 'updated': return t('plugins.store.sortUpdated', 'Recently updated');
+  }
+}
+
 export function PluginStoreBrowser({ store }: { store: InstalledState }): JSX.Element {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const [tier, setTier] = useState<'all' | 'free' | 'cloud'>('all');
-  const browse = useStoreBrowse(q);
+  // The whole catalogue is listed with no search; sorting orders it, searching narrows it.
+  const [sort, setSort] = useState<StoreSort>('installs');
+  const browse = useStoreBrowse(q, sort);
   const hasCloud = useHasCloudPlugins();
   const items = useMemo(
     () => (browse.items ?? []).filter((p) => tier === 'all' || p.tier === tier),
@@ -402,41 +437,56 @@ export function PluginStoreBrowser({ store }: { store: InstalledState }): JSX.El
   // The publisher's own private plugins (listed from `/plugins/mine`) read and install as the owner.
   if (open) return <StorePluginDetailCard id={open} owner={browse.owned.has(open)} store={store} onBack={() => setOpen(null)} />;
   return (
-    <section className={styles.card} aria-label="Plugin store">
+    <section className={styles.card} aria-label={t('plugins.store.title', 'Plugin store')}>
       <div className={styles.toolbar}>
-        <h3 className={styles.cardTitle}>Plugin store</h3>
+        <h3 className={styles.cardTitle}>{t('plugins.store.title', 'Plugin store')}</h3>
         <span className={styles.spacer} />
         <Button variant="ghost" size="sm" leftIcon={<Icon name="refresh" size="sm" />} disabled={browse.loading} onClick={browse.reload}>
-          Refresh
+          {t('plugins.store.refresh', 'Refresh')}
         </Button>
       </div>
       <div className={styles.toolbar}>
         <div className={styles.grow}>
-          <SearchField value={q} onChange={setQ} placeholder="Search plugins" ariaLabel="Search the plugin store" debounceMs={250} fullWidth />
+          <SearchField value={q} onChange={setQ} placeholder={t('plugins.store.searchPlaceholder', 'Search plugins')} ariaLabel={t('plugins.store.searchAria', 'Search the plugin store')} debounceMs={250} fullWidth />
         </div>
-        <div className={styles.filterChips} role="group" aria-label="Price">
-          {(['all', 'free', 'cloud'] as const).map((t) => (
+        <div className={styles.filterChips} role="group" aria-label={t('plugins.store.price', 'Price')}>
+          {(['all', 'free', 'cloud'] as const).map((key) => (
             <button
-              key={t}
+              key={key}
               type="button"
-              className={tier === t ? styles.filterChipActive : styles.filterChip}
-              aria-pressed={tier === t}
-              onClick={() => setTier(t)}
+              className={tier === key ? styles.filterChipActive : styles.filterChip}
+              aria-pressed={tier === key}
+              onClick={() => setTier(key)}
             >
-              {t === 'all' ? 'All' : t === 'free' ? 'Free' : 'Premation Cloud'}
+              {key === 'all' ? t('plugins.store.all', 'All') : key === 'free' ? t('plugins.store.free', 'Free') : 'Premation Cloud'}
             </button>
           ))}
         </div>
+        <Dropdown
+          placement="bottom-end"
+          trigger={
+            <Button variant="ghost" size="sm" rightIcon={<Icon name="chevron-down" size="sm" />} aria-label={t('plugins.store.sortAria', 'Sort: {sort}', { sort: sortLabel(sort) })}>
+              {sortLabel(sort)}
+            </Button>
+          }
+          items={SORT_KEYS.map((s) => ({
+            type: 'checkbox' as const,
+            id: s,
+            label: sortLabel(s),
+            checked: sort === s,
+            onChange: () => setSort(s),
+          }))}
+        />
       </div>
       {browse.error ? <span className={styles.error} role="alert">{browse.error}</span> : null}
       {browse.items && items.length === 0 ? (
         <div className={styles.empty} role="status">
-          <strong>{q || tier !== 'all' ? 'No plugins match' : 'No plugins yet'}</strong>
-          <span>Publish one with the SDK — see docs/PLUGIN_SDK.md.</span>
+          <strong>{q || tier !== 'all' ? t('plugins.store.noMatch', 'No plugins match') : t('plugins.store.noneYet', 'No plugins yet')}</strong>
+          <span>{t('plugins.store.publishHint', 'Publish one with the SDK — see docs/PLUGIN_SDK.md.')}</span>
         </div>
       ) : null}
       {items.length > 0 ? (
-        <ul className={styles.storeGrid} aria-label="Store plugins">
+        <ul className={styles.storeGrid} aria-label={t('plugins.store.gridAria', 'Store plugins')}>
           {items.map((p) => (
             <PluginCard
               key={p.id}
@@ -449,7 +499,7 @@ export function PluginStoreBrowser({ store }: { store: InstalledState }): JSX.El
           ))}
         </ul>
       ) : null}
-      {!browse.items && !browse.error ? <span className={styles.text} role="status">Asking the store…</span> : null}
+      {!browse.items && !browse.error ? <span className={styles.text} role="status">{t('plugins.store.asking', 'Asking the store…')}</span> : null}
     </section>
   );
 }

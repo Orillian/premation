@@ -23,6 +23,7 @@ import { familyKey, type FontUsage } from '@core/fonts/missingFonts';
 import { detectFontAvailability } from '@core/fonts/fontAvailability';
 import { replaceFontFamiliesEdit } from './textEdits';
 import styles from './TextDialogs.module.css';
+import { t } from '@core/i18n';
 
 export const REPLACE_FONTS_MODAL_ID = 'replace-fonts';
 
@@ -53,7 +54,9 @@ export function ReplaceFontsBody({ usages, missingKeys, close }: ReplaceFontsBod
     void replaceFontFamiliesEdit(new Map(pending)).then((layers) => {
       useUIStore.getState().notify({
         level: 'success',
-        message: `Replaced fonts on ${layers} layer${layers === 1 ? '' : 's'}`,
+        message: layers === 1
+          ? t('text.replaceFonts.doneOne', 'Replaced fonts on {n} layer', { n: layers })
+          : t('text.replaceFonts.doneOther', 'Replaced fonts on {n} layers', { n: layers }),
         durationMs: 2600,
       });
     });
@@ -64,10 +67,10 @@ export function ReplaceFontsBody({ usages, missingKeys, close }: ReplaceFontsBod
     <div className={styles.body}>
       <p className={styles.blurb}>
         {missingKeys.size > 0
-          ? 'These fonts are not installed on this computer, so their layers draw in a fallback font. Pick a replacement for each — one undo puts them all back.'
-          : 'Every font this project uses. Pick a replacement to swap it on every layer and styled run that uses it.'}
+          ? t('text.replaceFonts.blurbMissing', 'These fonts are not installed on this computer, so their layers draw in a fallback font. Pick a replacement for each — one undo puts them all back.')
+          : t('text.replaceFonts.blurbAll', 'Every font this project uses. Pick a replacement to swap it on every layer and styled run that uses it.')}
       </p>
-      <ul className={styles.fontRows} aria-label="Fonts used in this project">
+      <ul className={styles.fontRows} aria-label={t('text.replaceFonts.fontsUsedInThisProject', 'Fonts used in this project')}>
         {ordered.map((u) => {
           const missing = missingKeys.has(familyKey(u.family));
           const names = u.layers.map((l) => l.name);
@@ -78,10 +81,14 @@ export function ReplaceFontsBody({ usages, missingKeys, close }: ReplaceFontsBod
               <div className={styles.fontInfo}>
                 <span className={styles.fontName}>
                   {u.family}
-                  {missing ? <span className={styles.missingBadge}>Missing</span> : null}
+                  {missing ? <span className={styles.missingBadge}>{t('text.replaceFonts.missing', 'Missing')}</span> : null}
                 </span>
                 <span className={styles.fontLayers} title={names.join(', ')}>
-                  {u.layers.length} layer{u.layers.length === 1 ? '' : 's'}: {shown}{more > 0 ? ` +${more} more` : ''}
+                  {more > 0
+                    ? t('text.replaceFonts.layersMore', '{n} layers: {names} +{more} more', { n: u.layers.length, names: shown, more })
+                    : u.layers.length === 1
+                      ? t('text.replaceFonts.layersOne', '{n} layer: {names}', { n: u.layers.length, names: shown })
+                      : t('text.replaceFonts.layersOther', '{n} layers: {names}', { n: u.layers.length, names: shown })}
                 </span>
               </div>
               <div className={styles.fontChoice}>
@@ -95,11 +102,15 @@ export function ReplaceFontsBody({ usages, missingKeys, close }: ReplaceFontsBod
         })}
       </ul>
       <DialogFooter
-        note={pending.length > 0 ? `${pending.length} replacement${pending.length === 1 ? '' : 's'} chosen` : undefined}
-        secondary={<Button variant="secondary" onClick={close}>Cancel</Button>}
+        note={pending.length === 0
+          ? undefined
+          : pending.length === 1
+            ? t('text.replaceFonts.chosenOne', '{n} replacement chosen', { n: pending.length })
+            : t('text.replaceFonts.chosenOther', '{n} replacements chosen', { n: pending.length })}
+        secondary={<Button variant="secondary" onClick={close}>{t('text.replaceFonts.cancel', 'Cancel')}</Button>}
         primary={
           <Button variant="primary" disabled={pending.length === 0} onClick={apply}>
-            Replace
+            {t('text.replaceFonts.replace', 'Replace')}
           </Button>
         }
       />
@@ -111,7 +122,7 @@ export function ReplaceFontsBody({ usages, missingKeys, close }: ReplaceFontsBod
 export function openReplaceFontsDialog(usages: ReadonlyArray<FontUsage>, missingKeys: ReadonlySet<string>): void {
   openModal({
     id: REPLACE_FONTS_MODAL_ID,
-    title: missingKeys.size > 0 ? 'Replace Missing Fonts' : 'Find and Replace Fonts',
+    title: missingKeys.size > 0 ? t('text.replaceFonts.titleMissing', 'Replace Missing Fonts') : t('text.replaceFonts.title', 'Find and Replace Fonts'),
     size: 'md',
     render: (close) => <ReplaceFontsBody usages={usages} missingKeys={missingKeys} close={close} />,
   });
@@ -128,7 +139,7 @@ export async function openFindAndReplaceFonts(): Promise<boolean> {
   await loadTextTrees(m);
   const usages = mirrorFontUsage(m);
   if (usages.length === 0) {
-    useUIStore.getState().notify({ level: 'info', message: 'No text layer in this project sets a font', durationMs: 2600 });
+    useUIStore.getState().notify({ level: 'info', message: t('text.replaceFonts.noTextLayerInThis', 'No text layer in this project sets a font'), durationMs: 2600 });
     return false;
   }
   const isAvailable = await detectFontAvailability();

@@ -15,6 +15,7 @@
 
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
+import { t } from '@core/i18n';
 import { usePreferenceStore } from '@stores/preferenceStore';
 
 export const TIMELINE_TOGGLE_SNAP_COMMAND = asCommandId('timeline.toggleSnap');
@@ -45,8 +46,8 @@ export function buildTimelineSnapCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_TOGGLE_SNAP_COMMAND,
-      label: 'Snap in Timeline',
-      description: 'Snap clip and keyframe drags to the playhead, edges, markers and the frame grid. Alt inverts it for one drag.',
+      label: t('timeline.snap.command', 'Snap in Timeline'),
+      description: t('timeline.snap.commandDescription', 'Snap clip and keyframe drags to the playhead, edges, markers and the frame grid. Alt inverts it for one drag.'),
       icon: 'magnet',
       isChecked: isTimelineSnapOn,
       execute: () => {

@@ -24,6 +24,7 @@ import { mirrorPropertyMeta } from '@core/mirror/metaFacts';
 import { documentMirror } from '@stores/documentMirror';
 import { beginTrackPreview } from './assistantPreview';
 import styles from './AssistantDialog.module.css';
+import { t } from '@core/i18n';
 
 /** Fewer than three keyframes is a straight line; there is nothing to simplify. */
 const MIN_KEYFRAMES = 3;
@@ -126,7 +127,9 @@ function SmootherBody({ nodeId, tracks, close, onDone }: SmootherBodyProps): JSX
     }
     void p.commit();
     onDone(
-      `Smoothed ${chosen.size} track${chosen.size === 1 ? '' : 's'}: ${before} → ${after} keyframes`,
+      chosen.size === 1
+        ? t('motion.smoother.doneOne', 'Smoothed {n} track: {before} → {after} keyframes', { n: chosen.size, before, after })
+        : t('motion.smoother.doneOther', 'Smoothed {n} tracks: {before} → {after} keyframes', { n: chosen.size, before, after }),
     );
     close();
   };
@@ -146,36 +149,37 @@ function SmootherBody({ nodeId, tracks, close, onDone }: SmootherBodyProps): JSX
   return (
     <div className={styles.body}>
       <p className={styles.blurb}>
-        Replace dense keyframes with the fewest that keep each curve within the tolerance, then
-        smooth the survivors’ tangents. Tolerance is in the property’s own units — px for position,
-        degrees for rotation.
+        {t(
+          'motion.smoother.blurb',
+          'Replace dense keyframes with the fewest that keep each curve within the tolerance, then smooth the survivors’ tangents. Tolerance is in the property’s own units — px for position, degrees for rotation.',
+        )}
       </p>
 
       <div className={styles.fields}>
         <div className={styles.field}>
-          <span className={styles.label}>Tolerance</span>
+          <span className={styles.label}>{t('motion.smoother.tolerance', 'Tolerance')}</span>
           <ValueField
             value={tolerance}
             onChange={setTolerance}
             min={0.01}
             step={0.5}
             precision={2}
-            aria-label="Tolerance"
+            aria-label={t('motion.smoother.tolerance', 'Tolerance')}
           />
         </div>
       </div>
 
       <div className={styles.field}>
-        <span className={styles.label}>Properties</span>
+        <span className={styles.label}>{t('motion.smoother.properties', 'Properties')}</span>
         <div className={styles.tracks}>
-          {tracks.map((t) => (
-            <div key={t.prop} className={styles.trackRow}>
+          {tracks.map((track) => (
+            <div key={track.prop} className={styles.trackRow}>
               <Checkbox
-                checked={chosen.has(t.prop)}
-                onChange={() => toggle(t.prop)}
-                label={t.label}
+                checked={chosen.has(track.prop)}
+                onChange={() => toggle(track.prop)}
+                label={track.label}
               />
-              <span className={styles.trackCount}>{t.count} keys</span>
+              <span className={styles.trackCount}>{t('motion.smoother.keys', '{n} keys', { n: track.count })}</span>
             </div>
           ))}
         </div>
@@ -183,20 +187,22 @@ function SmootherBody({ nodeId, tracks, close, onDone }: SmootherBodyProps): JSX
 
       <p className={styles.result}>
         {chosen.size === 0
-          ? 'No properties selected.'
-          : `${before} keyframes → ${after} across ${chosen.size} track${chosen.size === 1 ? '' : 's'}.`}
+          ? t('motion.smoother.noneSelected', 'No properties selected.')
+          : chosen.size === 1
+            ? t('motion.smoother.resultOne', '{before} keyframes → {after} across {n} track.', { before, after, n: chosen.size })
+            : t('motion.smoother.resultOther', '{before} keyframes → {after} across {n} tracks.', { before, after, n: chosen.size })}
       </p>
 
       <DialogFooter
-        note="Previewing on the composition"
+        note={t('motion.smoother.previewing', 'Previewing on the composition')}
         secondary={
           <Button variant="ghost" onClick={cancel}>
-            Cancel
+            {t('motion.smoother.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" onClick={confirm} disabled={chosen.size === 0}>
-            Smooth
+            {t('motion.smoother.smooth', 'Smooth')}
           </Button>
         }
       />
@@ -221,7 +227,7 @@ export async function openSmootherDialog(nodeId: string): Promise<string | null>
     };
     openModal({
       id: 'smoother',
-      title: 'The Smoother',
+      title: t('motion.smoother.title', 'The Smoother'),
       size: 'sm',
       // A tool window: the preview is ON the comp, so the comp must stay
       // reachable — scrub the playhead to judge the result before committing.

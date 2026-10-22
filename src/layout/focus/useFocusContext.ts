@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { useFocusStore, focusActiveSet, isFocusActive } from '@stores/focusStore';
 import { documentMirror } from '@stores/documentMirror';
 import type { SnapshotFocus } from '@core/workspace/snapshotFocus';
+import { t } from '@core/i18n';
 
 export interface Crumb {
   /** -1 = the root document ("Main"); >=0 = index into the focus path. */
@@ -25,7 +26,7 @@ export interface FocusContext {
   crumbs: Crumb[];
 }
 
-const nameOf = (id: string): string => documentMirror().layer(id)?.name ?? 'Layer';
+const nameOf = (id: string): string => documentMirror().layer(id)?.name ?? t('workspace.focus.layer', 'Layer');
 
 export function useFocusContext(): FocusContext {
   const path = useFocusStore((s) => s.path);
@@ -54,7 +55,7 @@ export function useFocusContext(): FocusContext {
     : undefined;
   const focusKey = `${path.join('>')}|${isolatedId ?? ''}`;
 
-  const crumbs: Crumb[] = [{ index: -1, label: 'Main' }];
+  const crumbs: Crumb[] = [{ index: -1, label: t('workspace.focus.main', 'Main') }];
   path.forEach((id, i) => crumbs.push({ index: i, label: nameOf(id) }));
   if (isolatedId) crumbs.push({ index: path.length, label: nameOf(isolatedId), isolated: true });
 

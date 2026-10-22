@@ -102,7 +102,7 @@ LayerPaint resolve_layer_paint(const doc::Document& d, const doc::Node& n, doubl
                                     (s.at("cloneTimeShift").is_number() && s.at("cloneTimeShift").num() != 0) || sourceOther ||
                                     (tracks != nullptr && (tracks->contains("cloneTimeShift") || tracks->contains("cloneTime"))));
     if (timeWarp) {
-      out.unported.emplace_back("paint clone source time / another layer as the clone source");
+      out.unported.emplace_back("paint clone stroke sampling another time or another layer — that stroke is left out");
       continue;
     }
     const bool selfNamed = clone && !src.empty() && src == n.id;

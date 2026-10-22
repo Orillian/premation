@@ -13,6 +13,7 @@
 
 import { useRef, useState } from 'react';
 import type { CurvePoints } from '@core/inspector/effectCatalog';
+import { t } from '@core/i18n';
 
 const SIZE = 168; // px, square
 const PAD = 8;
@@ -133,7 +134,9 @@ export function CurveEditor({
       width={SIZE}
       height={SIZE}
       role="img"
-      aria-label={variant === 'hue' ? 'Hue curve' : variant === 'luma' ? 'Luma curve' : 'Tone curve'}
+      aria-label={variant === 'hue'
+        ? t('effects.curve.hue', 'Hue curve')
+        : variant === 'luma' ? t('effects.curve.luma', 'Luma curve') : t('effects.curve.tone', 'Tone curve')}
       style={{ touchAction: 'none', cursor: 'crosshair', background: 'var(--color-surface-1)', borderRadius: 4 }}
       onPointerDown={onBackgroundDown}
       onPointerMove={onPointerMove}

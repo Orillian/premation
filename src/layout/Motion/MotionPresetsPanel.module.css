@@ -54,7 +54,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   color: var(--color-text-secondary);
@@ -63,7 +63,7 @@
 
 .sortBtn:hover {
   color: var(--color-text-primary);
-  background: var(--color-surface-3);
+  background: var(--color-surface-0);
   border-color: var(--color-primary);
 }
 

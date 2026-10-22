@@ -19,7 +19,8 @@ import { mirrorEffectHeaders, mirrorMaskHeaders } from '@core/mirror/effects';
 import { useCameraTrackStore } from '@stores/cameraTrackStore';
 import { effectPointTargets } from '@core/tracking/effectPointTargets';
 import { TrackConfidenceGraph } from './TrackConfidenceGraph';
-import { FEATURE_SIZES, SEARCH_SIZES, MODE_HINTS, MODE_LABELS, sizeOptions } from './trackMotionCopy';
+import { t } from '@core/i18n';
+import { FEATURE_SIZES, SEARCH_SIZES, modeHints, modeLabels, sizeOptions } from './trackMotionCopy';
 import type { StabVariant, TrackMotionActions, TrackTarget } from './trackMotionActions';
 import styles from '../TrackMotionSection.module.css';
 
@@ -89,33 +90,33 @@ export function AdvancedTracking({
     // while this is open (or after a run) — see trackerStore.advancedOpen.
     onToggle={(e) => store.getState().setAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)}
   >
-    <summary className={styles.advancedSummary}>Advanced tracking</summary>
+    <summary className={styles.advancedSummary}>{t('inspector.advancedTracking.title', 'Advanced tracking')}</summary>
     <div className={styles.advancedBody}>
-      <InspectorRow label="Mode">
+      <InspectorRow label={t('inspector.advancedTracking.mode', 'Mode')}>
         <select
           className={styles.select}
           value={mode}
           onChange={(e) => store.getState().setMode(e.target.value as TrackerMode, src.width, src.height)}
         >
-          {(Object.keys(MODE_LABELS) as TrackerMode[]).map((m) => (
-            <option key={m} value={m}>{MODE_LABELS[m]}</option>
+          {(Object.entries(modeLabels()) as [TrackerMode, string][]).map(([m, label]) => (
+            <option key={m} value={m}>{label}</option>
           ))}
         </select>
       </InspectorRow>
-      <p className={styles.cardHint}>{MODE_HINTS[mode]}</p>
+      <p className={styles.cardHint}>{modeHints()[mode]}</p>
       {mode === 'mask' && maskPoints === 0 && (
         <p className={styles.cardHint} role="status">
-          This layer has no mask — draw one with the mask tools first.
+          {t('inspector.advancedTracking.noMask', 'This layer has no mask — draw one with the mask tools first.')}
         </p>
       )}
       {mode !== 'mask' && mode !== 'smooth' && (
-        <InspectorRow label={points.length > 1 ? 'Points' : 'Point'}>
+        <InspectorRow label={points.length > 1 ? t('inspector.advancedTracking.points', 'Points') : t('inspector.advancedTracking.point', 'Point')}>
           <span className={styles.cardHint}>
             {points.map((p) => `${p.x.toFixed(0)},${p.y.toFixed(0)}`).join(' · ') || '—'}
           </span>
         </InspectorRow>
       )}
-      <InspectorRow label="Feature size">
+      <InspectorRow label={t('inspector.advancedTracking.featureSize', 'Feature size')}>
         <select
           className={styles.select}
           value={featureHalf}
@@ -127,29 +128,29 @@ export function AdvancedTracking({
         </select>
       </InspectorRow>
       {mode === 'smooth' && (
-        <InspectorRow label="Variant">
+        <InspectorRow label={t('inspector.advancedTracking.variant', 'Variant')}>
           <select
             className={styles.select}
             value={stabVariant}
             onChange={(e) => setStabVariant(e.target.value as typeof stabVariant)}
           >
-            <option value="similarity">Similarity (global)</option>
-            <option value="subspace">Subspace warp (mesh)</option>
-            <option value="rolling-shutter">Rolling shutter</option>
+            <option value="similarity">{t('inspector.advancedTracking.variantSimilarity', 'Similarity (global)')}</option>
+            <option value="subspace">{t('inspector.advancedTracking.variantSubspace', 'Subspace warp (mesh)')}</option>
+            <option value="rolling-shutter">{t('inspector.advancedTracking.variantRollingShutter', 'Rolling shutter')}</option>
           </select>
         </InspectorRow>
       )}
       {mode === 'corner' && (
-        <InspectorRow label="Dense grid">
+        <InspectorRow label={t('inspector.advancedTracking.denseGrid', 'Dense grid')}>
           <input
             type="checkbox"
             checked={dense}
             onChange={(e) => store.getState().setDense(e.target.checked)}
-            title="Track a lattice of extra features inside the quad — the planar fit then survives partial occlusion (RANSAC keeps the agreeing majority)."
+            title={t('inspector.advancedTracking.denseGridHint', 'Track a lattice of extra features inside the quad — the planar fit then survives partial occlusion (RANSAC keeps the agreeing majority).')}
           />
         </InspectorRow>
       )}
-      <InspectorRow label="Search size">
+      <InspectorRow label={t('inspector.advancedTracking.searchSize', 'Search size')}>
         <select
           className={styles.select}
           value={searchHalf}
@@ -162,18 +163,18 @@ export function AdvancedTracking({
       </InspectorRow>
       {mode === 'planar' && (
         <>
-          <InspectorRow label="Surface Adjust">
+          <InspectorRow label={t('inspector.advancedTracking.surfaceAdjust', 'Surface Adjust')}>
             <input
               type="checkbox"
-              aria-label="Surface Adjust"
+              aria-label={t('inspector.advancedTracking.surfaceAdjust', 'Surface Adjust')}
               checked={planarSurface}
               onChange={(e) => store.getState().setPlanarSurface(e.target.checked, src.width, src.height)}
-              title="Four more corners: where the insert goes on the tracked plane, independent of the region tracked."
+              title={t('inspector.advancedTracking.surfaceAdjustHint', 'Four more corners: where the insert goes on the tracked plane, independent of the region tracked.')}
             />
           </InspectorRow>
           {masks.length > 0 && (
-            <InspectorRow label="Exclude">
-              <div className={styles.group} role="group" aria-label="Exclude masks">
+            <InspectorRow label={t('inspector.advancedTracking.exclude', 'Exclude')}>
+              <div className={styles.group} role="group" aria-label={t('inspector.advancedTracking.excludeMasks', 'Exclude masks')}>
                 {masks.map((m) => (
                   <label key={m.id} className={styles.cardHint}>
                     <input
@@ -191,32 +192,32 @@ export function AdvancedTracking({
       )}
       {mode === 'face' && (
         <>
-          <InspectorRow label="Method">
+          <InspectorRow label={t('inspector.advancedTracking.method', 'Method')}>
             <select
-              aria-label="Face tracking method"
+              aria-label={t('inspector.advancedTracking.faceMethod', 'Face tracking method')}
               className={styles.select}
               value={faceMode}
               onChange={(e) => store.getState().setFace({ faceMode: e.target.value as 'outline' | 'detailed' })}
             >
-              <option value="outline">Outline Only</option>
-              <option value="detailed">Detailed Features</option>
+              <option value="outline">{t('inspector.advancedTracking.faceOutline', 'Outline Only')}</option>
+              <option value="detailed">{t('inspector.advancedTracking.faceDetailed', 'Detailed Features')}</option>
             </select>
           </InspectorRow>
           {masks.length > 1 && (
-            <InspectorRow label="Face mask">
-              <select aria-label="Face mask" className={styles.select} value={faceMask} onChange={(e) => store.getState().setFace({ faceMask: e.target.value })}>
-                <option value="">{masks[0]?.name || 'First mask'}</option>
+            <InspectorRow label={t('inspector.advancedTracking.faceMask', 'Face mask')}>
+              <select aria-label={t('inspector.advancedTracking.faceMask', 'Face mask')} className={styles.select} value={faceMask} onChange={(e) => store.getState().setFace({ faceMask: e.target.value })}>
+                <option value="">{masks[0]?.name || t('inspector.advancedTracking.firstMask', 'First mask')}</option>
                 {masks.slice(1).map((m) => <option key={m.id} value={m.id}>{m.name || m.id}</option>)}
               </select>
             </InspectorRow>
           )}
-          {masks.length === 0 && <p className={styles.cardHint} role="status">Draw a mask around the face first.</p>}
+          {masks.length === 0 && <p className={styles.cardHint} role="status">{t('inspector.advancedTracking.drawFaceMask', 'Draw a mask around the face first.')}</p>}
         </>
       )}
       {mode === 'camera' && (
-        <InspectorRow label="Lens">
+        <InspectorRow label={t('inspector.advancedTracking.lens', 'Lens')}>
           <ValueField
-            aria-label="Focal length (0 = solve)"
+            aria-label={t('inspector.advancedTracking.focalLength', 'Focal length (0 = solve)')}
             value={focalLength}
             min={0}
             step={10}
@@ -226,9 +227,9 @@ export function AdvancedTracking({
         </InspectorRow>
       )}
       {mode === 'stabilize' && (
-        <InspectorRow label="Stabilize">
+        <InspectorRow label={t('inspector.advancedTracking.stabilize', 'Stabilize')}>
           <label className={styles.cardHint}>
-            <input type="checkbox" checked disabled /> Position
+            <input type="checkbox" checked disabled /> {t('inspector.advancedTracking.position', 'Position')}
           </label>
           <label className={styles.cardHint}>
             <input
@@ -236,7 +237,7 @@ export function AdvancedTracking({
               checked={stabRotation}
               onChange={(e) => store.getState().setStabilize(e.target.checked, stabScale, src.width, src.height)}
             />{' '}
-            Rotation
+            {t('inspector.advancedTracking.rotation', 'Rotation')}
           </label>
           <label className={styles.cardHint}>
             <input
@@ -244,106 +245,106 @@ export function AdvancedTracking({
               checked={stabScale}
               onChange={(e) => store.getState().setStabilize(stabRotation, e.target.checked, src.width, src.height)}
             />{' '}
-            Scale
+            {t('inspector.advancedTracking.scale', 'Scale')}
           </label>
         </InspectorRow>
       )}
       {mode === 'smooth' && (
         <>
-          <InspectorRow label="Smoothness">
-            <ValueField aria-label="Smoothness" value={warp.smoothness} min={0} max={100} step={1} unit="%" onChange={(v) => store.getState().setWarp({ smoothness: v })} />
+          <InspectorRow label={t('inspector.advancedTracking.smoothness', 'Smoothness')}>
+            <ValueField aria-label={t('inspector.advancedTracking.smoothness', 'Smoothness')} value={warp.smoothness} min={0} max={100} step={1} unit="%" onChange={(v) => store.getState().setWarp({ smoothness: v })} />
           </InspectorRow>
-          <InspectorRow label="Method">
+          <InspectorRow label={t('inspector.advancedTracking.method', 'Method')}>
             <select
-              aria-label="Stabilize method"
+              aria-label={t('inspector.advancedTracking.stabilizeMethod', 'Stabilize method')}
               className={styles.select}
               value={warp.method}
               onChange={(e) => store.getState().setWarp({ method: e.target.value as WarpSettings['method'] })}
             >
-              <option value="position">Position</option>
-              <option value="positionRotation">Position, Rotation</option>
-              <option value="positionRotationScale">Position, Scale, Rotation</option>
+              <option value="position">{t('inspector.advancedTracking.position', 'Position')}</option>
+              <option value="positionRotation">{t('inspector.advancedTracking.positionRotation', 'Position, Rotation')}</option>
+              <option value="positionRotationScale">{t('inspector.advancedTracking.positionScaleRotation', 'Position, Scale, Rotation')}</option>
             </select>
           </InspectorRow>
-          <InspectorRow label="Framing">
+          <InspectorRow label={t('inspector.advancedTracking.framing', 'Framing')}>
             <select
-              aria-label="Framing"
+              aria-label={t('inspector.advancedTracking.framing', 'Framing')}
               className={styles.select}
               value={stabVariant === 'similarity' ? warp.framing : 'stabilizeOnly'}
               disabled={stabVariant !== 'similarity'}
-              title={stabVariant !== 'similarity' ? 'The mesh variants keep the frame' : undefined}
+              title={stabVariant !== 'similarity' ? t('inspector.advancedTracking.meshKeepsFrame', 'The mesh variants keep the frame') : undefined}
               onChange={(e) => store.getState().setWarp({ framing: e.target.value as WarpSettings['framing'] })}
             >
-              <option value="stabilizeOnly">Stabilize Only</option>
-              <option value="stabilizeCrop">Stabilize, Crop</option>
-              <option value="cropAutoScale">Stabilize, Crop, Auto-scale</option>
+              <option value="stabilizeOnly">{t('inspector.advancedTracking.framingStabilizeOnly', 'Stabilize Only')}</option>
+              <option value="stabilizeCrop">{t('inspector.advancedTracking.framingStabilizeCrop', 'Stabilize, Crop')}</option>
+              <option value="cropAutoScale">{t('inspector.advancedTracking.framingCropAutoScale', 'Stabilize, Crop, Auto-scale')}</option>
             </select>
           </InspectorRow>
           {stabVariant === 'similarity' && warp.framing !== 'stabilizeOnly' && (
-            <InspectorRow label="Maximum scale">
-              <ValueField aria-label="Maximum scale" value={warp.maxScale} min={100} max={400} step={1} unit="%" onChange={(v) => store.getState().setWarp({ maxScale: Math.max(100, v) })} />
+            <InspectorRow label={t('inspector.advancedTracking.maxScale', 'Maximum scale')}>
+              <ValueField aria-label={t('inspector.advancedTracking.maxScale', 'Maximum scale')} value={warp.maxScale} min={100} max={400} step={1} unit="%" onChange={(v) => store.getState().setWarp({ maxScale: Math.max(100, v) })} />
             </InspectorRow>
           )}
         </>
       )}
       {(mode === 'follow' || mode === 'transform' || mode === 'stabilize') && points.length > 0 && (
-        <InspectorRow label="Attach offset">
-          <ValueField aria-label="Attach offset X" value={attach[0]?.x ?? 0} step={1} unit="px" onChange={(v) => store.getState().setAttach(0, v, attach[0]?.y ?? 0)} />
-          <ValueField aria-label="Attach offset Y" value={attach[0]?.y ?? 0} step={1} unit="px" onChange={(v) => store.getState().setAttach(0, attach[0]?.x ?? 0, v)} />
+        <InspectorRow label={t('inspector.advancedTracking.attachOffset', 'Attach offset')}>
+          <ValueField aria-label={t('inspector.advancedTracking.attachOffsetX', 'Attach offset X')} value={attach[0]?.x ?? 0} step={1} unit="px" onChange={(v) => store.getState().setAttach(0, v, attach[0]?.y ?? 0)} />
+          <ValueField aria-label={t('inspector.advancedTracking.attachOffsetY', 'Attach offset Y')} value={attach[0]?.y ?? 0} step={1} unit="px" onChange={(v) => store.getState().setAttach(0, attach[0]?.x ?? 0, v)} />
         </InspectorRow>
       )}
       {mode === 'mask' && (
-        <InspectorRow label="Method">
+        <InspectorRow label={t('inspector.advancedTracking.method', 'Method')}>
           {/* AE parity 5.4: AE's Mask Tracker methods — the mask follows each vertex, or moves as one shape. */}
           <select
-            aria-label="Mask tracking method"
+            aria-label={t('inspector.advancedTracking.maskMethod', 'Mask tracking method')}
             value={maskMethod}
             onChange={(e) => store.getState().setMaskMethod(e.target.value as MaskTrackMethod)}
-            title="Vertices: each vertex follows its own feature. The others move the whole mask by the transform fitted to every tracked point."
+            title={t('inspector.advancedTracking.maskMethodHint', 'Vertices: each vertex follows its own feature. The others move the whole mask by the transform fitted to every tracked point.')}
           >
-            <option value="vertices">Vertices</option>
-            <option value="position">Position</option>
-            <option value="positionRotation">Position &amp; Rotation</option>
-            <option value="positionScaleRotation">Position, Scale &amp; Rotation</option>
-            <option value="affine">Position, Scale, Rotation &amp; Skew</option>
-            <option value="perspective">Perspective</option>
+            <option value="vertices">{t('inspector.advancedTracking.maskVertices', 'Vertices')}</option>
+            <option value="position">{t('inspector.advancedTracking.position', 'Position')}</option>
+            <option value="positionRotation">{t('inspector.advancedTracking.maskPositionRotation', 'Position & Rotation')}</option>
+            <option value="positionScaleRotation">{t('inspector.advancedTracking.maskPositionScaleRotation', 'Position, Scale & Rotation')}</option>
+            <option value="affine">{t('inspector.advancedTracking.maskAffine', 'Position, Scale, Rotation & Skew')}</option>
+            <option value="perspective">{t('inspector.advancedTracking.maskPerspective', 'Perspective')}</option>
           </select>
         </InspectorRow>
       )}
-      <InspectorRow label="Full resolution">
+      <InspectorRow label={t('inspector.advancedTracking.fullResolution', 'Full resolution')}>
         <input
           type="checkbox"
-          aria-label="Track at full resolution"
+          aria-label={t('inspector.advancedTracking.fullResolutionAria', 'Track at full resolution')}
           checked={fullResolution}
           onChange={(e) => store.getState().setFullResolution(e.target.checked)}
-          title="Analyse every pixel of the footage instead of a 960 px copy: slower, steadier on fine detail."
+          title={t('inspector.advancedTracking.fullResolutionHint', 'Analyse every pixel of the footage instead of a 960 px copy: slower, steadier on fine detail.')}
         />
       </InspectorRow>
       {tracking ? (
-        <Button size="sm" disabled fullWidth>{`Tracking… ${Math.round(progress * 100)}%`}</Button>
+        <Button size="sm" disabled fullWidth>{t('inspector.advancedTracking.trackingProgress', 'Tracking… {pct}%', { pct: Math.round(progress * 100) })}</Button>
       ) : (
         !directional ? (
           <Button size="sm" onClick={runTrack('both')} disabled={!canTrack} fullWidth>
-            {solve ? 'Analyze again' : 'Analyze'}
+            {solve ? t('inspector.advancedTracking.analyzeAgain', 'Analyze again') : t('inspector.advancedTracking.analyze', 'Analyze')}
           </Button>
         ) : (
-        <div className={styles.trackRow} role="group" aria-label="Track">
+        <div className={styles.trackRow} role="group" aria-label={t('inspector.advancedTracking.track', 'Track')}>
           {oneFrameOk && (
-            <Button size="sm" variant="secondary" onClick={runTrack('backward', true)} disabled={!canTrack} aria-label="Track 1 frame backward" title="Track 1 frame backward">
+            <Button size="sm" variant="secondary" onClick={runTrack('backward', true)} disabled={!canTrack} aria-label={t('inspector.advancedTracking.trackFrameBackward', 'Track 1 frame backward')} title={t('inspector.advancedTracking.trackFrameBackward', 'Track 1 frame backward')}>
               ◀︎1
             </Button>
           )}
-          <Button size="sm" variant="secondary" onClick={runTrack('backward')} disabled={!canTrack} aria-label="Track backward" title="Track backward from the playhead to the layer's start">
+          <Button size="sm" variant="secondary" onClick={runTrack('backward')} disabled={!canTrack} aria-label={t('inspector.advancedTracking.trackBackward', 'Track backward')} title={t('inspector.advancedTracking.trackBackwardHint', "Track backward from the playhead to the layer's start")}>
             ◀︎◀︎
           </Button>
-          <Button size="sm" variant="secondary" onClick={runTrack('both')} disabled={!canTrack} aria-label="Track both ways" title="Track both ways from the playhead over the layer">
+          <Button size="sm" variant="secondary" onClick={runTrack('both')} disabled={!canTrack} aria-label={t('inspector.advancedTracking.trackBoth', 'Track both ways')} title={t('inspector.advancedTracking.trackBothHint', 'Track both ways from the playhead over the layer')}>
             ◀︎▶︎
           </Button>
-          <Button size="sm" onClick={runTrack('forward')} disabled={!canTrack} aria-label="Track forward" title="Track forward from the playhead to the end">
+          <Button size="sm" onClick={runTrack('forward')} disabled={!canTrack} aria-label={t('inspector.advancedTracking.trackForward', 'Track forward')} title={t('inspector.advancedTracking.trackForwardHint', 'Track forward from the playhead to the end')}>
             ▶︎▶︎
           </Button>
           {oneFrameOk && (
-            <Button size="sm" variant="secondary" onClick={runTrack('forward', true)} disabled={!canTrack} aria-label="Track 1 frame forward" title="Track 1 frame forward">
+            <Button size="sm" variant="secondary" onClick={runTrack('forward', true)} disabled={!canTrack} aria-label={t('inspector.advancedTracking.trackFrameForward', 'Track 1 frame forward')} title={t('inspector.advancedTracking.trackFrameForward', 'Track 1 frame forward')}>
               1▶︎
             </Button>
           )}
@@ -353,18 +354,18 @@ export function AdvancedTracking({
       {mode === 'camera' && solve && (
         <div className={styles.group}>
           <span className={styles.groupLabel}>
-            {`Track points: ${solve.points.length} · selected ${selectedPoints.length}`}
+            {t('inspector.advancedTracking.trackPointsCount', 'Track points: {n} · selected {selected}', { n: solve.points.length, selected: selectedPoints.length })}
           </span>
-          <p className={styles.cardHint}>Click track points in the viewer (Shift adds, drag selects an area).</p>
+          <p className={styles.cardHint}>{t('inspector.advancedTracking.trackPointsHint', 'Click track points in the viewer (Shift adds, drag selects an area).')}</p>
           <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('ground')} disabled={tracking || selectedPoints.length < 3} fullWidth>
-            Set Ground Plane and Origin
+            {t('inspector.advancedTracking.setGround', 'Set Ground Plane and Origin')}
           </Button>
-          <div className={styles.trackRow} role="group" aria-label="Create from track points">
-            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('text')} disabled={tracking || selectedPoints.length === 0}>Text</Button>
-            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('solid')} disabled={tracking || selectedPoints.length === 0}>Solid</Button>
-            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('null')} disabled={tracking || selectedPoints.length === 0}>Null</Button>
-            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('shadowCatcher')} disabled={tracking || selectedPoints.length < 3} title="A floor that shows only the shadows it receives">
-              Shadow
+          <div className={styles.trackRow} role="group" aria-label={t('inspector.advancedTracking.createFromPoints', 'Create from track points')}>
+            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('text')} disabled={tracking || selectedPoints.length === 0}>{t('inspector.advancedTracking.createText', 'Text')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('solid')} disabled={tracking || selectedPoints.length === 0}>{t('inspector.advancedTracking.createSolid', 'Solid')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('null')} disabled={tracking || selectedPoints.length === 0}>{t('inspector.advancedTracking.createNull', 'Null')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void onCameraPoints('shadowCatcher')} disabled={tracking || selectedPoints.length < 3} title={t('inspector.advancedTracking.createShadowHint', 'A floor that shows only the shadows it receives')}>
+              {t('inspector.advancedTracking.createShadow', 'Shadow')}
             </Button>
           </div>
         </div>
@@ -375,31 +376,33 @@ export function AdvancedTracking({
 
       {result && mode !== 'mask' && (result.tracks[0]?.length ?? 0) > 1 && (
         <div className={styles.group}>
-          <span className={styles.groupLabel}>Apply</span>
+          <span className={styles.groupLabel}>{t('inspector.advancedTracking.apply', 'Apply')}</span>
           {(mode === 'follow' || mode === 'transform' || mode === 'corner' || mode === 'planar') && (
-            <InspectorRow label={mode === 'corner' || mode === 'planar' ? 'Pin layer' : 'Apply to'}>
+            <InspectorRow label={mode === 'corner' || mode === 'planar' ? t('inspector.advancedTracking.pinLayer', 'Pin layer') : t('inspector.advancedTracking.applyTo', 'Apply to')}>
               <select
                 className={styles.select}
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
               >
-                {targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id === nodeId ? `${t.name || 'this layer'} (this layer)` : t.name || t.id}
+                {targets.map((tg) => (
+                  <option key={tg.id} value={tg.id}>
+                    {tg.id === nodeId
+                      ? t('inspector.advancedTracking.thisLayerSuffix', '{name} (this layer)', { name: tg.name || t('inspector.advancedTracking.thisLayer', 'this layer') })
+                      : tg.name || tg.id}
                   </option>
                 ))}
               </select>
             </InspectorRow>
           )}
           {mode === 'follow' && (
-            <InspectorRow label="Property">
+            <InspectorRow label={t('inspector.advancedTracking.property', 'Property')}>
               <select
-                aria-label="Apply to property"
+                aria-label={t('inspector.advancedTracking.applyToProperty', 'Apply to property')}
                 className={styles.select}
                 value={effectPoints.some((p) => p.path === applyPath) ? applyPath : ''}
                 onChange={(e) => store.getState().setApplyPath(e.target.value)}
               >
-                <option value="">Position</option>
+                <option value="">{t('inspector.advancedTracking.position', 'Position')}</option>
                 {effectPoints.map((p) => <option key={p.path} value={p.path}>{p.label}</option>)}
               </select>
             </InspectorRow>
@@ -409,7 +412,7 @@ export function AdvancedTracking({
           </Button>
           {mode === 'corner' && (
             <Button size="sm" variant="secondary" onClick={onApplyMesh} fullWidth>
-              Apply as Mesh Warp
+              {t('inspector.advancedTracking.applyMeshWarp', 'Apply as Mesh Warp')}
             </Button>
           )}
           {mode === 'corner' && (
@@ -418,19 +421,19 @@ export function AdvancedTracking({
               variant="secondary"
               onClick={onSolveCamera}
               fullWidth
-              title="3D Camera Tracker: SfM + bundle adjustment / planar-hybrid pose from tracked features."
+              title={t('inspector.advancedTracking.solveCameraHint', '3D Camera Tracker: SfM + bundle adjustment / planar-hybrid pose from tracked features.')}
             >
-              Solve 3D Camera Tracker
+              {t('inspector.advancedTracking.solveCamera', 'Solve 3D Camera Tracker')}
             </Button>
           )}
           {mode === 'corner' && result.tracks.length >= 8 && (
             <Button size="sm" variant="secondary" onClick={onCreateNullsForPlanes} fullWidth>
-              Create Nulls per Plane
+              {t('inspector.advancedTracking.nullsPerPlane', 'Create Nulls per Plane')}
             </Button>
           )}
           {(mode === 'follow' || mode === 'transform' || mode === 'corner') && (
             <Button size="sm" variant="secondary" onClick={() => onCreateNullAndApply()} fullWidth>
-              Create Null &amp; Apply
+              {t('inspector.advancedTracking.createNullApply', 'Create Null & Apply')}
             </Button>
           )}
         </div>
@@ -439,12 +442,12 @@ export function AdvancedTracking({
       {/* Roto / CAF — available without a prior track result (mask mode
           was unreachable before). */}
       <div className={styles.group}>
-        <span className={styles.groupLabel}>Roto &amp; fill</span>
+        <span className={styles.groupLabel}>{t('inspector.advancedTracking.rotoFill', 'Roto & fill')}</span>
         <Button size="sm" variant="secondary" onClick={() => void onRotoBrush()} disabled={!src || tracking} fullWidth>
-          Roto Brush (propagate)
+          {t('inspector.advancedTracking.rotoBrush', 'Roto Brush (propagate)')}
         </Button>
         <Button size="sm" variant="secondary" onClick={onSeedMatte} disabled={tracking} fullWidth>
-          Seed Matte
+          {t('inspector.advancedTracking.seedMatte', 'Seed Matte')}
         </Button>
         <Button
           size="sm"
@@ -452,12 +455,12 @@ export function AdvancedTracking({
           onClick={onSegmentSam}
           disabled={tracking}
           fullWidth
-          title="Segments the object under the track point (or the box between two points) with the SAM model in the engine, and writes an Add mask."
+          title={t('inspector.advancedTracking.segmentHint', 'Segments the object under the track point (or the box between two points) with the SAM model in the engine, and writes an Add mask.')}
         >
-          Segment (SAM-class)
+          {t('inspector.advancedTracking.segment', 'Segment (SAM-class)')}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void onContentAwareFill()} fullWidth title="Opens the Content-Aware Fill panel">
-          Content-Aware Fill…
+        <Button size="sm" variant="secondary" onClick={() => void onContentAwareFill()} fullWidth title={t('inspector.advancedTracking.cafHint', 'Opens the Content-Aware Fill panel')}>
+          {t('inspector.advancedTracking.caf', 'Content-Aware Fill…')}
         </Button>
       </div>
     </div>

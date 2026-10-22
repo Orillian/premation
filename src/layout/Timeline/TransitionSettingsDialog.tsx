@@ -19,13 +19,15 @@ import { DEFAULT_DIP_COLOR, TRANSITION_KINDS, TRANSITION_LABEL, type TransitionA
 import { TRANSITION_ALIGNMENTS, TRANSITION_ALIGNMENT_LABEL } from './transitionOverlay';
 import { setTransitionEdit } from './transitionEdits';
 import { cutTransitionEffect, cutTransitionEffects } from './cutTransitionEffects';
+import { t } from '@core/i18n';
 import styles from './TransitionSettingsDialog.module.css';
 
 export const TRANSITION_EASE_LABEL: Readonly<Record<TransitionEase, string>> = {
-  linear: 'Linear',
-  easeInOut: 'Ease In & Out',
-  easeIn: 'Ease In',
-  easeOut: 'Ease Out',
+  // Getters: `t()` must run when the picker renders, not at import (the catalogue loads later).
+  get linear() { return t('timeline.transitionSettings.easeLinear', 'Linear'); },
+  get easeInOut() { return t('timeline.transitionSettings.easeInOut', 'Ease In & Out'); },
+  get easeIn() { return t('timeline.transitionSettings.easeIn', 'Ease In'); },
+  get easeOut() { return t('timeline.transitionSettings.easeOut', 'Ease Out'); },
 };
 
 /** The type picker's value: a kind, or `wipe:<effect>` for an effect wipe. */
@@ -43,23 +45,23 @@ function TransitionSettingsBody({ id, leftNodeId, close }: BodyProps): JSX.Eleme
   const m = documentMirror();
   const compId = m.layer(leftNodeId)?.comp ?? '';
   const comp = m.comp(compId);
-  const t = comp?.transitions.find((x) => x.id === id);
+  const tx = comp?.transitions.find((x) => x.id === id);
   const fps = compFps(comp);
-  const [type, setType] = useState(() => (t ? typeValue(t.kind, t.effect) : 'crossDissolve'));
-  const [frames, setFrames] = useState(() => (t ? Math.max(1, Math.round(flicksToSeconds(t.duration) * fps)) : 12));
-  const [alignment, setAlignment] = useState<TransitionAlignment>(() => t?.alignment ?? 'centred');
-  const [angle, setAngle] = useState(() => t?.angle ?? 90);
-  const [softness, setSoftness] = useState(() => t?.softness ?? 0);
-  const [color, setColor] = useState(() => t?.color ?? DEFAULT_DIP_COLOR);
-  const [ease, setEase] = useState<TransitionEase>(() => t?.ease ?? 'linear');
+  const [type, setType] = useState(() => (tx ? typeValue(tx.kind, tx.effect) : 'crossDissolve'));
+  const [frames, setFrames] = useState(() => (tx ? Math.max(1, Math.round(flicksToSeconds(tx.duration) * fps)) : 12));
+  const [alignment, setAlignment] = useState<TransitionAlignment>(() => tx?.alignment ?? 'centred');
+  const [angle, setAngle] = useState(() => tx?.angle ?? 90);
+  const [softness, setSoftness] = useState(() => tx?.softness ?? 0);
+  const [color, setColor] = useState(() => tx?.color ?? DEFAULT_DIP_COLOR);
+  const [ease, setEase] = useState<TransitionEase>(() => tx?.ease ?? 'linear');
   const [error, setError] = useState<string | null>(null);
 
-  if (!t) {
+  if (!tx) {
     return (
       <div className={styles.body}>
-        <p className={styles.note}>This transition no longer exists.</p>
+        <p className={styles.note}>{t('timeline.transitionSettings.gone', 'This transition no longer exists.')}</p>
         <div className={styles.footer}>
-          <Button variant="primary" onClick={close}>Close</Button>
+          <Button variant="primary" onClick={close}>{t('timeline.transitionSettings.close', 'Close')}</Button>
         </div>
       </div>
     );
@@ -90,12 +92,12 @@ function TransitionSettingsBody({ id, leftNodeId, close }: BodyProps): JSX.Eleme
   return (
     <div className={styles.body}>
       <div className={styles.row}>
-        <label className={styles.label} htmlFor="tx-type">Type</label>
+        <label className={styles.label} htmlFor="tx-type">{t('timeline.transitionSettings.type', 'Type')}</label>
         <select id="tx-type" className={styles.select} value={type} onChange={(e) => setType(e.target.value)}>
           {TRANSITION_KINDS.map((k) => (
-            <option key={k} value={k}>{k === 'dipToWhite' ? 'Dip to Colour' : TRANSITION_LABEL[k]}</option>
+            <option key={k} value={k}>{k === 'dipToWhite' ? t('timeline.transitionSettings.dipToColour', 'Dip to Colour') : TRANSITION_LABEL[k]}</option>
           ))}
-          <optgroup label="Effect wipes">
+          <optgroup label={t('timeline.transitionSettings.effectWipes', 'Effect wipes')}>
             {cutTransitionEffects().map((e) => (
               <option key={e.type} value={`wipe:${e.type}`}>{e.label}</option>
             ))}
@@ -103,43 +105,43 @@ function TransitionSettingsBody({ id, leftNodeId, close }: BodyProps): JSX.Eleme
         </select>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Duration</span>
-        <ValueField value={frames} onChange={(v) => setFrames(Math.max(1, Math.round(v)))} min={1} step={1} precision={0} unit="f" aria-label="Duration in frames" />
+        <span className={styles.label}>{t('timeline.transitionSettings.duration', 'Duration')}</span>
+        <ValueField value={frames} onChange={(v) => setFrames(Math.max(1, Math.round(v)))} min={1} step={1} precision={0} unit="f" aria-label={t('timeline.transitionSettings.durationAria', 'Duration in frames')} />
       </div>
       <div className={styles.row}>
-        <label className={styles.label} htmlFor="tx-align">Alignment</label>
+        <label className={styles.label} htmlFor="tx-align">{t('timeline.transitionSettings.alignment', 'Alignment')}</label>
         <select id="tx-align" className={styles.select} value={alignment} onChange={(e) => setAlignment(e.target.value as TransitionAlignment)}>
           {TRANSITION_ALIGNMENTS.map((a) => <option key={a} value={a}>{TRANSITION_ALIGNMENT_LABEL[a]}</option>)}
         </select>
       </div>
       {showAngle && (
         <div className={styles.row}>
-          <span className={styles.label}>Direction</span>
-          <ValueField value={angle} onChange={setAngle} step={1} precision={0} unit="°" aria-label="Wipe direction" />
+          <span className={styles.label}>{t('timeline.transitionSettings.direction', 'Direction')}</span>
+          <ValueField value={angle} onChange={setAngle} step={1} precision={0} unit="°" aria-label={t('timeline.transitionSettings.directionAria', 'Wipe direction')} />
         </div>
       )}
       {showSoftness && (
         <div className={styles.row}>
-          <span className={styles.label}>Softness</span>
-          <ValueField value={softness} onChange={(v) => setSoftness(Math.max(0, v))} min={0} step={1} precision={0} unit="px" aria-label="Edge softness" />
+          <span className={styles.label}>{t('timeline.transitionSettings.softness', 'Softness')}</span>
+          <ValueField value={softness} onChange={(v) => setSoftness(Math.max(0, v))} min={0} step={1} precision={0} unit="px" aria-label={t('timeline.transitionSettings.softnessAria', 'Edge softness')} />
         </div>
       )}
       {kind === 'dipToWhite' && (
         <div className={styles.row}>
-          <label className={styles.label} htmlFor="tx-color">Colour</label>
+          <label className={styles.label} htmlFor="tx-color">{t('timeline.transitionSettings.colour', 'Colour')}</label>
           <input id="tx-color" type="color" className={styles.color} value={color} onChange={(e) => setColor(e.target.value)} />
         </div>
       )}
       <div className={styles.row}>
-        <label className={styles.label} htmlFor="tx-ease">Ease</label>
+        <label className={styles.label} htmlFor="tx-ease">{t('timeline.transitionSettings.ease', 'Ease')}</label>
         <select id="tx-ease" className={styles.select} value={ease} onChange={(e) => setEase(e.target.value as TransitionEase)}>
           {(Object.keys(TRANSITION_EASE_LABEL) as TransitionEase[]).map((k) => <option key={k} value={k}>{TRANSITION_EASE_LABEL[k]}</option>)}
         </select>
       </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <div className={styles.footer}>
-        <Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button variant="primary" onClick={apply}>Apply</Button>
+        <Button variant="ghost" onClick={close}>{t('timeline.transitionSettings.cancel', 'Cancel')}</Button>
+        <Button variant="primary" onClick={apply}>{t('timeline.transitionSettings.apply', 'Apply')}</Button>
       </div>
     </div>
   );
@@ -149,7 +151,7 @@ function TransitionSettingsBody({ id, leftNodeId, close }: BodyProps): JSX.Eleme
 export function openTransitionSettings(id: string, leftNodeId: string): void {
   openModal({
     id: 'transition-settings',
-    title: 'Transition Settings',
+    title: t('timeline.transitionSettings.title', 'Transition Settings'),
     size: 'sm',
     // Floating: the timeline and viewer stay live behind it.
     variant: 'floating',

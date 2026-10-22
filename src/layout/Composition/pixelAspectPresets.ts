@@ -22,6 +22,8 @@
  * number the dialog shows rather than as a 17-digit float nobody typed.
  */
 
+import { t } from '@core/i18n';
+
 export interface PixelAspectPreset {
   id: string;
   /** What it is, in the user's terms — matches the label AE uses. */
@@ -42,6 +44,21 @@ export const PIXEL_ASPECT_PRESETS: readonly PixelAspectPreset[] = [
   { id: 'anamorphic_2_1', label: 'Anamorphic 2:1', value: 2, note: 'a 2× squeeze lens, unsqueezed on projection' },
 ];
 
+/**
+ * The preset's label for display. The catalog array keeps the English (it is
+ * module-scope data, read before any locale loads); translation happens here,
+ * at render time. The AE format names (D1/DV …, HDV) are proper names.
+ */
+export function pixelAspectLabel(preset: PixelAspectPreset): string {
+  switch (preset.id) {
+    case 'square': return t('composition.pixelAspect.square', 'Square Pixels');
+    case 'd1_ntsc_wide': return t('composition.pixelAspect.d1NtscWide', 'D1/DV NTSC Widescreen');
+    case 'd1_pal_wide': return t('composition.pixelAspect.d1PalWide', 'D1/DV PAL Widescreen');
+    case 'anamorphic_2_1': return t('composition.pixelAspect.anamorphic', 'Anamorphic 2:1');
+    default: return preset.label;
+  }
+}
+
 /** Ratios closer than this count as the same preset. */
 const PAR_EPSILON = 5e-4;
 
@@ -57,5 +74,7 @@ export function findPixelAspectPreset(value: number): PixelAspectPreset | undefi
  */
 export function describePixelAspect(value: number): string {
   const preset = findPixelAspectPreset(value);
-  return `${value.toFixed(4)} (${preset ? preset.label : 'custom'})`;
+  return preset
+    ? t('composition.pixelAspect.describePreset', '{value} ({label})', { value: value.toFixed(4), label: pixelAspectLabel(preset) })
+    : t('composition.pixelAspect.describeCustom', '{value} (custom)', { value: value.toFixed(4) });
 }

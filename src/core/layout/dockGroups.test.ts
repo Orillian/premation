@@ -20,6 +20,7 @@ const group = (panels: string[], over: Partial<DockGroupState> = {}): DockGroupS
   id: `g-${panels[0]}`,
   panels,
   active: panels[0] ?? null,
+  column: 0,
   collapsed: false,
   weight: 1,
   ...over,
@@ -77,8 +78,8 @@ describe('reconcileGroups', () => {
     const groups = [group(['a', 'b'], { active: 'b', collapsed: true, weight: 2.5 }), group(['c'])];
     const out = reconcileGroups('rightInspector', ['a', 'b', 'c'], groups);
     expect(out).toEqual([
-      { id: 'g-a', panels: ['a', 'b'], active: 'b', collapsed: true, weight: 2.5 },
-      { id: 'g-c', panels: ['c'], active: 'c', collapsed: false, weight: 1 },
+      { id: 'g-a', panels: ['a', 'b'], active: 'b', collapsed: true, weight: 2.5, column: 0 },
+      { id: 'g-c', panels: ['c'], active: 'c', collapsed: false, weight: 1, column: 0 },
     ]);
     // Fresh objects: the input is untouched.
     expect(groups[0]!.panels).toEqual(['a', 'b']);
@@ -152,11 +153,23 @@ describe('ids, regions and persisted input', () => {
       { panels: [] },
       null,
     ])).toEqual([
-      { id: 'g1', panels: ['a', 'b'], active: 'a', collapsed: false, weight: 1 },
-      { id: 'g-c', panels: ['c'], active: 'c', collapsed: false, weight: 1 },
+      { id: 'g1', panels: ['a', 'b'], active: 'a', collapsed: false, weight: 1, column: 0 },
+      { id: 'g-c', panels: ['c'], active: 'c', collapsed: false, weight: 1, column: 0 },
     ]);
     expect(sanitizeDockGroups({ leftSidebar: [{ id: 'x', panels: ['a'] }], rightInspector: 3 })).toEqual({
-      leftSidebar: [{ id: 'x', panels: ['a'], active: 'a', collapsed: false, weight: 1 }],
+      leftSidebar: [{ id: 'x', panels: ['a'], active: 'a', collapsed: false, weight: 1, column: 0 }],
     });
+  });
+});
+
+describe('clampColumnWeights', () => {
+  it('lifts a sliver column to 40% of the average and leaves sane shares alone', async () => {
+    const { clampColumnWeights } = await import('./dockGroups');
+    // The divider bug's own numbers: 592 : 4. The sliver comes back to 40% of the average (298).
+    const [a, b] = clampColumnWeights([592, 4]);
+    expect(a).toBe(592);
+    expect(b).toBeCloseTo(0.4 * 298);
+    expect(clampColumnWeights([1, 0.9])).toEqual([1, 0.9]);
+    expect(clampColumnWeights([])).toEqual([1]);
   });
 });

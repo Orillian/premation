@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyValueExpression } from '@utils/evalMath';
 import { whipExpression } from '@core/whip/whipTarget';
+import { whipEffectNames } from '@core/whip/whipEffectNames';
 import type { PropertyMeta } from '@core/inspector/propertyMeta';
 import { mirrorModifierStack } from '@core/mirror/modifierStacks';
 import { memberExpressionOf } from '@core/mirror/memberExpressions';
@@ -58,6 +59,7 @@ import { useGesture } from '@hooks/useGesture';
 import { edit } from '@core/engine/uiEdits';
 import { reportUnaddressed } from './useComponentProp';
 import { engineRowMenuItems } from './propertyRowMenu';
+import { t } from '@core/i18n';
 import {
   allAddressable,
   deleteKeysAtCommands,
@@ -202,13 +204,15 @@ export interface MultiPropertyField {
   onBlurCapture: (e: React.FocusEvent<HTMLElement>) => void;
 }
 
-const EASINGS: ReadonlyArray<{ id: EasePreset; label: string }> = [
-  { id: 'Linear', label: 'Linear' },
-  { id: 'Ease', label: 'Easy Ease' },
-  { id: 'EaseIn', label: 'Easy Ease In' },
-  { id: 'EaseOut', label: 'Easy Ease Out' },
-  { id: 'Hold', label: 'Toggle Hold' },
-];
+function easings(): ReadonlyArray<{ id: EasePreset; label: string }> {
+  return [
+    { id: 'Linear', label: t('inspector.multiPropertyField.ease.linear', 'Linear') },
+    { id: 'Ease', label: t('inspector.multiPropertyField.ease.easyEase', 'Easy Ease') },
+    { id: 'EaseIn', label: t('inspector.multiPropertyField.ease.easyEaseIn', 'Easy Ease In') },
+    { id: 'EaseOut', label: t('inspector.multiPropertyField.ease.easyEaseOut', 'Easy Ease Out') },
+    { id: 'Hold', label: t('inspector.multiPropertyField.ease.toggleHold', 'Toggle Hold') },
+  ];
+}
 
 const NO_NAV: NavState = { hasPrev: false, hasNext: false, atKeyframe: false, prevT: null, nextT: null };
 
@@ -357,7 +361,7 @@ export function useMultiPropertyField(
   const pinned = exists && layer!.pinned.includes(prop);
   const resetValue = meta.resettable && typeof meta.defaultValue === 'number' ? meta.defaultValue : undefined;
   const hint = nodeIds.length > 1 && agg.present < nodeIds.length
-    ? `${agg.present} of ${nodeIds.length}`
+    ? t('inspector.multiPropertyField.coverage', '{n} of {total}', { n: agg.present, total: nodeIds.length })
     : undefined;
 
   // The lane draws the PRIMARY layer's keyframes on the comp axis.
@@ -371,8 +375,8 @@ export function useMultiPropertyField(
     openContextMenu(e.clientX, e.clientY, [
       {
         id: 'lane-easing',
-        label: 'Keyframe Interpolation',
-        children: EASINGS.map((p) => ({
+        label: t('inspector.multiPropertyField.interpolation', 'Keyframe Interpolation'),
+        children: easings().map((p) => ({
           id: `lane-ease-${p.id}`,
           label: p.label,
           onSelect: () => { void easeKeysAtCommands(nodeId, [prop], compT, p.id).then((cmds) => edit(`Set keyframe easing: ${p.id}`, cmds)); },
@@ -381,7 +385,7 @@ export function useMultiPropertyField(
       { id: 'lane-sep', separator: true },
       {
         id: 'lane-remove',
-        label: 'Remove Keyframe',
+        label: t('inspector.multiPropertyField.removeKeyframe', 'Remove Keyframe'),
         danger: true,
         onSelect: () => { void deleteKeysAtCommands(nodeId, [prop], compT).then((cmds) => edit(`Remove ${label} keyframe`, cmds)); },
       },
@@ -391,7 +395,7 @@ export function useMultiPropertyField(
   const onWhip = (target: { nodeId: string; prop?: string }): void => {
     const name = mirror.layer(target.nodeId)?.name;
     if (!name) return;
-    const src = whipExpression(name, target.prop ?? prop);
+    const src = whipExpression(name, target.prop ?? prop, whipEffectNames(target.nodeId, target.prop ?? prop));
     linkExpressions(`Link ${label}`, nodeIds.map((id) => ({ nodeId: id, prop, src })));
     setExprOpen(true);
   };
@@ -523,7 +527,9 @@ export function toggleAnimationGroupEach(
   const ids = nodeIds.filter((id) => mirror.hasLayer(id));
   if (ids.length === 0 || members.length === 0) return;
   const anyAnimated = ids.some((id) => members.some((m) => isTrackAnimated(mirror, id, m.prop)));
-  const label = anyAnimated ? `Remove ${groupLabel} animation` : `Animate ${groupLabel}`;
+  const label = anyAnimated
+    ? `Remove ${groupLabel} animation`
+    : `Animate ${groupLabel}`;
   if (groupOnEngine(ids, members)) {
     void edit(label, stopwatchCommands(ids, members.map((m) => m.prop), compTime));
     return;
@@ -572,6 +578,8 @@ export function toggleKeyframeGroup(
   const animatedIds = nodeIds.filter((id) => props.some((p) => isTrackAnimated(mirror, id, p)));
   if (animatedIds.length === 0 || !groupOnEngine(animatedIds, members)) return;
   const { atKeyframe } = groupNavigatorState(animatedIds, props, compTime);
-  const label = atKeyframe ? `Remove ${groupLabel} keyframe` : `Add ${groupLabel} keyframe`;
+  const label = atKeyframe
+    ? `Remove ${groupLabel} keyframe`
+    : `Add ${groupLabel} keyframe`;
   void keyToggleCommands(animatedIds, props, compTime).then((cmds) => edit(label, cmds));
 }

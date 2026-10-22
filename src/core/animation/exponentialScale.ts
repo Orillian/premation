@@ -39,6 +39,7 @@
  */
 
 import {  type Keyframe } from '@motion/animation';
+import { t } from '@core/i18n';
 
 /** Scale props this assistant will act on. */
 export const SCALE_PROPS = ['scaleX', 'scaleY'] as const;
@@ -84,9 +85,9 @@ export function refuseExponentialScale(range: ExpScaleRange): ExpScaleRefusal | 
 }
 
 export const REFUSAL_TEXT: Record<ExpScaleRefusal, string> = {
-  'needs-two-keyframes': 'Exponential Scale needs at least two scale keyframes.',
-  'non-positive-scale': 'Exponential Scale needs both scale values above zero — a ratio through 0 has no exponential path.',
-  'zero-duration': 'Exponential Scale needs the two keyframes at different times.',
+  get 'needs-two-keyframes'() { return t('core.expScale.needsTwoKeyframes', 'Exponential Scale needs at least two scale keyframes.'); },
+  get 'non-positive-scale'() { return t('core.expScale.nonPositiveScale', 'Exponential Scale needs both scale values above zero — a ratio through 0 has no exponential path.'); },
+  get 'zero-duration'() { return t('core.expScale.zeroDuration', 'Exponential Scale needs the two keyframes at different times.'); },
 };
 
 /**

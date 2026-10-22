@@ -18,11 +18,15 @@
 // `now` is passed in.
 #pragma once
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <map>
 #include <set>
@@ -35,10 +39,12 @@
 #include "engine_api.hpp"
 #include "engine_ctx.hpp"
 #include "events.hpp"
+#include "frame_keys.hpp"
 #include "frame_scene.hpp"
 #include "history.hpp"
 #include "jobs/job_api.hpp"
 #include "jobs/job_runner.hpp"
+#include "joining_thread.hpp"
 #include "model.hpp"
 #include "overlay_geometry.hpp"
 #include "premation/protocol/frame_channel.hpp"
@@ -129,7 +135,13 @@ class Session {
 
   /// D2w: build viewport frames from the document with the engine's scene
   /// builder (render graph) instead of C2's quad scene. Null = C2's scene.
-  void set_frame_builder(FrameBuilder* builder) noexcept { frameBuilder_ = builder; }
+  /// Waits for the builds in flight first (the worker reads the builder).
+  void set_frame_builder(FrameBuilder* builder);
+  /// Wait until every frame build handed to the build worker has been built
+  /// and submitted to the sink, then take their reports (layer errors,
+  /// cpuFrameMs) as tick() would. Tests: what makes a submit_frame observable
+  /// right after the request that caused it. Core thread.
+  void drain_builds();
   /// E2: the audio master clock + the document's sound (audio/transport_clock.hpp's
   /// seam). Null = the wall clock paces playback, no sound.
   void set_media_clock(MediaClock* clock) noexcept { mediaClock_ = clock; }
@@ -150,7 +162,6 @@ class Session {
   // ── envelope ──
   void handle_hello(const api::Hello& hello);
   void handle_request(api::Request request, Clock::time_point now);
-  api::Outcome handle_request_body(const api::Request& request, Clock::time_point now);
   void respond(api::Seq seq, api::Outcome outcome);
   void send_events(api::Revision from, api::Revision to, std::vector<api::Event> events, std::optional<api::Seq> seq,
                    api::Origin origin);
@@ -171,7 +182,8 @@ class Session {
   doc::HCtx handler_ctx(api::Origin origin);
   doc::PCtx pctx();
   void ensure_timelines();
-  void stamp_missing_key_ids(const doc::ChangeSet& touched, doc::HCtx& x);
+  /// `touched`: the open journal (Document::journal) — the parts the request wrote so far.
+  void stamp_missing_key_ids(const doc::Parts& touched, doc::HCtx& x);
 
   // ── history ──
   void apply_history(const doc::ChangeSet& target);
@@ -195,14 +207,36 @@ class Session {
   StillImage render_still(const doc::StillRequest& r);
   /// renderDocumentStill: `file` restored into a scratch Document (the open one untouched), its `comp` at `time`.
   StillImage render_document_still(const doc::Json& file, const std::string& comp, api::Time time, std::uint32_t maxSize);
-  /// A render-thread answer, waited for at most kRenderQueryTimeout.
+  /// A render-thread answer for the request being handled. Ready already →
+  /// `finish` makes the query's result now. Otherwise the request is
+  /// DEFERRED: its response is owed (deferred_), polled from tick(), sent when
+  /// the render thread gets to it — and the hook answers HookAnswer::deferred
+  /// so the query handler throws DeferredAnswer. This thread never waits on
+  /// the renderer: a heavy frame in hand, a device-lost recovery or a run of
+  /// thumbnails used to hold the document core (every edit, the transport and
+  /// the heartbeat behind it) for seconds at a time, and the supervisor's hang
+  /// window killed a healthy engine over it.
   template <class T>
-  T await_render(std::future<T> result, std::string_view what);
-  /// Well inside the supervisor's hang window (engineSupervisor.ts: a ping a
-  /// second, killed after 5 s without a pong): this thread answers the pings,
-  /// so a longer wait turned a busy renderer into a "hung" engine — and the
-  /// thumbnails the page asks for again after the restart into a crash loop.
+  T await_render(std::future<T> result, std::string_view what, std::function<api::QueryResult(T)> finish);
+  /// Outside a request (a hook used from a job, say) there is nothing to
+  /// defer: bounded wait, then `pending` (busy; ask again).
   static constexpr std::chrono::milliseconds kRenderQueryTimeout{2000};
+  /// A deferred answer the renderer never produced (its thread stuck, or the
+  /// frame hopeless): the request fails `busy` after this, never silently.
+  static constexpr std::chrono::seconds kDeferredBudget{60};
+  /// How often tick() looks at the owed answers.
+  static constexpr std::chrono::milliseconds kDeferredPoll{4};
+  struct DeferredReply {
+    api::Seq seq = 0;
+    std::string what;
+    Clock::time_point since;
+    /// nullopt until the render thread answered; then the response's outcome.
+    std::function<std::optional<api::Outcome>()> poll;
+  };
+  std::vector<DeferredReply> deferred_;
+  void poll_deferred(Clock::time_point now);
+  /// The core loop's clock as of the last request or tick (what deferred_ is budgeted against).
+  Clock::time_point loopNow_{};
 
   // ── transport ──
   [[nodiscard]] std::optional<Clock::time_point> next_clock_deadline() const;
@@ -222,6 +256,118 @@ class Session {
   void submit_frame(std::uint32_t clockDropped, bool fromClock = false);
   /// One viewport's job for the frame at `time_` (`announce`: report the layer errors).
   void submit_frame_to(const ViewportConfig& port, const std::string& comp, std::uint32_t clockDropped, bool announce);
+
+  // ── the build worker ──
+  // The frame builder (document → BuiltFrame, hundreds of ms on a heavy comp)
+  // used to run on the core thread inside submit_frame_to, so every request
+  // queued behind a playback tick waited for it. It now runs on the session's
+  // build worker, one thread, one build at a time, and the core thread only
+  // assembles the job (what to build, for which viewport, at which time and
+  // revision) and hands it over. What makes that safe:
+  //   • `buildMu_` (the build lock) is held by the worker for the whole build.
+  //     The core thread takes it around everything that WRITES the document
+  //     (run_edits, history, loads, a job's apply — BuildLock{write}) and
+  //     around every other use of the frame builder, whose text measurer,
+  //     fonts and memos are one object (thumbnails, hitTest, the text and rig
+  //     queries — BuildLock{read}). Queries that only read the document never
+  //     take it: readers on two threads are fine, and the document is written
+  //     on the core thread only. So queries, the transport and the heartbeat
+  //     run beside a build; an edit waits for at most the build in flight.
+  //   • Determinism: a built frame is a pure function of (document revision,
+  //     time, viewport). Every write-lock release bumps `docWrites_`; a task
+  //     records the count when it is queued and the worker, holding the lock,
+  //     skips a task whose count moved (the document is no longer the one the
+  //     job describes) and asks the core thread for a fresh frame instead.
+  //   • The worker has its own expression cache and expression environment
+  //     over a copy of the editor view (the core thread writes `view_.tabTime`
+  //     on every seek and tick): no state is shared with the core's queries.
+  //   • Back-pressure keeps its meaning: a viewport whose last task has not
+  //     STARTED building yet gets no new one from the clock (its frame is
+  //     counted dropped, as a job the render thread had not started was).
+  //   • The builder's per-layer errors and build time travel back as a report
+  //     the core thread takes in tick() (announced once per frame, as before).
+  struct BuildTask {
+    RenderJob job;  ///< the job's metadata (viewport, frame, time, revision, cache scope); the worker fills the rest
+    ViewportConfig port;
+    std::string comp;
+    api::Time time = 0;       ///< the frame's time (a held viewport's own, else the clock's)
+    api::Time clockTime = 0;  ///< the transport clock (the overlays' time)
+    bool playing = false;
+    bool announce = false;
+    std::string mediaBase;
+    doc::EditorView view;
+    std::optional<std::string> activeComp;
+    std::vector<doc::OverlaySubscription> overlays;  ///< this viewport's subscriptions
+    std::uint64_t writes = 0;                        ///< docWrites_ when queued
+  };
+  struct BuildReport {
+    std::string comp;
+    std::vector<api::LayerError> errors;
+    double ms = 0;
+    bool announce = false;
+    bool skipped = false;  ///< the document moved on before the build began: build again
+    bool cached = false;   ///< a cached frame (RenderJob::cachedKey): no build ran
+  };
+  /// The build lock as the core thread takes it. Nests (only the outermost
+  /// locks); `write` marks a document write, which bumps docWrites_ when the
+  /// outermost lock is released. Core thread only.
+  class BuildLock {
+   public:
+    BuildLock(Session& s, bool write) : s_(s) {
+      if (s_.buildLockDepth_++ == 0) s_.buildMu_.lock();
+      s_.buildLockWrote_ = s_.buildLockWrote_ || write;
+    }
+    ~BuildLock() {
+      if (--s_.buildLockDepth_ != 0) return;
+      if (s_.buildLockWrote_) {
+        s_.buildLockWrote_ = false;
+        s_.docWrites_.fetch_add(1, std::memory_order_release);
+      }
+      s_.buildMu_.unlock();
+    }
+    BuildLock(const BuildLock&) = delete;
+    BuildLock& operator=(const BuildLock&) = delete;
+    BuildLock(BuildLock&&) = delete;
+    BuildLock& operator=(BuildLock&&) = delete;
+
+   private:
+    Session& s_;
+  };
+  class LockedText;
+  friend class LockedText;
+  class LockedRig;
+  friend class LockedRig;
+  /// Queue `task` for the worker (newest task per viewport wins), starting the worker on first use.
+  void enqueue_build(BuildTask task);
+  /// Whether a task for `viewport` is queued and not yet building (submit_frame's back-pressure).
+  [[nodiscard]] bool build_pending(std::uint32_t viewport) const;
+  /// Whether any task is queued or building (next_deadline polls for the reports meanwhile).
+  [[nodiscard]] bool builds_active() const;
+  void build_worker();
+  /// One task: the build under the lock, then the job to the sink and a report to the core thread.
+  void run_build(BuildTask task);
+  /// After the builder (or without one): the C2 fallback scene, the overlays'
+  /// geometry, views and rig records, the onion ghosts. On the worker with its
+  /// own context, or on the core thread when this Session has no builder.
+  void complete_job(BuildTask& t, const doc::PCtx& pc, TextQueries* text, RigQueries* rig);
+  /// Take the worker's reports: cpuFrameMs, the layer errors, a rebuild for skipped tasks.
+  void pump_builds();
+  std::mutex buildMu_;
+  /// Core thread only: BuildLock nesting depth, and whether the outermost one wrote.
+  std::uint32_t buildLockDepth_ = 0;
+  bool buildLockWrote_ = false;
+  std::atomic<std::uint64_t> docWrites_{0};
+  /// The worker's expression cache (anim.hpp ExprCache memoises compiled sources; the
+  /// core thread's `exprCache_` is written by its own queries). Under buildMu_.
+  doc::ExprCache buildExprCache_;
+  mutable std::mutex buildQueueMu_;
+  std::condition_variable buildCv_;
+  std::deque<BuildTask> buildQueue_;
+  std::vector<BuildReport> buildReports_;
+  bool buildBusy_ = false;
+  bool buildStop_ = false;
+  std::unique_ptr<TextQueries> lockedText_;
+  std::unique_ptr<RigQueries> lockedRig_;
   [[nodiscard]] std::optional<std::string> active_comp() const;
   [[nodiscard]] api::Time frame_dur() const;
   struct Range {
@@ -285,6 +431,8 @@ class Session {
   };
   std::optional<RequestScope> scope_;
   void flush_scope();
+  /// nullopt: the request's answer is deferred (deferred_), no response yet.
+  std::optional<api::Outcome> handle_request_body(const api::Request& request, Clock::time_point now);
 
   // transport (engine-owned clock, never document state)
   std::optional<api::ItemId> activeComp_;
@@ -324,6 +472,30 @@ class Session {
   /// view put back (a pane, a zoom, a resolution) is the scope it was.
   std::vector<std::pair<ViewportConfig, std::uint64_t>> scopeConfigs_;
   std::uint64_t scopeConfigSeq_ = 0;
+  /// The revision half of a cache scope (its low word): the revision, mixed.
+  [[nodiscard]] static std::uint32_t revision_word(api::Revision revision) noexcept;
+
+  // ── cached playback without a build (core/frame_keys.hpp, render/coverage_ledger.hpp) ──
+  /// The active comp's per-frame document keys. Follows the active comp
+  /// (sync_frame_keys) and every commit (note_document_changed).
+  doc::FrameKeyIndex frameKeys_;
+  void sync_frame_keys();
+  /// After every revision bump: the index follows `changes` (null = the whole
+  /// document changed) and the sink learns which frames the step touched.
+  void note_document_changed(api::Revision from, const doc::ChangeSet* changes);
+  /// Viewports whose next frame must be BUILT (FrameSink::take_build_requests:
+  /// a cached job found no tier holding its frame; a pixel read of a frame the
+  /// render thread has no build of).
+  std::vector<std::uint32_t> forceBuild_;
+  /// Cached jobs handed to the sink, and how many it has answered (served,
+  /// missed or dropped) as of the last look: while some are outstanding the
+  /// core loop polls the sink for build requests (next_deadline), for at most
+  /// kCachedPoll after the last one.
+  std::uint64_t cachedSubmitted_ = 0;
+  std::uint64_t cachedAnswered_ = 0;
+  Clock::time_point cachedPollUntil_{};
+  static constexpr std::chrono::seconds kCachedPoll{2};
+  void poll_build_requests();
   std::uint64_t playheadSkipped_ = 0;
   Clock::time_point lastStats_{};
 
@@ -359,9 +531,12 @@ class Session {
     return rigQueries_ != nullptr ? rigQueries_ : frameBuilder_ != nullptr ? frameBuilder_->rig_queries() : nullptr;
   }
   /// B4 round 5: fill the `rig` records of a frame's geometry for the layers `o` subscribes with the rig kind.
-  void attach_overlay_rig(const doc::OverlaySubscription& o, std::vector<api::OverlayLayerGeometry>& geometry);
+  /// `rig`, `text` and the context are the caller's (the worker's or the core thread's).
+  void attach_overlay_rig(RigQueries* rig, TextQueries* text, const doc::PCtx& pc, const doc::OverlaySubscription& o,
+                          api::Time time, std::vector<api::OverlayLayerGeometry>& geometry);
   /// Onion skins: ghost frames for this viewport, reused while the playhead,
-  /// the document and the camera stay put.
+  /// the document and the camera stay put. Worker thread only (a Session
+  /// without a frame builder draws no onion skins).
   struct OnionMemo {
     std::uint64_t revision = ~std::uint64_t{0};
     std::int64_t frame = -1;
@@ -377,7 +552,7 @@ class Session {
     std::vector<RenderJob::OnionGhost> ghosts;
   };
   std::map<std::uint32_t, OnionMemo> onionMemo_;
-  void attach_onion(RenderJob& job, const ViewportConfig& port, const std::string& comp);
+  void attach_onion(BuildTask& t, const doc::PCtx& pc);
   std::vector<api::LayerError> layerErrors_;   // the set last announced (layerErrors event)
   std::string layerErrorsComp_;
   /// D5: the frame builder's CPU time per frame (ms, moving average) — the
@@ -442,6 +617,10 @@ class Session {
   /// P7a runPluginCommand: the plugin's command run inside the request's journal (one entry), its edits
   /// kept in jobLog_ for the log (session_plugins.cpp).
   api::CommandResult run_plugin_command_in_journal(const api::RunPluginCommand& c, api::Origin origin, std::string& label);
+
+  /// The build worker. LAST: joined (after ~Session told it to stop) before
+  /// any member it reads goes away.
+  JoiningThread buildThread_;
 };
 
 /// The seq of a Request inside an EngineMessage that failed to decode (so

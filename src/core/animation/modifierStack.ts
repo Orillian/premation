@@ -35,6 +35,7 @@
 
 import {  type ExpressionState } from '@motion/animation';
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 // ── The model ───────────────────────────────────────────────────────
 
@@ -61,32 +62,32 @@ export const MODIFIER_KINDS: readonly ModifierKind[] = [
 ];
 
 export const MODIFIER_LABELS: Record<ModifierKind, string> = {
-  offset: 'Offset',
-  multiply: 'Multiply',
-  clamp: 'Clamp',
-  wiggle: 'Wiggle',
-  oscillate: 'Oscillate',
-  spring: 'Overshoot',
-  smooth: 'Smooth',
-  delay: 'Delay',
-  loop: 'Loop',
-  audio: 'Audio',
-  expression: 'Expression',
+  get offset() { return t('core.modifierStack.labelOffset', 'Offset'); },
+  get multiply() { return t('core.modifierStack.labelMultiply', 'Multiply'); },
+  get clamp() { return t('core.modifierStack.labelClamp', 'Clamp'); },
+  get wiggle() { return t('core.modifierStack.labelWiggle', 'Wiggle'); },
+  get oscillate() { return t('core.modifierStack.labelOscillate', 'Oscillate'); },
+  get spring() { return t('core.modifierStack.labelSpring', 'Overshoot'); },
+  get smooth() { return t('core.modifierStack.labelSmooth', 'Smooth'); },
+  get delay() { return t('core.modifierStack.labelDelay', 'Delay'); },
+  get loop() { return t('core.modifierStack.labelLoop', 'Loop'); },
+  get audio() { return t('core.modifierStack.labelAudio', 'Audio'); },
+  get expression() { return t('core.modifierStack.labelExpression', 'Expression'); },
 };
 
 /** One line each, shown under the row — what it DOES, not what it is called. */
 export const MODIFIER_HINTS: Record<ModifierKind, string> = {
-  offset: 'Adds a constant.',
-  multiply: 'Scales by a factor.',
-  clamp: 'Holds the value between two limits.',
-  wiggle: 'Seeded smooth noise — identical on every run.',
-  oscillate: 'A sine wave, forever.',
-  spring: 'Velocity-driven overshoot after the last keyframe.',
-  smooth: 'Averages the value with its own past and future.',
-  delay: 'Reads the value from earlier in time.',
-  loop: 'Repeats the keyframes past the last one.',
-  audio: 'Adds an amount driven by the live audio level.',
-  expression: 'Raw expression text. `value` is the running value.',
+  get offset() { return t('core.modifierStack.hintOffset', 'Adds a constant.'); },
+  get multiply() { return t('core.modifierStack.hintMultiply', 'Scales by a factor.'); },
+  get clamp() { return t('core.modifierStack.hintClamp', 'Holds the value between two limits.'); },
+  get wiggle() { return t('core.modifierStack.hintWiggle', 'Seeded smooth noise — identical on every run.'); },
+  get oscillate() { return t('core.modifierStack.hintOscillate', 'A sine wave, forever.'); },
+  get spring() { return t('core.modifierStack.hintSpring', 'Velocity-driven overshoot after the last keyframe.'); },
+  get smooth() { return t('core.modifierStack.hintSmooth', 'Averages the value with its own past and future.'); },
+  get delay() { return t('core.modifierStack.hintDelay', 'Reads the value from earlier in time.'); },
+  get loop() { return t('core.modifierStack.hintLoop', 'Repeats the keyframes past the last one.'); },
+  get audio() { return t('core.modifierStack.hintAudio', 'Adds an amount driven by the live audio level.'); },
+  get expression() { return t('core.modifierStack.hintExpression', 'Raw expression text. `value` is the running value.'); },
 };
 
 interface ModifierCommon {
@@ -206,7 +207,7 @@ export function describeModifier(m: Modifier): string {
     case 'clamp': return `${m.min} – ${m.max}`;
     case 'wiggle': return `${m.freq} Hz · ${m.amp}`;
     case 'oscillate': return `${m.freq} Hz · ${m.amp}`;
-    case 'spring': return `${m.frequency} Hz · decay ${m.decay}`;
+    case 'spring': return t('core.modifierStack.springSummary', '{freq} Hz · decay {decay}', { freq: m.frequency, decay: m.decay });
     case 'smooth': return `± ${m.windowSec}s`;
     case 'delay': return `${m.seconds}s`;
     case 'loop': return m.mode;
@@ -393,8 +394,8 @@ export interface BehaviorRecipe {
 export const BEHAVIOR_RECIPES: readonly BehaviorRecipe[] = [
   {
     preset: 'Drift',
-    label: 'Drift',
-    description: 'Slow continuous wander on both axes — now two wiggle rows you can retune.',
+    get label() { return t('core.modifierStack.recipeDrift', 'Drift'); },
+    get description() { return t('core.modifierStack.recipeDriftDescription', 'Slow continuous wander on both axes — now two wiggle rows you can retune.'); },
     props: [
       // The preset's amplitude is `thisComp.width * 0.02`, which a numeric
       // parameter cannot be. 1920 × 0.02 = 38.4 is that value at the default
@@ -409,8 +410,8 @@ export const BEHAVIOR_RECIPES: readonly BehaviorRecipe[] = [
   },
   {
     preset: 'Pendulum',
-    label: 'Pendulum',
-    description: 'Endless pendulum rotation — an oscillator row, so amplitude and rate are sliders.',
+    get label() { return t('core.modifierStack.recipePendulum', 'Pendulum'); },
+    get description() { return t('core.modifierStack.recipePendulumDescription', 'Endless pendulum rotation — an oscillator row, so amplitude and rate are sliders.'); },
     props: [
       // The preset is `value + Math.sin(time * 1.8) * 6`. The oscillate row
       // takes frequency in Hz — the unit a person briefs in — so 1.8 rad/s is

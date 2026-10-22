@@ -33,8 +33,10 @@ import { ValueField } from '@components/ValueField';
 import { PropertyRow, KeyframeLane, type PropertyRowLayout } from '@components/PropertyRow';
 import { PickWhip } from '@components/PickWhip';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { useActiveCompFps } from '@hooks/useMirror';
 import { ExpressionEditor } from '@layout/Motion/ExpressionEditor';
+import { removeExpressionEdit } from '@providers/commands/expressionCommands';
 import { type PropertyAccess } from '@core/inspector/multiSelection';
 import { useInspectorHosted } from './inspectorSelection';
 import { ModifierChips } from './ModifierChips';
@@ -115,8 +117,14 @@ function MultiPropertyRowInner({
         // An attached (or open) expression is the row's expression MARK at rest.
         data-persist={f.hasExpr || f.exprOpen || undefined}
         aria-pressed={f.exprOpen}
-        aria-label={`${f.exprOpen ? 'Hide' : 'Show'} ${label} expression`}
-        title={f.exprError ?? (f.hasExpr ? (f.exprEnabled ? 'Expression on — click to edit' : 'Expression off — click to edit') : 'Add an expression')}
+        aria-label={f.exprOpen
+          ? t('inspector.multiProperty.hideExprAria', 'Hide {label} expression', { label })
+          : t('inspector.multiProperty.showExprAria', 'Show {label} expression', { label })}
+        title={f.exprError ?? (f.hasExpr
+          ? (f.exprEnabled
+            ? t('inspector.multiProperty.exprOn', 'Expression on — click to edit')
+            : t('inspector.multiProperty.exprOff', 'Expression off — click to edit'))
+          : t('inspector.multiProperty.addExpr', 'Add an expression'))}
         onClick={(e) => {
           e.stopPropagation();
           f.toggleExpression();
@@ -125,7 +133,7 @@ function MultiPropertyRowInner({
         =
       </button>
       <PickWhip
-        label={`${label} pick-whip — drag onto a layer or property to link`}
+        label={t('inspector.multiProperty.pickWhip', '{label} pick-whip — drag onto a layer or property to link', { label })}
         className={styles.whip}
         accept={(target) => !(target.nodeId === nodeId && (target.prop ?? prop) === prop)}
         onPick={f.onWhip}
@@ -169,6 +177,11 @@ function MultiPropertyRowInner({
       compact={compact}
       className={cn(styles.row, f.exprOpen && styles.rowExprOpen, className)}
       onStopwatch={f.toggleAnimation}
+      // AE's Alt-click: remove the expression, or add one and open its editor (the `=` toggle's add path).
+      onAltStopwatch={() => {
+        if (f.hasExpr) void removeExpressionEdit([{ nodeId, prop }]);
+        else f.toggleExpression();
+      }}
       navigator={f.navigator}
       onReset={resetVal !== undefined ? () => f.writeAll(resetVal * f.scale) : undefined}
       onFocusCapture={f.onFocusCapture}

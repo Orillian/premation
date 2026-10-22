@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { engine } from '@core/engine/engineInstance';
 import { REGISTRY_NOTICE_KEY, resetRegistryNoticeCacheForTest } from '@core/nativePlugins/nativePlugins';
+import { useContextMenuStore } from '@stores/contextMenuStore';
 import { NativePluginsList } from './NativePluginsList';
 import { NativePluginsPanel } from './NativePluginsPanel';
 import { RegistryPluginsNotice } from './RegistryPluginsNotice';
@@ -12,6 +13,20 @@ jest.mock('@core/engine/engineInstance', () => {
 });
 
 const base = { vendor: 'Acme', sdk: '1.0', error: '', effects: [], gpu: false };
+
+/** Right-click a plugin row and choose `label` from its context menu. */
+async function chooseFromRowMenu(row: RegExp, label: string): Promise<void> {
+  fireEvent.contextMenu(screen.getByRole('treeitem', { name: row }));
+  const item = useContextMenuStore.getState().items.find((i) => i.label === label);
+  if (!item) throw new Error(`no "${label}" in ${useContextMenuStore.getState().items.map((i) => String(i.label)).join(', ')}`);
+  expect(item.disabled).toBeFalsy();
+  await act(async () => { item.onSelect?.(); });
+}
+
+function rowMenuLabels(row: RegExp): string[] {
+  fireEvent.contextMenu(screen.getByRole('treeitem', { name: row }));
+  return useContextMenuStore.getState().items.filter((i) => !i.separator).map((i) => String(i.label));
+}
 
 function engineAnswers(plugins: unknown[]): void {
   jest.mocked(engine).mockReturnValue({
@@ -124,18 +139,23 @@ describe('installed plugins with the store', () => {
     jest.spyOn(api, 'checkPluginUpdates').mockResolvedValue([{ id: 'com.acme.glow', latestVersion: '1.3.0', publisherKey: 'k', sha256: 'x', blocked: false, kind: 'native' }]);
 
     render(<NativePluginsPanel />);
-    const update = await screen.findByRole('button', { name: 'Update to 1.3.0' });
-    await act(async () => { fireEvent.click(screen.getByRole('switch', { name: 'Enable Acme Glow' })); });
+    // The status is a word on the row; the actions are its context menu.
+    expect(await screen.findByText('Update 1.3.0')).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(rowMenuLabels(/Acme Glow/)).toEqual(['Disable', 'Update to 1.3.0', 'Show in Folder', 'Uninstall Acme Glow']);
+
+    await chooseFromRowMenu(/Acme Glow/, 'Disable');
     expect(execute).toHaveBeenCalledWith({ type: 'setPluginEnabled', plugin: 'com.acme.glow', enabled: false });
     expect(bridge.setEnabled).toHaveBeenCalledWith({ id: 'com.acme.glow', enabled: false });
 
-    await act(async () => { fireEvent.click(update); });
+    await chooseFromRowMenu(/Acme Glow/, 'Update to 1.3.0');
     expect(bridge.install).toHaveBeenCalledWith({ id: 'com.acme.glow', version: '1.3.0' });
     expect(await screen.findByText(/Restart Premation to use this version/)).toBeInTheDocument();
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Uninstall Acme Glow' })); });
+    await chooseFromRowMenu(/Acme Glow/, 'Uninstall Acme Glow');
     expect(bridge.uninstall).toHaveBeenCalledWith('com.acme.glow');
     expect(await screen.findByText('Removed on restart')).toBeInTheDocument();
+    expect(rowMenuLabels(/Acme Glow/)).not.toContain('Uninstall Acme Glow');
   });
 });
 
@@ -159,9 +179,13 @@ describe('a Premation Cloud plugin without the plan', () => {
     jest.spyOn(api, 'checkPluginUpdates').mockResolvedValue([]);
 
     render(<NativePluginsPanel />);
-    expect(await screen.findByText('Requires Premation Cloud')).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Enable Saber' })).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check plan' })); });
+    expect(await screen.findByText('Locked')).toBeInTheDocument();
+    expect(screen.getByText(/^Requires Premation Cloud/)).toBeInTheDocument();
+    expect(screen.getByText('Acme · v1.0.0 · Premation Cloud')).toBeInTheDocument();
+    const labels = rowMenuLabels(/Saber/);
+    expect(labels).not.toContain('Enable');
+    expect(labels).not.toContain('Disable');
+    await chooseFromRowMenu(/Saber/, 'Check plan');
     expect(bridge.refreshEntitlement).toHaveBeenCalled();
     expect(await screen.findByText(/Restart Premation to load its plugins/)).toBeInTheDocument();
   });

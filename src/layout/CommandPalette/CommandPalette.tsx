@@ -45,6 +45,7 @@ import { framesToTimecode, displayFramesToDomainSeconds } from '@core/time/timec
 import { seekPlayhead } from '@core/timeline/timelineView';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getCommandSystem } from '@core/commands/CommandSystem';
+import { commandLabel } from '@core/commands/commandLabel';
 // The glyph table is `sceneDerive`'s, not a copy of it: this file used to keep
 // its own, which had already drifted from the timeline's (a group drew a
 // `layers` stack here and a `folder` there) for the same kind of object.
@@ -55,9 +56,10 @@ import { resolveChord, getShortcutOverrides } from '@core/commands/shortcutOverr
 import { parseQuery, fuzzyScore, parseTimecode } from './paletteSearch';
 import { effectHits, presetHits } from './quickApply';
 import { rankRecent, recencyBoost, type RecencyMap } from './paletteRecency';
-import { CONTEXT_LABEL, shortcutHintsFor, type PaletteContext } from './shortcutHints';
+import { contextLabel, shortcutHintsFor, type PaletteContext } from './shortcutHints';
 import { sectionLabel, type DocSection } from './docsIndex';
 import { openDocSection } from './DocsSectionDialog';
+import { t } from '@core/i18n';
 import styles from './CommandPalette.module.css';
 
 /** Frames-per-second used to derive a frame number for timecode jumps. */
@@ -74,6 +76,21 @@ type Section =
   | 'Effects'
   | 'Presets'
   | 'Docs';
+
+/** A section's rendered header. `Section` stays the English id the code compares. */
+function sectionTitle(section: Section): string {
+  switch (section) {
+    case 'Recent': return t('commandPalette.section.recent', 'Recent');
+    case 'Shortcuts': return t('commandPalette.section.shortcuts', 'Shortcuts');
+    case 'Commands': return t('commandPalette.section.commands', 'Commands');
+    case 'Layers': return t('commandPalette.section.layers', 'Layers');
+    case 'Compositions': return t('commandPalette.section.compositions', 'Compositions');
+    case 'Go to time': return t('commandPalette.section.goToTime', 'Go to time');
+    case 'Effects': return t('commandPalette.section.effects', 'Effects');
+    case 'Presets': return t('commandPalette.section.presets', 'Presets');
+    case 'Docs': return t('commandPalette.section.docs', 'Docs');
+  }
+}
 
 interface Item {
   key: string;
@@ -123,7 +140,7 @@ function commandItem(c: Command, section: Section, closePalette: () => void, sec
     key: `${section === 'Commands' ? 'cmd' : section.toLowerCase()}:${id}`,
     section,
     sectionLabel: sectionLabelText,
-    label: c.label,
+    label: commandLabel(c),
     chord: chord ? formatChord(chord) : undefined,
     icon: (c.icon as IconName) ?? 'crosshair',
     disabled,
@@ -187,7 +204,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
       items.push(commandItem(c, 'Recent', closePalette));
     }
     const hints = shortcutHintsFor(registry.all(), context, chordOf);
-    const label = `Shortcuts · ${CONTEXT_LABEL[context]}`;
+    const label = t('commandPalette.section.shortcutsIn', 'Shortcuts · {context}', { context: contextLabel(context) });
     for (const { command } of hints) {
       const id = command.id as unknown as string;
       if (seen.has(id)) continue;
@@ -201,7 +218,9 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
     const listed = new Set(items.map((i) => i.key.slice(i.key.indexOf(':') + 1)));
     const scored = registry
       .all()
-      .map((c) => ({ c, s: fuzzyScore(term, c.label) }))
+      // The English name still matches in another language: tutorials and
+      // muscle memory are in English.
+      .map((c) => ({ c, s: Math.max(fuzzyScore(term, commandLabel(c)), fuzzyScore(term, c.label)) }))
       .filter((x) => x.s >= 0)
       // The boost is added AFTER the match filter: history reorders matches,
       // it never invents one.
@@ -218,7 +237,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
 
     if (wantComps) {
       const comps = m.compIds
-        .map((id) => ({ id, name: m.comp(id)?.settings.name || 'Composition' }))
+        .map((id) => ({ id, name: m.comp(id)?.settings.name || t('commandPalette.comp.fallbackName', 'Composition') }))
         .map((c) => ({ c, s: fuzzyScore(term, c.name) }))
         .filter((x) => x.s >= 0)
         .sort((a, b) => b.s - a.s);
@@ -259,7 +278,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
         items.push({
           key: `layer:${n.id}`,
           section: 'Layers',
-          label: n.name || 'Layer',
+          label: n.name || t('commandPalette.layer.fallbackName', 'Layer'),
           hint: kind,
           icon: (KIND_ICON[kind] ?? 'shape') as IconName,
           color: KIND_COLOR[kind],
@@ -279,7 +298,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
         key: h.key,
         section: 'Effects',
         label: h.label,
-        hint: h.enabled ? h.hint : 'select a layer',
+        hint: h.enabled ? h.hint : t('commandPalette.effect.needsLayer', 'select a layer'),
         icon: 'sparkles',
         disabled: !h.enabled,
         run: () => {
@@ -295,7 +314,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
         key: h.key,
         section: 'Presets',
         label: h.label,
-        hint: h.enabled ? h.hint : 'select a layer this fits',
+        hint: h.enabled ? h.hint : t('commandPalette.preset.needsLayer', 'select a layer this fits'),
         icon: 'zap',
         disabled: !h.enabled,
         run: () => {
@@ -320,7 +339,7 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
       items.push({
         key: 'time',
         section: 'Go to time',
-        label: `Go to ${framesToTimecode(sec, fps, comp.startFrame ?? 0)}`,
+        label: t('commandPalette.time.goTo', 'Go to {timecode}', { timecode: framesToTimecode(sec, fps, comp.startFrame ?? 0) }),
         hint: `${sec.toFixed(3)}s`,
         icon: 'skip-forward',
         run: () => {
@@ -338,16 +357,20 @@ function buildItems({ query, closePalette, recent, context, docs, now }: BuildIn
 }
 
 /** The search mode a prefix selects, as the field's tag names it. */
-const MODE_LABEL: Record<string, string> = {
-  commands: 'Commands',
-  layers: 'Layers',
-  comps: 'Compositions',
-  compositions: 'Compositions',
-  timecode: 'Time',
-  effects: 'Effects',
-  presets: 'Presets',
-  docs: 'Help',
-};
+function modeLabel(mode: string): string {
+  switch (mode) {
+    case 'commands': return t('commandPalette.mode.commands', 'Commands');
+    case 'layers': return t('commandPalette.mode.layers', 'Layers');
+    case 'comps':
+    case 'compositions': return t('commandPalette.mode.compositions', 'Compositions');
+    case 'timecode': return t('commandPalette.mode.time', 'Time');
+    case 'effects': return t('commandPalette.mode.effects', 'Effects');
+    case 'presets': return t('commandPalette.mode.presets', 'Presets');
+    case 'help':
+    case 'docs': return t('commandPalette.mode.help', 'Help');
+    default: return mode;
+  }
+}
 
 /**
  * A result's label with the typed text underlined where it appears verbatim.
@@ -355,15 +378,15 @@ const MODE_LABEL: Record<string, string> = {
  * one run — then the label is shown as it is.
  */
 function markMatch(label: string, term: string): React.ReactNode {
-  const t = term.trim();
-  if (!t) return label;
-  const at = label.toLowerCase().indexOf(t.toLowerCase());
+  const needle = term.trim();
+  if (!needle) return label;
+  const at = label.toLowerCase().indexOf(needle.toLowerCase());
   if (at < 0) return label;
   return (
     <>
       {label.slice(0, at)}
-      <u className={styles.match}>{label.slice(at, at + t.length)}</u>
-      {label.slice(at + t.length)}
+      <u className={styles.match}>{label.slice(at, at + needle.length)}</u>
+      {label.slice(at + needle.length)}
     </>
   );
 }
@@ -477,7 +500,7 @@ export function CommandPalette(): JSX.Element | null {
         <Dialog.Overlay className={styles.scrim}>
           <Dialog.Content
             className={styles.palette}
-            aria-label="Command palette"
+            aria-label={t('commandPalette.dialog.title', 'Command palette')}
             aria-describedby={undefined}
             // The search box, not the first focusable (which Radix would pick).
             onOpenAutoFocus={(e) => {
@@ -485,7 +508,7 @@ export function CommandPalette(): JSX.Element | null {
               inputRef.current?.focus();
             }}
           >
-            <Dialog.Title style={SR_ONLY}>Command palette</Dialog.Title>
+            <Dialog.Title style={SR_ONLY}>{t('commandPalette.dialog.title', 'Command palette')}</Dialog.Title>
             <div className={styles.searchRow}>
               <Icon name="search" size="md" className={styles.searchIcon} />
               <input
@@ -493,32 +516,32 @@ export function CommandPalette(): JSX.Element | null {
                 className={styles.input}
                 value={query}
                 spellCheck={false}
-                placeholder="Search commands, layers, effects and presets"
+                placeholder={t('commandPalette.search.placeholder', 'Search commands, layers, effects and presets')}
                 onChange={(e) => {
                   setQuery(e.currentTarget.value);
                   setActive(0);
                 }}
                 onKeyDown={onKeyDown}
-                aria-label="Command palette search"
+                aria-label={t('commandPalette.search.ariaLabel', 'Command palette search')}
               />
               {/* Which kind of thing a prefix has narrowed the search to. */}
-              {mode !== 'all' ? <span className={styles.modeTag}>{MODE_LABEL[mode] ?? mode}</span> : null}
+              {mode !== 'all' ? <span className={styles.modeTag}>{modeLabel(mode)}</span> : null}
             </div>
 
             <div className={styles.list} ref={listRef} role="listbox">
               {items.length === 0 ? (
                 <div className={styles.empty}>
                   {helpLoading
-                    ? 'Loading documentation…'
+                    ? t('commandPalette.empty.loadingDocs', 'Loading documentation…')
                     : wantDocs
-                      ? 'No matching doc section'
+                      ? t('commandPalette.empty.noDocs', 'No matching doc section')
                       : term
-                        ? `Nothing matches “${term}”. Check the spelling, or type > to search commands only.`
-                        : 'No results'}
+                        ? t('commandPalette.empty.noMatch', 'Nothing matches “{term}”. Check the spelling, or type > to search commands only.', { term })
+                        : t('commandPalette.empty.noResults', 'No results')}
                 </div>
               ) : (
                 items.map((item, i) => {
-                  const headerText = item.sectionLabel ?? item.section;
+                  const headerText = item.sectionLabel ?? sectionTitle(item.section);
                   const header = headerText !== lastHeader ? ((lastHeader = headerText), headerText) : null;
                   return (
                     <div key={item.key}>
@@ -552,11 +575,11 @@ export function CommandPalette(): JSX.Element | null {
 
             <div className={styles.footer}>
               {/* One quiet line. The prefixes are a legend, not seven keycaps. */}
-              <span>↑ ↓ move</span>
-              <span>Enter run</span>
-              <span>Esc close</span>
+              <span>{t('commandPalette.footer.move', '↑ ↓ move')}</span>
+              <span>{t('commandPalette.footer.run', 'Enter run')}</span>
+              <span>{t('commandPalette.footer.close', 'Esc close')}</span>
               <span className={styles.modeHints}>
-                &gt; commands · @ layers · # comps · : time · + effects · * presets · ? help
+                {t('commandPalette.footer.prefixes', '> commands · @ layers · # comps · : time · + effects · * presets · ? help')}
               </span>
             </div>
           </Dialog.Content>

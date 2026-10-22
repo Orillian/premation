@@ -28,6 +28,14 @@ export const ENTRANCE_ARCHETYPES = [
   'slide_settle',
   'mask_wipe',
   'char_cascade',
+  // Twelve more (2026-10-19): six entrances made every piece move the same
+  // way — the second half of why "every video looks the same". Each is a
+  // different mechanism, not a different number on the same one.
+  // Parked until `entranceTrackPlans` has a case for each (the picker would
+  // otherwise choose an entrance with no tracks):
+  // 'drop', 'zoom_from_depth', 'flip_in', 'spin_in', 'curtain', 'unfold',
+  // 'skew_slide', 'tracking_in', 'squash_land', 'push_in', 'orbit_in',
+  // 'fall_bounce',
 ] as const;
 export type EntranceArchetype = (typeof ENTRANCE_ARCHETYPES)[number];
 

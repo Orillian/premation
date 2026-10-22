@@ -19,6 +19,7 @@ import type { UpdateStatus } from '@app-types/motionEditor';
 // The dialog's own row styling — this renders INTO its rows, so it shares them
 // rather than inventing a second look for the same list.
 import styles from './CustomizeDialog.module.css';
+import { t } from '@core/i18n';
 
 function bridge(): NonNullable<Window['motionEditor']>['updates'] | null {
   return window.motionEditor?.updates ?? null;
@@ -26,28 +27,28 @@ function bridge(): NonNullable<Window['motionEditor']>['updates'] | null {
 
 /** One line of plain English for whatever the updater is doing. */
 function describe(status: UpdateStatus | null, checking: boolean): string {
-  if (checking) return 'Checking…';
+  if (checking) return t('settings.updates.checking', 'Checking…');
   if (!status) return '';
   switch (status.kind) {
     case 'checking':
-      return 'Checking…';
+      return t('settings.updates.checking', 'Checking…');
     case 'available':
       return status.downloading
-        ? `Version ${status.version} found — downloading…`
-        : `Version ${status.version} is available.`;
+        ? t('settings.updates.foundDownloading', 'Version {version} found — downloading…', { version: status.version })
+        : t('settings.updates.available', 'Version {version} is available.', { version: status.version });
     case 'downloading':
-      return `Downloading… ${status.percent}%`;
+      return t('settings.updates.downloading', 'Downloading… {pct}%', { pct: status.percent });
     case 'ready':
-      return `Version ${status.version} is ready — it installs when you quit.`;
+      return t('settings.updates.ready', 'Version {version} is ready — it installs when you quit.', { version: status.version });
     case 'unsupported':
-      return `Not available for this build: ${status.reason}`;
+      return t('settings.updates.unsupported', 'Not available for this build: {reason}', { reason: status.reason });
     case 'error':
       // The message is a network/HTTP string from electron-updater. Shown here
       // because the user is looking AT the updater; the toast stays silent.
-      return `Last check failed: ${status.message}`;
+      return t('settings.updates.failed', 'Last check failed: {message}', { message: status.message });
     case 'idle':
     default:
-      return 'Up to date.';
+      return t('settings.updates.upToDate', 'Up to date.');
   }
 }
 
@@ -72,7 +73,7 @@ export function UpdatesControl(): JSX.Element | null {
   return (
     <>
       <div className={styles.row}>
-        <span className={styles.rowLabel}>Download updates automatically</span>
+        <span className={styles.rowLabel}>{t('settings.updates.autoDownload', 'Download updates automatically')}</span>
         <div className={styles.rowRight}>
           <input
             type="checkbox"
@@ -83,7 +84,7 @@ export function UpdatesControl(): JSX.Element | null {
               setAutoDownload(next);
               void api.setAutoDownload(next).catch(() => setAutoDownload(!next));
             }}
-            aria-label="Download updates in the background, without asking"
+            aria-label={t('settings.updates.autoDownloadAria', 'Download updates in the background, without asking')}
           />
         </div>
       </div>
@@ -97,12 +98,12 @@ export function UpdatesControl(): JSX.Element | null {
               does nothing visible. */}
           {status?.kind === 'available' && !status.downloading ? (
             <Button size="sm" variant="primary" onClick={() => void api.downloadNow()}>
-              Download
+              {t('settings.updates.download', 'Download')}
             </Button>
           ) : null}
           {status?.kind === 'ready' ? (
             <Button size="sm" variant="primary" onClick={() => void api.restartAndInstall()}>
-              Restart now
+              {t('settings.updates.restartNow', 'Restart now')}
             </Button>
           ) : null}
           <Button
@@ -118,7 +119,7 @@ export function UpdatesControl(): JSX.Element | null {
                 .finally(() => setChecking(false));
             }}
           >
-            Check now
+            {t('settings.updates.checkNow', 'Check now')}
           </Button>
         </div>
       </div>

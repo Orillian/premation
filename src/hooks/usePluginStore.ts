@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '@core/i18n';
 import { api, type StorePluginSummary, type StorePluginUpdate } from '@core/api/client';
 import { hasSession } from '@core/api/session';
 import { pluginEngine } from '@core/engine/engineInstance';
@@ -57,14 +58,21 @@ async function ownPrivatePlugins(q: string): Promise<StorePluginSummary[]> {
   }
 }
 
-/** Search the store's native plugins (debounced by the caller's SearchField), the publisher's private ones first. */
-export function useStoreBrowse(q: string): PluginStoreBrowse & { reload: () => void } {
+/** The registry's browse orders (motion-back plugins.service browse): installs, then newest first. */
+export type StoreSort = 'installs' | 'new' | 'updated';
+
+/**
+ * The store's native plugins in `sort` order — the whole catalogue with an
+ * empty `q`, a search otherwise (debounced by the caller's SearchField) — the
+ * publisher's private ones first.
+ */
+export function useStoreBrowse(q: string, sort: StoreSort = 'installs'): PluginStoreBrowse & { reload: () => void } {
   const [state, setState] = useState<PluginStoreBrowse>({ items: null, total: 0, error: null, loading: true, owned: NONE });
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let alive = true;
     setState((s) => ({ ...s, loading: true }));
-    Promise.all([api.browseNativePlugins({ q: q.trim() || undefined, limit: 50 }), ownPrivatePlugins(q)])
+    Promise.all([api.browseNativePlugins({ q: q.trim() || undefined, sort, limit: 50 }), ownPrivatePlugins(q)])
       .then(([page, own]) => {
         if (!alive) return;
         const listed = new Set(page.items.map((p) => p.id));
@@ -72,11 +80,11 @@ export function useStoreBrowse(q: string): PluginStoreBrowse & { reload: () => v
         setState({ items: [...extra, ...page.items], total: page.total + extra.length, error: null, loading: false, owned: new Set(extra.map((p) => p.id)) });
       })
       .catch((e: unknown) => {
-        if (alive) setState({ items: null, total: 0, error: e instanceof Error ? e.message : 'The plugin store is unreachable.', loading: false, owned: NONE });
+        if (alive) setState({ items: null, total: 0, error: e instanceof Error ? e.message : t('hooks.pluginStore.unreachable', 'The plugin store is unreachable.'), loading: false, owned: NONE });
       });
     return () => { alive = false; };
-  }, [q, tick]);
-  return { ...state, reload: () => setTick((t) => t + 1) };
+  }, [q, sort, tick]);
+  return { ...state, reload: () => setTick((n) => n + 1) };
 }
 
 export interface InstalledState {
@@ -158,12 +166,12 @@ export function useInstalledPlugins(onEngineChange?: () => void): InstalledState
     }),
     uninstall: (id) => run(id, async () => {
       const err = await uninstallPlugin(pluginEngine(), id);
-      return err ? { text: err, error: true } : { text: `${id} is disabled and will be removed when Premation restarts.`, error: false };
+      return err ? { text: err, error: true } : { text: t('hooks.pluginStore.uninstalled', '{id} is disabled and will be removed when Premation restarts.', { id }), error: false };
     }),
     checkPlan: () => run('premation-cloud', checkPremationCloud),
     setEnabled: (id, enabled) => run(id, async () => {
       const err = await setPluginEnabled(pluginEngine(), id, enabled);
-      return err ? { text: err, error: true } : { text: `${id} ${enabled ? 'enabled' : 'disabled'}.`, error: false };
+      return err ? { text: err, error: true } : { text: enabled ? t('hooks.pluginStore.enabled', '{id} enabled.', { id }) : t('hooks.pluginStore.disabled', '{id} disabled.', { id }), error: false };
     }),
   };
 }

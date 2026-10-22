@@ -1,11 +1,19 @@
 /**
- * The composition's one contextual SCENE tool in the transport row: the
- * motion-path toggle, shown while the single selected layer has Position
- * keyframes (AE draws the path of the selected layer; Ctrl+Alt+M here).
+ * The Guides group of the transport row: the SCENE-side toggles of the
+ * viewport's measuring chrome.
+ *
+ *  • Smart Guides — the pink distance lines, equal-spacing bars, size matches
+ *    and the size pill under a selected layer. OFF by default (owner decision
+ *    2026-10-19: After Effects draws none of it, and over every drag it was
+ *    more than most moves wanted); this button is where it is switched on,
+ *    and the Overlays menu lists the same row.
+ *  • the motion-path toggle, shown while the single selected layer has
+ *    Position keyframes (AE draws the path of the selected layer;
+ *    Ctrl+Alt+M here).
  *
  * **This renders in the transport bar, right of the play cluster**, as the
  * Guides group before the Display group (`ViewportDisplayControls`). It owns
- * the hairline after it, since it alone knows whether it is there at all.
+ * the hairline after it.
  *
  * What used to sit beside it and does not any more (2026-10-07), because each
  * had a better home and the row had grown to 24 buttons:
@@ -31,33 +39,52 @@ import { hasPositionKeys } from '@core/mirror/motionFacts';
 import { cn } from '@utils/cn';
 import styles from './ViewportTools.module.css';
 import tool from './viewportToolButton.module.css';
+import { t } from '@core/i18n';
 
-export function ViewportTools(): JSX.Element | null {
+export function ViewportTools(): JSX.Element {
   const motionPathVisible = useGuidesStore((s) => s.motionPathVisible);
   const toggleMotionPath = useGuidesStore((s) => s.toggleMotionPath);
+  const smartGuides = useGuidesStore((s) => s.smartGuides);
+  const toggleSmartGuides = useGuidesStore((s) => s.toggleSmartGuides);
 
   // Re-render when the selection or a selected layer's keyframes change, so
-  // the toggle appears and disappears with the path.
+  // the motion-path toggle appears and disappears with the path.
   const selectedIds = useSelectionStore((s) => s.ids);
   const watchKeys = useMemo(() => selectedIds.map((id) => `keys:${id}`), [selectedIds]);
   useMirrorKeys(watchKeys);
 
   const singleId = selectedIds.length === 1 ? selectedIds[0] : null;
-  if (!singleId || !hasPositionKeys(documentMirror(), singleId)) return null;
+  const hasPath = !!singleId && hasPositionKeys(documentMirror(), singleId);
 
   return (
-    <div className={styles.tools} role="group" aria-label="Viewport guides">
+    <div className={styles.tools} role="group" aria-label={t('workspace.viewportTools.group', 'Viewport guides')}>
       <div className={tool.group}>
         <button
           type="button"
-          className={cn(tool.tool, motionPathVisible && tool.toolActive)}
-          onClick={toggleMotionPath}
-          aria-label="Show motion path"
-          aria-pressed={motionPathVisible}
-          title={motionPathVisible ? 'Hide Motion Path (Ctrl+Alt+M)' : 'Show Motion Path (Ctrl+Alt+M)'}
+          className={cn(tool.tool, smartGuides && tool.toolActive)}
+          onClick={toggleSmartGuides}
+          aria-label={t('workspace.viewportTools.smartGuides', 'Smart guides')}
+          aria-pressed={smartGuides}
+          title={smartGuides
+            ? t('workspace.viewportTools.smartGuidesOn', 'Smart Guides ON — distance lines, equal spacing and the size readout while you move (click to hide)')
+            : t('workspace.viewportTools.smartGuidesOff', 'Smart Guides OFF — click to show distances to neighbours, equal spacing and the size readout while you move')}
         >
-          <Icon name="path" size="sm" />
+          <Icon name="ruler" size="sm" />
         </button>
+        {hasPath && (
+          <button
+            type="button"
+            className={cn(tool.tool, motionPathVisible && tool.toolActive)}
+            onClick={toggleMotionPath}
+            aria-label={t('workspace.viewportTools.motionPath', 'Show motion path')}
+            aria-pressed={motionPathVisible}
+            title={motionPathVisible
+              ? t('workspace.viewportTools.hideMotionPath', 'Hide Motion Path (Ctrl+Alt+M)')
+              : t('workspace.viewportTools.showMotionPath', 'Show Motion Path (Ctrl+Alt+M)')}
+          >
+            <Icon name="path" size="sm" />
+          </button>
+        )}
       </div>
       <div className={tool.divider} />
     </div>

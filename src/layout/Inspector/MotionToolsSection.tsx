@@ -13,6 +13,7 @@
 import { useMirrorTreeShape } from '@hooks/useMirror';
 import { AudioDriverSection, hasAudioDriverSection } from './AudioDriverSection';
 import { ModifierStackSection, hasModifierStackSection } from './ModifierStackSection';
+import { t } from '@core/i18n';
 import styles from './MotionToolsSection.module.css';
 
 /** Registry predicate: either tool has something to drive on this layer. */
@@ -33,14 +34,14 @@ export function MotionToolsSection({ nodeId }: { nodeId: string }): JSX.Element 
   return (
     <div className={styles.root}>
       {modifiers && (
-        <section className={styles.group} aria-label="Modifiers">
-          <h4 className={styles.subhead}>Modifiers</h4>
+        <section className={styles.group} aria-label={t('inspector.motionTools.modifiers', 'Modifiers')}>
+          <h4 className={styles.subhead}>{t('inspector.motionTools.modifiers', 'Modifiers')}</h4>
           <ModifierStackSection nodeId={nodeId} />
         </section>
       )}
       {driver && (
-        <section className={styles.group} aria-label="Audio driver">
-          <h4 className={styles.subhead}>Audio driver</h4>
+        <section className={styles.group} aria-label={t('inspector.motionTools.audioDriver', 'Audio driver')}>
+          <h4 className={styles.subhead}>{t('inspector.motionTools.audioDriver', 'Audio driver')}</h4>
           <AudioDriverSection nodeId={nodeId} />
         </section>
       )}

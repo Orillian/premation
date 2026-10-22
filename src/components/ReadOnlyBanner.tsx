@@ -29,6 +29,7 @@ import { Icon } from '@components/Icon';
 import { useEntitlementStore, canWriteCloud } from '@stores/entitlementStore';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import { exportCurrentProjectAsBundle } from '@core/project/exportBundle';
+import { t } from '@core/i18n';
 import styles from './ReadOnlyBanner.module.css';
 
 /**
@@ -63,7 +64,7 @@ export function ReadOnlyBanner(): JSX.Element | null {
   // With sales closed, an older server's sentence may still say "subscribe";
   // the paused sentence replaces it so the bar never points at a closed door.
   const pausedMessage =
-    'Premation Cloud subscriptions are paused — this project stays available read-only, and export keeps working.';
+    t('ui.readOnlyBanner.paused', 'Premation Cloud subscriptions are paused — this project stays available read-only, and export keeps working.');
   const message = limited
     ? !salesOpen && /upgrade/i.test(projectLimit ?? '')
       ? pausedMessage
@@ -72,10 +73,10 @@ export function ReadOnlyBanner(): JSX.Element | null {
       ? pausedMessage
       : serverMessage ||
         (unverified
-          ? 'Confirm your email to save to the cloud. Your projects are read-only until then.'
+          ? t('ui.readOnlyBanner.unverified', 'Confirm your email to save to the cloud. Your projects are read-only until then.')
           : canPay
-            ? 'Your access has ended. Your projects are read-only — subscribe to keep working in the cloud, or export them and self-host.'
-            : 'Your projects are read-only. Export them to keep working, or manage your plan.');
+            ? t('ui.readOnlyBanner.ended', 'Your access has ended. Your projects are read-only — subscribe to keep working in the cloud, or export them and self-host.')
+            : t('ui.readOnlyBanner.readOnly', 'Your projects are read-only. Export them to keep working, or manage your plan.'));
 
   const onExport = async (): Promise<void> => {
     setExporting(true);
@@ -100,7 +101,7 @@ export function ReadOnlyBanner(): JSX.Element | null {
           disabled={exporting}
           onClick={() => void onExport()}
         >
-          {exporting ? 'Exporting…' : 'Export .motion'}
+          {exporting ? t('ui.readOnlyBanner.exporting', 'Exporting…') : t('ui.readOnlyBanner.export', 'Export .motion')}
         </button>
         {/*
           The plan and confirmation controls live in the dashboard's Settings
@@ -114,14 +115,14 @@ export function ReadOnlyBanner(): JSX.Element | null {
           onClick={() => navigate('/dashboard?tab=settings')}
         >
           {unverified
-            ? 'Confirm email'
+            ? t('ui.readOnlyBanner.confirmEmail', 'Confirm email')
             : canPay
               ? limited
-                ? 'Upgrade'
-                : 'Subscribe'
+                ? t('ui.readOnlyBanner.upgrade', 'Upgrade')
+                : t('ui.readOnlyBanner.subscribe', 'Subscribe')
               : payable
-                ? 'View plan'
-                : 'Manage plan'}
+                ? t('ui.readOnlyBanner.viewPlan', 'View plan')
+                : t('ui.readOnlyBanner.managePlan', 'Manage plan')}
         </button>
       </div>
     </div>

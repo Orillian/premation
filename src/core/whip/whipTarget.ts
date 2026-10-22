@@ -87,10 +87,48 @@ export function resolveWhipTargetAt(
  * `layer()` in the expression API), and a name is also what the author will
  * recognise when they read the expression back.
  */
-export function whipExpression(layerName: string, prop: string): string {
+export function whipExpression(layerName: string, prop: string, fx?: WhipEffectNames): string {
+  const ae = aeAccessor(prop, fx);
+  // AE's own form when the property has one — the expression reads exactly as
+  // After Effects writes it, so it can be pasted back and forth.
+  if (ae) return `thisComp.layer(${JSON.stringify(layerName)}).${ae}`;
   // Single quotes, escaped — a layer called `Ada's title` is legal and would
   // otherwise produce an expression that does not parse.
   return `layer('${layerName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', '${prop}')`;
+}
+
+/** An effect parameter's names as AE addresses it: `effect("Gaussian Blur")("Blurriness")`. */
+export interface WhipEffectNames {
+  effect: string;
+  param: string;
+}
+
+/** Transform tracks and the AE member each reads (`[i]` for one dimension of a vector). */
+const AE_TRANSFORM: Readonly<Record<string, string>> = {
+  x: 'transform.position[0]',
+  y: 'transform.position[1]',
+  z: 'transform.position[2]',
+  anchorX: 'transform.anchorPoint[0]',
+  anchorY: 'transform.anchorPoint[1]',
+  anchorZ: 'transform.anchorPoint[2]',
+  scaleX: 'transform.scale[0]',
+  scaleY: 'transform.scale[1]',
+  scaleZ: 'transform.scale[2]',
+  rotation: 'transform.rotation',
+  rotationX: 'transform.xRotation',
+  rotationY: 'transform.yRotation',
+  orientationX: 'transform.orientation[0]',
+  orientationY: 'transform.orientation[1]',
+  orientationZ: 'transform.orientation[2]',
+  opacity: 'transform.opacity',
+};
+
+/** The AE member path a track reads after `thisComp.layer(…)`, or null when it has none. */
+export function aeAccessor(prop: string, fx?: WhipEffectNames): string | null {
+  const t = AE_TRANSFORM[prop];
+  if (t) return t;
+  if (fx && /^effect\.[^.]+\.[^.]+$/.test(prop)) return `effect(${JSON.stringify(fx.effect)})(${JSON.stringify(fx.param)})`;
+  return null;
 }
 
 /**

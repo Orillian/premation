@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { billingEnabled } from '@core/config/edition';
+import { t } from '@core/i18n';
 import type { AccountRecord } from '@core/api/client';
 import { AccountSection, DevicesPanel } from '@layout/Settings/AccountSection';
 import { AiSettingsSection } from '@layout/Settings/AiSettingsSection';
@@ -50,19 +51,19 @@ export function DashboardSettings({
     setParams(q, { replace: true });
   };
 
-  const displayName = user?.name || user?.email?.split('@')[0] || 'Account';
+  const displayName = user?.name || user?.email?.split('@')[0] || t('dashboard.settings.accountFallback', 'Account');
   const planLabel = account
     ? account.plan === 'pro'
       ? 'Premation Cloud'
-      : 'Free plan'
+      : t('dashboard.settings.freePlan', 'Free plan')
     : null;
 
   return (
     <div className={page.settingsPanel}>
-      <div className={styles.tabs} role="tablist" aria-label="Settings">
+      <div className={styles.tabs} role="tablist" aria-label={t('dashboard.settings.tabsAria', 'Settings')}>
         {([
-          ['account', 'Account', 'user'],
-          ['devices', 'Devices', 'app'],
+          ['account', t('dashboard.settings.tabAccount', 'Account'), 'user'],
+          ['devices', t('dashboard.settings.tabDevices', 'Devices'), 'app'],
         ] as const).map(([id, label, icon]) => (
           <button
             key={id}
@@ -92,13 +93,13 @@ export function DashboardSettings({
                 <div className={page.profileEmailText}>{user?.email}</div>
                 {account && planLabel && (
                   <div className={page.profileNodeBadge}>
-                    {`${planLabel} · member since ${new Date(account.createdAt).toLocaleDateString()}`}
+                    {t('dashboard.settings.memberSince', '{plan} · member since {date}', { plan: planLabel, date: new Date(account.createdAt).toLocaleDateString() })}
                   </div>
                 )}
               </div>
               {account && billingEnabled() && (
                 <Button className={styles.planAction} variant="secondary" size="sm" onClick={onOpenBilling}>
-                  {account.plan === 'pro' ? 'Manage plan' : 'View plan'}
+                  {account.plan === 'pro' ? t('dashboard.settings.managePlan', 'Manage plan') : t('dashboard.settings.viewPlan', 'View plan')}
                 </Button>
               )}
             </div>
@@ -106,9 +107,11 @@ export function DashboardSettings({
             {account && (
               <div className={page.storageBarSection}>
                 <div className={page.storageBarHeader}>
-                  <span>Storage</span>
+                  <span>{t('dashboard.settings.storage', 'Storage')}</span>
                   <span className={page.monoValue}>
-                    {formatBytes(account.storageBytes)} across {account.assetCount} {account.assetCount === 1 ? 'asset' : 'assets'}
+                    {account.assetCount === 1
+                      ? t('dashboard.settings.storageUsageOne', '{size} across {n} asset', { size: formatBytes(account.storageBytes), n: account.assetCount })
+                      : t('dashboard.settings.storageUsageOther', '{size} across {n} assets', { size: formatBytes(account.storageBytes), n: account.assetCount })}
                   </span>
                 </div>
               </div>
@@ -124,27 +127,26 @@ export function DashboardSettings({
           </div>
 
           <div className={page.settingsCard} id="ai-settings">
-            <h3 className={page.settingsLabel}>Assistant</h3>
+            <h3 className={page.settingsLabel}>{t('dashboard.settings.assistant', 'Assistant')}</h3>
             <AiSettingsSection />
             <p className={page.optionDesc}>
-              Claude, Cursor, Antigravity and ChatGPT connect on their own page.
+              {t('dashboard.settings.connectionsNote', 'Claude, Cursor, Antigravity and ChatGPT connect on their own page.')}
             </p>
             <div className={page.settingsRow}>
               <Button variant="secondary" onClick={onOpenConnections}>
-                Open Connections
+                {t('dashboard.openConnections', 'Open Connections')}
               </Button>
             </div>
           </div>
 
           <div className={page.settingsCard}>
-            <h3 className={page.settingsLabel}>Editor preferences</h3>
+            <h3 className={page.settingsLabel}>{t('dashboard.settings.editorPreferences', 'Editor preferences')}</h3>
             <p className={page.optionDesc}>
-              Appearance, interface scale, panel layout, editing behaviour and keyboard
-              shortcuts are on the Preferences page.
+              {t('dashboard.settings.editorPreferencesDesc', 'Appearance, interface scale, panel layout, editing behaviour and keyboard shortcuts are on the Preferences page.')}
             </p>
             <div className={page.settingsRow}>
               <Button variant="secondary" onClick={onOpenPreferences}>
-                Open Preferences
+                {t('dashboard.settings.openPreferences', 'Open Preferences')}
               </Button>
             </div>
           </div>
@@ -156,10 +158,9 @@ export function DashboardSettings({
           id="settings-panel-devices"
           aria-labelledby="settings-tab-devices"
         >
-          <h3 className={page.settingsLabel}>Signed-in devices</h3>
+          <h3 className={page.settingsLabel}>{t('dashboard.settings.devicesTitle', 'Signed-in devices')}</h3>
           <p className={page.optionDesc}>
-            Every place this account is signed in. Signing out a device ends that session.
-            It does not delete anything on it.
+            {t('dashboard.settings.devicesDesc', 'Every place this account is signed in. Signing out a device ends that session. It does not delete anything on it.')}
           </p>
           <DevicesPanel />
         </div>

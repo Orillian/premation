@@ -43,6 +43,7 @@ import {
 import { cn } from '@utils/cn';
 import { Icon } from '@components/Icon';
 import { VirtualList } from '@components/VirtualList';
+import { t } from '@core/i18n';
 import styles from './DataGrid.module.css';
 
 export type SortDirection = 'asc' | 'desc';
@@ -119,7 +120,7 @@ export function DataGrid<T>({
   sort: sortProp,
   defaultSort = null,
   onSortChange,
-  emptyText = 'Nothing to show',
+  emptyText = t('ui.dataGrid.empty', 'Nothing to show'),
   className,
 }: DataGridProps<T>): JSX.Element {
   const [internalSort, setInternalSort] = useState<DataGridSort | null>(defaultSort);

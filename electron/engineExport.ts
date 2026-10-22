@@ -84,7 +84,8 @@ export interface EngineExportSpec {
 }
 
 export type EngineExportOutcome =
-  | { kind: 'completed'; frames: number; stats?: Record<string, unknown> }
+  /** `warnings`: what the frames were drawn without (the engine's preflight line) — the file is complete. */
+  | { kind: 'completed'; frames: number; stats?: Record<string, unknown>; warnings?: string[] }
   | { kind: 'fallback'; reason: string }
   | { kind: 'failed'; message: string }
   | { kind: 'cancelled' };
@@ -116,6 +117,8 @@ export interface EnginePreflight {
   audio: string | null;
   comp: string;
   compName: string;
+  /** What the frames draw without (layer errors of stage `warning`, one line each, first frame named). */
+  warnings?: string[];
 }
 
 export interface EngineExportDeps {
@@ -408,6 +411,7 @@ export function startEngineExport(
             audio: typeof msg.audio === 'string' ? msg.audio : null,
             comp: String(msg.comp ?? ''),
             compName: String(msg.compName ?? ''),
+            ...(Array.isArray(msg.warnings) && msg.warnings.length > 0 ? { warnings: msg.warnings.map(String) } : {}),
           };
           // Never tag SDR frames as HDR: an engine that did not encode the
           // transfer (one without it echoes no `hdr`) fails the job instead.
@@ -434,7 +438,12 @@ export function startEngineExport(
         }
         case 'done':
           if (terminal?.kind === 'failed') return;
-          terminal = { kind: 'completed', frames: Number(msg.frames), stats: (msg.stats ?? undefined) as Record<string, unknown> | undefined };
+          terminal = {
+            kind: 'completed',
+            frames: Number(msg.frames),
+            stats: (msg.stats ?? undefined) as Record<string, unknown> | undefined,
+            ...(preflight?.warnings?.length ? { warnings: preflight.warnings } : {}),
+          };
           return;
         case 'error':
           terminal = msg.fallback === true
@@ -481,7 +490,7 @@ export function startEngineExport(
     // names the mix, then exit 0 with no "done").
     const pre = preflight as EnginePreflight | null;
     if (!terminal && spec.format === 'wav' && exit.code === EXPORT_EXIT.ok && pre?.audio) {
-      terminal = { kind: 'completed', frames: pre.frames };
+      terminal = { kind: 'completed', frames: pre.frames, ...(pre.warnings?.length ? { warnings: pre.warnings } : {}) };
     }
     const outcome = terminal as EngineExportOutcome | null;
     if (exit.code === EXPORT_EXIT.ok && outcome?.kind === 'completed') {

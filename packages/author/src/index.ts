@@ -42,6 +42,7 @@ export {
 export {
   IdPool,
   coerceBeat,
+  coerceConcepts,
   coerceDesign,
   coerceScript,
   formatRepairs,
@@ -64,6 +65,8 @@ export {
 export { adviseScript, formatAdvice, type Advice, type AdviseOptions, type AdvisorFinding } from './advisors';
 export {
   BEATS_SCHEMA,
+  CONCEPTS_SCHEMA,
+  CRITIQUE_AXES,
   CRITIQUE_SCHEMA,
   DESIGN_SCHEMA,
   LAYER_SCHEMA,
@@ -72,6 +75,7 @@ export {
   shapeHint,
   type BeatCritique,
   type Critique,
+  type CritiqueAxis,
   type CritiqueFinding,
 } from './schema';
 export {
@@ -79,6 +83,8 @@ export {
   beatsPrompt,
   critiquePrompt,
   critiqueSystemPrompt,
+  conceptsPrompt,
+  describeConcept,
   designPrompt,
   revisePrompt,
   type AuthorBrief,
@@ -97,6 +103,7 @@ export {
   luminance,
   valueOf,
   type DepthLayer,
+  conceptDistance,
   type DiversityReport,
   type DiversityThresholds,
   type DepthScene,
@@ -105,3 +112,4 @@ export {
   type VarietyFinding,
   type VarietyOptions,
 } from './variety';
+export { READABLE_RATIO, cleanSwatches, contrastRatio, ensureReadable } from './palette';

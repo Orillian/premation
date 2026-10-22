@@ -13,8 +13,10 @@
 // cryptographic; never yields 0, which means "no key").
 #pragma once
 
+#include <array>
 #include <bit>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "render_context.hpp"
@@ -45,10 +47,12 @@ class KeyMix {
 };
 
 /// 0 where the input is not a function of the hashed fields (a precomp's
-/// offscreen, an unresolved texture, a deformed mesh). `translationFree` (P8b)
-/// leaves the layer's whole-pixel place on screen out of the key.
+/// offscreen, an unresolved texture, a deformed mesh). `placePhase` (P8b)
+/// leaves the layer's place on screen out of the key but its sub-pixel phase
+/// (the fraction of its buffer placement, in viewport px): the input is drawn
+/// at that phase, so only a whole-pixel move keeps it.
 [[nodiscard]] std::uint64_t chain_content_key(const PassContext& ctx, const api::Renderable& r, double opacity,
-                                              bool translationFree = false);
+                                              std::optional<std::array<double, 2>> placePhase = std::nullopt);
 
 /// `contentKey` 0 → 0. Mixes in `r.effects` (every parameter), the renderer's
 /// chain switches, and the project's precision and working space.

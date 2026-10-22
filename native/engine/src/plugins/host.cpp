@@ -496,6 +496,10 @@ PrErr PR_CALL cb_add_param(PrHost* h, const PrParamDef* def) {
   s.sliderMin = def->slider_min;
   s.sliderMax = def->slider_max;
   s.precision = def->precision;
+  // SDK 1.2: the tooltip, from a module whose struct has the field (bounded: one line, not a manual).
+  if (def->struct_size >= offsetof(PrParamDef, description) + sizeof(def->description) && def->description != nullptr) {
+    s.description = std::string(def->description, strnlen(def->description, 1024));
+  }
   if (def->type == PR_PARAM_POPUP && def->popup_choices != nullptr) {
     std::string all(def->popup_choices);
     std::size_t start = 0;
@@ -1572,11 +1576,14 @@ void PluginHost::Impl::register_document(const Plugin& p) {
     ne.generator = e->has(PR_OUT_FLAG_GENERATOR);
     ne.overlay = e->has(PR_OUT_FLAG_CUSTOM_OVERLAY);
     ne.panel = has_panel(p.dir);
+    ne.about = e->about;
     for (const ParamSpec& s : e->params) {
       doc::EffectParamDef d;
       d.key = s.key;
       d.label = s.name;
       if (!s.group.empty()) d.group = s.group;
+      d.fixed = (s.flags & PR_PARAM_FLAG_CANNOT_ANIMATE) != 0;
+      d.description = s.description;
       if ((s.flags & PR_PARAM_FLAG_SUPERVISE) != 0 && s.type != PR_PARAM_BUTTON) ne.supervised.push_back(s.key);
       switch (s.type) {
         case PR_PARAM_SLIDER:
@@ -1605,6 +1612,8 @@ void PluginHost::Impl::register_document(const Plugin& p) {
             a.unit = "px";
             a.def = js::Json::number(s.def.at(i));
             if (!s.group.empty()) a.group = s.group;
+            a.fixed = d.fixed;
+            a.description = d.description;
             ne.def.params.push_back(std::move(a));
           }
           break;
@@ -1636,7 +1645,9 @@ void PluginHost::Impl::register_document(const Plugin& p) {
           ne.def.params.push_back(std::move(d));
           break;
         case PR_PARAM_ARBITRARY_DATA: ne.arbitrary.push_back(s.key); break;
-        case PR_PARAM_BUTTON: ne.actions.emplace_back(s.key, s.name); break;
+        case PR_PARAM_BUTTON:
+          ne.actions.push_back({s.key, s.name, s.group, static_cast<std::uint32_t>(ne.def.params.size())});
+          break;
         // SDK 1.1 — static values: a string, the Curves effect's point list, stops, a project item.
         case PR_PARAM_STRING:
           d.type = "text";
@@ -1659,7 +1670,13 @@ void PluginHost::Impl::register_document(const Plugin& p) {
           ne.files.emplace_back(s.key, s.fileTypes);
           ne.def.params.push_back(std::move(d));
           break;
-        default: break;  // group markers are carried by `group`
+        case PR_PARAM_GROUP_START:
+          // Its params carry the path in `group`; the card also needs the group's key (hiding it
+          // through set_param_ui hides the whole group) and whether it opens twirled up.
+          ne.groups.push_back({s.group.empty() ? s.name : s.group + " / " + s.name, s.key, (s.flags & PR_PARAM_FLAG_START_COLLAPSED) != 0,
+                               s.description});
+          break;
+        default: break;  // GROUP_END: the next param's `group` already says it
       }
     }
     doc::NativeEffects::add(std::move(ne));
@@ -1687,6 +1704,8 @@ std::vector<PluginRecord> PluginHost::plugins() const {
     }
     r.gpu = p->gpu;
     r.panel = has_panel(p->dir);
+    if (std::error_code ec; !p->manifest.icon.empty() && fs::is_regular_file(p->dir / fs::path(p->manifest.icon), ec)) r.icon = p->manifest.icon;
+    r.panelTitle = p->manifest.panelTitle;
     out.push_back(std::move(r));
   }
   return out;
@@ -2659,6 +2678,8 @@ std::vector<api::PluginInfo> PluginHost::plugin_infos() const {
     i.effects = std::move(r.effects);
     i.gpu = r.gpu;
     i.panel = r.panel;
+    if (!r.icon.empty()) i.icon = std::move(r.icon);
+    if (!r.panelTitle.empty()) i.panel_title = std::move(r.panelTitle);
     contrib_->fill(i);  // P7: commands, importers, output modules, panels
     out.push_back(std::move(i));
   }

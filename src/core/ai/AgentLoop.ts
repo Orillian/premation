@@ -13,7 +13,7 @@
 
 import { ToolRegistry, getAdapter, mutates } from '@motion/ai-tools';
 import type { AiEvent, AiImage, AiMessage, AiRequest, AiToolCall, ProviderId } from '@motion/ai-tools';
-import type { PieceHistory } from '@motion/author';
+import type { ConceptChoice, ConceptOption, CritiqueAxis, PieceHistory } from '@motion/author';
 import { buildAiTools } from './toolHandlers';
 import { createToolContext } from './toolContext';
 import { beginAiTransaction, type AiTransaction } from './aiTransaction';
@@ -197,6 +197,10 @@ export interface AgentResult {
    * primitives. See `composeRatio`.
    */
   tally: ToolCallTally;
+  /** The author critique's five scores (1–10), when the run was authored and scored. */
+  scores?: Record<CritiqueAxis, number>;
+  /** The concept the piece was built on, when a concept stage ran. */
+  concept?: ConceptOption;
 }
 
 export class AiError extends Error {
@@ -291,6 +295,13 @@ export interface RunAgentOptions {
   images?: readonly AiImage[];
   /** The last pieces made (@motion/author variety.ts): the author run reads and extends it. */
   pieceHistory?: PieceHistory;
+  /**
+   * The author run's concept gate (AuthorRunner): shown three concepts, it
+   * answers with the user's pick, "more" or "surprise". Author mode only.
+   */
+  chooseConcept?: (concepts: ConceptOption[], round: number) => Promise<ConceptChoice>;
+  /** Concept names not to offer again ("Another take"). */
+  avoidConcepts?: readonly string[];
   /**
    * Manual mode: don't commit. Apply the run live so the canvas previews it, but
    * return the open transaction so the caller can Apply or Discard. Auto mode
@@ -395,6 +406,8 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
   let isGenerative = false;
   /** The caster's fit-critic verdict, if one ran. Shown with the answer. */
   let casterCritique = '';
+  let authoredScores: Record<CritiqueAxis, number> | undefined;
+  let authoredConcept: ConceptOption | undefined;
   /** Frames rendered after a successful plan run — seeds the polish pass. */
   let pipelineReviewShots: AiImage[] = [];
   let finalText = '';
@@ -436,10 +449,14 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<A
                 ...(opts.images?.length ? { images: opts.images } : {}),
                 ...(opts.direction ? { direction: opts.direction } : {}),
                 ...(opts.pieceHistory ? { history: opts.pieceHistory } : {}),
+                ...(opts.chooseConcept ? { chooseConcept: opts.chooseConcept } : {}),
+                ...(opts.avoidConcepts?.length ? { avoidConcepts: opts.avoidConcepts } : {}),
               },
               ctx, reg, writeNames, tally,
             );
             if (authored.ok) {
+              authoredScores = authored.scores;
+              authoredConcept = authored.concept;
               backendRan = true;
               planExecuted = true;
               // The author pipeline already rendered and critiqued its work;
@@ -825,11 +842,12 @@ ${casterCritique}`
 
     // Manual mode: leave the transaction open so the user can Apply or Discard
     // after seeing the result on the canvas. Auto mode commits now.
+    const extra = { ...(authoredScores ? { scores: authoredScores } : {}), ...(authoredConcept ? { concept: authoredConcept } : {}) };
     if (opts.preview) {
-      return { text: finalText, messages: produced, toolCallCount, tx, changes, tally: callTally };
+      return { text: finalText, messages: produced, toolCallCount, tx, changes, tally: callTally, ...extra };
     }
     await tx.commit();
-    return { text: finalText, messages: produced, toolCallCount, changes, tally: callTally };
+    return { text: finalText, messages: produced, toolCallCount, changes, tally: callTally, ...extra };
   } catch (err) {
     // A half-applied AI edit is worse than none — the user can't tell which
     // half landed, and undo would only reach part of it.

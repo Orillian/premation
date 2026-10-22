@@ -11,6 +11,7 @@
 import { Progress } from '@components/Progress';
 import { Badge } from '@components/Badge';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import styles from './EditorStatusBar.module.css';
 
 const MAX_CHIPS = 2;
@@ -22,7 +23,7 @@ export function JobTray(): JSX.Element | null {
   const shown = running.slice(0, MAX_CHIPS);
   const more = running.length - shown.length;
   return (
-    <div className={styles.tray} role="group" aria-label="Background jobs">
+    <div className={styles.tray} role="group" aria-label={t('statusBar.jobs.ariaLabel', 'Background jobs')}>
       {shown.map((job) => {
         const indeterminate = job.progress === 'indeterminate';
         const pct = indeterminate ? null : Math.round((job.progress as number) * 100);
@@ -30,7 +31,7 @@ export function JobTray(): JSX.Element | null {
           <div
             key={job.id}
             className={styles.job}
-            title={`${job.label}${pct === null ? '' : ` — ${pct}%`}`}
+            title={pct === null ? job.label : t('statusBar.jobs.progress', '{label} — {pct}%', { label: job.label, pct })}
           >
             <span className={styles.jobLabel}>{job.label}</span>
             <Progress
@@ -44,7 +45,7 @@ export function JobTray(): JSX.Element | null {
           </div>
         );
       })}
-      {more > 0 ? <Badge size="sm" title={`${more} more running`}>+{more}</Badge> : null}
+      {more > 0 ? <Badge size="sm" title={t('statusBar.jobs.more', '{n} more running', { n: more })}>+{more}</Badge> : null}
       <span className={styles.dot} aria-hidden>·</span>
     </div>
   );

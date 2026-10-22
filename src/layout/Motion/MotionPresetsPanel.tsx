@@ -56,6 +56,7 @@ import { edit } from '@core/engine/uiEdits';
 import { engine } from '@core/engine/engineInstance';
 import { compTime } from '@core/engine/propRefs';
 import styles from './MotionPresetsPanel.module.css';
+import { t } from '@core/i18n';
 
 type SortOrder = 'default' | 'alphabetical-asc' | 'alphabetical-desc';
 
@@ -183,7 +184,7 @@ export function MotionPresetsBody(): JSX.Element {
   const apply = (preset: AnimationPreset): void => {
     const id = selectedIds[0];
     if (!id) {
-      notify({ level: 'warning', message: 'Select a layer first', durationMs: 2000 });
+      notify({ level: 'warning', message: t('motion.presets.selectLayer', 'Select a layer first'), durationMs: 2000 });
       return;
     }
     if (preset.requires === 'text' && !selectionIsText) {
@@ -191,7 +192,7 @@ export function MotionPresetsBody(): JSX.Element {
       // and the selected layer has none.
       notify({
         level: 'warning',
-        message: `"${preset.name}" animates characters — select a text layer`,
+        message: t('motion.presets.needsText', '"{name}" animates characters — select a text layer', { name: preset.name }),
         durationMs: 2600,
       });
       return;
@@ -199,7 +200,7 @@ export function MotionPresetsBody(): JSX.Element {
     if (preset.requires === 'camera' && !selectionIsCamera) {
       notify({
         level: 'warning',
-        message: `"${preset.name}" moves the camera — select a camera layer`,
+        message: t('motion.presets.needsCamera', '"{name}" moves the camera — select a camera layer', { name: preset.name }),
         durationMs: 2600,
       });
       return;
@@ -213,8 +214,8 @@ export function MotionPresetsBody(): JSX.Element {
     }, { quiet: true }).then((res) => {
       notify(
         res.ok
-          ? { level: 'success', message: `Applied "${preset.name}"`, durationMs: 2000 }
-          : { level: 'warning', message: `Failed to apply "${preset.name}"`, durationMs: 2000 },
+          ? { level: 'success', message: t('motion.presets.applied', 'Applied "{name}"', { name: preset.name }), durationMs: 2000 }
+          : { level: 'warning', message: t('motion.presets.applyFailed', 'Failed to apply "{name}"', { name: preset.name }), durationMs: 2000 },
       );
     });
   };
@@ -243,13 +244,13 @@ export function MotionPresetsBody(): JSX.Element {
       if (!body) {
         notify(
           res.ok
-            ? { level: 'warning', message: 'Nothing to save — animate the layer first', durationMs: 2400 }
-            : { level: 'warning', message: `Could not capture the layer: ${res.error.message}`, durationMs: 2800 },
+            ? { level: 'warning', message: t('motion.presets.nothingToSave', 'Nothing to save — animate the layer first'), durationMs: 2400 }
+            : { level: 'warning', message: t('motion.presets.captureFailed', 'Could not capture the layer: {error}', { error: res.error.message }), durationMs: 2800 },
         );
         return;
       }
       saveUserPreset(name, body);
-      notify({ level: 'success', message: `Saved "${name}" to ${USER_PRESET_FOLDER}`, durationMs: 2200 });
+      notify({ level: 'success', message: t('motion.presets.saved', 'Saved "{name}" to {folder}', { name, folder: USER_PRESET_FOLDER }), durationMs: 2200 });
       setSaveName('');
       setSaving(false);
       void syncPresetToCloud(name);
@@ -266,7 +267,7 @@ export function MotionPresetsBody(): JSX.Element {
     } catch {
       notify({
         level: 'warning',
-        message: `Saved locally, but could not sync “${name}” to the cloud`,
+        message: t('motion.presets.syncFailed', 'Saved locally, but could not sync “{name}” to the cloud', { name }),
         durationMs: 2800,
       });
     }
@@ -274,7 +275,7 @@ export function MotionPresetsBody(): JSX.Element {
 
   const beginSave = (): void => {
     if (!selectedIds[0]) {
-      notify({ level: 'warning', message: 'Select an animated layer first', durationMs: 2000 });
+      notify({ level: 'warning', message: t('motion.presets.selectAnimated', 'Select an animated layer first'), durationMs: 2000 });
       return;
     }
     setSaving(true);
@@ -291,7 +292,9 @@ export function MotionPresetsBody(): JSX.Element {
     downloadBlob(new Blob([json], { type: 'application/json' }), 'premation-presets.json');
     notify({
       level: 'success',
-      message: `Exported ${userPresetCount} preset${userPresetCount === 1 ? '' : 's'}`,
+      message: userPresetCount === 1
+        ? t('motion.presets.exportedOne', 'Exported {n} preset', { n: userPresetCount })
+        : t('motion.presets.exportedOther', 'Exported {n} presets', { n: userPresetCount }),
       durationMs: 2000,
     });
   };
@@ -313,7 +316,7 @@ export function MotionPresetsBody(): JSX.Element {
       new Blob([exportPresets([name])], { type: 'application/json' }),
       `${name.replace(/[\\/:*?"<>|]/g, ' ').trim() || 'preset'}.preset.json`,
     );
-    notify({ level: 'success', message: `Exported "${name}"`, durationMs: 2000 });
+    notify({ level: 'success', message: t('motion.presets.exportedNamed', 'Exported "{name}"', { name }), durationMs: 2000 });
   };
 
   /** Shared outcome report for both import paths (file and cloud). Both halves
@@ -326,12 +329,12 @@ export function MotionPresetsBody(): JSX.Element {
       return;
     }
     const parts: string[] = [];
-    if (r.added.length) parts.push(`added ${r.added.length}`);
-    if (r.replaced.length) parts.push(`replaced ${r.replaced.length}`);
-    if (r.rejected) parts.push(`skipped ${r.rejected} unusable`);
+    if (r.added.length) parts.push(t('motion.presets.importAdded', 'added {n}', { n: r.added.length }));
+    if (r.replaced.length) parts.push(t('motion.presets.importReplaced', 'replaced {n}', { n: r.replaced.length }));
+    if (r.rejected) parts.push(t('motion.presets.importSkipped', 'skipped {n} unusable', { n: r.rejected }));
     notify({
       level: r.rejected ? 'warning' : 'success',
-      message: `Presets: ${parts.join(', ')}`,
+      message: t('motion.presets.importSummary', 'Presets: {parts}', { parts: parts.join(', ') }),
       durationMs: r.rejected ? 4000 : 2500,
     });
     libraryChanged();
@@ -354,7 +357,7 @@ export function MotionPresetsBody(): JSX.Element {
     try {
       const page = await api.listAnimationTemplates({ limit: 100 });
       if (!page.items.length) {
-        notify({ level: 'info', message: 'No presets in your cloud library yet', durationMs: 2500 });
+        notify({ level: 'info', message: t('motion.presets.cloudEmpty', 'No presets in your cloud library yet'), durationMs: 2500 });
         return;
       }
       const records = await Promise.all(page.items.map((s) => api.getAnimationTemplate(s.id)));
@@ -367,30 +370,30 @@ export function MotionPresetsBody(): JSX.Element {
       });
       reportImport(importPresetObjects(entries));
     } catch {
-      notify({ level: 'error', message: 'Could not reach your cloud preset library', durationMs: 3500 });
+      notify({ level: 'error', message: t('motion.presets.cloudFailed', 'Could not reach your cloud preset library'), durationMs: 3500 });
     }
   };
 
   const sortItems: DropdownItem[] = [
-    { type: 'label', label: 'Sort Presets By' },
+    { type: 'label', label: t('motion.presets.sortBy', 'Sort Presets By') },
     {
-      type: 'checkbox', id: 'default', label: 'Default Order',
+      type: 'checkbox', id: 'default', label: t('motion.presets.sortDefault', 'Default Order'),
       checked: sortOrder === 'default', onChange: () => setSortOrder('default'),
     },
     {
-      type: 'checkbox', id: 'asc', label: 'Alphabetical (A-Z)',
+      type: 'checkbox', id: 'asc', label: t('motion.presets.sortAsc', 'Alphabetical (A-Z)'),
       checked: sortOrder === 'alphabetical-asc', onChange: () => setSortOrder('alphabetical-asc'),
     },
     {
-      type: 'checkbox', id: 'desc', label: 'Alphabetical (Z-A)',
+      type: 'checkbox', id: 'desc', label: t('motion.presets.sortDesc', 'Alphabetical (Z-A)'),
       checked: sortOrder === 'alphabetical-desc', onChange: () => setSortOrder('alphabetical-desc'),
     },
     { type: 'separator' },
-    { type: 'label', label: 'Share' },
+    { type: 'label', label: t('motion.presets.share', 'Share') },
     {
       type: 'item',
       id: 'export',
-      label: 'Export Presets…',
+      label: t('motion.presets.export', 'Export Presets…'),
       icon: 'download',
       // Built-ins ship with the app, so a library of only built-ins exports an
       // empty bundle. Disabled with the reason rather than handing over a file
@@ -401,7 +404,7 @@ export function MotionPresetsBody(): JSX.Element {
     {
       type: 'item',
       id: 'import',
-      label: 'Import Presets…',
+      label: t('motion.presets.import', 'Import Presets…'),
       icon: 'upload',
       onSelect: () => fileRef.current?.click(),
     },
@@ -411,7 +414,7 @@ export function MotionPresetsBody(): JSX.Element {
       ? [{
           type: 'item' as const,
           id: 'cloud-pull',
-          label: 'Sync from Cloud',
+          label: t('motion.presets.syncFromCloud', 'Sync from Cloud'),
           icon: 'refresh' as IconName,
           onSelect: () => void doCloudPull(),
         }]
@@ -426,16 +429,16 @@ export function MotionPresetsBody(): JSX.Element {
         <div className={styles.searchRow}>
           <SearchField
             value={search}
-            placeholder="Search presets…"
-            ariaLabel="Search presets"
+            placeholder={t('motion.presets.searchPlaceholder', 'Search presets…')}
+            ariaLabel={t('motion.presets.searchAria', 'Search presets')}
             size="sm"
             onChange={setSearch}
           />
           <button
             type="button"
             className={styles.sortBtn}
-            title="Save the selected layer's animation as a preset"
-            aria-label="Save as preset"
+            title={t('motion.presets.saveTitle', 'Save the selected layer\'s animation as a preset')}
+            aria-label={t('motion.presets.saveAria', 'Save as preset')}
             onClick={beginSave}
           >
             <Icon name="plus" size="sm" />
@@ -443,7 +446,7 @@ export function MotionPresetsBody(): JSX.Element {
           <Dropdown
             placement="bottom-end"
             trigger={
-              <button type="button" className={styles.sortBtn} title="Sort presets">
+              <button type="button" className={styles.sortBtn} title={t('motion.presets.sortTitle', 'Sort presets')}>
                 <Icon name="settings" size="sm" />
               </button>
             }
@@ -468,7 +471,7 @@ export function MotionPresetsBody(): JSX.Element {
           <div className={styles.searchRow} style={{ marginTop: 6 }}>
             <Input
               value={saveName}
-              placeholder="Preset name…"
+              placeholder={t('motion.presets.namePlaceholder', 'Preset name…')}
               size="sm"
               fullWidth
               autoFocus
@@ -481,8 +484,8 @@ export function MotionPresetsBody(): JSX.Element {
             <button
               type="button"
               className={styles.sortBtn}
-              title="Save"
-              aria-label="Confirm save preset"
+              title={t('motion.presets.save', 'Save')}
+              aria-label={t('motion.presets.confirmSave', 'Confirm save preset')}
               disabled={!saveName.trim()}
               onClick={commitSave}
             >
@@ -491,8 +494,8 @@ export function MotionPresetsBody(): JSX.Element {
             <button
               type="button"
               className={styles.sortBtn}
-              title="Cancel"
-              aria-label="Cancel save preset"
+              title={t('motion.presets.cancel', 'Cancel')}
+              aria-label={t('motion.presets.cancelSave', 'Cancel save preset')}
               onClick={() => { setSaving(false); setSaveName(''); }}
             >
               <Icon name="close" size="sm" />
@@ -550,8 +553,10 @@ export function MotionPresetsBody(): JSX.Element {
                         }
                         title={
                           unavailable
-                            ? `${preset.name} — needs a ${preset.requires === 'camera' ? 'camera' : 'text'} layer`
-                            : `${preset.description ?? preset.name}\nClick to apply, or drag onto a layer.`
+                            ? preset.requires === 'camera'
+                              ? t('motion.presets.needsCameraTitle', '{name} — needs a camera layer', { name: preset.name })
+                              : t('motion.presets.needsTextTitle', '{name} — needs a text layer', { name: preset.name })
+                            : `${preset.description ?? preset.name}\n${t('motion.presets.clickToApply', 'Click to apply, or drag onto a layer.')}`
                         }
                         disabled={unavailable}
                         draggable
@@ -566,8 +571,8 @@ export function MotionPresetsBody(): JSX.Element {
                         <button
                           type="button"
                           className={styles.shareBtn}
-                          title="Export this preset to a file"
-                          aria-label={`Export preset ${preset.name}`}
+                          title={t('motion.presets.exportOneTitle', 'Export this preset to a file')}
+                          aria-label={t('motion.presets.exportOneAria', 'Export preset {name}', { name: preset.name })}
                           onClick={() => doExportOne(preset.name)}
                         >
                           <Icon name="download" size="sm" />
@@ -577,11 +582,11 @@ export function MotionPresetsBody(): JSX.Element {
                         <button
                           type="button"
                           className={styles.deleteBtn}
-                          title="Delete custom preset"
-                          aria-label={`Delete preset ${preset.name}`}
+                          title={t('motion.presets.deleteTitle', 'Delete custom preset')}
+                          aria-label={t('motion.presets.deleteAria', 'Delete preset {name}', { name: preset.name })}
                           onClick={() => {
                             deletePreset(preset.name);
-                            notify({ level: 'success', message: `Deleted preset "${preset.name}"`, durationMs: 2000 });
+                            notify({ level: 'success', message: t('motion.presets.deleted', 'Deleted preset "{name}"', { name: preset.name }), durationMs: 2000 });
                             libraryChanged();
                           }}
                         >
@@ -597,16 +602,16 @@ export function MotionPresetsBody(): JSX.Element {
         ) : (
           <EmptyState
             icon="sparkles"
-            title={search.trim() ? 'No matching presets' : 'No presets yet'}
+            title={search.trim() ? t('motion.presets.noMatch', 'No matching presets') : t('motion.presets.noneYet', 'No presets yet')}
             message={
               search.trim()
-                ? `Nothing in the library matches “${search.trim()}”.`
-                : 'Animate a layer, then save its keyframes here to reuse them anywhere.'
+                ? t('motion.presets.noMatchMessage', 'Nothing in the library matches “{query}”.', { query: search.trim() })
+                : t('motion.presets.noneYetMessage', 'Animate a layer, then save its keyframes here to reuse them anywhere.')
             }
             action={
               search.trim()
-                ? { label: 'Show all presets', onClick: () => setSearch('') }
-                : { label: 'Save selection as preset', onClick: beginSave }
+                ? { label: t('motion.presets.showAll', 'Show all presets'), onClick: () => setSearch('') }
+                : { label: t('motion.presets.saveSelection', 'Save selection as preset'), onClick: beginSave }
             }
           />
         )}
@@ -619,7 +624,7 @@ export function MotionPresetsPanel(): JSX.Element {
   return (
     <Panel
       id="presets"
-      title="Presets"
+      title={t('motion.presets.title', 'Presets')}
       icon="zap"
       hideHeader
       onClose={() => getEventBus().emit('PanelClosed', { panelId: 'presets' })}

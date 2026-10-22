@@ -7,6 +7,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { getLogger } from '@core/logging/Logger';
 import { trackCrash } from '@core/analytics/productEvents';
+import { t } from '@core/i18n';
 import styles from './ErrorBoundary.module.css';
 
 interface ErrorBoundaryProps {
@@ -58,8 +59,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
    */
   private wording(): { badge: string; reload: string } {
     return this.props.scope === 'dashboard'
-      ? { badge: 'Dashboard error', reload: 'Reload page' }
-      : { badge: 'Editor error', reload: 'Reload editor' };
+      ? { badge: t('ui.errorBoundary.dashboardBadge', 'Dashboard error'), reload: t('ui.errorBoundary.reloadPage', 'Reload page') }
+      : { badge: t('ui.errorBoundary.editorBadge', 'Editor error'), reload: t('ui.errorBoundary.reloadEditor', 'Reload editor') };
   }
 
   override render(): ReactNode {
@@ -71,10 +72,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div className={styles.root} role="alert">
         <div className={styles.card}>
           <div className={styles.badge}>{this.wording().badge}</div>
-          <h1 className={styles.title}>Something went wrong</h1>
-          <p className={styles.message}>{error.message || 'An unexpected error occurred.'}</p>
+          <h1 className={styles.title}>{t('ui.errorBoundary.title', 'Something went wrong')}</h1>
+          <p className={styles.message}>{error.message || t('ui.errorBoundary.unexpected', 'An unexpected error occurred.')}</p>
           <div className={styles.actions}>
-            <button type="button" className={styles.secondary} onClick={this.reset}>Try again</button>
+            <button type="button" className={styles.secondary} onClick={this.reset}>{t('ui.errorBoundary.tryAgain', 'Try again')}</button>
             <button type="button" className={styles.primary} onClick={() => window.location.reload()}>
               {this.wording().reload}
             </button>
@@ -90,7 +91,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               void import('@layout/Help/openHelp').then(({ openHelp }) => openHelp('errorBoundary'));
             }}
           >
-            Learn more about recovering from errors
+            {t('ui.errorBoundary.learnMore', 'Learn more about recovering from errors')}
           </button>
         </div>
       </div>

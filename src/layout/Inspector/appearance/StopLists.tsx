@@ -29,6 +29,7 @@ import { useMirrorTrackWatch } from '@hooks/useMirror';
 import { FILL_STOPS_PATH, gradientValueStops } from '@core/mirror/paintFields';
 import { useEngineEdit } from '../useEngineEdit';
 import { fillPaintCommands, fillStopsCommands, fillStopsStopwatch, setFillPaintEdit, strokePatchCommands } from './paintEdits';
+import { t } from '@core/i18n';
 import effStyles from '../../Effects/EffectsPanel.module.css';
 
 /** What the colour stop list watches: the primary fill's keyframeable stops. */
@@ -60,10 +61,10 @@ export function OpacityStopList({ nodeId, paint }: { nodeId: string; paint: Fill
       <button
         type="button"
         className={effStyles.addChip}
-        title="Fade this gradient independently of its colours"
+        title={t('inspector.stops.addOpacityRampHint', 'Fade this gradient independently of its colours')}
         onClick={() => write(defaultOpacityStops())}
       >
-        <Icon name="plus" size="sm" /> Add opacity ramp
+        <Icon name="plus" size="sm" /> {t('inspector.stops.addOpacityRamp', 'Add opacity ramp')}
       </button>
     );
   }
@@ -72,7 +73,7 @@ export function OpacityStopList({ nodeId, paint }: { nodeId: string; paint: Fill
     <>
       {ramp.map((o, i) => (
         <div key={o.id} className={effStyles.stopRow}>
-          <span className={effStyles.blendLabel} style={{ minWidth: 46 }}>Alpha</span>
+          <span className={effStyles.blendLabel} style={{ minWidth: 46 }}>{t('inspector.stops.alpha', 'Alpha')}</span>
           <ValueField
             value={Math.round(o.opacity * 100)}
             min={0}
@@ -80,7 +81,7 @@ export function OpacityStopList({ nodeId, paint }: { nodeId: string; paint: Fill
             precision={0}
             unit="%"
             onChange={(v) => write(ramp.map((x) => (x.id === o.id ? { ...x, opacity: v / 100 } : x)))}
-            aria-label={`Opacity stop ${i + 1} value`}
+            aria-label={t('inspector.stops.opacityStopValue', 'Opacity stop {n} value', { n: i + 1 })}
           />
           <ValueField
             value={Math.round(o.offset * 100)}
@@ -89,12 +90,12 @@ export function OpacityStopList({ nodeId, paint }: { nodeId: string; paint: Fill
             precision={0}
             unit="%"
             onChange={(v) => write(ramp.map((x) => (x.id === o.id ? { ...x, offset: v / 100 } : x)))}
-            aria-label={`Opacity stop ${i + 1} position`}
+            aria-label={t('inspector.stops.opacityStopPosition', 'Opacity stop {n} position', { n: i + 1 })}
           />
           <button
             type="button"
             className={effStyles.remove}
-            aria-label={`Remove opacity stop ${i + 1}`}
+            aria-label={t('inspector.stops.removeOpacityStop', 'Remove opacity stop {n}', { n: i + 1 })}
             // Dropping below two stops removes the ramp entirely rather than
             // leaving one stop behind, which would read as a constant fade.
             onClick={() => write(ramp.length <= 2 ? undefined : ramp.filter((x) => x.id !== o.id))}
@@ -108,7 +109,7 @@ export function OpacityStopList({ nodeId, paint }: { nodeId: string; paint: Fill
         className={effStyles.addChip}
         onClick={() => write([...ramp, makeOpacityStop(0.5, 0.5)])}
       >
-        <Icon name="plus" size="sm" /> Add opacity stop
+        <Icon name="plus" size="sm" /> {t('inspector.stops.addOpacityStop', 'Add opacity stop')}
       </button>
     </>
   );
@@ -178,6 +179,8 @@ export function StopList({
     // AE: on — one Colors key holding the stops; off — the stops at the playhead stay.
     e.send(stopsAnimated ? 'Remove gradient stop keyframes' : 'Animate gradient stops', fillStopsStopwatch(nodeId, !stopsAnimated, time));
   };
+  const colorLabel = 'Gradient Stop Color';
+  const positionLabel = 'Gradient Stop Position';
 
   return (
     <div className={effStyles.list}>
@@ -188,20 +191,20 @@ export function StopList({
         onClick={toggleStopwatch}
         aria-pressed={stopsAnimated}
         title={stopsAnimated
-          ? 'Gradient stops are keyframed — click to remove all stop keyframes'
-          : 'Keyframe the gradient stops at the playhead (positions and colors tween)'}
+          ? t('inspector.stops.keyframedHint', 'Gradient stops are keyframed — click to remove all stop keyframes')
+          : t('inspector.stops.animateHint', 'Keyframe the gradient stops at the playhead (positions and colors tween)')}
         style={stopsAnimated ? { color: 'var(--color-primary, #4c8dff)' } : undefined}
       >
-        <Icon name="keyframe" size="sm" /> {stopsAnimated ? 'Stops keyframed' : 'Animate stops'}
+        <Icon name="keyframe" size="sm" /> {stopsAnimated ? t('inspector.stops.keyframed', 'Stops keyframed') : t('inspector.stops.animate', 'Animate stops')}
       </button>
       )}
       {stops.map((s, i) => (
         <div key={s.id} className={effStyles.stopRow}>
-          <span style={{ display: 'contents' }} {...e.press('Gradient Stop Color')}>
+          <span style={{ display: 'contents' }} {...e.press(colorLabel)}>
             <ColorPicker
               value={s.color}
-              onChange={(color) => write(stops.map((x) => (x.id === s.id ? { ...x, color } : x)), 'Gradient Stop Color')}
-              aria-label={`Stop ${i + 1} color`}
+              onChange={(color) => write(stops.map((x) => (x.id === s.id ? { ...x, color } : x)), colorLabel)}
+              aria-label={t('inspector.stops.stopColor', 'Stop {n} color', { n: i + 1 })}
             />
           </span>
           <ValueField
@@ -210,14 +213,14 @@ export function StopList({
             max={100}
             precision={0}
             unit="%"
-            onChange={(v) => write(stops.map((x) => (x.id === s.id ? { ...x, offset: v / 100 } : x)), 'Gradient Stop Position')}
-            {...e.scrub('Gradient Stop Position')}
-            aria-label={`Stop ${i + 1} position`}
+            onChange={(v) => write(stops.map((x) => (x.id === s.id ? { ...x, offset: v / 100 } : x)), positionLabel)}
+            {...e.scrub(positionLabel)}
+            aria-label={t('inspector.stops.stopPosition', 'Stop {n} position', { n: i + 1 })}
           />
           <button
             type="button"
             className={effStyles.remove}
-            aria-label={`Remove stop ${i + 1}`}
+            aria-label={t('inspector.stops.removeStop', 'Remove stop {n}', { n: i + 1 })}
             disabled={stops.length <= 2}
             onClick={() => write(stops.filter((x) => x.id !== s.id), 'Remove Gradient Stop')}
           >
@@ -230,7 +233,7 @@ export function StopList({
         className={effStyles.addChip}
         onClick={() => write([...stops, makeStop(0.5, '#888888')], 'Add Gradient Stop')}
       >
-        <Icon name="plus" size="sm" /> Add stop
+        <Icon name="plus" size="sm" /> {t('inspector.stops.add', 'Add stop')}
       </button>
 
       {canAnimate && <OpacityStopList nodeId={nodeId} paint={paint} />}

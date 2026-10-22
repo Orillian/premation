@@ -20,6 +20,7 @@ import { Slider } from '@components/Slider';
 import { Switch } from '@components/Switch';
 import { ValueField } from '@components/ValueField';
 import { useOnionSkinStore, ONION_MAX_SIDE, ONION_MAX_STEP } from '@stores/onionSkinStore';
+import { t } from '@core/i18n';
 import styles from './OnionSkinSettings.module.css';
 
 export function OnionSkinSettingsPopover({ className }: { className?: string }): JSX.Element {
@@ -38,8 +39,8 @@ export function OnionSkinSettingsPopover({ className }: { className?: string }):
         <button
           type="button"
           className={className}
-          title="Onion Skin Settings"
-          aria-label="Onion Skin Settings"
+          title={t('timeline.onionSkin.settings', 'Onion Skin Settings')}
+          aria-label={t('timeline.onionSkin.settings', 'Onion Skin Settings')}
           aria-haspopup="dialog"
         >
           <Icon name="chevron-up" size="sm" />
@@ -47,10 +48,10 @@ export function OnionSkinSettingsPopover({ className }: { className?: string }):
       }
     >
       <div className={styles.body}>
-        <div className={styles.title}>Onion Skin</div>
+        <div className={styles.title}>{t('timeline.onionSkin.title', 'Onion Skin')}</div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Before</span>
+          <span className={styles.label}>{t('timeline.onionSkin.before', 'Before')}</span>
           <ValueField
             value={before}
             onChange={(v) => set({ before: v })}
@@ -58,12 +59,12 @@ export function OnionSkinSettingsPopover({ className }: { className?: string }):
             max={ONION_MAX_SIDE}
             step={1}
             precision={0}
-            aria-label="Ghosts before the playhead"
+            aria-label={t('timeline.onionSkin.beforeAria', 'Ghosts before the playhead')}
           />
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>After</span>
+          <span className={styles.label}>{t('timeline.onionSkin.after', 'After')}</span>
           <ValueField
             value={after}
             onChange={(v) => set({ after: v })}
@@ -71,12 +72,12 @@ export function OnionSkinSettingsPopover({ className }: { className?: string }):
             max={ONION_MAX_SIDE}
             step={1}
             precision={0}
-            aria-label="Ghosts after the playhead"
+            aria-label={t('timeline.onionSkin.afterAria', 'Ghosts after the playhead')}
           />
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Step</span>
+          <span className={styles.label}>{t('timeline.onionSkin.step', 'Step')}</span>
           <ValueField
             value={step}
             onChange={(v) => set({ step: v })}
@@ -84,36 +85,36 @@ export function OnionSkinSettingsPopover({ className }: { className?: string }):
             max={ONION_MAX_STEP}
             step={1}
             precision={0}
-            aria-label="Frames between ghosts"
+            aria-label={t('timeline.onionSkin.stepAria', 'Frames between ghosts')}
           />
         </div>
 
         <div className={styles.rowWide}>
-          <span className={styles.label}>Opacity</span>
+          <span className={styles.label}>{t('timeline.onionSkin.opacity', 'Opacity')}</span>
           <Slider
             value={Math.round(opacity * 100)}
             min={0}
             max={100}
             step={1}
             showValue
-            aria-label="Nearest ghost opacity"
+            aria-label={t('timeline.onionSkin.opacityAria', 'Nearest ghost opacity')}
             onChange={(v) => set({ opacity: v / 100 })}
           />
         </div>
 
         <div className={styles.row}>
-          <span className={styles.label}>Colorize</span>
+          <span className={styles.label}>{t('timeline.onionSkin.colorize', 'Colorize')}</span>
           <Switch
             checked={colorize}
             onChange={(e) => set({ colorize: e.currentTarget.checked })}
-            aria-label="Tint past and future ghosts"
+            aria-label={t('timeline.onionSkin.colorizeAria', 'Tint past and future ghosts')}
           />
         </div>
 
         {/* Each ghost is a FULL comp render, which is why the store caps the
             counts. Saying the number out loud is cheaper than a user wondering
             why the viewport got slow. */}
-        <p className={styles.note}>{before + after + 1} comp renders per repaint</p>
+        <p className={styles.note}>{t('timeline.onionSkin.renderCount', '{n} comp renders per repaint', { n: before + after + 1 })}</p>
       </div>
     </Popover>
   );

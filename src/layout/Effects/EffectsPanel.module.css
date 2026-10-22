@@ -71,7 +71,7 @@
   height: var(--control-height-row);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   /* A dropdown's choice is a value — in the text face: it is a word. */
@@ -107,7 +107,7 @@
   width: 100%;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   font-family: var(--panel-font-family-value);
@@ -172,7 +172,7 @@
   height: 26px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   font-family: var(--panel-font-family);
@@ -186,7 +186,7 @@
 
 .addChip:hover:not(:disabled) {
   border-color: var(--color-primary);
-  background: var(--color-hover);
+  background: var(--color-surface-0);
   color: var(--color-text-primary);
 }
 
@@ -593,6 +593,44 @@
   outline-offset: 1px;
 }
 
+/* A native plugin's header (PluginCardHeader): its icon after the fx switch,
+   and Presets / its panel / About before Reset. */
+.pluginIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+}
+
+.pluginHeaderActions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pluginAbout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 320px;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  color: var(--color-text-secondary);
+}
+
+.pluginAbout strong {
+  color: var(--color-text-primary);
+}
+
+.pluginAbout p {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  color: var(--color-text-primary);
+}
+
 /* ── Parameter lines (AE's disclosure gutter) ─────────────────────── */
 
 .paramLine {
@@ -763,6 +801,20 @@
 .paramGroupHead:hover {
   color: var(--color-text-primary);
   background: var(--color-hover);
+}
+
+/* A label with a description (a native plugin param's / group's tooltip):
+   dotted underline on hover / keyboard focus, as PropertyRow's name. */
+.paramDescribed {
+  cursor: help;
+  text-decoration: underline dotted transparent;
+  text-underline-offset: 2px;
+}
+
+.paramDescribed:hover,
+.paramDescribed:focus-visible,
+.paramGroupHead:focus-visible .paramDescribed {
+  text-decoration-color: currentColor;
 }
 
 /* Indented to the same left edge the group's own params would have had, so

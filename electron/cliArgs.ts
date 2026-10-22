@@ -130,6 +130,25 @@ export interface CliOutputOptions {
   logPath?: string;
 }
 
+/**
+ * `premation render-item <pack-dir>` — a Library pack's card media: the pack's
+ * payload applied to a new document by the Library's own interpreters, played
+ * as a loop (H.264) and stilled at its rest frame (webp). Paths as typed.
+ */
+export interface CliRenderItemJob {
+  packDir: string;
+  /** Default `<pack-dir>/preview.mp4`. */
+  outPath: string;
+  /** Default `<pack-dir>/poster.webp`. */
+  posterPath: string;
+  /** The frame's long side in px. Default 640 (640×360 for 16:9, 360×640 for 9:16). */
+  size: number;
+  /** Default 30. */
+  fps: number;
+  /** Seconds; default the pack's `posterTime`, else its rest frame. */
+  posterTime?: number;
+}
+
 export type CliInvocation =
   /** Not a CLI launch. Boot the editor normally. */
   | { kind: 'none' }
@@ -138,6 +157,7 @@ export type CliInvocation =
   | { kind: 'error'; message: string }
   | { kind: 'render'; job: CliRenderJob; output: CliOutputOptions }
   | { kind: 'comps'; projectPath: string; output: CliOutputOptions }
+  | { kind: 'renderItem'; job: CliRenderItemJob; output: CliOutputOptions }
   | {
       kind: 'captions';
       projectPath: string;
@@ -154,6 +174,7 @@ USAGE
   premation reframe  <project.motion> --aspect <ratio> [options]
   premation captions <project.motion> [--out subs.srt]
   premation comps    <project.motion>
+  premation render-item <pack-dir> [--out preview.mp4] [--poster poster.webp]
   premation --help | --version
 
 RENDER OPTIONS
@@ -182,6 +203,14 @@ CAPTION OPTIONS
   --commands <file>    Replay a recorded command log (.jsonl) before rendering: the
                        document the log starts from, then every recorded edit.
   --language <code>    Speech language hint for "captions", e.g. en, pt-BR.
+
+LIBRARY ITEM OPTIONS (render-item)
+  <pack-dir>           A Library pack folder: meta.json + payload.json.
+  --out <file.mp4>     The card's loop. Default: <pack-dir>/preview.mp4.
+  --poster <file.webp> The card's still. Default: <pack-dir>/poster.webp.
+  --size <px>          Long side of the frame. Default: 640.
+  --fps <n>            Default: 30.
+  --poster-time <s>    Default: the pack's posterTime, else its rest frame.
 
 DATA-DRIVEN OPTIONS
   --data <file>        CSV or JSON table. Renders one file per row, filling the
@@ -231,6 +260,9 @@ const VALUED_FLAGS = new Set([
   '--commands',
   '--language',
   '--log',
+  '--poster',
+  '--size',
+  '--poster-time',
 ]);
 
 const BOOLEAN_FLAGS = new Set(['--transparent', '--json', '--quiet']);
@@ -317,7 +349,7 @@ export function parseCli(args: readonly string[]): CliInvocation {
     if (args.includes('--version') || args.includes('-v')) return { kind: 'version' };
     return { kind: 'none' };
   }
-  if (first !== 'render' && first !== 'comps' && first !== 'reframe' && first !== 'captions') {
+  if (first !== 'render' && first !== 'comps' && first !== 'reframe' && first !== 'captions' && first !== 'render-item') {
     return { kind: 'none' };
   }
   if (args.includes('--help') || args.includes('-h')) return { kind: 'help', text: CLI_HELP };
@@ -365,6 +397,11 @@ export function parseCli(args: readonly string[]): CliInvocation {
       kind: 'error',
       message: `"${first}" takes one project path, but got ${positionals.length}: ${positionals.join(', ')}`,
     };
+  }
+
+  if (first === 'render-item') return parseRenderItem(projectPath, flags, bools, output);
+  for (const name of ITEM_ONLY_FLAGS) {
+    if (flags.has(name)) return { kind: 'error', message: `"${name}" belongs to the "render-item" command.` };
   }
 
   if (first === 'comps') {
@@ -553,4 +590,54 @@ export function parseCli(args: readonly string[]): CliInvocation {
   }
 
   return { kind: 'render', job, output };
+}
+
+/** Flags only `render-item` takes (`render` would otherwise accept and ignore them). */
+const ITEM_ONLY_FLAGS = ['--poster', '--size', '--poster-time'] as const;
+const ITEM_FLAGS: ReadonlySet<string> = new Set(['--out', '--fps', '--log', ...ITEM_ONLY_FLAGS]);
+
+/** Pack paths are joined with '/', which every platform's path module reads. */
+function inPack(dir: string, file: string): string {
+  return `${dir.replace(/[\\/]+$/, '')}/${file}`;
+}
+
+function parseRenderItem(
+  packDir: string,
+  flags: ReadonlyMap<string, string>,
+  bools: ReadonlySet<string>,
+  output: CliOutputOptions,
+): CliInvocation {
+  for (const name of flags.keys()) {
+    if (!ITEM_FLAGS.has(name)) return { kind: 'error', message: `"render-item" does not take "${name}".` };
+  }
+  if (bools.has('--transparent')) return { kind: 'error', message: '"render-item" does not take "--transparent".' };
+  const outPath = flags.get('--out') ?? inPack(packDir, 'preview.mp4');
+  if (!/\.mp4$/i.test(outPath)) return { kind: 'error', message: `"--out ${outPath}": render-item writes an H.264 .mp4.` };
+  const posterPath = flags.get('--poster') ?? inPack(packDir, 'poster.webp');
+  if (!/\.webp$/i.test(posterPath)) return { kind: 'error', message: `"--poster ${posterPath}": the poster is a .webp.` };
+  const job: CliRenderItemJob = { packDir, outPath, posterPath, size: 640, fps: 30 };
+  const size = flags.get('--size');
+  if (size !== undefined) {
+    const n = positiveInt(size);
+    // Even, so H.264's 4:2:0 needs no padding; 4096 is the thumbnail renderer's ceiling.
+    if (n === null || n < 64 || n > 4096 || n % 2 !== 0) {
+      return { kind: 'error', message: `"--size" wants an even pixel count from 64 to 4096 (got "${size}").` };
+    }
+    job.size = n;
+  }
+  const fps = flags.get('--fps');
+  if (fps !== undefined) {
+    const n = positiveNumber(fps);
+    if (n === null || n > 120) return { kind: 'error', message: `"--fps" wants a rate up to 120 (got "${fps}").` };
+    job.fps = n;
+  }
+  const posterTime = flags.get('--poster-time');
+  if (posterTime !== undefined) {
+    const n = Number(posterTime);
+    if (!/^\d+(\.\d+)?$/.test(posterTime) || !Number.isFinite(n)) {
+      return { kind: 'error', message: `"--poster-time" wants seconds, like --poster-time 2.5 (got "${posterTime}").` };
+    }
+    job.posterTime = n;
+  }
+  return { kind: 'renderItem', job, output };
 }

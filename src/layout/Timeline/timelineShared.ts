@@ -6,6 +6,7 @@
  */
 
 import type { IconName } from '@components/Icon';
+import { t } from '@core/i18n';
 import type { ClipCut } from './clipCuts';
 import { TIMELINE_EXTRA_COLUMNS, extraColumnsWidth } from './timelineColumns';
 import { TIMELINE_GROUP_ORDER, groupForPropWith, type TimelineGroupKey } from '@core/timeline/propertyTree';
@@ -180,19 +181,20 @@ export type Row =
  * about the layer's structure, not about this view; only the words and the
  * glyph are decided here.
  */
-export const GROUP_HEADING: Readonly<Record<TimelineGroupKey, { label: string; icon: IconName }>> = {
-  text: { label: 'Text', icon: 'type' },
-  contents: { label: 'Contents', icon: 'shape' },
-  masks: { label: 'Masks', icon: 'mask-square' },
-  effects: { label: 'Effects', icon: 'sparkles' },
-  transform: { label: 'Transform', icon: 'sliders-h' },
-  styles: { label: 'Layer Styles', icon: 'palette' },
-  camera: { label: 'Camera Options', icon: 'camera' },
-  light: { label: 'Light Options', icon: 'light' },
-  geometry: { label: 'Geometry Options', icon: 'cube' },
-  material: { label: 'Material Options', icon: 'cube' },
-  audio: { label: 'Audio', icon: 'audio' },
-  time: { label: 'Time', icon: 'clock' },
+export const GROUP_HEADING: Readonly<Record<TimelineGroupKey, { readonly label: string; icon: IconName }>> = {
+  // Getters: `t()` must run when a row is built, not at import (the catalogue loads later).
+  text: { get label() { return t('timeline.group.text', 'Text'); }, icon: 'type' },
+  contents: { get label() { return t('timeline.group.contents', 'Contents'); }, icon: 'shape' },
+  masks: { get label() { return t('timeline.group.masks', 'Masks'); }, icon: 'mask-square' },
+  effects: { get label() { return t('timeline.group.effects', 'Effects'); }, icon: 'sparkles' },
+  transform: { get label() { return t('timeline.group.transform', 'Transform'); }, icon: 'sliders-h' },
+  styles: { get label() { return t('timeline.group.styles', 'Layer Styles'); }, icon: 'palette' },
+  camera: { get label() { return t('timeline.group.camera', 'Camera Options'); }, icon: 'camera' },
+  light: { get label() { return t('timeline.group.light', 'Light Options'); }, icon: 'light' },
+  geometry: { get label() { return t('timeline.group.geometry', 'Geometry Options'); }, icon: 'cube' },
+  material: { get label() { return t('timeline.group.material', 'Material Options'); }, icon: 'cube' },
+  audio: { get label() { return t('timeline.group.audio', 'Audio'); }, icon: 'audio' },
+  time: { get label() { return t('timeline.group.time', 'Time'); }, icon: 'clock' },
 };
 
 /**

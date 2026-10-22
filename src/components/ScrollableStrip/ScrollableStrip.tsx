@@ -17,6 +17,7 @@ import {
 } from 'react';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import styles from './ScrollableStrip.module.css';
 
 export interface ScrollableStripProps extends HTMLAttributes<HTMLDivElement> {
@@ -153,8 +154,8 @@ export const ScrollableStrip = forwardRef<HTMLDivElement, ScrollableStripProps>(
           type="button"
           className={styles.swipeBtn}
           onClick={scrollLeft}
-          title="Scroll left"
-          aria-label="Scroll left"
+          title={t('ui.scrollableStrip.left', 'Scroll left')}
+          aria-label={t('ui.scrollableStrip.left', 'Scroll left')}
           tabIndex={canScrollLeft ? 0 : -1}
         >
           <Icon name="chevron-left" size="sm" />
@@ -183,8 +184,8 @@ export const ScrollableStrip = forwardRef<HTMLDivElement, ScrollableStripProps>(
           type="button"
           className={styles.swipeBtn}
           onClick={scrollRight}
-          title="Scroll right"
-          aria-label="Scroll right"
+          title={t('ui.scrollableStrip.right', 'Scroll right')}
+          aria-label={t('ui.scrollableStrip.right', 'Scroll right')}
           tabIndex={canScrollRight ? 0 : -1}
         >
           <Icon name="chevron-right" size="sm" />

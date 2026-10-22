@@ -52,6 +52,7 @@ import { edit } from '@core/engine/uiEdits';
 import { useUIStore } from '@stores/uiStore';
 import { insertMediaEdit, newCompFromFootageEdit } from '@layout/Workspace/footageEdits';
 import type { ImportedAsset } from '@stores/assetStore';
+import { t } from '@core/i18n';
 
 /** A span of the SOURCE file, in seconds. End-exclusive, like a clip. */
 export interface SourceRange {
@@ -216,7 +217,9 @@ function reportCovered(covered: number): void {
   if (covered <= 0) return;
   useUIStore.getState().notify({
     level: 'info',
-    message: `Overwrote the range. ${covered} clip${covered === 1 ? '' : 's'} sitting entirely inside it ${covered === 1 ? 'was' : 'were'} left in place — trim or delete ${covered === 1 ? 'it' : 'them'} if you meant to replace ${covered === 1 ? 'it' : 'them'}.`,
+    message: covered === 1
+      ? t('sourceMonitor.overwrite.coveredOne', 'Overwrote the range. {n} clip sitting entirely inside it was left in place — trim or delete it if you meant to replace it.', { n: covered })
+      : t('sourceMonitor.overwrite.coveredOther', 'Overwrote the range. {n} clips sitting entirely inside it were left in place — trim or delete them if you meant to replace them.', { n: covered }),
     durationMs: 7000,
   });
 }

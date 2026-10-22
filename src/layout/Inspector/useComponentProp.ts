@@ -39,6 +39,7 @@ import { isLayer } from '@core/mirror/docFacts';
 import { edit, reportEngineError } from '@core/engine/uiEdits';
 import { trackRef, trackWrites } from './inspectorEdits';
 import { useEngineEdit } from './useEngineEdit';
+import { t } from '@core/i18n';
 
 const HEX = /^#?[0-9a-fA-F]{3,8}$/;
 
@@ -134,7 +135,7 @@ export function componentPropsCommands(
 export function reportUnaddressed(nodeId: string, keys: readonly string[], label: string): void {
   if (keys.length === 0) return;
   const names = keys.map((k) => propLabel(nodeId, k)).join(', ');
-  reportEngineError(label, { code: 'unsupported', message: `${names} cannot be edited here — it is not an engine property of this layer` });
+  reportEngineError(label, { code: 'unsupported', message: t('inspector.componentProp.unaddressed', '{names} cannot be edited here — it is not an engine property of this layer', { names }) });
 }
 
 /**

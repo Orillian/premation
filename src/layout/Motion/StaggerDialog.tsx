@@ -46,14 +46,17 @@ import {
 } from '@core/animation/staggerOffsets';
 import { useStaggerStore } from '@layout/Timeline/staggerStore';
 import styles from './AssistantDialog.module.css';
+import { t } from '@core/i18n';
 
 /** What the offsets are applied to. */
 type StaggerTarget = 'bars' | 'animation';
 
-const TARGETS: ReadonlyArray<{ id: StaggerTarget; label: string; hint: string }> = [
-  { id: 'bars', label: 'Layer Bars', hint: 'Move when each layer starts' },
-  { id: 'animation', label: 'Animation', hint: 'Shift each layer’s keyframes in place' },
-];
+function targets(): ReadonlyArray<{ id: StaggerTarget; label: string; hint: string }> {
+  return [
+    { id: 'bars', label: t('motion.stagger.layerBars', 'Layer Bars'), hint: t('motion.stagger.layerBarsHint', 'Move when each layer starts') },
+    { id: 'animation', label: t('motion.stagger.animation', 'Animation'), hint: t('motion.stagger.animationHint', 'Shift each layer’s keyframes in place') },
+  ];
+}
 
 interface StaggerBodyProps {
   nodeIds: ReadonlyArray<string>;
@@ -107,7 +110,7 @@ function StaggerBody({ nodeIds, close, onDone }: StaggerBodyProps): JSX.Element 
       // `shiftLayerKeyframes` (B3z) moves whole tracks in LAYER time — sub-frame
       // offsets and times before 0 included, as the assistant always did.
       void staggerKeyframesEdit(nodeIds, { mode, step, reverse, balance, seed }).then((res) => {
-        onDone(res === true ? `Animation staggered across ${nodeIds.length} layers` : null);
+        onDone(res === true ? t('motion.stagger.doneAnimation', 'Animation staggered across {n} layers', { n: nodeIds.length }) : null);
       });
       close();
       return;
@@ -152,7 +155,7 @@ function StaggerBody({ nodeIds, close, onDone }: StaggerBodyProps): JSX.Element 
       return;
     }
     void moveBars(moves.map((m) => ({ clipId: m.layerId, start: m.startSeconds })), 'Stagger Layers');
-    onDone(`${nodeIds.length} layers staggered — ${preview.min} to ${preview.max}f`);
+    onDone(t('motion.stagger.doneBars', '{n} layers staggered — {min} to {max}f', { n: nodeIds.length, min: preview.min, max: preview.max }));
     close();
   };
 
@@ -161,31 +164,34 @@ function StaggerBody({ nodeIds, close, onDone }: StaggerBodyProps): JSX.Element 
   return (
     <div className={styles.body}>
       <p className={styles.blurb}>
-        Offset the {nodeIds.length} selected layers in time, top to bottom, in a pattern. Relative
-        spacing inside each layer is kept — this moves when things happen, never how long they last.
+        {t(
+          'motion.stagger.blurb',
+          'Offset the {n} selected layers in time, top to bottom, in a pattern. Relative spacing inside each layer is kept — this moves when things happen, never how long they last.',
+          { n: nodeIds.length },
+        )}
       </p>
 
       <div className={styles.fields}>
         <div className={styles.field}>
-          <span className={styles.label}>Apply to</span>
-          <div className={styles.segmented} role="group" aria-label="Apply to">
-            {TARGETS.map((t) => (
+          <span className={styles.label}>{t('motion.stagger.applyTo', 'Apply to')}</span>
+          <div className={styles.segmented} role="group" aria-label={t('motion.stagger.applyTo', 'Apply to')}>
+            {targets().map((opt) => (
               <Button
-                key={t.id}
+                key={opt.id}
                 size="sm"
-                variant={target === t.id ? 'primary' : 'secondary'}
-                title={t.hint}
-                onClick={() => setTarget(t.id)}
+                variant={target === opt.id ? 'primary' : 'secondary'}
+                title={opt.hint}
+                onClick={() => setTarget(opt.id)}
               >
-                {t.label}
+                {opt.label}
               </Button>
             ))}
           </div>
         </div>
 
         <div className={styles.fieldWide}>
-          <span className={styles.label}>Pattern</span>
-          <div className={styles.segmented} role="group" aria-label="Pattern">
+          <span className={styles.label}>{t('motion.stagger.pattern', 'Pattern')}</span>
+          <div className={styles.segmented} role="group" aria-label={t('motion.stagger.pattern', 'Pattern')}>
             {STAGGER_MODES.map((m) => (
               <Button
                 key={m.id}
@@ -201,60 +207,60 @@ function StaggerBody({ nodeIds, close, onDone }: StaggerBodyProps): JSX.Element 
         </div>
 
         <div className={styles.field}>
-          <span className={styles.label}>Step (frames)</span>
+          <span className={styles.label}>{t('motion.stagger.step', 'Step (frames)')}</span>
           <ValueField
             value={frames}
             onChange={setFrames}
             step={1}
             precision={0}
-            aria-label="Step in frames between adjacent layers"
+            aria-label={t('motion.stagger.stepAria', 'Step in frames between adjacent layers')}
           />
         </div>
 
         {mode === 'random' ? (
           <div className={styles.field}>
-            <span className={styles.label}>Random Seed</span>
+            <span className={styles.label}>{t('motion.stagger.seed', 'Random Seed')}</span>
             <ValueField
               value={seed}
               onChange={(v) => setSeed(Math.max(1, Math.round(v)))}
               min={1}
               step={1}
               precision={0}
-              aria-label="Random seed"
+              aria-label={t('motion.stagger.seedAria', 'Random seed')}
             />
           </div>
         ) : null}
 
         <div className={styles.field}>
-          <span className={styles.label}>Order</span>
-          <div className={styles.segmented} role="group" aria-label="Order">
+          <span className={styles.label}>{t('motion.stagger.order', 'Order')}</span>
+          <div className={styles.segmented} role="group" aria-label={t('motion.stagger.order', 'Order')}>
             <Button size="sm" variant={reverse ? 'secondary' : 'primary'} onClick={() => setReverse(false)}>
-              Top first
+              {t('motion.stagger.topFirst', 'Top first')}
             </Button>
             <Button size="sm" variant={reverse ? 'primary' : 'secondary'} onClick={() => setReverse(true)}>
-              Bottom first
+              {t('motion.stagger.bottomFirst', 'Bottom first')}
             </Button>
           </div>
         </div>
 
         <div className={styles.field}>
-          <span className={styles.label}>Anchor</span>
-          <div className={styles.segmented} role="group" aria-label="Anchor">
+          <span className={styles.label}>{t('motion.stagger.anchor', 'Anchor')}</span>
+          <div className={styles.segmented} role="group" aria-label={t('motion.stagger.anchor', 'Anchor')}>
             <Button
               size="sm"
               variant={balance ? 'secondary' : 'primary'}
-              title="The first layer stays put and the rest trail after it"
+              title={t('motion.stagger.firstStaysTitle', 'The first layer stays put and the rest trail after it')}
               onClick={() => setBalance(false)}
             >
-              First stays
+              {t('motion.stagger.firstStays', 'First stays')}
             </Button>
             <Button
               size="sm"
               variant={balance ? 'primary' : 'secondary'}
-              title="Spread around where the selection already sits"
+              title={t('motion.stagger.centredTitle', 'Spread around where the selection already sits')}
               onClick={() => setBalance(true)}
             >
-              Centred
+              {t('motion.stagger.centred', 'Centred')}
             </Button>
           </div>
         </div>
@@ -262,19 +268,19 @@ function StaggerBody({ nodeIds, close, onDone }: StaggerBodyProps): JSX.Element 
 
       <p className={styles.result}>
         {valid
-          ? `Spread ${preview.min} to ${preview.max} frames across ${nodeIds.length} layers.`
-          : 'Select two or more layers and set a non-zero step.'}
+          ? t('motion.stagger.result', 'Spread {min} to {max} frames across {n} layers.', { min: preview.min, max: preview.max, n: nodeIds.length })
+          : t('motion.stagger.invalid', 'Select two or more layers and set a non-zero step.')}
       </p>
 
       <DialogFooter
         secondary={
           <Button variant="ghost" onClick={cancel}>
-            Cancel
+            {t('motion.stagger.cancel', 'Cancel')}
           </Button>
         }
         primary={
           <Button variant="primary" onClick={confirm} disabled={!valid}>
-            Stagger
+            {t('motion.stagger.stagger', 'Stagger')}
           </Button>
         }
       />
@@ -297,7 +303,7 @@ export function openStaggerDialog(nodeIds: ReadonlyArray<string>): Promise<strin
     };
     openModal({
       id: 'stagger-layers',
-      title: 'Stagger Layers',
+      title: t('motion.stagger.title', 'Stagger Layers'),
       size: 'sm',
       variant: 'floating',
       onClose: () => finish(null),

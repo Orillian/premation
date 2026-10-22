@@ -17,6 +17,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useSelectionStore } from '@stores/selectionStore';
 import { canOpenInLayerPanel, canOpenLayerComposition, canOpenLayerSource, openLayerPanel, openLayerSource } from './openLayer';
 import { openLayerComposition } from '@layout/Composition/compNavigationEdits';
+import { t } from '@core/i18n';
 
 /** The one selected layer, or null. */
 function selectedLayer(): string | null {
@@ -30,8 +31,8 @@ export function buildOpenLayerCommands(): Command[] {
   return [
     {
       id: asCommandId('layer.openLayer'),
-      label: 'Open Layer',
-      description: 'Show the selected layer on its own in the Layer viewer (masks, paint, roto, tracking)',
+      label: t('layerViewer.commands.openLayer', 'Open Layer'),
+      description: t('layerViewer.commands.showTheSelectedLayerOn', 'Show the selected layer on its own in the Layer viewer (masks, paint, roto, tracking)'),
       icon: 'layers',
       enabled: () => {
         const id = selectedLayer();
@@ -44,8 +45,8 @@ export function buildOpenLayerCommands(): Command[] {
     },
     {
       id: asCommandId('layer.openLayerSource'),
-      label: 'Open Layer Source',
-      description: 'Show the file the selected layer plays in the Footage viewer',
+      label: t('layerViewer.commands.openLayerSource', 'Open Layer Source'),
+      description: t('layerViewer.commands.showTheFileTheSelected', 'Show the file the selected layer plays in the Footage viewer'),
       icon: 'media',
       enabled: () => {
         const id = selectedLayer();
@@ -58,8 +59,8 @@ export function buildOpenLayerCommands(): Command[] {
     },
     {
       id: asCommandId('layer.openComposition'),
-      label: 'Open Composition',
-      description: 'Open the composition the selected layer shows, where its parts are separate layers',
+      label: t('layerViewer.commands.openComposition', 'Open Composition'),
+      description: t('layerViewer.commands.openTheCompositionTheSelected', 'Open the composition the selected layer shows, where its parts are separate layers'),
       icon: 'shape',
       enabled: () => {
         const id = selectedLayer();

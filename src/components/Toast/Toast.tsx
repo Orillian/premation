@@ -21,6 +21,7 @@ import { cn } from '@utils/cn';
 import { Icon, type IconName } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
 import { Progress } from '@components/Progress';
+import { t } from '@core/i18n';
 import styles from './Toast.module.css';
 
 export type ToastLevel = 'info' | 'success' | 'warning' | 'error';
@@ -86,7 +87,7 @@ export function Toast({
             variant={level === 'error' ? 'danger' : level === 'success' ? 'success' : 'default'}
             value={typeof progress === 'number' ? progress : 0}
             indeterminate={progress === 'indeterminate'}
-            aria-label={label ?? 'Progress'}
+            aria-label={label ?? t('ui.toast.progress', 'Progress')}
           />
         ) : null}
       </div>
@@ -105,7 +106,7 @@ export function Toast({
         </button>
       ) : null}
       {onDismiss ? (
-        <IconButton aria-label="Dismiss" size="sm" className={styles.dismiss} onClick={onDismiss}>
+        <IconButton aria-label={t('ui.toast.dismiss', 'Dismiss')} size="sm" className={styles.dismiss} onClick={onDismiss}>
           <Icon name="close" size="sm" />
         </IconButton>
       ) : null}

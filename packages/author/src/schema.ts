@@ -49,6 +49,37 @@ export const LAYER_SCHEMA: JsonSchema = {
   },
 };
 
+/** One candidate concept (the concept stage, and the design call's own weighing). */
+const CONCEPT_PROPERTIES: Record<string, JsonSchema> = {
+  name: { type: 'string' },
+  idea: { type: 'string' },
+  medium: { type: 'string', enum: ['3d', 'image', 'ink', 'ui', 'shape', 'type', 'mixed'] },
+  value: { type: 'string', enum: ['light', 'mid', 'dark'] },
+  palette: { type: 'string', description: 'The palette in words.' },
+  swatches: { type: 'array', minItems: 3, maxItems: 5, items: { type: 'string' }, description: 'Hex colours: background first, surfaces, the accent, then a text colour that reads on the background.' },
+  type: { type: 'string', description: 'The type pairing, display / body, by name.' },
+  motion: { type: 'string', description: 'Tempo, ease family and the signature move.' },
+  camera: { type: 'string' },
+};
+
+/** The concept stage's answer: five directions, before any design. */
+export const CONCEPTS_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['concepts'],
+  properties: {
+    concepts: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        required: ['name', 'idea', 'medium', 'value', 'palette', 'swatches', 'type', 'motion', 'camera'],
+        properties: CONCEPT_PROPERTIES,
+      },
+    },
+  },
+};
+
 export const DESIGN_SCHEMA: JsonSchema = {
   type: 'object',
   required: ['concepts', 'chosen', 'why', 'title', 'intent', 'durationSec', 'background', 'palette', 'grid', 'type', 'globals', 'beats'],
@@ -61,14 +92,7 @@ export const DESIGN_SCHEMA: JsonSchema = {
       items: {
         type: 'object',
         required: ['name', 'idea', 'medium', 'value', 'palette', 'camera'],
-        properties: {
-          name: { type: 'string' },
-          idea: { type: 'string' },
-          medium: { type: 'string', enum: ['3d', 'image', 'ink', 'ui', 'shape', 'type', 'mixed'] },
-          value: { type: 'string', enum: ['light', 'mid', 'dark'] },
-          palette: { type: 'string' },
-          camera: { type: 'string' },
-        },
+        properties: CONCEPT_PROPERTIES,
       },
     },
     chosen: { type: 'integer', description: 'Index (0–2) of the concept you build.' },
@@ -118,11 +142,21 @@ export const BEATS_SCHEMA: JsonSchema = {
   },
 };
 
+/** The five axes the critic scores, in the order the panel draws them. */
+export const CRITIQUE_AXES = ['contrast', 'hierarchy', 'rhythm', 'novelty', 'brief'] as const;
+export type CritiqueAxis = (typeof CRITIQUE_AXES)[number];
+
 export const CRITIQUE_SCHEMA: JsonSchema = {
   type: 'object',
-  required: ['overall', 'beats'],
+  required: ['overall', 'scores', 'beats'],
   properties: {
     overall: { type: 'string' },
+    scores: {
+      type: 'object',
+      description: '1–10 per axis.',
+      required: [...CRITIQUE_AXES],
+      properties: Object.fromEntries(CRITIQUE_AXES.map((a) => [a, { type: 'integer', minimum: 1, maximum: 10 }])),
+    },
     beats: {
       type: 'array',
       items: {
@@ -191,6 +225,8 @@ export interface BeatCritique {
 export interface Critique {
   overall: string;
   beats: BeatCritique[];
+  /** 1–10 per axis; absent when the critic gave none. */
+  scores?: Record<CritiqueAxis, number>;
 }
 
 /**
@@ -220,5 +256,10 @@ export function coerceCritique(raw: unknown, beatCount: number): Critique {
   }
   for (let i = 0; i < beatCount; i++) if (!seen.has(i)) beats.push({ index: i, verdict: 'keep', findings: [] });
   beats.sort((a, b) => a.index - b.index);
-  return { overall: typeof o.overall === 'string' ? o.overall.trim() : '', beats };
+  // The scores: every axis a whole number 1–10, or no scores at all — a
+  // half-filled card would read as a verdict on the missing axes.
+  const s = o.scores && typeof o.scores === 'object' ? (o.scores as Record<string, unknown>) : null;
+  const scores = s ? Object.fromEntries(CRITIQUE_AXES.map((a) => [a, typeof s[a] === 'number' ? Math.max(1, Math.min(10, Math.round(s[a] as number))) : NaN])) as Record<CritiqueAxis, number> : null;
+  const complete = scores !== null && CRITIQUE_AXES.every((a) => Number.isFinite(scores[a]));
+  return { overall: typeof o.overall === 'string' ? o.overall.trim() : '', beats, ...(complete ? { scores } : {}) };
 }

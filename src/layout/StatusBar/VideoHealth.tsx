@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { videoDiag, VIDEO_DIAG_LIVE_MS, DropRateWindow } from '@core/media/videoPlaybackDiag';
 import { useUIStore } from '@stores/uiStore';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import styles from './EditorStatusBar.module.css';
 
 /** How far back the drop readout looks. Long enough that sustained pressure
@@ -34,14 +35,15 @@ export function VideoHealth(): JSX.Element | null {
   useEffect(() => {
     const id = setInterval(() => {
       if (videoDiag.stalledSources.size > 0) {
-        setState({ label: 'video decoder not responding — restart the app', bad: true });
+        setState({ label: t('statusBar.video.stalled', 'video decoder not responding — restart the app'), bad: true });
         if (!warnedRef.current) {
           warnedRef.current = true;
           useUIStore.getState().notify({
             level: 'error',
-            message:
-              'Video decoding is not responding (the system media pipeline appears wedged). '
-              + 'Fully restart the app — or your browser — to restore video playback.',
+            message: t(
+              'statusBar.video.stalledToast',
+              'Video decoding is not responding (the system media pipeline appears wedged). Fully restart the app — or your browser — to restore video playback.',
+            ),
             durationMs: 12000,
           });
         }
@@ -67,9 +69,15 @@ export function VideoHealth(): JSX.Element | null {
       // "behind" = the decoder cannot sustain realtime on this machine; the
       // timeline is pacing down to meet it. The cure is a preview proxy
       // (Media Settings ▸ Proxy), not a code path.
-      const lag = worstLagMs < -150 ? ` · behind ${(-worstLagMs / 1000).toFixed(1)}s` : '';
+      // Independent readouts joined by ' · ' — list items, not sentence pieces.
+      const parts = [
+        t('statusBar.video.live', 'video ×{n}', { n: live }),
+        t('statusBar.video.drop', 'drop {n}', { n: recentDrops }),
+      ];
+      if (seeking) parts.push(t('statusBar.video.seeking', 'seeking'));
+      if (worstLagMs < -150) parts.push(t('statusBar.video.behind', 'behind {s}s', { s: (-worstLagMs / 1000).toFixed(1) }));
       setState({
-        label: `video ×${live} · drop ${recentDrops}${seeking ? ' · seeking' : ''}${lag}`,
+        label: parts.join(' · '),
         // ~1/4 of a second's frames lost inside the window = real pressure now;
         // a couple of drops around a seek is normal and stays quiet.
         bad: recentDrops > DROP_BAD_COUNT || worstLagMs < -400,
@@ -83,7 +91,7 @@ export function VideoHealth(): JSX.Element | null {
       <span className={styles.dot} aria-hidden>·</span>
       <span
         className={cn(styles.mono, state.bad && styles.bad)}
-        title={`Video decoder health: live elements, frames dropped in the last ${DROP_WINDOW_MS / 1000}s`}
+        title={t('statusBar.video.title', 'Video decoder health: live elements, frames dropped in the last {s}s', { s: DROP_WINDOW_MS / 1000 })}
       >
         {state.label}
       </span>

@@ -43,15 +43,27 @@ import { AnimToggle } from './AnimToggle';
 import { allAddressable, scalarValueCommands, setLayersSwitch, stopwatchCommands } from './inspectorEdits';
 import { useEngineEdit } from './useEngineEdit';
 import { canBe3DLayer, inspectorKindOf } from './inspectorMirror';
+import { t } from '@core/i18n';
 import s from './ThreeDControl.module.css';
 
-const CAMERA_TIP = 'Tip: add a Camera (+ camera button in the viewport bar) to move in 3D';
+function cameraTip(): string {
+  return t('inspector.threeD.cameraTip', 'Tip: add a Camera (+ camera button in the viewport bar) to move in 3D');
+}
 
 /** Menu labels for the bevel profiles — the union stays the source of truth. */
-const BEVEL_STYLE_LABELS: Record<BevelStyle, string> = {
-  angular: 'Angular',
-  concave: 'Concave',
-  convex: 'Convex',
+function bevelStyleLabels(): Record<BevelStyle, string> {
+  return {
+    angular: t('inspector.threeD.bevel.angular', 'Angular'),
+    concave: t('inspector.threeD.bevel.concave', 'Concave'),
+    convex: t('inspector.threeD.bevel.convex', 'Convex'),
+  };
+}
+
+/** The depth rows' names in undo labels — English always. */
+const DEPTH_UNDO_NAME: Readonly<Record<DepthRowProps['prop'], string>> = {
+  extrusionDepth: 'Extrusion Depth',
+  bevelDepth: 'Bevel Depth',
+  holeBevelDepth: 'Hole Bevel Depth',
 };
 
 interface DepthRowProps {
@@ -83,11 +95,13 @@ interface DepthRowProps {
  */
 function DepthRow({ nodeId, prop, label, ariaLabel, value, animated, min, max, unit, time, autoKeyframe }: DepthRowProps): JSX.Element {
   const e = useEngineEdit();
+  // History labels stay English: the row's display label may be translated.
+  const undoName = DEPTH_UNDO_NAME[prop];
   const onEngine = (): boolean => allAddressable([nodeId], [prop]);
   const write = (v: number): void => {
     if (!Number.isFinite(v)) return;
     const clamped = Math.max(min, Math.min(max, v));
-    e.send(`Set ${label}`, scalarValueCommands(prop, [{ nodeId, value: clamped }], { seconds: time, autoKeyframe }));
+    e.send(`Set ${undoName}`, scalarValueCommands(prop, [{ nodeId, value: clamped }], { seconds: time, autoKeyframe }));
   };
   return (
     <div className={s.row}>
@@ -98,7 +112,9 @@ function DepthRow({ nodeId, prop, label, ariaLabel, value, animated, min, max, u
         animated={animated}
         values={() => [value]}
         onToggle={() => {
-          if (onEngine()) e.send(animated ? `Remove ${label} animation` : `Animate ${label}`, stopwatchCommands([nodeId], [prop], time));
+          if (onEngine()) e.send(animated
+            ? `Remove ${undoName} animation`
+            : `Animate ${undoName}`, stopwatchCommands([nodeId], [prop], time));
         }}
       />
       <span className={`${s.label}${animated ? ` ${s.labelAnimated}` : ''}`}>{label}</span>
@@ -109,7 +125,7 @@ function DepthRow({ nodeId, prop, label, ariaLabel, value, animated, min, max, u
         step={1}
         unit={unit}
         onChange={write}
-        {...e.scrub(`Set ${label}`, onEngine)}
+        {...e.scrub(`Set ${undoName}`, onEngine)}
         aria-label={ariaLabel}
       />
     </div>
@@ -166,7 +182,7 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
   return (
     <div className={s.stack}>
       <div className={s.switchRow}>
-        <span className={s.switchLabel}>3D Layer</span>
+        <span className={s.switchLabel}>{t('inspector.threeD.layer', '3D Layer')}</span>
         <Switch
           checked={on}
           onChange={(e) => {
@@ -175,10 +191,10 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
             // Without a camera, 3D depth does not move — surface the one-step fix
             // (cameraNav's `notifyCameraTipIfMissing`, asked of the mirror).
             if (next && !compHasKind(documentMirror(), activeCompIdNow(), 'camera')) {
-              useUIStore.getState().notify({ level: 'info', message: CAMERA_TIP, durationMs: 3200 });
+              useUIStore.getState().notify({ level: 'info', message: cameraTip(), durationMs: 3200 });
             }
           }}
-          aria-label="3D layer"
+          aria-label={t('inspector.threeD.layerLabel', '3D layer')}
         />
       </div>
 
@@ -187,7 +203,7 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
           {children}
           {isTextLayer && (
             <div className={s.row}>
-              <span className={s.label}>Per-character 3D</span>
+              <span className={s.label}>{t('inspector.threeD.perChar', 'Per-character 3D')}</span>
               <Switch
                 checked={perChar3D}
                 // `text/perCharacter3D` (a layer field).
@@ -195,7 +211,7 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
                   const next = e.currentTarget.checked;
                   void edit(next ? 'Enable Per-character 3D' : 'Disable Per-character 3D', fieldCommands(nodeId, 'text/perCharacter3D', next));
                 }}
-                aria-label="Enable per-character 3D"
+                aria-label={t('inspector.threeD.perCharLabel', 'Enable per-character 3D')}
               />
             </div>
           )}
@@ -205,17 +221,17 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
               depth of 0 where every option would look identical. */}
           {extrudedAtAll && bevelledAtAll && (
             <div className={s.row}>
-              <span className={s.label}>Bevel Style</span>
+              <span className={s.label}>{t('inspector.threeD.bevelStyle', 'Bevel Style')}</span>
               <select
                 className={s.select}
                 value={bevelStyle}
                 // `geometry/bevelStyle` (a layer field).
                 onChange={(e) => { void edit('Bevel Style', fieldCommands(nodeId, 'geometry/bevelStyle', e.currentTarget.value as BevelStyle)); }}
-                aria-label="Bevel style"
+                aria-label={t('inspector.threeD.bevelStyleLabel', 'Bevel style')}
               >
                 {BEVEL_STYLES.map((style) => (
                   <option key={style} value={style}>
-                    {BEVEL_STYLE_LABELS[style]}
+                    {bevelStyleLabels()[style]}
                   </option>
                 ))}
               </select>
@@ -225,8 +241,8 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
             <DepthRow
               nodeId={nodeId}
               prop="bevelDepth"
-              label="Bevel Depth"
-              ariaLabel="Bevel depth"
+              label={t('inspector.threeD.bevelDepth', 'Bevel Depth')}
+              ariaLabel={t('inspector.threeD.bevelDepthLabel', 'Bevel depth')}
               value={bevelNow}
               animated={animatedNow('bevelDepth')}
               min={0}
@@ -240,8 +256,8 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
             <DepthRow
               nodeId={nodeId}
               prop="holeBevelDepth"
-              label="Hole Bevel Depth"
-              ariaLabel="Hole bevel depth"
+              label={t('inspector.threeD.holeBevelDepth', 'Hole Bevel Depth')}
+              ariaLabel={t('inspector.threeD.holeBevelDepthLabel', 'Hole bevel depth')}
               value={holeNow}
               animated={animatedNow('holeBevelDepth')}
               min={0}
@@ -254,8 +270,8 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
           <DepthRow
             nodeId={nodeId}
             prop="extrusionDepth"
-            label="Extrusion Depth"
-            ariaLabel="Extrusion depth"
+            label={t('inspector.threeD.extrusionDepth', 'Extrusion Depth')}
+            ariaLabel={t('inspector.threeD.extrusionDepthLabel', 'Extrusion depth')}
             value={extrusionNow}
             animated={animatedNow('extrusionDepth')}
             min={0}
@@ -266,7 +282,7 @@ export function ThreeDControl({ nodeId, children }: ThreeDControlProps): JSX.Ele
           />
           {styled && (
             <p className={s.hint}>
-              Layer styles draw on the front face; the sides and bevels take the fill and material colours.
+              {t('inspector.threeD.stylesHint', 'Layer styles draw on the front face; the sides and bevels take the fill and material colours.')}
             </p>
           )}
         </div>

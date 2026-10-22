@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 import { Icon } from '@components/Icon';
 import type { DropdownItem } from '@components/Dropdown';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import {
   TIMELINE_EDIT_MODES,
@@ -36,11 +37,11 @@ export function TimelineSnapButton(): JSX.Element {
       type="button"
       className={cn(styles.toolBtn, snapOn && styles.toolBtnActive)}
       aria-pressed={snapOn}
-      aria-label="Snap in timeline"
+      aria-label={t('timeline.tools.snapAria', 'Snap in timeline')}
       title={
         snapOn
-          ? 'Snapping (On) — clip and keyframe drags snap to the playhead, edges, markers and the frame grid. Alt frees one drag. (S with the timeline focused)'
-          : 'Snapping (Off) — drags move freely. Alt snaps one drag. (S with the timeline focused)'
+          ? t('timeline.tools.snapOnTitle', 'Snapping (On) — clip and keyframe drags snap to the playhead, edges, markers and the frame grid. Alt frees one drag. (S with the timeline focused)')
+          : t('timeline.tools.snapOffTitle', 'Snapping (Off) — drags move freely. Alt snaps one drag. (S with the timeline focused)')
       }
       onClick={() => toggleTimelineSnap()}
     >
@@ -74,7 +75,7 @@ export function useTimelineToolsMenu(): {
     {
       type: 'checkbox',
       id: 'tl-snap',
-      label: 'Snapping (S)',
+      label: t('timeline.tools.snapping', 'Snapping (S)'),
       checked: snapOn,
       onChange: () => toggleTimelineSnap(),
     },
@@ -82,11 +83,11 @@ export function useTimelineToolsMenu(): {
       type: 'item',
       id: 'tl-tool-edit',
       icon: current.icon,
-      label: `Timeline tool: ${current.label}`,
+      label: t('timeline.tools.currentTool', 'Timeline tool: {tool}', { tool: current.label }),
       submenu: TIMELINE_EDIT_MODES.map<DropdownItem>((def) => ({
         type: 'checkbox',
         id: `tl-tool-${def.mode}`,
-        label: `${def.label} — ${def.description}`,
+        label: t('timeline.tools.labelWithDescription', '{label} — {description}', { label: def.label, description: def.description }),
         checked: mode === def.mode,
         onChange: () => setMode(def.mode),
       })),
@@ -94,11 +95,11 @@ export function useTimelineToolsMenu(): {
     {
       type: 'item',
       id: 'tl-tool-follow',
-      label: `Playhead follow: ${followDef.label}`,
+      label: t('timeline.tools.playheadFollow', 'Playhead follow: {mode}', { mode: followDef.label }),
       submenu: FOLLOW_MODES.map<DropdownItem>((f) => ({
         type: 'checkbox',
         id: `tl-tool-follow-${f.mode}`,
-        label: `${f.label} — ${f.description}`,
+        label: t('timeline.tools.labelWithDescription', '{label} — {description}', { label: f.label, description: f.description }),
         checked: followMode === f.mode,
         onChange: () => setPref('timelineFollowMode', f.mode),
       })),

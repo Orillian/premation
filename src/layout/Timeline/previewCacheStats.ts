@@ -21,6 +21,7 @@ import { engineCacheSnapshot } from './engineCacheCoverage';
 import { settingsDurationSeconds, settingsFps, settingsHasWorkArea, settingsWorkArea } from '@core/mirror/compFacts';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
+import { t } from '@core/i18n';
 
 const MB = 1024 * 1024;
 
@@ -99,8 +100,12 @@ export function formatCacheMb(mb: number): string {
 /** One line for a menu header: coverage, RAM, disk. */
 export function describePreviewCache(s: PreviewCacheStats): string {
   const span = s.total > 0
-    ? `${s.cached} / ${s.total} frames cached${s.workArea ? ' in work area' : ''}`
-    : 'Nothing to cache';
-  const disk = s.diskMb === null ? '' : ` · ${formatCacheMb(s.diskMb)} disk`;
-  return `${span} · ${formatCacheMb(s.ramMb)} RAM${disk}`;
+    ? s.workArea
+      ? t('timeline.cache.framesCachedWorkArea', '{cached} / {total} frames cached in work area', { cached: s.cached, total: s.total })
+      : t('timeline.cache.framesCached', '{cached} / {total} frames cached', { cached: s.cached, total: s.total })
+    : t('timeline.cache.nothing', 'Nothing to cache');
+  const ram = t('timeline.cache.ram', '{size} RAM', { size: formatCacheMb(s.ramMb) });
+  return s.diskMb === null
+    ? `${span} · ${ram}`
+    : `${span} · ${ram} · ${t('timeline.cache.disk', '{size} disk', { size: formatCacheMb(s.diskMb) })}`;
 }

@@ -33,6 +33,7 @@ import { customConfirm } from '@components/Modal';
 
 export { svgLayerDataOf, fetchSvgLayerData } from '@core/svg/svgLayerData';
 import { fetchSvgLayerData } from '@core/svg/svgLayerData';
+import { t } from '@core/i18n';
 
 /** Ask what conversion costs, then do it. Resolves to the new group id or null. */
 export async function confirmAndConvertSvg(nodeId: string): Promise<string | null> {
@@ -40,9 +41,9 @@ export async function confirmAndConvertSvg(nodeId: string): Promise<string | nul
   const data = await fetchSvgLayerData(nodeId);
   if (!data) return null;
   const ok = await customConfirm(
-    'Convert to Editable Shapes',
+    t('inspector.svgLayerActions.convertTitle', 'Convert to Editable Shapes'),
     describeConversion(data).join('\n\n'),
-    { confirmLabel: 'Convert', cancelLabel: 'Cancel' },
+    { confirmLabel: t('inspector.svgLayerActions.convert', 'Convert'), cancelLabel: t('inspector.svgLayerActions.cancel', 'Cancel') },
   );
   return ok ? convertSvgToShapes(nodeId) : null;
 }
@@ -185,7 +186,7 @@ export function svgContextMenuItems(nodeId: string): ContextMenuItem[] {
       { id: 'svg-sep', separator: true },
       {
         id: 'svg-convert',
-        label: 'Convert to Editable Shapes…',
+        label: t('inspector.svgLayerActions.convertMenu', 'Convert to Editable Shapes…'),
         onSelect: () => { void confirmAndConvertSvg(nodeId); },
       },
     ];
@@ -195,7 +196,7 @@ export function svgContextMenuItems(nodeId: string): ContextMenuItem[] {
       { id: 'svg-sep', separator: true },
       {
         id: 'svg-revert',
-        label: 'Revert to Original SVG',
+        label: t('inspector.svgLayerActions.revert', 'Revert to Original SVG'),
         onSelect: () => { void revertSvgToLayer(nodeId); },
       },
     ];

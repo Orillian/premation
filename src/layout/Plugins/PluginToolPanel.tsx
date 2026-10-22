@@ -28,6 +28,7 @@ import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { runPanelShortcut } from './panelShortcut';
 import { PluginEffectHomePanel } from './PluginEffectHomePanel';
+import { t } from '@core/i18n';
 
 export function PluginToolPanel({ panelId }: { panelId: string }): JSX.Element {
   usePluginContrib();
@@ -35,7 +36,7 @@ export function PluginToolPanel({ panelId }: { panelId: string }): JSX.Element {
   if (!entry) {
     return (
       <div style={{ padding: 12, color: 'var(--color-text-secondary)', fontSize: 'var(--panel-body-size, 12px)' }}>
-        This panel&apos;s plugin is not loaded. Enable it in Plugins to use the panel again.
+        {t('plugins.toolPanel.notLoaded', 'This panel\'s plugin is not loaded. Enable it in Plugins to use the panel again.')}
       </div>
     );
   }
@@ -58,8 +59,8 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
   }, []);
 
   const pushContext = useCallback(() => {
-    const { comp: c, layers: l, time: t } = live.current;
-    post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(t) }));
+    const { comp: c, layers: l, time: now } = live.current;
+    post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(now) }));
   }, [plugin, post]);
 
   const run = useCallback(async (msg: Exclude<ToolPanelMessage, { type: 'ready' } | { type: 'shortcut' }>) => {

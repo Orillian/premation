@@ -12,6 +12,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
 import { useSelectionStore } from '@stores/selectionStore';
@@ -23,8 +24,8 @@ export function buildLayerSettingsCommands(): ReadonlyArray<Command> {
   return [
     {
       id: LAYER_SETTINGS_COMMAND,
-      label: 'Layer Settings…',
-      description: 'Name, label colour and — for solids, nulls and adjustment layers — size (and a solid’s colour).',
+      label: t('composition.layerSettings.command', 'Layer Settings…'),
+      description: t('composition.layerSettings.commandDescription', 'Name, label colour and — for solids, nulls and adjustment layers — size (and a solid’s colour).'),
       icon: 'settings',
       shortcut: { key: 'y', meta: true, shift: true },
       enabled: () => useSelectionStore.getState().ids.length === 1,

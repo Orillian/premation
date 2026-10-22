@@ -29,19 +29,23 @@ import { Modal } from '@components/Modal';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { useReviewPromptStore } from '@stores/reviewPromptStore';
+import { t } from '@core/i18n';
 import styles from './ReviewPrompt.module.css';
 
 /** The floor the server enforces, mirrored so the form can explain itself. */
 const BODY_MIN = 40;
 const BODY_MAX = 1200;
 
-const RATING_LABEL: Record<number, string> = {
-  1: 'Not for me',
-  2: 'Needs work',
-  3: 'It is fine',
-  4: 'Really good',
-  5: 'I love it',
-};
+/** Called at render time: `t()` must not run at module scope. */
+function ratingLabels(): Record<number, string> {
+  return {
+    1: t('reviews.rating.1', 'Not for me'),
+    2: t('reviews.rating.2', 'Needs work'),
+    3: t('reviews.rating.3', 'It is fine'),
+    4: t('reviews.rating.4', 'Really good'),
+    5: t('reviews.rating.5', 'I love it'),
+  };
+}
 
 export function ReviewPrompt(): JSX.Element | null {
   const open = useReviewPromptStore((s) => s.open);
@@ -71,6 +75,7 @@ export function ReviewPrompt(): JSX.Element | null {
 
   if (!open) return null;
 
+  const RATING_LABEL = ratingLabels();
   const trimmed = body.trim();
   const shown = hovered || rating;
   // The body is optional until they start one; once started it has to be long
@@ -96,21 +101,21 @@ export function ReviewPrompt(): JSX.Element | null {
       onClose={close}
       id="review-prompt"
       size="md"
-      title={existing ? 'Edit your review' : 'How are you finding Premation?'}
+      title={existing ? t('reviews.prompt.editTitle', 'Edit your review') : t('reviews.prompt.title', 'How are you finding Premation?')}
       description={
         existing
-          ? 'Your review is still waiting to be published, so you can still change it.'
-          : 'You have made your first project — we would love to know how it went.'
+          ? t('reviews.prompt.editDescription', 'Your review is still waiting to be published, so you can still change it.')
+          : t('reviews.prompt.description', 'You have made your first project — we would love to know how it went.')
       }
     >
       <form className={styles.form} onSubmit={(e) => void onSubmit(e)}>
         <fieldset className={styles.ratingField}>
-          <legend className={styles.legend}>Your rating</legend>
+          <legend className={styles.legend}>{t('reviews.prompt.ratingLegend', 'Your rating')}</legend>
           <div
             className={styles.stars}
             onMouseLeave={() => setHovered(0)}
             role="radiogroup"
-            aria-label="Your rating out of five"
+            aria-label={t('reviews.prompt.ratingLabel', 'Your rating out of five')}
           >
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -118,7 +123,9 @@ export function ReviewPrompt(): JSX.Element | null {
                 type="button"
                 role="radio"
                 aria-checked={rating === n}
-                aria-label={`${n} ${n === 1 ? 'star' : 'stars'} — ${RATING_LABEL[n]}`}
+                aria-label={n === 1
+                  ? t('reviews.prompt.starOne', '{n} star — {label}', { n, label: RATING_LABEL[n] ?? '' })
+                  : t('reviews.prompt.starOther', '{n} stars — {label}', { n, label: RATING_LABEL[n] ?? '' })}
                 className={n <= shown ? `${styles.star} ${styles.starOn}` : styles.star}
                 disabled={submitting}
                 onMouseEnter={() => setHovered(n)}
@@ -137,7 +144,7 @@ export function ReviewPrompt(): JSX.Element | null {
 
         <label className={styles.field}>
           <span className={styles.label}>
-            What did you make?
+            {t('reviews.prompt.bodyLabel', 'What did you make?')}
             <span className={styles.count} data-over={trimmed.length > BODY_MAX || undefined}>
               {trimmed.length}/{BODY_MAX}
             </span>
@@ -146,38 +153,38 @@ export function ReviewPrompt(): JSX.Element | null {
             className={styles.textarea}
             rows={5}
             maxLength={BODY_MAX}
-            placeholder="A sentence or two about what you built and how it went."
+            placeholder={t('reviews.prompt.bodyPlaceholder', 'A sentence or two about what you built and how it went.')}
             value={body}
             disabled={submitting}
             onChange={(e) => setBody(e.target.value)}
           />
           {!bodyReady && (
             <span className={styles.hint}>
-              A little more, please — at least {BODY_MIN} characters.
+              {t('reviews.prompt.bodyTooShort', 'A little more, please — at least {n} characters.', { n: BODY_MIN })}
             </span>
           )}
         </label>
 
         <div className={styles.optionalRow}>
           <label className={styles.field}>
-            <span className={styles.label}>Headline (optional)</span>
+            <span className={styles.label}>{t('reviews.prompt.headline', 'Headline (optional)')}</span>
             <input
               className={styles.input}
               type="text"
               maxLength={80}
-              placeholder="Replaced our whole titles workflow"
+              placeholder={t('reviews.prompt.headlinePlaceholder', 'Replaced our whole titles workflow')}
               value={title}
               disabled={submitting}
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
           <label className={styles.field}>
-            <span className={styles.label}>What you do (optional)</span>
+            <span className={styles.label}>{t('reviews.prompt.role', 'What you do (optional)')}</span>
             <input
               className={styles.input}
               type="text"
               maxLength={80}
-              placeholder="Motion designer"
+              placeholder={t('reviews.prompt.rolePlaceholder', 'Motion designer')}
               value={role}
               disabled={submitting}
               onChange={(e) => setRole(e.target.value)}
@@ -188,8 +195,7 @@ export function ReviewPrompt(): JSX.Element | null {
         <p className={styles.notice}>
           <Icon name="info" size="sm" aria-hidden className={styles.noticeIcon} />
           <span>
-            Nothing is published automatically. We read every review first, and only your
-            name and what you write here would ever appear — never your email address.
+            {t('reviews.prompt.notice', 'Nothing is published automatically. We read every review first, and only your name and what you write here would ever appear — never your email address.')}
           </span>
         </p>
 
@@ -204,10 +210,10 @@ export function ReviewPrompt(): JSX.Element | null {
           {/* Declining is a button, not a hidden X — and it is the one that
               records a refusal. Closing the dialog does not. */}
           <Button variant="ghost" size="md" onClick={() => void dismiss()} disabled={submitting}>
-            {existing ? 'Leave it as it is' : 'Not now'}
+            {existing ? t('reviews.prompt.leave', 'Leave it as it is') : t('reviews.prompt.notNow', 'Not now')}
           </Button>
           <Button type="submit" variant="primary" size="md" loading={submitting} disabled={!ready}>
-            {existing ? 'Update review' : 'Send review'}
+            {existing ? t('reviews.prompt.update', 'Update review') : t('reviews.prompt.send', 'Send review')}
           </Button>
         </div>
       </form>

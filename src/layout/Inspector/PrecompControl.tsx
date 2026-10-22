@@ -18,6 +18,7 @@ import { boolFieldCommands } from './layerFieldEdits';
 import { setLayersSwitch } from './inspectorEdits';
 import { CompOverridesSection } from './CompOverridesSection';
 import { RetimeSection } from './RetimeSection';
+import { t } from '@core/i18n';
 import styles from './ParentControl.module.css';
 
 export function PrecompControl({ nodeId }: { nodeId: string }): JSX.Element | null {
@@ -41,15 +42,15 @@ export function PrecompControl({ nodeId }: { nodeId: string }): JSX.Element | nu
           <span
             className={styles.label}
             title={collapsed
-              ? 'This composition’s layers render in the host: they meet its camera, depth sort and lights, and are not cropped to their own frame.'
-              : 'This composition renders to its own frame first, then composites as one flat layer — so its 3D layers cannot meet the host’s camera.'}
+              ? t('inspector.precomp.collapseOnHint', 'This composition’s layers render in the host: they meet its camera, depth sort and lights, and are not cropped to their own frame.')
+              : t('inspector.precomp.collapseOffHint', 'This composition renders to its own frame first, then composites as one flat layer — so its 3D layers cannot meet the host’s camera.')}
           >
-            Collapse Transformations
+            {t('inspector.precomp.collapse', 'Collapse Transformations')}
           </span>
           <Switch
             checked={collapsed}
             onChange={(e) => { void setLayersSwitch([nodeId], { collapse: e.currentTarget.checked }, 'Collapse Transformations'); }}
-            aria-label="Collapse Transformations (join the host composition's 3D space)"
+            aria-label={t('inspector.precomp.collapseLabel', "Collapse Transformations (join the host composition's 3D space)")}
           />
         </div>
         <RetimeSection nodeId={nodeId} />
@@ -78,15 +79,15 @@ export function PrecompControl({ nodeId }: { nodeId: string }): JSX.Element | nu
           <span
             className={styles.label}
             title={cr
-              ? 'Re-rendered at the size it is actually drawn, from the smallest scale up. Costs memory in proportion to scale²; very large layers are bounded by the VRAM budget.'
-              : 'Vector layers already re-render automatically once they pass 400%, so a title or logo a camera pushes into stays sharp on its own. Turn this on only to force re-rendering below 400% as well.'}
+              ? t('inspector.precomp.crOnHint', 'Re-rendered at the size it is actually drawn, from the smallest scale up. Costs memory in proportion to scale²; very large layers are bounded by the VRAM budget.')
+              : t('inspector.precomp.crOffHint', 'Vector layers already re-render automatically once they pass 400%, so a title or logo a camera pushes into stays sharp on its own. Turn this on only to force re-rendering below 400% as well.')}
           >
-            Continuous Rasterization
+            {t('inspector.precomp.cr', 'Continuous Rasterization')}
           </span>
           <Switch
             checked={cr}
             onChange={(e) => { void setLayersSwitch([nodeId], { collapse: e.currentTarget.checked }, 'Continuous Rasterization'); }}
-            aria-label="Continuous Rasterization (re-render vector content at the scale it is drawn)"
+            aria-label={t('inspector.precomp.crLabel', 'Continuous Rasterization (re-render vector content at the scale it is drawn)')}
           />
         </div>
       </>
@@ -100,12 +101,12 @@ export function PrecompControl({ nodeId }: { nodeId: string }): JSX.Element | nu
   return (
     <>
       <div className={styles.row}>
-        <span className={styles.label}>Precompose</span>
+        <span className={styles.label}>{t('inspector.precomp.precompose', 'Precompose')}</span>
         <Switch
           checked={on}
           // `layer/precompose` (bool field, fx.precomp): composite the group as one unit — not the `precompose` command, which makes a new composition.
           onChange={(e) => { void edit('Precompose', boolFieldCommands(nodeId, 'layer/precompose', e.currentTarget.checked)); }}
-          aria-label="Precompose (composite group as one unit)"
+          aria-label={t('inspector.precomp.precomposeLabel', 'Precompose (composite group as one unit)')}
         />
       </div>
       {on && <RetimeSection nodeId={nodeId} />}

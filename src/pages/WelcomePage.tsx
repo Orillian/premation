@@ -35,6 +35,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { api, type SignupSource } from '@core/api/client';
 import { useAuthStore } from '@stores/authStore';
 import { Icon, type IconName } from '@components/Icon';
+import { t } from '@core/i18n';
 import { AuthShell } from './AuthShell';
 import styles from './AuthPage.module.css';
 import welcome from './WelcomePage.module.css';
@@ -47,16 +48,18 @@ import welcome from './WelcomePage.module.css';
  * of it. `other` is pinned last by construction — it is the escape hatch, and
  * an escape hatch offered early is the one everybody takes.
  */
-const OPTIONS: ReadonlyArray<{ value: SignupSource; label: string; icon: IconName }> = [
-  { value: 'google', label: 'Google or another search engine', icon: 'search' },
-  { value: 'ai_assistant', label: 'ChatGPT, Claude or another AI assistant', icon: 'sparkles' },
-  { value: 'youtube', label: 'YouTube', icon: 'play' },
-  { value: 'social', label: 'Instagram, X, TikTok or LinkedIn', icon: 'share' },
-  { value: 'friend', label: 'A friend or colleague', icon: 'user' },
-  { value: 'article', label: 'A blog post, newsletter or review', icon: 'file' },
-  { value: 'forum', label: 'Reddit, Discord or a forum', icon: 'group' },
-  { value: 'other', label: 'Something else', icon: 'more-horizontal' },
-];
+function signupOptions(): ReadonlyArray<{ value: SignupSource; label: string; icon: IconName }> {
+  return [
+    { value: 'google', label: t('auth.welcome.optionGoogle', 'Google or another search engine'), icon: 'search' },
+    { value: 'ai_assistant', label: t('auth.welcome.optionAi', 'ChatGPT, Claude or another AI assistant'), icon: 'sparkles' },
+    { value: 'youtube', label: 'YouTube', icon: 'play' },
+    { value: 'social', label: t('auth.welcome.optionSocial', 'Instagram, X, TikTok or LinkedIn'), icon: 'share' },
+    { value: 'friend', label: t('auth.welcome.optionFriend', 'A friend or colleague'), icon: 'user' },
+    { value: 'article', label: t('auth.welcome.optionArticle', 'A blog post, newsletter or review'), icon: 'file' },
+    { value: 'forum', label: t('auth.welcome.optionForum', 'Reddit, Discord or a forum'), icon: 'group' },
+    { value: 'other', label: t('auth.welcome.optionOther', 'Something else'), icon: 'more-horizontal' },
+  ];
+}
 
 /** The write-in limit the server enforces, mirrored so the field can show it. */
 const OTHER_MAX = 120;
@@ -102,7 +105,7 @@ export function WelcomePage(): JSX.Element {
       markAnswered();
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(messageOf(err, 'Could not save that just now. Try again.'));
+      setError(messageOf(err, t('auth.welcome.saveFailed', 'Could not save that just now. Try again.')));
       setSubmitting(false);
     }
   };
@@ -111,15 +114,15 @@ export function WelcomePage(): JSX.Element {
 
   return (
     <AuthShell
-      title={firstName ? `Welcome, ${firstName}` : 'Welcome'}
-      subtitle="Your email is confirmed. One question before you start."
+      title={firstName ? t('auth.welcome.titleNamed', 'Welcome, {name}', { name: firstName }) : t('auth.welcome.title', 'Welcome')}
+      subtitle={t('auth.welcome.subtitle', 'Your email is confirmed. One question before you start.')}
     >
       <form className={styles.form} onSubmit={(e) => void onSubmit(e)}>
         <fieldset className={welcome.fieldset}>
-          <legend className={welcome.legend}>How did you hear about Premation?</legend>
+          <legend className={welcome.legend}>{t('auth.welcome.question', 'How did you hear about Premation?')}</legend>
 
           <div className={welcome.options}>
-            {OPTIONS.map((opt) => {
+            {signupOptions().map((opt) => {
               const active = choice === opt.value;
               return (
                 <label
@@ -154,13 +157,13 @@ export function WelcomePage(): JSX.Element {
           {needsText && (
             <div className={welcome.otherField}>
               <label className={styles.label} htmlFor="signup-source-other">
-                Where was that?
+                {t('auth.welcome.otherLabel', 'Where was that?')}
               </label>
               <input
                 id="signup-source-other"
                 type="text"
                 className={styles.input}
-                placeholder="A podcast, a conference, a course…"
+                placeholder={t('auth.welcome.otherPlaceholder', 'A podcast, a conference, a course…')}
                 value={other}
                 maxLength={OTHER_MAX}
                 disabled={submitting}
@@ -171,8 +174,7 @@ export function WelcomePage(): JSX.Element {
                 onChange={(e) => setOther(e.target.value)}
               />
               <p className={welcome.otherHint}>
-                Free text. It is read by us to find the option this list is missing —
-                nothing here is ever shown publicly.
+                {t('auth.welcome.otherHint', 'Free text. It is read by us to find the option this list is missing — nothing here is ever shown publicly.')}
               </p>
             </div>
           )}
@@ -186,7 +188,7 @@ export function WelcomePage(): JSX.Element {
         )}
 
         <button type="submit" className={styles.primaryBtn} disabled={!ready || submitting}>
-          {submitting ? 'Saving…' : 'Continue'}
+          {submitting ? t('auth.welcome.saving', 'Saving…') : t('auth.welcome.continue', 'Continue')}
         </button>
       </form>
     </AuthShell>

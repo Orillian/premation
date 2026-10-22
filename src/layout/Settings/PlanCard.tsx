@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@components/Button';
 import { api, paidSalesOpen, type AccountRecord, type PlanDto } from '@core/api/client';
+import { t } from '@core/i18n';
 import { CloudUsage } from './CloudUsage';
 import styles from './PlanCard.module.css';
 
@@ -27,20 +28,20 @@ interface PlanCardProps {
 export function planStatusLabel(account: Pick<AccountRecord, 'access'>): { text: string; tone: 'ok' | 'warn' | 'muted' } {
   switch (account.access.reason) {
     case 'active':
-      return { text: 'Active', tone: 'ok' };
+      return { text: t('settings.plan.active', 'Active'), tone: 'ok' };
     // Cancelled-at-period-end and a failed card both land here; Billing says which.
     case 'grace':
-      return { text: 'Ending', tone: 'warn' };
+      return { text: t('settings.plan.ending', 'Ending'), tone: 'warn' };
     case 'beta':
-      return { text: 'Free during beta', tone: 'muted' };
+      return { text: t('settings.plan.beta', 'Free during beta'), tone: 'muted' };
     case 'staff':
-      return { text: 'Operator', tone: 'muted' };
+      return { text: t('settings.plan.operator', 'Operator'), tone: 'muted' };
     case 'granted':
-      return { text: 'Included', tone: 'ok' };
+      return { text: t('settings.plan.included', 'Included'), tone: 'ok' };
     case 'unverified':
-      return { text: 'Email not confirmed', tone: 'warn' };
+      return { text: t('settings.plan.unverified', 'Email not confirmed'), tone: 'warn' };
     default:
-      return { text: 'Free', tone: 'muted' };
+      return { text: t('settings.plan.free', 'Free'), tone: 'muted' };
   }
 }
 
@@ -69,7 +70,7 @@ export function PlanCard({ account, onOpenBilling }: PlanCardProps): JSX.Element
   const salesOpen = paidSalesOpen(plans);
   const status = planStatusLabel(account);
   const isBeta = access.reason === 'beta';
-  const name = paid ? (paidPlan?.name ?? 'Premation Cloud') : 'Free';
+  const name = paid ? (paidPlan?.name ?? 'Premation Cloud') : t('settings.plan.free', 'Free');
 
   const canUpgrade = !paid && !isBeta && salesOpen && paidPlan !== undefined;
 
@@ -77,7 +78,7 @@ export function PlanCard({ account, onOpenBilling }: PlanCardProps): JSX.Element
     <div className={styles.card}>
       <div className={styles.head}>
         <div className={styles.titleBlock}>
-          <span className={styles.eyebrow}>Your plan</span>
+          <span className={styles.eyebrow}>{t('settings.plan.eyebrow', 'Your plan')}</span>
           <div className={styles.titleRow}>
             <h3 className={styles.planName}>{name}</h3>
             <span className={`${styles.badge} ${status.tone === 'muted' ? '' : styles[status.tone]}`}>{status.text}</span>
@@ -85,21 +86,25 @@ export function PlanCard({ account, onOpenBilling }: PlanCardProps): JSX.Element
           <p className={styles.sub}>
             {paid
               ? access.writeEndsAt
-                ? `${access.reason === 'grace' ? 'Paid through' : access.reason === 'granted' ? 'Included until' : 'Renews'} ${new Date(access.writeEndsAt).toLocaleDateString()}. See Billing for details.`
-                : 'Unlimited cloud projects and long version history.'
+                ? access.reason === 'grace'
+                  ? t('settings.plan.paidThrough', 'Paid through {date}. See Billing for details.', { date: new Date(access.writeEndsAt).toLocaleDateString() })
+                  : access.reason === 'granted'
+                    ? t('settings.plan.includedUntil', 'Included until {date}. See Billing for details.', { date: new Date(access.writeEndsAt).toLocaleDateString() })
+                    : t('settings.plan.renews', 'Renews {date}. See Billing for details.', { date: new Date(access.writeEndsAt).toLocaleDateString() })
+                : t('settings.plan.paidSub', 'Unlimited cloud projects and long version history.')
               : isBeta
-                ? 'Cloud saving is free and uncapped while paid plans are not open yet.'
-                : 'The editor is free forever. Premation Cloud adds unlimited cloud projects and longer history.'}
+                ? t('settings.plan.betaSub', 'Cloud saving is free and uncapped while paid plans are not open yet.')
+                : t('settings.plan.freeSub', 'The editor is free forever. Premation Cloud adds unlimited cloud projects and longer history.')}
           </p>
         </div>
         <div className={styles.headActions}>
           {canUpgrade ? (
             <Button variant="primary" size="sm" onClick={onOpenBilling}>
-              {`Upgrade · ${paidPlan.priceLabel}/mo`}
+              {t('settings.plan.upgrade', 'Upgrade · {price}/mo', { price: paidPlan.priceLabel })}
             </Button>
           ) : null}
           <Button variant={canUpgrade ? 'ghost' : 'secondary'} size="sm" onClick={onOpenBilling}>
-            {paid ? 'Manage plan' : 'View plans'}
+            {paid ? t('settings.plan.manage', 'Manage plan') : t('settings.plan.view', 'View plans')}
           </Button>
         </div>
       </div>

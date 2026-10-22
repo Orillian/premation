@@ -26,6 +26,7 @@ import type { ReactNode } from 'react';
 import { Button } from '@components/Button';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import { LENS_PRESETS, focalPxForMm, lensPresetForFocalPx, mmForFocalPx } from '@core/scene/lensPresets';
 import { createOrbitNullEdit, distributeLayersInZ } from '@core/scene/cameraCommands';
 import { CAMERA_RIG_KINDS, addCameraRigEdit } from '@core/scene/cameraRig';
@@ -47,6 +48,19 @@ export const SHOT_PRESETS: ReadonlyArray<{ preset: string; label: string }> = [
   { preset: 'Handheld', label: 'Handheld' },
 ];
 
+/** A camera move's button label, translated at render time (SHOT_PRESETS keeps the English). */
+function shotPresetLabel(preset: string, fallback: string): string {
+  switch (preset) {
+    case 'Push In': return t('inspector.cameraShot.pushIn', 'Push In');
+    case 'Pull Out': return t('inspector.cameraShot.pullOut', 'Pull Out');
+    case 'Orbit Sweep': return t('inspector.cameraShot.orbitSweep', 'Orbit Sweep');
+    case 'Drift Parallax': return t('inspector.cameraShot.driftParallax', 'Drift Parallax');
+    case 'Dolly Zoom (Vertigo)': return t('inspector.cameraShot.dollyZoom', 'Dolly Zoom');
+    case 'Handheld': return t('inspector.cameraShot.handheld', 'Handheld');
+    default: return fallback;
+  }
+}
+
 function notify(message: string, level: 'info' | 'success' | 'warning' = 'info'): void {
   useUIStore.getState().notify({ level, message, durationMs: 4000 });
 }
@@ -66,7 +80,7 @@ export function lensItems(compWidth: number, focalPx: number, setFocal: (px: num
 /** What the lens trigger reads: the preset's label, or "Custom · <mm> mm". */
 export function lensTriggerLabel(compWidth: number, focalPx: number): string {
   const active = lensPresetForFocalPx(compWidth, focalPx);
-  return active ? active.label : `Custom · ${mmForFocalPx(compWidth, focalPx).toFixed(1)} mm`;
+  return active ? active.label : t('inspector.cameraShot.customLens', 'Custom · {mm} mm', { mm: mmForFocalPx(compWidth, focalPx).toFixed(1) });
 }
 
 export interface CameraShotHeaderProps {
@@ -89,20 +103,20 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
     <>
       {no3D && (
         <>
-          <p className={styles.helpWarning} role="note">No 3D layers — the camera moves nothing yet.</p>
+          <p className={styles.helpWarning} role="note">{t('inspector.cameraShot.no3D', 'No 3D layers — the camera moves nothing yet.')}</p>
           <div className={styles.actionRow}>
-            <Button size="sm" variant="secondary" onClick={makeAll3D} title="Turn on the 3D switch of every layer in this composition that can be 3D">
-              Make All 3D
+            <Button size="sm" variant="secondary" onClick={makeAll3D} title={t('inspector.cameraShot.makeAll3DHint', 'Turn on the 3D switch of every layer in this composition that can be 3D')}>
+              {t('inspector.cameraShot.makeAll3D', 'Make All 3D')}
             </Button>
           </div>
         </>
       )}
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Lens</span>
+        <span className={styles.popoverLabel}>{t('inspector.cameraShot.lens', 'Lens')}</span>
         <Dropdown
           placement="bottom-end"
           trigger={
-            <button type="button" className={shot.trigger} aria-label="Lens" title="Pick a lens: sets Zoom (and the Angle of View with it)">
+            <button type="button" className={shot.trigger} aria-label={t('inspector.cameraShot.lens', 'Lens')} title={t('inspector.cameraShot.lensHint', 'Pick a lens: sets Zoom (and the Angle of View with it)')}>
               <span className={shot.triggerText}>{label}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
@@ -110,7 +124,7 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
           items={() => lensItems(compWidth, focal, setFocal)}
         />
       </div>
-      <div className={shot.grid} role="group" aria-label="Camera moves" title="One-click camera moves from the playhead, as ordinary keyframes (Handheld sets the camera's Shake)">
+      <div className={shot.grid} role="group" aria-label={t('inspector.cameraShot.moves', 'Camera moves')} title={t('inspector.cameraShot.movesHint', "One-click camera moves from the playhead, as ordinary keyframes (Handheld sets the camera's Shake)")}>
         {SHOT_PRESETS.map((p) => (
           <button
             key={p.preset}
@@ -118,60 +132,60 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
             className={styles.presetChip}
             onClick={() => {
               void applyAnimationPresetEdit([nodeId], p.preset, getTime()).then((ok) => {
-                if (!ok) notify(`Could not apply ${p.label}`, 'warning');
+                if (!ok) notify(t('inspector.cameraShot.applyFailed', 'Could not apply {name}', { name: shotPresetLabel(p.preset, p.label) }), 'warning');
               });
             }}
           >
-            {p.label}
+            {shotPresetLabel(p.preset, p.label)}
           </button>
         ))}
       </div>
-      <div className={shot.actions} role="group" aria-label="Camera actions">
+      <div className={shot.actions} role="group" aria-label={t('inspector.cameraShot.actions', 'Camera actions')}>
         <Button
           size="sm"
           variant="secondary"
           aria-pressed={picking}
-          title={picking ? 'Click a layer in the viewer to focus on it (Esc cancels)' : 'Put the focal plane on a layer: click this, then the layer in the viewer'}
+          title={picking ? t('inspector.cameraShot.focusPicking', 'Click a layer in the viewer to focus on it (Esc cancels)') : t('inspector.cameraShot.focusHint', 'Put the focal plane on a layer: click this, then the layer in the viewer')}
           onClick={() => {
             const s = useFocusPickStore.getState();
             if (picking) s.cancel();
             else s.arm(nodeId);
           }}
         >
-          Focus on Layer
+          {t('inspector.cameraShot.focus', 'Focus on Layer')}
         </Button>
         <Button
           size="sm"
           variant="secondary"
-          title="Spread the comp's layers (or the selected ones) apart in depth so a camera move has parallax — sizes compensated so the framing does not change"
+          title={t('inspector.cameraShot.distributeHint', "Spread the comp's layers (or the selected ones) apart in depth so a camera move has parallax — sizes compensated so the framing does not change")}
           onClick={() => {
             void distributeLayersInZ(getTime()).then((r) => {
               notify(
-                r ? `Spread ${r.count} layers across ${r.span} px of depth — move the camera to see the parallax` : 'Need at least two layers to distribute in Z',
+                r ? t('inspector.cameraShot.distributed', 'Spread {n} layers across {span} px of depth — move the camera to see the parallax', { n: r.count, span: r.span }) : t('inspector.cameraShot.distributeNeedTwo', 'Need at least two layers to distribute in Z'),
                 r ? 'success' : 'warning',
               );
             });
           }}
         >
-          Distribute in Z
+          {t('inspector.cameraShot.distribute', 'Distribute in Z')}
         </Button>
         <Button
           size="sm"
           variant="secondary"
-          title="A 3D null at the camera's point of interest, with the camera parented to it — rotate the null to orbit the shot"
+          title={t('inspector.cameraShot.orbitNullHint', "A 3D null at the camera's point of interest, with the camera parented to it — rotate the null to orbit the shot")}
           onClick={() => {
             void createOrbitNullEdit(nodeId, getTime()).then((id) => {
-              notify(id ? 'Created an orbit null — rotate it to orbit the camera' : 'Could not create the orbit null', id ? 'success' : 'warning');
+              notify(id ? t('inspector.cameraShot.orbitNullCreated', 'Created an orbit null — rotate it to orbit the camera') : t('inspector.cameraShot.orbitNullFailed', 'Could not create the orbit null'), id ? 'success' : 'warning');
             });
           }}
         >
-          Create Orbit Null
+          {t('inspector.cameraShot.orbitNull', 'Create Orbit Null')}
         </Button>
         <Dropdown
           placement="bottom-start"
           trigger={
-            <Button size="sm" variant="secondary" title="Build a crane, dolly or orbit rig of 3D nulls above this camera — then operate it from Camera Rig">
-              Add Rig
+            <Button size="sm" variant="secondary" title={t('inspector.cameraShot.addRigHint', 'Build a crane, dolly or orbit rig of 3D nulls above this camera — then operate it from Camera Rig')}>
+              {t('inspector.cameraShot.addRig', 'Add Rig')}
             </Button>
           }
           items={() => CAMERA_RIG_KINDS.map(({ kind, label, description }): DropdownItem => ({
@@ -180,7 +194,7 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
             label: <span title={description}>{label}</span>,
             onSelect: () => {
               void addCameraRigEdit(nodeId, kind, getTime()).then((ids) => {
-                notify(ids ? `${label} rig added — operate it from Camera Rig` : `Could not add the ${label.toLowerCase()} rig`, ids ? 'success' : 'warning');
+                notify(ids ? t('inspector.cameraShot.rigAdded', '{name} rig added — operate it from Camera Rig', { name: label }) : t('inspector.cameraShot.rigFailed', 'Could not add the {name} rig', { name: label.toLowerCase() }), ids ? 'success' : 'warning');
               });
             },
           }))}
@@ -188,10 +202,10 @@ export function CameraShotHeader({ nodeId, compWidth, focal, setFocal, no3D, mak
         <Button
           size="sm"
           variant="secondary"
-          title="Keyframe the camera to frame each selected layer in turn, from the playhead (select the camera, then the layers in order)"
+          title={t('inspector.cameraShot.flyToHint', 'Keyframe the camera to frame each selected layer in turn, from the playhead (select the camera, then the layers in order)')}
           onClick={openFlyToDialog}
         >
-          Fly to Layers
+          {t('inspector.cameraShot.flyTo', 'Fly to Layers')}
         </Button>
         {actions}
       </div>

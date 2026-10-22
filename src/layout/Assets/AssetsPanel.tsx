@@ -84,6 +84,7 @@ import { useSelectionStore } from '@stores/selectionStore';
 import { getAssetVisualInfo, FOLDER_COLOR } from '@layout/Assets/assetVisuals';
 import { openContextMenu, type ContextMenuItem } from '@stores/contextMenuStore';
 import { useUIStore } from '@stores/uiStore';
+import { useLayoutStore } from '@stores/layoutStore';
 import { getEventBus } from '@core/events/EventBus';
 import { replaceTargetLayer } from './replaceTarget';
 import { replaceSourceWithAsset } from '@layout/Timeline/timelineEdits';
@@ -121,6 +122,7 @@ import {
   usageByAsset,
 } from './assetListLogic';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 const LIST_ROW_H = 26;
 const FOLDER_ROW_H = 26;
@@ -138,13 +140,29 @@ const IMPORT_REVEAL_WINDOW_MS = 30_000;
 /** How long "Filters cleared to show the import" stays under the filter row. */
 const FILTER_NOTE_MS = 6000;
 
-const SORT_LABEL: Record<AssetSortKey, string> = {
-  name: 'Name',
-  type: 'Type',
-  size: 'Size',
-  date: 'Date added',
-  used: 'Times used',
-};
+const SORT_KEYS: readonly AssetSortKey[] = ['name', 'type', 'size', 'date', 'used'];
+
+/** The sort key as a menu item / column label. */
+function sortLabel(key: AssetSortKey): string {
+  switch (key) {
+    case 'name': return t('assets.panel.sortName', 'Name');
+    case 'type': return t('assets.panel.sortType', 'Type');
+    case 'size': return t('assets.panel.sortSize', 'Size');
+    case 'date': return t('assets.panel.sortDate', 'Date added');
+    case 'used': return t('assets.panel.sortUsed', 'Times used');
+  }
+}
+
+/** The sort key inside a sentence ("Sorted by …"). */
+function sortKeyInSentence(key: AssetSortKey): string {
+  switch (key) {
+    case 'name': return t('assets.panel.sortNameLower', 'name');
+    case 'type': return t('assets.panel.sortTypeLower', 'type');
+    case 'size': return t('assets.panel.sortSizeLower', 'size');
+    case 'date': return t('assets.panel.sortDateLower', 'date added');
+    case 'used': return t('assets.panel.sortUsedLower', 'times used');
+  }
+}
 
 /** One rendered line. `depth` drives the hierarchy indent and guide line. */
 type AssetRow =
@@ -258,8 +276,11 @@ export function AssetsPanel(): JSX.Element {
       );
       if (failed.length > 0) {
         // Each file with its reason: "Could not import clip.r3d: this file type or codec cannot be read."
-        const lines = failed.map((p) => `${p.replace(/^.*[\\/]/, '')}: ${reasons?.[p] ?? 'the file could not be read'}`);
-        useUIStore.getState().notify({ level: 'error', message: `Could not import ${lines.join('; ')}.`, durationMs: 7000 });
+        const lines = failed.map((p) => t('assets.panel.importFailedLine', '{name}: {reason}', {
+          name: p.replace(/^.*[\\/]/, ''),
+          reason: reasons?.[p] ?? t('assets.import.reasonRead', 'the file could not be read'),
+        }));
+        useUIStore.getState().notify({ level: 'error', message: t('assets.panel.importFailed', 'Could not import {files}.', { files: lines.join('; ') }), durationMs: 7000 });
       }
       announceImport(imported);
     })();
@@ -354,10 +375,12 @@ export function AssetsPanel(): JSX.Element {
     if (created.length === 0) return;
     useUIStore.getState().notify({
       level: 'success',
-      message: `Imported ${created.length} file${created.length === 1 ? '' : 's'}`,
+      message: created.length === 1
+        ? t('assets.panel.importedOne', 'Imported {n} file', { n: created.length })
+        : t('assets.panel.importedOther', 'Imported {n} files', { n: created.length }),
       durationMs: 6000,
       action: {
-        label: 'Add to composition',
+        label: t('assets.browser.addToComp', 'Add to composition'),
         onSelect: () => { void insertMediaEdit(created); },
       },
     });
@@ -371,7 +394,7 @@ export function AssetsPanel(): JSX.Element {
   /** One model selection through the importer, as a job with progress and its outcome toast. */
   const runModelImport = async (files: File[]): Promise<void> => {
     const jobId = 'model-import';
-    useUIStore.getState().startJob({ id: jobId, label: 'Importing 3D model…' });
+    useUIStore.getState().startJob({ id: jobId, label: t('assets.panel.importingModel', 'Importing 3D model…') });
     try {
       const outcome = await importModelSelection(files, (fraction, message) => {
         useUIStore.getState().updateJob(jobId, { progress: fraction, ...(message ? { label: message } : {}) });
@@ -379,7 +402,7 @@ export function AssetsPanel(): JSX.Element {
       const { message } = modelImportMessage(outcome);
       useUIStore.getState().finishJob(jobId, { status: 'done', message });
     } catch (err) {
-      useUIStore.getState().finishJob(jobId, { status: 'failed', message: `3D import failed: ${err instanceof Error ? err.message : String(err)}` });
+      useUIStore.getState().finishJob(jobId, { status: 'failed', message: t('assets.panel.modelImportFailed', '3D import failed: {error}', { error: err instanceof Error ? err.message : String(err) }) });
     }
   };
 
@@ -392,7 +415,7 @@ export function AssetsPanel(): JSX.Element {
     }
     const media = all.filter(isMediaFile);
     if (media.length === 0) {
-      useUIStore.getState().notify({ level: 'info', message: 'Drop video, image or audio files.', durationMs: 2600 });
+      useUIStore.getState().notify({ level: 'info', message: t('assets.panel.dropMedia', 'Drop video, image or audio files.'), durationMs: 2600 });
       return;
     }
     const { imported } = await importBrowserFilesEdit(media.map((file) => ({ file, folderId: currentFolderId })));
@@ -465,7 +488,7 @@ export function AssetsPanel(): JSX.Element {
     if (filtering) clearFilters();
 
     const siblings = folders.filter((f) => (f.parentId ?? null) === validParentId);
-    const base = 'New Folder';
+    const base = t('assets.panel.newFolder', 'New Folder');
     let name = base;
     let n = 2;
     while (siblings.some((f) => f.name === name)) name = `${base} ${n++}`;
@@ -489,13 +512,21 @@ export function AssetsPanel(): JSX.Element {
    */
   const usageNote = (ids: readonly string[]): string => {
     const n = layersUsingItems(ids);
-    return n === 0 ? '' : ` ${n} layer${n === 1 ? ' uses' : 's use'} ${ids.length === 1 ? 'it' : 'them'} and will be deleted too.`;
+    if (n === 0) return '';
+    if (ids.length === 1) {
+      return n === 1
+        ? t('assets.panel.usageOneIt', ' {n} layer uses it and will be deleted too.', { n })
+        : t('assets.panel.usageManyIt', ' {n} layers use it and will be deleted too.', { n });
+    }
+    return n === 1
+      ? t('assets.panel.usageOneThem', ' {n} layer uses them and will be deleted too.', { n })
+      : t('assets.panel.usageManyThem', ' {n} layers use them and will be deleted too.', { n });
   };
   const deleteAsset = async (asset: ImportedAsset): Promise<void> => {
     const ok = await customConfirm(
-      `Delete “${asset.name}”`,
-      `This removes the asset from the project.${usageNote([asset.id])} Undo brings it back.`,
-      { confirmLabel: 'Delete', isDanger: true },
+      t('assets.panel.deleteNamed', 'Delete “{name}”', { name: asset.name }),
+      t('assets.panel.deleteAssetBody', 'This removes the asset from the project.{usage} Undo brings it back.', { usage: usageNote([asset.id]) }),
+      { confirmLabel: t('assets.panel.delete', 'Delete'), isDanger: true },
     );
     if (ok) await removeItemsEdit([asset.id], 'Delete Asset');
   };
@@ -520,9 +551,13 @@ export function AssetsPanel(): JSX.Element {
     const shown = names.slice(0, 5).map((n) => `• ${n}`).join('\n');
     const rest = names.length - Math.min(names.length, 5);
     const ok = await customConfirm(
-      `Delete ${ids.length} assets`,
-      `${shown}${rest > 0 ? `\n…and ${rest} more` : ''}\n\nThis removes them from the project.${usageNote(ids)} Undo brings them back.`,
-      { confirmLabel: `Delete ${ids.length}`, isDanger: true },
+      t('assets.panel.deleteManyTitle', 'Delete {n} assets', { n: ids.length }),
+      `${shown}${rest > 0 ? `\n${t('assets.panel.andMore', '…and {n} more', { n: rest })}` : ''}\n\n${t(
+        'assets.panel.deleteManyBody',
+        'This removes them from the project.{usage} Undo brings them back.',
+        { usage: usageNote(ids) },
+      )}`,
+      { confirmLabel: t('assets.panel.deleteN', 'Delete {n}', { n: ids.length }), isDanger: true },
     );
     if (!ok) return;
     if (!(await removeItemsEdit(ids, `Delete ${ids.length} Assets`))) return;
@@ -533,12 +568,20 @@ export function AssetsPanel(): JSX.Element {
   const deleteFolder = async (folder: AssetFolder): Promise<void> => {
     const assetCount = assets.filter((a) => a.folderId === folder.id).length;
     const subCount = folders.filter((f) => f.parentId === folder.id).length;
+    const assetPart = assetCount === 1
+      ? t('assets.panel.assetCountOne', '{n} asset', { n: assetCount })
+      : t('assets.panel.assetCountOther', '{n} assets', { n: assetCount });
+    const subPart = subCount === 1
+      ? t('assets.panel.subfolderCountOne', '{n} subfolder', { n: subCount })
+      : t('assets.panel.subfolderCountOther', '{n} subfolders', { n: subCount });
     const ok = await customConfirm(
-      `Delete “${folder.name}”`,
+      t('assets.panel.deleteNamed', 'Delete “{name}”', { name: folder.name }),
       assetCount || subCount
-        ? `This deletes the folder and everything inside it (${assetCount} asset${assetCount === 1 ? '' : 's'}${subCount ? `, ${subCount} subfolder${subCount === 1 ? '' : 's'}` : ''}). Undo brings it back.`
-        : 'Delete this empty folder?',
-      { confirmLabel: 'Delete', isDanger: true },
+        ? t('assets.panel.deleteFolderBody', 'This deletes the folder and everything inside it ({contents}). Undo brings it back.', {
+          contents: subCount ? `${assetPart}, ${subPart}` : assetPart,
+        })
+        : t('assets.panel.deleteEmptyFolder', 'Delete this empty folder?'),
+      { confirmLabel: t('assets.panel.delete', 'Delete'), isDanger: true },
     );
     if (ok) {
       if (currentFolderId === folder.id) setCurrentFolderId(null);
@@ -553,19 +596,21 @@ export function AssetsPanel(): JSX.Element {
     if (!first) return;
     const shared = targets.length === 1
       ? first.tags ?? []
-      : (first.tags ?? []).filter((t) => targets.every((a) => (a.tags ?? []).includes(t)));
+      : (first.tags ?? []).filter((tag) => targets.every((a) => (a.tags ?? []).includes(tag)));
     const text = await customPrompt(
-      targets.length === 1 ? `Tags for “${first.name}”` : `Tags for ${targets.length} assets`,
-      'Comma-separated. Search matches tags as well as names.',
+      targets.length === 1
+        ? t('assets.panel.tagsForOne', 'Tags for “{name}”', { name: first.name })
+        : t('assets.panel.tagsForMany', 'Tags for {n} assets', { n: targets.length }),
+      t('assets.panel.tagsHint', 'Comma-separated. Search matches tags as well as names.'),
       shared.join(', '),
-      { placeholder: 'b-roll, interview, logo', confirmLabel: 'Save' },
+      { placeholder: t('assets.panel.tagsPlaceholder', 'b-roll, interview, logo'), confirmLabel: t('assets.panel.save', 'Save') },
     );
     if (text === null || text === undefined) return;
     const next = parseTags(text);
     // One entry for the whole selection.
     await setItemTagsEdit(targets.map((a) => {
       // Multi-edit replaces only the SHARED tags; each asset keeps its own.
-      const own = targets.length === 1 ? [] : (a.tags ?? []).filter((t) => !shared.includes(t));
+      const own = targets.length === 1 ? [] : (a.tags ?? []).filter((tag) => !shared.includes(tag));
       return { id: a.id, tags: parseTags([...own, ...next].join(',')) };
     }));
   };
@@ -574,7 +619,7 @@ export function AssetsPanel(): JSX.Element {
   const labelMenuItems = (ids: string[], current: string | undefined): ContextMenuItem[] => [
     {
       id: 'label-none',
-      label: 'None',
+      label: t('assets.panel.labelNone', 'None'),
       icon: current === undefined ? 'check' : undefined,
       onSelect: () => setLabel(ids, null),
     },
@@ -620,7 +665,7 @@ export function AssetsPanel(): JSX.Element {
     openContextMenu(e.clientX, e.clientY, [
       {
         id: 'add',
-        label: many ? `Add ${count} to Composition` : 'Add to Composition',
+        label: many ? t('assets.panel.addNToComp', 'Add {n} to Composition', { n: count }) : t('assets.panel.addToComp', 'Add to Composition'),
         // In the panel's own row order, so what lands in the comp matches what
         // the user sees rather than the order they happened to click. One
         // entry for the whole selection.
@@ -632,7 +677,7 @@ export function AssetsPanel(): JSX.Element {
         // both start points are legitimate, and a toggle that silently changes
         // what "Add" means is how a clip lands 40s away from where you looked.
         id: 'add-at-playhead',
-        label: many ? `Add ${count} at Playhead` : 'Add at Playhead',
+        label: many ? t('assets.panel.addNAtPlayhead', 'Add {n} at Playhead', { n: count }) : t('assets.panel.addAtPlayhead', 'Add at Playhead'),
         onSelect: () => { void insertMediaEdit(many ? targets : [asset], { atPlayhead: true }); },
       },
       {
@@ -641,7 +686,7 @@ export function AssetsPanel(): JSX.Element {
         // full frame. Single-selection only — one comp per gesture; a batch
         // version would open N tabs and bury the user.
         id: 'comp-from-footage',
-        label: 'New Comp from Footage',
+        label: t('assets.panel.newCompFromFootage', 'New Comp from Footage'),
         disabled: many,
         onSelect: () => { void newCompFromFootageEdit(asset); },
       },
@@ -650,7 +695,9 @@ export function AssetsPanel(): JSX.Element {
         // FIRST clip's size, duration and rate, but every selected clip lands
         // in it end-to-end rather than stacked at frame 0.
         id: 'comp-from-clips',
-        label: many ? `New Composition from ${count} Clips…` : 'New Composition from Clip…',
+        label: many
+          ? t('assets.panel.newCompFromNClips', 'New Composition from {n} Clips…', { n: count })
+          : t('assets.panel.newCompFromClip', 'New Composition from Clip…'),
         onSelect: () => {
           const chosen = targets.filter((a) => a.type === 'video' || a.type === 'image');
           void runNewCompFromClips(chosen.length > 0 ? chosen : [asset]);
@@ -660,25 +707,25 @@ export function AssetsPanel(): JSX.Element {
         // Single VIDEO only: the detector needs frames to compare, and a batch
         // version would open N comps and run N decode passes off one click.
         id: 'assemble-from-footage',
-        label: 'Assemble from Footage…',
+        label: t('assets.panel.assembleFromFootage', 'Assemble from Footage…'),
         disabled: many || asset.type !== 'video',
         onSelect: () => { void runAssembleFromFootage({ kind: 'asset', asset }); },
       },
       {
         id: 'open-source-monitor',
-        label: 'Open in Footage Viewer',
+        label: t('assets.panel.openInViewer', 'Open in Footage Viewer'),
         disabled: many || asset.type === 'image',
         onSelect: () => { openFootagePreview(asset); },
       },
       {
         id: 'preview',
-        label: 'Preview…',
+        label: t('assets.panel.preview', 'Preview…'),
         disabled: many,
         onSelect: () => openFootagePreview(asset),
       },
       {
         id: 'interpret-footage',
-        label: 'Interpret Footage… (Ctrl+Alt+G)',
+        label: t('assets.panel.interpretWithShortcut', 'Interpret Footage… ({shortcut})', { shortcut: 'Ctrl+Alt+G' }),
         disabled: many,
         onSelect: () => openInterpretFootage(asset),
       },
@@ -690,17 +737,17 @@ export function AssetsPanel(): JSX.Element {
         const picked = replaceTargetLayer();
         if (!picked || many || asset.type === 'audio') return [];
         const target = picked.id;
-        const name = picked.name || 'layer';
+        const name = picked.name || t('assets.panel.layerFallback', 'layer');
         return [{
           id: 'use-as-source',
-          label: `Use as Source for “${name}”`,
+          label: t('assets.panel.useAsSource', 'Use as Source for “{name}”', { name }),
           // `replaceLayerSource` (keep size): undoable, where the old direct write was not.
           onSelect: () => { void replaceSourceWithAsset(target, asset.id); },
         }];
       })(),
       { id: 'sep-org', separator: true },
-      { id: 'label', label: 'Label', children: labelMenuItems(targetIds, many ? undefined : asset.label) },
-      { id: 'tags', label: 'Edit Tags…', onSelect: () => { void editTags(targets); } },
+      { id: 'label', label: t('assets.panel.label', 'Label'), children: labelMenuItems(targetIds, many ? undefined : asset.label) },
+      { id: 'tags', label: t('assets.panel.editTags', 'Edit Tags…'), onSelect: () => { void editTags(targets); } },
       // Desktop only — the browser build has no file manager to reveal in,
       // and an item that can never work is worse than no item.
       ...(canRevealAssets()
@@ -714,7 +761,7 @@ export function AssetsPanel(): JSX.Element {
       { id: 'sep-a', separator: true },
       {
         id: 'delete',
-        label: many ? `Delete ${count} Assets` : 'Delete',
+        label: many ? t('assets.panel.deleteNAssets', 'Delete {n} Assets', { n: count }) : t('assets.panel.delete', 'Delete'),
         danger: true,
         onSelect: () => { void (many ? deleteSelectedAssets() : deleteAsset(asset)); },
       },
@@ -725,12 +772,12 @@ export function AssetsPanel(): JSX.Element {
     e.preventDefault();
     e.stopPropagation();
     openContextMenu(e.clientX, e.clientY, [
-      { id: 'rename', label: 'Rename', onSelect: () => setRenamingId(folder.id) },
+      { id: 'rename', label: t('assets.panel.rename', 'Rename'), onSelect: () => setRenamingId(folder.id) },
       {
         id: 'new',
-        label: 'New Subfolder',
+        label: t('assets.panel.newSubfolder', 'New Subfolder'),
         onSelect: () => {
-          void createFolderEdit('New Folder', folder.id).then((id) => {
+          void createFolderEdit(t('assets.panel.newFolder', 'New Folder'), folder.id).then((id) => {
             if (!id) return;
             // Open the parent, or the folder just created is filed somewhere the
             // user cannot see and the rename box appears attached to nothing.
@@ -740,7 +787,7 @@ export function AssetsPanel(): JSX.Element {
         },
       },
       { id: 'sep-f', separator: true },
-      { id: 'delete', label: 'Delete', danger: true, onSelect: () => { void deleteFolder(folder); } },
+      { id: 'delete', label: t('assets.panel.delete', 'Delete'), danger: true, onSelect: () => { void deleteFolder(folder); } },
     ]);
   };
 
@@ -797,7 +844,7 @@ export function AssetsPanel(): JSX.Element {
     if (filterAssets(fresh, filters, usedCount).length < fresh.length) {
       clearFilters();
       setSearchQuery('');
-      setFilterNote('Filters cleared to show the import');
+      setFilterNote(t('assets.panel.filtersCleared', 'Filters cleared to show the import'));
     }
     // Open every folder on the way down to each file.
     const toOpen = new Set<string>();
@@ -819,8 +866,8 @@ export function AssetsPanel(): JSX.Element {
   // The note is transient: long enough to read, gone before it nags.
   useEffect(() => {
     if (!filterNote) return;
-    const t = setTimeout(() => setFilterNote(null), FILTER_NOTE_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setFilterNote(null), FILTER_NOTE_MS);
+    return () => clearTimeout(timer);
   }, [filterNote]);
 
   // Grid geometry from the measured host. Columns first, then the card
@@ -870,7 +917,7 @@ export function AssetsPanel(): JSX.Element {
         const rootAssets = visibleAssets.filter((a) => (a.folderId ?? null) === null);
         if (rootAssets.length > 0) {
           if (view === 'grid' && folders.length > 0) {
-            out.push({ kind: 'section', key: 'section:root-media', depth: 0, title: `Media (${rootAssets.length})` });
+            out.push({ kind: 'section', key: 'section:root-media', depth: 0, title: t('assets.panel.mediaSection', 'Media ({n})', { n: rootAssets.length }) });
           }
           pushAssets(rootAssets, 0, null);
         }
@@ -931,11 +978,11 @@ export function AssetsPanel(): JSX.Element {
     : [];
 
   const sortItems: DropdownItem[] = [
-    { type: 'label', label: 'Sort by' },
-    ...(Object.keys(SORT_LABEL) as AssetSortKey[]).map((key): DropdownItem => ({
+    { type: 'label', label: t('assets.panel.sortBy', 'Sort by') },
+    ...SORT_KEYS.map((key): DropdownItem => ({
       type: 'item',
       id: key,
-      label: SORT_LABEL[key],
+      label: sortLabel(key),
       icon: sortKey === key ? 'check' : undefined,
       onSelect: () => sortBy(key),
     })),
@@ -943,7 +990,7 @@ export function AssetsPanel(): JSX.Element {
     {
       type: 'item',
       id: 'dir',
-      label: sortDir === 'asc' ? 'Ascending' : 'Descending',
+      label: sortDir === 'asc' ? t('assets.panel.ascending', 'Ascending') : t('assets.panel.descending', 'Descending'),
       icon: sortDir === 'asc' ? 'arrow-up' : 'arrow-down',
       onSelect: () => setSort(sortKey, sortDir === 'asc' ? 'desc' : 'asc'),
     },
@@ -954,7 +1001,7 @@ export function AssetsPanel(): JSX.Element {
       type="button"
       className={`${className} ${styles.assetHeadBtn}${sortKey === key ? ` ${styles.assetHeadBtnActive}` : ''}`}
       onClick={() => sortBy(key)}
-      title={`Sort by ${SORT_LABEL[key].toLowerCase()}`}
+      title={t('assets.panel.sortByKey', 'Sort by {key}', { key: sortKeyInSentence(key) })}
       aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
     >
       {label}
@@ -1034,7 +1081,11 @@ export function AssetsPanel(): JSX.Element {
             <span className={styles.assetRowName} title={row.folder.name}>{row.folder.name}</span>
           )}
           <span className={styles.assetGridFolderBadge}>
-            {row.count > 0 ? `${row.count} ${row.count === 1 ? 'item' : 'items'}` : 'Empty'}
+            {row.count > 0
+              ? row.count === 1
+                ? t('assets.panel.itemsOne', '{n} item', { n: row.count })
+                : t('assets.panel.itemsOther', '{n} items', { n: row.count })
+              : t('assets.panel.empty', 'Empty')}
           </span>
         </div>
       );
@@ -1104,7 +1155,7 @@ export function AssetsPanel(): JSX.Element {
         ) : (
           <span className={styles.assetRowName} title={row.folder.name}>{row.folder.name}</span>
         )}
-        <span className={styles.assetRowType}>Folder</span>
+        <span className={styles.assetRowType}>{t('assets.browser.folder', 'Folder')}</span>
         <span className={styles.assetRowSize} />
       </div>
     );
@@ -1124,7 +1175,7 @@ export function AssetsPanel(): JSX.Element {
       }}
     >
       <Icon name="folder-open" size="sm" />
-      <span>Folder is empty · Drop files here</span>
+      <span>{t('assets.panel.folderEmpty', 'Folder is empty · Drop files here')}</span>
     </div>
   );
 
@@ -1156,7 +1207,7 @@ export function AssetsPanel(): JSX.Element {
         aria-selected={selectedAssetIds.has(asset.id)}
         className={`${styles.assetRow}${selectedAssetIds.has(asset.id) ? ` ${styles.assetRowSelected}` : ''}`}
         style={{ paddingLeft: 8 + row.depth * 16 + (flat ? 0 : 16) }}
-        title={asset.tags?.length ? `${asset.name}\nTags: ${asset.tags.join(', ')}` : asset.name}
+        title={asset.tags?.length ? `${asset.name}\n${t('assets.panel.tagsAria', 'Tags: {tags}', { tags: asset.tags.join(', ') })}` : asset.name}
         data-focused={focusedAssetId === asset.id || undefined}
         onClick={(e) => selectAsset(asset.id, e, orderedAssetIds)}
         onDoubleClick={() => openFootagePreview(asset)}
@@ -1167,9 +1218,9 @@ export function AssetsPanel(): JSX.Element {
         {label && <span className={styles.assetLabelDot} style={{ background: label }} aria-hidden />}
         <span className={styles.assetRowName}>{asset.name}</span>
         {asset.tags && asset.tags.length > 0 && (
-          <span className={styles.assetRowTags} aria-label={`Tags: ${asset.tags.join(', ')}`}>
-            {asset.tags.slice(0, 2).map((t) => (
-              <Chip key={t} size="sm" selected={tagFilter === t} onSelect={() => setTagFilter(tagFilter === t ? null : t)}>{t}</Chip>
+          <span className={styles.assetRowTags} aria-label={t('assets.panel.tagsAria', 'Tags: {tags}', { tags: asset.tags.join(', ') })}>
+            {asset.tags.slice(0, 2).map((tag) => (
+              <Chip key={tag} size="sm" selected={tagFilter === tag} onSelect={() => setTagFilter(tagFilter === tag ? null : tag)}>{tag}</Chip>
             ))}
             {asset.tags.length > 2 && <span className={styles.assetRowUsed}>+{asset.tags.length - 2}</span>}
           </span>
@@ -1199,7 +1250,7 @@ export function AssetsPanel(): JSX.Element {
               role="treeitem"
               aria-selected={selected}
               className={`${styles.assetCard}${selected ? ` ${styles.assetCardSelected}` : ''}`}
-              title={asset.tags?.length ? `${asset.name}\nTags: ${asset.tags.join(', ')}` : asset.name}
+              title={asset.tags?.length ? `${asset.name}\n${t('assets.panel.tagsAria', 'Tags: {tags}', { tags: asset.tags.join(', ') })}` : asset.name}
               data-focused={focusedAssetId === asset.id || undefined}
               onClick={(e) => selectAsset(asset.id, e, orderedAssetIds)}
               onDoubleClick={() => openFootagePreview(asset)}
@@ -1213,7 +1264,9 @@ export function AssetsPanel(): JSX.Element {
                 <span>{visual.label}</span>
                 <span>·</span>
                 <span>{formatBytes(asset.size)}</span>
-                {usedCount(asset.id) > 0 && <span title={`Used by ${usedCount(asset.id)} layer${usedCount(asset.id) === 1 ? '' : 's'}`}>· ×{usedCount(asset.id)}</span>}
+                {usedCount(asset.id) > 0 && <span title={usedCount(asset.id) === 1
+                  ? t('assets.panel.usedByOne', 'Used by {n} layer', { n: usedCount(asset.id) })
+                  : t('assets.panel.usedByOther', 'Used by {n} layers', { n: usedCount(asset.id) })}>· ×{usedCount(asset.id)}</span>}
               </span>
             </div>
           );
@@ -1227,7 +1280,7 @@ export function AssetsPanel(): JSX.Element {
   return (
     <Panel
       id="assets"
-      title="Assets"
+      title={t('assets.panel.title', 'Assets')}
       icon="media"
       hideHeader
       noScroll
@@ -1240,7 +1293,7 @@ export function AssetsPanel(): JSX.Element {
       {browseAvailable && (
         <ScrollableStrip
           role="tablist"
-          ariaLabel="Assets views"
+          ariaLabel={t('assets.panel.viewsAria', 'Assets views')}
           className={styles.libTabsWrap}
           scrollClassName={styles.libTabs}
         >
@@ -1249,22 +1302,22 @@ export function AssetsPanel(): JSX.Element {
             role="tab"
             aria-selected={tab === 'bin'}
             className={tab === 'bin' ? styles.libTabActive : styles.libTab}
-            title="Assets — the files this project has imported. Saved with the project."
+            title={t('assets.panel.binTabTitle', 'Assets — the files this project has imported. Saved with the project.')}
             onClick={() => setTab('bin')}
           >
             <Icon name="media" size="sm" />
-            <span>Assets</span>
+            <span>{t('assets.panel.title', 'Assets')}</span>
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={tab === 'browse'}
             className={tab === 'browse' ? styles.libTabActive : styles.libTab}
-            title="Media Browser — a folder on disk you can drag from. Nothing is imported until you drop it."
+            title={t('assets.panel.browseTabTitle', 'Media Browser — a folder on disk you can drag from. Nothing is imported until you drop it.')}
             onClick={() => setTab('browse')}
           >
             <Icon name="folder" size="sm" />
-            <span>Media Browser</span>
+            <span>{t('assets.panel.mediaBrowser', 'Media Browser')}</span>
           </button>
         </ScrollableStrip>
       )}
@@ -1287,8 +1340,8 @@ export function AssetsPanel(): JSX.Element {
           </div>
           <div className={styles.assetSearchRow}>
             <SearchField
-              placeholder="Search assets…"
-              ariaLabel="Search assets"
+              placeholder={t('assets.panel.searchPlaceholder', 'Search assets…')}
+              ariaLabel={t('assets.panel.searchAria', 'Search assets')}
               fullWidth
               size="sm"
               value={searchQuery}
@@ -1298,15 +1351,15 @@ export function AssetsPanel(): JSX.Element {
 
           <div className={styles.assetToolbarRow}>
             <div className={styles.assetToolbarGroup}>
-              <span className={styles.assetImportSplit} role="group" aria-label="Import">
+              <span className={styles.assetImportSplit} role="group" aria-label={t('assets.panel.import', 'Import')}>
                 <button
                   type="button"
                   className={styles.assetImportMain}
-                  title="Import files into the project (they are not added to the composition)"
+                  title={t('assets.panel.importTitle', 'Import files into the project (they are not added to the composition)')}
                   onClick={openImportFiles}
                 >
                   <Icon name="upload" size="sm" />
-                  <span>Import</span>
+                  <span>{t('assets.panel.import', 'Import')}</span>
                 </button>
                 <div className={styles.assetImportDivider} />
                 <Dropdown
@@ -1315,23 +1368,25 @@ export function AssetsPanel(): JSX.Element {
                     <button
                       type="button"
                       className={styles.assetImportMore}
-                      aria-label="More import options"
-                      title="More import options"
+                      aria-label={t('assets.panel.moreImport', 'More import options')}
+                      title={t('assets.panel.moreImport', 'More import options')}
                     >
                       <Icon name="chevron-down" size="sm" />
                     </button>
                   }
                   items={[
-                    { type: 'item', id: 'files', label: 'Import Files…', icon: 'upload', onSelect: openImportFiles },
-                    { type: 'item', id: 'folder', label: 'Import Folder…', icon: 'folder-open', onSelect: () => folderInputRef.current?.click() },
+                    { type: 'item', id: 'files', label: t('assets.panel.importFiles', 'Import Files…'), icon: 'upload', onSelect: openImportFiles },
+                    { type: 'item', id: 'folder', label: t('assets.panel.importFolder', 'Import Folder…'), icon: 'folder-open', onSelect: () => folderInputRef.current?.click() },
                     { type: 'separator' },
-                    { type: 'item', id: 'model', label: 'Import 3D Model…', icon: 'cube', onSelect: () => modelInputRef.current?.click() },
+                    { type: 'item', id: 'model', label: t('assets.panel.importModel', 'Import 3D Model…'), icon: 'cube', onSelect: () => modelInputRef.current?.click() },
+                    // A voice-over recorded straight into the project (layout/RecordAudio).
+                    { type: 'item', id: 'record-audio', label: t('assets.panel.recordAudio', 'Record Audio…'), icon: 'mic', onSelect: () => useLayoutStore.getState().openPanel('recordAudio') },
                     { type: 'separator' },
                     // Also in the bottom dock and the list's right-click menu;
                     // here because the dock is the first thing a short panel
                     // scrolls out of view, and "I can't make a folder" was the
                     // report that followed.
-                    { type: 'item', id: 'new-folder', label: 'New Folder', icon: 'folder-plus', onSelect: handleNewFolder },
+                    { type: 'item', id: 'new-folder', label: t('assets.panel.newFolder', 'New Folder'), icon: 'folder-plus', onSelect: handleNewFolder },
                   ]}
                 />
               </span>
@@ -1344,8 +1399,10 @@ export function AssetsPanel(): JSX.Element {
                   <button
                     type="button"
                     className={styles.assetToolbarBtn}
-                    title={`Sorted by ${SORT_LABEL[sortKey].toLowerCase()}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`}
-                    aria-label="Sort assets"
+                    title={sortDir === 'asc'
+                      ? t('assets.panel.sortedAsc', 'Sorted by {key}, ascending', { key: sortKeyInSentence(sortKey) })
+                      : t('assets.panel.sortedDesc', 'Sorted by {key}, descending', { key: sortKeyInSentence(sortKey) })}
+                    aria-label={t('assets.panel.sortAria', 'Sort assets')}
                   >
                     <Icon name={sortDir === 'asc' ? 'arrow-up' : 'arrow-down'} size="sm" />
                   </button>
@@ -1357,8 +1414,8 @@ export function AssetsPanel(): JSX.Element {
                 value={view}
                 onChange={setView}
                 options={[
-                  { value: 'list', label: <Icon name="menu" size="sm" />, ariaLabel: 'List view' },
-                  { value: 'grid', label: <Icon name="grid" size="sm" />, ariaLabel: 'Grid view' },
+                  { value: 'list', label: <Icon name="menu" size="sm" />, ariaLabel: t('assets.panel.listView', 'List view') },
+                  { value: 'grid', label: <Icon name="grid" size="sm" />, ariaLabel: t('assets.panel.gridView', 'Grid view') },
                 ]}
               />
             </div>
@@ -1399,9 +1456,9 @@ export function AssetsPanel(): JSX.Element {
           {/* Column headings, as in Explorer's details view. Buttons: click sorts. */}
           {view === 'list' && (
             <div className={styles.assetHead}>
-              {headBtn('name', 'Name', styles.assetHeadName)}
-              {headBtn('type', 'Type', styles.assetHeadType)}
-              {headBtn('size', 'Size', styles.assetHeadSize)}
+              {headBtn('name', sortLabel('name'), styles.assetHeadName)}
+              {headBtn('type', sortLabel('type'), styles.assetHeadType)}
+              {headBtn('size', sortLabel('size'), styles.assetHeadSize)}
             </div>
           )}
 
@@ -1414,7 +1471,7 @@ export function AssetsPanel(): JSX.Element {
             className={`${styles.assetListHost}${osDropActive ? ` ${styles.assetListHostDrop}` : ''}`}
             tabIndex={0}
             role="tree"
-            aria-label="Assets"
+            aria-label={t('assets.panel.title', 'Assets')}
             data-shortcut-claim="delete backspace Ctrl+a Meta+a Ctrl+Alt+g Meta+Alt+g"
             data-tour="assets-panel"
             // OS files onto the list = import to the project, no insert.
@@ -1443,10 +1500,10 @@ export function AssetsPanel(): JSX.Element {
                 e.preventDefault();
                 e.stopPropagation();
                 openContextMenu(e.clientX, e.clientY, [
-                  { id: 'new-folder', label: 'New Folder', onSelect: handleNewFolder },
+                  { id: 'new-folder', label: t('assets.panel.newFolder', 'New Folder'), onSelect: handleNewFolder },
                   { id: 'sep-e1', separator: true },
-                  { id: 'import-files', label: 'Import Files…', onSelect: openImportFiles },
-                  { id: 'import-folder', label: 'Import Folder…', onSelect: () => folderInputRef.current?.click() },
+                  { id: 'import-files', label: t('assets.panel.importFiles', 'Import Files…'), onSelect: openImportFiles },
+                  { id: 'import-folder', label: t('assets.panel.importFolder', 'Import Folder…'), onSelect: () => folderInputRef.current?.click() },
                 ]);
               }
             }}
@@ -1506,12 +1563,12 @@ export function AssetsPanel(): JSX.Element {
             {isEmpty ? (
               <div className={styles.empty}>
                 {flat ? (
-                  'No matching assets found.'
+                  t('assets.panel.noMatch', 'No matching assets found.')
                 ) : (
                   <>
-                    <p className={styles.emptyLead}>Nothing imported yet. Import files, or drag them here.</p>
+                    <p className={styles.emptyLead}>{t('assets.panel.emptyLead', 'Nothing imported yet. Import files, or drag them here.')}</p>
                     <p className={styles.emptyNote}>
-                      Imports go to this list; add them to the composition by dragging onto the canvas or the timeline.
+                      {t('assets.panel.emptyNote', 'Imports go to this list; add them to the composition by dragging onto the canvas or the timeline.')}
                     </p>
                     <Button
                       size="sm"
@@ -1519,7 +1576,7 @@ export function AssetsPanel(): JSX.Element {
                       icon={<Icon name="upload" size="sm" />}
                       onClick={openImportFiles}
                     >
-                      Import
+                      {t('assets.panel.import', 'Import')}
                     </Button>
                   </>
                 )}
@@ -1563,7 +1620,7 @@ export function AssetsPanel(): JSX.Element {
                 type="button"
                 className={`${styles.dockBtn}${dockCompDropActive ? ` ${styles.dockBtnDropActive}` : ''}`}
                 disabled={!singleSelectedAsset || singleSelectedAsset.type === 'audio'}
-                title="Create New Composition from Footage (or drag & drop footage here)"
+                title={t('assets.panel.dockNewComp', 'Create New Composition from Footage (or drag & drop footage here)')}
                 onClick={() => {
                   if (singleSelectedAsset) void newCompFromFootageEdit(singleSelectedAsset);
                 }}
@@ -1586,8 +1643,8 @@ export function AssetsPanel(): JSX.Element {
               <button
                 type="button"
                 className={styles.dockBtn}
-                title="New Folder"
-                aria-label="New Folder"
+                title={t('assets.panel.newFolder', 'New Folder')}
+                aria-label={t('assets.panel.newFolder', 'New Folder')}
                 onClick={handleNewFolder}
               >
                 <Icon name="folder-plus" size="sm" style={{ color: FOLDER_COLOR }} />
@@ -1601,8 +1658,10 @@ export function AssetsPanel(): JSX.Element {
                 type="button"
                 className={styles.dockBtn}
                 disabled={selectedAssetIds.size === 0}
-                title={selectedAssetIds.size > 1 ? `Add ${selectedAssetIds.size} selected to composition` : 'Add selected asset to composition'}
-                aria-label="Add to composition"
+                title={selectedAssetIds.size > 1
+                  ? t('assets.panel.dockAddN', 'Add {n} selected to composition', { n: selectedAssetIds.size })
+                  : t('assets.panel.dockAddOne', 'Add selected asset to composition')}
+                aria-label={t('assets.browser.addToComp', 'Add to composition')}
                 onClick={() => {
                   void insertMediaEdit(assets.filter((a) => selectedAssetIds.has(a.id)));
                 }}
@@ -1613,8 +1672,10 @@ export function AssetsPanel(): JSX.Element {
                 type="button"
                 className={styles.dockBtn}
                 disabled={selectedAssetIds.size === 0}
-                title={selectedAssetIds.size > 1 ? `Add ${selectedAssetIds.size} selected at playhead` : 'Add selected asset at the playhead'}
-                aria-label="Add at playhead"
+                title={selectedAssetIds.size > 1
+                  ? t('assets.panel.dockPlayheadN', 'Add {n} selected at playhead', { n: selectedAssetIds.size })
+                  : t('assets.panel.dockPlayheadOne', 'Add selected asset at the playhead')}
+                aria-label={t('assets.viewer.atPlayhead', 'Add at playhead')}
                 onClick={() => {
                   void insertMediaEdit(assets.filter((a) => selectedAssetIds.has(a.id)), { atPlayhead: true });
                 }}
@@ -1631,8 +1692,10 @@ export function AssetsPanel(): JSX.Element {
                   onClick={() => setShowDerived((v) => !v)}
                   title={
                     showDerived
-                      ? 'Hide generated images (duplicates and rasterized copies)'
-                      : `Show ${derivedCount} generated image${derivedCount === 1 ? '' : 's'} — duplicates and rasterized copies made by effects and plugins`
+                      ? t('assets.panel.hideDerived', 'Hide generated images (duplicates and rasterized copies)')
+                      : derivedCount === 1
+                        ? t('assets.panel.showDerivedOne', 'Show {n} generated image — duplicates and rasterized copies made by effects and plugins', { n: derivedCount })
+                        : t('assets.panel.showDerivedOther', 'Show {n} generated images — duplicates and rasterized copies made by effects and plugins', { n: derivedCount })
                   }
                 >
                   <Icon name="sparkles" size="sm" />
@@ -1643,7 +1706,7 @@ export function AssetsPanel(): JSX.Element {
                 type="button"
                 className={styles.dockBtn}
                 disabled={!singleSelectedAsset}
-                title="Interpret Footage… (Ctrl+Alt+G)"
+                title={t('assets.panel.interpretWithShortcut', 'Interpret Footage… ({shortcut})', { shortcut: 'Ctrl+Alt+G' })}
                 onClick={() => {
                   if (singleSelectedAsset) openInterpretFootage(singleSelectedAsset);
                 }}
@@ -1658,9 +1721,11 @@ export function AssetsPanel(): JSX.Element {
                 title={
                   selectedAssetIds.size === 0
                     ? currentFolderId
-                      ? 'Delete selected folder (Del)'
-                      : 'Delete selected asset(s) (Del)'
-                    : `Delete Selected Asset${selectedAssetIds.size > 1 ? 's' : ''} (Del)`
+                      ? t('assets.panel.deleteFolderTitle', 'Delete selected folder ({key})', { key: 'Del' })
+                      : t('assets.panel.deleteAssetsTitle', 'Delete selected asset(s) ({key})', { key: 'Del' })
+                    : selectedAssetIds.size > 1
+                      ? t('assets.panel.deleteSelectedMany', 'Delete Selected Assets ({key})', { key: 'Del' })
+                      : t('assets.panel.deleteSelectedOne', 'Delete Selected Asset ({key})', { key: 'Del' })
                 }
                 onClick={() => {
                   if (selectedAssetIds.size > 0) {

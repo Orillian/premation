@@ -20,6 +20,7 @@ import { Icon } from '@components/Icon';
 import { customPrompt } from '@components/Modal';
 import { useSectionPresetStore, type PresetValues, type SectionPreset } from '@stores/sectionPresetStore';
 import { useSectionMenuRows } from './sectionMenu';
+import { t } from '@core/i18n';
 import styles from './SectionPresetMenu.module.css';
 
 export interface SectionPresetMenuProps {
@@ -50,8 +51,8 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
 
-  const title = presetMenuTitle(label ?? `${sectionId} presets`);
-  const fallbackName = `Preset ${presets.length + 1}`;
+  const title = presetMenuTitle(label ?? t('inspector.sectionPresetMenu.fallbackLabel', '{section} presets', { section: sectionId }));
+  const fallbackName = t('inspector.sectionPresetMenu.defaultName', 'Preset {n}', { n: presets.length + 1 });
 
   const commitSave = (): void => {
     if (!capture) return;
@@ -65,10 +66,10 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
     if (!capture) return;
     const values = capture();
     void customPrompt(
-      `Save ${title.replace(/Presets$/, 'Preset')}`,
-      'Name the preset. It is kept on this computer, for every project.',
+      t('inspector.sectionPresetMenu.saveTitle', 'Save {name}', { name: title.replace(/Presets$/, 'Preset') }),
+      t('inspector.sectionPresetMenu.saveBody', 'Name the preset. It is kept on this computer, for every project.'),
       fallbackName,
-      { placeholder: fallbackName, confirmLabel: 'Save' },
+      { placeholder: fallbackName, confirmLabel: t('inspector.sectionPresetMenu.save', 'Save') },
     ).then((picked) => {
       if (picked !== null) save(sectionId, picked.trim() || fallbackName, values);
     });
@@ -76,17 +77,17 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
 
   const rows = (onSave: () => void): DropdownItem[] => {
     const out: DropdownItem[] = [
-      { type: 'item', id: 'save', label: 'Save Current as Preset…', icon: 'plus', disabled: !capture, onSelect: onSave },
+      { type: 'item', id: 'save', label: t('inspector.sectionPresetMenu.saveCurrent', 'Save Current as Preset…'), icon: 'plus', disabled: !capture, onSelect: onSave },
     ];
     if (presets.length === 0) return out;
-    out.push({ type: 'separator' }, { type: 'label', label: 'Apply' });
+    out.push({ type: 'separator' }, { type: 'label', label: t('inspector.sectionPresetMenu.apply', 'Apply') });
     for (const p of presets) {
       out.push({ type: 'item', id: `apply-${p.id}`, label: p.name, disabled: !apply, onSelect: () => apply?.(p.values) });
     }
     out.push({ type: 'separator' }, {
       type: 'item',
       id: 'delete',
-      label: 'Delete Preset',
+      label: t('inspector.sectionPresetMenu.delete', 'Delete Preset'),
       icon: 'trash',
       danger: true,
       submenu: presets.map((p): DropdownItem => ({
@@ -113,8 +114,8 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
           <input
             className={styles.nameInput}
             value={name}
-            placeholder="Preset name"
-            aria-label="Preset name"
+            placeholder={t('inspector.sectionPresetMenu.name', 'Preset name')}
+            aria-label={t('inspector.sectionPresetMenu.name', 'Preset name')}
             autoFocus
             onChange={(e) => setName(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -122,10 +123,10 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
               if (e.key === 'Escape') setNaming(false);
             }}
           />
-          <button type="button" className={styles.nameBtn} onClick={commitSave} aria-label="Save preset">
+          <button type="button" className={styles.nameBtn} onClick={commitSave} aria-label={t('inspector.sectionPresetMenu.savePreset', 'Save preset')}>
             <Icon name="check" size="sm" />
           </button>
-          <button type="button" className={styles.nameBtn} onClick={() => setNaming(false)} aria-label="Cancel">
+          <button type="button" className={styles.nameBtn} onClick={() => setNaming(false)} aria-label={t('inspector.sectionPresetMenu.cancel', 'Cancel')}>
             <Icon name="close" size="sm" />
           </button>
         </span>
@@ -134,9 +135,9 @@ export function SectionPresetMenu({ sectionId, capture, apply, label }: SectionP
           placement="bottom-end"
           items={rows(() => setNaming(true))}
           trigger={
-            <button type="button" className={styles.trigger} aria-label={label ?? 'Section presets'} title="Presets">
+            <button type="button" className={styles.trigger} aria-label={label ?? t('inspector.sectionPresetMenu.sectionPresets', 'Section presets')} title={t('inspector.sectionPresetMenu.presets', 'Presets')}>
               <Icon name="sliders-h" size="sm" />
-              <span className={styles.triggerText}>Presets</span>
+              <span className={styles.triggerText}>{t('inspector.sectionPresetMenu.presets', 'Presets')}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
           }

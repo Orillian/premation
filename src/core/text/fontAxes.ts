@@ -24,15 +24,16 @@
  */
 
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 /** Axis tags the OpenType spec registers, with the ranges the UI falls back
  *  to when a font's own `fvar` cannot be read (no Local Font Access). */
 export const REGISTERED_AXES: ReadonlyArray<{ tag: string; label: string; min: number; default: number; max: number }> = [
-  { tag: 'wght', label: 'Weight', min: 1, default: 400, max: 1000 },
-  { tag: 'wdth', label: 'Width', min: 50, default: 100, max: 200 },
-  { tag: 'slnt', label: 'Slant', min: -90, default: 0, max: 90 },
-  { tag: 'ital', label: 'Italic', min: 0, default: 0, max: 1 },
-  { tag: 'opsz', label: 'Optical Size', min: 6, default: 12, max: 144 },
+  { tag: 'wght', get label() { return t('core.fontAxes.wght', 'Weight'); }, min: 1, default: 400, max: 1000 },
+  { tag: 'wdth', get label() { return t('core.fontAxes.wdth', 'Width'); }, min: 50, default: 100, max: 200 },
+  { tag: 'slnt', get label() { return t('core.fontAxes.slnt', 'Slant'); }, min: -90, default: 0, max: 90 },
+  { tag: 'ital', get label() { return t('core.fontAxes.ital', 'Italic'); }, min: 0, default: 0, max: 1 },
+  { tag: 'opsz', get label() { return t('core.fontAxes.opsz', 'Optical Size'); }, min: 6, default: 12, max: 144 },
 ];
 
 /** AE's limit on axes a text layer's animators may drive. */

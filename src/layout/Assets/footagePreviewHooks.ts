@@ -19,6 +19,7 @@ import { demuxMp4 } from '@core/video/mp4Demuxer';
 import { demuxWebm, isWebmMagic } from '@core/video/webmDemuxer';
 import { ExactVideoSource } from '@core/video/exactVideoSource';
 import type { ImportedAsset } from '@stores/assetStore';
+import { t } from '@core/i18n';
 
 /** The one-line "what is this file" row: display size, length, rate, audio. */
 export function factsOf(asset: ImportedAsset): string {
@@ -30,7 +31,7 @@ export function factsOf(asset: ImportedAsset): string {
   // Probed rate only — the browser cannot report one, and printing the comp's
   // rate here would be a lie wearing units. Same rule as the panel footer.
   if (m.fps && m.fps > 0) parts.push(`${m.fps % 1 === 0 ? m.fps : m.fps.toFixed(3)} fps`);
-  if (m.hasAudioTrack) parts.push('audio');
+  if (m.hasAudioTrack) parts.push(t('assets.footage.audio', 'audio'));
   return parts.join(' · ');
 }
 
@@ -118,7 +119,7 @@ export function useExactStepper(asset: ImportedAsset): ExactStepper {
       setFrameIdx(clamped);
       setTimeUs(src.timeUsOf(clamped));
     }).catch((e: unknown) => {
-      setNote(`Frame-by-frame failed: ${e instanceof Error ? e.message : String(e)}`);
+      setNote(t('assets.footage.framesFailed', 'Frame-by-frame failed: {error}', { error: e instanceof Error ? e.message : String(e) }));
       setMode('player');
     });
   };
@@ -141,7 +142,7 @@ export function useExactStepper(asset: ImportedAsset): ExactStepper {
     void Promise.resolve()
       .then(() => fetch(asset.src))
       .then((r) => {
-        if (!r.ok) throw new Error(`source unreadable (${r.status})`);
+        if (!r.ok) throw new Error(t('assets.footage.sourceUnreadable', 'source unreadable ({status})', { status: r.status }));
         return r.arrayBuffer();
       })
       .then((buf) => {
@@ -149,7 +150,7 @@ export function useExactStepper(asset: ImportedAsset): ExactStepper {
         // and the same ceiling, so a multi-GB clip cannot double into the
         // JS heap from a preview click.
         if (buf.byteLength > 1536 * 1024 * 1024) {
-          throw new Error('file too large for frame-by-frame — generate a proxy');
+          throw new Error(t('assets.footage.tooLarge', 'file too large for frame-by-frame — generate a proxy'));
         }
         // WebM and MP4, like the timeline: this dialog was MP4-only, so WebM
         // clips offered the button and always failed even though the renderer
@@ -184,7 +185,7 @@ export function useExactStepper(asset: ImportedAsset): ExactStepper {
       })
       .catch((e: unknown) => {
         enteringRef.current = false;
-        setNote(`Frame-by-frame unavailable: ${e instanceof Error ? e.message : String(e)}`);
+        setNote(t('assets.footage.framesUnavailable', 'Frame-by-frame unavailable: {error}', { error: e instanceof Error ? e.message : String(e) }));
         setMode('player');
       });
   };

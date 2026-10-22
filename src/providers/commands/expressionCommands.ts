@@ -25,6 +25,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useLayoutStore } from '@stores/layoutStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { expressionCommands } from '@layout/Inspector/inspectorEdits';
+import { canCopyExpression, copyExpressionOnlyEdit } from '../clipboardEdits';
 
 interface Row {
   ref: PropertyRef;
@@ -84,6 +85,23 @@ export async function toggleExpressionEdit(refs: ReadonlyArray<PropertyRef>): Pr
   return enable;
 }
 
+/**
+ * Alt-click on a stopwatch (After Effects): a property with an expression
+ * loses it; one without gets `value` and its editor opens — through `open`
+ * when the surface has its own editor (the timeline's floating one), else the
+ * Properties panel's row.
+ */
+export async function altClickStopwatchEdit(refs: ReadonlyArray<PropertyRef>, open?: (ref: PropertyRef) => void): Promise<void> {
+  await documentMirror().loadTrees(refs.map((r) => r.nodeId));
+  if (rows(refs).some((r) => r.facts !== null)) {
+    await removeExpressionEdit(refs);
+    return;
+  }
+  await addExpressionEdit(refs, { openEditor: open === undefined });
+  const first = refs[0];
+  if (first && open) open(first);
+}
+
 const anyHas = (): boolean => rows(expressionTargets()).some((r) => r.facts !== null);
 
 export function buildExpressionCommands(): ReadonlyArray<Command> {
@@ -98,6 +116,15 @@ export function buildExpressionCommands(): ReadonlyArray<Command> {
       enabled: () => expressionTargets().length > 0,
       execute: () => {
         void addExpressionEdit(expressionTargets());
+      },
+    },
+    {
+      id: asCommandId('edit.copyExpressionOnly'),
+      label: 'Copy Expression Only',
+      description: 'Copy the selected property’s expression, without its keyframes or value',
+      enabled: canCopyExpression,
+      execute: () => {
+        void copyExpressionOnlyEdit();
       },
     },
     {

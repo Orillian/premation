@@ -58,6 +58,40 @@ export interface PieceFingerprint {
   camera: PieceCamera;
   /** Some light shades the piece. */
   lit: boolean;
+  /** The type pairing the concept named, when the piece came from a concept stage. */
+  type?: string;
+  /** The motion language the concept named, likewise. */
+  motion?: string;
+  /** The concept's name, likewise. */
+  concept?: string;
+}
+
+/**
+ * How unlike a concept is from a recent piece, 0 (a twin) to 1: value, hue
+ * family, medium and camera weigh a quarter each; sharing the type pairing
+ * takes a little more off. The concept stage keeps the candidates farthest
+ * from EVERY recent piece (the minimum over the history), so a run never
+ * offers the user what the editor made last week again.
+ */
+export function conceptDistance(
+  c: { value: PieceValue; medium: string; camera: string; swatches?: readonly string[]; type?: string },
+  recent: readonly PieceFingerprint[],
+): number {
+  if (!recent.length) return 1;
+  const accent = c.swatches && c.swatches.length >= 3 ? c.swatches[c.swatches.length - 2] : undefined;
+  const hue = accent ? hueFamily(accent) : undefined;
+  const cam: PieceCamera = /\b(none|static|still|no camera|locked)\b/i.test(c.camera) ? 'none' : /\b(depth|parallax|orbit|dolly|through)\b/i.test(c.camera) ? 'depth' : 'flat';
+  let nearest = 1;
+  for (const f of recent) {
+    let same = 0;
+    if (f.value === c.value) same += 0.25;
+    if (hue !== undefined && f.hue === hue) same += 0.25;
+    if (f.medium === c.medium) same += 0.25;
+    if (f.camera === cam) same += 0.25;
+    if (c.type && f.type && c.type.toLowerCase() === f.type.toLowerCase()) same += 0.15;
+    nearest = Math.min(nearest, Math.max(0, 1 - same));
+  }
+  return nearest;
 }
 
 /** Where the last pieces' fingerprints live (the host persists them; newest first). */
@@ -214,7 +248,7 @@ export function fingerprintScript(script: SceneScript): PieceFingerprint {
 
 /** One line per recent piece, for a prompt. */
 export function describeRecent(recent: readonly PieceFingerprint[], max = 4): string {
-  return recent.slice(0, max).map((f) => `- "${f.title || 'untitled'}": ${f.value} frame, ${f.hue} accent, ${f.medium}-led, camera ${f.camera === 'none' ? 'none' : f.camera === 'flat' ? 'over flat layers' : 'in depth'}${f.lit ? ', lit' : ''}`).join('\n');
+  return recent.slice(0, max).map((f) => `- "${f.title || 'untitled'}": ${f.value} frame, ${f.hue} accent, ${f.medium}-led, camera ${f.camera === 'none' ? 'none' : f.camera === 'flat' ? 'over flat layers' : 'in depth'}${f.lit ? ', lit' : ''}${f.type ? `, type ${f.type}` : ''}${f.motion ? `, motion ${f.motion}` : ''}`).join('\n');
 }
 
 // ── The rules ──────────────────────────────────────────────────────────

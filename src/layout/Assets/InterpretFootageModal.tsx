@@ -16,19 +16,22 @@ import type { AlphaInterpretation, FootageInterpretation } from '@core/source/so
 import { canProbePulldown, probePulldown } from '@core/video/pulldownProbe';
 import { interpretFootageEdit } from './assetEdits';
 import styles from './InterpretFootageModal.module.css';
+import { t } from '@core/i18n';
 
-const PAR_PRESETS: Array<{ label: string; value: number }> = [
-  { label: 'Square Pixels (1.0)', value: 1.0 },
-  { label: 'D1/DV NTSC (0.91)', value: 0.91 },
-  { label: 'D1/DV PAL (1.09)', value: 1.09 },
-  { label: 'D1/DV NTSC Widescreen (1.21)', value: 1.21 },
-  { label: 'D1/DV PAL Widescreen (1.46)', value: 1.46 },
-  { label: 'HDV / DVCPRO HD 1080 (1.333)', value: 1.333333 },
-  { label: 'Anamorphic 2:1 (2.0)', value: 2.0 },
-];
+function parPresets(): Array<{ label: string; value: number }> {
+  return [
+    { label: t('assets.interpret.parSquare', 'Square Pixels (1.0)'), value: 1.0 },
+    { label: 'D1/DV NTSC (0.91)', value: 0.91 },
+    { label: 'D1/DV PAL (1.09)', value: 1.09 },
+    { label: t('assets.interpret.parNtscWide', 'D1/DV NTSC Widescreen (1.21)'), value: 1.21 },
+    { label: t('assets.interpret.parPalWide', 'D1/DV PAL Widescreen (1.46)'), value: 1.46 },
+    { label: 'HDV / DVCPRO HD 1080 (1.333)', value: 1.333333 },
+    { label: t('assets.interpret.parAnamorphic', 'Anamorphic 2:1 (2.0)'), value: 2.0 },
+  ];
+}
 
 function findParPreset(val: number): string {
-  const match = PAR_PRESETS.find((p) => Math.abs(p.value - val) < 0.01);
+  const match = parPresets().find((p) => Math.abs(p.value - val) < 0.01);
   return match ? String(match.value) : 'custom';
 }
 
@@ -88,10 +91,10 @@ function InterpretFootageBody({
   const onDetectPulldown = async (): Promise<void> => {
     if (detecting) return;
     setDetecting(true);
-    setPulldownStatus('Analyzing 40 frames…');
+    setPulldownStatus(t('assets.interpret.analyzing40', 'Analyzing 40 frames…'));
     try {
       const report = await probePulldown(asset.src, (f) =>
-        setPulldownStatus(`Analyzing… ${Math.round(f * 100)}%`));
+        setPulldownStatus(t('assets.interpret.analyzingPct', 'Analyzing… {pct}%', { pct: Math.round(f * 100) })));
       if (report.telecine && report.phase !== null) {
         // A positive detect arms the removal itself: the decode path re-weaves
         // whole 23.976 film frames, so field separation is switched off rather
@@ -99,19 +102,28 @@ function InterpretFootageBody({
         setPulldownPhase(report.phase);
         setFieldsMode('off');
         setPulldownStatus(
-          `3:2 pulldown detected (confidence ${(report.confidence * 100).toFixed(0)}%, ` +
-          `${report.repeats} field repeats / ${report.transitions} transitions). ` +
-          `Remove Pulldown armed at phase ${pulldownPhaseLabel(report.phase)} — ` +
-          'playback now re-weaves whole progressive film frames.',
+          t(
+            'assets.interpret.pulldownDetected',
+            '3:2 pulldown detected (confidence {confidence}%, {repeats} field repeats / {transitions} transitions). Remove Pulldown armed at phase {phase} — playback now re-weaves whole progressive film frames.',
+            {
+              confidence: (report.confidence * 100).toFixed(0),
+              repeats: report.repeats,
+              transitions: report.transitions,
+              phase: pulldownPhaseLabel(report.phase),
+            },
+          ),
         );
       } else {
         setPulldownStatus(
-          `No 3:2 cadence found (confidence ${(report.confidence * 100).toFixed(0)}%). ` +
-          'This looks progressive or natively interlaced.',
+          t(
+            'assets.interpret.noCadence',
+            'No 3:2 cadence found (confidence {confidence}%). This looks progressive or natively interlaced.',
+            { confidence: (report.confidence * 100).toFixed(0) },
+          ),
         );
       }
     } catch (err) {
-      setPulldownStatus(`Detection failed: ${(err as Error).message}`);
+      setPulldownStatus(t('assets.interpret.detectFailed', 'Detection failed: {error}', { error: (err as Error).message }));
     } finally {
       setDetecting(false);
     }
@@ -146,7 +158,7 @@ function InterpretFootageBody({
     <div className={styles.modalBody}>
       {/* ── Frame Rate ── */}
       <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Frame Rate</h4>
+        <h4 className={styles.sectionTitle}>{t('assets.interpret.frameRate', 'Frame Rate')}</h4>
         <div className={styles.radioGroup}>
           <label className={styles.radioLabel}>
             <input
@@ -156,8 +168,9 @@ function InterpretFootageBody({
               onChange={() => setUseConform(false)}
             />
             <span>
-              Use frame rate from file{' '}
-              {probedFps ? `(${probedFps % 1 === 0 ? probedFps : probedFps.toFixed(3)} fps)` : '(unprobed / comp default)'}
+              {probedFps
+                ? t('assets.interpret.useFileFps', 'Use frame rate from file ({fps} fps)', { fps: probedFps % 1 === 0 ? probedFps : probedFps.toFixed(3) })
+                : t('assets.interpret.useFileFpsUnprobed', 'Use frame rate from file (unprobed / comp default)')}
             </span>
           </label>
 
@@ -168,7 +181,7 @@ function InterpretFootageBody({
               checked={useConform}
               onChange={() => setUseConform(true)}
             />
-            <span>Conform to frame rate:</span>
+            <span>{t('assets.interpret.conformTo', 'Conform to frame rate:')}</span>
           </label>
         </div>
 
@@ -187,13 +200,13 @@ function InterpretFootageBody({
           </div>
         )}
         <p className={styles.hint}>
-          Conforming changes playback speed without dropping frames (e.g. 60fps conform to 24fps creates smooth slow-motion).
+          {t('assets.interpret.conformHint', 'Conforming changes playback speed without dropping frames (e.g. 60fps conform to 24fps creates smooth slow-motion).')}
         </p>
       </div>
 
       {/* ── Pixel Aspect Ratio ── */}
       <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Pixel Aspect Ratio</h4>
+        <h4 className={styles.sectionTitle}>{t('assets.interpret.par', 'Pixel Aspect Ratio')}</h4>
         <select
           className={styles.select}
           value={parPreset}
@@ -203,17 +216,17 @@ function InterpretFootageBody({
             if (v !== 'custom') setCustomPar(parseFloat(v));
           }}
         >
-          {PAR_PRESETS.map((p) => (
+          {parPresets().map((p) => (
             <option key={p.value} value={p.value}>
               {p.label}
             </option>
           ))}
-          <option value="custom">Custom…</option>
+          <option value="custom">{t('assets.interpret.custom', 'Custom…')}</option>
         </select>
 
         {parPreset === 'custom' && (
           <div className={styles.inlineInput} style={{ marginTop: 6, marginLeft: 0 }}>
-            <span>Aspect ratio:</span>
+            <span>{t('assets.interpret.aspectRatio', 'Aspect ratio:')}</span>
             <input
               type="number"
               className={styles.numberInput}
@@ -230,17 +243,17 @@ function InterpretFootageBody({
       {/* ── Alpha Channel ── */}
       {asset.type !== 'audio' && (
         <div className={styles.section}>
-          <h4 className={styles.sectionTitle}>Alpha Channel</h4>
+          <h4 className={styles.sectionTitle}>{t('assets.interpret.alpha', 'Alpha Channel')}</h4>
           <select
             className={styles.select}
             value={alphaMode}
             onChange={(e) => setAlphaMode(e.target.value as AlphaInterpretation)}
           >
-            <option value="straight">Straight (Unmatted)</option>
-            <option value="premultiplied">Premultiplied (Matted With Black)</option>
+            <option value="straight">{t('assets.interpret.straight', 'Straight (Unmatted)')}</option>
+            <option value="premultiplied">{t('assets.interpret.premultiplied', 'Premultiplied (Matted With Black)')}</option>
           </select>
           <p className={styles.hint}>
-            Straight is standard for PNG, ProRes 4444 and WebM. Premultiplied prevents black fringing on rendered elements.
+            {t('assets.interpret.alphaHint', 'Straight is standard for PNG, ProRes 4444 and WebM. Premultiplied prevents black fringing on rendered elements.')}
           </p>
         </div>
       )}
@@ -248,7 +261,7 @@ function InterpretFootageBody({
       {/* ── Fields (interlaced sources only — video, not stills) ── */}
       {asset.type === 'video' && (
         <div className={styles.section}>
-          <h4 className={styles.sectionTitle}>Separate Fields</h4>
+          <h4 className={styles.sectionTitle}>{t('assets.interpret.separateFields', 'Separate Fields')}</h4>
           <select
             className={styles.select}
             value={fieldsMode}
@@ -261,15 +274,17 @@ function InterpretFootageBody({
               if (v !== 'off') setPulldownPhase(null);
             }}
           >
-            <option value="off">Off (progressive)</option>
-            <option value="upper">Upper Field First</option>
-            <option value="lower">Lower Field First</option>
+            <option value="off">{t('assets.interpret.fieldsOff', 'Off (progressive)')}</option>
+            <option value="upper">{t('assets.interpret.upperFirst', 'Upper Field First')}</option>
+            <option value="lower">{t('assets.interpret.lowerFirst', 'Lower Field First')}</option>
           </select>
           <p className={styles.hint}>
-            For interlaced tape-era footage showing comb teeth on motion. Files don&apos;t record
-            field order — DV is lower-first, most broadcast HD upper-first. Leave off for modern files.
+            {t(
+              'assets.interpret.fieldsHint',
+              'For interlaced tape-era footage showing comb teeth on motion. Files don\'t record field order — DV is lower-first, most broadcast HD upper-first. Leave off for modern files.',
+            )}
           </p>
-          <h4 className={styles.sectionTitle} style={{ marginTop: 10 }}>Remove Pulldown</h4>
+          <h4 className={styles.sectionTitle} style={{ marginTop: 10 }}>{t('assets.interpret.removePulldown', 'Remove Pulldown')}</h4>
           <select
             className={styles.select}
             value={pulldownPhase === null ? 'off' : String(pulldownPhase)}
@@ -282,7 +297,7 @@ function InterpretFootageBody({
               setFieldsMode('off');
             }}
           >
-            <option value="off">Off</option>
+            <option value="off">{t('assets.interpret.off', 'Off')}</option>
             {[0, 1, 2, 3, 4].map((p) => (
               <option key={p} value={String(p)}>
                 {pulldownPhaseLabel(p)}
@@ -290,8 +305,10 @@ function InterpretFootageBody({
             ))}
           </select>
           <p className={styles.hint}>
-            Inverse telecine for 29.97 video mastered from 24 fps film: re-weaves whole progressive
-            film frames from the 3:2 field cadence. Use Detect below to find the phase automatically.
+            {t(
+              'assets.interpret.pulldownHint',
+              'Inverse telecine for 29.97 video mastered from 24 fps film: re-weaves whole progressive film frames from the 3:2 field cadence. Use Detect below to find the phase automatically.',
+            )}
           </p>
           {canProbePulldown() && (
             <button
@@ -300,9 +317,9 @@ function InterpretFootageBody({
               style={{ cursor: 'pointer', marginTop: 6 }}
               disabled={detecting}
               onClick={() => void onDetectPulldown()}
-              title="Decode a short window and look for the 3:2 telecine field cadence"
+              title={t('assets.interpret.detectTitle', 'Decode a short window and look for the 3:2 telecine field cadence')}
             >
-              {detecting ? 'Detecting…' : 'Detect 3:2 Pulldown'}
+              {detecting ? t('assets.interpret.detecting', 'Detecting…') : t('assets.interpret.detect', 'Detect 3:2 Pulldown')}
             </button>
           )}
           {pulldownStatus && (
@@ -313,9 +330,9 @@ function InterpretFootageBody({
 
       {/* ── Other Options / Looping ── */}
       <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Other Options</h4>
+        <h4 className={styles.sectionTitle}>{t('assets.interpret.otherOptions', 'Other Options')}</h4>
         <div className={styles.inlineInput} style={{ marginLeft: 0 }}>
-          <span>Loop:</span>
+          <span>{t('assets.interpret.loop', 'Loop:')}</span>
           <input
             type="number"
             className={styles.numberInput}
@@ -325,17 +342,17 @@ function InterpretFootageBody({
             value={loopCount}
             onChange={(e) => setLoopCount(parseInt(e.target.value, 10) || 0)}
           />
-          <span>Times {loopCount === 0 ? '(Infinite Loop)' : ''}</span>
+          <span>{loopCount === 0 ? t('assets.interpret.timesInfinite', 'Times (Infinite Loop)') : t('assets.interpret.times', 'Times')}</span>
         </div>
       </div>
 
       {/* ── Actions ── */}
       <div className={styles.footer}>
         <Button size="sm" variant="secondary" onClick={close}>
-          Cancel
+          {t('assets.interpret.cancel', 'Cancel')}
         </Button>
         <Button size="sm" variant="primary" onClick={handleSave}>
-          OK
+          {t('assets.interpret.ok', 'OK')}
         </Button>
       </div>
     </div>
@@ -346,7 +363,7 @@ function InterpretFootageBody({
 export function openInterpretFootage(asset: ImportedAsset): void {
   openModal({
     id: `interpret-footage-${asset.id}`,
-    title: `Interpret Footage: ${asset.name}`,
+    title: t('assets.interpret.title', 'Interpret Footage: {name}', { name: asset.name }),
     size: 'md',
     // Floating: compare the interpreted clip against the viewport while the
     // fields are still open.

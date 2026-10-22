@@ -13,6 +13,7 @@ import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { openWhatsNew } from './WhatsNewDialog';
 import { openHelp } from './openHelp';
+import { t } from '@core/i18n';
 
 export const HELP_WHATS_NEW_COMMAND = asCommandId('help.whatsNew');
 export const HELP_DOCS_COMMAND = asCommandId('help.docs');
@@ -21,8 +22,8 @@ export function buildHelpCommands(): ReadonlyArray<Command> {
   return [
     {
       id: HELP_WHATS_NEW_COMMAND,
-      label: "What's New…",
-      description: 'The changelog for this version.',
+      label: t('help.whatsNew.command', "What's New…"),
+      description: t('help.whatsNew.description', 'The changelog for this version.'),
       icon: 'sparkles',
       enabled: () => true,
       execute: () => {
@@ -31,8 +32,8 @@ export function buildHelpCommands(): ReadonlyArray<Command> {
     },
     {
       id: HELP_DOCS_COMMAND,
-      label: 'Documentation',
-      description: 'Open the editor reference.',
+      label: t('help.docs.command', 'Documentation'),
+      description: t('help.docs.description', 'Open the editor reference.'),
       icon: 'info',
       enabled: () => true,
       execute: () => {

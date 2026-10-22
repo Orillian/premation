@@ -13,6 +13,7 @@ import { svgCapabilityWarnings } from '@core/svg/svgCapabilities';
 import { confirmAndConvertSvg, svgLayerDataOf } from './svgLayerActions';
 import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
+import { t } from '@core/i18n';
 import styles from './TransformSection.module.css';
 
 /** A capability the conversion will lose — a real warning, so it stays on screen (panel `help` role). */
@@ -49,13 +50,13 @@ export function SvgSection({ nodeId }: { nodeId: string }): JSX.Element | null {
   return (
     <div className={styles.section}>
       <div className={styles.inlineRows}>
-        <Row label="File" value={data.fileName} />
+        <Row label={t('inspector.svg.file', 'File')} value={data.fileName} />
         <Row
-          label="Dimensions"
+          label={t('inspector.svg.dimensions', 'Dimensions')}
           value={`${Math.round(data.intrinsicWidth)} × ${Math.round(data.intrinsicHeight)}`}
         />
-        <Row label="Paths" value={String(data.capabilities.pathCount)} />
-        <Row label="Playback" value={data.livePlayback ? 'Live SVG (time-scrubbed)' : 'Static texture'} />
+        <Row label={t('inspector.svg.paths', 'Paths')} value={String(data.capabilities.pathCount)} />
+        <Row label={t('inspector.svg.playback', 'Playback')} value={data.livePlayback ? t('inspector.svg.live', 'Live SVG (time-scrubbed)') : t('inspector.svg.static', 'Static texture')} />
       </div>
 
       <div className={styles.stackAfter}>
@@ -68,11 +69,11 @@ export function SvgSection({ nodeId }: { nodeId: string }): JSX.Element | null {
           variant="secondary"
           fullWidth
           title={data.livePlayback
-            ? 'This animated SVG plays with the timeline. Convert only when you need per-path keyframes — gradients, masks and filters may flatten.'
-            : 'The original file is stored intact and rendered as authored. Convert it to edit individual paths — gradients, masks and filters are flattened when you do.'}
+            ? t('inspector.svg.convertLiveHint', 'This animated SVG plays with the timeline. Convert only when you need per-path keyframes — gradients, masks and filters may flatten.')
+            : t('inspector.svg.convertHint', 'The original file is stored intact and rendered as authored. Convert it to edit individual paths — gradients, masks and filters are flattened when you do.')}
           onClick={() => void confirmAndConvertSvg(nodeId)}
         >
-          Convert to Editable Shapes
+          {t('inspector.svg.convert', 'Convert to Editable Shapes')}
         </Button>
       </div>
     </div>
@@ -93,10 +94,10 @@ export function RevertSvgRow({ onRevert }: { onRevert: () => void }): JSX.Elemen
         size="sm"
         variant="secondary"
         fullWidth
-        title="Converted from an SVG. The original file is still stored on this group."
+        title={t('inspector.svg.revertHint', 'Converted from an SVG. The original file is still stored on this group.')}
         onClick={onRevert}
       >
-        Revert to Original SVG
+        {t('inspector.svg.revert', 'Revert to Original SVG')}
       </Button>
     </div>
   );

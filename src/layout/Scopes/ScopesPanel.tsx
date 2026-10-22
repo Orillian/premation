@@ -58,6 +58,7 @@ import {
 import { captureScopeFrame, liveCompRegion, type ScopeFrame, type ScopeFrameMiss } from './scopeFrame';
 import { EmptyState } from '@components/EmptyState';
 import styles from './ScopesPanel.module.css';
+import { t } from '@core/i18n';
 
 /** Sampling rate. Matches the frame tap's publish ceiling deliberately. */
 const SCOPE_HZ = DEFAULT_FRAME_TAP_HZ;
@@ -68,20 +69,25 @@ export type ScopeKind = 'waveform' | 'parade' | 'vectorscope' | 'histogram';
 /** What the view selector offers — the four plots, or all of them at once. */
 type ScopeView = ScopeKind | 'all';
 
-const VIEW_TABS: ReadonlyArray<{ id: ScopeView; label: string }> = [
-  { id: 'waveform', label: 'Waveform' },
-  { id: 'parade', label: 'Parade' },
-  { id: 'vectorscope', label: 'Vector' },
-  { id: 'histogram', label: 'Histogram' },
-  { id: 'all', label: 'All' },
-];
+/** A plot's display name (computed at render; `t()` never runs at module load). */
+function kindLabel(kind: ScopeKind): string {
+  switch (kind) {
+    case 'waveform': return t('scopes.kind.waveform', 'Waveform');
+    case 'parade': return t('scopes.kind.parade', 'Parade');
+    case 'vectorscope': return t('scopes.kind.vector', 'Vector');
+    case 'histogram': return t('scopes.kind.histogram', 'Histogram');
+  }
+}
 
-const KIND_LABEL: Readonly<Record<ScopeKind, string>> = {
-  waveform: 'Waveform',
-  parade: 'Parade',
-  vectorscope: 'Vector',
-  histogram: 'Histogram',
-};
+function viewTabs(): ReadonlyArray<{ id: ScopeView; label: string }> {
+  return [
+    { id: 'waveform', label: kindLabel('waveform') },
+    { id: 'parade', label: kindLabel('parade') },
+    { id: 'vectorscope', label: kindLabel('vectorscope') },
+    { id: 'histogram', label: kindLabel('histogram') },
+    { id: 'all', label: t('scopes.kind.all', 'All') },
+  ];
+}
 
 // ── Theme ────────────────────────────────────────────────────────────
 
@@ -224,7 +230,7 @@ function ScopePlot({ kind, waveMode, subscribe }: ScopePlotProps): JSX.Element {
   return (
     <div className={styles.cell}>
       <canvas ref={canvasRef} className={styles.canvas} />
-      <span className={styles.cellLabel}>{KIND_LABEL[kind]}</span>
+      <span className={styles.cellLabel}>{kindLabel(kind)}</span>
     </div>
   );
 }
@@ -307,16 +313,16 @@ function sameStatus(a: Status, b: Status): boolean {
 /** The status line's text, and whether it is a warning. */
 export function statusText(status: Status): { text: string; warn: boolean } {
   if (status.miss === 'off-screen') {
-    return { text: 'Composition is off screen', warn: true };
+    return { text: t('scopes.status.offScreen', 'Composition is off screen'), warn: true };
   }
   if (status.miss === 'no-frame' || !status.source) {
-    return { text: 'Waiting for a rendered frame', warn: false };
+    return { text: t('scopes.status.waiting', 'Waiting for a rendered frame'), warn: false };
   }
   if (status.partial) {
-    return { text: 'Partial — comp is cropped by the viewport', warn: true };
+    return { text: t('scopes.status.partial', 'Partial — comp is cropped by the viewport'), warn: true };
   }
   // One source now — the engine's frame, through the frame tap.
-  return { text: 'Live', warn: false };
+  return { text: t('scopes.status.live', 'Live'), warn: false };
 }
 
 export function ScopesPanel(): JSX.Element {
@@ -421,8 +427,8 @@ export function ScopesPanel(): JSX.Element {
   return (
     <div className={styles.root} ref={rootRef}>
       <div className={styles.controls}>
-        <div className={styles.group} role="group" aria-label="Scope">
-          {VIEW_TABS.map((tab) => (
+        <div className={styles.group} role="group" aria-label={t('scopes.panel.scope', 'Scope')}>
+          {viewTabs().map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -435,22 +441,22 @@ export function ScopesPanel(): JSX.Element {
           ))}
         </div>
         {showWaveMode && (
-          <div className={styles.group} role="group" aria-label="Waveform channels">
+          <div className={styles.group} role="group" aria-label={t('scopes.panel.waveformChannels', 'Waveform channels')}>
             <button
               type="button"
               className={styles.tab}
               aria-pressed={waveMode === 'luma'}
               onClick={() => setWaveMode('luma')}
-              title="Rec.709 luma — one trace"
+              title={t('scopes.panel.rec709LumaOneTrace', 'Rec.709 luma — one trace')}
             >
-              Luma
+              {t('scopes.panel.luma', 'Luma')}
             </button>
             <button
               type="button"
               className={styles.tab}
               aria-pressed={waveMode === 'rgb'}
               onClick={() => setWaveMode('rgb')}
-              title="Red, green and blue traces overlaid"
+              title={t('scopes.panel.redGreenAndBlueTraces', 'Red, green and blue traces overlaid')}
             >
               RGB
             </button>
@@ -479,11 +485,11 @@ export function ScopesPanel(): JSX.Element {
           <div className={styles.plotsEmpty}>
             <EmptyState
               icon="graph-value"
-              title={status.miss === 'off-screen' ? 'Composition is off screen' : 'No signal yet'}
+              title={status.miss === 'off-screen' ? t('scopes.status.offScreen', 'Composition is off screen') : t('scopes.empty.noSignal', 'No signal yet')}
               message={
                 status.miss === 'off-screen'
-                  ? 'Scroll or zoom the viewport until the composition is visible — the scopes read what the canvas draws.'
-                  : 'Play or scrub the composition and the waveform, parade, vectorscope and histogram read the frame on screen.'
+                  ? t('scopes.empty.offScreenHint', 'Scroll or zoom the viewport until the composition is visible — the scopes read what the canvas draws.')
+                  : t('scopes.empty.noSignalHint', 'Play or scrub the composition and the waveform, parade, vectorscope and histogram read the frame on screen.')
               }
             />
           </div>

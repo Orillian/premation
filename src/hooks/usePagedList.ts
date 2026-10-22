@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '@core/i18n';
 import type { Paginated, PageQuery } from '@core/api/transport';
 
 export type PagedFetcher<T> = (params: Required<PageQuery>) => Promise<Paginated<T>>;
@@ -51,7 +52,7 @@ export interface UsePagedListOptions {
 
 export function usePagedList<T extends { id: string }>(
   fetcher: PagedFetcher<T>,
-  { pageSize = 24, enabled = true, errorMessage = 'Could not load this list.' }: UsePagedListOptions = {},
+  { pageSize = 24, enabled = true, errorMessage = t('hooks.pagedList.loadFailed', 'Could not load this list.') }: UsePagedListOptions = {},
 ): PagedList<T> {
   const [limit, setLimit] = useState(pageSize);
   const [offset, setOffset] = useState(0);
@@ -119,7 +120,7 @@ export function usePagedList<T extends { id: string }>(
     (ids: ReadonlySet<string> | string[]) => {
       const set = ids instanceof Set ? ids : new Set(ids);
       setItems((prev) => prev.filter((it) => !set.has(it.id)));
-      setTotal((t) => Math.max(0, t - set.size));
+      setTotal((n) => Math.max(0, n - set.size));
       reload();
     },
     [reload],

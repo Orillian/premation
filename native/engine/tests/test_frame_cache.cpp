@@ -3,10 +3,12 @@
 // serves a frame of its own size. Skips when no adapter exists.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "coverage_ledger.hpp"
 #include "frame_cache.hpp"
 #include "frame_scene.hpp"
 #include "onion_skin.hpp"
@@ -207,4 +209,126 @@ TEST_CASE("frame cache: the machine budget is sane", "[d4]") {
   const std::size_t b = render::default_frame_cache_budget(0, 0);
   CHECK(b >= (std::size_t{256} << 20U));
   CHECK(b <= (std::size_t{4} << 30U));
+}
+
+// ── cached playback without a build (render/coverage_ledger.hpp) ──────────────
+
+TEST_CASE("pre-build map: learn, find, forget, and a cap that starts over", "[d4][prebuild]") {
+  render::PrebuildMap map;
+  CHECK_FALSE(map.find(7).has_value());
+  map.learn(7, CachedKeys{70, 700});
+  const auto hit = map.find(7);
+  REQUIRE(hit.has_value());
+  CHECK(hit->content == 70);
+  CHECK(hit->disk == 700);
+  map.learn(7, CachedKeys{71, 0});  // re-learned: the latest build wins
+  CHECK(map.find(7)->content == 71);
+  map.forget(7);
+  CHECK_FALSE(map.find(7).has_value());
+  CHECK(map.size() == 0);
+  CHECK(render::prebuild_key(0x1234ULL << 32U, 5) != render::prebuild_key(0x1235ULL << 32U, 5));  // the view is part of it
+  CHECK(render::prebuild_key((0x1234ULL << 32U) | 9, 5) == render::prebuild_key((0x1234ULL << 32U) | 10, 5));  // the revision is not
+  CHECK(render::prebuild_key(0, 0) != 0);
+}
+
+namespace {
+
+RenderJob coverage_job(std::uint64_t scope, std::int64_t frame) {
+  RenderJob j;
+  j.viewport = 1;
+  j.cacheScope = scope;
+  j.frame = frame;
+  j.recordCoverage = true;
+  return j;
+}
+
+std::vector<std::int64_t> frames_of(const render::CoverageLedger& ledger) {
+  std::vector<std::int64_t> out;
+  const render::CoverageLedger::ScopeCover* cur = ledger.current(1);
+  if (cur == nullptr) return out;
+  for (const auto& [f, keys] : cur->frames) out.push_back(f);
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+}  // namespace
+
+TEST_CASE("coverage ledger: a revision keeps the frames its edit did not touch, and an undo brings them back", "[d4][ledger]") {
+  render::CoverageLedger ledger;
+  render::PrebuildMap map;
+  const render::CoverageLedger::Held held = [](const CachedKeys&) { return true; };
+  constexpr std::uint64_t kView = 0xabcdULL << 32U;
+  constexpr std::uint64_t kA = kView | 10;
+  constexpr std::uint64_t kB = kView | 11;
+  constexpr std::uint64_t kC = kView | 12;
+  for (std::int64_t f = 0; f < 10; ++f) ledger.note(coverage_job(kA, f), CachedKeys{100 + static_cast<std::uint64_t>(f), 0}, map, held);
+  REQUIRE(frames_of(ledger).size() == 10);
+
+  FrameRevision edit;
+  edit.fromRev = 10;
+  edit.toRev = 11;
+  edit.all = false;
+  edit.frames = {3, 4, 5};
+  edit.keys = {1003, 1004, 1005};  // their new document keys: never built, so unknown to the map
+  ledger.note_revision(edit);
+  ledger.note(coverage_job(kB, 3), CachedKeys{203, 0}, map, held);
+  CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 3, 6, 7, 8, 9});
+  CHECK(ledger.current(1)->frames.at(3).content == 203);
+  CHECK(ledger.current(1)->frames.at(0).content == 100);
+
+  SECTION("an undo's frames come back through the map without a draw") {
+    // Before the edit, the render thread had learned these frames' keys.
+    map.learn(render::prebuild_key(kC, 2004), CachedKeys{104, 0});
+    map.learn(render::prebuild_key(kC, 2005), CachedKeys{105, 0});
+    FrameRevision undo;
+    undo.fromRev = 11;
+    undo.toRev = 12;
+    undo.all = false;
+    undo.frames = {3, 4, 5};
+    undo.keys = {2003, 2004, 2005};
+    ledger.note_revision(undo);
+    ledger.note(coverage_job(kC, 0), CachedKeys{100, 0}, map, held);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 4, 5, 6, 7, 8, 9});  // 3 was never learned under its undone key
+    CHECK(ledger.current(1)->frames.at(4).content == 104);
+  }
+  SECTION("a frame the tiers no longer hold does not come back") {
+    map.learn(render::prebuild_key(kC, 2004), CachedKeys{104, 0});
+    FrameRevision undo;
+    undo.fromRev = 11;
+    undo.toRev = 12;
+    undo.all = false;
+    undo.frames = {4};
+    undo.keys = {2004};
+    ledger.note_revision(undo);
+    const render::CoverageLedger::Held gone = [](const CachedKeys& k) { return k.content != 104; };
+    ledger.note(coverage_job(kC, 0), CachedKeys{100, 0}, map, gone);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 3, 6, 7, 8, 9});
+  }
+  SECTION("two steps chain; a step that changed everything, or an unknown one, carries nothing") {
+    FrameRevision next;
+    next.fromRev = 11;
+    next.toRev = 12;
+    next.all = false;
+    next.frames = {8};
+    ledger.note_revision(next);
+    ledger.note(coverage_job(kC, 1), CachedKeys{101, 0}, map, held);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 3, 6, 7, 9});
+
+    FrameRevision all;
+    all.fromRev = 12;
+    all.toRev = 13;
+    ledger.note_revision(all);
+    ledger.note(coverage_job(kView | 13, 2), CachedKeys{102, 0}, map, held);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{2});
+
+    ledger.note(coverage_job(kView | 99, 5), CachedKeys{105, 0}, map, held);  // no record leads here
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{5});
+  }
+  SECTION("another view never inherits") {
+    ledger.note(coverage_job((0x1111ULL << 32U) | 11, 7), CachedKeys{107, 0}, map, held);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{7});
+    // …and the first view's bar is still there when it comes back.
+    ledger.note(coverage_job(kB, 9), CachedKeys{109, 0}, map, held);
+    CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 3, 6, 7, 8, 9});
+  }
 }

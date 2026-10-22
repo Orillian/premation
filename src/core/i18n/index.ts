@@ -1,4 +1,4 @@
-export { t, setCatalogue, getCatalogueRevision, subscribeCatalogue } from './t';
+export { t, tAround, SLOT, setCatalogue, getCatalogueRevision, subscribeCatalogue } from './t';
 export type { TranslationVars, Catalogue, CatalogueOptions } from './t';
 export {
   LOCALES,

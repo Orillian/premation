@@ -36,6 +36,7 @@
  */
 
 import type { SceneNode } from '@core/types';
+import { t } from '@core/i18n';
 
 export type PolystarType = 'polygon' | 'star';
 
@@ -91,16 +92,16 @@ export interface PolystarParamSpec {
  *  has no inner pair — showing dead controls would be worse than none. */
 export function polystarParamSpecs(starType: PolystarType): ReadonlyArray<PolystarParamSpec> {
   const rows: PolystarParamSpec[] = [
-    { param: 'points', label: 'Points', min: 3, max: 100, step: 1 },
-    { param: 'rotation', label: 'Rotation', unit: '°', signed: true },
-    { param: 'outerRadius', label: 'Outer Radius', unit: 'px', min: 0 },
+    { param: 'points', label: t('core.polystar.points', 'Points'), min: 3, max: 100, step: 1 },
+    { param: 'rotation', label: t('core.polystar.rotation', 'Rotation'), unit: '°', signed: true },
+    { param: 'outerRadius', label: t('core.polystar.outerRadius', 'Outer Radius'), unit: 'px', min: 0 },
   ];
   if (starType === 'star') {
-    rows.push({ param: 'innerRadius', label: 'Inner Radius', unit: 'px', min: 0 });
+    rows.push({ param: 'innerRadius', label: t('core.polystar.innerRadius', 'Inner Radius'), unit: 'px', min: 0 });
   }
-  rows.push({ param: 'outerRoundness', label: 'Outer Roundness', unit: '%', signed: true });
+  rows.push({ param: 'outerRoundness', label: t('core.polystar.outerRoundness', 'Outer Roundness'), unit: '%', signed: true });
   if (starType === 'star') {
-    rows.push({ param: 'innerRoundness', label: 'Inner Roundness', unit: '%', signed: true });
+    rows.push({ param: 'innerRoundness', label: t('core.polystar.innerRoundness', 'Inner Roundness'), unit: '%', signed: true });
   }
   return rows;
 }

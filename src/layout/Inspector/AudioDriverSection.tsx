@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SLOT, t, tAround } from '@core/i18n';
 import { Button } from '@components/Button';
 import { Slider } from '@components/Slider';
 import { ValueField } from '@components/ValueField';
@@ -236,8 +237,10 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
         result.error
           ? result.error
           : result.mode === 'expression'
-            ? 'Applied as an expression.'
-            : `Baked ${result.keyframes} keyframes${result.fellBackBecause ? ` — ${result.fellBackBecause}.` : '.'}`,
+            ? t('inspector.audioDriver.appliedExpression', 'Applied as an expression.')
+            : result.fellBackBecause
+              ? t('inspector.audioDriver.bakedBecause', 'Baked {n} keyframes — {reason}.', { n: result.keyframes, reason: result.fellBackBecause })
+              : t('inspector.audioDriver.baked', 'Baked {n} keyframes.', { n: result.keyframes }),
       );
     } finally {
       setBusy(false);
@@ -248,22 +251,22 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
 
   const existing = stored[activePath];
   const blocker = draft.mode === 'expression' ? expressionBlocker({ ...draft, prop: activePath }) : null;
+  const hint = tAround(t('inspector.audioDriver.hint', 'Drives a property from an audio envelope — no hand-written {expression}.', { expression: SLOT }));
 
   return (
     <div className={styles.root}>
       <p className={styles.hint}>
-        Drives a property from an audio envelope — no hand-written{' '}
-        <code>value + audio * 200</code>. Bakes keyframes over the work area
-        ({range.start.toFixed(2)}s–{range.end.toFixed(2)}s).
+        {hint[0]}<code>value + audio * 200</code>{hint[1]}{' '}
+        {t('inspector.audioDriver.hintRange', 'Bakes keyframes over the work area ({start}s–{end}s).', { start: range.start.toFixed(2), end: range.end.toFixed(2) })}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.label}>Property</span>
+        <span className={styles.label}>{t('inspector.audioDriver.property', 'Property')}</span>
         <select
           className={styles.select}
           value={activePath}
           onChange={(e) => setProp(e.target.value)}
-          aria-label="Driven property"
+          aria-label={t('inspector.audioDriver.drivenProperty', 'Driven property')}
         >
           {options.map((o) => (
             <option key={o.path} value={o.path}>
@@ -274,14 +277,14 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Source</span>
+        <span className={styles.label}>{t('inspector.audioDriver.source', 'Source')}</span>
         <select
           className={styles.select}
           value={draft.sourceLayerId}
           onChange={(e) => set('sourceLayerId', e.target.value)}
-          aria-label="Audio source"
+          aria-label={t('inspector.audioDriver.audioSource', 'Audio source')}
         >
-          <option value={MIX_SOURCE}>Comp mix (all audio)</option>
+          <option value={MIX_SOURCE}>{t('inspector.audioDriver.compMix', 'Comp mix (all audio)')}</option>
           {sources.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
@@ -289,7 +292,7 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Band</span>
+        <span className={styles.label}>{t('inspector.audioDriver.band', 'Band')}</span>
         <select
           className={styles.select}
           value={bandValue(draft.band)}
@@ -297,12 +300,12 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
             const v = e.target.value;
             set('band', v === 'custom' ? { lo: 20, hi: 250 } : (v as AudioBand));
           }}
-          aria-label="Frequency band"
+          aria-label={t('inspector.audioDriver.frequencyBand', 'Frequency band')}
         >
           {(['full', 'low', 'mid', 'high'] as const).map((b) => (
             <option key={b} value={b}>{BAND_LABELS[b]}</option>
           ))}
-          <option value="custom">Custom range…</option>
+          <option value="custom">{t('inspector.audioDriver.customRange', 'Custom range…')}</option>
         </select>
       </div>
 
@@ -313,72 +316,72 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
             value={draft.band.lo}
             min={0}
             onChange={(v) => set('band', { lo: Number(v), hi: (draft.band as { hi: number }).hi })}
-            aria-label="Band low Hz"
+            aria-label={t('inspector.audioDriver.bandLow', 'Band low Hz')}
           />
           <ValueField
             value={draft.band.hi}
             min={1}
             onChange={(v) => set('band', { lo: (draft.band as { lo: number }).lo, hi: Number(v) })}
-            aria-label="Band high Hz"
+            aria-label={t('inspector.audioDriver.bandHigh', 'Band high Hz')}
           />
         </div>
       )}
 
       <div className={styles.row}>
-        <span className={styles.label}>Attack</span>
+        <span className={styles.label}>{t('inspector.audioDriver.attack', 'Attack')}</span>
         <Slider
           value={draft.attackMs}
           min={0}
           max={500}
           step={1}
           size="sm"
-          aria-label="Attack milliseconds"
+          aria-label={t('inspector.audioDriver.attackMs', 'Attack milliseconds')}
           onChange={(v) => set('attackMs', v)}
         />
         <span className={styles.readout}>{Math.round(draft.attackMs)} ms</span>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Release</span>
+        <span className={styles.label}>{t('inspector.audioDriver.release', 'Release')}</span>
         <Slider
           value={draft.releaseMs}
           min={0}
           max={2000}
           step={5}
           size="sm"
-          aria-label="Release milliseconds"
+          aria-label={t('inspector.audioDriver.releaseMs', 'Release milliseconds')}
           onChange={(v) => set('releaseMs', v)}
         />
         <span className={styles.readout}>{Math.round(draft.releaseMs)} ms</span>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Gate</span>
+        <span className={styles.label}>{t('inspector.audioDriver.gate', 'Gate')}</span>
         <Slider
           value={draft.gate}
           min={0}
           max={1}
           step={0.01}
           size="sm"
-          aria-label="Gate floor"
+          aria-label={t('inspector.audioDriver.gateFloor', 'Gate floor')}
           onChange={(v) => set('gate', v)}
         />
         <span className={styles.readout}>{draft.gate.toFixed(2)}</span>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Range</span>
-        <ValueField value={draft.min} onChange={(v) => set('min', Number(v))} aria-label="Output minimum" />
-        <ValueField value={draft.max} onChange={(v) => set('max', Number(v))} aria-label="Output maximum" />
+        <span className={styles.label}>{t('inspector.audioDriver.range', 'Range')}</span>
+        <ValueField value={draft.min} onChange={(v) => set('min', Number(v))} aria-label={t('inspector.audioDriver.outMin', 'Output minimum')} />
+        <ValueField value={draft.max} onChange={(v) => set('max', Number(v))} aria-label={t('inspector.audioDriver.outMax', 'Output maximum')} />
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Curve</span>
+        <span className={styles.label}>{t('inspector.audioDriver.curve', 'Curve')}</span>
         <select
           className={styles.select}
           value={draft.curve}
           onChange={(e) => set('curve', e.target.value as EnvelopeCurve)}
-          aria-label="Response curve"
+          aria-label={t('inspector.audioDriver.responseCurve', 'Response curve')}
         >
           {CURVES.map((c) => (
             <option key={c} value={c}>{CURVE_LABELS[c]}</option>
@@ -387,59 +390,59 @@ export function AudioDriverSection({ nodeId }: { nodeId: string }): JSX.Element 
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Smooth</span>
+        <span className={styles.label}>{t('inspector.audioDriver.smooth', 'Smooth')}</span>
         <ValueField
           value={draft.smoothFrames}
           min={1}
           unit="f"
           onChange={(v) => set('smoothFrames', Math.max(1, Math.floor(Number(v))))}
-          aria-label="Smoothing frames"
+          aria-label={t('inspector.audioDriver.smoothingFrames', 'Smoothing frames')}
         />
         <label className={styles.check}>
           <input
             type="checkbox"
             checked={draft.normalize}
             onChange={(e) => set('normalize', e.target.checked)}
-            aria-label="Normalize to the loudest moment"
+            aria-label={t('inspector.audioDriver.normalizeAria', 'Normalize to the loudest moment')}
           />
-          Normalize
+          {t('inspector.audioDriver.normalize', 'Normalize')}
         </label>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Mode</span>
+        <span className={styles.label}>{t('inspector.audioDriver.mode', 'Mode')}</span>
         <select
           className={styles.select}
           value={draft.mode}
           onChange={(e) => set('mode', e.target.value === 'expression' ? 'expression' : 'baked')}
-          aria-label="Driver mode"
+          aria-label={t('inspector.audioDriver.driverMode', 'Driver mode')}
         >
-          <option value="baked">Baked keyframes</option>
-          <option value="expression">Expression (if possible)</option>
+          <option value="baked">{t('inspector.audioDriver.modeBaked', 'Baked keyframes')}</option>
+          <option value="expression">{t('inspector.audioDriver.modeExpression', 'Expression (if possible)')}</option>
         </select>
       </div>
 
       {blocker && (
-        <p className={styles.warn}>Will bake instead — {blocker}.</p>
+        <p className={styles.warn}>{t('inspector.audioDriver.willBake', 'Will bake instead — {reason}.', { reason: blocker })}</p>
       )}
 
       <div className={styles.previewWrap}>
-        <canvas ref={canvasRef} width={240} height={40} className={styles.preview} aria-label="Envelope preview" />
-        {!env && <span className={styles.previewEmpty}>No audio in this range yet</span>}
+        <canvas ref={canvasRef} width={240} height={40} className={styles.preview} aria-label={t('inspector.audioDriver.envelopePreview', 'Envelope preview')} />
+        {!env && <span className={styles.previewEmpty}>{t('inspector.audioDriver.noAudio', 'No audio in this range yet')}</span>}
       </div>
 
       <div className={styles.actions}>
         <Button size="sm" variant="primary" onClick={() => void apply()} disabled={busy}>
-          {existing ? 'Re-bake' : 'Apply'}
+          {existing ? t('inspector.audioDriver.rebake', 'Re-bake') : t('inspector.audioDriver.apply', 'Apply')}
         </Button>
         {existing && (
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => { void removeDriverEdit(nodeId, activePath).then(() => setNote('Driver removed.')); }}
+            onClick={() => { void removeDriverEdit(nodeId, activePath).then(() => setNote(t('inspector.audioDriver.removed', 'Driver removed.'))); }}
             disabled={busy}
           >
-            Remove
+            {t('inspector.audioDriver.remove', 'Remove')}
           </Button>
         )}
       </div>

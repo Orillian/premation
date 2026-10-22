@@ -45,13 +45,18 @@ import {
 import { bounceEdit } from './bounceEdits';
 import panel from './MotionEditorPanel.module.css';
 import styles from './BounceSection.module.css';
+import { t } from '@core/i18n';
 
-const DIRECTIONS: ReadonlyArray<{ id: DropDirection; label: string; icon: 'arrow-down' | 'arrow-up' | 'arrow-right' | 'arrow-left' }> = [
-  { id: 'top', label: 'From top', icon: 'arrow-down' },
-  { id: 'bottom', label: 'From bottom', icon: 'arrow-up' },
-  { id: 'left', label: 'From left', icon: 'arrow-right' },
-  { id: 'right', label: 'From right', icon: 'arrow-left' },
-];
+type DirectionIcon = 'arrow-down' | 'arrow-up' | 'arrow-right' | 'arrow-left';
+
+function directions(): ReadonlyArray<{ id: DropDirection; label: string; short: string; icon: DirectionIcon }> {
+  return [
+    { id: 'top', label: t('motion.bounce.fromTop', 'From top'), short: t('motion.bounce.top', 'top'), icon: 'arrow-down' },
+    { id: 'bottom', label: t('motion.bounce.fromBottom', 'From bottom'), short: t('motion.bounce.bottom', 'bottom'), icon: 'arrow-up' },
+    { id: 'left', label: t('motion.bounce.fromLeft', 'From left'), short: t('motion.bounce.left', 'left'), icon: 'arrow-right' },
+    { id: 'right', label: t('motion.bounce.fromRight', 'From right'), short: t('motion.bounce.right', 'right'), icon: 'arrow-left' },
+  ];
+}
 
 const PREVIEW_W = 280;
 const PREVIEW_H = 76;
@@ -100,7 +105,7 @@ function BouncePreview({ keyframes }: { keyframes: ReadonlyArray<Keyframe> }): J
       className={styles.preview}
       viewBox={`0 0 ${PREVIEW_W} ${PREVIEW_H}`}
       preserveAspectRatio="none"
-      aria-label="Bounce curve preview"
+      aria-label={t('motion.bounce.curvePreview', 'Bounce curve preview')}
       role="img"
     >
       <line className={styles.previewRest} x1={0} y1={restY} x2={PREVIEW_W} y2={restY} />
@@ -157,22 +162,22 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
     });
   };
 
-  const dropIn = (): void => run('drop', 'Set a distance and a fall time first');
+  const dropIn = (): void => run('drop', t('motion.bounce.needDistance', 'Set a distance and a fall time first'));
 
   const addToExisting = (): void =>
-    run('append', 'No keyframes that move on this layer — use Drop In & Bounce');
+    run('append', t('motion.bounce.noMovingKeys', 'No keyframes that move on this layer — use Drop In & Bounce'));
 
   return (
     <div className={styles.root}>
       <div className={styles.scroll}>
-      <section className={styles.block} aria-label="Bounce preview">
-        <h3 className={panel.sectionLabel}>Preview</h3>
+      <section className={styles.block} aria-label={t('motion.bounce.previewAria', 'Bounce preview')}>
+        <h3 className={panel.sectionLabel}>{t('motion.bounce.preview', 'Preview')}</h3>
         <BouncePreview keyframes={previewKeys} />
       </section>
 
-      <section className={styles.block} aria-label="Bounce style">
-        <h3 className={panel.sectionLabel}>Style</h3>
-        <div className={styles.styles} role="radiogroup" aria-label="Bounce style">
+      <section className={styles.block} aria-label={t('motion.bounce.styleAria', 'Bounce style')}>
+        <h3 className={panel.sectionLabel}>{t('motion.bounce.style', 'Style')}</h3>
+        <div className={styles.styles} role="radiogroup" aria-label={t('motion.bounce.styleAria', 'Bounce style')}>
           {BOUNCE_STYLES.map((s) => (
             <button
               key={s.id}
@@ -189,7 +194,7 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
         </div>
         <div className={styles.grid}>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Bounces</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.bounces', 'Bounces')}</span>
             <ValueField
               value={bounce.bounces}
               min={0}
@@ -197,11 +202,11 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               step={1}
               precision={0}
               onChange={(v) => setBounce({ bounces: Math.round(v) })}
-              aria-label="Number of bounces"
+              aria-label={t('motion.bounce.bouncesAria', 'Number of bounces')}
             />
           </label>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Decay</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.decay', 'Decay')}</span>
             <ValueField
               value={bounce.decay}
               min={0.05}
@@ -209,11 +214,11 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               step={0.01}
               precision={2}
               onChange={(v) => setBounce({ decay: v })}
-              aria-label="Decay per bounce"
+              aria-label={t('motion.bounce.decayAria', 'Decay per bounce')}
             />
           </label>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Elasticity</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.elasticity', 'Elasticity')}</span>
             <ValueField
               value={bounce.elasticity}
               min={0}
@@ -221,37 +226,37 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               step={0.01}
               precision={2}
               onChange={(v) => setBounce({ elasticity: v })}
-              aria-label="Elasticity"
+              aria-label={t('motion.bounce.elasticity', 'Elasticity')}
             />
           </label>
         </div>
         <div className={styles.row}>
-          <span className={styles.rowLabel} title="Overshoot both ways around the resting value, like a spring, instead of only rebounding back the way it came">
-            Oscillate
+          <span className={styles.rowLabel} title={t('motion.bounce.oscillateTitle', 'Overshoot both ways around the resting value, like a spring, instead of only rebounding back the way it came')}>
+            {t('motion.bounce.oscillate', 'Oscillate')}
           </span>
           <Switch
             checked={!!bounce.oscillate}
             onChange={(e) => setBounce({ oscillate: e.currentTarget.checked })}
-            aria-label="Oscillate around the resting value"
+            aria-label={t('motion.bounce.oscillateAria', 'Oscillate around the resting value')}
           />
         </div>
       </section>
 
-      <section className={styles.block} aria-label="Squash and stretch">
+      <section className={styles.block} aria-label={t('motion.bounce.squashAria', 'Squash and stretch')}>
         <div className={styles.row}>
-          <h3 className={panel.sectionLabel} title="Counter-scale on each impact: flatter along the direction of travel, wider across it">
-            Squash &amp; stretch
+          <h3 className={panel.sectionLabel} title={t('motion.bounce.squashTitle', 'Counter-scale on each impact: flatter along the direction of travel, wider across it')}>
+            {t('motion.bounce.squash', 'Squash & stretch')}
           </h3>
           <Switch
             checked={squashEnabled}
             onChange={(e) => setSquashEnabled(e.currentTarget.checked)}
-            aria-label="Squash and stretch"
+            aria-label={t('motion.bounce.squashAria', 'Squash and stretch')}
           />
         </div>
         {squashEnabled && (
           <div className={styles.grid}>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Amount</span>
+              <span className={styles.fieldLabel}>{t('motion.bounce.amount', 'Amount')}</span>
               <ValueField
                 value={Math.round(squash.amount * 100)}
                 min={0}
@@ -260,11 +265,11 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
                 precision={0}
                 unit="%"
                 onChange={(v) => setSquash({ amount: v / 100 })}
-                aria-label="Squash amount"
+                aria-label={t('motion.bounce.amountAria', 'Squash amount')}
               />
             </label>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Recover</span>
+              <span className={styles.fieldLabel}>{t('motion.bounce.recover', 'Recover')}</span>
               <ValueField
                 value={squash.duration}
                 min={0.02}
@@ -273,17 +278,17 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
                 precision={2}
                 unit="s"
                 onChange={(v) => setSquash({ duration: v })}
-                aria-label="Squash recovery time"
+                aria-label={t('motion.bounce.recoverAria', 'Squash recovery time')}
               />
             </label>
           </div>
         )}
       </section>
 
-      <section className={styles.block} aria-label="Drop in">
-        <h3 className={panel.sectionLabel}>Drop in from</h3>
-        <div className={styles.styles} role="radiogroup" aria-label="Drop direction">
-          {DIRECTIONS.map((d) => (
+      <section className={styles.block} aria-label={t('motion.bounce.dropInAria', 'Drop in')}>
+        <h3 className={panel.sectionLabel}>{t('motion.bounce.dropInFrom', 'Drop in from')}</h3>
+        <div className={styles.styles} role="radiogroup" aria-label={t('motion.bounce.directionAria', 'Drop direction')}>
+          {directions().map((d) => (
             <button
               key={d.id}
               type="button"
@@ -294,13 +299,13 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               onClick={() => setDrop({ direction: d.id })}
             >
               <Icon name={d.icon} size="sm" />
-              <span>{d.label.replace('From ', '')}</span>
+              <span>{d.short}</span>
             </button>
           ))}
         </div>
         <div className={styles.grid}>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Distance</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.distance', 'Distance')}</span>
             <ValueField
               value={drop.distance}
               min={0}
@@ -309,11 +314,11 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               precision={0}
               unit="px"
               onChange={(v) => setDrop({ distance: v })}
-              aria-label="Drop distance"
+              aria-label={t('motion.bounce.distanceAria', 'Drop distance')}
             />
           </label>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Fall</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.fall', 'Fall')}</span>
             <ValueField
               value={drop.duration}
               min={0.05}
@@ -322,15 +327,15 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
               precision={2}
               unit="s"
               onChange={(v) => setDrop({ duration: v })}
-              aria-label="Fall duration"
+              aria-label={t('motion.bounce.fallAria', 'Fall duration')}
             />
           </label>
           <label className={styles.fieldInline}>
-            <span className={styles.fieldLabel}>Fade in</span>
+            <span className={styles.fieldLabel}>{t('motion.bounce.fadeIn', 'Fade in')}</span>
             <Switch
               checked={drop.fade}
               onChange={(e) => setDrop({ fade: e.currentTarget.checked })}
-              aria-label="Fade in over the fall"
+              aria-label={t('motion.bounce.fadeInAria', 'Fade in over the fall')}
             />
           </label>
         </div>
@@ -343,9 +348,9 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
           size="sm"
           fullWidth
           onClick={dropIn}
-          title="Generate the fall and the bounce at the playhead — no keyframes needed"
+          title={t('motion.bounce.dropInTitle', 'Generate the fall and the bounce at the playhead — no keyframes needed')}
         >
-          Drop In &amp; Bounce
+          {t('motion.bounce.dropInBounce', 'Drop In & Bounce')}
         </Button>
         <Button
           variant="secondary"
@@ -355,11 +360,11 @@ export function BounceSection({ nodeId }: { nodeId: string }): JSX.Element {
           disabled={!hasAnimation}
           title={
             hasAnimation
-              ? "Append a bounce after this layer's last keyframe"
-              : 'This layer has no keyframes yet'
+              ? t('motion.bounce.appendTitle', 'Append a bounce after this layer\'s last keyframe')
+              : t('motion.bounce.noKeysTitle', 'This layer has no keyframes yet')
           }
         >
-          Add to Existing
+          {t('motion.bounce.addToExisting', 'Add to Existing')}
         </Button>
       </div>
     </div>

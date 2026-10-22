@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "compositor.hpp"
+#include "coverage_ledger.hpp"
 #include "disk_cache.hpp"
 #include "frame_cache.hpp"
 #include "frame_ring.hpp"
@@ -179,6 +180,12 @@ class RenderThread final : public FrameSink {
   void configure_disk_cache(const std::string& folder, std::uint64_t bytes) override;
   void purge_disk_cache() override;
   void configure_ram_cache(std::uint64_t bytes) override;
+  /// Cached playback without a build (coverage_ledger.hpp): the pre-build map
+  /// the core thread asks, the revision steps the bars carry over, and the
+  /// viewports whose cached job found no tier holding it.
+  [[nodiscard]] std::optional<CachedKeys> cached_frame(std::uint64_t key) const override { return prebuild_.find(key); }
+  void note_frames_changed(FrameRevision rev) override;
+  [[nodiscard]] std::vector<std::uint32_t> take_build_requests() override;
   /// The disk cache's counters.
   [[nodiscard]] DiskCacheStats disk_stats() const { return disk_->stats(); }
   /// The RAM tier's counters (as of the last frame).
@@ -322,16 +329,19 @@ class RenderThread final : public FrameSink {
   static constexpr std::chrono::milliseconds kCoverageEvery{50};
   bool coverageStale_ = false;
   std::chrono::steady_clock::time_point coveragePublishedAt_{};
-  /// Render thread only — the bars: per viewport, per cache scope (its current
-  /// scope first, a few recent ones kept so switching back — a comp, a zoom, a
-  /// pane — shows what is still cached for it), frame index → {content key,
-  /// disk key (0 = none)}. A frame counts while its key is still in a tier.
-  struct ScopeCover {
-    std::uint64_t scope = 0;
-    std::unordered_map<std::int64_t, std::pair<std::uint64_t, std::uint64_t>> frames;
-  };
-  std::map<std::uint32_t, std::deque<ScopeCover>> cover_;
-  static constexpr std::size_t kScopesKept = 8;
+  /// Render thread only — the bars (coverage_ledger.hpp): per viewport, per
+  /// cache scope, frame index → keys. A frame counts while a tier still holds it.
+  CoverageLedger ledger_;
+  /// Pre-build key → the keys its build produced (any thread; the core thread asks).
+  PrebuildMap prebuild_;
+  /// m_: revision steps from the core thread, taken into the ledger by the render thread before each frame.
+  std::deque<FrameRevision> revisionsIn_;
+  /// m_: viewports owed a built frame (a cached job no tier held; a pixel read of a cached frame).
+  std::vector<std::uint32_t> buildWanted_;
+  void take_revisions();
+  void want_build(std::uint32_t viewport);
+  /// Whether a tier (VRAM, RAM, disk) still holds the frame with these keys.
+  [[nodiscard]] bool tier_holds(const CachedKeys& keys) const;
 
   /// The RAM tier (AE's RAM cache). Outlives device losses: it holds no GPU objects.
   RamFrameCache ram_;

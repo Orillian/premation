@@ -28,6 +28,7 @@ import { isLocalFirst } from '@core/config/flags';
 import { isBundlePath } from '@core/project/bundle/bundleProjectIO';
 import { useProjectVersions } from '@hooks/useProjectVersions';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import styles from './VersionHistorySection.module.css';
 
 /**
@@ -60,34 +61,34 @@ export function VersionHistorySection(): JSX.Element | null {
 
   const onRestore = async (rev: number, label: string): Promise<void> => {
     const ok = await restore(rev);
-    if (ok) notify({ level: 'success', message: `Restored ${label}`, durationMs: 2000 });
-    else notify({ level: 'warning', message: `Could not restore ${label}`, durationMs: 2500 });
+    if (ok) notify({ level: 'success', message: t('inspector.versionHistory.restored', 'Restored {name}', { name: label }), durationMs: 2000 });
+    else notify({ level: 'warning', message: t('inspector.versionHistory.restoreFailed', 'Could not restore {name}', { name: label }), durationMs: 2500 });
   };
 
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        <span>Version History</span>
+        <span>{t('inspector.versionHistory.title', 'Version History')}</span>
         <button
           type="button"
           className={styles.saveBtn}
           onClick={() => void saveVersion()}
-          title="Snapshot the current state as a version"
+          title={t('inspector.versionHistory.saveHint', 'Snapshot the current state as a version')}
         >
-          Save version
+          {t('inspector.versionHistory.save', 'Save version')}
         </button>
       </div>
 
       {loading ? (
-        <div className={styles.empty}>Loading…</div>
+        <div className={styles.empty}>{t('inspector.versionHistory.loading', 'Loading…')}</div>
       ) : versions.length === 0 ? (
-        <div className={styles.empty}>No versions yet — save one to start history.</div>
+        <div className={styles.empty}>{t('inspector.versionHistory.empty', 'No versions yet — save one to start history.')}</div>
       ) : (
         <div className={styles.list}>
           {versions.map((v) => (
             <div key={v.rev} className={styles.row}>
               <div className={styles.meta}>
-                <span className={styles.label}>{v.label ?? `Version ${v.rev}`}</span>
+                <span className={styles.label}>{v.label ?? t('inspector.versionHistory.version', 'Version {rev}', { rev: v.rev })}</span>
                 <span className={styles.sub}>
                   <span className={styles.kind}>{v.kind}</span> · {formatWhen(v.createdAt)}
                 </span>
@@ -95,10 +96,10 @@ export function VersionHistorySection(): JSX.Element | null {
               <button
                 type="button"
                 className={styles.restore}
-                onClick={() => void onRestore(v.rev, v.label ?? `Version ${v.rev}`)}
-                title={`Restore version ${v.rev}`}
+                onClick={() => void onRestore(v.rev, v.label ?? t('inspector.versionHistory.version', 'Version {rev}', { rev: v.rev }))}
+                title={t('inspector.versionHistory.restoreHint', 'Restore version {rev}', { rev: v.rev })}
               >
-                Restore
+                {t('inspector.versionHistory.restore', 'Restore')}
               </button>
             </div>
           ))}

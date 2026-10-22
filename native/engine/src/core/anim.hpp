@@ -114,6 +114,67 @@ class ExprEnv {
   [[nodiscard]] virtual std::optional<std::string> active_camera(double /*t*/) const { return std::nullopt; }
   [[nodiscard]] virtual std::optional<motion::expr::SourceTextSample> source_text(std::string_view node,
                                                                                   double t) const = 0;
+
+  // AE-style rigs (docs/EXPRESSION_LANGUAGE.md).
+  /// inPoint / outPoint / index / parent / enabled of a layer; nullopt = not a layer.
+  [[nodiscard]] virtual std::optional<motion::expr::LayerFacts> layer_facts(std::string_view /*node*/,
+                                                                           double /*t*/) const {
+    return std::nullopt;
+  }
+  /// `thisComp.layer(index)`: the id of the layer at that 1-based stack index
+  /// (1 = top) in `self`'s composition.
+  [[nodiscard]] virtual std::optional<std::string> layer_by_index(std::string_view /*self*/, double /*index*/) const {
+    return std::nullopt;
+  }
+  /// One stored number behind an effect parameter, with the factor that
+  /// turns it into AE's units (a control colour's 0–255 → 0..1). An empty
+  /// `key` is a constant (`offset`): a colour control's alpha, which AE
+  /// reports as 1 but the control does not store.
+  struct EffectMember {
+    std::string key;
+    double scale = 1;
+    double offset = 0;
+  };
+  /// `effect("Name")`: does the layer carry an effect or expression control
+  /// of that name?
+  [[nodiscard]] virtual bool effect_exists(std::string_view /*node*/, std::string_view /*effect*/) const {
+    return false;
+  }
+  /// `effect("Name")("Param")`: the stored members (1 scalar, 2 point, 4
+  /// colour) of the parameter named `param`, or the `index`-th (1-based) one
+  /// when `param` is absent; nullopt = no such parameter.
+  [[nodiscard]] virtual std::optional<std::vector<EffectMember>> effect_param_members(
+      std::string_view /*node*/, std::string_view /*effect*/, const std::string* /*param*/, double /*index*/) const {
+    return std::nullopt;
+  }
+  /// A stored (static) value `base_value` does not cover: an effect parameter.
+  [[nodiscard]] virtual std::optional<double> static_value(std::string_view /*node*/, std::string_view /*prop*/) const {
+    return std::nullopt;
+  }
+
+  // AE property objects (2026-10-21).
+  /// `effect("Name").active`: the effect's on/off switch (a control is always on).
+  [[nodiscard]] virtual bool effect_enabled(std::string_view /*node*/, std::string_view /*effect*/) const { return true; }
+  /// `comp("Name")` (nullopt name = `self`'s own composition): its facts, nullopt = none.
+  [[nodiscard]] virtual std::optional<motion::expr::CompFacts> comp_facts(std::string_view /*self*/,
+                                                                         const std::string* /*name*/) const {
+    return std::nullopt;
+  }
+  /// `comp("Name").layer("L")` / `.layer(index)`: that layer's id.
+  [[nodiscard]] virtual std::optional<std::string> comp_layer(const std::string& /*comp*/, const std::string* /*name*/,
+                                                              double /*index*/) const {
+    return std::nullopt;
+  }
+};
+
+/// An enabled expression that failed while a frame was evaluated (it fell
+/// back to the pre-expression value): what the frame's `layerErrors` report.
+struct ExprRuntimeError {
+  std::string node;
+  std::string prop;     ///< the document member (`x`, `opacity`, `effect.<id>.<key>`…)
+  std::string message;  ///< the expression's error text, unchanged
+  std::uint32_t line = 0;    ///< 1-based, 0 = unknown
+  std::uint32_t column = 0;  ///< 1-based, 0 = unknown
 };
 
 /// Compiled expressions, shared by source text (compiled once per distinct source).
@@ -122,9 +183,55 @@ class ExprCache {
   [[nodiscard]] const motion::expr::Expression& get(const std::string& src);
   void clear() { cache_.clear(); }
 
+  /// Runtime-error capture for one frame build (nests: only the outermost
+  /// end returns the list). One entry per failing node + member, in
+  /// evaluation order; nothing is allocated unless an expression fails.
+  void begin_error_capture() {
+    if (captureDepth_++ == 0) errors_.clear();
+  }
+  [[nodiscard]] std::vector<ExprRuntimeError> end_error_capture() {
+    if (captureDepth_ > 0 && --captureDepth_ == 0) return std::move(errors_);
+    return {};
+  }
+  void note_runtime_error(std::string_view node, std::string_view prop, const std::u16string& message,
+                          std::uint32_t line, std::uint32_t column);
+
  private:
   std::unordered_map<std::string, std::unique_ptr<motion::expr::Expression>> cache_;
+  std::vector<ExprRuntimeError> errors_;
+  int captureDepth_ = 0;
 };
+
+/// RAII for ExprCache::begin_error_capture: `take()` ends the capture and
+/// returns what it saw; destruction without `take()` (an exception) ends it too.
+class ExprErrorCapture {
+ public:
+  explicit ExprErrorCapture(ExprCache& c) : cache_(&c) { cache_->begin_error_capture(); }
+  ExprErrorCapture(const ExprErrorCapture&) = delete;
+  ExprErrorCapture& operator=(const ExprErrorCapture&) = delete;
+  ExprErrorCapture(ExprErrorCapture&&) = delete;
+  ExprErrorCapture& operator=(ExprErrorCapture&&) = delete;
+  ~ExprErrorCapture() {
+    if (cache_ != nullptr) (void)cache_->end_error_capture();
+  }
+  [[nodiscard]] std::vector<ExprRuntimeError> take() {
+    ExprCache* c = cache_;
+    cache_ = nullptr;
+    return c->end_error_capture();
+  }
+
+ private:
+  ExprCache* cache_;
+};
+
+/// The compile error of the property's expression with its position (null if valid or none).
+struct ExprDiagnostic {
+  std::string message;
+  std::uint32_t line = 0;
+  std::uint32_t column = 0;
+};
+[[nodiscard]] std::optional<ExprDiagnostic> anim_expr_diagnostic(const Document& d, ExprCache& cache,
+                                                                 std::string_view node, std::string_view prop);
 
 /// `defaultAnimation.sample(node, prop, t)`.
 [[nodiscard]] std::optional<double> anim_sample(const Document& d, const ExprEnv& env, ExprCache& cache,

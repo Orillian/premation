@@ -94,6 +94,7 @@ import { SelectionAlignRow } from '@layout/Inspector/SelectionAlignRow';
 import { MographParamsSection } from '@layout/Inspector/MographParamsSection';
 import { ActiveTemplateFields } from '@layout/Templates/TemplateFieldsPanel';
 import styles from './panels.module.css';
+import { t } from '@core/i18n';
 
 /** The applied template's fields, or nothing when no template is applied. */
 function TemplateFieldsSection(): JSX.Element | null {
@@ -127,8 +128,10 @@ function registerInspectorCommands(): void {
     const reg = getCommandRegistry();
     reg.register({
       id: asCommandId('inspector.toggleKeyframeLanes'),
-      label: 'Toggle Keyframe Lanes in Properties',
-      description: 'Draw a mini keyframe strip under every animated property row',
+      // Getters: this runs at module load, before the locale catalogue — `t()`
+      // must run when the label is read, not now.
+      get label() { return t('editor.properties.toggleLanesCommand', 'Toggle Keyframe Lanes in Properties'); },
+      get description() { return t('editor.properties.toggleLanesDescription', 'Draw a mini keyframe strip under every animated property row'); },
       icon: 'keyframe',
       enabled: () => true,
       isChecked: () => usePreferenceStore.getState().inspectorShowLane,
@@ -139,16 +142,16 @@ function registerInspectorCommands(): void {
     });
     reg.register({
       id: asCommandId('inspector.showPinned'),
-      label: 'Properties: Show Pinned',
-      description: 'Open Properties with the selected layer’s pinned and essential properties expanded',
+      get label() { return t('editor.properties.showPinnedCommand', 'Properties: Show Pinned'); },
+      get description() { return t('editor.properties.showPinnedDescription', 'Open Properties with the selected layer’s pinned and essential properties expanded'); },
       icon: 'push-pin',
       enabled: () => true,
       execute: showPinnedSection,
     });
     reg.register({
       id: asCommandId('inspector.showEffects'),
-      label: 'Open Effect Controls Panel',
-      description: 'Show the selected layer’s effect stack in the Effect Controls panel',
+      get label() { return t('editor.properties.showEffectsCommand', 'Open Effect Controls Panel'); },
+      get description() { return t('editor.properties.showEffectsDescription', 'Show the selected layer’s effect stack in the Effect Controls panel'); },
       icon: 'sparkles',
       enabled: () => true,
       execute: () => useLayoutStore.getState().openPanel('effectControls'),
@@ -164,11 +167,13 @@ registerInspectorCommands();
 const SHELL_ROOTS: readonly string[] = ['layer'];
 
 /** AE's U / UU, as the toolbar's Show filter (view state, not the document). */
-const SHOW_OPTIONS = [
-  { value: 'all' as const, label: 'All' },
-  { value: 'animated' as const, label: 'Keyed' },
-  { value: 'modified' as const, label: 'Changed' },
-];
+function showOptions(): Array<{ value: PropertyShow; label: string }> {
+  return [
+    { value: 'all', label: t('editor.properties.showAll', 'All') },
+    { value: 'animated', label: t('editor.properties.showKeyed', 'Keyed') },
+    { value: 'modified', label: t('editor.properties.showChanged', 'Changed') },
+  ];
+}
 
 export function PropertiesPanel(): JSX.Element {
   const selected = useSelectionStore((s) => s.ids);
@@ -217,7 +222,7 @@ export function PropertiesPanel(): JSX.Element {
       {
         type: 'checkbox',
         id: 'lanes',
-        label: 'Keyframe lanes under animated rows',
+        label: t('editor.properties.lanesMenu', 'Keyframe lanes under animated rows'),
         checked: showLane,
         onChange: (v) => setPref('inspectorShowLane', v),
       },
@@ -225,7 +230,7 @@ export function PropertiesPanel(): JSX.Element {
       {
         type: 'item',
         id: 'effect-controls',
-        label: 'Open Effect Controls panel',
+        label: t('editor.properties.openEffectControls', 'Open Effect Controls panel'),
         icon: 'sparkles',
         onSelect: () => useLayoutStore.getState().openPanel('effectControls'),
       },
@@ -250,7 +255,7 @@ export function PropertiesPanel(): JSX.Element {
   const titleDetail = !hasLayer
     ? null
     : liveCount > 1
-      ? `${liveCount} layers`
+      ? t('editor.properties.layerCount', '{n} layers', { n: liveCount })
       : mirror.layer(primary!)?.name || null;
   useEffect(() => {
     if (!setTitleDetail) return;
@@ -265,7 +270,7 @@ export function PropertiesPanel(): JSX.Element {
       items={menuItems}
       placement="bottom-end"
       trigger={
-        <button type="button" className={styles.layerHeadBtn} aria-label="Properties panel options" title="Options">
+        <button type="button" className={styles.layerHeadBtn} aria-label={t('editor.properties.optionsLabel', 'Properties panel options')} title={t('editor.properties.options', 'Options')}>
           <Icon name="more-horizontal" size="sm" />
         </button>
       }
@@ -275,7 +280,7 @@ export function PropertiesPanel(): JSX.Element {
   return (
     <Panel
       id="properties"
-      title="Properties"
+      title={t('panel.properties', 'Properties')}
       icon="settings"
       hideHeader
       noScroll
@@ -291,17 +296,17 @@ export function PropertiesPanel(): JSX.Element {
           <div className={styles.propsToolbar}>
             <SearchField
               className={styles.propsSearch}
-              placeholder="Search properties"
-              ariaLabel="Search properties"
+              placeholder={t('editor.properties.search', 'Search properties')}
+              ariaLabel={t('editor.properties.search', 'Search properties')}
               value={query}
               onChange={setQuery}
             />
             <Segmented
               size="sm"
-              options={SHOW_OPTIONS}
+              options={showOptions()}
               value={show}
               onChange={setShow}
-              aria-label="Show properties"
+              aria-label={t('editor.properties.showFilter', 'Show properties')}
             />
           </div>
         )}

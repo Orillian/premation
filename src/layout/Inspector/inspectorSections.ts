@@ -103,6 +103,7 @@ import {
   PrecompGroupSection,
   TransformWithThreeDSection,
 } from './inspectorSectionParts';
+import { t } from '@core/i18n';
 
 /** Resolved per node, because two of them genuinely vary by layer. */
 type PerNode<T> = T | ((nodeId: string) => T);
@@ -208,7 +209,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // Present only while the layer has pins or promoted Essential Properties.
   {
     id: 'pinned',
-    title: 'Pinned',
+    title: () => t('inspector.sections.pinned', 'Pinned'),
     icon: 'push-pin',
     category: 'pinned',
     defaultOpen: true,
@@ -223,7 +224,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // panel is now on demand and renders the same body (`TextSettingsBody`).
   {
     id: 'text',
-    title: 'Text',
+    title: () => t('inspector.sections.text', 'Text'),
     icon: 'type',
     category: 'style',
     defaultOpen: true,
@@ -234,7 +235,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'animators',
-    title: 'Text animators',
+    title: () => t('inspector.sections.textAnimators', 'Text animators'),
     icon: 'sparkles',
     category: 'animation',
     defaultOpen: false,
@@ -247,7 +248,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     // Text has no fill here — the Text section above owns it — so the section
     // is honest about being stroke only, and starts closed under it. On a
     // shape layer it is AE's Contents (fill, stroke, corners).
-    title: (id) => (kindOf(id) === 'text' ? 'Stroke' : kindOf(id) === 'shape' ? 'Contents' : 'Appearance'),
+    title: (id) => (kindOf(id) === 'text' ? t('inspector.sections.stroke', 'Stroke') : kindOf(id) === 'shape' ? t('inspector.sections.contents', 'Contents') : t('inspector.sections.appearance', 'Appearance')),
     icon: 'shape',
     category: 'style',
     defaultOpen: (id) => kindOf(id) !== 'text',
@@ -262,7 +263,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     // before the path-operator chain. Present only on a layer that IS a
     // polystar, so every other shape's inspector is unchanged.
     id: 'polystar',
-    title: 'Polystar',
+    title: () => t('inspector.sections.polystar', 'Polystar'),
     icon: 'shape',
     category: 'layer',
     defaultOpen: true,
@@ -275,7 +276,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // primitive this IS the layer's content.
   {
     id: 'primitive3d',
-    title: 'Primitive',
+    title: () => t('inspector.sections.primitive', 'Primitive'),
     icon: 'cube',
     category: 'layer',
     defaultOpen: true,
@@ -285,7 +286,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'svg',
-    title: 'SVG layer',
+    title: () => t('inspector.sections.svgLayer', 'SVG layer'),
     icon: 'shape',
     category: 'layer',
     defaultOpen: true,
@@ -295,7 +296,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'precomp',
-    title: 'Pre-composition',
+    title: () => t('inspector.sections.preComposition', 'Pre-composition'),
     icon: 'folder',
     category: 'layer',
     defaultOpen: true,
@@ -305,7 +306,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'info',
-    title: 'Null object',
+    title: () => t('inspector.sections.nullObject', 'Null object'),
     icon: 'info',
     category: 'layer',
     defaultOpen: true,
@@ -318,7 +319,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // Effects as in AE's layer properties. Open when the layer has masks.
   {
     id: 'masks',
-    title: 'Masks',
+    title: () => t('inspector.sections.masks', 'Masks'),
     icon: 'mask-square',
     category: 'style',
     defaultOpen: (id) => mirrorMasksAt(documentMirror(), id, 0).length > 0,
@@ -330,7 +331,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // surfaced in Properties instead of only in their own panels / tools.
   {
     id: 'crop',
-    title: 'Crop',
+    title: () => t('inspector.sections.crop', 'Crop'),
     icon: 'mask-square',
     category: 'style',
     defaultOpen: false,
@@ -341,7 +342,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // Camera program D3: Photo → 3D parallax (a depth-displaced grid).
   {
     id: 'depthParallax',
-    title: 'Depth Parallax',
+    title: () => t('inspector.sections.depthParallax', 'Depth Parallax'),
     icon: 'camera',
     category: 'layer',
     defaultOpen: false,
@@ -354,7 +355,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // every add opened this tab over the Effects & Presets browser.
   {
     id: 'paint',
-    title: 'Paint',
+    title: () => t('inspector.sections.paint', 'Paint'),
     icon: 'brush',
     category: 'style',
     defaultOpen: true,
@@ -364,7 +365,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'puppet',
-    title: 'Puppet',
+    title: () => t('inspector.sections.puppet', 'Puppet'),
     icon: 'puppet-pin',
     category: 'layer',
     defaultOpen: true,
@@ -375,7 +376,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // ── 3. Transform ────────────────────────────────────────────────
   {
     id: 'transform',
-    title: 'Transform',
+    title: () => t('inspector.sections.transform', 'Transform'),
     icon: 'move',
     category: 'transform',
     defaultOpen: true,
@@ -390,7 +391,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // Transform.
   {
     id: 'custom',
-    title: 'Camera Options',
+    title: () => t('inspector.sections.cameraOptions', 'Camera Options'),
     icon: 'camera',
     category: 'layer',
     defaultOpen: true,
@@ -404,7 +405,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // each of its nulls, so the shot is operated from whichever was clicked.
   {
     id: 'cameraRig',
-    title: 'Camera Rig',
+    title: () => t('inspector.sections.cameraRig', 'Camera Rig'),
     icon: 'camera',
     category: 'layer',
     defaultOpen: true,
@@ -414,7 +415,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'custom',
-    title: 'Light Options',
+    title: () => t('inspector.sections.lightOptions', 'Light Options'),
     icon: 'light',
     category: 'layer',
     defaultOpen: true,
@@ -426,7 +427,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'custom',
-    title: 'Particle settings',
+    title: () => t('inspector.sections.particleSettings', 'Particle settings'),
     icon: 'sparkles',
     category: 'layer',
     defaultOpen: true,
@@ -436,7 +437,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'custom',
-    title: 'Audio settings',
+    title: () => t('inspector.sections.audioSettings', 'Audio settings'),
     icon: 'audio',
     category: 'layer',
     defaultOpen: true,
@@ -446,7 +447,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'media',
-    title: 'Media settings',
+    title: () => t('inspector.sections.mediaSettings', 'Media settings'),
     icon: 'image',
     category: 'layer',
     defaultOpen: true,
@@ -459,7 +460,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     // the layer. The same section the Tracker panel shows; mounted only while
     // open, because mounting arms the viewport's track overlay.
     id: 'trackMotion',
-    title: 'Track Motion',
+    title: () => t('inspector.sections.trackMotion', 'Track Motion'),
     icon: 'crosshair',
     category: 'layer',
     defaultOpen: false,
@@ -471,7 +472,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // ── 5. Layer Styles, Geometry Options, Material Options (AE order) ────
   {
     id: 'layerStyles',
-    title: 'Layer Styles',
+    title: () => t('inspector.sections.layerStyles', 'Layer Styles'),
     icon: 'sparkles',
     category: 'style',
     defaultOpen: false,
@@ -484,7 +485,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     // timeline column), then Bevel Style / Bevel Depth / Hole Bevel Depth /
     // Extrusion Depth. Open by default once the layer is 3D.
     id: 'geometryOptions',
-    title: 'Geometry Options',
+    title: () => t('inspector.sections.geometryOptions', 'Geometry Options'),
     icon: 'cube',
     category: 'transform',
     defaultOpen: (id) => is3DLayer(id),
@@ -500,7 +501,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // model reads, shadows and the per-face overrides are one subject.
   {
     id: 'material',
-    title: 'Material Options',
+    title: () => t('inspector.sections.materialOptions', 'Material Options'),
     icon: 'sphere',
     category: 'style',
     defaultOpen: true,
@@ -515,7 +516,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // ── 6. What can be done to its geometry ─────────────────────────
   {
     id: 'pathOps',
-    title: 'Pathfinder',
+    title: () => t('inspector.sections.pathfinder', 'Pathfinder'),
     icon: 'shape',
     category: 'layer',
     defaultOpen: false,
@@ -537,7 +538,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     // ONLY way to create one, so gating it on "has a waveform" would remove the
     // entry point. Collapsed instead.
     id: 'geometry',
-    title: 'Audio waveform',
+    title: () => t('inspector.sections.audioWaveform', 'Audio waveform'),
     icon: 'audio',
     category: 'layer',
     defaultOpen: false,
@@ -549,7 +550,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
 
   {
     id: 'compositing',
-    title: 'Blending and switches',
+    title: () => t('inspector.sections.blendingAndSwitches', 'Blending and switches'),
     icon: 'layers',
     category: 'layer',
     defaultOpen: false,
@@ -570,7 +571,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // carry a stack or follow the music.
   {
     id: 'motionTools',
-    title: 'Motion tools',
+    title: () => t('inspector.sections.motionTools', 'Motion tools'),
     icon: 'sparkles',
     category: 'animation',
     defaultOpen: false,
@@ -586,7 +587,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   // section itself.
   {
     id: 'morph',
-    title: 'Morph targets',
+    title: () => t('inspector.sections.morphTargets', 'Morph targets'),
     icon: 'sparkles',
     category: 'animation',
     defaultOpen: false,
@@ -597,7 +598,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
   },
   {
     id: 'ik3d',
-    title: '3D IK',
+    title: () => t('inspector.sections.threeDIk', '3D IK'),
     icon: 'crosshair',
     category: 'animation',
     defaultOpen: false,
@@ -621,7 +622,7 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
    */
   {
     id: 'versionHistory',
-    title: 'Version history',
+    title: () => t('inspector.sections.versionHistory', 'Version history'),
     icon: 'history',
     category: 'layer',
     defaultOpen: false,

@@ -1,4 +1,5 @@
 import type { SceneNode } from '../types';
+import { t } from '@core/i18n';
 
 /**
  * What a pin controls. After Effects ships five Puppet tools; we keep the same
@@ -24,11 +25,11 @@ export const PIN_KIND_CATALOG: ReadonlyArray<{
   color: string;
   hint: string;
 }> = [
-  { kind: 'position', label: 'Puppet Position Pin Tool', short: 'Position', color: '#ffc107', hint: 'Drag to move this point on the mesh.' },
-  { kind: 'starch', label: 'Puppet Starch Pin Tool', short: 'Starch', color: '#ff5252', hint: 'Keeps a region rigid so it resists bending.' },
-  { kind: 'bend', label: 'Puppet Bend Pin Tool', short: 'Bend', color: '#7ee787', hint: 'Rotates around a point carried by other pins.' },
-  { kind: 'advanced', label: 'Puppet Advanced Pin Tool', short: 'Advanced', color: '#ffd54f', hint: 'Position, plus rotation and scale.' },
-  { kind: 'overlap', label: 'Puppet Overlap Pin Tool', short: 'Overlap', color: '#4fc3f7', hint: 'Sets which part draws in front when the mesh folds.' },
+  { kind: 'position', get label() { return t('core.puppet.puppetPositionPinTool', 'Puppet Position Pin Tool'); }, get short() { return t('core.puppet.shortPosition', 'Position'); }, color: '#ffc107', get hint() { return t('core.puppet.hintDragToMoveThisPoint', 'Drag to move this point on the mesh.'); } },
+  { kind: 'starch', get label() { return t('core.puppet.puppetStarchPinTool', 'Puppet Starch Pin Tool'); }, get short() { return t('core.puppet.shortStarch', 'Starch'); }, color: '#ff5252', get hint() { return t('core.puppet.hintKeepsARegionRigidSo', 'Keeps a region rigid so it resists bending.'); } },
+  { kind: 'bend', get label() { return t('core.puppet.puppetBendPinTool', 'Puppet Bend Pin Tool'); }, get short() { return t('core.puppet.shortBend', 'Bend'); }, color: '#7ee787', get hint() { return t('core.puppet.hintRotatesAroundAPointCarried', 'Rotates around a point carried by other pins.'); } },
+  { kind: 'advanced', get label() { return t('core.puppet.puppetAdvancedPinTool', 'Puppet Advanced Pin Tool'); }, get short() { return t('core.puppet.shortAdvanced', 'Advanced'); }, color: '#ffd54f', get hint() { return t('core.puppet.hintPositionPlusRotationAndScale', 'Position, plus rotation and scale.'); } },
+  { kind: 'overlap', get label() { return t('core.puppet.puppetOverlapPinTool', 'Puppet Overlap Pin Tool'); }, get short() { return t('core.puppet.shortOverlap', 'Overlap'); }, color: '#4fc3f7', get hint() { return t('core.puppet.hintSetsWhichPartDrawsIn', 'Sets which part draws in front when the mesh folds.'); } },
 ];
 
 /** Absent `kind` is Advanced — every pin authored before the other tools existed. */

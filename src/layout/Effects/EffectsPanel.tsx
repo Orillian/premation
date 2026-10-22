@@ -47,6 +47,7 @@ import {
   type FxRow,
 } from './EffectsPanelRows';
 import styles from './EffectsPanel.module.css';
+import { t } from '@core/i18n';
 
 export { EFFECT_CATEGORY };
 
@@ -89,7 +90,9 @@ const presetsAt = (_rev: number): EffectPreset[] => listEffectPresets();
 function EffectFavoriteStar({ id, label }: { id: string; label: string }): JSX.Element {
   const { isFavorite, toggle } = useEffectFavorites();
   const on = isFavorite(id);
-  const description = on ? `Remove ${label} from favourites` : `Add ${label} to favourites`;
+  const description = on
+    ? t('effects.browser.unfavourite', 'Remove {name} from favourites', { name: label })
+    : t('effects.browser.favourite', 'Add {name} to favourites', { name: label });
   const activate = (e: { stopPropagation: () => void; preventDefault: () => void }): void => {
     e.stopPropagation();
     e.preventDefault();
@@ -257,14 +260,18 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
   const clonerOn = !!(node && jsonField<{ enabled?: boolean }>(m, node.id, 'layer/cloner')?.enabled);
   const physicsOn = !!(node && jsonField<{ enabled?: boolean }>(m, node.id, 'layer/physics')?.enabled);
 
+  // Installed plugins live in the Plugins sidebar tab (owner 2026-10-20), so
+  // their folder shows here only for a search or the starred view.
+  const showPluginFolder = !!q || starredOnly;
   const effectGroups = useMemo(() => {
     const groups: Record<string, typeof browserDefs> = {};
     browserDefs.forEach((d) => {
       const cat = effectCategoryOf(d);
+      if (cat === PLUGIN_EFFECTS_CATEGORY && !showPluginFolder) return;
       if (cat) (groups[cat] ??= []).push(d);
     });
     return groups;
-  }, [browserDefs]);
+  }, [browserDefs, showPluginFolder]);
 
   /*
     The browser, as ONE flat array of rows.
@@ -389,7 +396,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
     // Browsable with nothing selected, so a click names what is missing
     // rather than silently doing nothing.
     if (!primary) {
-      useUIStore.getState().notify({ level: 'warning', message: 'Select a layer to add this to', durationMs: 2000 });
+      useUIStore.getState().notify({ level: 'warning', message: t('effects.browser.selectLayerToAdd', 'Select a layer to add this to'), durationMs: 2000 });
       return;
     }
     switch (row.kind) {
@@ -479,16 +486,18 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
     }, PREVIEW_DELAY_MS);
   };
 
-  const favouritesLabel = starredOnly ? 'Show all effects' : 'Show favourites only';
+  const favouritesLabel = starredOnly
+    ? t('effects.browser.showAll', 'Show all effects')
+    : t('effects.browser.showFavourites', 'Show favourites only');
 
   return (
     <div className={styles.browser}>
       {/* The toolbar: one row — the search, then the favourites filter. */}
-      <div className={styles.searchRow} role="toolbar" aria-label="Effects and presets tools">
+      <div className={styles.searchRow} role="toolbar" aria-label={t('effects.browser.toolbarAria', 'Effects and presets tools')}>
         <SearchField
           value={effectQuery}
-          placeholder="Search effects and presets"
-          ariaLabel="Search effects and presets"
+          placeholder={t('effects.browser.search', 'Search effects and presets')}
+          ariaLabel={t('effects.browser.search', 'Search effects and presets')}
           size="sm"
           onChange={setEffectQuery}
         />
@@ -508,7 +517,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
         <div
           className={styles.browserList}
           role="tree"
-          aria-label="Effects and presets"
+          aria-label={t('effects.browser.treeAria', 'Effects and presets')}
           tabIndex={0}
           onKeyDown={onBrowserKeyDown}
           onMouseLeave={cancelPreview}
@@ -548,8 +557,12 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                     selected={active}
                     title={
                       row.userSaved
-                        ? `Apply "${row.name}" (${row.effectCount} effect(s)) — Alt-click deletes`
-                        : `Apply "${row.name}" (${row.effectCount} effect(s))`
+                        ? row.effectCount === 1
+                          ? t('effects.browser.applyPresetUserOne', 'Apply "{name}" ({n} effect) — Alt-click deletes', { name: row.name, n: row.effectCount })
+                          : t('effects.browser.applyPresetUserOther', 'Apply "{name}" ({n} effects) — Alt-click deletes', { name: row.name, n: row.effectCount })
+                        : row.effectCount === 1
+                          ? t('effects.browser.applyPresetOne', 'Apply "{name}" ({n} effect)', { name: row.name, n: row.effectCount })
+                          : t('effects.browser.applyPresetOther', 'Apply "{name}" ({n} effects)', { name: row.name, n: row.effectCount })
                     }
                     onClick={(e) => {
                       // A double-click is two clicks; applying on both
@@ -574,7 +587,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                     icon="sparkles"
                     selected={active}
                     right={row.preset.category ? <BrowserTag>{row.preset.category}</BrowserTag> : undefined}
-                    title={`Apply the ${row.effectLabel} preset "${row.preset.name}"`}
+                    title={t('effects.browser.applyPluginPreset', 'Apply the {effect} preset "{preset}"', { effect: row.effectLabel, preset: row.preset.name })}
                     onClick={(e) => { if (e.detail > 1) return; setFocusIndex(i); activateRow(row); }}
                   />
                 );
@@ -586,7 +599,9 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                     label={row.label}
                     icon={EFFECT_CATEGORY_ICON.Shape}
                     selected={active}
-                    title={row.taken ? `${row.label} is already on this layer` : `Add ${row.label}`}
+                    title={row.taken
+                      ? t('effects.browser.alreadyOn', '{name} is already on this layer', { name: row.label })
+                      : t('effects.addMenu.addNamed', 'Add {name}', { name: row.label })}
                     onClick={(e) => { if (e.detail > 1) return; setFocusIndex(i); activateRow(row); }}
                   />
                 );
@@ -598,8 +613,10 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                     label={row.label}
                     icon={row.icon}
                     selected={active}
-                    right={row.on ? <BrowserTag>On</BrowserTag> : undefined}
-                    title={row.on ? `Edit ${row.label} in Effect Controls` : `Add ${row.label}`}
+                    right={row.on ? <BrowserTag>{t('effects.browser.on', 'On')}</BrowserTag> : undefined}
+                    title={row.on
+                      ? t('effects.browser.editInControls', 'Edit {name} in Effect Controls', { name: row.label })
+                      : t('effects.addMenu.addNamed', 'Add {name}', { name: row.label })}
                     onClick={(e) => { if (e.detail > 1) return; setFocusIndex(i); activateRow(row); }}
                   />
                 );
@@ -642,9 +659,12 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
                     }
                     title={
                       row.gpuTag === 'no-webgpu'
-                        ? `${d.label} needs WebGPU — this machine is on the WebGL2 fallback. `
-                          + 'It is saved with your project and renders on a machine that has it.'
-                        : `Add ${d.label} — or drag onto a layer`
+                        ? t(
+                          'effects.browser.needsWebGpu',
+                          '{name} needs WebGPU — this machine is on the WebGL2 fallback. It is saved with your project and renders on a machine that has it.',
+                          { name: d.label },
+                        )
+                        : t('effects.browser.addOrDrag', 'Add {name} — or drag onto a layer', { name: d.label })
                     }
                     draggable
                     onDragStart={(e) => { cancelPreview(); setCanvasDrag(e, { kind: 'effect', effectType: d.type }); }}
@@ -658,10 +678,10 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
       ) : (
         <p className={styles.help} role="status">
           {starredOnly && effectFavorites.size === 0
-            ? 'No favourite effects yet — star one to pin it here.'
+            ? t('effects.browser.noFavourites', 'No favourite effects yet — star one to pin it here.')
             : starredOnly
-              ? 'No favourite effects match this search.'
-              : `No effects match “${effectQuery}”.`}
+              ? t('effects.browser.noFavouriteMatch', 'No favourite effects match this search.')
+              : t('effects.addMenu.noMatch', 'No effects match “{query}”.', { query: effectQuery })}
         </p>
       )}
       {preview && (
@@ -681,7 +701,7 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
           )}
           <div className={styles.fxPreviewCaption}>
             <span className={styles.fxPreviewName}>{preview.label}</span>
-            <span className={styles.fxPreviewCat}>{preview.url ? preview.category : `${preview.category} · no preview`}</span>
+            <span className={styles.fxPreviewCat}>{preview.url ? preview.category : t('effects.browser.noPreview', '{category} · no preview', { category: preview.category })}</span>
           </div>
         </div>
       )}
@@ -706,7 +726,7 @@ export function EffectsPanel(): JSX.Element {
   if (!hasSelection || !primary) {
     return (
       <div className={styles.root}>
-        <p className={styles.help}>Select a layer to add effects to it.</p>
+        <p className={styles.help}>{t('effects.browser.selectLayer', 'Select a layer to add effects to it.')}</p>
       </div>
     );
   }

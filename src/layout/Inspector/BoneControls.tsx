@@ -10,6 +10,7 @@
  */
 
 import { useRef, useState } from 'react';
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
@@ -214,8 +215,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
       return (
         <div className={styles.card}>
           <div className={styles.subText}>
-            Vertex {selectedVertex} is from a different mesh resolution. Re-pick a
-            vertex on the canvas.
+            {t('inspector.bone.staleVertex', 'Vertex {n} is from a different mesh resolution. Re-pick a vertex on the canvas.', { n: selectedVertex })}
           </div>
         </div>
       );
@@ -246,14 +246,14 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
         <div className={styles.cardHeader}>
           <div className={styles.cardTitle}>
             <Icon name="grid" size="sm" />
-            <span>Vertex Weights</span>
+            <span>{t('inspector.bone.vertexWeights', 'Vertex Weights')}</span>
             <span className={styles.badge}>#{selectedVertex}</span>
           </div>
           <Button
             size="sm"
             variant="ghost"
-            aria-label="Deselect vertex"
-            title="Deselect vertex"
+            aria-label={t('inspector.bone.deselectVertex', 'Deselect vertex')}
+            title={t('inspector.bone.deselectVertex', 'Deselect vertex')}
             onClick={() => clearRigVertex()}
           >
             <Icon name="close" size="sm" />
@@ -262,7 +262,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
 
         {influences.length === 0 && (
           <div className={styles.subText}>
-            No bone reaches this vertex — it stays in its bind position.
+            {t('inspector.bone.noInfluence', 'No bone reaches this vertex — it stays in its bind position.')}
           </div>
         )}
 
@@ -271,9 +271,8 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           // one influence is 1 by definition, and an editable field here would
           // renormalise whatever was typed straight back to 100%.
           <div className={styles.subText}>
-            <strong>{nameOf(influences[0]!.boneId)}</strong> is the only influence
-            here, so it holds 100%. Paint a second bone onto this vertex to divide
-            it.
+            <strong>{nameOf(influences[0]!.boneId)}</strong>{' '}
+            {t('inspector.bone.onlyInfluence', 'is the only influence here, so it holds 100%. Paint a second bone onto this vertex to divide it.')}
           </div>
         )}
 
@@ -286,7 +285,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               max={100}
               unit="%"
               precision={1}
-              aria-label={`${nameOf(w.boneId)} weight at vertex ${selectedVertex}`}
+              aria-label={t('inspector.bone.weightAria', '{name} weight at vertex {n}', { name: nameOf(w.boneId), n: selectedVertex })}
               {...eng.scrub('Set Vertex Weight')}
               onChange={(v) => commit(w.boneId, v)}
             />
@@ -297,8 +296,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           <div className={styles.subText} style={{ marginTop: 4 }}>
             {/* Read back from the binding, not from what was typed — so this
                 reports the weights that actually deform. */}
-            Total {(total * 100).toFixed(0)}%. Editing one weight redistributes
-            the rest in proportion.
+            {t('inspector.bone.total', 'Total {n}%. Editing one weight redistributes the rest in proportion.', { n: (total * 100).toFixed(0) })}
           </div>
         )}
       </div>
@@ -311,15 +309,15 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
       <div className={styles.headerCard}>
         <div className={styles.headerTitle}>
           <Icon name="bone" size="sm" style={{ color: '#f97316' }} />
-          <span>Bones</span>
-          <span className={styles.badge}>{bones.length === 1 ? '1 bone' : `${bones.length} bones`}</span>
+          <span>{t('inspector.bone.bones', 'Bones')}</span>
+          <span className={styles.badge}>{bones.length === 1 ? t('inspector.bone.countOne', '{n} bone', { n: 1 }) : t('inspector.bone.countOther', '{n} bones', { n: bones.length })}</span>
         </div>
         <Button
           size="sm"
           variant="secondary"
           onClick={() => useUIStore.getState().setActiveTool('bone')}
         >
-          <Icon name="plus" size="sm" /> Add Joint
+          <Icon name="plus" size="sm" /> {t('inspector.bone.addJoint', 'Add Joint')}
         </Button>
       </div>
 
@@ -328,12 +326,12 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           rig, because merging two skeletons produces duplicate bone ids and a
           duplicate id silently couples two bones onto one animation track. */}
       <div className={styles.paramRow}>
-        <span className={styles.paramLabel} title="Generates bones, IK chains and controllers scaled to this layer. Replaces any existing rig.">
-          Auto-Rig
+        <span className={styles.paramLabel} title={t('inspector.bone.autoRigTip', 'Generates bones, IK chains and controllers scaled to this layer. Replaces any existing rig.')}>
+          {t('inspector.bone.autoRig', 'Auto-Rig')}
         </span>
         <select
           value=""
-          aria-label="Auto-rig preset"
+          aria-label={t('inspector.bone.autoRigPreset', 'Auto-rig preset')}
           onChange={(e) => {
             const id = e.target.value as RigPresetId;
             if (!id) return;
@@ -342,7 +340,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
             void fetchLayerBox(nodeId, compTime(workspaceTime)).then((geom) => applyRigPresetEdit(
               nodeId,
               RIG_PRESETS[id]({ width: geom?.width ?? 200, height: geom?.height ?? 200 }),
-              `Auto-Rig ${RIG_PRESET_LABELS[id]}`,
+              t('inspector.bone.autoRigUndo', 'Auto-Rig {preset}', { preset: RIG_PRESET_LABELS[id] }),
             )).then((problems) => {
               if (problems.length > 0) {
                 // Never silently: a refused rig with no message reads as a dead
@@ -354,7 +352,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           }}
           className={styles.select}
         >
-          <option value="">Generate…</option>
+          <option value="">{t('inspector.bone.generate', 'Generate…')}</option>
           {(Object.keys(RIG_PRESETS) as RigPresetId[]).map((id) => (
             <option key={id} value={id}>{RIG_PRESET_LABELS[id]}</option>
           ))}
@@ -362,14 +360,14 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
       </div>
       {bones.length === 0 && (
         <div className={styles.card} style={{ textAlign: 'center', padding: '16px 12px' }}>
-          <span className={styles.subText}>Click the layer to draw bones.</span>
+          <span className={styles.subText}>{t('inspector.bone.clickToDraw', 'Click the layer to draw bones.')}</span>
           <Button
             size="sm"
             variant="primary"
             onClick={() => useUIStore.getState().setActiveTool('bone')}
             style={{ marginTop: 8 }}
           >
-            <Icon name="bone" size="sm" /> Draw Bones with Bone Tool (Ctrl+B)
+            <Icon name="bone" size="sm" /> {t('inspector.bone.drawBones', 'Draw Bones with Bone Tool (Ctrl+B)')}
           </Button>
         </div>
       )}
@@ -377,9 +375,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
       {bones.length > 0 && hasPuppet && (
         <div className={styles.card} style={{ padding: '10px 12px' }}>
           <span className={styles.subText}>
-            This layer also has puppet pins — the two rigs compose: the puppet
-            refines the mesh first, then the skeleton pose carries it. The
-            skinning mesh below follows the puppet's mesh settings.
+            {t('inspector.bone.puppetToo', "This layer also has puppet pins — the two rigs compose: the puppet refines the mesh first, then the skeleton pose carries it. The skinning mesh below follows the puppet's mesh settings.")}
           </span>
         </div>
       )}
@@ -389,7 +385,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           <div className={styles.cardHeader}>
             <div className={styles.cardTitle}>
               <Icon name="grid" size="sm" />
-              <span>Skinning Mesh</span>
+              <span>{t('inspector.bone.skinningMesh', 'Skinning Mesh')}</span>
             </div>
           </div>
           {/* These two rows used to read 15 and 8 while `buildRestMesh` actually
@@ -398,18 +394,18 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               one-cell dilation that wraps a PNG character in a ring of empty
               pixels. Read the engine's defaults instead of restating them. */}
           <div className={styles.paramRow}>
-            <span className={styles.paramLabel}>Density</span>
+            <span className={styles.paramLabel}>{t('inspector.bone.density', 'Density')}</span>
             <ValueField
               value={skel?.meshDensity ?? MESH_DENSITY_DEFAULT}
               min={2}
               max={50}
               {...eng.scrub('Edit Skeleton Mesh')}
               onChange={(v) => eng.send('Edit Skeleton Mesh', skeletonMeshCommands(nodeId, { density: Math.round(v) }))}
-              aria-label="Skinning mesh density"
+              aria-label={t('inspector.bone.meshDensityAria', 'Skinning mesh density')}
             />
           </div>
           <div className={styles.paramRow}>
-            <span className={styles.paramLabel}>Mesh</span>
+            <span className={styles.paramLabel}>{t('inspector.bone.mesh', 'Mesh')}</span>
             {/* Grid = a lattice over the bounding box, culled against the alpha.
                 Outline = the alpha OUTLINE traced and Delaunay-filled, so a thin
                 limb is its own strip of triangles and a bone bends it instead of
@@ -418,7 +414,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 on until you switch it here. */}
             <select
               value={skel?.meshMode ?? 'grid'}
-              aria-label="Skinning mesh mode"
+              aria-label={t('inspector.bone.meshModeAria', 'Skinning mesh mode')}
               onChange={(e) => {
                 void edit('Edit Skeleton Mesh', skeletonMeshCommands(nodeId, {
                   mode: e.target.value as 'grid' | 'silhouette',
@@ -426,12 +422,12 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               }}
               className={styles.select}
             >
-              <option value="grid">Grid</option>
-              <option value="silhouette">Outline</option>
+              <option value="grid">{t('inspector.bone.meshGrid', 'Grid')}</option>
+              <option value="silhouette">{t('inspector.bone.meshOutline', 'Outline')}</option>
             </select>
           </div>
           <div className={styles.paramRow}>
-            <span className={styles.paramLabel}>Expansion</span>
+            <span className={styles.paramLabel}>{t('inspector.bone.expansion', 'Expansion')}</span>
             <ValueField
               value={skel?.meshExpansion ?? MESH_EXPANSION_DEFAULT}
               min={0}
@@ -439,7 +435,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               unit="px"
               {...eng.scrub('Edit Skeleton Mesh')}
               onChange={(v) => eng.send('Edit Skeleton Mesh', skeletonMeshCommands(nodeId, { expansion: Math.round(v) }))}
-              aria-label="Skinning mesh expansion"
+              aria-label={t('inspector.bone.meshExpansionAria', 'Skinning mesh expansion')}
             />
           </div>
         </div>
@@ -452,11 +448,11 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           <div className={styles.cardHeader}>
             <div className={styles.cardTitle}>
               <Icon name="bone" size="sm" style={{ color: '#f97316' }} />
-              <span>Hierarchy</span>
+              <span>{t('inspector.bone.hierarchy', 'Hierarchy')}</span>
               <span className={styles.badge}>{bones.length}</span>
             </div>
           </div>
-          <div role="tree" aria-label="Bone hierarchy">
+          <div role="tree" aria-label={t('inspector.bone.hierarchyAria', 'Bone hierarchy')}>
             {orderedBones.map(({ bone, depth }) => {
               const selected = selectedBone?.id === bone.id;
               const hasIk = ikTargets.some((target) => target.boneId === bone.id);
@@ -495,7 +491,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
 
       {/* One selected-item editor, rather than a full property card per bone. */}
       {selectedBone && [selectedBone].map((bone) => {
-        const ik = ikTargets.find((t) => t.boneId === bone.id);
+        const ik = ikTargets.find((tg) => tg.boneId === bone.id);
         const hasIK = ik?.enabled !== false && !!ik;
 
         return (
@@ -508,7 +504,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 <input
                   value={nameDraft?.boneId === bone.id ? nameDraft.value : bone.name ?? ''}
                   placeholder={bone.id}
-                  aria-label={`${bone.name || bone.id} name`}
+                  aria-label={t('inspector.bone.nameAria', '{name} name', { name: bone.name || bone.id })}
                   onChange={(e) => setNameDraft({ boneId: bone.id, value: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') e.currentTarget.blur();
@@ -523,7 +519,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 <span className={styles.subText}>
                   {bone.parentId
                     ? `← ${bones.find((b) => b.id === bone.parentId)?.name ?? bone.parentId}`
-                    : '(Root)'}
+                    : t('inspector.bone.root', '(Root)')}
                 </span>
               </div>
               <Button
@@ -533,8 +529,8 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                   void edit('Delete Bone', deleteBoneCommands(nodeId, bone.id));
                   selectBone(null);
                 }}
-                aria-label={`Delete bone ${bone.name || bone.id}`}
-                title="Delete bone"
+                aria-label={t('inspector.bone.deleteAria', 'Delete bone {name}', { name: bone.name || bone.id })}
+                title={t('inspector.bone.deleteTip', 'Delete bone')}
               >
                 <Icon name="trash" size="sm" />
               </Button>
@@ -544,7 +540,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               const live = posedBones.find((candidate) => candidate.id === bone.id) ?? bone;
               return (
                 <div className={styles.paramRow}>
-                  <span className={styles.paramLabel}>Live Pose</span>
+                  <span className={styles.paramLabel}>{t('inspector.bone.livePose', 'Live Pose')}</span>
                   <span className={styles.subText}>
                     {`${((live.rotation * 180) / Math.PI).toFixed(1)}° · ${live.x.toFixed(1)}, ${live.y.toFixed(1)}`}
                   </span>
@@ -553,19 +549,19 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
             })()}
 
             <div className={styles.paramRow}>
-              <span className={styles.paramLabel}>Rest Length</span>
+              <span className={styles.paramLabel}>{t('inspector.bone.restLength', 'Rest Length')}</span>
               <ValueField
                 value={bone.length}
                 min={1}
                 unit="px"
                 {...eng.scrub('Set Bone Length')}
                 onChange={(v) => eng.send('Set Bone Length', boneFieldCommands(nodeId, bone.id, 'length', Math.max(1, v)))}
-                aria-label={`${bone.name || bone.id} length`}
+                aria-label={t('inspector.bone.lengthAria', '{name} length', { name: bone.name || bone.id })}
               />
             </div>
 
             <div className={styles.paramRow}>
-              <span className={styles.paramLabel}>Falloff</span>
+              <span className={styles.paramLabel}>{t('inspector.bone.falloff', 'Falloff')}</span>
               {/* How far this bone's influence travels THROUGH the artwork.
                   0 = unlimited, which is what a bone holds until you set it and
                   what every rig authored before the field does. Bounding it is
@@ -580,12 +576,12 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                   // 0 = unlimited: the engine clears the stored field at its default.
                   eng.send('Set Bone Falloff', boneFieldCommands(nodeId, bone.id, 'influenceRadius', v > 0 ? v : 0))
                 }
-                aria-label={`${bone.name || bone.id} influence radius`}
+                aria-label={t('inspector.bone.radiusAria', '{name} influence radius', { name: bone.name || bone.id })}
               />
             </div>
 
             <div className={styles.paramRow}>
-              <span className={styles.paramLabel}>Rest Angle</span>
+              <span className={styles.paramLabel}>{t('inspector.bone.restAngle', 'Rest Angle')}</span>
               {/* `Bone.rotation` is stored in RADIANS (skeleton.ts). This field
                   displayed the raw radian value under a ° label and wrote whatever
                   you typed straight back — so typing "45" set 45 radians ≈ 2578°
@@ -598,30 +594,30 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 unit="°"
                 {...eng.scrub('Set Bone Rest Angle')}
                 onChange={(v) => eng.send('Set Bone Rest Angle', boneRestCommands(nodeId, bone.id, 'rotation', v))}
-                aria-label={`${bone.name || bone.id} rotation`}
+                aria-label={t('inspector.bone.rotationAria', '{name} rotation', { name: bone.name || bone.id })}
               />
             </div>
 
             <div className={styles.paramRow}>
-              <span className={styles.paramLabel}>Scale X / Y</span>
+              <span className={styles.paramLabel}>{t('inspector.bone.scaleXY', 'Scale X / Y')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <ValueField
                   value={bone.scaleX ?? 1}
                   {...eng.scrub('Set Bone Scale')}
                   onChange={(v) => eng.send('Set Bone Scale', boneRestCommands(nodeId, bone.id, 'scale', { x: v, y: bone.scaleY ?? 1 }))}
-                  aria-label={`${bone.name || bone.id} scale x`}
+                  aria-label={t('inspector.bone.scaleXAria', '{name} scale x', { name: bone.name || bone.id })}
                 />
                 <ValueField
                   value={bone.scaleY ?? 1}
                   {...eng.scrub('Set Bone Scale')}
                   onChange={(v) => eng.send('Set Bone Scale', boneRestCommands(nodeId, bone.id, 'scale', { x: bone.scaleX ?? 1, y: v }))}
-                  aria-label={`${bone.name || bone.id} scale y`}
+                  aria-label={t('inspector.bone.scaleYAria', '{name} scale y', { name: bone.name || bone.id })}
                 />
               </div>
             </div>
 
             <div className={styles.paramRow} style={{ marginTop: 2 }}>
-              <span className={styles.paramLabel}>Inverse Kinematics</span>
+              <span className={styles.paramLabel}>{t('inspector.bone.ik', 'Inverse Kinematics')}</span>
               <Button
                 size="sm"
                 variant={hasIK ? 'primary' : 'secondary'}
@@ -631,7 +627,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 }}
               >
                 <Icon name="crosshair" size="sm" style={{ color: hasIK ? '#22c55e' : 'inherit' }} />
-                {hasIK ? 'IK Active' : 'Enable IK Target'}
+                {hasIK ? t('inspector.bone.ikActive', 'IK Active') : t('inspector.bone.enableIk', 'Enable IK Target')}
               </Button>
             </div>
 
@@ -642,13 +638,13 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               <div className={styles.paramRow}>
                 <span
                   className={styles.paramLabel}
-                  title="IK poses the chain from its goal; FK poses it from the bones. Switching preserves the pose."
+                  title={t('inspector.bone.chainModeTip', 'IK poses the chain from its goal; FK poses it from the bones. Switching preserves the pose.')}
                 >
-                  Chain Mode
+                  {t('inspector.bone.chainMode', 'Chain Mode')}
                 </span>
                 <select
                   value={chainModeAt({ boneId: bone.id, ikMode: ik?.ikMode })}
-                  aria-label={`${bone.name || bone.id} chain mode`}
+                  aria-label={t('inspector.bone.chainModeAria', '{name} chain mode', { name: bone.name || bone.id })}
                   onChange={(e) => {
                     const to = e.target.value as ChainMode;
                     const keyframe =
@@ -673,26 +669,26 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                   }}
                   className={styles.select}
                 >
-                  <option value="ik">IK (pose from the goal)</option>
-                  <option value="fk">FK (pose from the bones)</option>
+                  <option value="ik">{t('inspector.bone.modeIk', 'IK (pose from the goal)')}</option>
+                  <option value="fk">{t('inspector.bone.modeFk', 'FK (pose from the bones)')}</option>
                 </select>
               </div>
             )}
             {hasIK && (
               <>
                 <div className={styles.paramRow}>
-                  <span className={styles.paramLabel}>Chain Length</span>
+                  <span className={styles.paramLabel}>{t('inspector.bone.chainLength', 'Chain Length')}</span>
                   <ValueField
                     value={ik?.chainLength ?? 2}
                     min={1}
                     max={8}
                     {...eng.scrub('Set IK Chain Length')}
                     onChange={(v) => eng.send('Set IK Chain Length', ikChainLengthCommands(nodeId, bone.id, v))}
-                    aria-label={`${bone.name || bone.id} IK chain length`}
+                    aria-label={t('inspector.bone.chainLengthAria', '{name} IK chain length', { name: bone.name || bone.id })}
                   />
                 </div>
                 <div className={styles.paramRow}>
-                  <span className={styles.paramLabel}>Goal X / Y</span>
+                  <span className={styles.paramLabel}>{t('inspector.bone.goalXY', 'Goal X / Y')}</span>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {/* The goal at the playhead: a typed value keys it there
                         when the target is keyframed (setValueAtTime), else
@@ -702,14 +698,14 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                       unit="px"
                       {...eng.scrub('Set IK Goal')}
                       onChange={(x) => eng.send('Set IK Goal', ikTargetCommands(nodeId, bone.id, { x, y: goalAt(ik!).y }, workspaceTime))}
-                      aria-label={`${bone.name || bone.id} IK goal x`}
+                      aria-label={t('inspector.bone.goalXAria', '{name} IK goal x', { name: bone.name || bone.id })}
                     />
                     <ValueField
                       value={goalAt(ik!).y}
                       unit="px"
                       {...eng.scrub('Set IK Goal')}
                       onChange={(y) => eng.send('Set IK Goal', ikTargetCommands(nodeId, bone.id, { x: goalAt(ik!).x, y }, workspaceTime))}
-                      aria-label={`${bone.name || bone.id} IK goal y`}
+                      aria-label={t('inspector.bone.goalYAria', '{name} IK goal y', { name: bone.name || bone.id })}
                     />
                   </div>
                 </div>
@@ -719,9 +715,9 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               <div className={styles.paramRow}>
                 <span
                   className={styles.paramLabel}
-                  title="The side the joint bends toward. Without a pole the solver only preserves the current side and can never flip it."
+                  title={t('inspector.bone.poleTip', 'The side the joint bends toward. Without a pole the solver only preserves the current side and can never flip it.')}
                 >
-                  Pole Vector
+                  {t('inspector.bone.poleVector', 'Pole Vector')}
                 </span>
                 <Button
                   size="sm"
@@ -732,7 +728,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                     else void edit('Add Pole', addPoleCommands(nodeId, bone.id, poleFor(bone.id, ik!.chainLength)));
                   }}
                 >
-                  {ik?.pole ? 'Pole Set' : 'Add Pole'}
+                  {ik?.pole ? t('inspector.bone.poleSet', 'Pole Set') : t('inspector.bone.addPole', 'Add Pole')}
                 </Button>
                 {ik?.pole && (
                   <Button
@@ -740,7 +736,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                     variant="ghost"
                     onClick={() => { void edit('Remove Pole', removePoleCommands(nodeId, bone.id)); }}
                   >
-                    Remove
+                    {t('inspector.bone.remove', 'Remove')}
                   </Button>
                 )}
               </div>
@@ -758,14 +754,14 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           <div className={styles.cardHeader}>
             <div className={styles.cardTitle}>
               <Icon name="puppet-pin" size="sm" style={{ color: '#f97316' }} />
-              <span>Controllers</span>
+              <span>{t('inspector.bone.controllers', 'Controllers')}</span>
               <span className={styles.badge}>{controllers.length}</span>
             </div>
           </div>
 
           {controllers.length === 0 && (
             <div className={styles.subText} style={{ margin: "2px 0 8px" }}>
-              Add a handle to pose a bone or an IK goal without grabbing the joint.
+              {t('inspector.bone.noControllers', 'Add a handle to pose a bone or an IK goal without grabbing the joint.')}
             </div>
           )}
 
@@ -787,11 +783,13 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               }
             >
               <span className={styles.paramLabel} style={{ flexBasis: "100%" }}>
-                {c.name ?? c.id} → {c.link.kind === "ikTarget" ? "IK goal" : "bone"} {c.link.boneId}
+                {c.link.kind === "ikTarget"
+                  ? t('inspector.bone.linkIk', '{name} → IK goal {bone}', { name: c.name ?? c.id, bone: c.link.boneId })
+                  : t('inspector.bone.linkBone', '{name} → bone {bone}', { name: c.name ?? c.id, bone: c.link.boneId })}
               </span>
               <select
                 value={c.shape}
-                aria-label={`${c.name ?? c.id} shape`}
+                aria-label={t('inspector.bone.ctrlShapeAria', '{name} shape', { name: c.name ?? c.id })}
                 onChange={(e) => {
                   void edit('Set Controller Shape', controllerFieldCommands(nodeId, c.id, 'shape', e.target.value as ControllerShape));
                 }}
@@ -801,7 +799,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               </select>
               <select
                 value={c.side}
-                aria-label={`${c.name ?? c.id} side`}
+                aria-label={t('inspector.bone.ctrlSideAria', '{name} side', { name: c.name ?? c.id })}
                 onChange={(e) => {
                   void edit('Set Controller Side', controllerFieldCommands(nodeId, c.id, 'side', e.target.value as ControllerSide));
                 }}
@@ -813,14 +811,14 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
                 value={c.size}
                 min={4}
                 unit="px"
-                aria-label={`${c.name ?? c.id} size`}
+                aria-label={t('inspector.bone.ctrlSizeAria', '{name} size', { name: c.name ?? c.id })}
                 {...eng.scrub('Set Controller Size')}
                 onChange={(v) => eng.send('Set Controller Size', controllerFieldCommands(nodeId, c.id, 'size', Math.max(4, v)))}
               />
               <Button
                 size="sm"
                 variant="ghost"
-                aria-label={`Delete controller ${c.name ?? c.id}`}
+                aria-label={t('inspector.bone.ctrlDeleteAria', 'Delete controller {name}', { name: c.name ?? c.id })}
                 onClick={() => { void edit('Delete Controller', deleteControllerCommands(nodeId, c.id)); }}
               >
                 <Icon name="trash" size="sm" />
@@ -834,7 +832,7 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
           <div className={styles.paramRow} style={{ flexWrap: "wrap", gap: 4 }}>
             <select
               value=""
-              aria-label="Add controller"
+              aria-label={t('inspector.bone.addControllerAria', 'Add controller')}
               onChange={(e) => {
                 const v = e.target.value;
                 if (!v) return;
@@ -845,15 +843,15 @@ export function BoneControls({ nodeId }: { nodeId: string }): JSX.Element | null
               }}
               className={styles.select}
             >
-              <option value="">Add controller…</option>
+              <option value="">{t('inspector.bone.addController', 'Add controller…')}</option>
               {bones.map((b) => (
                 <option key={`fk-${b.id}`} value={`bone:${b.id}`}>
-                  {b.name ?? b.id} (FK bone)
+                  {t('inspector.bone.addControllerFk', '{name} (FK bone)', { name: b.name ?? b.id })}
                 </option>
               ))}
-              {ikTargets.map((t) => (
-                <option key={`ik-${t.boneId}`} value={`ikTarget:${t.boneId}`}>
-                  {bones.find((b) => b.id === t.boneId)?.name ?? t.boneId} (IK goal)
+              {ikTargets.map((tg) => (
+                <option key={`ik-${tg.boneId}`} value={`ikTarget:${tg.boneId}`}>
+                  {t('inspector.bone.addControllerIk', '{name} (IK goal)', { name: bones.find((b) => b.id === tg.boneId)?.name ?? tg.boneId })}
                 </option>
               ))}
             </select>

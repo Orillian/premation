@@ -30,6 +30,16 @@ namespace premation::doc {
 
 /// getThumbnail, resolved (queries.cpp): what to draw and at what size. The
 /// Session has the frame builder build it and the render thread draw it.
+/// Thrown by a query handler whose hook answered HookAnswer::deferred: the
+/// Session answers the request later (Session::poll_deferred). Not an
+/// exception type on purpose — nothing but Session::handle_request_body
+/// catches it, and never as an error.
+struct DeferredAnswer {};
+
+/// The error a hook answer other than `ready` means for query `what`
+/// (`unsupported`, `busy` for pending, `internal` otherwise), thrown as EngineFail.
+[[noreturn]] void fail_hook(HookAnswer a, const std::string& error, std::string_view what);
+
 struct StillRequest {
   /// A composition's frame at `time` (comp time) …
   std::string comp;

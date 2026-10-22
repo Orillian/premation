@@ -26,17 +26,42 @@ import type { FindScope } from '@core/textTools/textFindReplace';
 import { replaceTextEdit } from './textEdits';
 import { activeCompIdNow, mirrorCountInScope, mirrorTextLayersInScope } from './textMirror';
 import styles from './TextDialogs.module.css';
+import { t } from '@core/i18n';
 
 export const FIND_REPLACE_TEXT_MODAL_ID = 'find-replace-text';
 
-const SCOPES: ReadonlyArray<{ value: FindScope; label: string }> = [
-  { value: 'selected', label: 'Selected layers' },
-  { value: 'comp', label: 'This comp' },
-  { value: 'all', label: 'All comps' },
-];
+function scopes(): ReadonlyArray<{ value: FindScope; label: string }> {
+  return [
+    { value: 'selected', label: t('text.findReplace.selectedLayers', 'Selected layers') },
+    { value: 'comp', label: t('text.findReplace.thisComp', 'This comp') },
+    { value: 'all', label: t('text.findReplace.allComps', 'All comps') },
+  ];
+}
 
-const plural = (n: number, word: 'match' | 'layer'): string =>
-  `${n} ${n === 1 ? word : word === 'match' ? 'matches' : 'layers'}`;
+/** "N matches in M layers" — each plural pairing a whole phrase, so word order stays the translator's. */
+function matchesInLayers(matches: number, layers: number): string {
+  const vars = { matches, layers };
+  if (matches === 1) {
+    return layers === 1
+      ? t('text.findReplace.countOneOne', '{matches} match in {layers} layer', vars)
+      : t('text.findReplace.countOneOther', '{matches} match in {layers} layers', vars);
+  }
+  return layers === 1
+    ? t('text.findReplace.countOtherOne', '{matches} matches in {layers} layer', vars)
+    : t('text.findReplace.countOtherOther', '{matches} matches in {layers} layers', vars);
+}
+
+function replacedInLayers(matches: number, layers: number): string {
+  const vars = { matches, layers };
+  if (matches === 1) {
+    return layers === 1
+      ? t('text.findReplace.replacedOneOne', 'Replaced {matches} match in {layers} layer.', vars)
+      : t('text.findReplace.replacedOneOther', 'Replaced {matches} match in {layers} layers.', vars);
+  }
+  return layers === 1
+    ? t('text.findReplace.replacedOtherOne', 'Replaced {matches} matches in {layers} layer.', vars)
+    : t('text.findReplace.replacedOtherOther', 'Replaced {matches} matches in {layers} layers.', vars);
+}
 
 export function FindReplaceTextBody({ close, initialScope }: { close: () => void; initialScope: FindScope }): JSX.Element {
   // B4: counted over the document mirror; a document-wide count re-runs on
@@ -62,40 +87,40 @@ export function FindReplaceTextBody({ close, initialScope }: { close: () => void
   const replaceAll = (): void => {
     // One engine batch: Source Text (+ its re-indexed style runs) or its keys, per layer.
     void replaceTextEdit(scope, find, replacement, opts).then((r) => {
-      setDone(`Replaced ${plural(r.matches, 'match')} in ${plural(r.layers, 'layer')}.`);
+      setDone(replacedInLayers(r.matches, r.layers));
     });
   };
 
   const status = !find
-    ? 'Type text to find.'
+    ? t('text.findReplace.typeToFind', 'Type text to find.')
     : count.matches === 0
-      ? 'No matches.'
-      : `${plural(count.matches, 'match')} in ${plural(count.layers, 'layer')}`;
+      ? t('text.findReplace.noMatches', 'No matches.')
+      : matchesInLayers(count.matches, count.layers);
 
   return (
     <div className={styles.body}>
       <div className={styles.fields}>
         <Input
-          label="Find"
+          label={t('text.findReplace.find', 'Find')}
           value={find}
           autoFocus
           fullWidth
           onChange={(e) => { setFind(e.currentTarget.value); setDone(null); }}
         />
         <Input
-          label="Replace with"
+          label={t('text.findReplace.replaceWith', 'Replace with')}
           value={replacement}
           fullWidth
           onChange={(e) => { setReplacement(e.currentTarget.value); setDone(null); }}
         />
       </div>
       <div className={styles.options}>
-        <Checkbox label="Match case" checked={matchCase} onChange={(e) => setMatchCase(e.currentTarget.checked)} />
-        <Checkbox label="Whole word" checked={wholeWord} onChange={(e) => setWholeWord(e.currentTarget.checked)} />
+        <Checkbox label={t('text.findReplace.matchCase', 'Match case')} checked={matchCase} onChange={(e) => setMatchCase(e.currentTarget.checked)} />
+        <Checkbox label={t('text.findReplace.wholeWord', 'Whole word')} checked={wholeWord} onChange={(e) => setWholeWord(e.currentTarget.checked)} />
       </div>
       <Segmented<FindScope>
-        aria-label="Search in"
-        options={SCOPES}
+        aria-label={t('text.findReplace.searchIn', 'Search in')}
+        options={scopes()}
         value={scope}
         onChange={(s) => { setScope(s); setDone(null); }}
         fullWidth
@@ -105,11 +130,11 @@ export function FindReplaceTextBody({ close, initialScope }: { close: () => void
         {done ?? status}
       </p>
       <DialogFooter
-        note="Source Text keyframes are searched too."
-        secondary={<Button variant="secondary" onClick={close}>Close</Button>}
+        note={t('text.findReplace.sourceTextKeyframesAreSearched', 'Source Text keyframes are searched too.')}
+        secondary={<Button variant="secondary" onClick={close}>{t('text.findReplace.close', 'Close')}</Button>}
         primary={
           <Button variant="primary" disabled={!find || count.matches === 0} onClick={replaceAll}>
-            Replace All
+            {t('text.findReplace.replaceAll', 'Replace All')}
           </Button>
         }
       />
@@ -124,7 +149,7 @@ export function openFindReplaceTextDialog(): void {
   const initialScope: FindScope = hasSelectedText ? 'selected' : 'comp';
   openModal({
     id: FIND_REPLACE_TEXT_MODAL_ID,
-    title: 'Find and Replace Text',
+    title: t('text.findReplace.findAndReplaceText', 'Find and Replace Text'),
     size: 'sm',
     render: (close) => <FindReplaceTextBody close={close} initialScope={initialScope} />,
   });

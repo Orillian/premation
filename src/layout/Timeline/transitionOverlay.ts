@@ -31,6 +31,7 @@ import type {
   TransitionAlignment,
 } from '@core/timeline/transitionModel';
 import { TRANSITION_SHORT } from '@core/timeline/transitionModel';
+import { t } from '@core/i18n';
 import { mirrorTransitionOverlaps, mirrorTransitionRegion, type TransitionView } from '@core/mirror/transitions';
 
 /**
@@ -52,10 +53,11 @@ export const TRANSITION_ALIGNMENTS: readonly TransitionAlignment[] = [
 ];
 
 /** Human labels for `TRANSITION_ALIGNMENTS`. */
-export const TRANSITION_ALIGNMENT_LABEL: Record<TransitionAlignment, string> = {
-  centred: 'Centred',
-  startAtCut: 'Start at cut',
-  endAtCut: 'End at cut',
+export const TRANSITION_ALIGNMENT_LABEL: Readonly<Record<TransitionAlignment, string>> = {
+  // Getters: `t()` must run when a label is shown, not at import (the catalogue loads later).
+  get centred() { return t('timeline.transition.alignCentred', 'Centred'); },
+  get startAtCut() { return t('timeline.transition.alignStartAtCut', 'Start at cut'); },
+  get endAtCut() { return t('timeline.transition.alignEndAtCut', 'End at cut'); },
 };
 
 /** The next alignment in the cycle — wraps, so clicking forever is harmless. */

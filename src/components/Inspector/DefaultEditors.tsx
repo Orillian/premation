@@ -3,6 +3,7 @@ import { Input } from '@components/Input';
 import { Switch } from '@components/Switch/Switch';
 import { ValueField } from '@components/ValueField';
 import { ColorPicker } from '@components/ColorPicker';
+import { t } from '@core/i18n';
 
 /**
  * Default property editors.
@@ -38,7 +39,7 @@ export function registerDefaultEditors(): void {
       max={100}
       unit="%"
       precision={0}
-      aria-label="opacity"
+      aria-label={t('inspector.defaultEditors.opacity', 'opacity')}
     />
   ));
 
@@ -49,13 +50,13 @@ export function registerDefaultEditors(): void {
       onChange={(v) => onChange(v)}
       unit="°"
       precision={1}
-      aria-label="rotation"
+      aria-label={t('inspector.defaultEditors.rotation', 'rotation')}
     />
   ));
 
   // Color properties → real color picker (swatch + popover).
   const colorEditor = ({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) => (
-    <ColorPicker value={String(value ?? '#000000')} onChange={(hex) => onChange(hex)} aria-label="color" />
+    <ColorPicker value={String(value ?? '#000000')} onChange={(hex) => onChange(hex)} aria-label={t('inspector.defaultEditors.color', 'color')} />
   );
   propertyRegistry.register('*', 'fill', colorEditor);
   propertyRegistry.register('*', 'color', colorEditor);

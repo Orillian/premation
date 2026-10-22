@@ -27,6 +27,7 @@ import {
 import { openCompositionSettings } from '@layout/Composition/CompositionSettingsDialog';
 import { openNewCompositionDialog } from '@layout/Composition/NewCompositionDialog';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 /** What a row of the list shows of one composition. */
 export interface ListedComposition {
@@ -68,7 +69,7 @@ export function listedCompositions<C extends ListedComposition>(
   tabs: Readonly<Record<string, TabInfo>>,
   isReal: (compId: string) => boolean = isMirrorComposition,
 ): C[] {
-  const onScreen = new Set(Object.values(tabs).map((t) => t.compositionId));
+  const onScreen = new Set(Object.values(tabs).map((tab) => tab.compositionId));
   return Object.values(comps).filter((c) => isReal(c.id) && (!c.pristine || onScreen.has(c.id)));
 }
 
@@ -96,7 +97,7 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
   const activeCompId = activeTabId ? projectTabs[activeTabId]?.compositionId : undefined;
 
   const openComposition = (compId: string): void => {
-    const existing = Object.values(projectTabs).find((t) => t.compositionId === compId);
+    const existing = Object.values(projectTabs).find((tab) => tab.compositionId === compId);
     if (existing) {
       setActiveTab(existing.id);
       return;
@@ -107,14 +108,14 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
   const confirmDeleteComp = async (compId: string): Promise<void> => {
     const comp = comps[compId];
     if (!comp || comp.pristine) return;
-    if (await customConfirm('Delete Composition', deleteCompositionWarning(comp.name, compId), { isDanger: true, confirmLabel: 'Delete' })) {
+    if (await customConfirm(t('scene.compList.deleteTitle', 'Delete Composition'), deleteCompositionWarning(comp.name, compId), { isDanger: true, confirmLabel: t('scene.compList.delete', 'Delete') })) {
       await deleteCompositionEdit(compId);
     }
   };
 
   const promptRename = async (compId: string): Promise<void> => {
     const current = comps[compId]?.name ?? '';
-    const next = await customPrompt('Rename Composition', 'Composition name', current, { confirmLabel: 'Rename' });
+    const next = await customPrompt(t('scene.compList.renameTitle', 'Rename Composition'), t('scene.compList.compName', 'Composition name'), current, { confirmLabel: t('scene.compList.rename', 'Rename') });
     if (next !== null && next.trim() && next.trim() !== current) await renameCompositionEdit(compId, next);
   };
 
@@ -124,29 +125,29 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
     const comp = comps[compId];
     const name = comp?.name ?? compId;
     openContextMenu(e.clientX, e.clientY, [
-      { id: 'open', label: 'Open Composition', onSelect: () => openComposition(compId) },
-      { id: 'rename', label: 'Rename…', onSelect: () => { void promptRename(compId); } },
+      { id: 'open', label: t('scene.compList.open', 'Open Composition'), onSelect: () => openComposition(compId) },
+      { id: 'rename', label: t('scene.compList.renameEllipsis', 'Rename…'), onSelect: () => { void promptRename(compId); } },
       {
         id: 'settings',
-        label: 'Composition Settings…',
+        label: t('scene.compList.settings', 'Composition Settings…'),
         onSelect: () => {
           openComposition(compId);
           openCompositionSettings();
         },
       },
-      { id: 'duplicate', label: 'Duplicate', onSelect: () => { void duplicateCompositionEdit(compId); } },
+      { id: 'duplicate', label: t('scene.compList.duplicate', 'Duplicate'), onSelect: () => { void duplicateCompositionEdit(compId); } },
       // The placeholder comp cannot be deleted (`confirmDeleteComp` refuses),
       // so it is not offered rather than offered and ignored.
       ...(comp?.pristine
         ? []
         : [
             { id: 'sep', separator: true },
-            { id: 'delete', label: `Delete “${name}”`, danger: true, onSelect: () => { void confirmDeleteComp(compId); } },
+            { id: 'delete', label: t('scene.compList.deleteNamed', 'Delete “{name}”', { name }), danger: true, onSelect: () => { void confirmDeleteComp(compId); } },
           ]),
     ]);
   };
 
-  const label = <span className={styles.compSectionLabel}>Compositions</span>;
+  const label = <span className={styles.compSectionLabel}>{t('scene.compList.compositions', 'Compositions')}</span>;
 
   return (
     <div className={styles.compSection}>
@@ -163,14 +164,14 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
             <span className={styles.compMeta}>{listed.length}</span>
           </button>
         ) : label}
-        <IconButton size="sm" tooltip="New Composition…" aria-label="New Composition" onClick={() => openNewCompositionDialog()}>
+        <IconButton size="sm" tooltip={t('scene.compList.newComposition', 'New Composition…')} aria-label={t('scene.compList.newComposition2', 'New Composition')} onClick={() => openNewCompositionDialog()}>
           <Icon name="plus" size="sm" />
         </IconButton>
       </div>
       {open && (listed.length === 0 ? (
-        <div className={styles.compEmpty}>None yet — create one to start</div>
+        <div className={styles.compEmpty}>{t('scene.compList.noneYetCreateOneTo', 'None yet — create one to start')}</div>
       ) : (
-        <div className={styles.compList} role="list" aria-label="Compositions">
+        <div className={styles.compList} role="list" aria-label={t('scene.compList.compositions', 'Compositions')}>
           {listed.map((c) => {
             const active = c.id === activeCompId;
             return (
@@ -179,7 +180,7 @@ export function CompositionList({ collapsible = false }: CompositionListProps): 
                 role="listitem"
                 aria-current={active || undefined}
                 className={`${styles.compRow}${active ? ` ${styles.compRowActive}` : ''}`}
-                title={`${c.name} · ${c.width}×${c.height} · ${c.fps} fps`}
+                title={t('scene.compList.rowTitle', '{name} · {w}×{h} · {fps} fps', { name: c.name, w: c.width, h: c.height, fps: c.fps })}
                 onClick={() => openComposition(c.id)}
                 onDoubleClick={() => { void promptRename(c.id); }}
                 onContextMenu={(e) => openCompMenu(c.id, e)}

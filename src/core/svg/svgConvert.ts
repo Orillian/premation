@@ -28,6 +28,7 @@ import {
 } from './svgLayer';
 import { isAnimatedSvg } from './svgCapabilities';
 import { getRetainOriginalSvg } from './svgPreferences';
+import { t } from '@core/i18n';
 
 /** The layer properties that must survive the swap in either direction. */
 export interface CarriedTransform {
@@ -89,24 +90,26 @@ export function describeConversion(data: SvgLayerData): string[] {
   const out: string[] = [];
   const caps = data.capabilities;
   if (caps.pathCount > 0) {
-    out.push(`This SVG contains ${caps.pathCount} path${caps.pathCount === 1 ? '' : 's'} and will produce ${caps.pathCount} layer${caps.pathCount === 1 ? '' : 's'}.`);
+    out.push(caps.pathCount === 1
+      ? t('core.svgConvert.pathsOne', 'This SVG contains {n} path and will produce {n} layer.', { n: caps.pathCount })
+      : t('core.svgConvert.pathsOther', 'This SVG contains {n} paths and will produce {n} layers.', { n: caps.pathCount }));
   }
   if (caps.hasCSSAnimation) {
-    out.push('This SVG contains CSS animations. Conversion will approximate them as keyframes.');
+    out.push(t('core.svgConvert.cssAnimation', 'This SVG contains CSS animations. Conversion will approximate them as keyframes.'));
   }
   if (caps.hasSMIL) {
-    out.push('This SVG contains SMIL animations. Conversion will approximate them as keyframes.');
+    out.push(t('core.svgConvert.smilAnimation', 'This SVG contains SMIL animations. Conversion will approximate them as keyframes.'));
   }
   if (caps.hasRasterImage) {
-    out.push('Raster images become image layers rather than shapes.');
+    out.push(t('core.svgConvert.rasterImages', 'Raster images become image layers rather than shapes.'));
   }
   if (caps.hasText) {
-    out.push('Text becomes text layers and may reflow.');
+    out.push(t('core.svgConvert.text', 'Text becomes text layers and may reflow.'));
   }
   // Clip paths are CUT into the geometry now, not dropped — saying they are
   // "flattened to solid fills" described neither what used to happen (they were
   // ignored) nor what happens now.
-  out.push('Masks and filters are flattened; clip paths are cut into the geometry, which turns curves into fine polygons. Gradients become editable FillPaint (angle/stops).');
+  out.push(t('core.svgConvert.flattened', 'Masks and filters are flattened; clip paths are cut into the geometry, which turns curves into fine polygons. Gradients become editable FillPaint (angle/stops).'));
   return out;
 }
 

@@ -28,6 +28,7 @@
 
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
+import { t } from '@core/i18n';
 
 export const TIMELINE_GRAPH_NORMALIZE_COMMAND = asCommandId('timeline.graphNormalize');
 
@@ -80,10 +81,11 @@ export function buildGraphNormalizeCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TIMELINE_GRAPH_NORMALIZE_COMMAND,
-      label: 'Fit All Curves Vertically',
-      description:
-        'Re-fit every visible curve in the graph editor to the values it actually holds now, '
-        + 'discarding the range frozen by the last drag.',
+      label: t('timeline.graphNormalize.command', 'Fit All Curves Vertically'),
+      description: t(
+        'timeline.graphNormalize.commandDescription',
+        'Re-fit every visible curve in the graph editor to the values it actually holds now, discarding the range frozen by the last drag.',
+      ),
       icon: 'maximize',
       execute: () => requestGraphNormalize(),
     },

@@ -15,6 +15,7 @@
 import { useMemo } from 'react';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import styles from './Pagination.module.css';
 
 export interface PaginationProps {
@@ -72,7 +73,7 @@ export function Pagination({
   limit,
   offset,
   onChange,
-  itemLabel = 'item',
+  itemLabel,
   pageSizes = DEFAULT_PAGE_SIZES,
   showPageSizes = true,
   busy = false,
@@ -99,16 +100,23 @@ export function Pagination({
   const showSizes = showPageSizes && total > Math.min(...sizes);
 
   return (
-    <nav className={cn(styles.root, className)} aria-label="Pagination">
+    <nav className={cn(styles.root, className)} aria-label={t('ui.pagination.label', 'Pagination')}>
       <span className={styles.count}>
-        {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}{' '}
-        {total === 1 ? itemLabel : `${itemLabel}s`}
+        {t('ui.pagination.count', '{from}–{to} of {total} {items}', {
+          from: from.toLocaleString(),
+          to: to.toLocaleString(),
+          total: total.toLocaleString(),
+          // A caller's noun is pluralised the way it always was; the default is two whole words.
+          items: itemLabel
+            ? (total === 1 ? itemLabel : `${itemLabel}s`)
+            : (total === 1 ? t('ui.pagination.itemOne', 'item') : t('ui.pagination.itemOther', 'items')),
+        })}
       </span>
 
       <div className={styles.controls}>
         {showSizes && (
           <label className={styles.sizeLabel}>
-            <span>Rows</span>
+            <span>{t('ui.pagination.rows', 'Rows')}</span>
             <select
               className={styles.sizeSelect}
               value={size}
@@ -137,7 +145,7 @@ export function Pagination({
               className={styles.step}
               onClick={() => goto(current - 1)}
               disabled={busy || current === 1}
-              aria-label="Previous page"
+              aria-label={t('ui.pagination.previous', 'Previous page')}
             >
               <Icon name="chevron-left" size="sm" />
             </button>
@@ -155,7 +163,7 @@ export function Pagination({
                   onClick={() => goto(p)}
                   disabled={busy}
                   aria-current={p === current ? 'page' : undefined}
-                  aria-label={`Page ${p}`}
+                  aria-label={t('ui.pagination.page', 'Page {n}', { n: p })}
                 >
                   {p}
                 </button>
@@ -167,7 +175,7 @@ export function Pagination({
               className={styles.step}
               onClick={() => goto(current + 1)}
               disabled={busy || current === pageCount}
-              aria-label="Next page"
+              aria-label={t('ui.pagination.next', 'Next page')}
             >
               <Icon name="chevron-right" size="sm" />
             </button>

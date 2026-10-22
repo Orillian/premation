@@ -26,6 +26,7 @@ import { useMirrorLayer, useMirrorTreeShape } from '@hooks/useMirror';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { isLayer } from '@core/mirror/docFacts';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { mirrorFill, mirrorStrokeAt } from '@core/mirror/paintFields';
 import type { Stroke } from '@core/paint/stroke';
 import type { PresetValue, PresetValues } from '@stores/sectionPresetStore';
@@ -45,7 +46,9 @@ export function AppearancePresetAction({
   nodeIds?: ReadonlyArray<string>;
 }): JSX.Element {
   const isText = uiKindOf(useMirrorLayer(nodeId)) === 'text';
-  const label = isText ? 'Stroke presets' : 'Fill & Stroke presets';
+  const label = isText
+    ? t('inspector.appearance.strokePresets', 'Stroke presets')
+    : t('inspector.appearance.fillStrokePresets', 'Fill & Stroke presets');
   const targetIds = useInspectorSelection(nodeId);
   const effectiveNodeIds = nodeIds && nodeIds.length > 0 ? nodeIds : targetIds;
 

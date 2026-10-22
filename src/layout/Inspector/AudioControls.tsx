@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { SLOT, t, tAround } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { Switch } from '@components/Switch';
 import { Slider } from '@components/Slider';
@@ -112,7 +113,7 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
   const clipTimings = audioClipTimings(m, nodeId);
   const activeIndex = Math.max(
     0,
-    clipTimings.findIndex((t) => time >= t.startSec && time < t.startSec + (t.outSec - t.inSec)),
+    clipTimings.findIndex((ct) => time >= ct.startSec && time < ct.startSec + (ct.outSec - ct.inSec)),
   );
 
   if (!layer || !isAudio) return null;
@@ -150,9 +151,9 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
   const sendTiming = (field: 'start' | 'in' | 'out', label: string, v: number): void => {
     timingEdit.send(label, timing.clipId ? barTimingCommand(nodeId, field, timing, v) : unbarredTimingCommand(nodeId, field, v));
   };
-  const setStart = (v: number): void => sendTiming('start', 'Clip start', Math.max(0, v));
-  const setIn = (v: number): void => sendTiming('in', 'In point', clamp(v, 0, timing.outSec));
-  const setOut = (v: number): void => sendTiming('out', 'Out point', clamp(v, timing.inSec, duration || Infinity));
+  const setStart = (v: number): void => sendTiming('start', t('inspector.audioControls.clipStart', 'Clip start'), Math.max(0, v));
+  const setIn = (v: number): void => sendTiming('in', t('inspector.audioControls.inPoint', 'In point'), clamp(v, 0, timing.outSec));
+  const setOut = (v: number): void => sendTiming('out', t('inspector.audioControls.outPoint', 'Out point'), clamp(v, timing.inSec, duration || Infinity));
 
   // Waveform geometry: the trimmed-away head/tail are shaded, and the playhead
   // draws at the SOURCE position the comp playhead currently maps to (so it
@@ -169,8 +170,8 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
     <div className={styles.root}>
       <div className={styles.header}>
         {clipTimings.length > 1 ? (
-          <div className={styles.clipBadge} title="This layer's bar was split — editing the clip under the playhead">
-            Clip {activeIndex + 1}/{clipTimings.length}
+          <div className={styles.clipBadge} title={t('inspector.audioControls.clipSplit', "This layer's bar was split — editing the clip under the playhead")}>
+            {t('inspector.audioControls.clipBadge', 'Clip {i}/{n}', { i: activeIndex + 1, n: clipTimings.length })}
           </div>
         ) : null}
       </div>
@@ -182,7 +183,7 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
             viewBox={`0 0 ${WAVE_W} ${WAVE_H}`}
             preserveAspectRatio="none"
             role="img"
-            aria-label="Waveform"
+            aria-label={t('inspector.audioControls.waveform', 'Waveform')}
           >
             <path d={path} className={styles.fill} />
             <rect x={0} y={0} width={inX} height={WAVE_H} className={styles.trim} />
@@ -192,7 +193,7 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
             {overClip ? <line x1={playX} y1={0} x2={playX} y2={WAVE_H} className={styles.playhead} /> : null}
           </svg>
         ) : (
-          <div className={styles.decoding}>Decoding waveform…</div>
+          <div className={styles.decoding}>{t('inspector.audioControls.decodingWaveform', 'Decoding waveform…')}</div>
         )}
       </div>
 
@@ -204,7 +205,7 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
       <KeyframeRow
         nodeId={nodeId}
         prop={AUDIO_LEVEL_DB_PROP}
-        label="Level"
+        label={t('inspector.audioControls.level', 'Level')}
         value={levelDb}
         unit="dB"
         min={MIN_LEVEL_DB}
@@ -216,7 +217,7 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
       <KeyframeRow
         nodeId={nodeId}
         prop={AUDIO_PAN_PROP}
-        label="Pan"
+        label={t('inspector.audioControls.pan', 'Pan')}
         value={pan}
         unit="%"
         min={MIN_PAN}
@@ -224,16 +225,16 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
         onStatic={(v) => writeStatic(AUDIO_PAN_PROP, 'Pan', v)}
       />
 
-      <InspectorRow label="Mute" align="center">
-        <Switch checked={muted} onChange={(e) => muteEdit(nodeId, e.currentTarget.checked)} aria-label="Mute audio" />
+      <InspectorRow label={t('inspector.audioControls.mute', 'Mute')} align="center">
+        <Switch checked={muted} onChange={(e) => muteEdit(nodeId, e.currentTarget.checked)} aria-label={t('inspector.audioControls.muteAudio', 'Mute audio')} />
       </InspectorRow>
 
       <div className={styles.sectionLabel}>
-        Timing
-        <span className={styles.hint}>{timing.clipId ? 'follows the timeline bar' : 'no timeline bar'}</span>
+        {t('inspector.audioControls.timing', 'Timing')}
+        <span className={styles.hint}>{timing.clipId ? t('inspector.audioControls.followsBar', 'follows the timeline bar') : t('inspector.audioControls.noBar', 'no timeline bar')}</span>
       </div>
 
-      <InspectorRow label="Start" align="center">
+      <InspectorRow label={t('inspector.audioControls.start', 'Start')} align="center">
         <ValueField
           value={timing.startSec}
           min={0}
@@ -242,10 +243,10 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
           precision={2}
           onChange={setStart}
           {...timingEdit.scrub('Clip start')}
-          aria-label="Clip start"
+          aria-label={t('inspector.audioControls.clipStart', 'Clip start')}
         />
       </InspectorRow>
-      <InspectorRow label="In" align="center">
+      <InspectorRow label={t('inspector.audioControls.in', 'In')} align="center">
         <ValueField
           value={timing.inSec}
           min={0}
@@ -255,10 +256,10 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
           precision={2}
           onChange={setIn}
           {...timingEdit.scrub('In point')}
-          aria-label="In point"
+          aria-label={t('inspector.audioControls.inPoint', 'In point')}
         />
       </InspectorRow>
-      <InspectorRow label="Out" align="center">
+      <InspectorRow label={t('inspector.audioControls.out', 'Out')} align="center">
         <ValueField
           value={timing.outSec}
           min={timing.inSec}
@@ -268,21 +269,21 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
           precision={2}
           onChange={setOut}
           {...timingEdit.scrub('Out point')}
-          aria-label="Out point"
+          aria-label={t('inspector.audioControls.outPoint', 'Out point')}
         />
       </InspectorRow>
-      <InspectorRow label="Duration" align="center">
+      <InspectorRow label={t('inspector.audioControls.duration', 'Duration')} align="center">
         <span className={styles.readonlyVal}>
-          {spanSec.toFixed(2)}s <span className={styles.muted}>of {duration.toFixed(2)}s</span>
+          {spanSec.toFixed(2)}s <span className={styles.muted}>{t('inspector.audioControls.durationOf', 'of {d}s', { d: duration.toFixed(2) })}</span>
         </span>
       </InspectorRow>
 
-      <div className={styles.sectionLabel}>Effects</div>
+      <div className={styles.sectionLabel}>{t('inspector.audioControls.effects', 'Effects')}</div>
       <AudioEffectsSection nodeId={nodeId} />
 
       <div className={styles.sectionLabel}>
-        Edit
-        <span className={styles.hint}>cuts and levels</span>
+        {t('inspector.audioControls.edit', 'Edit')}
+        <span className={styles.hint}>{t('inspector.audioControls.editHint', 'cuts and levels')}</span>
       </div>
       <div className={toolStyles.toolButtons}>
         {/* The fades write ordinary level keyframes (see `audioFades`), so they
@@ -292,46 +293,46 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
         <button
           type="button"
           className={toolStyles.toolButton}
-          title={`Ramp up from silence over ${DEFAULT_FADE_SEC}s from where this layer's bar starts`}
+          title={t('inspector.audioControls.fadeInTip', "Ramp up from silence over {s}s from where this layer's bar starts", { s: DEFAULT_FADE_SEC })}
           onClick={() => fadeHere('in')}
         >
-          Fade in
+          {t('inspector.audioControls.fadeIn', 'Fade in')}
         </button>
         <button
           type="button"
           className={toolStyles.toolButton}
-          title={`Ramp down to silence over the last ${DEFAULT_FADE_SEC}s of this layer's bar`}
+          title={t('inspector.audioControls.fadeOutTip', "Ramp down to silence over the last {s}s of this layer's bar", { s: DEFAULT_FADE_SEC })}
           onClick={() => fadeHere('out')}
         >
-          Fade out
+          {t('inspector.audioControls.fadeOut', 'Fade out')}
         </button>
         <button
           type="button"
           className={toolStyles.toolButton}
-          title="Find the dead air in this take and cut it out, closing the gaps"
+          title={t('inspector.audioControls.removeSilenceTip', 'Find the dead air in this take and cut it out, closing the gaps')}
           onClick={() => openSilenceRemovalDialog(nodeId)}
         >
-          Remove silence…
+          {t('inspector.audioControls.removeSilence', 'Remove silence…')}
         </button>
         <button
           type="button"
           className={toolStyles.toolButton}
-          title="Hold this layer’s level down whenever another layer is talking"
+          title={t('inspector.audioControls.duckTip', 'Hold this layer’s level down whenever another layer is talking')}
           onClick={() => openDuckingDialog(nodeId)}
         >
-          Duck under voice…
+          {t('inspector.audioControls.duck', 'Duck under voice…')}
         </button>
         <button
           type="button"
           className={toolStyles.toolButton}
-          title="Pull this layer down wherever it is below a threshold — room tone, hiss"
+          title={t('inspector.audioControls.gateTip', 'Pull this layer down wherever it is below a threshold — room tone, hiss')}
           onClick={() => openGateDialog(nodeId)}
         >
-          Noise gate…
+          {t('inspector.audioControls.gate', 'Noise gate…')}
         </button>
       </div>
 
-      <div className={styles.sectionLabel}>Keyframes</div>
+      <div className={styles.sectionLabel}>{t('inspector.audioControls.keyframes', 'Keyframes')}</div>
       <AudioToKeyframes nodeId={nodeId} />
     </div>
   );
@@ -341,13 +342,23 @@ export function AudioControls({ nodeId }: { nodeId: string }): JSX.Element | nul
 
 /** Detail presets — a plain-language front end for `minDelta` + `frameStep`. */
 const DETAIL_PRESETS = [
-  { id: 'coarse', label: 'Coarse', frameStep: 4, minDelta: 8 },
-  { id: 'balanced', label: 'Balanced', frameStep: 2, minDelta: 3 },
-  { id: 'detailed', label: 'Detailed', frameStep: 1, minDelta: 1 },
-  { id: 'exact', label: 'Every frame', frameStep: 1, minDelta: 0 },
+  { id: 'coarse', frameStep: 4, minDelta: 8 },
+  { id: 'balanced', frameStep: 2, minDelta: 3 },
+  { id: 'detailed', frameStep: 1, minDelta: 1 },
+  { id: 'exact', frameStep: 1, minDelta: 0 },
 ] as const;
 
 type DetailId = (typeof DETAIL_PRESETS)[number]['id'];
+
+/** Display labels for the detail presets (translated at call time, never at module load). */
+function detailLabel(id: DetailId): string {
+  switch (id) {
+    case 'coarse': return t('inspector.audioControls.detailCoarse', 'Coarse');
+    case 'balanced': return t('inspector.audioControls.detailBalanced', 'Balanced');
+    case 'detailed': return t('inspector.audioControls.detailDetailed', 'Detailed');
+    case 'exact': return t('inspector.audioControls.detailExact', 'Every frame');
+  }
+}
 
 /**
  * The conversion control: a popover of options with a LIVE keyframe count, then
@@ -411,12 +422,14 @@ function AudioToKeyframes({ nodeId }: { nodeId: string }): JSX.Element {
         n > 0
           ? {
               level: 'success',
-              message: `Audio → ${n} keyframe${n === 1 ? '' : 's'} on “${AUDIO_AMPLITUDE_PROP}”`,
+              message: n === 1
+                ? t('inspector.audioControls.convertedOne', 'Audio → {n} keyframe on “{track}”', { n, track: AUDIO_AMPLITUDE_PROP })
+                : t('inspector.audioControls.convertedOther', 'Audio → {n} keyframes on “{track}”', { n, track: AUDIO_AMPLITUDE_PROP }),
               durationMs: 3200,
             }
           : {
               level: 'warning',
-              message: 'No audio could be decoded for this layer.',
+              message: t('inspector.audioControls.noDecode', 'No audio could be decoded for this layer.'),
               durationMs: 3200,
             },
       );
@@ -425,6 +438,8 @@ function AudioToKeyframes({ nodeId }: { nodeId: string }): JSX.Element {
       setBusy(false);
     }
   };
+
+  const convertDesc = tAround(t('inspector.audioControls.convertDesc', 'Samples the layer’s loudness into a {track} track (0–100) you can drive any property from. Replaces the existing track.', { track: SLOT }));
 
   return (
     <Popover
@@ -435,24 +450,23 @@ function AudioToKeyframes({ nodeId }: { nodeId: string }): JSX.Element {
         <button
           type="button"
           className={toolStyles.toolButton}
-          title={`Write the loudness envelope as keyframes (${AUDIO_AMPLITUDE_PROP}, 0–100) — drive any property from it`}
+          title={t('inspector.audioControls.convertTip', 'Write the loudness envelope as keyframes ({track}, 0–100) — drive any property from it', { track: AUDIO_AMPLITUDE_PROP })}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         >
           <Icon name="keyframe" size="sm" />
-          <span>Convert audio to keyframes…</span>
+          <span>{t('inspector.audioControls.convertMenu', 'Convert audio to keyframes…')}</span>
         </button>
       }
     >
       <div className={styles.panel}>
-        <div className={styles.panelTitle}>Convert audio to keyframes</div>
+        <div className={styles.panelTitle}>{t('inspector.audioControls.convertTitle', 'Convert audio to keyframes')}</div>
         <p className={styles.panelDesc}>
-          Samples the layer&rsquo;s loudness into a <code>{AUDIO_AMPLITUDE_PROP}</code> track (0–100) you can drive any
-          property from. Replaces the existing track.
+          {convertDesc[0]}<code>{AUDIO_AMPLITUDE_PROP}</code>{convertDesc[1]}
         </p>
 
         <div className={styles.field}>
-          <span className={styles.fieldLabel}>Detail</span>
-          <div className={styles.segmented} role="radiogroup" aria-label="Keyframe detail">
+          <span className={styles.fieldLabel}>{t('inspector.audioControls.detail', 'Detail')}</span>
+          <div className={styles.segmented} role="radiogroup" aria-label={t('inspector.audioControls.keyframeDetail', 'Keyframe detail')}>
             {DETAIL_PRESETS.map((d) => (
               <button
                 key={d.id}
@@ -462,49 +476,49 @@ function AudioToKeyframes({ nodeId }: { nodeId: string }): JSX.Element {
                 className={detail === d.id ? styles.segOn : styles.seg}
                 onClick={() => setDetail(d.id)}
               >
-                {d.label}
+                {detailLabel(d.id)}
               </button>
             ))}
           </div>
         </div>
 
         <div className={styles.field}>
-          <span className={styles.fieldLabel}>Smoothing</span>
+          <span className={styles.fieldLabel}>{t('inspector.audioControls.smoothing', 'Smoothing')}</span>
           <div className={styles.levelRow}>
-            <Slider value={smoothing} min={1} max={31} step={2} onChange={setSmoothing} aria-label="Smoothing" />
-            <span className={styles.levelVal}>{smoothing === 1 ? 'off' : `${smoothing}f`}</span>
+            <Slider value={smoothing} min={1} max={31} step={2} onChange={setSmoothing} aria-label={t('inspector.audioControls.smoothing', 'Smoothing')} />
+            <span className={styles.levelVal}>{smoothing === 1 ? t('inspector.audioControls.off', 'off') : `${smoothing}f`}</span>
           </div>
         </div>
 
         <div className={styles.field}>
-          <span className={styles.fieldLabel}>Gain</span>
+          <span className={styles.fieldLabel}>{t('inspector.audioControls.gain', 'Gain')}</span>
           <div className={styles.levelRow}>
-            <Slider value={gain} min={0.25} max={4} step={0.25} onChange={setGain} aria-label="Amplitude gain" />
+            <Slider value={gain} min={0.25} max={4} step={0.25} onChange={setGain} aria-label={t('inspector.audioControls.amplitudeGain', 'Amplitude gain')} />
             <span className={styles.levelVal}>{gain}×</span>
           </div>
         </div>
 
         <div className={styles.estimate}>
           {decoding ? (
-            <>Decoding audio…</>
+            <>{t('inspector.audioControls.decodingAudio', 'Decoding audio…')}</>
           ) : estimate === null ? (
             <>&nbsp;</>
           ) : estimate === 0 ? (
-            <span className={styles.warn}>No audio to convert.</span>
+            <span className={styles.warn}>{t('inspector.audioControls.noAudio', 'No audio to convert.')}</span>
           ) : (
             <>
-              <strong>{estimate.toLocaleString()}</strong> keyframes
-              {estimate > 2000 ? <span className={styles.warn}> — try a coarser detail</span> : null}
+              <strong>{estimate.toLocaleString()}</strong>{' '}{estimate === 1 ? t('inspector.audioControls.keyframeWordOne', 'keyframe') : t('inspector.audioControls.keyframeWordOther', 'keyframes')}
+              {estimate > 2000 ? <span className={styles.warn}> {t('inspector.audioControls.tryCoarser', '— try a coarser detail')}</span> : null}
             </>
           )}
         </div>
 
         <div className={styles.panelActions}>
           <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-            Cancel
+            {t('inspector.audioControls.cancel', 'Cancel')}
           </Button>
           <Button size="sm" variant="primary" loading={busy} disabled={busy || estimate === 0} onClick={() => void apply()}>
-            {busy ? 'Converting…' : 'Convert'}
+            {busy ? t('inspector.audioControls.converting', 'Converting…') : t('inspector.audioControls.convert', 'Convert')}
           </Button>
         </div>
       </div>

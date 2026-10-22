@@ -119,7 +119,80 @@ import {
 } from './graphReferenceCurve';
 import { usePropertySelectionStore } from '@stores/propertySelectionStore';
 import { useResizeObserver } from '@hooks/useResizeObserver';
+import { t } from '@core/i18n';
 import styles from './GraphEditor.module.css';
+
+/**
+ * The graph's fixed UI strings, resolved once on first use. The graph
+ * re-renders on every playback tick (`GraphEditorAtPlayhead`), so `t()` is
+ * kept out of that path; a language change reloads the interface, which
+ * resets this cache. Not at module scope: the catalogue loads after import.
+ */
+function buildGraphText() {
+  return {
+    value: t('timeline.graph.value', 'Value'),
+    valueTitle: t('timeline.graph.valueTitle', 'Value graph (edit values & curve paths)'),
+    speed: t('timeline.graph.speed', 'Speed'),
+    speedTitle: t('timeline.graph.speedTitle', 'Speed graph (edit velocity & influence %)'),
+    visibility: t('timeline.graph.visibility', 'Graph visibility'),
+    animated: t('timeline.graph.animated', 'Animated'),
+    animatedTitle: t('timeline.graph.animatedTitle', 'Show Animated Properties — every keyframed property of the selected layers'),
+    selected: t('timeline.graph.selected', 'Selected'),
+    selectedTitle: t('timeline.graph.selectedTitle', 'Show Selected Properties — only the property rows selected in the timeline (all animated ones while nothing is selected)'),
+    reference: t('timeline.graph.reference', 'Reference'),
+    referenceOnTitle: t('timeline.graph.referenceOnTitle', 'Reference graph on — the dashed ghosts are the curves as they were when you switched it on. Click to clear.'),
+    referenceOffTitle: t('timeline.graph.referenceOffTitle', 'Reference graph — freeze a dashed ghost of the current curves to compare your edits against'),
+    easyEase: t('timeline.graph.easyEase', 'Easy Ease'),
+    easyEaseTitle: t('timeline.graph.easyEaseTitle', 'Easy Ease (F9)'),
+    easyEaseIn: t('timeline.graph.easyEaseIn', 'Easy Ease In'),
+    easyEaseInTitle: t('timeline.graph.easyEaseInTitle', 'Easy Ease In (Shift+F9)'),
+    easyEaseOut: t('timeline.graph.easyEaseOut', 'Easy Ease Out'),
+    easyEaseOutTitle: t('timeline.graph.easyEaseOutTitle', 'Easy Ease Out (Ctrl+Shift+F9)'),
+    easingKind: t('timeline.graph.easingKind', 'Easing kind'),
+    easingKindTitle: t('timeline.graph.easingKindTitle', 'Interpolation kind for the selected keyframes'),
+    rove: t('timeline.graph.rove', 'Rove across time'),
+    roveTitle: t('timeline.graph.roveTitle', 'Rove Across Time — the keyframe keeps its value and gives up its time, so the speed through it is constant'),
+    roveDisabledTitle: t('timeline.graph.roveDisabledTitle', 'The first and last keyframes of a track cannot rove'),
+    copyEase: t('timeline.graph.copyEase', 'Copy ease'),
+    copyEaseTitle: t('timeline.graph.copyEaseTitle', "Copy this keyframe's easing"),
+    pasteEase: t('timeline.graph.pasteEase', 'Paste ease'),
+    pasteEaseTitle: t('timeline.graph.pasteEaseTitle', 'Paste the copied easing onto the selected keyframes'),
+    nothingCopied: t('timeline.graph.nothingCopied', 'Nothing copied yet'),
+    easeLibrary: t('timeline.graph.easeLibrary', 'Ease library'),
+    easeLibraryTitle: t('timeline.graph.easeLibraryTitle', 'Ease library — named curves, applied to the selected keyframes'),
+    linkedTitle: t('timeline.graph.linkedTitle', 'Handles are linked — drag moves both sides (Alt-drag to split). Click to break.'),
+    brokenTitle: t('timeline.graph.brokenTitle', 'Handles are split — each side moves alone. Click to link.'),
+    linked: t('timeline.graph.linked', '🔗 Linked'),
+    broken: t('timeline.graph.broken', '🔓 Broken'),
+    emptyAll: t('timeline.graph.emptyAll', 'Nothing is animated yet — switch back to the layer bars and click a property’s stopwatch to add a keyframe'),
+    emptySelected: t('timeline.graph.emptySelected', 'The selected layer has no keyframes — deselect it to see every animated layer'),
+    noMatch: t('timeline.graph.noMatch', 'No animated property matches the timeline filter'),
+    soloActiveTitle: t('timeline.graph.soloActiveTitle', 'Click to solo / Shift-click to toggle · click soloed chip to show all'),
+    soloTitle: t('timeline.graph.soloTitle', 'Click to solo this curve · Shift-click to multi-solo'),
+    curves: t('timeline.graph.curves', 'Curves'),
+    curvesNote: t('timeline.graph.curvesNote', 'Animated properties are listed here.'),
+    curveRowTitle: t('timeline.graph.curveRowTitle', 'Click to show only this curve · Shift-click to add or remove it · click again to show all'),
+    transformBox: t('timeline.graph.transformBox', 'Transform box'),
+    scaleTime: t('timeline.graph.scaleTime', 'Scale the keys in time'),
+    scaleValues: t('timeline.graph.scaleValues', 'Scale the values'),
+    scaleBoth: t('timeline.graph.scaleBoth', 'Scale time and values'),
+    selectedKeyframe: t('timeline.graph.selectedKeyframe', 'Selected keyframe'),
+    numValue: t('timeline.graph.numValue', 'Value'),
+    keyframeValue: t('timeline.graph.keyframeValue', 'Keyframe value'),
+    inSpeed: t('timeline.graph.inSpeed', 'In speed'),
+    incomingSpeed: t('timeline.graph.incomingSpeed', 'Incoming speed'),
+    outSpeed: t('timeline.graph.outSpeed', 'Out speed'),
+    outgoingSpeed: t('timeline.graph.outgoingSpeed', 'Outgoing speed'),
+    inInfluence: t('timeline.graph.inInfluence', 'In inf.'),
+    incomingInfluence: t('timeline.graph.incomingInfluence', 'Incoming influence'),
+    outInfluence: t('timeline.graph.outInfluence', 'Out inf.'),
+    outgoingInfluence: t('timeline.graph.outgoingInfluence', 'Outgoing influence'),
+  };
+}
+let graphTextCache: ReturnType<typeof buildGraphText> | null = null;
+function graphText(): ReturnType<typeof buildGraphText> {
+  return (graphTextCache ??= buildGraphText());
+}
 
 export interface GraphEditorProps {
   selectedNodeIds: ReadonlyArray<string>;
@@ -1991,6 +2064,7 @@ export function GraphEditor({
     });
   }, []);
 
+  const tx = graphText();
   return (
     <div className={styles.root} style={propsHeight ? { height: propsHeight } : undefined} ref={containerRef}>
       {/* ── Toolbar ────────────────────────────────────────────── */}
@@ -1999,40 +2073,40 @@ export function GraphEditor({
           type="button"
           className={mode === 'value' ? styles.tabActive : styles.tab}
           onClick={() => setMode('value')}
-          title="Value graph (edit values & curve paths)"
+          title={tx.valueTitle}
         >
-          <Icon name="graph-value" size="sm" /> Value
+          <Icon name="graph-value" size="sm" /> {tx.value}
         </button>
         <button
           type="button"
           className={mode === 'speed' ? styles.tabActive : styles.tab}
           onClick={() => setMode('speed')}
-          title="Speed graph (edit velocity & influence %)"
+          title={tx.speedTitle}
         >
-          <Icon name="graph-speed" size="sm" /> Speed
+          <Icon name="graph-speed" size="sm" /> {tx.speed}
         </button>
 
         {/* AE's two graph visibility modes. "Selected" answers "show me the
             row I clicked"; it falls back to the animated set when nothing is
             selected, because a blank graph is never what deselecting meant. */}
-        <div className={styles.segmented} role="group" aria-label="Graph visibility">
+        <div className={styles.segmented} role="group" aria-label={tx.visibility}>
           <button
             type="button"
             className={visibility === 'animated' ? styles.segBtnActive : styles.segBtn}
             aria-pressed={visibility === 'animated'}
             onClick={() => setVisibility('animated')}
-            title="Show Animated Properties — every keyframed property of the selected layers"
+            title={tx.animatedTitle}
           >
-            Animated
+            {tx.animated}
           </button>
           <button
             type="button"
             className={visibility === 'selected' ? styles.segBtnActive : styles.segBtn}
             aria-pressed={visibility === 'selected'}
             onClick={() => setVisibility('selected')}
-            title="Show Selected Properties — only the property rows selected in the timeline (all animated ones while nothing is selected)"
+            title={tx.selectedTitle}
           >
-            Selected
+            {tx.selected}
           </button>
         </div>
 
@@ -2041,11 +2115,9 @@ export function GraphEditor({
           className={referenceOn ? styles.tabActive : styles.tab}
           aria-pressed={referenceOn}
           onClick={() => setReferenceOn((v) => !v)}
-          title={referenceOn
-            ? 'Reference graph on — the dashed ghosts are the curves as they were when you switched it on. Click to clear.'
-            : 'Reference graph — freeze a dashed ghost of the current curves to compare your edits against'}
+          title={referenceOn ? tx.referenceOnTitle : tx.referenceOffTitle}
         >
-          <Icon name="history" size="sm" /> Reference
+          <Icon name="history" size="sm" /> {tx.reference}
         </button>
 
         {/* Quick Ease Presets Group — aria-pressed + the active class reflect
@@ -2053,13 +2125,13 @@ export function GraphEditor({
             is applied?" instead of only "which ones exist?". */}
         {selectedKfData && (
           <div className={styles.btnGroup}>
-            <button type="button" className={pillClass('Ease')} aria-pressed={activePreset === 'Ease'} aria-label="Easy Ease" onClick={() => handleApplyPreset('Ease')} title="Easy Ease (F9)">
+            <button type="button" className={pillClass('Ease')} aria-pressed={activePreset === 'Ease'} aria-label={tx.easyEase} onClick={() => handleApplyPreset('Ease')} title={tx.easyEaseTitle}>
               <Icon name="ease" size="sm" />
             </button>
-            <button type="button" className={pillClass('EaseIn')} aria-pressed={activePreset === 'EaseIn'} aria-label="Easy Ease In" onClick={() => handleApplyPreset('EaseIn')} title="Easy Ease In (Shift+F9)">
+            <button type="button" className={pillClass('EaseIn')} aria-pressed={activePreset === 'EaseIn'} aria-label={tx.easyEaseIn} onClick={() => handleApplyPreset('EaseIn')} title={tx.easyEaseInTitle}>
               <Icon name="arrow-right" size="sm" />
             </button>
-            <button type="button" className={pillClass('EaseOut')} aria-pressed={activePreset === 'EaseOut'} aria-label="Easy Ease Out" onClick={() => handleApplyPreset('EaseOut')} title="Easy Ease Out (Ctrl+Shift+F9)">
+            <button type="button" className={pillClass('EaseOut')} aria-pressed={activePreset === 'EaseOut'} aria-label={tx.easyEaseOut} onClick={() => handleApplyPreset('EaseOut')} title={tx.easyEaseOutTitle}>
               <Icon name="arrow-left" size="sm" />
             </button>
           </div>
@@ -2075,8 +2147,8 @@ export function GraphEditor({
                 Hold live only here, not as pills too. See `easingVocabulary`. */}
             <select
               className={styles.select}
-              aria-label="Easing kind"
-              title="Interpolation kind for the selected keyframes"
+              aria-label={tx.easingKind}
+              title={tx.easingKindTitle}
               value={activeEasingKind(selectedKfData)}
               onChange={(e) => applyKind(e.target.value as EasingKind)}
             >
@@ -2089,12 +2161,10 @@ export function GraphEditor({
               type="button"
               className={selectedKfData.roving ? styles.iconBtnActive : styles.iconBtn}
               aria-pressed={!!selectedKfData.roving}
-              aria-label="Rove across time"
+              aria-label={tx.rove}
               disabled={!selectedKfData.canRove}
               onClick={toggleRoving}
-              title={selectedKfData.canRove
-                ? 'Rove Across Time — the keyframe keeps its value and gives up its time, so the speed through it is constant'
-                : 'The first and last keyframes of a track cannot rove'}
+              title={selectedKfData.canRove ? tx.roveTitle : tx.roveDisabledTitle}
             >
               <Icon name="stopwatch" size="sm" />
             </button>
@@ -2102,19 +2172,19 @@ export function GraphEditor({
             <button
               type="button"
               className={styles.iconBtn}
-              aria-label="Copy ease"
+              aria-label={tx.copyEase}
               onClick={() => copyEase(selectedKfData.selId)}
-              title="Copy this keyframe's easing"
+              title={tx.copyEaseTitle}
             >
               <Icon name="copy" size="sm" />
             </button>
             <button
               type="button"
               className={styles.iconBtn}
-              aria-label="Paste ease"
+              aria-label={tx.pasteEase}
               disabled={!hasCopiedEase}
               onClick={() => { void pasteEase(targetKfIds); }}
-              title={hasCopiedEase ? 'Paste the copied easing onto the selected keyframes' : 'Nothing copied yet'}
+              title={hasCopiedEase ? tx.pasteEaseTitle : tx.nothingCopied}
             >
               <Icon name="download" size="sm" />
             </button>
@@ -2129,14 +2199,14 @@ export function GraphEditor({
                 className={libraryOpen ? styles.iconBtnActive : styles.iconBtn}
                 aria-expanded={libraryOpen}
                 aria-haspopup="dialog"
-                aria-label="Ease library"
+                aria-label={tx.easeLibrary}
                 onClick={() => setLibraryOpen((v) => !v)}
-                title="Ease library — named curves, applied to the selected keyframes"
+                title={tx.easeLibraryTitle}
               >
                 <Icon name="curvature" size="sm" />
               </button>
               {libraryOpen && (
-                <div className={styles.popover} role="dialog" aria-label="Ease library">
+                <div className={styles.popover} role="dialog" aria-label={tx.easeLibrary}>
                   <EaseLibrarySection keyframeIds={targetKfIds} bezier={selectedKfData.bezier} />
                 </div>
               )}
@@ -2183,9 +2253,7 @@ export function GraphEditor({
                 type="button"
                 className={selectedKfData.continuous !== false ? styles.tabActive : styles.tab}
                 style={{ padding: '2px 6px', fontSize: 'var(--font-size-micro, 10px)', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                title={selectedKfData.continuous !== false
-                  ? 'Handles are linked — drag moves both sides (Alt-drag to split). Click to break.'
-                  : 'Handles are split — each side moves alone. Click to link.'}
+                title={selectedKfData.continuous !== false ? tx.linkedTitle : tx.brokenTitle}
                 onClick={() => {
                   const nextContinuous = selectedKfData.continuous === false;
                   const writes: MemberWrite[] = [{ t: selectedKfData.t, continuous: nextContinuous }];
@@ -2193,7 +2261,7 @@ export function GraphEditor({
                   void commitMemberWrites(nextContinuous ? 'Link Tangents' : 'Break Tangents', selectedKfData.nodeId, selectedKfData.prop, writes);
                 }}
               >
-                {selectedKfData.continuous !== false ? '🔗 Linked' : '🔓 Broken'}
+                {selectedKfData.continuous !== false ? tx.linked : tx.broken}
               </button>
             )}
 
@@ -2203,15 +2271,13 @@ export function GraphEditor({
 
         {allTracks.length === 0 && (
           <span className={styles.hint}>
-            {showingAllLayers
-              ? 'Nothing is animated yet — switch back to the layer bars and click a property’s stopwatch to add a keyframe'
-              : 'The selected layer has no keyframes — deselect it to see every animated layer'}
+            {showingAllLayers ? tx.emptyAll : tx.emptySelected}
           </span>
         )}
         {/* Something IS animated but nothing is plotted — say which gate ate it,
             or the panel reads as broken. */}
         {allTracks.length > 0 && tracks.length === 0 && (
-          <span className={styles.hint}>No animated property matches the timeline filter</span>
+          <span className={styles.hint}>{tx.noMatch}</span>
         )}
 
         {!showCurveList && tracks.map(({ nodeId, prop, color }) => {
@@ -2222,7 +2288,7 @@ export function GraphEditor({
               key={key}
               type="button"
               className={soloed ? styles.legendItem : styles.legendItemDim}
-              title={soloKeys ? 'Click to solo / Shift-click to toggle · click soloed chip to show all' : 'Click to solo this curve · Shift-click to multi-solo'}
+              title={soloKeys ? tx.soloActiveTitle : tx.soloTitle}
               onClick={(e) => toggleSolo(key, e.shiftKey)}
             >
               <span className={styles.legendDot} style={{ background: color }} />
@@ -2244,9 +2310,9 @@ export function GraphEditor({
 
       <div className={styles.plotRow}>
       {showCurveList && (
-        <div className={styles.curveList} role="list" aria-label="Curves">
+        <div className={styles.curveList} role="list" aria-label={tx.curves}>
           {tracks.length === 0 ? (
-            <p className={styles.curveListNote}>Animated properties are listed here.</p>
+            <p className={styles.curveListNote}>{tx.curvesNote}</p>
           ) : (
             tracks.map((t, i) => {
               const key = trackKey(t.nodeId, t.prop);
@@ -2263,7 +2329,7 @@ export function GraphEditor({
                     type="button"
                     className={cn(styles.curveListRow, soloed && styles.curveListRowOn, dimmed && styles.curveListRowDim)}
                     aria-pressed={soloed}
-                    title="Click to show only this curve · Shift-click to add or remove it · click again to show all"
+                    title={tx.curveRowTitle}
                     onClick={(e) => toggleSolo(key, e.shiftKey)}
                   >
                     <span className={styles.curveListDot} style={{ background: t.color }} />
@@ -2356,7 +2422,7 @@ export function GraphEditor({
                   style={{ pointerEvents: dimmed ? 'none' : 'stroke', cursor: 'pointer' }}
                   onPointerDown={(e) => onCurvePointerDown(e, nodeId, prop)}
                 >
-                  <title>{`Select ${prop} curve`}</title>
+                  <title>{t('timeline.graph.selectCurve', 'Select {prop} curve', { prop })}</title>
                 </path>
                 <path
                   className={styles.curve}
@@ -2433,7 +2499,7 @@ export function GraphEditor({
           })}
 
           {transformBox && (
-            <g aria-label="Transform box">
+            <g aria-label={tx.transformBox}>
               <rect
                 className={styles.transformBoxRect}
                 x={transformBox.x0}
@@ -2455,7 +2521,7 @@ export function GraphEditor({
                     style={{ cursor: h.cursor }}
                     onPointerDown={(e) => onBoxHandlePointerDown(e, h.edgeX, h.edgeY, transformBox)}
                   >
-                    <title>{h.edgeY === null ? 'Scale the keys in time' : h.edgeX === null ? 'Scale the values' : 'Scale time and values'}</title>
+                    <title>{h.edgeY === null ? tx.scaleTime : h.edgeX === null ? tx.scaleValues : tx.scaleBoth}</title>
                   </rect>
                 );
               })}
@@ -2585,14 +2651,15 @@ function KeyframeNumericStrip({
     applyKeyframeVelocity(kf.nodeId, kf.prop, kf.t, { ...velocity, ...patch });
   };
 
+  const tx = graphText();
   return (
-    <div className={styles.numericStrip} role="group" aria-label="Selected keyframe">
+    <div className={styles.numericStrip} role="group" aria-label={tx.selectedKeyframe}>
       <span className={styles.numericLabel}>{kf.prop}</span>
       <label className={styles.numericField}>
-        <span>Value</span>
+        <span>{tx.numValue}</span>
         <ValueField
           value={kf.value}
-          aria-label="Keyframe value"
+          aria-label={tx.keyframeValue}
           onChange={(v) => {
             // The graph plots MEMBER tracks (`graphTracksOf`), so the strip's
             // key is one member's: the value writes that member of the key.
@@ -2601,48 +2668,48 @@ function KeyframeNumericStrip({
         />
       </label>
       <label className={styles.numericField}>
-        <span>In speed</span>
+        <span>{tx.inSpeed}</span>
         <ValueField
           value={velocity.inSpeed}
           min={0}
           disabled={!hasIncoming}
           unit="/s"
-          aria-label="Incoming speed"
+          aria-label={tx.incomingSpeed}
           onChange={(v) => write({ inSpeed: v })}
         />
       </label>
       <label className={styles.numericField}>
-        <span>Out speed</span>
+        <span>{tx.outSpeed}</span>
         <ValueField
           value={velocity.outSpeed}
           min={0}
           disabled={!hasOutgoing}
           unit="/s"
-          aria-label="Outgoing speed"
+          aria-label={tx.outgoingSpeed}
           onChange={(v) => write({ outSpeed: v })}
         />
       </label>
       <label className={styles.numericField}>
-        <span>In inf.</span>
+        <span>{tx.inInfluence}</span>
         <ValueField
           value={velocity.inInfluence * 100}
           min={0.1}
           max={99.9}
           unit="%"
           disabled={!hasIncoming}
-          aria-label="Incoming influence"
+          aria-label={tx.incomingInfluence}
           onChange={(v) => write({ inInfluence: v / 100 })}
         />
       </label>
       <label className={styles.numericField}>
-        <span>Out inf.</span>
+        <span>{tx.outInfluence}</span>
         <ValueField
           value={velocity.outInfluence * 100}
           min={0.1}
           max={99.9}
           unit="%"
           disabled={!hasOutgoing}
-          aria-label="Outgoing influence"
+          aria-label={tx.outgoingInfluence}
           onChange={(v) => write({ outInfluence: v / 100 })}
         />
       </label>

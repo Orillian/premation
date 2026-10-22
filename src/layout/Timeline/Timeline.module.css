@@ -136,14 +136,18 @@
   overflow: auto;
   background: var(--color-timeline-bg);
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
+  /* No `scrollbar-width` / `scrollbar-color` here: in Chromium either one
+     switches the `::-webkit-scrollbar` rules below off, and those are the
+     only way to drop the horizontal bar while keeping the vertical one. */
 }
 
-/* Flat AE-style scrollbars in the timeline lanes */
+/* Flat AE-style scrollbars in the timeline lanes. Vertical only: the time
+   navigator over the lanes is the horizontal scroll (drag to pan, its ends
+   to zoom), so a second bar under the lanes was a duplicate (owner
+   2026-10-21). Shift+wheel and the trackpad still scroll sideways. */
 .lanes::-webkit-scrollbar {
   width: 5px;
-  height: 5px;
+  height: 0;
 }
 .lanes::-webkit-scrollbar-track {
   background: var(--color-scrollbar-track);
@@ -824,7 +828,7 @@
 .markerEditorRow input {
   min-width: 0;
   padding: 2px 6px;
-  background: var(--color-surface-2);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm, 3px);
   color: var(--color-text-primary);
@@ -1508,7 +1512,7 @@
   font-family: var(--font-family-sans);
   letter-spacing: -0.01em;
   color: var(--color-text-primary);
-  background: var(--color-surface-3);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
   padding: 0 4px;
@@ -2470,7 +2474,7 @@
 .extraColInput:focus {
   outline: none;
   border-color: var(--color-focus-ring);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
 }
 
 /* Where a dragged Library transition will land: a lit bar end. */

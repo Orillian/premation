@@ -13,6 +13,7 @@ import { Icon } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
 import { secondsToFlicks } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
+import { t } from '@core/i18n';
 import styles from './ExportPreview.module.css';
 
 interface ExportPreviewProps {
@@ -170,7 +171,7 @@ export function ExportPreview({
       className={styles.root}
       tabIndex={0}
       role="region"
-      aria-label="Export preview and scrubber"
+      aria-label={t('export.preview.region', 'Export preview and scrubber')}
       onKeyDown={handleKeyDown}
     >
       <div
@@ -184,34 +185,34 @@ export function ExportPreview({
             <span>{error}</span>
           </div>
         ) : !ready ? (
-          <div className={styles.overlayMuted}>Preparing preview…</div>
+          <div className={styles.overlayMuted}>{t('export.preview.preparing', 'Preparing preview…')}</div>
         ) : null}
       </div>
 
       {singleFrame ? (
         <div className={styles.scrubRow}>
-          <span className={styles.timecode}>{timecode(time, fps)} · playhead</span>
+          <span className={styles.timecode}>{t('export.preview.playhead', '{time} · playhead', { time: timecode(time, fps) })}</span>
         </div>
       ) : (
         <div className={styles.scrubRow}>
           <IconButton
-            aria-label={isPlaying ? 'Pause preview (Space)' : 'Play preview (Space)'}
+            aria-label={isPlaying ? t('export.preview.pause', 'Pause preview (Space)') : t('export.preview.play', 'Play preview (Space)')}
             size="sm"
             disabled={disabled}
             onClick={() => setIsPlaying((p) => !p)}
-            title={isPlaying ? 'Pause preview (Space)' : 'Play preview (Space)'}
+            title={isPlaying ? t('export.preview.pause', 'Pause preview (Space)') : t('export.preview.play', 'Play preview (Space)')}
           >
             <Icon name={isPlaying ? 'pause' : 'play'} size="sm" />
           </IconButton>
           <IconButton
-            aria-label="Previous frame (Left arrow)"
+            aria-label={t('export.preview.prevFrame', 'Previous frame (Left arrow)')}
             size="sm"
             disabled={disabled || clampedFrame <= 0}
             onClick={() => {
               setIsPlaying(false);
               setFrame((f) => Math.max(0, f - 1));
             }}
-            title="Previous frame (Left arrow)"
+            title={t('export.preview.prevFrame', 'Previous frame (Left arrow)')}
           >
             <Icon name="chevron-left" size="sm" />
           </IconButton>
@@ -223,21 +224,21 @@ export function ExportPreview({
             step={1}
             value={clampedFrame}
             disabled={disabled}
-            aria-label="Preview frame"
+            aria-label={t('export.preview.frame', 'Preview frame')}
             onChange={(e) => {
               setIsPlaying(false);
               setFrame(Number(e.target.value));
             }}
           />
           <IconButton
-            aria-label="Next frame (Right arrow)"
+            aria-label={t('export.preview.nextFrame', 'Next frame (Right arrow)')}
             size="sm"
             disabled={disabled || clampedFrame >= frameCount - 1}
             onClick={() => {
               setIsPlaying(false);
               setFrame((f) => Math.min(frameCount - 1, f + 1));
             }}
-            title="Next frame (Right arrow)"
+            title={t('export.preview.nextFrame', 'Next frame (Right arrow)')}
           >
             <Icon name="chevron-right" size="sm" />
           </IconButton>

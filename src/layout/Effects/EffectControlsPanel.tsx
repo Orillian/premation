@@ -28,6 +28,7 @@ import { EffectStack } from './EffectStack';
 import { copyEffectsEdit, pasteEffectsEdit, saveEffectPresetEdit, setLayerEffectsEnabledEdit } from './effectEdits';
 import { notifyEffectPresetsChanged } from './EffectsPanel';
 import styles from './EffectsPanel.module.css';
+import { t } from '@core/i18n';
 
 const isObject = (v: unknown): boolean => !!v && typeof v === 'object';
 
@@ -61,10 +62,10 @@ function clipboardChanged(): void {
 /** Ask for a name, then save the layer's whole stack as an effect preset (the Effects & Presets browser lists it). */
 async function saveStackAsPreset(layerId: string): Promise<void> {
   const name = await customPrompt(
-    'Save Effect Preset',
-    'Name this effect stack so you can apply it to other layers.',
+    t('effects.controls.savePresetTitle', 'Save Effect Preset'),
+    t('effects.controls.savePresetBody', 'Name this effect stack so you can apply it to other layers.'),
     '',
-    { placeholder: 'My preset', confirmLabel: 'Save' },
+    { placeholder: t('effects.controls.savePresetPlaceholder', 'My preset'), confirmLabel: t('effects.controls.save', 'Save') },
   );
   if (name?.trim() && await saveEffectPresetEdit(layerId, name.trim())) notifyEffectPresetsChanged();
 }
@@ -79,7 +80,7 @@ export function effectStackMenuRows(layerId: string | null, effectCount: number,
     {
       type: 'item',
       id: 'fx-copy-stack',
-      label: 'Copy Stack',
+      label: t('effects.controls.copyStack', 'Copy Stack'),
       icon: 'copy',
       disabled: !layerId || effectCount === 0,
       onSelect: () => { if (layerId) void copyEffectsEdit(layerId).then(clipboardChanged); },
@@ -87,7 +88,11 @@ export function effectStackMenuRows(layerId: string | null, effectCount: number,
     {
       type: 'item',
       id: 'fx-paste',
-      label: clipboardCount > 0 ? `Paste ${clipboardCount} Effect${clipboardCount === 1 ? '' : 's'}` : 'Paste Effects',
+      label: clipboardCount > 0
+        ? clipboardCount === 1
+          ? t('effects.controls.pasteOne', 'Paste {n} Effect', { n: clipboardCount })
+          : t('effects.controls.pasteOther', 'Paste {n} Effects', { n: clipboardCount })
+        : t('effects.controls.paste', 'Paste Effects'),
       icon: 'plus',
       disabled: !layerId || clipboardCount === 0,
       onSelect: () => { if (layerId) void pasteEffectsEdit([layerId]); },
@@ -95,7 +100,7 @@ export function effectStackMenuRows(layerId: string | null, effectCount: number,
     {
       type: 'item',
       id: 'fx-save-preset',
-      label: 'Save Stack as Preset…',
+      label: t('effects.controls.saveStack', 'Save Stack as Preset…'),
       icon: 'star',
       disabled: !layerId || effectCount === 0,
       onSelect: () => { if (layerId) void saveStackAsPreset(layerId); },
@@ -179,13 +184,15 @@ export function EffectControlsPanel(): JSX.Element {
   if (!target || !node) {
     return (
       <div className={styles.controlsRoot}>
-        <p className={styles.controlsEmpty}>Select a layer to see its effects.</p>
+        <p className={styles.controlsEmpty}>{t('effects.controls.selectLayer', 'Select a layer to see its effects.')}</p>
       </div>
     );
   }
 
-  const layerName = node.name?.trim() || `Layer: ${target}`;
-  const fxLabel = masterFx ? 'Turn this layer’s effects off' : 'Turn this layer’s effects on';
+  const layerName = node.name?.trim() || t('effects.controls.layerFallback', 'Layer: {id}', { id: target });
+  const fxLabel = masterFx
+    ? t('effects.controls.fxOff', 'Turn this layer’s effects off')
+    : t('effects.controls.fxOn', 'Turn this layer’s effects on');
 
   return (
     <div className={styles.controlsRoot}>
@@ -210,9 +217,9 @@ export function EffectControlsPanel(): JSX.Element {
           size="sm"
           variant="ghost"
           active={locked}
-          aria-label={locked ? 'Unlock Effect Controls' : 'Lock Effect Controls to this layer'}
+          aria-label={locked ? t('effects.controls.unlock', 'Unlock Effect Controls') : t('effects.controls.lock', 'Lock Effect Controls to this layer')}
           aria-pressed={locked}
-          tooltip={locked ? 'Unlock Effect Controls' : 'Lock Effect Controls to this layer'}
+          tooltip={locked ? t('effects.controls.unlock', 'Unlock Effect Controls') : t('effects.controls.lock', 'Lock Effect Controls to this layer')}
           onClick={() => setLocked(!locked)}
         >
           <Icon name={locked ? 'lock' : 'unlock'} size="sm" />
@@ -222,7 +229,7 @@ export function EffectControlsPanel(): JSX.Element {
       <div className={styles.controlsBody}>
         <EffectControlsBody
           nodeId={target}
-          empty={<p className={styles.controlsEmpty}>No effects — add one from Effects &amp; Presets.</p>}
+          empty={<p className={styles.controlsEmpty}>{t('effects.controls.noEffects', 'No effects — add one from Effects & Presets.')}</p>}
         />
       </div>
     </div>

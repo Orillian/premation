@@ -62,12 +62,16 @@
   --color-hover:             var(--surface-hover);
   --color-active:            var(--surface-active);
   --color-pressed:           var(--surface-active);
+  --color-tool-pressed:      var(--surface-active);
   --color-overlay-hover:     var(--surface-hover);
   --color-overlay-active:    var(--surface-active);
 
   /* A solid, opaque ring three pixels wide — the alpha ring dark.css uses
      disappears against a light control. */
   --color-focus-ring:        var(--color-amber-400);
+  /* Dock drop zones while a panel is dragged (After Effects' violet). */
+  --color-dock-zone:         rgba(116, 104, 232, 0.55);
+  --color-dock-zone-edge:    var(--color-amber-400);
   --shadow-focus-ring:       0 0 0 var(--border-width-focus) var(--color-focus-ring);
 
   --color-info:              var(--color-neutral-100);
@@ -114,10 +118,13 @@
     --color-hover:             var(--surface-hover);
     --color-active:            var(--surface-active);
     --color-pressed:           var(--surface-active);
+    --color-tool-pressed:      var(--surface-active);
     --color-overlay-hover:     var(--surface-hover);
     --color-overlay-active:    var(--surface-active);
 
     --color-focus-ring:        var(--color-amber-400);
+    --color-dock-zone:         rgba(116, 104, 232, 0.55);
+    --color-dock-zone-edge:    var(--color-amber-400);
     --shadow-focus-ring:       0 0 0 var(--border-width-focus) var(--color-focus-ring);
 
     --color-info:              var(--color-neutral-100);

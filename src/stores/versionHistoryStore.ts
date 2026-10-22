@@ -16,6 +16,7 @@ import type { EditorDocument } from '@core/api/cloudDocument';
 import { getCloudProjectId } from './cloudProjectStore';
 import { useProjectStore } from './projectStore';
 import { useUIStore } from './uiStore';
+import { t } from '@core/i18n';
 
 /**
  * Versions per page.
@@ -63,7 +64,7 @@ export const useVersionHistoryStore = create<VersionHistoryState>((set, get) => 
     if (!projectId) {
       set({
         status: 'error',
-        error: 'Open a cloud project to see its history.',
+        error: t('stores.versionHistory.noCloudProject', 'Open a cloud project to see its history.'),
         versions: [],
         total: 0,
       });
@@ -86,7 +87,7 @@ export const useVersionHistoryStore = create<VersionHistoryState>((set, get) => 
       }
       set({ versions: result.items, total: result.total, status: 'ready' });
     } catch (err) {
-      set({ status: 'error', error: (err as Error).message || 'Could not load history' });
+      set({ status: 'error', error: (err as Error).message || t('stores.versionHistory.loadFailed', 'Could not load history') });
     }
   },
 
@@ -100,7 +101,9 @@ export const useVersionHistoryStore = create<VersionHistoryState>((set, get) => 
       await api.saveVersion(projectId, { kind: 'manual', label, time });
       useUIStore.getState().notify({
         level: 'success',
-        message: label ? `Saved version “${label}”.` : 'Saved a version checkpoint.',
+        message: label
+          ? t('stores.versionHistory.savedNamed', 'Saved version “{label}”.', { label })
+          : t('stores.versionHistory.saved', 'Saved a version checkpoint.'),
         durationMs: 3000,
       });
       // Back to page 1 — the version just saved is the newest, and the point of
@@ -109,7 +112,7 @@ export const useVersionHistoryStore = create<VersionHistoryState>((set, get) => 
     } catch (err) {
       useUIStore.getState().notify({
         level: 'error',
-        message: `Couldn't save version: ${(err as Error).message}`,
+        message: t('stores.versionHistory.saveFailed', "Couldn't save version: {error}", { error: (err as Error).message }),
         durationMs: 4000,
       });
     }
@@ -124,14 +127,14 @@ export const useVersionHistoryStore = create<VersionHistoryState>((set, get) => 
       if (!(await apply(project.document as EditorDocument))) throw new Error('the editor could not load that version');
       useUIStore.getState().notify({
         level: 'success',
-        message: 'Restored the selected version into the editor.',
+        message: t('stores.versionHistory.restored', 'Restored the selected version into the editor.'),
         durationMs: 3000,
       });
       await get().load();
     } catch (err) {
       useUIStore.getState().notify({
         level: 'error',
-        message: `Couldn't restore version: ${(err as Error).message}`,
+        message: t('stores.versionHistory.restoreFailed', "Couldn't restore version: {error}", { error: (err as Error).message }),
         durationMs: 4000,
       });
     } finally {

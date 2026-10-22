@@ -9,6 +9,7 @@
  */
 
 import type { AutoPlanSummary, TrackerMode } from '@stores/trackerStore';
+import { t } from '@core/i18n';
 
 export const FEATURE_SIZES = [5, 10, 15, 20];
 export const SEARCH_SIZES = [12, 24, 40, 60];
@@ -26,31 +27,37 @@ export function sizeOptions(presets: readonly number[], current: number): number
   return presets.includes(current) ? [...presets] : [...presets, current].sort((a, b) => a - b);
 }
 
-export const MODE_LABELS: Record<TrackerMode, string> = {
-  follow: 'Follow (position)',
-  transform: 'Follow + rotation & scale',
-  stabilize: 'Stabilize',
-  smooth: 'Smooth stabilize (dense)',
-  corner: 'Planar / Corner pin',
-  mask: 'Track mask',
-  planar: 'Planar tracker (surface)',
-  camera: '3D Camera Tracker',
-  face: 'Face tracking',
-};
+/** Display label per mode. A function so `t()` runs after the catalogue loads. */
+export function modeLabels(): Record<TrackerMode, string> {
+  return {
+  follow: t('inspector.trackMotion.modeFollow', 'Follow (position)'),
+  transform: t('inspector.trackMotion.modeTransform', 'Follow + rotation & scale'),
+  stabilize: t('inspector.trackMotion.modeStabilize', 'Stabilize'),
+  smooth: t('inspector.trackMotion.modeSmooth', 'Smooth stabilize (dense)'),
+  corner: t('inspector.trackMotion.modeCorner', 'Planar / Corner pin'),
+  mask: t('inspector.trackMotion.modeMask', 'Track mask'),
+  planar: t('inspector.trackMotion.modePlanar', 'Planar tracker (surface)'),
+  camera: t('inspector.trackMotion.modeCamera', '3D Camera Tracker'),
+  face: t('inspector.trackMotion.modeFace', 'Face tracking'),
+  };
+}
 
-export const MODE_HINTS: Record<TrackerMode, string> = {
-  follow: 'Drag the point onto the feature to follow, track, then apply as position keyframes on a target layer.',
-  transform:
-    'Two points: the ANCHOR drives position, the anchor→reference vector drives rotation and scale. Put both on the same rigid surface.',
-  stabilize: 'Drag the point onto the feature to lock, track, then apply — this layer moves inversely so the feature stays put.',
-  smooth:
-    'No points to place: dense optical flow measures the camera’s motion. Default = global similarity (Warp Stabilizer-class). Subspace / rolling-shutter variants bake a Mesh Warp lattice instead.',
-  corner: 'Planar track: drag corners onto the plane (TL, TR, BR, BL). “Dense grid” tracks a feature lattice inside the quad and fits the plane by RANSAC, so partial occlusion cannot drag it. Track, then pin / mesh / Solve 3D Camera Tracker (SfM + bundle adjustment). Two+ quads → Create Nulls per Plane.',
-  mask: 'Tracks every vertex of this layer’s mask and writes mask keyframes — the mask follows the footage. Seed Matte and Segment run the SAM model in the engine; Roto Brush propagates that matte through the shot.',
-  planar: 'Mocha-class planar tracking: drag the four corners around a flat, textured REGION (TL, TR, BR, BL). Everything inside it is tracked as one plane, so the corners can leave the frame or be covered. Exclude masks over occluders. Surface Adjust puts the insert’s corners anywhere on that plane. Apply as a corner pin.',
-  camera: 'Analyses the shot automatically: features across the frame, the camera’s path and lens, and the scene’s points. Then pick track points in the viewer to set the ground plane, or create a text, solid, null or shadow catcher on them.',
-  face: 'Draw a mask around the face first. Outline Only follows the face outline as a mask; Detailed Features adds masks for eyes, brows and mouth and nulls for the eyes, pupils, nose, mouth and chin.',
-};
+/** One-paragraph explanation per mode. A function for the same reason. */
+export function modeHints(): Record<TrackerMode, string> {
+  return {
+  follow: t('inspector.trackMotion.hintFollow', 'Drag the point onto the feature to follow, track, then apply as position keyframes on a target layer.'),
+  transform: t('inspector.trackMotion.hintTransform',
+    'Two points: the ANCHOR drives position, the anchor→reference vector drives rotation and scale. Put both on the same rigid surface.'),
+  stabilize: t('inspector.trackMotion.hintStabilize', 'Drag the point onto the feature to lock, track, then apply — this layer moves inversely so the feature stays put.'),
+  smooth: t('inspector.trackMotion.hintSmooth',
+    'No points to place: dense optical flow measures the camera’s motion. Default = global similarity (Warp Stabilizer-class). Subspace / rolling-shutter variants bake a Mesh Warp lattice instead.'),
+  corner: t('inspector.trackMotion.hintCorner', 'Planar track: drag corners onto the plane (TL, TR, BR, BL). “Dense grid” tracks a feature lattice inside the quad and fits the plane by RANSAC, so partial occlusion cannot drag it. Track, then pin / mesh / Solve 3D Camera Tracker (SfM + bundle adjustment). Two+ quads → Create Nulls per Plane.'),
+  mask: t('inspector.trackMotion.hintMask', 'Tracks every vertex of this layer’s mask and writes mask keyframes — the mask follows the footage. Seed Matte and Segment run the SAM model in the engine; Roto Brush propagates that matte through the shot.'),
+  planar: t('inspector.trackMotion.hintPlanar', 'Mocha-class planar tracking: drag the four corners around a flat, textured REGION (TL, TR, BR, BL). Everything inside it is tracked as one plane, so the corners can leave the frame or be covered. Exclude masks over occluders. Surface Adjust puts the insert’s corners anywhere on that plane. Apply as a corner pin.'),
+  camera: t('inspector.trackMotion.hintCamera', 'Analyses the shot automatically: features across the frame, the camera’s path and lens, and the scene’s points. Then pick track points in the viewer to set the ground plane, or create a text, solid, null or shadow catcher on them.'),
+  face: t('inspector.trackMotion.hintFace', 'Draw a mask around the face first. Outline Only follows the face outline as a mask; Detailed Features adds masks for eyes, brows and mouth and nulls for the eyes, pupils, nose, mouth and chin.'),
+  };
+}
 
 /**
  * How trustworthy the chosen feature is, as one word.
@@ -63,8 +70,8 @@ export const MODE_HINTS: Record<TrackerMode, string> = {
 export function qualityOf(plan: AutoPlanSummary): { level: 'good' | 'fair' | 'poor'; label: string } | null {
   // Not measured: no verdict (a badge the engine did not earn is worse than none).
   if (plan.distinctness === null) return null;
-  if (plan.distinctness >= 0.6) return { level: 'good', label: 'Strong feature' };
-  if (plan.distinctness >= 0.35) return { level: 'fair', label: 'Usable feature' };
-  return { level: 'poor', label: 'Ambiguous feature' };
+  if (plan.distinctness >= 0.6) return { level: 'good', label: t('inspector.trackMotion.qualityStrong', 'Strong feature') };
+  if (plan.distinctness >= 0.35) return { level: 'fair', label: t('inspector.trackMotion.qualityUsable', 'Usable feature') };
+  return { level: 'poor', label: t('inspector.trackMotion.qualityAmbiguous', 'Ambiguous feature') };
 }
 

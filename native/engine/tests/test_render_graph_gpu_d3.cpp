@@ -523,8 +523,9 @@ TEST_CASE("mip-mapped textures: the chain is generated and minification filters 
   CHECK(mip_levels(256, 1) == 9);
   CHECK(mip_levels(1, 1) == 1);
   // 256² of deterministic 0/255 noise (an LCG), drawn at 32² (8:1). Mipped:
-  // every output pixel is the mean of its 64-texel footprint (≈ mid grey, low
-  // spread). Un-mipped: bilinear reads 4 texels, the rest alias.
+  // every output pixel is the mean of its footprint (≈ mid grey, low spread).
+  // A 2D layer is mipped at draw whether or not its blob asks (composition_pass
+  // layer_texture): bilinear reading 4 of 64 texels aliased small layers.
   std::vector<std::uint8_t> noise(256 * 256 * 4);
   std::uint32_t lcg = 12345;
   for (std::size_t i = 0; i < noise.size(); i += 4) {
@@ -555,10 +556,10 @@ TEST_CASE("mip-mapped textures: the chain is generated and minification filters 
     return std::sqrt(std::max(0.0, sum2 / n - (sum / n) * (sum / n)));
   };
   const double mipped = spread(true);
-  const double aliased = spread(false);
-  std::printf("[measure] 8:1 minified 0/255 noise, output std-dev: mip-mapped %.1f, single level %.1f\n", mipped, aliased);
+  const double single = spread(false);
+  std::printf("[measure] 8:1 minified 0/255 noise, output std-dev: mip-mapped blob %.1f, single-level blob %.1f\n", mipped, single);
   CHECK(mipped < 20);
-  CHECK(aliased > 40);
+  CHECK(single < 20);
 }
 
 TEST_CASE("the overlay pass draws the grid, the proportional grid and guides (OverlayPass.ts)", "[overlay][gpu]") {

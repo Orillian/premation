@@ -31,6 +31,7 @@ import { activeCompIdNow } from '@hooks/useMirror';
 import { compLayersDeep } from '@core/mirror/layerFields';
 import { liveComps } from '@core/mirror/compNames';
 import { reorderCommands, withGroupMembers } from '@layout/Workspace/layerMenuEdits';
+import { t } from '@core/i18n';
 
 // ── A sequence as one entry ───────────────────────────────────────────
 
@@ -350,9 +351,17 @@ export function compositionDeleteSummary(compId: string): { layers: number; used
  */
 export function deleteCompositionWarning(name: string, compId: string): string {
   const { layers, usedBy } = compositionDeleteSummary(compId);
-  const own = layers > 0 ? ` and its ${layers} layer${layers === 1 ? '' : 's'}` : '';
-  const uses = usedBy > 0 ? ` It is used by ${usedBy} layer${usedBy === 1 ? '' : 's'} in other compositions, which will be removed too.` : '';
-  return `Delete “${name}”${own}?${uses}`;
+  const question = layers === 0
+    ? t('scene.deleteComp.question', 'Delete “{name}”?', { name })
+    : layers === 1
+      ? t('scene.deleteComp.questionLayersOne', 'Delete “{name}” and its {n} layer?', { name, n: layers })
+      : t('scene.deleteComp.questionLayersOther', 'Delete “{name}” and its {n} layers?', { name, n: layers });
+  const uses = usedBy === 0
+    ? ''
+    : usedBy === 1
+      ? t('scene.deleteComp.usedByOne', 'It is used by {n} layer in other compositions, which will be removed too.', { n: usedBy })
+      : t('scene.deleteComp.usedByOther', 'It is used by {n} layers in other compositions, which will be removed too.', { n: usedBy });
+  return uses ? `${question} ${uses}` : question;
 }
 
 /**

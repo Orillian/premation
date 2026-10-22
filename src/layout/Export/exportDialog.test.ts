@@ -40,7 +40,7 @@ describe('Export composition dialog', () => {
   it('pins the filename and Export action in a DialogFooter', () => {
     expect(DIALOG).toMatch(/<DialogFooter/);
     expect(DIALOG).toMatch(/styles\.fileName/);
-    expect(DIALOG).toMatch(/: 'Export'/);
+    expect(DIALOG).toMatch(/: (t\('[\w.]+', )?'Export'/);
   });
 
   it('surfaces alpha even when the format cannot carry it', () => {

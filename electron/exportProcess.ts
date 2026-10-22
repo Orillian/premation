@@ -580,6 +580,9 @@ export class ExportSupervisor {
       switch (outcome.kind) {
         case 'completed':
           job.progress = { ...job.progress, fraction: 1, frame: job.spec.totalFrames, etaSec: 0 };
+          // What the frames were drawn without (the engine's preflight line): the file is complete, the user is told.
+          if (outcome.warnings && outcome.warnings.length > 0) job.warnings = outcome.warnings;
+          else delete job.warnings;
           this.settle(job, 'completed');
           return;
         case 'failed':

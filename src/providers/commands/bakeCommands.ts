@@ -14,6 +14,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import type { Command } from '@core/commands/Command';
 import { jsonField } from '@core/mirror/layerFields';
 import { documentMirror } from '@stores/documentMirror';
@@ -61,7 +62,7 @@ export function buildBakeCommands(): ReadonlyArray<Command> {
       execute: () => {
         const ids = selectedPhysicsLayers();
         if (ids.length === 0) {
-          warn('Select a layer with a rigid body first.');
+          warn(t('providers.bake.selectRigidBody', 'Select a layer with a rigid body first.'));
           return;
         }
         void runPhysicsBake(ids, defaultRange());
@@ -75,7 +76,7 @@ export function buildBakeCommands(): ReadonlyArray<Command> {
       execute: () => {
         const id = selectedEmitterLayers()[0];
         if (!id) {
-          warn('Select a particle emitter first.');
+          warn(t('providers.bake.selectEmitter', 'Select a particle emitter first.'));
           return;
         }
         void runParticleBake(id, { ...defaultRange(), maxParticles: DEFAULT_PARTICLE_BAKE_CAP });

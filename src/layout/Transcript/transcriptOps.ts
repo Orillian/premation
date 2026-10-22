@@ -60,6 +60,7 @@ import {
   type TranscriptWord,
 } from '@core/captions/transcriptEdit';
 import { useTranscriptStore, type CompTranscript } from './transcriptStore';
+import { t } from '@core/i18n';
 
 /**
  * The active composition's id (B4: resolved against the document mirror —
@@ -116,20 +117,22 @@ export function transcribeScope(): TranscribeScope {
       return {
         start,
         end,
-        label: selected.length === 1 ? 'selected layer' : `${selected.length} selected layers`,
+        label: selected.length === 1
+          ? t('transcript.scope.selectedOne', 'selected layer')
+          : t('transcript.scope.selectedOther', '{n} selected layers', { n: selected.length }),
       };
     }
   }
 
   const work = settingsSetWorkArea(m.comp(activeCompId())?.settings);
   if (work && work.end > work.start) {
-    return { start: work.start, end: work.end, label: 'work area' };
+    return { start: work.start, end: work.end, label: t('transcript.scope.workArea', 'work area') };
   }
 
   return {
     start: 0,
     end: settingsDurationSeconds(documentMirror().comp(activeCompId())?.settings),
-    label: 'composition',
+    label: t('transcript.scope.composition', 'composition'),
   };
 }
 
@@ -181,7 +184,7 @@ export async function runTranscription(scope: TranscribeScope = transcribeScope(
   } catch (err) {
     const message = err instanceof TranscribeError
       ? err.message
-      : `Transcription failed: ${String(err)}`;
+      : t('transcript.ops.failed', 'Transcription failed: {error}', { error: String(err) });
     useTranscriptStore.getState().setError(message);
     useTranscriptStore.getState().setPhase('idle');
     notify(message, 'error', 8000);
@@ -324,8 +327,7 @@ export async function deleteSelectedWords(
   const scoped = state.restrictToSelection ? useSelectionStore.getState().ids : [];
   if (state.restrictToSelection && scoped.length === 0) {
     notify(
-      'No layers are selected, so there is nothing to cut. Select the layers to cut, '
-      + 'or turn off “Selected layers only”.',
+      t('transcript.ops.noSelection', 'No layers are selected, so there is nothing to cut. Select the layers to cut, or turn off “Selected layers only”.'),
       'warning',
     );
     return null;
@@ -334,8 +336,7 @@ export async function deleteSelectedWords(
   const result = await deleteTimeRanges(ranges, { nodeIds: scoped });
   useTranscriptStore.getState().replaceWords(rootId, applyDeletionsToWords(transcript.words, ranges));
   notify(
-    `Removed ${result.removedSeconds.toFixed(2)}s — ${result.deletedClips} clip piece(s) deleted, `
-    + `${result.splits} clip(s) split`,
+    t('transcript.ops.removed', 'Removed {seconds}s — {deleted} clip piece(s) deleted, {splits} clip(s) split', { seconds: result.removedSeconds.toFixed(2), deleted: result.deletedClips, splits: result.splits }),
   );
   return result;
 }
@@ -359,7 +360,7 @@ export function transcriptCues(rootId: string = activeCompId()): Cue[] {
 export async function addTranscriptAsCaptions(rootId: string = activeCompId()): Promise<number> {
   const cues = transcriptCues(rootId);
   if (cues.length === 0) {
-    notify('There is no transcript to add. Transcribe the composition first.', 'warning');
+    notify(t('transcript.ops.nothingToAdd', 'There is no transcript to add. Transcribe the composition first.'), 'warning');
     return 0;
   }
   // Replacing, not adding — the same argument `captionCommands.importCaptions`
@@ -379,8 +380,9 @@ export async function addTranscriptAsCaptions(rootId: string = activeCompId()): 
   const ids = e.added > 0 ? ((res.value.at(-1) as { layers?: string[] } | undefined)?.layers ?? []) : [];
   if (ids.length > 0) useSelectionStore.getState().set(ids);
   notify(
-    `Added ${ids.length} caption layer(s) from the transcript`
-    + (e.removed > 0 ? ` (replaced ${e.removed})` : ''),
+    e.removed > 0
+      ? t('transcript.ops.captionsAddedReplaced', 'Added {n} caption layer(s) from the transcript (replaced {removed})', { n: ids.length, removed: e.removed })
+      : t('transcript.ops.captionsAdded', 'Added {n} caption layer(s) from the transcript', { n: ids.length }),
   );
   return ids.length;
 }
@@ -389,7 +391,7 @@ export async function addTranscriptAsCaptions(rootId: string = activeCompId()): 
 export function exportTranscript(format: 'srt' | 'vtt', rootId: string = activeCompId()): boolean {
   const cues = transcriptCues(rootId);
   if (cues.length === 0) {
-    notify('There is no transcript to export. Transcribe the composition first.', 'warning');
+    notify(t('transcript.ops.nothingToExport', 'There is no transcript to export. Transcribe the composition first.'), 'warning');
     return false;
   }
   const text = format === 'srt' ? toSrt(cues) : toVtt(cues);
@@ -398,6 +400,6 @@ export function exportTranscript(format: 'srt' | 'vtt', rootId: string = activeC
     new Blob([text], { type: format === 'srt' ? 'application/x-subrip' : 'text/vtt' }),
     `${stem}.${format}`,
   );
-  notify(`Exported ${cues.length} cue(s)`);
+  notify(t('transcript.ops.exported', 'Exported {n} cue(s)', { n: cues.length }));
   return true;
 }

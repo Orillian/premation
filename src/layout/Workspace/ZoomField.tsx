@@ -17,6 +17,7 @@ import { Dropdown } from '@components/Dropdown';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import styles from './ZoomField.module.css';
 import tool from './viewportToolButton.module.css';
+import { t } from '@core/i18n';
 
 /** Magnification presets (AE's zoom menu). 100 = 1:1. */
 export const ZOOM_PRESETS = [12.5, 25, 50, 75, 100, 150, 200, 400, 800] as const;
@@ -27,7 +28,7 @@ export const ZOOM_PRESETS = [12.5, 25, 50, 75, 100, 150, 200, 400, 800] as const
  */
 export function zoomMenuItems(zoom: number): DropdownItem[] {
   return [
-    { type: 'item', id: 'zoom-fit', label: 'Fit in view', icon: 'fit', onSelect: () => getWorkspaceController().fitComposition() },
+    { type: 'item', id: 'zoom-fit', label: t('workspace.zoom.fit', 'Fit in view'), icon: 'fit', onSelect: () => getWorkspaceController().fitComposition() },
     { type: 'separator' },
     ...ZOOM_PRESETS.map<DropdownItem>((pct) => ({
       type: 'checkbox',
@@ -132,7 +133,7 @@ function ScrubField({
       <input
         ref={inputRef}
         className={styles.scrubInput}
-        aria-label="Zoom percentage"
+        aria-label={t('workspace.zoom.percentage', 'Zoom percentage')}
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         onBlur={onBlur}
@@ -159,7 +160,7 @@ export function ZoomField(): JSX.Element {
   const zoom = useZoomPercent();
 
   return (
-    <span className={styles.zoomGroup} role="group" aria-label="Viewport zoom">
+    <span className={styles.zoomGroup} role="group" aria-label={t('workspace.zoom.group', 'Viewport zoom')}>
       <ScrubField
         value={zoom}
         onChange={(v) => getWorkspaceController().setZoomPercent(v)}
@@ -168,12 +169,12 @@ export function ZoomField(): JSX.Element {
         max={6400}
         step={1}
         digits={0}
-        title="Magnification · drag or double-click to type (wheel, + and − zoom too)"
+        title={t('workspace.zoom.magnification', 'Magnification · drag or double-click to type (wheel, + and − zoom too)')}
       />
       <Dropdown
         placement="top-end"
         trigger={
-          <button type="button" className={styles.tool} title="Magnification presets — Fit, 12.5% … 800%" aria-label="Magnification presets">
+          <button type="button" className={styles.tool} title={t('workspace.zoom.presetsTitle', 'Magnification presets — Fit, 12.5% … 800%')} aria-label={t('workspace.zoom.presets', 'Magnification presets')}>
             <Icon name="chevron-down" size="sm" className={tool.chevron} />
           </button>
         }

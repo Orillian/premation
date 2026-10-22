@@ -6,6 +6,7 @@
 
 import { Icon } from '@components/Icon';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
+import { t } from '@core/i18n';
 import styles from './BottomTimeline.module.css';
 
 export interface TimelineToolbarOverflowProps {
@@ -21,8 +22,8 @@ export function TimelineToolbarOverflow({ viewItems }: TimelineToolbarOverflowPr
         <button
           type="button"
           className={styles.toggleIcon}
-          aria-label="More timeline tools"
-          title="View — timeline tool, playhead follow, shy layers, columns, row height, preview cache. Widen the track header column to bring the View button back."
+          aria-label={t('timeline.toolbar.moreTools', 'More timeline tools')}
+          title={t('timeline.toolbar.moreToolsTitle', 'View — timeline tool, playhead follow, shy layers, columns, row height, preview cache. Widen the track header column to bring the View button back.')}
         >
           <Icon name="more-horizontal" size="sm" />
         </button>

@@ -30,6 +30,7 @@ Mat3 fullscreen() { return affine(2.0F, 0.0F, 0.0F, -2.0F, -1.0F, 1.0F); }
 struct TexturedU {
   Mat3 mvp;
   std::array<float, 4> uvRect, tint, cr0, cr1, cr2, srcSpace;
+  std::array<float, 4> edge;  // textured.wgsl's layer edge: zero, the quad as it is
 };
 struct BlurU {
   Mat3 mvp;
@@ -43,7 +44,7 @@ struct PresentU {
   std::array<float, 4> dst, color;
   std::array<std::uint32_t, 4> info;
 };
-static_assert(sizeof(TexturedU) == 144 && sizeof(BlurU) == 80 && sizeof(VignetteU) == 112 && sizeof(PresentU) == 48);
+static_assert(sizeof(TexturedU) == 160 && sizeof(BlurU) == 80 && sizeof(VignetteU) == 112 && sizeof(PresentU) == 48);
 
 wgpu::ShaderModule compile(const wgpu::Device& device, const char* code, const char* label) {
   wgpu::ShaderSourceWGSL wgsl{};

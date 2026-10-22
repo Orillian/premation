@@ -14,6 +14,7 @@
 
 import type { DropdownItem } from '@components/Dropdown';
 import { BLEND_MODES, type LayerBlendMode } from '@core/effects/blendMode';
+import { t } from '@core/i18n';
 
 /**
  * `BLEND_MODES` bucketed into contiguous runs of the same group, in table
@@ -32,7 +33,7 @@ export function blendModeSections(): Array<{ group: string; modes: LayerBlendMod
 
 /** Label for a mode, falling back the way both pickers already did. */
 export function blendModeLabel(mode: LayerBlendMode | undefined): string {
-  return BLEND_MODES.find((b) => b.mode === mode)?.label ?? 'Normal';
+  return BLEND_MODES.find((b) => b.mode === mode)?.label ?? t('inspector.blendMenu.normal', 'Normal');
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { Checkbox } from '@components/Checkbox';
 import { PropertyRow } from '@components/PropertyRow';
@@ -61,14 +62,14 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
     <div className={panel.effectCardItem}>
       {/* AE Effect Controls header: ▾ fx Physics (Rigid Body) .......... Reset */}
       <div className={panel.effectCardHead}>
-        <span className={panel.dragGrip} aria-hidden title="Drag to reorder">
+        <span className={panel.dragGrip} aria-hidden title={t('inspector.physics.dragToReorder', 'Drag to reorder')}>
           <Icon name="grip-vertical" size="sm" />
         </span>
         <button
           type="button"
           className={panel.disclosureBtn}
           onClick={() => setIsCollapsed(!isCollapsed)}
-          title={isCollapsed ? 'Expand effect parameters' : 'Collapse effect parameters'}
+          title={isCollapsed ? t('inspector.physics.expandEffectParameters', 'Expand effect parameters') : t('inspector.physics.collapseEffectParameters', 'Collapse effect parameters')}
         >
           <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size="sm" />
         </button>
@@ -76,7 +77,7 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
         <Checkbox
           checked={!off}
           onChange={(ev) => write({ enabled: ev.target.checked }, ev.target.checked ? 'Enable Physics' : 'Disable Physics')}
-          title={off ? 'Enable physics' : 'Disable physics'}
+          title={off ? t('inspector.physics.enablePhysics', 'Enable physics') : t('inspector.physics.disablePhysics', 'Disable physics')}
           style={{ width: 15, height: 15, flexShrink: 0 }}
         />
 
@@ -86,15 +87,15 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
           className={off ? panel.itemLabelOff : panel.itemLabel}
           onClick={() => setIsCollapsed(!isCollapsed)}
         >
-          Physics (Rigid Body)
+          {t('inspector.physics.title', 'Physics (Rigid Body)')}
         </span>
 
         <div className={panel.itemActions}>
           <button
             type="button"
             className={panel.remove}
-            aria-label="Remove Physics"
-            title="Remove Physics effect"
+            aria-label={t('inspector.physics.removePhysics', 'Remove Physics')}
+            title={t('inspector.physics.removePhysicsEffect', 'Remove Physics effect')}
             onClick={removePhysics}
           >
             <Icon name="close" size="sm" />
@@ -104,65 +105,65 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
         <button
           type="button"
           className={panel.resetLink}
-          title="Restore physics parameters to default"
+          title={t('inspector.physics.restorePhysicsParametersToDefault', 'Restore physics parameters to default')}
           onClick={resetPhysics}
         >
-          Reset
+          {t('inspector.physics.reset', 'Reset')}
         </button>
       </div>
 
       {/* Parameters Accordion Body */}
       {!isCollapsed && !off && (
         <div className={panel.effectParamsBody}>
-          <PropertyRow label="Body Type" compact>
+          <PropertyRow label={t('inspector.physics.bodyType', 'Body Type')} compact>
             <select
               className={panel.paramSelect}
               value={cfg.kind}
               onChange={(e) => write({ kind: e.target.value as BodyKind })}
-              aria-label="Body type"
+              aria-label={t('inspector.physics.bodyTypeAria', 'Body type')}
             >
-              <option value="dynamic">Dynamic</option>
-              <option value="static">Static</option>
+              <option value="dynamic">{t('inspector.physics.dynamic', 'Dynamic')}</option>
+              <option value="static">{t('inspector.physics.static', 'Static')}</option>
             </select>
           </PropertyRow>
 
-          <PropertyRow label="Collider" compact>
+          <PropertyRow label={t('inspector.physics.collider', 'Collider')} compact>
             <select
               className={panel.paramSelect}
               value={cfg.shape}
               onChange={(e) => write({ shape: e.target.value as ColliderShape })}
-              aria-label="Collider shape"
+              aria-label={t('inspector.physics.colliderShape', 'Collider shape')}
             >
-              <option value="box">Box</option>
-              <option value="circle">Circle</option>
+              <option value="box">{t('inspector.physics.box', 'Box')}</option>
+              <option value="circle">{t('inspector.physics.circle', 'Circle')}</option>
             </select>
           </PropertyRow>
 
           {cfg.kind === 'dynamic' && (
             <>
-              <PropertyRow label="Allow Spin" compact>
+              <PropertyRow label={t('inspector.physics.allowSpin', 'Allow Spin')} compact>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                   <Checkbox
                     checked={cfg.rotate}
                     onChange={(e) => write({ rotate: e.target.checked })}
-                    aria-label="Allow rotation"
+                    aria-label={t('inspector.physics.allowRotation', 'Allow rotation')}
                   />
                   <span className={tStyles.helpLine}>
-                    {cfg.rotate ? 'Tumbles & rolls' : 'Translates only'}
+                    {cfg.rotate ? t('inspector.physics.tumblesRolls', 'Tumbles & rolls') : t('inspector.physics.translatesOnly', 'Translates only')}
                   </span>
                 </div>
               </PropertyRow>
-              <PropertyRow label="Mass" compact>
-                <ValueField value={cfg.mass} min={0.01} precision={2} {...scrub} onChange={(v) => write({ mass: v })} aria-label="Mass" />
+              <PropertyRow label={t('inspector.physics.mass', 'Mass')} compact>
+                <ValueField value={cfg.mass} min={0.01} precision={2} {...scrub} onChange={(v) => write({ mass: v })} aria-label={t('inspector.physics.mass', 'Mass')} />
               </PropertyRow>
-              <PropertyRow label="Bounce" compact>
-                <ValueField value={cfg.restitution} min={0} max={1} precision={2} {...scrub} onChange={(v) => write({ restitution: v })} aria-label="Restitution" />
+              <PropertyRow label={t('inspector.physics.bounce', 'Bounce')} compact>
+                <ValueField value={cfg.restitution} min={0} max={1} precision={2} {...scrub} onChange={(v) => write({ restitution: v })} aria-label={t('inspector.physics.restitution', 'Restitution')} />
               </PropertyRow>
-              <PropertyRow label="Friction" compact>
-                <ValueField value={cfg.friction} min={0} max={1} precision={2} {...scrub} onChange={(v) => write({ friction: v })} aria-label="Friction" />
+              <PropertyRow label={t('inspector.physics.friction', 'Friction')} compact>
+                <ValueField value={cfg.friction} min={0} max={1} precision={2} {...scrub} onChange={(v) => write({ friction: v })} aria-label={t('inspector.physics.friction', 'Friction')} />
               </PropertyRow>
-              <PropertyRow label="Damping" compact>
-                <ValueField value={cfg.damping} min={0} max={1} precision={3} {...scrub} onChange={(v) => write({ damping: v })} aria-label="Damping" />
+              <PropertyRow label={t('inspector.physics.damping', 'Damping')} compact>
+                <ValueField value={cfg.damping} min={0} max={1} precision={3} {...scrub} onChange={(v) => write({ damping: v })} aria-label={t('inspector.physics.damping', 'Damping')} />
               </PropertyRow>
             </>
           )}
@@ -171,15 +172,15 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
               a static body's pose is its own transform and the solver never
               overrides it, so there is nothing of it to write down. */}
           {cfg.kind === 'dynamic' && (
-            <PropertyRow label="Bake" compact>
+            <PropertyRow label={t('inspector.physics.bake', 'Bake')} compact>
               <button
                 type="button"
                 className={panel.paramSelect}
                 style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
                 onClick={() => setBakeOpen(true)}
-                title="Convert this simulation into editable keyframes and switch physics off"
+                title={t('inspector.physics.bakeTitle', 'Convert this simulation into editable keyframes and switch physics off')}
               >
-                Bake to keyframes…
+                {t('inspector.physics.bakeToKeyframes', 'Bake to keyframes…')}
               </button>
             </PropertyRow>
           )}
@@ -192,30 +193,30 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
               onClick={() => setWorldCollapsed(!worldCollapsed)}
             >
               <Icon name={worldCollapsed ? 'chevron-right' : 'chevron-down'} size="sm" />
-              <span>World (Simulation Scope)</span>
+              <span>{t('inspector.physics.world', 'World (Simulation Scope)')}</span>
             </button>
             {!worldCollapsed && (
               <div className={panel.paramGroupBody}>
-                <PropertyRow label="Gravity X" compact>
-                  <ValueField value={w.gravityX} precision={0} onChange={(v) => w.set({ gravityX: v })} aria-label="Gravity X" />
+                <PropertyRow label={t('inspector.physics.gravityX', 'Gravity X')} compact>
+                  <ValueField value={w.gravityX} precision={0} onChange={(v) => w.set({ gravityX: v })} aria-label={t('inspector.physics.gravityX', 'Gravity X')} />
                 </PropertyRow>
-                <PropertyRow label="Gravity Y" compact>
-                  <ValueField value={w.gravityY} precision={0} onChange={(v) => w.set({ gravityY: v })} aria-label="Gravity Y" />
+                <PropertyRow label={t('inspector.physics.gravityY', 'Gravity Y')} compact>
+                  <ValueField value={w.gravityY} precision={0} onChange={(v) => w.set({ gravityY: v })} aria-label={t('inspector.physics.gravityY', 'Gravity Y')} />
                 </PropertyRow>
-                <PropertyRow label="Comp Bounds" compact>
+                <PropertyRow label={t('inspector.physics.compBounds', 'Comp Bounds')} compact>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                     <Checkbox
                       checked={w.useCompBounds}
                       onChange={(e) => w.set({ useCompBounds: e.target.checked })}
-                      aria-label="Use composition bounds"
+                      aria-label={t('inspector.physics.useCompositionBounds', 'Use composition bounds')}
                     />
                     <span className={tStyles.helpLine}>
-                      {w.useCompBounds ? 'Comp edges' : 'Open (leaves frame)'}
+                      {w.useCompBounds ? t('inspector.physics.compEdges', 'Comp edges') : t('inspector.physics.openLeavesFrame', 'Open (leaves frame)')}
                     </span>
                   </div>
                 </PropertyRow>
-                <PropertyRow label="Solver Steps" compact>
-                  <ValueField value={w.iterations} min={1} max={20} precision={0} onChange={(v) => w.set({ iterations: v })} aria-label="Solver iterations" />
+                <PropertyRow label={t('inspector.physics.solverSteps', 'Solver Steps')} compact>
+                  <ValueField value={w.iterations} min={1} max={20} precision={0} onChange={(v) => w.set({ iterations: v })} aria-label={t('inspector.physics.solverIterations', 'Solver iterations')} />
                 </PropertyRow>
               </div>
             )}
@@ -227,7 +228,7 @@ export function PhysicsSection({ nodeId }: { nodeId: string }): JSX.Element | nu
         <BakeDialog
           open
           onClose={() => setBakeOpen(false)}
-          title="Bake Physics to Keyframes"
+          title={t('inspector.physics.bakeDialogTitle', 'Bake Physics to Keyframes')}
           onBake={(opts) => { void runPhysicsBake([nodeId], opts); }}
         />
       )}

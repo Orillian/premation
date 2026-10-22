@@ -77,21 +77,25 @@ function comparisonRows(plans: readonly PlanDto[]): { label: string; cells: (str
   if (plans.length < 2 || plans.some((p) => !p.limits)) return null;
   return [
     {
-      label: 'Cloud projects',
-      cells: plans.map((p) => (p.limits?.cloudProjects == null ? 'Unlimited' : String(p.limits.cloudProjects))),
+      label: t('billing.compare.cloudProjects', 'Cloud projects'),
+      cells: plans.map((p) =>
+        p.limits?.cloudProjects == null ? t('billing.compare.unlimited', 'Unlimited') : String(p.limits.cloudProjects),
+      ),
     },
     {
-      label: 'Version history',
-      cells: plans.map((p) => `${p.limits?.historyDays ?? 0} days`),
+      label: t('billing.compare.versionHistory', 'Version history'),
+      cells: plans.map((p) => t('billing.compare.days', '{n} days', { n: p.limits?.historyDays ?? 0 })),
     },
-    { label: 'The full editor — every effect, local projects and export', cells: plans.map(() => true) },
-    { label: 'AI assistant with your own provider key', cells: plans.map(() => true) },
-    { label: 'Connect Claude, ChatGPT, Cursor or Antigravity', cells: plans.map(() => true) },
+    { label: t('billing.compare.fullEditor', 'The full editor — every effect, local projects and export'), cells: plans.map(() => true) },
+    { label: t('billing.compare.aiAssistant', 'AI assistant with your own provider key'), cells: plans.map(() => true) },
+    { label: t('billing.compare.connect', 'Connect Claude, ChatGPT, Cursor or Antigravity'), cells: plans.map(() => true) },
     // Premation's own plugins are the paid plan's; third-party plugins stay free.
-    { label: 'Premation plugins', cells: plans.map((p) => p.id !== 'free') },
+    { label: t('billing.compare.plugins', 'Premation plugins'), cells: plans.map((p) => p.id !== 'free') },
     {
-      label: 'Past the project limit',
-      cells: plans.map((p) => (p.limits?.cloudProjects == null ? false : 'Read-only, never deleted')),
+      label: t('billing.compare.pastLimit', 'Past the project limit'),
+      cells: plans.map((p) =>
+        p.limits?.cloudProjects == null ? false : t('billing.compare.readOnly', 'Read-only, never deleted'),
+      ),
     },
   ];
 }
@@ -202,7 +206,7 @@ function confirmCancel(summary: BillingSummary): Promise<CancelChoice> {
 function readError(err: unknown): string {
   const body = (err as { body?: { message?: string | { message?: string } } }).body;
   const msg = typeof body?.message === 'object' ? body.message.message : body?.message;
-  return msg || (err instanceof Error ? err.message : 'Something went wrong.');
+  return msg || (err instanceof Error ? err.message : t('billing.error.generic', 'Something went wrong.'));
 }
 
 export function BillingSection(): JSX.Element | null {
@@ -229,7 +233,7 @@ export function BillingSection(): JSX.Element | null {
       });
       setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your plan.');
+      setError(err instanceof Error ? err.message : t('billing.error.load', 'Could not load your plan.'));
     }
   }, []);
 
@@ -252,13 +256,13 @@ export function BillingSection(): JSX.Element | null {
     next.delete('billing');
 
     if (returned === 'cancelled') {
-      setNotice('Checkout was cancelled. Your current plan has not changed.');
+      setNotice(t('billing.notice.checkoutCancelled', 'Checkout was cancelled. Your current plan has not changed.'));
       setSearchParams(next, { replace: true });
       return;
     }
 
     setBusy('resync');
-    setNotice('Confirming your payment…');
+    setNotice(t('billing.notice.confirmingPayment', 'Confirming your payment…'));
     void api
       .resyncBilling()
       .catch(() => ({ resynced: false }))
@@ -267,8 +271,11 @@ export function BillingSection(): JSX.Element | null {
         await useEntitlementStore.getState().refresh({ force: true });
         setNotice(
           resynced
-            ? 'Payment confirmed. Your plan and access are up to date.'
-            : 'Checkout completed. We refreshed your account; payment confirmation may take a moment.',
+            ? t('billing.notice.paymentConfirmed', 'Payment confirmed. Your plan and access are up to date.')
+            : t(
+                'billing.notice.checkoutCompleted',
+                'Checkout completed. We refreshed your account; payment confirmation may take a moment.',
+              ),
         );
       })
       .catch((err) => setError(readError(err)))
@@ -286,7 +293,7 @@ export function BillingSection(): JSX.Element | null {
   if (!isAuthenticated()) {
     return (
       <div className={styles.section}>
-        <p className={styles.intro}>Sign in to see your plan.</p>
+        <p className={styles.intro}>{t('billing.signIn', 'Sign in to see your plan.')}</p>
       </div>
     );
   }
@@ -314,11 +321,14 @@ export function BillingSection(): JSX.Element | null {
     await load(true);
     await useEntitlementStore.getState().refresh({ force: true });
     const messages: Record<string, string> = {
-      upgraded: 'Welcome to Premation Cloud. Unlimited cloud projects and the longer history apply now.',
-      downgraded: 'Plan switched. The new rate applies on the next invoice.',
-      cancelled: 'Cancellation scheduled. You keep paid access until the date shown above.',
-      resumed: 'Cancellation stopped. Billing continues on this plan.',
-      unchanged: 'You are already on this plan.',
+      upgraded: t(
+        'billing.notice.upgraded',
+        'Welcome to Premation Cloud. Unlimited cloud projects and the longer history apply now.',
+      ),
+      downgraded: t('billing.notice.downgraded', 'Plan switched. The new rate applies on the next invoice.'),
+      cancelled: t('billing.notice.cancelled', 'Cancellation scheduled. You keep paid access until the date shown above.'),
+      resumed: t('billing.notice.resumed', 'Cancellation stopped. Billing continues on this plan.'),
+      unchanged: t('billing.notice.unchanged', 'You are already on this plan.'),
       interval_changed:
         result.interval === 'year'
           ? t('billing.notice.nowYearly', 'Now billed yearly.')
@@ -327,7 +337,7 @@ export function BillingSection(): JSX.Element | null {
         amount: result.amountLabel ?? '',
       }),
     };
-    setNotice(messages[result.action ?? ''] ?? 'Your plan is up to date.');
+    setNotice(messages[result.action ?? ''] ?? t('billing.notice.upToDate', 'Your plan is up to date.'));
   };
 
   /**
@@ -411,15 +421,15 @@ export function BillingSection(): JSX.Element | null {
       await useEntitlementStore.getState().refresh({ force: true });
       setNotice(
         resynced
-          ? 'Checked with the payment provider — your plan is up to date.'
-          : 'There is no subscription on this account to check.',
+          ? t('billing.notice.resynced', 'Checked with the payment provider — your plan is up to date.')
+          : t('billing.notice.noSubscription', 'There is no subscription on this account to check.'),
       );
     });
 
   const resend = (): Promise<void> =>
     run('resend', async () => {
       await api.resendVerification();
-      setNotice('Confirmation email sent. Check your inbox, and your spam folder.');
+      setNotice(t('billing.notice.verificationSent', 'Confirmation email sent. Check your inbox, and your spam folder.'));
     });
 
   const access = summary?.access;
@@ -490,18 +500,18 @@ export function BillingSection(): JSX.Element | null {
                   }
                 >
                   {paymentNeedsAttention
-                    ? 'Payment Past Due'
+                    ? t('billing.badge.pastDue', 'Payment Past Due')
                     : cancellationPending
-                      ? 'Cancellation Scheduled'
+                      ? t('billing.badge.cancellationScheduled', 'Cancellation Scheduled')
                       : isBeta
-                        ? 'Beta Access'
+                        ? t('billing.badge.beta', 'Beta Access')
                         : access?.reason === 'active' || access?.reason === 'grace'
-                          ? 'Active Subscription'
+                          ? t('billing.badge.active', 'Active Subscription')
                           : access?.reason === 'staff'
-                            ? 'Operator'
+                            ? t('billing.badge.operator', 'Operator')
                             : access?.reason === 'granted'
-                              ? 'Included by Premation'
-                              : 'Free Plan'}
+                              ? t('billing.badge.granted', 'Included by Premation')
+                              : t('billing.badge.free', 'Free Plan')}
                 </span>
               </div>
               <p className={blocked ? styles.statusBlocked : styles.intro}>
@@ -527,7 +537,7 @@ export function BillingSection(): JSX.Element | null {
                       onClick={() => void switchInterval(switchTarget, paidPlan)}
                     >
                       {busy === 'interval'
-                        ? 'Working…'
+                        ? t('billing.working', 'Working…')
                         : switchTarget === 'year'
                           ? t('billing.switch.toYearly', 'Switch to yearly')
                           : t('billing.switch.toMonthly', 'Switch to monthly')}
@@ -535,7 +545,7 @@ export function BillingSection(): JSX.Element | null {
                   ) : null}
                   {canCancel ? (
                     <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void cancelFlow()}>
-                      {busy === 'cancel' ? 'Working…' : t('billing.cancel.button', 'Cancel subscription')}
+                      {busy === 'cancel' ? t('billing.working', 'Working…') : t('billing.cancel.button', 'Cancel subscription')}
                     </Button>
                   ) : null}
                 </div>
@@ -545,7 +555,7 @@ export function BillingSection(): JSX.Element | null {
 
           <div className={styles.statusHeroMeta}>
             <div className={styles.metaStat}>
-              <span className={styles.metaLabel}>Member since</span>
+              <span className={styles.metaLabel}>{t('billing.meta.memberSince', 'Member since')}</span>
               <span className={styles.metaValue}>
                 {new Date(summary.memberSince).toLocaleDateString()}
               </span>
@@ -554,8 +564,8 @@ export function BillingSection(): JSX.Element | null {
               <div className={styles.metaStat}>
                 <span className={styles.metaLabel}>
                   {summary.subscriptionStatus === 'cancelled'
-                    ? 'Access paid through'
-                    : 'Current period ends'}
+                    ? t('billing.meta.paidThrough', 'Access paid through')
+                    : t('billing.meta.periodEnds', 'Current period ends')}
                 </span>
                 <span className={styles.metaValue}>
                   {new Date(summary.currentPeriodEnd).toLocaleDateString()}
@@ -565,7 +575,7 @@ export function BillingSection(): JSX.Element | null {
             {access?.writeEndsAt ? (
               <div className={styles.metaStat}>
                 <span className={styles.metaLabel}>
-                  {access.write ? 'Full access until' : 'Ended'}
+                  {access.write ? t('billing.meta.fullAccessUntil', 'Full access until') : t('billing.meta.ended', 'Ended')}
                 </span>
                 <span className={styles.metaValue}>
                   {new Date(access.writeEndsAt).toLocaleDateString()}
@@ -576,7 +586,7 @@ export function BillingSection(): JSX.Element | null {
         </div>
       ) : (
         <div className={styles.statusHero}>
-          <p className={styles.intro}>Loading your plan details…</p>
+          <p className={styles.intro}>{t('billing.loading', 'Loading your plan details…')}</p>
         </div>
       )}
 
@@ -597,7 +607,9 @@ export function BillingSection(): JSX.Element | null {
                   disabled={busy !== null}
                   onClick={() => void choosePlan(upgradeTo)}
                 >
-                  {busy === upgradeTo.id ? 'Working…' : `Upgrade to ${upgradeTo.name}`}
+                  {busy === upgradeTo.id
+                    ? t('billing.working', 'Working…')
+                    : t('billing.upgradeTo', 'Upgrade to {plan}', { plan: upgradeTo.name })}
                 </Button>
               ) : null
             }
@@ -610,15 +622,23 @@ export function BillingSection(): JSX.Element | null {
         <div className={styles.paymentWarning} role="alert">
           <Icon name="warning" size="sm" className={styles.warningIcon} />
           <div className={styles.calloutBody}>
-            <strong>Payment needs attention</strong>
+            <strong>{t('billing.pastDue.title', 'Payment needs attention')}</strong>
             <span>
-              Your account is in a grace period. Update your payment method to avoid losing write
-              access{summary.currentPeriodEnd ? ` after ${new Date(summary.currentPeriodEnd).toLocaleDateString()}` : ''}.
+              {summary.currentPeriodEnd
+                ? t(
+                    'billing.pastDue.bodyDate',
+                    'Your account is in a grace period. Update your payment method to avoid losing write access after {date}.',
+                    { date: new Date(summary.currentPeriodEnd).toLocaleDateString() },
+                  )
+                : t(
+                    'billing.pastDue.body',
+                    'Your account is in a grace period. Update your payment method to avoid losing write access.',
+                  )}
             </span>
           </div>
           {summary.hasSubscription ? (
             <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void portal()}>
-              Update payment
+              {t('billing.pastDue.update', 'Update payment')}
             </Button>
           ) : null}
         </div>
@@ -628,13 +648,18 @@ export function BillingSection(): JSX.Element | null {
         <div className={styles.paymentWarning} role="status">
           <Icon name="info" size="sm" className={styles.calloutIcon} />
           <div className={styles.calloutBody}>
-            <strong>Cancellation scheduled</strong>
+            <strong>{t('billing.pending.title', 'Cancellation scheduled')}</strong>
             <span>
-              You keep {summary.plan.name} until{' '}
               {summary.currentPeriodEnd
-                ? new Date(summary.currentPeriodEnd).toLocaleDateString()
-                : 'the end of this period'}
-              . Resume before then to stay on this plan.
+                ? t('billing.pending.bodyDate', 'You keep {plan} until {date}. Resume before then to stay on this plan.', {
+                    plan: summary.plan.name,
+                    date: new Date(summary.currentPeriodEnd).toLocaleDateString(),
+                  })
+                : t(
+                    'billing.pending.body',
+                    'You keep {plan} until the end of this period. Resume before then to stay on this plan.',
+                    { plan: summary.plan.name },
+                  )}
             </span>
           </div>
           <Button
@@ -643,7 +668,9 @@ export function BillingSection(): JSX.Element | null {
             disabled={busy !== null}
             onClick={() => void choosePlan(summary.plan)}
           >
-            {busy === summary.plan.id ? 'Resuming…' : `Keep ${summary.plan.name}`}
+            {busy === summary.plan.id
+              ? t('billing.pending.resuming', 'Resuming…')
+              : t('billing.pending.keep', 'Keep {plan}', { plan: summary.plan.name })}
           </Button>
         </div>
       ) : null}
@@ -652,13 +679,13 @@ export function BillingSection(): JSX.Element | null {
         <div className={styles.callout}>
           <Icon name="info" size="sm" className={styles.calloutIcon} />
           <div className={styles.calloutBody}>
-            <strong>Confirm your email to save to the cloud.</strong>
+            <strong>{t('billing.verify.title', 'Confirm your email to save to the cloud.')}</strong>
             <span>
-              Your projects are read-only until then — you can open and export them, but not save.
+              {t('billing.verify.body', 'Your projects are read-only until then — you can open and export them, but not save.')}
             </span>
           </div>
           <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void resend()}>
-            {busy === 'resend' ? 'Sending…' : 'Resend email'}
+            {busy === 'resend' ? t('billing.verify.sending', 'Sending…') : t('billing.verify.resend', 'Resend email')}
           </Button>
         </div>
       )}
@@ -681,11 +708,14 @@ export function BillingSection(): JSX.Element | null {
         <div className={styles.callout} role="status">
           <Icon name="info" size="sm" className={styles.calloutIcon} />
           <div className={styles.calloutBody}>
-            <strong>Premation Cloud subscriptions are paused</strong>
+            <strong>{t('billing.paused.title', 'Premation Cloud subscriptions are paused')}</strong>
             <span>
               {access?.write
-                ? 'New subscriptions are not open right now. Your Free plan keeps working as normal, and export always works.'
-                : 'Your projects stay available read-only, and export keeps working.'}
+                ? t(
+                    'billing.paused.bodyWrite',
+                    'New subscriptions are not open right now. Your Free plan keeps working as normal, and export always works.',
+                  )
+                : t('billing.paused.bodyReadOnly', 'Your projects stay available read-only, and export keeps working.')}
             </span>
           </div>
         </div>
@@ -695,7 +725,7 @@ export function BillingSection(): JSX.Element | null {
         <div className={styles.footerManagement}>
           <div className={styles.actions}>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void resync()}>
-              {busy === 'resync' ? 'Checking…' : 'Already paid? Refresh status'}
+              {busy === 'resync' ? t('billing.resync.checking', 'Checking…') : t('billing.resync.action', 'Already paid? Refresh status')}
             </Button>
           </div>
         </div>
@@ -706,22 +736,28 @@ export function BillingSection(): JSX.Element | null {
           {/* 3. Tiered Plan Cards */}
           <div className={styles.plansSectionHeader}>
             <h3 className={styles.sectionTitle}>
-              {salesOpen ? 'Available Subscription Plans' : 'Your Plan'}
+              {salesOpen ? t('billing.plans.available', 'Available Subscription Plans') : t('billing.plans.yours', 'Your Plan')}
             </h3>
             <p className={styles.sectionDesc}>
               {salesOpen
-                ? 'The editor is free. Premation Cloud is the hosting: more cloud projects and longer history. Cancel anytime.'
-                : 'New subscriptions are paused for now. Your subscription, billing portal, cancel and resume work as usual.'}
+                ? t(
+                    'billing.plans.descOpen',
+                    'The editor is free. Premation Cloud is the hosting: more cloud projects and longer history. Cancel anytime.',
+                  )
+                : t(
+                    'billing.plans.descPaused',
+                    'New subscriptions are paused for now. Your subscription, billing portal, cancel and resume work as usual.',
+                  )}
             </p>
             {yearlyOffered && salesOpen ? (
-              <div className={styles.actions} role="group" aria-label="Billing period">
+              <div className={styles.actions} role="group" aria-label={t('billing.period.label', 'Billing period')}>
                 <Button
                   variant={billingInterval === 'month' ? 'primary' : 'ghost'}
                   size="sm"
                   aria-pressed={billingInterval === 'month'}
                   onClick={() => setBillingInterval('month')}
                 >
-                  Monthly
+                  {t('billing.interval.monthly', 'Monthly')}
                 </Button>
                 <Button
                   variant={billingInterval === 'year' ? 'primary' : 'ghost'}
@@ -729,7 +765,9 @@ export function BillingSection(): JSX.Element | null {
                   aria-pressed={billingInterval === 'year'}
                   onClick={() => setBillingInterval('year')}
                 >
-                  {monthsFree > 0 ? `Yearly · ${monthsFree} months free` : 'Yearly'}
+                  {monthsFree > 0
+                    ? t('billing.period.yearlyFree', 'Yearly · {n} months free', { n: monthsFree })
+                    : t('billing.interval.yearly', 'Yearly')}
                 </Button>
               </div>
             ) : null}
@@ -750,20 +788,26 @@ export function BillingSection(): JSX.Element | null {
                   aria-current={current ? 'true' : undefined}
                 >
                   <div className={styles.planBadges}>
-                    {p.highlighted ? <span className={styles.popularTag}>Recommended</span> : <span />}
-                    {current ? <span className={styles.currentTag}>Current Plan</span> : null}
+                    {p.highlighted ? <span className={styles.popularTag}>{t('billing.plan.recommended', 'Recommended')}</span> : <span />}
+                    {current ? <span className={styles.currentTag}>{t('billing.plan.current', 'Current Plan')}</span> : null}
                   </div>
                   <div className={styles.planHead}>
                     <h4 className={styles.planName}>{p.name}</h4>
                     <p className={styles.priceBlock}>
                       <span className={styles.priceAmount}>{p.priceLabel}</span>
                       <span className={styles.priceInterval}>
-                        {p.priceCents > 0 ? `/${p.interval === 'year' ? 'year' : 'month'}` : ' · no card'}
+                        {p.priceCents > 0
+                          ? p.interval === 'year'
+                            ? t('billing.plan.perYear', '/year')
+                            : t('billing.plan.perMonth', '/month')
+                          : t('billing.plan.noCard', ' · no card')}
                       </span>
                     </p>
                     {p.interval === 'year' && p.yearlyPriceCents ? (
                       <p className={styles.priceSub}>
-                        {dollars(Math.round(p.yearlyPriceCents / 12))}/month, billed yearly
+                        {t('billing.plan.billedYearly', '{price}/month, billed yearly', {
+                          price: dollars(Math.round(p.yearlyPriceCents / 12)),
+                        })}
                       </p>
                     ) : null}
                   </div>
@@ -794,7 +838,7 @@ export function BillingSection(): JSX.Element | null {
                         disabled={busy !== null}
                         onClick={() => void choosePlan(p)}
                       >
-                        {thisBusy ? 'Working…' : intent.label}
+                        {thisBusy ? t('billing.working', 'Working…') : intent.label}
                       </Button>
                     )}
                   </div>
@@ -807,10 +851,10 @@ export function BillingSection(): JSX.Element | null {
           {plans.length > 1 ? (
             <div className={styles.comparisonWrap}>
               <table className={styles.comparison}>
-                <caption>Compare plans</caption>
+                <caption>{t('billing.compare.caption', 'Compare plans')}</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Feature</th>
+                    <th scope="col">{t('billing.compare.feature', 'Feature')}</th>
                     {plans.map((plan) => (
                       <th scope="col" key={plan.id}>
                         {plan.name}
@@ -826,7 +870,13 @@ export function BillingSection(): JSX.Element | null {
                           {row.cells.map((cell, i) => (
                             <td
                               key={plans[i]?.id ?? i}
-                              aria-label={cell === true ? 'Included' : cell === false ? 'Not included' : undefined}
+                              aria-label={
+                                cell === true
+                                  ? t('billing.compare.included', 'Included')
+                                  : cell === false
+                                    ? t('billing.compare.notIncluded', 'Not included')
+                                    : undefined
+                              }
                             >
                               {cell === true ? (
                                 <Icon name="check" size="sm" className={styles.featureTick} />
@@ -843,7 +893,11 @@ export function BillingSection(): JSX.Element | null {
                         <tr key={feature}>
                           <th scope="row">{feature}</th>
                           {plans.map((plan) => (
-                            <td key={plan.id} aria-label={plan.features.includes(feature) ? 'Included' : 'Not included'}>
+                            <td key={plan.id} aria-label={
+                                plan.features.includes(feature)
+                                  ? t('billing.compare.included', 'Included')
+                                  : t('billing.compare.notIncluded', 'Not included')
+                              }>
                               {plan.features.includes(feature) ? (
                                 <Icon name="check" size="sm" className={styles.featureTick} />
                               ) : (
@@ -863,16 +917,23 @@ export function BillingSection(): JSX.Element | null {
             <div className={styles.actions}>
               {summary.hasSubscription && (
                 <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void portal()}>
-                  {busy === 'portal' ? 'Opening portal…' : 'Manage payment method'}
+                  {busy === 'portal'
+                    ? t('billing.portal.opening', 'Opening portal…')
+                    : t('billing.portal.manage', 'Manage payment method')}
                 </Button>
               )}
               <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void resync()}>
-                {busy === 'resync' ? 'Checking…' : 'Already paid? Refresh status'}
+                {busy === 'resync' ? t('billing.resync.checking', 'Checking…') : t('billing.resync.action', 'Already paid? Refresh status')}
               </Button>
             </div>
             <div className={styles.securityNote}>
               <Icon name="lock" size="sm" />
-              <span>Payments processed securely by Lemon Squeezy. Cancel anytime — your projects are never deleted.</span>
+              <span>
+                {t(
+                  'billing.security',
+                  'Payments processed securely by Lemon Squeezy. Cancel anytime — your projects are never deleted.',
+                )}
+              </span>
             </div>
           </div>
         </>

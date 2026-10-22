@@ -483,9 +483,10 @@ describe('tool results teach the model', () => {
     const c = ctx();
     const res = await reg.execute('create_layer', { kind: 'shape', name: 'Box' }, c);
     const id = (res.data as { id: string }).id;
-    const bad = await reg.execute('set_expression', { nodeId: id, prop: 'x', expression: 'return wiggle(2,30);' }, c);
+    // A top-level `return` is AE syntax the engine runs (2026-10-21); an unclosed call is not.
+    const bad = await reg.execute('set_expression', { nodeId: id, prop: 'x', expression: 'var a = 2;\nwiggle(2, a' }, c);
     expect(bad.ok).toBe(false);
-    expect(bad.content).toContain('single expression');
+    expect(bad.content).toContain('not applied');
   });
 
   it('applies a valid expression', async () => {

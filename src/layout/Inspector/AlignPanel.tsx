@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '@core/i18n';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useActiveCompSize } from './inspectorMirror';
 import { distributeMinimum, type AlignMode } from '@core/scene/alignNodes';
@@ -9,14 +10,16 @@ import styles from './AlignSection.module.css';
 
 type AlignTo = 'selection' | 'composition';
 
-const ALIGN_ACTIONS: { id: AlignMode; icon: IconName; label: string }[] = [
-  { id: 'left',      icon: 'align-left',   label: 'Align Left' },
-  { id: 'center-h',  icon: 'align-center', label: 'Align Horizontal Centers' },
-  { id: 'right',     icon: 'align-right',  label: 'Align Right' },
-  { id: 'top',       icon: 'align-top',    label: 'Align Top' },
-  { id: 'middle-v',  icon: 'align-middle', label: 'Align Vertical Centers' },
-  { id: 'bottom',    icon: 'align-bottom', label: 'Align Bottom' },
-];
+function alignActions(): { id: AlignMode; icon: IconName; label: string }[] {
+  return [
+  { id: 'left',      icon: 'align-left',   label: t('inspector.align.alignLeft', 'Align Left') },
+  { id: 'center-h',  icon: 'align-center', label: t('inspector.align.alignHCenters', 'Align Horizontal Centers') },
+  { id: 'right',     icon: 'align-right',  label: t('inspector.align.alignRight', 'Align Right') },
+  { id: 'top',       icon: 'align-top',    label: t('inspector.align.alignTop', 'Align Top') },
+  { id: 'middle-v',  icon: 'align-middle', label: t('inspector.align.alignVCenters', 'Align Vertical Centers') },
+  { id: 'bottom',    icon: 'align-bottom', label: t('inspector.align.alignBottom', 'Align Bottom') },
+  ];
+}
 
 /**
  * AE's Distribute row: the six edge / centre buttons in AE's order, then the
@@ -24,22 +27,25 @@ const ALIGN_ACTIONS: { id: AlignMode; icon: IconName; label: string }[] = [
  * edge they space (there is no separate distribute-by-edge glyph in the set);
  * the tooltips carry the distinction.
  */
-const DISTRIBUTE_ACTIONS: { id: AlignMode; icon: IconName; label: string }[] = [
-  { id: 'distribute-top',     icon: 'align-top',             label: 'Distribute Top Edges' },
-  { id: 'distribute-v',       icon: 'align-middle',          label: 'Distribute Vertical Centers' },
-  { id: 'distribute-bottom',  icon: 'align-bottom',          label: 'Distribute Bottom Edges' },
-  { id: 'distribute-left',    icon: 'align-left',            label: 'Distribute Left Edges' },
-  { id: 'distribute-h',       icon: 'align-center',          label: 'Distribute Horizontal Centers' },
-  { id: 'distribute-right',   icon: 'align-right',           label: 'Distribute Right Edges' },
-  { id: 'distribute-space-h', icon: 'distribute-horizontal', label: 'Distribute Horizontal Spacing' },
-  { id: 'distribute-space-v', icon: 'distribute-vertical',   label: 'Distribute Vertical Spacing' },
-];
+function distributeActions(): { id: AlignMode; icon: IconName; label: string }[] {
+  return [
+  { id: 'distribute-top',     icon: 'align-top',             label: t('inspector.align.distTop', 'Distribute Top Edges') },
+  { id: 'distribute-v',       icon: 'align-middle',          label: t('inspector.align.distVCenters', 'Distribute Vertical Centers') },
+  { id: 'distribute-bottom',  icon: 'align-bottom',          label: t('inspector.align.distBottom', 'Distribute Bottom Edges') },
+  { id: 'distribute-left',    icon: 'align-left',            label: t('inspector.align.distLeft', 'Distribute Left Edges') },
+  { id: 'distribute-h',       icon: 'align-center',          label: t('inspector.align.distHCenters', 'Distribute Horizontal Centers') },
+  { id: 'distribute-right',   icon: 'align-right',           label: t('inspector.align.distRight', 'Distribute Right Edges') },
+  { id: 'distribute-space-h', icon: 'distribute-horizontal', label: t('inspector.align.distHSpacing', 'Distribute Horizontal Spacing') },
+  { id: 'distribute-space-v', icon: 'distribute-vertical',   label: t('inspector.align.distVSpacing', 'Distribute Vertical Spacing') },
+  ];
+}
 
 /** What each "Align Layers to" choice does — the select's tooltip, not a paragraph in the panel. */
-const ALIGN_TO_HINT: Record<AlignTo, string> = {
-  selection: 'Selection: align the layers to each other. Distribute needs three or more; the outermost two stay put.',
-  composition: 'Composition: align each layer to the composition frame. Distribute spreads them edge to edge across it.',
-};
+function alignToHint(to: AlignTo): string {
+  return to === 'selection'
+    ? t('inspector.align.hintSelection', 'Selection: align the layers to each other. Distribute needs three or more; the outermost two stay put.')
+    : t('inspector.align.hintComposition', 'Composition: align each layer to the composition frame. Distribute spreads them edge to edge across it.');
+}
 
 /**
  * Align — After Effects' Align panel: "Align Layers to" (a labelled select),
@@ -72,7 +78,7 @@ export function AlignPanel(): JSX.Element {
         size="md"
         variant="ghost"
         aria-label={a.label}
-        tooltip={disabled ? `${a.label} — select ${min} or more layers` : a.label}
+        tooltip={disabled ? t('inspector.align.needMin', '{label} — select {min} or more layers', { label: a.label, min }) : a.label}
         disabled={disabled}
         onClick={() => run(a.id)}
       >
@@ -81,7 +87,7 @@ export function AlignPanel(): JSX.Element {
     );
   };
 
-  const buttonRow = (caption: string, actions: typeof ALIGN_ACTIONS, min: number): JSX.Element => (
+  const buttonRow = (caption: string, actions: ReturnType<typeof alignActions>, min: number): JSX.Element => (
     <div className={styles.group} role="group" aria-label={caption}>
       <span className={styles.caption}>{caption}</span>
       <div className={styles.grid}>
@@ -93,24 +99,24 @@ export function AlignPanel(): JSX.Element {
   return (
     <div className={styles.panelRoot}>
       <label className={styles.targetRow}>
-        <span className={styles.caption}>Align Layers to</span>
+        <span className={styles.caption}>{t('inspector.align.alignTo', 'Align Layers to')}</span>
         <select
           className={styles.select}
-          aria-label="Align Layers to"
-          title={ALIGN_TO_HINT[alignTo]}
+          aria-label={t('inspector.align.alignTo', 'Align Layers to')}
+          title={alignToHint(alignTo)}
           value={alignTo}
           onChange={(e) => setAlignTo(e.currentTarget.value as AlignTo)}
         >
-          <option value="selection">Selection</option>
-          <option value="composition">Composition</option>
+          <option value="selection">{t('inspector.align.selection', 'Selection')}</option>
+          <option value="composition">{t('inspector.align.composition', 'Composition')}</option>
         </select>
       </label>
 
-      {buttonRow('Align Layers', ALIGN_ACTIONS, alignMin)}
-      {buttonRow('Distribute Layers', DISTRIBUTE_ACTIONS.slice(0, 6), distributeMin)}
-      {buttonRow('Distribute Spacing', DISTRIBUTE_ACTIONS.slice(6), distributeMin)}
+      {buttonRow(t('inspector.align.alignLayers', 'Align Layers'), alignActions(), alignMin)}
+      {buttonRow(t('inspector.align.distributeLayers', 'Distribute Layers'), distributeActions().slice(0, 6), distributeMin)}
+      {buttonRow(t('inspector.align.distributeSpacing', 'Distribute Spacing'), distributeActions().slice(6), distributeMin)}
 
-      {count === 0 && <p className={styles.help}>Select layers to align them.</p>}
+      {count === 0 && <p className={styles.help}>{t('inspector.align.empty', 'Select layers to align them.')}</p>}
     </div>
   );
 }

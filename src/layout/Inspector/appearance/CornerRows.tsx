@@ -21,6 +21,7 @@ import { ValueField } from '@components/ValueField';
 import { Icon } from '@components/Icon';
 import { plainValue, storedNumber, trackRefIn } from '@core/mirror/trackIndex';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { isTrackAnimated } from '@core/mirror/selection';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorTrackWatch } from '@hooks/useMirror';
@@ -54,8 +55,8 @@ export function CornerRows({ nodeId }: { nodeId: string }): JSX.Element | null {
   // corners (a legacy document), where the API would report the defaults.
   const m = documentMirror();
   const tree = m.tree(nodeId);
-  const storedRadius = (t: string): number | undefined => {
-    const r = trackRefIn(tree, t);
+  const storedRadius = (path: string): number | undefined => {
+    const r = trackRefIn(tree, path);
     return r && r.info.stored === true ? storedNumber(r, r.info.value) : undefined;
   };
   const cornerRadius = storedRadius('cornerRadius') ?? 0;
@@ -93,7 +94,7 @@ export function CornerRows({ nodeId }: { nodeId: string }): JSX.Element | null {
       // Unlink: seed each corner from the current values so fields don't jump.
       void edit('Unlink Corners', [...cmds(Object.fromEntries(CORNERS.map((c) => [track(c), radii[c]]))), ...linkCmds(false)]);
     } else {
-      void edit('Link Corners', [...cmds(allValues(cornerRadius)), ...linkCmds(true)]);
+      void edit('Link Corners',[...cmds(allValues(cornerRadius)), ...linkCmds(true)]);
     }
   };
 
@@ -106,16 +107,16 @@ export function CornerRows({ nodeId }: { nodeId: string }): JSX.Element | null {
     <>
       <TwirlGroup
         prefKey="contents.roundness"
-        label={<>Roundness{isCornerAnimated && <span className={styles.animatedDot} />}</>}
+        label={<>{t('inspector.corners.roundness', 'Roundness')}{isCornerAnimated && <span className={styles.animatedDot} />}</>}
         defaultOpen
-        summary={cornersLinked ? `${Math.round(cornerRadius * 10) / 10}` : 'per corner'}
+        summary={cornersLinked ? `${Math.round(cornerRadius * 10) / 10}` : t('inspector.corners.perCorner', 'per corner')}
         trailing={(
           <button
             type="button"
             onClick={toggleCornersLinked}
             className={`${styles.lockBtn} ${cornersLinked ? styles.lockBtnActive : ''}`}
-            title={cornersLinked ? 'Unlink corners (edit individually)' : 'Link corners (same radius)'}
-            aria-label={cornersLinked ? 'Unlink corners' : 'Link corners'}
+            title={cornersLinked ? t('inspector.corners.unlinkHint', 'Unlink corners (edit individually)') : t('inspector.corners.linkHint', 'Link corners (same radius)')}
+            aria-label={cornersLinked ? t('inspector.corners.unlink', 'Unlink corners') : t('inspector.corners.link', 'Link corners')}
             aria-pressed={cornersLinked}
           >
             <Icon name={cornersLinked ? 'lock' : 'unlock'} size="sm" />
@@ -126,24 +127,24 @@ export function CornerRows({ nodeId }: { nodeId: string }): JSX.Element | null {
         <AnimatablePaintRow
           nodeId={nodeId}
           prop="cornerRadius"
-          label="All"
+          label={t('inspector.corners.all', 'All')}
           access={primaryAccess(cornerRadius)}
           valuesFor={(_id, v) => allValues(Math.max(0, v))}
         />
       ) : (
         <>
           <div className={styles.popoverRow}>
-            <span className={styles.popoverLabel}>All</span>
+            <span className={styles.popoverLabel}>{t('inspector.corners.all', 'All')}</span>
             <ValueField
               value={Math.max(radii.TL, radii.TR, radii.BR, radii.BL)}
               unit="px"
               min={0}
               onChange={(v) => e.send('Set Corner Radius', cmds(allValues(Math.max(0, Number(v)))))}
               {...e.scrub('Set Corner Radius')}
-              aria-label="Corner radius"
+              aria-label={t('inspector.corners.radius', 'Corner radius')}
             />
           </div>
-          <div className={styles.cornerGrid} role="group" aria-label="Individual corner radii">
+          <div className={styles.cornerGrid} role="group" aria-label={t('inspector.corners.individual', 'Individual corner radii')}>
             {(['TL', 'TR', 'BL', 'BR'] as const).map((c) => (
               <AnimatablePaintRow
                 key={c}

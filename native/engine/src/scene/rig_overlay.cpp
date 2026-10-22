@@ -106,8 +106,8 @@ Resolved resolve(const doc::Document& d, const doc::EditorView& view, const doc:
     if (tr == nullptr) return std::nullopt;
     return doc::sample_data_track(*tr, t);
   };
-  std::vector<std::string> unported;
-  out.model = build_rig_model(in, s, authoring, imageLike, unported);
+  std::vector<std::string> warnings;  // the overlay draws the mesh as built; the frame's layer errors say what it lacks
+  out.model = build_rig_model(in, s, authoring, imageLike, warnings);
   return out;
 }
 

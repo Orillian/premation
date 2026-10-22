@@ -33,6 +33,8 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { cn } from '@utils/cn';
 import { Icon } from '@components/Icon';
+import { Tooltip } from '@components/Tooltip';
+import { t } from '@core/i18n';
 import styles from './PropertyRow.module.css';
 
 /** `'default'` = the timeline / Effect Controls grid; `'inspector'` = the compact Properties row. */
@@ -67,6 +69,11 @@ export interface StopwatchButtonProps {
   /** Property name, for the accessible label. */
   label: string;
   onToggle: () => void;
+  /**
+   * Alt-click (Option-click on macOS) — After Effects' add / remove expression
+   * gesture on the stopwatch. Absent = Alt-click is a plain click.
+   */
+  onAltToggle?: () => void;
   className?: string;
 }
 
@@ -78,22 +85,25 @@ export interface StopwatchButtonProps {
  * app — that consistency is most of its value, because it is the control users
  * reach for without looking.
  */
-export function StopwatchButton({ animated, label, onToggle, className }: StopwatchButtonProps): JSX.Element {
+export function StopwatchButton({ animated, label, onToggle, onAltToggle, className }: StopwatchButtonProps): JSX.Element {
   return (
     <button
       type="button"
       className={cn(styles.stopwatch, className)}
       data-on={animated || undefined}
       aria-pressed={animated}
-      aria-label={`${animated ? 'Disable' : 'Enable'} ${label} animation`}
+      aria-label={animated
+        ? t('propertyRow.stopwatch.disableLabel', 'Disable {name} animation', { name: label })
+        : t('propertyRow.stopwatch.enableLabel', 'Enable {name} animation', { name: label })}
       title={
         animated
-          ? `Disable ${label} animation (removes its keyframes)`
-          : `Enable ${label} animation (create first keyframe at playhead)`
+          ? t('propertyRow.stopwatch.disableHint', 'Disable {name} animation (removes its keyframes)', { name: label })
+          : t('propertyRow.stopwatch.enableHint', 'Enable {name} animation (create first keyframe at playhead)', { name: label })
       }
       onClick={(e) => {
         e.stopPropagation();
-        onToggle();
+        if (e.altKey && onAltToggle) onAltToggle();
+        else onToggle();
       }}
     >
       <Icon name="stopwatch" size="sm" />
@@ -136,8 +146,8 @@ export function KeyframeNavigator({
         type="button"
         className={styles.navBtn}
         disabled={!hasPrev}
-        aria-label={`Previous ${label} keyframe`}
-        title="Previous keyframe"
+        aria-label={t('propertyRow.nav.prevLabel', 'Previous {name} keyframe', { name: label })}
+        title={t('propertyRow.nav.prev', 'Previous keyframe')}
         onClick={(e) => { e.stopPropagation(); onPrev(); }}
       >
         <Icon name="chevron-left" size="sm" />
@@ -147,8 +157,10 @@ export function KeyframeNavigator({
         className={styles.navBtn}
         data-on={atKeyframe || undefined}
         aria-pressed={atKeyframe}
-        aria-label={atKeyframe ? `Remove ${label} keyframe at playhead` : `Add ${label} keyframe at playhead`}
-        title={atKeyframe ? 'Remove keyframe at playhead' : 'Add keyframe at playhead'}
+        aria-label={atKeyframe
+          ? t('propertyRow.nav.removeLabel', 'Remove {name} keyframe at playhead', { name: label })
+          : t('propertyRow.nav.addLabel', 'Add {name} keyframe at playhead', { name: label })}
+        title={atKeyframe ? t('propertyRow.nav.remove', 'Remove keyframe at playhead') : t('propertyRow.nav.add', 'Add keyframe at playhead')}
         onClick={(e) => { e.stopPropagation(); onToggleKeyframe(); }}
       >
         <Icon name="keyframe" size="sm" />
@@ -157,8 +169,8 @@ export function KeyframeNavigator({
         type="button"
         className={styles.navBtn}
         disabled={!hasNext}
-        aria-label={`Next ${label} keyframe`}
-        title="Next keyframe"
+        aria-label={t('propertyRow.nav.nextLabel', 'Next {name} keyframe', { name: label })}
+        title={t('propertyRow.nav.next', 'Next keyframe')}
         onClick={(e) => { e.stopPropagation(); onNext(); }}
       >
         <Icon name="chevron-right" size="sm" />
@@ -183,6 +195,8 @@ export interface PropertyRowProps {
   children: ReactNode;
   animated?: boolean;
   onStopwatch?: () => void;
+  /** Alt-click on the stopwatch — add / remove an expression (After Effects). */
+  onAltStopwatch?: () => void;
   /** Navigator wiring. Omitted → the navigator column stays empty (reserved). */
   navigator?: Omit<KeyframeNavigatorProps, 'label'>;
   /** Restore the property's default. Omitted → no reset affordance. */
@@ -209,6 +223,12 @@ export interface PropertyRowProps {
    * message on hover. `null`/undefined = no error.
    */
   error?: string | null;
+  /**
+   * What the property does, in one line — a native plugin's param description
+   * (SDK 1.2). The name gets a dotted underline and shows it as a tooltip on
+   * hover and on keyboard focus.
+   */
+  description?: string;
   /**
    * Small controls that belong to the NAME cell's right edge — the `=`
    * expression toggle, the pick-whip, modifier chips. In the name cell rather
@@ -248,6 +268,7 @@ export function PropertyRow({
   children,
   animated = false,
   onStopwatch,
+  onAltStopwatch,
   navigator,
   onReset,
   onContextMenu,
@@ -258,6 +279,7 @@ export function PropertyRow({
   hint,
   pinned = false,
   error,
+  description,
   trailing,
   below,
   onFocusCapture,
@@ -267,6 +289,19 @@ export function PropertyRow({
   const contextLayout = useContext(PropertyRowLayoutContext);
   const layout = layoutProp ?? contextLayout;
   const a11yLabel = srLabel ?? label;
+  /** The name's text, under its description's tooltip when it has one (an error's message wins). */
+  const nameText = (text: string): JSX.Element => {
+    const span = (
+      <span
+        className={cn(styles.nameText, error && styles.nameError, !error && description && styles.nameDescribed)}
+        data-error={error ? '' : undefined}
+        tabIndex={!error && description ? 0 : undefined}
+      >
+        {text}
+      </span>
+    );
+    return !error && description ? <Tooltip label={description}>{span}</Tooltip> : span;
+  };
 
   if (layout === 'inspector') {
     /*
@@ -302,15 +337,13 @@ export function PropertyRow({
         data-layout="inspector"
         data-mixed={mixed || undefined}
       >
-        <span className={cn(styles.name, animated && styles.nameAnimated)} title={error ?? a11yLabel}>
-          {onStopwatch && <StopwatchButton animated={animated} label={a11yLabel} onToggle={onStopwatch} className={styles.leadStopwatch} />}
-          {pinned && <Icon name="push-pin" size="sm" className={styles.pin} title="Pinned" />}
-          <span className={cn(styles.nameText, error && styles.nameError)} data-error={error ? '' : undefined}>
-            {sentenceCaseLabel(label)}
-          </span>
+        <span className={cn(styles.name, animated && styles.nameAnimated)} title={error ?? (description ? undefined : a11yLabel)}>
+          {onStopwatch && <StopwatchButton animated={animated} label={a11yLabel} onToggle={onStopwatch} onAltToggle={onAltStopwatch} className={styles.leadStopwatch} />}
+          {pinned && <Icon name="push-pin" size="sm" className={styles.pin} title={t('propertyRow.pinned', 'Pinned')} />}
+          {nameText(sentenceCaseLabel(label))}
           {mixed && (
-            <span className={styles.mixedMark} title="Mixed — the selected layers disagree" aria-label="Mixed values">
-              mixed
+            <span className={styles.mixedMark} title={t('propertyRow.mixedHint', 'Mixed — the selected layers disagree')} aria-label={t('propertyRow.mixedLabel', 'Mixed values')}>
+              {t('propertyRow.mixed', 'mixed')}
             </span>
           )}
           {hint && <span className={styles.hint}>{hint}</span>}
@@ -336,19 +369,17 @@ export function PropertyRow({
       data-mixed={mixed || undefined}
     >
       {onStopwatch ? (
-        <StopwatchButton animated={animated} label={a11yLabel} onToggle={onStopwatch} />
+        <StopwatchButton animated={animated} label={a11yLabel} onToggle={onStopwatch} onAltToggle={onAltStopwatch} />
       ) : (
         <span />
       )}
       {animated && navigator ? <KeyframeNavigator label={a11yLabel} {...navigator} /> : <span />}
-      <span className={cn(styles.name, animated && styles.nameAnimated)} title={error ?? a11yLabel}>
-        {pinned && <Icon name="push-pin" size="sm" className={styles.pin} title="Pinned" />}
-        <span className={cn(styles.nameText, error && styles.nameError)} data-error={error ? '' : undefined}>
-          {label}
-        </span>
+      <span className={cn(styles.name, animated && styles.nameAnimated)} title={error ?? (description ? undefined : a11yLabel)}>
+        {pinned && <Icon name="push-pin" size="sm" className={styles.pin} title={t('propertyRow.pinned', 'Pinned')} />}
+        {nameText(label)}
         {mixed && (
-          <span className={styles.mixedMark} title="Mixed — the selected layers disagree" aria-label="Mixed values">
-            mixed
+          <span className={styles.mixedMark} title={t('propertyRow.mixedHint', 'Mixed — the selected layers disagree')} aria-label={t('propertyRow.mixedLabel', 'Mixed values')}>
+            {t('propertyRow.mixed', 'mixed')}
           </span>
         )}
         {hint && <span className={styles.hint}>{hint}</span>}
@@ -359,8 +390,8 @@ export function PropertyRow({
         <button
           type="button"
           className={styles.reset}
-          aria-label={`Reset ${a11yLabel}`}
-          title={`Reset ${a11yLabel}`}
+          aria-label={t('propertyRow.reset', 'Reset {name}', { name: a11yLabel })}
+          title={t('propertyRow.reset', 'Reset {name}', { name: a11yLabel })}
           onClick={(e) => { e.stopPropagation(); onReset(); }}
         >
           <Icon name="rotate" size="sm" />

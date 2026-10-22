@@ -208,6 +208,8 @@ std::pair<std::uint32_t, std::uint32_t> fit_still(double srcW, double srcH, std:
 constexpr std::uint64_t kMaxReadPixels = 256ULL * 256ULL;
 
 /// A still's or a pixel read's hook answer that is not `ready` → the error.
+}  // namespace
+
 [[noreturn]] void fail_hook(HookAnswer a, const std::string& error, std::string_view what) {
   switch (a) {
     case HookAnswer::unsupported:
@@ -216,10 +218,13 @@ constexpr std::uint64_t kMaxReadPixels = 256ULL * 256ULL;
       fail(ErrorCode::busy, error.empty() ? std::string(what) + ": not ready yet, ask again" : error);
     case HookAnswer::ready:
     case HookAnswer::failed:
+    case HookAnswer::deferred:  // never an error: the handler threw DeferredAnswer instead
       break;
   }
   fail(ErrorCode::internal, error.empty() ? std::string(what) + " failed" : error);
 }
+
+namespace {
 
 /// getWaveform buckets: enough for a clip bar across an 8K-wide timeline.
 constexpr std::uint32_t kMaxWaveformBuckets = 1U << 16U;
@@ -240,13 +245,14 @@ api::EffectInfo effect_info(const EffectDef& def) {
     pi.name = p.label;
     pi.match_name = p.key;
     pi.value_type = param_value_type(p.type);
-    pi.animatable = p.type == "number" || p.type == "color";
+    pi.animatable = !p.fixed && (p.type == "number" || p.type == "color");
     if (p.def.is_number()) pi.default_value = v_scalar(p.def.num());
     pi.min_ = p.min;
     pi.max_ = p.max;
     for (const auto& o : p.options) pi.choices.push_back(o.label);
     pi.unit = p.unit.value_or("");
     pi.group = p.group.value_or("");
+    if (!p.description.empty()) pi.description = p.description;
     if (p.precision) pi.precision = static_cast<std::uint32_t>(std::max(0.0, *p.precision));
     // Plugin SDK 1.1 param kinds the editor draws its own control for.
     if (p.type == "text" || p.type == "curve" || p.type == "gradient" || p.type == "file") pi.kind = p.type;
@@ -693,6 +699,7 @@ struct Q {
       case HookAnswer::pending:
         fail(ErrorCode::busy, "the source is still decoding; ask again", {.detail = s.src});
       case HookAnswer::failed:
+      case HookAnswer::deferred:  // peaks are read on this thread: never deferred
         fail(ErrorCode::decode, "the source's peaks could not be read", {.detail = s.src});
       case HookAnswer::ready:
         break;
@@ -761,6 +768,7 @@ struct Q {
     std::tie(r.width, r.height) = fit_still(w, h, maxSize);
     if (!c.still) fail(ErrorCode::unsupported, "getThumbnail needs the engine's renderer; this engine has none");
     StillImage img = c.still(r);
+    if (img.answer == HookAnswer::deferred) throw DeferredAnswer{};
     if (img.answer != HookAnswer::ready) fail_hook(img.answer, img.error, "getThumbnail");
     return query_result_for<api::GetThumbnail>(api::Thumbnail{img.width, img.height, std::move(img.format), std::move(img.data)});
   }
@@ -771,6 +779,7 @@ struct Q {
     if (!document || !document->is_object()) fail(ErrorCode::invalid_argument, "document must be an EditorDocument as JSON");
     if (!c.documentStill) fail(ErrorCode::unsupported, "renderDocumentStill needs the engine's renderer; this engine has none");
     StillImage img = c.documentStill(*document, q.comp.value_or(std::string()), q.time, q.max_size == 0 ? kDefaultThumbnail : q.max_size);
+    if (img.answer == HookAnswer::deferred) throw DeferredAnswer{};
     if (img.answer != HookAnswer::ready) fail_hook(img.answer, img.error, "renderDocumentStill");
     return query_result_for<api::RenderDocumentStill>(api::Thumbnail{img.width, img.height, std::move(img.format), std::move(img.data)});
   }
@@ -787,7 +796,13 @@ struct Q {
       e.provider = ne->provider;
       e.gpu = ne->gpu;
       e.supports_float = ne->supportsFloat;
-      for (const auto& [key, label] : ne->actions) e.actions.push_back(api::EffectActionInfo{key, label});
+      for (const NativeAction& a : ne->actions) e.actions.push_back(api::EffectActionInfo{a.key, a.label, a.group, a.at});
+      for (const NativeGroup& g : ne->groups) {
+        api::EffectGroupInfo gi{g.path, g.key, g.collapsed, std::nullopt};
+        if (!g.description.empty()) gi.description = g.description;
+        e.groups.push_back(std::move(gi));
+      }
+      if (!ne->about.empty()) e.about = ne->about;
       if (q.category.empty() || e.category == q.category) out.effects.push_back(std::move(e));
     }
     return query_result_for<api::ListEffects>(std::move(out));
@@ -961,6 +976,7 @@ struct Q {
     const PixelRegion region{static_cast<std::uint32_t>(cx0), static_cast<std::uint32_t>(cy0), static_cast<std::uint32_t>(rw),
                              static_cast<std::uint32_t>(rh)};
     WorkingPixels px = c.readPixels(q.viewport, region);
+    if (px.answer == HookAnswer::deferred) throw DeferredAnswer{};
     if (px.answer != HookAnswer::ready) fail_hook(px.answer, px.error, "readPixels");
     return query_result_for<api::ReadPixels>(api::PixelSamples{px.width, px.height, std::move(px.rgba)});
   }
@@ -1004,7 +1020,7 @@ struct Q {
                                                flicks_to_key_time(pc, q.prop.layer, b, q.time));
       api::ExpressionEvaluation out;
       if (tr.result) out.text = source_text_preview(*tr.result);
-      if (tr.error && !tr.error->empty()) out.diagnostics.push_back(api::ExpressionDiagnostic{to_u8(*tr.error), 0, 0});
+      if (tr.error && !tr.error->empty()) out.diagnostics.push_back(api::ExpressionDiagnostic{to_u8(*tr.error), tr.line, tr.column});
       return query_result_for<api::EvaluateExpression>(std::move(out));
     }
     if (b.members.empty()) fail(ErrorCode::unsupported, "'" + b.path + "' is not numeric", {.path = b.path});
@@ -1024,7 +1040,7 @@ struct Q {
       if (r.size == 2) out.value = v_vec2(v[0], v[1]);
       else out.value = v_vec3(r.size > 0 ? v[0] : 0, r.size > 1 ? v[1] : 0, r.size > 2 ? v[2] : 0);
     }
-    if (r.error && !r.error->empty()) out.diagnostics.push_back(api::ExpressionDiagnostic{to_u8(*r.error), 0, 0});
+    if (r.error && !r.error->empty()) out.diagnostics.push_back(api::ExpressionDiagnostic{to_u8(*r.error), r.line, r.column});
     return query_result_for<api::EvaluateExpression>(std::move(out));
   }
   api::QueryResult operator()(const api::GetSearchFacts& q) const {

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -163,6 +164,56 @@ std::string font_for(const TextStyle& s) {
   std::string css = text_css_font(s);
   if (s.smallCaps) css = css.starts_with("italic ") ? "italic small-caps " + css.substr(7) : "small-caps " + css;
   return css;
+}
+
+/// fontAxes.ts fontVariationString(base, offsets): the layer's variation string
+/// with a glyph's animator axis offsets added. An offset on an axis the layer
+/// does not set starts from the axis's registered default (the weight the CSS
+/// font carries, wdth 100, slnt 0, opsz 12 …), which is what the font renders
+/// when the axis is unset.
+std::string variations_with_offsets(const std::string& layerVariations, const TextStyle& style, const std::map<std::string, double>& offsets) {
+  std::map<std::string, double> axes;
+  // "'tag' value, 'tag' value"
+  std::size_t pos = 0;
+  while ((pos = layerVariations.find('\'', pos)) != std::string::npos) {
+    const std::size_t end = layerVariations.find('\'', pos + 1);
+    if (end == std::string::npos) break;
+    const std::string tag = layerVariations.substr(pos + 1, end - pos - 1);
+    std::size_t vEnd = layerVariations.find(',', end);
+    if (vEnd == std::string::npos) vEnd = layerVariations.size();
+    const std::string num = layerVariations.substr(end + 1, vEnd - end - 1);
+    axes[tag] = std::strtod(num.c_str(), nullptr);
+    pos = vEnd;
+  }
+  for (const auto& [tag, off] : offsets) {
+    if (!std::isfinite(off) || off == 0) continue;
+    const auto it = axes.find(tag);
+    double start = 0;
+    if (it != axes.end()) {
+      start = it->second;
+    } else if (tag == "wght") {
+      const double w = style.fontWeight ? std::strtod(style.fontWeight->c_str(), nullptr) : 0;
+      start = std::isfinite(w) && w > 0 ? w : 400;
+    } else if (tag == "wdth") {
+      start = 100;
+    } else if (tag == "opsz") {
+      start = 12;
+    }
+    axes[tag] = start + off;
+  }
+  std::string out;
+  const auto part = [&out](const std::string& tag, double v) {
+    if (!out.empty()) out += ", ";
+    out += "'" + tag + "' " + num_str(v);
+  };
+  for (const char* lead : {"wght", "wdth", "slnt"}) {
+    if (const auto it = axes.find(lead); it != axes.end()) part(lead, it->second);
+  }
+  for (const auto& [tag, v] : axes) {  // std::map: the other tags sorted, as the TS sorts them
+    if (tag == "wght" || tag == "wdth" || tag == "slnt") continue;
+    part(tag, v);
+  }
+  return out;
 }
 
 /// Everything about a style that changes the pixels of a same-string draw.
@@ -723,13 +774,14 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   specStyle.fontStyle = opt_str(spec["fontStyle"]);
   (void)ctx.setFont(font_for(specStyle));
   // Variable-font axes beyond the weight (which the font set drives from the
-  // CSS weight): width, slant and the layer's other registered axes.
+  // CSS weight): width, slant and the layer's other registered axes. A glyph
+  // with animator axis offsets draws with them added (variations_with_offsets).
+  std::string layerVariations;
   {
-    std::string variations;
-    const auto part = [&variations](std::string_view tag, double v) {
+    const auto part = [&layerVariations](std::string_view tag, double v) {
       if (!std::isfinite(v)) return;
-      if (!variations.empty()) variations += ", ";
-      variations += "'" + std::string(tag) + "' " + num_str(v);
+      if (!layerVariations.empty()) layerVariations += ", ";
+      layerVariations += "'" + std::string(tag) + "' " + num_str(v);
     };
     if (spec["fontWidth"].is_number()) part("wdth", spec["fontWidth"].num());
     if (spec["fontSlant"].is_number()) part("slnt", spec["fontSlant"].num());
@@ -737,8 +789,12 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
       if (tag.size() != 4 || tag == "wght" || tag == "wdth" || tag == "slnt") continue;
       if (spec["fontAxes"][tag].is_number()) part(tag, spec["fontAxes"][tag].num());
     }
-    if (!variations.empty()) ctx.setFontVariationSettings(variations);
+    if (!layerVariations.empty()) ctx.setFontVariationSettings(layerVariations);
   }
+  const auto glyphVariations = [&layerVariations](const TextStyle& s) -> std::optional<std::string> {
+    if (!s.axisOffsets || s.axisOffsets->empty()) return std::nullopt;
+    return variations_with_offsets(layerVariations, s, *s.axisOffsets);
+  };
   const bool optical = ex.kerningMode == "optical";
   ctx.setSmallCaps(spec["fontVariant"].str_or("") == "small-caps");
   if (optical) ctx.setFontKerning(false);
@@ -913,6 +969,8 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
     if (rangeScaled) ctx.scale(gs.sx, gs.sy);
     if (style.fauxItalic) ctx.transform({1, 0, -js_tan((12 * kJsPi) / 180), 1, 0, 0});  // FAUX_ITALIC_SKEW
     (void)ctx.setFont(font_for(style));
+    // Animator Font Axis offsets: the layer's variations plus this glyph's (ctx.restore() puts the layer's back).
+    if (const auto gv = glyphVariations(style)) ctx.setFontVariationSettings(*gv);
     if (runSpacing) ctx.setLetterSpacing(*runSpacing);
     const Style fs = useGradient ? gradient->style_for(ctx) : styleOf(fill);
     const Style ss = useStrokeGradient ? strokeGradient->style_for(ctx) : styleOf(strokeColor);
@@ -1015,11 +1073,14 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   std::map<std::string, double> measureCache;
   const MeasureGlyph measure = [&](const std::string& ch, const TextStyle& style) {
     const std::string font = font_for(style);
-    const std::string key = font + " " + ch;
+    const std::optional<std::string> gv = glyphVariations(style);
+    const std::string key = font + "|" + gv.value_or("") + " " + ch;
     const auto hit = measureCache.find(key);
     if (hit != measureCache.end()) return hit->second;
     (void)ctx.setFont(font);
+    if (gv) ctx.setFontVariationSettings(*gv);
     const double w = ctx.measureText(ch).width;
+    if (gv) ctx.setFontVariationSettings(layerVariations.empty() ? std::string("normal") : layerVariations);
     measureCache.emplace(key, w);
     return w;
   };
@@ -1034,12 +1095,15 @@ void paint_text_in_box(Canvas2D& ctx, const Value& spec, std::vector<std::string
   lo.opticalKern = opticalKern;
   lo.measureRun = [&](const std::string& run, const TextStyle& style) {
     const std::string font = font_for(style);
-    const std::string key = "run|" + font + "|" + num_str(style.letterSpacing.value_or(0)) + "|" + run;
+    const std::optional<std::string> gv = glyphVariations(style);
+    const std::string key = "run|" + font + "|" + gv.value_or("") + "|" + num_str(style.letterSpacing.value_or(0)) + "|" + run;
     const auto hit = measureCache.find(key);
     if (hit != measureCache.end()) return hit->second;
     ctx.setLetterSpacing(style.letterSpacing && *style.letterSpacing != 0 ? *style.letterSpacing : 0);
     (void)ctx.setFont(font);
+    if (gv) ctx.setFontVariationSettings(*gv);
     const double w = ctx.measureText(run).width;
+    if (gv) ctx.setFontVariationSettings(layerVariations.empty() ? std::string("normal") : layerVariations);
     ctx.setLetterSpacing(0);
     measureCache.emplace(key, w);
     return w;

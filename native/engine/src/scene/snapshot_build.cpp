@@ -328,6 +328,9 @@ class Walk final : public Scene3DHost {
   void emit_time_taps(const doc::Node& n, const RLayer& now);
   void build_node(const doc::Node& n);
   void unported(RLayer& l, const doc::Node& n, std::string what);
+  /// A `warning` layer error: the layer draws without `what` (a clone source,
+  /// a sky asset, a plugin …) and the frame is still exportable.
+  void warning(RLayer& l, const doc::Node& n, std::string what);
   /// T4: a `font` layer error when none of the text's families is registered.
   void note_missing_font(RLayer& l, const doc::Node& n, std::string_view cssFamilies);
   std::vector<Json> effects_of(const doc::Node& n, const Values& a, std::optional<double> layerTime, RLayer* note);
@@ -647,6 +650,12 @@ void Walk::unported(RLayer& l, const doc::Node& n, std::string what) {
   l.unported.push_back(std::move(what));
 }
 
+void Walk::warning(RLayer& l, const doc::Node& n, std::string what) {
+  if (std::ranges::find(l.unported, what) != l.unported.end()) return;
+  errors_.push_back({n.id, n.name, "warning", what});
+  l.unported.push_back(std::move(what));
+}
+
 void Walk::emit(RLayer l, const doc::Node& n) {
   const doc::Node* pc = nearest_precomp_root(n);
   if (pc == nullptr) {
@@ -715,11 +724,7 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
       }
       return false;
     };
-    if (auto compiled = layer_styles_to_effects(styles, comp_.globalLightAngle, comp_.globalLightAltitude, animated)) {
-      for (Json& e : *compiled) own.push_back(std::move(e));
-    } else if (note != nullptr) {
-      unported(*note, n, "layer styles");
-    }
+    for (Json& e : layer_styles_to_effects(styles, comp_.globalLightAngle, comp_.globalLightAltitude, animated)) own.push_back(std::move(e));
   }
   if (own.empty()) return {};
   std::vector<Json> resolved = resolve_effect_params(own, a, layerTime);
@@ -732,14 +737,22 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
         std::nullopt};
     if (const auto span = doc::anim_time_span(d_, sid(n.id))) anim.firstKey = span->start;
     resolve_effect_handoffs(resolved, n, a, layerTime, c_.measurer, notes, &anim);
+    // Energy Beam on a text outline the fonts cannot trace, Write-on's brush
+    // history without a sampler: the effect draws without that input.
     if (note != nullptr) {
-      for (std::string& w : notes) unported(*note, n, std::move(w));
+      for (std::string& w : notes) warning(*note, n, std::move(w));
     }
   }
   if (note != nullptr) {
     for (const Json& e : resolved) {
       const std::string type = e.at("type").is_string() ? e.at("type").str() : "";
-      if (const char* why = effect_unported_reason(e)) unported(*note, n, std::string(why) + " (" + type + ")");
+      if (const char* why = effect_unported_reason(e)) {
+        // A missing plugin / an effect outside every ported list passes its input
+        // through: the frame draws and exports, the user is told. A Cloud-locked
+        // plugin keeps its own stage (is_plugin_locked_error, the notice's heading).
+        if (std::string_view(why) == kPluginLockedReason) unported(*note, n, std::string(why) + " (" + type + ")");
+        else warning(*note, n, std::string(why) + " (" + type + ")");
+      }
     }
   }
   // Camera program D2: a Lens Flare linked to a light sits where the light
@@ -755,7 +768,9 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
       const doc::Node* light = node(link.str());
       const auto pr = light != nullptr ? three_->project_light(*light) : std::nullopt;
       if (!pr) {
-        if (note != nullptr) unported(*note, n, "Lens Flare: the linked light '" + link.str() + "' is not a light in this composition");
+        if (note != nullptr) {
+          warning(*note, n, "Lens Flare: the linked light '" + link.str() + "' is not a light in this composition — the flare draws at its own Centre");
+        }
         continue;
       }
       const xf::Vec2 local = xf::transform_point(xf::invert(world_matrix(n.id)), xf::Vec2{pr->x, pr->y});
@@ -1016,14 +1031,23 @@ void Walk::text_fields(RLayer& l, const doc::Node& n, const Base& base, const Va
   l.textStroke = base.textStroke;
   l.textStrokeWidth = a.get("strokeWidth") ? a.get("strokeWidth") : base.textStrokeWidth;
   Json out = point_text_extras(n);  // text_port.cpp
-  // Vertical optical pairs (opticalKernVertical) are not in the scene port's measurer.
-  if (out.at("orientation").is_string() && out.at("kerningMode").is_string()) unported(l, n, "vertical text with optical kerning");
   with_text_more_options(out, n, a);  // textMoreOptions + OpenType switches (text_port.cpp)
   if (!out.obj().empty()) l.textExtras = std::move(out);
   if (doc::read_text_path_config(n)) l.textPath = resolve_layer_text_path(n, a);  // text_port.cpp
   l.textStrokePaint = text_stroke_paint(n, a);                                     // text_port.cpp
-  const Json axes = doc::read_font_axes_prop(n);
-  if (axes.is_object() && !axes.obj().empty()) unported(l, n, "variable font axes");
+  // Variable font axes (fontAxes.ts resolveFontAxes): the stored registered tags,
+  // a keyed `text.axis.<tag>` value winning. The painter sets them as
+  // font-variation-settings over the weight / width / slant (text_paint.cpp);
+  // the measurer measures with the same variations (text_measure.cpp).
+  Json axes = doc::read_font_axes_prop(n);
+  for (const auto& [k, v] : a.items()) {
+    if (!std::isfinite(v)) continue;
+    if (const auto tag = doc::parse_axis_prop_path(k); tag && *tag != "wght" && *tag != "wdth" && *tag != "slnt") {
+      if (!axes.is_object()) axes = Json::object();
+      axes.set(*tag, Json::number(v));
+    }
+  }
+  if (axes.is_object() && !axes.obj().empty()) l.fontAxes = std::move(axes);
 }
 
 /// applySourceTextExpressionResult: layer-wide style overrides and the
@@ -1268,9 +1292,11 @@ void Walk::build_node(const doc::Node& n) {
     return;
   }
   if (kind.find('.') != std::string::npos) {
+    // A plugin GENERATOR layer of the retired JS / WGSL tiers (G2): there is no
+    // host for it in the C++ engine. The layer draws nothing; the frame is told.
     RLayer l;
     l.id = n.id;
-    unported(l, n, "plugin generator / shader layers");
+    warning(l, n, "plugin generator / shader layer '" + kind + "' (a retired JS / WGSL plugin layer) — drawn empty");
     emit_stub(n);
     return;
   }
@@ -1324,9 +1350,11 @@ void Walk::build_node(const doc::Node& n) {
     textStyle = read_measured_text_style(n, a.items());
     const std::optional<MeasuredStyle>& style = textStyle;
     if (style) {
-      if (c_.measurer == nullptr) unported(l, n, "text measurement (no fonts)");
+      // No measurer (a headless build) or a style the measurer refuses: the box
+      // falls back to the authored / default size and the text still paints into it.
+      if (c_.measurer == nullptr) warning(l, n, "text measurement (no fonts) — the text box keeps its authored size");
       else measured = c_.measurer->measure_text_size(*style);
-      if (!measured && c_.measurer != nullptr) unported(l, n, "text measurement of this style");
+      if (!measured && c_.measurer != nullptr) warning(l, n, "text measurement of this style — the text box keeps its authored size");
       note_missing_font(l, n, style->fontFamily);
     }
   }
@@ -1338,13 +1366,9 @@ void Walk::build_node(const doc::Node& n) {
   double layerH = isSolid ? (solidUnseeded || !rawH ? comp_.height : *rawH)
                           : (measured ? measured->second : rawH.value_or(sizeH));
 
-  // Geometry the port does not produce yet.
-  if (layerKind == LayerKind::shape) {
-    if (apply_polystar(n, a, pathPoints, layerW, layerH) == GeometryStatus::applied) {
-      staticSubpaths = Json();
-    } else if (doc::read_node_polystar(n)) {
-      unported(l, n, "parametric polystar");
-    }
+  // Parametric polystar (path_ops.cpp): the outline replaces the stored path.
+  if (layerKind == LayerKind::shape && apply_polystar(n, a, pathPoints, layerW, layerH) == GeometryStatus::applied) {
+    staticSubpaths = Json();
   }
   if (const Json& wave = fx.at("audioWaveform"); wave.is_object()) {
     const std::string source = wave.at("sourceLayerId").is_string() ? wave.at("sourceLayerId").str() : std::string();
@@ -1359,7 +1383,9 @@ void Walk::build_node(const doc::Node& n) {
       return pts;
     };
     if (c_.waveform == nullptr) {
-      unported(l, n, "audio waveform generator (no audio engine)");
+      // A headless build without an audio engine: the generator draws its empty path.
+      warning(l, n, "audio waveform generator (no audio engine) — drawn flat");
+      pathPoints = emptyPath();
     } else if (source.empty() || !c_.waveform(source, peaks, duration)) {
       // resolveAudioWaveformPoints: no source, or a source still decoding (getWave
       // undefined), draws the empty path; the next frame after the conform draws it.
@@ -1626,7 +1652,9 @@ void Walk::build_node(const doc::Node& n) {
   l.draft = read_node_quality_s(n) == "draft";
   if (doc::read_node_paint(n)) {  // paint_port.cpp: the frame's live strokes
     LayerPaint lp = resolve_layer_paint(d_, n, layerTimeNow, a, sid(n.id));
-    for (std::string& why : lp.unported) unported(l, n, std::move(why));
+    // A clone stroke sampling another layer or another time has no source in a
+    // raster: that stroke is left out and the rest of the paint draws.
+    for (std::string& why : lp.unported) warning(l, n, std::move(why));
     // Shapes draw paint in their path raster, text in its text raster (text_spec's
     // `paint`, raster_source), footage bakes it onto the decoded frame
     // (frame_build's paint-only bake → bake_footage), as the TypeScript does.
@@ -1793,7 +1821,9 @@ void Walk::build_node(const doc::Node& n) {
     if (kind == "svg") {  // svgLayerSrc: the stored document (svg_layer.cpp)
       SvgLayerSource svg = svg_layer_source(n);
       if (svg.src) l.src = std::move(svg.src);
-      for (std::string& why : svg.unported) unported(l, n, std::move(why));
+      // The stored markup draws as a still either way: an older sanitize policy
+      // or SMIL / CSS animation the renderer does not play is said, not refused.
+      for (std::string& why : svg.unported) warning(l, n, std::move(why));
     }
     // buildSnapshot: a cover slot keeps the authored box and crops in UV space
     // (mediaSlots.ts coverUvRect). The source size is footageSourceOf's display
@@ -1854,24 +1884,24 @@ void Walk::build_node(const doc::Node& n) {
     if (layerKind == LayerKind::image && l.src && !l.src->empty() && !pathSilhouette) {
       coverage = image_coverage_mask(l.assetId.value_or(*l.src), *l.src, c_.mediaBase);
     }
-    if (!coverage.unreachable.empty()) {
-      unported(l, n, "rigs on image layers (" + coverage.unreachable + ")");
-    } else {
-      RigInputs ri;
-      ri.fx = &fx;
-      ri.width = l.width;
-      ri.height = l.height;
-      ri.pad = raster_padding(l);
-      ri.pathPoints = l.pathPoints.is_array() ? &l.pathPoints : nullptr;
-      ri.pathOpen = l.pathOpen;
-      ri.rigT = l.sourceTime.value_or(t_);
-      ri.coverage = coverage.mask.get();
-      RigResult rig = build_rig_mesh_for(d_, c_.expr, c_.cache, sid(n.id), ri);
-      for (std::string& what : rig.unported) unported(l, n, std::move(what));
-      if (rig.unported.empty()) l.deformedMesh = std::move(rig.mesh);
-    }
+    // An image the engine cannot read here (a session URL, a relative path with
+    // no project folder): the rig deforms the layer's full grid instead of its
+    // alpha-traced outline.
+    if (!coverage.unreachable.empty()) warning(l, n, "rig on an image layer: " + coverage.unreachable + " — the mesh covers the whole layer");
+    RigInputs ri;
+    ri.fx = &fx;
+    ri.width = l.width;
+    ri.height = l.height;
+    ri.pad = raster_padding(l);
+    ri.pathPoints = l.pathPoints.is_array() ? &l.pathPoints : nullptr;
+    ri.pathOpen = l.pathOpen;
+    ri.rigT = l.sourceTime.value_or(t_);
+    ri.coverage = coverage.mask.get();
+    RigResult rig = build_rig_mesh_for(d_, c_.expr, c_.cache, sid(n.id), ri);
+    for (std::string& what : rig.warnings) warning(l, n, std::move(what));
+    if (rig.mesh) l.deformedMesh = std::move(rig.mesh);
   }
-  // Shape geometry: stored multi-run paths; the operator chain is not ported.
+  // Shape geometry: stored multi-run paths, then the operator chain.
   if (layerKind == LayerKind::shape) {
     if (staticSubpaths.is_array() && staticSubpaths.arr().size() > 1) {
       Json subs = Json::array();
@@ -1899,9 +1929,9 @@ void Walk::build_node(const doc::Node& n) {
       l.pathOpen = false;
       l.primitive = "path";
     }
-    if (apply_path_ops(n, a, layerTimeNow, l) == GeometryStatus::unported) {
-      unported(l, n, "shape path operators (trim / repeater / zig-zag / wiggle …)");
-    }
+    // The operator chain (trim / repeater / zig-zag / wiggle / offset / pucker /
+    // twist / round / merge …, path_ops.cpp) — the viewport's and the export's one evaluator.
+    (void)apply_path_ops(n, a, layerTimeNow, l);
   }
   motion_samples(l, n, base, n.id, three_->matrix_at(n, a, base.x, base.y, base.rotation, s3));
   if (layerKind == LayerKind::text && l.text) {
@@ -1929,7 +1959,8 @@ void Walk::build_node(const doc::Node& n) {
     // Paragraph text renders WRAPPED (wrappedLayerText, text_port.cpp) — after the animators
     // and runs, which index the raw text.
     if (l.text) {
-      if (std::string why = paragraph_layer(l, n, c_.measurer, *l.text); !why.empty()) unported(l, n, why);
+      // A box the measurer cannot wrap draws its text unwrapped (said, not refused).
+      if (std::string why = paragraph_layer(l, n, c_.measurer, *l.text); !why.empty()) warning(l, n, why + " — drawn unwrapped");
     }
   }
   three_->effects(s3, isSolid, px, py, l);  // DOF blur, cast shadows, receivers, the Only modes
@@ -2240,9 +2271,11 @@ Snapshot Walk::run() {
   }
   // Landed beams, projected shadows and the 3D depth sort (before the matte pairing, as the TS).
   three_->finish(layers_);
+  // An environment light / reflection whose image sky could not be read: the
+  // scene renders without that light (said, not refused).
   for (const auto& [id, what] : three_->unported()) {
     const doc::Node* un = node(id);
-    errors_.push_back({id, un != nullptr ? un->name : std::string(), "unported", what});
+    errors_.push_back({id, un != nullptr ? un->name : std::string(), "warning", what});
   }
 
   // resolveMatteSources — per stack level, as the TypeScript applies it to the top level only.

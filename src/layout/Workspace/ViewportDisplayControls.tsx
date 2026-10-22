@@ -82,6 +82,7 @@ import { VIEWPORT_COMMAND_IDS } from './viewportCommands';
 import { isDisplayShed, type DisplayGroup } from './transportOverflow';
 import styles from './ViewportDisplayControls.module.css';
 import tool from './viewportToolButton.module.css';
+import { t } from '@core/i18n';
 
 // The ladder lives with the transport bar's, in `transportOverflow.ts` — it is
 // the first rungs of that one now. Re-exported so importers keep reading
@@ -131,19 +132,26 @@ const CHANNEL_ICON: Record<ViewChannel, IconName> = {
   alpha: 'mask-circle',
 };
 
-const CHANNEL_LABEL: Record<ViewChannel, string> = {
-  rgb: 'RGB',
-  red: 'Red',
-  green: 'Green',
-  blue: 'Blue',
-  alpha: 'Alpha',
-};
+/** Functions, not constants: `t()` must run at render time, never at module scope. */
+function channelLabel(c: ViewChannel): string {
+  switch (c) {
+    case 'rgb': return 'RGB';
+    case 'red': return t('workspace.display.channelRed', 'Red');
+    case 'green': return t('workspace.display.channelGreen', 'Green');
+    case 'blue': return t('workspace.display.channelBlue', 'Blue');
+    case 'alpha': return t('workspace.display.channelAlpha', 'Alpha');
+    default: return c;
+  }
+}
 
-const LAYOUT_LABEL: Record<ViewLayout, string> = {
-  '1': '1 View',
-  '2': '2 Views',
-  '4': '4 Views',
-};
+function layoutLabel(l: ViewLayout): string {
+  switch (l) {
+    case '1': return t('workspace.display.layout1', '1 View');
+    case '2': return t('workspace.display.layout2', '2 Views');
+    case '4': return t('workspace.display.layout4', '4 Views');
+    default: return l;
+  }
+}
 
 const LAYOUT_ICON: Record<ViewLayout, IconName> = {
   '1': 'square',
@@ -215,7 +223,7 @@ function exposureMenuItems(m: Pick<ViewportDisplayModel, 'exposure' | 'setExposu
   return [-2, -1, 0, 1, 2].map<DropdownItem>((stops) => ({
     type: 'checkbox',
     id: `vd-exposure-${stops}`,
-    label: stops === 0 ? 'Reset Exposure (0.0)' : formatStops(stops),
+    label: stops === 0 ? t('workspace.display.resetExposureZero', 'Reset Exposure (0.0)') : formatStops(stops),
     checked: Math.abs(m.exposure - stops) < 0.05,
     onChange: () => m.setExposure(stops),
   }));
@@ -252,12 +260,16 @@ function ExposureControl({ stops, onChange }: { stops: number; onChange: (stops:
     setEditing(false);
   };
   return (
-    <span className={styles.exposure} role="group" aria-label="Exposure">
+    <span className={styles.exposure} role="group" aria-label={t('workspace.display.exposure', 'Exposure')}>
       <button
         type="button"
         className={cn(tool.tool, stops !== 0 && tool.toolActive)}
-        aria-label={stops !== 0 ? `Reset Exposure (now ${formatStops(stops)})` : 'Adjust Exposure'}
-        title={stops !== 0 ? `Exposure ${formatStops(stops)} stops — click to reset (viewer only)` : 'Adjust Exposure — drag the value; viewer only, never in output'}
+        aria-label={stops !== 0
+          ? t('workspace.display.resetExposureNow', 'Reset Exposure (now {stops})', { stops: formatStops(stops) })
+          : t('workspace.display.adjustExposure', 'Adjust Exposure')}
+        title={stops !== 0
+          ? t('workspace.display.exposureResetTitle', 'Exposure {stops} stops — click to reset (viewer only)', { stops: formatStops(stops) })
+          : t('workspace.display.adjustExposureTitle', 'Adjust Exposure — drag the value; viewer only, never in output')}
         onClick={() => onChange(0)}
       >
         <Icon name="theme" size="sm" />
@@ -265,7 +277,7 @@ function ExposureControl({ stops, onChange }: { stops: number; onChange: (stops:
       {editing ? (
         <input
           className={styles.exposureInput}
-          aria-label="Exposure in stops"
+          aria-label={t('workspace.display.exposureStops', 'Exposure in stops')}
           value={raw}
           autoFocus
           onChange={(e) => setRaw(e.target.value)}
@@ -279,12 +291,12 @@ function ExposureControl({ stops, onChange }: { stops: number; onChange: (stops:
         <span
           className={styles.exposureValue}
           role="spinbutton"
-          aria-label="Exposure in stops"
+          aria-label={t('workspace.display.exposureStops', 'Exposure in stops')}
           aria-valuenow={stops}
           aria-valuemin={-40}
           aria-valuemax={40}
           tabIndex={0}
-          title="Exposure (stops) · drag or double-click to type"
+          title={t('workspace.display.exposureValueTitle', 'Exposure (stops) · drag or double-click to type')}
           onPointerDown={onPointerDown}
           onDoubleClick={() => {
             setRaw(stops.toFixed(1));
@@ -353,7 +365,11 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
     ...(['1', '2', '4'] as ViewLayout[]).map<DropdownItem>((n) => ({
       type: 'checkbox',
       id: `vd-layout-${n}`,
-      label: n === '1' ? '1 View' : n === '2' ? '2 Views — side by side, each with its own camera' : '4 Views — 2×2 grid, each with its own camera',
+      label: n === '1'
+        ? t('workspace.display.layout1', '1 View')
+        : n === '2'
+          ? t('workspace.display.layout2Menu', '2 Views — side by side, each with its own camera')
+          : t('workspace.display.layout4Menu', '4 Views — 2×2 grid, each with its own camera'),
       checked: viewLayout === n,
       onChange: () => setViewLayout(n),
     })),
@@ -361,7 +377,7 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   // AE's 3D View popup — its own menu beside the layout, as in AE's
   // Composition panel footer ("Active Camera ▾" then "1 View ▾").
   const viewItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'vd-cam-active', label: 'Active Camera', checked: camera3dMode === 'active', onChange: () => setCamera3dMode('active') },
+    { type: 'checkbox', id: 'vd-cam-active', label: t('workspace.display.activeCamera', 'Active Camera'), checked: camera3dMode === 'active', onChange: () => setCamera3dMode('active') },
     ...cameraViews.map<DropdownItem>((c) => ({
       type: 'checkbox',
       id: `vd-cam-node-${c.nodeId}`,
@@ -393,7 +409,7 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   const channelItems = (['rgb', 'red', 'green', 'blue', 'alpha'] as ViewChannel[]).map<DropdownItem>((c) => ({
     type: 'checkbox',
     id: `vd-channel-${c}`,
-    label: c === 'rgb' ? 'RGB (colour)' : CHANNEL_LABEL[c],
+    label: c === 'rgb' ? t('workspace.display.channelRgbColour', 'RGB (colour)') : channelLabel(c),
     checked: channel === c,
     onChange: () => setChannel(c),
   }));
@@ -454,38 +470,40 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
    * command has one, the same chord the View menu prints.
    */
   const overlayItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'vd-grid', label: 'Grid', checked: grid, shortcut: shortcutOf('view.grid'), onChange: toggleGrid },
-    { type: 'checkbox', id: 'vd-rulers', label: 'Rulers', checked: rulers, shortcut: shortcutOf('view.rulers'), onChange: toggleRulers },
-    { type: 'checkbox', id: 'vd-safe-area', label: 'Safe Areas', checked: safeArea, shortcut: shortcutOf('view.safeAreas'), onChange: toggleSafeArea },
-    { type: 'checkbox', id: 'vd-guides', label: 'Guides', checked: guidesVisible, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.guidesShow), onChange: () => run(VIEWPORT_COMMAND_IDS.guidesShow) },
+    { type: 'checkbox', id: 'vd-grid', label: t('workspace.display.grid', 'Grid'), checked: grid, shortcut: shortcutOf('view.grid'), onChange: toggleGrid },
+    { type: 'checkbox', id: 'vd-rulers', label: t('workspace.display.rulers', 'Rulers'), checked: rulers, shortcut: shortcutOf('view.rulers'), onChange: toggleRulers },
+    { type: 'checkbox', id: 'vd-safe-area', label: t('workspace.display.safeAreas', 'Safe Areas'), checked: safeArea, shortcut: shortcutOf('view.safeAreas'), onChange: toggleSafeArea },
+    { type: 'checkbox', id: 'vd-guides', label: t('workspace.display.guides', 'Guides'), checked: guidesVisible, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.guidesShow), onChange: () => run(VIEWPORT_COMMAND_IDS.guidesShow) },
     // Measurement badges, equal-spacing and equal-size snapping while a drag
     // is in flight; Alt-hover measures between two layers.
-    { type: 'checkbox', id: 'vd-smart-guides', label: 'Smart Guides', checked: smartGuides, onChange: toggleSmartGuides },
+    { type: 'checkbox', id: 'vd-smart-guides', label: t('workspace.display.smartGuides', 'Smart Guides'), checked: smartGuides, onChange: toggleSmartGuides },
     { type: 'checkbox', id: 'vd-hud', label: 'HUD', checked: hud, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.hud), onChange: () => run(VIEWPORT_COMMAND_IDS.hud) },
     {
       type: 'item',
       id: 'vd-motion-path-dots',
-      label: 'Motion Path Dots',
+      label: t('workspace.display.motionPathDots', 'Motion Path Dots'),
       submenu: [
-        dotChoice('off', 'Off (curve only)'),
-        dotChoice('small', 'Small'),
-        dotChoice('medium', 'Medium'),
-        dotChoice('large', 'Large'),
+        dotChoice('off', t('workspace.display.dotsOff', 'Off (curve only)')),
+        dotChoice('small', t('workspace.display.dotsSmall', 'Small')),
+        dotChoice('medium', t('workspace.display.dotsMedium', 'Medium')),
+        dotChoice('large', t('workspace.display.dotsLarge', 'Large')),
       ],
     },
     {
       // AE Preferences ▸ Display ▸ Motion Path: how much of the path to draw.
       type: 'item',
       id: 'vd-motion-path-show',
-      label: 'Motion Path Keyframes',
+      label: t('workspace.display.motionPathKeyframes', 'Motion Path Keyframes'),
       submenu: [
-        { type: 'checkbox', id: 'vd-mp-show-all', label: 'All Keyframes', checked: motionPathShow === 'all', onChange: () => setMotionPathShow('all') },
-        { type: 'checkbox', id: 'vd-mp-show-none', label: 'No Keyframes', checked: motionPathShow === 'none', onChange: () => setMotionPathShow('none') },
+        { type: 'checkbox', id: 'vd-mp-show-all', label: t('workspace.display.allKeyframes', 'All Keyframes'), checked: motionPathShow === 'all', onChange: () => setMotionPathShow('all') },
+        { type: 'checkbox', id: 'vd-mp-show-none', label: t('workspace.display.noKeyframes', 'No Keyframes'), checked: motionPathShow === 'none', onChange: () => setMotionPathShow('none') },
         { type: 'separator' },
         ...[1, 2, 5, 10].map<DropdownItem>((sec) => ({
           type: 'checkbox',
           id: `vd-mp-show-${sec}s`,
-          label: `${sec} Second${sec === 1 ? '' : 's'} Around Playhead`,
+          label: sec === 1
+            ? t('workspace.display.secondsAroundOne', '{n} Second Around Playhead', { n: sec })
+            : t('workspace.display.secondsAroundOther', '{n} Seconds Around Playhead', { n: sec }),
           checked: motionPathShow === 'window' && motionPathWindowSeconds === sec,
           onChange: () => {
             setMotionPathWindowSeconds(sec);
@@ -495,12 +513,12 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
       ],
     },
     // The user's guides, managed where they are switched on.
-    { type: 'item', id: 'vd-guides-lock', label: 'Lock Guides', icon: 'lock', disabled: !guides.some((g) => !g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesLock) },
-    { type: 'item', id: 'vd-guides-unlock', label: 'Unlock Guides', icon: 'unlock', disabled: !guides.some((g) => g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesUnlock) },
-    { type: 'item', id: 'vd-guides-clear', label: 'Clear Guides', icon: 'trash', disabled: guides.length === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesClear) },
+    { type: 'item', id: 'vd-guides-lock', label: t('workspace.display.lockGuides', 'Lock Guides'), icon: 'lock', disabled: !guides.some((g) => !g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesLock) },
+    { type: 'item', id: 'vd-guides-unlock', label: t('workspace.display.unlockGuides', 'Unlock Guides'), icon: 'unlock', disabled: !guides.some((g) => g.locked), onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesUnlock) },
+    { type: 'item', id: 'vd-guides-clear', label: t('workspace.display.clearGuides', 'Clear Guides'), icon: 'trash', disabled: guides.length === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.guidesClear) },
     { type: 'separator' },
-    { type: 'checkbox', id: 'vd-snap-pixel', label: 'Snap to Pixel', checked: snapToPixel, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.snapToPixel), onChange: () => run(VIEWPORT_COMMAND_IDS.snapToPixel) },
-    { type: 'checkbox', id: 'vd-par', label: 'Pixel Aspect Correction', checked: par, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.pixelAspectCorrection), onChange: () => run(VIEWPORT_COMMAND_IDS.pixelAspectCorrection) },
+    { type: 'checkbox', id: 'vd-snap-pixel', label: t('workspace.display.snapToPixel', 'Snap to Pixel'), checked: snapToPixel, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.snapToPixel), onChange: () => run(VIEWPORT_COMMAND_IDS.snapToPixel) },
+    { type: 'checkbox', id: 'vd-par', label: t('workspace.display.pixelAspect', 'Pixel Aspect Correction'), checked: par, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.pixelAspectCorrection), onChange: () => run(VIEWPORT_COMMAND_IDS.pixelAspectCorrection) },
     { type: 'separator' },
     {
       // A row of its own at the foot: the label line (value at the right, in
@@ -512,7 +530,7 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
       render: (
         <div className={styles.opacityRow} style={{ '--vd-opacity-fill': opacityFill } as React.CSSProperties}>
           <div className={styles.opacityHead}>
-            <span>Overlay opacity</span>
+            <span>{t('workspace.display.overlayOpacity', 'Overlay opacity')}</span>
             <span className={styles.opacityValue}>{opacityPct}%</span>
           </div>
           <input
@@ -522,7 +540,7 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
             max={OPACITY_MAX}
             step={5}
             value={opacityPct}
-            aria-label="Overlay opacity"
+            aria-label={t('workspace.display.overlayOpacity', 'Overlay opacity')}
             aria-valuetext={`${opacityPct}%`}
             onChange={(e) => setOverlayOpacity(Number(e.target.value) / 100)}
           />
@@ -540,7 +558,9 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   const compareMode = useCompareStore((s) => s.mode);
   const snapshotCount = useCompareStore((s) => s.snapshots.length);
   const compareItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'vd-cmp-show', label: snapshotCount === 0 ? 'Show Snapshot — take one first (F5)' : 'Show Snapshot (Shift+F5)', checked: compareVisible, disabled: snapshotCount === 0, onChange: () => run(VIEWPORT_COMMAND_IDS.compareToggle) },
+    { type: 'checkbox', id: 'vd-cmp-show', label: snapshotCount === 0
+      ? t('workspace.display.showSnapshotNone', 'Show Snapshot — take one first (F5)')
+      : t('workspace.display.showSnapshot', 'Show Snapshot (Shift+F5)'), checked: compareVisible, disabled: snapshotCount === 0, onChange: () => run(VIEWPORT_COMMAND_IDS.compareToggle) },
     { type: 'separator' },
     ...(Object.keys(COMPARE_MODE_LABEL) as CompareMode[]).map<DropdownItem>((m) => ({
       type: 'checkbox',
@@ -550,8 +570,13 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
       onChange: () => run(VIEWPORT_COMMAND_IDS.compareMode(m)),
     })),
     { type: 'separator' },
-    { type: 'item', id: 'vd-cmp-flip', label: 'Flip A/B', disabled: !compareVisible, onSelect: () => run(VIEWPORT_COMMAND_IDS.compareFlip) },
-    { type: 'item', id: 'vd-cmp-clear', label: `Clear ${snapshotCount} Snapshot${snapshotCount === 1 ? '' : 's'}`, disabled: snapshotCount === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.compareClear) },
+    { type: 'item', id: 'vd-cmp-flip', label: t('workspace.display.flipAB', 'Flip A/B'), disabled: !compareVisible, onSelect: () => run(VIEWPORT_COMMAND_IDS.compareFlip) },
+    {
+      type: 'item',
+      id: 'vd-cmp-clear',
+      label: snapshotCount === 1
+        ? t('workspace.display.clearSnapshotsOne', 'Clear {n} Snapshot', { n: snapshotCount })
+        : t('workspace.display.clearSnapshotsOther', 'Clear {n} Snapshots', { n: snapshotCount }), disabled: snapshotCount === 0, onSelect: () => run(VIEWPORT_COMMAND_IDS.compareClear) },
   ];
 
   // ── Exposure / transparency grid (viewer only, AE's footer) ────────
@@ -591,18 +616,18 @@ export function displayOverflowItems(m: ViewportDisplayModel, level: number): Dr
   const shed = (g: DisplayGroup): boolean => isDisplayShed(g, level);
   const overflow: DropdownItem[] = [];
   if (shed('layout')) {
-    overflow.push({ type: 'item', id: 'vd-of-3dview', icon: 'cube', label: `3D View: ${cameraViewLabel(m.camera3dMode)}`, submenu: m.viewItems });
-    overflow.push({ type: 'item', id: 'vd-of-layout', icon: LAYOUT_ICON[m.viewLayout], label: `Layout: ${LAYOUT_LABEL[m.viewLayout]}`, submenu: m.layoutItems });
+    overflow.push({ type: 'item', id: 'vd-of-3dview', icon: 'cube', label: t('workspace.display.view3d', '3D View: {view}', { view: cameraViewLabel(m.camera3dMode) }), submenu: m.viewItems });
+    overflow.push({ type: 'item', id: 'vd-of-layout', icon: LAYOUT_ICON[m.viewLayout], label: t('workspace.display.layoutValue', 'Layout: {layout}', { layout: layoutLabel(m.viewLayout) }), submenu: m.layoutItems });
   }
-  if (shed('channel')) overflow.push({ type: 'item', id: 'vd-of-channel', icon: CHANNEL_ICON[m.channel], label: `Channel: ${CHANNEL_LABEL[m.channel]}`, submenu: m.channelItems });
-  if (shed('resolution')) overflow.push({ type: 'item', id: 'vd-of-resolution', label: `Resolution: ${RESOLUTION_LABELS[m.resolution]}`, submenu: m.resolutionItems });
-  if (shed('preview')) overflow.push({ type: 'item', id: 'vd-of-preview', icon: 'tv', label: 'Preview', submenu: m.previewItems });
-  if (shed('transparency')) overflow.push({ type: 'checkbox', id: 'vd-of-transparency', label: 'Transparency Grid', checked: m.transparencyGrid, onChange: m.toggleTransparencyGrid });
-  if (shed('overlays')) overflow.push({ type: 'item', id: 'vd-of-overlays', icon: 'grid', label: 'Overlays', submenu: m.overlayItems });
-  if (shed('exposure')) overflow.push({ type: 'item', id: 'vd-of-exposure', icon: 'theme', label: `Exposure: ${formatStops(m.exposure)}`, submenu: exposureMenuItems(m) });
+  if (shed('channel')) overflow.push({ type: 'item', id: 'vd-of-channel', icon: CHANNEL_ICON[m.channel], label: t('workspace.display.channelValue', 'Channel: {channel}', { channel: channelLabel(m.channel) }), submenu: m.channelItems });
+  if (shed('resolution')) overflow.push({ type: 'item', id: 'vd-of-resolution', label: t('workspace.display.resolutionValue', 'Resolution: {resolution}', { resolution: RESOLUTION_LABELS[m.resolution] }), submenu: m.resolutionItems });
+  if (shed('preview')) overflow.push({ type: 'item', id: 'vd-of-preview', icon: 'tv', label: t('workspace.display.preview', 'Preview'), submenu: m.previewItems });
+  if (shed('transparency')) overflow.push({ type: 'checkbox', id: 'vd-of-transparency', label: t('workspace.display.transparencyGrid', 'Transparency Grid'), checked: m.transparencyGrid, onChange: m.toggleTransparencyGrid });
+  if (shed('overlays')) overflow.push({ type: 'item', id: 'vd-of-overlays', icon: 'grid', label: t('workspace.display.overlays', 'Overlays'), submenu: m.overlayItems });
+  if (shed('exposure')) overflow.push({ type: 'item', id: 'vd-of-exposure', icon: 'theme', label: t('workspace.display.exposureValue', 'Exposure: {stops}', { stops: formatStops(m.exposure) }), submenu: exposureMenuItems(m) });
   if (shed('compare')) {
-    overflow.push({ type: 'item', id: 'vd-of-snapshot', icon: 'camera', label: 'Take Snapshot', shortcut: 'F5', onSelect: () => run(VIEWPORT_COMMAND_IDS.snapshot) });
-    overflow.push({ type: 'item', id: 'vd-of-compare', icon: 'wipe', label: 'Compare', submenu: m.compareItems });
+    overflow.push({ type: 'item', id: 'vd-of-snapshot', icon: 'camera', label: t('workspace.display.takeSnapshot', 'Take Snapshot'), shortcut: 'F5', onSelect: () => run(VIEWPORT_COMMAND_IDS.snapshot) });
+    overflow.push({ type: 'item', id: 'vd-of-compare', icon: 'wipe', label: t('workspace.display.compare', 'Compare'), submenu: m.compareItems });
   }
   return overflow;
 }
@@ -647,10 +672,10 @@ export function ViewportDisplayControlsView({
 
   const groupLabel =
     section === 'layout'
-      ? 'Viewport layout'
+      ? t('workspace.display.groupLayout', 'Viewport layout')
       : section === 'compare'
-      ? 'Viewport snapshots'
-      : 'Viewport display';
+      ? t('workspace.display.groupSnapshots', 'Viewport snapshots')
+      : t('workspace.display.groupDisplay', 'Viewport display');
 
   return (
     <div
@@ -663,12 +688,12 @@ export function ViewportDisplayControlsView({
         <>
           <Dropdown
             placement="top-start"
-            trigger={<Trigger icon="cube" text={cameraViewLabel(m.camera3dMode)} label={`3D View: ${cameraViewLabel(m.camera3dMode)}`} chevron />}
+            trigger={<Trigger icon="cube" text={cameraViewLabel(m.camera3dMode)} label={t('workspace.display.view3d', '3D View: {view}', { view: cameraViewLabel(m.camera3dMode) })} chevron />}
             items={m.viewItems}
           />
           <Dropdown
             placement="top-start"
-            trigger={<Trigger icon={LAYOUT_ICON[m.viewLayout]} label={`Viewport layout: ${LAYOUT_LABEL[m.viewLayout]}`} active={m.viewLayout !== '1'} chevron />}
+            trigger={<Trigger icon={LAYOUT_ICON[m.viewLayout]} label={t('workspace.display.viewportLayoutValue', 'Viewport layout: {layout}', { layout: layoutLabel(m.viewLayout) })} active={m.viewLayout !== '1'} chevron />}
             items={m.layoutItems}
           />
         </>
@@ -676,10 +701,12 @@ export function ViewportDisplayControlsView({
 
       {showCompare && (
         <>
-          <Trigger icon="camera" label="Take Snapshot (F5) — freeze this frame for comparison" onClick={() => run(VIEWPORT_COMMAND_IDS.snapshot)} />
+          <Trigger icon="camera" label={t('workspace.display.takeSnapshotTitle', 'Take Snapshot (F5) — freeze this frame for comparison')} onClick={() => run(VIEWPORT_COMMAND_IDS.snapshot)} />
           <Dropdown
             placement="top-start"
-            trigger={<Trigger icon="wipe" label={m.compareVisible ? `Compare: ${COMPARE_MODE_LABEL[m.compareMode]} (on)` : 'Compare snapshots'} active={m.compareVisible} chevron />}
+            trigger={<Trigger icon="wipe" label={m.compareVisible
+              ? t('workspace.display.compareOn', 'Compare: {mode} (on)', { mode: COMPARE_MODE_LABEL[m.compareMode] })
+              : t('workspace.display.compareSnapshots', 'Compare snapshots')} active={m.compareVisible} chevron />}
             items={m.compareItems}
           />
         </>
@@ -690,7 +717,7 @@ export function ViewportDisplayControlsView({
           {!shed('resolution') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger text={RESOLUTION_LABELS[m.resolution]} label={`Preview resolution: ${RESOLUTION_LABELS[m.resolution]}`} chevron />}
+              trigger={<Trigger text={RESOLUTION_LABELS[m.resolution]} label={t('workspace.display.previewResolution', 'Preview resolution: {resolution}', { resolution: RESOLUTION_LABELS[m.resolution] })} chevron />}
               items={m.resolutionItems}
             />
           )}
@@ -701,9 +728,11 @@ export function ViewportDisplayControlsView({
             <button
               type="button"
               className={cn(tool.tool, m.transparencyGrid && tool.toolActive)}
-              aria-label="Toggle Transparency Grid"
+              aria-label={t('workspace.display.toggleTransparencyGrid', 'Toggle Transparency Grid')}
               aria-pressed={m.transparencyGrid}
-              title={m.transparencyGrid ? 'Transparency Grid: on — transparent areas show a checkerboard' : 'Transparency Grid: off — transparent areas show the background colour'}
+              title={m.transparencyGrid
+                ? t('workspace.display.transparencyOn', 'Transparency Grid: on — transparent areas show a checkerboard')
+                : t('workspace.display.transparencyOff', 'Transparency Grid: off — transparent areas show the background colour')}
               onClick={m.toggleTransparencyGrid}
             >
               <Icon name="mask-square" size="sm" />
@@ -712,14 +741,14 @@ export function ViewportDisplayControlsView({
           {!shed('overlays') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger icon="grid" label="Overlays — grid, rulers, guides, HUD, overlay opacity" active={m.overlaysActive} chevron />}
+              trigger={<Trigger icon="grid" label={t('workspace.display.overlaysTitle', 'Overlays — grid, rulers, guides, HUD, overlay opacity')} active={m.overlaysActive} chevron />}
               items={m.overlayItems}
             />
           )}
           {!shed('channel') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger icon={CHANNEL_ICON[m.channel]} text={CHANNEL_LABEL[m.channel]} label={`Show channel: ${CHANNEL_LABEL[m.channel]}`} chevron />}
+              trigger={<Trigger icon={CHANNEL_ICON[m.channel]} text={channelLabel(m.channel)} label={t('workspace.display.showChannel', 'Show channel: {channel}', { channel: channelLabel(m.channel) })} chevron />}
               items={m.channelItems}
             />
           )}
@@ -727,7 +756,7 @@ export function ViewportDisplayControlsView({
           {ownOverflow.length > 0 && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger icon="more-horizontal" label={`More display controls (${ownOverflow.length})`} />}
+              trigger={<Trigger icon="more-horizontal" label={t('workspace.display.moreControls', 'More display controls ({n})', { n: ownOverflow.length })} />}
               items={ownOverflow}
             />
           )}

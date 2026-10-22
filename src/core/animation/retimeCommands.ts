@@ -25,6 +25,7 @@ import {
   type RetimeClip,
   type RetimeMode,
 } from './retime';
+import { t } from '@core/i18n';
 
 // ── The bar ────────────────────────────────────────────────────────────────
 
@@ -72,31 +73,31 @@ export interface SpeedPreset {
 
 export const SPEED_PRESETS: ReadonlyArray<SpeedPreset> = [
   {
-    id: 'velocity', label: 'Velocity', hint: 'Fast, a slow-motion hit in the middle, fast again',
+    id: 'velocity', get label() { return t('core.retime.velocity', 'Velocity'); }, get hint() { return t('core.retime.velocityHint', 'Fast, a slow-motion hit in the middle, fast again'); },
     points: [[0, 250, 'smooth'], [0.36, 250, 'smooth'], [0.48, 20, 'smooth'], [0.66, 20, 'smooth'], [0.78, 250, 'smooth'], [1, 250, 'smooth']],
   },
   {
-    id: 'hero', label: 'Hero', hint: 'Normal, then a long dramatic slow-motion moment',
+    id: 'hero', get label() { return t('core.retime.hero', 'Hero'); }, get hint() { return t('core.retime.heroHint', 'Normal, then a long dramatic slow-motion moment'); },
     points: [[0, 100, 'smooth'], [0.28, 100, 'smooth'], [0.4, 15, 'smooth'], [0.74, 15, 'smooth'], [0.86, 100, 'smooth'], [1, 100, 'smooth']],
   },
   {
-    id: 'bullet', label: 'Bullet', hint: 'Very fast into a near-freeze and out again',
+    id: 'bullet', get label() { return t('core.retime.bullet', 'Bullet'); }, get hint() { return t('core.retime.bulletHint', 'Very fast into a near-freeze and out again'); },
     points: [[0, 300, 'smooth'], [0.34, 300, 'smooth'], [0.44, 8, 'smooth'], [0.6, 8, 'smooth'], [0.7, 300, 'smooth'], [1, 300, 'smooth']],
   },
   {
-    id: 'montage', label: 'Montage', hint: 'Pulses between fast and slow',
+    id: 'montage', get label() { return t('core.retime.montage', 'Montage'); }, get hint() { return t('core.retime.montageHint', 'Pulses between fast and slow'); },
     points: [[0, 100, 'smooth'], [0.2, 250, 'smooth'], [0.4, 40, 'smooth'], [0.6, 250, 'smooth'], [0.8, 40, 'smooth'], [1, 100, 'smooth']],
   },
   {
-    id: 'flashIn', label: 'Flash In', hint: 'Rush in fast, settle to normal',
+    id: 'flashIn', get label() { return t('core.retime.flashIn', 'Flash In'); }, get hint() { return t('core.retime.flashInHint', 'Rush in fast, settle to normal'); },
     points: [[0, 500, 'smooth'], [0.35, 100, 'smooth'], [1, 100, 'smooth']],
   },
   {
-    id: 'flashOut', label: 'Flash Out', hint: 'Normal, then rush out fast',
+    id: 'flashOut', get label() { return t('core.retime.flashOut', 'Flash Out'); }, get hint() { return t('core.retime.flashOutHint', 'Normal, then rush out fast'); },
     points: [[0, 100, 'smooth'], [0.65, 100, 'smooth'], [1, 500, 'smooth']],
   },
   {
-    id: 'jumpCut', label: 'Jump Cut', hint: 'Hard cuts between normal and 4× — no ramps',
+    id: 'jumpCut', get label() { return t('core.retime.jumpCut', 'Jump Cut'); }, get hint() { return t('core.retime.jumpCutHint', 'Hard cuts between normal and 4× — no ramps'); },
     points: [[0, 100, 'instant'], [0.3, 400, 'instant'], [0.55, 100, 'instant'], [0.8, 400, 'instant'], [1, 100, 'instant']],
   },
 ];

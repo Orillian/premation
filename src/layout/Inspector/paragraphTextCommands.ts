@@ -29,6 +29,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
+import { t } from '@core/i18n';
 import type { Command as ApiCommand, TextLayout, TextLayoutOverrides } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
 import { compTime, values as apiValues } from '@core/engine/propRefs';
@@ -253,8 +254,8 @@ export function buildParagraphTextCommands(): ReadonlyArray<Command> {
   return [
     {
       id: TEXT_CONVERT_TO_PARAGRAPH_COMMAND,
-      label: 'Convert to Paragraph Text',
-      description: 'Turn the selected point text into paragraph (box) text without moving it.',
+      label: t('inspector.paragraphText.toParagraph', 'Convert to Paragraph Text'),
+      description: t('inspector.paragraphText.toParagraphDesc', 'Turn the selected point text into paragraph (box) text without moving it.'),
       enabled: () => selectedTextLayers('point').length > 0,
       execute: () => {
         void convertToParagraphText(selectedTextLayers('point'));
@@ -262,8 +263,8 @@ export function buildParagraphTextCommands(): ReadonlyArray<Command> {
     },
     {
       id: TEXT_CONVERT_TO_POINT_COMMAND,
-      label: 'Convert to Point Text',
-      description: 'Turn the selected paragraph text into point text; each wrapped line ends in a return.',
+      label: t('inspector.paragraphText.toPoint', 'Convert to Point Text'),
+      description: t('inspector.paragraphText.toPointDesc', 'Turn the selected paragraph text into point text; each wrapped line ends in a return.'),
       enabled: () => selectedTextLayers('paragraph').length > 0,
       execute: () => {
         void convertToPointText(selectedTextLayers('paragraph'));

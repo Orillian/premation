@@ -1,0 +1,358 @@
+/*
+  The Record Audio panel (voice-over). Effect Controls' grammar: hairline
+  rows, the label in the label role on the left, the value in the value role
+  (mono numerals, the accent) on the right, a group row per section. The
+  meter is the Audio panel's — the same well, the same green → amber → red
+  travel and the same clip LED — laid horizontally because this column reads
+  top to bottom.
+
+  Text takes the panel type roles only (src/tokens/typography.css). No title
+  — the tab is the title.
+*/
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  color: var(--color-text-primary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+}
+
+/* ── Group rows ───────────────────────────────────────────────────── */
+.group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-weight: var(--panel-weight-group);
+  color: var(--color-text-primary);
+  flex: none;
+}
+
+.groupAside {
+  margin-left: auto;
+  font-weight: var(--panel-weight-help);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+}
+
+/* ── Property rows ────────────────────────────────────────────────── */
+.row {
+  display: grid;
+  grid-template-columns: minmax(84px, 40%) minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-2);
+  min-height: 24px;
+  padding: 2px var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.label {
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.select:disabled {
+  opacity: 0.55;
+}
+
+.value {
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-text);
+}
+
+.unit {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-micro);
+  color: var(--color-text-muted);
+}
+
+/* ── Meter (horizontal: the Audio panel's well and travel) ────────── */
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.meterRow {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 6px 44px;
+  align-items: center;
+  column-gap: var(--space-2);
+  height: 10px;
+}
+
+.meterCh {
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+}
+
+.meterBar {
+  position: relative;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--color-timeline-well);
+  overflow: hidden;
+}
+
+/* The gradient spans the WHOLE well; the fill reveals it from the left (a
+   clip-path, not a width), so −6 dB is amber wherever the level is. */
+.meterFill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    var(--color-success) 0%,
+    var(--color-success) 62%,
+    var(--color-warning) 84%,
+    var(--color-danger) 100%
+  );
+  clip-path: inset(0 100% 0 0);
+}
+
+.meterHold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--color-text-primary);
+}
+
+.clipLed {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 1px;
+  background: var(--color-timeline-well);
+  cursor: pointer;
+}
+
+.clipLedOn {
+  background: var(--color-danger);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-danger) 60%, transparent);
+}
+
+.meterDb {
+  text-align: right;
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-text);
+}
+
+.meterIdle .meterBar {
+  opacity: 0.55;
+}
+
+/* ── Transport ────────────────────────────────────────────────────── */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.recordDot {
+  color: var(--color-danger);
+}
+
+.clock {
+  margin-left: auto;
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.clockLive {
+  color: var(--color-danger);
+}
+
+.countIn {
+  min-width: 18px;
+  text-align: center;
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-group);
+  color: var(--color-warning);
+}
+
+/* ── Takes ────────────────────────────────────────────────────────── */
+.takes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: none;
+}
+
+.take {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  column-gap: var(--space-1);
+  height: 26px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: default;
+}
+
+.take:hover {
+  background: var(--color-hover);
+}
+
+.takeSelected {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.takeName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-value);
+}
+
+.takeMeta {
+  font-family: var(--panel-font-family-value);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+
+.renameInput {
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+/* ── Edit ─────────────────────────────────────────────────────────── */
+.wave {
+  position: relative;
+  height: 72px;
+  margin: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-timeline-well);
+  overflow: hidden;
+  touch-action: none;
+  flex: none;
+}
+
+.waveCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--color-primary-text);
+}
+
+/* The trimmed-away ends, dimmed; the handles are 6px grab strips. */
+.waveShade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--color-surface-0) 70%, transparent);
+  pointer-events: none;
+}
+
+.waveHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  margin-left: -3px;
+  cursor: ew-resize;
+  background: linear-gradient(var(--color-warning), var(--color-warning)) center / 1px 100% no-repeat;
+}
+
+.waveHandle:focus-visible {
+  outline: 1px solid var(--color-focus-ring);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+/* One line of help — a state or a hint, never a paragraph. */
+.note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-tertiary);
+  flex: none;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-danger);
+  flex: none;
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
+}

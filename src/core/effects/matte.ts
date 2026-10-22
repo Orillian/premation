@@ -33,6 +33,7 @@
 
 import type { SceneNode } from '@core/types';
 import { renderComponentsOf } from '@core/scene/SceneGraph';
+import { t } from '@core/i18n';
 
 /** What the source contributes: its alpha channel, or its luminance. */
 export type MatteMode = 'alpha' | 'luma';
@@ -49,8 +50,8 @@ export interface TrackMatte {
 export type LegacyMatteType = 'alpha' | 'luma' | 'alpha-inv' | 'luma-inv';
 
 export const MATTE_MODES: ReadonlyArray<{ mode: MatteMode; label: string }> = [
-  { mode: 'alpha', label: 'Alpha' },
-  { mode: 'luma', label: 'Luma' },
+  { mode: 'alpha', get label() { return t('core.matte.alpha', 'Alpha'); } },
+  { mode: 'luma', get label() { return t('core.matte.luma', 'Luma'); } },
 ];
 
 const LEGACY: Record<LegacyMatteType, { mode: MatteMode; inverted: boolean }> = {

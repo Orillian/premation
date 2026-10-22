@@ -33,6 +33,7 @@ import {
 } from '@core/rig/weightPaint';
 import { useRigVertexSelection, selectRigVertex } from '@stores/rigVertexStore';
 import { useRigSelectionStore } from '@stores/rigSelectionStore';
+import { t } from '@core/i18n';
 
 /**
  * Pointer capture is a nicety, not a precondition: it keeps a drag alive when
@@ -1228,7 +1229,15 @@ export function BoneOverlay({ host }: { host?: TrackPointHost } = {}): JSX.Eleme
               pointerEvents="none"
               style={{ transition: 'stroke-width var(--motion-spring, 220ms cubic-bezier(0.34, 1.56, 0.64, 1))' }}
             />
-            <title>{`${c.name ?? c.id} → ${c.link.kind === 'ikTarget' ? 'IK goal' : 'bone'} ${c.link.boneId}${active ? '' : ' (inactive in this mode)'}`}</title>
+            <title>
+              {c.link.kind === 'ikTarget'
+                ? active
+                  ? t('workspace.bones.linkIkGoal', '{name} → IK goal {bone}', { name: c.name ?? c.id, bone: c.link.boneId })
+                  : t('workspace.bones.linkIkGoalInactive', '{name} → IK goal {bone} (inactive in this mode)', { name: c.name ?? c.id, bone: c.link.boneId })
+                : active
+                  ? t('workspace.bones.linkBone', '{name} → bone {bone}', { name: c.name ?? c.id, bone: c.link.boneId })
+                  : t('workspace.bones.linkBoneInactive', '{name} → bone {bone} (inactive in this mode)', { name: c.name ?? c.id, bone: c.link.boneId })}
+            </title>
           </g>
         );
       })}

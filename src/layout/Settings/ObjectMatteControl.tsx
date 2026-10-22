@@ -24,6 +24,7 @@ import { Input } from '@components/Input';
 import { SUGGESTED_MODEL } from '@core/tracking/samModelInstall';
 import { useSamModelStore } from '@stores/samModelStore';
 import { installObjectMatteJob } from './objectMatteJob';
+import { t } from '@core/i18n';
 import styles from './ObjectMatteControl.module.css';
 
 // The download outlives this control; the job tray and toast follow it.
@@ -59,11 +60,11 @@ export function ObjectMatteControl(): JSX.Element {
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.ready}>Installed · {megabytes(status.bytes)}</span>
+          <span className={styles.ready}>{t('settings.objectMatte.installed', 'Installed · {size}', { size: megabytes(status.bytes) })}</span>
           {/* Removing the custom model falls back to the bundled one, not to
               nothing: the engine checks the folder on every click. */}
           <Button variant="secondary" size="sm" onClick={() => { void remove(); }}>
-            Remove
+            {t('settings.objectMatte.remove', 'Remove')}
           </Button>
         </div>
         {/* The sources, kept and shown: "which model is running on my footage,
@@ -85,9 +86,11 @@ export function ObjectMatteControl(): JSX.Element {
           <span className={styles.progressText}>
             {/* No percentage without a Content-Length — model hosts often send
                 chunked responses, and inventing a denominator would be a lie. */}
-            {pct === null ? `Downloading… ${megabytes(receivedBytes)}` : `Downloading… ${pct}%`}
+            {pct === null
+              ? t('settings.objectMatte.downloadingSize', 'Downloading… {size}', { size: megabytes(receivedBytes) })
+              : t('settings.objectMatte.downloadingPct', 'Downloading… {pct}%', { pct })}
           </span>
-          <Button variant="secondary" size="sm" onClick={cancel}>Cancel</Button>
+          <Button variant="secondary" size="sm" onClick={cancel}>{t('settings.objectMatte.cancel', 'Cancel')}</Button>
         </div>
         <div className={styles.progressTrack}>
           <div
@@ -106,7 +109,7 @@ export function ObjectMatteControl(): JSX.Element {
         fullWidth
         value={encoderUrl}
         onChange={(e) => setEncoderUrl(e.target.value)}
-        aria-label="Object Matte encoder model URL"
+        aria-label={t('settings.objectMatte.encoderUrlAria', 'Object Matte encoder model URL')}
         spellCheck={false}
       />
       <div className={styles.installRow}>
@@ -115,19 +118,16 @@ export function ObjectMatteControl(): JSX.Element {
           fullWidth
           value={decoderUrl}
           onChange={(e) => setDecoderUrl(e.target.value)}
-          aria-label="Object Matte decoder model URL"
+          aria-label={t('settings.objectMatte.decoderUrlAria', 'Object Matte decoder model URL')}
           spellCheck={false}
         />
         <Button variant="secondary" size="sm" onClick={() => { void install(encoderUrl, decoderUrl); }}>
-          Install
+          {t('settings.objectMatte.install', 'Install')}
         </Button>
       </div>
       {status.kind === 'failed' ? <div className={styles.error}>{status.message}</div> : null}
       <div className={styles.hint}>
-        Optional. The app already bundles a model, and the Roto tool uses it with
-        nothing installed. Install downloads another encoder/decoder pair — about
-        {' '}{megabytes(SUGGESTED_MODEL.approxBytes)} for the suggested one, from the hosts above, once — and
-        keeps it on this computer, where the engine uses it instead.
+        {t('settings.objectMatte.hint', 'Optional. The app already bundles a model, and the Roto tool uses it with nothing installed. Install downloads another encoder/decoder pair — about {size} for the suggested one, from the hosts above, once — and keeps it on this computer, where the engine uses it instead.', { size: megabytes(SUGGESTED_MODEL.approxBytes) })}
       </div>
     </div>
   );

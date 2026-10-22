@@ -153,8 +153,9 @@ describe('Character and Paragraph panels', () => {
     renderParagraph();
 
     for (const name of ALIGN_BUTTONS) expect(screen.getByRole('button', { name })).toBeInTheDocument();
-    expect(screen.getByLabelText('Paragraph Spacing')).toHaveValue(12);
-    for (const label of PARAGRAPH_FIELDS) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    // ValueFields (2026-10-19), like Size / Leading / Tracking.
+    expect(screen.getByRole('spinbutton', { name: 'Paragraph Spacing' })).toHaveAttribute('aria-valuenow', '12');
+    for (const label of PARAGRAPH_FIELDS) expect(screen.getByRole('spinbutton', { name: label })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: 'Text Direction' })).toBeInTheDocument();
 
     // No character rows, no Source Text, no heading.
@@ -210,6 +211,8 @@ describe('Character and Paragraph panels', () => {
     renderParagraph();
     const before = (await h.doc());
 
+    // A ValueField: Enter opens the input, blur commits — ONE write, not one per keystroke.
+    fireEvent.keyDown(screen.getByRole('spinbutton', { name: 'Paragraph Spacing' }), { key: 'Enter' });
     const spacingInput = screen.getByLabelText('Paragraph Spacing');
     fireEvent.change(spacingInput, { target: { value: '25' } });
     fireEvent.blur(spacingInput);

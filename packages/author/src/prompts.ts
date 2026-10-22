@@ -10,8 +10,8 @@ import { CRAFT_RULES, NEVER_RULES } from '@motion/ai-tools';
 import { formatAdvice, type AdvisorFinding } from './advisors';
 import { formatRepairs } from './coerce';
 import { selectAuthorExemplar } from './exemplars';
-import { BEATS_SCHEMA, CRITIQUE_SCHEMA, DESIGN_SCHEMA, REVISE_SCHEMA, shapeHint, type CritiqueFinding } from './schema';
-import type { Beat, BeatOutline, DesignResult, Repair, ScriptHeader } from './types';
+import { BEATS_SCHEMA, CONCEPTS_SCHEMA, CRITIQUE_SCHEMA, DESIGN_SCHEMA, REVISE_SCHEMA, shapeHint, type CritiqueFinding } from './schema';
+import type { Beat, BeatOutline, ConceptOption, DesignResult, Repair, ScriptHeader } from './types';
 import { describeRecent, type PieceFingerprint } from './variety';
 import { vocabularyCard } from './vocabulary';
 
@@ -30,6 +30,12 @@ export interface AuthorBrief {
   imageCount?: number;
   /** The last pieces made here, newest first (variety.ts): the next one should not be a twin. */
   recent?: readonly PieceFingerprint[];
+  /**
+   * The concept the piece is built on, chosen at the concept stage (by the
+   * user, or by the code as the one least like the recent pieces). The design
+   * call builds THIS one and weighs no alternatives.
+   */
+  concept?: ConceptOption;
 }
 
 const SCRIPT_RULES = `HOW A SCENE SCRIPT WORKS
@@ -77,8 +83,51 @@ function briefLines(b: AuthorBrief): string[] {
   ];
 }
 
+/** A concept, in one line, for a prompt. */
+export function describeConcept(c: ConceptOption): string {
+  return `${c.name} — ${c.idea} (${c.medium}-led, ${c.value} frame; palette: ${c.palette}${c.swatches?.length ? ` = ${c.swatches.join(' ')}` : ''}; camera: ${c.camera}${c.type ? `; type: ${c.type}` : ''}${c.motion ? `; motion: ${c.motion}` : ''})`;
+}
+
+/**
+ * Call 0: five candidate concepts for the brief, before any design. The host
+ * scores them against the recent pieces (variety.ts `conceptDistance`), shows
+ * the three least alike, and the user picks — or asks for three more, which
+ * comes back here with the names already shown in `exclude`.
+ */
+export function conceptsPrompt(b: AuthorBrief, exclude: readonly string[] = []): string {
+  return [
+    `BRIEF: ${b.prompt}`,
+    '',
+    ...briefLines(b),
+    ...(b.imageCount ? [`The attached image${b.imageCount > 1 ? 's are' : ' is'} REFERENCE for the look — read palette, type, density and mood from ${b.imageCount > 1 ? 'them' : 'it'}; take three of its dominant colours into at least one concept.`] : []),
+    ...(b.recent?.length ? ['', 'The last pieces made in this editor were:', describeRecent(b.recent, 12), 'A concept that shares a recent piece\'s value, hue family, medium AND camera is a twin and will be thrown away. Move at least two of those.'] : []),
+    ...(exclude.length ? ['', `Already shown and declined — do not repeat them or near variants: ${exclude.join('; ')}.`] : []),
+    '',
+    'Sketch FIVE concepts for this brief, the way a creative director pitches directions: each a short name, the one idea a viewer would remember, its medium (3d, image, ink, ui, shape, type or mixed), the value of the frame (light, mid, dark — read it from the brief; a brief that does not ask for night is not a dark piece by default), the palette in words AND as 3–5 hex swatches (background first, then surfaces, the accent, and a text colour that reads on that background — hue from the SUBJECT\'s world: coffee is roast and amber, fintech is slate and one signal colour, a garden is chlorophyll and clay; never the same indigo-on-charcoal for everything), a type pairing (display / body; a real pairing, named), the motion language (tempo, the ease family, the signature move) and what the camera does.',
+    'The five must differ from EACH OTHER on at least two of value, medium, camera and hue family. One of them should be the unexpected reading of the brief.',
+    `Return ONE JSON object: ${shapeHint(CONCEPTS_SCHEMA)}`,
+  ].join('\n');
+}
+
 /** Call 1: the header, the beat outline and the globals. No beat layers. */
 export function designPrompt(b: AuthorBrief): string {
+  if (b.concept) {
+    return [
+      `BRIEF: ${b.prompt}`,
+      '',
+      ...briefLines(b),
+      ...(b.imageCount ? [`The attached image${b.imageCount > 1 ? 's are' : ' is'} REFERENCE for the look — read palette, type, density and mood from ${b.imageCount > 1 ? 'them' : 'it'}; do not describe them back.`] : []),
+      '',
+      `THE CONCEPT, already chosen (build this one, weigh no alternatives): ${describeConcept(b.concept)}`,
+      ...(b.concept.swatches?.length ? [`Its swatches are the palette: name them and reference them as $name. The background is ${b.concept.swatches[0]}.`] : []),
+      ...(b.concept.type ? [`Its type pairing is the type scale: ${b.concept.type}.`] : []),
+      ...(b.concept.motion ? [`Its motion language rules every ease and tempo: ${b.concept.motion}.`] : []),
+      '',
+      'Decide the approach for the concept, as a designer would before touching a layer: the signature motion a viewer would remember, what the camera does (if anything), and which engine capabilities the idea needs (real 3D and a camera, lights, effects with animated params, text animators, particles, masks, paths).',
+      'Design the piece. Return ONE JSON object: `concepts` holding this one concept only, `chosen` 0, why in one sentence, the title, the intent, the palette (named swatches you will reference as $name), the grid, the type scale, the globals (piece-wide layers such as a backdrop or a front grain pass, in composition seconds), and the beat outline (2–6 beats that tile the whole duration; each with a name, a purpose and notes on what it shows).',
+      `Shape: ${shapeHint(DESIGN_SCHEMA)}`,
+    ].join('\n');
+  }
   return [
     `BRIEF: ${b.prompt}`,
     '',
@@ -127,6 +176,7 @@ export function critiqueSystemPrompt(): string {
   return [
     'You are a creative director reviewing a junior motion designer\'s render against the brief. You are specific and you are not polite about defects: you name the beat, the layer and the fix.',
     '',
+    'Score the piece 1–10 on five axes in `scores`: contrast (type and hero read against what is behind them), hierarchy (one thing is clearly the subject of every frame), rhythm (the timing breathes; nothing arrives all at once or idles), novelty (it is not the obvious template and not a twin of the recent pieces named in the brief), brief (it is what was asked for). An axis under 7 must be explained by at least one beat finding, and that beat is a revise.',
     'For each beat decide keep or revise. Revise only for defects a viewer would notice: an empty or unbalanced frame, illegible type, elements colliding or clipped, a hero that does not read as the hero, motion that is static, mechanical, simultaneous or linear where it should not be, a beat that does not serve the brief, a cut where nothing carries over. Taste you merely would have done differently is not a defect.',
     'Every finding has a problem (what you see, with the time) and a fix (what to change, concretely — which layer, which property, to roughly what).',
     `Return ONE JSON object: ${shapeHint(CRITIQUE_SCHEMA)}`,

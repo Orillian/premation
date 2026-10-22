@@ -3,6 +3,7 @@
  * text it shows and the floating element that shows it.
  */
 
+import { t } from '@core/i18n';
 import styles from './Timeline.module.css';
 
 /** Where the badge sits (client px) and what it says. */
@@ -39,16 +40,22 @@ export function hudLines(
   if (d.mode === 'roll' && d.roll) {
     const delta = f(d.roll.deltaSec);
     const cut = d.roll.right.start + d.roll.deltaSec;
-    return [`Roll ${signed(delta)}f`, `cut @ ${f(cut)}f`];
+    return [
+      t('timeline.dragHud.roll', 'Roll {delta}f', { delta: signed(delta) }),
+      t('timeline.dragHud.cutAt', 'cut @ {frame}f', { frame: f(cut) }),
+    ];
   }
   if (d.mode === 'slip') {
     const delta = f(d.live.sourceInSec - d.sourceInSec);
     const inF = f(d.live.sourceInSec);
-    return [`Slip ${signed(delta)}f`, `src ${inF} → ${inF + f(d.live.duration)}`];
+    return [
+      t('timeline.dragHud.slip', 'Slip {delta}f', { delta: signed(delta) }),
+      t('timeline.dragHud.source', 'src {in} → {out}', { in: inF, out: inF + f(d.live.duration) }),
+    ];
   }
   const delta = f(d.live.start - d.start);
   const startF = f(d.live.start);
-  return [`Slide ${signed(delta)}f`, `${startF} → ${startF + f(d.live.duration)}`];
+  return [t('timeline.dragHud.slide', 'Slide {delta}f', { delta: signed(delta) }), `${startF} → ${startF + f(d.live.duration)}`];
 }
 
 /**
@@ -67,7 +74,9 @@ export function staggerHudLines(
 ): string[] {
   const frames = Math.round(stagger.step * fps * 10) / 10;
   const label = stagger.mode.charAt(0).toUpperCase() + stagger.mode.slice(1);
-  const bars = barCount === rowCount ? `${rowCount} rows` : `${rowCount} rows · ${barCount} bars`;
+  const bars = barCount === rowCount
+    ? t('timeline.dragHud.rows', '{rows} rows', { rows: rowCount })
+    : t('timeline.dragHud.rowsBars', '{rows} rows · {bars} bars', { rows: rowCount, bars: barCount });
   return [`${label} ${frames > 0 ? '+' : ''}${frames}f`, bars];
 }
 

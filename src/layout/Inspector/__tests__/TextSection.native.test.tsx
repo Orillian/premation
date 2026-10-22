@@ -76,7 +76,8 @@ it('shows AE\'s Character and Paragraph groups, and keeps the rarer options behi
   render(<TextSection nodeId={id} />);
 
   // Character and Paragraph are open, as AE's two panels are.
-  expect(screen.getByLabelText('Paragraph Spacing')).toHaveValue(7);
+  // A ValueField (2026-10-19), like Size / Leading / Tracking.
+  expect(screen.getByRole('spinbutton', { name: 'Paragraph Spacing' })).toHaveAttribute('aria-valuenow', '7');
   expect(screen.getByRole('button', { name: 'Faux Bold' })).toBeInTheDocument();
 
   expect(screen.queryByLabelText('Point or Paragraph Text')).toBeNull();

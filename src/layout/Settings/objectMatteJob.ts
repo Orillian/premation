@@ -15,6 +15,7 @@
 import { isObjectMatteModelMissing, SUGGESTED_MODEL } from '@core/tracking/samModelInstall';
 import { useSamModelStore } from '@stores/samModelStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 export const OBJECT_MATTE_JOB_ID = 'object-matte-model';
 
@@ -32,8 +33,8 @@ export function installObjectMatteJob(): void {
     if (status.kind === 'downloading') {
       const { receivedBytes, totalBytes } = status;
       const label = totalBytes
-        ? `Downloading Object Matte model… ${Math.min(100, Math.round((receivedBytes / totalBytes) * 100))}%`
-        : `Downloading Object Matte model… ${(receivedBytes / MB).toFixed(0)} MB`;
+        ? t('settings.objectMatte.jobPct', 'Downloading Object Matte model… {pct}%', { pct: Math.min(100, Math.round((receivedBytes / totalBytes) * 100)) })
+        : t('settings.objectMatte.jobMb', 'Downloading Object Matte model… {size} MB', { size: (receivedBytes / MB).toFixed(0) });
       // No percentage without a Content-Length — inventing one would be a lie.
       const progress = totalBytes ? Math.min(1, receivedBytes / totalBytes) : 'indeterminate';
       if (!wasDownloading) ui.startJob({ id: OBJECT_MATTE_JOB_ID, label, progress });
@@ -46,13 +47,13 @@ export function installObjectMatteJob(): void {
     if (status.kind === 'ready') {
       ui.finishJob(OBJECT_MATTE_JOB_ID, {
         status: 'done',
-        message: `Object Matte model installed (${(status.bytes / MB).toFixed(0)} MB)`,
+        message: t('settings.objectMatte.jobDone', 'Object Matte model installed ({size} MB)', { size: (status.bytes / MB).toFixed(0) }),
       });
     } else if (status.kind === 'failed') {
-      ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'failed', message: `Model download failed: ${status.message}` });
+      ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'failed', message: t('settings.objectMatte.jobFailed', 'Model download failed: {message}', { message: status.message }) });
     } else {
       // `absent` after downloading is the user's Cancel.
-      ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'cancelled', message: 'Model download cancelled' });
+      ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'cancelled', message: t('settings.objectMatte.jobCancelled', 'Model download cancelled') });
     }
   });
 }
@@ -70,11 +71,11 @@ export function offerObjectMatteDownload(message: string): boolean {
   if (sam.status.kind === 'downloading') return true;
   useUIStore.getState().notify({
     level: 'warning',
-    message: "Object Matte's AI model isn't on this computer",
-    detail: 'It is a one-time download of about 14 MB. Try the selection again once it finishes.',
+    message: t('settings.objectMatte.missing', "Object Matte's AI model isn't on this computer"),
+    detail: t('settings.objectMatte.missingDetail', 'It is a one-time download of about 14 MB. Try the selection again once it finishes.'),
     durationMs: 0,
     group: 'object-matte-model',
-    action: { label: 'Download model', onSelect: () => { void sam.install(SUGGESTED_MODEL.encoderUrl, SUGGESTED_MODEL.decoderUrl); } },
+    action: { label: t('settings.objectMatte.downloadModel', 'Download model'), onSelect: () => { void sam.install(SUGGESTED_MODEL.encoderUrl, SUGGESTED_MODEL.decoderUrl); } },
   });
   return true;
 }

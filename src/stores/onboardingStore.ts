@@ -52,6 +52,7 @@ import { useUIStore } from '@stores/uiStore';
 import { tryCoreServices } from '@core/services/coreServices';
 import { getCommandRegistry } from '@core/commands/Command';
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 
 /**
  * The anchor vocabulary.
@@ -172,7 +173,7 @@ function keyframeCount(): number {
 
 function isPlaying(): boolean {
   try {
-    return Object.values(useProjectStore.getState().tabs).some((t) => t.playing);
+    return Object.values(useProjectStore.getState().tabs).some((tab) => tab.playing);
   } catch {
     return false;
   }
@@ -231,92 +232,92 @@ export const TOUR_STEPS: TourStep[] = [];
 export const FIRST_RUN_STEPS: ReadonlyArray<TourStep> = [
   {
     id: 'add-shape',
-    title: 'Draw something',
-    body: 'Pick a shape and drag it out on the canvas. Q cycles rectangle, ellipse and polygon; G does the same for the pen tools next door.',
+    get title() { return t('stores.onboarding.addShape.title', 'Draw something'); },
+    get body() { return t('stores.onboarding.addShape.body', 'Pick a shape and drag it out on the canvas. Q cycles rectangle, ellipse and polygon; G does the same for the pen tools next door.'); },
     anchor: TOUR_ANCHORS.shapeTool,
     placement: 'bottom-start',
     action: {
       kind: 'create',
       check: () => contentLayerCount() > baseline.layers,
-      hint: 'Draw a shape on the canvas to continue.',
+      get hint() { return t('stores.onboarding.addShape.hint', 'Draw a shape on the canvas to continue.'); },
     },
-    whenMissing: 'The toolbar is hidden — reopen it from View, then come back.',
+    get whenMissing() { return t('stores.onboarding.addShape.missing', 'The toolbar is hidden — reopen it from View, then come back.'); },
   },
   {
     id: 'inspector',
-    title: 'Everything about that layer',
-    body: 'The inspector is the layer, in full: transform, fills, effects, 3D. Every number here is a scrubbable slider AND a field that does maths — drag it, or click and type 960/2.',
+    get title() { return t('stores.onboarding.inspector.title', 'Everything about that layer'); },
+    get body() { return t('stores.onboarding.inspector.body', 'The inspector is the layer, in full: transform, fills, effects, 3D. Every number here is a scrubbable slider AND a field that does maths — drag it, or click and type 960/2.'); },
     anchor: TOUR_ANCHORS.inspector,
     placement: 'left',
-    whenMissing: 'The inspector is collapsed — reopen it with the right-hand panel toggle.',
+    get whenMissing() { return t('stores.onboarding.inspector.missing', 'The inspector is collapsed — reopen it with the right-hand panel toggle.'); },
   },
   {
     id: 'set-keyframe',
-    title: 'Set a keyframe',
-    body: 'A stopwatch turns a property into an animation. Click the one beside Position in the timeline and the current value becomes your first keyframe.',
+    get title() { return t('stores.onboarding.setKeyframe.title', 'Set a keyframe'); },
+    get body() { return t('stores.onboarding.setKeyframe.body', 'A stopwatch turns a property into an animation. Click the one beside Position in the timeline and the current value becomes your first keyframe.'); },
     anchor: TOUR_ANCHORS.timeline,
     placement: 'top',
     action: {
       kind: 'keyframe',
       check: () => keyframeCount() >= baseline.keyframes + 1,
-      hint: 'Click any property stopwatch to record a keyframe.',
+      get hint() { return t('stores.onboarding.setKeyframe.hint', 'Click any property stopwatch to record a keyframe.'); },
     },
-    whenMissing: 'The timeline is closed — reopen it with the bottom panel toggle.',
+    get whenMissing() { return t('stores.onboarding.missing.timeline', 'The timeline is closed — reopen it with the bottom panel toggle.'); },
   },
   {
     id: 'second-keyframe',
-    title: 'Now make it move',
-    body: 'Drag the playhead somewhere later, then change the value. A second keyframe lands automatically, and the two of them are the animation.',
+    get title() { return t('stores.onboarding.secondKeyframe.title', 'Now make it move'); },
+    get body() { return t('stores.onboarding.secondKeyframe.body', 'Drag the playhead somewhere later, then change the value. A second keyframe lands automatically, and the two of them are the animation.'); },
     anchor: TOUR_ANCHORS.timeline,
     placement: 'top',
     action: {
       kind: 'keyframe',
       check: () => keyframeCount() >= baseline.keyframes + 2,
-      hint: 'Move the playhead, then change the value you just keyed.',
+      get hint() { return t('stores.onboarding.secondKeyframe.hint', 'Move the playhead, then change the value you just keyed.'); },
     },
-    whenMissing: 'The timeline is closed — reopen it with the bottom panel toggle.',
+    get whenMissing() { return t('stores.onboarding.missing.timeline', 'The timeline is closed — reopen it with the bottom panel toggle.'); },
   },
   {
     id: 'play',
-    title: 'Play it',
-    body: 'Spacebar, or the button in the middle of the transport. The first pass renders and caches; the second is real time.',
+    get title() { return t('stores.onboarding.play.title', 'Play it'); },
+    get body() { return t('stores.onboarding.play.body', 'Spacebar, or the button in the middle of the transport. The first pass renders and caches; the second is real time.'); },
     anchor: TOUR_ANCHORS.transport,
     placement: 'top',
     action: {
       kind: 'click',
       check: () => isPlaying(),
-      hint: 'Press Space, or hit Play.',
+      get hint() { return t('stores.onboarding.play.hint', 'Press Space, or hit Play.'); },
     },
-    whenMissing: 'The transport lives under the viewport — reopen the viewport to see it.',
+    get whenMissing() { return t('stores.onboarding.play.missing', 'The transport lives under the viewport — reopen the viewport to see it.'); },
   },
   {
     id: 'graph-editor',
-    title: 'Shape how it moves',
-    body: 'Easing is the difference between "it moved" and "it feels right". The easing pills set a curve in one click; the graph editor lets you draw the curve yourself, with real bezier handles and numeric velocity.',
+    get title() { return t('stores.onboarding.graphEditor.title', 'Shape how it moves'); },
+    get body() { return t('stores.onboarding.graphEditor.body', 'Easing is the difference between "it moved" and "it feels right". The easing pills set a curve in one click; the graph editor lets you draw the curve yourself, with real bezier handles and numeric velocity.'); },
     anchor: TOUR_ANCHORS.graphEditor,
     placement: 'top',
     action: {
       kind: 'click',
       check: () => graphEditorOpen(),
-      hint: 'Open the graph editor (Shift+F3) to see the curve.',
+      get hint() { return t('stores.onboarding.graphEditor.hint', 'Open the graph editor (Shift+F3) to see the curve.'); },
     },
-    whenMissing: 'The timeline is closed — reopen it to reach the graph editor.',
+    get whenMissing() { return t('stores.onboarding.graphEditor.missing', 'The timeline is closed — reopen it to reach the graph editor.'); },
   },
   {
     id: 'three-d',
-    title: '3D, when you want it',
-    body: 'Flip a layer to 3D and it gains Z, orientation and a place in a lit scene. This cluster is how you fly around it: orbit, pan and dolly, the gizmo mode, and which axes it aligns to.',
+    get title() { return t('stores.onboarding.threeD.title', '3D, when you want it'); },
+    get body() { return t('stores.onboarding.threeD.body', 'Flip a layer to 3D and it gains Z, orientation and a place in a lit scene. This cluster is how you fly around it: orbit, pan and dolly, the gizmo mode, and which axes it aligns to.'); },
     anchor: TOUR_ANCHORS.scene3d,
     placement: 'bottom',
-    whenMissing: 'The 3D cluster sits in the toolbar — reopen it from View.',
+    get whenMissing() { return t('stores.onboarding.threeD.missing', 'The 3D cluster sits in the toolbar — reopen it from View.'); },
   },
   {
     id: 'export',
-    title: 'Get it out',
-    body: 'Export writes video, image sequences, GIF and Lottie, and queues long renders in the background so you can keep working. That is the tour — everything else is discoverable from the command palette.',
+    get title() { return t('stores.onboarding.export.title', 'Get it out'); },
+    get body() { return t('stores.onboarding.export.body', 'Export writes video, image sequences, GIF and Lottie, and queues long renders in the background so you can keep working. That is the tour — everything else is discoverable from the command palette.'); },
     anchor: TOUR_ANCHORS.export,
     placement: 'bottom-end',
-    whenMissing: 'Export also lives in the File menu.',
+    get whenMissing() { return t('stores.onboarding.export.missing', 'Export also lives in the File menu.'); },
   },
 ];
 
@@ -329,53 +330,53 @@ export const FIRST_RUN_STEPS: ReadonlyArray<TourStep> = [
 export const POWER_STEPS: ReadonlyArray<TourStep> = [
   {
     id: 'jkl',
-    title: 'J, K and L',
-    body: 'In the timeline J and K hop between keyframes. In the Source Monitor they are the editor’s shuttle: J plays backwards, L forwards, again for 2× and 4×, K stops. Space still plays the comp.',
+    get title() { return t('stores.onboarding.jkl.title', 'J, K and L'); },
+    get body() { return t('stores.onboarding.jkl.body', 'In the timeline J and K hop between keyframes. In the Source Monitor they are the editor’s shuttle: J plays backwards, L forwards, again for 2× and 4×, K stops. Space still plays the comp.'); },
     anchor: TOUR_ANCHORS.timeline,
     placement: 'top',
     action: {
       kind: 'click',
       check: () => isPlaying(),
-      hint: 'Press Space (or L in the Source Monitor) to play.',
+      get hint() { return t('stores.onboarding.jkl.hint', 'Press Space (or L in the Source Monitor) to play.'); },
     },
-    whenMissing: 'The timeline is closed — reopen it with the bottom panel toggle.',
+    get whenMissing() { return t('stores.onboarding.missing.timeline', 'The timeline is closed — reopen it with the bottom panel toggle.'); },
   },
   {
     id: 'reveal',
-    title: 'U shows what moves',
-    body: 'Select a layer and press U: every animated property unfolds and everything else stays out of the way. Press U twice quickly (UU) for only the properties you changed from their defaults.',
+    get title() { return t('stores.onboarding.reveal.title', 'U shows what moves'); },
+    get body() { return t('stores.onboarding.reveal.body', 'Select a layer and press U: every animated property unfolds and everything else stays out of the way. Press U twice quickly (UU) for only the properties you changed from their defaults.'); },
     anchor: TOUR_ANCHORS.timeline,
     placement: 'top',
-    whenMissing: 'The timeline is closed — reopen it with the bottom panel toggle.',
+    get whenMissing() { return t('stores.onboarding.missing.timeline', 'The timeline is closed — reopen it with the bottom panel toggle.'); },
   },
   {
     id: 'fit',
-    title: '; fits the view',
-    body: 'Semicolon zooms the timeline to the whole composition; Alt+; fits the work area. The zoom cluster in the status bar does the same by mouse.',
+    get title() { return t('stores.onboarding.fit.title', '; fits the view'); },
+    get body() { return t('stores.onboarding.fit.body', 'Semicolon zooms the timeline to the whole composition; Alt+; fits the work area. The zoom cluster in the status bar does the same by mouse.'); },
     anchor: TOUR_ANCHORS.timelineZoom,
     placement: 'top',
-    whenMissing: 'The zoom cluster lives in the status bar under the timeline.',
+    get whenMissing() { return t('stores.onboarding.fit.missing', 'The zoom cluster lives in the status bar under the timeline.'); },
   },
   {
     id: 'quick-apply',
-    title: 'Quick apply with +',
-    body: 'Hover a preset and press + (or click its plus) to drop it on the selected layers at the playhead, without leaving the panel. Drag it onto the canvas to aim it at one layer.',
+    get title() { return t('stores.onboarding.quickApply.title', 'Quick apply with +'); },
+    get body() { return t('stores.onboarding.quickApply.body', 'Hover a preset and press + (or click its plus) to drop it on the selected layers at the playhead, without leaving the panel. Drag it onto the canvas to aim it at one layer.'); },
     anchor: TOUR_ANCHORS.quickApply,
     placement: 'left',
-    whenMissing: 'Open the Presets panel (Window ▸ Presets) to see quick apply.',
+    get whenMissing() { return t('stores.onboarding.quickApply.missing', 'Open the Presets panel (Window ▸ Presets) to see quick apply.'); },
   },
   {
     id: 'palette',
-    title: 'Everything, by name',
-    body: 'Ctrl/Cmd+Shift+P opens the command palette: every command, panel, preset and doc section, searchable. Type ? for the shortcut list.',
+    get title() { return t('stores.onboarding.palette.title', 'Everything, by name'); },
+    get body() { return t('stores.onboarding.palette.body', 'Ctrl/Cmd+Shift+P opens the command palette: every command, panel, preset and doc section, searchable. Type ? for the shortcut list.'); },
     anchor: TOUR_ANCHORS.commandPalette,
     placement: 'bottom',
     action: {
       kind: 'click',
       check: () => paletteOpen(),
-      hint: 'Press Ctrl+Shift+P (Cmd+Shift+P on a Mac).',
+      get hint() { return t('stores.onboarding.palette.hint', 'Press Ctrl+Shift+P (Cmd+Shift+P on a Mac).'); },
     },
-    whenMissing: 'The palette also opens from View ▸ Command Palette.',
+    get whenMissing() { return t('stores.onboarding.palette.missing', 'The palette also opens from View ▸ Command Palette.'); },
   },
 ];
 
@@ -739,8 +740,8 @@ export function registerPowerTourCommand(): void {
   try {
     getCommandRegistry().register({
       id: HELP_POWER_TOUR_COMMAND,
-      label: 'Power-user Tour',
-      description: 'JKL, U / UU, ; to fit, quick apply with + and the command palette.',
+      label: t('stores.onboarding.powerTour.label', 'Power-user Tour'),
+      description: t('stores.onboarding.powerTour.description', 'JKL, U / UU, ; to fit, quick apply with + and the command palette.'),
       icon: 'tour',
       enabled: () => true,
       execute: () => { useOnboardingStore.getState().start(POWER_TOUR_ID); },

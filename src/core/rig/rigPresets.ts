@@ -30,6 +30,7 @@ import type { Bone } from './skeleton';
 import type { SkeletonRig, IKTarget } from './skeletonCommands';
 import type { RigController, ControllerSide } from './controllers';
 import { DEFAULT_CONTROLLER_SIZE } from './controllers';
+import { t } from '@core/i18n';
 
 export type RigPresetId = 'biped' | 'quadruped';
 
@@ -271,8 +272,8 @@ export const RIG_PRESETS: Record<RigPresetId, (b: PresetBounds) => SkeletonRig> 
 };
 
 export const RIG_PRESET_LABELS: Record<RigPresetId, string> = {
-  biped: 'Biped',
-  quadruped: 'Quadruped',
+  get biped() { return t('core.rigPresets.biped', 'Biped'); },
+  get quadruped() { return t('core.rigPresets.quadruped', 'Quadruped'); },
 };
 
 // ── Validity ────────────────────────────────────────────────────────────

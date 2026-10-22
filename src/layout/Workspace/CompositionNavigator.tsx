@@ -23,6 +23,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys } from '@hooks/useMirror';
 import { installCompNavigation, navigateToCrumb } from '@layout/Composition/compNavigationEdits';
 import styles from './CompositionNavigator.module.css';
+import { t } from '@core/i18n';
 
 export function CompositionNavigator(): JSX.Element | null {
   // The bar is always mounted with the viewer, so it owns the repair that
@@ -46,7 +47,7 @@ export function CompositionNavigator(): JSX.Element | null {
   if (crumbs.length < 2) return null;
 
   return (
-    <nav className={styles.bar} aria-label="Composition Navigator">
+    <nav className={styles.bar} aria-label={t('workspace.compNavigator.label', 'Composition Navigator')}>
       {crumbs.map((c, i) => {
         const name = c.comp?.settings.name ?? c.layer?.name ?? c.id;
         const isCurrent = c.index === at;
@@ -61,10 +62,10 @@ export function CompositionNavigator(): JSX.Element | null {
               disabled={isCurrent}
               title={
                 isCurrent
-                  ? `${name} — the composition in this viewer`
+                  ? t('workspace.compNavigator.current', '{name} — the composition in this viewer', { name })
                   : downstream
-                    ? `Open ${name}, which contains this composition (Shift+Esc goes back)`
-                    : `Open ${name}, nested in this composition`
+                    ? t('workspace.compNavigator.openParent', 'Open {name}, which contains this composition (Shift+Esc goes back)', { name })
+                    : t('workspace.compNavigator.openNested', 'Open {name}, nested in this composition', { name })
               }
               onClick={() => navigateToCrumb(c.index)}
             >
@@ -77,8 +78,8 @@ export function CompositionNavigator(): JSX.Element | null {
       <button
         type="button"
         className={styles.flowchartBtn}
-        title="Composition Mini-Flowchart (Tab)"
-        aria-label="Open the Composition Mini-Flowchart"
+        title={t('workspace.compNavigator.flowchart', 'Composition Mini-Flowchart (Tab)')}
+        aria-label={t('workspace.compNavigator.openFlowchart', 'Open the Composition Mini-Flowchart')}
         onClick={() => useMiniFlowchartStore.getState().toggle()}
       >
         <Icon name="chevron-down" size="sm" />

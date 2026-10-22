@@ -45,6 +45,7 @@ import { ExportQueueList } from './ExportQueueList';
 import { useExportFormStore } from './exportFormStore';
 import styles from './ExportDialog.module.css';
 import { useState } from 'react';
+import { t } from '@core/i18n';
 import { PluginFormatOptions, isPluginFormat, pluginFormatExt, pluginOptionsField, usePluginExportPresets } from './pluginFormats';
 
 const RES = [
@@ -53,11 +54,33 @@ const RES = [
   { label: 'Quarter', scale: 0.25 },
 ] as const;
 
-const QUALITY: ReadonlyArray<{ value: ExportQuality; label: string; hint: string }> = [
-  { value: 'high', label: 'High', hint: 'Best quality. Slowest encode, largest file.' },
-  { value: 'medium', label: 'Medium', hint: 'Balanced — a good default for review copies.' },
-  { value: 'draft', label: 'Draft', hint: 'Fast and visibly compressed. For checking timing.' },
-];
+/** The resolution preset's display label (RES labels stay as React keys). */
+function resLabel(scale: number): string {
+  if (scale === 0.5) return t('export.form.resolution.half', 'Half');
+  if (scale === 0.25) return t('export.form.resolution.quarter', 'Quarter');
+  return t('export.form.resolution.full', 'Full');
+}
+
+/** Called at render time: `t()` must not run at module scope. */
+function qualityOptions(): ReadonlyArray<{ value: ExportQuality; label: string; hint: string }> {
+  return [
+    { value: 'high', label: t('export.form.quality.high', 'High'), hint: t('export.form.quality.highHint', 'Best quality. Slowest encode, largest file.') },
+    { value: 'medium', label: t('export.form.quality.medium', 'Medium'), hint: t('export.form.quality.mediumHint', 'Balanced — a good default for review copies.') },
+    { value: 'draft', label: t('export.form.quality.draft', 'Draft'), hint: t('export.form.quality.draftHint', 'Fast and visibly compressed. For checking timing.') },
+  ];
+}
+
+/** A format category's display label (FORMAT_GROUPS ids are compared in code). */
+function formatGroupLabel(group: { id: string; label: string }): string {
+  switch (group.id) {
+    case 'video': return t('export.form.category.video', 'Video');
+    case 'frames': return t('export.form.category.frames', 'Frames');
+    case 'audio': return t('export.form.category.audio', 'Audio');
+    case 'editorial': return t('export.form.category.editorial', 'Editorial');
+    case 'data': return t('export.form.category.data', 'Data');
+    default: return group.label;
+  }
+}
 
 const MOVING: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif']);
 const QUEUEABLE: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence']);
@@ -86,15 +109,15 @@ export { shouldUseSupervisor };
 
 function dataPreviewMeta(format: ExportFormat): { icon: import('@components/Icon').IconName; title: string } {
   switch (format) {
-    case 'wav': return { icon: 'audio', title: 'Audio Mixdown · WAV' };
-    case 'lottie': return { icon: 'sparkles', title: 'Lottie Animation JSON' };
-    case 'json': return { icon: 'file', title: 'Premation Project Document' };
-    case 'otio': return { icon: 'layers', title: 'OpenTimelineIO Schema' };
-    case 'fcpxml': return { icon: 'code', title: 'Final Cut Pro XML' };
-    case 'edl': return { icon: 'layers', title: 'CMX 3600 Edit Decision List' };
-    case 'ale': return { icon: 'file', title: 'Avid Log Exchange' };
-    case 'mogrt': return { icon: 'component', title: 'Motion Graphics Template (.mogrt.zip)' };
-    default: return { icon: 'file', title: 'Project document' };
+    case 'wav': return { icon: 'audio', title: t('export.form.data.wav', 'Audio Mixdown · WAV') };
+    case 'lottie': return { icon: 'sparkles', title: t('export.form.data.lottie', 'Lottie Animation JSON') };
+    case 'json': return { icon: 'file', title: t('export.form.data.json', 'Premation Project Document') };
+    case 'otio': return { icon: 'layers', title: t('export.form.data.otio', 'OpenTimelineIO Schema') };
+    case 'fcpxml': return { icon: 'code', title: t('export.form.data.fcpxml', 'Final Cut Pro XML') };
+    case 'edl': return { icon: 'layers', title: t('export.form.data.edl', 'CMX 3600 Edit Decision List') };
+    case 'ale': return { icon: 'file', title: t('export.form.data.ale', 'Avid Log Exchange') };
+    case 'mogrt': return { icon: 'component', title: t('export.form.data.mogrt', 'Motion Graphics Template (.mogrt.zip)') };
+    default: return { icon: 'file', title: t('export.form.data.default', 'Project document') };
   }
 }
 
@@ -119,7 +142,7 @@ function fileStem(name: string): string {
  */
 function chaptersForRange(startSec: number, endSec: number, fps: number): ExportChapter[] {
   const markers = documentMirror().comp(activeCompIdNow() ?? '')?.markers ?? [];
-  const shifted = markers.map((m) => ({ time: flicksToSeconds(m.time) - startSec, label: m.name || 'Marker' }));
+  const shifted = markers.map((m) => ({ time: flicksToSeconds(m.time) - startSec, label: m.name || t('export.form.markerPlaceholder', 'Marker') }));
   return chaptersFromMarkers(shifted, fps, Math.max(0, endSec - startSec));
 }
 
@@ -256,7 +279,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     try {
       await queueEngineRender({
         compositionId: baseComp.id,
-        compositionName: compName ?? 'Composition',
+        compositionName: compName ?? t('export.dialog.defaultCompName', 'Composition'),
         format,
         width,
         height,
@@ -271,9 +294,9 @@ export function useExportModel(duration: number, fps: number): ExportModel {
         ...pluginOptionsField(format),
         outPath,
       });
-      ui.notify({ level: 'success', message: `Queued ${outputName} — it renders in the background`, durationMs: 3000 });
+      ui.notify({ level: 'success', message: t('export.form.queued', 'Queued {name} — it renders in the background', { name: outputName }), durationMs: 3000 });
     } catch (err) {
-      reportQueueFailure(err, 'The export could not be queued');
+      reportQueueFailure(err, t('export.form.queueFailed', 'The export could not be queued'));
     }
   }, [outputName, captureChapters, captureRange, baseComp.id, compName, format, width, height, fps, time, quality, proresProfile, bitDepth, alpha]);
 
@@ -287,7 +310,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     const controller = new AbortController();
     store.begin(controller);
     const ui = useUIStore.getState();
-    ui.startJob({ id: EXPORT_JOB_ID, label: `Exporting ${outputName}`, progress: 0 });
+    ui.startJob({ id: EXPORT_JOB_ID, label: t('export.form.jobLabel', 'Exporting {name}', { name: outputName }), progress: 0 });
     try {
       await runDataExport({
         format,
@@ -301,15 +324,15 @@ export function useExportModel(duration: number, fps: number): ExportModel {
           useUIStore.getState().updateJob(EXPORT_JOB_ID, { progress: p });
         },
       });
-      useUIStore.getState().finishJob(EXPORT_JOB_ID, { status: 'done', message: 'Export complete' });
+      useUIStore.getState().finishJob(EXPORT_JOB_ID, { status: 'done', message: t('export.form.complete', 'Export complete') });
     } catch (err) {
       if (isAbortError(err)) {
-        useUIStore.getState().finishJob(EXPORT_JOB_ID, { status: 'cancelled', message: 'Export cancelled' });
+        useUIStore.getState().finishJob(EXPORT_JOB_ID, { status: 'cancelled', message: t('export.form.cancelled', 'Export cancelled') });
       } else {
         useUIStore.getState().finishJob(EXPORT_JOB_ID, {
           status: 'failed',
-          message: err instanceof Error ? err.message : 'Export failed',
-          action: { label: 'Learn more', onSelect: () => { void openHelp('exportFailed'); } },
+          message: err instanceof Error ? err.message : t('export.form.failed', 'Export failed'),
+          action: { label: t('export.form.learnMore', 'Learn more'), onSelect: () => { void openHelp('exportFailed'); } },
         });
       }
     } finally {
@@ -365,7 +388,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       if (!id) return;
       useUIStore.getState().notify({
         level: 'success',
-        message: 'Added to Render Queue (F6) — it renders in the background',
+        message: t('export.form.addedToQueue', 'Added to Render Queue (F6) — it renders in the background'),
         durationMs: 2600,
       });
     });
@@ -457,13 +480,14 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
   const offerBitDepth = format === 'mov' && bitDepth16 && shouldUseSupervisor(format);
 
   const frameCount = format === 'png' ? 1 : Math.max(1, Math.round(rangeDuration * fps));
+  const QUALITY = qualityOptions();
   const qualityHint = QUALITY.find((q) => q.value === quality)?.hint;
   const dataMeta = dataPreviewMeta(format);
 
   return (
     <div className={cn(styles.shell, host === 'panel' && styles.shellPanel)}>
       <div className={cn(styles.layout, host === 'panel' && styles.layoutStacked)}>
-        <section className={styles.previewCol} aria-label="Export preview">
+        <section className={styles.previewCol} aria-label={t('export.form.previewLabel', 'Export preview')}>
           {showRaster ? (
             <ExportPreview
               width={width}
@@ -481,25 +505,25 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
               <Icon name={dataMeta.icon} size="lg" />
               <p className={styles.dataPreviewTitle}>{dataMeta.title}</p>
               <p className={styles.dataPreviewHint}>
-                {activePreset?.hint ?? 'No raster preview for this format.'}
+                {activePreset?.hint ?? t('export.form.noRasterPreview', 'No raster preview for this format.')}
               </p>
             </div>
           )}
 
           <dl className={styles.stats}>
             <div>
-              <dt>Size</dt>
+              <dt>{t('export.form.stats.size', 'Size')}</dt>
               <dd>{showRaster ? `${width} × ${height}` : '—'}</dd>
             </div>
             <div>
-              <dt>Rate</dt>
+              <dt>{t('export.form.stats.rate', 'Rate')}</dt>
               <dd>{showRaster ? `${fps} fps` : '—'}</dd>
             </div>
             <div>
-              <dt>Length</dt>
+              <dt>{t('export.form.stats.length', 'Length')}</dt>
               <dd>
                 {format === 'png'
-                  ? '1 frame'
+                  ? t('export.form.stats.oneFrame', '1 frame')
                   : showRaster
                     ? `${frameCount} · ${rangeDuration.toFixed(2)}s`
                     : '—'}
@@ -508,9 +532,9 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           </dl>
         </section>
 
-        <section className={styles.settingsCol} aria-label="Export settings">
+        <section className={styles.settingsCol} aria-label={t('export.form.settingsLabel', 'Export settings')}>
           <div className={styles.section}>
-            <div className={styles.label}>Format Category</div>
+            <div className={styles.label}>{t('export.form.formatCategory', 'Format Category')}</div>
             <div className={styles.categoryTabs} role="tablist">
               {formatGroups.map((group) => {
                 const items = group.formats.filter((f) => presetByFormat.has(f));
@@ -532,7 +556,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
                       });
                     }}
                   >
-                    {group.label}
+                    {formatGroupLabel(group)}
                   </button>
                 );
               })}
@@ -540,8 +564,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           </div>
 
           <div className={styles.section}>
-            <div className={styles.label}>Format Preset</div>
-            <div className={styles.formatGrid} role="radiogroup" aria-label="Format Preset">
+            <div className={styles.label}>{t('export.form.formatPreset', 'Format Preset')}</div>
+            <div className={styles.formatGrid} role="radiogroup" aria-label={t('export.form.formatPreset', 'Format Preset')}>
               {(formatGroups.find((g) => g.id === activeCategory)?.formats.filter((f) => presetByFormat.has(f)) ?? []).map((id) => {
                 const p = presetByFormat.get(id)!;
                 const on = format === id;
@@ -570,8 +594,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
 
           {showRange ? (
             <div className={styles.section}>
-              <div className={styles.label}>Range</div>
-              <div className={styles.seg} role="radiogroup" aria-label="Export range">
+              <div className={styles.label}>{t('export.form.range', 'Range')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.rangeLabel', 'Export range')}>
                 <button
                   type="button"
                   role="radio"
@@ -580,18 +604,18 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
                   className={cn(styles.segChip, !useWorkArea && styles.segChipOn)}
                   onClick={() => patch({ rangeMode: 'full' })}
                 >
-                  Entire composition
+                  {t('export.form.rangeFull', 'Entire composition')}
                 </button>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={useWorkArea}
                   disabled={busy || !workArea}
-                  title={workArea ? 'Export the timeline work area' : 'No work area is set — B / N on the timeline'}
+                  title={workArea ? t('export.form.rangeWorkTitle', 'Export the timeline work area') : t('export.form.rangeNoWorkArea', 'No work area is set — B / N on the timeline')}
                   className={cn(styles.segChip, useWorkArea && styles.segChipOn)}
                   onClick={() => workArea && patch({ rangeMode: 'work' })}
                 >
-                  Work area
+                  {t('export.form.rangeWork', 'Work area')}
                 </button>
               </div>
               {useWorkArea && workArea ? (
@@ -601,13 +625,13 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
               ) : null}
             </div>
           ) : format === 'png' ? (
-            <p className={styles.fieldNote}>Exports the frame under the playhead as a single PNG.</p>
+            <p className={styles.fieldNote}>{t('export.form.pngNote', 'Exports the frame under the playhead as a single PNG.')}</p>
           ) : null}
 
           {showRaster ? (
             <div className={styles.section}>
-              <div className={styles.label}>Resolution</div>
-              <div className={styles.seg} role="radiogroup" aria-label="Output resolution">
+              <div className={styles.label}>{t('export.form.resolution', 'Resolution')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.resolutionLabel', 'Output resolution')}>
                 {RES.map((r, i) => (
                   <button
                     key={r.label}
@@ -618,7 +642,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
                     className={cn(styles.segChip, i === scaleIdx && styles.segChipOn)}
                     onClick={() => patch({ scaleIdx: i })}
                   >
-                    {r.label}
+                    {resLabel(r.scale)}
                   </button>
                 ))}
               </div>
@@ -627,8 +651,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
 
           {showQuality ? (
             <div className={styles.section}>
-              <div className={styles.label}>Quality</div>
-              <div className={styles.seg} role="radiogroup" aria-label="Encode quality">
+              <div className={styles.label}>{t('export.form.quality', 'Quality')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.qualityLabel', 'Encode quality')}>
                 {QUALITY.map((q) => (
                   <button
                     key={q.value}
@@ -650,8 +674,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
 
           {format === 'mov' ? (
             <div className={styles.section}>
-              <div className={styles.label}>ProRes profile</div>
-              <div className={styles.seg} role="radiogroup" aria-label="ProRes profile">
+              <div className={styles.label}>{t('export.form.proresProfile', 'ProRes profile')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.proresProfile', 'ProRes profile')}>
                 {PRORES_PROFILES.map((p) => (
                   <button
                     key={p}
@@ -663,22 +687,22 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
                     className={cn(styles.segChip, proresProfile === p && styles.segChipOn)}
                     onClick={() => patch({ proresProfile: p })}
                   >
-                    {p === '4444' ? '4444' : p === 'hq' ? '422 HQ' : p === '422' ? '422' : p === 'lt' ? '422 LT' : 'Proxy'}
+                    {p === '4444' ? '4444' : p === 'hq' ? '422 HQ' : p === '422' ? '422' : p === 'lt' ? '422 LT' : t('export.form.proresProxy', 'Proxy')}
                   </button>
                 ))}
               </div>
               <p className={styles.fieldNote}>
                 {proresProfile === '4444'
-                  ? 'Highest fidelity, and the only profile that carries alpha.'
-                  : 'No alpha channel — smaller files for opaque delivery and edit handoff.'}
+                  ? t('export.form.prores4444Note', 'Highest fidelity, and the only profile that carries alpha.')
+                  : t('export.form.prores422Note', 'No alpha channel — smaller files for opaque delivery and edit handoff.')}
               </p>
             </div>
           ) : null}
 
           {offerBitDepth ? (
             <div className={styles.section}>
-              <div className={styles.label}>Bits per channel</div>
-              <div className={styles.seg} role="radiogroup" aria-label="Bits per channel">
+              <div className={styles.label}>{t('export.form.bitsPerChannel', 'Bits per channel')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.bitsPerChannel', 'Bits per channel')}>
                 {([8, 16] as const).map((d) => (
                   <button
                     key={d}
@@ -689,14 +713,14 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
                     className={cn(styles.segChip, bitDepth === d && styles.segChipOn)}
                     onClick={() => patch({ bitDepth: d })}
                   >
-                    {d}-bit
+                    {t('export.form.bitDepth', '{n}-bit', { n: d })}
                   </button>
                 ))}
               </div>
               <p className={styles.fieldNote}>
                 {bitDepth === 16
-                  ? 'Rendered by the engine into a half-float surface (rgba64le). A job the engine cannot render is delivered at 8 bits, with a warning.'
-                  : '8 bits per channel, as every renderer writes it.'}
+                  ? t('export.form.bitDepth16Note', 'Rendered by the engine into a half-float surface (rgba64le). A job the engine cannot render is delivered at 8 bits, with a warning.')
+                  : t('export.form.bitDepth8Note', '8 bits per channel, as every renderer writes it.')}
               </p>
             </div>
           ) : null}
@@ -706,27 +730,31 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
               className={styles.switchRow}
               title={
                 supportsChapters
-                  ? 'Composition markers with a label become chapter marks in the file.'
-                  : 'Chapter marks are an MP4/MOV feature — this container cannot carry them.'
+                  ? t('export.form.chaptersTitle', 'Composition markers with a label become chapter marks in the file.')
+                  : t('export.form.chaptersUnsupportedTitle', 'Chapter marks are an MP4/MOV feature — this container cannot carry them.')
               }
             >
               <div className={styles.switchCopy}>
-                <span className={styles.switchTitle}>Chapters from markers</span>
+                <span className={styles.switchTitle}>{t('export.form.chapters', 'Chapters from markers')}</span>
                 <span className={styles.switchHint}>
                   {!supportsChapters
-                    ? 'Only MP4 and MOV carry chapters. WebM and GIF have nowhere to put them.'
+                    ? t('export.form.chaptersUnsupported', 'Only MP4 and MOV carry chapters. WebM and GIF have nowhere to put them.')
                     : chapterCount === 0
-                      ? 'No labelled composition markers in this range — nothing to write.'
+                      ? t('export.form.chaptersNone', 'No labelled composition markers in this range — nothing to write.')
                       : writeChapters
-                        ? `${chapterCount} chapter${chapterCount === 1 ? '' : 's'}, one per labelled marker, each running to the next.`
-                        : `${chapterCount} labelled marker${chapterCount === 1 ? '' : 's'} available.`}
+                        ? chapterCount === 1
+                          ? t('export.form.chaptersWriteOne', '{n} chapter, one per labelled marker, each running to the next.', { n: chapterCount })
+                          : t('export.form.chaptersWriteOther', '{n} chapters, one per labelled marker, each running to the next.', { n: chapterCount })
+                        : chapterCount === 1
+                          ? t('export.form.chaptersAvailableOne', '{n} labelled marker available.', { n: chapterCount })
+                          : t('export.form.chaptersAvailableOther', '{n} labelled markers available.', { n: chapterCount })}
                 </span>
               </div>
               <Switch
                 checked={writeChapters}
                 disabled={busy || !supportsChapters || chapterCount === 0}
                 onChange={(e) => patch({ chapters: e.currentTarget.checked })}
-                aria-label="Chapters from markers"
+                aria-label={t('export.form.chapters', 'Chapters from markers')}
               />
             </div>
           ) : null}
@@ -734,20 +762,22 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           {showRaster ? (
             <div className={styles.switchRow}>
               <div className={styles.switchCopy}>
-                <span className={styles.switchTitle}>Transparent background</span>
+                <span className={styles.switchTitle}>{t('export.form.transparent', 'Transparent background')}</span>
                 <span className={styles.switchHint}>
                   {!supportsAlpha
-                    ? `${activePreset?.label ?? 'This format'} has no alpha channel.`
+                    ? activePreset?.label
+                      ? t('export.form.noAlpha', '{format} has no alpha channel.', { format: activePreset.label })
+                      : t('export.form.noAlphaGeneric', 'This format has no alpha channel.')
                     : format === 'gif'
-                      ? 'GIF alpha is 1-bit, so edges will look hard.'
-                      : 'Keeps empty pixels clear instead of filling the comp colour.'}
+                      ? t('export.form.gifAlpha', 'GIF alpha is 1-bit, so edges will look hard.')
+                      : t('export.form.transparentHint', 'Keeps empty pixels clear instead of filling the comp colour.')}
                 </span>
               </div>
               <Switch
                 checked={alpha}
                 disabled={busy || !supportsAlpha}
                 onChange={(e) => patch({ transparent: e.currentTarget.checked })}
-                aria-label="Transparent background"
+                aria-label={t('export.form.transparent', 'Transparent background')}
               />
             </div>
           ) : null}
@@ -755,8 +785,8 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           {showRaster && (
             <p className={styles.audioNote}>
               {HAS_AUDIO.has(format)
-                ? 'Audio in the composition is mixed into the file.'
-                : 'This format is picture-only — no audio track.'}
+                ? t('export.form.audioMixed', 'Audio in the composition is mixed into the file.')
+                : t('export.form.pictureOnly', 'This format is picture-only — no audio track.')}
             </p>
           )}
         </section>
@@ -769,15 +799,15 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
           <div className={styles.progressWrap} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((progress ?? 0) * 100)}>
             {/* Width is the measured progress — the one inline value here. */}
             <div className={styles.progressBar} style={{ width: `${Math.round((progress ?? 0) * 100)}%` }} />
-            <span className={styles.progressText}>Rendering… {Math.round((progress ?? 0) * 100)}%</span>
+            <span className={styles.progressText}>{t('export.form.rendering', 'Rendering… {pct}%', { pct: Math.round((progress ?? 0) * 100) })}</span>
           </div>
           <button
             type="button"
             className={styles.cancelBtn}
             onClick={cancel}
-            title="Stop the export — nothing is written"
+            title={t('export.form.cancelTitle', 'Stop the export — nothing is written')}
           >
-            Cancel
+            {t('export.form.cancel', 'Cancel')}
           </button>
         </div>
       ) : null}

@@ -35,18 +35,19 @@ import { settingsDurationSeconds, settingsFps, settingsSetWorkArea } from '@core
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
 import { explainObjectMatteError } from '@core/tracking/samModelInstall';
 import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
+import { t } from '@core/i18n';
 import styles from './ToolOptionsBar.module.css';
 
-/** The two things a roto stroke can mean, and how to say so. */
-const ROTO_STROKE_KINDS = [
-  { kind: 'fg', label: 'Foreground', hint: 'Paint over the subject to keep it.' },
-  { kind: 'bg', label: 'Background', hint: 'Paint what to cut out. Alt while painting does this too.' },
+/** The two things a roto stroke can mean, and how to say so. A function: `t()` runs at render time. */
+const rotoStrokeKinds = () => [
+  { kind: 'fg', label: t('topNav.toolOptions.rotoForeground', 'Foreground'), hint: t('topNav.toolOptions.rotoForegroundHint', 'Paint over the subject to keep it.') },
+  { kind: 'bg', label: t('topNav.toolOptions.rotoBackground', 'Background'), hint: t('topNav.toolOptions.rotoBackgroundHint', 'Paint what to cut out. Alt while painting does this too.') },
 ] as const;
 
-const BONE_MODES = [
-  { id: 'draw', label: 'Draw', icon: 'bone', hint: 'Draw connected bones and branches.' },
-  { id: 'pose', label: 'Pose', icon: 'move', hint: 'Pose bones, IK goals, poles, and controllers.' },
-  { id: 'weights', label: 'Weights', icon: 'brush', hint: 'Bind artwork by painting bone influence.' },
+const boneModes = () => [
+  { id: 'draw', label: t('topNav.toolOptions.boneDraw', 'Draw'), icon: 'bone', hint: t('topNav.toolOptions.boneDrawHint', 'Draw connected bones and branches.') },
+  { id: 'pose', label: t('topNav.toolOptions.bonePose', 'Pose'), icon: 'move', hint: t('topNav.toolOptions.bonePoseHint', 'Pose bones, IK goals, poles, and controllers.') },
+  { id: 'weights', label: t('topNav.toolOptions.boneWeights', 'Weights'), icon: 'brush', hint: t('topNav.toolOptions.boneWeightsHint', 'Bind artwork by painting bone influence.') },
 ] as const;
 
 function Row({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
@@ -118,7 +119,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   if (activeTool === 'brush' || activeTool === 'paint' || activeTool === 'eraser') {
     content = (
       <>
-        <Row label="Size">
+        <Row label={t('topNav.toolOptions.size', 'Size')}>
           <ValueField value={drawToolOptions.brushSize} unit="px" min={1} max={activeTool === 'brush' ? 200 : 2500} onChange={(v) => set('brushSize', Number(v))} />
         </Row>
         {/* Taper and Pressure shape the freehand RIBBON's outline. A paint
@@ -127,16 +128,16 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
             do nothing, which is how the old shared bar read. */}
         {activeTool === 'brush' && (
           <>
-            <Row label="Taper">
+            <Row label={t('topNav.toolOptions.taper', 'Taper')}>
               <ValueField value={drawToolOptions.brushTaper} unit="%" min={0} max={100} onChange={(v) => set('brushTaper', Number(v))} />
             </Row>
-            <Row label="Pressure">
-              <Checkbox checked={drawToolOptions.brushPressure} onChange={() => set('brushPressure', !drawToolOptions.brushPressure)} title="Scale width by stylus pressure" />
+            <Row label={t('topNav.toolOptions.pressure', 'Pressure')}>
+              <Checkbox checked={drawToolOptions.brushPressure} onChange={() => set('brushPressure', !drawToolOptions.brushPressure)} title={t('topNav.toolOptions.pressureTitle', 'Scale width by stylus pressure')} />
             </Row>
           </>
         )}
-        <Row label="Color">
-          <ColorPicker compact value={drawToolOptions.brushColor} onChange={(hex) => set('brushColor', hex)} aria-label="Brush color" />
+        <Row label={t('topNav.toolOptions.color', 'Color')}>
+          <ColorPicker compact value={drawToolOptions.brushColor} onChange={(hex) => set('brushColor', hex)} aria-label={t('topNav.toolOptions.brushColor', 'Brush color')} />
         </Row>
         {paintingLayer && (
           <>
@@ -144,30 +145,30 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
                 Eraser tool's whole identity (Ctrl+B cycles all three), so there
                 is no Erase checkbox here that could turn a brush into one. */}
             {activeTool === 'paint' && (
-              <Row label="Clone">
+              <Row label={t('topNav.toolOptions.clone', 'Clone')}>
                 <Checkbox
                   checked={paint.mode === 'clone'}
                   onChange={() => paint.set({ mode: paint.mode === 'clone' ? 'paint' : 'clone' })}
-                  title="Clone stamp — paints the layer's own content from an offset source. Alt-click the canvas to set the source."
+                  title={t('topNav.toolOptions.cloneTitle', "Clone stamp — paints the layer's own content from an offset source. Alt-click the canvas to set the source.")}
                 />
               </Row>
             )}
-            <Row label="Opacity">
+            <Row label={t('topNav.toolOptions.opacity', 'Opacity')}>
               <ValueField value={Math.round(paint.opacity * 100)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.set({ opacity: Number(v) / 100 })} />
             </Row>
-            <Row label="Flow">
+            <Row label={t('topNav.toolOptions.flow', 'Flow')}>
               <ValueField value={Math.round(paint.flow * 100)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.set({ flow: Number(v) / 100 })} />
             </Row>
-            <Row label="Hardness">
+            <Row label={t('topNav.toolOptions.hardness', 'Hardness')}>
               <ValueField value={Math.round(paint.hardness * 100)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.set({ hardness: Number(v) / 100 })} />
             </Row>
             {/* The full AE panels: Mode, Channels, Duration, Clone Options,
                 the stroke list (Paint, Ctrl+8) and tips + dynamics (Brushes, Ctrl+9). */}
-            <button type="button" className={styles.action} title="Paint panel (Ctrl+8)" onClick={() => useLayoutStore.getState().openPanel('paint')}>
-              Paint…
+            <button type="button" className={styles.action} title={t('topNav.toolOptions.paintPanelTitle', 'Paint panel ({chord})', { chord: 'Ctrl+8' })} onClick={() => useLayoutStore.getState().openPanel('paint')}>
+              {t('topNav.toolOptions.paintPanel', 'Paint…')}
             </button>
-            <button type="button" className={styles.action} title="Brushes panel (Ctrl+9)" onClick={() => useLayoutStore.getState().openPanel('brushes')}>
-              Brushes…
+            <button type="button" className={styles.action} title={t('topNav.toolOptions.brushesPanelTitle', 'Brushes panel ({chord})', { chord: 'Ctrl+9' })} onClick={() => useLayoutStore.getState().openPanel('brushes')}>
+              {t('topNav.toolOptions.brushesPanel', 'Brushes…')}
             </button>
             {/* AE's "Erase: Last Stroke Only", as a button rather than a mode —
                 this is the one place a user would look for it. */}
@@ -175,11 +176,11 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
               <button
                 type="button"
                 className={styles.action}
-                title="Remove the most recent paint stroke on this layer"
+                title={t('topNav.toolOptions.undoStrokeTitle', 'Remove the most recent paint stroke on this layer')}
                 // Its own undo step (`removePaintStrokes`), like the stroke it removes.
                 onClick={() => { void removeLastPaintStroke(selectedIds[0]!); }}
               >
-                Undo last stroke
+                {t('topNav.toolOptions.undoStroke', 'Undo last stroke')}
               </button>
             )}
           </>
@@ -189,27 +190,27 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   } else if (activeTool === 'pencil' || activeTool === 'line') {
     content = (
       <>
-        <Row label="Stroke">
+        <Row label={t('topNav.toolOptions.stroke', 'Stroke')}>
           <ValueField value={drawToolOptions.pencilWidth} unit="px" min={1} max={100} onChange={(v) => set('pencilWidth', Number(v))} />
         </Row>
-        <Row label="Color">
-          <ColorPicker compact value={drawToolOptions.pencilColor} onChange={(hex) => set('pencilColor', hex)} aria-label="Stroke color" />
+        <Row label={t('topNav.toolOptions.color', 'Color')}>
+          <ColorPicker compact value={drawToolOptions.pencilColor} onChange={(hex) => set('pencilColor', hex)} aria-label={t('topNav.toolOptions.strokeColor', 'Stroke color')} />
         </Row>
       </>
     );
   } else if (activeTool === 'polygon') {
     content = (
-      <Row label="Sides">
+      <Row label={t('topNav.toolOptions.sides', 'Sides')}>
         <ValueField value={drawToolOptions.polygonSides} min={3} max={12} precision={0} onChange={(v) => set('polygonSides', Math.round(Number(v)))} />
       </Row>
     );
   } else if (activeTool === 'star') {
     content = (
       <>
-        <Row label="Points">
+        <Row label={t('topNav.toolOptions.points', 'Points')}>
           <ValueField value={drawToolOptions.starPoints} min={3} max={12} precision={0} onChange={(v) => set('starPoints', Math.round(Number(v)))} />
         </Row>
-        <Row label="Inner">
+        <Row label={t('topNav.toolOptions.inner', 'Inner')}>
           <ValueField
             value={Math.round(drawToolOptions.starInnerRatio * 100)}
             unit="%"
@@ -224,8 +225,8 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   } else if (activeTool === 'puppet-pin') {
     content = (
       <>
-        <span className={styles.optLabel}>Pin</span>
-        <div className={styles.kinds} role="group" aria-label="Puppet pin tool">
+        <span className={styles.optLabel}>{t('topNav.toolOptions.pin', 'Pin')}</span>
+        <div className={styles.kinds} role="group" aria-label={t('topNav.toolOptions.pinGroup', 'Puppet pin tool')}>
           {PIN_KIND_CATALOG.map((k) => {
             const active = puppetPinKind === k.kind;
             return (
@@ -250,9 +251,9 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   } else if (activeTool === 'bone') {
     content = (
       <>
-        <span className={styles.optLabel}>Bone</span>
-        <div className={styles.kinds} role="group" aria-label="Bone workflow mode">
-          {BONE_MODES.map((mode) => {
+        <span className={styles.optLabel}>{t('topNav.toolOptions.bone', 'Bone')}</span>
+        <div className={styles.kinds} role="group" aria-label={t('topNav.toolOptions.boneModeGroup', 'Bone workflow mode')}>
+          {boneModes().map((mode) => {
             const active = boneRigMode === mode.id;
             return (
               <button
@@ -270,20 +271,20 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
           })}
         </div>
         {boneRigMode === 'draw' && (
-          <span className={styles.hint}>Drag to draw. Start on a joint to chain or branch. Esc cancels.</span>
+          <span className={styles.hint}>{t('topNav.toolOptions.boneDrawTip', 'Drag to draw. Start on a joint to chain or branch. Esc cancels.')}</span>
         )}
         {boneRigMode === 'pose' && (
-          <span className={styles.hint}>Drag bones or controllers. Auto-key controls whether a keyframe is created.</span>
+          <span className={styles.hint}>{t('topNav.toolOptions.bonePoseTip', 'Drag bones or controllers. Auto-key controls whether a keyframe is created.')}</span>
         )}
         {boneRigMode === 'weights' && (
           <>
-            <div className={styles.kinds} role="group" aria-label="Bone weight tool">
+            <div className={styles.kinds} role="group" aria-label={t('topNav.toolOptions.boneWeightGroup', 'Bone weight tool')}>
               {(
                 [
-                  { id: 'add', label: 'Add', icon: 'plus' },
-                  { id: 'subtract', label: 'Subtract', icon: 'minus' },
-                  { id: 'smooth', label: 'Smooth', icon: 'waves' },
-                  { id: 'pick', label: 'Pick', icon: 'mouse-pointer' },
+                  { id: 'add', label: t('topNav.toolOptions.weightAdd', 'Add'), icon: 'plus' },
+                  { id: 'subtract', label: t('topNav.toolOptions.weightSubtract', 'Subtract'), icon: 'minus' },
+                  { id: 'smooth', label: t('topNav.toolOptions.weightSmooth', 'Smooth'), icon: 'waves' },
+                  { id: 'pick', label: t('topNav.toolOptions.weightPick', 'Pick'), icon: 'mouse-pointer' },
                 ] as const
               ).map((tool) => (
                 <button
@@ -299,7 +300,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
               ))}
             </div>
             {boneWeightMode !== 'pick' && (
-              <Row label="Brush">
+              <Row label={t('topNav.toolOptions.brush', 'Brush')}>
                 <ValueField
                   value={boneBrushRadius}
                   unit="px"
@@ -317,22 +318,22 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
     const ok = selectedIds.length === 1;
     content = (
       <>
-        <span className={styles.optLabel}>Mask</span>
+        <span className={styles.optLabel}>{t('topNav.toolOptions.mask', 'Mask')}</span>
         <span className={styles.hint}>
           {activeTool === 'mask-rect'
-            ? 'Drag a rectangle mask on the selected layer.'
+            ? t('topNav.toolOptions.maskRectHint', 'Drag a rectangle mask on the selected layer.')
             : activeTool === 'mask-ellipse'
-              ? 'Drag an ellipse mask on the selected layer.'
-              : 'Click to place mask points. Close the path to finish.'}
+              ? t('topNav.toolOptions.maskEllipseHint', 'Drag an ellipse mask on the selected layer.')
+              : t('topNav.toolOptions.maskPenHint', 'Click to place mask points. Close the path to finish.')}
         </span>
         {!ok && (
           <span className={`${styles.hint} ${styles.hintWarning}`}>
-            Select exactly one layer — mask tools need a target.
+            {t('topNav.toolOptions.maskNeedsTarget', 'Select exactly one layer — mask tools need a target.')}
           </span>
         )}
         {ok && (
           <span className={styles.hint}>
-            Edit modes, feather and opacity in Effects → Masks. Direct Select reshapes points.
+            {t('topNav.toolOptions.maskEditTip', 'Edit modes, feather and opacity in Effects → Masks. Direct Select reshapes points.')}
           </span>
         )}
       </>
@@ -364,7 +365,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
   // it. AE's tool options never move the Composition panel either.
   if (!content && !snapToPixel) return <div className={barClass} aria-hidden="true" data-tool-options-empty="" />;
   return (
-    <div className={barClass} role="toolbar" aria-label="Tool options" ref={wheelScrollRef}>
+    <div className={barClass} role="toolbar" aria-label={t('topNav.toolOptions.aria', 'Tool options')} ref={wheelScrollRef}>
       {content}
       {/* ── VIEWPORT-SNAP-BADGE (unique anchor) ─────────────────────────
           Pushed to the far end so it never moves as tool options change
@@ -375,10 +376,10 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
           <Badge
             variant="info"
             size="sm"
-            title="Positions and sizes round to whole pixels while dragging or nudging (Ctrl+Alt+Shift+P)"
+            title={t('topNav.toolOptions.snapToPixelTitle', 'Positions and sizes round to whole pixels while dragging or nudging ({chord})', { chord: 'Ctrl+Alt+Shift+P' })}
           >
             <Icon name="magnet" size="sm" />
-            Snap to Pixel
+            {t('topNav.toolOptions.snapToPixel', 'Snap to Pixel')}
           </Badge>
         </>
       )}
@@ -424,20 +425,20 @@ function RotoOptions(): JSX.Element {
     const start = direction === 'forward' ? origin : wa ? wa.start : 0;
     const end = direction === 'backward' ? origin + 1 / settingsFps(settings) : wa ? wa.end : settingsDurationSeconds(settings);
     if (!(end > start)) {
-      store.setStatus('Nothing in that direction to propagate into.');
+      store.setStatus(t('topNav.roto.nothingInDirection', 'Nothing in that direction to propagate into.'));
       return;
     }
     store.setBusy(true, 0);
-    store.setStatus('Object Matte…');
+    store.setStatus(t('topNav.roto.objectMatteBusy', 'Object Matte…'));
     propagateObjectMatte(nodeId, store.strokes, {
       origin, start, end, fps: settingsFps(settings), direction, featherPx: store.featherPx, refine: store.refine,
     }, (f) => {
       useRotoBrushStore.getState().setBusy(true, f);
       return useRotoBrushStore.getState().busy;
     })
-      .then((r) => useRotoBrushStore.getState().setStatus(r.status === 'cancelled' ? 'Cancelled.' : `Object Matte: ${r.frames} frames.`))
+      .then((r) => useRotoBrushStore.getState().setStatus(r.status === 'cancelled' ? t('topNav.roto.cancelled', 'Cancelled.') : t('topNav.roto.objectMatteDone', 'Object Matte: {n} frames.', { n: r.frames })))
       .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Object Matte failed.';
+        const message = err instanceof Error ? err.message : t('topNav.roto.objectMatteFailed', 'Object Matte failed.');
         offerObjectMatteDownload(message);
         useRotoBrushStore.getState().setStatus(explainObjectMatteError(message));
       })
@@ -453,11 +454,11 @@ function RotoOptions(): JSX.Element {
     const wa = settingsSetWorkArea(settings);
     const to = wa ? wa.end : settingsDurationSeconds(settings);
     if (!(to > from)) {
-      store.setStatus('Nothing ahead of the playhead to propagate into.');
+      store.setStatus(t('topNav.roto.nothingAhead', 'Nothing ahead of the playhead to propagate into.'));
       return;
     }
     store.setBusy(true, 0);
-    store.setStatus('Propagating forward…');
+    store.setStatus(t('topNav.roto.propagatingForward', 'Propagating forward…'));
     // B4-kept: an engine job run from the UI (segments decoded frames) — not registered as an engine job yet (G).
     propagateRotoForward(nodeId, store.strokes, from, to, settingsFps(settings), store.featherPx, (f) => {
       useRotoBrushStore.getState().setBusy(true, f);
@@ -466,16 +467,16 @@ function RotoOptions(): JSX.Element {
         useRotoBrushStore.getState().setStatus(null);
       })
       .catch((err: unknown) => {
-        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : 'Propagation failed.');
+        useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : t('topNav.roto.propagationFailed', 'Propagation failed.'));
       })
       .finally(() => useRotoBrushStore.getState().setBusy(false));
   };
 
   return (
     <>
-      <span className={styles.optLabel}>Roto</span>
-      <div className={styles.kinds} role="group" aria-label="Roto brush stroke">
-        {ROTO_STROKE_KINDS.map(({ kind: k, label, hint }) => (
+      <span className={styles.optLabel}>{t('topNav.roto.label', 'Roto')}</span>
+      <div className={styles.kinds} role="group" aria-label={t('topNav.roto.strokeGroup', 'Roto brush stroke')}>
+        {rotoStrokeKinds().map(({ kind: k, label, hint }) => (
           <button
             key={k}
             type="button"
@@ -489,42 +490,42 @@ function RotoOptions(): JSX.Element {
           </button>
         ))}
       </div>
-      <Row label="Size">
+      <Row label={t('topNav.toolOptions.size', 'Size')}>
         <ValueField value={size} unit="px" min={2} max={200} precision={0} onChange={(v) => useRotoBrushStore.getState().setSize(Number(v))} />
       </Row>
-      <Row label="Feather">
+      <Row label={t('topNav.toolOptions.feather', 'Feather')}>
         <ValueField value={featherPx} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setFeather(Number(v))} />
       </Row>
-      <div className={styles.kinds} role="group" aria-label="Matte engine">
+      <div className={styles.kinds} role="group" aria-label={t('topNav.roto.engineGroup', 'Matte engine')}>
         <button
           type="button"
           className={engine === 'objectMatte' ? styles.kindActive : styles.kind}
           aria-pressed={engine === 'objectMatte'}
-          title="Object Matte: the segmentation model follows the subject frame by frame (soft matte, refined edges)"
+          title={t('topNav.roto.objectMatteTitle', 'Object Matte: the segmentation model follows the subject frame by frame (soft matte, refined edges)')}
           onClick={() => useRotoBrushStore.getState().setEngine('objectMatte')}
         >
-          Object Matte
+          {t('topNav.roto.objectMatte', 'Object Matte')}
         </button>
         <button
           type="button"
           className={engine === 'classic' ? styles.kindActive : styles.kind}
           aria-pressed={engine === 'classic'}
-          title="Roto Brush (classic): colour and motion carry the outline forward"
+          title={t('topNav.roto.classicTitle', 'Roto Brush (classic): colour and motion carry the outline forward')}
           onClick={() => useRotoBrushStore.getState().setEngine('classic')}
         >
-          Classic
+          {t('topNav.roto.classic', 'Classic')}
         </button>
       </div>
       {engine === 'objectMatte' ? (
         <>
-          <div className={styles.kinds} role="group" aria-label="Propagate">
-            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label="Propagate backward" title="Propagate backward from the playhead" onClick={() => propagateMatte('backward')}>
+          <div className={styles.kinds} role="group" aria-label={t('topNav.roto.propagateGroup', 'Propagate')}>
+            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label={t('topNav.roto.propagateBackward', 'Propagate backward')} title={t('topNav.roto.propagateBackwardTitle', 'Propagate backward from the playhead')} onClick={() => propagateMatte('backward')}>
               <Icon name="skip-back" size="sm" />
             </button>
-            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label="Propagate both ways" title="Propagate both ways over the work area" onClick={() => propagateMatte('both')}>
+            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label={t('topNav.roto.propagateBoth', 'Propagate both ways')} title={t('topNav.roto.propagateBothTitle', 'Propagate both ways over the work area')} onClick={() => propagateMatte('both')}>
               {busy ? `${Math.round(progress * 100)}%` : '◀▶'}
             </button>
-            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label="Propagate forward" title="Propagate forward from the playhead" onClick={() => propagateMatte('forward')}>
+            <button type="button" className={styles.kind} disabled={!canPropagate} aria-label={t('topNav.roto.propagateForward', 'Propagate forward')} title={t('topNav.roto.propagateForwardTitle', 'Propagate forward from the playhead')} onClick={() => propagateMatte('forward')}>
               <Icon name="skip-forward" size="sm" />
             </button>
           </div>
@@ -538,35 +539,35 @@ function RotoOptions(): JSX.Element {
                 className={refineOpen ? styles.kindActive : styles.kind}
                 aria-haspopup="dialog"
                 aria-expanded={refineOpen}
-                title="Edge radius, choke, decontaminate, chatter and motion blur"
+                title={t('topNav.roto.refineTitle', 'Edge radius, choke, decontaminate, chatter and motion blur')}
               >
                 <Icon name="tune" size="sm" />
-                Refine
+                {t('topNav.roto.refine', 'Refine')}
                 <Icon name="chevron-down" size="sm" />
               </button>
             }
           >
-            <div className={styles.refinePanel} role="dialog" aria-label="Refine matte">
-              <Row label="Edge">
-                <ValueField aria-label="Refine edge radius" value={refine.edgeRadius} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ edgeRadius: Number(v) })} />
+            <div className={styles.refinePanel} role="dialog" aria-label={t('topNav.roto.refineMatte', 'Refine matte')}>
+              <Row label={t('topNav.toolOptions.edge', 'Edge')}>
+                <ValueField aria-label={t('topNav.toolOptions.edgeRadiusAria', 'Refine edge radius')} value={refine.edgeRadius} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ edgeRadius: Number(v) })} />
               </Row>
-              <Row label="Choke">
-                <ValueField aria-label="Choke" value={refine.choke} unit="%" min={-100} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ choke: Number(v) })} />
+              <Row label={t('topNav.toolOptions.choke', 'Choke')}>
+                <ValueField aria-label={t('topNav.toolOptions.choke', 'Choke')} value={refine.choke} unit="%" min={-100} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ choke: Number(v) })} />
               </Row>
-              <Row label="Decontaminate">
-                <ValueField aria-label="Decontaminate" value={refine.decontaminate} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ decontaminate: Number(v) })} />
+              <Row label={t('topNav.toolOptions.decontaminate', 'Decontaminate')}>
+                <ValueField aria-label={t('topNav.toolOptions.decontaminate', 'Decontaminate')} value={refine.decontaminate} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ decontaminate: Number(v) })} />
               </Row>
-              <Row label="Chatter">
-                <ValueField aria-label="Reduce chatter" value={refine.reduceChatter} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ reduceChatter: Number(v) })} />
+              <Row label={t('topNav.toolOptions.chatter', 'Chatter')}>
+                <ValueField aria-label={t('topNav.toolOptions.reduceChatter', 'Reduce chatter')} value={refine.reduceChatter} unit="%" min={0} max={100} precision={0} onChange={(v) => useRotoBrushStore.getState().setRefine({ reduceChatter: Number(v) })} />
               </Row>
               <button
                 type="button"
                 className={refine.motionBlur ? styles.kindActive : styles.kind}
                 aria-pressed={refine.motionBlur}
-                title="Blur the matte along the motion, as the camera blurred the subject"
+                title={t('topNav.roto.motionBlurTitle', 'Blur the matte along the motion, as the camera blurred the subject')}
                 onClick={() => useRotoBrushStore.getState().setRefine({ motionBlur: !refine.motionBlur })}
               >
-                Motion Blur
+                {t('topNav.roto.motionBlur', 'Motion Blur')}
               </button>
             </div>
           </Popover>
@@ -576,11 +577,11 @@ function RotoOptions(): JSX.Element {
           type="button"
           className={styles.kind}
           disabled={!canPropagate}
-          title="Track the matte forward from the playhead to the end of the work area"
+          title={t('topNav.roto.trackForwardTitle', 'Track the matte forward from the playhead to the end of the work area')}
           onClick={propagate}
         >
           <Icon name="skip-forward" size="sm" />
-          {busy ? `Propagating ${Math.round(progress * 100)}%` : 'Propagate Forward'}
+          {busy ? t('topNav.roto.propagatingPct', 'Propagating {pct}%', { pct: Math.round(progress * 100) }) : t('topNav.roto.propagateForwardAction', 'Propagate Forward')}
         </button>
       )}
       <button
@@ -589,8 +590,8 @@ function RotoOptions(): JSX.Element {
         disabled={!canFreeze}
         aria-pressed={frozen}
         title={frozen
-          ? 'The matte is frozen: strokes and Propagate cannot change it. Click to unfreeze.'
-          : 'Freeze the matte so a new stroke or Propagate cannot replace it'}
+          ? t('topNav.roto.frozenTitle', 'The matte is frozen: strokes and Propagate cannot change it. Click to unfreeze.')
+          : t('topNav.roto.freezeTitle', 'Freeze the matte so a new stroke or Propagate cannot replace it')}
         onClick={() => {
           if (!nodeId) return;
           const e = rotoFreezeEdit(nodeId, !frozen);
@@ -598,7 +599,7 @@ function RotoOptions(): JSX.Element {
         }}
       >
         <Icon name={frozen ? 'lock' : 'unlock'} size="sm" />
-        {frozen ? 'Frozen' : 'Freeze'}
+        {frozen ? t('topNav.roto.frozen', 'Frozen') : t('topNav.roto.freeze', 'Freeze')}
       </button>
     </>
   );

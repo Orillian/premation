@@ -6,6 +6,7 @@
  */
 
 import { fontFamilyInfo } from '@core/fonts/engineFontList';
+import { t } from '@core/i18n';
 
 interface LocalFontData {
   family?: string;
@@ -36,15 +37,15 @@ export function weightFromStyle(style: string): number {
 export const FALLBACK_WEIGHTS: readonly number[] = [300, 400, 500, 600, 700];
 
 export const WEIGHT_LABELS: Record<number, string> = {
-  100: 'Thin (100)',
-  200: 'Extra Light (200)',
-  300: 'Light (300)',
-  400: 'Regular (400)',
-  500: 'Medium (500)',
-  600: 'Semi-Bold (600)',
-  700: 'Bold (700)',
-  800: 'Extra Bold (800)',
-  900: 'Black (900)',
+  get 100() { return t('core.fontCatalog.weightThin', 'Thin (100)'); },
+  get 200() { return t('core.fontCatalog.weightExtraLight', 'Extra Light (200)'); },
+  get 300() { return t('core.fontCatalog.weightLight', 'Light (300)'); },
+  get 400() { return t('core.fontCatalog.weightRegular', 'Regular (400)'); },
+  get 500() { return t('core.fontCatalog.weightMedium', 'Medium (500)'); },
+  get 600() { return t('core.fontCatalog.weightSemiBold', 'Semi-Bold (600)'); },
+  get 700() { return t('core.fontCatalog.weightBold', 'Bold (700)'); },
+  get 800() { return t('core.fontCatalog.weightExtraBold', 'Extra Bold (800)'); },
+  get 900() { return t('core.fontCatalog.weightBlack', 'Black (900)'); },
 };
 
 let catalog: Map<string, Set<number>> | null = null;

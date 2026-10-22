@@ -41,6 +41,7 @@ import type { TemplateField } from '@core/template/templateTypes';
 import type { Command } from '@motion/engine-api';
 import { t } from '@core/i18n';
 import { DataFillSection } from './DataFillSection';
+import { TemplateAuthoringSection } from './TemplateFieldsPanel';
 import { fillMediaFieldEdit, isMediaField, templateFieldEditCommands, templateFieldValues } from './templateFieldEdits';
 import {
   exposableProperties,
@@ -341,6 +342,9 @@ function BuildMode({ fields }: { fields: TemplateField[] }): JSX.Element {
           ? <div className={styles.note}>{t('eg.controlsEmpty', 'Controls you add appear here. Each one is what a person using this template may change.')}</div>
           : fields.map((f, i) => <ControlCard key={f.id} field={f} first={i === 0} last={i === fields.length - 1} />)}
       </section>
+      {/* Automation inputs + "Save as Animation Template" — authoring, so it
+          lives here rather than under the Library's Templates shelf. */}
+      <TemplateAuthoringSection />
     </div>
   );
 }

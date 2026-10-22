@@ -189,6 +189,12 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Window ▸ Panels ▸ Record Audio (voice-over). macOS shows this sentence in
+  # the microphone prompt; without it TCC kills the process on the first
+  # getUserMedia instead of asking. Paired with `device.audio-input` in the
+  # entitlements (the hardened runtime refuses the mic without it).
+  extendInfo:
+    NSMicrophoneUsageDescription: Premation uses the microphone only when you record a voice-over or other audio in the Record Audio panel.
   # The engine and the host bridge are nested Mach-O files outside any
   # framework: named here so they are always signed (hardened runtime,
   # entitlementsInherit) before the app is sealed — an unsigned nested binary

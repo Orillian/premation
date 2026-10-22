@@ -12,17 +12,19 @@
  * the drag) and Reconstruction (relaxes the field back toward none). Pure.
  */
 
+import { t } from '@core/i18n';
+
 export type LiquifyTool = 'warp' | 'turbulence' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'shiftPixels' | 'reconstruction';
 
 export const LIQUIFY_TOOLS: ReadonlyArray<{ tool: LiquifyTool; label: string }> = [
-  { tool: 'warp', label: 'Warp' },
-  { tool: 'turbulence', label: 'Turbulence' },
-  { tool: 'twirlCW', label: 'Twirl Clockwise' },
-  { tool: 'twirlCCW', label: 'Twirl Counterclockwise' },
-  { tool: 'pucker', label: 'Pucker' },
-  { tool: 'bloat', label: 'Bloat' },
-  { tool: 'shiftPixels', label: 'Shift Pixels' },
-  { tool: 'reconstruction', label: 'Reconstruction' },
+  { tool: 'warp', get label() { return t('core.liquify.warp', 'Warp'); } },
+  { tool: 'turbulence', get label() { return t('core.liquify.turbulence', 'Turbulence'); } },
+  { tool: 'twirlCW', get label() { return t('core.liquify.twirlCW', 'Twirl Clockwise'); } },
+  { tool: 'twirlCCW', get label() { return t('core.liquify.twirlCCW', 'Twirl Counterclockwise'); } },
+  { tool: 'pucker', get label() { return t('core.liquify.pucker', 'Pucker'); } },
+  { tool: 'bloat', get label() { return t('core.liquify.bloat', 'Bloat'); } },
+  { tool: 'shiftPixels', get label() { return t('core.liquify.shiftPixels', 'Shift Pixels'); } },
+  { tool: 'reconstruction', get label() { return t('core.liquify.reconstruction', 'Reconstruction'); } },
 ];
 
 export interface LiquifyGrid {

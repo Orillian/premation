@@ -50,6 +50,7 @@ import { framesToTimecode } from '@core/time/timecode';
 import { openExportDialog } from '@layout/Export/ExportDialog';
 import { activeViewWireframeNodes } from '@core/workspace/wireframeNodes';
 import styles from './PresentationMode.module.css';
+import { t } from '@core/i18n';
 
 const QUALITY_ORDER: PreviewResolution[] = [1, 2, 3, 4];
 
@@ -60,7 +61,15 @@ const QUALITY_ORDER: PreviewResolution[] = [1, 2, 3, 4];
  * visible edge.
  */
 type Surround = 'auto' | 'black' | 'grey' | 'white';
-const SURROUND_LABEL: Record<Surround, string> = { auto: 'Automatic', black: 'Black', grey: 'Dark grey', white: 'White' };
+const SURROUNDS: readonly Surround[] = ['auto', 'black', 'grey', 'white'];
+function surroundLabel(s: Surround): string {
+  switch (s) {
+    case 'auto': return t('presentation.surround.auto', 'Automatic');
+    case 'black': return t('presentation.surround.black', 'Black');
+    case 'grey': return t('presentation.surround.grey', 'Dark grey');
+    case 'white': return t('presentation.surround.white', 'White');
+  }
+}
 const SURROUND_KEY = 'premation.preview.surround';
 /** Luma of the Dark grey surround (--color-slate-800, #2b2b2e). */
 const GREY_LUMA = 0.17;
@@ -415,13 +424,13 @@ export function PresentationMode(): JSX.Element | null {
     onChange: () => setResolution(q),
   }));
   const viewItems: DropdownItem[] = [
-    { type: 'checkbox', id: 'safe', label: 'Title / action safe', checked: safeAreas, onChange: setSafeAreas },
+    { type: 'checkbox', id: 'safe', label: t('presentation.mode.titleActionSafe', 'Title / action safe'), checked: safeAreas, onChange: setSafeAreas },
     { type: 'separator' },
-    { type: 'label', label: 'Background' },
-    ...(Object.keys(SURROUND_LABEL) as Surround[]).map((key): DropdownItem => ({
+    { type: 'label', label: t('presentation.mode.background', 'Background') },
+    ...SURROUNDS.map((key): DropdownItem => ({
       type: 'checkbox',
       id: `surround-${key}`,
-      label: SURROUND_LABEL[key],
+      label: surroundLabel(key),
       checked: surround === key,
       onChange: () => setSurround(key),
     })),
@@ -432,7 +441,7 @@ export function PresentationMode(): JSX.Element | null {
       ref={rootRef}
       className={styles.root}
       role="region"
-      aria-label="Preview"
+      aria-label={t('presentation.mode.preview', 'Preview')}
       data-hidden={uiVisible ? undefined : ''}
       data-surround={shownSurround}
       // Where the app draws its OWN caption buttons (no OS overlay), they live in
@@ -441,17 +450,17 @@ export function PresentationMode(): JSX.Element | null {
       onPointerMove={pokeControls}
     >
       <div className={styles.topBar} data-mac={hasDesktopChrome() && getUiPlatform() === 'mac' ? '' : undefined}>
-        <button type="button" className={styles.back} onClick={handleExit} title="Back to editor (Esc)">
+        <button type="button" className={styles.back} onClick={handleExit} title={t('presentation.mode.backToEditorEsc', 'Back to editor (Esc)')}>
           <Icon name="chevron-left" size="sm" />
-          <span>Back to editor</span>
+          <span>{t('presentation.mode.backToEditor', 'Back to editor')}</span>
         </button>
-        <div className={styles.title} title={name}>{name || 'Composition'}</div>
+        <div className={styles.title} title={name}>{name || t('presentation.defaultName', 'Composition')}</div>
         <div className={styles.topActions}>
           <Dropdown
             placement="bottom-end"
             items={resolutionItems}
             trigger={
-              <button type="button" className={styles.select} title="Preview resolution — fewer pixels play back faster">
+              <button type="button" className={styles.select} title={t('presentation.mode.previewResolutionFewerPixelsPlay', 'Preview resolution — fewer pixels play back faster')}>
                 <span>{RESOLUTION_LABELS[previewResolution]}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
@@ -461,17 +470,17 @@ export function PresentationMode(): JSX.Element | null {
             placement="bottom-end"
             items={viewItems}
             trigger={
-              <button type="button" className={styles.select} title="Guides and background">
-                <span>View</span>
+              <button type="button" className={styles.select} title={t('presentation.mode.guidesAndBackground', 'Guides and background')}>
+                <span>{t('presentation.mode.view', 'View')}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
             }
           />
-          <button type="button" className={styles.pill} onClick={downloadFrame} title="Save the current frame as a PNG">
-            Save frame
+          <button type="button" className={styles.pill} onClick={downloadFrame} title={t('presentation.mode.saveTheCurrentFrameAs', 'Save the current frame as a PNG')}>
+            {t('presentation.mode.saveFrame', 'Save frame')}
           </button>
-          <button type="button" className={styles.pillPrimary} onClick={() => openExportDialog(duration, fps)} title="Export video…">
-            Export
+          <button type="button" className={styles.pillPrimary} onClick={() => openExportDialog(duration, fps)} title={t('presentation.mode.exportVideo', 'Export video…')}>
+            {t('presentation.mode.export', 'Export')}
           </button>
         </div>
       </div>
@@ -490,7 +499,7 @@ export function PresentationMode(): JSX.Element | null {
         {/* Loading spinner — shown until the first rAF fires (surface mounting).
             Prevents the user from seeing a blank stage and assuming it's broken. */}
         {!backendReady && (
-          <div className={styles.stageLoader} aria-label="Loading preview…">
+          <div className={styles.stageLoader} aria-label={t('presentation.mode.loadingPreview', 'Loading preview…')}>
             <div className={styles.stageSpinner} />
           </div>
         )}
@@ -502,7 +511,7 @@ export function PresentationMode(): JSX.Element | null {
           className={styles.scrub}
           ref={scrubRef}
           role="slider"
-          aria-label="Seek"
+          aria-label={t('presentation.mode.seek', 'Seek')}
           aria-valuemin={0}
           aria-valuemax={durationFrames}
           aria-valuenow={currentFrame}
@@ -521,19 +530,19 @@ export function PresentationMode(): JSX.Element | null {
           </div>
 
           <div className={styles.transport}>
-            <button type="button" className={styles.tBtn} onClick={() => goToStart()} title="Go to start (Home)" aria-label="Go to start">
+            <button type="button" className={styles.tBtn} onClick={() => goToStart()} title={t('presentation.mode.goToStartHome', 'Go to start (Home)')} aria-label={t('presentation.mode.goToStart', 'Go to start')}>
               <Icon name="skip-back" size="sm" />
             </button>
-            <button type="button" className={styles.tBtn} onClick={() => stepBackward()} title="Previous frame (←)" aria-label="Previous frame">
+            <button type="button" className={styles.tBtn} onClick={() => stepBackward()} title={t('presentation.mode.previousFrame', 'Previous frame (←)')} aria-label={t('presentation.mode.previousFrame2', 'Previous frame')}>
               <Icon name="chevron-left" size="sm" />
             </button>
-            <button type="button" className={playing ? styles.playOn : styles.play} onClick={togglePlay} title={playing ? 'Pause (Space)' : 'Play (Space)'} aria-label={playing ? 'Pause' : 'Play'}>
+            <button type="button" className={playing ? styles.playOn : styles.play} onClick={togglePlay} title={playing ? t('presentation.mode.pauseSpace', 'Pause (Space)') : t('presentation.mode.playSpace', 'Play (Space)')} aria-label={playing ? t('presentation.mode.pause', 'Pause') : t('presentation.mode.play', 'Play')}>
               <Icon name={playing ? 'pause' : 'play'} size="sm" />
             </button>
-            <button type="button" className={styles.tBtn} onClick={() => stepForward()} title="Next frame (→)" aria-label="Next frame">
+            <button type="button" className={styles.tBtn} onClick={() => stepForward()} title={t('presentation.mode.nextFrame', 'Next frame (→)')} aria-label={t('presentation.mode.nextFrame2', 'Next frame')}>
               <Icon name="chevron-right" size="sm" />
             </button>
-            <button type="button" className={styles.tBtn} onClick={() => goToEnd()} title="Go to end (End)" aria-label="Go to end">
+            <button type="button" className={styles.tBtn} onClick={() => goToEnd()} title={t('presentation.mode.goToEndEnd', 'Go to end (End)')} aria-label={t('presentation.mode.goToEnd', 'Go to end')}>
               <Icon name="skip-forward" size="sm" />
             </button>
             <span className={styles.tSep} aria-hidden />
@@ -541,8 +550,8 @@ export function PresentationMode(): JSX.Element | null {
               type="button"
               className={looping ? styles.tBtnActive : styles.tBtn}
               onClick={toggleLoop}
-              title="Loop playback (L)"
-              aria-label="Loop playback"
+              title={t('presentation.mode.loopPlaybackL', 'Loop playback (L)')}
+              aria-label={t('presentation.mode.loopPlayback', 'Loop playback')}
               aria-pressed={looping}
             >
               <Icon name="loop" size="sm" />
@@ -551,7 +560,7 @@ export function PresentationMode(): JSX.Element | null {
 
           <div className={styles.facts}>
             <span>{width} × {height} · {fps} fps · frame {currentFrame} of {durationFrames}</span>
-            <button type="button" className={styles.tBtn} onClick={toggleFullscreen} title={isFullscreen ? 'Exit full screen (F)' : 'Full screen (F)'} aria-label="Toggle fullscreen">
+            <button type="button" className={styles.tBtn} onClick={toggleFullscreen} title={isFullscreen ? t('presentation.mode.exitFullScreenF', 'Exit full screen (F)') : t('presentation.mode.fullScreenF', 'Full screen (F)')} aria-label={t('presentation.mode.toggleFullscreen', 'Toggle fullscreen')}>
               <Icon name={isFullscreen ? 'minimize' : 'maximize'} size="sm" />
             </button>
           </div>

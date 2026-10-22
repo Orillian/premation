@@ -93,7 +93,11 @@ import { useFaceSelectionStore } from '@stores/faceSelectionStore';
 import { pickFace, faceHighlightGroups } from '@core/scene/facePicking';
 import { fetchLayerFaces, layerFacesNow, onLayerFaces, projectFacesForView } from './layerFaces';
 import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
-import { RULER_CSS_PX, inStrip, rulerStrips } from './rulerGeometry';
+import { RULER_CSS_PX, formatRulerValue, inRulerCorner, inStrip, pxPerRulerUnit, rulerStrips, rulerSteps, toRulerValue } from './rulerGeometry';
+import { hasRulerOrigin, resetRulerOrigin, rulerOrigin, rulerOriginDrag, rulerPointer, rulerUnit, setRulerOrigin, setRulerOriginDrag, setRulerPointer } from './rulerState';
+import { rulerContextMenuItems } from './viewportPrecisionMenus';
+import { activeCompIdNow } from '@hooks/useMirror';
+import { t } from '@core/i18n';
 
 
 /**
@@ -131,6 +135,22 @@ interface GuideDrag {
   screen: { x: number; y: number };
   /** True while the pointer is back over the source ruler (release = cancel/delete). */
   overRuler: boolean;
+  /** Where the guide lands, comp px, snapped (`snapGuidePosition`); null before the first move. */
+  position: number | null;
+}
+
+/**
+ * Where a dragged guide lands: on a whole comp pixel, or — Shift held — on
+ * the nearest tick of the ruler it came from, counted from the ruler origin.
+ */
+function snapGuidePosition(controller: WorkspaceController, axis: GuideAxis, world: number, toTick: boolean): number {
+  if (!toTick) return Math.round(world);
+  const { w, h } = compSize();
+  const o = rulerOrigin(activeCompIdNow());
+  const origin = axis === 'x' ? o.x : o.y;
+  const unitPx = pxPerRulerUnit(rulerUnit(), axis === 'x' ? w : h);
+  const step = rulerSteps(Math.max(1e-6, controller.getView().scale ?? 1) * unitPx).minor * unitPx;
+  return origin + Math.round((world - origin) / step) * step;
 }
 
 
@@ -248,6 +268,8 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
   const viewportPressRef = useRef<{ pointerId: number; x: number; y: number; dragging: boolean } | null>(null);
   // Active ruler-guide drag (drag-out / move / delete), or null.
   const guideDragRef = useRef<GuideDrag | null>(null);
+  /** A zero-point drag out of the rulers' corner: where it was pressed (overlay px). */
+  const originDragRef = useRef<{ start: { x: number; y: number } } | null>(null);
   /** Active Region-of-Interest grip drag (comp space). */
   const roiDragRef = useRef<{ handle: RoiHandle; pointerId: number } | null>(null);
   // True while we override the engine cursor with a guide resize cursor.
@@ -338,7 +360,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
     // effect deps (ref objects) never change.
     if (!content || !overlay || !stage) {
       if (attachTick >= 30) {
-        setRenderError('The preview canvas could not be attached.');
+        setRenderError(t('workspace.canvas.attachFailed', 'The preview canvas could not be attached.'));
         return;
       }
       const retry = requestAnimationFrame(() => setAttachTick((t) => t + 1));
@@ -998,12 +1020,24 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       // Ruler guides: pointer-down inside a ruler strip drags out a NEW guide
       // (top strip → horizontal 'y' guide, left strip → vertical 'x' guide).
       // Checked before anything is forwarded to the engine.
+      if (overlaysRef.current.rulers && e.button === 0 && inRulerCorner(local(e))) {
+        // AE: drag the zero point out of the corner where the rulers meet.
+        originDragRef.current = { start: local(e) };
+        setRulerOriginDrag(null);
+        try {
+          overlay.setPointerCapture(e.pointerId);
+        } catch {
+          /* best-effort */
+        }
+        useUIStore.getState().setDragging(true);
+        return;
+      }
       if (overlaysRef.current.rulers) {
         const p = local(e);
         const strips = rulerStrips(stage.clientWidth, stage.clientHeight);
         const axis: GuideAxis | null = inStrip(strips.top, p) ? 'y' : inStrip(strips.left, p) ? 'x' : null;
         if (axis) {
-          guideDragRef.current = { axis, guideId: null, screen: p, overRuler: true };
+          guideDragRef.current = { axis, guideId: null, screen: p, overRuler: true, position: null };
           try {
             overlay.setPointerCapture(e.pointerId);
           } catch {
@@ -1109,7 +1143,9 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
           // here is what a marquee-select on a paint stroke would look like.
           useUIStore.getState().notify({
             level: 'info',
-            message: erasing ? 'Select one layer to erase on.' : 'Select one layer to paint on.',
+            message: erasing
+              ? t('workspace.paint.selectLayerErase', 'Select one layer to erase on.')
+              : t('workspace.paint.selectLayerPaint', 'Select one layer to paint on.'),
             durationMs: 2600,
           });
           return;
@@ -1131,7 +1167,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
           // under the pointer, and guessing one paints somewhere else.
           useUIStore.getState().notify({
             level: 'info',
-            message: 'This layer has no surface under the pointer in this view — turn it or change the view to paint on it.',
+            message: t('workspace.paint.noSurface', 'This layer has no surface under the pointer in this view — turn it or change the view to paint on it.'),
             durationMs: 2600,
           });
           return;
@@ -1168,7 +1204,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
             if (!at) return;
             paintSettings.set({ cloneSource: { nodeId: srcId, x: at.x, y: at.y, compX: cp.x, compY: cp.y }, alignedOffset: null });
             cloneCompOffsetRef.current = null;
-            useUIStore.getState().notify({ level: 'info', message: 'Clone source set.', durationMs: 1400 });
+            useUIStore.getState().notify({ level: 'info', message: t('workspace.paint.cloneSourceSet', 'Clone source set.'), durationMs: 1400 });
             return;
           }
           // A stroke without a usable source has nothing to sample, so it
@@ -1180,7 +1216,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
             if (source) paintSettings.set({ cloneSource: null });
             useUIStore.getState().notify({
               level: 'info',
-              message: 'Alt-click to set the clone source first.',
+              message: t('workspace.paint.cloneSourceFirst', 'Alt-click to set the clone source first.'),
               durationMs: 2600,
             });
             return;
@@ -1260,7 +1296,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
         const p = local(e);
         const g = hitGuideAt(controller, p);
         if (g) {
-          guideDragRef.current = { axis: g.axis, guideId: g.id, screen: p, overRuler: false };
+          guideDragRef.current = { axis: g.axis, guideId: g.id, screen: p, overRuler: false, position: g.position };
           try {
             overlay.setPointerCapture(e.pointerId);
           } catch {
@@ -1310,6 +1346,14 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
           && Math.hypot(e.clientX - press.x, e.clientY - press.y) >= VIEWPORT_DRAG_SLOP) {
         press.dragging = true;
         useUIStore.getState().setDragging(true);
+      }
+      // The rulers' pointer markers follow the pointer, whatever else it does.
+      if (overlaysRef.current.rulers && setRulerPointer(local(e))) controller.requestRender();
+      // A zero-point drag out of the corner claims the move.
+      if (originDragRef.current) {
+        setRulerOriginDrag(local(e));
+        controller.requestRender();
+        return;
       }
       // Active viewport-camera navigation (orbit / track) claims the move.
       if (camNav && camNav.pointerId === e.pointerId) {
@@ -1383,10 +1427,10 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
         gd.screen = p;
         const strips = rulerStrips(stage.clientWidth, stage.clientHeight);
         gd.overRuler = inStrip(gd.axis === 'y' ? strips.top : strips.left, p);
-        if (gd.guideId) {
-          const w = controller.ws.screenToWorld(p);
-          controller.ws.guides.move(gd.guideId, gd.axis === 'x' ? w.x : w.y);
-        }
+        const w = controller.ws.screenToWorld(p);
+        gd.position = snapGuidePosition(controller, gd.axis, gd.axis === 'x' ? w.x : w.y, e.shiftKey);
+        setRulerPointer(p);
+        if (gd.guideId) controller.ws.guides.move(gd.guideId, gd.position);
         controller.requestRender();
         return;
       }
@@ -1394,7 +1438,9 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       if (overlaysRef.current.rulers && e.buttons === 0) {
         const p = local(e);
         const strips = rulerStrips(stage.clientWidth, stage.clientHeight);
-        const cursor = inStrip(strips.top, p)
+        const cursor = inRulerCorner(p)
+          ? 'crosshair'
+          : inStrip(strips.top, p)
           ? 'ns-resize'
           : inStrip(strips.left, p)
             ? 'ew-resize'
@@ -1552,6 +1598,22 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
         controller.requestRender();
         return;
       }
+      // Finish a zero-point drag: a release that moved sets the origin there;
+      // a click (the first half of a double-click) changes nothing.
+      const od = originDragRef.current;
+      if (od) {
+        originDragRef.current = null;
+        setRulerOriginDrag(null);
+        useUIStore.getState().setDragging(false);
+        const p = local(e);
+        const compId = activeCompIdNow();
+        if (compId && Math.hypot(p.x - od.start.x, p.y - od.start.y) >= VIEWPORT_DRAG_SLOP) {
+          const w = controller.ws.screenToWorld(p);
+          setRulerOrigin(compId, { x: Math.round(w.x), y: Math.round(w.y) });
+        }
+        controller.requestRender();
+        return;
+      }
       // Finish a ruler-guide drag: commit (add/move) or cancel/delete on the ruler.
       const gd = guideDragRef.current;
       if (gd) {
@@ -1561,7 +1623,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
         const strips = rulerStrips(stage.clientWidth, stage.clientHeight);
         const overRuler = inStrip(gd.axis === 'y' ? strips.top : strips.left, p);
         const w = controller.ws.screenToWorld(p);
-        const pos = gd.axis === 'x' ? w.x : w.y;
+        const pos = snapGuidePosition(controller, gd.axis, gd.axis === 'x' ? w.x : w.y, e.shiftKey);
         if (gd.guideId) {
           if (overRuler) controller.ws.removeGuide(gd.guideId);
           else controller.ws.guides.move(gd.guideId, pos);
@@ -1590,6 +1652,15 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       controller.ws.feedPointerUp(toPointer(e));
     };
     const onDoubleClick = (e: MouseEvent): void => {
+      // AE: double-click the rulers' corner to put the zero point back.
+      if (overlaysRef.current.rulers && inRulerCorner(local(e as unknown as PointerEvent))) {
+        e.preventDefault();
+        e.stopPropagation();
+        const compId = activeCompIdNow();
+        if (compId) resetRulerOrigin(compId);
+        controller.requestRender();
+        return;
+      }
       // AE 26.5: double-click a guide → its editor (position, unit, pin, colour).
       {
         const g = hitGuideAt(controller, local(e as unknown as PointerEvent), true);
@@ -1667,6 +1738,15 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
           return;
         }
       }
+      // The rulers: their own menu (units, origin, guides).
+      if (overlaysRef.current.rulers) {
+        const p = local(e);
+        const strips = rulerStrips(stage.clientWidth, stage.clientHeight);
+        if (inRulerCorner(p) || inStrip(strips.top, p) || inStrip(strips.left, p)) {
+          openContextMenu(e.clientX, e.clientY, rulerContextMenuItems());
+          return;
+        }
+      }
       // Then a user guide (locked ones too — the menu is how you unlock it).
       {
         const g = hitGuideAt(controller, local(e), true);
@@ -1717,6 +1797,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
     // Info readout: clear the pixel/position when the cursor leaves the canvas.
     const onLeave = (): void => {
       clearProbe();
+      if (setRulerPointer(null) && overlaysRef.current.rulers) controller.requestRender();
       if (mpHover) {
         mpHover = null;
         controller.requestRender();
@@ -2038,12 +2119,17 @@ export function paintOverlay(
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
+    // At the snapped position the release will commit (whole px, or a ruler
+    // tick with Shift), so the preview never lands a pixel off the guide.
+    const at = guideDrag.position !== null && controller
+      ? controller.ws.worldToScreen(guideDrag.axis === 'x' ? { x: guideDrag.position, y: 0 } : { x: 0, y: guideDrag.position })
+      : guideDrag.screen;
     if (guideDrag.axis === 'x') {
-      ctx.moveTo(guideDrag.screen.x + 0.5, 0);
-      ctx.lineTo(guideDrag.screen.x + 0.5, cssH);
+      ctx.moveTo(Math.floor(at.x) + 0.5, 0);
+      ctx.lineTo(Math.floor(at.x) + 0.5, cssH);
     } else {
-      ctx.moveTo(0, guideDrag.screen.y + 0.5);
-      ctx.lineTo(cssW, guideDrag.screen.y + 0.5);
+      ctx.moveTo(0, Math.floor(at.y) + 0.5);
+      ctx.lineTo(cssW, Math.floor(at.y) + 0.5);
     }
     ctx.stroke();
     // setLineDash was reset by hand here; the save/restore pair now covers it
@@ -2179,9 +2265,15 @@ export function paintOverlay(
   // selected it enclosed whatever happened to lie between them, and on any
   // rotation that was not a multiple of 90° it was visibly larger than the
   // artwork with dead padding at every corner.
+  // The text layer being edited on-canvas has no box here: the engine's box
+  // measures the COMMITTED text and sat frozen at the old size while the
+  // editor (its own live outline, TextBoxHandles for a paragraph) grew with
+  // what was typed — two boxes, one of them wrong (2026-10-19, AE draws one).
+  const editingTextId = useTextEditStore.getState().nodeId;
   if (!isActivelyDrawing && overlay.selectionBoxes.length > 0) {
     if (sel3D) ctx.setLineDash([4, 3]);
     for (const box of overlay.selectionBoxes) {
+      if (box.id === editingTextId) continue;
       // Each outline takes its OWN layer's label colour, so with several layers
       // selected you can tell which box belongs to which timeline row. That
       // linkage is the point of label colours. No label set ⇒ the accent,
@@ -2209,8 +2301,10 @@ export function paintOverlay(
     if (sel3D) ctx.setLineDash([]);
   }
 
-  // Handles (hidden while actively drawing or painting a stroke, and in 3D).
-  if (!isActivelyDrawing && !sel3D) {
+  // Handles (hidden while actively drawing or painting a stroke, in 3D, and
+  // while the selected text is being edited — its grips would resize a box
+  // that is not there).
+  if (!isActivelyDrawing && !sel3D && !(editingTextId && overlay.selectionBoxes.length === 1 && overlay.selectionBoxes[0]!.id === editingTextId)) {
     // Handles belong to the selection as a whole, not to one layer, so they
     // only take a label colour when exactly ONE layer is selected. With two
     // selected there is no non-arbitrary answer, and picking the first would
@@ -2323,9 +2417,12 @@ export function paintOverlay(
 
     // Size (and angle, when turned) under a single selected layer, at rest
     // only — while a drag is live the numbers belong to the Properties panel
-    // and the Info readout, never to a badge over the artwork.
+    // and the Info readout, never to a badge over the artwork. Part of the
+    // Smart Guides chrome (off by default, 2026-10-19): the same numbers are
+    // in the Properties panel, and a pill under every selected layer was
+    // chrome nobody asked for.
     const view = controller?.getView().scale ?? 0;
-    if (only && view > 0 && !overlay.dragHud) {
+    if (only && view > 0 && !overlay.dragHud && guidesState.smartGuides) {
       paintSelectionSizeLabel(ctx, only.corners, view, handleAccent);
     }
   }
@@ -2484,7 +2581,7 @@ export function paintOverlay(
   if (guidesState.rulers && controller) {
     // The rulers frame the stage: they stay in place (their ticks are the live camera's).
     atPointerSpace();
-    paintRulers(ctx, controller, cssW, cssH);
+    paintRulers(ctx, controller, cssW, cssH, guideDrag, overlay.guides);
   }
 
   // No measurement badge at the pointer while dragging (owner decision): the
@@ -2674,7 +2771,7 @@ function themeChrome(): { ACCENT: string; ACCENT_SOFT: string; HOVER: string } {
  */
 let guideCache: {
   key: string; BAR: string; CORNER: string; BORDER: string;
-  ACCENT: string; TEXT: string; TICK: string; GUIDE: string;
+  ACCENT: string; TEXT: string; TICK: string; GUIDE: string; BADGE_TEXT: string;
 } | null = null;
 
 function themeGuides(): Omit<NonNullable<typeof guideCache>, 'key'> {
@@ -2694,6 +2791,7 @@ function themeGuides(): Omit<NonNullable<typeof guideCache>, 'key'> {
     TEXT: read('--color-ruler-text', '#cccccc'),
     TICK: read('--color-ruler-tick', '#707070'),
     GUIDE: read('--color-ruler-guide', '#2dd4eb'),
+    BADGE_TEXT: read('--color-primary-foreground', '#ffffff'),
   };
   return guideCache;
 }
@@ -3305,8 +3403,8 @@ function paintSafeArea(ctx: CanvasRenderingContext2D, controller: WorkspaceContr
     ctx.letterSpacing = '0.06em';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('ACTION SAFE 90%', asX + 4, asY + 12);
-    ctx.fillText('TITLE SAFE 80%', tsX + 4, tsY + 12);
+    ctx.fillText(t('workspace.safeArea.action', 'ACTION SAFE 90%'), asX + 4, asY + 12);
+    ctx.fillText(t('workspace.safeArea.title', 'TITLE SAFE 80%'), tsX + 4, tsY + 12);
 
     ctx.restore();
   } catch (e) {
@@ -3314,157 +3412,264 @@ function paintSafeArea(ctx: CanvasRenderingContext2D, controller: WorkspaceContr
   }
 }
 
+/**
+ * The rulers, After Effects' way (2026-10-21):
+ *  • ticks on the 1-2-5 series for the zoom, labelled majors with tenths /
+ *    quarters / fifths between them and a taller middle tick (`rulerSteps`);
+ *  • numbers counted from the comp's ruler ORIGIN (dragged out of the corner,
+ *    double-click the corner to reset) in the ruler's unit (pixels or percent);
+ *  • the left ruler's numbers turned to read along it;
+ *  • the comp's own span a shade lighter, so its edges read on both rulers;
+ *  • a marker for the pointer on both rulers, and a notch for each guide;
+ *  • while a guide or the origin is dragged, its value in a badge on the ruler.
+ * Drawn in pointer space with the LIVE camera, like the hit-test.
+ */
 function paintRulers(
   ctx: CanvasRenderingContext2D,
   controller: WorkspaceController,
   cssW: number,
   cssH: number,
+  guideDrag: GuideDrag | null,
+  guides: ReadonlyArray<{ axis: GuideAxis; position: number; color?: string | null }>,
 ): void {
   try {
     // The SAME number `rulerStrips` hit-tests with — see RULER_CSS_PX.
-    const rulerHeight = RULER_CSS_PX;
+    const R = RULER_CSS_PX;
     const C = themeGuides();
+    const compId = activeCompIdNow();
+    const comp = compSize();
+    const origin = rulerOrigin(compId);
+    const unit = rulerUnit();
+    const scale = Math.max(1e-6, controller.getView().scale ?? 1);
+    const toScreenX = (wx: number): number => controller.ws.worldToScreen({ x: wx, y: 0 }).x;
+    const toScreenY = (wy: number): number => controller.ws.worldToScreen({ x: 0, y: wy }).y;
 
     ctx.save();
 
-    // Top & Left ruler background strip
+    // Bars.
     ctx.fillStyle = C.BAR;
-    ctx.fillRect(0, 0, cssW, rulerHeight);
-    ctx.fillRect(0, 0, rulerHeight, cssH);
+    ctx.fillRect(0, 0, cssW, R);
+    ctx.fillRect(0, 0, R, cssH);
 
-    // Border lines
+    // The comp's span, a shade lighter on each ruler.
+    {
+      ctx.save();
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = C.TICK;
+      const x0 = Math.max(R, toScreenX(0));
+      const x1 = Math.min(cssW, toScreenX(comp.w));
+      if (x1 > x0) ctx.fillRect(x0, 0, x1 - x0, R);
+      const y0 = Math.max(R, toScreenY(0));
+      const y1 = Math.min(cssH, toScreenY(comp.h));
+      if (y1 > y0) ctx.fillRect(0, y0, R, y1 - y0);
+      ctx.restore();
+    }
+
+    // One axis's ticks and labels.
+    const paintAxis = (horizontal: boolean): void => {
+      const side = horizontal ? comp.w : comp.h;
+      const o = horizontal ? origin.x : origin.y;
+      const unitPx = pxPerRulerUnit(unit, side);
+      const steps = rulerSteps(scale * unitPx);
+      const end = horizontal ? cssW : cssH;
+      const toWorld = (screen: number): number => horizontal
+        ? controller.ws.screenToWorld({ x: screen, y: 0 }).x
+        : controller.ws.screenToWorld({ x: 0, y: screen }).y;
+      const wA = toWorld(R);
+      const wB = toWorld(end);
+      if (!Number.isFinite(wA) || !Number.isFinite(wB)) return;
+      const i0 = Math.floor((Math.min(wA, wB) - o) / unitPx / steps.minor);
+      const i1 = Math.ceil((Math.max(wA, wB) - o) / unitPx / steps.minor);
+      // A runaway range (a camera far off the comp) draws nothing rather than
+      // a million ticks.
+      if (i1 - i0 > 4000) return;
+      const at = (i: number): number => {
+        const w = o + i * steps.minor * unitPx;
+        return horizontal ? toScreenX(w) : toScreenY(w);
+      };
+      const half = steps.subdivisions % 2 === 0 ? steps.subdivisions / 2 : 0;
+      ctx.strokeStyle = C.TICK;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = i0; i <= i1; i++) {
+        const s = Math.floor(at(i)) + 0.5;
+        if (s < R || s > end) continue;
+        const k = ((i % steps.subdivisions) + steps.subdivisions) % steps.subdivisions;
+        const len = k === 0 ? R : half && k === half ? R * 0.45 : R * 0.25;
+        if (horizontal) { ctx.moveTo(s, R - len); ctx.lineTo(s, R); }
+        else { ctx.moveTo(R - len, s); ctx.lineTo(R, s); }
+      }
+      ctx.stroke();
+
+      // Labels beside each major tick; the zero (the origin) in the accent.
+      ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+      for (let i = Math.ceil(i0 / steps.subdivisions) * steps.subdivisions; i <= i1; i += steps.subdivisions) {
+        const s = Math.floor(at(i));
+        if (s < R - 40 || s > end) continue;
+        const value = i * steps.minor;
+        const label = formatRulerValue(value, steps.major) + (unit === 'percent' && i !== 0 ? '%' : '');
+        ctx.fillStyle = i === 0 ? C.ACCENT : C.TEXT;
+        if (horizontal) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(label, s + 3, 3);
+        } else {
+          ctx.save();
+          ctx.translate(3, s + 3);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText(label, 0, 0);
+          ctx.restore();
+        }
+      }
+    };
+    // Each bar clipped, so a label never spills into the corner or the other bar.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(R, 0, Math.max(0, cssW - R), R);
+    ctx.clip();
+    paintAxis(true);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, R, R, Math.max(0, cssH - R));
+    ctx.clip();
+    paintAxis(false);
+    ctx.restore();
+
+    // Each guide's position: a notch in its colour on its ruler.
+    if (useGuidesStore.getState().guidesVisible) {
+      for (const g of guides) {
+        ctx.fillStyle = g.color ?? C.GUIDE;
+        ctx.beginPath();
+        if (g.axis === 'x') {
+          const s = Math.floor(toScreenX(g.position)) + 0.5;
+          if (s < R || s > cssW) continue;
+          ctx.moveTo(s - 3.5, R - 5);
+          ctx.lineTo(s + 3.5, R - 5);
+          ctx.lineTo(s, R);
+        } else {
+          const s = Math.floor(toScreenY(g.position)) + 0.5;
+          if (s < R || s > cssH) continue;
+          ctx.moveTo(R - 5, s - 3.5);
+          ctx.lineTo(R - 5, s + 3.5);
+          ctx.lineTo(R, s);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // The pointer, on both rulers.
+    const pointer = rulerPointer();
+    if (pointer) {
+      ctx.strokeStyle = C.ACCENT;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (pointer.x > R && pointer.x < cssW) {
+        ctx.moveTo(Math.floor(pointer.x) + 0.5, 0);
+        ctx.lineTo(Math.floor(pointer.x) + 0.5, R);
+      }
+      if (pointer.y > R && pointer.y < cssH) {
+        ctx.moveTo(0, Math.floor(pointer.y) + 0.5);
+        ctx.lineTo(R, Math.floor(pointer.y) + 0.5);
+      }
+      ctx.stroke();
+    }
+
+    // A value badge on a ruler: the readout while something is dragged.
+    const badge = (horizontal: boolean, at: number, text: string): void => {
+      ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      const w = Math.ceil(ctx.measureText(text).width) + 8;
+      const h = 14;
+      ctx.fillStyle = C.ACCENT;
+      ctx.beginPath();
+      if (horizontal) {
+        const x = Math.min(cssW - w - 2, Math.max(R + 2, at + 4));
+        ctx.roundRect(x, (R - h) / 2, w, h, 3);
+        ctx.fill();
+        ctx.fillStyle = C.BADGE_TEXT;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x + 4, R / 2 + 0.5);
+      } else {
+        const y = Math.min(cssH - w - 2, Math.max(R + 2, at + 4));
+        ctx.roundRect((R - h) / 2, y, h, w, 3);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(R / 2 + 0.5, y + w - 4);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = C.BADGE_TEXT;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+      }
+    };
+    const readout = (axis: GuideAxis, world: number): string => {
+      const v = toRulerValue(world, axis === 'x' ? origin.x : origin.y, unit, axis === 'x' ? comp.w : comp.h);
+      return unit === 'percent' ? `${v.toFixed(1)}%` : `${Math.round(v)} px`;
+    };
+    if (guideDrag && !guideDrag.overRuler) {
+      const w = controller.ws.screenToWorld(guideDrag.screen);
+      const pos = guideDrag.position ?? (guideDrag.axis === 'x' ? w.x : w.y);
+      if (guideDrag.axis === 'x') badge(true, toScreenX(pos), readout('x', pos));
+      else badge(false, toScreenY(pos), readout('y', pos));
+    }
+
+    // The zero point being dragged out of the corner: a crosshair over the
+    // stage, and where it will land on both rulers.
+    const od = rulerOriginDrag();
+    if (od) {
+      const w = controller.ws.screenToWorld(od);
+      const p = { x: Math.round(w.x), y: Math.round(w.y) };
+      const sx = Math.floor(toScreenX(p.x)) + 0.5;
+      const sy = Math.floor(toScreenY(p.y)) + 0.5;
+      ctx.save();
+      ctx.strokeStyle = C.ACCENT;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(sx, R);
+      ctx.lineTo(sx, cssH);
+      ctx.moveTo(R, sy);
+      ctx.lineTo(cssW, sy);
+      ctx.stroke();
+      ctx.restore();
+      badge(true, sx, `${p.x} px`);
+      badge(false, sy, `${p.y} px`);
+    }
+
+    // Borders, last, so the ticks end on them.
     ctx.strokeStyle = C.BORDER;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, rulerHeight + 0.5);
-    ctx.lineTo(cssW, rulerHeight + 0.5);
-    ctx.moveTo(rulerHeight + 0.5, 0);
-    ctx.lineTo(rulerHeight + 0.5, cssH);
+    ctx.moveTo(0, R + 0.5);
+    ctx.lineTo(cssW, R + 0.5);
+    ctx.moveTo(R + 0.5, 0);
+    ctx.lineTo(R + 0.5, cssH);
     ctx.stroke();
 
-    // Corner (0,0) square. Inset by the half-pixel the stroke occupies, so the
-    // box lands ON the 22px gutter instead of overhanging it by a pixel into
-    // the canvas — which is what put a stray light line down the artboard edge.
+    // The corner: the zero-point handle (drag it out; double-click resets)
+    // and the unit. A moved origin lights it in the accent.
     ctx.fillStyle = C.CORNER;
-    ctx.fillRect(0, 0, rulerHeight, rulerHeight);
+    ctx.fillRect(0, 0, R, R);
     ctx.strokeStyle = C.BORDER;
-    ctx.strokeRect(0.5, 0.5, rulerHeight - 1, rulerHeight - 1);
-    ctx.fillStyle = C.ACCENT;
-    ctx.font = 'bold 9px ui-monospace, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('px', rulerHeight / 2, rulerHeight / 2);
-
-    // Step sizing based on zoom scale
-    const scale = Math.max(0.01, controller.getView().scale ?? 1);
-    let stepWorld = 100;
-    if (scale > 3) stepWorld = 10;
-    else if (scale > 1.5) stepWorld = 20;
-    else if (scale > 0.8) stepWorld = 50;
-    else if (scale < 0.3) stepWorld = 500;
-    else if (scale < 0.6) stepWorld = 200;
-
-    const w1 = controller.ws.screenToWorld({ x: rulerHeight, y: 0 });
-    const w2 = controller.ws.screenToWorld({ x: cssW, y: 0 });
-    if (!Number.isFinite(w1.x) || !Number.isFinite(w2.x)) {
-      ctx.restore();
-      return;
-    }
-
-    const minXWorld = Math.floor(Math.min(w1.x, w2.x) / stepWorld) * stepWorld;
-    const maxXWorld = Math.ceil(Math.max(w1.x, w2.x) / stepWorld) * stepWorld;
-
-    ctx.textAlign = 'center';
+    ctx.strokeRect(0.5, 0.5, R - 1, R - 1);
+    const moved = hasRulerOrigin(compId);
+    ctx.strokeStyle = moved ? C.ACCENT : C.TICK;
+    ctx.beginPath();
+    ctx.moveTo(R - 6.5, 4);
+    ctx.lineTo(R - 6.5, R - 4);
+    ctx.moveTo(4, R - 6.5);
+    ctx.lineTo(R - 4, R - 6.5);
+    ctx.stroke();
+    ctx.fillStyle = moved ? C.ACCENT : C.TEXT;
+    ctx.font = '600 8px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-
-    const MAX_TICKS = 150;
-    let ticksX = 0;
-    for (let x = minXWorld; x <= maxXWorld && ticksX < MAX_TICKS; x += stepWorld) {
-      ticksX++;
-      const sx = controller.ws.worldToScreen({ x, y: 0 }).x;
-      if (Number.isFinite(sx) && sx >= rulerHeight && sx <= cssW) {
-        const isZero = x === 0;
-        ctx.beginPath();
-        ctx.moveTo(Math.floor(sx) + 0.5, rulerHeight - 7);
-        ctx.lineTo(Math.floor(sx) + 0.5, rulerHeight);
-        ctx.strokeStyle = isZero ? C.ACCENT : C.TEXT;
-        ctx.lineWidth = isZero ? 1.5 : 1;
-        ctx.stroke();
-
-        ctx.font = isZero ? 'bold 10px ui-monospace, monospace' : '10px ui-monospace, monospace';
-        ctx.fillStyle = isZero ? C.ACCENT : C.TEXT;
-        ctx.fillText(String(x), Math.floor(sx), 2);
-
-        // Minor ticks: the token at reduced alpha rather than a hardcoded
-        // white wash, which was invisible in the light theme.
-        const minorStep = stepWorld / 5;
-        ctx.save();
-        ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = C.TICK;
-        ctx.lineWidth = 1;
-        for (let m = 1; m < 5; m++) {
-          const msx = controller.ws.worldToScreen({ x: x + m * minorStep, y: 0 }).x;
-          if (Number.isFinite(msx) && msx >= rulerHeight && msx <= cssW) {
-            ctx.beginPath();
-            ctx.moveTo(Math.floor(msx) + 0.5, rulerHeight - 4);
-            ctx.lineTo(Math.floor(msx) + 0.5, rulerHeight);
-            ctx.stroke();
-          }
-        }
-        ctx.restore();
-      }
-    }
-
-    // Left Ruler (Y Axis)
-    const h1 = controller.ws.screenToWorld({ x: 0, y: rulerHeight });
-    const h2 = controller.ws.screenToWorld({ x: 0, y: cssH });
-    if (!Number.isFinite(h1.y) || !Number.isFinite(h2.y)) {
-      ctx.restore();
-      return;
-    }
-
-    const minYWorld = Math.floor(Math.min(h1.y, h2.y) / stepWorld) * stepWorld;
-    const maxYWorld = Math.ceil(Math.max(h1.y, h2.y) / stepWorld) * stepWorld;
-
-    let ticksY = 0;
-    for (let y = minYWorld; y <= maxYWorld && ticksY < MAX_TICKS; y += stepWorld) {
-      ticksY++;
-      const sy = controller.ws.worldToScreen({ x: 0, y }).y;
-      if (Number.isFinite(sy) && sy >= rulerHeight && sy <= cssH) {
-        const isZero = y === 0;
-        ctx.beginPath();
-        ctx.moveTo(rulerHeight - 7, Math.floor(sy) + 0.5);
-        ctx.lineTo(rulerHeight, Math.floor(sy) + 0.5);
-        ctx.strokeStyle = isZero ? C.ACCENT : C.TEXT;
-        ctx.lineWidth = isZero ? 1.5 : 1;
-        ctx.stroke();
-
-        ctx.save();
-        ctx.translate(2, Math.floor(sy) - 2);
-        ctx.font = isZero ? 'bold 9px ui-monospace, monospace' : '9px ui-monospace, monospace';
-        ctx.fillStyle = isZero ? C.ACCENT : C.TEXT;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(String(y), 0, 0);
-        ctx.restore();
-
-        const minorStep = stepWorld / 5;
-        ctx.save();
-        ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = C.TICK;
-        ctx.lineWidth = 1;
-        for (let m = 1; m < 5; m++) {
-          const msy = controller.ws.worldToScreen({ x: 0, y: y + m * minorStep }).y;
-          if (Number.isFinite(msy) && msy >= rulerHeight && msy <= cssH) {
-            ctx.beginPath();
-            ctx.moveTo(rulerHeight - 4, Math.floor(msy) + 0.5);
-            ctx.lineTo(rulerHeight, Math.floor(msy) + 0.5);
-            ctx.stroke();
-          }
-        }
-        ctx.restore();
-      }
-    }
+    ctx.fillText(unit === 'percent' ? '%' : 'px', 3, 3);
 
     ctx.restore();
   } catch (e) {

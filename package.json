@@ -26,7 +26,7 @@
     "build": "tsc -b && vite build",
     "build:local": "tsc -b && cross-env VITE_EDITION=local MOTION_EDITION=local vite build",
     "preview": "vite preview",
-    "electron:compile": "tsc -p electron/tsconfig.json && node scripts/buildMcp.cjs",
+    "electron:compile": "tsc -p electron/tsconfig.json && node scripts/buildMcp.cjs && node scripts/buildRenderItem.cjs",
     "electron:watch": "tsc -p electron/tsconfig.json --watch --preserveWatchOutput",
     "electron:dev": "npm run electron:compile && concurrently -k \"vite\" \"npm:electron:watch\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron dist-electron/main.js\"",
     "electron:dev:local": "npm run electron:compile && concurrently -k \"cross-env VITE_EDITION=local MOTION_EDITION=local vite\" \"npm:electron:watch\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development MOTION_EDITION=local electron dist-electron/main.js\"",

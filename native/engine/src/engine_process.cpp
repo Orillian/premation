@@ -1,10 +1,13 @@
 #include "engine_process.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -107,8 +110,13 @@ void command_reader(io::Handle in, BlockingQueue<CoreItem>& queue) {
   }
 }
 
+/// The newest heartbeat nonce the host sent (frames_reader writes it, the
+/// watchdog reads it): shared, because the reader thread is detached and may
+/// outlive run_engine's frame.
+using PingSlot = std::shared_ptr<std::atomic<std::uint64_t>>;
+
 template <class ReleaseFn>
-void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, ReleaseFn release) {
+void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, PingSlot pings, ReleaseFn release) {
   framing::Decoder decoder(frames::kMaxPayload);
   std::array<std::uint8_t, 4096> buf{};
   for (;;) {
@@ -126,6 +134,7 @@ void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, ReleaseFn rele
       if (const auto* r = std::get_if<api::FrameRelease>(&m.v)) {
         release(r->generation, r->slot);
       } else if (const auto* p = std::get_if<api::FramePing>(&m.v)) {
+        pings->store(p->nonce, std::memory_order_release);
         (void)queue.push(CoreItem{CoreItem::Kind::ping, {}, p->nonce, {}});
       }
     }
@@ -136,14 +145,35 @@ void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, ReleaseFn rele
   }
 }
 
-/// What the core thread is doing, for the watchdog: the supervisor kills an
-/// engine whose core thread misses heartbeats for 5 s (engineSupervisor.ts
-/// hangMs), and without this the log never says what it was stuck in.
+/// What the core thread is doing, for the watchdog — and the engine's proof
+/// of life while it is doing it.
+///
+/// The heartbeat (FramePing, one a second) is answered by the core thread
+/// between items, so a pong proves the core drains its queue. But a ping sits
+/// in the same FIFO as the work: a core thread inside ONE long item (a heavy
+/// comp's first frame build, a batch of hundreds of edits) answered nothing
+/// for as long as the item took, and the supervisor's 5 s window called that a
+/// hang and killed a healthy engine — the page replayed its command log, asked
+/// the same work again, and the restart looped. Liveness is not idleness: this
+/// thread answers the pings the core has not reached once the core has been on
+/// its item for kAnswerPingsAfter, saying what it is on and for how long
+/// (FramePong.busy / busyMs). The supervisor keeps such an engine alive and
+/// only gives up on an item that outlasts its stuck budget (a real deadlock).
+///
+/// It also logs a slow item (core_slow at its end, core_busy while it lasts),
+/// so the log says what a stalled core thread was stuck in.
 class CoreWatchdog {
  public:
   static constexpr auto kBusyAfter = std::chrono::milliseconds(2000);
+  /// A ping unanswered this long into an item is answered from here. Shorter
+  /// than kBusyAfter: the host must never see a silence it could mistake for a
+  /// hang, whatever it sets its window to.
+  static constexpr auto kAnswerPingsAfter = std::chrono::milliseconds(750);
 
-  CoreWatchdog() : thread_([this] { run(); }) {}
+  using SendFrames = std::function<void(const frames::Message&)>;
+
+  CoreWatchdog(PingSlot pings, SendFrames send)
+      : pings_(std::move(pings)), send_(std::move(send)), thread_([this] { run(); }) {}
   // Stop first; the thread (declared last) is joined when the members go.
   ~CoreWatchdog() { stop_.store(true, std::memory_order_release); }
   CoreWatchdog(const CoreWatchdog&) = delete;
@@ -151,12 +181,15 @@ class CoreWatchdog {
   CoreWatchdog(CoreWatchdog&&) = delete;
   CoreWatchdog& operator=(CoreWatchdog&&) = delete;
 
-  /// The core thread starts on `what` (a request's description, `tick`, …).
-  void begin(std::string what) {
+  /// The core thread starts on `what` (a request's description, `tick`, …)
+  /// at document `revision`, `playing` or not (what a pong sent from here says).
+  void begin(std::string what, std::uint64_t revision, bool playing) {
     {
       const std::scoped_lock lock(mu_);
       what_ = std::move(what);
     }
+    revision_.store(revision, std::memory_order_relaxed);
+    playing_.store(playing, std::memory_order_relaxed);
     since_.store(Clock::now().time_since_epoch().count(), std::memory_order_release);
   }
   /// A request names itself once decoded (SessionOptions::activity).
@@ -190,7 +223,9 @@ class CoreWatchdog {
       if (since == 0) continue;
       const auto start = Clock::time_point(Clock::duration(since));
       const auto now = Clock::now();
-      if (now - start < kBusyAfter) continue;
+      const auto busy = now - start;
+      answer_pings(busy);
+      if (busy < kBusyAfter) continue;
       if (since == reported && now < nextReport) continue;
       reported = since;
       nextReport = now + kBusyAfter;
@@ -200,8 +235,30 @@ class CoreWatchdog {
     }
   }
 
+  /// The host's newest ping, answered from here when the core is deep in an item.
+  void answer_pings(Clock::duration busy) {
+    if (busy < kAnswerPingsAfter || !pings_) return;
+    const std::uint64_t nonce = pings_->load(std::memory_order_acquire);
+    if (nonce == 0 || nonce == answered_) return;
+    answered_ = nonce;
+    api::FramePong pong;
+    pong.nonce = nonce;
+    pong.revision = revision_.load(std::memory_order_relaxed);
+    pong.playing = playing_.load(std::memory_order_relaxed);
+    pong.queued = 0;
+    pong.busy_ms = static_cast<std::uint32_t>(
+        std::min<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(busy).count(), UINT32_MAX));
+    pong.busy = current();
+    send_(frames::Message{.v = std::move(pong)});
+  }
+
+  PingSlot pings_;
+  SendFrames send_;
+  std::uint64_t answered_ = 0;  // watchdog thread only
   std::mutex mu_;
   std::string what_;
+  std::atomic<std::uint64_t> revision_{0};
+  std::atomic<bool> playing_{false};
   std::atomic<Clock::rep> since_{0};  // 0 = idle
   std::atomic<bool> stop_{false};
   // Not std::jthread: Apple's libc++ gates it behind -fexperimental-library
@@ -237,6 +294,7 @@ int run_engine(const EngineOptions& options) {
   ProcessOutbox outbox(commandOut, framesOut);
   BlockingQueue<CoreItem> queue;
   const auto sendFrames = [&outbox](const frames::Message& m) { outbox.send_frames(m); };
+  const PingSlot pings = std::make_shared<std::atomic<std::uint64_t>>(0);
 
   // G1: the native plugin host. Declared before the render thread and the
   // session so it outlives both (the render glue and the document reach it
@@ -335,15 +393,15 @@ int run_engine(const EngineOptions& options) {
 #if !defined(PREMATION_ENGINE_HEADLESS)
     if (gpuSink) {
       render::RenderThread* r = gpuSink.get();
-      std::thread([in = pipes.framesIn, &queue, r] {
-        frames_reader(in, queue, [r](std::uint32_t g, std::uint32_t s) { r->release(g, s); });
+      std::thread([in = pipes.framesIn, &queue, pings, r] {
+        frames_reader(in, queue, pings, [r](std::uint32_t g, std::uint32_t s) { r->release(g, s); });
       }).detach();
     } else
 #endif
     {
       SimulatedSink* r = simSink.get();
-      std::thread([in = pipes.framesIn, &queue, r] {
-        frames_reader(in, queue, [r](std::uint32_t g, std::uint32_t s) { r->release(g, s); });
+      std::thread([in = pipes.framesIn, &queue, pings, r] {
+        frames_reader(in, queue, pings, [r](std::uint32_t g, std::uint32_t s) { r->release(g, s); });
       }).detach();
     }
   }
@@ -375,7 +433,7 @@ int run_engine(const EngineOptions& options) {
   sessionOptions.footageDir = os::env_var("PREMATION_SESSION_FOOTAGE").value_or("");
   sessionOptions.testPorts = options.testPorts;
   sessionOptions.testPortsDir = options.testPortsDir;
-  CoreWatchdog watchdog;
+  CoreWatchdog watchdog(pings, sendFrames);
   sessionOptions.activity = [&watchdog](std::string what) { watchdog.name(std::move(what)); };
 #if defined(PREMATION_HAVE_JOBS)
   // importFiles / importBytes / relink: the jobs' decoders probe the file (ffmpeg + the OS still codec).
@@ -442,7 +500,7 @@ int run_engine(const EngineOptions& options) {
     if (item) {
       switch (item->kind) {
         case CoreItem::Kind::frame:
-          watchdog.begin("message");
+          watchdog.begin("message", session.revision(), session.playing());
           session.on_frame(item->bytes, now);
           watchdog.end();
           break;
@@ -468,7 +526,7 @@ int run_engine(const EngineOptions& options) {
           break;
       }
     }
-    watchdog.begin(session.playing() ? "tick (playing)" : "tick");
+    watchdog.begin(session.playing() ? "tick (playing)" : "tick", session.revision(), session.playing());
     session.tick(now);
     watchdog.end();
     os::high_resolution_timer(session.playing());

@@ -69,8 +69,8 @@ TEST_CASE("rig parity: the C++ rig block reproduces buildSnapshot's deformed mes
       in.pathOpen = s.at("pathOpen").b();
       in.rigT = s.at("rigT").num();
       const sc::RigResult r = sc::build_rig_mesh_for(d, env, cache, node, in);
-      INFO("unported: " << (r.unported.empty() ? std::string("-") : r.unported.front()));
-      REQUIRE(r.unported.empty());
+      INFO("warnings: " << (r.warnings.empty() ? std::string("-") : r.warnings.front()));
+      REQUIRE(r.warnings.empty());
       REQUIRE(r.mesh.has_value());
       {
         INFO("first vertex mismatch: " << first_float_mismatch(r.mesh->vertices, s.at("vertices")));

@@ -6,7 +6,7 @@
  * has it).
  */
 
-import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { PreviewPanel } from '../PreviewPanel';
 import { TooltipProvider } from '@components/Tooltip';
 import { useProjectStore } from '@stores/projectStore';
@@ -65,7 +65,7 @@ describe('PreviewPanel', () => {
     for (const name of ['First frame (Home)', 'Previous frame', 'Play', 'Next frame', 'Last frame (End)', /^(Enable|Disable) loop$/]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
-    for (const label of ['Range', 'Step', 'Resolution']) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    for (const name of ['Range', 'Step', 'Resolution']) expect(screen.getByRole('radiogroup', { name })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Include audio' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Draft quality' })).toBeInTheDocument();
     for (const name of ['Playback', 'Quality']) {
@@ -87,42 +87,41 @@ describe('PreviewPanel', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
   });
 
-  it('sets the range from its dropdown', async () => {
+  it('sets the range from its segments', async () => {
     renderPanel();
-    const range = screen.getByLabelText('Range') as HTMLSelectElement;
-    expect([...range.options].map((o) => o.text)).toEqual(['Work Area', 'Entire Composition', 'From Current Time']);
+    const range = screen.getByRole('radiogroup', { name: 'Range' });
+    const radios = within(range).getAllByRole('radio');
+    expect(radios.map((r) => r.textContent)).toEqual(['Work area', 'Comp', 'From now']);
 
-    fireEvent.change(range, { target: { value: 'entire-comp' } });
-    expect(range.value).toBe('entire-comp');
-    fireEvent.change(range, { target: { value: 'current-forward' } });
-    expect(range.value).toBe('current-forward');
-    fireEvent.change(range, { target: { value: 'work-area' } });
-    expect(range.value).toBe('work-area');
+    for (const name of ['Comp', 'From now', 'Work area']) {
+      fireEvent.click(within(range).getByRole('radio', { name }));
+      expect(within(range).getByRole('radio', { name })).toHaveAttribute('aria-checked', 'true');
+    }
   });
 
   it('the Step row sets how far the step buttons move', async () => {
     renderPanel();
-    const step = screen.getByLabelText('Step') as HTMLSelectElement;
-    fireEvent.change(step, { target: { value: '1' } });
-    expect(step.value).toBe('1');
+    const step = screen.getByRole('radiogroup', { name: 'Step' });
+    fireEvent.click(within(step).getByRole('radio', { name: '2 frames' }));
+    expect(within(step).getByRole('radio', { name: '2 frames' })).toHaveAttribute('aria-checked', 'true');
 
     const before = getTime();
     fireEvent.click(screen.getByRole('button', { name: 'Next frame' }));
     // Two frames at 30 fps.
     expect(getTime() - before).toBeCloseTo(2 / 30, 5);
 
-    fireEvent.change(step, { target: { value: '5' } });
-    expect(step.value).toBe('5');
+    fireEvent.click(within(step).getByRole('radio', { name: '6 frames' }));
+    expect(within(step).getByRole('radio', { name: '6 frames' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('sets the resolution and the draft quality', async () => {
     renderPanel();
-    const resolution = screen.getByLabelText('Resolution') as HTMLSelectElement;
-    fireEvent.change(resolution, { target: { value: '2' } });
+    const resolution = screen.getByRole('radiogroup', { name: 'Resolution' });
+    fireEvent.click(within(resolution).getByRole('radio', { name: 'Half' }));
     expect(useRenderQualityStore.getState().resolution).toBe(2);
     expect(useRenderQualityStore.getState().adaptive).toBe(false);
 
-    fireEvent.change(resolution, { target: { value: 'auto' } });
+    fireEvent.click(within(resolution).getByRole('radio', { name: 'Auto' }));
     expect(useRenderQualityStore.getState().adaptive).toBe(true);
 
     const draft = screen.getByRole('switch', { name: 'Draft quality' });

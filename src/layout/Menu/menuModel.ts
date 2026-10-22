@@ -20,7 +20,9 @@ import { cloudProjectsEnabled } from '@core/config/edition';
 // /dashboard, where the core has not booted. `coreServices()` throws there.
 import { tryCoreServices } from '@core/services/coreServices';
 import { buildWorkspaceMenuItems } from './workspaceMenu';
+import { buildExtensionsMenuItems } from './extensionsMenu';
 import { buildEffectMenuItems } from './effectMenu';
+import { buildScriptsMenuItems } from './scriptsMenu';
 
 /** Project-lifecycle command ids (registered against ProjectManager at boot). */
 export const ProjectCommands = {
@@ -117,26 +119,35 @@ export const APP_MENU: MenuGroupModel[] = [
       { commandId: 'file.openAfterEffects', label: 'Open After Effects Project…' },
       { separator: true },
       { commandId: ProjectCommands.Save, label: 'Save' },
-      { commandId: ProjectCommands.SaveAs, label: 'Save As…' },
-      /**
-       * Only where it is a DIFFERENT command from Save As.
-       *
-       * Save As now opens a save dialog and writes a portable `.motion` file in
-       * every build. On the desktop that is genuinely distinct from Save As,
-       * which writes the local-first directory bundle that Sync reconciles
-       * against — so both belong there. Anywhere else the two would run the
-       * identical code under two names, which is two menu entries for one
-       * feature and a user wondering which one is the real save.
-       */
       {
-        commandId: ProjectCommands.SaveToComputer,
-        label: 'Save Portable Copy…',
-        visible: () => tryCoreServices()?.files.environment === 'electron',
-      },
-      {
-        commandId: ProjectCommands.SaveCopyToCloud,
-        label: 'Save Copy to Cloud…',
-        visible: cloudProjectsEnabled,
+        // After Effects' File ▸ Save As ▸ (Save As…, Save a Copy…): the copies
+        // folded under Save As so File stays under its entry cap once
+        // File ▸ Scripts joined it. Ctrl+Shift+S still saves as directly.
+        label: 'Save As',
+        labelKey: 'menu.sub.saveAs',
+        children: [
+          { commandId: ProjectCommands.SaveAs, label: 'Save As…' },
+          /**
+           * Only where it is a DIFFERENT command from Save As.
+           *
+           * Save As now opens a save dialog and writes a portable `.motion` file in
+           * every build. On the desktop that is genuinely distinct from Save As,
+           * which writes the local-first directory bundle that Sync reconciles
+           * against — so both belong there. Anywhere else the two would run the
+           * identical code under two names, which is two menu entries for one
+           * feature and a user wondering which one is the real save.
+           */
+          {
+            commandId: ProjectCommands.SaveToComputer,
+            label: 'Save Portable Copy…',
+            visible: () => tryCoreServices()?.files.environment === 'electron',
+          },
+          {
+            commandId: ProjectCommands.SaveCopyToCloud,
+            label: 'Save Copy to Cloud…',
+            visible: cloudProjectsEnabled,
+          },
+        ],
       },
       { commandId: ProjectCommands.IncrementAndSave, label: 'Increment and Save' },
       {
@@ -163,6 +174,17 @@ export const APP_MENU: MenuGroupModel[] = [
         ],
       },
       { commandId: 'file.export', label: 'Export…' },
+      {
+        // After Effects' File ▸ Scripts: the fixed commands, then the user
+        // Scripts folder's scripts (a thunk: they are user data — scriptsMenu.ts).
+        label: 'Scripts',
+        labelKey: 'menu.sub.scripts',
+        children: () => buildScriptsMenuItems([
+          { commandId: 'file.runScriptFile', label: 'Run Script File…' },
+          { commandId: 'view.scriptEditor', label: 'Open Script Editor' },
+          { commandId: 'file.openScriptsFolder', label: 'Open Scripts Folder' },
+        ]),
+      },
       { separator: true },
       // Registered ONLY under `cloudProjectsEnabled()` (see Providers) —
       // snapshots live on the backend, keyed by project id. The registration
@@ -184,6 +206,7 @@ export const APP_MENU: MenuGroupModel[] = [
       { separator: true },
       { commandId: 'edit.cut', label: 'Cut' },
       { commandId: 'edit.copy', label: 'Copy' },
+      { commandId: 'edit.copyExpressionOnly', label: 'Copy Expression Only' },
       { commandId: 'edit.paste', label: 'Paste' },
       { separator: true },
       { commandId: BuiltinCommands.SelectAll, label: 'Select All' },
@@ -901,6 +924,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'view.ai', label: 'Assistant' },
           { commandId: 'view.character', label: 'Character' },
           { commandId: 'view.effects', label: 'Effects & Presets' },
+          { commandId: 'view.essentialGraphics', label: 'Essential Graphics' },
           { commandId: 'view.motion', label: 'Graph Panel' },
           { commandId: 'view.info', label: 'Info' },
           { commandId: 'view.scene', label: 'Layers' },
@@ -908,6 +932,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'view.paragraph', label: 'Paragraph' },
           { commandId: 'view.plugins', label: 'Plugins' },
           { commandId: 'view.preview', label: 'Preview' },
+          { commandId: 'view.recordAudio', label: 'Record Audio' },
           { commandId: 'view.rig', label: 'Rigging' },
           { commandId: 'view.scopes', label: 'Scopes' },
           { commandId: 'view.sourceMonitor', label: 'Source Monitor' },
@@ -919,8 +944,13 @@ export const APP_MENU: MenuGroupModel[] = [
       { separator: true },
       // Built per render from WorkspaceManager — half of it is user data. See
       // workspaceMenu.ts.
+      // Customize… (shortcuts, toolbars, workspaces) is the last entry of the
+      // Workspace submenu, where AE keeps Edit Workspaces — which keeps this
+      // group at the 14-entry cap now that Extensions sits beside it.
       { label: 'Workspace', labelKey: 'menu.sub.workspace', children: buildWorkspaceMenuItems },
-      { commandId: 'view.customize', label: 'Customize…' },
+      // Every installed plugin's panel, checked while docked (extensionsMenu.ts;
+      // docs/mockups/plugin-docking-ae.html frame 3). Built per draw: plugin data.
+      { label: 'Extensions', labelKey: 'menu.sub.extensions', children: buildExtensionsMenuItems },
     ],
   },
 

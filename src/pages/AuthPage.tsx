@@ -10,32 +10,39 @@ import { api } from '@core/api/client';
 import { startSocialAuth } from '@core/auth/startSocialAuth';
 import { setSession } from '@core/api/session';
 import { Icon } from '@components/Icon/Icon';
+import { SLOT, t, tAround } from '@core/i18n';
 import { cn } from '@utils/cn';
 import { AuthShell, PasswordRules } from './AuthShell';
 import styles from './AuthPage.module.css';
 
 export type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
-const TITLES: Record<AuthMode, string> = {
-  login: 'Welcome back',
-  register: 'Create your account',
-  forgot: 'Reset your password',
-  reset: 'Set a new password',
-};
+function titleOf(mode: AuthMode): string {
+  switch (mode) {
+    case 'login': return t('auth.login.title', 'Welcome back');
+    case 'register': return t('auth.register.title', 'Create your account');
+    case 'forgot': return t('auth.forgot.title', 'Reset your password');
+    case 'reset': return t('auth.reset.title', 'Set a new password');
+  }
+}
 
-const SUBTITLES: Record<AuthMode, string> = {
-  login: 'Sign in to pick up where you left off.',
-  register: 'Your trial starts when you confirm your email.',
-  forgot: 'Enter the email you signed up with. We will send a link to set a new password.',
-  reset: 'Choose a new password. You will be signed in straight after.',
-};
+function subtitleOf(mode: AuthMode): string {
+  switch (mode) {
+    case 'login': return t('auth.login.subtitle', 'Sign in to pick up where you left off.');
+    case 'register': return t('auth.register.subtitle', 'Your trial starts when you confirm your email.');
+    case 'forgot': return t('auth.forgot.subtitle', 'Enter the email you signed up with. We will send a link to set a new password.');
+    case 'reset': return t('auth.reset.subtitle', 'Choose a new password. You will be signed in straight after.');
+  }
+}
 
-const SUBMIT_LABELS: Record<AuthMode, string> = {
-  login: 'Sign in',
-  register: 'Create account',
-  forgot: 'Send reset link',
-  reset: 'Set password and sign in',
-};
+function submitLabelOf(mode: AuthMode): string {
+  switch (mode) {
+    case 'login': return t('auth.login.submit', 'Sign in');
+    case 'register': return t('auth.register.submit', 'Create account');
+    case 'forgot': return t('auth.forgot.submit', 'Send reset link');
+    case 'reset': return t('auth.reset.submit', 'Set password and sign in');
+  }
+}
 
 function GoogleMark(): JSX.Element {
   return (
@@ -141,7 +148,7 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
       await api.forgotPassword(email);
       setSent(true);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Could not send the link. Try again.');
+      setLocalError(err instanceof Error ? err.message : t('auth.forgot.sendFailed', 'Could not send the link. Try again.'));
     } finally {
       setLocalBusy(false);
     }
@@ -164,7 +171,7 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
         useAuthStore.setState({ status: 'authenticated', user: result.user, error: null });
         navigate(result.user.emailVerified ? '/dashboard' : '/verify-email', { replace: true });
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : 'Could not set the password. Try again.');
+        setLocalError(err instanceof Error ? err.message : t('auth.reset.failed', 'Could not set the password. Try again.'));
       } finally {
         setLocalBusy(false);
       }
@@ -187,29 +194,32 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
 
   if (isReset && !resetToken) {
     return (
-      <AuthShell title="This link is incomplete" subtitle="The reset link is missing its security token. Request a new one and use the link from that email.">
+      <AuthShell title={t('auth.reset.incompleteTitle', 'This link is incomplete')} subtitle={t('auth.reset.incompleteSubtitle', 'The reset link is missing its security token. Request a new one and use the link from that email.')}>
         <Link to="/forgot-password" className={styles.primaryBtn}>
-          Request a new link
+          {t('auth.reset.requestNew', 'Request a new link')}
         </Link>
         <div className={styles.footerLink}>
-          <Link to="/login">Back to sign in</Link>
+          <Link to="/login">{t('auth.backToSignIn', 'Back to sign in')}</Link>
         </div>
       </AuthShell>
     );
   }
 
   if (sent) {
+    const [sentBefore, sentAfter] = tAround(
+      t('auth.forgot.sentSubtitle', 'If {slot} has a Premation account, a reset link is on its way.', { slot: SLOT }),
+    );
     return (
       <AuthShell
-        title="Check your email"
+        title={t('auth.forgot.sentTitle', 'Check your email')}
         subtitle={
           <>
-            If <strong>{email}</strong> has a Premation account, a reset link is on its way.
+            {sentBefore}<strong>{email}</strong>{sentAfter}
           </>
         }
       >
         <p className={styles.alert} role="status">
-          Nothing after a few minutes? Check your spam folder, or send the link again.
+          {t('auth.forgot.sentHint', 'Nothing after a few minutes? Check your spam folder, or send the link again.')}
         </p>
         {error && (
           <div className={styles.errorAlert} role="alert">
@@ -223,17 +233,17 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
           disabled={submitting}
           onClick={() => void sendResetLink()}
         >
-          {submitting ? 'Sending…' : 'Send again'}
+          {submitting ? t('auth.forgot.sending', 'Sending…') : t('auth.forgot.sendAgain', 'Send again')}
         </button>
         <div className={styles.footerLink}>
-          <Link to="/login">Back to sign in</Link>
+          <Link to="/login">{t('auth.backToSignIn', 'Back to sign in')}</Link>
         </div>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell title={TITLES[mode]} subtitle={SUBTITLES[mode]}>
+    <AuthShell title={titleOf(mode)} subtitle={subtitleOf(mode)}>
       <form className={styles.form} onSubmit={onSubmit}>
         {(isLogin || isRegister) && googleEnabled && (
           <>
@@ -244,10 +254,10 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
               onClick={() => startSocialAuth('google')}
             >
               <GoogleMark />
-              <span>Continue with Google</span>
+              <span>{t('auth.continueWithGoogle', 'Continue with Google')}</span>
             </button>
             <div className={styles.divider}>
-              <span>or with email</span>
+              <span>{t('auth.orWithEmail', 'or with email')}</span>
             </div>
           </>
         )}
@@ -255,7 +265,7 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
         {isRegister && (
           <div className={styles.field}>
             <label className={styles.label} htmlFor="name">
-              Name
+              {t('auth.field.name', 'Name')}
             </label>
             <input
               id="name"
@@ -271,7 +281,7 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
         {!isReset && (
           <div className={styles.field}>
             <label className={styles.label} htmlFor="email">
-              Email
+              {t('auth.field.email', 'Email')}
             </label>
             <input
               id="email"
@@ -289,11 +299,11 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
           <div className={styles.field}>
             <div className={styles.labelRow}>
               <label className={styles.label} htmlFor="password">
-                {isReset ? 'New password' : 'Password'}
+                {isReset ? t('auth.field.newPassword', 'New password') : t('auth.field.password', 'Password')}
               </label>
               {isLogin && (
                 <Link to="/forgot-password" className={styles.forgotLink}>
-                  Forgot password?
+                  {t('auth.login.forgotPassword', 'Forgot password?')}
                 </Link>
               )}
             </div>
@@ -312,9 +322,9 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
                 type="button"
                 className={styles.passwordToggle}
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={showPassword ? t('auth.field.hidePasswordAria', 'Hide password') : t('auth.field.showPasswordAria', 'Show password')}
               >
-                {showPassword ? 'Hide' : 'Show'}
+                {showPassword ? t('auth.field.hidePassword', 'Hide') : t('auth.field.showPassword', 'Show')}
               </button>
             </div>
             {/* Shown before typing, so the rule is known rather than discovered. */}
@@ -331,26 +341,26 @@ export function AuthPage({ mode }: { mode: AuthMode }): JSX.Element {
 
         <button type="submit" className={styles.primaryBtn} disabled={submitting}>
           {submitting && <span className={styles.spinner} aria-hidden="true" />}
-          <span>{submitting ? 'Please wait…' : SUBMIT_LABELS[mode]}</span>
+          <span>{submitting ? t('auth.pleaseWait', 'Please wait…') : submitLabelOf(mode)}</span>
         </button>
 
         {isRegister && (
           <p className={styles.termsNotice}>
-            By creating an account, you agree to our Terms of Service and Privacy Policy.
+            {t('auth.register.terms', 'By creating an account, you agree to our Terms of Service and Privacy Policy.')}
           </p>
         )}
 
         <div className={styles.footerLink}>
           {isLogin ? (
             <span>
-              New here? <Link to="/register">Create an account</Link>
+              {t('auth.login.newHere', 'New here?')} <Link to="/register">{t('auth.login.createAccountLink', 'Create an account')}</Link>
             </span>
           ) : isRegister ? (
             <span>
-              Have an account? <Link to="/login">Sign in</Link>
+              {t('auth.register.haveAccount', 'Have an account?')} <Link to="/login">{t('auth.register.signInLink', 'Sign in')}</Link>
             </span>
           ) : (
-            <Link to="/login">Back to sign in</Link>
+            <Link to="/login">{t('auth.backToSignIn', 'Back to sign in')}</Link>
           )}
         </div>
       </form>

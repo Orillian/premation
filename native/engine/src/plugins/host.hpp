@@ -67,6 +67,8 @@ struct ParamSpec {
   std::vector<double> curve;      ///< CURVE: x, y pairs in 0..1
   std::vector<double> gradient;   ///< GRADIENT: 5 doubles per stop
   std::string fileTypes;          ///< FILE: "cube|3dl" ("" = any)
+  // SDK 1.2 (struct_size-guarded).
+  std::string description;        ///< the param's (a GROUP_START: the group's) tooltip ("" = none)
 };
 
 struct EffectSpec {
@@ -103,6 +105,10 @@ struct PluginRecord {
   bool gpu = false;
   /// SDK 1.1: the bundle ships a panel (`ui/index.html`).
   bool panel = false;
+  /// The manifest's `icon` when that file exists ("ui/icon.png"), else "".
+  std::string icon;
+  /// The manifest's `panelTitle` ("" = none).
+  std::string panelTitle;
 };
 
 /// One parameter's value at the frame (decoded from the FrameScene entry).

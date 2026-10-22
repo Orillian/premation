@@ -31,6 +31,7 @@ import { readMatte } from '@core/effects/matte';
 import { areRowPropsEqual } from './rowMemo';
 import { openContextMenu, type ContextMenuItem } from '@stores/contextMenuStore';
 import { LABEL_COLORS } from '@core/scene/labelColor';
+import { t } from '@core/i18n';
 import {
   collapseSwitchKind,
   toggleCollapseSwitch,
@@ -43,16 +44,24 @@ import {
 
 const NO_KEYS: readonly string[] = [];
 
-/** The Quality switch's three positions, as AE draws them (/, \, and a box). */
-const QUALITY_SWITCH = {
-  best: { label: 'Quality: Best', title: 'Quality: Best — click for Draft', glyph: '/' },
-  draft: { label: 'Quality: Draft', title: 'Quality: Draft — click for Wireframe', glyph: '\\' },
-  wireframe: {
-    label: 'Quality: Wireframe',
-    title: 'Quality: Wireframe (viewport only — exports as Best) — click for Best',
-    glyph: '□',
-  },
-} as const;
+/**
+ * The Quality switch's three positions, as AE draws them (/, \, and a box).
+ * A function: `t()` must run when the row renders, not at import.
+ */
+function qualitySwitch(q: 'best' | 'draft' | 'wireframe'): { label: string; title: string; glyph: string } {
+  switch (q) {
+    case 'best':
+      return { label: t('timeline.header.qualityBest', 'Quality: Best'), title: t('timeline.header.qualityBestTitle', 'Quality: Best — click for Draft'), glyph: '/' };
+    case 'draft':
+      return { label: t('timeline.header.qualityDraft', 'Quality: Draft'), title: t('timeline.header.qualityDraftTitle', 'Quality: Draft — click for Wireframe'), glyph: '\\' };
+    case 'wireframe':
+      return {
+        label: t('timeline.header.qualityWireframe', 'Quality: Wireframe'),
+        title: t('timeline.header.qualityWireframeTitle', 'Quality: Wireframe (viewport only — exports as Best) — click for Best'),
+        glyph: '□',
+      };
+  }
+}
 
 /**
  * Where a row's context menu opens. A keyboard ContextMenu / Shift+F10 press
@@ -65,8 +74,9 @@ function contextMenuPoint(e: React.MouseEvent<HTMLElement>): { x: number; y: num
 }
 
 /** Parent pick-whip tooltip — the AE modifiers, stated where they are used. */
-export const PARENT_WHIP_LABEL =
-  'Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)';
+export function parentWhipLabel(): string {
+  return t('timeline.header.parentWhip', 'Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)');
+}
 
 // Label colours come from the ONE palette in `core/scene/labelColor`. This file
 // used to carry its own 12 hexes, so the same layer showed a different red in the
@@ -233,8 +243,8 @@ export const TrackHeader = memo(function TrackHeader({
   const frameBlendOn = hasFrameBlend && layerFrameBlendOn(layer);
 
   const currentParentName = currentParent
-    ? parentLayer?.name || 'Parent'
-    : 'None';
+    ? parentLayer?.name || t('timeline.header.parent', 'Parent')
+    : t('timeline.header.none', 'None');
 
   // Option id + label come from the SHARED menu, not a second hardcoded copy of
   // the four labels. This row and the inspector used to each own their own list.
@@ -243,7 +253,8 @@ export const TrackHeader = memo(function TrackHeader({
   // without one the matte is the layer above, as it always was.
   const matteSourceId = readMatte(track.matteMode)?.sourceId;
   const matteSourceName = matteSourceId ? (documentMirror().layer(matteSourceId)?.name ?? null) : null;
-  const currentMatteLabel = `${MATTE_SHORT_LABEL[currentMatteOption] ?? 'None'}${matteSourceName ? ` · ${matteSourceName}` : ''}`;
+  const matteShort = MATTE_SHORT_LABEL[currentMatteOption] ?? t('timeline.header.none', 'None');
+  const currentMatteLabel = matteSourceName ? `${matteShort} · ${matteSourceName}` : matteShort;
 
   // Built when the menu OPENS, not per render: the list names every layer in
   // the comp, and the walk that collects it ran for every visible row on
@@ -254,7 +265,7 @@ export const TrackHeader = memo(function TrackHeader({
       {
         type: 'item' as const,
         id: '__none__',
-        label: 'None',
+        label: t('timeline.header.none', 'None'),
         icon: currentParent === null ? ('check' as const) : undefined,
         onSelect: (m: MenuSelectModifiers) => onParentChange?.(null, parentOptionsFor(m)),
       },
@@ -301,7 +312,7 @@ export const TrackHeader = memo(function TrackHeader({
       tabIndex={active ? 0 : -1}
       aria-selected={selected}
       aria-label={track.name}
-      title="↑ ↓ to move · → ← to twirl · Enter to rename · Space to hide · F2 to open · right-click for the layer menu"
+      title={t('timeline.header.rowHint', '↑ ↓ to move · → ← to twirl · Enter to rename · Space to hide · F2 to open · right-click for the layer menu')}
     >
       <div className={styles.preInfoCol}>
         <button
@@ -309,8 +320,8 @@ export const TrackHeader = memo(function TrackHeader({
           className={styles.trackAction}
           data-kind="visible"
           data-on={!hidden || undefined}
-          aria-label={hidden ? 'Show track' : 'Hide track'}
-          title={hidden ? 'Show (Video)' : 'Hide (Video)'}
+          aria-label={hidden ? t('timeline.header.showTrack', 'Show track') : t('timeline.header.hideTrack', 'Hide track')}
+          title={hidden ? t('timeline.header.showVideo', 'Show (Video)') : t('timeline.header.hideVideo', 'Hide (Video)')}
           onClick={(e) => { e.stopPropagation(); onToggleVisible(); }}
         >
           {!hidden ? <Icon name="eye" size="md" /> : null}
@@ -325,9 +336,9 @@ export const TrackHeader = memo(function TrackHeader({
             className={styles.trackAction}
             data-kind="audio"
             data-on={!audioMuted || undefined}
-            aria-label={audioMuted ? 'Unmute layer audio' : 'Mute layer audio'}
+            aria-label={audioMuted ? t('timeline.header.unmuteLayerAudio', 'Unmute layer audio') : t('timeline.header.muteLayerAudio', 'Mute layer audio')}
             aria-pressed={audioMuted}
-            title={audioMuted ? 'Unmute audio' : 'Mute audio'}
+            title={audioMuted ? t('timeline.header.unmuteAudio', 'Unmute audio') : t('timeline.header.muteAudio', 'Mute audio')}
             onClick={(e) => { e.stopPropagation(); onToggleAudio(); }}
           >
             {!audioMuted ? <Icon name="audio" size="md" /> : null}
@@ -340,8 +351,8 @@ export const TrackHeader = memo(function TrackHeader({
             disabled
             tabIndex={-1}
             aria-hidden="true"
-            title="Audio not available for this layer"
-            aria-label="Audio not available for this layer"
+            title={t('timeline.header.audioUnavailable', 'Audio not available for this layer')}
+            aria-label={t('timeline.header.audioUnavailable', 'Audio not available for this layer')}
           />
         )}
         <button
@@ -349,8 +360,8 @@ export const TrackHeader = memo(function TrackHeader({
           className={styles.trackAction}
           data-kind="solo"
           data-on={solo || undefined}
-          aria-label={solo ? 'Unsolo track' : 'Solo track'}
-          title={solo ? 'Unsolo' : 'Alt-click to solo only this layer'}
+          aria-label={solo ? t('timeline.header.unsoloTrack', 'Unsolo track') : t('timeline.header.soloTrack', 'Solo track')}
+          title={solo ? t('timeline.header.unsolo', 'Unsolo') : t('timeline.header.soloHint', 'Alt-click to solo only this layer')}
           onClick={(e) => { e.stopPropagation(); onToggleSolo(e.altKey); }}
         >
           {solo ? <Icon name="circle" size="md" /> : null}
@@ -360,8 +371,8 @@ export const TrackHeader = memo(function TrackHeader({
           className={styles.trackAction}
           data-kind="lock"
           data-on={locked || undefined}
-          aria-label={locked ? 'Unlock track' : 'Lock track'}
-          title={locked ? 'Unlock' : 'Lock'}
+          aria-label={locked ? t('timeline.header.unlockTrack', 'Unlock track') : t('timeline.header.lockTrack', 'Lock track')}
+          title={locked ? t('timeline.header.unlock', 'Unlock') : t('timeline.header.lock', 'Lock')}
           onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
         >
           {locked ? <Icon name="lock" size="md" /> : null}
@@ -383,12 +394,12 @@ export const TrackHeader = memo(function TrackHeader({
         <button
           type="button"
           className={cn(styles.disclosure, !hasProps && styles.disclosureHidden)}
-          aria-label={expanded ? 'Collapse properties' : 'Reveal animated properties'}
+          aria-label={expanded ? t('timeline.header.collapseProps', 'Collapse properties') : t('timeline.header.revealProps', 'Reveal animated properties')}
           aria-expanded={expanded}
           title={
             expanded
-              ? 'Collapse (Alt+click: this layer and everything under it)'
-              : 'Reveal animated properties (U) — Alt+click for this layer and everything under it'
+              ? t('timeline.header.collapsePropsTitle', 'Collapse (Alt+click: this layer and everything under it)')
+              : t('timeline.header.revealPropsTitle', 'Reveal animated properties (U) — Alt+click for this layer and everything under it')
           }
           onClick={(e) => {
             e.stopPropagation();
@@ -404,8 +415,8 @@ export const TrackHeader = memo(function TrackHeader({
             type="button"
             className={styles.labelSwatch}
             style={{ background: track.nodeColor || 'transparent' }}
-            aria-label={`Label: ${labelNameOf(track.nodeColor)}`}
-            title={`Label: ${labelNameOf(track.nodeColor)} — click to change`}
+            aria-label={t('timeline.header.label', 'Label: {name}', { name: labelNameOf(track.nodeColor) })}
+            title={t('timeline.header.labelTitle', 'Label: {name} — click to change', { name: labelNameOf(track.nodeColor) })}
             onClick={(e) => {
               e.stopPropagation();
               const r = e.currentTarget.getBoundingClientRect();
@@ -439,7 +450,7 @@ export const TrackHeader = memo(function TrackHeader({
         ) : (
           <span
             className={styles.trackName}
-            title={`${shownName} — double-click to rename`}
+            title={t('timeline.header.renameHint', '{name} — double-click to rename', { name: shownName })}
             onDoubleClick={startRename}
           >
             {shownName}
@@ -449,7 +460,7 @@ export const TrackHeader = memo(function TrackHeader({
             the name column's right edge, out of the way of the name. */}
         <div
           className={styles.dragHandle}
-          title="Drag to reorder"
+          title={t('timeline.header.dragToReorder', 'Drag to reorder')}
           onPointerDown={onReorderStart}
         >
           <Icon name="grip-vertical" size="md" />
@@ -463,8 +474,8 @@ export const TrackHeader = memo(function TrackHeader({
             className={styles.trackAction}
             data-kind="shy"
             data-on={track.shy || undefined}
-            title="Toggle Shy Layer"
-            aria-label="Toggle Shy Layer"
+            title={t('timeline.header.toggleShy', 'Toggle Shy Layer')}
+            aria-label={t('timeline.header.toggleShy', 'Toggle Shy Layer')}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('shy'); }}
           >
             {track.shy ? <Icon name="shy" size="md" /> : null}
@@ -479,8 +490,8 @@ export const TrackHeader = memo(function TrackHeader({
               data-kind="collapse"
               data-on={collapseOn || undefined}
               aria-pressed={collapseOn}
-              aria-label={collapseKind === 'collapse' ? 'Collapse Transformations' : 'Continuous Rasterize'}
-              title={collapseKind === 'collapse' ? 'Collapse Transformations' : 'Continuous Rasterize'}
+              aria-label={collapseKind === 'collapse' ? t('timeline.header.collapseTransformations', 'Collapse Transformations') : t('timeline.header.continuousRasterize', 'Continuous Rasterize')}
+              title={collapseKind === 'collapse' ? t('timeline.header.collapseTransformations', 'Collapse Transformations') : t('timeline.header.continuousRasterize', 'Continuous Rasterize')}
               onClick={(e) => { e.stopPropagation(); toggleCollapseSwitch(track.id); }}
             >
               {collapseOn ? <Icon name="star" size="md" /> : null}
@@ -493,8 +504,8 @@ export const TrackHeader = memo(function TrackHeader({
               disabled
               tabIndex={-1}
               aria-hidden="true"
-              title="Not available for this layer"
-              aria-label="Not available for this layer"
+              title={t('timeline.header.notAvailable', 'Not available for this layer')}
+              aria-label={t('timeline.header.notAvailable', 'Not available for this layer')}
             />
           )}
 
@@ -506,11 +517,11 @@ export const TrackHeader = memo(function TrackHeader({
               data-on={quality !== 'best' || undefined}
               data-quality={quality}
               aria-pressed={quality !== 'best'}
-              aria-label={QUALITY_SWITCH[quality].label}
-              title={QUALITY_SWITCH[quality].title}
+              aria-label={qualitySwitch(quality).label}
+              title={qualitySwitch(quality).title}
               onClick={(e) => { e.stopPropagation(); toggleQualitySwitch(track.id); }}
             >
-              <span className={styles.fxText}>{QUALITY_SWITCH[quality].glyph}</span>
+              <span className={styles.fxText}>{qualitySwitch(quality).glyph}</span>
             </button>
           ) : (
             <button
@@ -520,8 +531,8 @@ export const TrackHeader = memo(function TrackHeader({
               disabled
               tabIndex={-1}
               aria-hidden="true"
-              title="Quality not available for this layer"
-              aria-label="Quality not available for this layer"
+              title={t('timeline.header.qualityUnavailable', 'Quality not available for this layer')}
+              aria-label={t('timeline.header.qualityUnavailable', 'Quality not available for this layer')}
             />
           )}
 
@@ -538,8 +549,8 @@ export const TrackHeader = memo(function TrackHeader({
               className={styles.trackAction}
               data-kind="fx"
               data-on={track.fxEnabled !== false || undefined}
-              title="Toggle Effects (fx)"
-              aria-label="Toggle Effects (fx)"
+              title={t('timeline.header.toggleEffects', 'Toggle Effects (fx)')}
+              aria-label={t('timeline.header.toggleEffects', 'Toggle Effects (fx)')}
               onClick={(e) => { e.stopPropagation(); onToggleFlag?.('fxEnabled'); }}
             >
               {track.fxEnabled !== false ? <span className={styles.fxText}>fx</span> : null}
@@ -552,8 +563,8 @@ export const TrackHeader = memo(function TrackHeader({
               disabled
               tabIndex={-1}
               aria-hidden="true"
-              title="No effects on this layer"
-              aria-label="No effects on this layer"
+              title={t('timeline.header.noEffects', 'No effects on this layer')}
+              aria-label={t('timeline.header.noEffects', 'No effects on this layer')}
             />
           )}
 
@@ -564,8 +575,8 @@ export const TrackHeader = memo(function TrackHeader({
               data-kind="frameBlend"
               data-on={frameBlendOn || undefined}
               aria-pressed={frameBlendOn}
-              aria-label="Frame Blending"
-              title={frameBlendOn ? 'Frame Blending on — click to turn off' : 'Frame Blending'}
+              aria-label={t('timeline.header.frameBlending', 'Frame Blending')}
+              title={frameBlendOn ? t('timeline.header.frameBlendingOn', 'Frame Blending on — click to turn off') : t('timeline.header.frameBlending', 'Frame Blending')}
               onClick={(e) => { e.stopPropagation(); toggleFrameBlendSwitch(track.id); }}
             >
               {frameBlendOn ? <Icon name="video" size="md" /> : null}
@@ -578,8 +589,8 @@ export const TrackHeader = memo(function TrackHeader({
               disabled
               tabIndex={-1}
               aria-hidden="true"
-              title="Frame Blending not available for this layer"
-              aria-label="Frame Blending not available for this layer"
+              title={t('timeline.header.frameBlendingUnavailable', 'Frame Blending not available for this layer')}
+              aria-label={t('timeline.header.frameBlendingUnavailable', 'Frame Blending not available for this layer')}
             />
           )}
 
@@ -588,8 +599,8 @@ export const TrackHeader = memo(function TrackHeader({
             className={styles.trackAction}
             data-kind="motionBlur"
             data-on={track.motionBlur || undefined}
-            title="Toggle Motion Blur"
-            aria-label="Toggle Motion Blur"
+            title={t('timeline.header.toggleMotionBlur', 'Toggle Motion Blur')}
+            aria-label={t('timeline.header.toggleMotionBlur', 'Toggle Motion Blur')}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('motionBlur'); }}
           >
             {track.motionBlur ? <Icon name="motion-blur" size="md" /> : null}
@@ -599,8 +610,8 @@ export const TrackHeader = memo(function TrackHeader({
             className={styles.trackAction}
             data-kind="adjustment"
             data-on={track.adjustment || undefined}
-            title="Toggle Adjustment Layer"
-            aria-label="Toggle Adjustment Layer"
+            title={t('timeline.header.toggleAdjustment', 'Toggle Adjustment Layer')}
+            aria-label={t('timeline.header.toggleAdjustment', 'Toggle Adjustment Layer')}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('adjustment'); }}
           >
             {track.adjustment ? <Icon name="adjustment" size="md" /> : null}
@@ -611,8 +622,8 @@ export const TrackHeader = memo(function TrackHeader({
             data-kind="guide"
             data-on={track.guide || undefined}
             aria-pressed={track.guide === true}
-            title={track.guide ? 'Guide layer — not rendered on export' : 'Make Guide Layer'}
-            aria-label={track.guide ? 'Guide layer — not rendered on export' : 'Make Guide Layer'}
+            title={track.guide ? t('timeline.header.guideOn', 'Guide layer — not rendered on export') : t('timeline.header.makeGuide', 'Make Guide Layer')}
+            aria-label={track.guide ? t('timeline.header.guideOn', 'Guide layer — not rendered on export') : t('timeline.header.makeGuide', 'Make Guide Layer')}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('guide'); }}
           >
             {track.guide ? <Icon name="frame" size="md" /> : null}
@@ -626,10 +637,10 @@ export const TrackHeader = memo(function TrackHeader({
             data-kind="preserveTransparency"
             data-on={track.preserveTransparency || undefined}
             aria-pressed={track.preserveTransparency === true}
-            aria-label="Preserve Underlying Transparency"
+            aria-label={t('timeline.header.preserveTransparency', 'Preserve Underlying Transparency')}
             title={track.preserveTransparency
-              ? 'Preserve Underlying Transparency — visible only where layers beneath are opaque'
-              : 'Preserve Underlying Transparency'}
+              ? t('timeline.header.preserveTransparencyOn', 'Preserve Underlying Transparency — visible only where layers beneath are opaque')
+              : t('timeline.header.preserveTransparency', 'Preserve Underlying Transparency')}
             onClick={(e) => { e.stopPropagation(); onToggleFlag?.('preserveTransparency'); }}
           >
             {track.preserveTransparency ? <span className={styles.fxText}>T</span> : null}
@@ -643,8 +654,8 @@ export const TrackHeader = memo(function TrackHeader({
               disabled
               tabIndex={-1}
               aria-hidden="true"
-              title="Cameras and lights are always 3D"
-              aria-label="Cameras and lights are always 3D"
+              title={t('timeline.header.always3d', 'Cameras and lights are always 3D')}
+              aria-label={t('timeline.header.always3d', 'Cameras and lights are always 3D')}
             />
           ) : (
             <button
@@ -652,8 +663,8 @@ export const TrackHeader = memo(function TrackHeader({
               className={styles.trackAction}
               data-kind="threeD"
               data-on={track.threeD || undefined}
-              title="Toggle 3D Layer"
-              aria-label="Toggle 3D Layer"
+              title={t('timeline.header.toggle3d', 'Toggle 3D Layer')}
+              aria-label={t('timeline.header.toggle3d', 'Toggle 3D Layer')}
               onClick={(e) => { e.stopPropagation(); onToggleFlag?.('threeD'); }}
             >
               {track.threeD ? <Icon name="3d" size="md" /> : null}
@@ -675,7 +686,7 @@ export const TrackHeader = memo(function TrackHeader({
           <Dropdown
             placement="bottom-start"
             trigger={
-              <button type="button" className={styles.timelineSelectTrigger} aria-label="Layer Blend Mode">
+              <button type="button" className={styles.timelineSelectTrigger} aria-label={t('timeline.header.blendMode', 'Layer Blend Mode')}>
                 {blendModeLabel(track.blendMode as LayerBlendMode | undefined)}
               </button>
             }
@@ -690,14 +701,14 @@ export const TrackHeader = memo(function TrackHeader({
           {/* AE's track-matte pick-whip: drag to any layer to matte with it
               (an alpha matte when none was set). The dropdown is the mode. */}
           <PickWhip
-            label="Track matte pick-whip"
+            label={t('timeline.header.matteWhip', 'Track matte pick-whip')}
             accept={(target) => target.nodeId !== track.id && !!documentMirror().layer(target.nodeId)}
             onPick={(target) => onMatteChange?.(setMatteSource(track.matteMode ?? { mode: 'alpha', inverted: false }, target.nodeId))}
           />
           <Dropdown
             placement="bottom-start"
             trigger={
-              <button type="button" className={styles.timelineSelectTrigger} aria-label="Track Matte" title={matteSourceName ? `Matte: ${matteSourceName}` : 'Track matte (the layer above unless one is picked)'}>
+              <button type="button" className={styles.timelineSelectTrigger} aria-label={t('timeline.header.trackMatte', 'Track Matte')} title={matteSourceName ? t('timeline.header.matteSource', 'Matte: {name}', { name: matteSourceName }) : t('timeline.header.trackMatteTitle', 'Track matte (the layer above unless one is picked)')}>
                 {currentMatteLabel}
               </button>
             }
@@ -715,7 +726,7 @@ export const TrackHeader = memo(function TrackHeader({
                     {
                       type: 'item' as const,
                       id: 'matte-source-above',
-                      label: 'Use the Layer Above',
+                      label: t('timeline.header.useLayerAbove', 'Use the Layer Above'),
                       onSelect: () => onMatteChange?.(setMatteSource(track.matteMode, undefined)),
                     },
                   ]
@@ -733,14 +744,14 @@ export const TrackHeader = memo(function TrackHeader({
       */}
       <div className={styles.parentCol} onClick={(e) => e.stopPropagation()}>
         <PickWhip
-          label={PARENT_WHIP_LABEL}
+          label={parentWhipLabel()}
           accept={(target) => mirrorCanBeParentOf(documentMirror(), track.id, target.nodeId)}
           onPick={(target, m) => onParentChange?.(target.nodeId, parentOptionsFor(m))}
         />
         <Dropdown
           placement="bottom-start"
           trigger={
-            <button type="button" className={styles.timelineSelectTrigger} aria-label="Parent Layer">
+            <button type="button" className={styles.timelineSelectTrigger} aria-label={t('timeline.header.parentLayer', 'Parent Layer')}>
               {currentParentName}
             </button>
           }
@@ -759,13 +770,26 @@ export const TrackHeader = memo(function TrackHeader({
           ? Math.round(mirrorStretchPercent(documentMirror(), track.id) * 10) / 10
           : extraColumnValue(id, layerSpan, frameRate, 100);
         const value = raw === null ? null : id === 'in' || id === 'out' ? raw + startFrame : raw;
-        const label = id === 'in' ? 'In' : id === 'out' ? 'Out' : id === 'duration' ? 'Duration' : 'Stretch';
+        const label = id === 'in'
+          ? t('timeline.columns.in', 'In')
+          : id === 'out'
+            ? t('timeline.columns.out', 'Out')
+            : id === 'duration'
+              ? t('timeline.columns.duration', 'Duration')
+              : t('timeline.columns.stretch', 'Stretch');
         return (
-          <div key={id} className={styles.extraCol} data-col={id} title={`${label} (${id === 'stretch' ? '%' : 'frames'}) — type a value and press Enter`}>
+          <div
+            key={id}
+            className={styles.extraCol}
+            data-col={id}
+            title={id === 'stretch'
+              ? t('timeline.columns.editPercentTitle', '{column} (%) — type a value and press Enter', { column: label })
+              : t('timeline.columns.editFramesTitle', '{column} (frames) — type a value and press Enter', { column: label })}
+          >
             {value === null ? '—' : (
               <ExtraColumnInput
                 value={value}
-                ariaLabel={`${label} of ${track.name}`}
+                ariaLabel={t('timeline.columns.valueOf', '{column} of {layer}', { column: label, layer: track.name })}
                 disabled={!onExtraColumnEdit || track.locked === true}
                 onCommit={(v) => onExtraColumnEdit?.(id, v)}
               />
@@ -815,6 +839,7 @@ export function PropertyHeader({
   contextMenuItems,
   expression,
   onEditExpression,
+  onAltStopwatch,
 }: {
   label: string;
   style: CSSProperties;
@@ -851,6 +876,8 @@ export function PropertyHeader({
   expression?: { enabled: boolean; error: string | null } | null;
   /** Open the row's expression editor (the `=` button). */
   onEditExpression?: () => void;
+  /** Alt-click on the stopwatch: add (and open) or remove the row's expression, as in After Effects. */
+  onAltStopwatch?: () => void;
 }): JSX.Element {
   const sorted = useMemo(() => [...keyframes].sort((a, b) => a.time - b.time), [keyframes]);
   const onContextMenu = contextMenuItems
@@ -896,7 +923,7 @@ export function PropertyHeader({
   // stack render, so the control that turns animation on cannot look like a
   // checkbox in one panel and a stopwatch in another.
   const stopwatch = onStopwatch ? (
-    <StopwatchButton animated={animated} label={label} onToggle={onStopwatch} />
+    <StopwatchButton animated={animated} label={label} onToggle={onStopwatch} onAltToggle={onAltStopwatch} />
   ) : null;
 
   // AE's expression `=`: lit while the expression runs, red when it fails —
@@ -905,13 +932,13 @@ export function PropertyHeader({
     <button
       type="button"
       className={cn(styles.exprBadge, !expression.enabled && styles.exprBadgeOff, expression.error && styles.exprBadgeError)}
-      aria-label={`Edit expression on ${label}`}
+      aria-label={t('timeline.property.editExpression', 'Edit expression on {name}', { name: label })}
       title={
         expression.error
-          ? `Expression error: ${expression.error} — click to edit`
+          ? t('timeline.property.expressionError', 'Expression error: {error} — click to edit', { error: expression.error })
           : expression.enabled
-            ? 'Expression — click to edit'
-            : 'Expression (disabled) — click to edit'
+            ? t('timeline.property.expression', 'Expression — click to edit')
+            : t('timeline.property.expressionDisabled', 'Expression (disabled) — click to edit')
       }
       onClick={(e) => {
         e.stopPropagation();
@@ -1035,7 +1062,7 @@ export function TrackCategoryHeader({
               e.preventDefault();
               e.stopPropagation();
               const { x, y } = contextMenuPoint(e);
-              openContextMenu(x, y, [{ id: 'reset', label: 'Reset', onSelect: onReset }]);
+              openContextMenu(x, y, [{ id: 'reset', label: t('timeline.category.reset', 'Reset'), onSelect: onReset }]);
             }
           : undefined
       }
@@ -1051,14 +1078,14 @@ export function TrackCategoryHeader({
         <button
           type="button"
           className={styles.categoryReset}
-          aria-label={`Reset ${label}`}
-          title={`Reset ${label} — remove its keyframes and restore the defaults`}
+          aria-label={t('timeline.category.resetNamed', 'Reset {name}', { name: label })}
+          title={t('timeline.category.resetTitle', 'Reset {name} — remove its keyframes and restore the defaults', { name: label })}
           onClick={(e) => {
             e.stopPropagation();
             onReset();
           }}
         >
-          Reset
+          {t('timeline.category.reset', 'Reset')}
         </button>
       ) : null}
       <span className={styles.categoryBadge}>{count}</span>
@@ -1116,8 +1143,8 @@ function sourceNameOf(layerId: string): string | null {
 
 /** The label's name, AE-style (a custom colour reads "Custom"). */
 function labelNameOf(color: string | undefined): string {
-  if (!color) return 'None';
-  return LABEL_COLORS.find((l) => l.color.toLowerCase() === color.toLowerCase())?.label ?? 'Custom';
+  if (!color) return t('timeline.header.none', 'None');
+  return LABEL_COLORS.find((l) => l.color.toLowerCase() === color.toLowerCase())?.label ?? t('timeline.header.labelCustom', 'Custom');
 }
 
 /** AE's label menu: None, the named palette (the current one ticked), Select Label Group. */
@@ -1139,6 +1166,6 @@ function labelMenuItems(
       onSelect: () => onTrackColorChange?.(trackId, l.color),
     })),
     { id: 'label-sep', separator: true },
-    { id: 'select-label-group', label: 'Select Label Group', onSelect: () => { selectLabelGroup(trackId); } },
+    { id: 'select-label-group', label: t('timeline.header.selectLabelGroup', 'Select Label Group'), onSelect: () => { selectLabelGroup(trackId); } },
   ];
 }

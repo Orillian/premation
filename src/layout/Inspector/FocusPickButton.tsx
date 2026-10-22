@@ -9,6 +9,7 @@
  * reads as part of the Focus Distance row rather than as a separate verb.
  */
 
+import { t } from '@core/i18n';
 import { Icon } from '@components/Icon';
 import { useFocusPickStore } from '@layout/Workspace/focusPickStore';
 import styles from './TransformSection.module.css';
@@ -19,8 +20,8 @@ export function FocusPickButton({ nodeId }: { nodeId: string }): JSX.Element {
     <button
       type="button"
       className={armed ? `${styles.lockToggle} ${styles.lockToggleActive}` : styles.lockToggle}
-      title={armed ? 'Click a layer in the viewer to focus on it (Esc cancels)' : 'Pick focus on canvas: click a layer in the viewer'}
-      aria-label="Pick focus on canvas"
+      title={armed ? t('inspector.focusPick.armedHint', 'Click a layer in the viewer to focus on it (Esc cancels)') : t('inspector.focusPick.hint', 'Pick focus on canvas: click a layer in the viewer')}
+      aria-label={t('inspector.focusPick.label', 'Pick focus on canvas')}
       aria-pressed={armed}
       onClick={() => {
         const s = useFocusPickStore.getState();

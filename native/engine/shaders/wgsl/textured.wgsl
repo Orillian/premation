@@ -7,6 +7,7 @@ struct Object {
   cr1 : vec4<f32>,
   cr2 : vec4<f32>,
   srcSpace : vec4<f32>,
+  edge : vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> obj : Object;
 @group(0) @binding(1) var tex : texture_2d<f32>;
@@ -15,14 +16,17 @@ struct Object {
 struct VOut {
   @builtin(position) pos : vec4<f32>,
   @location(0) uv : vec2<f32>,
+  @location(1) local : vec2<f32>,
 };
 
 @vertex
 fn vs(@location(0) pos : vec2<f32>) -> VOut {
   var o : VOut;
-  let p = obj.mvp * vec3<f32>(pos, 1.0);
+  let local = mix(-obj.edge.xy, vec2<f32>(1.0) + obj.edge.xy, pos);
+  let p = obj.mvp * vec3<f32>(local, 1.0);
   o.pos = vec4<f32>(p.xy, 0.0, p.z);
-  o.uv = obj.uvRect.xy + pos * obj.uvRect.zw;
+  o.uv = obj.uvRect.xy + local * obj.uvRect.zw;
+  o.local = local;
   return o;
 }
 
@@ -128,12 +132,39 @@ fn workingFromSample(rgb : vec3<f32>, srcLinear : f32) -> vec3<f32> {
 fn workingToStorage(rgb : vec3<f32>) -> vec3<f32> { return rgb; }
 fn storageToWorking(rgb : vec3<f32>) -> vec3<f32> { return rgb; }
 
+
+// Layer-edge antialiasing (uniforms.hpp LayerEdge): `local` is the layer's unit
+// quad, grown by edge.xy (one device pixel) each side. The coverage is the area
+// of a one-pixel box filter inside the quad, per axis in device pixels from the
+// local coordinate's screen gradient, so a rotated, scaled or squashed edge
+// gets the same one-pixel ramp; a pixel-aligned edge stays fully opaque.
+fn edgeCoverage(local : vec2<f32>) -> f32 {
+  let gx = max(length(vec2<f32>(dpdx(local.x), dpdy(local.x))), 1e-8);
+  let gy = max(length(vec2<f32>(dpdx(local.y), dpdy(local.y))), 1e-8);
+  let cx = clamp(local.x / gx + 0.5, 0.0, 1.0) + clamp((1.0 - local.x) / gx + 0.5, 0.0, 1.0) - 1.0;
+  let cy = clamp(local.y / gy + 0.5, 0.0, 1.0) + clamp((1.0 - local.y) / gy + 0.5, 0.0, 1.0) - 1.0;
+  return max(cx, 0.0) * max(cy, 0.0);
+}
+
 @fragment
-fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
-  let c = unpremul(textureSample(tex, smp, uv)) * obj.tint;
+fn fs(@location(0) uvIn : vec2<f32>, @location(1) local : vec2<f32>) -> @location(0) vec4<f32> {
+  // The grown margin samples the edge texel (clamped to the uv rect), with the
+  // unclamped gradients so a mipmapped texture keeps its level there. edge.w
+  // scales them (0 = 1): a vector raster is supersampled 2×, so its mip level
+  // is chosen one finer — the 2× texels are already antialiased, and the
+  // coarser level would add a second pixel of blur to every edge.
+  let uvLo = min(obj.uvRect.xy, obj.uvRect.xy + obj.uvRect.zw);
+  let uvHi = max(obj.uvRect.xy, obj.uvRect.xy + obj.uvRect.zw);
+  let uv = clamp(uvIn, uvLo, uvHi);
+  let lodScale = select(1.0, obj.edge.w, obj.edge.w > 0.0);
+  let ddx = dpdx(uvIn) * lodScale;
+  let ddy = dpdy(uvIn) * lodScale;
+  let cov = select(1.0, edgeCoverage(local), obj.edge.z > 0.5);
+  let c = unpremul(textureSampleGrad(tex, smp, uv, ddx, ddy)) * obj.tint;
   let lin = workingFromSample(c.rgb, 0.0);
   let ws = select(lin, linearSrgbToAcesCg(lin), obj.srcSpace.y > 0.5);
   let v = vec4<f32>(ws, 1.0);
   let graded = vec3<f32>(dot(obj.cr0, v), dot(obj.cr1, v), dot(obj.cr2, v));
-  return vec4<f32>(graded * c.a, c.a);
+  let a = c.a * cov;
+  return vec4<f32>(graded * a, a);
 }

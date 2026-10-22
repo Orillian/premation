@@ -202,7 +202,7 @@ export function AppMenuBar(): JSX.Element {
       className={styles.bar}
       ref={barRef}
       role="menubar"
-      aria-label="Application menu"
+      aria-label={t('menuBar.bar.aria', 'Application menu')}
       style={naturalWidth !== null ? { width: naturalWidth } : undefined}
     >
       {menuGroups.map((g, i) => (

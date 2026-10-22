@@ -26,6 +26,7 @@ import { BoneControls } from '@layout/Inspector/BoneControls';
 import { PuppetControls } from '@layout/Inspector/PuppetControls';
 import { renderInspector } from '@layout/Inspector/InspectorContent';
 import styles from './panels.module.css';
+import { t } from '@core/i18n';
 
 export function RigPanel(): JSX.Element {
   const selected = useSelectionStore((s) => s.ids);
@@ -35,7 +36,7 @@ export function RigPanel(): JSX.Element {
   return (
     <Panel
       id="rig"
-      title="Rigging"
+      title={t('panel.rig', 'Rigging')}
       icon="bone"
       hideHeader
       onClose={() => getEventBus().emit('PanelClosed', { panelId: 'rig' })}
@@ -43,8 +44,8 @@ export function RigPanel(): JSX.Element {
       {primary && (
         <div className={styles.searchRow}>
           <SearchField
-            placeholder="Search rigging…"
-            ariaLabel="Search rigging"
+            placeholder={t('editor.rig.searchPlaceholder', 'Search rigging…')}
+            ariaLabel={t('editor.rig.search', 'Search rigging')}
             value={query}
             onChange={setQuery}
           />
@@ -66,22 +67,22 @@ function RigPanelContent({ nodeId, query = '' }: { nodeId: string | null; query?
     return (
       <EmptyState
         icon="bone"
-        title="Character Rigging"
-        message="Select a layer, then use the Puppet or Bone tool."
+        title={t('editor.rig.emptyTitle', 'Character Rigging')}
+        message={t('editor.rig.emptyMessage', 'Select a layer, then use the Puppet or Bone tool.')}
         action={
           <>
             <Button size="sm" variant="secondary" fullWidth onClick={() => useUIStore.getState().setActiveTool('bone')}>
-              <Icon name="bone" size="sm" style={{ color: '#f97316' }} /> Bone Tool
+              <Icon name="bone" size="sm" style={{ color: '#f97316' }} /> {t('editor.rig.boneTool', 'Bone Tool')}
             </Button>
             <Button size="sm" variant="secondary" fullWidth onClick={() => useUIStore.getState().setActiveTool('puppet-pin')}>
-              <Icon name="puppet-pin" size="sm" /> Puppet Pin Tool
+              <Icon name="puppet-pin" size="sm" /> {t('editor.rig.puppetPinTool', 'Puppet Pin Tool')}
             </Button>
           </>
         }
       />
     );
   }
-  if (!layer) return <div className={styles.empty}>No node data</div>;
+  if (!layer) return <div className={styles.empty}>{t('editor.rig.noNodeData', 'No node data')}</div>;
 
   const items: AccordionItem[] = [];
   const hasSkeleton = !!tree?.nodes.has('skeleton');
@@ -90,7 +91,7 @@ function RigPanelContent({ nodeId, query = '' }: { nodeId: string | null; query?
   if (hasSkeleton || activeTool === 'bone' || !hasPuppet) {
     items.push({
       id: 'skeleton',
-      title: 'Bones',
+      title: t('editor.rig.bones', 'Bones'),
       icon: 'bone',
       defaultOpen: true,
       content: <BoneControls nodeId={nodeId} />,
@@ -100,7 +101,7 @@ function RigPanelContent({ nodeId, query = '' }: { nodeId: string | null; query?
   if (hasPuppet || activeTool === 'puppet-pin' || !hasSkeleton) {
     items.push({
       id: 'puppet',
-      title: 'Puppet',
+      title: t('editor.rig.puppet', 'Puppet'),
       icon: 'puppet-pin',
       defaultOpen: true,
       content: <PuppetControls nodeId={nodeId} />,

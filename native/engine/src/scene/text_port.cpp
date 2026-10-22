@@ -7,13 +7,19 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <numbers>
+#include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "eval.hpp"
+#include "expr.hpp"
 #include "fxstate.hpp"
 #include "jsmath.hpp"
 #include "line_break.hpp"
+#include "strutil.hpp"
 #include "text_measure.hpp"
 #include "text_unicode.hpp"
 
@@ -94,6 +100,110 @@ Json identity_glyph(const std::string& ch) {
   g.set("fillOpacity", Json::number(1));
   for (const char* k : {"tracking", "lineSpacing", "blur", "skew", "strokeWidth"}) g.set(k, Json::number(0));
   return g;
+}
+
+// ── Character Value / Range (textAnimators.ts) ──────────────────────────────
+
+/// `[...ch].length === 1 ? ch.codePointAt(0) : undefined`.
+std::optional<char32_t> single_code_point(const std::string& ch) {
+  const auto cps = raster::code_points(ch);
+  if (cps.size() != 1) return std::nullopt;
+  return static_cast<char32_t>(cps[0]);
+}
+
+std::string from_code_point(char32_t c) {
+  std::string out;
+  raster::append_utf8(out, c);
+  return out;
+}
+
+/// offsetCharacter: Character Range "Preserve Case & Digits" walks 0-9 / A-Z / a-z, wrapping.
+std::string offset_character(const std::string& ch, long long shift) {
+  if (shift == 0) return ch;
+  const auto cp = single_code_point(ch);
+  if (!cp) return ch;
+  const auto code = static_cast<long long>(*cp);
+  constexpr std::array<std::pair<long long, long long>, 3> kAlphabets{{{0x30, 0x39}, {0x41, 0x5a}, {0x61, 0x7a}}};
+  for (const auto& [lo, hi] : kAlphabets) {
+    if (code < lo || code > hi) continue;
+    const long long span = hi - lo + 1;
+    const long long shifted = (((code - lo + shift) % span) + span) % span;
+    return from_code_point(static_cast<char32_t>(lo + shifted));
+  }
+  return ch;
+}
+
+/// offsetCharacterFull: Character Range "Full Unicode" shifts the code point
+/// itself, stepping over the surrogate block, within U+0020..U+10FFFF.
+std::string offset_character_full(const std::string& ch, long long shift) {
+  if (shift == 0) return ch;
+  const auto cp = single_code_point(ch);
+  if (!cp) return ch;
+  long long c = static_cast<long long>(*cp) + shift;
+  if (c >= 0xd800 && c <= 0xdfff) c += shift > 0 ? 0x800 : -0x800;
+  c = std::max<long long>(0x20, std::min<long long>(0x10ffff, c));
+  return from_code_point(static_cast<char32_t>(c));
+}
+
+/// characterFromValue: the Character Value as a drawable character (clamped, surrogates refused).
+std::optional<std::string> character_from_value(double value) {
+  if (!std::isfinite(value)) return std::nullopt;
+  const double c = std::floor(value + 0.5);  // Math.round
+  if (c < 0x20 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)) return std::nullopt;
+  return from_code_point(static_cast<char32_t>(c));
+}
+
+// ── Expression selector (textSelectors.ts expressionSelectorAt) ─────────────
+
+/// The selector's source runs in the engine's expression language with AE's
+/// per-character names bound by a `var` prologue (the TypeScript evaluated the
+/// same AST with a scope of textIndex / textTotal / selectorValue / time).
+/// Compiled sources are kept by their full text: a stack over a short text
+/// compiles a handful per frame and finds them again on the next.
+class SelectorExpressions {
+ public:
+  double run(const std::string& src, int unit, int count, double incoming, double time) {
+    namespace ex = motion::expr;
+    std::string full = "var textIndex = " + js::number_to_string(unit) + "; var textTotal = " +
+                       js::number_to_string(count) + "; var selectorValue = " + js::number_to_string(incoming * 100) +
+                       ";\n" + src;
+    const ex::Expression* compiled = nullptr;
+    {
+      const std::scoped_lock lock(m_);
+      auto it = cache_.find(full);
+      if (it == cache_.end()) {
+        if (cache_.size() >= kMax) cache_.clear();
+        it = cache_.emplace(full, std::make_unique<ex::Expression>(ex::Expression::compile(ex::utf8_to_utf16(full)))).first;
+      }
+      compiled = it->second.get();
+    }
+    ex::Context ctx;
+    ctx.time = time;
+    ctx.value = incoming * 100;
+    const ex::Result r = compiled->run(ctx);
+    if (r.error || r.kind != ex::Result::Kind::kNumber || !std::isfinite(r.number)) return 0;
+    return r.number;
+  }
+
+ private:
+  static constexpr std::size_t kMax = 512;
+  std::mutex m_;
+  std::unordered_map<std::string, std::unique_ptr<motion::expr::Expression>> cache_;
+};
+
+SelectorExpressions& selector_expressions() {
+  static SelectorExpressions s;
+  return s;
+}
+
+/// expressionSelectorAt: 0 for a unit outside the text or a source that does
+/// not evaluate; else the percentage it returns, scaled by Amount.
+double expression_selector_at(const Json& sel, int unit, int count, double time, double incoming) {
+  if (unit < 0) return 0;
+  const std::string src = sel.at("expression").is_string() ? sel.at("expression").str() : std::string("selectorValue");
+  const double amount = sel.at("amount").is_number() ? sel.at("amount").num() : 100;
+  const double v = selector_expressions().run(src, unit, count, incoming, time);
+  return (v / 100) * (amount / 100);
 }
 
 }  // namespace
@@ -786,7 +896,15 @@ std::vector<Json> resolve_text_animators_json(const Json& stored, const Values& 
     }
     if (d.at("characterRange").is_string() && !d.at("characterRange").str().empty()) r.set("characterRange", d.at("characterRange"));
     if (d.at("trackingType").is_string() && !d.at("trackingType").str().empty()) r.set("trackingType", d.at("trackingType"));
-    if (d.at("axes").is_object() && !d.at("axes").obj().empty()) r.set("axes", d.at("axes"));
+    // Font Axis properties: the stored offsets, a keyed `ta.<i>.axis<TAG>` value winning.
+    if (d.at("axes").is_object()) {
+      Json axes = Json::object();
+      for (const auto& m : d.at("axes").obj()) {
+        if (!doc::is_axis_tag(m.key) || !m.value.is_number()) continue;
+        axes.set(m.key, Json::number(val((std::string("axis") + m.key).c_str(), m.value.num())));
+      }
+      if (!axes.obj().empty()) r.set("axes", std::move(axes));
+    }
     r.set("enabled", Json::boolean(!(d.at("enabled").is_bool() && !d.at("enabled").b())));
     // normalizeAnimator's selector stack, then resolveSelector.
     std::vector<Json> sels;
@@ -844,15 +962,14 @@ Json evaluate_text_animators(std::string_view text, const std::vector<Json>& ani
     if (it == units.end()) it = units.emplace(basedOn, unit_positions(chars, basedOn)).first;
     return it->second;
   };
-  const auto fail = [why](const char* w) {
-    if (why != nullptr) *why = w;
-    return Json();
-  };
+  if (why != nullptr) why->clear();  // every animator feature evaluates here
   std::vector<double> charShift(chars.size(), 0);
+  // Character Value replaces (last affecting animator wins); Character Range
+  // decides how the accumulated offset then walks.
+  std::vector<std::optional<double>> charValue(chars.size());
+  std::vector<std::string> charRange(chars.size());
   for (const Json& a : animators) {
     if (!a.at("enabled").b()) continue;
-    if (a.has("axes")) return fail("text animator font axes");
-    if (a.has("characterValue") || a.has("characterRange")) return fail("text animator Character Value / Range");
     std::vector<const Json*> active;
     for (const Json& s : a.at("selectors").arr()) {
       if (!(s.at("enabled").is_bool() && !s.at("enabled").b())) active.push_back(&s);
@@ -881,7 +998,9 @@ Json evaluate_text_animators(std::string_view text, const std::vector<Json>& ani
             vx = wiggly_selector_at(sel, unit, time, 0);
             vy = sel.at("lockDimensions").b() ? vx : wiggly_selector_at(sel, unit, time, 1);
           } else {
-            return fail("text animator expression selectors");
+            // The expression sees the stack so far as `selectorValue`, which is how
+            // AE's Text Bounce and Inch Worm presets shape an incoming range.
+            vx = vy = expression_selector_at(sel, unit, map.count, time, started ? accX : 1);
           }
           const std::string mode = sel.at("mode").is_string() ? sel.at("mode").str() : "add";
           if (!started) {
@@ -897,6 +1016,8 @@ Json evaluate_text_animators(std::string_view text, const std::vector<Json>& ani
         wy = clamp01(accY);
       }
       if (wx <= 0 && wy <= 0) continue;
+      if (a.at("characterValue").is_number() && wx >= 0.5) charValue[i] = a.at("characterValue").num();
+      if (a.at("characterRange").is_string() && a.at("characterOffset").num() != 0) charRange[i] = a.at("characterRange").str();
       // applyOptionalProperties.
       set_opt_sum(g, "anchorX", a.at("anchorX"), wx);
       set_opt_sum(g, "anchorY", a.at("anchorY"), wy);
@@ -914,6 +1035,15 @@ Json evaluate_text_animators(std::string_view text, const std::vector<Json>& ani
         const double tt = tracking * wx;
         g.set("trackingBefore",
               Json::number(jnum(g.at("trackingBefore"), 0) + (a.at("trackingType").str() == "before" ? tt : tt / 2)));
+      }
+      // Font Axis properties: per-glyph variation offsets, summed under the selector.
+      if (a.at("axes").is_object()) {
+        for (const auto& m : a.at("axes").obj()) {
+          if (!doc::is_axis_tag(m.key) || !m.value.is_finite_number() || m.value.num() == 0) continue;
+          Json ax = g.at("axes").is_object() ? g.at("axes") : Json::object();
+          ax.set(m.key, Json::number(jnum(ax.at(m.key), 0) + m.value.num() * wx));
+          g.set("axes", std::move(ax));
+        }
       }
       const auto add = [&g](const char* k, double v) { g.set(k, Json::number(g.at(k).num() + v)); };
       add("dx", a.at("x").num() * wx);
@@ -948,24 +1078,17 @@ Json evaluate_text_animators(std::string_view text, const std::vector<Json>& ani
       }
     }
   }
-  // Character Offset: offsetCharacter walks 0-9 / A-Z / a-z, wrapping.
+  // Value first, then the offset walks from the replaced character — AE's
+  // order, so a Character Value + Character Offset pair counts up from it.
   for (std::size_t i = 0; i < glyphs.size(); ++i) {
-    const auto shift = static_cast<long long>(std::floor(charShift[i] + 0.5));  // Math.round
-    if (shift == 0) continue;
     const std::string& ch = chars[i];
-    const auto cps = raster::code_points(ch);
-    if (cps.size() != 1) continue;
-    const auto code = static_cast<long long>(cps[0]);
-    constexpr std::array<std::pair<long long, long long>, 3> kAlphabets{{{0x30, 0x39}, {0x41, 0x5a}, {0x61, 0x7a}}};
-    for (const auto& [lo, hi] : kAlphabets) {
-      if (code < lo || code > hi) continue;
-      const long long span = hi - lo + 1;
-      const long long shifted = (((code - lo + shift) % span) + span) % span;
-      std::string walked;
-      raster::append_utf8(walked, static_cast<char32_t>(lo + shifted));
-      if (walked != ch) glyphs[i].set("displayChar", Json::string(walked));
-      break;
+    std::string from = ch;
+    if (charValue[i]) {
+      if (const auto replaced = character_from_value(*charValue[i])) from = *replaced;
     }
+    const auto shift = static_cast<long long>(std::floor(charShift[i] + 0.5));  // Math.round
+    const std::string walked = shift == 0 ? from : charRange[i] == "full" ? offset_character_full(from, shift) : offset_character(from, shift);
+    if (walked != ch) glyphs[i].set("displayChar", Json::string(walked));
   }
   Json out = Json::array();
   for (Json& g : glyphs) out.arr_mut().push_back(std::move(g));

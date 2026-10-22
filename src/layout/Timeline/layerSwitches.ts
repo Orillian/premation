@@ -45,6 +45,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { edit } from '@core/engine/uiEdits';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 const QUALITY_LABEL: Readonly<Record<LayerQuality, string>> = {
   best: 'Quality: Best',
@@ -59,6 +60,15 @@ const SWITCH_LABEL: Readonly<Record<MirrorSwitch, string>> = {
   frameBlend: 'Frame Blending',
 };
 
+/** The refusal toast. `SWITCH_LABEL` stays English: it names the undo entry. */
+function switchUnavailableMessage(flag: MirrorSwitch): string {
+  switch (flag) {
+    case 'collapse': return t('timeline.switches.collapseUnavailable', "Collapse Transformations isn't available for that layer");
+    case 'quality': return t('timeline.switches.qualityUnavailable', "Quality isn't available for that layer");
+    case 'frameBlend': return t('timeline.switches.frameBlendUnavailable', "Frame Blending isn't available for that layer");
+  }
+}
+
 /**
  * One timeline switch on one layer through the engine (the three below).
  * Unavailable → the same one-line refusal `toggleLayerFlags` showed.
@@ -68,7 +78,7 @@ function setSwitch(nodeId: string, flag: MirrorSwitch, next: boolean | LayerQual
   if (!m.layer(nodeId)) return;
   const name = SWITCH_LABEL[flag];
   if (!mirrorSwitchAvailable(m, nodeId, flag)) {
-    useUIStore.getState().notify({ level: 'warning', message: `${name} isn't available for that layer`, durationMs: 2600 });
+    useUIStore.getState().notify({ level: 'warning', message: switchUnavailableMessage(flag), durationMs: 2600 });
     return;
   }
   const patch: LayerSwitchesPatch =

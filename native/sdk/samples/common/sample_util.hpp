@@ -147,8 +147,18 @@ enum class Fault : int { none = 1, access_violation, divide_by_zero, stack_overf
 
 /// Declare the Debug group (last in every sample's params).
 inline PrErr add_fault_params(const PrInData* in) {
-  PrErr e = add_simple(in, PR_PARAM_GROUP_START, kFaultGroupId, "Debug", {}, PR_PARAM_FLAG_START_COLLAPSED);
-  if (e == PR_ERR_NONE) e = add_simple(in, PR_PARAM_POPUP, kFaultParamId, "Fault", {1, 0, 0, 0}, 0, kFaultChoices);
+  // SDK 1.2 descriptions: Effect Controls shows them as the group's and the param's tooltips.
+  PrParamDef group = param(PR_PARAM_GROUP_START, kFaultGroupId, "Debug");
+  group.flags = PR_PARAM_FLAG_START_COLLAPSED;
+  group.description = "Host crash-isolation tests. Leave closed in real work.";
+  PrErr e = in->host->add_param(in->host_ref, &group);
+  // A test switch, not a look: never keyframed (CANNOT_ANIMATE — the card shows no stopwatch).
+  PrParamDef fault = param(PR_PARAM_POPUP, kFaultParamId, "Fault");
+  fault.value[0] = 1;
+  fault.flags = PR_PARAM_FLAG_CANNOT_ANIMATE;
+  fault.popup_choices = kFaultChoices;
+  fault.description = "Makes this effect fail on purpose, to check the host isolates it.";
+  if (e == PR_ERR_NONE) e = in->host->add_param(in->host_ref, &fault);
   if (e == PR_ERR_NONE) e = add_simple(in, PR_PARAM_GROUP_END, kFaultGroupEndId, "", {});
   return e;
 }

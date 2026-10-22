@@ -34,6 +34,7 @@ import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
 import { engine } from '@core/engine/engineInstance';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { engineCacheSnapshot } from './engineCacheCoverage';
 import { formatCacheMb, previewCacheStats } from './previewCacheStats';
 
@@ -49,10 +50,14 @@ const MB = 1024 * 1024;
  * viewport open there is nowhere to store frames. Shown wherever the action is
  * offered (the lane button's tooltip, the menu row, the toast).
  */
-export const CACHE_WORK_AREA_UNAVAILABLE = 'The preview cache fills from the viewport — open a composition to cache it.';
+export function cacheWorkAreaUnavailable(): string {
+  return t('timeline.cache.workAreaUnavailable', 'The preview cache fills from the viewport — open a composition to cache it.');
+}
 
 /** Why "Purge Disk Cache" has nothing to do. */
-export const DISK_CACHE_UNAVAILABLE = 'The disk cache is empty (or off in Preferences ▸ Media & Disk Cache).';
+export function diskCacheUnavailable(): string {
+  return t('timeline.cache.diskUnavailable', 'The disk cache is empty (or off in Preferences ▸ Media & Disk Cache).');
+}
 
 /**
  * Whether the engine can be asked to fill its frame cache now: there is a
@@ -87,17 +92,23 @@ function toast(message: string, level: 'info' | 'success' | 'warning' = 'info'):
 export function cacheWorkAreaNow(): void {
   const stats = previewCacheStats();
   if (stats.total === 0) {
-    toast('Nothing to cache — this composition has no frames', 'warning');
+    toast(t('timeline.cache.noFrames', 'Nothing to cache — this composition has no frames'), 'warning');
     return;
   }
   if (stats.cached >= stats.total) {
-    toast(stats.workArea ? 'Work area is already cached' : 'Composition is already cached', 'info');
+    toast(stats.workArea
+      ? t('timeline.cache.workAreaCached', 'Work area is already cached')
+      : t('timeline.cache.compositionCached', 'Composition is already cached'), 'info');
     return;
   }
   void engine()
     .execute({ type: 'play', rate: 1, range: stats.workArea ? 'workArea' : 'all', audio: false, cacheFirst: true, cacheOnly: true })
     .then((res) => {
-      if (!res.ok) toast(`Could not cache the ${stats.workArea ? 'work area' : 'composition'}: ${res.error.message}`, 'warning');
+      if (!res.ok) {
+        toast(stats.workArea
+          ? t('timeline.cache.workAreaFailed', 'Could not cache the work area: {error}', { error: res.error.message })
+          : t('timeline.cache.compositionFailed', 'Could not cache the composition: {error}', { error: res.error.message }), 'warning');
+      }
     });
 }
 
@@ -108,25 +119,27 @@ export function purgeRamPreview(): void {
   const held = engineCacheSnapshot().ramBytes / MB;
   void engine().execute({ type: 'purgeCache', kind: 'ram' }).then((res) => {
     if (!res.ok) {
-      toast(`Could not purge the preview cache: ${res.error.message}`, 'warning');
+      toast(t('timeline.cache.purgeRamFailed', 'Could not purge the preview cache: {error}', { error: res.error.message }), 'warning');
       return;
     }
-    toast(held > 0 ? `Purged ${formatCacheMb(held)} from the preview cache` : 'Purged the preview cache', 'success');
+    toast(held > 0
+      ? t('timeline.cache.purgedRamSize', 'Purged {size} from the preview cache', { size: formatCacheMb(held) })
+      : t('timeline.cache.purgedRam', 'Purged the preview cache'), 'success');
   });
 }
 
 export function purgeDiskCache(): void {
   if (!hasEngineDiskCache()) {
-    toast(DISK_CACHE_UNAVAILABLE, 'info');
+    toast(diskCacheUnavailable(), 'info');
     return;
   }
   const held = engineCacheSnapshot().diskBytes / MB;
   void engine().execute({ type: 'purgeCache', kind: 'disk' }).then((res) => {
     if (!res.ok) {
-      toast(`Could not purge the disk cache: ${res.error.message}`, 'warning');
+      toast(t('timeline.cache.purgeDiskFailed', 'Could not purge the disk cache: {error}', { error: res.error.message }), 'warning');
       return;
     }
-    toast(`Purged ${formatCacheMb(held)} of disk cache`, 'success');
+    toast(t('timeline.cache.purgedDiskSize', 'Purged {size} of disk cache', { size: formatCacheMb(held) }), 'success');
   });
 }
 
@@ -139,10 +152,12 @@ export function purgeAllCaches(): void {
   ]).then(([ram, disk]) => {
     if (!ram.ok || !disk.ok) {
       const err = !ram.ok ? ram.error : !disk.ok ? disk.error : null;
-      toast(`Could not purge the caches: ${err?.message ?? 'unknown error'}`, 'warning');
+      toast(t('timeline.cache.purgeAllFailed', 'Could not purge the caches: {error}', {
+        error: err?.message ?? t('timeline.cache.unknownError', 'unknown error'),
+      }), 'warning');
       return;
     }
-    toast('Purged the preview cache and the disk cache', 'success');
+    toast(t('timeline.cache.purgedAll', 'Purged the preview cache and the disk cache'), 'success');
   });
 }
 
@@ -150,8 +165,8 @@ export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
   return [
     {
       id: PREVIEW_CACHE_WORK_AREA_COMMAND,
-      label: 'Cache Work Area Now',
-      description: 'Pre-render the work area (or the whole composition when none is set) into the preview cache.',
+      label: t('timeline.cache.cacheWorkAreaNow', 'Cache Work Area Now'),
+      description: t('timeline.cache.cacheWorkAreaNowDescription', 'Pre-render the work area (or the whole composition when none is set) into the preview cache.'),
       icon: 'refresh',
       enabled: canCacheWorkArea,
       execute: () => {
@@ -160,8 +175,8 @@ export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
     },
     {
       id: PREVIEW_PURGE_RAM_COMMAND,
-      label: 'Purge RAM Preview',
-      description: 'Empty the preview frame cache the engine holds in video memory. Frames are drawn again as the playhead reaches them.',
+      label: t('timeline.cache.purgeRamPreview', 'Purge RAM Preview'),
+      description: t('timeline.cache.purgeRamPreviewDescription', 'Empty the preview frame cache the engine holds in video memory. Frames are drawn again as the playhead reaches them.'),
       icon: 'trash',
       execute: () => {
         purgeRamPreview();
@@ -169,8 +184,8 @@ export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
     },
     {
       id: PREVIEW_PURGE_DISK_COMMAND,
-      label: 'Purge Disk Cache',
-      description: 'Delete the frames the disk cache holds. They are drawn and written again as the playhead reaches them.',
+      label: t('timeline.cache.purgeDiskCache', 'Purge Disk Cache'),
+      description: t('timeline.cache.purgeDiskCacheDescription', 'Delete the frames the disk cache holds. They are drawn and written again as the playhead reaches them.'),
       icon: 'trash',
       enabled: hasEngineDiskCache,
       execute: () => {
@@ -179,8 +194,8 @@ export function buildPreviewCacheCommands(): ReadonlyArray<Command> {
     },
     {
       id: PREVIEW_PURGE_ALL_COMMAND,
-      label: 'Purge All Memory & Disk Cache',
-      description: 'Empty the preview frame cache in video memory and delete the disk cache\'s frames.',
+      label: t('timeline.cache.purgeAll', 'Purge All Memory & Disk Cache'),
+      description: t('timeline.cache.purgeAllDescription', "Empty the preview frame cache in video memory and delete the disk cache's frames."),
       icon: 'trash',
       execute: () => {
         purgeAllCaches();

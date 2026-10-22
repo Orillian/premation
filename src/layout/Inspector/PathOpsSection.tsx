@@ -41,6 +41,7 @@ import { useUIStore } from '@stores/uiStore';
 import { useMirrorLayers } from '@hooks/useMirror';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './PathOpsSection.module.css';
 
 /** Which command family the four op buttons dispatch into. */
@@ -71,14 +72,16 @@ function Glyph({ fill, ghost, evenOdd }: { fill: string; ghost?: string; evenOdd
   );
 }
 
-const OPS: readonly OpDef[] = [
-  { op: 'union', label: 'Union (Add)', bakeId: 'shape.mergeUnion', glyph: <Glyph fill={`${A} ${B}`} /> },
-  // A with the overlap punched out, and B outlined so it is clear WHAT was
-  // subtracted rather than just that something was.
-  { op: 'subtract', label: 'Subtract (top minus below)', bakeId: 'shape.mergeSubtract', glyph: <Glyph fill={`${A} ${OVERLAP}`} evenOdd ghost={B} /> },
-  { op: 'intersect', label: 'Intersect', bakeId: 'shape.mergeIntersect', glyph: <Glyph fill={OVERLAP} ghost={`${A} ${B}`} /> },
-  { op: 'exclude', label: 'Exclude (XOR)', bakeId: 'shape.mergeExclude', glyph: <Glyph fill={`${A} ${B}`} evenOdd /> },
-];
+function opDefs(): readonly OpDef[] {
+  return [
+    { op: 'union', label: t('inspector.pathOps.op.unionAdd', 'Union (Add)'), bakeId: 'shape.mergeUnion', glyph: <Glyph fill={`${A} ${B}`} /> },
+    // A with the overlap punched out, and B outlined so it is clear WHAT was
+    // subtracted rather than just that something was.
+    { op: 'subtract', label: t('inspector.pathOps.op.subtractTopMinusBelow', 'Subtract (top minus below)'), bakeId: 'shape.mergeSubtract', glyph: <Glyph fill={`${A} ${OVERLAP}`} evenOdd ghost={B} /> },
+    { op: 'intersect', label: t('inspector.pathOps.op.intersect', 'Intersect'), bakeId: 'shape.mergeIntersect', glyph: <Glyph fill={OVERLAP} ghost={`${A} ${B}`} /> },
+    { op: 'exclude', label: t('inspector.pathOps.op.excludeXor', 'Exclude (XOR)'), bakeId: 'shape.mergeExclude', glyph: <Glyph fill={`${A} ${B}`} evenOdd /> },
+  ];
+}
 
 function run(id: string): void {
   void getCommandSystem().execute(asCommandId(id));
@@ -104,44 +107,44 @@ export function PathOpsSection(): JSX.Element | null {
   const canCombine = selectedIds.length >= 2;
   const hint = canCombine
     ? mode === 'live'
-      ? 'Operands stay editable and animatable; the result re-evaluates every frame.'
-      : 'One-shot: the sources are consumed and the result is static geometry.'
-    : 'Select two or more shape layers to combine.';
+      ? t('inspector.pathOps.hintLive', 'Operands stay editable and animatable; the result re-evaluates every frame.')
+      : t('inspector.pathOps.hintBake', 'One-shot: the sources are consumed and the result is static geometry.')
+    : t('inspector.pathOps.hintSelect', 'Select two or more shape layers to combine.');
 
   return (
     <div className={styles.root}>
       <div className={styles.modeRow}>
-        <span className={styles.modeLabel}>Result</span>
+        <span className={styles.modeLabel}>{t('inspector.pathOps.result', 'Result')}</span>
         <div className={styles.modeToggles}>
           <button
             type="button"
             className={mode === 'live' ? styles.modeBtnActive : styles.modeBtn}
             onClick={() => setMode('live')}
-            title="Live — sources stay in the scene as editable operands"
+            title={t('inspector.pathOps.liveHint', 'Live — sources stay in the scene as editable operands')}
             aria-pressed={mode === 'live'}
           >
-            Live
+            {t('inspector.pathOps.live', 'Live')}
           </button>
           <button
             type="button"
             className={mode === 'bake' ? styles.modeBtnActive : styles.modeBtn}
             onClick={() => setMode('bake')}
-            title="Bake now — sources are consumed and the result is static"
+            title={t('inspector.pathOps.bakeHint', 'Bake now — sources are consumed and the result is static')}
             aria-pressed={mode === 'bake'}
           >
-            Bake now
+            {t('inspector.pathOps.bake', 'Bake now')}
           </button>
         </div>
       </div>
 
       <div className={styles.grid}>
-        {OPS.map((o) => (
+        {opDefs().map((o) => (
           <button
             key={o.op}
             type="button"
             className={styles.opButton}
-            aria-label={`${o.label}${mode === 'bake' ? ' (bake)' : ''}`}
-            title={`${o.label}${canCombine ? '' : ' — select 2+ shape layers'}`}
+            aria-label={mode === 'bake' ? t('inspector.pathOps.opBake', '{name} (bake)', { name: o.label }) : o.label}
+            title={canCombine ? o.label : t('inspector.pathOps.opDisabled', '{name} — select 2+ shape layers', { name: o.label })}
             disabled={!canCombine}
             onClick={() => run(mode === 'live' ? `shape.boolean.${o.op}` : o.bakeId)}
           >
@@ -160,21 +163,21 @@ export function PathOpsSection(): JSX.Element | null {
           type="button"
           className={styles.action}
           disabled={!canCombine}
-          title={canCombine ? 'Merge the selected paths into one static layer' : 'Select 2+ shape layers'}
+          title={canCombine ? t('inspector.pathOps.mergeHint', 'Merge the selected paths into one static layer') : t('inspector.pathOps.select2', 'Select 2+ shape layers')}
           onClick={() => run('shape.mergeUnion')}
         >
           <Icon name="layers" size="sm" />
-          <span>Merge Paths (bake)</span>
+          <span>{t('inspector.pathOps.merge', 'Merge Paths (bake)')}</span>
         </button>
         <button
           type="button"
           className={activeTool === 'knife' ? styles.actionActive : styles.action}
           aria-pressed={activeTool === 'knife'}
-          title="Knife — drag a line across the shape; every crossing splits its path"
+          title={t('inspector.pathOps.knifeHint', 'Knife — drag a line across the shape; every crossing splits its path')}
           onClick={() => setTool('knife')}
         >
           <Icon name="scissors" size="sm" />
-          <span>Knife</span>
+          <span>{t('inspector.pathOps.knife', 'Knife')}</span>
         </button>
       </div>
     </div>

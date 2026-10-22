@@ -1,4 +1,5 @@
 import { useFootageSource } from '@hooks/useFootageSource';
+import { t } from '@core/i18n';
 import { TrackMotionSection } from './TrackMotionSection';
 import styles from './CharacterPanel.module.css';
 
@@ -11,7 +12,7 @@ export function TrackerPanel(): JSX.Element {
     return (
       <div className={styles.root}>
         <div className={styles.emptyHint}>
-          No video or footage layer found in composition. Import a video footage file to use Motion Tracking, Camera Tracking, or Warp Stabilization.
+          {t('inspector.tracker.empty', 'No video or footage layer found in composition. Import a video footage file to use Motion Tracking, Camera Tracking, or Warp Stabilization.')}
         </div>
       </div>
     );
@@ -20,16 +21,16 @@ export function TrackerPanel(): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.col} style={{ marginBottom: 'var(--space-2)' }}>
-        <span className={styles.sectionTitle}>Motion Source</span>
+        <span className={styles.sectionTitle}>{t('inspector.tracker.motionSource', 'Motion Source')}</span>
         <select
-          aria-label="Motion Source"
+          aria-label={t('inspector.tracker.motionSource', 'Motion Source')}
           value={activeSourceId}
           onChange={(e) => source.choose(e.target.value)}
           className={styles.fontSelect}
         >
           {source.layers.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name} {l.id === source.selectedId ? '(Selected)' : ''}
+              {l.name} {l.id === source.selectedId ? t('inspector.tracker.selected', '(Selected)') : ''}
             </option>
           ))}
         </select>

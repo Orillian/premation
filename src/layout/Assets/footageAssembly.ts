@@ -25,6 +25,7 @@ import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
 import { detectForAssembly } from '@core/composition/assembleFromFootage';
 import { assembleShotsEdit, newCompFromClipsEdit, newCompFromFootageEdit } from '@layout/Workspace/footageEdits';
 import { openAssembleDialog } from './AssembleDialog';
+import { t } from '@core/i18n';
 
 type Level = 'info' | 'success' | 'warning' | 'error';
 
@@ -44,22 +45,29 @@ function notify(message: string, level: Level = 'info', durationMs = 3600): void
  */
 export async function runNewCompFromClips(assets: ReadonlyArray<ImportedAsset>): Promise<void> {
   if (assets.length === 0) {
-    notify('Select footage in the Assets panel first', 'warning');
+    notify(t('assets.assembly.selectFootage', 'Select footage in the Assets panel first'), 'warning');
     return;
   }
 
   let overlapFrames = 0;
   if (assets.length > 1) {
     const raw = await customPrompt(
-      'New Composition from Selected Clips',
-      `Build a composition sized and timed to “${assets[0]!.name}”, and lay all ${assets.length} clips end-to-end in panel order.\n\nOverlap in FRAMES — 0 butts them together; above 0 overlaps each pair by that much and cross-dissolves opacity across the overlap.`,
+      t('assets.assembly.fromClipsTitle', 'New Composition from Selected Clips'),
+      `${t(
+        'assets.assembly.fromClipsBody',
+        'Build a composition sized and timed to “{name}”, and lay all {n} clips end-to-end in panel order.',
+        { name: assets[0]!.name, n: assets.length },
+      )}\n\n${t(
+        'assets.assembly.overlapHelp',
+        'Overlap in FRAMES — 0 butts them together; above 0 overlaps each pair by that much and cross-dissolves opacity across the overlap.',
+      )}`,
       '0',
-      { placeholder: 'e.g. 12', confirmLabel: 'Create' },
+      { placeholder: t('assets.assembly.overlapPlaceholder', 'e.g. 12'), confirmLabel: t('assets.assembly.create', 'Create') },
     );
     if (raw === null) return;
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      notify('Overlap must be a number of frames, 0 or more', 'warning');
+      notify(t('assets.assembly.overlapInvalid', 'Overlap must be a number of frames, 0 or more'), 'warning');
       return;
     }
     overlapFrames = Math.round(parsed);
@@ -73,15 +81,17 @@ export async function runNewCompFromClips(assets: ReadonlyArray<ImportedAsset>):
     const n = result.layers.length;
     notify(
       result.sequenced && result.overlapFrames > 0
-        ? `Composition built from ${n} clips with a ${result.overlapFrames}-frame cross-dissolve`
+        ? t('assets.assembly.builtDissolve', 'Composition built from {n} clips with a {frames}-frame cross-dissolve', { n, frames: result.overlapFrames })
         : result.sequenced
-          ? `Composition built from ${n} clips, end-to-end`
-          : `Composition built from ${n === 1 ? 'the clip' : `${n} clips`}`,
+          ? t('assets.assembly.builtSequenced', 'Composition built from {n} clips, end-to-end', { n })
+          : n === 1
+            ? t('assets.assembly.builtOne', 'Composition built from the clip')
+            : t('assets.assembly.builtOther', 'Composition built from {n} clips', { n }),
       'success',
     );
   } catch (err) {
     notify(
-      `New Composition from Clips failed: ${err instanceof Error ? err.message : String(err)}`,
+      t('assets.assembly.fromClipsFailed', 'New Composition from Clips failed: {error}', { error: err instanceof Error ? err.message : String(err) }),
       'error',
       6000,
     );
@@ -149,7 +159,7 @@ export async function runAssembleFromFootage(target: AssembleTarget): Promise<vo
     } else {
       const made = await newCompFromFootageEdit(target.asset);
       if (!made) {
-        notify('Assemble from Footage: the clip could not be placed in a composition.', 'error', 6000);
+        notify(t('assets.assembly.placeFailed', 'Assemble from Footage: the clip could not be placed in a composition.'), 'error', 6000);
         return;
       }
       nodeId = made.layer;
@@ -159,25 +169,29 @@ export async function runAssembleFromFootage(target: AssembleTarget): Promise<vo
     // registered as an engine job yet (G).
     const { cutsCompSec, status } = await detectForAssembly(nodeId, opts);
     if (status === 'cancelled') {
-      notify('Assemble from Footage: cancelled.', 'info');
+      notify(t('assets.assembly.cancelled', 'Assemble from Footage: cancelled.'), 'info');
       return;
     }
     if (cutsCompSec.length === 0) {
-      notify('Assemble from Footage: no cuts found in this clip.', 'info');
+      notify(t('assets.assembly.noCuts', 'Assemble from Footage: no cuts found in this clip.'), 'info');
       return;
     }
 
     const report = await assembleShotsEdit(nodeId, { cutsCompSec, fps, dissolveFrames: opts.dissolveFrames, minShotFrames: opts.minShotFrames });
     if (!report) return;
 
-    const parts = [`${cutsCompSec.length} cut${cutsCompSec.length === 1 ? '' : 's'}`];
-    parts.push(`${report.shots.length} shot${report.shots.length === 1 ? '' : 's'}`);
-    if (report.dropped > 0) parts.push(`${report.dropped} dropped`);
-    if (opts.dissolveFrames > 0) parts.push(`${opts.dissolveFrames}-frame dissolves`);
-    notify(`Assembled: ${parts.join(', ')}.`, 'success', 5000);
+    const cuts = cutsCompSec.length;
+    const shots = report.shots.length;
+    const parts = [
+      cuts === 1 ? t('assets.assembly.cutsOne', '{n} cut', { n: cuts }) : t('assets.assembly.cutsOther', '{n} cuts', { n: cuts }),
+    ];
+    parts.push(shots === 1 ? t('assets.assembly.shotsOne', '{n} shot', { n: shots }) : t('assets.assembly.shotsOther', '{n} shots', { n: shots }));
+    if (report.dropped > 0) parts.push(t('assets.assembly.dropped', '{n} dropped', { n: report.dropped }));
+    if (opts.dissolveFrames > 0) parts.push(t('assets.assembly.dissolves', '{n}-frame dissolves', { n: opts.dissolveFrames }));
+    notify(t('assets.assembly.assembled', 'Assembled: {parts}.', { parts: parts.join(', ') }), 'success', 5000);
   } catch (err) {
     notify(
-      `Assemble from Footage failed: ${err instanceof Error ? err.message : String(err)}`,
+      t('assets.assembly.failed', 'Assemble from Footage failed: {error}', { error: err instanceof Error ? err.message : String(err) }),
       'error',
       6000,
     );

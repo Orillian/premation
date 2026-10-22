@@ -48,6 +48,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { useInspectorHosted, useInspectorSelection } from '../inspectorSelection';
 import { useEngineEdit } from '../useEngineEdit';
 import { stopwatchCommands, valueCommands } from '../inspectorEdits';
+import { t } from '@core/i18n';
 
 export type PaintProp =
   | 'fillAngle' | 'fillCenterX' | 'fillCenterY' | 'fillRadius' | 'strokeWidth' | 'strokeDashOffset'
@@ -195,7 +196,7 @@ export function AnimatablePaintRow({
     const entries: Array<{ nodeId: string; values: Record<string, number> }> = [];
     for (const w of writes) {
       const values = valuesFor ? valuesFor(w.nodeId, w.value) : { [prop]: w.value };
-      const keyed = autoKeyframe || Object.keys(values).some((t) => isTrackAnimated(documentMirror(), w.nodeId, t));
+      const keyed = autoKeyframe || Object.keys(values).some((tr) => isTrackAnimated(documentMirror(), w.nodeId, tr));
       const custom = !keyed && staticCommands ? staticCommands(w.nodeId, w.value) : null;
       if (custom) out.push(...custom);
       else entries.push({ nodeId: w.nodeId, values });
@@ -245,8 +246,8 @@ export function AnimatablePaintRow({
       compact
       animated={animated}
       mixed={agg.mixed}
-      hint={nodeIds.length > 1 && agg.present < nodeIds.length ? `${agg.present} of ${nodeIds.length}` : undefined}
-      onStopwatch={() => e.send(animated ? `Remove ${label} animation` : `Animate ${label}`, stopwatchCommands(agg.nodeIds.length > 0 ? agg.nodeIds : nodeIds, tracked, time))}
+      hint={nodeIds.length > 1 && agg.present < nodeIds.length ? t('inspector.animatablePaint.presentOf', '{present} of {total}', { present: agg.present, total: nodeIds.length }) : undefined}
+      onStopwatch={() => e.send(animated ? `Remove ${label} animation` : `Animate ${label}`,stopwatchCommands(agg.nodeIds.length > 0 ? agg.nodeIds : nodeIds, tracked, time))}
       navigator={navigator}
     >
       <ValueField

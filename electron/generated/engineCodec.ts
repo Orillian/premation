@@ -12461,6 +12461,7 @@ function encS_EffectParamInfo(w: Writer, v: T.EffectParamInfo): void {
   if (v.precision !== undefined) { w.byte(104); w.u32(v.precision); }
   w.byte(114); w.str(v.kind);
   w.byte(122); w.str(v.fileTypes);
+  if (v.description !== undefined) { w.varint(130); w.str(v.description); }
 }
 function decS_EffectParamInfo(r: Reader, end: number, o: any): T.EffectParamInfo {
   const l_choices: string[] = [];
@@ -12486,6 +12487,7 @@ function decS_EffectParamInfo(r: Reader, end: number, o: any): T.EffectParamInfo
   let v_precision: number | undefined;
   let v_kind: string | undefined;
   let v_fileTypes: string | undefined;
+  let v_description: string | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -12504,6 +12506,7 @@ function decS_EffectParamInfo(r: Reader, end: number, o: any): T.EffectParamInfo
       case 104: v_precision = r.u32(); break;
       case 114: v_kind = r.str(); h_kind = true; break;
       case 122: v_fileTypes = r.str(); h_fileTypes = true; break;
+      case 130: v_description = r.str(); break;
       default: r.skip(key);
     }
   }
@@ -12531,6 +12534,7 @@ function decS_EffectParamInfo(r: Reader, end: number, o: any): T.EffectParamInfo
   if (v_precision !== undefined) o.precision = v_precision;
   o.kind = v_kind;
   o.fileTypes = v_fileTypes;
+  if (v_description !== undefined) o.description = v_description;
   return o;
 }
 function encS_EffectInfo(w: Writer, v: T.EffectInfo): void {
@@ -12543,10 +12547,13 @@ function encS_EffectInfo(w: Writer, v: T.EffectInfo): void {
   w.byte(56); w.bool(v.supportsFloat);
   w.byte(64); w.bool(v.audio);
   { const a = v.actions; for (let i = 0; i < a.length; i++) { w.byte(74); { const s = w.beginLd(); encS_EffectActionInfo(w, a[i]!); w.endLd(s); } } }
+  { const a = v.groups; for (let i = 0; i < a.length; i++) { w.byte(82); { const s = w.beginLd(); encS_EffectGroupInfo(w, a[i]!); w.endLd(s); } } }
+  if (v.about !== undefined) { w.byte(90); w.str(v.about); }
 }
 function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
   const l_params: T.EffectParamInfo[] = [];
   const l_actions: T.EffectActionInfo[] = [];
+  const l_groups: T.EffectGroupInfo[] = [];
   let h_matchName = false;
   let h_displayName = false;
   let h_category = false;
@@ -12561,6 +12568,7 @@ function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
   let v_provider: string | undefined;
   let v_supportsFloat: boolean | undefined;
   let v_audio: boolean | undefined;
+  let v_about: string | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -12573,6 +12581,8 @@ function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
       case 56: v_supportsFloat = r.bool(); h_supportsFloat = true; break;
       case 64: v_audio = r.bool(); h_audio = true; break;
       case 74: l_actions.push(decS_EffectActionInfo(r, r.ldEnd(), {})); break;
+      case 82: l_groups.push(decS_EffectGroupInfo(r, r.ldEnd(), {})); break;
+      case 90: v_about = r.str(); break;
       default: r.skip(key);
     }
   }
@@ -12593,30 +12603,78 @@ function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
   o.supportsFloat = v_supportsFloat;
   o.audio = v_audio;
   o.actions = l_actions;
+  o.groups = l_groups;
+  if (v_about !== undefined) o.about = v_about;
   return o;
 }
 function encS_EffectActionInfo(w: Writer, v: T.EffectActionInfo): void {
   w.byte(10); w.str(v.key);
   w.byte(18); w.str(v.label);
+  w.byte(26); w.str(v.group);
+  w.byte(32); w.u32(v.at);
 }
 function decS_EffectActionInfo(r: Reader, end: number, o: any): T.EffectActionInfo {
   let h_key = false;
   let h_label = false;
+  let h_group = false;
+  let h_at = false;
   let v_key: string | undefined;
   let v_label: string | undefined;
+  let v_group: string | undefined;
+  let v_at: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
       case 10: v_key = r.str(); h_key = true; break;
       case 18: v_label = r.str(); h_label = true; break;
+      case 26: v_group = r.str(); h_group = true; break;
+      case 32: v_at = r.u32(); h_at = true; break;
       default: r.skip(key);
     }
   }
   r.expectAt(end);
   if (!h_key) throw new DecodeError('EffectActionInfo.key: missing', 'missingField');
   if (!h_label) throw new DecodeError('EffectActionInfo.label: missing', 'missingField');
+  if (!h_group) throw new DecodeError('EffectActionInfo.group: missing', 'missingField');
+  if (!h_at) throw new DecodeError('EffectActionInfo.at: missing', 'missingField');
   o.key = v_key;
   o.label = v_label;
+  o.group = v_group;
+  o.at = v_at;
+  return o;
+}
+function encS_EffectGroupInfo(w: Writer, v: T.EffectGroupInfo): void {
+  w.byte(10); w.str(v.name);
+  w.byte(18); w.str(v.key);
+  w.byte(24); w.bool(v.collapsed);
+  if (v.description !== undefined) { w.byte(34); w.str(v.description); }
+}
+function decS_EffectGroupInfo(r: Reader, end: number, o: any): T.EffectGroupInfo {
+  let h_name = false;
+  let h_key = false;
+  let h_collapsed = false;
+  let v_name: string | undefined;
+  let v_key: string | undefined;
+  let v_collapsed: boolean | undefined;
+  let v_description: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_name = r.str(); h_name = true; break;
+      case 18: v_key = r.str(); h_key = true; break;
+      case 24: v_collapsed = r.bool(); h_collapsed = true; break;
+      case 34: v_description = r.str(); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_name) throw new DecodeError('EffectGroupInfo.name: missing', 'missingField');
+  if (!h_key) throw new DecodeError('EffectGroupInfo.key: missing', 'missingField');
+  if (!h_collapsed) throw new DecodeError('EffectGroupInfo.collapsed: missing', 'missingField');
+  o.name = v_name;
+  o.key = v_key;
+  o.collapsed = v_collapsed;
+  if (v_description !== undefined) o.description = v_description;
   return o;
 }
 function encS_ListEffects(w: Writer, v: T.ListEffects): void {
@@ -12767,6 +12825,8 @@ function encS_PluginInfo(w: Writer, v: T.PluginInfo): void {
   { const a = v.outputModules; for (let i = 0; i < a.length; i++) { w.byte(106); { const s = w.beginLd(); encS_PluginOutputModuleInfo(w, a[i]!); w.endLd(s); } } }
   { const a = v.panels; for (let i = 0; i < a.length; i++) { w.byte(114); { const s = w.beginLd(); encS_PluginPanelInfo(w, a[i]!); w.endLd(s); } } }
   { const a = v.presets; for (let i = 0; i < a.length; i++) { w.byte(122); { const s = w.beginLd(); encS_PluginPresetInfo(w, a[i]!); w.endLd(s); } } }
+  if (v.icon !== undefined) { w.varint(130); w.str(v.icon); }
+  if (v.panelTitle !== undefined) { w.varint(138); w.str(v.panelTitle); }
 }
 function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
   const l_effects: string[] = [];
@@ -12793,6 +12853,8 @@ function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
   let v_error: string | undefined;
   let v_gpu: boolean | undefined;
   let v_panel: boolean | undefined;
+  let v_icon: string | undefined;
+  let v_panelTitle: string | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -12811,6 +12873,8 @@ function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
       case 106: l_outputModules.push(decS_PluginOutputModuleInfo(r, r.ldEnd(), {})); break;
       case 114: l_panels.push(decS_PluginPanelInfo(r, r.ldEnd(), {})); break;
       case 122: l_presets.push(decS_PluginPresetInfo(r, r.ldEnd(), {})); break;
+      case 130: v_icon = r.str(); break;
+      case 138: v_panelTitle = r.str(); break;
       default: r.skip(key);
     }
   }
@@ -12839,6 +12903,8 @@ function decS_PluginInfo(r: Reader, end: number, o: any): T.PluginInfo {
   o.outputModules = l_outputModules;
   o.panels = l_panels;
   o.presets = l_presets;
+  if (v_icon !== undefined) o.icon = v_icon;
+  if (v_panelTitle !== undefined) o.panelTitle = v_panelTitle;
   return o;
 }
 function encS_PluginList(w: Writer, v: T.PluginList): void {
@@ -15829,6 +15895,8 @@ function encS_FramePong(w: Writer, v: T.FramePong): void {
   w.byte(16); w.u64(v.revision);
   w.byte(24); w.bool(v.playing);
   w.byte(32); w.u32(v.queued);
+  if (v.busyMs !== undefined) { w.byte(40); w.u32(v.busyMs); }
+  if (v.busy !== undefined) { w.byte(50); w.str(v.busy); }
 }
 function decS_FramePong(r: Reader, end: number, o: any): T.FramePong {
   let h_nonce = false;
@@ -15839,6 +15907,8 @@ function decS_FramePong(r: Reader, end: number, o: any): T.FramePong {
   let v_revision: number | undefined;
   let v_playing: boolean | undefined;
   let v_queued: number | undefined;
+  let v_busyMs: number | undefined;
+  let v_busy: string | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -15846,6 +15916,8 @@ function decS_FramePong(r: Reader, end: number, o: any): T.FramePong {
       case 16: v_revision = r.u64(); h_revision = true; break;
       case 24: v_playing = r.bool(); h_playing = true; break;
       case 32: v_queued = r.u32(); h_queued = true; break;
+      case 40: v_busyMs = r.u32(); break;
+      case 50: v_busy = r.str(); break;
       default: r.skip(key);
     }
   }
@@ -15858,6 +15930,8 @@ function decS_FramePong(r: Reader, end: number, o: any): T.FramePong {
   o.revision = v_revision;
   o.playing = v_playing;
   o.queued = v_queued;
+  if (v_busyMs !== undefined) o.busyMs = v_busyMs;
+  if (v_busy !== undefined) o.busy = v_busy;
   return o;
 }
 function encS_FrameRelease(w: Writer, v: T.FrameRelease): void {
@@ -19605,6 +19679,7 @@ export const codecs = {
   EffectParamInfo: mk<T.EffectParamInfo>(encS_EffectParamInfo, (r, e) => decS_EffectParamInfo(r, e, {})),
   EffectInfo: mk<T.EffectInfo>(encS_EffectInfo, (r, e) => decS_EffectInfo(r, e, {})),
   EffectActionInfo: mk<T.EffectActionInfo>(encS_EffectActionInfo, (r, e) => decS_EffectActionInfo(r, e, {})),
+  EffectGroupInfo: mk<T.EffectGroupInfo>(encS_EffectGroupInfo, (r, e) => decS_EffectGroupInfo(r, e, {})),
   ListEffects: mk<T.ListEffects>(encS_ListEffects, (r, e) => decS_ListEffects(r, e, {})),
   ListGroupTypes: mk<T.ListGroupTypes>(encS_ListGroupTypes, (r, e) => decS_ListGroupTypes(r, e, {})),
   ListPresets: mk<T.ListPresets>(encS_ListPresets, (r, e) => decS_ListPresets(r, e, {})),

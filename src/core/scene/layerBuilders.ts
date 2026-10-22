@@ -54,6 +54,7 @@ import type { InsertFrame } from '@/engine-client/insertFragment';
 import { computeFit } from '@core/source/fitCommands';
 import { defaultTextSize } from '@core/scene/textDefaults';
 import { clamp01 } from '@utils/lang';
+import { t } from '@core/i18n';
 
 let seq = 0;
 
@@ -195,7 +196,7 @@ export function notifySvgWarnings(name: string, warnings: readonly string[]): vo
   if (warnings.length === 0) return;
   useUIStore.getState().notify({
     level: 'warning',
-    message: `“${name}”: ${warnings.join(' ')}`,
+    message: t('core.layerBuilders.svgWarnings', '“{name}”: {warnings}', { name, warnings: warnings.join(' ') }),
     durationMs: 7000,
   });
 }
@@ -1015,7 +1016,7 @@ export interface CameraSeed {
 export function notifyCameraNeeds3D(): void {
   useUIStore.getState().notify({
     level: 'info',
-    message: 'Camera added — it moves layers with the 3D switch on. Select a layer and enable 3D, then move or keyframe the camera.',
+    message: t('core.layerBuilders.cameraNeeds3D', 'Camera added — it moves layers with the 3D switch on. Select a layer and enable 3D, then move or keyframe the camera.'),
     durationMs: 9000,
   });
 }
@@ -1086,7 +1087,7 @@ export const AMBIENT_FILL_INTENSITY = 35;
 export function notifyAmbientFill(): void {
   useUIStore.getState().notify({
     level: 'info',
-    message: 'Added an Ambient Fill light so faces the new light does not reach stay visible — dim or delete it for harder lighting.',
+    message: t('core.layerBuilders.ambientFill', 'Added an Ambient Fill light so faces the new light does not reach stay visible — dim or delete it for harder lighting.'),
     durationMs: 7000,
   });
 }
@@ -1208,7 +1209,7 @@ export const PRIMITIVE_3D_LABELS: Record<Primitive3DKind, string> = {
 export function notify3DPrimitive(type: Primitive3DKind): void {
   useUIStore.getState().notify({
     level: 'info',
-    message: `${PRIMITIVE_3D_LABELS[type]} added to 3D Design Space`,
+    message: t('core.layerBuilders.primitiveAdded', '{label} added to 3D Design Space', { label: PRIMITIVE_3D_LABELS[type] }),
     durationMs: 3000,
   });
 }
@@ -1257,7 +1258,7 @@ export function build3DPrimitive(sink: LayerSink, frame: InsertFrame, type: Prim
 export function notify3DText(): void {
   useUIStore.getState().notify({
     level: 'info',
-    message: '3D Extruded Text added to scene',
+    message: t('core.layerBuilders.text3DAdded', '3D Extruded Text added to scene'),
     durationMs: 3000,
   });
 }
@@ -1347,7 +1348,7 @@ export function reportSvgAnimation(name: string, converted: boolean, unsupported
   if (anims > 0 && unsupported.size === 0) {
     useUIStore.getState().notify({
       level: 'success',
-      message: `“${name}” imported with its animation as editable keyframes.`,
+      message: t('core.layerBuilders.svgAnimConverted', '“{name}” imported with its animation as editable keyframes.', { name }),
       durationMs: 4000,
     });
     return;
@@ -1356,8 +1357,8 @@ export function reportSvgAnimation(name: string, converted: boolean, unsupported
   useUIStore.getState().notify({
     level: 'warning',
     message: anims > 0
-      ? `“${name}” imported with keyframes, but some animation could not be converted (${skipped}).`
-      : `“${name}” imported as shapes; its animation could not be converted (${skipped}).`,
+      ? t('core.layerBuilders.svgAnimPartial', '“{name}” imported with keyframes, but some animation could not be converted ({skipped}).', { name, skipped })
+      : t('core.layerBuilders.svgAnimNone', '“{name}” imported as shapes; its animation could not be converted ({skipped}).', { name, skipped }),
     durationMs: 6000,
   });
 }
@@ -1386,7 +1387,7 @@ export function isOversizedSvg(count: number, name: string, reports: Array<() =>
   if (count <= MAX_VECTOR_SHAPES) return false;
   reports.push(() => useUIStore.getState().notify({
     level: 'warning',
-    message: `“${name}” has ${count} vector paths — too many to edit as layers, so it imported as one image. Simplify or flatten it in your vector tool to keep the paths editable.`,
+    message: t('core.layerBuilders.svgOversized', '“{name}” has {count} vector paths — too many to edit as layers, so it imported as one image. Simplify or flatten it in your vector tool to keep the paths editable.', { name, count }),
     durationMs: 7000,
   }));
   return true;
@@ -1462,10 +1463,10 @@ export function buildSvgDocument(
     capabilities: caps,
     livePlayback: true,
     extraWarning: convertible && !simple
-      ? 'playing as a Live SVG so gradients, masks and filters stay intact (not editable shapes). Convert to Editable Shapes when you need per-path control.'
+      ? t('core.layerBuilders.liveSvgComplex', 'playing as a Live SVG so gradients, masks and filters stay intact (not editable shapes). Convert to Editable Shapes when you need per-path control.')
       : !convertible
-        ? `playing as a Live SVG (${blockers.slice(0, 3).join(', ') || 'complex animation'}). Convert to Editable Shapes only if you need keyframes.`
-        : 'playing as a Live SVG for full animated fidelity.',
+        ? t('core.layerBuilders.liveSvgBlocked', 'playing as a Live SVG ({reasons}). Convert to Editable Shapes only if you need keyframes.', { reasons: blockers.slice(0, 3).join(', ') || t('core.layerBuilders.complexAnimation', 'complex animation') })
+        : t('core.layerBuilders.liveSvgFidelity', 'playing as a Live SVG for full animated fidelity.'),
   });
 }
 

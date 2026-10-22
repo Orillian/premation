@@ -8,6 +8,7 @@
 import { asCommandId } from '@app-types/common';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { useLayoutStore } from '@stores/layoutStore';
+import { t } from '@core/i18n';
 
 export const EXPORT_PANEL_ID = 'export';
 export const VIEW_EXPORT_PANEL_COMMAND = asCommandId('view.export');
@@ -16,8 +17,8 @@ export function buildExportPanelCommands(): ReadonlyArray<Command> {
   return [
     {
       id: VIEW_EXPORT_PANEL_COMMAND,
-      label: 'Export Panel',
-      description: 'Dock the export form beside the inspector, to queue renders while you work.',
+      label: t('export.command.panel', 'Export Panel'),
+      description: t('export.command.panelDescription', 'Dock the export form beside the inspector, to queue renders while you work.'),
       icon: 'export',
       enabled: () => true,
       execute: () => {

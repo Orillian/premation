@@ -7,6 +7,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { flicksToSeconds } from '@motion/engine-api';
 import type { Command } from '@core/commands/Command';
 import { mirrorIkChainFromTip } from '@core/mirror/layerFacts';
@@ -24,9 +25,9 @@ const notify = (level: 'success' | 'warning', message: string): void => {
 /** [chain, target] from a two-layer selection (tip first), or the warning to show. */
 function readIkSelection(): { target: string; chain: string[] } | string {
   const ids = useSelectionStore.getState().ids;
-  if (ids.length !== 2) return 'Select the chain tip first, then Ctrl/Cmd-click the target layer.';
+  if (ids.length !== 2) return t('providers.ik.selectTipThenTarget', 'Select the chain tip first, then Ctrl/Cmd-click the target layer.');
   const chain = mirrorIkChainFromTip(documentMirror(), ids[0]!);
-  if (chain.length < 2) return 'The first-selected layer needs at least one 3D parent to form a chain.';
+  if (chain.length < 2) return t('providers.ik.needsParent', 'The first-selected layer needs at least one 3D parent to form a chain.');
   return { chain, target: ids[1]! };
 }
 
@@ -45,7 +46,9 @@ export function buildIk3DCommands(): ReadonlyArray<Command> {
         if (typeof sel === 'string') { notify('warning', sel); return; }
         void poseIk3DEdit(sel.chain, sel.target, getTime()).then((ok) => {
           const joints = sel.chain.length - 1;
-          if (ok) notify('success', `Posed ${joints} joint${joints === 1 ? '' : 's'} toward the target.`);
+          if (ok) notify('success', joints === 1
+            ? t('providers.ik.posedOne', 'Posed {n} joint toward the target.', { n: joints })
+            : t('providers.ik.posedOther', 'Posed {n} joints toward the target.', { n: joints }));
         });
       },
     },
@@ -65,8 +68,10 @@ export function buildIk3DCommands(): ReadonlyArray<Command> {
         void bakeIk3DEdit(sel.chain, sel.target, 0, Math.max(0, duration)).then((frames) => {
           const joints = sel.chain.length - 1;
           notify(frames > 0 ? 'success' : 'warning', frames > 0
-            ? `Baked IK: ${frames} frames of rotation keyframes on ${joints} joint${joints === 1 ? '' : 's'}.`
-            : 'Could not bake — chain or target failed to resolve.');
+            ? joints === 1
+              ? t('providers.ik.bakedOne', 'Baked IK: {frames} frames of rotation keyframes on {n} joint.', { frames, n: joints })
+              : t('providers.ik.bakedOther', 'Baked IK: {frames} frames of rotation keyframes on {n} joints.', { frames, n: joints })
+            : t('providers.ik.bakeFailed', 'Could not bake — chain or target failed to resolve.'));
         });
       },
     },

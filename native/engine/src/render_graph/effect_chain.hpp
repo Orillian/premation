@@ -136,10 +136,17 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
 /// and the special-cased families' passes (the blurs, glow, drop shadow, deep
 /// glow) — what the render thread compiles ahead while idle.
 [[nodiscard]] std::vector<std::pair<Mat, Blend>> effect_warm_passes(std::string_view type);
+/// E4: whether `type` builds an alpha distance field (fx_distance.hpp).
+[[nodiscard]] bool effect_uses_fields(std::string_view type);
+/// E4: the passes that BUILD the field for `type` (seed / flood / resolve),
+/// drawn into rgba16float field targets — warmed at that format, not the
+/// chain's. Empty for a type without a field.
+[[nodiscard]] std::vector<std::pair<Mat, Blend>> effect_field_warm_passes(std::string_view type);
 
 // emit helpers shared with the composition (passUtils.ts twins).
 void emit_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
-                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear);
+                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear,
+                   const LayerEdge& edge = {});
 void emit_silhouette(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& c, double opacity, Blend blend,
                      const TexRef& tex, const SamplerRef& smp, const Rect& uv);
 void emit_matte_combine(PassContext& ctx, Commands& cmds, const Mat3& mvp, Blend blend, const TexRef& tex,

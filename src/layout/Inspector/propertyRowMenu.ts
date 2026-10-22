@@ -31,14 +31,18 @@ import { essentialPropMenuItems } from '@core/inspector/propertyMenu';
 import { DEFAULT_EXPRESSION, requestExpressionEditor } from '@core/animation/expressionCommands';
 import { easeKeysAtCommands, expressionCommands, keyToggleCommands, setPinnedPropEdit, stopwatchCommands, trackRef, type EasePreset } from './inspectorEdits';
 import { pasteKeyframesAt } from '@layout/Timeline/keyframeEdits';
+import { copyExpressionOnlyEdit } from '@providers/clipboardEdits';
+import { t } from '@core/i18n';
 
-const EASING_PRESETS: ReadonlyArray<{ id: EasePreset; label: string; chord?: KeyChord }> = [
-  { id: 'Linear', label: 'Linear' },
-  { id: 'Ease', label: 'Easy Ease', chord: { key: 'F9' } },
-  { id: 'EaseIn', label: 'Easy Ease In', chord: { key: 'F9', shift: true } },
-  { id: 'EaseOut', label: 'Easy Ease Out', chord: { key: 'F9', ctrl: true, shift: true } },
-  { id: 'Hold', label: 'Toggle Hold' },
-];
+function easingPresets(): ReadonlyArray<{ id: EasePreset; label: string; chord?: KeyChord }> {
+  return [
+    { id: 'Linear', label: t('inspector.propertyRowMenu.ease.linear', 'Linear') },
+    { id: 'Ease', label: t('inspector.propertyRowMenu.ease.easyEase', 'Easy Ease'), chord: { key: 'F9' } },
+    { id: 'EaseIn', label: t('inspector.propertyRowMenu.ease.easyEaseIn', 'Easy Ease In'), chord: { key: 'F9', shift: true } },
+    { id: 'EaseOut', label: t('inspector.propertyRowMenu.ease.easyEaseOut', 'Easy Ease Out'), chord: { key: 'F9', ctrl: true, shift: true } },
+    { id: 'Hold', label: t('inspector.propertyRowMenu.ease.toggleHold', 'Toggle Hold') },
+  ];
+}
 
 export interface RowMenuContext {
   nodeId: string;
@@ -72,7 +76,7 @@ function expressionItems(m: MirrorRead, nodeId: string, prop: string, nodeIds: R
   if (!memberExpression(m, nodeId, prop)) {
     return [{
       id: 'expr-add',
-      label: 'Add Expression',
+      label: t('inspector.propertyRowMenu.addExpression', 'Add Expression'),
       onSelect: () => {
         const cmds = expressionCommands(ids.filter((id) => !memberExpression(documentMirror(), id, prop)).map((id) => ({ nodeId: id, track: prop, source: DEFAULT_EXPRESSION })));
         if (!cmds || cmds.length === 0) return;
@@ -83,10 +87,15 @@ function expressionItems(m: MirrorRead, nodeId: string, prop: string, nodeIds: R
     }];
   }
   return [
-    { id: 'expr-edit', label: 'Edit Expression', onSelect: () => { requestExpressionEditor({ nodeId, prop }); } },
+    { id: 'expr-edit', label: t('inspector.propertyRowMenu.editExpression', 'Edit Expression'), onSelect: () => { requestExpressionEditor({ nodeId, prop }); } },
+    {
+      id: 'expr-copy',
+      label: t('inspector.propertyRowMenu.copyExpression', 'Copy Expression Only'),
+      onSelect: () => { void copyExpressionOnlyEdit({ nodeId, prop }); },
+    },
     {
       id: 'expr-remove',
-      label: 'Remove Expression',
+      label: t('inspector.propertyRowMenu.removeExpression', 'Remove Expression'),
       danger: true,
       onSelect: () => {
         const had = ids.filter((id) => memberExpression(documentMirror(), id, prop) !== null);
@@ -106,7 +115,7 @@ function pinItems(m: MirrorRead, nodeId: string, prop: string): ContextMenuItem[
     { id: 'sep-pin', separator: true },
     {
       id: 'pin-toggle',
-      label: pinned ? 'Unpin from Pinned' : 'Pin to Pinned tab',
+      label: pinned ? t('inspector.propertyRowMenu.unpin', 'Unpin from Pinned') : t('inspector.propertyRowMenu.pin', 'Pin to Pinned tab'),
       icon: 'push-pin',
       onSelect: () => { setPinnedPropEdit(nodeId, prop, !pinned); },
     },
@@ -123,17 +132,19 @@ export function engineRowMenuItems(ctx: RowMenuContext): ContextMenuItem[] {
   if (animated) {
     items.push({
       id: 'kf-toggle',
-      label: at ? 'Remove Keyframe' : 'Add Keyframe',
+      label: at ? t('inspector.propertyRowMenu.removeKeyframe', 'Remove Keyframe') : t('inspector.propertyRowMenu.addKeyframe', 'Add Keyframe'),
       icon: 'keyframe',
       onSelect: () => {
-        void keyToggleCommands([nodeId], [prop], time).then((cmds) => edit(at ? `Remove ${label} keyframe` : `Add ${label} keyframe`, cmds));
+        void keyToggleCommands([nodeId], [prop], time).then((cmds) => edit(at
+          ? `Remove ${label} keyframe`
+          : `Add ${label} keyframe`, cmds));
       },
     });
     if (at) {
       items.push({
         id: 'kf-easing',
-        label: 'Keyframe Interpolation',
-        children: EASING_PRESETS.map((p) => ({
+        label: t('inspector.propertyRowMenu.interpolation', 'Keyframe Interpolation'),
+        children: easingPresets().map((p) => ({
           id: `ease-${p.id}`,
           label: p.label,
           ...(p.chord ? { shortcut: formatChord(p.chord) } : {}),
@@ -142,25 +153,25 @@ export function engineRowMenuItems(ctx: RowMenuContext): ContextMenuItem[] {
       });
       items.push({
         id: 'kf-copy',
-        label: 'Copy Keyframe',
+        label: t('inspector.propertyRowMenu.copyKeyframe', 'Copy Keyframe'),
         // The key under the playhead, copied whole by the engine (`copyKeyframes`).
         onSelect: () => { void copyKeyframeAt(nodeId, prop, time); },
       });
     }
     if (hasClipboard()) {
-      items.push({ id: 'kf-paste', label: 'Paste Keyframes', onSelect: () => { void pasteKeyframesAt([nodeId], time); } });
+      items.push({ id: 'kf-paste', label: t('inspector.propertyRowMenu.pasteKeyframes', 'Paste Keyframes'), onSelect: () => { void pasteKeyframesAt([nodeId], time); } });
     }
     items.push({ id: 'sep-anim', separator: true });
     items.push({
       id: 'remove-anim',
-      label: 'Remove Animation',
+      label: t('inspector.propertyRowMenu.removeAnimation', 'Remove Animation'),
       danger: true,
       onSelect: () => { void edit(`Remove ${label} animation`, stopwatchCommands([nodeId], [prop], time)); },
     });
   } else {
     items.push({
       id: 'animate',
-      label: 'Enable Animation',
+      label: t('inspector.propertyRowMenu.enableAnimation', 'Enable Animation'),
       icon: 'stopwatch',
       onSelect: () => { void edit(`Animate ${label}`, stopwatchCommands([nodeId], [prop], time)); },
     });
@@ -176,7 +187,7 @@ export function engineRowMenuItems(ctx: RowMenuContext): ContextMenuItem[] {
   if (expr?.enabled && r) {
     items.push({
       id: 'expr-bake',
-      label: 'Convert Expression to Keyframes',
+      label: t('inspector.propertyRowMenu.convertExpression', 'Convert Expression to Keyframes'),
       icon: 'keyframe',
       onSelect: () => { void edit('Convert Expression to Keyframes', { type: 'convertExpressionToKeyframes', prop: r.ref, step: 0 }); },
     });
@@ -185,7 +196,7 @@ export function engineRowMenuItems(ctx: RowMenuContext): ContextMenuItem[] {
   if (ctx.resetValue !== undefined) {
     const def = ctx.resetValue;
     items.push({ id: 'sep-reset', separator: true });
-    items.push({ id: 'reset', label: `Reset ${label}`, icon: 'rotate', onSelect: () => ctx.setValue(def) });
+    items.push({ id: 'reset', label: t('inspector.propertyRowMenu.reset', 'Reset {name}', { name: label }), icon: 'rotate', onSelect: () => ctx.setValue(def) });
   }
 
   // The composition's Essential Properties from the mirror (`CompSettings.essentialProps`).

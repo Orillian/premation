@@ -389,7 +389,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
     const std::string oom = pop_scope(dev);
     if (r.ok && validation.empty() && oom.empty()) {
       dev.queue().Submit(1, &cb);
-      draw_full(ctx, call.dest, rg::TexRef{out.view, out.id, w, h, true});
+      draw_full(ctx, call.dest, rg::TexRef{out.view, out.id, w, h, true, 0, 0});
       ++stats_.gpu;
       return true;
     }
@@ -432,7 +432,7 @@ bool RenderGlue::apply(rg::PassContext& ctx, const Call& call) {
   layout.rowsPerImage = h;
   const wgpu::Extent3D size{w, h, 1};
   dev.queue().WriteTexture(&dst, out.bytes.data(), out.bytes.size(), &layout, &size);
-  draw_full(ctx, call.dest, rg::TexRef{up.view, up.id, w, h, true});
+  draw_full(ctx, call.dest, rg::TexRef{up.view, up.id, w, h, true, 0, 0});
   ++stats_.cpu;
   return true;
 }

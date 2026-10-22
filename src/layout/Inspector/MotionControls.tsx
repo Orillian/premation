@@ -8,6 +8,7 @@
  */
 
 import { Switch } from '@components/Switch';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorLayer, useMirrorLayerKeyframes, useMirrorTree } from '@hooks/useMirror';
 import type { AutoOrientMode } from '@core/scene/autoOrient';
@@ -58,9 +59,9 @@ export function MotionControls({ nodeId }: { nodeId: string }): JSX.Element | nu
       {showAutoOrient && (
         <div className={styles.row}>
           <span className={styles.label}>
-            Auto-Orient
+            {t('inspector.motion.autoOrient', 'Auto-Orient')}
             {autoOrient === 'path' && !animated && (
-              <span className={tStyles.labelNote}> · needs position keys</span>
+              <span className={tStyles.labelNote}> · {t('inspector.motion.needsPositionKeys', 'needs position keys')}</span>
             )}
           </span>
           <select
@@ -68,24 +69,24 @@ export function MotionControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             style={{ width: 128 }}
             value={autoOrient}
             onChange={(e) => { void setLayersSwitch([nodeId], { autoOrient: API_AUTO_ORIENT[e.currentTarget.value as AutoOrientMode] }, 'Auto-Orient'); }}
-            aria-label="Auto-orient"
+            aria-label={t('inspector.motion.autoOrientAria', 'Auto-orient')}
           >
-            <option value="off">Off</option>
+            <option value="off">{t('inspector.motion.off', 'Off')}</option>
             {showAlongPath && (
-              <option value="path" title={is3D ? 'Along Path currently affects 2D layers only' : undefined}>
-                Along Path{is3D ? ' (2D only)' : ''}
+              <option value="path" title={is3D ? t('inspector.motion.alongPath2dTitle', 'Along Path currently affects 2D layers only') : undefined}>
+                {is3D ? t('inspector.motion.alongPath2dOnly', 'Along Path (2D only)') : t('inspector.motion.alongPath', 'Along Path')}
               </option>
             )}
             {/* AE's per-layer, opt-in billboard. Hidden for 2D layers because
                 facing a camera is meaningless outside 3D space. */}
-            {canFaceCamera && <option value="camera">Towards Camera</option>}
+            {canFaceCamera && <option value="camera">{t('inspector.motion.towardsCamera', 'Towards Camera')}</option>}
           </select>
         </div>
       )}
       <div className={styles.row}>
         <span className={styles.label}>
-          Motion Path
-          {!animated && <span className={tStyles.labelNote}> · needs position keys</span>}
+          {t('inspector.motion.motionPath', 'Motion Path')}
+          {!animated && <span className={tStyles.labelNote}> · {t('inspector.motion.needsPositionKeys', 'needs position keys')}</span>}
         </span>
         <span style={{ display: 'inline-flex', gap: 6 }}>
           <button
@@ -93,29 +94,29 @@ export function MotionControls({ nodeId }: { nodeId: string }): JSX.Element | nu
             className={styles.trigger}
             disabled={!animated}
             onClick={() => reshapePath(nodeId, 'smooth')}
-            title="Auto-bezier: curve the path smoothly through every keyframe (drag the square handles on the canvas to shape it)"
+            title={t('inspector.motion.smoothTitle', 'Auto-bezier: curve the path smoothly through every keyframe (drag the square handles on the canvas to shape it)')}
           >
-            Smooth
+            {t('inspector.motion.smooth', 'Smooth')}
           </button>
           <button
             type="button"
             className={styles.trigger}
             disabled={!animated || !mirrorHasPathTangents(m, nodeId)}
             onClick={() => reshapePath(nodeId, 'straighten')}
-            title="Remove spatial tangents — straight lines between keyframes"
+            title={t('inspector.motion.straightenTitle', 'Remove spatial tangents — straight lines between keyframes')}
           >
-            Straighten
+            {t('inspector.motion.straighten', 'Straighten')}
           </button>
         </span>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Separate Dimensions</span>
+        <span className={styles.label}>{t('inspector.motion.separateDimensions', 'Separate Dimensions')}</span>
         <Switch
           checked={separated}
           onChange={(e) => {
             void edit('Separate Dimensions', { type: 'setDimensionsSeparated', layer: nodeId, path: 'transform/position', separated: e.currentTarget.checked });
           }}
-          aria-label="Separate position into X and Y tracks"
+          aria-label={t('inspector.motion.separateDimensionsAria', 'Separate position into X and Y tracks')}
         />
       </div>
     </>

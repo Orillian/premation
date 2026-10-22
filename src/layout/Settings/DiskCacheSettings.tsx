@@ -20,6 +20,7 @@ import { engineCacheSnapshot, subscribeEngineCache } from '@layout/Timeline/engi
 import { DISK_CACHE_MAX_GB, DISK_CACHE_MIN_GB, defaultDiskCacheFolder } from '@layout/Timeline/diskCacheSync';
 import { purgeDiskCache } from '@layout/Timeline/previewCacheCommands';
 import { formatCacheMb } from '@layout/Timeline/previewCacheStats';
+import { t } from '@core/i18n';
 import styles from './CustomizeDialog.module.css';
 
 const MB = 1024 * 1024;
@@ -65,30 +66,30 @@ export function DiskCacheSettings(): JSX.Element {
     <>
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Disk Cache</span>
+          <span className={styles.settingTitle}>{t('settings.diskCache.title', 'Disk Cache')}</span>
           <span className={styles.settingDesc}>
-            Rendered preview frames also kept in a folder on disk, so frames video memory let go — and
-            frames from an earlier session — play back without rendering again. Frames on disk show as
-            the blue bar under the timeline ruler.
+            {t('settings.diskCache.desc', 'Rendered preview frames also kept in a folder on disk, so frames video memory let go — and frames from an earlier session — play back without rendering again. Frames on disk show as the blue bar under the timeline ruler.')}
           </span>
         </div>
         <div className={styles.settingRight}>
           <span className={styles.cacheSizeReadout} data-testid="disk-cache-readout">
-            {enabled ? `${formatCacheMb(cache.diskBytes / MB)} of ${maxGb} GB` : 'Off'}
+            {enabled
+              ? t('settings.diskCache.readout', '{used} of {max} GB', { used: formatCacheMb(cache.diskBytes / MB), max: maxGb })
+              : t('settings.diskCache.off', 'Off')}
           </span>
           <Switch
             checked={enabled}
             onChange={(e) => setPref('diskCacheEnabled', e.currentTarget.checked)}
-            aria-label="Enable Disk Cache"
+            aria-label={t('settings.diskCache.enable', 'Enable Disk Cache')}
           />
         </div>
       </div>
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Disk Cache Folder</span>
+          <span className={styles.settingTitle}>{t('settings.diskCache.folder', 'Disk Cache Folder')}</span>
           <span className={styles.settingDesc}>
-            A fast local drive is best. Only the cache&apos;s own files are ever deleted from it.
+            {t('settings.diskCache.folderDesc', "A fast local drive is best. Only the cache's own files are ever deleted from it.")}
           </span>
           {shownFolder ? <code className={styles.kbd} title={shownFolder}>{shownFolder}</code> : null}
         </div>
@@ -96,12 +97,12 @@ export function DiskCacheSettings(): JSX.Element {
           {pickerAvailable() ? (
             <Button variant="secondary" size="sm" disabled={!enabled} onClick={() => void chooseFolder()}>
               <Icon name="folder-open" size="sm" />
-              <span>Choose Folder…</span>
+              <span>{t('settings.diskCache.chooseFolder', 'Choose Folder…')}</span>
             </Button>
           ) : null}
           {folder ? (
             <Button variant="ghost" size="sm" disabled={!enabled} onClick={() => setPref('diskCacheFolder', null)}>
-              Use Default
+              {t('settings.diskCache.useDefault', 'Use Default')}
             </Button>
           ) : null}
         </div>
@@ -109,9 +110,9 @@ export function DiskCacheSettings(): JSX.Element {
 
       <div className={styles.settingRow}>
         <div className={styles.settingInfo}>
-          <span className={styles.settingTitle}>Maximum Disk Cache Size</span>
+          <span className={styles.settingTitle}>{t('settings.diskCache.maxSize', 'Maximum Disk Cache Size')}</span>
           <span className={styles.settingDesc}>
-            Past this, the least recently used frames are deleted first.
+            {t('settings.diskCache.maxSizeDesc', 'Past this, the least recently used frames are deleted first.')}
           </span>
         </div>
         <div className={styles.settingRight}>
@@ -127,7 +128,7 @@ export function DiskCacheSettings(): JSX.Element {
             onBlur={(e) => commitSize(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commitSize(e.currentTarget.value); }}
             suffix="GB"
-            aria-label="Maximum disk cache size in gigabytes"
+            aria-label={t('settings.diskCache.maxSizeAria', 'Maximum disk cache size in gigabytes')}
             data-enter-safe=""
           />
           <Button
@@ -137,7 +138,7 @@ export function DiskCacheSettings(): JSX.Element {
             onClick={() => purgeDiskCache()}
           >
             <Icon name="trash" size="sm" />
-            <span>Empty Disk Cache</span>
+            <span>{t('settings.diskCache.empty', 'Empty Disk Cache')}</span>
           </Button>
         </div>
       </div>

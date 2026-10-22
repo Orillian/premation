@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '@utils/cn';
 import { pointerAngleDeg, wrapDeltaDeg, snapAngle, revolutionsOf, formatAngle } from './angleDialMath';
+import { t } from '@core/i18n';
 import styles from './AngleDial.module.css';
 
 export interface AngleDialProps {
@@ -119,7 +120,7 @@ export function AngleDial({
         viewBox={`0 0 ${size} ${size}`}
         role="slider"
         tabIndex={disabled ? -1 : 0}
-        aria-label={ariaLabel ?? 'Angle'}
+        aria-label={ariaLabel ?? t('ui.angleDial.angle', 'Angle')}
         aria-valuenow={Number.isFinite(value) ? Math.round(value * 10) / 10 : undefined}
         aria-valuetext={formatAngle(value)}
         aria-disabled={disabled || undefined}

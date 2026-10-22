@@ -25,6 +25,7 @@ import { EmptyState } from '@components/EmptyState';
 import { VirtualList } from '@components/VirtualList';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import styles from './FontPicker.module.css';
 import type { LocalFace } from '@core/fonts/localFontIndex';
 import { cachedEngineFontList, fontFamilyInfo, loadEngineFontList } from '@core/fonts/engineFontList';
@@ -225,8 +226,8 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
           {family}
         </span>
         {variable?.has(family) ? (
-          <span className={styles.variableBadge} title="Variable font" aria-label="variable">
-            VAR
+          <span className={styles.variableBadge} title={t('inspector.fontPicker.variableFont', 'Variable font')} aria-label={t('inspector.fontPicker.variableAria', 'variable')}>
+            {t('inspector.fontPicker.varBadge', 'VAR')}
           </span>
         ) : null}
         {family === value ? (
@@ -236,8 +237,12 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
           type="button"
           className={cn(styles.star, favourite && styles.starOn)}
           aria-pressed={favourite}
-          aria-label={favourite ? `Remove ${family} from favourites` : `Add ${family} to favourites`}
-          title={favourite ? 'Remove from favourites' : 'Add to favourites'}
+          aria-label={favourite
+            ? t('inspector.fontPicker.removeFamilyFavourite', 'Remove {family} from favourites', { family })
+            : t('inspector.fontPicker.addFamilyFavourite', 'Add {family} to favourites', { family })}
+          title={favourite
+            ? t('inspector.fontPicker.removeFavourite', 'Remove from favourites')
+            : t('inspector.fontPicker.addFavourite', 'Add to favourites')}
           // The row selects on click; the star must not.
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
@@ -290,19 +295,19 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
         <div className={styles.searchWrap}>
           <SearchField
             size="sm"
-            placeholder="Search fonts…"
+            placeholder={t('inspector.fontPicker.searchPlaceholder', 'Search fonts…')}
             value={search}
             onChange={setSearch}
             onKeyDown={onSearchKeyDown}
             autoFocus
-            ariaLabel="Search fonts"
+            ariaLabel={t('inspector.fontPicker.searchAria', 'Search fonts')}
           />
           <button
             type="button"
             className={cn(styles.filterChip, favouritesOnly && styles.filterChipOn)}
             aria-pressed={favouritesOnly}
-            aria-label="Show favourites"
-            title="Show only favourite fonts"
+            aria-label={t('inspector.fontPicker.showFavourites', 'Show favourites')}
+            title={t('inspector.fontPicker.showFavouritesTitle', 'Show only favourite fonts')}
             onClick={() => setFavouritesOnly((v) => !v)}
           >
             ★
@@ -314,23 +319,25 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
             // Disabled until the probe has answered — a filter that hides
             // everything because nothing is known yet reads as "no fonts".
             disabled={!variable}
-            title={variable ? 'Show only variable fonts (weight / width / slant axes)' : 'Checking which fonts are variable…'}
+            title={variable
+              ? t('inspector.fontPicker.variableOnlyTitle', 'Show only variable fonts (weight / width / slant axes)')
+              : t('inspector.fontPicker.checkingVariable', 'Checking which fonts are variable…')}
             onClick={() => setVariableOnly((v) => !v)}
           >
-            Variable
+            {t('inspector.fontPicker.variable', 'Variable')}
           </button>
         </div>
         {!fonts ? (
-          <div className={styles.status}>Loading fonts…</div>
+          <div className={styles.status}>{t('inspector.fontPicker.loading', 'Loading fonts…')}</div>
         ) : (
           <>
             {recentCount > 0 ? (
-              <div role="listbox" aria-label="Recent fonts" className={styles.recentList}>
-                <div className={styles.sectionLabel} aria-hidden>Recent</div>
+              <div role="listbox" aria-label={t('inspector.fontPicker.recentFonts', 'Recent fonts')} className={styles.recentList}>
+                <div className={styles.sectionLabel} aria-hidden>{t('inspector.fontPicker.recent', 'Recent')}</div>
                 {recentShown.map((family, i) => (
                   <div key={`recent-${family}`} className={styles.recentRow}>{renderRow(family, i)}</div>
                 ))}
-                <div className={styles.sectionLabel} aria-hidden>All fonts</div>
+                <div className={styles.sectionLabel} aria-hidden>{t('inspector.fontPicker.allFonts', 'All fonts')}</div>
               </div>
             ) : null}
             {filtered.length === 0 ? (
@@ -338,9 +345,9 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
                 compact
                 icon="type"
                 message={favouritesOnly && favourites.length === 0
-                  ? 'No favourites yet — star a font to add it.'
-                  : `No fonts match “${search}”.`}
-                action={{ label: 'Show all fonts', onClick: clearFilters }}
+                  ? t('inspector.fontPicker.noFavourites', 'No favourites yet — star a font to add it.')
+                  : t('inspector.fontPicker.noMatch', 'No fonts match “{search}”.', { search })}
+                action={{ label: t('inspector.fontPicker.showAll', 'Show all fonts'), onClick: clearFilters }}
               />
             ) : (
               <div
@@ -348,7 +355,7 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
                 className={styles.listWrap}
                 style={{ height: listHeight }}
                 role="listbox"
-                aria-label="Font family"
+                aria-label={t('inspector.fontPicker.fontFamily', 'Font family')}
               >
                 <VirtualList
                   items={filtered}
@@ -359,9 +366,11 @@ export function FontPicker({ value, onChange, onStyleChange }: FontPickerProps):
               </div>
             )}
             {faces.length > 0 ? (
-              <div className={styles.faces} role="group" aria-label={`${styleFamily} styles`}>
+              <div className={styles.faces} role="group" aria-label={t('inspector.fontPicker.familyStyles', '{family} styles', { family: styleFamily })}>
                 <div className={styles.sectionLabel}>
-                  {styleFamily} · {faces.length} {faces.length === 1 ? 'style' : 'styles'}
+                  {faces.length === 1
+                    ? t('inspector.fontPicker.styleCountOne', '{family} · {n} style', { family: styleFamily, n: faces.length })
+                    : t('inspector.fontPicker.styleCountOther', '{family} · {n} styles', { family: styleFamily, n: faces.length })}
                 </div>
                 <div className={styles.faceList}>
                   {faces.map((face) => (

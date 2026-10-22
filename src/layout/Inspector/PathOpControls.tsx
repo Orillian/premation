@@ -29,6 +29,7 @@ import { AnimToggle } from './AnimToggle';
 import { InspectorSection } from './InspectorSection';
 import { useKeyedParam } from './useKeyedParam';
 import { useEngineEdit } from './useEngineEdit';
+import { t } from '@core/i18n';
 
 /** Reorder / remove an operator: the API's property-group commands on `contents/<opId>`. */
 function moveOp(nodeId: string, opId: string, toIndex: number): void {
@@ -54,55 +55,63 @@ function setOpField(label: string, nodeId: string, opId: string, key: string, va
   void edit(label, opFieldCommand(nodeId, opId, key, value));
 }
 
-const TYPES: { id: PathOpType; label: string }[] = [
-  { id: 'zigzag', label: 'Zig-Zag' },
-  { id: 'roundCorners', label: 'Round Corners' },
-  { id: 'pucker', label: 'Pucker & Bloat' },
-  { id: 'twist', label: 'Twist' },
-  { id: 'offset', label: 'Offset Paths' },
-  // AE's name for this operator. The stored id stays `roughen` so existing
-  // projects keep loading — the label is what was wrong, not the data.
-  { id: 'roughen', label: 'Wiggle Paths' },
-  // Chain-level like Trim and the Repeater: one random affine transform per
-  // RUN, so downstream of a Repeater every copy wanders independently. That
-  // order sensitivity is the operator's whole point — see applyWiggleTransform.
-  { id: 'wiggleTransform', label: 'Wiggle Transform' },
-  // Trim is an operator like any other since document version 1.4.0. It had its
-  // own inspector section and its own fixed slot after the chain, which made its
-  // position unchangeable — and the position is exactly what matters: trimming
-  // by arc length cuts a ruffled outline somewhere quite different from where it
-  // cuts the smooth one it was built from.
-  { id: 'trim', label: 'Trim Paths' },
-  // Folded in for the same reason Trim was, and the reason is stronger here.
-  // The Repeater applies a per-copy SCALE, and every operator in the chain
-  // measures its effect in absolute px — zigzag's amplitude, Round Corners'
-  // radius, Offset Path's distance. Scaling before an operator changes the
-  // ratio between the two; scaling after it does not. So the position genuinely
-  // changes the picture, which a fixed slot after the chain could not express.
-  { id: 'repeater', label: 'Repeater' },
-];
+function pathOpTypes(): { id: PathOpType; label: string }[] {
+  return [
+    { id: 'zigzag', label: t('inspector.pathOp.type.zigZag', 'Zig-Zag') },
+    { id: 'roundCorners', label: t('inspector.pathOp.type.roundCorners', 'Round Corners') },
+    { id: 'pucker', label: t('inspector.pathOp.type.puckerBloat', 'Pucker & Bloat') },
+    { id: 'twist', label: t('inspector.pathOp.type.twist', 'Twist') },
+    { id: 'offset', label: t('inspector.pathOp.type.offsetPaths', 'Offset Paths') },
+    // AE's name for this operator. The stored id stays `roughen` so existing
+    // projects keep loading — the label is what was wrong, not the data.
+    { id: 'roughen', label: t('inspector.pathOp.type.wigglePaths', 'Wiggle Paths') },
+    // Chain-level like Trim and the Repeater: one random affine transform per
+    // RUN, so downstream of a Repeater every copy wanders independently. That
+    // order sensitivity is the operator's whole point — see applyWiggleTransform.
+    { id: 'wiggleTransform', label: t('inspector.pathOp.type.wiggleTransform', 'Wiggle Transform') },
+    // Trim is an operator like any other since document version 1.4.0. It had its
+    // own inspector section and its own fixed slot after the chain, which made its
+    // position unchangeable — and the position is exactly what matters: trimming
+    // by arc length cuts a ruffled outline somewhere quite different from where it
+    // cuts the smooth one it was built from.
+    { id: 'trim', label: t('inspector.pathOp.type.trimPaths', 'Trim Paths') },
+    // Folded in for the same reason Trim was, and the reason is stronger here.
+    // The Repeater applies a per-copy SCALE, and every operator in the chain
+    // measures its effect in absolute px — zigzag's amplitude, Round Corners'
+    // radius, Offset Path's distance. Scaling before an operator changes the
+    // ratio between the two; scaling after it does not. So the position genuinely
+    // changes the picture, which a fixed slot after the chain could not express.
+    { id: 'repeater', label: t('inspector.pathOp.type.repeater', 'Repeater') },
+  ];
+}
 
 /** AE's stacking choice. `above` is this renderer's historical behaviour. */
-const COMPOSITE: { id: RepeaterComposite; label: string }[] = [
-  { id: 'above', label: 'Above' },
-  { id: 'below', label: 'Below' },
-];
+function compositeOptions(): { id: RepeaterComposite; label: string }[] {
+  return [
+    { id: 'above', label: t('inspector.pathOp.composite.above', 'Above') },
+    { id: 'below', label: t('inspector.pathOp.composite.below', 'Below') },
+  ];
+}
 
 /** Offset Paths' corner treatment — AE's Line Join. Discrete, like Composite:
  *  interpolating a join style has no meaning between the stops. */
-const LINE_JOINS: { id: OffsetLineJoin; label: string }[] = [
-  { id: 'miter', label: 'Miter' },
-  { id: 'round', label: 'Round' },
-  { id: 'bevel', label: 'Bevel' },
-];
+function lineJoinOptions(): { id: OffsetLineJoin; label: string }[] {
+  return [
+    { id: 'miter', label: t('inspector.pathOp.lineJoin.miter', 'Miter') },
+    { id: 'round', label: t('inspector.pathOp.lineJoin.round', 'Round') },
+    { id: 'bevel', label: t('inspector.pathOp.lineJoin.bevel', 'Bevel') },
+  ];
+}
 
 /** AE's "Trim Multiple Shapes". `simultaneously` (AE's default) trims every
  *  path by the same percentages at once; `individually` trims them one after
  *  another, which is what a staggered reveal of several outlines wants. */
-const TRIM_MULTIPLE: { id: 'simultaneously' | 'individually'; label: string }[] = [
-  { id: 'simultaneously', label: 'Simultaneously' },
-  { id: 'individually', label: 'Individually' },
-];
+function trimMultipleOptions(): { id: 'simultaneously' | 'individually'; label: string }[] {
+  return [
+    { id: 'simultaneously', label: t('inspector.pathOp.trimMultiple.simultaneously', 'Simultaneously') },
+    { id: 'individually', label: t('inspector.pathOp.trimMultiple.individually', 'Individually') },
+  ];
+}
 
 /**
  * The lower bound for an operator's parameter.
@@ -176,21 +185,21 @@ function PathOpCard({
   count: number;
 }): JSX.Element {
   const eng = useEngineEdit();
-  const typeLabel = TYPES.find((t) => t.id === op.type)?.label ?? 'Zig-Zag';
+  const typeLabel = pathOpTypes().find((ty) => ty.id === op.type)?.label ?? t('inspector.pathOp.type.zigZag', 'Zig-Zag');
   // The picker lists the deformers only (Trim and the Repeater have no type
   // picker — see below); the engine's `contents/<opId>/type` takes the same set.
-  const items: DropdownItem[] = TYPES.filter((t) => t.id !== 'trim' && t.id !== 'repeater').map((t) => ({
+  const items: DropdownItem[] = pathOpTypes().filter((ty) => ty.id !== 'trim' && ty.id !== 'repeater').map((ty) => ({
     type: 'item',
-    id: t.id,
-    label: t.label,
-    icon: t.id === op.type ? 'check' : undefined,
-    onSelect: () => setOpField('Set Path Operator Type', nodeId, op.id, 'type', t.id),
+    id: ty.id,
+    label: ty.label,
+    icon: ty.id === op.type ? 'check' : undefined,
+    onSelect: () => setOpField('Set Path Operator Type', nodeId, op.id, 'type', ty.id),
   }));
 
   return (
     <InspectorSection
       nested
-      title={count > 1 ? `${index + 1}. ${typeLabel}` : typeLabel}
+      title={count > 1 ? t('inspector.pathOp.numberedTitle', '{n}. {name}', { n: index + 1, name: typeLabel }) : typeLabel}
       // The move and remove controls go in the shared actions slot: the
       // inspector has one place a card's controls live, and it is the right end
       // of its title row — the same place the layer styles and shape effects
@@ -202,8 +211,8 @@ function PathOpCard({
               type="button"
               className={styles.remove}
               onClick={() => moveOp(nodeId, op.id, index - 1)}
-              aria-label={`Move ${typeLabel} up`}
-              title="Move up — operators apply top to bottom"
+              aria-label={t('inspector.pathOp.moveUpNamed', 'Move {name} up', { name: typeLabel })}
+              title={t('inspector.pathOp.moveUp', 'Move up — operators apply top to bottom')}
             >
               <Icon name="chevron-up" size="sm" />
             </button>
@@ -213,8 +222,8 @@ function PathOpCard({
               type="button"
               className={styles.remove}
               onClick={() => moveOp(nodeId, op.id, index + 1)}
-              aria-label={`Move ${typeLabel} down`}
-              title="Move down — operators apply top to bottom"
+              aria-label={t('inspector.pathOp.moveDownNamed', 'Move {name} down', { name: typeLabel })}
+              title={t('inspector.pathOp.moveDown', 'Move down — operators apply top to bottom')}
             >
               <Icon name="chevron-down" size="sm" />
             </button>
@@ -223,8 +232,8 @@ function PathOpCard({
             type="button"
             className={styles.remove}
             onClick={() => removeOp(nodeId, op.id)}
-            aria-label={`Remove ${typeLabel}`}
-            title="Remove path operator"
+            aria-label={t('inspector.pathOp.removeNamed', 'Remove {name}', { name: typeLabel })}
+            title={t('inspector.pathOp.remove', 'Remove path operator')}
           >
             <Icon name="minus" size="sm" />
           </button>
@@ -237,7 +246,7 @@ function PathOpCard({
           are chosen when added, from the same Add menu as everything else. */}
       {op.type !== 'trim' && op.type !== 'repeater' && (
         <div className={styles.selectorRow}>
-          <span className={styles.paramLabel}>Type</span>
+          <span className={styles.paramLabel}>{t('inspector.pathOp.typeLabel', 'Type')}</span>
           <Dropdown
             placement="left-start"
             trigger={
@@ -256,16 +265,16 @@ function PathOpCard({
           and behind the original. */}
       {op.type === 'repeater' && (
         <div className={styles.selectorRow}>
-          <span className={styles.paramLabel}>Composite</span>
+          <span className={styles.paramLabel}>{t('inspector.pathOp.compositeLabel', 'Composite')}</span>
           <Dropdown
             placement="left-start"
             trigger={
               <button type="button" className={styles.pick}>
-                <span>{op.composite === 'below' ? 'Below' : 'Above'}</span>
+                <span>{op.composite === 'below' ? t('inspector.pathOp.composite.below', 'Below') : t('inspector.pathOp.composite.above', 'Above')}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
             }
-            items={COMPOSITE.map((c) => ({
+            items={compositeOptions().map((c) => ({
               type: 'item' as const,
               id: c.id,
               label: c.label,
@@ -279,16 +288,16 @@ function PathOpCard({
           exactly as Composite is for the Repeater. */}
       {op.type === 'offset' && (
         <div className={styles.selectorRow}>
-          <span className={styles.paramLabel}>Line Join</span>
+          <span className={styles.paramLabel}>{t('inspector.pathOp.lineJoinLabel', 'Line Join')}</span>
           <Dropdown
             placement="left-start"
             trigger={
               <button type="button" className={styles.pick}>
-                <span>{LINE_JOINS.find((j) => j.id === (op.lineJoin ?? 'miter'))?.label ?? 'Miter'}</span>
+                <span>{lineJoinOptions().find((j) => j.id === (op.lineJoin ?? 'miter'))?.label ?? t('inspector.pathOp.lineJoin.miter', 'Miter')}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
             }
-            items={LINE_JOINS.map((j) => ({
+            items={lineJoinOptions().map((j) => ({
               type: 'item' as const,
               id: j.id,
               label: j.label,
@@ -300,16 +309,16 @@ function PathOpCard({
       )}
       {op.type === 'trim' && (
         <div className={styles.selectorRow}>
-          <span className={styles.paramLabel}>Multiple</span>
+          <span className={styles.paramLabel}>{t('inspector.pathOp.multipleLabel', 'Multiple')}</span>
           <Dropdown
             placement="left-start"
             trigger={
               <button type="button" className={styles.pick}>
-                <span>{op.trimMultipleShapes === 'individually' ? 'Individually' : 'Simultaneously'}</span>
+                <span>{op.trimMultipleShapes === 'individually' ? t('inspector.pathOp.trimMultiple.individually', 'Individually') : t('inspector.pathOp.trimMultiple.simultaneously', 'Simultaneously')}</span>
                 <Icon name="chevron-down" size="sm" />
               </button>
             }
-            items={TRIM_MULTIPLE.map((c) => ({
+            items={trimMultipleOptions().map((c) => ({
               type: 'item' as const,
               id: c.id,
               label: c.label,
@@ -349,13 +358,13 @@ function PathOpCard({
                 but its label must still start on the same column as the two
                 rows above it. */}
             <span className={styles.rowToggle} />
-            <span className={styles.paramLabel}>Random Seed</span>
+            <span className={styles.paramLabel}>{t('inspector.pathOp.randomSeed', 'Random Seed')}</span>
             <ValueField
               value={op.seed ?? 0}
               {...eng.scrub('Set Random Seed')}
               onChange={(v) => eng.send('Set Random Seed', opFieldCommand(nodeId, op.id, 'seed', Math.max(0, Math.round(v))))}
               min={0}
-              aria-label="Random Seed"
+              aria-label={t('inspector.pathOp.randomSeed', 'Random Seed')}
             />
           </div>
         </>

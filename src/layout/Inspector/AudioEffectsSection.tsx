@@ -34,6 +34,7 @@ import {
 import { shortId } from '@utils/lang';
 import { values } from '@core/engine/propRefs';
 import { isLayer } from '@core/mirror/docFacts';
+import { t } from '@core/i18n';
 import { useEngineEdit, type EngineEdit } from './useEngineEdit';
 import styles from './ParentControl.module.css';
 import ta from './TextAnimatorControls.module.css';
@@ -104,24 +105,24 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
       <div className={styles.row}>
         <span
           className={styles.label}
-          title="Effects apply before the layer level, in order, and are included in exported audio."
+          title={t('inspector.audioEffects.hint', 'Effects apply before the layer level, in order, and are included in exported audio.')}
         >
-          Audio Effects
+          {t('inspector.audioEffects.title', 'Audio Effects')}
         </span>
         <select
           className={styles.select}
           style={{ width: 140 }}
           value=""
           onChange={(e) => { if (e.currentTarget.value) add(e.currentTarget.value as AudioEffectType); }}
-          aria-label="Add audio effect"
+          aria-label={t('inspector.audioEffects.add', 'Add audio effect')}
         >
-          <option value="">Add effect…</option>
-          {TYPES.map((t) => <option key={t} value={t}>{AUDIO_EFFECT_DEFS[t].label}</option>)}
+          <option value="">{t('inspector.audioEffects.addPlaceholder', 'Add effect…')}</option>
+          {TYPES.map((ty) => <option key={ty} value={ty}>{AUDIO_EFFECT_DEFS[ty].label}</option>)}
         </select>
       </div>
 
       {chain.length === 0 && (
-        <p className={tStyles.helpLine}>No audio effects. They apply before the layer level, in order, and export with the audio.</p>
+        <p className={tStyles.helpLine}>{t('inspector.audioEffects.empty', 'No audio effects. They apply before the layer level, in order, and export with the audio.')}</p>
       )}
 
       {chain.map((e, i) => (
@@ -134,29 +135,29 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
               <Switch
                 checked={e.enabled !== false}
                 onChange={(ev) => update(e.id, { enabled: ev.currentTarget.checked })}
-                aria-label={`Enable ${AUDIO_EFFECT_DEFS[e.type].label}`}
+                aria-label={t('inspector.audioEffects.enable', 'Enable {name}', { name: AUDIO_EFFECT_DEFS[e.type].label })}
               />
               <button type="button" className={styles.select} style={{ width: 'auto', padding: '0 6px' }}
-                disabled={i === 0} onClick={() => move(e.id, -1)} aria-label="Move effect up">↑</button>
+                disabled={i === 0} onClick={() => move(e.id, -1)} aria-label={t('inspector.audioEffects.moveUp', 'Move effect up')}>↑</button>
               <button type="button" className={styles.select} style={{ width: 'auto', padding: '0 6px' }}
-                disabled={i === chain.length - 1} onClick={() => move(e.id, 1)} aria-label="Move effect down">↓</button>
+                disabled={i === chain.length - 1} onClick={() => move(e.id, 1)} aria-label={t('inspector.audioEffects.moveDown', 'Move effect down')}>↓</button>
               <button type="button" className={styles.select} style={{ width: 'auto', padding: '0 6px' }}
-                onClick={() => remove(e.id)} aria-label={`Remove ${AUDIO_EFFECT_DEFS[e.type].label}`}>✕</button>
+                onClick={() => remove(e.id)} aria-label={t('inspector.audioEffects.remove', 'Remove {name}', { name: AUDIO_EFFECT_DEFS[e.type].label })}>✕</button>
             </span>
           </div>
 
           {e.type === 'high-low-pass' && (
             <div className={ta.paramRow}>
               <div />
-              <span className={ta.paramLabel}>Mode</span>
+              <span className={ta.paramLabel}>{t('inspector.audioEffects.mode', 'Mode')}</span>
               <select
                 className={styles.select}
                 value={e.mode ?? 'highpass'}
                 onChange={(ev) => update(e.id, { mode: ev.currentTarget.value as 'highpass' | 'lowpass' })}
-                aria-label="Filter mode"
+                aria-label={t('inspector.audioEffects.filterMode', 'Filter mode')}
               >
-                <option value="highpass">High Pass</option>
-                <option value="lowpass">Low Pass</option>
+                <option value="highpass">{t('inspector.audioEffects.highPass', 'High Pass')}</option>
+                <option value="lowpass">{t('inspector.audioEffects.lowPass', 'Low Pass')}</option>
               </select>
             </div>
           )}
@@ -176,12 +177,12 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
           {WAVE_EFFECTS.has(e.type) && (
             <div className={ta.paramRow}>
               <div />
-              <span className={ta.paramLabel}>Waveform</span>
+              <span className={ta.paramLabel}>{t('inspector.audioEffects.waveform', 'Waveform')}</span>
               <select
                 className={styles.select}
                 value={e.wave ?? 'sine'}
                 onChange={(ev) => update(e.id, { wave: ev.currentTarget.value as AudioWaveform })}
-                aria-label={`${AUDIO_EFFECT_DEFS[e.type].label} waveform`}
+                aria-label={t('inspector.audioEffects.waveformOf', '{name} waveform', { name: AUDIO_EFFECT_DEFS[e.type].label })}
               >
                 {AUDIO_WAVEFORMS
                   // White Noise is a BUFFER, not an oscillator, so it is only
@@ -199,12 +200,12 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
           {e.type === 'distortion' && (
             <div className={ta.paramRow}>
               <div />
-              <span className={ta.paramLabel}>Type</span>
+              <span className={ta.paramLabel}>{t('inspector.audioEffects.type', 'Type')}</span>
               <select
                 className={styles.select}
                 value={e.curve ?? 'soft-clip'}
                 onChange={(ev) => update(e.id, { curve: ev.currentTarget.value as DistortionCurve })}
-                aria-label="Distortion type"
+                aria-label={t('inspector.audioEffects.distortionType', 'Distortion type')}
               >
                 {DISTORTION_CURVES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -226,7 +227,7 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
               <Switch
                 checked={hasFlag(e, f.key)}
                 onChange={(ev) => setFlag(e.id, f.key, ev.currentTarget.checked)}
-                aria-label={`${AUDIO_EFFECT_DEFS[e.type].label} ${f.label}`}
+                aria-label={t('inspector.audioEffects.paramOf', '{effect} {param}', { effect: AUDIO_EFFECT_DEFS[e.type].label, param: f.label })}
               />
             </div>
           ))}
@@ -243,7 +244,7 @@ export function AudioEffectsSection({ nodeId }: { nodeId: string }): JSX.Element
                 min={p.min}
                 max={p.max}
                 precision={2}
-                aria-label={`${AUDIO_EFFECT_DEFS[e.type].label} ${p.label}`}
+                aria-label={t('inspector.audioEffects.paramOf', '{effect} {param}', { effect: AUDIO_EFFECT_DEFS[e.type].label, param: p.label })}
               />
             </div>
           ))}

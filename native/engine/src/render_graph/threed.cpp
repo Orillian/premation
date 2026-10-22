@@ -24,15 +24,16 @@ namespace premation::rg {
 
 // emit helpers from composition_pass.cpp
 void emit_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
-                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear);
+                   const TexRef& tex, const SamplerRef& smp, const Rect& uv, const ColorTransform& ct, bool sampleLinear,
+                   const LayerEdge& edge);
 void emit_solid(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& c, double opacity, Blend blend,
-                const SolidShape& shape);
+                const SolidShape& shape, const LayerEdge& edge = {});
 void emit_masked_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity,
                           Blend blend, const TexRef& tex, const SamplerRef& smp, const TexRef& mask, const Rect& uv,
-                          const ColorTransform& ct, bool sampleLinear);
+                          const ColorTransform& ct, bool sampleLinear, const LayerEdge& edge = {});
 void emit_lut_textured(PassContext& ctx, Commands& cmds, const Mat3& mvp, const Color& tint, double opacity, Blend blend,
                        const TexRef& tex, const SamplerRef& smp, const TexRef& lut, const Rect& uv,
-                       const ColorTransform& ct, bool sampleLinear);
+                       const ColorTransform& ct, bool sampleLinear, const LayerEdge& edge = {});
 
 namespace {
 
@@ -1964,7 +1965,7 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     DrawItem& it = gc.add(Mat::DOF_GATHER_MATERIAL, Blend::normal, p.span());
     it.texture = dt->tex();
     it.sampler = clamp;
-    it.mask = TexRef{dt->depthView, dt->id | (std::uint64_t{1} << 62U), dt->width, dt->height, false};
+    it.mask = TexRef{dt->depthView, dt->id | (std::uint64_t{1} << 62U), dt->width, dt->height, false, 0, 0};
     ctx.draw_into(out, gc, false);
   }
 }

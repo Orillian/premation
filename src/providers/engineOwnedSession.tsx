@@ -29,6 +29,7 @@
 
 import { EngineDocumentSession, isCloudLocalCopy, type RecoveryFiles, type RecoveryIndex, type RecoveryRecord } from '@core/project/engineDocumentSession';
 import { engine } from '@core/engine/engineInstance';
+import { t } from '@core/i18n';
 import { processEngine, processEngineBridge } from '@core/engine/process/processEngine';
 import { installEngineTransport, type EngineTransportStats } from '@core/engine/engineTransport';
 import { getProjectManager } from '@core/services/coreServices';
@@ -273,6 +274,6 @@ async function restoreSilently(session: EngineDocumentSession, rec: RecoveryReco
   getProjectManager().resume(path ? projectNameFromFilePath(path) : 'Untitled', path);
   bumpScene();
   syncDirtyFromMirror();
-  notify('Restored your unsaved changes from the last session. Edit ▸ Undo goes back to the saved version.', 'info');
+  notify(t('providers.session.restored', 'Restored your unsaved changes from the last session. Edit ▸ Undo goes back to the saved version.'), 'info');
   return true;
 }

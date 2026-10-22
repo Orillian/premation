@@ -5,6 +5,7 @@
 #include <limits>
 #include <thread>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -20,6 +21,7 @@
 #include "scene.hpp"
 #include "scene_build.hpp"
 #include "onion_skin.hpp"
+#include "render/coverage_ledger.hpp"
 #include "time_conv.hpp"
 #include "variant_util.hpp"
 
@@ -108,6 +110,48 @@ struct EditVisitor {
   }
 };
 
+// ── the frame builder's queries, under the build lock ───────────────────────
+// The text measurer and the rig are the frame builder's (one object, with its
+// fonts and memos), which the build worker uses while it builds: the query
+// side reaches them through these, each call under the build lock.
+
+class Session::LockedText final : public TextQueries {
+ public:
+  explicit LockedText(Session& s) : s_(s) {}
+  api::TextLayout text_layout(const doc::Node& n, const api::TextLayoutOverrides* overrides) override {
+    const BuildLock lock(s_, false);
+    return s_.frameBuilder_->text_queries()->text_layout(n, overrides);
+  }
+  std::optional<TextGeometry> text_geometry(const doc::Node& n,
+                                            const std::vector<std::pair<std::string, double>>& overrides) override {
+    const BuildLock lock(s_, false);
+    return s_.frameBuilder_->text_queries()->text_geometry(n, overrides);
+  }
+
+ private:
+  Session& s_;
+};
+
+class Session::LockedRig final : public RigQueries {
+ public:
+  explicit LockedRig(Session& s) : s_(s) {}
+  std::optional<api::OverlayRig> rig_overlay(const doc::Document& d, const doc::EditorView& view, const doc::ExprEnv& expr,
+                                             doc::ExprCache& cache, TextQueries* text, std::string_view layer, double seconds,
+                                             const api::OverlayRigOptions& opts) override {
+    const BuildLock lock(s_, false);
+    return s_.rig_queries()->rig_overlay(d, view, expr, cache, text, layer, seconds, opts);
+  }
+  api::RigPose rig_pose(const doc::Document& d, const doc::EditorView& view, const doc::ExprEnv& expr, doc::ExprCache& cache,
+                        TextQueries* text, std::string_view layer, double seconds, const std::vector<api::Vec2>& points,
+                        std::optional<std::uint32_t> vertex, bool authoring) override {
+    const BuildLock lock(s_, false);
+    return s_.rig_queries()->rig_pose(d, view, expr, cache, text, layer, seconds, points, vertex, authoring);
+  }
+
+ private:
+  Session& s_;
+};
+
 // ── Session ─────────────────────────────────────────────────────────────────
 
 Session::Session(Outbox& out, FrameSink& sink, SessionOptions options)
@@ -125,7 +169,21 @@ Session::Session(Outbox& out, FrameSink& sink, SessionOptions options)
   savedRevision_ = 0;
 }
 
-Session::~Session() = default;
+Session::~Session() {
+  // Stop the build worker before any member it reads goes (buildThread_, the
+  // last member, joins it). A task still queued is dropped with the session.
+  {
+    const std::lock_guard<std::mutex> lock(buildQueueMu_);
+    buildStop_ = true;
+  }
+  buildCv_.notify_all();
+  buildThread_.join();
+}
+
+void Session::set_frame_builder(FrameBuilder* builder) {
+  drain_builds();  // the worker reads frameBuilder_ while it builds
+  frameBuilder_ = builder;
+}
 
 void Session::on_frame(std::span<const std::uint8_t> payload, Clock::time_point now) {
   if (phase_ == Phase::closed) return;
@@ -231,6 +289,7 @@ void Session::handle_hello(const api::Hello& hello) {
 void Session::close(api::GoodbyeReason reason, std::string message) {
   if (phase_ == Phase::closed) return;
   stop_playback();
+  deferred_.clear();  // nobody to answer; the futures' producers notice nothing
   api::EngineMessage m;
   m.v = api::Goodbye{reason, std::move(message)};
   out_.send(m);
@@ -246,10 +305,18 @@ void Session::on_disconnect() {
     if (!g.changes.empty()) history_.push(doc::Entry{g.label, g.origin, std::move(g.changes)});
   }
   stop_playback();
+  deferred_.clear();
 }
 
 void Session::on_ping(std::uint64_t nonce, std::uint32_t queued) {
-  out_.send_frames(frames::Message{.v = api::FramePong{nonce, revision_, playing_, queued}});
+  // From the core thread itself: it drained its queue to this ping (busyMs 0;
+  // the watchdog's busy pongs come from engine_process.cpp CoreWatchdog).
+  api::FramePong pong;
+  pong.nonce = nonce;
+  pong.revision = revision_;
+  pong.playing = playing_;
+  pong.queued = queued;
+  out_.send_frames(frames::Message{.v = std::move(pong)});
 }
 
 void Session::respond(api::Seq seq, api::Outcome outcome) {
@@ -320,14 +387,16 @@ void Session::handle_request(api::Request request, Clock::time_point now) {
         break;
     }
   }
+  loopNow_ = now;
   scope_ = RequestScope{request.seq, request.origin, std::nullopt};
-  api::Outcome o = handle_request_body(request, now);
-  respond(request.seq, std::move(o));
+  std::optional<api::Outcome> o = handle_request_body(request, now);
+  if (o) respond(request.seq, std::move(*o));
+  else flush_scope();  // deferred: the response follows from poll_deferred, its events (none, for a query) first
   scope_.reset();
   flush_render();
 }
 
-api::Outcome Session::handle_request_body(const api::Request& request, Clock::time_point now) {
+std::optional<api::Outcome> Session::handle_request_body(const api::Request& request, Clock::time_point now) {
   api::Outcome o;
   jobLog_.reset();
   try {
@@ -405,6 +474,8 @@ api::Outcome Session::handle_request_body(const api::Request& request, Clock::ti
         return o;
       }
     }
+  } catch (const doc::DeferredAnswer&) {
+    return std::nullopt;
   } catch (const EngineFail& f) {
     o.v = f.error;
   } catch (const std::exception& e) {
@@ -433,7 +504,10 @@ void Session::ensure_timelines() {
   // Every composition's timeline exists before a command runs (outside the
   // journal: a structural mirror, not an edit — LocalEngine.ensureTimelines).
   for (const auto& comp : doc::comp_item_ids(doc_)) {
-    if (doc_.timeline(comp) == nullptr) (void)doc::tl_ensure(doc_, comp);
+    if (doc_.timeline(comp) == nullptr) {
+      const BuildLock lock(*this, true);  // a document write, like any other
+      (void)doc::tl_ensure(doc_, comp);
+    }
   }
 }
 
@@ -471,11 +545,13 @@ void collect_owned(const doc::Document& d, const std::string& id, std::vector<st
   for (const std::string& c : doc::sg_child_order(d, id)) collect_owned(d, c, out);
 }
 
-/// `touched.before` = the command's journal so far (the parts as they were before it).
-void detach_proxy_ownership(doc::Document& d, const doc::ChangeSet& touched, api::Origin origin) {
+/// `touched` = the request's open journal (the parts as they were before it),
+/// read in place: this pass only reads the map and writes nodes it collected
+/// into `owned` afterwards (Document::journal).
+void detach_proxy_ownership(doc::Document& d, const doc::Parts& touched, api::Origin origin) {
   if (origin == api::Origin::plugin) return;
   std::vector<std::string> roots;
-  for (const auto& [id, before] : touched.before.nodes) {
+  for (const auto& [id, before] : touched.nodes) {
     if (!before) continue;  // created by this command
     const doc::Node* now = d.node(id);
     if (now == nullptr || !is_owned(now) || *now == *before) continue;
@@ -498,17 +574,21 @@ void detach_proxy_ownership(doc::Document& d, const doc::ChangeSet& touched, api
 
 }  // namespace
 
-void Session::stamp_missing_key_ids(const doc::ChangeSet& touched, doc::HCtx& x) {
+void Session::stamp_missing_key_ids(const doc::Parts& touched, doc::HCtx& x) {
   // stamp.ts: any key in the edited scope without an id gets one, tracks and
   // keys in engine order, inside the command (part of its inverse).
   // In the order the command first touched each animation (TS: the scope's
   // key order), not by id — two layers' new keys get their ids in that order.
+  // `touched` is the live journal: the anim ids are collected first, and the
+  // node loop below writes only nodes already journaled (set_mask_anim on a
+  // key of the map), so neither pass adds a key to the map it walks.
   std::vector<std::string> order;
+  std::unordered_set<std::string_view> ordered;  // (a linear search here made a batch of N edits O(N³))
   for (const std::string& id : doc_.journal_anim_order()) {
-    if (touched.before.anims.contains(id)) order.push_back(id);
+    if (touched.anims.contains(id) && ordered.insert(id).second) order.push_back(id);
   }
-  for (const auto& [id, before] : touched.before.anims) {
-    if (std::find(order.begin(), order.end(), id) == order.end()) order.push_back(id);
+  for (const auto& [id, before] : touched.anims) {
+    if (ordered.insert(id).second) order.push_back(id);
   }
   for (const std::string& id : order) {
     const doc::NodeAnim* a = doc_.anim(id);
@@ -534,7 +614,7 @@ void Session::stamp_missing_key_ids(const doc::ChangeSet& touched, doc::HCtx& x)
     }
     doc_.set_anim(id, std::move(snap));
   }
-  for (const auto& [id, before] : touched.before.nodes) {
+  for (const auto& [id, before] : touched.nodes) {
     const doc::Node* n = doc_.node(id);
     if (n == nullptr) continue;
     std::vector<doc::Json> anim = doc::read_node_mask_anim(*n);
@@ -554,6 +634,7 @@ std::vector<api::CommandResult> Session::run_edits(const std::vector<const api::
   std::vector<api::CommandResult> results;
   std::string label = batchLabel.value_or("");
   const bool indexed = commands.size() > 1 || batchLabel.has_value();
+  const BuildLock lock(*this, true);  // the document is written below: no frame builds meanwhile
   doc_.begin();
   for (std::size_t i = 0; i < commands.size(); ++i) {
     const api::Command& cmd = *commands[i];
@@ -586,11 +667,13 @@ std::vector<api::CommandResult> Session::run_edits(const std::vector<const api::
       throw EngineFail{std::move(*failed)};
     }
   }
+  if (const doc::Parts* written = doc_.journal()) keys_.settle(doc_, *written);
   doc::ChangeSet changes = doc_.commit();
   if (changes.empty()) return results;
   const api::Revision from = revision_;
   ++revision_;
   std::vector<api::Event> events = builder_.build(changes, pctx());
+  note_document_changed(from, &changes);
   if (gesture_) {
     gesture_->changes.merge(changes);
   } else {
@@ -607,13 +690,18 @@ api::CommandResult Session::run_in_journal(const api::Command& cmd, api::Origin 
   if (!is_edit(cmd)) fail(ErrorCode::invalid_argument, "'" + name + "' is not an edit command");
   doc::HCtx x = handler_ctx(origin);
   api::CommandResult r = std::visit(EditVisitor{x, name}, cmd.v);
-  // stampMissingKeyIds over what this command touched, then syncTimelines.
-  doc::ChangeSet sofar;
-  doc_.peek_journal(sofar.before);
-  stamp_missing_key_ids(sofar, x);
-  detach_proxy_ownership(doc_, sofar, origin);
+  // stampMissingKeyIds over what this request touched so far, then
+  // syncTimelines. The journal is read in place (Document::journal): copying
+  // it per command made a batch of N edits O(N²) in its size.
+  if (const doc::Parts* sofar = doc_.journal()) {
+    stamp_missing_key_ids(*sofar, x);
+    detach_proxy_ownership(doc_, *sofar, origin);
+  }
   doc::tl_sync_all(doc_);
-  keys_.invalidate();
+  // The key index follows what the request wrote (KeyIndex::mark_stale: the next
+  // lookup re-indexes the journaled layers, O(touched)); a rebuild per command
+  // made every key-adding command O(all keys in the document).
+  keys_.mark_stale();
   if (label != nullptr) *label = x.label ? *x.label : humanize(name);
   return r;
 }
@@ -621,6 +709,7 @@ api::CommandResult Session::run_in_journal(const api::Command& cmd, api::Origin 
 // ── history and controls ────────────────────────────────────────────────────
 
 void Session::apply_history(const doc::ChangeSet& target) {
+  const BuildLock lock(*this, true);
   doc_.apply(target.after);
   keys_.invalidate();
 }
@@ -654,6 +743,7 @@ void Session::emit_changes(api::Revision from, const doc::ChangeSet& changes) {
 void Session::load_new_project(api::ResetReason reason, bool emit) {
   // projectDocumentIO.createEmpty('Untitled') + restoreDocument: one empty
   // composition, `comp_root`, and its timeline.
+  const BuildLock lock(*this, true);
   doc_ = doc::Document{};
   doc::Node root;
   root.id = "comp_root";
@@ -691,9 +781,11 @@ void Session::after_load(api::ResetReason reason, bool emit) {
   keys_.invalidate();
   builder_.reset();
   exprCache_.clear();
+  buildExprCache_.clear();  // under the caller's write lock (load_new_project / load_document)
   const api::Revision from = revision_;
   ++revision_;
   savedRevision_ = revision_;
+  note_document_changed(from, nullptr);
   if (!emit) return;
   std::vector<api::Event> ev;
   ev.push_back(make_event(api::DocumentResetEvent{revision_, reason}));
@@ -702,6 +794,7 @@ void Session::after_load(api::ResetReason reason, bool emit) {
 }
 
 void Session::load_document(const doc::Json& file, api::ResetReason reason, std::string_view footageRoot) {
+  const BuildLock lock(*this, true);
   const std::vector<doc::Json> session = doc_.items().assets;
   const doc::RestoreResult r = doc::restore_document(doc_, view_, file, session);
   // The files the document names by path are read again where they still are (docio.hpp).
@@ -738,6 +831,7 @@ struct ControlVisitor {
     s.apply_history(step);
     const api::Revision from = s.revision_;
     ++s.revision_;
+    s.note_document_changed(from, &step);
     s.emit_changes(from, step);
     s.emit_status();
     s.request_render();
@@ -773,6 +867,7 @@ struct ControlVisitor {
     if (!folded.empty()) {
       const api::Revision from = s.revision_;
       ++s.revision_;
+      s.note_document_changed(from, &folded);
       s.emit_changes(from, folded);
       s.request_render();
     }
@@ -807,6 +902,7 @@ struct ControlVisitor {
       s.apply_history(back);
       const api::Revision from = s.revision_;
       ++s.revision_;
+      s.note_document_changed(from, &back);
       s.emit_changes(from, back);
       s.request_render();
     }
@@ -1218,8 +1314,16 @@ api::CommandResult Session::run_control(const api::Command& cmd, api::Origin ori
 api::QueryResult Session::run_query(const api::Query& q) {
   doc::QCtx c{pctx(), keys_, 0, "", false, {}, {}, {}, {}, &catalogCache_, {}, {}};
   if (!options_.testPorts) c.fonts = options_.systemFonts;
-  c.text = frameBuilder_ != nullptr ? frameBuilder_->text_queries() : nullptr;
-  c.rig = rig_queries();
+  // The builder's text measurer and the rig, each call under the build lock
+  // (the build worker uses the same objects while it builds a frame).
+  if (frameBuilder_ != nullptr && frameBuilder_->text_queries() != nullptr) {
+    if (!lockedText_) lockedText_ = std::make_unique<LockedText>(*this);
+    c.text = lockedText_.get();
+  }
+  if (rig_queries() != nullptr) {
+    if (!lockedRig_) lockedRig_ = std::make_unique<LockedRig>(*this);
+    c.rig = lockedRig_.get();
+  }
   c.revision = revision_;
   c.projectPath = projectPath_;
   c.dirty = revision_ != savedRevision_;
@@ -1269,10 +1373,12 @@ api::QueryResult Session::run_query(const api::Query& q) {
   };
   if (frameBuilder_ != nullptr) {
     c.hitTest = [this](const std::string& comp, api::Time time, api::Vec2 point, std::vector<std::string>& out) {
+      const BuildLock lock(*this, false);
       frameBuilder_->set_media_base(media_base());
       return frameBuilder_->hit_test(doc_, view_, exprEnv_, exprCache_, comp, time, point, out);
     };
     c.layerFaces = [this](const std::string& comp, api::Time time, const std::string& layer) {
+      const BuildLock lock(*this, false);
       frameBuilder_->set_media_base(media_base());
       return frameBuilder_->layer_faces(doc_, view_, exprEnv_, exprCache_, comp, time, layer);
     };
@@ -1287,7 +1393,9 @@ api::QueryResult Session::run_query(const api::Query& q) {
     return std::pair{it->second.width, it->second.height};
   };
   c.readPixels = [this](std::uint32_t viewport, PixelRegion region) {
-    return await_render<WorkingPixels>(sink_.read_pixels(viewport, region), "readPixels");
+    return await_render<WorkingPixels>(sink_.read_pixels(viewport, region), "readPixels", [](WorkingPixels px) {
+      return query_result_for<api::ReadPixels>(api::PixelSamples{px.width, px.height, std::move(px.rgba)});
+    });
   };
   if (mediaClock_ != nullptr) {
     c.waveform = [this](std::string_view src, double fromSec, double durationSec, std::uint32_t buckets,
@@ -1315,24 +1423,86 @@ std::string Session::media_base() const {
   return slash == std::string::npos ? std::string() : projectPath_.substr(0, slash);
 }
 
+namespace {
+
+/// A still's or pixel read's answer as the query's outcome: `finish` for a
+/// ready one, the hook's error otherwise.
 template <class T>
-T Session::await_render(std::future<T> result, std::string_view what) {
-  // The render thread answers between frames; a device-lost recovery or a
-  // heavy frame in hand can hold it — the query says `busy` rather than block
-  // the document core longer.
-  if (result.wait_for(kRenderQueryTimeout) != std::future_status::ready) {
-    T out;
-    out.answer = HookAnswer::pending;
-    out.error = std::string(what) + ": the renderer is busy; ask again";
-    return out;
-  }
+api::Outcome render_outcome(T value, std::string_view what, const std::function<api::QueryResult(T)>& finish) {
+  api::Outcome o;
   try {
-    return result.get();
-  } catch (const std::future_error&) {
-    T out;
-    out.answer = HookAnswer::failed;
-    out.error = std::string(what) + ": the renderer stopped";
-    return out;
+    if (value.answer != HookAnswer::ready) doc::fail_hook(value.answer, value.error, what);
+    o.v = finish(std::move(value));
+  } catch (const EngineFail& f) {
+    o.v = f.error;
+  } catch (const std::exception& e) {
+    o.v = err(ErrorCode::internal, e.what());
+  }
+  return o;
+}
+
+}  // namespace
+
+template <class T>
+T Session::await_render(std::future<T> result, std::string_view what, std::function<api::QueryResult(T)> finish) {
+  const auto take = [&what](std::future<T>& f) -> T {
+    try {
+      return f.get();
+    } catch (const std::future_error&) {
+      T out;
+      out.answer = HookAnswer::failed;
+      out.error = std::string(what) + ": the renderer stopped";
+      return out;
+    }
+  };
+  // Answered already (the simulated sink, a cached still): the handler finishes it inline.
+  if (result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) return take(result);
+  if (!scope_) {
+    // No request to answer later: a bounded wait, then `busy`.
+    if (result.wait_for(kRenderQueryTimeout) != std::future_status::ready) {
+      T out;
+      out.answer = HookAnswer::pending;
+      out.error = std::string(what) + ": the renderer is busy; ask again";
+      return out;
+    }
+    return take(result);
+  }
+  // Owed: the response goes out from poll_deferred once the render thread got to it.
+  auto shared = std::make_shared<std::future<T>>(std::move(result));
+  DeferredReply reply;
+  reply.seq = scope_->seq;
+  reply.what = std::string(what);
+  reply.since = loopNow_;
+  reply.poll = [shared, take, finish = std::move(finish), what = std::string(what)]() -> std::optional<api::Outcome> {
+    if (shared->wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return std::nullopt;
+    return render_outcome<T>(take(*shared), what, finish);
+  };
+  deferred_.push_back(std::move(reply));
+  T out;
+  out.answer = HookAnswer::deferred;
+  return out;
+}
+
+void Session::poll_deferred(Clock::time_point now) {
+  // Answers go out in the order they became ready; a reply past its budget
+  // fails `busy` — the page asks again, and the log says which query it was.
+  for (std::size_t i = 0; i < deferred_.size();) {
+    DeferredReply& r = deferred_[i];
+    std::optional<api::Outcome> o = r.poll();
+    if (!o && now - r.since >= kDeferredBudget) {
+      PREMATION_LOG(warn, "render_query_abandoned")
+          .kv("what", r.what)
+          .kv("ms", static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - r.since).count()));
+      o.emplace();
+      o->v = err(ErrorCode::busy, r.what + ": the renderer did not answer in " + std::to_string(kDeferredBudget.count()) + " s; ask again");
+    }
+    if (!o) {
+      ++i;
+      continue;
+    }
+    const api::Seq seq = r.seq;
+    deferred_.erase(deferred_.begin() + static_cast<std::ptrdiff_t>(i));
+    respond(seq, std::move(*o));
   }
 }
 
@@ -1342,18 +1512,23 @@ StillImage Session::render_still(const doc::StillRequest& r) {
     out.error = "getThumbnail needs the engine's scene builder (D2w); this engine draws C2 quads only";
     return out;
   }
-  frameBuilder_->set_media_base(media_base());
-  std::shared_ptr<BuiltFrame> frame =
-      r.footageSrc.empty()
-          ? frameBuilder_->build_still(doc_, view_, exprEnv_, exprCache_, r.comp, r.time, r.width, r.height, r.isolateLayer)
-          : frameBuilder_->build_footage_still(doc_, r.footageSrc, r.video, r.sourceSec, r.sourceWidth, r.sourceHeight,
-                                               r.width, r.height);
+  std::shared_ptr<BuiltFrame> frame;
+  {
+    const BuildLock lock(*this, false);
+    frameBuilder_->set_media_base(media_base());
+    frame = r.footageSrc.empty()
+                ? frameBuilder_->build_still(doc_, view_, exprEnv_, exprCache_, r.comp, r.time, r.width, r.height, r.isolateLayer)
+                : frameBuilder_->build_footage_still(doc_, r.footageSrc, r.video, r.sourceSec, r.sourceWidth, r.sourceHeight,
+                                                     r.width, r.height);
+  }
   if (!frame) {
     StillImage out;
     out.error = "the scene builder cannot build this still";
     return out;
   }
-  return await_render<StillImage>(sink_.render_still(std::move(frame), r.width, r.height), "getThumbnail");
+  return await_render<StillImage>(sink_.render_still(std::move(frame), r.width, r.height), "getThumbnail", [](StillImage img) {
+    return query_result_for<api::GetThumbnail>(api::Thumbnail{img.width, img.height, std::move(img.format), std::move(img.data)});
+  });
 }
 
 StillImage Session::render_document_still(const doc::Json& file, const std::string& compSel, api::Time time, std::uint32_t maxSize) {
@@ -1387,13 +1562,19 @@ StillImage Session::render_document_still(const doc::Json& file, const std::stri
   const auto height = static_cast<std::uint32_t>(std::max(1.0, std::round(h * scale)));
   doc::ExprCache cache;
   const doc::DocExprEnv env(d, v, cache);
-  frameBuilder_->set_media_base(media_base());
-  std::shared_ptr<BuiltFrame> frame = frameBuilder_->build_still(d, v, env, cache, comp, time, width, height, "");
+  std::shared_ptr<BuiltFrame> frame;
+  {
+    const BuildLock lock(*this, false);
+    frameBuilder_->set_media_base(media_base());
+    frame = frameBuilder_->build_still(d, v, env, cache, comp, time, width, height, "");
+  }
   if (!frame) {
     out.error = "the scene builder cannot build this still";
     return out;
   }
-  return await_render<StillImage>(sink_.render_still(std::move(frame), width, height), "renderDocumentStill");
+  return await_render<StillImage>(sink_.render_still(std::move(frame), width, height), "renderDocumentStill", [](StillImage img) {
+    return query_result_for<api::RenderDocumentStill>(api::Thumbnail{img.width, img.height, std::move(img.format), std::move(img.data)});
+  });
 }
 
 // ── transport ───────────────────────────────────────────────────────────────
@@ -1590,10 +1771,70 @@ std::uint64_t Session::cache_scope(const ViewportConfig& port, const std::string
     view *= 0x100000001b3ULL;
   }
   view ^= configId * 0x9e3779b97f4a7c15ULL;
-  std::uint64_t rev = static_cast<std::uint64_t>(revision_) * 0xff51afd7ed558ccdULL;
-  rev ^= rev >> 32U;
-  const std::uint64_t scope = ((view ^ (view >> 32U)) << 32U) | (rev & 0xffffffffULL);
+  const std::uint64_t scope = ((view ^ (view >> 32U)) << 32U) | revision_word(revision_);
   return scope == 0 ? 1 : scope;  // 0 = no scope (ram_cache.hpp ProtectedRange)
+}
+
+std::uint32_t Session::revision_word(api::Revision revision) noexcept {
+  std::uint64_t rev = static_cast<std::uint64_t>(revision) * 0xff51afd7ed558ccdULL;
+  rev ^= rev >> 32U;
+  return static_cast<std::uint32_t>(rev & 0xffffffffULL);
+}
+
+void Session::sync_frame_keys() {
+  const std::optional<std::string> active = active_comp();
+  if (!active) {
+    if (!frameKeys_.comp().empty()) frameKeys_.reset();
+    return;
+  }
+  if (frameKeys_.comp() == *active) return;
+  (void)frameKeys_.rebuild(doc_, view_, *active, media_base());
+}
+
+void Session::note_document_changed(api::Revision from, const doc::ChangeSet* changes) {
+  FrameRevision rev;
+  rev.fromRev = revision_word(from);
+  rev.toRev = revision_word(revision_);
+  if (changes == nullptr) {
+    // The whole document changed under the index (a load, a reset): built
+    // again for the active comp the next time a frame asks.
+    frameKeys_.reset();
+  } else {
+    sync_frame_keys();
+    if (frameKeys_.indexed()) {
+      doc::FrameKeyIndex::Delta delta = frameKeys_.update(doc_, view_, *changes, media_base());
+      rev.all = delta.all;
+      if (!delta.all) {
+        rev.frames = std::move(delta.frames);
+        // The changed frames' new keys let the bars take back what a tier
+        // still holds (an undo) without a build. Bounded: a step that reaches
+        // thousands of frames sends the frames alone (they come back as drawn).
+        constexpr std::size_t kKeyedFrames = 4096;
+        if (rev.frames.size() <= kKeyedFrames) {
+          rev.keys.reserve(rev.frames.size());
+          for (const std::int64_t f : rev.frames) rev.keys.push_back(frameKeys_.key(f));
+        }
+      }
+    }
+  }
+  sink_.note_frames_changed(std::move(rev));
+}
+
+void Session::poll_build_requests() {
+  const std::vector<std::uint32_t> wants = sink_.take_build_requests();
+  if (wants.empty()) return;
+  for (const std::uint32_t v : wants) {
+    if (std::ranges::find(forceBuild_, v) == forceBuild_.end()) forceBuild_.push_back(v);
+  }
+  if (playing_ && transportState_ == api::TransportState::caching && cacheInFlight_) {
+    // The frame the fill is waiting on was a cached job no tier held after all:
+    // the fill takes it again, built this time.
+    cacheInFlight_ = false;
+    cacheFrame_ = std::max(play_range().first, cacheFrame_ - 1);
+    return;
+  }
+  request_render();
+  flush_render();  // paused: build it now; playing: the next tick's frame builds
 }
 
 void Session::stop_playback() {
@@ -1611,6 +1852,19 @@ std::optional<Clock::time_point> Session::next_deadline() const {
   if (runner_ && runner_->live() > 0) jobs = jobsPolled_ + std::chrono::milliseconds(50);
   for (const JobRecord& r : jobs_) {
     if (r.result && r.apply && r.info.status == api::JobStatus::done && !r.info.applied) jobs = jobsPolled_ + std::chrono::milliseconds(50);
+  }
+  // Owed render answers, and frame builds in flight on the build worker (their
+  // layer errors and build times come back as reports tick() takes): looked
+  // at every few ms until sent.
+  if (!deferred_.empty() || (buildThread_.joinable() && builds_active())) {
+    const Clock::time_point poll = Clock::now() + kDeferredPoll;
+    jobs = jobs ? std::min(*jobs, poll) : poll;
+  }
+  // Cached jobs (RenderJob::cachedKey) the sink has not answered yet: one of
+  // them may come back as a build request (a tier evicted the frame meanwhile).
+  if (cachedSubmitted_ > cachedAnswered_ && loopNow_ < cachedPollUntil_) {
+    const Clock::time_point poll = Clock::now() + kDeferredPoll;
+    jobs = jobs ? std::min(*jobs, poll) : poll;
   }
   const std::optional<Clock::time_point> clock = next_clock_deadline();
   if (jobs && clock) return std::min(*jobs, *clock);
@@ -1641,6 +1895,14 @@ std::optional<Session::Clock::time_point> Session::next_clock_deadline() const {
 }
 
 void Session::tick(Clock::time_point now) {
+  loopNow_ = now;
+  if (buildThread_.joinable()) pump_builds();
+  if (cachedSubmitted_ > cachedAnswered_) {
+    const RenderCounters c = sink_.counters();
+    cachedAnswered_ = c.cacheServed + c.cacheMissed + c.cacheDropped;
+  }
+  poll_build_requests();
+  if (!deferred_.empty()) poll_deferred(now);
   if (phase_ == Phase::open && (runner_ || !jobs_.empty())) poll_jobs(now);
   if (!playing_ || phase_ != Phase::open) return;
   if (transportState_ == api::TransportState::caching) {
@@ -1839,13 +2101,12 @@ void Session::submit_frame(std::uint32_t clockDropped, bool fromClock) {
   bool first = true;
   for (const auto& [id, port] : surfaces_) {
     if (port.open) {
-      // Back-pressure: while playing, a viewport whose last job the render
-      // thread has not started would only see that job superseded — the
-      // build (the whole document → frame scene, on this thread, which every
-      // UI request waits behind) is skipped instead, and the frame counted
-      // as dropped with the pending job. Edits and seeks still replace a
-      // pending job: they must show.
-      if (fromClock && sink_.job_pending(id)) sink_.note_dropped(id, 1, clockDropped);
+      // Back-pressure: while playing, a viewport whose last job has not
+      // started — a build still queued on the build worker, or a job the
+      // render thread has not begun — would only see that job superseded: no
+      // new build is queued, and the frame is counted as dropped with the
+      // pending job. Edits and seeks still replace a pending job: they must show.
+      if (fromClock && (build_pending(id) || sink_.job_pending(id))) sink_.note_dropped(id, 1, clockDropped);
       else submit_frame_to(port, *c, clockDropped, first);
     }
     first = false;
@@ -1853,32 +2114,20 @@ void Session::submit_frame(std::uint32_t clockDropped, bool fromClock) {
 }
 
 void Session::submit_frame_to(const ViewportConfig& surface, const std::string& c, std::uint32_t clockDropped, bool announce) {
-  RenderJob job;
+  BuildTask t;
   // The surface's config plus this frame's editor-side hidden layers (they ride
   // beside the config, not in it: see `hiddenLayers_`).
-  ViewportConfig port = surface;
+  ViewportConfig& port = t.port;
+  port = surface;
   if (const auto hidden = hiddenLayers_.find(surface.viewport); hidden != hiddenLayers_.end()) port.hiddenLayers = hidden->second;
   if (const auto focus = focusLayers_.find(surface.viewport); focus != focusLayers_.end()) port.focusLayers = focus->second;
   port.viewerLut = viewerLut_;
   // A held viewport (the Layer panel's own ruler) renders at its time, not the clock's.
-  const api::Time t = port.time.value_or(time_);
-  if (frameBuilder_ != nullptr) {
-    // D2w: the engine's own scene builder (scene/snapshot_build.cpp) — the
-    // document through the render graph. Per-layer failures and features
-    // outside the port come back as layerErrors, never as a blank frame.
-    std::vector<api::LayerError> errors;
-    const auto t0 = Clock::now();
-    frameBuilder_->set_media_base(media_base());
-    job.built = frameBuilder_->build(doc_, view_, exprEnv_, exprCache_, c, t, port, playing_, errors);
-    // Measurement only (RenderStats.cpuFrameMs): an exponential moving average.
-    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-    buildMs_ = buildMs_ <= 0 ? ms : buildMs_ + (ms - buildMs_) * 0.2;
-    if (announce) announce_layer_errors(c, std::move(errors));
-  }
-  // The scene's quad vector changes hands (core → render thread) once per
-  // frame: one small allocation per frame, deliberately, so the two threads
-  // never share a buffer.
-  if (!job.built) doc::build_frame_scene(pctx(), c, t, job.scene);
+  const api::Time time = port.time.value_or(time_);
+  // The job's metadata: what this frame IS (viewport, frame, time, revision,
+  // cache scope). Read here, on the core thread, from the transport; the
+  // frame's content is built from the document at this revision (below).
+  RenderJob& job = t.job;
   job.viewport = port.viewport;
   job.recordCoverage = port.layer.empty() && !port.time;
   if (job.recordCoverage) {
@@ -1888,29 +2137,237 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
     job.rangeLast = range.last;
   }
   job.frame = frame_;
-  job.time = t;
+  job.time = time;
   job.revision = revision_;
   job.clockDropped = clockDropped;
   job.exactMedia = playing_ && transportState_ == api::TransportState::caching;
   job.playing = playing_;
-  // B4 round 2: the overlays' geometry at this frame's time and revision, read here on the core thread;
+  // Cached playback without a build (core/frame_keys.hpp): the frame's
+  // pre-build key, and — when the sink has seen that key built and a tier may
+  // still hold the frame — the job goes out with the content key alone. A
+  // viewport the sink asked a built frame for (forceBuild_) builds this once.
+  bool forceBuild = false;
+  if (const auto fb = std::ranges::find(forceBuild_, port.viewport); fb != forceBuild_.end()) {
+    forceBuild = true;
+    forceBuild_.erase(fb);
+  }
+  if (job.recordCoverage && frameBuilder_ != nullptr) {
+    sync_frame_keys();
+    if (const std::uint64_t docKey = frameKeys_.key(frame_); docKey != 0 && !frameKeys_.volatile_inputs()) {
+      job.prebuildKey = render::prebuild_key(job.cacheScope, docKey);
+      if (!forceBuild) {
+        if (const std::optional<CachedKeys> hit = sink_.cached_frame(*job.prebuildKey)) {
+          job.cachedKey = hit->content;
+          job.cachedDiskKey = hit->disk;
+          ++cachedSubmitted_;
+          cachedPollUntil_ = loopNow_ + kCachedPoll;
+          // No build for this frame: the HUD's cpuFrameMs (buildMs_, a moving
+          // average over built frames) decays towards zero as the cache serves.
+          buildMs_ += (0 - buildMs_) * 0.2;
+        }
+      }
+    }
+  }
+  t.comp = c;
+  t.time = time;
+  t.clockTime = time_;
+  t.playing = playing_;
+  t.announce = announce;
+  t.activeComp = active_comp();
+  // B4 round 2: the overlays' geometry at this frame's time and revision goes with the job;
   // the sink sends it (FrameGeometry) right before the frame's FrameReady.
   for (const doc::OverlaySubscription& o : overlays_) {
-    if (o.viewport != job.viewport) continue;
-    job.geometrySubscribed = true;
-    job.geometry = doc::overlay_geometry(pctx(), frameBuilder_ != nullptr ? frameBuilder_->text_queries() : nullptr, o, time_);
-    job.views = doc::overlay_views(pctx(), o, active_comp(), time_);  // B4 round 5: the view cameras
-    attach_overlay_rig(o, job.geometry);                                // B4 round 5: the rig records
+    if (o.viewport == job.viewport) t.overlays.push_back(o);
   }
-  attach_onion(job, port, c);
-  sink_.submit(std::move(job));
+  if (frameBuilder_ == nullptr) {
+    // No scene builder (the core-only tests, the fuzzer, PREMATION_ENGINE_SCENE=0):
+    // C2's quad scene, built here — cheap, and nothing else reads the document.
+    complete_job(t, pctx(), nullptr, rig_queries());
+    sink_.submit(std::move(t.job));
+    return;
+  }
+  if (job.cachedKey && t.overlays.empty() && !port.onion) {
+    // A cached frame with nothing to compute beside it: straight to the sink,
+    // no trip through the build worker. (Overlay geometry and onion ghosts
+    // still want the builder's measurer: those go through the worker below,
+    // which skips the frame build itself.)
+    sink_.submit(std::move(t.job));
+    return;
+  }
+  // D2w: the engine's own scene builder (scene/snapshot_build.cpp) — the
+  // document through the render graph, on the build worker (session.hpp "the
+  // build worker"). Per-layer failures and features outside the port come back
+  // as layerErrors, never as a blank frame.
+  t.mediaBase = media_base();
+  t.view = view_;
+  enqueue_build(std::move(t));
 }
 
-void Session::attach_onion(RenderJob& job, const ViewportConfig& port, const std::string& comp) {
-  if (playing_ || !port.onion || !port.layer.empty() || port.time || frameBuilder_ == nullptr) return;
+// ── the build worker ────────────────────────────────────────────────────────
+
+void Session::enqueue_build(BuildTask task) {
+  const std::uint32_t viewport = task.job.viewport;
+  task.writes = docWrites_.load(std::memory_order_acquire);
+  std::optional<BuildTask> superseded;
+  {
+    const std::lock_guard<std::mutex> lock(buildQueueMu_);
+    if (!buildThread_.joinable()) buildThread_ = JoiningThread([this] { build_worker(); });
+    // Newest wins per viewport: a task still queued (not building yet) is replaced.
+    for (auto it = buildQueue_.begin(); it != buildQueue_.end(); ++it) {
+      if (it->job.viewport == viewport) {
+        superseded = std::move(*it);
+        buildQueue_.erase(it);
+        break;
+      }
+    }
+    buildQueue_.push_back(std::move(task));
+  }
+  buildCv_.notify_all();
+  // Counted as the render thread counts a job superseded before it started: a
+  // frame of playback lost (an edit's is not), its clock drops carried over.
+  if (superseded) sink_.note_dropped(viewport, superseded->playing ? 1U : 0U, superseded->job.clockDropped);
+}
+
+bool Session::build_pending(std::uint32_t viewport) const {
+  const std::lock_guard<std::mutex> lock(buildQueueMu_);
+  return std::any_of(buildQueue_.begin(), buildQueue_.end(),
+                     [viewport](const BuildTask& t) { return t.job.viewport == viewport; });
+}
+
+bool Session::builds_active() const {
+  const std::lock_guard<std::mutex> lock(buildQueueMu_);
+  return buildBusy_ || !buildQueue_.empty();
+}
+
+void Session::build_worker() {
+  for (;;) {
+    BuildTask task;
+    {
+      std::unique_lock<std::mutex> lock(buildQueueMu_);
+      buildCv_.wait(lock, [this] { return buildStop_ || !buildQueue_.empty(); });
+      if (buildStop_) return;
+      task = std::move(buildQueue_.front());
+      buildQueue_.pop_front();
+      buildBusy_ = true;
+    }
+    run_build(std::move(task));
+    {
+      const std::lock_guard<std::mutex> lock(buildQueueMu_);
+      buildBusy_ = false;
+    }
+    buildCv_.notify_all();  // drain_builds
+  }
+}
+
+void Session::run_build(BuildTask t) {
+  BuildReport report;
+  report.comp = t.comp;
+  report.announce = t.announce;
+  bool submit = false;
+  {
+    const std::lock_guard<std::mutex> lock(buildMu_);
+    if (docWrites_.load(std::memory_order_acquire) != t.writes) {
+      // The document was written since this task was queued: the job's
+      // revision no longer names what we would build. The core thread queues
+      // a fresh frame for it (pump_builds) — a built frame is always a pure
+      // function of its job's revision and time.
+      report.skipped = true;
+    } else {
+      try {
+        const auto t0 = Clock::now();
+        frameBuilder_->set_media_base(t.mediaBase);
+        const doc::DocExprEnv env(doc_, t.view, buildExprCache_);
+        if (t.job.cachedKey) {
+          // A cached frame (RenderJob::cachedKey): no build; only what rides
+          // beside it (overlay geometry, onion ghosts) is computed here.
+          report.cached = true;
+        } else {
+          t.job.built = frameBuilder_->build(doc_, t.view, env, buildExprCache_, t.comp, t.time, t.port, t.playing, report.errors);
+          // A frame with a layer error may have been built from an input that
+          // is still arriving (a model loading, a probe pending): its pre-build
+          // key is not learned, so it is never presented without a build.
+          // (An expression error is not such an input: it is the document's own, and stable.)
+          if (std::any_of(report.errors.begin(), report.errors.end(),
+                          [](const api::LayerError& e) { return e.stage != "expression"; })) {
+            t.job.prebuildKey.reset();
+          }
+        }
+        // Measurement only (RenderStats.cpuFrameMs, averaged by pump_builds).
+        report.ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        const doc::PCtx pc{doc_, t.view, env, buildExprCache_};
+        complete_job(t, pc, frameBuilder_->text_queries(), rig_queries());
+      } catch (const std::exception& e) {
+        // Nothing here is expected to throw (the builder isolates its layers);
+        // if it does, the frame goes out as far as it got, with the failure on
+        // layerErrors — never a dead worker (CLAUDE.md: isolate, record, continue).
+        PREMATION_LOG(error, "frame_build_failed").kv("error", std::string(e.what()));
+        report.errors.push_back(api::LayerError{"", "snapshot", std::string("frame build failed: ") + e.what(), std::nullopt});
+      }
+      submit = true;
+    }
+  }
+  if (submit) sink_.submit(std::move(t.job));
+  else sink_.note_dropped(t.job.viewport, t.playing ? 1U : 0U, t.job.clockDropped);
+  const std::lock_guard<std::mutex> lock(buildQueueMu_);
+  buildReports_.push_back(std::move(report));
+}
+
+void Session::complete_job(BuildTask& t, const doc::PCtx& pc, TextQueries* text, RigQueries* rig) {
+  RenderJob& job = t.job;
+  // The scene's quad vector changes hands (→ render thread) once per frame:
+  // one small allocation per frame, deliberately, so the threads never share a buffer.
+  if (!job.built && !job.cachedKey) doc::build_frame_scene(pc, t.comp, t.time, job.scene);
+  for (const doc::OverlaySubscription& o : t.overlays) {
+    job.geometrySubscribed = true;
+    job.geometry = doc::overlay_geometry(pc, text, o, t.clockTime);
+    job.views = doc::overlay_views(pc, o, t.activeComp, t.clockTime);  // B4 round 5: the view cameras
+    attach_overlay_rig(rig, text, pc, o, t.clockTime, job.geometry);   // B4 round 5: the rig records
+  }
+  attach_onion(t, pc);
+}
+
+void Session::pump_builds() {
+  std::vector<BuildReport> reports;
+  {
+    const std::lock_guard<std::mutex> lock(buildQueueMu_);
+    reports.swap(buildReports_);
+  }
+  bool rebuild = false;
+  for (BuildReport& r : reports) {
+    if (r.skipped) {
+      rebuild = true;
+      continue;
+    }
+    if (r.cached) continue;  // no build happened: nothing to average, nothing to announce
+    // D5: the frame builder's CPU time per frame — an exponential moving average.
+    buildMs_ = buildMs_ <= 0 ? r.ms : buildMs_ + (r.ms - buildMs_) * 0.2;
+    if (r.announce) announce_layer_errors(r.comp, std::move(r.errors));
+  }
+  if (rebuild) {
+    request_render();
+    flush_render();  // while playing, the next tick's frame is the fresh one
+  }
+}
+
+void Session::drain_builds() {
+  if (!buildThread_.joinable()) return;
+  for (;;) {
+    {
+      std::unique_lock<std::mutex> lock(buildQueueMu_);
+      buildCv_.wait(lock, [this] { return buildQueue_.empty() && !buildBusy_; });
+    }
+    pump_builds();  // may queue a rebuild for a skipped task: wait for that too
+    if (!builds_active()) return;
+  }
+}
+
+void Session::attach_onion(BuildTask& t, const doc::PCtx& pc) {
+  const ViewportConfig& port = t.port;
+  if (t.playing || !port.onion || !port.layer.empty() || port.time || frameBuilder_ == nullptr) return;
+  RenderJob& job = t.job;
   const api::OnionSkin skin = *port.onion;
   OnionMemo& memo = onionMemo_[port.viewport];
-  const bool same = memo.revision == revision_ && memo.frame == job.frame && memo.width == port.width &&
+  const bool same = memo.revision == job.revision && memo.frame == job.frame && memo.width == port.width &&
                     memo.height == port.height && memo.zoom == port.zoom && memo.panX == port.panX &&
                     memo.panY == port.panY && memo.dpr == port.devicePixelRatio && memo.view == port.view &&
                     memo.custom == port.customView && memo.settings == skin;
@@ -1921,17 +2378,16 @@ void Session::attach_onion(RenderJob& job, const ViewportConfig& port, const std
     plan.step = static_cast<int>(skin.step);
     plan.opacity = skin.opacity;
     plan.colorize = skin.colorize;
-    const double fps = doc::comp_fps(doc_, comp);
-    const auto planned = onion_skin_plan(job.frame, plan, 0, static_cast<std::int64_t>(doc::comp_duration_frames(doc_, comp)));
+    const double fps = doc::comp_fps(pc.d, t.comp);
+    const auto planned = onion_skin_plan(job.frame, plan, 0, static_cast<std::int64_t>(doc::comp_duration_frames(pc.d, t.comp)));
     ViewportConfig ghostPort = port;
     ghostPort.ghost = true;
     ghostPort.onion.reset();
     std::vector<RenderJob::OnionGhost> built;
     built.reserve(planned.size());
-    frameBuilder_->set_media_base(media_base());
     for (const OnionGhostPlan& g : planned) {
       std::vector<api::LayerError> errors;
-      auto frame = frameBuilder_->build(doc_, view_, exprEnv_, exprCache_, comp,
+      auto frame = frameBuilder_->build(pc.d, pc.view, pc.expr, pc.cache, t.comp,
                                         doc::frames_to_flicks(static_cast<double>(g.frame), fps), ghostPort, false, errors);
       if (!frame) continue;
       RenderJob::OnionGhost ghost;
@@ -1943,7 +2399,7 @@ void Session::attach_onion(RenderJob& job, const ViewportConfig& port, const std
       ghost.tintStrength = g.tintStrength;
       built.push_back(std::move(ghost));
     }
-    memo.revision = revision_;
+    memo.revision = job.revision;
     memo.frame = job.frame;
     memo.width = port.width;
     memo.height = port.height;
@@ -1959,20 +2415,18 @@ void Session::attach_onion(RenderJob& job, const ViewportConfig& port, const std
   job.onion = memo.ghosts;
 }
 
-void Session::attach_overlay_rig(const doc::OverlaySubscription& o, std::vector<api::OverlayLayerGeometry>& geometry) {
-  RigQueries* rq = rig_queries();
-  if (rq == nullptr) return;
+void Session::attach_overlay_rig(RigQueries* rig, TextQueries* text, const doc::PCtx& pc, const doc::OverlaySubscription& o,
+                                 api::Time time, std::vector<api::OverlayLayerGeometry>& geometry) {
+  if (rig == nullptr) return;
   const auto kinds = doc::subscribed_layer_kinds(o);
   const api::OverlayRigOptions opts = o.rig.value_or(api::OverlayRigOptions{});
-  const double seconds = doc::flicks_to_seconds(time_);
-  TextQueries* text = frameBuilder_ != nullptr ? frameBuilder_->text_queries() : nullptr;
-  if (frameBuilder_ != nullptr) frameBuilder_->set_media_base(media_base());
+  const double seconds = doc::flicks_to_seconds(time);
   for (api::OverlayLayerGeometry& g : geometry) {
     const auto it = std::find_if(kinds.begin(), kinds.end(), [&g](const auto& e) { return e.first == g.layer; });
     if (it == kinds.end() || std::find(it->second.begin(), it->second.end(), api::OverlayKind::rig) == it->second.end()) continue;
     // A rig this frame cannot resolve is left out; the frame and the other records still go (CLAUDE.md).
     try {
-      g.rig = rq->rig_overlay(doc_, view_, exprEnv_, exprCache_, text, g.layer, seconds, opts);
+      g.rig = rig->rig_overlay(pc.d, pc.view, pc.expr, pc.cache, text, g.layer, seconds, opts);
     } catch (const doc::EngineFail&) {
       g.rig.reset();
     } catch (const std::exception&) {

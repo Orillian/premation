@@ -19,6 +19,7 @@
  */
 
 import { useState } from 'react';
+import { t } from '@core/i18n';
 import { Modal } from '@components/Modal';
 import { Button } from '@components/Button';
 import { PropertyRow } from '@components/PropertyRow';
@@ -79,34 +80,34 @@ export function BakeDialog({
       size="sm"
       footer={
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" size="sm" onClick={bake} disabled={to <= from}>Bake</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>{t('inspector.bake.cancel', 'Cancel')}</Button>
+          <Button variant="primary" size="sm" onClick={bake} disabled={to <= from}>{t('inspector.bake.bake', 'Bake')}</Button>
         </div>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <PropertyRow label="Start" compact>
-          <ValueField value={from} unit="s" min={0} precision={3} onChange={setFrom} aria-label="Bake range start" />
+        <PropertyRow label={t('inspector.bake.start', 'Start')} compact>
+          <ValueField value={from} unit="s" min={0} precision={3} onChange={setFrom} aria-label={t('inspector.bake.startAria', 'Bake range start')} />
         </PropertyRow>
-        <PropertyRow label="End" compact>
-          <ValueField value={to} unit="s" min={0} precision={3} onChange={setTo} aria-label="Bake range end" />
+        <PropertyRow label={t('inspector.bake.end', 'End')} compact>
+          <ValueField value={to} unit="s" min={0} precision={3} onChange={setTo} aria-label={t('inspector.bake.endAria', 'Bake range end')} />
         </PropertyRow>
-        <PropertyRow label="Every N Frames" compact>
-          <ValueField value={everyN} min={1} precision={0} onChange={setEveryN} aria-label="Sample every N frames" />
+        <PropertyRow label={t('inspector.bake.everyN', 'Every N Frames')} compact>
+          <ValueField value={everyN} min={1} precision={0} onChange={setEveryN} aria-label={t('inspector.bake.everyNAria', 'Sample every N frames')} />
         </PropertyRow>
-        <PropertyRow label="Simplify" compact>
-          <ValueField value={tolerance} unit="px" min={0} precision={2} onChange={setTolerance} aria-label="Simplify tolerance" />
+        <PropertyRow label={t('inspector.bake.simplify', 'Simplify')} compact>
+          <ValueField value={tolerance} unit="px" min={0} precision={2} onChange={setTolerance} aria-label={t('inspector.bake.simplifyAria', 'Simplify tolerance')} />
         </PropertyRow>
         {withParticleCap && (
-          <PropertyRow label="Max Layers" compact>
-            <ValueField value={cap} min={1} precision={0} onChange={setCap} aria-label="Maximum particle layers" />
+          <PropertyRow label={t('inspector.bake.maxLayers', 'Max Layers')} compact>
+            <ValueField value={cap} min={1} precision={0} onChange={setCap} aria-label={t('inspector.bake.maxLayersAria', 'Maximum particle layers')} />
           </PropertyRow>
         )}
         <p className={tStyles.helpLine}>
-          {`${frames} frames in range → about ${sampled} keyframes per track before simplification.`}
+          {t('inspector.bake.estimate', '{frames} frames in range → about {sampled} keyframes per track before simplification.', { frames, sampled })}
           {withParticleCap
-            ? ' The emitter is hidden and the baked layers are parented under a new null.'
-            : ' Physics is switched off on the baked layers so the keyframes drive them.'}
+            ? ` ${t('inspector.bake.particleNote', 'The emitter is hidden and the baked layers are parented under a new null.')}`
+            : ` ${t('inspector.bake.physicsNote', 'Physics is switched off on the baked layers so the keyframes drive them.')}`}
         </p>
       </div>
     </Modal>

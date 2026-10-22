@@ -57,7 +57,7 @@ TEST_CASE("frame channel: every message round-trips and every truncation is refu
   const std::vector<frames::Message> all = {
       frames::Message{.v = slots},
       frames::Message{.v = ready},
-      frames::Message{.v = api::FramePong{77, 12, true, 3}},
+      frames::Message{.v = api::FramePong{77, 12, true, 3, 450, "tick (playing)"}},  // a busy pong (the watchdog's)
       frames::Message{.v = api::FrameRelease{7, 2}},
       frames::Message{.v = api::FramePing{0xDEADBEEFULL}},
   };

@@ -21,6 +21,7 @@
  */
 
 import type { EasingKind } from '@motion/animation';
+import { t } from '@core/i18n';
 
 export type KeyframeShape = 'linear' | 'ease' | 'auto' | 'hold';
 
@@ -91,12 +92,12 @@ export function keyframePaths(left: KeyframeShape, right: KeyframeShape): { left
 /** A human-readable description, for the diamond's tooltip. */
 export function describeShapes(left: KeyframeShape, right: KeyframeShape): string {
   const name: Record<KeyframeShape, string> = {
-    linear: 'Linear',
-    ease: 'Eased',
-    auto: 'Auto Bezier',
-    hold: 'Hold',
+    linear: t('timeline.keyframeShape.linear', 'Linear'),
+    ease: t('timeline.keyframeShape.ease', 'Eased'),
+    auto: t('timeline.keyframeShape.auto', 'Auto Bezier'),
+    hold: t('timeline.keyframeShape.hold', 'Hold'),
   };
-  return left === right ? name[left] : `${name[left]} in · ${name[right]} out`;
+  return left === right ? name[left] : t('timeline.keyframeShape.inOut', '{in} in · {out} out', { in: name[left], out: name[right] });
 }
 
 // ── Interpolation colour ───────────────────────────────────────────

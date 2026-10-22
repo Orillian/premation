@@ -25,6 +25,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { mirrorCompNetwork, type NetworkEntry, type UpstreamSort } from '@core/mirror/compNetwork';
 import { openContainingComposition, openLayerComposition } from '@layout/Composition/compNavigationEdits';
 import styles from './MiniFlowchart.module.css';
+import { t } from '@core/i18n';
 
 type Column = 'down' | 'up';
 
@@ -113,7 +114,9 @@ export function MiniFlowchart(): JSX.Element | null {
             className={cn(styles.entry, sel.col === col && sel.i === i && styles.entrySelected)}
             onMouseEnter={() => setSel({ col, i })}
             onClick={() => activate(col, entry)}
-            title={col === 'up' ? `Open ${entry.name}` : `Open ${entry.name}, which contains ${net.name}`}
+            title={col === 'up'
+              ? t('workspace.miniFlowchart.open', 'Open {name}', { name: entry.name })
+              : t('workspace.miniFlowchart.openContaining', 'Open {name}, which contains {current}', { name: entry.name, current: net.name })}
           >
             <Icon name="layers" size="sm" />
             <span className={styles.entryName}>{entry.name}</span>
@@ -129,23 +132,25 @@ export function MiniFlowchart(): JSX.Element | null {
       ref={rootRef}
       className={styles.root}
       role="dialog"
-      aria-label="Composition Mini-Flowchart"
+      aria-label={t('workspace.miniFlowchart.label', 'Composition Mini-Flowchart')}
       tabIndex={-1}
       data-shortcut-claim={CLAIMED}
       onKeyDown={onKeyDown}
     >
       <div className={styles.flow}>
-        {column('down', 'Contains this', 'Not placed in any composition')}
+        {column('down', t('workspace.miniFlowchart.containsThis', 'Contains this'), t('workspace.miniFlowchart.notPlaced', 'Not placed in any composition'))}
         <Icon name="chevron-left" size="sm" className={styles.arrow} />
         <div className={styles.current}>
-          <span className={styles.columnLabel}>Composition</span>
+          <span className={styles.columnLabel}>{t('workspace.miniFlowchart.composition', 'Composition')}</span>
           <span className={styles.currentName}>{net.name}</span>
         </div>
         <Icon name="chevron-left" size="sm" className={styles.arrow} />
-        {column('up', 'Nested in this', 'No compositions inside')}
+        {column('up', t('workspace.miniFlowchart.nestedInThis', 'Nested in this'), t('workspace.miniFlowchart.noneInside', 'No compositions inside'))}
       </div>
       <div className={styles.hint}>
-        ↑↓←→ move · Enter open · S sort by {sort === 'name' ? 'layer order' : 'name'} · Esc close
+        {sort === 'name'
+          ? t('workspace.miniFlowchart.hintSortLayerOrder', '↑↓←→ move · Enter open · S sort by layer order · Esc close')
+          : t('workspace.miniFlowchart.hintSortName', '↑↓←→ move · Enter open · S sort by name · Esc close')}
       </div>
     </div>
   );

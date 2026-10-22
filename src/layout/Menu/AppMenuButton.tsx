@@ -12,6 +12,7 @@ import { Icon } from '@components/Icon';
 import { useAppMenuGroups } from './useAppMenuGroups';
 import { anchorMenuTo } from './menuAnchor';
 import { MenuModelItems } from './MenuModelItems';
+import { t } from '@core/i18n';
 import styles from './AppMenuBar.module.css';
 
 export function AppMenuButton(): JSX.Element {
@@ -54,7 +55,7 @@ export function AppMenuButton(): JSX.Element {
 
   return (
     <div ref={ref} style={{ display: 'inline-flex' }}>
-      <IconButton aria-label="Menu" size="md" active={open} onClick={toggle}>
+      <IconButton aria-label={t('menuBar.button.aria', 'Menu')} size="md" active={open} onClick={toggle}>
         <Icon name="menu" size="md" />
       </IconButton>
       {open && anchor

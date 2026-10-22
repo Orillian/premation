@@ -1,7 +1,8 @@
 /**
  * The native SDK plugins the engine found, with the folder they live in.
  *
- * Shared by the dashboard's Plugins page and the editor's Plugins panel. The
+ * The dashboard's Plugins page (the editor's Plugins panel draws its own
+ * AE-style tree, NativePluginsPanel.tsx). The
  * list is the engine's `listPlugins` answer, verbatim: every plugin it saw in
  * the folder, loaded or not — a failed one shows why, so "I copied it in and
  * nothing happened" has an answer on screen.
@@ -21,6 +22,7 @@ import {
   type NativePlugin,
 } from '@core/nativePlugins/nativePlugins';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
 function statusClass(status: NativePlugin['status']): string | undefined {
   if (status === 'loaded') return styles.statusLoaded;
@@ -34,17 +36,17 @@ function RowActions({ plugin, store }: { plugin: NativePlugin; store: InstalledS
   const queued = store.installed?.uninstall.includes(plugin.id) ?? false;
   const update = store.updates.get(plugin.id);
   const busy = store.busy !== null;
-  if (queued) return <span className={styles.status}>Removed on restart</span>;
+  if (queued) return <span className={styles.status}>{t('plugins.list.removedOnRestart', 'Removed on restart')}</span>;
   return (
     <div className={styles.rowActions}>
       {update ? (
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => void store.install(plugin.id, update.latestVersion)}>
-          Update to {update.latestVersion}
+          {t('plugins.list.updateTo', 'Update to {version}', { version: update.latestVersion })}
         </Button>
       ) : null}
       {plugin.status === 'locked' ? (
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => void store.checkPlan()}>
-          Check plan
+          {t('plugins.list.checkPlan', 'Check plan')}
         </Button>
       ) : null}
       {plugin.status !== 'revoked' && plugin.status !== 'locked' ? (
@@ -52,12 +54,12 @@ function RowActions({ plugin, store }: { plugin: NativePlugin; store: InstalledS
           checked={plugin.status !== 'disabled'}
           disabled={busy || plugin.status === 'failed'}
           onChange={(e) => void store.setEnabled(plugin.id, e.currentTarget.checked)}
-          aria-label={`Enable ${plugin.name || plugin.id}`}
+          aria-label={t('plugins.list.enable', 'Enable {name}', { name: plugin.name || plugin.id })}
         />
       ) : null}
       {mine ? (
         <Button size="sm" variant="ghost" iconOnly icon={<Icon name="trash" size="sm" />} disabled={busy} onClick={() => void store.uninstall(plugin.id)}>
-          Uninstall {plugin.name || plugin.id}
+          {t('plugins.list.uninstall', 'Uninstall {name}', { name: plugin.name || plugin.id })}
         </Button>
       ) : null}
     </div>
@@ -70,7 +72,7 @@ function UpdateNotes({ notes }: { notes: Array<{ version: string; releaseNotes: 
   if (!notes || !newest) return null;
   return (
     <details className={styles.updateNotes}>
-      <summary>What&apos;s new in v{newest.version}</summary>
+      <summary>{t('plugins.list.whatsNew', 'What\'s new in v{version}', { version: newest.version })}</summary>
       {notes.map((n) => (
         <div key={n.version} className={styles.markdown}>
           {notes.length > 1 ? <strong>v{n.version}</strong> : null}
@@ -81,17 +83,23 @@ function UpdateNotes({ notes }: { notes: Array<{ version: string; releaseNotes: 
   );
 }
 
-export function NativePluginRows({ plugins, store }: { plugins: readonly NativePlugin[]; store?: InstalledState }): JSX.Element {
+export function NativePluginRows({
+  plugins,
+  store,
+}: {
+  plugins: readonly NativePlugin[];
+  store?: InstalledState;
+}): JSX.Element {
   if (plugins.length === 0) {
     return (
       <div className={styles.empty} role="status">
-        <strong>No native plugins installed</strong>
-        <span>Install one from the plugin store, or copy a plugin into the plugins folder.</span>
+        <strong>{t('plugins.list.emptyTitle', 'No native plugins installed')}</strong>
+        <span>{t('plugins.list.emptyText', 'Install one from the plugin store, or copy a plugin into the plugins folder.')}</span>
       </div>
     );
   }
   return (
-    <ul className={styles.list} aria-label="Installed native plugins">
+    <ul className={styles.list} aria-label={t('plugins.list.installedTitle', 'Installed native plugins')}>
       {plugins.map((p) => (
         <li key={p.id} className={styles.row}>
           <Icon name="plugin" size="sm" className={styles.rowIcon} />
@@ -126,7 +134,7 @@ export function OpenPluginsFolderButton({ size = 'sm' }: { size?: 'sm' | 'md' })
           void openNativePluginFolder().then(setError);
         }}
       >
-        Open plugins folder
+        {t('plugins.list.openFolder', 'Open plugins folder')}
       </Button>
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
     </>
@@ -151,7 +159,7 @@ export function NativePluginsList({
   const body = (
     <>
       <div className={styles.toolbar}>
-        {!compact ? <h3 className={styles.cardTitle}>Installed native plugins</h3> : null}
+        {!compact ? <h3 className={styles.cardTitle}>{t('plugins.list.installedTitle', 'Installed native plugins')}</h3> : null}
         {actions}
         <span className={styles.spacer} />
         <Button
@@ -164,7 +172,7 @@ export function NativePluginsList({
             store?.refresh();
           }}
         >
-          {loading ? 'Checking…' : 'Refresh'}
+          {loading ? t('plugins.list.checking', 'Checking…') : t('plugins.list.refresh', 'Refresh')}
         </Button>
       </div>
       {error ? (
@@ -172,9 +180,9 @@ export function NativePluginsList({
       ) : plugins ? (
         <NativePluginRows plugins={plugins} {...(store ? { store } : {})} />
       ) : (
-        <span className={styles.text} role="status">Asking the engine…</span>
+        <span className={styles.text} role="status">{t('plugins.list.asking', 'Asking the engine…')}</span>
       )}
     </>
   );
-  return compact ? body : <section className={styles.card} aria-label="Installed native plugins">{body}</section>;
+  return compact ? body : <section className={styles.card} aria-label={t('plugins.list.installedTitle', 'Installed native plugins')}>{body}</section>;
 }

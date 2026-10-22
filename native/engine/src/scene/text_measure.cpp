@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <numbers>
 #include <optional>
@@ -72,6 +73,31 @@ double anchor_offset_of(const MeasuredStyle& s, double contentHeight) {
   return s.boxAnchorHeight ? (contentHeight - *s.boxAnchorHeight) / 2 : 0;
 }
 
+/// applyFontVariations: the font-variation-settings the painter draws with —
+/// the keyed weight, width ('wdth'), slant ('slnt') and the layer's registered
+/// axes (text_paint.cpp sets the same string; text_outlines.cpp
+/// font_variations_of builds it for the outlines). "normal" without any.
+std::string variation_settings(const MeasuredStyle& s) {
+  std::string out;
+  const auto part = [&out](std::string_view tag, double v) {
+    if (!std::isfinite(v)) return;
+    if (!out.empty()) out += ", ";
+    out += '\'';
+    out += tag;
+    out += "' ";
+    out += css_number(v);
+  };
+  const auto parsedWeight = js::parse(s.fontWeight);
+  if (parsedWeight && parsedWeight->is_number()) part("wght", parsedWeight->num());
+  if (s.fontWidth) part("wdth", *s.fontWidth);
+  if (s.fontSlant) part("slnt", *s.fontSlant);
+  for (const auto& [tag, v] : s.fontAxes) {  // std::map: sorted, as the TS sorts the tags
+    if (tag == "wght" || tag == "wdth" || tag == "slnt") continue;
+    part(tag, v);
+  }
+  return out.empty() ? std::string("normal") : out;
+}
+
 class CanvasMeasurer final : public TextMeasurer {
  public:
   explicit CanvasMeasurer(raster::CanvasOptions opts) : opts_(opts) {}
@@ -79,9 +105,8 @@ class CanvasMeasurer final : public TextMeasurer {
   [[nodiscard]] const raster::CanvasOptions* canvas_options() const noexcept override { return &opts_; }
 
   std::optional<std::pair<double, double>> measure_text_size(const MeasuredStyle& input) override {
-    if (input.hasFontAxes || input.fontWidth || input.fontSlant) return std::nullopt;
-    // Vertical optical pairs and vertical runs are outside the port.
-    if (input.vertical && (input.opticalKerning || input.hasLineRuns)) return std::nullopt;
+    // Vertical runs that change a line's size are outside the port.
+    if (input.vertical && input.hasLineRuns) return std::nullopt;
     if (input.textTransform == "capitalize") return std::nullopt;
     // Paragraph text measures its WRAPPED content (measureTextSize → wrappedStyle).
     std::optional<MeasuredStyle> wrapped;
@@ -167,6 +192,13 @@ class CanvasMeasurer final : public TextMeasurer {
     k += '\x02';
     k += s.fontStyle;
     k += '\x02';
+    // The variation axes: width, slant and the registered tags change every advance.
+    opt(s.fontWidth);
+    opt(s.fontSlant);
+    for (const auto& [tag, v] : s.fontAxes) {
+      k += tag;
+      num(v);
+    }
     k += s.content;
     return k;
   }
@@ -178,13 +210,7 @@ class CanvasMeasurer final : public TextMeasurer {
     const std::string style = s.fontStyle == "italic" ? "italic " : "";
     const std::string font = style + s.fontWeight + " " + css_number(s.fontSize) + "px \"" + s.fontFamily + "\", Inter, system-ui, sans-serif";
     if (!g.setFont(font)) return std::nullopt;
-    std::string variation = "normal";
-    {
-      const auto parsedWeight = js::parse(s.fontWeight);
-      const double w = parsedWeight && parsedWeight->is_number() ? parsedWeight->num() : std::nan("");
-      if (std::isfinite(w)) variation = "'wght' " + css_number(w);
-    }
-    g.setFontVariationSettings(variation);
+    g.setFontVariationSettings(variation_settings(s));
     // applyFontVariations: optical kerning measures with the font's kerning off.
     g.setFontKerning(!s.opticalKerning);
     g.setTextBaseline(raster::TextBaseline::middle);
@@ -281,7 +307,7 @@ class CanvasMeasurer final : public TextMeasurer {
 
  private:
   std::optional<FontBox> measure_font_box(const MeasuredStyle& input) override {
-    if (input.hasFontAxes || input.fontWidth || input.fontSlant || input.vertical) return std::nullopt;
+    if (input.vertical) return std::nullopt;  // a horizontal line block's font band
     std::optional<MeasuredStyle> wrapped;
     if (input.boxWidth) {
       wrapped = wrapped_style(input, nullptr);
@@ -352,7 +378,7 @@ class CanvasMeasurer final : public TextMeasurer {
   }
 
   std::optional<std::vector<GlyphLine>> measure_glyph_lines(const MeasuredStyle& s) override {
-    if (s.hasFontAxes || s.fontWidth || s.fontSlant || s.vertical) return std::nullopt;
+    if (s.vertical) return std::nullopt;  // horizontal lines only (getTextLayout)
     const std::scoped_lock lock(m_);
     if (!ctx_) ctx_ = raster::Canvas2D::make(1, 1, opts_);
     raster::Canvas2D& g = *ctx_;
@@ -387,7 +413,6 @@ class CanvasMeasurer final : public TextMeasurer {
   }
 
   std::optional<double> baseline_below_middle(const MeasuredStyle& s) override {
-    if (s.hasFontAxes || s.fontWidth || s.fontSlant) return std::nullopt;
     const std::scoped_lock lock(m_);
     if (!ctx_) ctx_ = raster::Canvas2D::make(1, 1, opts_);
     raster::Canvas2D& g = *ctx_;
@@ -412,13 +437,7 @@ class CanvasMeasurer final : public TextMeasurer {
     const std::string style = s.fontStyle == "italic" ? "italic " : "";
     const std::string font = style + s.fontWeight + " " + css_number(s.fontSize) + "px \"" + s.fontFamily + "\", Inter, system-ui, sans-serif";
     if (!g.setFont(font)) return false;
-    std::string variation = "normal";
-    {
-      const auto parsedWeight = js::parse(s.fontWeight);
-      const double wt = parsedWeight && parsedWeight->is_number() ? parsedWeight->num() : std::nan("");
-      if (std::isfinite(wt)) variation = "'wght' " + css_number(wt);
-    }
-    g.setFontVariationSettings(variation);
+    g.setFontVariationSettings(variation_settings(s));
     g.setFontKerning(!s.opticalKerning);
     return true;
   }
@@ -592,6 +611,21 @@ class CanvasMeasurer final : public TextMeasurer {
     };
     o.romanUpright = s.verticalRomanAlignment;
     o.tateChuYokoDigits = s.tateChuYokoDigits;
+    // Optical kerning in a column (verticalLayout.ts): sideways pairs as
+    // horizontal pairs, upright pairs from their top / bottom ink — the painter's
+    // kerner at the reference size (text_paint.cpp opticalFaceOf), as optical_line_delta.
+    const std::string refCss = (s.fontStyle == "italic" ? "italic " : "") + s.fontWeight + " " +
+                               css_number(raster::OpticalKerner::kRefEmPx) + "px \"" + s.fontFamily + "\", Inter, system-ui, sans-serif";
+    if (s.opticalKerning) {
+      if (!kerner_) kerner_ = std::make_unique<raster::OpticalKerner>(opts_);
+      o.opticalKern = [&](const std::string& a, const raster::TextStyle& sa, const std::string& b, const raster::TextStyle& sb) {
+        return kerner_->kern_px(refCss, a, sa.fontSize, refCss, b, sb.fontSize);
+      };
+      o.opticalKernVertical = [&](const std::string& a, const raster::TextStyle& sa, const std::string& b, const raster::TextStyle& sb,
+                                  bool /*upperAlt*/, bool /*lowerAlt*/) {
+        return kerner_->kern_vertical_px(refCss, a, sa.fontSize, refCss, b, sb.fontSize);
+      };
+    }
     const raster::TextLayout laid =
         raster::layout_vertical_text(content, base, [&](const std::string& t, const raster::TextStyle&) { return measureOne(t); }, o);
     const StyleTransform vt = text_style_transform(s);
@@ -705,8 +739,18 @@ std::optional<MeasuredStyle> read_measured_text_style(const doc::Node& n,
   if (s.verticalScale == 100) s.verticalScale.reset();
   if (s.horizontalScale == 100) s.horizontalScale.reset();
   if (s.baselineShift == 0) s.baselineShift.reset();
+  // resolveFontAxes: the stored registered tags, a keyed `text.axis.<tag>` value winning.
   const Json axes = doc::read_font_axes_prop(n);
-  s.hasFontAxes = axes.is_object() && !axes.obj().empty();
+  if (axes.is_object()) {
+    for (const auto& m : axes.obj()) {
+      if (m.value.is_finite_number()) s.fontAxes[m.key] = m.value.num();
+    }
+  }
+  for (const auto& [k, v] : overrides) {
+    if (!std::isfinite(v)) continue;
+    if (const auto tag = doc::parse_axis_prop_path(k); tag && *tag != "wght" && *tag != "wdth" && *tag != "slnt") s.fontAxes[*tag] = v;
+  }
+  s.hasFontAxes = !s.fontAxes.empty();
   if (s.vertical && tcyAuto) s.tateChuYokoDigits = static_cast<int>(std::max(1.0, std::min(4.0, std::floor(tcyDigits + 0.5))));
   if (!s.vertical) s.verticalRomanAlignment = false;
   // The first Text component's runs (`components.find`), legacy code-point

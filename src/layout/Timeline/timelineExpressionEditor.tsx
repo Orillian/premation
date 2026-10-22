@@ -12,13 +12,14 @@
 import { openModal } from '@stores/modalStore';
 import { documentMirror } from '@stores/documentMirror';
 import { ExpressionEditor } from '@layout/Motion/ExpressionEditor';
+import { t } from '@core/i18n';
 
 /** Open the expression editor for `prop` of layer `nodeId`, floating over the timeline. */
 export function openTimelineExpressionEditor(nodeId: string, prop: string): void {
-  const name = documentMirror().layer(nodeId)?.name ?? 'Layer';
+  const name = documentMirror().layer(nodeId)?.name ?? t('timeline.expression.layerFallback', 'Layer');
   openModal({
     id: 'timeline-expression-editor',
-    title: `Expression — ${name}`,
+    title: t('timeline.expression.title', 'Expression — {name}', { name }),
     size: 'md',
     variant: 'floating',
     render: () => <ExpressionEditor nodeId={nodeId} prop={prop} />,

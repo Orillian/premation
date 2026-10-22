@@ -38,6 +38,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { useRenderQualityStore } from '@stores/renderQualityStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { easePatch, keyIdsAt, trackRef, valueCommands } from '@layout/Inspector/inspectorEdits';
 import { reorderCommands } from '@layout/Workspace/layerMenuEdits';
 import { easeKeyframes, easeKindOnKeys, setRovingOnKeys } from '@layout/Timeline/keyframeEdits';
@@ -123,7 +124,7 @@ export async function toggleLayerFlagEdit(nodeId: string, flag: LayerFlag): Prom
   if (!node || !isLayer(nodeId)) return false;
   const def = layerFlagDef(flag);
   if (!mirrorLayerFlagAvailable(m, nodeId, flag)) {
-    notify(`${def.label} isn't available for that layer`, 'warning', 2600);
+    notify(t('menuBar.layerFlag.unavailable', "{flag} isn't available for that layer", { flag: def.label }), 'warning', 2600);
     return true;
   }
   const next: boolean | LayerQuality = def.cycles ? nextQuality(node.switches.quality) : !mirrorLayerFlag(node, flag);
@@ -149,16 +150,16 @@ export async function toggleLayerFlagEdit(nodeId: string, flag: LayerFlag): Prom
   if (!res.ok) return true;
   // The feedback `toggleLayerFlag` gave (layerSwitchFeedback.ts / cameraNav).
   if (flag === 'guide') {
-    notify(on ? 'Guide layer — visible while editing, omitted from export' : 'No longer a guide layer', 'success');
+    notify(on ? t('menuBar.layerFlag.guideOn', 'Guide layer — visible while editing, omitted from export') : t('menuBar.layerFlag.guideOff', 'No longer a guide layer'), 'success');
   } else if (flag === 'threeD' && on) {
     notifyCameraTipIfMissingIn(documentMirror(), activeCompIdNow(), (message, level) => notify(message, level));
   } else if (flag === 'motionBlur' && on) {
-    if (master.length > 0) notify('Motion Blur enabled for this layer and the composition', 'success');
+    if (master.length > 0) notify(t('menuBar.layerFlag.motionBlurBoth', 'Motion Blur enabled for this layer and the composition'), 'success');
     if (useRenderQualityStore.getState().draft) {
-      notify('Draft preview is on — motion blur samples are paused until draft is off', 'warning');
+      notify(t('menuBar.layerFlag.draftPaused', 'Draft preview is on — motion blur samples are paused until draft is off'), 'warning');
     }
   } else if (flag === 'adjustment' && on && (documentMirror().layer(nodeId)?.effectCount ?? 0) === 0) {
-    notify('Adjustment layer is on — add effects to grade layers beneath it');
+    notify(t('menuBar.layerFlag.adjustmentOn', 'Adjustment layer is on — add effects to grade layers beneath it'));
   }
   return true;
 }

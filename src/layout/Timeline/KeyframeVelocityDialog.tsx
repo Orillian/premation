@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { Button } from '@components/Button';
 import { ValueField } from '@components/ValueField';
 import { openModal } from '@stores/modalStore';
+import { t } from '@core/i18n';
 import {
   applyKeyframeVelocity,
   readKeyframeVelocity,
@@ -27,12 +28,12 @@ import styles from './KeyframeVelocityDialog.module.css';
 interface VelocityBodyProps {
   nodeId: string;
   prop: string;
-  t: number;
+  time: number;
   reading: VelocityReading;
   close: () => void;
 }
 
-function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): JSX.Element {
+function VelocityBody({ nodeId, prop, time, reading, close }: VelocityBodyProps): JSX.Element {
   const { hasIncoming, hasOutgoing, props } = reading;
   const [inSpeed, setInSpeed] = useState(reading.velocity.inSpeed);
   const [outSpeed, setOutSpeed] = useState(reading.velocity.outSpeed);
@@ -42,7 +43,7 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
   const [outInfluence, setOutInfluence] = useState(reading.velocity.outInfluence * 100);
 
   const apply = (): void => {
-    applyKeyframeVelocity(nodeId, prop, t, {
+    applyKeyframeVelocity(nodeId, prop, time, {
       inSpeed,
       outSpeed,
       inInfluence: inInfluence / 100,
@@ -54,14 +55,16 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
   return (
     <div className={styles.body}>
       <p className={styles.blurb}>
-        Speed is in the property’s units per second; influence is how far the handle reaches into
-        the segment. They are independent — changing one holds the other.
+        {t(
+          'timeline.velocity.blurb',
+          'Speed is in the property’s units per second; influence is how far the handle reaches into the segment. They are independent — changing one holds the other.',
+        )}
       </p>
 
       <fieldset className={styles.group} disabled={!hasIncoming}>
-        <legend className={styles.legend}>Incoming</legend>
+        <legend className={styles.legend}>{t('timeline.velocity.incoming', 'Incoming')}</legend>
         <div className={styles.row}>
-          <span className={styles.label}>Speed</span>
+          <span className={styles.label}>{t('timeline.velocity.speed', 'Speed')}</span>
           <ValueField
             value={inSpeed}
             onChange={setInSpeed}
@@ -69,11 +72,11 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
             step={1}
             precision={2}
             unit="/s"
-            aria-label="Incoming speed"
+            aria-label={t('timeline.velocity.incomingSpeed', 'Incoming speed')}
           />
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Influence</span>
+          <span className={styles.label}>{t('timeline.velocity.influence', 'Influence')}</span>
           <ValueField
             value={inInfluence}
             onChange={setInInfluence}
@@ -82,16 +85,16 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
             step={1}
             precision={1}
             unit="%"
-            aria-label="Incoming influence"
+            aria-label={t('timeline.velocity.incomingInfluence', 'Incoming influence')}
           />
         </div>
-        {hasIncoming ? null : <p className={styles.note}>First keyframe — nothing arrives here.</p>}
+        {hasIncoming ? null : <p className={styles.note}>{t('timeline.velocity.firstKeyframe', 'First keyframe — nothing arrives here.')}</p>}
       </fieldset>
 
       <fieldset className={styles.group} disabled={!hasOutgoing}>
-        <legend className={styles.legend}>Outgoing</legend>
+        <legend className={styles.legend}>{t('timeline.velocity.outgoing', 'Outgoing')}</legend>
         <div className={styles.row}>
-          <span className={styles.label}>Speed</span>
+          <span className={styles.label}>{t('timeline.velocity.speed', 'Speed')}</span>
           <ValueField
             value={outSpeed}
             onChange={setOutSpeed}
@@ -99,11 +102,11 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
             step={1}
             precision={2}
             unit="/s"
-            aria-label="Outgoing speed"
+            aria-label={t('timeline.velocity.outgoingSpeed', 'Outgoing speed')}
           />
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Influence</span>
+          <span className={styles.label}>{t('timeline.velocity.influence', 'Influence')}</span>
           <ValueField
             value={outInfluence}
             onChange={setOutInfluence}
@@ -112,24 +115,24 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
             step={1}
             precision={1}
             unit="%"
-            aria-label="Outgoing influence"
+            aria-label={t('timeline.velocity.outgoingInfluence', 'Outgoing influence')}
           />
         </div>
-        {hasOutgoing ? null : <p className={styles.note}>Last keyframe — nothing leaves here.</p>}
+        {hasOutgoing ? null : <p className={styles.note}>{t('timeline.velocity.lastKeyframe', 'Last keyframe — nothing leaves here.')}</p>}
       </fieldset>
 
       <p className={styles.note}>
         {props.length === 1
-          ? `Applies to ${props[0]}.`
-          : `Applies to ${props.join(', ')} — each solves its own curve for these numbers.`}
+          ? t('timeline.velocity.appliesToOne', 'Applies to {prop}.', { prop: props[0] ?? '' })
+          : t('timeline.velocity.appliesToMany', 'Applies to {props} — each solves its own curve for these numbers.', { props: props.join(', ') })}
       </p>
 
       <div className={styles.footer}>
         <Button variant="ghost" onClick={close}>
-          Cancel
+          {t('timeline.velocity.cancel', 'Cancel')}
         </Button>
         <Button variant="primary" onClick={apply}>
-          Apply
+          {t('timeline.velocity.apply', 'Apply')}
         </Button>
       </div>
     </div>
@@ -141,17 +144,17 @@ function VelocityBody({ nodeId, prop, t, reading, close }: VelocityBodyProps): J
  * Returns false — opening nothing — when that keyframe has no segment on
  * either side, because there would be nothing to shape.
  */
-export function openKeyframeVelocityDialog(nodeId: string, prop: string, t: number): boolean {
-  const reading = readKeyframeVelocity(nodeId, prop, t);
+export function openKeyframeVelocityDialog(nodeId: string, prop: string, time: number): boolean {
+  const reading = readKeyframeVelocity(nodeId, prop, time);
   if (!reading) return false;
   openModal({
     id: 'keyframe-velocity',
-    title: 'Keyframe Velocity',
+    title: t('timeline.velocity.title', 'Keyframe Velocity'),
     size: 'sm',
     // Floating: the graph it shapes stays live and scrubbable behind it.
     variant: 'floating',
     render: (close) => (
-      <VelocityBody nodeId={nodeId} prop={prop} t={t} reading={reading} close={close} />
+      <VelocityBody nodeId={nodeId} prop={prop} time={time} reading={reading} close={close} />
     ),
   });
   return true;

@@ -11,6 +11,7 @@
  */
 
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './CloudUsage.module.css';
 
 export interface CloudUsageProps {
@@ -45,7 +46,21 @@ function longDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+/**
+ * A translated sentence with the date drawn bold. `{date}` is left out of the
+ * vars on purpose, so it survives interpolation and marks where <strong> goes.
+ */
+function withDate(template: string, date: string): React.ReactNode {
+  const at = template.indexOf('{date}');
+  if (at < 0) return template;
+  return (
+    <>
+      {template.slice(0, at)}
+      <strong>{date}</strong>
+      {template.slice(at + '{date}'.length)}
+    </>
+  );
+}
 
 export function CloudUsage({
   used,
@@ -62,31 +77,34 @@ export function CloudUsage({
 
   let note: React.ReactNode = null;
   if (graceCap !== null && limitsFrom) {
+    const date = longDate(limitsFrom);
+    const extra = used - graceCap;
     note =
-      used > graceCap ? (
-        <>
-          Free plan limits start on <strong>{longDate(limitsFrom)}</strong>. From then on, your{' '}
-          {graceCap} most recently edited projects stay editable and the other{' '}
-          {plural(used - graceCap, 'project turns', 'projects turn')} read-only. Nothing is deleted.
-        </>
-      ) : (
-        <>
-          Free plan limits start on <strong>{longDate(limitsFrom)}</strong>: {graceCap} cloud
-          projects and {historyDays ?? 7} days of history. You are within them.
-        </>
-      );
+      used > graceCap
+        ? withDate(
+            extra === 1
+              ? t('settings.cloudUsage.graceOverOne', 'Free plan limits start on {date}. From then on, your {cap} most recently edited projects stay editable and the other {n} project turns read-only. Nothing is deleted.', { cap: graceCap, n: extra })
+              : t('settings.cloudUsage.graceOverOther', 'Free plan limits start on {date}. From then on, your {cap} most recently edited projects stay editable and the other {n} projects turn read-only. Nothing is deleted.', { cap: graceCap, n: extra }),
+            date,
+          )
+        : withDate(
+            t('settings.cloudUsage.graceWithin', 'Free plan limits start on {date}: {cap} cloud projects and {days} days of history. You are within them.', { cap: graceCap, days: historyDays ?? 7 }),
+            date,
+          );
   } else if (level === 'over' && limit !== null) {
-    note = (
-      <>
-        {plural(used - limit, 'project is', 'projects are')} past your plan and read-only. You can
-        still open and export {used - limit === 1 ? 'it' : 'them'}; your {limit} most recently edited
-        projects keep saving.
-      </>
-    );
+    const extra = used - limit;
+    note =
+      extra === 1
+        ? t('settings.cloudUsage.overOne', '{n} project is past your plan and read-only. You can still open and export it; your {limit} most recently edited projects keep saving.', { n: extra, limit })
+        : t('settings.cloudUsage.overOther', '{n} projects are past your plan and read-only. You can still open and export them; your {limit} most recently edited projects keep saving.', { n: extra, limit });
   } else if (level === 'full') {
-    note = <>You have used every cloud project on your plan. New projects can still be saved locally.</>;
+    note = t('settings.cloudUsage.full', 'You have used every cloud project on your plan. New projects can still be saved locally.');
   } else if (level === 'near' && limit !== null) {
-    note = <>{plural(limit - used, 'cloud project', 'cloud projects')} left on your plan.</>;
+    const left = limit - used;
+    note =
+      left === 1
+        ? t('settings.cloudUsage.leftOne', '{n} cloud project left on your plan.', { n: left })
+        : t('settings.cloudUsage.leftOther', '{n} cloud projects left on your plan.', { n: left });
   }
 
   const tone =
@@ -95,15 +113,15 @@ export function CloudUsage({
   return (
     <div className={styles.usage}>
       <div className={styles.row}>
-        <span className={styles.label}>Cloud projects</span>
+        <span className={styles.label}>{t('settings.cloudUsage.projects', 'Cloud projects')}</span>
         <span className={styles.value}>
           {capped ? (
             <>
-              {used} <span className={styles.of}>of {limit}</span>
+              {used} <span className={styles.of}>{t('settings.cloudUsage.of', 'of {limit}', { limit })}</span>
             </>
           ) : (
             <>
-              {used} <span className={styles.of}>· unlimited</span>
+              {used} <span className={styles.of}>{t('settings.cloudUsage.unlimited', '· unlimited')}</span>
             </>
           )}
         </span>
@@ -112,7 +130,7 @@ export function CloudUsage({
         <div
           className={styles.track}
           role="progressbar"
-          aria-label="Cloud projects used"
+          aria-label={t('settings.cloudUsage.usedAria', 'Cloud projects used')}
           aria-valuemin={0}
           aria-valuemax={limit}
           aria-valuenow={Math.min(used, limit)}
@@ -122,8 +140,12 @@ export function CloudUsage({
       ) : null}
       {historyDays ? (
         <div className={styles.row}>
-          <span className={styles.label}>Version history</span>
-          <span className={styles.value}>{plural(historyDays, 'day', 'days')}</span>
+          <span className={styles.label}>{t('settings.cloudUsage.history', 'Version history')}</span>
+          <span className={styles.value}>
+            {historyDays === 1
+              ? t('settings.cloudUsage.daysOne', '{n} day', { n: historyDays })
+              : t('settings.cloudUsage.daysOther', '{n} days', { n: historyDays })}
+          </span>
         </div>
       ) : null}
       {note || action ? (

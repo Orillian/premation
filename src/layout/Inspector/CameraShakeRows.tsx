@@ -11,6 +11,7 @@
  * that never shook (goldens stay byte-identical).
  */
 
+import { t } from '@core/i18n';
 import { useComponentProp, writeComponentProps } from './useComponentProp';
 import { componentOfType } from '@core/engine/propRefs';
 import { Button } from '@components/Button';
@@ -36,31 +37,31 @@ export function CameraShakeRows({ nodeId }: { nodeId: string }): JSX.Element {
   return (
     <TwirlGroup
       prefKey="camera.shake"
-      label={<span title="Handheld shake the engine adds after the camera's aim: seeded smooth noise, deterministic for a seed. Keyframe Amount to ramp it in or out; camera motion blur sees it.">Shake</span>}
+      label={<span title={t('inspector.cameraShake.hint', 'Handheld shake the engine adds after the camera\'s aim: seeded smooth noise, deterministic for a seed. Keyframe Amount to ramp it in or out; camera motion blur sees it.')}>{t('inspector.cameraShake.shake', 'Shake')}</span>}
       defaultOpen={shaking}
-      summary={shaking ? `${amount} px · ${rotation}°` : 'Off'}
+      summary={shaking ? `${amount} px · ${rotation}°` : t('inspector.cameraShake.off', 'Off')}
     >
-      <KeyframeRow nodeId={nodeId} prop="shakeAmount" label="Amount" value={amount} unit="px" min={0} onStatic={(v) => setAmount(v)} />
-      <KeyframeRow nodeId={nodeId} prop="shakeRotation" label="Rotation" value={rotation} unit="°" min={0} max={45} onStatic={(v) => setRotation(v)} />
-      <KeyframeRow nodeId={nodeId} prop="shakeFrequency" label="Frequency" value={frequency} unit="Hz" min={0} max={30} onStatic={(v) => setFrequency(v)} />
-      <KeyframeRow nodeId={nodeId} prop="shakeSeed" label="Seed" value={seed} min={0} precision={0} onStatic={(v) => setSeed(Math.round(v))} />
+      <KeyframeRow nodeId={nodeId} prop="shakeAmount" label={t('inspector.cameraShake.amount', 'Amount')} value={amount} unit="px" min={0} onStatic={(v) => setAmount(v)} />
+      <KeyframeRow nodeId={nodeId} prop="shakeRotation" label={t('inspector.cameraShake.rotation', 'Rotation')} value={rotation} unit="°" min={0} max={45} onStatic={(v) => setRotation(v)} />
+      <KeyframeRow nodeId={nodeId} prop="shakeFrequency" label={t('inspector.cameraShake.frequency', 'Frequency')} value={frequency} unit="Hz" min={0} max={30} onStatic={(v) => setFrequency(v)} />
+      <KeyframeRow nodeId={nodeId} prop="shakeSeed" label={t('inspector.cameraShake.seed', 'Seed')} value={seed} min={0} precision={0} onStatic={(v) => setSeed(Math.round(v))} />
       <div className={styles.actionRow}>
         <Button
           size="sm"
           variant="secondary"
-          title="Pick a different random pattern — same strength, new motion"
+          title={t('inspector.cameraShake.newSeedHint', 'Pick a different random pattern — same strength, new motion')}
           onClick={() => setSeed(seed + 1)}
         >
-          New Seed
+          {t('inspector.cameraShake.newSeed', 'New Seed')}
         </Button>
         {shaking && (
           <Button
             size="sm"
             variant="secondary"
-            title="Turn the shake off (back to no stored shake)"
+            title={t('inspector.cameraShake.offHint', 'Turn the shake off (back to no stored shake)')}
             onClick={() => writeComponentProps(nodeId, componentOfType(nodeId, 'Transform') ?? '', { shakeAmount: undefined, shakeRotation: undefined }, 'Remove Camera Shake')}
           >
-            Off
+            {t('inspector.cameraShake.off', 'Off')}
           </Button>
         )}
       </div>

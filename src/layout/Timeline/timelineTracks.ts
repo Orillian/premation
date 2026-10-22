@@ -23,6 +23,7 @@
  */
 
 import type { KeyId, NodeId, TrackId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { flicksToSeconds, type Keyframe, type LayerInfo, type Marker, type TimelineRow } from '@motion/engine-api';
 import { LABEL_COLORS } from '@core/scene/labelColor';
 import { KIND_COLOR, KIND_FILL, KIND_ICON } from '@core/scene/sceneDerive';
@@ -66,7 +67,7 @@ function markerView(m: Marker, offset: number): TimelineMarker {
   return {
     id: m.id,
     time: flicks(m.time + offset),
-    label: m.name || 'Marker',
+    label: m.name || t('timeline.marker.unnamed', 'Marker'),
     ...(m.color ? { color: m.color } : {}),
   };
 }

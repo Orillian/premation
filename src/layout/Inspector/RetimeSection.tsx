@@ -34,6 +34,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { compFps, useActiveMirrorComp, useMirrorComp, useMirrorItem, useMirrorKeyframes, useMirrorLayer } from '@hooks/useMirror';
 import type { FrameBlend } from '@core/scene/layerTime';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { REMAP_PROP, SPEED_PROP, type RetimeMode } from '@core/animation/retime';
 import { SPEED_PRESETS, rampStyleOf, type RampStyle, type RetimeBarInfo } from '@core/animation/retimeCommands';
 import {
@@ -65,23 +66,29 @@ import { setLayersSwitch } from './inspectorEdits';
 import ts from './TransformSection.module.css';
 import styles from './RetimeSection.module.css';
 
-const MODE_OPTIONS = [
-  { value: 'normal' as const, label: 'Normal' },
-  { value: 'speed' as const, label: 'Speed %' },
-  { value: 'frames' as const, label: 'Frames' },
-];
+function modeOptions() {
+  return [
+    { value: 'normal' as const, label: t('inspector.retime.modeNormal', 'Normal') },
+    { value: 'speed' as const, label: t('inspector.retime.modeSpeed', 'Speed %') },
+    { value: 'frames' as const, label: t('inspector.retime.modeFrames', 'Frames') },
+  ];
+}
 
-const RAMP_OPTIONS = [
-  { value: 'smooth' as const, label: 'Smooth' },
-  { value: 'linear' as const, label: 'Linear' },
-  { value: 'instant' as const, label: 'Instant' },
-];
+function rampOptions() {
+  return [
+    { value: 'smooth' as const, label: t('inspector.retime.rampSmooth', 'Smooth') },
+    { value: 'linear' as const, label: t('inspector.retime.rampLinear', 'Linear') },
+    { value: 'instant' as const, label: t('inspector.retime.rampInstant', 'Instant') },
+  ];
+}
 
-const BLEND_OPTIONS = [
-  { value: 'none' as const, label: 'Off' },
-  { value: 'mix' as const, label: 'Blend' },
-  { value: 'pixelMotion' as const, label: 'Optical flow' },
-];
+function blendOptions() {
+  return [
+    { value: 'none' as const, label: t('inspector.retime.blendOff', 'Off') },
+    { value: 'mix' as const, label: t('inspector.retime.blendMix', 'Blend') },
+    { value: 'pixelMotion' as const, label: t('inspector.retime.blendFlow', 'Optical flow') },
+  ];
+}
 
 function notify(message: string, level: 'info' | 'success' | 'warning' = 'info'): void {
   useUIStore.getState().notify({ level, message, durationMs: 4500 });
@@ -139,7 +146,7 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
     const approximate = mode === 'frames' && next === 'speed';
     const label = next === 'normal' ? 'Normal Speed' : next === 'speed' ? 'Retime: Speed %' : 'Retime: Frame Number';
     void edit(label, { type: 'setRetime', layer: nodeId, mode: next }).then((r) => {
-      if (r.ok && approximate) notify('Converted to Speed %. The frames at your old keys are kept; check the curve between them.');
+      if (r.ok && approximate) notify(t('inspector.retime.convertedToSpeed', 'Converted to Speed %. The frames at your old keys are kept; check the curve between them.'));
     });
   };
 
@@ -152,10 +159,10 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
   return (
     <div className={styles.section}>
       <div className={styles.header}>
-        <h4 className={ts.title} style={{ margin: 0 }}>Speed</h4>
+        <h4 className={ts.title} style={{ margin: 0 }}>{t('inspector.retime.speed', 'Speed')}</h4>
         {mode !== 'normal' && (
-          <span className={styles.readout} data-slow={speedNow < 100 || undefined} title="Playback speed at the playhead">
-            {speedNow}% here
+          <span className={styles.readout} data-slow={speedNow < 100 || undefined} title={t('inspector.retime.readoutTitle', 'Playback speed at the playhead')}>
+            {t('inspector.retime.readout', '{n}% here', { n: speedNow })}
           </span>
         )}
       </div>
@@ -163,16 +170,15 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
       <Segmented
         size="sm"
         fullWidth
-        aria-label="How this layer's source is timed"
-        options={MODE_OPTIONS}
+        aria-label={t('inspector.retime.modeAria', "How this layer's source is timed")}
+        options={modeOptions()}
         value={mode}
         onChange={changeMode}
       />
 
       {mode === 'normal' && (
         <p className={styles.hint}>
-          Plays as shot. <strong>Speed %</strong> for ramps and velocity edits;{' '}
-          <strong>Frames</strong> to choose exactly which source frame shows when.
+          {t('inspector.retime.normalHint', 'Plays as shot. Speed % for ramps and velocity edits; Frames to choose exactly which source frame shows when.')}
         </p>
       )}
 
@@ -209,13 +215,21 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
       {summary && (
         <div className={styles.summary}>
           <span>
-            Plays {formatSec(Math.abs(summary.usedSec))} of footage in {formatSec(summary.outputSec)}
-            {summary.availableSec !== null ? ` · ${formatSec(summary.availableSec)} available` : ''}
+            {summary.availableSec !== null
+              ? t('inspector.retime.summaryAvailable', 'Plays {used} of footage in {output} · {available} available', {
+                used: formatSec(Math.abs(summary.usedSec)),
+                output: formatSec(summary.outputSec),
+                available: formatSec(summary.availableSec),
+              })
+              : t('inspector.retime.summary', 'Plays {used} of footage in {output}', {
+                used: formatSec(Math.abs(summary.usedSec)),
+                output: formatSec(summary.outputSec),
+              })}
           </span>
           {summary.runsOutAtSec !== null && (
             <>
               <span className={styles.warning}>
-                Footage runs out at {formatSec(summary.runsOutAtSec)} — the last frame holds.
+                {t('inspector.retime.runsOut', 'Footage runs out at {time} — the last frame holds.', { time: formatSec(summary.runsOutAtSec) })}
               </span>
               {mode === 'speed' && (
                 <button
@@ -225,11 +239,11 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
                     const cmds = fitToFootageCommands(nodeId);
                     if (!cmds) return;
                     void edit('Fit speed to footage', cmds).then((r) => {
-                      if (r.ok) notify('Scaled the speed curve to end on the last frame.', 'success');
+                      if (r.ok) notify(t('inspector.retime.fitDone', 'Scaled the speed curve to end on the last frame.'), 'success');
                     });
                   }}
                 >
-                  Fit to footage
+                  {t('inspector.retime.fitToFootage', 'Fit to footage')}
                 </button>
               )}
             </>
@@ -239,13 +253,13 @@ export function RetimeSection({ nodeId }: { nodeId: string }): JSX.Element | nul
 
       {mode !== 'normal' && (
         <div className={styles.row}>
-          <span className={styles.label} title="Frame blending — slow motion without it repeats frames">Smooth motion</span>
+          <span className={styles.label} title={t('inspector.retime.smoothMotionTitle', 'Frame blending — slow motion without it repeats frames')}>{t('inspector.retime.smoothMotion', 'Smooth motion')}</span>
           <Segmented
             className={styles.grow}
             size="sm"
             fullWidth
-            aria-label="Smooth motion (frame blending)"
-            options={BLEND_OPTIONS}
+            aria-label={t('inspector.retime.smoothMotionAria', 'Smooth motion (frame blending)')}
+            options={blendOptions()}
             value={blend}
             onChange={(v: FrameBlend) => { void setLayersSwitch([nodeId], { frameBlend: v === 'mix' ? 'frameMix' : v === 'pixelMotion' ? 'pixelMotion' : 'off' }, 'Frame Blending'); }}
           />
@@ -295,7 +309,7 @@ function SpeedControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
         <AnimToggle
           nodeId={nodeId}
           tracks={[SPEED_PROP]}
-          label="Speed"
+          label={t('inspector.retime.speed', 'Speed')}
           animated={curve}
           values={() => [valueNow]}
           onToggle={() => {
@@ -308,7 +322,7 @@ function SpeedControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
             }
           }}
         />
-        <span className={styles.label}>Speed</span>
+        <span className={styles.label}>{t('inspector.retime.speed', 'Speed')}</span>
         <div className={styles.field}>
           <ValueField
             value={Math.round(valueNow * 10) / 10}
@@ -318,7 +332,7 @@ function SpeedControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
             precision={0}
             min={-1000}
             max={1000}
-            aria-label="Playback speed"
+            aria-label={t('inspector.retime.playbackSpeedAria', 'Playback speed')}
           />
         </div>
       </div>
@@ -352,36 +366,36 @@ function SpeedControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
           onSelect(null);
         }}
         onSeek={seek}
-        ariaLabel="Speed curve across the clip"
+        ariaLabel={t('inspector.retime.speedCurveAria', 'Speed curve across the clip')}
       />
 
       {curve && (
         <div className={styles.row}>
-          <span className={styles.label} title={selectedId !== null ? 'Ramp out of the selected point' : 'Ramp out of the point before the playhead'}>
-            Ramp
+          <span className={styles.label} title={selectedId !== null ? t('inspector.retime.rampSelectedTitle', 'Ramp out of the selected point') : t('inspector.retime.rampPlayheadTitle', 'Ramp out of the point before the playhead')}>
+            {t('inspector.retime.ramp', 'Ramp')}
           </span>
           <Segmented
             className={styles.grow}
             size="sm"
             fullWidth
-            aria-label="How speed changes after this point"
-            options={RAMP_OPTIONS}
+            aria-label={t('inspector.retime.rampAria', 'How speed changes after this point')}
+            options={rampOptions()}
             value={ramp}
             onChange={(style) => { void edit(`Ramp: ${style}`, rampStyleCommands(nodeId, style, focusId)); }}
           />
         </div>
       )}
 
-      <div className={styles.presets} role="group" aria-label="Velocity presets">
+      <div className={styles.presets} role="group" aria-label={t('inspector.retime.presetsAria', 'Velocity presets')}>
         {SPEED_PRESETS.map((p) => (
           <button
             key={p.id}
             type="button"
             className={styles.chip}
-            title={`${p.hint} — across the whole clip`}
+            title={t('inspector.retime.presetTitle', '{hint} — across the whole clip', { hint: p.hint })}
             onClick={() => {
               const plan = speedPresetCommands(nodeId, p.id);
-              if (!plan) notify('This layer has no clip bar to shape a preset across.', 'warning');
+              if (!plan) notify(t('inspector.retime.noClipBar', 'This layer has no clip bar to shape a preset across.'), 'warning');
               else void edit(plan.label, plan.commands);
               onSelect(null);
             }}
@@ -415,12 +429,12 @@ function FrameControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
         <AnimToggle
           nodeId={nodeId}
           tracks={[REMAP_PROP]}
-          label="Source Frame"
+          label={t('inspector.retime.sourceFrameLabel', 'Source Frame')}
           animated
           values={() => [chainOfFrame(frameNow)]}
           onToggle={() => { void edit('Normal Speed', { type: 'setRetime', layer: nodeId, mode: 'normal' }); }}
         />
-        <span className={styles.label}>Source frame</span>
+        <span className={styles.label}>{t('inspector.retime.sourceFrame', 'Source frame')}</span>
         <div className={styles.field}>
           <ValueField
             value={frameNow}
@@ -429,10 +443,10 @@ function FrameControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
             precision={0}
             min={0}
             {...(totalFrames !== null ? { max: totalFrames - 1 } : {})}
-            aria-label="Source frame shown at the playhead"
+            aria-label={t('inspector.retime.sourceFrameAria', 'Source frame shown at the playhead')}
           />
         </div>
-        {totalFrames !== null && <span className={styles.suffix}>of {totalFrames}</span>}
+        {totalFrames !== null && <span className={styles.suffix}>{t('inspector.retime.ofTotal', 'of {n}', { n: totalFrames })}</span>}
       </div>
 
       <RetimeGraph
@@ -460,7 +474,7 @@ function FrameControls({ nodeId, bar, time, fps, inSec, outSec, runsOutAtSec, se
           onSelect(null);
         }}
         onSeek={seek}
-        ariaLabel="Source frame across the clip"
+        ariaLabel={t('inspector.retime.framesCurveAria', 'Source frame across the clip')}
       />
     </>
   );

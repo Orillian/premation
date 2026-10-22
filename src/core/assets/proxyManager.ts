@@ -18,6 +18,7 @@ import { edit } from '@core/engine/uiEdits';
 import { useAssetStore, type ImportedAsset } from '@stores/assetStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { proxyResolution, type ProxyRecord } from './proxy';
+import { t } from '@core/i18n';
 
 /** Why a proxy could not be started. Distinguished so the UI can say something
  *  true rather than a generic failure. */
@@ -57,13 +58,13 @@ export function proxyRefusal(asset: ImportedAsset | undefined): ProxyRefusal | n
 
 /** Human-readable reason, for the Assets panel. */
 export const REFUSAL_TEXT: Record<ProxyRefusal, string> = {
-  'no-ffmpeg': 'Proxies need ffmpeg, which this build cannot reach. You can still attach one.',
-  'not-video': 'Only video footage can have a proxy.',
-  'too-small': 'This footage is already small enough to scrub smoothly.',
-  'unknown-size': 'This file’s dimensions are unknown, so no proxy size can be chosen.',
-  'already-running': 'A proxy is already being generated for this file.',
-  'source-unreadable': 'The original file could not be read.',
-  'no-engine': 'Proxies are made by the engine, which is not running here.',
+  get 'no-ffmpeg'() { return t('core.proxy.noFfmpeg', 'Proxies need ffmpeg, which this build cannot reach. You can still attach one.'); },
+  get 'not-video'() { return t('core.proxy.notVideo', 'Only video footage can have a proxy.'); },
+  get 'too-small'() { return t('core.proxy.tooSmall', 'This footage is already small enough to scrub smoothly.'); },
+  get 'unknown-size'() { return t('core.proxy.unknownSize', 'This file’s dimensions are unknown, so no proxy size can be chosen.'); },
+  get 'already-running'() { return t('core.proxy.alreadyRunning', 'A proxy is already being generated for this file.'); },
+  get 'source-unreadable'() { return t('core.proxy.sourceUnreadable', 'The original file could not be read.'); },
+  get 'no-engine'() { return t('core.proxy.noEngine', 'Proxies are made by the engine, which is not running here.'); },
 };
 
 /** Running viewport-proxy engine jobs, by asset (cancelProxy stops them). */

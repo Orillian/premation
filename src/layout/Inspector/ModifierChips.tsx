@@ -17,6 +17,7 @@ import { Popover } from '@components/Popover';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorLayer } from '@hooks/useMirror';
 import { useMirrorJson } from '@hooks/useMirrorFields';
@@ -56,7 +57,7 @@ export function AddModifierMenu({ onAdd, label }: { onAdd: (kind: ModifierKind) 
       items={items}
       placement="bottom-start"
       trigger={
-        <button type="button" className={styles.add} aria-label={label ?? 'Add modifier'} title="Add modifier">
+        <button type="button" className={styles.add} aria-label={label ?? t('inspector.modifierChips.add', 'Add modifier')} title={t('inspector.modifierChips.add', 'Add modifier')}>
           <Icon name="plus" size="sm" />
         </button>
       }
@@ -90,7 +91,7 @@ export function ModifierChips({ nodeId, prop, showAdd = false, className }: Modi
   const error = modifierCompileError(modifiers);
 
   return (
-    <div className={cn(styles.root, className)} role="list" aria-label={`${prop} modifiers`}>
+    <div className={cn(styles.root, className)} role="list" aria-label={t('inspector.modifierChips.listAria', '{prop} modifiers', { prop })}>
       {modifiers.map((m, i) => {
         const label = MODIFIER_LABELS[m.kind];
         return (
@@ -111,12 +112,12 @@ export function ModifierChips({ nodeId, prop, showAdd = false, className }: Modi
                   setDragFrom(null);
                 }}
                 onDragEnd={() => setDragFrom(null)}
-                title={`${label} — ${describeModifier(m)}. Click to edit, drag to reorder.`}
+                title={t('inspector.modifierChips.chipTitle', '{label} — {summary}. Click to edit, drag to reorder.', { label, summary: describeModifier(m) })}
               >
                 <button
                   type="button"
                   className={styles.chipBody}
-                  aria-label={`Edit ${label} modifier`}
+                  aria-label={t('inspector.modifierChips.editAria', 'Edit {label} modifier', { label })}
                   onClick={() => setOpen(open === m.id ? null : m.id)}
                 >
                   <span className={styles.chipKind}>{label}</span>
@@ -125,7 +126,7 @@ export function ModifierChips({ nodeId, prop, showAdd = false, className }: Modi
                 <button
                   type="button"
                   className={styles.chipRemove}
-                  aria-label={`Remove ${label} modifier`}
+                  aria-label={t('inspector.modifierChips.removeAria', 'Remove {label} modifier', { label })}
                   onClick={(e) => {
                     e.stopPropagation();
                     commit(modifiersWithout(modifiers, m.id), 'Remove Modifier');
@@ -143,10 +144,10 @@ export function ModifierChips({ nodeId, prop, showAdd = false, className }: Modi
                   <input
                     type="checkbox"
                     checked={m.enabled}
-                    aria-label={`Enable ${label}`}
+                    aria-label={t('inspector.modifierChips.enableAria', 'Enable {label}', { label })}
                     onChange={(e) => commit(modifiers.map((x) => (x.id === m.id ? { ...x, enabled: e.target.checked } : x)))}
                   />
-                  On
+                  {t('inspector.modifierChips.on', 'On')}
                 </label>
               </div>
               <ModifierParams modifier={m} list={modifiers} onPatch={commit} scrub={scrub} />
@@ -154,7 +155,7 @@ export function ModifierChips({ nodeId, prop, showAdd = false, className }: Modi
           </Popover>
         );
       })}
-      <AddModifierMenu onAdd={(kind) => commit([...modifiers, defaultModifier(kind)], 'Add Modifier')} label={`Add modifier to ${prop}`} />
+      <AddModifierMenu onAdd={(kind) => commit([...modifiers, defaultModifier(kind)], 'Add Modifier')} label={t('inspector.modifierChips.addToAria', 'Add modifier to {prop}', { prop })} />
       {error && <span className={styles.error} title={error}><Icon name="warning" size="sm" /></span>}
     </div>
   );

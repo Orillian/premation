@@ -40,6 +40,7 @@
  * is stored.
  */
 
+import { t } from '@core/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useActiveWorkspace } from '@stores/projectStore';
@@ -94,20 +95,20 @@ export function audioOptionsMenuRows(
     {
       type: 'item',
       id: 'audio-units',
-      label: 'Units',
+      label: t('inspector.audioPanel.units', 'Units'),
       submenu: [
-        { type: 'checkbox', id: 'audio-units-db', label: 'Decibels', checked: units === 'db', onChange: () => setUnits('db') },
-        { type: 'checkbox', id: 'audio-units-percent', label: 'Percentage', checked: units === 'percent', onChange: () => setUnits('percent') },
+        { type: 'checkbox', id: 'audio-units-db', label: t('inspector.audioPanel.decibels', 'Decibels'), checked: units === 'db', onChange: () => setUnits('db') },
+        { type: 'checkbox', id: 'audio-units-percent', label: t('inspector.audioPanel.percentage', 'Percentage'), checked: units === 'percent', onChange: () => setUnits('percent') },
       ],
     },
     {
       type: 'item',
       id: 'audio-slider-minimum',
-      label: 'Slider Minimum',
+      label: t('inspector.audioPanel.sliderMinimum', 'Slider Minimum'),
       submenu: FLOORS_DB.map((db): DropdownItem => ({
         type: 'checkbox',
         id: `audio-floor-${-db}`,
-        label: `${db} dB`,
+        label: t('inspector.audioPanel.dbValue', '{db} dB', { db }),
         checked: floorDb === db,
         onChange: () => setFloorDb(db),
       })),
@@ -271,7 +272,11 @@ export function AudioPanel(): JSX.Element {
 
   const lDb = target ? channelDb(target.levelDb, target.pan, 'l') : 0;
   const rDb = target ? channelDb(target.levelDb, target.pan, 'r') : 0;
-  const panText = !target ? '—' : target.pan === 0 ? 'C' : `${Math.abs(Math.round(target.pan))} ${target.pan < 0 ? 'L' : 'R'}`;
+  const panText = !target ? '—' : target.pan === 0
+    ? t('inspector.audioPanel.panCentre', 'C')
+    : target.pan < 0
+      ? t('inspector.audioPanel.panLeft', '{n} L', { n: Math.abs(Math.round(target.pan)) })
+      : t('inspector.audioPanel.panRight', '{n} R', { n: Math.abs(Math.round(target.pan)) });
 
   return (
     <div className={styles.root}>
@@ -280,11 +285,11 @@ export function AudioPanel(): JSX.Element {
           The pointer readout that sat here is the Info panel's again. */}
 
       {/* ── Identity: which layer the faders edit ─────────────────── */}
-      <div className={styles.identity} aria-label="Audio layer">
+      <div className={styles.identity} aria-label={t('inspector.audioPanel.audioLayer', 'Audio layer')}>
         <span className={styles.labelDot} style={target?.labelColor ? { background: target.labelColor } : undefined} aria-hidden />
         <Icon name={target?.kind === 'video' ? 'video' : 'audio'} size="sm" className={styles.kindIcon} />
-        <span className={styles.name}>{target ? target.name : 'No layer with sound selected'}</span>
-        <span className={styles.kind}>{target ? (target.kind === 'video' ? 'Video layer' : 'Audio layer') : ''}</span>
+        <span className={styles.name}>{target ? target.name : t('inspector.audioPanel.noLayer', 'No layer with sound selected')}</span>
+        <span className={styles.kind}>{target ? (target.kind === 'video' ? t('inspector.audioPanel.videoLayerKind', 'Video layer') : t('inspector.audioPanel.audioLayer', 'Audio layer')) : ''}</span>
       </div>
 
       {/* ── Meter + faders, each channel one column, one dB scale ─── */}
@@ -299,8 +304,8 @@ export function AudioPanel(): JSX.Element {
           <div key={ch} className={styles.strip}>
             <div
               className={cn(styles.clipLed, clipLit[ch] && styles.clipLedOn)}
-              title={clipLit[ch] ? 'Clipped — the signal went over full scale' : 'No clipping'}
-              aria-label={clipLit[ch] ? `${ch.toUpperCase()} clipped` : `${ch.toUpperCase()} not clipping`}
+              title={clipLit[ch] ? t('inspector.audioPanel.clipped', 'Clipped — the signal went over full scale') : t('inspector.audioPanel.noClipping', 'No clipping')}
+              aria-label={clipLit[ch] ? t('inspector.audioPanel.chClipped', '{ch} clipped', { ch: ch.toUpperCase() }) : t('inspector.audioPanel.chNotClipping', '{ch} not clipping', { ch: ch.toUpperCase() })}
             />
             <div className={styles.meterWrap} {...faderEdit.press('Set Audio Levels', () => target !== null)}>
               <div className={styles.meterBar}>
@@ -320,7 +325,7 @@ export function AudioPanel(): JSX.Element {
                 value={Math.max(floorDb, Math.min(MAX_LEVEL_DB, ch === 'l' ? lDb : rDb))}
                 disabled={!target}
                 onChange={(e) => setChannel(ch, Number(e.currentTarget.value))}
-                aria-label={`${ch === 'l' ? 'Left' : 'Right'} level`}
+                aria-label={ch === 'l' ? t('inspector.audioPanel.leftLevel', 'Left level') : t('inspector.audioPanel.rightLevel', 'Right level')}
               />
             </div>
             <div className={styles.chRow}>
@@ -333,7 +338,7 @@ export function AudioPanel(): JSX.Element {
 
       {/* ── Pan ───────────────────────────────────────────────────── */}
       <div className={styles.panRow} {...faderEdit.press('Set Audio Pan', () => target !== null)}>
-        <span className={styles.rowLabel}>Pan</span>
+        <span className={styles.rowLabel}>{t('inspector.audioPanel.pan', 'Pan')}</span>
         <input
           className={styles.pan}
           type="range"
@@ -344,8 +349,8 @@ export function AudioPanel(): JSX.Element {
           disabled={!target}
           onChange={(e) => setPan(Number(e.currentTarget.value))}
           onDoubleClick={() => setPan(0)}
-          aria-label="Pan"
-          title="Pan — drag left or right, double-click to centre"
+          aria-label={t('inspector.audioPanel.pan', 'Pan')}
+          title={t('inspector.audioPanel.panTip', 'Pan — drag left or right, double-click to centre')}
         />
         <span className={styles.panValue} data-numeric>{panText}</span>
       </div>
@@ -357,9 +362,9 @@ export function AudioPanel(): JSX.Element {
           className={styles.fadeField}
           disabled={!target}
           onClick={() => { if (target) void fadeEdit([target.nodeId], 'in'); }}
-          title={`Ramp up from silence over ${DEFAULT_FADE_SEC}s`}
+          title={t('inspector.audioPanel.fadeInTip', 'Ramp up from silence over {sec}s', { sec: DEFAULT_FADE_SEC })}
         >
-          <span className={styles.rowLabel}>Fade In</span>
+          <span className={styles.rowLabel}>{t('inspector.audioPanel.fadeIn', 'Fade In')}</span>
           <span className={styles.fadeValue} data-numeric>{DEFAULT_FADE_SEC.toFixed(2)}</span>
           <span className={styles.unit}>s</span>
         </button>
@@ -368,9 +373,9 @@ export function AudioPanel(): JSX.Element {
           className={styles.fadeField}
           disabled={!target}
           onClick={() => { if (target) void fadeEdit([target.nodeId], 'out'); }}
-          title={`Ramp down to silence over ${DEFAULT_FADE_SEC}s`}
+          title={t('inspector.audioPanel.fadeOutTip', 'Ramp down to silence over {sec}s', { sec: DEFAULT_FADE_SEC })}
         >
-          <span className={styles.rowLabel}>Fade Out</span>
+          <span className={styles.rowLabel}>{t('inspector.audioPanel.fadeOut', 'Fade Out')}</span>
           <span className={styles.fadeValue} data-numeric>{DEFAULT_FADE_SEC.toFixed(2)}</span>
           <span className={styles.unit}>s</span>
         </button>
@@ -380,13 +385,14 @@ export function AudioPanel(): JSX.Element {
         (target.levelAnimated || target.panAnimated) && (
           <p className={styles.note} role="status">
             {target.levelAnimated && target.panAnimated
-              ? 'Level and pan are keyframed'
-              : target.levelAnimated ? 'Level is keyframed' : 'Pan is keyframed'}
-            {' '}— a fader move keys at the playhead.
+              ? t('inspector.audioPanel.bothKeyframed', 'Level and pan are keyframed — a fader move keys at the playhead.')
+              : target.levelAnimated
+                ? t('inspector.audioPanel.levelKeyframed', 'Level is keyframed — a fader move keys at the playhead.')
+                : t('inspector.audioPanel.panKeyframed', 'Pan is keyframed — a fader move keys at the playhead.')}
           </p>
         )
       ) : (
-        <p className={styles.note}>Select a layer with sound to set its level and pan.</p>
+        <p className={styles.note}>{t('inspector.audioPanel.selectHint', 'Select a layer with sound to set its level and pan.')}</p>
       )}
     </div>
   );

@@ -166,6 +166,7 @@ bool Session::apply_job(JobRecord& r) {
   ensure_timelines();
   const std::string label = r.result->label();
   std::optional<api::EngineError> failed;
+  const BuildLock lock(*this, true);  // a document write: no frame builds meanwhile
   doc_.begin();
   SessionJobApply a(*this, api::Origin::engine);
   try {
@@ -184,6 +185,7 @@ bool Session::apply_job(JobRecord& r) {
     emit_job(r, true, failed);
     return false;
   }
+  if (const doc::Parts* written = doc_.journal()) keys_.settle(doc_, *written);
   doc::ChangeSet changes = doc_.commit();
   // The summary again, now with what the apply made (a created null's id…).
   r.info.result = r.result->summary_json();

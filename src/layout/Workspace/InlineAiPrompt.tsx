@@ -38,6 +38,7 @@ import { useCurrentTime } from '@stores/playbackClockStore';
 import { useInlineAiPromptStore } from './inlineAiPromptStore';
 import { useAiChat } from './useAiChat';
 import styles from './InlineAiPrompt.module.css';
+import { t } from '@core/i18n';
 
 /** Card width, mirroring `.card` — used only to clamp it inside the stage. */
 const CARD_W = 340;
@@ -135,28 +136,30 @@ function InlineAiPromptCard({ targetIds }: { targetIds: readonly string[] }): JS
         className={styles.card}
         style={{ left, top }}
         role="dialog"
-        aria-label="Ask AI about the selection"
+        aria-label={t('workspace.inlineAi.label', 'Ask AI about the selection')}
         onKeyDown={onKeyDown}
       >
         <span className={styles.context}>
-          {targetIds.length === 1 ? '1 layer selected' : `${targetIds.length} layers selected`}
+          {targetIds.length === 1
+            ? t('workspace.inlineAi.selectedOne', '1 layer selected')
+            : t('workspace.inlineAi.selectedOther', '{n} layers selected', { n: targetIds.length })}
         </span>
         <div className={styles.row}>
           <input
             ref={inputRef}
             className={styles.input}
             value={prompt}
-            placeholder="stagger these by 3f…"
-            aria-label="Prompt"
+            placeholder={t('workspace.inlineAi.placeholder', 'stagger these by 3f…')}
+            aria-label={t('workspace.inlineAi.prompt', 'Prompt')}
             disabled={ai.busy}
             onChange={(e) => setPrompt(e.target.value)}
           />
           <Button size="sm" variant="primary" disabled={ai.busy || !prompt.trim()} onClick={submit}>
-            Ask
+            {t('workspace.inlineAi.ask', 'Ask')}
           </Button>
         </div>
 
-        {ai.busy && <span className={styles.activity}>{ai.activity || 'Working…'}</span>}
+        {ai.busy && <span className={styles.activity}>{ai.activity || t('workspace.inlineAi.working', 'Working…')}</span>}
 
         {/* The preview transaction, inline. Same accept/discard the panel uses,
             so a change reviewed here and a change reviewed there are one thing. */}
@@ -169,10 +172,10 @@ function InlineAiPromptCard({ targetIds }: { targetIds: readonly string[] }): JS
             </ul>
             <div className={styles.actions}>
               <Button size="sm" variant="ghost" onClick={() => ai.discardPending()}>
-                Decline
+                {t('workspace.inlineAi.decline', 'Decline')}
               </Button>
               <Button size="sm" variant="primary" onClick={() => { ai.acceptPending(); close(); }}>
-                Apply
+                {t('workspace.inlineAi.apply', 'Apply')}
               </Button>
             </div>
           </>
@@ -180,7 +183,7 @@ function InlineAiPromptCard({ targetIds }: { targetIds: readonly string[] }): JS
 
         {!ai.busy && !ai.hasPendingTx && (
           <span className={styles.context}>
-            <Kbd chord="Enter" size="sm" /> to ask · <Kbd chord="Esc" size="sm" /> to close
+            <Kbd chord="Enter" size="sm" /> {t('workspace.inlineAi.toAsk', 'to ask ·')} <Kbd chord="Esc" size="sm" /> {t('workspace.inlineAi.toClose', 'to close')}
           </span>
         )}
       </div>

@@ -64,10 +64,27 @@ struct KeyLoc {
 
 class KeyIndex {
  public:
+  /// Forget everything: rebuilt from the whole document on the next lookup
+  /// (a load, undo/redo, a rolled-back transaction).
   void invalidate() {
     map_.reset();
     markers_.reset();
+    byLayer_.clear();
   }
+  /// After a command: the document may have changed. The next lookup brings
+  /// the index up to date — from the open journal when there is one (only the
+  /// layers the transaction touched are re-indexed, O(touched)), else from the
+  /// whole document. Rebuilding the whole index after every command made each
+  /// key-adding command O(all keys in the document), and a batch of N such
+  /// commands O(N × keys). The freshness point is the one the full rebuild
+  /// had: the first lookup inside a command sees everything written before it.
+  void mark_stale() {
+    stale_ = true;
+    markers_.reset();  // marker_taken RESERVES ids it is asked about; a reservation never outlives the command
+  }
+  /// Right before a transaction commits, with its journal: what it wrote since
+  /// the last lookup is re-indexed now (the next lookup may see another journal).
+  void settle(const Document& d, const Parts& written);
   [[nodiscard]] bool has(const Document& d, const std::string& id);
   [[nodiscard]] std::optional<KeyLoc> resolve(const Document& d, const std::string& id);
   /// Marker id in use; an id asked about and free is reserved (TS semantics).
@@ -75,7 +92,17 @@ class KeyIndex {
 
  private:
   void build(const Document& d);
+  /// The map, current as of now (built, or refreshed after mark_stale).
+  void ensure(const Document& d);
+  /// Re-index the layers `written` (an open journal) names.
+  void refresh(const Document& d, const Parts& written);
+  /// (Re)index one layer's keys — its scalar and data tracks and its mask
+  /// shape keys — dropping what the index held for it before.
+  void index_layer(const Document& d, const std::string& layer);
+  bool stale_ = false;
   std::unique_ptr<std::unordered_map<std::string, KeyLoc>> map_;
+  /// The ids `map_` holds per layer (what index_layer drops first).
+  std::unordered_map<std::string, std::vector<std::string>> byLayer_;
   std::unique_ptr<std::set<std::string, std::less<>>> markers_;
 };
 

@@ -7,6 +7,7 @@
 
 import { Button } from '@components/Button';
 import { billingEnabled } from '@core/config/edition';
+import { t } from '@core/i18n';
 import { CLAUDE_REQUIRES_PRO } from '@core/ai/mcp/mcpAccess';
 import type { AccountRecord } from '@core/api/client';
 import { ClaudeConnectSection } from '@layout/Settings/ClaudeConnectSection';
@@ -27,21 +28,20 @@ export function DashboardConnections({
   return (
     <div className={styles.page}>
       <p className={styles.intro}>
-        An assistant edits the project you have open. You watch each change, and you can stop it.
-        The connection stays on this computer.
+        {t('dashboard.connections.intro', 'An assistant edits the project you have open. You watch each change, and you can stop it. The connection stays on this computer.')}
       </p>
 
       {billingEnabled() && account && (
         <div className={styles.plan} data-plan={pro ? 'pro' : 'free'}>
-          <span className={styles.planName}>{pro ? 'Premation Cloud' : 'Free plan'}</span>
+          <span className={styles.planName}>{pro ? 'Premation Cloud' : t('dashboard.connections.freePlan', 'Free plan')}</span>
           <span className={styles.planDetail}>
             {locked
-              ? 'Assistant connections are part of Premation Cloud.'
-              : 'Assistant connections are free on every plan.'}
+              ? t('dashboard.connections.lockedDetail', 'Assistant connections are part of Premation Cloud.')
+              : t('dashboard.connections.freeDetail', 'Assistant connections are free on every plan.')}
           </span>
           {locked && (
             <Button variant="secondary" size="sm" onClick={onOpenBilling}>
-              View plans
+              {t('dashboard.connections.viewPlans', 'View plans')}
             </Button>
           )}
         </div>
@@ -54,7 +54,7 @@ export function DashboardConnections({
         </div>
       ) : (
         <p className={styles.desktopOnly}>
-          Open the Premation app on this computer to connect an assistant. A browser tab cannot start one.
+          {t('dashboard.connections.desktopOnly', 'Open the Premation app on this computer to connect an assistant. A browser tab cannot start one.')}
         </p>
       )}
     </div>

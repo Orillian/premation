@@ -60,11 +60,10 @@ struct Run {
   std::optional<double> strokeScale;
 };
 
-/// Set when an operator reaches geometry outside the port (polygon-clipping's
-/// union inside Offset Paths' cleanup).
-struct Ctx {
-  bool unported = false;
-};
+/// State shared along one operator chain. Empty today: the polygon-clipping
+/// union inside Offset Paths' cleanup, which used to flag the chain as
+/// unported, is in the port (polygon_clipping.cpp).
+struct Ctx {};
 
 // ── the resolved operator (resolveOne) ───────────────────────────────────
 struct Op {
@@ -1095,7 +1094,6 @@ GeometryStatus apply_path_ops(const doc::Node& n, const Values& a, double layerT
 
   Ctx ctx;
   std::vector<Run> chained = apply_path_op_chain(std::move(seed), ops, layerTime, ctx);
-  if (ctx.unported) return GeometryStatus::unported;
   std::vector<Run> runs;
   for (Run& r : chained) {
     if (r.pts.size() > 1) runs.push_back(std::move(r));

@@ -29,6 +29,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { Icon } from '@components/Icon';
 import { openContextMenu } from '@stores/contextMenuStore';
 import { documentMirror } from '@stores/documentMirror';
@@ -133,7 +134,7 @@ function MarkerLaneImpl({
       className={styles.markerLane}
       style={{ height: MARKER_LANE_HEIGHT, width }}
       role="group"
-      aria-label="Composition markers"
+      aria-label={t('timeline.marker.lane', 'Composition markers')}
     >
       {markers.map((m) => {
         const time = preview?.id === m.id ? preview.time : m.time;
@@ -142,8 +143,8 @@ function MarkerLaneImpl({
             key={m.id}
             className={cn(styles.markerChip, preview?.id === m.id && styles.markerChipDragging)}
             style={{ left: markerX(time, pps, leftOffset), background: m.color ?? undefined }}
-            title={`${m.label} — drag to move, double-click to edit, right-click to delete`}
-            aria-label={`Marker ${m.label}`}
+            title={t('timeline.marker.chipHint', '{name} — drag to move, double-click to edit, right-click to delete', { name: m.label })}
+            aria-label={t('timeline.marker.chipAria', 'Marker {name}', { name: m.label })}
             onPointerDown={(e) => onMarkerDown(m, e)}
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -159,13 +160,13 @@ function MarkerLaneImpl({
               openContextMenu(e.clientX, e.clientY, [
                 {
                   id: 'edit-marker',
-                  label: 'Edit Marker…',
+                  label: t('timeline.marker.edit', 'Edit Marker…'),
                   onSelect: () => setEditor({ id: m.id, x: e.clientX, y: e.clientY }),
                 },
                 { id: 'sep', separator: true },
                 {
                   id: 'delete-marker',
-                  label: 'Delete Marker',
+                  label: t('timeline.marker.delete', 'Delete Marker'),
                   danger: true,
                   onSelect: () => deleteMarker(m.id),
                 },
@@ -207,7 +208,7 @@ function MarkerEditor({
   // The popover's starting values, read once from the document mirror (B4).
   const found = mirrorMarkerById(documentMirror(), activeCompId(), id);
   const initial = found ? markerViewOf(found) : null;
-  const [label, setLabel] = useState(initial?.label ?? 'Marker');
+  const [label, setLabel] = useState(() => initial?.label ?? t('timeline.marker.unnamed', 'Marker'));
   const [comment, setComment] = useState(initial?.comment ?? '');
   const [durationText, setDurationText] = useState(String(initial?.duration ?? 0));
   const ref = useRef<HTMLDivElement | null>(null);
@@ -252,11 +253,11 @@ function MarkerEditor({
       className={styles.markerEditor}
       style={{ left: x, top: y }}
       role="dialog"
-      aria-label="Edit marker"
+      aria-label={t('timeline.marker.editorAria', 'Edit marker')}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <label className={styles.markerEditorRow}>
-        <span>Name</span>
+        <span>{t('timeline.marker.name', 'Name')}</span>
         <input
           autoFocus
           value={label}
@@ -267,11 +268,11 @@ function MarkerEditor({
         />
       </label>
       <label className={styles.markerEditorRow}>
-        <span>Comment</span>
+        <span>{t('timeline.marker.comment', 'Comment')}</span>
         <input value={comment} onChange={(e) => setComment(e.target.value)} />
       </label>
       <label className={styles.markerEditorRow}>
-        <span>Duration</span>
+        <span>{t('timeline.marker.duration', 'Duration')}</span>
         <input
           value={durationText}
           inputMode="decimal"
@@ -281,7 +282,7 @@ function MarkerEditor({
           }}
         />
       </label>
-      <div className={styles.markerSwatches} role="group" aria-label="Marker colour">
+      <div className={styles.markerSwatches} role="group" aria-label={t('timeline.marker.colour', 'Marker colour')}>
         {MARKER_COLORS.map((c) => (
           <button
             key={c.id}
@@ -298,8 +299,8 @@ function MarkerEditor({
         ))}
       </div>
       <div className={styles.markerEditorActions}>
-        <button type="button" onClick={() => { deleteMarker(id); onClose(); }}>Delete</button>
-        <button type="button" onClick={commit}>Done</button>
+        <button type="button" onClick={() => { deleteMarker(id); onClose(); }}>{t('timeline.marker.editorDelete', 'Delete')}</button>
+        <button type="button" onClick={commit}>{t('timeline.marker.editorDone', 'Done')}</button>
       </div>
     </div>
   );

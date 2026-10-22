@@ -209,7 +209,7 @@
   font-size: var(--panel-font-size);
   font-weight: var(--panel-weight-value);
   color: var(--color-text-primary);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm, 4px);
 }

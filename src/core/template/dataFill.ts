@@ -54,5 +54,16 @@ export function coerceCell(kind: string, cell: string): string | number | null {
     const hex = raw.startsWith('#') ? raw : `#${raw}`;
     return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex) ? hex : null;
   }
+  if (kind === 'toggle') {
+    // What a spreadsheet column of on/off values actually holds.
+    const raw = cell.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on', 'show'].includes(raw)) return 1;
+    if (['0', 'false', 'no', 'off', 'hide'].includes(raw)) return 0;
+    return null;
+  }
+  if (kind === 'font') {
+    const raw = cell.trim();
+    return raw === '' ? null : raw;
+  }
   return cell;
 }

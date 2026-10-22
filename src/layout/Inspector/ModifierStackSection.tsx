@@ -55,6 +55,7 @@ import {
 } from '@core/animation/modifierStack';
 import { compileModifierStack, modifierCompileError, modifierWarning } from '@core/animation/modifierCompile';
 import { edit } from '@core/engine/uiEdits';
+import { t } from '@core/i18n';
 import { useEngineEdit } from './useEngineEdit';
 import { behaviorRecipeCommands, bakeModifierStackCommands, modifierStackCommands, modifiersMoved, modifiersWithout } from './modifierEdits';
 import styles from './ModifierStackSection.module.css';
@@ -113,7 +114,7 @@ function ExpressionInput({
     <input
       className={styles.text}
       value={shown}
-      aria-label="Expression source"
+      aria-label={t('inspector.modifierStack.expressionSource', 'Expression source')}
       spellCheck={false}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
@@ -195,51 +196,51 @@ export function ModifierParams({
 
   switch (m.kind) {
     case 'offset':
-      return <div className={styles.params}><Field scrub={scrub} label="Amount" value={m.amount} onChange={(v) => set(m, { amount: v })} /></div>;
+      return <div className={styles.params}><Field scrub={scrub} label={t('inspector.modifierStack.amount', 'Amount')} value={m.amount} onChange={(v) => set(m, { amount: v })} /></div>;
     case 'multiply':
-      return <div className={styles.params}><Field scrub={scrub} label="Factor" value={m.factor} step={0.1} onChange={(v) => set(m, { factor: v })} /></div>;
+      return <div className={styles.params}><Field scrub={scrub} label={t('inspector.modifierStack.factor', 'Factor')} value={m.factor} step={0.1} onChange={(v) => set(m, { factor: v })} /></div>;
     case 'clamp':
       return (
         <div className={styles.params}>
-          <Field scrub={scrub} label="Min" value={m.min} onChange={(v) => set(m, { min: v })} />
-          <Field scrub={scrub} label="Max" value={m.max} onChange={(v) => set(m, { max: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.min', 'Min')} value={m.min} onChange={(v) => set(m, { min: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.max', 'Max')} value={m.max} onChange={(v) => set(m, { max: v })} />
         </div>
       );
     case 'wiggle':
       return (
         <div className={styles.params}>
-          <Field scrub={scrub} label="Frequency" value={m.freq} min={0} step={0.1} unit="Hz" onChange={(v) => set(m, { freq: v })} />
-          <Field scrub={scrub} label="Amplitude" value={m.amp} onChange={(v) => set(m, { amp: v })} />
-          <Field scrub={scrub} label="Octaves" value={m.octaves} min={1} max={8} step={1} onChange={(v) => set(m, { octaves: Math.max(1, Math.round(v)) })} />
-          <Field scrub={scrub} label="Seed" value={m.seed} step={1} onChange={(v) => set(m, { seed: Math.round(v) })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.frequency', 'Frequency')} value={m.freq} min={0} step={0.1} unit="Hz" onChange={(v) => set(m, { freq: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.amplitude', 'Amplitude')} value={m.amp} onChange={(v) => set(m, { amp: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.octaves', 'Octaves')} value={m.octaves} min={1} max={8} step={1} onChange={(v) => set(m, { octaves: Math.max(1, Math.round(v)) })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.seed', 'Seed')} value={m.seed} step={1} onChange={(v) => set(m, { seed: Math.round(v) })} />
         </div>
       );
     case 'oscillate':
       return (
         <div className={styles.params}>
-          <Field scrub={scrub} label="Rate" value={m.freq} min={0} step={0.05} unit="Hz" onChange={(v) => set(m, { freq: v })} />
-          <Field scrub={scrub} label="Amplitude" value={m.amp} onChange={(v) => set(m, { amp: v })} />
-          <Field scrub={scrub} label="Phase" value={m.phase} step={0.1} onChange={(v) => set(m, { phase: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.rate', 'Rate')} value={m.freq} min={0} step={0.05} unit="Hz" onChange={(v) => set(m, { freq: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.amplitude', 'Amplitude')} value={m.amp} onChange={(v) => set(m, { amp: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.phase', 'Phase')} value={m.phase} step={0.1} onChange={(v) => set(m, { phase: v })} />
         </div>
       );
     case 'spring':
       return (
         <div className={styles.params}>
-          <Field scrub={scrub} label="Frequency" value={m.frequency} min={0} step={0.1} unit="Hz" onChange={(v) => set(m, { frequency: v })} />
-          <Field scrub={scrub} label="Decay" value={m.decay} min={0} step={0.5} onChange={(v) => set(m, { decay: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.frequency', 'Frequency')} value={m.frequency} min={0} step={0.1} unit="Hz" onChange={(v) => set(m, { frequency: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.decay', 'Decay')} value={m.decay} min={0} step={0.5} onChange={(v) => set(m, { decay: v })} />
         </div>
       );
     case 'smooth':
-      return <div className={styles.params}><Field scrub={scrub} label="Window" value={m.windowSec} min={0} step={0.01} unit="s" onChange={(v) => set(m, { windowSec: v })} /></div>;
+      return <div className={styles.params}><Field scrub={scrub} label={t('inspector.modifierStack.window', 'Window')} value={m.windowSec} min={0} step={0.01} unit="s" onChange={(v) => set(m, { windowSec: v })} /></div>;
     case 'delay':
-      return <div className={styles.params}><Field scrub={scrub} label="Seconds" value={m.seconds} step={0.05} unit="s" onChange={(v) => set(m, { seconds: v })} /></div>;
+      return <div className={styles.params}><Field scrub={scrub} label={t('inspector.modifierStack.seconds', 'Seconds')} value={m.seconds} step={0.05} unit="s" onChange={(v) => set(m, { seconds: v })} /></div>;
     case 'loop':
       return (
         <div className={styles.params}>
           <select
             className={styles.select}
             value={m.mode}
-            aria-label="Loop mode"
+            aria-label={t('inspector.modifierStack.loopMode', 'Loop mode')}
             onChange={(e) => set(m, { mode: e.target.value as LoopModeName })}
           >
             {LOOP_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
@@ -252,13 +253,13 @@ export function ModifierParams({
           <select
             className={styles.select}
             value={m.band}
-            aria-label="Audio band"
+            aria-label={t('inspector.modifierStack.audioBand', 'Audio band')}
             onChange={(e) => set(m, { band: e.target.value as AudioBandName })}
           >
             {AUDIO_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
-          <Field scrub={scrub} label="Min" value={m.min} onChange={(v) => set(m, { min: v })} />
-          <Field scrub={scrub} label="Max" value={m.max} onChange={(v) => set(m, { max: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.min', 'Min')} value={m.min} onChange={(v) => set(m, { min: v })} />
+          <Field scrub={scrub} label={t('inspector.modifierStack.max', 'Max')} value={m.max} onChange={(v) => set(m, { max: v })} />
         </div>
       );
     case 'expression':
@@ -328,18 +329,16 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
   return (
     <div className={styles.root}>
       <p className={styles.hint}>
-        An ordered pipeline on one property. Each row takes the value from the row
-        above — starting at the keyframed value — so the ORDER changes the result.
-        The whole stack compiles to one expression.
+        {t('inspector.modifierStack.intro', 'An ordered pipeline on one property. Each row takes the value from the row above — starting at the keyframed value — so the ORDER changes the result. The whole stack compiles to one expression.')}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.label}>Property</span>
+        <span className={styles.label}>{t('inspector.modifierStack.property', 'Property')}</span>
         <select
           className={styles.select}
           value={activePath}
           onChange={(e) => { setProp(e.target.value); setNote(null); }}
-          aria-label="Modified property"
+          aria-label={t('inspector.modifierStack.propertyAria', 'Modified property')}
         >
           {options.map((o) => (
             <option key={o.path} value={o.path}>
@@ -350,7 +349,7 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
       </div>
 
       {modifiers.length === 0 && (
-        <p className={styles.empty}>No modifiers yet — add one below.</p>
+        <p className={styles.empty}>{t('inspector.modifierStack.empty', 'No modifiers yet — add one below.')}</p>
       )}
 
       <ol className={styles.list}>
@@ -375,7 +374,7 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
                 <input
                   type="checkbox"
                   checked={m.enabled}
-                  aria-label={`Enable ${label}`}
+                  aria-label={t('inspector.modifierStack.enableAria', 'Enable {label}', { label })}
                   onChange={(e) => commit(patchModifier(modifiers, m, { enabled: e.target.checked }))}
                 />
                 <span className={styles.kind}>{label}</span>
@@ -383,45 +382,45 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  aria-label={`Move ${label} up`}
+                  aria-label={t('inspector.modifierStack.moveUpAria', 'Move {label} up', { label })}
                   disabled={i === 0}
                   onClick={() => commit(modifiersMoved(modifiers, i, i - 1), 'Reorder Modifier')}
                 >▲</button>
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  aria-label={`Move ${label} down`}
+                  aria-label={t('inspector.modifierStack.moveDownAria', 'Move {label} down', { label })}
                   disabled={i === modifiers.length - 1}
                   onClick={() => commit(modifiersMoved(modifiers, i, i + 1), 'Reorder Modifier')}
                 >▼</button>
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  aria-label={`Remove ${label}`}
+                  aria-label={t('inspector.modifierStack.removeAria', 'Remove {label}', { label })}
                   onClick={() => commit(modifiersWithout(modifiers, m.id), 'Remove Modifier')}
                 >✕</button>
               </div>
               <ModifierParams modifier={m} list={modifiers} onPatch={commit} scrub={scrub} />
               <p className={styles.rowHint}>{MODIFIER_HINTS[m.kind]}</p>
-              {warning && <p className={styles.warn}>Note — {warning}.</p>}
+              {warning && <p className={styles.warn}>{t('inspector.modifierStack.warning', 'Note — {warning}.', { warning })}</p>}
             </li>
           );
         })}
       </ol>
 
       <div className={styles.row}>
-        <span className={styles.label}>Add</span>
+        <span className={styles.label}>{t('inspector.modifierStack.add', 'Add')}</span>
         <select
           className={styles.select}
           value=""
-          aria-label="Add modifier"
+          aria-label={t('inspector.modifierStack.addModifierAria', 'Add modifier')}
           onChange={(e) => {
             const kind = e.target.value as ModifierKind;
             if (!kind) return;
             commit([...modifiers, defaultModifier(kind)], 'Add Modifier');
           }}
         >
-          <option value="">Add modifier…</option>
+          <option value="">{t('inspector.modifierStack.addModifier', 'Add modifier…')}</option>
           {MODIFIER_KINDS.map((k) => (
             <option key={k} value={k}>{MODIFIER_LABELS[k]}</option>
           ))}
@@ -429,11 +428,11 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Behaviour</span>
+        <span className={styles.label}>{t('inspector.modifierStack.behaviour', 'Behaviour')}</span>
         <select
           className={styles.select}
           value=""
-          aria-label="Add behaviour"
+          aria-label={t('inspector.modifierStack.addBehaviourAria', 'Add behaviour')}
           onChange={(e) => {
             const recipe = BEHAVIOR_RECIPES.find((r) => r.preset === e.target.value);
             if (!recipe) return;
@@ -443,11 +442,11 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
             void edit(`Add ${recipe.label}`, commands).then((r) => {
               if (!r.ok) return;
               setProp(tracks[0] ?? activePath);
-              setNote(`${recipe.label} added as an editable stack on ${tracks.join(', ')}.`);
+              setNote(t('inspector.modifierStack.recipeAdded', '{label} added as an editable stack on {tracks}.', { label: recipe.label, tracks: tracks.join(', ') }));
             });
           }}
         >
-          <option value="">Add behaviour…</option>
+          <option value="">{t('inspector.modifierStack.addBehaviour', 'Add behaviour…')}</option>
           {BEHAVIOR_RECIPES.map((r) => (
             <option key={r.preset} value={r.preset} title={r.description}>{r.label}</option>
           ))}
@@ -457,8 +456,8 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
       {/* The stack's output, in full. See the module header: a stack that hides
           what it compiles to is the opaque behaviour it replaces. */}
       <div className={styles.compiled}>
-        <span className={styles.compiledLabel}>Compiles to</span>
-        <code className={styles.code} aria-label="Compiled expression">{compiled}</code>
+        <span className={styles.compiledLabel}>{t('inspector.modifierStack.compilesTo', 'Compiles to')}</span>
+        <code className={styles.code} aria-label={t('inspector.modifierStack.compiledAria', 'Compiled expression')}>{compiled}</code>
       </div>
 
       {error && <p className={styles.error}>{error}</p>}
@@ -477,11 +476,11 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
                 return;
               }
               const res = r.value[0] as { ids?: string[] } | undefined;
-              setNote(`Baked ${res?.ids?.length ?? 0} keyframes — the expression is now off, the rows are kept.`);
+              setNote(t('inspector.modifierStack.baked', 'Baked {n} keyframes — the expression is now off, the rows are kept.', { n: res?.ids?.length ?? 0 }));
             });
           }}
         >
-          Bake to keyframes
+          {t('inspector.modifierStack.bake', 'Bake to keyframes')}
         </Button>
         <Button
           size="sm"
@@ -489,11 +488,11 @@ export function ModifierStackSection({ nodeId }: { nodeId: string }): JSX.Elemen
           disabled={!hasStack}
           onClick={() => {
             void edit('Remove Modifier Stack', modifierStackCommands(nodeId, activePath, null)).then((r) => {
-              if (r.ok) setNote('Stack removed — any expression that was there first is back.');
+              if (r.ok) setNote(t('inspector.modifierStack.removed', 'Stack removed — any expression that was there first is back.'));
             });
           }}
         >
-          Remove stack
+          {t('inspector.modifierStack.removeStack', 'Remove stack')}
         </Button>
       </div>
 

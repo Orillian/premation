@@ -146,7 +146,7 @@ class SceneTextures final : public rg::ExternalTextureSource {
 
   [[nodiscard]] rg::TexRef external_texture(std::string_view hash) override;
   /// A raster / still image with a mip chain (its own pool entry, `#mip`): 3D quads.
-  [[nodiscard]] rg::TexRef external_texture_mipmapped(std::string_view hash) override;
+  [[nodiscard]] rg::TexRef external_texture_mipmapped(std::string_view hash, const rg::MipFootprint& fp) override;
 
   /// A cached raster by its hash (the parity tool reads pixels back).
   [[nodiscard]] const RasterEntry* raster(std::string_view hash) const;

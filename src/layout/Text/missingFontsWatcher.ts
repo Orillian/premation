@@ -17,8 +17,9 @@ import { documentMirror } from '@stores/documentMirror';
 import { loadTextTrees, mirrorMissingFonts } from '@core/mirror/fonts';
 import { useUIStore } from '@stores/uiStore';
 import { detectFontAvailability } from '@core/fonts/fontAvailability';
-import { familyKey, missingFontsMessage, type FontUsage } from '@core/fonts/missingFonts';
+import { familyKey, type FontUsage } from '@core/fonts/missingFonts';
 import { openReplaceFontsDialog } from './ReplaceFontsDialog';
+import { t } from '@core/i18n';
 
 export const MISSING_FONTS_TOAST_GROUP = 'missing-fonts';
 
@@ -35,11 +36,13 @@ export async function checkMissingFonts(
     const keys = new Set(missing.map((m) => familyKey(m.family)));
     useUIStore.getState().notify({
       level: 'warning',
-      message: missingFontsMessage(missing.length),
+      message: missing.length === 1
+        ? t('text.missingFonts.messageOne', '{n} font missing', { n: missing.length })
+        : t('text.missingFonts.messageOther', '{n} fonts missing', { n: missing.length }),
       detail: missing.map((m) => m.family).join(', '),
       durationMs: 12000,
       group: MISSING_FONTS_TOAST_GROUP,
-      action: { label: 'Replace Fonts…', onSelect: () => openReplaceFontsDialog(missing, keys) },
+      action: { label: t('text.missingFonts.replace', 'Replace Fonts…'), onSelect: () => openReplaceFontsDialog(missing, keys) },
     });
   }
   return missing;

@@ -34,8 +34,9 @@ import { useCallback, useEffect, useState, memo } from 'react';
 import { Icon } from '@components/Icon';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { subscribeEngineCache } from './engineCacheCoverage';
+import { t } from '@core/i18n';
 import {
-  CACHE_WORK_AREA_UNAVAILABLE,
+  cacheWorkAreaUnavailable,
   cacheWorkAreaNow,
   canCacheWorkArea,
   installPreviewCacheCommands,
@@ -113,7 +114,9 @@ export function previewCacheMenuItems(stats: PreviewCacheStats, refresh: () => v
     {
       type: 'item',
       id: 'cache-work-area',
-      label: stats.workArea ? 'Cache Work Area Now' : 'Cache Composition Now',
+      label: stats.workArea
+        ? t('timeline.cache.cacheWorkAreaNow', 'Cache Work Area Now')
+        : t('timeline.cache.cacheCompositionNow', 'Cache Composition Now'),
       icon: 'refresh',
       disabled: !canCache || stats.total === 0,
       onSelect: () => {
@@ -122,13 +125,13 @@ export function previewCacheMenuItems(stats: PreviewCacheStats, refresh: () => v
       },
     },
   ];
-  if (!canCache) items.push({ type: 'label', label: CACHE_WORK_AREA_UNAVAILABLE });
+  if (!canCache) items.push({ type: 'label', label: cacheWorkAreaUnavailable() });
   items.push(
     { type: 'separator' },
     {
       type: 'item',
       id: 'purge-ram',
-      label: 'Purge RAM Preview',
+      label: t('timeline.cache.purgeRamPreview', 'Purge RAM Preview'),
       icon: 'trash',
       disabled: !hasRam,
       onSelect: () => {
@@ -143,7 +146,7 @@ export function previewCacheMenuItems(stats: PreviewCacheStats, refresh: () => v
     items.push({
       type: 'item',
       id: 'purge-disk',
-      label: 'Purge Disk Cache',
+      label: t('timeline.cache.purgeDiskCache', 'Purge Disk Cache'),
       icon: 'trash',
       danger: true,
       onSelect: () => {
@@ -159,15 +162,18 @@ function CacheActionsImpl(): JSX.Element {
   const { stats, refresh } = usePreviewCacheStats();
   const full = stats.total > 0 && stats.cached >= stats.total;
   const canCache = canCacheWorkArea();
-  const what = stats.workArea ? 'work area' : 'composition';
   const cacheTitle = full
-    ? `${stats.workArea ? 'Work area' : 'Composition'} is already cached`
+    ? stats.workArea
+      ? t('timeline.cache.workAreaCached', 'Work area is already cached')
+      : t('timeline.cache.compositionCached', 'Composition is already cached')
     : canCache
-      ? `Cache ${what} now — ${describePreviewCache(stats)}`
-      : `${describePreviewCache(stats)}. ${CACHE_WORK_AREA_UNAVAILABLE}`;
+      ? stats.workArea
+        ? t('timeline.cache.cacheWorkAreaTitle', 'Cache work area now — {stats}', { stats: describePreviewCache(stats) })
+        : t('timeline.cache.cacheCompositionTitle', 'Cache composition now — {stats}', { stats: describePreviewCache(stats) })
+      : t('timeline.cache.unavailableTitle', '{stats}. {reason}', { stats: describePreviewCache(stats), reason: cacheWorkAreaUnavailable() });
 
   return (
-    <div className={styles.group} role="group" aria-label="Preview cache">
+    <div className={styles.group} role="group" aria-label={t('timeline.cache.group', 'Preview cache')}>
       {stats.total > 0 && (
         <span className={styles.readout} aria-hidden>
           {stats.cached}/{stats.total}
@@ -178,7 +184,9 @@ function CacheActionsImpl(): JSX.Element {
         type="button"
         className={styles.btn}
         title={cacheTitle}
-        aria-label={canCache ? 'Cache work area now' : `Cache work area now — unavailable. ${CACHE_WORK_AREA_UNAVAILABLE}`}
+        aria-label={canCache
+          ? t('timeline.cache.cacheWorkAreaAria', 'Cache work area now')
+          : t('timeline.cache.cacheWorkAreaUnavailableAria', 'Cache work area now — unavailable. {reason}', { reason: cacheWorkAreaUnavailable() })}
         disabled={!canCache || stats.total === 0}
         onClick={() => {
           cacheWorkAreaNow();
@@ -194,8 +202,8 @@ function CacheActionsImpl(): JSX.Element {
           <button
             type="button"
             className={styles.btn}
-            title="Preview cache actions"
-            aria-label="Preview cache actions"
+            title={t('timeline.cache.actions', 'Preview cache actions')}
+            aria-label={t('timeline.cache.actions', 'Preview cache actions')}
           >
             <Icon name="more-horizontal" size="sm" />
           </button>

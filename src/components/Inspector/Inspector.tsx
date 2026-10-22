@@ -14,6 +14,7 @@ import { type ReactNode } from 'react';
 import { cn } from '@utils/cn';
 import { Accordion, type AccordionItem } from '@components/Accordion';
 import { Icon } from '@components/Icon';
+import { t } from '@core/i18n';
 import styles from './Inspector.module.css';
 
 export interface InspectorGroup {
@@ -31,7 +32,7 @@ export interface InspectorProps {
   emptyMessage?: ReactNode;
 }
 
-export function Inspector({ groups, className, emptyMessage = 'No selection' }: InspectorProps): JSX.Element {
+export function Inspector({ groups, className, emptyMessage = t('inspector.panel.noSelection', 'No selection') }: InspectorProps): JSX.Element {
   if (groups.length === 0) {
     return (
       <div className={cn(styles.empty, className)}>

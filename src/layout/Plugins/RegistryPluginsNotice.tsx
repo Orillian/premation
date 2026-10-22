@@ -16,9 +16,14 @@ import { Icon } from '@components/Icon';
 import { dismissRegistryNotice } from '@core/nativePlugins/nativePlugins';
 import { useRegistryNoticeDismissed } from '@hooks/useNativePlugins';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
-export const REGISTRY_NOTICE_TEXT =
-  'The plugin store is back, for native plugins: they are free, run on this computer inside the engine, and install without a restart. Old JavaScript plugins no longer run.';
+export function registryNoticeText(): string {
+  return t(
+    'plugins.notice.text',
+    'The plugin store is back, for native plugins: they are free, run on this computer inside the engine, and install without a restart. Old JavaScript plugins no longer run.',
+  );
+}
 
 export function RegistryPluginsNotice({ onLearnMore }: { onLearnMore?: () => void }): JSX.Element | null {
   const dismissed = useRegistryNoticeDismissed();
@@ -27,16 +32,16 @@ export function RegistryPluginsNotice({ onLearnMore }: { onLearnMore?: () => voi
     <div className={styles.notice} role="status">
       <Icon name="plugin" size="sm" className={styles.noticeIcon} />
       <div className={styles.noticeBody}>
-        <span>{REGISTRY_NOTICE_TEXT}</span>
+        <span>{registryNoticeText()}</span>
         {onLearnMore ? (
           <button type="button" className={styles.noticeLink} onClick={onLearnMore}>
-            Learn more
+            {t('plugins.notice.learnMore', 'Learn more')}
           </button>
         ) : null}
       </div>
       {/* Button, not IconButton: it needs no TooltipProvider, so the notice renders anywhere. */}
       <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} onClick={dismissRegistryNotice}>
-        Dismiss plugins notice
+        {t('plugins.notice.dismiss', 'Dismiss plugins notice')}
       </Button>
     </div>
   );

@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react';
+import { t } from '@core/i18n';
 import { Button } from '@components/Button';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
@@ -36,10 +37,10 @@ function notify(message: string, level: 'info' | 'success' | 'warning'): void {
 
 /** A label for the stored source. */
 function sourceLabel(source: string): string {
-  if (!source) return 'None';
-  if (source.startsWith('layer:')) return documentMirror().layer(source.slice(6))?.name ?? 'Missing layer';
-  if (source.startsWith('seq:') || source.startsWith('src:')) return 'AI estimate';
-  return 'Image';
+  if (!source) return t('inspector.depthParallax.none', 'None');
+  if (source.startsWith('layer:')) return documentMirror().layer(source.slice(6))?.name ?? t('inspector.depthParallax.missingLayer', 'Missing layer');
+  if (source.startsWith('seq:') || source.startsWith('src:')) return t('inspector.depthParallax.aiEstimate', 'AI estimate');
+  return t('inspector.depthParallax.image', 'Image');
 }
 
 export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Element | null {
@@ -54,16 +55,16 @@ export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Elemen
   const active = source !== '' && scale !== 0;
 
   const estimate = (): void => {
-    setBusy('Estimating depth…');
-    void makeDepthFromModel(nodeId, scale || DEFAULT_DEPTH_SCALE, (p) => setBusy(`Estimating depth… ${Math.round(p * 100)}%`)).then((r) => {
+    setBusy(t('inspector.depthParallax.estimating', 'Estimating depth…'));
+    void makeDepthFromModel(nodeId, scale || DEFAULT_DEPTH_SCALE, (p) => setBusy(t('inspector.depthParallax.estimatingPct', 'Estimating depth… {pct}%', { pct: Math.round(p * 100) }))).then((r) => {
       setBusy(null);
-      notify(r.ok ? 'Depth estimated — the layer is 3D now; move a camera to see the parallax' : r.message, r.ok ? 'success' : 'warning');
+      notify(r.ok ? t('inspector.depthParallax.estimated', 'Depth estimated — the layer is 3D now; move a camera to see the parallax') : r.message, r.ok ? 'success' : 'warning');
     });
   };
   const items = (): DropdownItem[] => [
-    { type: 'item', id: 'ai', label: 'AI estimate (Depth Anything V2)', onSelect: estimate },
+    { type: 'item', id: 'ai', label: t('inspector.depthParallax.aiItem', 'AI estimate (Depth Anything V2)'), onSelect: estimate },
     { type: 'separator' },
-    { type: 'label', label: 'Depth map layer (white = near)' },
+    { type: 'label', label: t('inspector.depthParallax.mapLayer', 'Depth map layer (white = near)') },
     ...depthMapLayerChoices(nodeId).map((c): DropdownItem => ({
       type: 'item', id: c.id, label: c.name,
       onSelect: () => { void makeDepthFromLayer(nodeId, c.id, scale || DEFAULT_DEPTH_SCALE); },
@@ -72,7 +73,7 @@ export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Elemen
   const showOff = (preset: string): void => {
     const cam = commandCamera();
     if (!cam) {
-      notify('Add a camera to the composition first (Layer ▸ New ▸ Camera)', 'info');
+      notify(t('inspector.depthParallax.needCamera', 'Add a camera to the composition first (Layer ▸ New ▸ Camera)'), 'info');
       return;
     }
     void applyAnimationPresetEdit([cam], preset, getTime());
@@ -81,16 +82,16 @@ export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Elemen
   return (
     <TwirlGroup
       prefKey="layer.depthParallax"
-      label={<span title="Make a photo or video 3D: its depth pushes each part toward or away from the camera, so a camera move reveals parallax">Depth Parallax</span>}
+      label={<span title={t('inspector.depthParallax.hint', 'Make a photo or video 3D: its depth pushes each part toward or away from the camera, so a camera move reveals parallax')}>{t('inspector.depthParallax.title', 'Depth Parallax')}</span>}
       defaultOpen={active}
-      summary={active ? sourceLabel(source) : 'Off'}
+      summary={active ? sourceLabel(source) : t('inspector.depthParallax.off', 'Off')}
     >
       <div className={styles.popoverRow}>
-        <span className={styles.popoverLabel}>Depth Source</span>
+        <span className={styles.popoverLabel}>{t('inspector.depthParallax.source', 'Depth Source')}</span>
         <Dropdown
           placement="bottom-end"
           trigger={
-            <button type="button" className={styles.select} aria-label="Depth Source" title="Where the depth comes from">
+            <button type="button" className={styles.select} aria-label={t('inspector.depthParallax.source', 'Depth Source')} title={t('inspector.depthParallax.sourceHint', 'Where the depth comes from')}>
               <span>{busy ?? sourceLabel(source)}</span>
               <Icon name="chevron-down" size="sm" />
             </button>
@@ -100,12 +101,12 @@ export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Elemen
       </div>
       {source !== '' && (
         <>
-          <KeyframeRow nodeId={nodeId} prop="depthScale" label="Depth Scale" value={scale} unit="px" min={-5000} max={5000} onStatic={(v) => setScale(v)} />
-          <KeyframeRow nodeId={nodeId} prop="depthMeshDetail" label="Mesh Detail" value={typeof detailRaw === 'number' ? detailRaw : 128} min={2} max={256} precision={0} onStatic={(v) => setDetail(Math.round(v))} />
-          <KeyframeRow nodeId={nodeId} prop="depthEdgeCut" label="Edge Cut" value={typeof edgeRaw === 'number' ? edgeRaw : 0} min={0} max={1} precision={2} onStatic={(v) => setEdge(v)} />
+          <KeyframeRow nodeId={nodeId} prop="depthScale" label={t('inspector.depthParallax.scale', 'Depth Scale')} value={scale} unit="px" min={-5000} max={5000} onStatic={(v) => setScale(v)} />
+          <KeyframeRow nodeId={nodeId} prop="depthMeshDetail" label={t('inspector.depthParallax.meshDetail', 'Mesh Detail')} value={typeof detailRaw === 'number' ? detailRaw : 128} min={2} max={256} precision={0} onStatic={(v) => setDetail(Math.round(v))} />
+          <KeyframeRow nodeId={nodeId} prop="depthEdgeCut" label={t('inspector.depthParallax.edgeCut', 'Edge Cut')} value={typeof edgeRaw === 'number' ? edgeRaw : 0} min={0} max={1} precision={2} onStatic={(v) => setEdge(v)} />
           <div className={styles.actionRow}>
-            <Button size="sm" variant="secondary" title="Push the active camera in from the playhead" onClick={() => showOff('Push In')}>Push In</Button>
-            <Button size="sm" variant="secondary" title="Orbit the active camera from the playhead" onClick={() => showOff('Orbit Sweep')}>Orbit Sweep</Button>
+            <Button size="sm" variant="secondary" title={t('inspector.depthParallax.pushInHint', 'Push the active camera in from the playhead')} onClick={() => showOff('Push In')}>{t('inspector.depthParallax.pushIn', 'Push In')}</Button>
+            <Button size="sm" variant="secondary" title={t('inspector.depthParallax.orbitHint', 'Orbit the active camera from the playhead')} onClick={() => showOff('Orbit Sweep')}>{t('inspector.depthParallax.orbit', 'Orbit Sweep')}</Button>
           </div>
         </>
       )}

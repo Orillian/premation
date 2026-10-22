@@ -14,6 +14,7 @@
  * something to redo or remove.
  */
 
+import { t } from '@core/i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@components/Button';
 import { Slider } from '@components/Slider';
@@ -90,22 +91,25 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
     };
   }, [key, voiceNodeId, nodeId]);
 
-  const report = (result: ApplyDuckingResult, verb: string): void => {
+  const report = (result: ApplyDuckingResult, verb: 'ducked' | 'reducked'): void => {
+    const vars = { n: result.keyframes, db: result.peakDuckDb };
+    const one = result.keyframes === 1;
+    const message = verb === 'ducked'
+      ? (one
+        ? t('inspector.ducking.duckedOne', 'Ducked — {n} level keyframe, down to {db} dB.', vars)
+        : t('inspector.ducking.duckedOther', 'Ducked — {n} level keyframes, down to {db} dB.', vars))
+      : (one
+        ? t('inspector.ducking.reduckedOne', 'Re-ducked — {n} level keyframe, down to {db} dB.', vars)
+        : t('inspector.ducking.reduckedOther', 'Re-ducked — {n} level keyframes, down to {db} dB.', vars));
     useUIStore.getState().notify(
       result.error
         ? { level: 'warning', message: result.error, durationMs: 5000 }
-        : {
-            level: 'success',
-            message:
-              `${verb} — ${result.keyframes} level keyframe${result.keyframes === 1 ? '' : 's'}, `
-              + `down to ${result.peakDuckDb} dB.`,
-            durationMs: 4000,
-          },
+        : { level: 'success', message, durationMs: 4000 },
     );
     if (!result.error) onDone();
   };
 
-  const run = async (fn: () => Promise<ApplyDuckingResult>, verb: string): Promise<void> => {
+  const run = async (fn: () => Promise<ApplyDuckingResult>, verb: 'ducked' | 'reducked'): Promise<void> => {
     setBusy(true);
     try {
       report(await fn(), verb);
@@ -120,7 +124,7 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
       const ok = await removeDuckingEdit(nodeId);
       useUIStore.getState().notify({
         level: ok ? 'success' : 'warning',
-        message: ok ? 'Ducking removed, level track cleared.' : 'This layer has no ducking to remove.',
+        message: ok ? t('inspector.ducking.removed', 'Ducking removed, level track cleared.') : t('inspector.ducking.nothingToRemove', 'This layer has no ducking to remove.'),
         durationMs: 4000,
       });
       if (ok) onDone();
@@ -132,20 +136,19 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
   return (
     <div className={styles.body}>
       <p className={styles.intro}>
-        Writes level keyframes on this layer that pull it down whenever the sidechain layer is above
-        the threshold. Preview and export read the same track.
+        {t('inspector.ducking.intro', 'Writes level keyframes on this layer that pull it down whenever the sidechain layer is above the threshold. Preview and export read the same track.')}
       </p>
 
       <div className={styles.row}>
-        <span className={styles.label}>Sidechain</span>
+        <span className={styles.label}>{t('inspector.ducking.sidechain', 'Sidechain')}</span>
         <div className={styles.control}>
           <select
             className={styles.select}
             value={voiceNodeId}
             onChange={(e) => setVoiceNodeId(e.target.value)}
-            aria-label="Sidechain layer"
+            aria-label={t('inspector.ducking.sidechainLayer', 'Sidechain layer')}
           >
-            {sources.length === 0 ? <option value="">No other layer has sound</option> : null}
+            {sources.length === 0 ? <option value="">{t('inspector.ducking.noOtherLayer', 'No other layer has sound')}</option> : null}
             {sources.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -154,7 +157,7 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Duck by</span>
+        <span className={styles.label}>{t('inspector.ducking.duckBy', 'Duck by')}</span>
         <div className={styles.control}>
           <Slider
             value={params.duckDb}
@@ -162,14 +165,14 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
             max={0}
             step={1}
             onChange={(v) => set('duckDb', v)}
-            aria-label="Duck amount"
+            aria-label={t('inspector.ducking.duckAmount', 'Duck amount')}
           />
           <span className={styles.value}>{params.duckDb} dB</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Threshold</span>
+        <span className={styles.label}>{t('inspector.ducking.threshold', 'Threshold')}</span>
         <div className={styles.control}>
           <Slider
             value={params.thresholdDb}
@@ -177,14 +180,14 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
             max={-5}
             step={1}
             onChange={(v) => set('thresholdDb', v)}
-            aria-label="Sidechain threshold"
+            aria-label={t('inspector.ducking.sidechainThreshold', 'Sidechain threshold')}
           />
           <span className={styles.value}>{params.thresholdDb} dB</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Attack</span>
+        <span className={styles.label}>{t('inspector.ducking.attack', 'Attack')}</span>
         <div className={styles.control}>
           <Slider
             value={params.attackMs}
@@ -192,14 +195,14 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
             max={1000}
             step={10}
             onChange={(v) => set('attackMs', v)}
-            aria-label="Attack"
+            aria-label={t('inspector.ducking.attack', 'Attack')}
           />
           <span className={styles.value}>{params.attackMs} ms</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Release</span>
+        <span className={styles.label}>{t('inspector.ducking.release', 'Release')}</span>
         <div className={styles.control}>
           <Slider
             value={params.releaseMs}
@@ -207,14 +210,14 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
             max={3000}
             step={50}
             onChange={(v) => set('releaseMs', v)}
-            aria-label="Release"
+            aria-label={t('inspector.ducking.release', 'Release')}
           />
           <span className={styles.value}>{params.releaseMs} ms</span>
         </div>
       </div>
 
       <div className={styles.row}>
-        <span className={styles.label}>Hold</span>
+        <span className={styles.label}>{t('inspector.ducking.hold', 'Hold')}</span>
         <div className={styles.control}>
           <Slider
             value={params.holdMs}
@@ -222,7 +225,7 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
             max={2000}
             step={50}
             onChange={(v) => set('holdMs', v)}
-            aria-label="Hold"
+            aria-label={t('inspector.ducking.hold', 'Hold')}
           />
           <span className={styles.value}>{params.holdMs} ms</span>
         </div>
@@ -230,20 +233,21 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
 
       <div className={styles.readout} role="status">
         {!voiceNodeId ? (
-          <span className={styles.warn}>Nothing to duck under — this comp has only one layer with sound.</span>
+          <span className={styles.warn}>{t('inspector.ducking.nothingToDuck', 'Nothing to duck under — this comp has only one layer with sound.')}</span>
         ) : analysing ? (
-          <span>Analysing the sidechain…</span>
+          <span>{t('inspector.ducking.analysing', 'Analysing the sidechain…')}</span>
         ) : !preview ? (
-          <span className={styles.warn}>That layer&rsquo;s audio has not decoded, or is silent here.</span>
+          <span className={styles.warn}>{t('inspector.ducking.notDecoded', 'That layer’s audio has not decoded, or is silent here.')}</span>
         ) : preview.peakDb === 0 ? (
-          <span>Never crosses the threshold — nothing would duck. Try a lower threshold.</span>
+          <span>{t('inspector.ducking.neverCrosses', 'Never crosses the threshold — nothing would duck. Try a lower threshold.')}</span>
         ) : (
           <>
             <span>
-              Will write <strong>{preview.keyframes}</strong> level keyframe
-              {preview.keyframes === 1 ? '' : 's'}, down to <strong>{preview.peakDb}</strong> dB
+              {preview.keyframes === 1
+                ? t('inspector.ducking.willWriteOne', 'Will write {n} level keyframe, down to {db} dB', { n: preview.keyframes, db: preview.peakDb })
+                : t('inspector.ducking.willWriteOther', 'Will write {n} level keyframes, down to {db} dB', { n: preview.keyframes, db: preview.peakDb })}
             </span>
-            <span className={styles.readoutNote}>Over the work area, or the whole comp when none is set.</span>
+            <span className={styles.readoutNote}>{t('inspector.ducking.workAreaNote', 'Over the work area, or the whole comp when none is set.')}</span>
           </>
         )}
       </div>
@@ -252,27 +256,27 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
         <div className={styles.actionsLeft}>
           {stored ? (
             <>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => reduckEdit(nodeId), 'Re-ducked')}>
-                Re-duck
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => reduckEdit(nodeId), 'reducked')}>
+                {t('inspector.ducking.reduck', 'Re-duck')}
               </Button>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => void drop()}>
-                Remove
+                {t('inspector.ducking.remove', 'Remove')}
               </Button>
             </>
           ) : null}
         </div>
         <div className={styles.actions}>
           <Button size="sm" variant="ghost" onClick={onDone} disabled={busy}>
-            Cancel
+            {t('inspector.ducking.cancel', 'Cancel')}
           </Button>
           <Button
             size="sm"
             variant="primary"
             loading={busy}
             disabled={busy || !voiceNodeId}
-            onClick={() => void run(() => duckEdit(nodeId, voiceNodeId, params), 'Ducked')}
+            onClick={() => void run(() => duckEdit(nodeId, voiceNodeId, params), 'ducked')}
           >
-            {busy ? 'Applying…' : 'Apply'}
+            {busy ? t('inspector.ducking.applying', 'Applying…') : t('inspector.ducking.apply', 'Apply')}
           </Button>
         </div>
       </div>
@@ -283,7 +287,7 @@ export function DuckingDialog({ nodeId, onDone }: Props): JSX.Element {
 /** Open the dialog for a layer. Also the shape the command calls. */
 export function openDuckingDialog(nodeId: string): void {
   openModal({
-    title: 'Duck under voice',
+    title: t('inspector.ducking.title', 'Duck under voice'),
     size: 'sm',
     render: (close) => <DuckingDialog nodeId={nodeId} onDone={close} />,
   });

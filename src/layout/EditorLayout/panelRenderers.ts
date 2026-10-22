@@ -23,6 +23,7 @@ import { EffectsPanel } from '@layout/Effects/EffectsPanel';
 import { EffectControlsPanel } from '@layout/Effects/EffectControlsPanel';
 import { ExportPanel } from '@layout/Export/ExportPanel';
 import { NativePluginsPanel } from '@layout/Plugins/NativePluginsPanel';
+import { ScriptEditorPanel } from '@layout/Scripts/ScriptEditorPanel';
 import { SwatchesPanel } from '@layout/Swatches';
 import { ScopesPanel } from '@layout/Scopes';
 // Imported from the barrel deliberately: it also registers the transcript's
@@ -43,6 +44,8 @@ import { AssetsPanel } from '@layout/Assets/AssetsPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { RigPanel } from './RigPanel';
 import { LibraryPanel } from './LibraryPanel';
+import { EssentialGraphicsPanel } from '@layout/Templates/EssentialGraphicsPanel';
+import { RecordAudioPanel } from '@layout/RecordAudio/RecordAudioPanel';
 import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
 import { pluginPanels } from '@core/nativePlugins/pluginContrib';
 import { useLayoutStore } from '@stores/layoutStore';
@@ -76,10 +79,12 @@ export const PANEL_COMPONENTS: Readonly<Record<string, ComponentType>> = {
   properties: PropertiesPanel,
   character: CharacterPanel,
   paragraph: ParagraphPanel,
+  essentialGraphics: EssentialGraphicsPanel,
   align: AlignPanel,
   swatches: SwatchesPanel,
   info: InfoAudioPanel,
   audio: AudioPanel,
+  recordAudio: RecordAudioPanel,
   scopes: ScopesPanel,
   preview: PreviewPanel,
   tracker: TrackerPanel,
@@ -93,6 +98,7 @@ export const PANEL_COMPONENTS: Readonly<Record<string, ComponentType>> = {
   history: HistoryPanel,
   export: ExportPanel,
   plugins: NativePluginsPanel,
+  scriptEditor: ScriptEditorPanel,
   // ── Asset Library (one tab, sections inside) ─────────────────────────
   library: LibraryPanel,
 };

@@ -16,6 +16,7 @@ import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { cn } from '@utils/cn';
 import { aiEnabled } from '@core/config/edition';
+import { t } from '@core/i18n';
 import { ShortcutsTab, WorkspacesTab, AppearanceTab, type Tab as CustomizeTabId } from '@layout/Settings/CustomizeDialog';
 import { tabsForEdition } from '@layout/Settings/customizeTabs';
 import { AudioHardwareSection } from '@layout/Settings/AudioHardwareSection';
@@ -63,22 +64,22 @@ export function DashboardCustomizeTab(): JSX.Element {
   return (
     <div className={styles.customizeRoot}>
       <div className={styles.viewSwitch}>
-        <div className={styles.tabList} role="tablist" aria-label="Editor customization sections">
-          {tabs.map((t) => {
-            const isSelected = activeSection === t.id;
+        <div className={styles.tabList} role="tablist" aria-label={t('dashboard.customize.sectionsAria', 'Editor customization sections')}>
+          {tabs.map((tab) => {
+            const isSelected = activeSection === tab.id;
             return (
               <button
-                key={t.id}
+                key={tab.id}
                 type="button"
                 role="tab"
-                id={`customize-tab-${t.id}`}
+                id={`customize-tab-${tab.id}`}
                 aria-controls="customize-panel-content"
                 aria-selected={isSelected}
                 className={cn(styles.tabBtn, isSelected && styles.tabBtnActive)}
-                onClick={() => handleSelectSection(t.id)}
+                onClick={() => handleSelectSection(tab.id)}
               >
-                <Icon name={t.icon} size="sm" />
-                <span>{t.label}</span>
+                <Icon name={tab.icon} size="sm" />
+                <span>{tab.label}</span>
               </button>
             );
           })}
@@ -103,11 +104,11 @@ export function DashboardCustomizeTab(): JSX.Element {
           <div className={styles.aiContainer}>
             <AiSettingsSection />
             <p className={styles.connectionsNote}>
-              Claude, Cursor, Antigravity and ChatGPT connect on the Connections page.
+              {t('dashboard.customize.connectionsNote', 'Claude, Cursor, Antigravity and ChatGPT connect on the Connections page.')}
             </p>
             <div>
               <Button variant="secondary" onClick={() => navigate('/dashboard?tab=connections')}>
-                Open Connections
+                {t('dashboard.openConnections', 'Open Connections')}
               </Button>
             </div>
           </div>

@@ -34,6 +34,7 @@ import { exportFcpxmlText } from './exportFcpxml';
 import { exportAleText } from './exportAle';
 import { exportMogrtZip } from './exportMogrt';
 import { canEncodeLocally, type PluginOutputFormat, type VideoFormat } from './renderSpec';
+import { t } from '@core/i18n';
 import { exportFormatCode, failureReason, track as trackEvent } from '@core/analytics/productEvents';
 
 export type ExportFormat =
@@ -725,24 +726,125 @@ export interface ExportPreset {
  * nothing could open).
  */
 export const EXPORT_PRESETS: ExportPreset[] = [
-  { format: 'mp4', label: 'MP4 · H.264', ext: 'mp4', hint: 'Plays everywhere. Best default for sharing.', desktopOnly: true },
-  { format: 'hdr10', label: 'MP4 · HDR10 (PQ)', ext: 'mp4', hint: 'ST 2084 PQ, BT.2020, 10-bit HEVC with HDR10 mastering metadata (1000-nit display). Working-space white is 203 nits; brighter values become highlights. H.264 High 10 when ffmpeg has no libx265.', desktopOnly: true },
-  { format: 'hlg', label: 'MP4 · HLG', ext: 'mp4', hint: 'Hybrid Log-Gamma, BT.2020, 10-bit HEVC — broadcast HDR that also plays on SDR screens. White sits at 75% signal.', desktopOnly: true },
-  { format: 'webm', label: 'WebM · VP9', ext: 'webm', hint: 'Smaller than MP4, keeps transparency, ideal for the web.', desktopOnly: true },
-  { format: 'mov', label: 'MOV · ProRes', ext: 'mov', hint: 'For editing in another app. 4444 keeps alpha; the 422 profiles halve the file for opaque delivery.', desktopOnly: true },
-  { format: 'gif', label: 'Animated GIF', ext: 'gif', hint: 'No audio, 256 colours. Keep it short and small.', desktopOnly: true },
-  { format: 'wav', label: 'Audio only · WAV', ext: 'wav', hint: 'The comp’s mixed audio as 48kHz 16-bit stereo PCM. No picture.', desktopOnly: true },
-  { format: 'png-sequence', label: 'PNG sequence', ext: 'zip', hint: 'Lossless frames with alpha, zipped. The archival option.', desktopOnly: true },
-  { format: 'jpg-sequence', label: 'JPEG sequence', ext: 'zip', hint: 'Smaller frames, no alpha.', desktopOnly: true },
-  { format: 'exr-sequence', label: 'EXR sequence', ext: 'zip', hint: 'Half-float linear RGB per frame. Prefers GPU linear RT readback (WebGL2 sync / WebGPU async); falls back to display undo-gamma.', desktopOnly: true },
-  { format: 'png', label: 'Still frame', ext: 'png', hint: 'The current frame as one PNG.', desktopOnly: true },
-  { format: 'lottie', label: 'Lottie', ext: 'json', hint: 'Vector animation for web/mobile players. Shapes only.' },
-  { format: 'json', label: 'Project file', ext: 'json', hint: 'The editable document, re-openable with File ▸ Open.' },
-  { format: 'edl', label: 'EDL (CMX 3600)', ext: 'edl', hint: 'Clip list for Premiere / Avid. No nested comps or AAF.' },
-  { format: 'otio', label: 'OpenTimelineIO', ext: 'otio', hint: 'Editorial interchange: Resolve opens it natively; OTIO adapters convert to AAF/FCPXML. Cuts only — no effects.' },
-  { format: 'fcpxml', label: 'FCPXML', ext: 'fcpxml', hint: 'Final Cut / Premiere XML cuts. Same clip bars as EDL — no nested comps.' },
-  { format: 'ale', label: 'ALE (Avid)', ext: 'ale', hint: 'Avid Log Exchange cut list. Binary AAF still needs OTIO adapters.' },
-  { format: 'mogrt', label: 'Essential Graphics (.mogrt.zip)', ext: 'zip', hint: 'Premation template package (fields + project). Not Adobe AME — re-importable here.' },
+  {
+    format: 'mp4',
+    label: 'MP4 · H.264',
+    ext: 'mp4',
+    get hint() { return t('core.exportPresets.mp4Hint', 'Plays everywhere. Best default for sharing.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'hdr10',
+    label: 'MP4 · HDR10 (PQ)',
+    ext: 'mp4',
+    get hint() { return t('core.exportPresets.hdr10Hint', 'ST 2084 PQ, BT.2020, 10-bit HEVC with HDR10 mastering metadata (1000-nit display). Working-space white is 203 nits; brighter values become highlights. H.264 High 10 when ffmpeg has no libx265.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'hlg',
+    label: 'MP4 · HLG',
+    ext: 'mp4',
+    get hint() { return t('core.exportPresets.hlgHint', 'Hybrid Log-Gamma, BT.2020, 10-bit HEVC — broadcast HDR that also plays on SDR screens. White sits at 75% signal.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'webm',
+    label: 'WebM · VP9',
+    ext: 'webm',
+    get hint() { return t('core.exportPresets.webmHint', 'Smaller than MP4, keeps transparency, ideal for the web.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'mov',
+    label: 'MOV · ProRes',
+    ext: 'mov',
+    get hint() { return t('core.exportPresets.movHint', 'For editing in another app. 4444 keeps alpha; the 422 profiles halve the file for opaque delivery.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'gif',
+    get label() { return t('core.exportPresets.gif', 'Animated GIF'); },
+    ext: 'gif',
+    get hint() { return t('core.exportPresets.gifHint', 'No audio, 256 colours. Keep it short and small.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'wav',
+    get label() { return t('core.exportPresets.wav', 'Audio only · WAV'); },
+    ext: 'wav',
+    get hint() { return t('core.exportPresets.wavHint', 'The comp’s mixed audio as 48kHz 16-bit stereo PCM. No picture.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'png-sequence',
+    get label() { return t('core.exportPresets.pngSequence', 'PNG sequence'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.pngSequenceHint', 'Lossless frames with alpha, zipped. The archival option.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'jpg-sequence',
+    get label() { return t('core.exportPresets.jpgSequence', 'JPEG sequence'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.jpgSequenceHint', 'Smaller frames, no alpha.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'exr-sequence',
+    get label() { return t('core.exportPresets.exrSequence', 'EXR sequence'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.exrSequenceHint', 'Half-float linear RGB per frame. Prefers GPU linear RT readback (WebGL2 sync / WebGPU async); falls back to display undo-gamma.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'png',
+    get label() { return t('core.exportPresets.png', 'Still frame'); },
+    ext: 'png',
+    get hint() { return t('core.exportPresets.pngHint', 'The current frame as one PNG.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'lottie',
+    label: 'Lottie',
+    ext: 'json',
+    get hint() { return t('core.exportPresets.lottieHint', 'Vector animation for web/mobile players. Shapes only.'); },
+  },
+  {
+    format: 'json',
+    get label() { return t('core.exportPresets.json', 'Project file'); },
+    ext: 'json',
+    get hint() { return t('core.exportPresets.jsonHint', 'The editable document, re-openable with File ▸ Open.'); },
+  },
+  {
+    format: 'edl',
+    label: 'EDL (CMX 3600)',
+    ext: 'edl',
+    get hint() { return t('core.exportPresets.edlHint', 'Clip list for Premiere / Avid. No nested comps or AAF.'); },
+  },
+  {
+    format: 'otio',
+    label: 'OpenTimelineIO',
+    ext: 'otio',
+    get hint() { return t('core.exportPresets.otioHint', 'Editorial interchange: Resolve opens it natively; OTIO adapters convert to AAF/FCPXML. Cuts only — no effects.'); },
+  },
+  {
+    format: 'fcpxml',
+    label: 'FCPXML',
+    ext: 'fcpxml',
+    get hint() { return t('core.exportPresets.fcpxmlHint', 'Final Cut / Premiere XML cuts. Same clip bars as EDL — no nested comps.'); },
+  },
+  {
+    format: 'ale',
+    label: 'ALE (Avid)',
+    ext: 'ale',
+    get hint() { return t('core.exportPresets.aleHint', 'Avid Log Exchange cut list. Binary AAF still needs OTIO adapters.'); },
+  },
+  {
+    format: 'mogrt',
+    get label() { return t('core.exportPresets.mogrt', 'Essential Graphics (.mogrt.zip)'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.mogrtHint', 'Premation template package (fields + project). Not Adobe AME — re-importable here.'); },
+  },
 ];
 
 /** Presets this build can actually produce. */

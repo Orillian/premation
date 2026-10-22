@@ -20,13 +20,16 @@ import type { InstalledState } from '@hooks/usePluginStore';
 import { PluginIcon } from './PluginIcon';
 import { StorePluginDetailCard } from './PluginStore';
 import styles from './NativePlugins.module.css';
+import { t } from '@core/i18n';
 
 type Visibility = 'public' | 'private';
 
-const VISIBILITY_OPTIONS = [
-  { value: 'private' as const, label: 'Private' },
-  { value: 'public' as const, label: 'Public' },
-];
+function visibilityOptions(): { value: Visibility; label: string }[] {
+  return [
+    { value: 'private', label: t('plugins.publish.private', 'Private') },
+    { value: 'public', label: t('plugins.publish.public', 'Public') },
+  ];
+}
 
 /** `{signature, publicKey}` from the `.sig` file pack-plugin.mjs writes. */
 export function parseSignatureFile(text: string): { signature: string; publicKey: string } | null {
@@ -57,7 +60,7 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
   const load = useCallback(() => {
     api.myPlugins()
       .then((list) => { if (alive.current) setMine(list.filter((p) => p.kind === 'native')); })
-      .catch((e: unknown) => { if (alive.current) setError(e instanceof Error ? e.message : 'Sign in to publish plugins.'); });
+      .catch((e: unknown) => { if (alive.current) setError(e instanceof Error ? e.message : t('plugins.publish.signIn', 'Sign in to publish plugins.')); });
     api.myPublishers()
       .then((pubs) => { if (alive.current) setVerified(pubs.some((p) => p.verified)); })
       .catch(() => { if (alive.current) setVerified(false); });
@@ -73,10 +76,12 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
     setError(null);
     try {
       await api.setPluginVisibility(id, v);
-      setNote(`${id} is now ${v}.`);
+      setNote(v === 'public'
+        ? t('plugins.publish.nowPublic', '{id} is now public.', { id })
+        : t('plugins.publish.nowPrivate', '{id} is now private.', { id }));
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not change the visibility.');
+      setError(e instanceof Error ? e.message : t('plugins.publish.visibilityFailed', 'Could not change the visibility.'));
     }
   };
 
@@ -87,16 +92,20 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
     setNote(null);
     try {
       const out = await api.publishPlugin(pkg, sig.signature, sig.publicKey, visibility, releaseNotes);
+      const published = out.reviewStatus === 'pending'
+        ? t('plugins.publish.publishedPending', 'Published {id} {version} — held for review before it goes live.', { id: out.id, version: out.latestVersion })
+        : t('plugins.publish.published', 'Published {id} {version}.', { id: out.id, version: out.latestVersion });
       setNote(
-        `Published ${out.id} ${out.latestVersion}${out.reviewStatus === 'pending' ? ' — held for review before it goes live' : ''}.`
-        + (out.warnings.length ? ` Warnings: ${out.warnings.join('; ')}` : ''),
+        out.warnings.length
+          ? t('plugins.publish.withWarnings', '{message} Warnings: {warnings}', { message: published, warnings: out.warnings.join('; ') })
+          : published,
       );
       setPkg(null);
       setSig(null);
       setReleaseNotes('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The upload failed.');
+      setError(e instanceof Error ? e.message : t('plugins.publish.uploadFailed', 'The upload failed.'));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -105,84 +114,101 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
   if (open) return <StorePluginDetailCard id={open} owner store={store} onBack={() => setOpen(null)} />;
 
   return (
-    <section className={styles.card} aria-label="Your plugins">
-      <h3 className={styles.cardTitle}>Your plugins</h3>
+    <section className={styles.card} aria-label={t('plugins.publish.yourPlugins', 'Your plugins')}>
+      <h3 className={styles.cardTitle}>{t('plugins.publish.yourPlugins', 'Your plugins')}</h3>
       {verified === false ? (
         <p className={styles.text}>
-          Your publisher is not verified yet, so your plugins can be private (installable by you) but not public.
+          {t('plugins.publish.notVerified', 'Your publisher is not verified yet, so your plugins can be private (installable by you) but not public.')}
         </p>
       ) : null}
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
       {note ? <span className={styles.text} role="status">{note}</span> : null}
       {mine && mine.length > 0 ? (
-        <ul className={styles.list} aria-label="Your published plugins">
+        <ul className={styles.list} aria-label={t('plugins.publish.publishedListAria', 'Your published plugins')}>
           {mine.map((p) => (
             <li key={p.id} className={styles.row}>
               <PluginIcon plugin={p} size={32} />
-              <button type="button" className={styles.rowOpen} onClick={() => setOpen(p.id)} aria-label={`About ${p.name}`}>
+              <button type="button" className={styles.rowOpen} onClick={() => setOpen(p.id)} aria-label={t('plugins.publish.aboutPlugin', 'About {name}', { name: p.name })}>
                 <span className={styles.rowName}>{p.name}</span>
-                <span className={styles.rowMeta}>{`v${p.latestVersion} · ${p.installs} installs · ${p.tier === 'cloud' ? 'Premation Cloud' : 'Free'}`}</span>
-                <span className={styles.rowMeta}>{p.iconUrl && p.coverUrl ? 'Listing: icon and screenshots set' : 'Open to add an icon, screenshots and About'}</span>
+                <span className={styles.rowMeta}>
+                  {t('plugins.publish.rowMeta', 'v{version} · {n} installs · {tier}', {
+                    version: p.latestVersion,
+                    n: p.installs,
+                    tier: p.tier === 'cloud' ? 'Premation Cloud' : t('plugins.publish.free', 'Free'),
+                  })}
+                </span>
+                <span className={styles.rowMeta}>
+                  {p.iconUrl && p.coverUrl
+                    ? t('plugins.publish.listingSet', 'Listing: icon and screenshots set')
+                    : t('plugins.publish.listingOpen', 'Open to add an icon, screenshots and About')}
+                </span>
               </button>
               <Segmented
                 size="sm"
-                options={VISIBILITY_OPTIONS}
+                options={visibilityOptions()}
                 value={p.visibility}
                 onChange={(v) => void changeVisibility(p.id, v)}
-                aria-label={`Visibility of ${p.name}`}
+                aria-label={t('plugins.publish.visibilityOf', 'Visibility of {name}', { name: p.name })}
               />
             </li>
           ))}
         </ul>
       ) : mine ? (
-        <span className={styles.text}>You have not published a native plugin yet.</span>
+        <span className={styles.text}>{t('plugins.publish.noneYet', 'You have not published a native plugin yet.')}</span>
       ) : null}
 
-      <h3 className={styles.cardTitle}>Publish a version</h3>
+      <h3 className={styles.cardTitle}>{t('plugins.publish.publishVersion', 'Publish a version')}</h3>
       <p className={styles.text}>
-        Pack and sign the plugin with <span className={styles.path}>pack-plugin.mjs --key plugin-key.json</span> (it
-        ships with the SDK), then choose the <span className={styles.path}>.pplugin</span> and its
-        <span className={styles.path}> .sig</span> file here.
+        {t(
+          'plugins.publish.howTo',
+          'Pack and sign the plugin with {command} (it ships with the SDK), then choose the .pplugin and its .sig file here.',
+          { command: 'pack-plugin.mjs --key plugin-key.json' },
+        )}
       </p>
       <div className={styles.toolbar}>
         <label className={styles.fileLabel}>
-          <span>Package (.pplugin)</span>
+          <span>{t('plugins.publish.package', 'Package (.pplugin)')}</span>
           <input type="file" accept=".pplugin,application/zip" onChange={(e) => setPkg(e.target.files?.[0] ?? null)} />
         </label>
         <label className={styles.fileLabel}>
-          <span>Signature (.sig)</span>
+          <span>{t('plugins.publish.signature', 'Signature (.sig)')}</span>
           <input
             type="file"
             accept=".sig,application/json"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (!f) { setSig(null); return; }
-              void f.text().then((t) => {
-                const parsed = parseSignatureFile(t);
+              void f.text().then((text) => {
+                const parsed = parseSignatureFile(text);
                 setSig(parsed);
-                if (!parsed) setError('That signature file is not one pack-plugin.mjs wrote.');
+                if (!parsed) setError(t('plugins.publish.badSignature', 'That signature file is not one pack-plugin.mjs wrote.'));
               });
             }}
           />
         </label>
       </div>
       <label className={styles.editorBlock}>
-        <span className={styles.rowName}>Release notes for this version</span>
-        <span className={styles.rowMeta}>Optional, Markdown. Shown as &quot;What&apos;s new&quot; and with the update offer. The version number comes from the package and must be higher than the one already published.</span>
+        <span className={styles.rowName}>{t('plugins.publish.releaseNotes', 'Release notes for this version')}</span>
+        <span className={styles.rowMeta}>
+          {t(
+            'plugins.publish.releaseNotesHint',
+            'Optional, Markdown. Shown as "What\'s new" and with the update offer. The version number comes from the package and must be higher than the one already published.',
+          )}
+        </span>
         <textarea
           className={styles.textarea}
           rows={4}
           maxLength={5000}
           value={releaseNotes}
           onChange={(e) => setReleaseNotes(e.target.value)}
-          placeholder={'- New: …\n- Fixed: …'}
+          placeholder={`- ${t('plugins.listing.notesNew', 'New: …')}\n- ${t('plugins.listing.notesFixed', 'Fixed: …')}`}
         />
       </label>
       <div className={styles.toolbar}>
-        <Segmented size="sm" options={VISIBILITY_OPTIONS} value={visibility} onChange={setVisibility} aria-label="Visibility of the new version" />
+        <Segmented size="sm" options={visibilityOptions()} value={visibility} onChange={setVisibility} aria-label={t('plugins.publish.newVisibility', 'Visibility of the new version')} />
         <span className={styles.spacer} />
         <Button variant="primary" size="sm" leftIcon={<Icon name="upload" size="sm" />} disabled={!pkg || !sig || busy} onClick={() => void publish()}>
-          {busy ? 'Uploading…' : 'Publish'}
+          {busy ? t('plugins.publish.uploading', 'Uploading…') : t('plugins.publish.publish', 'Publish')}
         </Button>
       </div>
     </section>

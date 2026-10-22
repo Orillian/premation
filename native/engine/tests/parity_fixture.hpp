@@ -511,6 +511,14 @@ Report replay(const SessionData& s, const std::string& portsDir, SessionData* bl
         rep.valueDiffs += 1;
         differs = true;
         rep.lines.push_back(where + ": values differ (hashed; a full fixture explains)");
+        if (const char* dump = std::getenv("PARITY_DUMP"); dump != nullptr) {
+          // The C++ bytes and the fixture's length + hash (the TypeScript bytes
+          // are gone): decode with @motion/engine-api, edit the suspected field
+          // away, re-encode and compare the hash to explain a hashed difference.
+          const std::string base = std::string(dump) + "/" + std::to_string(hash64(std::vector<std::uint8_t>(s.name.begin(), s.name.end())) % 1000000007ULL) + "-" + std::to_string(rep.records - 1);
+          std::ofstream(base + ".cx.bin", std::ios::binary).write(reinterpret_cast<const char*>(mine.data()), static_cast<std::streamsize>(mine.size()));
+          std::ofstream(base + ".ts.hash") << r.length << " " << (r.hash >> 32U) << " " << (r.hash & 0xffffffffU) << "\n";
+        }
       }
     } else {
       api::Response expected;

@@ -17,13 +17,14 @@ import { outputExtFor, type OutputFormat } from '@core/export/renderSpec';
 import { renderDataRows, resolveOutputName, type BatchFieldOps, type BatchRenderSummary } from './batchRender';
 import type { DataTable } from './dataTable';
 import type { TemplateField } from './templateTypes';
+import { t } from '@core/i18n';
 
 /** Formats offered for a batch. A short list on purpose. */
 export const BATCH_FORMATS: ReadonlyArray<{ format: OutputFormat; label: string }> = [
   { format: 'mp4', label: 'MP4 · H.264' },
   { format: 'webm', label: 'WebM · VP9' },
-  { format: 'gif', label: 'Animated GIF' },
-  { format: 'png-sequence', label: 'PNG sequence' },
+  { format: 'gif', get label() { return t('core.batchRender.gif', 'Animated GIF'); } },
+  { format: 'png-sequence', get label() { return t('core.batchRender.pngSequence', 'PNG sequence'); } },
 ];
 
 export interface EditorBatchOptions {

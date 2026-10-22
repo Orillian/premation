@@ -52,6 +52,7 @@ import {
   type SelectorShape,
   type UnitMap,
 } from './textSelectors';
+import { t } from '@core/i18n';
 
 export {
   unitPositions,
@@ -146,19 +147,19 @@ export const OPTIONAL_ANIMATOR_PROPERTIES: ReadonlyArray<{
   step?: number;
   group: 'transform' | 'typography' | 'fill' | 'stroke';
 }> = [
-  { param: 'anchorX', label: 'Anchor Point X', unit: 'px', defaultValue: 0, group: 'transform' },
-  { param: 'anchorY', label: 'Anchor Point Y', unit: 'px', defaultValue: 0, group: 'transform' },
-  { param: 'anchorZ', label: 'Anchor Point Z', unit: 'px', defaultValue: 0, group: 'transform' },
-  { param: 'skewAxis', label: 'Skew Axis', unit: '°', defaultValue: 0, group: 'transform' },
-  { param: 'lineAnchor', label: 'Line Anchor', unit: '%', defaultValue: 0, min: 0, max: 100, group: 'typography' },
-  { param: 'characterValue', label: 'Character Value', unit: '', defaultValue: 65, min: 0, max: 0x10ffff, step: 1, group: 'typography' },
-  { param: 'fillHue', label: 'Fill Hue', unit: '°', defaultValue: 0, group: 'fill' },
-  { param: 'fillSaturation', label: 'Fill Saturation', unit: '%', defaultValue: 0, min: -100, max: 100, group: 'fill' },
-  { param: 'fillBrightness', label: 'Fill Brightness', unit: '%', defaultValue: 0, min: -100, max: 100, group: 'fill' },
-  { param: 'strokeOpacity', label: 'Stroke Opacity', unit: '%', defaultValue: 100, min: 0, max: 100, group: 'stroke' },
-  { param: 'strokeHue', label: 'Stroke Hue', unit: '°', defaultValue: 0, group: 'stroke' },
-  { param: 'strokeSaturation', label: 'Stroke Saturation', unit: '%', defaultValue: 0, min: -100, max: 100, group: 'stroke' },
-  { param: 'strokeBrightness', label: 'Stroke Brightness', unit: '%', defaultValue: 0, min: -100, max: 100, group: 'stroke' },
+  { param: 'anchorX', get label() { return t('core.textAnimators.anchorX', 'Anchor Point X'); }, unit: 'px', defaultValue: 0, group: 'transform' },
+  { param: 'anchorY', get label() { return t('core.textAnimators.anchorY', 'Anchor Point Y'); }, unit: 'px', defaultValue: 0, group: 'transform' },
+  { param: 'anchorZ', get label() { return t('core.textAnimators.anchorZ', 'Anchor Point Z'); }, unit: 'px', defaultValue: 0, group: 'transform' },
+  { param: 'skewAxis', get label() { return t('core.textAnimators.skewAxis', 'Skew Axis'); }, unit: '°', defaultValue: 0, group: 'transform' },
+  { param: 'lineAnchor', get label() { return t('core.textAnimators.lineAnchor', 'Line Anchor'); }, unit: '%', defaultValue: 0, min: 0, max: 100, group: 'typography' },
+  { param: 'characterValue', get label() { return t('core.textAnimators.characterValue', 'Character Value'); }, unit: '', defaultValue: 65, min: 0, max: 0x10ffff, step: 1, group: 'typography' },
+  { param: 'fillHue', get label() { return t('core.textAnimators.fillHue', 'Fill Hue'); }, unit: '°', defaultValue: 0, group: 'fill' },
+  { param: 'fillSaturation', get label() { return t('core.textAnimators.fillSaturation', 'Fill Saturation'); }, unit: '%', defaultValue: 0, min: -100, max: 100, group: 'fill' },
+  { param: 'fillBrightness', get label() { return t('core.textAnimators.fillBrightness', 'Fill Brightness'); }, unit: '%', defaultValue: 0, min: -100, max: 100, group: 'fill' },
+  { param: 'strokeOpacity', get label() { return t('core.textAnimators.strokeOpacity', 'Stroke Opacity'); }, unit: '%', defaultValue: 100, min: 0, max: 100, group: 'stroke' },
+  { param: 'strokeHue', get label() { return t('core.textAnimators.strokeHue', 'Stroke Hue'); }, unit: '°', defaultValue: 0, group: 'stroke' },
+  { param: 'strokeSaturation', get label() { return t('core.textAnimators.strokeSaturation', 'Stroke Saturation'); }, unit: '%', defaultValue: 0, min: -100, max: 100, group: 'stroke' },
+  { param: 'strokeBrightness', get label() { return t('core.textAnimators.strokeBrightness', 'Stroke Brightness'); }, unit: '%', defaultValue: 0, min: -100, max: 100, group: 'stroke' },
 ];
 
 /** AE's "All Transform Properties": the optional transform properties it adds

@@ -10,6 +10,7 @@ import { PresentationModeWindow } from '@layout/Presentation/PresentationModeWin
 import { pluginToolPanelRenderer } from '@layout/Plugins/PluginToolPanel';
 import { AiChatProvider } from '@layout/AiChat/AiChatContext';
 import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
+import { t } from '@core/i18n';
 import { pluginContribRevision, pluginPanel, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
 import { Providers } from '../providers/Providers';
 
@@ -24,22 +25,22 @@ function PopoutContent(): JSX.Element {
 
   useEffect(() => {
     const titleMap: Record<string, string> = {
-      viewport: 'Viewport Preview — Premation',
-      timeline: 'Timeline — Premation',
-      presentation: 'Presentation Mode — Premation',
+      viewport: t('pages.popout.titleViewport', 'Viewport Preview — Premation'),
+      timeline: t('pages.popout.titleTimeline', 'Timeline — Premation'),
+      presentation: t('pages.popout.titlePresentation', 'Presentation Mode — Premation'),
     };
     // `panel` comes from the layout store, which is EMPTY in a pop-out window
     // (registerPanel only runs in the editor shell), so this always fell through
     // to the generic "Detached Window". The shared registry knows the real name.
     const name = panel?.title ?? panelDef(panelId ?? '')?.title ?? pluginPanel(panelId ?? '')?.panel.name;
-    document.title = titleMap[panelId ?? ''] ?? (name ? `${name} — Premation` : 'Detached Window');
+    document.title = titleMap[panelId ?? ''] ?? (name ? t('pages.popout.titlePanel', '{name} — Premation', { name }) : t('pages.popout.titleDetached', 'Detached Window'));
 
     // The document reaches this window from the engine (windowSync: the page
     // replica refreshes from `exportDocument`, the mirror follows the engine).
   }, [panelId, panel, contrib]);
 
   if (!panelId) {
-    return <div style={{ color: '#fff', padding: 20 }}>No panel ID specified.</div>;
+    return <div style={{ color: '#fff', padding: 20 }}>{t('pages.popout.noPanelId', 'No panel ID specified.')}</div>;
   }
 
   // Handle special full-screen popout types: Viewport, Timeline, Presentation Mode
@@ -85,7 +86,7 @@ function PopoutContent(): JSX.Element {
             EditorShell mounts — a popped-out AI panel needs its own. */}
         {renderContent
           ? (panelId === 'ai' ? <AiChatProvider>{renderContent()}</AiChatProvider> : renderContent())
-          : <div style={{ padding: 20 }}>Panel Content ({panelId})</div>}
+          : <div style={{ padding: 20 }}>{t('pages.popout.panelContent', 'Panel Content ({panelId})', { panelId })}</div>}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@
  */
 
 import { asCommandId, type CommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import { getCommandRegistry } from '@core/commands/Command';
 import { getShortcutManager } from '@core/commands/ShortcutManager';
 import { engine } from '@core/engine/engineInstance';
@@ -75,7 +76,7 @@ export function buildPluginMenuGroup(): MenuGroupModel | null {
   if (panels.length > 0) {
     if (items.length > 0) items.push({ separator: true });
     items.push({
-      label: 'Panels',
+      label: t('menuBar.plugins.panels', 'Panels'),
       children: panels.map((p) => ({
         label: p.kind === 'effect' ? p.pluginName : `${p.panel.name} (${p.pluginName})`,
         onSelect: () => useLayoutStore.getState().openPanel(p.panelId),

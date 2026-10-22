@@ -15,15 +15,16 @@ import { SOURCE_TEXT_PROP } from '@motion/animation';
 import { openModal } from '@stores/modalStore';
 import { documentMirror } from '@stores/documentMirror';
 import { ExpressionEditor } from '@layout/Motion/ExpressionEditor';
+import { t } from '@core/i18n';
 
 export const SOURCE_TEXT_EXPRESSION_MODAL_ID = 'source-text-expression';
 
 export function openSourceTextExpressionEditor(nodeId: string): void {
-  const name = documentMirror().layer(nodeId)?.name ?? 'Text';
+  const name = documentMirror().layer(nodeId)?.name ?? t('text.sourceExpression.defaultName', 'Text');
   openModal({
     // Stable id: a floating window remembers where it was put.
     id: SOURCE_TEXT_EXPRESSION_MODAL_ID,
-    title: `Source Text Expression — ${name}`,
+    title: t('text.sourceExpression.title', 'Source Text Expression — {name}', { name }),
     size: 'md',
     variant: 'floating',
     render: () => <ExpressionEditor nodeId={nodeId} prop={SOURCE_TEXT_PROP} />,

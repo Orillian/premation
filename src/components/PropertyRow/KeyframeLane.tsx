@@ -20,6 +20,7 @@ import { cn } from '@utils/cn';
 import { laneX, laneTime, retimeTarget, nearestKeyframe, type LaneGeometry } from '@core/inspector/keyframeLane';
 import { subscribeTime, getTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
+import { t } from '@core/i18n';
 import styles from './KeyframeLane.module.css';
 
 /** ViewBox width — the strip stretches to the row with `preserveAspectRatio="none"`. */
@@ -122,7 +123,7 @@ function KeyframeLaneInner({
       viewBox={`0 0 ${LANE_UNITS} ${LANE_HEIGHT}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label={label ? `${label} keyframes` : 'Keyframes'}
+      aria-label={label ? t('propertyRow.lane.labelNamed', '{name} keyframes', { name: label }) : t('propertyRow.lane.label', 'Keyframes')}
       data-keyframe-lane
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

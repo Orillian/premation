@@ -38,6 +38,7 @@
  */
 
 import type { BezierHandles } from '@motion/animation';
+import { t } from '@core/i18n';
 
 /** The shape of the acceleration, independent of which end it applies to. */
 export type EaseFamily =
@@ -66,22 +67,50 @@ export interface EasePreset {
 }
 
 /** Families in increasing severity — the order they are offered in. */
-const FAMILY_ORDER: ReadonlyArray<{ family: EaseFamily; label: string }> = [
-  { family: 'sine', label: 'Sine' },
-  { family: 'quad', label: 'Quad' },
-  { family: 'cubic', label: 'Cubic' },
-  { family: 'quart', label: 'Quart' },
-  { family: 'quint', label: 'Quint' },
-  { family: 'expo', label: 'Expo' },
-  { family: 'circ', label: 'Circ' },
-  { family: 'back', label: 'Back' },
+const FAMILY_ORDER: ReadonlyArray<{ family: EaseFamily; readonly label: string }> = [
+  { family: 'sine', get label() { return t('core.easePresets.sine', 'Sine'); } },
+  { family: 'quad', get label() { return t('core.easePresets.quad', 'Quad'); } },
+  { family: 'cubic', get label() { return t('core.easePresets.cubic', 'Cubic'); } },
+  { family: 'quart', get label() { return t('core.easePresets.quart', 'Quart'); } },
+  { family: 'quint', get label() { return t('core.easePresets.quint', 'Quint'); } },
+  { family: 'expo', get label() { return t('core.easePresets.expo', 'Expo'); } },
+  { family: 'circ', get label() { return t('core.easePresets.circ', 'Circ'); } },
+  { family: 'back', get label() { return t('core.easePresets.back', 'Back'); } },
 ];
 
-const DIRECTION_LABEL: Record<EaseDirection, string> = {
-  in: 'In',
-  out: 'Out',
-  inOut: 'In Out',
-};
+/**
+ * Whole-phrase display names, one key per curve — word order of "family +
+ * direction" is not universal, so the two halves are never joined in code.
+ * A function, not a table: `t()` must run at call time, not at module load.
+ */
+function presetLabel(id: EasePresetId): string {
+  switch (id) {
+    case 'sine-in': return t('core.easePresets.sineIn', 'Sine In');
+    case 'sine-out': return t('core.easePresets.sineOut', 'Sine Out');
+    case 'sine-inOut': return t('core.easePresets.sineInOut', 'Sine In Out');
+    case 'quad-in': return t('core.easePresets.quadIn', 'Quad In');
+    case 'quad-out': return t('core.easePresets.quadOut', 'Quad Out');
+    case 'quad-inOut': return t('core.easePresets.quadInOut', 'Quad In Out');
+    case 'cubic-in': return t('core.easePresets.cubicIn', 'Cubic In');
+    case 'cubic-out': return t('core.easePresets.cubicOut', 'Cubic Out');
+    case 'cubic-inOut': return t('core.easePresets.cubicInOut', 'Cubic In Out');
+    case 'quart-in': return t('core.easePresets.quartIn', 'Quart In');
+    case 'quart-out': return t('core.easePresets.quartOut', 'Quart Out');
+    case 'quart-inOut': return t('core.easePresets.quartInOut', 'Quart In Out');
+    case 'quint-in': return t('core.easePresets.quintIn', 'Quint In');
+    case 'quint-out': return t('core.easePresets.quintOut', 'Quint Out');
+    case 'quint-inOut': return t('core.easePresets.quintInOut', 'Quint In Out');
+    case 'expo-in': return t('core.easePresets.expoIn', 'Expo In');
+    case 'expo-out': return t('core.easePresets.expoOut', 'Expo Out');
+    case 'expo-inOut': return t('core.easePresets.expoInOut', 'Expo In Out');
+    case 'circ-in': return t('core.easePresets.circIn', 'Circ In');
+    case 'circ-out': return t('core.easePresets.circOut', 'Circ Out');
+    case 'circ-inOut': return t('core.easePresets.circInOut', 'Circ In Out');
+    case 'back-in': return t('core.easePresets.backIn', 'Back In');
+    case 'back-out': return t('core.easePresets.backOut', 'Back Out');
+    case 'back-inOut': return t('core.easePresets.backInOut', 'Back In Out');
+  }
+}
 
 /** The raw table: family → direction → handles. */
 const CURVES: Record<EaseFamily, Record<EaseDirection, BezierHandles>> = {
@@ -97,12 +126,13 @@ const CURVES: Record<EaseFamily, Record<EaseDirection, BezierHandles>> = {
 
 function buildPresets(): EasePreset[] {
   const out: EasePreset[] = [];
-  for (const { family, label } of FAMILY_ORDER) {
+  for (const { family } of FAMILY_ORDER) {
     for (const direction of ['in', 'out', 'inOut'] as const) {
       const bezier = CURVES[family][direction];
+      const id: EasePresetId = `${family}-${direction}`;
       out.push({
-        id: `${family}-${direction}`,
-        label: `${label} ${DIRECTION_LABEL[direction]}`,
+        id,
+        get label() { return presetLabel(id); },
         family,
         direction,
         bezier,
@@ -132,9 +162,9 @@ export function isEasePresetId(id: string): id is EasePresetId {
 
 /** The library grouped for display: one row per family. */
 export function easePresetsByFamily(): ReadonlyArray<{ family: EaseFamily; label: string; presets: EasePreset[] }> {
-  return FAMILY_ORDER.map(({ family, label }) => ({
-    family,
-    label,
-    presets: EASE_PRESETS.filter((p) => p.family === family),
+  return FAMILY_ORDER.map((row) => ({
+    family: row.family,
+    label: row.label,
+    presets: EASE_PRESETS.filter((p) => p.family === row.family),
   }));
 }

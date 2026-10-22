@@ -86,15 +86,16 @@
   cursor: default;
 }
 
-/* Lit: a tint and a blue glyph, not a blue box. */
+/* Lit: After Effects' pressed tool — a grey well with the glyph in ink. Not
+   the accent, so a lit toggle is never mistaken for a selection or for Play. */
 .toolActive {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 .toolActive:hover:not(:disabled) {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-text);
+  background: var(--color-tool-pressed);
+  color: var(--color-text-primary);
 }
 
 /* The menu's current value, as text beside (or instead of) the glyph. */

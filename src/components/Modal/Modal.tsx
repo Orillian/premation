@@ -53,6 +53,7 @@ import {
   type DialogGeometry,
 } from './dialogGeometry';
 import { enterShouldConfirm, findPrimaryButton } from './enterToConfirm';
+import { t } from '@core/i18n';
 import styles from './Modal.module.css';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'fullscreen';
@@ -310,7 +311,7 @@ export function Modal({
     >
       {/* Radix requires a Title for a11y; hide it visually when unused. */}
       {hideHeader || !title ? (
-        <Dialog.Title style={SR_ONLY}>{title ?? 'Dialog'}</Dialog.Title>
+        <Dialog.Title style={SR_ONLY}>{title ?? t('ui.modal.dialog', 'Dialog')}</Dialog.Title>
       ) : null}
 
       {!hideHeader ? (
@@ -332,7 +333,7 @@ export function Modal({
                   this button, focus opens its tooltip, and Radix gives the
                   first Escape to that tooltip layer instead of the dialog. The
                   aria-label still names it. */}
-              <IconButton aria-label="Close" tooltip="" size="sm">
+              <IconButton aria-label={t('ui.modal.close', 'Close')} tooltip="" size="sm">
                 <Icon name="close" size="sm" />
               </IconButton>
             </Dialog.Close>

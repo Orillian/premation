@@ -137,9 +137,13 @@ function generate() {
 test('the C++ text animator / text path parity fixture matches the editor', () => {
   const data = generate();
   expect(existsSync(OUT)).toBe(true);
-  const stored = JSON.parse(readFileSync(OUT, 'utf8')) as Record<string, unknown>;
+  const stored = JSON.parse(readFileSync(OUT, 'utf8')) as { comment?: unknown; cases: Array<{ name: string }>; masks: unknown };
   delete stored.comment;
-  expect(stored).toEqual(JSON.parse(JSON.stringify(data)));
+  // The C++ test adds cases the TS engine never learned (font-axis offsets,
+  // expression selectors, Character Range — 2026-10-20); compare the shared ones.
+  const names = new Set(CASES.map((c) => c.name));
+  expect(CASES.every((c) => stored.cases.some((s) => s.name === c.name))).toBe(true);
+  expect({ ...stored, cases: stored.cases.filter((c) => names.has(c.name)) }).toEqual(JSON.parse(JSON.stringify(data)));
   // The fixture exercises what it claims to.
   expect(data.cases.some((c) => c.glyphs.some((g) => g.displayChar !== g.char))).toBe(true);
   expect(data.cases.some((c) => c.glyphs.some((g) => g.blurY !== undefined))).toBe(true);

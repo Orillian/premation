@@ -389,10 +389,13 @@ class Document {
     tlAllDirty_ = false;
   }
 
-  /// The open transaction's journal so far (its befores); empty when none is open.
-  void peek_journal(Parts& out) const {
-    if (journal_) out = *journal_;
-  }
+  /// The open transaction's journal so far (its befores), read in place; null
+  /// when none is open. The pointer is valid until commit() / rollback(). A
+  /// write while reading it only ever ADDS a part (note_* emplace once per
+  /// key; nothing erases), and std::map insertion keeps iterators valid — so
+  /// the stamp / proxy-detach passes that write the document while walking
+  /// the journal need no copy of it (a copy per command made a batch O(N²)).
+  [[nodiscard]] const Parts* journal() const noexcept { return journal_.get(); }
   /// The node ids whose animation the open transaction touched, in the order
   /// first touched (the TS scope's key order: stampMissingKeyIds mints in it).
   [[nodiscard]] const std::vector<std::string>& journal_anim_order() const noexcept { return animOrder_; }

@@ -78,6 +78,7 @@ import {
 } from '@core/timeline/transportController';
 import styles from './TransportBar.module.css';
 import tool from './viewportToolButton.module.css';
+import { t } from '@core/i18n';
 
 /**
  * Memoised: it takes no props and subscribes to everything it draws (workspace
@@ -120,7 +121,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
     }
     if (shed('zoom')) {
       if (items.length) items.push({ type: 'separator' });
-      items.push({ type: 'item', id: 'tb-zoom', label: `Zoom: ${Math.round(zoom)}%`, icon: 'zoom-in', submenu: zoomMenuItems(zoom) });
+      items.push({ type: 'item', id: 'tb-zoom', label: t('workspace.transport.zoom', 'Zoom: {percent}%', { percent: Math.round(zoom) }), icon: 'zoom-in', submenu: zoomMenuItems(zoom) });
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +132,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
       ref={barRef}
       className={styles.bar}
       role="toolbar"
-      aria-label="Viewport transport and tools"
+      aria-label={t('workspace.transport.toolbar', 'Viewport transport and tools')}
       // The JKL chords read `[data-transport-bar]` as "the viewport has focus"
       // — see `viewportCommands.transportChordsActive`.
       data-transport-bar=""
@@ -159,7 +160,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
 
         <div
           className={styles.timecode}
-          title={`Current time — minutes : seconds : frames @ ${fps} fps`}
+          title={t('workspace.transport.currentTime', 'Current time — minutes : seconds : frames @ {fps} fps', { fps })}
         >
           <LiveTimecode fps={fps} startFrame={startFrame} />
           <span className={styles.timecodeTotal}>/ {framesToTimecode(duration, fps, startFrame)}</span>
@@ -181,8 +182,8 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <button
           type="button"
           className={styles.btn}
-          title="Go to Start (Home)"
-          aria-label="Go to Start"
+          title={t('workspace.transport.goToStartTitle', 'Go to Start (Home)')}
+          aria-label={t('workspace.transport.goToStart', 'Go to Start')}
           onClick={() => goToStart()}
         >
           <Icon name="skip-back" size="md" weight="fill" />
@@ -190,8 +191,8 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <button
           type="button"
           className={styles.btn}
-          title="Previous Frame (Page Up)"
-          aria-label="Previous Frame"
+          title={t('workspace.transport.prevFrameTitle', 'Previous Frame (Page Up)')}
+          aria-label={t('workspace.transport.prevFrame', 'Previous Frame')}
           onClick={() => stepBackward()}
         >
           <Icon name="chevron-left" size="md" weight="bold" />
@@ -199,8 +200,10 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <button
           type="button"
           className={cn(styles.btn, styles.playBtn, ws?.playing && styles.playBtnActive)}
-          title={ws?.playing ? 'Pause Playback (Space)' : 'Start Playback (Space)'}
-          aria-label={ws?.playing ? 'Pause' : 'Play'}
+          title={ws?.playing
+            ? t('workspace.transport.pauseTitle', 'Pause Playback (Space)')
+            : t('workspace.transport.playTitle', 'Start Playback (Space)')}
+          aria-label={ws?.playing ? t('workspace.transport.pause', 'Pause') : t('workspace.transport.play', 'Play')}
           onClick={() => togglePlayTransport()}
         >
           <Icon name={ws?.playing ? 'pause' : 'play'} size="lg" weight="fill" />
@@ -209,8 +212,8 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <button
           type="button"
           className={styles.btn}
-          title="Next Frame (Page Down)"
-          aria-label="Next Frame"
+          title={t('workspace.transport.nextFrameTitle', 'Next Frame (Page Down)')}
+          aria-label={t('workspace.transport.nextFrame', 'Next Frame')}
           onClick={() => stepForward()}
         >
           <Icon name="chevron-right" size="md" weight="bold" />
@@ -218,8 +221,8 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <button
           type="button"
           className={styles.btn}
-          title="Go to End (End)"
-          aria-label="Go to End"
+          title={t('workspace.transport.goToEndTitle', 'Go to End (End)')}
+          aria-label={t('workspace.transport.goToEnd', 'Go to End')}
           onClick={() => goToEnd()}
         >
           <Icon name="skip-forward" size="md" weight="fill" />
@@ -246,7 +249,7 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
               <Dropdown
                 placement="top-end"
                 trigger={
-                  <button type="button" className={tool.tool} title="More transport controls" aria-label={`More transport controls (${overflowItems.length})`}>
+                  <button type="button" className={tool.tool} title={t('workspace.transport.more', 'More transport controls')} aria-label={t('workspace.transport.moreCount', 'More transport controls ({n})', { n: overflowItems.length })}>
                     <Icon name="more-horizontal" size="sm" />
                   </button>
                 }
@@ -282,8 +285,10 @@ function ShuttleRateBadge(): JSX.Element | null {
     <span
       className={styles.shuttleRate}
       role="status"
-      aria-label={`Shuttle ${rate < 0 ? 'reverse' : 'forward'} ${speed}×`}
-      title="Shuttle running — J / L again for 2× and 4×, K stops (I / O mark in and out)"
+      aria-label={rate < 0
+        ? t('workspace.transport.shuttleReverse', 'Shuttle reverse {speed}×', { speed })
+        : t('workspace.transport.shuttleForward', 'Shuttle forward {speed}×', { speed })}
+      title={t('workspace.transport.shuttleTitle', 'Shuttle running — J / L again for 2× and 4×, K stops (I / O mark in and out)')}
     >
       {dir} {speed}×
     </span>

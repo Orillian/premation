@@ -37,6 +37,7 @@ import {
   SCRUB_DEAD_ZONE_PX,
   type ScrubState,
 } from './scrubMath';
+import { t } from '@core/i18n';
 import styles from './ValueField.module.css';
 
 export interface ValueFieldProps {
@@ -510,7 +511,7 @@ function ValueFieldBase({
       onKeyDown={onFieldKeyDown}
       data-numeric
       data-mixed={mixed || undefined}
-      title={mixed ? 'Mixed values — drag to offset all, type to set all (+10, *2 apply per layer)' : undefined}
+      title={mixed ? t('ui.valueField.mixedTitle', 'Mixed values — drag to offset all, type to set all (+10, *2 apply per layer)') : undefined}
       {...(!editing
         ? {
             role: 'spinbutton',
@@ -519,7 +520,7 @@ function ValueFieldBase({
             'aria-valuenow': !mixed && Number.isFinite(value) ? value : undefined,
             'aria-valuemin': Number.isFinite(min) ? min : undefined,
             'aria-valuemax': Number.isFinite(max) ? max : undefined,
-            'aria-valuetext': mixed ? 'Mixed' : `${format(value, precision)}${unit ?? ''}`,
+            'aria-valuetext': mixed ? t('ui.valueField.mixed', 'Mixed') : `${format(value, precision)}${unit ?? ''}`,
             'aria-disabled': disabled || undefined,
           }
         : {})}

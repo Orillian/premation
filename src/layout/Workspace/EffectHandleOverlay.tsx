@@ -55,6 +55,7 @@ import {
 import { GestureSession } from '@core/engine/uiEdits';
 import { paths, ref, values as apiValues } from '@core/engine/propRefs';
 import { trackValueCommands } from './viewportEdits';
+import { t } from '@core/i18n';
 
 /** Drawn radius. Smaller than the PICK radius on purpose — see the note below. */
 const VERTEX_R = 5;
@@ -261,7 +262,7 @@ export function EffectHandleOverlay({ host }: { host?: TrackPointHost } = {}): J
   return (
     <svg
       ref={svgRef}
-      aria-label={`${effect.type} handles`}
+      aria-label={t('workspace.effectHandles.overlay', '{type} handles', { type: effect.type })}
       // `none` at the svg level: this overlay spans the whole stage, and an
       // `auto` svg swallowed every viewport gesture (pan, zoom, layer drags)
       // while handles were shown. Only the per-handle hit circles below are
@@ -279,7 +280,7 @@ export function EffectHandleOverlay({ host }: { host?: TrackPointHost } = {}): J
         const r = h.spec.kind === 'vertex' ? VERTEX_R : TANGENT_R;
         const on = hovered === h.spec.id;
         return (
-          <g key={h.spec.id} aria-label={`${h.spec.label} handle`}>
+          <g key={h.spec.id} aria-label={t('workspace.effectHandles.handle', '{label} handle', { label: h.spec.label })}>
             {/* Invisible fat hit target at the pick radius — the one
                 interactive part of the overlay. Events bubble to the svg's
                 own listeners, whose hit test uses the same radius. */}

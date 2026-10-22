@@ -24,6 +24,7 @@
 
 import { Icon } from '@components/Icon';
 import { useUpdateStore } from '@stores/updateStore';
+import { t } from '@core/i18n';
 import styles from './TitleBar.module.css';
 
 export function UpdateButton(): JSX.Element | null {
@@ -50,11 +51,11 @@ export function UpdateButton(): JSX.Element | null {
       // The version belongs in the tooltip, not the label: the label has to stay
       // the same width whatever the version number is, or the whole title bar
       // reflows when an update lands.
-      title={`Premation ${version} is ready to install`}
-      aria-label={`Restart to update to Premation ${version}`}
+      title={t('titleBar.update.readyTitle', 'Premation {version} is ready to install', { version })}
+      aria-label={t('titleBar.update.ariaLabel', 'Restart to update to Premation {version}', { version })}
     >
       <Icon name="download" size="sm" aria-hidden />
-      <span>{restarting ? 'Restarting…' : 'Restart to update'}</span>
+      <span>{restarting ? t('titleBar.update.restarting', 'Restarting…') : t('titleBar.update.restart', 'Restart to update')}</span>
     </button>
   );
 }

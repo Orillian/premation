@@ -10,6 +10,7 @@
  * block (see ShapeEffects, which also owns the "+ Add" entry point).
  */
 
+import { t } from '@core/i18n';
 import { ValueField } from '@components/ValueField';
 import { Button } from '@components/Button';
 import { cn } from '@utils/cn';
@@ -63,17 +64,17 @@ export function AudioWaveformSection({ nodeId }: { nodeId: string }): JSX.Elemen
         <div className={styles.popoverRow}>
           <span
             className={styles.popoverLabel}
-            title="Draws the amplitude envelope of an audio layer (not a frequency spectrum), from the source's precomputed peaks — deterministic, so scrubbing is stable. Nothing draws until the audio has decoded."
+            title={t('inspector.audioWaveform.sourceHint', 'Draws the amplitude envelope of an audio layer (not a frequency spectrum), from the source\'s precomputed peaks — deterministic, so scrubbing is stable. Nothing draws until the audio has decoded.')}
           >
-            Source
+            {t('inspector.audioWaveform.source', 'Source')}
           </span>
           <select
             className={cn(styles.select, styles.rowSelect)}
             value={cfg.sourceLayerId}
             onChange={(e) => set('sourceLayerId', e.target.value)}
-            aria-label="Source audio layer"
+            aria-label={t('inspector.audioWaveform.sourceAria', 'Source audio layer')}
           >
-            <option value="">— Select audio —</option>
+            <option value="">{t('inspector.audioWaveform.selectAudio', '— Select audio —')}</option>
             {audioLayers.map((n) => (
               <option key={n.id} value={n.id}>{n.name ?? n.id}</option>
             ))}
@@ -81,52 +82,52 @@ export function AudioWaveformSection({ nodeId }: { nodeId: string }): JSX.Elemen
         </div>
 
         {audioLayers.length === 0 && (
-          <p className={styles.helpWarning} role="note">No audio layers in this scene — import an audio file first.</p>
+          <p className={styles.helpWarning} role="note">{t('inspector.audioWaveform.noAudio', 'No audio layers in this scene — import an audio file first.')}</p>
         )}
         {sourceMissing && (
-          <p className={styles.helpWarning} role="note">The linked audio layer no longer exists — pick another source.</p>
+          <p className={styles.helpWarning} role="note">{t('inspector.audioWaveform.sourceMissing', 'The linked audio layer no longer exists — pick another source.')}</p>
         )}
 
         <div className={styles.popoverRow}>
-          <span className={styles.popoverLabel}>Display</span>
+          <span className={styles.popoverLabel}>{t('inspector.audioWaveform.display', 'Display')}</span>
           <select
             className={cn(styles.select, styles.rowSelect)}
             value={cfg.mode}
             onChange={(e) => set('mode', e.target.value as AudioWaveformConfig['mode'])}
-            aria-label="Waveform display mode"
+            aria-label={t('inspector.audioWaveform.displayAria', 'Waveform display mode')}
           >
-            <option value="full">Full clip</option>
-            <option value="playhead-window">Playhead window</option>
+            <option value="full">{t('inspector.audioWaveform.fullClip', 'Full clip')}</option>
+            <option value="playhead-window">{t('inspector.audioWaveform.playheadWindow', 'Playhead window')}</option>
           </select>
         </div>
 
         {cfg.mode === 'playhead-window' && (
           <div className={styles.popoverRow}>
             <div style={{ width: 13 }} />
-            <span className={styles.popoverLabel}>Window</span>
-            <ValueField {...scrub} value={cfg.windowSec} unit="s" min={0} precision={2} onChange={(v) => set('windowSec', Number(v))} aria-label="Window seconds" />
+            <span className={styles.popoverLabel}>{t('inspector.audioWaveform.window', 'Window')}</span>
+            <ValueField {...scrub} value={cfg.windowSec} unit="s" min={0} precision={2} onChange={(v) => set('windowSec', Number(v))} aria-label={t('inspector.audioWaveform.windowAria', 'Window seconds')} />
           </div>
         )}
 
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Height</span>
-          <ValueField {...scrub} value={cfg.heightScale} min={0} precision={2} onChange={(v) => set('heightScale', Number(v))} aria-label="Height scale" />
+          <span className={styles.popoverLabel}>{t('inspector.audioWaveform.height', 'Height')}</span>
+          <ValueField {...scrub} value={cfg.heightScale} min={0} precision={2} onChange={(v) => set('heightScale', Number(v))} aria-label={t('inspector.audioWaveform.heightAria', 'Height scale')} />
         </div>
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Thickness</span>
-          <ValueField {...scrub} value={cfg.thickness} unit="px" min={0} onChange={(v) => set('thickness', Number(v))} aria-label="Thickness" />
+          <span className={styles.popoverLabel}>{t('inspector.audioWaveform.thickness', 'Thickness')}</span>
+          <ValueField {...scrub} value={cfg.thickness} unit="px" min={0} onChange={(v) => set('thickness', Number(v))} aria-label={t('inspector.audioWaveform.thickness', 'Thickness')} />
         </div>
         <div className={styles.popoverRow}>
           <div style={{ width: 13 }} />
-          <span className={styles.popoverLabel}>Samples</span>
-          <ValueField {...scrub} value={cfg.samples} min={2} onChange={(v) => set('samples', Math.max(2, Math.floor(Number(v))))} aria-label="Samples" />
+          <span className={styles.popoverLabel}>{t('inspector.audioWaveform.samples', 'Samples')}</span>
+          <ValueField {...scrub} value={cfg.samples} min={2} onChange={(v) => set('samples', Math.max(2, Math.floor(Number(v))))} aria-label={t('inspector.audioWaveform.samples', 'Samples')} />
         </div>
 
         <div className={styles.actionRow}>
           <Button size="sm" variant="secondary" onClick={() => { void edit('Remove Audio Waveform', audioWaveformCommands(nodeId, null)); }}>
-            Remove Audio Waveform
+            {t('inspector.audioWaveform.remove', 'Remove Audio Waveform')}
           </Button>
         </div>
       </div>

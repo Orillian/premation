@@ -17,6 +17,7 @@ import {
 } from '@core/nativePlugins/pluginContrib';
 import { usePluginContrib } from '@hooks/usePluginContrib';
 import { usePluginExportOptions, type PluginOptionValues } from '@stores/pluginExportOptionsStore';
+import { t } from '@core/i18n';
 import styles from './ExportDialog.module.css';
 
 export { isPluginFormat };
@@ -48,10 +49,10 @@ export function usePluginExportPresets(): { presets: ExportPreset[]; group: { id
     format: f.id,
     label: f.module.name,
     ext: f.module.extension,
-    hint: `${f.module.name} — written by the ${f.pluginName} plugin's output module, frame by frame, to the path you choose.`,
+    hint: t('export.pluginFormat.hint', "{name} — written by the {plugin} plugin's output module, frame by frame, to the path you choose.", { name: f.module.name, plugin: f.pluginName }),
     desktopOnly: true,
   }));
-  return { presets, group: presets.length > 0 ? { id: 'plugins', label: 'Plugins', formats: presets.map((p) => p.format) } : null };
+  return { presets, group: presets.length > 0 ? { id: 'plugins', label: t('export.pluginFormat.category', 'Plugins'), formats: presets.map((p) => p.format) } : null };
 }
 
 /** The declared options of the selected plugin format, as controls. */
@@ -63,7 +64,7 @@ export function PluginFormatOptions({ format, disabled }: { format: string; disa
   if (!f || f.module.options.length === 0) return null;
   return (
     <div className={styles.section}>
-      <div className={styles.label}>{f.module.name} options</div>
+      <div className={styles.label}>{t('export.pluginFormat.options', '{name} options', { name: f.module.name })}</div>
       {f.module.options.map((o) => {
         const v = values?.[o.id] ?? (o.type === 'checkbox' ? o.defaultValue !== 0 : o.defaultValue);
         const id = `plugin-opt-${o.id}`;

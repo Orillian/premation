@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useWorkspaceStore } from '@stores/projectStore';
 import { audioEngine } from '@core/audio/AudioEngine';
 import { toDb, meterFraction } from '@core/audio/audioLevels';
+import { t } from '@core/i18n';
 
 interface Bars {
   l: number;
@@ -44,8 +45,8 @@ export function VUMeter(): JSX.Element | null {
 
   return (
     <span
-      title="Audio levels (L / R)"
-      aria-label="Audio VU meter"
+      title={t('statusBar.vu.title', 'Audio levels (L / R)')}
+      aria-label={t('statusBar.vu.ariaLabel', 'Audio VU meter')}
       style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, width: 46, verticalAlign: 'middle' }}
     >
       <Bar level={bars.l} />

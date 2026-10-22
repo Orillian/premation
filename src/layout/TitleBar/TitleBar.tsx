@@ -14,6 +14,7 @@ import { MacWindowControls } from './MacWindowControls';
 import { useTitleBarOverlaySync } from './useTitleBarOverlaySync';
 import { panelIdFromPopoutSegment } from '@core/layout/popoutPath';
 import { pluginContribRevision, pluginPanels, subscribePluginContrib } from '@core/nativePlugins/pluginContrib';
+import { t } from '@core/i18n';
 import styles from './TitleBar.module.css';
 
 /**
@@ -36,7 +37,7 @@ function WindowsCaptionButtons(): JSX.Element {
   const win = window.electronAPI?.window;
   return (
     <div className={styles.windowActions}>
-      <button type="button" onClick={() => void win?.minimize?.()} className={styles.btn} title="Minimize">
+      <button type="button" onClick={() => void win?.minimize?.()} className={styles.btn} title={t('titleBar.caption.minimize', 'Minimize')}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
         </svg>
@@ -48,7 +49,7 @@ function WindowsCaptionButtons(): JSX.Element {
           setIsMaximized(!isMaximized);
         }}
         className={styles.btn}
-        title={isMaximized ? 'Restore' : 'Maximize'}
+        title={isMaximized ? t('titleBar.caption.restore', 'Restore') : t('titleBar.caption.maximize', 'Maximize')}
       >
         {isMaximized ? (
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -61,7 +62,7 @@ function WindowsCaptionButtons(): JSX.Element {
           </svg>
         )}
       </button>
-      <button type="button" onClick={() => void win?.close?.()} className={`${styles.btn} ${styles.btnClose}`} title="Close">
+      <button type="button" onClick={() => void win?.close?.()} className={`${styles.btn} ${styles.btnClose}`} title={t('titleBar.caption.close', 'Close')}>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
         </svg>
@@ -87,12 +88,18 @@ function WindowsCaptionButtons(): JSX.Element {
  * `PREMATION_UI_PLATFORM` switches between them in development (`.env.local`).
  */
 /** A pop-out window's name: the panel it holds (the title bar is its only header). */
-const POPOUT_TITLES: Readonly<Record<string, string>> = { viewport: 'Composition', timeline: 'Timeline', presentation: 'Preview' };
+function popoutTitles(): Readonly<Record<string, string>> {
+  return {
+    viewport: t('titleBar.popout.composition', 'Composition'),
+    timeline: t('titleBar.popout.timeline', 'Timeline'),
+    presentation: t('titleBar.popout.preview', 'Preview'),
+  };
+}
 function popoutTitle(pathname: string): string | null {
   const m = new RegExp('^/popout/([^/]+)').exec(pathname);
   if (!m) return null;
   const id = panelIdFromPopoutSegment(m[1] ?? '');
-  return POPOUT_TITLES[id] ?? panelDef(id)?.title ?? pluginPanels().find((p) => p.panelId === id)?.panel.name ?? id;
+  return popoutTitles()[id] ?? panelDef(id)?.title ?? pluginPanels().find((p) => p.panelId === id)?.panel.name ?? id;
 }
 
 export function TitleBar(): JSX.Element | null {

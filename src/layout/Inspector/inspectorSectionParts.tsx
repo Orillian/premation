@@ -27,6 +27,7 @@ import { useCompLayersWatch } from './inspectorMirror';
 import { LayerStylesControls } from '@layout/Effects/LayerStylesControls';
 import { StylePresetsSection } from './StylePresetsSection';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 /**
  * Transform. The name predates the move of the 3D switch into Geometry Options
@@ -65,9 +66,9 @@ export function PrecompGroupSection({ nodeId }: { nodeId: string }): JSX.Element
       <PrecompControl nodeId={nodeId} />
       {retainsSvg && <RevertSvgRow onRevert={() => { void revertSvgToLayer(nodeId); }} />}
       <div className={styles.groupMeta}>
-        <span className={styles.groupCount}>Children: {childrenCount}</span>
+        <span className={styles.groupCount}>{t('inspector.sectionParts.children', 'Children: {n}', { n: childrenCount })}</span>
         <Button size="sm" variant="secondary" fullWidth onClick={() => enterFocus(nodeId)}>
-          Enter group
+          {t('inspector.sectionParts.enterGroup', 'Enter group')}
         </Button>
       </div>
     </>

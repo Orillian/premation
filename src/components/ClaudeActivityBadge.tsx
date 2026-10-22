@@ -11,6 +11,7 @@ import { Button } from '@components/Button';
 import { useMcpHost } from '@hooks/useMcpHost';
 import { useClaudeStore } from '@stores/claudeStore';
 import { assistantName } from './claude/claudeLabels';
+import { t } from '@core/i18n';
 import styles from './claude/Claude.module.css';
 
 export function ClaudeActivityBadge(): JSX.Element | null {
@@ -34,14 +35,14 @@ export function ClaudeActivityBadge(): JSX.Element | null {
   if (!approval) return null;
   const name = assistantName(setup);
   return (
-    <div className={styles.badge} data-mode="needs-you" role="alertdialog" aria-label={`${name} is asking for permission`}>
+    <div className={styles.badge} data-mode="needs-you" role="alertdialog" aria-label={t('ui.claude.badge.asking', '{name} is asking for permission', { name })}>
       <span className={styles.dot} data-mode="needs-you" aria-hidden="true" />
       <span className={styles.badgeText}>
-        {name} wants to {approval.title.charAt(0).toLowerCase()}{approval.title.slice(1)}
+        {t('ui.claude.wantsTo', '{name} wants to {action}', { name, action: `${approval.title.charAt(0).toLowerCase()}${approval.title.slice(1)}` })}
       </span>
-      <Button size="sm" variant="ghost" onClick={() => openPanel(true)}>Details</Button>
-      <Button size="sm" variant="secondary" onClick={() => answer(approval.id, false)}>Deny</Button>
-      <Button size="sm" variant="primary" onClick={() => answer(approval.id, true)}>Allow</Button>
+      <Button size="sm" variant="ghost" onClick={() => openPanel(true)}>{t('ui.claude.badge.details', 'Details')}</Button>
+      <Button size="sm" variant="secondary" onClick={() => answer(approval.id, false)}>{t('ui.claude.deny', 'Deny')}</Button>
+      <Button size="sm" variant="primary" onClick={() => answer(approval.id, true)}>{t('ui.claude.allow', 'Allow')}</Button>
     </div>
   );
 }

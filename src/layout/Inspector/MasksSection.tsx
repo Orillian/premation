@@ -22,6 +22,7 @@ import { useUIStore } from '@stores/uiStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys, useMirrorLayer, useMirrorTree } from '@hooks/useMirror';
 import { secondsToFlicks } from '@motion/engine-api';
+import { t } from '@core/i18n';
 import { mirrorMaskShapeKeyed, mirrorMasksAt, mirrorMaskWatchKeys } from '@core/mirror/masks';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { trackKeyTimes } from '@core/mirror/selection';
@@ -43,15 +44,17 @@ import {
 import styles from '@layout/Effects/EffectsPanel.module.css';
 import tStyles from './TransformSection.module.css';
 
-const MASK_MODES: ReadonlyArray<{ mode: MaskMode; label: string }> = [
-  { mode: 'none', label: 'None' },
-  { mode: 'add', label: 'Add' },
-  { mode: 'subtract', label: 'Subtract' },
-  { mode: 'intersect', label: 'Intersect' },
-  { mode: 'lighten', label: 'Lighten' },
-  { mode: 'darken', label: 'Darken' },
-  { mode: 'difference', label: 'Difference' },
-];
+function maskModes(): ReadonlyArray<{ mode: MaskMode; label: string }> {
+  return [
+    { mode: 'none', label: t('inspector.masks.modeNone', 'None') },
+    { mode: 'add', label: t('inspector.masks.modeAdd', 'Add') },
+    { mode: 'subtract', label: t('inspector.masks.modeSubtract', 'Subtract') },
+    { mode: 'intersect', label: t('inspector.masks.modeIntersect', 'Intersect') },
+    { mode: 'lighten', label: t('inspector.masks.modeLighten', 'Lighten') },
+    { mode: 'darken', label: t('inspector.masks.modeDarken', 'Darken') },
+    { mode: 'difference', label: t('inspector.masks.modeDifference', 'Difference') },
+  ];
+}
 
 /**
  * One mask's card: header band (name, mode, remove), then its values.
@@ -87,6 +90,9 @@ function MaskCard({
     if (cmds) e.send(label, cmds);
   };
   const variable = m.points.some((pt) => typeof pt.feather === 'number');
+  const modes = maskModes();
+  const defaultName = t('inspector.masks.defaultName', 'Mask {n}', { n: i + 1 });
+  const removeLabel = t('inspector.masks.remove', 'Remove Mask {n}', { n: i + 1 });
 
   return (
     // Same card as an applied effect: header band, then the parameters
@@ -98,16 +104,16 @@ function MaskCard({
         <span className={styles.maskMark} aria-hidden>
           <Icon name="mask-square" size="sm" />
         </span>
-        <span className={styles.itemLabel}>{m.name?.trim() || `Mask ${i + 1}`}</span>
+        <span className={styles.itemLabel}>{m.name?.trim() || defaultName}</span>
         <Dropdown
           placement="left-start"
           trigger={
             <button type="button" className={styles.blendTrigger}>
-              {MASK_MODES.find((x) => x.mode === m.mode)?.label ?? 'Add'}
+              {modes.find((x) => x.mode === m.mode)?.label ?? t('inspector.masks.modeAdd', 'Add')}
               <Icon name="chevron-down" size="sm" />
             </button>
           }
-          items={MASK_MODES.map((x) => ({
+          items={modes.map((x) => ({
             type: 'item',
             id: x.mode,
             label: x.label,
@@ -119,8 +125,8 @@ function MaskCard({
           <button
             type="button"
             className={styles.remove}
-            aria-label={`Remove Mask ${i + 1}`}
-            title={`Remove Mask ${i + 1}`}
+            aria-label={removeLabel}
+            title={removeLabel}
             onClick={() => { void removeMaskEdit(nodeId, m.id, `Remove Mask ${i + 1}`); }}
           >
             <Icon name="close" size="sm" />
@@ -128,11 +134,11 @@ function MaskCard({
         </div>
       </div>
       <div className={styles.effectParamsBody}>
-        <PropertyRow label="Name" compact>
+        <PropertyRow label={t('inspector.masks.name', 'Name')} compact>
           <input
             value={draft ?? m.name ?? ''}
-            placeholder={`Mask ${i + 1}`}
-            aria-label={`Mask ${i + 1} name`}
+            placeholder={defaultName}
+            aria-label={t('inspector.masks.nameAria', 'Mask {n} name', { n: i + 1 })}
             onChange={(ev) => setDraft(ev.target.value)}
             onBlur={commitName}
             onKeyDown={(ev) => {
@@ -145,9 +151,9 @@ function MaskCard({
         {/* One PropertyRow per value, so a mask's Feather sits in the
             same column as an effect's Softness rather than in a
             three-up strip of its own. */}
-        <PropertyRow label="Feather" compact>
+        <PropertyRow label={t('inspector.masks.feather', 'Feather')} compact>
           <ValueField {...e.scrub('Set Mask Feather')} value={m.feather} min={0} max={200} precision={0} unit="px"
-            onChange={(v) => setValue('feather', v, 'Set Mask Feather')} aria-label="Mask feather" />
+            onChange={(v) => setValue('feather', v, 'Set Mask Feather')} aria-label={t('inspector.masks.featherAria', 'Mask feather')} />
         </PropertyRow>
         {/* Variable-width feather: one row per vertex. A vertex with
             its own value overrides the uniform Feather above and the
@@ -155,7 +161,7 @@ function MaskCard({
             (the distance-field renderer in maskFeather.ts). Right-side
             clear button drops the override — every override cleared
             returns the path to the plain blur renderer. */}
-        <PropertyRow label="Per-Vertex" compact>
+        <PropertyRow label={t('inspector.masks.perVertex', 'Per-Vertex')} compact>
           <Checkbox
             checked={variable}
             onChange={() => {
@@ -164,7 +170,7 @@ function MaskCard({
               // toggle OFF clears every override.
               void setMaskVertexFeatherEdit(nodeId, m.id, m.points.map((_, vi) => ({ index: vi, feather: variable ? undefined : m.feather })), time);
             }}
-            aria-label={`Variable feather for Mask ${i + 1}`}
+            aria-label={t('inspector.masks.variableFeatherAria', 'Variable feather for Mask {n}', { n: i + 1 })}
             style={{ width: 14, height: 14 }}
           />
         </PropertyRow>
@@ -175,23 +181,23 @@ function MaskCard({
                 value={Math.round(pt.feather ?? m.feather)}
                 min={0} max={200} precision={0} unit="px"
                 onChange={(v) => { void setMaskVertexFeatherEdit(nodeId, m.id, [{ index: vi, feather: v }], time); }}
-                aria-label={`Mask ${i + 1} vertex ${vi + 1} feather`}
+                aria-label={t('inspector.masks.vertexFeatherAria', 'Mask {n} vertex {v} feather', { n: i + 1, v: vi + 1 })}
               />
             </PropertyRow>
           ))}
-        <PropertyRow label="Opacity" compact>
+        <PropertyRow label={t('inspector.masks.opacity', 'Opacity')} compact>
           <ValueField {...e.scrub('Set Mask Opacity')} value={Math.round(m.opacity * 100)} min={0} max={100} precision={0} unit="%"
-            onChange={(v) => setValue('opacity', v, 'Set Mask Opacity')} aria-label="Mask opacity" />
+            onChange={(v) => setValue('opacity', v, 'Set Mask Opacity')} aria-label={t('inspector.masks.opacityAria', 'Mask opacity')} />
         </PropertyRow>
-        <PropertyRow label="Expansion" compact>
+        <PropertyRow label={t('inspector.masks.expansion', 'Expansion')} compact>
           <ValueField {...e.scrub('Set Mask Expansion')} value={Math.round(m.expansion ?? 0)} min={-500} max={500} precision={0} unit="px"
-            onChange={(v) => setValue('expansion', v, 'Set Mask Expansion')} aria-label="Mask expansion" />
+            onChange={(v) => setValue('expansion', v, 'Set Mask Expansion')} aria-label={t('inspector.masks.expansionAria', 'Mask expansion')} />
         </PropertyRow>
-        <PropertyRow label="Inverted" compact>
+        <PropertyRow label={t('inspector.masks.inverted', 'Inverted')} compact>
           <Checkbox
             checked={!!m.inverted}
             onChange={() => { void setMaskInvertedEdit(nodeId, m.id, !m.inverted); }}
-            aria-label={`Invert Mask ${i + 1}`}
+            aria-label={t('inspector.masks.invertAria', 'Invert Mask {n}', { n: i + 1 })}
             style={{ width: 14, height: 14 }}
           />
         </PropertyRow>
@@ -234,37 +240,41 @@ function SmartMaskInterpolation({ nodeId, maskId, time }: { nodeId: string; mask
     });
     useUIStore.getState().notify({
       level: n > 0 ? 'success' : 'warning',
-      message: n > 0 ? `Smart Mask Interpolation: ${n} in-between keys` : 'Smart Mask Interpolation needs the playhead between two mask path keys.',
+      message: n > 0
+        ? t('inspector.masks.smartDone', 'Smart Mask Interpolation: {n} in-between keys', { n })
+        : t('inspector.masks.smartNeedsKeys', 'Smart Mask Interpolation needs the playhead between two mask path keys.'),
       durationMs: 3200,
     });
   };
   return (
     <div className={styles.effectCardItem} data-smart-mask="">
       <div className={styles.effectCardHead}>
-        <span className={styles.itemLabel}>Smart Mask Interpolation</span>
+        <span className={styles.itemLabel}>{t('inspector.masks.smartTitle', 'Smart Mask Interpolation')}</span>
       </div>
       <div className={styles.effectParamsBody}>
-        <PropertyRow label="Keyframe Rate" compact>
-          <ValueField value={rate} min={1} max={120} precision={0} unit="/s" onChange={setRate} aria-label="Keyframe rate" />
+        <PropertyRow label={t('inspector.masks.keyframeRate', 'Keyframe Rate')} compact>
+          <ValueField value={rate} min={1} max={120} precision={0} unit="/s" onChange={setRate} aria-label={t('inspector.masks.keyframeRateAria', 'Keyframe rate')} />
         </PropertyRow>
-        <PropertyRow label="Add Vertices Every" compact>
-          <ValueField value={spacing} min={0} max={500} precision={0} unit="px" onChange={setSpacing} aria-label="Add mask shape vertices every" />
+        <PropertyRow label={t('inspector.masks.addVerticesEvery', 'Add Vertices Every')} compact>
+          <ValueField value={spacing} min={0} max={500} precision={0} unit="px" onChange={setSpacing} aria-label={t('inspector.masks.addVerticesEveryAria', 'Add mask shape vertices every')} />
         </PropertyRow>
-        <PropertyRow label="First Vertices Match" compact>
-          <Checkbox checked={firstMatch} onChange={() => setFirstMatch(!firstMatch)} aria-label="First vertices match" style={{ width: 14, height: 14 }} />
+        <PropertyRow label={t('inspector.masks.firstVerticesMatch', 'First Vertices Match')} compact>
+          <Checkbox checked={firstMatch} onChange={() => setFirstMatch(!firstMatch)} aria-label={t('inspector.masks.firstVerticesMatchAria', 'First vertices match')} style={{ width: 14, height: 14 }} />
         </PropertyRow>
-        <PropertyRow label="Use 1:1 Vertex Matches" compact>
-          <Checkbox checked={oneToOne} onChange={() => setOneToOne(!oneToOne)} aria-label="Use 1:1 vertex matches" style={{ width: 14, height: 14 }} />
+        <PropertyRow label={t('inspector.masks.oneToOne', 'Use 1:1 Vertex Matches')} compact>
+          <Checkbox checked={oneToOne} onChange={() => setOneToOne(!oneToOne)} aria-label={t('inspector.masks.oneToOneAria', 'Use 1:1 vertex matches')} style={{ width: 14, height: 14 }} />
         </PropertyRow>
         <div className={styles.addRow}>
           <button
             type="button"
             className={styles.addChip}
             disabled={!keys}
-            title={keys ? `In-betweens from ${keys.t0.toFixed(2)} s to ${keys.t1.toFixed(2)} s` : 'Put the playhead between two mask path keyframes'}
+            title={keys
+              ? t('inspector.masks.smartRange', 'In-betweens from {from} s to {to} s', { from: keys.t0.toFixed(2), to: keys.t1.toFixed(2) })
+              : t('inspector.masks.smartPlayheadHint', 'Put the playhead between two mask path keyframes')}
             onClick={() => { void run(); }}
           >
-            <Icon name="keyframe" size="sm" /> Apply
+            <Icon name="keyframe" size="sm" /> {t('inspector.masks.apply', 'Apply')}
           </button>
         </div>
       </div>
@@ -289,32 +299,32 @@ export function MasksSection({ nodeId }: { nodeId: string }): JSX.Element {
   return (
     <div data-masks-section="">
       <div className={styles.addRow}>
-        <button type="button" className={styles.addChip} title="Add a rectangle mask"
+        <button type="button" className={styles.addChip} title={t('inspector.masks.addRectTitle', 'Add a rectangle mask')}
           onClick={() => { void addMaskEdit(nodeId, rectangleMask(maskW, maskH), 'Add Rectangle Mask'); }}>
-          <Icon name="plus" size="sm" /> Rectangle
+          <Icon name="plus" size="sm" /> {t('inspector.masks.rectangle', 'Rectangle')}
         </button>
-        <button type="button" className={styles.addChip} title="Add an ellipse mask"
+        <button type="button" className={styles.addChip} title={t('inspector.masks.addEllipseTitle', 'Add an ellipse mask')}
           onClick={() => { void addMaskEdit(nodeId, ellipseMask(maskW, maskH), 'Add Ellipse Mask'); }}>
-          <Icon name="plus" size="sm" /> Ellipse
+          <Icon name="plus" size="sm" /> {t('inspector.masks.ellipse', 'Ellipse')}
         </button>
-        <button type="button" className={styles.addChip} title="Switch to the Mask Pen tool"
+        <button type="button" className={styles.addChip} title={t('inspector.masks.drawTitle', 'Switch to the Mask Pen tool')}
           onClick={() => useUIStore.getState().setActiveTool('mask-pen')}>
-          <Icon name="pen" size="sm" /> Draw
+          <Icon name="pen" size="sm" /> {t('inspector.masks.draw', 'Draw')}
         </button>
         {masks.length > 0 && (
           <button
             type="button"
             className={styles.addChip}
-            title={shapeKeyed ? 'Remove mask animation' : 'Keyframe the mask shape at the playhead (animate the mask)'}
+            title={shapeKeyed ? t('inspector.masks.unanimateTitle', 'Remove mask animation') : t('inspector.masks.keyShapeTitle', 'Keyframe the mask shape at the playhead (animate the mask)')}
             onClick={() => { void setMaskShapeAnimatedEdit(nodeId, masks[0]!.id, !shapeKeyed, maskCompTime); }}
           >
-            <Icon name="keyframe" size="sm" /> {shapeKeyed ? 'Un-animate' : 'Keyframe shape'}
+            <Icon name="keyframe" size="sm" /> {shapeKeyed ? t('inspector.masks.unanimate', 'Un-animate') : t('inspector.masks.keyShape', 'Keyframe shape')}
           </button>
         )}
       </div>
       {masks.length === 0 && (
         <p className={styles.hint} style={{ margin: '4px 0' }}>
-          No masks. Add one above or draw with Mask Rectangle / Ellipse / Pen.
+          {t('inspector.masks.empty', 'No masks. Add one above or draw with Mask Rectangle / Ellipse / Pen.')}
         </p>
       )}
       {masks.length > 0 && (

@@ -7,6 +7,7 @@
 
 import { secondsToFlicks, type ContentAwareFillMode, type ContentAwareLighting, type JobSpec } from '@motion/engine-api';
 import { requireEngineJob, startEngineJob, type EngineJobHandle } from '@core/engine/engineJobs';
+import { t } from '@core/i18n';
 
 export type { ContentAwareFillMode, ContentAwareLighting };
 
@@ -46,16 +47,28 @@ export interface ContentAwareFillSummary {
 }
 
 export const FILL_MODES: ReadonlyArray<{ value: ContentAwareFillMode; label: string; hint: string }> = [
-  { value: 'object', label: 'Object', hint: 'Removes an object: synthesises the hole from the frame and carries it through time.' },
-  { value: 'surface', label: 'Surface', hint: 'For a surface (a wall, a road): carries the background through time, no synthesis.' },
-  { value: 'edgeBlend', label: 'Edge Blend', hint: 'Blends the hole’s edge inward on every frame. Fast; for flat, untextured areas.' },
+  {
+    value: 'object',
+    get label() { return t('core.contentAwareFill.modeObject', 'Object'); },
+    get hint() { return t('core.contentAwareFill.modeObjectHint', 'Removes an object: synthesises the hole from the frame and carries it through time.'); },
+  },
+  {
+    value: 'surface',
+    get label() { return t('core.contentAwareFill.modeSurface', 'Surface'); },
+    get hint() { return t('core.contentAwareFill.modeSurfaceHint', 'For a surface (a wall, a road): carries the background through time, no synthesis.'); },
+  },
+  {
+    value: 'edgeBlend',
+    get label() { return t('core.contentAwareFill.modeEdgeBlend', 'Edge Blend'); },
+    get hint() { return t('core.contentAwareFill.modeEdgeBlendHint', 'Blends the hole’s edge inward on every frame. Fast; for flat, untextured areas.'); },
+  },
 ];
 
 export const LIGHTING: ReadonlyArray<{ value: ContentAwareLighting; label: string }> = [
-  { value: 'off', label: 'Off' },
-  { value: 'subtle', label: 'Subtle' },
-  { value: 'moderate', label: 'Moderate' },
-  { value: 'strong', label: 'Strong' },
+  { value: 'off', get label() { return t('core.contentAwareFill.lightingOff', 'Off'); } },
+  { value: 'subtle', get label() { return t('core.contentAwareFill.lightingSubtle', 'Subtle'); } },
+  { value: 'moderate', get label() { return t('core.contentAwareFill.lightingModerate', 'Moderate'); } },
+  { value: 'strong', get label() { return t('core.contentAwareFill.lightingStrong', 'Strong'); } },
 ];
 
 /** The engine job for a request. Pure. */
@@ -82,18 +95,26 @@ export function contentAwareFillSummaryText(r: Partial<ContentAwareFillSummary> 
   if (reference) {
     const file = r?.files?.[0];
     return file
-      ? `Reference frame written to ${file}. Paint the hole in an image editor, then add it as a reference.`
-      : 'No reference frame: the layer has no mask at the playhead.';
+      ? t('core.contentAwareFill.referenceWritten', 'Reference frame written to {file}. Paint the hole in an image editor, then add it as a reference.', { file })
+      : t('core.contentAwareFill.noReference', 'No reference frame: the layer has no mask at the playhead.');
   }
   const frames = r?.frames ?? 0;
-  if (frames === 0) return 'Nothing to fill: draw a mask around what to remove first.';
+  if (frames === 0) return t('core.contentAwareFill.nothingToFill', 'Nothing to fill: draw a mask around what to remove first.');
   const parts = [
-    r?.fromReference ? `${r.fromReference} px from references` : '',
-    r?.propagated ? `${r.propagated} px carried through time` : '',
-    r?.synthesized ? `${r.synthesized} px synthesised` : '',
-    r?.blended ? `${r.blended} px blended` : '',
+    r?.fromReference ? t('core.contentAwareFill.pxFromReferences', '{n} px from references', { n: r.fromReference }) : '',
+    r?.propagated ? t('core.contentAwareFill.pxPropagated', '{n} px carried through time', { n: r.propagated }) : '',
+    r?.synthesized ? t('core.contentAwareFill.pxSynthesized', '{n} px synthesised', { n: r.synthesized }) : '',
+    r?.blended ? t('core.contentAwareFill.pxBlended', '{n} px blended', { n: r.blended }) : '',
   ].filter(Boolean);
-  return `Filled ${frames} frame${frames === 1 ? '' : 's'}${parts.length ? ` (${parts.join(', ')})` : ''}.`;
+  if (parts.length === 0) {
+    return frames === 1
+      ? t('core.contentAwareFill.filledOne', 'Filled {n} frame.', { n: frames })
+      : t('core.contentAwareFill.filledOther', 'Filled {n} frames.', { n: frames });
+  }
+  const details = parts.join(', ');
+  return frames === 1
+    ? t('core.contentAwareFill.filledOneDetails', 'Filled {n} frame ({details}).', { n: frames, details })
+    : t('core.contentAwareFill.filledOtherDetails', 'Filled {n} frames ({details}).', { n: frames, details });
 }
 
 /** Start the job. The fill is attached as one undo entry when it finishes (not for a reference). */
@@ -103,6 +124,6 @@ export async function startContentAwareFill(
 ): Promise<EngineJobHandle<ContentAwareFillSummary>> {
   return requireEngineJob(
     await startEngineJob<ContentAwareFillSummary>(contentAwareFillJob(req), { apply: !req.createReference, onProgress }),
-    'Content-Aware Fill',
+    t('core.contentAwareFill.feature', 'Content-Aware Fill'),
   );
 }

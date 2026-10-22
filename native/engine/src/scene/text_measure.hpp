@@ -8,6 +8,7 @@
 // in text_measure.cpp. A builder with no measurer reports text as unported.
 #pragma once
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -44,6 +45,11 @@ struct MeasuredStyle {
   std::optional<int> tateChuYokoDigits;  ///< auto tate-chu-yoko (vertical only)
   bool opticalKerning = false;
   bool hasFontAxes = false;
+  /// Registered variation axes beyond weight / width / slant (fontAxes.ts
+  /// resolveFontAxes: the stored map, a keyed `text.axis.<tag>` value winning).
+  /// Measured and painted as font-variation-settings over `fontWeight`,
+  /// `fontWidth` ('wdth') and `fontSlant` ('slnt').
+  std::map<std::string, double> fontAxes;
   // Paragraph box (textExtras.ts readParagraphBox), paragraph text only.
   std::optional<double> boxHeight;       ///< fixed box height (auto-size Off / Fit)
   std::string boxVerticalAlign;          ///< "" = top, "center", "bottom"

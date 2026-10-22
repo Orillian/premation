@@ -7,15 +7,20 @@
 import { useEffect } from 'react';
 import { Button } from '@components/Button';
 import { useFfmpegStore } from '@stores/ffmpegStore';
+import { t } from '@core/i18n';
 import styles from './ObjectMatteControl.module.css';
 
-const SOURCE_LABEL: Record<string, string> = {
-  bundled: 'Built in',
-  repaired: 'Repaired copy',
-  chosen: 'Your FFmpeg',
-  override: 'FFMPEG_PATH',
-  system: 'System FFmpeg',
-};
+/** A function, not a constant: t() must run at render time. */
+function sourceLabel(source: string): string | undefined {
+  const labels: Record<string, string> = {
+    bundled: t('settings.videoExport.sourceBundled', 'Built in'),
+    repaired: t('settings.videoExport.sourceRepaired', 'Repaired copy'),
+    chosen: t('settings.videoExport.sourceChosen', 'Your FFmpeg'),
+    override: 'FFMPEG_PATH',
+    system: t('settings.videoExport.sourceSystem', 'System FFmpeg'),
+  };
+  return labels[source];
+}
 
 export function VideoExportControl(): JSX.Element | null {
   const status = useFfmpegStore((s) => s.status);
@@ -34,20 +39,20 @@ export function VideoExportControl(): JSX.Element | null {
   };
 
   if (!status || status.checkedAt === 0) {
-    return <div className={styles.root}><span className={styles.progressText}>Checking…</span></div>;
+    return <div className={styles.root}><span className={styles.progressText}>{t('settings.videoExport.checking', 'Checking…')}</span></div>;
   }
 
   if (status.ok && status.active) {
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.ready}>Working · {SOURCE_LABEL[status.active.source] ?? status.active.source}</span>
-          <Button variant="secondary" size="sm" onClick={() => { void refresh(true); }}>Check again</Button>
+          <span className={styles.ready}>{t('settings.videoExport.working', 'Working · {source}', { source: sourceLabel(status.active.source) ?? status.active.source })}</span>
+          <Button variant="secondary" size="sm" onClick={() => { void refresh(true); }}>{t('settings.videoExport.checkAgain', 'Check again')}</Button>
         </div>
         {status.active.source === 'chosen' ? (
           <div className={styles.readyRow}>
             <div className={styles.source} title={status.active.path}>{status.active.path}</div>
-            <Button variant="ghost" size="sm" onClick={() => { void clearChoice(); }}>Use built-in</Button>
+            <Button variant="ghost" size="sm" onClick={() => { void clearChoice(); }}>{t('settings.videoExport.useBuiltIn', 'Use built-in')}</Button>
           </div>
         ) : null}
       </div>
@@ -58,11 +63,15 @@ export function VideoExportControl(): JSX.Element | null {
     <div className={styles.root}>
       <div className={styles.readyRow}>
         <span className={styles.error}>
-          {status.repairing ? 'Repairing…' : status.active ? 'Some video formats unavailable' : 'Not working'}
+          {status.repairing
+            ? t('settings.videoExport.repairing', 'Repairing…')
+            : status.active
+              ? t('settings.videoExport.partial', 'Some video formats unavailable')
+              : t('settings.videoExport.notWorking', 'Not working')}
         </span>
-        <Button variant="primary" size="sm" onClick={() => openDialog()}>Fix…</Button>
+        <Button variant="primary" size="sm" onClick={() => openDialog()}>{t('settings.videoExport.fix', 'Fix…')}</Button>
       </div>
-      <div className={styles.hint}>Images, image sequences and WAV audio export without it.</div>
+      <div className={styles.hint}>{t('settings.videoExport.hint', 'Images, image sequences and WAV audio export without it.')}</div>
     </div>
   );
 }

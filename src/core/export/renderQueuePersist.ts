@@ -31,6 +31,7 @@
  */
 
 import type { RenderJobSpec } from './renderSpec';
+import { t } from '@core/i18n';
 
 /**
  * The statuses a job can be written down in. `done` and `skipped` are finished
@@ -171,5 +172,5 @@ export function lostFramesMessage(p: PersistedRenderJob): string {
 
 /** What to tell the user about a job whose composition is not in this project. */
 export function missingCompositionMessage(compositionName: string): string {
-  return `“${compositionName}” is not in the open project — open the project it was queued from, or remove this job.`;
+  return t('core.renderQueue.missingComposition', '“{name}” is not in the open project — open the project it was queued from, or remove this job.', { name: compositionName });
 }

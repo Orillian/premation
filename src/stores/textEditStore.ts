@@ -33,18 +33,26 @@ export interface TextSelection {
 interface TextEditState {
   /** The text layer currently being edited, or null. */
   nodeId: string | null;
+  /**
+   * The layer was made by the Type tool a moment ago and has never been
+   * typed into: the editor opens EMPTY with a caret (After Effects), not on
+   * the placeholder "Text" selected — and a commit that leaves it empty
+   * deletes the layer, as AE drops an empty text layer.
+   */
+  fresh: boolean;
   /** The live selection within that layer, or null when not editing. */
   selection: TextSelection | null;
-  begin: (nodeId: string) => void;
+  begin: (nodeId: string, opts?: { fresh?: boolean }) => void;
   end: () => void;
   setSelection: (selection: TextSelection | null) => void;
 }
 
 export const useTextEditStore = create<TextEditState>((set) => ({
   nodeId: null,
+  fresh: false,
   selection: null,
-  begin: (nodeId) => set({ nodeId, selection: null }),
-  end: () => set({ nodeId: null, selection: null }),
+  begin: (nodeId, opts) => set({ nodeId, fresh: opts?.fresh === true, selection: null }),
+  end: () => set({ nodeId: null, fresh: false, selection: null }),
   setSelection: (selection) => set({ selection }),
 }));
 

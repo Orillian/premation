@@ -19,6 +19,7 @@ import { useAssetStore } from './assetStore';
 import { noteSignedIn, resetProductEvents } from '@core/analytics/productEvents';
 import { useAiProviderStore } from './aiProviderStore';
 import { useEntitlementStore } from './entitlementStore';
+import { t } from '@core/i18n';
 
 export interface AuthUser {
   id: string;
@@ -149,7 +150,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       // sign-in failed, and the next launch came up signed in anyway. If we
       // report failure, there must be no session left to restore.
       await clearSession().catch(() => undefined);
-      set({ status: 'idle', user: null, error: (err as Error).message || 'Sign in failed' });
+      set({ status: 'idle', user: null, error: (err as Error).message || t('stores.auth.signInFailed', 'Sign in failed') });
       throw err;
     }
   },
@@ -166,7 +167,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       // Same reasoning as `login`: a failure reported after the account was
       // created must not leave a restorable session behind.
       await clearSession().catch(() => undefined);
-      set({ status: 'idle', user: null, error: (err as Error).message || 'Registration failed' });
+      set({ status: 'idle', user: null, error: (err as Error).message || t('stores.auth.registrationFailed', 'Registration failed') });
       throw err;
     }
   },

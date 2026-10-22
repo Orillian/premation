@@ -7,6 +7,7 @@
  *   5. Mounts the global overlay hosts (modals, context menus, notifications).
  */
 
+import { t } from '@core/i18n';
 import { useEffect, useState, type ReactNode } from 'react';
 import { openStaggerDialog } from '@layout/Motion/StaggerDialog';
 import { Application } from '@core/application/Application';
@@ -23,7 +24,7 @@ import { isPickArmed } from '@stores/trackerStore';
 import { pruneKeyframeSelectionToNodes, useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { prunePropertySelectionToNodes } from '@stores/propertySelectionStore';
 import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
-import { copyEdit, cutEdit, pasteEdit } from './clipboardEdits';
+import { canCopyExpression, copyEdit, cutEdit, pasteEdit } from './clipboardEdits';
 import { audioAmplitudeNullEdit } from '@layout/Inspector/audioEdits';
 import { canExponentialScale, expressionBakeEdit, exponentialScaleEdit, hasBakeableExpression } from './menuCommandEdits';
 import { goToMarkerIndex, isTransportPlaying, pauseTransport, playTransport } from '@core/timeline/timelineView';
@@ -62,6 +63,7 @@ import { processEngineOwnsDocument } from '@core/engine/process/processEngine';
 import { installEngineOwnedSession } from './engineOwnedSession';
 import { installAutomationDevApi } from '@core/automation/devApi';
 import { LoadingScreen } from '@components/LoadingScreen';
+import { dockGroupUnderPointer } from '@components/DockPanel';
 import { isLocalFirst } from '@core/config/flags';
 import { cloudProjectsEnabled } from '@core/config/edition';
 import { chooseBundleDir, bundleDirPickerAvailable } from '@core/project/bundle/bundleProjectIO';
@@ -97,6 +99,7 @@ import { buildStereoRigCommands } from '@core/scene/stereoRigCommands';
 import { buildCarouselCommands } from '@core/scene/carouselCommands';
 import { buildCameraExportCommands } from '@core/scene/cameraExport';
 import { buildDepthParallaxCommands } from '@layout/Menu/depthParallaxCommands';
+import { buildScriptCommands } from '@layout/Scripts/scriptCommands';
 import { buildSmartAnimateCommands, installSmartAnimateCommandSync } from './commands/smartAnimateCommands';
 import { buildReframeCommands } from '@core/reframe/reframeCommands';
 import { buildIk3DCommands } from './commands/ikCommands';
@@ -218,17 +221,17 @@ function stillFrameTarget(): { comp: CompositionSettings; frame: number } {
 async function saveAsPortableFile(name: string): Promise<boolean> {
   const result = await saveToComputer(name);
   if (result.status === 'cancelled') {
-    notify('Save cancelled', 'info');
+    notify(t('providers.save.cancelled', 'Save cancelled'), 'info');
     return false;
   }
   if (result.status === 'failed') {
-    notify(result.error ?? 'Could not save the project', 'error');
+    notify(result.error ?? t('providers.save.failed', 'Could not save the project'), 'error');
     return false;
   }
   // The document is now on disk, so the unsaved indicator must clear exactly as
   // it does for the other save paths.
   afterProjectSaved();
-  notify(`Saved “${name}.motion” to your computer`, 'success');
+  notify(t('providers.save.savedToComputer', 'Saved “{name}.motion” to your computer', { name }), 'success');
   return true;
 }
 
@@ -270,7 +273,7 @@ function needsPortableSaveFallback(): boolean {
 function reportSave(outcome: SaveOutcome, opts?: { forkedFrom?: string | null }): boolean {
   if (outcome.status === 'saved') {
     afterProjectSaved();
-    notify(`Saved “${outcome.ref.name}”`, 'success');
+    notify(t('providers.save.saved', 'Saved “{name}”', { name: outcome.ref.name }), 'success');
     // A cloud Save As created a SEPARATE project; the route must follow it or
     // Save and autosave end up writing to two different documents.
     const forked =
@@ -282,15 +285,15 @@ function reportSave(outcome: SaveOutcome, opts?: { forkedFrom?: string | null })
     return true;
   }
   if (outcome.status === 'cancelled') {
-    notify('Save cancelled', 'info');
+    notify(t('providers.save.cancelled', 'Save cancelled'), 'info');
     return false;
   }
   // A failed write leaves the document unsaved and the recovery snapshot in
   // place, deliberately: it is the copy that still exists.
   notify(
     outcome.error instanceof Error
-      ? `Could not save: ${outcome.error.message}`
-      : 'Could not save the project',
+      ? t('providers.save.failedWithError', 'Could not save: {error}', { error: outcome.error.message })
+      : t('providers.save.failed', 'Could not save the project'),
     'error',
   );
   return false;
@@ -309,20 +312,20 @@ async function pickAndImportTemplatePackage(): Promise<void> {
   if (!file) return;
   const diskPath = window.motionEditor?.file?.pathOf?.(file) ?? '';
   if (!diskPath) {
-    notify('Importing a template package needs the desktop app.', 'warning');
+    notify(t('providers.templatePackage.needsDesktop', 'Importing a template package needs the desktop app.'), 'warning');
     return;
   }
   const res = await engine().execute({ type: 'importProject', path: diskPath });
   if (!res.ok) {
     notify(
       res.error.code === 'unsupported'
-        ? 'Template packages are imported by the engine, which is not running here.'
-        : `Could not import “${file.name}”: ${res.error.message}`,
+        ? t('providers.templatePackage.noEngine', 'Template packages are imported by the engine, which is not running here.')
+        : t('providers.templatePackage.importFailed', 'Could not import “{name}”: {error}', { name: file.name, error: res.error.message }),
       'error',
     );
     return;
   }
-  notify(`Imported “${file.name}”`, 'success');
+  notify(t('providers.templatePackage.imported', 'Imported “{name}”', { name: file.name }), 'success');
 }
 
 /**
@@ -379,7 +382,7 @@ export async function openAfterEffectsProjectFile(file: File): Promise<void> {
   getProjectManager().newProject(file.name.replace(/\.aepx?$/i, ''));
   resetProjectWorkspace();
 
-  notify(`Opening “${file.name}”…`, 'info');
+  notify(t('providers.aep.opening', 'Opening “{name}”…', { name: file.name }), 'info');
   const viaEngine = await importAepThroughEngine(engine(), diskPath).catch((err: unknown) => ({
     ok: false as const,
     message: err instanceof Error ? err.message : 'the file could not be read',
@@ -421,14 +424,14 @@ async function pickAndImport3DModel(): Promise<void> {
   });
   if (files.length === 0) return;
   const jobId = 'model-import';
-  useUIStore.getState().startJob({ id: jobId, label: 'Importing 3D model…' });
+  useUIStore.getState().startJob({ id: jobId, label: t('providers.model.importing', 'Importing 3D model…') });
   try {
     const outcome = await importModelSelection(files, (fraction, message) => {
       useUIStore.getState().updateJob(jobId, { progress: fraction, ...(message ? { label: message } : {}) });
     });
     useUIStore.getState().finishJob(jobId, { status: 'done', message: modelImportMessage(outcome).message });
   } catch (err) {
-    useUIStore.getState().finishJob(jobId, { status: 'failed', message: `3D import failed: ${err instanceof Error ? err.message : String(err)}` });
+    useUIStore.getState().finishJob(jobId, { status: 'failed', message: t('providers.model.importFailed', '3D import failed: {error}', { error: err instanceof Error ? err.message : String(err) }) });
   }
 }
 
@@ -577,12 +580,10 @@ function buildCameraToolCommands(): ReadonlyArray<Command> {
         useGuidesStore.getState().cycleCameraTool();
         const mode = useGuidesStore.getState().cameraTool;
         notify(
-          `Camera tool: ${
-            mode === 'unified' ? 'Unified (left orbit · middle pan · right dolly)'
-            : mode === 'pan' ? 'Pan (Track XY)'
-            : mode === 'dolly' ? 'Dolly'
-            : 'Orbit'
-          } — Esc to exit`,
+          mode === 'unified' ? t('providers.cameraTool.unified', 'Camera tool: Unified (left orbit · middle pan · right dolly) — Esc to exit')
+          : mode === 'pan' ? t('providers.cameraTool.pan', 'Camera tool: Pan (Track XY) — Esc to exit')
+          : mode === 'dolly' ? t('providers.cameraTool.dolly', 'Camera tool: Dolly — Esc to exit')
+          : t('providers.cameraTool.orbit', 'Camera tool: Orbit — Esc to exit'),
           'info',
         );
       },
@@ -597,7 +598,7 @@ function buildCameraToolCommands(): ReadonlyArray<Command> {
       enabled: () => canNavigateCamera(),
       execute: () => {
         useGuidesStore.getState().setCameraTool('unified');
-        notify('Unified Camera: left-drag orbits, middle-drag pans, right-drag dollies — Esc to exit', 'info');
+        notify(t('providers.cameraTool.unifiedHint', 'Unified Camera: left-drag orbits, middle-drag pans, right-drag dollies — Esc to exit'), 'info');
       },
     },
     {
@@ -682,7 +683,7 @@ function buildMarkerCommands(): ReadonlyArray<Command> {
     enabled: () => (documentMirror().comp(activeCompIdNow() ?? '')?.markers.length ?? 0) >= n,
     execute: () => {
       if (!goToMarkerIndex(n)) {
-        notify(`No comp marker ${n}`, 'info');
+        notify(t('providers.markers.noMarker', 'No comp marker {n}', { n }), 'info');
       }
     },
   }));
@@ -697,6 +698,7 @@ function buildMarkerCommands(): ReadonlyArray<Command> {
  */
 import { type MergeOp } from '@core/scene/mergePaths';
 import { installProductAnalytics, noteNextProjectSource } from '@core/analytics/productEvents';
+import { useBootStageStore } from '@stores/bootStageStore';
 
 /** The four boolean operators, in the order every other surface lists them. */
 const MERGE_OPS: ReadonlyArray<{ op: MergeOp; label: string; bakeId: string }> = [
@@ -731,8 +733,8 @@ function buildMergePathCommands(): ReadonlyArray<Command> {
     execute: () => {
       // The engine's createLiveMerge: the result made and the operands flagged in ONE entry.
       void liveMergePathsEdit(op).then((id) => {
-        if (id) notify(`Live boolean (${op}) — operands stay editable`, 'success');
-        else notify('Select at least two shape layers with closed paths', 'warning');
+        if (id) notify(t('providers.mergePaths.liveDone', 'Live boolean ({op}) — operands stay editable', { op }), 'success');
+        else notify(t('providers.mergePaths.selectClosed', 'Select at least two shape layers with closed paths'), 'warning');
       });
     },
   }));
@@ -744,8 +746,8 @@ function buildMergePathCommands(): ReadonlyArray<Command> {
     execute: () => {
       // The boolean runs off-document; `deleteLayers` + `pasteLayers`, one entry (layerMenuEdits).
       void bakeMergePathsEdit(op).then((ids) => {
-        if (ids.length > 0) notify(`Merged paths (${op})`, 'success');
-        else notify('Select at least two shape layers to merge', 'warning');
+        if (ids.length > 0) notify(t('providers.mergePaths.bakeDone', 'Merged paths ({op})', { op }), 'success');
+        else notify(t('providers.mergePaths.selectTwo', 'Select at least two shape layers to merge'), 'warning');
       });
     },
   }));
@@ -784,7 +786,7 @@ function buildPrimitive3DCommands(): ReadonlyArray<Command> {
     execute: () => {
       // Built as a fragment, inserted as ONE pasteLayers entry.
       void insert3DPrimitiveEdit(id, undefined, `New ${label}`, { comp: activeCompIdNow() ?? 'comp_root' }).then((ids) => {
-        if (ids && ids.length > 0) notify(`${label} added`, 'success');
+        if (ids && ids.length > 0) notify(t('providers.primitive3d.added', '{name} added', { name: label }), 'success');
       });
     },
   }));
@@ -838,7 +840,7 @@ function buildSceneEditCommands(): ReadonlyArray<Command> {
     execute: () => {
       const nodeId = selectedVideoNodeId();
       if (!nodeId) {
-        notify('Select a video layer first', 'warning');
+        notify(t('providers.sceneEdit.selectVideo', 'Select a video layer first'), 'warning');
         return;
       }
       void runSceneEditDetection(nodeId, mode);
@@ -863,15 +865,15 @@ function buildWorkspaceCommands(): ReadonlyArray<Command> {
       enabled: () => true,
       execute: async () => {
         const name = await customPrompt(
-          'Save Workspace',
-          'Save the current panel arrangement as a workspace you can switch back to from Window ▸ Workspace.',
+          t('providers.workspace.saveTitle', 'Save Workspace'),
+          t('providers.workspace.saveMessage', 'Save the current panel arrangement as a workspace you can switch back to from Window ▸ Workspace.'),
           '',
-          { placeholder: 'e.g. Rough Cut', confirmLabel: 'Save' },
+          { placeholder: t('providers.workspace.savePlaceholder', 'e.g. Rough Cut'), confirmLabel: t('providers.workspace.saveConfirm', 'Save') },
         );
         const trimmed = name?.trim();
         if (!trimmed) return;
         getWorkspaceManager().saveCurrentWorkspace(trimmed);
-        notify(`Workspace “${trimmed}” saved`, 'success');
+        notify(t('providers.workspace.saved', 'Workspace “{name}” saved', { name: trimmed }), 'success');
       },
     },
   ];
@@ -899,7 +901,7 @@ function buildEasingCommands(): ReadonlyArray<Command> {
     execute: () => {
       const kfIds = easingTargetKeyframes();
       if (kfIds.length === 0) return;
-      void easePresetOnKeys(kfIds, preset).then(() => notify(`${label} applied`, 'success'));
+      void easePresetOnKeys(kfIds, preset).then(() => notify(t('providers.easing.applied', '{name} applied', { name: label }), 'success'));
     },
   }));
 }
@@ -1007,7 +1009,21 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       shortcut: { key: '`' },
       enabled: () => !focusNavigationClaimedNow(),
       isChecked: () => useLayoutStore.getState().focusMode === 'viewport-timeline',
-      execute: () => useLayoutStore.getState().setFocusMode('viewport-timeline'),
+      execute: () => {
+        // After Effects: ` maximizes the panel group under the pointer, and
+        // restores it. Anywhere else (the viewer, the timeline) it is the focus mode.
+        const s = useLayoutStore.getState();
+        if (s.maximizedGroup) {
+          s.toggleMaximizeGroup(null);
+          return;
+        }
+        const group = dockGroupUnderPointer();
+        if (group) {
+          s.toggleMaximizeGroup(group);
+          return;
+        }
+        s.setFocusMode('viewport-timeline');
+      },
     },
     {
       id: asCommandId('view.focusMode.viewport'),
@@ -1052,11 +1068,11 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         notify(
           next
             ? plural
-              ? 'Guide layers — visible while editing, omitted from export'
-              : 'Guide layer — visible while editing, omitted from export'
+              ? t('providers.guide.onOther', 'Guide layers — visible while editing, omitted from export')
+              : t('providers.guide.onOne', 'Guide layer — visible while editing, omitted from export')
             : plural
-              ? 'No longer guide layers'
-              : 'No longer a guide layer',
+              ? t('providers.guide.offOther', 'No longer guide layers')
+              : t('providers.guide.offOne', 'No longer a guide layer'),
           'success',
         );
       },
@@ -1084,7 +1100,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         if (!nodeId) return;
         armMotionSketch(nodeId);
         if (!isTransportPlaying()) playTransport();
-        notify('Motion Sketch armed — drag to record, Esc to cancel', 'info');
+        notify(t('providers.motionSketch.armed', 'Motion Sketch armed — drag to record, Esc to cancel'), 'info');
 
         /*
           Two ways out, not one.
@@ -1109,7 +1125,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
           cleanup();
           if (isTransportPlaying()) pauseTransport();
           void finishMotionSketchEdit().then((n) => notify(
-            n > 0 ? `Motion Sketch — ${n} keyframes recorded` : 'Motion Sketch — nothing recorded',
+            n > 0 ? t('providers.motionSketch.recorded', 'Motion Sketch — {n} keyframes recorded', { n }) : t('providers.motionSketch.nothing', 'Motion Sketch — nothing recorded'),
             n > 0 ? 'success' : 'warning',
           ));
         };
@@ -1118,7 +1134,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
           cleanup();
           cancelMotionSketch();
           if (isTransportPlaying()) pauseTransport();
-          notify('Motion Sketch cancelled', 'info');
+          notify(t('providers.motionSketch.cancelled', 'Motion Sketch cancelled'), 'info');
         };
         window.addEventListener('pointerup', onUp);
         window.addEventListener('keydown', onKey);
@@ -1148,7 +1164,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
           if (refusal) { notify(REFUSAL_TEXT[refusal], 'warning'); return; }
           if (written.size === 0) return;
           const total = [...written.values()].reduce((a, b) => a + b, 0);
-          notify(`Exponential scale — ${total} keyframes across ${written.size} tracks`, 'success');
+          notify(t('providers.exponentialScale.done', 'Exponential scale — {total} keyframes across {tracks} tracks', { total, tracks: written.size }), 'success');
         });
       },
     },
@@ -1170,10 +1186,10 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         const id = useSelectionStore.getState().ids[0];
         if (!id) return;
         void timeReverseKeyframesEdit(id).then((done) => {
-          if (done === 'none') { notify('Layer has no keyframes yet', 'warning'); return; }
+          if (done === 'none') { notify(t('providers.keyframes.noneYet', 'Layer has no keyframes yet'), 'warning'); return; }
           // A refused edit has already reported its error.
           if (!done) return;
-          notify('Keyframes reversed', 'success');
+          notify(t('providers.keyframes.reversed', 'Keyframes reversed'), 'success');
         });
       },
     },
@@ -1191,10 +1207,10 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         const id = useSelectionStore.getState().ids[0];
         if (!id) return;
         void easyEaseAllEdit(id).then((done) => {
-          if (done === 'none') { notify('Layer has no keyframes yet', 'warning'); return; }
+          if (done === 'none') { notify(t('providers.keyframes.noneYet', 'Layer has no keyframes yet'), 'warning'); return; }
           // A refused edit has already reported its error.
           if (!done) return;
-          notify('Eased all keyframes', 'success');
+          notify(t('providers.keyframes.easedAll', 'Eased all keyframes'), 'success');
         });
       },
     },
@@ -1222,7 +1238,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         // all. The dialog previews live and commits as one undo entry.
         // The exact member lists (the engine's `getMemberKeyframes`), not the menu's last known ones.
         if (smootherTracksOf(id, await fetchMemberTracks(id)).length === 0) {
-          notify('Needs a track with 3+ keyframes', 'warning');
+          notify(t('providers.smoother.needsTrack', 'Needs a track with 3+ keyframes'), 'warning');
           return;
         }
         const summary = await openSmootherDialog(id);
@@ -1249,7 +1265,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         // Was a prompt that parsed "5, 25" out of a string — two numbers with
         // different units, unlabelled, and rejected wholesale on a typo.
         if (wigglerTracksOf(await fetchMemberTracks(id, ['x', 'y'])).size === 0) {
-          notify('Animate position first (2+ keyframes on x or y)', 'warning');
+          notify(t('providers.wiggler.needsPosition', 'Animate position first (2+ keyframes on x or y)'), 'warning');
           return;
         }
         const summary = await openWigglerDialog(id);
@@ -1269,28 +1285,28 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         const selectedIds = useSelectionStore.getState().ids;
         if (selectedIds.length < 2) return;
         const raw = await customPrompt(
-          'Sequence Layers',
-          'Lay the selected layers’ bars end-to-end, in selection order. Overlap in seconds — 0 butts them together; above 0 overlaps the bars by that much and cross-dissolves opacity across the overlap.',
+          t('providers.sequence.title', 'Sequence Layers'),
+          t('providers.sequence.message', 'Lay the selected layers’ bars end-to-end, in selection order. Overlap in seconds — 0 butts them together; above 0 overlaps the bars by that much and cross-dissolves opacity across the overlap.'),
           '0',
-          { placeholder: 'e.g. 0.5', confirmLabel: 'Sequence' },
+          { placeholder: t('providers.sequence.placeholder', 'e.g. 0.5'), confirmLabel: t('providers.sequence.confirm', 'Sequence') },
         );
         if (raw === null) return;
         const overlap = Number(raw);
         if (!Number.isFinite(overlap) || overlap < 0) {
-          notify('Overlap must be a number of seconds, 0 or more', 'warning');
+          notify(t('providers.sequence.badOverlap', 'Overlap must be a number of seconds, 0 or more'), 'warning');
           return;
         }
         // `sequenceLayers` through the engine (B3): bars and cross-dissolves, ONE
         // entry — one command per composition when the selection spans several (B3z).
         const ok = (await sequenceLayerBarsEdit(selectedIds, overlap, overlap > 0)) === true;
         if (!ok) {
-          notify('Select 2+ layers with timeline bars', 'warning');
+          notify(t('providers.sequence.selectTwo', 'Select 2+ layers with timeline bars'), 'warning');
           return;
         }
         notify(
           overlap > 0
-            ? `Layers sequenced with a ${overlap}s cross-dissolve`
-            : 'Layers sequenced end-to-end',
+            ? t('providers.sequence.doneDissolve', 'Layers sequenced with a {seconds}s cross-dissolve', { seconds: overlap })
+            : t('providers.sequence.done', 'Layers sequenced end-to-end'),
           'success',
         );
       },
@@ -1330,8 +1346,8 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       execute: () => {
         const ids = useSelectionStore.getState().ids;
         void staggerAnimationsEdit(ids, 0.3).then((done) => {
-          if (done === true) notify('Animations staggered', 'success');
-          else notify('Select 2+ animated layers first', 'warning');
+          if (done === true) notify(t('providers.stagger.done', 'Animations staggered'), 'success');
+          else notify(t('providers.stagger.selectTwo', 'Select 2+ animated layers first'), 'warning');
         });
       },
     },
@@ -1358,11 +1374,11 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         // built by the engine's audioAnalysis job (amplitudeNull), one entry.
         void audioAmplitudeNullEdit(nodeId).then((r) => {
           if (!r) {
-            notify('That layer has no decodable audio.', 'warning');
+            notify(t('providers.audioToKeys.noAudio', 'That layer has no decodable audio.'), 'warning');
             return;
           }
           const total = r.keys.both + r.keys.left + r.keys.right;
-          notify(`Audio → ${total} keyframes across 3 sliders`, 'success');
+          notify(t('providers.audioToKeys.done', 'Audio → {total} keyframes across 3 sliders', { total }), 'success');
         });
       },
     },
@@ -1395,8 +1411,9 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
           if (written.size === 0) return;
           const total = [...written.values()].reduce((a, b) => a + b, 0);
           notify(
-            `Expression baked — ${total} keyframes across ${written.size} ` +
-              `${written.size === 1 ? 'property' : 'properties'}. The expression is disabled, not deleted.`,
+            written.size === 1
+              ? t('providers.expressionBake.doneOne', 'Expression baked — {total} keyframes across {n} property. The expression is disabled, not deleted.', { total, n: written.size })
+              : t('providers.expressionBake.doneOther', 'Expression baked — {total} keyframes across {n} properties. The expression is disabled, not deleted.', { total, n: written.size }),
             'success',
           );
         });
@@ -1458,7 +1475,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().count() > 0 && useKeyframeSelectionStore.getState().ids.size === 0,
       execute: () => {
         void deleteSelectedLayersEdit();
-        notify('Deleted selected layers', 'info');
+        notify(t('providers.edit.deletedLayers', 'Deleted selected layers'), 'info');
       },
     },
     {
@@ -1472,7 +1489,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().count() > 0 && useKeyframeSelectionStore.getState().ids.size === 0,
       execute: () => {
         void deleteSelectedLayersEdit();
-        notify('Deleted selected layers', 'info');
+        notify(t('providers.edit.deletedLayers', 'Deleted selected layers'), 'info');
       },
     },
     {
@@ -1483,7 +1500,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().count() > 0,
       execute: () => {
         void duplicateSelectedLayersEdit().then((copies) => {
-          if (copies.length > 0) notify('Duplicated layers', 'success');
+          if (copies.length > 0) notify(t('providers.edit.duplicated', 'Duplicated layers'), 'success');
         });
       },
     },
@@ -1496,7 +1513,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       shortcut: { key: 'x', meta: true },
       enabled: () => hasCutCopyTarget(),
       execute: () => {
-        void cutEdit().then((kind) => { if (kind) notify('Cut', 'info'); });
+        void cutEdit().then((kind) => { if (kind) notify(t('providers.edit.cut', 'Cut'), 'info'); });
       },
     },
     {
@@ -1505,7 +1522,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       shortcut: { key: 'c', meta: true },
       enabled: () => hasCutCopyTarget(),
       execute: () => {
-        void copyEdit().then((kind) => { if (kind && kind !== 'path') notify('Copied', 'info'); });
+        void copyEdit().then((kind) => { if (kind && kind !== 'path') notify(t('providers.edit.copied', 'Copied'), 'info'); });
       },
     },
     {
@@ -1518,9 +1535,9 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       execute: () => {
         // Keyframes: `pasteKeyframes`; layers: the `copyLayers` fragment as one `pasteLayers` (clipboardEdits).
         void pasteEdit().then((kind) => {
-          if (kind === 'svg') notify('Pasted SVG', 'success');
-          else if (kind) notify('Pasted', 'success');
-          else notify('Nothing to paste', 'info');
+          if (kind === 'svg') notify(t('providers.edit.pastedSvg', 'Pasted SVG'), 'success');
+          else if (kind) notify(t('providers.edit.pasted', 'Pasted'), 'success');
+          else notify(t('providers.edit.nothingToPaste', 'Nothing to paste'), 'info');
         });
       },
     },
@@ -1529,7 +1546,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
 
 /** Cut/Copy act on selected keyframes if any, else on selected layers. */
 function hasCutCopyTarget(): boolean {
-  return useKeyframeSelectionStore.getState().ids.size > 0 || useSelectionStore.getState().count() > 0;
+  return useKeyframeSelectionStore.getState().ids.size > 0 || useSelectionStore.getState().count() > 0 || canCopyExpression();
 }
 
 /**
@@ -1589,10 +1606,10 @@ function buildRigPresetCommands(): ReadonlyArray<Command> {
       // Never silently: a refused rig with no message reads as a dead command,
       // which is worse than the error.
       if (problems.length > 0) {
-        notify(`Auto-rig refused: ${problems.map((p) => p.kind).join(', ')}`, 'warning');
+        notify(t('providers.autoRig.refused', 'Auto-rig refused: {problems}', { problems: problems.map((p) => p.kind).join(', ') }), 'warning');
         return;
       }
-      notify(`${RIG_PRESET_LABELS[id]} rig applied`, 'success');
+      notify(t('providers.autoRig.applied', '{rig} rig applied', { rig: RIG_PRESET_LABELS[id] }), 'success');
     },
   }));
 }
@@ -1628,6 +1645,7 @@ export function buildStaticCommands(): ReadonlyArray<Command> {
     ...buildCarouselCommands(),
     ...buildCameraExportCommands(),
     ...buildDepthParallaxCommands(),
+    ...buildScriptCommands(),
     ...buildSmartAnimateCommands(),
     ...buildReframeCommands(),
     ...buildIk3DCommands(),
@@ -1690,7 +1708,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       execute: () => {
         const assets = selectedPanelFootage();
         if (assets.length === 0) {
-          notify('Select footage in the Assets panel first', 'warning');
+          notify(t('providers.clips.selectFootage', 'Select footage in the Assets panel first'), 'warning');
           return;
         }
         void runNewCompFromClips(assets);
@@ -1709,7 +1727,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       execute: () => {
         const target = assembleTarget();
         if (!target) {
-          notify('Select a video layer, or a video item in the Assets panel', 'warning');
+          notify(t('providers.assemble.selectVideo', 'Select a video layer, or a video item in the Assets panel'), 'warning');
           return;
         }
         void runAssembleFromFootage(target);
@@ -1811,7 +1829,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const comp = st.comps[compId];
         if (!comp || comp.pristine) return;
         const warn = deleteCompositionWarning(comp.name, compId);
-        if (await customConfirm('Delete Composition', warn, { isDanger: true, confirmLabel: 'Delete' })) {
+        if (await customConfirm(t('providers.deleteComp.title', 'Delete Composition'), warn, { isDanger: true, confirmLabel: t('providers.deleteComp.confirm', 'Delete') })) {
           // `removeItems` with the layers that place it; the tabs close (sceneEdits).
           await deleteCompositionEdit(compId);
         }
@@ -1876,7 +1894,12 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         if (!id) return;
         // The nulls, built off-document INTO the shape: one pasteLayers, one entry.
         void nullsFromPathEdit(id, playheadSeconds()).then((made) => {
-          notify(made.length ? `Created ${made.length} null${made.length === 1 ? '' : 's'} on the path` : 'No path points to create nulls from', made.length ? 'success' : 'warning');
+          notify(
+            made.length === 0 ? t('providers.nullsFromPath.none', 'No path points to create nulls from')
+              : made.length === 1 ? t('providers.nullsFromPath.createdOne', 'Created {n} null on the path', { n: made.length })
+                : t('providers.nullsFromPath.createdOther', 'Created {n} nulls on the path', { n: made.length }),
+            made.length ? 'success' : 'warning',
+          );
         });
       },
     },
@@ -1893,7 +1916,12 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         if (!id) return;
         // The nulls and the vertex → null bindings (`layer/pointBindings`): one engine gesture.
         void nullsFromPathEdit(id, playheadSeconds(), { pointsFollowNulls: true }).then((made) => {
-          notify(made.length ? `${made.length} null${made.length === 1 ? '' : 's'} now drive the path — move one and the outline follows` : 'No path points to create nulls from', made.length ? 'success' : 'warning');
+          notify(
+            made.length === 0 ? t('providers.nullsFromPath.none', 'No path points to create nulls from')
+              : made.length === 1 ? t('providers.nullsFromPath.liveOne', '{n} null now drive the path — move one and the outline follows', { n: made.length })
+                : t('providers.nullsFromPath.liveOther', '{n} nulls now drive the path — move one and the outline follows', { n: made.length }),
+            made.length ? 'success' : 'warning',
+          );
         });
       },
     },
@@ -1914,10 +1942,10 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const made = await shapesFromTextEdit(id, playheadSeconds());
         notify(
           !made
-            ? 'Could not outline this text — is it empty?'
+            ? t('providers.shapesFromText.failed', 'Could not outline this text — is it empty?')
             : made.source === 'outlines'
-              ? 'Created a shape layer from the font’s own outlines'
-              : 'Created a shape layer from traced outlines (the font file could not be read — allow local fonts for exact curves)',
+              ? t('providers.shapesFromText.fromOutlines', 'Created a shape layer from the font’s own outlines')
+              : t('providers.shapesFromText.fromTrace', 'Created a shape layer from traced outlines (the font file could not be read — allow local fonts for exact curves)'),
           made ? 'success' : 'warning',
         );
       },
@@ -1937,8 +1965,8 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const wa = settingsSetWorkArea(settings);
         const fps = settingsFps(settings);
         const choice = await customPrompt(
-          'Auto-trace',
-          'Trace the current frame, or every frame of the work area? Type "frame" or "range". Optional threshold 0–255 after a space (default 128).',
+          t('providers.autoTrace.title', 'Auto-trace'),
+          t('providers.autoTrace.prompt', 'Trace the current frame, or every frame of the work area? Type "frame" or "range". Optional threshold 0–255 after a space (default 128).'),
           'frame 128',
         );
         if (choice === null) return;
@@ -1947,7 +1975,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const threshold = Math.max(0, Math.min(255, Number(thrRaw) || 128));
         const startSec = range && wa ? wa.start : now;
         const endSec = range && wa ? wa.end - 1 / Math.max(1, fps) : undefined;
-        const noteId = useUIStore.getState().notify({ level: 'info', message: 'Auto-trace: rendering…', durationMs: 0 });
+        const noteId = useUIStore.getState().notify({ level: 'info', message: t('providers.autoTrace.rendering', 'Auto-trace: rendering…'), durationMs: 0 });
         try {
           // The engine traces the layer (the autoTrace job): `rendered` = what
           // the layer DRAWS, rendered alone by a child engine (effects and
@@ -1966,21 +1994,28 @@ function buildProjectCommands(): ReadonlyArray<Command> {
                 rendered: true,
               },
             },
-            { onProgress: (f) => { useUIStore.getState().notify({ level: 'info', message: `Auto-trace: ${Math.round(f * 100)}%`, durationMs: 600 }); } },
+            { onProgress: (f) => { useUIStore.getState().notify({ level: 'info', message: t('providers.autoTrace.progress', 'Auto-trace: {percent}%', { percent: Math.round(f * 100) }), durationMs: 600 }); } },
           ), 'Auto-trace');
           useUIStore.getState().dismissNotification(noteId);
           const n = viaEngine.result?.pathsAdded ?? 0;
-          if (viaEngine.status === 'failed') notify(`Auto-trace failed: ${viaEngine.error?.message ?? 'unknown error'}`, 'error');
+          if (viaEngine.status === 'failed') notify(t('providers.autoTrace.failed', 'Auto-trace failed: {error}', { error: viaEngine.error?.message ?? t('providers.autoTrace.unknownError', 'unknown error') }), 'error');
           else if (viaEngine.status === 'done') {
+            const keys = viaEngine.result?.keyframes ?? 0;
             notify(
-              n === 0 ? 'Auto-trace found nothing above the threshold'
-                : `Auto-trace: ${n} mask path${n === 1 ? '' : 's'}${viaEngine.result?.keyframes ? `, ${viaEngine.result.keyframes} keyframes` : ''}`,
+              n === 0 ? t('providers.autoTrace.nothing', 'Auto-trace found nothing above the threshold')
+                : keys > 0
+                  ? n === 1
+                    ? t('providers.autoTrace.pathsKeysOne', 'Auto-trace: {n} mask path, {keys} keyframes', { n, keys })
+                    : t('providers.autoTrace.pathsKeysOther', 'Auto-trace: {n} mask paths, {keys} keyframes', { n, keys })
+                  : n === 1
+                    ? t('providers.autoTrace.pathsOne', 'Auto-trace: {n} mask path', { n })
+                    : t('providers.autoTrace.pathsOther', 'Auto-trace: {n} mask paths', { n }),
               n === 0 ? 'warning' : 'success',
             );
           }
         } catch (err) {
           useUIStore.getState().dismissNotification(noteId);
-          notify(`Auto-trace failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+          notify(t('providers.autoTrace.failed', 'Auto-trace failed: {error}', { error: err instanceof Error ? err.message : String(err) }), 'error');
         }
       },
     },
@@ -2093,11 +2128,11 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       longer reports having been brought forward.
     */
     ...([
-      ['layer.bringToFront', 'Bring to Front', 'arrow-up', 'front', 'Brought to front', { key: ']', meta: true, shift: true }],
-      ['layer.bringForward', 'Bring Forward', 'chevron-up', 'forward', 'Brought forward', { key: ']', meta: true }],
-      ['layer.sendBackward', 'Send Backward', 'chevron-down', 'backward', 'Sent backward', { key: '[', meta: true }],
-      ['layer.sendToBack', 'Send to Back', 'arrow-down', 'back', 'Sent to back', { key: '[', meta: true, shift: true }],
-    ] as const).map(([id, label, icon, action, message, shortcut]) => ({
+      ['layer.bringToFront', 'Bring to Front', 'arrow-up', 'front', { key: ']', meta: true, shift: true }],
+      ['layer.bringForward', 'Bring Forward', 'chevron-up', 'forward', { key: ']', meta: true }],
+      ['layer.sendBackward', 'Send Backward', 'chevron-down', 'backward', { key: '[', meta: true }],
+      ['layer.sendToBack', 'Send to Back', 'arrow-down', 'back', { key: '[', meta: true, shift: true }],
+    ] as const).map(([id, label, icon, action, shortcut]) => ({
       id: asCommandId(id),
       label,
       icon,
@@ -2106,7 +2141,15 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       execute: () => {
         // `reorderLayers` through the engine (B3), one entry.
         void arrangeLayersEdit(useSelectionStore.getState().ids, action).then((moved) => {
-          if (moved) notify(message, 'info');
+          if (moved) {
+            notify(
+              action === 'front' ? t('providers.arrange.toFront', 'Brought to front')
+              : action === 'forward' ? t('providers.arrange.forward', 'Brought forward')
+              : action === 'backward' ? t('providers.arrange.backward', 'Sent backward')
+              : t('providers.arrange.toBack', 'Sent to back'),
+              'info',
+            );
+          }
         });
       },
     })),
@@ -2116,7 +2159,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'blur'); notify('Added Fast Box Blur', 'success'); }
+        if (id) { void addEffectEdit([id], 'blur'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Fast Box Blur' }), 'success'); }
       },
     },
     {
@@ -2125,7 +2168,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'glow'); notify('Added Glow', 'success'); }
+        if (id) { void addEffectEdit([id], 'glow'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Glow' }), 'success'); }
       },
     },
     {
@@ -2134,7 +2177,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'brightness'); notify('Added Brightness & Contrast', 'success'); }
+        if (id) { void addEffectEdit([id], 'brightness'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Brightness & Contrast' }), 'success'); }
       },
     },
     {
@@ -2143,7 +2186,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'contrast'); notify('Added Contrast', 'success'); }
+        if (id) { void addEffectEdit([id], 'contrast'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Contrast' }), 'success'); }
       },
     },
     {
@@ -2152,7 +2195,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'saturate'); notify('Added Hue/Saturation', 'success'); }
+        if (id) { void addEffectEdit([id], 'saturate'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Hue/Saturation' }), 'success'); }
       },
     },
     {
@@ -2161,7 +2204,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'grayscale'); notify('Added Grayscale', 'success'); }
+        if (id) { void addEffectEdit([id], 'grayscale'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Grayscale' }), 'success'); }
       },
     },
     {
@@ -2170,7 +2213,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'sepia'); notify('Added Sepia', 'success'); }
+        if (id) { void addEffectEdit([id], 'sepia'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Sepia' }), 'success'); }
       },
     },
     {
@@ -2179,7 +2222,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => useSelectionStore.getState().primary !== null,
       execute: () => {
         const id = useSelectionStore.getState().primary;
-        if (id) { void addEffectEdit([id], 'hue-rotate'); notify('Added Hue Rotate', 'success'); }
+        if (id) { void addEffectEdit([id], 'hue-rotate'); notify(t('providers.effects.added', 'Added {effect}', { effect: 'Hue Rotate' }), 'success'); }
       },
     },
     {
@@ -2207,7 +2250,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         // arrive already flagged as unsaved, so the very next New/Open prompted
         // to discard changes that did not exist.
         afterProjectLoaded();
-        notify('New project created', 'success');
+        notify(t('providers.project.created', 'New project created'), 'success');
       },
     },
     {
@@ -2228,14 +2271,14 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         if (isLocalFirst() && bundleDirPickerAvailable()) {
           const dir = await chooseBundleDir();
           if (!dir) {
-            notify('Open cancelled', 'info');
+            notify(t('providers.project.openCancelled', 'Open cancelled'), 'info');
             return;
           }
           const opened = await openProjectPath(dir);
           if (opened) {
-            notify(`Opened “${opened.name}”`, 'success');
+            notify(t('providers.project.opened', 'Opened “{name}”', { name: opened.name }), 'success');
           } else {
-            notify('Could not open that bundle', 'error');
+            notify(t('providers.project.openBundleFailed', 'Could not open that bundle'), 'error');
           }
           return;
         }
@@ -2243,14 +2286,14 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         // on the dashboard; this is File → Open Project for a local file.
         const opened = await openLocalMotionFile();
         if (opened.status === 'cancelled') {
-          notify('Open cancelled', 'info');
+          notify(t('providers.project.openCancelled', 'Open cancelled'), 'info');
           return;
         }
         if (opened.status === 'failed') {
-          notify(opened.error ?? 'Could not open that project', 'error');
+          notify(opened.error ?? t('providers.project.openFailed', 'Could not open that project'), 'error');
           return;
         }
-        notify(`Opened “${opened.name}”`, 'success');
+        notify(t('providers.project.opened', 'Opened “{name}”', { name: opened.name ?? '' }), 'success');
         // Same per-project reset the cloud loader does: the Footage tab must
         // not carry the previous project's last-previewed clip name.
         clearLastFootagePreview();
@@ -2328,12 +2371,12 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const pm = getProjectManager();
         const before = pm.getState().current?.path ?? null;
         const entered = await customPrompt(
-          'Save Copy to Cloud',
-          'This creates a copy of the project in your cloud workspace. What should it be called?',
+          t('providers.saveCopyCloud.title', 'Save Copy to Cloud'),
+          t('providers.saveCopyCloud.message', 'This creates a copy of the project in your cloud workspace. What should it be called?'),
           pm.getState().current?.name ?? 'Untitled',
-          { placeholder: 'Project name', confirmLabel: 'Save copy' },
+          { placeholder: t('providers.saveCopyCloud.placeholder', 'Project name'), confirmLabel: t('providers.saveCopyCloud.confirm', 'Save copy') },
         );
-        if (!entered?.trim()) { notify('Save cancelled', 'info'); return; }
+        if (!entered?.trim()) { notify(t('providers.save.cancelled', 'Save cancelled'), 'info'); return; }
         reportSave(await pm.saveAs(entered.trim()), { forkedFrom: before });
       },
     },
@@ -2349,14 +2392,14 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         const name = getProjectManager().getState().current?.name ?? 'Untitled';
         const result = await saveToComputer(name);
         if (result.status === 'cancelled') {
-          notify('Save cancelled', 'info');
+          notify(t('providers.save.cancelled', 'Save cancelled'), 'info');
           return;
         }
         if (result.status === 'failed') {
-          notify(result.error ?? 'Could not save to computer', 'error');
+          notify(result.error ?? t('providers.save.toComputerFailed', 'Could not save to computer'), 'error');
           return;
         }
-        notify(`Saved “${name}.motion” to your computer`, 'success');
+        notify(t('providers.save.savedToComputer', 'Saved “{name}.motion” to your computer', { name }), 'success');
       },
     },
     {
@@ -2370,17 +2413,20 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       execute: async () => {
         const folder = await window.motionEditor?.shell?.pickFolder?.();
         if (!folder) return;
-        notify('Collecting files…', 'info');
+        notify(t('providers.collect.collecting', 'Collecting files…'), 'info');
         const res = await engine().execute({ type: 'collectFiles', folder, onlyUsed: false });
         if (!res.ok) {
-          notify(`Could not collect files: ${res.error.message}`, 'error');
+          notify(t('providers.collect.failed', 'Could not collect files: {error}', { error: res.error.message }), 'error');
           return;
         }
         const missing = res.value.missing ? res.value.missing.split('\n').filter((l) => l.length > 0) : [];
+        const collectVars = { path: res.value.path, n: missing.length, files: missing.slice(0, 3).join('; ') };
         notify(
           missing.length === 0
-            ? `Collected the project and its files into ${res.value.path}`
-            : `Collected into ${res.value.path} — ${missing.length} file${missing.length === 1 ? '' : 's'} could not be read: ${missing.slice(0, 3).join('; ')}`,
+            ? t('providers.collect.done', 'Collected the project and its files into {path}', collectVars)
+            : missing.length === 1
+              ? t('providers.collect.missingOne', 'Collected into {path} — {n} file could not be read: {files}', collectVars)
+              : t('providers.collect.missingOther', 'Collected into {path} — {n} files could not be read: {files}', collectVars),
           missing.length === 0 ? 'success' : 'warning',
         );
       },
@@ -2412,31 +2458,29 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       enabled: () => canSyncCurrentProject(),
       execute: async () => {
         const passphrase = await customPrompt(
-          'Sync Project',
-          'Enter this project’s sync passphrase. It never leaves this device — the ' +
-            'server only ever stores ciphertext it cannot read. Use the same passphrase ' +
-            'on every device, or they will not be able to decrypt each other’s changes.',
+          t('providers.sync.title', 'Sync Project'),
+          t('providers.sync.message', 'Enter this project’s sync passphrase. It never leaves this device — the server only ever stores ciphertext it cannot read. Use the same passphrase on every device, or they will not be able to decrypt each other’s changes.'),
           '',
-          { placeholder: 'Sync passphrase', confirmLabel: 'Sync' },
+          { placeholder: t('providers.sync.placeholder', 'Sync passphrase'), confirmLabel: t('providers.sync.confirm', 'Sync') },
         );
         // Cancelled, or an empty passphrase — which would derive a real key from
         // nothing and silently encrypt the project under it.
         if (!passphrase) return;
 
-        notify('Syncing…', 'info');
+        notify(t('providers.sync.syncing', 'Syncing…'), 'info');
         try {
           const outcome = await syncCurrentProject(passphrase);
           if (outcome.status === 'synced') {
-            notify('Project synced', 'success');
+            notify(t('providers.sync.done', 'Project synced'), 'success');
           } else if (outcome.status === 'conflict') {
             // Not an error: another device pushed first. The engine keeps both
             // sides, so say what happened rather than implying data was lost.
-            notify('Another device changed this project — sync again to merge', 'warning');
+            notify(t('providers.sync.conflict', 'Another device changed this project — sync again to merge'), 'warning');
           } else {
-            notify('Sync failed — check your connection and passphrase', 'error');
+            notify(t('providers.sync.failedCheck', 'Sync failed — check your connection and passphrase'), 'error');
           }
         } catch (err) {
-          notify(err instanceof Error ? err.message : 'Sync failed', 'error');
+          notify(err instanceof Error ? err.message : t('providers.sync.failed', 'Sync failed'), 'error');
         }
       },
     },
@@ -2448,7 +2492,7 @@ function buildProjectCommands(): ReadonlyArray<Command> {
         if (!await confirmDiscardChanges('Close the project')) return;
         getProjectManager().close();
         bumpScene();
-        notify('Project closed', 'info');
+        notify(t('providers.project.closed', 'Project closed'), 'info');
       },
     },
     {
@@ -2548,7 +2592,7 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
 
       // Core services are registered inside Application.boot; track the rest of
       // the boot sequence as a loading task so the UI can reflect it.
-      const bootTask = getLoadingManager().begin('boot', 'Starting editor…');
+      const bootTask = getLoadingManager().begin('boot', t('providers.boot.starting', 'Starting editor…'));
       try {
         // Register built-in + project commands AFTER boot so the registry exists.
         const registry = getCommandRegistry();
@@ -2644,14 +2688,14 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
               // seam; the frame is the engine's still.
               const { comp: c, frame } = stillFrameTarget();
               const blob = await engineCompFrameStill(c, frame);
-              if (!blob) { notify('Could not render the frame', 'warning'); return; }
+              if (!blob) { notify(t('providers.frame.renderFailed', 'Could not render the frame'), 'warning'); return; }
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
               a.download = `${(c.name ?? 'comp').replace(/\s+/g, '_')}_frame${frame}.png`;
               a.click();
               URL.revokeObjectURL(url);
-              notify(`Saved frame ${frame}`, 'success');
+              notify(t('providers.frame.saved', 'Saved frame {frame}', { frame }), 'success');
             },
           });
           registry.register({
@@ -2663,14 +2707,14 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
             execute: async () => {
               const { frame, comp: c } = stillFrameTarget();
               const blob = await engineCompFrameStill(c, frame);
-              if (!blob) { notify('Could not render the frame', 'warning'); return; }
+              if (!blob) { notify(t('providers.frame.renderFailed', 'Could not render the frame'), 'warning'); return; }
               try {
                 await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                notify(`Copied frame ${frame} to the clipboard`, 'success');
+                notify(t('providers.frame.copied', 'Copied frame {frame} to the clipboard', { frame }), 'success');
               } catch (err) {
                 // Clipboard writes need a user gesture and a secure context;
                 // say which rather than failing silently.
-                notify(`Clipboard refused the frame: ${err instanceof Error ? err.message : String(err)}`, 'warning');
+                notify(t('providers.frame.clipboardRefused', 'Clipboard refused the frame: {error}', { error: err instanceof Error ? err.message : String(err) }), 'warning');
               }
             },
           });
@@ -2705,11 +2749,13 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
             { id: 'view.library', panel: 'library', label: 'Library', icon: 'component' },
             { id: 'view.character', panel: 'character', label: 'Character', icon: 'type' },
             { id: 'view.paragraph', panel: 'paragraph', label: 'Paragraph', icon: 'text-left' },
+            { id: 'view.essentialGraphics', panel: 'essentialGraphics', label: 'Essential Graphics', icon: 'layout' },
             { id: 'view.align', panel: 'align', label: 'Align', icon: 'align-center' },
             { id: 'view.swatches', panel: 'swatches', label: 'Swatches', icon: 'palette' },
             { id: 'view.info', panel: 'info', label: 'Info', icon: 'info' },
             { id: 'view.scopes', panel: 'scopes', label: 'Scopes', icon: 'waves' },
             { id: 'view.preview', panel: 'preview', label: 'Preview', icon: 'play' },
+            { id: 'view.recordAudio', panel: 'recordAudio', label: 'Record Audio', icon: 'mic' },
             { id: 'view.sourceMonitor', panel: 'sourceMonitor', label: 'Source Monitor', icon: 'tv' },
             { id: 'view.tracker', panel: 'tracker', label: 'Tracker', icon: 'crosshair' },
             { id: 'view.contentAwareFill', panel: 'contentAwareFill', label: 'Content-Aware Fill', icon: 'magic-wand' },
@@ -2801,8 +2847,8 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
               usePreferenceStore.getState().set('useProxies', next);
               notify(
                 next
-                  ? 'Using proxies where they exist — exports always use the originals'
-                  : 'Previewing the original media',
+                  ? t('providers.proxies.on', 'Using proxies where they exist — exports always use the originals')
+                  : t('providers.proxies.off', 'Previewing the original media'),
                 'info',
               );
             },
@@ -2954,6 +3000,17 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
         } catch { /* ignore */ }
         // The engine API (NATIVE_CORE_PLAN §5 B3): the C++ engine, which owns
         // the document. After the history baseline.
+        // The loading screen names the boot's stages (bootStageStore). The
+        // fonts load beside the engine; their stage closes when the document's
+        // fonts are ready, or at once where there is no font API (tests).
+        const boot = useBootStageStore.getState();
+        boot.reset();
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+          void document.fonts.ready.then(() => useBootStageStore.getState().finish('fonts'), () => useBootStageStore.getState().finish('fonts'));
+        } else {
+          boot.finish('fonts');
+        }
+        boot.begin('engine');
         try {
           bootEngine({ ownsDocument: ownsDocument || mirrorsEngine });
           track(() => { void shutdownEngine(); });
@@ -2983,6 +3040,11 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
         // Dirty tracking, autosave and crash recovery: the engine's session
         // does all three, from the mirror (engineOwnedSession.tsx). Without an
         // engine host (unit tests) there is nothing to track.
+        useBootStageStore.getState().finish('engine');
+        // The plugins register with the engine as it comes up; the session
+        // install below is where the project itself opens.
+        useBootStageStore.getState().finish('plugins');
+        useBootStageStore.getState().begin('project');
         if (!cancelled && engineOwnsDocumentNow()) {
           try {
             await installEngineOwnedSession(track);
@@ -2990,6 +3052,7 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
             console.error('[boot] the engine-owned session failed to start', err);
           }
         }
+        useBootStageStore.getState().finish('project');
       } finally {
         bootTask.end();
       }
@@ -3012,7 +3075,7 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
   }, []);
 
   if (!ready) {
-    return <LoadingScreen message="Loading editor…" />;
+    return <LoadingScreen message={t('providers.loadingEditor', 'Loading editor…')} />;
   }
 
   // TooltipProvider is mounted at the app root (main.tsx) so it also covers the

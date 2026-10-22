@@ -81,21 +81,28 @@ import { SceneRowAV, SceneRowSwitches } from './SceneRowSwitches';
 import { deleteLayersWithFeedback, sceneNodeMenuItems } from './sceneMenu';
 import styles from '@layout/EditorLayout/panels.module.css';
 import { CompositionList } from './CompositionList';
+import { t } from '@core/i18n';
 
 const KIND_ORDER = Object.keys(KIND_LABEL) as SceneKind[];
 
-const SEARCH_FIELDS: ReadonlyArray<{ id: SearchFieldId; label: string }> = [
-  { id: 'name', label: 'Layer name' },
-  { id: 'effects', label: 'Effect names' },
-  { id: 'expressions', label: 'Expression text' },
-  { id: 'source', label: 'Source file / comp' },
-];
+const SEARCH_FIELD_IDS: ReadonlyArray<SearchFieldId> = ['name', 'effects', 'expressions', 'source'];
 
-const DENSITIES: ReadonlyArray<{ id: RowDensity; label: string }> = [
-  { id: 'compact', label: 'Compact' },
-  { id: 'cozy', label: 'Cozy' },
-  { id: 'comfortable', label: 'Comfortable' },
-];
+function searchFieldLabel(id: SearchFieldId): string {
+  switch (id) {
+    case 'name': return t('scene.panel.fieldName', 'Layer name');
+    case 'effects': return t('scene.panel.fieldEffects', 'Effect names');
+    case 'expressions': return t('scene.panel.fieldExpressions', 'Expression text');
+    case 'source': return t('scene.panel.fieldSource', 'Source file / comp');
+  }
+}
+
+function densities(): ReadonlyArray<{ id: RowDensity; label: string }> {
+  return [
+    { id: 'compact', label: t('scene.panel.densityCompact', 'Compact') },
+    { id: 'cozy', label: t('scene.panel.densityCozy', 'Cozy') },
+    { id: 'comfortable', label: t('scene.panel.densityComfortable', 'Comfortable') },
+  ];
+}
 
 /** Re-export for the layer-ordering tests, which assert what this panel LISTS. */
 export { sceneGraphToTree } from './sceneRows';
@@ -396,7 +403,9 @@ export function ScenePanel(): JSX.Element {
       const n = result.captured.length;
       useUIStore.getState().notify({
         level: 'warning',
-        message: `${n} expression${n === 1 ? '' : 's'} naming “${name.trim()}” now read this layer instead of the one they read before.`,
+        message: n === 1
+          ? t('scene.panel.expressionRetargetOne', '{n} expression naming “{name}” now read this layer instead of the one they read before.', { n, name: name.trim() })
+          : t('scene.panel.expressionRetargetOther', '{n} expressions naming “{name}” now read this layer instead of the one they read before.', { n, name: name.trim() }),
         // Longer than the others: this one is a silent retarget the user cannot
         // see anywhere else, and it is the only notice they will get.
         durationMs: 10000,
@@ -404,7 +413,7 @@ export function ScenePanel(): JSX.Element {
     } else if (result.nameAlreadyInUse) {
       useUIStore.getState().notify({
         level: 'warning',
-        message: `Another layer is already called “${name.trim()}”. An expression naming it can only reach one of them.`,
+        message: t('scene.panel.nameInUse', 'Another layer is already called “{name}”. An expression naming it can only reach one of them.', { name: name.trim() }),
         durationMs: 6000,
       });
     }
@@ -464,17 +473,17 @@ export function ScenePanel(): JSX.Element {
 
   /** The view menu: scope, density, which switches, thumbnails, shy. */
   const viewMenuItems: DropdownItem[] = [
-    { type: 'label', label: 'Show' },
+    { type: 'label', label: t('scene.panel.viewShow', 'Show') },
     ...(['comp', 'project'] as const).map((s): DropdownItem => ({
       type: 'item',
       id: `v-scope-${s}`,
-      label: s === 'comp' ? 'This composition' : 'Whole project',
+      label: s === 'comp' ? t('scene.panel.scopeComp', 'This composition') : t('scene.panel.scopeProject', 'Whole project'),
       icon: scope === s ? 'check' : undefined,
       onSelect: () => view.setScope(s),
     })),
     { type: 'separator' },
-    { type: 'label', label: 'Row height' },
-    ...DENSITIES.map((d): DropdownItem => ({
+    { type: 'label', label: t('scene.panel.rowHeight', 'Row height') },
+    ...densities().map((d): DropdownItem => ({
       type: 'item',
       id: `v-density-${d.id}`,
       label: d.label,
@@ -482,7 +491,7 @@ export function ScenePanel(): JSX.Element {
       onSelect: () => view.setDensity(d.id),
     })),
     { type: 'separator' },
-    { type: 'label', label: 'Switches on each row' },
+    { type: 'label', label: t('scene.panel.switchesOnRow', 'Switches on each row') },
     ...LAYER_FLAGS.map((f): DropdownItem => ({
       type: 'checkbox',
       id: `v-switch-${f.id}`,
@@ -494,14 +503,14 @@ export function ScenePanel(): JSX.Element {
     {
       type: 'checkbox',
       id: 'v-thumbs',
-      label: 'Source thumbnails',
+      label: t('scene.panel.thumbnails', 'Source thumbnails'),
       checked: thumbnails,
       onChange: () => view.setThumbnails(!thumbnails),
     },
     {
       type: 'checkbox',
       id: 'v-shy',
-      label: 'Hide shy layers',
+      label: t('scene.panel.hideShy', 'Hide shy layers'),
       checked: hideShy,
       onChange: () => view.setHideShy(!hideShy),
     },
@@ -514,9 +523,9 @@ export function ScenePanel(): JSX.Element {
     active is spelled out as chips under the search field.
   */
   const filterMenuItems = (): DropdownItem[] => [
-    { type: 'label', label: 'Kind' },
+    { type: 'label', label: t('scene.panel.filterKind', 'Kind') },
     ...(kindChoices.length === 0
-      ? [{ type: 'item', id: 'no-kinds', label: 'No layers yet', disabled: true } as DropdownItem]
+      ? [{ type: 'item', id: 'no-kinds', label: t('scene.panel.noKinds', 'No layers yet'), disabled: true } as DropdownItem]
       : kindChoices.map((k): DropdownItem => ({
           type: 'checkbox',
           id: `kind-${k}`,
@@ -530,18 +539,18 @@ export function ScenePanel(): JSX.Element {
           },
         }))),
     { type: 'separator' },
-    { type: 'label', label: 'Has' },
-    { type: 'checkbox', id: 'has-keys', label: 'Keyframes', checked: stored.animatedOnly, onChange: () => patch({ animatedOnly: !stored.animatedOnly }) },
-    { type: 'checkbox', id: 'has-fx', label: 'Effects', checked: stored.effectsOnly, onChange: () => patch({ effectsOnly: !stored.effectsOnly }) },
+    { type: 'label', label: t('scene.panel.filterHas', 'Has') },
+    { type: 'checkbox', id: 'has-keys', label: t('scene.panel.filterKeyframes', 'Keyframes'), checked: stored.animatedOnly, onChange: () => patch({ animatedOnly: !stored.animatedOnly }) },
+    { type: 'checkbox', id: 'has-fx', label: t('scene.panel.filterEffects', 'Effects'), checked: stored.effectsOnly, onChange: () => patch({ effectsOnly: !stored.effectsOnly }) },
     // The 3D view (U5): cameras, lights and 3D layers; the active camera is marked.
-    { type: 'checkbox', id: 'has-3d', label: 'Cameras, lights and 3D layers', checked: stored.threeDOnly, onChange: () => patch({ threeDOnly: !stored.threeDOnly }) },
+    { type: 'checkbox', id: 'has-3d', label: t('scene.panel.filter3d', 'Cameras, lights and 3D layers'), checked: stored.threeDOnly, onChange: () => patch({ threeDOnly: !stored.threeDOnly }) },
     { type: 'separator' },
-    { type: 'label', label: 'Label' },
+    { type: 'label', label: t('scene.panel.filterLabel', 'Label') },
     {
       type: 'custom',
       id: 'labels',
       render: (
-        <div className={styles.filterSwatches} role="group" aria-label="Label colour">
+        <div className={styles.filterSwatches} role="group" aria-label={t('scene.panel.labelColour', 'Label colour')}>
           {LABEL_COLORS.map((c) => (
             <button
               key={c.id}
@@ -561,7 +570,7 @@ export function ScenePanel(): JSX.Element {
             aria-pressed={stored.label === 'none'}
             onClick={() => patch({ label: stored.label === 'none' ? null : 'none' })}
           >
-            None
+            {t('scene.panel.none', 'None')}
           </button>
         </div>
       ),
@@ -570,32 +579,32 @@ export function ScenePanel(): JSX.Element {
     // WHICH fields the box searches — visible here rather than a syntax
     // ("fx:glow"), because a search that silently looks in four places is as
     // confusing as one that silently looks in one.
-    { type: 'label', label: 'Search in' },
-    ...SEARCH_FIELDS.map((f): DropdownItem => ({
+    { type: 'label', label: t('scene.panel.searchIn', 'Search in') },
+    ...SEARCH_FIELD_IDS.map((f): DropdownItem => ({
       type: 'checkbox',
-      id: `field-${f.id}`,
-      label: f.label,
-      checked: stored.fields.includes(f.id),
-      onChange: () => patch({ fields: toggleField(stored.fields, f.id) }),
+      id: `field-${f}`,
+      label: searchFieldLabel(f),
+      checked: stored.fields.includes(f),
+      onChange: () => patch({ fields: toggleField(stored.fields, f) }),
     })),
   ];
 
   /** The active filters as removable chips (the search text is in its own field). */
   const chips: Array<{ id: string; label: string; clear: () => void }> = [];
   if (kindFilter) chips.push({ id: 'kind', label: [...kindFilter].map((k) => KIND_LABEL[k]).join(', '), clear: () => patch({ kinds: null }) });
-  if (stored.animatedOnly) chips.push({ id: 'keys', label: 'Has keyframes', clear: () => patch({ animatedOnly: false }) });
-  if (stored.effectsOnly) chips.push({ id: 'fx', label: 'Has effects', clear: () => patch({ effectsOnly: false }) });
-  if (stored.threeDOnly) chips.push({ id: '3d', label: '3D only', clear: () => patch({ threeDOnly: false }) });
+  if (stored.animatedOnly) chips.push({ id: 'keys', label: t('scene.panel.chipKeyframes', 'Has keyframes'), clear: () => patch({ animatedOnly: false }) });
+  if (stored.effectsOnly) chips.push({ id: 'fx', label: t('scene.panel.chipEffects', 'Has effects'), clear: () => patch({ effectsOnly: false }) });
+  if (stored.threeDOnly) chips.push({ id: '3d', label: t('scene.panel.chip3d', '3D only'), clear: () => patch({ threeDOnly: false }) });
   if (stored.label) {
-    const name = stored.label === 'none' ? 'None' : LABEL_COLORS.find((c) => c.color === stored.label)?.label ?? 'Colour';
-    chips.push({ id: 'label', label: `Label: ${name}`, clear: () => patch({ label: null }) });
+    const name = stored.label === 'none' ? t('scene.panel.labelNone', 'None') : LABEL_COLORS.find((c) => c.color === stored.label)?.label ?? t('scene.panel.labelColourFallback', 'Colour');
+    chips.push({ id: 'label', label: t('scene.panel.chipLabel', 'Label: {name}', { name }), clear: () => patch({ label: null }) });
   }
   const menuFilterActive = chips.length > 0;
 
   return (
     <Panel
       id="scene"
-      title="Scene"
+      title={t('scene.panel.scene', 'Scene')}
       icon="layers"
       hideHeader
       noScroll
@@ -604,14 +613,14 @@ export function ScenePanel(): JSX.Element {
       <div className={styles.sceneShell} data-tour="scene-panel">
         <CompositionList collapsible />
         <div className={styles.layerSectionHead}>
-          <span className={styles.compSectionLabel}>Layers</span>
+          <span className={styles.compSectionLabel}>{t('scene.panel.layers', 'Layers')}</span>
           <span className={styles.compMeta}>{itemCount}</span>
         </div>
         <div className={styles.searchRow}>
           <SearchField
             className={styles.sceneSearch}
             placeholder={searchPlaceholder(stored.fields)}
-            ariaLabel="Search layers"
+            ariaLabel={t('scene.panel.searchAria', 'Search layers')}
             value={stored.query}
             onChange={(query) => patch({ query })}
           />
@@ -621,8 +630,8 @@ export function ScenePanel(): JSX.Element {
               <IconButton
                 size="sm"
                 className={styles.sceneFilterTrigger}
-                tooltip="Filter layers"
-                aria-label="Layer filters"
+                tooltip={t('scene.panel.filterLayers', 'Filter layers')}
+                aria-label={t('scene.panel.layerFilters', 'Layer filters')}
                 aria-pressed={menuFilterActive}
               >
                 <Icon name="filter" size="sm" />
@@ -634,7 +643,7 @@ export function ScenePanel(): JSX.Element {
           <Dropdown
             placement="bottom-end"
             trigger={
-              <IconButton size="sm" tooltip="How this panel lists layers" aria-label="Layers panel view options">
+              <IconButton size="sm" tooltip={t('scene.panel.howThisPanelListsLayers', 'How this panel lists layers')} aria-label={t('scene.panel.layersPanelViewOptions', 'Layers panel view options')}>
                 <Icon name="tune" size="sm" />
               </IconButton>
             }
@@ -642,13 +651,13 @@ export function ScenePanel(): JSX.Element {
           />
         </div>
         {filterActive && (
-          <div className={styles.sceneChips} aria-label="Active layer filters">
+          <div className={styles.sceneChips} aria-label={t('scene.panel.activeLayerFilters', 'Active layer filters')}>
             {chips.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 className={styles.sceneChip}
-                aria-label={`Remove filter: ${c.label}`}
+                aria-label={t('scene.panel.removeFilter', 'Remove filter: {label}', { label: c.label })}
                 onClick={c.clear}
               >
                 <span className={styles.sceneChipText}>{c.label}</span>
@@ -658,10 +667,10 @@ export function ScenePanel(): JSX.Element {
             <button
               type="button"
               className={styles.sceneChipClear}
-              aria-label="Clear layer filters"
+              aria-label={t('scene.panel.clearLayerFilters', 'Clear layer filters')}
               onClick={() => clearFilterFor(activeCompId)}
             >
-              Clear
+              {t('scene.panel.clear', 'Clear')}
             </button>
           </div>
         )}
@@ -673,7 +682,7 @@ export function ScenePanel(): JSX.Element {
             <span className={styles.avHead}><Icon name="circle" size="sm" /></span>
             <span className={styles.avHead}><Icon name="lock" size="sm" /></span>
           </span>
-          <span className={styles.layerColumnName}>Layer name</span>
+          <span className={styles.layerColumnName}>{t('scene.panel.layerName', 'Layer name')}</span>
         </div>
         {/*
           A pick-whip drop surface. Rows already carry `data-id` from the shared
@@ -686,7 +695,7 @@ export function ScenePanel(): JSX.Element {
           {filtered.length ? (
             <TreeView
               nodes={filtered}
-              ariaLabel="Layers"
+              ariaLabel={t('scene.panel.layers', 'Layers')}
               rowHeight={rowHeight}
               selectedIds={selected}
               onSelect={selectFromTree}
@@ -714,7 +723,7 @@ export function ScenePanel(): JSX.Element {
                 if (!documentMirror().layer(node.id)) return null;
                 return (
                   <PickWhip
-                    label="Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)"
+                    label={t('scene.panel.pickWhip', 'Parent pick-whip — drag onto a layer (Shift: jump to the parent · Alt: keep values)')}
                     accept={(target) => mirrorCanBeParentOf(documentMirror(), node.id, target.nodeId)}
                     // The inspector's writer (`setParent`); a composition root = no parent.
                     onPick={(target, m) => parentLayer(node.id, isLayer(target.nodeId) ? target.nodeId : null, m)}
@@ -726,26 +735,26 @@ export function ScenePanel(): JSX.Element {
           ) : (
             <div className={styles.empty} role="status">
               {filterActive
-                ? 'No layers match this filter.'
-                : 'No layers yet. Add one from the “+ New layer” menu in the toolbar.'}
+                ? t('scene.panel.noMatch', 'No layers match this filter.')
+                : t('scene.panel.empty', 'No layers yet. Add one from the “+ New layer” menu in the toolbar.')}
             </div>
           )}
         </div>
         <div className={styles.sceneFooter}>
-          <span>{itemCount} {itemCount === 1 ? 'layer' : 'layers'}</span>
+          <span>{itemCount === 1 ? t('scene.panel.layerCountOne', '{n} layer', { n: itemCount }) : t('scene.panel.layerCountOther', '{n} layers', { n: itemCount })}</span>
           {filterActive && (
             <>
               <span>·</span>
-              <span>{matchCount} {matchCount === 1 ? 'match' : 'matches'}</span>
+              <span>{matchCount === 1 ? t('scene.panel.matchCountOne', '{n} match', { n: matchCount }) : t('scene.panel.matchCountOther', '{n} matches', { n: matchCount })}</span>
             </>
           )}
           <span>·</span>
-          <span>{selected.length} selected</span>
+          <span>{t('scene.panel.selectedCount', '{n} selected', { n: selected.length })}</span>
           <span className={styles.spacer} />
           <IconButton
             size="sm"
-            tooltip="Delete the selected layers"
-            aria-label="Delete selected layers"
+            tooltip={t('scene.panel.deleteTheSelectedLayers', 'Delete the selected layers')}
+            aria-label={t('scene.panel.deleteSelectedLayers', 'Delete selected layers')}
             disabled={selected.length === 0}
             onClick={() => { void deleteLayersWithFeedback(selected); }}
           >
@@ -760,9 +769,9 @@ export function ScenePanel(): JSX.Element {
 /** Placeholder that says where the box is looking, so the answer is visible
  *  before a fruitless search rather than after it. */
 function searchPlaceholder(fields: ReadonlyArray<SearchFieldId>): string {
-  if (fields.length === 0 || (fields.length === 1 && fields[0] === 'name')) return 'Search layers…';
-  if (fields.length === SEARCH_FIELDS.length) return 'Search layers, effects, expressions…';
-  return `Search ${fields.map((f) => SEARCH_FIELDS.find((s) => s.id === f)?.label.toLowerCase() ?? f).join(' · ')}…`;
+  if (fields.length === 0 || (fields.length === 1 && fields[0] === 'name')) return t('scene.panel.searchPlaceholder', 'Search layers…');
+  if (fields.length === SEARCH_FIELD_IDS.length) return t('scene.panel.searchPlaceholderAll', 'Search layers, effects, expressions…');
+  return t('scene.panel.searchPlaceholderFields', 'Search {fields}…', { fields: fields.map((f) => searchFieldLabel(f).toLowerCase()).join(' · ') });
 }
 
 /** Toggle a search field; unchecking the last one falls back to the name,

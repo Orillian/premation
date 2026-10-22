@@ -24,6 +24,7 @@ import { engine } from '@core/engine/engineInstance';
 import { edit } from '@core/engine/uiEdits';
 import { isLayer } from '@core/mirror/docFacts';
 import { customConfirm } from '@components/Modal';
+import { t } from '@core/i18n';
 import { needsSelfApplyConfirm, selfApplyConfirmCopy } from './applyTargetGuard';
 import { explainObjectMatteError } from '@core/tracking/samModelInstall';
 import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
@@ -96,17 +97,25 @@ export function trackMotionActions(ctx: TrackMotionContext) {
   const store = useTrackerStore;
 
   const targetName = (id: string): string =>
-    targets.find((t) => t.id === id)?.name || (id === nodeId ? 'this layer' : id);
+    targets.find((tg) => tg.id === id)?.name || (id === nodeId ? t('inspector.trackMotion.thisLayer', 'this layer') : id);
 
   const summarize = (tracks: { length: number }[], status: string, extra = ''): string => {
-    const n = tracks[0]?.length ?? 0;
-    const outcome =
+    const frames = tracks[0]?.length ?? 0;
+    const vars = { points: tracks.length, frames };
+    const one = tracks.length === 1;
+    const base =
       status === 'lost'
-        ? 'lost — samples up to the loss are kept'
+        ? one
+          ? t('inspector.trackMotion.trackedLostOne', 'Tracked {points} point × {frames} frames (lost — samples up to the loss are kept)', vars)
+          : t('inspector.trackMotion.trackedLostOther', 'Tracked {points} points × {frames} frames (lost — samples up to the loss are kept)', vars)
         : status === 'cancelled'
-          ? 'cancelled'
-          : 'completed';
-    return `Tracked ${tracks.length} point${tracks.length === 1 ? '' : 's'} × ${n} frames (${outcome})${extra}`;
+          ? one
+            ? t('inspector.trackMotion.trackedCancelledOne', 'Tracked {points} point × {frames} frames (cancelled)', vars)
+            : t('inspector.trackMotion.trackedCancelledOther', 'Tracked {points} points × {frames} frames (cancelled)', vars)
+          : one
+            ? t('inspector.trackMotion.trackedCompletedOne', 'Tracked {points} point × {frames} frames (completed)', vars)
+            : t('inspector.trackMotion.trackedCompletedOther', 'Tracked {points} points × {frames} frames (completed)', vars);
+    return `${base}${extra}`;
   };
 
   /**
@@ -142,8 +151,8 @@ export function trackMotionActions(ctx: TrackMotionContext) {
         ...(extra.stabilizeScale ? { stabilizeScale: true } : {}),
       },
     });
-    if (!out) return { ok: false, summary: null, message: 'this engine does not apply tracks' };
-    return { ok: out.status === 'done', summary: out.result, message: out.error?.message ?? (out.status === 'cancelled' ? 'cancelled' : '') };
+    if (!out) return { ok: false, summary: null, message: t('inspector.trackMotion.engineNoApply', 'this engine does not apply tracks') };
+    return { ok: out.status === 'done', summary: out.result, message: out.error?.message ?? (out.status === 'cancelled' ? t('inspector.trackMotion.cancelledWord', 'cancelled') : '') };
   };
 
   // ── One click ─────────────────────────────────────────────────────────
@@ -161,7 +170,7 @@ export function trackMotionActions(ctx: TrackMotionContext) {
   // Cancel works by clearing the flag the walk polls each frame; the command
   // then finishes normally and KEEPS what it measured.
   const onCancel = (): void => {
-    store.getState().finishTracking(null, 'Stopping…');
+    store.getState().finishTracking(null, t('inspector.trackMotion.stopping', 'Stopping…'));
   };
 
   /**
@@ -180,7 +189,9 @@ export function trackMotionActions(ctx: TrackMotionContext) {
     if (viaEngine) {
       const nullId = viaEngine.summary?.nullIds[0];
       if (!viaEngine.ok || !nullId) {
-        store.getState().finishTracking(result, viaEngine.message ? `Could not create null: ${viaEngine.message}` : 'Could not create null.');
+        store.getState().finishTracking(result, viaEngine.message
+          ? t('inspector.trackMotion.nullFailedReason', 'Could not create null: {reason}', { reason: viaEngine.message })
+          : t('inspector.trackMotion.nullFailed', 'Could not create null.'));
         return;
       }
       useSelectionStore.getState().set([nullId]);
@@ -188,7 +199,10 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       ctx.onNullCreated?.(nullId);
       store.getState().finishTracking(
         result,
-        `Created a tracked null with ${viaEngine.summary?.keyframes ?? 0} ${asTransform ? 'position, rotation & scale' : 'position'} keyframes.`,
+        asTransform
+          ? t('inspector.trackMotion.nullCreatedTransform', 'Created a tracked null with {n} position, rotation & scale keyframes.', { n: viaEngine.summary?.keyframes ?? 0 })
+          : t('inspector.trackMotion.nullCreated', 'Created a tracked null with {n} position keyframes.', { n: viaEngine.summary?.keyframes ?? 0 }),
+        true,
       );
       return;
     }
@@ -208,8 +222,8 @@ export function trackMotionActions(ctx: TrackMotionContext) {
     store.getState().finishTracking(
       result,
       ok
-        ? `Parented ${targetName(childId)} to ${nullName} — it now follows the track.`
-        : 'Could not parent that layer — the move would create a loop.',
+        ? t('inspector.trackMotion.parented', 'Parented {child} to {parent} — it now follows the track.', { child: targetName(childId), parent: nullName })
+        : t('inspector.trackMotion.parentLoop', 'Could not parent that layer — the move would create a loop.'),
     );
   };
 
@@ -260,15 +274,18 @@ export function trackMotionActions(ctx: TrackMotionContext) {
     cancelSolve = job.cancel;
     const out = await job.done;
     if (out.status !== 'done' || !out.result) {
-      store.getState().finishTracking(null, out.error?.message ?? 'The camera solve was cancelled.');
+      store.getState().finishTracking(null, out.error?.message ?? t('inspector.trackMotion.cameraSolveCancelled', 'The camera solve was cancelled.'));
       return;
     }
     const r = out.result;
     useCameraTrackStore.getState().setSolve(nodeId, await loadCameraSolve(engine(), nodeId));
     store.getState().finishTracking(
       null,
-      `Solved ${r.solvedFrames} of ${r.totalFrames} frames · ${r.points} track points · lens ${Math.round(r.focal)} px · error ${r.errorPx.toFixed(2)} px. `
-        + 'Select track points in the viewer to set the ground plane or create layers on them.',
+      t(
+        'inspector.trackMotion.cameraSolved',
+        'Solved {solved} of {total} frames · {points} track points · lens {focal} px · error {error} px. Select track points in the viewer to set the ground plane or create layers on them.',
+        { solved: r.solvedFrames, total: r.totalFrames, points: r.points, focal: Math.round(r.focal), error: r.errorPx.toFixed(2) },
+      ),
     );
   };
 
@@ -277,21 +294,27 @@ export function trackMotionActions(ctx: TrackMotionContext) {
     const selected = useCameraTrackStore.getState().selected;
     if (selected.length === 0 || tracking) return;
     if (action === 'ground' && selected.length < 3) {
-      store.getState().finishTracking(null, 'Select three or more track points on the ground first.');
+      store.getState().finishTracking(null, t('inspector.trackMotion.groundNeedsThree', 'Select three or more track points on the ground first.'));
       return;
     }
     store.getState().beginTracking();
     const out = await runEngineJob<{ layer: string; camera: string }>(action === 'ground' ? groundPlaneJob(nodeId, selected) : trackPointLayersJob(nodeId, selected, action));
     if (!out || out.status !== 'done') {
-      store.getState().finishTracking(null, out?.error?.message ?? 'This engine does not run the camera tracker.');
+      store.getState().finishTracking(null, out?.error?.message ?? t('inspector.trackMotion.engineNoCameraTracker', 'This engine does not run the camera tracker.'));
       return;
     }
     if (action === 'ground') useCameraTrackStore.getState().setSolve(nodeId, await loadCameraSolve(engine(), nodeId));
     else if (out.result?.layer) useSelectionStore.getState().set([out.result.layer]);
     store.getState().finishTracking(
       null,
-      action === 'ground' ? 'The ground plane and origin are set; the camera was re-keyed.'
-        : `Created a ${action === 'shadowCatcher' ? 'shadow catcher' : action} on the track points.`,
+      action === 'ground' ? t('inspector.trackMotion.groundSet', 'The ground plane and origin are set; the camera was re-keyed.')
+        : action === 'shadowCatcher' ? t('inspector.trackMotion.createdShadowCatcher', 'Created a shadow catcher on the track points.')
+          : action === 'text' ? t('inspector.trackMotion.createdText', 'Created a text on the track points.')
+            : action === 'solid' ? t('inspector.trackMotion.createdSolid', 'Created a solid on the track points.')
+              : action === 'null' ? t('inspector.trackMotion.createdNull', 'Created a null on the track points.')
+                : t('inspector.trackMotion.createdLayer', 'Created a {kind} on the track points.', { kind: action }),
+      // A created layer is a success; the ground-plane line keeps the plain tone it always had.
+      action !== 'ground',
     );
   };
 
@@ -322,12 +345,34 @@ export function trackMotionActions(ctx: TrackMotionContext) {
     cancelFace = job.cancel;
     const out = await job.done;
     const r = out.result;
+    const faceSummary = (res: NonNullable<typeof r>): string => {
+      const lost = res.status === 'lost';
+      const vars = { frames: res.frames, masks: res.masks.length, nulls: res.nulls.length };
+      const oneMask = res.masks.length === 1;
+      if (res.nulls.length) {
+        if (lost) {
+          return oneMask
+            ? t('inspector.trackMotion.faceLostMaskNullsOne', 'Face tracked over {frames} frames (the face was lost part-way; the frames before it are kept): {masks} mask, {nulls} nulls.', vars)
+            : t('inspector.trackMotion.faceLostMaskNullsOther', 'Face tracked over {frames} frames (the face was lost part-way; the frames before it are kept): {masks} masks, {nulls} nulls.', vars);
+        }
+        return oneMask
+          ? t('inspector.trackMotion.faceMaskNullsOne', 'Face tracked over {frames} frames: {masks} mask, {nulls} nulls.', vars)
+          : t('inspector.trackMotion.faceMaskNullsOther', 'Face tracked over {frames} frames: {masks} masks, {nulls} nulls.', vars);
+      }
+      if (lost) {
+        return oneMask
+          ? t('inspector.trackMotion.faceLostMaskOne', 'Face tracked over {frames} frames (the face was lost part-way; the frames before it are kept): {masks} mask.', vars)
+          : t('inspector.trackMotion.faceLostMaskOther', 'Face tracked over {frames} frames (the face was lost part-way; the frames before it are kept): {masks} masks.', vars);
+      }
+      return oneMask
+        ? t('inspector.trackMotion.faceMaskOne', 'Face tracked over {frames} frames: {masks} mask.', vars)
+        : t('inspector.trackMotion.faceMaskOther', 'Face tracked over {frames} frames: {masks} masks.', vars);
+    };
     store.getState().finishTracking(
       null,
       out.status !== 'done' || !r
-        ? out.error?.message ?? 'Face tracking was cancelled.'
-        : `Face tracked over ${r.frames} frames${r.status === 'lost' ? ' (the face was lost part-way; the frames before it are kept)' : ''}: `
-          + `${r.masks.length} mask${r.masks.length === 1 ? '' : 's'}${r.nulls.length ? `, ${r.nulls.length} nulls` : ''}.`,
+        ? out.error?.message ?? t('inspector.trackMotion.faceCancelled', 'Face tracking was cancelled.')
+        : faceSummary(r),
     );
   };
 
@@ -386,10 +431,10 @@ export function trackMotionActions(ctx: TrackMotionContext) {
           store.getState().finishTracking(
             null,
             out.status !== 'done' || !r
-              ? out.error?.message ?? 'Mask tracking was cancelled.'
+              ? out.error?.message ?? t('inspector.trackMotion.maskCancelled', 'Mask tracking was cancelled.')
               : r.sampled < r.vertices
-                ? `Tracked ${r.sampled} of ${r.vertices} mask vertices (the rest follow their neighbours), wrote ${r.keyframes} mask keyframes (${r.status}).`
-                : `Tracked ${r.vertices} mask vertices, wrote ${r.keyframes} mask keyframes (${r.status}).`,
+                ? t('inspector.trackMotion.maskTrackedSampled', 'Tracked {sampled} of {vertices} mask vertices (the rest follow their neighbours), wrote {keyframes} mask keyframes ({status}).', { sampled: r.sampled, vertices: r.vertices, keyframes: r.keyframes, status: r.status })
+                : t('inspector.trackMotion.maskTracked', 'Tracked {vertices} mask vertices, wrote {keyframes} mask keyframes ({status}).', { vertices: r.vertices, keyframes: r.keyframes, status: r.status }),
           );
           return;
         }
@@ -415,8 +460,8 @@ export function trackMotionActions(ctx: TrackMotionContext) {
         store.getState().finishTracking(
           null,
           viaEngine.status === 'done'
-            ? `Stabilized (${stabVariant}): fitted ${viaEngine.result?.fittedPairs ?? 0}/${viaEngine.result?.totalPairs ?? 0} frame pairs.`
-            : viaEngine.error?.message ?? 'Stabilize was cancelled.',
+            ? t('inspector.trackMotion.stabilized', 'Stabilized ({variant}): fitted {fitted}/{total} frame pairs.', { variant: stabVariant, fitted: viaEngine.result?.fittedPairs ?? 0, total: viaEngine.result?.totalPairs ?? 0 })
+            : viaEngine.error?.message ?? t('inspector.trackMotion.stabilizeCancelled', 'Stabilize was cancelled.'),
         );
         return;
       }
@@ -463,10 +508,10 @@ export function trackMotionActions(ctx: TrackMotionContext) {
         const viaEngine = await handle.done;
         const res = viaEngine.result;
         if (viaEngine.status !== 'done' || !res) {
-          store.getState().finishTracking(null, viaEngine.error?.message ?? 'Tracking was cancelled.');
+          store.getState().finishTracking(null, viaEngine.error?.message ?? t('inspector.trackMotion.trackingCancelled', 'Tracking was cancelled.'));
           return;
         }
-        const fresh = res.tracks.map((t) => t.map(([compTime, x, y, confidence, coasted]) => ({ compTime, x, y, confidence, coasted: coasted === 1 })));
+        const fresh = res.tracks.map((tr) => tr.map(([compTime, x, y, confidence, coasted]) => ({ compTime, x, y, confidence, coasted: coasted === 1 })));
         const status = res.status === 'lost' ? 'lost' : 'completed';
         // A walk from a corrected (or any held) frame splices into the held
         // track: forward replaces what follows the playhead, backward what precedes it.
@@ -474,7 +519,7 @@ export function trackMotionActions(ctx: TrackMotionContext) {
         const coasted = merged.tracks.flat().filter((smp) => smp.coasted).length;
         store.getState().finishTracking(
           merged,
-          summarize(merged.tracks, status, coasted > 0 ? ` · ${coasted} coasted` : ''),
+          summarize(merged.tracks, status, coasted > 0 ? t('inspector.trackMotion.coastedSuffix', ' · {n} coasted', { n: coasted }) : ''),
         );
       }
     } catch (e) {
@@ -492,20 +537,25 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       const copy = selfApplyConfirmCopy({ mode, layerName: targetName(targetId) });
       const makeNull = await customConfirm(copy.title, copy.message, { confirmLabel: copy.confirmLabel });
       if (makeNull) await onCreateNullAndApply();
-      else store.getState().finishTracking(result, 'Not applied — choose another layer to receive the track.');
+      else store.getState().finishTracking(result, t('inspector.trackMotion.notAppliedChoose', 'Not applied — choose another layer to receive the track.'));
       return;
     }
     const targetIsCamera = uiKindOf(documentMirror().layer(targetId)) === 'camera';
-    const whatFor = (): string =>
-      mode === 'follow'
-        ? targetIsCamera ? `camera position + look-at to “${targetName(targetId)}”` : `position keyframes to “${targetName(targetId)}”`
+    /** The whole "Applied …" sentence per mode (no spliced fragments). */
+    const appliedMessage = (n: number): string => {
+      const vars = { n, name: targetName(targetId) };
+      return mode === 'follow'
+        ? targetIsCamera
+          ? t('inspector.trackMotion.appliedCameraLookAt', 'Applied {n} camera position + look-at to “{name}”.', vars)
+          : t('inspector.trackMotion.appliedPosition', 'Applied {n} position keyframes to “{name}”.', vars)
         : mode === 'transform'
           ? targetIsCamera
-            ? `camera solve (position + orientation) to “${targetName(targetId)}”`
-            : `position/rotation/scale keyframes to “${targetName(targetId)}”`
+            ? t('inspector.trackMotion.appliedCameraSolve', 'Applied {n} camera solve (position + orientation) to “{name}”.', vars)
+            : t('inspector.trackMotion.appliedTransform', 'Applied {n} position/rotation/scale keyframes to “{name}”.', vars)
           : mode === 'stabilize'
-            ? 'stabilizing keyframes to this layer'
-            : `corner-pin keyframes to “${targetName(targetId)}”`;  // corner and planar
+            ? t('inspector.trackMotion.appliedStabilize', 'Applied {n} stabilizing keyframes to this layer.', vars)
+            : t('inspector.trackMotion.appliedCornerPin', 'Applied {n} corner-pin keyframes to “{name}”.', vars);  // corner and planar
+    };
     if (mode === 'follow' || mode === 'transform' || mode === 'stabilize' || mode === 'corner' || mode === 'planar') {
       const st = store.getState();
       const applyPath = mode === 'follow' ? st.applyPath : '';
@@ -519,7 +569,10 @@ export function trackMotionActions(ctx: TrackMotionContext) {
         const n = viaEngine.summary?.keyframes ?? 0;
         store.getState().finishTracking(
           result,
-          !viaEngine.ok ? `Not applied: ${viaEngine.message || 'the engine refused the track'}` : n > 0 ? `Applied ${n} ${whatFor()}.` : 'Nothing to apply.',
+          !viaEngine.ok
+            ? t('inspector.trackMotion.notApplied', 'Not applied: {reason}', { reason: viaEngine.message || t('inspector.trackMotion.engineRefused', 'the engine refused the track') })
+            : n > 0 ? appliedMessage(n) : t('inspector.trackMotion.nothingToApply', 'Nothing to apply.'),
+          viaEngine.ok && n > 0,
         );
       }
     }
@@ -532,7 +585,12 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       const n = viaEngine.summary?.keyframes ?? 0;
       store.getState().finishTracking(
         result,
-        !viaEngine.ok ? `Not applied: ${viaEngine.message}` : n > 0 ? `Applied ${n} mesh-warp keyframes to “${targetName(targetId)}”.` : 'Nothing to apply.',
+        !viaEngine.ok
+          ? t('inspector.trackMotion.notApplied', 'Not applied: {reason}', { reason: viaEngine.message })
+          : n > 0
+            ? t('inspector.trackMotion.appliedMeshWarp', 'Applied {n} mesh-warp keyframes to “{name}”.', { n, name: targetName(targetId) })
+            : t('inspector.trackMotion.nothingToApply', 'Nothing to apply.'),
+        viaEngine.ok && n > 0,
       );
     }
   };
@@ -548,8 +606,8 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       store.getState().finishTracking(
         result,
         viaEngine.ok && r?.cameraId
-          ? `3D Camera Tracker: ${r.solvedFrames ?? 0}/${r.totalFrames ?? 0} frames, mean error ${(r.meanRmsPx ?? 0).toFixed(2)} px. Enable 3D on layers to see it.`
-          : viaEngine.message || 'Camera solve failed — the plane is degenerate over this range.',
+          ? t('inspector.trackMotion.cameraTrackerResult', '3D Camera Tracker: {solved}/{total} frames, mean error {error} px. Enable 3D on layers to see it.', { solved: r.solvedFrames ?? 0, total: r.totalFrames ?? 0, error: (r.meanRmsPx ?? 0).toFixed(2) })
+          : viaEngine.message || t('inspector.trackMotion.cameraSolveDegenerate', 'Camera solve failed — the plane is degenerate over this range.'),
       );
     }
   };
@@ -589,13 +647,13 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       {
         cancelRoto = rotoJob.cancel;
         const out = await rotoJob.done;
-        if (out.status === 'failed') throw new Error(out.error?.message ?? 'Roto Brush failed');
+        if (out.status === 'failed') throw new Error(out.error?.message ?? t('inspector.trackMotion.rotoFailed', 'Roto Brush failed'));
         const r = out.result;
         store.getState().finishTracking(
           null,
           out.status === 'cancelled'
-            ? 'Roto Brush cancelled.'
-            : `Roto Brush: ${r?.keyframes ?? 0} mask keyframes over ${r?.frames ?? 0} frames (completed). Refine with Track mask.`,
+            ? t('inspector.trackMotion.rotoCancelled', 'Roto Brush cancelled.')
+            : t('inspector.trackMotion.rotoDone', 'Roto Brush: {keyframes} mask keyframes over {frames} frames (completed). Refine with Track mask.', { keyframes: r?.keyframes ?? 0, frames: r?.frames ?? 0 }),
         );
       }
     } catch (e) {
@@ -617,10 +675,11 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       store.getState().finishTracking(
         result,
         !viaEngine.ok
-          ? `Could not create plane nulls: ${viaEngine.message}`
+          ? t('inspector.trackMotion.planeNullsFailed', 'Could not create plane nulls: {reason}', { reason: viaEngine.message })
           : ids.length > 0
-            ? `Created ${ids.length} plane nulls (${viaEngine.summary?.keyframes ?? 0} keyframes).`
-            : 'Need at least two quads (8 tracks) for multi-plane nulls.',
+            ? t('inspector.trackMotion.planeNullsCreated', 'Created {n} plane nulls ({keyframes} keyframes).', { n: ids.length, keyframes: viaEngine.summary?.keyframes ?? 0 })
+            : t('inspector.trackMotion.planeNullsNeedQuads', 'Need at least two quads (8 tracks) for multi-plane nulls.'),
+        viaEngine.ok && ids.length > 0,
       );
     }
   };
@@ -663,10 +722,12 @@ export function trackMotionActions(ctx: TrackMotionContext) {
       store.getState().finishTracking(
         null,
         !viaEngine
-          ? 'Segment: place a track point on the subject first (or two points as a box).'
+          ? t('inspector.trackMotion.segmentNeedsPoint', 'Segment: place a track point on the subject first (or two points as a box).')
           : viaEngine.status === 'done'
-            ? `Segment (SAM): ${viaEngine.result?.contourPoints ?? 0} contour points → mask path. Use Track mask / Roto Brush to propagate.`
-            : `Segment: ${segmentError ? explainObjectMatteError(segmentError) : 'cancelled'}`,
+            ? t('inspector.trackMotion.segmentDone', 'Segment (SAM): {n} contour points → mask path. Use Track mask / Roto Brush to propagate.', { n: viaEngine.result?.contourPoints ?? 0 })
+            : segmentError
+              ? t('inspector.trackMotion.segmentError', 'Segment: {reason}', { reason: explainObjectMatteError(segmentError) })
+              : t('inspector.trackMotion.segmentCancelled', 'Segment: cancelled'),
       );
     }
   };

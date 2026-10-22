@@ -38,6 +38,10 @@ struct EffectParamDef {
   std::optional<double> max;
   std::optional<double> precision;
   Json def;  ///< `default`
+  /// Never keyframeable (a native plugin param's PR_PARAM_FLAG_CANNOT_ANIMATE): no stopwatch, no keys.
+  bool fixed = false;
+  /// A native plugin param's one-line description (SDK 1.2 PrParamDef.description): the label's tooltip.
+  std::string description;
 };
 
 struct EffectDef {

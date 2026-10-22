@@ -339,7 +339,20 @@ export interface ConceptOption {
   palette: string;
   /** What the camera does (none, a slow push through layered depth, an orbit…). */
   camera: string;
+  /**
+   * The palette as 3–5 hex swatches, background first, the accent last but
+   * one, a text colour that reads on the background among them (the concept
+   * stage checks the contrast, palette.ts). Drawn in the panel's concept cards.
+   */
+  swatches?: string[];
+  /** The type pairing ("Fraunces / Inter", "Archivo Black alone"). */
+  type?: string;
+  /** The motion language: tempo, eases, the signature move ("slow eases, 110-frame holds, one dolly"). */
+  motion?: string;
 }
+
+/** How a concept stage ends: the user's (or the code's) pick, or a request for more. */
+export type ConceptChoice = { kind: 'pick'; index: number } | { kind: 'more' } | { kind: 'surprise' };
 
 /** What the DESIGN call returns: the header, the outline, and the globals. */
 export interface DesignResult extends ScriptHeader {

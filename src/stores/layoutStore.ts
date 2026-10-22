@@ -20,23 +20,47 @@ import { getEventBus } from '@core/events/EventBus';
 import { clamp } from '@utils/lang';
 import {
   DOCK_SIDES,
+  MIN_COLUMN_PX,
+  NEW_COLUMN_PX,
   bottomRegionOf,
+  clampColumnWeights,
+  compactColumns,
+  emptyColumnWeights,
   emptyDockGroups,
   flattenGroups,
   groupOfPanel,
+  homeColumn,
   legacySplitGroups,
   normalizeWeights,
   reconcileGroups,
+  sanitizeColumnWeights,
   sanitizeDockGroups,
   sanitizeGroupList,
   sideOfRegion,
   uniqueGroupId,
+  type DockColumnWeights,
   type DockGroupState,
   type DockGroups,
   type DockSide,
 } from '@core/layout/dockGroups';
 
-export type { DockGroupState, DockGroups, DockSide } from '@core/layout/dockGroups';
+export type { DockColumnWeights, DockGroupState, DockGroups, DockSide } from '@core/layout/dockGroups';
+
+/** What a dock drag carries: one panel (its tab) or a whole group (the group grip). */
+export type DockDragSource = { panel: string } | { group: string };
+
+/**
+ * Where a dock drag lands (After Effects' drop zones, 2026-10-20):
+ *   • `tabs`   into a group's strip (its centre zone, or the strip itself);
+ *   • `split`  a group of its own in `column`, before the column's group at `index`
+ *              (a group's top / bottom zone, or the gap between two groups);
+ *   • `column` a new column inserted at `column` (a group's left / right zone, or
+ *              the edge strips of a side).
+ */
+export type DockDropTarget =
+  | { kind: 'tabs'; groupId: string; index?: number }
+  | { kind: 'split'; side: DockSide; column: number; index: number }
+  | { kind: 'column'; side: DockSide; column: number };
 
 const PANEL_ORDER_SETTINGS_KEY = 'layout.panelOrder';
 
@@ -89,6 +113,8 @@ export interface PersistedLayout {
   rightInspectorSplit?: boolean;
   /** Each side's panel groups (dockGroups.ts). Absent on layouts saved before groups. */
   dockGroups?: Partial<Record<DockSide, DockGroupState[]>>;
+  /** Each side's column widths (shares). Absent on layouts saved before columns: one column. */
+  dockColumns?: Partial<DockColumnWeights>;
 }
 
 /**
@@ -140,6 +166,7 @@ function saveLayout(
   rightInspectorPosition?: 'left' | 'right',
   timelinePosition?: 'bottom' | 'top',
   dockGroups?: DockGroups,
+  dockColumns?: DockColumnWeights,
 ): void {
   try {
     const data: PersistedLayout = {
@@ -151,6 +178,7 @@ function saveLayout(
       rightInspectorPosition,
       timelinePosition,
       dockGroups,
+      dockColumns,
     };
     localStorage.setItem(LAYOUT_PERSIST_KEY, JSON.stringify(data));
   } catch {
@@ -267,6 +295,8 @@ export interface WorkspaceLayoutInput {
    * open.
    */
   dockGroups?: Partial<Record<DockSide, ReadonlyArray<DockGroupState>>>;
+  /** Each side's column widths. Absent: equal shares for the columns its groups use. */
+  dockColumns?: Partial<DockColumnWeights>;
 }
 
 interface LayoutActions {
@@ -299,6 +329,17 @@ interface LayoutActions {
   mergeGroupUp(groupId: string): void;
   /** Height shares for a side's expanded groups (a divider drag's result), by group id. */
   setGroupWeights(side: DockSide, weights: Readonly<Record<string, number>>): void;
+  /**
+   * Drop a dragged panel or group (After Effects docking): into a group's tabs,
+   * as a group of its own in a column, or as a new column — on either side. A
+   * new column widens its side by `NEW_COLUMN_PX`; a column left empty goes
+   * and gives its width back.
+   */
+  dockDrop(source: DockDragSource, target: DockDropTarget): void;
+  /** Width shares of a side's columns (a column divider drag's result), left to right. */
+  setColumnWeights(side: DockSide, weights: ReadonlyArray<number>): void;
+  /** Maximize Frame: one group fills the editor body until it is toggled again (null restores). */
+  toggleMaximizeGroup(groupId: string | null): void;
   /** Redock an external panel into a region. */
   dockPanel(panelId: string, toRegion?: RegionId): void;
   /** Mark panel for external OS window pop-out. */
@@ -356,8 +397,12 @@ export interface LayoutStore {
    * old split's and stay empty once a layout has been loaded.
    */
   panelOrder: Record<RegionId, ReadonlyArray<string>>;
-  /** Each side's panel groups, top to bottom (dockGroups.ts). */
+  /** Each side's panel groups, column by column, top to bottom (dockGroups.ts). */
   dockGroups: DockGroups;
+  /** Each side's column widths as shares of its width, left to right (one entry per column). */
+  dockColumns: DockColumnWeights;
+  /** The group Maximize Frame is showing over the editor body. Not persisted. */
+  maximizedGroup: string | null;
   /** List of currently externally popped-out panel IDs. */
   externalPanels: ReadonlyArray<string>;
   /**
@@ -375,12 +420,14 @@ export interface LayoutStore {
 }
 
 const DEFAULT_REGIONS: LayoutMap = {
-  leftSidebar:           { collapsed: false, size: 280, minSize: 220, maxSize: 640 },
-  leftSidebar_bottom:    { collapsed: false, size: 280, minSize: 220, maxSize: 640 },
+  // maxSize leaves room for docked columns (several NEW_COLUMN_PX side by side);
+  // EditorLayout also caps a side at the window width less 100px.
+  leftSidebar:           { collapsed: false, size: 280, minSize: 220, maxSize: 1600 },
+  leftSidebar_bottom:    { collapsed: false, size: 280, minSize: 220, maxSize: 1600 },
   // 320, not 280: the labelled rail takes 56px of the region, and Properties
   // draws paired X / Y fields that need the room.
-  rightInspector:        { collapsed: false, size: 320, minSize: 240, maxSize: 640 },
-  rightInspector_bottom: { collapsed: false, size: 320, minSize: 240, maxSize: 640 },
+  rightInspector:        { collapsed: false, size: 320, minSize: 240, maxSize: 1600 },
+  rightInspector_bottom: { collapsed: false, size: 320, minSize: 240, maxSize: 1600 },
   centerWorkspace:       { collapsed: false, size: 0,   minSize: 0,   maxSize: 0   },
   bottomTimeline:        { collapsed: false, size: 240, minSize: 100, maxSize: 600 },
 };
@@ -434,6 +481,13 @@ function syncSide(s: LayoutStore, side: DockSide): void {
   const groups = reconcileGroups(side, sideMembers(s, side), s.dockGroups[side], {
     expandNew: (id) => (_legacyExpanded.has(id) ? true : undefined),
   });
+  // A column left without groups goes, and its width goes back to the viewer.
+  const cols = compactColumns(groups, s.dockColumns[side] ?? [1]);
+  s.dockColumns[side] = cols.weights;
+  if (cols.removedShare > 0) {
+    const r = s.regions[side];
+    r.size = clamp(Math.round(r.size * (1 - cols.removedShare)), r.minSize, r.maxSize);
+  }
   s.dockGroups[side] = groups;
   s.panelOrder[side] = flattenGroups(groups);
   s.panelOrder[bottomRegionOf(side)] = [];
@@ -454,6 +508,20 @@ function commitGroups(s: LayoutStore, side: DockSide): void {
   s.panelOrder[side] = flattenGroups(s.dockGroups[side]);
   s.panelOrder[bottomRegionOf(side)] = [];
   syncSide(s, side);
+}
+
+/**
+ * The narrowest the composition viewer may get. Docking a new column widens its
+ * side only while the viewer keeps this; EditorLayout caps both sidebars by it.
+ */
+export const MIN_VIEWER_PX = 480;
+
+/** How much wider `side` may grow before the viewer drops under MIN_VIEWER_PX. */
+function viewerRoom(s: LayoutStore, side: DockSide): number {
+  if (typeof window === 'undefined' || !(window.innerWidth > 0)) return NEW_COLUMN_PX;
+  const width = (sd: DockSide): number => (s.regions[sd].collapsed ? COLLAPSED_SIDEBAR_SIZE : s.regions[sd].size);
+  const other: DockSide = side === 'leftSidebar' ? 'rightInspector' : 'leftSidebar';
+  return Math.max(0, window.innerWidth - width(other) - width(side) - MIN_VIEWER_PX);
 }
 
 /** The side and group holding a docked panel. */
@@ -525,6 +593,8 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
     rightInspectorPosition: _persisted?.rightInspectorPosition ?? 'right',
     timelinePosition: _persisted?.timelinePosition ?? 'bottom',
     dockGroups: initialDockGroups(_persisted),
+    dockColumns: { ...emptyColumnWeights(), ...sanitizeColumnWeights(_persisted?.dockColumns) },
+    maximizedGroup: null,
 
     registerPanel: (panel) =>
       set((s) => {
@@ -676,7 +746,7 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
         if (toBottom) {
           // The old split's lower pane: a group of its own at the bottom.
           const groups = s.dockGroups[toSide];
-          groups.push({ id: uniqueGroupId(groups, panelId), panels: [panelId], active: panelId, collapsed: false, weight: 1 });
+          groups.push({ id: uniqueGroupId(groups, panelId), panels: [panelId], active: panelId, collapsed: false, weight: 1, column: homeColumn(toSide, groups) });
           commitGroups(s, toSide);
         } else {
           s.panelOrder[toSide] = [...(s.panelOrder[toSide] ?? []), panelId];
@@ -732,7 +802,9 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
         const fromSide = detach(s, panelId);
         const groups = s.dockGroups[side];
         const at = clamp(index - lostAbove, 0, groups.length);
-        groups.splice(at, 0, { id: uniqueGroupId(groups, panelId), panels: [panelId], active: panelId, collapsed: false, weight: 1 });
+        // The column of the group it lands above (or below, at the end).
+        const column = (groups[at] ?? groups[at - 1])?.column ?? homeColumn(side, groups);
+        groups.splice(at, 0, { id: uniqueGroupId(groups, panelId), panels: [panelId], active: panelId, collapsed: false, weight: 1, column });
         if (fromSide && fromSide !== side) commitGroups(s, fromSide);
         commitGroups(s, side);
         s.activePanelByRegion[side] = panelId;
@@ -784,6 +856,8 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
         if (!at || at.index === 0) return;
         const groups = s.dockGroups[at.side];
         const above = groups[at.index - 1]!;
+        // "Above" is in the same column: the first group of a column has none.
+        if (above.column !== at.group.column) return;
         above.panels = [...above.panels, ...at.group.panels];
         above.active = at.group.active ?? above.active;
         above.collapsed = above.collapsed && at.group.collapsed;
@@ -797,7 +871,158 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
           const w = weights[g.id];
           if (typeof w === 'number' && Number.isFinite(w) && w > 0) g.weight = w;
         }
-        normalizeWeights(s.dockGroups[side]);
+        // Shares are relative within a column, so each column is normalised alone.
+        for (const c of new Set(s.dockGroups[side].map((g) => g.column))) {
+          normalizeWeights(s.dockGroups[side].filter((g) => g.column === c));
+        }
+      }),
+
+    dockDrop: (source, target) => {
+      set((s) => {
+        for (const sd of DOCK_SIDES) syncSide(s, sd);
+        // What moves: one panel, or every panel of a group (keeping its front tab and height).
+        let moving: string[];
+        let proto: { active: string; weight: number };
+        let fromGroupId: string | null = null;
+        if ('panel' in source) {
+          if (!s.panels[source.panel]) return;
+          moving = [source.panel];
+          proto = { active: source.panel, weight: 1 };
+        } else {
+          const at = locateGroup(s, source.group);
+          if (!at) return;
+          fromGroupId = at.group.id;
+          moving = [...at.group.panels];
+          proto = { active: at.group.active ?? moving[0]!, weight: at.group.weight };
+        }
+        if (moving.length === 0) return;
+
+        if (target.kind === 'tabs') {
+          // A group dropped on itself, or a lone tab on its own strip: nothing to do.
+          if (target.groupId === fromGroupId) return;
+          const into = locateGroup(s, target.groupId);
+          if (!into) return;
+          if (moving.length === 1 && into.group.panels.length === 1 && into.group.panels[0] === moving[0]) return;
+          const fromSides = new Set<DockSide>();
+          for (const id of moving) {
+            const side = detach(s, id);
+            if (side) fromSides.add(side);
+          }
+          const g = s.dockGroups[into.side].find((x) => x.id === target.groupId);
+          if (!g) return;
+          const panels = [...g.panels];
+          panels.splice(clamp(target.index ?? panels.length, 0, panels.length), 0, ...moving);
+          g.panels = panels;
+          g.active = proto.active;
+          g.collapsed = false;
+          for (const id of moving) {
+            const p = s.panels[id];
+            if (p) p.placement = 'docked';
+          }
+          s.externalPanels = s.externalPanels.filter((id) => !moving.includes(id));
+          for (const side of fromSides) if (side !== into.side) commitGroups(s, side);
+          commitGroups(s, into.side);
+          s.activePanelByRegion[into.side] = proto.active;
+          s.regions[into.side].collapsed = false;
+          return;
+        }
+
+        const side = target.side;
+        let dest: Exclude<DockDropTarget, { kind: 'tabs' }> = target;
+        if (dest.kind === 'column') {
+          // No room for another usable column: the foot of the nearest one instead.
+          const r = s.regions[side];
+          const n = s.dockColumns[side].length;
+          const width = Math.min(r.maxSize, (r.collapsed ? 0 : r.size) + Math.min(NEW_COLUMN_PX, viewerRoom(s, side)));
+          if (width < (n + 1) * MIN_COLUMN_PX) {
+            const column = clamp(dest.column, 0, n - 1);
+            const count = s.dockGroups[side].filter((g) => g.column === column).length;
+            dest = { kind: 'split', side, column, index: count };
+          }
+        }
+        // The group the new one goes before, named BEFORE anything moves — the
+        // position is between groups as the user saw them.
+        const columnGroups = s.dockGroups[side].filter((g) => g.column === dest.column);
+        let anchor = dest.kind === 'split' ? columnGroups[dest.index] ?? null : null;
+        if (anchor && anchor.id === fromGroupId && dest.kind === 'split') {
+          // Dropped just above itself: the group after it is the anchor.
+          anchor = columnGroups[dest.index + 1] ?? null;
+        }
+        const anchorId = anchor?.id ?? null;
+        if (dest.kind === 'split' && fromGroupId) {
+          // A whole group dropped into the gap right below itself: it is already there.
+          const self = columnGroups.findIndex((g) => g.id === fromGroupId);
+          if (self >= 0 && (self === dest.index || self + 1 === dest.index)) return;
+        }
+
+        const fromSides = new Set<DockSide>();
+        for (const id of moving) {
+          const from = detach(s, id);
+          if (from) fromSides.add(from);
+          const p = s.panels[id];
+          if (p) p.placement = 'docked';
+        }
+        s.externalPanels = s.externalPanels.filter((id) => !moving.includes(id));
+        const groups = s.dockGroups[side];
+        const group: DockGroupState = {
+          id: uniqueGroupId(groups, moving[0]!),
+          panels: moving,
+          active: proto.active,
+          collapsed: false,
+          weight: proto.weight,
+          column: dest.column,
+        };
+
+        if (dest.kind === 'column') {
+          // A new column: the ones from here rightwards shift over, the side widens.
+          const at = clamp(dest.column, 0, s.dockColumns[side].length);
+          for (const g of groups) if (g.column >= at) g.column += 1;
+          group.column = at;
+          group.weight = 1;
+          const weights = [...s.dockColumns[side]];
+          const r = s.regions[side];
+          const sum = weights.reduce((a, b) => a + b, 0) || 1;
+          // The side grows only by what the viewer can spare (it keeps MIN_VIEWER_PX);
+          // past that the new column takes its width from the side's other columns.
+          const current = r.collapsed ? 0 : r.size;
+          const width = clamp(current + Math.min(NEW_COLUMN_PX, viewerRoom(s, side)), r.minSize, r.maxSize);
+          const columnPx = Math.min(NEW_COLUMN_PX, Math.max(width - current, width / (weights.length + 1)));
+          weights.splice(at, 0, (columnPx * sum) / Math.max(1, width - columnPx));
+          s.dockColumns[side] = weights;
+          r.size = width;
+          groups.push(group);
+        } else {
+          const at = anchorId ? groups.findIndex((g) => g.id === anchorId) : -1;
+          if (at >= 0) groups.splice(at, 0, group);
+          else {
+            // The end of the column: after its last group.
+            let last = -1;
+            groups.forEach((g, i) => {
+              if (g.column === dest.column) last = i;
+            });
+            groups.splice(last >= 0 ? last + 1 : groups.length, 0, group);
+          }
+        }
+        for (const from of fromSides) if (from !== side) commitGroups(s, from);
+        commitGroups(s, side);
+        s.activePanelByRegion[side] = proto.active;
+        s.regions[side].collapsed = false;
+      });
+      getEventBus().emit('LayoutChanged', undefined);
+    },
+
+    setColumnWeights: (side, weights) =>
+      set((s) => {
+        const n = s.dockColumns[side].length;
+        if (weights.length !== n) return;
+        const clean = clampColumnWeights(weights);
+        const mean = clean.reduce((a, b) => a + b, 0) / n;
+        s.dockColumns[side] = clean.map((w) => w / mean);
+      }),
+
+    toggleMaximizeGroup: (groupId) =>
+      set((s) => {
+        s.maximizedGroup = groupId === null || s.maximizedGroup === groupId ? null : groupId;
       }),
 
     dockPanel: (panelId, toRegion) =>
@@ -948,6 +1173,8 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
         // split — becomes a group of its own), with the group of the
         // workspace's active panel open, so Color still opens on Scopes.
         if (layout.panelOrder || layout.dockGroups) {
+          // The workspace's columns replace the current ones (equal shares when it has none saved).
+          s.dockColumns = { ...emptyColumnWeights(), ...sanitizeColumnWeights(layout.dockColumns) };
           for (const side of DOCK_SIDES) {
             const given = layout.dockGroups?.[side] ? sanitizeGroupList(layout.dockGroups[side]) : null;
             if (given) {
@@ -989,6 +1216,8 @@ export const useLayoutStore = create<LayoutStore & LayoutActions>()(
         // Fresh-session groups: the policy rebuilds them as the panels are
         // re-docked below, with nothing carried over from the old stack.
         s.dockGroups = emptyDockGroups();
+        s.dockColumns = emptyColumnWeights();
+        s.maximizedGroup = null;
         _legacyExpanded = new Set();
         s.panelOrder = {
           leftSidebar: [],
@@ -1078,6 +1307,7 @@ useLayoutStore.subscribe((state) => {
     rightPos: state.rightInspectorPosition,
     timePos: state.timelinePosition,
     g: state.dockGroups,
+    c: state.dockColumns,
   });
   if (sig === _lastLayoutSig) return;
   _lastLayoutSig = sig;
@@ -1092,6 +1322,7 @@ useLayoutStore.subscribe((state) => {
       state.rightInspectorPosition,
       state.timelinePosition,
       state.dockGroups,
+      state.dockColumns,
     );
   }, 250);
 });

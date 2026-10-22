@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -321,6 +322,93 @@ TEST_CASE("queries: getThumbnail sizes, builds and draws a still", "[session][qu
     return img;
   };
   CHECK(is_error(h.ask(qry(q)), api::ErrorCode::internal));
+  h.sink.onStill = nullptr;
+  h.session.set_frame_builder(nullptr);
+}
+
+TEST_CASE("queries: a slow renderer never holds the core thread — the thumbnail answers later",
+          "[session][queries][thumbnail][deferred]") {
+  // The hang of 2026-10-19: thumbnails waited up to 2 s EACH on the core
+  // thread, behind which every edit, the transport and the heartbeat queued;
+  // three in a row and the supervisor killed a healthy engine. Now a still the
+  // render thread has not drawn yet defers the request: the core thread goes
+  // on, and the response follows from tick() once the still is there.
+  Harness h;
+  StillBuilder builder;
+  (void)h.hello();
+  const auto comp = make_comp(h);
+  h.session.set_frame_builder(&builder);
+
+  std::promise<StillImage> slow;
+  std::size_t asked = 0;
+  h.sink.onStillLater = [&](std::uint32_t, std::uint32_t) {
+    ++asked;
+    return slow.get_future();
+  };
+  api::GetThumbnail q;
+  q.item = comp;
+  q.time = kSec;
+  q.max_size = 256;
+  const api::Response none = h.ask(qry(q));
+  const api::Seq querySeq = h.seq;
+  CHECK(none.seq == 0);  // no response yet: deferred, not `busy`
+  CHECK(asked == 1);
+
+  // Meanwhile the core thread is free: an edit answers at once.
+  const auto layer = make_layer(h, comp, api::LayerKind::solid);
+  CHECK(!layer.empty());
+  h.advance(std::chrono::milliseconds(10));
+  const auto responded = [&](api::Seq seq) -> std::optional<api::Response> {
+    for (const auto& m : h.messages) {
+      if (m.kind() != api::EngineMessage::Kind::response) continue;
+      const auto& r = std::get<api::Response>(m.v);
+      if (r.seq == seq) return r;
+    }
+    return std::nullopt;
+  };
+  CHECK(!responded(querySeq));
+  // While an answer is owed, the loop wakes for it.
+  REQUIRE(h.session.next_deadline().has_value());
+
+  StillImage img;
+  img.answer = HookAnswer::ready;
+  img.width = 256;
+  img.height = 144;
+  img.format = "png";
+  img.data = {0x89, 'P', 'N', 'G'};
+  slow.set_value(std::move(img));
+  h.advance(std::chrono::milliseconds(5));
+  const std::optional<api::Response> r = responded(querySeq);
+  REQUIRE(r);
+  const auto t = answer_of<api::Thumbnail>(*r);
+  CHECK(t.width == 256);
+  CHECK(t.height == 144);
+  CHECK(h.session.next_deadline() == std::nullopt);
+
+  // A renderer that never answers: the request fails `busy` after the budget, never silently.
+  std::promise<StillImage> never;
+  h.sink.onStillLater = [&](std::uint32_t, std::uint32_t) { return never.get_future(); };
+  CHECK(h.ask(qry(q)).seq == 0);
+  const api::Seq lostSeq = h.seq;
+  h.advance(std::chrono::seconds(30));
+  CHECK(!responded(lostSeq));
+  h.advance(std::chrono::seconds(31));
+  const std::optional<api::Response> lost = responded(lostSeq);
+  REQUIRE(lost);
+  CHECK(is_error(*lost, api::ErrorCode::busy));
+
+  // An answer the render thread already has is finished inline, as before.
+  h.sink.onStillLater = nullptr;
+  h.sink.onStill = [](std::uint32_t w, std::uint32_t hgt) {
+    StillImage out;
+    out.answer = HookAnswer::ready;
+    out.width = w;
+    out.height = hgt;
+    out.format = "png";
+    out.data = {1};
+    return out;
+  };
+  CHECK(answer_of<api::Thumbnail>(h.ask(qry(q))).width == 256);
   h.sink.onStill = nullptr;
   h.session.set_frame_builder(nullptr);
 }

@@ -40,6 +40,7 @@ import {
   RESOLUTION_LABELS,
 } from '@stores/renderQualityStore';
 import styles from './ViewportHud.module.css';
+import { t } from '@core/i18n';
 
 /** Sampling period. Fast enough to feel live, slow enough to be readable. */
 const SAMPLE_MS = 250;
@@ -91,28 +92,28 @@ export function ViewportHud(): JSX.Element | null {
       <span className={styles.key}>fps</span>
       <span className={styles.value}>{sample.fps}</span>
 
-      <span className={styles.key}>frame</span>
+      <span className={styles.key}>{t('workspace.hud.frame', 'frame')}</span>
       <span className={`${styles.value} ${sample.frameMs > SLOW_FRAME_MS ? styles.warn : ''}`}>
         {sample.frameMs.toFixed(1)} ms
       </span>
 
       {/* Where the frame goes: the engine's build (CPU) and its render (GPU). */}
-      <span className={styles.key}>build</span>
+      <span className={styles.key}>{t('workspace.hud.build', 'build')}</span>
       <span className={`${styles.value} ${engineStats && engineStats.cpuFrameMs > SLOW_FRAME_MS ? styles.warn : ''}`}>
         {engineStats ? `${ms(engineStats.cpuFrameMs)} ms` : '—'}
       </span>
 
-      <span className={styles.key}>gpu time</span>
+      <span className={styles.key}>{t('workspace.hud.gpuTime', 'gpu time')}</span>
       <span className={`${styles.value} ${engineStats && engineStats.gpuFrameMs > SLOW_FRAME_MS ? styles.warn : ''}`}>
         {engineStats ? `${ms(engineStats.gpuFrameMs)} ms` : '—'}
       </span>
 
-      <span className={styles.key}>dropped</span>
+      <span className={styles.key}>{t('workspace.hud.dropped', 'dropped')}</span>
       <span className={`${styles.value} ${engineStats && engineStats.droppedFrames > 0 ? styles.warn : ''}`}>
         {engineStats ? engineStats.droppedFrames : '—'}
       </span>
 
-      <span className={styles.key}>cache</span>
+      <span className={styles.key}>{t('workspace.hud.cache', 'cache')}</span>
       <span className={styles.value}>
         {engineStats && engineStats.ramCacheBytes > 0 ? `${mb(engineStats.ramCacheBytes)} MB` : '—'}
       </span>
@@ -123,19 +124,21 @@ export function ViewportHud(): JSX.Element | null {
         {engineStats && engineStats.vramBytes > 0 ? `${mb(engineStats.vramBytes)} MB` : '—'}
       </span>
 
-      <span className={styles.key}>slot switch</span>
+      <span className={styles.key}>{t('workspace.hud.slotSwitch', 'slot switch')}</span>
       <span className={`${styles.value} ${engineStats?.slotSwitchMs !== undefined && engineStats.slotSwitchMs > 100 ? styles.warn : ''}`}>
-        {engineStats?.lastSlotSwitchAgoMs !== undefined ? `${ago(engineStats.lastSlotSwitchAgoMs)} ago · ${ms(engineStats.slotSwitchMs ?? 0)} ms` : '—'}
+        {engineStats?.lastSlotSwitchAgoMs !== undefined ? t('workspace.hud.slotSwitchValue', '{ago} ago · {ms} ms', { ago: ago(engineStats.lastSlotSwitchAgoMs), ms: ms(engineStats.slotSwitchMs ?? 0) }) : '—'}
       </span>
 
-      <span className={styles.key}>res</span>
+      <span className={styles.key}>{t('workspace.hud.res', 'res')}</span>
       <span className={`${styles.value} ${degrading ? styles.warn : ''}`}>
         {RESOLUTION_LABELS[effective]}
       </span>
 
-      <span className={styles.key}>adaptive</span>
+      <span className={styles.key}>{t('workspace.hud.adaptive', 'adaptive')}</span>
       <span className={styles.value}>
-        {!quality.adaptive ? 'off' : degrading ? `→ ${RESOLUTION_LABELS[quality.adaptiveFloor]}` : 'ready'}
+        {!quality.adaptive
+          ? t('workspace.hud.adaptiveOff', 'off')
+          : degrading ? `→ ${RESOLUTION_LABELS[quality.adaptiveFloor]}` : t('workspace.hud.adaptiveReady', 'ready')}
       </span>
 
       <span className={styles.key}>gpu</span>

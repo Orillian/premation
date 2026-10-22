@@ -66,6 +66,7 @@ import {
   timeReverseEdit,
   ungroupSelectedEdit,
 } from './layerMenuEdits';
+import { t } from '@core/i18n';
 
 /**
  * Right-click menu for a canvas node — the same actions as the scene-tree menu
@@ -108,7 +109,7 @@ function labelColorCanvasMenuItems(targetId: string): ContextMenuItem[] {
   return [
     {
       id: 'label-none',
-      label: 'None (Default)',
+      label: t('workspace.layerMenu.labelNone', 'None (Default)'),
       icon: current === undefined ? 'check' : undefined,
       onSelect: pick(undefined),
     },
@@ -161,22 +162,26 @@ export function videoContextMenuItems(id: string): ContextMenuItem {
   });
   return {
     id: 'video',
-    label: 'Video',
+    label: t('workspace.layerMenu.video', 'Video'),
     children: [
       // Speed is the USER's word; stretch is the model's (200% stretch = half
       // speed). The labels speak speed so nobody does the reciprocal in their
       // head mid-edit.
-      { id: 'speed', label: 'Speed', children: [
-        speed('25% (4× slower)', 400),
-        speed('50% (2× slower)', 200),
-        speed('100% (normal)', 100),
-        speed('200% (2× faster)', 50),
-        speed('400% (4× faster)', 25),
+      { id: 'speed', label: t('workspace.layerMenu.speed', 'Speed'), children: [
+        speed(t('workspace.layerMenu.speed25', '25% (4× slower)'), 400),
+        speed(t('workspace.layerMenu.speed50', '50% (2× slower)'), 200),
+        speed(t('workspace.layerMenu.speed100', '100% (normal)'), 100),
+        speed(t('workspace.layerMenu.speed200', '200% (2× faster)'), 50),
+        speed(t('workspace.layerMenu.speed400', '400% (4× faster)'), 25),
       ] },
-      { id: 'reverse', label: time.reverse ? 'Un-reverse' : 'Reverse', onSelect: () => { void timeReverseEdit(id); } },
+      {
+        id: 'reverse',
+        label: time.reverse ? t('workspace.layerMenu.unreverse', 'Un-reverse') : t('workspace.layerMenu.reverse', 'Reverse'),
+        onSelect: () => { void timeReverseEdit(id); },
+      },
       {
         id: 'freeze',
-        label: time.freeze ? 'Un-freeze Frame' : 'Freeze Frame at Playhead',
+        label: time.freeze ? t('workspace.layerMenu.unfreeze', 'Un-freeze Frame') : t('workspace.layerMenu.freeze', 'Freeze Frame at Playhead'),
         onSelect: () => {
           if (time.freeze) {
             void unfreezeEdit([id]);
@@ -187,15 +192,15 @@ export function videoContextMenuItems(id: string): ContextMenuItem {
           void freezeFrameEdit(id, playhead);
         },
       },
-      { id: 'fb', label: 'Frame Blending', children: [
-        blend('Off', 'none'),
-        blend('Frame Mix', 'mix'),
-        blend('Pixel Motion (smooth slow-mo)', 'pixelMotion'),
+      { id: 'fb', label: t('workspace.layerMenu.frameBlending', 'Frame Blending'), children: [
+        blend(t('workspace.layerMenu.blendOff', 'Off'), 'none'),
+        blend(t('workspace.layerMenu.blendMix', 'Frame Mix'), 'mix'),
+        blend(t('workspace.layerMenu.blendPixelMotion', 'Pixel Motion (smooth slow-mo)'), 'pixelMotion'),
       ] },
       { id: 'sep-v1', separator: true },
       {
         id: 'stab',
-        label: 'Stabilize (smooth)…',
+        label: t('workspace.layerMenu.stabilize', 'Stabilize (smooth)…'),
         onSelect: () => {
           const src = mirrorSourceDisplaySize(documentMirror(), id);
           useTrackerStore.getState().setMode('smooth', src?.width ?? 0, src?.height ?? 0);
@@ -203,21 +208,21 @@ export function videoContextMenuItems(id: string): ContextMenuItem {
           useLayoutStore.getState().openPanel('tracker');
           useUIStore.getState().notify({
             level: 'info',
-            message: 'Smooth Stabilize armed — press Track in the Tracker panel.',
+            message: t('workspace.layerMenu.stabilizeArmed', 'Smooth Stabilize armed — press Track in the Tracker panel.'),
             durationMs: 4000,
           });
         },
       },
       {
         id: 'track',
-        label: 'Track Motion…',
+        label: t('workspace.layerMenu.trackMotion', 'Track Motion…'),
         onSelect: () => {
           const src = mirrorSourceDisplaySize(documentMirror(), id);
           useTrackerStore.getState().setMode('follow', src?.width ?? 0, src?.height ?? 0);
           useLayoutStore.getState().openPanel('tracker');
           useUIStore.getState().notify({
             level: 'info',
-            message: 'Tracker armed — drag the point in the viewport, then press Track in the Tracker panel.',
+            message: t('workspace.layerMenu.trackerArmed', 'Tracker armed — drag the point in the viewport, then press Track in the Tracker panel.'),
             durationMs: 4000,
           });
         },
@@ -225,14 +230,14 @@ export function videoContextMenuItems(id: string): ContextMenuItem {
       { id: 'sep-v2', separator: true },
       {
         id: 'interpret',
-        label: 'Interpret Footage…',
+        label: t('workspace.layerMenu.interpretFootage', 'Interpret Footage…'),
         onSelect: () => {
           const assetId = documentMirror().layer(id)?.source;
           // B4-gap: the Interpret Footage dialog (layout/Assets) edits the legacy asset record, so it
           // still takes one; it goes when the dialog takes an item id (the mirror's ItemInfo).
           const asset = assetRecordNow(assetId);
           if (asset) openInterpretFootage(asset);
-          else useUIStore.getState().notify({ level: 'info', message: 'This layer has no importable source to interpret.', durationMs: 2600 });
+          else useUIStore.getState().notify({ level: 'info', message: t('workspace.layerMenu.noSourceToInterpret', 'This layer has no importable source to interpret.'), durationMs: 2600 });
         },
       },
     ],
@@ -250,9 +255,12 @@ export function nodeContextMenuItems(id: string): ContextMenuItem[] {
     const n = documentMirror().layer(id);
     if (!n) return;
     void (async () => {
-      const newName = await customPrompt('Rename Layer', 'Give this layer a new name.', n.name, {
-        confirmLabel: 'Rename',
-      });
+      const newName = await customPrompt(
+        t('workspace.layerMenu.renameTitle', 'Rename Layer'),
+        t('workspace.layerMenu.renameMessage', 'Give this layer a new name.'),
+        n.name,
+        { confirmLabel: t('workspace.layerMenu.renameConfirm', 'Rename') },
+      );
       if (!newName?.trim()) return;
       // Re-read: the dialog is async now, so the node could have been deleted
       // while it was open. The old synchronous prompt could not have this gap.
@@ -264,97 +272,100 @@ export function nodeContextMenuItems(id: string): ContextMenuItem[] {
         const count = result.repaired.length;
         useUIStore.getState().notify({
           level: 'info',
-          message: `${count} expression${count === 1 ? '' : 's'} updated to follow the new name.`,
+          message: count === 1
+            ? t('workspace.layerMenu.expressionsUpdatedOne', '{n} expression updated to follow the new name.', { n: count })
+            : t('workspace.layerMenu.expressionsUpdatedOther', '{n} expressions updated to follow the new name.', { n: count }),
           durationMs: 4000,
         });
       }
       if (result.captured.length > 0 || result.nameAlreadyInUse) {
         useUIStore.getState().notify({
           level: 'warning',
-          message: `Another layer already uses “${newName.trim()}”; review expressions that reference that name.`,
+          message: t('workspace.layerMenu.nameInUse', 'Another layer already uses “{name}”; review expressions that reference that name.', { name: newName.trim() }),
           durationMs: 8000,
         });
       }
     })();
   };
   return [
-    { id: 'rename', label: 'Rename…', onSelect: renameNode },
-    { id: 'duplicate', label: 'Duplicate', onSelect: () => { void duplicateSelectedLayersEdit(); } },
+    { id: 'rename', label: t('workspace.layerMenu.rename', 'Rename…'), onSelect: renameNode },
+    { id: 'duplicate', label: t('workspace.layerMenu.duplicate', 'Duplicate'), onSelect: () => { void duplicateSelectedLayersEdit(); } },
     // One call for the whole selection — see `reorderSiblings` for what looping
     // over it did to a multi-selection. Same sibling rules as the Layer menu
     // and the Scene panel's context menu (`arrangeNodes`).
-    { id: 'arrange', label: 'Arrange', children: [
-      { id: 'arr-front', label: 'Bring to Front', onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'front'); } },
-      { id: 'arr-forward', label: 'Bring Forward', onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'forward'); } },
-      { id: 'arr-backward', label: 'Send Backward', onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'backward'); } },
-      { id: 'arr-back', label: 'Send to Back', onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'back'); } },
+    { id: 'arrange', label: t('workspace.layerMenu.arrange', 'Arrange'), children: [
+      { id: 'arr-front', label: t('workspace.layerMenu.bringToFront', 'Bring to Front'), onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'front'); } },
+      { id: 'arr-forward', label: t('workspace.layerMenu.bringForward', 'Bring Forward'), onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'forward'); } },
+      { id: 'arr-backward', label: t('workspace.layerMenu.sendBackward', 'Send Backward'), onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'backward'); } },
+      { id: 'arr-back', label: t('workspace.layerMenu.sendToBack', 'Send to Back'), onSelect: () => { void arrangeLayersEdit(useSelectionStore.getState().ids, 'back'); } },
     ] },
     { id: 'sep0', separator: true },
-    { id: 'kf', label: 'Add Keyframe', children: [
-      { id: 'kf-pos', label: 'Position', onSelect: () => addKeyframesAtPlayhead(id, 'Position', ['x', 'y']) },
-      { id: 'kf-scale', label: 'Scale', onSelect: () => addKeyframesAtPlayhead(id, 'Scale', ['scaleX', 'scaleY']) },
-      { id: 'kf-rot', label: 'Rotation', onSelect: () => addKeyframesAtPlayhead(id, 'Rotation', ['rotation']) },
-      { id: 'kf-op', label: 'Opacity', onSelect: () => addKeyframesAtPlayhead(id, 'Opacity', ['opacity']) },
-      { id: 'kf-all', label: 'All Transform', onSelect: () => addKeyframesAtPlayhead(id, 'Transform', ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity']) },
+    // The display labels are translated; the second argument stays the English undo label.
+    { id: 'kf', label: t('workspace.layerMenu.addKeyframe', 'Add Keyframe'), children: [
+      { id: 'kf-pos', label: t('workspace.layerMenu.kfPosition', 'Position'), onSelect: () => addKeyframesAtPlayhead(id, 'Position', ['x', 'y']) },
+      { id: 'kf-scale', label: t('workspace.layerMenu.kfScale', 'Scale'), onSelect: () => addKeyframesAtPlayhead(id, 'Scale', ['scaleX', 'scaleY']) },
+      { id: 'kf-rot', label: t('workspace.layerMenu.kfRotation', 'Rotation'), onSelect: () => addKeyframesAtPlayhead(id, 'Rotation', ['rotation']) },
+      { id: 'kf-op', label: t('workspace.layerMenu.kfOpacity', 'Opacity'), onSelect: () => addKeyframesAtPlayhead(id, 'Opacity', ['opacity']) },
+      { id: 'kf-all', label: t('workspace.layerMenu.kfAllTransform', 'All Transform'), onSelect: () => addKeyframesAtPlayhead(id, 'Transform', ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'opacity']) },
     ] },
     // Footage verbs on the footage itself — see videoContextMenuItems.
     ...(isVideo ? [videoContextMenuItems(id), { id: 'sep-vid', separator: true } as ContextMenuItem] : []),
     { id: 'sep1', separator: true },
     // Anchored on the right-clicked layer: its state (what the item says) decides
     // the direction for the whole selection when it is part of it.
-    { id: 'toggle', label: hidden ? 'Show' : 'Hide', onSelect: () => { void toggleLayerSwitchAnchored(id, 'visible'); } },
-    { id: 'lock', label: locked ? 'Unlock' : 'Lock', onSelect: () => { void toggleLayerSwitchAnchored(id, 'locked'); } },
-    { id: 'solo', label: solo ? 'Unsolo' : 'Solo', onSelect: () => { void toggleLayerSwitchAnchored(id, 'solo'); } },
+    { id: 'toggle', label: hidden ? t('workspace.layerMenu.show', 'Show') : t('workspace.layerMenu.hide', 'Hide'), onSelect: () => { void toggleLayerSwitchAnchored(id, 'visible'); } },
+    { id: 'lock', label: locked ? t('workspace.layerMenu.unlock', 'Unlock') : t('workspace.layerMenu.lock', 'Lock'), onSelect: () => { void toggleLayerSwitchAnchored(id, 'locked'); } },
+    { id: 'solo', label: solo ? t('workspace.layerMenu.unsolo', 'Unsolo') : t('workspace.layerMenu.solo', 'Solo'), onSelect: () => { void toggleLayerSwitchAnchored(id, 'solo'); } },
     {
       id: 'toggle-3d',
-      label: layer?.switches.threeD ? 'Disable 3D Layer' : 'Enable 3D Layer',
+      label: layer?.switches.threeD ? t('workspace.layerMenu.disable3D', 'Disable 3D Layer') : t('workspace.layerMenu.enable3D', 'Enable 3D Layer'),
       onSelect: () => {
         const ids = useSelectionStore.getState().ids;
         void set3DEdit(ids.includes(id) ? ids : [id]);
       },
     },
-    { id: 'labelColor', label: 'Label Color', children: labelColorCanvasMenuItems(id) },
+    { id: 'labelColor', label: t('workspace.layerMenu.labelColor', 'Label Color'), children: labelColorCanvasMenuItems(id) },
     { id: 'sep2', separator: true },
     {
       id: 'group',
-      label: 'Group Selection',
+      label: t('workspace.layerMenu.groupSelection', 'Group Selection'),
       onSelect: () => {
         void groupSelectedLayersEdit().then((handled) => {
           // Layers of different compositions (a selection made in the Scene panel): a layer
           // cannot move between compositions, so there is no one group to put them in.
           if (!handled) {
-            useUIStore.getState().notify({ level: 'info', message: 'Group Selection needs layers of one composition.', durationMs: 3000 });
+            useUIStore.getState().notify({ level: 'info', message: t('workspace.layerMenu.groupNeedsOneComp', 'Group Selection needs layers of one composition.'), durationMs: 3000 });
           }
         });
       },
     },
-    ...(isGroup ? [{ id: 'ungroup', label: 'Ungroup', onSelect: () => { void ungroupSelectedEdit(); } }] : []),
-    { id: 'precompose', label: 'Pre-compose…', onSelect: () => openPrecomposeDialog() },
-    { id: 'rig-logo', label: 'Rig Logo for Animation', onSelect: () => { void rigLogoForAnimation(); } },
+    ...(isGroup ? [{ id: 'ungroup', label: t('workspace.layerMenu.ungroup', 'Ungroup'), onSelect: () => { void ungroupSelectedEdit(); } }] : []),
+    { id: 'precompose', label: t('workspace.layerMenu.precompose', 'Pre-compose…'), onSelect: () => openPrecomposeDialog() },
+    { id: 'rig-logo', label: t('workspace.layerMenu.rigLogo', 'Rig Logo for Animation'), onSelect: () => { void rigLogoForAnimation(); } },
     ...svgContextMenuItems(id),
     ...(useSelectionStore.getState().ids.length >= 2
       ? [
           { id: 'sep_merge', separator: true },
           {
             id: 'merge-paths',
-            label: 'Merge Paths',
+            label: t('workspace.layerMenu.mergePaths', 'Merge Paths'),
             children: [
-              { id: 'merge-live-union', label: 'Live Union (Add)', onSelect: () => { void liveMergePathsEdit('union'); } },
-              { id: 'merge-live-subtract', label: 'Live Subtract', onSelect: () => { void liveMergePathsEdit('subtract'); } },
-              { id: 'merge-live-intersect', label: 'Live Intersect', onSelect: () => { void liveMergePathsEdit('intersect'); } },
-              { id: 'merge-live-exclude', label: 'Live Exclude (XOR)', onSelect: () => { void liveMergePathsEdit('exclude'); } },
+              { id: 'merge-live-union', label: t('workspace.layerMenu.liveUnion', 'Live Union (Add)'), onSelect: () => { void liveMergePathsEdit('union'); } },
+              { id: 'merge-live-subtract', label: t('workspace.layerMenu.liveSubtract', 'Live Subtract'), onSelect: () => { void liveMergePathsEdit('subtract'); } },
+              { id: 'merge-live-intersect', label: t('workspace.layerMenu.liveIntersect', 'Live Intersect'), onSelect: () => { void liveMergePathsEdit('intersect'); } },
+              { id: 'merge-live-exclude', label: t('workspace.layerMenu.liveExclude', 'Live Exclude (XOR)'), onSelect: () => { void liveMergePathsEdit('exclude'); } },
               { id: 'merge-sep', label: '—', disabled: true },
               // The boolean runs off-document; its result lands as deleteLayers + pasteLayers (one entry).
-              { id: 'merge-union', label: 'Bake Union', onSelect: () => { void bakeMergePathsEdit('union'); } },
-              { id: 'merge-subtract', label: 'Bake Subtract', onSelect: () => { void bakeMergePathsEdit('subtract'); } },
-              { id: 'merge-intersect', label: 'Bake Intersect', onSelect: () => { void bakeMergePathsEdit('intersect'); } },
-              { id: 'merge-exclude', label: 'Bake Exclude', onSelect: () => { void bakeMergePathsEdit('exclude'); } },
+              { id: 'merge-union', label: t('workspace.layerMenu.bakeUnion', 'Bake Union'), onSelect: () => { void bakeMergePathsEdit('union'); } },
+              { id: 'merge-subtract', label: t('workspace.layerMenu.bakeSubtract', 'Bake Subtract'), onSelect: () => { void bakeMergePathsEdit('subtract'); } },
+              { id: 'merge-intersect', label: t('workspace.layerMenu.bakeIntersect', 'Bake Intersect'), onSelect: () => { void bakeMergePathsEdit('intersect'); } },
+              { id: 'merge-exclude', label: t('workspace.layerMenu.bakeExclude', 'Bake Exclude'), onSelect: () => { void bakeMergePathsEdit('exclude'); } },
             ],
           },
         ]
       : []),
     { id: 'sep3', separator: true },
-    { id: 'delete', label: 'Delete', danger: true, onSelect: () => { void deleteSelectedLayersEdit(); } },
+    { id: 'delete', label: t('workspace.layerMenu.delete', 'Delete'), danger: true, onSelect: () => { void deleteSelectedLayersEdit(); } },
   ];
 }
 
@@ -363,12 +374,12 @@ export function canvasContextMenuItems(controller: WorkspaceController): Context
   const guides = useGuidesStore.getState();
   const hasSelection = useSelectionStore.getState().ids.length > 0;
   return [
-    { id: 'select-all', label: 'Select All', onSelect: () => controller.ws.selectAll() },
-    { id: 'deselect', label: 'Deselect', disabled: !hasSelection, onSelect: () => controller.ws.clearSelection() },
+    { id: 'select-all', label: t('workspace.canvasMenu.selectAll', 'Select All'), onSelect: () => controller.ws.selectAll() },
+    { id: 'deselect', label: t('workspace.canvasMenu.deselect', 'Deselect'), disabled: !hasSelection, onSelect: () => controller.ws.clearSelection() },
     { id: 'sep1', separator: true },
-    { id: 'fit', label: 'Fit Comp in View', onSelect: () => controller.fitComposition() },
+    { id: 'fit', label: t('workspace.canvasMenu.fit', 'Fit Comp in View'), onSelect: () => controller.fitComposition() },
     { id: 'sep2', separator: true },
-    { id: 'grid', label: guides.grid ? 'Hide Grid' : 'Show Grid', onSelect: () => guides.toggleGrid() },
-    { id: 'rulers', label: guides.rulers ? 'Hide Rulers' : 'Show Rulers', onSelect: () => guides.toggleRulers() },
+    { id: 'grid', label: guides.grid ? t('workspace.canvasMenu.hideGrid', 'Hide Grid') : t('workspace.canvasMenu.showGrid', 'Show Grid'), onSelect: () => guides.toggleGrid() },
+    { id: 'rulers', label: guides.rulers ? t('workspace.canvasMenu.hideRulers', 'Hide Rulers') : t('workspace.canvasMenu.showRulers', 'Show Rulers'), onSelect: () => guides.toggleRulers() },
   ];
 }

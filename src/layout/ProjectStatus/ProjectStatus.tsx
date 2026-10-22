@@ -24,6 +24,7 @@ import { useMirrorSelect } from '@hooks/useMirror';
 import { useEngineOwnsDocument } from '@hooks/useEngineViewport';
 import { displayProjectName, looksLikeProjectId } from '@core/project/projectName';
 import styles from './ProjectStatus.module.css';
+import { t } from '@core/i18n';
 
 /** Module-level so a remount (route change, pop-out) does not forget it. */
 let lastSavedAt: number | null = null;
@@ -31,12 +32,12 @@ let lastSavedAt: number | null = null;
 /** "just now", "3m ago", "2h ago" — coarse on purpose; this is a glance, not a log. */
 export function formatAgo(savedAt: number, now: number): string {
   const s = Math.max(0, Math.round((now - savedAt) / 1000));
-  if (s < 45) return 'just now';
+  if (s < 45) return t('project.status.justNow', 'just now');
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t('project.status.minutesAgo', '{n}m ago', { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 24) return t('project.status.hoursAgo', '{n}h ago', { n: h });
+  return t('project.status.daysAgo', '{n}d ago', { n: Math.round(h / 24) });
 }
 
 /**
@@ -114,10 +115,19 @@ export function ProjectStatus({ compact = false }: { compact?: boolean }): JSX.E
   const ago = savedAt !== null ? formatAgo(savedAt, Date.now()) : null;
   // Always carries the FULL name: the chip truncates, and this is where the
   // rest of it can still be read.
-  const title = current?.path
-    ? `${name} — ${current.path}${dirty ? ' (unsaved changes)' : ''}${ago ? ` · saved ${ago}` : ''}`
-    : `${name ? `${name} — ` : ''}Not saved yet — Save will ask where to put it`;
-  const [head, tail] = splitForMiddleEllipsis(name ?? 'No project');
+  const path = current?.path;
+  const title = path
+    ? dirty
+      ? ago
+        ? t('project.status.titleDirtySaved', '{name} — {path} (unsaved changes) · saved {ago}', { name, path, ago })
+        : t('project.status.titleDirty', '{name} — {path} (unsaved changes)', { name, path })
+      : ago
+        ? t('project.status.titleSaved', '{name} — {path} · saved {ago}', { name, path, ago })
+        : t('project.status.titlePath', '{name} — {path}', { name, path })
+    : name
+      ? t('project.status.titleNotSavedNamed', '{name} — Not saved yet — Save will ask where to put it', { name })
+      : t('project.status.titleNotSaved', 'Not saved yet — Save will ask where to put it');
+  const [head, tail] = splitForMiddleEllipsis(name ?? t('project.status.noProject', 'No project'));
 
   return (
     <div className={compact ? `${styles.status} ${styles.compact}` : styles.status} title={title}>

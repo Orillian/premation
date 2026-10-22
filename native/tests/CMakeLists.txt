@@ -8,6 +8,7 @@ add_executable(motion_tests
   test_eval.cpp
   test_jsmath.cpp
   test_expr.cpp
+  test_expr_lang.cpp
   test_transform.cpp
 )
 

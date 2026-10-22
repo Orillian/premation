@@ -306,9 +306,13 @@ ResultOf<api::CreateLayer> handle(const api::CreateLayer& c, HCtx& x) {
       fail(ErrorCode::invalid_argument, "the parent must be a layer of the same composition", {.layer = *c.parent});
     }
   }
-  const std::size_t count = layer_ids_of_comp(d, c.comp).size();
-  if (c.index && *c.index > count) {
-    fail(ErrorCode::out_of_range, "index " + std::to_string(*c.index) + " is past the " + std::to_string(count) + " layers of the composition");
+  if (c.index) {
+    // Only an explicit index needs the count (a walk of the comp, O(layers)):
+    // the author's batches create hundreds of layers without one.
+    const std::size_t count = layer_ids_of_comp(d, c.comp).size();
+    if (*c.index > count) {
+      fail(ErrorCode::out_of_range, "index " + std::to_string(*c.index) + " is past the " + std::to_string(count) + " layers of the composition");
+    }
   }
   const std::string id = x.mint_id("layer_");
   const Json assetCopy = asset != nullptr ? *asset : Json();

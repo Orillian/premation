@@ -11,6 +11,8 @@
  * a marker and the tick it was placed on cannot drift apart at any zoom.
  */
 
+import { t } from '@core/i18n';
+
 /**
  * The lane's height, px.
  *
@@ -56,15 +58,16 @@ export function markerTimeAt(
  * million of are categories nobody can read back. The values are the domain
  * tokens' own marker ramp, resolved at paint time, so they follow the theme.
  */
-export const MARKER_COLORS: ReadonlyArray<{ id: string; label: string; token: string }> = [
-  { id: 'blue', label: 'Blue', token: 'var(--color-timeline-marker-blue)' },
-  { id: 'purple', label: 'Purple', token: 'var(--color-timeline-marker-purple)' },
-  { id: 'green', label: 'Green', token: 'var(--color-timeline-marker-green)' },
-  { id: 'yellow', label: 'Yellow', token: 'var(--color-timeline-marker-yellow)' },
-  { id: 'orange', label: 'Orange', token: 'var(--color-timeline-marker-orange)' },
-  { id: 'red', label: 'Red', token: 'var(--color-timeline-marker-red)' },
-  { id: 'cyan', label: 'Cyan', token: 'var(--color-timeline-marker-cyan)' },
-  { id: 'grey', label: 'Grey', token: 'var(--color-timeline-marker-grey)' },
+export const MARKER_COLORS: ReadonlyArray<{ id: string; readonly label: string; token: string }> = [
+  // Getters: `t()` must run when the swatches render, not at import (the catalogue loads later).
+  { id: 'blue', get label() { return t('timeline.markerColor.blue', 'Blue'); }, token: 'var(--color-timeline-marker-blue)' },
+  { id: 'purple', get label() { return t('timeline.markerColor.purple', 'Purple'); }, token: 'var(--color-timeline-marker-purple)' },
+  { id: 'green', get label() { return t('timeline.markerColor.green', 'Green'); }, token: 'var(--color-timeline-marker-green)' },
+  { id: 'yellow', get label() { return t('timeline.markerColor.yellow', 'Yellow'); }, token: 'var(--color-timeline-marker-yellow)' },
+  { id: 'orange', get label() { return t('timeline.markerColor.orange', 'Orange'); }, token: 'var(--color-timeline-marker-orange)' },
+  { id: 'red', get label() { return t('timeline.markerColor.red', 'Red'); }, token: 'var(--color-timeline-marker-red)' },
+  { id: 'cyan', get label() { return t('timeline.markerColor.cyan', 'Cyan'); }, token: 'var(--color-timeline-marker-cyan)' },
+  { id: 'grey', get label() { return t('timeline.markerColor.grey', 'Grey'); }, token: 'var(--color-timeline-marker-grey)' },
 ];
 
 /** The default a new marker takes — the first swatch, named once. */

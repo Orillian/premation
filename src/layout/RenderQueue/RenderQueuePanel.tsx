@@ -29,20 +29,25 @@ import { canEncodeLocally } from '@core/export/renderSpec';
 import { customConfirm } from '@components/Modal/Dialogs';
 import { failureAction, useExportQueueStore } from '@stores/exportQueueStore';
 import { describeProgress, isFinishedStatus, isLiveStatus, type ExportJobRecord } from '@core/export/exportSupervisorClient';
-import { SUPERVISOR_RESTART_NOTE, orderForDisplay } from '@layout/Export/ExportQueueList';
+import { supervisorRestartNote, orderForDisplay } from '@layout/Export/ExportQueueList';
+import { t } from '@core/i18n';
 import styles from './RenderQueuePanel.module.css';
 
-const FORMAT_LABEL: Record<OutputFormat, string> = {
-  mp4: 'H.264 MP4',
-  hdr10: 'HDR10 MP4 (PQ)',
-  hlg: 'HLG MP4',
-  webm: 'WebM VP9',
-  mov: 'ProRes MOV',
-  gif: 'Animated GIF',
-  'png-sequence': 'PNG Sequence',
-  'jpg-sequence': 'JPEG Sequence',
-  'exr-sequence': 'EXR Sequence',
-};
+/** Called at render time: `t()` must not run at module scope. */
+function formatLabel(format: OutputFormat): string | undefined {
+  const labels: Record<OutputFormat, string> = {
+    mp4: 'H.264 MP4',
+    hdr10: 'HDR10 MP4 (PQ)',
+    hlg: 'HLG MP4',
+    webm: 'WebM VP9',
+    mov: 'ProRes MOV',
+    gif: t('renderQueue.format.gif', 'Animated GIF'),
+    'png-sequence': t('renderQueue.format.pngSequence', 'PNG Sequence'),
+    'jpg-sequence': t('renderQueue.format.jpgSequence', 'JPEG Sequence'),
+    'exr-sequence': t('renderQueue.format.exrSequence', 'EXR Sequence'),
+  };
+  return labels[format];
+}
 
 function statusClass(s: RenderJob['status']): string {
   switch (s) {
@@ -59,13 +64,13 @@ function statusClass(s: RenderJob['status']): string {
 
 function statusLabel(s: RenderJob['status']): string {
   switch (s) {
-    case 'queued':    return 'Queued';
-    case 'rendering': return 'Rendering…';
-    case 'paused':    return 'Paused';
-    case 'stopped':   return 'Stopped';
-    case 'done':      return 'Done';
-    case 'failed':    return 'Failed';
-    case 'skipped':   return 'Skipped';
+    case 'queued':    return t('renderQueue.status.queued', 'Queued');
+    case 'rendering': return t('renderQueue.status.rendering', 'Rendering…');
+    case 'paused':    return t('renderQueue.status.paused', 'Paused');
+    case 'stopped':   return t('renderQueue.status.stopped', 'Stopped');
+    case 'done':      return t('renderQueue.status.done', 'Done');
+    case 'failed':    return t('renderQueue.status.failed', 'Failed');
+    case 'skipped':   return t('renderQueue.status.skipped', 'Skipped');
   }
 }
 
@@ -141,9 +146,9 @@ export function RenderQueuePanel(): JSX.Element {
         !!active && (active.format.endsWith('-sequence') || !canResumeFormat);
       if (nonResumable) {
         const ok = await customConfirm(
-          'Stop rendering?',
-          `${FORMAT_LABEL[active.format] ?? active.format} renders cannot resume — this job restarts from the beginning next time. Other formats keep their progress.`,
-          { confirmLabel: 'Stop rendering', isDanger: true },
+          t('renderQueue.stop.title', 'Stop rendering?'),
+          t('renderQueue.stop.body', '{format} renders cannot resume — this job restarts from the beginning next time. Other formats keep their progress.', { format: formatLabel(active.format) ?? active.format }),
+          { confirmLabel: t('renderQueue.stop.confirm', 'Stop rendering'), isDanger: true },
         );
         if (!ok) return;
       }
@@ -160,9 +165,9 @@ export function RenderQueuePanel(): JSX.Element {
   const confirmDiscard = (): void => {
     void (async () => {
       const ok = await customConfirm(
-        'Discard render progress?',
-        'The frames already rendered are deleted and these jobs start again from the beginning. This cannot be undone.',
-        { confirmLabel: 'Discard progress', isDanger: true },
+        t('renderQueue.discard.title', 'Discard render progress?'),
+        t('renderQueue.discard.body', 'The frames already rendered are deleted and these jobs start again from the beginning. This cannot be undone.'),
+        { confirmLabel: t('renderQueue.discard.confirm', 'Discard progress'), isDanger: true },
       );
       if (!ok) return;
       discardAll();
@@ -201,14 +206,14 @@ export function RenderQueuePanel(): JSX.Element {
   const activeLocal = jobs.find((j) => j.status === 'rendering');
   const activeFraction = activeLocal ? activeLocal.progress : activeBg ? activeBg.progress.fraction : 0;
   const summary = total === 0
-    ? 'Nothing queued'
+    ? t('renderQueue.summary.empty', 'Nothing queued')
     : [
-        `${total} item${total === 1 ? '' : 's'}`,
-        `${queuedCount} queued`,
-        resumableCount > 0 ? `${resumableCount} paused` : '',
-        `${doneCount} done`,
-        failedCount > 0 ? `${failedCount} failed` : '',
-        backgroundJobs.length > 0 ? `${backgroundLive} in background` : '',
+        total === 1 ? t('renderQueue.summary.itemsOne', '{n} item', { n: total }) : t('renderQueue.summary.itemsOther', '{n} items', { n: total }),
+        t('renderQueue.summary.queued', '{n} queued', { n: queuedCount }),
+        resumableCount > 0 ? t('renderQueue.summary.paused', '{n} paused', { n: resumableCount }) : '',
+        t('renderQueue.summary.done', '{n} done', { n: doneCount }),
+        failedCount > 0 ? t('renderQueue.summary.failed', '{n} failed', { n: failedCount }) : '',
+        backgroundJobs.length > 0 ? t('renderQueue.summary.background', '{n} in background', { n: backgroundLive }) : '',
       ].filter(Boolean).join(' · ');
 
   return (
@@ -216,7 +221,7 @@ export function RenderQueuePanel(): JSX.Element {
       {/* ── Top line: where the queue stands, and the verbs for all of it ── */}
       <div className={styles.top}>
         <span className={styles.summary}>
-          {anyRunning ? <span className={styles.running}>Rendering · </span> : null}
+          {anyRunning ? <span className={styles.running}>{t('renderQueue.summary.rendering', 'Rendering · ')}</span> : null}
           {summary}
         </span>
         <div className={styles.topBar} aria-hidden>
@@ -227,18 +232,18 @@ export function RenderQueuePanel(): JSX.Element {
             variant="secondary"
             size="sm"
             onClick={() => void chooseOutputDir()}
-            title={outputDir ? `Renders are written to ${outputDir}` : 'Choose where renders are written'}
+            title={outputDir ? t('renderQueue.outputDir.title', 'Renders are written to {dir}', { dir: outputDir }) : t('renderQueue.outputDir.choose', 'Choose where renders are written')}
           >
-            {outputDir ? (outputDir.split(/[\\/]/).pop() || outputDir) : 'Output folder…'}
+            {outputDir ? (outputDir.split(/[\\/]/).pop() || outputDir) : t('renderQueue.outputDir.button', 'Output folder…')}
           </Button>
         )}
         {(isRunning || resumableCount > 0) && (
-          <Button variant="secondary" size="sm" onClick={confirmDiscard} title="Throw away the frames already rendered — jobs restart from the beginning">
-            Discard
+          <Button variant="secondary" size="sm" onClick={confirmDiscard} title={t('renderQueue.discard.buttonTitle', 'Throw away the frames already rendered — jobs restart from the beginning')}>
+            {t('renderQueue.discard.button', 'Discard')}
           </Button>
         )}
-        <Button variant="secondary" size="sm" onClick={clearDone} disabled={doneCount === 0} title="Remove finished items from the list">
-          Clear done
+        <Button variant="secondary" size="sm" onClick={clearDone} disabled={doneCount === 0} title={t('renderQueue.clearDone.title', 'Remove finished items from the list')}>
+          {t('renderQueue.clearDone.button', 'Clear done')}
         </Button>
         {/*
           "Stop (keep progress)" — the label is the promise: stopping keeps the
@@ -252,41 +257,41 @@ export function RenderQueuePanel(): JSX.Element {
           disabled={jobs.length === 0 && bgFailed.length === 0}
           title={
             isRunning
-              ? 'Stop rendering — the current job keeps its rendered frames and resumes here'
+              ? t('renderQueue.main.stopTitle', 'Stop rendering — the current job keeps its rendered frames and resumes here')
               : resumableCount > 0
-                ? 'Resume stopped jobs, then render the rest of the queue'
+                ? t('renderQueue.main.resumeTitle', 'Resume stopped jobs, then render the rest of the queue')
                 : bgFailed.length > 0
-                  ? 'Render all queued, and run the failed renders again'
-                  : 'Render all queued'
+                  ? t('renderQueue.main.renderRetryTitle', 'Render all queued, and run the failed renders again')
+                  : t('renderQueue.main.renderTitle', 'Render all queued')
           }
         >
-          {isRunning ? 'Stop (keep progress)' : resumableCount > 0 ? 'Resume' : 'Render'}
+          {isRunning ? t('renderQueue.main.stop', 'Stop (keep progress)') : resumableCount > 0 ? t('renderQueue.main.resume', 'Resume') : t('renderQueue.main.render', 'Render')}
         </Button>
       </div>
 
       {/* ── The table: one row per item, as After Effects lists them ── */}
-      <div className={styles.table} role="table" aria-label="Render queue">
+      <div className={styles.table} role="table" aria-label={t('renderQueue.table.label', 'Render queue')}>
         <div className={`${styles.row} ${styles.head}`} role="row">
           <span role="columnheader">#</span>
-          <span role="columnheader">Composition</span>
-          <span role="columnheader">Status</span>
-          <span role="columnheader">Output module</span>
-          <span role="columnheader">Output to</span>
-          <span role="columnheader">Render time</span>
-          <span role="columnheader" aria-label="Actions" />
+          <span role="columnheader">{t('renderQueue.table.composition', 'Composition')}</span>
+          <span role="columnheader">{t('renderQueue.table.status', 'Status')}</span>
+          <span role="columnheader">{t('renderQueue.table.outputModule', 'Output module')}</span>
+          <span role="columnheader">{t('renderQueue.table.outputTo', 'Output to')}</span>
+          <span role="columnheader">{t('renderQueue.table.renderTime', 'Render time')}</span>
+          <span role="columnheader" aria-label={t('renderQueue.table.actions', 'Actions')} />
         </div>
 
         <div className={styles.rows}>
           {total === 0 && (
             <div className={styles.empty}>
-              <b>Nothing queued</b>
-              <span>Add a composition with Export ▸ Add to Render Queue. It renders here while you keep working.</span>
+              <b>{t('renderQueue.summary.empty', 'Nothing queued')}</b>
+              <span>{t('renderQueue.empty.hint', 'Add a composition with Export ▸ Add to Render Queue. It renders here while you keep working.')}</span>
             </div>
           )}
 
           {/* Background renders first: main's queue is already running what it
               holds, while the in-window jobs below wait for Render. */}
-          {backgroundJobs.length > 0 && <p className={styles.note}>{SUPERVISOR_RESTART_NOTE}</p>}
+          {backgroundJobs.length > 0 && <p className={styles.note}>{supervisorRestartNote()}</p>}
           {orderForDisplay(backgroundJobs).map((job, idx) => (
             <BackgroundRow key={job.id} job={job} index={idx + 1} />
           ))}
@@ -295,10 +300,10 @@ export function RenderQueuePanel(): JSX.Element {
             const resumable = job.status === 'paused' || job.status === 'stopped';
             const seconds = job.rangeStartSec !== undefined && job.rangeEndSec !== undefined ? job.rangeEndSec - job.rangeStartSec : job.durationSec;
             const outputModule = [
-              FORMAT_LABEL[job.format] ?? job.format,
+              formatLabel(job.format) ?? job.format,
               `${job.width}×${job.height}`,
               `${job.fps} fps`,
-              job.transparent ? 'alpha' : '',
+              job.transparent ? t('renderQueue.row.alpha', 'alpha') : '',
               job.quality && job.quality !== 'high' ? job.quality : '',
             ].filter(Boolean).join(' · ');
             const showProgress = job.status === 'rendering' || (resumable && job.progress > 0);
@@ -310,39 +315,39 @@ export function RenderQueuePanel(): JSX.Element {
                   <span
                     role="cell"
                     className={`${styles.status} ${statusClass(job.status)}`}
-                    title={job.resumeFrame != null && resumable ? `${job.resumeFrame} frames already rendered — resumes at frame ${job.resumeFrame}` : undefined}
+                    title={job.resumeFrame != null && resumable ? t('renderQueue.row.resumeTitle', '{n} frames already rendered — resumes at frame {n}', { n: job.resumeFrame }) : undefined}
                   >
                     {statusLabel(job.status)}
                     {showProgress ? ` · ${Math.round(job.progress * 100)} %` : ''}
-                    {job.resumeFrame != null && resumable ? ` · frame ${job.resumeFrame}` : ''}
+                    {job.resumeFrame != null && resumable ? t('renderQueue.row.frame', ' · frame {n}', { n: job.resumeFrame }) : ''}
                   </span>
                   <span role="cell" className={styles.setting} title={`${outputModule} · ${seconds.toFixed(2)} s`}>{outputModule}</span>
                   <span role="cell" className={styles.setting} title={job.outputPath}>{job.outputPath}</span>
                   <span role="cell" className={styles.time}>{job.elapsedMs != null ? `${(job.elapsedMs / 1000).toFixed(1)} s` : '—'}</span>
                   <span role="cell" className={styles.actions}>
                     {job.status === 'rendering' && (
-                      <Button variant="ghost" size="sm" iconOnly icon={<Icon name="pause" size="sm" />} title="Pause this render — keeps the frames already rendered" onClick={() => pauseJob(job.id)}>Pause</Button>
+                      <Button variant="ghost" size="sm" iconOnly icon={<Icon name="pause" size="sm" />} title={t('renderQueue.row.pauseTitle', 'Pause this render — keeps the frames already rendered')} onClick={() => pauseJob(job.id)}>{t('renderQueue.row.pause', 'Pause')}</Button>
                     )}
                     {resumable && (
                       <>
-                        <Button variant="ghost" size="sm" iconOnly icon={<Icon name="play" size="sm" />} title={`Resume this render${job.resumeFrame != null ? ` at frame ${job.resumeFrame}` : ''}`} onClick={() => resumeJob(job.id)}>Resume</Button>
-                        <Button variant="ghost" size="sm" iconOnly icon={<Icon name="trash" size="sm" />} title="Discard this job's rendered frames — it restarts from the beginning" onClick={() => discardJobProgress(job.id)}>Discard progress</Button>
+                        <Button variant="ghost" size="sm" iconOnly icon={<Icon name="play" size="sm" />} title={job.resumeFrame != null ? t('renderQueue.row.resumeAtTitle', 'Resume this render at frame {n}', { n: job.resumeFrame }) : t('renderQueue.row.resumeRenderTitle', 'Resume this render')} onClick={() => resumeJob(job.id)}>{t('renderQueue.main.resume', 'Resume')}</Button>
+                        <Button variant="ghost" size="sm" iconOnly icon={<Icon name="trash" size="sm" />} title={t('renderQueue.row.discardTitle', "Discard this job's rendered frames — it restarts from the beginning")} onClick={() => discardJobProgress(job.id)}>{t('renderQueue.discard.confirm', 'Discard progress')}</Button>
                       </>
                     )}
-                    <Button variant="ghost" size="sm" iconOnly icon={<Icon name="copy" size="sm" />} title="Duplicate this job" onClick={() => duplicateJob(job.id)}>Duplicate</Button>
+                    <Button variant="ghost" size="sm" iconOnly icon={<Icon name="copy" size="sm" />} title={t('renderQueue.row.duplicateTitle', 'Duplicate this job')} onClick={() => duplicateJob(job.id)}>{t('renderQueue.row.duplicate', 'Duplicate')}</Button>
                     {(job.status === 'queued' || resumable) && (
-                      <Button variant="ghost" size="sm" iconOnly icon={<Icon name="skip-forward" size="sm" />} title="Skip this job — leave it in the list but don't render it" onClick={() => skipJob(job.id)}>Skip</Button>
+                      <Button variant="ghost" size="sm" iconOnly icon={<Icon name="skip-forward" size="sm" />} title={t('renderQueue.row.skipTitle', "Skip this job — leave it in the list but don't render it")} onClick={() => skipJob(job.id)}>{t('renderQueue.row.skip', 'Skip')}</Button>
                     )}
                     <Button
                       variant="ghost"
                       size="sm"
                       iconOnly
                       icon={<Icon name="close" size="sm" />}
-                      title={job.status === 'rendering' ? 'Stop the queue before removing a rendering job' : 'Remove job'}
+                      title={job.status === 'rendering' ? t('renderQueue.row.removeRenderingTitle', 'Stop the queue before removing a rendering job') : t('renderQueue.row.removeTitle', 'Remove job')}
                       disabled={job.status === 'rendering'}
                       onClick={() => removeJob(job.id)}
                     >
-                      Remove
+                      {t('renderQueue.row.remove', 'Remove')}
                     </Button>
                   </span>
                 </div>
@@ -383,7 +388,7 @@ function BackgroundRow({ job, index }: { job: ExportJobRecord; index: number }):
         <span role="cell" className={styles.name} title={job.spec.label}>{job.spec.label}</span>
         <span role="cell" className={`${styles.status} ${tone ?? ''}`} title={describeProgress(job)}>
           {describeProgress(job)}
-          {job.priority !== 0 ? ` · priority ${job.priority > 0 ? '+' : ''}${job.priority}` : ''}
+          {job.priority !== 0 ? t('export.queue.priority', ' · priority {n}', { n: `${job.priority > 0 ? '+' : ''}${job.priority}` }) : ''}
         </span>
         <span role="cell" className={styles.setting}>{job.spec.format.toUpperCase()}</span>
         <span role="cell" className={styles.setting} title={job.spec.outPath}>{file}</span>
@@ -391,27 +396,27 @@ function BackgroundRow({ job, index }: { job: ExportJobRecord; index: number }):
         <span role="cell" className={styles.actions}>
           {live && waiting && (
             <>
-              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="chevron-up" size="sm" />} title="Raise priority — runs before lower-priority waiting renders" onClick={() => void setPriority(job.id, job.priority + 1)}>Raise priority</Button>
-              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="chevron-down" size="sm" />} title="Lower priority — runs after higher-priority waiting renders" onClick={() => void setPriority(job.id, job.priority - 1)}>Lower priority</Button>
+              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="chevron-up" size="sm" />} title={t('export.queue.raisePriorityTitle', 'Raise priority — runs before lower-priority waiting renders')} onClick={() => void setPriority(job.id, job.priority + 1)}>{t('export.queue.raisePriority', 'Raise priority')}</Button>
+              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="chevron-down" size="sm" />} title={t('export.queue.lowerPriorityTitle', 'Lower priority — runs after higher-priority waiting renders')} onClick={() => void setPriority(job.id, job.priority - 1)}>{t('export.queue.lowerPriority', 'Lower priority')}</Button>
             </>
           )}
           {live ? (
-            <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} title="Stop this export — nothing is written" onClick={() => void cancel(job.id)}>Cancel</Button>
+            <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} title={t('export.queue.cancelTitle', 'Stop this export — nothing is written')} onClick={() => void cancel(job.id)}>{t('export.queue.cancel', 'Cancel')}</Button>
           ) : (
             <>
               {job.errorCode === 'ffmpeg-unavailable' && (
-                <Button variant="secondary" size="sm" title="Repair video export, then render this again" onClick={() => failureAction(job).action?.onSelect()}>Fix</Button>
+                <Button variant="secondary" size="sm" title={t('export.queue.fixTitle', 'Repair video export, then render this again')} onClick={() => failureAction(job).action?.onSelect()}>{t('export.queue.fix', 'Fix')}</Button>
               )}
               {job.status !== 'completed' && (
-                <Button variant="ghost" size="sm" iconOnly icon={<Icon name="loop" size="sm" />} title="Render this export again, from the first frame" onClick={() => void retry(job.id)}>Retry</Button>
+                <Button variant="ghost" size="sm" iconOnly icon={<Icon name="loop" size="sm" />} title={t('export.queue.retryTitle', 'Render this export again, from the first frame')} onClick={() => void retry(job.id)}>{t('export.queue.retry', 'Retry')}</Button>
               )}
-              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} title="Remove from the list" onClick={() => void remove(job.id)}>Remove</Button>
+              <Button variant="ghost" size="sm" iconOnly icon={<Icon name="close" size="sm" />} title={t('export.queue.removeTitle', 'Remove from the list')} onClick={() => void remove(job.id)}>{t('export.queue.remove', 'Remove')}</Button>
             </>
           )}
         </span>
       </div>
       {live && !waiting && (
-        <div className={styles.progress} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Export ${job.spec.label}`}>
+        <div className={styles.progress} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('export.queue.progressLabel', 'Export {name}', { name: job.spec.label })}>
           <div className={styles.progressFill} style={{ transform: `scaleX(${job.progress.fraction})` }} />
         </div>
       )}

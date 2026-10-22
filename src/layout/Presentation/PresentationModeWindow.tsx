@@ -3,6 +3,7 @@ import { useActiveWorkspace } from '@stores/projectStore';
 import { pauseTransport, playTransport } from '@core/timeline/timelineView';
 import { Icon } from '@components/Icon';
 import styles from './PresentationModeWindow.module.css';
+import { t } from '@core/i18n';
 
 export function PresentationModeWindow(): JSX.Element {
   const workspace = useActiveWorkspace();
@@ -51,7 +52,7 @@ export function PresentationModeWindow(): JSX.Element {
           type="button"
           className={styles.btn}
           onClick={togglePlay}
-          title={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? t('presentation.window.pause', 'Pause') : t('presentation.window.play', 'Play')}
         >
           <Icon name={isPlaying ? 'pause' : 'play'} size="md" />
         </button>
@@ -67,7 +68,7 @@ export function PresentationModeWindow(): JSX.Element {
           type="button"
           className={styles.btn}
           onClick={toggleFullscreen}
-          title={fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          title={fullscreen ? t('presentation.window.exitFullscreen', 'Exit Fullscreen') : t('presentation.window.fullscreen', 'Fullscreen')}
         >
           <Icon name={fullscreen ? 'minimize' : 'maximize'} size="md" />
         </button>

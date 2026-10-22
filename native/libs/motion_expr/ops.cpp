@@ -55,6 +55,8 @@ Prim to_primitive(const Value& v) {
       // the arrow function — not reproducible and not meaningful. Documented
       // divergence (native/README.md); no golden depends on it.
       return {.tag = Tag::kString, .s = u"function () { [native code] }"};
+    case ObjKind::kNumberObject:
+      return {.tag = Tag::kNumber, .n = o.num};
     case ObjKind::kPlain:
     case ObjKind::kStyle:
       break;
@@ -74,7 +76,8 @@ bool truthy(const Value& v) noexcept {
     case Tag::kString:
       return !v.s->empty();
     case Tag::kObject:
-      return true;
+      // A scalar property object is as true as its number (`if (checkbox)`).
+      return v.o->kind != ObjKind::kNumberObject || !(v.o->num == 0 || std::isnan(v.o->num));
   }
   return false;
 }
@@ -151,7 +154,11 @@ Str to_string(const Value& v) {
   return {};
 }
 
-bool strict_equals(const Value& a, const Value& b) noexcept {
+bool strict_equals(const Value& av, const Value& bv) noexcept {
+  // A scalar property object compares as its number (AE rigs write
+  // `effect("Checkbox Control")("Checkbox") === 1`).
+  const Value a = unwrap_prop(av);
+  const Value b = unwrap_prop(bv);
   if (a.tag != b.tag) return false;
   switch (a.tag) {
     case Tag::kUndefined:

@@ -28,6 +28,7 @@ import { solidFill, linearFill, radialFill,  type FillPaint, type ColorStop } fr
 import { defaultStroke,  type Stroke } from '@core/paint/stroke';
 import {  type LayerStyles } from '@core/effects/layerStyles';
 import {  type LayerBlendMode } from '@core/effects/blendMode';
+import { t } from '@core/i18n';
 
 export type StylePresetCategory = 'surface' | 'outline' | 'text' | 'depth' | 'material';
 
@@ -82,9 +83,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   // ── Surfaces ────────────────────────────────────────────────────
   {
     id: 'glass',
-    label: 'Glass',
+    get label() { return t('core.stylePresets.glass', 'Glass'); },
     category: 'surface',
-    hint: 'Frosted acrylic — actually blurs the artwork behind it',
+    get hint() { return t('core.stylePresets.glassHint', 'Frosted acrylic — actually blurs the artwork behind it'); },
     cornerRadius: 24,
     backdropBlur: 18,
     fills: () => [
@@ -98,9 +99,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'soft-ui',
-    label: 'Soft UI',
+    get label() { return t('core.stylePresets.softUi', 'Soft UI'); },
     category: 'surface',
-    hint: 'Neumorphic pad — matched light and dark shadows, almost no outline',
+    get hint() { return t('core.stylePresets.softUiHint', 'Neumorphic pad — matched light and dark shadows, almost no outline'); },
     cornerRadius: 28,
     backdropBlur: 6,
     fills: (a) => [grad(145, [0, alpha('#ffffff', 0.14)], [1, alpha(a, 0.06)])],
@@ -112,9 +113,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'input-field',
-    label: 'Input Field',
+    get label() { return t('core.stylePresets.inputField', 'Input Field'); },
     category: 'surface',
-    hint: 'Recessed control surface with a crisp border — for form and UI mockups',
+    get hint() { return t('core.stylePresets.inputFieldHint', 'Recessed control surface with a crisp border — for form and UI mockups'); },
     cornerRadius: 12,
     fills: () => [solidFill(alpha('#000000', 0.35))],
     strokes: () => [stroke(alpha('#ffffff', 0.22), 1.5)],
@@ -124,9 +125,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'gradient-card',
-    label: 'Gradient Card',
+    get label() { return t('core.stylePresets.gradientCard', 'Gradient Card'); },
     category: 'surface',
-    hint: 'Saturated two-tone card with a lifted shadow',
+    get hint() { return t('core.stylePresets.gradientCardHint', 'Saturated two-tone card with a lifted shadow'); },
     cornerRadius: 20,
     fills: (a) => [grad(135, [0, a], [1, '#7b2ff7'])],
     styles: (a) => ({
@@ -137,9 +138,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   // ── Outlines ────────────────────────────────────────────────────
   {
     id: 'neon',
-    label: 'Neon',
+    get label() { return t('core.stylePresets.neon', 'Neon'); },
     category: 'outline',
-    hint: 'Hollow shape with a saturated glowing rim',
+    get hint() { return t('core.stylePresets.neonHint', 'Hollow shape with a saturated glowing rim'); },
     fills: () => [solidFill('#00000000')],
     strokes: (a) => [stroke(a, 3)],
     styles: (a) => ({
@@ -149,17 +150,17 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'outline',
-    label: 'Outline',
+    get label() { return t('core.stylePresets.outline', 'Outline'); },
     category: 'outline',
-    hint: 'Flat hollow shape — no fill, single clean stroke',
+    get hint() { return t('core.stylePresets.outlineHint', 'Flat hollow shape — no fill, single clean stroke'); },
     fills: () => [solidFill('#00000000')],
     strokes: (a) => [stroke(a, 2)],
   },
   {
     id: 'sticker',
-    label: 'Sticker',
+    get label() { return t('core.stylePresets.sticker', 'Sticker'); },
     category: 'outline',
-    hint: 'Solid fill inside a thick white keyline, with a contact shadow',
+    get hint() { return t('core.stylePresets.stickerHint', 'Solid fill inside a thick white keyline, with a contact shadow'); },
     cornerRadius: 16,
     fills: (a) => [solidFill(a)],
     // Two strokes: the white keyline over a slightly wider dark edge.
@@ -172,9 +173,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   // ── Text ────────────────────────────────────────────────────────
   {
     id: 'chrome-text',
-    label: 'Chrome',
+    get label() { return t('core.stylePresets.chromeText', 'Chrome'); },
     category: 'text',
-    hint: 'Metallic vertical ramp with a dark edge — classic title treatment',
+    get hint() { return t('core.stylePresets.chromeTextHint', 'Metallic vertical ramp with a dark edge — classic title treatment'); },
     fills: () => [grad(90,
       [0, '#ffffff'], [0.35, '#c9d4e0'], [0.5, '#7d8794'], [0.52, '#e8eef5'], [1, '#9aa7b4'],
     )],
@@ -185,16 +186,16 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'gradient-text',
-    label: 'Gradient Text',
+    get label() { return t('core.stylePresets.gradientText', 'Gradient Text'); },
     category: 'text',
-    hint: 'Accent-to-white ramp across the glyphs',
+    get hint() { return t('core.stylePresets.gradientTextHint', 'Accent-to-white ramp across the glyphs'); },
     fills: (a) => [grad(90, [0, '#ffffff'], [1, a])],
   },
   {
     id: 'glow-text',
-    label: 'Glow Text',
+    get label() { return t('core.stylePresets.glowText', 'Glow Text'); },
     category: 'text',
-    hint: 'Bright glyphs with a coloured bloom — reads on dark backgrounds',
+    get hint() { return t('core.stylePresets.glowTextHint', 'Bright glyphs with a coloured bloom — reads on dark backgrounds'); },
     fills: () => [solidFill('#ffffff')],
     styles: (a) => ({
       outerGlow: { enabled: true, color: a, opacity: 1, size: 22 },
@@ -204,9 +205,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   // ── Depth ───────────────────────────────────────────────────────
   {
     id: 'long-shadow',
-    label: 'Long Shadow',
+    get label() { return t('core.stylePresets.longShadow', 'Long Shadow'); },
     category: 'depth',
-    hint: 'Flat-design cast shadow raking off at 45°',
+    get hint() { return t('core.stylePresets.longShadowHint', 'Flat-design cast shadow raking off at 45°'); },
     fills: (a) => [solidFill(a)],
     styles: () => ({
       dropShadow: { enabled: true, color: '#000000', opacity: 0.35, distance: 120, angle: 45, blur: 0 },
@@ -214,9 +215,9 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   },
   {
     id: 'spotlight',
-    label: 'Spotlight',
+    get label() { return t('core.stylePresets.spotlight', 'Spotlight'); },
     category: 'depth',
-    hint: 'Radial falloff from a hot centre — good for backdrops and vignettes',
+    get hint() { return t('core.stylePresets.spotlightHint', 'Radial falloff from a hot centre — good for backdrops and vignettes'); },
     fills: (a) => [{ ...radialFill(), cx: 0.5, cy: 0.4, radius: 0.7, stops: stops([0, a], [1, alpha(a, 0)]) }],
   },
 
@@ -224,38 +225,38 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
   // Colour AND light response together: a material is a look, so it states the
   // fill like every other preset here rather than mutating it from elsewhere.
   {
-    id: 'steel', label: 'Steel', category: 'material',
-    hint: 'Brushed metal — cool grey with a tight highlight',
+    id: 'steel', get label() { return t('core.stylePresets.steel', 'Steel'); }, category: 'material',
+    get hint() { return t('core.stylePresets.steelHint', 'Brushed metal — cool grey with a tight highlight'); },
     fills: () => [solidFill('#8a99a8')],
     specular: 85, shininess: 64,
   },
   {
-    id: 'gold', label: 'Gold', category: 'material',
-    hint: 'Warm metal with a broad, bright highlight',
+    id: 'gold', get label() { return t('core.stylePresets.gold', 'Gold'); }, category: 'material',
+    get hint() { return t('core.stylePresets.goldHint', 'Warm metal with a broad, bright highlight'); },
     fills: () => [solidFill('#ffd700')],
     specular: 95, shininess: 80,
   },
   {
-    id: 'plastic', label: 'Plastic', category: 'material',
-    hint: 'Matte body with a soft highlight — keeps the accent colour',
+    id: 'plastic', get label() { return t('core.stylePresets.plastic', 'Plastic'); }, category: 'material',
+    get hint() { return t('core.stylePresets.plasticHint', 'Matte body with a soft highlight — keeps the accent colour'); },
     fills: (accent) => [solidFill(accent)],
     specular: 30, shininess: 24,
   },
   {
-    id: 'glass-3d', label: 'Glass', category: 'material',
-    hint: 'Pale and highly polished — sharpest highlight',
+    id: 'glass-3d', get label() { return t('core.stylePresets.glass3d', 'Glass'); }, category: 'material',
+    get hint() { return t('core.stylePresets.glass3dHint', 'Pale and highly polished — sharpest highlight'); },
     fills: () => [solidFill('#e0f7fa')],
     specular: 95, shininess: 96, opacity: 70,
   },
   {
-    id: 'neon-3d', label: 'Neon', category: 'material',
-    hint: 'Saturated and hot — the most concentrated highlight',
+    id: 'neon-3d', get label() { return t('core.stylePresets.neon3d', 'Neon'); }, category: 'material',
+    get hint() { return t('core.stylePresets.neon3dHint', 'Saturated and hot — the most concentrated highlight'); },
     fills: () => [solidFill('#ff007f')],
     specular: 100, shininess: 120,
   },
   {
-    id: 'obsidian', label: 'Obsidian', category: 'material',
-    hint: 'Near-black with a hard, narrow highlight',
+    id: 'obsidian', get label() { return t('core.stylePresets.obsidian', 'Obsidian'); }, category: 'material',
+    get hint() { return t('core.stylePresets.obsidianHint', 'Near-black with a hard, narrow highlight'); },
     fills: () => [solidFill('#1a1a1e')],
     specular: 50, shininess: 70,
   },

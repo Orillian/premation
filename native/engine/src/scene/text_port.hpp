@@ -35,9 +35,10 @@ class TextMeasurer;
 /// The same over a stored `__animators` array.
 [[nodiscard]] std::vector<Json> resolve_text_animators_json(const Json& stored, const Values& a);
 
-/// `evaluateTextAnimators(text, animators, time)` → GlyphTransform[] JSON. `why`
-/// names what the port does not evaluate (expression selectors, Character
-/// Value / Range, font axes); the result is then undefined and must not be used.
+/// `evaluateTextAnimators(text, animators, time)` → GlyphTransform[] JSON: range,
+/// wiggly and expression selectors; every property including Character Value /
+/// Range and the Font Axis offsets. `why` (when given) is cleared — kept so a
+/// future gap can be named without changing the callers.
 [[nodiscard]] Json evaluate_text_animators(std::string_view text, const std::vector<Json>& animators, double time,
                                          std::string* why);
 

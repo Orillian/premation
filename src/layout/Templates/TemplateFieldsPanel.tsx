@@ -41,9 +41,14 @@ import { LibraryBrowser } from '@layout/EditorLayout/LibraryBrowser';
 import type { PremiumCatalogItem } from '@core/library/premium/packFormat';
 import { t } from '@core/i18n';
 
+/**
+ * The Library's Templates tab is a gallery and only a gallery: an applied
+ * template is edited in Essential Graphics (opened on insert) and the
+ * Properties panel, and authoring lives in Essential Graphics › Build — never
+ * editing controls under the shelf.
+ */
 export function TemplateFieldsPanel(): JSX.Element {
-  const active = useTemplateStore((s) => s.active);
-  return active ? <ActiveTemplateFields /> : <TemplateGallery />;
+  return <TemplateGallery />;
 }
 
 /** One tile in the Templates grid — a library template (free or Pro). */
@@ -136,7 +141,6 @@ function TemplateGallery(): JSX.Element {
         filters={aspectFilter}
         predicate={byAspect}
         toolbar={<>{shelfEmpty}<ShelfNote shelf={shelf} /></>}
-        after={<TemplateAuthoringSection />}
       >
         {(items) => (
           <div className={cardStyles.grid}>

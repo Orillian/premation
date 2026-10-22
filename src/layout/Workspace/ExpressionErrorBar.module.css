@@ -1,0 +1,54 @@
+/*
+ * The expression error bar, along the bottom of the viewport (where After
+ * Effects puts it), in the overlay-panel tokens the viewport notices use.
+ */
+.bar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-2);
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(720px, calc(100% - var(--space-4)));
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-overlay-panel-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay-panel-bg);
+  box-shadow: var(--color-overlay-panel-shadow);
+  color: var(--color-overlay-text);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.icon {
+  flex: none;
+  color: var(--color-warning);
+}
+
+.where {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.message {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-family-mono);
+}
+
+.nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.count {
+  opacity: 0.75;
+  white-space: nowrap;
+}

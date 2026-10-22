@@ -969,7 +969,10 @@ moved on — for scripts and AI tools that read, think, then write.
   native SDK gains the same commands in G1.
 - **Scripts / CLI**: a script is a client that speaks the protocol (Node over
   the same pipe, or a JSON-lines front end): the command log format *is* the
-  script format.
+  script format. In the app, File ▸ Scripts runs user scripts in a sandbox
+  worker over the same commands and queries — `premation` (the API itself) and
+  an After Effects-style `app.project` object model built on it (§15.6,
+  docs/SCRIPTING.md).
 - **Command logs and replay (B5, plan §6)**: `LogRecord { request,
   revisionAfter, documentHash }` per applied request, retrievable with
   `getCommandLog`. Replaying the requests against a fresh engine (either
@@ -1071,8 +1074,9 @@ Not in the schema (AE has it; out of B1 scope, listed so nobody assumes it):
   Stabilizer's shape-based modes, Mocha-style planar tracking (the `planar`
   track kind is reserved).
 - Multiple output modules per render item, post-render actions.
-- Data-driven animation (JSON/CSV data layers), team projects, ExtendScript
-  compatibility, ScriptUI.
+- Data-driven animation (JSON/CSV data layers), team projects, full ExtendScript
+  compatibility (a subset of AE's `app.project` object model runs — see §15.6 and
+  docs/SCRIPTING.md; no `File` / `Folder` / `Socket`, no `.jsxbin`), ScriptUI.
 - Proxy *generation* (pre-render exists as a job; automatic proxy workflows do not).
 - Layer panel view options beyond effects on/off (e.g. per-mask render toggles).
 
@@ -1287,6 +1291,40 @@ dedicated Worker (no DOM, storage or network) with one global, `premation`
 `document.write` are declared in a `// @permissions` header and granted per run;
 control and io commands are never available. One run = one gesture `Script: <name>`,
 origin `script`; a throw, a timeout or a crash rolls it back.
+
+**Scripts in the editor (2026-10-21).** File ▸ Scripts (Run Script File…, Open Script
+Editor, Open Scripts Folder, then every `.jsx` / `.js` in `<userData>/Scripts`) and the
+Script Editor panel (`layout/Scripts/`, `electron/ipc/scripts.ts`) run scripts through
+`runScript`; the app registers the consent dialog (`setScriptConsentPrompt`). A script
+without a `// @permissions` header — every After Effects script — is asked for read and
+write from the editor; the dialog shows it. The run message carries editor state the
+document does not hold (`context`: active composition, current time).
+
+*`app` — AE's object model on the API* (`core/scripting/aeObjectModel.ts`): `app.project`
+(`activeItem`, `items` / `item(i)` / `numItems`, `items.addComp`), `CompItem` (settings via
+`getComposition` / `setCompositionSettings`, `layer(i | name)`, `layers.addSolid / addText /
+addNull / addShape / addCamera / addLight / add`), `Layer` (name, index, timing via
+`setLayerTiming`, switches via `setLayerSwitches`, `parent` via `setParent` keeping the world
+transform, `remove`, `duplicate`, `moveTo*`), `PropertyGroup` / `Property` (`property(name |
+matchName | index)` over `getPropertyTree`, `value` / `valueAtTime` via `getPropertyValues`,
+`setValue` → `setProperty`, `setValueAtTime` / `setValuesAtTimes` / `addKey` → `addKeyframes`,
+`numKeys` / `keyTime` / `keyValue` via `getKeyframes`, `expression` → `setExpression`,
+`expressionEnabled` → `setExpressionEnabled`). Values convert both ways (vec2/3 ⇄ arrays, colour ⇄
+`[r, g, b, a]`, Source Text ⇄ `TextDocument`), times are seconds ⇄ flicks.
+
+*Synchronous over postMessage — by replay.* AE scripts are synchronous; the worker cannot block
+on the host without `SharedArrayBuffer` + `Atomics.wait`, and the page is not cross-origin
+isolated (COOP/COEP would cut off its cross-origin media and fonts). So the worker runtime
+(`scriptRuntime.ts`) keeps a TAPE of every engine call's answer: a read with no answer yet
+throws a private sentinel that ends the pass, the runtime asks the engine, records the answer
+and runs the script again from the top, serving earlier answers from the tape. Writes whose
+result nothing reads are queued and sent in program order before the next read (or at the end
+of the pass); a refused write is recorded and thrown at its own line on the next pass. Every
+engine call is therefore sent exactly once, in order, inside the run's one gesture; passes are
+deterministic (seeded `Math.random`, a frozen `Date.now()` / `new Date()`; logs are tape
+entries, emitted once). Cost: a pass per distinct read, each replaying the tape in memory.
+The async `premation` API shares the tape, so the two can be mixed when each `premation` call
+is awaited before the next engine call. Errors report the script line (`ScriptRunResult.errorLine`).
 
 Gaps B5 found on the engine side were closed in G2 (§15.8): gesture ids are in the
 id counters, the app's undo/redo/jump send engine requests, and `applyPreset`

@@ -25,33 +25,43 @@ export function planIntent(
   target: PlanIntentPlan,
   opts: { cancelled: boolean; hasSubscription: boolean },
 ): PlanIntent {
-  const period = shortInterval(target.interval ?? 'month');
+  const yearly = shortInterval(target.interval ?? 'month') === 'yr';
   if (target.id === current.id) {
     if (opts.cancelled && target.priceCents > 0) {
-      return { kind: 'resume', label: `Keep ${target.name}` };
+      return { kind: 'resume', label: t('billing.intent.keep', 'Keep {plan}', { plan: target.name }) };
     }
-    return { kind: 'current', label: 'Current plan' };
+    return { kind: 'current', label: t('billing.intent.current', 'Current plan') };
   }
   if (target.priceCents <= 0) {
     if (opts.hasSubscription || current.priceCents > 0) {
-      return { kind: 'cancel', label: 'Switch to Free' };
+      return { kind: 'cancel', label: t('billing.intent.switchToFree', 'Switch to Free') };
     }
-    return { kind: 'current', label: 'Current plan' };
+    return { kind: 'current', label: t('billing.intent.current', 'Current plan') };
   }
   // Everything below starts or changes a paid subscription. When the server
   // has sales closed (PRO_SALES_OPEN), there is nothing to press: checkout
   // would refuse. Resume and cancel above are untouched — an existing
   // subscriber keeps both.
   if (target.purchasable === false) {
-    return { kind: 'unavailable', label: 'Paused for new subscriptions' };
+    return { kind: 'unavailable', label: t('billing.intent.paused', 'Paused for new subscriptions') };
   }
   if (!opts.hasSubscription) {
-    return { kind: 'subscribe', label: `Subscribe — ${target.priceLabel}/${period}` };
+    return {
+      kind: 'subscribe',
+      label: yearly
+        ? t('billing.intent.subscribeYearly', 'Subscribe — {price}/yr', { price: target.priceLabel })
+        : t('billing.intent.subscribeMonthly', 'Subscribe — {price}/mo', { price: target.priceLabel }),
+    };
   }
   if (target.priceCents > current.priceCents) {
-    return { kind: 'upgrade', label: `Upgrade — ${target.priceLabel}/${period}` };
+    return {
+      kind: 'upgrade',
+      label: yearly
+        ? t('billing.intent.upgradeYearly', 'Upgrade — {price}/yr', { price: target.priceLabel })
+        : t('billing.intent.upgradeMonthly', 'Upgrade — {price}/mo', { price: target.priceLabel }),
+    };
   }
-  return { kind: 'downgrade', label: `Switch to ${target.name}` };
+  return { kind: 'downgrade', label: t('billing.intent.switchTo', 'Switch to {plan}', { plan: target.name }) };
 }
 
 export function confirmPlanChange(
@@ -61,34 +71,46 @@ export function confirmPlanChange(
 ): { title: string; message: string; confirmLabel: string; isDanger: boolean } | null {
   const until = periodEnd
     ? new Date(periodEnd).toLocaleDateString()
-    : 'the end of the current period';
+    : t('billing.cancel.periodEndFallback', 'the end of the current period');
   switch (intent.kind) {
     case 'upgrade':
       return {
-        title: `Upgrade to ${target.name}?`,
-        message: `You'll move to ${target.name} now. Lemon Squeezy will charge the prorated difference on this billing cycle.`,
-        confirmLabel: `Upgrade to ${target.name}`,
+        title: t('billing.confirm.upgradeTitle', 'Upgrade to {plan}?', { plan: target.name }),
+        message: t(
+          'billing.confirm.upgradeMessage',
+          "You'll move to {plan} now. Lemon Squeezy will charge the prorated difference on this billing cycle.",
+          { plan: target.name },
+        ),
+        confirmLabel: t('billing.upgradeTo', 'Upgrade to {plan}', { plan: target.name }),
         isDanger: false,
       };
     case 'downgrade':
       return {
-        title: `Switch to ${target.name}?`,
-        message: `You'll switch to ${target.name}. The new rate applies on the next invoice; unused time on the current plan is credited.`,
-        confirmLabel: `Switch to ${target.name}`,
+        title: t('billing.confirm.switchTitle', 'Switch to {plan}?', { plan: target.name }),
+        message: t(
+          'billing.confirm.switchMessage',
+          "You'll switch to {plan}. The new rate applies on the next invoice; unused time on the current plan is credited.",
+          { plan: target.name },
+        ),
+        confirmLabel: t('billing.intent.switchTo', 'Switch to {plan}', { plan: target.name }),
         isDanger: false,
       };
     case 'cancel':
       return {
-        title: 'Cancel subscription?',
-        message: `You'll keep paid access until ${until}, then the account moves to Free. API keys stop working after that date.`,
-        confirmLabel: 'Cancel subscription',
+        title: t('billing.cancel.title', 'Cancel subscription?'),
+        message: t(
+          'billing.cancel.plain',
+          "You'll keep paid access until {date}, then the account moves to Free. API keys stop working after that date.",
+          { date: until },
+        ),
+        confirmLabel: t('billing.cancel.confirm', 'Cancel subscription'),
         isDanger: true,
       };
     case 'resume':
       return {
-        title: `Keep ${target.name}?`,
-        message: 'The scheduled cancellation will be stopped and billing continues as usual.',
-        confirmLabel: `Keep ${target.name}`,
+        title: t('billing.confirm.keepTitle', 'Keep {plan}?', { plan: target.name }),
+        message: t('billing.confirm.keepMessage', 'The scheduled cancellation will be stopped and billing continues as usual.'),
+        confirmLabel: t('billing.intent.keep', 'Keep {plan}', { plan: target.name }),
         isDanger: false,
       };
     default:

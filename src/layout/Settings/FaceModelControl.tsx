@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
+import { t } from '@core/i18n';
 import styles from './ObjectMatteControl.module.css';
 
 const MB = 1024 * 1024;
@@ -36,11 +37,11 @@ export function FaceModelControl(): JSX.Element {
   const install = async (): Promise<void> => {
     const b = bridge();
     if (!b) {
-      setStatus({ kind: 'failed', message: 'Installing a model needs the desktop app: the engine reads it from this computer.' });
+      setStatus({ kind: 'failed', message: t('settings.faceModel.needsDesktop', 'Installing a model needs the desktop app: the engine reads it from this computer.') });
       return;
     }
     if (!/^https:\/\//i.test(url.trim())) {
-      setStatus({ kind: 'failed', message: 'Only https:// model URLs are accepted.' });
+      setStatus({ kind: 'failed', message: t('settings.faceModel.httpsOnly', 'Only https:// model URLs are accepted.') });
       return;
     }
     const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -65,9 +66,9 @@ export function FaceModelControl(): JSX.Element {
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.ready}>Installed · {(status.bytes / MB).toFixed(1)} MB</span>
+          <span className={styles.ready}>{t('settings.faceModel.installed', 'Installed · {size} MB', { size: (status.bytes / MB).toFixed(1) })}</span>
           <Button variant="secondary" size="sm" onClick={() => { void bridge()?.remove().then(() => setStatus({ kind: 'absent' })); }}>
-            Remove
+            {t('settings.faceModel.remove', 'Remove')}
           </Button>
         </div>
         <div className={styles.source} title={status.url}>{status.url}</div>
@@ -79,8 +80,10 @@ export function FaceModelControl(): JSX.Element {
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.progressText}>{pct === null ? `Downloading… ${(status.received / MB).toFixed(1)} MB` : `Downloading… ${pct}%`}</span>
-          <Button variant="secondary" size="sm" onClick={() => { if (requestId) void bridge()?.cancelDownload(requestId); }}>Cancel</Button>
+          <span className={styles.progressText}>{pct === null
+            ? t('settings.faceModel.downloadingMb', 'Downloading… {size} MB', { size: (status.received / MB).toFixed(1) })
+            : t('settings.faceModel.downloadingPct', 'Downloading… {pct}%', { pct })}</span>
+          <Button variant="secondary" size="sm" onClick={() => { if (requestId) void bridge()?.cancelDownload(requestId); }}>{t('settings.faceModel.cancel', 'Cancel')}</Button>
         </div>
         <div className={styles.progressTrack}>
           <div className={pct === null ? styles.progressIndeterminate : styles.progressFill} style={pct === null ? undefined : { transform: `scaleX(${pct / 100})` }} />
@@ -97,15 +100,14 @@ export function FaceModelControl(): JSX.Element {
           value={url}
           placeholder="https://…/face_landmark.onnx"
           onChange={(e) => setUrl(e.target.value)}
-          aria-label="Face landmark model URL"
+          aria-label={t('settings.faceModel.urlAria', 'Face landmark model URL')}
           spellCheck={false}
         />
-        <Button variant="secondary" size="sm" disabled={!url.trim()} onClick={() => { void install(); }}>Install</Button>
+        <Button variant="secondary" size="sm" disabled={!url.trim()} onClick={() => { void install(); }}>{t('settings.faceModel.install', 'Install')}</Button>
       </div>
       {status.kind === 'failed' ? <div className={styles.error}>{status.message}</div> : null}
       <div className={styles.hint}>
-        Face Tracking needs a face landmark model (a MediaPipe Face Mesh ONNX export, face_landmark.onnx). It is downloaded once,
-        from the URL above, and kept on this computer.
+        {t('settings.faceModel.hint', 'Face Tracking needs a face landmark model (a MediaPipe Face Mesh ONNX export, face_landmark.onnx). It is downloaded once, from the URL above, and kept on this computer.')}
       </div>
     </div>
   );

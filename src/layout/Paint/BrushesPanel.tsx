@@ -14,12 +14,15 @@ import { usePaintStore, type BrushPreset } from '@stores/paintStore';
 import { ValueField } from '@components/ValueField';
 import { Checkbox } from '@components/Checkbox';
 import styles from './Paint.module.css';
+import { t } from '@core/i18n';
 
-const SOURCES: ReadonlyArray<{ value: DynamicsSource; label: string }> = [
-  { value: 'off', label: 'Off' },
-  { value: 'pressure', label: 'Pen Pressure' },
-  { value: 'tilt', label: 'Pen Tilt' },
-];
+function sources(): ReadonlyArray<{ value: DynamicsSource; label: string }> {
+  return [
+    { value: 'off', label: t('paint.brushes.off', 'Off') },
+    { value: 'pressure', label: t('paint.brushes.penPressure', 'Pen Pressure') },
+    { value: 'tilt', label: t('paint.brushes.penTilt', 'Pen Tilt') },
+  ];
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -47,20 +50,20 @@ export function BrushesPanel(): JSX.Element {
     <Row label={label}>
       <select
         className={styles.select}
-        aria-label={`${label} dynamics`}
+        aria-label={t('paint.brushes.dynamicsAria', '{label} dynamics', { label })}
         value={paint.dynamics[key]}
         onChange={(e) => paint.setDynamics(key, e.target.value as DynamicsSource)}
       >
-        {SOURCES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {sources().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </Row>
   );
 
   return (
-    <div className={styles.panelRoot} aria-label="Brushes">
+    <div className={styles.panelRoot} aria-label={t('paint.brushes.brushes', 'Brushes')}>
       <div className={styles.group}>
-        <span className={styles.groupLabel}>Brush Tips</span>
-        <div className={styles.presetGrid} role="listbox" aria-label="Brush tips">
+        <span className={styles.groupLabel}>{t('paint.brushes.brushTips2', 'Brush Tips')}</span>
+        <div className={styles.presetGrid} role="listbox" aria-label={t('paint.brushes.brushTips', 'Brush tips')}>
           {paint.brushPresets.map((p, i) => {
             const on = matches(p, size, paint);
             const dot = Math.max(2, Math.min(28, p.diameter * 0.4));
@@ -88,28 +91,28 @@ export function BrushesPanel(): JSX.Element {
             );
           })}
         </div>
-        <button type="button" className={styles.button} onClick={() => paint.saveBrushPreset(`Custom ${size}`)}>
-          Save Current Tip
+        <button type="button" className={styles.button} onClick={() => paint.saveBrushPreset(t('paint.brushes.customPresetName', 'Custom {size}', { size }))}>
+          {t('paint.brushes.saveCurrentTip', 'Save Current Tip')}
         </button>
       </div>
 
       <div className={styles.group}>
-        <span className={styles.groupLabel}>Tip</span>
-        <Row label="Diameter">
+        <span className={styles.groupLabel}>{t('paint.brushes.tip', 'Tip')}</span>
+        <Row label={t('paint.brushes.diameter', 'Diameter')}>
           <ValueField value={size} unit="px" min={1} max={2500} precision={0} onChange={(v) => { drawToolOptions.brushSize = Math.max(1, Number(v)); bump(); }} />
         </Row>
-        <Row label="Angle">
+        <Row label={t('paint.brushes.angle', 'Angle')}>
           <ValueField value={paint.angle} unit="°" min={-180} max={180} precision={0} onChange={(v) => paint.set({ angle: Number(v) })} />
         </Row>
-        <Row label="Roundness">
+        <Row label={t('paint.brushes.roundness', 'Roundness')}>
           <ValueField value={pct(paint.roundness)} unit="%" min={1} max={100} precision={0} onChange={(v) => paint.set({ roundness: Math.max(0.01, Number(v) / 100) })} />
         </Row>
-        <Row label="Hardness">
+        <Row label={t('paint.brushes.hardness', 'Hardness')}>
           <ValueField value={pct(paint.hardness)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.set({ hardness: Number(v) / 100 })} />
         </Row>
         <div className={styles.row}>
           <Checkbox
-            label="Spacing"
+            label={t('paint.brushes.spacing', 'Spacing')}
             checked={spacingOn}
             onChange={() => {
               // AE's unchecked Spacing lays dabs as fast as the pointer moves;
@@ -120,22 +123,22 @@ export function BrushesPanel(): JSX.Element {
           />
           <ValueField value={pct(paint.spacing)} unit="%" min={1} max={1000} precision={0} disabled={!spacingOn} onChange={(v) => paint.set({ spacing: Math.max(0.01, Number(v) / 100) })} />
         </div>
-        <Row label="Smoothing">
+        <Row label={t('paint.brushes.smoothing', 'Smoothing')}>
           <ValueField value={pct(paint.smoothing)} unit="%" min={0} max={95} precision={0} onChange={(v) => paint.set({ smoothing: Number(v) / 100 })} />
         </Row>
       </div>
 
       <div className={styles.group}>
-        <span className={styles.groupLabel}>Brush Dynamics</span>
-        {dynRow('size', 'Size')}
-        <Row label="Minimum Size">
+        <span className={styles.groupLabel}>{t('paint.brushes.brushDynamics', 'Brush Dynamics')}</span>
+        {dynRow('size', t('paint.brushes.size', 'Size'))}
+        <Row label={t('paint.brushes.minimumSize', 'Minimum Size')}>
           <ValueField value={pct(paint.dynamics.minSize)} unit="%" min={0} max={100} precision={0} onChange={(v) => paint.setDynamics('minSize', Number(v) / 100)} />
         </Row>
-        {dynRow('angle', 'Angle')}
-        {dynRow('roundness', 'Roundness')}
-        {dynRow('opacity', 'Opacity')}
-        {dynRow('flow', 'Flow')}
-        <span className={styles.hint}>Dynamics read a pen. A mouse paints at full pressure and upright.</span>
+        {dynRow('angle', t('paint.brushes.angle', 'Angle'))}
+        {dynRow('roundness', t('paint.brushes.roundness', 'Roundness'))}
+        {dynRow('opacity', t('paint.brushes.opacity', 'Opacity'))}
+        {dynRow('flow', t('paint.brushes.flow', 'Flow'))}
+        <span className={styles.hint}>{t('paint.brushes.dynamicsReadAPenA', 'Dynamics read a pen. A mouse paints at full pressure and upright.')}</span>
       </div>
     </div>
   );

@@ -22,9 +22,36 @@ export type PluginEffectDef = EffectDef & {
   /** The plugin id that provides it. */
   readonly provider: string;
   readonly category: string;
-  /** Buttons: invokeEffectAction's action keys. */
-  readonly actions: ReadonlyArray<{ key: string; label: string }>;
+  /**
+   * Buttons: invokeEffectAction's action keys, each drawn where the plugin
+   * declared it — inside `group` ('' = top level), before `params[at]`.
+   */
+  readonly actions: ReadonlyArray<PluginEffectAction>;
+  /** Twirl-down groups (GROUP_START), in declaration order. */
+  readonly groups: ReadonlyArray<PluginEffectGroup>;
+  /** Param keys the plugin declared CANNOT_ANIMATE (a point's axes included): no stopwatch. */
+  readonly fixed: ReadonlySet<string>;
+  /** SDK 1.2 PrParamDef.description by param key (a point's axes included): the label's tooltip. */
+  readonly descriptions: ReadonlyMap<string, string>;
+  /** PR_CMD_ABOUT's text ('' = none): the card's About. */
+  readonly about: string;
 };
+
+export interface PluginEffectAction {
+  readonly key: string;
+  readonly label: string;
+  readonly group: string;
+  readonly at: number;
+}
+
+/** `name`: the path its params' `group` spells; `key`: the GROUP_START param's; `collapsed`: START_COLLAPSED. */
+export interface PluginEffectGroup {
+  readonly name: string;
+  readonly key: string;
+  readonly collapsed: boolean;
+  /** The GROUP_START's description: the header's tooltip ('' = none). */
+  readonly description: string;
+}
 
 let defs: readonly PluginEffectDef[] = [];
 let byType = new Map<string, PluginEffectDef>();
@@ -52,11 +79,19 @@ const KIND_OF: Record<string, EffectParamDef['type'] | undefined> = {
 /** One engine `EffectInfo` (a plugin's) → an editor effect definition. */
 export function effectInfoToDef(info: EffectInfo): PluginEffectDef {
   const params: EffectParamDef[] = [];
+  const fixed = new Set<string>();
+  const descriptions = new Map<string, string>();
+  // A button's `at` counts the engine's params; this list may skip some (not controls).
+  const uiIndexOf: number[] = [];
   for (const p of info.params) {
+    uiIndexOf.push(params.length);
     // Plugin SDK 1.1: the control the param needs beyond its value type.
     const kind = KIND_OF[p.kind ?? ''];
     const type = kind ?? TYPE_OF[p.valueType];
     if (!type) continue; // arbitrary data and the like: not a control
+    // Numbers and colours are keyframeable unless the plugin said CANNOT_ANIMATE.
+    if ((type === 'number' || type === 'color') && p.animatable === false) fixed.add(p.matchName);
+    if (p.description) descriptions.set(p.matchName, p.description);
     const dv = p.defaultValue;
     const def = dv?.kind === 'scalar' || dv?.kind === 'int' ? dv.value : dv?.kind === 'bool' ? dv.value : dv?.kind === 'string' && type === 'text' ? dv.value : undefined;
     params.push({
@@ -80,7 +115,16 @@ export function effectInfoToDef(info: EffectInfo): PluginEffectDef {
     ...(info.gpu ? { gpuOnly: true as const } : {}),
     provider: info.provider,
     category: info.category,
-    actions: info.actions ?? [],
+    actions: (info.actions ?? []).map((a) => ({
+      key: a.key,
+      label: a.label,
+      group: a.group ?? '',
+      at: a.at !== undefined && a.at < uiIndexOf.length ? uiIndexOf[a.at]! : params.length,
+    })),
+    groups: (info.groups ?? []).map((g) => ({ name: g.name, key: g.key, collapsed: g.collapsed === true, description: g.description ?? '' })),
+    fixed,
+    descriptions,
+    about: info.about ?? '',
   };
 }
 

@@ -12,6 +12,7 @@
  */
 
 import { readMatte, type TrackMatte, type MatteMode } from '@core/effects/matte';
+import { t } from '@core/i18n';
 
 export interface MatteOption {
   id: string;
@@ -28,21 +29,23 @@ export interface MatteOption {
  * of the model change was never to make the user click twice — it was so a fifth
  * matte kind costs one entry here instead of a new spelling in every consumer.
  */
+// Labels are getters: `t()` runs when a menu reads them (render time), never at
+// module scope, where the catalogue is not loaded yet.
 export const MATTE_OPTIONS: readonly MatteOption[] = [
-  { id: 'none', label: 'No matte', value: undefined },
-  { id: 'alpha', label: 'Alpha', value: { mode: 'alpha', inverted: false } },
-  { id: 'alpha-inv', label: 'Alpha Inverted', value: { mode: 'alpha', inverted: true } },
-  { id: 'luma', label: 'Luma', value: { mode: 'luma', inverted: false } },
-  { id: 'luma-inv', label: 'Luma Inverted', value: { mode: 'luma', inverted: true } },
+  { id: 'none', get label() { return t('ui.matte.none', 'No matte'); }, value: undefined },
+  { id: 'alpha', get label() { return t('ui.matte.alpha', 'Alpha'); }, value: { mode: 'alpha', inverted: false } },
+  { id: 'alpha-inv', get label() { return t('ui.matte.alphaInverted', 'Alpha Inverted'); }, value: { mode: 'alpha', inverted: true } },
+  { id: 'luma', get label() { return t('ui.matte.luma', 'Luma'); }, value: { mode: 'luma', inverted: false } },
+  { id: 'luma-inv', get label() { return t('ui.matte.lumaInverted', 'Luma Inverted'); }, value: { mode: 'luma', inverted: true } },
 ];
 
 /** Short labels for the timeline's narrow column. */
 export const MATTE_SHORT_LABEL: Record<string, string> = {
-  none: 'None',
-  alpha: 'Alpha',
-  'alpha-inv': 'Alpha Inv',
-  luma: 'Luma',
-  'luma-inv': 'Luma Inv',
+  get none() { return t('ui.matte.short.none', 'None'); },
+  get alpha() { return t('ui.matte.alpha', 'Alpha'); },
+  get 'alpha-inv'() { return t('ui.matte.short.alphaInv', 'Alpha Inv'); },
+  get luma() { return t('ui.matte.luma', 'Luma'); },
+  get 'luma-inv'() { return t('ui.matte.short.lumaInv', 'Luma Inv'); },
 };
 
 /** Which option a stored matte corresponds to. Accepts every legacy shape. */

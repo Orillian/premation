@@ -19,6 +19,7 @@ import { NativePluginsPage } from '@layout/Plugins/NativePluginsPage';
 import { RegistryPluginsNotice } from '@layout/Plugins/RegistryPluginsNotice';
 import { BillingSection } from '@layout/Settings/BillingSection';
 import { billingEnabled } from '@core/config/edition';
+import { t } from '@core/i18n';
 import { hasDesktopChrome } from '@core/config/uiPlatform';
 import { TITLE_BAR_ROUTE_SLOT_ID } from '@layout/TitleBar/routeSlot';
 import { ColorPicker } from '@components/ColorPicker';
@@ -27,7 +28,7 @@ import {
   SIZE_PRESETS, SIZE_GROUPS, FPS_PRESETS,
   MIN_DIMENSION, MAX_DIMENSION, MIN_DURATION, MAX_DURATION,
   clampDimension, clampFps, clampDuration, describeSize, describeDuration,
-  aspectRatioLabel,
+  aspectRatioLabel, sizeGroupLabel,
 } from '@core/composition/presets';
 import { purgeStoredAssets, type AssetFolder, type ImportedAsset } from '@stores/assetStore';
 import { useMirrorAssetRecords, useMirrorFolders } from '@hooks/useAssetRecords';
@@ -76,10 +77,10 @@ function ReadOnlyTag(): JSX.Element {
   return (
     <span
       className={styles.readOnlyTag}
-      title="Past your plan's cloud project limit. It opens and exports, but does not save to the cloud."
+      title={t('dashboard.readOnly.tooltip', "Past your plan's cloud project limit. It opens and exports, but does not save to the cloud.")}
     >
       <Icon name="lock" size="sm" />
-      Read-only
+      {t('dashboard.readOnly.label', 'Read-only')}
     </span>
   );
 }
@@ -97,12 +98,12 @@ function timeAgo(iso: string): string {
   const d = Date.parse(iso);
   if (Number.isNaN(d)) return '';
   const s = Math.max(1, Math.round((Date.now() - d) / 1000));
-  if (s < 60) return 'just now';
+  if (s < 60) return t('dashboard.time.justNowLower', 'just now');
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t('dashboard.time.minutesShort', '{n}m ago', { n: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 24) return t('dashboard.time.hoursShort', '{n}h ago', { n: h });
+  return t('dashboard.time.daysShort', '{n}d ago', { n: Math.round(h / 24) });
 }
 
 /**
@@ -113,13 +114,21 @@ function lastEditedLabel(iso: string): string {
   const d = Date.parse(iso);
   if (Number.isNaN(d)) return '';
   const minutes = Math.round((Date.now() - d) / 60000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  if (minutes < 1) return t('dashboard.time.justNow', 'Just now');
+  if (minutes < 60) {
+    return minutes === 1
+      ? t('dashboard.time.minutesOne', '{n} minute ago', { n: minutes })
+      : t('dashboard.time.minutesOther', '{n} minutes ago', { n: minutes });
+  }
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  if (hours < 24) {
+    return hours === 1
+      ? t('dashboard.time.hoursOne', '{n} hour ago', { n: hours })
+      : t('dashboard.time.hoursOther', '{n} hours ago', { n: hours });
+  }
   const days = Math.round(hours / 24);
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
+  if (days === 1) return t('dashboard.time.yesterday', 'Yesterday');
+  if (days < 7) return t('dashboard.time.daysOther', '{n} days ago', { n: days });
   const date = new Date(d);
   return date.toLocaleDateString(undefined, {
     month: 'short',
@@ -213,38 +222,42 @@ interface NavItem {
 }
 
 /** The library: what you came here to open, import, export or recover. */
-const NAV_LIBRARY: readonly NavItem[] = [
-  { tab: 'home', label: 'Home', icon: 'home' },
-  { tab: 'projects', label: 'Projects', icon: 'folder' },
-  { tab: 'assets', label: 'Assets', icon: 'image' },
-  { tab: 'renders', label: 'Render queue', icon: 'queue' },
-  { tab: 'trash', label: 'Trash', icon: 'trash' },
-];
+function navLibrary(): readonly NavItem[] {
+  return [
+    { tab: 'home', label: t('dashboard.nav.home', 'Home'), icon: 'home' },
+    { tab: 'projects', label: t('dashboard.nav.projects', 'Projects'), icon: 'folder' },
+    { tab: 'assets', label: t('dashboard.nav.assets', 'Assets'), icon: 'image' },
+    { tab: 'renders', label: t('dashboard.nav.renders', 'Render queue'), icon: 'queue' },
+    { tab: 'trash', label: t('dashboard.nav.trash', 'Trash'), icon: 'trash' },
+  ];
+}
 
 /** The app's own setup. */
-const NAV_APP: readonly NavItem[] = [
-  { tab: 'plugins', label: 'Plugins', icon: 'plugin' },
-  { tab: 'customize', label: 'Preferences', icon: 'sliders-h' },
-];
+function navApp(): readonly NavItem[] {
+  return [
+    { tab: 'plugins', label: t('dashboard.nav.plugins', 'Plugins'), icon: 'plugin' },
+    { tab: 'customize', label: t('dashboard.nav.preferences', 'Preferences'), icon: 'sliders-h' },
+  ];
+}
 
 /** Account pages. Also listed in the profile menu. */
 function accountNav(): NavItem[] {
   const items: NavItem[] = [];
-  if (billingEnabled()) items.push({ tab: 'billing', label: 'Plan', icon: 'star' });
-  items.push({ tab: 'connections', label: 'Connections', icon: 'link' });
-  items.push({ tab: 'settings', label: 'Settings', icon: 'settings' });
+  if (billingEnabled()) items.push({ tab: 'billing', label: t('dashboard.nav.plan', 'Plan'), icon: 'star' });
+  items.push({ tab: 'connections', label: t('dashboard.nav.connections', 'Connections'), icon: 'link' });
+  items.push({ tab: 'settings', label: t('dashboard.nav.settings', 'Settings'), icon: 'settings' });
   return items;
 }
 
 /** One line under the Home greeting: which plan, and how much of it is in use. */
 function planGlance(account: AccountRecord): string {
-  if (account.access.reason === 'beta') return 'Cloud saving is open during beta';
-  if (account.plan === 'pro') return 'Unlimited cloud projects';
+  if (account.access.reason === 'beta') return t('dashboard.plan.beta', 'Cloud saving is open during beta');
+  if (account.plan === 'pro') return t('dashboard.plan.unlimited', 'Unlimited cloud projects');
   const cap = account.access.limits?.cloudProjects;
   if (typeof cap === 'number') {
-    return `${account.projectCount.toLocaleString()} of ${cap.toLocaleString()} cloud projects`;
+    return t('dashboard.plan.usage', '{used} of {cap} cloud projects', { used: account.projectCount.toLocaleString(), cap: cap.toLocaleString() });
   }
-  return 'The editor is free';
+  return t('dashboard.plan.free', 'The editor is free');
 }
 
 /**
@@ -254,13 +267,15 @@ function planGlance(account: AccountRecord): string {
  * and, for `canceled`, spelled it the American way in a UI that is otherwise
  * British. A table maps the wire value to the label once.
  */
-const RENDER_STATUS_LABEL: Record<RenderJobDto['status'], string> = {
-  queued: 'Queued',
-  running: 'Rendering',
-  completed: 'Done',
-  failed: 'Failed',
-  canceled: 'Cancelled',
-};
+function renderStatusLabel(status: RenderJobDto['status']): string {
+  switch (status) {
+    case 'queued': return t('dashboard.renders.status.queued', 'Queued');
+    case 'running': return t('dashboard.renders.status.running', 'Rendering');
+    case 'completed': return t('dashboard.renders.status.completed', 'Done');
+    case 'failed': return t('dashboard.renders.status.failed', 'Failed');
+    case 'canceled': return t('dashboard.renders.status.canceled', 'Cancelled');
+  }
+}
 
 const VIDEO_ACCEPT = 'video/*,.mp4,.mov,.webm,.m4v,.mxf,.avi,.mts,.m2ts,.mpg,.wmv,.mkv';
 
@@ -274,11 +289,22 @@ const ASSET_PAGE_SIZE = 24;
  * distinguishes a reel from a YouTube cut, and it comes from the comp's own
  * size (the server filters on it — see projectLibraryStore).
  */
-const ORIENTATION_LABEL: Record<Orientation, string> = {
-  landscape: 'Landscape',
-  portrait: 'Portrait',
-  square: 'Square',
-};
+function orientationLabel(o: Orientation): string {
+  switch (o) {
+    case 'landscape': return t('dashboard.orientation.landscape', 'Landscape');
+    case 'portrait': return t('dashboard.orientation.portrait', 'Portrait');
+    case 'square': return t('dashboard.orientation.square', 'Square');
+  }
+}
+
+/** The empty-list line for one orientation filter. */
+function noOrientationProjects(o: Orientation): string {
+  switch (o) {
+    case 'landscape': return t('dashboard.projects.noneLandscape', 'No landscape projects yet.');
+    case 'portrait': return t('dashboard.projects.nonePortrait', 'No portrait projects yet.');
+    case 'square': return t('dashboard.projects.noneSquare', 'No square projects yet.');
+  }
+}
 
 /** "24.5 MB" from a real byte count — the sizes used to be decorative strings. */
 function formatBytes(bytes: number): string {
@@ -320,8 +346,8 @@ export function DashboardPage(): JSX.Element {
   // "set up AI" prompt lands the user on the right page, not just this one.
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>(() => {
-    const t = searchParams.get('tab');
-    return isTab(t) ? t : 'home';
+    const tab = searchParams.get('tab');
+    return isTab(tab) ? tab : 'home';
   });
 
   useEffect(() => {
@@ -431,7 +457,7 @@ export function DashboardPage(): JSX.Element {
   const renders = usePagedList<RenderJobDto>(fetchRenders, {
     pageSize: TABLE_PAGE_SIZE,
     enabled: activeTab === 'renders',
-    errorMessage: 'Could not load the render queue.',
+    errorMessage: t('dashboard.renders.loadFailed', 'Could not load the render queue.'),
   });
 
   const fetchTrash = useCallback(
@@ -441,7 +467,7 @@ export function DashboardPage(): JSX.Element {
   const trash = usePagedList<TrashedProject>(fetchTrash, {
     pageSize: TABLE_PAGE_SIZE,
     enabled: activeTab === 'trash',
-    errorMessage: 'Could not load the trash.',
+    errorMessage: t('dashboard.trash.loadFailed', 'Could not load the trash.'),
   });
 
   /**
@@ -578,8 +604,8 @@ export function DashboardPage(): JSX.Element {
   // filter the loaded page). Debounced so typing doesn't fire a query a
   // keystroke. `load` resets to page 1 when the query changes.
   useEffect(() => {
-    const t = setTimeout(() => { void load({ query: searchQuery }); }, 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => { void load({ query: searchQuery }); }, 250);
+    return () => clearTimeout(timer);
   }, [load, searchQuery]);
 
   useEffect(() => {
@@ -668,7 +694,7 @@ export function DashboardPage(): JSX.Element {
         transparent: setupTransparent,
       });
       const p = await create(compName, initialDoc);
-      if (!p?.id) throw new Error('The server did not return a project id.');
+      if (!p?.id) throw new Error(t('dashboard.create.noId', 'The server did not return a project id.'));
       // Nothing primed here: the stores still belong to whatever project is
       // loaded behind the dashboard. Opening `initialDoc` states its comps, and
       // its timeline is seeded from them (restoreDocument: no `timelines`).
@@ -686,7 +712,7 @@ export function DashboardPage(): JSX.Element {
       const message =
         err instanceof Error && err.message
           ? err.message
-          : 'Could not create the composition. Check your connection and try again.';
+          : t('dashboard.create.failed', 'Could not create the composition. Check your connection and try again.');
       // Past the Free plan's cloud allowance the server's sentence carries the
       // way out (upgrade, or a local project) — give it time to be read.
       const limited = projectLimitDetail(403, (err as { body?: unknown }).body) !== null;
@@ -698,7 +724,11 @@ export function DashboardPage(): JSX.Element {
   const onDelete = async (id: string, name: string) => {
     // It CAN be undone now — saying otherwise would be the opposite lie to the
     // one this codebase usually tells, and would scare people out of tidying up.
-    if (!await customConfirm('Move to Trash', `Move “${name}” to the trash? You can restore it for 30 days.`, { confirmLabel: 'Move to Trash' })) return;
+    if (!await customConfirm(
+      t('dashboard.projects.trashTitle', 'Move to Trash'),
+      t('dashboard.projects.trashMessage', 'Move “{name}” to the trash? You can restore it for 30 days.', { name }),
+      { confirmLabel: t('dashboard.projects.trashConfirm', 'Move to Trash') },
+    )) return;
     await remove(id).catch(() => undefined);
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -765,7 +795,7 @@ export function DashboardPage(): JSX.Element {
       // Browser `File`s (no path): imported from their bytes, one entry.
       await importBrowserFilesEdit(items);
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Upload failed.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.assets.uploadFailed', 'Upload failed.'));
     } finally {
       setAssetsBusy(false);
     }
@@ -792,13 +822,13 @@ export function DashboardPage(): JSX.Element {
         picked.push({ file, dir: segments.join('/') });
       }
       const pathToId = await createFolderTreeEdit(dirs, currentFolderId);
-      if (dirs.length > 0 && pathToId.size === 0) throw new Error('Could not create the folders.');
+      if (dirs.length > 0 && pathToId.size === 0) throw new Error(t('dashboard.assets.createFoldersFailed', 'Could not create the folders.'));
       const items = picked.map(({ file, dir }) => ({ file, folderId: dir ? pathToId.get(dir) ?? currentFolderId : currentFolderId }));
       if (items.length > 0) {
         await importBrowserFilesEdit(items);
       }
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Folder import failed.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.assets.folderImportFailed', 'Folder import failed.'));
     } finally {
       setAssetsBusy(false);
     }
@@ -817,12 +847,24 @@ export function DashboardPage(): JSX.Element {
   const handleDeleteFolder = async (folder: AssetFolder): Promise<void> => {
     const assetCount = storeAssets.filter((a) => a.folderId === folder.id).length;
     const subCount = folders.filter((f) => f.parentId === folder.id).length;
+    const countVars = { assets: assetCount, folders: subCount };
+    const contents = subCount === 0
+      ? assetCount === 1
+        ? t('dashboard.assets.deleteFolderAssetsOne', 'This deletes the folder and everything inside it ({assets} asset). This can’t be undone.', countVars)
+        : t('dashboard.assets.deleteFolderAssetsOther', 'This deletes the folder and everything inside it ({assets} assets). This can’t be undone.', countVars)
+      : assetCount === 1
+        ? subCount === 1
+          ? t('dashboard.assets.deleteFolderAssetOneSubOne', 'This deletes the folder and everything inside it ({assets} asset, {folders} subfolder). This can’t be undone.', countVars)
+          : t('dashboard.assets.deleteFolderAssetOneSubOther', 'This deletes the folder and everything inside it ({assets} asset, {folders} subfolders). This can’t be undone.', countVars)
+        : subCount === 1
+          ? t('dashboard.assets.deleteFolderAssetOtherSubOne', 'This deletes the folder and everything inside it ({assets} assets, {folders} subfolder). This can’t be undone.', countVars)
+          : t('dashboard.assets.deleteFolderAssetOtherSubOther', 'This deletes the folder and everything inside it ({assets} assets, {folders} subfolders). This can’t be undone.', countVars);
     const ok = await customConfirm(
-      `Delete “${folder.name}”`,
+      t('dashboard.assets.deleteFolderTitle', 'Delete “{name}”', { name: folder.name }),
       assetCount || subCount
-        ? `This deletes the folder and everything inside it (${assetCount} asset${assetCount === 1 ? '' : 's'}${subCount ? `, ${subCount} subfolder${subCount === 1 ? '' : 's'}` : ''}). This can’t be undone.`
-        : 'Delete this empty folder?',
-      { confirmLabel: 'Delete', isDanger: true }
+        ? contents
+        : t('dashboard.assets.deleteEmptyFolder', 'Delete this empty folder?'),
+      { confirmLabel: t('dashboard.delete', 'Delete'), isDanger: true }
     );
     if (!ok) return;
     // The folder tree and everything in it.
@@ -836,11 +878,15 @@ export function DashboardPage(): JSX.Element {
   };
 
   const handleDeleteAsset = async (id: string, name: string): Promise<void> => {
-    if (!await customConfirm('Delete Asset', `Delete “${name}”? This cannot be undone.`, { isDanger: true, confirmLabel: 'Delete' })) return;
+    if (!await customConfirm(
+      t('dashboard.assets.deleteAssetTitle', 'Delete Asset'),
+      t('dashboard.assets.deleteAssetMessage', 'Delete “{name}”? This cannot be undone.', { name }),
+      { isDanger: true, confirmLabel: t('dashboard.delete', 'Delete') },
+    )) return;
     try {
       await deletePermanentlyEdit([id], storeAssets.filter((a) => a.id === id));
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Could not delete that asset.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.assets.deleteFailed', 'Could not delete that asset.'));
     }
   };
 
@@ -853,22 +899,22 @@ export function DashboardPage(): JSX.Element {
       void refreshProjects();
       void refreshOverview();
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Could not restore that project.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.trash.restoreFailed', 'Could not restore that project.'));
     }
   };
 
   const handleDestroy = async (id: string, name: string): Promise<void> => {
     if (!await customConfirm(
-      'Permanently Delete Project',
-      `Permanently delete “${name}”? This cannot be undone — the project and all of its version history will be gone for good.`,
-      { isDanger: true, confirmLabel: 'Permanently Delete' }
+      t('dashboard.trash.destroyTitle', 'Permanently Delete Project'),
+      t('dashboard.trash.destroyMessage', 'Permanently delete “{name}”? This cannot be undone — the project and all of its version history will be gone for good.', { name }),
+      { isDanger: true, confirmLabel: t('dashboard.trash.destroyConfirm', 'Permanently Delete') }
     )) return;
     try {
       await api.destroyProject(id);
       trash.removeLocal([id]);
       void refreshOverview();
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Could not delete that project.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.trash.destroyFailed', 'Could not delete that project.'));
     }
   };
 
@@ -880,7 +926,7 @@ export function DashboardPage(): JSX.Element {
       renders.reload();
       void refreshOverview();
     } catch (err) {
-      setDataError(err instanceof Error ? err.message : 'Could not cancel that render.');
+      setDataError(err instanceof Error ? err.message : t('dashboard.renders.cancelFailed', 'Could not cancel that render.'));
     }
   };
 
@@ -954,20 +1000,20 @@ export function DashboardPage(): JSX.Element {
               <div className={styles.newsBanner}>
                 <div className={styles.newsArt} aria-hidden>{RELEASE_LABEL}</div>
                 <div className={styles.newsBody}>
-                  <h2 className={styles.newsTitle}>New in {RELEASE_LABEL}: the native engine</h2>
+                  <h2 className={styles.newsTitle}>{t('dashboard.news.title', 'New in {release}: the native engine', { release: RELEASE_LABEL })}</h2>
                   <p className={styles.newsText}>
-                    Playback, rendering and export now run in a new GPU engine. Your existing projects open as before.
+                    {t('dashboard.news.text', 'Playback, rendering and export now run in a new GPU engine. Your existing projects open as before.')}
                   </p>
                 </div>
                 <button type="button" className={styles.btnSecondary} onClick={openWhatsNew}>
-                  See what’s new
+                  {t('dashboard.news.seeWhatsNew', 'See what’s new')}
                 </button>
                 <button
                   type="button"
                   className={styles.actionBtn}
                   onClick={dismissNews}
-                  title="Dismiss"
-                  aria-label="Dismiss"
+                  title={t('dashboard.news.dismiss', 'Dismiss')}
+                  aria-label={t('dashboard.news.dismiss', 'Dismiss')}
                 >
                   <Icon name="close" size="sm" />
                 </button>
@@ -988,8 +1034,8 @@ export function DashboardPage(): JSX.Element {
                     onClick={() => openTab('renders')}
                   >
                     {overview.failedRenders === 1
-                      ? '1 render failed'
-                      : `${overview.failedRenders.toLocaleString()} renders failed`}
+                      ? t('dashboard.home.rendersFailedOne', '1 render failed')
+                      : t('dashboard.home.rendersFailedOther', '{n} renders failed', { n: overview.failedRenders.toLocaleString() })}
                   </button>
                 )}
                 {overview.activeRenders > 0 && (
@@ -999,19 +1045,19 @@ export function DashboardPage(): JSX.Element {
                     onClick={() => openTab('renders')}
                   >
                     {overview.activeRenders === 1
-                      ? '1 render in progress'
-                      : `${overview.activeRenders.toLocaleString()} renders in progress`}
+                      ? t('dashboard.home.rendersActiveOne', '1 render in progress')
+                      : t('dashboard.home.rendersActiveOther', '{n} renders in progress', { n: overview.activeRenders.toLocaleString() })}
                   </button>
                 )}
               </div>
             )}
 
             <div className={styles.sectionHeaderRow}>
-              <h2 className={styles.sectionTitle}>Recent</h2>
+              <h2 className={styles.sectionTitle}>{t('dashboard.home.recent', 'Recent')}</h2>
               <button type="button" className={styles.sectionLink} onClick={() => openTab('projects')}>
                 {overviewFailed || overview.projects <= 6
-                  ? 'All projects'
-                  : `All ${overview.projects.toLocaleString()} projects`}
+                  ? t('dashboard.home.allProjects', 'All projects')
+                  : t('dashboard.home.allProjectsCount', 'All {n} projects', { n: overview.projects.toLocaleString() })}
               </button>
             </div>
             {/*
@@ -1037,28 +1083,28 @@ export function DashboardPage(): JSX.Element {
                   className={`${styles.segment} ${assetTypeFilter === 'all' ? styles.segmentActive : ''}`}
                   onClick={() => setAssetTypeFilter('all')}
                 >
-                  All
+                  {t('dashboard.assets.filterAll', 'All')}
                 </button>
                 <button
                   type="button"
                   className={`${styles.segment} ${assetTypeFilter === 'video' ? styles.segmentActive : ''}`}
                   onClick={() => setAssetTypeFilter('video')}
                 >
-                  Videos
+                  {t('dashboard.assets.filterVideos', 'Videos')}
                 </button>
                 <button
                   type="button"
                   className={`${styles.segment} ${assetTypeFilter === 'image' ? styles.segmentActive : ''}`}
                   onClick={() => setAssetTypeFilter('image')}
                 >
-                  Images
+                  {t('dashboard.assets.filterImages', 'Images')}
                 </button>
                 <button
                   type="button"
                   className={`${styles.segment} ${assetTypeFilter === 'audio' ? styles.segmentActive : ''}`}
                   onClick={() => setAssetTypeFilter('audio')}
                 >
-                  Audio
+                  {t('dashboard.assets.filterAudio', 'Audio')}
                 </button>
               </div>
 
@@ -1067,15 +1113,15 @@ export function DashboardPage(): JSX.Element {
                   type="button"
                   className={styles.btnSecondary}
                   onClick={() => { void handleNewFolder(); }}
-                  title="Create new folder"
+                  title={t('dashboard.assets.newFolderTooltip', 'Create new folder')}
                 >
                   <Icon name="folder-plus" size="md" style={{ color: FOLDER_COLOR }} />
-                  <span>New folder</span>
+                  <span>{t('dashboard.assets.newFolder', 'New folder')}</span>
                 </button>
 
                 <label className={`${styles.btnSecondary} ${assetsBusy ? styles.fileLabelBusy : styles.fileLabel}`}>
                   <Icon name="folder-open" size="md" style={{ color: FOLDER_COLOR }} />
-                  <span>Import folder</span>
+                  <span>{t('dashboard.assets.importFolder', 'Import folder')}</span>
                   <input
                     type="file"
                     multiple
@@ -1091,7 +1137,7 @@ export function DashboardPage(): JSX.Element {
 
                 <label className={`${styles.btnPrimary} ${assetsBusy ? styles.fileLabelBusy : styles.fileLabel}`}>
                   <Icon name="upload" size="md" />
-                  <span>{assetsBusy ? 'Uploading…' : 'Import asset'}</span>
+                  <span>{assetsBusy ? t('dashboard.assets.uploading', 'Uploading…') : t('dashboard.assets.importAsset', 'Import asset')}</span>
                   <input
                     type="file"
                     multiple
@@ -1107,13 +1153,13 @@ export function DashboardPage(): JSX.Element {
               </div>
             </div>
 
-            <nav className={styles.breadcrumb} aria-label="Asset folder">
+            <nav className={styles.breadcrumb} aria-label={t('dashboard.assets.breadcrumbAria', 'Asset folder')}>
               <button
                 type="button"
                 className={`${styles.breadcrumbBtn} ${currentFolderId === null ? styles.breadcrumbBtnActive : ''}`}
                 onClick={() => setCurrentFolderId(null)}
               >
-                All assets
+                {t('dashboard.assets.allAssets', 'All assets')}
               </button>
               {currentBreadcrumb.map((f, i) => (
                 <span key={f.id} className={styles.breadcrumbSeg}>
@@ -1140,15 +1186,15 @@ export function DashboardPage(): JSX.Element {
             {subfoldersInView.length === 0 && visibleAssetsInView.length === 0 ? (
               <div className={styles.emptyState}>
                 <Icon name="folder" size={48} className={styles.emptyStateIcon} />
-                <h3>{currentFolderId === null ? 'No assets yet' : 'This folder is empty'}</h3>
+                <h3>{currentFolderId === null ? t('dashboard.assets.emptyTitle', 'No assets yet') : t('dashboard.assets.folderEmptyTitle', 'This folder is empty')}</h3>
                 <p>
                   {currentFolderId === null
-                    ? 'Footage, stills and audio you import here are available to every project in your library.'
-                    : 'Import media into this folder, or drop a subfolder inside it to keep things sorted.'}
+                    ? t('dashboard.assets.emptyText', 'Footage, stills and audio you import here are available to every project in your library.')
+                    : t('dashboard.assets.folderEmptyText', 'Import media into this folder, or drop a subfolder inside it to keep things sorted.')}
                 </p>
                 <label className={`${styles.btnPrimary} ${assetsBusy ? styles.fileLabelBusy : styles.fileLabel}`}>
                   <Icon name="upload" size="md" />
-                  <span>{assetsBusy ? 'Uploading…' : 'Import asset'}</span>
+                  <span>{assetsBusy ? t('dashboard.assets.uploading', 'Uploading…') : t('dashboard.assets.importAsset', 'Import asset')}</span>
                   <input
                     type="file"
                     multiple
@@ -1201,12 +1247,16 @@ export function DashboardPage(): JSX.Element {
                             {folder.name}
                           </div>
                         )}
-                        <div className={styles.assetDetails}>{count} item{count === 1 ? '' : 's'}</div>
+                        <div className={styles.assetDetails}>
+                          {count === 1
+                            ? t('dashboard.assets.itemsOne', '{n} item', { n: count })
+                            : t('dashboard.assets.itemsOther', '{n} items', { n: count })}
+                        </div>
                       </div>
                       <button
                         type="button"
                         className={styles.actionBtn}
-                        title="Delete folder"
+                        title={t('dashboard.assets.deleteFolder', 'Delete folder')}
                         onClick={(e) => { e.stopPropagation(); void handleDeleteFolder(folder); }}
                       >
                         <Icon name="trash" size="sm" />
@@ -1253,7 +1303,7 @@ export function DashboardPage(): JSX.Element {
                       <button
                         type="button"
                         className={styles.actionBtn}
-                        title="Delete asset"
+                        title={t('dashboard.assets.deleteAsset', 'Delete asset')}
                         onClick={() => void handleDeleteAsset(asset.id, asset.name)}
                       >
                         <Icon name="trash" size="sm" />
@@ -1281,20 +1331,20 @@ export function DashboardPage(): JSX.Element {
             {renders.status === 'error' ? <p className={styles.emptyHint}>{renders.error}</p> : null}
             {renders.status === 'loading' ? (
               <div className={styles.loadingState}>
-                <p>Loading render queue…</p>
+                <p>{t('dashboard.renders.loading', 'Loading render queue…')}</p>
               </div>
             ) : renders.items.length === 0 ? (
               <div className={styles.emptyState}>
                 <Icon name="queue" size={48} className={styles.emptyStateIcon} />
-                <h3>No renders in queue</h3>
-                <p>Export a project from the composition editor to send render jobs to the queue.</p>
+                <h3>{t('dashboard.renders.emptyTitle', 'No renders in queue')}</h3>
+                <p>{t('dashboard.renders.emptyText', 'Export a project from the composition editor to send render jobs to the queue.')}</p>
                 <button
                   type="button"
                   className={styles.btnSecondary}
                   onClick={() => openTab('projects')}
                 >
                   <Icon name="folder" size="md" />
-                  <span>Go to projects</span>
+                  <span>{t('dashboard.renders.goToProjects', 'Go to projects')}</span>
                 </button>
               </div>
             ) : (
@@ -1302,12 +1352,12 @@ export function DashboardPage(): JSX.Element {
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Job Name</th>
-                    <th>Format</th>
-                    <th>Progress</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th style={{ width: '60px', textAlign: 'center' }}>Actions</th>
+                    <th>{t('dashboard.renders.colJob', 'Job Name')}</th>
+                    <th>{t('dashboard.renders.colFormat', 'Format')}</th>
+                    <th>{t('dashboard.renders.colProgress', 'Progress')}</th>
+                    <th>{t('dashboard.renders.colStatus', 'Status')}</th>
+                    <th>{t('dashboard.renders.colCreated', 'Created')}</th>
+                    <th style={{ width: '60px', textAlign: 'center' }}>{t('dashboard.renders.colActions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1321,7 +1371,7 @@ export function DashboardPage(): JSX.Element {
                         <td>
                           <div className={styles.jobCell}>
                             <Icon name="video" size="md" style={{ color: 'var(--color-primary)' }} />
-                            <span style={{ fontWeight: 600 }}>{project?.name ?? 'Untitled render'}</span>
+                            <span style={{ fontWeight: 600 }}>{project?.name ?? t('dashboard.renders.untitled', 'Untitled render')}</span>
                           </div>
                         </td>
                         <td className={styles.monoCell}>{job.format.toUpperCase()}</td>
@@ -1357,7 +1407,7 @@ export function DashboardPage(): JSX.Element {
                             }`}
                           >
                             {job.status === 'running' && <span className={styles.pulseDot} />}
-                            {RENDER_STATUS_LABEL[job.status]}
+                            {renderStatusLabel(job.status)}
                           </span>
                           {/*
                             Why it failed, in the row.
@@ -1381,7 +1431,7 @@ export function DashboardPage(): JSX.Element {
                               href={job.resultUrl}
                               download
                               className={styles.actionBtn}
-                              title="Download result"
+                              title={t('dashboard.renders.download', 'Download result')}
                             >
                               <Icon name="download" size="md" />
                             </a>
@@ -1389,7 +1439,7 @@ export function DashboardPage(): JSX.Element {
                             <button
                               type="button"
                               className={styles.actionBtn}
-                              title="Cancel render"
+                              title={t('dashboard.renders.cancel', 'Cancel render')}
                               onClick={() => void handleCancelRender(job.id)}
                             >
                               <Icon name="close" size="md" />
@@ -1421,20 +1471,22 @@ export function DashboardPage(): JSX.Element {
             {trash.status === 'error' ? <p className={styles.emptyHint}>{trash.error}</p> : null}
             {trash.status === 'loading' ? (
               <div className={styles.loadingState}>
-                <p>Loading trash…</p>
+                <p>{t('dashboard.trash.loading', 'Loading trash…')}</p>
               </div>
             ) : trash.items.length === 0 ? (
               <div className={styles.emptyState}>
                 <Icon name="trash" size={48} className={styles.emptyStateIcon} />
-                <h3>Nothing in the trash</h3>
-                <p>Deleted projects rest here for 30 days, and can be restored at any point before that.</p>
+                <h3>{t('dashboard.trash.emptyTitle', 'Nothing in the trash')}</h3>
+                <p>{t('dashboard.trash.emptyText', 'Deleted projects rest here for 30 days, and can be restored at any point before that.')}</p>
               </div>
             ) : (
               <>
                 {selectedTrashIds.size > 0 && (
                   <div className={styles.selectionBar}>
                     <span className={styles.selectionCount}>
-                      {selectedTrashIds.size} {selectedTrashIds.size === 1 ? 'project' : 'projects'} selected
+                      {selectedTrashIds.size === 1
+                        ? t('dashboard.selectedOne', '{n} project selected', { n: selectedTrashIds.size })
+                        : t('dashboard.selectedOther', '{n} projects selected', { n: selectedTrashIds.size })}
                     </span>
                     <button
                       type="button"
@@ -1447,16 +1499,16 @@ export function DashboardPage(): JSX.Element {
                       }}
                     >
                       <Icon name="undo" size="sm" />
-                      <span>Restore selected ({selectedTrashIds.size})</span>
+                      <span>{t('dashboard.trash.restoreSelected', 'Restore selected ({n})', { n: selectedTrashIds.size })}</span>
                     </button>
                     <button
                       type="button"
                       className={styles.btnDanger}
                       onClick={async () => {
                         if (!await customConfirm(
-                          'Permanently Delete Projects',
-                          `Permanently delete ${selectedTrashIds.size} selected projects? This cannot be undone.`,
-                          { isDanger: true, confirmLabel: 'Permanently Delete' }
+                          t('dashboard.trash.destroyManyTitle', 'Permanently Delete Projects'),
+                          t('dashboard.trash.destroyManyMessage', 'Permanently delete {n} selected projects? This cannot be undone.', { n: selectedTrashIds.size }),
+                          { isDanger: true, confirmLabel: t('dashboard.trash.destroyConfirm', 'Permanently Delete') }
                         )) return;
                         const gone = new Set<string>();
                         for (const id of selectedTrashIds) {
@@ -1471,7 +1523,7 @@ export function DashboardPage(): JSX.Element {
                       }}
                     >
                       <Icon name="trash" size="sm" />
-                      <span>Delete permanently ({selectedTrashIds.size})</span>
+                      <span>{t('dashboard.trash.deleteSelected', 'Delete permanently ({n})', { n: selectedTrashIds.size })}</span>
                     </button>
                   </div>
                 )}
@@ -1491,10 +1543,10 @@ export function DashboardPage(): JSX.Element {
                           }}
                         />
                       </th>
-                      <th>Project</th>
-                      <th>Deleted</th>
-                      <th>Purges in</th>
-                      <th style={{ width: '150px', textAlign: 'center' }}>Actions</th>
+                      <th>{t('dashboard.trash.colProject', 'Project')}</th>
+                      <th>{t('dashboard.trash.colDeleted', 'Deleted')}</th>
+                      <th>{t('dashboard.trash.colPurges', 'Purges in')}</th>
+                      <th style={{ width: '150px', textAlign: 'center' }}>{t('dashboard.trash.colActions', 'Actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1536,7 +1588,9 @@ export function DashboardPage(): JSX.Element {
                           <td className={styles.monoCell}>{timeAgo(p.deletedAt)}</td>
                           <td className={styles.monoCell}>
                             <span className={p.purgesInDays <= 3 ? styles.purgeSoon : undefined}>
-                              {p.purgesInDays} {p.purgesInDays === 1 ? 'day' : 'days'}
+                              {p.purgesInDays === 1
+                                ? t('dashboard.trash.daysOne', '{n} day', { n: p.purgesInDays })
+                                : t('dashboard.trash.daysOther', '{n} days', { n: p.purgesInDays })}
                             </span>
                           </td>
                           <td>
@@ -1547,12 +1601,12 @@ export function DashboardPage(): JSX.Element {
                                 onClick={() => void handleRestore(p.id)}
                               >
                                 <Icon name="undo" size="sm" />
-                                <span>Restore</span>
+                                <span>{t('dashboard.trash.restore', 'Restore')}</span>
                               </button>
                               <button
                                 type="button"
                                 className={styles.actionBtn}
-                                title="Delete permanently"
+                                title={t('dashboard.trash.deletePermanently', 'Delete permanently')}
                                 onClick={() => void handleDestroy(p.id, p.name)}
                               >
                                 <Icon name="trash" size="md" />
@@ -1647,7 +1701,7 @@ export function DashboardPage(): JSX.Element {
           is missing.
         */}
         {status === 'loading' && (
-          <div className={styles.skeletonTable} aria-busy="true" aria-label="Loading projects">
+          <div className={styles.skeletonTable} aria-busy="true" aria-label={t('dashboard.projects.loadingAria', 'Loading projects')}>
             {Array.from({ length: max ?? 6 }, (_, i) => (
               <div key={i} className={styles.skeletonRow}>
                 <span className={styles.skeletonThumb} />
@@ -1665,7 +1719,7 @@ export function DashboardPage(): JSX.Element {
             <Icon name="warning" size="lg" />
             <p>{error}</p>
             <button type="button" className={styles.btnSecondary} onClick={() => void load()}>
-              Retry
+              {t('dashboard.projects.retry', 'Retry')}
             </button>
           </div>
         )}
@@ -1684,13 +1738,13 @@ export function DashboardPage(): JSX.Element {
             {isFiltered ? (
               <>
                 <Icon name="search" size={48} className={styles.emptyStateIcon} />
-                <h3>No projects match</h3>
+                <h3>{t('dashboard.projects.noMatchTitle', 'No projects match')}</h3>
                 <p>
                   {searchQuery.trim()
-                    ? `Nothing in your library is called “${searchQuery.trim()}”.`
+                    ? t('dashboard.projects.noMatchQuery', 'Nothing in your library is called “{query}”.', { query: searchQuery.trim() })
                     : orientation === 'all'
-                      ? 'Nothing matched the current filters.'
-                      : `No ${ORIENTATION_LABEL[orientation].toLowerCase()} projects yet.`}
+                      ? t('dashboard.projects.noMatchFilters', 'Nothing matched the current filters.')
+                      : noOrientationProjects(orientation)}
                 </p>
                 <button
                   type="button"
@@ -1701,14 +1755,14 @@ export function DashboardPage(): JSX.Element {
                     void load({ orientation: 'all' });
                   }}
                 >
-                  Clear filters
+                  {t('dashboard.projects.clearFilters', 'Clear filters')}
                 </button>
               </>
             ) : (
               <>
                 <Icon name="folder" size={48} className={styles.emptyStateIcon} />
-                <h3>No projects yet</h3>
-                <p>A project is one composition — its comps, layers and renders live inside it.</p>
+                <h3>{t('dashboard.projects.emptyTitle', 'No projects yet')}</h3>
+                <p>{t('dashboard.projects.emptyText', 'A project is one composition — its comps, layers and renders live inside it.')}</p>
                 <button
                   type="button"
                   className={styles.btnPrimary}
@@ -1716,7 +1770,7 @@ export function DashboardPage(): JSX.Element {
                   disabled={creating}
                 >
                   <Icon name="plus" size="md" />
-                  <span>{creating ? 'Creating…' : 'Create your first project'}</span>
+                  <span>{creating ? t('dashboard.projects.creating', 'Creating…') : t('dashboard.projects.createFirst', 'Create your first project')}</span>
                 </button>
               </>
             )}
@@ -1760,15 +1814,15 @@ export function DashboardPage(): JSX.Element {
                       checked={selectedIds.size === projects.length && projects.length > 0}
                       indeterminate={selectedIds.size > 0 && selectedIds.size < projects.length}
                       onChange={toggleSelectAll}
-                      title="Select every project on this page"
+                      title={t('dashboard.projects.selectPage', 'Select every project on this page')}
                     />
                   </th>
                 )}
-                <th className={styles.colName}>Name</th>
-                <th>Last edited</th>
-                <th className={styles.colOptional}>Frame size</th>
-                <th>Duration</th>
-                <th style={{ width: '44px' }} aria-label="Actions" />
+                <th className={styles.colName}>{t('dashboard.projects.colName', 'Name')}</th>
+                <th>{t('dashboard.projects.colLastEdited', 'Last edited')}</th>
+                <th className={styles.colOptional}>{t('dashboard.projects.colFrameSize', 'Frame size')}</th>
+                <th>{t('dashboard.projects.colDuration', 'Duration')}</th>
+                <th style={{ width: '44px' }} aria-label={t('dashboard.projects.colActions', 'Actions')} />
               </tr>
             </thead>
             <tbody>
@@ -1776,9 +1830,9 @@ export function DashboardPage(): JSX.Element {
                 const isSelected = selectable && selectedIds.has(p.id);
                 const open = (): void => navigate(`/editor/${p.id}`);
                 const menu: DropdownItem[] = [
-                  { type: 'item', id: 'open', label: 'Open', onSelect: open },
+                  { type: 'item', id: 'open', label: t('dashboard.projects.menuOpen', 'Open'), onSelect: open },
                   { type: 'separator' },
-                  { type: 'item', id: 'trash', label: 'Move to Trash', danger: true, onSelect: () => { void onDelete(p.id, p.name); } },
+                  { type: 'item', id: 'trash', label: t('dashboard.projects.trashTitle', 'Move to Trash'), danger: true, onSelect: () => { void onDelete(p.id, p.name); } },
                 ];
                 return (
                   /*
@@ -1834,8 +1888,8 @@ export function DashboardPage(): JSX.Element {
                           <button
                             type="button"
                             className={styles.moreBtn}
-                            title="More"
-                            aria-label={`Actions for ${p.name}`}
+                            title={t('dashboard.projects.more', 'More')}
+                            aria-label={t('dashboard.projects.actionsFor', 'Actions for {name}', { name: p.name })}
                           >
                             <Icon name="more-horizontal" size="md" />
                           </button>
@@ -1873,58 +1927,58 @@ export function DashboardPage(): JSX.Element {
     switch (activeTab) {
       case 'home':
         return {
-          title: 'Home',
+          title: t('dashboard.nav.home', 'Home'),
           desc: '',
         };
       case 'projects':
         return {
-          title: 'Projects',
+          title: t('dashboard.nav.projects', 'Projects'),
           desc: '',
         };
       case 'trash':
         return {
-          title: 'Trash',
-          desc: 'Restore deleted projects within 30 days, or remove them permanently.',
+          title: t('dashboard.nav.trash', 'Trash'),
+          desc: t('dashboard.header.trashDesc', 'Restore deleted projects within 30 days, or remove them permanently.'),
         };
       case 'assets':
         return {
-          title: 'Assets',
-          desc: 'Import and organize media you’ll use across projects.',
+          title: t('dashboard.nav.assets', 'Assets'),
+          desc: t('dashboard.header.assetsDesc', 'Import and organize media you’ll use across projects.'),
         };
       case 'renders':
         return {
-          title: 'Render queue',
-          desc: 'Track exports in progress, finished downloads, and queued jobs.',
+          title: t('dashboard.nav.renders', 'Render queue'),
+          desc: t('dashboard.header.rendersDesc', 'Track exports in progress, finished downloads, and queued jobs.'),
         };
       case 'billing':
         return {
-          title: 'Plan',
-          desc: 'What’s included, and how to change or cancel.',
+          title: t('dashboard.nav.plan', 'Plan'),
+          desc: t('dashboard.header.billingDesc', 'What’s included, and how to change or cancel.'),
         };
       case 'connections':
         return {
-          title: 'Connections',
-          desc: 'Claude, Cursor, Antigravity and ChatGPT on this computer.',
+          title: t('dashboard.nav.connections', 'Connections'),
+          desc: t('dashboard.header.connectionsDesc', 'Claude, Cursor, Antigravity and ChatGPT on this computer.'),
         };
       case 'plugins':
         return {
-          title: 'Plugins',
-          desc: 'Native plugins installed on this machine, and how to add more.',
+          title: t('dashboard.nav.plugins', 'Plugins'),
+          desc: t('dashboard.header.pluginsDesc', 'Native plugins installed on this machine, and how to add more.'),
         };
       case 'customize':
         return {
-          title: 'Preferences',
-          desc: 'Workspaces, keyboard shortcuts, appearance, audio hardware, and editor behaviors.',
+          title: t('dashboard.nav.preferences', 'Preferences'),
+          desc: t('dashboard.header.customizeDesc', 'Workspaces, keyboard shortcuts, appearance, audio hardware, and editor behaviors.'),
         };
       case 'settings':
         return {
-          title: 'Settings',
-          desc: 'Your account, and the devices signed in to it.',
+          title: t('dashboard.nav.settings', 'Settings'),
+          desc: t('dashboard.header.settingsDesc', 'Your account, and the devices signed in to it.'),
         };
     }
   }, [activeTab]);
 
-  const displayName = user?.name || user?.email?.split('@')[0] || 'Account';
+  const displayName = user?.name || user?.email?.split('@')[0] || t('dashboard.account.fallbackName', 'Account');
   const displayInitial = displayName.trim().charAt(0).toUpperCase() || '?';
   const firstName = user?.name?.trim().split(/\s+/)[0] ?? '';
 
@@ -1939,11 +1993,11 @@ export function DashboardPage(): JSX.Element {
       <Icon name={item.icon} size="md" className={styles.navIcon} />
       <span>{item.label}</span>
       {item.tab === 'renders' && overview.activeRenders > 0 && (
-        <span className={styles.navCount} title="Renders in progress">{overview.activeRenders}</span>
+        <span className={styles.navCount} title={t('dashboard.nav.rendersInProgress', 'Renders in progress')}>{overview.activeRenders}</span>
       )}
       {item.tab === 'billing' && account && (
         <span className={`${styles.navBadge} ${account.plan === 'pro' ? styles.navBadgePro : ''}`}>
-          {account.plan === 'pro' ? 'Pro' : 'Free'}
+          {account.plan === 'pro' ? t('dashboard.plan.badgePro', 'Pro') : t('dashboard.plan.badgeFree', 'Free')}
         </span>
       )}
     </button>
@@ -1958,24 +2012,26 @@ export function DashboardPage(): JSX.Element {
           <span className={styles.accountName}>{displayName}</span>
           {user?.email ? <span className={styles.accountEmail}>{user.email}</span> : null}
           {account && billingEnabled() ? (
-            <span className={styles.accountPlan}>{account.plan === 'pro' ? 'Premation Cloud' : 'Free plan'}</span>
+            <span className={styles.accountPlan}>{account.plan === 'pro' ? 'Premation Cloud' : t('dashboard.account.freePlan', 'Free plan')}</span>
           ) : null}
         </div>
       ),
     },
     { type: 'separator' },
-    { type: 'item', id: 'settings', label: 'Settings', onSelect: () => openTab('settings') },
-    { type: 'item', id: 'connections', label: 'Connections', onSelect: () => openTab('connections') },
+    { type: 'item', id: 'settings', label: t('dashboard.nav.settings', 'Settings'), onSelect: () => openTab('settings') },
+    { type: 'item', id: 'connections', label: t('dashboard.nav.connections', 'Connections'), onSelect: () => openTab('connections') },
     ...(billingEnabled()
       ? [{
           type: 'item' as const,
           id: 'billing',
-          label: account?.plan && account.plan !== 'free' ? 'Manage plan' : salesOpen ? 'View plans' : 'Your plan',
+          label: account?.plan && account.plan !== 'free'
+            ? t('dashboard.account.managePlan', 'Manage plan')
+            : salesOpen ? t('dashboard.account.viewPlans', 'View plans') : t('dashboard.account.yourPlan', 'Your plan'),
           onSelect: () => openTab('billing'),
         }]
       : []),
     { type: 'separator' },
-    { type: 'item', id: 'signout', label: 'Sign out', onSelect: () => { void logout(); } },
+    { type: 'item', id: 'signout', label: t('dashboard.account.signOut', 'Sign out'), onSelect: () => { void logout(); } },
   ];
 
   /*
@@ -1988,21 +2044,21 @@ export function DashboardPage(): JSX.Element {
         <Icon name="search" size="sm" className={styles.topSearchIcon} />
         <input
           type="search"
-          placeholder="Search projects"
+          placeholder={t('dashboard.search.placeholder', 'Search projects')}
           className={styles.topSearchInput}
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
             if (activeTab !== 'projects') openTab('projects');
           }}
-          aria-label="Search projects"
+          aria-label={t('dashboard.search.placeholder', 'Search projects')}
         />
       </div>
       <Dropdown
         placement="bottom-end"
         items={accountMenu}
         trigger={
-          <button type="button" className={styles.accountButton} title="Account" aria-label="Account">
+          <button type="button" className={styles.accountButton} title={t('dashboard.account.button', 'Account')} aria-label={t('dashboard.account.button', 'Account')}>
             {displayInitial}
           </button>
         }
@@ -2031,17 +2087,17 @@ export function DashboardPage(): JSX.Element {
       <aside className={styles.sidebar}>
         <div className={styles.railCta}>
           <button type="button" className={styles.ctaPrimary} onClick={onCreate} disabled={creating}>
-            New project
+            {t('dashboard.newProject', 'New project')}
           </button>
           <button type="button" className={styles.ctaSecondary} onClick={onCreateFromVideo} disabled={creating}>
-            New from video
+            {t('dashboard.newFromVideo', 'New from video')}
           </button>
         </div>
 
-        <nav className={styles.sidebarNav} aria-label="Dashboard">
-          {NAV_LIBRARY.map((item) => navButton(item))}
+        <nav className={styles.sidebarNav} aria-label={t('dashboard.nav.aria', 'Dashboard')}>
+          {navLibrary().map((item) => navButton(item))}
           <div className={styles.navDivider} role="separator" />
-          {NAV_APP.map((item) => navButton(item))}
+          {navApp().map((item) => navButton(item))}
           <div className={styles.navDivider} role="separator" />
           {accountNav().map((item) => navButton(item))}
         </nav>
@@ -2050,10 +2106,10 @@ export function DashboardPage(): JSX.Element {
           {hasEngine() && (
             <span className={styles.engineLine}>
               <span className={`${styles.engineDot} ${styles.engineDotReady}`} aria-hidden />
-              Engine ready
+              {t('dashboard.engineReady', 'Engine ready')}
             </span>
           )}
-          <span>Version {APP_VERSION}</span>
+          <span>{t('dashboard.version', 'Version {version}', { version: APP_VERSION })}</span>
         </div>
       </aside>
 
@@ -2062,12 +2118,14 @@ export function DashboardPage(): JSX.Element {
           {activeTab === 'home' ? (
             <div className={styles.welcomeBlock}>
               <h1 className={styles.welcomeTitle}>
-                Welcome to Premation{firstName ? `, ${firstName}` : ''}
+                {firstName
+                  ? t('dashboard.home.welcomeNamed', 'Welcome to Premation, {name}', { name: firstName })
+                  : t('dashboard.home.welcome', 'Welcome to Premation')}
               </h1>
               {account && billingEnabled() && (
                 <button type="button" className={styles.planLine} onClick={() => openTab('billing')}>
                   <span className={styles.planMark} data-plan={account.plan === 'pro' ? 'pro' : 'free'}>
-                    {account.plan === 'pro' ? 'Pro' : 'Free'}
+                    {account.plan === 'pro' ? t('dashboard.plan.badgePro', 'Pro') : t('dashboard.plan.badgeFree', 'Free')}
                   </span>
                   <span>{planGlance(account)}</span>
                 </button>
@@ -2086,7 +2144,11 @@ export function DashboardPage(): JSX.Element {
                       type="button"
                       className={styles.btnDanger}
                       onClick={async () => {
-                        if (await customConfirm('Move to Trash', `Move ${selectedIds.size} projects to the trash? You can restore them for 30 days.`, { confirmLabel: 'Move to Trash' })) {
+                        if (await customConfirm(
+                          t('dashboard.projects.trashTitle', 'Move to Trash'),
+                          t('dashboard.projects.trashManyMessage', 'Move {n} projects to the trash? You can restore them for 30 days.', { n: selectedIds.size }),
+                          { confirmLabel: t('dashboard.projects.trashConfirm', 'Move to Trash') },
+                        )) {
                           await removeMany(selectedIds);
                           setSelectedIds(new Set());
                           void refreshOverview();
@@ -2094,10 +2156,10 @@ export function DashboardPage(): JSX.Element {
                       }}
                     >
                       <Icon name="trash" size="md" />
-                      <span>Move to Trash ({selectedIds.size})</span>
+                      <span>{t('dashboard.projects.trashSelected', 'Move to Trash ({n})', { n: selectedIds.size })}</span>
                     </button>
                   )}
-                  <div className={styles.segmentedGroup} role="group" aria-label="Filter by format">
+                  <div className={styles.segmentedGroup} role="group" aria-label={t('dashboard.projects.filterAria', 'Filter by format')}>
                     {(['all', 'landscape', 'portrait', 'square'] as const).map((value) => (
                       <button
                         key={value}
@@ -2110,17 +2172,17 @@ export function DashboardPage(): JSX.Element {
                           void load({ orientation: value as OrientationFilter });
                         }}
                       >
-                        {value === 'all' ? 'All' : ORIENTATION_LABEL[value]}
+                        {value === 'all' ? t('dashboard.projects.filterAll', 'All') : orientationLabel(value)}
                       </button>
                     ))}
                   </div>
-                  <div className={styles.viewToggle} role="group" aria-label="View">
+                  <div className={styles.viewToggle} role="group" aria-label={t('dashboard.projects.viewAria', 'View')}>
                     <button
                       type="button"
                       className={`${styles.viewToggleBtn} ${projectView === 'list' ? styles.viewToggleBtnActive : ''}`}
                       aria-pressed={projectView === 'list'}
-                      title="List view"
-                      aria-label="List view"
+                      title={t('dashboard.projects.listView', 'List view')}
+                      aria-label={t('dashboard.projects.listView', 'List view')}
                       onClick={() => chooseProjectView('list')}
                     >
                       <Icon name="menu" size="md" />
@@ -2129,8 +2191,8 @@ export function DashboardPage(): JSX.Element {
                       type="button"
                       className={`${styles.viewToggleBtn} ${projectView === 'grid' ? styles.viewToggleBtnActive : ''}`}
                       aria-pressed={projectView === 'grid'}
-                      title="Grid view"
-                      aria-label="Grid view"
+                      title={t('dashboard.projects.gridView', 'Grid view')}
+                      aria-label={t('dashboard.projects.gridView', 'Grid view')}
                       onClick={() => {
                         setSelectedIds(new Set());
                         chooseProjectView('grid');
@@ -2156,13 +2218,13 @@ export function DashboardPage(): JSX.Element {
       <Modal
         open={setupModalOpen}
         onClose={() => !creating && setSetupModalOpen(false)}
-        title="New project"
+        title={t('dashboard.newProject', 'New project')}
         size="md"
         className={styles.setupDialog}
         persistent={creating}
       >
         <form className={styles.modalForm} onSubmit={onLaunchWorkspace}>
-          <div className={styles.setupTabs} role="tablist" aria-label="Start from">
+          <div className={styles.setupTabs} role="tablist" aria-label={t('dashboard.setup.startFromAria', 'Start from')}>
             <button
               type="button"
               role="tab"
@@ -2170,7 +2232,7 @@ export function DashboardPage(): JSX.Element {
               className={cn(styles.setupTab, setupTab === 'blank' && styles.setupTabActive)}
               onClick={() => { setSetupTab('blank'); setSetupFootage(null); }}
             >
-              Blank
+              {t('dashboard.setup.tabBlank', 'Blank')}
             </button>
             <button
               type="button"
@@ -2179,7 +2241,7 @@ export function DashboardPage(): JSX.Element {
               className={cn(styles.setupTab, setupTab === 'video' && styles.setupTabActive)}
               onClick={() => { setSetupTab('video'); if (!setupFootage) pickSetupVideo(); }}
             >
-              From video file
+              {t('dashboard.setup.tabVideo', 'From video file')}
             </button>
           </div>
 
@@ -2191,22 +2253,22 @@ export function DashboardPage(): JSX.Element {
                     <>
                       <span className={styles.setupFileName} title={setupFootage.name}>{setupFootage.name}</span>
                       <span className={styles.setupFileMeta}>
-                        {setupWidth} × {setupHeight} · {describeDuration(setupDuration)} · placed at full frame
+                        {t('dashboard.setup.fileMeta', '{width} × {height} · {duration} · placed at full frame', { width: setupWidth, height: setupHeight, duration: describeDuration(setupDuration) })}
                       </span>
                     </>
                   ) : (
                     <span className={styles.setupFileMeta}>
-                      No file chosen. The project takes its size and length from the video.
+                      {t('dashboard.setup.noFile', 'No file chosen. The project takes its size and length from the video.')}
                     </span>
                   )}
                 </div>
                 <button type="button" className={styles.setupFileChange} onClick={pickSetupVideo}>
-                  {setupFootage ? 'Choose another…' : 'Choose a video file…'}
+                  {setupFootage ? t('dashboard.setup.chooseAnother', 'Choose another…') : t('dashboard.setup.chooseVideo', 'Choose a video file…')}
                 </button>
               </div>
             )}
 
-            <label className={styles.setupLabel} htmlFor="setup-name">Project name</label>
+            <label className={styles.setupLabel} htmlFor="setup-name">{t('dashboard.setup.projectName', 'Project name')}</label>
             <input
               id="setup-name"
               type="text"
@@ -2220,7 +2282,7 @@ export function DashboardPage(): JSX.Element {
 
             {setupTab === 'blank' && (
               <>
-                <label className={styles.setupLabel} htmlFor="setup-preset">Preset</label>
+                <label className={styles.setupLabel} htmlFor="setup-preset">{t('dashboard.setup.preset', 'Preset')}</label>
                 <select
                   id="setup-preset"
                   className={styles.formSelect}
@@ -2231,9 +2293,9 @@ export function DashboardPage(): JSX.Element {
                     if (preset) setSize(preset.width, preset.height);
                   }}
                 >
-                  <option value="custom">Custom</option>
+                  <option value="custom">{t('dashboard.setup.presetCustom', 'Custom')}</option>
                   {SIZE_GROUPS.map((group) => (
-                    <optgroup key={group} label={group}>
+                    <optgroup key={group} label={sizeGroupLabel(group)}>
                       {SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.label} · {p.width} × {p.height}
@@ -2245,7 +2307,7 @@ export function DashboardPage(): JSX.Element {
               </>
             )}
 
-            <label className={styles.setupLabel} htmlFor="setup-width">Width</label>
+            <label className={styles.setupLabel} htmlFor="setup-width">{t('dashboard.setup.width', 'Width')}</label>
             <div className={styles.setupInline}>
               <input
                 id="setup-width"
@@ -2263,14 +2325,14 @@ export function DashboardPage(): JSX.Element {
                 type="button"
                 className={styles.swapDimensionsBtn}
                 onClick={swapDimensions}
-                title="Swap width and height"
-                aria-label="Swap width and height"
+                title={t('dashboard.setup.swap', 'Swap width and height')}
+                aria-label={t('dashboard.setup.swap', 'Swap width and height')}
               >
                 <Icon name="refresh" size="sm" />
               </button>
             </div>
 
-            <label className={styles.setupLabel} htmlFor="setup-height">Height</label>
+            <label className={styles.setupLabel} htmlFor="setup-height">{t('dashboard.setup.height', 'Height')}</label>
             <div className={styles.setupInline}>
               <input
                 id="setup-height"
@@ -2292,11 +2354,11 @@ export function DashboardPage(): JSX.Element {
                     if (e.target.checked && setupWidth > 0 && setupHeight > 0) setLockedRatio(setupWidth / setupHeight);
                   }}
                 />
-                <span>Lock aspect ratio to {aspectRatioLabel(setupWidth, setupHeight)}</span>
+                <span>{t('dashboard.setup.lockAspect', 'Lock aspect ratio to {ratio}', { ratio: aspectRatioLabel(setupWidth, setupHeight) })}</span>
               </label>
             </div>
 
-            <label className={styles.setupLabel} htmlFor="setup-fps">Frame rate</label>
+            <label className={styles.setupLabel} htmlFor="setup-fps">{t('dashboard.setup.frameRate', 'Frame rate')}</label>
             <div className={styles.setupInline}>
               <select
                 id="setup-fps"
@@ -2309,10 +2371,10 @@ export function DashboardPage(): JSX.Element {
                   <option key={f.value} value={f.value}>{f.label}</option>
                 ))}
               </select>
-              {setupTab === 'video' && <span className={styles.setupHint}>The editor reads the exact rate on import.</span>}
+              {setupTab === 'video' && <span className={styles.setupHint}>{t('dashboard.setup.rateHint', 'The editor reads the exact rate on import.')}</span>}
             </div>
 
-            <label className={styles.setupLabel} htmlFor="setup-duration">Duration</label>
+            <label className={styles.setupLabel} htmlFor="setup-duration">{t('dashboard.setup.duration', 'Duration')}</label>
             <div className={styles.setupInline}>
               <input
                 id="setup-duration"
@@ -2326,20 +2388,20 @@ export function DashboardPage(): JSX.Element {
                 onBlur={(e) => setSetupDuration(clampDuration(Number(e.target.value)))}
                 required
               />
-              <span>seconds</span>
+              <span>{t('dashboard.setup.seconds', 'seconds')}</span>
               <span className={styles.setupHint}>
-                {timecodeOf(setupDuration, setupFps)} · {Math.round(setupDuration * setupFps)} frames
+                {t('dashboard.setup.durationHint', '{timecode} · {frames} frames', { timecode: timecodeOf(setupDuration, setupFps), frames: Math.round(setupDuration * setupFps) })}
               </span>
             </div>
 
-            <span className={styles.setupLabel}>Background colour</span>
+            <span className={styles.setupLabel}>{t('dashboard.setup.background', 'Background colour')}</span>
             <div className={styles.setupInline}>
               <div className={styles.swatchGroup}>
                 {[
-                  { name: 'Dark slate', hex: '#101014' },
-                  { name: 'Black', hex: '#000000' },
-                  { name: 'White', hex: '#ffffff' },
-                  { name: 'Chroma green', hex: '#00ff00' },
+                  { name: t('dashboard.setup.swatchSlate', 'Dark slate'), hex: '#101014' },
+                  { name: t('dashboard.setup.swatchBlack', 'Black'), hex: '#000000' },
+                  { name: t('dashboard.setup.swatchWhite', 'White'), hex: '#ffffff' },
+                  { name: t('dashboard.setup.swatchGreen', 'Chroma green'), hex: '#00ff00' },
                 ].map((sw) => (
                   <button
                     key={sw.hex}
@@ -2359,7 +2421,7 @@ export function DashboardPage(): JSX.Element {
                 <ColorPicker
                   value={setupBg}
                   onChange={(c) => { setSetupBg(c); setSetupTransparent(false); }}
-                  aria-label="Background colour"
+                  aria-label={t('dashboard.setup.background', 'Background colour')}
                 />
               </div>
               <label className={styles.setupCheck}>
@@ -2367,7 +2429,7 @@ export function DashboardPage(): JSX.Element {
                   checked={setupTransparent}
                   onChange={(e) => setSetupTransparent(e.target.checked)}
                 />
-                <span>Transparent</span>
+                <span>{t('dashboard.setup.transparent', 'Transparent')}</span>
               </label>
             </div>
           </div>
@@ -2381,8 +2443,9 @@ export function DashboardPage(): JSX.Element {
             <div className={styles.setupLimitNote} role="status">
               <Icon name="info" size="sm" />
               <span>
-                You are using all {projectCap} cloud projects on the Free plan. Move one to the
-                Trash to make room{salesOpen ? ', or upgrade for unlimited projects' : ''}.
+                {salesOpen
+                  ? t('dashboard.setup.limitUpgrade', 'You are using all {cap} cloud projects on the Free plan. Move one to the Trash to make room, or upgrade for unlimited projects.', { cap: projectCap })
+                  : t('dashboard.setup.limit', 'You are using all {cap} cloud projects on the Free plan. Move one to the Trash to make room.', { cap: projectCap })}
               </span>
               {salesOpen && (
                 <Button
@@ -2393,16 +2456,16 @@ export function DashboardPage(): JSX.Element {
                     openTab('billing');
                   }}
                 >
-                  View plans
+                  {t('dashboard.account.viewPlans', 'View plans')}
                 </Button>
               )}
             </div>
           )}
 
           <div className={styles.modalFooter} data-dialog-actions>
-            <span className={styles.setupNote}>You can change these later in composition settings.</span>
+            <span className={styles.setupNote}>{t('dashboard.setup.changeLater', 'You can change these later in composition settings.')}</span>
             <Button variant="secondary" onClick={() => setSetupModalOpen(false)} disabled={creating}>
-              Cancel
+              {t('dashboard.setup.cancel', 'Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -2410,7 +2473,7 @@ export function DashboardPage(): JSX.Element {
               disabled={creating || (setupTab === 'video' && !setupFootage)}
               loading={creating}
             >
-              Create
+              {t('dashboard.setup.create', 'Create')}
             </Button>
           </div>
         </form>

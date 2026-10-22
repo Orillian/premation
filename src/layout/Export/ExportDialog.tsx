@@ -14,6 +14,7 @@ import { openModal } from '@stores/modalStore';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
 import { ExportForm, useExportModel } from './ExportForm';
+import { t } from '@core/i18n';
 import styles from './ExportDialog.module.css';
 
 function ExportDialogFooter({ duration, fps, onClose }: { duration: number; fps: number; onClose: () => void }): JSX.Element {
@@ -38,9 +39,9 @@ function ExportDialogFooter({ duration, fps, onClose }: { duration: number; fps:
               if (queueJob()) onClose();
             }}
             disabled={busy}
-            title="Queue this render in the Render Queue (F6) instead of exporting now"
+            title={t('export.dialog.queueTitle', 'Queue this render in the Render Queue (F6) instead of exporting now')}
           >
-            Add to Queue
+            {t('export.action.addToQueue', 'Add to Queue')}
           </Button>
         ) : undefined
       }
@@ -53,7 +54,7 @@ function ExportDialogFooter({ duration, fps, onClose }: { duration: number; fps:
           disabled={busy}
           title={activePreset?.hint}
         >
-          {busy ? 'Exporting…' : 'Export'}
+          {busy ? t('export.action.exporting', 'Exporting…') : t('export.action.export', 'Export')}
         </Button>
       }
     />
@@ -62,10 +63,10 @@ function ExportDialogFooter({ duration, fps, onClose }: { duration: number; fps:
 
 /** Open the export dialog as a modal. */
 export function openExportDialog(duration: number, fps: number): void {
-  const name = documentMirror().comp(activeCompIdNow() ?? '')?.settings.name?.trim() || 'Composition';
+  const name = documentMirror().comp(activeCompIdNow() ?? '')?.settings.name?.trim() || t('export.dialog.defaultCompName', 'Composition');
   openModal({
     id: 'export-dialog',
-    title: 'Export composition',
+    title: t('export.dialog.title', 'Export composition'),
     description: name,
     size: 'lg',
     // Persistent: Esc / a backdrop click used to unmount the dialog. A running

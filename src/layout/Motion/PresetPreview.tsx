@@ -24,6 +24,7 @@ import {
   samplePresetFrame,
 } from '@core/animation/presetPreview';
 import { phaseFor, prefersReducedMotion, subscribePreviewTick } from './previewTicker';
+import { t } from '@core/i18n';
 
 /** Where in the loop a non-animating card rests. Not 0: most presets START
  *  invisible, and a gallery of blank cards is worse than no gallery. */
@@ -71,8 +72,8 @@ export function PresetPreview({
     // Offset each card within its own loop so a grid does not pulse in unison.
     const phase = phaseFor(preset.name) * cycle;
 
-    const paint = (t: number): void => {
-      drawPresetFrame(ctx, preset, samplePresetFrame(preset, t), width, height, theme);
+    const paint = (time: number): void => {
+      drawPresetFrame(ctx, preset, samplePresetFrame(preset, time), width, height, theme);
     };
 
     if (prefersReducedMotion()) {
@@ -121,7 +122,7 @@ export function PresetPreview({
     <canvas
       ref={canvasRef}
       style={{ width, height, display: 'block' }}
-      aria-label={`${preset.name} preview`}
+      aria-label={t('motion.presets.previewAria', '{name} preview', { name: preset.name })}
     />
   );
 }

@@ -28,6 +28,7 @@
 import { memo, useCallback, type ComponentType } from 'react';
 import { Accordion, type AccordionItem } from '@components/Accordion';
 import { EmptyState } from '@components/EmptyState';
+import { t } from '@core/i18n';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorTreeShape, useRetainTrees } from '@hooks/useMirror';
@@ -95,7 +96,7 @@ function toAccordionItem(
 ): AccordionItem {
   const { Component, actions: ActionsComponent } = def;
   const coverage = nodeIds.length > 1 ? sectionCoverage(def, nodeIds) : nodeIds.length;
-  const badge = nodeIds.length > 1 && coverage < nodeIds.length ? `${coverage} of ${nodeIds.length}` : undefined;
+  const badge = nodeIds.length > 1 && coverage < nodeIds.length ? t('inspector.content.coverage', '{n} of {total}', { n: coverage, total: nodeIds.length }) : undefined;
   return {
     id: def.id,
     title: resolve(def.title, nodeId),
@@ -146,7 +147,7 @@ export function renderInspector(items: AccordionItem[], query: string): JSX.Elem
         .map((it) => ({ ...it, forceOpen: true }))
     : items;
   if (q && filtered.length === 0) {
-    return <EmptyState compact icon="search" message={`No properties match “${query.trim()}”.`} />;
+    return <EmptyState compact icon="search" message={t('inspector.content.noMatch', 'No properties match “{query}”.', { query: query.trim() })} />;
   }
   return <InspectorAccordion items={filtered} />;
 }
@@ -170,20 +171,20 @@ export function InspectorContent({ nodeId, query = '', nodeIds }: InspectorConte
   useRetainTrees(nodeIds ?? []);
   if (!nodeId) return <CompositionSummary />;
 
-  if (!documentMirror().layer(nodeId)) return <div className={styles.empty}>No node data</div>;
+  if (!documentMirror().layer(nodeId)) return <div className={styles.empty}>{t('inspector.content.noNodeData', 'No node data')}</div>;
 
   // Primary first whatever order the caller passed — the registry reads the
   // first id as the layer the sections are drawn for.
   const selection = [nodeId, ...(nodeIds ?? []).filter((id) => id !== nodeId)];
   const all = inspectorSectionsForSelection(selection);
   if (all.length === 0) {
-    return <EmptyState icon="info" message="This layer type has no editable properties." />;
+    return <EmptyState icon="info" message={t('inspector.content.noProperties', 'This layer type has no editable properties.')} />;
   }
 
   const q = query.trim().toLowerCase();
   const matched = q ? all.filter((def) => matchesQuery(def, nodeId, q)) : all;
   if (q && matched.length === 0) {
-    return <EmptyState compact icon="search" message={`No properties match “${query.trim()}”.`} />;
+    return <EmptyState compact icon="search" message={t('inspector.content.noMatch', 'No properties match “{query}”.', { query: query.trim() })} />;
   }
 
   return <InspectorAccordion items={matched.map((def) => toAccordionItem(def, nodeId, q.length > 0, selection))} />;

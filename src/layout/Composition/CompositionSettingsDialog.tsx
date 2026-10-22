@@ -48,6 +48,7 @@ import { useViewerLutStore } from '@stores/viewerLutStore';
 import {
   SIZE_PRESETS,
   SIZE_GROUPS,
+  sizeGroupLabel,
   aspectRatioLabel,
   clampDimension,
   clampFps,
@@ -60,6 +61,7 @@ import {
   PIXEL_ASPECT_PRESETS,
   findPixelAspectPreset,
   describePixelAspect,
+  pixelAspectLabel,
 } from './pixelAspectPresets';
 import {
   ENVIRONMENT_PRESETS,
@@ -68,16 +70,19 @@ import {
   type EnvironmentPresetId,
 } from '@core/scene/environmentLight';
 import styles from './CompositionSettingsDialog.module.css';
+import { t } from '@core/i18n';
 
 export type TabId = 'general' | 'background' | 'grid' | 'world' | 'renderer' | 'time' | 'color';
 
 /* eslint-disable design-system/no-hex-color -- Studio background hex values are composition document presets */
-const STUDIO_COLOR_SWATCHES = [
-  { label: 'Studio Dark', hex: '#101014' },
-  { label: 'Deep Black', hex: '#000000' },
-  { label: 'Slate Charcoal', hex: '#1c1c22' },
-  { label: 'Clean White', hex: '#ffffff' },
-];
+function studioColorSwatches(): Array<{ label: string; hex: string }> {
+  return [
+    { label: t('composition.settings.swatchStudioDark', 'Studio Dark'), hex: '#101014' },
+    { label: t('composition.settings.swatchDeepBlack', 'Deep Black'), hex: '#000000' },
+    { label: t('composition.settings.swatchSlateCharcoal', 'Slate Charcoal'), hex: '#1c1c22' },
+    { label: t('composition.settings.swatchCleanWhite', 'Clean White'), hex: '#ffffff' },
+  ];
+}
 /* eslint-enable design-system/no-hex-color */
 
 const POPULAR_PRESETS: readonly SizePreset[] = [
@@ -226,8 +231,8 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
   }, [s.width, s.height]);
 
   const orientation = useMemo(() => {
-    if (s.width === s.height) return 'Square';
-    return s.width > s.height ? 'Landscape' : 'Portrait';
+    if (s.width === s.height) return t('composition.settings.square', 'Square');
+    return s.width > s.height ? t('composition.settings.landscape', 'Landscape') : t('composition.settings.portrait', 'Portrait');
   }, [s.width, s.height]);
 
   // Pixel aspect ratio
@@ -350,7 +355,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
   return (
     <div className={styles.root}>
       {/* Top Navigation Tabs */}
-      <div className={styles.navTabs} role="tablist" aria-label="Composition settings tabs">
+      <div className={styles.navTabs} role="tablist" aria-label={t('composition.settings.compositionSettingsTabs', 'Composition settings tabs')}>
         <button
           type="button"
           role="tab"
@@ -359,7 +364,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('general')}
         >
           <Icon name="sliders-h" size="sm" />
-          <span>General</span>
+          <span>{t('composition.settings.general', 'General')}</span>
         </button>
         <button
           type="button"
@@ -369,7 +374,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('background')}
         >
           <Icon name="brush" size="sm" />
-          <span>Background</span>
+          <span>{t('composition.settings.background', 'Background')}</span>
         </button>
         <button
           type="button"
@@ -379,7 +384,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('grid')}
         >
           <Icon name="grid" size="sm" />
-          <span>Grid & Guides</span>
+          <span>{t('composition.settings.gridGuides', 'Grid & Guides')}</span>
         </button>
         <button
           type="button"
@@ -389,7 +394,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('world')}
         >
           <Icon name="axis-world" size="sm" />
-          <span>World</span>
+          <span>{t('composition.settings.world', 'World')}</span>
         </button>
         <button
           type="button"
@@ -399,7 +404,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('renderer')}
         >
           <Icon name="cube" size="sm" />
-          <span>Renderer</span>
+          <span>{t('composition.settings.renderer', 'Renderer')}</span>
         </button>
         <button
           type="button"
@@ -409,7 +414,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('time')}
         >
           <Icon name="keyframe" size="sm" />
-          <span>Time</span>
+          <span>{t('composition.settings.time', 'Time')}</span>
         </button>
         <button
           type="button"
@@ -419,7 +424,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           onClick={() => setActiveTab('color')}
         >
           <Icon name="palette" size="sm" />
-          <span>Color</span>
+          <span>{t('composition.settings.color', 'Color')}</span>
         </button>
       </div>
 
@@ -429,7 +434,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
           <div className={styles.columns}>
             {/* Left Column: Live Visual Interactive Preview Card */}
             <div className={styles.leftCol}>
-              <div className={styles.previewCard} aria-label="Composition preview">
+              <div className={styles.previewCard} aria-label={t('composition.settings.compositionPreview', 'Composition preview')}>
                 <div className={styles.previewViewport}>
                   <div
                     data-testid="composition-preview-frame"
@@ -468,7 +473,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
               <div className={styles.section}>
                 <div className={styles.label}>
                   <Icon name="play" size="sm" />
-                  <span>Popular Presets</span>
+                  <span>{t('composition.settings.popularPresets', 'Popular Presets')}</span>
                 </div>
                 <div className={styles.chips}>
                   {POPULAR_PRESETS.map((p) => {
@@ -493,12 +498,12 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             <div className={styles.rightCol}>
               {/* Composition Name */}
               <div className={styles.section}>
-                <div className={styles.label}>Composition Name</div>
+                <div className={styles.label}>{t('composition.settings.compositionName2', 'Composition Name')}</div>
                 <Input
                   value={s.name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Composition 1"
-                  aria-label="Composition name"
+                  aria-label={t('composition.settings.compositionName', 'Composition name')}
                 />
               </div>
 
@@ -507,10 +512,10 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                 <div className={styles.sectionHeader}>
                   <div className={styles.label}>
                     <Icon name="sliders-h" size="sm" />
-                    <span>Resolution & Preset</span>
+                    <span>{t('composition.settings.resolutionPreset2', 'Resolution & Preset')}</span>
                   </div>
                   <span className={styles.metaBadge}>
-                    {matchingPreset ? matchingPreset.label : 'Custom Size'}
+                    {matchingPreset ? matchingPreset.label : t('composition.settings.customSize', 'Custom Size')}
                   </span>
                 </div>
 
@@ -522,11 +527,11 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     if (preset) handleSelectPreset(preset);
                   }}
                   className={styles.selectInput}
-                  aria-label="Resolution preset"
+                  aria-label={t('composition.settings.resolutionPreset', 'Resolution preset')}
                 >
-                  <option value="custom">Custom Size ({s.width}×{s.height})</option>
+                  <option value="custom">{t('composition.settings.customSizeOption', 'Custom Size ({w}×{h})', { w: s.width, h: s.height })}</option>
                   {SIZE_GROUPS.map((group) => (
-                    <optgroup key={group} label={group}>
+                    <optgroup key={group} label={sizeGroupLabel(group)}>
                       {SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.label} — {p.width}×{p.height} ({aspectRatioLabel(p.width, p.height)})
@@ -539,7 +544,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                 {/* Dimensions Controls: Width, Lock, Height, Swap */}
                 <div className={styles.dimensionControlsRow}>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Width</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.width', 'Width')}</span>
                     <ValueField
                       value={s.width}
                       onChange={handleWidthChange}
@@ -547,7 +552,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       max={7680}
                       step={1}
                       unit="px"
-                      aria-label="Width"
+                      aria-label={t('composition.settings.width', 'Width')}
                     />
                   </div>
 
@@ -563,7 +568,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                   </IconButton>
 
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Height</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.height', 'Height')}</span>
                     <ValueField
                       value={s.height}
                       onChange={handleHeightChange}
@@ -571,7 +576,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       max={7680}
                       step={1}
                       unit="px"
-                      aria-label="Height"
+                      aria-label={t('composition.settings.height', 'Height')}
                     />
                   </div>
 
@@ -579,8 +584,8 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     size="sm"
                     variant="secondary"
                     onClick={handleSwapDimensions}
-                    tooltip="Swap width and height (flip orientation)"
-                    aria-label="Swap width and height"
+                    tooltip={t('composition.settings.swapWidthAndHeightFlip', 'Swap width and height (flip orientation)')}
+                    aria-label={t('composition.settings.swapWidthAndHeight', 'Swap width and height')}
                   >
                     <Icon name="rotate" size="sm" />
                   </IconButton>
@@ -589,10 +594,10 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
 
               {/* Time & Frame Rate */}
               <div className={styles.section}>
-                <div className={styles.label}>Time & Frame Rate</div>
+                <div className={styles.label}>{t('composition.settings.timeFrameRate', 'Time & Frame Rate')}</div>
                 <div className={styles.timingRow}>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Frame Rate</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.frameRate2', 'Frame Rate')}</span>
                     <ValueField
                       value={s.fps}
                       onChange={setFps}
@@ -600,11 +605,11 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       max={240}
                       step={1}
                       unit="fps"
-                      aria-label="Frame rate"
+                      aria-label={t('composition.settings.frameRate', 'Frame rate')}
                     />
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Duration</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.duration', 'Duration')}</span>
                     <ValueField
                       value={s.durationSeconds}
                       onChange={setDuration}
@@ -612,12 +617,12 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       max={MAX_DURATION}
                       step={0.5}
                       unit="s"
-                      aria-label="Duration"
+                      aria-label={t('composition.settings.duration', 'Duration')}
                     />
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel} title="The timecode frame 0 is labelled with (display only)">
-                      Start Frame
+                    <span className={styles.fieldLabel} title={t('composition.settings.theTimecodeFrame0Is', 'The timecode frame 0 is labelled with (display only)')}>
+                      {t('composition.settings.startFrame', 'Start Frame')}
                     </span>
                     <ValueField
                       value={s.startFrame}
@@ -625,7 +630,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       min={0}
                       step={1}
                       unit="f"
-                      aria-label="Start timecode (frames)"
+                      aria-label={t('composition.settings.startTimecodeFrames', 'Start timecode (frames)')}
                     />
                   </div>
                 </div>
@@ -645,16 +650,16 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                 </div>
 
                 <div className={styles.hint} style={{ opacity: 0.7, marginTop: 2 }}>
-                  {`Timecode starts at ${framesToTimecode(0, s.fps, s.startFrame)} · display only`}
+                  {t('composition.settings.timecodeStarts', 'Timecode starts at {tc} · display only', { tc: framesToTimecode(0, s.fps, s.startFrame) })}
                 </div>
               </div>
 
               {/* Pixel Aspect Ratio */}
               <div className={styles.section}>
-                <div className={styles.label}>Pixel Aspect Ratio</div>
+                <div className={styles.label}>{t('composition.settings.pixelAspectRatio2', 'Pixel Aspect Ratio')}</div>
                 <div className={styles.row}>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Preset</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.preset', 'Preset')}</span>
                     <select
                       className={styles.selectInput}
                       value={parPresetId}
@@ -662,16 +667,16 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                         const preset = PIXEL_ASPECT_PRESETS.find((p) => p.id === e.target.value);
                         setPixelAspect(preset ? preset.value : DEFAULT_PIXEL_ASPECT);
                       }}
-                      aria-label="Pixel aspect ratio preset"
+                      aria-label={t('composition.settings.pixelAspectRatioPreset', 'Pixel aspect ratio preset')}
                     >
-                      {parPresetId === '' && <option value="">Custom</option>}
+                      {parPresetId === '' && <option value="">{t('composition.settings.custom', 'Custom')}</option>}
                       {PIXEL_ASPECT_PRESETS.map((p) => (
-                        <option key={p.id} value={p.id}>{p.label}</option>
+                        <option key={p.id} value={p.id}>{pixelAspectLabel(p)}</option>
                       ))}
                     </select>
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Ratio</span>
+                    <span className={styles.fieldLabel}>{t('composition.settings.ratio', 'Ratio')}</span>
                     <ValueField
                       value={pixelAspect}
                       onChange={setPixelAspect}
@@ -679,7 +684,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       max={10}
                       step={0.01}
                       precision={4}
-                      aria-label="Pixel aspect ratio"
+                      aria-label={t('composition.settings.pixelAspectRatio', 'Pixel aspect ratio')}
                     />
                   </div>
                 </div>
@@ -695,28 +700,36 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         {activeTab === 'background' && (
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
-              <div className={styles.label}>Scene Canvas Background</div>
+              <div className={styles.label}>{t('composition.settings.sceneCanvasBackground', 'Scene Canvas Background')}</div>
               <span className={styles.metaBadge}>
-                {s.transparent ? 'Transparent' : bgPaint.type.toUpperCase()}
+                {s.transparent ? t('composition.settings.transparent', 'Transparent') : bgPaint.type.toUpperCase()}
               </span>
             </div>
             <p className={styles.hint}>
-              The composition background rendered on the canvas and included in video exports.
+              {t('composition.settings.theCompositionBackgroundRenderedOn', 'The composition background rendered on the canvas and included in video exports.')}
             </p>
 
             {/* Fill Mode Segmented Control */}
             <div className={styles.bgRow} style={{ marginTop: 2 }}>
               <div className={styles.segmentedControl}>
-                {(['solid', 'linear', 'radial'] as FillType[]).map((t) => (
+                {(['solid', 'linear', 'radial'] as FillType[]).map((ft) => (
                   <button
-                    key={t}
+                    key={ft}
                     type="button"
-                    title={`${t[0]!.toUpperCase()}${t.slice(1)} background`}
-                    className={`${styles.segmentBtn} ${!s.transparent && bgPaint.type === t ? styles.segmentBtnActive : ''}`}
+                    title={ft === 'solid'
+                      ? t('composition.settings.bgSolidTitle', 'Solid background')
+                      : ft === 'linear'
+                        ? t('composition.settings.bgLinearTitle', 'Linear background')
+                        : t('composition.settings.bgRadialTitle', 'Radial background')}
+                    className={`${styles.segmentBtn} ${!s.transparent && bgPaint.type === ft ? styles.segmentBtnActive : ''}`}
                     disabled={s.transparent}
-                    onClick={() => setBgType(t)}
+                    onClick={() => setBgType(ft)}
                   >
-                    {t === 'solid' ? 'Solid' : t === 'linear' ? 'Linear' : 'Radial'}
+                    {ft === 'solid'
+                      ? t('composition.settings.bgSolid', 'Solid')
+                      : ft === 'linear'
+                        ? t('composition.settings.bgLinear', 'Linear')
+                        : t('composition.settings.bgRadial', 'Radial')}
                   </button>
                 ))}
               </div>
@@ -724,19 +737,19 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
 
             {/* Canvas Alpha Channel Switch */}
             <div className={styles.colorCardRow} style={{ marginTop: 4 }}>
-              <span className={styles.colorCardLabel}>Canvas Transparency (Alpha)</span>
+              <span className={styles.colorCardLabel}>{t('composition.settings.canvasTransparencyAlpha', 'Canvas Transparency (Alpha)')}</span>
               <Switch
                 checked={s.transparent}
-                aria-label="Canvas Transparency"
+                aria-label={t('composition.settings.canvasTransparency', 'Canvas Transparency')}
                 onChange={(e) => setTransparent(e.target.checked)}
               />
             </div>
 
             {/* Quick Studio Color Swatches */}
             <div className={styles.colorCardRow}>
-              <span className={styles.colorCardLabel}>Studio Presets</span>
-              <div className={styles.swatchRow} role="group" aria-label="Studio swatches">
-                {STUDIO_COLOR_SWATCHES.map((swatch) => {
+              <span className={styles.colorCardLabel}>{t('composition.settings.studioPresets', 'Studio Presets')}</span>
+              <div className={styles.swatchRow} role="group" aria-label={t('composition.settings.studioSwatches', 'Studio swatches')}>
+                {studioColorSwatches().map((swatch) => {
                   const isSelected =
                     !s.transparent &&
                     bgPaint.type === 'solid' &&
@@ -763,18 +776,18 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {bgPaint.type === 'solid' && (
                   <div className={styles.colorCardRow}>
-                    <span className={styles.colorCardLabel}>Solid Fill Color</span>
+                    <span className={styles.colorCardLabel}>{t('composition.settings.solidFillColor', 'Solid Fill Color')}</span>
                     <ColorPicker
                       value={s.background}
                       onChange={(hex) => setBackgroundPaint(solidFill(hex))}
-                      aria-label="Background color"
+                      aria-label={t('composition.settings.backgroundColor', 'Background color')}
                     />
                   </div>
                 )}
 
                 {bgPaint.type === 'linear' && (
                   <div className={styles.colorCardRow}>
-                    <span className={styles.colorCardLabel}>Gradient Angle</span>
+                    <span className={styles.colorCardLabel}>{t('composition.settings.gradientAngle2', 'Gradient Angle')}</span>
                     <div style={{ width: 140 }}>
                       <ValueField
                         value={bgPaint.angle}
@@ -783,7 +796,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                         max={360}
                         step={1}
                         unit="°"
-                        aria-label="Gradient angle"
+                        aria-label={t('composition.settings.gradientAngle', 'Gradient angle')}
                       />
                     </div>
                   </div>
@@ -791,7 +804,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
 
                 {bgPaint.type === 'radial' && (
                   <div className={styles.colorCardRow}>
-                    <span className={styles.colorCardLabel}>Gradient Radius</span>
+                    <span className={styles.colorCardLabel}>{t('composition.settings.gradientRadius2', 'Gradient Radius')}</span>
                     <div style={{ width: 140 }}>
                       <ValueField
                         value={Math.round(bgPaint.radius * 100)}
@@ -800,7 +813,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                         max={200}
                         step={1}
                         unit="%"
-                        aria-label="Gradient radius"
+                        aria-label={t('composition.settings.gradientRadius', 'Gradient radius')}
                       />
                     </div>
                   </div>
@@ -809,7 +822,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                 {bgPaint.type !== 'solid' && (
                   <div className={styles.stopsContainer}>
                     <div className={styles.sectionHeader}>
-                      <span className={styles.colorCardLabel}>Gradient Stops</span>
+                      <span className={styles.colorCardLabel}>{t('composition.settings.gradientStops', 'Gradient Stops')}</span>
                       {gradientTrackPreview && (
                         <div
                           className={styles.gradientTrackPreview}
@@ -823,7 +836,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                           compact
                           value={stop.color}
                           onChange={(color) => writeStop(stop.id, { color })}
-                          aria-label="Stop color"
+                          aria-label={t('composition.settings.stopColor', 'Stop color')}
                         />
                         <ValueField
                           value={Math.round(stop.offset * 100)}
@@ -832,12 +845,12 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                           max={100}
                           step={1}
                           unit="%"
-                          aria-label="Stop position"
+                          aria-label={t('composition.settings.stopPosition', 'Stop position')}
                         />
                         <button
                           type="button"
                           className={styles.chip}
-                          title="Remove stop"
+                          title={t('composition.settings.removeStop', 'Remove stop')}
                           disabled={bgPaint.stops.length <= 2}
                           onClick={() => removeStop(stop.id)}
                           style={{ height: 26, width: 26, padding: 0, display: 'grid', placeItems: 'center' }}
@@ -853,7 +866,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                       onClick={addStop}
                       style={{ alignSelf: 'flex-start', marginTop: 2 }}
                     >
-                      Add Stop
+                      {t('composition.settings.addStop', 'Add Stop')}
                     </Button>
                   </div>
                 )}
@@ -864,16 +877,16 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             {s.transparent && (
               <div className={styles.formatCalloutCard} style={{ marginTop: 4 }}>
                 <div className={styles.formatCalloutItem}>
-                  <span className={styles.formatTagPreserved}>✓ Keeps Alpha:</span>
-                  <span><strong>MOV</strong> (ProRes 4444), <strong>WebM</strong> (VP9), <strong>PNG</strong> & PNG sequence.</span>
+                  <span className={styles.formatTagPreserved}>✓ {t('composition.settings.keepsAlpha', 'Keeps Alpha:')}</span>
+                  <span><strong>MOV</strong> (ProRes 4444), <strong>WebM</strong> (VP9), <strong>PNG</strong> {t('composition.settings.andPngSequence', '& PNG sequence.')}</span>
                 </div>
                 <div className={styles.formatCalloutItem}>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Composited over black:</span>
-                  <span>MP4, GIF, JPG sequence (no alpha channel).</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{t('composition.settings.compositedOverBlack', 'Composited over black:')}</span>
+                  <span>{t('composition.settings.mp4GifJpgSequenceNo', 'MP4, GIF, JPG sequence (no alpha channel).')}</span>
                 </div>
                 <div className={styles.formatCalloutItem}>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Lottie / JSON:</span>
-                  <span>Carries no canvas background; takes whatever is behind the player.</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{t('composition.settings.lottieJson', 'Lottie / JSON:')}</span>
+                  <span>{t('composition.settings.carriesNoCanvasBackgroundTakes', 'Carries no canvas background; takes whatever is behind the player.')}</span>
                 </div>
               </div>
             )}
@@ -884,15 +897,15 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         {activeTab === 'grid' && (
           <>
             <div className={styles.section}>
-              <div className={styles.label}>Pixel Grid</div>
+              <div className={styles.label}>{t('composition.settings.pixelGrid', 'Pixel Grid')}</div>
               <div className={styles.row}>
-                <Switch checked={gridOn} onChange={() => toggleGrid()} label="Show grid" />
-                <Switch checked={snapToGrid} onChange={() => toggleSnapToGrid()} label="Snap to grid" />
+                <Switch checked={gridOn} onChange={() => toggleGrid()} label={t('composition.settings.showGrid', 'Show grid')} />
+                <Switch checked={snapToGrid} onChange={() => toggleSnapToGrid()} label={t('composition.settings.snapToGrid', 'Snap to grid')} />
               </div>
 
               <div className={styles.row} style={{ marginTop: 4 }}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Gridline every</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.gridlineEvery', 'Gridline every')}</span>
                   <ValueField
                     value={gridSpacing}
                     onChange={setGridSpacing}
@@ -900,77 +913,77 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     max={10000}
                     step={1}
                     unit="px"
-                    aria-label="Gridline every (pixels)"
+                    aria-label={t('composition.settings.gridlineEveryPixels', 'Gridline every (pixels)')}
                   />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Subdivisions</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.subdivisions', 'Subdivisions')}</span>
                   <ValueField
                     value={gridSubdivisions}
                     onChange={setGridSubdivisions}
                     min={1}
                     max={64}
                     step={1}
-                    aria-label="Grid subdivisions"
+                    aria-label={t('composition.settings.gridSubdivisions', 'Grid subdivisions')}
                   />
                 </div>
               </div>
 
               <div className={styles.row} style={{ marginTop: 4 }}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Style</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.style', 'Style')}</span>
                   <select
                     className={styles.selectInput}
                     value={gridStyle}
                     onChange={(e) => setGridStyle(e.target.value as GridStyle)}
-                    aria-label="Grid style"
+                    aria-label={t('composition.settings.gridStyle', 'Grid style')}
                   >
-                    <option value="lines">Lines</option>
-                    <option value="dashed">Dashed Lines</option>
-                    <option value="dots">Dots</option>
+                    <option value="lines">{t('composition.settings.lines', 'Lines')}</option>
+                    <option value="dashed">{t('composition.settings.dashedLines', 'Dashed Lines')}</option>
+                    <option value="dots">{t('composition.settings.dots', 'Dots')}</option>
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Line color</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.lineColor', 'Line color')}</span>
                   <ColorPicker
                     value={gridColor}
                     onChange={setGridColor}
-                    aria-label="Grid line color"
+                    aria-label={t('composition.settings.gridLineColor', 'Grid line color')}
                   />
                 </div>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Proportional Grid</div>
+              <div className={styles.label}>{t('composition.settings.proportionalGrid', 'Proportional Grid')}</div>
               <div className={styles.bgRow}>
                 <Switch
                   checked={proportionalGrid}
                   onChange={() => toggleProportionalGrid()}
-                  label="Show proportional grid"
+                  label={t('composition.settings.showProportionalGrid', 'Show proportional grid')}
                 />
               </div>
               <div className={styles.row} style={{ marginTop: 4 }}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Columns</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.columns', 'Columns')}</span>
                   <ValueField
                     value={proportionalColumns}
                     onChange={setProportionalColumns}
                     min={1}
                     max={64}
                     step={1}
-                    aria-label="Proportional grid columns"
+                    aria-label={t('composition.settings.proportionalGridColumns', 'Proportional grid columns')}
                   />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Rows</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.rows', 'Rows')}</span>
                   <ValueField
                     value={proportionalRows}
                     onChange={setProportionalRows}
                     min={1}
                     max={64}
                     step={1}
-                    aria-label="Proportional grid rows"
+                    aria-label={t('composition.settings.proportionalGridRows', 'Proportional grid rows')}
                   />
                 </div>
               </div>
@@ -982,16 +995,16 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         {activeTab === 'world' && (
           <>
             <div className={styles.section}>
-              <div className={styles.label}>Default Sky Preset</div>
+              <div className={styles.label}>{t('composition.settings.defaultSkyPreset', 'Default Sky Preset')}</div>
               <p className={styles.hint}>
-                The sky an environment light starts on. Existing lights keep their own image.
+                {t('composition.settings.theSkyAnEnvironmentLight', 'The sky an environment light starts on. Existing lights keep their own image.')}
               </p>
               <div className={styles.field}>
                 <select
                   className={styles.selectInput}
                   value={defaultEnvPreset}
                   onChange={(e) => setDefaultEnvPreset(e.target.value)}
-                  aria-label="Default environment sky"
+                  aria-label={t('composition.settings.defaultEnvironmentSky', 'Default environment sky')}
                 >
                   {ENVIRONMENT_PRESETS.map((p) => (
                     <option key={p.id} value={p.id}>{p.label}</option>
@@ -1001,37 +1014,37 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Ground Level</div>
+              <div className={styles.label}>{t('composition.settings.groundLevel2', 'Ground Level')}</div>
               <p className={styles.hint}>
-                Reference 3D floor plane height, measured downward from the composition bottom.
+                {t('composition.settings.reference3dFloorPlaneHeight', 'Reference 3D floor plane height, measured downward from the composition bottom.')}
               </p>
               <div className={styles.field} style={{ maxWidth: 200 }}>
-                <span className={styles.fieldLabel}>Offset from comp bottom</span>
+                <span className={styles.fieldLabel}>{t('composition.settings.offsetFromCompBottom', 'Offset from comp bottom')}</span>
                 <ValueField
                   value={groundLevel}
                   onChange={setGroundLevel}
                   step={10}
                   unit="px"
-                  aria-label="Ground level"
+                  aria-label={t('composition.settings.groundLevel', 'Ground level')}
                 />
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Ground Shadows</div>
+              <div className={styles.label}>{t('composition.settings.groundShadows2', 'Ground Shadows')}</div>
               <p className={styles.hint}>
-                An invisible floor at the ground level catches the shadows of shadow-casting lights.
+                {t('composition.settings.anInvisibleFloorAtThe', 'An invisible floor at the ground level catches the shadows of shadow-casting lights.')}
               </p>
               <div className={styles.colorCardRow}>
-                <span className={styles.colorCardLabel}>Catch shadows on the ground</span>
+                <span className={styles.colorCardLabel}>{t('composition.settings.catchShadowsOnTheGround', 'Catch shadows on the ground')}</span>
                 <Switch
                   checked={groundShadows.enabled}
                   onChange={(e) => patchGroundShadows({ enabled: e.target.checked })}
-                  aria-label="Ground shadows"
+                  aria-label={t('composition.settings.groundShadows', 'Ground shadows')}
                 />
               </div>
               <div className={styles.field} style={{ maxWidth: 200 }}>
-                <span className={styles.fieldLabel}>Shadow opacity</span>
+                <span className={styles.fieldLabel}>{t('composition.settings.shadowOpacity', 'Shadow opacity')}</span>
                 <ValueField
                   value={groundShadows.opacity}
                   onChange={(v) => patchGroundShadows({ opacity: v })}
@@ -1040,22 +1053,22 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                   step={1}
                   unit="%"
                   disabled={!groundShadows.enabled}
-                  aria-label="Ground shadow opacity"
+                  aria-label={t('composition.settings.groundShadowOpacity', 'Ground shadow opacity')}
                 />
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Fog</div>
+              <div className={styles.label}>{t('composition.settings.fog', 'Fog')}</div>
               <p className={styles.hint}>
-                Distance fog over the 3D layers, thickening away from the camera.
+                {t('composition.settings.distanceFogOverThe3d', 'Distance fog over the 3D layers, thickening away from the camera.')}
               </p>
               <div className={styles.colorCardRow}>
-                <span className={styles.colorCardLabel}>Enable fog</span>
-                <Switch checked={fog.enabled} onChange={(e) => patchFog({ enabled: e.target.checked })} aria-label="Enable fog" />
+                <span className={styles.colorCardLabel}>{t('composition.settings.enableFog', 'Enable fog')}</span>
+                <Switch checked={fog.enabled} onChange={(e) => patchFog({ enabled: e.target.checked })} aria-label={t('composition.settings.enableFog', 'Enable fog')} />
               </div>
               <div className={styles.field}>
-                <span className={styles.fieldLabel}>Falloff</span>
+                <span className={styles.fieldLabel}>{t('composition.settings.falloff', 'Falloff')}</span>
                 <select
                   className={styles.selectInput}
                   value={fog.mode}
@@ -1064,54 +1077,54 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     const v = e.target.value;
                     patchFog({ mode: v === 'exponential' || v === 'exponential2' ? v : 'linear' });
                   }}
-                  aria-label="Fog falloff"
+                  aria-label={t('composition.settings.fogFalloff', 'Fog falloff')}
                 >
-                  <option value="linear">Linear (start to end)</option>
-                  <option value="exponential">Exponential</option>
-                  <option value="exponential2">Exponential squared</option>
+                  <option value="linear">{t('composition.settings.linearStartToEnd', 'Linear (start to end)')}</option>
+                  <option value="exponential">{t('composition.settings.exponential', 'Exponential')}</option>
+                  <option value="exponential2">{t('composition.settings.exponentialSquared', 'Exponential squared')}</option>
                 </select>
               </div>
               <div className={styles.row}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Start</span>
-                  <ValueField value={fog.start} onChange={(v) => patchFog({ start: v })} min={0} step={50} unit="px" disabled={!fog.enabled} aria-label="Fog start" />
+                  <span className={styles.fieldLabel}>{t('composition.settings.start', 'Start')}</span>
+                  <ValueField value={fog.start} onChange={(v) => patchFog({ start: v })} min={0} step={50} unit="px" disabled={!fog.enabled} aria-label={t('composition.settings.fogStart', 'Fog start')} />
                 </div>
                 {fog.mode === 'linear' ? (
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>End</span>
-                    <ValueField value={fog.end} onChange={(v) => patchFog({ end: v })} min={1} step={50} unit="px" disabled={!fog.enabled} aria-label="Fog end" />
+                    <span className={styles.fieldLabel}>{t('composition.settings.end', 'End')}</span>
+                    <ValueField value={fog.end} onChange={(v) => patchFog({ end: v })} min={1} step={50} unit="px" disabled={!fog.enabled} aria-label={t('composition.settings.fogEnd', 'Fog end')} />
                   </div>
                 ) : (
                   <div className={styles.field}>
-                    <span className={styles.fieldLabel}>Density</span>
-                    <ValueField value={fog.density} onChange={(v) => patchFog({ density: v })} min={0} step={0.05} disabled={!fog.enabled} aria-label="Fog density" />
+                    <span className={styles.fieldLabel}>{t('composition.settings.density', 'Density')}</span>
+                    <ValueField value={fog.density} onChange={(v) => patchFog({ density: v })} min={0} step={0.05} disabled={!fog.enabled} aria-label={t('composition.settings.fogDensity', 'Fog density')} />
                   </div>
                 )}
               </div>
               <div className={styles.row}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Color</span>
-                  <ColorPicker value={fog.color} onChange={(v) => patchFog({ color: v })} aria-label="Fog color" />
+                  <span className={styles.fieldLabel}>{t('composition.settings.color', 'Color')}</span>
+                  <ColorPicker value={fog.color} onChange={(v) => patchFog({ color: v })} aria-label={t('composition.settings.fogColor', 'Fog color')} />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Max opacity</span>
-                  <ValueField value={fog.maxOpacity} onChange={(v) => patchFog({ maxOpacity: v })} min={0} max={100} step={1} unit="%" disabled={!fog.enabled} aria-label="Fog maximum opacity" />
+                  <span className={styles.fieldLabel}>{t('composition.settings.maxOpacity', 'Max opacity')}</span>
+                  <ValueField value={fog.maxOpacity} onChange={(v) => patchFog({ maxOpacity: v })} min={0} max={100} step={1} unit="%" disabled={!fog.enabled} aria-label={t('composition.settings.fogMaximumOpacity', 'Fog maximum opacity')} />
                 </div>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Backdrop Sky</div>
+              <div className={styles.label}>{t('composition.settings.backdropSky', 'Backdrop Sky')}</div>
               <div className={styles.colorCardRow}>
-                <span className={styles.colorCardLabel}>Show sky as backdrop</span>
+                <span className={styles.colorCardLabel}>{t('composition.settings.showSkyAsBackdrop', 'Show sky as backdrop')}</span>
                 <Switch
                   checked={showSkyBackdrop}
                   onChange={(e) => update({ showSkyBackdrop: e.target.checked })}
-                  aria-label="Show sky as backdrop"
+                  aria-label={t('composition.settings.showSkyAsBackdrop', 'Show sky as backdrop')}
                 />
               </div>
               <p className={styles.hint}>
-                The environment light&apos;s sky is drawn behind every layer, rotated with it. Needs an environment light.
+                {t('composition.settings.theEnvironmentLightSSky', "The environment light's sky is drawn behind every layer, rotated with it. Needs an environment light.")}
               </p>
             </div>
           </>
@@ -1121,54 +1134,54 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         {activeTab === 'renderer' && (
           <>
             <div className={styles.section}>
-              <div className={styles.label}>Shadows</div>
+              <div className={styles.label}>{t('composition.settings.shadows', 'Shadows')}</div>
               <p className={styles.hint}>
-                Mapped shadows from the lights that cast them. A larger map is sharper and costs more memory and time per light.
+                {t('composition.settings.mappedShadowsFromTheLights', 'Mapped shadows from the lights that cast them. A larger map is sharper and costs more memory and time per light.')}
               </p>
               <div className={styles.row}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Shadow map size</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.shadowMapSize', 'Shadow map size')}</span>
                   <select
                     className={styles.selectInput}
                     value={renderer.shadowMapSize}
                     onChange={(e) => patchRenderer({ shadowMapSize: Number(e.target.value) === 512 ? 512 : Number(e.target.value) === 2048 ? 2048 : 1024 })}
-                    aria-label="Shadow map size"
+                    aria-label={t('composition.settings.shadowMapSize', 'Shadow map size')}
                   >
-                    <option value={512}>512 px (fast)</option>
+                    <option value={512}>{t('composition.settings.shadowMap512', '512 px (fast)')}</option>
                     <option value={1024}>1024 px</option>
-                    <option value={2048}>2048 px (sharp)</option>
+                    <option value={2048}>{t('composition.settings.shadowMap2048', '2048 px (sharp)')}</option>
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Shadow-casting lights</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.shadowCastingLights', 'Shadow-casting lights')}</span>
                   <ValueField
                     value={renderer.shadowLightCap}
                     onChange={(v) => patchRenderer({ shadowLightCap: Math.max(0, Math.min(16, Math.round(v))) })}
                     min={0}
                     max={16}
                     step={1}
-                    aria-label="Shadow-casting light cap"
+                    aria-label={t('composition.settings.shadowCastingLightCap', 'Shadow-casting light cap')}
                   />
                 </div>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Ambient Occlusion (SSAO)</div>
+              <div className={styles.label}>{t('composition.settings.ambientOcclusionSsao', 'Ambient Occlusion (SSAO)')}</div>
               <p className={styles.hint}>
-                Contact darkening between proximate 3D surfaces. Dims ambient light only.
+                {t('composition.settings.contactDarkeningBetweenProximate3d', 'Contact darkening between proximate 3D surfaces. Dims ambient light only.')}
               </p>
               <div className={styles.colorCardRow}>
-                <span className={styles.colorCardLabel}>Enable Ambient Occlusion</span>
+                <span className={styles.colorCardLabel}>{t('composition.settings.enableAmbientOcclusion2', 'Enable Ambient Occlusion')}</span>
                 <Switch
                   checked={ssao.enabled}
                   onChange={(e) => patchSsao({ enabled: e.target.checked })}
-                  aria-label="Enable ambient occlusion"
+                  aria-label={t('composition.settings.enableAmbientOcclusion', 'Enable ambient occlusion')}
                 />
               </div>
               <div className={styles.row}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Radius</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.radius', 'Radius')}</span>
                   <ValueField
                     value={ssao.radius}
                     onChange={(v) => patchSsao({ radius: v })}
@@ -1177,11 +1190,11 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     step={5}
                     unit="px"
                     disabled={!ssao.enabled}
-                    aria-label="Ambient occlusion radius"
+                    aria-label={t('composition.settings.ambientOcclusionRadius', 'Ambient occlusion radius')}
                   />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Intensity</span>
+                  <span className={styles.fieldLabel}>{t('composition.settings.intensity', 'Intensity')}</span>
                   <ValueField
                     value={ssao.intensity}
                     onChange={(v) => patchSsao({ intensity: v })}
@@ -1189,49 +1202,49 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     max={2}
                     step={0.05}
                     disabled={!ssao.enabled}
-                    aria-label="Ambient occlusion intensity"
+                    aria-label={t('composition.settings.ambientOcclusionIntensity', 'Ambient occlusion intensity')}
                   />
                 </div>
               </div>
               <div className={styles.field}>
-                <span className={styles.fieldLabel}>Quality</span>
+                <span className={styles.fieldLabel}>{t('composition.settings.quality', 'Quality')}</span>
                 <select
                   className={styles.selectInput}
                   value={ssao.quality}
                   disabled={!ssao.enabled}
                   onChange={(e) => patchSsao({ quality: e.target.value === 'full' ? 'full' : 'half' })}
-                  aria-label="Ambient occlusion quality"
+                  aria-label={t('composition.settings.ambientOcclusionQuality', 'Ambient occlusion quality')}
                 >
-                  <option value="half">Half resolution (faster preview)</option>
-                  <option value="full">Full resolution (crisp contact edges)</option>
+                  <option value="half">{t('composition.settings.halfResolutionFasterPreview', 'Half resolution (faster preview)')}</option>
+                  <option value="full">{t('composition.settings.fullResolutionCrispContactEdges', 'Full resolution (crisp contact edges)')}</option>
                 </select>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Depth of Field</div>
+              <div className={styles.label}>{t('composition.settings.depthOfField', 'Depth of Field')}</div>
               <p className={styles.hint}>
-                How many samples the camera&apos;s depth of field gathers. Draft is for working; High for the final look.
+                {t('composition.settings.howManySamplesTheCamera', "How many samples the camera's depth of field gathers. Draft is for working; High for the final look.")}
               </p>
               <div className={styles.field}>
-                <span className={styles.fieldLabel}>Quality</span>
+                <span className={styles.fieldLabel}>{t('composition.settings.quality', 'Quality')}</span>
                 <select
                   className={styles.selectInput}
                   value={renderer.dofQuality}
                   onChange={(e) => patchRenderer({ dofQuality: e.target.value === 'draft' || e.target.value === 'high' ? e.target.value : 'medium' })}
-                  aria-label="Depth of field quality"
+                  aria-label={t('composition.settings.depthOfFieldQuality', 'Depth of field quality')}
                 >
-                  <option value="draft">Draft (fastest)</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High (smoothest bokeh)</option>
+                  <option value="draft">{t('composition.settings.draftFastest', 'Draft (fastest)')}</option>
+                  <option value="medium">{t('composition.settings.medium', 'Medium')}</option>
+                  <option value="high">{t('composition.settings.highSmoothestBokeh', 'High (smoothest bokeh)')}</option>
                 </select>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Anti-aliasing</div>
+              <div className={styles.label}>{t('composition.settings.antiAliasing', 'Anti-aliasing')}</div>
               <p className={styles.hint}>
-                Multisampling on the 3D runs smooths layer edges in depth. Off is fastest on heavy scenes.
+                {t('composition.settings.multisamplingOnThe3dRuns', 'Multisampling on the 3D runs smooths layer edges in depth. Off is fastest on heavy scenes.')}
               </p>
               <div className={styles.field}>
                 <span className={styles.fieldLabel}>MSAA</span>
@@ -1239,9 +1252,9 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                   className={styles.selectInput}
                   value={renderer.msaa}
                   onChange={(e) => patchRenderer({ msaa: Number(e.target.value) === 1 ? 1 : 4 })}
-                  aria-label="Multisample anti-aliasing"
+                  aria-label={t('composition.settings.multisampleAntiAliasing', 'Multisample anti-aliasing')}
                 >
-                  <option value={1}>Off</option>
+                  <option value={1}>{t('composition.settings.off', 'Off')}</option>
                   <option value={4}>4× MSAA</option>
                 </select>
               </div>
@@ -1256,8 +1269,8 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
         {activeTab === 'color' && (
           <>
             <div className={styles.section}>
-              <div className={styles.label}>Working Space</div>
-              <p className={styles.hint}>Internal color pipeline space where math runs.</p>
+              <div className={styles.label}>{t('composition.settings.workingSpace', 'Working Space')}</div>
+              <p className={styles.hint}>{t('composition.settings.internalColorPipelineSpaceWhere', 'Internal color pipeline space where math runs.')}</p>
               <div className={styles.row}>
                 <Button
                   variant={cm.workingSpace === 'srgb-linear' ? 'primary' : 'secondary'}
@@ -1277,8 +1290,8 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Display Transform</div>
-              <p className={styles.hint}>Output mapping to the viewport monitor canvas.</p>
+              <div className={styles.label}>{t('composition.settings.displayTransform', 'Display Transform')}</div>
+              <p className={styles.hint}>{t('composition.settings.outputMappingToTheViewport', 'Output mapping to the viewport monitor canvas.')}</p>
               <div className={styles.row}>
                 <Button
                   variant={cm.displayTransform === 'srgb' ? 'primary' : 'secondary'}
@@ -1299,22 +1312,22 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                   size="sm"
                   onClick={() => setDisplayTransform('pq')}
                 >
-                  PQ (preview)
+                  {t('composition.settings.pqPreview', 'PQ (preview)')}
                 </Button>
                 <Button
                   variant={cm.displayTransform === 'hlg' ? 'primary' : 'secondary'}
                   size="sm"
                   onClick={() => setDisplayTransform('hlg')}
                 >
-                  HLG (preview)
+                  {t('composition.settings.hlgPreview', 'HLG (preview)')}
                 </Button>
               </div>
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Viewer LUT</div>
+              <div className={styles.label}>{t('composition.settings.viewerLut', 'Viewer LUT')}</div>
               <p className={styles.hint}>
-                Optional monitor 3D LUT (.cube). Session-only, never baked into export.
+                {t('composition.settings.optionalMonitor3dLutCube', 'Optional monitor 3D LUT (.cube). Session-only, never baked into export.')}
               </p>
               <div className={styles.row}>
                 <Button
@@ -1336,7 +1349,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                     input.click();
                   }}
                 >
-                  Load .cube…
+                  {t('composition.settings.loadCube', 'Load .cube…')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -1344,33 +1357,33 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
                   disabled={!viewerLutName}
                   onClick={() => clearViewerLut()}
                 >
-                  Clear LUT
+                  {t('composition.settings.clearLut', 'Clear LUT')}
                 </Button>
               </div>
               {viewerLutName && (
                 <span className={styles.metaBadge} title={viewerLutName}>
-                  Active: {viewerLutName}
+                  {t('composition.settings.lutActive', 'Active: {name}', { name: viewerLutName })}
                 </span>
               )}
             </div>
 
             <div className={styles.section}>
-              <div className={styles.label}>Intermediate Bit Depth</div>
-              <p className={styles.hint}>Float precision for scene-color and render targets.</p>
+              <div className={styles.label}>{t('composition.settings.intermediateBitDepth', 'Intermediate Bit Depth')}</div>
+              <p className={styles.hint}>{t('composition.settings.floatPrecisionForSceneColor', 'Float precision for scene-color and render targets.')}</p>
               <div className={styles.row}>
                 <Button
                   variant={cm.bitDepth === 16 ? 'primary' : 'secondary'}
                   size="sm"
                   onClick={() => setBitDepth(16 as IntermediateBitDepth)}
                 >
-                  16-bit float
+                  {t('composition.settings.bitDepth16', '16-bit float')}
                 </Button>
                 <Button
                   variant={cm.bitDepth === 32 ? 'primary' : 'secondary'}
                   size="sm"
                   onClick={() => setBitDepth(32 as IntermediateBitDepth)}
                 >
-                  32-bit float
+                  {t('composition.settings.bitDepth32', '32-bit float')}
                 </Button>
               </div>
             </div>
@@ -1382,7 +1395,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
       <DialogFooter
         secondary={
           <Button variant="secondary" size="md" onClick={handleCancel}>
-            Cancel
+            {t('composition.settings.cancel', 'Cancel')}
           </Button>
         }
         primary={
@@ -1392,7 +1405,7 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
             leftIcon={<Icon name="check" size="md" />}
             onClick={handleSave}
           >
-            Save Changes
+            {t('composition.settings.saveChanges', 'Save Changes')}
           </Button>
         }
       />
@@ -1407,11 +1420,11 @@ export function CompositionSettings({ close }: { close?: () => void }): JSX.Elem
 export function openCompositionSettings(): void {
   // B4: the active composition's settings from the document mirror.
   const comp = documentMirror().comp(activeCompIdNow() ?? '')?.settings;
-  const description = `${comp?.name || 'Composition'} · ${comp?.width ?? 1920} × ${comp?.height ?? 1080} · ${settingsFps(comp)} fps`;
+  const description = t('composition.settings.description', '{name} · {w} × {h} · {fps} fps', { name: comp?.name || t('composition.settings.defaultName', 'Composition'), w: comp?.width ?? 1920, h: comp?.height ?? 1080, fps: settingsFps(comp) });
 
   openModal({
     id: 'composition-settings',
-    title: 'Composition Settings',
+    title: t('composition.settings.title', 'Composition Settings'),
     description,
     size: 'lg',
     className: styles.dialogWindow,

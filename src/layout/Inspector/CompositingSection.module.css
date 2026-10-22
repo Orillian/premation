@@ -57,7 +57,7 @@
   height: var(--control-height-row);
   padding: 0 10px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   /* The panel `value` role (typography.css). */

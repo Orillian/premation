@@ -76,19 +76,32 @@ bool is_js_ws(char16_t c) noexcept {
 struct RawOut {
   detail::Value out;
   std::optional<Str> error;
+  std::uint32_t pos = detail::kNoPos;  // the failing node's source offset
 };
 
 /// `evaluateRaw`: evaluate, humanizing any failure.
 RawOut evaluate_raw(const detail::Program& prog, const Context& ctx, detail::Arena& arena) {
+  detail::Interp in(prog, ctx, arena);
   try {
-    detail::Interp in(prog, ctx, arena);
     return {.out = in.run(), .error = std::nullopt};
   } catch (detail::EvalError& e) {
-    return {.out = {}, .error = humanize(e.message)};
+    return {.out = {}, .error = humanize(e.message), .pos = in.error_pos()};
   } catch (HostError& e) {
-    return {.out = {}, .error = humanize(e.message)};
+    return {.out = {}, .error = humanize(e.message), .pos = in.error_pos()};
   }
 }
+
+/// Where a program's completion value came from: its last statement.
+std::uint32_t completion_pos(const detail::Program& prog) {
+  if (prog.root == detail::kNoNode) return detail::kNoPos;
+  const detail::Node& root = prog.nodes[prog.root];
+  if (root.kind == detail::NodeKind::kBlock && root.count > 0) {
+    return prog.nodes[prog.lists[root.list + root.count - 1]].pos;
+  }
+  return root.pos;
+}
+
+bool is_line_break(char16_t c) noexcept { return c == 0x0A || c == 0x0D || c == 0x2028 || c == 0x2029; }
 
 }  // namespace
 
@@ -103,18 +116,49 @@ Expression Expression::compile(std::u16string_view src) {
   while (b < end && is_js_ws(src[b])) ++b;
   while (end > b && is_js_ws(src[end - 1])) --end;
   if (b == end) return e;  // empty: a no-op
+  // Line starts, for the line / column of an error (CRLF is one break).
+  e.base_ = static_cast<std::uint32_t>(b);
+  e.line_starts_.push_back(0);
+  for (std::size_t i = 0; i < src.size(); ++i) {
+    if (!is_line_break(src[i])) continue;
+    if (src[i] == 0x0D && i + 1 < src.size() && src[i + 1] == 0x0A) ++i;
+    e.line_starts_.push_back(static_cast<std::uint32_t>(i + 1));
+  }
   try {
     e.program_ = std::make_unique<const detail::Program>(detail::parse(src.substr(b, end - b)));
   } catch (detail::SyntaxError& err) {
     e.compile_error_ = u"Syntax error: " + err.message;
+    e.locate(err.pos, e.error_line_, e.error_column_);
   }
   return e;
+}
+
+void Expression::locate(std::uint32_t pos, std::uint32_t& line, std::uint32_t& column) const noexcept {
+  line = 0;
+  column = 0;
+  if (pos == detail::kNoPos || line_starts_.empty()) return;
+  const std::uint32_t at = pos + base_;
+  // The last line start at or before `at`.
+  std::size_t lo = 0;
+  std::size_t hi = line_starts_.size();
+  while (hi - lo > 1) {
+    const std::size_t mid = (lo + hi) / 2;
+    if (line_starts_[mid] <= at) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  line = static_cast<std::uint32_t>(lo + 1);
+  column = at - line_starts_[lo] + 1;
 }
 
 Result Expression::run(const Context& ctx) const {
   Result r;
   if (compile_error_) {
     r.error = compile_error_;
+    r.line = error_line_;
+    r.column = error_column_;
     return r;
   }
   if (!program_) return r;
@@ -122,9 +166,11 @@ Result Expression::run(const Context& ctx) const {
   RawOut raw = evaluate_raw(*program_, ctx, arena);
   if (raw.error) {
     r.error = std::move(raw.error);
+    locate(raw.pos, r.line, r.column);
     return r;
   }
-  const detail::Value& out = raw.out;
+  // A property object (`thisComp.layer("A").transform.opacity`) returns its value.
+  const detail::Value out = detail::unwrap_prop(raw.out);
   if (out.is_number() && detail::is_finite(out.n)) {
     r.kind = Result::Kind::kNumber;
     r.number = out.n;
@@ -134,15 +180,19 @@ Result Expression::run(const Context& ctx) const {
   if (detail::is_array(out)) {
     const auto& e = out.o->elems;
     bool ok = !e.empty() && e.size() <= 4;
-    for (const detail::Value& v : e) ok = ok && v.is_number() && detail::is_finite(v.n);
+    for (const detail::Value& v : e) {
+      const detail::Value n = detail::unwrap_prop(v);
+      ok = ok && n.is_number() && detail::is_finite(n.n);
+    }
     if (ok) {
       r.kind = Result::Kind::kVector;
       r.size = e.size();
-      for (std::size_t i = 0; i < e.size(); ++i) r.vec.at(i) = e[i].n;
+      for (std::size_t i = 0; i < e.size(); ++i) r.vec.at(i) = detail::unwrap_prop(e[i]).n;
       return r;
     }
   }
   r.error = Str(u"Expression must return a number (or a [x, y] array).");
+  locate(completion_pos(*program_), r.line, r.column);
   return r;
 }
 
@@ -150,6 +200,8 @@ TextResult Expression::run_text(const Context& ctx) const {
   TextResult r;
   if (compile_error_) {
     r.error = compile_error_;
+    r.line = error_line_;
+    r.column = error_column_;
     return r;
   }
   if (!program_) return r;
@@ -157,10 +209,13 @@ TextResult Expression::run_text(const Context& ctx) const {
   RawOut raw = evaluate_raw(*program_, ctx, arena);
   if (raw.error) {
     r.error = std::move(raw.error);
+    locate(raw.pos, r.line, r.column);
     return r;
   }
   const Str fallback = ctx.text_value != nullptr ? ctx.text_value->text : Str();
-  return detail::coerce_source_text_result(raw.out, arena, fallback);
+  TextResult tr = detail::coerce_source_text_result(raw.out, arena, fallback);
+  if (tr.error) locate(completion_pos(*program_), tr.line, tr.column);
+  return tr;
 }
 
 double string_seed(std::u16string_view s) noexcept {

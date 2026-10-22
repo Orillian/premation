@@ -26,7 +26,9 @@ import { shouldStartBackend, startBackend, stopBackend } from './backend';
 import { registerIndexIpc } from './localIndexDb';
 import { registerThumbIpc } from './thumbCache';
 import { registerRevealIpc } from './ipc/reveal';
+import { registerScriptIpc } from './ipc/scripts';
 import { registerDiskCacheIpc } from './ipc/diskCache';
+import { registerMediaAccess } from './ipc/mediaAccess';
 import {
   pluginLaunchArgs,
   forgetEntitlement,
@@ -55,7 +57,14 @@ import { apiBaseUrl } from './apiBase';
 import { aiEnabled, assertRendererEditionMatches } from './edition';
 import { parseProbeJson, type ProbeJson } from './mediaProbeParse';
 import { checkForUpdatesInteractive, initAutoUpdate, registerUpdaterIpc } from './updater';
-import { nativeTemplateFromGroups, sanitizeMenuGroups, type NativeMenuGroupSpec, type NativeMenuOptions } from './nativeMenu';
+import {
+  nativeTemplateFromGroups,
+  sanitizeMenuGroups,
+  sanitizeMenuStrings,
+  type NativeMenuGroupSpec,
+  type NativeMenuOptions,
+  type NativeMenuStrings,
+} from './nativeMenu';
 import { CLI_HELP, cliArgs, parseCli, type CliInvocation } from './cliArgs';
 import { runCliAndExit } from './cliRender';
 import {
@@ -186,7 +195,8 @@ const cliInvocation = parseCli(cliArgs(process.argv, !!process.defaultApp));
 const isHeadlessRun =
   cliInvocation.kind === 'render'
   || cliInvocation.kind === 'comps'
-  || cliInvocation.kind === 'captions';
+  || cliInvocation.kind === 'captions'
+  || cliInvocation.kind === 'renderItem';
 
 // These three need no app, no window and no GPU, so they answer and leave
 // rather than booting Electron to print a paragraph.
@@ -756,7 +766,11 @@ function registerRenderIpc(): void {
  * in-app menu ("Save to Computer…" for what the app calls "Save Portable
  * Copy…"), which is the whole reason it is generated now.
  */
-function buildApplicationMenu(win: BrowserWindow, groups?: ReadonlyArray<NativeMenuGroupSpec>): void {
+function buildApplicationMenu(
+  win: BrowserWindow,
+  groups?: ReadonlyArray<NativeMenuGroupSpec>,
+  strings?: NativeMenuStrings,
+): void {
   const cmd = (id: string) => () => win.webContents.send('menu:command', id);
   const opts: NativeMenuOptions = {
     platform: process.platform,
@@ -764,6 +778,7 @@ function buildApplicationMenu(win: BrowserWindow, groups?: ReadonlyArray<NativeM
     version: app.getVersion(),
     cmd,
     checkForUpdates: () => checkForUpdatesInteractive(win),
+    ...(strings ? { strings } : {}),
   };
   const bootstrap: NativeMenuGroupSpec[] = [
     {
@@ -788,12 +803,12 @@ function buildApplicationMenu(win: BrowserWindow, groups?: ReadonlyArray<NativeM
  * window may set the application menu; a pop-out sending this is ignored.
  */
 function registerMenuIpc(): void {
-  handle('menu:setTemplate', async (e, raw: unknown) => {
+  handle('menu:setTemplate', async (e, raw: unknown, rawStrings: unknown) => {
     const win = mainWindow;
     if (!win || e.sender !== win.webContents) return { ok: false };
     const groups = sanitizeMenuGroups(raw);
     if (!groups) return { ok: false };
-    buildApplicationMenu(win, groups);
+    buildApplicationMenu(win, groups, sanitizeMenuStrings(rawStrings));
     return { ok: true };
   });
 }
@@ -1159,7 +1174,7 @@ function registerPluginPanelProtocol(): void {
  * assets, its blobs) and ffmpeg.
  */
 function bootHeadlessRun(
-  cli: Extract<CliInvocation, { kind: 'render' } | { kind: 'comps' } | { kind: 'captions' }>,
+  cli: Extract<CliInvocation, { kind: 'render' } | { kind: 'comps' } | { kind: 'captions' } | { kind: 'renderItem' }>,
 ): void {
   registerLocalFileProtocol();
   registerFileIpc();
@@ -1173,6 +1188,8 @@ function bootHeadlessRun(
   void runCliAndExit(
     cli.kind === 'render'
       ? { request: { kind: 'render', job: cli.job }, output: cli.output }
+      : cli.kind === 'renderItem'
+        ? { request: { kind: 'renderItem', job: cli.job }, output: cli.output }
       : cli.kind === 'captions'
         ? {
             request: {
@@ -1206,6 +1223,7 @@ app.whenReady().then(() => {
     cliInvocation.kind === 'render'
     || cliInvocation.kind === 'comps'
     || cliInvocation.kind === 'captions'
+    || cliInvocation.kind === 'renderItem'
   ) {
     bootHeadlessRun(cliInvocation);
     return;
@@ -1255,8 +1273,13 @@ app.whenReady().then(() => {
   registerIndexIpc(app);
   registerThumbIpc(app);
   registerRevealIpc();
+  // File ▸ Scripts: the user Scripts folder and the Script Editor's files (electron/ipc/scripts.ts).
+  registerScriptIpc({ dir: () => path.join(app.getPath('userData'), 'Scripts') });
   // Preferences ▸ Media & Disk Cache: the default folder for the engine's disk cache.
   registerDiskCacheIpc();
+  // Window ▸ Panels ▸ Record Audio: the session's media permission (audio only,
+  // our own page only; every other permission unchanged) and the OS mic switch.
+  registerMediaAccess({ devServerUrl: DEV_SERVER_URL });
   // The Plugins page / panel's "Open plugins folder" — the same folder the
   // engine loads native SDK plugins from (nativePluginDir below).
   registerNativePluginIpc({ dir: nativePluginDirPath });

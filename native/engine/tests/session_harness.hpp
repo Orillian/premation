@@ -82,6 +82,7 @@ class Harness final : public Outbox {
     api::encode(w, m);
     session.on_frame(w.bytes(), now);
     session.tick(now);
+    if (drainBuilds) session.drain_builds();
   }
 
   api::Welcome hello(std::uint32_t major = api::kProtocolMajor, std::vector<std::string> capabilities = {}) {
@@ -147,6 +148,7 @@ class Harness final : public Outbox {
   void advance(std::chrono::microseconds dt) {
     now += dt;
     session.tick(now);
+    if (drainBuilds) session.drain_builds();
   }
 
   /// Release every slot of the current generation the sink announced.
@@ -168,6 +170,10 @@ class Harness final : public Outbox {
   std::vector<frames::Message> frameMsgs;
   int decodeFailures = 0;
   std::size_t backlog = 0;
+  /// Frame builds run on the session's build worker; the harness waits for
+  /// them after every request and tick so a frame is observable at once.
+  /// False: a test that watches the worker and the core thread run side by side.
+  bool drainBuilds = true;
   api::Seq seq = 0;
   Clock::time_point now = Clock::time_point{} + std::chrono::hours(1);
   SimulatedSink sink;

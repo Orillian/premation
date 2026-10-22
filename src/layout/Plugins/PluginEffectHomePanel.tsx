@@ -31,6 +31,7 @@ import { useActiveWorkspace } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
 import styles from './PluginEffectHomePanel.module.css';
+import { t } from '@core/i18n';
 
 const EFFECTS_ROOT: readonly string[] = ['effects'];
 
@@ -54,7 +55,7 @@ export function PluginEffectHomePanel({ plugin, pluginName }: { plugin: string; 
       <div className={styles.panel}>
         <div className={styles.context}>
           <Icon name="layers" size="sm" className={styles.contextIcon} />
-          <span className={styles.contextText} title={layer?.name}>{layer?.name ?? 'Layer'}</span>
+          <span className={styles.contextText} title={layer?.name}>{layer?.name ?? t('plugins.effectHome.layer', 'Layer')}</span>
           <span className={styles.contextMeta}>{def.label}</span>
         </div>
         <div className={styles.frame}>
@@ -68,7 +69,7 @@ export function PluginEffectHomePanel({ plugin, pluginName }: { plugin: string; 
   const apply = (d: PluginEffectDef): void => {
     if (!layerId) return;
     void addEffectEdit([layerId], d.type).then((added) => {
-      if (added.length > 0) useUIStore.getState().notify({ level: 'success', message: `Added ${d.label}`, durationMs: 2400 });
+      if (added.length > 0) useUIStore.getState().notify({ level: 'success', message: t('plugins.effectHome.added', 'Added {name}', { name: d.label }), durationMs: 2400 });
     });
   };
   return (
@@ -77,15 +78,18 @@ export function PluginEffectHomePanel({ plugin, pluginName }: { plugin: string; 
         icon="plugin"
         message={
           layerId
-            ? `${layer?.name ?? 'This layer'} has no ${pluginName} effect. Apply it to edit the layer here.`
-            : `Select a layer with ${pluginName} applied to edit it here.`
+            ? t('plugins.effectHome.noEffect', '{layer} has no {plugin} effect. Apply it to edit the layer here.', {
+                layer: layer?.name ?? t('plugins.effectHome.thisLayer', 'This layer'),
+                plugin: pluginName,
+              })
+            : t('plugins.effectHome.selectLayer', 'Select a layer with {plugin} applied to edit it here.', { plugin: pluginName })
         }
         action={
           layerId && offered.length > 0 ? (
             <>
               {offered.map((d) => (
                 <Button key={d.type} size="sm" variant="secondary" leftIcon={<Icon name="plus" size="sm" />} onClick={() => apply(d)}>
-                  Apply {d.label}
+                  {t('plugins.effectHome.apply', 'Apply {name}', { name: d.label })}
                 </Button>
               ))}
             </>

@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'react';
 import { getCommandRegistry } from '@core/commands/Command';
 import { resolveChord, getShortcutOverrides } from '@core/commands/shortcutOverrides';
+import { t } from '@core/i18n';
 import { useAppMenuGroups } from './useAppMenuGroups';
 import {
   buildNativeMenuTemplate,
@@ -52,11 +53,15 @@ export function useNativeMenuSync(): void {
       } catch {
         return; // a `checked()` that throws pre-boot must not take the menu down
       }
-      void send(template);
+      void send(template, {
+        checkForUpdates: t('menuBar.native.checkForUpdates', 'Check for Updates…'),
+        settings: t('menuBar.native.settings', 'Settings…'),
+        version: t('menuBar.native.version', 'Version {version}'),
+      });
     };
     sync();
     const timers = RESEND_DELAYS_MS.map((ms) => window.setTimeout(sync, ms));
-    return () => { for (const t of timers) window.clearTimeout(t); };
+    return () => { for (const id of timers) window.clearTimeout(id); };
   }, [groups]);
 
   useEffect(() => {

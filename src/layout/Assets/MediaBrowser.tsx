@@ -37,6 +37,7 @@ import { formatBytes } from './assetListLogic';
 import { baseName, flattenMediaTree, mediaKindOf, type DirEntry, type MediaRow } from './mediaBrowserTree';
 import { revealLabel } from './assetCommands';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 const ROW_H = 24;
 
@@ -61,7 +62,7 @@ async function importAndInsert(path: string, at: 'default' | 'playhead'): Promis
   const { imported } = await importPathsEdit([path]);
   const asset = imported[0];
   if (!asset) {
-    useUIStore.getState().notify({ level: 'error', message: `Could not import “${baseName(path)}”.`, durationMs: 4000 });
+    useUIStore.getState().notify({ level: 'error', message: t('assets.browser.importFailedOne', 'Could not import “{name}”.', { name: baseName(path) }), durationMs: 4000 });
     return;
   }
   await insertMediaEdit([asset], { atPlayhead: at === 'playhead' });
@@ -113,7 +114,7 @@ export function MediaBrowser(): JSX.Element {
     if (!root) return;
     void listDir(root).then((entries) => {
       if (cancelled) return;
-      if (!entries) setError(`Could not read ${root}`);
+      if (!entries) setError(t('assets.browser.readFailed', 'Could not read {path}', { path: root }));
       setRootEntries(entries ?? []);
     });
     return () => { cancelled = true; };
@@ -158,15 +159,17 @@ export function MediaBrowser(): JSX.Element {
     if (!chosen || chosen.length === 0) return;
     const { imported, failed } = await importPathsEdit(chosen);
     if (failed.length > 0) {
-      useUIStore.getState().notify({ level: 'error', message: `Could not import ${failed.map(baseName).join(', ')}.`, durationMs: 5000 });
+      useUIStore.getState().notify({ level: 'error', message: t('assets.browser.importFailedMany', 'Could not import {names}.', { names: failed.map(baseName).join(', ') }), durationMs: 5000 });
     }
     if (imported.length === 0) return;
     useUIStore.getState().notify({
       level: 'success',
-      message: `Imported ${imported.length} file${imported.length === 1 ? '' : 's'} to the project.`,
+      message: imported.length === 1
+        ? t('assets.browser.importedOne', 'Imported {n} file to the project.', { n: imported.length })
+        : t('assets.browser.importedOther', 'Imported {n} files to the project.', { n: imported.length }),
       durationMs: 6000,
       action: {
-        label: 'Add to composition',
+        label: t('assets.browser.addToComp', 'Add to composition'),
         onSelect: () => { void insertMediaEdit(imported); },
       },
     });
@@ -177,8 +180,8 @@ export function MediaBrowser(): JSX.Element {
     const asset = (await importPathsEdit([path])).imported[0];
     useUIStore.getState().notify(
       asset
-        ? { level: 'success', message: `Imported “${asset.name}” to the project.`, durationMs: 2200 }
-        : { level: 'error', message: `Could not import “${baseName(path)}”.`, durationMs: 4000 },
+        ? { level: 'success', message: t('assets.browser.importedNamed', 'Imported “{name}” to the project.', { name: asset.name }), durationMs: 2200 }
+        : { level: 'error', message: t('assets.browser.importFailedOne', 'Could not import “{name}”.', { name: baseName(path) }), durationMs: 4000 },
     );
   };
 
@@ -188,17 +191,17 @@ export function MediaBrowser(): JSX.Element {
     const { entry } = row;
     if (entry.kind === 'dir') {
       openContextMenu(e.clientX, e.clientY, [
-        { id: 'open', label: row.expanded ? 'Collapse' : 'Expand', onSelect: () => toggleDir(entry.path) },
-        { id: 'root', label: 'Browse This Folder', onSelect: () => setBrowseRoot(entry.path) },
+        { id: 'open', label: row.expanded ? t('assets.browser.collapse', 'Collapse') : t('assets.browser.expand', 'Expand'), onSelect: () => toggleDir(entry.path) },
+        { id: 'root', label: t('assets.browser.browseThis', 'Browse This Folder'), onSelect: () => setBrowseRoot(entry.path) },
         { id: 'sep', separator: true },
         { id: 'reveal', label: revealLabel(), onSelect: () => { void window.motionEditor?.shell?.revealInFolder?.(entry.path); } },
       ]);
       return;
     }
     openContextMenu(e.clientX, e.clientY, [
-      { id: 'import', label: 'Import to Project', onSelect: () => { void importOnly(entry.path); } },
-      { id: 'add', label: 'Import and Add to Composition', onSelect: () => { void importAndInsert(entry.path, 'default'); } },
-      { id: 'add-playhead', label: 'Import and Add at Playhead', onSelect: () => { void importAndInsert(entry.path, 'playhead'); } },
+      { id: 'import', label: t('assets.browser.importToProject', 'Import to Project'), onSelect: () => { void importOnly(entry.path); } },
+      { id: 'add', label: t('assets.browser.importAndAdd', 'Import and Add to Composition'), onSelect: () => { void importAndInsert(entry.path, 'default'); } },
+      { id: 'add-playhead', label: t('assets.browser.importAtPlayhead', 'Import and Add at Playhead'), onSelect: () => { void importAndInsert(entry.path, 'playhead'); } },
       { id: 'sep', separator: true },
       { id: 'reveal', label: revealLabel(), onSelect: () => { void window.motionEditor?.shell?.revealInFolder?.(entry.path); } },
     ]);
@@ -246,12 +249,12 @@ export function MediaBrowser(): JSX.Element {
       <div className={styles.mediaBrowserRoot}>
         <div className={styles.mediaBrowserEmpty}>
           <Icon name="folder-open" size="lg" />
-          <span>Pick a folder to browse its files without importing. Drag a file into the composition to import and place it.</span>
+          <span>{t('assets.browser.emptyHint', 'Pick a folder to browse its files without importing. Drag a file into the composition to import and place it.')}</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <Button size="sm" variant="secondary" onClick={() => { void pickFolder(); }}>Choose Folder…</Button>
+            <Button size="sm" variant="secondary" onClick={() => { void pickFolder(); }}>{t('assets.browser.chooseFolder', 'Choose Folder…')}</Button>
             {canPickFiles && (
-              <Button size="sm" variant="secondary" onClick={() => { void pickAndImportFiles(); }} title="Pick specific files and import them to the project">
-                Import Files…
+              <Button size="sm" variant="secondary" onClick={() => { void pickAndImportFiles(); }} title={t('assets.browser.importFilesTitle', 'Pick specific files and import them to the project')}>
+                {t('assets.browser.importFiles', 'Import Files…')}
               </Button>
             )}
           </div>
@@ -264,14 +267,14 @@ export function MediaBrowser(): JSX.Element {
     <div className={styles.mediaBrowserRoot} data-tour="media-browser">
       <div className={styles.mediaBrowserBar}>
         <span className={styles.mediaBrowserPath} title={root}>{root}</span>
-        <button type="button" className={styles.dockBtn} title="Refresh" aria-label="Refresh folder" onClick={() => setRefreshTick((t) => t + 1)}>
+        <button type="button" className={styles.dockBtn} title={t('assets.browser.refresh', 'Refresh')} aria-label={t('assets.browser.refreshAria', 'Refresh folder')} onClick={() => setRefreshTick((n) => n + 1)}>
           <Icon name="refresh" size="sm" />
         </button>
-        <button type="button" className={styles.dockBtn} title="Choose another folder…" aria-label="Choose folder" onClick={() => { void pickFolder(); }}>
+        <button type="button" className={styles.dockBtn} title={t('assets.browser.chooseAnother', 'Choose another folder…')} aria-label={t('assets.browser.chooseFolderAria', 'Choose folder')} onClick={() => { void pickFolder(); }}>
           <Icon name="folder-open" size="sm" />
         </button>
         {canPickFiles && (
-          <button type="button" className={styles.dockBtn} title="Import specific files… (pick files, not a folder)" aria-label="Import files" onClick={() => { void pickAndImportFiles(); }}>
+          <button type="button" className={styles.dockBtn} title={t('assets.browser.importSpecificTitle', 'Import specific files… (pick files, not a folder)')} aria-label={t('assets.browser.importFilesAria', 'Import files')} onClick={() => { void pickAndImportFiles(); }}>
             <Icon name="upload" size="sm" />
           </button>
         )}
@@ -281,15 +284,15 @@ export function MediaBrowser(): JSX.Element {
         className={styles.assetListHost}
         tabIndex={0}
         role="tree"
-        aria-label="Media browser"
+        aria-label={t('assets.browser.aria', 'Media browser')}
         onKeyDown={onKeyDown}
       >
         {error ? (
           <div className={styles.empty}>{error}</div>
         ) : rootEntries === null ? (
-          <div className={styles.empty}>Reading folder…</div>
+          <div className={styles.empty}>{t('assets.browser.reading', 'Reading folder…')}</div>
         ) : rows.length === 0 ? (
-          <div className={styles.empty}>No media in this folder.</div>
+          <div className={styles.empty}>{t('assets.browser.noMedia', 'No media in this folder.')}</div>
         ) : hostHeight > 0 ? (
           <VirtualList
             items={rows}
@@ -340,7 +343,7 @@ export function MediaBrowser(): JSX.Element {
                   )}
                   <span className={styles.assetRowName}>{entry.name}</span>
                   <span className={styles.assetRowType}>
-                    {isDir ? (row.loading ? <span className={styles.mediaRowLoading}>loading…</span> : 'Folder') : visual!.label}
+                    {isDir ? (row.loading ? <span className={styles.mediaRowLoading}>{t('assets.browser.loading', 'loading…')}</span> : t('assets.browser.folder', 'Folder')) : visual!.label}
                   </span>
                   <span className={styles.assetRowSize}>{!isDir && entry.size != null ? formatBytes(entry.size) : ''}</span>
                 </div>

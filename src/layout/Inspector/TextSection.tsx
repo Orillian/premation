@@ -10,6 +10,7 @@
  */
 
 import { memo, useCallback } from 'react';
+import { t } from '@core/i18n';
 import type { PresetValues } from '@stores/sectionPresetStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorLayer, useMirrorTreeShape } from '@hooks/useMirror';
@@ -65,7 +66,7 @@ export function TextPresetAction({
   // stays Auto), colours as hex, the Fill and Stroke order as `strokeOverFill` — the mirror at call time.
   const capture = useCallback(() => mirrorTextPresetCapture(documentMirror(), nodeId), [nodeId]);
   const apply = useCallback((values: PresetValues) => { textPresetEdit(targets, values); }, [targets]);
-  return <SectionPresetMenu sectionId="text" label="Text style presets" capture={capture} apply={apply} />;
+  return <SectionPresetMenu sectionId="text" label={t('inspector.textSection.presets', 'Text style presets')} capture={capture} apply={apply} />;
 }
 
 export default TextSection;

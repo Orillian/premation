@@ -12,6 +12,7 @@ import { Button } from '@components/Button';
 import { useActiveMirrorComp } from '@hooks/useMirror';
 import { settingsDurationSeconds, settingsFps } from '@core/mirror/compFacts';
 import { ExportForm, useExportModel } from './ExportForm';
+import { t } from '@core/i18n';
 import styles from './ExportPanel.module.css';
 
 export function ExportPanel(): JSX.Element {
@@ -36,9 +37,9 @@ export function ExportPanel(): JSX.Element {
               leftIcon={<Icon name="queue" size="sm" />}
               onClick={() => queueJob()}
               disabled={busy}
-              title="Queue this render in the Render Queue (F6)"
+              title={t('export.panel.queueTitle', 'Queue this render in the Render Queue (F6)')}
             >
-              Add to Queue
+              {t('export.action.addToQueue', 'Add to Queue')}
             </Button>
           ) : null}
           <Button
@@ -49,7 +50,7 @@ export function ExportPanel(): JSX.Element {
             disabled={busy}
             title={activePreset?.hint}
           >
-            {busy ? 'Exporting…' : 'Export'}
+            {busy ? t('export.action.exporting', 'Exporting…') : t('export.action.export', 'Export')}
           </Button>
         </div>
       </div>

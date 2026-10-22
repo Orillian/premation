@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <utility>
 
 #include "color_wgsl.hpp"
 
@@ -107,6 +109,9 @@ Device::Device(wgpu::Instance instance, wgpu::Device device, wgpu::Queue queue)
   wgpu::Limits limits{};
   if (device_.GetLimits(&limits) == wgpu::Status::Success && limits.maxTextureDimension2D != wgpu::kLimitU32Undefined) {
     maxTexture2D_ = limits.maxTextureDimension2D;
+  }
+  if (device_.GetLimits(&limits) == wgpu::Status::Success && limits.maxBufferSize != wgpu::kLimitU64Undefined) {
+    maxBufferSize_ = limits.maxBufferSize;
   }
 }
 
@@ -221,21 +226,27 @@ RenderTarget& Device::target(std::string_view name, std::uint32_t w, std::uint32
 
 TexRef Device::texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
                        std::span<const std::uint8_t> pixels, bool mipmapped) {
-  // Over the device's 2D limit Dawn makes an error texture, and drawing it
-  // fails validation for the frame's whole command buffer — every layer, not
-  // just this one. No texture instead: the draw that wanted it is skipped
-  // (a layer with no texture draws nothing) and the frame goes on.
-  if (w > maxTexture2D_ || h > maxTexture2D_) {
-    ++stats_.texturesRefused;
-    return {};
-  }
-  const std::uint32_t bpp = bytes_per_texel(format);
-  const std::uint64_t bytes = std::uint64_t{w} * h * bpp;
   // A mipmapped blob carries level 0 only (the TS texture's chain is never
   // uploaded — WebGPUBackend allocates levels and nothing fills them); the chain
   // is regenerated here, level by level, as exact 2×2 box averages of the
   // premultiplied texels (kMipWgsl), and linear samplers filter between levels.
-  const std::uint32_t levels = mipmapped ? mip_levels(w, h) : 1;
+  return make_texture(hash, w, h, format, pixels, mipmapped ? mip_levels(w, h) : 1, true);
+}
+
+TexRef Device::make_texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
+                            std::span<const std::uint8_t> pixels, std::uint32_t levels, bool build) {
+  // Over the device's 2D limit Dawn makes an error texture, and drawing it
+  // fails validation for the frame's whole command buffer — every layer, not
+  // just this one. No texture instead: the draw that wanted it is skipped
+  // (a layer with no texture draws nothing) and the frame goes on.
+  const std::uint32_t bpp = bytes_per_texel(format);
+  const std::uint64_t bytes = std::uint64_t{w} * h * bpp;
+  // Likewise past the device's buffer limit: WriteTexture stages the pixels in
+  // one buffer, and a larger one is a validation error with the same reach.
+  if (w > maxTexture2D_ || h > maxTexture2D_ || (!pixels.empty() && bytes > maxBufferSize_)) {
+    ++stats_.texturesRefused;
+    return {};
+  }
   const std::uint64_t charged = levels > 1 ? bytes + bytes / 3 : bytes;  // gpuMemory.ts mipChainBytes ≈ 4/3
   return textures_.acquire(
       hash, frame_,
@@ -244,9 +255,12 @@ TexRef Device::texture(std::string_view hash, std::uint32_t w, std::uint32_t h, 
         td.size = {std::max(1U, w), std::max(1U, h), 1};
         td.format = format;
         td.mipLevelCount = levels;
-        td.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst |
+        // CopySrc: mip_texture copies a single-level texture's pixels into its
+        // mipmapped replacement on the GPU.
+        td.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc |
                    (levels > 1 ? wgpu::TextureUsage::RenderAttachment : wgpu::TextureUsage::None);
         wgpu::Texture tex = device_.CreateTexture(&td);
+        std::uint32_t built = 1;
         if (pixels.size() >= bytes && bytes > 0) {
           wgpu::TexelCopyTextureInfo dst{};
           dst.texture = tex;
@@ -255,13 +269,65 @@ TexRef Device::texture(std::string_view hash, std::uint32_t w, std::uint32_t h, 
           layout.rowsPerImage = h;
           const wgpu::Extent3D size{w, h, 1};
           queue_.WriteTexture(&dst, pixels.data(), bytes, &layout, &size);
-          if (levels > 1) generate_mips(tex, format, w, h, levels);
+          if (levels > 1 && build) {
+            generate_mips(tex, format, w, h, 1, levels);
+            built = levels;
+          }
         }
-        TexRef ref{tex.CreateView(), nextId_++, w, h, false};
+        TexRef ref{tex.CreateView(), nextId_++, w, h, false, built, levels};
         textureObjects_.acquire(hash, frame_, [&] { return tex; });
         return ref;
       },
       charged);
+}
+
+TexRef Device::mip_texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
+                           std::span<const std::uint8_t> pixels, std::uint32_t levels) {
+  const std::uint32_t full = mip_levels(w, h);
+  const std::uint32_t want = std::clamp(levels, 1U, full);
+  // Made single-level (drawn at full size so far), now drawn small: made again,
+  // once, with the whole chain allocated — never a texture per depth (a chain
+  // cut to each frame's needs made a new one whenever an animated scale crossed
+  // an octave, and churned the cache: +40–75 % frame time with 60 such layers).
+  // Its level 0 is copied across on the GPU, not uploaded again: a 4K SVG raster
+  // re-sent from the CPU stalled the first frame it was drawn small (~25 ms).
+  wgpu::Texture previous;
+  if (const TexRef* have = textures_.find(hash); have != nullptr && want > std::max(1U, have->mipAlloc)) {
+    if (const wgpu::Texture* obj = textureObjects_.find(hash); obj != nullptr) previous = *obj;
+    textures_.free(hash);
+    textureObjects_.free(hash);
+  }
+  TexRef made =
+      make_texture(hash, w, h, format, previous != nullptr ? std::span<const std::uint8_t>{} : pixels, want > 1 ? full : 1, false);
+  if (!made) return {};
+  if (previous != nullptr) {
+    if (const wgpu::Texture* obj = textureObjects_.find(hash); obj != nullptr) {
+      wgpu::TexelCopyTextureInfo src{};
+      src.texture = std::move(previous);
+      wgpu::TexelCopyTextureInfo dst{};
+      dst.texture = *obj;
+      const wgpu::Extent3D size{std::max(1U, w), std::max(1U, h), 1};
+      wgpu::CommandEncoder enc = device_.CreateCommandEncoder();
+      enc.CopyTextureToTexture(&src, &dst, &size);
+      const wgpu::CommandBuffer cb = enc.Finish();
+      queue_.Submit(1, &cb);
+    }
+  }
+  TexRef* pooled = textures_.find(hash);
+  if (pooled == nullptr) return made;
+  const std::uint32_t built = std::max(1U, pooled->mipLevels);
+  if (built < want) {
+    // Deeper levels the first time a draw reaches them, each from the one above.
+    const wgpu::Texture* obj = textureObjects_.find(hash);
+    if (obj == nullptr) return {};
+    generate_mips(*obj, format, w, h, built, want);
+    pooled->mipLevels = want;
+  }
+  // This draw samples `want` levels whatever was built before (deeper levels
+  // from an earlier, smaller draw): the frame depends on the frame alone.
+  TexRef out = *pooled;
+  out.mipLevels = want;
+  return out;
 }
 
 std::uint32_t mip_levels(std::uint32_t w, std::uint32_t h) noexcept {
@@ -270,33 +336,81 @@ std::uint32_t mip_levels(std::uint32_t w, std::uint32_t h) noexcept {
   return n;
 }
 
+std::uint32_t mip_levels_needed(std::uint32_t w, std::uint32_t h, const MipFootprint& fp) noexcept {
+  const std::uint32_t full = mip_levels(w, h);
+  if (!(fp.width > 0) || !(fp.height > 0) || !std::isfinite(fp.width) || !std::isfinite(fp.height)) return full;
+  // Texels per device pixel along the more minified axis, and the LOD the
+  // ½-scaled gradients reach: log2(ratio) − 1. Level 0 alone up to 2:1.
+  const double ratio = std::max(static_cast<double>(w) / fp.width, static_cast<double>(h) / fp.height);
+  const double lod = std::log2(std::max(1.0, ratio)) - 1;
+  if (!(lod > 0)) return 1;
+  return std::min(full, static_cast<std::uint32_t>(std::ceil(lod)) + 2);
+}
+
 void Device::generate_mips(const wgpu::Texture& tex, wgpu::TextureFormat format, std::uint32_t w, std::uint32_t h,
-                           std::uint32_t levels) {
+                           std::uint32_t from, std::uint32_t to) {
+  if (from < 1 || to <= from) return;
   static constexpr std::array<LayoutEntry, 2> kLayout{{{0, BindingType::uniform, kStageVertex | kStageFragment},
                                                        {1, BindingType::unfilterable, kStageFragment}}};
   const Mat mat = dynamic_material("rg-mip", shaders::kMipWgsl, kLayout);
-  std::uint32_t sw = std::max(1U, w);
-  std::uint32_t sh = std::max(1U, h);
-  for (std::uint32_t level = 1; level < levels; ++level) {
+  const Pipeline& p = pipeline(mat, Blend::none, format, 1);
+  const MaterialDesc& m = material_of(mat);
+  // The levels in one command buffer and one uniform buffer (a 256-byte slot
+  // per level, the dynamic-offset alignment): 2D layers mipmap their rasters
+  // when drawn small, and a side draw per level — a buffer, an encoder and a
+  // submit each — cost a dozen submits per texture, many a frame while text or
+  // shapes animate. Level k is max(1, w >> k) × max(1, h >> k).
+  const auto dim = [](std::uint32_t s, std::uint32_t level) { return std::max(1U, std::max(1U, s) >> level); };
+  const std::uint32_t steps = to - from;
+  std::vector<float> u(std::size_t{steps} * (kUniformAlign / sizeof(float)), 0.0F);
+  for (std::uint32_t i = 0; i < steps; ++i) {
+    const std::size_t at = std::size_t{i} * (kUniformAlign / sizeof(float));
+    u[at] = static_cast<float>(dim(w, from + i - 1));
+    u[at + 1] = static_cast<float>(dim(h, from + i - 1));
+  }
+  wgpu::BufferDescriptor bd{};
+  bd.size = u.size() * sizeof(float);
+  bd.usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+  bd.label = "mip-uniforms";
+  const wgpu::Buffer ubuf = device_.CreateBuffer(&bd);
+  queue_.WriteBuffer(ubuf, 0, u.data(), bd.size);
+  wgpu::CommandEncoder enc = device_.CreateCommandEncoder();
+  for (std::uint32_t level = from; level < to; ++level) {
     wgpu::TextureViewDescriptor src{};
     src.baseMipLevel = level - 1;
     src.mipLevelCount = 1;
     wgpu::TextureViewDescriptor dst{};
     dst.baseMipLevel = level;
     dst.mipLevelCount = 1;
-    const std::uint32_t dw = std::max(1U, sw / 2);
-    const std::uint32_t dh = std::max(1U, sh / 2);
     DrawItem it;
     it.material = mat;
-    it.texture = {tex.CreateView(&src), 0, sw, sh, false};
-    const std::array<float, 4> u = {static_cast<float>(sw), static_cast<float>(sh), 0, 0};
-    side_draw(tex.CreateView(&dst), format, dw, dh, it, u);
-    sw = dw;
-    sh = dh;
+    it.texture = {tex.CreateView(&src), 0, dim(w, level - 1), dim(h, level - 1), false, 0, 0};
+    const wgpu::BindGroup bg = make_bind_group(p, m, it, ubuf, 16);
+    wgpu::RenderPassColorAttachment ca{};
+    ca.view = tex.CreateView(&dst);
+    ca.loadOp = wgpu::LoadOp::Clear;
+    ca.storeOp = wgpu::StoreOp::Store;
+    ca.clearValue = {0, 0, 0, 0};
+    wgpu::RenderPassDescriptor rp{};
+    rp.colorAttachmentCount = 1;
+    rp.colorAttachments = &ca;
+    wgpu::RenderPassEncoder pass = enc.BeginRenderPass(&rp);
+    pass.SetViewport(0, 0, static_cast<float>(dim(w, level)), static_cast<float>(dim(h, level)), 0, 1);
+    pass.SetPipeline(p.pipeline);
+    const std::uint32_t offset = (level - from) * kUniformAlign;
+    pass.SetBindGroup(0, bg, 1, &offset);
+    pass.SetVertexBuffer(0, quad_);
+    pass.Draw(6, 1);
+    pass.End();
+    ++stats_.passes;
+    ++stats_.draws;
   }
+  const wgpu::CommandBuffer cb = enc.Finish();
+  queue_.Submit(1, &cb);
 }
 
-SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy) {
+SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::AddressMode address, std::uint16_t maxAnisotropy,
+                           float lodMaxClamp) {
   return samplers_.acquire(
       key, frame_,
       [&] {
@@ -308,6 +422,7 @@ SamplerRef Device::sampler(std::string_view key, wgpu::FilterMode filter, wgpu::
         sd.mipmapFilter = filter == wgpu::FilterMode::Linear ? wgpu::MipmapFilterMode::Linear : wgpu::MipmapFilterMode::Nearest;
         sd.addressModeU = address;
         sd.addressModeV = address;
+        sd.lodMaxClamp = lodMaxClamp;
         // Anisotropy needs every filter linear (WebGPU); 1 = off.
         if (filter == wgpu::FilterMode::Linear) sd.maxAnisotropy = std::max<std::uint16_t>(1, maxAnisotropy);
         return SamplerRef{device_.CreateSampler(&sd), nextId_++};

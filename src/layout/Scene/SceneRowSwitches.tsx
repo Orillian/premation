@@ -33,6 +33,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys, useRetainTree } from '@hooks/useMirror';
 import { anchoredLayerIds, toggleAudioAnchoredEdit, toggleLayerFlagsEdit, toggleLayerSwitchAnchored } from './layerSwitchEdits';
 import styles from '@layout/EditorLayout/panels.module.css';
+import { t } from '@core/i18n';
 
 /** Does this layer make sound? Same test the timeline's A/V column uses (the mirror's `hasAudio`). */
 function hasAudio(nodeId: string): boolean {
@@ -75,8 +76,8 @@ export function SceneRowAV({ nodeId }: SceneRowAVProps): JSX.Element {
         className={styles.avCell}
         data-kind="visible"
         data-on={hidden || undefined}
-        aria-label={hidden ? 'Show layer' : 'Hide layer'}
-        title={hidden ? 'Show' : 'Hide'}
+        aria-label={hidden ? t('scene.rowSwitches.showLayer', 'Show layer') : t('scene.rowSwitches.hideLayer', 'Hide layer')}
+        title={hidden ? t('scene.rowSwitches.show', 'Show') : t('scene.rowSwitches.hide', 'Hide')}
         onClick={(e) => { e.stopPropagation(); void toggleLayerSwitchAnchored(nodeId, 'visible'); }}
       >
         <Icon name={hidden ? 'eye-off' : 'eye'} size="sm" />
@@ -89,9 +90,9 @@ export function SceneRowAV({ nodeId }: SceneRowAVProps): JSX.Element {
           className={styles.avCell}
           data-kind="audio"
           data-on={muted || undefined}
-          aria-label={muted ? 'Unmute layer audio' : 'Mute layer audio'}
+          aria-label={muted ? t('scene.rowSwitches.unmuteLayerAudio', 'Unmute layer audio') : t('scene.rowSwitches.muteLayerAudio', 'Mute layer audio')}
           aria-pressed={muted}
-          title={muted ? 'Unmute audio' : 'Mute audio'}
+          title={muted ? t('scene.rowSwitches.unmuteAudio', 'Unmute audio') : t('scene.rowSwitches.muteAudio', 'Mute audio')}
           onClick={(e) => { e.stopPropagation(); toggleAudioAnchored(nodeId); }}
         >
           <Icon name={muted ? 'audio-off' : 'audio'} size="sm" />
@@ -103,8 +104,8 @@ export function SceneRowAV({ nodeId }: SceneRowAVProps): JSX.Element {
         className={styles.avCell}
         data-kind="solo"
         data-on={solo || undefined}
-        aria-label={solo ? 'Unsolo layer' : 'Solo layer'}
-        title={solo ? 'Unsolo' : 'Solo'}
+        aria-label={solo ? t('scene.rowSwitches.unsoloLayer', 'Unsolo layer') : t('scene.rowSwitches.soloLayer', 'Solo layer')}
+        title={solo ? t('scene.rowSwitches.unsolo', 'Unsolo') : t('scene.rowSwitches.solo', 'Solo')}
         onClick={(e) => { e.stopPropagation(); void toggleLayerSwitchAnchored(nodeId, 'solo'); }}
       >
         <Icon name="circle" size="sm" />
@@ -115,8 +116,8 @@ export function SceneRowAV({ nodeId }: SceneRowAVProps): JSX.Element {
         className={styles.avCell}
         data-kind="lock"
         data-on={locked || undefined}
-        aria-label={locked ? 'Unlock layer' : 'Lock layer'}
-        title={locked ? 'Unlock' : 'Lock'}
+        aria-label={locked ? t('scene.rowSwitches.unlockLayer', 'Unlock layer') : t('scene.rowSwitches.lockLayer', 'Lock layer')}
+        title={locked ? t('scene.rowSwitches.unlock', 'Unlock') : t('scene.rowSwitches.lock', 'Lock')}
         onClick={(e) => { e.stopPropagation(); void toggleLayerSwitchAnchored(nodeId, 'locked'); }}
       >
         <Icon name="lock" size="sm" />

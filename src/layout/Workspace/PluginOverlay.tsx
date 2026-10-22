@@ -35,6 +35,7 @@ import {
 } from '@core/nativePlugins/pluginOverlay';
 import { layerScreenMapping } from './layerScreen';
 import { useDisplayedCamera2D } from './useOverlayView';
+import { t } from '@core/i18n';
 
 /** The draw list, and the layer's transform it maps through. */
 const PLUGIN_KINDS: ReadonlyArray<OverlayKind> = ['plugin', 'transform', 'bounds'];
@@ -169,7 +170,7 @@ export function PluginOverlay(): JSX.Element | null {
   return (
     <svg
       ref={svgRef}
-      aria-label="Plugin overlays"
+      aria-label={t('workspace.pluginOverlay.label', 'Plugin overlays')}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
     >
       {layers.map((l) => (
@@ -178,7 +179,7 @@ export function PluginOverlay(): JSX.Element | null {
             // The plugin's draw order is the identity of a path.
             <path key={i} d={s.d} fill="none" stroke={s.color ?? 'var(--color-overlay-text)'} strokeWidth={1} />
           ) : (
-            <g key={`h${s.effect}:${s.handle}`} aria-label="Effect handle">
+            <g key={`h${s.effect}:${s.handle}`} aria-label={t('workspace.pluginOverlay.handle', 'Effect handle')}>
               <circle cx={s.at.x} cy={s.at.y} r={PICK_RADIUS} fill="transparent" style={{ pointerEvents: 'all', cursor: 'move' }} />
               {s.shape === 2 ? (
                 <path

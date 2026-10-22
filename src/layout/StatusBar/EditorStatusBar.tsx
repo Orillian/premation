@@ -27,7 +27,7 @@ import { openPalette } from '@stores/commandPaletteStore';
 import { openCompositionSettings } from '@layout/Composition/CompositionSettingsDialog';
 import { useActiveCompName } from '@layout/Composition/activeCompName';
 import { isMacKeyboard } from '@core/commands/formatChord';
-import { countLabel } from './countLabel';
+import { t } from '@core/i18n';
 import { StatusBar } from './StatusBar';
 import { FpsMeter } from './FpsMeter';
 import { InfoReadout } from './InfoReadout';
@@ -67,14 +67,18 @@ export function EditorStatusBar({ layerCount }: EditorStatusBarProps): JSX.Eleme
           {/* Real state, not a hardcoded "Ready": amber while unsaved. */}
           <span className={cn(styles.stateDot, activeDirty && styles.stateDotDirty)} aria-hidden>●</span>
           {assistantOn ? <AssistantWorkLine /> : (
-            <span className={styles.drop4}>{activeDirty ? 'Unsaved changes' : 'Ready'}</span>
+            <span className={styles.drop4}>{activeDirty ? t('statusBar.state.unsaved', 'Unsaved changes') : t('statusBar.state.ready', 'Ready')}</span>
           )}
           <span className={assistantOn ? undefined : styles.drop4}><Sep /></span>
-          <span>{countLabel(layerCount, 'layer')}</span>
+          <span>
+            {layerCount === 1
+              ? t('statusBar.layers.one', '{n} layer', { n: layerCount })
+              : t('statusBar.layers.other', '{n} layers', { n: layerCount })}
+          </span>
           {selectionCount > 0 ? (
             <>
               <Sep />
-              <span>{selectionCount} selected</span>
+              <span>{t('statusBar.selection.count', '{n} selected', { n: selectionCount })}</span>
             </>
           ) : null}
           <span className={cn(styles.cluster, styles.drop3)}>
@@ -87,16 +91,18 @@ export function EditorStatusBar({ layerCount }: EditorStatusBarProps): JSX.Eleme
         <button
           type="button"
           className={styles.comp}
-          title={compName ? `${compName} — Composition settings` : 'Composition settings'}
+          title={compName
+            ? t('statusBar.comp.settingsNamed', '{name} — Composition settings', { name: compName })
+            : t('statusBar.comp.settings', 'Composition settings')}
           onClick={() => openCompositionSettings()}
         >
           <Icon name="layers" size="sm" className={styles.compIcon} />
-          <span className={styles.compName}>{compName ?? 'Untitled'}</span>
+          <span className={styles.compName}>{compName ?? t('statusBar.comp.untitled', 'Untitled')}</span>
           <span className={cn(styles.compMeta, styles.drop3)}>
             {compWidth}×{compHeight} · {compFps}fps
           </span>
           {activeDirty ? (
-            <span aria-label="Unsaved changes" title="Unsaved changes" className={styles.dirtyDot} />
+            <span aria-label={t('statusBar.state.unsaved', 'Unsaved changes')} title={t('statusBar.state.unsaved', 'Unsaved changes')} className={styles.dirtyDot} />
           ) : null}
         </button>
       }
@@ -119,10 +125,10 @@ export function EditorStatusBar({ layerCount }: EditorStatusBarProps): JSX.Eleme
             className={styles.search}
             data-tour="command-palette"
             onClick={() => openPalette()}
-            title="Search commands, layers, effects, presets… (? for docs)"
+            title={t('statusBar.search.title', 'Search commands, layers, effects, presets… (? for docs)')}
           >
             <Icon name="search" size="sm" />
-            <span className={styles.drop2}>Search</span>
+            <span className={styles.drop2}>{t('statusBar.search.label', 'Search')}</span>
             <span className={cn(styles.cluster, styles.drop1)}>
               <Kbd size="sm" chord={isMacKeyboard() ? '⇧⌘P' : 'Ctrl+Shift+P'} />
             </span>

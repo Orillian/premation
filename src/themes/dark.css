@@ -108,6 +108,9 @@
   --color-selected-hover:    var(--color-selection-hover);
   --color-pressed:           var(--surface-active);
   --color-drop-target:       rgba(255, 255, 255, 0.10);
+  /* An ARMED tool or ON toggle, After Effects' way: a lighter grey well with
+     the glyph in ink. Never the accent — blue is for selection and Play. */
+  --color-tool-pressed:      var(--color-white-a16);
 
   /* ── Selection (AE Royal Blue highlight) ───────────────────────── */
   --color-selection:         #2988ff;
@@ -162,6 +165,9 @@
 
   /* ── Focus / accessibility (white ring on black) ──────────────── */
   --color-focus-ring:        rgba(255, 255, 255, 0.55);
+  /* Dock drop zones while a panel is dragged (After Effects' violet). */
+  --color-dock-zone:         rgba(116, 104, 232, 0.42);
+  --color-dock-zone-edge:    #8e83f5;
 
   /* ── Overlays ─────────────────────────────────────────────────── */
   --color-overlay-scrim:     rgba(4, 6, 9, 0.7);

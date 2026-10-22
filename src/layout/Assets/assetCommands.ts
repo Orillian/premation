@@ -17,6 +17,7 @@ import { useLayoutStore } from '@stores/layoutStore';
 import { documentMirror } from '@stores/documentMirror';
 import { panelAssetSelectionIds, selectedPanelAssets } from '@core/composition/assetSelection';
 import { canRevealAssets, revealAsset } from './assetReveal';
+import { t } from '@core/i18n';
 
 export const ASSETS_TOGGLE_VIEW_COMMAND = asCommandId('assets.toggleGridView');
 export const ASSETS_TOGGLE_UNUSED_COMMAND = asCommandId('assets.toggleUnusedFilter');
@@ -78,7 +79,7 @@ export function ensureAssetImportOpeners(timeoutMs: number = REVEAL_TIMEOUT_MS):
 /** The OS's own name for its file manager — what every native app's menu says. */
 export function revealLabel(): string {
   const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '');
-  return mac ? 'Reveal in Finder' : 'Reveal in Explorer';
+  return mac ? t('assets.commands.revealFinder', 'Reveal in Finder') : t('assets.commands.revealExplorer', 'Reveal in Explorer');
 }
 
 export function buildAssetCommands(): ReadonlyArray<Command> {

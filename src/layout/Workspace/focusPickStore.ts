@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import { setFocusDistanceToLayer } from '@core/scene/cameraCommands';
 import { documentMirror } from '@stores/documentMirror';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 interface FocusPickState {
   /** The camera whose Focus Distance the next viewport click sets (null: not armed). */
@@ -65,11 +66,16 @@ export async function completeFocusPick(hit: string | undefined, time: number): 
   useFocusPickStore.getState().cancel();
   if (!cam) return null;
   if (!hit || hit === cam) {
-    notify('Focus pick cancelled — click a layer to focus on it', 'info');
+    notify(t('workspace.focusPick.cancelled', 'Focus pick cancelled — click a layer to focus on it'), 'info');
     return null;
   }
   const depth = await setFocusDistanceToLayer(cam, hit, time);
-  const name = documentMirror().layer(hit)?.name ?? 'the layer';
-  notify(depth === null ? `${name} is behind the camera` : `Focus on ${name} — ${Math.round(depth)} px`, depth === null ? 'warning' : 'success');
+  const name = documentMirror().layer(hit)?.name ?? t('workspace.focusPick.theLayer', 'the layer');
+  notify(
+    depth === null
+      ? t('workspace.focusPick.behindCamera', '{name} is behind the camera', { name })
+      : t('workspace.focusPick.focused', 'Focus on {name} — {depth} px', { name, depth: Math.round(depth) }),
+    depth === null ? 'warning' : 'success',
+  );
   return depth;
 }

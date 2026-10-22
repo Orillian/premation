@@ -10,6 +10,7 @@ import { cn } from '@utils/cn';
 import { useFocusStore, isFocusActive } from '@stores/focusStore';
 import { useFocusContext } from './useFocusContext';
 import styles from './FocusBreadcrumb.module.css';
+import { t } from '@core/i18n';
 
 export function FocusBreadcrumb(): JSX.Element | null {
   const { active, crumbs } = useFocusContext();
@@ -40,7 +41,7 @@ export function FocusBreadcrumb(): JSX.Element | null {
   if (!active) return null;
 
   return (
-    <div className={styles.bar} role="navigation" aria-label="Focus location">
+    <div className={styles.bar} role="navigation" aria-label={t('workspace.focus.location', 'Focus location')}>
       <Icon name="crosshair" size="sm" className={styles.focusIcon} />
       {crumbs.map((c, i) => {
         const last = i === crumbs.length - 1;
@@ -58,7 +59,7 @@ export function FocusBreadcrumb(): JSX.Element | null {
           </span>
         );
       })}
-      <button type="button" className={styles.exit} onClick={() => exitOne()} title="Step up (Esc)">
+      <button type="button" className={styles.exit} onClick={() => exitOne()} title={t('workspace.focus.stepUp', 'Step up (Esc)')}>
         <Icon name="close" size="sm" />
       </button>
     </div>

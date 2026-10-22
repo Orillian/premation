@@ -44,6 +44,7 @@ import {
   type ViewFit,
 } from './maskEditing';
 import styles from './LayerViewer.module.css';
+import { t } from '@core/i18n';
 
 export interface LayerMaskEditorProps {
   nodeId: string;
@@ -259,7 +260,7 @@ export function LayerMaskEditor({
       width={stageWidth}
       height={stageHeight}
       tabIndex={0}
-      aria-label="Layer masks"
+      aria-label={t('layerViewer.maskEditor.layerMasks', 'Layer masks')}
       data-shortcut-claim="delete backspace escape enter"
       onPointerDown={onStageDown}
       onPointerMove={onMove}

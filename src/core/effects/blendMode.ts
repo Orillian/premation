@@ -40,6 +40,7 @@
 
 import type { SceneNode } from '@core/types';
 import { renderComponentsOf } from '@core/scene/SceneGraph';
+import { t } from '@core/i18n';
 
 export type LayerBlendMode =
   | 'normal'
@@ -113,51 +114,51 @@ export type LayerBlendMode =
  * do not have.
  */
 export const BLEND_MODES: ReadonlyArray<{ mode: LayerBlendMode; label: string; group: string }> = [
-  { mode: 'normal', label: 'Normal', group: 'Normal' },
-  { mode: 'dissolve', label: 'Dissolve', group: 'Normal' },
-  { mode: 'dancing-dissolve', label: 'Dancing Dissolve', group: 'Normal' },
+  { mode: 'normal', get label() { return t('core.blendMode.normal', 'Normal'); }, group: 'Normal' },
+  { mode: 'dissolve', get label() { return t('core.blendMode.dissolve', 'Dissolve'); }, group: 'Normal' },
+  { mode: 'dancing-dissolve', get label() { return t('core.blendMode.dancingDissolve', 'Dancing Dissolve'); }, group: 'Normal' },
 
-  { mode: 'darken', label: 'Darken', group: 'Subtractive' },
-  { mode: 'multiply', label: 'Multiply', group: 'Subtractive' },
-  { mode: 'color-burn', label: 'Color Burn', group: 'Subtractive' },
-  { mode: 'classic-color-burn', label: 'Classic Color Burn', group: 'Subtractive' },
-  { mode: 'linear-burn', label: 'Linear Burn', group: 'Subtractive' },
-  { mode: 'darker-color', label: 'Darker Color', group: 'Subtractive' },
+  { mode: 'darken', get label() { return t('core.blendMode.darken', 'Darken'); }, group: 'Subtractive' },
+  { mode: 'multiply', get label() { return t('core.blendMode.multiply', 'Multiply'); }, group: 'Subtractive' },
+  { mode: 'color-burn', get label() { return t('core.blendMode.colorBurn', 'Color Burn'); }, group: 'Subtractive' },
+  { mode: 'classic-color-burn', get label() { return t('core.blendMode.classicColorBurn', 'Classic Color Burn'); }, group: 'Subtractive' },
+  { mode: 'linear-burn', get label() { return t('core.blendMode.linearBurn', 'Linear Burn'); }, group: 'Subtractive' },
+  { mode: 'darker-color', get label() { return t('core.blendMode.darkerColor', 'Darker Color'); }, group: 'Subtractive' },
 
-  { mode: 'add', label: 'Add', group: 'Additive' },
-  { mode: 'lighten', label: 'Lighten', group: 'Additive' },
-  { mode: 'screen', label: 'Screen', group: 'Additive' },
-  { mode: 'color-dodge', label: 'Color Dodge', group: 'Additive' },
-  { mode: 'classic-color-dodge', label: 'Classic Color Dodge', group: 'Additive' },
-  { mode: 'linear-dodge', label: 'Linear Dodge', group: 'Additive' },
-  { mode: 'lighter-color', label: 'Lighter Color', group: 'Additive' },
+  { mode: 'add', get label() { return t('core.blendMode.add', 'Add'); }, group: 'Additive' },
+  { mode: 'lighten', get label() { return t('core.blendMode.lighten', 'Lighten'); }, group: 'Additive' },
+  { mode: 'screen', get label() { return t('core.blendMode.screen', 'Screen'); }, group: 'Additive' },
+  { mode: 'color-dodge', get label() { return t('core.blendMode.colorDodge', 'Color Dodge'); }, group: 'Additive' },
+  { mode: 'classic-color-dodge', get label() { return t('core.blendMode.classicColorDodge', 'Classic Color Dodge'); }, group: 'Additive' },
+  { mode: 'linear-dodge', get label() { return t('core.blendMode.linearDodge', 'Linear Dodge'); }, group: 'Additive' },
+  { mode: 'lighter-color', get label() { return t('core.blendMode.lighterColor', 'Lighter Color'); }, group: 'Additive' },
 
-  { mode: 'overlay', label: 'Overlay', group: 'Complex' },
-  { mode: 'soft-light', label: 'Soft Light', group: 'Complex' },
-  { mode: 'hard-light', label: 'Hard Light', group: 'Complex' },
-  { mode: 'linear-light', label: 'Linear Light', group: 'Complex' },
-  { mode: 'vivid-light', label: 'Vivid Light', group: 'Complex' },
-  { mode: 'pin-light', label: 'Pin Light', group: 'Complex' },
-  { mode: 'hard-mix', label: 'Hard Mix', group: 'Complex' },
+  { mode: 'overlay', get label() { return t('core.blendMode.overlay', 'Overlay'); }, group: 'Complex' },
+  { mode: 'soft-light', get label() { return t('core.blendMode.softLight', 'Soft Light'); }, group: 'Complex' },
+  { mode: 'hard-light', get label() { return t('core.blendMode.hardLight', 'Hard Light'); }, group: 'Complex' },
+  { mode: 'linear-light', get label() { return t('core.blendMode.linearLight', 'Linear Light'); }, group: 'Complex' },
+  { mode: 'vivid-light', get label() { return t('core.blendMode.vividLight', 'Vivid Light'); }, group: 'Complex' },
+  { mode: 'pin-light', get label() { return t('core.blendMode.pinLight', 'Pin Light'); }, group: 'Complex' },
+  { mode: 'hard-mix', get label() { return t('core.blendMode.hardMix', 'Hard Mix'); }, group: 'Complex' },
 
-  { mode: 'difference', label: 'Difference', group: 'Difference' },
-  { mode: 'classic-difference', label: 'Classic Difference', group: 'Difference' },
-  { mode: 'exclusion', label: 'Exclusion', group: 'Difference' },
-  { mode: 'subtract', label: 'Subtract', group: 'Difference' },
-  { mode: 'divide', label: 'Divide', group: 'Difference' },
+  { mode: 'difference', get label() { return t('core.blendMode.difference', 'Difference'); }, group: 'Difference' },
+  { mode: 'classic-difference', get label() { return t('core.blendMode.classicDifference', 'Classic Difference'); }, group: 'Difference' },
+  { mode: 'exclusion', get label() { return t('core.blendMode.exclusion', 'Exclusion'); }, group: 'Difference' },
+  { mode: 'subtract', get label() { return t('core.blendMode.subtract', 'Subtract'); }, group: 'Difference' },
+  { mode: 'divide', get label() { return t('core.blendMode.divide', 'Divide'); }, group: 'Difference' },
 
-  { mode: 'hue', label: 'Hue', group: 'HSL' },
-  { mode: 'saturation', label: 'Saturation', group: 'HSL' },
-  { mode: 'color', label: 'Color', group: 'HSL' },
-  { mode: 'luminosity', label: 'Luminosity', group: 'HSL' },
+  { mode: 'hue', get label() { return t('core.blendMode.hue', 'Hue'); }, group: 'HSL' },
+  { mode: 'saturation', get label() { return t('core.blendMode.saturation', 'Saturation'); }, group: 'HSL' },
+  { mode: 'color', get label() { return t('core.blendMode.color', 'Color'); }, group: 'HSL' },
+  { mode: 'luminosity', get label() { return t('core.blendMode.luminosity', 'Luminosity'); }, group: 'HSL' },
 
-  { mode: 'alpha-add', label: 'Alpha Add', group: 'Utility' },
-  { mode: 'luminescent-premul', label: 'Luminescent Premul', group: 'Utility' },
+  { mode: 'alpha-add', get label() { return t('core.blendMode.alphaAdd', 'Alpha Add'); }, group: 'Utility' },
+  { mode: 'luminescent-premul', get label() { return t('core.blendMode.luminescentPremul', 'Luminescent Premul'); }, group: 'Utility' },
 
-  { mode: 'stencil-alpha', label: 'Stencil Alpha', group: 'Matte' },
-  { mode: 'stencil-luma', label: 'Stencil Luma', group: 'Matte' },
-  { mode: 'silhouette-alpha', label: 'Silhouette Alpha', group: 'Matte' },
-  { mode: 'silhouette-luma', label: 'Silhouette Luma', group: 'Matte' },
+  { mode: 'stencil-alpha', get label() { return t('core.blendMode.stencilAlpha', 'Stencil Alpha'); }, group: 'Matte' },
+  { mode: 'stencil-luma', get label() { return t('core.blendMode.stencilLuma', 'Stencil Luma'); }, group: 'Matte' },
+  { mode: 'silhouette-alpha', get label() { return t('core.blendMode.silhouetteAlpha', 'Silhouette Alpha'); }, group: 'Matte' },
+  { mode: 'silhouette-luma', get label() { return t('core.blendMode.silhouetteLuma', 'Silhouette Luma'); }, group: 'Matte' },
 ];
 
 /**

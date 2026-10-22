@@ -5,6 +5,7 @@
 
 import type { IconName } from '@components/Icon';
 import { PIN_KIND_CATALOG, type PinKind } from '@core/rig/puppet';
+import { t } from '@core/i18n';
 
 export const PUPPET_PIN_ICONS: Record<PinKind, IconName> = {
   position: 'puppet-pin',
@@ -15,7 +16,7 @@ export const PUPPET_PIN_ICONS: Record<PinKind, IconName> = {
 };
 
 export function puppetPinLabel(kind: PinKind): string {
-  return PIN_KIND_CATALOG.find((k) => k.kind === kind)?.label ?? 'Puppet Position Pin Tool';
+  return PIN_KIND_CATALOG.find((k) => k.kind === kind)?.label ?? t('topNav.puppet.positionPin', 'Puppet Position Pin Tool');
 }
 
 export { PIN_KIND_CATALOG };

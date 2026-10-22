@@ -17,8 +17,15 @@
       Electron loads its own frameworks and helpers, which are signed with our
       Developer ID rather than Apple's. Library validation refuses to load them.
 
-  Nothing here grants network, camera, microphone or file access beyond what the
-  app already asks for at runtime; these are code-execution entitlements only.
+    device.audio-input
+      The Record Audio panel (voice-over). Under the hardened runtime the
+      microphone is refused outright without it, before macOS ever asks the
+      user; the prompt's wording is NSMicrophoneUsageDescription in
+      electron-builder.yml (mac.extendInfo). Main still asks at runtime
+      (systemPreferences.askForMediaAccess) and grants the page audio only.
+
+  Nothing else here grants network, camera or file access beyond what the app
+  already asks for at runtime; the others are code-execution entitlements only.
   Keep this file minimal — every entitlement widens the attack surface the
   hardened runtime exists to narrow, and notarization does not check whether we
   needed them.
@@ -32,6 +39,8 @@
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
     <true/>
   </dict>
 </plist>

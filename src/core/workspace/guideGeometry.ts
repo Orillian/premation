@@ -20,6 +20,8 @@
  * colour, so documents written before this existed load unchanged.
  */
 
+import { t } from '@core/i18n';
+
 export type GuideUnit = 'px' | '%';
 export type GuideEdge = 'start' | 'end';
 
@@ -150,11 +152,11 @@ export function storedGuidesKey(list: readonly StoredGuide[]): string {
 
 /** Preset swatches offered by the guide editor (null = theme default). */
 export const GUIDE_COLOR_PRESETS: ReadonlyArray<{ id: string; label: string; color: string | null }> = [
-  { id: 'default', label: 'Default', color: null },
-  { id: 'red', label: 'Red', color: '#e5484d' },
-  { id: 'orange', label: 'Orange', color: '#f76b15' },
-  { id: 'yellow', label: 'Yellow', color: '#ffc53d' },
-  { id: 'green', label: 'Green', color: '#46a758' },
-  { id: 'blue', label: 'Blue', color: '#3e63dd' },
-  { id: 'magenta', label: 'Magenta', color: '#d6409f' },
+  { id: 'default', get label() { return t('core.guideColor.default', 'Default'); }, color: null },
+  { id: 'red', get label() { return t('core.guideColor.red', 'Red'); }, color: '#e5484d' },
+  { id: 'orange', get label() { return t('core.guideColor.orange', 'Orange'); }, color: '#f76b15' },
+  { id: 'yellow', get label() { return t('core.guideColor.yellow', 'Yellow'); }, color: '#ffc53d' },
+  { id: 'green', get label() { return t('core.guideColor.green', 'Green'); }, color: '#46a758' },
+  { id: 'blue', get label() { return t('core.guideColor.blue', 'Blue'); }, color: '#3e63dd' },
+  { id: 'magenta', get label() { return t('core.guideColor.magenta', 'Magenta'); }, color: '#d6409f' },
 ];

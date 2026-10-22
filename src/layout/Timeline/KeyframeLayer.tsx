@@ -12,6 +12,7 @@
 
 import { memo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { keyframeShapes, keyframePaths, describeShapes, keyframeInterp } from './keyframeShape';
 import type { TimelineKeyframeRef } from './TimelineModel';
 import { timeInWindow, type TimeWindow } from './visibleWindow';
@@ -109,15 +110,16 @@ export const Keyframes = memo(function Keyframes({
             onPointerLeave={() => setHovered((h) => (h === kf.id ? null : h))}
             onPointerEnter={(e) => {
               setHovered(kf.id);
-              e.currentTarget.title = `${formatKeyframeLabel({
+              const label = formatKeyframeLabel({
                 time,
                 fps,
                 startFrame,
                 values: keyframeValues(kf.id),
                 ease: describeShapes(shapes.left, shapes.right),
-              })} — drag to move, Shift+click to multi-select, right-click for options${
-                scaleGripIds.has(kf.id) ? ', Alt+drag to scale the selection in time' : ''
-              }`;
+              });
+              e.currentTarget.title = scaleGripIds.has(kf.id)
+                ? t('timeline.keyframe.hoverHintScale', '{label} — drag to move, Shift+click to multi-select, right-click for options, Alt+drag to scale the selection in time', { label })
+                : t('timeline.keyframe.hoverHint', '{label} — drag to move, Shift+click to multi-select, right-click for options', { label });
             }}
           />
         );

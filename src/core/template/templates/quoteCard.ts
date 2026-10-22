@@ -5,6 +5,7 @@
 
 import type SceneGraph from '@core/scene/SceneGraph';
 import type { TemplateDefinition } from '../templateTypes';
+import { t } from '@core/i18n';
 import { addRoot, addText, addGradientShape, linearFill, radialFill,  type SetKf } from './builders';
 
 const CW = 1080, CH = 1080, CX = CW / 2, CY = CH / 2;
@@ -31,23 +32,23 @@ export function animateQuoteCard(set: SetKf): void {
 
 export const quoteCardTemplate: TemplateDefinition = {
   id: 'quote-card',
-  name: 'Quote Card',
+  get name() { return t('core.template.quoteCardName', 'Quote Card'); },
   aspect: '1:1',
   width: CW,
   height: CH,
-  description: 'A centred pull-quote over a soft gradient with an author credit.',
+  get description() { return t('core.template.quoteCardDescription', 'A centred pull-quote over a soft gradient with an author credit.'); },
   layout: layoutQuoteCard,
   settings: { fps: 60, durationSeconds: 5, background: '#0b1020' },
   animate: animateQuoteCard,
   previewTime: 1.5,
   fields: [
-    { id: 'quote', label: 'Quote', kind: 'text', group: 'Text', default: 'Design is intelligence\nmade visible.',
+    { id: 'quote', get label() { return t('core.template.fieldQuote', 'Quote'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: 'Design is intelligence\nmade visible.',
       target: { nodeId: 'tpl_quote', componentType: 'Text', prop: 'content' } },
-    { id: 'author', label: 'Author', kind: 'text', group: 'Text', default: '— Alina Wheeler',
+    { id: 'author', get label() { return t('core.template.fieldAuthor', 'Author'); }, kind: 'text', get group() { return t('core.template.groupText', 'Text'); }, default: '— Alina Wheeler',
       target: { nodeId: 'tpl_author', componentType: 'Text', prop: 'content' } },
-    { id: 'quoteColor', label: 'Quote colour', kind: 'color', group: 'Colours', default: '#ffffff',
+    { id: 'quoteColor', get label() { return t('core.template.fieldQuoteColour', 'Quote colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#ffffff',
       target: { nodeId: 'tpl_quote', componentType: 'Text', prop: 'fill' } },
-    { id: 'accentColor', label: 'Mark colour', kind: 'color', group: 'Colours', default: '#7c6cff',
+    { id: 'accentColor', get label() { return t('core.template.fieldMarkColour', 'Mark colour'); }, kind: 'color', get group() { return t('core.template.groupColours', 'Colours'); }, default: '#7c6cff',
       target: { nodeId: 'tpl_mark', componentType: 'Text', prop: 'fill' } },
   ],
 };

@@ -11,6 +11,7 @@
 import { loadDocsIndex } from '@layout/CommandPalette/docsGlob';
 import { openDocSection } from '@layout/CommandPalette/DocsSectionDialog';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 import { helpLinkFor, helpUrlFor, pickHelpSection } from './helpLinks';
 
 export async function openHelp(id: string, opts: { external?: boolean } = {}): Promise<void> {
@@ -27,12 +28,12 @@ export async function openHelp(id: string, opts: { external?: boolean } = {}): P
   try {
     const sections = await loadDocsIndex();
     const section = pickHelpSection(sections, link);
-    if (!section) throw new Error(`No documentation for ${link.doc}`);
+    if (!section) throw new Error(t('help.docs.missing', 'No documentation for {doc}', { doc: link.doc }));
     openDocSection(section);
   } catch (err) {
     useUIStore.getState().notify({
       level: 'warning',
-      message: err instanceof Error ? err.message : 'Help is not available in this build.',
+      message: err instanceof Error ? err.message : t('help.docs.unavailable', 'Help is not available in this build.'),
       durationMs: 4000,
     });
   }

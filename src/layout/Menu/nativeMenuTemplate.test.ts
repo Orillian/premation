@@ -104,8 +104,10 @@ describe('buildNativeMenuTemplate over APP_MENU', () => {
     expect(template.map((g) => g.label)).toEqual(APP_MENU.map((g) => g.label));
     const file = template.find((g) => g.id === 'file')!;
     // The label the hand-written native menu had drifted from.
-    expect(file.items.map((i) => i.label)).toContain('Save As…');
-    expect(file.items.map((i) => i.label)).not.toContain('Save to Computer…');
+    // File ▸ Save As ▸ Save As…, as After Effects nests it (menuModel).
+    const saveAs = file.items.find((i) => i.label === 'Save As')?.submenu ?? [];
+    expect(saveAs.map((i) => i.label)).toContain('Save As…');
+    expect([...file.items, ...saveAs].map((i) => i.label)).not.toContain('Save to Computer…');
   });
 
   it('carries the submenu tree, not a flattened subset', () => {

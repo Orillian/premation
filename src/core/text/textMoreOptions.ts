@@ -16,41 +16,42 @@
 
 import type { SceneNode } from '@core/types';
 import type { StrokeOrder, TextExtras } from './textExtras';
+import { t } from '@core/i18n';
 
 export type AnchorGrouping = 'character' | 'word' | 'line' | 'all';
 export type FillStrokeMode = 'perCharacter' | 'allAsOne';
 
 export const ANCHOR_GROUPINGS: ReadonlyArray<{ value: AnchorGrouping; label: string }> = [
-  { value: 'character', label: 'Character' },
-  { value: 'word', label: 'Word' },
-  { value: 'line', label: 'Line' },
-  { value: 'all', label: 'All' },
+  { value: 'character', get label() { return t('core.textMoreOptions.character', 'Character'); } },
+  { value: 'word', get label() { return t('core.textMoreOptions.word', 'Word'); } },
+  { value: 'line', get label() { return t('core.textMoreOptions.line', 'Line'); } },
+  { value: 'all', get label() { return t('core.textMoreOptions.all', 'All'); } },
 ];
 
 export const FILL_STROKE_MODES: ReadonlyArray<{ value: FillStrokeMode; label: string }> = [
-  { value: 'perCharacter', label: 'Per Character Palette' },
-  { value: 'allAsOne', label: 'All Characters As One' },
+  { value: 'perCharacter', get label() { return t('core.textMoreOptions.perCharacter', 'Per Character Palette'); } },
+  { value: 'allAsOne', get label() { return t('core.textMoreOptions.allAsOne', 'All Characters As One'); } },
 ];
 
 /** AE's blend-mode names → the canvas composite operation that implements each. */
 export const INTER_CHARACTER_BLEND_MODES: ReadonlyArray<{ value: string; label: string; op: GlobalCompositeOperation }> = [
-  { value: 'normal', label: 'Normal', op: 'source-over' },
-  { value: 'darken', label: 'Darken', op: 'darken' },
-  { value: 'multiply', label: 'Multiply', op: 'multiply' },
-  { value: 'color-burn', label: 'Color Burn', op: 'color-burn' },
-  { value: 'add', label: 'Add', op: 'lighter' },
-  { value: 'lighten', label: 'Lighten', op: 'lighten' },
-  { value: 'screen', label: 'Screen', op: 'screen' },
-  { value: 'color-dodge', label: 'Color Dodge', op: 'color-dodge' },
-  { value: 'overlay', label: 'Overlay', op: 'overlay' },
-  { value: 'soft-light', label: 'Soft Light', op: 'soft-light' },
-  { value: 'hard-light', label: 'Hard Light', op: 'hard-light' },
-  { value: 'difference', label: 'Difference', op: 'difference' },
-  { value: 'exclusion', label: 'Exclusion', op: 'exclusion' },
-  { value: 'hue', label: 'Hue', op: 'hue' },
-  { value: 'saturation', label: 'Saturation', op: 'saturation' },
-  { value: 'color', label: 'Color', op: 'color' },
-  { value: 'luminosity', label: 'Luminosity', op: 'luminosity' },
+  { value: 'normal', get label() { return t('core.blendMode.normal', 'Normal'); }, op: 'source-over' },
+  { value: 'darken', get label() { return t('core.blendMode.darken', 'Darken'); }, op: 'darken' },
+  { value: 'multiply', get label() { return t('core.blendMode.multiply', 'Multiply'); }, op: 'multiply' },
+  { value: 'color-burn', get label() { return t('core.blendMode.colorBurn', 'Color Burn'); }, op: 'color-burn' },
+  { value: 'add', get label() { return t('core.blendMode.add', 'Add'); }, op: 'lighter' },
+  { value: 'lighten', get label() { return t('core.blendMode.lighten', 'Lighten'); }, op: 'lighten' },
+  { value: 'screen', get label() { return t('core.blendMode.screen', 'Screen'); }, op: 'screen' },
+  { value: 'color-dodge', get label() { return t('core.blendMode.colorDodge', 'Color Dodge'); }, op: 'color-dodge' },
+  { value: 'overlay', get label() { return t('core.blendMode.overlay', 'Overlay'); }, op: 'overlay' },
+  { value: 'soft-light', get label() { return t('core.blendMode.softLight', 'Soft Light'); }, op: 'soft-light' },
+  { value: 'hard-light', get label() { return t('core.blendMode.hardLight', 'Hard Light'); }, op: 'hard-light' },
+  { value: 'difference', get label() { return t('core.blendMode.difference', 'Difference'); }, op: 'difference' },
+  { value: 'exclusion', get label() { return t('core.blendMode.exclusion', 'Exclusion'); }, op: 'exclusion' },
+  { value: 'hue', get label() { return t('core.blendMode.hue', 'Hue'); }, op: 'hue' },
+  { value: 'saturation', get label() { return t('core.blendMode.saturation', 'Saturation'); }, op: 'saturation' },
+  { value: 'color', get label() { return t('core.blendMode.color', 'Color'); }, op: 'color' },
+  { value: 'luminosity', get label() { return t('core.blendMode.luminosity', 'Luminosity'); }, op: 'luminosity' },
 ];
 
 /** The composite op for a stored blend value, or null for Normal / unknown. */

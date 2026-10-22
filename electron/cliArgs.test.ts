@@ -365,6 +365,61 @@ describe('parseCli — comps', () => {
   });
 });
 
+describe('parseCli — render-item (Library pack previews)', () => {
+  const item = (args: string[]) => {
+    const inv = parseCli(args);
+    if (inv.kind !== 'renderItem') throw new Error(`expected renderItem, got ${JSON.stringify(inv)}`);
+    return inv.job;
+  };
+
+  it('writes the card media into the pack by default, 640 px at 30 fps', () => {
+    expect(item(['render-item', 'packs/pro.transition.spin-warp'])).toEqual({
+      packDir: 'packs/pro.transition.spin-warp',
+      outPath: 'packs/pro.transition.spin-warp/preview.mp4',
+      posterPath: 'packs/pro.transition.spin-warp/poster.webp',
+      size: 640,
+      fps: 30,
+    });
+  });
+
+  it('a trailing separator on the pack does not double up', () => {
+    expect(item(['render-item', 'C:\\packs\\x\\']).outPath).toBe('C:\\packs\\x/preview.mp4');
+  });
+
+  it('takes --out, --poster, --size, --fps and --poster-time', () => {
+    expect(item(['render-item', 'p', '--out', 'a/preview.mp4', '--poster=a/still.webp', '--size', '1280', '--fps', '24', '--poster-time', '2.5'])).toEqual({
+      packDir: 'p', outPath: 'a/preview.mp4', posterPath: 'a/still.webp', size: 1280, fps: 24, posterTime: 2.5,
+    });
+  });
+
+  it('keeps the output options', () => {
+    const inv = parseCli(['render-item', 'p', '--json', '--log', 'r.log']);
+    expect(inv.kind === 'renderItem' && inv.output).toEqual({ json: true, quiet: false, logPath: 'r.log' });
+  });
+
+  it.each([
+    [['render-item'], 'needs'],
+    [['render-item', 'a', 'b'], 'takes one'],
+    [['render-item', 'p', '--out', 'x.mov'], '.mp4'],
+    [['render-item', 'p', '--poster', 'x.png'], '.webp'],
+    [['render-item', 'p', '--size', '641'], 'even'],
+    [['render-item', 'p', '--size', '32'], 'even'],
+    [['render-item', 'p', '--fps', '0'], 'rate'],
+    [['render-item', 'p', '--poster-time', '-1'], 'seconds'],
+    [['render-item', 'p', '--format', 'gif'], 'does not take'],
+    [['render-item', 'p', '--transparent'], 'does not take'],
+  ])('refuses %j', (args, why) => {
+    const inv = parseCli(args);
+    expect(inv.kind).toBe('error');
+    expect(inv.kind === 'error' && inv.message).toContain(why);
+  });
+
+  it('render refuses the item-only flags rather than ignoring them', () => {
+    expect(parseCli(['render', 'a.motion', '--poster', 'p.webp']).kind).toBe('error');
+    expect(parseCli(['render', 'a.motion', '--size', '640']).kind).toBe('error');
+  });
+});
+
 describe('extensionFor', () => {
   it('gives every format a real file extension', () => {
     for (const format of CLI_FORMATS) {

@@ -85,6 +85,21 @@ function interpolate(template: string, vars?: TranslationVars): string {
 }
 
 /**
+ * A whole sentence with ONE element (a link, a `<code>` span) inside it:
+ * translate the sentence with `{slot}` where the element goes, render
+ * `[before, element, after]`. Never translate the two halves separately —
+ * the element's position is the translator's call, not English word order.
+ *
+ *   const [a, b] = tAround(t('k', 'Go to {slot} first.', { slot: SLOT }));
+ */
+export const SLOT = '\u0000';
+
+export function tAround(translated: string): [string, string] {
+  const i = translated.indexOf(SLOT);
+  return i < 0 ? [translated, ''] : [translated.slice(0, i), translated.slice(i + SLOT.length)];
+}
+
+/**
  * Translate `key`, falling back to `fallback` (then to the key itself) and
  * interpolating `{var}` placeholders from `vars`.
  */

@@ -6,6 +6,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { clipHandleLayout } from './clipHandleLayout';
 import type { TimelineTrack, TimelineClip, TimelineMarker } from './TimelineModel';
 import { openContextMenu } from '@stores/contextMenuStore';
@@ -90,7 +91,7 @@ export const ClipBar = memo(function ClipBar({
         border: 'none',
         cursor: locked ? 'not-allowed' : onClipDown ? 'grab' : undefined,
       }}
-      title={locked ? `${clip.label ?? clip.id} — locked` : clip.label ?? clip.id}
+      title={locked ? t('timeline.lanes.clipLocked', '{name} — locked', { name: clip.label ?? clip.id }) : clip.label ?? clip.id}
       onPointerDown={onClipDown ? (e) => onClipDown(clip, 'move', e, locked) : undefined}
       onContextMenu={
         onClipContextMenu
@@ -274,7 +275,9 @@ export function LayerMarker({
     <div
       className={styles.layerMarker}
       style={{ left: `${TIMELINE_LEFT_OFFSET + time * pps}px`, background: marker.color ?? undefined }}
-      title={locked ? `${marker.label} — locked` : `${marker.label} — drag to move, right-click to delete`}
+      title={locked
+        ? t('timeline.lanes.clipLocked', '{name} — locked', { name: marker.label })
+        : t('timeline.lanes.markerHint', '{name} — drag to move, right-click to delete', { name: marker.label })}
       onPointerDown={(e) => {
         if (locked || e.button !== 0) return;
         // Stopped so the press does not also start a CLIP drag on the bar this
@@ -291,7 +294,7 @@ export function LayerMarker({
         openContextMenu(e.clientX, e.clientY, [
           {
             id: 'delete-layer-marker',
-            label: 'Delete Layer Marker',
+            label: t('timeline.lanes.deleteLayerMarker', 'Delete Layer Marker'),
             danger: true,
             onSelect: () => deleteMarker(marker.id),
           },

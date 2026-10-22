@@ -34,9 +34,12 @@ import {
   beatRootId,
   beatsPrompt,
   coerceBeat,
+  coerceConcepts,
   coerceCritique,
   coerceDesign,
   compileScript,
+  conceptDistance,
+  conceptsPrompt,
   critiquePrompt,
   critiqueSystemPrompt,
   designPrompt,
@@ -44,6 +47,9 @@ import {
   rebuildCalls,
   revisePrompt,
   type AuthorBrief,
+  type ConceptChoice,
+  type ConceptOption,
+  type CritiqueAxis,
   type PieceHistory,
   type Beat,
   type CompiledScript,
@@ -69,7 +75,14 @@ export const BEAT_CHUNK = 3;
 /** Re-asks for the beats a cut-off chunk did not finish. */
 const MAX_RESUMES = 3;
 
-const TOKENS = { design: 8_000, beats: 16_000, critique: 4_000, revise: 12_000 } as const;
+const TOKENS = { concepts: 6_000, design: 8_000, beats: 16_000, critique: 4_000, revise: 12_000 } as const;
+
+/** How many times "three more" may ask the model for fresh concepts. */
+const MAX_CONCEPT_ROUNDS = 3;
+/** A candidate this close to a recent piece (variety.ts conceptDistance) is a twin and is dropped. */
+const TWIN_DISTANCE = 0.5;
+/** How many concepts the gate is shown. */
+const CONCEPTS_SHOWN = 3;
 
 /**
  * What the runner needs from the editor besides the model: something to look
@@ -126,6 +139,16 @@ export interface AuthorRunOptions {
   history?: PieceHistory;
   /** Override MAX_AUTHOR_ROUNDS (tests, the eval harness). */
   maxRounds?: number;
+  /**
+   * The concept stage's gate: shown the three candidates least like the
+   * recent pieces, it answers with a pick, "more" (three fresh ones) or
+   * "surprise" (the code's pick: the farthest from the ledger). Given, the
+   * run opens with the concept stage; absent, the design call weighs its
+   * own three as before (tests, the eval harness, scripts).
+   */
+  chooseConcept?: (concepts: ConceptOption[], round: number) => Promise<ConceptChoice>;
+  /** Concept names not to offer again ("Another take" after one was built). */
+  avoidConcepts?: readonly string[];
 }
 
 export interface AuthorRunResult {
@@ -141,6 +164,49 @@ export interface AuthorRunResult {
   revised: number[][];
   /** The last critique's overall sentence. */
   critique?: string;
+  /** The last critique's five scores (1–10), when the critic gave them. */
+  scores?: Record<CritiqueAxis, number>;
+  /** The concept the piece was built on, when a concept stage ran. */
+  concept?: ConceptOption;
+}
+
+/**
+ * The concept stage: five candidates from the model, the twins of recent
+ * pieces dropped, the three farthest from the ledger shown to the gate. Null
+ * when the model offered nothing usable (the design call then weighs its own).
+ */
+async function conceptStage(
+  o: AuthorRunOptions,
+  target: { provider: GatewayProviderId; dialect: ProviderId; model: string; signal: AbortSignal },
+  brief: AuthorBrief,
+  gate: NonNullable<AuthorRunOptions['chooseConcept']>,
+  repairs: Repair[],
+): Promise<ConceptOption | null> {
+  const recent = o.history?.recent() ?? [];
+  const exclude: string[] = [...(o.avoidConcepts ?? [])];
+  for (let round = 0; round < MAX_CONCEPT_ROUNDS; round++) {
+    if (o.signal.aborted) return null;
+    o.events?.onActivity?.('Proposing concepts…');
+    const res = await askJson(target, authorSystemPrompt(brief, o.exemplarRandom), conceptsPrompt(brief, exclude), { images: o.images, maxTokens: TOKENS.concepts, path: 'author' });
+    const c = coerceConcepts(res.value);
+    repairs.push(...c.repairs);
+    if (!c.value.length) {
+      recordAiPathFailure('author', `concept stage: nothing usable${res.truncated ? ' (cut off)' : ''}`);
+      return null;
+    }
+    // Farthest from the ledger first; twins go unless they are all there is.
+    const scored = c.value.map((concept) => ({ concept, d: conceptDistance(concept, recent) })).sort((a, b) => b.d - a.d);
+    const fresh = scored.filter((s) => s.d >= TWIN_DISTANCE);
+    const shown = (fresh.length >= CONCEPTS_SHOWN ? fresh : scored).slice(0, CONCEPTS_SHOWN).map((s) => s.concept);
+    if (scored.length - fresh.length > 0) {
+      repairs.push({ path: 'concepts', message: `${scored.length - fresh.length} candidate(s) were twins of a recent piece and were not offered` });
+    }
+    const choice = await gate(shown, round);
+    if (choice.kind === 'pick') return shown[Math.max(0, Math.min(shown.length - 1, choice.index))] ?? null;
+    if (choice.kind === 'surprise') return shown[0] ?? null;
+    exclude.push(...shown.map((s) => s.name));
+  }
+  return null;
 }
 
 /** The composer's direction in the words the author brief takes. */
@@ -198,6 +264,18 @@ export async function runAuthorPipeline(
     ...(o.images?.length ? { imageCount: o.images.length } : {}),
     ...(o.history?.recent().length ? { recent: o.history.recent() } : {}),
   };
+  const result: AuthorRunResult = { ok: false, toolCallCount: 0, changes: [], problems: [], rounds: 0, revised: [] };
+  const repairs: Repair[] = [];
+
+  // ── 0. Concepts (with a gate: the chat panel) ─────────────────────────
+  if (o.chooseConcept) {
+    const concept = await conceptStage(o, target, brief, o.chooseConcept, repairs);
+    if (o.signal.aborted) return result;
+    if (concept) {
+      brief.concept = concept;
+      result.concept = concept;
+    }
+  }
   // The advisors' view of the brief: DARK_DEFAULT reads its cues, SAME_AS_LAST the recent pieces.
   const adviseOpts = {
     width: comp.width, height: comp.height, fps: comp.fps, brief: o.prompt,
@@ -205,8 +283,6 @@ export async function runAuthorPipeline(
     ...(brief.recent ? { recent: brief.recent } : {}),
   };
   const system = authorSystemPrompt(brief, o.exemplarRandom);
-  const result: AuthorRunResult = { ok: false, toolCallCount: 0, changes: [], problems: [], rounds: 0, revised: [] };
-  const repairs: Repair[] = [];
 
   // ── 1. Design ─────────────────────────────────────────────────────────
   o.events?.onActivity?.('Designing the piece…');
@@ -360,9 +436,14 @@ export async function runAuthorPipeline(
   }
 
   if (critique?.overall) result.critique = critique.overall;
+  if (critique?.scores) result.scores = critique.scores;
   // What this piece was, for the next run (never fatal: the piece is built).
+  // The concept's type pairing and motion language ride along, so the next
+  // concept stage can keep its distance from them too.
   try {
-    o.history?.record(fingerprintScript(script));
+    const fp = fingerprintScript(script);
+    const c = result.concept;
+    o.history?.record(c ? { ...fp, concept: c.name, ...(c.type ? { type: c.type } : {}), ...(c.motion ? { motion: c.motion } : {}) } : fp);
   } catch (err) {
     recordAiPathFailure('author', `piece history: ${err instanceof Error ? err.message : String(err)}`);
   }

@@ -56,9 +56,10 @@
   color: var(--color-text-primary);
 }
 
+/* Active = whiter, bolder text, never a blue bar or fill (owner 2026-10-21). */
 .tabActive {
-  color: var(--color-primary);
-  border-bottom: 1px solid var(--color-primary);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Graph visibility mode — one control with two states, not two buttons that

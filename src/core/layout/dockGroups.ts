@@ -47,12 +47,84 @@ export interface DockGroupState {
    * that opens later with the default weight gets an average share.
    */
   weight: number;
+  /**
+   * Which column of its side the group stands in, counted left to right on
+   * screen (2026-10-20, After Effects docking: a panel dropped on a group's left
+   * or right edge makes a new column beside it). 0 when the side has one column.
+   * Groups are kept sorted by column, so a column's groups are contiguous and
+   * `panelOrder` reads column by column.
+   */
+  column: number;
 }
 
 export type DockGroups = Record<DockSide, DockGroupState[]>;
 
+/** Each side's column widths as shares of the side's width (flex-grow), left to right. */
+export type DockColumnWeights = Record<DockSide, number[]>;
+
 export function emptyDockGroups(): DockGroups {
   return { leftSidebar: [], rightInspector: [] };
+}
+
+export function emptyColumnWeights(): DockColumnWeights {
+  return { leftSidebar: [1], rightInspector: [1] };
+}
+
+/** How wide a column made by a drop starts, in px; the side grows by it. */
+export const NEW_COLUMN_PX = 280;
+
+/**
+ * The narrowest a column may be. A drop that would leave the side's columns
+ * narrower than this (the viewer has no width left to give) docks the panel
+ * at the foot of the column instead of squeezing every column to a sliver.
+ */
+export const MIN_COLUMN_PX = 180;
+
+/**
+ * Column shares with none below 40% of the average — a column can be narrow
+ * but never a sliver. Layouts saved while a divider bug could squeeze a column
+ * to a few pixels come back readable through this.
+ */
+export function clampColumnWeights(weights: ReadonlyArray<number>): number[] {
+  const clean = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 1));
+  if (clean.length < 2) return clean.length === 0 ? [1] : clean;
+  const mean = clean.reduce((a, b) => a + b, 0) / clean.length;
+  return clean.map((w) => Math.max(w, mean * 0.4));
+}
+
+/** The number of columns a side's groups stand in (at least 1). */
+export function columnCount(groups: ReadonlyArray<DockGroupState>): number {
+  return groups.reduce((n, g) => Math.max(n, g.column + 1), 1);
+}
+
+/** A side's groups as columns, left to right; each column's groups top to bottom. */
+export function groupsByColumn<G extends DockGroupState>(groups: ReadonlyArray<G>): G[][] {
+  const cols: G[][] = Array.from({ length: columnCount(groups) }, () => []);
+  for (const g of groups) cols[g.column]!.push(g);
+  return cols.filter((c) => c.length > 0);
+}
+
+/**
+ * Renumber a side's columns to 0..n-1 after some emptied (MUTATES the groups),
+ * carrying each surviving column's weight. Returns the new weights and the
+ * share of the side's width the removed columns had (0..1), so the caller can
+ * give that width back to the viewer.
+ */
+export function compactColumns(groups: DockGroupState[], weights: ReadonlyArray<number>): { weights: number[]; removedShare: number } {
+  const present = [...new Set(groups.map((g) => g.column))].sort((a, b) => a - b);
+  const total = Math.max(1, columnCount(groups), weights.length);
+  const w = (i: number): number => {
+    const v = weights[i];
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 1;
+  };
+  const sumAll = Array.from({ length: total }, (_, i) => w(i)).reduce((a, b) => a + b, 0);
+  if (present.length === 0) return { weights: [1], removedShare: 0 };
+  const remap = new Map(present.map((c, i) => [c, i]));
+  for (const g of groups) g.column = remap.get(g.column) ?? 0;
+  const next = present.map((c) => w(c));
+  const kept = next.reduce((a, b) => a + b, 0);
+  // Weights only for columns that still exist: the share of the ones that went.
+  return { weights: next, removedShare: Math.max(0, 1 - kept / sumAll) };
 }
 
 /** The legacy second pane of a side — the old split's bottom region. */
@@ -116,6 +188,10 @@ export interface PlaceOptions {
  *   2. the left sidebar → join its first group (Project · Effect Controls ·
  *      Layers are tabs of one group, as in AE);
  *   3. the right column → a group of its own at the bottom.
+ *
+ * With several columns on a side, "the bottom" is the bottom of the side's
+ * HOME column — the one at the window's edge (the left side's first, the
+ * right side's last), where the side's own panels live.
  */
 export function placePanel(
   side: DockSide,
@@ -145,9 +221,15 @@ export function placePanel(
     active: panelId,
     collapsed: !expand,
     weight: DEFAULT_WEIGHT[panelId] ?? 1,
+    column: homeColumn(side, groups),
   };
   groups.push(group);
   return group;
+}
+
+/** The column at the window's edge: where a side's own panels go. */
+export function homeColumn(side: DockSide, groups: ReadonlyArray<DockGroupState>): number {
+  return side === 'leftSidebar' ? 0 : columnCount(groups) - 1;
 }
 
 export interface ReconcileOptions {
@@ -191,6 +273,7 @@ export function reconcileGroups(
       active: g.active && panels.includes(g.active) ? g.active : panels[0]!,
       collapsed: g.collapsed === true,
       weight: Number.isFinite(g.weight) && g.weight > 0 ? g.weight : 1,
+      column: validColumn(g.column),
     });
   }
   for (const id of members) {
@@ -204,8 +287,14 @@ export function reconcileGroups(
   });
   const at = (id: string): number => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
   for (const g of out) g.panels.sort((a, b) => at(a) - at(b));
-  out.sort((a, b) => at(a.panels[0]!) - at(b.panels[0]!));
+  // Column first, so each column's groups stay together (left to right), then
+  // `members`' order down the column.
+  out.sort((a, b) => a.column - b.column || at(a.panels[0]!) - at(b.panels[0]!));
   return out;
+}
+
+function validColumn(c: unknown): number {
+  return typeof c === 'number' && Number.isInteger(c) && c >= 0 ? c : 0;
 }
 
 /** The side's panels in on-screen order. */
@@ -276,7 +365,21 @@ export function sanitizeGroupList(raw: unknown): DockGroupState[] | null {
       active: typeof r.active === 'string' && panels.includes(r.active) ? r.active : panels[0]!,
       collapsed: r.collapsed === true,
       weight: typeof r.weight === 'number' && Number.isFinite(r.weight) && r.weight > 0 ? r.weight : 1,
+      column: validColumn(r.column),
     });
+  }
+  return out;
+}
+
+/** A persisted / imported set of column weights; a side that is not a list of positive numbers comes back absent. */
+export function sanitizeColumnWeights(raw: unknown): Partial<DockColumnWeights> {
+  const out: Partial<DockColumnWeights> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Partial<Record<DockSide, unknown>>;
+  for (const side of DOCK_SIDES) {
+    const list = r[side];
+    if (!Array.isArray(list) || list.length === 0) continue;
+    out[side] = clampColumnWeights(list.map((v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 1)));
   }
   return out;
 }

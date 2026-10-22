@@ -570,7 +570,12 @@ int batch(const Options& o) {
       eng.textures->prepare(nf.textures, nf.file.textures, ps);
       // Reasons this frame falls back.
       std::set<std::string> reasons;
-      for (const auto& e : nf.errors) reasons.insert((e.stage == "snapshot" ? "snapshot error: " : "") + e.message);
+      for (const auto& e : nf.errors) {
+        // Stage `warning`: the frame draws without something it could not resolve
+        // and is still gated against its reference, as an export still completes.
+        if (e.stage == "warning") continue;
+        reasons.insert((e.stage == "snapshot" ? "snapshot error: " : "") + e.message);
+      }
       for (const auto& [k, u] : ps.unsupported) reasons.insert("raster: " + u);
       // Structural diff against the TS FrameScene.
       Diff d;

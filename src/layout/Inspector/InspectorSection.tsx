@@ -35,6 +35,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '@utils/cn';
+import { t } from '@core/i18n';
 import { Icon, type IconName } from '@components/Icon';
 import { Checkbox } from '@components/Checkbox';
 import styles from './InspectorSection.module.css';
@@ -94,7 +95,9 @@ export function InspectorSection({
               type="button"
               className={styles.twisty}
               aria-expanded={isOpen}
-              aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${titleText ?? 'section'}`}
+              aria-label={titleText !== undefined
+                ? (isOpen ? t('inspector.inspectorSection.collapseNamed', 'Collapse {title}', { title: titleText }) : t('inspector.inspectorSection.expandNamed', 'Expand {title}', { title: titleText }))
+                : (isOpen ? t('inspector.inspectorSection.collapse', 'Collapse section') : t('inspector.inspectorSection.expand', 'Expand section'))}
               onClick={() => onToggle?.(!isOpen)}
             >
               <Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size="sm" />
@@ -104,7 +107,7 @@ export function InspectorSection({
             <Checkbox
               checked={enabled === true}
               onChange={(e) => onEnabledChange(e.currentTarget.checked)}
-              aria-label={enableLabel ?? (titleText ? `Enable ${titleText}` : 'Enable section')}
+              aria-label={enableLabel ?? (titleText ? t('inspector.inspectorSection.enableNamed', 'Enable {title}', { title: titleText }) : t('inspector.inspectorSection.enable', 'Enable section'))}
             />
           )}
           {icon && <Icon name={icon} size="sm" className={styles.icon} />}

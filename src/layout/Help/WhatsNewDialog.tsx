@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import { Button } from '@components/Button';
 import { DialogFooter } from '@components/Modal';
 import { openModal, useModalStore } from '@stores/modalStore';
+import { t } from '@core/i18n';
 import { CHANGELOG_MARKDOWN } from './changelogText';
 import { APP_VERSION, readLastSeenVersion, shouldShowWhatsNew, stampSeenVersion } from './whatsNew';
 import styles from './WhatsNewDialog.module.css';
@@ -20,8 +21,8 @@ export function openWhatsNew(): void {
   stampSeenVersion();
   openModal({
     id: MODAL_ID,
-    title: "What's new",
-    description: `Premation ${APP_VERSION}`,
+    title: t('help.whatsNew.title', "What's new"),
+    description: t('help.whatsNew.version', 'Premation {version}', { version: APP_VERSION }),
     size: 'md',
     render: () => (
       <div className={styles.body}>
@@ -31,7 +32,7 @@ export function openWhatsNew(): void {
     footer: (close) => (
       <DialogFooter
         note={<span className={styles.version}>CHANGELOG.md</span>}
-        primary={<Button variant="primary" onClick={close}>Got it</Button>}
+        primary={<Button variant="primary" onClick={close}>{t('help.whatsNew.gotIt', 'Got it')}</Button>}
       />
     ),
     primaryAction: (close) => close(),

@@ -8,6 +8,7 @@
  */
 
 import type { ExportChapter } from '@core/export/chapters';
+import { t } from '@core/i18n';
 
 /**
  * The moving-picture formats the engine export writes. `hdr10` (PQ) and `hlg`
@@ -26,7 +27,7 @@ export type ExportQuality = 'high' | 'medium' | 'draft';
 export type ProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444';
 
 export const PRORES_PROFILE_LABELS: Record<ProresProfile, string> = {
-  '4444': 'ProRes 4444 (alpha)',
+  get '4444'() { return t('core.renderSpec.prores4444Alpha', 'ProRes 4444 (alpha)'); },
   hq: 'ProRes 422 HQ',
   '422': 'ProRes 422',
   lt: 'ProRes 422 LT',
@@ -37,7 +38,7 @@ export const PRORES_PROFILE_LABELS: Record<ProresProfile, string> = {
 export type VideoEncoderId = 'libx264' | 'h264_nvenc' | 'hevc_nvenc' | 'h264_qsv' | 'h264_videotoolbox';
 
 export const VIDEO_ENCODER_LABELS: Record<VideoEncoderId, string> = {
-  libx264: 'Software (libx264)',
+  get libx264() { return t('core.renderSpec.libx264', 'Software (libx264)'); },
   h264_nvenc: 'NVIDIA NVENC (H.264)',
   hevc_nvenc: 'NVIDIA NVENC (HEVC)',
   h264_qsv: 'Intel Quick Sync (H.264)',

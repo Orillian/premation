@@ -20,6 +20,7 @@
 import type { SceneNode } from '@core/types';
 import type { FillPaint, LinearFill, RadialFill } from '@core/paint/fill';
 import { paragraphLevelOf } from './bidi';
+import { t } from '@core/i18n';
 
 /** Horizontal render padding each side of a text box, px. `measureText`'s
  *  render box adds it; the painter insets left/right-aligned text by it. */
@@ -51,10 +52,10 @@ export type StrokeOrder =
   | 'all-strokes-over-all-fills';
 
 export const STROKE_ORDERS: ReadonlyArray<{ value: StrokeOrder; label: string }> = [
-  { value: 'fill-over-stroke', label: 'Fill Over Stroke' },
-  { value: 'stroke-over-fill', label: 'Stroke Over Fill' },
-  { value: 'all-fills-over-all-strokes', label: 'All Fills Over All Strokes' },
-  { value: 'all-strokes-over-all-fills', label: 'All Strokes Over All Fills' },
+  { value: 'fill-over-stroke', get label() { return t('core.textExtras.fillOverStroke', 'Fill Over Stroke'); } },
+  { value: 'stroke-over-fill', get label() { return t('core.textExtras.strokeOverFill', 'Stroke Over Fill'); } },
+  { value: 'all-fills-over-all-strokes', get label() { return t('core.textExtras.allFillsOverAllStrokes', 'All Fills Over All Strokes'); } },
+  { value: 'all-strokes-over-all-fills', get label() { return t('core.textExtras.allStrokesOverAllFills', 'All Strokes Over All Fills'); } },
 ];
 
 export interface TextExtras {

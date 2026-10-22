@@ -155,6 +155,13 @@ export interface EngineBridge {
   onState(handler: (state: EngineHostState) => void): () => void;
   onRestarted(handler: (info: EngineRestartNotice) => void): () => void;
   onUnavailable(handler: (info: EngineUnavailableNotice) => void): () => void;
+  /**
+   * The engine's core thread is deep in one item (`what` it is on, `ms` so
+   * far — a heavy frame build, a long batch) and answers nothing until it is
+   * done; null once it is back. The UI says so instead of looking frozen.
+   * Absent in hosts without a heartbeat.
+   */
+  onBusy?(handler: (info: EngineBusyNotice | null) => void): () => void;
   /** Frames from the shared-texture ring (null stops). Absent outside Electron. */
   onFrame?(consumer: EngineFrameConsumer | null): void;
   /**
@@ -166,6 +173,12 @@ export interface EngineBridge {
 }
 
 // ── notices ──
+
+export interface EngineBusyNotice {
+  /** The engine's own description (`command createLayer`, `batch Build scene`, `tick (playing)`, `query 1000`). */
+  what: string;
+  ms: number;
+}
 
 export type ProcessEngineNotice =
   | { kind: 'restarted'; attempt: number; cause: EngineRestartNotice['cause']; replayed: number; mismatches: number; ms: number }

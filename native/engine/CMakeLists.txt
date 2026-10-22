@@ -257,6 +257,7 @@ if(MOTION_BUILD_TESTS)
     tests/test_convert_layer.cpp
     tests/test_framing.cpp
     tests/test_session.cpp
+    tests/test_session_perf.cpp
     tests/test_b4_round2.cpp
     tests/test_b4_round3.cpp
     tests/test_b4_round5_text.cpp
@@ -268,6 +269,7 @@ if(MOTION_BUILD_TESTS)
     tests/test_paths.cpp
     tests/test_proxy_ownership.cpp
     tests/test_expression_controls.cpp
+    tests/test_expression_lang.cpp
     tests/test_migrations.cpp
     tests/test_stress.cpp
     tests/test_render_graph.cpp
@@ -1179,7 +1181,8 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
                                       tests/test_viewport_view.cpp  # setViewport view / customView → the snapshot's camera
                                       tests/test_layer_view.cpp  # setViewport layer: the Layer panel's one-layer walk
                                       tests/test_overlay_render_agreement.cpp  # the overlay maths place a 3D layer where the frame drew it
-                                      tests/test_oversize_texture.cpp)  # an enormous layer clamps / is refused, never blanks the frame
+                                      tests/test_oversize_texture.cpp  # an enormous layer clamps / is refused, never blanks the frame
+                                      tests/test_unported_warnings.cpp)  # 2026-10-20: ported text features; what a layer draws without is a `warning`
     target_compile_definitions(engine_scene_tests PRIVATE PREMATION_ENGINE_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
       PREMATION_RASTER_FONTS="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/harness/fonts/fonts.json")
     target_link_libraries(engine_scene_tests PRIVATE engine_scene motion::options Catch2::Catch2WithMain)

@@ -6,6 +6,7 @@
 
 import { useViewerLutStore } from '@stores/viewerLutStore';
 import { useUIStore } from '@stores/uiStore';
+import { t } from '@core/i18n';
 
 export function openViewerLutPicker(): void {
   if (typeof document === 'undefined') return;
@@ -19,7 +20,7 @@ export function openViewerLutPicker(): void {
     if (!file) return;
     void file.text().then((text) => {
       if (!useViewerLutStore.getState().loadFromText(text, file.name)) {
-        useUIStore.getState().notify({ level: 'error', message: `“${file.name}” is not a .cube LUT this viewer can read.`, durationMs: 4200 });
+        useUIStore.getState().notify({ level: 'error', message: t('workspace.viewerLut.unreadable', '“{file}” is not a .cube LUT this viewer can read.', { file: file.name }), durationMs: 4200 });
       }
     });
   };

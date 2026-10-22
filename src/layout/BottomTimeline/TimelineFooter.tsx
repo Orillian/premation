@@ -15,6 +15,7 @@ import { viewportHudStats } from '@stores/viewportDisplayStore';
 import { TimelineZoom } from '@layout/StatusBar/TimelineZoom';
 import { usePreviewCacheStats } from '@layout/Timeline/CacheActions';
 import { describePreviewCache } from '@layout/Timeline/previewCacheStats';
+import { t } from '@core/i18n';
 import styles from './BottomTimeline.module.css';
 
 /** How often the readout re-reads the render loop's rolling mean. */
@@ -35,8 +36,8 @@ function FrameRenderTime(): JSX.Element {
     return () => window.clearInterval(id);
   }, []);
   return (
-    <span className={styles.footerReadout} title="Mean time to render a frame, over the last 30 renders">
-      Frame Render Time: <b className={styles.footerValue}>{ms > 0 ? `${ms}ms` : '—'}</b>
+    <span className={styles.footerReadout} title={t('timeline.footer.renderTimeTitle', 'Mean time to render a frame, over the last 30 renders')}>
+      {t('timeline.footer.renderTime', 'Frame Render Time:')} <b className={styles.footerValue}>{ms > 0 ? `${ms}ms` : '—'}</b>
     </span>
   );
 }
@@ -48,12 +49,14 @@ function FrameRenderTime(): JSX.Element {
  */
 function CacheReadout(): JSX.Element {
   const { stats } = usePreviewCacheStats();
-  if (stats.total <= 0) return <span className={styles.footerReadout}>Cache —</span>;
+  if (stats.total <= 0) return <span className={styles.footerReadout}>{t('timeline.footer.cacheEmpty', 'Cache —')}</span>;
   const ram = Math.round((stats.cached / stats.total) * 100);
   const disk = stats.diskMb === null ? null : Math.round((stats.onDisk / stats.total) * 100);
   return (
     <span className={styles.footerReadout} title={describePreviewCache(stats)}>
-      Cache {ram}% RAM{disk === null ? '' : ` · ${disk}% disk`}
+      {disk === null
+        ? t('timeline.footer.cacheRam', 'Cache {ram}% RAM', { ram })
+        : t('timeline.footer.cacheRamDisk', 'Cache {ram}% RAM · {disk}% disk', { ram, disk })}
     </span>
   );
 }
@@ -66,17 +69,17 @@ export interface TimelineFooterProps {
 export function TimelineFooter({ headerWidth }: TimelineFooterProps): JSX.Element {
   const cycleColumns = useUIStore((s) => s.cycleTimelineColumns);
   return (
-    <div className={styles.footer} aria-label="Timeline footer">
+    <div className={styles.footer} aria-label={t('timeline.footer.aria', 'Timeline footer')}>
       <div className={styles.footerLeft} style={{ width: headerWidth }}>
         <FrameRenderTime />
         <CacheReadout />
         <button
           type="button"
           className={styles.footerToggle}
-          title="Cycle the columns: Switches, Modes, both (F4)"
+          title={t('timeline.footer.toggleColumnsTitle', 'Cycle the columns: Switches, Modes, both (F4)')}
           onClick={() => cycleColumns()}
         >
-          Toggle Switches / Modes
+          {t('timeline.footer.toggleColumns', 'Toggle Switches / Modes')}
         </button>
       </div>
       <div className={styles.footerRight}>

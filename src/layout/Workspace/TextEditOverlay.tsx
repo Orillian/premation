@@ -49,9 +49,14 @@ import {
   TEXT_CONVERT_TO_POINT_COMMAND,
 } from '@layout/Inspector/paragraphTextCommands';
 import { openContextMenu } from '@stores/contextMenuStore';
+import { edit } from '@core/engine/uiEdits';
 import { TextBoxHandles } from './TextBoxHandles';
+import styles from './TextEditOverlay.module.css';
+import { t } from '@core/i18n';
 
 const num = (v: unknown, fb: number): number => (typeof v === 'number' ? v : fb);
+/** The class the placement loop adds once the editor sits over its layer (TextEditOverlay.module.css). */
+const PLACED_CLASS: string = styles.editorPlaced ?? 'editorPlaced';
 const strp = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 /**
@@ -142,6 +147,7 @@ const TEXT_EDIT_KINDS: ReadonlyArray<OverlayKind> = ['transform', 'textBox'];
 
 export function TextEditOverlay(): JSX.Element | null {
   const nodeId = useTextEditStore((s) => s.nodeId);
+  const fresh = useTextEditStore((s) => s.fresh);
   const end = useTextEditStore((s) => s.end);
   const setSelection = useTextEditStore((s) => s.setSelection);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -214,6 +220,11 @@ export function TextEditOverlay(): JSX.Element | null {
         }
         box.style.transform =
           `translate(calc(-50% + ${ox}px), calc(-50% + ${oy}px)) rotate(${p.rotationDeg}deg) scale(${zoom * sx}, ${zoom * sy})`;
+        // Placed: shown from here on (TextEditOverlay.module.css).
+        if (!box.classList.contains(PLACED_CLASS)) {
+          box.classList.add(PLACED_CLASS);
+          if (document.activeElement !== box) box.focus();
+        }
       }
       raf = requestAnimationFrame(place);
     };
@@ -240,23 +251,29 @@ export function TextEditOverlay(): JSX.Element | null {
     setDraft(null);
     const box = boxRef.current;
     if (!nodeId || !box) return;
-    box.textContent = strp(componentPropValue(documentMirror(), nodeId, 'content')) ?? '';
+    // Not yet placed over the layer (the placement loop above shows it).
+    box.classList.remove(PLACED_CLASS);
+    // A layer the Type tool just made opens EMPTY with a caret, as AE's does
+    // — the placeholder "Text" the layer is born with is the engine's, not
+    // something to select and overwrite.
+    box.textContent = fresh ? '' : (strp(componentPropValue(documentMirror(), nodeId, 'content')) ?? '');
     box.focus();
     const range = document.createRange();
     range.selectNodeContents(box);
     const sel = window.getSelection();
     sel?.removeAllRanges();
     sel?.addRange(range);
-  }, [nodeId]);
+  }, [nodeId, fresh]);
 
-  // A layer the Type tool has just made opens before its tree reaches the
-  // mirror (useRetainTree loads it asynchronously), so the editor above opened
-  // EMPTY over the engine's "Text" glyphs. Once the content arrives — and only
-  // while nothing has been typed — it fills in, selected, as AE opens it.
+  // A layer opened for editing before its tree reaches the mirror
+  // (useRetainTree loads it asynchronously) opened EMPTY over the engine's
+  // glyphs. Once the content arrives — and only while nothing has been typed
+  // — it fills in, selected, as AE opens it. Never for a FRESH layer: its
+  // placeholder content is exactly what the empty editor replaces.
   const mirrorContent = nodeId ? strp(componentPropValue(documentMirror(), nodeId, 'content')) : undefined;
   useEffect(() => {
     const box = boxRef.current;
-    if (!box || draft !== null || !mirrorContent || box.textContent !== '') return;
+    if (!box || fresh || draft !== null || !mirrorContent || box.textContent !== '') return;
     box.textContent = mirrorContent;
     if (document.activeElement !== box) box.focus();
     const range = document.createRange();
@@ -264,7 +281,7 @@ export function TextEditOverlay(): JSX.Element | null {
     const sel = window.getSelection();
     sel?.removeAllRanges();
     sel?.addRange(range);
-  }, [nodeId, mirrorContent, draft]);
+  }, [nodeId, fresh, mirrorContent, draft]);
 
   // Publish the selection so the inspector can style a character range.
   // `selectionchange` is a document-level event — there is no element-level
@@ -369,6 +386,12 @@ export function TextEditOverlay(): JSX.Element | null {
       end();
       return;
     }
+    // AE: a Type-tool layer left empty is not kept — clicking the stage and
+    // clicking away again leaves nothing behind, not a layer reading "Text".
+    if (fresh && next.trim() === '') {
+      void edit('Delete empty text layer', { type: 'deleteLayers', layers: [nodeId] }).finally(end);
+      return;
+    }
     if (isSourceTextAnimated(m, nodeId)) {
       // Source Text is animated: `setProperty` at the playhead keys it (AE).
       // Compared with what the playhead shows (its keyed value there, asked of
@@ -409,8 +432,9 @@ export function TextEditOverlay(): JSX.Element | null {
     <TextBoxHandles overflow={box ? box.overflow : undefined} />
     <div
       ref={boxRef}
+      className={styles.editor}
       role="textbox"
-      aria-label="Edit text"
+      aria-label={t('workspace.textEdit.label', 'Edit text')}
       dir={auto ? 'auto' : rtl ? 'rtl' : 'ltr'}
       data-overflow={box?.overflow || undefined}
       contentEditable

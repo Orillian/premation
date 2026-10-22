@@ -19,6 +19,7 @@
  */
 
 import { asCommandId } from '@app-types/common';
+import { t } from '@core/i18n';
 import type { Command as EngineCommand, KeyframeInsert, LayerInfo, Value } from '@motion/engine-api';
 import { getCommandRegistry, type Command } from '@core/commands/Command';
 import { engine } from '@core/engine/engineInstance';
@@ -201,17 +202,26 @@ async function run(toId: string): Promise<void> {
   });
   const ui = useUIStore.getState();
   if (!result) {
-    ui.notify({ level: 'warning', message: 'Could not build the transition — one of the compositions is missing.', durationMs: 5000 });
+    ui.notify({ level: 'warning', message: t('providers.smartAnimate.missingComp', 'Could not build the transition — one of the compositions is missing.'), durationMs: 5000 });
     return;
   }
   // The counts are the explanation: nothing matched means the layer NAMES did not line up.
-  const parts = [`${result.matched} matched`];
-  if (result.departing > 0) parts.push(`${result.departing} leaving`);
-  if (result.arriving > 0) parts.push(`${result.arriving} arriving`);
+  const vars = {
+    from: fromName, to: toName, matched: result.matched, leaving: result.departing,
+    arriving: result.arriving, keyframes: result.keyframes,
+  };
+  const summary = result.departing > 0
+    ? result.arriving > 0
+      ? t('providers.smartAnimate.summaryLeavingArriving', '“{from} → {to}”: {matched} matched, {leaving} leaving, {arriving} arriving, {keyframes} keyframes.', vars)
+      : t('providers.smartAnimate.summaryLeaving', '“{from} → {to}”: {matched} matched, {leaving} leaving, {keyframes} keyframes.', vars)
+    : result.arriving > 0
+      ? t('providers.smartAnimate.summaryArriving', '“{from} → {to}”: {matched} matched, {arriving} arriving, {keyframes} keyframes.', vars)
+      : t('providers.smartAnimate.summary', '“{from} → {to}”: {matched} matched, {keyframes} keyframes.', vars);
   ui.notify({
     level: result.matched === 0 ? 'warning' : 'success',
-    message: `“${fromName} → ${toName}”: ${parts.join(', ')}, ${result.keyframes} keyframes.`
-      + (result.matched === 0 ? ' Nothing matched — layers pair up by name, so give the elements the same names in both boards.' : ''),
+    message: result.matched === 0
+      ? `${summary} ${t('providers.smartAnimate.nothingMatched', 'Nothing matched — layers pair up by name, so give the elements the same names in both boards.')}`
+      : summary,
     durationMs: 7000,
   });
 }

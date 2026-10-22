@@ -593,7 +593,8 @@ SourceTextStyleOverrides style_as_overrides(const SourceTextStyle& s) {
 
 }  // namespace
 
-TextResult coerce_source_text_result(const Value& out, const Arena& arena, const Str& fallback) {
+TextResult coerce_source_text_result(const Value& raw, const Arena& arena, const Str& fallback) {
+  const Value out = unwrap_prop(raw);  // a slider read straight into Source Text is its number
   const Str must = u"Source Text expressions must return text (or text.sourceText.style…).";
   TextResult r;
   if (out.is_object()) {

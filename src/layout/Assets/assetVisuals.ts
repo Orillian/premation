@@ -1,5 +1,6 @@
 import type { IconName } from '@components/Icon';
 import type { ImportedAsset } from '@stores/assetStore';
+import { t } from '@core/i18n';
 
 export interface AssetVisualInfo {
   icon: IconName;
@@ -22,7 +23,7 @@ export function getAssetVisualInfo(
   if (ext === 'svg') {
     return {
       icon: 'shape',
-      label: 'SVG Vector',
+      label: t('assets.type.svg', 'SVG Vector'),
       className: 'assetGlyphSvg',
       color: 'var(--color-filetype-image)',
     };
@@ -50,7 +51,7 @@ export function getAssetVisualInfo(
   if (['exr', 'dpx', 'hdr', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'raw', 'rw2', 'orf'].includes(ext)) {
     return {
       icon: 'camera',
-      label: 'RAW / HDR',
+      label: t('assets.type.rawHdr', 'RAW / HDR'),
       className: 'assetGlyphRaw',
       color: 'var(--color-filetype-image)',
     };
@@ -60,7 +61,7 @@ export function getAssetVisualInfo(
   if (ext === 'gif') {
     return {
       icon: 'image',
-      label: 'GIF Animation',
+      label: t('assets.type.gif', 'GIF Animation'),
       className: 'assetGlyphGif',
       color: 'var(--color-filetype-image)',
     };
@@ -71,11 +72,11 @@ export function getAssetVisualInfo(
     asset.type === 'image' ||
     ['png', 'jpg', 'jpeg', 'webp', 'avif', 'bmp', 'tiff', 'tif', 'ico', 'heic', 'heif'].includes(ext)
   ) {
-    let label = 'Image';
-    if (ext === 'png') label = 'PNG Image';
-    else if (ext === 'jpg' || ext === 'jpeg') label = 'JPEG Image';
-    else if (ext === 'webp') label = 'WebP Image';
-    else if (ext === 'avif') label = 'AVIF Image';
+    let label = t('assets.type.image', 'Image');
+    if (ext === 'png') label = t('assets.type.png', 'PNG Image');
+    else if (ext === 'jpg' || ext === 'jpeg') label = t('assets.type.jpeg', 'JPEG Image');
+    else if (ext === 'webp') label = t('assets.type.webp', 'WebP Image');
+    else if (ext === 'avif') label = t('assets.type.avif', 'AVIF Image');
 
     return {
       icon: 'image',
@@ -89,7 +90,7 @@ export function getAssetVisualInfo(
   if (['mxf', 'mts', 'm2ts', 'r3d', 'braw', 'prores'].includes(ext)) {
     return {
       icon: 'video',
-      label: 'Pro Video',
+      label: t('assets.type.proVideo', 'Pro Video'),
       className: 'assetGlyphVideoPro',
       color: 'var(--color-filetype-video)',
     };
@@ -100,10 +101,10 @@ export function getAssetVisualInfo(
     asset.type === 'video' ||
     ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'mpg', 'mpeg', 'wmv', 'flv', '3gp', 'ts'].includes(ext)
   ) {
-    let label = 'Video';
-    if (ext === 'mp4') label = 'MP4 Video';
+    let label = t('assets.type.video', 'Video');
+    if (ext === 'mp4') label = t('assets.type.mp4', 'MP4 Video');
     else if (ext === 'mov') label = 'QuickTime';
-    else if (ext === 'webm') label = 'WebM Video';
+    else if (ext === 'webm') label = t('assets.type.webm', 'WebM Video');
 
     return {
       icon: 'video',
@@ -118,11 +119,11 @@ export function getAssetVisualInfo(
     asset.type === 'audio' ||
     ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'flac', 'aiff', 'aif', 'wma', 'opus', 'alac'].includes(ext)
   ) {
-    let label = 'Audio';
-    if (ext === 'mp3') label = 'MP3 Audio';
-    else if (ext === 'wav') label = 'WAV Audio';
-    else if (ext === 'aac' || ext === 'm4a') label = 'AAC Audio';
-    else if (ext === 'flac') label = 'FLAC Audio';
+    let label = t('assets.type.audio', 'Audio');
+    if (ext === 'mp3') label = t('assets.type.mp3', 'MP3 Audio');
+    else if (ext === 'wav') label = t('assets.type.wav', 'WAV Audio');
+    else if (ext === 'aac' || ext === 'm4a') label = t('assets.type.aac', 'AAC Audio');
+    else if (ext === 'flac') label = t('assets.type.flac', 'FLAC Audio');
 
     return {
       icon: 'audio',
@@ -146,7 +147,7 @@ export function getAssetVisualInfo(
   if (['ttf', 'otf', 'woff', 'woff2'].includes(ext)) {
     return {
       icon: 'type',
-      label: 'Font',
+      label: t('assets.type.font', 'Font'),
       className: 'assetGlyphFont',
       color: 'var(--color-filetype-font)',
     };
@@ -156,7 +157,7 @@ export function getAssetVisualInfo(
   if (['gltf', 'glb', 'obj', 'fbx', 'usd', 'usdz', 'dae'].includes(ext)) {
     return {
       icon: '3d',
-      label: '3D Model',
+      label: t('assets.type.model3d', '3D Model'),
       className: 'assetGlyph3D',
       color: 'var(--color-filetype-other)',
     };
@@ -166,7 +167,7 @@ export function getAssetVisualInfo(
   if (asset.type === 'comp' || asset.source === 'derived') {
     return {
       icon: 'component',
-      label: 'Composition',
+      label: t('assets.type.composition', 'Composition'),
       className: 'assetGlyphComp',
       color: 'var(--color-filetype-comp)',
     };
@@ -175,7 +176,7 @@ export function getAssetVisualInfo(
   // 13. Fallback generic file
   return {
     icon: 'file',
-    label: ext ? `${ext.toUpperCase()} File` : 'File',
+    label: ext ? t('assets.type.extFile', '{ext} File', { ext: ext.toUpperCase() }) : t('assets.type.file', 'File'),
     className: 'assetGlyphFile',
     color: 'var(--color-filetype-other)',
   };

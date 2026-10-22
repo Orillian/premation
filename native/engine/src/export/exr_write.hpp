@@ -18,8 +18,10 @@
 
 namespace premation::exporter {
 
-/// The scene-color target's texel format.
-enum class LinearFormat : std::uint8_t { unorm8, float16, float32 };
+/// The source pixel format: a read-back target's texel format, or `unorm16` for
+/// the export job's 16-bit output frame (straight RGBA64 little-endian integers,
+/// `half_surface_to_rgba64`), whose values are v / 65535 — never half bits.
+enum class LinearFormat : std::uint8_t { unorm8, float16, float32, unorm16 };
 
 /// exr.ts `floatToHalf` (JavaScript doubles; Math.round rounds half up).
 [[nodiscard]] inline std::uint16_t float_to_half(double f) noexcept {
@@ -72,6 +74,12 @@ inline void target_to_half_rgba(std::span<const std::uint8_t> src, std::uint32_t
           float v = 0;
           std::memcpy(&v, &row[i * 4], 4);
           h = float_to_half(v);
+          break;
+        }
+        case LinearFormat::unorm16: {
+          std::uint16_t v = 0;
+          std::memcpy(&v, &row[i * 2], 2);
+          h = float_to_half(static_cast<double>(v) / 65535.0);
           break;
         }
       }
