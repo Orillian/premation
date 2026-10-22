@@ -41,6 +41,7 @@ import { useTimelinePixelsPerSecond, useTimelineRuler, useTimelineTracks } from 
 import { timelineHandlerProps, useTimelineHandlers } from '@layout/Timeline/useTimelineHandlers';
 import { bindAdaptiveResolution } from '@stores/renderQualityStore';
 import { EditorLayout } from '@layout/EditorLayout';
+import { PremiumPromptHost } from '@layout/EditorLayout/LibraryCards';
 
 import { EditorStatusBar } from '@layout/StatusBar';
 import { getEventBus } from '@core/events/EventBus';
@@ -608,6 +609,8 @@ function EditorShellInner(): JSX.Element {
           inspectorRenderers={getAllPanelRenderers()}
         />
       </div>
+      {/* "This is a Pro item" — opened by any library path (card, canvas or timeline drop). */}
+      <PremiumPromptHost />
     </div>
   );
 }

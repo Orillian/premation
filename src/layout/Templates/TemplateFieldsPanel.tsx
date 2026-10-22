@@ -36,7 +36,7 @@ import { exposeLayerAsFieldEdit, mirrorAuthoredFields, removeAuthoredFieldEdit, 
 import { useSelectionStore } from '@stores/selectionStore';
 import styles from './TemplateFieldsPanel.module.css';
 import cardStyles from '@layout/EditorLayout/LibraryCards.module.css';
-import { PremiumCard, PremiumSheet, Segmented, ShelfNote, usePremiumSheet, usePremiumShelf } from '@layout/EditorLayout/LibraryCards';
+import { PremiumCard, Segmented, ShelfNote, usePremiumShelf } from '@layout/EditorLayout/LibraryCards';
 import { LibraryBrowser } from '@layout/EditorLayout/LibraryBrowser';
 import type { PremiumCatalogItem } from '@core/library/premium/packFormat';
 import { t } from '@core/i18n';
@@ -81,7 +81,6 @@ type AspectFilter = 'all' | '16:9' | '9:16' | '1:1';
 
 function TemplateGallery(): JSX.Element {
   const shelf = usePremiumShelf('template');
-  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
   const [aspect, setAspect] = useState<AspectFilter>('all');
 
   const entries = useMemo<TemplateEntry[]>(() => shelf.items.map((item) => ({
@@ -141,11 +140,10 @@ function TemplateGallery(): JSX.Element {
       >
         {(items) => (
           <div className={cardStyles.grid}>
-            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} />)}
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} />)}
           </div>
         )}
       </LibraryBrowser>
-      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
     </div>
   );
 }

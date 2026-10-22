@@ -45,8 +45,8 @@ import { importLottieFileEdit } from './lottieInsertEdits';
 import { TemplateFieldsPanel } from '@layout/Templates/TemplateFieldsPanel';
 import { LibraryBrowser, FavoriteStar } from './LibraryBrowser';
 import {
-  PremiumCard, PremiumSheet, ProMark, ShelfNote, Waveform,
-  useAuditioning, usePremiumActivate, usePremiumSheet, usePremiumShelf,
+  PremiumCard, ProMark, ShelfNote, Waveform,
+  premiumLocked, useAuditioning, usePremiumActivate, usePremiumShelf,
 } from './LibraryCards';
 import cardStyles from './LibraryCards.module.css';
 import { auditionState, auditionUrl, stopAudition } from '@core/library/audition';
@@ -434,7 +434,6 @@ function TransitionTools(): JSX.Element {
 
 function TransitionsContent(): JSX.Element {
   const shelf = usePremiumShelf('transition');
-  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
   const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
   const categories = useMemo(() => orderedCategories(TRANSITION_CATEGORIES, entries), [entries]);
   return (
@@ -448,11 +447,10 @@ function TransitionsContent(): JSX.Element {
       >
         {(items) => (
           <div className={cardStyles.grid}>
-            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} />)}
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} />)}
           </div>
         )}
       </LibraryBrowser>
-      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
     </div>
   );
 }
@@ -478,24 +476,23 @@ function sfxCategoryLabel(cat: string): string {
   }
 }
 
-function SoundRow({ item, access, onLocked, onAudition }: {
+function SoundRow({ item, access, onAudition }: {
   item: PremiumCatalogItem;
   access: PremiumAccess;
-  onLocked: (item: PremiumCatalogItem) => void;
   onAudition: () => void;
 }): JSX.Element {
   const playing = useAuditioning(item.id);
   const busy = usePremiumLibraryStore((s) => s.busy.has(item.id));
-  const add = usePremiumActivate(item, access, onLocked);
-  const locked = access !== 'pro';
+  const add = usePremiumActivate(item, access);
+  const locked = premiumLocked(item, access);
   const name = item.name;
   return (
     <div
       className={cardStyles.soundRow}
       data-playing={playing}
       title={t('editor.library.sfx.rowTitle', '{name} — click to listen; + or drag to add at the playhead', { name })}
-      draggable={access === 'pro'}
-      onDragStart={(e) => { if (access === 'pro') setCanvasDrag(e, { kind: 'premium', itemId: item.id, name }); }}
+      draggable={!locked}
+      onDragStart={(e) => { if (!locked) setCanvasDrag(e, { kind: 'premium', itemId: item.id, name }); }}
       onClick={onAudition}
       onDoubleClick={() => { if (!busy) add(); }}
     >
@@ -516,7 +513,7 @@ function SoundRow({ item, access, onLocked, onAudition }: {
         <span className={cardStyles.meta}>{`${sfxCategoryLabel(catId(item.category))} · ${formatSeconds(item.durationSec)}`}</span>
       </span>
       <span className={cardStyles.rowAction}>
-        <ProMark locked={locked} />
+        {item.tier === 'cloud' && <ProMark locked={access !== 'pro'} />}
         <FavoriteStar id={item.id} label={name} />
         <button
           type="button"
@@ -536,7 +533,6 @@ function SoundRow({ item, access, onLocked, onAudition }: {
 function SoundFXContent(): JSX.Element {
   const notify = useUIStore((s) => s.notify);
   const shelf = usePremiumShelf('sfx');
-  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
   const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
   const categories = useMemo(() => orderedCategories(SFX_CATEGORIES, entries), [entries]);
 
@@ -565,12 +561,11 @@ function SoundFXContent(): JSX.Element {
         {(items) => (
           <div className={cardStyles.soundList}>
             {items.map((e) => (
-              <SoundRow key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} onAudition={() => toggle(e.item)} />
+              <SoundRow key={e.id} item={e.item} access={shelf.access} onAudition={() => toggle(e.item)} />
             ))}
           </div>
         )}
       </LibraryBrowser>
-      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
     </div>
   );
 }
@@ -595,7 +590,6 @@ function lottieCategoryLabel(cat: string): string {
 function LottieContent(): JSX.Element {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const shelf = usePremiumShelf('lottie');
-  const { sheetItem, openSheet, closeSheet } = usePremiumSheet();
   const entries = useMemo(() => shelfEntries(shelf.items), [shelf.items]);
   const categories = useMemo(() => orderedCategories(LOTTIE_CATEGORIES, entries), [entries]);
 
@@ -634,11 +628,10 @@ function LottieContent(): JSX.Element {
       >
         {(items) => (
           <div className={cardStyles.gridTight}>
-            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} onLocked={openSheet} square />)}
+            {items.map((e) => <PremiumCard key={e.id} item={e.item} access={shelf.access} square />)}
           </div>
         )}
       </LibraryBrowser>
-      {sheetItem && <PremiumSheet item={sheetItem} access={shelf.access} onClose={closeSheet} />}
     </div>
   );
 }

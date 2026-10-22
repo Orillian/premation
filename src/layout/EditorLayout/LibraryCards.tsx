@@ -8,10 +8,16 @@
  * downloads and inserts it; anyone else gets the Premium sheet — the loop
  * large, what the item is, what it lands as, and the way to get it. The
  * backend's 402 is the real gate; when the plan is not known yet the card
- * simply tries, and a refusal opens the sheet.
+ * simply tries, and a refusal opens the sheet. Free-tier items (the template
+ * tasters) are for everyone and carry no PRO mark.
+ *
+ * The sheet is ONE dialog over the app (`PremiumPromptHost`, opened through
+ * `proPromptStore`), so the card, a canvas drop and a timeline drop all land
+ * on the same "Get Premation Cloud" / "Sign in" prompt.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@components/Button';
 import { Icon } from '@components/Icon';
 import { t } from '@core/i18n';
@@ -22,11 +28,13 @@ import type { PremiumCatalogItem, PremiumKind } from '@core/library/premium/pack
 import { usePremiumAccess, useOpenBilling, useOpenSignIn, type PremiumAccess } from '@hooks/usePremiumAccess';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import { markLayerTransitionDrag } from '@layout/Timeline/transitionDrag';
+import { useEntitlementStore } from '@stores/entitlementStore';
 import { usePremiumLibraryStore } from '@stores/premiumLibraryStore';
+import { promptForPro, useProPromptStore } from '@stores/proPromptStore';
 import { useUIStore } from '@stores/uiStore';
 import { FavoriteStar } from './LibraryBrowser';
 export { Segmented, tierOptions, type SegOption, type TierFilter } from './LibraryBrowser';
-import { insertPremiumItem, PREMIUM_TRANSITION_PREFIX } from './premiumInsertEdits';
+import { insertPremiumItem, insertPremiumWithToast, PREMIUM_TRANSITION_PREFIX } from './premiumInsertEdits';
 import styles from './LibraryCards.module.css';
 
 export { styles as libraryCardStyles };
@@ -193,36 +201,41 @@ function metaLine(item: PremiumCatalogItem): string {
   return parts.join(' · ');
 }
 
+/** A Pro item this viewer is known not to have (the PRO mark carries a lock; no drag). */
+export function premiumLocked(item: Pick<PremiumCatalogItem, 'tier'>, access: PremiumAccess): boolean {
+  return item.tier === 'cloud' && (access === 'free' || access === 'signedOut');
+}
+
 /**
- * Insert a premium item from a card, or open the sheet when the account may
- * not. Shared by grid cards and sound rows.
+ * Insert a premium item from a card, or open the Pro dialog when the account
+ * may not. Shared by grid cards and sound rows.
  */
-export function usePremiumActivate(item: PremiumCatalogItem, access: PremiumAccess, onLocked: (item: PremiumCatalogItem) => void): () => void {
+export function usePremiumActivate(item: PremiumCatalogItem, access: PremiumAccess): () => void {
   const notify = useUIStore((s) => s.notify);
   return useCallback(() => {
-    if (access === 'free' || access === 'signedOut') {
-      onLocked(item);
+    if (premiumLocked(item, access)) {
+      promptForPro(item);
       return;
     }
     void insertPremiumItem(item).then((r) => {
       if (r.ok) notify({ level: 'success', message: r.message, durationMs: 2200 });
-      else if (r.code === 'plan-required' || r.code === 'signed-out') onLocked(item);
-      else notify({ level: 'warning', message: r.message, durationMs: 3400 });
+      // A plan refusal has opened the Pro dialog already.
+      else if (r.code !== 'plan-required' && r.code !== 'signed-out') notify({ level: 'warning', message: r.message, durationMs: 3400 });
     });
-  }, [access, item, notify, onLocked]);
+  }, [access, item, notify]);
 }
 
-export function PremiumCard({ item, access, onLocked, square = false }: {
+export function PremiumCard({ item, access, square = false }: {
   item: PremiumCatalogItem;
   access: PremiumAccess;
-  onLocked: (item: PremiumCatalogItem) => void;
   square?: boolean;
 }): JSX.Element {
   const { playing, bind } = useHoverPlay();
   const busy = usePremiumLibraryStore((s) => s.busy.has(item.id));
-  const activate = usePremiumActivate(item, access, onLocked);
-  const locked = access !== 'pro';
-  const canDrag = access === 'pro';
+  const activate = usePremiumActivate(item, access);
+  const locked = premiumLocked(item, access);
+  // An unknown plan may drag too: the drop goes through the same gate.
+  const canDrag = !locked;
   return (
     <button
       type="button"
@@ -245,7 +258,7 @@ export function PremiumCard({ item, access, onLocked, square = false }: {
     >
       <span className={square ? styles.thumbSquare : styles.thumb}>
         <PremiumThumb item={item} playing={playing} />
-        <ProMark locked={locked} onThumb />
+        {item.tier === 'cloud' && <ProMark locked={access !== 'pro'} onThumb />}
         {busy && (
           <span className={styles.busy} role="status">
             <span className={styles.spinner} aria-hidden />
@@ -360,10 +373,21 @@ function landsAs(item: PremiumCatalogItem): string {
   }
 }
 
+function kindNoun(item: PremiumCatalogItem): string {
+  switch (item.kind) {
+    case 'template': return t('editor.library.sheet.kindTemplate', 'template');
+    case 'lottie': return t('editor.library.sheet.kindLottie', 'animation');
+    case 'sfx': return item.category === 'music' ? t('editor.library.sheet.kindMusic', 'music track') : t('editor.library.sheet.kindSfx', 'sound');
+    case 'transition': return t('editor.library.sheet.kindTransition', 'transition');
+  }
+}
+
 /**
- * What a viewer without Premation Cloud sees on clicking a premium item. Over
- * the section (not a modal): Esc, the close button or a click on the scrim
- * dismiss it; focus is kept inside while it is open and returned after.
+ * What a viewer without Premation Cloud sees on asking for a premium item: a
+ * modal over the app. Esc, the close button or a click on the scrim dismiss
+ * it; focus is kept inside while it is open and returned after. Opening it
+ * re-asks the server for the plan, so an account upgraded a minute ago in the
+ * browser gets "Insert" instead of a second sales pitch.
  */
 export function PremiumSheet({ item, access, onClose }: {
   item: PremiumCatalogItem;
@@ -381,6 +405,10 @@ export function PremiumSheet({ item, access, onClose }: {
     return () => { previous?.focus?.(); };
   }, []);
 
+  useEffect(() => {
+    void useEntitlementStore.getState().refresh({ force: true });
+  }, [item.id]);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key === 'Escape') {
       e.stopPropagation();
@@ -396,14 +424,30 @@ export function PremiumSheet({ item, access, onClose }: {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
 
+  // Leave for sign-in or billing with the dialog closed, so it is not waiting on return.
+  const leaveVia = (go: () => void) => () => { onClose(); go(); };
+  const unlocked = !premiumLocked(item, access) && access !== 'unknown';
+
   let primary: ReactNode = null;
-  if (access === 'signedOut' && openSignIn) {
-    primary = <Button variant="primary" size="sm" onClick={openSignIn}>{t('editor.library.sheet.signIn', 'Sign in')}</Button>;
+  if (unlocked) {
+    primary = (
+      <Button variant="primary" size="sm" onClick={() => { onClose(); void insertPremiumWithToast(item); }}>
+        {t('editor.library.sheet.insert', 'Insert')}
+      </Button>
+    );
+  } else if (access === 'signedOut' && openSignIn) {
+    primary = <Button variant="primary" size="sm" onClick={leaveVia(openSignIn)}>{t('editor.library.sheet.signIn', 'Sign in')}</Button>;
   } else if (openBilling && salesOpen) {
-    primary = <Button variant="primary" size="sm" onClick={openBilling}>{t('editor.library.sheet.getCloud', 'Get Premation Cloud')}</Button>;
+    primary = <Button variant="primary" size="sm" onClick={leaveVia(openBilling)}>{t('editor.library.sheet.getCloud', 'Get Premation Cloud')}</Button>;
   } else if (openBilling) {
-    primary = <Button variant="secondary" size="sm" onClick={openBilling}>{t('editor.library.sheet.seePlans', 'See plans')}</Button>;
+    primary = <Button variant="secondary" size="sm" onClick={leaveVia(openBilling)}>{t('editor.library.sheet.seePlans', 'See plans')}</Button>;
   }
+
+  const pitch = unlocked
+    ? t('editor.library.sheet.unlocked', 'Your plan includes this {kind}.', { kind: kindNoun(item) })
+    : access === 'signedOut'
+      ? t('editor.library.sheet.pitchSignIn', 'This is a Pro {kind}. Sign in with a Premation Cloud account to use it.', { kind: kindNoun(item) })
+      : t('editor.library.sheet.pitch', 'This is a Pro {kind}. Upgrade to Premation Cloud to use it in your projects.', { kind: kindNoun(item) });
 
   const square = item.aspect === '1:1' || item.kind === 'lottie';
   const audio = item.kind === 'sfx' ? libraryMediaUrl(item.audio) : null;
@@ -434,8 +478,9 @@ export function PremiumSheet({ item, access, onClose }: {
         <div className={styles.sheetBody}>
           <div className={styles.sheetTitleRow}>
             <h3 id="premium-sheet-title" className={styles.sheetTitle}>{item.name}</h3>
-            <ProMark locked />
+            <ProMark locked={!unlocked} />
           </div>
+          <p className={styles.sheetText}>{pitch}</p>
           <p className={styles.sheetHelp}>
             {[item.category, item.kind === 'template' && item.width && item.height ? `${item.width}×${item.height}` : null, metaLine(item)].filter(Boolean).join(' · ')}
           </p>
@@ -463,14 +508,11 @@ export function PremiumSheet({ item, access, onClose }: {
   );
 }
 
-/** Sheet state for a section: which premium item it is showing, if any. */
-export function usePremiumSheet(): {
-  sheetItem: PremiumCatalogItem | null;
-  openSheet: (item: PremiumCatalogItem) => void;
-  closeSheet: () => void;
-} {
-  const [sheetItem, setSheetItem] = useState<PremiumCatalogItem | null>(null);
-  const openSheet = useCallback((item: PremiumCatalogItem) => setSheetItem(item), []);
-  const closeSheet = useCallback(() => setSheetItem(null), []);
-  return { sheetItem, openSheet, closeSheet };
+/** The editor's one Pro dialog (proPromptStore), mounted once beside the layout. */
+export function PremiumPromptHost(): JSX.Element | null {
+  const item = useProPromptStore((s) => s.item);
+  const close = useProPromptStore((s) => s.close);
+  const access = usePremiumAccess();
+  if (!item) return null;
+  return createPortal(<PremiumSheet key={item.id} item={item} access={access} onClose={close} />, document.body);
 }

@@ -314,14 +314,16 @@
 
 /* ── The Premium sheet ───────────────────────────────────── */
 
+/* Over the whole app (PremiumPromptHost portals it to <body>): a drop on the
+   canvas or the timeline opens it too, and a narrow sidebar has no room. */
 .scrim {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: var(--z-index-overlay);
+  z-index: var(--z-index-modal);
   display: flex;
-  align-items: flex-start;
+  align-items: safe center;
   justify-content: center;
-  padding: 10px 8px;
+  padding: 24px 16px;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.55);
   animation: libFade var(--motion-duration-base) var(--motion-ease-standard);

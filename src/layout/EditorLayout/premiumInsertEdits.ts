@@ -11,15 +11,23 @@
  *   sfx        → insertSfxBytesEdit
  *   transition → applyTransitionSpecEdit (layer mode only)
  *
- * Every outcome is worded here, once, for a toast.
+ * Every outcome is worded here, once, for a toast. Before any of it, the
+ * plan gate (`premiumGate`): a Pro item asked for by an account that may not
+ * have it opens the Pro dialog instead — on every path, so a drop or a
+ * shortcut cannot slip past what the card refuses. The backend's 402 stays
+ * the real paywall, and a 402 opens the same dialog.
  */
 
 import { flicksToSeconds } from '@motion/engine-api';
+import { isAuthenticated } from '@core/api/client';
+import { billingEnabled } from '@core/config/edition';
 import { t } from '@core/i18n';
 import type { PremiumCatalogItem } from '@core/library/premium/packFormat';
 import { getPremiumPayload, PremiumError } from '@core/library/premium/payload';
 import { documentMirror } from '@stores/documentMirror';
+import { isPaidPlan, useEntitlementStore } from '@stores/entitlementStore';
 import { usePremiumLibraryStore } from '@stores/premiumLibraryStore';
+import { promptForPro } from '@stores/proPromptStore';
 import { useTemplateStore } from '@stores/templateStore';
 import { useUIStore } from '@stores/uiStore';
 import { insertLottieDocEdit } from './lottieInsertEdits';
@@ -56,8 +64,37 @@ function errorOutcome(item: PremiumCatalogItem, e: unknown): PremiumInsertOutcom
   return { ok: false, code: 'failed', message: t('editor.library.premium.failed', 'Could not get {name}: {reason}', { name: item.name, reason: (e as Error)?.message ?? String(e) }) };
 }
 
-/** Insert `item`. Never throws; the outcome says what happened in words. */
+/**
+ * May this account have `item`? Free-tier items are for anyone (the backend
+ * serves them without a plan), and the local edition has no paywall. A plan not
+ * fetched yet is fetched once; if it still is not known (offline), the server's
+ * answer decides.
+ */
+export async function premiumGate(item: Pick<PremiumCatalogItem, 'tier'>): Promise<'allowed' | 'plan-required' | 'signed-out'> {
+  if (item.tier === 'free' || !billingEnabled()) return 'allowed';
+  if (!isAuthenticated()) return 'signed-out';
+  const entitlement = useEntitlementStore.getState();
+  if (!entitlement.access) await entitlement.refresh();
+  const access = useEntitlementStore.getState().access;
+  if (!access) return 'allowed';
+  return isPaidPlan(access) ? 'allowed' : 'plan-required';
+}
+
+function lockedOutcome(item: PremiumCatalogItem, code: 'plan-required' | 'signed-out'): PremiumInsertOutcome {
+  promptForPro(item);
+  return code === 'signed-out'
+    ? { ok: false, code, message: t('editor.library.premium.signIn', 'Sign in to use {name}.', { name: item.name }) }
+    : { ok: false, code, message: t('editor.library.premium.planRequired', '{name} comes with Premation Cloud.', { name: item.name }) };
+}
+
+/**
+ * Insert `item`. Never throws; the outcome says what happened in words. A
+ * plan refusal (`plan-required` / `signed-out`) has already opened the Pro
+ * dialog, so callers must not toast it as well.
+ */
 export async function insertPremiumItem(item: PremiumCatalogItem, opts: PremiumInsertOptions = {}): Promise<PremiumInsertOutcome> {
+  const gate = await premiumGate(item);
+  if (gate !== 'allowed') return lockedOutcome(item, gate);
   // A transition with nothing to key is refused BEFORE the download, so the hint is instant.
   if (item.kind === 'transition' && !opts.layerDrop && !hasLayerTransitionTargets()) {
     return {
@@ -74,7 +111,10 @@ export async function insertPremiumItem(item: PremiumCatalogItem, opts: PremiumI
     try {
       payload = await getPremiumPayload(item);
     } catch (e) {
-      return errorOutcome(item, e);
+      const r = errorOutcome(item, e);
+      // The server is the paywall: its refusal opens the same dialog.
+      if (!r.ok && (r.code === 'plan-required' || r.code === 'signed-out')) return lockedOutcome(item, r.code);
+      return r;
     }
     const failed: PremiumInsertOutcome = { ok: false, code: 'failed', message: t('editor.library.premium.couldNotInsert', 'Could not insert {name}', { name: item.name }) };
     switch (payload.kind) {
@@ -111,6 +151,7 @@ export async function insertPremiumItem(item: PremiumCatalogItem, opts: PremiumI
 /** Insert and toast the outcome (canvas and timeline drops; the cards toast themselves). */
 export async function insertPremiumWithToast(item: PremiumCatalogItem, opts: PremiumInsertOptions = {}): Promise<PremiumInsertOutcome> {
   const r = await insertPremiumItem(item, opts);
+  if (!r.ok && (r.code === 'plan-required' || r.code === 'signed-out')) return r;
   useUIStore.getState().notify(r.ok
     ? { level: 'success', message: r.message, durationMs: 2000 }
     : { level: 'warning', message: r.message, durationMs: 3200 });
