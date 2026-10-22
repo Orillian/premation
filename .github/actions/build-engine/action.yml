@@ -29,6 +29,10 @@ inputs:
     description: Run ctest for the preset after building ('true' / 'false')
     required: false
     default: 'false'
+  target:
+    description: Build only this CMake target (e.g. premation-release, what a release ships); empty builds everything. Not with test.
+    required: false
+    default: ''
 
 outputs:
   engine-dir:
@@ -125,7 +129,7 @@ runs:
     - name: Build
       shell: bash
       working-directory: native
-      run: cmake --build --preset ${{ inputs.preset }}
+      run: cmake --build --preset ${{ inputs.preset }} ${{ inputs.target != '' && format('--target {0}', inputs.target) || '' }}
 
     - name: Test
       if: inputs.test == 'true'

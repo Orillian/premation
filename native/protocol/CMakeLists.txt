@@ -30,7 +30,9 @@ option(PROTOCOL_BUILD_BENCH "Build the codec benchmark" ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/warnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/sanitizers.cmake)
 
-add_library(premation_protocol STATIC generated/engine_api.cpp)
+# engine_api.cpp + a TU per big union (packages/engine-api/codegen/generate.cjs).
+include(${CMAKE_CURRENT_SOURCE_DIR}/generated/engine_api_sources.cmake)
+add_library(premation_protocol STATIC ${PREMATION_PROTOCOL_GENERATED_SOURCES})
 add_library(premation::protocol ALIAS premation_protocol)
 target_include_directories(premation_protocol PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include

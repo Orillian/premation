@@ -3452,8 +3452,14 @@ struct JobSpec {
     depth_estimate = 1721,
   };
   std::variant<TrackMotionJob, StabilizeJob, AutoTraceJob, SceneDetectJob, ObjectMatteJob, TranscribeJob, AudioAnalysisJob, RenderJob, PrerenderJob, ProxyJob, AudioDuckJob, AudioGateJob, TrackApplyJob, RotoBrushJob, ContentAwareFillJob, AutoReframeJob, RigLogoJob, PhysicsBakeJob, ParticleBakeJob, CameraTrackJob, FaceTrackJob, ModelImportJob, DepthEstimateJob> v;
+  JobSpec();
+  JobSpec(const JobSpec&);
+  JobSpec(JobSpec&&) noexcept;
+  JobSpec& operator=(const JobSpec&);
+  JobSpec& operator=(JobSpec&&) noexcept;
+  ~JobSpec();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const JobSpec&) const = default;
+  bool operator==(const JobSpec&) const;
 };
 
 struct StartJob {
@@ -3694,8 +3700,14 @@ struct Command {
     run_plugin_command = 873,
   };
   std::variant<Undo, Redo, JumpToHistory, BeginGesture, EndGesture, ClearHistory, SetHistoryLimit, AddHistoryCheckpoint, RestoreDocument, NewProject, OpenProject, SaveProject, ImportProject, SetProjectSettings, RevertProject, CollectFiles, SetAutosave, SetGuides, SetSwatches, SetMaterials, SetMotionBlur, SetColorManagement, ImportFiles, ImportBytes, RelinkItem, ReloadItems, RemoveItems, RenameItem, CreateFolder, MoveItems, SetInterpretation, SetItemLabel, RemoveUnusedItems, SetProxy, SetItemComment, SetItemTags, CreateComposition, DuplicateComposition, SetCompositionSettings, SetWorkArea, ClearWorkArea, Precompose, TrimCompToWorkArea, CropComposition, AssembleComposition, MigrateLegacyPrecomps, SetEssentialProp, AddRenderItems, SetRenderItem, RemoveRenderItems, ReorderRenderItems, CreateLayer, DeleteLayers, DuplicateLayers, ReorderLayers, SetParent, RenameLayer, SetLayerSwitches, SetBlendMode, SetTrackMatte, ReplaceLayerSource, GroupLayers, UngroupLayer, ConvertLayer, PasteLayers, SeparateLayer, AutoTrace, SetLayerComment, SetPinnedProperties, PoseIk3D, BakeIk3D, CreateLiveMerge, SetLayerTiming, MoveLayersInTime, TrimLayers, SlipLayers, SlideLayer, RollEdit, SplitLayers, RippleDeleteLayers, EditWorkArea, InsertGap, TimeReverseLayers, SetTimeRemap, FreezeFrame, SetRetime, SequenceLayers, TimeStretchLayers, UnfreezeLayers, RippleDeleteRange, LiftRange, ShiftLayerKeyframes, AddTransition, SetTransition, RemoveTransitions, SetProperty, SetProperties, ResetProperty, SetAnimated, SetDimensionsSeparated, SetExpression, SetExpressionEnabled, ConvertExpressionToKeyframes, LinkProperty, AddKeyframes, DeleteKeyframes, MoveKeyframes, UpdateKeyframes, ScaleKeyframes, ReverseKeyframes, PasteKeyframes, SetKeyframes, SetMemberKeyframes, AddEffect, AddMask, AddPropertyGroup, RemovePropertyGroups, MovePropertyGroup, DuplicatePropertyGroups, SetGroupEnabled, RenamePropertyGroup, CopyPropertyGroups, ApplyPreset, InvokeEffectAction, DragEffectOverlay, AddProperties, RemoveProperties, PasteEffects, RemoveStroke, AddPaintStroke, UpdatePaintStroke, RemovePaintStrokes, SetPaintOnTransparent, SetPaintStrokePath, SetPaintPathAnimated, EditPathTopology, SetShapeOutline, AddMarkers, UpdateMarkers, DeleteMarkers, MoveMarkers, Play, Pause, Seek, Step, SetLoop, SetPreviewQuality, SetAudioPreview, SetActiveComposition, SetViewport, CloseViewport, SetCacheBudget, PurgeCache, SetInteracting, SetViewportHiddenLayers, SetViewportFocus, SetViewerLut, SetOverlayGeometry, SetLayerTrackers, SetCameraSolve, SetLayerMatte, StartJob, CancelJob, ApplyJobResult, SetContentAwareFill, SetCaptions, SetPluginEnabled, RescanPlugins, SetPluginData, RunPluginCommand> v;
+  Command();
+  Command(const Command&);
+  Command(Command&&) noexcept;
+  Command& operator=(const Command&);
+  Command& operator=(Command&&) noexcept;
+  ~Command();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const Command&) const = default;
+  bool operator==(const Command&) const;
 };
 
 struct GetLayerTrackers {
@@ -4099,8 +4111,14 @@ struct Query {
     get_cache_coverage = 1089,
   };
   std::variant<GetLayerTrackers, GetCameraSolve, ListPluginCommands, GetDocument, ExportDocument, GetComposition, GetLayers, GetPropertyTree, GetPropertyValues, SampleProperty, GetKeyframes, GetMotionPath, GetMarkers, CopyLayers, CopyKeyframes, GetMemberKeyframes, CopyEffects, GetSearchFacts, GetDocumentColors, GetCaptionCues, MapLayerTime, GetSourceSize, CheckPrecompose, GetTimelineRows, GetRigPose, SampleCamera, GetWaveform, ListFonts, GetItems, GetSvgDocument, GetCryptomatte, GetThumbnail, RenderDocumentStill, ListEffects, ListGroupTypes, ListPresets, CapturePreset, GetCapabilities, ListPlugins, GetEffectUi, GetLayerFaces, HitTest, GetLayerBounds, GetLayerTransforms, GetTextLayout, EvaluateExpression, ReadPixels, FindLayers, GetDependencies, GetHistory, GetRenderStats, GetLayerErrors, GetJobs, GetRenderQueue, GetCommandLog, GetCacheCoverage> v;
+  Query();
+  Query(const Query&);
+  Query(Query&&) noexcept;
+  Query& operator=(const Query&);
+  Query& operator=(Query&&) noexcept;
+  ~Query();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const Query&) const = default;
+  bool operator==(const Query&) const;
 };
 
 struct CommandBatch {
@@ -4116,8 +4134,14 @@ struct RequestBody {
     batch = 3,
   };
   std::variant<Command, Query, CommandBatch> v;
+  RequestBody();
+  RequestBody(const RequestBody&);
+  RequestBody(RequestBody&&) noexcept;
+  RequestBody& operator=(const RequestBody&);
+  RequestBody& operator=(RequestBody&&) noexcept;
+  ~RequestBody();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const RequestBody&) const = default;
+  bool operator==(const RequestBody&) const;
 };
 
 struct Request {
@@ -4533,8 +4557,14 @@ struct CommandResult {
     run_plugin_command = 873,
   };
   std::variant<HistoryStep, HistoryStep, HistoryStep, GestureRef, Empty, Empty, Empty, Empty, Empty, Empty, OpenProjectResult, SaveProjectResult, ImportProjectResult, Empty, Empty, SaveProjectResult, Empty, Empty, Empty, Empty, Empty, Empty, ItemList, ItemList, Empty, Empty, Empty, Empty, ItemRef, Empty, Empty, Empty, ItemList, Empty, Empty, Empty, ItemRef, ItemRef, Empty, Empty, Empty, PrecomposeResult, Empty, Empty, ItemRef, ItemList, Empty, RenderItemList, Empty, Empty, Empty, LayerRef, Empty, LayerList, Empty, Empty, RenameLayerResult, Empty, Empty, Empty, Empty, LayerRef, LayerList, LayerList, LayerList, LayerList, GroupList, Empty, Empty, IkResult, IkResult, LayerRef, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, Empty, LayerList, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, TimeRangeEdit, Empty, TransitionRef, Empty, Empty, PropertyWriteResult, Empty, Empty, PropertyWriteResult, Empty, ExpressionResult, Empty, KeyframeIds, Empty, KeyframeIds, Empty, Empty, Empty, Empty, Empty, KeyframeIds, KeyframeIds, Empty, GroupList, GroupList, GroupList, Empty, Empty, GroupList, Empty, Empty, GroupList, GroupList, Empty, Empty, PropertyPaths, Empty, GroupList, Empty, PaintStrokeId, Empty, Empty, Empty, Empty, Empty, Empty, Empty, MarkerIds, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, JobRef, Empty, ItemList, Empty, LayerList, Empty, PluginList, Empty, PluginCommandResult> v;
+  CommandResult();
+  CommandResult(const CommandResult&);
+  CommandResult(CommandResult&&) noexcept;
+  CommandResult& operator=(const CommandResult&);
+  CommandResult& operator=(CommandResult&&) noexcept;
+  ~CommandResult();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const CommandResult&) const = default;
+  bool operator==(const CommandResult&) const;
 };
 
 struct LayerTrackers {
@@ -5509,8 +5539,14 @@ struct QueryResult {
     get_cache_coverage = 1089,
   };
   std::variant<LayerTrackers, CameraSolveAnswer, PluginCommandList, DocumentSnapshot, ExportedDocument, CompositionDetails, LayerDetails, PropertyTree, PropertyValues, PropertySamples, KeyframeSets, PropertySamples, MarkerList, DocumentFragment, KeyframeSets, MemberTracks, CopiedEffects, SearchFactsList, DocumentColors, CaptionCues, MappedTime, SourceSizes, PrecomposeCheck, TimelineRowSets, RigPose, CameraSamples, WaveformPeaks, FontList, ItemDetails, SvgDocument, CryptomatteInfo, Thumbnail, Thumbnail, EffectCatalog, GroupTypeList, PresetList, CapturedPreset, Capabilities, PluginList, EffectUi, LayerFaces, HitResult, LayerBoundsList, LayerTransformList, TextLayout, ExpressionEvaluation, PixelSamples, LayerList, Dependencies, HistoryState, RenderStats, LayerErrorList, JobList, RenderQueueState, CommandLog, CacheCoverage> v;
+  QueryResult();
+  QueryResult(const QueryResult&);
+  QueryResult(QueryResult&&) noexcept;
+  QueryResult& operator=(const QueryResult&);
+  QueryResult& operator=(QueryResult&&) noexcept;
+  ~QueryResult();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const QueryResult&) const = default;
+  bool operator==(const QueryResult&) const;
 };
 
 struct BatchResult {
@@ -5537,8 +5573,14 @@ struct Outcome {
     error = 4,
   };
   std::variant<CommandResult, QueryResult, BatchResult, EngineError> v;
+  Outcome();
+  Outcome(const Outcome&);
+  Outcome(Outcome&&) noexcept;
+  Outcome& operator=(const Outcome&);
+  Outcome& operator=(Outcome&&) noexcept;
+  ~Outcome();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const Outcome&) const = default;
+  bool operator==(const Outcome&) const;
 };
 
 struct Response {
@@ -5778,8 +5820,14 @@ struct Event {
     autosaved = 2063,
   };
   std::variant<DocumentResetEvent, ProjectSettingsChangedEvent, ItemsChangedEvent, ItemsRemovedEvent, CompositionChangedEvent, LayersChangedEvent, LayersRemovedEvent, LayerOrderChangedEvent, PropertiesChangedEvent, KeyframesChangedEvent, PropertyGroupsChangedEvent, MarkersChangedEvent, RenderQueueChangedEvent, TransitionsChangedEvent, GuidesChangedEvent, SwatchesChangedEvent, MaterialsChangedEvent, MotionBlurChangedEvent, ColorManagementChangedEvent, HistoryChangedEvent, DirtyChangedEvent, TransportChangedEvent, PlayheadEvent, RenderStatsUpdatedEvent, CacheChangedEvent, EngineErrorEvent, LayerErrorsEvent, JobProgressEvent, JobFinishedEvent, ProjectSavedEvent, AssetStatusChangedEvent, FontsChangedEvent, AutosavedEvent> v;
+  Event();
+  Event(const Event&);
+  Event(Event&&) noexcept;
+  Event& operator=(const Event&);
+  Event& operator=(Event&&) noexcept;
+  ~Event();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const Event&) const = default;
+  bool operator==(const Event&) const;
 };
 
 struct EventBatch {
@@ -5808,8 +5856,14 @@ struct EngineMessage {
     log_record = 1006,
   };
   std::variant<Hello, Welcome, Request, Response, EventBatch, Goodbye, LogRecord> v;
+  EngineMessage();
+  EngineMessage(const EngineMessage&);
+  EngineMessage(EngineMessage&&) noexcept;
+  EngineMessage& operator=(const EngineMessage&);
+  EngineMessage& operator=(EngineMessage&&) noexcept;
+  ~EngineMessage();
   [[nodiscard]] Kind kind() const noexcept;
-  bool operator==(const EngineMessage&) const = default;
+  bool operator==(const EngineMessage&) const;
 };
 
 struct FrameSlots {

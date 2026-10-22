@@ -2550,6 +2550,6 @@ from the struct's maximum + 800.
 | `packages/engine-api/bench/` | `npm run engine-api:bench` (set `ENGINE_API_BENCH_EXTRA` to an adapter module to add a comparator). |
 | `packages/engine-api/bench/flatbuffers-eval/` | The FlatBuffers twin used in §9.3 (`bench.fbs`, the C++ bench). The TS side was an esbuild-bundled adapter mapping the plain payloads onto flatc's `*T` object-API classes, passed via `ENGINE_API_BENCH_EXTRA`; flatc came from vcpkg at the repo baseline. Not built by anything. |
 | `native/protocol/include/premation/protocol/wire.hpp` | Hand-written C++ runtime. |
-| `native/protocol/generated/{engine_api.hpp,engine_api.cpp,fixtures.inc}` | Generated C++ (do not edit). |
+| `native/protocol/generated/{engine_api.hpp,engine_api.cpp,engine_api_<union>.cpp,engine_api_sources.cmake,fixtures.inc}` | Generated C++ (do not edit). The unions over 64 alternatives (Command, CommandResult) get their special members in a TU of their own; `engine_api_sources.cmake` lists the sources for CMake. |
 | `native/protocol/{CMakeLists.txt,CMakePresets.json,build.mjs}` | Separate CMake project (no vcpkg packages); `npm run protocol:build` configures, builds, tests; `--bench` runs the codec benchmark. |
 | `native/protocol/tests/test_protocol.cpp`, `bench/bench_protocol.cpp` | C++ round trip of every fixture; C++ benchmark. |

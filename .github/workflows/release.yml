@@ -166,11 +166,17 @@ jobs:
   # (macos-clang-engine-x64); electron-builder's beforePack
   # (scripts/stageEngine.cjs) stages the engine matching each dmg's arch and
   # FAILS the package if it is missing.
+  #
+  # Only the `premation-release` target is built (native/engine/CMakeLists.txt):
+  # the engine, the host bridge and premation-plugins for the SDK — not the test
+  # suites, the fuzzer or the tools, which native.yml builds and runs. 330 min:
+  # a vcpkg cache miss on the 3-core macOS runner adds ~2 h of Dawn / Skia /
+  # ffmpeg from source.
   engine:
     name: Engine ${{ matrix.name }}
     needs: verify
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 240
+    timeout-minutes: 330
     strategy:
       fail-fast: true
       matrix:
@@ -201,6 +207,7 @@ jobs:
           triplet: ${{ matrix.triplet }}
           # native/vcpkg.json builtin-baseline (the same pin native.yml uses).
           vcpkg-commit: c76c06644034521fb761a39f8f52d8e87d1103d5
+          target: premation-release
       - name: Upload the engine
         uses: actions/upload-artifact@v4
         with:

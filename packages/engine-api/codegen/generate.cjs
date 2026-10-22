@@ -13,6 +13,8 @@
  *                                                  (from native/engine/catalog/*.json)
  *   native/protocol/generated/engine_api.hpp       C++ structs + codec declarations
  *   native/protocol/generated/engine_api.cpp       C++ codec
+ *   native/protocol/generated/engine_api_<union>.cpp   a big union's special members, alone in a TU
+ *   native/protocol/generated/engine_api_sources.cmake the generated C++ sources, for CMake
  *   native/protocol/generated/fixtures.inc         cross-language round-trip vectors
  *   native/protocol/generated/commands.json        command id / kind / name, for the C++ catalog
  *   electron/generated/frameChannel.ts             the FrameChannel family, standalone (Electron main)
@@ -997,6 +999,72 @@ function cppDefault(model, n) {
   }
 }
 
+/**
+ * Unions whose special members (and ==) are defined once in the generated
+ * sources, not implicitly in every translation unit that copies, moves or
+ * destroys one. The big unions nest (EngineMessage → Request → Command … →
+ * Value), so one implicit copy of a Response instantiates and optimises
+ * std::variant machinery over hundreds of alternatives: that alone made
+ * engine/src/cli_prepare.cpp a ~100 s, 5.4 GB TU (tens of minutes on the 7 GB
+ * macOS runner). Value and FrameChannelMessage stay inline: small, and copied
+ * on per-sample / per-frame paths where an out-of-line call would cost.
+ *
+ * A union of more than CPP_OWN_TU_ALTERNATIVES alternatives gets its members in
+ * a translation unit of its own (engine_api_<name>.cpp): Command's alone take
+ * ~2.9 GB of compiler memory, CommandResult's ~2.6 GB, and together with the
+ * codec in engine_api.cpp they made one 5.6 GB TU.
+ */
+const CPP_INLINE_UNIONS = new Set(['Value', 'FrameChannelMessage']);
+const CPP_OWN_TU_ALTERNATIVES = 64;
+const cppOutOfLineUnion = (n) => !CPP_INLINE_UNIONS.has(n);
+const cppOwnTuUnions = (model) =>
+  [...model.unions.values()].filter((u) => cppOutOfLineUnion(u.name) && u.variants.length > CPP_OWN_TU_ALTERNATIVES).map((u) => u.name);
+const cppUnionSourceName = (n) => `engine_api_${n.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}.cpp`;
+
+function cppUnionMembers(n) {
+  return [
+    `${n}::${n}() = default;`,
+    `${n}::${n}(const ${n}&) = default;`,
+    `${n}::${n}(${n}&&) noexcept = default;`,
+    `${n}& ${n}::operator=(const ${n}&) = default;`,
+    `${n}& ${n}::operator=(${n}&&) noexcept = default;`,
+    `${n}::~${n}() = default;`,
+    `bool ${n}::operator==(const ${n}&) const = default;`,
+  ];
+}
+
+/** engine_api_<name>.cpp: one big union's special members, alone in their TU. */
+function genCppUnionSource(n) {
+  const L = [];
+  L.push(`// ${HEADER_NOTE}`);
+  L.push('//');
+  L.push(`// ${n}'s special members and ==, in a translation unit of their own (std::variant over`);
+  L.push('// its alternatives is the most expensive code in the protocol to compile).');
+  L.push('');
+  L.push('#include "engine_api.hpp"');
+  L.push('');
+  L.push('namespace premation::api {');
+  L.push('');
+  L.push(...cppUnionMembers(n));
+  L.push('');
+  L.push('}  // namespace premation::api');
+  return L.join('\n') + '\n';
+}
+
+/** engine_api_sources.cmake: every generated C++ source, for the CMake targets that compile the codec. */
+function genCppSourcesCmake(model) {
+  const L = [];
+  L.push(`# ${HEADER_NOTE}`);
+  L.push('#');
+  L.push('# The generated C++ sources (engine_api.cpp + a TU per big union), for');
+  L.push('# include() by native/engine and native/protocol.');
+  L.push('set(PREMATION_PROTOCOL_GENERATED_SOURCES');
+  L.push('  ${CMAKE_CURRENT_LIST_DIR}/engine_api.cpp');
+  for (const n of cppOwnTuUnions(model)) L.push(`  \${CMAKE_CURRENT_LIST_DIR}/${cppUnionSourceName(n)}`);
+  L.push(')');
+  return L.join('\n') + '\n';
+}
+
 /** Topological order so by-value members are complete; list edges are soft (std::vector allows incomplete T). */
 function cppOrder(model) {
   const deps = new Map();
@@ -1094,8 +1162,19 @@ function genCppHeader(model) {
       for (const v of vs) L.push(`    ${cppIdent(v.name)} = ${v.num},`);
       L.push('  };');
       L.push(`  std::variant<${vs.map((v) => (v.type === 'void' ? 'std::monostate' : cppT(model, v.type))).join(', ')}> v;`);
-      L.push(`  [[nodiscard]] Kind kind() const noexcept;`);
-      L.push(`  bool operator==(const ${n}&) const = default;`);
+      if (cppOutOfLineUnion(n)) {
+        L.push(`  ${n}();`);
+        L.push(`  ${n}(const ${n}&);`);
+        L.push(`  ${n}(${n}&&) noexcept;`);
+        L.push(`  ${n}& operator=(const ${n}&);`);
+        L.push(`  ${n}& operator=(${n}&&) noexcept;`);
+        L.push(`  ~${n}();`);
+        L.push(`  [[nodiscard]] Kind kind() const noexcept;`);
+        L.push(`  bool operator==(const ${n}&) const;`);
+      } else {
+        L.push(`  [[nodiscard]] Kind kind() const noexcept;`);
+        L.push(`  bool operator==(const ${n}&) const = default;`);
+      }
       L.push('};');
     }
     L.push('');
@@ -1120,6 +1199,7 @@ function genCppHeader(model) {
 
 function genCppSource(model) {
   const L = [];
+  const ownTu = new Set(cppOwnTuUnions(model));
   L.push(`// ${HEADER_NOTE}`);
   L.push('');
   L.push('#include "engine_api.hpp"');
@@ -1272,6 +1352,10 @@ function genCppSource(model) {
     } else {
       const u = model.unions.get(n);
       const vs = u.variants;
+      if (cppOutOfLineUnion(n) && !ownTu.has(n)) {
+        L.push(...cppUnionMembers(n));
+        L.push('');
+      }
       L.push(`${n}::Kind ${n}::kind() const noexcept {`);
       L.push(`  static constexpr std::array<Kind, ${vs.length}> kKinds = {${vs.map((v) => `Kind::${cppIdent(v.name)}`).join(', ')}};`);
       L.push('  return kKinds[v.index()];');
@@ -1578,7 +1662,10 @@ function loadSchema(dir = SCHEMA_DIR) {
 
 /** Every generated file: absolute path → contents. */
 function generateAll(model = loadSchema()) {
+  const unionSources = Object.fromEntries(cppOwnTuUnions(model).map((n) => [join(CPP_OUT, cppUnionSourceName(n)), genCppUnionSource(n)]));
   return {
+    ...unionSources,
+    [join(CPP_OUT, 'engine_api_sources.cmake')]: genCppSourcesCmake(model),
     [join(TS_OUT, 'types.ts')]: genTsTypes(model),
     [join(TS_OUT, 'codec.ts')]: genTsCodec(model),
     [join(TS_OUT, 'meta.ts')]: genTsMeta(model),

@@ -23,7 +23,9 @@ set(PROTOCOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../protocol)
 find_package(Dawn CONFIG QUIET)
 
 # ── protocol ────────────────────────────────────────────────────────────────
-add_library(engine_protocol STATIC ${PROTOCOL_DIR}/generated/engine_api.cpp)
+# engine_api.cpp + a TU per big union (packages/engine-api/codegen/generate.cjs).
+include(${PROTOCOL_DIR}/generated/engine_api_sources.cmake)
+add_library(engine_protocol STATIC ${PREMATION_PROTOCOL_GENERATED_SOURCES})
 target_include_directories(engine_protocol PUBLIC ${PROTOCOL_DIR}/include ${PROTOCOL_DIR}/generated)
 target_compile_features(engine_protocol PUBLIC cxx_std_20)
 target_link_libraries(engine_protocol PRIVATE motion::options)
@@ -346,7 +348,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t*, std::size_t) { return
     # motion_eval is compiled in (not linked) so everything shares one CRT:
     # the Windows libFuzzer runtime is static-CRT (/MT), the libraries are /MD.
     set(_eval_dir ${CMAKE_CURRENT_SOURCE_DIR}/../libs/motion_eval)
-    add_executable(engine_fuzz tests/fuzz_protocol.cpp ${ENGINE_CORE_SOURCES} ${PROTOCOL_DIR}/generated/engine_api.cpp
+    add_executable(engine_fuzz tests/fuzz_protocol.cpp ${ENGINE_CORE_SOURCES} ${PREMATION_PROTOCOL_GENERATED_SOURCES}
                    ${_eval_dir}/eval.cpp ${_eval_dir}/motion_eval.cpp ${_eval_dir}/motion_abi.cpp)
     target_include_directories(engine_fuzz PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/core
@@ -1493,4 +1495,18 @@ if(MOTION_ASAN_RUNTIME_DIR)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${MOTION_ASAN_RUNTIME_DIR}/clang_rt.asan_dynamic-x86_64.dll" "${CMAKE_CURRENT_BINARY_DIR}"
     VERBATIM)
+endif()
+
+# premation-release: only what a release ships, for release.yml's engine job
+# (.github/actions/build-engine `target`): the engine (+ the DXC copy beside it),
+# the host bridge where it is built, and the SDK artifact's premation-plugins
+# (`cmake --install --component sdk` needs it built). `all` also builds every
+# Catch2 suite, engine_fuzz (engine_core compiled a second time), the sample
+# bundles and the bench / proto tools, which a release never runs.
+if(TARGET premation-engine)
+  add_custom_target(premation-release)
+  add_dependencies(premation-release premation-engine premation-plugins)
+  if(TARGET premation-host-bridge)
+    add_dependencies(premation-release premation-host-bridge)
+  endif()
 endif()

@@ -12785,6 +12785,14 @@ Status decode(wire::Reader& r, DepthEstimateJob& out) {
   return Status::ok;
 }
 
+JobSpec::JobSpec() = default;
+JobSpec::JobSpec(const JobSpec&) = default;
+JobSpec::JobSpec(JobSpec&&) noexcept = default;
+JobSpec& JobSpec::operator=(const JobSpec&) = default;
+JobSpec& JobSpec::operator=(JobSpec&&) noexcept = default;
+JobSpec::~JobSpec() = default;
+bool JobSpec::operator==(const JobSpec&) const = default;
+
 JobSpec::Kind JobSpec::kind() const noexcept {
   static constexpr std::array<Kind, 23> kKinds = {Kind::track_motion, Kind::stabilize, Kind::auto_trace, Kind::scene_detect, Kind::object_matte, Kind::transcribe, Kind::audio_analysis, Kind::render, Kind::prerender, Kind::proxy, Kind::audio_duck, Kind::audio_gate, Kind::track_apply, Kind::roto_brush, Kind::content_aware_fill, Kind::auto_reframe, Kind::rig_logo, Kind::physics_bake, Kind::particle_bake, Kind::camera_track, Kind::face_track, Kind::model_import, Kind::depth_estimate};
   return kKinds[v.index()];
@@ -16698,6 +16706,14 @@ Status decode(wire::Reader& r, GetCacheCoverage& out) {
   return Status::ok;
 }
 
+Query::Query() = default;
+Query::Query(const Query&) = default;
+Query::Query(Query&&) noexcept = default;
+Query& Query::operator=(const Query&) = default;
+Query& Query::operator=(Query&&) noexcept = default;
+Query::~Query() = default;
+bool Query::operator==(const Query&) const = default;
+
 Query::Kind Query::kind() const noexcept {
   static constexpr std::array<Kind, 56> kKinds = {Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage};
   return kKinds[v.index()];
@@ -17256,6 +17272,14 @@ Status decode(wire::Reader& r, CommandBatch& out) {
   if (!has_label) return Status::missing_field;
   return Status::ok;
 }
+
+RequestBody::RequestBody() = default;
+RequestBody::RequestBody(const RequestBody&) = default;
+RequestBody::RequestBody(RequestBody&&) noexcept = default;
+RequestBody& RequestBody::operator=(const RequestBody&) = default;
+RequestBody& RequestBody::operator=(RequestBody&&) noexcept = default;
+RequestBody::~RequestBody() = default;
+bool RequestBody::operator==(const RequestBody&) const = default;
 
 RequestBody::Kind RequestBody::kind() const noexcept {
   static constexpr std::array<Kind, 3> kKinds = {Kind::command, Kind::query, Kind::batch};
@@ -25625,6 +25649,14 @@ Status decode(wire::Reader& r, CacheCoverage& out) {
   return Status::ok;
 }
 
+QueryResult::QueryResult() = default;
+QueryResult::QueryResult(const QueryResult&) = default;
+QueryResult::QueryResult(QueryResult&&) noexcept = default;
+QueryResult& QueryResult::operator=(const QueryResult&) = default;
+QueryResult& QueryResult::operator=(QueryResult&&) noexcept = default;
+QueryResult::~QueryResult() = default;
+bool QueryResult::operator==(const QueryResult&) const = default;
+
 QueryResult::Kind QueryResult::kind() const noexcept {
   static constexpr std::array<Kind, 56> kKinds = {Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage};
   return kKinds[v.index()];
@@ -26242,6 +26274,14 @@ Status decode(wire::Reader& r, EngineError& out) {
   if (!has_message) return Status::missing_field;
   return Status::ok;
 }
+
+Outcome::Outcome() = default;
+Outcome::Outcome(const Outcome&) = default;
+Outcome::Outcome(Outcome&&) noexcept = default;
+Outcome& Outcome::operator=(const Outcome&) = default;
+Outcome& Outcome::operator=(Outcome&&) noexcept = default;
+Outcome::~Outcome() = default;
+bool Outcome::operator==(const Outcome&) const = default;
 
 Outcome::Kind Outcome::kind() const noexcept {
   static constexpr std::array<Kind, 4> kKinds = {Kind::command, Kind::query, Kind::batch, Kind::error};
@@ -27330,6 +27370,14 @@ Status decode(wire::Reader& r, AutosavedEvent& out) {
   return Status::ok;
 }
 
+Event::Event() = default;
+Event::Event(const Event&) = default;
+Event::Event(Event&&) noexcept = default;
+Event& Event::operator=(const Event&) = default;
+Event& Event::operator=(Event&&) noexcept = default;
+Event::~Event() = default;
+bool Event::operator==(const Event&) const = default;
+
 Event::Kind Event::kind() const noexcept {
   static constexpr std::array<Kind, 33> kKinds = {Kind::document_reset, Kind::project_settings_changed, Kind::items_changed, Kind::items_removed, Kind::composition_changed, Kind::layers_changed, Kind::layers_removed, Kind::layer_order_changed, Kind::properties_changed, Kind::keyframes_changed, Kind::property_groups_changed, Kind::markers_changed, Kind::render_queue_changed, Kind::transitions_changed, Kind::guides_changed, Kind::swatches_changed, Kind::materials_changed, Kind::motion_blur_changed, Kind::color_management_changed, Kind::history_changed, Kind::dirty_changed, Kind::transport_changed, Kind::playhead, Kind::render_stats_updated, Kind::cache_changed, Kind::engine_error, Kind::layer_errors, Kind::job_progress, Kind::job_finished, Kind::project_saved, Kind::asset_status_changed, Kind::fonts_changed, Kind::autosaved};
   return kKinds[v.index()];
@@ -27735,6 +27783,14 @@ Status decode(wire::Reader& r, Goodbye& out) {
   if (!has_message) return Status::missing_field;
   return Status::ok;
 }
+
+EngineMessage::EngineMessage() = default;
+EngineMessage::EngineMessage(const EngineMessage&) = default;
+EngineMessage::EngineMessage(EngineMessage&&) noexcept = default;
+EngineMessage& EngineMessage::operator=(const EngineMessage&) = default;
+EngineMessage& EngineMessage::operator=(EngineMessage&&) noexcept = default;
+EngineMessage::~EngineMessage() = default;
+bool EngineMessage::operator==(const EngineMessage&) const = default;
 
 EngineMessage::Kind EngineMessage::kind() const noexcept {
   static constexpr std::array<Kind, 7> kKinds = {Kind::hello, Kind::welcome, Kind::request, Kind::response, Kind::events, Kind::goodbye, Kind::log_record};
