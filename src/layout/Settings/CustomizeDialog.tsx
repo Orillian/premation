@@ -42,6 +42,7 @@ import { AiSettingsSection } from './AiSettingsSection';
 import { ClaudeConnectSection } from './ClaudeConnectSection';
 import { McpAppsSection } from './McpAppsSection';
 import { ExportSettingsSection } from './ExportSettingsSection';
+import { PerformanceSettingsSection } from './PerformanceSettingsSection';
 import { UpdatesControl } from './UpdatesControl';
 import { ObjectMatteControl } from './ObjectMatteControl';
 import { VideoExportControl } from './VideoExportControl';
@@ -1011,6 +1012,8 @@ export function AppearanceTab(): JSX.Element {
           </div>
         </div>
       </div>
+
+      <PerformanceSettingsSection />
 
       <ExportSettingsSection />
 

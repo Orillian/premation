@@ -37,6 +37,20 @@ import {
   DEFAULT_SKETCH_TOLERANCE,
   type SketchSample,
 } from '@core/rig/puppetSketch';
+import { detailToTolerance, fitTake, takeRange, type FittedKey, type TakeSample } from '@core/performance/fitTake';
+import { ToolTransaction } from '@core/workspace/viewportGesture';
+
+/**
+ * How a take becomes keys (Settings ▸ Performance Recording, plan §9):
+ *
+ *   smart       the time-aware fit (core/performance/fitTake) — few keys with
+ *               eases and path handles, holds kept;
+ *   everyFrame  After Effects' Motion Sketch: one key per captured sample;
+ *   smooth      the spatial Douglas–Peucker reduction below, as before.
+ *
+ * `everyFrame` and `smooth` are today's behaviour, kept as choices.
+ */
+export type SketchReduction = 'smart' | 'everyFrame' | 'smooth';
 
 export interface MotionSketchOptions {
   /**
@@ -65,6 +79,21 @@ export interface MotionSketchOptions {
    * speed it was drawn; 50 stretches it to twice the duration; 200 halves it.
    */
   captureSpeedPct: number;
+  /**
+   * `smart` switches to the time-aware fit, which ignores `tolerance` and uses
+   * `detail` instead. Absent (or anything else) = the classic path above.
+   */
+  reduction?: SketchReduction;
+  /** Smart fit: 0 (few keys) … 100 (faithful). Default 50. */
+  detail?: number;
+  /** Smart fit: keys on whole frames (default true). */
+  wholeFrames?: boolean;
+  /** Smart fit: shortest stillness kept as a hold, seconds. */
+  holdSeconds?: number;
+  /** Smart fit: seconds per composition frame. Default 1/30. */
+  frameDuration?: number;
+  /** Pre-roll: samples before this comp time are not part of the take. */
+  fromTime?: number;
 }
 
 export const DEFAULT_MOTION_SKETCH_OPTIONS: MotionSketchOptions = {
@@ -161,20 +190,57 @@ export function spliceRecordedRange(
   return [...kept, ...recorded].sort((a, b) => a.t - b.t);
 }
 
+/**
+ * The smart fit of a take: the samples (layer x / y, comp seconds) after
+ * capture speed, fitted. `spatial` = Position is one vector property, so the
+ * fit may give the path handles; separated X / Y get straight segments with
+ * the same key times on both (plan §8.1).
+ */
+export function fitMotionSketch(
+  samples: readonly SketchSample[],
+  opts: MotionSketchOptions,
+  spatial: boolean,
+): FittedKey[] {
+  const timed: TakeSample[] = applyCaptureSpeed(samples, opts.captureSpeedPct).map((s) => ({ t: s.t, v: [s.x, s.y] }));
+  return fitTake(timed, {
+    frameDuration: opts.frameDuration ?? 1 / 30,
+    tolerance: detailToTolerance(opts.detail ?? 50, takeRange(timed)),
+    ...(opts.holdSeconds !== undefined ? { holdSeconds: opts.holdSeconds } : {}),
+    spatial,
+    wholeFrames: opts.wholeFrames !== false,
+  });
+}
+
 interface SketchSession {
   nodeId: string;
   recorder: SketchRecorder;
+  /** The same samples before pixel snapping — what the smart fit reads (plan §8.2). */
+  raw: SketchSample[];
   opts: MotionSketchOptions;
+  /**
+   * The take's ONE engine gesture: the live drag writes and the final write
+   * both go through it, so a take is one undo entry and Esc reverts all of it
+   * (plan §3.3). Opened lazily on the first write.
+   */
+  txn: ToolTransaction;
+  /** Time ran backwards: the take is over, later samples are ignored. */
+  wrapped: boolean;
 }
 
 let session: SketchSession | null = null;
 
-/** Arm a recording for `nodeId`. Replaces any session already armed. */
+/** Arm a recording for `nodeId`. Replaces any session already armed (reverting what it wrote). */
 export function armMotionSketch(
   nodeId: string,
   opts: MotionSketchOptions = DEFAULT_MOTION_SKETCH_OPTIONS,
 ): void {
-  session = { nodeId, recorder: new SketchRecorder(), opts };
+  if (session) void session.txn.cancel();
+  session = { nodeId, recorder: new SketchRecorder(), raw: [], opts, txn: new ToolTransaction(), wrapped: false };
+}
+
+/** The armed take's transaction — the drag that records writes through it. Null when nothing is armed. */
+export function motionSketchTransaction(): ToolTransaction | null {
+  return session?.txn ?? null;
 }
 
 /** The node currently recording, or null. */
@@ -191,27 +257,76 @@ export function motionSketchSampleCount(): number {
  * the conversion is not done here. Ignores nodes other than the armed one, so
  * a multi-select drag records only the layer the user armed.
  */
-export function recordMotionSketchSample(nodeId: string, x: number, y: number, t: number): void {
-  if (!session || session.nodeId !== nodeId) return;
+export function recordMotionSketchSample(
+  nodeId: string,
+  x: number,
+  y: number,
+  t: number,
+  /** The position before pixel snapping, when it differs. */
+  unsnapped?: { x: number; y: number },
+): void {
+  if (!session || session.nodeId !== nodeId || session.wrapped) return;
+  if (session.opts.fromTime !== undefined && t < session.opts.fromTime - 1e-9) return;
+  // Time running backwards — the loop wrapped, or the playhead was scrubbed —
+  // ends the take at its last forward sample (plan §8.2): a second pass over
+  // the same span would fold onto the first.
+  const last = session.raw[session.raw.length - 1];
+  if (last && t < last.t - 1e-6) {
+    session.wrapped = true;
+    return;
+  }
   session.recorder.add(x, y, t);
+  session.raw.push({ x: unsnapped?.x ?? x, y: unsnapped?.y ?? y, t });
 }
 
-/** Discard the take without writing. */
+/**
+ * A playback tick while the take records: the layer is where the last sample
+ * left it, at time `t`. Pointer events stop while the pointer rests, so
+ * without this a pause has no samples and the fit sees one slow move from
+ * where the pointer stopped to where it moved again — the hold the take
+ * exists to keep would be gone (plan §8.2).
+ */
+export function tickMotionSketch(t: number): void {
+  if (!session || session.wrapped) return;
+  const last = session.raw[session.raw.length - 1];
+  if (!last || t <= last.t + 1e-6) {
+    if (last && t < last.t - 1e-6) session.wrapped = true;
+    return;
+  }
+  const rec = session.recorder.raw();
+  const lastRec = rec[rec.length - 1];
+  if (lastRec) session.recorder.add(lastRec.x, lastRec.y, t);
+  session.raw.push({ x: last.x, y: last.y, t });
+}
+
+/** Discard the take: everything it wrote live is reverted. */
 export function cancelMotionSketch(): void {
+  if (session) void session.txn.cancel();
   session = null;
+}
+
+export interface MotionSketchTake {
+  nodeId: string;
+  /** The classic tracks (every frame / smooth). Empty x when the take recorded nothing. */
+  tracks: MotionSketchTracks;
+  /** The take's unsnapped samples, comp seconds (for the smart fit and re-fits). */
+  raw: SketchSample[];
+  opts: MotionSketchOptions;
+  /** The take's gesture — the caller sends the final write through it and ends it. */
+  txn: ToolTransaction;
 }
 
 /**
  * End the recording: the armed layer and its take as x / y tracks (times are
  * COMPOSITION seconds, as recorded), or null when nothing was armed. The
- * session is cleared. Writing it is the caller's (one engine batch:
+ * session is cleared. Writing it is the caller's (the take's gesture:
  * providers/commands/motionSketchEdits.ts).
  */
-export function takeMotionSketch(): { nodeId: string; tracks: MotionSketchTracks } | null {
+export function takeMotionSketch(): MotionSketchTake | null {
   if (!session) return null;
-  const { nodeId, recorder, opts } = session;
+  const { nodeId, recorder, raw, opts, txn } = session;
   session = null;
   const tracks = motionSketchTracks(recorder.raw(), opts);
   recorder.reset();
-  return { nodeId, tracks };
+  return { nodeId, tracks, raw, opts, txn };
 }

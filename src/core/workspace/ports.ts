@@ -71,6 +71,7 @@ import { compTime, paths } from '@core/engine/propRefs';
 import { maskPointsToPath, trackValueCommands, type NodeTrackValues } from '@core/workspace/toolEdits';
 import { outlineOnEngine, outlineRef, SHAPE_PATH } from '@core/workspace/pathEdits';
 import { useProjectStore } from '@stores/projectStore';
+import { getTime } from '@stores/playbackClockStore';
 import { documentMirror } from '@stores/documentMirror';
 import { MAIN_VIEWPORT, overlayLayer, type OverlayLayer } from '@stores/overlayGeometry';
 import { Project3D } from '@motion/scene';
@@ -80,7 +81,7 @@ import { rectangleMask, ellipseMask, MaskPath, MaskPoint } from '@core/effects/m
 import { defaultPolystar, POLYSTAR_FX_PROP, type PolystarType } from '@core/scene/polystar';
 import { defaultTextSize } from '@core/scene/textDefaults';
 import { affineFromCorners, createSceneGraphPort } from './geometryPort';
-import { recordMotionSketchSample, motionSketchNodeId } from '@core/animation/motionSketch';
+import { recordMotionSketchSample, motionSketchNodeId, motionSketchTransaction } from '@core/animation/motionSketch';
 import { Matrix, type Matrix2D } from '@motion/scene';
 
 // ── SceneGraphPort ────────────────────────────────────────────────
@@ -446,10 +447,15 @@ export function snapPx(v: number): number {
   return useViewportDisplayStore.getState().snapToPixel ? Math.round(v) : v;
 }
 
-/** The playhead of the active tab, in comp seconds. */
+/**
+ * The playhead of the active tab, in comp seconds — the transient clock, not
+ * the project store's copy: that copy is mirrored at 4 Hz while the transport
+ * runs (playbackClockStore), so a write keyed "at the playhead" during
+ * playback — every Motion Sketch sample — landed up to 250 ms late, and a
+ * take's timing came out as a staircase.
+ */
 function playheadSeconds(): number {
-  const s = useProjectStore.getState();
-  return s.tabs[s.activeTabId ?? '']?.time ?? 0;
+  return getTime(useProjectStore.getState().activeTabId);
 }
 
 function activeCompSize(): { w: number; h: number } {
@@ -612,8 +618,13 @@ function captureMoveStarts(ids: readonly NodeId[], view: Camera3dMode): MoveStar
   return out;
 }
 
-/** The layer values for `start` moved by the projected world drag `total`. */
-function movedValues(s: MoveStart, total: { x: number; y: number }): Record<string, number> {
+/**
+ * The layer values for `start` moved by the projected world drag `total`.
+ * `snap` false skips the snap-to-pixel rounding — Motion Sketch's smart fit
+ * reads the drag as drawn, or a slow drag would fit as a staircase.
+ */
+function movedValues(s: MoveStart, total: { x: number; y: number }, snap = true): Record<string, number> {
+  const px = snap ? snapPx : (v: number): number => v;
   let planar = total;
   let dz: number | null = null;
   if (s.basis) {
@@ -629,7 +640,7 @@ function movedValues(s: MoveStart, total: { x: number; y: number }): Record<stri
     // z (a 3D parent chain's depth lives in nodeMatrix.parentWorld3d).
     planar = { x: s.inv.a * planar.x + s.inv.c * planar.y, y: s.inv.b * planar.x + s.inv.d * planar.y };
   }
-  const values: Record<string, number> = { x: snapPx(s.x + planar.x), y: snapPx(s.y + planar.y) };
+  const values: Record<string, number> = { x: px(s.x + planar.x), y: px(s.y + planar.y) };
   if (dz !== null) values.z = s.z + dz;
   return values;
 }
@@ -657,8 +668,17 @@ function sendMove(label: string, st: MoveAction, ids: readonly NodeId[], view: C
     for (const s of st.starts) {
       if (!s.sketch) continue;
       const v = movedValues(s, st.total);
+      const u = movedValues(s, st.total, false);
       // Composition time: the engine maps it onto the layer's keyframe axis when the take is written.
-      recordMotionSketchSample(s.id, v.x!, v.y!, rawTime);
+      recordMotionSketchSample(s.id, v.x!, v.y!, rawTime, { x: u.x!, y: u.y! });
+    }
+    // The drag's live writes go into the TAKE's gesture, not the pointer's:
+    // the take's final write lands in the same gesture, so drag + take are one
+    // undo entry named after the take, and Esc reverts both (plan §3.3).
+    const take = motionSketchTransaction();
+    if (take) {
+      txn = take;
+      label = 'Motion Sketch';
     }
   }
   sendLayerValues(label, () => {

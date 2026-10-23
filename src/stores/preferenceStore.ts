@@ -302,6 +302,27 @@ export interface Preferences {
   compLayerOpens: 'nested' | 'layer';
   /** Which of the optional In / Out / Duration / Stretch columns are shown. */
   timelineExtraColumns: string[];
+  /**
+   * Settings ▸ Performance Recording (docs/PERFORMANCE_ANIMATION_PLAN.md §9).
+   * How a recorded take becomes keys: the time-aware fit, After Effects' one
+   * key per captured sample, or the earlier path smoothing.
+   */
+  performanceReduction: 'smart' | 'everyFrame' | 'smooth';
+  /** Smart fit: 0 (few keys) … 100 (faithful). */
+  performanceDetail: number;
+  /** Smart fit: keys on whole frames. */
+  performanceWholeFrames: boolean;
+  /** Capture speed, percent: 100 plays back at the speed it was recorded. */
+  performanceCaptureSpeed: number;
+  /** Seconds the playhead starts BEFORE the playhead when a take is armed (0 = none). */
+  performancePreRoll: number;
+  /** Smart fit: shortest stillness kept as a hold, seconds. */
+  performanceHoldSeconds: number;
+  /** Perform (record live) or Pose (Set Key, then step). */
+  performanceMode: 'perform' | 'pose';
+  /** Pose mode's step after Set Key, in `performancePoseStepUnit`. */
+  performancePoseStep: number;
+  performancePoseStepUnit: 'frames' | 'seconds';
 }
 
 /** A floating dialog's remembered frame, CSS pixels relative to the viewport. */
@@ -379,6 +400,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
   footageLayerOpens: 'layer',
   compLayerOpens: 'nested',
   timelineExtraColumns: [],
+  performanceReduction: 'smart',
+  performanceDetail: 50,
+  performanceWholeFrames: true,
+  performanceCaptureSpeed: 100,
+  performancePreRoll: 0,
+  performanceHoldSeconds: 0.25,
+  performanceMode: 'perform',
+  performancePoseStep: 10,
+  performancePoseStepUnit: 'frames',
 };
 
 /** Pluggable persistence backend. */

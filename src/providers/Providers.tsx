@@ -27,7 +27,7 @@ import { DEFAULT_COMPOSITION } from '@stores/compositionStore';
 import { canCopyExpression, copyEdit, cutEdit, pasteEdit } from './clipboardEdits';
 import { audioAmplitudeNullEdit } from '@layout/Inspector/audioEdits';
 import { canExponentialScale, expressionBakeEdit, exponentialScaleEdit, hasBakeableExpression } from './menuCommandEdits';
-import { goToMarkerIndex, isTransportPlaying, pauseTransport, playTransport } from '@core/timeline/timelineView';
+import { goToMarkerIndex } from '@core/timeline/timelineView';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
 import { useProjectStore, type CompositionSettings } from '@stores/projectStore';
@@ -124,8 +124,7 @@ import { openWigglerDialog, wigglerTracks, wigglerTracksOf } from '@layout/Motio
 import { fetchMemberTracks, memberTracksNow } from '@stores/memberTracks';
 import { fetchLayerBox } from '@stores/layerBoxes';
 import { compTime } from '@core/engine/propRefs';
-import { armMotionSketch, cancelMotionSketch } from '@core/animation/motionSketch';
-import { finishMotionSketchEdit } from './commands/motionSketchEdits';
+import { openPerformance } from './commands/performanceSession';
 import { installSceneRevisionUpkeep } from '@core/engine/sceneRevisionUpkeep';
 import { ProjectCommands } from '@layout/Menu';
 import { CommandPalette } from '@layout/CommandPalette';
@@ -1113,50 +1112,14 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
       label: 'Motion Sketch (Record Position)',
       icon: 'pencil-line',
       enabled: () => useSelectionStore.getState().ids.length === 1,
-      execute: () => {
-        const nodeId = useSelectionStore.getState().ids[0];
-        if (!nodeId) return;
-        armMotionSketch(nodeId);
-        if (!isTransportPlaying()) playTransport();
-        notify(t('providers.motionSketch.armed', 'Motion Sketch armed — drag to record, Esc to cancel'), 'info');
-
-        /*
-          Two ways out, not one.
-
-          The pointer-up path FINISHES: it writes whatever was sampled, which
-          for someone who armed the command and thought better of it is a set of
-          keyframes they did not ask for and now have to undo. Escape is the
-          other answer — `cancelMotionSketch` drops the session without writing.
-          It had no caller at all until this, which is precisely why arming was a
-          one-way door.
-
-          Both paths tear down BOTH listeners. `{ once: true }` removes only the
-          handler it is attached to, so without an explicit teardown an Escape
-          would leave a live pointer-up handler waiting to finish a session that
-          no longer exists.
-        */
-        const cleanup = (): void => {
-          window.removeEventListener('pointerup', onUp);
-          window.removeEventListener('keydown', onKey);
-        };
-        const onUp = (): void => {
-          cleanup();
-          if (isTransportPlaying()) pauseTransport();
-          void finishMotionSketchEdit().then((n) => notify(
-            n > 0 ? t('providers.motionSketch.recorded', 'Motion Sketch — {n} keyframes recorded', { n }) : t('providers.motionSketch.nothing', 'Motion Sketch — nothing recorded'),
-            n > 0 ? 'success' : 'warning',
-          ));
-        };
-        const onKey = (ev: KeyboardEvent): void => {
-          if (ev.key !== 'Escape') return;
-          cleanup();
-          cancelMotionSketch();
-          if (isTransportPlaying()) pauseTransport();
-          notify(t('providers.motionSketch.cancelled', 'Motion Sketch cancelled'), 'info');
-        };
-        window.addEventListener('pointerup', onUp);
-        window.addEventListener('keydown', onKey);
-      },
+      /*
+        Opens the Performance bar on the selected layer (docs/
+        PERFORMANCE_ANIMATION_PLAN.md §10). The take starts at the press on the
+        viewport and finishes on release; Esc reverts a take in progress, a
+        second Esc closes the bar. The reduction — Smart, or After Effects'
+        one key per sample, or the earlier smoothing — is a setting on the bar.
+      */
+      execute: () => openPerformance(useSelectionStore.getState().ids[0]),
     },
     {
       /**

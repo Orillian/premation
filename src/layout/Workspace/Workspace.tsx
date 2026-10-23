@@ -92,6 +92,7 @@ import { ViewportHud } from './ViewportHud';
 import { EngineSurface } from '@components/EngineSurface/EngineSurface';
 import { EngineUnportedNotice } from './EngineUnportedNotice';
 import { ExpressionErrorBar } from './ExpressionErrorBar';
+import { PerformanceBar } from './PerformanceBar';
 import { CompareOverlay } from './CompareOverlay';
 import { RotoBrushOverlay } from './RotoBrushOverlay';
 import { InlineAiPrompt } from './InlineAiPrompt';
@@ -659,6 +660,8 @@ export function WorkspaceViewport({
           // read. See `.canvas` in the module for why it is a CSS transform
           // and not a projection change.
           style={{ '--viewport-par': viewportPar } as CSSProperties}
+          // The Performance bar starts a take on a press INSIDE the stage.
+          data-viewport-stage=""
         >
           {/* BEFORE the canvas, so the compositor blends the canvas over it —
               that is what makes partial alpha composite correctly for free. */}
@@ -755,6 +758,8 @@ export function WorkspaceViewport({
           <EngineUnportedNotice />
           {/* After Effects' expression error bar: failing expressions, ◀ ▶, Edit. */}
           <ExpressionErrorBar />
+          {/* Motion Sketch / Pose recording: the bar while a layer is armed. */}
+          <PerformanceBar />
           {/* Ctrl+Enter: an AI prompt anchored to the selection's screen rect. */}
           <InlineAiPrompt />
         </div>

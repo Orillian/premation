@@ -1,0 +1,170 @@
+/*
+ * The Performance bar, docked along the bottom of the viewport (plan §10), in
+ * the overlay-panel tokens the viewport's other notices use and the panel
+ * type roles. Above the expression error bar's slot: both can be up at once.
+ */
+.bar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: max-content;
+  max-width: calc(100% - var(--space-4));
+  height: calc(var(--control-height-row, 24px) + var(--space-2));
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 1px solid var(--color-overlay-panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-overlay-panel-bg);
+  box-shadow: var(--color-overlay-panel-shadow);
+  color: var(--color-overlay-text);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.bar[data-phase='recording'] {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-overlay-panel-border));
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-danger) 70%, transparent);
+}
+
+.dotLive {
+  background: var(--color-danger);
+  animation: performancePulse 1s ease-in-out infinite;
+}
+
+.dotDone {
+  background: var(--color-primary);
+}
+
+@keyframes performancePulse {
+  50% { opacity: 0.35; }
+}
+
+:global(.reduce-motion) .dotLive {
+  animation: none;
+}
+
+.status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: var(--panel-weight-label);
+}
+
+.clock {
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  background: var(--color-overlay-panel-border);
+}
+
+/* The layer · property chip is the target menu's trigger: the system ghost button. */
+.chipTrigger {
+  max-width: 260px;
+  gap: var(--space-1);
+}
+
+.chipLayer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--panel-weight-value);
+}
+
+.chipLayer::after {
+  content: ' ·';
+  opacity: 0.5;
+}
+
+.chipProp {
+  opacity: 0.75;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+.detail {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detailLabel {
+  opacity: 0.75;
+}
+
+.detailSlider {
+  width: 96px;
+}
+
+.spacer {
+  flex: 1 1 0;
+}
+
+.hint {
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  opacity: 0.6;
+}
+
+/* The ⋯ popover. */
+.settings {
+  display: grid;
+  gap: var(--space-2);
+  width: 300px;
+  padding: var(--space-3);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--control-height-row, 24px);
+}
+
+.settingLabel {
+  font-weight: var(--panel-weight-label);
+}
+
+.settingHelp {
+  margin: calc(var(--space-1) * -1) 0 var(--space-1);
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  opacity: 0.7;
+}
+
+.settingSlider {
+  width: 140px;
+}
+
+@media (max-width: 720px) {
+  .hint {
+    display: none;
+  }
+}

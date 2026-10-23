@@ -124,6 +124,8 @@ const NOT_WRITES = new Set([
   'mergeRanges', // pure range arithmetic
   'mergeIntervals', // core/audio/silenceRemoval: unions comp-time intervals (pure; audioEdits sends the cuts)
   'fitSpeedFactor', // core/animation/retimeCommands: returns Fit to Footage's scale factor (pure; retimeEdits sends the keys)
+  'fitTake', // core/performance/fitTake: a recorded take → keyframe values (pure; motionSketchEdits / performanceScrub send setKeyframes)
+  'fitMotionSketch', // core/animation/motionSketch: fitTake over a Motion Sketch take (pure; motionSketchEdits sends the keys)
   'applyTextPath', // pure glyph layout along a path (core/text/textPath)
   'resetProjectWorkspace', // project lifecycle (tabs/timelines), not an edit
   'deleteEffectPreset', 'deletePreset', 'importPresets', 'importPresetObjects', // preset LIBRARY, not the document
