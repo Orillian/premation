@@ -42,6 +42,20 @@ import {
 import type { AiTransaction } from '../aiTransaction';
 import { beatNameOfRoot, FRONT_GLOBALS_ROOT_NAME } from '../structureAdvisors';
 import { SFX_ITEMS, getSfxItem } from '@core/library/sfxLibrary';
+import type { MotionSheetInput } from '../filmstrip';
+import { analyzeMotionText, motionSheetData } from './motionTools';
+import { rigCharacter, rigCycle, rigViewData, type RigView } from '../rigTools';
+import {
+  describeEntry,
+  findLibraryEntry,
+  insertForPreview,
+  insertLibraryItem,
+  insertRoute,
+  premiumPoster,
+  previewSpan,
+  searchLibraryText,
+  type LibraryEditorOps,
+} from './libraryTools';
 import {
   applyLook,
   applyTechnique,
@@ -111,6 +125,8 @@ export interface McpEditorOps {
   addSfx(id: string, atSec: number, levelDb: number | null, opts?: { inGroup?: boolean }): Promise<{ id: string } | { error: string }>;
   setAudioLevels(nodeId: string, o: { levelDb?: number; fadeInSec?: number; fadeOutSec?: number }): Promise<{ ok: true; message: string } | { error: string }>;
   duck(musicId: string, voiceId: string, duckDb: number): Promise<{ ok: true; message: string } | { error: string }>;
+  /** Library inserts only the editor can run (templates, Cloud items). */
+  library?: Omit<LibraryEditorOps, 'addSfx'>;
 }
 
 export interface McpHostDeps {
@@ -124,6 +140,10 @@ export interface McpHostDeps {
   renderStill(seconds: number, maxSize: number): Promise<{ mimeType: string; data: string } | null>;
   /** A labelled contact sheet of `cells` frames between two times. */
   renderStrip(startSec: number, endSec: number, cells: number): Promise<{ mimeType: string; data: string } | null>;
+  /** render_motion_sheet's images (frame strip, onion skin with trails); absent = text only. */
+  renderMotionSheet?(input: MotionSheetInput): Promise<{ mimeType: string; data: string }[]>;
+  /** render_rig_view's image (the layer cropped, grid and rig drawn on it); absent = text only. */
+  renderRigView?(view: RigView): Promise<{ mimeType: string; data: string } | null>;
   access(): Promise<AccessDecision>;
   editor?: McpEditorOps;
   /** Ask the user in Premation; resolves false on Deny or timeout. Absent = always refused. */
@@ -304,6 +324,23 @@ export class McpCallHost {
         case 'end_edit': return await this.endEdit(call);
         case 'render_frame': return await this.renderFrame(call);
         case 'render_filmstrip': return await this.renderStrip(call);
+        case 'analyze_motion': {
+          const r = await analyzeMotionText(this.readContext(call), call.args);
+          return text(r.text, !r.ok);
+        }
+        case 'render_motion_sheet': return await this.renderMotionSheet(call);
+        case 'search_library': return text(await searchLibraryText(call.args));
+        case 'preview_library': return await this.previewLibrary(call);
+        case 'insert_library_item': return await this.insertLibrary(call);
+        case 'render_rig_view': return await this.renderRigView(call);
+        case 'rig_character': return await this.inTransaction(call, 'Claude: rig character', async (ctx) => {
+          const r = await rigCharacter(ctx, call.args);
+          return { result: text(r.text, !r.ok), ok: r.ok };
+        });
+        case 'rig_cycle': return await this.inTransaction(call, 'Claude: animate rig', async (ctx) => {
+          const r = await rigCycle(ctx, call.args);
+          return { result: text(r.text, !r.ok), ok: r.ok };
+        });
         case 'get_author_guide': return this.authorGuide(call);
         case 'author_scene': return await this.inTransaction(call, 'Claude: build scene', (ctx) => this.authorScene(call, ctx));
         case 'list_compositions': return await this.editorOp(async (ed) => text(JSON.stringify(await ed.listCompositions(), null, 1)));
@@ -577,6 +614,103 @@ export class McpCallHost {
     const img = await this.deps.renderStrip(start, end, cells);
     if (!img) return text(`Premation could not render frames between ${start}s and ${end}s.`, true);
     return { content: [{ type: 'image', data: img.data, mimeType: img.mimeType }, { type: 'text', text: `${cells} frames from ${start}s to ${end}s, each labelled with its time.` }] };
+  }
+
+  /** A context for a read: the open group's session when there is one, so it sees the group's edits. */
+  private readContext(call: McpCall): ToolContext {
+    return this.deps.context(this.group?.tx.session ?? null, this.abort.signal, this.aliasesFor(call.clientId));
+  }
+
+  private async renderMotionSheet(call: McpCall): Promise<McpResult> {
+    const data = await motionSheetData(this.readContext(call), call.args);
+    if ('error' in data) return text(data.error, true);
+    const images = this.deps.renderMotionSheet ? await this.deps.renderMotionSheet(data) : [];
+    const lead = images.length
+      ? `Attached: ${images.length === 2 ? 'every frame of the window (labelled f<frame>) and an onion skin with the moving elements\' paths, one dot per sample' : 'the frames of the window'}.`
+      : 'No frames could be rendered; the measurements below still hold.';
+    return { content: [...images.map((i) => ({ type: 'image' as const, data: i.data, mimeType: i.mimeType })), { type: 'text', text: `${lead}\n\n${data.text}` }] };
+  }
+
+  private async renderRigView(call: McpCall): Promise<McpResult> {
+    const view = await rigViewData(this.readContext(call), call.args);
+    if ('error' in view) return text(view.error, true);
+    const img = this.deps.renderRigView ? await this.deps.renderRigView(view) : null;
+    return { content: [...(img ? [{ type: 'image' as const, data: img.data, mimeType: img.mimeType }] : []), { type: 'text', text: img ? view.text : `${view.text}\n(No image could be rendered; the coordinates above still hold.)` }] };
+  }
+
+  // ── Library ──────────────────────────────────────────────────────────
+
+  private libraryEditor(): LibraryEditorOps | undefined {
+    const ed = this.deps.editor;
+    if (!ed) return undefined;
+    return {
+      applyTemplate: (id) => ed.library?.applyTemplate(id) ?? Promise.resolve({ error: 'This Premation build cannot apply templates from Claude.' }),
+      insertPremium: (item, o) => ed.library?.insertPremium(item, o) ?? Promise.resolve({ error: 'This Premation build cannot insert Cloud items from Claude.' }),
+      addSfx: (id, atSec, inGroup) => ed.addSfx(id, atSec, null, { inGroup }),
+    };
+  }
+
+  private async insertLibrary(call: McpCall): Promise<McpResult> {
+    const entry = await findLibraryEntry(String(obj(call.args).id ?? ''));
+    const deps = (ctx: ToolContext) => ({
+      ...(this.libraryEditor() ? { editor: this.libraryEditor()! } : {}),
+      inGroup: this.group !== null,
+      moveLayer: async (id: string, x: number, y: number) => {
+        const r = await this.deps.registry().execute('update_layer', { nodeId: id, x, y }, ctx);
+        if (!r.ok) throw new Error(r.content);
+      },
+    });
+    // Editor-routed inserts open their own engine gesture: never inside this call's transaction.
+    if (!entry || insertRoute(entry) === 'editor') {
+      const r = await insertLibraryItem(this.readContext(call), call.args, deps(this.readContext(call)));
+      return text(r.text, !r.ok);
+    }
+    return this.inTransaction(call, `Claude: insert ${entry.name}`, async (ctx) => {
+      const r = await insertLibraryItem(ctx, call.args, deps(ctx));
+      return { result: text(r.text, !r.ok), ok: r.ok };
+    });
+  }
+
+  /**
+   * Build each item for real, render its motion, throw it away: a transaction
+   * that is always rolled back, so nothing stays and nothing enters undo.
+   */
+  private async previewLibrary(call: McpCall): Promise<McpResult> {
+    if (this.group) return text('preview_library builds and removes items, which cannot happen inside a begin_edit group. Call end_edit first.', true);
+    const a = obj(call.args);
+    const ids = (Array.isArray(a.ids) ? a.ids : []).filter((x): x is string => typeof x === 'string').slice(0, 4);
+    if (ids.length === 0) return text('preview_library needs `ids` from search_library.', true);
+    const cells = Math.max(3, Math.min(12, Math.round(num(a.cells, 6))));
+    const content: McpResult['content'] = [];
+    const notes: string[] = [];
+    for (const id of ids) {
+      const entry = await findLibraryEntry(id);
+      if (!entry) { notes.push(`- ${id}: not in the library (search_library).`); continue; }
+      if (entry.premium) {
+        const poster = await premiumPoster(entry);
+        if (poster) content.push({ type: 'image', data: poster.data, mimeType: poster.mimeType });
+        notes.push(`- ${describeEntry(entry)}${poster ? ' (poster attached)' : ' (no poster available offline)'}`);
+        continue;
+      }
+      if (insertRoute(entry) === 'editor') { notes.push(`- ${describeEntry(entry)} (described only: it is not drawn on the canvas or replaces the composition)`); continue; }
+      const tx = await this.deps.beginTransaction(`Claude: preview ${entry.name}`);
+      try {
+        const ctx = this.deps.context(tx.session, this.abort.signal, this.aliasesFor(call.clientId));
+        const made = await insertForPreview(ctx, entry);
+        if (!made || made.length === 0) { notes.push(`- ${entry.id}: could not be built.`); continue; }
+        const comp = await ctx.comp.get();
+        const span = Math.min(previewSpan(entry), comp.durationSeconds);
+        const img = span > 0.05
+          ? await this.deps.renderStrip(0, span, cells)
+          : await this.deps.renderStill(0, 1024);
+        if (img) content.push({ type: 'image', data: img.data, mimeType: img.mimeType });
+        notes.push(`- ${describeEntry(entry)}${img ? ` (${span > 0.05 ? `filmstrip 0–${span.toFixed(2)}s` : 'frame'} attached, over the composition at 0 s)` : ' (could not render)'}`);
+      } finally {
+        await tx.rollback();
+      }
+    }
+    content.push({ type: 'text', text: [`Previewed ${ids.length} item(s); images in the order below. Nothing was left in the project.`, ...notes].join('\n') });
+    return { content };
   }
 
   // ── Author mode ──────────────────────────────────────────────────────

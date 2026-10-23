@@ -208,7 +208,9 @@ const isPuppetScalar = (prop: string): boolean =>
 const isSkeletonScalar = (prop: string): boolean =>
   (prop.startsWith('bone.') &&
     (prop.endsWith('.rotation') || prop.endsWith('.x') || prop.endsWith('.y'))) ||
-  (prop.startsWith('ikTarget.') && (prop.endsWith('.x') || prop.endsWith('.y')));
+  ((prop.startsWith('ikTarget.') || prop.startsWith('ikPole.')) && (prop.endsWith('.x') || prop.endsWith('.y'))) ||
+  // The chain's IK/FK switch (rigSpecs.ts `ikMode.{id}`: 0 = FK, 1 = IK).
+  /^ikMode\.[^.]+$/.test(prop);
 
 /**
  * Paint stroke tracks (AE Effects ▸ Paint ▸ Brush N): the numeric Stroke

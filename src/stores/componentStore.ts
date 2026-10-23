@@ -63,7 +63,7 @@ const rand = () => Math.random().toString(36).slice(2, 6);
 function toStored(f: DocumentFragment): StoredFragment {
   return { version: f.version, data: new TextDecoder().decode(f.data) };
 }
-function fromStored(f: StoredFragment): DocumentFragment {
+export function fromStored(f: StoredFragment): DocumentFragment {
   return { version: f.version, data: new TextEncoder().encode(f.data) };
 }
 

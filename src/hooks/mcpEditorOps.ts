@@ -28,6 +28,8 @@ import { DEFAULT_DUCKING } from '@core/audio/ducking';
 import { insertSfxAtEdit } from '@layout/EditorLayout/sfxInsertEdits';
 import { duckEdit, fadeEdit, levelRef } from '@layout/Inspector/audioEdits';
 import { valueCommands } from '@layout/Inspector/inspectorEdits';
+import { insertPremiumItem, premiumGate } from '@layout/EditorLayout/premiumInsertEdits';
+import { useTemplateStore } from '@stores/templateStore';
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -135,6 +137,34 @@ export const mcpEditorOps: McpEditorOps = {
     if (o.fadeInSec && (await fadeEdit([nodeId], 'in', o.fadeInSec))) done.push(`fade in ${o.fadeInSec}s`);
     if (o.fadeOutSec && (await fadeEdit([nodeId], 'out', o.fadeOutSec))) done.push(`fade out ${o.fadeOutSec}s`);
     return done.length ? { ok: true, message: `Set ${nodeId}: ${done.join(', ')}.` } : { error: 'Nothing to set: give levelDb, fadeInSec or fadeOutSec.' };
+  },
+
+  library: {
+    async applyTemplate(id) {
+      const before = useTemplateStore.getState().active;
+      try {
+        await useTemplateStore.getState().apply(id);
+      } catch (err) {
+        return { error: `Could not apply the template: ${errText(err)}` };
+      }
+      const active = useTemplateStore.getState().active;
+      return active && active !== before && active.id === id
+        ? { ok: true, message: `Applied the ${active.name} template to the active composition (${active.fields.length} editable field(s)).` }
+        : { error: 'Premation refused to apply the template.' };
+    },
+
+    async insertPremium(item, o) {
+      // Checked first and answered in words: the insert itself would open the
+      // Pro dialog over the user's editor for a call they did not make.
+      const gate = await premiumGate(item);
+      if (gate === 'signed-out') return { error: `${item.name} is a Premation Cloud item and the user is signed out. Ask them to sign in, or use a bundled item.` };
+      if (gate === 'plan-required') return { error: `${item.name} comes with Premation Cloud, which this account does not have. Use a bundled item (search_library includePremium: false), or tell the user.` };
+      const r = await insertPremiumItem(item, {
+        ...(o.at ? { at: o.at } : {}),
+        ...(o.layer ? { layerDrop: { layer: o.layer, time: o.atSec ?? 0 } } : {}),
+      });
+      return r.ok ? { ok: true, message: r.message } : { error: r.message };
+    },
   },
 
   async duck(musicId, voiceId, duckDb) {

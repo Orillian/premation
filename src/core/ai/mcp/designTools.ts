@@ -41,6 +41,8 @@ import { buildCustomStyle, setRuntimeStyle, type EasingPersonality } from '../de
 import { engineBounds, formatFindings, verifyScene } from '../verify';
 import { formatStructureWarnings, sceneStructureWarnings } from '../structureAdvisors';
 import { renderCritiqueEvidence } from '../filmstrip';
+import { analyzeMotion, type MotionFinding } from '../motionAnalysis';
+import { sampleMotion } from '../motionSampling';
 import { hueFamily, lintVariety, type DepthLayer, type DepthScene, type PieceFingerprint, type VarietyFinding } from '@motion/author';
 import type { PropertyInfo, Value } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
@@ -437,6 +439,28 @@ export interface ReviewOptions {
   recent?: readonly PieceFingerprint[];
 }
 
+/** The worst measured motion problems over the whole piece, one line each; '' when none or not measurable. */
+async function measuredMotion(ctx: ToolContext, durationSec: number): Promise<string> {
+  try {
+    // 240 samples: the whole piece in ~0.2 s on a beat-sized scene (900 cost
+    // ~0.5 s of a 1.8 s review). Past ~2 frames a sample the report marks
+    // itself coarse and keeps to the rules that survive it; analyze_motion on
+    // a beat is the frame-accurate pass.
+    const report = analyzeMotion(await sampleMotion(ctx, { startSec: 0, endSec: durationSec, maxSamples: 240 }));
+    // At most three per rule, so one repeated habit does not hide the others.
+    const perRule = new Map<MotionFinding['rule'], number>();
+    const kept = report.findings.filter((f) => {
+      const n = (perRule.get(f.rule) ?? 0) + 1;
+      perRule.set(f.rule, n);
+      return n <= 3;
+    });
+    const more = report.findings.length - Math.min(kept.length, 12);
+    return [...kept.slice(0, 12).map((f) => `- ${f.message}`), ...(more > 0 ? [`- … ${more} more (analyze_motion lists them)`] : [])].join('\n');
+  } catch {
+    return '';
+  }
+}
+
 export async function reviewDesign(ctx: ToolContext, opts: ReviewOptions = {}): Promise<{ text: string; images: { mimeType: string; data: string }[] }> {
   const comp = await ctx.comp.get();
   const findings = formatFindings(await verifyScene(ctx, { bounds: engineBounds }));
@@ -445,11 +469,13 @@ export async function reviewDesign(ctx: ToolContext, opts: ReviewOptions = {}): 
     ...(opts.brief !== undefined ? { brief: opts.brief } : {}),
     ...(opts.recent ? { recent: opts.recent } : {}),
   }));
+  const motion = await measuredMotion(ctx, comp.durationSeconds);
   const evidence = await renderCritiqueEvidence(ctx, comp.durationSeconds);
   const text = [
     findings ? `Mechanical checks found problems:\n${findings}` : 'Mechanical checks: nothing off-screen, invisible, past the end, or popping in together.',
     structure ? `\nStructure — fix these FIRST, they make everything else slower and wrong:\n${structure}` : '',
     variety ? `\nDepth, light and variety:\n${variety}` : '',
+    motion ? `\nMotion, measured on screen (analyze_motion on a beat lists every move frame by frame):\n${motion}` : '',
     '',
     evidence.length ? `Attached: ${evidence.length === 2 ? 'a filmstrip sampled around the keyframes (cells labelled with time) and speed graphs of the hero properties' : 'a filmstrip sampled around the keyframes'}.` : 'No frames could be rendered for review.',
     '',

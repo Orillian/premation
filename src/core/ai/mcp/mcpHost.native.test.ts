@@ -11,6 +11,9 @@ import { McpCallHost, type McpResult } from './mcpHost';
 import { editorMcpDeps } from './mcpDefaults';
 
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'queueMicrotask', 'nextTick', 'setImmediate'] });
+// Two exemplar builds and a review run 3–4 s alone and past the 5 s default
+// under a full parallel run (as mcpTraps / mcpMotion do).
+jest.setTimeout(60_000);
 
 let h: Harness;
 let host: McpCallHost;

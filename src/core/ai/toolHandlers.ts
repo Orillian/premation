@@ -2362,7 +2362,7 @@ const createPuppetRig: AiTool['handler'] = async (input, ctx) => {
 interface SetPuppetPinKeyframesInput {
   layerId: string;
   pinId: string;
-  keyframes: { timeSec: number; x: number; y: number }[];
+  keyframes: { timeSec: number; x: number; y: number; easing?: string }[];
 }
 
 const setPuppetPinKeyframes: AiTool['handler'] = async (input, ctx) => {
@@ -2386,6 +2386,8 @@ const setPuppetPinKeyframes: AiTool['handler'] = async (input, ctx) => {
   for (const k of i.keyframes) {
     const lt = k.timeSec; // composition seconds — the engine converts
     await ctx.anim.setPointsKeyframe(i.layerId, prop, lt, [{ x: k.x, y: k.y }]);
+    // A points key lands linear; the easing of the segment starting here.
+    if (k.easing && k.easing !== 'linear') await ctx.anim.setEasing(i.layerId, prop, lt, k.easing);
   }
   return {
     ok: true,
@@ -2695,7 +2697,11 @@ const addPathOperatorHandler: AiTool['handler'] = async (input, ctx) => {
 };
 
 const createSkeletonRigHandler: AiTool['handler'] = async (input, ctx) => {
-  const i = input as { layerId: string; bones: Array<{ id: string; parentId?: string; length: number; x?: number; y?: number; rotation?: number }> };
+  const i = input as {
+    layerId: string;
+    bones: Array<{ id: string; parentId?: string; length: number; x?: number; y?: number; rotation?: number }>;
+    ik?: Array<{ boneId: string; x: number; y: number; chainLength?: number }>;
+  };
   if (!await ctx.scene.has(i.layerId)) return fail((await unknownNode(ctx, i.layerId)));
   const skelKind = kindOf(i.layerId);
   if (!skelKind) return fail(`Node '${i.layerId}' not found.`);
@@ -2723,11 +2729,26 @@ const createSkeletonRigHandler: AiTool['handler'] = async (input, ctx) => {
     length: b.length,
     x: b.x ?? 0,
     y: b.y ?? 0,
-    rotation: b.rotation ?? 0,
+    // The tool takes degrees; the stored rig is radians (rig/skeleton.ts
+    // fromTRS). Written as given, a 90° bone was stored as 90 rad.
+    rotation: ((b.rotation ?? 0) * Math.PI) / 180,
+  }));
+  const boneIds = new Set(bones.map((b) => b.id));
+  const badIk = (i.ik ?? []).filter((g) => !boneIds.has(g.boneId)).map((g) => g.boneId);
+  if (badIk.length > 0) return fail(`IK goal(s) on unknown bone(s): ${badIk.join(', ')}.`);
+  const ikTargets = (i.ik ?? []).map((g) => ({
+    boneId: g.boneId,
+    x: g.x,
+    y: g.y,
+    chainLength: Math.max(1, Math.min(8, Math.round(g.chainLength ?? 2))),
   }));
   // The whole rig as `layer/skeleton` (a rig preset's route, rigPaths.ts).
-  await ctx.engine.apply([{ type: 'setProperty', prop: { layer: i.layerId, path: 'layer/skeleton' }, value: { kind: 'json', value: JSON.stringify({ bones, ikTargets: [] }) } } as Command]);
-  return ok(`Created skeleton rig with ${bones.length} bones on layer '${i.layerId}'.`, { layerId: i.layerId, boneCount: bones.length });
+  await ctx.engine.apply([{ type: 'setProperty', prop: { layer: i.layerId, path: 'layer/skeleton' }, value: { kind: 'json', value: JSON.stringify({ bones, ikTargets }) } } as Command]);
+  return ok(
+    `Created skeleton rig with ${bones.length} bones${ikTargets.length ? ` and ${ikTargets.length} IK goal(s)` : ''} on layer '${i.layerId}'.` +
+      (ikTargets.length ? ' Animate a goal with set_keyframes on ikTarget.<boneId>.x / .y (layer px).' : ''),
+    { layerId: i.layerId, boneCount: bones.length, ikCount: ikTargets.length },
+  );
 };
 
 const poseSkeletonHandler: AiTool['handler'] = async (input, ctx) => {

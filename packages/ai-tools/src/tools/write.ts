@@ -1206,7 +1206,8 @@ export const setPuppetPinKeyframesDef: AiToolDef = {
     "Animate a puppet pin's POSITION over time by setting keyframes on its points data track (puppet.<pinId>.position). " +
     'Use this after create_puppet_rig to make a rig move — e.g. wave an arm, bounce a character. ' +
     'Coordinates are layer-local, centered on the origin (same space as create_puppet_rig pins). ' +
-    'Each keyframe is a moment (timeSec) and the pin position (x, y) at that moment; intermediate frames tween linearly. ' +
+    'Each keyframe is a moment (timeSec) and the pin position (x, y) at that moment; the segment from a key is linear ' +
+    'unless that key gives `easing`. ' +
     'For rotation/stiffness animation (with easing) use set_keyframes on puppet.<pinId>.rotation / .stiffness instead.',
   inputSchema: {
     type: 'object',
@@ -1226,6 +1227,7 @@ export const setPuppetPinKeyframesDef: AiToolDef = {
             timeSec: { type: 'number', minimum: 0, description: 'Time of this keyframe in seconds.' },
             x: { type: 'number', description: 'Local X of the pin at this time.' },
             y: { type: 'number', description: 'Local Y of the pin at this time.' },
+            easing: { type: 'string', enum: ['linear', 'easeIn', 'easeOut', 'easeInOut'], description: 'Easing of the segment that starts at this key (default linear).' },
           },
         },
         description: 'Position keyframes for the pin, in time order.',
@@ -1414,7 +1416,10 @@ export const addPathOperatorDef: AiToolDef = {
 export const createSkeletonRigDef: AiToolDef = {
   name: 'create_skeleton_rig',
   kind: 'write',
-  description: 'Create a 2D skeleton bone hierarchy on a layer for character rigging and kinematics.',
+  description:
+    'Create a 2D skeleton bone hierarchy on a layer for character rigging and kinematics. Bone x/y/rotation are ' +
+    'PARENT-local (a root: layer-local); for a character from joint positions, rig_character solves them for you. ' +
+    'Optional IK goals (`ik`) make a chain reach for a point: animate ikTarget.<boneId>.x / .y.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -1438,6 +1443,21 @@ export const createSkeletonRigDef: AiToolDef = {
           },
         },
         description: 'Hierarchy of bones defining the skeleton.',
+      },
+      ik: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['boneId', 'x', 'y'],
+          properties: {
+            boneId: { type: 'string', description: 'The END bone of the chain: its tip reaches for (x, y).' },
+            x: { type: 'number', description: 'Goal X, layer-local px.' },
+            y: { type: 'number', description: 'Goal Y, layer-local px.' },
+            chainLength: { type: 'integer', minimum: 1, maximum: 8, default: 2, description: 'Bones solved (the end bone and its ancestors). A joint keeps the side it bends to in the rest pose.' },
+          },
+        },
+        description: 'IK goals.',
       },
     },
   },

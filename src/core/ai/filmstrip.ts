@@ -30,6 +30,7 @@ import type { AiImage } from '@motion/ai-tools';
 import type { ToolContext } from '@motion/ai-tools';
 import { useCompositionStore } from '@stores/compositionStore';
 import { engineCompStill } from '@core/engine/engineStill';
+import type { RigView } from './rigTools';
 
 /** Target frames in a strip. Enough to show a curve; few enough to stay legible. */
 export const STRIP_MIN = 16;
@@ -200,6 +201,235 @@ export async function renderFilmstripWindow(startSec: number, endSec: number, ce
   const n = Math.max(3, Math.min(STRIP_MAX, Math.round(cells)));
   const times = Array.from({ length: n }, (_, i) => startSec + ((last - startSec) * i) / (n - 1));
   return renderFilmstrip(times);
+}
+
+// ── Motion sheet (a close-up of one moment) ───────────────────────────
+
+/** Trail colours: distinct on light and dark frames alike. */
+const TRAIL_COLOURS = ['#ff5b2e', '#2ec4ff', '#ffd23f', '#7cff6b', '#ff4fd8', '#a78bff', '#ffffff', '#00e0b0'];
+
+export interface MotionSheetInput {
+  startSec: number;
+  endSec: number;
+  fps: number;
+  compWidth: number;
+  compHeight: number;
+  /** Sample times of the trails, composition seconds. */
+  times: readonly number[];
+  /** Screen centres (comp px) per sample time, one per moving unit. */
+  trails: readonly { name: string; points: readonly ({ x: number; y: number } | null)[] }[];
+}
+
+/**
+ * Two images of one short window: every frame (or every Nth, up to 24) as a
+ * contact sheet labelled with frame numbers, and an onion skin — up to 12 of
+ * those frames averaged into one picture — with each moving unit's path drawn
+ * over it, one dot per frame. Dot spacing IS speed: tight dots are slow, wide
+ * dots fast, and an ease reads as dots bunching at one end.
+ */
+export async function renderMotionSheet(o: MotionSheetInput): Promise<AiImage[]> {
+  const out: AiImage[] = [];
+  try {
+    const c = useCompositionStore.getState().comp();
+    const fps = o.fps || c.fps || 30;
+    const firstFrame = Math.round(o.startSec * fps);
+    const lastFrame = Math.max(firstFrame, Math.min(Math.round(o.endSec * fps), Math.round(c.durationSeconds * fps) - 1));
+    const total = lastFrame - firstFrame + 1;
+    const every = Math.max(1, Math.ceil(total / STRIP_MAX));
+    const frameNos: number[] = [];
+    for (let f = firstFrame; f <= lastFrame; f += every) frameNos.push(f);
+
+    const bitmaps: { frame: number; bitmap: ImageBitmap }[] = [];
+    for (const f of frameNos) {
+      const blob = await withTimeout(engineCompStill(c.id, f / fps, 800), 8000);
+      if (!blob) continue;
+      const bitmap = await withTimeout(createImageBitmap(blob), 4000);
+      if (bitmap) bitmaps.push({ frame: f, bitmap });
+    }
+    if (bitmaps.length < 2) return out;
+
+    // The strip.
+    const cols = bitmaps.length <= 8 ? 4 : bitmaps.length <= 15 ? 5 : 6;
+    const rows = Math.ceil(bitmaps.length / cols);
+    const cellW = Math.floor(1600 / cols);
+    const cellH = Math.round((cellW * c.height) / Math.max(1, c.width));
+    const labelH = 18, pad = 4;
+    const strip = makeCanvas(cols * (cellW + pad) + pad, rows * (cellH + labelH + pad) + pad);
+    if (strip) {
+      const { canvas, c2d } = strip;
+      c2d.fillStyle = '#2a2a2e';
+      c2d.fillRect(0, 0, canvas.width, canvas.height);
+      c2d.font = '12px system-ui, sans-serif';
+      c2d.textBaseline = 'middle';
+      bitmaps.forEach(({ frame, bitmap }, i) => {
+        const x = pad + (i % cols) * (cellW + pad);
+        const y = pad + Math.floor(i / cols) * (cellH + labelH + pad);
+        c2d.drawImage(bitmap, x, y, cellW, cellH);
+        c2d.fillStyle = '#cfcfd4';
+        c2d.fillText(`f${frame}  ${(frame / fps).toFixed(3)}s`, x + 2, y + cellH + labelH / 2);
+      });
+      const img = toImage(canvas);
+      if (img) out.push(img);
+    }
+
+    // The onion skin: a running average, so every frame weighs the same.
+    const W = 1280;
+    const H = Math.round((W * o.compHeight) / Math.max(1, o.compWidth));
+    const onion = makeCanvas(W, H + 28);
+    if (onion) {
+      const { canvas, c2d } = onion;
+      c2d.fillStyle = '#111114';
+      c2d.fillRect(0, 0, canvas.width, canvas.height);
+      const skin = bitmaps.filter((_, i) => bitmaps.length <= 12 || i % Math.ceil(bitmaps.length / 12) === 0);
+      skin.forEach(({ bitmap }, k) => {
+        c2d.globalAlpha = 1 / (k + 1);
+        c2d.drawImage(bitmap, 0, 0, W, H);
+      });
+      c2d.globalAlpha = 1;
+      const sx = W / Math.max(1, o.compWidth), sy = H / Math.max(1, o.compHeight);
+      c2d.font = '13px system-ui, sans-serif';
+      c2d.lineWidth = 1.5;
+      o.trails.forEach((trail, ti) => {
+        const colour = TRAIL_COLOURS[ti % TRAIL_COLOURS.length]!;
+        c2d.strokeStyle = colour;
+        c2d.fillStyle = colour;
+        c2d.beginPath();
+        let open = false;
+        for (const p of trail.points) {
+          if (!p) { open = false; continue; }
+          if (open) c2d.lineTo(p.x * sx, p.y * sy);
+          else { c2d.moveTo(p.x * sx, p.y * sy); open = true; }
+        }
+        c2d.stroke();
+        let last: { x: number; y: number } | null = null;
+        for (const p of trail.points) {
+          if (!p) continue;
+          c2d.beginPath();
+          c2d.arc(p.x * sx, p.y * sy, 2.6, 0, Math.PI * 2);
+          c2d.fill();
+          last = p;
+        }
+        if (last) c2d.fillText(trail.name.slice(0, 32), last.x * sx + 6, last.y * sy - 6);
+      });
+      c2d.fillStyle = '#cfcfd4';
+      c2d.font = '12px system-ui, sans-serif';
+      c2d.textBaseline = 'middle';
+      c2d.fillText(`Onion skin of ${skin.length} frames, ${o.startSec.toFixed(2)}–${o.endSec.toFixed(2)}s. Dots: one per sample (${(o.times.length > 1 ? Math.round(((o.times[1]! - o.times[0]!) * fps)) : 1) || 1} frame) — wide spacing fast, tight spacing slow.`, 8, H + 14);
+      const img = toImage(canvas);
+      if (img) out.push(img);
+    }
+    for (const b of bitmaps) b.bitmap.close?.();
+  } catch {
+    // Best-effort: whatever was drawn before the failure goes back.
+  }
+  return out;
+}
+
+// ── Rig view ──────────────────────────────────────────────────────────
+
+/**
+ * The layer cropped from the real frame, with a grid labelled in its
+ * LAYER-LOCAL pixels and the rig drawn on it (rigTools.ts `rigViewData`
+ * computes everything; this only draws). Local → comp is the affine the
+ * engine's own layer box and its comp corners define, so the grid is exactly
+ * where a pin or a joint at those numbers lands.
+ */
+export async function renderRigView(view: RigView): Promise<AiImage | null> {
+  try {
+    const c = useCompositionStore.getState().comp();
+    const fps = c.fps || 30;
+    const frame = Math.max(0, Math.min(Math.round(view.time * fps), Math.round(c.durationSeconds * fps) - 1));
+    const blob = await withTimeout(engineCompStill(c.id, frame / fps, 2048), 8000);
+    if (!blob) return null;
+    const bitmap = await withTimeout(createImageBitmap(blob), 4000);
+    if (!bitmap) return null;
+    const px = bitmap.width / Math.max(1, c.width); // image px per comp px
+    const { crop } = view;
+    const S = 1100 / Math.max(crop.width, crop.height); // canvas px per comp px
+    const made = makeCanvas(Math.round(crop.width * S), Math.round(crop.height * S));
+    if (!made) return null;
+    const { canvas, c2d } = made;
+    c2d.fillStyle = '#1a1a1e';
+    c2d.fillRect(0, 0, canvas.width, canvas.height);
+    c2d.drawImage(bitmap, crop.x * px, crop.y * px, crop.width * px, crop.height * px, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    const { o, ex, ey } = view.affine;
+    const toCanvas = (lx: number, ly: number): { x: number; y: number } => ({
+      x: (o.x + lx * ex.x + ly * ey.x - crop.x) * S,
+      y: (o.y + lx * ex.y + ly * ey.y - crop.y) * S,
+    });
+    const seg = (a: { x: number; y: number }, b: { x: number; y: number }): void => {
+      c2d.beginPath();
+      c2d.moveTo(a.x, a.y);
+      c2d.lineTo(b.x, b.y);
+      c2d.stroke();
+    };
+
+    // The grid over the box (plus one step around it), labelled in layer px.
+    const { box, gridStep: g } = view;
+    const x0 = Math.floor((box.x - g) / g) * g, x1 = Math.ceil((box.x + box.width + g) / g) * g;
+    const y0 = Math.floor((box.y - g) / g) * g, y1 = Math.ceil((box.y + box.height + g) / g) * g;
+    c2d.font = '11px system-ui, sans-serif';
+    c2d.lineWidth = 1;
+    for (let x = x0; x <= x1 + 1e-6; x += g) {
+      c2d.strokeStyle = Math.abs(x) < 1e-6 ? 'rgba(255,91,46,0.85)' : 'rgba(0,224,255,0.35)';
+      seg(toCanvas(x, y0), toCanvas(x, y1));
+      const p = toCanvas(x, y0);
+      c2d.fillStyle = '#00e0ff';
+      c2d.fillText(String(Math.round(x)), p.x + 2, Math.max(11, p.y + 11));
+    }
+    for (let y = y0; y <= y1 + 1e-6; y += g) {
+      c2d.strokeStyle = Math.abs(y) < 1e-6 ? 'rgba(255,91,46,0.85)' : 'rgba(0,224,255,0.35)';
+      seg(toCanvas(x0, y), toCanvas(x1, y));
+      const p = toCanvas(x0, y);
+      c2d.fillStyle = '#00e0ff';
+      c2d.fillText(String(Math.round(y)), Math.max(2, p.x + 2), p.y - 2);
+    }
+
+    // Bones: a line root → tip, a dot at the root, the id at the middle.
+    c2d.lineWidth = 3;
+    c2d.font = '12px system-ui, sans-serif';
+    for (const b of view.bones) {
+      const r = toCanvas(b.root.x, b.root.y), t = toCanvas(b.tip.x, b.tip.y);
+      c2d.strokeStyle = 'rgba(255,210,63,0.95)';
+      seg(r, t);
+      c2d.fillStyle = '#ffd23f';
+      c2d.beginPath();
+      c2d.arc(r.x, r.y, 4, 0, Math.PI * 2);
+      c2d.fill();
+      c2d.fillStyle = '#ffffff';
+      c2d.fillText(b.id, (r.x + t.x) / 2 + 5, (r.y + t.y) / 2 - 4);
+    }
+    // IK goals: a crosshair; the pole as a hollow dot.
+    c2d.lineWidth = 2;
+    for (const k of view.ik) {
+      const p = toCanvas(k.x, k.y);
+      c2d.strokeStyle = k.mode === 'ik' ? '#ff4fd8' : '#a78bff';
+      seg({ x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y });
+      seg({ x: p.x, y: p.y - 8 }, { x: p.x, y: p.y + 8 });
+      c2d.fillStyle = '#ff4fd8';
+      c2d.fillText(`IK ${k.bone}`, p.x + 9, p.y + 14);
+      if (k.pole) {
+        const q = toCanvas(k.pole.x, k.pole.y);
+        c2d.beginPath();
+        c2d.arc(q.x, q.y, 5, 0, Math.PI * 2);
+        c2d.stroke();
+      }
+    }
+    // Pins.
+    for (const pin of view.pins) {
+      const p = toCanvas(pin.x, pin.y);
+      c2d.fillStyle = '#7cff6b';
+      c2d.beginPath();
+      c2d.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      c2d.fill();
+      c2d.fillText(`${pin.id} ${pin.name}`.slice(0, 28), p.x + 7, p.y - 6);
+    }
+    return toImage(canvas);
+  } catch {
+    return null;
+  }
 }
 
 // ── Velocity graphs ───────────────────────────────────────────────────

@@ -391,6 +391,189 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
     },
   },
   {
+    name: 'analyze_motion',
+    kind: 'read',
+    description:
+      'MEASURE the motion instead of guessing it from stills. Samples every frame (long windows: evenly, up to 1200 ' +
+      'samples) in SCREEN pixels — through parents and the 3D camera — and returns, per move: window and frames, the ' +
+      'layers moving as one unit, channel (position / scale / rotation / opacity), amount and direction, peak speed and ' +
+      'where in the move it peaks, the ease shape (ease-out, ease-in-out, ease-in, linear, overshoot, there-and-back, ' +
+      'drift, cut), overshoot % and settle time. Then the choreography (start offsets in frames between elements, most ' +
+      'things moving at once) and findings: linear moves, dead stops, same-frame starts, crowding, too fast / too slow / ' +
+      'too bouncy for UI. Call it after animating a beat, fix what it finds, call it again.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        startSec: { type: 'number', minimum: 0, description: 'Window start, composition seconds (default 0).' },
+        endSec: { type: 'number', minimum: 0, description: 'Window end (default the composition end). A beat-sized window is sampled every frame.' },
+        nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Only these layers. Default: every visible picture layer.' },
+        maxMoves: { type: 'integer', minimum: 5, maximum: 200, default: 60, description: 'Moves listed (all are still checked).' },
+      },
+    },
+  },
+  {
+    name: 'render_motion_sheet',
+    kind: 'read',
+    description:
+      'A frame-accurate close-up of one moment (≤ 4 s): every frame (or every Nth, up to 24) as a contact sheet labelled ' +
+      'with frame numbers, plus an ONION SKIN of the window with each moving element\'s path drawn on it, one dot per ' +
+      'frame — dot spacing is speed, so an ease shows as dots bunching at the arrival and a linear move as even dots. ' +
+      'Also returns the analyze_motion report for the window. Use it on a hero move, a transition or a stagger.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['startSec', 'endSec'],
+      properties: {
+        startSec: { type: 'number', minimum: 0 },
+        endSec: { type: 'number', minimum: 0, description: 'At most 4 s after startSec.' },
+        nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 60, description: 'Only these layers\' trails and moves.' },
+      },
+    },
+  },
+  {
+    name: 'search_library',
+    kind: 'read',
+    description:
+      'Search Premation\'s Library — every shelf of the Library panel and more: templates, transitions, sound FX, Lottie ' +
+      'animations, the UI kit (buttons, inputs, toggles, cards, devices), cursors, motion graphics (lower thirds, callouts, ' +
+      'titles, data, loops), the user\'s saved components, and the Premation Cloud shelf. Each line: id, name, kind / ' +
+      'category, duration, size, tier, what it is. Words match names, categories, tags and descriptions ("cursor click", ' +
+      '"glitch transition", "loader", "lower third"). Then preview_library to SEE items and insert_library_item to place one.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: { type: 'string', description: 'Words to match. Omit to list everything (of `kind`).' },
+        kind: { type: 'string', enum: ['template', 'transition', 'sfx', 'lottie', 'ui', 'cursor', 'mograph', 'component'] },
+        includePremium: { type: 'boolean', default: true, description: 'Include the Premation Cloud shelf.' },
+        limit: { type: 'integer', minimum: 1, maximum: 80, default: 25 },
+      },
+    },
+  },
+  {
+    name: 'preview_library',
+    kind: 'read',
+    description:
+      'SEE library items before choosing: each one is built for real at the composition centre, its motion rendered as a ' +
+      'labelled filmstrip (a still item as one frame), then removed again — nothing stays in the project and nothing ' +
+      'enters undo. Cloud items show their server-rendered poster; sound FX and templates are described in words. ' +
+      'Cannot run inside a begin_edit group.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['ids'],
+      properties: {
+        ids: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' }, description: 'Ids from search_library.' },
+        cells: { type: 'integer', minimum: 3, maximum: 12, default: 6, description: 'Frames per moving item.' },
+      },
+    },
+  },
+  {
+    name: 'insert_library_item',
+    kind: 'compose',
+    description:
+      'Place a library item in the active composition with the same builder the Library panel uses — real editable ' +
+      'layers (shapes, text, keys), returned by id so you can recolour, retime and re-ease them to the film\'s system. ' +
+      'Bundled items and components are one undo step and may join a begin_edit group. Sound FX: atSec is where the clip ' +
+      'starts. Transitions: comp-covering panels whose motion starts at atSec (centre them on the cut). Templates REPLACE ' +
+      'the active composition (pass replaceComposition: true, ideally in a fresh composition). Cloud items download and ' +
+      'check the user\'s plan, run as their own undo step (not inside begin_edit); a Cloud transition keys onto layerId.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'An id from search_library.' },
+        x: { type: 'number', description: 'Centre X, comp px (default the centre).' },
+        y: { type: 'number', description: 'Centre Y, comp px.' },
+        atSec: { type: 'number', minimum: 0, default: 0, description: 'When its motion starts, composition seconds.' },
+        as: { type: 'string', description: 'A handle for the top layer, usable as nodeId in later calls.' },
+        layerId: { type: 'string', description: 'Cloud transitions: the layer to key it onto.' },
+        replaceComposition: { type: 'boolean', description: 'Templates: confirm it may replace the active composition\'s layers.' },
+      },
+    },
+  },
+  {
+    name: 'render_rig_view',
+    kind: 'read',
+    description:
+      'LOOK at a layer to rig it: the layer cropped from the real frame with a coordinate GRID labelled in its LAYER-LOCAL ' +
+      'pixels — the space puppet pins, rig_character joints and chains, bone x/y and IK goals use — and the rig drawn on ' +
+      'it (bones root → tip, IK goals, pins, with ids). Read joint positions (shoulder, elbow, knee…) off the grid ' +
+      'instead of guessing; call it again at a few times to check a pose or a cycle.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['layerId'],
+      properties: {
+        layerId: { type: 'string' },
+        time: { type: 'number', minimum: 0, description: 'Composition seconds (default the playhead).' },
+      },
+    },
+  },
+  {
+    name: 'rig_character',
+    kind: 'compose',
+    description:
+      'Rig a character (one shape / image / SVG layer) from JOINT POSITIONS you read off render_rig_view: preset "biped" ' +
+      'builds hips → chest → head and two-bone IK arms and legs, each bone exactly from its joints (any joint you omit ' +
+      'comes from front-view proportions of the layer — the result lists which); `chains` add any polyline of bones — a ' +
+      'tail, ears, a cape, a quadruped\'s legs, an arm on its own — optionally IK, hung from a bone. Each elbow / knee keeps ' +
+      'the side it bends to in the joints you give. REPLACES the layer\'s skeleton. Returns bone ids, rest angles and goals ' +
+      'to animate (bone.<id>.rotation, ikTarget.<bone>.x / .y) — or rig_cycle.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['layerId'],
+      properties: {
+        layerId: { type: 'string' },
+        preset: { type: 'string', enum: ['biped', 'none'], default: 'none' },
+        joints: {
+          type: 'object',
+          description:
+            'Biped joints, layer-local [x, y]: head_top, neck, chest, hips, shoulder_l, elbow_l, wrist_l, shoulder_r, elbow_r, ' +
+            'wrist_r, hip_l, knee_l, ankle_l, hip_r, knee_r, ankle_r (_l = SCREEN left).',
+        },
+        chains: {
+          type: 'array',
+          maxItems: 12,
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Bones are named <name>_1, <name>_2, …' },
+              points: { type: 'array', minItems: 2, maxItems: 9, items: { type: 'array', items: { type: 'number' } }, description: '[[x, y], …] root first, layer-local.' },
+              parent: { type: 'string', description: 'Bone it hangs from (e.g. "hips"); omit for a root.' },
+              ik: { type: 'boolean', description: 'An IK goal at the chain\'s tip.' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'rig_cycle',
+    kind: 'compose',
+    description:
+      'Animate a biped rig (rig_character preset "biped" or Auto-Rig) with a cycle over a span: idle (breathing — chest, ' +
+      'head, hips), wave (one arm raised, forearm swinging; that arm goes FK) or walk (in place, front view: alternate ' +
+      'foot lifts on the leg IK goals, hip bob, arm swing). Eased keys at quarter phases you can refine afterwards.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['layerId', 'cycle'],
+      properties: {
+        layerId: { type: 'string' },
+        cycle: { type: 'string', enum: ['idle', 'wave', 'walk'] },
+        startSec: { type: 'number', minimum: 0, default: 0 },
+        durationSec: { type: 'number', minimum: 0.2, description: 'Default: to the composition end.' },
+        periodSec: { type: 'number', minimum: 0.2, description: 'One cycle (defaults: idle 3, walk 1, wave 0.8).' },
+        amount: { type: 'number', minimum: 0, maximum: 3, default: 1 },
+        side: { type: 'string', enum: ['l', 'r'], default: 'r', description: 'wave: which arm (screen side).' },
+      },
+    },
+  },
+  {
     name: 'begin_edit',
     kind: 'read',
     description:
@@ -486,7 +669,7 @@ export const MCP_SERVER_INSTRUCTIONS = [
   '3. Build it with author_scene: every layer, property, effect, keyframe and ease written by you — real 3D (primitives, extruded and bevelled type, PBR metal / glass materials, typed lights with soft shadows, environment skies), cameras, text animators, trim paths, repeaters, masks, mattes, blend modes, generated imagery and your own vectors are all available. Then refine with the layer tools (set_keyframes, set_easing, text_animator, add_effect, add_camera_move, set_light).',
   '4. Instruments, only when they serve your idea: apply_look (a palette/type/pacing pack), apply_technique (a hand-authored move for layers you made), cast_piece (template layouts; you pick a layout and a technique per beat from its menus). Never start from them — a piece that is only a look pack and a template reads as one.',
   '5. Sound: list_sfx / add_sfx on the moments that hit, set_audio_levels and duck_audio for the mix; import_media for the user\'s music; generate_speech for voice-over.',
-  '6. review_design after building; fix the three biggest problems inside begin_edit / end_edit; review again; then save_project.',
+  '6. review_design after building, and analyze_motion on each beat — it measures every move on screen (ease shape, overshoot, settle, stagger in frames, crowding); render_motion_sheet shows one moment frame by frame with an onion skin. Fix the three biggest problems inside begin_edit / end_edit; review again; then save_project.',
   'Look before editing: describe_scene, get_selection ("this"), list_compositions, list_capabilities. Multi-scene: one composition per scene or format (create_composition / set_active_composition), nest with create_precomp.',
   'import_media, export_video and generate_speech need the user to click Allow in Premation; say what you are about to do first.',
   'Times are composition seconds. Ids come from describe_scene, list_compositions or the tool that created the thing. A failed call says why: change the call rather than repeating it.',

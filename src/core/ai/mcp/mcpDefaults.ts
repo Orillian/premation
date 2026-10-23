@@ -8,7 +8,7 @@ import { getAiRegistry } from '../AgentLoop';
 import { beginAiTransaction } from '../aiTransaction';
 import { createToolContext, sessionToolContext } from '../toolContext';
 import { EngineTurnSession } from '../aiEngineSession';
-import { renderFilmstripWindow } from '../filmstrip';
+import { renderFilmstripWindow, renderMotionSheet, renderRigView } from '../filmstrip';
 import { engine } from '@core/engine/engineInstance';
 import { engineCompStill } from '@core/engine/engineStill';
 import { useCompositionStore } from '@stores/compositionStore';
@@ -40,6 +40,11 @@ export function editorMcpDeps(): McpHostDeps {
     },
     renderStrip: async (start, end, cells) => {
       const img = await renderFilmstripWindow(start, end, cells);
+      return img ? { mimeType: img.mediaType, data: img.dataBase64 } : null;
+    },
+    renderMotionSheet: async (input) => (await renderMotionSheet(input)).map((img) => ({ mimeType: img.mediaType, data: img.dataBase64 })),
+    renderRigView: async (view) => {
+      const img = await renderRigView(view);
       return img ? { mimeType: img.mediaType, data: img.dataBase64 } : null;
     },
     access: () => claudeAccess(),

@@ -26,7 +26,7 @@ const HOW = [
   '- Plan the piece as beats with timings before building, and tell me the plan in two or three lines.',
   '- Build each request inside begin_edit / end_edit so it is one undo step.',
   '- For the whole design, read get_author_guide and use author_scene; then refine with the individual tools (set_easing, text_animator, add_effect, add_camera_move, set_light).',
-  '- After building, render_filmstrip across the piece, judge timing, spacing and legibility, fix what is weak, then save_project.',
+  '- After building, render_filmstrip across the piece and analyze_motion on each beat (render_motion_sheet on a hero move): judge timing, spacing and legibility from the measurements, fix what is weak, then save_project.',
 ].join('\n');
 
 export const PREMATION_PROMPTS: readonly PremationPrompt[] = [
