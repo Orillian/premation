@@ -224,7 +224,7 @@ std::shared_ptr<const EnvAsset> environment_asset(const doc::Document& d, std::s
     why = "the sky image is a session URL, not in the document";
     return nullptr;
   } else {
-    const std::filesystem::path p = file_url_path(src);
+    const std::filesystem::path p = file_url_fs_path(src);
     if (p.is_relative()) {
       why = "the sky image is a relative path (no project folder to resolve it against)";
       return nullptr;

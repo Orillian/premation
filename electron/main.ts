@@ -1394,6 +1394,7 @@ app.whenReady().then(() => {
   // The C++ engine process: the only engine, and it owns the document. The
   // channels exist before the window does (the page asks for the status at boot).
   const recoveryPath = path.join(ensureDir(path.join(app.getPath('userData'), 'recovery')), 'engine-recovery.json');
+  const engineLogPath = path.join(app.getPath('userData'), 'logs', 'engine.log');
   engineHost = new EngineHost({
     isDev,
     isPackaged: app.isPackaged,
@@ -1413,6 +1414,8 @@ app.whenReady().then(() => {
     nativePluginJournal: path.join(app.getPath('userData'), 'native-plugin-journal.bin'),
     // F2 / D5: where the engine-owned document's autosave writes its recovery copy.
     recoveryPath,
+    // The engine's stderr + the supervisor's events, for a user's crash report (engineLogFile.ts).
+    engineLogPath,
     // Imported bytes and session blob: footage become files here (the same
     // folder file:sessionFootageDir hands the page).
     sessionFootageDir: ensureDir(path.join(app.getPath('userData'), 'session-footage')),
@@ -1432,6 +1435,7 @@ app.whenReady().then(() => {
         showMessageBox: (o) => (parent ? dialog.showMessageBox(parent, o) : dialog.showMessageBox(o)),
         showSaveDialog: (o) => (parent ? dialog.showSaveDialog(parent, o) : dialog.showSaveDialog(o)),
         recoveryPath,
+        logPath: engineLogPath,
         exists: (p) => existsSync(p),
         copyFile: (from, to) => copyFile(from, to),
         retry: () => engineHost?.retry() ?? Promise.resolve(),

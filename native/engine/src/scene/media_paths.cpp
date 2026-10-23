@@ -1,6 +1,7 @@
 // Document media sources as file paths (scene_textures.hpp `file_url_path`),
 // in the scene core so the GPU-free readers (the model registry) share it.
 #include <cctype>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -48,6 +49,16 @@ std::string file_url_path(std::string_view src) {
     out.push_back(rest[i]);
   }
   return out;
+}
+
+std::filesystem::path file_url_fs_path(std::string_view src) {
+  const std::string u = file_url_path(src);
+  return {std::u8string(u.begin(), u.end())};
+}
+
+std::string utf8_path(const std::filesystem::path& p) {
+  const std::u8string u = p.u8string();
+  return {u.begin(), u.end()};
 }
 
 }  // namespace premation::scene

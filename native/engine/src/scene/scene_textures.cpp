@@ -338,7 +338,14 @@ void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::v
     }
     if (r.kind == TexKind::media) {
       std::optional<api::RenderColorSpace> space;
-      ref.hash = media_ref(r, stats, space);
+      // One footage file that cannot be read (a name, a codec, a decoder that
+      // throws) skips its layer and says why — never the frame, never the engine.
+      try {
+        ref.hash = media_ref(r, stats, space);
+      } catch (const std::exception& e) {
+        ref.hash.clear();
+        stats.unsupported.emplace_back(r.key, std::string("footage failed: ") + e.what());
+      }
       ref.ready = !ref.hash.empty();
       if (colorManaged_ && ref.ready) ref.input_space = space;
       refs.push_back(std::move(ref));
@@ -466,17 +473,27 @@ void SceneTextures::prepare_refs(const std::vector<TextureRequest>& reqs, std::v
     timing[i] = {out.contentMs, out.bakeMs, out.readMs};
     done[i] = std::move(e);
   };
+  // A raster that throws is that layer's error, not a dead worker thread (std::terminate).
+  const auto guarded = [&](std::size_t i) {
+    try {
+      work(i);
+    } catch (const std::exception& e) {
+      auto failed = std::make_shared<RasterEntry>();
+      failed->error = e.what();
+      done[i] = std::move(failed);
+    }
+  };
   unsigned threads = opts_.threads != 0 ? opts_.threads : std::min(8U, std::max(1U, std::thread::hardware_concurrency()));
   threads = std::min<unsigned>(threads, static_cast<unsigned>(misses.size()));
   if (threads <= 1) {
-    for (std::size_t i = 0; i < misses.size(); ++i) work(i);
+    for (std::size_t i = 0; i < misses.size(); ++i) guarded(i);
   } else {
     std::atomic<std::size_t> next{0};
     std::vector<JoiningThread> pool;
     pool.reserve(threads);
     for (unsigned t = 0; t < threads; ++t) {
       pool.emplace_back([&] {
-        for (std::size_t i = next.fetch_add(1); i < misses.size(); i = next.fetch_add(1)) work(i);
+        for (std::size_t i = next.fetch_add(1); i < misses.size(); i = next.fetch_add(1)) guarded(i);
       });
     }
   }
@@ -568,7 +585,7 @@ std::string SceneTextures::image_ref(const TextureRequest& r, const std::filesys
   std::array<char, 64> tail{};
   std::snprintf(tail.data(), tail.size(), "|%llu|%llu|%d", static_cast<unsigned long long>(st.size),  // NOLINT(cppcoreguidelines-pro-type-vararg)
                 static_cast<unsigned long long>(st.modified), r.premultiplied ? 1 : 0);
-  const std::string key = p.lexically_normal().string();
+  const std::string key = utf8_path(p.lexically_normal());
   std::string hash = "img:" + hex64(fnv1a(tail.data(), fnv1a(key)));
   if (const auto oe = openErrors_.find(hash); oe != openErrors_.end()) {
     stats.unsupported.emplace_back(r.key, "image did not decode: " + oe->second);
@@ -625,7 +642,7 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
     stats.unsupported.emplace_back(r.key, "footage that is not a file on disk");
     return {};
   }
-  std::filesystem::path p = file_url_path(r.src);
+  std::filesystem::path p = file_url_fs_path(r.src);
   if (p.is_relative() && !opts_.mediaBase.empty()) p = opts_.mediaBase / p;
   // An animated GIF / WebP imported as footage that moves (the probe's `video`)
   // is decoded frame by frame like any video; as a still, its first frame.
@@ -634,7 +651,7 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
   if (is_still_image_path(p) && !r.video) return baked_still(image_ref(r, p, stats));
 #if defined(PREMATION_HAVE_MEDIA)
   if (media_ == nullptr) return {};
-  const std::string key = p.lexically_normal().string();
+  const std::string key = utf8_path(p.lexically_normal());
   std::uint32_t id = 0;
   if (const auto it = sources_.find(key); it != sources_.end()) {
     id = it->second;
@@ -1014,7 +1031,7 @@ std::string SceneTextures::svg_ref(const TextureRequest& r, PrepareStats& stats)
   std::string path;
   std::uint64_t h = fnv1a(r.fill.value_or(""), fnv1a(r.src));
   if (!r.src.starts_with("data:")) {
-    std::filesystem::path p = file_url_path(r.src);
+    std::filesystem::path p = file_url_fs_path(r.src);
     if (p.is_relative() && !opts_.mediaBase.empty()) p = opts_.mediaBase / p;
     const std::u8string u8 = p.lexically_normal().u8string();
     path.assign(u8.begin(), u8.end());

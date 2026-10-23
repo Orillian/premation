@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "hdr_read.hpp"
+#include "media_paths.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -79,7 +80,7 @@ bool decode_hdr_still(std::span<const std::uint8_t> bytes, DecodedImage& out, st
 bool decode_hdr_file(const std::filesystem::path& p, DecodedImage& out, std::string& error) {
   std::ifstream in(p, std::ios::binary);
   if (!in) {
-    error = "open " + p.string() + " failed";
+    error = "open " + utf8_path(p) + " failed";
     return false;
   }
   const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -155,7 +156,7 @@ bool decode_image_file(const std::filesystem::path& p, DecodedImage& out, std::s
   hr = factory->CreateDecoderFromFilename(p.wstring().c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
                                           &decoder);
   if (FAILED(hr)) {
-    error = hr_text("open " + p.string(), hr);
+    error = hr_text("open " + utf8_path(p), hr);
     return false;
   }
   return decode_frame(decoder.Get(), out, error);
@@ -298,9 +299,9 @@ bool decode_data(sk_sp<SkData> data, DecodedImage& out, std::string& error) {
 
 bool decode_image_file(const std::filesystem::path& p, DecodedImage& out, std::string& error) {
   if (hdr_path(p)) return decode_hdr_file(p, out, error);  // E7
-  sk_sp<SkData> data = SkData::MakeFromFileName(p.string().c_str());
+  sk_sp<SkData> data = SkData::MakeFromFileName(utf8_path(p).c_str());
   if (!data) {
-    error = "open " + p.string() + " failed";
+    error = "open " + utf8_path(p) + " failed";
     return false;
   }
   return decode_data(std::move(data), out, error);

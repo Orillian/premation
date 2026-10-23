@@ -94,7 +94,7 @@ std::shared_ptr<const HeightField> height_field_for(std::string_view key, std::s
     why = "height map source is not in the document (" + std::string(src.substr(0, src.find(':') + 1)) + " — a session / in-memory field)";
     return nullptr;
   } else {
-    const std::filesystem::path p = file_url_path(src);
+    const std::filesystem::path p = file_url_fs_path(src);
     if (p.is_relative()) {
       why = "height map is a relative path (no project folder to resolve it against)";
       return nullptr;

@@ -47,6 +47,7 @@ import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { handle, on } from './ipcGuard';
 import { peekEnvelope, peekRequest, transcribeProviderOf, withCausedBy, withEnvelopeSeq, withTranscribeCredential, type EngineFrameMessage, type FrameGeometryMessage, type FrameReadyMessage, type SlotsMessage } from './engineFraming';
 import { CMD, EngineCommandLog } from './engineCommandLog';
+import { EngineLogFile } from './engineLogFile';
 import type { PixelFrame } from './pixelChannel';
 import { hostBridgePath, loadDmabufBridge, loadIoSurfaceBridge } from './ioSurfaceBridge';
 import { ntHandleSource, slotHandleSourceFor, type SlotHandleSource, type SlotTextureHandle } from './sharedTextureHandles';
@@ -623,6 +624,11 @@ export interface EngineHostOptions {
   nativePluginJournal?: string;
   /** F2 / D5: the recovery copy the engine-owned document's autosave writes (reported with ownsDocument). */
   recoveryPath?: string;
+  /**
+   * The engine's log on disk (<userData>/logs/engine.log, engineLogFile.ts): its
+   * stderr and the supervisor's events — what a user sends us after a crash.
+   */
+  engineLogPath?: string;
   /** Where the engine caches imported bytes / session footage as files (<userData>/session-footage). */
   sessionFootageDir?: string;
   /** The user's installed Object Matte model folder (<userData>/models/object-matte; objectMatteModel.ts). */
@@ -704,10 +710,17 @@ export class EngineHost {
   /** While a restarted engine is being replayed into: requests wait, events are not relayed. */
   private recovering: Promise<void> | null = null;
   private lastRecovery: HostRecoveryInfo | null = null;
+  /** <userData>/logs/engine.log (EngineHostOptions.engineLogPath), or null. */
+  readonly engineLog: EngineLogFile | null;
 
   constructor(private readonly o: EngineHostOptions) {
     this.commandLog = new EngineCommandLog(o.recordLog ?? true);
-    const log = o.log ?? ((line: string) => console.info(line));
+    const consoleLog = o.log ?? ((line: string) => console.info(line));
+    this.engineLog = o.engineLogPath ? new EngineLogFile(o.engineLogPath, `Premation ${o.appVersion} (${process.platform})`) : null;
+    const log = (line: string): void => {
+      consoleLog(line);
+      this.engineLog?.event(line);
+    };
     const platform = o.platform ?? process.platform;
     const resolveExe = (): string | null =>
       resolveEngineExecutable({
@@ -809,12 +822,11 @@ export class EngineHost {
       o.onUnavailable?.(info);
     });
     sup.on('ready', () => { this.unavailableReason = undefined; });
-    if (o.isDev) {
-      // Engine warnings and errors in the terminal (its stderr is JSON lines).
-      sup.on('log', (line) => {
-        if (/"level":"(warn|error)"/.test(line)) log(`[premation-engine] ${line}`);
-      });
-    }
+    // Every engine line on disk; warnings and errors in a dev terminal too (its stderr is JSON lines, "lvl").
+    sup.on('log', (line) => {
+      this.engineLog?.write(line);
+      if (o.isDev && /"lvl":"(warn|error)"/.test(line)) consoleLog(`[premation-engine] ${line}`);
+    });
   }
 
 

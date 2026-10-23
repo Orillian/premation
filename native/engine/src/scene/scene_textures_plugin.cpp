@@ -42,7 +42,7 @@ std::string SceneTextures::plugin_image_ref(const TextureRequest& r, const std::
   std::array<char, 96> tail{};
   std::snprintf(tail.data(), tail.size(), "|%llu|%llu|%d|%lld", static_cast<unsigned long long>(st.size),  // NOLINT(cppcoreguidelines-pro-type-vararg)
                 static_cast<unsigned long long>(st.modified), r.premultiplied ? 1 : 0, us);
-  const std::string path = p.lexically_normal().string();
+  const std::string path = utf8_path(p.lexically_normal());
   std::array<char, 24> hex{};
   std::snprintf(hex.data(), hex.size(), "%016llx", static_cast<unsigned long long>(fnv(tail.data(), fnv(path))));  // NOLINT(cppcoreguidelines-pro-type-vararg)
   std::string hash = std::string("img:plg") + hex.data();

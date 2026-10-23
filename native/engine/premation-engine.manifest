@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- premation-engine on Windows: the process code page is UTF-8 (Windows 10 1903+).
+     Every narrow path the engine and its libraries (ffmpeg, Skia, the STL
+     filesystem) build or print is then the document's UTF-8, not the user's ANSI
+     code page: on a Japanese system (932) a UTF-8 name like ダウンロード.png made
+     std::filesystem::path throw and the engine crash-looped on the project. -->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

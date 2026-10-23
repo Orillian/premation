@@ -29,6 +29,7 @@
 
 #include <charconv>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <string_view>
 
@@ -48,6 +49,30 @@
 #endif
 
 namespace {
+
+/// The last words of an engine that is going down on an exception nobody
+/// caught (any thread): the reason goes to stderr, which Electron main keeps in
+/// <userData>/logs/engine.log — a user's crash report then says what failed.
+[[noreturn]] void on_terminate() noexcept {
+  const char* what = "unknown";
+  try {
+    if (const std::exception_ptr e = std::current_exception()) std::rethrow_exception(e);
+    what = "std::terminate without an exception";
+  } catch (const std::exception& e) {
+    what = e.what();
+  } catch (...) {
+    what = "a non-std exception";
+  }
+  std::fputs("{\"lvl\":\"error\",\"ev\":\"uncaught_exception\",\"what\":\"", stderr);
+  for (const char* c = what; *c != '\0'; ++c) {  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): a C string
+    const char ch = *c;
+    if (ch == '"' || ch == '\\') std::fputc('\\', stderr);
+    std::fputc(static_cast<unsigned char>(ch) < 0x20 ? ' ' : ch, stderr);
+  }
+  std::fputs("\"}\n", stderr);
+  std::fflush(stderr);
+  std::abort();
+}
 
 bool parse_u32(std::string_view s, std::uint32_t& out) {
   const auto* end = s.data() + s.size();
@@ -174,6 +199,7 @@ int run(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  std::set_terminate(on_terminate);
   try {
     return run(argc, argv);
   } catch (const std::exception& e) {  // allocation failure; nothing else throws by design

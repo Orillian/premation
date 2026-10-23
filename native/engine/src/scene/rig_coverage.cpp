@@ -6,14 +6,13 @@
 #include <mutex>
 
 #include "image_decode.hpp"
+#include "media_paths.hpp"
 #include "native_effects.hpp"
 #include "svg_layer.hpp"
 #include "raster/canvas.hpp"
 
 namespace premation::scene {
 
-// scene_textures.hpp (declared here so this file does not pull the GPU headers in).
-[[nodiscard]] std::string file_url_path(std::string_view src);
 
 namespace {
 
@@ -70,7 +69,7 @@ CoverageLookup image_coverage_mask(std::string_view key, std::string_view src, c
     // (rasterizeSvg), and only its alpha is read.
     std::string path;
     if (!src.starts_with("data:")) {
-      std::filesystem::path p = file_url_path(src);
+      std::filesystem::path p = file_url_fs_path(src);
       if (p.is_relative()) {
         if (mediaBase.empty()) {
           out.unreachable = "the image is a relative path (no project folder to resolve it against)";
@@ -111,7 +110,7 @@ CoverageLookup image_coverage_mask(std::string_view key, std::string_view src, c
       if (const auto bytes = doc::native_unbase64(src.substr(comma + 1))) decoded = decode_image_bytes(*bytes, img, error);
     }
   } else {
-    std::filesystem::path p = file_url_path(src);
+    std::filesystem::path p = file_url_fs_path(src);
     if (p.is_relative()) {
       if (mediaBase.empty()) {
         out.unreachable = "the image is a relative path (no project folder to resolve it against)";

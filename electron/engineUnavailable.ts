@@ -21,6 +21,8 @@ export interface EngineUnavailableDeps {
   showSaveDialog(options: { title: string; defaultPath: string; filters: Array<{ name: string; extensions: string[] }> }): Promise<{ canceled: boolean; filePath?: string }>;
   /** The engine's autosave recovery file (EngineHostOptions.recoveryPath), or null. */
   recoveryPath: string | null;
+  /** The engine's log on disk (engineLogFile.ts): named in the crash-loop dialog, for a report. */
+  logPath?: string | null;
   exists(p: string): boolean;
   copyFile(from: string, to: string): Promise<void>;
   retry(): Promise<void>;
@@ -98,7 +100,8 @@ Technical detail: ${info.reason}`,
         + (hasRecovery
           ? 'Save a recovery copy of your project (its last autosave) before trying again or quitting.'
           : 'No autosave of this project exists yet, so there is no recovery copy to save.')
-        + (saved ? `\n\nRecovery copy saved to ${saved}` : ''),
+        + (saved ? `\n\nRecovery copy saved to ${saved}` : '')
+        + (d.logPath ? `\n\nWhat went wrong is recorded in ${d.logPath}. Please attach it if you report this.` : ''),
       buttons: [...ENGINE_UNAVAILABLE_BUTTONS],
       defaultId: hasRecovery && !saved ? 0 : 1,
       cancelId: 2,

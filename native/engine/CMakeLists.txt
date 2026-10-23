@@ -164,6 +164,9 @@ if(Dawn_FOUND)
   # `--prepare` (cli_prepare.cpp): the CLI's document edits (reframe, transcribe, comps) in the engine.
   target_compile_definitions(premation-engine PRIVATE PREMATION_HAVE_PREPARE=1)
   target_link_libraries(premation-engine PRIVATE engine_gpu motion::options)
+  if(WIN32)
+    target_sources(premation-engine PRIVATE premation-engine.manifest)  # UTF-8 process code page (the file says why)
+  endif()
 
   add_executable(premation-viewport-proto proto/proto_main.cpp proto/scene.cpp proto/wire.cpp)
   target_include_directories(premation-viewport-proto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/proto)
@@ -200,6 +203,7 @@ target_compile_definitions(premation-engine-headless PRIVATE PREMATION_ENGINE_HE
 target_link_libraries(premation-engine-headless PRIVATE engine_core engine_plugins motion::options)
 if(WIN32)
   target_link_libraries(premation-engine-headless PRIVATE winmm)
+  target_sources(premation-engine-headless PRIVATE premation-engine.manifest)  # UTF-8 process code page, as premation-engine
   target_compile_definitions(premation-engine-headless PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 endif()
 
@@ -1184,7 +1188,8 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
                                       tests/test_layer_view.cpp  # setViewport layer: the Layer panel's one-layer walk
                                       tests/test_overlay_render_agreement.cpp  # the overlay maths place a 3D layer where the frame drew it
                                       tests/test_oversize_texture.cpp  # an enormous layer clamps / is refused, never blanks the frame
-                                      tests/test_unported_warnings.cpp)  # 2026-10-20: ported text features; what a layer draws without is a `warning`
+                                      tests/test_unported_warnings.cpp  # 2026-10-20: ported text features; what a layer draws without is a `warning`
+                                      tests/test_unicode_media_paths.cpp)  # 2026-10-23: footage named outside the ANSI code page (Japanese user crash loop)
     target_compile_definitions(engine_scene_tests PRIVATE PREMATION_ENGINE_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
       PREMATION_RASTER_FONTS="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/harness/fonts/fonts.json")
     target_link_libraries(engine_scene_tests PRIVATE engine_scene motion::options Catch2::Catch2WithMain)
