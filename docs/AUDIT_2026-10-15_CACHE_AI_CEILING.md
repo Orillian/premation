@@ -158,6 +158,40 @@ camera push-in with the budget pinned at 8 MB: no blink, cached pass 96 % hits).
 The timeline shows the disk tier again: a blue line in its own row right above the green one
 (owner 2026-10-18), both from `getCacheCoverage`.
 
+### 2026-10-22: a 600-layer film — the disk tier ignored the build, one warning disabled the no-build path
+
+The owner's report: a 49 s, 657-layer 3D film (1080p60) plays slowly, the RAM cache "cannot cache it", the
+disk cache neither, and the two should work together as in After Effects. Measured on that document
+(exported read-only, loaded into a fresh `premation-engine`, viewer 1280×720, first 6 s):
+
+| Pass | Result |
+|---|---|
+| Cache Work Area | 360 frames in 33 s: 92 ms/frame, of which ~64 ms is the CPU build and ~3 ms the GPU draw |
+| Play after the fill | 100 % hits, yet 276 of 360 frames dropped (14.5 fps): every frame was built again |
+| New engine process, play | 0 % hits; only 138 of the 360 frames had reached disk |
+
+Three causes, each in the engine:
+
+1. **The disk decision weighed the GPU draw alone.** `worth_disk(gpuMs)` saw 2–3 ms and kept the frames off
+   disk, while each had cost ~95 ms to make. A range longer than the RAM tier (49 s at 1080p is ~24 GB) then
+   lost every frame RAM refused: not in RAM, not on disk, drawn again on every pass. Now `RenderJob::buildMs`
+   travels with the frame and the tiers weigh `build + draw` (eager read-back, late spill, RAM eviction).
+2. **Any layer warning switched the no-build path off.** The build worker dropped the pre-build key whenever
+   a frame had a layer error other than `expression` — a missing font, an unported feature, an oversize
+   texture — so a comp with one such layer built every frame even with all of them cached. Only the stages
+   that can change on their own (`plugin`, `snapshot`) block it now. With the app's bundled fonts the same
+   film plays its cached range at 60 fps with no build.
+3. **A new session had to build a frame to find its file.** The disk key is a hash of the built frame, and
+   the pre-build map lived in memory, so after a restart the disk tier saved only the GPU draw. The disk cache
+   now keeps an alias log (`aliases-v1.bin`: salted pre-build key → content and disk keys, loaded with the
+   scan, compacted when dead records outnumber live ones, purged with the frames). Frames that read footage
+   files get no alias: their file stamps are in the disk key only, so a replaced file stays a miss.
+
+Also fixed: the frame-key index mapped a frame outside every clip of a layer on the comp clock, where
+`comp_to_keyframe_time` maps it through the nearest clip (changed 2026-10-21), so such frames were keyed by
+another time's content (`test_session.cpp` "frame keys …" was red). A `playback_summary` log line now says,
+per play, how many frames were keyed and how many were served without a build.
+
 ### Proposed fix (small, engine-only)
 
 1. **Decide after the draw, from the frame's own measured cost.** When `worth_disk(gpuMs)` holds at

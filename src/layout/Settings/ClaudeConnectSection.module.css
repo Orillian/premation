@@ -3,11 +3,11 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px 22px;
   border-radius: var(--radius-surface);
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
   font-size: 0.74rem;
   line-height: 1.45;
   color: var(--color-text-primary);
@@ -165,7 +165,7 @@
   font-weight: 600;
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-1);
+  background: var(--color-surface-2);
 }
 
 .step[data-current='true'] .stepMark {
@@ -217,17 +217,20 @@
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-control);
   border: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-1);
+  background: var(--color-surface-2);
   color: var(--color-text-primary);
   font: inherit;
   font-size: 0.72rem;
   cursor: pointer;
+  transition: background var(--motion-duration-fast) var(--motion-ease-standard),
+              border-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .example:hover {
+  background: var(--color-surface-3);
   border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
@@ -400,7 +403,7 @@
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--radius-control);
-  background: var(--color-surface-1);
+  background: var(--color-surface-0);
   border: 1px solid var(--color-border-subtle);
   font-family: var(--font-family-mono);
   font-size: 0.68rem;

@@ -13,7 +13,7 @@
  *   - Push timeline data: pass a `model` prop to <BottomTimeline />.
  */
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type ComponentProps, type MutableRefObject } from 'react';
 import { clampPps } from '@layout/Timeline/zoomAnchor';
 import { Providers } from '@providers/Providers';
 import { useLayoutStore, consumeLayoutMigration } from '@stores/layoutStore';
@@ -117,7 +117,6 @@ function EditorShellInner(): JSX.Element {
   // needs the playhead is an EVENT HANDLER, which reads `playheadNow()` at
   // event time — non-reactive and always current.
 
-  const { activeSet } = useFocusContext();
 
   // Enable responsive UI auto-collapsing behaviors
   useResponsiveLayout();
@@ -174,11 +173,13 @@ function EditorShellInner(): JSX.Element {
 
   const [expandedIds, setExpandedIds] = useState<ReadonlyArray<string>>([]);
 
-  // Timeline rows from the document MIRROR (B4): one row per layer of the
-  // active comp, in stack order, subscribed to exactly the records they draw
-  // (the comp's stack, each layer's header and keyframes, expanded rows'
-  // property trees + the throttled playhead). See Timeline/useTimelineModel.
-  const tracks = useTimelineTracks(activeCompId, expandedIds);
+  // The timeline's rows are built in <ShellTimeline> (below), NOT here: they
+  // change on every keyframe edit — each step of dragging a keyframed layer —
+  // and built in this shell they re-rendered the whole editor (top bar, every
+  // dock panel, the inspector) once per pointer move. The shell keeps only the
+  // latest rows for the reveal shortcuts (tracksRef) and the layer count.
+  const tracksRef = useRef<TimelineTrack[]>([]);
+  const [layerCount, setLayerCount] = useState(0);
 
   // Session hydration is owned by AppRouter (before any route renders), so the
   // editor must NOT re-hydrate here — doing so flips auth status to 'loading'
@@ -191,8 +192,7 @@ function EditorShellInner(): JSX.Element {
   const [revealFilter, setRevealFilter] = useState<ReadonlyArray<string> | null>(null);
 
   // Horizontal zoom — the Timeline Engine's view is the authority (pixels/frame);
-  // pps = ppf × fps. Driven by the transport zoom buttons and Ctrl+Wheel.
-  const pps = useTimelinePixelsPerSecond(activeCompId);
+  // pps = ppf × fps (read in ShellTimeline). Driven by the transport zoom buttons and Ctrl+Wheel.
   const handleZoom = useCallback((next: number, anchorSeconds?: number): void => {
     // Anchor on the point the gesture was aimed at, falling back to the
     // playhead when there was none (a slider, a keyboard zoom).
@@ -206,9 +206,8 @@ function EditorShellInner(): JSX.Element {
     setExpandedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   }, []);
 
-  // Latest tracks, read by the reveal shortcuts without re-binding the listener.
-  const tracksRef = useRef(tracks);
-  tracksRef.current = tracks;
+  // Latest tracks (ShellTimeline keeps tracksRef current), read by the reveal
+  // shortcuts without re-binding the listener.
 
   useEffect(() => {
     // AE reveal shortcuts, filtering which property sub-rows show:
@@ -519,50 +518,6 @@ function EditorShellInner(): JSX.Element {
     for (const id of st.ids.slice(0, 64)) memberTracksNow(id);
   }), []);
 
-  // Mark tracks that fall outside the current Focus Mode context as ghosted.
-  const focusTracks = useMemo<TimelineTrack[]>(() => {
-    if (!activeSet) return tracks;
-    return tracks.map((t) => ({ ...t, ghosted: !activeSet.has(t.id) }));
-  }, [tracks, activeSet]);
-
-  // Comp markers, work area, duration, rate and start frame: the active comp's
-  // mirror record (seconds).
-  const ruler = useTimelineRuler(activeCompId);
-
-  // No preview cache is attached here: the frame cache is the engine's (video
-  // memory, sized from the graphics adapter, plus the disk tier the
-  // preferences configure through layout/Timeline/diskCacheSync.ts).
-
-  // NOTE: preview-coverage (the green RAM lane and blue disk lane under the
-  // ruler) is deliberately NOT state here any more. It changes on every
-  // rendered frame — 60×/s through a first playback pass, and again through
-  // every idle pre-render pass while paused — so holding it in the shell
-  // re-rendered the entire application tree at frame rate and replaced the
-  // `timelineModel` object below, defeating the memoization the comment on that
-  // model exists to protect. The lanes now subscribe themselves; see
-  // `layout/Timeline/CacheBars.tsx`.
-
-  // Model object for the timeline — deliberately does NOT include the live
-  // playhead time (activeTime). BottomTimeline reads ws?.time directly and
-  // passes it to <Timeline> as a separate `playheadTime` prop, so the model
-  // object stays referentially stable across playback frames. Without this,
-  // timelineModel was a new object 60×/s and forced the entire row tree to
-  // re-evaluate on every frame tick.
-  const timelineModel = useMemo<TimelineModel>(() => ({
-    duration: ruler.duration,
-    frameRate: ruler.frameRate,
-    startFrame: ruler.startFrame,
-    // A SNAPSHOT, deliberately not reactive: every live consumer reads the
-    // separate playheadTime path (BottomTimeline/Timeline/GraphEditor), so
-    // this field only serves the no-active-tab fallback. Making it reactive
-    // rebuilt this model object every playback frame — exactly what the
-    // header comment above forbids.
-    currentTime: playheadNow(),
-    pixelsPerSecond: pps,
-    markers: ruler.markers,
-    tracks: focusTracks,
-    ...(ruler.workArea ? { workArea: ruler.workArea } : {}),
-  }), [focusTracks, pps, ruler]);
 
   // Real-time playback clock: pumps the Timeline Engine while `playing` is set.
   usePlaybackClock();
@@ -591,10 +546,12 @@ function EditorShellInner(): JSX.Element {
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <EditorLayout
           topNav={<TopNav />}
-          statusBar={<EditorStatusBar layerCount={tracks.length} />}
+          statusBar={<EditorStatusBar layerCount={layerCount} />}
           timeline={
-            <BottomTimeline
-              model={timelineModel}
+            <ShellTimeline
+              activeCompId={activeCompId}
+              tracksRef={tracksRef}
+              onLayerCount={setLayerCount}
               {...timelineHandlerProps(timelineHandlers)}
               onWorkAreaChange={(start, end) => { void setTimelineWorkArea(start, end); }}
               onScroll={(px) => setTimelineScrollPixels(px)}
@@ -613,6 +570,64 @@ function EditorShellInner(): JSX.Element {
       <PremiumPromptHost />
     </div>
   );
+}
+
+/**
+ * The timeline and the model it draws: the active comp's rows from the
+ * document MIRROR (B4: one row per layer in stack order, subscribed to exactly
+ * the records they draw — the comp's stack, each layer's header and keyframes,
+ * expanded rows' property trees; see Timeline/useTimelineModel), the ruler, the
+ * zoom and Focus Mode's ghosting.
+ *
+ * Its own component so the rows changing re-renders the timeline and nothing
+ * else. They change on every keyframe edit, which is every step of dragging a
+ * keyframed layer: built in EditorShellInner they re-rendered the whole editor
+ * per pointer move — the drag of a keyframed layer ran at half the rate of a
+ * plain one, and it read as "that layer got slow".
+ *
+ * The model deliberately does NOT include the live playhead time: BottomTimeline
+ * reads it directly and passes it to <Timeline> as `playheadTime`, so the model
+ * stays referentially stable across playback frames.
+ */
+function ShellTimeline({
+  activeCompId,
+  tracksRef,
+  onLayerCount,
+  expandedTrackIds,
+  ...props
+}: Omit<ComponentProps<typeof BottomTimeline>, 'model'> & {
+  activeCompId: string | undefined;
+  tracksRef: MutableRefObject<TimelineTrack[]>;
+  onLayerCount: (n: number) => void;
+}): JSX.Element {
+  const tracks = useTimelineTracks(activeCompId, expandedTrackIds ?? []);
+  tracksRef.current = tracks;
+  useEffect(() => onLayerCount(tracks.length), [tracks.length, onLayerCount]);
+  const { activeSet } = useFocusContext();
+  // Mark tracks that fall outside the current Focus Mode context as ghosted.
+  const focusTracks = useMemo<TimelineTrack[]>(() => {
+    if (!activeSet) return tracks;
+    return tracks.map((t) => ({ ...t, ghosted: !activeSet.has(t.id) }));
+  }, [tracks, activeSet]);
+  // Comp markers, work area, duration, rate and start frame: the active comp's mirror record (seconds).
+  const ruler = useTimelineRuler(activeCompId);
+  const pps = useTimelinePixelsPerSecond(activeCompId);
+  // The preview-cache lanes are not part of the model: they change every
+  // rendered frame and subscribe themselves (layout/Timeline/CacheBars.tsx).
+  const model = useMemo<TimelineModel>(() => ({
+    duration: ruler.duration,
+    frameRate: ruler.frameRate,
+    startFrame: ruler.startFrame,
+    // A SNAPSHOT, deliberately not reactive: every live consumer reads the
+    // separate playheadTime path (BottomTimeline/Timeline/GraphEditor), so this
+    // field only serves the no-active-tab fallback.
+    currentTime: playheadNow(),
+    pixelsPerSecond: pps,
+    markers: ruler.markers,
+    tracks: focusTracks,
+    ...(ruler.workArea ? { workArea: ruler.workArea } : {}),
+  }), [focusTracks, pps, ruler]);
+  return <BottomTimeline model={model} expandedTrackIds={expandedTrackIds} {...props} />;
 }
 
 export function App(): JSX.Element {

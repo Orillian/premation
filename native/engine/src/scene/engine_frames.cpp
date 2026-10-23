@@ -1039,10 +1039,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     const std::optional<std::uint64_t> key = content_key(frame, width, height);
     if (!key) return std::nullopt;
     const auto now = std::chrono::steady_clock::now();
-    if (now - saltAt_ >= kStampRecheck || salt_ == 0) {
-      saltAt_ = now;
-      salt_ = disk_salt();
-    }
+    refresh_salt(now);
     if (frame.mediaBase != stampBase_) {
       stampBase_ = frame.mediaBase;
       stamps_.clear();
@@ -1054,6 +1051,20 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
       if (!t.src.empty()) h.u64(footage_stamp(t.src, now));
     }
     return h.value();
+  }
+
+  [[nodiscard]] std::uint64_t alias_salt() override {
+    refresh_salt(std::chrono::steady_clock::now());
+    return salt_;
+  }
+
+  [[nodiscard]] bool reads_files(const BuiltFrame& frame) const override {
+    // The sources footage_stamp stamps: a file (gltf:<file> included), not an
+    // inline image (a stored SVG is a data: URL) or a URL.
+    return std::ranges::any_of(frame.textures, [](const TextureRequest& t) {
+      return !t.src.empty() && !t.src.starts_with("data:") && !t.src.starts_with("blob:") && !t.src.starts_with("http:") &&
+             !t.src.starts_with("https:");
+    });
   }
 
   [[nodiscard]] bool last_frame_exact() const override { return exact_; }
@@ -1184,6 +1195,13 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   }
 
   static constexpr std::chrono::seconds kStampRecheck{2};
+  /// disk_salt(), re-read at most every kStampRecheck.
+  void refresh_salt(std::chrono::steady_clock::time_point now) {
+    if (now - saltAt_ >= kStampRecheck || salt_ == 0) {
+      saltAt_ = now;
+      salt_ = disk_salt();
+    }
+  }
   std::uint64_t salt_ = 0;
   std::chrono::steady_clock::time_point saltAt_{};
   std::string stampBase_;

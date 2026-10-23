@@ -1036,6 +1036,7 @@ export function TrackCategoryHeader({
   sticky,
   onToggle,
   onReset,
+  fx,
 }: {
   label: string;
   icon: IconName;
@@ -1050,10 +1051,12 @@ export function TrackCategoryHeader({
    * same verb on the heading's right-click. Absent = neither.
    */
   onReset?: () => void;
+  /** One applied effect's twirl (AE): the fx switch that turns the effect off without removing it. */
+  fx?: { enabled: boolean; onToggle: () => void };
 }): JSX.Element {
   return (
     <div
-      className={cn(styles.categoryHeader, sticky && styles.categoryHeaderSticky)}
+      className={cn(styles.categoryHeader, sticky && styles.categoryHeaderSticky, fx && !fx.enabled && styles.categoryHeaderOff)}
       style={style}
       onClick={onToggle}
       onContextMenu={
@@ -1070,9 +1073,25 @@ export function TrackCategoryHeader({
       <span className={styles.disclosure}>
         <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="md" />
       </span>
-      <span className={styles.categoryIcon}>
-        <Icon name={icon} size="md" />
-      </span>
+      {fx ? (
+        <button
+          type="button"
+          className={cn(styles.categoryFx, fx.enabled && styles.categoryFxOn)}
+          aria-pressed={fx.enabled}
+          aria-label={fx.enabled ? t('timeline.category.fxOff', 'Turn {name} off', { name: label }) : t('timeline.category.fxOn', 'Turn {name} on', { name: label })}
+          title={fx.enabled ? t('timeline.category.fxOffTitle', '{name} is on — click to turn the effect off (it stays applied)', { name: label }) : t('timeline.category.fxOnTitle', '{name} is off — click to turn it back on', { name: label })}
+          onClick={(e) => {
+            e.stopPropagation();
+            fx.onToggle();
+          }}
+        >
+          fx
+        </button>
+      ) : (
+        <span className={styles.categoryIcon}>
+          <Icon name={icon} size="md" />
+        </span>
+      )}
       <span className={styles.categoryName}>{label}</span>
       {onReset ? (
         <button

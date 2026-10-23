@@ -18,17 +18,26 @@
 //  * Least recently used files go first once the folder is over its size
 //    limit. Recency survives restarts: a hit refreshes the file's time, and the
 //    scan at start orders the index by it.
+//  * Pre-build ALIASES survive restarts too (`aliases-v1.bin`, appended, loaded
+//    with the scan): a frame's salted pre-build key → its content and disk
+//    keys. A disk key is a hash of the BUILT frame, so without them a new
+//    session had to build every frame (60+ ms on a 600-layer comp) just to
+//    learn which file it was — the disk tier could never make a heavy comp
+//    play after a restart. With them the frame is a file read, unbuilt (After
+//    Effects' disk cache across sessions).
 //
 // Thread-safe: the render thread reads (contains / load) and hands frames over
 // (store); the core thread configures and purges.
 #pragma once
 
+#include <array>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -117,6 +126,14 @@ class DiskCache {
   /// Whether `reserve` would claim `key` now (no side effect; tests).
   [[nodiscard]] bool wants(std::uint64_t key) const;
 
+  /// Remember that the frame whose salted pre-build key is `alias` is `content`
+  /// (its VRAM / RAM key) and `disk` (its file): appended to the folder's alias
+  /// log by the writer thread. Only for frames whose pixels the pre-build key
+  /// fully decides (no footage files: their stamps are in the disk key alone).
+  void store_alias(std::uint64_t alias, std::uint64_t content, std::uint64_t disk);
+  /// `alias`'s {content, disk} keys while its file is on disk; nullopt otherwise.
+  [[nodiscard]] std::optional<std::pair<std::uint64_t, std::uint64_t>> find_alias(std::uint64_t alias) const;
+
   /// Purge Disk Cache: forget every frame and delete the folder's cache files.
   void purge();
 
@@ -130,7 +147,7 @@ class DiskCache {
     std::uint64_t bytes = 0;  // on disk
     std::list<std::uint64_t>::iterator lru;
   };
-  enum class JobKind : std::uint8_t { scan, write, touch, remove, purge, trim };
+  enum class JobKind : std::uint8_t { scan, write, touch, remove, purge, trim, alias };
   struct Job {
     JobKind kind = JobKind::write;
     std::uint64_t generation = 0;
@@ -138,7 +155,8 @@ class DiskCache {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::vector<std::uint8_t> rgba;
-    std::filesystem::path dir;  // scan / purge: the folder; touch / remove: the file
+    std::filesystem::path dir;  // scan / purge / alias: the folder; touch / remove: the file
+    std::array<std::uint64_t, 3> alias{};  // alias: {alias, content, disk}
   };
   static Job job_of(JobKind kind, std::uint64_t generation, std::filesystem::path dir = {}) {
     Job j;
@@ -152,6 +170,12 @@ class DiskCache {
   void do_scan(const Job& job);
   void do_write(Job& job);
   void do_purge(const std::filesystem::path& dir);
+  /// Writer thread: one alias record onto the folder's log.
+  void do_alias(const Job& job);
+  /// Writer thread, from the scan: the folder's alias log into `aliases_`
+  /// (the last record of an alias wins), rewritten without the dead ones when
+  /// they have come to outnumber the live ones.
+  void load_aliases(const std::filesystem::path& dir, std::uint64_t generation);
   /// Writer thread: time reading `file` back (read + decode) into readMsPerMp_, if still this generation's.
   void measure_read(const std::filesystem::path& file, std::uint64_t generation);
   /// Under m_: evict least recently used entries until the cache is inside its budget; returns the files to delete.
@@ -181,6 +205,9 @@ class DiskCache {
   std::unordered_set<std::uint64_t> pending_;
   /// Keys claimed for a GPU read-back that has not reached `store` yet.
   std::unordered_set<std::uint64_t> reserved_;
+  /// store_alias / find_alias: salted pre-build key → {content, disk}. Live
+  /// while the disk key's file is in `index_` (an evicted frame's alias is dead weight until the log is compacted).
+  std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::uint64_t>> aliases_;
   DiskCacheStats counters_;
   /// read_ms_per_mp (0 = not measured in this folder yet).
   double readMsPerMp_ = 0;

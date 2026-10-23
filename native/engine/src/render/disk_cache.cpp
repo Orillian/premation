@@ -39,6 +39,9 @@ static_assert(sizeof(FileHeader) == 40);
 
 constexpr std::string_view kExt = ".pfc";
 constexpr std::string_view kTmpExt = ".tmp";
+/// The alias log: 24-byte records {alias, content, disk}, little-endian, appended.
+constexpr std::string_view kAliasFile = "aliases-v1.bin";
+constexpr std::size_t kAliasRecord = 3 * sizeof(std::uint64_t);
 
 fs::path utf8_path(const std::string& s) { return {std::u8string(s.begin(), s.end())}; }
 
@@ -116,6 +119,7 @@ void DiskCache::configure(const std::string& folder, std::uint64_t budgetBytes) 
       lru_.clear();
       pending_.clear();
       reserved_.clear();
+      aliases_.clear();
       bytes_ = 0;
       readMsPerMp_ = 0;
       std::erase_if(jobs_, [](const Job& j) { return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim; });
@@ -302,12 +306,38 @@ void DiskCache::purge() {
     lru_.clear();
     pending_.clear();
     reserved_.clear();
+    aliases_.clear();
     bytes_ = 0;
-    std::erase_if(jobs_, [](const Job& j) { return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim; });
+    std::erase_if(jobs_, [](const Job& j) {
+      return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim || j.kind == JobKind::alias;
+    });
     queuedBytes_ = 0;
     if (!dir_.empty()) jobs_.push_back(job_of(JobKind::purge, generation_, dir_));
   }
   cv_.notify_all();
+}
+
+void DiskCache::store_alias(std::uint64_t alias, std::uint64_t content, std::uint64_t disk) {
+  if (alias == 0 || disk == 0) return;
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    if (dir_.empty() || !counters_.error.empty()) return;
+    const auto it = aliases_.find(alias);
+    if (it != aliases_.end() && it->second == std::make_pair(content, disk)) return;  // known: nothing to append
+    aliases_[alias] = {content, disk};
+    Job job = job_of(JobKind::alias, generation_, dir_);
+    job.alias = {alias, content, disk};
+    jobs_.push_back(std::move(job));
+  }
+  cv_.notify_all();
+}
+
+std::optional<std::pair<std::uint64_t, std::uint64_t>> DiskCache::find_alias(std::uint64_t alias) const {
+  const std::lock_guard<std::mutex> lock(m_);
+  if (dir_.empty()) return std::nullopt;
+  const auto it = aliases_.find(alias);
+  if (it == aliases_.end() || !index_.contains(it->second.second)) return std::nullopt;
+  return it->second;
 }
 
 void DiskCache::flush() {
@@ -369,6 +399,7 @@ void DiskCache::run() {
       case JobKind::touch: fs::last_write_time(job.dir, fs::file_time_type::clock::now(), ec); break;
       case JobKind::remove: fs::remove(job.dir, ec); break;
       case JobKind::purge: do_purge(job.dir); break;
+      case JobKind::alias: do_alias(job); break;
       case JobKind::trim: {
         std::vector<fs::path> victims;
         {
@@ -432,6 +463,7 @@ void DiskCache::do_scan(const Job& job) {
     bytes = bytes_;
   }
   for (const fs::path& v : victims) fs::remove(v, ec);
+  load_aliases(job.dir, job.generation);
   // The read cost the render thread weighs draws against, timed on this
   // folder's most recently used frame (a cold read, as a hit after a restart is).
   if (found.size() > victims.size()) measure_read(file_of(job.dir, found.back().key), job.generation);
@@ -541,7 +573,75 @@ void DiskCache::do_purge(const fs::path& dir) {
     if (ext == kExt || ext == kTmpExt) files.push_back(it->path());
   }
   for (const fs::path& f : files) fs::remove(f, ec);
+  fs::remove(dir / utf8_path(std::string(kAliasFile)), ec);
   PREMATION_LOG(info, "disk_cache_purged").kv("files", static_cast<std::int64_t>(files.size()));
+}
+
+void DiskCache::do_alias(const Job& job) {
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    if (job.generation != generation_) return;  // purged or moved meanwhile
+  }
+  std::array<char, kAliasRecord> rec{};
+  std::memcpy(rec.data(), job.alias.data(), kAliasRecord);
+  std::ofstream f(job.dir / utf8_path(std::string(kAliasFile)), std::ios::binary | std::ios::app);  // NOLINT(hicpp-signed-bitwise,bugprone-signed-bitwise): the standard's openmode flags
+  if (f) f.write(rec.data(), static_cast<std::streamsize>(rec.size()));
+}
+
+void DiskCache::load_aliases(const fs::path& dir, std::uint64_t generation) {
+  const fs::path file = dir / utf8_path(std::string(kAliasFile));
+  std::vector<std::uint8_t> bytes;
+  {
+    std::error_code ec;
+    const std::uintmax_t size = fs::file_size(file, ec);
+    if (ec || size < kAliasRecord) return;
+    std::ifstream f(file, std::ios::binary);
+    if (!f) return;
+    bytes.resize(static_cast<std::size_t>(size - size % kAliasRecord));  // a torn last record is dropped
+    f.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes in
+    if (!std::cmp_equal(f.gcount(), bytes.size())) return;
+  }
+  const std::size_t records = bytes.size() / kAliasRecord;
+  std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::uint64_t>> map;
+  map.reserve(records);
+  for (std::size_t i = 0; i < records; ++i) {
+    std::array<std::uint64_t, 3> r{};
+    std::memcpy(r.data(), bytes.data() + i * kAliasRecord, kAliasRecord);
+    map[r[0]] = {r[1], r[2]};
+  }
+  std::vector<std::array<std::uint64_t, 3>> live;
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    if (generation != generation_) return;
+    for (const auto& [alias, keys] : map) {
+      if (!index_.contains(keys.second)) continue;  // its frame was evicted or purged
+      aliases_.emplace(alias, keys);
+      live.push_back({alias, keys.first, keys.second});
+    }
+  }
+  // Compacted when the dead (superseded, evicted) records outnumber the live
+  // ones: rewritten through a temp file, never in place.
+  if (records > 2 * live.size() + 1024) {
+    fs::path tmp = file;
+    tmp.replace_extension(utf8_path(std::string(kTmpExt)));
+    bool ok = false;
+    {
+      std::ofstream f(tmp, std::ios::binary | std::ios::trunc);  // NOLINT(hicpp-signed-bitwise,bugprone-signed-bitwise): the standard's openmode flags
+      if (f) {
+        for (const auto& r : live) {
+          std::array<char, kAliasRecord> rec{};
+          std::memcpy(rec.data(), r.data(), kAliasRecord);
+          f.write(rec.data(), static_cast<std::streamsize>(rec.size()));
+        }
+        f.close();
+        ok = !f.fail();
+      }
+    }
+    std::error_code ec;
+    if (ok) fs::rename(tmp, file, ec);
+    if (!ok || ec) fs::remove(tmp, ec);
+  }
+  PREMATION_LOG(info, "disk_cache_aliases").kv("live", static_cast<std::int64_t>(live.size())).kv("records", static_cast<std::int64_t>(records));
 }
 
 }  // namespace premation::render

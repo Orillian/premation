@@ -590,6 +590,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'anim.interpHold', label: 'Hold' },
         ],
       },
+      { commandId: 'anim.toggleHold', label: 'Toggle Hold Keyframe' },
       {
         // AE Animation ▸ Keyframe Assistant — engines lived in the palette /
         // TopNav only; this menu is where AE muscle memory looks first.
@@ -769,6 +770,23 @@ export const APP_MENU: MenuGroupModel[] = [
         ],
       },
       { separator: true },
+      {
+        // AE's View ▸ Show Layer Controls (Ctrl+Shift+H) and View Options:
+        // which viewer chrome draws, and whether it draws during playback.
+        label: 'Layer Controls',
+        labelKey: 'menu.sub.layerControls',
+        children: [
+          { commandId: 'view.layerControls', label: 'Show Layer Controls' },
+          { commandId: 'view.layerControls.whilePlaying', label: 'Show While Playing' },
+          { separator: true },
+          { commandId: 'view.layerControls.handles', label: 'Handles' },
+          { commandId: 'view.layerControls.masks', label: 'Masks and Shape Paths' },
+          { commandId: 'view.motionPath', label: 'Motion Paths' },
+          { commandId: 'view.layerControls.lightsCameras', label: 'Camera and Light Wireframes' },
+          { commandId: 'view.layerControls.gizmo3d', label: '3D Gizmo' },
+          { commandId: 'view.layerControls.effectControls', label: 'Effect Controls' },
+        ],
+      },
       { commandId: 'view.fitSelection', label: 'Fit Selection in View' },
       {
         // Everything that frames or reshapes the timeline PANEL, kept apart

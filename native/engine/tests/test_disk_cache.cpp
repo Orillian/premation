@@ -115,6 +115,51 @@ TEST_CASE("disk cache: frames outlive the instance (the next session reads them)
   CHECK(next.bytes() > 0);
 }
 
+TEST_CASE("disk cache: a frame's pre-build alias outlives the instance, and dies with its file", "[disk_cache][alias]") {
+  // The next session finds a frame by its (salted) pre-build key without building
+  // it: the alias says which content and disk keys the frame had.
+  const fs::path dir = fresh_dir("alias");
+  {
+    DiskCache cache;
+    cache.configure(utf8(dir), 64ULL * 1024 * 1024);
+    cache.flush();
+    REQUIRE(cache.store(42, kW, kH, noise(3)));
+    cache.store_alias(900, 77, 42);
+    cache.store_alias(901, 78, 43);  // its frame never reached disk
+    cache.flush();
+    const auto a = cache.find_alias(900);
+    REQUIRE(a.has_value());
+    CHECK(a->first == 77);
+    CHECK(a->second == 42);
+    CHECK_FALSE(cache.find_alias(901).has_value());  // no file: nothing to serve
+  }
+  {
+    DiskCache next;
+    next.configure(utf8(dir), 64ULL * 1024 * 1024);
+    next.flush();  // the scan loads the alias log
+    const auto a = next.find_alias(900);
+    REQUIRE(a.has_value());
+    CHECK(a->first == 77);
+    CHECK(a->second == 42);
+    // Re-pointed (the frame was drawn again under other keys): the last record wins.
+    REQUIRE(next.store(44, kW, kH, noise(4)));
+    next.store_alias(900, 79, 44);
+    next.flush();
+  }
+  DiskCache third;
+  third.configure(utf8(dir), 64ULL * 1024 * 1024);
+  third.flush();
+  const auto b = third.find_alias(900);
+  REQUIRE(b.has_value());
+  CHECK(b->first == 79);
+  CHECK(b->second == 44);
+  // Purge: the log goes with the frames.
+  third.purge();
+  third.flush();
+  CHECK_FALSE(third.find_alias(900).has_value());
+  CHECK_FALSE(fs::exists(dir / DiskCache::kSubfolder / "aliases-v1.bin"));
+}
+
 TEST_CASE("disk cache: the read cost is measured on the folder's own files", "[disk_cache]") {
   const fs::path dir = fresh_dir("readcost");
   {

@@ -1638,6 +1638,7 @@ void Session::start_playback(Clock::time_point now, std::optional<api::Time> fro
   set_time(f * frame_dur());
   playFrom_ = time_;
   playing_ = true;
+  playTally_ = {};
   playBase_ = now;
   playBaseU_ = frame_ - r.first;
   lastK_ = 0;
@@ -1839,6 +1840,13 @@ void Session::poll_build_requests() {
 
 void Session::stop_playback() {
   if (!playing_) return;
+  PREMATION_LOG(info, "playback_summary")
+      .kv("frames", playTally_.frames)
+      .kv("keyed", playTally_.keyed)
+      .kv("servedWithoutBuild", playTally_.cached)
+      .kv("indexed", frameKeys_.indexed())
+      .kv("volatile", frameKeys_.volatile_inputs())
+      .kv("buildMs", buildMs_);
   playing_ = false;
   cacheInFlight_ = false;
   transportState_ = api::TransportState::stopped;
@@ -2142,6 +2150,7 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
   job.clockDropped = clockDropped;
   job.exactMedia = playing_ && transportState_ == api::TransportState::caching;
   job.playing = playing_;
+  job.transient = gesture_.has_value() && !playing_;
   // Cached playback without a build (core/frame_keys.hpp): the frame's
   // pre-build key, and — when the sink has seen that key built and a tier may
   // still hold the frame — the job goes out with the content key alone. A
@@ -2151,14 +2160,17 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
     forceBuild = true;
     forceBuild_.erase(fb);
   }
+  if (playing_) ++playTally_.frames;
   if (job.recordCoverage && frameBuilder_ != nullptr) {
     sync_frame_keys();
     if (const std::uint64_t docKey = frameKeys_.key(frame_); docKey != 0 && !frameKeys_.volatile_inputs()) {
       job.prebuildKey = render::prebuild_key(job.cacheScope, docKey);
+      if (playing_) ++playTally_.keyed;
       if (!forceBuild) {
         if (const std::optional<CachedKeys> hit = sink_.cached_frame(*job.prebuildKey)) {
           job.cachedKey = hit->content;
           job.cachedDiskKey = hit->disk;
+          if (playing_) ++playTally_.cached;
           ++cachedSubmitted_;
           cachedPollUntil_ = loopNow_ + kCachedPoll;
           // No build for this frame: the HUD's cpuFrameMs (buildMs_, a moving
@@ -2283,12 +2295,16 @@ void Session::run_build(BuildTask t) {
           report.cached = true;
         } else {
           t.job.built = frameBuilder_->build(doc_, t.view, env, buildExprCache_, t.comp, t.time, t.port, t.playing, report.errors);
-          // A frame with a layer error may have been built from an input that
-          // is still arriving (a model loading, a probe pending): its pre-build
-          // key is not learned, so it is never presented without a build.
-          // (An expression error is not such an input: it is the document's own, and stable.)
+          t.job.buildMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+          // A frame built from an input that may still change on its own (a
+          // plugin instance loading or failing, a build that threw part-way):
+          // its pre-build key is not learned, so it is never presented without
+          // a build. Every other stage is the document's own and stable — an
+          // expression error, a missing font, an unported feature, an oversize
+          // texture — and blocking on those (any warning, before) kept a whole
+          // comp off the no-build path: its cached frames still cost a full build.
           if (std::any_of(report.errors.begin(), report.errors.end(),
-                          [](const api::LayerError& e) { return e.stage != "expression"; })) {
+                          [](const api::LayerError& e) { return e.stage == "plugin" || e.stage == "snapshot"; })) {
             t.job.prebuildKey.reset();
           }
         }

@@ -162,6 +162,19 @@ export async function commitSourceTextEdit(
   text: string,
   opts: { seconds: number; label: string; rename?: string; runs?: ReadonlyArray<unknown> },
 ): Promise<boolean> {
+  const res = await edit(opts.label, sourceTextEditCommands(nodeId, text, opts));
+  return res.ok;
+}
+
+/**
+ * The commands of a Source Text edit (`commitSourceTextEdit`'s, and each live
+ * step of in-place typing — TextEditOverlay sends them inside one gesture).
+ */
+export function sourceTextEditCommands(
+  nodeId: string,
+  text: string,
+  opts: { seconds: number; rename?: string; runs?: ReadonlyArray<unknown> },
+): Command[] {
   const cmds: Command[] = [];
   if (opts.rename !== undefined) cmds.push({ type: 'renameLayer', layer: nodeId, name: opts.rename });
   cmds.push({
@@ -173,8 +186,7 @@ export async function commitSourceTextEdit(
   // Styled text: the runs re-indexed to the new text, after it (G1 `text/styleRuns`
   // — a static Source Text write drops the runs that indexed the old text).
   if (opts.runs) cmds.push({ type: 'setProperty', prop: { layer: nodeId, path: paths.textProp('styleRuns') }, value: values.json(opts.runs) });
-  const res = await edit(opts.label, cmds);
-  return res.ok;
+  return cmds;
 }
 
 // ── Gradient gizmo (GradientHandleOverlay) ───────────────────────────

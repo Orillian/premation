@@ -54,7 +54,7 @@ export function buildTextToolCommands(): ReadonlyArray<Command> {
       label: t('text.commands.findAndReplaceText', 'Find and Replace Text…'),
       description: t('text.commands.findTextInTheSelected', 'Find text in the selected layers, this comp or every comp — Source Text keyframes included — and replace it in one undo.'),
       icon: 'search',
-      shortcut: { key: 'h', meta: true, shift: true },
+      // No chord: Ctrl+Shift+H is After Effects' View ▸ Show Layer Controls (view.layerControls).
       enabled: () => true,
       execute: () => {
         openFindReplaceTextDialog();

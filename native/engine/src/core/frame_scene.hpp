@@ -62,6 +62,17 @@ struct RenderJob {
   /// dropped frame (FrameReady.dropped of the next one). A paused edit
   /// superseded by the next edit is not — no frame of playback was lost.
   bool playing = false;
+  /// What building this frame cost on the CPU, ms (the document evaluated, the
+  /// scene and its rasters planned); 0 for a cached job. A frame's real cost is
+  /// this plus its GPU draw: a 600-layer comp builds in 60+ ms and draws in 3,
+  /// and judged by the draw alone it never looked worth a disk file.
+  double buildMs = 0;
+  /// Drawn while an edit gesture is open (a drag, a scrub of a value) and the
+  /// transport is not playing: a state that is never shown again, one per
+  /// pointer move. Drawn and presented, but kept in no cache tier — storing it
+  /// filled VRAM with throwaway frames, then paid a full-frame GPU read-back
+  /// per move to push each evicted one into RAM (gigabytes over a few drags).
+  bool transient = false;
   /// B4 round 2: the viewport's overlays subscribed (setOverlayGeometry): the sink sends `geometry` as
   /// FrameGeometry messages right before this frame's FrameReady (even when empty).
   bool geometrySubscribed = false;

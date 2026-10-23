@@ -92,25 +92,74 @@ describe('TextEditOverlay', () => {
     promptSpy.mockRestore();
   });
 
-  it('keeps the engine from drawing the text under the box: the layer is hidden in the viewport while editing, drawn again after', async () => {
+  it('the engine draws the text being typed: only a fresh layer\'s placeholder is hidden, until the first keystroke', async () => {
     const hidden = (): unknown[] =>
       spy.mock.calls.map((c) => c[0]).filter((c) => (c as { type: string }).type === 'setViewportHiddenLayers');
     const spy = jest.spyOn(h.client, 'execute');
     const { getByRole } = render(<TextEditOverlay />);
-    expect(hidden()).toEqual([]);
 
+    // An existing layer: its glyphs stay on screen (the editor is the caret over them).
     act(() => useTextEditStore.getState().begin(T));
-    expect(hidden()).toEqual([{ type: 'setViewportHiddenLayers', viewport: 1, layers: [T] }]);
-
+    expect(hidden()).toEqual([]);
     await commitWith(() => getByRole('textbox').dispatchEvent(ctrlEnter()));
-    // Closed: the viewport draws the layer again (an empty set).
+
+    // A layer the Type tool just made: the engine's placeholder "Text" is left
+    // out of the viewport until the first keystroke, then the typed text draws.
+    act(() => useTextEditStore.getState().begin(T, { fresh: true }));
+    expect(hidden()).toEqual([{ type: 'setViewportHiddenLayers', viewport: 1, layers: [T] }]);
+    const box = getByRole('textbox');
+    await act(async () => {
+      box.innerText = 'N';
+      fireEvent.input(box);
+      await settleEdits();
+    });
     expect(hidden()).toEqual([
       { type: 'setViewportHiddenLayers', viewport: 1, layers: [T] },
       { type: 'setViewportHiddenLayers', viewport: 1, layers: [] },
     ]);
+    await commitWith(() => box.dispatchEvent(ctrlEnter()));
     // It is view state: the document has no trace of it.
     expect((await historyLabels())).not.toContain('setViewportHiddenLayers');
     spy.mockRestore();
+  });
+
+  it('typing is live (AE): each keystroke is on the layer, the whole edit is ONE undo entry', async () => {
+    const before = (await h.doc());
+    const entries = (await historyLabels()).length;
+    const { getByRole } = render(<TextEditOverlay />);
+    act(() => useTextEditStore.getState().begin(T));
+    const box = getByRole('textbox');
+    for (const typed of ['H', 'Hi', 'Hi!']) {
+      await act(async () => {
+        box.innerText = typed;
+        fireEvent.input(box);
+        await settleEdits();
+      });
+      // Mid-edit: the engine already has it (it is what the viewport draws).
+      expect((await contentOf(T))).toBe(typed);
+    }
+    await commitWith(() => box.dispatchEvent(ctrlEnter()));
+    expect((await contentOf(T))).toBe('Hi!');
+    expect((await historyLabels()).length).toBe(entries + 1);
+    expect((await historyLabels()).at(-1)).toBe('Edit Text');
+    await act(async () => { await h.run({ type: 'undo' }); });
+    expect((await h.doc())).toBe(before);
+  });
+
+  it('Shift+Escape after live typing rolls every keystroke back, leaving no entry', async () => {
+    const entries = (await historyLabels()).length;
+    const { getByRole } = render(<TextEditOverlay />);
+    act(() => useTextEditStore.getState().begin(T));
+    const box = getByRole('textbox');
+    await act(async () => {
+      box.innerText = 'Gone soon';
+      fireEvent.input(box);
+      await settleEdits();
+    });
+    expect((await contentOf(T))).toBe('Gone soon');
+    await commitWith(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', shiftKey: true, bubbles: true })));
+    expect((await contentOf(T))).toBe('Hello');
+    expect((await historyLabels()).length).toBe(entries);
   });
 
   it('an editor that opened before the layer reached the mirror fills in, selected, once its text arrives', async () => {
@@ -146,7 +195,9 @@ describe('TextEditOverlay', () => {
     act(() => useTextEditStore.getState().begin(T));
     const box = getByRole('textbox') as HTMLElement;
     expect(box.style.textAlign).toBe('center');
-    expect(box.style.color).toContain('0, 255, 136'); // #00ff88 (browsers normalise to rgb)
+    // The engine draws the glyphs; the editor is the caret (in the layer's colour) over them.
+    expect(box.style.color).toBe('transparent');
+    expect(box.style.caretColor).toBe('#00ff88');
     expect(box.style.fontSize).toBe('48px');
   });
 
@@ -415,7 +466,8 @@ describe('TextEditOverlay', () => {
     });
     await waitFor(() => expect(box.getAttribute('data-overflow')).toBe('true'));
     expect(parseFloat(box.style.paddingTop || '0')).toBe(0);
-    expect((await contentOf(T))).toBe('Hi');
+    // Typing is live: the layer already holds what was typed.
+    expect((await contentOf(T))).toBe('Hi\nthere');
   });
 
   it('Shift+Enter does not commit (newline in multi-line text)', async () => {

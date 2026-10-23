@@ -1743,6 +1743,39 @@
   text-decoration: underline;
 }
 
+/* One applied effect's twirl (AE): the italic "fx" switch before its name.
+   On = the effect renders; off = applied but skipped, its name dimmed. */
+.categoryFx {
+  flex: none;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+  background: none;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.categoryFxOn {
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.categoryFx:hover,
+.categoryFx:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.categoryHeaderOff .categoryName {
+  color: var(--color-text-tertiary);
+}
+
 /* ── Property sub-row header (Level 2 Indent) ───────────────────── */
 .propHeader {
   position: relative;

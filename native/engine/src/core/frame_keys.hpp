@@ -60,6 +60,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -559,12 +560,25 @@ class FrameKeyIndex {
   [[nodiscard]] static double clock_time(const Clock& c, double compTime) noexcept {
     double time = compTime;
     const double frame = motion::js::round(time * c.fps);
+    // comp_to_keyframe_time's governing clip: the one active here, else the
+    // NEAREST one (a layer's time runs on past its in / out points, as in AE).
+    // Leaving an out-of-clip frame on the comp clock hashed the layer at the
+    // wrong time, so its cached frames could be keyed by another frame's content.
+    const ClipSpan* governing = nullptr;
+    double bestDist = std::numeric_limits<double>::infinity();
     for (const ClipSpan& k : c.clips) {
       if (k.enabled && frame >= k.start && frame < k.start + k.duration) {
-        time = (k.sourceIn + (frame - k.start)) / c.fps;
+        governing = &k;
         break;
       }
+      const double clamped = std::max(k.start, std::min(k.start + k.duration - 1, frame));
+      const double dist = std::fabs(frame - clamped);
+      if (dist < bestDist) {
+        bestDist = dist;
+        governing = &k;
+      }
     }
+    if (governing != nullptr) time = (governing->sourceIn + (frame - governing->start)) / c.fps;
     if (c.cfg) time = remap_time(time, *c.cfg, c.spanStart, c.spanEnd);
     return time;
   }

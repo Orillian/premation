@@ -33,7 +33,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Drag
 import { cn } from '@utils/cn';
 import { useProjectStore } from '@stores/projectStore';
 import { getTime as getPlayheadTime } from '@stores/playbackClockStore';
-import { useMirrorRevisionFrame } from '@hooks/useMirrorFrame';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow, useActiveMirrorComp, useMirrorSelect } from '@hooks/useMirror';
 import { isReplaceableSourceLayer, uiKindOf } from '@core/mirror/layerKinds';
@@ -83,6 +82,7 @@ import { SmartGuideOverlay } from './SmartGuideOverlay';
 import { GradientHandleOverlay } from './GradientHandleOverlay';
 import { useGizmo3d } from './useGizmo3d';
 import { useDeviceHandles } from './useDeviceHandles';
+import { useLayerControlShown, type LayerControlKind } from '@stores/layerControls';
 import { useFocusContext } from '@layout/focus/useFocusContext';
 import { useEngineFocus } from '@layout/focus/useEngineFocus';
 import { MAIN_VIEWPORT } from '@stores/overlayGeometry';
@@ -200,6 +200,16 @@ function TransparencyGrid(): JSX.Element {
  * keep their relative order because they are still called in the same order
  * from the same component.
  */
+/**
+ * Mounts its overlays only while their kind of layer control is shown (View ▸
+ * Show Layer Controls, View Options, while playing — stores/layerControls.ts).
+ * Unmounted, an overlay's pointer listeners go with it: hidden handles are
+ * never grabbed.
+ */
+function LayerControlsGate({ kind, children }: { kind: LayerControlKind; children: ReactNode }): JSX.Element | null {
+  return useLayerControlShown(kind) ? <>{children}</> : null;
+}
+
 function Gizmo3dLayer({ stageRef }: { stageRef: React.RefObject<HTMLDivElement | null> }): JSX.Element | null {
   // No view options — the main viewport IS the default view (camera3dMode +
   // the workspace controller's transform). The secondary panes pass their own.
@@ -208,6 +218,7 @@ function Gizmo3dLayer({ stageRef }: { stageRef: React.RefObject<HTMLDivElement |
   // listener runs second: where a device handle overlaps a transform handle the
   // layer gizmo claims the press first, which is the more specific intent.
   const { deviceHandles, hoveredHandle } = useDeviceHandles(stageRef);
+  const gizmoShown = useLayerControlShown('gizmo3d');
   // Mounts for the whole 3D SCENE, not for the selection: the ground plane and
   // comp frame are how you orient yourself in a side view, so gating them on
   // "a 3D layer is selected" hid them in exactly the case they exist for. The
@@ -219,7 +230,7 @@ function Gizmo3dLayer({ stageRef }: { stageRef: React.RefObject<HTMLDivElement |
       deviceHandles={deviceHandles}
       hoveredDeviceHandle={hoveredHandle}
       nodeId={gizmo3dProps.singleId ?? null}
-      showGizmo={gizmo3dProps.is3D && !!gizmo3dProps.singleId}
+      showGizmo={gizmo3dProps.is3D && !!gizmo3dProps.singleId && gizmoShown}
     />
   );
 }
@@ -235,10 +246,11 @@ export function WorkspaceViewport({
   // useWorkspace — which now reads the clock itself. Anything below that has
   // to follow the playhead subscribes on its own (see Gizmo3dLayer).
   //
-  // Frame-coalesced, NOT the raw rev: this component is the whole viewport
-  // shell — every SVG overlay under it reconciles when it does — and the raw
-  // subscription re-rendered it once per pointermove during a drag.
-  const sceneRev = useMirrorRevisionFrame();
+  // No document-revision subscription either: this is the whole viewport shell
+  // and every SVG overlay under it reconciles when it does. Even frame-coalesced,
+  // it re-rendered the shell on every step of a drag (the 3D gizmo and axis
+  // widget with it); useWorkspace repaints on document changes by itself, and
+  // each overlay subscribes to what it draws.
   // The blank-comp moment — AE's two ways in, said out loud.
   //
   // Scoped to the ACTIVE composition, not the whole scene graph: this used to
@@ -331,7 +343,6 @@ export function WorkspaceViewport({
     contentCanvasRef: canvasRef,
     overlayCanvasRef: overlayRef,
     stageRef,
-    sceneRev,
     focusKey,
   });
 
@@ -693,13 +704,17 @@ export function WorkspaceViewport({
           )}
           {/* On-canvas text editor — screen coords match the canvas' own space. */}
           <TextEditOverlay />
-          <PuppetOverlay />
-          <EffectHandleOverlay />
-          {/* Native plugin effects' own overlays and handles (plugin SDK 1.1). */}
-          <PluginOverlay />
+          <LayerControlsGate kind="effectControls">
+            <PuppetOverlay />
+            <EffectHandleOverlay />
+            {/* Native plugin effects' own overlays and handles (plugin SDK 1.1). */}
+            <PluginOverlay />
+          </LayerControlsGate>
           <LiquifyBrushOverlay />
-          <BoneOverlay />
-          <TrackPointOverlay />
+          <LayerControlsGate kind="effectControls">
+            <BoneOverlay />
+            <TrackPointOverlay />
+          </LayerControlsGate>
           {/* Mounts for the whole 3D SCENE, not for the selection: the ground
               plane and comp frame are how you orient yourself in a side view,
               so gating them on "a 3D layer is selected" hid them in exactly
@@ -709,11 +724,15 @@ export function WorkspaceViewport({
               the 3D gizmo so it paints above the wireframes it belongs to; it
               is pointer-transparent apart from that one handle, and renders
               nothing at all unless a DOF camera is on show. */}
-          <FocusPlaneOverlay />
+          <LayerControlsGate kind="lightsCameras">
+            <FocusPlaneOverlay />
+          </LayerControlsGate>
           {/* The gradient axis, its end grips and the colour stops. Renders
               nothing unless the one selected layer has a gradient fill, and
               only a small swatch chip until the editor is armed. */}
-          <GradientHandleOverlay />
+          <LayerControlsGate kind="effectControls">
+            <GradientHandleOverlay />
+          </LayerControlsGate>
           {/* Figma-style measurement chrome: distances to the nearest layers,
               equal-spacing hatch bars, equal-size highlights. Draws only while
               a gesture is in flight or Alt is measuring, so an idle viewport is

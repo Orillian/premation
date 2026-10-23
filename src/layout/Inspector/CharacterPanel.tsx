@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useSyncExternalStore } from 'react';
+import { memo, useState, useMemo, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useActiveWorkspace } from '@stores/projectStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
@@ -132,7 +132,16 @@ export interface TextSettingsBodyProps {
 /** The tree groups the Text settings read. */
 const TEXT_TREE_GROUPS = ['text', 'masks'] as const;
 
-export function TextSettingsBody({ nodeId, nodeIds, variant = 'character' }: TextSettingsBodyProps): JSX.Element {
+/**
+ * Memoized: in the Properties panel this sits under rows that re-render on
+ * every step of a Position / Scale drag, and the whole Character + Paragraph
+ * body re-rendered with them (3 ms a pointer move on a text layer). Its own
+ * subscriptions (the mirror keys, groups and props below) are what it reacts
+ * to — the Character panel mounts it with nothing above that re-renders.
+ */
+export const TextSettingsBody = memo(TextSettingsBodyInner);
+
+function TextSettingsBodyInner({ nodeId, nodeIds, variant = 'character' }: TextSettingsBodyProps): JSX.Element {
   const primary = nodeId;
   const selected = useMemo(() => nodeIds ?? (nodeId ? [nodeId] : []), [nodeIds, nodeId]);
   /** The dock panels — not the Properties section, which lives in ANOTHER panel's dock slot. */

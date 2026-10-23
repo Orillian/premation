@@ -81,6 +81,12 @@ export interface WorkspaceOptions {
   registerBuiltinTools?: boolean;
   /** Tool active after initialize (default 'select'). */
   defaultTool?: string;
+  /**
+   * The host has hidden the transform grips (After Effects' Show Layer
+   * Controls off, or a play in progress): read on every overlay build and
+   * every press, so a grip nobody can see is never grabbed either.
+   */
+  transformHandlesHidden?: () => boolean;
 }
 
 const NOOP_RENDERER: RendererPort = { markDirty: () => {} };
@@ -115,6 +121,7 @@ export class Workspace implements InputSink {
   private readonly selectionPort: SelectionPort;
   private readonly renderer: RendererPort;
   private readonly commands: CommandPort;
+  private readonly handlesHidden: () => boolean;
   private readonly disposers: Array<() => void> = [];
 
   private focused = false;
@@ -136,6 +143,7 @@ export class Workspace implements InputSink {
     this.selectionPort = opts.selection;
     this.renderer = opts.renderer ?? NOOP_RENDERER;
     this.commands = opts.commands ?? NOOP_COMMANDS;
+    this.handlesHidden = opts.transformHandlesHidden ?? (() => false);
 
     this.viewport = new Viewport(opts.viewport);
     this.camera = new Camera(opts.camera);
@@ -588,6 +596,7 @@ export class Workspace implements InputSink {
       commands: this.commands,
       events: this.events,
       selectionIds: () => this.selectionPort.get(),
+      transformHandlesHidden: () => this.handlesHidden(),
       screenToWorld: (screen: Vec2) => this.coordinates.screenToWorld(screen),
       screenToViewport: (screen: Vec2) => this.viewport.screenToViewport(screen),
       requestRender: () => {

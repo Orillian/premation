@@ -19,6 +19,8 @@ import { compRecordFromSettings } from '@core/mirror/compFacts';
 import type { Guide, GuideAxis, WorkspaceOverlay } from '@motion/workspace';
 import { modifiersFrom, drawToolOptions, type PointerInput, type WheelInput } from '@motion/workspace';
 import { useWorkspaceStore } from '@stores/projectStore';
+import { layerControlShown, layerControlsOn } from '@stores/layerControls';
+import { usePreferenceStore } from '@stores/preferenceStore';
 import { compHasWireframeQualityLayer, paintWireframeQualityLayers } from './wireframeQualityOverlay';
 import { useGuidesStore, clampOverlayOpacity } from '@stores/guidesStore';
 import { roiHandleAt, resizeRoi, clampRoi, roiHandleCursor, type RoiHandle } from '@core/workspace/roiGeometry';
@@ -182,14 +184,17 @@ export interface UseWorkspaceArgs {
   contentCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   overlayCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   stageRef: React.RefObject<HTMLElement | null>;
-  sceneRev: number;
+  // No `sceneRev`: a document change reaches the render loop through the
+  // mirror's own subscription (see "Re-render on scene changes"), never as a
+  // React prop — the prop re-rendered the whole viewport shell, and every
+  // overlay under it, on each step of a drag.
   // No `time`: the playhead reaches the render loop through a clock
   // subscription (see "Playhead → render"), never through a React prop.
   focusKey?: string;
 }
 
 export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderError: string | null } {
-  const { contentCanvasRef, overlayCanvasRef, stageRef, sceneRev, focusKey } = args;
+  const { contentCanvasRef, overlayCanvasRef, stageRef, focusKey } = args;
 
   const dprRef = useRef(1);
   // The chrome is ready once the overlay is attached and sized; the picture is
@@ -545,7 +550,14 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       const playing = t?.playing === true;
       if (playing === wasPlaying) return;
       wasPlaying = playing;
-      if (!playing) controller.requestRender();
+      // Playback start too: the layer controls step aside while playing (stores/layerControls.ts).
+      controller.requestRender();
+    });
+    // View ▸ Show Layer Controls / View Options: the chrome (and the grips' hit list) follows at once.
+    const controlsSub = usePreferenceStore.subscribe((s, prev) => {
+      if (s.showLayerControls !== prev.showLayerControls || s.layerControlsWhilePlaying !== prev.layerControlsWhilePlaying || s.layerControlKinds !== prev.layerControlKinds) {
+        controller.requestRender();
+      }
     });
     // Reflect the engine cursor on the overlay (rich resize/rotate cursors).
     const cursorSub = controller.ws.cursor.events.on('changed', ({ css }) => {
@@ -560,6 +572,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
       ro.disconnect();
       offFrameChanged();
       playSub();
+      controlsSub();
       cursorSub.dispose();
       // Drop only OUR subscription. This used to install a no-op callback,
       // which — under the old single-slot onRender — silently unsubscribed
@@ -621,12 +634,12 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
   // clock subscription below ("Playhead → render"), without React.
   const isDragging = useUIStore((s) => s.isDragging);
   useEffect(() => {
+    getWorkspaceController().requestRender();
+  }, [isDragging]);
+  useEffect(() => {
     const controller = getWorkspaceController();
-    if (!isDragging) {
-      controller.requestRender();
-      return;
-    }
-    // LEADING rAF throttle, not a trailing timeout.
+    // LEADING rAF throttle, not a trailing timeout, over every document change
+    // (outside React: no component re-renders for it).
     //
     // The old code set a 50ms trailing timer and cancelled it in the effect's
     // cleanup — but the effect re-runs on every `sceneRev` bump, so a drag that
@@ -637,14 +650,19 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
     // mid-gesture, since camera nav signals only through bumpScene.
     // Rendering on the leading edge, coalesced to one frame, keeps the preview
     // live at exactly the cadence the display can show.
-    let raf: number | null = requestAnimationFrame(() => {
-      raf = null;
-      controller.requestRender();
+    let raf: number | null = null;
+    const off = documentMirror().subscribe(['doc'], () => {
+      if (raf !== null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        controller.requestRender();
+      });
     });
     return () => {
+      off();
       if (raf !== null) cancelAnimationFrame(raf);
     };
-  }, [sceneRev, isDragging]);
+  }, []);
   // ── Playhead → render ──────────────────────────────────────────────
   //
   // The playhead used to reach the renderer as a React prop: clock tick →
@@ -2149,7 +2167,10 @@ export function paintOverlay(
   // of near-identical rectangles. Corner marks say "this is what you would get"
   // without claiming to be a selection, which is what makes overlapping layers
   // navigable without clicking through them.
-  if (overlay.hoveredCorners) {
+  // View ▸ Show Layer Controls, its View Options and "while playing" (stores/layerControls.ts).
+  const showHandles = layerControlShown('handles');
+  const showPaths = layerControlShown('masks');
+  if (overlay.hoveredCorners && showHandles) {
     onPictureSpace();
     ctx.strokeStyle = HOVER;
     ctx.lineWidth = 1;
@@ -2270,7 +2291,7 @@ export function paintOverlay(
   // editor (its own live outline, TextBoxHandles for a paragraph) grew with
   // what was typed — two boxes, one of them wrong (2026-10-19, AE draws one).
   const editingTextId = useTextEditStore.getState().nodeId;
-  if (!isActivelyDrawing && overlay.selectionBoxes.length > 0) {
+  if (!isActivelyDrawing && showHandles && overlay.selectionBoxes.length > 0) {
     if (sel3D) ctx.setLineDash([4, 3]);
     for (const box of overlay.selectionBoxes) {
       if (box.id === editingTextId) continue;
@@ -2312,6 +2333,8 @@ export function paintOverlay(
     const only = overlay.selectionBoxes.length === 1 ? overlay.selectionBoxes[0] : null;
     const handleAccent = (only ? mirrorLabelColor(documentMirror().layer(only.id)) : undefined) ?? ACCENT;
     for (const h of overlay.handles) {
+      const pathPoint = h.kind === 'point' || h.kind === 'tangent-in' || h.kind === 'tangent-out' || h.kind === 'feather';
+      if (!(pathPoint ? showPaths : showHandles)) continue;
       if (h.kind === 'anchor') {
         // The pivot, as a crosshair/target — deliberately unlike every square
         // resize grip, because it does something completely different and may
@@ -2422,14 +2445,14 @@ export function paintOverlay(
     // in the Properties panel, and a pill under every selected layer was
     // chrome nobody asked for.
     const view = controller?.getView().scale ?? 0;
-    if (only && view > 0 && !overlay.dragHud && guidesState.smartGuides) {
+    if (only && view > 0 && !overlay.dragHud && guidesState.smartGuides && showHandles) {
       paintSelectionSizeLabel(ctx, only.corners, view, handleAccent);
     }
   }
 
   // Free Transform Points: the box around the selected vertices. Its grips and
   // anchor come through `handles` like any other; this is the outline.
-  if (overlay.pathTransformBox) {
+  if (overlay.pathTransformBox && showPaths) {
     const c = overlay.pathTransformBox.corners;
     ctx.save();
     ctx.beginPath();
@@ -2445,7 +2468,7 @@ export function paintOverlay(
 
   // Draw tangent arm lines (connect vertex to its tangent handles)
   // We pair them by looking for handles with same node+index prefix
-  if (!isFreehandTool) {
+  if (!isFreehandTool && showPaths) {
     const vertMap = new Map<string, { x: number; y: number }>();
     for (const h of overlay.handles) {
       if (h.kind === 'point') {
@@ -2936,7 +2959,7 @@ function paintMotionPath(
   // header, the "Motion Paths" menu entry and the Ctrl+Alt+M command all flipped a
   // flag that changed nothing — the path was always drawn.
   const guides = useGuidesStore.getState();
-  if (!guides.motionPathVisible) return;
+  if (!guides.motionPathVisible || !layerControlsOn()) return;
 
   const ids = useSelectionStore.getState().ids;
   if (ids.length !== 1) return;

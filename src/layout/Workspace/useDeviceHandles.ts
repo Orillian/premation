@@ -26,6 +26,7 @@ import type { Vec3 } from '@motion/scene';
 import { Gizmo3D } from '@motion/workspace';
 import { useGuidesStore } from '@stores/guidesStore';
 import { useSelectionStore } from '@stores/selectionStore';
+import { layerControlShown } from '@stores/layerControls';
 import { documentMirror } from '@stores/documentMirror';
 import { displayedRenderView } from '@core/workspace/displayedView';
 import { isSceneCameraView } from '@core/scene/cameraViewMode';
@@ -96,6 +97,8 @@ export function useDeviceHandles(stageRef: React.RefObject<HTMLElement | null>) 
       if (e.button !== 0 || e.altKey) return;
       // The C-key camera tool owns plain left-drags while active.
       if (useGuidesStore.getState().cameraTool !== 'none') return;
+      // Hidden dots (Show Layer Controls off, View Options, playing) are not grabbable.
+      if (!layerControlShown('lightsCameras')) return;
 
       const compPt = compLocal(e);
       const hit = hitTestDeviceHandle(compPt, stateRef.current.handles, projector(), tolerance());
@@ -116,12 +119,15 @@ export function useDeviceHandles(stageRef: React.RefObject<HTMLElement | null>) 
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      const compPt = compLocal(e);
       const drag = dragRef.current;
       if (!drag) {
-        setHovered(hitTestDeviceHandle(compPt, stateRef.current.handles, projector(), tolerance()));
+        // No camera or light on screen: nothing to hover, and no layout read
+        // (the stage rect, the displayed view) on every pointer move of a drag.
+        if (stateRef.current.handles.length === 0 || !layerControlShown('lightsCameras')) return;
+        setHovered(hitTestDeviceHandle(compLocal(e), stateRef.current.handles, projector(), tolerance()));
         return;
       }
+      const compPt = compLocal(e);
       const { camera3dMode: mode, camera: cam } = stateRef.current;
       const delta = { x: compPt.x - drag.startComp.x, y: compPt.y - drag.startComp.y };
       // The SAME projected-delta → world conversion the layer drag uses, so a

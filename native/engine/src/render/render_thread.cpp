@@ -257,6 +257,26 @@ void RenderThread::want_build(std::uint32_t viewport) {
   if (std::ranges::find(buildWanted_, viewport) == buildWanted_.end()) buildWanted_.push_back(viewport);
 }
 
+namespace {
+/// A pre-build key salted for the disk cache's alias log (disk_cache.hpp store_alias).
+std::uint64_t alias_key(std::uint64_t prebuild, std::uint64_t salt) noexcept {
+  std::uint64_t x = prebuild ^ (salt * 0x9e3779b97f4a7c15ULL);
+  x ^= x >> 31U;
+  x *= 0xd6e8feb86659fd93ULL;
+  x ^= x >> 32U;
+  return x == 0 ? 1 : x;
+}
+}  // namespace
+
+std::optional<CachedKeys> RenderThread::cached_frame(std::uint64_t key) const {
+  if (std::optional<CachedKeys> hit = prebuild_.find(key)) return hit;
+  // Not built in this session: a frame an earlier one left on disk, by its alias.
+  const std::uint64_t salt = aliasSalt_.load(std::memory_order_relaxed);
+  if (salt == 0) return std::nullopt;
+  if (const auto a = disk_->find_alias(alias_key(key, salt))) return CachedKeys{a->first, a->second};
+  return std::nullopt;
+}
+
 bool RenderThread::tier_holds(const CachedKeys& keys) const {
   if (cache_ && cache_->contains(keys.content)) return true;
   if (ram_.contains(keys.content)) return true;
@@ -1205,6 +1225,7 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
 #endif
   bool drawn = false;
   InFlight f;
+  f.buildMs = job.buildMs;
   take_revisions();
   // A cached job (RenderJob::cachedKey): the session built nothing, the keys
   // name a frame a tier held when it asked. Presented from VRAM, RAM or disk
@@ -1218,7 +1239,8 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
     if (cachedJob) {
       if (cache_ && set.copyable) key = job.cachedKey;
       if (key && job.cachedDiskKey != 0 && disk_->enabled()) diskKey = job.cachedDiskKey;
-    } else if (cache_ && set.copyable) {
+    } else if (cache_ && set.copyable && !job.transient) {
+      // A transient frame (RenderJob::transient, mid-drag) gets no key: no tier stores it.
       key = drawer_->content_key(*job.built, set.width, set.height);
     }
     // Every frame the disk tier could hold is keyed (a hash of the content key
@@ -1235,6 +1257,7 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
     const FrameTag tag{job.recordCoverage ? job.cacheScope : 0, job.frame};
     const double predictedMs = std::min(drawMsAvg_, lastDrawMs_);
     if (!cachedJob && key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, set.width, set.height);
+    if (disk_->enabled()) aliasSalt_.store(drawer_->alias_salt(), std::memory_order_relaxed);
     const std::uint64_t dk = diskKey.value_or(0);
     if (key) {
       // D4: the same content was drawn before — a copy instead of the frame.
@@ -1324,7 +1347,14 @@ void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const 
     f.cached = drawn && !f.drawn;
     // The pre-build map learns the frame once a tier holds it (served from one,
     // or drawn exact and stored): the next job with this pre-build key skips the build.
-    if (!cachedJob && key && job.prebuildKey && (f.cached || f.vramKey)) prebuild_.learn(*job.prebuildKey, CachedKeys{*key, dk});
+    if (!cachedJob && key && job.prebuildKey && (f.cached || f.vramKey)) {
+      prebuild_.learn(*job.prebuildKey, CachedKeys{*key, dk});
+      // And for the next session, when its frame is (or will be) a file and
+      // nothing outside the document decides its pixels (no footage files).
+      if (const std::uint64_t salt = aliasSalt_.load(std::memory_order_relaxed); salt != 0 && dk != 0 && !drawer_->reads_files(*job.built)) {
+        disk_->store_alias(alias_key(*job.prebuildKey, salt), *key, dk);
+      }
+    }
     if (cachedJob && drawn) {
       const std::lock_guard<std::mutex> lock(m_);
       ++counters_.cacheServed;
@@ -1437,15 +1467,17 @@ std::size_t RenderThread::complete_frames(bool block) {
       send_(frames::Message{.v = f.ready});
     }
     // After the announcement: the viewer never waits for the disk cache.
+    // What the frame cost to make: its build on the CPU plus its draw here.
+    const double costMs = gpuMs + f.buildMs;
     if (f.drawn) {
-      drawMsAvg_ = drawMsAvg_ == 0 ? gpuMs : 0.7 * drawMsAvg_ + 0.3 * gpuMs;
-      lastDrawMs_ = gpuMs;
+      drawMsAvg_ = drawMsAvg_ == 0 ? costMs : 0.7 * drawMsAvg_ + 0.3 * costMs;
+      lastDrawMs_ = costMs;
       // What the frame cost travels with it down the tiers (the disk tier takes only slow ones).
       if (f.vramKey && cache_) {
-        if (FrameMeta* m = cache_->meta(*f.vramKey)) m->drawMs = gpuMs;
+        if (FrameMeta* m = cache_->meta(*f.vramKey)) m->drawMs = costMs;
       }
     }
-    const bool worth = f.drawn && worth_disk(gpuMs, set->width, set->height);
+    const bool worth = f.drawn && worth_disk(costMs, set->width, set->height);
     if (f.diskBuffer != nullptr) {
       if (worth) {
         spill_to_disk(f, set->width, set->height);

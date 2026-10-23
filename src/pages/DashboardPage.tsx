@@ -1645,7 +1645,11 @@ export function DashboardPage(): JSX.Element {
         );
 
       case 'plugins':
-        return <NativePluginsPage />;
+        return (
+          <div className={styles.pluginsPanel}>
+            <NativePluginsPage />
+          </div>
+        );
 
       case 'customize':
         return (
@@ -1656,7 +1660,9 @@ export function DashboardPage(): JSX.Element {
 
       case 'connections':
         return (
-          <DashboardConnections account={account} onOpenBilling={() => openTab('billing')} />
+          <div className={styles.connectionsPanel}>
+            <DashboardConnections account={account} onOpenBilling={() => openTab('billing')} />
+          </div>
         );
 
       case 'settings':

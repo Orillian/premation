@@ -4,6 +4,7 @@
 // `setShapeOutline` — each one exact undo / redo, same semantics as the
 // TypeScript engine.
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
@@ -304,4 +305,43 @@ TEST_CASE("paths: an animated mask path reads as the shape drawn between its key
   REQUIRE(b.vertices.size() == 6);
   CHECK(b.vertices[1] == -65.0);
   CHECK(b.vertices[2] == 65.0);
+}
+
+TEST_CASE("paths: a shape's box is its outline's exact extent, curves included", "[session][paths][bounds]") {
+  Harness h;
+  (void)h.hello();
+  const auto comp = make_comp(h);
+  const auto d = drawn_path(h, comp);
+  const auto box = [&] {
+    api::GetLayerBounds q;
+    q.layers = {d};
+    q.space = api::BoundsSpace::layer;
+    const auto r = h.ask(qry(q));
+    REQUIRE(is_ok(r));
+    return std::get<api::LayerBoundsList>(std::get<api::QueryResult>(r.outcome.v).v).bounds.at(0).bounds;
+  };
+  // An off-centre outline: the box sits on the points, not centred on the layer origin.
+  api::BezierPath tall;
+  tall.vertices = {0, -40, 30, 10, -10, 10};
+  tall.in_tangents = {0, 0, 0, 0, 0, 0};
+  tall.out_tangents = {0, 0, 0, 0, 0, 0};
+  tall.closed = true;
+  REQUIRE(is_ok(h.run(set_prop(d, "layer/path.points", path_value(tall)))));
+  const auto b1 = box();
+  CHECK(b1.x == Catch::Approx(-10));
+  CHECK(b1.y == Catch::Approx(-40));
+  CHECK(b1.width == Catch::Approx(40));
+  CHECK(b1.height == Catch::Approx(50));
+  // A bulge: the curve's peak (y = -30), not its control hull (y = -40).
+  api::BezierPath arc;
+  arc.vertices = {-20, 0, 20, 0};
+  arc.in_tangents = {0, 0, 0, -40};
+  arc.out_tangents = {0, -40, 0, 0};
+  arc.closed = false;
+  REQUIRE(is_ok(h.run(set_prop(d, "layer/path.points", path_value(arc)))));
+  const auto b2 = box();
+  CHECK(b2.x == Catch::Approx(-20));
+  CHECK(b2.width == Catch::Approx(40));
+  CHECK(b2.y == Catch::Approx(-30));
+  CHECK(b2.height == Catch::Approx(30));
 }

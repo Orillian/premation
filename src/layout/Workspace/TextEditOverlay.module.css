@@ -22,3 +22,37 @@
   background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   color: inherit;
 }
+
+/* Point text being typed: After Effects' layer box around it — a hairline and
+   eight grips, the same chrome the Selection tool draws on the canvas, sized
+   in screen px by the placement loop (so it stays a hairline at any zoom) and
+   growing with every keystroke. Hidden until the loop first places it. */
+.pointBox {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 21;
+}
+
+.pointGrip {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  background: var(--color-overlay-handle);
+  border: 1px solid var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-overlay-handle-halo);
+}
+
+.pointGrip[data-grip='nw'] { left: 0; top: 0; }
+.pointGrip[data-grip='n'] { left: 50%; top: 0; }
+.pointGrip[data-grip='ne'] { left: 100%; top: 0; }
+.pointGrip[data-grip='e'] { left: 100%; top: 50%; }
+.pointGrip[data-grip='se'] { left: 100%; top: 100%; }
+.pointGrip[data-grip='s'] { left: 50%; top: 100%; }
+.pointGrip[data-grip='sw'] { left: 0; top: 100%; }
+.pointGrip[data-grip='w'] { left: 0; top: 50%; }

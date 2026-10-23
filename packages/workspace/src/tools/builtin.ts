@@ -171,7 +171,7 @@ export class SelectTool implements Tool {
     // Pan-Behind tool. Visual-only here; dragging it still needs Y. Drawn as a
     // crosshair, never a square, so it cannot be mistaken for a resize grip.
     const node = ctx.scene.getNode(sel[0]!);
-    if (node) out.push({ id: `anchor_${sel[0]!}`, position: anchorWorld(node), kind: 'anchor' });
+    if (node && !ctx.transformHandlesHidden?.()) out.push({ id: `anchor_${sel[0]!}`, position: anchorWorld(node), kind: 'anchor' });
     return out;
   }
 
@@ -229,6 +229,9 @@ export class SelectTool implements Tool {
 
   /** Handle ids large enough to show at the current zoom. */
   private visibleIds(ctx: ToolContext): readonly HandleId[] {
+    // Hidden layer controls: no grip is drawn, so none is grabbable (getHandles,
+    // pickHandle and the rotate ring all read this list).
+    if (ctx.transformHandlesHidden?.()) return [];
     const b = ctx.selection.selectionBounds();
     if (!b) return [];
     // screenDistanceToWorld is the inverse of what we need (world px per

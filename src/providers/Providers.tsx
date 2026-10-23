@@ -108,6 +108,7 @@ import { importModelSelection, modelImportMessage } from '@layout/Assets/modelIm
 import { buildAudioCommands } from '@layout/Inspector/audioCommands';
 import { type EasingPreset } from '@core/animation/keyframeAssistants';
 import { easingTargetKeyframes } from '@core/animation/easingSelection';
+import { resolveSelectionKey } from '@core/mirror/keySelection';
 import { useAssetStore } from '@stores/assetStore';
 import { openCustomizeDialog } from '@layout/Settings/openCustomizeDialog';
 import { openVersionHistory } from '@layout/History/VersionHistoryPanel';
@@ -889,7 +890,24 @@ function buildEasingCommands(): ReadonlyArray<Command> {
     { id: 'anim.interpLinear', label: 'Keyframe Interpolation: Linear', preset: 'Linear' },
     { id: 'anim.interpHold', label: 'Keyframe Interpolation: Hold', preset: 'Hold' },
   ];
-  return presets.map(({ id, label, preset, shortcut }) => ({
+  // AE's Animation ▸ Toggle Hold Keyframe: every selected key held, or — when
+  // they all are already — back to Linear. One command for the round trip.
+  const toggleHold: Command = {
+    id: asCommandId('anim.toggleHold'),
+    label: 'Toggle Hold Keyframe',
+    icon: 'ease',
+    enabled: () => easingTargetKeyframes().length > 0,
+    execute: () => {
+      const kfIds = easingTargetKeyframes();
+      if (kfIds.length === 0) return;
+      const m = documentMirror();
+      const allHeld = kfIds.every((id) => resolveSelectionKey(m, id)?.key.easing === 'hold');
+      const preset: EasingPreset = allHeld ? 'Linear' : 'Hold';
+      void easePresetOnKeys(kfIds, preset).then(() =>
+        notify(allHeld ? t('providers.easing.holdOff', 'Hold off — Linear') : t('providers.easing.holdOn', 'Hold keyframes'), 'success'));
+    },
+  };
+  return [toggleHold, ...presets.map(({ id, label, preset, shortcut }) => ({
     id: asCommandId(id),
     label,
     icon: 'ease' as const,
@@ -903,7 +921,7 @@ function buildEasingCommands(): ReadonlyArray<Command> {
       if (kfIds.length === 0) return;
       void easePresetOnKeys(kfIds, preset).then(() => notify(t('providers.easing.applied', '{name} applied', { name: label }), 'success'));
     },
-  }));
+  }))];
 }
 
 /** The playhead in comp seconds — where the registry's transform commands read and key. */

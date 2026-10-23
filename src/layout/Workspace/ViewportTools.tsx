@@ -32,6 +32,8 @@
 import { useMemo } from 'react';
 import { Icon } from '@components/Icon';
 import { useGuidesStore } from '@stores/guidesStore';
+import { usePreferenceStore } from '@stores/preferenceStore';
+import { toggleLayerControls } from '@stores/layerControls';
 import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys } from '@hooks/useMirror';
@@ -46,6 +48,7 @@ export function ViewportTools(): JSX.Element {
   const toggleMotionPath = useGuidesStore((s) => s.toggleMotionPath);
   const smartGuides = useGuidesStore((s) => s.smartGuides);
   const toggleSmartGuides = useGuidesStore((s) => s.toggleSmartGuides);
+  const showLayerControls = usePreferenceStore((s) => s.showLayerControls);
 
   // Re-render when the selection or a selected layer's keyframes change, so
   // the motion-path toggle appears and disappears with the path.
@@ -59,6 +62,21 @@ export function ViewportTools(): JSX.Element {
   return (
     <div className={styles.tools} role="group" aria-label={t('workspace.viewportTools.group', 'Viewport guides')}>
       <div className={tool.group}>
+        {/* AE View ▸ Show Layer Controls (Ctrl+Shift+H): boxes, handles, paths,
+            light/camera wireframes and the gizmo, all at once. The kinds and
+            "while playing" are in Overlays ▸ Layer Controls. */}
+        <button
+          type="button"
+          className={cn(tool.tool, showLayerControls && tool.toolActive)}
+          onClick={toggleLayerControls}
+          aria-label={t('workspace.viewportTools.layerControls', 'Layer controls')}
+          aria-pressed={showLayerControls}
+          title={showLayerControls
+            ? t('workspace.viewportTools.hideLayerControls', 'Hide Layer Controls (Ctrl+Shift+H) — boxes, handles, paths, light and camera wireframes')
+            : t('workspace.viewportTools.showLayerControls', 'Show Layer Controls (Ctrl+Shift+H)')}
+        >
+          <Icon name="frame" size="sm" />
+        </button>
         <button
           type="button"
           className={cn(tool.tool, smartGuides && tool.toolActive)}

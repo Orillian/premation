@@ -10,15 +10,33 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { TextLayout, TextLayoutOverrides } from '@motion/engine-api';
+import type { Keyframe, TextLayout, TextLayoutOverrides } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
-import { useMirrorKeys, useRetainTree } from './useMirror';
+import { useMirrorKeys, useMirrorSelect, useRetainTree } from './useMirror';
+
+/**
+ * The keys the layout can depend on — the Text group's and the masks' (a text
+ * path) — as one comparable string. A Position / Scale / Rotation key moved by
+ * a drag leaves it unchanged, so it neither re-queries the engine nor
+ * re-renders the Character panel on every step of the drag.
+ */
+function layoutKeysSignature(keys: ReadonlyMap<string, readonly Keyframe[]>): string {
+  let sig = '';
+  for (const [path, list] of keys) {
+    if (!path.startsWith('text') && !path.startsWith('masks')) continue;
+    sig += `${path}=`;
+    for (const k of list) sig += `${k.id}@${k.time}:${JSON.stringify(k.value)};`;
+    sig += '|';
+  }
+  return sig;
+}
 
 export function useTextLayout(layer: string | null | undefined, overrides?: TextLayoutOverrides): TextLayout | null {
   useRetainTree(layer);
   // The layout follows the Text group and the masks a text path runs along (and the header,
   // the tree's shape, the keys) — not every write on the layer: a Position drag re-measures nothing.
-  const rev = useMirrorKeys(layer ? [`layer:${layer}`, `struct:${layer}`, `grp:${layer}|text`, `grp:${layer}|masks`, `keys:${layer}`] : []);
+  const rev = useMirrorKeys(layer ? [`layer:${layer}`, `struct:${layer}`, `grp:${layer}|text`, `grp:${layer}|masks`] : []);
+  const keySig = useMirrorSelect(layer ? [`keys:${layer}`] : [], (m) => (layer ? layoutKeysSignature(m.layerKeyframes(layer)) : ''));
   const [answer, setAnswer] = useState<{ layer: string; layout: TextLayout | null } | null>(null);
   const overrideKey = overrides ? JSON.stringify(overrides) : '';
   useEffect(() => {
@@ -31,6 +49,6 @@ export function useTextLayout(layer: string | null | undefined, overrides?: Text
     return () => {
       live = false;
     };
-  }, [layer, rev, overrideKey]);
+  }, [layer, rev, keySig, overrideKey]);
   return answer && answer.layer === layer ? answer.layout : null;
 }

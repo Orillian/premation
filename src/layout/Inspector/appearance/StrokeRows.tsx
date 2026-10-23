@@ -31,7 +31,7 @@ import type { Command } from '@motion/engine-api';
 import { Icon } from '@components/Icon';
 import { Checkbox } from '@components/Checkbox';
 import { documentMirror } from '@stores/documentMirror';
-import { useMirrorKeys, useRetainTree } from '@hooks/useMirror';
+import { useMirrorKeys, useMirrorKeysOutside, useRetainTree } from '@hooks/useMirror';
 import { mirrorStrokeAt, mirrorStrokes } from '@core/mirror/paintFields';
 import { isTrackAnimated } from '@core/mirror/selection';
 import { edit } from '@core/engine/uiEdits';
@@ -562,11 +562,15 @@ function StrokeBlock({ nodeId, index, stroke }: { nodeId: string; index: number;
   );
 }
 
+/** The keys a layer drag moves: the stroke rows never read them. */
+const TRANSFORM_KEYS = ['transform/'] as const;
+
 export function StrokeRows({ nodeId }: { nodeId: string }): JSX.Element | null {
   // B4: the stack (`layer/strokes`, under the `layer` group) and every stroke track's keys. Not the whole tree:
   // a drag of Position (`transform/*`) must not re-render the stroke rows.
   useRetainTree(nodeId);
-  useMirrorKeys([`layer:${nodeId}`, `struct:${nodeId}`, `grp:${nodeId}|layer`, `keys:${nodeId}`]);
+  useMirrorKeys([`layer:${nodeId}`, `struct:${nodeId}`, `grp:${nodeId}|layer`]);
+  useMirrorKeysOutside(nodeId, TRANSFORM_KEYS);
   const m = documentMirror();
   if (!m.layer(nodeId)) return null;
 

@@ -13,6 +13,7 @@ import type { Tool as UITool } from '@stores/uiStore';
 import type { RenderView } from '@core/workspace/renderView';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useCompositionStore } from '@stores/compositionStore';
+import { layerControlShown } from '@stores/layerControls';
 import { createSceneGraphPort, createSelectionPort, createCommandPort, nudgeNodes } from './ports';
 import { setRenderFlusher } from '@core/perf/framePump';
 
@@ -100,6 +101,8 @@ export class WorkspaceController {
       renderer: { markDirty: () => this.scheduleRender() },
       viewport: { width: 1280, height: 720, dpr: 1 },
       camera: { minZoom: 0.05, maxZoom: 32 },
+      // View ▸ Show Layer Controls / View Options / while playing (stores/layerControls.ts).
+      transformHandlesHidden: () => !layerControlShown('handles'),
     });
     this.ws.initialize();
 

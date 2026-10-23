@@ -18,6 +18,7 @@
 // restarts the engine.
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -83,6 +84,14 @@ class BuiltFrameDrawer {
                                                               std::uint32_t /*height*/) {
     return std::nullopt;
   }
+  /// What a pre-build ALIAS in the disk cache is salted with (disk_cache.hpp
+  /// store_alias): the part of disk_key's salt the pre-build key cannot see
+  /// and that is the same for every frame — the engine build and the loaded
+  /// plugins. 0 = no aliases. Render thread.
+  [[nodiscard]] virtual std::uint64_t alias_salt() { return 0; }
+  /// Whether `frame` reads footage files: their stamps are in its disk key
+  /// only, so such a frame never gets an alias (a replaced file must be a miss).
+  [[nodiscard]] virtual bool reads_files(const BuiltFrame& /*frame*/) const { return true; }
   /// D4: whether the frame `draw` just drew is final — false when footage on
   /// it was drawn from a nearest decoded frame (or skipped) instead of the exact one.
   [[nodiscard]] virtual bool last_frame_exact() const { return false; }
@@ -183,7 +192,7 @@ class RenderThread final : public FrameSink {
   /// Cached playback without a build (coverage_ledger.hpp): the pre-build map
   /// the core thread asks, the revision steps the bars carry over, and the
   /// viewports whose cached job found no tier holding it.
-  [[nodiscard]] std::optional<CachedKeys> cached_frame(std::uint64_t key) const override { return prebuild_.find(key); }
+  [[nodiscard]] std::optional<CachedKeys> cached_frame(std::uint64_t key) const override;
   void note_frames_changed(FrameRevision rev) override;
   [[nodiscard]] std::vector<std::uint32_t> take_build_requests() override;
   /// The disk cache's counters.
@@ -252,6 +261,8 @@ class RenderThread final : public FrameSink {
     std::uint32_t diskRow = 0;  // bytes per row in diskBuffer (256-aligned)
     /// Drawn by the drawer (not a VRAM or disk copy): its time is a draw cost.
     bool drawn = false;
+    /// RenderJob::buildMs: the CPU half of the frame's cost (the GPU half is timed here).
+    double buildMs = 0;
     /// Drawn while playing with footage from a nearest decoded frame (RenderCounters::inexact).
     bool inexact = false;
     /// Served from a cache tier (VRAM, RAM, disk) instead of drawn.
@@ -334,6 +345,10 @@ class RenderThread final : public FrameSink {
   CoverageLedger ledger_;
   /// Pre-build key → the keys its build produced (any thread; the core thread asks).
   PrebuildMap prebuild_;
+  /// BuiltFrameDrawer::alias_salt as of the last frame drawn (0 until one is):
+  /// read by `cached_frame` on the core thread to find a frame an earlier
+  /// session left on disk.
+  std::atomic<std::uint64_t> aliasSalt_{0};
   /// m_: revision steps from the core thread, taken into the ledger by the render thread before each frame.
   std::deque<FrameRevision> revisionsIn_;
   /// m_: viewports owed a built frame (a cached job no tier held; a pixel read of a cached frame).

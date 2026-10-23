@@ -40,7 +40,7 @@ import { utf16ToGraphemeIndex } from '@core/text/graphemes';
 import { readParagraphDirection, resolveAlignForDirection } from '@core/text/textExtras';
 import { isAutoTextLayerName, textLayerNameFor } from '@core/text/textLayerName';
 import { isLayer } from '@core/mirror/docFacts';
-import { commitSourceTextEdit } from './viewportEdits';
+import { commitSourceTextEdit, sourceTextEditCommands } from './viewportEdits';
 import { getTime as getPlayheadTime } from '@stores/playbackClockStore';
 import { installTextCommands } from '@layout/Inspector/textCommands';
 import {
@@ -49,7 +49,7 @@ import {
   TEXT_CONVERT_TO_POINT_COMMAND,
 } from '@layout/Inspector/paragraphTextCommands';
 import { openContextMenu } from '@stores/contextMenuStore';
-import { edit } from '@core/engine/uiEdits';
+import { edit, GestureSession } from '@core/engine/uiEdits';
 import { TextBoxHandles } from './TextBoxHandles';
 import styles from './TextEditOverlay.module.css';
 import { t } from '@core/i18n';
@@ -142,6 +142,9 @@ function mirrorTextProps(m: DocumentMirror, nodeId: string): Record<string, unkn
   return out;
 }
 
+/** The eight grips of the point-text box (TextEditOverlay.module.css places them by `data-grip`). */
+const POINT_BOX_GRIPS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
+
 /** What the in-place editor asks of the overlay geometry push: the layer's matrix and its measured box. */
 const TEXT_EDIT_KINDS: ReadonlyArray<OverlayKind> = ['transform', 'textBox'];
 
@@ -153,6 +156,27 @@ export function TextEditOverlay(): JSX.Element | null {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const committedRef = useRef(false);
   const commitRef = useRef<() => void>(() => {});
+  /** The point-text box (AE's layer box around the text being typed), placed by the loop below. */
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * In-place typing is LIVE, as in After Effects: every keystroke edits the
+   * layer inside ONE gesture, so the engine draws the real glyphs (font, fill,
+   * stroke, animators, 3D) while you type — no browser-drawn stand-in that
+   * jumps to the engine's text on commit — and the whole edit is one undo
+   * entry. Opened on the first keystroke; null until then.
+   */
+  const liveRef = useRef<{
+    gesture: GestureSession;
+    /** The content when typing began (runs re-index from it; typing back to it keeps nothing). */
+    prev: string;
+    runs: ReturnType<typeof currentRuns>;
+    seconds: number;
+    /** Source Text is keyframed: each step keys the playhead; no rename, no runs. */
+    animated: boolean;
+    /** The layer still carries an automatic name: it follows the text. */
+    autoName: boolean;
+    lastName: string;
+  } | null>(null);
   /** The text as TYPED (null until the first keystroke): the preview's box
    *  alignment and overflow follow it, not the last committed content. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -181,6 +205,14 @@ export function TextEditOverlay(): JSX.Element | null {
     if (!nodeId) return undefined;
     void requestOverlayLayers(MAIN_VIEWPORT, 'textEdit', [nodeId], TEXT_EDIT_KINDS);
     return () => { void requestOverlayLayers(MAIN_VIEWPORT, 'textEdit', [], TEXT_EDIT_KINDS); };
+  }, [nodeId]);
+
+  // Leaving the editor any other way than commit / cancel (the store ended it,
+  // the component went away) keeps what was typed: it is already on the layer.
+  useEffect(() => () => {
+    const live = liveRef.current;
+    liveRef.current = null;
+    void live?.gesture.end(true);
   }, [nodeId]);
 
   // Keep the overlay glued to the layer while the camera moves.
@@ -220,6 +252,17 @@ export function TextEditOverlay(): JSX.Element | null {
         }
         box.style.transform =
           `translate(calc(-50% + ${ox}px), calc(-50% + ${oy}px)) rotate(${p.rotationDeg}deg) scale(${zoom * sx}, ${zoom * sy})`;
+        // Point text: AE's layer box around what is being typed, in screen px
+        // (a hairline at any zoom), growing with every keystroke.
+        const frame = frameRef.current;
+        if (frame) {
+          frame.style.left = `${p.x + ox}px`;
+          frame.style.top = `${p.y + oy}px`;
+          frame.style.width = `${box.offsetWidth * zoom * Math.abs(sx)}px`;
+          frame.style.height = `${box.offsetHeight * zoom * Math.abs(sy)}px`;
+          frame.style.transform = `translate(-50%, -50%) rotate(${p.rotationDeg}deg)`;
+          frame.style.visibility = 'visible';
+        }
         // Placed: shown from here on (TextEditOverlay.module.css).
         if (!box.classList.contains(PLACED_CLASS)) {
           box.classList.add(PLACED_CLASS);
@@ -232,22 +275,24 @@ export function TextEditOverlay(): JSX.Element | null {
     return () => cancelAnimationFrame(raf);
   }, [nodeId]);
 
-  // The engine draws the viewport, so it draws this layer's text under the
-  // editor too — the box is transparent. Ask it to leave the layer out of this
-  // viewport's frames while the box is up (view state: no history, no revision,
-  // the document untouched) and to draw it again on close — after the commit
-  // has landed, so the new text is what comes back.
+  // The engine draws the layer's text while you type (the editor's own glyphs
+  // are transparent: it is only the caret and the selection). One exception:
+  // a layer the Type tool just made carries the engine's placeholder "Text"
+  // until the first keystroke, so that viewport leaves it out until then
+  // (view state: no history, no revision, the document untouched).
+  const hidePlaceholder = !!nodeId && fresh && draft === null;
   useEffect(() => {
-    if (!nodeId) return undefined;
+    if (!nodeId || !hidePlaceholder) return undefined;
     // The window's main viewport, by the engine's id for it (windowViewport.ts).
     const hide = (layers: string[]): void => {
       withEngineViewport(MAIN_VIEWPORT, (id) => { void engine().execute({ type: 'setViewportHiddenLayers', viewport: id, layers }); });
     };
     hide([nodeId]);
     return () => hide([]);
-  }, [nodeId]);
+  }, [nodeId, hidePlaceholder]);
   useLayoutEffect(() => {
     committedRef.current = false;
+    liveRef.current = null;
     setDraft(null);
     const box = boxRef.current;
     if (!nodeId || !box) return;
@@ -360,13 +405,72 @@ export function TextEditOverlay(): JSX.Element | null {
     ? Math.max(0, box.boxHeight / 2 - box.contentHeight / 2 + box.lineOffsetY)
     : 0;
 
+  /** One live step: the layer takes what is typed now (inside the edit's gesture). */
+  const sendLive = (next: string): void => {
+    if (committedRef.current || !isLayer(nodeId)) return;
+    let live = liveRef.current;
+    if (!live) {
+      const m = documentMirror();
+      const layer = m.layer(nodeId);
+      const source = m.property(nodeId, SOURCE_TEXT_PATH);
+      if (!layer || !source) return;
+      const prev = sourceTextOf(source.value) ?? '';
+      const animated = isSourceTextAnimated(m, nodeId);
+      live = {
+        // The labels the one-shot commit uses (below), so the History panel reads the same either way.
+        gesture: new GestureSession(animated ? 'Edit Source Text keyframe' : 'Edit Text'),
+        prev,
+        runs: animated ? [] : currentRuns(nodeId, m),
+        seconds: getPlayheadTime(),
+        animated,
+        autoName: !animated && isAutoTextLayerName(layer.name, prev),
+        lastName: layer.name,
+      };
+      liveRef.current = live;
+    }
+    // AE: a text layer is NAMED after what it says, until the user names it.
+    const name = live.autoName ? textLayerNameFor(next) : null;
+    const rename = name && name !== live.lastName ? name : undefined;
+    if (rename) live.lastName = rename;
+    live.gesture.send(sourceTextEditCommands(nodeId, next, {
+      seconds: live.seconds,
+      ...(rename ? { rename } : {}),
+      // Runs address characters by index: re-indexed from the text typing began with.
+      ...(live.runs.length > 0 ? { runs: reindexRuns(live.runs, live.prev, next) } : {}),
+    }));
+  };
+
   const cancel = (): void => {
     committedRef.current = true; // discard edits
-    end();
+    const live = liveRef.current;
+    liveRef.current = null;
+    // Shift+Escape: the live steps roll back with their gesture.
+    if (live) void live.gesture.cancel().finally(end);
+    else end();
   };
 
   const commit = (): void => {
     if (committedRef.current) return;
+    const live = liveRef.current;
+    if (live) {
+      // The live steps are already on the layer: the last one lands, then the
+      // gesture closes as ONE undo entry ("Edit Text").
+      const next = boxRef.current?.innerText ?? '';
+      sendLive(next);
+      committedRef.current = true;
+      liveRef.current = null;
+      if (fresh && next.trim() === '') {
+        // AE: a Type-tool layer left empty is not kept.
+        void live.gesture.cancel()
+          .then(() => edit('Delete empty text layer', { type: 'deleteLayers', layers: [nodeId] }))
+          .finally(end);
+        return;
+      }
+      // Typed back to where it began: nothing to keep, and no empty undo entry.
+      const unchanged = next === live.prev && !live.animated;
+      void (unchanged ? live.gesture.cancel() : live.gesture.end(true)).finally(end);
+      return;
+    }
     committedRef.current = true;
     const m = documentMirror();
     const layer = m.layer(nodeId);
@@ -430,6 +534,11 @@ export function TextEditOverlay(): JSX.Element | null {
   return (
     <>
     <TextBoxHandles overflow={box ? box.overflow : undefined} />
+    {!paragraph && (
+      <div ref={frameRef} className={styles.pointBox} aria-hidden="true">
+        {POINT_BOX_GRIPS.map((g) => <span key={g} className={styles.pointGrip} data-grip={g} />)}
+      </div>
+    )}
     <div
       ref={boxRef}
       className={styles.editor}
@@ -440,7 +549,11 @@ export function TextEditOverlay(): JSX.Element | null {
       contentEditable
       suppressContentEditableWarning
       spellCheck={false}
-      onInput={(e) => setDraft(e.currentTarget.innerText ?? '')}
+      onInput={(e) => {
+        const next = e.currentTarget.innerText ?? '';
+        setDraft(next);
+        sendLive(next);
+      }}
       // Clipped at the box: the caret may scroll the lines inside it (never
       // sideways), but nothing spills past its edges.
       onScroll={fixedBox ? (e) => { if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0; } : undefined}
@@ -492,11 +605,14 @@ export function TextEditOverlay(): JSX.Element | null {
         paddingTop: boxPadTop,
         margin: 0,
         ...(fixedBox ? { overflow: 'hidden' as const } : {}),
-        // Paragraph text: TextBoxHandles draws AE's dashed box instead.
-        outline: paragraph ? 'none' : '1px solid var(--color-primary, #4c8dff)',
+        // The box is chrome of its own: AE's layer box for point text (frameRef),
+        // TextBoxHandles' dashed box for paragraph text.
+        outline: 'none',
         background: 'transparent',
         caretColor: color,
-        color,
+        // The engine draws the glyphs (live typing above); the editor is the
+        // caret and the selection over them, never a second copy of the text.
+        color: 'transparent',
         // Justified paragraph text previews justified, with its last line
         // aligned per the variant — the browser's own text-align-last.
         textAlign: paragraph && aligned.justify ? 'justify' : cssAlign(aligned.line),

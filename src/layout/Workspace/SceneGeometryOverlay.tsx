@@ -19,6 +19,7 @@ import React, { useId } from 'react';
 import type { Camera3D, OrthoView, Vec3 } from '@motion/scene';
 import { Project3D } from '@motion/scene';
 import { Gizmo3D, type GizmoSegmentKind, type SceneGizmo } from '@motion/workspace';
+import { useLayerControlShown } from '@stores/layerControls';
 
 export interface SceneGeometryOverlayProps {
   camera: Camera3D;
@@ -99,6 +100,10 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
   throughSceneCamera,
   compFrameVisible = false,
 }) => {
+  // View ▸ Show Layer Controls / View Options / while playing: camera and light
+  // wireframes and their grab dots, and the layer boxes, step aside together.
+  const showDevices = useLayerControlShown('lightsCameras');
+  const showBoxes = useLayerControlShown('handles');
   // One mask id per overlay instance: the main viewport and each inspection
   // pane mount their own copy, and SVG ids are document-wide.
   const gridMaskId = `ground-grid${useId().replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -222,10 +227,11 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
   };
 
   const renderSceneGizmos = () => {
-    if (!sceneGizmos.length) return null;
+    const shown = sceneGizmos.filter((g) => (g.type === 'layer' ? showBoxes : showDevices));
+    if (!shown.length) return null;
     return (
       <g className="scene-gizmos">
-        {sceneGizmos.map((giz) => (
+        {shown.map((giz) => (
           <g key={`${giz.type}_${giz.nodeId}`} opacity={giz.selected ? 1 : 0.62}>
             {giz.segments.map((s, i) => {
               const st = SEGMENT_STYLE[s.kind];
@@ -263,7 +269,7 @@ export const SceneGeometryOverlay: React.FC<SceneGeometryOverlayProps> = ({
    * hit test uses, so anything you can see you can also grab.
    */
   const renderDeviceHandles = () => {
-    if (!deviceHandles || deviceHandles.length === 0) return null;
+    if (!showDevices || !deviceHandles || deviceHandles.length === 0) return null;
     return (
       <g className="device-handles">
         {deviceHandles.map((h) => {

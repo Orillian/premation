@@ -36,6 +36,7 @@ import { beginViewportGesture, endViewportGesture } from '@core/workspace/viewpo
 import { GestureSession } from '@core/engine/uiEdits';
 import { useProjectStore } from '@stores/projectStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
+import { layerControlShown } from '@stores/layerControls';
 import { trackValueCommands } from './viewportEdits';
 import { useSceneRefGeometry } from './useSceneRefGeometry';
 import { useOverlayView } from './useOverlayView';
@@ -697,6 +698,8 @@ export function useGizmo3d(stageRef: React.RefObject<HTMLElement | null>, option
       // The C-key camera tool owns plain left-drags while active — let the
       // press fall through to useWorkspace's camera navigation.
       if (useGuidesStore.getState().cameraTool !== 'none') return;
+      // A hidden gizmo (Show Layer Controls off, View Options, playing) is not grabbable.
+      if (!layerControlShown('gizmo3d')) return;
       const stagePt = getStageLocal(e);
       const compPt = getCompLocal(stagePt);
 

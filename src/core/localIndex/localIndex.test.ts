@@ -22,6 +22,26 @@ describe('deriveProjectFacts', () => {
     expect(deriveProjectFacts(doc)).toEqual({ width: 1920, height: 1080, fps: 30, durationSeconds: 12, layerCount: 3 });
   });
 
+  it('describes the comp holding the work, not the empty auto-made first comp', () => {
+    const comp = (id: string, width: number, height: number, fps: number, durationSeconds: number) =>
+      ({ id, name: id, width, height, fps, durationSeconds, background: '#000', transparent: false, startFrame: 0 });
+    const doc = {
+      version: '1.1.0',
+      scene: {
+        version: '1.0.0',
+        nodes: [
+          { id: 'comp_root', parent: null },
+          { id: 'comp_1', parent: null },
+          { id: 'a', parent: 'comp_1' },
+          { id: 'b', parent: 'a' },
+        ],
+      },
+      animation: { tracks: {}, expressions: {} },
+      comps: { comp_root: comp('comp_root', 1920, 1080, 30, 10), comp_1: comp('comp_1', 1080, 1920, 60, 49) },
+    } as unknown as EditorDocument;
+    expect(deriveProjectFacts(doc)).toEqual({ width: 1080, height: 1920, fps: 60, durationSeconds: 49, layerCount: 2 });
+  });
+
   it('falls back to the legacy single comp', () => {
     const doc = {
       version: '1.0.0',

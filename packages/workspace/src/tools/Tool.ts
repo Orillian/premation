@@ -91,6 +91,12 @@ export interface ToolContext {
 
   /** Current selected node ids (read-only snapshot). */
   selectionIds(): readonly string[];
+  /**
+   * True while the host hides the transform grips (Show Layer Controls off,
+   * or playing): the tool offers none and picks none. Optional so a
+   * hand-built test context without it still type-checks.
+   */
+  transformHandlesHidden?(): boolean;
   /** Project a screen point to world. */
   screenToWorld(screen: Vec2): Vec2;
   /** Project a screen point to viewport-local pixels (camera anchor space). */

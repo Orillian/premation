@@ -493,6 +493,13 @@ class Session {
   /// kCachedPoll after the last one.
   std::uint64_t cachedSubmitted_ = 0;
   std::uint64_t cachedAnswered_ = 0;
+  /// This play's frames: ticked, with a pre-build key, sent as cached (no build).
+  /// Logged when it stops (`playback_summary`): why a cached comp still builds.
+  struct PlayTally {
+    std::uint64_t frames = 0;
+    std::uint64_t keyed = 0;
+    std::uint64_t cached = 0;
+  } playTally_;
   Clock::time_point cachedPollUntil_{};
   static constexpr std::chrono::seconds kCachedPoll{2};
   void poll_build_requests();

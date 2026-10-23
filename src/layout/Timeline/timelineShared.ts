@@ -171,7 +171,11 @@ export const TIMELINE_BOTTOM_PADDING = 12;
 /** A virtualized row is either a track summary row, a category accordion row, or a property sub-row. */
 export type Row =
   | { type: 'track'; track: TimelineTrack; expanded: boolean; hasProps: boolean }
-  | { type: 'category'; track: TimelineTrack; categoryKey: string; label: string; icon: IconName; expanded: boolean; count: number }
+  | {
+      type: 'category'; track: TimelineTrack; categoryKey: string; label: string; icon: IconName; expanded: boolean; count: number;
+      /** One applied effect's twirl inside Effects (AE): its id and fx switch. Its key is `effects/<id>`. */
+      effect?: { id: string; enabled: boolean };
+    }
   | { type: 'prop'; track: TimelineTrack; prop: TimelinePropertyTrack; categoryKey: string };
 
 /**

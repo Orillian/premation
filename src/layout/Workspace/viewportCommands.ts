@@ -58,12 +58,30 @@ import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
 import { settingsSetWorkArea } from '@core/mirror/compFacts';
 import { useGuidesStore } from '@stores/guidesStore';
 import { useSelectionStore } from '@stores/selectionStore';
+import { usePreferenceStore } from '@stores/preferenceStore';
+import { LAYER_CONTROL_KINDS, setLayerControlKind, toggleLayerControls, type LayerControlKind } from '@stores/layerControls';
 import { useUIStore } from '@stores/uiStore';
 import { useViewportDisplayStore, DISPLAY_MODE_LABEL, type DisplayMode } from '@stores/viewportDisplayStore';
 import { useViewerLutStore } from '@stores/viewerLutStore';
 import { openViewerLutPicker } from './viewerLutPicker';
 import { openInlineAiPrompt } from './inlineAiPromptStore';
 import { t } from '@core/i18n';
+
+/** View Options rows: what each kind of layer control covers, in AE's words where AE has one. */
+export function layerControlKindLabel(kind: LayerControlKind): string {
+  switch (kind) {
+    case 'handles':
+      return t('workspace.command.layerControlKind.handles', 'Handles');
+    case 'masks':
+      return t('workspace.command.layerControlKind.masks', 'Masks and Shape Paths');
+    case 'lightsCameras':
+      return t('workspace.command.layerControlKind.lightsCameras', 'Camera and Light Wireframes');
+    case 'gizmo3d':
+      return t('workspace.command.layerControlKind.gizmo3d', '3D Gizmo');
+    case 'effectControls':
+      return t('workspace.command.layerControlKind.effectControls', 'Effect Controls');
+  }
+}
 
 export const VIEWPORT_COMMAND_IDS = {
   shuttleReverse: 'transport.shuttleReverse',
@@ -93,6 +111,9 @@ export const VIEWPORT_COMMAND_IDS = {
   displayMode: (m: DisplayMode) => `view.displayMode.${m}`,
   displayModeCycle: 'view.displayMode.cycle',
   hud: 'view.hud',
+  layerControls: 'view.layerControls',
+  layerControlsWhilePlaying: 'view.layerControls.whilePlaying',
+  layerControlKind: (k: LayerControlKind) => `view.layerControls.${k}`,
   snapToPixel: 'view.snapToPixel',
   pixelAspectCorrection: 'view.pixelAspectCorrection',
   viewerLutLoad: 'view.viewerLut.load',
@@ -424,6 +445,34 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
       enabled: () => true,
       execute: () => useViewportDisplayStore.getState().cycleDisplayMode(),
     },
+    // ── Layer controls (AE View ▸ Show Layer Controls, View Options) ─
+    {
+      id: asCommandId(VIEWPORT_COMMAND_IDS.layerControls),
+      label: t('workspace.command.layerControls', 'Show Layer Controls'),
+      description: t('workspace.command.layerControlsDescription', 'Selection boxes, handles, paths, camera and light wireframes, the 3D gizmo and effect points in the viewer — all on or all off.'),
+      shortcut: { key: 'h', meta: true, shift: true },
+      enabled: () => true,
+      isChecked: () => usePreferenceStore.getState().showLayerControls,
+      execute: () => toggleLayerControls(),
+    },
+    {
+      id: asCommandId(VIEWPORT_COMMAND_IDS.layerControlsWhilePlaying),
+      label: t('workspace.command.layerControlsWhilePlaying', 'Show Layer Controls While Playing'),
+      description: t('workspace.command.layerControlsWhilePlayingDescription', 'Off: the viewer shows a clean picture during playback and the controls return when it stops.'),
+      enabled: () => true,
+      isChecked: () => usePreferenceStore.getState().layerControlsWhilePlaying,
+      execute: () => {
+        const p = usePreferenceStore.getState();
+        p.set('layerControlsWhilePlaying', !p.layerControlsWhilePlaying);
+      },
+    },
+    ...LAYER_CONTROL_KINDS.map((kind): Command => ({
+      id: asCommandId(VIEWPORT_COMMAND_IDS.layerControlKind(kind)),
+      label: layerControlKindLabel(kind),
+      enabled: () => true,
+      isChecked: () => usePreferenceStore.getState().layerControlKinds?.[kind] !== false,
+      execute: () => setLayerControlKind(kind, usePreferenceStore.getState().layerControlKinds?.[kind] === false),
+    })),
     // ── HUD / snap / PAR ─────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.hud),

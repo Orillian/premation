@@ -12,6 +12,23 @@ import type { ThemeId } from '@app-types/common';
 import { asThemeId } from '@app-types/common';
 import { getEventBus } from '@core/events/EventBus';
 
+/**
+ * The kinds of viewer layer controls (After Effects' View Options). A kind
+ * missing from a persisted profile (written before it existed) reads as on.
+ */
+export interface LayerControlKinds {
+  /** Selection boxes, transform handles, the anchor point, text box grips. */
+  handles: boolean;
+  /** Mask and shape path points, Free Transform Points. */
+  masks: boolean;
+  /** Camera and light wireframes and their grab dots, the focus plane. */
+  lightsCameras: boolean;
+  /** The 3D transform gizmo (axis arrows, rotation rings). */
+  gizmo3d: boolean;
+  /** Effect points, gradient axes, plugin overlays, puppet pins, bones, track points. */
+  effectControls: boolean;
+}
+
 export interface Preferences {
   theme: ThemeId;
   /** Whole-UI zoom, 0.75.. 1.5 (applied as document zoom). */
@@ -94,6 +111,26 @@ export interface Preferences {
    * a cat's cradle of chrome.
    */
   deviceWireframesAll: boolean;
+  /**
+   * After Effects' View ▸ Show Layer Controls (Ctrl+Shift+H): every piece of
+   * per-layer chrome in the viewer — selection boxes and handles, mask and
+   * path points, motion paths, camera and light wireframes and their grab
+   * dots, the 3D gizmo, effect points. Off = a clean picture for judging the
+   * work; nothing about the layers changes. See `src/stores/layerControls.ts`.
+   */
+  showLayerControls: boolean;
+  /**
+   * Draw the layer controls while the comp plays. Off by default: during
+   * playback the chrome follows every frame over the artwork you are trying
+   * to watch (a light's grab dot dancing across the shot), and nothing can be
+   * dragged mid-play anyway. The controls come back on the frame playback stops.
+   */
+  layerControlsWhilePlaying: boolean;
+  /**
+   * After Effects' View Options (Ctrl+Alt+U): which KINDS of layer controls
+   * the viewer draws, under the master `showLayerControls`.
+   */
+  layerControlKinds: LayerControlKinds;
   /**
    * Decode low-resolution proxies in the viewport (After Effects' Use Proxies).
    *
@@ -309,6 +346,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
   retainOriginalSvg: true,
   showLayerBounds: true,
   deviceWireframesAll: false,
+  showLayerControls: true,
+  layerControlsWhilePlaying: false,
+  layerControlKinds: {
+    handles: true,
+    masks: true,
+    lightsCameras: true,
+    gizmo3d: true,
+    effectControls: true,
+  },
   useProxies: true,
   exportRawPipe: true,
   exportInProcess: false,

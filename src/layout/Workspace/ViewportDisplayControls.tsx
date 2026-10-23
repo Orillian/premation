@@ -78,7 +78,9 @@ import {
   effectiveViewMode,
   useCompCameraViews,
 } from '@layout/TopNav/ViewControls';
-import { VIEWPORT_COMMAND_IDS } from './viewportCommands';
+import { VIEWPORT_COMMAND_IDS, layerControlKindLabel } from './viewportCommands';
+import { usePreferenceStore } from '@stores/preferenceStore';
+import { LAYER_CONTROL_KINDS } from '@stores/layerControls';
 import { isDisplayShed, type DisplayGroup } from './transportOverflow';
 import styles from './ViewportDisplayControls.module.css';
 import tool from './viewportToolButton.module.css';
@@ -450,6 +452,10 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   const snapToPixel = useViewportDisplayStore((s) => s.snapToPixel);
   const par = useViewportDisplayStore((s) => s.pixelAspectCorrection);
   const guides = userGuides();
+  // AE View ▸ Show Layer Controls + View Options (stores/layerControls.ts).
+  const showLayerControls = usePreferenceStore((s) => s.showLayerControls);
+  const layerControlsWhilePlaying = usePreferenceStore((s) => s.layerControlsWhilePlaying);
+  const layerControlKinds = usePreferenceStore((s) => s.layerControlKinds);
   const dotChoice = (id: 'off' | 'small' | 'medium' | 'large', label: string): DropdownItem => ({
     type: 'checkbox',
     id: `vd-mp-dots-${id}`,
@@ -477,6 +483,24 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
     // Measurement badges, equal-spacing and equal-size snapping while a drag
     // is in flight; Alt-hover measures between two layers.
     { type: 'checkbox', id: 'vd-smart-guides', label: t('workspace.display.smartGuides', 'Smart Guides'), checked: smartGuides, onChange: toggleSmartGuides },
+    {
+      type: 'item',
+      id: 'vd-layer-controls',
+      label: t('workspace.display.layerControls', 'Layer Controls'),
+      submenu: [
+        { type: 'checkbox', id: 'vd-lc-show', label: t('workspace.command.layerControls', 'Show Layer Controls'), checked: showLayerControls, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.layerControls), onChange: () => run(VIEWPORT_COMMAND_IDS.layerControls) },
+        { type: 'checkbox', id: 'vd-lc-playing', label: t('workspace.display.layerControlsWhilePlaying', 'Show While Playing'), checked: layerControlsWhilePlaying, onChange: () => run(VIEWPORT_COMMAND_IDS.layerControlsWhilePlaying) },
+        { type: 'separator' },
+        ...LAYER_CONTROL_KINDS.map<DropdownItem>((kind) => ({
+          type: 'checkbox',
+          id: `vd-lc-${kind}`,
+          label: layerControlKindLabel(kind),
+          checked: layerControlKinds?.[kind] !== false,
+          disabled: !showLayerControls,
+          onChange: () => run(VIEWPORT_COMMAND_IDS.layerControlKind(kind)),
+        })),
+      ],
+    },
     { type: 'checkbox', id: 'vd-hud', label: 'HUD', checked: hud, shortcut: shortcutOf(VIEWPORT_COMMAND_IDS.hud), onChange: () => run(VIEWPORT_COMMAND_IDS.hud) },
     {
       type: 'item',

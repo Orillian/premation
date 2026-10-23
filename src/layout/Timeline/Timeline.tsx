@@ -39,6 +39,10 @@ import { useTimelineEditModeStore } from './timelineEditMode';
 import { isLayerTransitionDrag, isTransitionDrag, readLayerTransitionDrag, readTransitionDrag, readTransitionDragEffect } from './transitionDrag';
 import { hasCanvasDrag, readCanvasDrag } from '@core/dnd/canvasDrag';
 import { documentMirror } from '@stores/documentMirror';
+import { mirrorEffectHeaders } from '@core/mirror/effects';
+import { effectDisplayNames, type Effect } from '@core/inspector/effectCatalog';
+import { resetEffectEdit, setEffectEnabledEdit } from '@layout/Effects/effectEdits';
+import { groupEffectRows } from './effectRowGroups';
 import { barOf, replaceSourceWithAsset, replaceTargetAt, splitLayersAt, timeStretchEdit } from './timelineEdits';
 import {
   layoutTransitions,
@@ -741,7 +745,31 @@ function Timeline({
                 count: cat.props.length,
               });
 
-              if (isCatExpanded) {
+              if (isCatExpanded && cat.key === 'effects') {
+                // AE: Effects ▸ <each effect> ▸ its params, in stack order.
+                const tree = documentMirror().tree(track.id);
+                const headers = mirrorEffectHeaders(tree);
+                const names = effectDisplayNames(headers as unknown as Effect[]);
+                for (const g of groupEffectRows(cat.props, headers, names)) {
+                  if (g.effectId === null) {
+                    for (const prop of g.props) out.push({ type: 'prop', track, prop, categoryKey: cat.key });
+                    continue;
+                  }
+                  const fxKey = `effects/${g.effectId}`;
+                  const fxExpanded = !collapsedCategoryKeys.has(`${track.id}:${fxKey}`);
+                  out.push({
+                    type: 'category',
+                    track,
+                    categoryKey: fxKey,
+                    label: g.label,
+                    icon: 'sparkles',
+                    expanded: fxExpanded,
+                    count: g.props.length,
+                    effect: { id: g.effectId, enabled: g.enabled },
+                  });
+                  if (fxExpanded) for (const prop of g.props) out.push({ type: 'prop', track, prop, categoryKey: fxKey });
+                }
+              } else if (isCatExpanded) {
                 for (const prop of cat.props) {
                   out.push({ type: 'prop', track, prop, categoryKey: cat.key });
                 }
@@ -2459,9 +2487,11 @@ function Timeline({
                 );
               }
               if (row.type === 'category') {
+                const fx = row.effect;
                 const categoryStyle: CSSProperties = {
                   ...rowStyle,
-                  paddingLeft: 88 + (row.track.depth ?? 0) * 14,
+                  // An effect's twirl sits one step inside Effects.
+                  paddingLeft: 88 + (row.track.depth ?? 0) * 14 + (fx ? 14 : 0),
                 };
                 return (
                   <TrackCategoryHeader
@@ -2472,18 +2502,23 @@ function Timeline({
                     count={row.count}
                     style={categoryStyle}
                     onToggle={() => toggleCategory(row.track.id, row.categoryKey)}
-                    // AE's Transform group "Reset": keyframes off, defaults back.
+                    // AE's Transform group "Reset": keyframes off, defaults back;
+                    // an effect's Reset puts its parameters back to their defaults.
                     onReset={
                       row.categoryKey === 'transform'
                         ? () => { void resetTransformEdit([row.track.id], activeCompSize()); }
-                        : undefined
+                        : fx
+                          ? () => { void resetEffectEdit(row.track.id, fx.id, row.label); }
+                          : undefined
                     }
+                    fx={fx ? { enabled: fx.enabled, onToggle: () => { void setEffectEnabledEdit(row.track.id, fx.id, !fx.enabled, row.label); } } : undefined}
                   />
                 );
               }
               const propStyle: CSSProperties = {
                 ...rowStyle,
-                paddingLeft: 124 + (row.track.depth ?? 0) * 14,
+                // An effect's params sit under its twirl, one step deeper.
+                paddingLeft: 124 + (row.track.depth ?? 0) * 14 + (row.categoryKey.startsWith('effects/') ? 14 : 0),
               };
               return (
                 <PropertyHeader

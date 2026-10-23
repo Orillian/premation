@@ -303,6 +303,28 @@ export function useMirrorKeyframes(layer: string | null | undefined, path: strin
   );
 }
 
+/**
+ * Re-render when the layer's keyframes change OUTSIDE `excludePrefixes`
+ * (API paths, e.g. `transform/`): for a component that reads keys elsewhere on
+ * the layer and must not re-render on every step of a Position / Scale drag —
+ * which moves a key on a keyframed layer, and with `keys:<layer>` re-rendered
+ * whole inspector sections per pointer move. Returns the keys' signature (a
+ * string, equal while they are), for an effect dependency.
+ */
+export function useMirrorKeysOutside(layer: string | null | undefined, excludePrefixes: readonly string[]): string {
+  return useMirrorSelect(layer ? [`keys:${layer}`] : [], (m) => {
+    if (!layer) return '';
+    let sig = '';
+    for (const [path, list] of m.layerKeyframes(layer)) {
+      if (excludePrefixes.some((p) => path.startsWith(p))) continue;
+      sig += `${path}=`;
+      for (const k of list) sig += `${k.id}@${k.time}:${JSON.stringify(k.value)}/${k.easing};`;
+      sig += '|';
+    }
+    return sig;
+  });
+}
+
 export function useMirrorLayerKeyframes(layer: string | null | undefined): ReadonlyMap<string, readonly Keyframe[]> {
   return useMirrorSelect(layer ? [`keys:${layer}`] : [], (m) => (layer ? m.layerKeyframes(layer) : EMPTY_MAP));
 }
