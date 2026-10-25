@@ -99,7 +99,9 @@ describe('writing speed back — the round trip', () => {
   it('clamps a runaway drag instead of producing an unusable curve', () => {
     const bz = withOutgoingSpeed(LINEAR, DV, DT, 1e9);
     expect(Number.isFinite(bz[1])).toBe(true);
-    expect(bz[1]).toBeLessThanOrEqual(3);
+    // Capped at 20x the segment's average speed (AE's velocity fields accept
+    // large values; 3x stopped the handle under the cursor).
+    expect(bz[1]).toBeLessThanOrEqual(20);
   });
 });
 

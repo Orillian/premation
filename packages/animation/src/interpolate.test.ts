@@ -240,6 +240,15 @@ describe('Auto Bezier temporal tangents', () => {
     const leaving0 = (sampleTrack(track, h) - sampleTrack(track, 0)) / h;
     expect(leaving0).toBeCloseTo(10, 1);  // the segment's average speed
   });
+  it('a roving key has linear sides whatever ease its neighbours carry', () => {
+    const keys = [
+      { t: 0, value: 0, easing: 'bezier', bezier: [0.1, 0, 0.9, 1] },
+      { t: 1, value: 10, easing: 'bezier', bezier: [0.1, 0, 0.9, 1], roving: true },
+      { t: 2, value: 40 },
+    ];
+    expect(segmentTemporalBezier(keys, 0).slice(2)).toEqual([2 / 3, 2 / 3]);
+    expect(segmentTemporalBezier(keys, 1).slice(0, 2)).toEqual([1 / 3, 1 / 3]);
+  });
   it('segmentTemporalBezier leaves a flat segment linear', () => {
     expect(segmentTemporalBezier([kf(0, 5), kf(1, 5), kf(2, 9)], 0)).toEqual([1 / 3, 1 / 3, 2 / 3, 2 / 3]);
   });

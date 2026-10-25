@@ -8506,6 +8506,8 @@
   "timeline.graph.selected": "Selected",
   "timeline.graph.selectedKeyframe": "Selected keyframe",
   "timeline.graph.selectedTitle": "Show Selected Properties — only the property rows selected in the timeline (all animated ones while nothing is selected)",
+  "timeline.graph.sharedAxis": "Shared axis",
+  "timeline.graph.sharedAxisTitle": "One vertical axis for every curve, so values compare across properties (off: each curve fitted to its own range)",
   "timeline.graph.soloActiveTitle": "Click to solo / Shift-click to toggle · click soloed chip to show all",
   "timeline.graph.soloTitle": "Click to solo this curve · Shift-click to multi-solo",
   "timeline.graph.speed": "Speed",

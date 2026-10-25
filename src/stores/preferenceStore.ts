@@ -285,6 +285,8 @@ export interface Preferences {
   timelineFollowMode: 'off' | 'page' | 'continuous';
   /** Clip and keyframe snapping. Alt still inverts whatever this says. */
   timelineSnap: boolean;
+  /** Graph editor value graph: one vertical axis for every curve (AE), or each curve fitted to its own. */
+  graphSharedAxis: boolean;
   /** Row height, px — the three presets (28 / 36 / 46) or a dragged value. */
   timelineRowHeight: number;
   /**
@@ -396,6 +398,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   pinnedProjects: [],
   timelineFollowMode: 'page',
   timelineSnap: true,
+  graphSharedAxis: true,
   timelineRowHeight: 28,
   footageLayerOpens: 'layer',
   compLayerOpens: 'nested',

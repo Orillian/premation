@@ -16,7 +16,11 @@ would want to know; the engine-level detail is in `ROADMAP.md`.
 - **Keyframes.** Auto Bezier keys are smooth through the key (the tangent
   follows the neighbours), as in After Effects, instead of a fixed ease-in-out
   that stopped the motion at every key; Continuous Bezier starts from those
-  tangents. Easy Ease, Easy Ease In and Easy Ease Out apply to the
+  tangents. A roving key's sides are linear, so a roved run keeps its
+  constant speed. A keyframe can be dragged past its neighbours (they
+  reorder) and value-graph handles and speeds may overshoot well past the
+  segment. The value graph draws every curve on one shared axis, with a
+  toolbar toggle for per-curve fitting. Easy Ease, Easy Ease In and Easy Ease Out apply to the
   key's own arrival and departure, as in After Effects (Ease In and Ease Out
   were the wrong way round). Keyframe Velocity leaves a hold segment hold.
   Dragging keys in the timeline no longer sends keys selected in the graph

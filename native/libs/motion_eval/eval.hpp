@@ -215,6 +215,10 @@ template <KeyframeSource S>
   const Keyframe& b = src.get(i + 1);
   const bool autoA = a.easing == kEasingAutoBezier;
   const bool autoB = b.easing == kEasingAutoBezier;
+  // A roving key's sides are linear (interpolate.ts segmentTemporalBezier):
+  // it was placed for constant speed through the run.
+  const bool roveA = (a.flags & MOTION_KF_ROVING) != 0u;
+  const bool roveB = (b.flags & MOTION_KF_ROVING) != 0u;
   const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
   std::array<double, 4> bz{1.0 / 3.0, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0};
   if (has_handles) bz = {a.c0, a.c1, a.c2, a.c3};  // stored handles still carry the other end's side
@@ -228,6 +232,14 @@ template <KeyframeSource S>
   if (autoB) {
     bz[2] = 2.0 / 3.0;
     bz[3] = (dv != 0.0 && dt > 0.0) ? 1.0 - (auto_temporal_slope(src, i + 1) * dt / 3.0) / dv : 2.0 / 3.0;
+  }
+  if (roveA) {
+    bz[0] = 1.0 / 3.0;
+    bz[1] = 1.0 / 3.0;
+  }
+  if (roveB) {
+    bz[2] = 2.0 / 3.0;
+    bz[3] = 2.0 / 3.0;
   }
   return bz;
 }
@@ -256,9 +268,10 @@ template <KeyframeSource S>
   const bool bezier_kind =
       kind == kEasingBezier || kind == kEasingAutoBezier || kind == kEasingContinuousBezier;
   const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
-  const bool auto_end = kind == kEasingAutoBezier || b.easing == kEasingAutoBezier;
+  const bool roving = ((a.flags | b.flags) & MOTION_KF_ROVING) != 0u;
+  const bool auto_end = kind == kEasingAutoBezier || b.easing == kEasingAutoBezier || roving;
   double eased = 0.0;
-  if (auto_end && !named_easing(kind)) {
+  if (auto_end && (!named_easing(kind) || roving)) {
     const std::array<double, 4> sb = segment_temporal_bezier(src, i);
     eased = cubic_bezier_ease(sb[0], sb[1], sb[2], sb[3], local);
   } else {

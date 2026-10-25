@@ -108,7 +108,7 @@ std::string_view validate_keyframe(const Keyframe& k) noexcept {
   if (std::isnan(k.value)) return "keyframe value is NaN";
   if (k.easing < 0 || k.easing >= kEasingCount) return "keyframe easing is not a motion_easing";
   constexpr std::uint32_t known_bits =
-      MOTION_KF_HAS_BEZIER | MOTION_KF_HAS_SI | MOTION_KF_HAS_SO | MOTION_KF_SPATIAL_MASK;
+      MOTION_KF_HAS_BEZIER | MOTION_KF_HAS_SI | MOTION_KF_HAS_SO | MOTION_KF_SPATIAL_MASK | MOTION_KF_ROVING;
   if ((k.flags & ~known_bits) != 0u) return "keyframe flags carry unknown bits";
   if (spatial_mode(k) >= static_cast<std::uint32_t>(MOTION_SPATIAL_COUNT_)) return "keyframe spatial mode is not a motion_spatial";
   if ((k.flags & MOTION_KF_HAS_BEZIER) != 0u) {

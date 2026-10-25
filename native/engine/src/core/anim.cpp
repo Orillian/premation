@@ -43,6 +43,7 @@ motion_keyframe to_motion(const Key& k) {
   m.value = k.value;
   m.easing = to_motion_easing(k.easing.value_or(api::Easing::linear));
   m.flags = k.spatial ? spatial_bits(*k.spatial) : 0U;
+  if (k.roving.value_or(false)) m.flags |= MOTION_KF_ROVING;
   if (k.bezier) {
     m.flags |= MOTION_KF_HAS_BEZIER;
     m.c0 = (*k.bezier)[0];

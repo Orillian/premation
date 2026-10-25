@@ -65,6 +65,7 @@ typedef enum motion_easing {
 #define MOTION_KF_HAS_BEZIER 0x1u /* c0..c3 hold [x1, y1, x2, y2] */
 #define MOTION_KF_HAS_SI 0x2u     /* si is present (spatial in) */
 #define MOTION_KF_HAS_SO 0x4u     /* so is present (spatial out) */
+#define MOTION_KF_ROVING 0x8u     /* Rove Across Time: the key's sides carry no temporal ease */
 #define MOTION_KF_SPATIAL_SHIFT 4u
 #define MOTION_KF_SPATIAL_MASK (0xFu << MOTION_KF_SPATIAL_SHIFT)
 

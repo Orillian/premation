@@ -70,6 +70,8 @@ export interface TemporalKey {
   value: number;
   easing?: string;
   bezier?: readonly number[];
+  /** Rove Across Time: the key sits where constant speed puts it, so its sides carry no ease. */
+  roving?: boolean;
 }
 
 /** A linear segment as a cubic: both handles on the straight line. */
@@ -114,8 +116,12 @@ export function segmentTemporalBezier(kfs: ReadonlyArray<TemporalKey>, i: number
   if (!b) return own(a);
   const autoA = a.easing === 'autoBezier';
   const autoB = b.easing === 'autoBezier';
-  if (!autoA && !autoB) return own(a);
-  if (!autoA && NAMED_EASINGS.has(a.easing ?? '')) return own(a);
+  // A roving key's sides are linear: it was placed for constant speed through
+  // the run, and an eased segment inside the run would stop at it anyway.
+  const roveA = a.roving === true;
+  const roveB = b.roving === true;
+  if (!autoA && !autoB && !roveA && !roveB) return own(a);
+  if (!autoA && !roveA && !roveB && NAMED_EASINGS.has(a.easing ?? '')) return own(a);
   const dv = b.value - a.value;
   const dt = b.t - a.t;
   // An auto key without stored handles starts from the straight line (its
@@ -128,6 +134,14 @@ export function segmentTemporalBezier(kfs: ReadonlyArray<TemporalKey>, i: number
   if (autoB) {
     bz[2] = 2 / 3;
     bz[3] = dv !== 0 && dt > 0 ? 1 - (autoTemporalSlope(kfs, i + 1) * dt / 3) / dv : 2 / 3;
+  }
+  if (roveA) {
+    bz[0] = 1 / 3;
+    bz[1] = 1 / 3;
+  }
+  if (roveB) {
+    bz[2] = 2 / 3;
+    bz[3] = 2 / 3;
   }
   return bz;
 }
@@ -213,8 +227,8 @@ export function sampleTrack(track: PropertyTrack, t: number): number | undefined
   if (kind === 'step' || kind === 'hold') return t < b.t ? a.value : b.value;
   const span = b.t - a.t;
   const local = span <= 0 ? 0 : (t - a.t) / span;
-  const autoEnd = kind === 'autoBezier' || b.easing === 'autoBezier';
-  const eased = autoEnd && !NAMED_EASINGS.has(kind)
+  const autoEnd = kind === 'autoBezier' || b.easing === 'autoBezier' || a.roving === true || b.roving === true;
+  const eased = autoEnd && (!NAMED_EASINGS.has(kind) || a.roving === true || b.roving === true)
     ? cubicBezierEase(segmentTemporalBezier(kfs, i), local)
     : (kind === 'bezier' || kind === 'autoBezier' || kind === 'continuousBezier') && a.bezier
       ? cubicBezierEase(a.bezier, local)

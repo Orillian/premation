@@ -33,7 +33,9 @@ export type Bezier = [number, number, number, number];
 const MIN_INFLUENCE = 1e-4;
 /** AE clamps handle y to a band around the segment; overshoot is legal, runaway is not. */
 const MIN_Y = -2;
-const MAX_Y = 3;
+// A speed may run well past the segment's average (AE's velocity fields accept
+// it): the old cap at 3× silently stopped the handle and rewrote typed values.
+const MAX_Y = 20;
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;

@@ -51,6 +51,7 @@ import {
   activeEasingKind,
 } from '@core/animation/easingVocabulary';
 import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
+import { usePreferenceStore } from '@stores/preferenceStore';
 import { useEaseClipboardStore } from '@stores/easeClipboardStore';
 import { EaseLibrarySection } from '@layout/Motion/EaseLibrarySection';
 import { flicksToSeconds, secondsToFlicks, type KeyframePatch } from '@motion/engine-api';
@@ -136,6 +137,8 @@ function buildGraphText() {
     speed: t('timeline.graph.speed', 'Speed'),
     speedTitle: t('timeline.graph.speedTitle', 'Speed graph (edit velocity & influence %)'),
     visibility: t('timeline.graph.visibility', 'Graph visibility'),
+    sharedAxis: t('timeline.graph.sharedAxis', 'Shared axis'),
+    sharedAxisTitle: t('timeline.graph.sharedAxisTitle', 'One vertical axis for every curve, so values compare across properties (off: each curve fitted to its own range)'),
     animated: t('timeline.graph.animated', 'Animated'),
     animatedTitle: t('timeline.graph.animatedTitle', 'Show Animated Properties — every keyframed property of the selected layers'),
     selected: t('timeline.graph.selected', 'Selected'),
@@ -346,7 +349,8 @@ interface DragState {
   /** Diamond drag: each member's whole key at pointer-down (absolute value writes). */
   startKeys?: Array<MemberKeyStart | null>;
   /** Diamond drag: each member's nearest keys that do NOT move with it (comp seconds). */
-  neighbours?: Array<{ prev?: number; next?: number }>;
+  /** Per group member: the comp times of its track's keys that do NOT move with the drag (a key may cross them, never land on one). */
+  fixedTimes?: number[][];
   /** Live box-zoom corner (svg); start corner is ox/oy. */
   boxX?: number;
   boxY?: number;
@@ -397,8 +401,11 @@ const GRAPH_PPS_MAX = TIMELINE_PPS_MAX;
 /** Pointer must travel this far before a press becomes a drag (click ≠ nudge). */
 const DRAG_DEAD_ZONE_PX = 2;
 /** Handle y is clamped to this band around the segment (overshoot allowed, runaway not). */
-const MIN_HANDLE_Y = -2;
-const MAX_HANDLE_Y = 3;
+// A value-graph handle may overshoot well past the segment (AE lets it): the
+// old ±2/3 cap stopped the handle under the cursor and read back a different
+// number than was typed.
+const MIN_HANDLE_Y = -10;
+const MAX_HANDLE_Y = 11;
 const MIN_INFLUENCE = 0.001;
 const MAX_INFLUENCE = 0.999;
 
@@ -511,13 +518,26 @@ async function commitMemberWrites(label: string, nodeId: string, prop: string, w
   if (patches && patches.length > 0) await edit(label, { type: 'updateKeyframes', patches });
 }
 
-/** A key's time clamped a frame short of the keys that do not move with it (comp seconds). */
-function clampToNeighbours(t: number, nb: { prev?: number; next?: number } | undefined, start: number, frame: number): number {
+/**
+ * A dragged key's time kept OFF the keys that do not move with it (comp
+ * seconds): a key may pass its neighbours and reorder, as in After Effects —
+ * only landing on a fixed key's frame is avoided (the engine replaces the key
+ * already there, and a drag that passed through would have eaten it).
+ */
+function avoidFixedKeys(t: number, fixed: ReadonlyArray<number> | undefined, frame: number): number {
   const gap = frame > 0 ? frame : 1e-3;
-  const lo = nb?.prev !== undefined ? nb.prev + gap : -Infinity;
-  const hi = nb?.next !== undefined ? nb.next - gap : Infinity;
-  if (lo > hi) return start;
-  return clamp(t, lo, hi);
+  let out = t;
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (const f of fixed ?? []) {
+      if (Math.abs(out - f) < gap - 1e-9) {
+        out = out < f ? f - gap : f + gap;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return Math.max(0, out);
 }
 
 /**
@@ -626,6 +646,11 @@ export function GraphEditor({
    */
   const [visibility, setVisibility] = useState<GraphVisibilityMode>('animated');
   const propertySelection = usePropertySelectionStore((s) => s.entries);
+  // AE's value graph plots every curve on ONE axis; per-curve fitting (the
+  // old behaviour) overlaid curves of different ranges so they could not be
+  // compared or edited against each other.
+  const sharedAxis = usePreferenceStore((s) => s.graphSharedAxis);
+  const setPreference = usePreferenceStore((s) => s.set);
   const [selectedKf, setSelectedKf] = useState<SelectedKf | null>(null);
   const selectedKfIds = useKeyframeSelectionStore((s) => s.ids);
   const setSelectedKfIds = useKeyframeSelectionStore((s) => s.set);
@@ -778,6 +803,8 @@ export function GraphEditor({
       movingNow.add(posKey(drag.nodeId, drag.prop, drag.kfT));
     }
     const sampleStep = Math.max(1e-4, 2 / pps);  // seconds per dense sample (about one per 2 px)
+    /** Every plotted track's samples and keys, before the ranges are known (one axis needs them all). */
+    const pre: Array<{ nodeId: string; prop: string; color: string; kfs: MemberKey[]; samples: [number, number][]; toAbs: (kf: MemberKey) => number }> = [];
     for (const { nodeId, prop, color } of tracks) {
       const storedT = storedTimeOf(nodeId);
       const hit = memberKeysOf(mirror, nodeId, prop, storedT);
@@ -890,41 +917,73 @@ export function GraphEditor({
         samples.push([0, v], [duration, v]);
       }
 
-      // ── Range: frozen during a drag, auto-fit otherwise ──
+      pre.push({ nodeId, prop, color, kfs, samples, toAbs });
+    }
+
+    // ── Range: frozen during a drag, auto-fit otherwise ──
+    // The raw extent of one track's samples and keys (value mode counts the
+    // keys too: a hold key's value is on no sample).
+    const extentOf = (p: { samples: ReadonlyArray<readonly [number, number]>; kfs: MemberKey[] }): { lo: number; hi: number } => {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const [, v] of p.samples) {
+        if (Number.isFinite(v)) {
+          lo = Math.min(lo, v);
+          hi = Math.max(hi, v);
+        }
+      }
+      if (mode === 'value') {
+        for (const kf of p.kfs) {
+          lo = Math.min(lo, kf.value);
+          hi = Math.max(hi, kf.value);
+        }
+      }
+      return { lo, hi };
+    };
+    const padded = (lo: number, hi: number): Range => {
+      let minV = lo;
+      let maxV = hi;
+      if (!Number.isFinite(minV) || !Number.isFinite(maxV)) {
+        minV = 0;
+        maxV = 1;
+      }
+      if (mode === 'speed') {
+        minV = 0;
+        if (maxV <= 0) maxV = 100;
+        maxV *= 1.25; // headroom
+      } else {
+        if (maxV === minV) {
+          minV -= 1;
+          maxV += 1;
+        }
+        const pad = (maxV - minV) * 0.15;
+        minV -= pad;
+        maxV += pad;
+      }
+      return { minV, maxV };
+    };
+    // One axis for every value curve (AE): the union of their extents.
+    let shared: Range | null = null;
+    if (sharedAxis && mode === 'value' && pre.length > 0) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const p of pre) {
+        const e = extentOf(p);
+        lo = Math.min(lo, e.lo);
+        hi = Math.max(hi, e.hi);
+      }
+      shared = padded(lo, hi);
+    }
+
+    for (const { nodeId, prop, color, kfs, samples, toAbs } of pre) {
       let range = frozenRangesRef.current?.get(trackKey(nodeId, prop));
       if (!range) {
-        let minV = Infinity;
-        let maxV = -Infinity;
-        for (const [, v] of samples) {
-          if (Number.isFinite(v)) {
-            minV = Math.min(minV, v);
-            maxV = Math.max(maxV, v);
-          }
-        }
-        if (mode === 'value') {
-          for (const kf of kfs) {
-            minV = Math.min(minV, kf.value);
-            maxV = Math.max(maxV, kf.value);
-          }
-        }
-        if (!Number.isFinite(minV) || !Number.isFinite(maxV)) {
-          minV = 0;
-          maxV = 1;
-        }
-        if (mode === 'speed') {
-          minV = 0;
-          if (maxV <= 0) maxV = 100;
-          maxV *= 1.25; // headroom
+        if (shared) {
+          range = shared;
         } else {
-          if (maxV === minV) {
-            minV -= 1;
-            maxV += 1;
-          }
-          const pad = (maxV - minV) * 0.15;
-          minV -= pad;
-          maxV += pad;
+          const e = extentOf({ samples, kfs });
+          range = padded(e.lo, e.hi);
         }
-        range = { minV, maxV };
       }
       const { minV, maxV } = range;
 
@@ -982,7 +1041,7 @@ export function GraphEditor({
     sampler.retain(plotted);
     return paths;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `rev` (mirror watch) and `samplesTick` (a curve answer landed) drive the re-sample
-  }, [tracks, duration, pps, INNER_H, rev, samplesTick, mode, scrollLeft, viewportW, refitTick]);
+  }, [tracks, duration, pps, INNER_H, rev, samplesTick, mode, scrollLeft, viewportW, refitTick, sharedAxis]);
 
   /**
    * The transform box around the selected diamonds — value graph only (the
@@ -1270,19 +1329,11 @@ export function GraphEditor({
       const grabIndex = Math.max(0, group.findIndex(
         (m) => m.nodeId === kf.nodeId && m.prop === kf.prop && Math.abs(m.startT - kf.t) < 1e-9,
       ));
-      // The keys each member may not cross: its track's nearest keys that are
-      // not moving with it, in comp time (the API moves keys in comp time).
+      // The keys each member may not LAND on: its track's keys that are not
+      // moving with it, in comp time (the API moves keys in comp time).
       const moving = new Set(group.map((m) => `${m.nodeId}|${m.prop}|${m.startT}`));
-      const neighbours = group.map((m) => {
-        const kfs = trackKeys(m.nodeId, m.prop) ?? [];
-        const fixed = kfs.filter((k) => !moving.has(`${m.nodeId}|${m.prop}|${k.t}`));
-        const prev = [...fixed].reverse().find((k) => k.t < m.startT);
-        const next = fixed.find((k) => k.t > m.startT);
-        return {
-          ...(prev ? { prev: prev.tAbs } : {}),
-          ...(next ? { next: next.tAbs } : {}),
-        };
-      });
+      const fixedTimes = group.map((m) =>
+        (trackKeys(m.nodeId, m.prop) ?? []).filter((k) => !moving.has(`${m.nodeId}|${m.prop}|${k.t}`)).map((k) => k.tAbs));
       const gesture = new GestureSession('Move Keyframe');
 
       const { x, y } = svgCoords(e);
@@ -1308,7 +1359,7 @@ export function GraphEditor({
         // whose first moves were dropped while the ids resolved lagged, then jumped).
         ...(groupKeyIds.every((id) => id !== undefined) ? { groupEids: groupKeyIds } : {}),
         startKeys: group.map((m) => memberKeyStart(m.nodeId, m.prop, m.startT)),
-        neighbours,
+        fixedTimes,
       });
       // The engine ids of the moving keys (stamped first if a pre-API writer
       // left them unnamed — resolveKeysForGesture).
@@ -1343,13 +1394,8 @@ export function GraphEditor({
       }
       if (group.length < 2) return;
       const moving = new Set(group.map((m) => `${m.nodeId}|${m.prop}|${m.startT}`));
-      const neighbours = group.map((m) => {
-        const kfs = trackKeys(m.nodeId, m.prop) ?? [];
-        const fixed = kfs.filter((k) => !moving.has(`${m.nodeId}|${m.prop}|${k.t}`));
-        const prev = [...fixed].reverse().find((k) => k.t < m.startT);
-        const next = fixed.find((k) => k.t > m.startT);
-        return { ...(prev ? { prev: prev.tAbs } : {}), ...(next ? { next: next.tAbs } : {}) };
-      });
+      const fixedTimes = group.map((m) =>
+        (trackKeys(m.nodeId, m.prop) ?? []).filter((k) => !moving.has(`${m.nodeId}|${m.prop}|${k.t}`)).map((k) => k.tAbs));
       const gesture = new GestureSession('Scale Keyframes');
       const { x, y } = svgCoords(e);
       const first = group[0]!;
@@ -1374,7 +1420,7 @@ export function GraphEditor({
         groupY0,
         ...(groupKeyIds.every((id) => id !== undefined) ? { groupEids: groupKeyIds } : {}),
         startKeys: group.map((m) => memberKeyStart(m.nodeId, m.prop, m.startT)),
-        neighbours,
+        fixedTimes,
         box: { ...box, edgeX, edgeY },
       });
       void resolveKeysForGesture(gesture, group.map((m, i) => ({ id: String(i), nodeId: m.nodeId, prop: m.prop, t: m.startT }))).then((ids) => {
@@ -1524,10 +1570,11 @@ export function GraphEditor({
 
   // ── Drag: keyframe diamond ────────────────────────────────────
   // One engine gesture (opened in onKfPointerDown). Every move sends each
-  // moving key's ABSOLUTE comp time and whole value; a key stops a frame short
-  // of the keys that do not move with it (`clampToNeighbours` — the API moves
-  // keys in comp time, quantized to frames inside a clip, so a sub-frame gap
-  // could land it ON its neighbour, which would replace it). The focused key
+  // moving key's ABSOLUTE comp time and whole value; a key may pass the keys
+  // that do not move with it (they reorder, as in AE) but never lands on one
+  // (`avoidFixedKeys` — the API moves keys in comp time, quantized to frames
+  // inside a clip, so a sub-frame gap could land it ON a neighbour, which
+  // would replace it). The focused key
   // follows the keys by their engine ids once the move landed; the selection
   // names engine keys, so it follows by itself (a stamped key excepted).
   const relocateKeys = useCallback((d: DragState) => {
@@ -1607,7 +1654,7 @@ export function GraphEditor({
           disableSnap: snapOff,
         });
         timeTarget = plan.snapTarget;
-        compTimes = plan.compTimes.map((t, i) => clampToNeighbours(t, d.neighbours?.[i], group[i]!.startCompT, frameDur));
+        compTimes = plan.compTimes.map((t, i) => avoidFixedKeys(t, d.fixedTimes?.[i], frameDur));
         const grab = group[d.grabIndex]!;
         if (d.mode === 'value') {
           const snapped = snapKeyframeValue(yToValue(d.oy + ey, d.minV, d.maxV, INNER_H), {
@@ -1636,7 +1683,7 @@ export function GraphEditor({
           disabled: snapOff,
         });
         timeTarget = timeSnap.target;
-        compTimes = [clampToNeighbours(clamp(timeSnap.time, 0, duration), d.neighbours?.[0], m.startCompT, frameDur)];
+        compTimes = [avoidFixedKeys(clamp(timeSnap.time, 0, duration), d.fixedTimes?.[0], frameDur)];
         if (d.mode === 'value') {
           const snapped = snapKeyframeValue(yToValue(d.oy + ey, d.minV, d.maxV, INNER_H), {
             pixelsPerUnit,
@@ -1710,12 +1757,7 @@ export function GraphEditor({
         const eid = d.groupEids![i];
         const start = d.startKeys![i];
         if (!eid || !start) return;
-        const compT = clampToNeighbours(
-          clamp((anchorX + (m.startCompT * pps - anchorX) * sx) / pps, 0, duration),
-          d.neighbours?.[i],
-          m.startCompT,
-          frameDur,
-        );
+        const compT = avoidFixedKeys(clamp((anchorX + (m.startCompT * pps - anchorX) * sx) / pps, 0, duration), d.fixedTimes?.[i], frameDur);
         const value = sy === 1 ? m.startValue : yToValue(anchorY + (d.groupY0![i]! - anchorY) * sy, m.minV, m.maxV, INNER_H);
         const entry = byId.get(eid) ?? { time: compT, start, rep: new Map<number, number>() };
         entry.rep.set(start.index, value);
@@ -2212,6 +2254,18 @@ export function GraphEditor({
             {tx.selected}
           </button>
         </div>
+
+        {mode === 'value' && (
+          <button
+            type="button"
+            className={sharedAxis ? styles.segBtnActive : styles.segBtn}
+            aria-pressed={sharedAxis}
+            onClick={() => setPreference('graphSharedAxis', !sharedAxis)}
+            title={tx.sharedAxisTitle}
+          >
+            {tx.sharedAxis}
+          </button>
+        )}
 
         <button
           type="button"
