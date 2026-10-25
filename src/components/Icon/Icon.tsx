@@ -34,7 +34,7 @@ import { memo, useSyncExternalStore, type CSSProperties } from 'react';
 
 import { usePreferenceStore } from '@stores/preferenceStore';
 
-import { DRAWN_ICONS, DRAWN_ICON_VIEWBOX } from './drawnIcons';
+import { DRAWN_ICONS, DRAWN_ICON_VIEWBOX, PIXEL_ICON_NAMES, PIXEL_ICON_VIEWBOX } from './drawnIcons';
 import { ICON_NAMES, type IconName } from './iconNames';
 import { SHARP_ICON_PATHS, SHARP_ICON_VIEWBOX } from './sharpIconPaths';
 
@@ -217,6 +217,35 @@ function IconInner({
   }
 
   const glyph = SHARP_ICON_PATHS[name];
+  // The pixel set (drawnIcons.ts PIXEL_ICON_NAMES): drawn at exactly 16 px, or
+  // 32 px once the box is large enough, centred in the requested box — a 16
+  // grid stretched onto 17 or 19 px put every 1 px stroke across two pixels.
+  if (PIXEL_ICON_NAMES.has(name)) {
+    const px = computedSize >= 28 ? 32 : 16;
+    return (
+      <span
+        className={className}
+        style={mergedStyle}
+        onClick={onClick}
+        aria-label={ariaLabel ?? title}
+        aria-hidden={(ariaLabel ?? title) ? undefined : true}
+      >
+        <svg
+          width={px}
+          height={px}
+          viewBox={PIXEL_ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1}
+          strokeLinecap="square"
+          strokeLinejoin="miter"
+          xmlns="http://www.w3.org/2000/svg"
+          // Authored markup from drawnIcons.ts, never input.
+          dangerouslySetInnerHTML={{ __html: DRAWN_ICONS[name] ?? '' }}
+        />
+      </span>
+    );
+  }
   // A hand-drawn name — or one neither table knows, which draws the square
   // rather than nothing.
   if (!glyph) {

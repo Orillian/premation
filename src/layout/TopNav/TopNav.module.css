@@ -209,19 +209,17 @@
 }
 
 .toolDropdownTrigger:hover {
-  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
-/* Armed: After Effects' pressed tool — a grey well, the glyph in ink. */
+/* Armed: as After Effects shows its tools (owner, 2026-10-26) — no well, no
+   box; the armed tool's glyph takes the accent and nothing else changes. */
 .toolDropdownTriggerActive {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .toolDropdownTriggerActive:hover {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 /* The flyout chevron: 9px and dim, so it reads as "opens" and not as a glyph.
@@ -282,21 +280,17 @@
 }
 
 .tool:hover {
-  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
-/* ON: After Effects' pressed tool — a grey well with the glyph in ink. Never
-   the accent (2026-10-19): a blue tint and a blue glyph read as a selected
-   item, and an armed tool is not a selection. */
+/* ON: as After Effects shows its tools (owner, 2026-10-26): no grey well, no
+   hover fill; the armed tool's glyph takes the accent. */
 .toolActive {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .toolActive:hover {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .tool:focus-visible,
@@ -320,14 +314,14 @@
 }
 
 .layoutToggle[data-active] {
-  background: var(--color-tool-pressed) !important;
-  color: var(--color-text-primary) !important;
+  background: transparent !important;
+  color: var(--color-primary-text) !important;
   border: none !important;
 }
 
 .layoutToggle[data-active]:hover {
-  background: var(--color-tool-pressed) !important;
-  color: var(--color-text-primary) !important;
+  background: transparent !important;
+  color: var(--color-primary-text) !important;
   border: none !important;
 }
 

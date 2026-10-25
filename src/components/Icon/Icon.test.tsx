@@ -59,11 +59,26 @@ describe('the icon vocabulary resolves to geometry', () => {
   it('draws a hand-drawn name from drawnIcons, on its own grid', () => {
     // The drawn family is resolved FIRST. If that order flips, every tool icon
     // silently becomes the fallback square.
-    const { container } = render(<Icon name="pen" />);
+    const { container } = render(<Icon name="pencil" />);
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('viewBox')).toBe('0 0 18 18');
     expect(svg?.getAttribute('stroke')).toBe('currentColor');
     expect(svg?.children.length).toBeGreaterThan(0);
+  });
+
+  it('draws the pixel set at exactly 16 px on its 16 grid, whatever the box asks for', () => {
+    // The AE-style chrome glyphs are 1 px strokes on half-pixel centres: scaled
+    // onto a 19 px box they smeared across two pixels. The box keeps its size;
+    // the drawing inside it is 16 px (32 px on a large box).
+    const { container } = render(<Icon name="pen" size="md" />);
+    const svg = container.querySelector('svg');
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 16 16');
+    expect(svg?.getAttribute('width')).toBe('16');
+    expect(svg?.getAttribute('stroke-width')).toBe('1');
+    // A display-sized box (the numeric form the empty-state art uses) gets the 32 px drawing.
+    const displaySize = 32;
+    const big = render(<Icon name="pen" size={displaySize} />);
+    expect(big.container.querySelector('svg')?.getAttribute('width')).toBe('32');
   });
 
   it('has a path for exactly the declared names, no more and no fewer', () => {

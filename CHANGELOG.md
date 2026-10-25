@@ -6,8 +6,11 @@ would want to know; the engine-level detail is in `ROADMAP.md`.
 ## Unreleased
 
 - **Icons.** A new chrome icon set drawn in After Effects' manner: 1 px
-  strokes on a 16 px grid, square caps, crisp at the small size. Tools,
-  layer kinds, timeline switches, transport, align and the panel chrome.
+  strokes on a 16 px grid, square caps, drawn at exactly 16 px whatever the
+  box around them, so every line is a whole pixel. Tools, layer kinds,
+  timeline switches, transport, align and the panel chrome. The tool bar
+  shows the armed tool by its blue glyph alone, as After Effects does, with
+  no grey well and no hover fill.
 - **Timeline.** Right-clicking a keyframe opens its menu first time, every
   time (the press no longer starts a drag and a seek under the menu, and the
   clip bar's own menu no longer replaces it). A click on a keyframe that is
