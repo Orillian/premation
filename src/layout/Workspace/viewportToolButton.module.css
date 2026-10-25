@@ -59,7 +59,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font: inherit;
   font-size: var(--font-size-xs);
   line-height: 1;

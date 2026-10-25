@@ -199,8 +199,10 @@
     background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+/* Light ink at rest (the icon sheet's), as After Effects draws its tools; hover
+   goes to full white, the armed tool to the accent. */
 .toolDropdownTrigger {
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
 }
 
 .flyoutLabel {
@@ -276,7 +278,7 @@
 }
 
 .tool {
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
 }
 
 .tool:hover {

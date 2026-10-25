@@ -66,19 +66,20 @@ describe('the icon vocabulary resolves to geometry', () => {
     expect(svg?.children.length).toBeGreaterThan(0);
   });
 
-  it('draws the pixel set at exactly 16 px on its 16 grid, whatever the box asks for', () => {
-    // The AE-style chrome glyphs are 1 px strokes on half-pixel centres: scaled
-    // onto a 19 px box they smeared across two pixels. The box keeps its size;
-    // the drawing inside it is 16 px (32 px on a large box).
-    const { container } = render(<Icon name="pen" size="md" />);
+  it('draws the chrome set on its 16 grid at the box size with a one-pixel hairline', () => {
+    // The AE-style chrome glyphs: whatever the box, the stroke is one screen
+    // pixel (16 / size in grid units) and the outline is anti-aliased.
+    const { container } = render(<Icon name="pen" size="sm" />);
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('viewBox')).toBe('0 0 16 16');
     expect(svg?.getAttribute('width')).toBe('16');
     expect(svg?.getAttribute('stroke-width')).toBe('1');
-    // A display-sized box (the numeric form the empty-state art uses) gets the 32 px drawing.
+    expect(svg?.getAttribute('shape-rendering')).toBe('geometricPrecision');
     const displaySize = 32;
     const big = render(<Icon name="pen" size={displaySize} />);
-    expect(big.container.querySelector('svg')?.getAttribute('width')).toBe('32');
+    const bigSvg = big.container.querySelector('svg');
+    expect(bigSvg?.getAttribute('width')).toBe('32');
+    expect(bigSvg?.getAttribute('stroke-width')).toBe('0.5');
   });
 
   it('has a path for exactly the declared names, no more and no fewer', () => {

@@ -217,11 +217,14 @@ function IconInner({
   }
 
   const glyph = SHARP_ICON_PATHS[name];
-  // The pixel set (drawnIcons.ts PIXEL_ICON_NAMES): drawn at exactly 16 px, or
-  // 32 px once the box is large enough, centred in the requested box — a 16
-  // grid stretched onto 17 or 19 px put every 1 px stroke across two pixels.
+  // The chrome set (drawnIcons.ts PIXEL_ICON_NAMES): drawn at the box's size
+  // with a HAIRLINE — the stroke is one screen pixel whatever the box, and the
+  // outline is anti-aliased (geometricPrecision), the look of the icon sheet's
+  // cards. Snapping the drawing to 16 px made the glyphs small and dim next to
+  // the chrome around them (owner, 2026-10-26).
   if (PIXEL_ICON_NAMES.has(name)) {
-    const px = computedSize >= 28 ? 32 : 16;
+    const px = computedSize;
+    const hairline = 16 / Math.max(1, computedSize);
     return (
       <span
         className={className}
@@ -236,9 +239,10 @@ function IconInner({
           viewBox={PIXEL_ICON_VIEWBOX}
           fill="none"
           stroke="currentColor"
-          strokeWidth={1}
+          strokeWidth={hairline}
           strokeLinecap="square"
           strokeLinejoin="miter"
+          shapeRendering="geometricPrecision"
           xmlns="http://www.w3.org/2000/svg"
           // Authored markup from drawnIcons.ts, never input.
           dangerouslySetInnerHTML={{ __html: DRAWN_ICONS[name] ?? '' }}
