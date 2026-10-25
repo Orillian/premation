@@ -96,6 +96,8 @@ export interface EngineSurfaceStats {
   mode: EngineSurfaceMode;
   /** How frames arrive: shared textures (route C) or pixel copies (route A); null before the first. */
   route: 'shared' | 'copy' | null;
+  /** How this surface draws its frames (frameBlit.ts): WebGPU, or Canvas 2D where the page has none. */
+  blit: 'webgpu' | '2d' | null;
   received: number;
   drawn: number;
   superseded: number;
@@ -221,6 +223,8 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
   // stage with no explanation). One React render when it changes.
   const [firstFrame, setFirstFrame] = useState(false);
   const [waitingLong, setWaitingLong] = useState(false);
+  // Neither WebGPU nor Canvas 2D can draw the engine's frames here (frameBlit.ts): said, not waited for.
+  const [cannotDraw, setCannotDraw] = useState<string | null>(null);
   // The active comp's size, for the pasteboard around it (read by the draw, never a render per frame).
   const compSettings = useActiveMirrorComp()?.settings;
   const compSizeRef = useRef({ width: 0, height: 0 });
@@ -237,7 +241,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     if (!box || !canvas || !bridge?.onFrame) return undefined;
 
     const stats: EngineSurfaceStats = {
-      mode, route: null, received: 0, drawn: 0, superseded: 0, fps: 0, lastRevision: 0, lastFrame: 0, lastLatencyMs: 0,
+      mode, route: null, blit: null, received: 0, drawn: 0, superseded: 0, fps: 0, lastRevision: 0, lastFrame: 0, lastLatencyMs: 0,
       lastRenderMs: 0, engineBuildMs: 0, lastDrawnAt: 0, viewportsSent: 0, lastViewport: null, errors: [],
     };
     (window as unknown as { __premationEngineSurface?: EngineSurfaceStats }).__premationEngineSurface = stats;
@@ -264,7 +268,21 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     let sawFirst = false;
     const slowTimer = setTimeout(() => { if (!sawFirst && !disposed) setWaitingLong(true); }, 3000);
     // The WebGPU blit (frameBlit.ts): up asynchronously; the newest frame waits for it.
-    const blitter = createFrameBlitter(canvas, () => { if (pending) schedule(); }, fail);
+    const blitter = createFrameBlitter(
+      canvas,
+      () => {
+        if (!stats.blit) stats.blit = blitter.mode();
+        if (pending) schedule();
+      },
+      (e) => {
+        fail(e);
+        setCannotDraw(e instanceof Error ? e.message : String(e));
+      },
+      (reason) => {
+        stats.blit = '2d';
+        stats.errors.push(`WebGPU blit unavailable (${reason}); drawing with Canvas 2D`);
+      },
+    );
 
     /**
      * The pasteboard uniform for a w×h frame: the comp rect under `cam`, the
@@ -678,7 +696,10 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       <canvas ref={canvasRef} className={styles.viewportCanvas} style={displayMode !== 'shaded' ? { visibility: 'hidden' } : undefined} />
       {!firstFrame && (
         <div className={styles.waiting} role="status">
-          {notice ?? (waitingLong ? t('ui.engineSurface.waiting', 'Waiting for the C++ engine’s first frame…') : '')}
+          {notice
+            ?? (cannotDraw
+              ? t('ui.engineSurface.cannotDraw', 'This window cannot draw the engine’s frames ({reason}). WebGPU is off or unsupported on this GPU; Help ▸ Copy Diagnostics Report has the details.', { reason: cannotDraw })
+              : waitingLong ? t('ui.engineSurface.waiting', 'Waiting for the C++ engine’s first frame…') : '')}
         </div>
       )}
       {firstFrame && notice && <div className={styles.viewportNotice} role="status">{notice}</div>}

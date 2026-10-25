@@ -3,6 +3,27 @@
 Newest first. Each entry is what a person opening the app after an update
 would want to know; the engine-level detail is in `ROADMAP.md`.
 
+## Unreleased
+
+- **Export.** Time-remapped and speed-ramped footage, and retimed precomps,
+  export with their sound following the picture (varispeed), instead of the
+  export refusing with "time-remapped footage audio plays at one rate".
+- **Viewport.** A machine whose browser has no WebGPU (Linux with an Intel HD
+  or a software GL driver) now draws the engine's frames through Canvas 2D
+  instead of waiting for a first frame for ever; when nothing can draw, the
+  viewport says so.
+- **Help.** Open Logs Folder and Copy Diagnostics Report: a shipped build has
+  no developer tools, so these are how to report a blank viewport or an
+  engine restart.
+- **Stability.** A burst of edits (an assistant building a scene) no longer
+  gets a healthy engine killed as "hung"; one failed frame no longer takes
+  the engine down with it.
+- **Cache.** A play that dropped frames caches the range before it plays
+  the next time (looping or not), a cache fill stores every frame it draws
+  (the disk tier takes what RAM refuses), and the fill waits on its own
+  viewport's frames; integrated GPUs and small-memory laptops get memory
+  budgets that fit the machine.
+
 ## 1.0.2 — 2026-10-19
 
 - **Linux.** Premation now ships for Linux as an x64 AppImage beside the

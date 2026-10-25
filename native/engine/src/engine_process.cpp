@@ -110,10 +110,14 @@ void command_reader(io::Handle in, BlockingQueue<CoreItem>& queue) {
   }
 }
 
-/// The newest heartbeat nonce the host sent (frames_reader writes it, the
-/// watchdog reads it): shared, because the reader thread is detached and may
-/// outlive run_engine's frame.
-using PingSlot = std::shared_ptr<std::atomic<std::uint64_t>>;
+/// The newest heartbeat the host sent (frames_reader writes it, the watchdog
+/// reads it): its nonce and WHEN it arrived. Shared, because the reader thread
+/// is detached and may outlive run_engine's frame.
+struct PingState {
+  std::atomic<std::uint64_t> nonce{0};
+  std::atomic<Clock::rep> arrivedAt{0};  // Clock ticks since epoch; written before `nonce`
+};
+using PingSlot = std::shared_ptr<PingState>;
 
 template <class ReleaseFn>
 void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, PingSlot pings, ReleaseFn release) {
@@ -134,7 +138,8 @@ void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, PingSlot pings
       if (const auto* r = std::get_if<api::FrameRelease>(&m.v)) {
         release(r->generation, r->slot);
       } else if (const auto* p = std::get_if<api::FramePing>(&m.v)) {
-        pings->store(p->nonce, std::memory_order_release);
+        pings->arrivedAt.store(Clock::now().time_since_epoch().count(), std::memory_order_relaxed);
+        pings->nonce.store(p->nonce, std::memory_order_release);
         (void)queue.push(CoreItem{CoreItem::Kind::ping, {}, p->nonce, {}});
       }
     }
@@ -159,6 +164,14 @@ void frames_reader(io::Handle in, BlockingQueue<CoreItem>& queue, PingSlot pings
 /// its item for kAnswerPingsAfter, saying what it is on and for how long
 /// (FramePong.busy / busyMs). The supervisor keeps such an engine alive and
 /// only gives up on an item that outlasts its stuck budget (a real deadlock).
+///
+/// The same silence came from MANY short items: a burst of edits (an MCP
+/// build, the page's follow-up queries) each under kAnswerPingsAfter kept
+/// the core busy for seconds while the ping waited behind them in the FIFO;
+/// no item was ever "deep", so nothing answered, and the supervisor killed a
+/// healthy engine that was simply working through its queue. So a ping is
+/// also answered by its own AGE (PingState.arrivedAt): one that has waited
+/// kAnswerPingsAfter is answered from here whatever the core is on.
 ///
 /// It also logs a slow item (core_slow at its end, core_busy while it lasts),
 /// so the log says what a stalled core thread was stuck in.
@@ -220,11 +233,11 @@ class CoreWatchdog {
     while (!stop_.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
       const Clock::rep since = since_.load(std::memory_order_acquire);
-      if (since == 0) continue;
-      const auto start = Clock::time_point(Clock::duration(since));
       const auto now = Clock::now();
-      const auto busy = now - start;
-      answer_pings(busy);
+      const auto start = Clock::time_point(Clock::duration(since));
+      const auto busy = since == 0 ? Clock::duration::zero() : now - start;
+      answer_pings(now, busy);
+      if (since == 0) continue;
       if (busy < kBusyAfter) continue;
       if (since == reported && now < nextReport) continue;
       reported = since;
@@ -235,11 +248,16 @@ class CoreWatchdog {
     }
   }
 
-  /// The host's newest ping, answered from here when the core is deep in an item.
-  void answer_pings(Clock::duration busy) {
-    if (busy < kAnswerPingsAfter || !pings_) return;
-    const std::uint64_t nonce = pings_->load(std::memory_order_acquire);
+  /// The host's newest ping, answered from here when the core is deep in an
+  /// item (`busy`, zero between items) or when the ping itself has waited
+  /// kAnswerPingsAfter behind a queue of shorter items.
+  void answer_pings(Clock::time_point now, Clock::duration busy) {
+    if (!pings_) return;
+    const std::uint64_t nonce = pings_->nonce.load(std::memory_order_acquire);
     if (nonce == 0 || nonce == answered_) return;
+    const auto arrived = Clock::time_point(Clock::duration(pings_->arrivedAt.load(std::memory_order_relaxed)));
+    const auto age = now - arrived;
+    if (busy < kAnswerPingsAfter && age < kAnswerPingsAfter) return;
     answered_ = nonce;
     api::FramePong pong;
     pong.nonce = nonce;
@@ -294,7 +312,7 @@ int run_engine(const EngineOptions& options) {
   ProcessOutbox outbox(commandOut, framesOut);
   BlockingQueue<CoreItem> queue;
   const auto sendFrames = [&outbox](const frames::Message& m) { outbox.send_frames(m); };
-  const PingSlot pings = std::make_shared<std::atomic<std::uint64_t>>(0);
+  const PingSlot pings = std::make_shared<PingState>();
 
   // G1: the native plugin host. Declared before the render thread and the
   // session so it outlives both (the render glue and the document reach it

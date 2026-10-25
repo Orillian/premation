@@ -180,11 +180,14 @@ class RenderThread final : public FrameSink {
   void set_copy(bool copy) override;
   [[nodiscard]] bool copy_supported() const override;
   [[nodiscard]] RenderCounters counters() const override;
+  [[nodiscard]] PortCounters port_counters(std::uint32_t viewport) const override;
+  void set_filling(bool filling) override { filling_.store(filling, std::memory_order_relaxed); }
   [[nodiscard]] std::string adapter() const override;
   [[nodiscard]] std::string backend() const override;
   /// D4: the frame cache's counters (zeros when the cache is off).
   [[nodiscard]] FrameCacheStats cache_stats() const;
   [[nodiscard]] CacheCoverageSnap cache_coverage() const override;
+  void publish_coverage_now() override;
   void purge_frame_cache() override;
   void configure_disk_cache(const std::string& folder, std::uint64_t bytes) override;
   void purge_disk_cache() override;
@@ -215,6 +218,8 @@ class RenderThread final : public FrameSink {
     bool dirty = false;                     // m_: the ring must be rebuilt (size, open/closed, route)
     std::optional<RenderJob> pending;       // m_
     std::uint32_t droppedPending = 0;       // m_: superseded + clock-skipped since the last FrameReady
+    std::uint64_t rendered = 0;             // m_: FrameReady announced for this viewport (port_counters)
+    std::uint64_t standIn = 0;              // m_: of those, drawn with a stand-in
     /// shared_ptr: release() (the frame-channel reader thread) holds it past
     /// m_ while the render thread may retire the port.
     std::shared_ptr<FrameRing> ring = std::make_shared<FrameRing>();
@@ -243,6 +248,8 @@ class RenderThread final : public FrameSink {
   /// Route A: the slot's read-back buffer → one pixel message. False = nothing sent.
   bool send_copy(SlotSet& set, std::uint32_t slot);
   void render(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config);
+  /// render() without its exception barrier (the body; the slot joins inflight_ last).
+  void render_guarded(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config);
   /// P5: a frame submitted to the GPU, announced (FrameReady) once its work is
   /// done — the render thread does not wait for it, so the next frame's CPU
   /// work (rasters, encoding) overlaps this frame's GPU work.
@@ -325,6 +332,11 @@ class RenderThread final : public FrameSink {
 
   // Counters (m_).
   RenderCounters counters_;
+  /// FrameSink::set_filling: a cache fill is running (worth_disk says yes to every frame).
+  std::atomic<bool> filling_{false};
+  /// An integrated GPU's frame-cache budget comes out of system memory — the
+  /// same memory the RAM tier is sized from (manage_ram_budget takes it off).
+  std::uint64_t sharedVramBudget_ = 0;
   FrameCacheStats cacheStats_;
   wgpu::Texture onionTex_;
   wgpu::TextureView onionView_;

@@ -446,8 +446,9 @@ TEST_CASE("ram cache: the default size follows the machine", "[ram_cache]") {
   using premation::render::auto_ram_budget;
   CHECK(auto_ram_budget(0) == 2 * kGiB);
   CHECK(auto_ram_budget(4 * kGiB) == kGiB / 2);   // never below half a GiB
-  CHECK(auto_ram_budget(8 * kGiB) == 4 * kGiB);   // half, leaving 4 GiB
-  CHECK(auto_ram_budget(16 * kGiB) == 8 * kGiB);
+  CHECK(auto_ram_budget(8 * kGiB) == 2 * kGiB);   // a small machine: a quarter (Chromium, decode, the iGPU share the rest)
+  CHECK(auto_ram_budget(12 * kGiB) == 3 * kGiB);
+  CHECK(auto_ram_budget(16 * kGiB) == 8 * kGiB);  // half, leaving 4 GiB
   CHECK(auto_ram_budget(32 * kGiB) == 16 * kGiB);
   CHECK(auto_ram_budget(512 * kGiB) == 64 * kGiB);  // capped
 }

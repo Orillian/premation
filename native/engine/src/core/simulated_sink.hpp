@@ -114,6 +114,11 @@ class SimulatedSink final : public FrameSink {
     const std::lock_guard<std::mutex> lock(m_);
     return counters_;
   }
+  /// The simulation announces every job it gets: one viewport's share is the whole.
+  [[nodiscard]] PortCounters port_counters(std::uint32_t /*viewport*/) const override {
+    const std::lock_guard<std::mutex> lock(m_);
+    return PortCounters{counters_.rendered, counters_.standIn};
+  }
 
   // ── the simulated cache tiers (render/coverage_ledger.hpp) ──
   /// Tests: the content key a submitted BUILT job's frame has (null = never cached).

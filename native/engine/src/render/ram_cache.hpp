@@ -85,11 +85,14 @@ struct RamCacheStats {
 
 /// The RAM tier's default size on a machine with `physicalBytes` installed:
 /// half of it, leaving at least 4 GiB to everything else, within [512 MiB, 64 GiB].
-/// Unknown memory (0) gets 2 GiB.
+/// A small machine (12 GiB or less — an 8 GiB laptop) gets a quarter: Chromium,
+/// the engine's own textures, decode buffers and the integrated GPU's frame
+/// cache all live in that same memory, and half of it in frames paged the
+/// rest out. Unknown memory (0) gets 2 GiB.
 [[nodiscard]] inline std::uint64_t auto_ram_budget(std::uint64_t physicalBytes) noexcept {
   constexpr std::uint64_t kGiB = std::uint64_t{1} << 30U;
   if (physicalBytes == 0) return 2 * kGiB;
-  const std::uint64_t half = physicalBytes / 2;
+  const std::uint64_t half = physicalBytes <= 12 * kGiB ? physicalBytes / 4 : physicalBytes / 2;
   const std::uint64_t leave = physicalBytes > 4 * kGiB ? physicalBytes - 4 * kGiB : 0;
   const std::uint64_t want = half < leave ? half : leave;
   if (want < kGiB / 2) return kGiB / 2;

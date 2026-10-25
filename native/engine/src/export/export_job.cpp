@@ -980,12 +980,12 @@ int run_export(const std::string& jobPath) {
       ctl.emit(error_line(true, "audio: " + aerr));
       return kExitFallback;
     }
-    if (!mix.notes.empty()) {
-      // Voices the E2 builder reports outside its port (audio effects, retimed
-      // precomp audio): the Chromium path's mix is the reference.
-      ctl.emit(error_line(true, "audio: " + mix.notes.front()));
-      return kExitFallback;
-    }
+    // Voices the audio builder mixes without something (an audio effect it
+    // has no port for): told on the preflight line with the picture's
+    // warnings, never a refusal — there is no other mixer to fall back to
+    // (docs/TS_ENGINE_REMOVAL.md), and the user saw the whole export fail
+    // over one layer's note.
+    for (const std::string& note : mix.notes) warnings.push_back("audio: " + note);
     if (mix.audible && job.sequence.starts_with("plugin:")) {
       pluginAudio = mix.channels;
       pluginAudioRate = mix.sampleRate;

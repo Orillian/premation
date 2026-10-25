@@ -199,6 +199,13 @@ RenderCounters RenderThread::counters() const {
   return counters_;
 }
 
+PortCounters RenderThread::port_counters(std::uint32_t viewport) const {
+  const std::lock_guard<std::mutex> lock(m_);
+  const auto it = ports_.find(viewport);
+  if (it == ports_.end()) return {};
+  return PortCounters{it->second->rendered, it->second->standIn};
+}
+
 std::string RenderThread::adapter() const {
   const std::lock_guard<std::mutex> lock(m_);
   return adapter_;
@@ -314,9 +321,14 @@ void RenderThread::manage_ram_budget(bool force) {
   memoryCheckedAt_ = now;
   const os::MemoryStatus mem = os::memory_status();
   if (dirty || ramBudgetTarget_ == 0) {
-    const std::uint64_t target = asked != 0                    ? asked
-                                 : options_.ramCacheBytes != 0 ? options_.ramCacheBytes
-                                                               : auto_ram_budget(mem.physicalBytes);
+    std::uint64_t target = asked != 0                    ? asked
+                           : options_.ramCacheBytes != 0 ? options_.ramCacheBytes
+                                                         : auto_ram_budget(mem.physicalBytes);
+    if (asked == 0 && options_.ramCacheBytes == 0 && sharedVramBudget_ > 0) {
+      // Sized from the machine: the integrated GPU's frame cache is in the same RAM.
+      constexpr std::uint64_t kFloor = std::uint64_t{512} << 20U;
+      target = target > sharedVramBudget_ + kFloor ? target - sharedVramBudget_ : kFloor;
+    }
     if (target != ramBudgetTarget_) {
       ramBudgetTarget_ = target;
       PREMATION_LOG(info, "ram_cache")
@@ -378,6 +390,10 @@ bool RenderThread::load_from_disk(std::uint64_t diskKey, std::uint32_t width, st
 }
 
 bool RenderThread::worth_disk(double drawMs, std::uint32_t width, std::uint32_t height) const {
+  // A cache fill stores EVERY frame it draws: a cheap frame RAM refused (the
+  // tier full of the range) would otherwise be in no tier at all, and the
+  // range the user just cached plays with a hole where it was.
+  if (filling_.load(std::memory_order_relaxed)) return true;
   if (options_.diskCacheMinDrawMs >= 0) return drawMs >= options_.diskCacheMinDrawMs;
   // A frame is worth a file when its draw costs half again what reading it
   // back would, plus a millisecond: a cheap comp never pays for disk at all.
@@ -729,14 +745,16 @@ std::string RenderThread::open_gpu() {
       PREMATION_LOG(warn, "scene_drawer_failed").kv("error", error);
     }
   }
+  sharedVramBudget_ = 0;
   if (drawer_ && options_.frameCacheBytes != 0) {
     // D4: only built frames have content keys; C2's quads are never cached.
     std::size_t budget = options_.frameCacheBytes;
-    if (budget == kFrameCacheAuto) {
-      wgpu::AdapterInfo info{};
-      gpu_->adapter.GetInfo(&info);
-      budget = default_frame_cache_budget(info.vendorID, info.deviceID);
-    }
+    wgpu::AdapterInfo info{};
+    gpu_->adapter.GetInfo(&info);
+    if (budget == kFrameCacheAuto) budget = default_frame_cache_budget(info.vendorID, info.deviceID);
+    // An integrated GPU (a ThinkPad's Intel HD, a Ryzen APU) has no memory of
+    // its own: this budget is system RAM, counted against the RAM tier below.
+    if (info.adapterType == wgpu::AdapterType::IntegratedGPU) sharedVramBudget_ = budget;
     cache_ = std::make_unique<FrameCache>(gpu_->device, budget);
     PREMATION_LOG(info, "frame_cache").kv("budgetMB", static_cast<double>(budget) / (1024.0 * 1024.0));
   }
@@ -1210,7 +1228,39 @@ void RenderThread::collect_retired(SteadyClock::time_point now) {
   std::erase_if(retired_, [now](const std::unique_ptr<SlotSet>& s) { return now - s->retiredAt >= kRetireGrace; });
 }
 
-void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& /*config*/) {
+void RenderThread::render(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config) {
+  // The exception barrier of the render thread. Nothing above this frame
+  // catches: a throw out of a draw (bad_alloc on a huge raster, a
+  // system_error from the raster thread pool, an `.at()` in a port) went to
+  // std::terminate and took the whole engine with it — one frame's failure
+  // became "the engine crashed" and a command-log replay. One bad frame never
+  // kills the editor (CLAUDE.md): it is logged, its slot goes back to the
+  // ring, and the next job draws.
+  try {
+    render_guarded(port, job, slot, config);
+    return;
+  } catch (const std::exception& e) {
+    PREMATION_LOG(error, "render_failed").kv("viewport", job.viewport).kv("frame", job.frame).kv("error", std::string(e.what()));
+  } catch (...) {
+    PREMATION_LOG(error, "render_failed").kv("viewport", job.viewport).kv("frame", job.frame).kv("error", "non-standard exception");
+  }
+  // The slot is handed to inflight_ as render_guarded's LAST step; a throw
+  // before that leaves it acquired and never announced — give it back, or the
+  // ring runs dry and the viewport freezes on its last picture.
+  if (!port.slots) return;
+  const bool handed = std::ranges::any_of(inflight_, [&](const InFlight& f) {
+    return f.port == &port && f.slot == slot && f.generation == port.slots->generation;
+  });
+  if (handed) return;
+#if defined(PREMATION_SHARED_TEXTURE)
+  // end_access on a slot whose access never began is refused by the OS object
+  // and reports false; the value is dropped either way.
+  if (port.slots->pool) (void)port.slots->pool->end_access(port.slots->pool->slots()[slot]);
+#endif
+  port.ring->unacquire(slot);
+}
+
+void RenderThread::render_guarded(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& /*config*/) {
   SlotSet& set = *port.slots;
   FrameRing& ring = *port.ring;
   const double startUs = os::epoch_us();
@@ -1491,7 +1541,12 @@ std::size_t RenderThread::complete_frames(bool block) {
       const std::lock_guard<std::mutex> lock(m_);
       if (cache_) cacheStats_ = cache_->stats();
       ++counters_.rendered;
+      ++f.port->rendered;
       if (f.inexact) ++counters_.inexact;
+      if (f.standIn) {
+        ++counters_.standIn;
+        ++f.port->standIn;
+      }
       ++windowFrames_;
       if (f.cached) ++windowCached_;
       windowGpuMs_ += gpuMs;

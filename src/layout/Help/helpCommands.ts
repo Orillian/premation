@@ -17,6 +17,13 @@ import { t } from '@core/i18n';
 
 export const HELP_WHATS_NEW_COMMAND = asCommandId('help.whatsNew');
 export const HELP_DOCS_COMMAND = asCommandId('help.docs');
+export const HELP_OPEN_LOGS_COMMAND = asCommandId('help.openLogs');
+export const HELP_COPY_DIAGNOSTICS_COMMAND = asCommandId('help.copyDiagnostics');
+
+/** The desktop bridge's diagnostics half (absent in the browser / tests). */
+function diag(): NonNullable<Window['motionEditor']>['diag'] | undefined {
+  return window.motionEditor?.diag;
+}
 
 export function buildHelpCommands(): ReadonlyArray<Command> {
   return [
@@ -38,6 +45,28 @@ export function buildHelpCommands(): ReadonlyArray<Command> {
       enabled: () => true,
       execute: () => {
         void openHelp('editor');
+      },
+    },
+    // A shipped build has no DevTools: these are how a user reports a blank
+    // viewport or an engine restart (the engine log and the GPU as Chromium sees it).
+    {
+      id: HELP_OPEN_LOGS_COMMAND,
+      label: t('help.openLogs.command', 'Open Logs Folder'),
+      description: t('help.openLogs.description', 'Reveal the engine log (engine.log) in your file manager.'),
+      icon: 'folder',
+      enabled: () => typeof diag()?.openLogs === 'function',
+      execute: () => {
+        void diag()?.openLogs?.();
+      },
+    },
+    {
+      id: HELP_COPY_DIAGNOSTICS_COMMAND,
+      label: t('help.copyDiagnostics.command', 'Copy Diagnostics Report'),
+      description: t('help.copyDiagnostics.description', 'Copy this machine, its GPU and the last engine log lines to the clipboard for a bug report.'),
+      icon: 'copy',
+      enabled: () => typeof diag()?.copyReport === 'function',
+      execute: () => {
+        void diag()?.copyReport?.();
       },
     },
   ];

@@ -32,6 +32,7 @@
 #include "item_facts.hpp"
 #include "layer_faces.hpp"
 #include "merge_paths.hpp"
+#include "misc_port.hpp"
 #include "snapshot_build.hpp"
 #include "log.hpp"
 #include "lut_port.hpp"
@@ -1365,7 +1366,7 @@ class EngineAudio final : public MediaClock {
     if (!program || !(endSec > startSec)) return true;
     // Conform is asynchronous (AudioSystem's worker pool): wait for every source.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(5);
-    for (const auto& [path, id] : sources_) {
+    for (const auto& [path, id] : sources_snapshot()) {
       if (id == 0) continue;
       while (system_.state(id) == audio::SourceState::conforming || system_.state(id) == audio::SourceState::unknown) {
         if (std::chrono::steady_clock::now() > deadline) {
@@ -1430,16 +1431,30 @@ class EngineAudio final : public MediaClock {
     return audio::ParamCurve::table(std::move(values), startSec, kRampHz);
   }
 
+  /// The source id of a media path, opened on first use. Reached from the
+  /// core thread (set_document, the peaks query hook) AND the build worker
+  /// (an audio-waveform layer's `waveform`) — the map is shared under
+  /// `sourcesMu_`; AudioSystem::open_source is itself thread-safe.
   std::uint64_t source_of(const std::string& src) {
     const std::string path = file_url_path(src);
-    if (const auto it = sources_.find(path); it != sources_.end()) return it->second;
+    {
+      const std::lock_guard<std::mutex> lock(sourcesMu_);
+      if (const auto it = sources_.find(path); it != sources_.end()) return it->second;
+    }
     std::string err;
     const std::uint64_t id = system_.open_source(path, err);
     if (id == 0) {
       PREMATION_LOG(warn, "audio_source_failed").kv("path", path).kv("error", err);
     }
-    sources_.emplace(path, id);
-    return id;
+    const std::lock_guard<std::mutex> lock(sourcesMu_);
+    return sources_.emplace(path, id).first->second;
+  }
+
+  /// A snapshot of the opened sources (mixdown waits on each; it must not hold
+  /// the lock while it waits).
+  std::vector<std::pair<std::string, std::uint64_t>> sources_snapshot() {
+    const std::lock_guard<std::mutex> lock(sourcesMu_);
+    return {sources_.begin(), sources_.end()};
   }
 
   /// audioScene.ts `panOf`: the first component carrying a numeric audioPan.
@@ -1469,6 +1484,57 @@ class EngineAudio final : public MediaClock {
     if (asset == nullptr) return false;
     const Json& n = asset->at("interpret").at("loopCount");
     return n.is_number() && n.num() != 1;
+  }
+
+  /// What the PICTURE shows of a retimed layer at comp time `t`: its own
+  /// Time Remap / Speed % (retimed_chain_time) through the bar live (or
+  /// nearest) at `t`, the footage loop and the layer's stretch / reverse —
+  /// Walk::retimed_source_at (snapshot_build.cpp) without the precomp-ancestor
+  /// fold (comp_voices places nested comps on the host clock itself) and
+  /// without Posterize Time. For a precomp instance the value is the inner
+  /// comp time it shows. audioScene.ts fed the same curve to
+  /// buildAudioRetimeSegments.
+  static double retimed_source_sec(const Ctx& c, const doc::Node& n, const Json* asset, double fps, double t) {
+    const std::vector<const doc::Bar*> bars = doc::tl_bars_for_node(c.d, c.view, n.id);
+    const double exact = t * fps;
+    const doc::Bar* active = nullptr;
+    for (const doc::Bar* b : bars) {
+      if (b->active_at(std::round(exact))) {
+        active = b;
+        break;
+      }
+    }
+    if (active == nullptr) active = pick_retime_bar(bars, std::round(exact));
+    const std::optional<RetimeClip> clip = retime_clip_of(active, fps);
+    const std::optional<double> retimed = retimed_chain_time(RetimeReader{c.d, c.expr, c.cache}, n.id, t, clip);
+    const double tt = retimed.value_or(t);
+    double time = active != nullptr ? active->clip.source_frame_at(tt * fps) / fps : tt;
+    if (asset != nullptr) {
+      const Json& lc = asset->at("interpret").at("loopCount");
+      const double loopCount = lc.is_number() ? lc.num() : 1;
+      const Json& dj = asset->at("metadata").at("duration");
+      const double dur = dj.is_number() ? dj.num() : 0;
+      if (loopCount != 1 && dur > 0 && time >= dur) {
+        const double pass = std::floor(time / dur);
+        time = (loopCount != 0 && pass >= loopCount) ? dur - 1e-6 : time - pass * dur;
+      }
+    }
+    if (const auto cfg = doc::read_node_layer_time(n)) {
+      double s0 = 0;
+      double s1 = 1;
+      if (const auto span = doc::anim_time_span(c.d, n.id)) {
+        s0 = span->start;
+        s1 = span->end;
+      } else if (active != nullptr && active->clip.duration > 0) {
+        s0 = active->clip.sourceIn / fps;
+        s1 = s0 + active->clip.duration / fps;
+      } else if (asset != nullptr && asset->at("metadata").at("duration").is_number() &&
+                 asset->at("metadata").at("duration").num() > 0) {
+        s1 = asset->at("metadata").at("duration").num();
+      }
+      time = doc::remap_time(time, *cfg, s0, s1);
+    }
+    return time;
   }
 
   /// readAudioVoices (an audio layer).
@@ -1546,9 +1612,12 @@ class EngineAudio final : public MediaClock {
     const doc::LayerTime lt = doc::get_node_layer_time(n);
     const bool freeze = lt.freeze;
     const double rate = 100 / std::max(0.01, lt.stretch);
-    if (doc::read_retime_mode(c.d, n.id) != api::RetimeMode::normal) {
-      notes_.insert("time-remapped footage audio plays at one rate (" + n.id + ")");
-    }
+    // Time Remap / Speed % (readVideoAudioVoices -> buildAudioRetimeSegments):
+    // the bar is cut into constant-rate varispeed windows that follow the
+    // picture's source-time curve; stretch and reverse are inside that curve.
+    const bool retimed = doc::read_retime_mode(c.d, n.id) != api::RetimeMode::normal;
+    double fps = doc::tl_fps_for_node(c.d, c.view, n.id);
+    if (!(fps > 0)) fps = 30;
     auto spans = timings_of(c, n.id);
     if (spans.empty()) {
       const double dur = asset != nullptr ? asset->at("metadata").at("duration").num() : 0;
@@ -1568,6 +1637,13 @@ class EngineAudio final : public MediaClock {
       v.loop = asset_loops(asset);
       v.muted = muted || !t.enabled || freeze;
       finish_voice(c, n, v, db);
+      if (retimed && !freeze) {
+        const auto sourceAt = [&](double at) { return retimed_source_sec(c, n, asset, fps, at); };
+        const std::vector<audio::RateSegment> segs = audio::retime_segments(sourceAt, t, fps);
+        // Holds and zero-length bars are silence: no voice (as the TS).
+        for (audio::Voice& seg : audio::expand_segments(v, t, segs)) out.push_back(std::move(seg));
+        continue;
+      }
       out.push_back(std::move(v));
     }
     return out;
@@ -1602,12 +1678,16 @@ class EngineAudio final : public MediaClock {
           if (!inner.empty()) {
             auto spans = timings_of(c, n->id);
             const doc::LayerTime lt = doc::get_node_layer_time(*n);
-            if (doc::read_retime_mode(c.d, n->id) != api::RetimeMode::normal || lt.stretch != 100 || lt.reverse) {
-              notes_.insert("retimed precomp audio plays unretimed (" + n->id + ")");
-            }
+            // placeNestedVoices: a retimed / stretched / reversed instance
+            // carries its inner comp's sound through the inner-time curve the
+            // picture shows (constant-rate stretches of it).
+            const bool retimed =
+                doc::read_retime_mode(c.d, n->id) != api::RetimeMode::normal || lt.stretch != 100 || lt.reverse;
             double fps = doc::tl_fps_for_node(c.d, c.view, n->id);
             if (!(fps > 0)) fps = 30;
-            voices = audio::place_nested(n->id, inner, spans, false, [](double t) { return t; }, fps, !n->visible);
+            const doc::Node* inst = n;
+            const auto innerAt = [&c, inst, fps](double t) { return retimed_source_sec(c, *inst, nullptr, fps, t); };
+            voices = audio::place_nested(n->id, inner, spans, retimed, innerAt, fps, !n->visible);
           }
         }
       } catch (const std::exception& e) {
@@ -1627,6 +1707,7 @@ class EngineAudio final : public MediaClock {
   audio::AudioSystem system_;
   const doc::Document* doc_ = nullptr;
   AudioTransportClock clock_;
+  std::mutex sourcesMu_;  // sources_: core thread + build worker (source_of)
   std::map<std::string, std::uint64_t> sources_;
   std::set<std::string> notes_;
   std::uint64_t revision_ = 0;

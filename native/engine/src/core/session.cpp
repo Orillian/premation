@@ -1066,7 +1066,11 @@ struct ControlVisitor {
       }
     }
     if (c.from) s.seek_to(*c.from);
-    s.transportState_ = c.cache_first ? api::TransportState::caching : api::TransportState::playing;
+    // A play-once whose last pass dropped frames: store the range before the
+    // clock runs (see the clock tick), unless this Play is itself a fill.
+    const bool cacheFirst = c.cache_first || (s.loop_ == api::LoopMode::once && s.nextPlayCachesFirst_ && !s.cacheOnly_);
+    s.nextPlayCachesFirst_ = false;
+    s.transportState_ = cacheFirst ? api::TransportState::caching : api::TransportState::playing;
     // No viewport: there is nowhere to store frames, so play at once.
     if (s.transportState_ == api::TransportState::caching && !s.any_viewport_open()) {
       s.transportState_ = api::TransportState::playing;
@@ -1673,13 +1677,45 @@ void Session::start_playback(Clock::time_point now, std::optional<api::Time> fro
 
 void Session::fill_cache(Clock::time_point now) {
   const Range r = play_range();
+  // The fill's viewport: the first open comp viewport that records coverage
+  // (a pop-out or the Layer panel finishing a frame must not advance the fill).
+  if (cacheViewport_ == 0 || !surfaces_.contains(cacheViewport_) || !surfaces_.at(cacheViewport_).open) {
+    cacheViewport_ = 0;
+    for (const auto& [id, port] : surfaces_) {
+      if (port.open && port.layer.empty() && !port.time) {
+        cacheViewport_ = id;
+        break;
+      }
+    }
+    if (cacheViewport_ == 0) {
+      for (const auto& [id, port] : surfaces_) {
+        if (port.open) {
+          cacheViewport_ = id;
+          break;
+        }
+      }
+    }
+  }
   if (cacheInFlight_) {
-    if (sink_.counters().rendered == cacheSeenRendered_) {
+    const PortCounters c = sink_.port_counters(cacheViewport_);
+    if (c.rendered == cacheSeenRendered_) {
       if (now - lastStats_ >= std::chrono::seconds(1)) emit_stats(now);
       return;
     }
     cacheInFlight_ = false;
+    // The frame drew with footage still decoding (a stand-in, never stored):
+    // draw it again rather than leave a hole in the range — for a while, so a
+    // source that never decodes cannot stall the fill.
+    constexpr auto kStandInRetry = std::chrono::seconds(2);
+    if (c.standIn != cacheSeenStandIn_) {
+      if (!cacheRetryUntil_) cacheRetryUntil_ = now + kStandInRetry;
+      if (now < *cacheRetryUntil_) --cacheFrame_;
+      else cacheRetryUntil_.reset();
+    } else {
+      cacheRetryUntil_.reset();
+    }
   }
+  if (cacheFrame_ > r.last) sink_.publish_coverage_now();  // the whole range is in: the bar shows it now
   if (cacheFrame_ > r.last && cacheOnly_) {
     // The range is stored and that was the whole request: stop where the playhead was.
     cacheOnly_ = false;
@@ -1718,7 +1754,11 @@ void Session::fill_cache(Clock::time_point now) {
   }
   set_time(cacheFrame_ * frame_dur());
   emit_playhead();
-  cacheSeenRendered_ = sink_.counters().rendered;
+  {
+    const PortCounters c = sink_.port_counters(cacheViewport_);
+    cacheSeenRendered_ = c.rendered;
+    cacheSeenStandIn_ = c.standIn;
+  }
   submit_frame(0);
   cacheInFlight_ = true;
   ++cacheFrame_;
@@ -1903,6 +1943,8 @@ std::optional<Session::Clock::time_point> Session::next_clock_deadline() const {
 }
 
 void Session::tick(Clock::time_point now) {
+  // The render thread stores every frame of a fill (FrameSink::set_filling).
+  sink_.set_filling(playing_ && transportState_ == api::TransportState::caching);
   loopNow_ = now;
   if (buildThread_.joinable()) pump_builds();
   if (cachedSubmitted_ > cachedAnswered_) {
@@ -2007,6 +2049,12 @@ void Session::tick(Clock::time_point now) {
     fill_cache(now);
     return;
   }
+  // The same for a play-once (the UI's default: it sends `once` whenever
+  // looping is off), where there is no wrap to fill at: a pass that skipped
+  // more than a frame ends where it ends, and the NEXT Play of this transport
+  // stores the range first (cacheFirst — AE's preview rendering before it
+  // plays), then plays it from the cache. One late frame is not worth a pass.
+  if (stop && drops_so_far() + dropped > passDropBase_ + 1) nextPlayCachesFirst_ = true;
   if (wrapped) passDropBase_ = drops_so_far() + dropped;
   lastK_ = k;
   lastU_ = u;

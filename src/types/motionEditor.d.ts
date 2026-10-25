@@ -695,6 +695,10 @@ export interface MotionEditorApi {
   diag?: {
     /** Fire-and-forget GPU/WebGPU probe report → <userData>/gpu-diagnostics.log. */
     gpuReport?(report: unknown): void;
+    /** Help ▸ Open Logs Folder: reveals the engine log in the OS file manager. */
+    openLogs?(): Promise<boolean>;
+    /** Help ▸ Copy Diagnostics Report: machine, GPU and log tails onto the clipboard; main confirms. */
+    copyReport?(): Promise<boolean>;
   };
   /**
    * Local project index (SQLite in the main process). Every method mirrors the

@@ -615,6 +615,75 @@ TEST_CASE("session: a looping play that dropped frames stores the range at the w
   REQUIRE(h.session.playing());
 }
 
+TEST_CASE("session: a play-once that dropped frames makes the next Play store the range first", "[session][transport][p9]") {
+  Harness h(64);
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  (void)make_layer(h, comp);
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 320;
+  v.height = 180;
+  v.device_pixel_ratio = 1;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  REQUIRE(is_ok(h.run(cmd(api::SetLoop{api::LoopMode::once}))));
+  h.release_all();
+  api::Play play;
+  play.rate = 1;
+  play.range = api::PlayRange::custom;
+  play.custom = api::TimeRange{0, 10 * (kSec / 30)};
+  REQUIRE(is_ok(h.run(cmd(play))));
+  // A slow pass: one late tick skips frames, then the play runs out.
+  h.release_all();
+  h.advance(std::chrono::milliseconds(150));
+  for (int i = 0; i < 400; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  REQUIRE_FALSE(h.session.playing());
+
+  // The next Play stores frames 0..9 one per tick (no clock), then plays from 0.
+  const std::size_t mark = h.frames_ready().size();
+  REQUIRE(is_ok(h.run(cmd(play))));
+  for (int i = 0; i < 12; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  const auto ready = h.frames_ready();
+  std::vector<std::int64_t> frames;
+  for (std::size_t i = mark; i < ready.size(); ++i) frames.push_back(ready[i].frame);
+  REQUIRE(frames.size() >= 11);
+  for (std::int64_t f = 0; f < 10; ++f) REQUIRE(frames[static_cast<std::size_t>(f)] == f);
+  REQUIRE(frames[10] == 0);
+  REQUIRE(h.session.playing());
+  // The pass out of the cache drops nothing and stops on the last frame.
+  for (int i = 0; i < 500; ++i) {
+    h.release_all();
+    h.advance(std::chrono::milliseconds(1));
+  }
+  REQUIRE_FALSE(h.session.playing());
+  const auto after = h.frames_ready();
+  std::uint32_t dropped = 0;
+  for (std::size_t i = mark + 10; i < after.size(); ++i) dropped += after[i].dropped;
+  REQUIRE(dropped == 0);
+
+  // A third Play, with no drops behind it, plays at once.
+  const std::size_t mark2 = h.frames_ready().size();
+  REQUIRE(is_ok(h.run(cmd(play))));
+  h.release_all();
+  h.advance(std::chrono::milliseconds(1));
+  const auto third = h.frames_ready();
+  REQUIRE(third.size() > mark2);
+  REQUIRE(h.session.playing());
+  REQUIRE(third[mark2].frame == 0);
+  h.release_all();
+  h.advance(std::chrono::milliseconds(34));
+  REQUIRE(h.frames_ready().back().frame == 1);
+}
+
 TEST_CASE("session: cacheFirst stores every frame of the range, then plays it", "[session][transport][d4]") {
   Harness h(64);
   (void)h.hello();

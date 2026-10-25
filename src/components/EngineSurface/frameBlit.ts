@@ -68,9 +68,14 @@ const UNIFORM_COPY_DST = 0x0040 | 0x0008;
 /** The pasteboard uniform's layout: rect x0, y0, x1, y1, colour r, g, b, on. */
 export const BOARD_FLOATS = 8;
 
+/** How a surface draws its frames: WebGPU (the external-texture blit) or, where the page has no WebGPU, Canvas 2D. */
+export type BlitMode = 'webgpu' | '2d';
+
 export interface FrameBlitter {
   /** True once the device, the pipeline and the canvas context are up. */
   ready(): boolean;
+  /** The path in use, null until one is up. */
+  mode(): BlitMode | null;
   /**
    * Draw `frame` into the canvas (resized to the frame's pixels) with `board`
    * as the pasteboard uniform; `release` runs once the GPU no longer reads the
@@ -83,17 +88,30 @@ export interface FrameBlitter {
 
 /**
  * Bring up WebGPU on `canvas` (asynchronously; `onReady` once drawing can
- * start, `onError` with the reason when it cannot) and return the blitter.
+ * start) and return the blitter. Where the page has no WebGPU — Linux Chromium
+ * gates it behind Vulkan, and an Intel HD / software GL machine has none —
+ * the frames fall back to a Canvas 2D `drawImage` of the engine's VideoFrame
+ * (`onFallback` says why; the HUD shows it) so the viewport still draws: the
+ * route-A copy is already a CPU-side picture, and 2D keeps a 1280x720 viewport
+ * at playback rate. Only when neither path works does `onError` fire — and the
+ * surface then SAYS so, instead of waiting for a first frame for ever.
  */
-export function createFrameBlitter(canvas: HTMLCanvasElement, onReady: () => void, onError: (e: unknown) => void): FrameBlitter {
+export function createFrameBlitter(
+  canvas: HTMLCanvasElement,
+  onReady: () => void,
+  onError: (e: unknown) => void,
+  onFallback?: (reason: string) => void,
+): FrameBlitter {
   let disposed = false;
   let device: SurfDevice | null = null;
   let ctx: SurfContext | null = null;
   let pipeline: { getBindGroupLayout(i: number): unknown } | null = null;
   let sampler: unknown = null;
   let boardBuf: unknown = null;
+  let two: CanvasRenderingContext2D | null = null;
 
   void (async () => {
+    let tookCanvas = false;  // getContext('webgpu') binds the canvas: no 2D after it
     try {
       const gpu = (navigator as unknown as { gpu?: SurfGpu }).gpu;
       if (!gpu) throw new Error('WebGPU unavailable');
@@ -106,6 +124,7 @@ export function createFrameBlitter(canvas: HTMLCanvasElement, onReady: () => voi
       }
       const c = canvas.getContext('webgpu') as unknown as SurfContext | null;
       if (!c) throw new Error('no webgpu canvas context');
+      tookCanvas = true;
       const format = gpu.getPreferredCanvasFormat();
       c.configure({ device: dev, format, alphaMode: 'opaque' });
       const module = dev.createShaderModule({ code: WGSL });
@@ -121,13 +140,53 @@ export function createFrameBlitter(canvas: HTMLCanvasElement, onReady: () => voi
       ctx = c;
       onReady();
     } catch (e) {
-      onError(e);
+      if (disposed) return;
+      const reason = e instanceof Error ? e.message : String(e);
+      const fallback = tookCanvas ? null : (canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D | null);
+      if (!fallback) {
+        onError(e);
+        return;
+      }
+      two = fallback;
+      onFallback?.(reason);
+      onReady();
     }
   })();
 
+  /** Canvas 2D: the frame as it is, the pasteboard painted around the comp rect. */
+  const draw2d = (frame: VideoFrame, board: Float32Array, release: () => void): boolean => {
+    if (!two) return false;
+    const w = frame.displayWidth;
+    const h = frame.displayHeight;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    try {
+      two.drawImage(frame as unknown as CanvasImageSource, 0, 0, w, h);
+      if ((board[7] ?? 0) > 0.5) {
+        const x0 = Math.round((board[0] ?? 0) * w);
+        const y0 = Math.round((board[1] ?? 0) * h);
+        const x1 = Math.round((board[2] ?? 1) * w);
+        const y1 = Math.round((board[3] ?? 1) * h);
+        const ch = (i: number): number => Math.round((board[i] ?? 0) * 255);
+        two.fillStyle = `rgb(${ch(4)}, ${ch(5)}, ${ch(6)})`;
+        if (y0 > 0) two.fillRect(0, 0, w, y0);
+        if (y1 < h) two.fillRect(0, y1, w, h - y1);
+        if (x0 > 0) two.fillRect(0, y0, x0, y1 - y0);
+        if (x1 < w) two.fillRect(x1, y0, w - x1, y1 - y0);
+      }
+    } finally {
+      release();  // drawImage copied the pixels synchronously: the slot is the engine's again
+    }
+    return true;
+  };
+
   return {
-    ready: () => device !== null && ctx !== null && pipeline !== null,
+    ready: () => two !== null || (device !== null && ctx !== null && pipeline !== null),
+    mode: () => (two ? '2d' : device && ctx && pipeline ? 'webgpu' : null),
     draw(frame, board, release) {
+      if (two) return draw2d(frame, board, release);
       if (!device || !ctx || !pipeline) return false;
       const w = frame.displayWidth;
       const h = frame.displayHeight;
@@ -160,6 +219,7 @@ export function createFrameBlitter(canvas: HTMLCanvasElement, onReady: () => voi
       device = null;
       ctx = null;
       pipeline = null;
+      two = null;
     },
   };
 }

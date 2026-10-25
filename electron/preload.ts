@@ -284,6 +284,10 @@ const bridge = {
      *  <userData>/gpu-diagnostics.log so a packaged build with DevTools disabled
      *  can still be diagnosed. Fire-and-forget. */
     gpuReport: (report: unknown) => ipcRenderer.send('diag:gpuReport', report),
+    /** Help ▸ Open Logs Folder: reveals <userData>/logs/engine.log. */
+    openLogs: () => ipcRenderer.invoke('diag:openLogs'),
+    /** Help ▸ Copy Diagnostics Report: the machine, GPU and log tails onto the clipboard (main confirms with a message box). */
+    copyReport: () => ipcRenderer.invoke('diag:copyReport'),
   },
 
   index: {

@@ -311,6 +311,12 @@ enum class HookAnswer : std::uint8_t {
   deferred,
 };
 
+/// FrameSink::port_counters: one viewport's frames.
+struct PortCounters {
+  std::uint64_t rendered = 0;  // FrameReady announced for this viewport
+  std::uint64_t standIn = 0;   // of those, drawn with a footage stand-in (not stored)
+};
+
 struct RenderCounters {
   std::uint64_t rendered = 0;
   std::uint64_t dropped = 0;     // ring full or superseded before rendering
@@ -405,8 +411,22 @@ class FrameSink {
   virtual void set_copy(bool /*copy*/) {}
   [[nodiscard]] virtual bool copy_supported() const { return false; }
   [[nodiscard]] virtual RenderCounters counters() const = 0;
+  /// One viewport's share of the counters: frames announced for it and how
+  /// many of those drew with a stand-in. The cache fill waits on ITS viewport's
+  /// frame — the global `rendered` moved whenever any viewport (a pop-out, a
+  /// 2-up pane, the Layer panel) finished one, and the fill then submitted its
+  /// next frame over a job of its own still queued, leaving holes in the bar.
+  [[nodiscard]] virtual PortCounters port_counters(std::uint32_t /*viewport*/) const { return {}; }
+  /// A cache fill is running (transport state `caching`): every frame it
+  /// draws is stored — the disk tier takes the ones RAM refuses whatever
+  /// they cost to draw (a fill that drops cheap frames leaves a gap the next
+  /// pass renders again). Any thread.
+  virtual void set_filling(bool /*filling*/) {}
   /// Viewport frame-cache coverage (zeros when there is no cache).
   [[nodiscard]] virtual CacheCoverageSnap cache_coverage() const { return {}; }
+  /// Publish the coverage now rather than at its next throttled update: a
+  /// cache fill just finished and the bar (and getCacheCoverage) must show it.
+  virtual void publish_coverage_now() {}
   /// Drop the viewport frame cache (Purge RAM). The next frames fill it again.
   virtual void purge_frame_cache() {}
   /// setCacheBudget: the disk cache's folder (UTF-8) and size limit in bytes;

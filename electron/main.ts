@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, Menu, protocol, net, sharedTexture, type WebContents } from 'electron';
+import { app, BrowserWindow, shell, dialog, Menu, protocol, net, sharedTexture, clipboard, type WebContents } from 'electron';
 import { handle, on } from './ipcGuard';
 import {
   devUiPlatformOverride,
@@ -10,6 +10,7 @@ import {
   WINDOWS_TITLEBAR_HEIGHT,
 } from './uiPlatform';
 import path from 'node:path';
+import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { readFile, writeFile, mkdir, unlink, readdir, access, rm, copyFile, stat } from 'node:fs/promises';
 import { writeFileAtomic } from './atomicWrite';
@@ -1067,6 +1068,76 @@ app.on('web-contents-created', (_event, contents) => {
 // The renderer's ground-truth WebGPU probe result (adapter/device/configure +
 // any error), appended to the same log the main process writes. This is what
 // actually answers "is WebGPU working" on a packaged build with no DevTools.
+/**
+ * Help ▸ Open Logs Folder / Copy Diagnostics Report. A shipped build has no
+ * DevTools (hardenWebContents), so a user whose viewport stays blank or whose
+ * engine restarts had nothing to paste into a bug report ("the option isn't
+ * shown nor does the shortcut work" — isroil01/premation#31). The report is the
+ * machine, the GPU as Chromium sees it, and the tails of the engine and GPU
+ * logs; it goes to the clipboard and a message box says so.
+ */
+handle('diag:openLogs', async () => {
+  const logPath = path.join(app.getPath('userData'), 'logs', 'engine.log');
+  try {
+    await access(logPath);
+    shell.showItemInFolder(logPath);
+  } catch {
+    await shell.openPath(app.getPath('userData'));
+  }
+  return true;
+});
+
+handle('diag:copyReport', async (event) => {
+  const report = await buildDiagnosticsReport();
+  clipboard.writeText(report);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const box = {
+    type: 'info' as const,
+    title: 'Diagnostics report copied',
+    message: 'The diagnostics report is on the clipboard.',
+    detail: 'Paste it into a bug report (GitHub issue or Discord). It lists this machine, the GPU as the app sees it, and the last lines of the engine and GPU logs — no project content.',
+    buttons: ['OK'],
+  };
+  if (win) await dialog.showMessageBox(win, box);
+  else await dialog.showMessageBox(box);
+  return true;
+});
+
+async function tailOf(file: string, lines: number): Promise<string> {
+  try {
+    const text = await readFile(file, 'utf8');
+    return text.split(/\r?\n/).filter((l) => l.length > 0).slice(-lines).join('\n');
+  } catch {
+    return '(none)';
+  }
+}
+
+async function buildDiagnosticsReport(): Promise<string> {
+  const userData = app.getPath('userData');
+  let gpuInfo: unknown = null;
+  try {
+    gpuInfo = await app.getGPUInfo('basic');
+  } catch {
+    /* some drivers reject the query; the feature status still tells the story */
+  }
+  const engine = engineHost ? { ...engineHost.status(), lastRecovery: engineHost.recovery } : null;
+  const parts = [
+    `Premation ${app.getVersion()} (${app.isPackaged ? 'packaged' : 'dev'})`,
+    `Electron ${process.versions.electron}, Chromium ${process.versions.chrome}, Node ${process.versions.node}`,
+    `OS: ${process.platform} ${os.release()} ${os.arch()}; CPU: ${os.cpus()[0]?.model ?? '?'} x${os.cpus().length}; RAM: ${(os.totalmem() / 2 ** 30).toFixed(1)} GiB total, ${(os.freemem() / 2 ** 30).toFixed(1)} GiB free`,
+    `Chromium GPU feature status: ${JSON.stringify(app.getGPUFeatureStatus())}`,
+    `Chromium GPU info: ${JSON.stringify(gpuInfo)}`,
+    `Engine: ${JSON.stringify(engine)}`,
+    '',
+    '--- engine.log (last 60 lines) ---',
+    await tailOf(path.join(userData, 'logs', 'engine.log'), 60),
+    '',
+    '--- gpu-diagnostics.log (last 6 lines) ---',
+    await tailOf(path.join(userData, 'gpu-diagnostics.log'), 6),
+  ];
+  return parts.join('\n');
+}
+
 on('diag:gpuReport', (_event, report: unknown) => {
   try {
     const line = `${new Date().toISOString()} [renderer] ${JSON.stringify(report)}\n`;

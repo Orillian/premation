@@ -457,6 +457,14 @@ class Session {
   std::int64_t cacheFrame_ = 0;
   std::uint64_t cacheSeenRendered_ = 0;
   bool cacheInFlight_ = false;
+  /// The viewport whose frames the fill waits on (FrameSink::port_counters):
+  /// the first open comp viewport that records coverage; 0 = none yet.
+  std::uint32_t cacheViewport_ = 0;
+  /// The stand-in count when the in-flight frame was submitted: it moved = the
+  /// frame drew with a stand-in and was not stored, so the fill draws it again
+  /// (its decode catching up) until `cacheRetryUntil_`, then moves on.
+  std::uint64_t cacheSeenStandIn_ = 0;
+  std::optional<Clock::time_point> cacheRetryUntil_;
   /// play{cacheOnly}: the fill stops when the range is stored and the playhead
   /// returns to `cacheReturn_` (where it was before the fill).
   bool cacheOnly_ = false;
@@ -465,6 +473,8 @@ class Session {
   /// began, and whether this play already switched to a fill once.
   std::uint64_t passDropBase_ = 0;
   bool autoFilled_ = false;
+  /// A play-once pass dropped frames: the next Play stores the range first.
+  bool nextPlayCachesFirst_ = false;
   /// Frames the viewer did not get right so far: dropped (sink + clock), or
   /// shown with footage from a nearest decoded frame (RenderCounters::inexact).
   [[nodiscard]] std::uint64_t drops_so_far() const;
