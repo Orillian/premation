@@ -53,19 +53,17 @@
 }
 
 .trigger:hover {
-  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
-/* Armed: AE's pressed-tool well, the glyph in ink (TopNav .toolActive). */
+/* Armed: as After Effects shows its tools (owner, 2026-10-26) — no well, no
+   hover fill; the armed glyph takes the accent (TopNav .toolActive). */
 .triggerActive {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .triggerActive:hover {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .trigger:focus-visible,

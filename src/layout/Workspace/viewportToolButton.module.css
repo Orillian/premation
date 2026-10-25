@@ -9,9 +9,9 @@
  * 28px, `md` and `sm` icons, chevrons on toggles and none on menus).
  *
  *   24px tall, 26px wide at least, 6px side padding, --radius-sm.
- *   Glyph 14px (`size="sm"`), --color-text-secondary; hover is --color-hover.
- *   LIT is the selection tint with the accent-as-ink glyph — never a filled
- *   blue box, so a lit toggle cannot be mistaken for Play.
+ *   Glyph 14px (`size="sm"`), --color-text-secondary; hover brightens the glyph
+ *   and draws no fill. LIT is the accent-as-ink glyph alone (After Effects'
+ *   tool bar, owner 2026-10-26) — never a filled box or a grey well.
  *   A chevron only where a menu opens: 9px, muted.
  *   A menu's current value ("Active Camera", "Full", "RGB") is text in
  *   --color-text-primary, so the state is readable without opening it.
@@ -72,7 +72,6 @@
 }
 
 .tool:hover:not(:disabled) {
-  background: var(--color-hover);
   color: var(--color-text-primary);
 }
 
@@ -86,16 +85,14 @@
   cursor: default;
 }
 
-/* Lit: After Effects' pressed tool — a grey well with the glyph in ink. Not
-   the accent, so a lit toggle is never mistaken for a selection or for Play. */
+/* Lit: as After Effects shows its tools (owner, 2026-10-26) — no well, no
+   hover fill; the lit toggle's glyph takes the accent and nothing else draws. */
 .toolActive {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 .toolActive:hover:not(:disabled) {
-  background: var(--color-tool-pressed);
-  color: var(--color-text-primary);
+  color: var(--color-primary-text);
 }
 
 /* The menu's current value, as text beside (or instead of) the glyph. */
