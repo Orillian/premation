@@ -19,7 +19,8 @@
 import { render } from '@testing-library/react';
 
 import { Icon, ICON_NAMES, type IconName, type IconWeight } from './Icon';
-import { DRAWN_ICONS } from './drawnIcons';
+import { DRAWN_ICONS, PIXEL_ICON_NAMES } from './drawnIcons';
+import { PIXEL_ICONS } from './pixelIcons.generated';
 import { SHARP_ICON_PATHS } from './sharpIconPaths';
 
 /**
@@ -66,24 +67,25 @@ describe('the icon vocabulary resolves to geometry', () => {
     expect(svg?.children.length).toBeGreaterThan(0);
   });
 
-  it('draws the chrome set from its pixel-snapped table for the box: 16, 24 or 32 px', () => {
-    // A row glyph (sm = 16) takes the 16 px drawing; a tool-bar glyph (lg = 26)
-    // the 24 px one; a display box the 32 px one. Strokes are always 1 px.
+  it('draws the chrome set from the Fluent table for the box: the 16 or the 20 grid', () => {
+    // A row glyph (sm = 16) takes the family's 16-grid drawing; a tool-bar glyph
+    // (lg = 26) its 20-grid drawing. Both are filled outlines drawn at exactly
+    // their own grid size: no stroke attributes, no scaling.
     const small = render(<Icon name="pen" size="sm" />).container.querySelector('svg');
     expect(small?.getAttribute('viewBox')).toBe('0 0 16 16');
     expect(small?.getAttribute('width')).toBe('16');
-    expect(small?.getAttribute('stroke-width')).toBe('1');
+    expect(small?.getAttribute('fill')).toBe('currentColor');
+    expect(small?.getAttribute('stroke')).toBeNull();
     const tool = render(<Icon name="pen" size="lg" />).container.querySelector('svg');
-    expect(tool?.getAttribute('viewBox')).toBe('0 0 24 24');
-    expect(tool?.getAttribute('width')).toBe('24');
-    const displaySize = 32;
-    const big = render(<Icon name="pen" size={displaySize} />).container.querySelector('svg');
-    expect(big?.getAttribute('viewBox')).toBe('0 0 32 32');
-    // Every snapped stroke coordinate sits on a half pixel (a crisp 1 px line).
-    const d = tool?.querySelector('path')?.getAttribute('d') ?? '';
-    const coords = d.match(/-?\d*\.?\d+/g) ?? [];
-    expect(coords.length).toBeGreaterThan(4);
-    for (const c of coords) expect(Math.abs((parseFloat(c) * 2) % 1)).toBeLessThan(1e-6);
+    expect(tool?.getAttribute('viewBox')).toBe('0 0 20 20');
+    expect(tool?.getAttribute('width')).toBe('20');
+    expect(tool?.querySelector('path')?.getAttribute('d')).not.toBe(small?.querySelector('path')?.getAttribute('d'));
+    // Every chrome name has both drawings.
+    for (const n of PIXEL_ICON_NAMES) {
+      const t = PIXEL_ICONS[n === 'diamond' ? 'keyframe' : n];
+      expect(t?.[16]).toBeTruthy();
+      expect(t?.[20]).toBeTruthy();
+    }
   });
 
   it('has a path for exactly the declared names, no more and no fewer', () => {

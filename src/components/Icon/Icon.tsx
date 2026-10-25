@@ -218,13 +218,13 @@ function IconInner({
   }
 
   const glyph = SHARP_ICON_PATHS[name];
-  // The chrome set (drawnIcons.ts PIXEL_ICON_NAMES): PIXEL_ICONS holds each
-  // glyph optically sized and pixel-snapped at 16, 24 and 32 px; the box picks
-  // the nearest table below it and the drawing sits centred in the box. So a
-  // tool-bar glyph (a 26 px box) is the 24 px drawing with its 1 px strokes on
-  // whole pixels; a row glyph (16) the 16 px one (owner, 2026-10-26).
+  // The chrome set (drawnIcons.ts PIXEL_ICON_NAMES): PIXEL_ICONS holds, for
+  // each name, Fluent System Icons' own 16-grid drawing (rows, switches, panel
+  // chrome) and its own 20-grid drawing (the tool bar, the lg step). The glyph
+  // is drawn at exactly its grid size, centred in the box, so nothing is ever
+  // scaled and every outline is the family's 1 px line (owner, 2026-10-26).
   if (PIXEL_ICON_NAMES.has(name)) {
-    const px: PixelSize = computedSize >= 30 ? 32 : computedSize >= 22 ? 24 : 16;
+    const px: PixelSize = computedSize >= 22 ? 20 : 16;
     const table = PIXEL_ICONS[name === 'diamond' ? 'keyframe' : name];
     return (
       <span
@@ -238,14 +238,10 @@ function IconInner({
           width={px}
           height={px}
           viewBox={`0 0 ${px} ${px}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1}
-          strokeLinecap="square"
-          strokeLinejoin="miter"
+          fill="currentColor"
           xmlns="http://www.w3.org/2000/svg"
           // Generated markup (pixelIcons.generated.ts), never input.
-          dangerouslySetInnerHTML={{ __html: table?.[px] ?? DRAWN_ICONS[name] ?? '' }}
+          dangerouslySetInnerHTML={{ __html: table?.[px] ?? '' }}
         />
       </span>
     );

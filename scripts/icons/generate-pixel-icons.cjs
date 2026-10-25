@@ -1,137 +1,130 @@
-// Generate optically sized, pixel-snapped glyph tables for the chrome icon set.
+// Build the chrome icon tables from a REAL pixel-grid icon family.
 //
-//   npm run icons:pixel   (measure with headless Electron, then generate)
-//   node scripts/icons/generate-pixel-icons.cjs <bbox.json> <out.ts>
+//   node scripts/icons/generate-pixel-icons.cjs src/components/Icon/pixelIcons.generated.ts
+//   (npm run icons:pixel)
 //
-// For each glyph: take its 16-grid markup from drawnIcons.ts, scale it about
-// the grid centre so its ink box spans the same TARGET extent as every other
-// glyph (optical sizing: a chevron or an eye is drawn larger than a cube), then
-// resize to each output grid (16, 24, 32) and snap every coordinate so a 1 px
-// stroke sits on a half-pixel centre and every box edge on a whole pixel.
+// Source: Microsoft Fluent System Icons (@fluentui/svg-icons, MIT), the
+// "regular" weight, which is drawn natively on a 16-unit grid and on a
+// 20-unit grid with 1 px outlines. We take the 16 set for rows, switches and
+// panel chrome and the 20 set for the tool bar, and draw each at exactly its
+// own grid size — no scaling, no optical resizing, no snapping of our own, so
+// every glyph is pixel-perfect by construction and the whole set shares one
+// weight. The handful of glyphs Fluent lacks (magnet, and a 16 px eraser and
+// move) come from VS Code Codicons (@vscode/codicons, MIT), also a 16-grid,
+// 1 px family.
 const fs = require('node:fs');
 const path = require('node:path');
-const [bboxFile, outFile] = process.argv.slice(2);
-const src = fs.readFileSync(path.resolve('src/components/Icon/drawnIcons.ts'), 'utf8');
-const bbox = JSON.parse(fs.readFileSync(bboxFile, 'utf8'));
-const names = Object.keys(bbox);
+const ROOT = path.resolve(__dirname, '..', '..');
+const FLUENT = path.join(ROOT, 'node_modules', '@fluentui', 'svg-icons', 'icons');
+const CODICONS = path.join(ROOT, 'node_modules', '@vscode', 'codicons', 'src', 'icons');
+const SIZES = [16, 20];
 
-// Target ink extent in 16-grid units: a square glyph spans 12 of 16; a long
-// thin one (a chevron) is brought up by its longer side only, capped so a
-// one-line glyph cannot balloon.
-const TARGET = 12.5;
-const SCALE_MIN = 0.8, SCALE_MAX = 1.35;
-const SIZES = [16, 24, 32];
+// chrome name → Fluent glyph name (regular weight). A `{16, 20}` object names a
+// different glyph per grid; a `codicon:` prefix takes the glyph from Codicons
+// (16-grid; scaled 1.25× onto the 20 grid, the one place a glyph is scaled).
+const MAP = {
+  'mouse-pointer': 'cursor',
+  'hand': 'hand_left',
+  'zoom-in': 'zoom_in',
+  'zoom-out': 'zoom_out',
+  'orbit': { 16: 'space_3d', 20: 'cube_rotate' },
+  'rotate': 'arrow_rotate_clockwise',
+  'pan-behind': { 16: 'codicon:move', 20: 'arrow_move' },
+  'square': 'square',
+  'circle': 'circle',
+  'star': 'star',
+  'pen': 'pen',
+  'type': 'text_t',
+  'brush': 'paint_brush',
+  'eraser': { 16: 'codicon:eraser', 20: 'eraser_tool' },
+  'puppet-pin': 'pin',
+  'magnet': 'codicon:magnet',
+  'search': 'search',
+  'composition': 'rectangle_landscape',
+  'video': 'video',
+  'solid': 'color',
+  'audio': 'speaker_2',
+  'audio-off': 'speaker_mute',
+  'shape': 'shapes',
+  'adjustment': 'options',
+  'camera': 'camera',
+  'light': 'lightbulb',
+  'folder-plus': 'folder_add',
+  'trash': 'delete',
+  'menu': 'navigation',
+  'close': 'dismiss',
+  'chevron-down': 'chevron_down',
+  'chevron-up': 'chevron_up',
+  'chevron-left': 'chevron_left',
+  'chevron-right': 'chevron_right',
+  'grid': 'grid',
+  'eye': 'eye',
+  'eye-off': 'eye_off',
+  'lock': 'lock_closed',
+  'unlock': 'lock_open',
+  'stopwatch': 'timer',
+  'keyframe': 'diamond',
+  'skip-back': 'previous',
+  'skip-forward': 'next',
+  'loop': 'arrow_repeat_all',
+  'motion-blur': 'blur',
+  'shy': 'person',
+  '3d': 'cube',
+  'draft-3d': 'space_3d',
+  'graph-value': 'data_line',
+  'graph-speed': 'data_trending',
+  'marker': 'bookmark',
+  'align-left': 'align_left',
+  'align-center': 'align_center_horizontal',
+  'align-right': 'align_right',
+  'align-top': 'align_top',
+  'align-middle': 'align_center_vertical',
+  'align-bottom': 'align_bottom',
+  'distribute-horizontal': 'align_distribute_left',
+  'distribute-vertical': 'align_distribute_top',
+};
 
-// ── a small SVG path transformer: M L H V C S Q T A Z, absolute and relative ──
-function transformPath(d, fx, fy) {
-  // fx(x), fy(y) map ABSOLUTE coordinates; relative commands get the delta form.
-  const toks = d.match(/[a-zA-Z]|-?\d*\.?\d+(?:e-?\d+)?/g);
-  let i = 0, cmd = '', out = '';
-  let cx = 0, cy = 0, sx = 0, sy = 0;
-  const num = () => parseFloat(toks[i++]);
-  const fmt = (v) => (Math.round(v * 100) / 100).toString().replace(/^(-?)0\./, '$1.');
-  const sc = (fx(1) - fx(0));
-  while (i < toks.length) {
-    const t = toks[i];
-    if (/[a-zA-Z]/.test(t)) { cmd = t; i++; if (cmd === 'Z' || cmd === 'z') { out += 'Z'; cx = sx; cy = sy; continue; } }
-    const rel = cmd === cmd.toLowerCase();
-    const C = cmd.toUpperCase();
-    const pt = (x, y) => { const ax = rel ? cx + x : x, ay = rel ? cy + y : y; return [ax, ay]; };
-    if (C === 'M' || C === 'L' || C === 'T') {
-      const [ax, ay] = pt(num(), num()); out += `${C}${fmt(fx(ax))} ${fmt(fy(ay))}`; cx = ax; cy = ay; if (C === 'M') { sx = ax; sy = ay; cmd = rel ? 'l' : 'L'; }
-    } else if (C === 'H') { const ax = rel ? cx + num() : num(); out += `H${fmt(fx(ax))}`; cx = ax; }
-    else if (C === 'V') { const ay = rel ? cy + num() : num(); out += `V${fmt(fy(ay))}`; cy = ay; }
-    else if (C === 'C') { const p = []; for (let k = 0; k < 3; k++) { const [ax, ay] = pt(num(), num()); p.push(fmt(fx(ax)), fmt(fy(ay))); if (k === 2) { cx = ax; cy = ay; } } out += `C${p.join(' ')}`; }
-    else if (C === 'S' || C === 'Q') { const p = []; for (let k = 0; k < 2; k++) { const [ax, ay] = pt(num(), num()); p.push(fmt(fx(ax)), fmt(fy(ay))); if (k === 1) { cx = ax; cy = ay; } } out += `${C}${p.join(' ')}`; }
-    else if (C === 'A') { const rx = num(), ry = num(), rot = num(), la = num(), sw = num(); const [ax, ay] = pt(num(), num()); out += `A${fmt(rx * sc)} ${fmt(ry * sc)} ${rot} ${la} ${sw} ${fmt(fx(ax))} ${fmt(fy(ay))}`; cx = ax; cy = ay; }
-    else throw new Error('cmd ' + cmd + ' in ' + d);
+function body(file) {
+  const s = fs.readFileSync(file, 'utf8');
+  return s.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '').trim();
+}
+function glyph(spec, size) {
+  const name = typeof spec === 'string' ? spec : spec[size];
+  if (name.startsWith('codicon:')) {
+    const b = body(path.join(CODICONS, name.slice(8) + '.svg'));
+    return size === 16 ? b : `<g transform="scale(${size / 16})">${b}</g>`;
   }
-  return out;
+  const file = path.join(FLUENT, `${name}_${size}_regular.svg`);
+  if (fs.existsSync(file)) return body(file);
+  // Fluent draws a few glyphs (the distribute pair) at 16 and 24 only; the
+  // 20 grid, which the chrome never uses for them, takes the 16 drawing scaled.
+  const at16 = path.join(FLUENT, `${name}_16_regular.svg`);
+  if (size !== 16 && fs.existsSync(at16)) return `<g transform="scale(${size / 16})">${body(at16)}</g>`;
+  throw new Error(`Fluent has no ${name} at ${size}`);
 }
 
-function transformMarkup(markup, fx, fy) {
-  const sc = fx(1) - fx(0);
-  let m = markup.replace(/ d="([^"]+)"/g, (_, d) => ` d="${transformPath(d, fx, fy)}"`);
-  m = m.replace(/<circle([^>]*)\/>/g, (_, a) => {
-    const g = (k) => parseFloat((a.match(new RegExp(k + '="([^"]+)"')) || [0, '0'])[1]);
-    const rest = a.replace(/ (cx|cy|r)="[^"]+"/g, '');
-    return `<circle cx="${f(fx(g('cx')))}" cy="${f(fy(g('cy')))}" r="${f(g('r') * sc)}"${rest}/>`;
-  });
-  m = m.replace(/<ellipse([^>]*)\/>/g, (_, a) => {
-    const g = (k) => parseFloat((a.match(new RegExp(k + '="([^"]+)"')) || [0, '0'])[1]);
-    const rest = a.replace(/ (cx|cy|rx|ry)="[^"]+"/g, '');
-    return `<ellipse cx="${f(fx(g('cx')))}" cy="${f(fy(g('cy')))}" rx="${f(g('rx') * sc)}" ry="${f(g('ry') * sc)}"${rest}/>`;
-  });
-  m = m.replace(/<rect([^>]*)\/>/g, (_, a) => {
-    const g = (k) => parseFloat((a.match(new RegExp(' ' + k + '="([^"]+)"')) || [0, '0'])[1]);
-    const rest = a.replace(/ (x|y|width|height)="[^"]+"/g, '');
-    const x0 = fx(g('x')), y0 = fy(g('y')), x1 = fx(g('x') + g('width')), y1 = fy(g('y') + g('height'));
-    return `<rect x="${f(x0)}" y="${f(y0)}" width="${f(x1 - x0)}" height="${f(y1 - y0)}"${rest}/>`;
-  });
-  // dash arrays scale with the stroke grid
-  m = m.replace(/stroke-dasharray="([^"]+)"/g, (_, v) => `stroke-dasharray="${v.split(/[ ,]+/).map((n) => f(parseFloat(n) * sc)).join(' ')}"`);
-  return m;
-}
-const f = (v) => (Math.round(v * 100) / 100).toString().replace(/^(-?)0\./, '$1.');
-
-// Snap: a stroked coordinate to a half-pixel centre; filled shapes (fill=currentColor, no stroke) to whole pixels.
-function snapHalf(v) { return Math.round(v - 0.5) + 0.5; }
-function snapWhole(v) { return Math.round(v); }
-
-const out = {};
-for (const n of names) {
-  const m = src.match(new RegExp("^  '" + n + "': '(.*?)',$", 'm'));
-  if (!m) throw new Error('no glyph ' + n);
-  const markup = m[1].replace(/\\'/g, "'");
-  const b = bbox[n];
-  const w = b.x1 - b.x0, h = b.y1 - b.y0;
-  const ext = Math.max(w, h);
-  // Sub-glyphs stay their size (a chevron is a dropdown mark, not an icon); a
-  // thin glyph (one dimension under half the other) is brought up only a little.
-  const FIXED = { 'chevron-down': 1, 'chevron-up': 1, 'chevron-left': 1, 'chevron-right': 1, close: 1.1, menu: 1.05 };
-  const thin = Math.min(w, h) < 0.5 * ext;
-  const opt = FIXED[n] ?? Math.min(thin ? 1.12 : SCALE_MAX, Math.max(SCALE_MIN, TARGET / ext));
-  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-  const filled = /<g fill="currentColor" stroke="none">/.test(markup);
-  out[n] = {};
-  for (const S of SIZES) {
-    const k = S / 16;
-    const snap = filled ? snapWhole : snapHalf;
-    // centre the optically scaled glyph on the output grid centre
-    const fx = (x) => snap(S / 2 + (x - cx) * opt * k);
-    const fy = (y) => snap(S / 2 + (y - cy) * opt * k);
-    // radii must not be snapped (an arc with a snapped centre and raw radius is fine)
-    const sc = opt * k;
-    const fxr = (x) => S / 2 + (x - cx) * sc, fyr = (y) => S / 2 + (y - cy) * sc;
-    let tm = transformMarkup(markup, fx, fy);
-    // transformMarkup scales radii by (fx(1)-fx(0)); with snapping that is unstable, redo radii from the raw scale
-    tm = tm.replace(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"/g, (_, a, b2, r) => `<circle cx="${a}" cy="${b2}" r="${f(parseFloat(r) / (fx(1) - fx(0)) * sc)}"`)
-           .replace(/<ellipse cx="([^"]+)" cy="([^"]+)" rx="([^"]+)" ry="([^"]+)"/g, (_, a, b2, rx, ry) => `<ellipse cx="${a}" cy="${b2}" rx="${f(parseFloat(rx) / (fx(1) - fx(0)) * sc)}" ry="${f(parseFloat(ry) / (fx(1) - fx(0)) * sc)}"`);
-    out[n][S] = tm;
-  }
-  out[n].opt = Math.round(opt * 100) / 100;
-}
-
+const out = process.argv[2];
+if (!out) throw new Error('usage: generate-pixel-icons.cjs <out.ts>');
 let ts = `/**
- * GENERATED FILE — do not edit by hand. Source: drawnIcons.ts (the 16-grid chrome
- * set) through scripts/icons/generate-pixel-icons.cjs (npm run icons:pixel): each glyph optically sized (its ink box
- * brought to a common extent, so a chevron and a cube read the same size) and
- * pixel-snapped at the sizes the chrome draws it: 16 (rows, switches), 24 (the
- * tool bar), 32 (large). Strokes sit on half-pixel centres, filled edges on
- * whole pixels. Icon.tsx picks the table by the box it is given.
+ * GENERATED FILE — do not edit by hand. Source: Microsoft Fluent System Icons
+ * (@fluentui/svg-icons, regular weight, MIT) with three glyphs from VS Code
+ * Codicons (@vscode/codicons, MIT), through scripts/icons/generate-pixel-icons.cjs
+ * (npm run icons:pixel). Each glyph is the family's own 16-grid drawing for
+ * rows, switches and panel chrome, and its own 20-grid drawing for the tool
+ * bar; Icon.tsx draws each at exactly that size, so no glyph is ever scaled.
  */
 import type { IconName } from './iconNames';
 
-export const PIXEL_SIZES = [16, 24, 32] as const;
+export const PIXEL_SIZES = [16, 20] as const;
 export type PixelSize = (typeof PIXEL_SIZES)[number];
 
 export const PIXEL_ICONS: Partial<Record<IconName, Record<PixelSize, string>>> = {
 `;
-for (const n of names) {
+for (const [n, spec] of Object.entries(MAP)) {
   ts += `  '${n}': {\n`;
-  for (const S of SIZES) ts += `    ${S}: '${out[n][S].replace(/'/g, "\\'")}',\n`;
+  for (const S of SIZES) ts += `    ${S}: '${glyph(spec, S).replace(/'/g, "\\'")}',\n`;
   ts += `  },\n`;
 }
 ts += `};\n`;
-fs.writeFileSync(outFile, ts);
-console.log('generated', names.length, 'opt range', Math.min(...names.map((n) => out[n].opt)), Math.max(...names.map((n) => out[n].opt)));
+fs.writeFileSync(out, ts.replace(/\r?\n/g, '\r\n'));
+console.log('generated', Object.keys(MAP).length, 'glyphs ×', SIZES.join('/'));

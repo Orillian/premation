@@ -77,12 +77,11 @@ const GLYPHS = {
   'axis-view': '<path d="M5.4 2.4 H12.6 L16 15.6 H2 Z" stroke-width="1.3"/><path d="M8 5.6 V10 H12.6 M8 10 L5.6 12.4"/>',
   'cube': '<path d="M9 1.9 L15.2 5.4 V12.6 L9 16.1 L2.8 12.6 V5.4 Z"/><path d="M2.8 5.4 L9 9 L15.2 5.4 M9 9 V16.1"/>',
 
-  // ── The After Effects-style chrome set (2026-10-26, owner-approved from the
-  // workspace mockup). Its OWN 16-unit grid (PIXEL_ICON_NAMES below): Icon.tsx
-  // draws these at exactly 16 px (32 px on the large step) with 1 px strokes
-  // on half-pixel centres and square caps, so every line lands on a whole
-  // pixel — the one thing the 18-grid family scaled onto a 19 px box could not
-  // do. Solid only where the object is (the transport ends).
+  // ── The After Effects-style chrome set (PIXEL_ICON_NAMES below). Icon.tsx
+  // draws these names from pixelIcons.generated.ts — Fluent System Icons' own
+  // 16- and 20-grid drawings (owner, 2026-10-26: a real pixel-grid family, not
+  // hand-drawn glyphs). The markup here is the pre-Fluent 16-grid sketch, kept
+  // only so the name stays in the drawn vocabulary; it is never drawn.
   'mouse-pointer': '<path d="M4.5 2.5v10l2.6-2.4L9 13.5l1.6-.8-1.9-3.3h3.4Z"/>',
   'hand': '<path d="M5.5 8.5v-5a1 1 0 0 1 2 0v4m0-5a1 1 0 0 1 2 0v5m0-4a1 1 0 0 1 2 0v5m-6 0-1.3-1.5a1.1 1.1 0 0 0-1.7 1.4L5 12.6c.5 .8 1.3 1 2.3 1h2.2c1.6 0 2.5-1 2.5-2.6V8"/>',
   'zoom-in': '<circle cx="6.5" cy="6.5" r="4"/><path d="M9.5 9.5 14 14M4.5 6.5h4M6.5 4.5v4"/>',
