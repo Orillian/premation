@@ -376,6 +376,10 @@ class Walk final : public Scene3DHost {
   std::unordered_map<std::string, bool> live_;
   std::unordered_map<std::string, xf::Mat2D> world_;
   std::set<std::string, std::less<>> fullBuild_;
+  /// Matte sources of layers that will NOT draw (hidden, soloed out): still
+  /// matte-only, never drawn as ordinary layers (AE keeps a matte layer's
+  /// video off whatever its consumer does).
+  std::set<std::string, std::less<>> hiddenMatteSources_;
 
   std::vector<RLayer> layers_;
   std::map<std::string, std::vector<RLayer>, std::less<>> precompInner_;
@@ -2092,9 +2096,17 @@ Snapshot Walk::run() {
     };
     for (std::size_t i = 0; i < order.size(); ++i) {
       const doc::Node& n = *order[i];
-      if (!willDraw(n)) continue;
-      fullBuild_.insert(n.id);
       const auto m = read_matte_of(n);
+      if (!willDraw(n)) {
+        // A hidden matted layer: its matte source stays a matte (drawn by
+        // nobody), instead of appearing as a plain layer the moment the
+        // consumer's eye went off — the scan bar of a logo reveal, say.
+        if (!m) continue;
+        if (m->sourceId) hiddenMatteSources_.insert(*m->sourceId);
+        else if (i + 1 < order.size()) hiddenMatteSources_.insert(order[i + 1]->id);
+        continue;
+      }
+      fullBuild_.insert(n.id);
       if (!m) continue;
       if (m->sourceId) fullBuild_.insert(*m->sourceId);
       else if (i + 1 < order.size()) fullBuild_.insert(order[i + 1]->id);
@@ -2279,9 +2291,12 @@ Snapshot Walk::run() {
   }
 
   // resolveMatteSources — per stack level, as the TypeScript applies it to the top level only.
-  const auto resolveMattes = [](std::vector<RLayer>& ls) {
+  const auto resolveMattes = [this](std::vector<RLayer>& ls) {
     std::unordered_map<std::string, std::size_t> idx;
     for (std::size_t i = 0; i < ls.size(); ++i) idx.emplace(ls[i].id, i);
+    for (RLayer& l : ls) {
+      if (hiddenMatteSources_.contains(l.id)) l.isMatteSource = true;
+    }
     for (std::size_t i = 0; i < ls.size(); ++i) {
       RLayer& l = ls[i];
       if (!l.matte) continue;

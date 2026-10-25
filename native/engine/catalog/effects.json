@@ -24,7 +24,7 @@
         "type": "number",
         "unit": "px",
         "min": 0,
-        "max": 60,
+        "max": 250,
         "default": 16
       },
       {

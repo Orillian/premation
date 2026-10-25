@@ -63,6 +63,8 @@ export function useKeyframeDrag({
     moved: boolean;
     /** Which keyframe the pointer went down on — the grip for Alt time-scaling. */
     grabbedId: string;
+    /** A plain press on a diamond already in a multi-selection: a click collapses the selection to it. */
+    collapseOnClick?: boolean;
   } | null>(null);
   const [kfPreview, setKfPreview] = useState<Map<string, number>>(new Map());
   const kfPreviewRef = useRef<Map<string, number>>(new Map());
@@ -84,8 +86,18 @@ export function useKeyframeDrag({
   const onKeyframeDown = useCallback((kf: TimelineKeyframeRef, e: ReactPointerEvent<HTMLDivElement>, locked = false) => {
     e.stopPropagation();
 
+    // A right (or middle) press: the diamond joins the selection if it is not
+    // in it (the context menu that follows acts on the selection), and that is
+    // all — no drag, and no "click seeks" on release. Treating it as a left
+    // press started a drag and a seek under the menu that was opening.
+    if (e.button !== 0) {
+      if (!selectedKfIds.has(kf.id)) setSelectedKfIds(new Set([kf.id]));
+      return;
+    }
+
     // Compute next selection synchronously to avoid stale closure in drag start
     const nextSel = new Set(selectedKfIds);
+    const wasSelected = nextSel.has(kf.id);
     if (e.shiftKey) {
       if (nextSel.has(kf.id)) nextSel.delete(kf.id);
       else nextSel.add(kf.id);
@@ -105,7 +117,12 @@ export function useKeyframeDrag({
     // Locked layer: the selection above still happens (so the inspector and
     // the graph can show the key), but there is nothing to drag.
     if (locked) return;
-    activeKf.current = { ids: [...times.keys()], times, startX: e.clientX, moved: false, grabbedId: kf.id };
+    // A plain press on a diamond already in a multi-selection keeps the set
+    // for the drag; a CLICK (no move) collapses the selection to that diamond
+    // on release, as AE does — clicking a property name selects every key of
+    // the row, and F9 after a click on one diamond then eased the whole row.
+    const collapseOnClick = !e.shiftKey && wasSelected && nextSel.size > 1;
+    activeKf.current = { ids: [...times.keys()], times, startX: e.clientX, moved: false, grabbedId: kf.id, collapseOnClick };
 
     const emptyPreview = new Map<string, number>();
     kfPreviewRef.current = emptyPreview;
@@ -214,6 +231,7 @@ export function useKeyframeDrag({
         if (onKeyframesMove) onKeyframesMove(moves);
         else for (const m of moves) onKeyframeMove?.(m.keyframeId, m.time);
       } else {
+        if (d.collapseOnClick) setSelectedKfIds(new Set([d.grabbedId]));
         // Click without move → seek to the key that was CLICKED (not the
         // first of a multi-key selection).
         onKeyframeSeek?.(d.grabbedId);

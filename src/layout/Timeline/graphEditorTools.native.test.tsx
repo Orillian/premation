@@ -284,3 +284,17 @@ describe('Easy Ease applies to the key’s own sides, as After Effects does', ()
     expect((await kfAt(1)).bezier?.[3]).toBeCloseTo(2 / 3, 6);
   });
 });
+
+describe('a click on a selected diamond collapses the selection to it', () => {
+  it('keeps the set for a drag but F9 after a click eases one key', async () => {
+    await renderGraph();
+    pick(0);
+    pick(1, true);
+    pick(2, true);
+    expect(useKeyframeSelectionStore.getState().ids.size).toBe(3);
+    // A plain press-and-release on a diamond already in the set: just that one.
+    pick(1);
+    expect(useKeyframeSelectionStore.getState().ids.size).toBe(1);
+    expect(useKeyframeSelectionStore.getState().ids.has(rowSelectionId(NODE, PROP, 1))).toBe(true);
+  });
+});

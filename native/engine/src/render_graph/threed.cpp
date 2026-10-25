@@ -317,6 +317,19 @@ double effect_spread_px(const std::vector<api::RenderEffect>& effects, double la
       s = pos == 1 ? 0 : pos == 2 ? fx.num("widthPx") * 0.5 : fx.num("widthPx");
     } else if (t == "displacement-map") s = fx.num("amount");
     else if (t == "compound-blur") s = fx.num("maxRadiusPx") * kBlurTail;
+    // Distortions push pixels past the layer by their amount (effects_spatial_b
+    // round_twelve packs amount at p[2]; curl-noise packs amount x size / 2 with
+    // 1 / size at p[3]). Without a margin the pass drew inside the layer's own
+    // texture: a 60 px scan bar with a 200 px Turbulent Displace barely
+    // wobbled — AE's shape layer has the whole comp to move in.
+    else if (t == "turbulent-displace" || t == "scatter" || t == "roughen-edges") {
+      const auto p = fx.nums("p");
+      s = p.size() > 2 ? std::abs(p[2]) : 0;
+    } else if (t == "curl-noise") {
+      const auto p = fx.nums("p");
+      s = p.size() > 3 ? std::abs(p[2] * 2 * p[3]) : 0;
+    } else if (t == "wave-warp") s = std::abs(fx.num("height"));
+    else if (t == "ripple") s = std::abs(fx.num("amplitude"));
     // Program E's effects say how far they draw past their input (layer px).
     else if (fx.has("reachPx")) s = std::max(0.0, fx.num("reachPx"));
     mx = std::max(mx, s);

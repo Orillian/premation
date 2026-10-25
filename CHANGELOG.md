@@ -5,6 +5,15 @@ would want to know; the engine-level detail is in `ROADMAP.md`.
 
 ## Unreleased
 
+- **Timeline.** Right-clicking a keyframe opens its menu first time, every
+  time (the press no longer starts a drag and a seek under the menu, and the
+  clip bar's own menu no longer replaces it). A click on a keyframe that is
+  part of a multi-selection selects just that keyframe, as in After Effects,
+  so Easy Ease after clicking one diamond no longer eases the whole row.
+- **Effects.** A track matte's source stays hidden when the layer it mattes
+  is hidden. Turbulent Displace, Curl Noise, Wave Warp, Ripple, Scatter and
+  Roughen Edges get room to push pixels past the layer instead of being
+  clipped to its box. Glow radius goes to 250 px.
 - **Graph editor.** Dragging a keyframe or a handle no longer blinks: the
   focused key, its handles and the numeric strip stay put through the drag,
   the curve follows the keys instead of snapping between the old and new

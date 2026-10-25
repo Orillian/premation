@@ -342,6 +342,8 @@ interface DragState {
   keyIds?: Map<number, string>;
   /** The handle drag's own key, by engine id (its stored time changes under a drag). */
   keyId?: string;
+  /** A plain press on a diamond already in a multi-selection: a click (no move) collapses the selection to it. */
+  collapseOnClick?: boolean;
   /** Diamond drag: each group member's engine key id (parallel to `group`). */
   groupEids?: Array<string | undefined>;
   /** Diamond drag: each group member's selection id at pointer-down (parallel to `group`). */
@@ -1264,6 +1266,10 @@ export function GraphEditor({
     } else if (d.gesture) {
       // Nothing sent (a click on a diamond or a handle) → nothing recorded.
       void (d.moved ? d.gesture.end() : d.gesture.cancel());
+      if (!d.moved && d.collapseOnClick && d.kind === 'kf') {
+        const sel = d.groupSelIds?.[d.grabIndex ?? 0];
+        if (sel) setSelectedKfIds(new Set([sel]));
+      }
     }
     try {
       if (svgRef.current?.hasPointerCapture(d.pointerId)) svgRef.current.releasePointerCapture(d.pointerId);
@@ -1275,7 +1281,7 @@ export function GraphEditor({
     setDragging(false);
     setGraphSnap(null);
     setRefitTick((n) => n + 1);
-  }, [onZoom, onScrollChange, pps, viewportW]);
+  }, [onZoom, onScrollChange, pps, viewportW, setSelectedKfIds]);
 
   // Start dragging a keyframe diamond. Shift-click toggles multi-select (same
   // set the timeline / F9 commands use); plain click focuses and replaces the
@@ -1286,6 +1292,7 @@ export function GraphEditor({
       if (e.button !== 0) return;
       const id = kf.selId;
       const next = new Set(selectedKfIds);
+      const wasSelected = next.has(id);
       if (e.shiftKey) {
         if (next.has(id)) next.delete(id);
         else next.add(id);
@@ -1295,6 +1302,9 @@ export function GraphEditor({
       }
       setSelectedKfIds(next);
       setSelectedKf({ nodeId: kf.nodeId, prop: kf.prop, t: kf.t, keyId: kf.keyId });
+      // A click on a diamond already in a multi-selection selects just it on
+      // release (AE); a DRAG keeps the set and moves it as one body.
+      const collapseOnClick = !e.shiftKey && wasSelected && next.size > 1;
 
       // Snapshot the moving body at pointer-down (origin+delta). Prefer the
       // multi-selection when the grab is already in it; otherwise just the grab.
@@ -1358,6 +1368,7 @@ export function GraphEditor({
         // The mirror's engine ids, so the FIRST move already writes (a drag
         // whose first moves were dropped while the ids resolved lagged, then jumped).
         ...(groupKeyIds.every((id) => id !== undefined) ? { groupEids: groupKeyIds } : {}),
+        collapseOnClick,
         startKeys: group.map((m) => memberKeyStart(m.nodeId, m.prop, m.startT)),
         fixedTimes,
       });

@@ -149,3 +149,65 @@ TEST_CASE("layerView of a layer that is not in the comp draws nothing", "[scene]
   const sc::Snapshot s = f.build(sc::BuildContext::LayerView{"nope", true, std::nullopt});
   CHECK(s.layers.empty());
 }
+
+namespace {
+
+// Three top-level layers: `logo` draws; `scanned` is a HIDDEN copy matted by `bar`
+// (an explicit alpha matte); `bar` has its eye on.
+const char* kHiddenMatteProject = R"json({
+  "version":"1.9.0",
+  "scene":{"version":"1.0.0","nodes":[
+    {"id":"comp_root","name":"Composition 1","parent":null,"children":["bar","scanned","logo"],
+     "transform":{"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}},"visible":true,"locked":false,
+     "components":[{"id":"comp_root_meta","type":"group","props":{"__kind":"group"}}]},
+    {"id":"bar","name":"bar","children":[],"parent":"comp_root",
+     "transform":{"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}},
+     "components":[
+       {"id":"bar_t","type":"Transform","props":{"__kind":"shape","x":100,"y":100,"rotation":0,"width":30,"height":200}},
+       {"id":"bar_s","type":"Style","props":{"opacity":100,"fill":"#fff"}},
+       {"id":"bar_fx","type":"fx","props":{"solid":true,"fill":"#ffffff"}}],
+     "visible":true,"locked":false},
+    {"id":"scanned","name":"scanned","children":[],"parent":"comp_root",
+     "transform":{"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}},
+     "components":[
+       {"id":"scanned_t","type":"Transform","props":{"__kind":"shape","x":160,"y":110,"rotation":0,"width":300,"height":80}},
+       {"id":"scanned_s","type":"Style","props":{"opacity":100,"fill":"#fff"}},
+       {"id":"scanned_fx","type":"fx","props":{"solid":true,"fill":"#ffffff","matte":{"mode":"alpha","inverted":false,"sourceId":"bar"}}}],
+     "visible":false,"locked":false},
+    {"id":"logo","name":"logo","children":[],"parent":"comp_root",
+     "transform":{"position":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}},
+     "components":[
+       {"id":"logo_t","type":"Transform","props":{"__kind":"shape","x":160,"y":110,"rotation":0,"width":300,"height":80}},
+       {"id":"logo_s","type":"Style","props":{"opacity":100,"fill":"#fff"}},
+       {"id":"logo_fx","type":"fx","props":{"solid":true,"fill":"#ffffff"}}],
+     "visible":true,"locked":false}
+  ]},
+  "comps":{"comp_root":{"id":"comp_root","name":"comp_root","width":320,"height":220,"fps":30,"durationSeconds":10,"background":"#0c0c12"}},
+  "motionBlur":{"enabled":false,"shutterAngle":180,"shutterPhase":-90,"samples":8,"adaptiveSampleLimit":128},
+  "openTabs":{"tabOrder":["tab1"],"activeTabId":"tab1","tabs":{"tab1":{"id":"tab1","compositionId":"comp_root","breadcrumbPath":["comp_root"],"title":"comp_root","time":0,"frame":0}}}
+})json";
+
+}  // namespace
+
+TEST_CASE("a matte source stays a matte when the layer it mattes is hidden", "[scene][matte]") {
+  // AE keeps a track-matte layer's video off whatever its consumer does. With
+  // `scanned` hidden the walk never saw its matte, so `bar` drew as a plain
+  // layer — the scan bar of a logo reveal popped into the frame.
+  doc::Document d;
+  doc::EditorView view;
+  doc::ExprCache cache;
+  const auto parsed = premation::js::parse(kHiddenMatteProject);
+  REQUIRE(parsed.has_value());
+  (void)doc::restore_document(d, view, *parsed, {});
+  const doc::DocExprEnv env(d, view, cache);
+  sc::BuildContext ctx{d, view, env, cache, nullptr, {}};
+  const sc::SnapshotComp comp = sc::snapshot_comp_of(d, "comp_root");
+  const sc::Snapshot s = sc::build_snapshot(ctx, comp, 0, std::nullopt);
+  const sc::RLayer* bar = layer(s, "bar");
+  REQUIRE(bar != nullptr);
+  CHECK(bar->isMatteSource);
+  const sc::RLayer* logo = layer(s, "logo");
+  REQUIRE(logo != nullptr);
+  CHECK_FALSE(logo->isMatteSource);
+  CHECK(logo->visible);
+}

@@ -102,6 +102,9 @@ export const Keyframes = memo(function Keyframes({
             onPointerDown={(e) => onKeyframeDown(kf, e, locked)}
             onContextMenu={(e) => {
               e.preventDefault();
+              // Stopped: the clip bar under the diamond opens ITS menu on the
+              // same event, replacing the keyframe's the moment it opened.
+              e.stopPropagation();
               onKeyframeContextMenu?.(kf.id, e.clientX, e.clientY);
             }}
             // The value is looked up on HOVER, not on render: a title with the

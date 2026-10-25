@@ -225,7 +225,7 @@ double baked_effect_spread(const RLayer& l) {
   if (!layer_is_baked(l)) return 0;
   if (l.effects.empty()) return 0;
   constexpr double kBlurExtent = 3.5;  // blur.wgsl's reach in σ
-  constexpr double kMaxEffectPad = 256;
+  constexpr double kMaxEffectPad = 512;
   double spread = 0;
   for (const Json& e : l.effects) {
     if (!effect_enabled(e)) continue;
@@ -247,6 +247,14 @@ double baked_effect_spread(const RLayer& l) {
     else if (t == "path-stroke") s = n("brushSize") / 2 + 1;
     else if (t == "scribble") s = n("edgeWidth") + n("strokeWidth") + 2 * n("spacing");
     else if (t == "write-on") s = n("writeOnMode") == 0 ? n("brushSize") / 2 + 1 : 0;
+    // Distortions push pixels past the layer by their amount: without this
+    // pad the CPU kernel displaced inside the layer's own raster and the
+    // result was clipped to a box (a 60 px scan bar with a 200 px Turbulent
+    // Displace barely wobbled — AE's shape layer has the whole comp to move in).
+    else if (t == "turbulent-displace" || t == "curl-noise" || t == "scatter" || t == "displacement-map") s = std::abs(n("amount"));
+    else if (t == "wave-warp") s = std::abs(n("waveHeight"));
+    else if (t == "ripple") s = std::abs(n("amplitude"));
+    else if (t == "roughen-edges") s = std::abs(n("border"));
     // A JS plugin effect's declared reach (pluginEffectSpreadPx) is outside the
     // port (G2); the snapshot reports the effect.
     if (s > spread) spread = s;
