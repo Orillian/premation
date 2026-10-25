@@ -34,7 +34,8 @@ import { memo, useSyncExternalStore, type CSSProperties } from 'react';
 
 import { usePreferenceStore } from '@stores/preferenceStore';
 
-import { DRAWN_ICONS, DRAWN_ICON_VIEWBOX, PIXEL_ICON_NAMES, PIXEL_ICON_VIEWBOX } from './drawnIcons';
+import { DRAWN_ICONS, DRAWN_ICON_VIEWBOX, PIXEL_ICON_NAMES } from './drawnIcons';
+import { PIXEL_ICONS, type PixelSize } from './pixelIcons.generated';
 import { ICON_NAMES, type IconName } from './iconNames';
 import { SHARP_ICON_PATHS, SHARP_ICON_VIEWBOX } from './sharpIconPaths';
 
@@ -217,14 +218,14 @@ function IconInner({
   }
 
   const glyph = SHARP_ICON_PATHS[name];
-  // The chrome set (drawnIcons.ts PIXEL_ICON_NAMES): drawn at the box's size
-  // with a HAIRLINE — the stroke is one screen pixel whatever the box, and the
-  // outline is anti-aliased (geometricPrecision), the look of the icon sheet's
-  // cards. Snapping the drawing to 16 px made the glyphs small and dim next to
-  // the chrome around them (owner, 2026-10-26).
+  // The chrome set (drawnIcons.ts PIXEL_ICON_NAMES): PIXEL_ICONS holds each
+  // glyph optically sized and pixel-snapped at 16, 24 and 32 px; the box picks
+  // the nearest table below it and the drawing sits centred in the box. So a
+  // tool-bar glyph (a 26 px box) is the 24 px drawing with its 1 px strokes on
+  // whole pixels; a row glyph (16) the 16 px one (owner, 2026-10-26).
   if (PIXEL_ICON_NAMES.has(name)) {
-    const px = computedSize;
-    const hairline = 16 / Math.max(1, computedSize);
+    const px: PixelSize = computedSize >= 30 ? 32 : computedSize >= 22 ? 24 : 16;
+    const table = PIXEL_ICONS[name === 'diamond' ? 'keyframe' : name];
     return (
       <span
         className={className}
@@ -236,16 +237,15 @@ function IconInner({
         <svg
           width={px}
           height={px}
-          viewBox={PIXEL_ICON_VIEWBOX}
+          viewBox={`0 0 ${px} ${px}`}
           fill="none"
           stroke="currentColor"
-          strokeWidth={hairline}
+          strokeWidth={1}
           strokeLinecap="square"
           strokeLinejoin="miter"
-          shapeRendering="geometricPrecision"
           xmlns="http://www.w3.org/2000/svg"
-          // Authored markup from drawnIcons.ts, never input.
-          dangerouslySetInnerHTML={{ __html: DRAWN_ICONS[name] ?? '' }}
+          // Generated markup (pixelIcons.generated.ts), never input.
+          dangerouslySetInnerHTML={{ __html: table?.[px] ?? DRAWN_ICONS[name] ?? '' }}
         />
       </span>
     );

@@ -66,20 +66,24 @@ describe('the icon vocabulary resolves to geometry', () => {
     expect(svg?.children.length).toBeGreaterThan(0);
   });
 
-  it('draws the chrome set on its 16 grid at the box size with a one-pixel hairline', () => {
-    // The AE-style chrome glyphs: whatever the box, the stroke is one screen
-    // pixel (16 / size in grid units) and the outline is anti-aliased.
-    const { container } = render(<Icon name="pen" size="sm" />);
-    const svg = container.querySelector('svg');
-    expect(svg?.getAttribute('viewBox')).toBe('0 0 16 16');
-    expect(svg?.getAttribute('width')).toBe('16');
-    expect(svg?.getAttribute('stroke-width')).toBe('1');
-    expect(svg?.getAttribute('shape-rendering')).toBe('geometricPrecision');
+  it('draws the chrome set from its pixel-snapped table for the box: 16, 24 or 32 px', () => {
+    // A row glyph (sm = 16) takes the 16 px drawing; a tool-bar glyph (lg = 26)
+    // the 24 px one; a display box the 32 px one. Strokes are always 1 px.
+    const small = render(<Icon name="pen" size="sm" />).container.querySelector('svg');
+    expect(small?.getAttribute('viewBox')).toBe('0 0 16 16');
+    expect(small?.getAttribute('width')).toBe('16');
+    expect(small?.getAttribute('stroke-width')).toBe('1');
+    const tool = render(<Icon name="pen" size="lg" />).container.querySelector('svg');
+    expect(tool?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(tool?.getAttribute('width')).toBe('24');
     const displaySize = 32;
-    const big = render(<Icon name="pen" size={displaySize} />);
-    const bigSvg = big.container.querySelector('svg');
-    expect(bigSvg?.getAttribute('width')).toBe('32');
-    expect(bigSvg?.getAttribute('stroke-width')).toBe('0.5');
+    const big = render(<Icon name="pen" size={displaySize} />).container.querySelector('svg');
+    expect(big?.getAttribute('viewBox')).toBe('0 0 32 32');
+    // Every snapped stroke coordinate sits on a half pixel (a crisp 1 px line).
+    const d = tool?.querySelector('path')?.getAttribute('d') ?? '';
+    const coords = d.match(/-?\d*\.?\d+/g) ?? [];
+    expect(coords.length).toBeGreaterThan(4);
+    for (const c of coords) expect(Math.abs((parseFloat(c) * 2) % 1)).toBeLessThan(1e-6);
   });
 
   it('has a path for exactly the declared names, no more and no fewer', () => {

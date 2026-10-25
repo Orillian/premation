@@ -830,7 +830,7 @@ export function TopNav(): JSX.Element {
                     title={snap ? t('topNav.snap.on', 'Snapping ON — Magnetically snaps layers & playhead (Click to disable)') : t('topNav.snap.off', 'Snapping OFF — Click to enable magnetic snapping')}
                     onClick={toggleSnap}
                   >
-                    <Icon name="magnet" size="md" />
+                    <Icon name="magnet" size="lg" />
                   </button>
                 </div>
               </>

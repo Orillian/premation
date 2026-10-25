@@ -92,7 +92,7 @@ export function ToolFlyout({ icon, label, title, shortcut, active, disabled, ite
           disabled={disabled}
           data-tour={dataTour}
         >
-          <Icon name={icon} size="md" />
+          <Icon name={icon} size="lg" />
           <Icon name="chevron-down" size="sm" className={styles.chevron} />
         </button>
       }

@@ -52,6 +52,7 @@
     "feature-counts": "node scripts/featureCounts.cjs",
     "fetch:objectmatte": "node scripts/fetchObjectMatte.cjs",
     "icons:generate": "node scripts/generate-sharp-icons.mjs",
+    "icons:pixel": "npx electron scripts/icons/measure-pixel-icons.cjs scripts/icons/pixel-bbox.json && node scripts/icons/generate-pixel-icons.cjs scripts/icons/pixel-bbox.json src/components/Icon/pixelIcons.generated.ts",
     "native:configure": "node scripts/native.mjs configure",
     "native:build": "node scripts/native.mjs build",
     "native:test": "node scripts/native.mjs test",
