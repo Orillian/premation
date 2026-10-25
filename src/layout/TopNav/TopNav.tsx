@@ -740,7 +740,7 @@ export function TopNav(): JSX.Element {
                 noScroll
                 trigger={
                   <button type="button" className={styles.toolDropdownTrigger} aria-label={t('topNav.newLayer.aria', 'New layer')} aria-haspopup="menu" title={t('topNav.newLayer.title', 'New Layer (Shape, Text, Solid, Null, Camera, Light, 3D…)')}>
-                    <Icon name="layer-plus" size="md" />
+                    <Icon name="layer-plus" size="lg" />
                     <span className={styles.flyoutMark} aria-hidden />
                   </button>
                 }
@@ -808,7 +808,7 @@ export function TopNav(): JSX.Element {
                       title={selectedId ? t('topNav.animate.title', 'Animation presets & rigging (Easy Ease, Typewriter, Bounce, Rig)…') : t('topNav.animate.titleNoSelection', 'Select a layer to apply animation presets')}
                       disabled={!selectedId}
                     >
-                      <Icon name="magic-wand" size="md" />
+                      <Icon name="magic-wand" size="lg" />
                       <span className={styles.flyoutMark} aria-hidden />
                     </button>
                   }
@@ -855,7 +855,7 @@ export function TopNav(): JSX.Element {
                     placement="bottom-end"
                     trigger={
                       <button type="button" className={styles.tool} aria-label={t('topNav.moreTools', 'More tools')} aria-haspopup="menu" title={t('topNav.moreTools', 'More tools')}>
-                        <Icon name="more-horizontal" size="md" />
+                        <Icon name="more-horizontal" size="lg" />
                       </button>
                     }
                     items={overflowItems}
@@ -877,7 +877,7 @@ export function TopNav(): JSX.Element {
                     disabled={!canUndo}
                     onClick={() => performUndo()}
                   >
-                    <Icon name="undo" size="md" />
+                    <Icon name="undo" size="lg" />
                   </button>
                   <button
                     type="button"
@@ -887,7 +887,7 @@ export function TopNav(): JSX.Element {
                     disabled={!canRedo}
                     onClick={() => performRedo()}
                   >
-                    <Icon name="redo" size="md" />
+                    <Icon name="redo" size="lg" />
                   </button>
                 </div>
               </>

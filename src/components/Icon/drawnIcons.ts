@@ -232,6 +232,7 @@ export const PIXEL_ICON_NAMES: ReadonlySet<IconName> = new Set<IconName>([
   'more-horizontal',
   'pan-camera',
   'perspective',
+  'ground-grid',
 ]);
 export const PIXEL_ICON_VIEWBOX = '0 0 16 16';
 

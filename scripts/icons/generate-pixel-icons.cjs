@@ -17,7 +17,33 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const FLUENT = path.join(ROOT, 'node_modules', '@fluentui', 'svg-icons', 'icons');
 const CODICONS = path.join(ROOT, 'node_modules', '@vscode', 'codicons', 'src', 'icons');
-const SIZES = [16, 20];
+// Measured ink extent (max of width / height, px) of each glyph's own drawing
+// at the 20 and 24 grids - getBBox in the running app (2026-10-26). The tool
+// bar box (lg) takes whichever grid lands nearer INK_TARGET, so a T, a square
+// or three dots read the same size as a circle or a cube beside them: the
+// owner's rule that same-size boxes are not same-size icons. Rows keep 16.
+const INK_TARGET = 16.5;
+const INK = {
+  'mouse-pointer': [16, 20], hand: [16, 20], 'zoom-in': [15, 19], 'zoom-out': [15, 19], orbit: [18, 0], rotate: [14, 18],
+  'pan-behind': [16, 20], square: [14, 18], circle: [16, 20], star: [16, 20], pen: [16, 20], type: [14, 16], brush: [16, 20],
+  eraser: [16, 20], 'puppet-pin': [15, 18.9], magnet: [15, 18], search: [15, 19], composition: [16, 20], video: [16, 20],
+  solid: [15.9, 19.9], audio: [16, 20], 'audio-off': [16, 20], shape: [16, 20], adjustment: [16, 20.1], camera: [16, 20],
+  light: [16, 20], 'folder-plus': [17, 21], trash: [16.5, 20.5], menu: [16, 20.1], close: [12, 15.5], 'chevron-down': [12.1, 16],
+  'chevron-up': [12, 16], 'chevron-left': [12, 16], 'chevron-right': [12, 16], grid: [16, 18], eye: [15.5, 19.4], 'eye-off': [16, 20],
+  lock: [17, 21], unlock: [17, 21], stopwatch: [16, 19.5], keyframe: [18, 22], 'skip-back': [14, 18], 'skip-forward': [14, 18],
+  loop: [16, 20.1], 'motion-blur': [16, 18], shy: [16, 20], '3d': [16, 20], 'draft-3d': [14, 18], 'graph-value': [16, 20],
+  'graph-speed': [16, 18], marker: [16, 19], 'align-left': [16, 20], 'align-center': [16, 20], 'align-right': [16, 20],
+  'align-top': [16, 20], 'align-middle': [16, 20], 'align-bottom': [16, 20], 'distribute-horizontal': [0, 0], 'distribute-vertical': [0, 0],
+  'mask-square': [14, 18], 'mask-circle': [16, 20], 'mask-pen': [14, 18], 'mask-feather': [16, 20], undo: [16, 20], redo: [16, 20],
+  'gizmo-universal': [16, 20], 'gizmo-position': [16, 20], 'gizmo-scale': [14, 18], 'gizmo-rotation': [14, 18], 'axis-local': [16, 20],
+  'axis-world': [16, 20], 'axis-view': [15.5, 19.4], cube: [16.9, 0], 'layer-plus': [14, 18], 'magic-wand': [16, 18.9],
+  'more-horizontal': [12.5, 15.5], 'pan-camera': [16, 20], perspective: [14, 18], 'ground-grid': [14, 17],
+};
+function lgGrid(n) {
+  const [at20, at24] = INK[n] ?? [16, 0];
+  if (!at24) return 20;
+  return Math.abs(at24 - INK_TARGET) < Math.abs(at20 - INK_TARGET) ? 24 : 20;
+}
 
 // chrome name → Fluent glyph name (regular weight). A `{16, 20}` object names a
 // different glyph per grid; a `codicon:` prefix takes the glyph from Codicons
@@ -103,6 +129,7 @@ const MAP = {
   'more-horizontal': 'more_horizontal',
   'pan-camera': 'hand_left',
   'perspective': 'arrow_expand',
+  'ground-grid': 'grid_dots',
 };
 
 function body(file) {
@@ -114,6 +141,10 @@ function glyph(spec, size) {
   if (name.startsWith('codicon:')) {
     const b = body(path.join(CODICONS, name.slice(8) + '.svg'));
     return size === 16 ? b : `<g transform="scale(${size / 16})">${b}</g>`;
+  }
+  if (typeof spec !== 'string' && !spec[size] && size === 24) {
+    // A per-grid spec names 16 and 20 only; the 24 grid takes the 20 name.
+    return glyph(spec[20], size);
   }
   const file = path.join(FLUENT, `${name}_${size}_regular.svg`);
   if (fs.existsSync(file)) return body(file);
@@ -136,16 +167,19 @@ let ts = `/**
  */
 import type { IconName } from './iconNames';
 
-export const PIXEL_SIZES = [16, 20] as const;
-export type PixelSize = (typeof PIXEL_SIZES)[number];
+/** One drawing: the grid it is drawn on (also its box in px) and its markup. */
+export interface PixelGlyph { px: 16 | 20 | 24; m: string }
 
-export const PIXEL_ICONS: Partial<Record<IconName, Record<PixelSize, string>>> = {
+/** sm: rows, switches, panel chrome (16 grid). lg: the tool bar (20 or 24 grid, by ink). */
+export const PIXEL_ICONS: Partial<Record<IconName, { sm: PixelGlyph; lg: PixelGlyph }>> = {
 `;
 for (const [n, spec] of Object.entries(MAP)) {
+  const lg = lgGrid(n);
   ts += `  '${n}': {\n`;
-  for (const S of SIZES) ts += `    ${S}: '${glyph(spec, S).replace(/'/g, "\\'")}',\n`;
+  ts += `    sm: { px: 16, m: '${glyph(spec, 16).replace(/'/g, "\\'")}' },\n`;
+  ts += `    lg: { px: ${lg}, m: '${glyph(spec, lg).replace(/'/g, "\\'")}' },\n`;
   ts += `  },\n`;
 }
 ts += `};\n`;
 fs.writeFileSync(out, ts.replace(/\r?\n/g, '\r\n'));
-console.log('generated', Object.keys(MAP).length, 'glyphs ×', SIZES.join('/'));
+console.log('generated', Object.keys(MAP).length, 'glyphs;', Object.keys(MAP).filter((n) => lgGrid(n) === 24).length, 'on the 24 grid in the tool bar');

@@ -35,7 +35,7 @@ import { memo, useSyncExternalStore, type CSSProperties } from 'react';
 import { usePreferenceStore } from '@stores/preferenceStore';
 
 import { DRAWN_ICONS, DRAWN_ICON_VIEWBOX, PIXEL_ICON_NAMES } from './drawnIcons';
-import { PIXEL_ICONS, type PixelSize } from './pixelIcons.generated';
+import { PIXEL_ICONS, type PixelGlyph } from './pixelIcons.generated';
 import { ICON_NAMES, type IconName } from './iconNames';
 import { SHARP_ICON_PATHS, SHARP_ICON_VIEWBOX } from './sharpIconPaths';
 
@@ -224,8 +224,9 @@ function IconInner({
   // is drawn at exactly its grid size, centred in the box, so nothing is ever
   // scaled and every outline is the family's 1 px line (owner, 2026-10-26).
   if (PIXEL_ICON_NAMES.has(name)) {
-    const px: PixelSize = computedSize >= 22 ? 20 : 16;
     const table = PIXEL_ICONS[name === 'diamond' ? 'keyframe' : name];
+    const g: PixelGlyph | undefined = computedSize >= 22 ? table?.lg : table?.sm;
+    const px = g?.px ?? 16;
     return (
       <span
         className={className}
@@ -241,7 +242,7 @@ function IconInner({
           fill="currentColor"
           xmlns="http://www.w3.org/2000/svg"
           // Generated markup (pixelIcons.generated.ts), never input.
-          dangerouslySetInnerHTML={{ __html: table?.[px] ?? '' }}
+          dangerouslySetInnerHTML={{ __html: g?.m ?? '' }}
         />
       </span>
     );

@@ -67,10 +67,11 @@ describe('the icon vocabulary resolves to geometry', () => {
     expect(svg?.children.length).toBeGreaterThan(0);
   });
 
-  it('draws the chrome set from the Fluent table for the box: the 16 or the 20 grid', () => {
+  it('draws the chrome set from the Fluent table for the box: the 16 grid, or the 20 / 24 grid by ink', () => {
     // A row glyph (sm = 16) takes the family's 16-grid drawing; a tool-bar glyph
-    // (lg = 26) its 20-grid drawing. Both are filled outlines drawn at exactly
-    // their own grid size: no stroke attributes, no scaling.
+    // (lg = 26) its 20-grid drawing, or the 24-grid one when that puts its ink
+    // nearer the bar's common size (a T, a square). Filled outlines drawn at
+    // exactly their own grid size: no stroke attributes, no scaling.
     const small = render(<Icon name="pen" size="sm" />).container.querySelector('svg');
     expect(small?.getAttribute('viewBox')).toBe('0 0 16 16');
     expect(small?.getAttribute('width')).toBe('16');
@@ -79,12 +80,16 @@ describe('the icon vocabulary resolves to geometry', () => {
     const tool = render(<Icon name="pen" size="lg" />).container.querySelector('svg');
     expect(tool?.getAttribute('viewBox')).toBe('0 0 20 20');
     expect(tool?.getAttribute('width')).toBe('20');
-    expect(tool?.querySelector('path')?.getAttribute('d')).not.toBe(small?.querySelector('path')?.getAttribute('d'));
-    // Every chrome name has both drawings.
+    const thin = render(<Icon name="type" size="lg" />).container.querySelector('svg');
+    expect(thin?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(thin?.getAttribute('width')).toBe('24');
+    // Every chrome name has both drawings, each on its own grid.
     for (const n of PIXEL_ICON_NAMES) {
       const t = PIXEL_ICONS[n === 'diamond' ? 'keyframe' : n];
-      expect(t?.[16]).toBeTruthy();
-      expect(t?.[20]).toBeTruthy();
+      expect(t?.sm.px).toBe(16);
+      expect(t?.sm.m).toBeTruthy();
+      expect([20, 24]).toContain(t?.lg.px);
+      expect(t?.lg.m).toBeTruthy();
     }
   });
 

@@ -204,7 +204,7 @@ export function SceneControls(): JSX.Element {
             aria-label={t('sceneControls.toolbar.cameraTool', 'Camera tool')}
             title={cameraToolTitle(cameraTool)}
           >
-            <Icon name={armedCamera?.icon ?? 'orbit'} size="md" />
+            <Icon name={armedCamera?.icon ?? 'orbit'} size="lg" />
             <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
@@ -229,7 +229,7 @@ export function SceneControls(): JSX.Element {
             aria-label={t('sceneControls.toolbar.gizmoMode', 'Gizmo mode')}
             title={t('sceneControls.gizmo.title', 'Gizmo mode — {label}', { label: gizmo.label })}
           >
-            <Icon name={gizmo.icon} size="md" />
+            <Icon name={gizmo.icon} size="lg" />
             <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
@@ -249,7 +249,7 @@ export function SceneControls(): JSX.Element {
             title={a.label}
             onClick={() => setGizmo3dAxisMode(a.id)}
           >
-            <Icon name={a.icon} size="md" />
+            <Icon name={a.icon} size="lg" />
           </button>
         ))}
       </div>
@@ -265,7 +265,7 @@ export function SceneControls(): JSX.Element {
         title={t('sceneControls.toolbar.draft3dAmbientKeyLight', 'Draft 3D — ambient + key light only; no shadows, SSAO, DOF or reflections')}
         onClick={() => toggleDraft3d()}
       >
-        <Icon name="draft-3d" size="md" />
+        <Icon name="draft-3d" size="lg" />
       </button>
       <button
         type="button"
@@ -275,7 +275,7 @@ export function SceneControls(): JSX.Element {
         title={t('sceneControls.toolbar.n3dGroundPlane', '3D ground plane')}
         onClick={() => toggleGroundGridVisible()}
       >
-        <Icon name="ground-grid" size="md" />
+        <Icon name="ground-grid" size="lg" />
       </button>
 
       {/*
@@ -336,7 +336,7 @@ export function SceneControls(): JSX.Element {
             aria-label={t('sceneControls.toolbar.n3dViewOptions', '3D view options')}
             title={t('sceneControls.toolbar.n3dViewExtendedViewerLayer', '3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane')}
           >
-            <Icon name="cube" size="md" />
+            <Icon name="cube" size="lg" />
             <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
