@@ -182,7 +182,10 @@ export function applyKeyframeVelocity(
   for (const n of tracks) {
     const incoming = incomingSegment(n.keyframes, n.index);
     const prev = n.keyframes[n.index - 1];
-    if (incoming && prev) {
+    // A hold segment has no arrival to shape: writing a bezier onto its key
+    // would turn the hold into a ramp.
+    const prevHold = !!prev && ((prev as { easing?: string }).easing === 'hold' || (prev as { easing?: string }).easing === 'step');
+    if (incoming && prev && !prevHold) {
       let b = withIncomingInfluence(incoming.bezier, incoming.dv, incoming.dt, v.inInfluence);
       b = withIncomingSpeed(b, incoming.dv, incoming.dt, v.inSpeed);
       // The incoming half belongs to the PREVIOUS keyframe.

@@ -10,10 +10,19 @@ import { scaleSelection, scaleGrip } from './keyframeTimeScale';
 import type { TimelineModel, TimelineKeyframeRef } from './TimelineModel';
 import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { snapForDrag } from './snapCommands';
+import { documentMirror } from '@stores/documentMirror';
+import { resolveSelectionKey } from '@core/mirror/keySelection';
+import { flicksToSeconds } from '@motion/engine-api';
 import { keyframeDragLines, keyframeValues } from './keyframeTooltip';
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react';
 import type { DragHudState } from './DragHudOverlay';
 import type { TimelineProps } from './Timeline';
+
+/** A selected key's comp time from the document mirror (undefined when the id no longer resolves). */
+function mirrorKeyTime(id: string): number | undefined {
+  const r = resolveSelectionKey(documentMirror(), id);
+  return r ? flicksToSeconds(r.key.time) : undefined;
+}
 
 export interface UseKeyframeDragArgs {
   model: TimelineModel;
@@ -85,15 +94,18 @@ export function useKeyframeDrag({
     }
     setSelectedKfIds(nextSel);
 
+    // Every selected key's time: the lanes' own map, else the mirror (a key
+    // selected in the graph editor, or on a collapsed row, is not in the
+    // lanes' map — it used to be dragged from time 0 and committed there).
     const times = new Map<string, number>();
     for (const id of nextSel) {
-      const t = id === kf.id ? kf.time : (kfTimeById.get(id) ?? 0);
-      times.set(id, t);
+      const t = id === kf.id ? kf.time : (kfTimeById.get(id) ?? mirrorKeyTime(id));
+      if (t !== undefined) times.set(id, t);
     }
     // Locked layer: the selection above still happens (so the inspector and
     // the graph can show the key), but there is nothing to drag.
     if (locked) return;
-    activeKf.current = { ids: [...nextSel], times, startX: e.clientX, moved: false, grabbedId: kf.id };
+    activeKf.current = { ids: [...times.keys()], times, startX: e.clientX, moved: false, grabbedId: kf.id };
 
     const emptyPreview = new Map<string, number>();
     kfPreviewRef.current = emptyPreview;

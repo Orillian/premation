@@ -45,6 +45,7 @@ import { memberKeyIndexAt, memberKeyOf, memberKeysOf, type MemberKey, type Store
 import { resolveSelectionKey, selectionLayerOf, storedTimeOf } from '@core/mirror/keySelection';
 import { numbersOfValue, type TrackRef as MirrorTrackRef } from '@core/mirror/trackIndex';
 import { documentMirror } from '@stores/documentMirror';
+import { effectiveBezier } from './speedGraph';
 import { isDataProperty } from './buildPropertyRows';
 
 /** One MEMBER track's key by its stored time — the member-level editors' address (`id` is the caller's own key). */
@@ -259,7 +260,69 @@ export async function easeKeyframes(
 
 /** A preset (Easy Ease, Hold, an ease-library curve) on keys — F9, the pills, the graph grid. */
 export function easePresetOnKeys(uiIds: ReadonlyArray<string>, preset: EasingPreset): Promise<void> {
+  if (preset === 'Ease' || preset === 'EaseIn' || preset === 'EaseOut') return easeSidesOnKeys(uiIds, preset);
   return easeKeyframes(uiIds, presetCurve(preset), `Set keyframe easing: ${preset}`);
+}
+
+const isHoldKind = (e: string | undefined): boolean => e === 'hold' || e === 'step';
+
+/**
+ * Easy Ease (F9), Easy Ease In (Shift+F9) and Easy Ease Out (Ctrl+Shift+F9)
+ * as After Effects applies them: to the key's own SIDES, not to a segment.
+ * A key's incoming ease lives on the previous key's handles (x2, y2 of the
+ * segment that arrives) and its outgoing ease on its own (x1, y1). Writing the
+ * whole [1/3, 0, 2/3, 1] onto the key eased its departure AND the arrival of
+ * the next key (which was not selected), and left the key's own arrival as it
+ * was — F9 on the last key of a move did nothing you could see, and Ease In /
+ * Ease Out came out the wrong way round.
+ */
+async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'EaseIn' | 'EaseOut'): Promise<void> {
+  if (uiIds.length === 0) return;
+  const targets = await resolveSelection(uiIds);
+  if (!targets) return;
+  const m = documentMirror();
+  // Per engine key: the handles to write, seeded from the key's current ease
+  // the first time it is touched (a key can be both "K" and "the previous key").
+  const planned = new Map<string, { bz: [number, number, number, number]; hold: boolean }>();
+  const seed = (eid: string, key: MemberKey): { bz: [number, number, number, number]; hold: boolean } => {
+    let p = planned.get(eid);
+    if (!p) {
+      // A COPY: effectiveBezier hands back the shared named-easing table entry.
+      p = { bz: [...effectiveBezier(key)] as [number, number, number, number], hold: isHoldKind(key.easing) };
+      planned.set(eid, p);
+    }
+    return p;
+  };
+  const seen = new Set<string>();
+  for (const id of uiIds) {
+    const tgt = targets.get(id);
+    const eid = tgt?.expected;
+    if (!tgt || !eid || seen.has(eid)) continue;
+    seen.add(eid);
+    const keys = memberKeysOf(m, tgt.ref.layer, tgt.member, storedTimeOf(tgt.ref.layer))?.keys ?? [];
+    const i = keys.findIndex((k) => k.key.id === eid);
+    const key = i >= 0 ? keys[i]! : tgt.key;
+    const prev = i > 0 ? keys[i - 1]! : undefined;
+    const next = i >= 0 && i < keys.length - 1 ? keys[i + 1] : undefined;
+    if ((preset === 'Ease' || preset === 'EaseOut') && next) {
+      const p = seed(eid, key);
+      p.bz[0] = 1 / 3;
+      p.bz[1] = 0;
+      p.hold = false;  // AE: easing a hold key's departure makes it a bezier key
+    }
+    if ((preset === 'Ease' || preset === 'EaseIn') && prev && !isHoldKind(prev.easing)) {
+      const p = seed(prev.key.id, prev);
+      p.bz[2] = 2 / 3;
+      p.bz[3] = 1;
+    }
+  }
+  const patches: KeyframePatch[] = [];
+  for (const [eid, p] of planned) {
+    if (p.hold) continue;
+    patches.push({ id: eid, easing: 'bezier', bezier: toCubic(p.bz), spatialIn: [], spatialOut: [] });
+  }
+  if (patches.length === 0) return;
+  await edit(`Set keyframe easing: ${preset}`, { type: 'updateKeyframes', patches });
 }
 
 /**

@@ -25,7 +25,20 @@ export function cubicBezierEase([x1, y1, x2, y2]: BezierHandles, x: number): num
     if (Math.abs(d) < 1e-6) break;
     s -= dx / d;
   }
-  return sampleY(Math.max(0, Math.min(1, s)));
+  s = Math.max(0, Math.min(1, s));
+  // Newton left the root (handles past each other, influence near 100 %):
+  // bisection, a root being bracketed on [0, 1] whatever the handles do. The
+  // engine's solver (native/libs/motion_eval/eval.cpp) does the same.
+  if (Math.abs(sampleX(s) - t) > 1e-4) {
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 40; i++) {
+      s = 0.5 * (lo + hi);
+      if (sampleX(s) < t) lo = s;
+      else hi = s;
+    }
+  }
+  return sampleY(s);
 }
 
 /** Remap a normalized 0..1 segment position through an easing curve. */

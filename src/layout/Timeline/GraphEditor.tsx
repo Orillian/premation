@@ -42,7 +42,7 @@ import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, use
 import { memberTracksVersion, subscribeMemberTracks } from '@stores/memberTracks';
 import { clampPps, TIMELINE_PPS_MAX } from './zoomAnchor';
 import { Icon } from '@components/Icon';
-import { EASY_EASE_BEZIER, EASY_EASE_IN_BEZIER, EASY_EASE_OUT_BEZIER, type EasingKind } from '@motion/animation';
+import { EASY_EASE_BEZIER, EASY_EASE_IN_BEZIER, EASY_EASE_OUT_BEZIER, cubicBezierEase, type EasingKind } from '@motion/animation';
 import { type EasingPreset } from '@core/animation/keyframeAssistants';
 import { easingTargetKeyframes } from '@core/animation/easingSelection';
 import { easeKindOnKeys, easePresetOnKeys } from './keyframeEdits';
@@ -73,6 +73,7 @@ import {
 import { resolveSelectionKey, storedTimeOf, trackSelectionId } from '@core/mirror/keySelection';
 import { isDataProperty } from './buildPropertyRows';
 import { CurveSampler, samplerPropKey } from './graphSamples';
+import { isTimelineSnapOn, snapForDrag } from './snapCommands';
 import { clamp } from '@utils/lang';
 import { cn } from '@utils/cn';
 import { ValueField } from '@components/ValueField';
@@ -96,7 +97,7 @@ import {
 } from './speedGraph';
 import { keyframesInBox, nearestCurveAt } from './graphHover';
 import { installGraphNormalizeCommands, onGraphNormalize } from './graphNormalize';
-import { applyKeyframeVelocity, readKeyframeVelocity } from './keyframeVelocity';
+import { applyKeyframeVelocity, readKeyframeVelocity, type KeyframeVelocity } from './keyframeVelocity';
 import { snapKeyframeTime, snapKeyframeValue, type SnapTarget, type ValueSnapTarget } from './keyframeSnap';
 import { computeBoxZoomFromSvg } from './graphBoxZoom';
 import { nearestKeyframeOnCurve } from './graphCurveClick';
@@ -265,6 +266,14 @@ interface SelectedKf {
   nodeId: string;
   prop: string;
   t: number;
+  /**
+   * The engine key's id, when known: the focused diamond is found by it first.
+   * Found by TIME alone, a diamond being dragged along the time axis lost its
+   * focus on every move (its stored time had already changed, the focus
+   * followed only once the engine went idle) — its handles, value label and
+   * the ease pills' state blinked off and on for the whole drag.
+   */
+  keyId?: string;
 }
 
 /**
@@ -328,6 +337,8 @@ interface DragState {
    */
   gesture?: GestureSession;
   keyIds?: Map<number, string>;
+  /** The handle drag's own key, by engine id (its stored time changes under a drag). */
+  keyId?: string;
   /** Diamond drag: each group member's engine key id (parallel to `group`). */
   groupEids?: Array<string | undefined>;
   /** Diamond drag: each group member's selection id at pointer-down (parallel to `group`). */
@@ -589,11 +600,22 @@ export function GraphEditor({
   /** Bumped when an asynchronous curve sample lands (`CurveSampler`). */
   const [samplesTick, setSamplesTick] = useState(0);
   const samplerRef = useRef<CurveSampler | null>(null);
-  samplerRef.current ??= new CurveSampler(() => setSamplesTick((n) => n + 1));
+  // One redraw per animation frame however many curves' answers land in it
+  // (a drag over N plotted tracks answered N queries per move, each a render).
+  const samplesRafRef = useRef(0);
+  samplerRef.current ??= new CurveSampler(() => {
+    if (samplesRafRef.current) return;
+    samplesRafRef.current = requestAnimationFrame(() => {
+      samplesRafRef.current = 0;
+      setSamplesTick((n) => n + 1);
+    });
+  });
   const sampler = samplerRef.current;
   useEffect(() => () => {
     samplerRef.current?.dispose();
     samplerRef.current = null;
+    if (samplesRafRef.current) cancelAnimationFrame(samplesRafRef.current);
+    samplesRafRef.current = 0;
   }, []);
   const [mode, setMode] = useState<'value' | 'speed'>('value');
   /**
@@ -622,6 +644,9 @@ export function GraphEditor({
    * and the drag has its own read-out.
    */
   const [hover, setHover] = useState<{ x: number; y: number; label: string; color: string } | null>(null);
+  const hoverRafRef = useRef(0);
+  const hoverPendingRef = useRef<{ hx: number; hy: number } | null>(null);
+  useEffect(() => () => { if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current); }, []);
   /** Live snap guides while dragging a diamond (time vertical / value horizontal). */
   const [graphSnap, setGraphSnap] = useState<{
     time: SnapTarget | null;
@@ -694,7 +719,10 @@ export function GraphEditor({
     [allTracks, propertyFilter, visibility, selectedTrackKeys],
   );
 
-  const INNER_H = Math.max(40, height - 40); // leave 40 px for toolbar
+  // The numeric strip's row (measured: it is always mounted, so the plot never
+  // jumps under the cursor when the focus changes mid-drag).
+  const { ref: stripRef, size: stripSize } = useResizeObserver<HTMLDivElement>();
+  const INNER_H = Math.max(40, height - 40 - stripSize.height); // leave 40 px for toolbar
   const totalWidth = Math.max(duration * pps, 1);
   const graphWidth = Math.max(totalWidth, viewportW);
 
@@ -739,6 +767,17 @@ export function GraphEditor({
     const plotted = new Set<string>();
 
     const mirror = documentMirror();
+    // The keys a drag is moving right now (their time or their handles): the
+    // segments touching them are drawn from the keys while the engine's
+    // samples for this revision are still on their way (see `stale` below).
+    const drag = dragRef.current;
+    const movingNow = new Set<string>();
+    if (drag && (drag.kind === 'kf' || drag.kind === 'box-transform') && drag.group && drag.groupCurrentT) {
+      drag.group.forEach((m, i) => movingNow.add(posKey(m.nodeId, m.prop, drag.groupCurrentT![i]!)));
+    } else if (drag && (drag.kind === 'handle-in' || drag.kind === 'handle-out')) {
+      movingNow.add(posKey(drag.nodeId, drag.prop, drag.kfT));
+    }
+    const sampleStep = Math.max(1e-4, 2 / pps);  // seconds per dense sample (about one per 2 px)
     for (const { nodeId, prop, color } of tracks) {
       const storedT = storedTimeOf(nodeId);
       const hit = memberKeysOf(mirror, nodeId, prop, storedT);
@@ -748,16 +787,36 @@ export function GraphEditor({
 
       const toAbs = (kf: MemberKey): number => kf.tAbs;
       plotted.add(samplerPropKey(nodeId, ref.path));
-      const answer = sampler.get(
-        {
-          type: 'sampleProperty',
-          prop: { layer: nodeId, path: ref.path },
-          range: { start: secondsToFlicks(visT0), duration: secondsToFlicks(winT1) - secondsToFlicks(visT0) },
-          samples: winSamples,
-          speed: false,
-        },
-        rev,
-      );
+      const query = {
+        type: 'sampleProperty' as const,
+        prop: { layer: nodeId, path: ref.path },
+        range: { start: secondsToFlicks(visT0), duration: secondsToFlicks(winT1) - secondsToFlicks(visT0) },
+        samples: winSamples,
+        speed: false,
+      };
+      const answer = sampler.get(query, rev);
+      const stale = answer !== undefined && !sampler.isCurrent(query, rev);
+      /** A segment whose ends include a key being dragged, while the samples shown are the previous revision's. */
+      const driftingSeg = (a: MemberKey, b: MemberKey): boolean =>
+        stale && (movingNow.has(posKey(nodeId, prop, a.t)) || movingNow.has(posKey(nodeId, prop, b.t)));
+      /**
+       * The segment from its own keys: the temporal bezier the engine samples
+       * (a one-dimensional key's ease is CSS cubic-bezier semantics, packages/animation
+       * interpolate.ts), dense at the same spacing as the engine's answer.
+       */
+      const localIn = (a: MemberKey, b: MemberKey, aAbs: number, bAbs: number): Array<[number, number]> => {
+        const out: Array<[number, number]> = [];
+        const dt = b.t - a.t;
+        const span = bAbs - aAbs;
+        if (!(dt > 0) || !(span > 0)) return out;
+        const bz = effectiveBezier(a);
+        const dv = b.value - a.value;
+        for (let t = aAbs + sampleStep; t < bAbs - 1e-9; t += sampleStep) {
+          if (t < visT0 - sampleStep || t > visT1 + sampleStep) continue;
+          out.push([t, a.value + dv * cubicBezierEase(bz, (t - aAbs) / span)]);
+        }
+        return out;
+      };
       /** The window's samples of this member, [comp seconds, stored value]. */
       const dense: Array<[number, number]> = [];
       if (answer && answer.dimensions > ref.member) {
@@ -766,8 +825,9 @@ export function GraphEditor({
           if (typeof v === 'number' && Number.isFinite(v)) dense.push([flicksToSeconds(answer.times[i]!), v / ref.factor]);
         }
       }
-      /** The dense samples strictly inside (a, b), comp seconds. */
-      const denseIn = (a: number, b: number): Array<[number, number]> => dense.filter(([t]) => t > a + 1e-9 && t < b - 1e-9);
+      /** The dense samples strictly inside (a, b), comp seconds — the engine's, or the keys' own while a drag outruns them. */
+      const denseIn = (a: number, b: number, ka?: MemberKey, kb?: MemberKey): Array<[number, number]> =>
+        ka && kb && driftingSeg(ka, kb) ? localIn(ka, kb, a, b) : dense.filter(([t]) => t > a + 1e-9 && t < b - 1e-9);
 
       /**
        * Speed INSIDE segment [a,b] — a finite difference over the segment's own
@@ -779,7 +839,7 @@ export function GraphEditor({
         const dt = b.t - a.t;
         const bz = effectiveBezier(a);
         const out: Array<[number, number]> = [[aAbs, dt > 0 ? outgoingSpeed(bz, b.value - a.value, dt) : 0]];
-        const inner = denseIn(aAbs, bAbs);
+        const inner = denseIn(aAbs, bAbs, a, b);
         for (let i = 0; i < inner.length; i++) {
           const p0 = inner[Math.max(0, i - 1)]!;
           const p1 = inner[Math.min(inner.length - 1, i + 1)]!;
@@ -818,7 +878,7 @@ export function GraphEditor({
           continue;
         }
         // Offscreen segments (and a window not sampled yet) get their ends only.
-        samples.push([aAbs, a.value], ...denseIn(aAbs, bAbs), [bAbs, b.value]);
+        samples.push([aAbs, a.value], ...denseIn(aAbs, bAbs, a, b), [bAbs, b.value]);
       }
 
       if (lastAbs < duration) {
@@ -1104,6 +1164,7 @@ export function GraphEditor({
       }
       freezeRanges();
       dragRef.current = { ...state, pointerId: e.pointerId, moved: false };
+      setHover(null);  // a chip from before the drag came back on release, pointing at nothing
       setDragging(true);
     },
     [freezeRanges],
@@ -1174,13 +1235,14 @@ export function GraphEditor({
         next.add(id);
       }
       setSelectedKfIds(next);
-      setSelectedKf({ nodeId: kf.nodeId, prop: kf.prop, t: kf.t });
+      setSelectedKf({ nodeId: kf.nodeId, prop: kf.prop, t: kf.t, keyId: kf.keyId });
 
       // Snapshot the moving body at pointer-down (origin+delta). Prefer the
       // multi-selection when the grab is already in it; otherwise just the grab.
       const idsForGroup = next.has(id) && next.size > 1 ? next : new Set([id]);
       const group: GraphGroupMemberStart[] = [];
       const groupSelIds: string[] = [];
+      const groupKeyIds: Array<string | undefined> = [];
       for (const sid of idsForGroup) {
         let point: KfPoint | undefined;
         for (const p of sampledPaths) {
@@ -1189,6 +1251,7 @@ export function GraphEditor({
         }
         if (!point) continue;
         groupSelIds.push(point.selId);
+        groupKeyIds.push(point.keyId.startsWith('@') ? undefined : point.keyId);
         group.push({
           nodeId: point.nodeId,
           prop: point.prop,
@@ -1202,6 +1265,7 @@ export function GraphEditor({
       if (group.length === 0) {
         group.push({ nodeId: kf.nodeId, prop: kf.prop, startT: kf.t, startCompT: kf.tAbs, startValue: kf.value, minV: kf.minV, maxV: kf.maxV });
         groupSelIds.push(kf.selId);
+        groupKeyIds.push(kf.keyId.startsWith('@') ? undefined : kf.keyId);
       }
       const grabIndex = Math.max(0, group.findIndex(
         (m) => m.nodeId === kf.nodeId && m.prop === kf.prop && Math.abs(m.startT - kf.t) < 1e-9,
@@ -1240,6 +1304,9 @@ export function GraphEditor({
         grabIndex,
         groupCurrentT: group.map((m) => m.startT),
         groupSelIds,
+        // The mirror's engine ids, so the FIRST move already writes (a drag
+        // whose first moves were dropped while the ids resolved lagged, then jumped).
+        ...(groupKeyIds.every((id) => id !== undefined) ? { groupEids: groupKeyIds } : {}),
         startKeys: group.map((m) => memberKeyStart(m.nodeId, m.prop, m.startT)),
         neighbours,
       });
@@ -1264,12 +1331,14 @@ export function GraphEditor({
       const group: GraphGroupMemberStart[] = [];
       const groupSelIds: string[] = [];
       const groupY0: number[] = [];
+      const groupKeyIds: Array<string | undefined> = [];
       for (const p of sampledPaths) {
         for (const k of p.keyframes) {
           if (!selectedKfIds.has(k.selId)) continue;
           group.push({ nodeId: k.nodeId, prop: k.prop, startT: k.t, startCompT: k.tAbs, startValue: k.value, minV: k.minV, maxV: k.maxV });
           groupSelIds.push(k.selId);
           groupY0.push(k.y);
+          groupKeyIds.push(k.keyId.startsWith('@') ? undefined : k.keyId);
         }
       }
       if (group.length < 2) return;
@@ -1303,6 +1372,7 @@ export function GraphEditor({
         groupCurrentT: group.map((m) => m.startT),
         groupSelIds,
         groupY0,
+        ...(groupKeyIds.every((id) => id !== undefined) ? { groupEids: groupKeyIds } : {}),
         startKeys: group.map((m) => memberKeyStart(m.nodeId, m.prop, m.startT)),
         neighbours,
         box: { ...box, edgeX, edgeY },
@@ -1339,7 +1409,7 @@ export function GraphEditor({
         next.add(id);
       }
       setSelectedKfIds(next);
-      setSelectedKf({ nodeId: kf.nodeId, prop: kf.prop, t: kf.t });
+      setSelectedKf({ nodeId: kf.nodeId, prop: kf.prop, t: kf.t, keyId: kf.keyId });
     },
     [sampledPaths, svgCoords, pps, selectedKfIds, setSelectedKfIds],
   );
@@ -1356,6 +1426,7 @@ export function GraphEditor({
       const kfs = trackKeys(kf.nodeId, kf.prop) ?? [];
       const i = findKfIndex(kfs, kf.t);
       const near = [kfs[i - 1], kfs[i], kfs[i + 1]].filter((k): k is NonNullable<typeof k> => !!k);
+      const mirrorIds = near.every((k) => !k.key.id.startsWith('@')) ? new Map(near.map((k) => [k.t, k.key.id])) : undefined;
       void memberKeyPatches(kf.nodeId, kf.prop, near.map((k) => ({ t: k.t }))).then((patches) => {
         const d = dragRef.current;
         if (!patches || !d || d.gesture !== gesture) return;
@@ -1366,6 +1437,8 @@ export function GraphEditor({
         nodeId: kf.nodeId,
         prop: kf.prop,
         kfT: kf.t,
+        keyId: kf.keyId,
+        ...(mirrorIds ? { keyIds: mirrorIds } : {}),
         origValue: kf.value,
         ox: hx,
         oy: hy,
@@ -1474,7 +1547,7 @@ export function GraphEditor({
       d.groupCurrentT[i] = t;
       if (i === d.grabIndex) {
         d.kfT = t;
-        setSelectedKf({ nodeId: m.nodeId, prop: m.prop, t });
+        setSelectedKf({ nodeId: m.nodeId, prop: m.prop, t, ...(eid ? { keyId: eid } : {}) });
       }
     }
   }, []);
@@ -1488,12 +1561,22 @@ export function GraphEditor({
       const pixelsPerUnit = INNER_H / range;
       const group = d.group;
       const moving = new Set(group.map((m, i) => posKey(m.nodeId, m.prop, d.groupCurrentT![i]!)));
+      const movingIds = new Set((d.groupEids ?? []).filter((id): id is string => !!id));
+      // Snapping follows the timeline's toggle (Alt inverts it), as the lanes do.
+      const snapOff = !snapForDrag(isTimelineSnapOn(), e.altKey);
 
+      // Values worth snapping to: the grabbed key's OWN track (another track's
+      // values are in other units), never a key that moves with the drag — the
+      // dragged key's last written value counted as a target, so the drag stuck
+      // to where it had just been and the guide blinked on every move.
+      const grabM = group[d.grabIndex]!;
       const collectOtherValues = (): number[] => {
         const vals: number[] = [];
         for (const p of sampledPaths) {
+          if (p.nodeId !== grabM.nodeId || p.prop !== grabM.prop) continue;
           for (const k of p.keyframes) {
-            if (!moving.has(posKey(p.nodeId, p.prop, k.t))) vals.push(k.value);
+            if (movingIds.has(k.keyId) || moving.has(posKey(p.nodeId, p.prop, k.t))) continue;
+            vals.push(k.value);
           }
         }
         return vals;
@@ -1521,7 +1604,7 @@ export function GraphEditor({
           frameDuration: frameDur,
           playheadTime: currentTime,
           otherCompTimes: otherTimes,
-          disableSnap: e.altKey,
+          disableSnap: snapOff,
         });
         timeTarget = plan.snapTarget;
         compTimes = plan.compTimes.map((t, i) => clampToNeighbours(t, d.neighbours?.[i], group[i]!.startCompT, frameDur));
@@ -1530,7 +1613,7 @@ export function GraphEditor({
           const snapped = snapKeyframeValue(yToValue(d.oy + ey, d.minV, d.maxV, INNER_H), {
             pixelsPerUnit,
             keyframeValues: collectOtherValues(),
-            disabled: e.altKey,
+            disabled: snapOff,
           });
           valueSnap = snapped.target;
           values = group.map((m) => applyGroupValueDelta(m, grab, snapped.value));
@@ -1550,7 +1633,7 @@ export function GraphEditor({
           frameDuration: frameDur,
           playheadTime: currentTime,
           keyframeTimes: otherTimes,
-          disabled: e.altKey,
+          disabled: snapOff,
         });
         timeTarget = timeSnap.target;
         compTimes = [clampToNeighbours(clamp(timeSnap.time, 0, duration), d.neighbours?.[0], m.startCompT, frameDur)];
@@ -1558,7 +1641,7 @@ export function GraphEditor({
           const snapped = snapKeyframeValue(yToValue(d.oy + ey, d.minV, d.maxV, INNER_H), {
             pixelsPerUnit,
             keyframeValues: collectOtherValues(),
-            disabled: e.altKey,
+            disabled: snapOff,
           });
           valueSnap = snapped.target;
           values = [snapped.value];
@@ -1653,7 +1736,10 @@ export function GraphEditor({
     (d: DragState, ex: number, ey: number, e: React.PointerEvent) => {
       const kfs = trackKeys(d.nodeId, d.prop);
       if (!kfs) return;
-      const selfIdx = findKfIndex(kfs, d.kfT);
+      // By engine id first: the key's stored time is stale for a moment after
+      // every write, and a move found no key then — the handle stuttered.
+      const byId = d.keyId ? kfs.findIndex((k) => k.key.id === d.keyId) : -1;
+      const selfIdx = byId >= 0 ? byId : findKfIndex(kfs, d.kfT);
       if (selfIdx < 0) return;
       const selfKf = kfs[selfIdx]!;
 
@@ -1678,8 +1764,10 @@ export function GraphEditor({
         // Influence is a FRACTION of the segment — measured in comp pixels so it
         // stays continuous (compToKeyframeTime snaps to the frame grid).
         const segPx = (nextKf.tAbs - selfTComp) * pps;
-        const influence = segPx <= 0 ? 1 / 3 : clamp((hx - selfTComp * pps) / segPx, MIN_INFLUENCE, MAX_INFLUENCE);
         const curBz = effectiveBezier(selfKf);
+        // Never past the segment's incoming handle: x1 > x2 folds the curve
+        // back on itself and the sampler returns garbage (jumps, reversals).
+        const influence = segPx <= 0 ? 1 / 3 : clamp((hx - selfTComp * pps) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, curBz[2] - 0.01));
 
         if (d.mode === 'value') {
           const vHover = yToValue(hy, d.minV, d.maxV, INNER_H);
@@ -1708,8 +1796,9 @@ export function GraphEditor({
         const dvPrev = selfKf.value - prevKf.value;
 
         const segPx = (selfTComp - prevKf.tAbs) * pps;
-        const influence = segPx <= 0 ? 1 / 3 : clamp((selfTComp * pps - hx) / segPx, MIN_INFLUENCE, MAX_INFLUENCE);
         const prevBz = effectiveBezier(prevKf);
+        // 1 − influence is the segment's x2: never behind its outgoing handle x1.
+        const influence = segPx <= 0 ? 1 / 3 : clamp((selfTComp * pps - hx) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, 1 - prevBz[0] - 0.01));
 
         if (d.mode === 'value') {
           const vHover = yToValue(hy, d.minV, d.maxV, INNER_H);
@@ -1745,18 +1834,28 @@ export function GraphEditor({
       // Only while nothing is being dragged: a drag has its own numbers, and
       // a second chip following the pointer through one would be noise.
       if (!d) {
+        // One read-out per animation frame: every pointer move re-rendered the
+        // whole editor otherwise.
         const { x: hx, y: hy } = svgCoords(e);
-        const reading = nearestCurveAt(sampledPaths, hx / pps, hy, INNER_H);
-        setHover(
-          reading
-            ? {
-              x: hx,
-              y: reading.y,
-              color: reading.color,
-              label: `${reading.prop} ${fmtAxis(reading.value)}${mode === 'speed' ? '/s' : ''} @ ${(hx / pps).toFixed(2)}s`,
-            }
-            : null,
-        );
+        hoverPendingRef.current = { hx, hy };
+        if (!hoverRafRef.current) {
+          hoverRafRef.current = requestAnimationFrame(() => {
+            hoverRafRef.current = 0;
+            const p = hoverPendingRef.current;
+            if (!p || dragRef.current) return;
+            const reading = nearestCurveAt(sampledPaths, p.hx / pps, p.hy, INNER_H);
+            setHover(
+              reading
+                ? {
+                  x: p.hx,
+                  y: reading.y,
+                  color: reading.color,
+                  label: `${reading.prop} ${fmtAxis(reading.value)}${mode === 'speed' ? '/s' : ''} @ ${(p.hx / pps).toFixed(2)}s`,
+                }
+                : null,
+            );
+          });
+        }
       }
       if (!d || e.pointerId !== d.pointerId) return;
       const { x, y } = svgCoords(e);
@@ -1847,10 +1946,14 @@ export function GraphEditor({
   const playheadX = currentTime * pps;
 
   // ── Find selected keyframe for handle rendering ───────────────
+  // By the engine key's id first (stable across a drag), by stored time otherwise.
   const selectedKfData = selectedKf
-    ? sampledPaths
-        .flatMap((p) => p.keyframes)
-        .find((kf) => kf.nodeId === selectedKf.nodeId && kf.prop === selectedKf.prop && Math.abs(kf.t - selectedKf.t) < 1e-6)
+    ? (() => {
+      const own = sampledPaths.filter((p) => p.nodeId === selectedKf.nodeId && p.prop === selectedKf.prop).flatMap((p) => p.keyframes);
+      return (selectedKf.keyId ? own.find((kf) => kf.keyId === selectedKf.keyId) : undefined)
+        ?? own.find((kf) => Math.abs(kf.t - selectedKf.t) < 1e-6)
+        ?? null;
+    })()
     : null;
 
   const handleApplyPreset = useCallback((preset: EasingPreset) => {
@@ -1917,7 +2020,7 @@ export function GraphEditor({
       if (!focused || !eid) return;
       const t = keyTimeById(focused.nodeId, focused.prop, eid);
       if (t === null) return;
-      setSelectedKf((cur) => (cur && cur.nodeId === focused.nodeId && cur.prop === focused.prop ? { ...cur, t } : cur));
+      setSelectedKf((cur) => (cur && cur.nodeId === focused.nodeId && cur.prop === focused.prop ? { ...cur, t, keyId: eid } : cur));
     })();
   }, [targetKfIds, selectedKfData]);
 
@@ -2239,7 +2342,7 @@ export function GraphEditor({
                     rewriteSelectedKeyframeId(uiId, trackSelectionId(documentMirror(), nodeId, prop, eid));
                     const t = keyTimeById(nodeId, prop, eid);
                     if (t === null || t === oldT) return;
-                    setSelectedKf((cur) => (cur ? { ...cur, t } : null));
+                    setSelectedKf((cur) => (cur ? { ...cur, t, keyId: eid } : null));
                   })();
                 }}
               />
@@ -2306,7 +2409,7 @@ export function GraphEditor({
           case — this is the same values, docked, live, for the one key you are
           looking at. Every field is a `ValueField`, so each is scrubbable and
           typeable with the same gestures as the inspector's. */}
-      {selectedKfData ? <KeyframeNumericStrip kf={selectedKfData} /> : null}
+      <div ref={stripRef}><KeyframeNumericStrip kf={selectedKfData ?? null} /></div>
 
       <div className={styles.plotRow}>
       {showCurveList && (
@@ -2640,13 +2743,16 @@ export function GraphEditor({
 function KeyframeNumericStrip({
   kf,
 }: {
-  kf: { nodeId: string; prop: string; t: number; value: number };
+  /** The focused key, or null: the strip stays, its fields disabled (a row that came and went moved the plot). */
+  kf: { nodeId: string; prop: string; t: number; value: number } | null;
 }): JSX.Element | null {
-  const reading = readKeyframeVelocity(kf.nodeId, kf.prop, kf.t);
-  if (!reading) return null;
-  const { velocity, hasIncoming, hasOutgoing } = reading;
+  const reading = kf ? readKeyframeVelocity(kf.nodeId, kf.prop, kf.t) : null;
+  const velocity: KeyframeVelocity = reading?.velocity ?? { inSpeed: 0, inInfluence: 1 / 3, outSpeed: 0, outInfluence: 1 / 3 };
+  const hasIncoming = !!reading?.hasIncoming;
+  const hasOutgoing = !!reading?.hasOutgoing;
 
   const write = (patch: Partial<typeof velocity>): void => {
+    if (!kf) return;
     // Through the engine: the mirror's change events redraw the graph.
     applyKeyframeVelocity(kf.nodeId, kf.prop, kf.t, { ...velocity, ...patch });
   };
@@ -2654,13 +2760,15 @@ function KeyframeNumericStrip({
   const tx = graphText();
   return (
     <div className={styles.numericStrip} role="group" aria-label={tx.selectedKeyframe}>
-      <span className={styles.numericLabel}>{kf.prop}</span>
+      <span className={styles.numericLabel}>{kf?.prop ?? '—'}</span>
       <label className={styles.numericField}>
         <span>{tx.numValue}</span>
         <ValueField
-          value={kf.value}
+          value={kf?.value ?? 0}
+          disabled={!kf}
           aria-label={tx.keyframeValue}
           onChange={(v) => {
+            if (!kf) return;
             // The graph plots MEMBER tracks (`graphTracksOf`), so the strip's
             // key is one member's: the value writes that member of the key.
             void commitMemberWrites('Set Keyframe Value', kf.nodeId, kf.prop, [{ t: kf.t, value: v }]);

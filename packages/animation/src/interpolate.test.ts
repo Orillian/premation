@@ -199,3 +199,20 @@ describe('spatial bezier tangents (curved motion paths)', () => {
     expect(sampleTrack(tAuto, 0.25)).toBeLessThan(25);
   });
 });
+
+describe('cubicBezierEase with handles past each other', () => {
+  it('stays finite, monotone and inside the segment when x1 > x2 (influences over 100 %)', () => {
+    // Out influence 90 %, in influence 90 %: x1 = 0.9 > x2 = 0.1. Newton
+    // alone left a residue here (jumps, a step backwards); bisection finds the root.
+    const bz: [number, number, number, number] = [0.9, 0, 0.1, 1];
+    let last = -Infinity;
+    for (let i = 0; i <= 100; i++) {
+      const y = cubicBezierEase(bz, i / 100);
+      expect(Number.isFinite(y)).toBe(true);
+      expect(y).toBeGreaterThanOrEqual(last - 1e-6);
+      last = y;
+    }
+    expect(cubicBezierEase(bz, 0)).toBeCloseTo(0, 6);
+    expect(cubicBezierEase(bz, 1)).toBeCloseTo(1, 6);
+  });
+});

@@ -5,6 +5,21 @@ would want to know; the engine-level detail is in `ROADMAP.md`.
 
 ## Unreleased
 
+- **Graph editor.** Dragging a keyframe or a handle no longer blinks: the
+  focused key, its handles and the numeric strip stay put through the drag,
+  the curve follows the keys instead of snapping between the old and new
+  samples, the first move is not lost, and the hover chip does not come back
+  stale. Value snapping follows the Snapping toggle, snaps only to the same
+  property's keys and never to the dragged key's last value. A handle can no
+  longer be pushed past the segment's other handle, and the sampler never
+  folds a curve back on itself.
+- **Keyframes.** Easy Ease, Easy Ease In and Easy Ease Out apply to the
+  key's own arrival and departure, as in After Effects (Ease In and Ease Out
+  were the wrong way round). Keyframe Velocity leaves a hold segment hold.
+  Dragging keys in the timeline no longer sends keys selected in the graph
+  editor or on a collapsed row to time 0.
+- **Cache.** Toggling onion skin or re-sending the same viewer LUT no longer
+  empties the cache bar.
 - **Export.** Time-remapped and speed-ramped footage, and retimed precomps,
   export with their sound following the picture (varispeed), instead of the
   export refusing with "time-remapped footage audio plays at one rate".

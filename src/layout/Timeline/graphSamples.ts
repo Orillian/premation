@@ -65,6 +65,20 @@ export class CurveSampler {
     return hit?.samples;
   }
 
+  /**
+   * Whether the answer `get` would return for `q` at `revision` IS that
+   * revision's (false while a newer one is still being fetched and the previous
+   * answer stands in). The graph draws the segments a drag is changing from
+   * the keys themselves while this is false: a curve between moved keys drawn
+   * from the previous revision's samples bulged and snapped on every move.
+   */
+  isCurrent(q: QueryOf<'sampleProperty'>, revision: number | string): boolean {
+    const prop = `${q.prop.layer}\u0000${q.prop.path}`;
+    const key = `${q.range.start}|${q.range.duration}|${q.samples}|${revision}`;
+    const hit = this.answers.get(prop);
+    return !!hit && hit.key === key;
+  }
+
   /** Forget properties no longer plotted (keeps the cache to what is on screen). */
   retain(props: ReadonlySet<string>): void {
     for (const k of [...this.answers.keys()]) if (!props.has(k)) this.answers.delete(k);

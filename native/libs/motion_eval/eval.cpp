@@ -54,8 +54,21 @@ double cubic_bezier_ease(double x1, double y1, double x2, double y2, double x) n
     if (std::fabs(d) < 1e-6) break;
     s -= dx / d;
   }
-  // Math.max(0, Math.min(1, s)) — s is finite here, so the plain clamp is the same.
-  return sample_y(clamp01(s));
+  s = clamp01(s);
+  // Newton left the root (a flat or folded x(s): handles past each other, an
+  // influence near 100 %): bisection on [0, 1] — x(0) = 0 ≤ t ≤ 1 = x(1), so a
+  // root is bracketed whatever the handles do. Without it the sampler answered
+  // the Newton residue: a jump or a step backwards in the middle of a segment.
+  if (std::fabs(sample_x(s) - t) > 1e-4) {
+    double lo = 0.0;
+    double hi = 1.0;
+    for (int i = 0; i < 40; ++i) {
+      s = 0.5 * (lo + hi);
+      if (sample_x(s) < t) lo = s;
+      else hi = s;
+    }
+  }
+  return sample_y(s);
 }
 
 // interpolate.ts 32–52 — ease

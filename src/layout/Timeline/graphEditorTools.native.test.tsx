@@ -21,6 +21,7 @@ import { rowSelectionId } from '@core/engine/__testHelpers__/selectionIds';
 import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { useEaseClipboardStore } from '@stores/easeClipboardStore';
 import { easePresetById } from '@core/animation/easePresets';
+import { easePresetOnKeys } from './keyframeEdits';
 import { clearHistory, setupAppEngine, historyLabels, settleEdits } from '@core/engine/__testHelpers__/appEngine';
 import { docView } from '@core/engine/__testHelpers__/docView';
 import { sec, type Harness } from '@core/engine/__testHelpers__/appEngine';
@@ -243,5 +244,43 @@ describe('the ease library popover', () => {
     await settle();
     expect((await kfAt(2)).bezier).toEqual(easePresetById('quint-in')!.bezier);
     expect((await kfAt(0)).bezier).toBeUndefined();
+  });
+});
+
+describe('Easy Ease applies to the key’s own sides, as After Effects does', () => {
+  // Three linear keys 0 → 50 → 100. The middle key’s INCOMING ease lives on
+  // key 0’s handles (x2, y2 of the segment that arrives); its OUTGOING ease on
+  // its own (x1, y1). Key 2’s arrival is not the selection’s business.
+  it('F9 on the middle key eases its arrival and its departure, nothing else', async () => {
+    await easePresetOnKeys([rowSelectionId(NODE, PROP, 1)], 'Ease');
+    await settle();
+    const k0 = await kfAt(0);
+    const k1 = await kfAt(1);
+    const k2 = await kfAt(2);
+    expect(k0.easing).toBe('bezier');
+    expect(k0.bezier?.[0]).toBeCloseTo(1 / 3, 6);   // key 0’s own departure: still linear (a handle on the straight line)
+    expect(k0.bezier?.[1]).toBeCloseTo(1 / 3, 6);
+    expect(k0.bezier?.[2]).toBeCloseTo(2 / 3, 6);  // the middle key’s arrival: 33.33 %, speed 0
+    expect(k0.bezier?.[3]).toBeCloseTo(1, 6);
+    expect(k1.easing).toBe('bezier');
+    expect(k1.bezier?.[0]).toBeCloseTo(1 / 3, 6);  // the middle key’s departure
+    expect(k1.bezier?.[1]).toBeCloseTo(0, 6);
+    expect(k1.bezier?.[2]).toBeCloseTo(2 / 3, 6);   // key 2’s arrival: untouched (linear)
+    expect(k1.bezier?.[3]).toBeCloseTo(2 / 3, 6);
+    expect(k2.easing).toBe('linear');
+    expect(await historyLabels()).toHaveLength(1);
+  });
+
+  it('Ease In touches only the arrival, Ease Out only the departure', async () => {
+    await easePresetOnKeys([rowSelectionId(NODE, PROP, 1)], 'EaseIn');
+    await settle();
+    expect((await kfAt(0)).bezier?.[2]).toBeCloseTo(2 / 3, 6);
+    expect((await kfAt(1)).easing).toBe('linear');
+    await easePresetOnKeys([rowSelectionId(NODE, PROP, 1)], 'EaseOut');
+    await settle();
+    expect((await kfAt(1)).easing).toBe('bezier');
+    expect((await kfAt(1)).bezier?.[0]).toBeCloseTo(1 / 3, 6);
+    expect((await kfAt(1)).bezier?.[2]).toBeCloseTo(2 / 3, 6);
+    expect((await kfAt(1)).bezier?.[3]).toBeCloseTo(2 / 3, 6);
   });
 });

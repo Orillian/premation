@@ -1787,10 +1787,32 @@ std::uint64_t Session::drops_so_far() const {
   return c.dropped + c.inexact + clockDropped_;
 }
 
+namespace {
+/// Two view states whose cached frames are the same pixels. Onion skin is
+/// composited OVER the drawn frame on the render thread (composite_onion),
+/// after the cache took its copy, and playback ignores it — so toggling it
+/// must not open a new scope (the bar emptied and every frame was built
+/// again). The viewer LUT is compared by its table, not its pointer: the
+/// page re-sends the same LUT on a reload or a focus change.
+bool same_cache_view(const ViewportConfig& a, const ViewportConfig& b) {
+  const bool lutEq = (!a.viewerLut && !b.viewerLut) ||
+                     (a.viewerLut && b.viewerLut && a.viewerLut->intensity == b.viewerLut->intensity &&
+                      a.viewerLut->table == b.viewerLut->table);
+  if (!lutEq) return false;
+  ViewportConfig x = a;
+  ViewportConfig y = b;
+  x.onion.reset();
+  y.onion.reset();
+  x.viewerLut.reset();
+  y.viewerLut.reset();
+  return x == y;
+}
+}  // namespace
+
 std::uint64_t Session::cache_scope(const ViewportConfig& port, const std::string& comp) {
   std::uint64_t configId = 0;
   for (const auto& [config, id] : scopeConfigs_) {
-    if (config == port) {
+    if (same_cache_view(config, port)) {
       configId = id;
       break;
     }
