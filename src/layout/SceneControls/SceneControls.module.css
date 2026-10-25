@@ -31,9 +31,10 @@
    size as its neighbours. */
 .trigger,
 .triggerActive {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   height: var(--control-height-lg);
   min-width: var(--control-height-lg);
   padding: 0 var(--space-1);
@@ -64,6 +65,20 @@
 
 .triggerActive:hover {
   color: var(--color-primary-text);
+}
+
+/* The flyout mark — TopNav .flyoutMark, the same corner triangle. */
+.flyoutMark {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 2.5px solid transparent;
+  border-right: 2.5px solid transparent;
+  border-top: 3px solid currentColor;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .trigger:focus-visible,

@@ -741,7 +741,7 @@ export function TopNav(): JSX.Element {
                 trigger={
                   <button type="button" className={styles.toolDropdownTrigger} aria-label={t('topNav.newLayer.aria', 'New layer')} aria-haspopup="menu" title={t('topNav.newLayer.title', 'New Layer (Shape, Text, Solid, Null, Camera, Light, 3D…)')}>
                     <Icon name="layer-plus" size="md" />
-                    <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                    <span className={styles.flyoutMark} aria-hidden />
                   </button>
                 }
                 items={[
@@ -809,7 +809,7 @@ export function TopNav(): JSX.Element {
                       disabled={!selectedId}
                     >
                       <Icon name="magic-wand" size="md" />
-                      <Icon name="chevron-down" size="sm" className={styles.chevron} />
+                      <span className={styles.flyoutMark} aria-hidden />
                     </button>
                   }
                   items={buildAnimateItems(selectedIds, isTextLayer, playhead)}

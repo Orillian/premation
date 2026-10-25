@@ -82,6 +82,27 @@ const MAP = {
   'align-bottom': 'align_bottom',
   'distribute-horizontal': 'align_distribute_left',
   'distribute-vertical': 'align_distribute_top',
+  // The tool bar's right side and the scene-control strip (owner, 2026-10-26:
+  // one family across the whole bar, the AE mask / gizmo / axis / undo marks).
+  'mask-square': 'square_hint',
+  'mask-circle': 'circle_hint',
+  'mask-pen': 'select_object',
+  'mask-feather': 'circle_half_fill',
+  'undo': 'arrow_undo',
+  'redo': 'arrow_redo',
+  'gizmo-universal': 'select_object_skew',
+  'gizmo-position': { 16: 'codicon:move', 20: 'arrow_move' },
+  'gizmo-scale': 'resize',
+  'gizmo-rotation': 'arrow_rotate_counterclockwise',
+  'axis-local': 'cube',
+  'axis-world': 'globe',
+  'axis-view': 'eye',
+  'cube': { 16: 'cube', 20: 'cube_add' },
+  'layer-plus': 'add_square_multiple',
+  'magic-wand': 'wand',
+  'more-horizontal': 'more_horizontal',
+  'pan-camera': 'hand_left',
+  'perspective': 'arrow_expand',
 };
 
 function body(file) {

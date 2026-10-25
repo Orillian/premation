@@ -181,12 +181,13 @@
    to its own row height (the container query at the foot). */
 .toolDropdownTrigger,
 .toolDropdownTriggerActive {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   height: var(--control-height-lg);
   min-width: var(--control-height-lg);
-  padding: 0 var(--space-1) 0 var(--space-2);
+  padding: 0 var(--space-1);
   background: none;
   border: none;
   border-radius: var(--radius-sm);
@@ -224,13 +225,22 @@
   color: var(--color-primary-text);
 }
 
-/* The flyout chevron: 9px and dim, so it reads as "opens" and not as a glyph.
-   `Icon` sets its box inline, hence the !important. */
-.chevron {
-  width: 9px !important;
-  height: 9px !important;
-  color: var(--color-text-muted);
-  flex: none;
+/* The flyout mark: After Effects' small solid triangle in the button's
+   bottom-right corner, under the glyph and off its centre line, so the glyph
+   stays centred and the mark reads as "holds more tools" (owner, 2026-10-26;
+   it was a 9 px chevron beside the glyph). Drawn with borders: a 5 × 3 px
+   triangle lands on whole pixels at any zoom. */
+.flyoutMark {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 2.5px solid transparent;
+  border-right: 2.5px solid transparent;
+  border-top: 3px solid currentColor;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .toolDropdownTrigger:focus-visible,

@@ -205,7 +205,7 @@ export function SceneControls(): JSX.Element {
             title={cameraToolTitle(cameraTool)}
           >
             <Icon name={armedCamera?.icon ?? 'orbit'} size="md" />
-            <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
+            <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
       />
@@ -230,7 +230,7 @@ export function SceneControls(): JSX.Element {
             title={t('sceneControls.gizmo.title', 'Gizmo mode — {label}', { label: gizmo.label })}
           >
             <Icon name={gizmo.icon} size="md" />
-            <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
+            <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
       />
@@ -337,7 +337,7 @@ export function SceneControls(): JSX.Element {
             title={t('sceneControls.toolbar.n3dViewExtendedViewerLayer', '3D view — extended viewer, layer bounding boxes, camera & light wireframes, focus plane')}
           >
             <Icon name="cube" size="md" />
-            <Icon name="chevron-down" size="sm" style={{ opacity: 0.6 }} />
+            <span className={styles.flyoutMark} aria-hidden />
           </button>
         }
       />

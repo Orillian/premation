@@ -93,7 +93,7 @@ export function ToolFlyout({ icon, label, title, shortcut, active, disabled, ite
           data-tour={dataTour}
         >
           <Icon name={icon} size="lg" />
-          <Icon name="chevron-down" size="sm" className={styles.chevron} />
+          <span className={styles.flyoutMark} aria-hidden />
         </button>
       }
     >
