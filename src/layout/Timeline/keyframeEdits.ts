@@ -45,7 +45,7 @@ import { memberKeyIndexAt, memberKeyOf, memberKeysOf, type MemberKey, type Store
 import { resolveSelectionKey, selectionLayerOf, storedTimeOf } from '@core/mirror/keySelection';
 import { numbersOfValue, type TrackRef as MirrorTrackRef } from '@core/mirror/trackIndex';
 import { documentMirror } from '@stores/documentMirror';
-import { effectiveBezier } from './speedGraph';
+import { segmentBezierOf } from './speedGraph';
 import { isDataProperty } from './buildPropertyRows';
 
 /** One MEMBER track's key by its stored time — the member-level editors' address (`id` is the caller's own key). */
@@ -284,11 +284,12 @@ async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'E
   // Per engine key: the handles to write, seeded from the key's current ease
   // the first time it is touched (a key can be both "K" and "the previous key").
   const planned = new Map<string, { bz: [number, number, number, number]; hold: boolean }>();
-  const seed = (eid: string, key: MemberKey): { bz: [number, number, number, number]; hold: boolean } => {
+  // Seeded from the segment the key's handles are sampled with (an auto
+  // bezier side keeps its computed tangent on the untouched half).
+  const seed = (eid: string, key: MemberKey, keys: ReadonlyArray<MemberKey>, i: number): { bz: [number, number, number, number]; hold: boolean } => {
     let p = planned.get(eid);
     if (!p) {
-      // A COPY: effectiveBezier hands back the shared named-easing table entry.
-      p = { bz: [...effectiveBezier(key)] as [number, number, number, number], hold: isHoldKind(key.easing) };
+      p = { bz: segmentBezierOf(keys, i), hold: isHoldKind(key.easing) };
       planned.set(eid, p);
     }
     return p;
@@ -305,13 +306,13 @@ async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'E
     const prev = i > 0 ? keys[i - 1]! : undefined;
     const next = i >= 0 && i < keys.length - 1 ? keys[i + 1] : undefined;
     if ((preset === 'Ease' || preset === 'EaseOut') && next) {
-      const p = seed(eid, key);
+      const p = seed(eid, key, keys, i);
       p.bz[0] = 1 / 3;
       p.bz[1] = 0;
       p.hold = false;  // AE: easing a hold key's departure makes it a bezier key
     }
     if ((preset === 'Ease' || preset === 'EaseIn') && prev && !isHoldKind(prev.easing)) {
-      const p = seed(prev.key.id, prev);
+      const p = seed(prev.key.id, prev, keys, i - 1);
       p.bz[2] = 2 / 3;
       p.bz[3] = 1;
     }
@@ -348,7 +349,15 @@ export async function easeKindOnKeys(uiIds: ReadonlyArray<string>, kind: EasingK
     const patch: KeyframePatch = { id: eid, easing: kind as Easing, spatialIn: [], spatialOut: [] };
     if (lead && !lead.bezier) {
       if (kind === 'bezier') patch.bezier = { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 };
-      else if (kind === 'autoBezier' || kind === 'continuousBezier') patch.bezier = { x1: 0.333, y1: 0, x2: 0.667, y2: 1 };
+      // Auto Bezier's tangents are computed from the neighbours when sampled
+      // (segmentTemporalBezier); Continuous Bezier starts from them.
+      else if (kind === 'continuousBezier') {
+        const keys = memberKeysOf(documentMirror(), tgt.ref.layer, tgt.member, storedTimeOf(tgt.ref.layer))?.keys ?? [];
+        const at = keys.findIndex((k) => k.key.id === eid);
+        const asAuto = keys.map((k, j) => (j === at ? { ...k, easing: 'autoBezier' as EasingKind } : k));
+        const b = at >= 0 ? segmentBezierOf(asAuto, at) : [1 / 3, 1 / 3, 2 / 3, 2 / 3];
+        patch.bezier = { x1: b[0]!, y1: b[1]!, x2: b[2]!, y2: b[3]! };
+      }
     }
     // A fresh bezier key is continuous. The API states continuity as a boolean
     // (no "never set"), so "fresh" is a key that is not continuous yet.

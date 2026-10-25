@@ -20,7 +20,7 @@ export type {
 
 // ── Interpolation / sampling ──────────────────────────────────────
 export {
-  cubicBezierEase, ease, sampleTrack, upsertKeyframe,
+  cubicBezierEase, ease, sampleTrack, upsertKeyframe, segmentTemporalBezier, autoTemporalSlope, LINEAR_TEMPORAL_BEZIER,
   sampleSpeed, applyRoving, applyRovingSpatial,
   cubicValueAt, smoothTrackTangents, clearTrackTangents,
   autoSpatialTangents, effectiveSpatialTangents,

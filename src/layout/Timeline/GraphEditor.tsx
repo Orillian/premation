@@ -91,7 +91,7 @@ import {
   incomingSpeed,
   outgoingSlope,
   incomingSlope,
-  effectiveBezier,
+  segmentBezierOf,
   isHoldEasing,
   type Bezier,
 } from './speedGraph';
@@ -533,8 +533,8 @@ function alignTangentsWrites(nodeId: string, prop: string, t: number): MemberWri
   const prevKf = kfs[idx - 1]!;
   const kf = kfs[idx]!;
   const nextKf = kfs[idx + 1]!;
-  const slope = outgoingSlope(effectiveBezier(kf), nextKf.value - kf.value, nextKf.t - kf.t);
-  const prevBz = withIncomingSlope(effectiveBezier(prevKf), kf.value - prevKf.value, kf.t - prevKf.t, slope);
+  const slope = outgoingSlope(segmentBezierOf(kfs, idx), nextKf.value - kf.value, nextKf.t - kf.t);
+  const prevBz = withIncomingSlope(segmentBezierOf(kfs, idx - 1), kf.value - prevKf.value, kf.t - prevKf.t, slope);
   return [bezierWrite(prevKf, prevBz, prevKf.continuous)];
 }
 
@@ -564,11 +564,11 @@ function speedWrites(
   const doIn = side === 'in' || (side === 'linked' && (self.continuous !== false || !next));
 
   if (doOut && next) {
-    const bz = withOutgoingSpeed(effectiveBezier(self), next.value - self.value, next.t - self.t, target);
+    const bz = withOutgoingSpeed(segmentBezierOf(kfs, i), next.value - self.value, next.t - self.t, target);
     out.push(bezierWrite(self, bz, self.continuous));
   }
   if (doIn && prev) {
-    const bz = withIncomingSpeed(effectiveBezier(prev), self.value - prev.value, self.t - prev.t, target);
+    const bz = withIncomingSpeed(segmentBezierOf(kfs, i - 1), self.value - prev.value, self.t - prev.t, target);
     out.push(bezierWrite(prev, bz, prev.continuous));
   }
   return out;
@@ -809,7 +809,7 @@ export function GraphEditor({
         const dt = b.t - a.t;
         const span = bAbs - aAbs;
         if (!(dt > 0) || !(span > 0)) return out;
-        const bz = effectiveBezier(a);
+        const bz = segmentBezierOf(kfs, kfs.indexOf(a));
         const dv = b.value - a.value;
         for (let t = aAbs + sampleStep; t < bAbs - 1e-9; t += sampleStep) {
           if (t < visT0 - sampleStep || t > visT1 + sampleStep) continue;
@@ -837,7 +837,7 @@ export function GraphEditor({
       const speedSegment = (a: MemberKey, b: MemberKey, aAbs: number, bAbs: number): Array<[number, number]> => {
         if (isHoldEasing(a.easing)) return [[aAbs, 0], [bAbs, 0]];
         const dt = b.t - a.t;
-        const bz = effectiveBezier(a);
+        const bz = segmentBezierOf(kfs, kfs.indexOf(a));
         const out: Array<[number, number]> = [[aAbs, dt > 0 ? outgoingSpeed(bz, b.value - a.value, dt) : 0]];
         const inner = denseIn(aAbs, bAbs, a, b);
         for (let i = 0; i < inner.length; i++) {
@@ -940,12 +940,12 @@ export function GraphEditor({
         let outInf: number | undefined;
 
         if (prev) {
-          const prevBz = effectiveBezier(prev);
+          const prevBz = segmentBezierOf(kfs, i - 1);
           inSpd = isHoldEasing(prev.easing) ? 0 : incomingSpeed(prevBz, kf.value - prev.value, kf.t - prev.t);
           inInf = 1 - prevBz[2];
         }
         if (next) {
-          const bz = effectiveBezier(kf);
+          const bz = segmentBezierOf(kfs, i);
           outSpd = isHoldEasing(kf.easing) ? 0 : outgoingSpeed(bz, next.value - kf.value, next.t - kf.t);
           outInf = bz[0];
         }
@@ -1764,7 +1764,7 @@ export function GraphEditor({
         // Influence is a FRACTION of the segment — measured in comp pixels so it
         // stays continuous (compToKeyframeTime snaps to the frame grid).
         const segPx = (nextKf.tAbs - selfTComp) * pps;
-        const curBz = effectiveBezier(selfKf);
+        const curBz = segmentBezierOf(kfs, selfIdx);
         // Never past the segment's incoming handle: x1 > x2 folds the curve
         // back on itself and the sampler returns garbage (jumps, reversals).
         const influence = segPx <= 0 ? 1 / 3 : clamp((hx - selfTComp * pps) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, curBz[2] - 0.01));
@@ -1776,7 +1776,7 @@ export function GraphEditor({
           writes.push(bezierWrite(selfKf, bz, linked));
           if (linked && prevKf && !isHoldEasing(prevKf.easing)) {
             const slope = outgoingSlope(bz, dv, dt);
-            const prevBz = withIncomingSlope(effectiveBezier(prevKf), selfKf.value - prevKf.value, selfKf.t - prevKf.t, slope);
+            const prevBz = withIncomingSlope(segmentBezierOf(kfs, selfIdx - 1), selfKf.value - prevKf.value, selfKf.t - prevKf.t, slope);
             writes.push(bezierWrite(prevKf, prevBz, prevKf.continuous));
           }
         } else {
@@ -1784,7 +1784,7 @@ export function GraphEditor({
           const bz = withOutgoingSpeed([influence, curBz[1], curBz[2], curBz[3]], dv, dt, speed);
           writes.push(bezierWrite(selfKf, bz, linked));
           if (linked && prevKf && !isHoldEasing(prevKf.easing)) {
-            const prevBz = withIncomingSpeed(effectiveBezier(prevKf), selfKf.value - prevKf.value, selfKf.t - prevKf.t, speed);
+            const prevBz = withIncomingSpeed(segmentBezierOf(kfs, selfIdx - 1), selfKf.value - prevKf.value, selfKf.t - prevKf.t, speed);
             writes.push(bezierWrite(prevKf, prevBz, prevKf.continuous));
           }
         }
@@ -1796,7 +1796,7 @@ export function GraphEditor({
         const dvPrev = selfKf.value - prevKf.value;
 
         const segPx = (selfTComp - prevKf.tAbs) * pps;
-        const prevBz = effectiveBezier(prevKf);
+        const prevBz = segmentBezierOf(kfs, selfIdx - 1);
         // 1 − influence is the segment's x2: never behind its outgoing handle x1.
         const influence = segPx <= 0 ? 1 / 3 : clamp((selfTComp * pps - hx) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, 1 - prevBz[0] - 0.01));
 
@@ -1809,7 +1809,7 @@ export function GraphEditor({
           writes.push(bezierWrite(prevKf, bz, prevKf.continuous));
           if (linked && nextKf && !isHoldEasing(selfKf.easing)) {
             const slope = incomingSlope(bz, dvPrev, dtPrev);
-            const curBz = withOutgoingSlope(effectiveBezier(selfKf), nextKf.value - selfKf.value, nextKf.t - selfKf.t, slope);
+            const curBz = withOutgoingSlope(segmentBezierOf(kfs, selfIdx), nextKf.value - selfKf.value, nextKf.t - selfKf.t, slope);
             writes.push(bezierWrite(selfKf, curBz, true));
           }
         } else {
@@ -1817,7 +1817,7 @@ export function GraphEditor({
           const bz = withIncomingSpeed([prevBz[0], prevBz[1], 1 - influence, prevBz[3]], dvPrev, dtPrev, speed);
           writes.push(bezierWrite(prevKf, bz, prevKf.continuous));
           if (linked && nextKf && !isHoldEasing(selfKf.easing)) {
-            const curBz = withOutgoingSpeed(effectiveBezier(selfKf), nextKf.value - selfKf.value, nextKf.t - selfKf.t, speed);
+            const curBz = withOutgoingSpeed(segmentBezierOf(kfs, selfIdx), nextKf.value - selfKf.value, nextKf.t - selfKf.t, speed);
             writes.push(bezierWrite(selfKf, curBz, true));
           }
         }
@@ -2091,7 +2091,7 @@ export function GraphEditor({
     let outX = kx, outY = ky;
 
     if (showIn && prevKf) {
-      const prevBz = effectiveBezier(prevKf);
+      const prevBz = segmentBezierOf(path.keyframes, i - 1);
       const dtPrev = kf.t - prevKf.t;
       const dvPrev = kf.value - prevKf.value;
       inX = kx - (kx - prevKf.tAbs * pps) * (1 - prevBz[2]);
@@ -2104,7 +2104,7 @@ export function GraphEditor({
       }
     }
     if (showOut && nextKf) {
-      const bz = effectiveBezier(kf);
+      const bz = segmentBezierOf(path.keyframes, i);
       const dt = nextKf.t - kf.t;
       const dv = nextKf.value - kf.value;
       outX = kx + (nextKf.tAbs * pps - kx) * bz[0];

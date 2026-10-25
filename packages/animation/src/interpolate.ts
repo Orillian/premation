@@ -64,6 +64,74 @@ export function ease(kind: EasingKind, x: number): number {
   }
 }
 
+/** The least a key needs for its segment's temporal handles. */
+export interface TemporalKey {
+  t: number;
+  value: number;
+  easing?: string;
+  bezier?: readonly number[];
+}
+
+/** A linear segment as a cubic: both handles on the straight line. */
+export const LINEAR_TEMPORAL_BEZIER: BezierHandles = [1 / 3, 1 / 3, 2 / 3, 2 / 3];
+const NAMED_EASINGS = new Set(['ease', 'easeIn', 'easeOut', 'easeInOut']);
+
+/**
+ * After Effects' Auto Bezier temporal tangent at key `i`: the chord slope
+ * through its neighbours (one-sided at the ends), in value units per second.
+ */
+export function autoTemporalSlope(kfs: ReadonlyArray<TemporalKey>, i: number): number {
+  const k = kfs[i];
+  if (!k || kfs.length < 2) return 0;
+  const prev = kfs[Math.max(0, i - 1)]!;
+  const next = kfs[Math.min(kfs.length - 1, i + 1)]!;
+  const dt = next.t - prev.t;
+  return dt > 0 ? (next.value - prev.value) / dt : 0;
+}
+
+/**
+ * The cubic the segment `i → i+1` is sampled with (a fresh array). A key's
+ * own handles, except that an AUTO BEZIER end takes the computed tangent for
+ * its side — AE's auto bezier is smooth through the key (the neighbour
+ * slope), not a fixed ease-in-out that stopped the motion at every key. A
+ * handle at x = 1/3 (or 2/3) with y = slope·dt/3 ÷ dv is that tangent; a flat
+ * segment (dv = 0) cannot carry one and stays linear. Continuous Bezier keeps
+ * the key's stored handles; a named ease (ease, easeIn …) keeps its curve.
+ * The engine samples the same rule (native/libs/motion_eval/eval.hpp).
+ */
+export function segmentTemporalBezier(kfs: ReadonlyArray<TemporalKey>, i: number): BezierHandles {
+  const a = kfs[i];
+  const b = kfs[i + 1];
+  const own = (k: TemporalKey): BezierHandles => {
+    const e = k.easing;
+    if ((e === 'bezier' || e === 'autoBezier' || e === 'continuousBezier') && k.bezier && k.bezier.length === 4) {
+      return [k.bezier[0]!, k.bezier[1]!, k.bezier[2]!, k.bezier[3]!];
+    }
+    if (e === 'autoBezier' || e === 'continuousBezier') return [0.333, 0, 0.667, 1];
+    return [...LINEAR_TEMPORAL_BEZIER] as BezierHandles;
+  };
+  if (!a) return [...LINEAR_TEMPORAL_BEZIER] as BezierHandles;
+  if (!b) return own(a);
+  const autoA = a.easing === 'autoBezier';
+  const autoB = b.easing === 'autoBezier';
+  if (!autoA && !autoB) return own(a);
+  if (!autoA && NAMED_EASINGS.has(a.easing ?? '')) return own(a);
+  const dv = b.value - a.value;
+  const dt = b.t - a.t;
+  // An auto key without stored handles starts from the straight line (its
+  // stored handles, if any, still carry the OTHER end's side).
+  const bz: BezierHandles = autoA && !a.bezier ? ([...LINEAR_TEMPORAL_BEZIER] as BezierHandles) : own(a);
+  if (autoA) {
+    bz[0] = 1 / 3;
+    bz[1] = dv !== 0 && dt > 0 ? (autoTemporalSlope(kfs, i) * dt / 3) / dv : 1 / 3;
+  }
+  if (autoB) {
+    bz[2] = 2 / 3;
+    bz[3] = dv !== 0 && dt > 0 ? 1 - (autoTemporalSlope(kfs, i + 1) * dt / 3) / dv : 2 / 3;
+  }
+  return bz;
+}
+
 /**
  * Evaluate a 1D cubic bezier B(u) with endpoints `v0`,`v3` and control VALUES
  * `v1`,`v2` at parameter u∈[0,1]. With v1/v2 at the linear third-points the
@@ -145,8 +213,10 @@ export function sampleTrack(track: PropertyTrack, t: number): number | undefined
   if (kind === 'step' || kind === 'hold') return t < b.t ? a.value : b.value;
   const span = b.t - a.t;
   const local = span <= 0 ? 0 : (t - a.t) / span;
-  const eased =
-    (kind === 'bezier' || kind === 'autoBezier' || kind === 'continuousBezier') && a.bezier
+  const autoEnd = kind === 'autoBezier' || b.easing === 'autoBezier';
+  const eased = autoEnd && !NAMED_EASINGS.has(kind)
+    ? cubicBezierEase(segmentTemporalBezier(kfs, i), local)
+    : (kind === 'bezier' || kind === 'autoBezier' || kind === 'continuousBezier') && a.bezier
       ? cubicBezierEase(a.bezier, local)
       : ease(kind, local);
   // Spatial MODE (per keyframe): absent = the stored tangents as-is (legacy,

@@ -17,6 +17,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -184,6 +185,53 @@ template <KeyframeSource S>
   return lo;
 }
 
+/// After Effects' Auto Bezier temporal tangent at key `i`: the chord slope
+/// through its neighbours (one-sided at the ends), value units per second
+/// (interpolate.ts autoTemporalSlope).
+template <KeyframeSource S>
+[[nodiscard]] double auto_temporal_slope(const S& src, std::size_t i) noexcept {
+  const std::size_t n = src.size();
+  if (i >= n || n < 2) return 0.0;
+  const Keyframe& prev = src.get(i > 0 ? i - 1 : 0);
+  const Keyframe& next = src.get(i + 1 < n ? i + 1 : n - 1);
+  const double dt = next.t - prev.t;
+  return dt > 0 ? (next.value - prev.value) / dt : 0.0;
+}
+
+[[nodiscard]] constexpr bool named_easing(std::int32_t kind) noexcept {
+  return kind == MOTION_EASING_EASE || kind == MOTION_EASING_EASE_IN || kind == MOTION_EASING_EASE_OUT ||
+         kind == MOTION_EASING_EASE_IN_OUT;
+}
+
+/// `segmentTemporalBezier(kfs, i)` (interpolate.ts): the cubic segment i → i+1
+/// is sampled with when either end is Auto Bezier — that end's side is the
+/// computed tangent (a handle at x = 1/3 or 2/3 with y = slope·dt/3 ÷ dv), the
+/// other side the key's own handle or the straight line. Auto bezier was a
+/// fixed ease-in-out here, which stopped the motion at every key; AE's is
+/// smooth through it. A flat segment (dv = 0) cannot carry a tangent.
+template <KeyframeSource S>
+[[nodiscard]] std::array<double, 4> segment_temporal_bezier(const S& src, std::size_t i) noexcept {
+  const Keyframe& a = src.get(i);
+  const Keyframe& b = src.get(i + 1);
+  const bool autoA = a.easing == kEasingAutoBezier;
+  const bool autoB = b.easing == kEasingAutoBezier;
+  const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
+  std::array<double, 4> bz{1.0 / 3.0, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0};
+  if (has_handles) bz = {a.c0, a.c1, a.c2, a.c3};  // stored handles still carry the other end's side
+  else if (!autoA && a.easing == kEasingContinuousBezier) bz = {0.333, 0.0, 0.667, 1.0};
+  const double dv = b.value - a.value;
+  const double dt = b.t - a.t;
+  if (autoA) {
+    bz[0] = 1.0 / 3.0;
+    bz[1] = (dv != 0.0 && dt > 0.0) ? (auto_temporal_slope(src, i) * dt / 3.0) / dv : 1.0 / 3.0;
+  }
+  if (autoB) {
+    bz[2] = 2.0 / 3.0;
+    bz[3] = (dv != 0.0 && dt > 0.0) ? 1.0 - (auto_temporal_slope(src, i + 1) * dt / 3.0) / dv : 2.0 / 3.0;
+  }
+  return bz;
+}
+
 /// `sampleTrack(track, t)`. Preconditions: `validate_track` passed and `t` is
 /// not NaN (the C wrappers check both; this never fails).
 template <KeyframeSource S>
@@ -208,8 +256,14 @@ template <KeyframeSource S>
   const bool bezier_kind =
       kind == kEasingBezier || kind == kEasingAutoBezier || kind == kEasingContinuousBezier;
   const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
-  const double eased = (bezier_kind && has_handles) ? cubic_bezier_ease(a.c0, a.c1, a.c2, a.c3, local)
-                                                    : ease(kind, local);
+  const bool auto_end = kind == kEasingAutoBezier || b.easing == kEasingAutoBezier;
+  double eased = 0.0;
+  if (auto_end && !named_easing(kind)) {
+    const std::array<double, 4> sb = segment_temporal_bezier(src, i);
+    eased = cubic_bezier_ease(sb[0], sb[1], sb[2], sb[3], local);
+  } else {
+    eased = (bezier_kind && has_handles) ? cubic_bezier_ease(a.c0, a.c1, a.c2, a.c3, local) : ease(kind, local);
+  }
 
   // Spatial mode absent = the stored tangents as-is; otherwise resolve the mode.
   Tangents out_side;

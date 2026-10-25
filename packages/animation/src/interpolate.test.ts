@@ -1,4 +1,5 @@
 import {
+  segmentTemporalBezier,
   cubicBezierEase,
   sampleTrack,
   sampleSpeed,
@@ -195,8 +196,11 @@ describe('spatial bezier tangents (curved motion paths)', () => {
     const tCont = track([{ t: 0, value: 0, easing: 'continuousBezier' }, { t: 1, value: 100 }]);
     expect(sampleTrack(tAuto, 0.5)).toBeCloseTo(50);
     expect(sampleTrack(tCont, 0.5)).toBeCloseTo(50);
-    expect(sampleTrack(tAuto, 0.25)).toBeGreaterThan(0);
-    expect(sampleTrack(tAuto, 0.25)).toBeLessThan(25);
+    // Two auto keys with no neighbours beyond them: AE's auto bezier is the
+    // straight line (the one-sided chord), not an ease-in-out.
+    expect(sampleTrack(tAuto, 0.25)).toBeCloseTo(25, 6);
+    // Continuous Bezier keeps its own handles (here the default ease-in-out).
+    expect(sampleTrack(tCont, 0.25)).toBeLessThan(25);
   });
 });
 
@@ -214,5 +218,29 @@ describe('cubicBezierEase with handles past each other', () => {
     }
     expect(cubicBezierEase(bz, 0)).toBeCloseTo(0, 6);
     expect(cubicBezierEase(bz, 1)).toBeCloseTo(1, 6);
+  });
+});
+
+describe('Auto Bezier temporal tangents', () => {
+  const kf = (t: number, value: number, easing: 'autoBezier' | 'linear' = 'autoBezier'): Keyframe => ({ t, value, easing });
+  it('is smooth through an interior auto key: the same velocity arriving and leaving', () => {
+    const track: PropertyTrack = { keyframes: [kf(0, 0), kf(1, 10), kf(2, 40)] };
+    const h = 1e-4;
+    const before = (sampleTrack(track, 1) - sampleTrack(track, 1 - h)) / h;
+    const after = (sampleTrack(track, 1 + h) - sampleTrack(track, 1)) / h;
+    // The chord through the neighbours: (40 − 0) / 2 = 20 per second.
+    expect(before).toBeCloseTo(20, 2);
+    expect(after).toBeCloseTo(20, 2);
+    // Not the old fixed ease-in-out, which stopped (speed 0) at every key.
+    expect(Math.abs(after)).toBeGreaterThan(1);
+  });
+  it('a linear key next to an auto key keeps its own side on the straight line', () => {
+    const track: PropertyTrack = { keyframes: [kf(0, 0, 'linear'), kf(1, 10), kf(2, 40)] };
+    const h = 1e-4;
+    const leaving0 = (sampleTrack(track, h) - sampleTrack(track, 0)) / h;
+    expect(leaving0).toBeCloseTo(10, 1);  // the segment's average speed
+  });
+  it('segmentTemporalBezier leaves a flat segment linear', () => {
+    expect(segmentTemporalBezier([kf(0, 5), kf(1, 5), kf(2, 9)], 0)).toEqual([1 / 3, 1 / 3, 2 / 3, 2 / 3]);
   });
 });

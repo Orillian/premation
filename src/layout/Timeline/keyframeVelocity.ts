@@ -34,7 +34,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { memberKeyPatches, toCubic } from './keyframeEdits';
 import { storedTimeOf } from '@core/mirror/keySelection';
 import {
-  effectiveBezier,
+  segmentBezierOf,
   incomingSpeed,
   influences,
   outgoingSpeed,
@@ -103,7 +103,7 @@ function outgoingSegment(kfs: ReadonlyArray<MemberKey>, i: number): Segment | nu
   const cur = kfs[i];
   const next = kfs[i + 1];
   if (!cur || !next) return null;
-  return { bezier: effectiveBezier(cur), dv: next.value - cur.value, dt: next.t - cur.t };
+  return { bezier: segmentBezierOf(kfs, i), dv: next.value - cur.value, dt: next.t - cur.t };
 }
 
 /** The segment arriving at keyframe `i`, or null at the first keyframe. */
@@ -111,7 +111,7 @@ function incomingSegment(kfs: ReadonlyArray<MemberKey>, i: number): Segment | nu
   const prev = kfs[i - 1];
   const cur = kfs[i];
   if (!prev || !cur) return null;
-  return { bezier: effectiveBezier(prev), dv: cur.value - prev.value, dt: cur.t - prev.t };
+  return { bezier: segmentBezierOf(kfs, i - 1), dv: cur.value - prev.value, dt: cur.t - prev.t };
 }
 
 /** AE's default handle reach — a third of the segment on each side. */

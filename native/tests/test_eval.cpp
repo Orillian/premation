@@ -171,11 +171,30 @@ TEST_CASE("bezier: uses the keyframe's handles, degrades to linear without them"
   const std::array<motion_keyframe, 2> bare{kf(0.0, 0.0, MOTION_EASING_BEZIER), kf(1.0, 100.0)};
   CHECK(sample_ok(bare, 0.5) == 50.0);
 
-  // autoBezier / continuousBezier without handles use the [0.333, 0, 0.667, 1] preset.
-  const std::array<motion_keyframe, 2> autob{kf(0.0, 0.0, MOTION_EASING_AUTO_BEZIER),
+  // continuousBezier without handles uses the [0.333, 0, 0.667, 1] preset.
+  const std::array<motion_keyframe, 2> contb{kf(0.0, 0.0, MOTION_EASING_CONTINUOUS_BEZIER),
                                              kf(1.0, 100.0)};
   const double preset = motion::eval::cubic_bezier_ease(0.333, 0.0, 0.667, 1.0, 0.25) * 100.0;
-  CHECK(sample_ok(autob, 0.25) == preset);
+  CHECK(sample_ok(contb, 0.25) == preset);
+  // autoBezier's tangents are computed from the neighbours (segment_temporal_bezier):
+  // two keys alone are the straight line, as in After Effects.
+  const std::array<motion_keyframe, 2> autob{kf(0.0, 0.0, MOTION_EASING_AUTO_BEZIER),
+                                             kf(1.0, 100.0)};
+  CHECK_THAT(sample_ok(autob, 0.25), WithinAbs(25.0, 1e-9));
+}
+
+TEST_CASE("autoBezier is smooth through an interior key", "[eval][easing]") {
+  // The chord through the neighbours, (40 - 0) / 2 = 20 per second, arriving and leaving.
+  const std::array<motion_keyframe, 3> kfs{kf(0.0, 0.0, MOTION_EASING_AUTO_BEZIER), kf(1.0, 10.0, MOTION_EASING_AUTO_BEZIER),
+                                           kf(2.0, 40.0, MOTION_EASING_AUTO_BEZIER)};
+  const double h = 1e-4;
+  const double before = (sample_ok(kfs, 1.0) - sample_ok(kfs, 1.0 - h)) / h;
+  const double after = (sample_ok(kfs, 1.0 + h) - sample_ok(kfs, 1.0)) / h;
+  CHECK_THAT(before, WithinAbs(20.0, 1e-2));
+  CHECK_THAT(after, WithinAbs(20.0, 1e-2));
+  // A linear key next to an auto key keeps its own side on the straight line.
+  const std::array<motion_keyframe, 3> mixed{kf(0.0, 0.0), kf(1.0, 10.0, MOTION_EASING_AUTO_BEZIER), kf(2.0, 40.0, MOTION_EASING_AUTO_BEZIER)};
+  CHECK_THAT((sample_ok(mixed, h) - sample_ok(mixed, 0.0)) / h, WithinAbs(10.0, 1e-1));
 }
 
 TEST_CASE("single keyframe is a constant", "[eval][abi]") {

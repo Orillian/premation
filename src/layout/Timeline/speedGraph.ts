@@ -25,6 +25,7 @@
  */
 
 import { isHoldKind } from '@core/animation/easingVocabulary';
+import { segmentTemporalBezier } from '@motion/animation';
 
 export type Bezier = [number, number, number, number];
 
@@ -115,6 +116,20 @@ export function withIncomingInfluence(bezier: Bezier, dv: number, dt: number, in
  * else the graph editor and the Motion panel used to disagree about.
  */
 export const isHoldEasing = isHoldKind;
+
+/**
+ * The handles segment `i → i+1` is DRAWN and edited with: the key's own
+ * (`effectiveBezier`) unless an end is Auto Bezier, whose side is the computed
+ * tangent — exactly what the engine samples (packages/animation
+ * segmentTemporalBezier). Always a fresh array (never the shared table entry).
+ */
+export function segmentBezierOf(
+  kfs: ReadonlyArray<{ t: number; value: number; easing?: string; bezier?: readonly number[] }>,
+  i: number,
+): Bezier {
+  if (i < 0 || i >= kfs.length) return [...LINEAR_BEZIER] as Bezier;
+  return [...segmentTemporalBezier(kfs, i)] as Bezier;
+}
 
 /** The cubic-bezier equivalent of linear — handles at ⅓ along the segment. */
 export const LINEAR_BEZIER: Bezier = [1 / 3, 1 / 3, 2 / 3, 2 / 3];
