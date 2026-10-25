@@ -5,6 +5,9 @@ would want to know; the engine-level detail is in `ROADMAP.md`.
 
 ## Unreleased
 
+- **Icons.** A new chrome icon set drawn in After Effects' manner: 1 px
+  strokes on a 16 px grid, square caps, crisp at the small size. Tools,
+  layer kinds, timeline switches, transport, align and the panel chrome.
 - **Timeline.** Right-clicking a keyframe opens its menu first time, every
   time (the press no longer starts a drag and a seek under the menu, and the
   clip bar's own menu no longer replaces it). A click on a keyframe that is
