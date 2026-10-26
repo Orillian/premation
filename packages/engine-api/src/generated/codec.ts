@@ -368,6 +368,10 @@ const RenderRasterKind_TO_NUM: Record<string, number> = { 'text': 0, 'path': 1, 
 const RenderRasterKind_FROM_NUM: readonly (T.RenderRasterKind | undefined)[] = ['text', 'path', 'mask'];
 function enc_RenderRasterKind(v: T.RenderRasterKind): number { const n = RenderRasterKind_TO_NUM[v]; if (n === undefined) throw new RangeError('RenderRasterKind: invalid value ' + String(v)); return n; }
 function dec_RenderRasterKind(n: number): T.RenderRasterKind { const v = RenderRasterKind_FROM_NUM[n]; if (v === undefined) throw new DecodeError('RenderRasterKind: unknown value ' + n, 'badEnum'); return v; }
+const LiveInputState_TO_NUM: Record<string, number> = { 'stopped': 0, 'starting': 1, 'running': 2, 'failed': 3 };
+const LiveInputState_FROM_NUM: readonly (T.LiveInputState | undefined)[] = ['stopped', 'starting', 'running', 'failed'];
+function enc_LiveInputState(v: T.LiveInputState): number { const n = LiveInputState_TO_NUM[v]; if (n === undefined) throw new RangeError('LiveInputState: invalid value ' + String(v)); return n; }
+function dec_LiveInputState(n: number): T.LiveInputState { const v = LiveInputState_FROM_NUM[n]; if (v === undefined) throw new DecodeError('LiveInputState: unknown value ' + n, 'badEnum'); return v; }
 
 function encS_Empty(w: Writer, v: T.Empty): void {
   void w; void v;
@@ -7040,6 +7044,190 @@ function decS_PropertyPaths(r: Reader, end: number, o: any): T.PropertyPaths {
   }
   r.expectAt(end);
   o.paths = l_paths;
+  return o;
+}
+function encS_PerformanceFit(w: Writer, v: T.PerformanceFit): void {
+  w.byte(10); w.str(v.reduction);
+  w.byte(17); w.f64(v.detail);
+  w.byte(25); w.f64(v.captureSpeedPct);
+  w.byte(32); w.bool(v.wholeFrames);
+  w.byte(41); w.f64(v.holdSeconds);
+  w.byte(49); w.f64(v.frameDuration);
+  w.byte(56); w.bool(v.spatial);
+}
+function decS_PerformanceFit(r: Reader, end: number, o: any): T.PerformanceFit {
+  let h_reduction = false;
+  let h_detail = false;
+  let h_captureSpeedPct = false;
+  let h_wholeFrames = false;
+  let h_holdSeconds = false;
+  let h_frameDuration = false;
+  let h_spatial = false;
+  let v_reduction: string | undefined;
+  let v_detail: number | undefined;
+  let v_captureSpeedPct: number | undefined;
+  let v_wholeFrames: boolean | undefined;
+  let v_holdSeconds: number | undefined;
+  let v_frameDuration: number | undefined;
+  let v_spatial: boolean | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_reduction = r.str(); h_reduction = true; break;
+      case 17: v_detail = r.f64(); h_detail = true; break;
+      case 25: v_captureSpeedPct = r.f64(); h_captureSpeedPct = true; break;
+      case 32: v_wholeFrames = r.bool(); h_wholeFrames = true; break;
+      case 41: v_holdSeconds = r.f64(); h_holdSeconds = true; break;
+      case 49: v_frameDuration = r.f64(); h_frameDuration = true; break;
+      case 56: v_spatial = r.bool(); h_spatial = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_reduction) throw new DecodeError('PerformanceFit.reduction: missing', 'missingField');
+  if (!h_detail) throw new DecodeError('PerformanceFit.detail: missing', 'missingField');
+  if (!h_captureSpeedPct) throw new DecodeError('PerformanceFit.captureSpeedPct: missing', 'missingField');
+  if (!h_wholeFrames) throw new DecodeError('PerformanceFit.wholeFrames: missing', 'missingField');
+  if (!h_holdSeconds) throw new DecodeError('PerformanceFit.holdSeconds: missing', 'missingField');
+  if (!h_frameDuration) throw new DecodeError('PerformanceFit.frameDuration: missing', 'missingField');
+  if (!h_spatial) throw new DecodeError('PerformanceFit.spatial: missing', 'missingField');
+  o.reduction = v_reduction;
+  o.detail = v_detail;
+  o.captureSpeedPct = v_captureSpeedPct;
+  o.wholeFrames = v_wholeFrames;
+  o.holdSeconds = v_holdSeconds;
+  o.frameDuration = v_frameDuration;
+  o.spatial = v_spatial;
+  return o;
+}
+function encS_PerformanceTake(w: Writer, v: T.PerformanceTake): void {
+  w.byte(10); w.str(v.layer);
+  w.byte(18); w.str(v.path);
+  w.byte(26); w.str(v.source);
+  w.byte(32); w.u32(v.dims);
+  { const a = v.times; if (a.length) { w.byte(42); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
+  { const a = v.values; if (a.length) { w.byte(50); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
+  w.byte(58); { const s = w.beginLd(); encS_PerformanceFit(w, v.fit); w.endLd(s); }
+  w.byte(66); { const s = w.beginLd(); encS_TimeRange(w, v.span); w.endLd(s); }
+}
+function decS_PerformanceTake(r: Reader, end: number, o: any): T.PerformanceTake {
+  const l_times: number[] = [];
+  const l_values: number[] = [];
+  let h_layer = false;
+  let h_path = false;
+  let h_source = false;
+  let h_dims = false;
+  let h_fit = false;
+  let h_span = false;
+  let v_layer: string | undefined;
+  let v_path: string | undefined;
+  let v_source: string | undefined;
+  let v_dims: number | undefined;
+  let v_fit: T.PerformanceFit | undefined;
+  let v_span: T.TimeRange | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 18: v_path = r.str(); h_path = true; break;
+      case 26: v_source = r.str(); h_source = true; break;
+      case 32: v_dims = r.u32(); h_dims = true; break;
+      case 42: { const e = r.ldEnd(); while (r.pos < e) l_times.push(r.f64()); r.expectAt(e); break; }
+      case 50: { const e = r.ldEnd(); while (r.pos < e) l_values.push(r.f64()); r.expectAt(e); break; }
+      case 58: v_fit = decS_PerformanceFit(r, r.ldEnd(), {}); h_fit = true; break;
+      case 66: v_span = decS_TimeRange(r, r.ldEnd(), {}); h_span = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('PerformanceTake.layer: missing', 'missingField');
+  if (!h_path) throw new DecodeError('PerformanceTake.path: missing', 'missingField');
+  if (!h_source) throw new DecodeError('PerformanceTake.source: missing', 'missingField');
+  if (!h_dims) throw new DecodeError('PerformanceTake.dims: missing', 'missingField');
+  if (!h_fit) throw new DecodeError('PerformanceTake.fit: missing', 'missingField');
+  if (!h_span) throw new DecodeError('PerformanceTake.span: missing', 'missingField');
+  o.layer = v_layer;
+  o.path = v_path;
+  o.source = v_source;
+  o.dims = v_dims;
+  o.times = l_times;
+  o.values = l_values;
+  o.fit = v_fit;
+  o.span = v_span;
+  return o;
+}
+function encS_PerformanceTakes(w: Writer, v: T.PerformanceTakes): void {
+  { const a = v.takes; for (let i = 0; i < a.length; i++) { w.byte(10); { const s = w.beginLd(); encS_PerformanceTake(w, a[i]!); w.endLd(s); } } }
+}
+function decS_PerformanceTakes(r: Reader, end: number, o: any): T.PerformanceTakes {
+  const l_takes: T.PerformanceTake[] = [];
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: l_takes.push(decS_PerformanceTake(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  o.takes = l_takes;
+  return o;
+}
+function encS_SetPerformanceTake(w: Writer, v: T.SetPerformanceTake): void {
+  w.byte(10); { const s = w.beginLd(); encS_PerformanceTake(w, v.take); w.endLd(s); }
+}
+function decS_SetPerformanceTake(r: Reader, end: number, o: any): T.SetPerformanceTake {
+  let h_take = false;
+  let v_take: T.PerformanceTake | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_take = decS_PerformanceTake(r, r.ldEnd(), {}); h_take = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_take) throw new DecodeError('SetPerformanceTake.take: missing', 'missingField');
+  o.take = v_take;
+  return o;
+}
+function encS_ClearPerformanceTakes(w: Writer, v: T.ClearPerformanceTakes): void {
+  w.byte(10); w.str(v.layer);
+  { const a = v.paths; for (let i = 0; i < a.length; i++) { w.byte(18); w.str(a[i]!); } }
+}
+function decS_ClearPerformanceTakes(r: Reader, end: number, o: any): T.ClearPerformanceTakes {
+  const l_paths: string[] = [];
+  let h_layer = false;
+  let v_layer: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 18: l_paths.push(r.str()); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('ClearPerformanceTakes.layer: missing', 'missingField');
+  o.layer = v_layer;
+  o.paths = l_paths;
+  return o;
+}
+function encS_GetPerformanceTakes(w: Writer, v: T.GetPerformanceTakes): void {
+  w.byte(10); w.str(v.layer);
+}
+function decS_GetPerformanceTakes(r: Reader, end: number, o: any): T.GetPerformanceTakes {
+  let h_layer = false;
+  let v_layer: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('GetPerformanceTakes.layer: missing', 'missingField');
+  o.layer = v_layer;
   return o;
 }
 function encS_MarkerOwner(w: Writer, v: T.MarkerOwner): void {
@@ -17982,6 +18170,212 @@ function decS_RenderFrameFile(r: Reader, end: number, o: any): T.RenderFrameFile
   o.rasters = l_rasters;
   return o;
 }
+function encS_CameraInfo(w: Writer, v: T.CameraInfo): void {
+  w.byte(10); w.str(v.id);
+  w.byte(18); w.str(v.name);
+}
+function decS_CameraInfo(r: Reader, end: number, o: any): T.CameraInfo {
+  let h_id = false;
+  let h_name = false;
+  let v_id: string | undefined;
+  let v_name: string | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_id = r.str(); h_id = true; break;
+      case 18: v_name = r.str(); h_name = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_id) throw new DecodeError('CameraInfo.id: missing', 'missingField');
+  if (!h_name) throw new DecodeError('CameraInfo.name: missing', 'missingField');
+  o.id = v_id;
+  o.name = v_name;
+  return o;
+}
+function encS_CameraList(w: Writer, v: T.CameraList): void {
+  { const a = v.cameras; for (let i = 0; i < a.length; i++) { w.byte(10); { const s = w.beginLd(); encS_CameraInfo(w, a[i]!); w.endLd(s); } } }
+}
+function decS_CameraList(r: Reader, end: number, o: any): T.CameraList {
+  const l_cameras: T.CameraInfo[] = [];
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: l_cameras.push(decS_CameraInfo(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  o.cameras = l_cameras;
+  return o;
+}
+function encS_LiveHand(w: Writer, v: T.LiveHand): void {
+  { const a = v.landmarks; if (a.length) { w.byte(10); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
+  w.byte(17); w.f64(v.handedness);
+  w.byte(25); w.f64(v.presence);
+  w.byte(33); w.f64(v.pinch);
+}
+function decS_LiveHand(r: Reader, end: number, o: any): T.LiveHand {
+  const l_landmarks: number[] = [];
+  let h_handedness = false;
+  let h_presence = false;
+  let h_pinch = false;
+  let v_handedness: number | undefined;
+  let v_presence: number | undefined;
+  let v_pinch: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: { const e = r.ldEnd(); while (r.pos < e) l_landmarks.push(r.f64()); r.expectAt(e); break; }
+      case 17: v_handedness = r.f64(); h_handedness = true; break;
+      case 25: v_presence = r.f64(); h_presence = true; break;
+      case 33: v_pinch = r.f64(); h_pinch = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_handedness) throw new DecodeError('LiveHand.handedness: missing', 'missingField');
+  if (!h_presence) throw new DecodeError('LiveHand.presence: missing', 'missingField');
+  if (!h_pinch) throw new DecodeError('LiveHand.pinch: missing', 'missingField');
+  o.landmarks = l_landmarks;
+  o.handedness = v_handedness;
+  o.presence = v_presence;
+  o.pinch = v_pinch;
+  return o;
+}
+function encS_ListCameras(w: Writer, v: T.ListCameras): void {
+  void w; void v;
+}
+function decS_ListCameras(r: Reader, end: number, o: any): T.ListCameras {
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  return o;
+}
+function encS_StartLiveInput(w: Writer, v: T.StartLiveInput): void {
+  w.byte(10); w.str(v.camera);
+  w.byte(18); w.str(v.modelDir);
+  w.byte(24); w.u32(v.width);
+  w.byte(33); w.f64(v.fps);
+  w.byte(40); w.u32(v.maxHands);
+}
+function decS_StartLiveInput(r: Reader, end: number, o: any): T.StartLiveInput {
+  let h_camera = false;
+  let h_modelDir = false;
+  let h_width = false;
+  let h_fps = false;
+  let h_maxHands = false;
+  let v_camera: string | undefined;
+  let v_modelDir: string | undefined;
+  let v_width: number | undefined;
+  let v_fps: number | undefined;
+  let v_maxHands: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_camera = r.str(); h_camera = true; break;
+      case 18: v_modelDir = r.str(); h_modelDir = true; break;
+      case 24: v_width = r.u32(); h_width = true; break;
+      case 33: v_fps = r.f64(); h_fps = true; break;
+      case 40: v_maxHands = r.u32(); h_maxHands = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_camera) throw new DecodeError('StartLiveInput.camera: missing', 'missingField');
+  if (!h_modelDir) throw new DecodeError('StartLiveInput.modelDir: missing', 'missingField');
+  if (!h_width) throw new DecodeError('StartLiveInput.width: missing', 'missingField');
+  if (!h_fps) throw new DecodeError('StartLiveInput.fps: missing', 'missingField');
+  if (!h_maxHands) throw new DecodeError('StartLiveInput.maxHands: missing', 'missingField');
+  o.camera = v_camera;
+  o.modelDir = v_modelDir;
+  o.width = v_width;
+  o.fps = v_fps;
+  o.maxHands = v_maxHands;
+  return o;
+}
+function encS_StopLiveInput(w: Writer, v: T.StopLiveInput): void {
+  void w; void v;
+}
+function decS_StopLiveInput(r: Reader, end: number, o: any): T.StopLiveInput {
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  return o;
+}
+function encS_LiveInputEvent(w: Writer, v: T.LiveInputEvent): void {
+  w.byte(8); w.varint(enc_LiveInputState(v.state));
+  w.byte(18); w.str(v.message);
+  w.byte(26); w.str(v.camera);
+  w.byte(32); w.u32(v.width);
+  w.byte(40); w.u32(v.height);
+  w.byte(49); w.f64(v.fps);
+  w.byte(56); w.u64(v.seq);
+  w.byte(65); w.f64(v.latencyMs);
+  { const a = v.hands; for (let i = 0; i < a.length; i++) { w.byte(74); { const s = w.beginLd(); encS_LiveHand(w, a[i]!); w.endLd(s); } } }
+}
+function decS_LiveInputEvent(r: Reader, end: number, o: any): T.LiveInputEvent {
+  const l_hands: T.LiveHand[] = [];
+  let h_state = false;
+  let h_message = false;
+  let h_camera = false;
+  let h_width = false;
+  let h_height = false;
+  let h_fps = false;
+  let h_seq = false;
+  let h_latencyMs = false;
+  let v_state: T.LiveInputState | undefined;
+  let v_message: string | undefined;
+  let v_camera: string | undefined;
+  let v_width: number | undefined;
+  let v_height: number | undefined;
+  let v_fps: number | undefined;
+  let v_seq: number | undefined;
+  let v_latencyMs: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 8: v_state = dec_LiveInputState(r.varint()); h_state = true; break;
+      case 18: v_message = r.str(); h_message = true; break;
+      case 26: v_camera = r.str(); h_camera = true; break;
+      case 32: v_width = r.u32(); h_width = true; break;
+      case 40: v_height = r.u32(); h_height = true; break;
+      case 49: v_fps = r.f64(); h_fps = true; break;
+      case 56: v_seq = r.u64(); h_seq = true; break;
+      case 65: v_latencyMs = r.f64(); h_latencyMs = true; break;
+      case 74: l_hands.push(decS_LiveHand(r, r.ldEnd(), {})); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_state) throw new DecodeError('LiveInputEvent.state: missing', 'missingField');
+  if (!h_message) throw new DecodeError('LiveInputEvent.message: missing', 'missingField');
+  if (!h_camera) throw new DecodeError('LiveInputEvent.camera: missing', 'missingField');
+  if (!h_width) throw new DecodeError('LiveInputEvent.width: missing', 'missingField');
+  if (!h_height) throw new DecodeError('LiveInputEvent.height: missing', 'missingField');
+  if (!h_fps) throw new DecodeError('LiveInputEvent.fps: missing', 'missingField');
+  if (!h_seq) throw new DecodeError('LiveInputEvent.seq: missing', 'missingField');
+  if (!h_latencyMs) throw new DecodeError('LiveInputEvent.latencyMs: missing', 'missingField');
+  o.state = v_state;
+  o.message = v_message;
+  o.camera = v_camera;
+  o.width = v_width;
+  o.height = v_height;
+  o.fps = v_fps;
+  o.seq = v_seq;
+  o.latencyMs = v_latencyMs;
+  o.hands = l_hands;
+  return o;
+}
 function encU_Value(w: Writer, v: T.Value): void {
   switch (v.kind) {
     case 'none': w.varint(10); w.byte(0); return;
@@ -18382,6 +18776,10 @@ function encU_Command(w: Writer, v: T.Command): void {
     case 'setLayerTrackers': w.varint(15562); { const s = w.beginLd(); encS_SetLayerTrackers(w, v); w.endLd(s); } return;
     case 'setCameraSolve': w.varint(15570); { const s = w.beginLd(); encS_SetCameraSolve(w, v); w.endLd(s); } return;
     case 'setLayerMatte': w.varint(15578); { const s = w.beginLd(); encS_SetLayerMatte(w, v); w.endLd(s); } return;
+    case 'startLiveInput': w.varint(15586); { const s = w.beginLd(); encS_StartLiveInput(w, v); w.endLd(s); } return;
+    case 'stopLiveInput': w.varint(15594); { const s = w.beginLd(); encS_StopLiveInput(w, v); w.endLd(s); } return;
+    case 'setPerformanceTake': w.varint(15602); { const s = w.beginLd(); encS_SetPerformanceTake(w, v); w.endLd(s); } return;
+    case 'clearPerformanceTakes': w.varint(15610); { const s = w.beginLd(); encS_ClearPerformanceTakes(w, v); w.endLd(s); } return;
     default: throw new RangeError('Command: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -18561,6 +18959,10 @@ function decU_Command(r: Reader, end: number): T.Command {
       case 15562: out = decS_SetLayerTrackers(r, r.ldEnd(), { type: 'setLayerTrackers' }) as T.Command; break;
       case 15570: out = decS_SetCameraSolve(r, r.ldEnd(), { type: 'setCameraSolve' }) as T.Command; break;
       case 15578: out = decS_SetLayerMatte(r, r.ldEnd(), { type: 'setLayerMatte' }) as T.Command; break;
+      case 15586: out = decS_StartLiveInput(r, r.ldEnd(), { type: 'startLiveInput' }) as T.Command; break;
+      case 15594: out = decS_StopLiveInput(r, r.ldEnd(), { type: 'stopLiveInput' }) as T.Command; break;
+      case 15602: out = decS_SetPerformanceTake(r, r.ldEnd(), { type: 'setPerformanceTake' }) as T.Command; break;
+      case 15610: out = decS_ClearPerformanceTakes(r, r.ldEnd(), { type: 'clearPerformanceTakes' }) as T.Command; break;
       default: r.skip(key);
     }
   }
@@ -18740,6 +19142,10 @@ function encU_CommandResult(w: Writer, v: T.CommandResult): void {
     case 'setLayerTrackers': w.varint(15562); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'setCameraSolve': w.varint(15570); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'setLayerMatte': w.varint(15578); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
+    case 'startLiveInput': w.varint(15586); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
+    case 'stopLiveInput': w.varint(15594); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
+    case 'setPerformanceTake': w.varint(15602); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
+    case 'clearPerformanceTakes': w.varint(15610); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     default: throw new RangeError('CommandResult: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -18919,6 +19325,10 @@ function decU_CommandResult(r: Reader, end: number): T.CommandResult {
       case 15562: out = decS_Empty(r, r.ldEnd(), { type: 'setLayerTrackers' }) as T.CommandResult; break;
       case 15570: out = decS_Empty(r, r.ldEnd(), { type: 'setCameraSolve' }) as T.CommandResult; break;
       case 15578: out = decS_Empty(r, r.ldEnd(), { type: 'setLayerMatte' }) as T.CommandResult; break;
+      case 15586: out = decS_Empty(r, r.ldEnd(), { type: 'startLiveInput' }) as T.CommandResult; break;
+      case 15594: out = decS_Empty(r, r.ldEnd(), { type: 'stopLiveInput' }) as T.CommandResult; break;
+      case 15602: out = decS_Empty(r, r.ldEnd(), { type: 'setPerformanceTake' }) as T.CommandResult; break;
+      case 15610: out = decS_Empty(r, r.ldEnd(), { type: 'clearPerformanceTakes' }) as T.CommandResult; break;
       default: r.skip(key);
     }
   }
@@ -18984,6 +19394,8 @@ function encU_Query(w: Writer, v: T.Query): void {
     case 'renderDocumentStill': w.varint(15482); { const s = w.beginLd(); encS_RenderDocumentStill(w, v); w.endLd(s); } return;
     case 'getLayerFaces': w.varint(15490); { const s = w.beginLd(); encS_GetLayerFaces(w, v); w.endLd(s); } return;
     case 'getTimelineRows': w.varint(15498); { const s = w.beginLd(); encS_GetTimelineRows(w, v); w.endLd(s); } return;
+    case 'listCameras': w.varint(15506); { const s = w.beginLd(); encS_ListCameras(w, v); w.endLd(s); } return;
+    case 'getPerformanceTakes': w.varint(15618); { const s = w.beginLd(); encS_GetPerformanceTakes(w, v); w.endLd(s); } return;
     default: throw new RangeError('Query: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -19049,6 +19461,8 @@ function decU_Query(r: Reader, end: number): T.Query {
       case 15482: out = decS_RenderDocumentStill(r, r.ldEnd(), { type: 'renderDocumentStill' }) as T.Query; break;
       case 15490: out = decS_GetLayerFaces(r, r.ldEnd(), { type: 'getLayerFaces' }) as T.Query; break;
       case 15498: out = decS_GetTimelineRows(r, r.ldEnd(), { type: 'getTimelineRows' }) as T.Query; break;
+      case 15506: out = decS_ListCameras(r, r.ldEnd(), { type: 'listCameras' }) as T.Query; break;
+      case 15618: out = decS_GetPerformanceTakes(r, r.ldEnd(), { type: 'getPerformanceTakes' }) as T.Query; break;
       default: r.skip(key);
     }
   }
@@ -19114,6 +19528,8 @@ function encU_QueryResult(w: Writer, v: T.QueryResult): void {
     case 'renderDocumentStill': w.varint(15482); { const s = w.beginLd(); encS_Thumbnail(w, v); w.endLd(s); } return;
     case 'getLayerFaces': w.varint(15490); { const s = w.beginLd(); encS_LayerFaces(w, v); w.endLd(s); } return;
     case 'getTimelineRows': w.varint(15498); { const s = w.beginLd(); encS_TimelineRowSets(w, v); w.endLd(s); } return;
+    case 'listCameras': w.varint(15506); { const s = w.beginLd(); encS_CameraList(w, v); w.endLd(s); } return;
+    case 'getPerformanceTakes': w.varint(15618); { const s = w.beginLd(); encS_PerformanceTakes(w, v); w.endLd(s); } return;
     default: throw new RangeError('QueryResult: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -19179,6 +19595,8 @@ function decU_QueryResult(r: Reader, end: number): T.QueryResult {
       case 15482: out = decS_Thumbnail(r, r.ldEnd(), { type: 'renderDocumentStill' }) as T.QueryResult; break;
       case 15490: out = decS_LayerFaces(r, r.ldEnd(), { type: 'getLayerFaces' }) as T.QueryResult; break;
       case 15498: out = decS_TimelineRowSets(r, r.ldEnd(), { type: 'getTimelineRows' }) as T.QueryResult; break;
+      case 15506: out = decS_CameraList(r, r.ldEnd(), { type: 'listCameras' }) as T.QueryResult; break;
+      case 15618: out = decS_PerformanceTakes(r, r.ldEnd(), { type: 'getPerformanceTakes' }) as T.QueryResult; break;
       default: r.skip(key);
     }
   }
@@ -19219,6 +19637,7 @@ function encU_Event(w: Writer, v: T.Event): void {
     case 'assetStatusChanged': w.varint(16490); { const s = w.beginLd(); encS_AssetStatusChangedEvent(w, v); w.endLd(s); } return;
     case 'fontsChanged': w.varint(16498); { const s = w.beginLd(); encS_FontsChangedEvent(w, v); w.endLd(s); } return;
     case 'autosaved': w.varint(16506); { const s = w.beginLd(); encS_AutosavedEvent(w, v); w.endLd(s); } return;
+    case 'liveInput': w.varint(16514); { const s = w.beginLd(); encS_LiveInputEvent(w, v); w.endLd(s); } return;
     case 'motionBlurChanged': w.varint(21730); { const s = w.beginLd(); encS_MotionBlurChangedEvent(w, v); w.endLd(s); } return;
     case 'colorManagementChanged': w.varint(21738); { const s = w.beginLd(); encS_ColorManagementChangedEvent(w, v); w.endLd(s); } return;
     default: throw new RangeError('Event: unknown type ' + String((v as { type?: unknown }).type));
@@ -19261,6 +19680,7 @@ function decU_Event(r: Reader, end: number): T.Event {
       case 16490: out = decS_AssetStatusChangedEvent(r, r.ldEnd(), { type: 'assetStatusChanged' }) as T.Event; break;
       case 16498: out = decS_FontsChangedEvent(r, r.ldEnd(), { type: 'fontsChanged' }) as T.Event; break;
       case 16506: out = decS_AutosavedEvent(r, r.ldEnd(), { type: 'autosaved' }) as T.Event; break;
+      case 16514: out = decS_LiveInputEvent(r, r.ldEnd(), { type: 'liveInput' }) as T.Event; break;
       case 21730: out = decS_MotionBlurChangedEvent(r, r.ldEnd(), { type: 'motionBlurChanged' }) as T.Event; break;
       case 21738: out = decS_ColorManagementChangedEvent(r, r.ldEnd(), { type: 'colorManagementChanged' }) as T.Event; break;
       default: r.skip(key);
@@ -19511,6 +19931,12 @@ export const codecs = {
   EditPathTopology: mk<T.EditPathTopology>(encS_EditPathTopology, (r, e) => decS_EditPathTopology(r, e, {})),
   SetShapeOutline: mk<T.SetShapeOutline>(encS_SetShapeOutline, (r, e) => decS_SetShapeOutline(r, e, {})),
   PropertyPaths: mk<T.PropertyPaths>(encS_PropertyPaths, (r, e) => decS_PropertyPaths(r, e, {})),
+  PerformanceFit: mk<T.PerformanceFit>(encS_PerformanceFit, (r, e) => decS_PerformanceFit(r, e, {})),
+  PerformanceTake: mk<T.PerformanceTake>(encS_PerformanceTake, (r, e) => decS_PerformanceTake(r, e, {})),
+  PerformanceTakes: mk<T.PerformanceTakes>(encS_PerformanceTakes, (r, e) => decS_PerformanceTakes(r, e, {})),
+  SetPerformanceTake: mk<T.SetPerformanceTake>(encS_SetPerformanceTake, (r, e) => decS_SetPerformanceTake(r, e, {})),
+  ClearPerformanceTakes: mk<T.ClearPerformanceTakes>(encS_ClearPerformanceTakes, (r, e) => decS_ClearPerformanceTakes(r, e, {})),
+  GetPerformanceTakes: mk<T.GetPerformanceTakes>(encS_GetPerformanceTakes, (r, e) => decS_GetPerformanceTakes(r, e, {})),
   MarkerOwner: mk<T.MarkerOwner>(encS_MarkerOwner, (r, e) => decS_MarkerOwner(r, e, {})),
   Marker: mk<T.Marker>(encS_Marker, (r, e) => decS_Marker(r, e, {})),
   MarkerInsert: mk<T.MarkerInsert>(encS_MarkerInsert, (r, e) => decS_MarkerInsert(r, e, {})),
@@ -19827,6 +20253,13 @@ export const codecs = {
   RenderShaderSource: mk<T.RenderShaderSource>(encS_RenderShaderSource, (r, e) => decS_RenderShaderSource(r, e, {})),
   RenderRasterSource: mk<T.RenderRasterSource>(encS_RenderRasterSource, (r, e) => decS_RenderRasterSource(r, e, {})),
   RenderFrameFile: mk<T.RenderFrameFile>(encS_RenderFrameFile, (r, e) => decS_RenderFrameFile(r, e, {})),
+  CameraInfo: mk<T.CameraInfo>(encS_CameraInfo, (r, e) => decS_CameraInfo(r, e, {})),
+  CameraList: mk<T.CameraList>(encS_CameraList, (r, e) => decS_CameraList(r, e, {})),
+  LiveHand: mk<T.LiveHand>(encS_LiveHand, (r, e) => decS_LiveHand(r, e, {})),
+  ListCameras: mk<T.ListCameras>(encS_ListCameras, (r, e) => decS_ListCameras(r, e, {})),
+  StartLiveInput: mk<T.StartLiveInput>(encS_StartLiveInput, (r, e) => decS_StartLiveInput(r, e, {})),
+  StopLiveInput: mk<T.StopLiveInput>(encS_StopLiveInput, (r, e) => decS_StopLiveInput(r, e, {})),
+  LiveInputEvent: mk<T.LiveInputEvent>(encS_LiveInputEvent, (r, e) => decS_LiveInputEvent(r, e, {})),
   Command: mk<T.Command>(encU_Command, decU_Command),
   CommandResult: mk<T.CommandResult>(encU_CommandResult, decU_CommandResult),
   Query: mk<T.Query>(encU_Query, decU_Query),

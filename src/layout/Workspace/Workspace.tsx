@@ -93,6 +93,7 @@ import { EngineSurface } from '@components/EngineSurface/EngineSurface';
 import { EngineUnportedNotice } from './EngineUnportedNotice';
 import { ExpressionErrorBar } from './ExpressionErrorBar';
 import { PerformanceBar } from './PerformanceBar';
+import { HandOverlay } from './HandOverlay';
 import { CompareOverlay } from './CompareOverlay';
 import { RotoBrushOverlay } from './RotoBrushOverlay';
 import { InlineAiPrompt } from './InlineAiPrompt';
@@ -760,6 +761,8 @@ export function WorkspaceViewport({
           <ExpressionErrorBar />
           {/* Motion Sketch / Pose recording: the bar while a layer is armed. */}
           <PerformanceBar />
+          {/* The tracked hand (skeleton, grab and record state) while the bar's source is the hand. */}
+          <HandOverlay />
           {/* Ctrl+Enter: an AI prompt anchored to the selection's screen rect. */}
           <InlineAiPrompt />
         </div>

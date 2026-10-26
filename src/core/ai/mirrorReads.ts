@@ -51,6 +51,16 @@ export function allLayerIds(): string[] {
   return m.compIds.flatMap((c) => [...(m.comp(c)?.layers ?? [])]);
 }
 
+/**
+ * The layers of one composition (the active one by default), stack top first
+ * with a parent before its children. Every composition's layers when there is
+ * no such composition.
+ */
+export function compLayerIds(compId: string | undefined): string[] {
+  const comp = compId ? documentMirror().comp(compId) : undefined;
+  return comp ? [...comp.layers] : allLayerIds();
+}
+
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 
 /** A track's static value in stored units (`x` of Position, `fontSize`), undefined when the layer has none. */

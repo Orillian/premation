@@ -1,6 +1,7 @@
 #include "frame_cache.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace premation::render {
@@ -27,6 +28,17 @@ bool FrameCache::copy_to(std::uint64_t key, std::uint32_t width, std::uint32_t h
   return true;
 }
 
+const wgpu::Texture* FrameCache::use(std::uint64_t key, std::uint32_t width, std::uint32_t height) {
+  const auto it = index_.find(key);
+  if (it == index_.end() || it->second->width != width || it->second->height != height) {
+    ++stats_.misses;
+    return nullptr;
+  }
+  lru_.splice(lru_.begin(), lru_, it->second);
+  ++stats_.hits;
+  return &it->second->texture;
+}
+
 wgpu::Texture FrameCache::peek(std::uint64_t key, std::uint32_t width, std::uint32_t height) const {
   const auto it = index_.find(key);
   if (it == index_.end() || it->second->width != width || it->second->height != height) return nullptr;
@@ -44,7 +56,11 @@ void FrameCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t hei
     if (meta.diskKey != 0) it->second->meta.diskKey = meta.diskKey;
     return;
   }
-  while (bytes_ + need > budget_ && !lru_.empty()) evict_one(&encoder, onEvict ? &onEvict : nullptr);
+  while (bytes_ + need > budget_ && !lru_.empty()) {
+    // Every remaining frame is one an open surface shows: the cache stays over
+    // budget by this frame rather than blank another viewport.
+    if (!evict_one(&encoder, onEvict ? &onEvict : nullptr)) break;
+  }
   Entry e;
   e.key = key;
   e.width = width;
@@ -68,8 +84,17 @@ FrameMeta* FrameCache::meta(std::uint64_t key) {
   return it == index_.end() ? nullptr : &it->second->meta;
 }
 
-void FrameCache::evict_one(wgpu::CommandEncoder* encoder, const EvictHook* onEvict) {
-  Entry& victim = lru_.back();
+bool FrameCache::evict_one(wgpu::CommandEncoder* encoder, const EvictHook* onEvict) {
+  // Least recently used first, skipping the frames open surfaces show now.
+  auto it = lru_.end();
+  for (auto cand = lru_.rbegin(); cand != lru_.rend(); ++cand) {
+    if (!pinned_.pins(cand->key)) {
+      it = std::prev(cand.base());
+      break;
+    }
+  }
+  if (it == lru_.end()) return false;
+  Entry& victim = *it;
   if (encoder != nullptr && onEvict != nullptr) {
     (*onEvict)(Evicted{victim.key, victim.width, victim.height, &victim.texture, victim.meta}, *encoder);
   }
@@ -81,8 +106,9 @@ void FrameCache::evict_one(wgpu::CommandEncoder* encoder, const EvictHook* onEvi
     return s.width == victim.width && s.height == victim.height;
   });
   if (keep) spare_.push_back(std::move(victim));
-  lru_.pop_back();
+  lru_.erase(it);
   ++stats_.evictions;
+  return true;
 }
 
 wgpu::Texture FrameCache::take_texture(std::uint32_t w, std::uint32_t h) {

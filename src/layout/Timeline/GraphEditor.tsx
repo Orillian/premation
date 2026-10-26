@@ -42,7 +42,9 @@ import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, use
 import { memberTracksVersion, subscribeMemberTracks } from '@stores/memberTracks';
 import { clampPps, TIMELINE_PPS_MAX } from './zoomAnchor';
 import { Icon } from '@components/Icon';
-import { EASY_EASE_BEZIER, EASY_EASE_IN_BEZIER, EASY_EASE_OUT_BEZIER, cubicBezierEase, type EasingKind } from '@motion/animation';
+import { IconButton } from '@components/IconButton';
+import { TooltipProvider } from '@components/Tooltip';
+import { EASY_EASE_BEZIER, EASY_EASE_IN_BEZIER, EASY_EASE_OUT_BEZIER, type EasingKind, type PropertyTrack } from '@motion/animation';
 import { type EasingPreset } from '@core/animation/keyframeAssistants';
 import { easingTargetKeyframes } from '@core/animation/easingSelection';
 import { easeKindOnKeys, easePresetOnKeys } from './keyframeEdits';
@@ -101,6 +103,8 @@ import { installGraphNormalizeCommands, onGraphNormalize } from './graphNormaliz
 import { applyKeyframeVelocity, readKeyframeVelocity, type KeyframeVelocity } from './keyframeVelocity';
 import { snapKeyframeTime, snapKeyframeValue, type SnapTarget, type ValueSnapTarget } from './keyframeSnap';
 import { computeBoxZoomFromSvg } from './graphBoxZoom';
+import { fitTimeSpan, fitValueRange, panValueRange, zoomValueRange, VALUE_ZOOM_STEP } from './graphValueView';
+import { memberPropertyTrack, sampleMemberLocal, spatialSiblingTracks } from './graphLocalSample';
 import { nearestKeyframeOnCurve } from './graphCurveClick';
 import {
   planGraphGroupTimes,
@@ -139,6 +143,10 @@ function buildGraphText() {
     visibility: t('timeline.graph.visibility', 'Graph visibility'),
     sharedAxis: t('timeline.graph.sharedAxis', 'Shared axis'),
     sharedAxisTitle: t('timeline.graph.sharedAxisTitle', 'One vertical axis for every curve, so values compare across properties (off: each curve fitted to its own range)'),
+    fitAll: t('timeline.graph.fitAll', 'Fit all graphs to view'),
+    fitAllTitle: t('timeline.graph.fitAllTitle', 'Fit all graphs to view — every curve re-fitted to its values and the whole composition in time. Alt+wheel zooms the values, Shift+wheel pans them, middle-drag pans both ways.'),
+    fitSelection: t('timeline.graph.fitSelection', 'Fit selection to view'),
+    fitSelectionTitle: t('timeline.graph.fitSelectionTitle', 'Fit selection to view — zoom to the selected keyframes’ values and times (every curve, with none selected)'),
     animated: t('timeline.graph.animated', 'Animated'),
     animatedTitle: t('timeline.graph.animatedTitle', 'Show Animated Properties — every keyframed property of the selected layers'),
     selected: t('timeline.graph.selected', 'Selected'),
@@ -311,7 +319,7 @@ interface GraphTrack {
   color: string;
 }
 
-type DragKind = 'kf' | 'handle-in' | 'handle-out' | 'scrub' | 'box-zoom' | 'box-select' | 'box-transform';
+type DragKind = 'kf' | 'handle-in' | 'handle-out' | 'scrub' | 'box-zoom' | 'box-select' | 'box-transform' | 'pan';
 
 interface DragState {
   kind: DragKind;
@@ -353,6 +361,9 @@ interface DragState {
   /** Diamond drag: each member's nearest keys that do NOT move with it (comp seconds). */
   /** Per group member: the comp times of its track's keys that do NOT move with the drag (a key may cross them, never land on one). */
   fixedTimes?: number[][];
+  /** Middle-drag pan: the pointer's last CLIENT position (the svg scrolls under it, so svg x is not a stable origin). */
+  lastClientX?: number;
+  lastClientY?: number;
   /** Live box-zoom corner (svg); start corner is ox/oy. */
   boxX?: number;
   boxY?: number;
@@ -653,6 +664,16 @@ export function GraphEditor({
   // compared or edited against each other.
   const sharedAxis = usePreferenceStore((s) => s.graphSharedAxis);
   const setPreference = usePreferenceStore((s) => s.set);
+  /**
+   * Which manual value range a curve reads (`manualRangesRef`): one for every
+   * value curve on the shared axis, its own otherwise. The mode is part of the
+   * key, so a view set in the value graph is not the speed graph's, and comes
+   * back when you return.
+   */
+  const viewKeyOf = useCallback(
+    (nodeId: string, prop: string): string => (mode === 'value' && sharedAxis ? `${mode}|*` : `${mode}|${trackKey(nodeId, prop)}`),
+    [mode, sharedAxis],
+  );
   const [selectedKf, setSelectedKf] = useState<SelectedKf | null>(null);
   const selectedKfIds = useKeyframeSelectionStore((s) => s.ids);
   const setSelectedKfIds = useKeyframeSelectionStore((s) => s.set);
@@ -684,6 +705,15 @@ export function GraphEditor({
   // Bumped when a drag ends so the range re-fits once (the memo below reads the
   // frozen ranges through a ref, which a state change must flush).
   const [refitTick, setRefitTick] = useState(0);
+  /**
+   * The value axis as the user LEFT it — Alt+wheel zoom, Shift+wheel / middle
+   * drag pan, Fit selection — per view key (`viewKeyOf`), replacing the
+   * auto-fit for that curve while set, so a zoom outlives the re-fit every
+   * engine answer would otherwise cause. A ref, not state: the sampling memo
+   * reads it; bumping `viewTick` is what redraws. Fit clears it.
+   */
+  const manualRangesRef = useRef<Map<string, Range>>(new Map());
+  const [viewTick, setViewTick] = useState(0);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const { ref: containerRef, size } = useResizeObserver<HTMLDivElement>();
 
@@ -829,20 +859,28 @@ export function GraphEditor({
       const driftingSeg = (a: MemberKey, b: MemberKey): boolean =>
         stale && (movingNow.has(posKey(nodeId, prop, a.t)) || movingNow.has(posKey(nodeId, prop, b.t)));
       /**
-       * The segment from its own keys: the temporal bezier the engine samples
-       * (a one-dimensional key's ease is CSS cubic-bezier semantics, packages/animation
-       * interpolate.ts), dense at the same spacing as the engine's answer.
+       * The segment from its own keys, dense at the same spacing as the
+       * engine's answer: the member's temporal bezier (CSS cubic-bezier
+       * semantics, packages/animation interpolate.ts) — or, for an axis of a
+       * spatial property, the arc-length-timed motion path its siblings trace
+       * with it (graphLocalSample), which is what the engine evaluates. Built
+       * on the first drifting segment only: a drag rarely has one.
        */
+      let localTracks: { own: PropertyTrack; siblings: Array<PropertyTrack | undefined> | null } | null = null;
       const localIn = (a: MemberKey, b: MemberKey, aAbs: number, bAbs: number): Array<[number, number]> => {
         const out: Array<[number, number]> = [];
         const dt = b.t - a.t;
         const span = bAbs - aAbs;
         if (!(dt > 0) || !(span > 0)) return out;
-        const bz = segmentBezierOf(kfs, kfs.indexOf(a));
-        const dv = b.value - a.value;
+        localTracks ??= {
+          own: memberPropertyTrack(nodeId, prop, ref, kfs, ref.member),
+          siblings: spatialSiblingTracks(mirror, nodeId, ref, storedT),
+        };
         for (let t = aAbs + sampleStep; t < bAbs - 1e-9; t += sampleStep) {
           if (t < visT0 - sampleStep || t > visT1 + sampleStep) continue;
-          out.push([t, a.value + dv * cubicBezierEase(bz, (t - aAbs) / span)]);
+          // Comp seconds → the keys' stored axis, where the tracks live.
+          const v = sampleMemberLocal(localTracks.own, localTracks.siblings, ref.member, a.t + ((t - aAbs) / span) * dt);
+          if (typeof v === 'number' && Number.isFinite(v)) out.push([t, v]);
         }
         return out;
       };
@@ -978,7 +1016,9 @@ export function GraphEditor({
     }
 
     for (const { nodeId, prop, color, kfs, samples, toAbs } of pre) {
-      let range = frozenRangesRef.current?.get(trackKey(nodeId, prop));
+      // The manual view first (a zoom or pan outlives any drag), then the
+      // range frozen by a drag in progress, then the fit.
+      let range = manualRangesRef.current.get(viewKeyOf(nodeId, prop)) ?? frozenRangesRef.current?.get(trackKey(nodeId, prop));
       if (!range) {
         if (shared) {
           range = shared;
@@ -1043,7 +1083,10 @@ export function GraphEditor({
     sampler.retain(plotted);
     return paths;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `rev` (mirror watch) and `samplesTick` (a curve answer landed) drive the re-sample
-  }, [tracks, duration, pps, INNER_H, rev, samplesTick, mode, scrollLeft, viewportW, refitTick, sharedAxis]);
+  }, [tracks, duration, pps, INNER_H, rev, samplesTick, mode, scrollLeft, viewportW, refitTick, sharedAxis, viewKeyOf, viewTick]);
+  // Read by the wheel / pan handlers, which must not re-bind on every sample that lands.
+  const sampledPathsRef = useRef(sampledPaths);
+  sampledPathsRef.current = sampledPaths;
 
   /**
    * The transform box around the selected diamonds — value graph only (the
@@ -1149,6 +1192,9 @@ export function GraphEditor({
 
   // ── Horizontal scroll / zoom ──────────────────────────────────
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // Keep the time under the cursor fixed across a wheel zoom (applied by the
+  // layout effect below, once the svg has been laid out at the new width).
+  const zoomAnchorRef = useRef<{ t: number; localX: number } | null>(null);
   // Follow the host's scroll (the Timeline's lanes) when it changes under us.
   useEffect(() => {
     const el = canvasRef.current;
@@ -1162,12 +1208,108 @@ export function GraphEditor({
     [onScrollChange],
   );
 
-  // Wheel: plain / shift → pan horizontally (the graph has no vertical scroll);
-  // ctrl / ⌘ → zoom, keeping the time under the cursor fixed.
+  // ── Vertical view: zoom / pan / fit (AE's value-axis navigation) ──
+  /** Apply `fn` to every plotted curve's CURRENT range and keep the result as the manual view. */
+  const transformView = useCallback(
+    (fn: (r: Range) => Range) => {
+      const paths = sampledPathsRef.current;
+      if (paths.length === 0) return;
+      const next = manualRangesRef.current;
+      for (const p of paths) next.set(viewKeyOf(p.nodeId, p.prop), fn({ minV: p.minV, maxV: p.maxV }));
+      setViewTick((n) => n + 1);
+    },
+    [viewKeyOf],
+  );
+  /** Zoom the value axis about svg `cy`; `factor` < 1 zooms in. */
+  const zoomValueAxis = useCallback(
+    (cy: number, factor: number) => transformView((r) => zoomValueRange(r, cy, INNER_H, factor)),
+    [transformView, INNER_H],
+  );
+  /** Pan the value axis by `dyPx` screen pixels (positive = the content moves down). */
+  const panValueAxis = useCallback(
+    (dyPx: number) => transformView((r) => panValueRange(r, dyPx, INNER_H)),
+    [transformView, INNER_H],
+  );
+  /** Zoom the TIME axis so [t0, t1] fills the viewport — the box-zoom's plumbing. */
+  const zoomTimeTo = useCallback(
+    (t0: number, t1: number) => {
+      if (!onZoom || !(t1 > t0)) return;
+      const result = computeBoxZoomFromSvg({
+        x0: t0 * pps,
+        x1: t1 * pps,
+        currentPps: pps,
+        viewportW,
+        minPps: GRAPH_PPS_MIN,
+        maxPps: GRAPH_PPS_MAX,
+        minSpanPx: 0,
+      });
+      if (!result) return;
+      zoomAnchorRef.current = { t: result.t0, localX: 0 };
+      onZoom(result.pps);
+      const el = canvasRef.current;
+      if (el) {
+        el.scrollLeft = result.scrollLeft;
+        onScrollChange?.(result.scrollLeft);
+      }
+    },
+    [onZoom, onScrollChange, pps, viewportW],
+  );
+  /** Fit all graphs to view: every manual range (and a drag's freeze) dropped, the composition fitted in time. */
+  const fitAllToView = useCallback(() => {
+    manualRangesRef.current = new Map();
+    frozenRangesRef.current = null;
+    setRefitTick((n) => n + 1);
+    zoomTimeTo(0, duration);
+  }, [zoomTimeTo, duration]);
+  /**
+   * Fit selection to view: the selected keys' plotted values (per curve, or
+   * together on the shared axis) and their time span. With nothing selected
+   * it is Fit all — a button that did nothing is the failure to avoid.
+   */
+  const fitSelectionToView = useCallback(() => {
+    const picked = sampledPathsRef.current
+      .map((p) => ({ p, keys: p.keyframes.filter((k) => selectedKfIds.has(k.selId)) }))
+      .filter((e) => e.keys.length > 0);
+    if (picked.length === 0) {
+      fitAllToView();
+      return;
+    }
+    const next = manualRangesRef.current;
+    if (mode === 'value' && sharedAxis) {
+      const r = fitValueRange(picked.flatMap((e) => e.keys.map((k) => k.plotted)), mode);
+      if (r) next.set(viewKeyOf(picked[0]!.p.nodeId, picked[0]!.p.prop), r);
+    } else {
+      for (const e of picked) {
+        const r = fitValueRange(e.keys.map((k) => k.plotted), mode);
+        if (r) next.set(viewKeyOf(e.p.nodeId, e.p.prop), r);
+      }
+    }
+    setViewTick((n) => n + 1);
+    const span = fitTimeSpan(picked.flatMap((e) => e.keys.map((k) => k.tAbs)));
+    if (span) zoomTimeTo(span.t0, span.t1);
+  }, [selectedKfIds, mode, sharedAxis, viewKeyOf, fitAllToView, zoomTimeTo]);
+
+  // Wheel: plain → pan horizontally; ctrl / ⌘ → zoom time, keeping the time
+  // under the cursor fixed; alt → zoom the VALUE axis about the pointer;
+  // shift → pan the value axis (After Effects' graph editor).
   const onCanvasWheel = useCallback(
     (e: WheelEvent) => {
       const el = canvasRef.current;
       if (!el) return;
+      if (e.altKey) {
+        e.preventDefault();
+        const rect = svgRef.current?.getBoundingClientRect();
+        zoomValueAxis(rect ? e.clientY - rect.top : INNER_H / 2, e.deltaY < 0 ? 1 / VALUE_ZOOM_STEP : VALUE_ZOOM_STEP);
+        return;
+      }
+      if (e.shiftKey) {
+        e.preventDefault();
+        // Some platforms hand shift+wheel over as deltaX already.
+        const dy = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+        // Wheel down shows the lower values: the content moves UP.
+        if (dy !== 0) panValueAxis(-dy);
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         if (!onZoom) return;
         e.preventDefault();
@@ -1184,11 +1326,10 @@ export function GraphEditor({
       if (delta === 0) return;
       el.scrollLeft += delta;
     },
-    [pps, onZoom],
+    [pps, onZoom, zoomValueAxis, panValueAxis, INNER_H],
   );
   // Keep the time under the cursor fixed across a wheel zoom. Runs after the
   // svg has been laid out at the new width, so the scroll can actually land.
-  const zoomAnchorRef = useRef<{ t: number; localX: number } | null>(null);
   useLayoutEffect(() => {
     const a = zoomAnchorRef.current;
     const el = canvasRef.current;
@@ -1510,9 +1651,31 @@ export function GraphEditor({
     [svgCoords, beginDrag, mode],
   );
 
-  // Background: Alt-drag box-zooms; plain click-drag scrubs the playhead.
+  // Background: Alt-drag box-zooms; plain click-drag scrubs the playhead;
+  // a middle drag pans both axes (the diamonds, handles and curves let a
+  // middle press through, so it works from anywhere on the canvas).
   const onSvgPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (e.button === 1) {
+        const { x, y } = svgCoords(e);
+        beginDrag(e, {
+          kind: 'pan',
+          nodeId: '',
+          prop: '',
+          kfT: 0,
+          origValue: 0,
+          ox: x,
+          oy: y,
+          px0: x,
+          py0: y,
+          minV: 0,
+          maxV: 1,
+          mode,
+          lastClientX: e.clientX,
+          lastClientY: e.clientY,
+        });
+        return;
+      }
       if (e.button !== 0) return;
       const { x, y } = svgCoords(e);
       // Shift on empty space is a SELECTION box, not a scrub. Shift already
@@ -1822,12 +1985,19 @@ export function GraphEditor({
         // back on itself and the sampler returns garbage (jumps, reversals).
         const influence = segPx <= 0 ? 1 / 3 : clamp((hx - selfTComp * pps) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, curBz[2] - 0.01));
 
+        // A FLAT segment (dv = 0) has no normalised y: its speed is 0 whatever
+        // the handle does, so the drag edits INFLUENCE only (AE stores speed +
+        // influence per side, and a flat side's influence still matters when
+        // the segment is un-flattened or the graph shows speed). The stored y
+        // is kept, and the linked neighbour is left alone — a slope of 0 read
+        // off a flat segment is the representation, not the user's intent.
+        const flat = dv === 0;
         if (d.mode === 'value') {
           const vHover = yToValue(hy, d.minV, d.maxV, INNER_H);
-          const y1 = dv === 0 ? curBz[1] : clamp((vHover - selfKf.value) / dv, MIN_HANDLE_Y, MAX_HANDLE_Y);
+          const y1 = flat ? curBz[1] : clamp((vHover - selfKf.value) / dv, MIN_HANDLE_Y, MAX_HANDLE_Y);
           const bz: Bezier = [influence, y1, curBz[2], curBz[3]];
           writes.push(bezierWrite(selfKf, bz, linked));
-          if (linked && prevKf && !isHoldEasing(prevKf.easing)) {
+          if (linked && !flat && prevKf && !isHoldEasing(prevKf.easing)) {
             const slope = outgoingSlope(bz, dv, dt);
             const prevBz = withIncomingSlope(segmentBezierOf(kfs, selfIdx - 1), selfKf.value - prevKf.value, selfKf.t - prevKf.t, slope);
             writes.push(bezierWrite(prevKf, prevBz, prevKf.continuous));
@@ -1836,7 +2006,7 @@ export function GraphEditor({
           const speed = Math.max(0, yToValue(hy, d.minV, d.maxV, INNER_H));
           const bz = withOutgoingSpeed([influence, curBz[1], curBz[2], curBz[3]], dv, dt, speed);
           writes.push(bezierWrite(selfKf, bz, linked));
-          if (linked && prevKf && !isHoldEasing(prevKf.easing)) {
+          if (linked && !flat && prevKf && !isHoldEasing(prevKf.easing)) {
             const prevBz = withIncomingSpeed(segmentBezierOf(kfs, selfIdx - 1), selfKf.value - prevKf.value, selfKf.t - prevKf.t, speed);
             writes.push(bezierWrite(prevKf, prevBz, prevKf.continuous));
           }
@@ -1853,14 +2023,16 @@ export function GraphEditor({
         // 1 − influence is the segment's x2: never behind its outgoing handle x1.
         const influence = segPx <= 0 ? 1 / 3 : clamp((selfTComp * pps - hx) / segPx, MIN_INFLUENCE, Math.min(MAX_INFLUENCE, 1 - prevBz[0] - 0.01));
 
+        // Flat arriving segment: influence only, neighbour untouched (see the out handle).
+        const flat = dvPrev === 0;
         if (d.mode === 'value') {
           const vHover = yToValue(hy, d.minV, d.maxV, INNER_H);
-          const y2 = dvPrev === 0
+          const y2 = flat
             ? prevBz[3]
             : clamp(1 - (selfKf.value - vHover) / dvPrev, 1 - MAX_HANDLE_Y, 1 - MIN_HANDLE_Y);
           const bz: Bezier = [prevBz[0], prevBz[1], 1 - influence, y2];
           writes.push(bezierWrite(prevKf, bz, prevKf.continuous));
-          if (linked && nextKf && !isHoldEasing(selfKf.easing)) {
+          if (linked && !flat && nextKf && !isHoldEasing(selfKf.easing)) {
             const slope = incomingSlope(bz, dvPrev, dtPrev);
             const curBz = withOutgoingSlope(segmentBezierOf(kfs, selfIdx), nextKf.value - selfKf.value, nextKf.t - selfKf.t, slope);
             writes.push(bezierWrite(selfKf, curBz, true));
@@ -1869,7 +2041,7 @@ export function GraphEditor({
           const speed = Math.max(0, yToValue(hy, d.minV, d.maxV, INNER_H));
           const bz = withIncomingSpeed([prevBz[0], prevBz[1], 1 - influence, prevBz[3]], dvPrev, dtPrev, speed);
           writes.push(bezierWrite(prevKf, bz, prevKf.continuous));
-          if (linked && nextKf && !isHoldEasing(selfKf.easing)) {
+          if (linked && !flat && nextKf && !isHoldEasing(selfKf.easing)) {
             const curBz = withOutgoingSpeed(segmentBezierOf(kfs, selfIdx), nextKf.value - selfKf.value, nextKf.t - selfKf.t, speed);
             writes.push(bezierWrite(selfKf, curBz, true));
           }
@@ -1914,6 +2086,18 @@ export function GraphEditor({
       const { x, y } = svgCoords(e);
       let ex = x - d.px0;
       let ey = y - d.py0;
+
+      if (d.kind === 'pan') {
+        // Client deltas: the svg scrolls under the pointer as it pans.
+        const dx = e.clientX - (d.lastClientX ?? e.clientX);
+        const dy = e.clientY - (d.lastClientY ?? e.clientY);
+        d.lastClientX = e.clientX;
+        d.lastClientY = e.clientY;
+        const el = canvasRef.current;
+        if (el && dx !== 0) el.scrollLeft -= dx;
+        if (dy !== 0) panValueAxis(dy);
+        return;
+      }
 
       if (d.kind === 'scrub') {
         onScrub?.(clamp(x / pps, 0, duration));
@@ -1970,7 +2154,7 @@ export function GraphEditor({
       if (d.kind === 'kf') moveKeyframe(d, ex, ey, e);
       else moveHandle(d, ex, ey, e);
     },
-    [svgCoords, onScrub, pps, duration, moveKeyframe, moveHandle, moveBoxTransform, sampledPaths, INNER_H, mode, boxSelectIds],
+    [svgCoords, onScrub, pps, duration, moveKeyframe, moveHandle, moveBoxTransform, panValueAxis, sampledPaths, INNER_H, mode, boxSelectIds],
   );
 
   const onSvgPointerUp = useCallback(
@@ -2190,6 +2374,7 @@ export function GraphEditor({
     installGraphNormalizeCommands();
     return onGraphNormalize(() => {
       frozenRangesRef.current = null;
+      manualRangesRef.current = new Map();
       setRefitTick((n) => n + 1);
     });
   }, []);
@@ -2287,6 +2472,21 @@ export function GraphEditor({
         >
           <Icon name="history" size="sm" /> {tx.reference}
         </button>
+
+        {/* AE's footer pair. Fit all also drops the manual view a wheel zoom
+            / pan left behind (there is no other way back to the auto-fit). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 6 }}>
+          {/* The editor is hosted by panels that mount it alone (Motion panel,
+              pop-outs); the tooltips need a provider, so it carries its own. */}
+          <TooltipProvider>
+            <IconButton size="sm" aria-label={tx.fitAll} tooltip={tx.fitAllTitle} onClick={fitAllToView}>
+              <Icon name="fit" size="sm" />
+            </IconButton>
+            <IconButton size="sm" aria-label={tx.fitSelection} tooltip={tx.fitSelectionTitle} onClick={fitSelectionToView}>
+              <Icon name="select-all" size="sm" />
+            </IconButton>
+          </TooltipProvider>
+        </div>
 
         {/* Quick Ease Presets Group — aria-pressed + the active class reflect
             the selected keyframe's real easing, so the pills answer "which one

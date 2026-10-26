@@ -17,17 +17,21 @@ import { usePerformanceStore, type PerformanceTarget } from '@stores/performance
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { usePlaybackClockStore } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
+import { useLiveInputStore } from '@stores/liveInputStore';
 import { useMirror } from '@hooks/useMirror';
 import {
   adjustTakeDetail,
   closePerformance,
   recordAgain,
   setPerformanceMode,
+  setPerformanceSource,
   setPerformanceTarget,
   setPoseKey,
   takeIsAdjustable,
   targetLabel,
+  toggleHandTake,
 } from '@providers/commands/performanceSession';
+import { grabDriven } from '@providers/commands/performanceHandSource';
 import { Button } from '@components/Button';
 import { Dropdown, type DropdownItem } from '@components/Dropdown';
 import { Icon } from '@components/Icon';
@@ -68,11 +72,34 @@ function TakeClock({ start }: { start: number }): JSX.Element {
   return <span ref={ref} className={styles.clock} data-take-clock="" />;
 }
 
-function SettingsPopover({ disabled }: { disabled: boolean }): JSX.Element {
+/** The camera's state while the hand is the source (liveInputStore: a state change, else ≤ 4×/s). */
+function CameraState(): JSX.Element {
+  const live = useLiveInputStore();
+  const text = live.state === 'running'
+    ? live.hands > 0
+      ? t('performance.camera.hands', '{n} hand(s) · {fps} fps', { n: live.hands, fps: live.trackedFps || Math.round(live.fps) })
+      : t('performance.camera.noHand', 'Camera on — show a hand')
+    : live.state === 'starting'
+      ? t('performance.camera.starting', 'Starting camera…')
+      : live.state === 'failed'
+        ? live.message
+        : t('performance.camera.off', 'Camera off');
+  return (
+    <span className={cn(styles.camera, live.state === 'failed' && styles.cameraFailed)} data-camera-state={live.state} title={text}>
+      <Icon name="video" size="sm" />
+      <span className={styles.cameraText}>{text}</span>
+    </span>
+  );
+}
+
+function SettingsPopover({ disabled, hand }: { disabled: boolean; hand: boolean }): JSX.Element {
   const reduction = usePreferenceStore((s) => s.performanceReduction);
   const wholeFrames = usePreferenceStore((s) => s.performanceWholeFrames);
   const preRoll = usePreferenceStore((s) => s.performancePreRoll);
   const hold = usePreferenceStore((s) => s.performanceHoldSeconds);
+  const gain = usePreferenceStore((s) => s.performanceHandGain);
+  const whichHand = usePreferenceStore((s) => s.performanceHand);
+  const mirror = usePreferenceStore((s) => s.performanceHandMirror);
   const setPref = usePreferenceStore((s) => s.set);
   return (
     <Popover
@@ -140,6 +167,44 @@ function SettingsPopover({ disabled }: { disabled: boolean }): JSX.Element {
             className={styles.settingSlider}
           />
         </div>
+        {hand && (
+          <>
+            <div className={styles.settingRow}>
+              <span className={styles.settingLabel}>{t('performance.hand.gain', 'Hand gain')}</span>
+              <Slider
+                size="sm"
+                min={0.25}
+                max={4}
+                step={0.25}
+                value={gain}
+                showValue
+                onChange={(v) => setPref('performanceHandGain', v)}
+                className={styles.settingSlider}
+              />
+            </div>
+            <div className={styles.settingRow}>
+              <span className={styles.settingLabel}>{t('performance.hand.which', 'Hand')}</span>
+              <Segmented
+                size="sm"
+                value={whichHand}
+                onChange={(v) => setPref('performanceHand', v)}
+                options={[
+                  { value: 'either', label: t('performance.hand.either', 'Either') },
+                  { value: 'left', label: t('performance.hand.left', 'Left') },
+                  { value: 'right', label: t('performance.hand.right', 'Right') },
+                ]}
+              />
+            </div>
+            <div className={styles.settingRow}>
+              <span className={styles.settingLabel}>{t('performance.hand.mirror', 'Mirror')}</span>
+              <Switch
+                checked={mirror}
+                onChange={(e) => setPref('performanceHandMirror', e.target.checked)}
+                aria-label={t('performance.hand.mirror', 'Mirror')}
+              />
+            </div>
+          </>
+        )}
       </div>
     </Popover>
   );
@@ -152,32 +217,42 @@ export function PerformanceBar(): JSX.Element | null {
   const takeStart = usePerformanceStore((s) => s.takeStart);
   const lastKeys = usePerformanceStore((s) => s.lastKeys);
   const poseKeys = usePerformanceStore((s) => s.poseKeys);
+  const storedTake = usePerformanceStore((s) => s.storedTake);
   const mode = usePreferenceStore((s) => s.performanceMode);
   const speed = usePreferenceStore((s) => s.performanceCaptureSpeed);
   const detail = usePreferenceStore((s) => s.performanceDetail);
   const reduction = usePreferenceStore((s) => s.performanceReduction);
   const poseStep = usePreferenceStore((s) => s.performancePoseStep);
   const poseUnit = usePreferenceStore((s) => s.performancePoseStepUnit);
+  const source = usePreferenceStore((s) => s.performanceSource);
   const setPref = usePreferenceStore((s) => s.set);
   const mirror = useMirror();
 
   if (phase === 'off' || !nodeId) return null;
   const recording = phase === 'recording';
   const perform = mode === 'perform';
+  const hand = source === 'hand';
   const layerName = mirror.layer(nodeId)?.name ?? t('performance.layer', 'Layer');
   const scrub = perform && target !== 'position';
 
+  const readyText = hand
+    ? grabDriven(target)
+      ? t('performance.status.readyHand', 'Ready — pinch to grab')
+      : t('performance.status.readyPinch', 'Ready — press Record, then open and close your hand')
+    : scrub
+      ? t('performance.status.readyScrub', 'Ready — drag left or right')
+      : t('performance.status.ready', 'Ready — drag the layer');
   const status = recording
     ? t('performance.status.recording', 'Recording')
     : phase === 'done' && perform
       ? t('performance.status.keys', '{n} keys', { n: lastKeys })
       : perform
-        ? scrub
-          ? t('performance.status.readyScrub', 'Ready — drag left or right')
-          : t('performance.status.ready', 'Ready — drag the layer')
+        ? readyText
         : poseKeys > 0
           ? t('performance.status.poseKeys', '{n} poses set', { n: poseKeys })
-          : t('performance.status.pose', 'Move the layer, then Set Key');
+          : hand
+            ? t('performance.status.poseHand', 'Move your hand, then tap or make a fist')
+            : t('performance.status.pose', 'Move the layer, then Set Key');
 
   const targetItems = (): DropdownItem[] => TARGETS.map((tg) => ({
     type: 'item',
@@ -213,7 +288,8 @@ export function PerformanceBar(): JSX.Element | null {
   const stepLabel = poseUnit === 'seconds'
     ? t('performance.step.seconds', '{n} s', { n: poseStep })
     : t('performance.step.framesShort', '{n}f', { n: poseStep });
-  const adjustable = phase === 'done' && perform && reduction === 'smart' && takeIsAdjustable();
+  // A take just recorded, or one the document holds for this layer and property (after a reopen, an undo): Detail re-fits it.
+  const adjustable = perform && reduction === 'smart' && (phase === 'done' || storedTake) && takeIsAdjustable();
 
   return (
     <TooltipProvider>
@@ -239,7 +315,7 @@ export function PerformanceBar(): JSX.Element | null {
             <Button size="xs" variant="ghost" disabled={recording} className={styles.chipTrigger}>
               <span className={styles.chipLayer}>{layerName}</span>
               <span className={styles.chipProp}>{targetLabel(target)}</span>
-              <Icon name="chevron-down" size={12} />
+              <Icon name="chevron-down" size="sm" />
             </Button>
           )}
         />
@@ -255,6 +331,32 @@ export function PerformanceBar(): JSX.Element | null {
           ]}
         />
 
+        <Tooltip label={t('performance.sourceHelp', 'What drives the take: the mouse, or a hand in front of the camera')}>
+          <span>
+            <Segmented
+              size="sm"
+              value={source}
+              disabled={recording}
+              onChange={setPerformanceSource}
+              aria-label={t('performance.source', 'Input')}
+              options={[
+                { value: 'mouse', label: t('performance.source.mouse', 'Mouse') },
+                { value: 'hand', label: t('performance.source.hand', 'Hand') },
+              ]}
+            />
+          </span>
+        </Tooltip>
+
+        {hand && <CameraState />}
+
+        {hand && perform && (
+          <Button size="xs" variant={recording ? 'primary' : 'secondary'} onClick={toggleHandTake} data-hand-record="">
+            <Icon name={recording ? 'stop' : 'circle'} size="sm" />
+            <span>{recording ? t('performance.hand.stop', 'Stop') : t('performance.hand.record', 'Record')}</span>
+            <Kbd chord="Enter" size="sm" />
+          </Button>
+        )}
+
         {perform ? (
           <Tooltip label={t('performance.speedHelp', 'Capture speed: 50% plays back twice as long as you drew it')}>
             <span>
@@ -264,7 +366,7 @@ export function PerformanceBar(): JSX.Element | null {
                 trigger={(
                   <Button size="xs" variant="secondary" disabled={recording} className={styles.numeric}>
                     <span>{`${speed}%`}</span>
-                    <Icon name="chevron-down" size={12} />
+                    <Icon name="chevron-down" size="sm" />
                   </Button>
                 )}
               />
@@ -285,7 +387,7 @@ export function PerformanceBar(): JSX.Element | null {
                   trigger={(
                     <Button size="xs" variant="secondary" className={styles.numeric}>
                       <span>{t('performance.step', 'Step {step}', { step: stepLabel })}</span>
-                      <Icon name="chevron-down" size={12} />
+                      <Icon name="chevron-down" size="sm" />
                     </Button>
                   )}
                 />
@@ -296,7 +398,9 @@ export function PerformanceBar(): JSX.Element | null {
 
         {perform && reduction === 'smart' && (
           <Tooltip label={adjustable
-            ? t('performance.detailAdjust', 'Fewer keys ↔ more faithful — re-fits the take you just recorded')
+            ? (phase === 'done'
+              ? t('performance.detailAdjust', 'Fewer keys ↔ more faithful — re-fits the take you just recorded')
+              : t('performance.detailStored', 'Fewer keys ↔ more faithful — re-fits the take kept in the project for this property'))
             : t('performance.detailHelp', 'Fewer keys ↔ more faithful')}
           >
             <span className={styles.detail}>
@@ -325,12 +429,16 @@ export function PerformanceBar(): JSX.Element | null {
         <span className={styles.spacer} />
         <span className={styles.hint}>
           {recording
-            ? scrub
-              ? t('performance.hint.recordingScrub', 'Shift for fine control · Release to finish · Esc to cancel')
-              : t('performance.hint.recording', 'Release to finish · Esc to cancel')
+            ? hand
+              ? grabDriven(target)
+                ? t('performance.hint.recordingHand', 'Open your hand to finish · Esc to cancel')
+                : t('performance.hint.recordingPinch', 'Stop to finish · Esc to cancel')
+              : scrub
+                ? t('performance.hint.recordingScrub', 'Shift for fine control · Release to finish · Esc to cancel')
+                : t('performance.hint.recording', 'Release to finish · Esc to cancel')
             : t('performance.hint.close', 'Esc to close')}
         </span>
-        <SettingsPopover disabled={recording} />
+        <SettingsPopover disabled={recording} hand={hand} />
         <IconButton size="xs" disabled={recording} aria-label={t('performance.close', 'Close')} onClick={closePerformance}>
           <Icon name="close" size="sm" />
         </IconButton>

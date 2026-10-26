@@ -2700,7 +2700,7 @@ const createSkeletonRigHandler: AiTool['handler'] = async (input, ctx) => {
   const i = input as {
     layerId: string;
     bones: Array<{ id: string; parentId?: string; length: number; x?: number; y?: number; rotation?: number }>;
-    ik?: Array<{ boneId: string; x: number; y: number; chainLength?: number }>;
+    ik?: Array<{ boneId: string; x: number; y: number; chainLength?: number; pole?: { x: number; y: number } }>;
   };
   if (!await ctx.scene.has(i.layerId)) return fail((await unknownNode(ctx, i.layerId)));
   const skelKind = kindOf(i.layerId);
@@ -2741,6 +2741,9 @@ const createSkeletonRigHandler: AiTool['handler'] = async (input, ctx) => {
     x: g.x,
     y: g.y,
     chainLength: Math.max(1, Math.min(8, Math.round(g.chainLength ?? 2))),
+    // A pole picks the elbow / knee side (the side of the root→goal line it is
+    // on — rig_mesh.cpp apply_ik); none keeps the rest pose's side.
+    ...(g.pole && Number.isFinite(g.pole.x) && Number.isFinite(g.pole.y) ? { pole: { x: g.pole.x, y: g.pole.y } } : {}),
   }));
   // The whole rig as `layer/skeleton` (a rig preset's route, rigPaths.ts).
   await ctx.engine.apply([{ type: 'setProperty', prop: { layer: i.layerId, path: 'layer/skeleton' }, value: { kind: 'json', value: JSON.stringify({ bones, ikTargets }) } } as Command]);

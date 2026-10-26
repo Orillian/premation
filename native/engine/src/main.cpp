@@ -31,9 +31,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <optional>
+#include <string>
 #include <string_view>
 
 #include "engine_process.hpp"
+#include "os_ffi.hpp"
 #if defined(PREMATION_HAVE_PREPARE)
 #include <string>
 
@@ -83,6 +86,14 @@ bool parse_u32(std::string_view s, std::uint32_t& out) {
 int run(int argc, char** argv) {
   premation::EngineOptions o;
   o.render.highPerformance = true;
+  // Developer aid: the log level from the environment when the host passes no
+  // --log-level (the app's supervisor passes none) — so a debug session can
+  // turn on debug lines without changing the host. The flag still wins.
+  if (const std::optional<std::string> lvl = premation::os::env_var("PREMATION_LOG_LEVEL")) {
+    if (*lvl == "debug") o.logLevel = premation::log::Level::debug;
+    else if (*lvl == "warn") o.logLevel = premation::log::Level::warn;
+    else if (*lvl == "error") o.logLevel = premation::log::Level::error;
+  }
   for (int i = 1; i < argc; ++i) {
     const std::string_view k = argv[i];
     const std::string_view v = i + 1 < argc ? std::string_view(argv[i + 1]) : std::string_view();
@@ -128,6 +139,20 @@ int run(int argc, char** argv) {
       return premation::run_job_child(std::string(v));
 #else
       std::fprintf(stderr, "premation-engine: built without engine jobs\n");
+      return 3;
+#endif
+    } else if (k == "--live") {
+      // Live performance input (live/live_host.hpp): the camera and the hand
+      // model run here, in a process of their own; JSON lines on stdout. A
+      // crash here stops live input only.
+#if defined(PREMATION_HAVE_JOBS)
+      if (v.empty()) {
+        std::fprintf(stderr, "premation-engine: --live needs a settings file\n");
+        return 64;
+      }
+      return premation::run_live_child(std::string(v));
+#else
+      std::fprintf(stderr, "premation-engine: built without live input\n");
       return 3;
 #endif
     } else if (k == "--no-gpu") {

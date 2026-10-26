@@ -17,6 +17,7 @@
 
 import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { GraphEditor } from './GraphEditor';
+import { TooltipProvider } from '@components/Tooltip';
 import { rowSelectionId } from '@core/engine/__testHelpers__/selectionIds';
 import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { useEaseClipboardStore } from '@stores/easeClipboardStore';
@@ -74,14 +75,17 @@ async function settle(): Promise<void> {
 }
 
 const renderGraph = async (): Promise<ReturnType<typeof render>> => {
+  // The fit buttons are IconButtons, whose tooltips need the app's provider.
   view = render(
-    <GraphEditor
-      selectedNodeIds={[NODE]}
-      currentTime={0}
-      duration={3}
-      pixelsPerSecond={60}
-      scrollLeft={0}
-    />,
+    <TooltipProvider>
+      <GraphEditor
+        selectedNodeIds={[NODE]}
+        currentTime={0}
+        duration={3}
+        pixelsPerSecond={60}
+        scrollLeft={0}
+      />
+    </TooltipProvider>,
   );
   // The diamonds draw once the layer's keys land.
   await waitFor(() => expect(view.container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(3));

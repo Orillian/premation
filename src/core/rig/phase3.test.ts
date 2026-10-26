@@ -200,11 +200,25 @@ describe('4.4 — IK pole vectors', () => {
     }
   });
 
+  it('the elbow lands on the POLE\'s side of the root→target line', () => {
+    // Root (-150, 0) → target (-60, 70). Layer space is y-down: a pole at
+    // y = -300 is above the line, one at y = 300 below it.
+    const root = { x: -150, y: 0 };
+    const target = { x: -60, y: 70 };
+    const side = (p: { x: number; y: number }) => (p.x - root.x) * (target.y - root.y) - (p.y - root.y) * (target.x - root.x);
+    for (const pole of [{ x: -150, y: -300 }, { x: -150, y: 300 }]) {
+      const { elbow } = elbowFor(pole);
+      expect(Math.sign(side(elbow))).toBe(Math.sign(side(pole)));
+    }
+  });
+
   it('no pole preserves the current bend side (unchanged default)', () => {
+    // The straight rest chain has cross = 0, which the solver reads as the
+    // positive bend — the side a pole ABOVE the line (y-down: y < 0) selects.
     const none = elbowFor(undefined);
-    const down = elbowFor({ x: -150, y: 300 });
-    expect(none.elbow.x).toBeCloseTo(down.elbow.x, 3);
-    expect(none.elbow.y).toBeCloseTo(down.elbow.y, 3);
+    const up = elbowFor({ x: -150, y: -300 });
+    expect(none.elbow.x).toBeCloseTo(up.elbow.x, 3);
+    expect(none.elbow.y).toBeCloseTo(up.elbow.y, 3);
   });
 
   it('a pole cannot help an UNREACHABLE target — the chain is fully extended', () => {

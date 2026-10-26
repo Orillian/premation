@@ -24,6 +24,8 @@
 // Render-thread only, like the VRAM cache: no locking.
 #pragma once
 
+#include <array>
+#include <span>
 #include <cstddef>
 #include <cstdint>
 #include <list>
@@ -44,14 +46,45 @@ struct FrameTag {
 };
 
 /// The frames eviction keeps: those of `scope` with an index in [first, last]
-/// (the play range: the work area, a custom range or the whole comp).
+/// (the play range: the work area, a custom range or the whole comp), and the
+/// frames `pinned` by key — the frame each open surface shows NOW (the comp
+/// viewport's, the Layer panel's, a pop-out's). A store for one view used to
+/// evict another view's current frame, which then blinked (a build) on its
+/// next draw; a pinned frame is never evicted to make room, whatever its scope.
 struct ProtectedRange {
   std::uint64_t scope = 0;
   std::int64_t first = 0;
   std::int64_t last = -1;
+  /// Content keys of every open surface's current frame (0 = none). Fixed
+  /// size: no allocation on the render thread's per-frame path.
+  static constexpr std::size_t kMaxPinned = 8;
+  std::array<std::uint64_t, kMaxPinned> pinned{};
   [[nodiscard]] bool covers(const FrameTag& t) const noexcept {
     return scope != 0 && t.scope == scope && t.frame >= first && t.frame <= last;
   }
+  [[nodiscard]] bool pins(std::uint64_t key) const noexcept {
+    if (key == 0) return false;
+    for (const std::uint64_t k : pinned) {
+      if (k == key) return true;
+    }
+    return false;
+  }
+  /// Whether eviction must keep the entry `key` tagged `t`.
+  [[nodiscard]] bool keeps(std::uint64_t key, const FrameTag& t) const noexcept { return covers(t) || pins(key); }
+  /// Pin `key` (a no-op when 0 or already pinned; the oldest pin goes when all slots are taken).
+  void pin(std::uint64_t key) noexcept {
+    if (key == 0 || pins(key)) return;
+    for (std::uint64_t& k : pinned) {
+      if (k == 0) {
+        k = key;
+        return;
+      }
+    }
+    const std::span<std::uint64_t> slots(pinned);
+    for (std::size_t i = 1; i < kMaxPinned; ++i) slots[i - 1] = slots[i];
+    slots.back() = key;
+  }
+  void clear_pins() noexcept { pinned.fill(0); }
 };
 
 /// One frame in the RAM tier.
@@ -135,7 +168,7 @@ class RamFrameCache {
     if (bytes_ + bytes <= budget_) return true;
     std::size_t freeable = 0;
     for (const Entry& e : lru_) {
-      if (!protect.covers(e.frame.tag)) freeable += e.frame.bytes();
+      if (!protect.keeps(e.key, e.frame.tag)) freeable += e.frame.bytes();
       if (bytes_ - freeable + bytes <= budget_) return true;
     }
     return false;
@@ -158,7 +191,7 @@ class RamFrameCache {
     }
     for (auto it = lru_.end(); bytes_ + need > budget_ && it != lru_.begin();) {
       --it;
-      if (protect.covers(it->frame.tag)) continue;
+      if (protect.keeps(it->key, it->frame.tag)) continue;
       it = evict(it, evicted);
     }
     lru_.push_front(Entry{key, std::move(frame)});

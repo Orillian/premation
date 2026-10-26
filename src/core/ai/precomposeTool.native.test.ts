@@ -10,6 +10,7 @@
 
 import { ToolRegistry } from '@motion/ai-tools';
 import type { ToolContext } from '@motion/ai-tools';
+import type { Command } from '@motion/engine-api';
 import { buildAiTools } from './toolHandlers';
 import { createToolContext } from './toolContext';
 import { documentMirror } from '@stores/documentMirror';
@@ -74,5 +75,25 @@ describe('create_precomp', () => {
     expect((await docView()).getTrackKeyframes(inst.id, 'timeRemap')?.map((k) => k.value)).toEqual([0, 2]);
     // Its precomp flag is what makes it render its comp — never cleared.
     expect(documentMirror().layer(inst.id)?.kind).toBe('precomp');
+  });
+
+  it("describe_scene lists the active composition's layers, not every composition's", async () => {
+    // A and B are in comp_root, the active composition; Other's layer is not.
+    const { item: other } = await h!.run({ type: 'createComposition', settings: { name: 'Other', width: 640, height: 360 }, fromItems: [] } as Command) as { item: string };
+    const elsewhere = (await h!.run({ type: 'createLayer', comp: other, kind: 'shape', name: 'elsewhere', init: [] })).layer;
+    await engineIdle();
+    const res = await registry().execute('describe_scene', {}, ctx());
+    const ids = (res.data as { layers: Array<{ id: string }> }).layers.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining([A, B]));
+    expect(ids).not.toContain(elsewhere);
+  });
+
+  it('pre-composes in a composition other than the one open when the document loaded', async () => {
+    // The engine's view stays on comp_root; the command names the other composition.
+    const { item: other } = await h!.run({ type: 'createComposition', settings: { name: 'Second', width: 640, height: 360 }, fromItems: [] } as Command) as { item: string };
+    const C = (await h!.run({ type: 'createLayer', comp: other, kind: 'shape', name: 'c', init: [] })).layer;
+    const r = await h!.run({ type: 'precompose', comp: other, layers: [C], name: 'Inner', mode: 'moveAll', adjustDuration: false } as Command) as { comp: string; layer: string };
+    expect(r.layer).toBeTruthy();
+    expect((await docView()).getNode(C)?.parent).toBe(r.comp);
   });
 });

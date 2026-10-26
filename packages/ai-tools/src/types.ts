@@ -144,7 +144,7 @@ export class AiEngineError extends Error {
  */
 export interface SceneFacade {
   has(nodeId: string): Promise<boolean>;
-  /** Real hierarchy walk, parents before children. */
+  /** The active composition's layers, a real hierarchy walk, parents before children. */
   all(): Promise<readonly SceneNodeView[]>;
   get(nodeId: string): Promise<SceneNodeView | undefined>;
   /** Closest existing ids to a bad one, for "did you mean" repair hints. */

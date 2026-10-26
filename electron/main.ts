@@ -50,6 +50,7 @@ import { registerModelDownloadIpc, abortAllModelDownloads } from './modelDownloa
 import { objectMatteUserDir, registerObjectMatteModelIpc } from './objectMatteModel';
 import { faceModelUserDir, registerFaceModelIpc } from './faceModel';
 import { depthModelUserDir, registerDepthModelIpc } from './depthModel';
+import { handModelUserDir, registerHandModelIpc } from './handModel';
 import { registerMediaKeyIpc } from './mediaKeyVault';
 import { registerAiMediaProxyIpc } from './aiMediaProxy';
 import { registerApiProxyIpc, abortAllApiStreams, sendWithAuth } from './apiProxy';
@@ -1422,6 +1423,8 @@ app.whenReady().then(() => {
   registerFaceModelIpc(() => app.getPath('userData'));
   // Make 3D from Photo's depth model, a PINNED download on first use (depthModel.ts).
   registerDepthModelIpc(() => app.getPath('userData'));
+  // Live performance input's hand models, a PINNED download on first use (handModel.ts).
+  registerHandModelIpc(() => app.getPath('userData'));
   registerModelDownloadIpc();
   // Export's ffmpeg: health check, one-click repair download, "choose file"
   // (ffmpegService.ts). Ungated for the same reason as the model download.
@@ -1493,6 +1496,7 @@ app.whenReady().then(() => {
     samUserDir: objectMatteUserDir(app.getPath('userData')),
     faceUserDir: faceModelUserDir(app.getPath('userData')),
     depthUserDir: depthModelUserDir(app.getPath('userData')),
+    handUserDir: handModelUserDir(app.getPath('userData')),
     userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>

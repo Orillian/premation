@@ -1580,3 +1580,245 @@ TEST_CASE("cached playback: the second pass over a range builds nothing; an edit
   }
   h.session.set_frame_builder(nullptr);
 }
+
+// ── comp-space cache scopes + idle render-ahead (frame_scene.hpp comp_space_frame, Session::idle_prefetch) ──
+
+TEST_CASE("comp-space frame: the geometry follows the comp, not the pane; views that cannot be copied are slot space",
+          "[session][cache][compspace]") {
+  ViewportConfig v;
+  v.viewport = 1;
+  v.width = 640;
+  v.height = 360;
+  v.zoom = 1;
+  v.devicePixelRatio = 1;
+  v.panX = 320;  // the comp centre at the pane centre: the comp fills the pane exactly
+  v.panY = 180;
+  v.open = true;
+  const auto cs = comp_space_frame(v, 640, 360);
+  REQUIRE(cs);
+  CHECK(cs->width == 640);
+  CHECK(cs->height == 360);
+  CHECK(cs->slotX == 0);
+  CHECK(cs->slotY == 0);
+  CHECK(cs->phaseX == 0);
+  CHECK(cs->zoom == 1);
+  CHECK(cs->dpr == 1);
+  // A wider pane, the same camera: the same comp-space frame, landing further right.
+  ViewportConfig wide = v;
+  wide.width = 800;
+  const auto cw = comp_space_frame(wide, 640, 360);
+  REQUIRE(cw);
+  CHECK(cw->width == cs->width);
+  CHECK(cw->slotX == 80);
+  CHECK(cw->phaseX == cs->phaseX);
+  // A pan by whole pixels keeps the phase; by a third of a pixel it does not (quantised to 1/256).
+  ViewportConfig panned = v;
+  panned.panX = 300;
+  CHECK(comp_space_frame(panned, 640, 360)->phaseX == 0);
+  CHECK(comp_space_frame(panned, 640, 360)->slotX == 20);
+  panned.panX = 300.3333;
+  const auto third = comp_space_frame(panned, 640, 360);
+  REQUIRE(third);
+  CHECK(third->phaseX != 0);
+  CHECK(third->phaseX * 256 == std::round(third->phaseX * 256));
+  // Zoom changes the scale: a different frame. Zoomed far in, the comp would
+  // cost more than twice the slot to draw: slot space.
+  ViewportConfig zoomed = v;
+  zoomed.zoom = 1.25;  // 800 x 450: under twice the slot's pixels
+  const auto z = comp_space_frame(zoomed, 640, 360);
+  REQUIRE(z);
+  CHECK(z->width == 800);
+  CHECK(z->slotX == -80);
+  zoomed.zoom = 2;  // 1280 x 720: four times the slot
+  CHECK_FALSE(comp_space_frame(zoomed, 640, 360));
+  // Fit (zoom <= 0): export_view's camera, the comp centred.
+  ViewportConfig fit = v;
+  fit.zoom = 0;
+  fit.width = 1280;
+  fit.height = 360;
+  const auto f = comp_space_frame(fit, 640, 360);
+  REQUIRE(f);
+  CHECK(f->width == 640);
+  CHECK(f->slotX == 320);
+  CHECK(f->zoom == 1);
+  // Preview resolution halves the texture.
+  ViewportConfig half = v;
+  half.resolution = 0.5;
+  const auto hf = comp_space_frame(half, 640, 360);
+  REQUIRE(hf);
+  CHECK(hf->width == 320);
+  CHECK(hf->dpr == 0.5);
+  // Slot space: a Layer view, a held time, a channel view, the Extended Viewer, a ROI, the ground grid.
+  ViewportConfig layer = v;
+  layer.layer = "L";
+  CHECK_FALSE(comp_space_frame(layer, 640, 360));
+  ViewportConfig held = v;
+  held.time = 0;
+  CHECK_FALSE(comp_space_frame(held, 640, 360));
+  ViewportConfig ch = v;
+  ch.channel = api::ChannelView::alpha;
+  CHECK_FALSE(comp_space_frame(ch, 640, 360));
+  ViewportConfig ext = v;
+  ext.clipToComp = false;
+  CHECK_FALSE(comp_space_frame(ext, 640, 360));
+  ViewportConfig roi = v;
+  roi.regionOfInterest = api::Rect{0, 0, 10, 10};
+  CHECK_FALSE(comp_space_frame(roi, 640, 360));
+  ViewportConfig grid = v;
+  grid.groundGrid = true;
+  CHECK_FALSE(comp_space_frame(grid, 640, 360));
+}
+
+TEST_CASE("cache scope: a pane resize or a whole-pixel pan keeps the bar and the no-build path; a zoom does not",
+          "[session][cache][compspace]") {
+  Harness h(64);
+  CountingBuilder builder;
+  h.session.set_frame_builder(&builder);
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);  // 1920 x 1080
+  const api::LayerId layer = make_layer(h, comp);
+  api::AddKeyframes a;
+  for (int k = 0; k <= 10; ++k) {
+    api::KeyframeInsert ins;
+    ins.prop = {layer, "transform/position"};
+    ins.time = static_cast<api::Time>(k) * (kSec / 5);
+    ins.value = vec2(10.0 * k, 0);
+    ins.easing = api::Easing::linear;
+    a.keys.push_back(std::move(ins));
+  }
+  REQUIRE(is_ok(h.run(cmd(a))));
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  // The simulated tiers: a frame's content is its index AND its comp-space
+  // geometry (the real content key mixes the texture size and the camera).
+  h.sink.contentKeyOf = [](const RenderJob& j) {
+    std::uint64_t k = 0x1000 + static_cast<std::uint64_t>(j.frame);
+    if (j.compSpace) k ^= (std::uint64_t{j.compSpace->width} << 40U) ^ (std::uint64_t{j.compSpace->height} << 24U);
+    return std::optional<std::uint64_t>(k);
+  };
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 960;
+  v.height = 540;
+  v.device_pixel_ratio = 1.0;
+  v.zoom = 0.5;  // the whole comp at half size fills the pane
+  v.pan = api::Vec2{960, 540};
+  REQUIRE(is_ok(h.run(cmd(v))));
+  play_once(h, 2.0);
+  REQUIRE(cached_range(h, 0, 60));
+  const int built = builder.built;
+
+  // A wider pane (the same zoom and pan): the comp pixels are the same, the bar stays.
+  v.width = 1200;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(cached_range(h, 0, 60));
+  CHECK(builder.built == built);  // the frame at the playhead came from the map, no build
+  // A pan by whole pixels: the same.
+  v.pan = api::Vec2{900, 540};
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(cached_range(h, 0, 60));
+  CHECK(builder.built == built);
+  // Played again at the new size: nothing builds.
+  REQUIRE(is_ok(h.run(cmd(api::Seek{0, api::SeekMode::exact}))));
+  play_once(h, 2.0);
+  CHECK(builder.built == built);
+  CHECK(cached_range(h, 0, 60));
+
+  // A zoom is other pixels: the bar empties and the frames build again.
+  v.zoom = 0.25;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(none_cached(h, 0, 59));  // only the playhead's frame (59) drew under the new scope
+  REQUIRE(is_ok(h.run(cmd(api::Seek{0, api::SeekMode::exact}))));
+  play_once(h, 2.0);
+  CHECK(builder.built > built + 50);
+  CHECK(cached_range(h, 0, 60));
+  // And back to the first zoom: the frames are still there.
+  v.zoom = 0.5;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(cached_range(h, 0, 60));
+  h.session.set_frame_builder(nullptr);
+}
+
+TEST_CASE("idle render-ahead: a stopped transport fills the range from the playhead; any command stops it",
+          "[session][cache][prefetch]") {
+  Harness h(64);
+  CountingBuilder builder;
+  h.session.set_frame_builder(&builder);
+  (void)h.hello();
+  const auto comp = make_comp(h, 30);
+  const api::LayerId layer = make_layer(h, comp);
+  api::AddKeyframes a;
+  for (int k = 0; k <= 10; ++k) {
+    api::KeyframeInsert ins;
+    ins.prop = {layer, "transform/position"};
+    ins.time = static_cast<api::Time>(k) * (kSec / 5);
+    ins.value = vec2(10.0 * k, 0);
+    ins.easing = api::Easing::linear;
+    a.keys.push_back(std::move(ins));
+  }
+  REQUIRE(is_ok(h.run(cmd(a))));
+  api::SetActiveComposition active;
+  active.comp = comp;
+  REQUIRE(is_ok(h.run(cmd(active))));
+  h.sink.contentKeyOf = [](const RenderJob& j) { return std::optional<std::uint64_t>(0x1000 + static_cast<std::uint64_t>(j.frame)); };
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 640;
+  v.height = 360;
+  v.device_pixel_ratio = 1.0;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  // The work area: frames 30-89. The playhead at frame 40.
+  api::SetWorkArea wa;
+  wa.comp = comp;
+  wa.range = api::TimeRange{kSec, 2 * kSec};
+  REQUIRE(is_ok(h.run(cmd(wa))));
+  REQUIRE(is_ok(h.run(cmd(api::SetLoop{api::LoopMode::once}))));
+  REQUIRE(is_ok(h.run(cmd(api::Seek{40 * kFrame30, api::SeekMode::exact}))));
+  h.release_all();
+  const auto framesShown = h.frames_ready().size();
+  const int builtAtRest = builder.built;
+
+  // Nothing for the quiet period.
+  for (int i = 0; i < 250; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(h.sink.prefetched() == 0);
+  CHECK(builder.built == builtAtRest);
+  // Then a frame every other tick (submitted, then seen answered), forward from the
+  // playhead to the end of the work area, then backward to its start.
+  for (int i = 0; i < 300; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(h.sink.prefetched() >= 59);
+  CHECK(cached_range(h, 41, 90));
+  CHECK(cached_range(h, 30, 40));
+  CHECK(none_cached(h, 1, 30));  // frame 0 drew when the viewport opened
+  CHECK(none_cached(h, 90, 100));
+  // The playhead never moved and no frame was presented.
+  CHECK(h.session.time() == 40 * kFrame30);
+  CHECK(h.frames_ready().size() == framesShown);
+  // Covered: the prefetcher asks for no more wake-ups.
+  const std::uint64_t done = h.sink.prefetched();
+  for (int i = 0; i < 50; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(h.sink.prefetched() == done);
+  CHECK_FALSE(h.session.next_deadline().has_value());
+
+  // An edit at 2 s invalidates frames around it. The edit's own frame draws
+  // (the viewport), then nothing for the quiet period - then the gap fills again.
+  REQUIRE(is_ok(set_prop(h, layer, "transform/position", vec2(999, 0), 2 * kSec)));
+  CHECK(none_cached(h, 50, 70));
+  const std::uint64_t afterEdit = h.sink.prefetched();
+  for (int i = 0; i < 250; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(h.sink.prefetched() == afterEdit);
+  for (int i = 0; i < 300; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(cached_range(h, 30, 90));
+  CHECK(h.session.time() == 40 * kFrame30);
+
+  // A sink whose tiers keep nothing: the prefetcher gives up after a few refusals, and rests.
+  h.sink.contentKeyOf = nullptr;
+  h.sink.held.clear();
+  h.sink.prebuild.clear();
+  REQUIRE(is_ok(h.run(cmd(api::Seek{45 * kFrame30, api::SeekMode::exact}))));
+  const std::uint64_t beforeRest = h.sink.prefetched();
+  for (int i = 0; i < 400; ++i) h.advance(std::chrono::milliseconds(1));
+  CHECK(h.sink.prefetched() - beforeRest == 3);
+  CHECK_FALSE(h.session.next_deadline().has_value());
+  h.session.set_frame_builder(nullptr);
+}

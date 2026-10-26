@@ -23,6 +23,8 @@
 
 import { flicksToSeconds } from '@motion/engine-api';
 import { cancelMotionSketch, tickMotionSketch } from '@core/animation/motionSketch';
+import type { GestureEvent } from '@core/live/gestures';
+import { useLiveInputStore } from '@stores/liveInputStore';
 import { usePlaybackClockStore } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import {
@@ -54,6 +56,16 @@ import {
   finishMotionSketchEdit,
   refitLastTake,
 } from './motionSketchEdits';
+import { hasStoredTake, refitStoredTake } from './performanceTakes';
+import {
+  bindHandPosition,
+  bindHandScrub,
+  grabDriven,
+  refreshHandSettings,
+  startHandSource,
+  stopHandSource,
+  unbindHand,
+} from './performanceHandSource';
 
 function notify(message: string, level: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
   useUIStore.getState().notify({ level, message, durationMs: 2600 });
@@ -121,7 +133,9 @@ let scrubFromX: number | null = null;
 
 const onPointerDown = (e: PointerEvent): void => {
   const s = usePerformanceStore.getState();
-  if (s.phase !== 'armed' || usePreferenceStore.getState().performanceMode !== 'perform') return;
+  const p = usePreferenceStore.getState();
+  // With the hand as the source a press on the viewport is an ordinary press.
+  if (s.phase !== 'armed' || p.performanceMode !== 'perform' || p.performanceSource !== 'mouse') return;
   if (e.button !== 0 || inBar(e.target) || !inViewport(e.target)) return;
   if (s.target !== 'position') {
     // A scrub take owns the drag: the viewport must not also select or move.
@@ -180,6 +194,12 @@ const onKeyDown = (e: KeyboardEvent): void => {
   if (e.key === 'Enter' && !typing(e.target) && s.phase !== 'recording' && usePreferenceStore.getState().performanceMode === 'pose') {
     e.preventDefault();
     void setPoseKey();
+    return;
+  }
+  // Hand source, Perform: Enter is the Record button (starts, and stops, a take).
+  if (e.key === 'Enter' && !typing(e.target) && handOn() && usePreferenceStore.getState().performanceMode === 'perform') {
+    e.preventDefault();
+    toggleHandTake();
   }
 };
 
@@ -218,6 +238,7 @@ function sketchOptions(fromTime?: number): Parameters<typeof armMotionSketchEdit
     wholeFrames: p.performanceWholeFrames,
     holdSeconds: p.performanceHoldSeconds,
     frameDuration: frameDuration(),
+    source: p.performanceSource,
     ...(fromTime !== undefined ? { fromTime } : {}),
   };
 }
@@ -231,6 +252,7 @@ function scrubOptions(): ScrubFitOptions {
     frameDuration: frameDuration(),
     captureSpeedPct: p.performanceCaptureSpeed,
     smart: p.performanceReduction === 'smart',
+    source: p.performanceSource,
   };
 }
 
@@ -266,9 +288,11 @@ export function openPerformance(nodeId: string | undefined): void {
     return;
   }
   if (isTransportPlaying()) pauseTransport();
-  set({ phase: 'armed', nodeId, target: 'position', lastKeys: 0, poseKeys: 0 });
+  set({ phase: 'armed', nodeId, target: 'position', lastKeys: 0, poseKeys: 0, storedTake: false });
   listen(true);
+  watchStoredTake(true);
   if (usePreferenceStore.getState().performanceMode === 'perform') armTake();
+  if (handOn()) void startHand();
 }
 
 /** Close the bar; an armed take that recorded nothing is dropped, a running one reverted. */
@@ -282,7 +306,9 @@ export function closePerformance(): void {
   scrubFromX = null;
   sampleTicks(false);
   listen(false);
-  set({ phase: 'off', nodeId: null });
+  watchStoredTake(false);
+  stopHand();
+  set({ phase: 'off', nodeId: null, storedTake: false });
 }
 
 /** The press that starts a Perform take: pre-roll, then play. */
@@ -291,21 +317,32 @@ function startTake(): void {
   const { nodeId, target } = usePerformanceStore.getState();
   if (!nodeId) return;
   const from = playheadSeconds();
+  const hand = handOn();
   set({ phase: 'recording', takeStart: from });
+  const refuse = (): void => {
+    scrubFromX = null;
+    unbindHand();
+    notify(t('performance.problem.notAnimatable', '{prop} cannot be animated on this layer', { prop: targetLabel(target) }), 'warning');
+    set({ phase: 'armed' });
+  };
   if (target === 'position') {
     // Re-armed with the pre-roll cut: samples before `from` are not the take.
     if (p.performancePreRoll > 0) armMotionSketchEdit(nodeId, sketchOptions(from));
-    run();
+    if (!hand) {
+      run();
+      return;
+    }
+    // The hand's clutch deltas add to the value at the grab.
+    void bindHandPosition(nodeId, from, compWidth()).then((ok) => {
+      if (!ok) return refuse();
+      if (usePerformanceStore.getState().phase === 'recording') run();
+    });
     return;
   }
   // A scrub take reads the value at the press before anything plays.
   void beginScrub(nodeId, target, from).then((ok) => {
-    if (!ok) {
-      scrubFromX = null;
-      notify(t('performance.problem.notAnimatable', '{prop} cannot be animated on this layer', { prop: targetLabel(target) }), 'warning');
-      set({ phase: 'armed' });
-      return;
-    }
+    if (!ok) return refuse();
+    if (hand) bindHandScrub(target);
     if (usePerformanceStore.getState().phase === 'recording') run();
   });
 
@@ -320,21 +357,30 @@ function startTake(): void {
 async function endTake(): Promise<void> {
   sampleTicks(false);
   if (isTransportPlaying()) pauseTransport();
-  const scrubbing = scrubFromX !== null;
+  const hand = handOn();
+  const scrubbing = scrubFromX !== null || scrubActive();
   scrubFromX = null;
+  unbindHand();
   set({ phase: 'armed' });
   const n = scrubbing ? await finishScrub(scrubOptions()) : await finishMotionSketchEdit();
   if (usePerformanceStore.getState().phase === 'off') return;
   if (n > 0) {
     lastTakeKind = scrubbing ? 'scrub' : 'sketch';
     set({ phase: 'done', lastKeys: n });
+    void refreshStoredTake();
   } else {
     // A press that recorded nothing (a click, a marquee): stay armed and say how.
-    notify(scrubbing
-      ? t('performance.nothingScrub', 'Nothing recorded — drag left or right while it plays')
-      : t('performance.nothing', 'Nothing recorded — drag the layer while it plays'), 'info');
+    // A hand TAP (a short, still pinch) is not a failed take: no toast for it.
+    if (hand) {
+      if (!lastReleaseWasTap) notify(t('performance.nothingHand', 'Nothing recorded — move your hand while it plays'), 'info');
+    } else {
+      notify(scrubbing
+        ? t('performance.nothingScrub', 'Nothing recorded — drag left or right while it plays')
+        : t('performance.nothing', 'Nothing recorded — drag the layer while it plays'), 'info');
+    }
     armTake();
   }
+  lastReleaseWasTap = false;
 }
 
 /** Esc mid-take: revert everything the take wrote, stay armed. */
@@ -342,6 +388,7 @@ function cancelTake(): void {
   sampleTicks(false);
   disarmSketch();
   cancelScrub();
+  unbindHand();
   scrubFromX = null;
   if (isTransportPlaying()) pauseTransport();
   notify(t('performance.cancelled', 'Take cancelled'), 'info');
@@ -377,7 +424,118 @@ export function setPerformanceTarget(target: PerformanceTarget): void {
     return;
   }
   set({ target });
+  void refreshStoredTake();
   if (usePreferenceStore.getState().performanceMode === 'perform') armTake();
+}
+
+// ── Hand source (plan P1.3) ───────────────────────────────────────────────────
+
+function handOn(): boolean {
+  return usePreferenceStore.getState().performanceSource === 'hand';
+}
+
+function compWidth(): number {
+  const comp = activeCompIdNow();
+  return (comp ? documentMirror().comp(comp)?.settings.width : undefined) ?? 1920;
+}
+
+/** The last release was a tap (set between the recogniser's release and tap events and endTake's toast). */
+let lastReleaseWasTap = false;
+let unwatchHand: (() => void) | null = null;
+
+/**
+ * What the recogniser saw. Perform: a pinch grabs the layer (Position,
+ * Rotation) and opening the hand — or losing it — finishes the take; the
+ * pinch-driven targets (Scale, Opacity) start and stop with Record. Pose: a tap
+ * or a fist is Set Key.
+ */
+function onHandEvent(e: GestureEvent): void {
+  const s = usePerformanceStore.getState();
+  if (s.phase === 'off') return;
+  if (usePreferenceStore.getState().performanceMode === 'pose') {
+    if ((e.type === 'tap' || e.type === 'fist') && s.phase !== 'recording') void setPoseKey();
+    return;
+  }
+  switch (e.type) {
+    case 'grab':
+      lastReleaseWasTap = false;
+      if (s.phase === 'armed' && grabDriven(s.target)) startTake();
+      return;
+    case 'tap':
+      lastReleaseWasTap = true;
+      return;
+    case 'release':
+      if (s.phase === 'recording' && grabDriven(s.target)) void endTake();
+      return;
+    case 'lost':
+      // Plan §8.5: a hand gone for 0.3 s is a release; the take keeps what it has.
+      if (s.phase === 'recording') void endTake();
+      return;
+    case 'fist':
+      return;
+  }
+}
+
+/** Start the camera and follow the hand; the camera's failures reach the user once each. */
+async function startHand(): Promise<void> {
+  unwatchHand?.();
+  let lastFailure = '';
+  const offStatus = useLiveInputStore.subscribe((live) => {
+    if (live.state === 'failed' && live.message && live.message !== lastFailure) {
+      lastFailure = live.message;
+      notify(live.message, 'error');
+      // Mid-take the samples so far are kept (plan §8.2: the source going away finishes the take).
+      if (usePerformanceStore.getState().phase === 'recording') void endTake();
+    }
+    if (live.state === 'running') lastFailure = '';
+  });
+  const offPrefs = usePreferenceStore.subscribe((p, prev) => {
+    if (p.performanceHandGain !== prev.performanceHandGain || p.performanceHand !== prev.performanceHand || p.performanceHandMirror !== prev.performanceHandMirror) {
+      refreshHandSettings();
+    }
+  });
+  unwatchHand = () => {
+    offStatus();
+    offPrefs();
+  };
+  const refused = await startHandSource({ now: playheadSeconds, onEvent: onHandEvent });
+  if (refused) notify(refused, 'warning');
+}
+
+function stopHand(): void {
+  unwatchHand?.();
+  unwatchHand = null;
+  stopHandSource();
+}
+
+/** Mouse ↔ Hand (a preference). Switching to Hand starts the camera; back to Mouse releases it. */
+export function setPerformanceSource(source: 'mouse' | 'hand'): void {
+  const prev = usePreferenceStore.getState().performanceSource;
+  usePreferenceStore.getState().set('performanceSource', source);
+  const { phase } = usePerformanceStore.getState();
+  if (phase === 'off' || phase === 'recording' || prev === source) return;
+  if (source === 'hand') void startHand();
+  else stopHand();
+}
+
+/**
+ * The bar's Record button (and Enter) with the hand as the source: starts a
+ * take — the way to record Scale / Opacity, whose pinch is the value, not the
+ * grab — and stops the running one. Needs the camera.
+ */
+export function toggleHandTake(): void {
+  const s = usePerformanceStore.getState();
+  if (s.phase === 'off' || !handOn() || usePreferenceStore.getState().performanceMode !== 'perform') return;
+  if (s.phase === 'recording') {
+    void endTake();
+    return;
+  }
+  if (useLiveInputStore.getState().state !== 'running') {
+    notify(t('performance.hand.noCamera', 'The camera is not running — see its status in the bar'), 'warning');
+    return;
+  }
+  if (s.phase === 'done') armTake();
+  startTake();
 }
 
 /** The pose step, in comp seconds. */
@@ -422,26 +580,68 @@ export async function setPoseKey(): Promise<void> {
 let refitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * The Detail control after a take: remembered as the preference and, once the
- * control rests for a moment, the last take re-fitted (one undo entry per
- * adjustment, not per slider tick).
+ * The Detail control: remembered as the preference and, once the control
+ * rests for a moment, the take re-fitted (one undo entry per adjustment, not
+ * per slider tick). The take just recorded is re-fitted from the recorder's
+ * own samples while they are still valid; otherwise — after a reopen, an
+ * undo / redo, another layer — from the take the document holds for the
+ * bar's layer and target (plan §4.1).
  */
 export function adjustTakeDetail(detail: number): void {
   usePreferenceStore.getState().set('performanceDetail', detail);
-  if (usePerformanceStore.getState().phase !== 'done') return;
+  if (!takeIsAdjustable()) return;
   if (refitTimer !== null) clearTimeout(refitTimer);
   refitTimer = setTimeout(() => {
     refitTimer = null;
-    if (!takeIsAdjustable()) return;
-    void (lastTakeKind === 'scrub' ? refitLastScrub(detail) : refitLastTake(detail)).then((n) => {
-      if (n > 0 && usePerformanceStore.getState().phase === 'done') set({ lastKeys: n });
+    const s = usePerformanceStore.getState();
+    if (!takeIsAdjustable() || !s.nodeId) return;
+    const refit = s.phase === 'done' && lastTakeInMemory()
+      ? (lastTakeKind === 'scrub' ? refitLastScrub(detail) : refitLastTake(detail))
+      : refitStoredTake(s.nodeId, s.target, detail);
+    void refit.then((n) => {
+      const now = usePerformanceStore.getState();
+      if (n > 0 && now.phase !== 'off' && now.phase !== 'recording') set({ phase: 'done', lastKeys: n });
     });
   }, 250);
 }
 
-/** Whether the Detail control can still re-fit the last take (nothing else has edited since). */
+/** The recorder still holds the last take, and nothing else has edited the document since. */
+function lastTakeInMemory(): boolean {
+  return lastTakeKind === 'scrub' ? canRefitLastScrub() : lastTakeKind === 'sketch' ? canRefitLastTake() : false;
+}
+
+/** Whether the Detail control re-fits a take: the one just recorded, or the one the document holds for the bar's layer and target. */
 export function takeIsAdjustable(): boolean {
-  if (usePerformanceStore.getState().phase !== 'done') return false;
-  return lastTakeKind === 'scrub' ? canRefitLastScrub() : canRefitLastTake();
+  const { phase, storedTake } = usePerformanceStore.getState();
+  if (phase === 'off' || phase === 'recording') return false;
+  return (phase === 'done' && lastTakeInMemory()) || storedTake;
+}
+
+// ── The take the document holds (plan §4.1) ───────────────────────────────────
+
+let unwatchStoredTake: (() => void) | null = null;
+let storedTakeQuery = 0;
+
+/** Ask the document whether it holds a take for the bar's layer and target; the answer lands in the store. */
+export async function refreshStoredTake(): Promise<void> {
+  const { nodeId, target, phase } = usePerformanceStore.getState();
+  const seq = ++storedTakeQuery;
+  const stored = nodeId && phase !== 'off' ? await hasStoredTake(nodeId, target) : false;
+  if (seq !== storedTakeQuery) return;
+  const now = usePerformanceStore.getState();
+  if (now.phase !== 'off' && now.nodeId === nodeId && now.target === target && now.storedTake !== stored) set({ storedTake: stored });
+}
+
+/** While the bar is up, every document revision (an undo, a reopen) re-checks the stored take. */
+function watchStoredTake(on: boolean): void {
+  unwatchStoredTake?.();
+  unwatchStoredTake = null;
+  storedTakeQuery++;
+  if (!on) return;
+  unwatchStoredTake = documentMirror().subscribe(['doc'], () => {
+    if (usePerformanceStore.getState().phase === 'recording') return;
+    void refreshStoredTake();
+  });
+  void refreshStoredTake();
 }
 

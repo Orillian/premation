@@ -451,6 +451,7 @@ coalescable inside a gesture (§5.2). Controls and I/O never enter history.
 | `setPaintPathAnimated` | B3 — the Path stopwatch: ON keys the current points at `time` (already animated: no change); OFF removes the Path keys, keeping the static points. Inverse: the track as it was. |
 | `editPathTopology` | B3 — a STRUCTURAL edit of an outline (`masks/<id>/path`, a shape's `layer/path.points`) in EVERY state, static + each key: split a segment, remove vertices, Set First Vertex, Reverse Path Direction, Continue Path (`op`), and/or the Closed switch (`closed`). States the op does not apply to are left alone; none at all = `invalidArgument`. Key ids/times/easing kept (§15.10). Inverse: every state exactly. |
 | `setShapeOutline` | B3 — the Knife: a shape layer's outline becomes independent runs (`Geometry.subpaths`), the single-run outline cleared, shape type `path`. Not a shape: `invalidArgument`; animated outline: `animated`. Inverse: the outline exactly. |
+| `setPerformanceTake`, `clearPerformanceTakes` | Performance takes (docs/PERFORMANCE_ANIMATION_PLAN.md §4.1, D5): a recorded take kept on its layer as source material (`fx.performanceTakes`, keyed by the property path it drives — `transform/position`, or the first track's path of a separated Position): the raw samples (`times` comp seconds, `values` `dims` numbers per sample, before capture speed), what recorded it (`source`), the fit settings, and the comp-time `span` of the keys it wrote. Never rendered — only the keys are; the Detail control re-fits the take after save / reopen and undo. `set` replaces the take for `take.path` (at most 36,000 samples — 10 minutes at 60 Hz — else `outOfRange`; `invalidArgument` for a missing path, `dims` outside 1..4, a values count that is not times × dims, or a non-finite number); `clear` removes the named paths or, with none, every take of the layer (D5 "Discard takes"). The recorders send the take in the same gesture as its keys, so a take is still ONE undo entry. Inverse: the previous take(s). Stored on the layer's own time axis (retiming keeps it on its frames); deleting the layer deletes its takes (undo restores them). Read with `getPerformanceTakes`. |
 
 `setEffectParam` and `setMaskPath` from the plan's §2 sketch are `setProperty`
 on an effect or mask path — one command, one inverse implementation.
@@ -470,6 +471,7 @@ on an effect or mask path — one command, one inverse implementation.
 |---|---|---|
 | `startJob` | control | Track motion (position … planar, forward/backward/both, apply to a property), stabilize, auto-trace, scene detect, object matte, transcribe, audio analysis, render queue items, pre-render. A job never edits while it runs; on success its result is applied as **one** history entry (`origin: engine`) unless `apply:false`. |
 | `cancelJob` | control | Nothing is applied. |
+| `startLiveInput`, `stopLiveInput` | control | Performance Animation P1 (2026-10-23): live hand input from a camera. The engine runs the tracker in its `--live` child (Media Foundation capture, ONNX palm + hand landmark models, One Euro smoothing) and relays each tracked frame as a `liveInput` event (state `starting` / `running` / `failed` with the reason, then every frame: 21 landmarks per hand, handedness, presence, pinch). Editor input only: nothing reaches the document until the page writes keys through ordinary commands (`setKeyframes` inside the take's gesture). `startLiveInput` restarts a running input (another camera, other models); `stopLiveInput` releases the camera, a no-op when stopped. |
 | `applyJobResult` | edit | Apply a finished `apply:false` job. Inverse: that entry. |
 | `setContentAwareFill` | edit | The layer's content-aware fill frames (the Content-Aware Fill job's result): the filled frame nearest the layer's time stands in for its footage; empty `frames` clears it. Inverse: the previous record. |
 | `setCaptions` | edit | Burn-in captions (`premation render --captions`, p4-round3): the comp's top-level caption layers (`__caption` on Text) are replaced by one centred text layer per cue, in/out = the cue; `style` JSON (`fontSizeRatio` 0.05, `fontWeight` 700, `fill` #ffffff, `bottomMarginRatio` 0.1). A cue that does not end after it starts is `invalidArgument`. One journal. The TS engine answers `unsupported`. |
@@ -704,6 +706,8 @@ Queries answer at the revision in their `Response` and never change anything.
 | `getHistory`, `getRenderStats`, `getLayerErrors`, `getJobs`, `getRenderQueue` | Status. |
 | `getCommandLog` | Recorded requests since a revision (replay, bug reports, §12). |
 | `getCacheCoverage` | Frames the viewport frame cache holds (timeline cache bars). `ram` ranges are comp time, end exclusive. `disk` is empty: the cache is VRAM. `comp` absent = the active composition; another comp answers empty. The TS engine answers empty. |
+| `listCameras` | The cameras the engine can open for live hand input (id = the OS device path, name); `unsupported` where the platform has no capture yet (macOS until its capture lands). |
+| `getPerformanceTakes` | The layer's stored performance takes (`PerformanceTakes`), sample times and spans in composition time; a layer that is not one: `notFound`. |
 
 ---
 
@@ -767,7 +771,7 @@ Ephemeral (no revision, `fromRevision == toRevision`): `historyChanged`,
 `dirtyChanged`, `transportChanged`, `playhead`, `renderStatsUpdated`,
 `cacheChanged`, `engineError`, `layerErrors` (the complete per-layer error set of
 a comp — `snapshot.layerErrors`), `jobProgress`, `jobFinished`, `projectSaved`,
-`assetStatusChanged`, `fontsChanged`, `autosaved`.
+`assetStatusChanged`, `fontsChanged`, `autosaved`, `liveInput` (live hand input: state and, while running, every tracked frame at about the camera's rate; never revisioned, never replayed).
 
 ### 8.2 Applying a batch
 

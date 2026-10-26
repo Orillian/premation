@@ -20,6 +20,9 @@ export interface MotionFrame {
   cy: number;
   /** √(width · height) of the rendered box: a scale that ignores aspect changes. */
   size: number;
+  /** The rendered box's width and height (absent: a square of `size`). */
+  w?: number;
+  h?: number;
   /** Screen rotation, degrees. */
   rotation: number;
   /** 0–100. */
@@ -31,6 +34,12 @@ export interface LayerSamples {
   name: string;
   /** One entry per `MotionInput.times`; null where the layer is not on the timeline or has no box. */
   frames: readonly (MotionFrame | null)[];
+  /**
+   * The top-most ANIMATED ancestor whose motion this layer inherits (a group
+   * null, a rig). Children of one moving group are one thing to the eye even
+   * though each travels a different distance when the group scales.
+   */
+  rig?: { id: string; name: string };
 }
 
 export interface MotionInput {
@@ -79,9 +88,15 @@ export interface Move {
   /** Time spent in the last 2% of the travel (and any overshoot). */
   settleSec: number;
   shape: EaseShape;
+  /** It runs past both ends of the window: its ease is not measured, only that it moves. */
+  clipped?: boolean;
   /** On screen and visible right before / after the move (for start / stop rules). */
   visibleBefore: boolean;
   visibleAfter: boolean;
+  /** The group it moves with (LayerSamples.rig). */
+  rig?: { id: string; name: string };
+  /** Screen centre and box size at the move's start. */
+  at: { x: number; y: number; w: number; h: number };
 }
 
 export interface MotionFinding {
@@ -100,7 +115,7 @@ export interface MotionReport {
   /** The most separate units in motion at one time. */
   peakConcurrent: { count: number; atSec: number; names: string[] };
   /** Starts of units close together in time (≤ 0.5 s apart), each with its offset from the one before in frames. */
-  staggers: { atSec: number; entries: { name: string; atSec: number; offsetFrames: number }[] }[];
+  staggers: { atSec: number; entries: { name: string; atSec: number; offsetFrames: number; cluster: string }[] }[];
   findings: MotionFinding[];
   /** Samples are further apart than ~2 frames: shape rules that need frame accuracy were skipped. */
   coarse: boolean;
@@ -113,7 +128,7 @@ const STILL: Record<MotionChannel, number> = { position: 4, scale: 0.5, rotation
 /** A move smaller than this is noise. */
 const MIN_AMOUNT: Record<MotionChannel, number> = { position: 2, scale: 1, rotation: 1, opacity: 3 };
 /** Peak speed under which a long move is ambient drift. */
-const DRIFT_SPEED: Record<MotionChannel, number> = { position: 80, scale: 8, rotation: 15, opacity: 20 };
+const DRIFT_SPEED: Record<MotionChannel, number> = { position: 120, scale: 10, rotation: 15, opacity: 20 };
 const DRIFT_MIN_SEC = 2.5;
 /** Still samples a move may pause for and remain one move (a spring's turn-around). */
 const MERGE_GAP = 2;
@@ -196,8 +211,43 @@ function runs(sp: readonly number[], still: number): [number, number][] {
   return out;
 }
 
+/** Below this share of the move's peak speed … */
+const LULL_RATIO = 0.12;
+/** … for this many samples, a move has ended even though something still drifts on. */
+const LULL_SAMPLES = 8;
+
+/**
+ * Split a run where the speed falls to a lull and stays there: an entrance
+ * that lands inside a slow camera push never drops below the still threshold,
+ * and measured as one move it reads as a 3-second crawl. Each part is judged
+ * on its own — the entrance as an entrance, the tail as a drift.
+ */
+function splitAtLull(sp: readonly number[], [i0, i1]: [number, number]): [number, number][] {
+  const out: [number, number][] = [];
+  let start = i0, peak = 0, lull = 0;
+  for (let i = i0; i <= i1; i++) {
+    const v = sp[i]!;
+    if (v > peak) { peak = v; lull = 0; continue; }
+    if (v < peak * LULL_RATIO) lull++;
+    else lull = 0;
+    // Only a lull that a LONG slow tail follows (≥ 2× the move, ≥ 30 samples):
+    // an ease-out's own settle drops below the ratio too, and stays the move's.
+    const head = i - LULL_SAMPLES - start, tail = i1 - (i - LULL_SAMPLES);
+    if (lull === LULL_SAMPLES && head > 0 && tail >= Math.max(30, 2 * head)) {
+      out.push([start, i - LULL_SAMPLES]);
+      start = i - LULL_SAMPLES + 1;
+      peak = 0;
+      lull = 0;
+      // Restart on the tail: the next peak is measured from here.
+      for (let k = start; k <= i; k++) peak = Math.max(peak, sp[k]!);
+    }
+  }
+  out.push([start, i1]);
+  return out;
+}
+
 function visibleAt(input: MotionInput, f: MotionFrame | null | undefined): boolean {
-  if (!f || f.opacity <= 2) return false;
+  if (!f || f.opacity <= 2 || f.size < 3) return false;
   const half = f.size / 2;
   return f.cx + half > 0 && f.cx - half < input.compWidth && f.cy + half > 0 && f.cy - half < input.compHeight;
 }
@@ -291,8 +341,11 @@ function measureMove(
     overshootPct,
     settleSec,
     shape,
+    ...(a === 0 && b === layer.frames.length - 1 && dur >= 1 ? { clipped: true } : {}),
     visibleBefore: a > 0 && visibleAt(input, layer.frames[a - 1]),
     visibleAfter: b < layer.frames.length - 1 && visibleAt(input, layer.frames[b + 1]),
+    ...(layer.rig ? { rig: layer.rig } : {}),
+    at: { x: fa.cx, y: fa.cy, w: fa.w ?? fa.size, h: fa.h ?? fa.size },
   };
 }
 
@@ -301,9 +354,11 @@ export function layerMoves(input: MotionInput, layer: LayerSamples): Move[] {
   for (const channel of ['position', 'scale', 'rotation', 'opacity'] as const) {
     const track = channel === 'position' ? null : scalarTrack(layer.frames, channel);
     const sp = speeds(input, layer.frames, channel, track);
-    for (const [i0, i1] of runs(sp, STILL[channel])) {
-      const m = measureMove(input, layer, channel, track, sp, i0, i1);
-      if (m) out.push(m);
+    for (const run of runs(sp, STILL[channel])) {
+      for (const [i0, i1] of splitAtLull(sp, run)) {
+        const m = measureMove(input, layer, channel, track, sp, i0, i1);
+        if (m) out.push(m);
+      }
     }
   }
   return out;
@@ -320,56 +375,116 @@ export function layerMoves(input: MotionInput, layer: LayerSamples): Move[] {
 function groupMoves(moves: readonly Move[], fps: number): Move[] {
   const byKey = new Map<string, Move>();
   for (const m of moves) {
-    const key = [m.channel, Math.round(m.startSec * fps), Math.round(m.endSec * fps), Math.round(m.amount), m.direction ?? '', m.shape].join('|');
+    // Children of one moving group: one line per channel and window, whatever
+    // distance each child travels (a scaled group moves its edges furthest).
+    const key = m.rig
+      ? [m.channel, `rig:${m.rig.id}`, Math.round(m.startSec * fps)].join('|')
+      : [m.channel, Math.round(m.startSec * fps), Math.round(m.endSec * fps), Math.round(m.amount), m.direction ?? '', m.shape].join('|');
     const g = byKey.get(key);
-    if (g) { g.layerIds.push(...m.layerIds); g.layerNames.push(...m.layerNames); }
-    else byKey.set(key, { ...m, layerIds: [...m.layerIds], layerNames: [...m.layerNames] });
+    if (g) {
+      g.layerIds.push(...m.layerIds);
+      g.layerNames.push(...m.layerNames);
+      // The child that travels furthest speaks for the group; the group ends when its last child settles.
+      if (Math.abs(m.amount) > Math.abs(g.amount)) Object.assign(g, { amount: m.amount, direction: m.direction, peakSpeed: m.peakSpeed, peakAt: m.peakAt, shape: m.shape, overshootPct: m.overshootPct, settleSec: m.settleSec });
+      g.endSec = Math.max(g.endSec, m.endSec);
+    } else byKey.set(key, { ...m, layerIds: [...m.layerIds], layerNames: [...m.layerNames] });
   }
   return [...byKey.values()].sort((x, y) => x.startSec - y.startSec || x.channel.localeCompare(y.channel));
 }
 
 /** A unit is a set of layers moving together; its label for the report. */
 function unitKey(m: Move): string {
-  return [...m.layerIds].sort().join(',');
+  return m.rig ? `rig:${m.rig.id}` : [...m.layerIds].sort().join(',');
 }
 
 export function unitName(m: Move): string {
   const n = m.layerNames;
+  if (m.rig) return n.length === 1 ? `'${n[0]}' (in '${m.rig.name}')` : `'${m.rig.name}' (${n.length} layers)`;
   return n.length <= 2 ? n.map((x) => `'${x}'`).join(' + ') : `'${n[0]}' + ${n.length - 1} more`;
+}
+
+/** Units starting within this long of each other, one inside the other, read as ONE thing entering. */
+const CLUSTER_SEC = 0.12;
+
+/** The same move a few frames apart (an avatar row popping in, a list sliding up) is ONE gesture — a cascade. */
+const CASCADE_SEC = 0.35;
+
+/** What a move is, independent of where and when: channel, direction, distance (10 px buckets) and length (0.1 s buckets). */
+function signature(m: Move): string {
+  return `${m.channel}|${m.direction ?? ''}|${Math.round(Math.abs(m.amount) / 10)}|${Math.round((m.endSec - m.startSec) * 10)}`;
+}
+
+/** Does `outer`'s box (at its start) hold `inner`'s centre? A label on its card, an icon in its row. */
+function holds(outer: Move['at'], inner: Move['at']): boolean {
+  return Math.abs(inner.x - outer.x) <= outer.w / 2 && Math.abs(inner.y - outer.y) <= outer.h / 2;
+}
+
+/**
+ * Units that start together in the same place, as one visual element: what the
+ * crowding and same-frame rules count. Union of every pair whose first starts
+ * are within CLUSTER_SEC and where one's box holds the other's centre (a list
+ * row's background, icon and label are one row; two rows are two).
+ */
+function clustersOf(moves: readonly Move[]): Map<string, string> {
+  const first = new Map<string, Move>();
+  for (const m of moves) {
+    if (!active(m)) continue;
+    const k = unitKey(m);
+    const f = first.get(k);
+    if (!f || m.startSec < f.startSec) first.set(k, m);
+  }
+  const keys = [...first.keys()];
+  const parent = new Map(keys.map((k) => [k, k] as const));
+  const find = (k: string): string => {
+    let r = k;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(k, r);
+    return r;
+  };
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = first.get(keys[i]!)!, b = first.get(keys[j]!)!;
+      const nested = Math.abs(a.startSec - b.startSec) <= CLUSTER_SEC && (holds(a.at, b.at) || holds(b.at, a.at));
+      const cascade = Math.abs(a.startSec - b.startSec) <= CASCADE_SEC && signature(a) === signature(b);
+      if (nested || cascade) parent.set(find(keys[i]!), find(keys[j]!));
+    }
+  }
+  return new Map(keys.map((k) => [k, find(k)] as const));
 }
 
 const active = (m: Move): boolean => m.shape !== 'drift';
 
-function concurrency(moves: readonly Move[], times: readonly number[]): MotionReport['peakConcurrent'] {
+function concurrency(moves: readonly Move[], times: readonly number[], clusters: Map<string, string>): MotionReport['peakConcurrent'] {
   let best = { count: 0, atSec: times[0] ?? 0, names: [] as string[] };
   for (let i = 1; i < times.length; i++) {
     const mid = (times[i - 1]! + times[i]!) / 2;
     const units = new Map<string, string>();
     for (const m of moves) {
       if (!active(m) || m.shape === 'cut' || mid < m.startSec || mid > m.endSec) continue;
-      units.set(unitKey(m), unitName(m));
+      const c = clusters.get(unitKey(m)) ?? unitKey(m);
+      if (!units.has(c)) units.set(c, unitName(m));
     }
     if (units.size > best.count) best = { count: units.size, atSec: times[i - 1]!, names: [...units.values()] };
   }
   return best;
 }
 
-function staggersOf(moves: readonly Move[], fps: number): MotionReport['staggers'] {
+function staggersOf(moves: readonly Move[], fps: number, clusters: Map<string, string>): MotionReport['staggers'] {
   // First start of each unit per cluster: a unit's position and opacity starting together is one start.
-  const starts = new Map<string, { at: number; name: string }>();
+  const starts = new Map<string, { at: number; name: string; cluster: string }>();
   for (const m of moves) {
     if (!active(m)) continue;
     const key = `${unitKey(m)}@${Math.round(m.startSec * fps)}`;
-    if (!starts.has(key)) starts.set(key, { at: m.startSec, name: unitName(m) });
+    if (!starts.has(key)) starts.set(key, { at: m.startSec, name: unitName(m), cluster: clusters.get(unitKey(m)) ?? unitKey(m) });
   }
   const sorted = [...starts.values()].sort((a, b) => a.at - b.at);
   const out: MotionReport['staggers'] = [];
-  let cur: { at: number; name: string }[] = [];
+  let cur: { at: number; name: string; cluster: string }[] = [];
   const flush = (): void => {
     if (cur.length >= 2) {
       out.push({
         atSec: cur[0]!.at,
-        entries: cur.map((s, i) => ({ name: s.name, atSec: s.at, offsetFrames: i === 0 ? 0 : Math.round((s.at - cur[i - 1]!.at) * fps) })),
+        entries: cur.map((s, i) => ({ name: s.name, atSec: s.at, cluster: s.cluster, offsetFrames: i === 0 ? 0 : Math.round((s.at - cur[i - 1]!.at) * fps) })),
       });
     }
   };
@@ -397,22 +512,24 @@ function rules(report: Omit<MotionReport, 'findings'>): MotionFinding[] {
   }
 
   for (const s of report.staggers) {
-    let run: string[] = [s.entries[0]!.name];
+    // Parts of one visual element (one cluster) starting together is not a missing stagger.
+    let run = new Map<string, string>([[s.entries[0]!.cluster, s.entries[0]!.name]]);
     let at = s.entries[0]!.atSec;
     const emit = (): void => {
-      if (run.length >= 3) out.push({ rule: 'same-frame', atSec: at, message: `${run.length} elements start on the same frame at ${fmtS(at)} (${run.slice(0, 4).join(', ')}${run.length > 4 ? ', …' : ''}): stagger them 2–4 frames apart, in reading order.` });
+      const names = [...run.values()];
+      if (names.length >= 3) out.push({ rule: 'same-frame', atSec: at, message: `${names.length} elements start on the same frame at ${fmtS(at)} (${names.slice(0, 4).join(', ')}${names.length > 4 ? ', …' : ''}): stagger them 2–4 frames apart, in reading order.` });
     };
     for (const e of s.entries.slice(1)) {
-      if (e.offsetFrames === 0) { run.push(e.name); continue; }
+      if (e.offsetFrames === 0) { if (!run.has(e.cluster)) run.set(e.cluster, e.name); continue; }
       emit();
-      run = [e.name];
+      run = new Map([[e.cluster, e.name]]);
       at = e.atSec;
     }
     emit();
   }
 
   for (const m of moves) {
-    if (m.channel === 'opacity' || m.shape === 'drift' || m.shape === 'cut') continue;
+    if (m.channel === 'opacity' || m.shape === 'drift' || m.shape === 'cut' || m.clipped) continue;
     const who = unitName(m);
     const what = m.channel === 'position' ? `moves ${Math.round(Math.abs(m.amount))}px` : m.channel === 'scale' ? `scales ${m.amount > 0 ? '+' : ''}${Math.round(m.amount)}%` : `turns ${Math.round(m.amount)}°`;
     const span = `${fmtS(m.startSec)}–${fmtS(m.endSec)}`;
@@ -444,6 +561,7 @@ export function analyzeMotion(input: MotionInput): MotionReport {
   const raw: Move[] = [];
   for (const layer of input.layers) raw.push(...layerMoves(input, layer));
   const moves = groupMoves(raw, input.fps);
+  const clusters = clustersOf(moves);
   const stepSec = t.length > 1 ? (t[t.length - 1]! - t[0]!) / (t.length - 1) : 0;
   const base: Omit<MotionReport, 'findings'> = {
     startSec: t[0] ?? 0,
@@ -452,8 +570,8 @@ export function analyzeMotion(input: MotionInput): MotionReport {
     fps: input.fps,
     layersSampled: input.layers.length,
     moves,
-    peakConcurrent: concurrency(moves, t),
-    staggers: staggersOf(moves, input.fps),
+    peakConcurrent: concurrency(moves, t, clusters),
+    staggers: staggersOf(moves, input.fps, clusters),
     coarse: stepSec > 2.5 / Math.max(1, input.fps),
   };
   const order: MotionFinding['rule'][] = ['crowd', 'same-frame', 'linear', 'hard-stop', 'too-fast', 'too-bouncy', 'too-slow'];

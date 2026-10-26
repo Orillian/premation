@@ -1455,6 +1455,18 @@ export const createSkeletonRigDef: AiToolDef = {
             x: { type: 'number', description: 'Goal X, layer-local px.' },
             y: { type: 'number', description: 'Goal Y, layer-local px.' },
             chainLength: { type: 'integer', minimum: 1, maximum: 8, default: 2, description: 'Bones solved (the end bone and its ancestors). A joint keeps the side it bends to in the rest pose.' },
+            pole: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['x', 'y'],
+              properties: {
+                x: { type: 'number', description: 'Pole X, layer-local px.' },
+                y: { type: 'number', description: 'Pole Y, layer-local px.' },
+              },
+              description:
+                'Optional pole for a two-bone chain: the middle joint (elbow / knee) bends to the SIDE of the root→goal line the pole is on. ' +
+                'Animate it with ikPole.<boneId>.x / .y. Without one the joint keeps the side it already bends to.',
+            },
           },
         },
         description: 'IK goals.',

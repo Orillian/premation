@@ -261,7 +261,7 @@ a tight group.
 | [x] P0.2 | A take is ONE engine gesture (§3.3) — no engine change needed | Motion Sketch = one undo entry; Esc reverts the live keys |
 | [x] P0.3 | Perform on Rotation / Scale / Opacity (drag left / right, Shift = fine); capture speed; pre-roll | one undo per take; values clamped to the property's range |
 | [x] P0.4 | Pose mode with mouse: set key + auto-advance | Set Key = one entry, playhead steps |
-| [~] P0.5 | Re-fit from raw samples (§4.1) | moving Detail after the take re-fits without re-recording — **done, in-session**; storing takes in the project file is still open (needs a document slot, D5) |
+| [x] P0.5 | Re-fit from raw samples (§4.1) | moving Detail after the take re-fits without re-recording; the take is STORED IN THE PROJECT (D5): `setPerformanceTake` / `clearPerformanceTakes` / `getPerformanceTakes` (engine API 1950–1952, the layer's `fx.performanceTakes` keyed by property path — samples, source, fit, key span; ≤ 36,000 samples = 10 min at 60 Hz, `outOfRange` above), sent in the SAME gesture as the keys (still one undo entry), gone with its layer; Detail re-fits the stored take after save / reopen and after undo / redo (`providers/commands/performanceTakes.ts`). Evidence 2026-10-26: `engine_tests [performance]` 5 cases / 115 assertions (set / query / clear with inverses, cap, save → reopen, layer time axis, delete layer + undo); `performanceTakes.native.test.ts` 4 cases on `premation-engine-headless` (one entry for keys + take, undo / redo in step, save → newProject → open → re-fit, scrub take); the 6 performance native suites 32 / 32; `takeRecord.test.ts` 7 unit cases; codec round trip + ENGINE_API.md gates green. |
 
 #### Progress (2026-10-23)
 
@@ -302,11 +302,43 @@ running app (agents do not start the dev server).
 ### P1 — Hand tracking as a source
 | id | task | done when |
 |---|---|---|
-| P1.0 | Latency spike: camera → landmarks → preview, measured on Windows and macOS (decides D1) | numbers written here; macOS camera permission verified |
-| P1.1 | Live-input service in the engine: camera capture, hand landmark model (21 points/hand, two hands), One-Euro smoothing, model download like Face Tracking | landmarks stream to the page at ≥ 30 Hz; no camera → clear message, editor unaffected |
-| P1.2 | Gesture recogniser: pinch grab/release, tap, fist; relative clutch; gain | false-grab rate measured on recorded test clips |
-| P1.3 | Hand → property mapping (position, rotation from wrist roll, pinch distance → scale/opacity) | Perform and Pose modes work by hand on any layer |
-| P1.4 | Viewport overlay: skeleton of the hand, grab state, recording state | visible, never rendered into export |
+| [x] P1.0 | Latency spike: camera → landmarks → preview, measured on Windows and macOS (decides D1) | numbers written here; macOS camera permission verified — **Windows done 2026-10-23** (`premation-live-spike`, ASUS FHD webcam, NV12 1080p30 scaled by MF to 640×360, CPU ORT): sensor → frame 38.9 ms p50, frame → landmarks 19.9 ms, **total 58.7 ms p50 / 65.4 p95**; palm 11.7 ms, hand 3.5 ms; 30 fps kept, 1 drop in 10 s. In the engine's `--live` child: 53 / 62 ms. First run without a capture thread queued frames → 244 ms: latest-frame mailbox is mandatory. D1 = engine child process, CPU. macOS not measured (no capture yet). |
+| [x] P1.1 | Live-input service: engine `src/live/*` (pipeline, tracker, MF camera, ORT, One Euro, `--live` child, LiveHost) + schema `97_live.eapi` (startLiveInput / stopLiveInput / listCameras / `liveInput` event) + Session relay; Electron `handModel.ts` (two PINNED files: OpenCV Zoo HF revisions 233e619d / 4b2a0b44, SHA-256 = their LFS oids) → `PREMATION_HAND_USER_DIR`; page `core/live/liveInput.ts` (per-frame `onLiveFrame`, status `liveInputStore` ≤ 4 Hz); Settings ▸ Performance Recording: Hand Tracking Model + Camera Test | engine_live_tests 11, engine_live_host_tests 4, handModel 4, liveInput 3 + 2 native — green. **Not yet verified:** detection with a real hand in front of the camera; the Settings rows in the running app; macOS (no capture) |
+| [x] P1.1 | Live-input service in the engine: camera capture, hand landmark model (21 points/hand, two hands), One-Euro smoothing, model download like Face Tracking | landmarks stream to the page at ≥ 30 Hz; no camera → clear message, editor unaffected — the row above; the Performance bar shows the camera's state and the reason when it fails |
+| [x] P1.2 | Gesture recogniser: pinch grab/release, tap, fist; relative clutch; gain | `src/core/live/gestures.ts` (pure, deterministic): grab ≤ 0.25 / release ≥ 0.40 pinch with 2 confirming frames, tap ≤ 300 ms and ≤ 0.04 frame-width travel, fist = four tips folded below their PIPs, lost ≥ 0.3 s releases, clutch + gain, mirror, Left / Right / Either. **False grabs measured: 0 in a 20 s, 600-frame open-hand clip with pinch jitter ±0.12 and ±1 % palm shake** (`gestures.test.ts`, 15 tests) |
+| [x] P1.3 | Hand → property mapping (position, rotation from wrist roll, pinch distance → scale/opacity) | `providers/commands/performanceHandSource.ts` + the bar's Mouse / Hand toggle: Position ← clutch deltas × gain × comp width (Motion Sketch's gesture and fit), Rotation ← wrist roll (continuous), Scale / Opacity ← pinch distance from the take's start (200 % per pinch unit, clamped to the range); a pinch grabs Position / Rotation, Record (Enter) starts and stops the pinch-driven targets; Pose: tap or fist = Set Key. `performanceHandSource.native.test.ts` (4): one undo entry per take, Undo restores the static value, lost hand finishes the take |
+| [x] P1.4 | Viewport overlay: skeleton of the hand, grab state, recording state | `layout/Workspace/HandOverlay.tsx`: a top-right inset drawn from the frame listener (rAF-coalesced, no React render per frame) — 21-point skeleton, palm, state dot (grey / accent while grabbed / red while recording). Page-side DOM in the viewport stage: the engine renders exports from the document, so it is never in one. `HandOverlay.test.tsx` (3), `PerformanceBar.native.test.tsx` (+2) |
+
+#### Progress (2026-10-26, P1.2–P1.4)
+
+Built (uncommitted, branch `native-core`), on top of P1.1:
+
+- the hand is a second SOURCE on the P0 pipeline, not a second recorder:
+  Position goes through Motion Sketch (`recordMotionSketchSample` + the take's
+  gesture), the other targets through the scrub recorder (`moveScrubBy`), so
+  the fit, the splice of keys outside the span, the engine-restart fallback
+  and the Detail re-fit are the P0 ones;
+- what starts a take: a confirmed pinch for Position and Rotation (the hand
+  is the mouse button); Record / Enter for Scale and Opacity, because their
+  pinch IS the value — a pinch cannot both grab and vary. A tap in Perform
+  mode writes nothing and shows no toast;
+- each frame's measured latency shifts its sample back (plan §3.3 / §8.5);
+- new preferences (§9, in the bar's ⋯ popover): Input (Mouse / Hand), Hand
+  gain 0.25–4, Hand (Either / Left / Right), Mirror (on).
+
+Position deltas are WORLD (comp px) and go through the parent's inverse
+(the parent's layer-to-comp matrix from the engine's `getLayerTransforms`, the
+same matrix the pointer's move uses; fetched with the start values in one
+round trip at the grab), so a child of a
+scaled or turned null travels the distance the hand did (test: a parent
+turned 90°, same travel, same comp-space distance). Known limit:
+two-hands-two-roles (§2.3) is not built.
+
+**Not yet verified:** a real hand in front of a real camera (the thresholds
+are set on the hand model's documented pinch scale and the P1.0 spike
+footage, and measured only on synthetic clips); the bar, inset and camera
+status in the running app (agents do not start the dev server); macOS (no
+capture there yet).
 
 ### P2 — Hand → rig
 | id | task | done when |

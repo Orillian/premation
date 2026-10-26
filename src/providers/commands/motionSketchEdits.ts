@@ -19,7 +19,7 @@
  * at the same times.
  */
 
-import type { Command, Keyframe, PropRef, Value } from '@motion/engine-api';
+import type { Command, Keyframe, PerformanceFit, PropRef, Value } from '@motion/engine-api';
 import type { Keyframe as TsKeyframe } from '@motion/animation';
 import {
   armMotionSketch,
@@ -29,17 +29,20 @@ import {
 } from '@core/animation/motionSketch';
 import type { SketchSample } from '@core/rig/puppetSketch';
 import type { FittedKey } from '@core/performance/fitTake';
+import { MAX_TAKE_SAMPLES, performanceTakeOf } from '@core/performance/takeRecord';
+import { t } from '@core/i18n';
 import { engine, engineGeneration } from '@core/engine/engineInstance';
 import { compTime, values } from '@core/engine/propRefs';
 import { edit } from '@core/engine/uiEdits';
 import { numbersOfValue } from '@core/mirror/trackIndex';
 import { documentMirror } from '@stores/documentMirror';
+import { useUIStore } from '@stores/uiStore';
 import { trackRef } from '@layout/Inspector/inspectorEdits';
 
 type Ref = NonNullable<ReturnType<typeof trackRef>>;
 
 /** Keys of each Position track when the take was armed, by API path. */
-type Snapshot = Map<string, readonly Keyframe[]>;
+export type Snapshot = Map<string, readonly Keyframe[]>;
 
 interface Armed {
   nodeId: string;
@@ -53,6 +56,70 @@ function positionRefs(nodeId: string): { rx: Ref; ry: Ref } | null {
   const rx = trackRef(nodeId, 'x');
   const ry = trackRef(nodeId, 'y');
   return rx && ry ? { rx, ry } : null;
+}
+
+/** The API paths of the Position tracks a take on `nodeId` writes (one when Position is a vector, two when separated), or null when Position is not addressable. */
+export function positionTakePaths(nodeId: string): string[] | null {
+  const refs = positionRefs(nodeId);
+  if (!refs) return null;
+  return refs.rx.ref.path === refs.ry.ref.path ? [refs.rx.ref.path] : [refs.rx.ref.path, refs.ry.ref.path];
+}
+
+/** The key a Position take is stored under in the document: the first track's path. */
+export function positionTakePath(nodeId: string): string | null {
+  return positionTakePaths(nodeId)?.[0] ?? null;
+}
+
+/** The fit a take is stored with (plan §4.1), from its Motion Sketch options. */
+export function sketchFitOf(opts: MotionSketchOptions, spatial: boolean): PerformanceFit {
+  return {
+    reduction: opts.reduction ?? (opts.tolerance > 0 ? 'smooth' : 'everyFrame'),
+    detail: opts.detail ?? 50,
+    captureSpeedPct: opts.captureSpeedPct,
+    wholeFrames: opts.wholeFrames !== false,
+    holdSeconds: opts.holdSeconds ?? 0.25,
+    frameDuration: opts.frameDuration ?? 1 / 30,
+    spatial,
+  };
+}
+
+/** Motion Sketch options from a stored fit (a re-fit from the document). */
+export function sketchOptionsOfFit(fit: PerformanceFit, detail: number): MotionSketchOptions {
+  return {
+    tolerance: 0,
+    captureSpeedPct: fit.captureSpeedPct,
+    reduction: 'smart',
+    detail,
+    wholeFrames: fit.wholeFrames,
+    holdSeconds: fit.holdSeconds,
+    frameDuration: fit.frameDuration,
+  };
+}
+
+/**
+ * The command that stores the take in the document beside its keys (plan
+ * §4.1, D5), or null when it cannot be stored (over the sample cap: the keys
+ * are still written, and the user is told the take was not kept).
+ */
+function storeTakeCommand(nodeId: string, raw: readonly SketchSample[], opts: MotionSketchOptions, spatial: boolean, keys: readonly TakeKey[]): Command | null {
+  const path = positionTakePath(nodeId);
+  if (!path) return null;
+  const take = performanceTakeOf({
+    layer: nodeId,
+    path,
+    source: opts.source ?? 'mouse',
+    samples: raw.map((s) => ({ t: s.t, v: [s.x, s.y] })),
+    fit: sketchFitOf(opts, spatial),
+    keyTimes: keys.map((k) => k.t),
+  });
+  if (!take && raw.length > MAX_TAKE_SAMPLES) {
+    useUIStore.getState().notify({
+      level: 'warning',
+      durationMs: 4000,
+      message: t('performance.takeTooLong', 'The keys were written, but the take itself was not kept: {n} samples is more than 10 minutes at 60 Hz, so Detail cannot re-fit it later', { n: raw.length }),
+    });
+  }
+  return take ? { type: 'setPerformanceTake', take } : null;
 }
 
 function snapshot(nodeId: string): Snapshot {
@@ -127,6 +194,11 @@ function fromFitted(keys: readonly FittedKey[]): TakeKey[] {
     ...(k.spatialIn.length >= 2 ? { si: [k.spatialIn[0]!, k.spatialIn[1]!] as [number, number] } : {}),
     ...(k.spatialOut.length >= 2 ? { so: [k.spatialOut[0]!, k.spatialOut[1]!] as [number, number] } : {}),
   }));
+}
+
+/** The commands that write the fitted `keys` on `nodeId`'s Position (see `takeCommands`). */
+export function positionTakeCommands(nodeId: string, keys: readonly FittedKey[], originals: Snapshot): Promise<Command[] | null> {
+  return takeCommands(nodeId, fromFitted(keys), originals);
 }
 
 /** The commands that write `take` on `nodeId`'s Position, or null when Position is not addressable. */
@@ -204,6 +276,9 @@ export async function finishMotionSketchEdit(): Promise<number> {
     await take.txn.cancel();
     return 0;
   }
+  // The raw take rides the same entry as its keys (plan §4.1): one undo for both.
+  const store = storeTakeCommand(take.nodeId, take.raw, take.opts, spatial, keys);
+  if (store) cmds.push(store);
   if (arm && arm.generation !== engineGeneration()) {
     // The engine restarted mid-take: the gesture died with it (and its live
     // keys with the old process). The samples are still here — write the take
@@ -233,6 +308,8 @@ export async function refitLastTake(detail: number): Promise<number> {
   const keys = fromFitted(fitMotionSketch(last.raw, opts, last.spatial));
   const cmds = await takeCommands(last.nodeId, keys, last.originals);
   if (!cmds || cmds.length === 0) return 0;
+  const store = storeTakeCommand(last.nodeId, last.raw, opts, last.spatial, keys);
+  if (store) cmds.push(store);
   const res = await edit('Adjust Take Detail', cmds);
   if (!res.ok) return 0;
   await documentMirror().whenIdle();

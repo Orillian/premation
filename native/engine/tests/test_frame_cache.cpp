@@ -332,3 +332,47 @@ TEST_CASE("coverage ledger: a revision keeps the frames its edit did not touch, 
     CHECK(frames_of(ledger) == std::vector<std::int64_t>{0, 1, 2, 3, 6, 7, 8, 9});
   }
 }
+
+TEST_CASE("frame cache: a pinned frame (what an open view shows) is skipped by eviction", "[gpu][d4][pins]") {
+  auto& gpu = cache_gpu();
+  if (!gpu) SKIP("no GPU adapter");
+  constexpr std::uint32_t W = 16;
+  constexpr std::uint32_t H = 16;
+  constexpr std::size_t kFrame = std::size_t{W} * H * 4;
+  render::FrameCache cache(gpu->device, 3 * kFrame);
+  const wgpu::Texture src = filled(*gpu, W, H, 5);
+  wgpu::CommandEncoder enc = gpu->device.CreateCommandEncoder();
+  cache.store(1, W, H, src, enc);  // view A's current frame: the least recently used
+  cache.store(2, W, H, src, enc);
+  cache.store(3, W, H, src, enc);
+  render::ProtectedRange pins;
+  pins.pin(1);
+  cache.set_pinned(pins);
+  cache.store(4, W, H, src, enc);  // room is made from frame 2, not the pinned 1
+  submit(*gpu, enc);
+  CHECK(cache.contains(1));
+  CHECK_FALSE(cache.contains(2));
+  CHECK(cache.contains(3));
+  CHECK(cache.contains(4));
+  // Every frame pinned: the store still happens (over budget by one) rather than blank a view.
+  pins.pin(3);
+  pins.pin(4);
+  cache.set_pinned(pins);
+  wgpu::CommandEncoder e2 = gpu->device.CreateCommandEncoder();
+  cache.store(5, W, H, src, e2);
+  submit(*gpu, e2);
+  CHECK(cache.contains(1));
+  CHECK(cache.contains(3));
+  CHECK(cache.contains(4));
+  CHECK(cache.contains(5));
+  CHECK(cache.stats().bytes == 4 * kFrame);
+  // `use` marks a hit most recently used and hands out its texture.
+  cache.set_pinned(render::ProtectedRange{});
+  REQUIRE(cache.use(1, W, H) != nullptr);
+  CHECK(cache.use(1, W + 1, H) == nullptr);
+  wgpu::CommandEncoder e3 = gpu->device.CreateCommandEncoder();
+  cache.store(6, W, H, src, e3);  // down towards the budget: 3 goes first (oldest), 1 was just used
+  submit(*gpu, e3);
+  CHECK(cache.contains(1));
+  CHECK_FALSE(cache.contains(3));
+}

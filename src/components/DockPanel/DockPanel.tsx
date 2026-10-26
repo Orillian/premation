@@ -756,18 +756,23 @@ function DockGroup({
     };
     setOverflow((cur) => (cur.any === next.any && cur.left === next.left && cur.right === next.right ? cur : next));
   }, []);
+  // The front tab whole in view: when it changes AND when the strip is resized
+  // (a narrower sidebar used to leave the front tab cut off at the edge).
+  const keepFrontInView = useCallback(() => {
+    const el = tabsRef.current?.querySelector<HTMLElement>('[data-dock-tab][aria-selected="true"]');
+    (el?.parentElement ?? el)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    measure();
+  }, [measure]);
   useEffect(() => {
     const el = tabsRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(keepFrontInView);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [measure]);
+  }, [keepFrontInView]);
   useLayoutEffect(() => {
-    const el = tabsRef.current?.querySelector<HTMLElement>('[data-dock-tab][aria-selected="true"]');
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    measure();
-  }, [active, tabs.length, titleDetail, measure]);
+    keepFrontInView();
+  }, [active, tabs.length, titleDetail, keepFrontInView]);
 
   const onWheel = (e: WheelEvent<HTMLDivElement>): void => {
     const el = e.currentTarget;

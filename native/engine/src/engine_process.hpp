@@ -81,4 +81,7 @@ int run_engine(const EngineOptions& options);
 /// host the job file asks for (P7b). Built with the engine jobs only.
 int run_job_child(const std::string& jobFile);
 
+/// `premation-engine --live FILE` (live/live_host.hpp): the camera + hand model child. Built with the engine jobs only.
+int run_live_child(const std::string& settingsFile);
+
 }  // namespace premation

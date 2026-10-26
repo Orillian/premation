@@ -567,6 +567,22 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   /// map_layer needs to draw a precomp source (Program X1 time taps, layer
   /// controls naming a precomp).
   ListState* chainList_ = nullptr;
+  /// Precomp layers the current layer's effects read as maps (Displacement Map,
+  /// Set Matte, …), drawn into their precomp slots BEFORE the layer is drawn;
+  /// map_layer reads them from here. See prepare_map_precomps.
+  std::unordered_map<std::string, api::Renderable> mapPrecomps_;
+  /// One layer's mapPrecomps_: a precomp drawn inside it has its own, and the
+  /// outer layer's come back when it is done.
+  struct MapPrecompScope {
+    std::unordered_map<std::string, api::Renderable>& slot;
+    std::unordered_map<std::string, api::Renderable> saved;
+    explicit MapPrecompScope(std::unordered_map<std::string, api::Renderable>& s) : slot(s), saved(std::move(s)) { slot.clear(); }
+    ~MapPrecompScope() { slot = std::move(saved); }
+    MapPrecompScope(const MapPrecompScope&) = delete;
+    MapPrecompScope& operator=(const MapPrecompScope&) = delete;
+    MapPrecompScope(MapPrecompScope&&) = delete;
+    MapPrecompScope& operator=(MapPrecompScope&&) = delete;
+  };
   /// Sets chainList_ for one chain run.
   struct ChainListScope {
     ListState*& slot;
@@ -886,7 +902,9 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     if (it == byId.end()) return {};
     const api::Renderable* src = it->second;
     api::Renderable prepared;
-    if (src->precomp) {
+    if (const auto pre = mapPrecomps_.find(std::string(mapLayerId)); pre != mapPrecomps_.end()) {
+      src = &pre->second;
+    } else if (src->precomp) {
       // A precomp source: its subtree drawn offscreen first (as a matte source's
       // is), without its own mask — that step borrows the chain's blur targets.
       if (chainList_ == nullptr || !prepare_isolated_precomp(ctx, *src, *chainList_, chainList_->depth + 1, false, prepared, false)) return {};
@@ -900,6 +918,30 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   }
 
  private:
+  /// Draws every precomp layer `r`'s effect params name (a map, matte or extra
+  /// layer input) into its own precomp slot, from `slot` up, into mapPrecomps_.
+  /// It runs before `r` is drawn: drawn from inside the effect chain instead,
+  /// a precomp's subtree runs through the same layer / blur / matte targets the
+  /// chain holds its image in, and the layer comes out as that subtree's last
+  /// draw. Past the last slot a map falls back to map_layer's own draw.
+  void prepare_map_precomps(PassContext& ctx, const api::Renderable& r, ListState& st, std::size_t slot) {
+    auto consider = [&](const std::string& id) {
+      if (id.empty() || id == r.id || mapPrecomps_.contains(id) || slot >= kPrecompTargets.size()) return;
+      const auto it = st.byId.find(id);
+      if (it == st.byId.end() || !it->second->precomp) return;
+      api::Renderable prepared;
+      if (!prepare_isolated_precomp(ctx, *it->second, st, slot, false, prepared, false)) return;
+      mapPrecomps_.emplace(id, std::move(prepared));
+      ++slot;
+    };
+    for (const api::RenderEffect& fx : r.effects) {
+      for (const api::RenderEffectParam& p : fx.params) {
+        consider(p.text);
+        for (const std::string& t : p.texts) consider(t);
+      }
+    }
+  }
+
   /// D1: the scene depth depth-reading effects sample (render thread only).
   SceneDepth sceneDepth_;
   /// Mat3 reparent of a renderable list (prepareIsolatedPrecomp `reparent`).
@@ -1199,16 +1241,29 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     }
     const api::Renderable& r = *rp;
 
+    // Precomps this layer needs besides its own are drawn BEFORE it, each into
+    // its own precomp slot: a precomp's subtree runs through process() too, so a
+    // matte or effect inside it writes the shared layer / matte / blur targets,
+    // and drawn after the layer (or from inside its effect chain) it would
+    // overwrite the layer's image. The matte source takes depth + 1, the
+    // precomps the effects read as maps the slots after it.
+    const MapPrecompScope maps(mapPrecomps_);
+    const auto matteIt = r.matte ? st.byId.find(r.matte->source_id) : st.byId.end();
+    const api::Renderable* matteSource = matteIt != st.byId.end() ? matteIt->second : nullptr;
+    api::Renderable preparedSource;
+    if (matteSource != nullptr && matteSource->precomp) {
+      matteSource = prepare_isolated_precomp(ctx, *matteSource, st, st.depth + 1, false, preparedSource) ? &preparedSource : nullptr;
+    }
+    if (r.matte || r.adjustment || (rects_intersect(visible, rect_of(r.bounds)) && r.opacity > 0)) {
+      prepare_map_precomps(ctx, r, st, st.depth + 2 + mapPrecomps_.size());
+      if (matteSource != nullptr) prepare_map_precomps(ctx, *matteSource, st, st.depth + 2 + mapPrecomps_.size());
+    }
+
     if (r.matte) {
-      const auto it = st.byId.find(r.matte->source_id);
-      if (it != st.byId.end()) {
+      if (matteIt != st.byId.end()) {
         flush(ctx, st);
+        const api::Renderable* source = matteSource;
         const TexRef matted = layer_into_target(ctx, r, r.opacity, kLayerTarget, st);
-        const api::Renderable* source = it->second;
-        api::Renderable preparedSource;
-        if (source->precomp) {
-          source = prepare_isolated_precomp(ctx, *source, st, st.depth + 1, false, preparedSource) ? &preparedSource : nullptr;
-        }
         const TexRef matte = source != nullptr ? layer_into_target(ctx, *source, 1, kMatteTarget, st) : TexRef{};
         if (matte && matted) {
           ColorTransform mode;

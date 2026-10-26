@@ -142,6 +142,21 @@ export const MCP_ONLY_TOOL_DEFS: readonly AiToolDef[] = [
     },
   },
   {
+    name: 'delete_composition',
+    kind: 'write',
+    description:
+      'Delete compositions from the project (Project panel ▸ Delete), by the ids list_compositions gave: ' +
+      'leftovers of an attempt, a duplicate, an emptied precomp. Precomp layers that show a deleted ' +
+      'composition go with it, and the result says how many. One undo step for the whole call. Deleting ' +
+      'the last composition leaves an empty one in its place.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['compIds'],
+      properties: { compIds: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 } },
+    },
+  },
+  {
     name: 'save_project',
     kind: 'read',
     description: 'Save the open project (File ▸ Save). Cloud projects also save themselves; call this at the end of a big change.',

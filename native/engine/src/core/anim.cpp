@@ -1,9 +1,12 @@
 #include "anim.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <set>
+#include <span>
 #include <utility>
 
 #include "eval.hpp"
@@ -170,6 +173,133 @@ std::optional<double> sample_keys(const std::vector<Key>& keys, double t) {
 }
 
 std::optional<double> anim_sample_keys(const std::vector<Key>& keys, double t) { return sample_keys(keys, t); }
+
+// ── spatial members: arc-length timing ───────────────────────────────────
+
+namespace {
+
+/// The axes of a spatial property, in order, and which one `prop` is.
+struct SpatialGroup {
+  std::array<std::string_view, motion::eval::kSpatialAxes> members{};
+  std::size_t axes = 0;
+  std::size_t own = 0;
+};
+
+std::optional<SpatialGroup> spatial_group_of(std::string_view prop) noexcept {
+  static constexpr std::array<std::array<std::string_view, 3>, 3> kGroups{{
+      {"x", "y", "z"},
+      {"anchorX", "anchorY", ""},
+      {"poiX", "poiY", "poiZ"},
+  }};
+  for (const auto& g : kGroups) {
+    const std::span<const std::string_view> members(g);
+    for (std::size_t i = 0; i < members.size(); ++i) {
+      if (!members[i].empty() && members[i] == prop) {
+        SpatialGroup out;
+        out.members = g;
+        out.axes = g.back().empty() ? 2 : 3;
+        out.own = i;
+        return out;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+/// Arc-length tables by segment control values. A table is a pure function of
+/// its controls, so a hit and a miss answer the same bits; the cache only saves
+/// the 64 cubic evaluations. Direct-mapped, fixed size, thread-local: no
+/// allocation on the sampling path (CLAUDE.md performance discipline).
+struct ArcCacheEntry {
+  std::array<std::uint64_t, motion::eval::kSpatialAxes * 4> key{};
+  std::uint64_t axes = ~std::uint64_t{0};  ///< never a valid count: an empty slot
+  motion::eval::ArcTable table;
+};
+constexpr std::size_t kArcCacheSlots = 256;
+
+const motion::eval::ArcTable& cached_arc_table(const motion::eval::SpatialSegment& seg) {
+  thread_local std::array<ArcCacheEntry, kArcCacheSlots> cacheStore;
+  const std::span<ArcCacheEntry> cache(cacheStore);
+  std::array<std::uint64_t, motion::eval::kSpatialAxes * 4> key{};
+  const std::span<std::uint64_t> keyv(key);
+  const std::span<const std::array<double, 4>> ctrl(seg.ctrl);
+  auto h = static_cast<std::uint64_t>(seg.axes);
+  for (std::size_t a = 0; a < seg.axes; ++a) {
+    const std::span<const double, 4> axis(ctrl[a]);
+    for (std::size_t c = 0; c < 4; ++c) {
+      const auto bits = std::bit_cast<std::uint64_t>(axis[c]);
+      keyv[a * 4 + c] = bits;
+      h ^= bits + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+    }
+  }
+  ArcCacheEntry& e = cache[static_cast<std::size_t>(h % kArcCacheSlots)];
+  if (e.axes != static_cast<std::uint64_t>(seg.axes) || e.key != key) {
+    e.axes = static_cast<std::uint64_t>(seg.axes);
+    e.key = key;
+    motion::eval::arc_table(seg, e.table);
+  }
+  return e.table;
+}
+
+/// `keys` as motion keyframes in `scratch` (reused per thread, see sample_keys).
+motion::eval::StructSource as_source(const std::vector<Key>& keys, std::vector<motion_keyframe>& scratch) {
+  scratch.resize(keys.size());
+  for (std::size_t i = 0; i < keys.size(); ++i) scratch[i] = to_motion(keys[i]);
+  return motion::eval::StructSource{std::span<const motion_keyframe>(scratch)};
+}
+
+}  // namespace
+
+std::optional<double> anim_sample_member_keys(const Document& d, std::string_view node, std::string_view prop,
+                                             const std::vector<Key>& keys, double t) {
+  const auto group = spatial_group_of(prop);
+  if (!group || keys.size() < 2) return sample_keys(keys, t);
+  if (!(t > keys.front().t && t < keys.back().t)) return sample_keys(keys, t);
+  // One scratch per axis: the own track and its siblings are converted side by side.
+  thread_local std::array<std::vector<motion_keyframe>, motion::eval::kSpatialAxes> scratchStore;
+  const std::span<std::vector<motion_keyframe>> scratch(scratchStore);
+  const std::span<const std::string_view> members(group->members);
+  const motion::eval::StructSource own = as_source(keys, scratch[group->own]);
+  const std::size_t i = motion::eval::segment_index_for(own, t);
+  const motion_keyframe& a = own.get(i);
+  const motion_keyframe& b = own.get(i + 1);
+  if (a.easing == motion::eval::kEasingHold || a.easing == motion::eval::kEasingStep) return sample_keys(keys, t);
+  if (!(b.t > a.t)) return sample_keys(keys, t);
+
+  motion::eval::SpatialSegment seg;
+  seg.axes = group->axes;
+  const std::span<std::array<double, 4>> ctrl(seg.ctrl);
+  bool anyTangent = false;
+  for (std::size_t axis = 0; axis < group->axes; ++axis) {
+    motion::eval::SegmentControls c;
+    if (axis == group->own) {
+      c = motion::eval::segment_controls(own, i);
+    } else {
+      const std::vector<Key>* sib = anim_track(d, node, members[axis]);
+      if (sib == nullptr || sib->empty()) continue;  // a constant axis: no length
+      // The sibling must be keyed on the SAME segment (keys at a.t and b.t,
+      // none between); otherwise the axes trace no shared curve and each
+      // samples on its own, as before.
+      const motion::eval::StructSource src = as_source(*sib, scratch[axis]);
+      std::size_t ia = src.size();
+      for (std::size_t k = 0; k < src.size(); ++k) {
+        if (src.get(k).t == a.t) ia = k;
+      }
+      if (ia + 1 >= src.size() || src.get(ia + 1).t != b.t) return sample_keys(keys, t);
+      c = motion::eval::segment_controls(src, ia);
+    }
+    ctrl[axis] = {c.v0, c.c1, c.c2, c.v3};
+    anyTangent = anyTangent || c.has_tangent;
+  }
+  // Every axis linear in u: the path is the straight line and u IS the arc fraction.
+  if (!anyTangent) return sample_keys(keys, t);
+
+  const double local = (t - a.t) / (b.t - a.t);
+  const double eased = motion::eval::segment_eased(own, i, local);
+  const double u = motion::eval::arc_param(seg, cached_arc_table(seg), eased);
+  const std::span<const double, 4> c(ctrl[group->own]);
+  return motion::eval::cubic_value_at(c[0], c[1], c[2], c[3], u);
+}
 
 std::pair<std::optional<double>, std::optional<double>> effective_spatial_tangents_of(const std::vector<Key>& keys, std::size_t i) {
   if (i >= keys.size()) return {};
@@ -490,7 +620,7 @@ class Sampler {
 
   std::optional<double> track_at(std::string_view node, std::string_view prop, double t) const {
     const auto* keys = anim_track(d_, node, prop);
-    return keys != nullptr ? sample_keys(*keys, t) : std::nullopt;
+    return keys != nullptr ? anim_sample_member_keys(d_, node, prop, *keys, t) : std::nullopt;
   }
   /// The property's own static value. A component prop first; else the document's
   /// static reader — an effect parameter (`effect.<id>.<key>`) lives in its

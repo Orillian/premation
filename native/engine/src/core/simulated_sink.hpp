@@ -34,6 +34,19 @@ class SimulatedSink final : public FrameSink {
     ++submitted_;
     lastScene_ = job.scene;
     const auto it = ports_.find(job.viewport);
+    if (job.prefetch) {
+      // Idle render-ahead: stored (held, learned, on the bars), never presented, answered at once.
+      if (it != ports_.end() && it->second->config.open && contentKeyOf && !job.cachedKey) {
+        if (const std::optional<std::uint64_t> key = contentKeyOf(job)) {
+          held.insert(*key);
+          if (job.prebuildKey) prebuild.learn(*job.prebuildKey, CachedKeys{.content = *key, .disk = 0});
+          if (job.recordCoverage) ledger.note(job, CachedKeys{.content = *key, .disk = 0}, prebuild, held_pred());
+        }
+      }
+      ++counters_.prefetched;
+      ++prefetched_;
+      return;
+    }
     if (it == ports_.end() || !it->second->config.open) {
       ++counters_.dropped;  // no such viewport (closed meanwhile): nowhere to put it
       if (job.cachedKey) ++counters_.cacheDropped;
@@ -197,6 +210,11 @@ class SimulatedSink final : public FrameSink {
     const std::lock_guard<std::mutex> lock(m_);
     return submitted_;
   }
+  /// Tests: idle render-ahead jobs (RenderJob::prefetch) this sink took.
+  [[nodiscard]] std::uint64_t prefetched() const {
+    const std::scoped_lock lock(m_);
+    return prefetched_;
+  }
   [[nodiscard]] FrameScene last_scene() const {
     const std::lock_guard<std::mutex> lock(m_);
     return lastScene_;
@@ -263,6 +281,7 @@ class SimulatedSink final : public FrameSink {
   ViewportConfig lastConfig_;
   RenderCounters counters_;
   std::uint64_t submitted_ = 0;
+  std::uint64_t prefetched_ = 0;
   FrameScene lastScene_;
 };
 

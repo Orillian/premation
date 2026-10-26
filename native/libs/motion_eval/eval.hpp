@@ -244,6 +244,67 @@ template <KeyframeSource S>
   return bz;
 }
 
+/// The segment `i → i+1`'s eased fraction at `local` (0..1 along its time
+/// span): the temporal half of `sampleTrack` — the segment's bezier when an
+/// end is Auto Bezier or roving, else the key's handles or its named ease.
+template <KeyframeSource S>
+[[nodiscard]] double segment_eased(const S& src, std::size_t i, double local) noexcept {
+  const Keyframe& a = src.get(i);
+  const Keyframe& b = src.get(i + 1);
+  const std::int32_t kind = a.easing;
+  const bool bezier_kind =
+      kind == kEasingBezier || kind == kEasingAutoBezier || kind == kEasingContinuousBezier;
+  const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
+  const bool roving = ((a.flags | b.flags) & MOTION_KF_ROVING) != 0u;
+  const bool auto_end = kind == kEasingAutoBezier || b.easing == kEasingAutoBezier || roving;
+  if (auto_end && (!named_easing(kind) || roving)) {
+    const std::array<double, 4> sb = segment_temporal_bezier(src, i);
+    return cubic_bezier_ease(sb[0], sb[1], sb[2], sb[3], local);
+  }
+  return (bezier_kind && has_handles) ? cubic_bezier_ease(a.c0, a.c1, a.c2, a.c3, local) : ease(kind, local);
+}
+
+/// The 1D cubic the segment `i → i+1` traces in its shared parameter: the key
+/// values with the effective spatial tangents as control values (the linear
+/// third-point for a missing side). `has_tangent` is false when neither side
+/// carries one — the segment is then the straight line `v0 + (v3 − v0)·u`.
+struct SegmentControls {
+  double v0 = 0.0;
+  double c1 = 0.0;
+  double c2 = 0.0;
+  double v3 = 0.0;
+  bool has_tangent = false;
+};
+
+template <KeyframeSource S>
+[[nodiscard]] SegmentControls segment_controls(const S& src, std::size_t i) noexcept {
+  const Keyframe& a = src.get(i);
+  const Keyframe& b = src.get(i + 1);
+  SegmentControls out;
+  out.v0 = a.value;
+  out.v3 = b.value;
+  // Spatial mode absent = the stored tangents as-is; otherwise resolve the mode.
+  Tangents out_side;
+  if (spatial_mode(a) == MOTION_SPATIAL_UNSET) {
+    out_side.has_so = (a.flags & MOTION_KF_HAS_SO) != 0u;
+    out_side.so = a.so;
+  } else {
+    out_side = effective_spatial_tangents(src, i);
+  }
+  Tangents in_side;
+  if (spatial_mode(b) == MOTION_SPATIAL_UNSET) {
+    in_side.has_si = (b.flags & MOTION_KF_HAS_SI) != 0u;
+    in_side.si = b.si;
+  } else {
+    in_side = effective_spatial_tangents(src, i + 1);
+  }
+  const double third = (b.value - a.value) / 3.0;  // linear default for the missing side
+  out.c1 = a.value + (out_side.has_so ? out_side.so : third);
+  out.c2 = b.value + (in_side.has_si ? in_side.si : -third);
+  out.has_tangent = out_side.has_so || in_side.has_si;
+  return out;
+}
+
 /// `sampleTrack(track, t)`. Preconditions: `validate_track` passed and `t` is
 /// not NaN (the C wrappers check both; this never fails).
 template <KeyframeSource S>
@@ -265,42 +326,51 @@ template <KeyframeSource S>
   }
   const double seg_span = b.t - a.t;
   const double local = seg_span <= 0 ? 0.0 : (t - a.t) / seg_span;
-  const bool bezier_kind =
-      kind == kEasingBezier || kind == kEasingAutoBezier || kind == kEasingContinuousBezier;
-  const bool has_handles = (a.flags & MOTION_KF_HAS_BEZIER) != 0u;
-  const bool roving = ((a.flags | b.flags) & MOTION_KF_ROVING) != 0u;
-  const bool auto_end = kind == kEasingAutoBezier || b.easing == kEasingAutoBezier || roving;
-  double eased = 0.0;
-  if (auto_end && (!named_easing(kind) || roving)) {
-    const std::array<double, 4> sb = segment_temporal_bezier(src, i);
-    eased = cubic_bezier_ease(sb[0], sb[1], sb[2], sb[3], local);
-  } else {
-    eased = (bezier_kind && has_handles) ? cubic_bezier_ease(a.c0, a.c1, a.c2, a.c3, local) : ease(kind, local);
-  }
-
-  // Spatial mode absent = the stored tangents as-is; otherwise resolve the mode.
-  Tangents out_side;
-  if (spatial_mode(a) == MOTION_SPATIAL_UNSET) {
-    out_side.has_so = (a.flags & MOTION_KF_HAS_SO) != 0u;
-    out_side.so = a.so;
-  } else {
-    out_side = effective_spatial_tangents(src, i);
-  }
-  Tangents in_side;
-  if (spatial_mode(b) == MOTION_SPATIAL_UNSET) {
-    in_side.has_si = (b.flags & MOTION_KF_HAS_SI) != 0u;
-    in_side.si = b.si;
-  } else {
-    in_side = effective_spatial_tangents(src, i + 1);
-  }
-  if (out_side.has_so || in_side.has_si) {
-    const double third = (b.value - a.value) / 3.0;  // linear default for the missing side
-    const double c1 = a.value + (out_side.has_so ? out_side.so : third);
-    const double c2 = b.value + (in_side.has_si ? in_side.si : -third);
-    return cubic_value_at(a.value, c1, c2, b.value, eased);
-  }
+  const double eased = segment_eased(src, i, local);
+  const SegmentControls c = segment_controls(src, i);
+  if (c.has_tangent) return cubic_value_at(c.v0, c.c1, c.c2, c.v3, eased);
   return a.value + (b.value - a.value) * eased;
 }
+
+// ── Spatial arc length (After Effects motion paths) ─────────────────────────
+//
+// A spatial property (position, anchor point, point of interest) keeps one
+// scalar track per axis; the axes share the segment's eased parameter, so
+// together they trace one cubic bezier. After Effects moves along that curve
+// at constant speed in ARC LENGTH: the temporal ease remaps the fraction of
+// the path covered, not the bezier parameter. These two functions give a
+// segment's cumulative chord-length table and the parameter at a fraction of
+// it; the sampler (premation::doc::anim_sample_member_keys) caches the table
+// per segment. Pure functions of the control values — deterministic.
+
+/// How many axes a spatial segment can carry (x, y, z).
+inline constexpr std::size_t kSpatialAxes = 3;
+/// Chord samples per segment: u = i / kArcSamples, i = 0..kArcSamples.
+inline constexpr std::size_t kArcSamples = 64;
+
+/// One keyframe segment of a spatial property: `axes` 1D cubics (v0, c1, c2,
+/// v3 — `segment_controls`) in the shared parameter u. An axis without a
+/// track is constant and may be left at zeros (it adds no length).
+struct SpatialSegment {
+  std::size_t axes = 0;
+  std::array<std::array<double, 4>, kSpatialAxes> ctrl{};
+};
+
+/// `cum[i]`: the curve's chord length from u = 0 to u = i / kArcSamples.
+struct ArcTable {
+  std::array<double, kArcSamples + 1> cum{};
+};
+
+/// Fills `out` for `seg`.
+void arc_table(const SpatialSegment& seg, ArcTable& out) noexcept;
+
+/// The parameter u ∈ [0, 1] at which the curve has covered `fraction`
+/// (clamped to 0..1) of its total length: the chord table picks the bin, a
+/// bisection on the distance along `seg`'s own cubic places u inside it (so
+/// a straight path answers exactly, whatever its parametrisation — a folded
+/// or zero handle changes the parametrisation, not the line). A zero-length
+/// curve (every axis constant) answers `fraction` itself.
+[[nodiscard]] double arc_param(const SpatialSegment& seg, const ArcTable& table, double fraction) noexcept;
 
 }  // namespace motion::eval
 

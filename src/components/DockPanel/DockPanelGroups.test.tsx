@@ -261,3 +261,36 @@ describe('a dock column of panel groups', () => {
     expect(panelGroups()).toEqual([['properties'], ['info', 'audio'], ['preview'], ['effects']]);
   });
 });
+
+describe('the front tab stays whole in view', () => {
+  const observers: Array<() => void> = [];
+  class RecordingResizeObserver {
+    constructor(cb: () => void) { observers.push(cb); }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  const scrollIntoView = jest.fn();
+  beforeAll(() => {
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = RecordingResizeObserver;
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+  afterAll(() => {
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = StubResizeObserver;
+  });
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 2560 });
+    resetLayoutStore();
+    observers.length = 0;
+  });
+
+  it('scrolls the front tab back into view when the strip is resized, not only when it changes', () => {
+    mount();
+    scrollIntoView.mockClear();
+    // The sidebar is dragged narrower: every strip's observer fires.
+    act(() => { for (const cb of observers) cb(); });
+    const scrolled = scrollIntoView.mock.contexts as Element[];
+    const front = screen.getByRole('tab', { name: 'Properties' });
+    expect(scrolled.some((el) => el.contains(front))).toBe(true);
+  });
+});

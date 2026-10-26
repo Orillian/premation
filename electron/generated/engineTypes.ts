@@ -776,6 +776,13 @@ export type RenderRasterKind =
   | 'mask';
 export const RenderRasterKindValues = ['text', 'path', 'mask'] as const;
 
+export type LiveInputState =
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'failed';
+export const LiveInputStateValues = ['stopped', 'starting', 'running', 'failed'] as const;
+
 /** A layer (scene node) id. Stable for the layer's lifetime, survives save/load and undo. */
 export type LayerId = string;
 
@@ -2688,6 +2695,49 @@ export interface SetShapeOutline {
 
 export interface PropertyPaths {
   paths: PropPath[];
+}
+
+/** The settings a take was fitted with (core/performance/fitTake.ts, motionSketch.ts options). `reduction`: smart | everyFrame | smooth. `detail` 0 (few keys) … 100 (faithful). `spatial`: Position as one vector property (the fit gives path handles); false = straight segments. */
+export interface PerformanceFit {
+  reduction: string;
+  detail: number;
+  captureSpeedPct: number;
+  wholeFrames: boolean;
+  holdSeconds: number;
+  frameDuration: number;
+  spatial: boolean;
+}
+
+/** A recorded take kept on its layer as source material (plan §4.1: takes are kept, keys are derived), so the Detail control re-fits it after save / reopen and undo without performing again. Keyed by `layer` + `path` (the API path of the property's first track: `transform/position`, or `transform/position/x` for a separated Position whose take drives both dimensions). `times`: composition seconds, one per sample, non-decreasing; `values`: `dims` numbers per sample, flattened, in API units (layer px, degrees, percent) BEFORE capture speed. `source`: what recorded it (mouse | hand | …). `span`: the comp-time range of the keys the take wrote — a re-fit replaces the keys inside it and keeps the rest. Stored on the layer's own time axis, so retiming the layer keeps the take on its frames; answered in composition time. Never rendered: only the keys are. */
+export interface PerformanceTake {
+  layer: LayerId;
+  path: PropPath;
+  source: string;
+  dims: number;
+  times: number[];
+  values: number[];
+  fit: PerformanceFit;
+  span: TimeRange;
+}
+
+export interface PerformanceTakes {
+  takes: PerformanceTake[];
+}
+
+/** Store (replace) the layer's take for `take.path`. At most 36,000 samples (10 minutes at 60 Hz): `outOfRange` above it; `invalidArgument` for a missing path, `dims` outside 1..4, a values count that is not times × dims, or a non-finite number. Inverse: the previous take (or none). Deleting the layer deletes its takes. */
+export interface SetPerformanceTake {
+  take: PerformanceTake;
+}
+
+/** Remove the layer's takes for `paths`; an empty list removes every take of the layer (D5 "Discard takes"). Inverse: the previous takes. */
+export interface ClearPerformanceTakes {
+  layer: LayerId;
+  paths: PropPath[];
+}
+
+/** The layer's stored takes, sample times and spans in composition time. */
+export interface GetPerformanceTakes {
+  layer: LayerId;
 }
 
 /** Composition marker (no layer) or layer marker (layer time). */
@@ -5594,6 +5644,75 @@ export interface RenderFrameFile {
   rasters: RenderRasterSource[];
 }
 
+export interface CameraInfo {
+  /** Stable id to start by (the OS's device path). */
+  id: string;
+  name: string;
+}
+
+export interface CameraList {
+  cameras: CameraInfo[];
+}
+
+/** One tracked hand in a live frame. */
+export interface LiveHand {
+  /**
+   * The 21 MediaPipe landmarks as x, y, z (63 numbers): x / y normalized to the
+   * camera frame (0…1, origin top-left, NOT mirrored), z relative to the wrist
+   * in frame-width units (negative = toward the camera).
+   */
+  landmarks: number[];
+  /**
+   * 0…1, the model's "right hand" on a mirrored (selfie) view: for the camera
+   * as delivered, > 0.5 is the performer's LEFT hand.
+   */
+  handedness: number;
+  /** 0…1: confidence there is a hand. */
+  presence: number;
+  /** Thumb tip to index tip over the palm's size (wrist → middle base): ~0.1 pinched, ≥ 0.5 open. */
+  pinch: number;
+}
+
+/** The cameras the engine can open for live input. `unsupported` where this platform has no capture yet. */
+export interface ListCameras {}
+
+/**
+ * Start live hand input. Restarts it when already running (another camera, other models).
+ * `camera`: a CameraInfo id, '' = the first colour camera. `modelDir`: the folder holding
+ * `palm_detection.onnx` and `hand_landmark.onnx`, '' = the installed models
+ * (PREMATION_HAND_USER_DIR, else the bundled PREMATION_HAND_DIR). The answer comes as
+ * `liveInput` events: `starting`, then `running` with hands, or `failed` with the reason.
+ */
+export interface StartLiveInput {
+  camera: string;
+  modelDir: string;
+  /** Frame width the camera delivers to the tracker (0 = 640). */
+  width: number;
+  /** Preferred camera rate (0 = 60; the device's highest up to this). */
+  fps: number;
+  /** Hands to follow, 1–2 (0 = 2). */
+  maxHands: number;
+}
+
+/** Stop live input and release the camera. No-op when stopped. */
+export interface StopLiveInput {}
+
+/** Live input's state and, while running, every tracked frame (≈ the camera's rate). */
+export interface LiveInputEvent {
+  state: LiveInputState;
+  /** `failed`: why, in words for the user (no camera, access denied, model missing…). */
+  message: string;
+  camera: string;
+  width: number;
+  height: number;
+  fps: number;
+  /** Tracked-frame counter (gaps = frames the tracker skipped to stay current). */
+  seq: number;
+  /** Sensor capture → landmarks ready in the child, ms (0 when the driver gives no capture time). */
+  latencyMs: number;
+  hands: LiveHand[];
+}
+
 /** Every command, keyed by its schema id. */
 export type Command =
   | ({ type: 'undo' } & Undo)
@@ -5733,6 +5852,8 @@ export type Command =
   | ({ type: 'setPaintPathAnimated' } & SetPaintPathAnimated)
   | ({ type: 'editPathTopology' } & EditPathTopology)
   | ({ type: 'setShapeOutline' } & SetShapeOutline)
+  | ({ type: 'setPerformanceTake' } & SetPerformanceTake)
+  | ({ type: 'clearPerformanceTakes' } & ClearPerformanceTakes)
   | ({ type: 'addMarkers' } & AddMarkers)
   | ({ type: 'updateMarkers' } & UpdateMarkers)
   | ({ type: 'deleteMarkers' } & DeleteMarkers)
@@ -5765,7 +5886,9 @@ export type Command =
   | ({ type: 'setPluginEnabled' } & SetPluginEnabled)
   | ({ type: 'rescanPlugins' } & RescanPlugins)
   | ({ type: 'setPluginData' } & SetPluginData)
-  | ({ type: 'runPluginCommand' } & RunPluginCommand);
+  | ({ type: 'runPluginCommand' } & RunPluginCommand)
+  | ({ type: 'startLiveInput' } & StartLiveInput)
+  | ({ type: 'stopLiveInput' } & StopLiveInput);
 export type CommandType = Command['type'];
 
 /** The typed result of a successful command; same key as its command. */
@@ -5907,6 +6030,8 @@ export type CommandResult =
   | ({ type: 'setPaintPathAnimated' } & Empty)
   | ({ type: 'editPathTopology' } & Empty)
   | ({ type: 'setShapeOutline' } & Empty)
+  | ({ type: 'setPerformanceTake' } & Empty)
+  | ({ type: 'clearPerformanceTakes' } & Empty)
   | ({ type: 'addMarkers' } & MarkerIds)
   | ({ type: 'updateMarkers' } & Empty)
   | ({ type: 'deleteMarkers' } & Empty)
@@ -5939,11 +6064,14 @@ export type CommandResult =
   | ({ type: 'setPluginEnabled' } & Empty)
   | ({ type: 'rescanPlugins' } & PluginList)
   | ({ type: 'setPluginData' } & Empty)
-  | ({ type: 'runPluginCommand' } & PluginCommandResult);
+  | ({ type: 'runPluginCommand' } & PluginCommandResult)
+  | ({ type: 'startLiveInput' } & Empty)
+  | ({ type: 'stopLiveInput' } & Empty);
 export type CommandResultType = CommandResult['type'];
 
 /** Every query, keyed by its schema id. */
 export type Query =
+  | ({ type: 'getPerformanceTakes' } & GetPerformanceTakes)
   | ({ type: 'getLayerTrackers' } & GetLayerTrackers)
   | ({ type: 'getCameraSolve' } & GetCameraSolve)
   | ({ type: 'listPluginCommands' } & ListPluginCommands)
@@ -5999,11 +6127,13 @@ export type Query =
   | ({ type: 'getJobs' } & GetJobs)
   | ({ type: 'getRenderQueue' } & GetRenderQueue)
   | ({ type: 'getCommandLog' } & GetCommandLog)
-  | ({ type: 'getCacheCoverage' } & GetCacheCoverage);
+  | ({ type: 'getCacheCoverage' } & GetCacheCoverage)
+  | ({ type: 'listCameras' } & ListCameras);
 export type QueryType = Query['type'];
 
 /** The typed result of a query; same key as its query. */
 export type QueryResult =
+  | ({ type: 'getPerformanceTakes' } & PerformanceTakes)
   | ({ type: 'getLayerTrackers' } & LayerTrackers)
   | ({ type: 'getCameraSolve' } & CameraSolveAnswer)
   | ({ type: 'listPluginCommands' } & PluginCommandList)
@@ -6059,7 +6189,8 @@ export type QueryResult =
   | ({ type: 'getJobs' } & JobList)
   | ({ type: 'getRenderQueue' } & RenderQueueState)
   | ({ type: 'getCommandLog' } & CommandLog)
-  | ({ type: 'getCacheCoverage' } & CacheCoverage);
+  | ({ type: 'getCacheCoverage' } & CacheCoverage)
+  | ({ type: 'listCameras' } & CameraList);
 export type QueryResultType = QueryResult['type'];
 
 /** Every change / status event, keyed by its schema id. */
@@ -6096,7 +6227,8 @@ export type Event =
   | ({ type: 'projectSaved' } & ProjectSavedEvent)
   | ({ type: 'assetStatusChanged' } & AssetStatusChangedEvent)
   | ({ type: 'fontsChanged' } & FontsChangedEvent)
-  | ({ type: 'autosaved' } & AutosavedEvent);
+  | ({ type: 'autosaved' } & AutosavedEvent)
+  | ({ type: 'liveInput' } & LiveInputEvent);
 export type EventType = Event['type'];
 
 /** Arguments of each command, by name. */
@@ -6238,6 +6370,8 @@ export interface CommandArgs {
   setPaintPathAnimated: SetPaintPathAnimated;
   editPathTopology: EditPathTopology;
   setShapeOutline: SetShapeOutline;
+  setPerformanceTake: SetPerformanceTake;
+  clearPerformanceTakes: ClearPerformanceTakes;
   addMarkers: AddMarkers;
   updateMarkers: UpdateMarkers;
   deleteMarkers: DeleteMarkers;
@@ -6271,6 +6405,8 @@ export interface CommandArgs {
   rescanPlugins: RescanPlugins;
   setPluginData: SetPluginData;
   runPluginCommand: RunPluginCommand;
+  startLiveInput: StartLiveInput;
+  stopLiveInput: StopLiveInput;
 }
 
 /** Result of each command, by name. */
@@ -6412,6 +6548,8 @@ export interface CommandResults {
   setPaintPathAnimated: Empty;
   editPathTopology: Empty;
   setShapeOutline: Empty;
+  setPerformanceTake: Empty;
+  clearPerformanceTakes: Empty;
   addMarkers: MarkerIds;
   updateMarkers: Empty;
   deleteMarkers: Empty;
@@ -6445,10 +6583,13 @@ export interface CommandResults {
   rescanPlugins: PluginList;
   setPluginData: Empty;
   runPluginCommand: PluginCommandResult;
+  startLiveInput: Empty;
+  stopLiveInput: Empty;
 }
 
 /** Arguments of each query, by name. */
 export interface QueryArgs {
+  getPerformanceTakes: GetPerformanceTakes;
   getLayerTrackers: GetLayerTrackers;
   getCameraSolve: GetCameraSolve;
   listPluginCommands: ListPluginCommands;
@@ -6505,10 +6646,12 @@ export interface QueryArgs {
   getRenderQueue: GetRenderQueue;
   getCommandLog: GetCommandLog;
   getCacheCoverage: GetCacheCoverage;
+  listCameras: ListCameras;
 }
 
 /** Result of each query, by name. */
 export interface QueryResults {
+  getPerformanceTakes: PerformanceTakes;
   getLayerTrackers: LayerTrackers;
   getCameraSolve: CameraSolveAnswer;
   listPluginCommands: PluginCommandList;
@@ -6565,6 +6708,7 @@ export interface QueryResults {
   getRenderQueue: RenderQueueState;
   getCommandLog: CommandLog;
   getCacheCoverage: CacheCoverage;
+  listCameras: CameraList;
 }
 
 /** Payload of each event, by name. */
@@ -6602,4 +6746,5 @@ export interface EventPayloads {
   assetStatusChanged: AssetStatusChangedEvent;
   fontsChanged: FontsChangedEvent;
   autosaved: AutosavedEvent;
+  liveInput: LiveInputEvent;
 }

@@ -12,8 +12,10 @@
  * units (degrees, percent; plan §8.1 bounds: opacity 0–100, scale ≥ 0).
  */
 
-import type { Command, Keyframe, PropRef, Value } from '@motion/engine-api';
+import type { Command, Keyframe, PerformanceFit, PropRef, Value } from '@motion/engine-api';
 import { fitTake, detailToTolerance, takeRange, type FittedKey, type TakeSample } from '@core/performance/fitTake';
+import { MAX_TAKE_SAMPLES, performanceTakeOf } from '@core/performance/takeRecord';
+import { t } from '@core/i18n';
 import { engine, engineGeneration } from '@core/engine/engineInstance';
 import { compTime, values } from '@core/engine/propRefs';
 import { edit } from '@core/engine/uiEdits';
@@ -21,6 +23,7 @@ import { numbersOfValue } from '@core/mirror/trackIndex';
 import { ToolTransaction } from '@core/workspace/viewportGesture';
 import { documentMirror } from '@stores/documentMirror';
 import type { PerformanceTarget } from '@stores/performanceStore';
+import { useUIStore } from '@stores/uiStore';
 import { trackRef } from '@layout/Inspector/inspectorEdits';
 
 /** Units per screen pixel of drag, and the property's legal range. */
@@ -33,6 +36,11 @@ const SCRUB: Record<Exclude<PerformanceTarget, 'position'>, { track: string; gai
 /** Shift: fine control, a tenth of the gain. */
 export const FINE = 0.1;
 
+/** The legacy track name a scrub target records (`trackRef`). */
+export function scrubTrackName(target: Exclude<PerformanceTarget, 'position'>): string {
+  return SCRUB[target].track;
+}
+
 export interface ScrubFitOptions {
   detail: number;
   wholeFrames: boolean;
@@ -41,6 +49,33 @@ export interface ScrubFitOptions {
   captureSpeedPct: number;
   /** Smart fit, or one key per sample (`everyFrame` and `smooth` both keep every sample here: a value has no path to smooth). */
   smart: boolean;
+  /** What records the take, kept with it in the project (plan §4.1): mouse | hand. Default mouse. */
+  source?: string;
+}
+
+/** The fit a scrub take is stored with (plan §4.1). */
+export function scrubFitOf(o: ScrubFitOptions): PerformanceFit {
+  return {
+    reduction: o.smart ? 'smart' : 'everyFrame',
+    detail: o.detail,
+    captureSpeedPct: o.captureSpeedPct,
+    wholeFrames: o.wholeFrames,
+    holdSeconds: o.holdSeconds,
+    frameDuration: o.frameDuration,
+    spatial: false,
+  };
+}
+
+/** Scrub fit options from a stored fit (a re-fit from the document). */
+export function scrubOptionsOfFit(fit: PerformanceFit, detail: number): ScrubFitOptions {
+  return {
+    detail,
+    wholeFrames: fit.wholeFrames,
+    holdSeconds: fit.holdSeconds,
+    frameDuration: fit.frameDuration,
+    captureSpeedPct: fit.captureSpeedPct,
+    smart: true,
+  };
 }
 
 interface Scrub {
@@ -100,7 +135,17 @@ export function scrubActive(): boolean {
 export function moveScrub(dx: number, t: number, fine: boolean): void {
   const s = scrub;
   if (!s) return;
-  const delta = dx * s.spec.gain * (fine ? FINE : 1);
+  moveScrubBy(dx * s.spec.gain * (fine ? FINE : 1), t);
+}
+
+/**
+ * The value `delta` property units from the value at the press (degrees,
+ * percent) — the mouse's scrub above, or another source's (the hand, plan
+ * P1.3) — clamped to the property's range, shown live and recorded at `t`.
+ */
+export function moveScrubBy(delta: number, t: number): void {
+  const s = scrub;
+  if (!s) return;
   // Scale: every member moves together (a uniform scrub), from its own start.
   const v = s.start.map((x) => Math.min(s.spec.max, Math.max(s.spec.min, x + delta)));
   s.last = v;
@@ -141,6 +186,11 @@ function keyOf(kind: Value['kind'], k: FittedKey): Keyframe {
   };
 }
 
+/** The fitted keys of a scrub take's samples (comp seconds, API units) under `o`. */
+export function fitScrubSamples(samples: readonly TakeSample[], o: ScrubFitOptions): FittedKey[] {
+  return fit(samples, o);
+}
+
 function fit(samples: readonly TakeSample[], o: ScrubFitOptions): FittedKey[] {
   const pct = o.captureSpeedPct > 0 ? o.captureSpeedPct : 100;
   const t0 = samples[0]?.t ?? 0;
@@ -155,6 +205,35 @@ function fit(samples: readonly TakeSample[], o: ScrubFitOptions): FittedKey[] {
     holdSeconds: o.holdSeconds,
     wholeFrames: o.wholeFrames,
   });
+}
+
+/** The commands that write the fitted `keys` on `prop`: `originals` outside the keys' span kept, the keys inside (see `finishScrub`). */
+export function scrubTakeCommands(prop: PropRef, kind: Value['kind'], originals: readonly Keyframe[], keys: readonly FittedKey[]): Command[] {
+  return commandsFor(prop, kind, originals, keys);
+}
+
+/**
+ * The command that stores the take in the document beside its keys (plan
+ * §4.1, D5), or null when it cannot be stored (over the sample cap: the keys
+ * are still written, and the user is told the take was not kept).
+ */
+function storeTakeCommand(prop: PropRef, samples: readonly TakeSample[], o: ScrubFitOptions, keys: readonly FittedKey[]): Command | null {
+  const take = performanceTakeOf({
+    layer: prop.layer,
+    path: prop.path,
+    source: o.source ?? 'mouse',
+    samples,
+    fit: scrubFitOf(o),
+    keyTimes: keys.map((k) => k.t),
+  });
+  if (!take && samples.length > MAX_TAKE_SAMPLES) {
+    useUIStore.getState().notify({
+      level: 'warning',
+      durationMs: 4000,
+      message: t('performance.takeTooLong', 'The keys were written, but the take itself was not kept: {n} samples is more than 10 minutes at 60 Hz, so Detail cannot re-fit it later', { n: samples.length }),
+    });
+  }
+  return take ? { type: 'setPerformanceTake', take } : null;
 }
 
 function commandsFor(prop: PropRef, kind: Value['kind'], originals: readonly Keyframe[], keys: readonly FittedKey[]): Command[] {
@@ -194,6 +273,9 @@ export async function finishScrub(opts: ScrubFitOptions): Promise<number> {
     await s.txn.cancel();
     return 0;
   }
+  // The raw take rides the same entry as its keys (plan §4.1): one undo for both.
+  const store = storeTakeCommand(s.prop, s.samples, opts, keys);
+  if (store) cmds.push(store);
   if (s.generation !== engineGeneration()) {
     void s.txn.cancel();
     const res = await edit('Motion Sketch', cmds);
@@ -219,6 +301,8 @@ export async function refitLastScrub(detail: number): Promise<number> {
   const keys = fit(last.samples, opts);
   const cmds = commandsFor(last.prop, last.kind, last.originals, keys);
   if (cmds.length === 0) return 0;
+  const store = storeTakeCommand(last.prop, last.samples, opts, keys);
+  if (store) cmds.push(store);
   const res = await edit('Adjust Take Detail', cmds);
   if (!res.ok) return 0;
   await documentMirror().whenIdle();

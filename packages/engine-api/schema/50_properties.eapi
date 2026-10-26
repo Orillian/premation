@@ -225,3 +225,36 @@ command editPathTopology = 630 { prop: PropRef = 1; op?: PathTopologyOp = 2; clo
 command setShapeOutline = 631 { layer: LayerId = 1; runs: BezierPath[] = 2; }
 
 struct PropertyPaths { paths: PropPath[] = 1; }
+
+// ── Performance takes (docs/PERFORMANCE_ANIMATION_PLAN.md §4.1, D5) ──────────
+// Command ids 1950–1952 (the late-additions range, after setLayerMatte).
+
+/// The settings a take was fitted with (core/performance/fitTake.ts, motionSketch.ts options). `reduction`: smart | everyFrame | smooth. `detail` 0 (few keys) … 100 (faithful). `spatial`: Position as one vector property (the fit gives path handles); false = straight segments.
+struct PerformanceFit {
+  reduction: string = 1;
+  detail: f64 = 2;
+  captureSpeedPct: f64 = 3;
+  wholeFrames: bool = 4;
+  holdSeconds: f64 = 5;
+  frameDuration: f64 = 6;
+  spatial: bool = 7;
+}
+
+/// A recorded take kept on its layer as source material (plan §4.1: takes are kept, keys are derived), so the Detail control re-fits it after save / reopen and undo without performing again. Keyed by `layer` + `path` (the API path of the property's first track: `transform/position`, or `transform/position/x` for a separated Position whose take drives both dimensions). `times`: composition seconds, one per sample, non-decreasing; `values`: `dims` numbers per sample, flattened, in API units (layer px, degrees, percent) BEFORE capture speed. `source`: what recorded it (mouse | hand | …). `span`: the comp-time range of the keys the take wrote — a re-fit replaces the keys inside it and keeps the rest. Stored on the layer's own time axis, so retiming the layer keeps the take on its frames; answered in composition time. Never rendered: only the keys are.
+struct PerformanceTake {
+  layer: LayerId = 1;
+  path: PropPath = 2;
+  source: string = 3;
+  dims: u32 = 4;
+  times: f64[] = 5;
+  values: f64[] = 6;
+  fit: PerformanceFit = 7;
+  span: TimeRange = 8;
+}
+struct PerformanceTakes { takes: PerformanceTake[] = 1; }
+/// Store (replace) the layer's take for `take.path`. At most 36,000 samples (10 minutes at 60 Hz): `outOfRange` above it; `invalidArgument` for a missing path, `dims` outside 1..4, a values count that is not times × dims, or a non-finite number. Inverse: the previous take (or none). Deleting the layer deletes its takes.
+command setPerformanceTake = 1950 { take: PerformanceTake = 1; }
+/// Remove the layer's takes for `paths`; an empty list removes every take of the layer (D5 "Discard takes"). Inverse: the previous takes.
+command clearPerformanceTakes = 1951 { layer: LayerId = 1; paths: PropPath[] = 2; }
+/// The layer's stored takes, sample times and spans in composition time.
+query getPerformanceTakes = 1952 { layer: LayerId = 1; } -> PerformanceTakes;

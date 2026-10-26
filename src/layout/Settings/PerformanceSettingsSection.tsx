@@ -5,6 +5,7 @@
  * The same preferences the Performance bar's ⋯ popover changes — two views of
  * one setting, never two settings. The reduction keeps today's behaviours as
  * choices: After Effects' one key per sample and the earlier path smoothing.
+ * Then hand tracking (P1): the model install and a camera test.
  */
 
 import { Segmented } from '@components/Segmented';
@@ -14,6 +15,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { t } from '@core/i18n';
 import { cn } from '@utils/cn';
 import styles from './CustomizeDialog.module.css';
+import { CameraTestControl, HandModelControl, useHandModelInstalled } from './HandTrackingControls';
 
 export function PerformanceSettingsSection(): JSX.Element {
   const reduction = usePreferenceStore((s) => s.performanceReduction);
@@ -24,8 +26,12 @@ export function PerformanceSettingsSection(): JSX.Element {
   const hold = usePreferenceStore((s) => s.performanceHoldSeconds);
   const step = usePreferenceStore((s) => s.performancePoseStep);
   const stepUnit = usePreferenceStore((s) => s.performancePoseStepUnit);
+  const handGain = usePreferenceStore((s) => s.performanceHandGain);
+  const whichHand = usePreferenceStore((s) => s.performanceHand);
+  const handMirror = usePreferenceStore((s) => s.performanceHandMirror);
   const setPref = usePreferenceStore((s) => s.set);
   const smart = reduction === 'smart';
+  const [handModel, setHandModel] = useHandModelInstalled();
 
   return (
     <div className={styles.sectionGroup}>
@@ -156,6 +162,68 @@ export function PerformanceSettingsSection(): JSX.Element {
             />
           </div>
         </div>
+
+        <div className={cn(styles.settingRow, styles.settingRowWide)}>
+          <div className={styles.settingInfo}>
+            <span className={styles.settingTitle}>{t('settings.handModel.title', 'Hand Tracking Model')}</span>
+            <span className={styles.settingDesc}>{t('settings.handModel.desc', 'Lets your hand drive animation through the camera. Runs on this computer.')}</span>
+          </div>
+          <div className={styles.settingRight}>
+            <HandModelControl onChange={setHandModel} />
+          </div>
+        </div>
+
+        {handModel ? (
+          <>
+            <div className={styles.settingRow}>
+              <div className={styles.settingInfo}>
+                <span className={styles.settingTitle}>{t('performance.hand.gain', 'Hand gain')}</span>
+                <span className={styles.settingDesc}>{t('settings.performance.handGainDesc', 'How far the layer moves for a hand movement: at 1, a hand crossing the camera frame crosses the composition.')}</span>
+              </div>
+              <div className={styles.settingRight}>
+                <Slider size="sm" min={0.25} max={4} step={0.25} value={handGain} showValue onChange={(v) => setPref('performanceHandGain', v)} />
+              </div>
+            </div>
+            <div className={styles.settingRow}>
+              <div className={styles.settingInfo}>
+                <span className={styles.settingTitle}>{t('performance.hand.which', 'Hand')}</span>
+                <span className={styles.settingDesc}>{t('settings.performance.handDesc', 'Which hand drives; Either follows the nearer one.')}</span>
+              </div>
+              <div className={styles.settingRight}>
+                <Segmented
+                  size="sm"
+                  value={whichHand}
+                  onChange={(v) => setPref('performanceHand', v)}
+                  options={[
+                    { value: 'either', label: t('performance.hand.either', 'Either') },
+                    { value: 'left', label: t('performance.hand.left', 'Left') },
+                    { value: 'right', label: t('performance.hand.right', 'Right') },
+                  ]}
+                />
+              </div>
+            </div>
+            <div className={styles.switchRow}>
+              <div className={styles.settingInfo}>
+                <span className={styles.settingTitle}>{t('performance.hand.mirror', 'Mirror')}</span>
+                <span className={styles.settingDesc}>{t('settings.performance.handMirrorDesc', 'Moving right in front of the camera moves right on screen.')}</span>
+              </div>
+              <Switch
+                checked={handMirror}
+                onChange={(e) => setPref('performanceHandMirror', e.target.checked)}
+                aria-label={t('performance.hand.mirror', 'Mirror')}
+              />
+            </div>
+          <div className={cn(styles.settingRow, styles.settingRowWide)}>
+            <div className={styles.settingInfo}>
+              <span className={styles.settingTitle}>{t('settings.cameraTest.title', 'Camera Test')}</span>
+              <span className={styles.settingDesc}>{t('settings.cameraTest.desc', 'Check hand tracking on this machine. The camera turns off when you leave Settings.')}</span>
+            </div>
+            <div className={styles.settingRight}>
+              <CameraTestControl />
+            </div>
+          </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

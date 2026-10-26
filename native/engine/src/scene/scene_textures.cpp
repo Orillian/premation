@@ -1161,6 +1161,10 @@ void SceneTextures::svg_drop_below(const std::string& doc, int step) {
   for (int s = kSvgMinStep; s < step; ++s) {
     const auto it = byHash_.find(doc + "#s" + std::to_string(s));
     if (it == byHash_.end()) continue;
+    // Another layer showing the same document smaller drew from this step in
+    // the frame being prepared: dropping it would blank that layer. It goes
+    // once a frame passes without it (or is evicted as any raster is).
+    if (it->second->lastUse == frame_) continue;
     bytes_ -= it->second->entry->rgba.size();
     lru_.erase(it->second);
     byHash_.erase(it);

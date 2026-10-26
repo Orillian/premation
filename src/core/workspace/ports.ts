@@ -144,7 +144,13 @@ function chain2DOf(id: string): Matrix2D | null {
   return affineFromCorners(rec.box, rec.corners);
 }
 
-/** The world affine of a layer's PARENT at the playhead — identity at the top of its composition. */
+/**
+ * The world affine of a layer's PARENT at the playhead — identity at the top
+ * of its composition. The space a layer's own x / y live in: a source that
+ * turns a WORLD delta into a Position write runs it through this matrix's
+ * inverse (the hand in performanceHandSource reads the same matrix through
+ * the engine's getLayerTransforms: command code does not read the ports).
+ */
 function parentChain2D(id: string): Matrix2D {
   const parent = documentMirror().layer(id)?.parent;
   return (parent ? chain2DOf(parent) : null) ?? Matrix.identity();

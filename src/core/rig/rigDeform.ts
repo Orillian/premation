@@ -139,10 +139,13 @@ export function applyIk(bones: readonly Bone[], targets: readonly IkTargetResolv
       if (t.pole) {
         // Explicit pole: bend toward whichever side of the root→target line the
         // pole sits on. Deterministic and keyframeable, so the joint can be made
-        // to flip rather than only holding its current side.
+        // to flip rather than only holding its current side. Same orientation
+        // as the no-pole branch (cross(j1 − j0, target − j0) ≥ 0 is the positive
+        // bend), so the elbow lands on the POLE's side — the engine's
+        // rig_mesh.cpp apply_ik measures it the same way.
         const ax = target.x - j0.x;
         const ay = target.y - j0.y;
-        const side = ax * (t.pole.y - j0.y) - ay * (t.pole.x - j0.x);
+        const side = (t.pole.x - j0.x) * ay - (t.pole.y - j0.y) * ax;
         bendPositive = side >= 0;
       } else {
         // Preserve the current bend side so the joint does not pop when the

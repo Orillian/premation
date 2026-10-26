@@ -685,6 +685,16 @@
     "type": "setShapeOutline"
   },
   {
+    "id": 1950,
+    "kind": "edit",
+    "type": "setPerformanceTake"
+  },
+  {
+    "id": 1951,
+    "kind": "edit",
+    "type": "clearPerformanceTakes"
+  },
+  {
     "id": 700,
     "kind": "edit",
     "type": "addMarkers"
@@ -848,5 +858,15 @@
     "id": 873,
     "kind": "edit",
     "type": "runPluginCommand"
+  },
+  {
+    "id": 1948,
+    "kind": "control",
+    "type": "startLiveInput"
+  },
+  {
+    "id": 1949,
+    "kind": "control",
+    "type": "stopLiveInput"
   }
 ]

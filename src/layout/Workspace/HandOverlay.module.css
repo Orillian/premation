@@ -1,0 +1,13 @@
+/*
+ * The hand inset: top-right of the viewport, under the HUD's row, above the
+ * picture and below the bar and the interactive handles. Pointer-transparent:
+ * it describes the hand, it never takes a click.
+ */
+.inset {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 6;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+}

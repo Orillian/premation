@@ -121,6 +121,27 @@
   flex: 1 1 0;
 }
 
+/* The camera's state while the hand is the source: an icon and a short readout. */
+.camera {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 220px;
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  opacity: 0.75;
+}
+
+.cameraText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cameraFailed {
+  color: var(--color-danger);
+  opacity: 1;
+}
+
 .hint {
   font-size: var(--panel-font-size-help);
   line-height: var(--panel-line-height-help);

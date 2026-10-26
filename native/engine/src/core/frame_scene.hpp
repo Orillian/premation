@@ -42,6 +42,25 @@ struct FrameScene {
 /// the render graph instead of the C2 quad compositor.
 struct BuiltFrame;
 
+/// A composition viewport frame drawn in COMP space: the comp rectangle alone,
+/// at the view's own scale (the same pixels the slot would show — nothing is
+/// resampled), in a texture of `width` × `height` whose pixel (0, 0) lands on
+/// slot pixel (`slotX`, `slotY`). The present is an integer-offset copy, so a
+/// pane resize or a pan that keeps the scale and the sub-pixel phase of the
+/// comp origin is the same cached frame: the cache scope and the content key
+/// name THIS texture, not the slot.
+struct CompSpaceFrame {
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  std::int32_t slotX = 0;  ///< where texture pixel (0, 0) lands in the slot (may be negative: the view is zoomed in)
+  std::int32_t slotY = 0;
+  double zoom = 1;        ///< comp px → CSS px (ViewSpec::zoom)
+  double dpr = 1;         ///< CSS px → texture px: the device pixel ratio × the preview scale (ViewSpec::dpr)
+  double phaseX = 0;      ///< the comp origin inside texture pixel (0, 0), [0, 1) in texture px, quantised to 1/256
+  double phaseY = 0;
+  bool operator==(const CompSpaceFrame&) const = default;
+};
+
 struct RenderJob {
   FrameScene scene;
   // shared_ptr: handed core thread → render thread exactly once and destroyed
@@ -119,6 +138,15 @@ struct RenderJob {
     float tintStrength = 0;
   };
   std::vector<OnionGhost> onion;
+  /// Comp-space caching (comp_space_frame): the frame is drawn into (or served
+  /// from a tier as) a comp-space texture of this geometry and copied into the
+  /// slot. Absent = slot space. Set by the Session with the port's per-frame copy.
+  std::optional<CompSpaceFrame> compSpace;
+  /// Idle render-ahead (Session::idle_prefetch): the frame is drawn and stored in
+  /// the cache tiers (coverage recorded) but never presented — no slot, no
+  /// FrameReady, the playhead stays where it is. Answered through
+  /// RenderCounters::prefetched (drawn, stored or not, or dropped).
+  bool prefetch = false;
 };
 
 /// The keys a cache tier holds a frame under: its content key
@@ -272,8 +300,15 @@ struct ViewportConfig {
   /// Build this frame with a transparent background (an onion ghost). Never
   /// stored on a surface — only the copy handed to the frame builder.
   bool ghost = false;
+  /// Comp-space caching (comp_space_frame below): this frame is drawn as the
+  /// composition's own pixels at the view's scale, and presented into the slot
+  /// by a copy. Filled per frame by the Session (never on a surface's stored
+  /// config); absent = the frame is drawn straight into the slot, zoom and pan
+  /// baked in (a Layer view, a ghost, the Extended Viewer, a channel view…).
+  std::optional<CompSpaceFrame> compSpace;
   bool operator==(const ViewportConfig&) const = default;
 };
+
 
 /// D5: does going from `a` to `b` need a new slot ring? Only the slot
 /// geometry does (which viewport, its physical size, open/closed, the preview
@@ -295,6 +330,77 @@ struct ViewportConfig {
 [[nodiscard]] inline bool ring_config_changed(const ViewportConfig& a, const ViewportConfig& b) {
   return a.viewport != b.viewport || a.width != b.width || a.height != b.height || a.open != b.open ||
          a.resolution != b.resolution;
+}
+
+/// The comp-space frame a composition viewport `port` draws a `compW` × `compH`
+/// composition as, or nullopt when the frame must be drawn in slot space: a
+/// Layer view or a held time (another picture), a ghost, the Extended Viewer
+/// (layers outside the comp rect), a region of interest, the ground grid, a
+/// channel view or a viewer LUT (the slot's border colour would differ from
+/// black), or a comp-space texture far larger than the slot (zoomed well in —
+/// drawing the whole comp would cost more than the slot it fills).
+/// The phase is the sub-pixel position of the comp origin in the slot, quantised
+/// to 1/256 px so that pans by whole pixels (or floating-point noise in the
+/// page's camera) share one frame; the picture moves by at most 1/512 px.
+[[nodiscard]] inline std::optional<CompSpaceFrame> comp_space_frame(const ViewportConfig& port, double compW, double compH) {
+  if (!port.layer.empty() || port.time || port.ghost || !port.clipToComp || port.groundGrid || port.regionOfInterest ||
+      port.channel != api::ChannelView::rgb || port.viewerLut || port.width == 0 || port.height == 0 || !(compW >= 1) ||
+      !(compH >= 1)) {
+    return std::nullopt;
+  }
+  const double res = preview_scale(port.resolution);
+  const auto slotW = static_cast<double>(preview_pixels(port.width, port.resolution));
+  const auto slotH = static_cast<double>(preview_pixels(port.height, port.resolution));
+  // The slot's camera, as engine_frames builds it (export_view, or the page's own).
+  double zoom = 0;
+  double dpr = 1;
+  double originX = 0;  // the comp origin in slot px
+  double originY = 0;
+  if (port.zoom > 0) {
+    const double pageDpr = port.devicePixelRatio > 0 ? port.devicePixelRatio : 1.0;
+    const double cssW = std::max(1.0, static_cast<double>(port.width) / pageDpr);
+    const double cssH = std::max(1.0, static_cast<double>(port.height) / pageDpr);
+    zoom = port.zoom;
+    dpr = pageDpr * res;
+    originX = ((0 - port.panX) * zoom + cssW / 2) * dpr;
+    originY = ((0 - port.panY) * zoom + cssH / 2) * dpr;
+  } else {
+    // export_view: the comp contain-fitted and centred in the slot.
+    zoom = std::min(slotW / compW, slotH / compH);
+    dpr = 1;
+    originX = (slotW - compW * zoom) / 2;
+    originY = (slotH - compH * zoom) / 2;
+  }
+  if (!(zoom > 0) || !std::isfinite(zoom) || !std::isfinite(originX) || !std::isfinite(originY)) return std::nullopt;
+  const auto split = [](double origin, std::int32_t& whole, double& phase) {
+    const double w = std::floor(origin);
+    double p = std::round((origin - w) * 256.0) / 256.0;
+    double wi = w;
+    if (p >= 1.0) {
+      p = 0;
+      wi += 1;
+    }
+    if (std::abs(wi) > 1e9) return false;
+    whole = static_cast<std::int32_t>(wi);
+    phase = p;
+    return true;
+  };
+  CompSpaceFrame cs;
+  if (!split(originX, cs.slotX, cs.phaseX) || !split(originY, cs.slotY, cs.phaseY)) return std::nullopt;
+  const double scale = zoom * dpr;
+  // The texture covers the comp rect and the partial pixels at its edges (1e-6: a
+  // comp edge that lands on a pixel boundary within noise adds no empty column).
+  const double w = std::ceil(cs.phaseX + compW * scale - 1e-6);
+  const double h = std::ceil(cs.phaseY + compH * scale - 1e-6);
+  constexpr double kMaxSide = 8192;  // Dawn's default maxTextureDimension2D
+  if (!(w >= 1) || !(h >= 1) || w > kMaxSide || h > kMaxSide) return std::nullopt;
+  // Zoomed well in: the comp would cost more than twice the slot to draw. Slot space.
+  if (w * h > 2.0 * slotW * slotH) return std::nullopt;
+  cs.width = static_cast<std::uint32_t>(w);
+  cs.height = static_cast<std::uint32_t>(h);
+  cs.zoom = zoom;
+  cs.dpr = dpr;
+  return cs;
 }
 
 /// How the engine's media or render side answered a query the document core
@@ -332,6 +438,10 @@ struct RenderCounters {
   /// fell behind): not the real frame, and never cached. A looping play that
   /// had any fills the range at the wrap, as one that dropped frames does.
   std::uint64_t inexact = 0;
+  /// Every frame drawn with a stand-in for its footage (a nearest decoded frame,
+  /// a GPU error), playing or not: drawn, never stored. A cache fill re-draws
+  /// such a frame instead of moving past it.
+  std::uint64_t standIn = 0;
   /// Of the frames shown in the last second, the share served from a cache
   /// tier (VRAM, RAM or disk) instead of drawn (RenderStats.cacheHitRate).
   double cacheHitRate = 0;
@@ -342,6 +452,9 @@ struct RenderCounters {
   std::uint64_t cacheServed = 0;
   std::uint64_t cacheMissed = 0;
   std::uint64_t cacheDropped = 0;
+  /// Idle render-ahead jobs (RenderJob::prefetch) answered: drawn (stored or
+  /// not), or dropped. The session submits one at a time and waits for this.
+  std::uint64_t prefetched = 0;
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.
@@ -422,6 +535,10 @@ class FrameSink {
   /// they cost to draw (a fill that drops cheap frames leaves a gap the next
   /// pass renders again). Any thread.
   virtual void set_filling(bool /*filling*/) {}
+  /// Whether every open viewport's slots accept texture copies in and out
+  /// (comp-space frames are presented by a copy; a slot that cannot take one
+  /// is drawn in slot space). Any thread.
+  [[nodiscard]] virtual bool slots_copyable() const { return true; }
   /// Viewport frame-cache coverage (zeros when there is no cache).
   [[nodiscard]] virtual CacheCoverageSnap cache_coverage() const { return {}; }
   /// Publish the coverage now rather than at its next throttled update: a

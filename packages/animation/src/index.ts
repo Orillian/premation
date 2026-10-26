@@ -23,6 +23,7 @@ export {
   cubicBezierEase, ease, sampleTrack, upsertKeyframe, segmentTemporalBezier, autoTemporalSlope, LINEAR_TEMPORAL_BEZIER,
   sampleSpeed, applyRoving, applyRovingSpatial,
   cubicValueAt, smoothTrackTangents, clearTrackTangents,
+  sampleSpatialMember, segmentEased, segmentControls, arcLengthTable, arcParam, ARC_SAMPLES,
   autoSpatialTangents, effectiveSpatialTangents,
   EASY_EASE_BEZIER, EASY_EASE_OUT_BEZIER, EASY_EASE_IN_BEZIER,
 } from './interpolate';

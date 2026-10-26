@@ -28,7 +28,9 @@ const frameCount = (ranges: ReadonlyArray<{ start: number; end: number }>): numb
 
 suite('the RAM tier', () => {
   it('holds a range longer than VRAM, plays it from the cache, and keeps the bars honest', async () => {
-    const native = await startNativeEngine({ extraArgs: ['--frame-cache-mb', '16', '--ram-cache-mb', '512', '--log-level', 'warn'] });
+    // Idle render-ahead off (PREMATION_IDLE_PREFETCH): step 2 reads the bars after an edit and
+    // expects only what was DRAWN since; the prefetcher would fill them within a second.
+    const native = await startNativeEngine({ extraArgs: ['--frame-cache-mb', '16', '--ram-cache-mb', '512', '--log-level', 'warn'] }, { PREMATION_IDLE_PREFETCH: '0' });
     const client = new ProcessEngineClient(native.bridge);
     let phase = 'idle';
     native.supervisor.on('frame', (m: EngineFrameMessage) => {

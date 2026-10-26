@@ -2138,7 +2138,7 @@ Json api_to_data_value(const PropBinding& b, const api::Value& value) {
 double sample_member(const Document& d, std::string_view layer, const std::string& prop, double t, double fallback) {
   const auto* keys = anim_track(d, layer, prop);
   if (keys == nullptr || keys->empty()) return fallback;
-  return sample_keys(*keys, t).value_or(fallback);
+  return anim_sample_member_keys(d, layer, prop, *keys, t).value_or(fallback);
 }
 
 }  // namespace

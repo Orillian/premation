@@ -64,6 +64,8 @@ RenderThread::RenderThread(RenderOptions options, SendFrames send, OnFatal onFat
 }
 
 void RenderThread::release(std::uint32_t generation, std::uint32_t slot) {
+  // Frame-pipeline trace: the host handed a slot back (the ring's pace).
+  PREMATION_LOG(debug, "ft_release").kv("slot", slot);
   std::shared_ptr<FrameRing> ring;
   {
     const std::lock_guard<std::mutex> lock(m_);
@@ -107,6 +109,15 @@ void RenderThread::submit(RenderJob job) {
   {
     const std::lock_guard<std::mutex> lock(m_);
     const auto it = ports_.find(job.viewport);
+    if (job.prefetch) {
+      // Idle render-ahead: one waits at a time, drawn when no viewport has a
+      // frame to draw (run). Replaced or orphaned = answered, as a drop.
+      if (prefetch_ || it == ports_.end() || !it->second->config.open) ++counters_.prefetched;
+      if (it == ports_.end() || !it->second->config.open) return;
+      prefetch_ = std::move(job);
+      cv_.notify_all();
+      return;
+    }
     if (it == ports_.end() || !it->second->config.open) {
       ++counters_.dropped;  // its viewport closed meanwhile: nowhere to show it
       if (job.cachedKey) ++counters_.cacheDropped;
@@ -119,6 +130,9 @@ void RenderThread::submit(RenderJob job) {
       if (p.pending->cachedKey) ++counters_.cacheDropped;
     }
     p.droppedPending += job.clockDropped;
+    // Frame-pipeline trace (debug level): a job reaching the render thread.
+    PREMATION_LOG(debug, "ft_submit").kv("rev", static_cast<std::uint64_t>(job.revision))
+        .kv("free", p.ring ? p.ring->any_free() : false);
     p.pending = std::move(job);
   }
   cv_.notify_all();
@@ -224,6 +238,10 @@ FrameCacheStats RenderThread::cache_stats() const {
 CacheCoverageSnap RenderThread::cache_coverage() const {
   const std::lock_guard<std::mutex> lock(m_);
   return coverage_;
+}
+
+void RenderThread::publish_coverage_now() {
+  post([this] { publish_coverage(); });
 }
 
 void RenderThread::purge_frame_cache() {
@@ -679,7 +697,10 @@ void RenderThread::composite_onion(const RenderJob& job, const wgpu::TextureView
 
 void RenderThread::publish_coverage() {
   coverageStale_ = false;
-  diskCoverageStale_ = false;
+  // Files still being written join the blue lane when they land: stay stale
+  // until the writer is done, so the idle loop publishes again (a publish made
+  // mid-write — the one at the end of a fill — used to leave the last frame out).
+  diskCoverageStale_ = disk_->writing();
   coveragePublishedAt_ = SteadyClock::now();
   // Each viewport's current scope: the green bar is what VRAM or RAM holds,
   // the blue one what is on disk (a frame queued for writing joins once
@@ -791,6 +812,7 @@ void RenderThread::close_gpu() {
   onionView_ = nullptr;
   onionW_ = 0;
   onionH_ = 0;
+  compTargets_.clear();
   // The VRAM tier goes with the device: entries naming frames only it held
   // would miss (and heal) one by one — start over instead.
   prebuild_.clear();
@@ -853,8 +875,11 @@ void RenderThread::run(std::promise<std::string>& ready) {
     const auto at = nextSettle();
     return at && *at <= SteadyClock::now();
   };
-  const auto workReady = [this, &anyDirty, &canWarm, &settleDue] {
-    return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr || canWarm() || settleDue();
+  // Idle render-ahead: a prefetch job draws only when nothing is on the GPU and
+  // no viewport has a frame waiting (under m_).
+  const auto canPrefetch = [this] { return prefetch_.has_value() && inflight_.empty() && next_ready_locked() == nullptr; };
+  const auto workReady = [this, &anyDirty, &canWarm, &settleDue, &canPrefetch] {
+    return quit_ || anyDirty() || !tasks_.empty() || next_ready_locked() != nullptr || canWarm() || settleDue() || canPrefetch();
   };
   for (;;) {
     if (!inflight_.empty()) {
@@ -887,6 +912,10 @@ void RenderThread::run(std::promise<std::string>& ready) {
     if (gpu_->device_lost()) {
       abandon_all_disk();
       inflight_.clear();  // their slots are rebuilt with the device (a new generation)
+      if (prefetch_) {    // the session asks again once it is idle
+        prefetch_.reset();
+        ++counters_.prefetched;
+      }
       lock.unlock();
       const bool recovered = recover_device();
       if (!recovered && onFatal_) onFatal_("GPU device lost");
@@ -969,8 +998,7 @@ void RenderThread::run(std::promise<std::string>& ready) {
       // fill would otherwise wait for the next frame drawn).
       if (diskCoverageStale_ || coverageStale_) {
         lock.unlock();
-        publish_coverage();
-        diskCoverageStale_ = disk_->writing();
+        publish_coverage();  // stays disk-stale while the writer works (publish_coverage)
         lock.lock();
       }
       // Idle: one step of the drawer's warm-up (P7), then look for work again —
@@ -979,11 +1007,28 @@ void RenderThread::run(std::promise<std::string>& ready) {
         lock.unlock();
         timed("warm_step", [&] { (void)drawer_->warm_step(); });
         lock.lock();
+        continue;
+      }
+      // Idle: the session's render-ahead frame (RenderJob::prefetch), one at a
+      // time, into the cache tiers — never a slot. A viewport's frame arriving
+      // meanwhile waits for this one draw at most.
+      if (canPrefetch()) {
+        RenderJob job = std::move(*prefetch_);
+        prefetch_.reset();
+        lock.unlock();
+        timed("prefetch", [&] { render_prefetch(job); });
+        lock.lock();
       }
       continue;
     }
     const std::optional<std::uint32_t> slot = port->ring->acquire();
-    if (!slot) continue;  // every slot is with the host: keep the newest job until one returns
+    if (!slot) {
+      // Frame-pipeline trace: all slots with the host — production is gated on a release.
+      PREMATION_LOG(debug, "ft_noslot").kv("rev", static_cast<std::uint64_t>(port->pending->revision));
+      continue;  // every slot is with the host: keep the newest job until one returns
+    }
+    // Frame-pipeline trace: the job starts drawing (FrameReady carries start/done).
+    PREMATION_LOG(debug, "ft_rstart").kv("rev", static_cast<std::uint64_t>(port->pending->revision)).kv("slot", *slot);
     RenderJob job = std::move(*port->pending);
     port->pending.reset();
     job.clockDropped = port->droppedPending;
@@ -1217,6 +1262,12 @@ void RenderThread::rebuild(Port& port, const ViewportConfig& config, bool shared
       .kv("copy", port.slots->copy);
   if (send_) send_(frames::Message{.v = std::move(announce)});
   const std::lock_guard<std::mutex> lock(m_);
+  // Comp-space frames are presented by a copy: offered only while every open slot takes one.
+  bool allCopyable = true;
+  for (const auto& [id, p] : ports_) {
+    if (p->config.open && p->slots && !p->slots->copyable) allCopyable = false;
+  }
+  slotsCopyable_.store(allCopyable, std::memory_order_relaxed);
   if (sizeSwitch) {
     counters_.slotSwitchEpochUs = os::epoch_us();
     counters_.slotSwitchMs = std::chrono::duration<double, std::milli>(SteadyClock::now() - rebuildStart).count();
@@ -1276,139 +1327,39 @@ void RenderThread::render_guarded(Port& port, RenderJob& job, std::uint32_t slot
   bool drawn = false;
   InFlight f;
   f.buildMs = job.buildMs;
+  f.frameWidth = set.width;
+  f.frameHeight = set.height;
   take_revisions();
   // A cached job (RenderJob::cachedKey): the session built nothing, the keys
   // name a frame a tier held when it asked. Presented from VRAM, RAM or disk
   // below; found in no tier after all, the session is asked for a built frame.
   const bool cachedJob = job.cachedKey.has_value() && !job.built;
   if ((job.built || cachedJob) && drawer_) {
-    if (!cachedJob) drawer_->set_exact_media(job.exactMedia);
     const wgpu::Texture& slotTexture = set.textures[slot];
-    std::optional<std::uint64_t> key;
-    std::optional<std::uint64_t> diskKey;
-    if (cachedJob) {
-      if (cache_ && set.copyable) key = job.cachedKey;
-      if (key && job.cachedDiskKey != 0 && disk_->enabled()) diskKey = job.cachedDiskKey;
-    } else if (cache_ && set.copyable && !job.transient) {
-      // A transient frame (RenderJob::transient, mid-drag) gets no key: no tier stores it.
-      key = drawer_->content_key(*job.built, set.width, set.height);
-    }
-    // Every frame the disk tier could hold is keyed (a hash of the content key
-    // and the footage stamps, cached for seconds): whether one is worth a file
-    // is known only once it has drawn — the first frame after an open, or the
-    // one a new raster lands on, is the slow one a prediction never sees.
-    // The prediction is the cheaper of the running average and the last drawn
-    // frame: a slow first frame (pipelines compiling) must not make the next
-    // ones pay for eager read-backs the real draw time then turns down.
-    seed_disk_read_cost();
-    // The RAM tier keeps the frames of the range this viewport plays (ram_cache.hpp).
-    if (job.recordCoverage) protect_ = ProtectedRange{job.cacheScope, job.rangeFirst, job.rangeLast};
-    manage_ram_budget(false);
-    const FrameTag tag{job.recordCoverage ? job.cacheScope : 0, job.frame};
-    const double predictedMs = std::min(drawMsAvg_, lastDrawMs_);
-    if (!cachedJob && key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, set.width, set.height);
-    if (disk_->enabled()) aliasSalt_.store(drawer_->alias_salt(), std::memory_order_relaxed);
-    const std::uint64_t dk = diskKey.value_or(0);
-    if (key) {
-      // D4: the same content was drawn before — a copy instead of the frame.
-      wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
-      if (cache_->copy_to(*key, set.width, set.height, slotTexture, enc)) {
-        const wgpu::CommandBuffer cb = enc.Finish();
-        gpu_->queue.Submit(1, &cb);
-        drawn = true;
-        if (FrameMeta* m = cache_->meta(*key)) {
-          m->tag = tag;
-          if (dk != 0) m->diskKey = dk;
-        }
-        if (job.recordCoverage) note_coverage(job, *key, dk);
-      }
-    }
-    if (!drawn && key && (ram_.contains(*key) || settle_victim(*key))) {
-      // The RAM tier: a frame VRAM evicted — one upload instead of the render.
-      // Back into VRAM with it, so scrubbing over it again is a copy.
-      if (const std::optional<RamFrame> hit = ram_.find(*key, set.width, set.height, tag)) {
-        wgpu::TexelCopyTextureInfo dst{};
-        dst.texture = slotTexture;
-        wgpu::TexelCopyBufferLayout layout{};
-        layout.bytesPerRow = set.width * 4U;
-        layout.rowsPerImage = set.height;
-        const wgpu::Extent3D size{set.width, set.height, 1};
-        gpu_->queue.WriteTexture(&dst, hit->rgba->data(), hit->rgba->size(), &layout, &size);
-        store_vram(*key, slotTexture, set.width, set.height, FrameMeta{tag, hit->drawMs, dk != 0 ? dk : hit->diskKey});
-        drawn = true;
-        if (job.recordCoverage) note_coverage(job, *key, dk);
-      }
-    }
-    if (!drawn && diskKey && disk_->contains(*diskKey) && load_from_disk(*diskKey, set.width, set.height, slotTexture)) {
-      // The disk tier: a frame VRAM evicted, or one drawn in an earlier
-      // session — a file read instead of the render. Back into VRAM and RAM
-      // with it, so the next pass over it is a copy again.
-      store_vram(*key, slotTexture, set.width, set.height, FrameMeta{tag, 0, *diskKey});
-      // The read pixels move into the RAM tier (WriteTexture took its copy); the scratch is refilled next time.
-      std::vector<RamFrame> evicted;
-      (void)ram_.store(*key,
-                       RamFrame{std::make_shared<std::vector<std::uint8_t>>(std::move(diskScratch_)), set.width, set.height,
-                                0, *diskKey, tag},
-                       protect_, evicted);
-      diskScratch_.clear();
-      spill_ram_evictions(evicted);
-      drawn = true;
-      if (job.recordCoverage) note_coverage(job, *key, *diskKey);
-    }
-    if (!drawn && cachedJob) {
-      // No tier holds it any more (evicted, purged, a lost device): forget the
-      // entry, give the slot back and ask for a built frame — never a blank one.
-      if (job.prebuildKey) prebuild_.forget(*job.prebuildKey);
-      {
-        const std::lock_guard<std::mutex> lock(m_);
-        ++counters_.cacheMissed;
-        if (std::ranges::find(buildWanted_, job.viewport) == buildWanted_.end()) buildWanted_.push_back(job.viewport);
-      }
+    // Comp-space caching (frame_scene.hpp CompSpaceFrame): the frame is the
+    // comp's own pixels in a texture of its own size, and the slot gets a copy
+    // at an integer offset — so the tiers hold one frame across pane sizes
+    // and pans. A slot that takes no copies draws in slot space.
+    const CompSpaceFrame* cs = job.compSpace && set.copyable ? &*job.compSpace : nullptr;
+    const FrameTarget target = cs != nullptr ? comp_target(cs->width, cs->height)
+                                             : FrameTarget{.texture = &slotTexture, .view = &set.views[slot], .width = set.width, .height = set.height};
+    f.frameWidth = target.width;
+    f.frameHeight = target.height;
+    const Served served = serve_or_draw(job, target, set.copyable, cs == nullptr, f);
+    if (served.missing) {
+      // No tier holds it any more (evicted, purged, a lost device): the slot
+      // goes back and the session is asked for a built frame — never a blank one.
 #if defined(PREMATION_SHARED_TEXTURE)
       if (shared != nullptr) (void)set.pool->end_access(*shared);
 #endif
       ring.unacquire(slot);
       return;
     }
-    if (!drawn) {
-      std::string error;
-      drawn = drawer_->draw(*job.built, set.views[slot], set.width, set.height, error);
-      f.drawn = drawn;
-      if (!drawn) {
-        PREMATION_LOG(error, "scene_draw_failed").kv("error", error).kv("frame", job.frame);
-      } else if (!drawer_->last_frame_exact()) {
-        // Footage from a nearest decoded frame (or a GPU error): shown, never cached.
-        f.inexact = job.playing;
-      } else if (key) {
-        store_vram(*key, slotTexture, set.width, set.height, FrameMeta{tag, 0, dk});
-        f.vramKey = *key;
-        // An exact frame not on disk yet, predicted slow: read it back now
-        // (before any onion ghost lands on the slot) for the writer once the
-        // GPU is done. Predicted fast: complete_frames decides on its real
-        // draw time, and reads a slow one back from its VRAM copy.
-        if (diskKey && worth_disk(predictedMs, set.width, set.height) && disk_->reserve(*diskKey)) {
-          queue_disk_readback(f, *diskKey, slotTexture, set.width, set.height);
-        } else if (diskKey && !disk_->contains(*diskKey)) {
-          f.lateDisk = std::make_pair(*key, *diskKey);
-        }
-        if (job.recordCoverage) note_coverage(job, *key, dk);
-      }
+    drawn = served.drawn;
+    if (drawn && cs != nullptr && served.source != nullptr) {
+      present_comp_space(*cs, *served.source, slotTexture, set.views[slot], set.width, set.height);
     }
-    f.cached = drawn && !f.drawn;
-    // The pre-build map learns the frame once a tier holds it (served from one,
-    // or drawn exact and stored): the next job with this pre-build key skips the build.
-    if (!cachedJob && key && job.prebuildKey && (f.cached || f.vramKey)) {
-      prebuild_.learn(*job.prebuildKey, CachedKeys{*key, dk});
-      // And for the next session, when its frame is (or will be) a file and
-      // nothing outside the document decides its pixels (no footage files).
-      if (const std::uint64_t salt = aliasSalt_.load(std::memory_order_relaxed); salt != 0 && dk != 0 && !drawer_->reads_files(*job.built)) {
-        disk_->store_alias(alias_key(*job.prebuildKey, salt), *key, dk);
-      }
-    }
-    if (cachedJob && drawn) {
-      const std::lock_guard<std::mutex> lock(m_);
-      ++counters_.cacheServed;
-    }
+    if (drawn) note_view_key(port, served.key.value_or(0));
     if (drawn && !job.onion.empty() && compositor_) composite_onion(job, set.views[slot], set.width, set.height);
     // A paused frame whose footage came from a stand-in: wait for the decode, then draw it again.
     MediaWants wants = cachedJob ? MediaWants{} : drawer_->take_media_wants();
@@ -1429,6 +1380,7 @@ void RenderThread::render_guarded(Port& port, RenderJob& job, std::uint32_t slot
     compositor_->encode(enc, job.scene, set.views[slot], set.width, set.height, 1.0);
     const wgpu::CommandBuffer cb = enc.Finish();
     gpu_->queue.Submit(1, &cb);
+    note_view_key(port, 0);
   }
 #if defined(PREMATION_SHARED_TEXTURE)
   if (shared != nullptr) (void)set.pool->end_access(*shared);
@@ -1483,12 +1435,337 @@ void RenderThread::render_guarded(Port& port, RenderJob& job, std::uint32_t slot
   inflight_.push_back(std::move(f));
 }
 
+RenderThread::Served RenderThread::serve_or_draw(RenderJob& job, const FrameTarget& target, bool copyable, bool copyHit,
+                                                 InFlight& f) {
+  Served out;
+  const bool cachedJob = job.cachedKey.has_value() && !job.built;
+  if (!cachedJob) drawer_->set_exact_media(job.exactMedia);
+  const wgpu::Texture& targetTexture = *target.texture;
+  const std::uint32_t width = target.width;
+  const std::uint32_t height = target.height;
+  std::optional<std::uint64_t> key;
+  std::optional<std::uint64_t> diskKey;
+  if (cachedJob) {
+    if (cache_ && copyable) key = job.cachedKey;
+    if (key && job.cachedDiskKey != 0 && disk_->enabled()) diskKey = job.cachedDiskKey;
+  } else if (cache_ && copyable && !job.transient) {
+    // A transient frame (RenderJob::transient, mid-drag) gets no key: no tier stores it.
+    key = drawer_->content_key(*job.built, width, height);
+  }
+  // Every frame the disk tier could hold is keyed (a hash of the content key
+  // and the footage stamps, cached for seconds): whether one is worth a file
+  // is known only once it has drawn — the first frame after an open, or the
+  // one a new raster lands on, is the slow one a prediction never sees.
+  // The prediction is the cheaper of the running average and the last drawn
+  // frame: a slow first frame (pipelines compiling) must not make the next
+  // ones pay for eager read-backs the real draw time then turns down.
+  seed_disk_read_cost();
+  // The RAM tier keeps the frames of the range this viewport plays (ram_cache.hpp),
+  // and the frame every open view shows now (apply_pins).
+  if (job.recordCoverage) protect_ = ProtectedRange{.scope = job.cacheScope, .first = job.rangeFirst, .last = job.rangeLast};
+  apply_pins();
+  manage_ram_budget(false);
+  const FrameTag tag{.scope = job.recordCoverage ? job.cacheScope : 0, .frame = job.frame};
+  const double predictedMs = std::min(drawMsAvg_, lastDrawMs_);
+  if (!cachedJob && key && disk_->enabled()) diskKey = drawer_->disk_key(*job.built, width, height);
+  if (disk_->enabled()) aliasSalt_.store(drawer_->alias_salt(), std::memory_order_relaxed);
+  const std::uint64_t dk = diskKey.value_or(0);
+  bool drawn = false;
+  out.source = &targetTexture;
+  if (key) {
+    // D4: the same content was drawn before — a copy instead of the frame.
+    if (const wgpu::Texture* hit = cache_->use(*key, width, height); hit != nullptr) {
+      if (copyHit) {
+        wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
+        wgpu::TexelCopyTextureInfo src{};
+        src.texture = *hit;
+        wgpu::TexelCopyTextureInfo dst{};
+        dst.texture = targetTexture;
+        const wgpu::Extent3D size{.width = width, .height = height, .depthOrArrayLayers = 1};
+        enc.CopyTextureToTexture(&src, &dst, &size);
+        const wgpu::CommandBuffer cb = enc.Finish();
+        gpu_->queue.Submit(1, &cb);
+      } else {
+        out.source = hit;  // the caller copies the region it shows straight from the cache
+      }
+      drawn = true;
+      if (FrameMeta* m = cache_->meta(*key)) {
+        m->tag = tag;
+        if (dk != 0) m->diskKey = dk;
+      }
+      if (job.recordCoverage) note_coverage(job, *key, dk);
+    }
+  }
+  if (!drawn && key && (ram_.contains(*key) || settle_victim(*key))) {
+    // The RAM tier: a frame VRAM evicted — one upload instead of the render.
+    // Back into VRAM with it, so scrubbing over it again is a copy.
+    if (const std::optional<RamFrame> hit = ram_.find(*key, width, height, tag)) {
+      wgpu::TexelCopyTextureInfo dst{};
+      dst.texture = targetTexture;
+      wgpu::TexelCopyBufferLayout layout{};
+      layout.bytesPerRow = width * 4U;
+      layout.rowsPerImage = height;
+      const wgpu::Extent3D size{.width = width, .height = height, .depthOrArrayLayers = 1};
+      gpu_->queue.WriteTexture(&dst, hit->rgba->data(), hit->rgba->size(), &layout, &size);
+      store_vram(*key, targetTexture, width, height, FrameMeta{.tag = tag, .drawMs = hit->drawMs, .diskKey = dk != 0 ? dk : hit->diskKey});
+      drawn = true;
+      if (job.recordCoverage) note_coverage(job, *key, dk);
+    }
+  }
+  if (!drawn && diskKey && disk_->contains(*diskKey) && load_from_disk(*diskKey, width, height, targetTexture)) {
+    // The disk tier: a frame VRAM evicted, or one drawn in an earlier
+    // session — a file read instead of the render. Back into VRAM and RAM
+    // with it, so the next pass over it is a copy again.
+    store_vram(*key, targetTexture, width, height, FrameMeta{.tag = tag, .drawMs = 0, .diskKey = *diskKey});
+    // The read pixels move into the RAM tier (WriteTexture took its copy); the scratch is refilled next time.
+    std::vector<RamFrame> evicted;
+    (void)ram_.store(*key,
+                     RamFrame{.rgba = std::make_shared<std::vector<std::uint8_t>>(std::move(diskScratch_)),
+                              .width = width,
+                              .height = height,
+                              .drawMs = 0,
+                              .diskKey = *diskKey,
+                              .tag = tag},
+                     protect_, evicted);
+    diskScratch_.clear();
+    spill_ram_evictions(evicted);
+    drawn = true;
+    if (job.recordCoverage) note_coverage(job, *key, *diskKey);
+  }
+  if (!drawn && cachedJob) {
+    // No tier holds it any more (evicted, purged, a lost device): forget the
+    // entry and ask for a built frame.
+    if (job.prebuildKey) prebuild_.forget(*job.prebuildKey);
+    {
+      const std::scoped_lock lock(m_);
+      ++counters_.cacheMissed;
+      if (std::ranges::find(buildWanted_, job.viewport) == buildWanted_.end()) buildWanted_.push_back(job.viewport);
+    }
+    out.missing = true;
+    return out;
+  }
+  if (!drawn) {
+    std::string error;
+    drawn = drawer_->draw(*job.built, *target.view, width, height, error);
+    f.drawn = drawn;
+    if (!drawn) {
+      PREMATION_LOG(error, "scene_draw_failed").kv("error", error).kv("frame", job.frame);
+    } else if (!drawer_->last_frame_exact()) {
+      // Footage from a nearest decoded frame (or a GPU error): shown, never cached.
+      f.inexact = job.playing;
+      f.standIn = true;
+      key.reset();
+    } else if (key) {
+      store_vram(*key, targetTexture, width, height, FrameMeta{.tag = tag, .drawMs = 0, .diskKey = dk});
+      f.vramKey = *key;
+      // An exact frame not on disk yet, predicted slow: read it back now
+      // (before any onion ghost lands on the slot) for the writer once the
+      // GPU is done. Predicted fast: complete_frames decides on its real
+      // draw time, and reads a slow one back from its VRAM copy.
+      if (diskKey && worth_disk(predictedMs, width, height) && disk_->reserve(*diskKey)) {
+        queue_disk_readback(f, *diskKey, targetTexture, width, height);
+      } else if (diskKey && !disk_->contains(*diskKey)) {
+        f.lateDisk = std::make_pair(*key, *diskKey);
+      }
+      if (job.recordCoverage) note_coverage(job, *key, dk);
+    }
+  }
+  f.cached = drawn && !f.drawn;
+  // The pre-build map learns the frame once a tier holds it (served from one,
+  // or drawn exact and stored): the next job with this pre-build key skips the build.
+  if (!cachedJob && key && job.prebuildKey && (f.cached || f.vramKey)) {
+    prebuild_.learn(*job.prebuildKey, CachedKeys{.content = *key, .disk = dk});
+    // And for the next session, when its frame is (or will be) a file and
+    // nothing outside the document decides its pixels (no footage files).
+    if (const std::uint64_t salt = aliasSalt_.load(std::memory_order_relaxed); salt != 0 && dk != 0 && !drawer_->reads_files(*job.built)) {
+      disk_->store_alias(alias_key(*job.prebuildKey, salt), *key, dk);
+    }
+  }
+  if (cachedJob && drawn) {
+    const std::scoped_lock lock(m_);
+    ++counters_.cacheServed;
+  }
+  out.drawn = drawn;
+  out.key = key;
+  return out;
+}
+
+void RenderThread::present_comp_space(const CompSpaceFrame& cs, const wgpu::Texture& source, const wgpu::Texture& slot,
+                                      const wgpu::TextureView& slotView, std::uint32_t width, std::uint32_t height) {
+  if (!gpu_) return;  // only reached from a render after init; nothing to present without a device
+  // The part of the comp-space texture that lands inside the slot.
+  const std::int64_t sx0 = std::max<std::int64_t>(0, -static_cast<std::int64_t>(cs.slotX));
+  const std::int64_t sy0 = std::max<std::int64_t>(0, -static_cast<std::int64_t>(cs.slotY));
+  const std::int64_t dx0 = std::max<std::int64_t>(0, cs.slotX);
+  const std::int64_t dy0 = std::max<std::int64_t>(0, cs.slotY);
+  const std::int64_t cw = std::min<std::int64_t>(static_cast<std::int64_t>(cs.width) - sx0, static_cast<std::int64_t>(width) - dx0);
+  const std::int64_t ch = std::min<std::int64_t>(static_cast<std::int64_t>(cs.height) - sy0, static_cast<std::int64_t>(height) - dy0);
+  const bool covers = dx0 == 0 && dy0 == 0 && std::cmp_greater_equal(cw, width) && std::cmp_greater_equal(ch, height);
+  wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
+  if (!covers) {
+    // Where the comp does not reach, the slot shows the frame's border: the
+    // view's clear colour (opaque black) through the display encode — black.
+    // comp_space_frame refuses the views whose border would differ (a channel
+    // view, a viewer LUT, the Extended Viewer's pasteboard).
+    wgpu::RenderPassColorAttachment att{};
+    att.view = slotView;
+    att.loadOp = wgpu::LoadOp::Clear;
+    att.storeOp = wgpu::StoreOp::Store;
+    att.clearValue = wgpu::Color{.r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0};
+    wgpu::RenderPassDescriptor rp{};
+    rp.colorAttachmentCount = 1;
+    rp.colorAttachments = &att;
+    wgpu::RenderPassEncoder pass = enc.BeginRenderPass(&rp);
+    pass.End();
+  }
+  if (cw > 0 && ch > 0) {
+    wgpu::TexelCopyTextureInfo src{};
+    src.texture = source;
+    src.origin = wgpu::Origin3D{.x = static_cast<std::uint32_t>(sx0), .y = static_cast<std::uint32_t>(sy0), .z = 0};
+    wgpu::TexelCopyTextureInfo dst{};
+    dst.texture = slot;
+    dst.origin = wgpu::Origin3D{.x = static_cast<std::uint32_t>(dx0), .y = static_cast<std::uint32_t>(dy0), .z = 0};
+    const wgpu::Extent3D size{.width = static_cast<std::uint32_t>(cw), .height = static_cast<std::uint32_t>(ch), .depthOrArrayLayers = 1};
+    enc.CopyTextureToTexture(&src, &dst, &size);
+  }
+  const wgpu::CommandBuffer cb = enc.Finish();
+  gpu_->queue.Submit(1, &cb);
+}
+
+RenderThread::FrameTarget RenderThread::comp_target(std::uint32_t width, std::uint32_t height) {
+  // Only reached from a render after init (`gpu_` set); an empty target says so to a caller that checks.
+  if (!gpu_) return FrameTarget{};
+  ++compTargetUse_;
+  for (CompTarget& t : compTargets_) {
+    if (t.width == width && t.height == height) {
+      t.lastUse = compTargetUse_;
+      return FrameTarget{.texture = &t.texture, .view = &t.view, .width = width, .height = height};
+    }
+  }
+  // One texture per size in use (a view's scale); the least recently used goes
+  // when more than a few sizes are live — never a texture per frame.
+  if (compTargets_.size() >= kCompTargetsKept) {
+    const auto oldest = std::ranges::min_element(compTargets_, {}, &CompTarget::lastUse);
+    compTargets_.erase(oldest);
+  }
+  wgpu::TextureDescriptor td{};
+  td.label = "comp-space";
+  td.size = wgpu::Extent3D{.width = width, .height = height, .depthOrArrayLayers = 1};
+  td.format = wgpu::TextureFormat::RGBA8Unorm;
+  // RenderAttachment: drawn into; CopySrc: into the slot and the VRAM cache; CopyDst: a RAM or disk hit's upload.
+  td.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
+  CompTarget t;
+  t.width = width;
+  t.height = height;
+  t.texture = gpu_->device.CreateTexture(&td);
+  t.view = t.texture.CreateView();
+  t.lastUse = compTargetUse_;
+  compTargets_.push_back(std::move(t));
+  return FrameTarget{.texture = &compTargets_.back().texture, .view = &compTargets_.back().view, .width = width, .height = height};
+}
+
+void RenderThread::apply_pins() {
+  protect_.clear_pins();
+  {
+    // ports_ (the map) is the core thread's to grow; lastKey is this thread's.
+    const std::scoped_lock lock(m_);
+    for (const auto& [id, p] : ports_) {
+      if (p->lastKey != 0 && p->config.open) protect_.pin(p->lastKey);
+    }
+  }
+  if (cache_) cache_->set_pinned(protect_);
+}
+
+void RenderThread::note_view_key(Port& port, std::uint64_t key) {
+  if (port.lastKey == key) return;
+  port.lastKey = key;
+  apply_pins();
+}
+
+void RenderThread::render_prefetch(RenderJob& job) {
+  // Exception barrier, as render(): a failed prefetch is logged and answered, nothing else.
+  const auto answer = [this] {
+    const std::scoped_lock lock(m_);
+    ++counters_.prefetched;
+  };
+  try {
+    take_revisions();
+    if (!job.built || job.cachedKey || !drawer_ || !cache_ || !gpu_) {
+      answer();
+      return;
+    }
+    Port* port = nullptr;
+    {
+      const std::scoped_lock lock(m_);
+      if (const auto it = ports_.find(job.viewport); it != ports_.end()) port = it->second.get();
+    }
+    // Render thread: `port` stays valid (only this thread erases one). Its slots
+    // say the slot size a slot-space frame is keyed by; without them, nothing to key.
+    if (port == nullptr || !port->slots || port->slots->width == 0 || port->slots->height == 0 || !port->slots->copyable) {
+      answer();
+      return;
+    }
+    const auto t0 = SteadyClock::now();
+    const FrameTarget target = job.compSpace ? comp_target(job.compSpace->width, job.compSpace->height)
+                                             : comp_target(port->slots->width, port->slots->height);
+    InFlight f;
+    f.prefetch = true;
+    f.buildMs = job.buildMs;
+    f.frameWidth = target.width;
+    f.frameHeight = target.height;
+    f.t0 = t0;
+    const Served served = serve_or_draw(job, target, true, true, f);
+    if (!served.drawn) {
+      abandon_disk(f);
+      answer();
+      return;
+    }
+    (void)drawer_->take_media_wants();  // a stand-in frame is not stored; the prefetch moves on
+    f.done = gpu_->queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {});
+    inflight_.push_back(std::move(f));
+  } catch (const std::exception& e) {
+    PREMATION_LOG(error, "prefetch_failed").kv("frame", job.frame).kv("error", std::string(e.what()));
+    answer();
+  } catch (...) {
+    PREMATION_LOG(error, "prefetch_failed").kv("frame", job.frame).kv("error", "non-standard exception");
+    answer();
+  }
+}
+
 std::size_t RenderThread::complete_frames(bool block) {
   std::size_t n = 0;
   while (!inflight_.empty()) {
     InFlight& f = inflight_.front();
     const wgpu::WaitStatus st = gpu_->instance.WaitAny(f.done, block && n == 0 ? UINT64_MAX : 0);
     if (st == wgpu::WaitStatus::TimedOut) break;
+    if (f.prefetch) {
+      // Idle render-ahead: no slot, nothing announced. The frame is in the
+      // tiers already (serve_or_draw); only its disk read-back and its cost remain.
+      const bool ok = st == wgpu::WaitStatus::Success && !gpu_->device_lost();
+      if (ok) {
+        const double costMs = std::chrono::duration<double, std::milli>(SteadyClock::now() - f.t0).count() + f.buildMs;
+        if (f.drawn && f.vramKey && cache_) {
+          if (FrameMeta* m = cache_->meta(*f.vramKey)) m->drawMs = costMs;
+        }
+        const bool worth = f.drawn && worth_disk(costMs, f.frameWidth, f.frameHeight);
+        if (f.diskBuffer != nullptr) {
+          if (worth) spill_to_disk(f, f.frameWidth, f.frameHeight);
+          else abandon_disk(f);
+        } else if (worth && f.lateDisk) {
+          queue_late_spill(f.lateDisk->first, f.lateDisk->second, f.frameWidth, f.frameHeight);
+        }
+      } else {
+        abandon_disk(f);
+      }
+      {
+        const std::scoped_lock lock(m_);
+        if (cache_) cacheStats_ = cache_->stats();
+        ++counters_.prefetched;
+      }
+      inflight_.pop_front();
+      ++n;
+      continue;
+    }
     FrameRing& ring = *f.port->ring;
     SlotSet* set = f.port->slots.get();
     const bool sameSet = set != nullptr && set->generation == f.generation;
@@ -1527,15 +1804,18 @@ std::size_t RenderThread::complete_frames(bool block) {
         if (FrameMeta* m = cache_->meta(*f.vramKey)) m->drawMs = costMs;
       }
     }
-    const bool worth = f.drawn && worth_disk(costMs, set->width, set->height);
+    // The frame's own size (a comp-space texture's, or the slot's): what the tiers hold.
+    const std::uint32_t fw = f.frameWidth != 0 ? f.frameWidth : set->width;
+    const std::uint32_t fh = f.frameHeight != 0 ? f.frameHeight : set->height;
+    const bool worth = f.drawn && worth_disk(costMs, fw, fh);
     if (f.diskBuffer != nullptr) {
       if (worth) {
-        spill_to_disk(f, set->width, set->height);
+        spill_to_disk(f, fw, fh);
       } else {
         abandon_disk(f);  // this one drew fast after all: VRAM is enough for it
       }
     } else if (worth && f.lateDisk) {
-      queue_late_spill(f.lateDisk->first, f.lateDisk->second, set->width, set->height);
+      queue_late_spill(f.lateDisk->first, f.lateDisk->second, fw, fh);
     }
     {
       const std::lock_guard<std::mutex> lock(m_);

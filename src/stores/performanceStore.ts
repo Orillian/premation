@@ -8,6 +8,10 @@
  *   armed      the bar is up; Perform waits for a drag, Pose for Set Key
  *   recording  a take is being recorded (Perform)
  *   done       a take was written; its Detail can still be adjusted
+ *
+ * `storedTake`: the document holds a take for the bar's layer and target
+ * (plan §4.1) — Detail re-fits it even after the project was reopened or the
+ * take undone and redone. Refreshed by the session, never written by the bar.
  */
 
 import { create } from 'zustand';
@@ -28,6 +32,8 @@ export interface PerformanceState {
   lastKeys: number;
   /** Pose keys set since the bar opened. */
   poseKeys: number;
+  /** The document holds a take for `nodeId`'s `target` that Detail can re-fit. */
+  storedTake: boolean;
 }
 
 export const usePerformanceStore = create<PerformanceState>(() => ({
@@ -37,4 +43,5 @@ export const usePerformanceStore = create<PerformanceState>(() => ({
   takeStart: 0,
   lastKeys: 0,
   poseKeys: 0,
+  storedTake: false,
 }));

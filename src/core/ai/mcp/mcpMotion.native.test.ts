@@ -7,6 +7,7 @@
 import type { Command } from '@motion/engine-api';
 import { setupAppEngine, sec, settleEdits, type Harness } from '@core/engine/__testHelpers__/appEngine';
 import { activeCompRootId } from '@core/scene/activeComp';
+import { documentMirror } from '@stores/documentMirror';
 import { McpCallHost, type McpResult } from './mcpHost';
 import { editorMcpDeps } from './mcpDefaults';
 
@@ -72,13 +73,42 @@ describe('analyze_motion', () => {
     });
     await settleEdits();
     const t = textOf(await call('analyze_motion', { startSec: 0, endSec: 3 }));
-    expect(t).toMatch(/'Passenger' position 300px ↑/);
+    expect(t).toMatch(/'Passenger' \(in 'Rig'\) position 300px ↑/);
   });
 
   it('refuses a window outside the composition and a layer it does not have', async () => {
     expect((await call('analyze_motion', { startSec: 3, endSec: 1 })).isError).toBe(true);
     const r = await call('analyze_motion', { nodeIds: ['nope'] });
     expect([r.isError, textOf(r)]).toEqual([true, expect.stringMatching(/No layer 'nope'/)]);
+  });
+});
+
+describe('precomps', () => {
+  const script = (push: boolean): Record<string, unknown> => ({
+    title: 'Pre', intent: 'probe', durationSec: 4, background: '#101014',
+    palette: { ink: '#f4efe6' }, grid: { columns: 12, gutter: 24, margin: 120, baseline: 8 }, type: {}, globals: [],
+    beats: [{
+      name: 'Scene', purpose: '', startSec: 0, endSec: 4,
+      layers: [{ id: 'card', kind: 'shape', shape: 'rect', name: 'Card', props: { x: 960, y: 540, width: 300, height: 200, fill: '$ink' } }],
+      precompose: [{ id: 'rig', name: 'Scene comp', layers: ['card'], ...(push ? { keys: { x: [{ t: 1, v: 960, ease: 'easeInOut' }, { t: 2, v: 360 }] } } : {}) }],
+    }],
+  });
+
+  it('measures what a precomp shows, on screen: its contents move when the precomp layer does', async () => {
+    expect((await call('author_scene', { script: script(true) })).isError).toBeUndefined();
+    await settleEdits();
+    const t = textOf(await call('analyze_motion', { startSec: 0, endSec: 3 }));
+    expect(t).toMatch(/'Card' \(in 'Scene comp'\) position 600px ←/);
+  });
+
+  it('a rebuilt beat leaves no orphan of its precomp composition behind', async () => {
+    const comps = async (): Promise<number> => documentMirror().compIds.length;
+    expect((await call('author_scene', { script: script(false) })).isError).toBeUndefined();
+    await settleEdits();
+    const once = await comps();
+    expect((await call('author_scene', { script: script(false) })).isError).toBeUndefined();
+    await settleEdits();
+    expect(await comps()).toBe(once);
   });
 });
 

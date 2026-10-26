@@ -452,3 +452,44 @@ TEST_CASE("ram cache: the default size follows the machine", "[ram_cache]") {
   CHECK(auto_ram_budget(32 * kGiB) == 16 * kGiB);
   CHECK(auto_ram_budget(512 * kGiB) == 64 * kGiB);  // capped
 }
+
+TEST_CASE("ram cache: the frame an open view shows is pinned — another view's fill never evicts it", "[ram_cache][pins]") {
+  // Room for 3 frames. View A shows frame 5 of scope 1 (key 105); view B fills
+  // scope 2's range 0–9. Without the pin, B's third frame would take A's.
+  RamFrameCache ram(3 * kFrameBytes);
+  std::vector<RamFrame> evicted;
+  REQUIRE(ram.store(105, ram_frame(1, 5), ProtectedRange{}, evicted));
+  ProtectedRange b{2, 0, 9};
+  b.pin(105);
+  REQUIRE(ram.store(200, ram_frame(2, 0), b, evicted));
+  REQUIRE(ram.store(201, ram_frame(2, 1), b, evicted));
+  // Full: B's range is protected and A's frame is pinned — the next frame is refused, nothing evicted.
+  CHECK_FALSE(ram.store(202, ram_frame(2, 2), b, evicted));
+  CHECK(evicted.empty());
+  CHECK(ram.contains(105));
+  CHECK(ram.stats().refused == 1);
+  // The pin is the only thing keeping it: without it, A's frame is the first to go.
+  const ProtectedRange unpinned{2, 0, 9};
+  REQUIRE(ram.store(202, ram_frame(2, 2), unpinned, evicted));
+  REQUIRE(evicted.size() == 1);
+  CHECK(evicted[0].tag.scope == 1);
+  CHECK_FALSE(ram.contains(105));
+}
+
+TEST_CASE("ram cache: pins hold a few keys, oldest out, never 0", "[ram_cache][pins]") {
+  ProtectedRange p;
+  p.pin(0);
+  CHECK_FALSE(p.pins(0));
+  for (std::uint64_t k = 1; k <= ProtectedRange::kMaxPinned; ++k) p.pin(k);
+  p.pin(3);  // already there: no change
+  CHECK(p.pins(1));
+  CHECK(p.pins(ProtectedRange::kMaxPinned));
+  p.pin(ProtectedRange::kMaxPinned + 1);  // one too many: the oldest goes
+  CHECK_FALSE(p.pins(1));
+  CHECK(p.pins(2));
+  CHECK(p.pins(ProtectedRange::kMaxPinned + 1));
+  CHECK(p.keeps(2, FrameTag{}));
+  CHECK_FALSE(p.keeps(999, FrameTag{}));
+  p.clear_pins();
+  CHECK_FALSE(p.pins(2));
+}

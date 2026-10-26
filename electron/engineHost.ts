@@ -637,6 +637,8 @@ export interface EngineHostOptions {
   faceUserDir?: string;
   /** The depth model folder (<userData>/models/depth-anything; depthModel.ts) — camera program D3. */
   depthUserDir?: string;
+  /** The hand models for live performance input (<userData>/models/hand-landmarks; handModel.ts). */
+  handUserDir?: string;
   /** app.getPath('userData'): lets PREMATION_FFMPEG find the in-app repaired ffmpeg (ffmpegRepair.ts). */
   userDataPath?: string;
   log?(line: string): void;
@@ -786,6 +788,8 @@ export class EngineHost {
               ...(o.samUserDir ? { PREMATION_SAM_USER_DIR: o.samUserDir } : {}),
               ...(o.faceUserDir ? { PREMATION_FACE_USER_DIR: o.faceUserDir } : {}),
               ...(o.depthUserDir ? { PREMATION_DEPTH_USER_DIR: o.depthUserDir } : {}),
+              // Read at every startLiveInput, so an install applies to the next start.
+              ...(o.handUserDir ? { PREMATION_HAND_USER_DIR: o.handUserDir } : {}),
               PREMATION_SAM_DIR: process.env.PREMATION_SAM_DIR
                 ?? (o.isPackaged ? path.join(o.resourcesPath, 'models', 'object-matte') : path.join(o.appPath, 'dist', 'models', 'object-matte')),
               // The fonts the app ships (resources/fonts, scripts/fetchFonts.cjs): the

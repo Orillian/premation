@@ -43,9 +43,11 @@ interface Session {
 
 /** `policy` 'every' writes every exact frame; 'auto' is the engine's own (only frames slower than a disk read). */
 async function open(policy: 'every' | 'auto' = 'every'): Promise<Session> {
+  // Idle render-ahead off (PREMATION_IDLE_PREFETCH): the counts below are what the
+  // fills wrote; a purge must stay empty rather than refill within a second.
   const native = await startNativeEngine({
     extraArgs: ['--frame-cache-mb', '1024', '--log-level', 'warn', ...(policy === 'every' ? ['--disk-cache-min-draw-ms', '0'] : [])],
-  });
+  }, { PREMATION_IDLE_PREFETCH: '0' });
   const client = new ProcessEngineClient(native.bridge);
   let phase = 'idle';
   let firstMs: number | null = null;

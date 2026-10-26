@@ -39,6 +39,9 @@ import {
   formatRepairs,
   type PieceHistory,
 } from '@motion/author';
+import type { Command } from '@motion/engine-api';
+import { documentMirror } from '@stores/documentMirror';
+import { activeCompRootId } from '@core/scene/activeComp';
 import type { AiTransaction } from '../aiTransaction';
 import { beatNameOfRoot, FRONT_GLOBALS_ROOT_NAME } from '../structureAdvisors';
 import { SFX_ITEMS, getSfxItem } from '@core/library/sfxLibrary';
@@ -114,6 +117,8 @@ export interface McpEditorOps {
   /** The new composition's id, or a sentence saying why not. */
   createComposition(o: { name: string; width: number; height: number; fps: number; durationSeconds: number; background: string }): Promise<{ id: string } | { error: string }>;
   setActiveComposition(compId: string): Promise<{ ok: true; name: string } | { error: string }>;
+  /** Removes the compositions (and the precomp layers showing them) as one undo step. */
+  deleteCompositions(compIds: readonly string[]): Promise<{ ok: true; names: string[]; layersRemoved: number } | { error: string }>;
   save(): Promise<{ ok: true; message: string } | { error: string }>;
   /** `atSec`: where each placed clip starts, comp seconds. */
   importMedia(paths: readonly string[], placeOnTimeline: boolean, atSec?: number): Promise<{ ok: true; message: string } | { error: string }>;
@@ -203,12 +208,30 @@ async function removeScriptLayers(ctx: ToolContext, script: { beats: readonly { 
     const backNames = new Set(script.globals.filter((g) => g.stack !== 'front').map((g) => g.name));
     victims.push(...top.filter((n) => backNames.has(n.name) && !victims.includes(n)));
   }
+  // The compositions the victims' precomp layers show (a beat's `precompose`):
+  // removing the layer leaves its composition behind, and every rebuild of a
+  // beat would add another orphan "Phone" / "Goals scene" to the project.
+  const m = documentMirror();
+  const byId = new Map(all.map((n) => [n.id, n] as const));
+  const under = (id: string): boolean => {
+    for (let n = byId.get(id); n; n = n.parent ? byId.get(n.parent) : undefined) if (victims.some((v) => v.id === n!.id)) return true;
+    return false;
+  };
+  const shown = new Set<string>();
+  for (const n of all) {
+    const source = m.layer(n.id)?.source;
+    if (source && m.comp(source) && under(n.id)) shown.add(source);
+  }
   const removed: string[] = [];
   for (const v of victims) {
     if (!(await ctx.scene.has(v.id))) continue;
     await ctx.scene.remove(v.id);
     removed.push(v.name);
   }
+  // Only compositions nothing else still shows (and never the one being built in).
+  const active = activeCompRootId();
+  const orphans = [...shown].filter((c) => c !== active && !m.layerIds().some((id) => m.layer(id)?.source === c && !under(id)));
+  if (orphans.length) await ctx.engine.apply([{ type: 'removeItems', items: orphans, removeUsingLayers: false } as Command]);
   return removed;
 }
 
@@ -346,6 +369,7 @@ export class McpCallHost {
         case 'list_compositions': return await this.editorOp(async (ed) => text(JSON.stringify(await ed.listCompositions(), null, 1)));
         case 'create_composition': return await this.createComposition(call);
         case 'set_active_composition': return await this.setActiveComposition(call);
+        case 'delete_composition': return await this.deleteCompositions(call);
         case 'save_project': return await this.editorOp(async (ed) => {
           const r = await ed.save();
           return 'error' in r ? text(r.error, true) : text(r.message);
@@ -496,6 +520,18 @@ export class McpCallHost {
     return this.editorOp(async (ed) => {
       const r = await ed.setActiveComposition(compId);
       return 'error' in r ? text(r.error, true) : text(`"${r.name}" is now the active composition.`);
+    });
+  }
+
+  private deleteCompositions(call: McpCall): Promise<McpResult> {
+    const raw = obj(call.args).compIds;
+    const compIds = [...new Set((Array.isArray(raw) ? raw : []).filter((c): c is string => typeof c === 'string' && c !== ''))].slice(0, 50);
+    if (compIds.length === 0) return Promise.resolve(text('delete_composition needs `compIds`: ids from list_compositions.', true));
+    return this.editorOp(async (ed) => {
+      const r = await ed.deleteCompositions(compIds);
+      if ('error' in r) return text(r.error, true);
+      const layers = r.layersRemoved ? ` and ${r.layersRemoved} precomp layer${r.layersRemoved === 1 ? '' : 's'} showing them` : '';
+      return text(`Deleted ${r.names.map((n) => `"${n}"`).join(', ')}${layers}. One undo step brings them back.`);
     });
   }
 

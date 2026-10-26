@@ -86,7 +86,7 @@ import { spreadPlacement } from './propOwner';
 import { EngineTurnSession } from './aiEngineSession';
 import { effectDefFor } from '@core/effects/effects';
 import { FragmentBuilder } from '@/engine-client/fragmentBuilder';
-import { allLayerIds, hasNode, layerEffects, layerInfo, layerKind, layerView, puppetPins, staticField, treeOf } from './mirrorReads';
+import { allLayerIds, compLayerIds, hasNode, layerEffects, layerInfo, layerKind, layerView, puppetPins, staticField, treeOf } from './mirrorReads';
 
 /**
  * Property paths the render pipeline actually samples.
@@ -470,9 +470,12 @@ function freeSession(): AiEngineSession {
 }
 
 export function createSceneFacade(session: AiEngineSession = freeSession()): SceneFacade {
+  // The ACTIVE composition's layers: every tool that reads the scene (describe,
+  // the camera lookup, structure warnings, recipes) means the comp it is
+  // editing, and a precomp's layers live in their own composition.
   const views = async (): Promise<SceneNodeView[]> => {
     const out: SceneNodeView[] = [];
-    for (const id of allLayerIds()) {
+    for (const id of compLayerIds(activeCompRootId())) {
       const v = await layerView(id);
       if (v) out.push(v);
     }

@@ -15,6 +15,7 @@ import type { Harness } from '@core/engine/__testHelpers__/appEngine';
 import { engineIdle } from '@core/engine/engineInstance';
 import {
   deleteCompositionEdit,
+  deleteCompositionsEdit,
   deleteLayersEdit,
   duplicateCompositionEdit,
   freezeLayersEdit,
@@ -157,6 +158,23 @@ describe('compositions', () => {
   test('delete removes the comp, one entry, undoable', async () => {
     await roundTrip(() => deleteCompositionEdit(s.comp2), 'Delete Composition');
     expect(useProjectStore.getState().comps[s.comp2]).toBeUndefined();
+  });
+
+  test('several compositions go as ONE entry, undoable; deleting them all leaves the placeholder', async () => {
+    await engineIdle();
+    const all = Object.keys(useProjectStore.getState().comps);
+    expect(all.length).toBeGreaterThan(1);
+    await roundTrip(() => deleteCompositionsEdit(all), 'Delete Compositions');
+    const comps = Object.values(useProjectStore.getState().comps);
+    expect(comps).toHaveLength(1);
+    expect(comps[0]).toMatchObject({ name: 'Composition 1', pristine: true });
+  });
+
+  test('a list naming something that is not a composition deletes nothing', async () => {
+    const before = await historyLabels();
+    expect(await deleteCompositionsEdit([s.comp2, 'not_a_comp'])).toBe(false);
+    expect(useProjectStore.getState().comps[s.comp2]).toBeDefined();
+    expect(await historyLabels()).toEqual(before);
   });
 
   test('deleting the LAST composition leaves the pristine placeholder, one entry, undoable', async () => {

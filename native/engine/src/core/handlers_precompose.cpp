@@ -495,9 +495,9 @@ ResultOf<api::Precompose> handle(const api::Precompose& c, HCtx& x) {
   mint.contentId = x.mint_id("layer_");
   ensure_timeline(d, c.comp);
   x.label = "Pre-compose";
-  // The targets in the ACTIVE tab's composition, as the frozen parity corpus answers (the dry-run query asks
-  // the command's composition; moving the command too is a behaviour change for its own parity-checked step).
-  const std::vector<std::string> targets = precompose_targets_in(d, x.view.tabComp, c.layers);
+  // The targets in the command's composition (the layers are proven to be in it above). The live session never
+  // moves view.tabComp off the tab open at load, so walking the tab refused every other composition.
+  const std::vector<std::string> targets = precompose_targets_in(d, c.comp, c.layers);
   auto refuse = [&]() {
     fail(ErrorCode::invalid_argument, leave ? "this layer cannot be pre-composed leaving its attributes" : "nothing to pre-compose");
   };

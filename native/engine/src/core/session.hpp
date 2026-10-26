@@ -45,6 +45,7 @@
 #include "jobs/job_api.hpp"
 #include "jobs/job_runner.hpp"
 #include "joining_thread.hpp"
+#include "live_port.hpp"
 #include "model.hpp"
 #include "overlay_geometry.hpp"
 #include "premation/protocol/frame_channel.hpp"
@@ -95,6 +96,12 @@ struct SessionOptions {
   /// (`command createLayer`, `query 1000`, `batch <label>`): the engine
   /// process's watchdog names a stalled core thread with it. Unset: nothing.
   std::function<void(std::string)> activity;
+  /// Idle render-ahead (Session::idle_prefetch): with the transport stopped and
+  /// nothing else to do, frames around the playhead are drawn into the cache
+  /// tiers one at a time (AE's idle caching). Off = only playback and Cache
+  /// Work Area fill the cache. The engine process reads PREMATION_IDLE_PREFETCH
+  /// (0 = off); tests set it directly.
+  bool idlePrefetch = true;
 };
 
 class Session {
@@ -126,6 +133,11 @@ class Session {
   [[nodiscard]] bool finished() const noexcept { return phase_ == Phase::closed; }
   [[nodiscard]] api::Revision revision() const noexcept { return revision_; }
   [[nodiscard]] bool playing() const noexcept { return playing_; }
+  /// A UI gesture (a drag) is open: interactive frames are flowing, and the
+  /// process loop keeps the 1 ms scheduler timer, exactly as while playing —
+  /// without it every timed wait in the frame pipeline rounds to Windows'
+  /// 15.6 ms tick and a drag's picture updates at ~45 fps in uneven steps.
+  [[nodiscard]] bool gesture_open() const noexcept { return gesture_.has_value(); }
   [[nodiscard]] const doc::Document& document() const noexcept { return doc_; }
   [[nodiscard]] api::Time time() const noexcept { return time_; }
   [[nodiscard]] const doc::EditorView& view() const noexcept { return view_; }
@@ -155,6 +167,9 @@ class Session {
   /// (core/convert_geometry.hpp). Null (core-only builds, most tests) = those
   /// commands answer `unsupported`, as the TypeScript engine does.
   void set_convert_geometry(doc::ConvertGeometry* g) noexcept { convertGeometry_ = g; }
+  /// Live performance input (core/live_port.hpp). Null (the headless engine,
+  /// most tests) = startLiveInput / listCameras answer `unsupported`.
+  void set_live_input(LivePort* live) noexcept { live_ = live; }
 
  private:
   enum class Phase : std::uint8_t { awaiting_hello, open, closed };
@@ -255,7 +270,44 @@ class Session {
   /// started yet gets no new build (back-pressure, below).
   void submit_frame(std::uint32_t clockDropped, bool fromClock = false);
   /// One viewport's job for the frame at `time_` (`announce`: report the layer errors).
-  void submit_frame_to(const ViewportConfig& port, const std::string& comp, std::uint32_t clockDropped, bool announce);
+  /// `prefetchFrame`: instead, an idle render-ahead job for that frame index
+  /// (RenderJob::prefetch — stored, never presented; the clock is not touched).
+  void submit_frame_to(const ViewportConfig& port, const std::string& comp, std::uint32_t clockDropped, bool announce,
+                       std::optional<std::int64_t> prefetchFrame = std::nullopt);
+  /// A surface's config as a frame of `comp` draws it: the per-frame editor
+  /// state beside it (hidden layers, focus set, viewer LUT) and its comp-space
+  /// geometry (ViewportConfig::compSpace) when the frame qualifies.
+  [[nodiscard]] ViewportConfig frame_port(const ViewportConfig& surface, const std::string& comp) const;
+
+  // ── idle render-ahead ──
+  /// From tick(): with the transport stopped, no command for kIdlePrefetchAfter,
+  /// no build / deferred answer / job / cached job outstanding and the last
+  /// prefetch answered, the next uncached keyed frame of the play range — forward
+  /// from the playhead, then backward — goes to the sink as a prefetch job.
+  /// Stops at once on any command (the next one re-arms the delay), when the
+  /// range is covered, or when the tiers refuse frames (the RAM budget is full
+  /// of the range) — kIdlePrefetchRefusals in a row, until the next edit.
+  void idle_prefetch(Clock::time_point now);
+  /// Whether idle_prefetch has anything to do and may run now (next_deadline polls for it).
+  [[nodiscard]] bool idle_prefetch_armed() const;
+  /// A command (an edit, a seek, a viewport move) arrived: the prefetcher waits again.
+  void note_activity(Clock::time_point now);
+  static constexpr std::chrono::milliseconds kIdlePrefetchAfter{300};
+  static constexpr std::chrono::milliseconds kIdlePrefetchPoll{2};
+  static constexpr int kIdlePrefetchRefusals = 3;
+  Clock::time_point lastActivity_{};
+  /// The prefetch job out at the sink: its frame, its pre-build key, and the
+  /// sink's answered count when it went (RenderCounters::prefetched moves when it is done).
+  std::optional<std::int64_t> prefetchFrame_;
+  std::uint64_t prefetchKey_ = 0;
+  std::uint64_t prefetchSeenAnswered_ = 0;
+  /// Prefetched frames the tiers did not keep, in a row; at kIdlePrefetchRefusals the prefetcher rests.
+  int prefetchRefused_ = 0;
+  bool prefetchResting_ = false;
+  /// The frame the prefetcher stepped from, and how far it got each way (reset by every edit / seek).
+  std::int64_t prefetchOrigin_ = -1;
+  std::int64_t prefetchAhead_ = 0;
+  std::int64_t prefetchBehind_ = 0;
 
   // ── the build worker ──
   // The frame builder (document → BuiltFrame, hundreds of ms on a heavy comp)
@@ -375,6 +427,10 @@ class Session {
     std::int64_t last = 0;   // last frame index (inclusive)
   };
   [[nodiscard]] Range play_range() const;
+  /// The frames idle render-ahead fills: the work area when the comp has one, else the whole comp.
+  [[nodiscard]] Range prefetch_range() const;
+  /// The frame indices (inclusive) `kind` plays: the comp, its work area or the custom range.
+  [[nodiscard]] Range frame_range(api::PlayRange kind) const;
   /// RenderJob::cacheScope for a frame of `comp` built with `port`: the comp,
   /// the document revision and the viewport's view state as one word.
   [[nodiscard]] std::uint64_t cache_scope(const ViewportConfig& port, const std::string& comp);
@@ -593,6 +649,14 @@ class Session {
   };
   jobs::JobKinds* jobKinds_ = nullptr;
   doc::ConvertGeometry* convertGeometry_ = nullptr;
+
+  // ── live performance input (core/session_live.cpp) ──
+  LivePort* live_ = nullptr;
+  api::CommandResult start_live(const api::StartLiveInput& c);
+  api::CommandResult stop_live();
+  api::QueryResult list_cameras();
+  /// Relay the live input's newest state / frame as a `liveInput` event (core thread, from tick()).
+  void poll_live();
   std::unique_ptr<jobs::JobRunner> runner_;
   std::vector<JobRecord> jobs_;
   std::uint64_t jobSeq_ = 0;

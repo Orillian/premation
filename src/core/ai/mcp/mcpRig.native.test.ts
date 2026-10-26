@@ -142,4 +142,25 @@ describe('create_skeleton_rig', () => {
     expect(v.bones.find((x) => x.id === 'low')!.tip.x).toBeCloseTo(40, 0);
     expect(v.bones.find((x) => x.id === 'low')!.tip.y).toBeCloseTo(40, 0);
   });
+
+  it('a pole puts the elbow on ITS side of the root→goal line', async () => {
+    // Root (0, -100) → goal (40, 40); a pole far to the left (x = -300) and one
+    // far to the right (x = 300). The engine's solver once measured the side
+    // with the opposite sign and bent every joint away from its pole.
+    const side = (p: { x: number; y: number }) => (p.x - 0) * (40 - -100) - (p.y - -100) * (40 - 0);
+    // One figure (the alias 'fig' and the name 'Figure' both find the first one): the rig is rewritten per pole.
+    const id = await figure();
+    for (const pole of [{ x: -300, y: -30 }, { x: 300, y: -30 }]) {
+      await ok('create_skeleton_rig', {
+        layerId: 'fig',
+        bones: [{ id: 'up', length: 80, x: 0, y: -100, rotation: 90 }, { id: 'low', parentId: 'up', length: 80, x: 80, y: 0, rotation: 0 }],
+        ik: [{ boneId: 'low', x: 40, y: 40, pole }],
+      });
+      await settleEdits();
+      const v = await view(id);
+      expect(v.ik[0]?.pole).toEqual(pole);
+      const elbow = v.bones.find((x) => x.id === 'low')!.root;
+      expect(Math.sign(side(elbow))).toBe(Math.sign(side(pole)));
+    }
+  });
 });

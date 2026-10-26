@@ -8,12 +8,16 @@
 #include <string>
 #include <vector>
 
+#include "core/frame_scene.hpp"
 #include "engine_api.hpp"
 #include "frame_build.hpp"
 
 namespace premation {
 
 struct BuiltFrame {
+  /// Comp-space caching (frame_scene.hpp CompSpaceFrame): the frame was built
+  /// for a comp-space texture of this geometry, not for the slot. Absent = slot space.
+  std::optional<CompSpaceFrame> compSpace;
   api::RenderFrameFile file;
   std::vector<scene::TextureRequest> textures;
   /// Transport playing: footage decodes ahead of the playhead.

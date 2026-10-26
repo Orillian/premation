@@ -371,24 +371,34 @@ export function deleteCompositionWarning(name: string, compId: string): string {
  * composition, and is refused, as before. Resolves to whether it went.
  */
 export async function deleteCompositionEdit(compId: string): Promise<boolean> {
+  return deleteCompositionsEdit([compId]);
+}
+
+/**
+ * Delete several compositions as ONE undo entry (deleteCompositionEdit's rules
+ * for each). Ids that are not compositions are refused: resolves false and
+ * deletes nothing.
+ */
+export async function deleteCompositionsEdit(compIds: readonly string[]): Promise<boolean> {
   // B4: the compositions from the document mirror (a group opened in its own
   // tab is a layer, not a composition record there).
   const m = documentMirror();
-  if (!m.comp(compId)) return false;
-  if (!isCompItem(compId)) return false;
+  const ids = [...new Set(compIds)];
+  if (ids.length === 0 || ids.some((id) => !m.comp(id) || !isCompItem(id))) return false;
   // Deleting the LAST composition leaves the empty project's placeholder in its
   // place (AE's "no compositions" state: pristine, adopted by New Composition,
   // no tab opened) — created first, in the same entry.
-  const last = liveComps(m).length <= 1;
+  const last = liveComps(m).every((c) => ids.includes(c.id));
   const cmds: Command[] = [
     ...(last ? [{ type: 'createComposition', settings: { name: 'Composition 1', pristine: true }, fromItems: [] } as Command] : []),
-    { type: 'removeItems', items: [compId], removeUsingLayers: true },
+    { type: 'removeItems', items: ids, removeUsingLayers: true },
   ];
-  const res = await edit('Delete Composition', cmds);
+  const res = await edit(ids.length === 1 ? 'Delete Composition' : 'Delete Compositions', cmds);
   if (!res.ok) return false;
   const s = useProjectStore.getState();
+  const gone = new Set(ids);
   for (const tab of Object.values(s.tabs)) {
-    if (tab.compositionId === compId) s.actions.closeTab(tab.id);
+    if (gone.has(tab.compositionId)) s.actions.closeTab(tab.id);
   }
   useSelectionStore.getState().clear();
   return true;

@@ -94,6 +94,8 @@ export interface MotionSketchOptions {
   frameDuration?: number;
   /** Pre-roll: samples before this comp time are not part of the take. */
   fromTime?: number;
+  /** What records the take, kept with it in the project (plan §4.1): mouse | hand. Default mouse. */
+  source?: string;
 }
 
 export const DEFAULT_MOTION_SKETCH_OPTIONS: MotionSketchOptions = {

@@ -187,6 +187,50 @@ TEST_CASE("overlay rig: live pins, solved bones, IK goals, the mesh, focus weigh
   CHECK_FALSE(pushed_rig(h, layer, api::OverlayRigOptions{}, kSec / 2, {api::OverlayKind::transform}).has_value());
 }
 
+TEST_CASE("IK pole: the middle joint lands on the pole's side of the root→target line", "[b4r5][rig][ik]") {
+  // b1 root (-40, 0) → (0, 0) → b2 tip (40, 0); the goal (20, 30) is reachable
+  // (|goal − root| ≈ 67 < 80). Layer space is y-down, so a pole at y = -100 is
+  // ABOVE the root→goal line and one at y = 100 below it. apply_ik's pole
+  // branch measured the side with the opposite sign and bent every joint away
+  // from its pole.
+  constexpr double kRootX = -40, kRootY = 0, kGoalX = 20, kGoalY = 30;
+  const auto side = [](double px, double py) {
+    return (px - kRootX) * (kGoalY - kRootY) - (py - kRootY) * (kGoalX - kRootX);
+  };
+  const auto elbow_for = [&](double px, double py) {
+    Harness h;
+    (void)h.hello();
+    scene::DocRigQueries rig;
+    h.session.set_rig_queries(&rig);
+    const auto layer = make_shape(h, "P");
+    set_json(h, layer, "layer/puppet", kPuppet);
+    const std::string skel =
+        R"({"bones":[{"id":"b1","parentId":null,"length":40,"x":-40,"y":0,"rotation":0},)"
+        R"({"id":"b2","parentId":"b1","length":40,"x":40,"y":0,"rotation":0}],)"
+        R"("ikTargets":[{"boneId":"b2","x":20,"y":30,"chainLength":2,"pole":{"x":)" +
+        std::to_string(px) + R"(,"y":)" + std::to_string(py) + R"(}}]})";
+    set_json(h, layer, "layer/skeleton", skel.c_str());
+    const auto r = pushed_rig(h, layer, api::OverlayRigOptions{}, kSec / 2);
+    REQUIRE(r.has_value());
+    REQUIRE(r->bones.size() == 2);
+    REQUIRE(r->bones[1].world.size() == 6);
+    REQUIRE(r->ik.size() == 1);
+    REQUIRE(r->ik[0].pole.size() == 2);
+    CHECK(r->ik[0].pole[0] == Approx(px));
+    CHECK(r->ik[0].pole[1] == Approx(py));
+    // The posed root of b2 is the elbow; b2's tip reaches the goal.
+    const auto& w = r->bones[1].world;
+    CHECK(w[0] * 40 + w[4] == Approx(kGoalX).margin(1e-6));
+    CHECK(w[1] * 40 + w[5] == Approx(kGoalY).margin(1e-6));
+    return std::pair<double, double>{w[4], w[5]};
+  };
+  const auto above = elbow_for(20, -100);
+  const auto below = elbow_for(20, 100);
+  CHECK((side(above.first, above.second) > 0) == (side(20, -100) > 0));
+  CHECK((side(below.first, below.second) > 0) == (side(20, 100) > 0));
+  CHECK(std::hypot(above.first - below.first, above.second - below.second) > 10);
+}
+
 TEST_CASE("getRigPose: a drawn point maps back through the pose; a vertex names its bind weights", "[b4r5][rig]") {
   Harness h;
   (void)h.hello();

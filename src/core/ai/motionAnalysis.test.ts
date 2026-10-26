@@ -119,6 +119,53 @@ describe('analyzeMotion: choreography', () => {
     expect(r.findings[0]!.rule).toBe('crowd');
   });
 
+  it('counts a row\'s parts entering together as ONE element, and two rows as two', () => {
+    // Row = a wide background with an icon and a label inside it; two rows 90 px apart.
+    const row = (k: number, dt: number, rise: number): LayerSamples[] => {
+      const y = 400 + 90 * k;
+      const box = (id: string, x: number, w: number, h: number): LayerSamples => ({
+        id: `${id}${k}`, name: `${id}${k}`,
+        frames: ts.map((t) => ({ cx: x, cy: move(0.5 + dt, 1 + dt, -rise, easeOutCubic)(t) - 400 + y + rise, size: Math.sqrt(w * h), w, h, rotation: 0, opacity: 100 })),
+      });
+      return [box('bg', 960, 384, 78), box('icon', 820, 44, 44), box('label', 960, 160, 24)];
+    };
+    // Two rows on the same frame making DIFFERENT moves: two elements, not six.
+    const r = analyzeMotion(input(ts, [...row(0, 0, 40), ...row(1, 0, 90)]));
+    expect(r.peakConcurrent.count).toBe(2);
+    expect(r.findings.map((f) => f.rule)).not.toContain('same-frame');
+  });
+
+  it('counts a cascade (the same move a few frames apart) as one gesture', () => {
+    const r = analyzeMotion(input(ts, Array.from({ length: 5 }, (_, i) => layer(`Avatar ${i}`, move(0.5 + (i * 4) / FPS, 1 + (i * 4) / FPS, 120, easeOutCubic), ts, { y: 200 + 160 * i }))));
+    expect(r.peakConcurrent.count).toBe(1);
+    expect(r.findings.map((f) => f.rule)).not.toContain('crowd');
+  });
+
+  it('splits an entrance from the slow push it lands inside, so neither reads as a 3-second crawl', () => {
+    const long = times(0, 6);
+    // A 0.6 s ease-out rise of 120 px, then the whole thing drifts 60 px over 4 s (a camera push).
+    const y = (t: number): number => move(0.5, 1.1, 120, easeOutCubic)(t) + (t > 1.1 ? Math.min(1, (t - 1.1) / 4) * 60 : 0);
+    const r = analyzeMotion(input(long, [layer('Row', y, long)]));
+    expect(r.moves.map((m) => m.shape)).toEqual(['ease-out', 'drift']);
+    expect(r.findings.map((f) => f.rule)).not.toContain('too-slow');
+  });
+
+  it('does not judge the ease of a move the window clips at both ends, nor call a vanishing shape a dead stop', () => {
+    const clipped = analyzeMotion(input(ts, [layer('Glow', move(-1, 3, 900, linear), ts)]));
+    expect(clipped.moves[0]!.clipped).toBe(true);
+    expect(clipped.findings).toEqual([]);
+    const gone: LayerSamples = { id: 'dot', name: 'Burst dot', frames: ts.map((t) => ({ cx: 960, cy: 540, size: 40 * (1 - easeInCubic(Math.max(0, Math.min(1, (t - 0.5) / 0.5)))), rotation: 0, opacity: 100 })) };
+    expect(analyzeMotion(input(ts, [gone])).findings.map((f) => f.rule)).not.toContain('hard-stop');
+  });
+
+  it('treats the children of one moving group as one unit, named for the group', () => {
+    const child = (id: string, x: number): LayerSamples => ({ ...layer(id, move(0.5, 1, 100 + (x - 900) / 2, easeOutCubic), ts, { y: 540 }), rig: { id: 'g', name: 'Pill' } });
+    const r = analyzeMotion(input(ts, [child('a', 800), child('b', 960), child('c', 1120)]));
+    expect(r.moves.filter((m) => m.channel === 'position')).toHaveLength(1);
+    expect(formatMotionReport(r)).toMatch(/'Pill' \(3 layers\) position/);
+    expect(r.findings.map((f) => f.rule)).not.toContain('same-frame');
+  });
+
   it('skips frame-accuracy rules on coarse samples and says so', () => {
     const coarse = sampleTimes(0, 2, FPS, 12);
     const r = analyzeMotion(input(coarse, [layer('Card', move(0.5, 1, 300, easeInCubic), coarse)]));

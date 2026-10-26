@@ -14,6 +14,7 @@ function labels(): Record<string, string> {
     open_project: t('ui.claude.tool.openProject', 'Opening a project'),
     list_compositions: t('ui.claude.tool.listCompositions', 'Reading compositions'),
     create_composition: t('ui.claude.tool.createComposition', 'Adding a composition'),
+    delete_composition: t('ui.claude.tool.deleteComposition', 'Deleting compositions'),
     set_active_composition: t('ui.claude.tool.setActiveComposition', 'Switching composition'),
     save_project: t('ui.claude.tool.saveProject', 'Saving'),
     import_media: t('ui.claude.tool.importMedia', 'Importing media'),

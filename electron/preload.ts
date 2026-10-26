@@ -164,6 +164,18 @@ const bridge = {
       return () => ipcRenderer.removeListener('depthModel:downloadProgress', listener);
     },
   },
+  // Live performance input's hand models (electron/handModel.ts): a PINNED download on first use.
+  handModel: {
+    status: () => ipcRenderer.invoke('handModel:status'),
+    install: (request: { requestId: string }) => ipcRenderer.invoke('handModel:install', request),
+    remove: () => ipcRenderer.invoke('handModel:remove'),
+    cancelDownload: (requestId: string) => ipcRenderer.invoke('objectMatte:cancelDownload', requestId),
+    onDownloadProgress: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('handModel:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('handModel:downloadProgress', listener);
+    },
+  },
   // Export's ffmpeg: health, one-click repair, "choose file" (electron/ffmpegService.ts).
   ffmpeg: {
     status: (force?: boolean) => ipcRenderer.invoke('ffmpeg:status', force === true),

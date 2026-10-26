@@ -152,6 +152,8 @@ export const COMMANDS: Readonly<Record<CommandType, CommandInfo>> = {
   setPaintPathAnimated: { id: 620, kind: 'edit', coalesce: false, family: "PropertyGroups", result: "Empty", doc: "The Path stopwatch: ON keys the current points at `time` (already animated: no change); OFF removes the Path keyframes (the static points stay). Inverse: the track as it was." },
   editPathTopology: { id: 630, kind: 'edit', coalesce: false, family: "PropertyGroups", result: "Empty", doc: "B3 — a STRUCTURAL edit of a path property — a mask's `masks/<id>/path` or a shape layer's `layer/path.points` — in EVERY state: the static outline and each keyframe (an outline cannot gain a vertex, open, or start elsewhere at one key only: keys whose vertex counts differ hold instead of morphing). `op` first, on each state's current closed state: split a segment, remove vertices, Set First Vertex (a closed outline rotates; an open one can only start at its last vertex, which reverses it), Reverse Path Direction, or continue an open outline; then `closed`, the outline's Closed switch in every state. At least one of the two. A state the op does not apply to (a segment or vertex it lacks) is left as it is; an op that applies to no state is `invalidArgument` and changes nothing. Per-vertex feathers and editing state travel with their vertices; keyframe ids, times and easing are kept. Undo restores every state exactly." },
   setShapeOutline: { id: 631, kind: 'edit', coalesce: false, family: "PropertyGroups", result: "Empty", doc: "B3 — replace a shape layer's drawn outline with independent RUNS (the Knife's cut, a boolean's islands): stored as the layer's subpaths, each run with its own closed state; the single-run outline is cleared, the layer's shape type becomes `path` (a cut rectangle is no longer a rectangle), and a layer without Geometry gets one. At least one run, each of at least 2 vertices. A layer that is not a shape is `invalidArgument`; an animated outline (`layer/path.points` keyed — the keys would win over the runs every frame) is `animated`. Undo restores the outline exactly." },
+  setPerformanceTake: { id: 1950, kind: 'edit', coalesce: false, family: "PropertyGroups", result: "Empty", doc: "Store (replace) the layer's take for `take.path`. At most 36,000 samples (10 minutes at 60 Hz): `outOfRange` above it; `invalidArgument` for a missing path, `dims` outside 1..4, a values count that is not times × dims, or a non-finite number. Inverse: the previous take (or none). Deleting the layer deletes its takes." },
+  clearPerformanceTakes: { id: 1951, kind: 'edit', coalesce: false, family: "PropertyGroups", result: "Empty", doc: "Remove the layer's takes for `paths`; an empty list removes every take of the layer (D5 \"Discard takes\"). Inverse: the previous takes." },
   addMarkers: { id: 700, kind: 'edit', coalesce: false, family: "Markers", result: "MarkerIds", doc: "" },
   updateMarkers: { id: 701, kind: 'edit', coalesce: true, family: "Markers", result: "Empty", doc: "" },
   deleteMarkers: { id: 702, kind: 'edit', coalesce: false, family: "Markers", result: "Empty", doc: "" },
@@ -185,9 +187,12 @@ export const COMMANDS: Readonly<Record<CommandType, CommandInfo>> = {
   rescanPlugins: { id: 872, kind: 'control', coalesce: false, family: "Plugins", result: "PluginList", doc: "AE parity 2.7 — rescan the plugin folders (`--plugins`, PREMATION_PLUGIN_PATH) after an install: new bundles load and their effects become available without a restart; plugins already loaded stay loaded until the engine restarts (a loaded module cannot be swapped under live instances). Returns every plugin afterwards, like listPlugins." },
   setPluginData: { id: 871, kind: 'edit', coalesce: false, family: "Plugins", result: "Empty", doc: "Store plugin data in the DOCUMENT (AE sequence data / arbitrary-data params). Undoable, saved with the project." },
   runPluginCommand: { id: 873, kind: 'edit', coalesce: false, family: "Plugins", result: "PluginCommandResult", doc: "P7a — run a native plugin's command in the engine (core thread, crash-guarded, under the watchdog). `comp`, `layers` and `time` are what the user had (the active composition, the selected layers top first, the playhead; absent comp / time = the engine's active composition and playhead); `args` is JSON handed to the plugin. Every edit the plugin makes through `engine_command` is ONE undo entry labelled with the command's name, and the log holds those edits (a replay never runs the plugin). `notFound`: no such command or its plugin is not loaded; the plugin's error or a crash: `internal`, nothing changed (a crash disables the command until setPluginEnabled(true))." },
+  startLiveInput: { id: 1948, kind: 'control', coalesce: false, family: "LiveInput", result: "Empty", doc: "Start live hand input. Restarts it when already running (another camera, other models). `camera`: a CameraInfo id, '' = the first colour camera. `modelDir`: the folder holding `palm_detection.onnx` and `hand_landmark.onnx`, '' = the installed models (PREMATION_HAND_USER_DIR, else the bundled PREMATION_HAND_DIR). The answer comes as `liveInput` events: `starting`, then `running` with hands, or `failed` with the reason." },
+  stopLiveInput: { id: 1949, kind: 'control', coalesce: false, family: "LiveInput", result: "Empty", doc: "Stop live input and release the camera. No-op when stopped." },
 };
 
 export const QUERIES: Readonly<Record<QueryType, QueryInfo>> = {
+  getPerformanceTakes: { id: 1952, family: "PropertyGroups", result: "PerformanceTakes", doc: "The layer's stored takes, sample times and spans in composition time." },
   getLayerTrackers: { id: 1090, family: "Jobs", result: "LayerTrackers", doc: "The layer's saved trackers, sample times in composition time." },
   getCameraSolve: { id: 1091, family: "Jobs", result: "CameraSolveAnswer", doc: "" },
   listPluginCommands: { id: 1092, family: "Plugins", result: "PluginCommandList", doc: "P7a — every native plugin command, in load order (a disabled plugin's are listed with enabled = false; the editor hides them)." },
@@ -244,6 +249,7 @@ export const QUERIES: Readonly<Record<QueryType, QueryInfo>> = {
   getRenderQueue: { id: 1084, family: "Status", result: "RenderQueueState", doc: "" },
   getCommandLog: { id: 1085, family: "Status", result: "CommandLog", doc: "The command log since `fromRevision` (B5 replay, bug reports)." },
   getCacheCoverage: { id: 1089, family: "Status", result: "CacheCoverage", doc: "Frames the viewport frame cache holds, for the timeline cache bars. `ram` ranges are comp time, end exclusive. `disk` is empty: the engine cache is VRAM only. `comp` absent = the active composition; another comp answers empty (coverage is the composition the viewport is drawing)." },
+  listCameras: { id: 1938, family: "LiveInput", result: "CameraList", doc: "The cameras the engine can open for live input. `unsupported` where this platform has no capture yet." },
 };
 
 export const EVENTS: Readonly<Record<EventType, EventInfo>> = {
@@ -280,7 +286,8 @@ export const EVENTS: Readonly<Record<EventType, EventInfo>> = {
   assetStatusChanged: { id: 2061, ephemeral: true, family: "StatusEvents", doc: "" },
   fontsChanged: { id: 2062, ephemeral: true, family: "StatusEvents", doc: "" },
   autosaved: { id: 2063, ephemeral: true, family: "StatusEvents", doc: "An autosave / recovery file was written." },
+  liveInput: { id: 2064, ephemeral: true, family: "LiveInput", doc: "Live input's state and, while running, every tracked frame (≈ the camera's rate)." },
 };
 
 /** Size of the schema, for docs and tests. */
-export const SCHEMA_COUNTS = {"enums":91,"structs":538,"unions":11,"commands":170,"queries":56,"events":33} as const;
+export const SCHEMA_COUNTS = {"enums":92,"structs":551,"unions":11,"commands":174,"queries":58,"events":34} as const;

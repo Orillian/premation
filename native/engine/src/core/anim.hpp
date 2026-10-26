@@ -64,6 +64,15 @@ void anim_set_expr_enabled(Document& d, std::string_view node, std::string_view 
 
 /// `sampleTrack(track, t)` — the keyframed value (nullopt for an empty track).
 [[nodiscard]] std::optional<double> sample_keys(const std::vector<Key>& keys, double t);
+/// `sample_keys` for the member `prop` of `node` — the value the frame reads.
+/// A member of a SPATIAL property (position x / y / z, anchor point, point of
+/// interest) whose sibling axes are keyed on the same segment and whose segment
+/// carries spatial tangents moves at constant speed in ARC LENGTH along the
+/// axes' shared bezier (After Effects): the temporal ease remaps the fraction
+/// of the path covered, not the bezier parameter. Every other track samples as
+/// `sample_keys`. The arc-length table is cached per segment (thread-local).
+[[nodiscard]] std::optional<double> anim_sample_member_keys(const Document& d, std::string_view node, std::string_view prop,
+                                                           const std::vector<Key>& keys, double t);
 /// `effectiveSpatialTangents(kfs, i)`: key `i`'s spatial tangents with its spatial mode applied
 /// (none for `linear`, computed for `auto`) — {si, so}, each absent when the key has none.
 [[nodiscard]] std::pair<std::optional<double>, std::optional<double>> effective_spatial_tangents_of(const std::vector<Key>& keys,

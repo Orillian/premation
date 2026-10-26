@@ -1498,9 +1498,17 @@
   letter-spacing: -0.01em;
   color: var(--color-text-primary);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
+}
+
+/* The name's text: an ellipsis needs a block box — text straight inside the
+   flex .trackName was cut mid-letter with none ("Beat 1 — Boarc"). */
+.trackNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Inline rename input — appears on double-click, styled to look like the span */

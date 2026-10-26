@@ -1261,11 +1261,30 @@
       {
         "key": "palette",
         "label": "Use Preset Palette",
-        "type": "number",
+        "type": "enum",
         "group": "Output Cycle",
-        "min": 0,
-        "max": 4,
-        "precision": 0,
+        "options": [
+          {
+            "value": 0,
+            "label": "Fire"
+          },
+          {
+            "value": 1,
+            "label": "Hue Cycle"
+          },
+          {
+            "value": 2,
+            "label": "Ramp Grey"
+          },
+          {
+            "value": 3,
+            "label": "Ice"
+          },
+          {
+            "value": 4,
+            "label": "Solarize"
+          }
+        ],
         "default": 0
       },
       {

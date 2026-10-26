@@ -227,24 +227,208 @@ export function sampleTrack(track: PropertyTrack, t: number): number | undefined
   if (kind === 'step' || kind === 'hold') return t < b.t ? a.value : b.value;
   const span = b.t - a.t;
   const local = span <= 0 ? 0 : (t - a.t) / span;
+  const eased = segmentEased(kfs, i, local);
+  const c = segmentControls(kfs, i);
+  if (c.hasTangent) return cubicValueAt(c.v0, c.c1, c.c2, c.v3, eased);
+  return a.value + (b.value - a.value) * eased;
+}
+
+/**
+ * The segment `i → i+1`'s eased fraction at `local` (0..1 along its time
+ * span): the temporal half of `sampleTrack` — the segment's bezier when an end
+ * is Auto Bezier or roving, else the key's handles or its named ease. The
+ * engine's `segment_eased` (native/libs/motion_eval/eval.hpp) is the same.
+ */
+export function segmentEased(kfs: readonly Keyframe[], i: number, local: number): number {
+  const a = kfs[i]!;
+  const b = kfs[i + 1]!;
+  const kind = a.easing ?? 'linear';
   const autoEnd = kind === 'autoBezier' || b.easing === 'autoBezier' || a.roving === true || b.roving === true;
-  const eased = autoEnd && (!NAMED_EASINGS.has(kind) || a.roving === true || b.roving === true)
+  return autoEnd && (!NAMED_EASINGS.has(kind) || a.roving === true || b.roving === true)
     ? cubicBezierEase(segmentTemporalBezier(kfs, i), local)
     : (kind === 'bezier' || kind === 'autoBezier' || kind === 'continuousBezier') && a.bezier
       ? cubicBezierEase(a.bezier, local)
       : ease(kind, local);
+}
+
+/**
+ * The 1D cubic the segment `i → i+1` traces in its shared parameter: the key
+ * values with the effective spatial tangents as control values (the linear
+ * third-point for a missing side). `hasTangent` is false when neither side
+ * carries one — the segment is then the straight line `v0 + (v3 − v0)·u`.
+ */
+export interface SegmentControls {
+  v0: number;
+  c1: number;
+  c2: number;
+  v3: number;
+  hasTangent: boolean;
+}
+
+export function segmentControls(kfs: readonly Keyframe[], i: number): SegmentControls {
+  const a = kfs[i]!;
+  const b = kfs[i + 1]!;
   // Spatial MODE (per keyframe): absent = the stored tangents as-is (legacy,
   // and the fast path); `linear` ignores them; `auto` computes them from the
   // neighbours so the curve stays smooth when a neighbour moves.
   const so = a.spatialInterp === undefined ? a.so : effectiveSpatialTangents(kfs, i).so;
   const si = b.spatialInterp === undefined ? b.si : effectiveSpatialTangents(kfs, i + 1).si;
-  if (so !== undefined || si !== undefined) {
-    const third = (b.value - a.value) / 3; // linear default for the missing side
-    const c1 = a.value + (so ?? third);
-    const c2 = b.value + (si ?? -third);
-    return cubicValueAt(a.value, c1, c2, b.value, eased);
+  const third = (b.value - a.value) / 3; // linear default for the missing side
+  return {
+    v0: a.value,
+    c1: a.value + (so ?? third),
+    c2: b.value + (si ?? -third),
+    v3: b.value,
+    hasTangent: so !== undefined || si !== undefined,
+  };
+}
+
+// ── Spatial arc length (After Effects motion paths) ─────────────────────────
+//
+// A spatial property (position, anchor point, point of interest) keeps one
+// scalar track per axis; the axes share the segment's eased parameter, so
+// together they trace one cubic bezier. After Effects moves along that curve
+// at constant speed in ARC LENGTH: the temporal ease remaps the fraction of
+// the path covered, not the bezier parameter. The engine samples position
+// this way (anim_sample_member_keys, native/engine/src/core/anim.cpp, over
+// motion_eval's arc_table / arc_param); this is its UI-side twin, same
+// chord count, same inversion.
+
+/** Chord samples per segment: u = i / ARC_SAMPLES, i = 0..ARC_SAMPLES. */
+export const ARC_SAMPLES = 64;
+
+/**
+ * `cum[i]`: the chord length of the curve whose axes are the cubics `ctrl`
+ * (each [v0, c1, c2, v3]) from u = 0 to u = i / ARC_SAMPLES.
+ */
+export function arcLengthTable(ctrl: ReadonlyArray<readonly [number, number, number, number]>): number[] {
+  const cum: number[] = new Array<number>(ARC_SAMPLES + 1);
+  const prev = ctrl.map((c) => c[0]);
+  cum[0] = 0;
+  for (let i = 1; i <= ARC_SAMPLES; i++) {
+    const u = i / ARC_SAMPLES;
+    let d2 = 0;
+    for (let k = 0; k < ctrl.length; k++) {
+      const c = ctrl[k]!;
+      const v = cubicValueAt(c[0], c[1], c[2], c[3], u);
+      const dv = v - prev[k]!;
+      d2 += dv * dv;
+      prev[k] = v;
+    }
+    cum[i] = cum[i - 1]! + Math.sqrt(d2);
   }
-  return a.value + (b.value - a.value) * eased;
+  return cum;
+}
+
+/**
+ * The parameter u ∈ [0, 1] at which the curve has covered `fraction` (clamped
+ * to 0..1) of its total length: the chord table picks the bin, a bisection on
+ * the distance along `ctrl`'s own cubic places u inside it — so a straight
+ * path answers exactly whatever its parametrisation (a folded or zero handle
+ * changes the parametrisation, not the line; interpolating u linearly in the
+ * chord answered 24.9996 for an exact 25). A zero-length curve answers
+ * `fraction` itself. The engine's `arc_param` is the same.
+ */
+export function arcParam(
+  ctrl: ReadonlyArray<readonly [number, number, number, number]>,
+  cum: readonly number[],
+  fraction: number,
+): number {
+  const f = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+  const total = cum[ARC_SAMPLES]!;
+  if (!(total > 0)) return f;
+  const target = f * total;
+  // Largest i < ARC_SAMPLES with cum[i] <= target (cum is non-decreasing).
+  let lo = 0;
+  let hi = ARC_SAMPLES;
+  while (hi - lo > 1) {
+    const mid = lo + ((hi - lo) >> 1);
+    if (cum[mid]! <= target) lo = mid;
+    else hi = mid;
+  }
+  const span = cum[lo + 1]! - cum[lo]!;
+  const u0 = lo / ARC_SAMPLES;
+  const u1 = (lo + 1) / ARC_SAMPLES;
+  if (!(span > 0)) return u0;
+  const need = target - cum[lo]!;
+  if (!(need > 0)) return u0; // on the chord's start exactly
+  if (!(need < span)) return u1;
+  const p0 = ctrl.map((c) => cubicValueAt(c[0], c[1], c[2], c[3], u0));
+  const dist = (u: number): number => {
+    let d2 = 0;
+    for (let k = 0; k < ctrl.length; k++) {
+      const c = ctrl[k]!;
+      const dv = cubicValueAt(c[0], c[1], c[2], c[3], u) - p0[k]!;
+      d2 += dv * dv;
+    }
+    return Math.sqrt(d2);
+  };
+  let a = u0;
+  let b = u1;
+  for (let i = 0; i < 40; i++) {
+    const mid = 0.5 * (a + b);
+    if (dist(mid) < need) a = mid;
+    else b = mid;
+  }
+  const u = 0.5 * (a + b);
+  return u < 0 ? 0 : u > 1 ? 1 : u;
+}
+
+/**
+ * `sampleTrack` for ONE axis of a spatial property whose axis tracks are
+ * `tracks` (x, y[, z]; an axis without a track is constant and may be
+ * undefined). When the segment the time falls in is keyed on every present
+ * axis (keys at both ends, none between) and carries a spatial tangent on any
+ * of them, the axis's value is read at the parameter where the shared curve
+ * has covered the eased fraction of its ARC LENGTH. Every other case is
+ * `sampleTrack` on the axis alone (a straight segment is its own arc; axes
+ * keyed on different segments trace no shared curve). Returns `undefined`
+ * for an empty axis track.
+ */
+export function sampleSpatialMember(
+  tracks: ReadonlyArray<PropertyTrack | undefined>,
+  axis: number,
+  t: number,
+): number | undefined {
+  const own = tracks[axis];
+  if (!own) return undefined;
+  const kfs = own.keyframes;
+  if (kfs.length < 2) return sampleTrack(own, t);
+  if (!(t > kfs[0]!.t && t < kfs[kfs.length - 1]!.t)) return sampleTrack(own, t);
+  const i = segmentIndexFor(kfs, t);
+  const a = kfs[i]!;
+  const b = kfs[i + 1]!;
+  const kind = a.easing ?? 'linear';
+  if (kind === 'step' || kind === 'hold' || !(b.t > a.t)) return sampleTrack(own, t);
+  const ctrl: [number, number, number, number][] = [];
+  let anyTangent = false;
+  let ownIndex = 0;
+  for (let k = 0; k < tracks.length; k++) {
+    const tr = tracks[k];
+    if (!tr || tr.keyframes.length === 0) continue; // a constant axis: no length
+    let c: SegmentControls;
+    if (k === axis) {
+      c = segmentControls(kfs, i);
+      ownIndex = ctrl.length;
+    } else {
+      // The sibling must be keyed on the SAME segment (keys at a.t and b.t, none
+      // between); otherwise the axes trace no shared curve.
+      let ia = -1;
+      for (let j = 0; j < tr.keyframes.length; j++) {
+        if (tr.keyframes[j]!.t === a.t) ia = j;
+      }
+      if (ia < 0 || ia + 1 >= tr.keyframes.length || tr.keyframes[ia + 1]!.t !== b.t) return sampleTrack(own, t);
+      c = segmentControls(tr.keyframes, ia);
+    }
+    ctrl.push([c.v0, c.c1, c.c2, c.v3]);
+    anyTangent = anyTangent || c.hasTangent;
+  }
+  // Every axis linear in u: the path is the straight line and u IS the arc fraction.
+  if (!anyTangent) return sampleTrack(own, t);
+  const local = (t - a.t) / (b.t - a.t);
+  const u = arcParam(ctrl, arcLengthTable(ctrl), segmentEased(kfs, i, local));
+  const c = ctrl[ownIndex]!;
+  return cubicValueAt(c[0], c[1], c[2], c[3], u);
 }
 
 /**

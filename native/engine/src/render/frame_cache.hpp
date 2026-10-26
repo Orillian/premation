@@ -65,6 +65,13 @@ class FrameCache {
   /// RGBA8Unorm, CopyDst) and marks it most recently used. A miss encodes nothing.
   bool copy_to(std::uint64_t key, std::uint32_t width, std::uint32_t height, const wgpu::Texture& target,
                wgpu::CommandEncoder& encoder);
+  /// A hit marks `key`'s frame (width × height) most recently used and returns
+  /// its texture for the caller to copy from in a submission made now (an
+  /// evicted texture is reused by the next store). nullptr on a miss.
+  [[nodiscard]] const wgpu::Texture* use(std::uint64_t key, std::uint32_t width, std::uint32_t height);
+  /// Keys eviction never takes (the frame each open surface shows now:
+  /// ram_cache.hpp ProtectedRange::pinned). A copy, taken per store.
+  void set_pinned(const ProtectedRange& protect) { pinned_ = protect; }
 
   /// A frame about to leave the cache: its texture is reused by the store that
   /// evicted it, so the hook encodes any copy out of it into the same encoder
@@ -105,7 +112,8 @@ class FrameCache {
     FrameMeta meta;
   };
   static std::size_t bytes_of(std::uint32_t w, std::uint32_t h) { return std::size_t{w} * h * 4; }
-  void evict_one(wgpu::CommandEncoder* encoder = nullptr, const EvictHook* onEvict = nullptr);
+  /// Evict the least recently used frame that is not pinned; false when every frame is pinned.
+  bool evict_one(wgpu::CommandEncoder* encoder = nullptr, const EvictHook* onEvict = nullptr);
   wgpu::Texture take_texture(std::uint32_t w, std::uint32_t h);
 
   wgpu::Device device_;
@@ -119,6 +127,8 @@ class FrameCache {
   /// texture per frame is allocator churn on the render thread's hot path.
   std::vector<Entry> spare_;
   FrameCacheStats stats_;
+  /// Only its pins are read here (the range rule is the RAM tier's).
+  ProtectedRange pinned_;
 };
 
 /// The frame cache's default budget for this machine: a quarter of the render

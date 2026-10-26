@@ -306,6 +306,8 @@ void Session::on_disconnect() {
   }
   stop_playback();
   deferred_.clear();
+  // Nobody is watching: the camera goes off with the editor.
+  if (live_ != nullptr) live_->stop();
 }
 
 void Session::on_ping(std::uint64_t nonce, std::uint32_t queued) {
@@ -388,6 +390,9 @@ void Session::handle_request(api::Request request, Clock::time_point now) {
     }
   }
   loopNow_ = now;
+  // A command is the user at work (an edit, a seek, a pane move): the idle
+  // prefetcher stands back. Queries (the UI polling coverage, stats) are not.
+  if (request.body.kind() != api::RequestBody::Kind::query) note_activity(now);
   scope_ = RequestScope{request.seq, request.origin, std::nullopt};
   std::optional<api::Outcome> o = handle_request_body(request, now);
   if (o) respond(request.seq, std::move(*o));
@@ -636,6 +641,10 @@ std::vector<api::CommandResult> Session::run_edits(const std::vector<const api::
   const bool indexed = commands.size() > 1 || batchLabel.has_value();
   const BuildLock lock(*this, true);  // the document is written below: no frame builds meanwhile
   doc_.begin();
+  // A failed request is rolled back AND left out of the command log, so the ids
+  // it minted must be handed back too: otherwise a restart's replay, which never
+  // sees the failure, mints every later id one step behind the live engine.
+  auto idsBefore = ids_.state();
   for (std::size_t i = 0; i < commands.size(); ++i) {
     const api::Command& cmd = *commands[i];
     const std::optional<std::uint32_t> index = indexed ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(i)) : std::nullopt;
@@ -663,6 +672,7 @@ std::vector<api::CommandResult> Session::run_edits(const std::vector<const api::
     }
     if (failed) {
       doc_.rollback();
+      ids_.restore(std::move(idsBefore));
       keys_.invalidate();
       throw EngineFail{std::move(*failed)};
     }
@@ -936,6 +946,9 @@ struct ControlVisitor {
     s.autosave_ = Session::Autosave{c.enabled, c.interval_seconds, c.keep};
     return result_for<api::SetAutosave>();
   }
+  // Live performance input (core/session_live.cpp): editor input, not the document.
+  R operator()(const api::StartLiveInput& c) const { return s.start_live(c); }
+  R operator()(const api::StopLiveInput&) const { return s.stop_live(); }
   R operator()(const api::NewProject&) const {
     no_gesture_for(s, "close the gesture first");
     s.load_new_project(api::ResetReason::created);
@@ -1405,6 +1418,8 @@ api::QueryResult Session::run_query(const api::Query& q) {
     c.waveform = [this](std::string_view src, double fromSec, double durationSec, std::uint32_t buckets,
                         api::WaveformPeaks& out) { return mediaClock_->peaks(src, fromSec, durationSec, buckets, out); };
   }
+  // Live input is session state too (the cameras, through the live port).
+  if (std::holds_alternative<api::ListCameras>(q.v)) return list_cameras();
   // Jobs are session state (jobs_), not the document's.
   if (std::holds_alternative<api::GetJobs>(q.v)) {
     api::JobList list;
@@ -1598,16 +1613,25 @@ api::Time Session::frame_dur() const {
   return d > 0 ? d : static_cast<api::Time>(doc::kFlicks / 30);
 }
 
-Session::Range Session::play_range() const {
+Session::Range Session::play_range() const { return frame_range(rangeKind_); }
+
+Session::Range Session::prefetch_range() const {
+  // The work area when the comp has one (AE caches the work area), else the whole comp.
+  const auto c = active_comp();
+  const bool workArea = c && doc::comp_settings(doc_, *c).work_area.duration > 0;
+  return frame_range(workArea ? api::PlayRange::work_area : api::PlayRange::all);
+}
+
+Session::Range Session::frame_range(api::PlayRange kind) const {
   const auto c = active_comp();
   const api::Time fd = frame_dur();
   api::TimeRange r{0, fd};
   if (c) {
     const api::CompSettings cs = doc::comp_settings(doc_, *c);
     r = api::TimeRange{0, cs.duration};
-    if (rangeKind_ == api::PlayRange::work_area && cs.work_area.duration > 0) r = cs.work_area;
+    if (kind == api::PlayRange::work_area && cs.work_area.duration > 0) r = cs.work_area;
   }
-  if (rangeKind_ == api::PlayRange::custom && customRange_.duration > 0) r = customRange_;
+  if (kind == api::PlayRange::custom && customRange_.duration > 0) r = customRange_;
   Range out;
   out.first = std::max<std::int64_t>(0, floor_div(r.start + fd - 1, fd));
   out.last = std::max(out.first, floor_div(r.start + r.duration + fd - 1, fd) - 1);
@@ -1668,6 +1692,7 @@ void Session::start_playback(Clock::time_point now, std::optional<api::Time> fro
   if (filling) {
     cacheFrame_ = r.first;
     cacheInFlight_ = false;
+    cacheRetryUntil_.reset();
     renderDirty_ = false;
     return;
   }
@@ -1765,6 +1790,123 @@ void Session::fill_cache(Clock::time_point now) {
   if (now - lastStats_ >= std::chrono::seconds(1)) emit_stats(now);
 }
 
+// ── idle render-ahead ───────────────────────────────────────────────────────
+
+void Session::note_activity(Clock::time_point now) {
+  lastActivity_ = now;
+  // Whatever the prefetcher had out is stale (an edit) or in the way (a seek,
+  // a play): forgotten here; its answer, if it comes, is folded into the count
+  // the next prefetch starts from. It steps out from the playhead again.
+  prefetchFrame_.reset();
+  prefetchKey_ = 0;
+  prefetchRefused_ = 0;
+  prefetchResting_ = false;
+  prefetchOrigin_ = -1;
+  prefetchAhead_ = 0;
+  prefetchBehind_ = 0;
+}
+
+bool Session::idle_prefetch_armed() const {
+  if (!options_.idlePrefetch || playing_ || phase_ != Phase::open || prefetchResting_ || gesture_) return false;
+  // No scene builder (C2's quads: the core-only tests, PREMATION_ENGINE_SCENE=0): nothing worth caching.
+  if (frameBuilder_ == nullptr || !active_comp()) return false;
+  const bool view = std::ranges::any_of(surfaces_, [](const auto& e) { return e.second.open && e.second.layer.empty() && !e.second.time; });
+  if (!view) return false;
+  if (prefetchFrame_) return true;
+  // Stepped through the whole range from this playhead: nothing until something moves.
+  const Range r = prefetch_range();
+  const std::int64_t origin = std::clamp(frame_, r.first, r.last);
+  return !(prefetchOrigin_ == origin && origin + prefetchAhead_ >= r.last && origin - prefetchBehind_ <= r.first);
+}
+
+void Session::idle_prefetch(Clock::time_point now) {
+  if (!idle_prefetch_armed()) return;
+  if (!deferred_.empty() || !forceBuild_.empty() || renderDirty_) return;
+  if (now - lastActivity_ < kIdlePrefetchAfter) return;
+  const RenderCounters counters = sink_.counters();
+  if (prefetchFrame_) {
+    if (counters.prefetched == prefetchSeenAnswered_) return;  // still drawing (or queued behind a frame)
+    // Landed. The map knows its key once a tier kept it; refused by every tier
+    // (the RAM budget full of this range, VRAM too small) a few times in a row,
+    // the prefetcher rests until the next edit or move.
+    const bool kept = prefetchKey_ != 0 && sink_.cached_frame(prefetchKey_).has_value();
+    prefetchRefused_ = kept ? 0 : prefetchRefused_ + 1;
+    prefetchFrame_.reset();
+    prefetchKey_ = 0;
+    if (prefetchRefused_ >= kIdlePrefetchRefusals) {
+      prefetchResting_ = true;
+      return;
+    }
+  }
+  // Only when nothing else wants the build worker or the GPU: a frame being
+  // built or drawn for a viewport, a cached job not yet answered, an engine job.
+  if (builds_active() || cachedSubmitted_ > cachedAnswered_) return;
+  if (runner_ && runner_->live() > 0) return;
+  const std::optional<std::string> c = active_comp();
+  if (!c) return;
+  const ViewportConfig* view = nullptr;
+  for (const auto& [id, port] : surfaces_) {
+    if (port.open && port.layer.empty() && !port.time) {
+      view = &port;
+      break;
+    }
+  }
+  if (view == nullptr || sink_.job_pending(view->viewport) || build_pending(view->viewport)) return;
+  // Keyed frames only: the pre-build key is how the prefetcher knows what a
+  // tier already holds, and what it just stored. A comp with volatile inputs
+  // (time-dependent expressions outside the index) rebuilds every frame anyway.
+  sync_frame_keys();
+  if (!frameKeys_.indexed() || frameKeys_.volatile_inputs()) return;
+  const Range r = prefetch_range();
+  const std::int64_t origin = std::clamp(frame_, r.first, r.last);
+  if (prefetchOrigin_ != origin) {
+    prefetchOrigin_ = origin;
+    prefetchAhead_ = 0;
+    prefetchBehind_ = 0;
+  }
+  const ViewportConfig port = frame_port(*view, *c);
+  const std::uint64_t scope = cache_scope(port, *c);
+  // The next frame no tier holds: forward from the playhead to the end of the
+  // range, then backward to its start (what Play needs first, then a scrub back).
+  for (;;) {
+    std::int64_t f = 0;
+    if (origin + prefetchAhead_ < r.last) {
+      f = origin + ++prefetchAhead_;
+    } else if (origin - prefetchBehind_ > r.first) {
+      f = origin - ++prefetchBehind_;
+    } else {
+      return;  // the range is covered
+    }
+    const std::uint64_t docKey = frameKeys_.key(f);
+    if (docKey == 0) continue;
+    const std::uint64_t pk = render::prebuild_key(scope, docKey);
+    if (sink_.cached_frame(pk)) continue;  // a tier holds it (or will: a build of it is on its way)
+    prefetchFrame_ = f;
+    prefetchKey_ = pk;
+    prefetchSeenAnswered_ = counters.prefetched;
+    submit_frame_to(*view, *c, 0, false, f);
+    return;
+  }
+}
+
+ViewportConfig Session::frame_port(const ViewportConfig& surface, const std::string& comp) const {
+  // The surface's config plus this frame's editor-side hidden layers (they ride
+  // beside the config, not in it: see `hiddenLayers_`), focus set and viewer LUT.
+  ViewportConfig port = surface;
+  if (const auto hidden = hiddenLayers_.find(surface.viewport); hidden != hiddenLayers_.end()) port.hiddenLayers = hidden->second;
+  if (const auto focus = focusLayers_.find(surface.viewport); focus != focusLayers_.end()) port.focusLayers = focus->second;
+  port.viewerLut = viewerLut_;
+  // Comp-space caching (frame_scene.hpp comp_space_frame): a composition view
+  // whose slots take copies draws the comp's own pixels, so its cached frames
+  // outlive a pane resize or a pan. Decided here, once per frame, and carried
+  // to the builder (the port) and the render thread (the job) alike.
+  if (port.layer.empty() && !port.time && sink_.slots_copyable()) {
+    const api::CompSettings cs = doc::comp_settings(doc_, comp);
+    port.compSpace = comp_space_frame(port, static_cast<double>(cs.width), static_cast<double>(cs.height));
+  }
+  return port;
+}
+
 void Session::rebase_playback(Clock::time_point now) {
   const Range r = play_range();
   playBase_ = now;
@@ -1794,6 +1936,26 @@ namespace {
 /// must not open a new scope (the bar emptied and every frame was built
 /// again). The viewer LUT is compared by its table, not its pointer: the
 /// page re-sends the same LUT on a reload or a focus change.
+/// A comp-space frame's view (ViewportConfig::compSpace) is the comp-space
+/// texture: its size, scale and phase — not the pane's size, the pan or the
+/// device pixel ratio, which no longer decide its pixels. Those fields are
+/// replaced by the texture's, so two panes showing the same comp pixels share
+/// one scope (the bar, the pre-build map, the RAM tier's protected range).
+void canonical_cache_view(ViewportConfig& v) {
+  if (!v.compSpace) return;
+  const CompSpaceFrame& cs = *v.compSpace;
+  v.width = cs.width;
+  v.height = cs.height;
+  v.zoom = cs.zoom;
+  v.devicePixelRatio = cs.dpr;
+  v.panX = cs.phaseX;
+  v.panY = cs.phaseY;
+  v.resolution = 1.0;  // folded into cs.dpr
+  // Where the texture lands in the slot is the present's business, not the frame's.
+  v.compSpace->slotX = 0;
+  v.compSpace->slotY = 0;
+}
+
 bool same_cache_view(const ViewportConfig& a, const ViewportConfig& b) {
   const bool lutEq = (!a.viewerLut && !b.viewerLut) ||
                      (a.viewerLut && b.viewerLut && a.viewerLut->intensity == b.viewerLut->intensity &&
@@ -1805,6 +1967,8 @@ bool same_cache_view(const ViewportConfig& a, const ViewportConfig& b) {
   y.onion.reset();
   x.viewerLut.reset();
   y.viewerLut.reset();
+  canonical_cache_view(x);
+  canonical_cache_view(y);
   return x == y;
 }
 }  // namespace
@@ -1819,6 +1983,15 @@ std::uint64_t Session::cache_scope(const ViewportConfig& port, const std::string
   }
   if (configId == 0) {
     configId = ++scopeConfigSeq_;
+    // A new view state (a zoom, a pane the comp-space frame could not absorb, a channel view): the bar starts over for it.
+    PREMATION_LOG(info, "cache_scope_new")
+        .kv("viewport", port.viewport)
+        .kv("width", port.width)
+        .kv("height", port.height)
+        .kv("zoom", std::to_string(port.zoom))
+        .kv("compSpace", port.compSpace ? static_cast<std::int64_t>(port.compSpace->width) : std::int64_t{-1})
+        .kv("phaseX", std::to_string(port.compSpace ? port.compSpace->phaseX : -1.0))
+        .kv("configs", static_cast<std::int64_t>(scopeConfigs_.size()));
     scopeConfigs_.emplace_back(port, configId);
     // A handful of recent view states is all a scope switch back needs (a pane, a zoom, a resolution).
     constexpr std::size_t kConfigsKept = 32;
@@ -1914,6 +2087,9 @@ void Session::stop_playback() {
   transportState_ = api::TransportState::stopped;
   if (mediaClock_ != nullptr) mediaClock_->pause();
   mediaPaced_ = false;
+  // The end of a play (its own, or a pause) starts the idle prefetcher's quiet
+  // period over: it never cuts in on the frame the viewer settles on.
+  note_activity(loopNow_);
 }
 
 std::optional<Clock::time_point> Session::next_deadline() const {
@@ -1934,6 +2110,19 @@ std::optional<Clock::time_point> Session::next_deadline() const {
   // them may come back as a build request (a tier evicted the frame meanwhile).
   if (cachedSubmitted_ > cachedAnswered_ && loopNow_ < cachedPollUntil_) {
     const Clock::time_point poll = Clock::now() + kDeferredPoll;
+    jobs = jobs ? std::min(*jobs, poll) : poll;
+  }
+  // Idle render-ahead: the quiet period after the last command, then a poll
+  // per prefetched frame (each waits for the one before it to land).
+  if (idle_prefetch_armed()) {
+    const Clock::time_point quiet = lastActivity_ + kIdlePrefetchAfter;
+    const Clock::time_point poll = std::max(quiet, Clock::now() + kIdlePrefetchPoll);
+    jobs = jobs ? std::min(*jobs, poll) : poll;
+  }
+  // Live input: its frames are relayed as they come (≈ the camera's 30–60 Hz),
+  // so the loop looks every few ms while it runs — a frame waits at most that.
+  if (live_ != nullptr && live_->active()) {
+    const Clock::time_point poll = Clock::now() + std::chrono::milliseconds(4);
     jobs = jobs ? std::min(*jobs, poll) : poll;
   }
   const std::optional<Clock::time_point> clock = next_clock_deadline();
@@ -1976,6 +2165,8 @@ void Session::tick(Clock::time_point now) {
   poll_build_requests();
   if (!deferred_.empty()) poll_deferred(now);
   if (phase_ == Phase::open && (runner_ || !jobs_.empty())) poll_jobs(now);
+  poll_live();
+  if (!playing_ && phase_ == Phase::open && options_.idlePrefetch) idle_prefetch(now);
   if (!playing_ || phase_ != Phase::open) return;
   if (transportState_ == api::TransportState::caching) {
     fill_cache(now);
@@ -2191,17 +2382,15 @@ void Session::submit_frame(std::uint32_t clockDropped, bool fromClock) {
   }
 }
 
-void Session::submit_frame_to(const ViewportConfig& surface, const std::string& c, std::uint32_t clockDropped, bool announce) {
+void Session::submit_frame_to(const ViewportConfig& surface, const std::string& c, std::uint32_t clockDropped, bool announce,
+                              std::optional<std::int64_t> prefetchFrame) {
   BuildTask t;
-  // The surface's config plus this frame's editor-side hidden layers (they ride
-  // beside the config, not in it: see `hiddenLayers_`).
+  // The surface's config as this frame draws it (frame_port: hidden layers, focus, LUT, comp space).
   ViewportConfig& port = t.port;
-  port = surface;
-  if (const auto hidden = hiddenLayers_.find(surface.viewport); hidden != hiddenLayers_.end()) port.hiddenLayers = hidden->second;
-  if (const auto focus = focusLayers_.find(surface.viewport); focus != focusLayers_.end()) port.focusLayers = focus->second;
-  port.viewerLut = viewerLut_;
+  port = frame_port(surface, c);
   // A held viewport (the Layer panel's own ruler) renders at its time, not the clock's.
-  const api::Time time = port.time.value_or(time_);
+  const std::int64_t frameIndex = prefetchFrame.value_or(frame_);
+  const api::Time time = prefetchFrame ? frameIndex * frame_dur() : port.time.value_or(time_);
   // The job's metadata: what this frame IS (viewport, frame, time, revision,
   // cache scope). Read here, on the core thread, from the transport; the
   // frame's content is built from the document at this revision (below).
@@ -2209,31 +2398,34 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
   job.viewport = port.viewport;
   job.recordCoverage = port.layer.empty() && !port.time;
   if (job.recordCoverage) {
+    job.compSpace = port.compSpace;  // comp-space caching: the render thread presents through this geometry
     job.cacheScope = cache_scope(port, c);
     const Range range = play_range();
     job.rangeFirst = range.first;
     job.rangeLast = range.last;
   }
-  job.frame = frame_;
+  job.frame = frameIndex;
   job.time = time;
   job.revision = revision_;
   job.clockDropped = clockDropped;
-  job.exactMedia = playing_ && transportState_ == api::TransportState::caching;
+  // A prefetched frame is stored, so its footage is exact (as a fill's); it is never shown.
+  job.prefetch = prefetchFrame.has_value();
+  job.exactMedia = job.prefetch || (playing_ && transportState_ == api::TransportState::caching);
   job.playing = playing_;
   job.transient = gesture_.has_value() && !playing_;
   // Cached playback without a build (core/frame_keys.hpp): the frame's
   // pre-build key, and — when the sink has seen that key built and a tier may
   // still hold the frame — the job goes out with the content key alone. A
   // viewport the sink asked a built frame for (forceBuild_) builds this once.
-  bool forceBuild = false;
-  if (const auto fb = std::ranges::find(forceBuild_, port.viewport); fb != forceBuild_.end()) {
+  bool forceBuild = job.prefetch;  // a prefetch is a build by definition (idle_prefetch skips frames a tier holds)
+  if (const auto fb = std::ranges::find(forceBuild_, port.viewport); !job.prefetch && fb != forceBuild_.end()) {
     forceBuild = true;
     forceBuild_.erase(fb);
   }
   if (playing_) ++playTally_.frames;
   if (job.recordCoverage && frameBuilder_ != nullptr) {
     sync_frame_keys();
-    if (const std::uint64_t docKey = frameKeys_.key(frame_); docKey != 0 && !frameKeys_.volatile_inputs()) {
+    if (const std::uint64_t docKey = frameKeys_.key(frameIndex); docKey != 0 && !frameKeys_.volatile_inputs()) {
       job.prebuildKey = render::prebuild_key(job.cacheScope, docKey);
       if (playing_) ++playTally_.keyed;
       if (!forceBuild) {
@@ -2252,14 +2444,19 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
   }
   t.comp = c;
   t.time = time;
-  t.clockTime = time_;
+  t.clockTime = job.prefetch ? time : time_;
   t.playing = playing_;
-  t.announce = announce;
+  t.announce = announce && !job.prefetch;
   t.activeComp = active_comp();
   // B4 round 2: the overlays' geometry at this frame's time and revision goes with the job;
   // the sink sends it (FrameGeometry) right before the frame's FrameReady.
-  for (const doc::OverlaySubscription& o : overlays_) {
-    if (o.viewport == job.viewport) t.overlays.push_back(o);
+  // A prefetch is never shown: no overlays, no onion ghosts.
+  if (job.prefetch) {
+    port.onion.reset();
+  } else {
+    for (const doc::OverlaySubscription& o : overlays_) {
+      if (o.viewport == job.viewport) t.overlays.push_back(o);
+    }
   }
   if (frameBuilder_ == nullptr) {
     // No scene builder (the core-only tests, the fuzzer, PREMATION_ENGINE_SCENE=0):
@@ -2290,16 +2487,30 @@ void Session::submit_frame_to(const ViewportConfig& surface, const std::string& 
 void Session::enqueue_build(BuildTask task) {
   const std::uint32_t viewport = task.job.viewport;
   task.writes = docWrites_.load(std::memory_order_acquire);
+  // Frame-pipeline trace (debug level, PREMATION_LOG_LEVEL=debug): where a
+  // frame's time goes between an edit and its pixels — one atomic load when off.
+  PREMATION_LOG(debug, "ft_enqueue").kv("rev", static_cast<std::uint64_t>(task.job.revision)).kv("vp", viewport);
   std::optional<BuildTask> superseded;
   {
     const std::lock_guard<std::mutex> lock(buildQueueMu_);
     if (!buildThread_.joinable()) buildThread_ = JoiningThread([this] { build_worker(); });
     // Newest wins per viewport: a task still queued (not building yet) is replaced.
-    for (auto it = buildQueue_.begin(); it != buildQueue_.end(); ++it) {
-      if (it->job.viewport == viewport) {
-        superseded = std::move(*it);
-        buildQueue_.erase(it);
-        break;
+    // An idle prefetch (RenderJob::prefetch) never replaces a frame the viewport
+    // will show; a frame for the viewport drops a queued prefetch (the user is
+    // back: idle_prefetch starts over after the quiet period) — not a drop of playback.
+    if (!task.job.prefetch) {
+      for (auto it = buildQueue_.begin(); it != buildQueue_.end(); ++it) {
+        if (it->job.viewport == viewport && it->job.prefetch) {
+          buildQueue_.erase(it);
+          break;
+        }
+      }
+      for (auto it = buildQueue_.begin(); it != buildQueue_.end(); ++it) {
+        if (it->job.viewport == viewport) {
+          superseded = std::move(*it);
+          buildQueue_.erase(it);
+          break;
+        }
       }
     }
     buildQueue_.push_back(std::move(task));
@@ -2313,7 +2524,7 @@ void Session::enqueue_build(BuildTask task) {
 bool Session::build_pending(std::uint32_t viewport) const {
   const std::lock_guard<std::mutex> lock(buildQueueMu_);
   return std::any_of(buildQueue_.begin(), buildQueue_.end(),
-                     [viewport](const BuildTask& t) { return t.job.viewport == viewport; });
+                     [viewport](const BuildTask& t) { return t.job.viewport == viewport && !t.job.prefetch; });
 }
 
 bool Session::builds_active() const {
@@ -2346,8 +2557,13 @@ void Session::run_build(BuildTask t) {
   report.comp = t.comp;
   report.announce = t.announce;
   bool submit = false;
+  const auto ftWait0 = Clock::now();
   {
     const std::lock_guard<std::mutex> lock(buildMu_);
+    // Frame-pipeline trace: how long the build waited for the lock, and a skip.
+    PREMATION_LOG(debug, "ft_build").kv("rev", static_cast<std::uint64_t>(t.job.revision))
+        .kv("lockMs", std::chrono::duration<double, std::milli>(Clock::now() - ftWait0).count())
+        .kv("skip", docWrites_.load(std::memory_order_acquire) != t.writes);
     if (docWrites_.load(std::memory_order_acquire) != t.writes) {
       // The document was written since this task was queued: the job's
       // revision no longer names what we would build. The core thread queues
@@ -2469,6 +2685,7 @@ void Session::attach_onion(BuildTask& t, const doc::PCtx& pc) {
     ViewportConfig ghostPort = port;
     ghostPort.ghost = true;
     ghostPort.onion.reset();
+    ghostPort.compSpace.reset();  // ghosts are composited onto the slot at its size (composite_onion)
     std::vector<RenderJob::OnionGhost> built;
     built.reserve(planned.size());
     for (const OnionGhostPlan& g : planned) {

@@ -9,6 +9,7 @@ import type { Command as EngineCommand } from '@motion/engine-api';
 import { setupAppEngine } from '@core/engine/__testHelpers__/appEngine';
 import { engineIdle } from '@core/engine/engineInstance';
 import { documentMirror } from '@stores/documentMirror';
+import { useLiveInputStore } from '@stores/liveInputStore';
 import { usePerformanceStore } from '@stores/performanceStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { closePerformance } from '@providers/commands/performanceSession';
@@ -27,6 +28,8 @@ afterEach(async () => {
   act(() => closePerformance());
   usePreferenceStore.getState().set('performanceMode', 'perform');
   usePreferenceStore.getState().set('performanceReduction', 'smart');
+  usePreferenceStore.getState().set('performanceSource', 'mouse');
+  useLiveInputStore.setState({ state: 'stopped', message: '', hands: 0 });
   await h.dispose();
 });
 
@@ -72,6 +75,37 @@ it('after a take: the key count and Record again', () => {
   show({ phase: 'done', lastKeys: 7 });
   expect(screen.getByText('7 keys')).toBeTruthy();
   expect(screen.getByRole('button', { name: /Record again/ })).toBeTruthy();
+});
+
+it('the source toggle offers Mouse and Hand; with the hand: the camera state, Record, and how to grab', () => {
+  const { container } = render(<PerformanceBar />);
+  show({ phase: 'armed' });
+  expect(screen.getByText('Mouse')).toBeTruthy();
+  expect(screen.getByText('Hand')).toBeTruthy();
+  expect(screen.queryByText('Camera off')).toBeNull();
+  act(() => usePreferenceStore.getState().set('performanceSource', 'hand'));
+  expect(screen.getByText('Ready — pinch to grab')).toBeTruthy();
+  expect(screen.getByText('Camera off')).toBeTruthy();
+  expect(container.querySelector('[data-hand-record]')?.textContent).toMatch(/Record/);
+  act(() => useLiveInputStore.setState({ state: 'running', hands: 1, trackedFps: 30, fps: 30 }));
+  expect(screen.getByText('1 hand(s) · 30 fps')).toBeTruthy();
+  act(() => useLiveInputStore.setState({ state: 'failed', message: 'The camera could not be opened: busy' }));
+  expect(screen.getByText('The camera could not be opened: busy')).toBeTruthy();
+  // A pinch-driven target asks for Record first; recording by hand says how to finish.
+  show({ phase: 'armed', target: 'scale' });
+  expect(screen.getByText('Ready — press Record, then open and close your hand')).toBeTruthy();
+  show({ phase: 'recording', target: 'position' });
+  expect(screen.getByText('Open your hand to finish · Esc to cancel')).toBeTruthy();
+  expect(container.querySelector('[data-hand-record]')?.textContent).toMatch(/Stop/);
+});
+
+it('Pose by hand says to tap or make a fist', () => {
+  usePreferenceStore.getState().set('performanceMode', 'pose');
+  usePreferenceStore.getState().set('performanceSource', 'hand');
+  const { container } = render(<PerformanceBar />);
+  show({ phase: 'armed' });
+  expect(screen.getByText('Move your hand, then tap or make a fist')).toBeTruthy();
+  expect(container.querySelector('[data-hand-record]')).toBeNull();
 });
 
 it('Pose: Set Key with its shortcut, the step, and the target as a menu', () => {

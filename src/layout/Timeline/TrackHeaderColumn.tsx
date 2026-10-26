@@ -453,7 +453,7 @@ export const TrackHeader = memo(function TrackHeader({
             title={t('timeline.header.renameHint', '{name} — double-click to rename', { name: shownName })}
             onDoubleClick={startRename}
           >
-            {shownName}
+            <span className={styles.trackNameText}>{shownName}</span>
           </span>
         )}
         {/* Reorder grip: AE has none, so it shows only on the hovered row, at

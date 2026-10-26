@@ -1,0 +1,70 @@
+// Live performance input (docs/PERFORMANCE_ANIMATION_PLAN.md P1): a camera and
+// a hand-landmark model run in a CHILD engine process (`premation-engine
+// --live`), so a model or driver crash stops live input, never the engine. The
+// engine relays what the child tracks as `liveInput` events — editor input,
+// like the pointer: nothing here touches the document or history. A take that
+// keys from it goes through ordinary commands.
+// Command ids: 1948–1949. Query id: 1938. Event id: 2064.
+
+family "LiveInput";
+
+enum LiveInputState { stopped = 0; starting = 1; running = 2; failed = 3; }
+
+struct CameraInfo {
+  /// Stable id to start by (the OS's device path).
+  id: string = 1;
+  name: string = 2;
+}
+struct CameraList { cameras: CameraInfo[] = 1; }
+
+/// One tracked hand in a live frame.
+struct LiveHand {
+  /// The 21 MediaPipe landmarks as x, y, z (63 numbers): x / y normalized to the
+  /// camera frame (0…1, origin top-left, NOT mirrored), z relative to the wrist
+  /// in frame-width units (negative = toward the camera).
+  landmarks: f64[] = 1;
+  /// 0…1, the model's "right hand" on a mirrored (selfie) view: for the camera
+  /// as delivered, > 0.5 is the performer's LEFT hand.
+  handedness: f64 = 2;
+  /// 0…1: confidence there is a hand.
+  presence: f64 = 3;
+  /// Thumb tip to index tip over the palm's size (wrist → middle base): ~0.1 pinched, ≥ 0.5 open.
+  pinch: f64 = 4;
+}
+
+/// The cameras the engine can open for live input. `unsupported` where this platform has no capture yet.
+query listCameras = 1938 {} -> CameraList;
+
+/// Start live hand input. Restarts it when already running (another camera, other models).
+/// `camera`: a CameraInfo id, '' = the first colour camera. `modelDir`: the folder holding
+/// `palm_detection.onnx` and `hand_landmark.onnx`, '' = the installed models
+/// (PREMATION_HAND_USER_DIR, else the bundled PREMATION_HAND_DIR). The answer comes as
+/// `liveInput` events: `starting`, then `running` with hands, or `failed` with the reason.
+command startLiveInput = 1948 [control] {
+  camera: string = 1;
+  modelDir: string = 2;
+  /// Frame width the camera delivers to the tracker (0 = 640).
+  width: u32 = 3;
+  /// Preferred camera rate (0 = 60; the device's highest up to this).
+  fps: f64 = 4;
+  /// Hands to follow, 1–2 (0 = 2).
+  maxHands: u32 = 5;
+}
+/// Stop live input and release the camera. No-op when stopped.
+command stopLiveInput = 1949 [control] {}
+
+/// Live input's state and, while running, every tracked frame (≈ the camera's rate).
+event liveInput = 2064 [ephemeral] {
+  state: LiveInputState = 1;
+  /// `failed`: why, in words for the user (no camera, access denied, model missing…).
+  message: string = 2;
+  camera: string = 3;
+  width: u32 = 4;
+  height: u32 = 5;
+  fps: f64 = 6;
+  /// Tracked-frame counter (gaps = frames the tracker skipped to stay current).
+  seq: u64 = 7;
+  /// Sensor capture → landmarks ready in the child, ms (0 when the driver gives no capture time).
+  latencyMs: f64 = 8;
+  hands: LiveHand[] = 9;
+}

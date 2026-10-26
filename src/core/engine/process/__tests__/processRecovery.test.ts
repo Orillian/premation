@@ -78,6 +78,33 @@ describeNative('C3: the process backend recovers from engine crashes', () => {
     console.log(`[C3] engine killed → restarted, ${notices[0]!.kind === 'restarted' ? `${notices[0]!.replayed} requests replayed in ${notices[0]!.ms} ms` : ''}`);
   }, 60_000);
 
+  it('a failed request before the crash does not shift the ids the replay mints', async () => {
+    native = await startNativeEngine();
+    const notices: ProcessEngineNotice[] = [];
+    client = new ProcessEngineClient(native.bridge, { onNotice: (n) => notices.push(n) });
+    await client.whenReady();
+    const c = client;
+    const { item: comp } = unwrap(await c.execute({ type: 'createComposition', settings: { name: 'Ids', width: 640, height: 360 }, fromItems: [] }));
+    const { layer: a } = unwrap(await c.execute({ type: 'createLayer', comp, kind: 'solid', name: 'A', init: [] }));
+    // Mints a layer id, then fails: rolled back, and never in the command log.
+    const failed = await c.batch('Fails', [
+      { type: 'createLayer', comp, kind: 'solid', name: 'gone', init: [] },
+      { type: 'renameLayer', layer: a, name: '' },
+    ]);
+    expect(failed.ok).toBe(false);
+    const { layer: b } = unwrap(await c.execute({ type: 'createLayer', comp, kind: 'rectangle', name: 'B', init: [] }));
+    unwrap(await c.execute({ type: 'renameLayer', layer: b, name: 'B renamed' }));
+    unwrap(await c.execute({ type: 'deleteLayers', layers: [a] }));
+    const before = await snapshot(c, comp);
+
+    native.kill();
+    await waitFor(() => notices.length > 0);
+    expect(notices[0]).toMatchObject({ kind: 'restarted', mismatches: 0 });
+    const after = await snapshot(c, comp);
+    expect(after).toEqual(before);
+    expect(after.layers.map((l) => l.name)).toEqual(['B renamed']);
+  }, 60_000);
+
   it('three crashes inside the window → unavailable, one notice; retry() brings the document back', async () => {
     native = await startNativeEngine({ backoffMs: [50, 50, 50] });
     const notices: ProcessEngineNotice[] = [];

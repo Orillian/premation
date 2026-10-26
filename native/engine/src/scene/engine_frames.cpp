@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <thread>
 #include <optional>
 #include <set>
@@ -482,6 +483,20 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
         vs.zoom = viewport.zoom;
         vs.centerX = viewport.panX;
         vs.centerY = viewport.panY;
+      }
+      if (viewport.compSpace) {
+        // Comp-space caching (core/frame_scene.hpp comp_space_frame): the same
+        // scale and sub-pixel phase as the slot's camera, over a surface of the
+        // comp's own size — the render thread copies it into the slot at an
+        // integer offset. Nothing in the picture changes; only where it is drawn.
+        const CompSpaceFrame& cs = *viewport.compSpace;
+        vs.dpr = cs.dpr;
+        vs.zoom = cs.zoom;
+        vs.cssWidth = static_cast<double>(cs.width) / cs.dpr;
+        vs.cssHeight = static_cast<double>(cs.height) / cs.dpr;
+        vs.centerX = (vs.cssWidth / 2 - cs.phaseX / cs.dpr) / cs.zoom;
+        vs.centerY = (vs.cssHeight / 2 - cs.phaseY / cs.dpr) / cs.zoom;
+        out->compSpace = cs;
       }
       vs.clear = viewport.ghost ? api::Color{0, 0, 0, 0} : api::Color{0, 0, 0, 1};
       vs.channel = viewport.channel;  // View ▸ Show Channel, on the final blit
@@ -985,21 +1000,31 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     // may have shown a frame-cache copy, or a still was drawn since — and
     // telling would cost a content key on every viewport draw. A pixel read
     // is a click or a hover (the UI throttles it), not a per-frame cost.
-    const api::RenderFrameFile& file = prepare(frame, width, height, true);
+    // A comp-space frame (BuiltFrame::compSpace) is drawn at its own size; the
+    // region, given in slot px, is read through its offset — slot pixels the
+    // comp does not reach are the border (transparent black here).
+    const std::uint32_t drawW = frame.compSpace ? frame.compSpace->width : width;
+    const std::uint32_t drawH = frame.compSpace ? frame.compSpace->height : height;
+    const std::int64_t offX = frame.compSpace ? frame.compSpace->slotX : 0;
+    const std::int64_t offY = frame.compSpace ? frame.compSpace->slotY : 0;
+    const api::RenderFrameFile& file = prepare(frame, drawW, drawH, true);
     rg::FrameStats st;
     if (!renderer_->render(file, nullptr, st, error)) return false;
     rg::TargetPixels scene;
     if (!renderer_->read_target(rg::kSceneColor, scene, error)) return false;
-    if (region.x + region.width > scene.width || region.y + region.height > scene.height) {
+    if (!frame.compSpace && (region.x + region.width > scene.width || region.y + region.height > scene.height)) {
       error = "the scene colour is smaller than the viewport's slot";
       return false;
     }
     out.width = region.width;
     out.height = region.height;
-    out.rgba.resize(std::size_t{region.width} * region.height * 4);
+    out.rgba.assign(std::size_t{region.width} * region.height * 4, 0.0F);
     for (std::uint32_t y = 0; y < region.height; ++y) {
       for (std::uint32_t x = 0; x < region.width; ++x) {
-        const std::size_t src = (std::size_t{region.y + y} * scene.width + region.x + x) * 4;
+        const std::int64_t sx = static_cast<std::int64_t>(region.x) + x - offX;
+        const std::int64_t sy = static_cast<std::int64_t>(region.y) + y - offY;
+        if (sx < 0 || sy < 0 || std::cmp_greater_equal(sx, scene.width) || std::cmp_greater_equal(sy, scene.height)) continue;
+        const std::size_t src = (static_cast<std::size_t>(sy) * scene.width + static_cast<std::size_t>(sx)) * 4;
         const std::size_t dst = (std::size_t{y} * region.width + x) * 4;
         const float a = scene.rgba[src + 3];
         // Premultiplied in the graph; the Info panel and the eyedropper want the colour.

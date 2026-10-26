@@ -182,6 +182,7 @@ class RenderThread final : public FrameSink {
   [[nodiscard]] RenderCounters counters() const override;
   [[nodiscard]] PortCounters port_counters(std::uint32_t viewport) const override;
   void set_filling(bool filling) override { filling_.store(filling, std::memory_order_relaxed); }
+  [[nodiscard]] bool slots_copyable() const override { return slotsCopyable_.load(std::memory_order_relaxed); }
   [[nodiscard]] std::string adapter() const override;
   [[nodiscard]] std::string backend() const override;
   /// D4: the frame cache's counters (zeros when the cache is off).
@@ -227,6 +228,10 @@ class RenderThread final : public FrameSink {
     std::unique_ptr<SlotSet> slots;
     /// The job drawn last, drawn again on a recovered device (and read by readPixels).
     std::optional<RenderJob> lastJob;
+    /// The content key of the frame this viewport shows now (0 = none / unkeyed):
+    /// pinned in every tier while it is shown (ProtectedRange::pinned), so a
+    /// store for another view never evicts it and this view never blinks.
+    std::uint64_t lastKey = 0;
     /// Paused footage drawn from a stand-in: the frames still decoding. The
     /// last job is drawn again once they are (polled every kSettlePoll), so a
     /// seek always ends on its exact frame — AE's "the frame resolves".
@@ -250,6 +255,55 @@ class RenderThread final : public FrameSink {
   void render(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config);
   /// render() without its exception barrier (the body; the slot joins inflight_ last).
   void render_guarded(Port& port, RenderJob& job, std::uint32_t slot, const ViewportConfig& config);
+  /// Idle render-ahead (RenderJob::prefetch): draw the job into a scratch
+  /// target (comp-space or slot-sized), store it in the tiers, announce
+  /// nothing. Exception barrier included. Render thread.
+  void render_prefetch(RenderJob& job);
+  struct InFlight;
+  /// Where a frame's pixels go: the slot, or a comp-space texture (comp_target).
+  struct FrameTarget {
+    const wgpu::Texture* texture = nullptr;
+    const wgpu::TextureView* view = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+  };
+  /// serve_or_draw's answer.
+  struct Served {
+    bool drawn = false;   ///< the target holds the frame (served from a tier or drawn)
+    bool missing = false; ///< a cached job (no build) that no tier holds any more: the session was asked to build it
+    std::optional<std::uint64_t> key;  ///< the frame's content key, when it has one
+    /// The texture holding the frame's pixels: the target, or the VRAM cache's
+    /// own texture when a hit was not copied (`copyHit` false) — valid until the next store.
+    const wgpu::Texture* source = nullptr;
+  };
+  /// The cache tiers around one frame: served from VRAM / RAM / disk when a
+  /// tier holds its content key, else drawn by the drawer into `target` and
+  /// stored. `copyHit` false leaves a VRAM hit in the cache's texture (the
+  /// caller copies a region of it). Fills `f` (draw time, disk read-back,
+  /// VRAM key). Render thread.
+  Served serve_or_draw(RenderJob& job, const FrameTarget& target, bool copyable, bool copyHit, InFlight& f);
+  /// Comp-space present: the slot cleared to the frame's border colour where
+  /// the comp does not reach, and the comp-space texture copied in at its
+  /// integer offset (no resampling). Render thread.
+  void present_comp_space(const CompSpaceFrame& cs, const wgpu::Texture& source, const wgpu::Texture& slot,
+                          const wgpu::TextureView& slotView, std::uint32_t width, std::uint32_t height);
+  /// A reusable comp-space render target of this size (a few sizes kept: one per open view's scale).
+  struct CompTarget {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    wgpu::Texture texture;
+    wgpu::TextureView view;
+    std::uint64_t lastUse = 0;
+  };
+  [[nodiscard]] FrameTarget comp_target(std::uint32_t width, std::uint32_t height);
+  std::vector<CompTarget> compTargets_;  // render thread only
+  std::uint64_t compTargetUse_ = 0;
+  static constexpr std::size_t kCompTargetsKept = 4;
+  /// Render thread only: every open viewport's current frame key (Port::lastKey)
+  /// re-pinned in the RAM and VRAM tiers' protection (ProtectedRange::pinned).
+  void apply_pins();
+  /// A viewport's current frame changed to `key`: pin it (and unpin the one before).
+  void note_view_key(Port& port, std::uint64_t key);
   /// P5: a frame submitted to the GPU, announced (FrameReady) once its work is
   /// done — the render thread does not wait for it, so the next frame's CPU
   /// work (rasters, encoding) overlaps this frame's GPU work.
@@ -272,6 +326,8 @@ class RenderThread final : public FrameSink {
     double buildMs = 0;
     /// Drawn while playing with footage from a nearest decoded frame (RenderCounters::inexact).
     bool inexact = false;
+    /// Drawn with any stand-in, playing or not (RenderCounters::standIn).
+    bool standIn = false;
     /// Served from a cache tier (VRAM, RAM, disk) instead of drawn.
     bool cached = false;
     /// The frame's VRAM cache key when it was stored there: its draw time is filled in once known.
@@ -279,6 +335,11 @@ class RenderThread final : public FrameSink {
     /// An exact frame kept in VRAM with no read-back queued: its keys, so it
     /// can still go to disk once its own draw time says it is worth it.
     std::optional<std::pair<std::uint64_t, std::uint64_t>> lateDisk;  // {VRAM key, disk key}
+    /// The frame's own pixel size (the comp-space texture's, or the slot's): what the tiers hold.
+    std::uint32_t frameWidth = 0;
+    std::uint32_t frameHeight = 0;
+    /// RenderJob::prefetch: no slot, no FrameReady; counted in RenderCounters::prefetched when done.
+    bool prefetch = false;
   };
   /// A frame on its way to the disk cache from its VRAM copy (queue_late_spill).
   struct Spill {
@@ -314,6 +375,10 @@ class RenderThread final : public FrameSink {
   /// Every viewport by id (m_ for the map; see Port for its fields).
   std::map<std::uint32_t, std::unique_ptr<Port>> ports_;
   std::uint32_t lastServed_ = 0;  // m_: the viewport rendered last (fair turns between viewports)
+  /// m_: the idle render-ahead job waiting its turn (one at a time; a newer one replaces it).
+  std::optional<RenderJob> prefetch_;
+  /// Every open viewport's slots take copies (FrameSink::slots_copyable); recomputed by rebuild.
+  std::atomic<bool> slotsCopyable_{true};
   /// Query work for the render thread (render_still, read_pixels), run
   /// between frames in arrival order; drained (answered) on stop.
   std::deque<std::function<void()>> tasks_;

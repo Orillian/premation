@@ -8,6 +8,9 @@ import {
   smoothTrackTangents,
   clearTrackTangents,
   EASY_EASE_BEZIER,
+  arcLengthTable,
+  arcParam,
+  sampleSpatialMember,
 } from './interpolate';
 import type { PropertyTrack, Keyframe } from './types';
 
@@ -201,6 +204,108 @@ describe('spatial bezier tangents (curved motion paths)', () => {
     expect(sampleTrack(tAuto, 0.25)).toBeCloseTo(25, 6);
     // Continuous Bezier keeps its own handles (here the default ease-in-out).
     expect(sampleTrack(tCont, 0.25)).toBeLessThan(25);
+  });
+});
+
+describe('spatial arc length — After Effects constant speed along the path', () => {
+  // (0, 0) → (100, 0): the out tangent dives +100 in y, the in tangent is folded
+  // onto the end key. Controls x: 0, 0, 100, 100; y: 0, 100, 0, 0 — a lopsided
+  // arc whose first half is mostly the dive.
+  const X: [number, number, number, number] = [0, 0, 100, 100];
+  const Y: [number, number, number, number] = [0, 100, 0, 0];
+  const xTrack = (easing?: Keyframe['easing']): PropertyTrack =>
+    ({ nodeId: 'n', prop: 'x', keyframes: [{ t: 0, value: 0, so: 0, easing }, { t: 1, value: 100, si: 0 }] });
+  const yTrack = (easing?: Keyframe['easing']): PropertyTrack =>
+    ({ nodeId: 'n', prop: 'y', keyframes: [{ t: 0, value: 0, so: 100, easing }, { t: 1, value: 0, si: 0 }] });
+
+  /** The point at `fraction` of the ARC LENGTH, by a fine chord sum. */
+  const arcPoint = (fraction: number) => {
+    const N = 1 << 16;
+    const cum = [0];
+    let px = 0;
+    let py = 0;
+    for (let i = 1; i <= N; i++) {
+      const u = i / N;
+      const vx = cubicValueAt(X[0], X[1], X[2], X[3], u);
+      const vy = cubicValueAt(Y[0], Y[1], Y[2], Y[3], u);
+      cum.push(cum[i - 1]! + Math.hypot(vx - px, vy - py));
+      px = vx;
+      py = vy;
+    }
+    const target = cum[N]! * fraction;
+    let lo = 0;
+    for (let i = 0; i < N; i++) if (cum[i]! <= target) lo = i;
+    const u = (lo + (target - cum[lo]!) / (cum[lo + 1]! - cum[lo]!)) / N;
+    return { x: cubicValueAt(X[0], X[1], X[2], X[3], u), y: cubicValueAt(Y[0], Y[1], Y[2], Y[3], u) };
+  };
+
+  it('arcLengthTable is non-decreasing and ends at the path length; arcParam inverts it', () => {
+    const cum = arcLengthTable([X, Y]);
+    expect(cum.length).toBe(65);
+    for (let i = 1; i < cum.length; i++) expect(cum[i]!).toBeGreaterThanOrEqual(cum[i - 1]!);
+    expect(cum[64]!).toBeCloseTo(145.84, 1);
+    expect(arcParam([X, Y], cum, 0)).toBe(0);
+    expect(arcParam([X, Y], cum, 1)).toBe(1);
+    // A straight line's parameter IS its arc fraction.
+    const lineCtrl: [number, number, number, number][] = [[0, 100 / 3, 200 / 3, 100]];
+    expect(arcParam(lineCtrl, arcLengthTable(lineCtrl), 0.3)).toBeCloseTo(0.3, 9);
+    // A zero-length curve answers the fraction itself.
+    const dot: [number, number, number, number][] = [[5, 5, 5, 5]];
+    expect(arcParam(dot, arcLengthTable(dot), 0.7)).toBe(0.7);
+  });
+
+  it('a straight path with a zero / folded handle is still traversed exactly (the graph-editor parity case)', () => {
+    // Key A stored as `bezier` with a ZERO out tangent on y (the API's
+    // spatialOut [0, 0] in this dimension) and no in tangent; key B is a
+    // `linear` corner. x is constant, y goes 0 → 50: the path is a straight
+    // line whatever the handle does to its parametrisation, so the midpoint is
+    // exactly 25 — the engine's answer. Interpolating u linearly inside a
+    // chord gave 24.9996 here.
+    const x: PropertyTrack = { nodeId: 'n', prop: 'x', keyframes: [{ t: 0, value: 100, spatialInterp: 'bezier', so: 0 }, { t: 1, value: 100, spatialInterp: 'linear' }] };
+    const y: PropertyTrack = { nodeId: 'n', prop: 'y', keyframes: [{ t: 0, value: 0, spatialInterp: 'bezier', so: 0 }, { t: 1, value: 50, spatialInterp: 'linear' }] };
+    expect(sampleSpatialMember([x, y], 1, 0.5)!).toBeCloseTo(25, 9);
+    expect(sampleSpatialMember([x, y], 1, 0.25)!).toBeCloseTo(12.5, 9);
+    expect(sampleSpatialMember([x, y], 0, 0.5)!).toBeCloseTo(100, 9);
+    // The same keys without the stored zero: the straight short-cut, the same number.
+    const y2: PropertyTrack = { nodeId: 'n', prop: 'y', keyframes: [{ t: 0, value: 0, spatialInterp: 'bezier' }, { t: 1, value: 50, spatialInterp: 'linear' }] };
+    expect(sampleSpatialMember([x, y2], 1, 0.5)!).toBe(25);
+  });
+
+  it('at t = 0.5 the axis is at HALF THE ARC, not at bezier u = 0.5', () => {
+    const tracks = [xTrack(), yTrack()];
+    const want = arcPoint(0.5);
+    const x = sampleSpatialMember(tracks, 0, 0.5)!;
+    const y = sampleSpatialMember(tracks, 1, 0.5)!;
+    expect(x).toBeCloseTo(want.x, 1);
+    expect(y).toBeCloseTo(want.y, 1);
+    // Bezier u = 0.5 is (50, 37.5) — what per-axis sampleTrack still answers.
+    expect(Math.abs(x - 50)).toBeGreaterThan(5);
+    expect(sampleTrack(tracks[0]!, 0.5)).toBeCloseTo(50, 6);
+  });
+
+  it('the temporal ease remaps the ARC fraction', () => {
+    // One speed graph for the whole property (AE): the same ease on every axis.
+    const tracks = [xTrack('easeIn'), yTrack('easeIn')];
+    // easeIn(0.5) = 0.25 → the point a quarter of the way along the arc.
+    const want = arcPoint(0.25);
+    expect(sampleSpatialMember(tracks, 0, 0.5)!).toBeCloseTo(want.x, 1);
+    expect(sampleSpatialMember(tracks, 1, 0.5)!).toBeCloseTo(want.y, 1);
+  });
+
+  it('endpoints, straight segments and axes keyed apart sample as sampleTrack does', () => {
+    const tracks = [xTrack(), yTrack()];
+    expect(sampleSpatialMember(tracks, 0, 0)).toBe(0);
+    expect(sampleSpatialMember(tracks, 0, 1)).toBe(100);
+    expect(sampleSpatialMember(tracks, 2, 0.5)).toBeUndefined();
+    const straight = [
+      { nodeId: 'n', prop: 'x', keyframes: [{ t: 0, value: 0 }, { t: 1, value: 100 }] },
+      { nodeId: 'n', prop: 'y', keyframes: [{ t: 0, value: 0 }, { t: 1, value: 40 }] },
+    ];
+    expect(sampleSpatialMember(straight, 0, 0.5)).toBeCloseTo(50, 9);
+    expect(sampleSpatialMember(straight, 1, 0.5)).toBeCloseTo(20, 9);
+    // y has a key inside x's segment: no shared curve, x alone.
+    const apart = [xTrack(), { nodeId: 'n', prop: 'y', keyframes: [{ t: 0, value: 0 }, { t: 0.5, value: 50 }, { t: 1, value: 0 }] }];
+    expect(sampleSpatialMember(apart, 0, 0.25)).toBe(sampleTrack(apart[0]!, 0.25));
   });
 });
 

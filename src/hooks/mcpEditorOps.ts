@@ -19,6 +19,8 @@ import { documentMirror } from '@stores/documentMirror';
 import { useProjectStore } from '@stores/projectStore';
 import { cloudProjectsEnabled } from '@core/config/edition';
 import { createCompositionEdit } from '@layout/Composition/compositionEdits';
+import { deleteCompositionsEdit } from '@layout/Scene/sceneEdits';
+import { layersUsingItem } from '@core/mirror/docFacts';
 import { importPathsEdit } from '@layout/Assets/assetEdits';
 import { insertMediaEdit } from '@layout/Workspace/footageEdits';
 import { activeCompIdNow } from './useMirror';
@@ -76,6 +78,25 @@ export const mcpEditorOps: McpEditorOps = {
     const name = compRecordFromSettings(compId, c.settings).name;
     useProjectStore.getState().actions.openTab(compId, [compId], name);
     return { ok: true, name };
+  },
+
+  async deleteCompositions(compIds) {
+    const m = documentMirror();
+    const missing = compIds.filter((id) => !m.comp(id));
+    if (missing.length) {
+      return { error: `No composition ${missing.map((id) => `'${id}'`).join(', ')}. The project has: ${m.compIds.join(', ') || 'none'} (list_compositions).` };
+    }
+    const names = compIds.map((id) => compRecordFromSettings(id, m.comp(id)!.settings).name);
+    // Precomp layers showing a deleted composition, outside the ones deleted (those go with their comp).
+    const gone = new Set(compIds);
+    const layers = new Set(compIds.flatMap((id) => layersUsingItem(id)).filter((l) => !gone.has(m.layer(l)?.comp ?? '')));
+    try {
+      return (await deleteCompositionsEdit(compIds))
+        ? { ok: true, names, layersRemoved: layers.size }
+        : { error: 'Premation refused to delete those compositions (a group opened in a tab is a layer, not a composition).' };
+    } catch (err) {
+      return { error: `Could not delete: ${errText(err)}` };
+    }
   },
 
   async save() {

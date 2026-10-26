@@ -133,7 +133,14 @@ describe('disk cache', () => {
       const write = await fillOnce(project, folder, false, true);
       const hit = await fillOnce(project, folder, false, true);
       console.log('[disk] ' + JSON.stringify({ off, auto, off2, write, hit }));
-      expect(auto.files).toBeLessThanOrEqual(2);  // a warm-up frame (pipeline compiles) may genuinely draw slow
+      // Auto mode's policy since 98f33183 (2026-10-25, RenderThread::worth_disk):
+      // a cache FILL (the cacheFirst play above) stores EVERY frame it draws —
+      // a cheap frame RAM refused would otherwise sit in no tier and the range
+      // the user just cached would play with a hole. Outside a fill only a
+      // frame whose draw costs half again its read-back is written. So the
+      // fill's file count is the range (a frame or two may still be in the
+      // writer when the process goes), and the writes must not slow the fill.
+      expect(auto.files).toBeGreaterThanOrEqual(Math.max(1, auto.frames - 2));
       expect(auto.p50).toBeLessThanOrEqual(Math.max(off.p50, off2.p50) * 1.25 + 0.5);
       expect(hit.frames).toBeGreaterThanOrEqual(30);
     } finally {

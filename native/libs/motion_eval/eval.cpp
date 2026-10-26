@@ -103,6 +103,88 @@ double cubic_value_at(double v0, double v1, double v2, double v3, double u) noex
   return m * m * m * v0 + 3.0 * m * m * s * v1 + 3.0 * m * s * s * v2 + s * s * s * v3;
 }
 
+// ── Spatial arc length ──────────────────────────────────────────────────────
+
+namespace {
+
+/// One axis's cubic at u (the controls as a span: the array index is a loop variable).
+[[nodiscard]] double axis_at(std::span<const double, 4> c, double u) noexcept {
+  return cubic_value_at(c[0], c[1], c[2], c[3], u);
+}
+
+}  // namespace
+
+void arc_table(const SpatialSegment& seg, ArcTable& out) noexcept {
+  const std::size_t axes = seg.axes < kSpatialAxes ? seg.axes : kSpatialAxes;
+  const std::span<const std::array<double, 4>> ctrl(seg.ctrl);
+  const std::span<double> cum(out.cum);
+  std::array<double, kSpatialAxes> prevStore{};
+  const std::span<double> prev(prevStore);
+  for (std::size_t k = 0; k < axes; ++k) prev[k] = axis_at(ctrl[k], 0.0);
+  cum[0] = 0.0;
+  for (std::size_t i = 1; i <= kArcSamples; ++i) {
+    const double u = static_cast<double>(i) / static_cast<double>(kArcSamples);
+    double d2 = 0.0;
+    for (std::size_t k = 0; k < axes; ++k) {
+      const double v = axis_at(ctrl[k], u);
+      const double dv = v - prev[k];
+      d2 += dv * dv;
+      prev[k] = v;
+    }
+    cum[i] = cum[i - 1] + std::sqrt(d2);
+  }
+}
+
+double arc_param(const SpatialSegment& seg, const ArcTable& table, double fraction) noexcept {
+  const double f = clamp01(fraction);
+  const std::span<const double> cum(table.cum);
+  const double total = cum[kArcSamples];
+  if (!(total > 0.0)) return f;
+  const double target = f * total;
+  // Largest i < kArcSamples with cum[i] <= target (cum is non-decreasing).
+  std::size_t lo = 0;
+  std::size_t hi = kArcSamples;
+  while (hi - lo > 1) {
+    const std::size_t mid = lo + (hi - lo) / 2;
+    if (cum[mid] <= target) lo = mid;
+    else hi = mid;
+  }
+  const double span = cum[lo + 1] - cum[lo];
+  const double u0 = static_cast<double>(lo) / static_cast<double>(kArcSamples);
+  const double u1 = static_cast<double>(lo + 1) / static_cast<double>(kArcSamples);
+  if (!(span > 0.0)) return u0;
+  const double need = target - cum[lo];
+  if (!(need > 0.0)) return u0;  // on the chord's start exactly
+  if (!(need < span)) return u1;
+  // Inside the chord the parameter is NOT linear in distance (a straight path
+  // with a folded handle runs its cubic parametrisation; interpolating u
+  // linearly answered 24.9996 for an exact 25). Bisect on the distance from
+  // the chord's start along the curve itself: exact for a straight path
+  // whatever its parametrisation, and the true cubic (not the chord) inside
+  // the bin for a curved one. Fixed count — deterministic.
+  const std::size_t axes = seg.axes < kSpatialAxes ? seg.axes : kSpatialAxes;
+  const std::span<const std::array<double, 4>> ctrl(seg.ctrl);
+  std::array<double, kSpatialAxes> p0Store{};
+  const std::span<double> p0(p0Store);
+  for (std::size_t k = 0; k < axes; ++k) p0[k] = axis_at(ctrl[k], u0);
+  const auto dist = [&](double u) noexcept {
+    double d2 = 0.0;
+    for (std::size_t k = 0; k < axes; ++k) {
+      const double dv = axis_at(ctrl[k], u) - p0[k];
+      d2 += dv * dv;
+    }
+    return std::sqrt(d2);
+  };
+  double a = u0;
+  double b = u1;
+  for (int i = 0; i < 40; ++i) {
+    const double mid = 0.5 * (a + b);
+    if (dist(mid) < need) a = mid;
+    else b = mid;
+  }
+  return clamp01(0.5 * (a + b));
+}
+
 std::string_view validate_keyframe(const Keyframe& k) noexcept {
   if (std::isnan(k.t)) return "keyframe time is NaN";
   if (std::isnan(k.value)) return "keyframe value is NaN";

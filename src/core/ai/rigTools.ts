@@ -126,11 +126,13 @@ export function poleFor(root: Pt, mid: Pt, tip: Pt, awayX: number): Pt {
  *
  * No pole is stored: without one the engine's two-bone solve keeps the side
  * the chain already bends to (rig_mesh.cpp `apply_ik`), which is exactly what
- * joints read off the picture say. Its pole branch measures the side with the
- * opposite sign — a pole on the left bends the joint RIGHT, against the
- * IKTarget doc — so relying on it would mirror every elbow and knee. A
- * straight chain has no side for the solver to keep: it gets one, by 1.5% of
- * its reach toward `poleFor`'s side.
+ * joints read off the picture say — a stored pole would be a second opinion
+ * on a side the picture already gives (and, animated, something else to
+ * keep in step). A straight chain has no side for the solver to keep: it
+ * gets one, by 1.5% of its reach toward `poleFor`'s side. (The solver's pole
+ * branch once measured the side with the opposite sign and bent every joint
+ * away from its pole; fixed 2026-10-26, so create_skeleton_rig's `pole` is
+ * trustworthy again.)
  */
 export function bentJoint(root: Pt, mid: Pt, tip: Pt, awayX: number): Pt {
   const reach = Math.hypot(tip.x - root.x, tip.y - root.y) || 1;

@@ -1564,9 +1564,16 @@ std::vector<Bone> apply_ik(const std::vector<Bone>& bones, const std::vector<IkT
       const V2 j2 = joints[2];
       bool bendPositive = false;
       if (const V2* pole = t.pole_point()) {
+        // The elbow lands on the pole's side of the root→target line.
+        // solve_two_bone's bendPositive puts the middle joint where
+        // cross(j1 − j0, target − j0) ≥ 0 (the no-pole branch below keeps the
+        // current bend by the same product), so the pole is measured with the
+        // SAME orientation: cross(pole − j0, target − j0). The former
+        // `ax·(pole.y − j0.y) − ay·(pole.x − j0.x)` was that cross negated, and
+        // bent every joint AWAY from its pole (rigTools.ts worked around it).
         const double ax = target.x - j0.x;
         const double ay = target.y - j0.y;
-        bendPositive = ax * (pole->y - j0.y) - ay * (pole->x - j0.x) >= 0;
+        bendPositive = (pole->x - j0.x) * ay - (pole->y - j0.y) * ax >= 0;
       } else {
         bendPositive = (j1.x - j0.x) * (j2.y - j1.y) - (j1.y - j0.y) * (j2.x - j1.x) >= 0;
       }

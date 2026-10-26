@@ -567,6 +567,14 @@ export interface MotionEditorApi {
     cancelDownload(requestId: string): Promise<boolean>;
     onDownloadProgress(handler: (event: unknown) => void): () => void;
   };
+  /** Live performance input's hand models in <userData>/models/hand-landmarks (electron/handModel.ts): pinned download. */
+  handModel?: {
+    status(): Promise<{ urls: string[]; bytes: number; installedAt: number } | null>;
+    install(request: { requestId: string }): Promise<{ ok: true; model: { urls: string[]; bytes: number; installedAt: number } } | { ok: false; message: string }>;
+    remove(): Promise<boolean>;
+    cancelDownload(requestId: string): Promise<boolean>;
+    onDownloadProgress(handler: (event: unknown) => void): () => void;
+  };
   /** Export's ffmpeg: health check, one-click repair, "choose file" (electron/ffmpegService.ts). */
   ffmpeg?: {
     status(force?: boolean): Promise<FfmpegStatus>;

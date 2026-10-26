@@ -40,6 +40,7 @@
 #include "plugins/contrib.hpp"  // P7b: importers_off, for a child job's plugin set
 #include "jobs/job_kinds.hpp"
 #include "jobs/media_input.hpp"
+#include "live/live_host.hpp"
 #endif
 
 namespace premation {
@@ -449,6 +450,8 @@ int run_engine(const EngineOptions& options) {
   // importBytes caches bytes as files where main says (PREMATION_SESSION_FOOTAGE,
   // <userData>/session-footage): the engine's document never holds a blob: URL.
   sessionOptions.footageDir = os::env_var("PREMATION_SESSION_FOOTAGE").value_or("");
+  // Idle render-ahead (Session::idle_prefetch) is on unless PREMATION_IDLE_PREFETCH=0.
+  sessionOptions.idlePrefetch = os::env_var("PREMATION_IDLE_PREFETCH").value_or("1") != "0";
   sessionOptions.testPorts = options.testPorts;
   sessionOptions.testPortsDir = options.testPortsDir;
   CoreWatchdog watchdog(pings, sendFrames);
@@ -466,9 +469,17 @@ int run_engine(const EngineOptions& options) {
   // mesh falls back to its box grid.
   scene::DocRigQueries headlessRig;
 #endif
+#if defined(PREMATION_HAVE_JOBS)
+  // Live performance input (live/live_host.hpp): its child process is started
+  // from this executable. Declared before the session, so it outlives it.
+  const std::unique_ptr<LivePort> liveInput = live::make_live_host(os::executable_path());
+#endif
   Session session(outbox, *sink, sessionOptions);
 #if defined(PREMATION_ENGINE_HEADLESS)
   session.set_rig_queries(&headlessRig);
+#endif
+#if defined(PREMATION_HAVE_JOBS)
+  session.set_live_input(liveInput.get());
 #endif
 #if defined(PREMATION_HAVE_SCENE)
   session.set_frame_builder(frameBuilder.get());
@@ -547,7 +558,10 @@ int run_engine(const EngineOptions& options) {
     watchdog.begin(session.playing() ? "tick (playing)" : "tick", session.revision(), session.playing());
     session.tick(now);
     watchdog.end();
-    os::high_resolution_timer(session.playing());
+    // The 1 ms scheduler timer while frames must flow steadily: playback, and
+    // an open UI gesture (a drag renders a frame per pointer step — without
+    // this it is quantised to Windows' 15.6 ms tick, ~45 fps and uneven).
+    os::high_resolution_timer(session.playing() || session.gesture_open());
   }
   os::high_resolution_timer(false);
   PREMATION_LOG(info, "shutdown").kv("exitCode", exitCode).kv("revision", session.revision());
@@ -579,6 +593,8 @@ class ChildPluginHost final : public jobs::ChildPluginScope {
 };
 
 }  // namespace
+
+int run_live_child(const std::string& settingsFile) { return live::live_main(settingsFile); }
 
 int run_job_child(const std::string& jobFile) {
   // As the export process starts its host (export_job.cpp): the engine's folders, disabled set,

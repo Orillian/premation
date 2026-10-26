@@ -149,6 +149,10 @@ describe('approvals and project operations', () => {
         listCompositions: async () => ({ active: 'c1', compositions: [{ id: 'c1' }] }),
         createComposition: async (o: { name: string }) => { calls.push(`create:${o.name}`); return { id: 'c2' }; },
         setActiveComposition: async (id: string) => (id === 'c1' ? { ok: true as const, name: 'Main' } : { error: 'No composition' }),
+        deleteCompositions: async (ids: readonly string[]) => {
+          calls.push(`delete:${ids.join(',')}`);
+          return ids.includes('zz') ? { error: "No composition 'zz'." } : { ok: true as const, names: ids.map((i) => `Comp ${i}`), layersRemoved: 1 };
+        },
         save: async () => ({ ok: true as const, message: 'Saved.' }),
         importMedia: async (paths: readonly string[]) => { calls.push(`import:${paths.join(',')}`); return { ok: true as const, message: 'Imported 1' }; },
         addSfx: async (id: string) => { calls.push(`sfx:${id}`); return { id: 'layer_9' }; },
@@ -204,5 +208,16 @@ describe('approvals and project operations', () => {
     expect(textOf(await call('create_composition', { name: 'Vertical', width: 1080, height: 1920 }))).toMatch(/Created composition "Vertical" \(id c2\)/);
     expect(textOf(await call('set_active_composition', { compId: 'c1' }))).toMatch(/"Main" is now the active/);
     expect((await call('set_active_composition', { compId: 'zz' })).isError).toBe(true);
+  });
+
+  it('deletes compositions through the editor operations, as one call, and says what went', async () => {
+    const ed = editor();
+    const { call } = setup({ editor: ed.ops });
+    expect(textOf(await call('delete_composition', { compIds: ['c2', 'c3', 'c2'] }))).toBe(
+      'Deleted "Comp c2", "Comp c3" and 1 precomp layer showing them. One undo step brings them back.',
+    );
+    expect(ed.calls).toEqual(['delete:c2,c3']);
+    expect((await call('delete_composition', { compIds: ['zz'] })).isError).toBe(true);
+    expect((await call('delete_composition', { compIds: [] })).isError).toBe(true);
   });
 });

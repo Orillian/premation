@@ -936,6 +936,15 @@ enum class RenderRasterKind : std::uint32_t {
 [[nodiscard]] std::string_view to_string(RenderRasterKind v) noexcept;
 [[nodiscard]] bool from_u32(std::uint32_t n, RenderRasterKind& out) noexcept;
 
+enum class LiveInputState : std::uint32_t {
+  stopped = 0,
+  starting = 1,
+  running = 2,
+  failed = 3,
+};
+[[nodiscard]] std::string_view to_string(LiveInputState v) noexcept;
+[[nodiscard]] bool from_u32(std::uint32_t n, LiveInputState& out) noexcept;
+
 struct Empty;
 struct Vec2;
 struct Vec3;
@@ -1122,6 +1131,10 @@ struct SetPaintPathAnimated;
 struct PathTopologyOp;
 struct EditPathTopology;
 struct SetShapeOutline;
+struct PerformanceFit;
+struct PerformanceTake;
+struct SetPerformanceTake;
+struct ClearPerformanceTakes;
 struct MarkerOwner;
 struct MarkerInsert;
 struct AddMarkers;
@@ -1197,7 +1210,10 @@ struct SetPluginEnabled;
 struct RescanPlugins;
 struct SetPluginData;
 struct RunPluginCommand;
+struct StartLiveInput;
+struct StopLiveInput;
 struct Command;
+struct GetPerformanceTakes;
 struct GetLayerTrackers;
 struct GetCameraSolve;
 struct ListPluginCommands;
@@ -1255,6 +1271,7 @@ struct GetJobs;
 struct GetRenderQueue;
 struct GetCommandLog;
 struct GetCacheCoverage;
+struct ListCameras;
 struct Query;
 struct CommandBatch;
 struct RequestBody;
@@ -1294,6 +1311,7 @@ struct PluginInfo;
 struct PluginList;
 struct PluginCommandResult;
 struct CommandResult;
+struct PerformanceTakes;
 struct LayerTrackers;
 struct CameraSolveAnswer;
 struct PluginCommandList;
@@ -1393,6 +1411,8 @@ struct LogRecord;
 struct CommandLog;
 struct CacheRange;
 struct CacheCoverage;
+struct CameraInfo;
+struct CameraList;
 struct QueryResult;
 struct BatchResult;
 struct EngineError;
@@ -1431,6 +1451,8 @@ struct ProjectSavedEvent;
 struct AssetStatusChangedEvent;
 struct FontsChangedEvent;
 struct AutosavedEvent;
+struct LiveHand;
+struct LiveInputEvent;
 struct Event;
 struct EventBatch;
 struct Goodbye;
@@ -2859,6 +2881,40 @@ struct SetShapeOutline {
   bool operator==(const SetShapeOutline&) const = default;
 };
 
+struct PerformanceFit {
+  std::string reduction;
+  double detail = 0.0;
+  double capture_speed_pct = 0.0;
+  bool whole_frames = false;
+  double hold_seconds = 0.0;
+  double frame_duration = 0.0;
+  bool spatial = false;
+  bool operator==(const PerformanceFit&) const = default;
+};
+
+struct PerformanceTake {
+  LayerId layer;
+  PropPath path;
+  std::string source;
+  std::uint32_t dims = 0;
+  std::vector<double> times;
+  std::vector<double> values;
+  PerformanceFit fit;
+  TimeRange span;
+  bool operator==(const PerformanceTake&) const = default;
+};
+
+struct SetPerformanceTake {
+  PerformanceTake take;
+  bool operator==(const SetPerformanceTake&) const = default;
+};
+
+struct ClearPerformanceTakes {
+  LayerId layer;
+  std::vector<PropPath> paths;
+  bool operator==(const ClearPerformanceTakes&) const = default;
+};
+
 struct MarkerOwner {
   ItemId comp;
   std::optional<LayerId> layer;
@@ -3526,6 +3582,19 @@ struct RunPluginCommand {
   bool operator==(const RunPluginCommand&) const = default;
 };
 
+struct StartLiveInput {
+  std::string camera;
+  std::string model_dir;
+  std::uint32_t width = 0;
+  double fps = 0.0;
+  std::uint32_t max_hands = 0;
+  bool operator==(const StartLiveInput&) const = default;
+};
+
+struct StopLiveInput {
+  bool operator==(const StopLiveInput&) const = default;
+};
+
 struct Command {
   enum class Kind : std::uint32_t {
     undo = 1,
@@ -3665,6 +3734,8 @@ struct Command {
     set_paint_path_animated = 620,
     edit_path_topology = 630,
     set_shape_outline = 631,
+    set_performance_take = 1950,
+    clear_performance_takes = 1951,
     add_markers = 700,
     update_markers = 701,
     delete_markers = 702,
@@ -3698,8 +3769,10 @@ struct Command {
     rescan_plugins = 872,
     set_plugin_data = 871,
     run_plugin_command = 873,
+    start_live_input = 1948,
+    stop_live_input = 1949,
   };
-  std::variant<Undo, Redo, JumpToHistory, BeginGesture, EndGesture, ClearHistory, SetHistoryLimit, AddHistoryCheckpoint, RestoreDocument, NewProject, OpenProject, SaveProject, ImportProject, SetProjectSettings, RevertProject, CollectFiles, SetAutosave, SetGuides, SetSwatches, SetMaterials, SetMotionBlur, SetColorManagement, ImportFiles, ImportBytes, RelinkItem, ReloadItems, RemoveItems, RenameItem, CreateFolder, MoveItems, SetInterpretation, SetItemLabel, RemoveUnusedItems, SetProxy, SetItemComment, SetItemTags, CreateComposition, DuplicateComposition, SetCompositionSettings, SetWorkArea, ClearWorkArea, Precompose, TrimCompToWorkArea, CropComposition, AssembleComposition, MigrateLegacyPrecomps, SetEssentialProp, AddRenderItems, SetRenderItem, RemoveRenderItems, ReorderRenderItems, CreateLayer, DeleteLayers, DuplicateLayers, ReorderLayers, SetParent, RenameLayer, SetLayerSwitches, SetBlendMode, SetTrackMatte, ReplaceLayerSource, GroupLayers, UngroupLayer, ConvertLayer, PasteLayers, SeparateLayer, AutoTrace, SetLayerComment, SetPinnedProperties, PoseIk3D, BakeIk3D, CreateLiveMerge, SetLayerTiming, MoveLayersInTime, TrimLayers, SlipLayers, SlideLayer, RollEdit, SplitLayers, RippleDeleteLayers, EditWorkArea, InsertGap, TimeReverseLayers, SetTimeRemap, FreezeFrame, SetRetime, SequenceLayers, TimeStretchLayers, UnfreezeLayers, RippleDeleteRange, LiftRange, ShiftLayerKeyframes, AddTransition, SetTransition, RemoveTransitions, SetProperty, SetProperties, ResetProperty, SetAnimated, SetDimensionsSeparated, SetExpression, SetExpressionEnabled, ConvertExpressionToKeyframes, LinkProperty, AddKeyframes, DeleteKeyframes, MoveKeyframes, UpdateKeyframes, ScaleKeyframes, ReverseKeyframes, PasteKeyframes, SetKeyframes, SetMemberKeyframes, AddEffect, AddMask, AddPropertyGroup, RemovePropertyGroups, MovePropertyGroup, DuplicatePropertyGroups, SetGroupEnabled, RenamePropertyGroup, CopyPropertyGroups, ApplyPreset, InvokeEffectAction, DragEffectOverlay, AddProperties, RemoveProperties, PasteEffects, RemoveStroke, AddPaintStroke, UpdatePaintStroke, RemovePaintStrokes, SetPaintOnTransparent, SetPaintStrokePath, SetPaintPathAnimated, EditPathTopology, SetShapeOutline, AddMarkers, UpdateMarkers, DeleteMarkers, MoveMarkers, Play, Pause, Seek, Step, SetLoop, SetPreviewQuality, SetAudioPreview, SetActiveComposition, SetViewport, CloseViewport, SetCacheBudget, PurgeCache, SetInteracting, SetViewportHiddenLayers, SetViewportFocus, SetViewerLut, SetOverlayGeometry, SetLayerTrackers, SetCameraSolve, SetLayerMatte, StartJob, CancelJob, ApplyJobResult, SetContentAwareFill, SetCaptions, SetPluginEnabled, RescanPlugins, SetPluginData, RunPluginCommand> v;
+  std::variant<Undo, Redo, JumpToHistory, BeginGesture, EndGesture, ClearHistory, SetHistoryLimit, AddHistoryCheckpoint, RestoreDocument, NewProject, OpenProject, SaveProject, ImportProject, SetProjectSettings, RevertProject, CollectFiles, SetAutosave, SetGuides, SetSwatches, SetMaterials, SetMotionBlur, SetColorManagement, ImportFiles, ImportBytes, RelinkItem, ReloadItems, RemoveItems, RenameItem, CreateFolder, MoveItems, SetInterpretation, SetItemLabel, RemoveUnusedItems, SetProxy, SetItemComment, SetItemTags, CreateComposition, DuplicateComposition, SetCompositionSettings, SetWorkArea, ClearWorkArea, Precompose, TrimCompToWorkArea, CropComposition, AssembleComposition, MigrateLegacyPrecomps, SetEssentialProp, AddRenderItems, SetRenderItem, RemoveRenderItems, ReorderRenderItems, CreateLayer, DeleteLayers, DuplicateLayers, ReorderLayers, SetParent, RenameLayer, SetLayerSwitches, SetBlendMode, SetTrackMatte, ReplaceLayerSource, GroupLayers, UngroupLayer, ConvertLayer, PasteLayers, SeparateLayer, AutoTrace, SetLayerComment, SetPinnedProperties, PoseIk3D, BakeIk3D, CreateLiveMerge, SetLayerTiming, MoveLayersInTime, TrimLayers, SlipLayers, SlideLayer, RollEdit, SplitLayers, RippleDeleteLayers, EditWorkArea, InsertGap, TimeReverseLayers, SetTimeRemap, FreezeFrame, SetRetime, SequenceLayers, TimeStretchLayers, UnfreezeLayers, RippleDeleteRange, LiftRange, ShiftLayerKeyframes, AddTransition, SetTransition, RemoveTransitions, SetProperty, SetProperties, ResetProperty, SetAnimated, SetDimensionsSeparated, SetExpression, SetExpressionEnabled, ConvertExpressionToKeyframes, LinkProperty, AddKeyframes, DeleteKeyframes, MoveKeyframes, UpdateKeyframes, ScaleKeyframes, ReverseKeyframes, PasteKeyframes, SetKeyframes, SetMemberKeyframes, AddEffect, AddMask, AddPropertyGroup, RemovePropertyGroups, MovePropertyGroup, DuplicatePropertyGroups, SetGroupEnabled, RenamePropertyGroup, CopyPropertyGroups, ApplyPreset, InvokeEffectAction, DragEffectOverlay, AddProperties, RemoveProperties, PasteEffects, RemoveStroke, AddPaintStroke, UpdatePaintStroke, RemovePaintStrokes, SetPaintOnTransparent, SetPaintStrokePath, SetPaintPathAnimated, EditPathTopology, SetShapeOutline, SetPerformanceTake, ClearPerformanceTakes, AddMarkers, UpdateMarkers, DeleteMarkers, MoveMarkers, Play, Pause, Seek, Step, SetLoop, SetPreviewQuality, SetAudioPreview, SetActiveComposition, SetViewport, CloseViewport, SetCacheBudget, PurgeCache, SetInteracting, SetViewportHiddenLayers, SetViewportFocus, SetViewerLut, SetOverlayGeometry, SetLayerTrackers, SetCameraSolve, SetLayerMatte, StartJob, CancelJob, ApplyJobResult, SetContentAwareFill, SetCaptions, SetPluginEnabled, RescanPlugins, SetPluginData, RunPluginCommand, StartLiveInput, StopLiveInput> v;
   Command();
   Command(const Command&);
   Command(Command&&) noexcept;
@@ -3708,6 +3781,11 @@ struct Command {
   ~Command();
   [[nodiscard]] Kind kind() const noexcept;
   bool operator==(const Command&) const;
+};
+
+struct GetPerformanceTakes {
+  LayerId layer;
+  bool operator==(const GetPerformanceTakes&) const = default;
 };
 
 struct GetLayerTrackers {
@@ -4051,8 +4129,13 @@ struct GetCacheCoverage {
   bool operator==(const GetCacheCoverage&) const = default;
 };
 
+struct ListCameras {
+  bool operator==(const ListCameras&) const = default;
+};
+
 struct Query {
   enum class Kind : std::uint32_t {
+    get_performance_takes = 1952,
     get_layer_trackers = 1090,
     get_camera_solve = 1091,
     list_plugin_commands = 1092,
@@ -4109,8 +4192,9 @@ struct Query {
     get_render_queue = 1084,
     get_command_log = 1085,
     get_cache_coverage = 1089,
+    list_cameras = 1938,
   };
-  std::variant<GetLayerTrackers, GetCameraSolve, ListPluginCommands, GetDocument, ExportDocument, GetComposition, GetLayers, GetPropertyTree, GetPropertyValues, SampleProperty, GetKeyframes, GetMotionPath, GetMarkers, CopyLayers, CopyKeyframes, GetMemberKeyframes, CopyEffects, GetSearchFacts, GetDocumentColors, GetCaptionCues, MapLayerTime, GetSourceSize, CheckPrecompose, GetTimelineRows, GetRigPose, SampleCamera, GetWaveform, ListFonts, GetItems, GetSvgDocument, GetCryptomatte, GetThumbnail, RenderDocumentStill, ListEffects, ListGroupTypes, ListPresets, CapturePreset, GetCapabilities, ListPlugins, GetEffectUi, GetLayerFaces, HitTest, GetLayerBounds, GetLayerTransforms, GetTextLayout, EvaluateExpression, ReadPixels, FindLayers, GetDependencies, GetHistory, GetRenderStats, GetLayerErrors, GetJobs, GetRenderQueue, GetCommandLog, GetCacheCoverage> v;
+  std::variant<GetPerformanceTakes, GetLayerTrackers, GetCameraSolve, ListPluginCommands, GetDocument, ExportDocument, GetComposition, GetLayers, GetPropertyTree, GetPropertyValues, SampleProperty, GetKeyframes, GetMotionPath, GetMarkers, CopyLayers, CopyKeyframes, GetMemberKeyframes, CopyEffects, GetSearchFacts, GetDocumentColors, GetCaptionCues, MapLayerTime, GetSourceSize, CheckPrecompose, GetTimelineRows, GetRigPose, SampleCamera, GetWaveform, ListFonts, GetItems, GetSvgDocument, GetCryptomatte, GetThumbnail, RenderDocumentStill, ListEffects, ListGroupTypes, ListPresets, CapturePreset, GetCapabilities, ListPlugins, GetEffectUi, GetLayerFaces, HitTest, GetLayerBounds, GetLayerTransforms, GetTextLayout, EvaluateExpression, ReadPixels, FindLayers, GetDependencies, GetHistory, GetRenderStats, GetLayerErrors, GetJobs, GetRenderQueue, GetCommandLog, GetCacheCoverage, ListCameras> v;
   Query();
   Query(const Query&);
   Query(Query&&) noexcept;
@@ -4522,6 +4606,8 @@ struct CommandResult {
     set_paint_path_animated = 620,
     edit_path_topology = 630,
     set_shape_outline = 631,
+    set_performance_take = 1950,
+    clear_performance_takes = 1951,
     add_markers = 700,
     update_markers = 701,
     delete_markers = 702,
@@ -4555,8 +4641,10 @@ struct CommandResult {
     rescan_plugins = 872,
     set_plugin_data = 871,
     run_plugin_command = 873,
+    start_live_input = 1948,
+    stop_live_input = 1949,
   };
-  std::variant<HistoryStep, HistoryStep, HistoryStep, GestureRef, Empty, Empty, Empty, Empty, Empty, Empty, OpenProjectResult, SaveProjectResult, ImportProjectResult, Empty, Empty, SaveProjectResult, Empty, Empty, Empty, Empty, Empty, Empty, ItemList, ItemList, Empty, Empty, Empty, Empty, ItemRef, Empty, Empty, Empty, ItemList, Empty, Empty, Empty, ItemRef, ItemRef, Empty, Empty, Empty, PrecomposeResult, Empty, Empty, ItemRef, ItemList, Empty, RenderItemList, Empty, Empty, Empty, LayerRef, Empty, LayerList, Empty, Empty, RenameLayerResult, Empty, Empty, Empty, Empty, LayerRef, LayerList, LayerList, LayerList, LayerList, GroupList, Empty, Empty, IkResult, IkResult, LayerRef, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, Empty, LayerList, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, TimeRangeEdit, Empty, TransitionRef, Empty, Empty, PropertyWriteResult, Empty, Empty, PropertyWriteResult, Empty, ExpressionResult, Empty, KeyframeIds, Empty, KeyframeIds, Empty, Empty, Empty, Empty, Empty, KeyframeIds, KeyframeIds, Empty, GroupList, GroupList, GroupList, Empty, Empty, GroupList, Empty, Empty, GroupList, GroupList, Empty, Empty, PropertyPaths, Empty, GroupList, Empty, PaintStrokeId, Empty, Empty, Empty, Empty, Empty, Empty, Empty, MarkerIds, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, JobRef, Empty, ItemList, Empty, LayerList, Empty, PluginList, Empty, PluginCommandResult> v;
+  std::variant<HistoryStep, HistoryStep, HistoryStep, GestureRef, Empty, Empty, Empty, Empty, Empty, Empty, OpenProjectResult, SaveProjectResult, ImportProjectResult, Empty, Empty, SaveProjectResult, Empty, Empty, Empty, Empty, Empty, Empty, ItemList, ItemList, Empty, Empty, Empty, Empty, ItemRef, Empty, Empty, Empty, ItemList, Empty, Empty, Empty, ItemRef, ItemRef, Empty, Empty, Empty, PrecomposeResult, Empty, Empty, ItemRef, ItemList, Empty, RenderItemList, Empty, Empty, Empty, LayerRef, Empty, LayerList, Empty, Empty, RenameLayerResult, Empty, Empty, Empty, Empty, LayerRef, LayerList, LayerList, LayerList, LayerList, GroupList, Empty, Empty, IkResult, IkResult, LayerRef, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, Empty, LayerList, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, LayerList, TimeRangeEdit, Empty, TransitionRef, Empty, Empty, PropertyWriteResult, Empty, Empty, PropertyWriteResult, Empty, ExpressionResult, Empty, KeyframeIds, Empty, KeyframeIds, Empty, Empty, Empty, Empty, Empty, KeyframeIds, KeyframeIds, Empty, GroupList, GroupList, GroupList, Empty, Empty, GroupList, Empty, Empty, GroupList, GroupList, Empty, Empty, PropertyPaths, Empty, GroupList, Empty, PaintStrokeId, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, MarkerIds, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, JobRef, Empty, ItemList, Empty, LayerList, Empty, PluginList, Empty, PluginCommandResult, Empty, Empty> v;
   CommandResult();
   CommandResult(const CommandResult&);
   CommandResult(CommandResult&&) noexcept;
@@ -4565,6 +4653,11 @@ struct CommandResult {
   ~CommandResult();
   [[nodiscard]] Kind kind() const noexcept;
   bool operator==(const CommandResult&) const;
+};
+
+struct PerformanceTakes {
+  std::vector<PerformanceTake> takes;
+  bool operator==(const PerformanceTakes&) const = default;
 };
 
 struct LayerTrackers {
@@ -5479,8 +5572,20 @@ struct CacheCoverage {
   bool operator==(const CacheCoverage&) const = default;
 };
 
+struct CameraInfo {
+  std::string id;
+  std::string name;
+  bool operator==(const CameraInfo&) const = default;
+};
+
+struct CameraList {
+  std::vector<CameraInfo> cameras;
+  bool operator==(const CameraList&) const = default;
+};
+
 struct QueryResult {
   enum class Kind : std::uint32_t {
+    get_performance_takes = 1952,
     get_layer_trackers = 1090,
     get_camera_solve = 1091,
     list_plugin_commands = 1092,
@@ -5537,8 +5642,9 @@ struct QueryResult {
     get_render_queue = 1084,
     get_command_log = 1085,
     get_cache_coverage = 1089,
+    list_cameras = 1938,
   };
-  std::variant<LayerTrackers, CameraSolveAnswer, PluginCommandList, DocumentSnapshot, ExportedDocument, CompositionDetails, LayerDetails, PropertyTree, PropertyValues, PropertySamples, KeyframeSets, PropertySamples, MarkerList, DocumentFragment, KeyframeSets, MemberTracks, CopiedEffects, SearchFactsList, DocumentColors, CaptionCues, MappedTime, SourceSizes, PrecomposeCheck, TimelineRowSets, RigPose, CameraSamples, WaveformPeaks, FontList, ItemDetails, SvgDocument, CryptomatteInfo, Thumbnail, Thumbnail, EffectCatalog, GroupTypeList, PresetList, CapturedPreset, Capabilities, PluginList, EffectUi, LayerFaces, HitResult, LayerBoundsList, LayerTransformList, TextLayout, ExpressionEvaluation, PixelSamples, LayerList, Dependencies, HistoryState, RenderStats, LayerErrorList, JobList, RenderQueueState, CommandLog, CacheCoverage> v;
+  std::variant<PerformanceTakes, LayerTrackers, CameraSolveAnswer, PluginCommandList, DocumentSnapshot, ExportedDocument, CompositionDetails, LayerDetails, PropertyTree, PropertyValues, PropertySamples, KeyframeSets, PropertySamples, MarkerList, DocumentFragment, KeyframeSets, MemberTracks, CopiedEffects, SearchFactsList, DocumentColors, CaptionCues, MappedTime, SourceSizes, PrecomposeCheck, TimelineRowSets, RigPose, CameraSamples, WaveformPeaks, FontList, ItemDetails, SvgDocument, CryptomatteInfo, Thumbnail, Thumbnail, EffectCatalog, GroupTypeList, PresetList, CapturedPreset, Capabilities, PluginList, EffectUi, LayerFaces, HitResult, LayerBoundsList, LayerTransformList, TextLayout, ExpressionEvaluation, PixelSamples, LayerList, Dependencies, HistoryState, RenderStats, LayerErrorList, JobList, RenderQueueState, CommandLog, CacheCoverage, CameraList> v;
   QueryResult();
   QueryResult(const QueryResult&);
   QueryResult(QueryResult&&) noexcept;
@@ -5783,6 +5889,27 @@ struct AutosavedEvent {
   bool operator==(const AutosavedEvent&) const = default;
 };
 
+struct LiveHand {
+  std::vector<double> landmarks;
+  double handedness = 0.0;
+  double presence = 0.0;
+  double pinch = 0.0;
+  bool operator==(const LiveHand&) const = default;
+};
+
+struct LiveInputEvent {
+  LiveInputState state = LiveInputState::stopped;
+  std::string message;
+  std::string camera;
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  double fps = 0.0;
+  std::uint64_t seq = 0;
+  double latency_ms = 0.0;
+  std::vector<LiveHand> hands;
+  bool operator==(const LiveInputEvent&) const = default;
+};
+
 struct Event {
   enum class Kind : std::uint32_t {
     document_reset = 2000,
@@ -5818,8 +5945,9 @@ struct Event {
     asset_status_changed = 2061,
     fonts_changed = 2062,
     autosaved = 2063,
+    live_input = 2064,
   };
-  std::variant<DocumentResetEvent, ProjectSettingsChangedEvent, ItemsChangedEvent, ItemsRemovedEvent, CompositionChangedEvent, LayersChangedEvent, LayersRemovedEvent, LayerOrderChangedEvent, PropertiesChangedEvent, KeyframesChangedEvent, PropertyGroupsChangedEvent, MarkersChangedEvent, RenderQueueChangedEvent, TransitionsChangedEvent, GuidesChangedEvent, SwatchesChangedEvent, MaterialsChangedEvent, MotionBlurChangedEvent, ColorManagementChangedEvent, HistoryChangedEvent, DirtyChangedEvent, TransportChangedEvent, PlayheadEvent, RenderStatsUpdatedEvent, CacheChangedEvent, EngineErrorEvent, LayerErrorsEvent, JobProgressEvent, JobFinishedEvent, ProjectSavedEvent, AssetStatusChangedEvent, FontsChangedEvent, AutosavedEvent> v;
+  std::variant<DocumentResetEvent, ProjectSettingsChangedEvent, ItemsChangedEvent, ItemsRemovedEvent, CompositionChangedEvent, LayersChangedEvent, LayersRemovedEvent, LayerOrderChangedEvent, PropertiesChangedEvent, KeyframesChangedEvent, PropertyGroupsChangedEvent, MarkersChangedEvent, RenderQueueChangedEvent, TransitionsChangedEvent, GuidesChangedEvent, SwatchesChangedEvent, MaterialsChangedEvent, MotionBlurChangedEvent, ColorManagementChangedEvent, HistoryChangedEvent, DirtyChangedEvent, TransportChangedEvent, PlayheadEvent, RenderStatsUpdatedEvent, CacheChangedEvent, EngineErrorEvent, LayerErrorsEvent, JobProgressEvent, JobFinishedEvent, ProjectSavedEvent, AssetStatusChangedEvent, FontsChangedEvent, AutosavedEvent, LiveInputEvent> v;
   Event();
   Event(const Event&);
   Event(Event&&) noexcept;
@@ -6847,6 +6975,14 @@ void encode(wire::Writer& w, const EditPathTopology& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, EditPathTopology& out);
 void encode(wire::Writer& w, const SetShapeOutline& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, SetShapeOutline& out);
+void encode(wire::Writer& w, const PerformanceFit& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, PerformanceFit& out);
+void encode(wire::Writer& w, const PerformanceTake& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, PerformanceTake& out);
+void encode(wire::Writer& w, const SetPerformanceTake& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, SetPerformanceTake& out);
+void encode(wire::Writer& w, const ClearPerformanceTakes& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, ClearPerformanceTakes& out);
 void encode(wire::Writer& w, const MarkerOwner& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, MarkerOwner& out);
 void encode(wire::Writer& w, const MarkerInsert& v);
@@ -6997,8 +7133,14 @@ void encode(wire::Writer& w, const SetPluginData& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, SetPluginData& out);
 void encode(wire::Writer& w, const RunPluginCommand& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RunPluginCommand& out);
+void encode(wire::Writer& w, const StartLiveInput& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, StartLiveInput& out);
+void encode(wire::Writer& w, const StopLiveInput& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, StopLiveInput& out);
 void encode(wire::Writer& w, const Command& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, Command& out);
+void encode(wire::Writer& w, const GetPerformanceTakes& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, GetPerformanceTakes& out);
 void encode(wire::Writer& w, const GetLayerTrackers& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetLayerTrackers& out);
 void encode(wire::Writer& w, const GetCameraSolve& v);
@@ -7113,6 +7255,8 @@ void encode(wire::Writer& w, const GetCommandLog& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetCommandLog& out);
 void encode(wire::Writer& w, const GetCacheCoverage& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, GetCacheCoverage& out);
+void encode(wire::Writer& w, const ListCameras& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, ListCameras& out);
 void encode(wire::Writer& w, const Query& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, Query& out);
 void encode(wire::Writer& w, const CommandBatch& v);
@@ -7191,6 +7335,8 @@ void encode(wire::Writer& w, const PluginCommandResult& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, PluginCommandResult& out);
 void encode(wire::Writer& w, const CommandResult& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, CommandResult& out);
+void encode(wire::Writer& w, const PerformanceTakes& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, PerformanceTakes& out);
 void encode(wire::Writer& w, const LayerTrackers& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, LayerTrackers& out);
 void encode(wire::Writer& w, const CameraSolveAnswer& v);
@@ -7389,6 +7535,10 @@ void encode(wire::Writer& w, const CacheRange& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, CacheRange& out);
 void encode(wire::Writer& w, const CacheCoverage& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, CacheCoverage& out);
+void encode(wire::Writer& w, const CameraInfo& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, CameraInfo& out);
+void encode(wire::Writer& w, const CameraList& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, CameraList& out);
 void encode(wire::Writer& w, const QueryResult& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, QueryResult& out);
 void encode(wire::Writer& w, const BatchResult& v);
@@ -7465,6 +7615,10 @@ void encode(wire::Writer& w, const FontsChangedEvent& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, FontsChangedEvent& out);
 void encode(wire::Writer& w, const AutosavedEvent& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, AutosavedEvent& out);
+void encode(wire::Writer& w, const LiveHand& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, LiveHand& out);
+void encode(wire::Writer& w, const LiveInputEvent& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, LiveInputEvent& out);
 void encode(wire::Writer& w, const Event& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, Event& out);
 void encode(wire::Writer& w, const EventBatch& v);

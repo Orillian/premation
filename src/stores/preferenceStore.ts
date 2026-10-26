@@ -325,6 +325,14 @@ export interface Preferences {
   /** Pose mode's step after Set Key, in `performancePoseStepUnit`. */
   performancePoseStep: number;
   performancePoseStepUnit: 'frames' | 'seconds';
+  /** What drives a take: the mouse, or a tracked hand through the camera (plan P1). */
+  performanceSource: 'mouse' | 'hand';
+  /** Hand source: how far the target moves per hand movement (1 = a frame width of travel moves one comp width). */
+  performanceHandGain: number;
+  /** Hand source: which of the performer's hands drives; Either = the nearer one. */
+  performanceHand: 'either' | 'left' | 'right';
+  /** Hand source: moving right on camera moves right on screen. */
+  performanceHandMirror: boolean;
 }
 
 /** A floating dialog's remembered frame, CSS pixels relative to the viewport. */
@@ -412,6 +420,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   performanceMode: 'perform',
   performancePoseStep: 10,
   performancePoseStepUnit: 'frames',
+  performanceSource: 'mouse',
+  performanceHandGain: 1,
+  performanceHand: 'either',
+  performanceHandMirror: true,
 };
 
 /** Pluggable persistence backend. */

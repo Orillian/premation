@@ -22,6 +22,7 @@
 #include "handlers_misc.hpp"
 #include "item_facts.hpp"
 #include "handlers_native.hpp"
+#include "handlers_performance.hpp"
 #include "layer_geometry.hpp"
 #include "native_contrib.hpp"
 #include "native_effects.hpp"
@@ -1098,6 +1099,9 @@ struct Q {
   }
   api::QueryResult operator()(const api::GetLayerTrackers& q) const {
     return query_result_for<api::GetLayerTrackers>(layer_trackers(d, pc.view, q.layer));
+  }
+  api::QueryResult operator()(const api::GetPerformanceTakes& q) const {
+    return query_result_for<api::GetPerformanceTakes>(performance_takes(d, pc.view, q.layer));
   }
   api::QueryResult operator()(const api::GetSourceSize& q) const {
     return query_result_for<api::GetSourceSize>(api::SourceSizes{source_sizes(d, q.layers)});

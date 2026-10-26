@@ -39,6 +39,7 @@ set(ENGINE_CORE_SOURCES
   src/core/history.cpp
   src/core/session.cpp
   src/core/session_jobs.cpp
+  src/core/session_live.cpp
   src/core/session_plugins.cpp  # P7a: runPluginCommand inside the request's journal
   src/jobs/job_runner.cpp
   src/jobs/job_inputs.cpp
@@ -281,6 +282,8 @@ if(MOTION_BUILD_TESTS)
     tests/test_render_graph.cpp
     tests/test_fx_bounds.cpp
     tests/test_disk_cache.cpp
+    tests/test_spatial_arc.cpp
+    tests/test_performance_takes.cpp
   )
   # engine_scene_core: the rig overlay (B4 round 5, tests/test_b4_round5_rig.cpp) — the tests link it, engine_core does not.
   target_link_libraries(engine_tests PRIVATE engine_core engine_rg_core engine_scene_core engine_disk_cache motion::options Catch2::Catch2WithMain)
@@ -453,6 +456,7 @@ set(ENGINE_DOC_SOURCES
   src/core/handlers_layertime.cpp
   src/core/handlers_markers.cpp
   src/core/handlers_misc.cpp
+  src/core/handlers_performance.cpp
   src/core/handlers_native.cpp
   src/core/handlers_optional.cpp
   src/core/handlers_precompose.cpp
@@ -1427,6 +1431,55 @@ if(MOTION_BUILD_TESTS)
     target_compile_options(engine_jobs_tests PRIVATE /bigobj)
   endif()
   add_test(NAME engine_jobs_tests COMMAND engine_jobs_tests --reporter compact)
+endif()
+
+# ── Live performance input (src/live; docs/PERFORMANCE_ANIMATION_PLAN.md P1) ──
+#   engine_live_core   the hand pipeline's arithmetic and the tracker (pure;
+#                      models through hand_ort.hpp's interface)
+#   engine_live        + the camera (camera_ffi_win.cpp: Media Foundation; the
+#                      stub elsewhere) and ONNX Runtime (hand_ort_ffi.cpp)
+#   premation-live-spike  P1.0: sensor → landmarks latency on this machine
+add_library(engine_live_core STATIC src/live/hand_pipeline.cpp src/live/hand_tracker.cpp)
+target_include_directories(engine_live_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/live)
+target_link_libraries(engine_live_core PRIVATE motion::options)
+add_library(engine_live STATIC src/live/hand_ort_ffi.cpp)
+# ort_providers_ffi.hpp: the execution-provider choice the jobs' models use.
+target_include_directories(engine_live PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/jobs)
+target_link_libraries(engine_live PUBLIC engine_live_core PRIVATE motion::options)
+if(WIN32)
+  target_sources(engine_live PRIVATE src/live/camera_ffi_win.cpp)
+  target_link_libraries(engine_live PRIVATE mfplat mf mfreadwrite mfuuid ole32)
+  target_compile_definitions(engine_live PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+else()
+  target_sources(engine_live PRIVATE src/live/camera_ffi_none.cpp)
+endif()
+# The jobs block above imported it (its config cannot be found twice).
+if(TARGET onnxruntime::onnxruntime)
+  target_link_libraries(engine_live PRIVATE onnxruntime::onnxruntime)
+endif()
+# The engine side + the `--live` child (live_host.cpp) need the jobs' child
+# process and child executable: they ride in engine_jobs, which the engine links.
+if(TARGET engine_jobs)
+  target_sources(engine_jobs PRIVATE src/live/live_host.cpp)
+  target_link_libraries(engine_jobs PUBLIC engine_live)
+  if(MOTION_BUILD_TESTS)
+    # The host's state machine over a fake `--live` child: no camera, no model.
+    add_executable(live_fake_child tests/live_fake_child.cpp)
+    # os_ffi.cpp: engine_jobs reads env vars through it; the executables compile it in, so must this.
+    add_executable(engine_live_host_tests tests/test_live_host.cpp src/os_ffi.cpp)
+    target_include_directories(engine_live_host_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/live)
+    target_link_libraries(engine_live_host_tests PRIVATE engine_jobs motion::options Catch2::Catch2WithMain)
+    target_compile_definitions(engine_live_host_tests PRIVATE PREMATION_LIVE_FAKE_CHILD="$<TARGET_FILE:live_fake_child>")
+    add_dependencies(engine_live_host_tests live_fake_child)
+    add_test(NAME engine_live_host_tests COMMAND engine_live_host_tests --reporter compact)
+  endif()
+endif()
+add_executable(premation-live-spike tools/premation_live_spike.cpp)
+target_link_libraries(premation-live-spike PRIVATE engine_live motion::options)
+if(MOTION_BUILD_TESTS)
+  add_executable(engine_live_tests tests/test_live_hand.cpp)
+  target_link_libraries(engine_live_tests PRIVATE engine_live_core motion::options Catch2::Catch2WithMain)
+  add_test(NAME engine_live_tests COMMAND engine_live_tests --reporter compact)
 endif()
 
 # ── 3D model import (AE parity 4.7; src/scene/model_*.cpp) ─────────────────
