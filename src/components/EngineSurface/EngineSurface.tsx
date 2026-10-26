@@ -142,6 +142,20 @@ export interface EngineSurfaceStats {
     groundGrid: boolean;
   } | null;
   errors: string[];
+  /**
+   * Dev harness: the last frames' pipeline timestamps, newest last — where a
+   * drag frame's time goes (engine render start/done, main-process send, page
+   * receive, page blit; epoch ms except renderMs). Capped; costs one small
+   * object per drawn frame.
+   */
+  trace: Array<{
+    revision: number;
+    renderStartMs: number;
+    renderDoneMs: number;
+    sentMs: number;
+    recvMs: number;
+    drawnMs: number;
+  }>;
 }
 
 type Pending = {
@@ -150,6 +164,8 @@ type Pending = {
   release: () => void;
   /** The viewport the engine had applied when the frame arrived — the view it was drawn with (null: none acknowledged yet). */
   view: NonNullable<EngineSurfaceStats['lastViewport']> | null;
+  /** Epoch ms when the page received the frame (stats.trace). */
+  recvMs: number;
 };
 
 const CHANNEL: Record<string, ChannelView> = { rgb: 'rgb', red: 'red', green: 'green', blue: 'blue', alpha: 'alpha' };
@@ -242,7 +258,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
 
     const stats: EngineSurfaceStats = {
       mode, route: null, blit: null, received: 0, drawn: 0, superseded: 0, fps: 0, lastRevision: 0, lastFrame: 0, lastLatencyMs: 0,
-      lastRenderMs: 0, engineBuildMs: 0, lastDrawnAt: 0, viewportsSent: 0, lastViewport: null, errors: [],
+      lastRenderMs: 0, engineBuildMs: 0, lastDrawnAt: 0, viewportsSent: 0, lastViewport: null, errors: [], trace: [],
     };
     (window as unknown as { __premationEngineSurface?: EngineSurfaceStats }).__premationEngineSurface = stats;
     const fail = (e: unknown): void => {
@@ -369,6 +385,16 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
         stats.lastLatencyMs = Date.now() - p.meta.renderDoneUs / 1000;
         stats.lastRenderMs = (p.meta.renderDoneUs - p.meta.renderStartUs) / 1000;
         stats.lastDrawnAt = now;
+        // Dev harness: per-frame pipeline timestamps (where a drag frame's time goes).
+        stats.trace.push({
+          revision: p.meta.revision,
+          renderStartMs: p.meta.renderStartUs / 1000,
+          renderDoneMs: p.meta.renderDoneUs / 1000,
+          sentMs: p.meta.sentUs / 1000,
+          recvMs: p.recvMs,
+          drawnMs: Date.now(),
+        });
+        if (stats.trace.length > 300) stats.trace.splice(0, stats.trace.length - 300);
         // The viewport HUD's frame time is the engine's cost of this frame:
         // its build (document → FrameScene) + its render (to GPU completion).
         viewportHudStats.report(stats.lastRenderMs + stats.engineBuildMs, false, now);
@@ -430,7 +456,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       }
       // The viewport applied NOW is the one this frame was drawn with: a frame
       // that arrives before a setViewport's acknowledgement was drawn before it.
-      pending = { frame: frame as VideoFrame, meta, release, view: applied };
+      pending = { frame: frame as VideoFrame, meta, release, view: applied, recvMs: Date.now() };
       schedule();
     };
 

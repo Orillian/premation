@@ -115,13 +115,28 @@ export async function gestureSessionsSettled(): Promise<void> {
   while (closing.size > 0) await Promise.allSettled([...closing]);
 }
 
+/**
+ * How many gesture messages may be on the wire at once.
+ *
+ * One (the old rule) tied a drag's update CADENCE to the full round trip —
+ * page → main → engine → main → page — which is ~0.3 ms idle but 7–16 ms while
+ * a drag keeps the renderer busy, so the picture updated at ~45 Hz in uneven
+ * steps (the "shaky" drag). A small window keeps messages flowing at input
+ * rate while the engine coalesces: stale queued builds are superseded per
+ * viewport and the render thread draws the newest, so at most this many
+ * already-applied bodies ever wait, and a slow engine still never builds a
+ * backlog (the page falls back to latest-wins queueing at the window's edge).
+ */
+const kGestureSendWindow = 3;
+
 export class GestureSession {
   readonly label: string;
   private readonly client: EngineClient;
   private readonly generation: number;
   private readonly quiet: boolean;
   private readonly opened: Promise<number | null>;
-  private inFlight: Promise<void> | null = null;
+  /** Messages on the wire (≤ kGestureSendWindow); replies arrive in pipe order. */
+  private readonly flights = new Set<Promise<void>>();
   /** Messages waiting for the one in flight: kept ones in order, at most one droppable at the end. */
   private pending: Array<{ list: readonly Command[]; keep: boolean }> = [];
   private ended = false;
@@ -170,7 +185,7 @@ export class GestureSession {
     if (this.ended || !this.alive()) return;
     const list = Array.isArray(commands) ? commands as readonly Command[] : [commands as Command];
     if (list.length === 0) return;
-    if (this.inFlight) {
+    if (this.flights.size >= kGestureSendWindow) {
       const keep = opts.keep === true;
       const last = this.pending[this.pending.length - 1];
       // Latest wins over the droppable message still waiting; a kept one stays.
@@ -182,15 +197,19 @@ export class GestureSession {
   }
 
   private dispatch(list: readonly Command[]): void {
-    this.inFlight = (async () => {
+    // Dispatch order IS send order: every flight resumes from the same settled
+    // `opened`, so their execute calls (and the pipe) stay in sequence.
+    const flight = (async () => {
       const id = await this.opened;
       if (id === null || !this.alive()) return;
       const res = list.length === 1
         ? await this.client.execute(list[0]!)
         : await this.client.batch(this.label, [...list]);
       if (!res.ok) this.report(res.error);
-    })().finally(() => {
-      this.inFlight = null;
+    })();
+    this.flights.add(flight);
+    void flight.finally(() => {
+      this.flights.delete(flight);
       const next = this.pending.flatMap((m) => m.list);
       this.pending = [];
       if (next.length > 0 && this.alive()) this.dispatch(next);
@@ -199,7 +218,7 @@ export class GestureSession {
 
   /** Wait for every queued message to land. */
   private async drain(): Promise<void> {
-    while (this.inFlight) await this.inFlight;
+    while (this.flights.size > 0) await Promise.allSettled([...this.flights]);
   }
 
   /** Commit (default) or revert the gesture. Idempotent. */
