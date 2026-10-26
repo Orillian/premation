@@ -322,6 +322,36 @@ suite('text quality (audit 2026-10-18)', () => {
     expect(Math.abs((bottom.bottom - bottom.top) - (control.bottom - control.top))).toBeLessThanOrEqual(2);
   }, 120_000);
 
+  it('T11: vertical type answers getLayerBounds — a column box, taller than wide (it used to have no geometry at all: unselectable)', async () => {
+    await tools('vertical bounds', [
+      bg,
+      ...text('vt', 'HHHH', 640, 180, { fontFamily: 'Inter', fontSize: 60, fontWeight: 600 }),
+    ]);
+    await field('vt', 'orientation', 'vertical');
+    await settleEdits();
+    await engineIdle();
+    const id = real('vt');
+    const b = (await h.query({ type: 'getLayerBounds', layers: [id], time: 0, space: 'layer', includeEffects: false } as never)) as {
+      bounds: Array<{ bounds: { x: number; y: number; width: number; height: number } }>;
+    };
+    expect(b.bounds.length).toBe(1);
+    const box = b.bounds[0]!.bounds;
+    // Four 60px glyphs stacked: the column is far taller than wide.
+    expect(box.height).toBeGreaterThan(box.width);
+    expect(box.height).toBeGreaterThan(2 * 60);
+    expect(box.width).toBeGreaterThan(20);
+    // And the box brackets the rendered ink (same frame, comp space = layer
+    // space + position for an unrotated layer at scale 1).
+    const p = await frame();
+    const col = inkIn(p, 0, 1280, 0, 360);
+    expect(col.count).toBeGreaterThan(0);
+    // bounds.x/y are the box's top-left in layer space (layerBoxes.ts boxOf).
+    const top = 180 + box.y;
+    const bottom = 180 + box.y + box.height;
+    expect(col.top).toBeGreaterThanOrEqual(top - 2);
+    expect(col.bottom).toBeLessThanOrEqual(bottom + 2);
+  }, 120_000);
+
   it('T10: a per-range `tracking` run is 1/1000 em at the run\'s size — doubling the font size doubles its px', async () => {
     const line = 'HHHHHH';
     const style = { fontFamily: 'Inter', fontSize: 40, fontWeight: 500 };

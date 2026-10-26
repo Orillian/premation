@@ -2407,9 +2407,10 @@ export function paintOverlay(
         // contrast is what keeps them visible over both light and dark artwork.
         // Hovered: 10px, accent-filled, with a soft halo — "grabbable", said
         // by the grip itself rather than only by the cursor.
-        // Edge grips are bars along their edge, turned with the layer, so a
-        // side (one axis) never reads as a corner (both axes).
-        const isEdge = h.id === 'n' || h.id === 's' || h.id === 'e' || h.id === 'w';
+        // Every grip is the SAME square, corners and edge midpoints alike (AE):
+        // edge grips drawn as elongated bars read as a different control and
+        // made the box look asymmetric. On a single rotated layer the squares
+        // turn with the box, as AE's do.
         const r = h.hovered ? 5 : 4;
         if (h.hovered) {
           ctx.beginPath();
@@ -2420,16 +2421,14 @@ export function paintOverlay(
         ctx.fillStyle = h.hovered ? handleAccent : '#fff';
         ctx.strokeStyle = h.hovered ? '#fff' : handleAccent;
         ctx.lineWidth = 1;
-        if (isEdge) {
-          const c = only?.corners;
-          const along = c ? Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x) : 0;
+        const c = only?.corners;
+        const along = c ? Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x) : 0;
+        if (along !== 0) {
           ctx.save();
           ctx.translate(h.position.x, h.position.y);
-          ctx.rotate(h.id === 'n' || h.id === 's' ? along : along + Math.PI / 2);
-          ctx.beginPath();
-          ctx.roundRect(-r * 1.6, -r * 0.7, r * 3.2, r * 1.4, r * 0.7);
-          ctx.fill();
-          ctx.stroke();
+          ctx.rotate(along);
+          ctx.fillRect(-r, -r, r * 2, r * 2);
+          ctx.strokeRect(-r, -r, r * 2, r * 2);
           ctx.restore();
         } else {
           ctx.fillRect(h.position.x - r, h.position.y - r, r * 2, r * 2);

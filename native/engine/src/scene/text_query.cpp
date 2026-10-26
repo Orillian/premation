@@ -349,7 +349,19 @@ api::TextLayout text_layout_of(TextMeasurer& m, const doc::Node& original, const
 std::optional<TextGeometry> text_geometry_of(TextMeasurer& m, const doc::Node& n,
                                              const std::vector<std::pair<std::string, double>>& overrides) {
   const std::optional<MeasuredStyle> read = read_measured_text_style(n, overrides);
-  if (!read || read->vertical) return std::nullopt;
+  if (!read) return std::nullopt;
+  if (read->vertical) {
+    // Vertical type: the measurer's own vertical branch — the size the renderer
+    // lays the layer out at — less the canvas padding. The column stack is
+    // symmetric about the box centre (measure_vertical), so dy is 0. Without
+    // this a vertical text layer had NO geometry at all: no selection box, no
+    // hit test, no handles (overlay_geometry's bounds_of caught the fail and
+    // dropped the layer).
+    if (read->hasLineRuns) return std::nullopt;
+    const auto size = m.measure_text_size(*read);
+    if (!size) return std::nullopt;
+    return TextGeometry{std::max(1.0, size->first - 2 * kTextPadX), std::max(1.0, size->second - 2 * kTextPadY), 0};
+  }
   const bool onPath = has_text_path(n);
   // The AUTHORED box width (paragraph text): the override, else the first component's.
   std::optional<double> authored;
