@@ -940,6 +940,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'view.align', label: 'Align' },
           { commandId: 'view.presets', label: 'Animation Presets' },
           { commandId: 'view.ai', label: 'Assistant' },
+          { commandId: 'view.cacheMemory', label: 'Cache & Memory' },
           { commandId: 'view.character', label: 'Character' },
           { commandId: 'view.effects', label: 'Effects & Presets' },
           { commandId: 'view.essentialGraphics', label: 'Essential Graphics' },

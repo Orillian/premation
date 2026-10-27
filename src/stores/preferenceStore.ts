@@ -271,6 +271,22 @@ export interface Preferences {
   /** The disk cache's size limit, GB (least recently used frames go first). */
   diskCacheMaxGb: number;
   /**
+   * The RAM tier of the preview cache, GB; 0 = sized from the machine (the
+   * engine's auto_ram_budget). Sent with the disk cache in `setCacheBudget`.
+   */
+  ramCacheGb: number;
+  /**
+   * Idle render-ahead (AE's idle caching): with the transport stopped, the
+   * engine fills the cache around the playhead. `setCacheBudget.idleRenderAhead`.
+   */
+  idleRenderAhead: boolean;
+  /**
+   * AE's Cache Before Playback: Play first renders the range into the cache,
+   * then plays every frame on time (`play { cacheFirst }`). Off = play at once
+   * and skip frames that are not ready.
+   */
+  cacheBeforePlayback: boolean;
+  /**
    * Project paths pinned to the top of the start screen. A preference rather
    * than MRU data: the MRU is written by every open and save, and a pin has to
    * survive that churn.
@@ -403,6 +419,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   diskCacheEnabled: true,
   diskCacheFolder: null,
   diskCacheMaxGb: 20,
+  ramCacheGb: 0,
+  idleRenderAhead: true,
+  cacheBeforePlayback: false,
   pinnedProjects: [],
   timelineFollowMode: 'page',
   timelineSnap: true,

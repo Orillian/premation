@@ -741,7 +741,23 @@ void RenderThread::publish_coverage() {
   snap.ramBytes = (cache_ ? static_cast<std::uint64_t>(cache_->stats().bytes) : 0) + ram_.bytes();
   snap.disk = coalesce_frame_indices(std::move(diskFrames));
   snap.diskBytes = disk_->bytes();
+  if (cache_) {
+    const FrameCacheStats vram = cache_->stats();
+    snap.vramBytes = static_cast<std::uint64_t>(vram.bytes);
+    snap.vramBudget = static_cast<std::uint64_t>(vram.budget);
+  }
+  snap.ramBudget = static_cast<std::uint64_t>(ram_.budget());
+  snap.diskBudget = disk_->budget();
+  snap.diskReadMsPerMp = disk_->read_ms_per_mp();
   const std::lock_guard<std::mutex> lock(m_);
+  if (snap.ramBudget == 0) {
+    // Before the first frame the tier has no budget yet (manage_ram_budget
+    // sizes it as frames arrive): report the one it is about to take.
+    snap.ramBudget = ramBudgetTarget_ != 0         ? ramBudgetTarget_
+                     : ramBudgetAsked_ != 0        ? ramBudgetAsked_
+                     : options_.ramCacheBytes != 0 ? options_.ramCacheBytes
+                                                   : auto_ram_budget(os::memory_status().physicalBytes);
+  }
   coverage_ = std::move(snap);
   ramStats_ = ram_.stats();
 }
@@ -842,6 +858,11 @@ void RenderThread::run(std::promise<std::string>& ready) {
     return;
   }
   ready.set_value({});
+  // Size the RAM tier and publish the (empty) snapshot now, not at the first
+  // frame: getRenderStats reports the tiers' budgets from it (the Cache &
+  // Memory panel), and with no frame yet there would be none.
+  manage_ram_budget(true);
+  publish_coverage();
 
   std::unique_lock<std::mutex> lock(m_);
   const auto anyDirty = [this] {

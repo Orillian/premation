@@ -1256,6 +1256,7 @@ struct ControlVisitor {
     }
     s.sink_.configure_ram_cache(c.ram_megabytes * kMiB);
     s.sink_.configure_disk_cache(c.disk_path, c.disk_megabytes * kMiB);
+    if (c.idle_render_ahead) s.options_.idlePrefetch = *c.idle_render_ahead;
     return result_for<api::SetCacheBudget>();
   }
   R operator()(const api::PurgeCache& c) const {
@@ -2301,6 +2302,18 @@ api::RenderStats Session::render_stats() {
   const CacheCoverageSnap cacheSnap = sink_.cache_coverage();
   st.ram_cache_bytes = cacheSnap.ramBytes;
   st.disk_cache_bytes = cacheSnap.diskBytes;
+  st.ram_cache_budget = cacheSnap.ramBudget;
+  st.vram_cache_bytes = cacheSnap.vramBytes;
+  st.vram_cache_budget = cacheSnap.vramBudget;
+  st.disk_cache_budget = cacheSnap.diskBudget;
+  if (cacheSnap.diskReadMsPerMp > 0) st.disk_read_ms_per_mp = cacheSnap.diskReadMsPerMp;
+  st.idle_render_ahead = options_.idlePrefetch;
+  if (options_.hostMemory) {
+    const SessionOptions::HostMemory mem = options_.hostMemory();
+    if (mem.processBytes > 0) st.engine_memory_bytes = mem.processBytes;
+    if (mem.physicalBytes > 0) st.physical_memory_bytes = mem.physicalBytes;
+    if (mem.availableBytes > 0) st.available_memory_bytes = mem.availableBytes;
+  }
   if (c.slotSwitchEpochUs > 0) {
     // The same clock os::epoch_us reads (engine_core does not link os_ffi).
     const double nowUs = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(

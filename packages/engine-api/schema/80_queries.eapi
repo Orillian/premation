@@ -662,6 +662,22 @@ struct RenderStats {
   lastSlotSwitchAgoMs?: f64 = 10;
   /// How long that last slot rebuild took (ms). Absent = never.
   slotSwitchMs?: f64 = 11;
+  /// The RAM tier's budget (bytes): what `ramCacheBytes` may grow to. Absent = unknown.
+  ramCacheBudget?: u64 = 12;
+  /// The viewport frame cache in video memory: bytes held and its budget. Absent = unknown (no GPU).
+  vramCacheBytes?: u64 = 13;
+  vramCacheBudget?: u64 = 14;
+  /// The disk tier's size limit (bytes); 0 = off. Absent = unknown.
+  diskCacheBudget?: u64 = 15;
+  /// The engine process's own memory (private bytes / resident set). Absent = unknown.
+  engineMemoryBytes?: u64 = 16;
+  /// The machine's installed and currently available memory (bytes). Absent = unknown.
+  physicalMemoryBytes?: u64 = 17;
+  availableMemoryBytes?: u64 = 18;
+  /// Whether idle render-ahead is on (setCacheBudget `idleRenderAhead`).
+  idleRenderAhead?: bool = 19;
+  /// What reading one frame back from the disk tier costs, ms per megapixel, timed on the folder's own files. Absent = not measured yet.
+  diskReadMsPerMp?: f64 = 20;
 }
 
 struct LayerError {

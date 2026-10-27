@@ -341,6 +341,8 @@ const bridge = {
   /** The preview disk cache's default folder — see electron/ipc/diskCache.ts. */
   diskCache: {
     defaultFolder: () => ipcRenderer.invoke('cache:defaultFolder'),
+    /** Volumes with their free / total space (the Cache & Memory panel's Location tab). */
+    drives: () => ipcRenderer.invoke('cache:drives'),
   },
 
   /** The native plugins folder — see electron/ipc/nativePlugins.ts. */
@@ -640,6 +642,8 @@ const bridge = {
    */
   engine: {
     request: (bytes: Uint8Array) => ipcRenderer.invoke('engine:request', bytes),
+    /** Restart the engine on purpose to give its memory back (the document is replayed). */
+    restartToFreeMemory: (): Promise<boolean> => ipcRenderer.invoke('engine:restartToFreeMemory').catch(() => false),
     // No handler = no engine host in this process.
     status: () =>
       ipcRenderer.invoke('engine:status').catch(() => ({ enabled: false, state: 'stopped' })),

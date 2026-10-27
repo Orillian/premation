@@ -28,6 +28,7 @@ import { useProjectStore } from '@stores/projectStore';
 import { getClock, setTime, usePlaybackClockStore } from '@stores/playbackClockStore';
 import { documentMirror } from '@stores/documentMirror';
 import { previewIncludesAudio } from '@stores/previewBehaviorStore';
+import { usePreferenceStore } from '@stores/preferenceStore';
 import { isTransportLooping } from '@core/timeline/timelineView';
 
 export interface EngineTransportStats {
@@ -160,7 +161,9 @@ export function installEngineTransport(client: () => EngineClient, stats?: Engin
         rate: 1,
         range: workArea && workArea.duration > 0 ? 'workArea' : 'all',
         audio: previewIncludesAudio(),
-        cacheFirst: false,
+        // Cache Before Playback (Preview panel, Cache & Memory panel): the engine
+        // stores the range first, then plays every frame on time.
+        cacheFirst: usePreferenceStore.getState().cacheBeforePlayback,
         cacheOnly: false,
         ...(currentFlicks() !== null ? { from: currentFlicks()! } : {}),
       }).then((r) => {

@@ -208,6 +208,13 @@ export const PANEL_DEFS: readonly PanelDef[] = [
   // signal trace; `graph-value` / `graph-speed` are the Graph panel's.
   { id: 'scopes',      get title() { return t('panel.scopes', 'Scopes'); },    icon: 'waves',       region: 'rightInspector', weight: 4.15, closable: true, onDemand: true },
   /**
+   * The preview cache and the engine's memory: tiers against budgets, the disk
+   * cache's folder and drives, frame timings, the leak signal, restart to free
+   * memory. Opened from the transport bar's memory meter or Window ▸ Cache &
+   * Memory. `gpu` because it is the one glyph about the machine's resources.
+   */
+  { id: 'cacheMemory', get title() { return t('panel.cacheMemory', 'Cache & Memory'); }, get shortTitle() { return t('panel.cacheMemory.short', 'Memory'); }, icon: 'gpu', region: 'rightInspector', weight: 4.12, closable: true, onDemand: true },
+  /**
    * The SOURCE viewer — one clip, before it is in the edit, with in/out points
    * and the four verbs that put the marked range into a comp. Every route that
    * hands it a clip (the Project panel's context menu, the footage dialog's

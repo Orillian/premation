@@ -6247,7 +6247,6 @@
   "plugins.store.installing": "Instalando…",
   "plugins.store.installs": "{n} instalações",
   "plugins.store.licence": "Licença",
-  "plugins.store.loadFailed": "Não foi possível carregar o plug-in.",
   "plugins.store.loading": "Carregando…",
   "plugins.store.noMatch": "Nenhum plug-in corresponde",
   "plugins.store.noneYet": "Nenhum plug-in ainda",

@@ -191,6 +191,11 @@ std::uint64_t DiskCache::bytes() const {
   return bytes_;
 }
 
+std::uint64_t DiskCache::budget() const {
+  const std::lock_guard<std::mutex> lock(m_);
+  return budget_;
+}
+
 bool DiskCache::writing() const {
   const std::lock_guard<std::mutex> lock(m_);
   return !pending_.empty() || !reserved_.empty();

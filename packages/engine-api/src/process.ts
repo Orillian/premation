@@ -170,6 +170,12 @@ export interface EngineBridge {
    * own in a pop-out. Absent outside Electron (then 0).
    */
   viewportBase?(): Promise<number>;
+  /**
+   * Restart the engine on purpose to give its memory back (the Cache & Memory
+   * panel). The host replays the document into the new process; reported as a
+   * `requested` restart. False when no engine is running. Absent outside Electron.
+   */
+  restartToFreeMemory?(): Promise<boolean>;
 }
 
 // ── notices ──

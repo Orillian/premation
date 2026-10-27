@@ -3072,6 +3072,7 @@ struct SetCacheBudget {
   std::uint64_t ram_megabytes = 0;
   std::uint64_t disk_megabytes = 0;
   std::string disk_path;
+  std::optional<bool> idle_render_ahead;
   bool operator==(const SetCacheBudget&) const = default;
 };
 
@@ -5508,6 +5509,15 @@ struct RenderStats {
   double decode_ms = 0.0;
   std::optional<double> last_slot_switch_ago_ms;
   std::optional<double> slot_switch_ms;
+  std::optional<std::uint64_t> ram_cache_budget;
+  std::optional<std::uint64_t> vram_cache_bytes;
+  std::optional<std::uint64_t> vram_cache_budget;
+  std::optional<std::uint64_t> disk_cache_budget;
+  std::optional<std::uint64_t> engine_memory_bytes;
+  std::optional<std::uint64_t> physical_memory_bytes;
+  std::optional<std::uint64_t> available_memory_bytes;
+  std::optional<bool> idle_render_ahead;
+  std::optional<double> disk_read_ms_per_mp;
   bool operator==(const RenderStats&) const = default;
 };
 

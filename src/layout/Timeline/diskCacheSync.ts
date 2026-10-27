@@ -1,11 +1,13 @@
 /**
- * Preferences ▸ Media & Disk Cache → the engine.
+ * Preferences ▸ Media & Disk Cache (and the Cache & Memory panel) → the engine.
  *
  * The disk tier of the preview cache is the engine's
  * (native/engine/src/render/disk_cache.hpp); the editor only says where and
  * how big, with `setCacheBudget { diskMegabytes, diskPath }` (0 MB or no path
- * = off). Sent when the window's engine client appears, on every change of
- * the three preferences, and again after an engine restart — a restarted
+ * = off). The same command carries the RAM tier's budget (`ramMegabytes`, 0 =
+ * sized from the machine) and idle render-ahead. Sent when the window's engine
+ * client appears, on every change of those preferences, and again after an
+ * engine restart — a restarted
  * engine starts with its disk cache off, and finds the frames it wrote
  * before in the same folder.
  *
@@ -24,6 +26,8 @@ import { usePreferenceStore, type Preferences } from '@stores/preferenceStore';
 
 export const DISK_CACHE_MIN_GB = 1;
 export const DISK_CACHE_MAX_GB = 4096;
+/** The RAM tier's manual budget range, GB (0 = Auto). */
+export const RAM_CACHE_MAX_GB = 512;
 
 let defaultFolder: Promise<string | null> | null = null;
 
@@ -41,14 +45,23 @@ export function defaultDiskCacheFolder(): Promise<string | null> {
   return defaultFolder;
 }
 
-type DiskCachePrefs = Pick<Preferences, 'diskCacheEnabled' | 'diskCacheFolder' | 'diskCacheMaxGb'>;
+type CachePrefKey = 'diskCacheEnabled' | 'diskCacheFolder' | 'diskCacheMaxGb' | 'ramCacheGb' | 'idleRenderAhead';
+type DiskCachePrefs = Pick<Preferences, 'diskCacheEnabled' | 'diskCacheFolder' | 'diskCacheMaxGb'> & Partial<Pick<Preferences, 'ramCacheGb' | 'idleRenderAhead'>>;
+const CACHE_PREF_KEYS: readonly CachePrefKey[] = ['diskCacheEnabled', 'diskCacheFolder', 'diskCacheMaxGb', 'ramCacheGb', 'idleRenderAhead'];
 
 /** The `setCacheBudget` these preferences mean (`fallbackFolder` when none is chosen). */
 export function diskCacheBudgetCommand(prefs: DiskCachePrefs, fallbackFolder: string | null): Extract<Command, { type: 'setCacheBudget' }> {
   const folder = prefs.diskCacheFolder || fallbackFolder || '';
   const gb = Math.min(DISK_CACHE_MAX_GB, Math.max(DISK_CACHE_MIN_GB, Math.round(prefs.diskCacheMaxGb) || DISK_CACHE_MIN_GB));
   const on = prefs.diskCacheEnabled && folder !== '';
-  return { type: 'setCacheBudget', ramMegabytes: 0, diskMegabytes: on ? gb * 1024 : 0, diskPath: on ? folder : '' };
+  const ramGb = Math.min(RAM_CACHE_MAX_GB, Math.max(0, Math.round(prefs.ramCacheGb ?? 0) || 0));
+  return {
+    type: 'setCacheBudget',
+    ramMegabytes: ramGb * 1024,
+    diskMegabytes: on ? gb * 1024 : 0,
+    diskPath: on ? folder : '',
+    ...(prefs.idleRenderAhead !== undefined ? { idleRenderAhead: prefs.idleRenderAhead } : {}),
+  };
 }
 
 let installed = false;
@@ -77,7 +90,7 @@ export function installDiskCacheSync(): void {
   };
 
   usePreferenceStore.subscribe((s, prev) => {
-    if (s.diskCacheEnabled === prev.diskCacheEnabled && s.diskCacheFolder === prev.diskCacheFolder && s.diskCacheMaxGb === prev.diskCacheMaxGb) return;
+    if (CACHE_PREF_KEYS.every((k) => s[k] === prev[k])) return;
     void send();
   });
   subscribeProcessEngine(() => {

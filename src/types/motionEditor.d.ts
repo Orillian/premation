@@ -755,6 +755,8 @@ export interface MotionEditorApi {
    */
   diskCache?: {
     defaultFolder?(): Promise<string>;
+    /** Volumes with their free and total space, bytes (electron/ipc/diskCache.ts listCacheDrives). */
+    drives?(): Promise<Array<{ root: string; freeBytes: number; totalBytes: number }>>;
   };
   /**
    * File ▸ Scripts and the Script Editor (electron/ipc/scripts.ts): the user

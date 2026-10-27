@@ -271,6 +271,28 @@ export const useRenderQualityStore = create<RenderQualityStore>((set, get) => ({
 }));
 
 /**
+ * The one resolution choice the viewer's Resolution menu, the Preview panel and
+ * the Cache & Memory panel offer: Auto (adaptive on, Full when you are not
+ * dragging a heavy comp) or a fixed divisor ('1'…'4', adaptive off).
+ */
+export type ResolutionChoice = 'auto' | `${PreviewResolution}`;
+
+export function resolutionChoiceOf(s: { adaptive: boolean; resolution: PreviewResolution }): ResolutionChoice {
+  return s.adaptive ? 'auto' : `${s.resolution}`;
+}
+
+export function setResolutionChoice(next: ResolutionChoice): void {
+  const rq = useRenderQualityStore.getState();
+  if (next === 'auto') {
+    rq.setAdaptive(true);
+    rq.setResolution(1);
+  } else {
+    rq.setAdaptive(false);
+    rq.setResolution(Number(next) as PreviewResolution);
+  }
+}
+
+/**
  * Hook the drag flag up. Called once at boot. Returns the unsubscribe.
  *
  * The release is DEBOUNCED by one frame: a drag that ends and a new one that

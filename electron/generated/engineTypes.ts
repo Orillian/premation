@@ -2928,6 +2928,8 @@ export interface SetCacheBudget {
   ramMegabytes: number;
   diskMegabytes: number;
   diskPath: string;
+  /** Idle render-ahead: with the transport stopped, fill the cache around the playhead (AE's idle caching). Absent = leave as it is. */
+  idleRenderAhead?: boolean;
 }
 
 export interface PurgeCache {
@@ -4592,6 +4594,22 @@ export interface RenderStats {
   lastSlotSwitchAgoMs?: number;
   /** How long that last slot rebuild took (ms). Absent = never. */
   slotSwitchMs?: number;
+  /** The RAM tier's budget (bytes): what `ramCacheBytes` may grow to. Absent = unknown. */
+  ramCacheBudget?: number;
+  /** The viewport frame cache in video memory: bytes held and its budget. Absent = unknown (no GPU). */
+  vramCacheBytes?: number;
+  vramCacheBudget?: number;
+  /** The disk tier's size limit (bytes); 0 = off. Absent = unknown. */
+  diskCacheBudget?: number;
+  /** The engine process's own memory (private bytes / resident set). Absent = unknown. */
+  engineMemoryBytes?: number;
+  /** The machine's installed and currently available memory (bytes). Absent = unknown. */
+  physicalMemoryBytes?: number;
+  availableMemoryBytes?: number;
+  /** Whether idle render-ahead is on (setCacheBudget `idleRenderAhead`). */
+  idleRenderAhead?: boolean;
+  /** What reading one frame back from the disk tier costs, ms per megapixel, timed on the folder's own files. Absent = not measured yet. */
+  diskReadMsPerMp?: number;
 }
 
 export interface LayerError {

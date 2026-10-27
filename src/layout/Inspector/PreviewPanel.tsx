@@ -6,11 +6,12 @@
  * the foot.
  *
  * Only settings this app actually has, in AE's order — no stand-ins for AE's
- * Shortcut, Cache Before Playback, Play From, Frame Rate or Full Screen,
- * because a control that changes nothing is worse than none:
+ * Shortcut, Play From, Frame Rate or Full Screen, because a control that
+ * changes nothing is worse than none:
  *   • Timecode   → the playhead, written by `LiveTimecode` (no React render per frame)
  *   • Transport  → TimelineController + projectStore (first / step / play / last, loop, audio)
  *   • Range      → the Work Area (Work Area / Entire Composition / From Current Time)
+ *   • Cache first → Cache Before Playback (preference; `play { cacheFirst }`)
  *   • Step       → how far the step buttons move (1, 2, 3 or 6 frames)
  *   • Resolution → renderQualityStore (Auto adaptive / Full / Half / Third / Quarter)
  *   • Draft      → renderQualityStore draft flag (skips motion blur for 60fps scrub)
@@ -25,7 +26,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '@stores/projectStore';
 import { getTime, setTime as setPlayheadTime } from '@stores/playbackClockStore';
-import { useRenderQualityStore, type PreviewResolution } from '@stores/renderQualityStore';
+import { useRenderQualityStore, resolutionChoiceOf, setResolutionChoice, type ResolutionChoice } from '@stores/renderQualityStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow, compFps, useActiveMirrorComp } from '@hooks/useMirror';
@@ -48,8 +49,6 @@ import { Switch } from '@components/Switch';
 import styles from './PreviewPanel.module.css';
 
 type PlayRange = 'work-area' | 'entire-comp' | 'current-forward';
-/** The Segmented control's values are strings: 'auto' or the divisor ('1'…'4'). */
-type ResolutionChoice = 'auto' | `${PreviewResolution}`;
 
 function ranges(): ReadonlyArray<SegmentedOption<PlayRange>> {
   return [
@@ -129,17 +128,8 @@ export function PreviewPanel(): JSX.Element {
   const draft = useRenderQualityStore((s) => s.draft);
   const setDraft = useRenderQualityStore((s) => s.setDraft);
 
-  const resolutionChoice: ResolutionChoice = adaptive ? 'auto' : `${resolution}`;
-  const setResolutionChoice = (next: ResolutionChoice): void => {
-    const rq = useRenderQualityStore.getState();
-    if (next === 'auto') {
-      rq.setAdaptive(true);
-      rq.setResolution(1);
-    } else {
-      rq.setAdaptive(false);
-      rq.setResolution(Number(next) as PreviewResolution);
-    }
-  };
+  const resolutionChoice: ResolutionChoice = resolutionChoiceOf({ adaptive, resolution });
+  const cacheBeforePlayback = usePreferenceStore((s) => s.cacheBeforePlayback);
 
   // The playhead strip under the timecode: a transform the playhead
   // subscription writes, never a React render.
@@ -223,6 +213,17 @@ export function PreviewPanel(): JSX.Element {
               onChange={setRange}
             />
           </div>
+          <label className={styles.row} title={t('inspector.preview.cacheBeforeTitle', 'Render the range into the cache first, then play every frame on time')}>
+            <span className={styles.label}>{t('inspector.preview.cacheBefore', 'Cache first')}</span>
+            <span className={styles.switchRow}>
+              <Switch
+                aria-label={t('inspector.preview.cacheBeforeAria', 'Cache before playback')}
+                checked={cacheBeforePlayback}
+                onChange={(e) => usePreferenceStore.getState().set('cacheBeforePlayback', e.currentTarget.checked)}
+              />
+              <span className={styles.help}>{t('inspector.preview.cacheBeforeHelp', 'Off: play at once, skipping frames not ready')}</span>
+            </span>
+          </label>
           <div className={styles.row} title={t('inspector.preview.stepTitle', 'How far the previous and next frame buttons move')}>
             <span className={styles.label}>{t('inspector.preview.step', 'Step')}</span>
             <Segmented

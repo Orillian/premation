@@ -7964,6 +7964,7 @@ function encS_SetCacheBudget(w: Writer, v: T.SetCacheBudget): void {
   w.byte(8); w.u64(v.ramMegabytes);
   w.byte(16); w.u64(v.diskMegabytes);
   w.byte(26); w.str(v.diskPath);
+  if (v.idleRenderAhead !== undefined) { w.byte(32); w.bool(v.idleRenderAhead); }
 }
 function decS_SetCacheBudget(r: Reader, end: number, o: any): T.SetCacheBudget {
   let h_ramMegabytes = false;
@@ -7972,12 +7973,14 @@ function decS_SetCacheBudget(r: Reader, end: number, o: any): T.SetCacheBudget {
   let v_ramMegabytes: number | undefined;
   let v_diskMegabytes: number | undefined;
   let v_diskPath: string | undefined;
+  let v_idleRenderAhead: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
       case 8: v_ramMegabytes = r.u64(); h_ramMegabytes = true; break;
       case 16: v_diskMegabytes = r.u64(); h_diskMegabytes = true; break;
       case 26: v_diskPath = r.str(); h_diskPath = true; break;
+      case 32: v_idleRenderAhead = r.bool(); break;
       default: r.skip(key);
     }
   }
@@ -7988,6 +7991,7 @@ function decS_SetCacheBudget(r: Reader, end: number, o: any): T.SetCacheBudget {
   o.ramMegabytes = v_ramMegabytes;
   o.diskMegabytes = v_diskMegabytes;
   o.diskPath = v_diskPath;
+  if (v_idleRenderAhead !== undefined) o.idleRenderAhead = v_idleRenderAhead;
   return o;
 }
 function encS_PurgeCache(w: Writer, v: T.PurgeCache): void {
@@ -14301,6 +14305,15 @@ function encS_RenderStats(w: Writer, v: T.RenderStats): void {
   w.byte(73); w.f64(v.decodeMs);
   if (v.lastSlotSwitchAgoMs !== undefined) { w.byte(81); w.f64(v.lastSlotSwitchAgoMs); }
   if (v.slotSwitchMs !== undefined) { w.byte(89); w.f64(v.slotSwitchMs); }
+  if (v.ramCacheBudget !== undefined) { w.byte(96); w.u64(v.ramCacheBudget); }
+  if (v.vramCacheBytes !== undefined) { w.byte(104); w.u64(v.vramCacheBytes); }
+  if (v.vramCacheBudget !== undefined) { w.byte(112); w.u64(v.vramCacheBudget); }
+  if (v.diskCacheBudget !== undefined) { w.byte(120); w.u64(v.diskCacheBudget); }
+  if (v.engineMemoryBytes !== undefined) { w.varint(128); w.u64(v.engineMemoryBytes); }
+  if (v.physicalMemoryBytes !== undefined) { w.varint(136); w.u64(v.physicalMemoryBytes); }
+  if (v.availableMemoryBytes !== undefined) { w.varint(144); w.u64(v.availableMemoryBytes); }
+  if (v.idleRenderAhead !== undefined) { w.varint(152); w.bool(v.idleRenderAhead); }
+  if (v.diskReadMsPerMp !== undefined) { w.varint(161); w.f64(v.diskReadMsPerMp); }
 }
 function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   let h_gpuFrameMs = false;
@@ -14323,6 +14336,15 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   let v_decodeMs: number | undefined;
   let v_lastSlotSwitchAgoMs: number | undefined;
   let v_slotSwitchMs: number | undefined;
+  let v_ramCacheBudget: number | undefined;
+  let v_vramCacheBytes: number | undefined;
+  let v_vramCacheBudget: number | undefined;
+  let v_diskCacheBudget: number | undefined;
+  let v_engineMemoryBytes: number | undefined;
+  let v_physicalMemoryBytes: number | undefined;
+  let v_availableMemoryBytes: number | undefined;
+  let v_idleRenderAhead: boolean | undefined;
+  let v_diskReadMsPerMp: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -14337,6 +14359,15 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
       case 73: v_decodeMs = r.f64(); h_decodeMs = true; break;
       case 81: v_lastSlotSwitchAgoMs = r.f64(); break;
       case 89: v_slotSwitchMs = r.f64(); break;
+      case 96: v_ramCacheBudget = r.u64(); break;
+      case 104: v_vramCacheBytes = r.u64(); break;
+      case 112: v_vramCacheBudget = r.u64(); break;
+      case 120: v_diskCacheBudget = r.u64(); break;
+      case 128: v_engineMemoryBytes = r.u64(); break;
+      case 136: v_physicalMemoryBytes = r.u64(); break;
+      case 144: v_availableMemoryBytes = r.u64(); break;
+      case 152: v_idleRenderAhead = r.bool(); break;
+      case 161: v_diskReadMsPerMp = r.f64(); break;
       default: r.skip(key);
     }
   }
@@ -14361,6 +14392,15 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   o.decodeMs = v_decodeMs;
   if (v_lastSlotSwitchAgoMs !== undefined) o.lastSlotSwitchAgoMs = v_lastSlotSwitchAgoMs;
   if (v_slotSwitchMs !== undefined) o.slotSwitchMs = v_slotSwitchMs;
+  if (v_ramCacheBudget !== undefined) o.ramCacheBudget = v_ramCacheBudget;
+  if (v_vramCacheBytes !== undefined) o.vramCacheBytes = v_vramCacheBytes;
+  if (v_vramCacheBudget !== undefined) o.vramCacheBudget = v_vramCacheBudget;
+  if (v_diskCacheBudget !== undefined) o.diskCacheBudget = v_diskCacheBudget;
+  if (v_engineMemoryBytes !== undefined) o.engineMemoryBytes = v_engineMemoryBytes;
+  if (v_physicalMemoryBytes !== undefined) o.physicalMemoryBytes = v_physicalMemoryBytes;
+  if (v_availableMemoryBytes !== undefined) o.availableMemoryBytes = v_availableMemoryBytes;
+  if (v_idleRenderAhead !== undefined) o.idleRenderAhead = v_idleRenderAhead;
+  if (v_diskReadMsPerMp !== undefined) o.diskReadMsPerMp = v_diskReadMsPerMp;
   return o;
 }
 function encS_LayerError(w: Writer, v: T.LayerError): void {

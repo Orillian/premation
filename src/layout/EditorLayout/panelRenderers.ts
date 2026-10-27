@@ -26,6 +26,7 @@ import { NativePluginsPanel } from '@layout/Plugins/NativePluginsPanel';
 import { ScriptEditorPanel } from '@layout/Scripts/ScriptEditorPanel';
 import { SwatchesPanel } from '@layout/Swatches';
 import { ScopesPanel } from '@layout/Scopes';
+import { CacheMemoryPanel } from '@layout/CacheMemory/CacheMemoryPanel';
 // Imported from the barrel deliberately: it also registers the transcript's
 // commands on load. See `layout/Transcript/index.ts`.
 import { TranscriptPanel } from '@layout/Transcript';
@@ -86,6 +87,7 @@ export const PANEL_COMPONENTS: Readonly<Record<string, ComponentType>> = {
   audio: AudioPanel,
   recordAudio: RecordAudioPanel,
   scopes: ScopesPanel,
+  cacheMemory: CacheMemoryPanel,
   preview: PreviewPanel,
   tracker: TrackerPanel,
   contentAwareFill: ContentAwareFillPanel,

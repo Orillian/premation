@@ -18,6 +18,12 @@ describe('diskCacheBudgetCommand', () => {
     expect(diskCacheBudgetCommand(prefs, null)).toMatchObject({ diskMegabytes: 0, diskPath: '' });
   });
 
+  it('carries the RAM budget and idle render-ahead', () => {
+    expect(diskCacheBudgetCommand({ ...prefs, ramCacheGb: 8, idleRenderAhead: false }, 'x')).toMatchObject({ ramMegabytes: 8 * 1024, idleRenderAhead: false });
+    expect(diskCacheBudgetCommand({ ...prefs, ramCacheGb: 0 }, 'x').ramMegabytes).toBe(0);
+    expect(diskCacheBudgetCommand({ ...prefs, ramCacheGb: -3 }, 'x').ramMegabytes).toBe(0);
+  });
+
   it('clamps the size', () => {
     expect(diskCacheBudgetCommand({ ...prefs, diskCacheMaxGb: 0 }, 'x').diskMegabytes).toBe(1024);
     expect(diskCacheBudgetCommand({ ...prefs, diskCacheMaxGb: 1e9 }, 'x').diskMegabytes).toBe(DISK_CACHE_MAX_GB * 1024);

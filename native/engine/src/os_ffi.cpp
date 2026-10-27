@@ -8,12 +8,16 @@
 #include <fcntl.h>
 #include <io.h>
 #include <windows.h>
+#include <psapi.h>
 #include <timeapi.h>
 #else
 #include <sys/resource.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#include <mach/mach.h>
+#else
+#include <fstream>
 #endif
 #include <climits>
 #include <cstdint>
@@ -167,6 +171,35 @@ MemoryStatus memory_status() {
   if (avail > 0 && pageSize > 0) out.availableBytes = static_cast<std::uint64_t>(avail) * static_cast<std::uint64_t>(pageSize);
 #endif
   return out;
+}
+
+std::uint64_t process_memory_bytes() {
+#ifdef _WIN32
+  // Private bytes: what this process committed for itself (the figure that
+  // grows with a leak; the working set also moves with the OS trimming pages).
+  PROCESS_MEMORY_COUNTERS_EX pmc{};
+  pmc.cb = sizeof(pmc);
+  if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc)) != 0) {  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the documented EX-struct idiom
+    return pmc.PrivateUsage;
+  }
+  return 0;
+#elif defined(__APPLE__)
+  // The physical footprint Activity Monitor shows as "Memory".
+  task_vm_info_data_t info{};
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) == KERN_SUCCESS) {  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): the mach out-parameter idiom
+    return info.phys_footprint;
+  }
+  return 0;
+#else
+  // Resident pages (/proc/self/statm, second field).
+  std::ifstream statm("/proc/self/statm");
+  std::uint64_t sizePages = 0;
+  std::uint64_t residentPages = 0;
+  const long pageSize = sysconf(_SC_PAGESIZE);
+  if (!(statm >> sizePages >> residentPages) || pageSize <= 0) return 0;
+  return residentPages * static_cast<std::uint64_t>(pageSize);
+#endif
 }
 
 }  // namespace premation::os

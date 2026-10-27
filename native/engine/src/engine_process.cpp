@@ -452,6 +452,10 @@ int run_engine(const EngineOptions& options) {
   sessionOptions.footageDir = os::env_var("PREMATION_SESSION_FOOTAGE").value_or("");
   // Idle render-ahead (Session::idle_prefetch) is on unless PREMATION_IDLE_PREFETCH=0.
   sessionOptions.idlePrefetch = os::env_var("PREMATION_IDLE_PREFETCH").value_or("1") != "0";
+  sessionOptions.hostMemory = [] {
+    const os::MemoryStatus machine = os::memory_status();
+    return SessionOptions::HostMemory{os::process_memory_bytes(), machine.physicalBytes, machine.availableBytes};
+  };
   sessionOptions.testPorts = options.testPorts;
   sessionOptions.testPortsDir = options.testPortsDir;
   CoreWatchdog watchdog(pings, sendFrames);

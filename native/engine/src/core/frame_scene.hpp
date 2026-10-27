@@ -178,6 +178,14 @@ struct CacheCoverageSnap {
   std::vector<std::pair<std::int64_t, std::int64_t>> disk;
   std::uint64_t ramBytes = 0;
   std::uint64_t diskBytes = 0;
+  /// The tiers' budgets and the VRAM tier on its own (getRenderStats, the Cache & Memory panel).
+  /// `ramBytes` above is VRAM + RAM together (what the timeline's green bar holds).
+  std::uint64_t ramBudget = 0;
+  std::uint64_t vramBytes = 0;
+  std::uint64_t vramBudget = 0;
+  std::uint64_t diskBudget = 0;
+  /// The disk tier's measured read cost, ms per megapixel (0 = not measured yet).
+  double diskReadMsPerMp = 0;
 };
 
 /// Adjacent frame indices become half-open ranges [start, end).

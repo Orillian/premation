@@ -49,4 +49,8 @@ struct MemoryStatus {
 };
 [[nodiscard]] MemoryStatus memory_status();
 
+// This process's own memory: private bytes on Windows, the physical footprint
+// on macOS, the resident set on Linux (bytes; 0 = unknown).
+[[nodiscard]] std::uint64_t process_memory_bytes();
+
 }  // namespace premation::os

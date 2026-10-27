@@ -102,6 +102,15 @@ struct SessionOptions {
   /// Work Area fill the cache. The engine process reads PREMATION_IDLE_PREFETCH
   /// (0 = off); tests set it directly.
   bool idlePrefetch = true;
+  /// The engine process's memory and the machine's, for getRenderStats (the
+  /// Cache & Memory panel's leak signal: engine memory no cache accounts for).
+  /// The engine process reads them from the OS (os_ffi); unset = absent fields.
+  struct HostMemory {
+    std::uint64_t processBytes = 0;
+    std::uint64_t physicalBytes = 0;
+    std::uint64_t availableBytes = 0;
+  };
+  std::function<HostMemory()> hostMemory;
 };
 
 class Session {

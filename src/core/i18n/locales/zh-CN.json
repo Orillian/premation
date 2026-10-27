@@ -6247,7 +6247,6 @@
   "plugins.store.installing": "正在安装…",
   "plugins.store.installs": "{n} 次安装",
   "plugins.store.licence": "许可证",
-  "plugins.store.loadFailed": "无法加载插件。",
   "plugins.store.loading": "正在加载…",
   "plugins.store.noMatch": "没有匹配的插件",
   "plugins.store.noneYet": "尚无插件",

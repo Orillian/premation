@@ -885,6 +885,17 @@ export class EngineHost {
     return this.supervisor.stop();
   }
 
+  /**
+   * The Cache & Memory panel's "Restart engine to free memory": a requested
+   * restart (never counted as a crash), the document replayed into the new
+   * process from main's command log (F2) as after any restart.
+   */
+  restartToFreeMemory(): boolean {
+    if (this.supervisor.state !== 'running') return false;
+    this.supervisor.restart('free memory (Cache & Memory panel)');
+    return true;
+  }
+
   /** Chromium's GPU process went away: the engine follows it onto the (possibly new) adapter. */
   gpuProcessGone(reason: string): void {
     this.supervisor.restart(`chromium GPU process gone (${reason})`);
@@ -1034,6 +1045,7 @@ export class EngineHost {
 /** Register the engine channels (all of them: the engine always runs). */
 export function registerEngineIpc(host: EngineHost): void {
   handle('engine:status', () => host.status());
+  handle('engine:restartToFreeMemory', () => host.restartToFreeMemory());
   // C: the first engine viewport id this window may use (EngineHost.viewportBase).
   handle('engine:viewportBase', (e: IpcMainInvokeEvent) => host.viewportBase(e.sender.id));
   handle('engine:request', (e: IpcMainInvokeEvent, bytes: Uint8Array) => host.request(bytes, e.sender.id));

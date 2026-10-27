@@ -2735,6 +2735,7 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
             { id: 'view.swatches', panel: 'swatches', label: 'Swatches', icon: 'palette' },
             { id: 'view.info', panel: 'info', label: 'Info', icon: 'info' },
             { id: 'view.scopes', panel: 'scopes', label: 'Scopes', icon: 'waves' },
+            { id: 'view.cacheMemory', panel: 'cacheMemory', label: 'Cache & Memory', icon: 'gpu' },
             { id: 'view.preview', panel: 'preview', label: 'Preview', icon: 'play' },
             { id: 'view.recordAudio', panel: 'recordAudio', label: 'Record Audio', icon: 'mic' },
             { id: 'view.sourceMonitor', panel: 'sourceMonitor', label: 'Source Monitor', icon: 'tv' },

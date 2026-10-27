@@ -65,6 +65,8 @@ import {
   useRenderQualityStore,
   RESOLUTION_LABELS,
   RESOLUTION_PERCENT,
+  resolutionChoiceOf,
+  setResolutionChoice,
   type PreviewResolution,
 } from '@stores/renderQualityStore';
 import { useCompareStore, COMPARE_MODE_LABEL, type CompareMode } from '@stores/compareStore';
@@ -124,6 +126,11 @@ export function popOutViewport(): void {
   }
   const url = `${window.location.origin}${window.location.pathname}#/popout/viewport`;
   window.open(url, 'popout-viewport', 'width=1280,height=720,resizable=yes');
+}
+
+/** The Resolution trigger's text: Auto, or the fixed resolution's name. */
+function resolutionLabel(r: PreviewResolution | 'auto'): string {
+  return r === 'auto' ? t('workspace.display.resolutionAutoShort', 'Auto') : RESOLUTION_LABELS[r];
 }
 
 const CHANNEL_ICON: Record<ViewChannel, IconName> = {
@@ -333,7 +340,7 @@ export interface ViewportDisplayModel {
   viewItems: DropdownItem[];
   channel: ViewChannel;
   channelItems: DropdownItem[];
-  resolution: PreviewResolution;
+  resolution: PreviewResolution | 'auto';
   resolutionItems: DropdownItem[];
   previewItems: DropdownItem[];
   /** The Preview menu's trigger is lit: something cheaper than the real frame is on. */
@@ -417,15 +424,30 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   }));
 
   // ── Resolution (also the Preview panel's) ──────────────────────────
-  const resolution = useRenderQualityStore((s) => s.resolution);
-  const setResolution = useRenderQualityStore((s) => s.setResolution);
-  const resolutionItems = ([1, 2, 3, 4] as PreviewResolution[]).map<DropdownItem>((r) => ({
-    type: 'checkbox',
-    id: `vd-res-${r}`,
-    label: `${RESOLUTION_LABELS[r]} · ${RESOLUTION_PERCENT[r]}`,
-    checked: resolution === r,
-    onChange: () => setResolution(r),
-  }));
+  // Auto first, as in the Preview panel: Full, dropping to Half only while a
+  // drag on a heavy comp cannot keep up (renderQualityStore's adaptive mode).
+  const resolutionValue = useRenderQualityStore((s) => s.resolution);
+  const adaptive = useRenderQualityStore((s) => s.adaptive);
+  const choice = resolutionChoiceOf({ adaptive, resolution: resolutionValue });
+  // What the trigger names: Auto, or the fixed divisor.
+  const resolution: PreviewResolution | 'auto' = choice === 'auto' ? 'auto' : resolutionValue;
+  const resolutionItems: DropdownItem[] = [
+    {
+      type: 'checkbox',
+      id: 'vd-res-auto',
+      label: t('workspace.display.resolutionAuto', 'Auto · Full, Half while a heavy drag lags'),
+      checked: choice === 'auto',
+      onChange: () => setResolutionChoice('auto'),
+    },
+    { type: 'separator' },
+    ...([1, 2, 3, 4] as PreviewResolution[]).map<DropdownItem>((r) => ({
+      type: 'checkbox',
+      id: `vd-res-${r}`,
+      label: `${RESOLUTION_LABELS[r]} · ${RESOLUTION_PERCENT[r]}`,
+      checked: choice === `${r}`,
+      onChange: () => setResolutionChoice(`${r}`),
+    })),
+  ];
 
   // ── Preview ────────────────────────────────────────────────────────
   const preview = usePreviewMenuItems();
@@ -644,7 +666,7 @@ export function displayOverflowItems(m: ViewportDisplayModel, level: number): Dr
     overflow.push({ type: 'item', id: 'vd-of-layout', icon: LAYOUT_ICON[m.viewLayout], label: t('workspace.display.layoutValue', 'Layout: {layout}', { layout: layoutLabel(m.viewLayout) }), submenu: m.layoutItems });
   }
   if (shed('channel')) overflow.push({ type: 'item', id: 'vd-of-channel', icon: CHANNEL_ICON[m.channel], label: t('workspace.display.channelValue', 'Channel: {channel}', { channel: channelLabel(m.channel) }), submenu: m.channelItems });
-  if (shed('resolution')) overflow.push({ type: 'item', id: 'vd-of-resolution', label: t('workspace.display.resolutionValue', 'Resolution: {resolution}', { resolution: RESOLUTION_LABELS[m.resolution] }), submenu: m.resolutionItems });
+  if (shed('resolution')) overflow.push({ type: 'item', id: 'vd-of-resolution', label: t('workspace.display.resolutionValue', 'Resolution: {resolution}', { resolution: resolutionLabel(m.resolution) }), submenu: m.resolutionItems });
   if (shed('preview')) overflow.push({ type: 'item', id: 'vd-of-preview', icon: 'tv', label: t('workspace.display.preview', 'Preview'), submenu: m.previewItems });
   if (shed('transparency')) overflow.push({ type: 'checkbox', id: 'vd-of-transparency', label: t('workspace.display.transparencyGrid', 'Transparency Grid'), checked: m.transparencyGrid, onChange: m.toggleTransparencyGrid });
   if (shed('overlays')) overflow.push({ type: 'item', id: 'vd-of-overlays', icon: 'grid', label: t('workspace.display.overlays', 'Overlays'), submenu: m.overlayItems });
@@ -741,7 +763,7 @@ export function ViewportDisplayControlsView({
           {!shed('resolution') && (
             <Dropdown
               placement="top-end"
-              trigger={<Trigger text={RESOLUTION_LABELS[m.resolution]} label={t('workspace.display.previewResolution', 'Preview resolution: {resolution}', { resolution: RESOLUTION_LABELS[m.resolution] })} chevron />}
+              trigger={<Trigger text={resolutionLabel(m.resolution)} label={t('workspace.display.previewResolution', 'Preview resolution: {resolution}', { resolution: resolutionLabel(m.resolution) })} chevron />}
               items={m.resolutionItems}
             />
           )}

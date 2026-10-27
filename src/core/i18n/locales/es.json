@@ -6247,7 +6247,6 @@
   "plugins.store.installing": "Instalando…",
   "plugins.store.installs": "{n} instalaciones",
   "plugins.store.licence": "Licencia",
-  "plugins.store.loadFailed": "No se pudo cargar el complemento.",
   "plugins.store.loading": "Cargando…",
   "plugins.store.noMatch": "Ningún complemento coincide",
   "plugins.store.noneYet": "Aún no hay complementos",

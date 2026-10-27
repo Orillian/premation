@@ -76,6 +76,7 @@ import {
   getCompositionShuttle,
   subscribeCompositionShuttleRate,
 } from '@core/timeline/transportController';
+import { CacheMemoryMeter } from '@layout/CacheMemory/CacheMemoryMeter';
 import styles from './TransportBar.module.css';
 import tool from './viewportToolButton.module.css';
 import { t } from '@core/i18n';
@@ -238,6 +239,10 @@ export const TransportBar = memo(function TransportBar(): JSX.Element {
         <div className={cn(tool.group, !showDisplay && tool.groupEmpty)}>
           <ViewportDisplayControlsView model={display} level={displayLevel} overflow="host" section="right" />
         </div>
+
+        {/* The memory meter: never shed (it is how memory trouble is noticed),
+            down to its status dot once the zoom field has gone. */}
+        <CacheMemoryMeter compact={shed('zoom')} />
 
         {/* The zoom field, pinned at the far right. Last to go: the wheel
             and the +/- keys still reach the viewport's zoom, and the `⋯`

@@ -10573,6 +10573,7 @@ void encode(wire::Writer& w, const SetCacheBudget& v) {
   w.varint(8U); w.varint(v.ram_megabytes);
   w.varint(16U); w.varint(v.disk_megabytes);
   w.varint(26U); w.str(v.disk_path);
+  if (v.idle_render_ahead.has_value()) { w.varint(32U); w.boolean(*v.idle_render_ahead); }
 }
 
 Status decode(wire::Reader& r, SetCacheBudget& out) {
@@ -10596,6 +10597,12 @@ Status decode(wire::Reader& r, SetCacheBudget& out) {
       case 26U: {
         if (!r.str(out.disk_path)) return Status::truncated;
         has_disk_path = true;
+        break;
+      }
+      case 32U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.idle_render_ahead = std::move(e);
         break;
       }
       default:
@@ -25681,6 +25688,15 @@ void encode(wire::Writer& w, const RenderStats& v) {
   w.varint(73U); w.f64(v.decode_ms);
   if (v.last_slot_switch_ago_ms.has_value()) { w.varint(81U); w.f64(*v.last_slot_switch_ago_ms); }
   if (v.slot_switch_ms.has_value()) { w.varint(89U); w.f64(*v.slot_switch_ms); }
+  if (v.ram_cache_budget.has_value()) { w.varint(96U); w.varint(*v.ram_cache_budget); }
+  if (v.vram_cache_bytes.has_value()) { w.varint(104U); w.varint(*v.vram_cache_bytes); }
+  if (v.vram_cache_budget.has_value()) { w.varint(112U); w.varint(*v.vram_cache_budget); }
+  if (v.disk_cache_budget.has_value()) { w.varint(120U); w.varint(*v.disk_cache_budget); }
+  if (v.engine_memory_bytes.has_value()) { w.varint(128U); w.varint(*v.engine_memory_bytes); }
+  if (v.physical_memory_bytes.has_value()) { w.varint(136U); w.varint(*v.physical_memory_bytes); }
+  if (v.available_memory_bytes.has_value()) { w.varint(144U); w.varint(*v.available_memory_bytes); }
+  if (v.idle_render_ahead.has_value()) { w.varint(152U); w.boolean(*v.idle_render_ahead); }
+  if (v.disk_read_ms_per_mp.has_value()) { w.varint(161U); w.f64(*v.disk_read_ms_per_mp); }
 }
 
 Status decode(wire::Reader& r, RenderStats& out) {
@@ -25752,6 +25768,60 @@ Status decode(wire::Reader& r, RenderStats& out) {
         double e = 0.0;
         if (!r.f64(e)) return Status::truncated;
         out.slot_switch_ms = std::move(e);
+        break;
+      }
+      case 96U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.ram_cache_budget = std::move(e);
+        break;
+      }
+      case 104U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.vram_cache_bytes = std::move(e);
+        break;
+      }
+      case 112U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.vram_cache_budget = std::move(e);
+        break;
+      }
+      case 120U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.disk_cache_budget = std::move(e);
+        break;
+      }
+      case 128U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.engine_memory_bytes = std::move(e);
+        break;
+      }
+      case 136U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.physical_memory_bytes = std::move(e);
+        break;
+      }
+      case 144U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.available_memory_bytes = std::move(e);
+        break;
+      }
+      case 152U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.idle_render_ahead = std::move(e);
+        break;
+      }
+      case 161U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.disk_read_ms_per_mp = std::move(e);
         break;
       }
       default:

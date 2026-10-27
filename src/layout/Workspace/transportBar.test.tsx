@@ -114,7 +114,8 @@ it('balances controls across the left and right sides of the centered play butto
   // Ctrl+Shift+H) and Smart Guides toggles (the motion-path toggle joins them
   // only with a keyframed layer selected), then AE's footer — resolution,
   // preview, transparency, overlays, channel, exposure (reset) — and the
-  // magnification presets: 11 in all (the exposure value is a spinbutton, not a button).
+  // memory meter and the magnification presets: 12 in all (the exposure value
+  // is a spinbutton, not a button).
   expect(rightButtons.map((btn) => btn.getAttribute('aria-label'))).toEqual([
     'Next Frame',
     'Go to End',
@@ -126,6 +127,7 @@ it('balances controls across the left and right sides of the centered play butto
     expect.stringMatching(/^Overlays/),
     expect.stringMatching(/^Show channel:/),
     'Adjust Exposure',
+    expect.stringMatching(/^Cache and memory:/),
     'Magnification presets',
   ]);
 });

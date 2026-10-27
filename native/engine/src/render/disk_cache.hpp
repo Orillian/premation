@@ -100,6 +100,8 @@ class DiskCache {
   void presence(const std::vector<std::uint64_t>& keys, std::vector<std::uint8_t>& out) const;
   /// Bytes on disk (stats().bytes without copying the strings).
   [[nodiscard]] std::uint64_t bytes() const;
+  /// The size limit configure() set (0 = off).
+  [[nodiscard]] std::uint64_t budget() const;
   /// Frames handed over and not written yet.
   [[nodiscard]] bool writing() const;
   /// What reading a frame back costs here, ms per megapixel (file read +

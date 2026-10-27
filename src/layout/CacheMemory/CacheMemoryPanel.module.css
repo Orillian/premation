@@ -1,0 +1,422 @@
+/*
+  Cache & Memory panel: a status banner and the view switch on top, then
+  sections of label / value rows with bars. One 12px inset, the panel type
+  roles throughout (no heading inside: the tab is the panel's title). The tier
+  colours are the timeline's own: green = RAM, blue = disk; video memory takes
+  the accent's violet so the three never read as one.
+*/
+.root {
+  --cm-inset: var(--space-3);
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-panel);
+  color: var(--color-text-primary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--cm-inset) var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: var(--space-3);
+}
+
+/* ── Status banner ──────────────────────────────────────────────── */
+.banner {
+  --tone: var(--color-success);
+
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+}
+
+.banner[data-tone='warn'] { --tone: var(--color-warning); }
+.banner[data-tone='bad'] { --tone: var(--color-danger); }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.bannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bannerTitle {
+  font-weight: var(--panel-weight-group);
+  color: var(--color-text-primary);
+}
+
+/* The banner's body wraps: it is the one place a whole sentence is the point. */
+.banner .help {
+  white-space: normal;
+}
+
+/* ── Sections ───────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--cm-inset);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.section:last-child {
+  border-bottom: 0;
+}
+
+.group {
+  font-weight: var(--panel-weight-group);
+  color: var(--color-text-primary);
+  user-select: none;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.value {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.value[data-tone='warn'] { color: var(--color-warning); }
+.value[data-tone='bad'] { color: var(--color-danger); }
+
+.help {
+  min-width: 0;
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-tertiary);
+}
+
+.helpRight {
+  margin-left: auto;
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.warn {
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  color: var(--color-warning);
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* ── A tier: name, value, purge · bar with budget mark · one help line ── */
+.tier {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tierHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 22px;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.track {
+  position: relative;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--color-surface-2);
+  overflow: visible;
+}
+
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  max-width: 100%;
+}
+
+.swatch[data-tone='ram'],
+.fill[data-tone='ram'] { background: var(--color-timeline-cache); }
+.swatch[data-tone='vram'],
+.fill[data-tone='vram'] { background: var(--color-violet-500); }
+.swatch[data-tone='disk'],
+.fill[data-tone='disk'] { background: var(--color-timeline-disk-cache); }
+.fill[data-tone='drive'] { background: var(--color-text-tertiary); }
+.fill[data-tone='time'] { background: var(--color-primary); }
+.fill[data-tone='warn'] { background: var(--color-warning); }
+
+/* The budget, on a bar whose full width is the machine's memory. */
+.budgetMark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--color-text-primary);
+}
+
+/* ── This composition: disk on top, RAM under, as the timeline lane ── */
+.coverage {
+  position: relative;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+
+.coverDisk,
+.coverRam {
+  position: absolute;
+  left: 0;
+  height: 5px;
+}
+
+.coverDisk {
+  top: 0;
+  background: var(--color-timeline-disk-cache);
+}
+
+.coverRam {
+  bottom: 0;
+  background: var(--color-timeline-cache);
+}
+
+/* ── Switch rows and fields ─────────────────────────────────────── */
+.switchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  cursor: pointer;
+}
+
+.switchText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.switchText .label {
+  color: var(--color-text-primary);
+  white-space: normal;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldInline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height-md);
+}
+
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: var(--panel-weight-button);
+  cursor: pointer;
+}
+
+.select:hover {
+  background: var(--color-hover);
+}
+
+.sizeInput {
+  width: 96px;
+}
+
+.path {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-family: var(--panel-font-family-value);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+/* ── Drives ─────────────────────────────────────────────────────── */
+.drive {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.driveCurrent {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  background: var(--color-primary-subtle);
+}
+
+.badge {
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  color: var(--color-primary-text);
+  font-size: var(--panel-font-size-help);
+}
+
+/* ── Diagnostics ────────────────────────────────────────────────── */
+.chart {
+  width: 100%;
+  height: 96px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+
+.chart polyline {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.lineRam { stroke: var(--color-timeline-cache); }
+.lineTotal { stroke: var(--color-text-primary); }
+.lineTotal[data-tone='bad'] { stroke: var(--color-danger); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-secondary);
+}
+
+.legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendSpan {
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+}
+
+.legendKey {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legendKey[data-tone='total'] { background: var(--color-text-primary); }
+.legendKey[data-tone='ram'] { background: var(--color-timeline-cache); }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+
+.stat .value {
+  margin-left: 0;
+}
+
+.events {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-primary);
+}
+
+.events li {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.eventTime {
+  flex: none;
+  font-family: var(--panel-font-family-value);
+  color: var(--color-text-tertiary);
+}

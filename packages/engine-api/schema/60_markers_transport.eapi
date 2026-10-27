@@ -150,7 +150,13 @@ command setViewport = 808 [control, coalesce] {
   groundGrid?: bool = 21;
 }
 command closeViewport = 809 [control] { viewport: u32 = 1; }
-command setCacheBudget = 810 [control] { ramMegabytes: u64 = 1; diskMegabytes: u64 = 2; diskPath: string = 3; }
+command setCacheBudget = 810 [control] {
+  ramMegabytes: u64 = 1;
+  diskMegabytes: u64 = 2;
+  diskPath: string = 3;
+  /// Idle render-ahead: with the transport stopped, fill the cache around the playhead (AE's idle caching). Absent = leave as it is.
+  idleRenderAhead?: bool = 4;
+}
 
 enum PurgeKind { all = 0; ram = 1; disk = 2; undo = 3; images = 4; }
 
