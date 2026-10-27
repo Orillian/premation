@@ -14,7 +14,22 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '@core/i18n';
+import { generation } from '@core/api/cache';
 import type { Paginated, PageQuery } from '@core/api/transport';
+
+/**
+ * The last page each keyed list showed, so a tab opened again paints it at once
+ * instead of an empty table (the fetch still runs and corrects it). Tagged with
+ * the cache's session generation: another account never sees these rows.
+ */
+const lastPages = new Map<string, { gen: number; limit: number; offset: number; items: unknown[]; total: number }>();
+
+function rememberedPage<T>(key: string | undefined): { limit: number; offset: number; items: T[]; total: number } | null {
+  if (!key) return null;
+  const page = lastPages.get(key);
+  if (!page || page.gen !== generation()) return null;
+  return page as { limit: number; offset: number; items: T[]; total: number };
+}
 
 export type PagedFetcher<T> = (params: Required<PageQuery>) => Promise<Paginated<T>>;
 
@@ -48,17 +63,28 @@ export interface UsePagedListOptions {
   enabled?: boolean;
   /** Fallback message when the failure carries none. */
   errorMessage?: string;
+  /**
+   * Remember the last page under this key across unmounts. Only for a list
+   * whose fetcher identity does not vary (one key = one query).
+   */
+  cacheKey?: string;
 }
 
 export function usePagedList<T extends { id: string }>(
   fetcher: PagedFetcher<T>,
-  { pageSize = 24, enabled = true, errorMessage = t('hooks.pagedList.loadFailed', 'Could not load this list.') }: UsePagedListOptions = {},
+  {
+    pageSize = 24,
+    enabled = true,
+    errorMessage = t('hooks.pagedList.loadFailed', 'Could not load this list.'),
+    cacheKey,
+  }: UsePagedListOptions = {},
 ): PagedList<T> {
-  const [limit, setLimit] = useState(pageSize);
-  const [offset, setOffset] = useState(0);
-  const [items, setItems] = useState<T[]>([]);
-  const [total, setTotal] = useState(0);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [remembered] = useState(() => rememberedPage<T>(cacheKey));
+  const [limit, setLimit] = useState(remembered?.limit ?? pageSize);
+  const [offset, setOffset] = useState(remembered?.offset ?? 0);
+  const [items, setItems] = useState<T[]>(remembered?.items ?? []);
+  const [total, setTotal] = useState(remembered?.total ?? 0);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(remembered ? 'ready' : 'loading');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -89,6 +115,7 @@ export function usePagedList<T extends { id: string }>(
         setTotal(page.total);
         setStatus('ready');
         setError(null);
+        if (cacheKey) lastPages.set(cacheKey, { gen: generation(), limit, offset, items: page.items, total: page.total });
         // The page can outlive its rows (something else deleted them, or the
         // user was on the last page of a list that shrank). Step back rather
         // than show an empty table under a "…of 143" label.
@@ -107,7 +134,7 @@ export function usePagedList<T extends { id: string }>(
     return () => {
       live = false;
     };
-  }, [fetcher, limit, offset, enabled, nonce, errorMessage]);
+  }, [fetcher, limit, offset, enabled, nonce, errorMessage, cacheKey]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

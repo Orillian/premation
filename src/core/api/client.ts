@@ -907,13 +907,15 @@ export const api = {
   oauthExchange: (code: string) => authRequest('/auth/oauth/exchange', { code }),
 
   /** Devices with a live session. */
-  listSessions: () => request<SessionRecord[]>('/auth/sessions'),
+  listSessions: () => cachedGet<SessionRecord[]>('/auth/sessions', { tags: ['sessions'] }),
   /** Sign out everywhere, including here. */
   revokeAllSessions: () =>
-    request<{ revoked: number }>('/auth/sessions', { method: 'DELETE' }),
+    request<{ revoked: number }>('/auth/sessions', { method: 'DELETE' }).then(tap(['sessions'])),
   /** Sign out one device by its session record id. */
   revokeSession: (id: string) =>
-    request<{ revoked: number }>(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    request<{ revoked: number }>(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(
+      tap(['sessions']),
+    ),
 
   // account — the signed-in user's own identity. Every route is authenticated;
   // the ones that end with a new session go through `authRequest` so the
@@ -1419,26 +1421,33 @@ export const api = {
   /** Browse native plugins (public ones, plus nothing private: private plugins are only on `myPlugins`). */
   browseNativePlugins: (params: { q?: string; category?: string; sort?: string; limit?: number; offset?: number } = {}) =>
     // The registry filters on `kind` and on what this engine's SDK loads (motion-back plugins.service browse).
-    request<StorePluginPage>(`/plugins${query({ kind: 'native', sdk: ENGINE_PLUGIN_SDK, ...params })}`).then((page) => ({
+    cachedGet<StorePluginPage>(`/plugins${query({ kind: 'native', sdk: ENGINE_PLUGIN_SDK, ...params })}`, {
+      tags: ['plugins'],
+    }).then((page) => ({
       items: (page.items ?? []).map(storePluginFromWire),
       total: page.total,
     })),
   /** One plugin's public listing. */
   storePluginDetail: (id: string) =>
-    request<StorePluginDetail>(`/plugins/${encodeURIComponent(id)}`).then(storePluginFromWire),
+    cachedGet<StorePluginDetail>(`/plugins/${encodeURIComponent(id)}`, { tags: ['plugins'] }).then(
+      storePluginFromWire,
+    ),
   /** What the signed-in user has published, private ones included. */
   myPlugins: () =>
-    request<Array<StorePluginSummary & { visibility: 'public' | 'private' }>>('/plugins/mine/list')
-      .then((list) => list.map(storePluginFromWire)),
+    cachedGet<Array<StorePluginSummary & { visibility: 'public' | 'private' }>>('/plugins/mine/list', {
+      tags: ['plugins'],
+    }).then((list) => list.map(storePluginFromWire)),
   /** The owner's view of one plugin (private ones included). */
   myPluginDetail: (id: string) =>
-    request<StorePluginDetail>(`/plugins/mine/${encodeURIComponent(id)}/detail`).then(storePluginFromWire),
+    cachedGet<StorePluginDetail>(`/plugins/mine/${encodeURIComponent(id)}/detail`, { tags: ['plugins'] }).then(
+      storePluginFromWire,
+    ),
   /** Public or private, set by the publisher (public needs a verified publisher). */
   setPluginVisibility: (id: string, visibility: 'public' | 'private') =>
     request<StorePluginSummary>(`/plugins/${encodeURIComponent(id)}/listing`, {
       method: 'PATCH',
       body: JSON.stringify({ visibility }),
-    }),
+    }).then(tap(['plugins'])),
   /** Upload a signed `.pplugin` (pack-plugin.mjs --key writes the signature). */
   publishPlugin: (file: Blob, signature: string, publicKey: string, visibility: 'public' | 'private', releaseNotes?: string) => {
     const form = new FormData();
@@ -1447,31 +1456,38 @@ export const api = {
     form.append('publicKey', publicKey);
     form.append('visibility', visibility);
     if (releaseNotes?.trim()) form.append('releaseNotes', releaseNotes.trim());
-    return request<PublishPluginResult>('/plugins', { method: 'POST', body: form });
+    return request<PublishPluginResult>('/plugins', { method: 'POST', body: form }).then(tap(['plugins']));
   },
   /** The listing text a publisher edits: About (Markdown), categories, licence. */
   updatePluginListing: (id: string, listing: { readme?: string; categories?: string[]; license?: string }) =>
-    request<StorePluginSummary>(`/plugins/${encodeURIComponent(id)}/listing`, { method: 'PATCH', body: JSON.stringify(listing) }),
+    request<StorePluginSummary>(`/plugins/${encodeURIComponent(id)}/listing`, { method: 'PATCH', body: JSON.stringify(listing) }).then(
+      tap(['plugins']),
+    ),
   /** Upload the icon (replaces it) or a screenshot (up to 3). PNG, JPEG or WebP, 2 MB, 2560 px a side. */
   uploadPluginMedia: (id: string, kind: 'icon' | 'screenshot', file: Blob) => {
     const form = new FormData();
     form.append('file', file);
-    return request<unknown>(`/plugins/${encodeURIComponent(id)}/media/${kind}`, { method: 'POST', body: form });
+    return request<unknown>(`/plugins/${encodeURIComponent(id)}/media/${kind}`, { method: 'POST', body: form }).then(
+      tap(['plugins']),
+    );
   },
   deletePluginMedia: (mediaId: string) =>
-    request<unknown>(`/plugins/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }),
+    request<unknown>(`/plugins/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }).then(tap(['plugins'])),
   /** A version's release notes (empty clears them). */
   setPluginReleaseNotes: (id: string, version: string, releaseNotes: string) =>
     request<{ version: string; releaseNotes: string | null }>(
       `/plugins/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/notes`,
       { method: 'PATCH', body: JSON.stringify({ releaseNotes }) },
-    ),
+    ).then(tap(['plugins'])),
   /** Newer versions of what is installed (the installed set goes in the body, not the URL). */
   checkPluginUpdates: (installed: Array<{ id: string; version: string }>) =>
     request<StorePluginUpdate[]>('/plugins/updates', { method: 'POST', body: JSON.stringify({ installed }) }),
   /** The signed-in user's publisher identities (verification decides whether anything can be public). */
   myPublishers: () =>
-    request<Array<{ id: string; namespace: string; displayName: string; verified: boolean; verifiedDomain: string | null }>>('/publishers/mine'),
+    cachedGet<Array<{ id: string; namespace: string; displayName: string; verified: boolean; verifiedDomain: string | null }>>(
+      '/publishers/mine',
+      { tags: ['plugins'] },
+    ),
 };
 
 /**

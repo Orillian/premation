@@ -32,6 +32,7 @@ import {
 } from '@core/api/client';
 import { billingEnabled } from '@core/config/edition';
 import { t } from '@core/i18n/t';
+import { useCachedQuery } from '@hooks/useCachedQuery';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import { openModal } from '@stores/modalStore';
 import { cancelDialogCopy, confirmPlanChange, planIntent } from './planIntent';
@@ -203,47 +204,69 @@ function confirmCancel(summary: BillingSummary): Promise<CancelChoice> {
 }
 
 /** Server-authored `{ code, message }` if there is one, else the raw error. */
+const NO_PLANS: PlanDto[] = [];
+
 function readError(err: unknown): string {
   const body = (err as { body?: { message?: string | { message?: string } } }).body;
   const msg = typeof body?.message === 'object' ? body.message.message : body?.message;
   return msg || (err instanceof Error ? err.message : t('billing.error.generic', 'Something went wrong.'));
 }
 
+/** The memo key for this page's data — shared with the dashboard's hover prefetch. */
+export const BILLING_QUERY_KEY = 'billing:summary+plans';
+
+/** What this page shows: the account's billing state and the plan catalog. */
+export function fetchBillingPage(): Promise<[BillingSummary, PlanDto[]]> {
+  return Promise.all([api.getBilling(), api.listPlans()]);
+}
+
 export function BillingSection(): JSX.Element | null {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [summary, setSummary] = useState<BillingSummary | null>(null);
-  const [plans, setPlans] = useState<PlanDto[]>([]);
-  const [error, setError] = useState('');
+  // Kept across visits (useCachedQuery): coming back to Billing paints the last
+  // answer at once and corrects it quietly, instead of "Loading your plan…".
+  const billing = useCachedQuery(BILLING_QUERY_KEY, fetchBillingPage, {
+    tags: ['billing', 'account'],
+    enabled: billingEnabled() && isAuthenticated(),
+  });
+  const summary: BillingSummary | null = billing.data?.[0] ?? null;
+  const plans: PlanDto[] = billing.data?.[1] ?? NO_PLANS;
+  const [actionError, setError] = useState('');
+  // A failed background refresh behind a rendered plan is not worth a banner.
+  const error = actionError || (summary ? '' : (billing.error ?? ''));
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
   const handledReturn = useRef(false);
 
+  // Every answer, first or refreshed, is also the entitlement the rest of the
+  // app gates on.
+  useEffect(() => {
+    if (!summary) return;
+    useEntitlementStore.setState({
+      access: summary.access,
+      message: summary.access.write ? '' : summary.statusMessage,
+      salesOpen: paidSalesOpen(plans),
+    });
+  }, [summary, plans]);
+
+  /**
+   * Re-read the plan. `force` skips the HTTP cache — after a checkout, a
+   * resync or a plan change, where the server's answer just moved. Arriving on
+   * the page needs no load call: the query revalidates on mount, and a mutation
+   * in `client.ts` invalidates `billing`, which refetches it.
+   */
+  const reloadBilling = billing.reload;
   const load = useCallback(async (force = false) => {
     if (!billingEnabled()) return;
     if (!isAuthenticated()) return;
     try {
-      const [me, catalog] = await Promise.all([api.getBilling({ force }), api.listPlans()]);
-      setSummary(me);
-      setPlans(catalog);
-      useEntitlementStore.setState({
-        access: me.access,
-        message: me.access.write ? '' : me.statusMessage,
-        salesOpen: paidSalesOpen(catalog),
-      });
+      if (force) await api.getBilling({ force: true });
+      await reloadBilling();
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('billing.error.load', 'Could not load your plan.'));
     }
-  }, []);
-
-  useEffect(() => {
-    // Checkout returns run their own resync-first flow below. Starting a normal
-    // fetch in parallel can win the race with the webhook and briefly restore
-    // stale plan data.
-    if (checkoutReturnState(searchParams)) return;
-    void load(true);
-  }, [load, searchParams]);
+  }, [reloadBilling]);
 
   useEffect(() => {
     const returned = checkoutReturnState(searchParams);

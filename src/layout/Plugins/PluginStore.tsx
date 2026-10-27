@@ -30,6 +30,7 @@ import { billingEnabled, cloudProjectsEnabled } from '@core/config/edition';
 import { canInstallFromStore, compareVersions, hostPlatformKeys, runsHere } from '@core/nativePlugins/pluginStore';
 import type { InstalledState, StoreSort } from '@hooks/usePluginStore';
 import { useStoreBrowse } from '@hooks/usePluginStore';
+import { useCachedQuery } from '@hooks/useCachedQuery';
 import { useEntitlementStore } from '@stores/entitlementStore';
 import { PluginIcon } from './PluginIcon';
 import { PluginListingEditor } from './PluginListingEditor';
@@ -241,17 +242,16 @@ export function StorePluginDetailCard({
   store: InstalledState;
   onBack: () => void;
 }): JSX.Element {
-  const [detail, setDetail] = useState<StorePluginDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
+  // Remembered per plugin, so going back to a listing shows it at once; the
+  // publisher's edits invalidate `plugins`, which refetches it.
+  const query = useCachedQuery<StorePluginDetail>(
+    `plugins:detail:${owner ? 'mine' : 'store'}:${id}`,
+    () => (owner ? api.myPluginDetail(id) : api.storePluginDetail(id)),
+    { tags: ['plugins'] },
+  );
+  const detail = query.data ?? null;
+  const error = detail ? null : query.error;
   const hasCloud = useHasCloudPlugins();
-  useEffect(() => {
-    let alive = true;
-    (owner ? api.myPluginDetail(id) : api.storePluginDetail(id))
-      .then((d) => { if (alive) setDetail(d); })
-      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : t('plugins.store.loadFailed', 'Could not load the plugin.')); });
-    return () => { alive = false; };
-  }, [id, owner, revision]);
 
   const versions = detail?.versionHistory ?? [];
   const shots = (detail?.screenshots ?? []).slice(0, 3);
@@ -355,7 +355,7 @@ export function StorePluginDetailCard({
             ) : null}
           </div>
 
-          {owner ? <PluginListingEditor detail={detail} onChanged={() => setRevision((r) => r + 1)} /> : null}
+          {owner ? <PluginListingEditor detail={detail} onChanged={() => void query.reload()} /> : null}
 
           <p className={styles.text}>
             {t(

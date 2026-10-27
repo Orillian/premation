@@ -43,7 +43,9 @@ export type CacheTag =
   | 'animation-templates'
   | 'render-capabilities'
   | 'review'
-  | 'library';
+  | 'library'
+  | 'sessions'
+  | 'plugins';
 
 /**
  * Every tag, as a value.
@@ -67,6 +69,8 @@ const ALL_TAGS = [
   'render-capabilities',
   'review',
   'library',
+  'sessions',
+  'plugins',
 ] as const satisfies readonly CacheTag[];
 
 interface Entry<T = unknown> {
@@ -91,6 +95,18 @@ const DEFAULT_TTL_MS = 30_000;
 const entries = new Map<string, Entry>();
 const inflight = new Map<string, Promise<unknown>>();
 const listeners = new Set<(tags: CacheTag[]) => void>();
+/** Bumped by `clear`, so layers that keep their own copies can tell a new session. */
+let sessionGeneration = 0;
+
+/**
+ * Which session the cache's contents belong to. Anything derived from a cached
+ * value and held elsewhere (the dashboard's per-page memo) records this and
+ * discards its copy once it changes: sign-out must not leave the last user's
+ * plan sitting in a module-scope map for the next one to see.
+ */
+export function generation(): number {
+  return sessionGeneration;
+}
 
 /**
  * Subscribe to cache changes. Called with the tags that changed, so a listener
@@ -202,6 +218,7 @@ export function put<T>(path: string, data: T, tags: CacheTag[] = []): void {
 export function clear(): void {
   entries.clear();
   inflight.clear();
+  sessionGeneration += 1;
   // Every tag, so nothing stays subscribed to a value from the old session.
   // Taken from ALL_TAGS rather than written out again: a second hand-written
   // list silently stops covering a tag the moment one is added, and the symptom

@@ -17,7 +17,8 @@ import { DashboardConnections } from './DashboardConnections';
 import { newProjectDocument } from '@core/project/newProjectDocument';
 import { NativePluginsPage } from '@layout/Plugins/NativePluginsPage';
 import { RegistryPluginsNotice } from '@layout/Plugins/RegistryPluginsNotice';
-import { BillingSection } from '@layout/Settings/BillingSection';
+import { BILLING_QUERY_KEY, BillingSection, fetchBillingPage } from '@layout/Settings/BillingSection';
+import { SESSIONS_QUERY_KEY } from '@layout/Settings/AccountSection';
 import { billingEnabled } from '@core/config/edition';
 import { t } from '@core/i18n';
 import { hasDesktopChrome } from '@core/config/uiPlatform';
@@ -38,6 +39,7 @@ import { getAssetVisualInfo, FOLDER_COLOR } from '@layout/Assets/assetVisuals';
 import { createFolderEdit, createFolderTreeEdit, importBrowserFilesEdit, renameItemEdit } from '@layout/Assets/assetEdits';
 import {
   api,
+  isAuthenticated,
   type AccountRecord,
   type ProjectSummary,
   type RenderJobDto,
@@ -45,6 +47,7 @@ import {
 } from '@core/api/client';
 import { projectLimitDetail } from '@core/api/transport';
 import { usePagedList } from '@hooks/usePagedList';
+import { prefetchQuery, useCachedQuery } from '@hooks/useCachedQuery';
 import { useProSalesOpen } from '@hooks/useProSalesOpen';
 import { clearRecovery } from '@core/persistence/recovery';
 import { DashboardCustomizeTab } from './DashboardCustomizeTab';
@@ -285,6 +288,73 @@ const TABLE_PAGE_SIZE = 20;
 const ASSET_PAGE_SIZE = 24;
 
 /**
+ * Library-wide numbers for the Home tab.
+ *
+ * Deliberately NOT derived from the loaded page: "Total Projects" counted the
+ * rows in the browser, so it showed 24 for a 143-project account, and
+ * "Active Renders" counted the running jobs among the newest 50. Both are now
+ * a `total` from a one-row query, which is the count the server actually has.
+ */
+interface HomeOverview {
+  projects: number;
+  activeRenders: number;
+  /** Renders that ended badly and the user has not looked at yet. */
+  failedRenders: number;
+  recent: ProjectSummary | null;
+}
+
+const EMPTY_OVERVIEW: HomeOverview = { projects: 0, activeRenders: 0, failedRenders: 0, recent: null };
+const OVERVIEW_QUERY_KEY = 'dashboard:overview';
+
+/**
+ * Warm a page's data while the pointer is on its nav link, so the click lands
+ * on content. Each read goes through `cachedGet`: a warm one costs nothing and
+ * a cold one is the request the click was about to make anyway. Failures are
+ * left for the page itself to report.
+ */
+function prefetchTab(tab: TabType): void {
+  if (!isAuthenticated()) return;
+  const quiet = (p: Promise<unknown>): void => void p.catch(() => undefined);
+  switch (tab) {
+    case 'billing':
+      if (billingEnabled()) quiet(prefetchQuery(BILLING_QUERY_KEY, fetchBillingPage, ['billing', 'account']));
+      break;
+    case 'settings':
+      quiet(prefetchQuery(SESSIONS_QUERY_KEY, api.listSessions, ['sessions']));
+      break;
+    case 'renders':
+      quiet(api.listRenders({ limit: TABLE_PAGE_SIZE, offset: 0 }));
+      break;
+    case 'trash':
+      quiet(api.listTrash({ limit: TABLE_PAGE_SIZE, offset: 0 }));
+      break;
+    default:
+      break;
+  }
+}
+
+async function fetchOverview(): Promise<{ account: AccountRecord; overview: HomeOverview }> {
+  // Four one-row queries rather than four lists: every number here is a
+  // `total` the server already knows, and asking for the rows to count them
+  // would download a library to display one integer.
+  const [me, newest, active, failed] = await Promise.all([
+    api.me(),
+    api.listProjects({ limit: 1 }),
+    api.listRenders({ limit: 1, status: 'active' }),
+    api.listRenders({ limit: 1, status: 'failed' }),
+  ]);
+  return {
+    account: me,
+    overview: {
+      projects: newest.total,
+      activeRenders: active.total,
+      failedRenders: failed.total,
+      recent: newest.items[0] ?? null,
+    },
+  };
+}
+
+/**
  * The format filter's labels. Orientation is the axis that actually
  * distinguishes a reel from a YouTube cut, and it comes from the comp's own
  * size (the server filters on it — see projectLibraryStore).
@@ -420,8 +490,6 @@ export function DashboardPage(): JSX.Element {
   useEffect(() => {
     setTitleSlot(hasDesktopChrome() ? document.getElementById(TITLE_BAR_ROUTE_SLOT_ID) : null);
   }, []);
-  /** The Home numbers could not be loaded — so Home states none, rather than zeroes. */
-  const [overviewFailed, setOverviewFailed] = useState(false);
   const [projectView, setProjectView] = useState<ProjectView>(() =>
     readPref(PROJECT_VIEW_KEY) === 'grid' ? 'grid' : 'list',
   );
@@ -435,8 +503,20 @@ export function DashboardPage(): JSX.Element {
     setNewsOpen(false);
     writePref(NEWS_SEEN_KEY, APP_VERSION);
   };
-  /** Plan + credits, from /auth/me. The UI must not guess these. */
-  const [account, setAccount] = useState<AccountRecord | null>(null);
+  /**
+   * Plan + credits (from /auth/me) and the Home numbers, kept across visits
+   * (useCachedQuery): back from the editor or another tab, Home paints its last
+   * numbers at once and corrects them in the background. A create, delete or
+   * render invalidates the tags below, which refetches it.
+   */
+  const overviewQuery = useCachedQuery(OVERVIEW_QUERY_KEY, fetchOverview, {
+    tags: ['account', 'projects', 'renders'],
+  });
+  const account: AccountRecord | null = overviewQuery.data?.account ?? null;
+  const overview = overviewQuery.data?.overview ?? EMPTY_OVERVIEW;
+  /** The Home numbers could not be loaded — so Home states none, rather than zeroes. */
+  const overviewFailed = !overviewQuery.data && overviewQuery.error !== null;
+  const refreshOverview = overviewQuery.reload;
   // Pro sales can be closed server-side; the sidebar then stops saying "View plans".
   const salesOpen = useProSalesOpen();
   /** The cloud project cap in force (null = none, incl. the beta and the launch grace). */
@@ -457,6 +537,7 @@ export function DashboardPage(): JSX.Element {
   const renders = usePagedList<RenderJobDto>(fetchRenders, {
     pageSize: TABLE_PAGE_SIZE,
     enabled: activeTab === 'renders',
+    cacheKey: 'dashboard:renders',
     errorMessage: t('dashboard.renders.loadFailed', 'Could not load the render queue.'),
   });
 
@@ -467,48 +548,10 @@ export function DashboardPage(): JSX.Element {
   const trash = usePagedList<TrashedProject>(fetchTrash, {
     pageSize: TABLE_PAGE_SIZE,
     enabled: activeTab === 'trash',
+    cacheKey: 'dashboard:trash',
     errorMessage: t('dashboard.trash.loadFailed', 'Could not load the trash.'),
   });
 
-  /**
-   * Library-wide numbers for the Home tab.
-   *
-   * Deliberately NOT derived from the loaded page: "Total Projects" counted the
-   * rows in the browser, so it showed 24 for a 143-project account, and
-   * "Active Renders" counted the running jobs among the newest 50. Both are now
-   * a `total` from a one-row query, which is the count the server actually has.
-   */
-  const [overview, setOverview] = useState<{
-    projects: number;
-    activeRenders: number;
-    /** Renders that ended badly and the user has not looked at yet. */
-    failedRenders: number;
-    recent: ProjectSummary | null;
-  }>({ projects: 0, activeRenders: 0, failedRenders: 0, recent: null });
-
-  const refreshOverview = useCallback(async (): Promise<void> => {
-    try {
-      // Four one-row queries rather than four lists: every number here is a
-      // `total` the server already knows, and asking for the rows to count them
-      // would download a library to display one integer.
-      const [me, newest, active, failed] = await Promise.all([
-        api.me(),
-        api.listProjects({ limit: 1 }),
-        api.listRenders({ limit: 1, status: 'active' }),
-        api.listRenders({ limit: 1, status: 'failed' }),
-      ]);
-      setAccount(me);
-      setOverviewFailed(false);
-      setOverview({
-        projects: newest.total,
-        activeRenders: active.total,
-        failedRenders: failed.total,
-        recent: newest.items[0] ?? null,
-      });
-    } catch {
-      setOverviewFailed(true);
-    }
-  }, []);
 
   // Workspace Setup Modal State
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -607,10 +650,6 @@ export function DashboardPage(): JSX.Element {
     const timer = setTimeout(() => { void load({ query: searchQuery }); }, 250);
     return () => clearTimeout(timer);
   }, [load, searchQuery]);
-
-  useEffect(() => {
-    void refreshOverview();
-  }, [refreshOverview]);
 
   const considerReviewPrompt = useReviewPromptStore((s) => s.consider);
 
@@ -1995,6 +2034,8 @@ export function DashboardPage(): JSX.Element {
       className={`${styles.navLink} ${activeTab === item.tab ? styles.navLinkActive : ''}`}
       aria-current={activeTab === item.tab ? 'page' : undefined}
       onClick={() => openTab(item.tab)}
+      onPointerEnter={() => prefetchTab(item.tab)}
+      onFocus={() => prefetchTab(item.tab)}
     >
       <Icon name={item.icon} size="md" className={styles.navIcon} />
       <span>{item.label}</span>

@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { BillingSection, checkoutReturnState, currentPlanLine, yearlyMonthsFree } from './BillingSection';
 import { api, type BillingSummary, type PlanDto } from '@core/api/client';
 import { useModalStore } from '@stores/modalStore';
+import { resetCachedQueriesForTests } from '@hooks/useCachedQuery';
 
 jest.mock('@core/config/edition', () => ({ billingEnabled: () => true }));
 jest.mock('@core/api/client', () => {
@@ -50,6 +51,10 @@ function DialogStack(): JSX.Element {
     </>
   );
 }
+
+// The page remembers its last answer across mounts (useCachedQuery) — every
+// scenario here is a different account, so none may inherit the last one's.
+beforeEach(() => resetCachedQueriesForTests());
 
 const renderBilling = (): ReturnType<typeof render> =>
   render(
@@ -327,6 +332,7 @@ describe('subscription lifecycle', () => {
     const { unmount } = renderBilling();
     expect(await screen.findByRole('button', { name: 'Switch to monthly' })).toBeInTheDocument();
     unmount();
+    resetCachedQueriesForTests();
     jest.mocked(api.listPlans).mockResolvedValue([cloudPlans[0]!, { ...cloudPlans[1]!, yearlyPriceLabel: null }]);
     renderBilling();
     expect(await screen.findByRole('button', { name: 'Cancel subscription' })).toBeInTheDocument();

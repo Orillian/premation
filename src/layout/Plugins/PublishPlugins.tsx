@@ -17,6 +17,7 @@ import { Icon } from '@components/Icon';
 import { Segmented } from '@components/Segmented';
 import { api, type StorePluginSummary } from '@core/api/client';
 import type { InstalledState } from '@hooks/usePluginStore';
+import { useCachedQuery } from '@hooks/useCachedQuery';
 import { PluginIcon } from './PluginIcon';
 import { StorePluginDetailCard } from './PluginStore';
 import styles from './NativePlugins.module.css';
@@ -45,9 +46,21 @@ export function parseSignatureFile(text: string): { signature: string; publicKey
 }
 
 export function PublishPlugins({ store }: { store: InstalledState }): JSX.Element {
-  const [mine, setMine] = useState<Array<StorePluginSummary & { visibility: Visibility }> | null>(null);
-  const [verified, setVerified] = useState<boolean | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Remembered across visits (useCachedQuery); publishing or a visibility
+  // change invalidates `plugins`, which refetches both.
+  const mineQuery = useCachedQuery('plugins:mine', api.myPlugins, { tags: ['plugins'] });
+  const publishersQuery = useCachedQuery('plugins:publishers', api.myPublishers, { tags: ['plugins'] });
+  const mine: Array<StorePluginSummary & { visibility: Visibility }> | null =
+    mineQuery.data?.filter((p) => p.kind === 'native') ?? null;
+  const verified: boolean | null = publishersQuery.data
+    ? publishersQuery.data.some((p) => p.verified)
+    : publishersQuery.error
+      ? false
+      : null;
+  const [actionError, setError] = useState<string | null>(null);
+  const error =
+    actionError ??
+    (mineQuery.data || !mineQuery.error ? null : t('plugins.publish.signIn', 'Sign in to publish plugins.'));
   const [note, setNote] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [pkg, setPkg] = useState<File | null>(null);
@@ -57,20 +70,17 @@ export function PublishPlugins({ store }: { store: InstalledState }): JSX.Elemen
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
 
+  const reloadMine = mineQuery.reload;
+  const reloadPublishers = publishersQuery.reload;
   const load = useCallback(() => {
-    api.myPlugins()
-      .then((list) => { if (alive.current) setMine(list.filter((p) => p.kind === 'native')); })
-      .catch((e: unknown) => { if (alive.current) setError(e instanceof Error ? e.message : t('plugins.publish.signIn', 'Sign in to publish plugins.')); });
-    api.myPublishers()
-      .then((pubs) => { if (alive.current) setVerified(pubs.some((p) => p.verified)); })
-      .catch(() => { if (alive.current) setVerified(false); });
-  }, []);
+    void reloadMine();
+    void reloadPublishers();
+  }, [reloadMine, reloadPublishers]);
 
   useEffect(() => {
     alive.current = true;
-    load();
     return () => { alive.current = false; };
-  }, [load]);
+  }, []);
 
   const changeVisibility = async (id: string, v: Visibility): Promise<void> => {
     setError(null);

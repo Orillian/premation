@@ -17,7 +17,7 @@
  * and the auth store both learn the new tokens before the dialog closes.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
@@ -30,6 +30,7 @@ import { setSession } from '@core/api/session';
 import { SLOT, t, tAround } from '@core/i18n/t';
 import { PasswordRules } from '../../pages/AuthShell';
 import { cn } from '@utils/cn';
+import { useCachedQuery } from '@hooks/useCachedQuery';
 import styles from './AccountSection.module.css';
 
 export interface AccountSectionProps {
@@ -569,24 +570,18 @@ function openDeleteAccount(account: AccountRecord, onOpenBilling: () => void, on
 
 // ── Sessions ───────────────────────────────────────────────────────────
 
+/** The memo key for the device list — shared with the dashboard's hover prefetch. */
+export const SESSIONS_QUERY_KEY = 'account:sessions';
+
 /** Signed-in devices. Its own Settings tab, not a row inside the account form. */
 export function DevicesPanel(): JSX.Element {
-  const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
-  const [error, setError] = useState('');
+  // Remembered across visits, so reopening the tab lists the devices at once;
+  // a revoke invalidates `sessions`, which refetches the list.
+  const query = useCachedQuery<SessionRecord[]>(SESSIONS_QUERY_KEY, api.listSessions, { tags: ['sessions'] });
+  const sessions = query.data ?? null;
+  const error = sessions ? '' : (query.error ?? '');
   const [busy, setBusy] = useState<string | null>(null);
-
-  const load = useCallback(async (): Promise<void> => {
-    try {
-      setSessions(await api.listSessions());
-      setError('');
-    } catch (err) {
-      setError(readError(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const load = query.reload;
 
   const revoke = async (id: string): Promise<void> => {
     setBusy(id);

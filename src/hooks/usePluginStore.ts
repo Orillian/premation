@@ -7,7 +7,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '@core/i18n';
+import { invalidate } from '@core/api/cache';
 import { api, type StorePluginSummary, type StorePluginUpdate } from '@core/api/client';
+import { useCachedQuery } from './useCachedQuery';
 import { hasSession } from '@core/api/session';
 import { pluginEngine } from '@core/engine/engineInstance';
 import {
@@ -67,24 +69,32 @@ export type StoreSort = 'installs' | 'new' | 'updated';
  * publisher's private ones first.
  */
 export function useStoreBrowse(q: string, sort: StoreSort = 'installs'): PluginStoreBrowse & { reload: () => void } {
-  const [state, setState] = useState<PluginStoreBrowse>({ items: null, total: 0, error: null, loading: true, owned: NONE });
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    setState((s) => ({ ...s, loading: true }));
-    Promise.all([api.browseNativePlugins({ q: q.trim() || undefined, sort, limit: 50 }), ownPrivatePlugins(q)])
-      .then(([page, own]) => {
-        if (!alive) return;
-        const listed = new Set(page.items.map((p) => p.id));
-        const extra = own.filter((p) => !listed.has(p.id));
-        setState({ items: [...extra, ...page.items], total: page.total + extra.length, error: null, loading: false, owned: new Set(extra.map((p) => p.id)) });
-      })
-      .catch((e: unknown) => {
-        if (alive) setState({ items: null, total: 0, error: e instanceof Error ? e.message : t('hooks.pluginStore.unreachable', 'The plugin store is unreachable.'), loading: false, owned: NONE });
-      });
-    return () => { alive = false; };
-  }, [q, sort, tick]);
-  return { ...state, reload: () => setTick((n) => n + 1) };
+  const term = q.trim();
+  // Remembered per search + sort (useCachedQuery), so reopening the store lists
+  // the catalogue at once instead of an empty card while it reloads.
+  const query = useCachedQuery(
+    `plugins:browse:${sort}:${term}`,
+    async () => {
+      const [page, own] = await Promise.all([
+        api.browseNativePlugins({ q: term || undefined, sort, limit: 50 }),
+        ownPrivatePlugins(q),
+      ]);
+      const listed = new Set(page.items.map((p) => p.id));
+      const extra = own.filter((p) => !listed.has(p.id));
+      return { items: [...extra, ...page.items], total: page.total + extra.length, owned: new Set(extra.map((p) => p.id)) as ReadonlySet<string> };
+    },
+    { tags: ['plugins'] },
+  );
+  const data = query.data;
+  return {
+    items: data?.items ?? null,
+    total: data?.total ?? 0,
+    owned: data?.owned ?? NONE,
+    loading: query.loading,
+    error: data || !query.error ? null : t('hooks.pluginStore.unreachable', 'The plugin store is unreachable.'),
+    // Refresh means "ask the registry", not "re-read what we have".
+    reload: () => invalidate('plugins'),
+  };
 }
 
 export interface InstalledState {
