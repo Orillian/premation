@@ -261,7 +261,9 @@ export function TextEditOverlay(): JSX.Element | null {
           frame.style.width = `${box.offsetWidth * zoom * Math.abs(sx)}px`;
           frame.style.height = `${box.offsetHeight * zoom * Math.abs(sy)}px`;
           frame.style.transform = `translate(-50%, -50%) rotate(${p.rotationDeg}deg)`;
-          frame.style.visibility = 'visible';
+          // Nothing typed yet (a fresh, empty layer): the box is zero wide and
+          // its eight grips stacked into one column — AE shows only the caret.
+          frame.style.visibility = box.textContent ? 'visible' : 'hidden';
         }
         // Placed: shown from here on (TextEditOverlay.module.css).
         if (!box.classList.contains(PLACED_CLASS)) {
@@ -277,9 +279,10 @@ export function TextEditOverlay(): JSX.Element | null {
 
   // The engine draws the layer's text while you type (the editor's own glyphs
   // are transparent: it is only the caret and the selection). One exception:
-  // a layer the Type tool just made carries the engine's placeholder "Text"
-  // until the first keystroke, so that viewport leaves it out until then
-  // (view state: no history, no revision, the document untouched).
+  // a FRESH layer shows nothing until the first keystroke, so that viewport
+  // leaves it out until then (view state: no history, no revision, the
+  // document untouched). The Type tool's layer is born empty (ports.ts
+  // drawnLayerOf), so there is no placeholder word to flash before this lands.
   const hidePlaceholder = !!nodeId && fresh && draft === null;
   useEffect(() => {
     if (!nodeId || !hidePlaceholder) return undefined;

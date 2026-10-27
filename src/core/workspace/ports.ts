@@ -939,6 +939,15 @@ function drawnLayerOf(payload: CreateNodePayload): { node: SceneNode; polystar: 
     pointText ? undefined : outW, pointText ? undefined : outH,
     payload.closed === true,
   );
+  if (kind === 'text') {
+    // Born EMPTY, as After Effects' Type tool makes it: the editor opens on a
+    // caret (`fresh`, TextEditOverlay). Seeded with the placeholder "Text", the
+    // engine drew that word for the frames between the insert and the editor
+    // hiding it — a flash of a word nobody typed (owner, 2026-10-27). An empty
+    // layer measures a caret-high, zero-wide box; a commit left empty deletes it.
+    const textComp = node.components.find((c) => c.type === 'Text');
+    if (textComp) Object.assign(textComp.props, { content: '' });
+  }
   if (payload.kind === 'ParagraphText' || payload.kind === 'VerticalParagraphText') {
     // AE paragraph text: the dragged rectangle IS the box. The layer origin is
     // the rect centre (text content is centred on it), so the box lands exactly

@@ -225,6 +225,15 @@
   color: var(--color-primary-text);
 }
 
+/* A trigger that holds a flyout gets its own gutter for the mark. The `lg`
+   glyph fills the 28px box edge to edge, so a mark drawn inside that box sat
+   on the glyph's ink and the two read as one smudge (owner, 2026-10-27). The
+   button widens by the gutter instead; the glyph keeps its place and size. */
+.toolDropdownTrigger:has(> .flyoutMark),
+.toolDropdownTriggerActive:has(> .flyoutMark) {
+  padding-right: 10px;
+}
+
 /* The flyout mark: After Effects' small solid triangle in the button's
    bottom-right corner, under the glyph and off its centre line, so the glyph
    stays centred and the mark reads as "holds more tools" (owner, 2026-10-26;
@@ -232,14 +241,14 @@
    triangle lands on whole pixels at any zoom. */
 .flyoutMark {
   position: absolute;
-  right: 2px;
-  bottom: 3px;
+  right: 3px;
+  bottom: 5px;
   width: 0;
   height: 0;
-  border-left: 2.5px solid transparent;
-  border-right: 2.5px solid transparent;
-  border-top: 3px solid currentColor;
-  opacity: 0.75;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.8;
   pointer-events: none;
 }
 

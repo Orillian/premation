@@ -10,6 +10,10 @@
   pointer-events: none;
   user-select: none;
   background: var(--color-pasteboard);
+  /* The picture is drawn at its frame's own size (EngineSurface placeCanvas):
+     while the stage shrinks under a splitter drag, the last, larger frame stops
+     at the stage's edge until the next one lands. */
+  overflow: hidden;
 }
 
 .viewportCanvas {

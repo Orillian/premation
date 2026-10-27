@@ -335,6 +335,31 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       boardData[7] = rect ? 1 : 0;
     };
 
+    /**
+     * The picture at the size its frame was drawn for, from the stage's top-left
+     * — never stretched to the box. While a splitter drag resizes the stage, the
+     * frame on screen is the last size's until the next one lands; stretched to
+     * the new box it squashed every layer out of shape and slid them off the
+     * selection outlines, which are drawn in that frame's view (`mainPictureGlue`)
+     * — then snapped back on release (owner, 2026-10-27). Drawn 1:1 it stays
+     * registered with its chrome; the stage's pasteboard fills any uncovered
+     * edge. A frame whose aspect is not its view's (one that beat its
+     * acknowledgement) keeps filling the box, as before. The PAR stretch pivots on
+     * the BOX centre, as the overlay canvas's does. Writes only on a change.
+     */
+    let placedW = '';
+    let placedH = '';
+    let placedOrigin = '';
+    const placeCanvas = (w: number, h: number, cam: NonNullable<EngineSurfaceStats['lastViewport']> | null): void => {
+      const fits = cam !== null && Math.abs(w / Math.max(1, h) - cam.width / Math.max(1, cam.height)) < 0.02;
+      const cssW = fits ? `${cam.width}px` : '';
+      const cssH = fits ? `${cam.height}px` : '';
+      const origin = fits && boxSize ? `${boxSize.width / 2}px 50%` : '';
+      if (cssW !== placedW) canvas.style.width = placedW = cssW;
+      if (cssH !== placedH) canvas.style.height = placedH = cssH;
+      if (origin !== placedOrigin) canvas.style.transformOrigin = placedOrigin = origin;
+    };
+
     const draw = (): void => {
       raf = 0;
       const p = pending;
@@ -366,6 +391,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
           pending = p;
           return;
         }
+        placeCanvas(w, h, drawnWith);
         const now = performance.now();
         // B4 round 2: the overlays read THIS frame's geometry (the records it carried) from now on —
         // and project it through the view the frame was drawn with, not the page's live view

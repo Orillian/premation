@@ -15,6 +15,13 @@
   visibility: visible;
 }
 
+/* The app-wide focus ring is a control's; here it drew a hollow rectangle
+   around the caret of an empty layer (owner, 2026-10-27). The caret and the
+   point box are this editor's focus indication, as in After Effects. */
+.editor:focus-visible {
+  box-shadow: none;
+}
+
 /* The selected characters: the accent as a tint, not the browser's pale
    highlight, which read as a white box behind the text. */
 .editor::selection,
