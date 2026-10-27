@@ -720,6 +720,23 @@ class Sampler {
     if (depth > 16) {
       throw ex::HostError{u"Maximum cross-layer evaluation depth (16) exceeded (" + ex::utf8_to_utf16(key) + u")"};
     }
+    // One evaluation (ExprEvalScope): each (property, time) is read once — an
+    // expression's program runs once, a keyed or stored value is looked up
+    // once. A value is kept only when it came out clean (an expression error
+    // is not kept: it stays reported where it happens).
+    std::string memoKey;
+    if (cache_.scoped()) {
+      memoKey.reserve(key.size() + 1 + sizeof(double));
+      memoKey.append(key).push_back('\x1f');
+      const auto bits = std::bit_cast<std::uint64_t>(t);
+      for (std::size_t i = 0; i < sizeof(bits); ++i) memoKey.push_back(static_cast<char>((bits >> (8 * i)) & 0xffU));
+      const auto& values = cache_.memo(env_).values;
+      if (const auto it = values.find(memoKey); it != values.end()) return it->second;
+    }
+    const auto keep = [&](std::optional<double> v) {
+      if (!memoKey.empty()) cache_.memo(env_).values.emplace(std::move(memoKey), v);
+      return v;
+    };
     visited_.insert(key);
     struct Erase {
       std::set<std::string>& v;
@@ -743,14 +760,15 @@ class Sampler {
         if (m.find(u"Cycle detected") != std::u16string::npos || m.find(u"Maximum cross-layer") != std::u16string::npos) {
           throw ex::HostError{m};
         }
+        memoKey.clear();
       }
       // The result is in AE units (expr_unit_factor); the document's back.
       const double factor = expr_unit_factor(prop);
-      if (r.kind == ex::Result::Kind::kVector) return r.vec.at(std::min(component_index_of(prop), r.size - 1)) / factor;
-      if (r.kind == ex::Result::Kind::kNumber) return r.number / factor;
+      if (r.kind == ex::Result::Kind::kVector) return keep(r.vec.at(std::min(component_index_of(prop), r.size - 1)) / factor);
+      if (r.kind == ex::Result::Kind::kNumber) return keep(r.number / factor);
     }
-    if (base) return base;
-    return base_of(node, prop);
+    if (base) return keep(base);
+    return keep(base_of(node, prop));
   }
 
   /// `compiled.run(exprContext(...))`.
@@ -781,6 +799,7 @@ class Sampler {
 
   ex::Result run(const std::string& node, const std::string& prop, double t, std::optional<double> base, int depth,
                  const ex::Expression& compiled) {
+    cache_.count_run();
     ContextHost host(*this, node, prop, depth);
     host.time = t;
     ex::Context c;

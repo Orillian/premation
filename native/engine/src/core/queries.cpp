@@ -8,6 +8,7 @@
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 #include "anim_json.hpp"
 #include "catalog_data.hpp"
@@ -40,6 +41,16 @@ namespace premation::doc {
 namespace {
 
 using api::ErrorCode;
+
+/// The layer's composition size (compSizeOf ?? 1920x1080).
+std::pair<double, double> comp_size_for(const Document& d, std::string_view layer) {
+  if (const auto comp = comp_of_layer(d, layer)) {
+    if (const Json* rec = d.comp(*comp); rec != nullptr && rec->at("width").is_number() && rec->at("height").is_number()) {
+      return {rec->at("width").num(), rec->at("height").num()};
+    }
+  }
+  return {1920, 1080};
+}
 
 api::ValueType param_value_type(const std::string& t) {
   if (t == "number") return api::ValueType::scalar;
@@ -910,12 +921,36 @@ struct Q {
       const double b = t + g->height;
       std::array<double, 8> corners{l, t, r, t, r, b, l, b};
       if (q.space == api::BoundsSpace::comp) {
-        const auto m = world_2d_at(pc, id, seconds);
-        for (std::size_t i = 0; i < corners.size(); i += 2) {
-          const double x = corners[i];
-          const double y = corners[i + 1];
-          corners[i] = m.a * x + m.c * y + m.e;
-          corners[i + 1] = m.b * x + m.d * y + m.f;
+        // Where the renderer draws the box (frame_build.cpp quad_origin, layer
+        // space centre-origin: ENGINE_API.md §3): the content sits at
+        // position − anchor. A 3D layer: through its world matrix (which has
+        // the anchor term) and the scene camera. A 2D layer: its 2D chain,
+        // which has none, after T(−anchor). (2026-10-27: the anchor was
+        // ignored, and a 3D layer read through its 2D chain.)
+        const Node& n = *d.node(id);
+        const std::string kind = n.kind();
+        std::optional<LayerSpace> space;
+        if (is_3d_enabled(n) && kind != "camera" && kind != "light") {
+          const auto [cw, ch] = comp_size_for(d, id);
+          space = layer_space_at(sc, id, seconds, cw, ch);
+        }
+        if (const auto* s3 = space ? std::get_if<motion::xf::LayerSpace3D>(&*space) : nullptr) {
+          for (std::size_t i = 0; i < corners.size(); i += 2) {
+            const motion::xf::Vec2 p = s3->to_comp({corners[i], corners[i + 1]});
+            corners[i] = p.x;
+            corners[i + 1] = p.y;
+          }
+        } else {
+          const auto m = world_2d_at(pc, id, seconds);
+          const auto own = local_3d_at(sc, n, seconds);
+          const double ax = own ? own->anchor_x : 0;
+          const double ay = own ? own->anchor_y : 0;
+          for (std::size_t i = 0; i < corners.size(); i += 2) {
+            const double x = corners[i] - ax;
+            const double y = corners[i + 1] - ay;
+            corners[i] = m.a * x + m.c * y + m.e;
+            corners[i + 1] = m.b * x + m.d * y + m.f;
+          }
         }
       }
       double minX = corners[0], maxX = corners[0], minY = corners[1], maxY = corners[1];
@@ -990,14 +1025,7 @@ struct Q {
       t.layer = id;
       // A 3D layer (or a camera / light): its world 4x4, as toWorld reads it —
       // at the layer's comp size (compSizeOf ?? 1920x1080).
-      double cw = 1920;
-      double ch = 1080;
-      if (const auto comp = comp_of_layer(d, id)) {
-        if (const Json* rec = d.comp(*comp); rec != nullptr && rec->at("width").is_number() && rec->at("height").is_number()) {
-          cw = rec->at("width").num();
-          ch = rec->at("height").num();
-        }
-      }
+      const auto [cw, ch] = comp_size_for(d, id);
       if (const auto m3 = world_3d_at(SpaceCtx{d, pc.view, pc.expr, pc.cache}, id, seconds, cw, ch)) {
         t.matrix.assign(m3->begin(), m3->end());
         t.anchor = api::Vec3{0, 0, 0};
@@ -1235,6 +1263,8 @@ const Catalog& query_catalog(QCtx& c, const std::string& layer) {
 }
 
 api::QueryResult run_query(const api::Query& q, QCtx& c) {
+  // A query reads one unchanging document: its expression reads are memoised (ExprCache::Memo).
+  const ExprEvalScope scope(c.pc.cache);
   return std::visit(Q{c, c.pc, c.pc.d}, q.v);
 }
 

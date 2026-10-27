@@ -60,7 +60,17 @@ std::optional<double> DocExprEnv::base_value(std::string_view node, std::string_
 }
 
 std::optional<std::string> DocExprEnv::resolve_layer(std::u16string_view name) const {
-  return node_by_name(d_, to_u8(name));
+  if (!cache_.scoped()) return node_by_name(d_, to_u8(name));
+  // One evaluation: every name indexed once (the first node with it wins, as node_by_name).
+  auto& names = cache_.memo(*this).layerNames;
+  if (!names) {
+    names.emplace();
+    names->reserve(d_.nodes().size());
+    for (const auto& [id, n] : d_.nodes()) names->try_emplace(n->name, id);
+  }
+  const auto it = names->find(to_u8(name));
+  if (it == names->end()) return std::nullopt;
+  return it->second;
 }
 
 ex::CompInfo DocExprEnv::comp_info() const {
@@ -346,14 +356,14 @@ EffectHit find_effect(const Node& n, const std::vector<LayerControl>& controls, 
       return hit;
     }
   }
-  for (const Json& e : read_node_effects(n)) {
+  for (Json& e : read_node_effects(n)) {
     const std::string type = e.at("type").is_string() ? e.at("type").str() : std::string();
     const EffectDef* def = registry().effect(type);
     const Json& own = e.at("name");
     const bool match = (own.is_string() && same_name(own.str(), name)) || (def != nullptr && same_name(def->label, name)) ||
                        same_name(type, name);
     if (!match) continue;
-    hit.effect = e;
+    hit.effect = std::move(e);
     hit.def = def;
     return hit;
   }
@@ -362,7 +372,18 @@ EffectHit find_effect(const Node& n, const std::vector<LayerControl>& controls, 
 
 }  // namespace
 
-std::optional<ex::LayerFacts> DocExprEnv::layer_facts(std::string_view node, double /*t*/) const {
+std::optional<ex::LayerFacts> DocExprEnv::layer_facts(std::string_view node, double t) const {
+  if (cache_.scoped()) {
+    auto& facts = cache_.memo(*this).facts;
+    if (const auto it = facts.find(std::string(node)); it != facts.end()) return it->second;
+    std::optional<ex::LayerFacts> f = layer_facts_of(node, t);
+    facts.emplace(std::string(node), f);
+    return f;
+  }
+  return layer_facts_of(node, t);
+}
+
+std::optional<ex::LayerFacts> DocExprEnv::layer_facts_of(std::string_view node, double /*t*/) const {
   const Node* n = d_.node(node);
   if (n == nullptr) return std::nullopt;
   ex::LayerFacts f;
@@ -400,16 +421,53 @@ std::optional<std::string> DocExprEnv::layer_by_index(std::string_view self, dou
 }
 
 bool DocExprEnv::effect_exists(std::string_view node, std::string_view effect) const {
-  const Node* n = d_.node(node);
-  if (n == nullptr) return false;
-  const EffectHit hit = find_effect(*n, read_controls(*n), effect);
-  return hit.control != nullptr || hit.effect.has_value();
+  return effect_state(node, effect).first;
+}
+
+std::pair<bool, bool> DocExprEnv::effect_state(std::string_view node, std::string_view effect) const {
+  // {exists, enabled}: effect("X") asks both on every call.
+  const auto find = [&]() -> std::pair<bool, bool> {
+    const Node* n = d_.node(node);
+    if (n == nullptr) return {false, true};
+    const EffectHit hit = find_effect(*n, read_controls(*n), effect);
+    if (!hit.effect) return {hit.control != nullptr, true};  // an expression control has no switch of its own
+    const Json& en = hit.effect->at("enabled");
+    return {true, !(en.is_bool() && !en.b())};
+  };
+  if (!cache_.scoped()) return find();
+  std::string key;
+  key.append(node).push_back('\x1f');
+  key.append(effect);
+  auto& effects = cache_.memo(*this).effects;
+  if (const auto it = effects.find(key); it != effects.end()) return it->second;
+  const std::pair<bool, bool> out = find();
+  effects.emplace(std::move(key), out);
+  return out;
 }
 
 std::optional<std::vector<ExprEnv::EffectMember>> DocExprEnv::effect_param_members(std::string_view node,
                                                                                    std::string_view effect,
                                                                                    const std::string* param,
                                                                                    double index) const {
+  if (!cache_.scoped()) return effect_param_members_of(node, effect, param, index);
+  // One evaluation: effect("X")("P") resolves once (read_controls, the effect
+  // list and the parameter scan), then every read is a lookup.
+  std::string key;
+  key.append(node).push_back('\x1f');
+  key.append(effect).push_back('\x1f');
+  if (param != nullptr) key.append(*param);
+  else key.append("#").append(std::to_string(index));
+  auto& members = cache_.memo(*this).members;
+  if (const auto it = members.find(key); it != members.end()) return it->second;
+  auto out = effect_param_members_of(node, effect, param, index);
+  members.emplace(std::move(key), out);
+  return out;
+}
+
+std::optional<std::vector<ExprEnv::EffectMember>> DocExprEnv::effect_param_members_of(std::string_view node,
+                                                                                      std::string_view effect,
+                                                                                      const std::string* param,
+                                                                                      double index) const {
   const Node* n = d_.node(node);
   if (n == nullptr) return std::nullopt;
   const std::vector<LayerControl> controls = read_controls(*n);
@@ -459,18 +517,21 @@ std::optional<std::vector<ExprEnv::EffectMember>> DocExprEnv::effect_param_membe
 }
 
 std::optional<double> DocExprEnv::static_value(std::string_view node, std::string_view prop) const {
-  return read_static_property_value(d_, node, prop);
+  if (!cache_.scoped()) return read_static_property_value(d_, node, prop);
+  std::string key;
+  key.append(node).push_back('\x1f');
+  key.append(prop);
+  auto& statics = cache_.memo(*this).statics;
+  if (const auto it = statics.find(key); it != statics.end()) return it->second;
+  const std::optional<double> v = read_static_property_value(d_, node, prop);
+  statics.emplace(std::move(key), v);
+  return v;
 }
 
 // ── AE property objects (2026-10-21) ─────────────────────────────────────
 
 bool DocExprEnv::effect_enabled(std::string_view node, std::string_view effect) const {
-  const Node* n = d_.node(node);
-  if (n == nullptr) return true;
-  const EffectHit hit = find_effect(*n, read_controls(*n), effect);
-  if (!hit.effect) return true;  // an expression control has no switch of its own
-  const Json& en = hit.effect->at("enabled");
-  return !(en.is_bool() && !en.b());
+  return effect_state(node, effect).second;
 }
 
 namespace {

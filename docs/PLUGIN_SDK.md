@@ -651,7 +651,10 @@ ctx->engine->engine_command(ctx->host_ref,
 - It runs in premation-engine on the core thread, under the crash guard, the
   crash journal and the watchdog. A crash rolls back, the command is off for the
   session (listed `enabled: false` with why) and `setPluginEnabled(true)`
-  re-arms it; a hang quarantines the plugin and restarts the engine.
+  re-arms it; a hang quarantines the plugin and restarts the engine. A command
+  that legitimately runs longer than the watchdog (baking expressions over a
+  long comp, say) calls `progress()` as it goes: each call restarts the
+  watchdog's clock (see "The watchdog" below).
 - The editor: the **Plugins** menu (a submenu per manifest `menu`), the command
   palette ("Plugins: Distribute Layers"; Customize can bind a shortcut), and
   `runPluginCommand` from anywhere else (a plugin panel's `command`). The engine API:
@@ -802,6 +805,32 @@ SIGSEGV/SIGBUS/SIGFPE/SIGILL on an alternate stack on POSIX) and the crash journ
 | `abort()`, `exit()`, heap corruption that does not fault | The engine dies. The journal's in-flight slot survives in the mapped file, and the next start **quarantines** the plugin (AE's "this plugin crashed last time") |
 
 \* On POSIX a stack overflow is reported as an access violation (both are SIGSEGV).
+
+### The watchdog
+
+A selector call that runs longer than the watchdog (10 s; `--watchdog <ms>`)
+is a hang. The engine cannot stop a thread safely, so it quarantines the plugin
+and ends; the supervisor restarts it.
+
+**`progress()` extends commands, not renders** (decided 2026-10-27). In a P7
+call — a command's `PR_CMD_RUN`, an importer or an output-module selector —
+every `host->progress(host, fraction)` restarts that call's clock: the watchdog
+measures the time since the last progress report, not since the call began. A
+command may therefore run as long as it needs if it reports at least once per
+watchdog period; report from the loop that does the work (every item, every
+frame), not from a timer thread, so a command stuck in that loop still stops
+reporting and is still caught. A command that reports nothing is held to 10 s
+as before. Render selectors (`SMART_PRE_RENDER`, `SMART_RENDER[_GPU]`, `RENDER`)
+and the setup/param selectors are not extended: a frame has a deadline, and a
+render that needs more than 10 s is a hang whatever it reports. `fraction` is
+informational (0..1); it need not grow.
+
+The same report keeps the engine itself alive: a command runs on the engine's
+core thread, and Electron's supervisor kills an engine whose core has been on
+one item for 30 s (`stuckMs`, electron/engineSupervisor.ts) as a deadlock. A
+command's progress also restarts that busy clock (`HostOptions::onProgress` →
+the core watchdog in engine_process.cpp), so a reporting command outlasts both
+limits and a silent one hits whichever comes first.
 
 A quarantined plugin is listed but not loaded. `setPluginEnabled(true)` retries
 it and clears the quarantine.

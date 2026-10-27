@@ -257,6 +257,8 @@ NativeFrame build_native_frame(const BuildContext& c, std::string_view comp, dou
   // Expressions that fail while the frame evaluates fall back to their
   // pre-expression value; the frame reports each (stage `expression`).
   doc::ExprErrorCapture capture(c.cache);
+  // One frame reads one unchanging document: its expression reads are memoised.
+  const doc::ExprEvalScope evalScope(c.cache);
   Snapshot snap = build_snapshot(c, sc, t, mb);
   const std::vector<doc::ExprRuntimeError> exprErrors = capture.take();
   const double snapshotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();

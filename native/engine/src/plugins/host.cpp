@@ -48,6 +48,9 @@ struct ParamDefs {
 struct PrHost {
   PluginHost* host = nullptr;
   PrCmd cmd = PR_CMD_ABOUT;
+  /// The watchdog slot of a P7 call (command, importer, output module), whose
+  /// progress() restarts its clock; -1 for every other selector.
+  int progressSlot = -1;
   // PARAMS_SETUP
   std::vector<ParamSpec>* declared = nullptr;
   std::vector<std::string> groups;
@@ -249,6 +252,14 @@ class Watchdog {
       }
     }
     return -1;
+  }
+  /// The call in `slot` reported progress: its clock restarts (a call already
+  /// declared hung stays hung — the engine is ending).
+  void touch(int slot) {
+    if (slot < 0) return;
+    Slot& s = slots_.at(static_cast<std::size_t>(slot));
+    if (s.start.load(std::memory_order_acquire) == 0 || s.hung.load(std::memory_order_acquire)) return;
+    s.start.store(now_ns(), std::memory_order_release);
   }
   /// True when the call was declared hung while it ran.
   bool leave(int slot) {
@@ -1053,7 +1064,15 @@ PrErr PR_CALL cb_set_arb_data(PrHost* h, std::uint32_t index, const std::uint8_t
 }
 
 std::int32_t PR_CALL cb_abort_requested(PrHost* /*h*/) { return 0; }
-void PR_CALL cb_progress(PrHost* /*h*/, double /*fraction*/) {}
+/// docs/PLUGIN_SDK.md "The watchdog": progress in a P7 call is proof of life —
+/// it restarts that call's watchdog clock and the engine's core busy clock.
+/// Render and setup selectors are not extended.
+void PR_CALL cb_progress(PrHost* h, double /*fraction*/) {
+  if (h == nullptr || h->host == nullptr || h->progressSlot < 0) return;
+  PluginHost::Impl& m = impl_of(h);
+  if (m.watchdog) m.watchdog->touch(h->progressSlot);
+  if (m.options.onProgress) m.options.onProgress();
+}
 void PR_CALL cb_log(PrHost* h, std::int32_t level, const char* message) {
   const std::string m = message != nullptr ? std::string(message) : std::string();
   const std::string cmd(command_name(h != nullptr ? h->cmd : -1));
@@ -2858,6 +2877,7 @@ CallResult PluginHost::call_guarded(std::string_view pluginId, std::int32_t jour
   } call{fn, ctx, &host, &m.suite, false};
   const int js = m.journal ? m.journal->enter(p->manifest.id, journalCmd) : -1;
   const int ws = m.watchdog ? m.watchdog->enter(p->manifest.id, journalCmd) : -1;
+  host.progressSlot = ws;
   Fault fault = guarded_call(
       [](void* x) {
         auto* c = static_cast<Call*>(x);

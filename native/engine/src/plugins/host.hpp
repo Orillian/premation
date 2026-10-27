@@ -320,6 +320,10 @@ struct HostOptions {
   /// engine process (the supervisor restarts it; the hung thread cannot be
   /// stopped safely). Tests install a recorder.
   std::function<void(const std::string& pluginId, std::string_view command)> onHang;
+  /// A P7 call (command, importer, output module) reported progress: besides
+  /// restarting its own watchdog clock, the engine tells its core watchdog the
+  /// core thread is alive (engine_process.cpp). Empty = nothing more.
+  std::function<void()> onProgress;
   /// Worker threads for iterate() (0 = hardware concurrency − 1, at most 16).
   int threads = 0;
   /// Register the effects with the document (NativeEffects) and install its handlers.

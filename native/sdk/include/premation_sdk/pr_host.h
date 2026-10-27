@@ -86,6 +86,10 @@ typedef struct PrHostSuite {
   /* ── any selector ── */
   /** Non-zero when the host wants the current render abandoned (return PR_ERR_INTERRUPTED). */
   int32_t(PR_CALL* abort_requested)(PrHost* host);
+  /** How far the call is (0..1). In a command, importer or output-module call it
+   * also restarts the watchdog's clock, so a long command that reports progress
+   * at least once per watchdog period (10 s) is never treated as a hang. Render
+   * selectors are not extended (docs/PLUGIN_SDK.md, "The watchdog"). */
   void(PR_CALL* progress)(PrHost* host, double fraction);
   void(PR_CALL* log)(PrHost* host, int32_t level, const char* message);
 
