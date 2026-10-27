@@ -205,10 +205,68 @@ class ExprCache {
   void note_runtime_error(std::string_view node, std::string_view prop, const std::u16string& message,
                           std::uint32_t line, std::uint32_t column);
 
+  /// One evaluation — a frame build or a query (ExprEvalScope): the document
+  /// does not change while a scope is open, so what an AE rig asks again and
+  /// again is worked out once and kept until the outermost scope ends: an
+  /// expression property's value at a time (a layer that reads another's
+  /// expressed Position N times runs that program once), a layer's id by
+  /// name, an effect parameter's stored members, a stored value. Outside a
+  /// scope nothing is kept, so a command's reads see its own edits.
+  struct Memo {
+    const ExprEnv* env = nullptr;  ///< the env the answers came from (another one starts over)
+    /// "<node>\x1f<prop>\x1f<t bits>" → an expression's value (post-expression, document units).
+    std::unordered_map<std::string, std::optional<double>> values;
+    /// name → the first node with it (insertion order); built on first use.
+    std::optional<std::unordered_map<std::string, std::string>> layerNames;
+    /// "<node>\x1f<effect>\x1f<param or #index>" → effect_param_members.
+    std::unordered_map<std::string, std::optional<std::vector<ExprEnv::EffectMember>>> members;
+    /// "<node>\x1f<prop>" → static_value.
+    std::unordered_map<std::string, std::optional<double>> statics;
+    /// "<node>\x1f<effect>" → {effect_exists, effect_enabled}.
+    std::unordered_map<std::string, std::pair<bool, bool>> effects;
+    /// node → layer_facts.
+    std::unordered_map<std::string, std::optional<motion::expr::LayerFacts>> facts;
+  };
+  void begin_scope() {
+    if (scopeDepth_++ == 0) memo_ = {};
+  }
+  void end_scope() {
+    if (scopeDepth_ > 0 && --scopeDepth_ == 0) memo_ = {};
+  }
+  [[nodiscard]] bool scoped() const noexcept { return scopeDepth_ > 0; }
+  /// The open scope's memo for `env` (dropped and restarted when another env asks).
+  [[nodiscard]] Memo& memo(const ExprEnv& env) {
+    if (memo_.env != &env) {
+      memo_ = {};
+      memo_.env = &env;
+    }
+    return memo_;
+  }
+  /// Expression programs run so far (tests and benches read it).
+  [[nodiscard]] std::uint64_t runs() const noexcept { return runs_; }
+  void count_run() noexcept { ++runs_; }
+
  private:
   std::unordered_map<std::string, std::unique_ptr<motion::expr::Expression>> cache_;
   std::vector<ExprRuntimeError> errors_;
   int captureDepth_ = 0;
+  int scopeDepth_ = 0;
+  Memo memo_;
+  std::uint64_t runs_ = 0;
+};
+
+/// RAII for ExprCache::begin_scope / end_scope: one frame build or one query.
+class ExprEvalScope {
+ public:
+  explicit ExprEvalScope(ExprCache& c) : cache_(&c) { cache_->begin_scope(); }
+  ExprEvalScope(const ExprEvalScope&) = delete;
+  ExprEvalScope& operator=(const ExprEvalScope&) = delete;
+  ExprEvalScope(ExprEvalScope&&) = delete;
+  ExprEvalScope& operator=(ExprEvalScope&&) = delete;
+  ~ExprEvalScope() { cache_->end_scope(); }
+
+ private:
+  ExprCache* cache_;
 };
 
 /// RAII for ExprCache::begin_error_capture: `take()` ends the capture and

@@ -2102,9 +2102,14 @@ from the struct's maximum + 800.
   per-kind size, a shape's points, a text layer's measured box (a fixed
   paragraph box as authored), an unseeded solid's comp frame, a GROUP's union
   of its children AT THE SAME TIME. `layer` space: the local box (centred on
-  the origin, offset for groups and text); `comp`: its corners through the 2D
-  world chain (`world2DAt`: a 3D layer's depth and the camera are not applied),
-  `bounds` their axis-aligned extent. `viewport` space and `includeEffects`
+  the origin, offset for groups and text); `comp`: its corners where the
+  renderer draws them — the content sits at position − anchor (layer space is
+  centre-origin, §3): a 2D layer's box after T(−anchor) through the 2D world
+  chain (`world2DAt`, which has no anchor term), a 3D layer's through its
+  world matrix (`getLayerTransforms`, anchor included) and the scene camera;
+  `bounds` their axis-aligned extent. (Until 2026-10-27 the anchor was
+  ignored and a 3D layer read through its 2D chain, so a layer with a
+  non-zero anchor reported a box where nothing drew.) `viewport` space and `includeEffects`
   answer `unsupported` (the overlay push carries viewport geometry; effect
   growth is not measured). Layers with no canvas box (audio, adjustment) are
   left out of the list. TS: `core/engine/layerBoundsQuery.ts`; C++:

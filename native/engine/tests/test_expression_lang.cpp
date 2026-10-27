@@ -7,7 +7,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cmath>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -387,4 +389,86 @@ TEST_CASE("rig: expression diagnostics carry the line and column", "[expr][rig][
   CHECK(ev.diagnostics[0].message.starts_with("Unknown name “foo”."));
   CHECK(ev.diagnostics[0].line == 3);
   CHECK(ev.diagnostics[0].column == 7);
+}
+
+TEST_CASE("rig: one evaluation runs another layer's expression once per time", "[expr][rig][memo]") {
+  Rig x;
+  const auto a = x.layer();
+  const auto b = x.layer();
+  const std::string g = x.add_effect(a, "ADBE Slider Control", "Drive");
+  x.set(a, g + "/slider", scalar(5));
+  x.expression(a, "transform/rotation", "effect(\"Drive\")(\"Slider\") * 2");
+  // `a` was created first, so it is layer 2; reached by index and by name.
+  api::RenameLayer rn;
+  rn.layer = a;
+  rn.name = "Driver";
+  REQUIRE(is_ok(x.h.run(cmd(rn))));
+  x.expression(b, "transform/rotation",
+               "var s = 0; for (var i = 0; i < 25; i++) { s += thisComp.layer(2).transform.rotation + "
+               "thisComp.layer(\"Driver\").transform.rotation; } s");
+  const doc::Document& d = x.h.session.document();
+  doc::ExprCache cache;
+  const doc::DocExprEnv env(d, x.h.session.view(), cache);
+  // Outside a scope every read runs the driver's program again: 1 + 50.
+  std::uint64_t from = cache.runs();
+  CHECK(doc::anim_sample(d, env, cache, b, "rotation", 0).value_or(-1) == Catch::Approx(500));
+  CHECK(cache.runs() - from == 51);
+  {
+    const doc::ExprEvalScope scope(cache);
+    from = cache.runs();
+    CHECK(doc::anim_sample(d, env, cache, b, "rotation", 0).value_or(-1) == Catch::Approx(500));
+    CHECK(cache.runs() - from == 2);  // b once, the driver once
+    CHECK(doc::anim_sample(d, env, cache, b, "rotation", 0).value_or(-1) == Catch::Approx(500));
+    CHECK(cache.runs() - from == 2);  // the same time again: nothing runs
+    CHECK(doc::anim_sample(d, env, cache, b, "rotation", 1.0).value_or(-1) == Catch::Approx(500));
+    CHECK(cache.runs() - from == 4);  // another time is another value
+  }
+  // The scope ended: an edit after it is seen.
+  x.set(a, g + "/slider", scalar(1));
+  const doc::ExprEvalScope scope(cache);
+  CHECK(doc::anim_sample(d, env, cache, b, "rotation", 0).value_or(-1) == Catch::Approx(100));
+  // And through a query (each query is one scope).
+  CHECK(scalar_of(x.value(b, "transform/rotation", 0)) == Catch::Approx(100));
+}
+
+// The cost of AE-rig reads (Carousel plugin, 2026-10-27): effect("X")("P") on
+// the layer itself, thisComp.layer("Name") by name, and another layer's
+// expression-driven property — each read many times by one expression. Hidden
+// (`[.bench]`): run `engine_tests "[expr-bench]"` for the numbers.
+TEST_CASE("rig bench: effect, layer-by-name and cross-layer expression reads", "[.bench][expr-bench]") {
+  Rig x;
+  constexpr int kLayers = 40;
+  for (int i = 0; i < kLayers; ++i) {
+    const auto l = x.layer();
+    api::RenameLayer rn;
+    rn.layer = l;
+    rn.name = "L" + std::to_string(i);
+    REQUIRE(is_ok(x.h.run(cmd(rn))));
+    const std::string g = x.add_effect(l, "ADBE Slider Control", "Drive");
+    x.set(l, g + "/slider", scalar(i));
+    x.expression(l, "transform/rotation", "effect(\"Drive\")(\"Slider\") * 2");
+  }
+  const auto hub = x.layer();
+  const std::string g = x.add_effect(hub, "ADBE Slider Control", "Radius");
+  x.set(hub, g + "/slider", scalar(3));
+  const auto time = [&](const std::string& src, int reads, double want) {
+    x.expression(hub, "transform/rotation", src);
+    REQUIRE(scalar_of(x.value(hub, "transform/rotation", 0)) == Catch::Approx(want));
+    constexpr int kRuns = 30;
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int r = 0; r < kRuns; ++r) (void)x.value(hub, "transform/rotation", (r % 3) * kSec);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / kRuns;
+    std::cout << "  " << src.substr(0, 60) << "... : " << ms << " ms per evaluation, " << (ms * 1000 / reads)
+              << " us per read\n";
+  };
+  std::cout << "expression reads (" << kLayers << " layers):\n";
+  // The language's own floor: the loop, and the loop building the names.
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += 1; } s", 400, 400);
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += (\"L\" + (i % 40)).length > 2 ? 1 : 0; } s", 400, 300);
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += effect(\"Radius\")(\"Slider\"); } s", 400, 1200);
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += thisComp.layer(\"L39\").index; } s", 400, 400 * 2);
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += thisComp.layer(\"L\" + (i % 40)).effect(\"Drive\")(\"Slider\"); } s", 400,
+       10 * 780);
+  time("var s = 0; for (var i = 0; i < 400; i++) { s += thisComp.layer(\"L\" + (i % 40)).transform.rotation; } s", 400,
+       10 * 1560);
 }

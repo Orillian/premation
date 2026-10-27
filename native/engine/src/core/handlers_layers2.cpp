@@ -212,13 +212,27 @@ void set_3d_enabled(HCtx& x, const std::string& node, bool on) {
   const std::string tid = t->id;
   const Json before = t->props;
   if (on && is_solid_node(*n)) {
-    const Json* comp = active_comp_record(d, x.view);
-    const double w = comp != nullptr && comp->at("width").is_number() ? comp->at("width").num() : 1920;
-    const double h = comp != nullptr && comp->at("height").is_number() ? comp->at("height").num() : 1080;
-    const std::pair<const char*, double> seed[] = {{"x", w / 2}, {"y", h / 2},       {"width", w},  {"height", h},
-                                                   {"anchorX", w / 2}, {"anchorY", h / 2}, {"rotation", 0}, {"scaleX", 1},
-                                                   {"scaleY", 1}};
-    for (const auto& [prop, value] : seed) (void)sg_write_prop(d, node, tid, prop, Json::number(value));
+    // Turning 3D changes nothing a solid shows. An UNSIZED one (no size, or the
+    // 100 × 100 placeholder: snapshot_build.cpp `solidUnseeded`) fills its comp,
+    // so it gets that size written down; a sized one keeps its size, position,
+    // anchor and transform as they are. (2026-10-27: every solid was reseeded
+    // to the comp's size and centre, unrotated, with an anchor of (w/2, h/2) —
+    // a top-left convention the centre-origin layer space does not use.)
+    std::optional<double> sw;
+    std::optional<double> sh;
+    for (const Component& c : n->components) {
+      if (c.props.at("width").is_number()) sw = c.props.at("width").num();
+      if (c.props.at("height").is_number()) sh = c.props.at("height").num();
+    }
+    if (!sw || !sh || (*sw == 100 && *sh == 100)) {
+      const auto owner = comp_of_layer(d, node);
+      const Json* comp = owner ? d.comp(*owner) : nullptr;
+      if (comp == nullptr) comp = active_comp_record(d, x.view);
+      const double w = comp != nullptr && comp->at("width").is_number() ? comp->at("width").num() : 1920;
+      const double h = comp != nullptr && comp->at("height").is_number() ? comp->at("height").num() : 1080;
+      (void)sg_write_prop(d, node, tid, "width", Json::number(w));
+      (void)sg_write_prop(d, node, tid, "height", Json::number(h));
+    }
   }
   if (on && d.node(node)->comp("Transform")->props.at("acceptsLights").is_undefined()) {
     (void)sg_write_prop(d, node, tid, "acceptsLights", Json::boolean(true));

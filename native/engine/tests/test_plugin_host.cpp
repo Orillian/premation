@@ -11,6 +11,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +21,7 @@
 #include <span>
 #include <optional>
 #include <string>
+#include <thread>
 #include <variant>
 #include <vector>
 
@@ -26,6 +29,7 @@
 #include <sys/wait.h>
 #endif
 
+#include "contrib.hpp"
 #include "cpu_render.hpp"
 #include "host.hpp"
 #include "journal.hpp"
@@ -395,6 +399,36 @@ TEST_CASE("plugin host: a hang or an abort ends the process and quarantines the 
     CHECK(run_tool(j + "render com.premation.samples.rings") == 1);
   }
 #endif
+}
+
+TEST_CASE("plugin host: progress() keeps a long command alive; a silent one still hangs", "[plugins][watchdog]") {
+  // A command that bakes expressions can take longer than the watchdog: each
+  // progress() call restarts its clock (docs/PLUGIN_SDK.md, "The watchdog").
+  std::atomic<int> hangs{0};
+  pl::HostOptions o = options();
+  o.watchdog = std::chrono::milliseconds(250);
+  o.onHang = [&hangs](const std::string&, std::string_view) { ++hangs; };
+  pl::PluginHost host(o);
+  (void)host.scan();
+  struct Work {
+    int ms;
+    bool report;
+  };
+  const pl::PluginHost::GuardedFn run = [](void* c, PrHost* h, const PrHostSuite* s) {
+    const auto* w = static_cast<const Work*>(c);
+    for (int t = 0; t < w->ms; t += 25) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      if (w->report) s->progress(h, static_cast<double>(t) / w->ms);
+    }
+  };
+  Work busy{1000, true};
+  const pl::CallResult a = host.call_guarded(kRipple, pl::kJournalCommandRun, run, &busy);
+  CHECK(a.fault.kind == pl::FaultKind::none);
+  CHECK(hangs.load() == 0);
+  Work silent{1000, false};
+  const pl::CallResult b = host.call_guarded(kRipple, pl::kJournalCommandRun, run, &silent);
+  CHECK(b.fault.kind == pl::FaultKind::hang);
+  CHECK(hangs.load() == 1);
 }
 
 // ── AE parity step 2: the store's engine side ───────────────────────────

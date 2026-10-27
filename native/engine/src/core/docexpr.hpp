@@ -2,6 +2,9 @@
 // its AnimationEngine at boot (src/providers/Providers.tsx):
 //
 //   layerResolver      first node (insertion order) with that name
+//
+// Inside an ExprEvalScope (one frame build / one query) the name index, the
+// effect parameters, stored values and layer facts are worked out once.
 //   baseValueProvider  Transform first, then every other component
 //   compInfo           the ACTIVE composition (EditorView.tabComp), numLayers = every node
 //   layerInfo          name + Transform width/height (else the comp's)
@@ -62,6 +65,13 @@ class DocExprEnv final : public ExprEnv {
  private:
   [[nodiscard]] std::optional<std::string> space_node(std::string_view self, const std::u16string* name) const;
   [[nodiscard]] std::optional<LayerSpace> space_at(const std::string& id, double t) const;
+  // The uncached answers; inside an ExprEvalScope the public ones memoise them (ExprCache::Memo).
+  [[nodiscard]] std::pair<bool, bool> effect_state(std::string_view node, std::string_view effect) const;
+  [[nodiscard]] std::optional<motion::expr::LayerFacts> layer_facts_of(std::string_view node, double t) const;
+  [[nodiscard]] std::optional<std::vector<EffectMember>> effect_param_members_of(std::string_view node,
+                                                                                 std::string_view effect,
+                                                                                 const std::string* param,
+                                                                                 double index) const;
   const Document& d_;
   const EditorView& view_;
   ExprCache& cache_;

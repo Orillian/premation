@@ -211,6 +211,13 @@ class CoreWatchdog {
     const std::scoped_lock lock(mu_);
     what_ = std::move(what);
   }
+  /// The item reported progress (a plugin command's progress(), PLUGIN_SDK.md
+  /// "The watchdog"): it is alive, so its busy clock restarts — the supervisor
+  /// judges `stuckMs` by the time since the last report, not since the start.
+  void progress() {
+    Clock::rep since = since_.load(std::memory_order_acquire);
+    if (since != 0) (void)since_.compare_exchange_strong(since, Clock::now().time_since_epoch().count(), std::memory_order_acq_rel);
+  }
   /// The core thread is back waiting on its queue.
   void end() {
     const Clock::rep since = since_.exchange(0, std::memory_order_acq_rel);
@@ -318,6 +325,9 @@ int run_engine(const EngineOptions& options) {
   // G1: the native plugin host. Declared before the render thread and the
   // session so it outlives both (the render glue and the document reach it
   // through PluginHost::active()). Absent when no plugin folder is configured.
+  // A plugin command's progress() reaches the core watchdog (declared below,
+  // after the host is made): set once it exists, cleared before it goes.
+  std::function<void()> coreProgress;
   std::unique_ptr<plugins::PluginHost> pluginHost;
   std::vector<std::string> pluginFolders = options.pluginPaths;  // P7b: also a child job's (child_job.hpp)
   {
@@ -337,6 +347,9 @@ int run_engine(const EngineOptions& options) {
       ho.disabled = options.pluginDisabled;
       if (!options.pluginRevoked.empty()) ho.revoked = plugins::read_revoked_file(options.pluginRevoked);
       ho.entitlement = options.pluginEntitlement;
+      ho.onProgress = [&coreProgress] {
+        if (coreProgress) coreProgress();
+      };
       pluginHost = std::make_unique<plugins::PluginHost>(std::move(ho));
       const std::vector<plugins::PluginRecord> recs = pluginHost->scan();
       PREMATION_LOG(info, "plugins_scanned").kv("count", static_cast<std::uint64_t>(recs.size()));
@@ -460,6 +473,16 @@ int run_engine(const EngineOptions& options) {
   sessionOptions.testPortsDir = options.testPortsDir;
   CoreWatchdog watchdog(pings, sendFrames);
   sessionOptions.activity = [&watchdog](std::string what) { watchdog.name(std::move(what)); };
+  coreProgress = [&watchdog] { watchdog.progress(); };
+  struct ForgetWatchdog {
+    std::function<void()>* hook;
+    explicit ForgetWatchdog(std::function<void()>& h) : hook(&h) {}
+    ForgetWatchdog(const ForgetWatchdog&) = delete;
+    ForgetWatchdog& operator=(const ForgetWatchdog&) = delete;
+    ForgetWatchdog(ForgetWatchdog&&) = delete;
+    ForgetWatchdog& operator=(ForgetWatchdog&&) = delete;
+    ~ForgetWatchdog() { *hook = nullptr; }
+  } const forgetWatchdog{coreProgress};
 #if defined(PREMATION_HAVE_JOBS)
   // importFiles / importBytes / relink: the jobs' decoders probe the file (ffmpeg + the OS still codec).
   sessionOptions.mediaProbe = [](const std::string& path, js::Json& facts, std::string& error) {
