@@ -21,7 +21,9 @@ import {
   toolPanelUrl,
   type ToolPanelMessage,
 } from '@core/nativePlugins/pluginToolPanel';
+import { panelThemeMessage } from '@core/nativePlugins/panelTheme';
 import { useMirrorRevision } from '@hooks/useMirror';
+import { usePanelTheme } from '@hooks/usePanelTheme';
 import { usePluginContrib } from '@hooks/usePluginContrib';
 import { useThrottledTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
@@ -77,6 +79,15 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
     frame.current?.contentWindow?.postMessage(msg, '*');
   }, []);
 
+  // The editor's look (AE's app colours / CEP skin): on load, on ready, on every change.
+  const theme = usePanelTheme();
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const pushTheme = useCallback(() => post(panelThemeMessage(themeRef.current)), [post]);
+  useEffect(() => {
+    pushTheme();
+  }, [theme, pushTheme]);
+
   const pushContext = useCallback(() => {
     const { comp: c, layers: l, time: now } = live.current;
     post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(now), ...panelSelection() }));
@@ -124,6 +135,7 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
       if (!msg) return;
       if (msg.type === 'ready') {
         ready.current = true;
+        pushTheme();
         pushContext();
         return;
       }
@@ -139,7 +151,7 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [pushContext, run, post]);
+  }, [pushContext, pushTheme, run, post]);
 
   // The panel's shortcuts work anywhere in the editor while the panel is open. Capture phase so a
   // binding the editor does not own reaches the panel; acceptPanelShortcuts refused any it owns.
@@ -168,6 +180,7 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
       src={toolPanelUrl(plugin, page)}
       sandbox={PANEL_SANDBOX}
       referrerPolicy="no-referrer"
+      onLoad={pushTheme}
       // No minimum: a short dock (a toolbar strip) must fit the frame, not scroll it.
       style={{ width: '100%', height: '100%', minHeight: 0, border: 'none', background: 'transparent', display: 'block' }}
     />

@@ -51,7 +51,7 @@ async function refresh() {
     for (const l of r.layers) {
       const li = document.createElement('li');
       li.textContent = l.name;
-      if (context.layers.includes(l.id)) li.className = 'selected';
+      if (context.layers.includes(l.id)) li.className = 'pm-selected';
       layersEl.appendChild(li);
     }
   } catch (e) {

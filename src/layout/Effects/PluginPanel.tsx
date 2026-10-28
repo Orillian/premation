@@ -37,7 +37,9 @@ import {
   type PanelReply,
   type PanelRequest,
 } from '@core/nativePlugins/pluginPanel';
+import { panelThemeMessage } from '@core/nativePlugins/panelTheme';
 import { useMirrorRevision } from '@hooks/useMirror';
+import { usePanelTheme } from '@hooks/usePanelTheme';
 import { useActiveWorkspace } from '@stores/projectStore';
 import { runPanelShortcut } from '@layout/Plugins/panelShortcut';
 import { t } from '@core/i18n';
@@ -91,6 +93,15 @@ export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Pr
     frame.current?.contentWindow?.postMessage(msg, '*');
   }, []);
 
+  // The editor's look (AE's app colours / CEP skin): on load, on ready, on every change.
+  const theme = usePanelTheme();
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const pushTheme = useCallback(() => post(panelThemeMessage(themeRef.current)), [post]);
+  useEffect(() => {
+    pushTheme();
+  }, [theme, pushTheme]);
+
   const pushState = useCallback(async () => {
     const { nodeId: layer, effect: fx, def: d, time: t } = live.current;
     const res = await engine().query({ type: 'getEffectUi', layer, effect: paths.effectGroup(fx.id), time: secondsToFlicks(t) });
@@ -126,6 +137,7 @@ export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Pr
       if (!msg) return;
       if (msg.type === 'ready') {
         ready.current = true;
+        pushTheme();
         void pushState();
         return;
       }
@@ -137,7 +149,7 @@ export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Pr
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [pushState, run, post]);
+  }, [pushState, pushTheme, run, post]);
 
   // Every document change (an edit from anywhere, undo, redo) and every time change: fresh state.
   useEffect(() => {
@@ -151,6 +163,7 @@ export function PluginEffectFrame({ nodeId, effect, def, time, plugin }: Omit<Pr
       src={panelUrl(plugin)}
       sandbox={PANEL_SANDBOX}
       referrerPolicy="no-referrer"
+      onLoad={pushTheme}
       style={{ width: '100%', height: '100%', minHeight: 200, border: 'none', background: 'transparent', display: 'block' }}
     />
   );

@@ -27,6 +27,8 @@
  *                                                       every document, selection or time change
  *     { type: 'invoke', id }                         a bound shortcut was pressed
  *     { type: 'reply', id, ok, result? | error? }
+ *     { type: 'theme', theme }                       the editor's look (panelTheme.ts): on load,
+ *                                                       on ready and on every change
  *
  * Only EDIT commands pass (no undo / open / save / transport / jobs): what a
  * panel does is always an undoable edit of the open document. Requests are

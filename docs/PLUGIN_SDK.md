@@ -583,6 +583,71 @@ shortcuts never see it. A panel forwards Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
 does, except in a text field, which keeps its own undo. The editor runs it only
 while that frame holds the focus, so a panel cannot undo on its own.
 
+### Matching the editor (theme and panel kit)
+
+After Effects' split, kept: the editor draws a plugin's **params** (the Effect
+Controls card, from `EffectInfo.params`) and its **viewer handles** (overlay
+geometry), so those always look native. A panel is the plugin's own page, and
+the editor never restyles it. Like AE (`PF_AppColorSuite`, a CEP panel's skin
+info and theme-changed event), it offers the panel its look instead. A panel
+can use that look or ignore it. This applies to effect panels and to dockable
+panels (below).
+
+**The `theme` message.** Every panel frame gets
+`{ premation: 1, type: 'theme', theme }` when it loads, again on `ready`
+(before `state` / `context`), and whenever the user changes theme, high
+contrast or density:
+
+```js
+theme = {
+  name: 'dark' | 'light',
+  contrast: 'normal' | 'more',            // 'more' = the high-contrast theme
+  density: 'compact' | 'default' | 'comfortable',
+  vars: { '--pm-surface-1': '#2b2b2e', '--pm-text': '#e1e1e1', … },  // resolved values
+}
+```
+
+The `--pm-*` names are a stable contract: new ones may be added, and none is
+renamed or removed. The list is in `src/core/nativePlugins/panelTheme.ts`:
+
+| Group | Names |
+|---|---|
+| Surfaces | `--pm-surface-0` (app ground), `-1` (panels), `-2` (controls, wells), `-3` (popovers); `--pm-surface-hover`, `-active`, `-selected` |
+| Text | `--pm-text`, `--pm-text-secondary`, `--pm-text-tertiary`, `--pm-text-disabled` |
+| Lines | `--pm-border`, `--pm-border-strong`, `--pm-border-subtle`, `--pm-field-border`, `--pm-field-border-hover` |
+| Accent | `--pm-accent`, `-hover`, `-active`, `-subtle`, `--pm-accent-text` (links), `--pm-on-accent`, `--pm-selection`, `--pm-focus-ring` |
+| Status | `--pm-success`, `--pm-warning`, `--pm-danger`, `--pm-info` |
+| Type | `--pm-font-family`, `--pm-font-family-mono` (values), `--pm-font-size`, `--pm-line-height`, `--pm-font-size-small`, `--pm-line-height-small`, `--pm-weight-label`, `--pm-weight-value`, `--pm-weight-heading` |
+| Geometry (follows Density) | `--pm-radius`, `--pm-radius-surface`, `--pm-control-height`, `--pm-row-height`, `--pm-padding`, `--pm-gap` |
+
+**The panel kit.** The app serves two files inside every panel's own origin,
+at a path no bundle can ship, so they pass the panel's CSP as they are:
+
+```html
+<link rel="stylesheet" href="/.premation/premation-ui.css">
+<script src="/.premation/premation-ui.js"></script>
+<link rel="stylesheet" href="panel.css">  <!-- yours, after the kit -->
+```
+
+- `premation-ui.css` declares every `--pm-*` with the dark theme's values (the
+  editor's default, so the first paint is already right). It styles **plain
+  HTML** like the editor: body type and ground, `button` (plus `.pm-primary`
+  and `.pm-quiet`), text / number / select / textarea fields, checkboxes, radios
+  and ranges in the accent colour, focus rings and scrollbars. It also has a few
+  layout helpers: `.pm-row`, `.pm-label`, `.pm-grow`, `.pm-hint`, `.pm-section`,
+  `.pm-heading`, `.pm-list` (with `.pm-selected`), `.pm-value`, `.pm-mono`, and
+  `.pm-success` / `-warning` / `-danger`.
+- `premation-ui.js` applies each `theme` message: it sets the variables on
+  `:root` and `data-theme` / `data-contrast` / `data-density` on `<html>`, then
+  fires a `premationtheme` event (`detail` = the theme) for a panel that paints
+  a canvas. `window.premationTheme()` returns the latest theme.
+
+The kit is the app's, not the bundle's. Don't copy it into `ui/`. A panel
+always gets the current editor's look, so after an editor update it may look
+slightly different. Code against the `--pm-*` names, not exact pixels. A panel
+that wants its own brand can skip the kit, or link it and override what it
+needs. `statspanel` uses the kit and no colours of its own.
+
 ## Plugins that are not effects (SDK 1.2, P7)
 
 After Effects has three plugin classes besides effects: AEGP (menu commands
@@ -760,7 +825,8 @@ The editor sends `{ type: 'context', plugin, comp, layers, time, keyframes, prop
 and after every document change (undo and redo too), selection or time change,
 and `{ type: 'reply', id, ok, result?, error? }` to each request. Requests over
 1 MiB, non-edit commands (undo, save, transport, jobs) and unknown types are
-refused with an error reply; nothing changes.
+refused with an error reply; nothing changes. It also sends `theme`, and the
+panel kit works here too ("Matching the editor" above).
 
 ## Sequence data
 

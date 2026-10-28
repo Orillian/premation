@@ -21,6 +21,7 @@
  *   editor → panel
  *   { type: 'state', effect, plugin, time, params, values, data }   on ready and after every document change
  *   { type: 'reply', id, ok, error?, image? }                       one per request
+ *   { type: 'theme', theme }   the editor's look (panelTheme.ts): on load, on ready, on change
  *
  * Every message carries `premation: 1`. Pure: no React, no engine import (the
  * component in src/layout/Effects/PluginPanel.tsx runs the commands).

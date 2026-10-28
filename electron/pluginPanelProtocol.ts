@@ -9,10 +9,13 @@
  * bundle only, no network at all (`connect-src 'none'`), no forms, no frames.
  * Only files inside `<bundle>/ui/` are served — no `..`, no hidden files, no
  * symlink out of the folder. No plugin code runs here: main reads files.
+ * One exception, the app's own: `/.premation/` is the editor's panel kit
+ * (pluginPanelKit.ts), served in every panel's origin.
  */
 
 import { realpath, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { panelKitFile } from './pluginPanelKit';
 
 export const PANEL_SCHEME = 'plugin-ui';
 const MANIFEST = 'premation-plugin.json';
@@ -126,8 +129,27 @@ export interface PanelFile {
   csp: string;
 }
 
+/**
+ * The editor's panel kit at `plugin-ui://<id>/.premation/<file>` (pluginPanelKit.ts):
+ * the app's own files, in every panel's origin. A bundle can never serve that path
+ * (parsePanelUrl refuses dot segments), so the kit cannot be shadowed.
+ */
+function readKitFile(rawUrl: string): PanelFile | null {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== `${PANEL_SCHEME}:` || !/^[a-z][a-z0-9._-]{0,99}$/.test(u.hostname)) return null;
+  const kit = panelKitFile(u.pathname.split('/').filter((s) => s.length > 0));
+  return kit ? { ...kit, csp: panelCsp(u.hostname) } : null;
+}
+
 /** The file a panel URL names, or null (404). Never throws. */
 export async function readPanelFile(roots: readonly string[], rawUrl: string): Promise<PanelFile | null> {
+  const kit = readKitFile(rawUrl);
+  if (kit) return kit;
   const parsed = parsePanelUrl(rawUrl);
   if (!parsed) return null;
   const type = TYPES[path.extname(parsed.segments[parsed.segments.length - 1] ?? '').toLowerCase()];

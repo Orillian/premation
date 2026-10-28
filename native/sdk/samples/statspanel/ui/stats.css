@@ -1,12 +1,5 @@
-:root { color-scheme: dark; font: 12px/1.4 system-ui, sans-serif; }
-body { margin: 0; padding: 10px; background: #1e1e22; color: #d8d8de; }
-h1 { font-size: 13px; margin: 0 0 6px; }
-.hint { color: #8b8b95; margin: 4px 0; }
-.kinds { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.kinds li { background: #2a2a30; border-radius: 3px; padding: 1px 6px; }
-.layers { margin: 6px 0; padding-left: 20px; max-height: 50vh; overflow: auto; }
-.layers li.selected { color: #fff; font-weight: 600; }
-.row { display: flex; gap: 6px; margin: 8px 0; align-items: center; }
-input[type="text"] { flex: 1; background: #141417; color: inherit; border: 1px solid #3a3a42; border-radius: 3px; padding: 3px 5px; }
-button { background: #2e2e35; color: inherit; border: 1px solid #3a3a42; border-radius: 3px; padding: 3px 10px; }
-button.primary { background: #3b5bdb; border-color: #3b5bdb; color: #fff; }
+/* Layout only: colours, type and controls come from the editor's panel kit (--pm-*). */
+.kinds { list-style: none; padding: 0; margin: var(--pm-gap) 0; display: flex; flex-wrap: wrap; gap: var(--pm-gap); }
+.kinds li { background: var(--pm-surface-2); border-radius: var(--pm-radius); padding: 1px 6px; color: var(--pm-text-secondary); }
+.layers { margin: var(--pm-gap) 0; max-height: 50vh; overflow: auto; }
+.layers li.pm-selected { color: var(--pm-text); font-weight: var(--pm-weight-heading); }

@@ -63,6 +63,22 @@ describe('plugin-ui protocol', () => {
     expect(await readPanelFile([root], 'plugin-ui://com.premation.rings/missing.js')).toBeNull();
     expect(await readPanelFile([root], 'plugin-ui://com.other/index.html')).toBeNull();
   });
+
+  it('serves the editor kit in every panel origin, which no bundle can shadow', async () => {
+    await mkdir(path.join(bundle, 'ui', '.premation'), { recursive: true });
+    await writeFile(path.join(bundle, 'ui', '.premation', 'premation-ui.css'), 'body{color:red}');
+    const css = await readPanelFile([root], 'plugin-ui://com.premation.rings/.premation/premation-ui.css');
+    expect(css?.contentType).toBe('text/css; charset=utf-8');
+    expect(css?.body.toString()).toContain('--pm-surface-1');
+    expect(css?.body.toString()).not.toContain('color:red');
+    expect(css?.csp).toBe(panelCsp('com.premation.rings')); // its own origin: same-origin under the panel's CSP
+    const js = await readPanelFile([], 'plugin-ui://com.any.plugin/.premation/premation-ui.js');
+    expect(js?.contentType).toContain('javascript');
+    expect(js?.body.toString()).toContain("m.type === 'theme'");
+    expect(await readPanelFile([root], 'plugin-ui://com.premation.rings/.premation/other.css')).toBeNull();
+    expect(await readPanelFile([root], 'plugin-ui://com.premation.rings/sub/.premation/premation-ui.css')).toBeNull();
+    expect(await readPanelFile([root], 'plugin-ui://com.premation.rings/.premation/constructor')).toBeNull();
+  });
 });
 
 describe('panel navigation', () => {

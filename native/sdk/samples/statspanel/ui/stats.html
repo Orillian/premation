@@ -3,18 +3,21 @@
 <head>
 <meta charset="utf-8">
 <title>Layer Stats</title>
+<!-- The editor's panel kit (docs/PLUGIN_SDK.md "Matching the editor"): served by the app, not in this bundle. -->
+<link rel="stylesheet" href="/.premation/premation-ui.css">
+<script src="/.premation/premation-ui.js"></script>
 <link rel="stylesheet" href="stats.css">
 </head>
 <body>
   <h1>Layer Stats</h1>
-  <p id="comp" class="hint">No composition.</p>
+  <p id="comp" class="pm-hint">No composition.</p>
   <ul id="kinds" class="kinds"></ul>
-  <ol id="layers" class="layers"></ol>
-  <div class="row">
-    <input id="prefix" type="text" value="Shot" aria-label="Name prefix">
-    <button id="number" type="button" class="primary">Number selected</button>
+  <ol id="layers" class="pm-list layers"></ol>
+  <div class="pm-row">
+    <input id="prefix" class="pm-grow" type="text" value="Shot" aria-label="Name prefix">
+    <button id="number" type="button" class="pm-primary">Number selected</button>
   </div>
-  <p id="status" class="hint" role="status"></p>
+  <p id="status" class="pm-hint" role="status"></p>
   <script src="stats.js"></script>
 </body>
 </html>
