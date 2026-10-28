@@ -2451,6 +2451,29 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
+/* The pinned layer row (both halves) — see `stickyStack.ts`. The layer-row
+   colour is translucent in the light theme, so it is laid over the panel's
+   own background or the rows scrolled under it would show through. z-index 3
+   with the playhead's: the playhead comes later in the lanes, so it stays on
+   top of the band; the header lifts its copy over the group heading inline. */
+.pinnedRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  background:
+    linear-gradient(var(--color-timeline-layer-row), var(--color-timeline-layer-row)),
+    var(--color-timeline-bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Lanes half of the pinned group heading: blank, as the real one is. Drawn
+   before the layer band, so it slides under it while the next layer pushes
+   both off. */
+.pinnedLaneGroup {
+  background: var(--color-surface-2);
+}
+
 /* ── Row height grip ─────────────────────────────────────────────
    On the seam where the header column meets the lanes, so the two size
    gestures — column width, row height — share one edge. */

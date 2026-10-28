@@ -91,7 +91,7 @@ import { TRANSCRIPT_LANE_HEIGHT } from './transcriptGeometry';
 import { HeatLane } from './HeatLane';
 import { addCompMarkerAtPlayhead, addLayerMarkersAtPlayhead, installTimelineMarkerCommands } from './markerCommands';
 import { deleteSelectionFromTimeline, installTimelineClipEditCommands, rippleDeleteSelection } from './clipEditCommands';
-import { stickyCategoryFor } from './stickyCategory';
+import { stickyStackFor } from './stickyStack';
 import { activeCompIdNow, compFps, useMirrorComps } from '@hooks/useMirror';
 import {
   RULER_HEIGHT_DEFAULT,
@@ -2184,17 +2184,41 @@ function Timeline({
   }, [model.tracks]);
 
   /**
-   * The category heading to pin while scrolled inside an expanded layer.
+   * The layer row and group heading to pin while scrolled inside an expanded
+   * layer (see `stickyStack.ts`).
    *
    * `scrollTop` is measured from the top of the row list, so the padding above
    * the first row has to come off before it means "which row is at the top".
+   * A nested group (an effect) names its parent in the label: the stack is two
+   * rows deep, never three.
    */
-  const stickyCategory = useMemo(() => {
-    const found = stickyCategoryFor(rows, scrollTop - TIMELINE_TOP_PADDING, trackHeight);
-    if (!found) return null;
-    const row = rows[found.index];
-    return row && row.type === 'category' ? { row, offset: found.offset } : null;
+  const stickyStack = useMemo(() => {
+    const found = stickyStackFor(rows, scrollTop - TIMELINE_TOP_PADDING, trackHeight);
+    const trackRow = found.track ? rows[found.track.index] : undefined;
+    const catRow = found.category ? rows[found.category.index] : undefined;
+    let category = null;
+    if (found.category && catRow?.type === 'category') {
+      let label = catRow.label;
+      if (catRow.categoryKey.startsWith('effects/')) {
+        for (let i = found.category.index - 1; i >= 0; i--) {
+          const r = rows[i]!;
+          if (r.type === 'category' && r.categoryKey === 'effects') { label = `${r.label} › ${label}`; break; }
+          if (r.type === 'track') break;
+        }
+      }
+      category = { row: catRow, label, index: found.category.index, offset: found.category.offset };
+    }
+    return {
+      track: found.track && trackRow?.type === 'track'
+        ? { row: trackRow, index: found.track.index, offset: found.track.offset }
+        : null,
+      category,
+    };
   }, [rows, scrollTop, trackHeight]);
+  /** Scroll so row `index` is `slot` rows below the top — a pinned row's way back to its real one. */
+  const scrollRowToSlot = useCallback((index: number, slot: number) => {
+    if (lanesRef.current) lanesRef.current.scrollTop = Math.max(0, TIMELINE_TOP_PADDING + (index - slot) * trackHeight);
+  }, [trackHeight]);
 
   const playheadX = TIMELINE_LEFT_OFFSET + currentTime * pps;
 
@@ -2629,40 +2653,103 @@ function Timeline({
                 />
               );
             })}
-            {/* ── The pinned category heading ─────────────────────────
-                Scroll into a layer's forty effect parameters and the "Effects"
-                heading is the first thing off the top of the panel; what is
-                left is forty rows called "Radius" and "Amount" with nothing
-                saying what they belong to. `position: sticky` cannot do this —
-                the rows are absolutely positioned AND virtualized, so the real
-                heading is unmounted at exactly the moment it would need to
-                stick — so one extra copy is drawn, pinned, and pushed up by
-                the next section as it arrives. See `stickyCategory.ts`. */}
-            {stickyCategory ? (
-              <TrackCategoryHeader
-                label={stickyCategory.row.label}
-                icon={stickyCategory.row.icon}
-                expanded={stickyCategory.row.expanded}
-                count={stickyCategory.row.count}
-                sticky
-                style={{
-                  position: 'absolute',
-                  top: scrollTop + stickyCategory.offset,
-                  left: 0,
-                  right: 0,
-                  height: trackHeight,
-                  zIndex: 3,
-                }}
-                onToggle={() =>
-                  toggleCategory(stickyCategory.row.track.id, stickyCategory.row.categoryKey)
-                }
-                onReset={
-                  stickyCategory.row.categoryKey === 'transform'
-                    ? () => { void resetTransformEdit([stickyCategory.row.track.id], activeCompSize()); }
-                    : undefined
-                }
-              />
-            ) : null}
+            {/* ── The pinned layer row and group heading ──────────────
+                Scroll into a layer's forty effect parameters and its name and
+                the "Effects" heading are the first things off the top of the
+                panel; what is left is forty rows called "Radius" and "Amount"
+                with nothing saying what they belong to. `position: sticky`
+                cannot do this — the rows are absolutely positioned AND
+                virtualized, so the real rows are unmounted at exactly the
+                moment they would need to stick — so one extra copy of each is
+                drawn, pinned, and pushed up by the next section as it arrives.
+                See `stickyStack.ts`. Collapsing from a pinned row scrolls its
+                real row back into place, so the list does not jump to
+                whatever now sits at the old scroll position. */}
+            {stickyStack.category ? (() => {
+              const { row, label, index, offset } = stickyStack.category;
+              const fx = row.effect;
+              return (
+                <TrackCategoryHeader
+                  label={label}
+                  icon={row.icon}
+                  expanded={row.expanded}
+                  count={row.count}
+                  sticky
+                  style={{
+                    position: 'absolute',
+                    top: scrollTop + trackHeight + offset,
+                    left: 0,
+                    right: 0,
+                    height: trackHeight,
+                    zIndex: 3,
+                    paddingLeft: 88 + (row.track.depth ?? 0) * 14 + (fx ? 14 : 0),
+                  }}
+                  onToggle={() => {
+                    if (row.expanded) scrollRowToSlot(index, 1);
+                    toggleCategory(row.track.id, row.categoryKey);
+                  }}
+                  onReset={
+                    row.categoryKey === 'transform'
+                      ? () => { void resetTransformEdit([row.track.id], activeCompSize()); }
+                      : fx
+                        ? () => { void resetEffectEdit(row.track.id, fx.id, row.label); }
+                        : undefined
+                  }
+                  fx={fx ? { enabled: fx.enabled, onToggle: () => { void setEffectEnabledEdit(row.track.id, fx.id, !fx.enabled, row.label); } } : undefined}
+                />
+              );
+            })() : null}
+            {stickyStack.track ? (() => {
+              const { row, index, offset } = stickyStack.track;
+              const h = handlersFor(row.track.id);
+              return (
+                <div
+                  className={styles.pinnedRow}
+                  style={{ top: scrollTop + offset, height: trackHeight, zIndex: 4 }}
+                >
+                  <TrackHeader
+                    key={`pin_${row.track.id}`}
+                    track={row.track}
+                    index={trackIndexById.get(row.track.id) ?? 0}
+                    selected={selectedTrackIds?.includes(row.track.id) ?? false}
+                    expanded={row.expanded}
+                    hasProps={row.hasProps}
+                    onToggleExpand={(recursive) => {
+                      if (row.expanded) scrollRowToSlot(index, 0);
+                      h.onToggleExpand(recursive);
+                    }}
+                    onActivate={h.onActivate}
+                    // A click on the pinned copy also takes you back to the real row.
+                    onClick={(mods) => {
+                      h.onClick(mods);
+                      scrollRowToSlot(index, 0);
+                    }}
+                    onToggleVisible={h.onToggleVisible}
+                    onToggleLock={h.onToggleLock}
+                    onToggleSolo={h.onToggleSolo}
+                    onToggleAudio={onClipMuteToggle ? h.onToggleAudio : undefined}
+                    onBlendModeChange={h.onBlendModeChange}
+                    onMatteChange={h.onMatteChange}
+                    onParentChange={h.onParentChange}
+                    onToggleFlag={h.onToggleFlag}
+                    onRename={h.onRename}
+                    onTrackColorChange={onTrackColorChange}
+                    onExtraColumnEdit={h.onExtraColumnEdit}
+                    startFrame={model.startFrame ?? 0}
+                    onContextMenu={h.onContextMenu}
+                    showSwitches={showSwitches}
+                    showModes={showModes}
+                    extraColumns={extraColumns}
+                    frameRate={fps}
+                    // The real row keeps the list's one tab stop.
+                    active={false}
+                    onRowFocus={h.onRowFocus}
+                    onReorderStart={noopReorderStart}
+                    style={rowStyleFor(0, trackHeight)}
+                  />
+                </div>
+              );
+            })() : null}
 
             {/* Drop indicator — horizontal line showing insertion target during row drag */}
             {rowDragOver !== null && (
@@ -3062,6 +3149,36 @@ function Timeline({
                 </LaneRow>
               );
             })}
+
+            {/* The lanes half of the pinned stack (header half: see the pinned
+                layer row above). Opaque, so the keyframes scrolled under it do
+                not show through as if they were the pinned row's; the layer's
+                own bar is drawn again, live, so it can still be dragged. The
+                group band is first so it slides under the layer band. */}
+            {stickyStack.category ? (
+              <div
+                className={cn(styles.pinnedRow, styles.pinnedLaneGroup)}
+                style={{ top: scrollTop + trackHeight + stickyStack.category.offset, height: trackHeight }}
+                aria-hidden
+              />
+            ) : null}
+            {stickyStack.track ? (
+              <div className={styles.pinnedRow} style={{ top: scrollTop + stickyStack.track.offset, height: trackHeight }}>
+                <TrackContent
+                  track={stickyStack.track.row.track}
+                  ghosted={stickyStack.track.row.track.ghosted ?? false}
+                  pps={pps}
+                  trackHeight={trackHeight}
+                  top={0}
+                  selected={selectedTrackIds?.includes(stickyStack.track.row.track.id) ?? false}
+                  clipPreviews={previewsForRow(clipPreviews, stickyStack.track.row.track.clips)}
+                  window={timeWindow}
+                  onClipDown={onClipDown}
+                  onClipContextMenu={onClipContextMenu}
+                  onActivate={onTrackActivate}
+                />
+              </div>
+            ) : null}
 
             {/* ── Cut markers ─────────────────────────────────────────
                 Purely visual: a narrow strip at every cut that lights while a
