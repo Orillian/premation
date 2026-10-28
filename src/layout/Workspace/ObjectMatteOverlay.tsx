@@ -67,7 +67,17 @@ function reportFailure(err: unknown): void {
   store.setStatus(explainObjectMatteError(message));
 }
 
+/**
+ * The gate: only the tool's own flag is subscribed here, so with another tool
+ * up a drag or a played frame re-renders nothing of this overlay (the inner
+ * part reads the time and the document revision).
+ */
 export function ObjectMatteOverlay(): JSX.Element | null {
+  const on = useUIStore((s) => s.activeTool === 'object-matte');
+  return on ? <ObjectMatteOverlayActive /> : null;
+}
+
+function ObjectMatteOverlayActive(): JSX.Element | null {
   const activeTool = useUIStore((s) => s.activeTool);
   const ids = useSelectionStore((s) => s.ids);
   const time = useCurrentTime();

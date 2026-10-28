@@ -57,7 +57,13 @@ async function addSubjectEffect(layer: string, effect: 'matte-stroke' | 'selecti
   if (res.ok) useSelectionStore.getState().set([layer]);
 }
 
+/** The gate: with no roto tool up, a document revision re-renders nothing here. */
 export function SubjectChips(): JSX.Element | null {
+  const on = useUIStore((s) => s.activeTool === 'object-matte' || s.activeTool === 'roto');
+  return on ? <SubjectChipsActive /> : null;
+}
+
+function SubjectChipsActive(): JSX.Element | null {
   const tool = useUIStore((s) => s.activeTool);
   const comp = useActiveCompRootId();
   const rev = useMirrorRevisionFrame();
