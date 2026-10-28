@@ -160,8 +160,10 @@ Editor (`isroil01/premation`) and backend (`isroil01/motion-back`, branch `dev`)
      frame. Add it to the toolbar.
    - Status 2026-10-28: the walk runs SAM 2.1 Hiera-Tiny with its memory
      bank (`src/jobs/sam2_track.hpp`, the square-zero-labs video export) when
-     `<userData>/models/sam2-video` holds it (`electron/sam2Model.ts`, a
-     pinned download awaiting owner approval), SlimSAM per frame otherwise.
+     `<userData>/models/sam2-video` holds it (`electron/models.json`
+     `sam2-video`, a pinned download the owner approved 2026-10-28, offered
+     once when the Object Matte tool is first picked), SlimSAM per frame
+     otherwise.
      ONNX Runtime has the DirectML provider on Windows (the
      `native/vcpkg-overlays/onnxruntime` overlay). Core ML on macOS is wired
      in the overlay but not built or tried on a Mac yet. No UI install button
