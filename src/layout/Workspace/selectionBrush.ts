@@ -26,6 +26,9 @@ import { ROTO_PATH_NAME } from '@core/workspace/rotoBrushTool';
 import { documentMirror } from '@stores/documentMirror';
 import { useRotoBrushStore } from '@stores/rotoBrushStore';
 import { t } from '@core/i18n';
+import { paths, values } from '@core/engine/propRefs';
+import { effectNumber } from '@core/inspector/effectCatalog';
+import { objectMatteCard } from '@core/workspace/objectMatteEffect';
 import { maskPathCommand } from './viewportEdits';
 
 type Pt = { x: number; y: number };
@@ -126,10 +129,24 @@ export async function applySelectionBrushEdit(nodeId: string, stroke: readonly P
   return res.ok;
 }
 
-/** Refine Edge: the brush's radius becomes the matte's edge radius for the next propagation. */
-export function applyRefineEdgeStroke(radiusLayerPx: number): void {
+/**
+ * Refine Edge: the brush's radius becomes the matte's edge radius for the next
+ * propagation. With the layer's Object Matte effect present that is the
+ * effect's Edge Radius (and Render Refine Edge on): the effect is what the
+ * next propagation reads (objectMatteEffect.ts); else the tool's settings.
+ */
+export async function applyRefineEdgeStroke(nodeId: string, radiusLayerPx: number): Promise<void> {
   const store = useRotoBrushStore.getState();
-  const edgeRadius = Math.max(store.refine.edgeRadius, Math.round(radiusLayerPx));
-  store.setRefine({ edgeRadius });
+  const card = objectMatteCard(nodeId);
+  const current = card ? effectNumber(card, 'edgeRadius') : store.refine.edgeRadius;
+  const edgeRadius = Math.min(64, Math.max(current, Math.round(radiusLayerPx)));
+  if (card) {
+    await edit(t('workspace.refineEdge.label', 'Refine Edge'), [
+      { type: 'setProperty', prop: { layer: nodeId, path: paths.effectParam(card.id, 'edgeRadius') }, value: values.scalar(edgeRadius) },
+      { type: 'setProperty', prop: { layer: nodeId, path: paths.effectParam(card.id, 'renderRefineEdge') }, value: values.bool(true) },
+    ]);
+  } else {
+    store.setRefine({ edgeRadius });
+  }
   store.setStatus(t('workspace.refineEdge.set', 'Refine Edge radius {n} px: used when you Propagate.', { n: edgeRadius }));
 }

@@ -155,7 +155,7 @@ export function RotoBrushOverlay(): JSX.Element | null {
       const b = mapping?.screenToLocal(store.size / 2, 0);
       const radius = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : store.size / 2;
       if (brushMode === 'refine') {
-        applyRefineEdgeStroke(radius);
+        void applyRefineEdgeStroke(nodeId, radius);
         return;
       }
       void applySelectionBrushEdit(nodeId, done.points, radius, done.kind === 'bg', time).then((ok) => {

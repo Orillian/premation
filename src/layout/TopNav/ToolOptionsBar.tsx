@@ -34,6 +34,7 @@ import { playheadSeconds } from '@core/timeline/timelineView';
 import { settingsDurationSeconds, settingsFps, settingsSetWorkArea } from '@core/mirror/compFacts';
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
 import { explainObjectMatteError } from '@core/tracking/samModelInstall';
+import { objectMatteCard } from '@core/workspace/objectMatteEffect';
 import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
 import { t } from '@core/i18n';
 import styles from './ToolOptionsBar.module.css';
@@ -417,6 +418,7 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
   const rotoTree = useMirrorTree(nodeId);
   const mattes = nodeId && rotoTree ? rotoMattes(nodeId) : { live: [], frozen: [] };
   const frozen = mattes.frozen.length > 0;
+  const matteCard = nodeId && rotoTree ? objectMatteCard(nodeId) : null;
   const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0);
   const canPropagate = !!nodeId && (strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;
   // The Object Matte tool always follows with the model; the brush has the choice.
@@ -583,6 +585,13 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
               <Icon name="skip-forward" size="sm" />
             </button>
           </div>
+          {/* With the layer's Object Matte effect, its card holds these (the next
+              propagation reads them there): point at it rather than edit a copy. */}
+          {matteCard ? (
+            <span className={styles.hint} title={t('topNav.roto.refineInEffectTitle', 'Edge radius, decontaminate, chatter and motion blur are on the layer\'s Object Matte effect')}>
+              {t('topNav.roto.refineInEffect', 'Refine: Effect Controls')}
+            </span>
+          ) : (
           <Popover
             placement="bottom-start"
             open={refineOpen}
@@ -625,6 +634,7 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
               </button>
             </div>
           </Popover>
+          )}
         </>
       ) : (
         <button
