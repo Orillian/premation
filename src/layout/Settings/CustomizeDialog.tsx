@@ -43,6 +43,7 @@ import { ClaudeConnectSection } from './ClaudeConnectSection';
 import { McpAppsSection } from './McpAppsSection';
 import { ExportSettingsSection } from './ExportSettingsSection';
 import { PerformanceSettingsSection } from './PerformanceSettingsSection';
+import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { UpdatesControl } from './UpdatesControl';
 import { ObjectMatteControl } from './ObjectMatteControl';
 import { VideoExportControl } from './VideoExportControl';
@@ -1172,6 +1173,8 @@ export function Customize({ initialTab = 'shortcuts' }: { initialTab?: Tab }): J
           <AudioHardwareSection />
         ) : tab === 'files' ? (
           <FilesTab />
+        ) : tab === 'models' ? (
+          <ModelsSettingsSection />
         ) : tab === 'ai' ? (
           <div className={styles.section}>
             <AiSettingsSection />

@@ -32,13 +32,20 @@ extraResources:
     filter:
       - premation-engine*
       - '*.dll'
-  # The Object Matte model pair (scripts/fetchObjectMatte.cjs) OUTSIDE app.asar
-  # too: the engine's objectMatte job reads the files itself (it cannot read an
-  # archive); main points it here with PREMATION_SAM_DIR (engineHost.ts).
+  # The bundled ML models (electron/models.json `bundled: true`, staged by
+  # scripts/fetchModels.cjs) OUTSIDE app.asar too: the engine reads the files
+  # itself (it cannot read an archive); main points it at each folder with
+  # PREMATION_<env>_DIR (engineHost.ts, modelManifest.ts bundledModelEnv).
   - from: dist/models/object-matte
     to: models/object-matte
     filter:
       - '*.onnx'
+      - model.json
+  - from: dist/models/hand-landmarks
+    to: models/hand-landmarks
+    filter:
+      - '*.onnx'
+      - model.json
   # Repeated: the bundled fonts (resources/fonts).
   - from: resources/fonts
     to: fonts

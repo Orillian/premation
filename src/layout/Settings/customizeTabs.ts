@@ -7,7 +7,7 @@ import type { IconName } from '@components/Icon';
 import { aiEnabled } from '@core/config/edition';
 import { t } from '@core/i18n';
 
-export type Tab = 'shortcuts' | 'tabs' | 'appearance' | 'audio' | 'files' | 'ai';
+export type Tab = 'shortcuts' | 'tabs' | 'appearance' | 'audio' | 'files' | 'models' | 'ai';
 
 export function tabsForEdition(): ReadonlyArray<{ id: Tab; label: string; icon: IconName }> {
   return [
@@ -19,6 +19,8 @@ export function tabsForEdition(): ReadonlyArray<{ id: Tab; label: string; icon: 
     // device buried under "Appearance" is a device nobody finds.
     { id: 'audio', label: t('settings.customize.tab.audio', 'Audio'), icon: 'audio' as IconName },
     { id: 'files', label: t('settings.customize.tab.files', 'Files'), icon: 'folder' as IconName },
+    // The ML models the engine runs (electron/models.json): built in, installed, or fetched on first use.
+    { id: 'models', label: t('settings.customize.tab.models', 'Models'), icon: 'brain' as IconName },
     ...(aiEnabled() ? [{ id: 'ai' as const, label: t('settings.customize.tab.ai', 'AI Engine'), icon: 'ai' as IconName }] : []),
   ];
 }

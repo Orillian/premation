@@ -48,9 +48,20 @@
 //    frame is presented without a build (Session reads `volatile_inputs`).
 //
 // Core thread only: it reads the document between edits, as a query would.
-// Memory: one 64-bit word per (layer at the comp's level, frame); past
-// kMaxCells the comp is not indexed (keys are 0; the bars fall back to
-// all-or-nothing and every frame builds, as before).
+//
+// Storage (long timelines: a 30-minute comp is 54,000 frames, a 4-hour one at
+// 120 fps 1.7 million): a layer's hash is PIECEWISE CONSTANT over the frames —
+// it changes only where a sampled clock crosses a key (± the blur reach), so
+// each layer at the comp's level keeps a sorted vector of (startFrame, hash)
+// SPANS, ~4 per keyframe, not a word per frame; a key-less layer is one span.
+// The per-frame sum of the spans (`total_`) stays dense: `key()` is one load
+// per frame on the core thread during playback, and at kMaxFrames the dense
+// total is 16 MB, within the smallest budget. An edit re-spans only its layer
+// and corrects the total over the frames whose span hash differs. The whole
+// index is held to a byte budget — 1 % of the machine's RAM, clamped to
+// [32 MB, 512 MB] (`budget_for`, set by the Session from the host memory it is
+// given; tests set it directly) — past which the comp is not indexed (keys are
+// 0; the bars fall back to all-or-nothing and every frame builds, as before).
 #pragma once
 
 #include <algorithm>
@@ -205,11 +216,25 @@ class FrameKeyIndex {
     bool all = true;
     std::vector<std::int64_t> frames;
   };
-  static constexpr std::int64_t kMaxFrames = 200'000;
-  /// (layers at the comp's level) × frames words kept; past it the comp is not indexed.
-  static constexpr std::size_t kMaxCells = std::size_t{4} << 20U;  // 32 MB
+  /// Frames a comp may have and still be indexed: 4 h 37 min at 120 fps
+  /// (18.5 h at 30). The dense total is 8 bytes a frame: 16 MB here.
+  static constexpr std::int64_t kMaxFrames = 2'000'000;
   /// Motion-blur reach, frames either side (a 720° shutter and its phase).
   static constexpr std::int64_t kBlurFrames = 3;
+  /// The byte budget's bounds: `budget_for` is 1 % of the machine's RAM inside them.
+  static constexpr std::size_t kMinBudgetBytes = std::size_t{32} << 20U;
+  static constexpr std::size_t kMaxBudgetBytes = std::size_t{512} << 20U;
+  /// The budget for a machine with `physicalBytes` of RAM (0 = unknown: the floor).
+  [[nodiscard]] static constexpr std::size_t budget_for(std::uint64_t physicalBytes) noexcept {
+    const std::uint64_t share = physicalBytes / 100U;
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(share, kMinBudgetBytes, kMaxBudgetBytes));
+  }
+  /// The bytes the index may hold (dense total + every layer's spans). Kept
+  /// across resets; a comp past it is not indexed until the next rebuild.
+  void set_budget_bytes(std::size_t bytes) noexcept { budget_ = bytes; }
+  [[nodiscard]] std::size_t budget_bytes() const noexcept { return budget_; }
+  /// What the index holds now (0 when not indexed).
+  [[nodiscard]] std::size_t bytes() const noexcept { return bytes_; }
 
   void reset() {
     comp_.clear();
@@ -220,6 +245,7 @@ class FrameKeyIndex {
     frames_ = 0;
     fps_ = 30;
     static_ = 0;
+    bytes_ = 0;
     layers_.clear();
     layerIndex_.clear();
     compList_.clear();
@@ -245,15 +271,9 @@ class FrameKeyIndex {
     seen.insert(comp_);
     compList_.push_back(comp_);
     collect(d, *root, false, false, 0, seen);
-    std::size_t rows = 0;
-    for (const Layer& l : layers_) rows += l.nested ? 0 : 1;
-    if (rows * static_cast<std::size_t>(frames_) > kMaxCells) {
-      const std::string keep = comp_;
-      reset();
-      comp_ = keep;
-      return false;
-    }
     std::ranges::sort(compList_);
+    bytes_ = static_cast<std::size_t>(frames_) * sizeof(std::uint64_t);
+    if (bytes_ > budget_) return give_up();
     total_.assign(static_cast<std::size_t>(frames_), 0);
     for (Layer& l : layers_) {
       if (l.nested) {
@@ -261,8 +281,10 @@ class FrameKeyIndex {
         continue;
       }
       l.clock = clock_of(d, v, l.id);
-      l.row = row_of(d, l);
-      for (std::size_t f = 0; f < l.row.size(); ++f) total_[f] += l.row[f];
+      l.spans = spans_of(d, l);
+      bytes_ += l.spans.size() * sizeof(Span);
+      if (bytes_ > budget_) return give_up();
+      add_spans(l.spans, true);
     }
     static_ = static_of(d);
     indexed_ = true;
@@ -329,7 +351,9 @@ class FrameKeyIndex {
       (void)rebuild(d, v, comp_, mediaBase);
       return all;
     }
-    std::vector<std::int64_t> changed;
+    // Frame ranges [first, end) whose total changed: a re-spanned layer's
+    // spans against its old ones, hash by hash.
+    std::vector<std::pair<std::int64_t, std::int64_t>> ranges;
     for (const std::string& id : rows) {
       Layer& l = layers_[layerIndex_.at(id)];
       if (l.nested) {
@@ -338,20 +362,20 @@ class FrameKeyIndex {
         continue;
       }
       l.clock = clock_of(d, v, l.id);
-      const std::vector<std::uint64_t> old = std::move(l.row);
-      l.row = row_of(d, l);
-      for (std::size_t f = 0; f < l.row.size(); ++f) {
-        if (old[f] == l.row[f]) continue;
-        total_[f] += l.row[f] - old[f];
-        changed.push_back(static_cast<std::int64_t>(f));
-      }
+      const std::vector<Span> old = std::move(l.spans);
+      l.spans = spans_of(d, l);
+      bytes_ = bytes_ - old.size() * sizeof(Span) + l.spans.size() * sizeof(Span);
+      diff_spans(old, l.spans, ranges);
+    }
+    if (bytes_ > budget_) {
+      (void)give_up();  // the keys grew past the budget: not indexed until the next rebuild
+      return all;
     }
     if (staticChanged) {
       static_ = static_of(d);
       return all;
     }
-    std::ranges::sort(changed);
-    changed.erase(std::unique(changed.begin(), changed.end()), changed.end());
+    std::vector<std::int64_t> changed = frames_of(std::move(ranges));
     if (changed.size() >= static_cast<std::size_t>(frames_)) return all;
     Delta some;
     some.all = false;
@@ -360,11 +384,16 @@ class FrameKeyIndex {
   }
 
   /// The document's key for `frame` (0 = not indexed, or outside the comp).
+  /// One load from the dense total: no search, no allocation.
   [[nodiscard]] std::uint64_t key(std::int64_t frame) const noexcept {
     if (!indexed_ || frame < 0 || frame >= frames_) return 0;
+    return key_of(static_, total_[static_cast<std::size_t>(frame)], frame);
+  }
+  /// The key's recipe: the static hash, the frame's summed layer hashes, the frame. Never 0.
+  [[nodiscard]] static std::uint64_t key_of(std::uint64_t staticHash, std::uint64_t total, std::int64_t frame) noexcept {
     frame_keys::Mix m;
-    m.u64(static_);
-    m.u64(total_[static_cast<std::size_t>(frame)]);
+    m.u64(staticHash);
+    m.u64(total);
     m.u64(static_cast<std::uint64_t>(frame));
     const std::uint64_t v = m.value();
     return v == 0 ? 1 : v;
@@ -384,6 +413,31 @@ class FrameKeyIndex {
     if (it == layerIndex_.end() || layers_[it->second].nested) return std::nullopt;
     return clock_time(layers_[it->second].clock, static_cast<double>(frame) / fps_);
   }
+  /// Tests: the layers at the comp's level (the ones with spans), in index order.
+  [[nodiscard]] std::vector<std::string> indexed_layers() const {
+    std::vector<std::string> out;
+    for (const Layer& l : layers_) {
+      if (!l.nested) out.push_back(l.id);
+    }
+    return out;
+  }
+  /// Tests: how many spans `layer` holds (0 = nested, or no such layer).
+  [[nodiscard]] std::size_t span_count(std::string_view layer) const {
+    const auto it = layerIndex_.find(std::string(layer));
+    return it == layerIndex_.end() ? 0 : layers_[it->second].spans.size();
+  }
+  /// Tests: the static hash `key_of` mixes with every frame's total.
+  [[nodiscard]] std::uint64_t static_hash() const noexcept { return static_; }
+  /// Tests: `layer`'s hash at `frame` computed from scratch, frame by frame —
+  /// the dense reference the spans compress (sampling every clock, walking
+  /// every track; slow: it plans the row on each call). The sum over the
+  /// comp's layers is `total_[frame]`. nullopt = nested or no such layer.
+  [[nodiscard]] std::optional<std::uint64_t> layer_hash(const Document& d, std::string_view layer, std::int64_t frame) const {
+    const auto it = layerIndex_.find(std::string(layer));
+    if (it == layerIndex_.end() || layers_[it->second].nested || frame < 0 || frame >= frames_) return std::nullopt;
+    const Layer& l = layers_[it->second];
+    return frame_hash(plan_of(d, l), l.clock, frame);
+  }
 
  private:
   struct ClipSpan {
@@ -400,14 +454,76 @@ class FrameKeyIndex {
     double spanStart = 0;
     double spanEnd = 1;
   };
+  /// A run of frames over which a layer's hash is one value: [start, next span's start).
+  struct Span {
+    std::int64_t start = 0;
+    std::uint64_t hash = 0;
+  };
   struct Layer {
     std::string id;
     bool nested = false;  ///< inside a precomp / an instanced comp: on the parent's clock, hashed whole
     bool whole = false;   ///< every key of every track (a temporal effect on it or above it)
-    std::uint64_t constant = 0;      ///< nested: the animation's hash
-    std::vector<std::uint64_t> row;  ///< not nested: per frame
+    std::uint64_t constant = 0;  ///< nested: the animation's hash
+    std::vector<Span> spans;     ///< not nested: sorted by start, the first at frame 0, never empty once indexed
     Clock clock;
   };
+  static constexpr std::size_t kSamples = static_cast<std::size_t>(2 * kBlurFrames + 1);
+  using Samples = std::array<double, kSamples>;
+  using KeyRange = std::pair<std::ptrdiff_t, std::ptrdiff_t>;
+
+  /// Not indexable after all (past the budget): keep the comp's name so the caller does not retry every frame.
+  bool give_up() {
+    const std::string keep = comp_;
+    reset();
+    comp_ = keep;
+    return false;
+  }
+
+  /// Add (or take back) a layer's spans to the dense total.
+  void add_spans(const std::vector<Span>& spans, bool add) noexcept {
+    for (std::size_t i = 0; i < spans.size(); ++i) {
+      const std::int64_t stop = i + 1 < spans.size() ? spans[i + 1].start : frames_;
+      for (std::int64_t f = spans[i].start; f < stop; ++f) {
+        if (add) total_[static_cast<std::size_t>(f)] += spans[i].hash;
+        else total_[static_cast<std::size_t>(f)] -= spans[i].hash;
+      }
+    }
+  }
+
+  /// Walk two span lists of one layer in step: where the hashes differ, move
+  /// the total from the old hash to the new and note the range.
+  void diff_spans(const std::vector<Span>& old, const std::vector<Span>& neu, std::vector<std::pair<std::int64_t, std::int64_t>>& ranges) {
+    if (old.empty() || neu.empty()) return;
+    std::size_t i = 0;
+    std::size_t j = 0;
+    std::int64_t pos = 0;
+    while (pos < frames_) {
+      const std::int64_t nextOld = i + 1 < old.size() ? old[i + 1].start : frames_;
+      const std::int64_t nextNew = j + 1 < neu.size() ? neu[j + 1].start : frames_;
+      const std::int64_t stop = std::min(nextOld, nextNew);
+      if (old[i].hash != neu[j].hash) {
+        const std::uint64_t shift = neu[j].hash - old[i].hash;
+        for (std::int64_t f = pos; f < stop; ++f) total_[static_cast<std::size_t>(f)] += shift;
+        if (!ranges.empty() && ranges.back().second == pos) ranges.back().second = stop;
+        else ranges.emplace_back(pos, stop);
+      }
+      pos = stop;
+      if (stop == nextOld) ++i;
+      if (stop == nextNew) ++j;
+    }
+  }
+
+  /// The frames of a union of ranges, sorted and unique (the Delta's shape).
+  [[nodiscard]] static std::vector<std::int64_t> frames_of(std::vector<std::pair<std::int64_t, std::int64_t>> ranges) {
+    std::ranges::sort(ranges);
+    std::vector<std::int64_t> out;
+    std::int64_t next = std::numeric_limits<std::int64_t>::min();
+    for (const auto& [first, stop] : ranges) {
+      for (std::int64_t f = std::max(first, next); f < stop; ++f) out.push_back(f);
+      next = std::max(next, stop);
+    }
+    return out;
+  }
 
   [[nodiscard]] bool compList_end(std::string_view id) const { return std::ranges::find(compList_, id) != compList_.end(); }
 
@@ -590,22 +706,62 @@ class FrameKeyIndex {
     return (it - keys.begin()) - 1;
   }
 
-  [[nodiscard]] std::vector<std::uint64_t> row_of(const Document& d, const Layer& l) const {
-    std::vector<std::uint64_t> row(static_cast<std::size_t>(frames_));
-    const NodeAnim* a = d.anim(l.id);
-    // Per track: its keys' hashes (once), and whether it hashes whole.
-    struct Track {
-      const std::string* prop = nullptr;
-      const std::vector<Key>* keys = nullptr;
-      const DataTrack* data = nullptr;
-      std::vector<std::uint64_t> keyHash;
-      bool whole = false;
-      bool raw = false;  // timeRemap / precompTime: on the comp clock
-    };
+  /// What a layer's clock is made of (clock_time reads nothing else): hashed
+  /// into every frame of the layer instead of the clock TIME at the frame,
+  /// so the hash is constant between key crossings. Equal parameters give
+  /// equal times at equal frames; the frame itself is in the key (`key_of`).
+  [[nodiscard]] static std::uint64_t clock_hash(const Clock& c) noexcept {
+    frame_keys::Mix m;
+    m.f64(c.fps);
+    m.u64(c.clips.size());
+    for (const ClipSpan& k : c.clips) {
+      m.f64(k.start);
+      m.f64(k.duration);
+      m.f64(k.sourceIn);
+      m.flag(k.enabled);
+    }
+    m.flag(c.cfg.has_value());
+    if (c.cfg) {
+      // remap_time: frozen reads only freezeTime; else the stretch anchors on
+      // the keys' span start, and reverse mirrors through its end too.
+      m.flag(c.cfg->freeze);
+      if (c.cfg->freeze) {
+        m.f64(c.cfg->freezeTime);
+      } else {
+        m.f64(c.cfg->stretch);
+        m.flag(c.cfg->reverse);
+        m.f64(c.spanStart);
+        if (c.cfg->reverse) m.f64(c.spanEnd);
+      }
+    }
+    return m.value();
+  }
+
+  /// Per track: its keys' hashes (once), and whether it hashes whole.
+  struct Track {
+    const std::string* prop = nullptr;
+    const std::vector<Key>* keys = nullptr;
+    const DataTrack* data = nullptr;
+    std::vector<std::uint64_t> keyHash;
+    std::uint64_t allHash = 0;  ///< every key's hash mixed in order: what a whole track contributes
+    bool whole = false;
+    bool raw = false;  // timeRemap / precompTime: on the comp clock
+  };
+  /// A layer's frame-hash inputs, gathered once per (re)span.
+  struct RowPlan {
     std::vector<Track> tracks;
+    std::uint64_t clock = 0;  ///< clock_hash
     std::uint64_t exprs = 0;
+    double reach = 0;      ///< keyframe seconds either side of a sampled clock (a comp frame, stretched)
+    bool constant = true;  ///< no track picks keys per frame: the layer is one span
+  };
+
+  [[nodiscard]] RowPlan plan_of(const Document& d, const Layer& l) const {
+    RowPlan p;
+    p.clock = clock_hash(l.clock);
+    const NodeAnim* a = d.anim(l.id);
     if (a != nullptr) {
-      tracks.reserve(a->tracks.size() + a->data.size());
+      p.tracks.reserve(a->tracks.size() + a->data.size());
       for (const auto& [prop, keys] : a->tracks) {
         Track t;
         t.prop = &prop;
@@ -620,7 +776,7 @@ class FrameKeyIndex {
           mix_key(m, k);
           t.keyHash.push_back(m.value());
         }
-        tracks.push_back(std::move(t));
+        p.tracks.push_back(std::move(t));
       }
       for (const auto& [prop, data] : a->data) {
         Track t;
@@ -637,7 +793,13 @@ class FrameKeyIndex {
           mix_data_key(m, k);
           t.keyHash.push_back(m.value());
         }
-        tracks.push_back(std::move(t));
+        p.tracks.push_back(std::move(t));
+      }
+      for (Track& t : p.tracks) {
+        frame_keys::Mix m;
+        for (const std::uint64_t h : t.keyHash) m.u64(h);
+        t.allHash = m.value();
+        if (!t.whole && !t.keyHash.empty()) p.constant = false;
       }
       frame_keys::Mix e;
       for (const auto& [prop, st] : a->exprs) {
@@ -645,48 +807,123 @@ class FrameKeyIndex {
         e.str(st.src);
         e.flag(st.enabled);
       }
-      exprs = e.value();
+      p.exprs = e.value();
     }
     // Reach in keyframe seconds around each sampled clock: a frame of the
     // comp, stretched as the layer's time is (remap_time's 100 / stretch).
-    double reach = 1.0 / fps_;
-    if (l.clock.cfg && l.clock.cfg->stretch > 0) reach *= std::max(1.0, 100.0 / l.clock.cfg->stretch);
-    constexpr std::size_t kSamples = static_cast<std::size_t>(2 * kBlurFrames + 1);
-    std::array<double, kSamples> clocks{};
-    std::array<double, kSamples> comps{};
-    for (std::int64_t f = 0; f < frames_; ++f) {
-      for (std::size_t s = 0; s < kSamples; ++s) {
-        const double compTime = static_cast<double>(f - kBlurFrames + static_cast<std::int64_t>(s)) / fps_;
-        comps[s] = compTime;
-        clocks[s] = clock_time(l.clock, compTime);
-      }
-      frame_keys::Mix m;
-      m.f64(clocks[static_cast<std::size_t>(kBlurFrames)]);
-      m.u64(exprs);
-      for (const Track& t : tracks) {
-        m.str(*t.prop);
-        const std::size_t n = t.keyHash.size();
-        if (n == 0) continue;
-        std::ptrdiff_t lo = 0;
-        std::ptrdiff_t hi = static_cast<std::ptrdiff_t>(n) - 1;
-        if (!t.whole) {
-          lo = hi;
-          hi = 0;
-          const std::array<double, kSamples>& times = t.raw ? comps : clocks;
-          for (const double x : times) {
-            const std::ptrdiff_t a0 = t.keys != nullptr ? segment(*t.keys, x - reach) : segment(t.data->keys, x - reach);
-            const std::ptrdiff_t a1 = t.keys != nullptr ? segment(*t.keys, x + reach) : segment(t.data->keys, x + reach);
-            lo = std::min(lo, a0 - 1);
-            hi = std::max(hi, a1 + 2);
-          }
-          lo = std::clamp<std::ptrdiff_t>(lo, 0, static_cast<std::ptrdiff_t>(n) - 1);
-          hi = std::clamp<std::ptrdiff_t>(hi, 0, static_cast<std::ptrdiff_t>(n) - 1);
-        }
-        for (std::ptrdiff_t i = lo; i <= hi; ++i) m.u64(t.keyHash[static_cast<std::size_t>(i)]);
-      }
-      row[static_cast<std::size_t>(f)] = m.value();
+    p.reach = 1.0 / fps_;
+    if (l.clock.cfg && l.clock.cfg->stretch > 0) p.reach *= std::max(1.0, 100.0 / l.clock.cfg->stretch);
+    return p;
+  }
+
+  /// The comp time of frame `g` (may be negative: the blur samples before frame 0).
+  [[nodiscard]] double comp_time(std::int64_t g) const noexcept { return static_cast<double>(g) / fps_; }
+
+  /// The keys a track contributes at a frame whose sampled times are `times`:
+  /// the segment either side of each sample ± reach, one key beyond (the
+  /// tangents), clamped to the track. `segment` is monotone, so the outer
+  /// samples decide: two searches, not fourteen.
+  [[nodiscard]] static KeyRange key_range(const Track& t, const Samples& times, double reach) noexcept {
+    double lo = times[0];
+    double hi = times[0];
+    for (const double x : times) {
+      lo = std::min(lo, x);
+      hi = std::max(hi, x);
     }
-    return row;
+    const std::ptrdiff_t n = static_cast<std::ptrdiff_t>(t.keyHash.size());
+    const std::ptrdiff_t first = (t.keys != nullptr ? segment(*t.keys, lo - reach) : segment(t.data->keys, lo - reach)) - 1;
+    const std::ptrdiff_t last = (t.keys != nullptr ? segment(*t.keys, hi + reach) : segment(t.data->keys, hi + reach)) + 2;
+    return KeyRange{std::clamp<std::ptrdiff_t>(first, 0, n - 1), std::clamp<std::ptrdiff_t>(last, 0, n - 1)};
+  }
+
+  /// The hash of one frame of a layer from its sampled times and the ranges
+  /// `key_range` picked per track (a whole or key-less track ignores `ranges`).
+  [[nodiscard]] static std::uint64_t mix_frame(const RowPlan& p, const std::vector<KeyRange>& ranges) noexcept {
+    frame_keys::Mix m;
+    m.u64(p.clock);
+    m.u64(p.exprs);
+    for (std::size_t i = 0; i < p.tracks.size(); ++i) {
+      const Track& t = p.tracks[i];
+      m.str(*t.prop);
+      if (t.keyHash.empty()) continue;
+      if (t.whole) {
+        m.u64(t.allHash);
+        continue;
+      }
+      for (std::ptrdiff_t k = ranges[i].first; k <= ranges[i].second; ++k) m.u64(t.keyHash[static_cast<std::size_t>(k)]);
+    }
+    return m.value();
+  }
+
+  /// The dense reference: one frame, every clock sampled afresh, the per-sample
+  /// search of the key range written out (what `spans_of` must agree with).
+  [[nodiscard]] std::uint64_t frame_hash(const RowPlan& p, const Clock& c, std::int64_t f) const {
+    Samples clocks{};
+    Samples comps{};
+    for (std::size_t s = 0; s < kSamples; ++s) {
+      comps[s] = comp_time(f - kBlurFrames + static_cast<std::int64_t>(s));
+      clocks[s] = clock_time(c, comps[s]);
+    }
+    std::vector<KeyRange> ranges(p.tracks.size());
+    for (std::size_t i = 0; i < p.tracks.size(); ++i) {
+      const Track& t = p.tracks[i];
+      const std::ptrdiff_t n = static_cast<std::ptrdiff_t>(t.keyHash.size());
+      if (n == 0 || t.whole) continue;
+      std::ptrdiff_t lo = n - 1;
+      std::ptrdiff_t hi = 0;
+      const Samples& times = t.raw ? comps : clocks;
+      for (const double x : times) {
+        const std::ptrdiff_t a0 = t.keys != nullptr ? segment(*t.keys, x - p.reach) : segment(t.data->keys, x - p.reach);
+        const std::ptrdiff_t a1 = t.keys != nullptr ? segment(*t.keys, x + p.reach) : segment(t.data->keys, x + p.reach);
+        lo = std::min(lo, a0 - 1);
+        hi = std::max(hi, a1 + 2);
+      }
+      ranges[i] = KeyRange{std::clamp<std::ptrdiff_t>(lo, 0, n - 1), std::clamp<std::ptrdiff_t>(hi, 0, n - 1)};
+    }
+    return mix_frame(p, ranges);
+  }
+
+  /// A layer's spans over the comp's frames. The sampled clocks slide one
+  /// frame at a time (one clock_time per frame, not seven); a frame whose key
+  /// ranges match the previous frame's has its hash and is skipped; a new
+  /// span opens where the hash differs.
+  [[nodiscard]] std::vector<Span> spans_of(const Document& d, const Layer& l) const {
+    std::vector<Span> spans;
+    if (frames_ <= 0) return spans;
+    const RowPlan p = plan_of(d, l);
+    if (p.constant) {
+      spans.push_back(Span{0, frame_hash(p, l.clock, 0)});
+      return spans;
+    }
+    Samples clocks{};
+    Samples comps{};
+    // Before frame 0: samples 1..kSamples-1 hold frames -kBlurFrames-1+s; the loop shifts them down and adds the last.
+    for (std::size_t s = 1; s < kSamples; ++s) {
+      comps[s] = comp_time(static_cast<std::int64_t>(s) - 1 - kBlurFrames);
+      clocks[s] = clock_time(l.clock, comps[s]);
+    }
+    std::vector<KeyRange> prev(p.tracks.size(), KeyRange{-1, -1});
+    std::vector<KeyRange> cur(p.tracks.size(), KeyRange{-1, -1});
+    for (std::int64_t f = 0; f < frames_; ++f) {
+      for (std::size_t s = 0; s + 1 < kSamples; ++s) {
+        comps[s] = comps[s + 1];
+        clocks[s] = clocks[s + 1];
+      }
+      comps[kSamples - 1] = comp_time(f + kBlurFrames);
+      clocks[kSamples - 1] = clock_time(l.clock, comps[kSamples - 1]);
+      bool same = f > 0;
+      for (std::size_t i = 0; i < p.tracks.size(); ++i) {
+        const Track& t = p.tracks[i];
+        if (t.keyHash.empty() || t.whole) continue;
+        cur[i] = key_range(t, t.raw ? comps : clocks, p.reach);
+        if (cur[i] != prev[i]) same = false;
+      }
+      if (same) continue;
+      prev.swap(cur);
+      const std::uint64_t h = mix_frame(p, prev);
+      if (spans.empty() || spans.back().hash != h) spans.push_back(Span{f, h});
+    }
+    return spans;
   }
 
   [[nodiscard]] std::uint64_t static_of(const Document& d) {
@@ -773,7 +1010,9 @@ class FrameKeyIndex {
   std::unordered_map<std::string, std::size_t> layerIndex_;
   std::vector<std::string> compList_;  ///< the comp and every instanced comp reached, sorted
   std::unordered_map<std::string, std::uint64_t> nodeHash_;
-  std::vector<std::uint64_t> total_;  ///< per frame: the sum of the rows
+  std::vector<std::uint64_t> total_;  ///< per frame: the sum of the layers' span hashes (dense: `key` is one load)
+  std::size_t budget_ = kMinBudgetBytes;  ///< set_budget_bytes; the Session sets it from the machine's RAM
+  std::size_t bytes_ = 0;                 ///< total_ + every layer's spans
 };
 
 }  // namespace premation::doc

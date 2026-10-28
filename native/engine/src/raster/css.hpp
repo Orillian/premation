@@ -63,7 +63,18 @@ struct FilterOp {
 struct Filter {
   Filter() = default;
   explicit Filter(double blur) : blurPx(blur) {}
+  /// A blur drawn with the raster engine's fast Gaussian (three box passes on
+  /// 8-bit pixels) instead of the shader algorithm an accelerated canvas
+  /// matches. For per-glyph blurs (a text animator's Blur), which paint one
+  /// filter layer per glyph: the shader algorithm runs interpreted on the CPU
+  /// and cost 4–15 ms a glyph (35× the box passes, measured 2026-10-27).
+  static Filter fast_blur(double blur) {
+    Filter f(blur);
+    f.fastBlur = true;
+    return f;
+  }
   double blurPx = 0.0;
+  bool fastBlur = false;
   std::vector<FilterOp> ops;
 };
 

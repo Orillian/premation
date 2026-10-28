@@ -548,3 +548,109 @@ TEST_CASE("MediaSystem: an intra-only scrub decodes exactly one frame per target
   }
   CHECK(ms.stats(*id).framesDecoded == targets.size());
 }
+
+TEST_CASE("MediaSystem: decoder pool — never more open decoders than the cap; an evicted source re-opens on its next request under the same id", "[media][system][pool]") {
+  MediaConfig cfg;
+  cfg.maxOpenDecoders = 2;
+  MediaSystem ms(cfg);
+  REQUIRE(ms.max_open_decoders() == 2);
+  struct Clip {
+    fixture::Kind kind;
+    int frames;
+    SourceId id = 0;
+  };
+  // FFV1-in-MKV: its exact index comes from the background scan, which must
+  // survive the source being closed for the cap (the scan is not redone).
+  std::vector<Clip> clips{{fixture::Kind::prores422, 30}, {fixture::Kind::mpeg4, 40}, {fixture::Kind::ffv1rgb, 6},
+                          {fixture::Kind::prores4444, 30}, {fixture::Kind::vp9alpha, 20}};
+  std::string error;
+  for (Clip& c : clips) {
+    const auto id = ms.open(make_fixture(c.kind, c.frames), error);
+    REQUIRE(id);
+    c.id = *id;
+  }
+  CHECK(ms.open_decoders() == 0);  // open() probes only: no decoder, no thread
+  for (const Clip& c : clips) {
+    REQUIRE(ms.wait_ready(c.id, 10s));
+    CHECK(ms.open_decoders() <= 2);
+  }
+  const auto deadline = std::chrono::steady_clock::now() + 10s;
+  for (const Clip& c : clips) {
+    while (ms.index(c.id)->size() != c.frames && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(5ms);
+    REQUIRE(ms.index(c.id)->size() == c.frames);
+  }
+
+  // Round-robin over five sources with room for two: every step opens one and
+  // closes the least recently used idle one.
+  auto uncached = [&ms](const Clip& c, std::int64_t from) {
+    for (int k = 0; k < c.frames; ++k) {
+      const std::int64_t f = (from + k) % c.frames;
+      if (!ms.cached(c.id, f)) return f;
+    }
+    return std::int64_t{-1};
+  };
+  std::mt19937 rng(31);
+  for (int round = 0; round < 3; ++round) {
+    for (const Clip& c : clips) {
+      ms.cache().drop_source(c.id);  // every request misses: it must reach a decoder
+      const auto f = static_cast<std::int64_t>(rng() % static_cast<unsigned>(c.frames));
+      const Lane lane = round % 2 == 0 ? Lane::exact : Lane::latest;
+      const FramePtr got = ms.wait(c.id, f, lane, 10s);
+      REQUIRE(got);
+      INFO("kind " << static_cast<int>(c.kind) << " frame " << f << " round " << round);
+      CHECK(got->index == f);
+      CHECK(identify(*got, c.frames) == f);
+      CHECK(ms.open_decoders() <= 2);
+    }
+  }
+  CHECK(ms.peak_open_decoders() <= 2);
+  for (const Clip& c : clips) {
+    const SourceStats st = ms.stats(c.id);
+    INFO("kind " << static_cast<int>(c.kind));
+    CHECK(st.evictions >= 1);
+    CHECK(st.reopens >= 1);
+    CHECK(st.threads >= 1);
+    CHECK(st.threads <= cfg.maxThreadsPerDecoder);
+    CHECK(st.error.empty());
+  }
+  // LRU: the two most recently requested are the ones open.
+  CHECK(ms.stats(clips[4].id).open);
+  CHECK(ms.stats(clips[3].id).open);
+  CHECK_FALSE(ms.stats(clips[0].id).open);
+
+  // The id of a closed source stays valid: info, index and its cached frames answer...
+  const Clip& closed = clips[2];
+  REQUIRE_FALSE(ms.stats(closed.id).open);
+  MediaInfo info;
+  CHECK(ms.info(closed.id, info));
+  CHECK(ms.index(closed.id)->size() == closed.frames);
+  CHECK(ms.nearest(closed.id, 0));  // closing frees the decoder, not the frames
+  const std::int64_t f = uncached(closed, 0);
+  REQUIRE(f >= 0);
+  CHECK_FALSE(ms.settled(closed.id, f));  // closed for the cap is not "never will be"
+  CHECK_FALSE(ms.stats(closed.id).open);  // (settled() does not open it)
+  // ...and its next request opens it again (evicting the LRU idle one) and decodes.
+  const std::uint64_t reopensBefore = ms.stats(closed.id).reopens;
+  const FramePtr got = ms.wait(closed.id, f, Lane::latest, 10s);
+  REQUIRE(got);
+  CHECK(identify(*got, closed.frames) == f);
+  CHECK(ms.stats(closed.id).open);
+  CHECK(ms.stats(closed.id).reopens == reopensBefore + 1);
+  CHECK_FALSE(ms.stats(clips[3].id).open);  // the least recently used of the two
+  CHECK(ms.open_decoders() == 2);
+
+  // A burst on closed sources may open one past the cap while every open one
+  // is busy (the cap is soft); a later request trims back down.
+  for (const Clip& c : clips) {
+    if (const std::int64_t g = uncached(c, 1); g >= 0) (void)ms.request(c.id, g, Lane::exact);
+  }
+  for (const Clip& c : clips) {
+    if (const std::int64_t g = uncached(c, 1); g >= 0) CHECK(ms.wait(c.id, g, Lane::exact, 10s));
+  }
+  (void)ms.request(clips[0].id, 0, Lane::latest);
+  CHECK(ms.open_decoders() <= 2);
+
+  for (const Clip& c : clips) ms.close(c.id);
+  CHECK(ms.open_decoders() == 0);
+  CHECK(ms.cache_stats().frames == 0);
+}

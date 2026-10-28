@@ -137,9 +137,21 @@ const bridge = {
     openBundleDir: () => ipcRenderer.invoke('project:openBundleDir'),
   },
 
-  // The user's Object Matte model: main downloads it into <userData> where the
-  // engine reads it (electron/objectMatteModel.ts). No credential attached; it
-  // runs only on an explicit Install press.
+  // The ML models (electron/models.json, installed by electron/modelInstaller.ts
+  // into <userData>/models/<id> where the engine reads them). No credential
+  // attached; a download runs only when the page asks. `models` is the whole
+  // list for Settings ▸ Models; the per-model bridges below keep their callers.
+  models: {
+    list: () => ipcRenderer.invoke('models:list'),
+    install: (request: { id: string; requestId: string; urls?: string[] }) => ipcRenderer.invoke('models:install', request),
+    remove: (id: string) => ipcRenderer.invoke('models:remove', id),
+    cancelDownload: (requestId: string) => ipcRenderer.invoke('objectMatte:cancelDownload', requestId),
+    onDownloadProgress: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('models:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('models:downloadProgress', listener);
+    },
+  },
   // Face Tracking's landmark model (electron/faceModel.ts), downloaded on first use.
   faceModel: {
     status: () => ipcRenderer.invoke('faceModel:status'),

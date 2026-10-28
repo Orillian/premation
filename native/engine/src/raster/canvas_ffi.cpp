@@ -26,6 +26,9 @@
 #include "include/core/SkPath.h"
 #include "include/core/SkPathBuilder.h"
 #include "include/core/SkPathEffect.h"
+#include "include/core/SkBBHFactory.h"
+#include "include/core/SkPicture.h"
+#include "include/core/SkPictureRecorder.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkSamplingOptions.h"
@@ -228,6 +231,7 @@ struct State {
   double globalAlpha = 1.0;
   SkBlendMode blend = SkBlendMode::kSrcOver;
   double blurPx = 0.0;
+  bool blurFast = false;  ///< css::Filter::fastBlur: the raster engine's box passes, never the shader algorithm
   std::vector<css::FilterOp> filterOps;  // a filter-function list (the bake chain's CSS effects)
   css::Color shadowColor{0, 0, 0, 0};  // transparent black: no shadow
   double shadowBlur = 0.0;
@@ -365,6 +369,7 @@ class SkiaCanvas final : public Canvas2D {
   [[nodiscard]] std::string globalCompositeOperation() const override { return std::string(blend_name(st_.blend)); }
   void setFilter(const css::Filter& f) override {
     st_.blurPx = f.blurPx;
+    st_.blurFast = f.fastBlur;
     st_.filterOps = f.ops;
   }
   void setImageSmoothing(bool on) override { st_.smoothing = on; }
@@ -711,36 +716,83 @@ class SkiaCanvas final : public Canvas2D {
                            st_.smoothing ? SkSamplingOptions(SkFilterMode::kLinear) : SkSamplingOptions(), &lm);
   }
 
+  /// The canvas pixels one draw touches under the current transform, with the
+  /// paint's own reach (a stroke width): the draw recorded once into a picture
+  /// whose bounding hierarchy trims the cull rect to the content. Nullopt =
+  /// nothing drawn. Recording a glyph or a path costs microseconds; it is what
+  /// lets a filter layer cover the draw instead of the canvas.
+  template <typename F>
+  [[nodiscard]] std::optional<SkIRect> draw_bounds(const F& fn, const SkPaint& paint) {
+    SkRTreeFactory bbh;
+    SkPictureRecorder rec;
+    SkCanvas* rc = rec.beginRecording(SkRect::MakeWH(f(w_), f(h_)), &bbh);
+    rc->setMatrix(to_sk(st_.ctm));
+    fn(rc, paint);
+    const sk_sp<SkPicture> pic = rec.finishRecordingAsPicture();
+    if (!pic) return std::nullopt;
+    const SkRect r = pic->cullRect();
+    if (!r.isFinite() || r.isEmpty()) return std::nullopt;
+    return r.roundOut();
+  }
+
   /// BaseRenderingContext2D::Draw + CompositedDraw: plain draws go straight to
   /// the canvas with the blend mode on the paint; a filter or a composite
-  /// operation that reaches outside the shape goes through a full-canvas layer.
+  /// operation that reaches outside the shape goes through a layer.
+  ///
+  /// A blur layer is the DRAW's bounds plus the blur's reach, never the whole
+  /// canvas: an animator Blur paints every glyph through its own layer, and a
+  /// canvas-sized F16 surface + full-canvas blur per glyph made a 150-glyph
+  /// paragraph cost 50–180 s a frame at 1080p (the 2026-10-27 launch film's
+  /// "Answer" line; 6 glyphs at 180 px cost 1–3 s). The blur is decal-tiled, so
+  /// cutting the input at ±3σ + 1 px around the content changes no pixel.
   template <typename F>
   void draw(const F& fn, SkPaint paint) {
     SkCanvas* c = canvas();
     // CanvasRenderingContext2DState::ShouldDrawShadows.
     const bool shadows = st_.shadowColor.a > 0 && (st_.shadowBlur > 0 || st_.shadowOffsetX != 0 || st_.shadowOffsetY != 0);
     const bool layer = st_.blurPx > 0 || !st_.filterOps.empty() || shadows || is_full_canvas_op(st_.blend);
+    // Nothing to draw: a source-over draw at alpha 0 (its shadow is scaled by
+    // the same alpha) leaves every pixel as it was. A text animator fading
+    // glyphs in sends every hidden glyph here — with a Blur, each one used to
+    // pay a filter layer for no pixels.
+    if (paint.getAlpha() == 0 && st_.blend == SkBlendMode::kSrcOver && st_.filterOps.empty()) return;
     if (!layer) {
       paint.setBlendMode(st_.blend);
       c->setMatrix(to_sk(st_.ctm));
       fn(c, paint);
       return;
     }
-    if (accelerated_ && !shadows && st_.filterOps.empty() && st_.blurPx > 0) {
+    const SkIRect whole = SkIRect::MakeWH(static_cast<int>(w_), static_cast<int>(h_));
+    const bool blurOnly = !shadows && st_.filterOps.empty() && st_.blurPx > 0;
+    // The blur layer's region: the draw's bounds plus the blur's reach, inside the canvas.
+    std::optional<SkIRect> region;
+    if (blurOnly) {
+      const std::optional<SkIRect> b = draw_bounds(fn, paint);
+      if (!b) return;  // nothing to blur
+      const int pad = static_cast<int>(std::ceil(st_.blurPx * 3)) + 1;
+      SkIRect r = b->makeOutset(pad, pad);
+      if (!r.intersect(whole)) return;  // entirely off the canvas
+      region = r;
+    }
+    if (accelerated_ && blurOnly && !st_.blurFast) {
       // A GPU-accelerated Chromium canvas blurs with Skia's shader algorithm
       // (σ ≤ 4 per pass, rescaled above), not the CPU's box approximation:
       // blur the draw as a non-8888 image so the raster engine picks the same
       // algorithm, then composite it with the canvas's operation. Measured:
       // fill-opacity-zero-inner-shadow (σ 40) 11 % → 0.004 % of pixels off by
       // more than 4/255, mask-feather 6.2 % → 0.24 %.
-      const sk_sp<SkSurface> tmp = SkSurfaces::Raster(
-          SkImageInfo::Make(static_cast<int>(w_), static_cast<int>(h_), kRGBA_F16_SkColorType, kPremul_SkAlphaType));
+      const SkIRect& rg = *region;
+      const sk_sp<SkSurface> tmp =
+          SkSurfaces::Raster(SkImageInfo::Make(rg.width(), rg.height(), kRGBA_F16_SkColorType, kPremul_SkAlphaType));
       if (tmp) {
-        tmp->getCanvas()->setMatrix(to_sk(st_.ctm));
+        // The region's origin is the temporary surface's (0, 0).
+        SkMatrix m = SkMatrix::Translate(-f(rg.left()), -f(rg.top()));
+        m.preConcat(to_sk(st_.ctm));
+        tmp->getCanvas()->setMatrix(m);
         paint.setBlendMode(SkBlendMode::kSrcOver);
         fn(tmp->getCanvas(), paint);
         const sk_sp<SkImageFilter> blur = SkImageFilters::Blur(f(st_.blurPx), f(st_.blurPx), SkTileMode::kDecal, nullptr);
-        const SkIRect all = SkIRect::MakeWH(static_cast<int>(w_), static_cast<int>(h_));
+        const SkIRect all = SkIRect::MakeWH(rg.width(), rg.height());
         SkIRect outSubset;
         SkIPoint offset;
         const sk_sp<SkImage> blurred =
@@ -750,8 +802,8 @@ class SkiaCanvas final : public Canvas2D {
           lp.setBlendMode(st_.blend);
           c->setMatrix(SkMatrix::I());
           c->drawImageRect(blurred, SkRect::Make(outSubset),
-                           SkRect::MakeXYWH(static_cast<float>(offset.x()), static_cast<float>(offset.y()),
-                                            static_cast<float>(outSubset.width()), static_cast<float>(outSubset.height())),
+                           SkRect::MakeXYWH(f(rg.left() + offset.x()), f(rg.top() + offset.y()), f(outSubset.width()),
+                                            f(outSubset.height())),
                            SkSamplingOptions(), &lp, SkCanvas::kStrict_SrcRectConstraint);
         }
         return;
@@ -776,7 +828,10 @@ class SkiaCanvas final : public Canvas2D {
                                                    to_skcolor(st_.shadowColor, 1.0), lp.refImageFilter()));
     }
     c->setMatrix(SkMatrix::I());
-    c->saveLayer(nullptr, &lp);
+    // The blur-only layer is bounded to the draw's region (see above); the
+    // other filters keep the canvas-sized layer their reach needs.
+    const SkRect layerBounds = region ? SkRect::Make(*region) : SkRect::Make(whole);
+    c->saveLayer(region ? &layerBounds : nullptr, &lp);
     c->setMatrix(to_sk(st_.ctm));
     paint.setBlendMode(SkBlendMode::kSrcOver);
     fn(c, paint);

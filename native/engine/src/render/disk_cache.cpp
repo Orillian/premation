@@ -88,7 +88,22 @@ bool read_file(const fs::path& p, std::vector<std::uint8_t>& out) {
 
 }  // namespace
 
-DiskCache::DiskCache() : thread_([this] { run(); }) {}
+DiskCache::DiskCache() : DiskCache(DiskCacheOptions{}) {}
+
+DiskCache::DiskCache(const DiskCacheOptions& options)
+    : softQueueBytes_(options.softQueueBytes != 0 ? options.softQueueBytes : kSoftQueuedBytes),
+      // Declared after softQueueBytes_, so it is set by now.
+      hardQueueBytes_(options.hardQueueBytes != 0 ? std::max(options.hardQueueBytes, softQueueBytes_) : 4 * softQueueBytes_) {
+  // A quarter of the cores: compression is the writers' work, and the render
+  // thread, the decoders and the effect pool need the rest.
+  const std::uint32_t n = options.writers != 0 ? std::min(options.writers, kMaxWriters)
+                                               : std::clamp<std::uint32_t>(std::thread::hardware_concurrency() / 4U, 1U, kMaxWriters);
+  counters_.queueSoftBytes = softQueueBytes_;
+  counters_.queueHardBytes = hardQueueBytes_;
+  counters_.writers = n;
+  writers_.reserve(n);
+  for (std::uint32_t i = 0; i < n; ++i) writers_.emplace_back([this] { run(); });
+}
 
 DiskCache::~DiskCache() {
   {
@@ -96,7 +111,7 @@ DiskCache::~DiskCache() {
     quit_ = true;
   }
   cv_.notify_all();
-  if (thread_.joinable()) thread_.join();
+  writers_.clear();  // joins
 }
 
 fs::path DiskCache::file_of(const fs::path& dir, std::uint64_t key) const {
@@ -122,8 +137,10 @@ void DiskCache::configure(const std::string& folder, std::uint64_t budgetBytes) 
       aliases_.clear();
       bytes_ = 0;
       readMsPerMp_ = 0;
-      std::erase_if(jobs_, [](const Job& j) { return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim; });
-      queuedBytes_ = 0;
+      std::erase_if(jobs_, [this](const Job& j) {
+        if (j.kind == JobKind::write) unqueue_locked(j.queued);
+        return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim;
+      });
       if (!dir_.empty()) jobs_.push_back(job_of(JobKind::scan, generation_, dir_));
     } else if (!dir_.empty()) {
       jobs_.push_back(job_of(JobKind::trim, generation_));
@@ -209,7 +226,12 @@ double DiskCache::read_ms_per_mp() const {
 bool DiskCache::wants(std::uint64_t key) const {
   const std::lock_guard<std::mutex> lock(m_);
   return !dir_.empty() && counters_.error.empty() && !index_.contains(key) && !pending_.contains(key) &&
-         !reserved_.contains(key) && queuedBytes_ < kMaxQueuedBytes;
+         !reserved_.contains(key) && queuedBytes_ < softQueueBytes_;
+}
+
+bool DiskCache::behind() const {
+  const std::lock_guard<std::mutex> lock(m_);
+  return queuedBytes_ > softQueueBytes_;
 }
 
 bool DiskCache::load(std::uint64_t key, std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t>& out) {
@@ -251,11 +273,13 @@ bool DiskCache::load(std::uint64_t key, std::uint32_t width, std::uint32_t heigh
       if (generation == generation_ && index_.contains(key)) {
         erase_locked(key);
         jobs_.push_back(job_of(JobKind::remove, generation, p));
+        jobs_.back().key = key;  // runs before a later write of the key, never alongside it
       }
     } else {
       ++counters_.hits;
       // Recency outlives the session: the file's time is what the next scan orders by.
       jobs_.push_back(job_of(JobKind::touch, generation, p));
+      jobs_.back().key = key;
     }
   }
   cv_.notify_all();
@@ -265,33 +289,51 @@ bool DiskCache::load(std::uint64_t key, std::uint32_t width, std::uint32_t heigh
   return ok;
 }
 
-bool DiskCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t> rgba) {
+StoreResult DiskCache::enqueue(std::uint64_t key, std::uint32_t width, std::uint32_t height,
+                               std::vector<std::uint8_t>& rgba) {
+  StoreResult result = StoreResult::queued;
   {
     const std::lock_guard<std::mutex> lock(m_);
     reserved_.erase(key);  // a reservation ends here, taken or not
-    if (rgba.size() != std::size_t{width} * height * 4U || rgba.empty()) return false;
-    if (dir_.empty() || !counters_.error.empty() || index_.contains(key) || pending_.contains(key)) return false;
-    if (queuedBytes_ + rgba.size() > kMaxQueuedBytes) {
-      ++counters_.dropped;
-      return false;
+    if (rgba.size() != std::size_t{width} * height * 4U || rgba.empty()) return StoreResult::skipped;
+    if (dir_.empty() || !counters_.error.empty() || index_.contains(key) || pending_.contains(key)) return StoreResult::skipped;
+    const std::uint64_t size = rgba.size();
+    // The hard cap: the only refusal. An empty queue takes any frame (one
+    // larger than the cap could never be written otherwise).
+    if (queuedBytes_ != 0 && queuedBytes_ + size > hardQueueBytes_) {
+      ++counters_.refused;
+      return StoreResult::refused;
     }
-    queuedBytes_ += rgba.size();
+    queuedBytes_ += size;
+    counters_.queueHighWater = std::max(counters_.queueHighWater, queuedBytes_);
+    if (queuedBytes_ > softQueueBytes_) {
+      // Past the soft target: taken all the same; the writers catch up.
+      ++counters_.behind;
+      result = StoreResult::queuedBehind;
+    }
     pending_.insert(key);
     Job job = job_of(JobKind::write, generation_);
     job.key = key;
     job.width = width;
     job.height = height;
+    job.queued = size;
     job.rgba = std::move(rgba);
+    rgba.clear();  // the contract: taken = left empty (a moved-from vector is only "valid")
     jobs_.push_back(std::move(job));
   }
-  cv_.notify_all();
-  return true;
+  cv_.notify_one();
+  return result;
+}
+
+bool DiskCache::store(std::uint64_t key, std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t> rgba) {
+  const StoreResult r = enqueue(key, width, height, rgba);
+  return r == StoreResult::queued || r == StoreResult::queuedBehind;
 }
 
 bool DiskCache::reserve(std::uint64_t key) {
   const std::lock_guard<std::mutex> lock(m_);
   if (dir_.empty() || !counters_.error.empty() || index_.contains(key) || pending_.contains(key) ||
-      reserved_.contains(key) || queuedBytes_ >= kMaxQueuedBytes) {
+      reserved_.contains(key) || queuedBytes_ >= softQueueBytes_) {
     return false;
   }
   reserved_.insert(key);
@@ -313,10 +355,10 @@ void DiskCache::purge() {
     reserved_.clear();
     aliases_.clear();
     bytes_ = 0;
-    std::erase_if(jobs_, [](const Job& j) {
+    std::erase_if(jobs_, [this](const Job& j) {
+      if (j.kind == JobKind::write) unqueue_locked(j.queued);
       return j.kind == JobKind::write || j.kind == JobKind::touch || j.kind == JobKind::trim || j.kind == JobKind::alias;
     });
-    queuedBytes_ = 0;
     if (!dir_.empty()) jobs_.push_back(job_of(JobKind::purge, generation_, dir_));
   }
   cv_.notify_all();
@@ -331,6 +373,7 @@ void DiskCache::store_alias(std::uint64_t alias, std::uint64_t content, std::uin
     if (it != aliases_.end() && it->second == std::make_pair(content, disk)) return;  // known: nothing to append
     aliases_[alias] = {content, disk};
     Job job = job_of(JobKind::alias, generation_, dir_);
+    job.key = alias;  // records of one alias land in the order they were made
     job.alias = {alias, content, disk};
     jobs_.push_back(std::move(job));
   }
@@ -347,7 +390,15 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> DiskCache::find_alias(std
 
 void DiskCache::flush() {
   std::unique_lock<std::mutex> lock(m_);
-  idle_.wait(lock, [this] { return quit_ || (jobs_.empty() && !busy_); });
+  idle_.wait(lock, [this] { return quit_ || (jobs_.empty() && active_ == 0); });
+}
+
+void DiskCache::pause(bool paused) {
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    paused_ = paused;
+  }
+  cv_.notify_all();
 }
 
 DiskCacheStats DiskCache::stats() const {
@@ -355,8 +406,11 @@ DiskCacheStats DiskCache::stats() const {
   DiskCacheStats s = counters_;
   s.bytes = bytes_;
   s.entries = index_.size();
+  s.queuedBytes = queuedBytes_;
   return s;
 }
+
+void DiskCache::unqueue_locked(std::uint64_t bytes) { queuedBytes_ -= std::min(queuedBytes_, bytes); }
 
 void DiskCache::insert_locked(std::uint64_t key, std::uint64_t bytes) {
   erase_locked(key);
@@ -373,30 +427,65 @@ void DiskCache::erase_locked(std::uint64_t key) {
   index_.erase(it);
 }
 
-std::vector<fs::path> DiskCache::trim_locked() {
-  std::vector<fs::path> victims;
+std::vector<DiskCache::Victim> DiskCache::trim_locked() {
+  std::vector<Victim> victims;
   while (bytes_ > budget_ && !lru_.empty()) {
     const std::uint64_t key = lru_.back();
-    victims.push_back(file_of(dir_, key));
+    victims.push_back(Victim{.key = key, .file = file_of(dir_, key)});
+    // Held until its file is deleted: a write of the same key queued meanwhile
+    // must not land first and be deleted with it.
+    busyKeys_.insert(key);
     erase_locked(key);
     ++counters_.evictions;
   }
   return victims;
 }
 
+void DiskCache::drop_files(const std::vector<Victim>& victims) {
+  if (victims.empty()) return;
+  std::error_code ec;
+  for (const Victim& v : victims) fs::remove(v.file, ec);
+  {
+    const std::lock_guard<std::mutex> lock(m_);
+    for (const Victim& v : victims) {
+      const auto it = busyKeys_.find(v.key);
+      if (it != busyKeys_.end()) busyKeys_.erase(it);
+    }
+  }
+  cv_.notify_all();
+}
+
+bool DiskCache::take_locked(Job& job) {
+  if (exclusiveRunning_) return false;
+  // The earliest job that may start: one whose key no running job holds. A
+  // scan or purge starts only at the front with nothing running, and nothing
+  // behind it is passed over to it.
+  for (auto it = jobs_.begin(); it != jobs_.end(); ++it) {
+    if (exclusive(it->kind)) {
+      if (it != jobs_.begin() || active_ != 0) return false;
+      exclusiveRunning_ = true;
+    } else if (keyed(it->kind) && busyKeys_.contains(it->key)) {
+      continue;  // a later job of the same key is skipped too: order per key holds
+    }
+    job = std::move(*it);
+    jobs_.erase(it);
+    return true;
+  }
+  return false;
+}
+
 void DiskCache::run() {
+  std::unique_lock<std::mutex> lock(m_);
   for (;;) {
     Job job;
-    {
-      std::unique_lock<std::mutex> lock(m_);
-      cv_.wait(lock, [this] { return quit_ || !jobs_.empty(); });
-      // Stopping drops what is queued: those frames are drawn (and written) again next session.
-      if (quit_) break;
-      job = std::move(jobs_.front());
-      jobs_.pop_front();
-      if (job.kind == JobKind::write) queuedBytes_ -= std::min<std::uint64_t>(queuedBytes_, job.rgba.size());
-      busy_ = true;
-    }
+    // Stopping drops what is queued: those frames are drawn (and written) again next session.
+    cv_.wait(lock, [this, &job] { return quit_ || (!paused_ && take_locked(job)); });
+    if (quit_) break;
+    ++active_;
+    const bool held = keyed(job.kind);
+    if (held) busyKeys_.insert(job.key);
+    lock.unlock();
+
     std::error_code ec;
     switch (job.kind) {
       case JobKind::scan: do_scan(job); break;
@@ -406,19 +495,28 @@ void DiskCache::run() {
       case JobKind::purge: do_purge(job.dir); break;
       case JobKind::alias: do_alias(job); break;
       case JobKind::trim: {
-        std::vector<fs::path> victims;
+        std::vector<Victim> victims;
         {
-          const std::lock_guard<std::mutex> lock(m_);
+          const std::lock_guard<std::mutex> trimLock(m_);
           if (job.generation == generation_) victims = trim_locked();
         }
-        for (const fs::path& v : victims) fs::remove(v, ec);
+        drop_files(victims);
         break;
       }
     }
-    {
-      const std::lock_guard<std::mutex> lock(m_);
-      busy_ = false;
+    // The pixels go before the queue says they have (memory is what the cap bounds).
+    job.rgba = {};
+
+    lock.lock();
+    --active_;
+    if (exclusive(job.kind)) exclusiveRunning_ = false;
+    if (held) {
+      const auto it = busyKeys_.find(job.key);
+      if (it != busyKeys_.end()) busyKeys_.erase(it);
     }
+    if (job.kind == JobKind::write) unqueue_locked(job.queued);
+    // Other writers may be waiting on this job's key or for a barrier to clear.
+    cv_.notify_all();
     idle_.notify_all();
   }
   idle_.notify_all();
@@ -458,7 +556,7 @@ void DiskCache::do_scan(const Job& job) {
   }
   // Oldest first, so the most recently used ends up at the front of the LRU.
   std::ranges::sort(found, {}, &Found::time);
-  std::vector<fs::path> victims;
+  std::vector<Victim> victims;
   std::uint64_t bytes = 0;
   {
     const std::lock_guard<std::mutex> lock(m_);
@@ -467,7 +565,7 @@ void DiskCache::do_scan(const Job& job) {
     victims = trim_locked();
     bytes = bytes_;
   }
-  for (const fs::path& v : victims) fs::remove(v, ec);
+  drop_files(victims);
   load_aliases(job.dir, job.generation);
   // The read cost the render thread weighs draws against, timed on this
   // folder's most recently used frame (a cold read, as a hit after a restart is).
@@ -533,7 +631,7 @@ void DiskCache::do_write(Job& job) {
     }
     return;
   }
-  std::vector<fs::path> victims;
+  std::vector<Victim> victims;
   bool measured = true;
   {
     const std::lock_guard<std::mutex> lock(m_);
@@ -545,7 +643,7 @@ void DiskCache::do_write(Job& job) {
     victims = trim_locked();
     measured = readMsPerMp_ > 0;
   }
-  for (const fs::path& v : victims) fs::remove(v, ec);
+  drop_files(victims);
   // An empty folder had nothing to time at its scan: the first frame written is it.
   if (!measured) measure_read(final, job.generation);
 }
@@ -589,6 +687,8 @@ void DiskCache::do_alias(const Job& job) {
   }
   std::array<char, kAliasRecord> rec{};
   std::memcpy(rec.data(), job.alias.data(), kAliasRecord);
+  // Writers of other aliases run alongside: one append at a time keeps records whole.
+  const std::lock_guard<std::mutex> fileLock(aliasFile_);
   std::ofstream f(job.dir / utf8_path(std::string(kAliasFile)), std::ios::binary | std::ios::app);  // NOLINT(hicpp-signed-bitwise,bugprone-signed-bitwise): the standard's openmode flags
   if (f) f.write(rec.data(), static_cast<std::streamsize>(rec.size()));
 }

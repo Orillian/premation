@@ -16,7 +16,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <deque>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -350,6 +353,177 @@ class LayerFxCache {
   std::unordered_map<std::string, std::uint64_t> last_;
 };
 
+/// The VRAM the precomp slots past the four declared ones may hold together
+/// (each an MSAA colour pair + depth: ~116 MB at 1080p in rgba16float, so ~9
+/// more levels; ~2 at 4K). Past it a deeper precomp draws inline.
+constexpr std::uint64_t kExtraPrecompTargetBudget = std::uint64_t{1} << 30U;
+
+/// Bytes a texel of `f` takes (device.cpp bytes_per_texel).
+std::uint64_t texel_bytes(wgpu::TextureFormat f) noexcept {
+  switch (f) {
+    case wgpu::TextureFormat::R8Unorm: return 1;
+    case wgpu::TextureFormat::RGBA16Float: return 8;
+    case wgpu::TextureFormat::RGBA32Float: return 16;
+    default: return 4;
+  }
+}
+
+/// Byte-exact content into a key, eight bytes a step.
+void mix_bytes(KeyMix& k, std::span<const std::uint8_t> b) noexcept {
+  k.u64(b.size());
+  std::size_t i = 0;
+  for (; i + 8 <= b.size(); i += 8) {
+    std::uint64_t v = 0;
+    std::memcpy(&v, b.subspan(i, 8).data(), 8);
+    k.u64(v);
+  }
+  std::uint64_t tail = 0;
+  if (i < b.size()) std::memcpy(&tail, b.subspan(i).data(), b.size() - i);
+  k.u64(tail);
+}
+
+/// Finished isolated-precomp images kept across frames, keyed by a hash of
+/// everything their pixels depend on (CompositionPass::precomp_key): a static
+/// nested comp is drawn once, then composited from here. Entries name
+/// persistent single-sample Device targets (`precomp-cache-<n>`) holding an
+/// exact texel copy of the precomp target's resolved image (same format), and
+/// fit a byte budget, least recently used out first. A target the Device pool
+/// collected (idle 120 frames) is reported `created` and the entry dropped.
+/// Render thread only.
+class PrecompCache {
+ public:
+  /// The kept images' budget: ~15 precomps at 1080p in rgba16float, 3 at 4K.
+  static constexpr std::uint64_t kBudgetBytes = std::uint64_t{256} << 20U;
+  /// Entries idle this long go (the Device pool would collect their targets anyway).
+  static constexpr std::uint64_t kMaxIdle = 120;
+
+  struct Entry {
+    std::string name;
+    std::uint64_t key = 0;
+    std::uint32_t w = 0;
+    std::uint32_t h = 0;
+    wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;
+    std::uint64_t bytes = 0;
+    std::uint64_t used = 0;  ///< the Device frame it was last read or written
+  };
+
+  [[nodiscard]] Entry* find(std::uint64_t key, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat f) noexcept {
+    for (Entry& e : entries_) {
+      if (e.key == key && e.w == w && e.h == h && e.format == f) return &e;
+    }
+    return nullptr;
+  }
+
+  /// Whether precomp `who` (its id and variant) should be kept under `key`:
+  /// the first time it is seen, or when its key held since last frame. One
+  /// whose content changes every frame (animated) is not copied every frame
+  /// for a result never read; it is kept again once it settles.
+  bool worth_keeping(std::uint64_t who, std::uint64_t key) {
+    if (last_.size() > 4096) last_.clear();  // precomps come and go over a session: bounded
+    auto [it, fresh] = last_.try_emplace(who, key);
+    if (fresh) return true;
+    const bool same = it->second == key;
+    it->second = key;
+    return same;
+  }
+
+  /// An entry for `key` (w × h, `bytes`): a fresh one under the budget, the
+  /// least recently used ones evicted for room — never one read or written
+  /// this frame (its image may still be composited). nullptr when it cannot fit.
+  Entry* claim(std::uint64_t key, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat f, std::uint64_t bytes,
+               std::uint64_t frame) {
+    if (bytes == 0 || bytes > kBudgetBytes) return nullptr;
+    std::uint64_t total = 0;
+    for (const Entry& e : entries_) total += e.bytes;
+    const auto victim = [&](bool sameShape) {
+      Entry* pick = nullptr;
+      for (Entry& e : entries_) {
+        if (e.used == frame || (sameShape && (e.w != w || e.h != h || e.format != f))) continue;
+        if (pick == nullptr || e.used < pick->used) pick = &e;
+      }
+      return pick;
+    };
+    if (total + bytes > kBudgetBytes) {
+      // Over budget: a same-shaped victim is re-keyed in place (its target is reused as is).
+      if (Entry* e = victim(true)) return rekey(*e, key, frame);
+    }
+    while (total + bytes > kBudgetBytes) {
+      Entry* e = victim(false);
+      if (e == nullptr) return nullptr;
+      total -= e->bytes;
+      forget(*e);
+    }
+    std::string name;
+    if (!free_.empty()) {
+      name = std::move(free_.back());
+      free_.pop_back();
+    } else {
+      name = "precomp-cache-" + std::to_string(next_++);
+    }
+    entries_.push_back({std::move(name), key, w, h, f, bytes, frame});
+    return &entries_.back();
+  }
+
+  /// Drop `e`; its target name is reused by a later claim.
+  void forget(const Entry& e) {
+    for (std::size_t i = 0; i < entries_.size(); ++i) {
+      if (&entries_[i] == &e) {
+        evict_at(i);
+        return;
+      }
+    }
+  }
+
+  /// Drop entries idle more than kMaxIdle frames.
+  void expire(std::uint64_t frame) {
+    for (std::size_t i = entries_.size(); i-- > 0;) {
+      if (frame > entries_[i].used + kMaxIdle) evict_at(i);
+    }
+  }
+
+ private:
+  static Entry* rekey(Entry& e, std::uint64_t key, std::uint64_t frame) noexcept {
+    e.key = key;
+    e.used = frame;
+    return &e;
+  }
+  /// Remove entry `i` (the last one moved into its place), keeping its target name.
+  void evict_at(std::size_t i) {
+    free_.push_back(std::move(entries_[i].name));
+    if (i + 1 != entries_.size()) entries_[i] = std::move(entries_.back());
+    entries_.pop_back();
+  }
+
+  std::vector<Entry> entries_;
+  std::vector<std::string> free_;
+  std::uint64_t next_ = 0;
+  std::unordered_map<std::uint64_t, std::uint64_t> last_;
+};
+
+/// The engine's texture feed seen through one precomp's subtree: forwards
+/// every lookup and records whether any of them drew pixels the frame's
+/// hashes do not pin down — a texture not available yet (its draw is skipped
+/// now and made next frame under the same hash) or footage (`media:` hashes:
+/// a preview draws the nearest decoded frame under the wanted frame's name).
+/// A subtree that looked one up is drawn, never kept.
+class TaintingSource final : public ExternalTextureSource {
+ public:
+  explicit TaintingSource(ExternalTextureSource& inner) : inner_(&inner) {}
+  [[nodiscard]] TexRef external_texture(std::string_view hash) override { return check(hash, inner_->external_texture(hash)); }
+  [[nodiscard]] TexRef external_texture_mipmapped(std::string_view hash, const MipFootprint& fp) override {
+    return check(hash, inner_->external_texture_mipmapped(hash, fp));
+  }
+  [[nodiscard]] bool tainted() const noexcept { return tainted_; }
+
+ private:
+  TexRef check(std::string_view hash, TexRef t) {
+    if (!t || hash.starts_with("media:")) tainted_ = true;
+    return t;
+  }
+  ExternalTextureSource* inner_;
+  bool tainted_ = false;
+};
+
 /// Grow bounds: where a chain input drawn from `r` (renderable_cmds) can be non-zero.
 std::optional<PxBox> drawn_box(const PassContext& ctx, const api::Renderable& r) {
   return content_box(r, ctx.viewport.viewProjection, ctx.viewport.pixelWidth, ctx.viewport.pixelHeight);
@@ -521,6 +695,10 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   bool execute(PassContext& ctx, std::string& /*error*/) override {
     precompTex_.clear();
     owned_.clear();  // last frame's synthesized renderables
+    precompCache_.expire(ctx.dev.frame());
+    if (ctx.effectStats != nullptr) {
+      ctx.effectStats->precompsRendered = ctx.effectStats->precompsCached = ctx.effectStats->precompsInline = 0;
+    }
     std::vector<const api::Renderable*> list;
     list.reserve(ctx.file.scene.renderables.size());
     for (const auto& r : ctx.file.scene.renderables) list.push_back(&r);
@@ -538,7 +716,7 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   }
 
  private:
-  /// Offscreen textures of isolated precomps rendered this frame, by `precomp:<id>` key.
+  /// Offscreen textures of isolated precomps this frame (drawn, or kept from an earlier frame), by `precomp:<id>` key.
   std::unordered_map<std::string, TexRef> precompTex_;
   /// AE parity 4.2: images of 3D-run layers drawn by render_3d_group, during composite_special_3d.
   const std::unordered_map<std::string, TexRef>* predrawn_ = nullptr;
@@ -547,20 +725,34 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   /// E1: finished 3D surface chains (threed.cpp resolve_surface), layer-sized
   /// buffers — a 3D comp holds more effect layers at once than a 2D one.
   LayerFxCache surfaceFx_{"fx-surface-", 16};
-  /// Kill switch (PREMATION_LAYER_FX_CACHE=0): every chain runs, as before P8.
-  bool layerFxEnabled_ = [] {
+  /// Whether the switch `name` is on: unset or anything but "0" (read once, at construction).
+  static bool env_on(const char* name) {
 #ifdef _WIN32
     char* v = nullptr;
     std::size_t len = 0;
-    if (_dupenv_s(&v, &len, "PREMATION_LAYER_FX_CACHE") != 0 || v == nullptr) return true;
+    if (_dupenv_s(&v, &len, name) != 0 || v == nullptr) return true;
     const bool on = std::string_view(v) != "0";
     std::free(v);  // NOLINT(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): _dupenv_s allocates with malloc
     return on;
 #else
-    const char* v = std::getenv("PREMATION_LAYER_FX_CACHE");  // NOLINT(concurrency-mt-unsafe): read once, at construction
+    const char* v = std::getenv(name);  // NOLINT(concurrency-mt-unsafe): read once, at construction
     return v == nullptr || std::string_view(v) != "0";
 #endif
-  }();
+  }
+  /// Kill switch (PREMATION_LAYER_FX_CACHE=0): every chain runs, as before P8.
+  bool layerFxEnabled_ = env_on("PREMATION_LAYER_FX_CACHE");
+  /// Kill switch (PREMATION_PRECOMP_CACHE=0): every isolated precomp is drawn every frame.
+  bool precompCacheEnabled_ = env_on("PREMATION_PRECOMP_CACHE");
+  /// Finished precomp images kept across frames (PrecompCache).
+  PrecompCache precompCache_;
+  /// Names of the precomp slots past the declared four (`precomp-target-<n>`,
+  /// n ≥ 4), made once per depth reached. A deque: views into it stay valid as it grows.
+  std::deque<std::string> precompNames_;
+  /// The VRAM budget refused a slot this session (reported once).
+  bool precompBudgetReported_ = false;
+  /// Scratch for a precomp's content key (the wire bytes of its subtree);
+  /// cleared, never shrunk: no allocation once warm.
+  wire::Writer keyBuf_;
   /// Renderables synthesized this frame (reparented precomp children, prepared containers).
   std::vector<std::unique_ptr<std::vector<api::Renderable>>> owned_;
   /// The list an effect chain runs in (set around run_effects_chain): what
@@ -593,6 +785,17 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     ChainListScope& operator=(const ChainListScope&) = delete;
     ChainListScope(ChainListScope&&) = delete;
     ChainListScope& operator=(ChainListScope&&) = delete;
+  };
+  /// Puts the pass context's texture feed back when a precomp's subtree is done.
+  struct ExternalScope {
+    PassContext* pass;
+    ExternalTextureSource* outer;
+    explicit ExternalScope(PassContext& c) : pass(&c), outer(c.external) {}
+    ~ExternalScope() { pass->external = outer; }
+    ExternalScope(const ExternalScope&) = delete;
+    ExternalScope& operator=(const ExternalScope&) = delete;
+    ExternalScope(ExternalScope&&) = delete;
+    ExternalScope& operator=(ExternalScope&&) = delete;
   };
 
   TexRef tex_for(PassContext& ctx, const std::optional<std::string>& key) {
@@ -923,10 +1126,10 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   /// It runs before `r` is drawn: drawn from inside the effect chain instead,
   /// a precomp's subtree runs through the same layer / blur / matte targets the
   /// chain holds its image in, and the layer comes out as that subtree's last
-  /// draw. Past the last slot a map falls back to map_layer's own draw.
+  /// draw. A slot the VRAM budget refuses (precomp_target) falls back to map_layer's own draw.
   void prepare_map_precomps(PassContext& ctx, const api::Renderable& r, ListState& st, std::size_t slot) {
     auto consider = [&](const std::string& id) {
-      if (id.empty() || id == r.id || mapPrecomps_.contains(id) || slot >= kPrecompTargets.size()) return;
+      if (id.empty() || id == r.id || mapPrecomps_.contains(id)) return;
       const auto it = st.byId.find(id);
       if (it == st.byId.end() || !it->second->precomp) return;
       api::Renderable prepared;
@@ -992,8 +1195,12 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
     kids.reserve(r.precomp_children.size());
     for (const auto& k : r.precomp_children) kids.push_back(&k);
 
-    if (slot >= kPrecompTargets.size()) {
+    const std::string_view targetName = precomp_target(ctx, slot);
+    if (targetName.empty()) {
+      // No isolated target (over the VRAM budget): the children drawn straight
+      // into the parent — not an isolated group, so blending differs (logged once).
       if (!inlineFallback) return false;
+      if (ctx.effectStats != nullptr) ++ctx.effectStats->precompsInline;
       flush(ctx, st);
       std::vector<api::Renderable> direct;
       if (flat) {
@@ -1008,52 +1215,16 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       render_list(ctx, ptrs, st.out, st.depth);
       return false;
     }
-    flush(ctx, st);
-    const std::string_view targetName = kPrecompTargets.at(slot);
-    std::vector<const api::Renderable*> children = kids;
-    if (flat) {
-      auto& keep = owned_.emplace_back(
-          std::make_unique<std::vector<api::Renderable>>(reparent(kids, mul(fullModel, cardToUnit))));
-      children.clear();
-      for (const auto& c : *keep) children.push_back(&c);
-    }
-    {
-      const Commands none;
-      ctx.draw_into(targetName, none, true);
-    }
-    // precompScope: a sealed comp instance with its own 3D frame replaces the
-    // camera, lights and environment wholesale (SSAO off) for its subtree.
-    const Scope3D saved = ctx.scope;
-    if (pre.camera3d) {
-      ctx.scope = Scope3D{&*pre.camera3d, &pre.lights3d, pre.env_map ? &*pre.env_map : nullptr, false,
-                          pre.fog ? &*pre.fog : nullptr, nullptr, &r.precomp_children};
-    }
-    render_list(ctx, children, std::string(targetName), slot + 1);
-    ctx.scope = saved;
-    RenderTarget* pt = ctx.target(targetName);
-    if (pt == nullptr) return false;
-    TexRef tex = pt->tex();
-
-    if (r.mask_texture_key && applyMask) {
-      const TexRef maskRes = ctx.texture(*r.mask_texture_key);
-      if (maskRes) {
-        Commands maskCmds;
-        emit_textured(ctx, maskCmds, mvp_for(ctx.viewport, flat ? fullModel : mat3_of(r.model_matrix)), Color::white(), 1,
-                      Blend::normal, maskRes, ctx.linear_clamp(), {0, 0, 1, 1}, kIdentityColor, maskRes.sampleLinear);
-        ctx.draw_into(kBlur1, maskCmds, true);
-        const TexRef maskTex = ctx.target(kBlur1)->tex();
-        Commands combine;
-        ColorTransform alphaMode;
-        alphaMode.m = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-        emit_matte_combine(ctx, combine, screen_mvp(), Blend::none, tex, ctx.linear_clamp(), maskTex, alphaMode, {0, 0, 1, 1});
-        ctx.draw_into(kBlur2, combine, true);
-        const TexRef masked = ctx.target(kBlur2)->tex();
-        Commands copy;
-        emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, masked, ctx.linear_clamp(), {0, 0, 1, 1},
-                      kIdentityColor, true);
-        ctx.draw_into(targetName, copy, true);
-        tex = pt->tex();
-      }
+    const PassContext::TargetSpec* spec = ctx.spec(targetName);
+    if (spec == nullptr) return false;
+    // A result kept from an earlier frame under the same content key is these
+    // pixels exactly (a texel copy of the resolved target): nothing is drawn.
+    const std::uint64_t cacheKey = precompCacheEnabled_ ? precomp_key(ctx, r, *spec, applyMask) : 0;
+    TexRef tex = reuse_precomp(ctx, cacheKey, *spec);
+    if (tex) {
+      if (ctx.effectStats != nullptr) ++ctx.effectStats->precompsCached;
+    } else if (!render_isolated_precomp(ctx, r, st, slot, targetName, applyMask, cacheKey, tex)) {
+      return false;
     }
     if (r.texture_key) precompTex_[*r.texture_key] = tex;
 
@@ -1085,6 +1256,272 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
       }
     }
     return true;
+  }
+
+  /// The target of precomp nesting slot `slot`: the four declared ones, then
+  /// `precomp-target-<n>` declared on demand like slot 0 (the project's
+  /// precision, MSAA and depth) — every depth an isolated group of its own.
+  /// Pool targets: allocated on first use, kept warm across frames, collected
+  /// idle. Empty when the slots past the fourth would exceed
+  /// kExtraPrecompTargetBudget (reported once per session).
+  std::string_view precomp_target(PassContext& ctx, std::size_t slot) {
+    if (slot < kPrecompTargets.size()) return kPrecompTargets.at(slot);
+    const PassContext::TargetSpec* base = ctx.spec(kPrecompTargets.front());
+    if (base == nullptr) return {};
+    const std::uint64_t each = render_target_bytes(base->width, base->height, texel_bytes(base->format), base->samples, base->depth);
+    const std::uint64_t extra = slot - kPrecompTargets.size() + 1;
+    if (each == 0 || extra > kExtraPrecompTargetBudget / each) {
+      if (!precompBudgetReported_) {
+        precompBudgetReported_ = true;
+        ctx.diagnostics.push_back({"precomp-inline", "Precomps nested " + std::to_string(slot + 1) +
+                                                         " deep exceed the precomp target budget; deeper ones draw into their parent"});
+      }
+      return {};
+    }
+    const std::size_t idx = slot - kPrecompTargets.size();
+    while (precompNames_.size() <= idx) {
+      precompNames_.push_back(std::string(kPrecompTargetPrefix) + std::to_string(precompNames_.size() + kPrecompTargets.size()));
+    }
+    const std::string& name = precompNames_[idx];
+    // Declared for this frame (PassContext::specs is per frame): one map node per deep slot used.
+    if (ctx.spec(name) == nullptr) {
+      const PassContext::TargetSpec like = *base;  // copied first: the insert may rehash
+      ctx.specs.emplace(name, like);
+    }
+    return name;
+  }
+
+  /// The subtree of precomp `r` drawn into `targetName` (and masked), its image
+  /// in `tex`; kept under `cacheKey` when every texture it drew was pinned by its hash.
+  bool render_isolated_precomp(PassContext& ctx, const api::Renderable& r, ListState& st, std::size_t slot,
+                               std::string_view targetName, bool applyMask, std::uint64_t cacheKey, TexRef& tex) {
+    if (!r.precomp) return false;
+    const auto& pre = *r.precomp;
+    const bool flat = pre.flat_width.has_value();
+    const Mat3 fullModel = model_from_rect(ctx.viewport.visibleWorldRect);
+    const Mat3 cardToUnit = flat ? scaling(1 / std::max(1.0, *pre.flat_width), 1 / std::max(1.0, pre.flat_height.value_or(1)))
+                                 : Mat3{};
+    flush(ctx, st);
+    std::vector<const api::Renderable*> children;
+    children.reserve(r.precomp_children.size());
+    if (flat) {
+      std::vector<const api::Renderable*> kids;
+      kids.reserve(r.precomp_children.size());
+      for (const auto& k : r.precomp_children) kids.push_back(&k);
+      auto& keep = owned_.emplace_back(
+          std::make_unique<std::vector<api::Renderable>>(reparent(kids, mul(fullModel, cardToUnit))));
+      for (const auto& c : *keep) children.push_back(&c);
+    } else {
+      for (const auto& k : r.precomp_children) children.push_back(&k);
+    }
+    // Every texture the subtree (and its mask) draws is looked up through a
+    // TaintingSource: one not pinned by its hash keeps the result out of the cache.
+    std::optional<TaintingSource> taint;
+    const ExternalScope feed(ctx);
+    // A subtree that reports something (a missing matte source, an effect it
+    // could not run) is drawn every frame, so the frame keeps reporting it.
+    const std::size_t diagnosticsBefore = ctx.diagnostics.size();
+    if (cacheKey != 0 && feed.outer != nullptr) ctx.external = &taint.emplace(*feed.outer);
+    {
+      const Commands none;
+      ctx.draw_into(targetName, none, true);
+    }
+    // precompScope: a sealed comp instance with its own 3D frame replaces the
+    // camera, lights and environment wholesale (SSAO off) for its subtree.
+    const Scope3D saved = ctx.scope;
+    if (pre.camera3d) {
+      ctx.scope = Scope3D{&*pre.camera3d, &pre.lights3d, pre.env_map ? &*pre.env_map : nullptr, false,
+                          pre.fog ? &*pre.fog : nullptr, nullptr, &r.precomp_children};
+    }
+    render_list(ctx, children, std::string(targetName), slot + 1);
+    ctx.scope = saved;
+    RenderTarget* pt = ctx.target(targetName);
+    if (pt == nullptr) return false;
+    tex = pt->tex();
+
+    if (r.mask_texture_key && applyMask) {
+      const TexRef maskRes = ctx.texture(*r.mask_texture_key);
+      if (maskRes) {
+        Commands maskCmds;
+        emit_textured(ctx, maskCmds, mvp_for(ctx.viewport, flat ? fullModel : mat3_of(r.model_matrix)), Color::white(), 1,
+                      Blend::normal, maskRes, ctx.linear_clamp(), {0, 0, 1, 1}, kIdentityColor, maskRes.sampleLinear);
+        ctx.draw_into(kBlur1, maskCmds, true);
+        const TexRef maskTex = ctx.target(kBlur1)->tex();
+        Commands combine;
+        ColorTransform alphaMode;
+        alphaMode.m = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+        emit_matte_combine(ctx, combine, screen_mvp(), Blend::none, tex, ctx.linear_clamp(), maskTex, alphaMode, {0, 0, 1, 1});
+        ctx.draw_into(kBlur2, combine, true);
+        const TexRef masked = ctx.target(kBlur2)->tex();
+        Commands copy;
+        emit_textured(ctx, copy, screen_mvp(), Color::white(), 1, Blend::none, masked, ctx.linear_clamp(), {0, 0, 1, 1},
+                      kIdentityColor, true);
+        ctx.draw_into(targetName, copy, true);
+        tex = pt->tex();
+      }
+    }
+    if (ctx.effectStats != nullptr) ++ctx.effectStats->precompsRendered;
+    if (cacheKey != 0 && !(taint && taint->tainted()) && ctx.diagnostics.size() == diagnosticsBefore) {
+      keep_precomp(ctx, r, applyMask, cacheKey, *pt);
+    }
+    return true;
+  }
+
+  /// A texture key's content into a precomp's key: its hash, sampling and
+  /// colour interpretation. False = the subtree is not kept: a placeholder
+  /// (not ready) or footage (`media:` — a preview may draw a nearer frame).
+  /// A key with no content (unknown, or not a texture at all — an effect
+  /// param naming a layer) draws nothing either way and adds a 0.
+  static bool fold_texture(const PassContext& ctx, std::string_view key, KeyMix& k) {
+    const ResolvedBlob rb = ctx.textures.resolve(key);
+    if (rb.hash.empty()) {
+      k.u64(0);
+      return true;
+    }
+    if (!rb.ready || rb.hash.starts_with("media:")) return false;
+    k.str(rb.hash);
+    k.u64((rb.sampleLinear ? 1U : 0U) | (rb.inputSpace ? (static_cast<std::uint64_t>(*rb.inputSpace) + 1) << 1U : 0U));
+    return true;
+  }
+
+  /// A precomp frame's environment texture (its sky), by content.
+  static bool fold_env_map(const PassContext& ctx, const api::RenderPrecompFrame& f, KeyMix& k) {
+    if (!f.env_map) return true;
+    const api::RenderEnvMap& env = *f.env_map;
+    return !env.texture_key || fold_texture(ctx, *env.texture_key, k);
+  }
+
+  /// Every texture `list` (recursively) draws, by content. False = a renderable
+  /// whose pixels are not a function of the frame's data: footage, a plugin
+  /// generator, a WGSL or native plugin effect, a stepped simulation.
+  static bool fold_inputs(const PassContext& ctx, const std::vector<api::Renderable>& list, KeyMix& k) {
+    for (const api::Renderable& c : list) {
+      if (c.kind == api::RenderableKind::video || c.generator) return false;
+      if (c.precomp) {
+        const api::RenderPrecompFrame& inner = *c.precomp;
+        if (!fold_env_map(ctx, inner, k)) return false;
+      }
+      if (c.adjustment) {
+        const api::RenderAdjustment& adj = *c.adjustment;
+        if (adj.lut_texture_key && !fold_texture(ctx, *adj.lut_texture_key, k)) return false;
+      }
+      if (c.extruded_mesh) {
+        const api::RenderExtrudedMesh& mesh = *c.extruded_mesh;
+        if (mesh.pbr) {
+          const api::RenderPbrMaps& m = *mesh.pbr;
+          for (const std::optional<std::string>* key : {&m.normal_key, &m.metallic_roughness_key, &m.occlusion_key, &m.emissive_key}) {
+            if (*key && !fold_texture(ctx, **key, k)) return false;
+          }
+        }
+      }
+      for (const api::RenderEffect& e : c.effects) {
+        if (e.type == "native-plugin" || e.type == "plugin") return false;
+        // Texture keys an effect names (LUT strips, data textures, scoped masks, …).
+        for (const api::RenderEffectParam& p : e.params) {
+          // An fx-graph simulation (X2) is stepped across frames, a capped number a
+          // frame: the same params can draw a state still catching up.
+          if (p.name == "simKey" && !p.text.empty()) return false;
+          if (!p.text.empty() && !fold_texture(ctx, p.text, k)) return false;
+          for (const std::string& t : p.texts) {
+            if (!t.empty() && !fold_texture(ctx, t, k)) return false;
+          }
+        }
+      }
+      for (const std::optional<std::string>* key : {&c.texture_key, &c.mask_texture_key, &c.lut_texture_key}) {
+        if (*key && !fold_texture(ctx, **key, k)) return false;
+      }
+      if (!fold_inputs(ctx, c.precomp_children, k)) return false;
+    }
+    return true;
+  }
+
+  /// The key of precomp `r`'s finished image in `spec`'s target: everything its
+  /// pixels depend on — the subtree byte for byte (every renderable field the
+  /// draw reads: transforms, opacity, blend, colours, effects and their
+  /// params, masks, mattes, motion samples, meshes, nested precomps), each
+  /// texture it draws by content hash, its own 3D frame and mask, the target's
+  /// size / format / samples, the view, and the renderer's switches, precision
+  /// and colour pipeline. 0 = not kept (see fold_inputs; a precomp under a 3D
+  /// camera it does not seal reads the parent's 3D scope — camera, lights,
+  /// shadow casters, scene depth — none of which is in the subtree).
+  std::uint64_t precomp_key(PassContext& ctx, const api::Renderable& r, const PassContext::TargetSpec& spec, bool applyMask) {
+    if (!r.precomp) return 0;
+    const api::RenderPrecompFrame& pre = *r.precomp;
+    // Drawn inside an effect chain (scissored to its reach) or a 3D run's offscreen step: drawn, not kept.
+    if (predrawn_ != nullptr || ctx.fxScissor) return 0;
+    if (!pre.camera3d && (ctx.scope.camera3d != nullptr || ctx.file.scene.camera3d)) return 0;
+    KeyMix k;
+    k.u64(0x7072'6563'6f6d'7031ULL);  // "precomp1": the key's layout version
+    if (!fold_inputs(ctx, r.precomp_children, k)) return 0;
+    if (!fold_env_map(ctx, pre, k)) return 0;
+    const bool masked = applyMask && r.mask_texture_key.has_value();
+    k.u64(masked ? 1U : 0U);
+    if (masked) {
+      if (!fold_texture(ctx, *r.mask_texture_key, k)) return 0;
+      for (const double v : r.model_matrix) k.f64(v);  // where the mask is drawn
+    }
+    keyBuf_.clear();
+    api::encode(keyBuf_, pre);
+    for (const api::Renderable& c : r.precomp_children) api::encode(keyBuf_, c);
+    const api::RenderView& view = ctx.file.view;
+    const api::RenderFrameScene& scene = ctx.file.scene;
+    if (view.color_management) api::encode(keyBuf_, *view.color_management);
+    if (scene.renderer) api::encode(keyBuf_, *scene.renderer);
+    mix_bytes(k, keyBuf_.bytes());
+    // The target.
+    k.u64((std::uint64_t{spec.width} << 32U) | spec.height);
+    k.u64(static_cast<std::uint64_t>(spec.format));
+    k.u64((std::uint64_t{spec.samples} << 1U) | (spec.depth ? 1U : 0U));
+    // The view the subtree is drawn under (P8b's ViewShift moves it).
+    const ViewportState& vp = ctx.viewport;
+    k.u64((std::uint64_t{vp.pixelWidth} << 32U) | vp.pixelHeight);
+    for (std::size_t i = 0; i < 9; ++i) k.f64(vp.viewProjection[i]);
+    for (const double v : {vp.visibleWorldRect.x, vp.visibleWorldRect.y, vp.visibleWorldRect.width, vp.visibleWorldRect.height,
+                           vp.cssWidth, vp.cssHeight, vp.dpr, vp.centerX, vp.centerY, vp.zoom}) {
+      k.f64(v);
+    }
+    // The renderer's switches, precision and colour pipeline.
+    k.u64((ctx.fxFields ? 1U : 0U) | (ctx.fxBounds ? 2U : 0U) | (ctx.fxLayerBuffers ? 4U : 0U) | (layerFxEnabled_ ? 8U : 0U) |
+          (ctx.colorSystem != nullptr ? 16U : 0U) | (ctx.color.managed ? 32U : 0U));
+    k.u64((std::uint64_t{view.bit_depth} << 8U) | (view.float16_textures ? 1U : 0U) | (view.float32_textures ? 2U : 0U));
+    k.u64((static_cast<std::uint64_t>(view.working_space) << 16U) | (static_cast<std::uint64_t>(view.display_transform) << 8U));
+    k.u64((static_cast<std::uint64_t>(ctx.color.working) << 40U) | (static_cast<std::uint64_t>(ctx.color.display) << 32U) |
+          ctx.color.bitDepth);
+    for (const double v : ctx.color.fromLinear709) k.f64(v);
+    // Comp-level inputs a layer of the subtree reads (advanced blends: the comp's size, Dissolve's frame).
+    k.f64(scene.width);
+    k.f64(scene.height);
+    k.f64(scene.dissolve_frame.value_or(-1));
+    return k.value();
+  }
+
+  /// An earlier frame's image of the precomp under `key` in `spec`'s shape (the entry's own target), or nothing.
+  TexRef reuse_precomp(PassContext& ctx, std::uint64_t key, const PassContext::TargetSpec& spec) {
+    if (key == 0) return {};
+    PrecompCache::Entry* e = precompCache_.find(key, spec.width, spec.height, spec.format);
+    if (e == nullptr) return {};
+    bool created = false;
+    RenderTarget& t = ctx.dev.target(e->name, e->w, e->h, e->format, 1, false, &created);
+    if (created) {
+      precompCache_.forget(*e);  // the pool collected it: the subtree is drawn again
+      return {};
+    }
+    e->used = ctx.dev.frame();
+    return t.tex();
+  }
+
+  /// Keep precomp `r`'s finished image (`from`, the resolved target) under
+  /// `key`: an exact texel copy into a single-sample target of the same format.
+  void keep_precomp(PassContext& ctx, const api::Renderable& r, bool applyMask, std::uint64_t key, const RenderTarget& from) {
+    KeyMix who;
+    who.str(r.id);
+    who.u64(applyMask ? 1U : 0U);
+    if (!precompCache_.worth_keeping(who.value(), key)) return;
+    const std::uint64_t bytes = std::uint64_t{from.width} * from.height * texel_bytes(from.format);
+    PrecompCache::Entry* e = precompCache_.claim(key, from.width, from.height, from.format, bytes, ctx.dev.frame());
+    if (e == nullptr) return;  // over the budget, every other entry in use this frame
+    RenderTarget& t = ctx.dev.target(e->name, from.width, from.height, from.format, 1, false);
+    copy_texels(ctx, from, t);
   }
 
   /// renderGeneratorField: draw a plugin generator's instances into

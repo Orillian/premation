@@ -24,6 +24,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { getTime } from '@stores/playbackClockStore';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { commandCamera } from '@core/scene/cameraCommands';
+import { ensureModelInstalled } from '@layout/Settings/modelDownloadJob';
 import {
   DEFAULT_DEPTH_SCALE, depthMapLayerChoices, isDepthParallaxCandidate, makeDepthFromLayer, makeDepthFromModel,
 } from '@core/scene/depthParallax';
@@ -56,9 +57,18 @@ export function DepthParallaxSection({ nodeId }: { nodeId: string }): JSX.Elemen
 
   const estimate = (): void => {
     setBusy(t('inspector.depthParallax.estimating', 'Estimating depth…'));
-    void makeDepthFromModel(nodeId, scale || DEFAULT_DEPTH_SCALE, (p) => setBusy(t('inspector.depthParallax.estimatingPct', 'Estimating depth… {pct}%', { pct: Math.round(p * 100) }))).then((r) => {
-      setBusy(null);
-      notify(r.ok ? t('inspector.depthParallax.estimated', 'Depth estimated — the layer is 3D now; move a camera to see the parallax') : r.message, r.ok ? 'success' : 'warning');
+    // The depth model first, fetched on the spot when it is not on this
+    // computer (the status bar's job chip shows the download; a failure has
+    // already been toasted), then the estimate.
+    void ensureModelInstalled('depthModel').then((model) => {
+      if (!model.ok) {
+        setBusy(null);
+        return undefined;
+      }
+      return makeDepthFromModel(nodeId, scale || DEFAULT_DEPTH_SCALE, (p) => setBusy(t('inspector.depthParallax.estimatingPct', 'Estimating depth… {pct}%', { pct: Math.round(p * 100) }))).then((r) => {
+        setBusy(null);
+        notify(r.ok ? t('inspector.depthParallax.estimated', 'Depth estimated — the layer is 3D now; move a camera to see the parallax') : r.message, r.ok ? 'success' : 'warning');
+      });
     });
   };
   const items = (): DropdownItem[] => [

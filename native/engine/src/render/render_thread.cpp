@@ -377,13 +377,19 @@ void RenderThread::configure_disk_cache(const std::string& folder, std::uint64_t
   disk_->configure(folder, bytes);
   post([this] {
     diskReadMeasured_ = false;  // another folder (another drive): its own read cost
+    diskRetry_.clear();         // parked for the old folder
+    diskRetryBytes_ = 0;
     publish_coverage();
   });
 }
 
 void RenderThread::purge_disk_cache() {
   disk_->purge();
-  post([this] { publish_coverage(); });
+  post([this] {
+    diskRetry_.clear();  // a purge drops what was on its way too
+    diskRetryBytes_ = 0;
+    publish_coverage();
+  });
 }
 
 bool RenderThread::load_from_disk(std::uint64_t diskKey, std::uint32_t width, std::uint32_t height,
@@ -543,9 +549,38 @@ void RenderThread::drain_victims(bool block) {
     }
     // Not kept in RAM (full of the range being played): a frame worth a file goes to disk.
     if (v.meta.diskKey != 0 && v.meta.drawMs > 0 && disk_->enabled() && worth_disk(v.meta.drawMs, v.width, v.height) &&
-        !disk_->contains(v.meta.diskKey) && disk_->store(v.meta.diskKey, v.width, v.height, std::move(*rgba))) {
-      diskCoverageStale_ = true;
+        !disk_->contains(v.meta.diskKey)) {
+      offer_disk(v.meta.diskKey, v.width, v.height, *rgba);
     }
+  }
+  retry_disk();
+}
+
+void RenderThread::offer_disk(std::uint64_t key, std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t>& rgba) {
+  const StoreResult r = disk_->enqueue(key, width, height, rgba);
+  if (r == StoreResult::queued || r == StoreResult::queuedBehind) {
+    diskCoverageStale_ = true;
+    return;
+  }
+  if (r != StoreResult::refused || rgba.empty()) return;  // skipped: on disk already, or not wanted
+  // Refused at the writer's hard cap: this frame is in no other tier. Park it.
+  diskRetryBytes_ += rgba.size();
+  diskRetry_.push_back(DiskRetry{key, width, height, std::move(rgba)});
+  while (diskRetryBytes_ > kMaxDiskRetryBytes && !diskRetry_.empty()) {
+    diskRetryBytes_ -= diskRetry_.front().rgba.size();
+    diskRetry_.pop_front();
+  }
+}
+
+void RenderThread::retry_disk() {
+  while (!diskRetry_.empty() && disk_->enabled()) {
+    DiskRetry& d = diskRetry_.front();
+    const std::size_t bytes = d.rgba.size();
+    const StoreResult r = disk_->enqueue(d.key, d.width, d.height, d.rgba);
+    if (r == StoreResult::refused) return;  // still behind: try again on the next drain
+    if (r == StoreResult::queued || r == StoreResult::queuedBehind) diskCoverageStale_ = true;
+    diskRetryBytes_ -= bytes;
+    diskRetry_.pop_front();
   }
 }
 
@@ -564,7 +599,7 @@ void RenderThread::spill_ram_evictions(std::vector<RamFrame>& evicted) {
     if (!worth_disk(f.drawMs, f.width, f.height) || disk_->contains(f.diskKey)) continue;
     // Moved when nothing else holds the pixels (an upload in flight may).
     std::vector<std::uint8_t> bytes = f.rgba.use_count() == 1 ? std::move(*f.rgba) : *f.rgba;
-    if (disk_->store(f.diskKey, f.width, f.height, std::move(bytes))) diskCoverageStale_ = true;
+    offer_disk(f.diskKey, f.width, f.height, bytes);  // refused at the cap: parked, not lost
   }
   evicted.clear();
 }
@@ -769,7 +804,7 @@ std::string RenderThread::open_gpu() {
 #else
   const bool wantShared = false;  // Linux without GBM: no shared route — the route-A copy
 #endif
-  gpu_ = create_gpu(wantShared, options_.highPerformance, options_.vendorId);
+  gpu_ = create_gpu(wantShared, options_.highPerformance, options_.vendorId, options_.shaderCacheDir);
   if (!gpu_) return "no GPU adapter / device (Dawn)";
   compositor_ = std::make_unique<Compositor>();
   if (!compositor_->init(*gpu_)) return "compositor pipelines failed to build";

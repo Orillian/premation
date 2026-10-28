@@ -29,6 +29,9 @@
  *   --min-abs <ms>      an absolute floor, default 0.05: a metric that moved
  *                       by less than this never counts as a regression, so a
  *                       0.04 → 0.08 ms wobble on a sub-0.1 ms stage is not a 98 %.
+ *   SUITE_GATES         per-suite overrides of both (below): the long-form
+ *                       engine suites time single seeks / edits / opens and
+ *                       get a far looser gate than the microbenchmarks.
  *
  * The baseline carries the machine that produced it. When the current run is
  * from a different CPU the table says so up front — numbers across machines
@@ -60,6 +63,33 @@ const TOLERANCE = Number(opt('tolerance', '15'));
 const MIN_ABS = Number(opt('min-abs', '0.05'));
 if (!Number.isFinite(TOLERANCE) || TOLERANCE < 0) throw new Error(`bad --tolerance: ${opt('tolerance')}`);
 if (!Number.isFinite(MIN_ABS) || MIN_ABS < 0) throw new Error(`bad --min-abs: ${opt('min-abs')}`);
+
+/**
+ * Per-suite slack, by scenario-name prefix: the long-form suites
+ * (src/core/engine/__tests__/{longTimeline,manySources,deepPrecomp,editLatency}.bench.test.ts)
+ * time ONE seek, one edit or one open on the GPU engine — single samples
+ * whose run-to-run spread on a laptop is far wider than the sub-ms
+ * buildSnapshot stages the default gate was tuned on. Each entry is the
+ * tolerance in percent and the smallest absolute move (ms) that counts: a
+ * metric must cross BOTH to regress. `--tolerance` on the command line
+ * raises (never lowers) these.
+ */
+const SUITE_GATES = [
+  // 2026-10-27 on the baseline laptop: firstFrame 300–420 ms, seeks 17–118 ms (the "0s"
+  // seek is the second frame, right after the first draw), edit 137–800 ms wall.
+  { prefix: 'longTimeline/', tolerance: 100, minAbs: 20 },
+  // open 7.1 s (150 importFiles + 150 createLayer); scrub p50 ~10 ms once the sources are
+  // open, max 6.6 s on the FIRST seek (every decoder opens); engine memory / threads informational.
+  { prefix: 'manySources/', tolerance: 100, minAbs: 20 },
+  // 8 nested levels: ~10 ms a frame full, ~4.6 ms half (GPU-bound); interval pinned at 33 ms by the clock.
+  { prefix: 'deepPrecomp/', tolerance: 60, minAbs: 2 },
+  // 3000 layers: p50 ~98 ms, p95 ~145 ms from setProperty to the redrawn frame; build 6.9 s.
+  { prefix: 'editLatency/', tolerance: 75, minAbs: 20 },
+];
+const gateFor = (name) => {
+  const g = SUITE_GATES.find((s) => name.startsWith(s.prefix));
+  return g ? { tolerance: Math.max(g.tolerance, TOLERANCE), minAbs: Math.max(g.minAbs, MIN_ABS) } : { tolerance: TOLERANCE, minAbs: MIN_ABS };
+};
 
 const rel = (p) => relative(process.cwd(), p) || p;
 
@@ -149,10 +179,11 @@ for (const [key, b] of base) {
   const dir = direction(b.unit);
   const delta = c.value - b.value;
   const rel = b.value !== 0 ? (delta / b.value) * 100 : (delta === 0 ? 0 : Infinity);
+  const gate = gateFor(b.name);
   let status = 'ok';
-  if (dir !== 'none' && Math.abs(delta) >= MIN_ABS) {
-    const worse = dir === 'lower' ? rel > TOLERANCE : rel < -TOLERANCE;
-    const better = dir === 'lower' ? rel < -TOLERANCE : rel > TOLERANCE;
+  if (dir !== 'none' && Math.abs(delta) >= gate.minAbs) {
+    const worse = dir === 'lower' ? rel > gate.tolerance : rel < -gate.tolerance;
+    const better = dir === 'lower' ? rel < -gate.tolerance : rel > gate.tolerance;
     if (worse) { status = 'REGRESSION'; regressions += 1; }
     else if (better) { status = 'faster'; improvements += 1; }
   } else if (dir === 'none') {

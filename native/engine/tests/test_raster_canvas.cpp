@@ -1,9 +1,14 @@
 // E3 raster module on Skia: Canvas2D semantics, fonts + shaping, replay.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdio>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <utility>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -359,4 +364,96 @@ TEST_CASE("I4: a tapered stroke on a rounded rect keeps its corners", "[raster][
   // The straight edges keep their (tapered) ribbon.
   CHECK(alpha(1, 100) > 0);
   CHECK(alpha(198, 100) > 0);
+}
+
+TEST_CASE("blur cost: per-glyph animator blur on a paragraph and on a wordmark", "[.bench][raster][blur]") {
+  // Hidden ([.bench]): the per-glyph Blur an animator paints (text_paint.cpp
+  // drawItemInner sets one filter per glyph). Prints the cost per glyph so a
+  // change to Canvas2D's blur layer can be measured: 2026-10-27 launch film,
+  // a 150-glyph paragraph at blur 6 and a 6-glyph 180 px wordmark at blur 14.
+  CanvasOptions co;
+  co.fonts = &harness_fonts();
+  const auto run = [&co](const char* label, std::uint32_t w, std::uint32_t h, double fontPx, double blur, const std::string& text,
+                         bool readFrequently, bool fast) {
+    auto c = Canvas2D::make(w, h, co);
+    c->set_will_read_frequently(readFrequently);
+    c->setFillStyle(color("#1f1e1d"));
+    REQUIRE(c->setFont(std::to_string(static_cast<int>(fontPx)) + "px Arial"));
+    const auto t0 = std::chrono::steady_clock::now();
+    double x = 20;
+    double y = fontPx * 1.2;
+    for (const char ch : text) {
+      c->save();
+      c->setFilter(fast ? css::Filter::fast_blur(blur) : css::Filter{blur});
+      const std::string g(1, ch);
+      c->fillText(g, x, y);
+      c->restore();
+      x += fontPx * 0.55;
+      if (x > static_cast<double>(w) - fontPx) {
+        x = 20;
+        y += fontPx * 1.4;
+      }
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("[blur] %s %ux%u font %.0f blur %.0f glyphs %zu readFrequently %d fast %d: %.1f ms total, %.2f ms/glyph\n", label, w, h,
+                fontPx, blur, text.size(), readFrequently ? 1 : 0, fast ? 1 : 0, ms, ms / static_cast<double>(text.size()));
+    const std::vector<std::uint8_t> px = c->pixels();
+    std::size_t ink = 0;
+    for (std::size_t i = 3; i < px.size(); i += 4) ink += px[i] > 0 ? 1U : 0U;
+    CHECK(ink > 0);
+  };
+  const std::string para =
+      "Heres a 24-second plan: open on the spark, show the work in motion, then land the name. Three beats, one idea clarity now.";
+  run("paragraph", 1920, 1080, 34, 6, para, false, false);
+  run("paragraph", 1920, 1080, 34, 6, para, false, true);
+  run("wordmark", 1920, 1080, 180, 14, "Claude", false, false);
+  run("wordmark", 1920, 1080, 180, 14, "Claude", false, true);
+  run("paragraph", 1920, 1080, 34, 2, para, false, false);
+  run("paragraph", 1920, 1080, 34, 2, para, false, true);
+}
+
+TEST_CASE("blur: the fast per-glyph blur stays close to the shader algorithm", "[raster][blur]") {
+  // css::Filter::fast_blur (three box passes on 8-bit pixels) stands in for
+  // the accelerated canvas's shader blur on per-glyph animator blurs. The two
+  // are different Gaussian approximations; this pins how far apart they are
+  // so a change to either shows up here, not as a surprise in a film.
+  CanvasOptions co;
+  co.fonts = &harness_fonts();
+  const auto draw = [&co](double fontPx, double blur, bool fast) {
+    auto c = Canvas2D::make(640, 320, co);
+    c->setFillStyle(color("#1f1e1d"));
+    REQUIRE(c->setFont(std::to_string(static_cast<int>(fontPx)) + "px Arial"));
+    double x = 20;
+    for (const char ch : std::string("Claude")) {
+      c->save();
+      c->setFilter(fast ? css::Filter::fast_blur(blur) : css::Filter{blur});
+      c->fillText(std::string(1, ch), x, fontPx * 1.2);
+      c->restore();
+      x += fontPx * 0.55;
+    }
+    return c->pixels();
+  };
+  for (const auto& [fontPx, blur] : {std::pair{34.0, 6.0}, std::pair{90.0, 14.0}, std::pair{34.0, 2.0}, std::pair{34.0, 3.0}, std::pair{34.0, 4.0}, std::pair{34.0, 5.0}}) {
+    const std::vector<std::uint8_t> exact = draw(fontPx, blur, false);
+    const std::vector<std::uint8_t> fast = draw(fontPx, blur, true);
+    REQUIRE(exact.size() == fast.size());
+    int maxDiff = 0;
+    std::size_t over4 = 0;
+    std::size_t inked = 0;
+    for (std::size_t i = 3; i < exact.size(); i += 4) {
+      const int d = std::abs(static_cast<int>(exact[i]) - static_cast<int>(fast[i]));
+      maxDiff = std::max(maxDiff, d);
+      over4 += d > 4 ? 1U : 0U;
+      inked += exact[i] > 0 || fast[i] > 0 ? 1U : 0U;
+    }
+    const double share = inked == 0 ? 0 : static_cast<double>(over4) / static_cast<double>(inked);
+    INFO("font " << fontPx << " blur " << blur << ": max alpha diff " << maxDiff << ", " << share * 100 << " % of inked px off by > 4");
+    std::printf("[blur] fast vs exact font %.0f blur %.0f: max alpha diff %d, %.2f %% of inked px off by > 4/255\n", fontPx, blur,
+                maxDiff, share * 100);
+    // Measured 2026-10-27: σ 2 max 14 (37 % of inked px > 4/255), σ 3 max 10,
+    // σ 4–5 max 8 (5 %), σ ≥ 6 max 6 (< 0.5 %): edge alpha only, in motion.
+    CHECK(maxDiff <= 16);
+    if (blur >= 4) CHECK(share < 0.08);
+    if (blur >= 6) CHECK(share < 0.01);
+  }
 }

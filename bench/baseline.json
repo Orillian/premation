@@ -179,6 +179,90 @@
       "samples": 180
     },
     {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "full.dropped",
+      "unit": "count",
+      "value": 15,
+      "samples": 0
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "full.intervalP50",
+      "unit": "ms",
+      "value": 33.3,
+      "samples": 45
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "full.renderP50",
+      "unit": "ms",
+      "value": 10.42,
+      "samples": 46
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "full.renderP95",
+      "unit": "ms",
+      "value": 11.7,
+      "samples": 46
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "half.dropped",
+      "unit": "count",
+      "value": 0,
+      "samples": 0
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "half.intervalP50",
+      "unit": "ms",
+      "value": 33.3,
+      "samples": 59
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "half.renderP50",
+      "unit": "ms",
+      "value": 4.58,
+      "samples": 60
+    },
+    {
+      "name": "deepPrecomp/8levels-1080p",
+      "metric": "half.renderP95",
+      "unit": "ms",
+      "value": 5.42,
+      "samples": 60
+    },
+    {
+      "name": "editLatency/3000layers-1080p",
+      "metric": "build.wall",
+      "unit": "ms",
+      "value": 6852.4,
+      "samples": 1
+    },
+    {
+      "name": "editLatency/3000layers-1080p",
+      "metric": "edit.commandP50",
+      "unit": "ms",
+      "value": 2.9,
+      "samples": 20
+    },
+    {
+      "name": "editLatency/3000layers-1080p",
+      "metric": "edit.p50",
+      "unit": "ms",
+      "value": 97.7,
+      "samples": 20
+    },
+    {
+      "name": "editLatency/3000layers-1080p",
+      "metric": "edit.p95",
+      "unit": "ms",
+      "value": 144.3,
+      "samples": 20
+    },
+    {
       "name": "export/jpeg-stage-1080p",
       "metric": "fps.best10",
       "unit": "fps",
@@ -275,6 +359,104 @@
       "unit": "ms",
       "value": 19.1851,
       "samples": 20
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "build.wall",
+      "unit": "ms",
+      "value": 48680.9,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "edit.command",
+      "unit": "ms",
+      "value": 4.4,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "edit.toFrame",
+      "unit": "ms",
+      "value": 20.2,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "firstFrame.wall",
+      "unit": "ms",
+      "value": 328.3,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "keyIndex.active",
+      "unit": "count",
+      "value": 0,
+      "samples": 0
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "seek.0s.wall",
+      "unit": "ms",
+      "value": 180.6,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "seek.10min.wall",
+      "unit": "ms",
+      "value": 93.9,
+      "samples": 1
+    },
+    {
+      "name": "longTimeline/30min-200layers",
+      "metric": "seek.29min.wall",
+      "unit": "ms",
+      "value": 62.6,
+      "samples": 1
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "engineMemory.MB",
+      "unit": "count",
+      "value": 3661.9,
+      "samples": 0
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "open.import",
+      "unit": "ms",
+      "value": 1197,
+      "samples": 1
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "open.wall",
+      "unit": "ms",
+      "value": 7098.4,
+      "samples": 1
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "scrub.max",
+      "unit": "ms",
+      "value": 6575.8,
+      "samples": 10
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "scrub.p50",
+      "unit": "ms",
+      "value": 9.8,
+      "samples": 10
+    },
+    {
+      "name": "manySources/150clips-5min",
+      "metric": "threads",
+      "unit": "count",
+      "value": 250,
+      "samples": 0
     },
     {
       "name": "rasterKey/animated-paths-300",

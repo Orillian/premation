@@ -298,6 +298,156 @@ TEST_CASE("disk cache: off takes nothing", "[disk_cache]") {
   CHECK_FALSE(cache.store(2, kW, kH, std::vector<std::uint8_t>(10)));  // wrong size, refused anyway
 }
 
+// ── back-pressure: the queue's soft target and hard cap, the writer pool ────
+
+using premation::render::DiskCacheOptions;
+using premation::render::StoreResult;
+
+TEST_CASE("disk cache: a burst past the soft target is taken and written in full", "[disk_cache][backpressure]") {
+  // A long fill evicting RAM faster than the disk writes: nothing may be dropped.
+  const fs::path dir = fresh_dir("burst");
+  DiskCache cache(DiskCacheOptions{.writers = 2, .softQueueBytes = 4 * kFrameBytes, .hardQueueBytes = 0});
+  cache.configure(utf8(dir), 64ULL * 1024 * 1024);
+  cache.flush();
+  cache.pause(true);  // the writers fall behind: nothing drains while the burst arrives
+  constexpr std::uint32_t kFrames = 12;
+  for (std::uint32_t i = 0; i < kFrames; ++i) {
+    auto px = noise(100 + i);
+    const StoreResult r = cache.enqueue(1000 + i, kW, kH, px);
+    CHECK(r == (i < 4 ? StoreResult::queued : StoreResult::queuedBehind));
+    CHECK(px.empty());  // taken: moved from
+  }
+  CHECK(cache.behind());
+  CHECK_FALSE(cache.reserve(5000));  // optional read-backs wait while behind
+  CHECK_FALSE(cache.wants(5000));
+  auto s = cache.stats();
+  CHECK(s.behind == kFrames - 4);
+  CHECK(s.refused == 0);
+  CHECK(s.queuedBytes == kFrames * kFrameBytes);
+  CHECK(s.queueHighWater == kFrames * kFrameBytes);
+
+  cache.pause(false);
+  cache.flush();
+  CHECK_FALSE(cache.behind());
+  s = cache.stats();
+  CHECK(s.writes == kFrames);
+  CHECK(s.dropped == 0);
+  CHECK(s.entries == kFrames);
+  CHECK(s.queuedBytes == 0);
+  CHECK(s.queueHighWater == kFrames * kFrameBytes);  // a high-water mark stays
+  std::vector<std::uint8_t> out;
+  for (std::uint32_t i = 0; i < kFrames; ++i) {
+    REQUIRE(cache.load(1000 + i, kW, kH, out));
+    CHECK(out == noise(100 + i));
+  }
+  CHECK(cache.reserve(5000));  // caught up: read-backs are claimed again
+  cache.release(5000);
+}
+
+TEST_CASE("disk cache: the hard cap refuses a frame and leaves the caller's bytes", "[disk_cache][backpressure]") {
+  const fs::path dir = fresh_dir("hardcap");
+  DiskCache cache(DiskCacheOptions{.writers = 1, .softQueueBytes = 2 * kFrameBytes, .hardQueueBytes = 4 * kFrameBytes});
+  cache.configure(utf8(dir), 64ULL * 1024 * 1024);
+  cache.flush();
+  cache.pause(true);
+  for (std::uint32_t i = 0; i < 4; ++i) CHECK(cache.store(10 + i, kW, kH, noise(i)));
+  auto keep = noise(77);
+  CHECK(cache.enqueue(99, kW, kH, keep) == StoreResult::refused);
+  CHECK(keep == noise(77));  // untouched: the caller keeps its RAM copy
+  CHECK_FALSE(cache.store(98, kW, kH, noise(78)));  // the bool wrapper says the same
+  // Not wanted is not refused: a frame already queued is skipped, and not counted.
+  auto again = noise(0);
+  CHECK(cache.enqueue(10, kW, kH, again) == StoreResult::skipped);
+  CHECK(again == noise(0));
+  auto s = cache.stats();
+  CHECK(s.refused == 2);
+  CHECK(s.queueSoftBytes == 2 * kFrameBytes);
+  CHECK(s.queueHardBytes == 4 * kFrameBytes);
+  CHECK(s.writers == 1);
+
+  cache.pause(false);
+  cache.flush();
+  CHECK_FALSE(cache.contains(99));
+  CHECK(cache.enqueue(99, kW, kH, keep) == StoreResult::queued);  // room again
+  CHECK(keep.empty());
+  cache.flush();
+  std::vector<std::uint8_t> out;
+  REQUIRE(cache.load(99, kW, kH, out));
+  CHECK(out == noise(77));
+  s = cache.stats();
+  CHECK(s.dropped == 0);
+  CHECK(s.writes == 5);
+}
+
+TEST_CASE("disk cache: an empty queue takes a frame larger than the hard cap", "[disk_cache][backpressure]") {
+  const fs::path dir = fresh_dir("oversize");
+  DiskCache cache(DiskCacheOptions{.writers = 1, .softQueueBytes = kFrameBytes / 4, .hardQueueBytes = kFrameBytes / 2});
+  cache.configure(utf8(dir), 64ULL * 1024 * 1024);
+  cache.flush();
+  cache.pause(true);
+  auto big = flat(1);
+  CHECK(cache.enqueue(1, kW, kH, big) == StoreResult::queuedBehind);
+  auto next = flat(2);
+  CHECK(cache.enqueue(2, kW, kH, next) == StoreResult::refused);
+  cache.pause(false);
+  cache.flush();
+  CHECK(cache.contains(1));
+}
+
+TEST_CASE("disk cache: the writer pool sizes itself to the machine", "[disk_cache][backpressure]") {
+  DiskCache cache;
+  const auto s = cache.stats();
+  CHECK(s.writers >= 1);
+  CHECK(s.writers <= DiskCache::kMaxWriters);
+  CHECK(s.queueSoftBytes == DiskCache::kSoftQueuedBytes);
+  CHECK(s.queueHardBytes == 4 * DiskCache::kSoftQueuedBytes);
+}
+
+TEST_CASE("disk cache: many writers at once keep the index and the files whole", "[disk_cache][backpressure]") {
+  const fs::path dir = fresh_dir("pool");
+  constexpr std::uint32_t kFrames = 200;
+  {
+    DiskCache cache(DiskCacheOptions{.writers = 4, .softQueueBytes = 0, .hardQueueBytes = 0});
+    cache.configure(utf8(dir), 256ULL * 1024 * 1024);
+    cache.flush();
+    for (std::uint32_t i = 0; i < kFrames; ++i) {
+      // Half noise (stored raw), half flat (compressed): both paths at once.
+      REQUIRE(cache.store(1 + i, kW, kH, i % 2 == 0 ? noise(i) : flat(static_cast<std::uint8_t>(i))));
+      cache.store_alias(100000 + i, 50000 + i, 1 + i);
+    }
+    cache.flush();
+    const auto s = cache.stats();
+    CHECK(s.writes == kFrames);
+    CHECK(s.entries == kFrames);
+    CHECK(s.dropped == 0);
+    CHECK(s.refused == 0);
+    CHECK(s.queuedBytes == 0);
+    std::vector<std::uint8_t> out;
+    for (std::uint32_t i = 0; i < kFrames; ++i) {
+      REQUIRE(cache.load(1 + i, kW, kH, out));
+      CHECK(out == (i % 2 == 0 ? noise(i) : flat(static_cast<std::uint8_t>(i))));
+    }
+    cache.flush();  // the hits' touches
+    CHECK(count_files(dir / DiskCache::kSubfolder, ".pfc") == kFrames);
+    CHECK(count_files(dir / DiskCache::kSubfolder, ".tmp") == 0);
+  }
+  // The next session's scan: the same files, the same bytes, every alias record whole.
+  DiskCache next(DiskCacheOptions{.writers = 4, .softQueueBytes = 0, .hardQueueBytes = 0});
+  next.configure(utf8(dir), 256ULL * 1024 * 1024);
+  next.flush();
+  CHECK(next.stats().entries == kFrames);
+  std::vector<std::uint8_t> out;
+  for (std::uint32_t i = 0; i < kFrames; ++i) {
+    REQUIRE(next.load(1 + i, kW, kH, out));
+    CHECK(out == (i % 2 == 0 ? noise(i) : flat(static_cast<std::uint8_t>(i))));
+    const auto a = next.find_alias(100000 + i);
+    REQUIRE(a.has_value());
+    CHECK(a->first == 50000 + i);
+    CHECK(a->second == 1 + i);
+  }
+  CHECK(fs::file_size(dir / DiskCache::kSubfolder / "aliases-v1.bin") == std::uintmax_t{kFrames} * 24U);
+}
+
 // Hidden (run with "[.disk_cache_bench]"): where a 1080p disk hit's time goes, without the GPU upload.
 TEST_CASE("disk cache: 1080p load timing", "[.disk_cache_bench]") {
   constexpr std::uint32_t w = 1920;

@@ -652,6 +652,11 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
 #if defined(PREMATION_HAVE_MEDIA)
   if (media_ == nullptr) return {};
   const std::string key = utf8_path(p.lexically_normal());
+  // A SourceId stays valid for the MediaSystem's lifetime, but its decoder may
+  // be closed for the decoder-pool cap at any time (media_system.hpp). Nothing
+  // here needs it open: index() / info() come from the probe, and the frame is
+  // requested through MediaTextures, whose miss re-opens the source and draws
+  // a stand-in until the frame settles (render_thread's retry).
   std::uint32_t id = 0;
   if (const auto it = sources_.find(key); it != sources_.end()) {
     id = it->second;

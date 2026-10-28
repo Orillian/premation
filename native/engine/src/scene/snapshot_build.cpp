@@ -53,6 +53,19 @@
 #include "transform.hpp"
 
 namespace premation::scene {
+
+// snapshot_build.hpp WalkTopology: time-independent, so the WalkCache keeps it across frames.
+struct WalkTopology {  // NOLINT(bugprone-exception-escape): as WalkNodes (MSVC's node-based containers)
+  /// Flatten → collapsed instances → the sealed pass's overrides (cloners not yet expanded).
+  WalkNodes walk;
+  /// `walk.nodes` by id (the first node with an id wins, as the walk always did).
+  std::unordered_map<std::string, const doc::Node*> byId;
+  /// A walked node carries a `__cloner` object: the walk expands cloners per
+  /// frame (a cloner can read the raw graph at the frame's time). False proves
+  /// expand_cloners a no-op (read_cloner reads only that object).
+  bool mayClone = false;
+};
+
 namespace {
 
 using doc::Bar;
@@ -290,20 +303,20 @@ class Walk final : public Scene3DHost {
   xf::Local2D world2d(const std::string& id) override { return world_of(id); }
   [[nodiscard]] std::optional<std::string> parent3d_of(const std::string& id) const override { return parent_of(id); }
   bool live3d(const std::string& id) override { return is_live_at(id); }
-  [[nodiscard]] std::string anim_id3d(const std::string& id) const override { return wn_.src(id); }
+  [[nodiscard]] std::string anim_id3d(const std::string& id) const override { return wn_->src(id); }
 
  private:
   /// `srcId(id)` (comp_instance.cpp): the node a walked id samples animation and clips from.
-  [[nodiscard]] const std::string& sid(const std::string& id) const { return wn_.src(id); }
+  [[nodiscard]] const std::string& sid(const std::string& id) const { return wn_->src(id); }
   /// The animation wrapper's `sample` (an Essential-Properties override drops the track).
   std::optional<double> anim_sample_of(const std::string& id, std::string_view prop, double tt) {
-    if (wn_.is_overridden(id, prop)) return std::nullopt;
+    if (wn_->is_overridden(id, prop)) return std::nullopt;
     return doc::anim_sample(d_, c_.expr, c_.cache, sid(id), prop, tt);
   }
   // ── lookups ──
   [[nodiscard]] const doc::Node* node(std::string_view id) const {
-    const auto it = byId_.find(std::string(id));
-    return it == byId_.end() ? nullptr : it->second;
+    const auto it = byId_->find(std::string(id));
+    return it == byId_->end() ? nullptr : it->second;
   }
   const Values& values_of(const std::string& id);
   double remap(const std::string& id, double tt, bool subFrame, bool extrapolate = false);
@@ -367,10 +380,21 @@ class Walk final : public Scene3DHost {
   /// A collapsed comp layer — except in the Layer panel, where it is sealed (shown as a card).
   [[nodiscard]] bool collapsed(const doc::Node& n) const { return !layer_view_of(n) && doc::read_comp_collapse(n); }
 
-  std::vector<const doc::Node*> nodes_;
-  /// The walked nodes' owner: collapsed-instance clones and override copies.
-  WalkNodes wn_;
-  std::unordered_map<std::string, const doc::Node*> byId_;
+  /// The walk's topology (flatten + collapsed instances + sealed overrides),
+  /// from the frame builder's WalkCache or built for this walk alone.
+  // shared_ptr: shared with the builder's WalkCache, which may drop its entry
+  // (a nested pass's insert past the cap, a new document) while this walk still
+  // reads the nodes and clones the topology owns.
+  std::shared_ptr<const WalkTopology> topo_;
+  /// This frame's cloner expansion, only when the topology holds a cloner
+  /// (cloners read the raw graph at t_): the topology's nodes by pointer plus
+  /// this frame's clones, which it owns.
+  WalkNodes clonedWn_;
+  std::unordered_map<std::string, const doc::Node*> clonedById_;
+  /// What the walk reads: the topology's, or this frame's cloner expansion.
+  const WalkNodes* wn_ = nullptr;
+  const std::unordered_map<std::string, const doc::Node*>* byId_ = nullptr;
+  [[nodiscard]] const std::vector<const doc::Node*>& walked() const { return wn_->nodes; }
   std::unordered_map<std::string, Values> values_;
   std::unordered_map<std::string, std::vector<const Bar*>> clips_;
   std::unordered_map<std::string, bool> live_;
@@ -393,7 +417,7 @@ const Values& Walk::values_of(const std::string& id) {
   const auto it = values_.find(id);
   if (it != values_.end()) return it->second;
   Values v(doc::anim_evaluate_node(d_, c_.expr, c_.cache, sid(id), remap(id, t_, false)));
-  if (const auto ov = wn_.overridden.find(id); ov != wn_.overridden.end()) {
+  if (const auto ov = wn_->overridden.find(id); ov != wn_->overridden.end()) {
     for (const std::string& p : ov->second) v.erase(p);
   }
   return values_.emplace(id, std::move(v)).first->second;
@@ -517,10 +541,10 @@ double Walk::remap(const std::string& id, double ttIn, bool subFrame, bool extra
 }
 
 double Walk::clone_time_offset(const std::string& id) const {
-  if (wn_.cloneOffsets.empty()) return 0;
+  if (wn_->cloneOffsets.empty()) return 0;
   const doc::Node* cur = node(id);
   for (int i = 0; cur != nullptr && i < 64; ++i) {
-    if (const auto it = wn_.cloneOffsets.find(cur->id); it != wn_.cloneOffsets.end()) return it->second.timeOffset;
+    if (const auto it = wn_->cloneOffsets.find(cur->id); it != wn_->cloneOffsets.end()) return it->second.timeOffset;
     cur = cur->parent ? node(*cur->parent) : nullptr;
   }
   return 0;
@@ -563,7 +587,7 @@ std::optional<std::string> Walk::parent_of(const std::string& id) const {
   const doc::Node* n = node(id);
   // A comp instance's top clones are authored in the referenced comp's own
   // space: the transform chain stops at them (isCompInstanceRoot).
-  if (n == nullptr || wn_.instance_root(id)) return std::nullopt;
+  if (n == nullptr || wn_->instance_root(id)) return std::nullopt;
   return n->parent;
 }
 
@@ -737,7 +761,7 @@ std::vector<Json> Walk::effects_of(const doc::Node& n, const Values& a, std::opt
     // buildSnapshot's `anim` bound to this node (Write-on's dab history).
     HandoffAnim anim{
         [this, &n](std::string_view prop, double tt) { return anim_sample_of(n.id, prop, tt); },
-        [this, &n](std::string_view prop) { return !wn_.is_overridden(n.id, prop) && doc::anim_is_animated(d_, sid(n.id), prop); },
+        [this, &n](std::string_view prop) { return !wn_->is_overridden(n.id, prop) && doc::anim_is_animated(d_, sid(n.id), prop); },
         std::nullopt};
     if (const auto span = doc::anim_time_span(d_, sid(n.id))) anim.firstKey = span->start;
     resolve_effect_handoffs(resolved, n, a, layerTime, c_.measurer, notes, &anim);
@@ -950,7 +974,7 @@ void Walk::motion_samples(RLayer& l, const doc::Node& n, const Base& base, const
       "x", "y", "rotation", "scale", "scaleX", "scaleY", "z", "rotationX", "rotationY",
       "orientationX", "orientationY", "orientationZ"};
   const bool moves = std::ranges::any_of(
-      kMoves, [&](std::string_view p) { return !wn_.is_overridden(id, p) && doc::anim_is_animated(d_, sid(id), p); });
+      kMoves, [&](std::string_view p) { return !wn_->is_overridden(id, p) && doc::anim_is_animated(d_, sid(id), p); });
   // A 3D layer also moves on screen when the camera does.
   if (!moves && !(matrixAt && three_ && three_->camera_animated())) return;
   const auto sample = [&](std::string_view prop, double tt) { return anim_sample_of(id, prop, tt); };
@@ -1319,8 +1343,8 @@ void Walk::build_node(const doc::Node& n) {
   l.kind = layerKind;
   const double layerTimeNow = remap(n.id, t_, false);
   // A cloner clone's opacity MULTIPLIES the resolved one (cloner_port.cpp).
-  const auto cloneOff = wn_.cloneOffsets.find(n.id);
-  const CloneOffset* clone = cloneOff != wn_.cloneOffsets.end() ? &cloneOff->second : nullptr;
+  const auto cloneOff = wn_->cloneOffsets.find(n.id);
+  const CloneOffset* clone = cloneOff != wn_->cloneOffsets.end() ? &cloneOff->second : nullptr;
   // Focus Mode: a layer outside the working set is a dim reference (buildSnapshot GHOST_OPACITY).
   constexpr double kGhostOpacity = 0.12;
   const bool ghost = !c_.focusLayers.empty() && !layer_view_of(n) &&
@@ -1994,49 +2018,57 @@ void Walk::build_node(const doc::Node& n) {
 }
 
 Snapshot Walk::run() {
-  // Collapsed instances expand into clones; a sealed pass applies its overrides (comp_instance.cpp).
-  if (c_.layerView) {
-    // LAYER PANEL: the one layer and nothing else — not the layers parented to
-    // it — and sealed: no collapsed-instance expansion (the panel shows a
-    // collapsed comp as a card, drawn by its own pass).
-    std::vector<const doc::Node*> flat = flatten_composition(d_, comp_.rootId);
-    std::erase_if(flat, [&](const doc::Node* n) { return n->id != c_.layerView->id; });
-    wn_ = WalkNodes{};
-    wn_.nodes = std::move(flat);
-  } else {
-    wn_ = expand_walk_nodes(d_, flatten_composition(d_, comp_.rootId), comp_.rootId, comp_.compOverrides);
+  // The flattened comp with its collapsed instances expanded and the sealed
+  // pass's overrides applied: a function of the document alone, so the frame
+  // builder's WalkCache keeps it across frames (built here when there is none).
+  const std::optional<std::string> layerViewId = c_.layerView ? std::optional<std::string>(c_.layerView->id) : std::nullopt;
+  topo_ = c_.walkCache != nullptr ? c_.walkCache->topology(d_, comp_.rootId, comp_.compOverrides, layerViewId)
+                                  : make_walk_topology(d_, comp_.rootId, comp_.compOverrides, layerViewId);
+  wn_ = &topo_->walk;
+  byId_ = &topo_->byId;
+  if (topo_->mayClone) {
+    // Cloners stay per frame: a layer falloff or a path cloner reads the raw
+    // graph's world matrices at t_ (cloner_port.cpp fieldOf / pathOf). The
+    // cached nodes are shared by pointer; only this frame's clones are owned here.
+    clonedWn_.nodes = topo_->walk.nodes;
+    clonedWn_.source = topo_->walk.source;
+    clonedWn_.instanceRoots = topo_->walk.instanceRoots;
+    clonedWn_.overridden = topo_->walk.overridden;
+    clonedWn_.cloneOffsets = topo_->walk.cloneOffsets;
+    expand_cloners(clonedWn_, raw_);  // cloner_port.cpp
+    clonedById_.reserve(clonedWn_.nodes.size());
+    for (const doc::Node* n : clonedWn_.nodes) clonedById_.emplace(n->id, n);
+    wn_ = &clonedWn_;
+    byId_ = &clonedById_;
   }
-  expand_cloners(wn_, raw_);  // cloner_port.cpp
-  nodes_ = wn_.nodes;
-  for (const doc::Node* n : nodes_) byId_.emplace(n->id, n);
   // The Layer panel's layer draws un-soloed.
-  anySolo_ = !c_.layerView && std::ranges::any_of(nodes_, [](const doc::Node* n) { return n->solo; });
+  anySolo_ = !c_.layerView && std::ranges::any_of(walked(), [](const doc::Node* n) { return n->solo; });
   std::set<std::string, std::less<>> roots;
-  if (!c_.isolateLayer.empty() && byId_.contains(c_.isolateLayer)) roots.insert(c_.isolateLayer);
+  if (!c_.isolateLayer.empty() && byId_->contains(c_.isolateLayer)) roots.insert(c_.isolateLayer);
   for (const std::string& id : c_.isolateAlso) {
-    if (byId_.contains(id)) roots.insert(id);
+    if (byId_->contains(id)) roots.insert(id);
   }
   if (!roots.empty()) {
     // getThumbnail of a layer: it alone draws (with what it holds), as if the
     // only soloed layer (Rig Logo: several together). A nested comp's walk
     // does not hold them: unaffected.
-    for (const doc::Node* n : nodes_) {
+    for (const doc::Node* n : walked()) {
       for (const doc::Node* up = n; up != nullptr;) {
         if (roots.contains(up->id)) {
           isolated_.insert(n->id);
           break;
         }
-        const auto it = up->parent ? byId_.find(*up->parent) : byId_.end();
-        up = it != byId_.end() ? it->second : nullptr;
+        const auto it = up->parent ? byId_->find(*up->parent) : byId_->end();
+        up = it != byId_->end() ? it->second : nullptr;
       }
     }
     // The groups above them: a group draws nothing of its own, but its
     // visibility carries to what it holds.
     for (const std::string& root : roots) {
-      const doc::Node* n = byId_.at(root);
+      const doc::Node* n = byId_->at(root);
       while (n->parent) {
-        const auto it = byId_.find(*n->parent);
-        if (it == byId_.end()) break;
+        const auto it = byId_->find(*n->parent);
+        if (it == byId_->end()) break;
         n = it->second;
         if (n->kind() == "group") isolated_.insert(n->id);
       }
@@ -2049,7 +2081,7 @@ Snapshot Walk::run() {
     // any is placed), seeded from each layer's AUTHORED pose (readBase). The world
     // is physicsStore's default: gravity 0 / 1800, the comp rectangle, 4 passes.
     std::vector<physics::BodySeed> seeds;
-    for (const doc::Node* n : nodes_) {
+    for (const doc::Node* n : walked()) {
       std::optional<physics::BodyConfig> cfg;
       for (const auto& comp : n->components) {
         const Json& raw = comp.props.at("__physics");
@@ -2077,12 +2109,12 @@ Snapshot Walk::run() {
   }
   // The camera, DOF and lights resolve before the walk (buildSnapshot order).
   three_ = std::make_unique<Scene3D>(*this, c_, comp_, t_, mb_);
-  three_->setup(nodes_);
+  three_->setup(walked());
 
   // Which layers must be fully built (buildSnapshot `needsFullBuild`).
   {
     std::vector<const doc::Node*> order;
-    for (const doc::Node* n : nodes_) {
+    for (const doc::Node* n : walked()) {
       const std::string k = n->kind();
       if (k == "group" || k == "null" || k == "camera" || k == "audio") continue;
       if (k == "comp" && collapsed(*n)) continue;
@@ -2113,7 +2145,7 @@ Snapshot Walk::run() {
     }
   }
 
-  for (const doc::Node* n : nodes_) {
+  for (const doc::Node* n : walked()) {
     if (n->id == comp_.rootId) continue;  // the composition root is the frame, not a layer
     const std::size_t markTop = layers_.size();
     std::map<std::string, std::size_t, std::less<>> markInner;
@@ -2353,7 +2385,114 @@ Snapshot Walk::run() {
   return s;
 }
 
+/// The memo's cap (comp × overrides × Layer panel layer); past it the memo starts over.
+constexpr std::size_t kWalkCacheEntries = 256;
+
 }  // namespace
+
+// ── the walk memo (snapshot_build.hpp WalkCache) ────────────────────────────
+
+std::shared_ptr<const WalkTopology> make_walk_topology(const Document& d, const std::string& rootId,
+                                                       const std::map<std::string, Json, std::less<>>& overrides,
+                                                       const std::optional<std::string>& layerViewId) {
+  auto t = std::make_shared<WalkTopology>();
+  if (layerViewId) {
+    // LAYER PANEL: the one layer and nothing else — not the layers parented to
+    // it — and sealed: no collapsed-instance expansion (the panel shows a
+    // collapsed comp as a card, drawn by its own pass).
+    std::vector<const doc::Node*> flat = flatten_composition(d, rootId);
+    std::erase_if(flat, [&](const doc::Node* n) { return n->id != *layerViewId; });
+    t->walk.nodes = std::move(flat);
+  } else {
+    // Collapsed instances expand into clones; a sealed pass applies its overrides (comp_instance.cpp).
+    t->walk = expand_walk_nodes(d, flatten_composition(d, rootId), rootId, overrides);
+  }
+  t->byId.reserve(t->walk.nodes.size());
+  for (const doc::Node* n : t->walk.nodes) t->byId.emplace(n->id, n);
+  t->mayClone = std::ranges::any_of(t->walk.nodes, [](const doc::Node* n) {
+    return std::ranges::any_of(n->components, [](const doc::Component& c) { return c.props.at("__cloner").is_object(); });
+  });
+  return t;
+}
+
+struct WalkCache::State {
+  /// The document the memo was built from, by entity identity (see the header).
+  std::vector<std::shared_ptr<const doc::Node>> nodePins;
+  std::vector<std::shared_ptr<const Json>> compPins;
+  struct Entry {
+    std::map<std::string, Json, std::less<>> overrides;
+    std::shared_ptr<const WalkTopology> topo;
+  };
+  /// "<rootId>\x1f[L<layerViewId>]" → the entries for each override set.
+  std::unordered_map<std::string, std::vector<Entry>> entries;
+  std::size_t count = 0;
+};
+
+WalkCache::WalkCache() : s_(std::make_unique<State>()) {}
+WalkCache::~WalkCache() = default;
+
+void WalkCache::clear() noexcept {
+  s_->entries.clear();
+  s_->count = 0;
+  s_->nodePins.clear();
+  s_->compPins.clear();
+}
+
+void WalkCache::revalidate(const Document& d) {
+  State& s = *s_;
+  validatedDoc_ = &d;
+  const auto& nodes = d.nodes().entries();
+  const auto& comps = d.comps().entries();
+  bool same = s.nodePins.size() == nodes.size() && s.compPins.size() == comps.size();
+  for (std::size_t i = 0; same && i < nodes.size(); ++i) same = s.nodePins[i].get() == nodes[i].second.get();
+  for (std::size_t i = 0; same && i < comps.size(); ++i) same = s.compPins[i].get() == comps[i].second.get();
+  if (same) return;
+  ++revisions_;
+  clear();
+  s.nodePins.reserve(nodes.size());
+  for (const auto& e : nodes) s.nodePins.emplace_back(e.second);
+  s.compPins.reserve(comps.size());
+  for (const auto& e : comps) s.compPins.emplace_back(e.second);
+}
+
+std::shared_ptr<const WalkTopology> WalkCache::topology(const Document& d, const std::string& rootId,
+                                                        const std::map<std::string, Json, std::less<>>& overrides,
+                                                        const std::optional<std::string>& layerViewId) {
+  // Outside a Scope, or a nested build over another document: compare here.
+  if (depth_ == 0 || &d != validatedDoc_) revalidate(d);
+  State& s = *s_;
+  std::string key = rootId;
+  key.push_back('\x1f');
+  if (layerViewId) {
+    key.push_back('L');
+    key += *layerViewId;
+  }
+  if (const auto it = s.entries.find(key); it != s.entries.end()) {
+    for (const State::Entry& e : it->second) {
+      if (e.overrides == overrides) return e.topo;
+    }
+  }
+  if (s.count >= kWalkCacheEntries) {
+    // Walks in flight hold their topologies (shared_ptr): dropping the memo is safe mid-build.
+    s.entries.clear();
+    s.count = 0;
+  }
+  std::shared_ptr<const WalkTopology> topo = make_walk_topology(d, rootId, overrides, layerViewId);
+  ++flattens_;
+  s.entries[key].push_back({overrides, topo});
+  ++s.count;
+  return topo;
+}
+
+WalkCache::Scope::Scope(WalkCache* cache, const Document& d) : cache_(cache) {
+  if (cache_ == nullptr) return;
+  if (cache_->depth_ == 0) cache_->revalidate(d);
+  ++cache_->depth_;
+}
+
+WalkCache::Scope::~Scope() {
+  if (cache_ != nullptr) --cache_->depth_;
+}
 
 SnapshotComp snapshot_comp_of(const Document& d, std::string_view comp) {
   SnapshotComp s;
@@ -2426,6 +2565,8 @@ Snapshot build_snapshot(const BuildContext& c, const SnapshotComp& comp, double 
   // The build only READS the document: clip-bar lookups answer from the
   // per-timeline index (timeline.hpp) instead of scanning every bar per layer.
   const doc::TlReadScope readOnly;
+  // The outermost build compares the document with the walk memo's (nested passes share the answer).
+  const WalkCache::Scope memo(c.walkCache, c.d);
   Walk w(c, comp, t, motionBlur);
   return w.run();
 }

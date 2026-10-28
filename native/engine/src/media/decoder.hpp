@@ -1,6 +1,6 @@
 // One video stream's demuxer + decoder (ffmpeg behind the interface; the only
 // code that includes libav* is decoder_ffi.cpp). Single-threaded: a decoder
-// belongs to one worker thread (MediaSystem gives every source its own), while
+// belongs to one worker thread (MediaSystem gives every open source its own), while
 // libavcodec runs its own slice/frame threads underneath.
 #pragma once
 
@@ -48,7 +48,8 @@ struct DecoderOptions {
   /// MultiPlanarFormatP010, not offered on D3D12 by the pinned Dawn): such
   /// frames are downloaded to system memory instead (one upload later).
   bool keepHighBitOnGpu = false;
-  /// libavcodec threads (0 = one per core, capped at 16).
+  /// libavcodec threads (0 = one per core, capped at 16). MediaSystem passes its
+  /// shared budget here (the cores split among open decoders, see media_system.hpp).
   int threads = 0;
   /// Fault injection for tests: the hardware decoder "fails" once it has
   /// delivered this many frames (-1 = never), exercising the per-clip software fallback.

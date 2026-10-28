@@ -47,10 +47,8 @@ import { packagePathsIn } from './pluginFileInstall';
 import { getKeyForProvider, registerAiKeyIpc, VAULT_PROVIDERS, type VaultProvider } from './aiKeyVault';
 import { registerAiProxyIpc, abortAllStreams } from './aiProxy';
 import { registerModelDownloadIpc, abortAllModelDownloads } from './modelDownload';
-import { objectMatteUserDir, registerObjectMatteModelIpc } from './objectMatteModel';
-import { faceModelUserDir, registerFaceModelIpc } from './faceModel';
-import { depthModelUserDir, registerDepthModelIpc } from './depthModel';
-import { handModelUserDir, registerHandModelIpc } from './handModel';
+import { registerModelsIpc } from './modelInstaller';
+import { modelUserDir } from './modelManifest';
 import { registerMediaKeyIpc } from './mediaKeyVault';
 import { registerAiMediaProxyIpc } from './aiMediaProxy';
 import { registerApiProxyIpc, abortAllApiStreams, sendWithAuth } from './apiProxy';
@@ -1414,17 +1412,14 @@ app.whenReady().then(() => {
   const supervisorLoaded = exportSupervisor.load();
   registerPopoutIpc();
   registerOAuthIpc();
-  // The user's Object Matte model (Settings ▸ Object Matte ▸ Install): main
-  // downloads it into <userData>/models/object-matte, where the engine reads
-  // it (objectMatteModel.ts); the cancel channel is modelDownload.ts. Ungated:
-  // it attaches no credential and runs only on an explicit press.
-  registerObjectMatteModelIpc(() => app.getPath('userData'));
-  // Face Tracking's landmark model, downloaded on first use (faceModel.ts).
-  registerFaceModelIpc(() => app.getPath('userData'));
-  // Make 3D from Photo's depth model, a PINNED download on first use (depthModel.ts).
-  registerDepthModelIpc(() => app.getPath('userData'));
-  // Live performance input's hand models, a PINNED download on first use (handModel.ts).
-  registerHandModelIpc(() => app.getPath('userData'));
+  // The ML models (models.json: Object Matte, face landmarks, depth, hand):
+  // main downloads one into <userData>/models/<id>, where the engine reads it
+  // (modelInstaller.ts); the cancel channel is modelDownload.ts. Ungated: the
+  // download attaches no credential and runs only when the page asks.
+  registerModelsIpc({
+    userData: () => app.getPath('userData'),
+    app: { isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.isPackaged ? app.getAppPath() : path.join(__dirname, '..') },
+  });
   registerModelDownloadIpc();
   // Export's ffmpeg: health check, one-click repair download, "choose file"
   // (ffmpegService.ts). Ungated for the same reason as the model download.
@@ -1493,10 +1488,10 @@ app.whenReady().then(() => {
     // Imported bytes and session blob: footage become files here (the same
     // folder file:sessionFootageDir hands the page).
     sessionFootageDir: ensureDir(path.join(app.getPath('userData'), 'session-footage')),
-    samUserDir: objectMatteUserDir(app.getPath('userData')),
-    faceUserDir: faceModelUserDir(app.getPath('userData')),
-    depthUserDir: depthModelUserDir(app.getPath('userData')),
-    handUserDir: handModelUserDir(app.getPath('userData')),
+    samUserDir: modelUserDir(app.getPath('userData'), 'object-matte'),
+    faceUserDir: modelUserDir(app.getPath('userData'), 'face-landmarks'),
+    depthUserDir: modelUserDir(app.getPath('userData'), 'depth-anything'),
+    handUserDir: modelUserDir(app.getPath('userData'), 'hand-landmarks'),
     userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>

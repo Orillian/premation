@@ -162,6 +162,8 @@ Session::Session(Outbox& out, FrameSink& sink, SessionOptions options)
     files->set_footage_dir(options_.footageDir);
     ports_ = std::move(files);
   }
+  // The frame-key index (core/frame_keys.hpp) holds itself to a share of the machine's RAM.
+  if (options_.hostMemory) frameKeys_.set_budget_bytes(doc::FrameKeyIndex::budget_for(options_.hostMemory().physicalBytes));
   // The engine starts on a new project, as the editor does (New Project →
   // `comp_root`), at revision 0.
   load_new_project(api::ResetReason::created, false);
@@ -2081,6 +2083,7 @@ void Session::stop_playback() {
       .kv("keyed", playTally_.keyed)
       .kv("servedWithoutBuild", playTally_.cached)
       .kv("indexed", frameKeys_.indexed())
+      .kv("indexBytes", frameKeys_.bytes())
       .kv("volatile", frameKeys_.volatile_inputs())
       .kv("buildMs", buildMs_);
   playing_ = false;

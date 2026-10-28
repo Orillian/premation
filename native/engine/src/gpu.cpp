@@ -1,14 +1,85 @@
 #include "gpu.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
+#include "engine_process.hpp"
+#include "os_ffi.hpp"
 #include "render_graph/device_limits.hpp"
 
 namespace premation {
 namespace {
+
+// ── Dawn's blob cache on disk ────────────────────────────────────────────────
+// Dawn hands every compiled shader (and, on D3D12, the pipeline state it
+// built) to these callbacks keyed by a hash of the source, the toggles and the
+// adapter; the next launch loads them instead of compiling. Without it every
+// engine start recompiled every material the first frame used (FXC: tens of
+// seconds for the fx-graph shaders, measured 2026-10-27). One file per key,
+// named by a 64-bit FNV-1a of the key; written temp + rename, never over a
+// file being read. Dawn calls these from its own threads: each call touches
+// one file and nothing shared.
+struct BlobCache {
+  std::filesystem::path dir;
+
+  [[nodiscard]] std::filesystem::path path_of(const void* key, std::size_t keySize) const {
+    std::uint64_t h = 1469598103934665603ULL;
+    const auto* p = static_cast<const std::uint8_t*>(key);
+    for (std::size_t i = 0; i < keySize; ++i) {
+      h ^= p[i];  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      h *= 1099511628211ULL;
+    }
+    std::array<char, 24> name{};
+    std::snprintf(name.data(), name.size(), "%016llx.bin", static_cast<unsigned long long>(h));
+    return dir / name.data();
+  }
+
+  // Dawn's contract: the first call has `value` null and answers the size;
+  // the second brings a buffer of that size.
+  static std::size_t load(std::size_t keySize, const std::uint8_t* key, std::size_t valueSize, std::uint8_t* value,
+                          void* userdata, void* /*userdata2*/) {
+    const auto* self = static_cast<const BlobCache*>(userdata);
+    if (self == nullptr || key == nullptr || keySize == 0) return 0;
+    std::error_code ec;
+    const std::filesystem::path p = self->path_of(key, keySize);
+    const std::uintmax_t size = std::filesystem::file_size(p, ec);
+    if (ec || size == 0 || size > (std::uintmax_t{64} << 20U)) return 0;
+    if (value == nullptr) return static_cast<std::size_t>(size);  // the size query
+    if (valueSize < size) return 0;
+    std::ifstream in(p, std::ios::binary);
+    if (!in.read(reinterpret_cast<char*>(value), static_cast<std::streamsize>(size))) return 0;  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    return static_cast<std::size_t>(size);
+  }
+
+  static void store(std::size_t keySize, const std::uint8_t* key, std::size_t valueSize, const std::uint8_t* value,
+                    void* userdata, void* /*userdata2*/) {
+    const auto* self = static_cast<const BlobCache*>(userdata);
+    if (self == nullptr || key == nullptr || keySize == 0 || value == nullptr || valueSize == 0) return;
+    const std::filesystem::path p = self->path_of(key, keySize);
+    std::error_code ec;
+    if (std::filesystem::exists(p, ec)) return;
+    const std::filesystem::path tmp = p.string() + ".tmp";
+    {
+      std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+      if (!out.write(reinterpret_cast<const char*>(value), static_cast<std::streamsize>(valueSize))) return;  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    }
+    std::filesystem::rename(tmp, p, ec);
+    if (ec) std::filesystem::remove(tmp, ec);
+  }
+};
+
+// One cache per process: Dawn keeps the userdata pointer for the device's life.
+std::unique_ptr<BlobCache>& blob_cache() {
+  static std::unique_ptr<BlobCache> cache;
+  return cache;
+}
 
 std::string_view view(wgpu::StringView s) {
   if (s.data == nullptr) return {};
@@ -40,7 +111,8 @@ wgpu::BackendType native_backend() {
 
 }  // namespace
 
-std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std::uint32_t vendorId) {
+std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std::uint32_t vendorId,
+                              std::string_view cacheDir) {
   Gpu gpu;
 
   static constexpr auto kTimedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
@@ -138,6 +210,47 @@ std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std:
   deviceDesc.requiredFeatureCount = features.size();
   deviceDesc.requiredFeatures = features.data();
   deviceDesc.requiredLimits = &limits;
+
+  // Shader compilation. On D3D12 Dawn compiles HLSL with FXC unless told to use
+  // DXC (dxcompiler.dll + dxil.dll ship next to the engine, scripts/stageEngine.cjs);
+  // FXC took 10–60 s on the fx-graph and lumetri shaders (2026-10-27), DXC
+  // seconds. Dawn drops the toggle itself where DXC is not loadable.
+  // PREMATION_GPU_FXC=1 keeps FXC (a comparison, a driver bug).
+  std::vector<const char*> enabledToggles;
+#if defined(_WIN32)
+  const std::optional<std::string> fxc = os::env_var("PREMATION_GPU_FXC");
+  if (!fxc || *fxc != "1") enabledToggles.push_back("use_dxc");
+#endif
+  wgpu::DawnTogglesDescriptor toggles{};
+  toggles.enabledToggleCount = enabledToggles.size();
+  toggles.enabledToggles = enabledToggles.data();
+  // The persistent blob cache (BlobCache above): isolated per engine version
+  // and adapter, so a driver or engine update never serves a stale blob.
+  // The C descriptor: the C++ wrapper keeps the callback slots protected and
+  // its setters take wrapper functors; the C struct is the same bytes.
+  WGPUDawnCacheDeviceDescriptor cache = WGPU_DAWN_CACHE_DEVICE_DESCRIPTOR_INIT;
+  std::string isolationKey;
+  if (!cacheDir.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(cacheDir), ec);
+    if (!ec) {
+      blob_cache() = std::make_unique<BlobCache>(BlobCache{std::filesystem::path(cacheDir)});
+      isolationKey = std::string(kEngineVersion) + '|' + std::string(view(info.device)) + '|' +
+                     std::string(view(info.description)) + '|' + std::to_string(info.vendorID) + ':' +
+                     std::to_string(info.deviceID);
+      cache.isolationKey = WGPUStringView{isolationKey.c_str(), isolationKey.size()};
+      cache.dawnLoadCacheDataCallbackInfo.callback = &BlobCache::load;
+      cache.dawnLoadCacheDataCallbackInfo.userdata1 = blob_cache().get();
+      cache.dawnStoreCacheDataCallbackInfo.callback = &BlobCache::store;
+      cache.dawnStoreCacheDataCallbackInfo.userdata1 = blob_cache().get();
+    } else {
+      std::fprintf(stderr, "engine: shader cache folder unusable (%s): %s\n", std::string(cacheDir).c_str(),
+                   ec.message().c_str());
+    }
+  }
+  // wgpu::ChainedStruct and WGPUChainedStruct are one layout (the wrapper's own static_asserts).
+  toggles.nextInChain = blob_cache() ? reinterpret_cast<wgpu::ChainedStruct*>(&cache) : nullptr;  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  deviceDesc.nextInChain = &toggles;
   deviceDesc.SetUncapturedErrorCallback([](const wgpu::Device&, wgpu::ErrorType type, wgpu::StringView msg) {
     std::fprintf(stderr, "engine: GPU error %d: %.*s\n", static_cast<int>(type), static_cast<int>(view(msg).size()),
                  view(msg).data());

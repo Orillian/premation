@@ -49,6 +49,7 @@ import { usePerformanceStore, type PerformanceTarget } from '@stores/performance
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { useUIStore } from '@stores/uiStore';
 import { trackRef } from '@layout/Inspector/inspectorEdits';
+import { ensureModelInstalled } from '@layout/Settings/modelDownloadJob';
 import {
   armMotionSketchEdit,
   canRefitLastTake,
@@ -498,8 +499,16 @@ async function startHand(): Promise<void> {
     offStatus();
     offPrefs();
   };
-  const refused = await startHandSource({ now: playheadSeconds, onEvent: onHandEvent });
-  if (refused) notify(refused, 'warning');
+  // The source is on at once (the bar shows it); the hand models are fetched
+  // beside it when this build has no bundled copy (a pinned download, with the
+  // status bar's job chip): picking Hand is the ask, Settings is not a detour.
+  const started = startHandSource({ now: playheadSeconds, onEvent: onHandEvent });
+  const model = await ensureModelInstalled('handModel');
+  let refused = await started;
+  if (!unwatchHand) return;  // the source was switched off meanwhile
+  // Refused for want of the model, now installed: once more.
+  if (refused && model.ok) refused = await startHandSource({ now: playheadSeconds, onEvent: onHandEvent });
+  if (refused && model.ok) notify(refused, 'warning');  // a failed download has already been toasted
 }
 
 function stopHand(): void {

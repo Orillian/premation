@@ -890,3 +890,115 @@ TEST_CASE("E8: the ground grid draws into a frame that asks for it, against the 
   REQUIRE(renderer->render(file, &again, sa, err));
   CHECK(again.rgba == plain.rgba);
 }
+
+namespace {
+
+/// A precomp layer `id` over the whole 64×48 comp of solid_scene, holding `child`
+/// (a collapsed-transform instance: the child is already in comp space).
+api::Renderable precomp_layer(const std::string& id, api::Renderable child, double opacity) {
+  api::Renderable pc;
+  pc.id = id;
+  pc.kind = api::RenderableKind::image;
+  pc.model_matrix = {64, 0, 0, 0, 48, 0, 0, 0, 1};
+  pc.bounds = {0, 0, 64, 48};
+  pc.opacity = opacity;
+  pc.texture_key = "precomp:" + id;
+  pc.precomp = api::RenderPrecompFrame{};
+  pc.precomp_children.push_back(std::move(child));
+  return pc;
+}
+
+}  // namespace
+
+TEST_CASE("precomp cache: a static nested precomp is drawn once, then composited from its kept image, pixel for pixel") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = solid_scene(1, 0.5, 0);
+  const api::Renderable rect = file.scene.renderables[0];
+  file.scene.renderables[0] = precomp_layer("outer", precomp_layer("inner", rect, 0.5), 0.75);
+  std::vector<std::uint8_t> firstRgba;
+  for (int i = 0; i < 3; ++i) {
+    Frame f;
+    FrameStats s;
+    REQUIRE(renderer->render(file, &f, s, err));
+    CHECK(s.gpuError.empty());
+    CHECK(s.diagnostics.empty());
+    CHECK(s.effects.precompsInline == 0);
+    if (i == 0) {
+      // Both levels drawn (and kept: seen for the first time).
+      CHECK(s.effects.precompsRendered == 2);
+      CHECK(s.effects.precompsCached == 0);
+      firstRgba = f.rgba;
+    } else {
+      // The outer precomp's kept image: its subtree (the inner one too) is not visited.
+      CHECK(s.effects.precompsRendered == 0);
+      CHECK(s.effects.precompsCached == 1);
+      CHECK(f.rgba == firstRgba);
+    }
+  }
+  // The comp is not just the background: the nested rect is there.
+  CHECK(firstRgba.at((std::size_t{24} * 64 + 32) * 4) > 0);
+
+  // The inner rect changes: both levels are drawn again, with the new colour.
+  file.scene.renderables[0].precomp_children[0].precomp_children[0].color = api::Color{0, 0.5, 1, 1};
+  Frame changed;
+  FrameStats sc;
+  REQUIRE(renderer->render(file, &changed, sc, err));
+  CHECK(sc.effects.precompsRendered == 2);
+  CHECK(sc.effects.precompsCached == 0);
+  CHECK(changed.rgba != firstRgba);
+  // A key that changed since last frame (animated) is not kept; held for a frame it is.
+  Frame held;
+  FrameStats sh;
+  REQUIRE(renderer->render(file, &held, sh, err));
+  CHECK(sh.effects.precompsRendered == 2);
+  CHECK(held.rgba == changed.rgba);
+  Frame after;
+  FrameStats sa;
+  REQUIRE(renderer->render(file, &after, sa, err));
+  CHECK(sa.effects.precompsRendered == 0);
+  CHECK(sa.effects.precompsCached == 1);
+  CHECK(after.rgba == changed.rgba);
+
+  // A fresh renderer (nothing kept) draws the same frame.
+  auto other = SceneRenderer::create({}, err);
+  REQUIRE(other);
+  Frame fresh;
+  FrameStats sf;
+  REQUIRE(other->render(file, &fresh, sf, err));
+  CHECK(fresh.rgba == after.rgba);
+}
+
+TEST_CASE("precomp targets: eight nested precomps each render into an isolated target of their own") {
+  std::string err;
+  auto renderer = SceneRenderer::create({}, err);
+  if (!renderer) return;
+  auto file = solid_scene(1, 0.5, 0);
+  api::Renderable nested = file.scene.renderables[0];
+  for (int i = 7; i >= 0; --i) nested = precomp_layer("p" + std::to_string(i), std::move(nested), 0.9);
+  file.scene.renderables[0] = std::move(nested);
+  Frame frame;
+  FrameStats s;
+  REQUIRE(renderer->render(file, &frame, s, err));
+  CHECK(s.gpuError.empty());
+  CHECK(s.diagnostics.empty());
+  CHECK(s.effects.precompsRendered == 8);
+  CHECK(s.effects.precompsInline == 0);
+  // The deepest level's own target (past the four declared slots) was allocated and drawn.
+  TargetPixels tp;
+  std::string e2;
+  CHECK(renderer->read_target("precomp-target-7", tp, e2));
+  CHECK_FALSE(renderer->read_target("precomp-target-8", tp, e2));
+  // 0.9⁸ of the orange rect over black: lit, but well under full red.
+  const auto red = frame.rgba.at((std::size_t{24} * 64 + 32) * 4);
+  CHECK(red > 100);
+  CHECK(red < 250);
+  // Static: the next frame is the outermost precomp's kept image.
+  Frame again;
+  FrameStats s2;
+  REQUIRE(renderer->render(file, &again, s2, err));
+  CHECK(s2.effects.precompsRendered == 0);
+  CHECK(s2.effects.precompsCached == 1);
+  CHECK(again.rgba == frame.rgba);
+}

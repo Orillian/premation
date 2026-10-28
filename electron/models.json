@@ -1,0 +1,92 @@
+{
+  "$comment": "Every ML model the engine runs, in one place (electron/modelManifest.ts reads it). `id` is the folder under <userData>/models/ (the user's install) and, for a bundled model, under <resources>/models/ (scripts/fetchModels.cjs stages it, electron-builder ships it). `env` names the engine variables: PREMATION_<env>_USER_DIR (the user's install) and PREMATION_<env>_DIR (the bundled copy). `source` is `pinned` (the URLs and checksums below are the only accepted ones) or `user` (the person supplies the URL; a `url` below is a default, not a pin). A `sha256` of null means no checksum is known for that file today — none has been invented; such a file is checked only for being an ONNX protobuf of at least `minBytes`.",
+  "models": [
+    {
+      "id": "object-matte",
+      "ipc": "objectMatte",
+      "env": "SAM",
+      "name": "Object Matte (SlimSAM-77)",
+      "description": "Segment-anything model behind one-click Roto subject selection. Bundled with the app; a different SAM-class pair can be installed over it.",
+      "licence": "Apache-2.0",
+      "bundled": true,
+      "source": "user",
+      "files": [
+        {
+          "name": "vision_encoder_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/main/onnx/vision_encoder_quantized.onnx",
+          "sha256": null,
+          "bytes": null,
+          "minBytes": 5000000
+        },
+        {
+          "name": "prompt_encoder_mask_decoder_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/slimsam-77-uniform/resolve/main/onnx/prompt_encoder_mask_decoder_quantized.onnx",
+          "sha256": null,
+          "bytes": null,
+          "minBytes": 2000000
+        }
+      ]
+    },
+    {
+      "id": "face-landmarks",
+      "ipc": "faceModel",
+      "env": "FACE",
+      "name": "Face landmarks (MediaPipe Face Mesh)",
+      "description": "468- or 478-point face mesh for the Tracker's Face tracking: a 192×192 RGB input, planar or interleaved (native/engine/src/jobs/face_ort_ffi.cpp). No pinned source is known with certainty, so the URL is supplied in Settings and downloaded on first use.",
+      "licence": "Apache-2.0 (MediaPipe) — the chosen export's own licence applies",
+      "bundled": false,
+      "source": "user",
+      "files": [
+        {
+          "name": "face_landmark.onnx",
+          "url": null,
+          "sha256": null,
+          "bytes": null,
+          "minBytes": 16
+        }
+      ]
+    },
+    {
+      "id": "depth-anything",
+      "ipc": "depthModel",
+      "env": "DEPTH",
+      "name": "Depth Anything V2 Small",
+      "description": "Monocular depth for Make 3D from Photo / Video. Downloaded on first use from a pinned Hugging Face revision; the checksum is verified before anything is installed.",
+      "licence": "Apache-2.0",
+      "bundled": false,
+      "source": "pinned",
+      "files": [
+        {
+          "name": "depth_anything_v2_small.onnx",
+          "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model.onnx",
+          "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
+          "bytes": 99060839
+        }
+      ]
+    },
+    {
+      "id": "hand-landmarks",
+      "ipc": "handModel",
+      "env": "HAND",
+      "name": "Hand tracking (MediaPipe palm + hand landmarks)",
+      "description": "Palm detector and hand landmarker for live performance input (OpenCV Zoo ONNX exports). Bundled with the app; both files are pinned to an exact revision and checksum.",
+      "licence": "Apache-2.0",
+      "bundled": true,
+      "source": "pinned",
+      "files": [
+        {
+          "name": "palm_detection.onnx",
+          "url": "https://huggingface.co/opencv/palm_detection_mediapipe/resolve/233e619dcea1759bf6de707b9b904fe30881ea55/palm_detection_mediapipe_2023feb.onnx",
+          "sha256": "78ff51c38496b7fc8b8ebdb6cc8c1abb02fa6c38427c6848254cdaba57fcce7c",
+          "bytes": 3905734
+        },
+        {
+          "name": "hand_landmark.onnx",
+          "url": "https://huggingface.co/opencv/handpose_estimation_mediapipe/resolve/4b2a0b446e5cf2f11fb6b2c7251091c035d2c1f7/handpose_estimation_mediapipe_2023feb.onnx",
+          "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c",
+          "bytes": 4099621
+        }
+      ]
+    }
+  ]
+}

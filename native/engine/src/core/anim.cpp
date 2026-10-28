@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <set>
 #include <span>
@@ -40,7 +41,7 @@ std::uint32_t spatial_bits(api::SpatialInterp s) {
   return (static_cast<std::uint32_t>(s) << MOTION_KF_SPATIAL_SHIFT) & MOTION_KF_SPATIAL_MASK;
 }
 
-motion_keyframe to_motion(const Key& k) {
+motion_keyframe to_motion(const Key& k) noexcept {
   motion_keyframe m{};
   m.t = k.t;
   m.value = k.value;
@@ -64,6 +65,17 @@ motion_keyframe to_motion(const Key& k) {
   }
   return m;
 }
+
+/// motion_eval's KeyframeSource over a document track: a key is converted
+/// (`to_motion`) when the sampler reads it, so one sample touches the
+/// O(log n) keys it needs instead of copying the track. Same conversion,
+/// same sampler, same bits as converting the whole track first.
+struct KeySource {
+  std::span<const Key> keys;
+
+  [[nodiscard]] std::size_t size() const noexcept { return keys.size(); }
+  [[nodiscard]] motion_keyframe get(std::size_t i) const noexcept { return to_motion(keys[i]); }
+};
 
 const NodeAnim* anim_of(const Document& d, std::string_view node) { return d.anim(node); }
 
@@ -164,12 +176,8 @@ std::optional<TimeSpan> anim_time_span(const Document& d, std::string_view node)
 
 std::optional<double> sample_keys(const std::vector<Key>& keys, double t) {
   if (keys.empty()) return std::nullopt;
-  // Reused per thread: sampling runs on the document core thread only, so a
-  // per-call allocation here would be the dominant cost of evaluating a comp.
-  thread_local std::vector<motion_keyframe> scratch;
-  scratch.resize(keys.size());
-  for (std::size_t i = 0; i < keys.size(); ++i) scratch[i] = to_motion(keys[i]);
-  return motion::eval::sample(motion::eval::StructSource{std::span<const motion_keyframe>(scratch)}, t);
+  // No copy and no allocation: the sampler reads keys through KeySource.
+  return motion::eval::sample(KeySource{std::span<const Key>(keys)}, t);
 }
 
 std::optional<double> anim_sample_keys(const std::vector<Key>& keys, double t) { return sample_keys(keys, t); }
@@ -241,13 +249,6 @@ const motion::eval::ArcTable& cached_arc_table(const motion::eval::SpatialSegmen
   return e.table;
 }
 
-/// `keys` as motion keyframes in `scratch` (reused per thread, see sample_keys).
-motion::eval::StructSource as_source(const std::vector<Key>& keys, std::vector<motion_keyframe>& scratch) {
-  scratch.resize(keys.size());
-  for (std::size_t i = 0; i < keys.size(); ++i) scratch[i] = to_motion(keys[i]);
-  return motion::eval::StructSource{std::span<const motion_keyframe>(scratch)};
-}
-
 }  // namespace
 
 std::optional<double> anim_sample_member_keys(const Document& d, std::string_view node, std::string_view prop,
@@ -255,14 +256,11 @@ std::optional<double> anim_sample_member_keys(const Document& d, std::string_vie
   const auto group = spatial_group_of(prop);
   if (!group || keys.size() < 2) return sample_keys(keys, t);
   if (!(t > keys.front().t && t < keys.back().t)) return sample_keys(keys, t);
-  // One scratch per axis: the own track and its siblings are converted side by side.
-  thread_local std::array<std::vector<motion_keyframe>, motion::eval::kSpatialAxes> scratchStore;
-  const std::span<std::vector<motion_keyframe>> scratch(scratchStore);
   const std::span<const std::string_view> members(group->members);
-  const motion::eval::StructSource own = as_source(keys, scratch[group->own]);
+  const KeySource own{std::span<const Key>(keys)};
   const std::size_t i = motion::eval::segment_index_for(own, t);
-  const motion_keyframe& a = own.get(i);
-  const motion_keyframe& b = own.get(i + 1);
+  const motion_keyframe a = own.get(i);
+  const motion_keyframe b = own.get(i + 1);
   if (a.easing == motion::eval::kEasingHold || a.easing == motion::eval::kEasingStep) return sample_keys(keys, t);
   if (!(b.t > a.t)) return sample_keys(keys, t);
 
@@ -279,14 +277,14 @@ std::optional<double> anim_sample_member_keys(const Document& d, std::string_vie
       if (sib == nullptr || sib->empty()) continue;  // a constant axis: no length
       // The sibling must be keyed on the SAME segment (keys at a.t and b.t,
       // none between); otherwise the axes trace no shared curve and each
-      // samples on its own, as before.
-      const motion::eval::StructSource src = as_source(*sib, scratch[axis]);
-      std::size_t ia = src.size();
-      for (std::size_t k = 0; k < src.size(); ++k) {
-        if (src.get(k).t == a.t) ia = k;
-      }
-      if (ia + 1 >= src.size() || src.get(ia + 1).t != b.t) return sample_keys(keys, t);
-      c = motion::eval::segment_controls(src, ia);
+      // samples on its own, as before. Tracks are sorted by time, so the
+      // last key at a.t is one step before upper_bound(a.t).
+      const std::span<const Key> sk(*sib);
+      const auto ub = std::upper_bound(sk.begin(), sk.end(), a.t, [](double tt, const Key& key) { return tt < key.t; });
+      if (ub == sk.begin()) return sample_keys(keys, t);
+      const auto ia = static_cast<std::size_t>(std::distance(sk.begin(), ub)) - 1;
+      if (sk[ia].t != a.t || ia + 1 >= sk.size() || sk[ia + 1].t != b.t) return sample_keys(keys, t);
+      c = motion::eval::segment_controls(KeySource{sk}, ia);
     }
     ctrl[axis] = {c.v0, c.c1, c.c2, c.v3};
     anyTangent = anyTangent || c.has_tangent;
@@ -303,10 +301,7 @@ std::optional<double> anim_sample_member_keys(const Document& d, std::string_vie
 
 std::pair<std::optional<double>, std::optional<double>> effective_spatial_tangents_of(const std::vector<Key>& keys, std::size_t i) {
   if (i >= keys.size()) return {};
-  thread_local std::vector<motion_keyframe> scratch;
-  scratch.resize(keys.size());
-  for (std::size_t k = 0; k < keys.size(); ++k) scratch[k] = to_motion(keys[k]);
-  const auto tg = motion::eval::effective_spatial_tangents(motion::eval::StructSource{std::span<const motion_keyframe>(scratch)}, i);
+  const auto tg = motion::eval::effective_spatial_tangents(KeySource{std::span<const Key>(keys)}, i);
   return {tg.has_si ? std::optional<double>(tg.si) : std::nullopt, tg.has_so ? std::optional<double>(tg.so) : std::nullopt};
 }
 
@@ -454,8 +449,11 @@ std::optional<Json> sample_data_track(const DataTrack& tr, double t) {
   if (kfs.empty()) return std::nullopt;
   if (t <= kfs.front().t) return kfs.front().value;
   if (t >= kfs.back().t) return kfs.back().value;
-  std::size_t i = 0;
-  while (i + 1 < kfs.size() && kfs[i + 1].t <= t) ++i;
+  // Keys are sorted by time and front.t < t < back.t, so the segment starts at
+  // the last key at or before t: the smallest i with kfs[i + 1].t > t.
+  const std::span<const DataKey> ks(kfs);
+  const auto ub = std::upper_bound(ks.begin(), ks.end(), t, [](double tt, const DataKey& key) { return tt < key.t; });
+  const std::size_t i = static_cast<std::size_t>(std::distance(ks.begin(), ub)) - 1;
   const DataKey& a = kfs[i];
   const DataKey& b = kfs[i + 1];
   if (tr.kind == "text") return a.value;

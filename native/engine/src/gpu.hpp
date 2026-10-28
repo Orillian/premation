@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace premation {
 
@@ -37,7 +38,12 @@ struct Gpu {
 // `highPerformance`: the discrete GPU on a hybrid laptop. Routes B and C must
 // use the SAME adapter as Chromium's GPU process: the host passes Chromium's
 // active PCI `vendorId` (app.getGPUInfo), which wins over the power preference.
-std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std::uint32_t vendorId = 0);
+// `cacheDir`: where Dawn's blob cache lives (compiled shaders, D3D12 pipeline
+// state) so a shader compiles once per machine, not once per launch; empty =
+// no persistent cache. The directory is created; a cache that cannot be
+// written is silently a miss.
+std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std::uint32_t vendorId = 0,
+                              std::string_view cacheDir = {});
 
 // Block until everything submitted so far has finished on the GPU.
 void wait_idle(const Gpu& gpu);

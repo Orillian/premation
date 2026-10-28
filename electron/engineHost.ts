@@ -53,6 +53,7 @@ import { hostBridgePath, loadDmabufBridge, loadIoSurfaceBridge } from './ioSurfa
 import { ntHandleSource, slotHandleSourceFor, type SlotHandleSource, type SlotTextureHandle } from './sharedTextureHandles';
 import { resolveFfmpegBinary } from './ffmpegBinary';
 import { EngineGoneError } from './engineTransport';
+import { bundledModelEnv } from './modelManifest';
 import {
   EngineSupervisor,
   chromiumGpuVendor,
@@ -779,8 +780,6 @@ export class EngineHost {
             env: {
               ...process.env,
               PREMATION_FFMPEG: resolveFfmpegBinary({ vars: process.env, resourcesPath: o.resourcesPath, platform: process.platform, exists: existsSync, ...(o.userDataPath ? { userDataPath: o.userDataPath } : {}) }),
-              // The objectMatte job's SAM pair: <resources>/models/object-matte when
-              // packaged (electron-builder extraResources), dist/ in development.
               // importBytes caches bytes as files here (the page's session-footage
               // cache, file:sessionFootageDir): the engine never holds a blob: URL.
               ...(o.sessionFootageDir ? { PREMATION_SESSION_FOOTAGE: o.sessionFootageDir } : {}),
@@ -790,8 +789,10 @@ export class EngineHost {
               ...(o.depthUserDir ? { PREMATION_DEPTH_USER_DIR: o.depthUserDir } : {}),
               // Read at every startLiveInput, so an install applies to the next start.
               ...(o.handUserDir ? { PREMATION_HAND_USER_DIR: o.handUserDir } : {}),
-              PREMATION_SAM_DIR: process.env.PREMATION_SAM_DIR
-                ?? (o.isPackaged ? path.join(o.resourcesPath, 'models', 'object-matte') : path.join(o.appPath, 'dist', 'models', 'object-matte')),
+              // The bundled copies (models.json `bundled`: the SAM pair, the hand
+              // models): <resources>/models/<id> packaged, dist/models/<id> in
+              // development — PREMATION_SAM_DIR, PREMATION_HAND_DIR, …
+              ...bundledModelEnv(o),
               // The fonts the app ships (resources/fonts, scripts/fetchFonts.cjs): the
               // default Inter and the Noto families every script falls back to, so
               // text renders the same on every machine — not only in what is installed.
@@ -806,7 +807,12 @@ export class EngineHost {
       },
       {
         ...o.supervisor,
-        extraArgs: [...(o.supervisor?.extraArgs ?? []), ...nativePluginArgs(o.nativePluginDir, o.nativePluginJournal)],
+        extraArgs: [
+          ...(o.supervisor?.extraArgs ?? []),
+          ...nativePluginArgs(o.nativePluginDir, o.nativePluginJournal),
+          // Dawn's blob cache: shaders compile once per machine, not once per launch (gpu.cpp).
+          ...(o.userDataPath ? ['--shader-cache-dir', path.join(o.userDataPath, 'shader-cache')] : []),
+        ],
         ...(o.nativePluginLaunchArgs ? { launchArgs: o.nativePluginLaunchArgs } : {}),
       },
     );

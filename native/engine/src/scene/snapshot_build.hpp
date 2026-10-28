@@ -12,8 +12,11 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,6 +30,82 @@
 #include "timeline.hpp"
 
 namespace premation::scene {
+
+/// What every walk starts from (snapshot_build.cpp): the flattened composition
+/// with its collapsed instances expanded and a sealed pass's overrides applied,
+/// and its nodes by id. A function of the document, the comp, its overrides and
+/// the Layer panel's layer — never of time (cloners, which can read the raw
+/// graph at the frame's time, are expanded per frame on top of it).
+struct WalkTopology;
+
+/// The frame builder's memo of WalkTopology, one per (comp, overrides, Layer
+/// panel layer), kept while the document is unchanged — so a 3000-layer comp
+/// is not re-flattened, re-expanded and re-indexed on every played frame.
+///
+/// The document has no revision counter of its own, so the memo's revision is
+/// the document's copy-on-write identity: the memo PINS (holds a reference to)
+/// every node and composition record it was built from, in document order. A
+/// write to a pinned entity goes through `Document::*_mut` → `unshare`, which
+/// clones it because the pin shares it — so an unchanged pointer sequence
+/// means an unchanged document (no ABA: a pinned address is never reused), and
+/// any edit, add, remove, reorder, undo or load shows up as a pointer change.
+/// The outermost build_snapshot (Scope) compares; nested passes share its answer.
+///
+/// Threading: owned by the frame builder and used only under the session's
+/// build lock (the build worker, or the core thread's builder queries); never
+/// invalidated by a callback from the core thread.
+class WalkCache {
+ public:
+  WalkCache();
+  ~WalkCache();
+  WalkCache(const WalkCache&) = delete;
+  WalkCache& operator=(const WalkCache&) = delete;
+  WalkCache(WalkCache&&) = delete;
+  WalkCache& operator=(WalkCache&&) = delete;
+
+  /// The memoised topology (built, and counted, on a miss).
+  // shared_ptr: a walk keeps the topology it reads alive while a nested pass
+  // may drop the memo's entry (cap) — the walk reads its nodes until it returns.
+  [[nodiscard]] std::shared_ptr<const WalkTopology> topology(const doc::Document& d, const std::string& rootId,
+                                                             const std::map<std::string, Json, std::less<>>& overrides,
+                                                             const std::optional<std::string>& layerViewId);
+  /// Topologies built — each one a flatten (tests and benches read it).
+  [[nodiscard]] std::uint64_t flattens() const noexcept { return flattens_; }
+  /// Times the document was found changed and the memo dropped.
+  [[nodiscard]] std::uint64_t revisions() const noexcept { return revisions_; }
+  /// Drop everything (and the pins).
+  void clear() noexcept;
+
+  /// One build_snapshot (nests): the outermost compares the document with the memo's.
+  class Scope {
+   public:
+    Scope(WalkCache* cache, const doc::Document& d);
+    ~Scope();
+    Scope(const Scope&) = delete;
+    Scope& operator=(const Scope&) = delete;
+    Scope(Scope&&) = delete;
+    Scope& operator=(Scope&&) = delete;
+
+   private:
+    WalkCache* cache_;
+  };
+
+ private:
+  void revalidate(const doc::Document& d);
+  struct State;
+  std::unique_ptr<State> s_;
+  int depth_ = 0;
+  /// The document last compared (only read inside a Scope, which compared it
+  /// on entry; a nested build over another document compares again).
+  const doc::Document* validatedDoc_ = nullptr;
+  std::uint64_t flattens_ = 0;
+  std::uint64_t revisions_ = 0;
+};
+
+/// The topology a walk builds for itself when there is no WalkCache.
+[[nodiscard]] std::shared_ptr<const WalkTopology> make_walk_topology(const doc::Document& d, const std::string& rootId,
+                                                                     const std::map<std::string, Json, std::less<>>& overrides,
+                                                                     const std::optional<std::string>& layerViewId);
 
 struct BuildContext {
   const doc::Document& d;
@@ -77,6 +156,9 @@ struct BuildContext {
   /// Program X1: build the time taps temporal deep effects read (off inside a
   /// tap's own build, so taps never nest).
   bool timeTaps = true;
+  /// The frame builder's walk memo (flatten / instance expansion / by-id map
+  /// across frames); null = every walk builds its own (tests, one-off builds).
+  WalkCache* walkCache = nullptr;
 };
 
 /// The comp-level inputs the editor's viewport hands buildSnapshot for a

@@ -14,6 +14,7 @@ import { getTime } from '@stores/playbackClockStore';
 import { applyAnimationPresetEdit } from './appEdits';
 import { commandCamera } from '@core/scene/cameraCommands';
 import { isDepthParallaxCandidate, makeDepthFromModel } from '@core/scene/depthParallax';
+import { ensureModelInstalled } from '@layout/Settings/modelDownloadJob';
 
 function target(): string | null {
   return useSelectionStore.getState().ids.find((id) => isDepthParallaxCandidate(id)) ?? null;
@@ -34,6 +35,11 @@ export function buildDepthParallaxCommands(): ReadonlyArray<Command> {
           ui.notify({ level: 'info', message: t('menuBar.depthParallax.selectLayer', 'Select an image or video layer'), durationMs: 4000 });
           return;
         }
+        // The depth model, fetched on the spot when it is not on this computer
+        // (a pinned download, with the status bar's job chip); its failure has
+        // already been toasted.
+        const model = await ensureModelInstalled('depthModel');
+        if (!model.ok) return;
         const r = await makeDepthFromModel(layer);
         if (!r.ok) {
           ui.notify({ level: 'warning', message: r.message, durationMs: 6000 });

@@ -721,6 +721,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
                        doc::ExprCache& cache) {
     BuildContext ctx{d, view, expr, cache, measurer_.get(), {}};
     ctx.mediaBase = utf8_path(mediaBase_);
+    ctx.walkCache = &walkCache_;
     if (audio_ != nullptr) {
       ctx.waveform = [this](std::string_view layerId, std::vector<float>& peaks, double& duration) {
         return audio_->waveform(layerId, peaks, duration);
@@ -787,6 +788,9 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
   Fonts fonts_;
   std::string lastText_;  // the document text per-character fallback last covered
   std::unique_ptr<TextMeasurer> measurer_;
+  /// The walks' flatten / instance-expansion memo across frames (snapshot_build.hpp),
+  /// used under the build lock like the rest of the builder.
+  WalkCache walkCache_;
   MediaClock* audio_ = nullptr;
   std::uint64_t builtFrames_ = 0;
   wire::Writer hashWriter_;  // P6: frame_content_hash's scratch, reused across frames

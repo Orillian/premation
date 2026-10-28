@@ -38,8 +38,13 @@ inline constexpr std::string_view kFxBlendInput = "fx-blend-input";
 /// (kDataTargetFormat), whatever the project's bit depth.
 inline constexpr std::array<std::string_view, 4> kFxAux = {"fx-aux-0", "fx-aux-1", "fx-aux-2", "fx-aux-3"};
 inline constexpr std::string_view kDataTargetFormat = "rgba16float-data";
+/// An isolated precomp draws into the target of its nesting slot (composition_pass.cpp
+/// precomp_target). The first four are declared with the graph; deeper slots are
+/// `kPrecompTargetPrefix<n>`, declared on demand in the same descriptor as slot 0
+/// (MSAA + depth, the project's precision) while they fit a VRAM budget.
 inline constexpr std::array<std::string_view, 4> kPrecompTargets = {"precomp-target-0", "precomp-target-1",
                                                                     "precomp-target-2", "precomp-target-3"};
+inline constexpr std::string_view kPrecompTargetPrefix = "precomp-target-";
 inline constexpr std::uint32_t kBackdropDownscale = 2;
 inline constexpr std::uint32_t kMsaaSamples = 4;
 /// EffectPass VIEWER_LUT_TEXTURE_KEY: the viewer LUT strip's texture key.

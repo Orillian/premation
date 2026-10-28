@@ -70,6 +70,13 @@ struct EffectStats {
   std::uint32_t ssaoReused = 0;
   std::uint32_t reflectionsBuilt = 0;
   std::uint32_t reflectionsReused = 0;
+  /// Isolated precomps this frame (composition_pass.cpp, reset by the pass):
+  /// subtrees drawn into their own target, served from a result kept from an
+  /// earlier frame (same content key — nothing drawn), and drawn inline into
+  /// the parent because no isolated target fit the VRAM budget.
+  std::uint32_t precompsRendered = 0;
+  std::uint32_t precompsCached = 0;
+  std::uint32_t precompsInline = 0;
   /// Set by the caller before the frame: keep one record per entry.
   bool keepPaths = false;
   std::vector<EffectPathRecord> paths;

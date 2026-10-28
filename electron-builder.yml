@@ -48,13 +48,22 @@ extraResources:
       - '*.dll'
       - '*.so'
       - '*.so.*'
-  # The Object Matte model pair (scripts/fetchObjectMatte.cjs) OUTSIDE app.asar
-  # too: the engine's objectMatte job reads the files itself (it cannot read an
-  # archive); main points it here with PREMATION_SAM_DIR (engineHost.ts).
+  # The bundled ML models (electron/models.json `bundled: true`, staged by
+  # scripts/fetchModels.cjs) OUTSIDE app.asar too: the engine reads the files
+  # itself (it cannot read an archive); main points it at each folder with
+  # PREMATION_<env>_DIR (engineHost.ts, modelManifest.ts bundledModelEnv).
+  # One entry per model, not dist/models wholesale: a stray folder in a
+  # developer's gitignored public/models must not ride along.
   - from: dist/models/object-matte
     to: models/object-matte
     filter:
       - '*.onnx'
+      - model.json
+  - from: dist/models/hand-landmarks
+    to: models/hand-landmarks
+    filter:
+      - '*.onnx'
+      - model.json
   # The fonts the engine registers first (resources/fonts, scripts/fetchFonts.cjs):
   # outside app.asar because the engine reads them; main points it at fonts.json
   # with PREMATION_FONTS_MANIFEST (engineHost.ts bundledFontsManifest).

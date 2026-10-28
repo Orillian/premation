@@ -148,6 +148,9 @@ struct RenderOptions {
   /// says otherwise; 0 = sized from the machine (auto_ram_budget).
   std::uint64_t ramCacheBytes = 0;
   bool highPerformance = false;
+  /// Dawn's blob cache folder (gpu.hpp create_gpu): compiled shaders and
+  /// pipeline state kept across launches. Empty = compile every launch.
+  std::string shaderCacheDir;
 };
 
 class RenderThread final : public FrameSink {
@@ -476,6 +479,23 @@ class RenderThread final : public FrameSink {
   bool settle_victim(std::uint64_t key);
   /// Frames the RAM tier evicted: the slow ones not on disk yet go to the disk tier.
   void spill_ram_evictions(std::vector<RamFrame>& evicted);
+  /// A frame in no other tier that the disk writer refused at its hard cap
+  /// (DiskCache::StoreResult::refused): kept here and offered again once the
+  /// writers catch up, instead of being lost. Bounded by kMaxDiskRetryBytes;
+  /// past it the oldest go (counted in the disk stats as dropped by the caller).
+  struct DiskRetry {
+    std::uint64_t key = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> rgba;
+  };
+  std::deque<DiskRetry> diskRetry_;
+  std::size_t diskRetryBytes_ = 0;
+  static constexpr std::size_t kMaxDiskRetryBytes = std::size_t{1} << 30U;  // 1 GiB
+  /// Hand `rgba` to the disk tier; a refusal parks it in diskRetry_.
+  void offer_disk(std::uint64_t key, std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t>& rgba);
+  /// Offer the parked frames again, oldest first, until the writer refuses.
+  void retry_disk();
   /// Encode a copy of `source` into a pooled read-back buffer (onto `encoder`); `row` = its bytes per row.
   wgpu::Buffer encode_readback(const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
                                std::uint32_t& row, wgpu::CommandEncoder& encoder);

@@ -236,6 +236,27 @@ export interface ExportJobProgress {
 
 export type ExportErrorCode = 'ffmpeg-unavailable' | 'disk-full' | 'output-unwritable' | 'output-busy';
 
+/** The models in electron/models.json, by folder name. */
+export type ModelId = 'object-matte' | 'face-landmarks' | 'depth-anything' | 'hand-landmarks';
+
+/** One row of Settings ▸ Models (electron/modelInstaller.ts listModels). */
+export interface ModelListing {
+  id: ModelId;
+  name: string;
+  description: string;
+  licence: string;
+  /** Shipped in the installer. */
+  bundled: boolean;
+  /** `pinned`: one accepted source + checksum. `user`: the person supplies the URL. */
+  source: 'pinned' | 'user';
+  /** The download's size, when the manifest knows every file's. */
+  bytes: number | null;
+  state: 'installed' | 'bundled' | 'absent';
+  installedBytes: number;
+  installedAt: number;
+  urls: string[];
+}
+
 /** electron/ffmpegHealth.ts FfmpegProblemCode. */
 export type FfmpegProblemCode = 'missing' | 'blocked' | 'wrong-arch' | 'damaged' | 'timeout' | 'incomplete';
 export type FfmpegSource = 'override' | 'chosen' | 'bundled' | 'repaired' | 'system';
@@ -545,15 +566,24 @@ export interface MotionEditorApi {
     openBundleDir?(): Promise<string | null>;
   };
   /**
-   * The user's Object Matte model, installed by MAIN into
-   * <userData>/models/object-matte where the engine's objectMatte job reads it
-   * (electron/objectMatteModel.ts). https-only, size-capped, no credentials;
-   * runs only when the user presses Install. Progress arrives on
-   * `onDownloadProgress`, correlated by the caller-minted `requestId`.
+   * The ML models (electron/models.json), installed by MAIN into
+   * <userData>/models/<id> where the engine reads them (electron/modelInstaller.ts):
+   * https-only, size-capped, no credentials, checksum-verified when pinned.
+   * Progress arrives on `onDownloadProgress`, correlated by the caller-minted
+   * `requestId`. `models` is the whole list (Settings ▸ Models); the per-model
+   * bridges below answer `bundled: true` for the copy shipped with the app.
    */
+  models?: {
+    list(): Promise<ModelListing[]>;
+    install(request: { id: ModelId; requestId: string; urls?: string[] }): Promise<{ ok: true; model: { bytes: number; installedAt: number } } | { ok: false; message: string }>;
+    remove(id: ModelId): Promise<boolean>;
+    cancelDownload(requestId: string): Promise<boolean>;
+    /** `{ id, requestId, receivedBytes, totalBytes }` for every `models:install` in flight. */
+    onDownloadProgress(handler: (event: unknown) => void): () => void;
+  };
   /** Face Tracking's landmark model in <userData>/models/face-landmarks (electron/faceModel.ts). */
   faceModel?: {
-    status(): Promise<{ url: string; bytes: number; installedAt: number } | null>;
+    status(): Promise<{ url: string; bytes: number; installedAt: number; bundled?: boolean } | null>;
     install(request: { url: string; requestId: string }): Promise<{ ok: true; model: { url: string; bytes: number; installedAt: number } } | { ok: false; message: string }>;
     remove(): Promise<boolean>;
     cancelDownload(requestId: string): Promise<boolean>;
@@ -561,7 +591,7 @@ export interface MotionEditorApi {
   };
   /** Make 3D from Photo's depth model in <userData>/models/depth-anything (electron/depthModel.ts) — camera program D3. */
   depthModel?: {
-    status(): Promise<{ url: string; sha256: string; bytes: number; installedAt: number } | null>;
+    status(): Promise<{ url: string; sha256: string; bytes: number; installedAt: number; bundled?: boolean } | null>;
     install(request: { requestId: string }): Promise<{ ok: true; model: { url: string; sha256: string; bytes: number; installedAt: number } } | { ok: false; message: string }>;
     remove(): Promise<boolean>;
     cancelDownload(requestId: string): Promise<boolean>;
@@ -569,7 +599,7 @@ export interface MotionEditorApi {
   };
   /** Live performance input's hand models in <userData>/models/hand-landmarks (electron/handModel.ts): pinned download. */
   handModel?: {
-    status(): Promise<{ urls: string[]; bytes: number; installedAt: number } | null>;
+    status(): Promise<{ urls: string[]; bytes: number; installedAt: number; bundled?: boolean } | null>;
     install(request: { requestId: string }): Promise<{ ok: true; model: { urls: string[]; bytes: number; installedAt: number } } | { ok: false; message: string }>;
     remove(): Promise<boolean>;
     cancelDownload(requestId: string): Promise<boolean>;

@@ -28,7 +28,8 @@ type ModelStatus =
   | { kind: 'loading' }
   | { kind: 'absent' }
   | { kind: 'downloading'; received: number; total: number | null }
-  | { kind: 'ready'; bytes: number }
+  /** `bundled`: the copy shipped with the app (electron/models.json), nothing to remove. */
+  | { kind: 'ready'; bytes: number; bundled: boolean }
   | { kind: 'failed'; message: string };
 
 const bridge = (): NonNullable<Window['motionEditor']>['handModel'] | undefined =>
@@ -61,7 +62,7 @@ export function HandModelControl({ onChange }: { onChange?: (installed: boolean)
       setStatus({ kind: 'absent' });
       return undefined;
     }
-    void b.status().then((m) => { if (live) setStatus(m ? { kind: 'ready', bytes: m.bytes } : { kind: 'absent' }); })
+    void b.status().then((m) => { if (live) setStatus(m ? { kind: 'ready', bytes: m.bytes, bundled: m.bundled === true } : { kind: 'absent' }); })
       .catch(() => { if (live) setStatus({ kind: 'absent' }); });
     return () => { live = false; };
   }, []);
@@ -83,7 +84,7 @@ export function HandModelControl({ onChange }: { onChange?: (installed: boolean)
     });
     try {
       const r = await b.install({ requestId: id });
-      setStatus(r.ok ? { kind: 'ready', bytes: r.model.bytes } : { kind: 'failed', message: r.message });
+      setStatus(r.ok ? { kind: 'ready', bytes: r.model.bytes, bundled: false } : { kind: 'failed', message: r.message });
       if (r.ok) onChange?.(true);
     } finally {
       off();
@@ -96,20 +97,27 @@ export function HandModelControl({ onChange }: { onChange?: (installed: boolean)
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.ready}>{t('settings.handModel.installed', 'Installed · {size} MB', { size: (status.bytes / MB).toFixed(1) })}</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              void stopLiveInput();
-              void bridge()?.remove().then(() => {
-                setStatus({ kind: 'absent' });
-                onChange?.(false);
-              });
-            }}
-          >
-            {t('settings.handModel.remove', 'Remove')}
-          </Button>
+          <span className={styles.ready}>
+            {status.bundled
+              ? t('settings.handModel.builtIn', 'Built in · {size} MB', { size: (status.bytes / MB).toFixed(1) })
+              : t('settings.handModel.installed', 'Installed · {size} MB', { size: (status.bytes / MB).toFixed(1) })}
+          </span>
+          {/* The copy shipped with the app is not the person's to remove. */}
+          {!status.bundled && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void stopLiveInput();
+                void bridge()?.remove().then(() => {
+                  setStatus({ kind: 'absent' });
+                  onChange?.(false);
+                });
+              }}
+            >
+              {t('settings.handModel.remove', 'Remove')}
+            </Button>
+          )}
         </div>
         <div className={styles.source}>{t('settings.handModel.source', 'MediaPipe palm + hand models · OpenCV Zoo · Apache-2.0')}</div>
       </div>
