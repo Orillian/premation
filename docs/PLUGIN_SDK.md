@@ -746,6 +746,9 @@ the editor by `window.parent.postMessage({ premation: 1, … }, '*')`:
 | `{ id, type: 'command', request, label? }` | one EDIT command, origin `plugin`: one undo entry (a `runPluginCommand` runs the plugin's own command) |
 | `{ id, type: 'command', commands: [...], label }` | several edits as ONE undo entry |
 | `{ type: 'shortcut', action: 'undo' \| 'redo' }` | Edit ▸ Undo / Redo for a key pressed in the panel (only while its frame has the focus; an `undo` COMMAND stays refused) |
+| `{ id, type: 'settings', set? }` | the plugin's saved settings (`result`, an object; `{}` at first). `set` (an object, ≤ 256 KiB) replaces them first. Editor prefs, per user — never the document |
+| `{ id, type: 'listEditorCommands' }` | `result.commands`: `{ id, label, shortcut, enabled }` for every editor command a panel may run |
+| `{ id, type: 'editorCommand', command }` | runs that editor command as its menu item would — only while the frame has the focus (the click that asked was in the panel). File, app, account, help and plugin-management commands are refused |
 
 The editor sends `{ type: 'context', plugin, comp, layers, time }` on `ready`
 and after every document change (undo and redo too), selection or time change,

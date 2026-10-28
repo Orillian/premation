@@ -26,6 +26,7 @@ import { usePluginContrib } from '@hooks/usePluginContrib';
 import { useThrottledTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
+import { panelEditorCommands, pluginPanelSettings, runPanelEditorCommand } from './panelEditorCommands';
 import { runPanelShortcut } from './panelShortcut';
 import { PluginEffectHomePanel } from './PluginEffectHomePanel';
 import { t } from '@core/i18n';
@@ -64,6 +65,12 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
   }, [plugin, post]);
 
   const run = useCallback(async (msg: Exclude<ToolPanelMessage, { type: 'ready' } | { type: 'shortcut' }>) => {
+    if (msg.type === 'settings') return toolPanelReply(msg.id, { ok: true, result: pluginPanelSettings(plugin, msg.set) });
+    if (msg.type === 'listEditorCommands') return toolPanelReply(msg.id, { ok: true, result: { commands: panelEditorCommands() } });
+    if (msg.type === 'editorCommand') {
+      await runPanelEditorCommand(msg.command, frame.current);
+      return toolPanelReply(msg.id, { ok: true, result: {} });
+    }
     const client = engine();
     if (msg.type === 'query') {
       const res = await client.query(msg.request);
@@ -77,7 +84,7 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
     }
     const res = await client.batch(toolPanelLabel(msg.commands, msg.label, name), msg.commands, { origin: 'plugin' });
     return res.ok ? toolPanelReply(msg.id, { ok: true, result: res.value }) : toolPanelReply(msg.id, { ok: false, error: res.error.message });
-  }, [name]);
+  }, [name, plugin]);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent): void => {

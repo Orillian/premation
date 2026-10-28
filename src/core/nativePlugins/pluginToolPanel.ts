@@ -13,6 +13,12 @@
  *     { id, type: 'command', commands: [...], label } → several, still ONE undo entry
  *     { type: 'shortcut', action: 'undo' | 'redo' }  → Edit ▸ Undo / Redo (a key press in the
  *                                                       frame never reaches the editor's shortcuts)
+ *     { id, type: 'settings', set? }                 → the plugin's saved settings (editor prefs,
+ *                                                       per user, never the document); `set`
+ *                                                       replaces them first
+ *     { id, type: 'listEditorCommands' }            → the editor commands a panel may run
+ *     { id, type: 'editorCommand', command }         → run one, as its menu item would — only while
+ *                                                       the frame has the focus (a click in the panel)
  *   editor → panel
  *     { type: 'context', plugin, comp, layers, time } on ready and after every document,
  *                                                       selection or time change
@@ -32,12 +38,28 @@ export const TOOL_PANEL_PROTOCOL = 1;
 /** A request's JSON size limit (a panel never needs more; the frame is untrusted). */
 export const MAX_TOOL_REQUEST = 1024 * 1024;
 export const MAX_TOOL_BATCH = 256;
+/** A plugin's saved settings, as JSON (a toolbar's buttons fit many times over). */
+export const MAX_PANEL_SETTINGS = 256 * 1024;
 
 export type ToolPanelMessage =
   | { type: 'ready' }
   | { type: 'shortcut'; action: PanelShortcut }
   | { id: number; type: 'query'; request: Query }
-  | { id: number; type: 'command'; commands: Command[]; label: string };
+  | { id: number; type: 'command'; commands: Command[]; label: string }
+  | { id: number; type: 'settings'; set?: Record<string, unknown> }
+  | { id: number; type: 'listEditorCommands' }
+  | { id: number; type: 'editorCommand'; command: string };
+
+/**
+ * Editor command ids a panel may never run: files, the app, the account, help, plugin
+ * management (a panel must not install, sign in, save over, quit or open URLs). Prefixes.
+ */
+const PANEL_DENIED_COMMANDS = ['file.', 'app.', 'account.', 'help.', 'plugins.', 'plugin.', 'test.', 'window.', 'auth.', 'update.'];
+
+export function panelMayRunEditorCommand(id: string): boolean {
+  const lower = id.toLowerCase();
+  return !PANEL_DENIED_COMMANDS.some((p) => lower.startsWith(p));
+}
 
 export type ToolPanelParse = ToolPanelMessage | { id: number; type: 'invalid'; error: string } | null;
 
@@ -95,6 +117,24 @@ export function parseToolPanelMessage(raw: unknown): ToolPanelParse {
     if (!sizeOk(list)) return invalid('the request is too large');
     const label = typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim().slice(0, 80) : '';
     return { id, type: 'command', commands: list as Command[], label };
+  }
+  if (raw.type === 'settings') {
+    if (raw.set === undefined) return { id, type: 'settings' };
+    if (!isObject(raw.set)) return invalid('settings are an object');
+    let size = Infinity;
+    try {
+      size = JSON.stringify(raw.set).length;
+    } catch {
+      /* not JSON */
+    }
+    if (size > MAX_PANEL_SETTINGS) return invalid('the settings are too large');
+    return { id, type: 'settings', set: JSON.parse(JSON.stringify(raw.set)) as Record<string, unknown> };
+  }
+  if (raw.type === 'listEditorCommands') return { id, type: 'listEditorCommands' };
+  if (raw.type === 'editorCommand') {
+    if (typeof raw.command !== 'string' || !raw.command || raw.command.length > 200) return invalid('name the command');
+    if (!panelMayRunEditorCommand(raw.command)) return invalid(`a panel may not run '${raw.command}'`);
+    return { id, type: 'editorCommand', command: raw.command };
   }
   return invalid(`unknown message '${raw.type}'`);
 }
