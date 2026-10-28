@@ -123,7 +123,8 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
       src={toolPanelUrl(plugin, page)}
       sandbox={PANEL_SANDBOX}
       referrerPolicy="no-referrer"
-      style={{ width: '100%', height: '100%', minHeight: 200, border: 'none', background: 'transparent', display: 'block' }}
+      // No minimum: a short dock (a toolbar strip) must fit the frame, not scroll it.
+      style={{ width: '100%', height: '100%', minHeight: 0, border: 'none', background: 'transparent', display: 'block' }}
     />
   );
 }

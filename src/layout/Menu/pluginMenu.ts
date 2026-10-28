@@ -78,7 +78,8 @@ export function buildPluginMenuGroup(): MenuGroupModel | null {
     items.push({
       label: t('menuBar.plugins.panels', 'Panels'),
       children: panels.map((p) => ({
-        label: p.kind === 'effect' ? p.pluginName : `${p.panel.name} (${p.pluginName})`,
+        // "Toolbar (Toolbar)" says nothing twice: the plugin's name only when it adds something.
+        label: p.kind === 'effect' ? p.pluginName : p.panel.name === p.pluginName ? p.panel.name : `${p.panel.name} (${p.pluginName})`,
         onSelect: () => useLayoutStore.getState().openPanel(p.panelId),
       })),
     });
