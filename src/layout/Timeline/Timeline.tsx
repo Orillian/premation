@@ -92,6 +92,14 @@ import { HeatLane } from './HeatLane';
 import { addCompMarkerAtPlayhead, addLayerMarkersAtPlayhead, installTimelineMarkerCommands } from './markerCommands';
 import { deleteSelectionFromTimeline, installTimelineClipEditCommands, rippleDeleteSelection } from './clipEditCommands';
 import { stickyStackFor } from './stickyStack';
+import { KeyframeSelectionBar } from './KeyframeSelectionBar';
+import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
+
+/** The selection bar's height plus its margin: the scroll room that keeps the last rows reachable above it. */
+const KEY_BAR_CLEARANCE = 56;
+/** Visible rows below which nothing pins / only the layer row pins (see `stickyStack`). */
+const STICKY_MIN_ROWS_ANY = 3;
+const STICKY_MIN_ROWS_GROUP = 5;
 import { activeCompIdNow, compFps, useMirrorComps } from '@hooks/useMirror';
 import {
   RULER_HEIGHT_DEFAULT,
@@ -1053,10 +1061,15 @@ function Timeline({
     return max;
   }, [model.tracks, totalSeconds]);
   const laneWidth = TIMELINE_LEFT_OFFSET + (contentSeconds + 1) * pps;
-  const totalLanesHeight = TIMELINE_TOP_PADDING + rows.length * trackHeight + TIMELINE_BOTTOM_PADDING;
+  // While keys are selected the selection bar floats over the bottom of the
+  // lanes; this much extra scroll lets the last rows rise above it.
+  const keyBarShown = useKeyframeSelectionStore((s) => s.ids.size > 0);
+  const rowsHeight = TIMELINE_TOP_PADDING + rows.length * trackHeight + TIMELINE_BOTTOM_PADDING;
+  const totalLanesHeight = rowsHeight + (keyBarShown ? KEY_BAR_CLEARANCE : 0);
   const effectiveLanesHeight = Math.max(totalLanesHeight, Math.max(0, size.height - rulerStackHeight));
   /** The row minimap shows only when the rows overflow one screen. */
-  const minimapShown = size.height > 0 && totalLanesHeight > size.height - rulerStackHeight;
+  // The rows alone: the selection bar's clearance must not flip the minimap on and off.
+  const minimapShown = size.height > 0 && rowsHeight > size.height - rulerStackHeight;
   // The minimap is an overlay, so the lanes do not resize when it appears —
   // the ResizeObserver above would not notice. Re-publish on the toggle, after
   // the minimap has laid out.
@@ -1917,6 +1930,15 @@ function Timeline({
     onClipSlide,
   });
 
+  // The playhead as of a click, for the keyframe selection bar: stable, so the
+  // bar's memo holds through playback; the live clock while playing.
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+  const readPlayheadTime = useCallback(
+    () => (livePlayhead ? getLiveTime() : currentTimeRef.current),
+    [livePlayhead],
+  );
+
   // ── Playhead keyboard nudge (role="slider" must be operable) ──
   // Arrow keys step one frame; Shift steps one second; Home/End jump to bounds.
   const onPlayheadKey = useCallback(
@@ -2192,8 +2214,15 @@ function Timeline({
    * A nested group (an effect) names its parent in the label: the stack is two
    * rows deep, never three.
    */
+  // A short panel cannot spare the rows: pinned copies over half of four
+  // visible rows hide what they label. Under five rows only the layer pins;
+  // under three, nothing does.
+  const rowsInView = trackHeight > 0 ? Math.max(0, size.height - rulerStackHeight) / trackHeight : 0;
   const stickyStack = useMemo(() => {
-    const found = stickyStackFor(rows, scrollTop - TIMELINE_TOP_PADDING, trackHeight);
+    const raw = stickyStackFor(rows, scrollTop - TIMELINE_TOP_PADDING, trackHeight);
+    const found = rowsInView < STICKY_MIN_ROWS_ANY
+      ? { track: null, category: null }
+      : rowsInView < STICKY_MIN_ROWS_GROUP ? { ...raw, category: null } : raw;
     const trackRow = found.track ? rows[found.track.index] : undefined;
     const catRow = found.category ? rows[found.category.index] : undefined;
     let category = null;
@@ -2214,11 +2243,38 @@ function Timeline({
         : null,
       category,
     };
-  }, [rows, scrollTop, trackHeight]);
+  }, [rows, scrollTop, trackHeight, rowsInView]);
   /** Scroll so row `index` is `slot` rows below the top — a pinned row's way back to its real one. */
   const scrollRowToSlot = useCallback((index: number, slot: number) => {
     if (lanesRef.current) lanesRef.current.scrollTop = Math.max(0, TIMELINE_TOP_PADDING + (index - slot) * trackHeight);
   }, [trackHeight]);
+
+  /**
+   * The pinned copies are pointer affordances. For a screen reader and the Tab
+   * order they would be a second copy of the layer's every control (the real
+   * row is often still mounted under them), so they are `aria-hidden` and
+   * their focusables are taken out of the Tab order — after every render,
+   * since a re-render can mount new controls (a dropdown, a rename field).
+   */
+  const pinnedCopies = useRef(new Set<HTMLElement>());
+  const pinnedCopyRef = useCallback((el: HTMLElement | null) => {
+    if (el) pinnedCopies.current.add(el);
+  }, []);
+  useLayoutEffect(() => {
+    for (const el of pinnedCopies.current) {
+      if (!el.isConnected) { pinnedCopies.current.delete(el); continue; }
+      for (const f of el.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]')) {
+        if (f.tabIndex !== -1) f.tabIndex = -1;
+      }
+    }
+  });
+  /**
+   * The lanes route pointer-down (marquee, razor), double-click (transitions)
+   * and drops by the Y of the event — which, over a pinned band, is a row
+   * hidden UNDER it. The band keeps them: the bar inside it still works, it
+   * handles its own pointer-down before this sees it.
+   */
+  const swallowLaneEvent = useCallback((e: { stopPropagation: () => void }) => { e.stopPropagation(); }, []);
 
   const playheadX = TIMELINE_LEFT_OFFSET + currentTime * pps;
 
@@ -2669,6 +2725,7 @@ function Timeline({
               const { row, label, index, offset } = stickyStack.category;
               const fx = row.effect;
               return (
+                <div ref={pinnedCopyRef} aria-hidden="true">
                 <TrackCategoryHeader
                   label={label}
                   icon={row.icon}
@@ -2697,6 +2754,7 @@ function Timeline({
                   }
                   fx={fx ? { enabled: fx.enabled, onToggle: () => { void setEffectEnabledEdit(row.track.id, fx.id, !fx.enabled, row.label); } } : undefined}
                 />
+                </div>
               );
             })() : null}
             {stickyStack.track ? (() => {
@@ -2704,6 +2762,8 @@ function Timeline({
               const h = handlersFor(row.track.id);
               return (
                 <div
+                  ref={pinnedCopyRef}
+                  aria-hidden="true"
                   className={styles.pinnedRow}
                   style={{ top: scrollTop + offset, height: trackHeight, zIndex: 4 }}
                 >
@@ -3160,10 +3220,23 @@ function Timeline({
                 className={cn(styles.pinnedRow, styles.pinnedLaneGroup)}
                 style={{ top: scrollTop + trackHeight + stickyStack.category.offset, height: trackHeight }}
                 aria-hidden
+                onPointerDown={swallowLaneEvent}
+                onDoubleClick={swallowLaneEvent}
+                onDragOver={swallowLaneEvent}
+                onDrop={swallowLaneEvent}
               />
             ) : null}
             {stickyStack.track ? (
-              <div className={styles.pinnedRow} style={{ top: scrollTop + stickyStack.track.offset, height: trackHeight }}>
+              <div
+                ref={pinnedCopyRef}
+                aria-hidden="true"
+                className={styles.pinnedRow}
+                style={{ top: scrollTop + stickyStack.track.offset, height: trackHeight }}
+                onPointerDown={swallowLaneEvent}
+                onDoubleClick={swallowLaneEvent}
+                onDragOver={swallowLaneEvent}
+                onDrop={swallowLaneEvent}
+              >
                 <TrackContent
                   track={stickyStack.track.row.track}
                   ghosted={stickyStack.track.row.track.ghosted ?? false}
@@ -3398,6 +3471,8 @@ function Timeline({
           onScrollTo={onMinimapScrollTo}
         />
       ) : null}
+
+      <KeyframeSelectionBar playheadTime={readPlayheadTime} />
     </div>
   );
 }

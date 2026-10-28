@@ -46,6 +46,7 @@ import { resolveSelectionKey, selectionLayerOf, storedTimeOf } from '@core/mirro
 import { numbersOfValue, type TrackRef as MirrorTrackRef } from '@core/mirror/trackIndex';
 import { documentMirror } from '@stores/documentMirror';
 import { segmentBezierOf } from './speedGraph';
+import { landingCollisions } from './keySelectionSummary';
 import { isDataProperty } from './buildPropertyRows';
 
 /** One MEMBER track's key by its stored time — the member-level editors' address (`id` is the caller's own key). */
@@ -196,6 +197,70 @@ export async function moveKeyframesTo(moves: ReadonlyArray<{ id: string; time: n
   await edit(moves.length === 1 ? 'Move keyframe' : 'Move keyframes', cmds);
 }
 
+/**
+ * Shift the selected keys together so the EARLIEST lands on `time` (comp
+ * seconds) — the selection bar's "To playhead". Spacing is kept: one
+ * `moveKeyframes` by one delta, one undo entry.
+ *
+ * Resolves to what happened: `moved` false for a stale selection, a refused
+ * edit or a selection already there; `replaced`, the keys of the same
+ * properties the move landed on (the engine replaces those, as a drag onto a
+ * key does) — the caller says so rather than letting them vanish silently.
+ */
+export async function alignKeyframesToTime(
+  uiIds: ReadonlyArray<string>,
+  time: number,
+): Promise<{ moved: boolean; replaced: number }> {
+  const none = { moved: false, replaced: 0 };
+  if (uiIds.length === 0) return none;
+  const targets = await resolveSelection(uiIds);
+  if (!targets) return none;
+  let earliest = Infinity;
+  const ids = new Set<string>();
+  for (const tgt of targets.values()) {
+    earliest = Math.min(earliest, tgt.key.key.time);
+    ids.add(tgt.expected);
+  }
+  const delta = compTime(Math.max(0, time)) - earliest;
+  if (!Number.isFinite(delta) || delta === 0) return none;
+  // Per property: the moving keys' times and everyone else's.
+  const m = documentMirror();
+  const byProp = new Map<string, { moving: number[]; others: number[] }>();
+  for (const id of uiIds) {
+    const hit = resolveSelectionKey(m, id);
+    if (!hit) continue;
+    const k = `${hit.sel.layer}\u0000${hit.path}`;
+    if (byProp.has(k)) {
+      const g = byProp.get(k)!;
+      if (!g.moving.includes(hit.key.time)) g.moving.push(hit.key.time);
+      g.others = g.others.filter((t) => t !== hit.key.time);
+      continue;
+    }
+    byProp.set(k, {
+      moving: [hit.key.time],
+      others: hit.keys.filter((key) => !ids.has(key.id)).map((key) => key.time),
+    });
+  }
+  // A tenth of a millisecond: keys are frame-aligned, so a landing is exact.
+  const replaced = landingCollisions([...byProp.values()], delta, compTime(0.0001));
+  const res = await edit('Move keyframes to playhead', { type: 'moveKeyframes', ids: [...ids], delta });
+  return { moved: res.ok, replaced: res.ok ? replaced : 0 };
+}
+
+/**
+ * Time-reverse the selected keys within their own span (AE's Time-Reverse
+ * Keyframes, on the selection rather than the whole layer). The engine mirrors
+ * them as one block. One undo entry; nothing for fewer than two keys.
+ */
+export async function reverseKeyframesUi(uiIds: ReadonlyArray<string>): Promise<void> {
+  if (uiIds.length < 2) return;
+  const ids = await resolveKeyIds(uiIds);
+  if (!ids) return;
+  const list = [...new Set(ids.values())];
+  if (list.length < 2) return;
+  await edit('Time-reverse keyframes', { type: 'reverseKeyframes', ids: list });
+}
+
 /** Delete keys (one undo entry). */
 export async function deleteKeyframesUi(uiIds: ReadonlyArray<string>, label?: string): Promise<void> {
   if (uiIds.length === 0) return;
@@ -258,6 +323,15 @@ export async function easeKeyframes(
   await edit(label, { type: 'updateKeyframes', patches });
 }
 
+/**
+ * Linear on BOTH sides of each key (the selection bar's Linear): the key's
+ * own departure and its arrival on the previous key — so a key that was
+ * eased in comes out linear, as After Effects' Linear does. One undo entry.
+ */
+export function linearSidesOnKeys(uiIds: ReadonlyArray<string>): Promise<void> {
+  return easeSidesOnKeys(uiIds, 'Linear');
+}
+
 /** A preset (Easy Ease, Hold, an ease-library curve) on keys — F9, the pills, the graph grid. */
 export function easePresetOnKeys(uiIds: ReadonlyArray<string>, preset: EasingPreset): Promise<void> {
   if (preset === 'Ease' || preset === 'EaseIn' || preset === 'EaseOut') return easeSidesOnKeys(uiIds, preset);
@@ -276,7 +350,7 @@ const isHoldKind = (e: string | undefined): boolean => e === 'hold' || e === 'st
  * was — F9 on the last key of a move did nothing you could see, and Ease In /
  * Ease Out came out the wrong way round.
  */
-async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'EaseIn' | 'EaseOut'): Promise<void> {
+async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'EaseIn' | 'EaseOut' | 'Linear'): Promise<void> {
   if (uiIds.length === 0) return;
   const targets = await resolveSelection(uiIds);
   if (!targets) return;
@@ -316,11 +390,31 @@ async function easeSidesOnKeys(uiIds: ReadonlyArray<string>, preset: 'Ease' | 'E
       p.bz[2] = 2 / 3;
       p.bz[3] = 1;
     }
+    if (preset === 'Linear') {
+      // Both sides straight, as AE's Linear: the departure on this key (a
+      // hold stops holding), the arrival on the previous key's handles.
+      const p = seed(eid, key, keys, i);
+      p.bz[0] = 1 / 3;
+      p.bz[1] = 1 / 3;
+      // The last key has no segment of its own: nothing arrives on its far end.
+      if (!next) { p.bz[2] = 2 / 3; p.bz[3] = 2 / 3; }
+      p.hold = false;
+      if (prev && !isHoldKind(prev.easing)) {
+        const q = seed(prev.key.id, prev, keys, i - 1);
+        q.bz[2] = 2 / 3;
+        q.bz[3] = 2 / 3;
+      }
+    }
   }
   const patches: KeyframePatch[] = [];
   for (const [eid, p] of planned) {
     if (p.hold) continue;
-    patches.push({ id: eid, easing: 'bezier', bezier: toCubic(p.bz), spatialIn: [], spatialOut: [] });
+    // Linear: a segment now straight at both ends IS a linear key — say so,
+    // rather than leave a bezier that only looks like one.
+    const straight = preset === 'Linear' && Math.abs(p.bz[0] - p.bz[1]) < 1e-9 && Math.abs(p.bz[2] - p.bz[3]) < 1e-9;
+    patches.push(straight
+      ? { id: eid, easing: 'linear', spatialIn: [], spatialOut: [] }
+      : { id: eid, easing: 'bezier', bezier: toCubic(p.bz), spatialIn: [], spatialOut: [] });
   }
   if (patches.length === 0) return;
   await edit(`Set keyframe easing: ${preset}`, { type: 'updateKeyframes', patches });
