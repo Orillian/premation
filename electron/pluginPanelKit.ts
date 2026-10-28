@@ -23,7 +23,7 @@ const CSS = `/* Premation panel kit — served by the editor; do not copy into y
 :root {
   color-scheme: dark;
   --pm-surface-0: #171718;
-  --pm-surface-1: #2b2b2e;
+  --pm-surface-1: #171718; /* the editor's panels (dark.css body.editor-active), not the dashboard's */
   --pm-surface-2: #35373d;
   --pm-surface-3: #444444;
   --pm-surface-hover: rgba(255, 255, 255, 0.04);
