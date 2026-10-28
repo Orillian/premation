@@ -208,6 +208,16 @@ void RenderThread::set_copy(bool copy) {
 
 bool RenderThread::copy_supported() const { return static_cast<bool>(options_.sendPixels); }
 
+void RenderThread::request_layer_profile() {
+  profileWanted_.store(true, std::memory_order_release);
+  cv_.notify_one();
+}
+
+std::optional<LayerProfile> RenderThread::layer_profile() const {
+  const std::lock_guard<std::mutex> lock(m_);
+  return layerProfile_;
+}
+
 RenderCounters RenderThread::counters() const {
   const std::lock_guard<std::mutex> lock(m_);
   return counters_;
@@ -526,6 +536,69 @@ void RenderThread::store_vram(std::uint64_t key, const wgpu::Texture& source, st
   victimsEncoding_.clear();
 }
 
+void RenderThread::resize_vram_cache(std::size_t budget) {
+  wgpu::CommandEncoder enc = gpu_->device.CreateCommandEncoder();
+  cache_->set_budget(budget, enc, [this](const FrameCache::Evicted& ev, wgpu::CommandEncoder& e) { on_vram_evict(ev, e); });
+  const wgpu::CommandBuffer cb = enc.Finish();
+  gpu_->queue.Submit(1, &cb);
+  for (Victim& v : victimsEncoding_) {
+    v.done = gpu_->queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {});
+    victims_.push_back(std::move(v));
+  }
+  victimsEncoding_.clear();
+}
+
+void RenderThread::relieve_gpu_pressure() {
+  if (!gpuProbe_ || !gpu_ || gpu_->device_lost()) return;
+  const std::optional<GpuMemoryReading> r = gpuProbe_->read();
+  if (!r) return;
+  // Past ~90 % of its budget the OS starts demoting this process's
+  // allocations to system memory, and every pass that touches one crawls over
+  // the bus (deepPrecomp half: 5 ms -> 21 ms with other apps holding 6-7 GB of
+  // an 8 GB card, 2026-10-28). The engine gives memory back before that.
+  constexpr std::uint64_t kGpuHigh = 90;
+  constexpr std::uint64_t kGpuLow = 75;
+  // The frame cache never goes below this under pressure: the frames on screen.
+  constexpr std::size_t kVramCacheFloor = std::size_t{64} << 20U;
+  const std::uint64_t high = r->budget / 100 * kGpuHigh;
+  const std::uint64_t low = r->budget / 100 * kGpuLow;
+  std::uint64_t trimmed = 0;
+  if (r->used > high) {
+    std::uint64_t over = r->used - high;
+    if (cache_) {
+      // The VRAM tier first: its frames move to the RAM tier, nothing is drawn again.
+      const std::size_t held = cache_->stats().bytes;
+      const std::size_t from = std::min(cache_->budget(), held);
+      const std::size_t want = from > kVramCacheFloor + over ? from - static_cast<std::size_t>(over) : kVramCacheFloor;
+      if (want < cache_->budget()) {
+        resize_vram_cache(want);
+        const std::size_t after = cache_->stats().bytes;
+        const std::uint64_t freed = held > after ? held - after : 0;
+        trimmed += freed;
+        over = over > freed ? over - freed : 0;
+      }
+    }
+    // Then what the render graph and the footage feed hold but did not use last frame.
+    if (over > 0 && drawer_) trimmed += drawer_->trim_vram(over);
+    if (trimmed > 0) {
+      PREMATION_LOG(info, "gpu_pressure_trim")
+          .kv("budgetMB", static_cast<double>(r->budget) / (1024.0 * 1024.0))
+          .kv("usedMB", static_cast<double>(r->used) / (1024.0 * 1024.0))
+          .kv("trimmedMB", static_cast<double>(trimmed) / (1024.0 * 1024.0));
+    }
+  } else if (r->used < low && cache_ && cache_->budget() < vramCacheBase_) {
+    // Room again: half the headroom under the low line back to the tier, never past its configured size.
+    const std::size_t grow = std::min(vramCacheBase_ - cache_->budget(), static_cast<std::size_t>((low - r->used) / 2));
+    if (grow > 0) resize_vram_cache(cache_->budget() + grow);
+  }
+  const std::lock_guard<std::mutex> lock(m_);
+  counters_.gpuBudgetBytes = r->budget;
+  counters_.gpuUsedBytes = r->used;
+  counters_.gpuTotalBytes = r->total;
+  counters_.gpuTrimmedBytes += trimmed;
+  if (cache_) cacheStats_ = cache_->stats();
+}
+
 void RenderThread::drain_victims(bool block) {
   while (!victims_.empty()) {
     const wgpu::WaitStatus st = gpu_->instance.WaitAny(victims_.front().done, block ? UINT64_MAX : 0);
@@ -818,6 +891,11 @@ std::string RenderThread::open_gpu() {
     }
   }
   sharedVramBudget_ = 0;
+  {
+    wgpu::AdapterInfo info{};
+    gpu_->adapter.GetInfo(&info);
+    gpuProbe_ = GpuMemoryProbe::open(info.vendorID, info.deviceID);
+  }
   if (drawer_ && options_.frameCacheBytes != 0) {
     // D4: only built frames have content keys; C2's quads are never cached.
     std::size_t budget = options_.frameCacheBytes;
@@ -828,6 +906,7 @@ std::string RenderThread::open_gpu() {
     // its own: this budget is system RAM, counted against the RAM tier below.
     if (info.adapterType == wgpu::AdapterType::IntegratedGPU) sharedVramBudget_ = budget;
     cache_ = std::make_unique<FrameCache>(gpu_->device, budget);
+    vramCacheBase_ = budget;
     PREMATION_LOG(info, "frame_cache").kv("budgetMB", static_cast<double>(budget) / (1024.0 * 1024.0));
   }
   PREMATION_LOG(info, "gpu_ready")
@@ -868,6 +947,7 @@ void RenderThread::close_gpu() {
   // would miss (and heal) one by one — start over instead.
   prebuild_.clear();
   cache_.reset();
+  gpuProbe_.reset();
   drawer_.reset();
   compositor_.reset();
   gpu_.reset();
@@ -987,6 +1067,18 @@ void RenderThread::run(std::promise<std::string>& ready) {
       continue;
     }
     const auto now = SteadyClock::now();
+    if (inflight_.empty() && now - lastGpuProbe_ >= std::chrono::seconds(1)) {
+      // Between frames (nothing encoding): the pools can be trimmed safely.
+      lastGpuProbe_ = now;
+      lock.unlock();
+      timed("gpu_pressure", [&] { relieve_gpu_pressure(); });
+      lock.lock();
+    }
+    if (drawer_) {
+      // The per-layer profile: arm before the next draw, collect what a sampled frame left.
+      if (profileWanted_.exchange(false, std::memory_order_acq_rel)) drawer_->profile_next_frame();
+      if (std::optional<LayerProfile> p = drawer_->take_layer_profile()) layerProfile_ = std::move(p);
+    }
     if (!retired_.empty()) {
       lock.unlock();
       collect_retired(now);

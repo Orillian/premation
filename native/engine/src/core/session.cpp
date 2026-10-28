@@ -1386,7 +1386,10 @@ api::QueryResult Session::run_query(const api::Query& q) {
     cap.cpu_threads = std::thread::hardware_concurrency();
     return cap;
   };
-  c.renderStats = [this] { return render_stats(); };
+  c.renderStats = [this](bool profileLayers) {
+    if (profileLayers) sink_.request_layer_profile();
+    return render_stats();
+  };
   c.cacheCoverage = [this](const std::optional<std::string>& comp) {
     api::CacheCoverage out;
     const auto active = active_comp();
@@ -2342,6 +2345,24 @@ api::RenderStats Session::render_stats() {
     if (mem.processBytes > 0) st.engine_memory_bytes = mem.processBytes;
     if (mem.physicalBytes > 0) st.physical_memory_bytes = mem.physicalBytes;
     if (mem.availableBytes > 0) st.available_memory_bytes = mem.availableBytes;
+  }
+  if (c.gpuBudgetBytes > 0) {
+    st.gpu_memory_budget = c.gpuBudgetBytes;
+    st.gpu_memory_used = c.gpuUsedBytes;
+    if (c.gpuTotalBytes > 0) st.gpu_memory_total = c.gpuTotalBytes;
+  }
+  st.gpu_memory_trimmed = c.gpuTrimmedBytes;
+  if (const std::optional<LayerProfile> prof = sink_.layer_profile()) {
+    // Heaviest first already; the panel shows a dozen, the wire carries 32 at most.
+    constexpr std::size_t kMaxLayers = 32;
+    for (const LayerProfile::Layer& l : prof->layers) {
+      if (st.layer_costs.size() >= kMaxLayers) break;
+      st.layer_costs.push_back(api::LayerCost{l.id, l.kind, l.gpuMs, l.passes});
+    }
+    st.layer_costs_frame_ms = prof->totalMs;
+    const double nowUs = static_cast<double>(
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    st.layer_costs_ago_ms = std::max(0.0, (nowUs - prof->drawnUs) / 1000.0);
   }
   if (c.slotSwitchEpochUs > 0) {
     // The same clock os::epoch_us reads (engine_core does not link os_ffi).

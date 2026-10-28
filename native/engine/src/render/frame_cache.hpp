@@ -26,6 +26,8 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -99,6 +101,13 @@ class FrameCache {
   /// on a miss. Copy from it in a submission made now: an evicted texture is
   /// reused by the next store.
   [[nodiscard]] wgpu::Texture peek(std::uint64_t key, std::uint32_t width, std::uint32_t height) const;
+  /// Resize the budget (video-memory pressure, render_thread.cpp
+  /// relieve_gpu_pressure): frames past a smaller one leave least recently used
+  /// first, each through `onEvict` (the render thread demotes them to the RAM
+  /// tier, so a frame leaves video memory, not the cache). Frames an open
+  /// surface shows stay, over budget if they must.
+  void set_budget(std::size_t bytes, wgpu::CommandEncoder& encoder, const EvictHook& onEvict = {});
+  [[nodiscard]] std::size_t budget() const noexcept { return budget_; }
   /// Drop every frame (fonts changed under the rasters, device reset, budget 0).
   void clear();
   [[nodiscard]] FrameCacheStats stats() const;
@@ -136,5 +145,33 @@ class FrameCache {
 /// at 4 GiB; 1 GiB where the OS does not say. `vendorId`/`deviceId` pick the
 /// adapter Dawn chose (0 = the first hardware adapter).
 [[nodiscard]] std::size_t default_frame_cache_budget(std::uint32_t vendorId, std::uint32_t deviceId);
+
+/// The render adapter's video memory as the OS sees it now.
+struct GpuMemoryReading {
+  /// What the OS lets this process hold before it starts paging (DXGI
+  /// QueryVideoMemoryInfo Budget). It shrinks as other apps take memory.
+  std::uint64_t budget = 0;
+  /// What this process holds now (CurrentUsage): every Dawn allocation, not
+  /// only the pools the engine counts itself.
+  std::uint64_t used = 0;
+  /// The adapter's own memory (dedicated VRAM; the shared pool on an integrated GPU).
+  std::uint64_t total = 0;
+};
+
+/// Live reads of GpuMemoryReading for one adapter (vram_ffi.cpp). Opened once
+/// per device; read() is cheap (one driver call) and runs about once a second
+/// on the render thread. nullptr from open() where the OS cannot say (Metal,
+/// Vulkan for now; a DXGI adapter that does not report budgets).
+class GpuMemoryProbe {
+ public:
+  GpuMemoryProbe() = default;
+  virtual ~GpuMemoryProbe() = default;
+  GpuMemoryProbe(const GpuMemoryProbe&) = delete;
+  GpuMemoryProbe& operator=(const GpuMemoryProbe&) = delete;
+  GpuMemoryProbe(GpuMemoryProbe&&) = delete;
+  GpuMemoryProbe& operator=(GpuMemoryProbe&&) = delete;
+  [[nodiscard]] static std::unique_ptr<GpuMemoryProbe> open(std::uint32_t vendorId, std::uint32_t deviceId);
+  [[nodiscard]] virtual std::optional<GpuMemoryReading> read() = 0;
+};
 
 }  // namespace premation::render

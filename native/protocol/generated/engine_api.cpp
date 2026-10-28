@@ -1343,6 +1343,22 @@ bool from_u32(std::uint32_t n, BoundsSpace& out) noexcept {
     default: return false;
   }
 }
+std::string_view to_string(LayerCostKind v) noexcept {
+  switch (v) {
+    case LayerCostKind::layer: return "layer";
+    case LayerCostKind::scene3d: return "scene3d";
+    case LayerCostKind::frame: return "frame";
+  }
+  return {};
+}
+bool from_u32(std::uint32_t n, LayerCostKind& out) noexcept {
+  switch (n) {
+    case 0: out = LayerCostKind::layer; return true;
+    case 1: out = LayerCostKind::scene3d; return true;
+    case 2: out = LayerCostKind::frame; return true;
+    default: return false;
+  }
+}
 std::string_view to_string(JobStatus v) noexcept {
   switch (v) {
     case JobStatus::queued: return "queued";
@@ -17143,16 +17159,20 @@ Status decode(wire::Reader& r, GetHistory& out) {
 }
 
 void encode(wire::Writer& w, const GetRenderStats& v) {
-  (void)w;
-  (void)v;
+  if (v.profile_layers.has_value()) { w.varint(8U); w.boolean(*v.profile_layers); }
 }
 
 Status decode(wire::Reader& r, GetRenderStats& out) {
-  (void)out;
   while (!r.at_end()) {
     std::uint64_t key = 0;
     if (!r.varint(key)) return Status::truncated;
     switch (key) {
+      case 8U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.profile_layers = std::move(e);
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
@@ -26095,6 +26115,54 @@ Status decode(wire::Reader& r, HistoryState& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const LayerCost& v) {
+  w.varint(10U); w.str(v.layer);
+  w.varint(16U); w.varint(static_cast<std::uint32_t>(v.kind));
+  w.varint(25U); w.f64(v.gpu_ms);
+  w.varint(32U); w.varint(v.passes);
+}
+
+Status decode(wire::Reader& r, LayerCost& out) {
+  bool has_layer = false;
+  bool has_kind = false;
+  bool has_gpu_ms = false;
+  bool has_passes = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.layer)) return Status::truncated;
+        has_layer = true;
+        break;
+      }
+      case 16U: {
+        { std::uint32_t n = 0; if (!r.u32(n)) return Status::bad_value; if (!from_u32(n, out.kind)) return Status::bad_enum; }
+        has_kind = true;
+        break;
+      }
+      case 25U: {
+        if (!r.f64(out.gpu_ms)) return Status::truncated;
+        has_gpu_ms = true;
+        break;
+      }
+      case 32U: {
+        if (!r.u32(out.passes)) return Status::bad_value;
+        has_passes = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_layer) return Status::missing_field;
+  if (!has_kind) return Status::missing_field;
+  if (!has_gpu_ms) return Status::missing_field;
+  if (!has_passes) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const RenderStats& v) {
   w.varint(9U); w.f64(v.gpu_frame_ms);
   w.varint(17U); w.f64(v.cpu_frame_ms);
@@ -26116,6 +26184,13 @@ void encode(wire::Writer& w, const RenderStats& v) {
   if (v.available_memory_bytes.has_value()) { w.varint(144U); w.varint(*v.available_memory_bytes); }
   if (v.idle_render_ahead.has_value()) { w.varint(152U); w.boolean(*v.idle_render_ahead); }
   if (v.disk_read_ms_per_mp.has_value()) { w.varint(161U); w.f64(*v.disk_read_ms_per_mp); }
+  if (v.gpu_memory_budget.has_value()) { w.varint(168U); w.varint(*v.gpu_memory_budget); }
+  if (v.gpu_memory_used.has_value()) { w.varint(176U); w.varint(*v.gpu_memory_used); }
+  if (v.gpu_memory_total.has_value()) { w.varint(184U); w.varint(*v.gpu_memory_total); }
+  if (v.gpu_memory_trimmed.has_value()) { w.varint(192U); w.varint(*v.gpu_memory_trimmed); }
+  for (const auto& e : v.layer_costs) { w.varint(202U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  if (v.layer_costs_frame_ms.has_value()) { w.varint(209U); w.f64(*v.layer_costs_frame_ms); }
+  if (v.layer_costs_ago_ms.has_value()) { w.varint(217U); w.f64(*v.layer_costs_ago_ms); }
 }
 
 Status decode(wire::Reader& r, RenderStats& out) {
@@ -26241,6 +26316,47 @@ Status decode(wire::Reader& r, RenderStats& out) {
         double e = 0.0;
         if (!r.f64(e)) return Status::truncated;
         out.disk_read_ms_per_mp = std::move(e);
+        break;
+      }
+      case 168U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.gpu_memory_budget = std::move(e);
+        break;
+      }
+      case 176U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.gpu_memory_used = std::move(e);
+        break;
+      }
+      case 184U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.gpu_memory_total = std::move(e);
+        break;
+      }
+      case 192U: {
+        std::uint64_t e = 0;
+        if (!r.varint(e)) return Status::truncated;
+        out.gpu_memory_trimmed = std::move(e);
+        break;
+      }
+      case 202U: {
+        auto& e = out.layer_costs.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 209U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.layer_costs_frame_ms = std::move(e);
+        break;
+      }
+      case 217U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.layer_costs_ago_ms = std::move(e);
         break;
       }
       default:
@@ -32923,7 +33039,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 568> kNames = {
+constexpr std::array<std::string_view, 569> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -33380,6 +33496,7 @@ constexpr std::array<std::string_view, 568> kNames = {
     "HistoryEntry",
     "HistoryState",
     "RenderStats",
+    "LayerCost",
     "LayerError",
     "JobInfo",
     "GetHistory",
@@ -33954,6 +34071,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "HistoryEntry") return roundtrip<HistoryEntry>(bytes, out);
   if (type == "HistoryState") return roundtrip<HistoryState>(bytes, out);
   if (type == "RenderStats") return roundtrip<RenderStats>(bytes, out);
+  if (type == "LayerCost") return roundtrip<LayerCost>(bytes, out);
   if (type == "LayerError") return roundtrip<LayerError>(bytes, out);
   if (type == "JobInfo") return roundtrip<JobInfo>(bytes, out);
   if (type == "GetHistory") return roundtrip<GetHistory>(bytes, out);

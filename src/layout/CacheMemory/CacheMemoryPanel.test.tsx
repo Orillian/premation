@@ -49,6 +49,8 @@ describe('CacheMemoryPanel', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Diagnostics' }));
     expect(screen.getByText('Engine memory')).toBeInTheDocument();
+    // Before the engine answers, the heaviest-layers list holds its place.
+    expect(screen.getByText('Heaviest layers')).toBeInTheDocument();
     expect(screen.getByText('No restarts or memory warnings.')).toBeInTheDocument();
   });
 
@@ -75,7 +77,7 @@ describe('CacheMemoryPanel', () => {
 });
 
 describe('healthCopy', () => {
-  const stats = { gpuFrameMs: 0, cpuFrameMs: 0, fps: 0, droppedFrames: 0, vramBytes: 0, ramCacheBytes: 2 * 1024 ** 3, diskCacheBytes: 0, cacheHitRate: 0, decodeMs: 0, ramCacheBudget: 12 * 1024 ** 3, engineMemoryBytes: 6 * 1024 ** 3 };
+  const stats = { gpuFrameMs: 0, cpuFrameMs: 0, fps: 0, droppedFrames: 0, vramBytes: 0, ramCacheBytes: 2 * 1024 ** 3, diskCacheBytes: 0, cacheHitRate: 0, decodeMs: 0, ramCacheBudget: 12 * 1024 ** 3, engineMemoryBytes: 6 * 1024 ** 3, layerCosts: [] };
 
   it('names the budget when healthy and the growth when growing', () => {
     const r = readMemory(stats);
@@ -83,5 +85,12 @@ describe('healthCopy', () => {
     const growing = healthCopy({ kind: 'growing', growthPerMin: 80 * 1024 ** 2 }, r);
     expect(growing.title).toBe('Engine memory keeps growing');
     expect(growing.body).toContain('80 MB');
+  });
+
+  it('names what other apps hold when graphics memory is tight', () => {
+    const r = readMemory({ ...stats, gpuMemoryBudget: 2 * 1024 ** 3, gpuMemoryUsed: 1.9 * 1024 ** 3, gpuMemoryTotal: 8 * 1024 ** 3 });
+    const copy = healthCopy({ kind: 'pressure', pressure: 'gpu' }, r);
+    expect(copy.title).toBe('Graphics memory is tight');
+    expect(copy.body).toContain('6.0 GB');
   });
 });

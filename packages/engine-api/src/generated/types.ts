@@ -577,6 +577,13 @@ export type BoundsSpace =
   | 'viewport';
 export const BoundsSpaceValues = ['comp', 'layer', 'viewport'] as const;
 
+/** One root-level layer's share of a sampled frame's GPU time. */
+export type LayerCostKind =
+  | 'layer'
+  | 'scene3d'
+  | 'frame';
+export const LayerCostKindValues = ['layer', 'scene3d', 'frame'] as const;
+
 export type JobStatus =
   | 'queued'
   | 'running'
@@ -4675,6 +4682,26 @@ export interface RenderStats {
   idleRenderAhead?: boolean;
   /** What reading one frame back from the disk tier costs, ms per megapixel, timed on the folder's own files. Absent = not measured yet. */
   diskReadMsPerMp?: number;
+  /** Video memory as the OS sees it: what it lets the engine hold before it pages (shrinks as other apps take memory), what the engine holds now, and the adapter's size (bytes). Absent = the OS does not say (macOS, Linux for now). */
+  gpuMemoryBudget?: number;
+  gpuMemoryUsed?: number;
+  gpuMemoryTotal?: number;
+  /** Video memory the engine gave back under pressure since it started (frame-cache frames moved to RAM, idle targets and textures freed), bytes. */
+  gpuMemoryTrimmed?: number;
+  /** The last sampled frame's GPU time per root-level layer, heaviest first (getRenderStats profileLayers). Empty = no sample yet. */
+  layerCosts: LayerCost[];
+  /** That frame's measured GPU total (ms) and how long ago it was drawn (ms). */
+  layerCostsFrameMs?: number;
+  layerCostsAgoMs?: number;
+}
+
+export interface LayerCost {
+  /** The layer (scene3d: the first layer of a run of 3D layers drawn as one depth-tested group; frame: empty). */
+  layer: LayerId;
+  kind: LayerCostKind;
+  /** Its render passes' GPU time, its precomp subtree and effects included (ms). */
+  gpuMs: number;
+  passes: number;
 }
 
 export interface LayerError {
@@ -4699,7 +4726,10 @@ export interface JobInfo {
 
 export interface GetHistory {}
 
-export interface GetRenderStats {}
+/** `profileLayers`: also sample the GPU time of the next frame drawn, per root-level layer (RenderStats.layerCosts). */
+export interface GetRenderStats {
+  profileLayers?: boolean;
+}
 
 export interface GetLayerErrors {
   comp?: ItemId;

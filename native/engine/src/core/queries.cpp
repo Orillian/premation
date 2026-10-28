@@ -1232,8 +1232,8 @@ struct Q {
     return query_result_for<api::GetDependencies>(std::move(out));
   }
   api::QueryResult operator()(const api::GetHistory&) const { return query_result_for<api::GetHistory>(c.history()); }
-  api::QueryResult operator()(const api::GetRenderStats&) const {
-    return query_result_for<api::GetRenderStats>(c.renderStats());
+  api::QueryResult operator()(const api::GetRenderStats& q) const {
+    return query_result_for<api::GetRenderStats>(c.renderStats(q.profile_layers.value_or(false)));
   }
   api::QueryResult operator()(const api::GetCacheCoverage& q) const {
     if (q.comp) require_comp(d, *q.comp);

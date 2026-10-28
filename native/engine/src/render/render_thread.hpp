@@ -109,6 +109,13 @@ class BuiltFrameDrawer {
   [[nodiscard]] virtual double decode_ms() const { return 0; }
   /// GPU memory the drawer holds (render graph targets and textures, converted footage), bytes.
   [[nodiscard]] virtual std::uint64_t vram_bytes() { return 0; }
+  /// Video-memory pressure: give back at least `bytes` the last frame did not
+  /// use (render graph targets and textures). Between frames. Returns bytes freed.
+  virtual std::uint64_t trim_vram(std::uint64_t /*bytes*/) { return 0; }
+  /// Sample the next frame drawn per root-level layer (gpu_profiler.hpp).
+  virtual void profile_next_frame() {}
+  /// A sample finished since the last call (taken: each is returned once).
+  [[nodiscard]] virtual std::optional<LayerProfile> take_layer_profile() { return std::nullopt; }
 
   /// getThumbnail: draw `frame` offscreen at width × height and encode it
   /// (StillImage). False (with `error`) when it cannot.
@@ -191,6 +198,8 @@ class RenderThread final : public FrameSink {
   /// D4: the frame cache's counters (zeros when the cache is off).
   [[nodiscard]] FrameCacheStats cache_stats() const;
   [[nodiscard]] CacheCoverageSnap cache_coverage() const override;
+  void request_layer_profile() override;
+  [[nodiscard]] std::optional<LayerProfile> layer_profile() const override;
   void publish_coverage_now() override;
   void purge_frame_cache() override;
   void configure_disk_cache(const std::string& folder, std::uint64_t bytes) override;
@@ -406,6 +415,16 @@ class RenderThread final : public FrameSink {
   /// same memory the RAM tier is sized from (manage_ram_budget takes it off).
   std::uint64_t sharedVramBudget_ = 0;
   FrameCacheStats cacheStats_;
+  /// The OS's video-memory budget for this process, read live (relieve_gpu_pressure).
+  /// Null where the OS does not say (render thread only).
+  std::unique_ptr<GpuMemoryProbe> gpuProbe_;
+  /// The frame cache's budget as configured: pressure lowers the live one, and it grows back to this.
+  std::size_t vramCacheBase_ = 0;
+  /// getRenderStats profileLayers: arm the drawer's profiler before the next draw.
+  std::atomic<bool> profileWanted_{false};
+  /// The newest per-layer sample (m_).
+  std::optional<LayerProfile> layerProfile_;
+  std::chrono::steady_clock::time_point lastGpuProbe_{};
   wgpu::Texture onionTex_;
   wgpu::TextureView onionView_;
   std::uint32_t onionW_ = 0;
@@ -473,6 +492,15 @@ class RenderThread final : public FrameSink {
   /// Store `source` in the VRAM cache as `key`, its evictions read back for the RAM tier.
   void store_vram(std::uint64_t key, const wgpu::Texture& source, std::uint32_t width, std::uint32_t height,
                   const FrameMeta& meta);
+  /// Video-memory pressure, about once a second between frames: read the OS
+  /// budget; past kGpuHigh of it, shrink the frame cache (its frames demote to
+  /// the RAM tier, nothing re-renders) and then give back targets and textures
+  /// the last frame did not use, until the process is under the line again.
+  /// Below kGpuLow the frame cache grows back toward vramCacheBase_. Pixels
+  /// never change: no isolated precomp or effect falls back under pressure.
+  void relieve_gpu_pressure();
+  /// Resize the VRAM tier, its evictions read back for the RAM tier (as store_vram's).
+  void resize_vram_cache(std::size_t budget);
   /// Hand finished victim read-backs to the RAM (or disk) tier; `block` waits for the oldest.
   void drain_victims(bool block);
   /// A key whose read-back is still in flight: wait for it (true = it was one).

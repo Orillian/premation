@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "materials.hpp"
+#include "gpu_profiler.hpp"
 #include "resource_pool.hpp"
 
 namespace premation::rg {
@@ -202,6 +203,8 @@ class Device {
   [[nodiscard]] const wgpu::Device& device() const noexcept { return device_; }
   [[nodiscard]] const wgpu::Queue& queue() const noexcept { return queue_; }
   [[nodiscard]] const wgpu::Instance& instance() const noexcept { return instance_; }
+  /// Per-layer GPU time, one sampled frame at a time (gpu_profiler.hpp).
+  [[nodiscard]] GpuProfiler& profiler() noexcept { return profiler_; }
   /// The device's maxTextureDimension2D (device_limits.hpp asks for up to 16384).
   [[nodiscard]] std::uint32_t max_texture_dimension() const noexcept { return maxTexture2D_; }
 
@@ -210,6 +213,11 @@ class Device {
   [[nodiscard]] wgpu::CommandEncoder& encoder() noexcept { return encoder_; }
   /// Flush the uniform arena, submit, run GC. Returns resources collected.
   std::size_t end_frame();
+  /// Video-memory pressure (the OS budget is short): give back at least
+  /// `bytes` of targets and textures the last frame did not use, oldest first
+  /// — targets before textures (a texture costs a re-upload, a target only a
+  /// re-allocation). Between frames only. Returns the bytes freed.
+  std::uint64_t trim(std::uint64_t bytes);
   /// G1: submit everything encoded so far (with the uniform arena it reads) and
   /// continue the frame in a fresh encoder — for work that must run on the
   /// queue after the frame so far and before the rest of it: a native plugin's
@@ -353,6 +361,7 @@ class Device {
   /// has none): a draw's own scissor is cut to it, and it is restored after.
   std::array<std::uint32_t, 4> passRect_{};
   DeviceStats stats_;
+  GpuProfiler profiler_;
   std::string firstError_;
 };
 

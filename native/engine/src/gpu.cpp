@@ -199,8 +199,9 @@ std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std:
     features.push_back(wgpu::FeatureName::Float32Blendable);
     gpu.float32 = true;
   }
+  // TimestampQuery: the per-layer GPU profile (render_graph/gpu_profiler.hpp), idle unless a frame is sampled.
   for (const wgpu::FeatureName f : {wgpu::FeatureName::DawnMultiPlanarFormats, wgpu::FeatureName::MultiPlanarFormatP010,
-                                    wgpu::FeatureName::Unorm16TextureFormats}) {
+                                    wgpu::FeatureName::Unorm16TextureFormats, wgpu::FeatureName::TimestampQuery}) {
     if (gpu.adapter.HasFeature(f)) features.push_back(f);
   }
 
@@ -221,9 +222,14 @@ std::optional<Gpu> create_gpu(bool wantSharedTexture, bool highPerformance, std:
   const std::optional<std::string> fxc = os::env_var("PREMATION_GPU_FXC");
   if (!fxc || *fxc != "1") enabledToggles.push_back("use_dxc");
 #endif
+  // Timestamps at full resolution: Dawn rounds them (a browser's fingerprinting
+  // guard) to ~65 µs, which reads most layers of the per-layer profile as 0 ms.
+  const std::array<const char*, 1> disabledToggles = {"timestamp_quantization"};
   wgpu::DawnTogglesDescriptor toggles{};
   toggles.enabledToggleCount = enabledToggles.size();
   toggles.enabledToggles = enabledToggles.data();
+  toggles.disabledToggleCount = disabledToggles.size();
+  toggles.disabledToggles = disabledToggles.data();
   // The persistent blob cache (BlobCache above): isolated per engine version
   // and adapter, so a driver or engine update never serves a stale blob.
   // The C descriptor: the C++ wrapper keeps the callback slots protected and

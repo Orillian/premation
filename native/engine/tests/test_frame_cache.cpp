@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -151,6 +152,47 @@ TEST_CASE("frame cache: the byte budget evicts least recently used first", "[gpu
   CHECK(s.entries == 3);
   CHECK(s.bytes == 3 * kFrame);
   CHECK(s.evictions == 1);
+}
+
+TEST_CASE("frame cache: a smaller budget sends its least recently used frames through the evict hook", "[gpu][d4]") {
+  auto& gpu = cache_gpu();
+  if (!gpu) SKIP("no GPU adapter");
+  constexpr std::uint32_t W = 16;
+  constexpr std::uint32_t H = 16;
+  constexpr std::size_t kFrame = std::size_t{W} * H * 4;
+  render::FrameCache cache(gpu->device, 4 * kFrame);
+  const wgpu::Texture src = filled(*gpu, W, H, 3);
+  wgpu::CommandEncoder enc = gpu->device.CreateCommandEncoder();
+  for (std::uint64_t k = 1; k <= 4; ++k) cache.store(k, W, H, src, enc);
+  std::vector<std::uint64_t> demoted;
+  // Video-memory pressure: half the budget. The two oldest leave through the hook (the RAM tier's read-back).
+  cache.set_budget(2 * kFrame, enc, [&](const render::FrameCache::Evicted& ev, wgpu::CommandEncoder&) { demoted.push_back(ev.key); });
+  submit(*gpu, enc);
+  CHECK(demoted == std::vector<std::uint64_t>{1, 2});
+  CHECK(cache.budget() == 2 * kFrame);
+  CHECK(cache.stats().bytes == 2 * kFrame);
+  CHECK(cache.contains(3));
+  CHECK(cache.contains(4));
+  // Grown back: nothing is evicted, and new frames fit again.
+  wgpu::CommandEncoder enc2 = gpu->device.CreateCommandEncoder();
+  cache.set_budget(4 * kFrame, enc2);
+  cache.store(5, W, H, src, enc2);
+  submit(*gpu, enc2);
+  CHECK(cache.stats().entries == 3);
+}
+
+TEST_CASE("gpu memory probe: a reading is sane where the OS gives one", "[gpu][d4]") {
+  auto& gpu = cache_gpu();
+  if (!gpu) SKIP("no GPU adapter");
+  wgpu::AdapterInfo info{};
+  gpu->adapter.GetInfo(&info);
+  const std::unique_ptr<render::GpuMemoryProbe> probe = render::GpuMemoryProbe::open(info.vendorID, info.deviceID);
+  if (!probe) SKIP("the OS does not report video-memory budgets here");
+  const std::optional<render::GpuMemoryReading> r = probe->read();
+  REQUIRE(r.has_value());
+  CHECK(r->budget > 0);
+  CHECK(r->total > 0);
+  CHECK(r->used <= r->budget * 2);  // a process can exceed its budget, not by a multiple
 }
 
 TEST_CASE("frame cache: a frame larger than the whole budget is not kept", "[gpu][d4]") {

@@ -246,7 +246,7 @@ export const QUERIES: Readonly<Record<QueryType, QueryInfo>> = {
   findLayers: { id: 1066, family: "Interaction", result: "LayerList", doc: "" },
   getDependencies: { id: 1067, family: "Interaction", result: "Dependencies", doc: "What a layer/item depends on and what depends on it (flowchart, expression references, precomp nesting)." },
   getHistory: { id: 1080, family: "Status", result: "HistoryState", doc: "" },
-  getRenderStats: { id: 1081, family: "Status", result: "RenderStats", doc: "" },
+  getRenderStats: { id: 1081, family: "Status", result: "RenderStats", doc: "`profileLayers`: also sample the GPU time of the next frame drawn, per root-level layer (RenderStats.layerCosts)." },
   getLayerErrors: { id: 1082, family: "Status", result: "LayerErrorList", doc: "" },
   getJobs: { id: 1083, family: "Status", result: "JobList", doc: "" },
   getRenderQueue: { id: 1084, family: "Status", result: "RenderQueueState", doc: "" },
@@ -293,4 +293,4 @@ export const EVENTS: Readonly<Record<EventType, EventInfo>> = {
 };
 
 /** Size of the schema, for docs and tests. */
-export const SCHEMA_COUNTS = {"enums":92,"structs":557,"unions":11,"commands":176,"queries":59,"events":34} as const;
+export const SCHEMA_COUNTS = {"enums":93,"structs":558,"unions":11,"commands":176,"queries":59,"events":34} as const;

@@ -129,6 +129,7 @@ if(Dawn_FOUND)
   # (embedded above → builtin_shaders.inc, materials.inc).
   add_library(engine_render_graph STATIC
     src/render_graph/device.cpp
+    src/render_graph/gpu_profiler.cpp  # per-layer GPU time, one sampled frame at a time
     src/render_graph/shader_library.cpp
     src/render_graph/render_context.cpp
     src/render_graph/passes.cpp

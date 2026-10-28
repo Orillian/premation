@@ -57,6 +57,12 @@ function findingCopy(f: HealthFinding, refresh: () => void): Copy {
         body: t('health.machineLow.body', 'Previews give memory back first. Purging them, closing other apps or lowering RAM for previews helps.'),
         action: { label: t('timeline.cache.purgeRamPreview', 'Purge RAM Preview'), run: () => { purgeRamPreview(); refresh(); refreshEngineMemory(); } },
       };
+    case 'gpuLow':
+      return {
+        title: t('health.gpuLow', 'Graphics memory is tight'),
+        body: t('health.gpuLow.body', 'Other apps hold most of the graphics card, so Premation moves cached frames to RAM to keep playback smooth. Closing other GPU apps (browsers, games, other editors) gives it room back.'),
+        action: { label: t('health.gpuLow.action', 'Show Graphics Memory'), run: () => setCacheMemoryView('overview') },
+      };
     case 'ramFull':
       return {
         title: t('health.ramFull', 'RAM previews are at their budget'),

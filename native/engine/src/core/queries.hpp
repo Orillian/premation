@@ -66,7 +66,8 @@ struct QCtx {
   std::function<api::HistoryState()> history;
   std::function<std::vector<api::LogRecord>(api::Revision)> log;
   std::function<api::Capabilities()> capabilities;
-  std::function<api::RenderStats()> renderStats;
+  /// `profileLayers`: also sample the next frame drawn per layer (getRenderStats profileLayers).
+  std::function<api::RenderStats(bool profileLayers)> renderStats;
   /// Property catalogs by layer, valid until the next command (the session
   /// clears it before any command runs): repeated queries at one revision —
   /// a scrub, a panel re-reading its rows — build each layer's catalog once.

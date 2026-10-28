@@ -260,6 +260,10 @@ const BoundsSpace_TO_NUM: Record<string, number> = { 'comp': 0, 'layer': 1, 'vie
 const BoundsSpace_FROM_NUM: readonly (T.BoundsSpace | undefined)[] = ['comp', 'layer', 'viewport'];
 function enc_BoundsSpace(v: T.BoundsSpace): number { const n = BoundsSpace_TO_NUM[v]; if (n === undefined) throw new RangeError('BoundsSpace: invalid value ' + String(v)); return n; }
 function dec_BoundsSpace(n: number): T.BoundsSpace { const v = BoundsSpace_FROM_NUM[n]; if (v === undefined) throw new DecodeError('BoundsSpace: unknown value ' + n, 'badEnum'); return v; }
+const LayerCostKind_TO_NUM: Record<string, number> = { 'layer': 0, 'scene3d': 1, 'frame': 2 };
+const LayerCostKind_FROM_NUM: readonly (T.LayerCostKind | undefined)[] = ['layer', 'scene3d', 'frame'];
+function enc_LayerCostKind(v: T.LayerCostKind): number { const n = LayerCostKind_TO_NUM[v]; if (n === undefined) throw new RangeError('LayerCostKind: invalid value ' + String(v)); return n; }
+function dec_LayerCostKind(n: number): T.LayerCostKind { const v = LayerCostKind_FROM_NUM[n]; if (v === undefined) throw new DecodeError('LayerCostKind: unknown value ' + n, 'badEnum'); return v; }
 const JobStatus_TO_NUM: Record<string, number> = { 'queued': 0, 'running': 1, 'done': 2, 'failed': 3, 'cancelled': 4 };
 const JobStatus_FROM_NUM: readonly (T.JobStatus | undefined)[] = ['queued', 'running', 'done', 'failed', 'cancelled'];
 function enc_JobStatus(v: T.JobStatus): number { const n = JobStatus_TO_NUM[v]; if (n === undefined) throw new RangeError('JobStatus: invalid value ' + String(v)); return n; }
@@ -14586,8 +14590,16 @@ function encS_RenderStats(w: Writer, v: T.RenderStats): void {
   if (v.availableMemoryBytes !== undefined) { w.varint(144); w.u64(v.availableMemoryBytes); }
   if (v.idleRenderAhead !== undefined) { w.varint(152); w.bool(v.idleRenderAhead); }
   if (v.diskReadMsPerMp !== undefined) { w.varint(161); w.f64(v.diskReadMsPerMp); }
+  if (v.gpuMemoryBudget !== undefined) { w.varint(168); w.u64(v.gpuMemoryBudget); }
+  if (v.gpuMemoryUsed !== undefined) { w.varint(176); w.u64(v.gpuMemoryUsed); }
+  if (v.gpuMemoryTotal !== undefined) { w.varint(184); w.u64(v.gpuMemoryTotal); }
+  if (v.gpuMemoryTrimmed !== undefined) { w.varint(192); w.u64(v.gpuMemoryTrimmed); }
+  { const a = v.layerCosts; for (let i = 0; i < a.length; i++) { w.varint(202); { const s = w.beginLd(); encS_LayerCost(w, a[i]!); w.endLd(s); } } }
+  if (v.layerCostsFrameMs !== undefined) { w.varint(209); w.f64(v.layerCostsFrameMs); }
+  if (v.layerCostsAgoMs !== undefined) { w.varint(217); w.f64(v.layerCostsAgoMs); }
 }
 function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
+  const l_layerCosts: T.LayerCost[] = [];
   let h_gpuFrameMs = false;
   let h_cpuFrameMs = false;
   let h_fps = false;
@@ -14617,6 +14629,12 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   let v_availableMemoryBytes: number | undefined;
   let v_idleRenderAhead: boolean | undefined;
   let v_diskReadMsPerMp: number | undefined;
+  let v_gpuMemoryBudget: number | undefined;
+  let v_gpuMemoryUsed: number | undefined;
+  let v_gpuMemoryTotal: number | undefined;
+  let v_gpuMemoryTrimmed: number | undefined;
+  let v_layerCostsFrameMs: number | undefined;
+  let v_layerCostsAgoMs: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -14640,6 +14658,13 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
       case 144: v_availableMemoryBytes = r.u64(); break;
       case 152: v_idleRenderAhead = r.bool(); break;
       case 161: v_diskReadMsPerMp = r.f64(); break;
+      case 168: v_gpuMemoryBudget = r.u64(); break;
+      case 176: v_gpuMemoryUsed = r.u64(); break;
+      case 184: v_gpuMemoryTotal = r.u64(); break;
+      case 192: v_gpuMemoryTrimmed = r.u64(); break;
+      case 202: l_layerCosts.push(decS_LayerCost(r, r.ldEnd(), {})); break;
+      case 209: v_layerCostsFrameMs = r.f64(); break;
+      case 217: v_layerCostsAgoMs = r.f64(); break;
       default: r.skip(key);
     }
   }
@@ -14673,6 +14698,49 @@ function decS_RenderStats(r: Reader, end: number, o: any): T.RenderStats {
   if (v_availableMemoryBytes !== undefined) o.availableMemoryBytes = v_availableMemoryBytes;
   if (v_idleRenderAhead !== undefined) o.idleRenderAhead = v_idleRenderAhead;
   if (v_diskReadMsPerMp !== undefined) o.diskReadMsPerMp = v_diskReadMsPerMp;
+  if (v_gpuMemoryBudget !== undefined) o.gpuMemoryBudget = v_gpuMemoryBudget;
+  if (v_gpuMemoryUsed !== undefined) o.gpuMemoryUsed = v_gpuMemoryUsed;
+  if (v_gpuMemoryTotal !== undefined) o.gpuMemoryTotal = v_gpuMemoryTotal;
+  if (v_gpuMemoryTrimmed !== undefined) o.gpuMemoryTrimmed = v_gpuMemoryTrimmed;
+  o.layerCosts = l_layerCosts;
+  if (v_layerCostsFrameMs !== undefined) o.layerCostsFrameMs = v_layerCostsFrameMs;
+  if (v_layerCostsAgoMs !== undefined) o.layerCostsAgoMs = v_layerCostsAgoMs;
+  return o;
+}
+function encS_LayerCost(w: Writer, v: T.LayerCost): void {
+  w.byte(10); w.str(v.layer);
+  w.byte(16); w.varint(enc_LayerCostKind(v.kind));
+  w.byte(25); w.f64(v.gpuMs);
+  w.byte(32); w.u32(v.passes);
+}
+function decS_LayerCost(r: Reader, end: number, o: any): T.LayerCost {
+  let h_layer = false;
+  let h_kind = false;
+  let h_gpuMs = false;
+  let h_passes = false;
+  let v_layer: string | undefined;
+  let v_kind: T.LayerCostKind | undefined;
+  let v_gpuMs: number | undefined;
+  let v_passes: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 16: v_kind = dec_LayerCostKind(r.varint()); h_kind = true; break;
+      case 25: v_gpuMs = r.f64(); h_gpuMs = true; break;
+      case 32: v_passes = r.u32(); h_passes = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('LayerCost.layer: missing', 'missingField');
+  if (!h_kind) throw new DecodeError('LayerCost.kind: missing', 'missingField');
+  if (!h_gpuMs) throw new DecodeError('LayerCost.gpuMs: missing', 'missingField');
+  if (!h_passes) throw new DecodeError('LayerCost.passes: missing', 'missingField');
+  o.layer = v_layer;
+  o.kind = v_kind;
+  o.gpuMs = v_gpuMs;
+  o.passes = v_passes;
   return o;
 }
 function encS_LayerError(w: Writer, v: T.LayerError): void {
@@ -14777,16 +14845,19 @@ function decS_GetHistory(r: Reader, end: number, o: any): T.GetHistory {
   return o;
 }
 function encS_GetRenderStats(w: Writer, v: T.GetRenderStats): void {
-  void w; void v;
+  if (v.profileLayers !== undefined) { w.byte(8); w.bool(v.profileLayers); }
 }
 function decS_GetRenderStats(r: Reader, end: number, o: any): T.GetRenderStats {
+  let v_profileLayers: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
+      case 8: v_profileLayers = r.bool(); break;
       default: r.skip(key);
     }
   }
   r.expectAt(end);
+  if (v_profileLayers !== undefined) o.profileLayers = v_profileLayers;
   return o;
 }
 function encS_GetLayerErrors(w: Writer, v: T.GetLayerErrors): void {
@@ -20483,6 +20554,7 @@ export const codecs = {
   HistoryEntry: mk<T.HistoryEntry>(encS_HistoryEntry, (r, e) => decS_HistoryEntry(r, e, {})),
   HistoryState: mk<T.HistoryState>(encS_HistoryState, (r, e) => decS_HistoryState(r, e, {})),
   RenderStats: mk<T.RenderStats>(encS_RenderStats, (r, e) => decS_RenderStats(r, e, {})),
+  LayerCost: mk<T.LayerCost>(encS_LayerCost, (r, e) => decS_LayerCost(r, e, {})),
   LayerError: mk<T.LayerError>(encS_LayerError, (r, e) => decS_LayerError(r, e, {})),
   JobInfo: mk<T.JobInfo>(encS_JobInfo, (r, e) => decS_JobInfo(r, e, {})),
   GetHistory: mk<T.GetHistory>(encS_GetHistory, (r, e) => decS_GetHistory(r, e, {})),

@@ -124,6 +124,25 @@ class Pool {
     return n + extra;
   }
 
+  /// Free at least `bytes` (oldest first) from entries no draw used this frame
+  /// (video-memory pressure: Device::trim). Pinned entries stay. Returns the bytes freed.
+  std::uint64_t trim(std::uint64_t frame, std::uint64_t bytes) {
+    std::vector<typename decltype(map_)::iterator> idle;
+    for (auto it = map_.begin(); it != map_.end(); ++it) {
+      if (!it->second.pinned && it->second.lastFrame < frame) idle.push_back(it);
+    }
+    std::ranges::sort(idle, [](const auto& a, const auto& b) { return a->second.lastFrame < b->second.lastFrame; });
+    std::uint64_t freed = 0;
+    for (auto it : idle) {
+      if (freed >= bytes) break;
+      freed += it->second.bytes;
+      if (meter_ != nullptr) meter_->sub(it->second.bytes);
+      map_.erase(it);
+      ++stats_.collected;
+    }
+    return freed;
+  }
+
   /// Drop every entry whose key `other` no longer holds (a companion pool
   /// keyed like it: the texture objects behind the views). Returns how many.
   template <typename U>

@@ -147,6 +147,39 @@ TEST_CASE("P10: a budgeted pool keeps a loop's idle textures under budget, oldes
   CHECK(objects.has("d"));
 }
 
+TEST_CASE("over budget, quick entries go after their short grace; the rest keep minIdle") {
+  MemoryMeter meter;
+  Pool<int> pool(&meter);
+  // Two 400-byte MSAA slots ("...:4") and one kept single-sample result, all last used at frame 0.
+  (void)pool.acquire("slot-a:4", 0, [] { return 1; }, 400);
+  (void)pool.acquire("slot-b:4:d", 0, [] { return 2; }, 400);
+  (void)pool.acquire("kept:1", 0, [] { return 3; }, 400);
+  const auto quick = [](std::string_view k) { return k.ends_with(":4") || k.ends_with(":4:d"); };
+  // Frame 20, 1000-byte budget (1200 held): idle past the quick grace (8) but not minIdle (120).
+  CHECK(pool.collect_budgeted(20, 120, 3600, 1000, 8, quick) == 1);
+  CHECK(pool.has("kept:1"));  // a single-sample kept result keeps its grace
+  CHECK(meter.bytes == 800);
+  // Under the budget now: nothing more goes.
+  CHECK(pool.collect_budgeted(21, 120, 3600, 1000, 8, quick) == 0);
+  // Without a predicate the old rule holds: nothing idle past minIdle yet.
+  (void)pool.acquire("slot-c:4", 21, [] { return 4; }, 400);
+  CHECK(pool.collect_budgeted(30, 120, 3600, 1000) == 0);
+}
+
+TEST_CASE("pressure trim frees the oldest entries the last frame did not use, never the ones it did") {
+  MemoryMeter meter;
+  Pool<int> pool(&meter);
+  (void)pool.acquire("old", 1, [] { return 1; }, 100);
+  (void)pool.acquire("older", 0, [] { return 2; }, 100);
+  (void)pool.acquire("now", 5, [] { return 3; }, 100);
+  CHECK(pool.trim(5, 150) == 200);  // two idle entries, oldest first, until 150 bytes are free
+  CHECK_FALSE(pool.has("older"));
+  CHECK_FALSE(pool.has("old"));
+  CHECK(pool.has("now"));
+  CHECK(pool.trim(5, 1000) == 0);  // the frame's own entry stays whatever is asked
+  CHECK(meter.bytes == 100);
+}
+
 TEST_CASE("render-target byte estimate matches gpuMemory.ts") {
   // 1920×1080 rgba16float, 4× MSAA with depth: colour + MSAA colour + MSAA depth.
   const std::uint64_t px = 1920ULL * 1080ULL;

@@ -8,9 +8,12 @@
  *   • the tiers: VRAM frame cache, RAM tier, disk tier — used and budget;
  *   • "outside the caches": engine memory the RAM tier does not account for
  *     (scene, rasters, decoders, fonts, plugins — and anything leaked);
+ *   • graphics memory as the OS sees it: what it lets the engine hold on the
+ *     card (shrinking as other apps take memory) against what the engine holds;
  *   • a health verdict: `healthy`, `pressure` (the RAM tier is at its budget,
- *     or the machine is short of memory) or `growing` (memory outside the
- *     caches has climbed steadily for many minutes — the leak signal).
+ *     the machine is short of memory, or the engine is near its share of the
+ *     graphics card) or `growing` (memory outside the caches has climbed
+ *     steadily for many minutes — the leak signal).
  *
  * Pure functions over plain numbers, so the verdict is tested without an engine.
  */
@@ -47,6 +50,12 @@ export interface MemoryReadout {
   /** Engine memory the RAM tier does not account for, bytes (null without engineBytes). */
   outsideCachesBytes: number | null;
   idleRenderAhead: boolean | null;
+  /** Graphics memory (null where the OS does not say): the engine's share of the card, what it holds, the card's size. */
+  gpuBudget: number | null;
+  gpuUsed: number | null;
+  gpuTotal: number | null;
+  /** Graphics memory the engine gave back under pressure this session (cached frames moved to RAM, idle buffers freed). */
+  gpuTrimmed: number;
 }
 
 export function readMemory(s: RenderStats): MemoryReadout {
@@ -67,6 +76,10 @@ export function readMemory(s: RenderStats): MemoryReadout {
     availableBytes: s.availableMemoryBytes ?? null,
     outsideCachesBytes: engineBytes === null ? null : Math.max(0, engineBytes - ramBytes),
     idleRenderAhead: s.idleRenderAhead ?? null,
+    gpuBudget: s.gpuMemoryBudget ?? null,
+    gpuUsed: s.gpuMemoryUsed ?? null,
+    gpuTotal: s.gpuMemoryTotal ?? null,
+    gpuTrimmed: s.gpuMemoryTrimmed ?? 0,
   };
 }
 
@@ -77,7 +90,7 @@ export interface MemoryHealth {
   /** For `growing`: how fast memory outside the caches climbs, bytes per minute. */
   growthPerMin?: number;
   /** For `pressure`: which kind. */
-  pressure?: 'ramBudget' | 'machine';
+  pressure?: 'ramBudget' | 'machine' | 'gpu';
 }
 
 /** The RAM tier counts as full from this share of its budget. */
@@ -85,6 +98,22 @@ export const RAM_PRESSURE_SHARE = 0.95;
 /** The machine counts as short of memory below this share of it free (and below MACHINE_LOW_FLOOR). */
 export const MACHINE_LOW_SHARE = 0.08;
 const MACHINE_LOW_FLOOR = 1 * GiB;
+/**
+ * The engine counts as short of graphics memory from this share of what the
+ * OS lets it hold — the line where the engine starts giving memory back
+ * (render_thread.cpp relieve_gpu_pressure), a little before the OS pages.
+ */
+export const GPU_PRESSURE_SHARE = 0.9;
+
+/** The engine's use of its graphics-memory budget (0..1+), or null where the OS does not say. */
+export function gpuShare(m: MemoryReadout): number | null {
+  return m.gpuBudget && m.gpuBudget > 0 && m.gpuUsed !== null ? m.gpuUsed / m.gpuBudget : null;
+}
+
+/** Graphics memory other apps (and the OS) hold: the card less the engine's budget. */
+export function gpuHeldElsewhere(m: MemoryReadout): number | null {
+  return m.gpuTotal && m.gpuBudget !== null ? Math.max(0, m.gpuTotal - m.gpuBudget) : null;
+}
 /** Growth needs this much history to be judged at all. */
 export const GROWTH_MIN_SPAN_MS = 10 * 60_000;
 /** …and only the last GROWTH_WINDOW_MS of it counts. */
@@ -130,6 +159,10 @@ export function memoryHealth(m: MemoryReadout, history: readonly MemorySample[],
   if (m.physicalBytes !== null && m.availableBytes !== null
     && m.availableBytes < Math.max(MACHINE_LOW_FLOOR, m.physicalBytes * MACHINE_LOW_SHARE)) {
     return { kind: 'pressure', pressure: 'machine' };
+  }
+  const share = gpuShare(m);
+  if (share !== null && share >= GPU_PRESSURE_SHARE) {
+    return { kind: 'pressure', pressure: 'gpu' };
   }
   if (m.ramBudget !== null && m.ramBudget > 0 && m.ramBytes >= m.ramBudget * RAM_PRESSURE_SHARE) {
     return { kind: 'pressure', pressure: 'ramBudget' };

@@ -7,8 +7,10 @@
  * Preferences ▸ Media & Disk Cache, Edit ▸ Purge and the Info panel, and shows
  * none of it while you work. Here it is one dockable panel, three views:
  *
- *   • Overview     the three tiers against their budgets (VRAM frame cache,
- *                  RAM tier, disk tier), this composition's coverage with Cache
+ *   • Overview     the tiers against their budgets (RAM tier, the graphics
+ *                  card as the OS shares it out — Premation's frame cache and
+ *                  layers against what other apps hold — and the disk tier),
+ *                  this composition's coverage with Cache
  *                  Work Area Now, the preview switches (idle render-ahead, cache
  *                  before playback, resolution) and the RAM budget;
  *   • Location     the disk cache's folder, its size limit and measured read
@@ -18,7 +20,8 @@
  *                  one suggestion + action per problem (create proxies, cache
  *                  the work area, purge…) — the status bar's dot opens it;
  *   • Diagnostics  this frame's build / GPU / decode time against the frame
- *                  budget, engine memory over 30 minutes, memory outside the
+ *                  budget, the heaviest layers (one frame's GPU time per
+ *                  layer, GpuViews.tsx), engine memory over 30 minutes, memory outside the
  *                  caches (the leak signal), what happened this session, and
  *                  Restart Engine to Free Memory.
  *
@@ -55,6 +58,7 @@ import { engineMemorySnapshot, refreshEngineMemory, subscribeEngineMemory, type 
 import { healthCopy, healthTone } from './memoryCopy';
 import { setCacheMemoryView, useCacheMemoryView, type CacheMemoryView } from './cacheMemoryView';
 import { ProjectHealthView } from './ProjectHealthView';
+import { GraphicsMemory, HeaviestLayers } from './GpuViews';
 import styles from './CacheMemoryPanel.module.css';
 
 type View = CacheMemoryView;
@@ -221,14 +225,7 @@ function Overview({ readout }: { readout: MemoryReadout | null }): JSX.Element {
           onPurge={purgeRam}
           purgeLabel={t('cacheMemory.purgeRam', 'Purge RAM and video memory previews')}
         />
-        <Tier
-          name={t('cacheMemory.tier.vram', 'Video memory')}
-          tone="vram"
-          used={r?.vramBytes ?? 0}
-          budget={r?.vramBudget ?? null}
-          scale={null}
-          detail={t('cacheMemory.tier.vramDetail', 'The newest frames, kept on the GPU for instant replay')}
-        />
+        <GraphicsMemory readout={r} />
         <Tier
           name={t('cacheMemory.tier.disk', 'Disk cache')}
           tone="disk"
@@ -626,6 +623,8 @@ function Diagnostics({ mem }: { mem: EngineMemorySnapshot }): JSX.Element {
           <span className={styles.help}>{t('cacheMemory.dropped', '{n} frames dropped in playback this session.', { n: s.droppedFrames })}</span>
         )}
       </section>
+
+      <HeaviestLayers stats={s} budgetMs={budgetMs} />
 
       <section className={styles.section} aria-label={t('cacheMemory.engineMemory', 'Engine memory')}>
         <div className={styles.rowHead}>

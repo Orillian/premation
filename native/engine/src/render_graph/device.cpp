@@ -106,6 +106,7 @@ Device::Device(wgpu::Instance instance, wgpu::Device device, wgpu::Queue queue)
   qd.label = "unit-quad";
   quad_ = device_.CreateBuffer(&qd);
   queue_.WriteBuffer(quad_, 0, kQuad.data(), sizeof(kQuad));
+  profiler_.init(device_, instance_);
   wgpu::Limits limits{};
   if (device_.GetLimits(&limits) == wgpu::Status::Success && limits.maxTextureDimension2D != wgpu::kLimitU32Undefined) {
     maxTexture2D_ = limits.maxTextureDimension2D;
@@ -122,6 +123,7 @@ void Device::begin_frame() {
   chunk_ = 0;
   for (auto& c : chunks_) c.used = 0;
   encoder_ = device_.CreateCommandEncoder();
+  profiler_.begin_frame(frame_);
 }
 
 std::size_t Device::end_frame() {
@@ -130,9 +132,11 @@ std::size_t Device::end_frame() {
     if (c.used > 0) queue_.WriteBuffer(c.buffer, 0, c.cpu.data(), c.used);
   }
   if (encoder_ != nullptr) {
+    profiler_.end_frame(encoder_);
     wgpu::CommandBuffer cb = encoder_.Finish();
     queue_.Submit(1, &cb);
     encoder_ = nullptr;
+    profiler_.after_submit();
   }
   constexpr std::uint64_t kMaxIdle = 120;  // ResourceManager default maxIdleFrames
   // Content textures (rasters, footage frames) outlive a playback loop while
@@ -162,6 +166,14 @@ std::size_t Device::end_frame() {
       targets_.collect_budgeted(frame_, kMaxIdle, kTargetWarmIdle, kTargetBudget, kSlotOverBudgetIdle, multisampled);
   return targets + textures + textureObjects_.collect_absent_from(textures_) + buffers_.collect(frame_, kMaxIdle) +
          bindGroups_.collect(frame_, kMaxIdle);
+}
+
+std::uint64_t Device::trim(std::uint64_t bytes) {
+  // frame_ is the frame that just ended (begin_frame advances it): what it drew stays.
+  std::uint64_t freed = targets_.trim(frame_, bytes);
+  if (freed < bytes) freed += textures_.trim(frame_, bytes - freed);
+  (void)textureObjects_.collect_absent_from(textures_);
+  return freed;
 }
 
 void Device::flush() {
@@ -660,6 +672,7 @@ wgpu::RenderPassEncoder Device::begin_pass(const Attachment& att, std::uint32_t 
     da.depthStoreOp = wgpu::StoreOp::Store;
     rp.depthStencilAttachment = &da;
   }
+  rp.timestampWrites = profiler_.pass_writes();
   wgpu::RenderPassEncoder pass = encoder_.BeginRenderPass(&rp);
   // A target may be larger than the viewport drawn into it; a scissor never leaves either.
   passRect_ = {0, 0, t != nullptr ? std::min(std::max(1U, w), t->width) : std::max(1U, w),

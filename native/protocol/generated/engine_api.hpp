@@ -700,6 +700,14 @@ enum class BoundsSpace : std::uint32_t {
 [[nodiscard]] std::string_view to_string(BoundsSpace v) noexcept;
 [[nodiscard]] bool from_u32(std::uint32_t n, BoundsSpace& out) noexcept;
 
+enum class LayerCostKind : std::uint32_t {
+  layer = 0,
+  scene3d = 1,
+  frame = 2,
+};
+[[nodiscard]] std::string_view to_string(LayerCostKind v) noexcept;
+[[nodiscard]] bool from_u32(std::uint32_t n, LayerCostKind& out) noexcept;
+
 enum class JobStatus : std::uint32_t {
   queued = 0,
   running = 1,
@@ -1407,6 +1415,7 @@ struct PixelSamples;
 struct Dependencies;
 struct HistoryEntry;
 struct HistoryState;
+struct LayerCost;
 struct RenderStats;
 struct LayerError;
 struct LayerErrorList;
@@ -4141,6 +4150,7 @@ struct GetHistory {
 };
 
 struct GetRenderStats {
+  std::optional<bool> profile_layers;
   bool operator==(const GetRenderStats&) const = default;
 };
 
@@ -5568,6 +5578,14 @@ struct HistoryState {
   bool operator==(const HistoryState&) const = default;
 };
 
+struct LayerCost {
+  LayerId layer;
+  LayerCostKind kind = LayerCostKind::layer;
+  double gpu_ms = 0.0;
+  std::uint32_t passes = 0;
+  bool operator==(const LayerCost&) const = default;
+};
+
 struct RenderStats {
   double gpu_frame_ms = 0.0;
   double cpu_frame_ms = 0.0;
@@ -5589,6 +5607,13 @@ struct RenderStats {
   std::optional<std::uint64_t> available_memory_bytes;
   std::optional<bool> idle_render_ahead;
   std::optional<double> disk_read_ms_per_mp;
+  std::optional<std::uint64_t> gpu_memory_budget;
+  std::optional<std::uint64_t> gpu_memory_used;
+  std::optional<std::uint64_t> gpu_memory_total;
+  std::optional<std::uint64_t> gpu_memory_trimmed;
+  std::vector<LayerCost> layer_costs;
+  std::optional<double> layer_costs_frame_ms;
+  std::optional<double> layer_costs_ago_ms;
   bool operator==(const RenderStats&) const = default;
 };
 
@@ -7609,6 +7634,8 @@ void encode(wire::Writer& w, const HistoryEntry& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, HistoryEntry& out);
 void encode(wire::Writer& w, const HistoryState& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, HistoryState& out);
+void encode(wire::Writer& w, const LayerCost& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, LayerCost& out);
 void encode(wire::Writer& w, const RenderStats& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, RenderStats& out);
 void encode(wire::Writer& w, const LayerError& v);

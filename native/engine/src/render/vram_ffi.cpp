@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -79,6 +82,52 @@ std::size_t default_frame_cache_budget(std::uint32_t vendorId, std::uint32_t dev
   }
   return kFallback;
 }
+
+namespace {
+
+/// GpuMemoryProbe over DXGI: the adapter Dawn renders on, found once by its
+/// vendor / device id. An integrated GPU's frames live in the shared segment,
+/// so that is the one it reports (as default_frame_cache_budget sizes it).
+class DxgiMemoryProbe final : public GpuMemoryProbe {
+ public:
+  DxgiMemoryProbe(Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter, DXGI_MEMORY_SEGMENT_GROUP segment, std::uint64_t total)
+      : adapter_(std::move(adapter)), segment_(segment), total_(total) {}
+  std::optional<GpuMemoryReading> read() override {
+    DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+    if (FAILED(adapter_->QueryVideoMemoryInfo(0, segment_, &info)) || info.Budget == 0) return std::nullopt;
+    return GpuMemoryReading{info.Budget, info.CurrentUsage, total_};
+  }
+
+ private:
+  Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter_;
+  DXGI_MEMORY_SEGMENT_GROUP segment_;
+  std::uint64_t total_;
+};
+
+}  // namespace
+
+std::unique_ptr<GpuMemoryProbe> GpuMemoryProbe::open(std::uint32_t vendorId, std::uint32_t deviceId) {
+  using Microsoft::WRL::ComPtr;
+  ComPtr<IDXGIFactory4> factory;
+  if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) return nullptr;
+  ComPtr<IDXGIAdapter1> adapter;
+  for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+    DXGI_ADAPTER_DESC1 desc{};
+    if (FAILED(adapter->GetDesc1(&desc))) continue;
+    if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0U) continue;
+    const bool match = vendorId == 0 || (desc.VendorId == vendorId && (deviceId == 0 || desc.DeviceId == deviceId));
+    if (!match) continue;
+    ComPtr<IDXGIAdapter3> a3;
+    if (FAILED(adapter.As(&a3))) return nullptr;
+    const bool integrated = desc.DedicatedVideoMemory < (std::uint64_t{512} << 20U);
+    const std::uint64_t total = integrated ? desc.SharedSystemMemory : desc.DedicatedVideoMemory;
+    auto probe = std::make_unique<DxgiMemoryProbe>(
+        std::move(a3), integrated ? DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL : DXGI_MEMORY_SEGMENT_GROUP_LOCAL, total);
+    if (!probe->read()) return nullptr;
+    return probe;
+  }
+  return nullptr;
+}
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
@@ -87,6 +136,10 @@ std::size_t default_frame_cache_budget(std::uint32_t vendorId, std::uint32_t dev
 
 std::size_t default_frame_cache_budget(std::uint32_t /*vendorId*/, std::uint32_t /*deviceId*/) {
   return kFallback;  // Metal / Vulkan budgets: not queried yet
+}
+
+std::unique_ptr<GpuMemoryProbe> GpuMemoryProbe::open(std::uint32_t /*vendorId*/, std::uint32_t /*deviceId*/) {
+  return nullptr;  // Metal / Vulkan budgets: not queried yet
 }
 
 #endif

@@ -127,6 +127,16 @@ wgpu::Texture FrameCache::take_texture(std::uint32_t w, std::uint32_t h) {
   return device_.CreateTexture(&td);
 }
 
+void FrameCache::set_budget(std::size_t bytes, wgpu::CommandEncoder& encoder, const EvictHook& onEvict) {
+  budget_ = bytes;
+  stats_.budget = budget_;
+  while (bytes_ > budget_ && !lru_.empty()) {
+    if (!evict_one(&encoder, onEvict ? &onEvict : nullptr)) break;  // the rest are pinned
+  }
+  // Spares are video memory too: a budget cut for pressure gives them back.
+  spare_.clear();
+}
+
 void FrameCache::clear() {
   lru_.clear();
   index_.clear();

@@ -90,6 +90,7 @@ export type HealthFindingKind =
   | 'layerErrors'
   | 'memoryGrowing'
   | 'machineLow'
+  | 'gpuLow'
   | 'ramFull'
   | 'missingFootage'
   | 'largeWithoutProxy'
@@ -147,6 +148,7 @@ export function projectHealth(input: HealthInput): ProjectHealth {
 
   if (input.memory.kind === 'growing') out.push({ kind: 'memoryGrowing', tone: 'bad', n: 0 });
   else if (input.memory.kind === 'pressure' && input.memory.pressure === 'machine') out.push({ kind: 'machineLow', tone: 'warn', n: 0 });
+  else if (input.memory.kind === 'pressure' && input.memory.pressure === 'gpu') out.push({ kind: 'gpuLow', tone: 'warn', n: 0 });
   else if (input.memory.kind === 'pressure') out.push({ kind: 'ramFull', tone: 'warn', n: 0 });
 
   const c = input.cache;

@@ -471,6 +471,28 @@ struct RenderCounters {
   /// Idle render-ahead jobs (RenderJob::prefetch) answered: drawn (stored or
   /// not), or dropped. The session submits one at a time and waits for this.
   std::uint64_t prefetched = 0;
+  /// Video memory as the OS sees it (RenderThread::relieve_gpu_pressure; 0 =
+  /// the OS does not say): this process's budget, what it holds, the adapter's
+  /// size, and the bytes given back under pressure since the engine started.
+  std::uint64_t gpuBudgetBytes = 0;
+  std::uint64_t gpuUsedBytes = 0;
+  std::uint64_t gpuTotalBytes = 0;
+  std::uint64_t gpuTrimmedBytes = 0;
+};
+
+/// A sampled frame's GPU time per root-level layer (render_graph/gpu_profiler.hpp),
+/// handed from the drawer to the session (RenderStats.layerCosts).
+struct LayerProfile {
+  struct Layer {
+    std::string id;
+    api::LayerCostKind kind = api::LayerCostKind::layer;
+    double gpuMs = 0;
+    std::uint32_t passes = 0;
+  };
+  std::vector<Layer> layers;  ///< heaviest first
+  double totalMs = 0;
+  /// When the sampled frame was drawn (steady clock, µs since its epoch).
+  double drawnUs = 0;
 };
 
 /// getThumbnail: a frame the render thread drew offscreen and encoded.
@@ -557,6 +579,10 @@ class FrameSink {
   [[nodiscard]] virtual bool slots_copyable() const { return true; }
   /// Viewport frame-cache coverage (zeros when there is no cache).
   [[nodiscard]] virtual CacheCoverageSnap cache_coverage() const { return {}; }
+  /// Sample the GPU time of the next frame drawn, per root-level layer (getRenderStats profileLayers).
+  virtual void request_layer_profile() {}
+  /// The newest finished sample (nullopt: none yet, or no GPU profiler).
+  [[nodiscard]] virtual std::optional<LayerProfile> layer_profile() const { return std::nullopt; }
   /// Publish the coverage now rather than at its next throttled update: a
   /// cache fill just finished and the bar (and getCacheCoverage) must show it.
   virtual void publish_coverage_now() {}

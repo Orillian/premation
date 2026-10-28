@@ -3,7 +3,7 @@
  * about the engine's memory — one wording for both.
  */
 
-import { formatBytes, type MemoryHealth, type MemoryReadout } from '@core/perf/memoryHealth';
+import { formatBytes, gpuHeldElsewhere, type MemoryHealth, type MemoryReadout } from '@core/perf/memoryHealth';
 import { t } from '@core/i18n';
 
 export type HealthTone = 'ok' | 'warn' | 'bad';
@@ -32,6 +32,15 @@ export function healthCopy(h: MemoryHealth, r: MemoryReadout | null): { title: s
     return {
       title: t('cacheMemory.health.machine', 'This machine is low on memory'),
       body: t('cacheMemory.health.machineBody', 'Only {free} is free. Previews give memory back first; closing other apps or lowering RAM for previews helps.', { free: formatBytes(r.availableBytes ?? 0) }),
+    };
+  }
+  if (h.kind === 'pressure' && h.pressure === 'gpu') {
+    const elsewhere = gpuHeldElsewhere(r);
+    return {
+      title: t('cacheMemory.health.gpu', 'Graphics memory is tight'),
+      body: elsewhere
+        ? t('cacheMemory.health.gpuBody', 'Other apps hold {elsewhere} of the graphics card. Premation is moving its oldest cached frames to RAM so playback does not stall; closing other GPU apps gives it room back.', { elsewhere: formatBytes(elsewhere) })
+        : t('cacheMemory.health.gpuBodyNoOthers', 'Premation is near its share of the graphics card and is moving its oldest cached frames to RAM so playback does not stall.'),
     };
   }
   if (h.kind === 'pressure') {

@@ -1622,9 +1622,18 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
         if (depth_eligible_3d(*list[k])) lastEligibleEnd = k + 1;
       }
     }
+    // A sampled frame (gpu_profiler.hpp) times each root-level layer on its
+    // own: its scope is set before it draws and its batch is flushed after it,
+    // so no pass mixes two layers. Same draws, same order: the same pixels.
+    GpuProfiler& prof = ctx.dev.profiler();
+    const bool profiling = rootList && prof.active();
     std::size_t i = 0;
     while (i < list.size()) {
       if (canDepthGroup && depth_eligible_3d(*list[i])) {
+        if (profiling) {
+          flush(ctx, st);
+          prof.set_scope(list[i]->id, GpuScopeCost::Kind::scene3d);
+        }
         std::vector<const api::Renderable*> group;
         while (i < list.size() && depth_eligible_3d(*list[i])) {
           const api::Renderable* g = list[i];
@@ -1644,10 +1653,13 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
         }
         continue;
       }
+      if (profiling) prof.set_scope(list[i]->id);
       process(ctx, *list[i], st);
+      if (profiling) flush(ctx, st);
       ++i;
     }
     flush(ctx, st);
+    if (profiling) prof.clear_scope();
   }
 
   void process(PassContext& ctx, const api::Renderable& r0, ListState& st) {

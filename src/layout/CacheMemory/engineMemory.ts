@@ -7,6 +7,10 @@
  * plays, so the meter (always on screen) asks every POLL_MS instead; the
  * answer is a few numbers.
  *
+ * While the Diagnostics view's "Heaviest layers" is on screen
+ * (`wantLayerCosts`), each poll also asks the engine to time the next frame it
+ * draws per layer (`profileLayers`); otherwise no frame is sampled.
+ *
  * Kept here, not in the engine: the 30-minute history the leak signal and the
  * chart read (`core/perf/memoryHealth.ts`), and a short log of what happened
  * to memory this session (engine restarts, budget reached, growth warnings).
@@ -54,6 +58,8 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let inflight = false;
 let lastNotice: unknown = lastProcessEngineNotice();
 let offNotice: (() => void) | null = null;
+/** Mounted "Heaviest layers" views: while any is, polls ask for a per-layer sample. */
+let layerCostViewers = 0;
 
 const MiB = 1024 * 1024;
 const roundMb = (n: number | null): number | null => (n === null ? null : Math.round(n / MiB));
@@ -64,7 +70,8 @@ function sameReadout(a: MemoryReadout | null, b: MemoryReadout): boolean {
     && roundMb(a.diskBytes) === roundMb(b.diskBytes) && roundMb(a.engineBytes) === roundMb(b.engineBytes)
     && roundMb(a.availableBytes) === roundMb(b.availableBytes) && a.ramBudget === b.ramBudget
     && a.vramBudget === b.vramBudget && a.diskBudget === b.diskBudget && a.idleRenderAhead === b.idleRenderAhead
-    && a.diskReadMsPerMp === b.diskReadMsPerMp;
+    && a.diskReadMsPerMp === b.diskReadMsPerMp && roundMb(a.gpuUsed) === roundMb(b.gpuUsed)
+    && roundMb(a.gpuBudget) === roundMb(b.gpuBudget) && roundMb(a.gpuTrimmed) === roundMb(b.gpuTrimmed);
 }
 
 function emit(): void {
@@ -77,7 +84,9 @@ function logEvent(e: MemoryEvent): void {
 
 function sameTimings(a: RenderStats | null, b: RenderStats): boolean {
   return !!a && Math.round(a.cpuFrameMs) === Math.round(b.cpuFrameMs) && Math.round(a.gpuFrameMs) === Math.round(b.gpuFrameMs)
-    && Math.round(a.decodeMs) === Math.round(b.decodeMs) && a.droppedFrames === b.droppedFrames;
+    && Math.round(a.decodeMs) === Math.round(b.decodeMs) && a.droppedFrames === b.droppedFrames
+    // A new per-layer sample (its total differs to the microsecond), or one appearing.
+    && a.layerCostsFrameMs === b.layerCostsFrameMs && a.layerCosts.length === b.layerCosts.length;
 }
 
 function apply(stats: RenderStats, now: number): void {
@@ -102,7 +111,7 @@ async function sample(): Promise<void> {
   if (inflight) return;
   inflight = true;
   try {
-    const res = await engine().query({ type: 'getRenderStats' });
+    const res = await engine().query({ type: 'getRenderStats', profileLayers: layerCostViewers > 0 });
     if (res.ok) apply(res.value, Date.now());
   } catch {
     // The engine is restarting: the last figures stay until it answers.
@@ -148,6 +157,21 @@ export function subscribeEngineMemory(listener: () => void): () => void {
   };
 }
 
+/**
+ * Keep per-layer GPU samples coming while the caller is on screen (the
+ * Diagnostics view's "Heaviest layers"). Returns the release.
+ */
+export function wantLayerCosts(): () => void {
+  layerCostViewers++;
+  void sample();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    layerCostViewers = Math.max(0, layerCostViewers - 1);
+  };
+}
+
 /** Ask now (after a purge or a budget change), instead of at the next poll. */
 export function refreshEngineMemory(): void {
   void sample();
@@ -156,5 +180,6 @@ export function refreshEngineMemory(): void {
 /** Tests: forget everything. */
 export function resetEngineMemoryForTests(): void {
   snap = EMPTY;
+  layerCostViewers = 0;
   lastNotice = lastProcessEngineNotice();
 }

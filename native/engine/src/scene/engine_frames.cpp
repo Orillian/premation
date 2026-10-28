@@ -916,6 +916,28 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
 #endif
     return b;
   }
+  std::uint64_t trim_vram(std::uint64_t bytes) override { return renderer_->device().trim(bytes); }
+  void profile_next_frame() override { renderer_->device().profiler().arm(); }
+  std::optional<LayerProfile> take_layer_profile() override {
+    rg::GpuProfiler& prof = renderer_->device().profiler();
+    prof.poll();
+    const std::optional<rg::GpuFrameProfile>& last = prof.last();
+    if (!last || last->frame == takenProfileFrame_) return std::nullopt;
+    takenProfileFrame_ = last->frame;
+    LayerProfile out;
+    out.totalMs = last->totalMs;
+    out.drawnUs = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                          std::chrono::steady_clock::now().time_since_epoch())
+                                          .count());
+    out.layers.reserve(last->scopes.size());
+    for (const rg::GpuScopeCost& c : last->scopes) {
+      const api::LayerCostKind kind = c.kind == rg::GpuScopeCost::Kind::scene3d ? api::LayerCostKind::scene3d
+                                      : c.kind == rg::GpuScopeCost::Kind::frame  ? api::LayerCostKind::frame
+                                                                                 : api::LayerCostKind::layer;
+      out.layers.push_back({c.id, kind, c.gpuMs, c.passes});
+    }
+    return out;
+  }
   [[nodiscard]] double decode_ms() const override {
 #if defined(PREMATION_HAVE_MEDIA)
     return media_->slowest_ms_per_frame();
@@ -1260,6 +1282,8 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   std::string mediaBase_;    // the texture feed's (BuiltFrame::mediaBase)
   Fonts fonts_;
   std::unique_ptr<rg::SceneRenderer> renderer_;
+  /// The profiler frame of the last sample take_layer_profile handed out.
+  std::uint64_t takenProfileFrame_ = 0;
   std::unique_ptr<SceneTextures> textures_;
   std::unique_ptr<plugins::RenderGlue> plugins_;
 #if defined(PREMATION_HAVE_MEDIA)

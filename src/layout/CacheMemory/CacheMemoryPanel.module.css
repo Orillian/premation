@@ -202,6 +202,21 @@
 .fill[data-tone='drive'] { background: var(--color-text-tertiary); }
 .fill[data-tone='time'] { background: var(--color-primary); }
 .fill[data-tone='warn'] { background: var(--color-warning); }
+/* Graphics memory: the engine's layers and effects, a lighter step of the frame cache's violet. */
+.fill[data-tone='vramSoft'] { background: color-mix(in srgb, var(--color-violet-500) 45%, var(--color-surface-2)); }
+
+/* Past the OS's line for Premation: memory other apps and the system hold. */
+.elsewhere {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 3px 3px 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--color-text-tertiary) 35%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
 
 /* The budget, on a bar whose full width is the machine's memory. */
 .budgetMark {
@@ -466,4 +481,146 @@
 
 .findingText .actions {
   margin-top: var(--space-1);
+}
+
+.legendKey[data-tone='vram'] { background: var(--color-violet-500); }
+.legendKey[data-tone='vramSoft'] { background: color-mix(in srgb, var(--color-violet-500) 45%, var(--color-surface-2)); }
+.legendKey[data-tone='elsewhere'] {
+  background: repeating-linear-gradient(-45deg, var(--color-text-tertiary) 0 1px, transparent 1px 3px);
+}
+
+/* ── Heaviest layers ────────────────────────────────────────────── */
+.costs {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row: rank, name (+ note), time; its bar and share under it. A row is
+   a button (it selects the layer): flat until hovered, no box. */
+.cost {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'rank name  value'
+    '.    track share';
+  column-gap: var(--space-2);
+  row-gap: 3px;
+  width: 100%;
+  padding: 5px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.cost + .cost,
+.costs li + li .cost {
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+}
+
+.cost:hover:not(:disabled) { background: var(--color-surface-2); }
+.cost:active:not(:disabled) { transform: translateY(1px); }
+.cost:focus-visible { outline: 2px solid var(--color-focus-ring, var(--color-primary)); outline-offset: -2px; }
+.cost:disabled { cursor: default; }
+.cost[data-selected] .label { color: var(--color-text-primary); }
+.cost[data-selected] .costRank { color: var(--color-primary); }
+
+.costRank {
+  grid-area: rank;
+  font-family: var(--panel-font-family-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+  text-align: right;
+}
+
+.costName {
+  grid-area: name;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.costName .help {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cost .value { grid-area: value; }
+
+.costTrack {
+  grid-area: track;
+  position: relative;
+  align-self: center;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-surface-2);
+}
+
+.costShare {
+  grid-area: share;
+  font-size: var(--panel-font-size-help);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Waiting for the engine's first answer: three rows the shape of the list. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeleton > span {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-surface-2) 0%, color-mix(in srgb, var(--color-text-primary) 8%, var(--color-surface-2)) 50%, var(--color-surface-2) 100%);
+  background-size: 200% 100%;
+  animation: cm-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton > span:nth-child(2) { width: 82%; }
+.skeleton > span:nth-child(3) { width: 64%; }
+
+@keyframes cm-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton > span { animation: none; }
+  .cost { transition: none; }
+}
+
+/* Graphics memory's key: square swatches like the tiers', wrapping as whole items. */
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
+  font-size: var(--panel-font-size-help);
+  color: var(--color-text-tertiary);
+}
+
+.keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.keys .legendKey {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
 }

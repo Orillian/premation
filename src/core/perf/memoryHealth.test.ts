@@ -1,11 +1,11 @@
 import type { RenderStats } from '@motion/engine-api';
-import { formatBytes, memoryHealth, readMemory, type MemorySample } from './memoryHealth';
+import { formatBytes, gpuHeldElsewhere, gpuShare, memoryHealth, readMemory, type MemorySample } from './memoryHealth';
 
 const GiB = 1024 ** 3;
 
 const base: RenderStats = {
   gpuFrameMs: 0, cpuFrameMs: 0, fps: 0, droppedFrames: 0, vramBytes: 0,
-  ramCacheBytes: 0, diskCacheBytes: 0, cacheHitRate: 0, decodeMs: 0,
+  ramCacheBytes: 0, diskCacheBytes: 0, cacheHitRate: 0, decodeMs: 0, layerCosts: [],
 };
 
 const history = (minutes: number, outside: (m: number) => number, ramTier = 2 * GiB): MemorySample[] =>
@@ -21,6 +21,30 @@ describe('readMemory', () => {
 
   it('says nothing outside the caches without the engine figure', () => {
     expect(readMemory(base).outsideCachesBytes).toBeNull();
+  });
+});
+
+describe('graphics memory', () => {
+  const now = 20 * 60_000;
+
+  it('reads the OS budget, the share used and what other apps hold', () => {
+    const m = readMemory({ ...base, gpuMemoryBudget: 6 * GiB, gpuMemoryUsed: 3 * GiB, gpuMemoryTotal: 8 * GiB, gpuMemoryTrimmed: 512 * 1024 ** 2 });
+    expect(gpuShare(m)).toBe(0.5);
+    expect(gpuHeldElsewhere(m)).toBe(2 * GiB);
+    expect(m.gpuTrimmed).toBe(512 * 1024 ** 2);
+    expect(memoryHealth(m, [], now).kind).toBe('healthy');
+  });
+
+  it('is pressure near the line the OS draws for the engine', () => {
+    const m = readMemory({ ...base, gpuMemoryBudget: 2 * GiB, gpuMemoryUsed: 1.9 * GiB, gpuMemoryTotal: 8 * GiB });
+    expect(memoryHealth(m, [], now)).toEqual({ kind: 'pressure', pressure: 'gpu' });
+  });
+
+  it('says nothing where the OS does not report the card', () => {
+    const m = readMemory(base);
+    expect(gpuShare(m)).toBeNull();
+    expect(gpuHeldElsewhere(m)).toBeNull();
+    expect(m.gpuTrimmed).toBe(0);
   });
 });
 

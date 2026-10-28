@@ -700,6 +700,28 @@ struct RenderStats {
   idleRenderAhead?: bool = 19;
   /// What reading one frame back from the disk tier costs, ms per megapixel, timed on the folder's own files. Absent = not measured yet.
   diskReadMsPerMp?: f64 = 20;
+  /// Video memory as the OS sees it: what it lets the engine hold before it pages (shrinks as other apps take memory), what the engine holds now, and the adapter's size (bytes). Absent = the OS does not say (macOS, Linux for now).
+  gpuMemoryBudget?: u64 = 21;
+  gpuMemoryUsed?: u64 = 22;
+  gpuMemoryTotal?: u64 = 23;
+  /// Video memory the engine gave back under pressure since it started (frame-cache frames moved to RAM, idle targets and textures freed), bytes.
+  gpuMemoryTrimmed?: u64 = 24;
+  /// The last sampled frame's GPU time per root-level layer, heaviest first (getRenderStats profileLayers). Empty = no sample yet.
+  layerCosts: LayerCost[] = 25;
+  /// That frame's measured GPU total (ms) and how long ago it was drawn (ms).
+  layerCostsFrameMs?: f64 = 26;
+  layerCostsAgoMs?: f64 = 27;
+}
+
+/// One root-level layer's share of a sampled frame's GPU time.
+enum LayerCostKind { layer = 0; scene3d = 1; frame = 2; }
+struct LayerCost {
+  /// The layer (scene3d: the first layer of a run of 3D layers drawn as one depth-tested group; frame: empty).
+  layer: LayerId = 1;
+  kind: LayerCostKind = 2;
+  /// Its render passes' GPU time, its precomp subtree and effects included (ms).
+  gpuMs: f64 = 3;
+  passes: u32 = 4;
 }
 
 struct LayerError {
@@ -725,7 +747,8 @@ struct JobInfo {
 }
 
 query getHistory = 1080 {} -> HistoryState;
-query getRenderStats = 1081 {} -> RenderStats;
+/// `profileLayers`: also sample the GPU time of the next frame drawn, per root-level layer (RenderStats.layerCosts).
+query getRenderStats = 1081 { profileLayers?: bool = 1; } -> RenderStats;
 query getLayerErrors = 1082 { comp?: ItemId = 1; } -> LayerErrorList;
 query getJobs = 1083 {} -> JobList;
 query getRenderQueue = 1084 {} -> RenderQueueState;
