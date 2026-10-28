@@ -145,9 +145,21 @@ std::size_t Device::end_frame() {
   // resize) stay warm for a minute while they fit the budget, so switching back
   // is a pool hit instead of a reallocation of every target (a 0.1–1.7 s stall
   // on a 3D comp). Anything idle a minute still goes, whatever the budget.
+  // Over the budget, an idle MULTISAMPLED target goes after a few frames rather
+  // than kMaxIdle: those are the viewport slots (scene colour, one precomp slot
+  // per nesting level, ~83 MB each at 1080p), and a Full → Half switch kept the
+  // whole Full set resident beside the Half one for four seconds — on a GPU
+  // other apps already fill, the driver paged and Half drew at 21 ms instead of
+  // 5 (deepPrecomp bench, 2026-10-28). Kept results (P8 chains, the precomp
+  // cache) are single-sample and keep their grace; a slot drawn every frame is
+  // never idle, so nothing churns.
   constexpr std::uint64_t kTargetWarmIdle = 1800;
   constexpr std::uint64_t kTargetBudget = std::uint64_t{768} << 20U;
-  const std::size_t targets = targets_.collect_budgeted(frame_, kMaxIdle, kTargetWarmIdle, kTargetBudget);
+  constexpr std::uint64_t kSlotOverBudgetIdle = 8;
+  // Device::target's key: "…:<samples>" or "…:<samples>:d".
+  const auto multisampled = [](std::string_view key) { return key.ends_with(":4") || key.ends_with(":4:d"); };
+  const std::size_t targets =
+      targets_.collect_budgeted(frame_, kMaxIdle, kTargetWarmIdle, kTargetBudget, kSlotOverBudgetIdle, multisampled);
   return targets + textures + textureObjects_.collect_absent_from(textures_) + buffers_.collect(frame_, kMaxIdle) +
          bindGroups_.collect(frame_, kMaxIdle);
 }
@@ -209,19 +221,26 @@ RenderTarget& Device::target(std::string_view name, std::uint32_t w, std::uint32
           t.msaa = device_.CreateTexture(&md);
           t.msaaView = t.msaa.CreateView();
         }
-        if (depth) {
-          wgpu::TextureDescriptor dd{};
-          dd.size = {w, h, 1};
-          dd.format = wgpu::TextureFormat::Depth24Plus;
-          dd.sampleCount = sampleCount;
-          dd.usage = sampleCount > 1 ? wgpu::TextureUsage::RenderAttachment
-                                     : wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding;
-          t.depth = device_.CreateTexture(&dd);
-          t.depthView = t.depth.CreateView();
-        }
+        t.wantsDepth = depth;  // the buffer itself on first use (depth_view)
         return t;
       },
+      // Charged with its depth buffer whether or not one is made yet: the
+      // pool's budgets see the target's worst case, as before depth was lazy.
       render_target_bytes(w, h, bytes_per_texel(format), sampleCount, depth));
+}
+
+const wgpu::TextureView& Device::depth_view(const RenderTarget& t) {
+  if (t.depthView == nullptr && t.wantsDepth) {
+    wgpu::TextureDescriptor dd{};
+    dd.size = {t.width, t.height, 1};
+    dd.format = wgpu::TextureFormat::Depth24Plus;
+    dd.sampleCount = t.samples;
+    dd.usage = t.samples > 1 ? wgpu::TextureUsage::RenderAttachment
+                             : wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding;
+    t.depth = device_.CreateTexture(&dd);
+    t.depthView = t.depth.CreateView();
+  }
+  return t.depthView;
 }
 
 TexRef Device::texture(std::string_view hash, std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format,
@@ -634,7 +653,7 @@ wgpu::RenderPassEncoder Device::begin_pass(const Attachment& att, std::uint32_t 
   rp.colorAttachments = &ca;
   wgpu::RenderPassDepthStencilAttachment da{};
   const RenderTarget* dt = att.depthFrom != nullptr ? att.depthFrom : t;
-  if (depth && t != nullptr && dt->depthView != nullptr) {
+  if (depth && t != nullptr && depth_view(*dt) != nullptr) {
     da.view = dt->depthView;
     da.depthClearValue = 1.0F;
     da.depthLoadOp = att.loadDepth ? wgpu::LoadOp::Load : wgpu::LoadOp::Clear;

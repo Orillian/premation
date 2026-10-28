@@ -63,8 +63,14 @@ struct RenderTarget {
   wgpu::TextureView view;
   wgpu::Texture msaa;
   wgpu::TextureView msaaView;
-  wgpu::Texture depth;
-  wgpu::TextureView depthView;
+  /// The depth buffer, made on the first pass that tests depth (Device::depth_view),
+  /// not with the target: most targets declared with depth (the precomp slots,
+  /// scene colour) only ever take 2D draws, and an MSAA depth buffer is ~30 %
+  /// of such a target's VRAM. Mutable: made through the const target a pass reads.
+  mutable wgpu::Texture depth;
+  mutable wgpu::TextureView depthView;
+  /// Declared with depth: depth_view may make the buffer.
+  bool wantsDepth = false;
   wgpu::TextureFormat format = wgpu::TextureFormat::RGBA16Float;
   std::uint32_t width = 0;
   std::uint32_t height = 0;
@@ -240,6 +246,9 @@ class Device {
   /// Begin a render pass on `att` with the viewport set to w × h. `scissor`
   /// clips draws (the surface's frame clip; an effect chain's reach on a target).
   /// A clear still clears the whole attachment.
+  /// `t`'s depth buffer, made on first use (RenderTarget::depth); null when `t`
+  /// was declared without depth.
+  const wgpu::TextureView& depth_view(const RenderTarget& t);
   wgpu::RenderPassEncoder begin_pass(const Attachment& att, std::uint32_t w, std::uint32_t h,
                                      const wgpu::TextureView& surfaceView, wgpu::TextureFormat surfaceFormat,
                                      const std::array<std::uint32_t, 4>* scissor, bool depth);

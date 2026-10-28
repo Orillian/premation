@@ -97,14 +97,19 @@ class Pool {
   /// pool holds more than `budgetBytes`, oldest first. A playback loop longer
   /// than `minIdle` frames keeps its textures for the next pass (the plain
   /// collect re-uploaded every raster each time round), and memory stays bounded.
-  std::size_t collect_budgeted(std::uint64_t frame, std::uint64_t minIdle, std::uint64_t maxIdle, std::uint64_t budgetBytes) {
+  /// Over the budget, an entry whose key `quick` accepts goes once idle longer
+  /// than `quickIdle` instead (the default accepts none).
+  template <typename Quick = bool (*)(std::string_view)>
+  std::size_t collect_budgeted(std::uint64_t frame, std::uint64_t minIdle, std::uint64_t maxIdle, std::uint64_t budgetBytes,
+                               std::uint64_t quickIdle = 0, Quick quick = [](std::string_view) { return false; }) {
     std::size_t n = collect(frame, maxIdle);
     std::uint64_t total = 0;
     for (const auto& [k, e] : map_) total += e.bytes;
     if (total <= budgetBytes) return n;
     std::vector<typename decltype(map_)::iterator> idle;
     for (auto it = map_.begin(); it != map_.end(); ++it) {
-      if (!it->second.pinned && frame > it->second.lastFrame + minIdle) idle.push_back(it);
+      const std::uint64_t grace = quick(std::string_view(it->first)) ? std::min(quickIdle, minIdle) : minIdle;
+      if (!it->second.pinned && frame > it->second.lastFrame + grace) idle.push_back(it);
     }
     std::ranges::sort(idle, [](const auto& a, const auto& b) { return a->second.lastFrame < b->second.lastFrame; });
     std::size_t extra = 0;

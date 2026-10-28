@@ -1978,7 +1978,7 @@ void render_3d_group(PassContext& ctx, std::span<const api::Renderable* const> g
     DrawItem& it = gc.add(Mat::DOF_GATHER_MATERIAL, Blend::normal, p.span());
     it.texture = dt->tex();
     it.sampler = clamp;
-    it.mask = TexRef{dt->depthView, dt->id | (std::uint64_t{1} << 62U), dt->width, dt->height, false, 0, 0};
+    it.mask = TexRef{ctx.dev.depth_view(*dt), dt->id | (std::uint64_t{1} << 62U), dt->width, dt->height, false, 0, 0};
     ctx.draw_into(out, gc, false);
   }
 }
