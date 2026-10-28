@@ -86,3 +86,22 @@ describe('Add Expression Control', () => {
     expect((await h.doc())).toBe(before);
   });
 });
+
+describe('3D Point Control', () => {
+  it('adds as the ADBE Point3D Control with x, y, z, and an expression reads all three', async () => {
+    const { layer } = await h.run({ type: 'createLayer', comp: 'comp_root', kind: 'null', name: 'Rig', init: [] });
+    await engineIdle();
+    expect(await addExpressionControlEdit(layer, 'point3d')).toBe('3D Point 1');
+    await engineIdle();
+    const t = await h.query({ type: 'getPropertyTree', layer, path: 'effects/ctrl_3D Point 1', depth: 2 });
+    const group = t.nodes.find((n) => n.path === 'effects/ctrl_3D Point 1');
+    expect(group?.matchName).toBe('ADBE Point3D Control');
+    const value = t.nodes.find((n) => n.path.startsWith('effects/ctrl_3D Point 1/') && n.kind === 'property');
+    expect(value?.valueType).toBe('vec3');
+    await h.run({ type: 'setProperty', prop: { layer, path: value!.path }, value: { kind: 'vec3', value: { x: 10, y: 20, z: 30 } } });
+    // AE's form: effect("3D Point 1")("3D Point")[2] is z.
+    await h.run({ type: 'setExpression', prop: { layer, path: 'transform/rotation' }, source: 'effect("3D Point 1")("3D Point")[2]', enabled: true });
+    const r = await h.query({ type: 'getPropertyValues', props: [{ layer, path: 'transform/rotation' }], time: 0, evaluated: true });
+    expect(r.values[0]!.value).toEqual({ kind: 'scalar', value: 30 });
+  });
+});

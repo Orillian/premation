@@ -221,6 +221,8 @@ const OBJECT_MEMBERS: Readonly<Record<string, readonly MemberDef[]>> = {
     { name: 'velocityAtTime()', insert: 'velocityAtTime(time - 0.1)', hint: 'rate of change at a time' },
     { name: 'loopOut()', insert: "loopOut('cycle')", hint: 'repeat keyframes after the last' },
     { name: 'loopIn()', insert: "loopIn('cycle')", hint: 'repeat keyframes before the first' },
+    { name: 'loopOutDuration()', insert: "loopOutDuration('cycle', 1)", hint: 'repeat the last seconds of keyframes' },
+    { name: 'loopInDuration()', insert: "loopInDuration('cycle', 1)", hint: 'repeat the first seconds of keyframes' },
   ],
   marker: [
     { name: 'numKeys', hint: 'how many markers this layer has' },

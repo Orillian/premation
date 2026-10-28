@@ -11,6 +11,7 @@ namespace {
 
 api::ValueType value_type_of(std::string_view t) {
   if (t == "vec2") return api::ValueType::vec2;
+  if (t == "vec3") return api::ValueType::vec3;
   if (t == "color") return api::ValueType::color;
   return api::ValueType::scalar;
 }

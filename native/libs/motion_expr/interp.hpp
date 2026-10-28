@@ -126,7 +126,8 @@ class Interp {
   Value space_fn(const Obj& f, Args a);
   Value key_fn(const Value& n);
   Value nearest_key(Args a);
-  Value loop(bool out, const Value& mode);
+  /// loopOut / loopIn (limit = numKeyframes) and loopOutDuration / loopInDuration (limit = seconds).
+  Value loop(bool out, const Value& mode, const Value& limit, bool by_duration);
   Value layer_at(const Value& name, const Value& prop, const Value& t);
   Value source_rect(Args a);
   Value zip(const Value& a, const Value& b, Op op);

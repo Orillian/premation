@@ -19,7 +19,7 @@
  */
 
 /** Control kinds (expressionControls.ts). */
-export type ControlKind = 'slider' | 'angle' | 'point' | 'color' | 'checkbox' | 'dropdown' | 'layer';
+export type ControlKind = 'slider' | 'angle' | 'point' | 'point3d' | 'color' | 'checkbox' | 'dropdown' | 'layer';
 
 export interface ControlSpec {
   kind: ControlKind;
@@ -42,7 +42,7 @@ export interface ControlSpec {
    * (a checkbox 0/1, a dropdown its selected index, a layer control the index
    * of the referenced layer).
    */
-  valueType: 'scalar' | 'vec2' | 'color';
+  valueType: 'scalar' | 'vec2' | 'vec3' | 'color';
   /** Suffixes appended to `ctrl_<name>`, one per component, in value order. */
   components: readonly string[];
   /** A new control's value per component. */
@@ -57,6 +57,7 @@ export const CONTROL_SPECS: readonly ControlSpec[] = [
   { kind: 'slider', matchName: 'ADBE Slider Control', label: 'Slider Control', displayName: 'Slider', param: 'slider', propName: 'Slider', propMatchName: 'ADBE Slider Control-0001', valueType: 'scalar', components: [''], defaults: [50], unit: '' },
   { kind: 'angle', matchName: 'ADBE Angle Control', label: 'Angle Control', displayName: 'Angle', param: 'angle', propName: 'Angle', propMatchName: 'ADBE Angle Control-0001', valueType: 'scalar', components: [''], defaults: [0], unit: '°' },
   { kind: 'point', matchName: 'ADBE Point Control', label: 'Point Control', displayName: 'Point', param: 'point', propName: 'Point', propMatchName: 'ADBE Point Control-0001', valueType: 'vec2', components: ['.x', '.y'], defaults: [0, 0], unit: 'px' },
+  { kind: 'point3d', matchName: 'ADBE Point3D Control', label: '3D Point Control', displayName: '3D Point', param: 'point3d', propName: '3D Point', propMatchName: 'ADBE Point3D Control-0001', valueType: 'vec3', components: ['.x', '.y', '.z'], defaults: [0, 0, 0], unit: 'px' },
   { kind: 'color', matchName: 'ADBE Color Control', label: 'Color Control', displayName: 'Color', param: 'color', propName: 'Color', propMatchName: 'ADBE Color Control-0001', valueType: 'color', components: ['.r', '.g', '.b'], defaults: [255, 255, 255], unit: '' },
   { kind: 'checkbox', matchName: 'ADBE Checkbox Control', label: 'Checkbox Control', displayName: 'Checkbox', param: 'checkbox', propName: 'Checkbox', propMatchName: 'ADBE Checkbox Control-0001', valueType: 'scalar', components: [''], defaults: [0], unit: '' },
   { kind: 'dropdown', matchName: 'ADBE Dropdown Control', label: 'Dropdown Menu Control', displayName: 'Dropdown', param: 'menu', propName: 'Menu', propMatchName: 'ADBE Dropdown Control-0001', valueType: 'scalar', components: [''], defaults: [0], unit: '' },

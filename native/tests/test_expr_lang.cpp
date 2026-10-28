@@ -806,3 +806,24 @@ TEST_CASE("expr lang: ??, ?., default parameters, bitwise operators", "[expr][la
   CHECK(r.num("-16 >> 2") == -4);
   CHECK(r.num("-1 >>> 28") == 15);
 }
+
+TEST_CASE("AE: loopOut / loopIn count keyframes, loopOutDuration / loopInDuration seconds", "[expr][lang][loop]") {
+  Run r;
+  // 0 → 10 → 30 → 30 at 0, 1, 2, 3 s (the last segment holds).
+  r.keys({{0, 0}, {1, 10}, {2, 30}, {3, 30}});
+  // Whole span (absent / 0): at 3.5 s, cycle replays 0.5 s → 5.
+  CHECK(r.num("loopOut(\"cycle\")", 3.5, 30) == 5);
+  CHECK(r.num("loopOut(\"cycle\", 0)", 3.5, 30) == 5);
+  // The last 2 segments [1, 3]: 3.5 s replays 1.5 s → 20.
+  CHECK(r.num("loopOut(\"cycle\", 2)", 3.5, 30) == 20);
+  // A count past the keys clamps to the whole span.
+  CHECK(r.num("loopOut(\"cycle\", 99)", 3.5, 30) == 5);
+  // The last 1.5 s [1.5, 3]: 3.25 s replays 1.75 s → 25.
+  CHECK(r.num("loopOutDuration(\"cycle\", 1.5)", 3.25, 30) == 25);
+  // loopIn mirrors it at the start: the first segment [0, 1] before 0.
+  CHECK(r.num("loopIn(\"cycle\", 1)", -0.25, 0) == 7.5);
+  CHECK(r.num("loopInDuration(\"cycle\", 1)", -0.25, 0) == 7.5);
+  // On the property object too, and an unusable duration means the whole span.
+  CHECK(r.num("thisProperty.loopOutDuration(\"cycle\", 1.5)", 3.25, 30) == 25);
+  CHECK(r.num("loopOutDuration(\"cycle\", -1)", 3.5, 30) == 5);
+}

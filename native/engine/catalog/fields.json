@@ -2363,6 +2363,27 @@
       "unit": "px"
     },
     {
+      "kind": "point3d",
+      "matchName": "ADBE Point3D Control",
+      "label": "3D Point Control",
+      "displayName": "3D Point",
+      "param": "point3d",
+      "propName": "3D Point",
+      "propMatchName": "ADBE Point3D Control-0001",
+      "valueType": "vec3",
+      "components": [
+        ".x",
+        ".y",
+        ".z"
+      ],
+      "defaults": [
+        0,
+        0,
+        0
+      ],
+      "unit": "px"
+    },
+    {
       "kind": "color",
       "matchName": "ADBE Color Control",
       "label": "Color Control",

@@ -1048,6 +1048,10 @@ Value Interp::global(const Node& n) {
       return fn_value(Fn::kLoopOut);
     case Global::kLoopIn:
       return fn_value(Fn::kLoopIn);
+    case Global::kLoopOutDuration:
+      return fn_value(Fn::kLoopOutDuration);
+    case Global::kLoopInDuration:
+      return fn_value(Fn::kLoopInDuration);
     case Global::kThisComp:
       return this_comp();
     case Global::kThisLayer:
@@ -1213,6 +1217,8 @@ Value Interp::this_property() {
         {.key = KeyId::k_velocityAtTime, .value = fn_value(Fn::kVelocityAtTime)},
         {.key = KeyId::k_loopOut, .value = fn_value(Fn::kLoopOut)},
         {.key = KeyId::k_loopIn, .value = fn_value(Fn::kLoopIn)},
+        {.key = KeyId::k_loopOutDuration, .value = fn_value(Fn::kLoopOutDuration)},
+        {.key = KeyId::k_loopInDuration, .value = fn_value(Fn::kLoopInDuration)},
         {.key = KeyId::k_smooth, .value = fn_value(Fn::kSmooth)},
         {.key = KeyId::k_temporalWiggle, .value = fn_value(Fn::kTemporalWiggle)},
         {.key = KeyId::k_wiggle, .value = fn_value(Fn::kWiggle)},
@@ -1773,14 +1779,33 @@ Value Interp::nearest_key(Args a) {
   return key_fn(Value::number(static_cast<double>(best + 1)));
 }
 
-Value Interp::loop(bool out, const Value& mode_arg) {
+Value Interp::loop(bool out, const Value& mode_arg, const Value& limit_arg, bool by_duration) {
   const double time = ctx_.time;
   const std::optional<KeySpan>& span = ctx_.self_span;
   if (!span || span->end <= span->start || (out ? time <= span->end : time >= span->start)) {
     return Value::number(ctx_.value);
   }
-  const double start = span->start;
-  const double end = span->end;
+  double start = span->start;
+  double end = span->end;
+  // AE's second argument narrows the looped stretch to its end (loopOut) or
+  // start (loopIn): loopOut(type, numKeyframes) loops the last numKeyframes
+  // segments, loopOutDuration(type, duration) the last `duration` seconds.
+  // 0 / absent = the whole keyed span.
+  if (!limit_arg.is_undefined()) {
+    const double n = to_number(limit_arg);
+    if (by_duration) {
+      if (n > 0 && std::isfinite(n)) {
+        if (out) start = std::max(start, end - n);
+        else end = std::min(end, start + n);
+      }
+    } else if (n >= 1 && std::isfinite(n) && ctx_.key_times.size() >= 2) {
+      const std::size_t last = ctx_.key_times.size() - 1;
+      const std::size_t k = std::min(last, static_cast<std::size_t>(std::floor(n)));
+      if (out) start = ctx_.key_times[last - k];
+      else end = ctx_.key_times[k];
+    }
+  }
+  if (end <= start) return Value::number(ctx_.value);
   const double dur = end - start;
   const double rel = time - start;
   const auto is_mode = [&](std::u16string_view m) {
@@ -1967,9 +1992,13 @@ Value Interp::call_api(const Obj& f, Args a) {
     case Fn::kLayerAt:
       return layer_at(a[0], a[1], a[2]);
     case Fn::kLoopOut:
-      return loop(true, a[0]);
+      return loop(true, a[0], a[1], false);
     case Fn::kLoopIn:
-      return loop(false, a[0]);
+      return loop(false, a[0], a[1], false);
+    case Fn::kLoopOutDuration:
+      return loop(true, a[0], a[1], true);
+    case Fn::kLoopInDuration:
+      return loop(false, a[0], a[1], true);
     case Fn::kSourceRectAtTime:
       return source_rect(a);
     case Fn::kToComp:

@@ -65,6 +65,8 @@ enum class Global : std::int8_t {
   // AE globals (2026-10-21)
   kDegreesToRadians, kRadiansToDegrees, kHslToRgb, kRgbToHsl, kSmooth, kTemporalWiggle, kComp,
   kTimeToTimecode, kTimeToCurrentFormat,
+  // AE: loop the last / first `duration` seconds (2026-10-29)
+  kLoopOutDuration, kLoopInDuration,
   kCount_
 };
 
@@ -87,7 +89,7 @@ enum class Fn : std::uint8_t {
   // AE globals and property objects (2026-10-21): conversions, smooth / temporalWiggle,
   // comp("Name") and its layer(), and the methods of a layer / effect property object
   kDegreesToRadians, kRadiansToDegrees, kHslToRgb, kRgbToHsl, kSmooth, kTemporalWiggle, kComp, kCompByNameLayer,
-  kTimeToTimecode, kTimeToCurrentFormat,
+  kTimeToTimecode, kTimeToCurrentFormat, kLoopOutDuration, kLoopInDuration,
   kPropValueAtTime, kPropVelocityAtTime, kPropKey, kPropNearestKey, kPropSmooth,
   // sourceText.ts
   kGetStyleAt, kStyleSetter, kStyleSetText,

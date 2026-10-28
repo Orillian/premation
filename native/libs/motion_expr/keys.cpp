@@ -48,6 +48,7 @@ constexpr std::array<std::u16string_view, static_cast<std::size_t>(Global::kCoun
     u"startTime",
     u"degreesToRadians", u"radiansToDegrees", u"hslToRgb", u"rgbToHsl", u"smooth", u"temporalWiggle",
     u"comp",          u"timeToTimecode", u"timeToCurrentFormat",
+    u"loopOutDuration", u"loopInDuration",
 };
 
 }  // namespace

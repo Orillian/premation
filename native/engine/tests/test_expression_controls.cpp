@@ -100,7 +100,7 @@ double scalar_of(const api::Value& v) { return std::get<double>(v.v); }
 
 }  // namespace
 
-TEST_CASE("controls: listGroupTypes lists the seven controls under effects", "[controls]") {
+TEST_CASE("controls: listGroupTypes lists the eight controls under effects", "[controls]") {
   Controls x;
   const auto l = x.solid();
   const auto types = x.query<api::GroupTypeList>(qry(api::ListGroupTypes{l, "effects"})).types;
@@ -110,6 +110,7 @@ TEST_CASE("controls: listGroupTypes lists the seven controls under effects", "[c
   }
   REQUIRE(got == std::vector<std::string>{
                      "ADBE Slider Control|Slider Control", "ADBE Angle Control|Angle Control", "ADBE Point Control|Point Control",
+                     "ADBE Point3D Control|3D Point Control",
                      "ADBE Color Control|Color Control", "ADBE Checkbox Control|Checkbox Control",
                      "ADBE Dropdown Control|Dropdown Menu Control", "ADBE Layer Control|Layer Control"});
   for (const auto& t : x.query<api::GroupTypeList>(qry(api::ListGroupTypes{l, "contents"})).types) REQUIRE(t.category != "controls");
