@@ -19,9 +19,13 @@
  *     { id, type: 'listEditorCommands' }            → the editor commands a panel may run
  *     { id, type: 'editorCommand', command }         → run one, as its menu item would — only while
  *                                                       the frame has the focus (a click in the panel)
+ *     { id, type: 'runScript', source, name }        → File ▸ Scripts' run (consent, one undo step)
+ *     { id, type: 'setShortcuts', shortcuts }        → editor-wide chords while the panel is open
+ *     { id, type: 'saveFile' | 'openFile', … }       → the save / open dialogs, text ≤ 1 MiB
  *   editor → panel
- *     { type: 'context', plugin, comp, layers, time } on ready and after every document,
- *                                                       selection or time change
+ *     { type: 'context', plugin, comp, layers, time, keyframes, properties } on ready and after
+ *                                                       every document, selection or time change
+ *     { type: 'invoke', id }                         a bound shortcut was pressed
  *     { type: 'reply', id, ok, result? | error? }
  *
  * Only EDIT commands pass (no undo / open / save / transport / jobs): what a
@@ -48,7 +52,36 @@ export type ToolPanelMessage =
   | { id: number; type: 'command'; commands: Command[]; label: string }
   | { id: number; type: 'settings'; set?: Record<string, unknown> }
   | { id: number; type: 'listEditorCommands' }
-  | { id: number; type: 'editorCommand'; command: string };
+  | { id: number; type: 'editorCommand'; command: string }
+  | { id: number; type: 'runScript'; source: string; name: string }
+  | { id: number; type: 'setShortcuts'; shortcuts: PanelShortcutBinding[] }
+  | { id: number; type: 'saveFile'; name: string; text: string }
+  | { id: number; type: 'openFile'; accept: string };
+
+/** A key chord a panel binds editor-wide while it is open; the editor answers `{ type: 'invoke', id }`. */
+export interface PanelShortcutBinding {
+  id: string;
+  key: string;
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}
+
+export const MAX_PANEL_SHORTCUTS = 200;
+/** A script or a saved file, as text. */
+export const MAX_PANEL_TEXT = 1024 * 1024;
+
+function bindingOf(v: unknown): PanelShortcutBinding | null {
+  if (!isObject(v) || typeof v.id !== 'string' || !v.id || v.id.length > 100) return null;
+  if (typeof v.key !== 'string' || !v.key || v.key.length > 20) return null;
+  const ctrl = v.ctrl === true;
+  const alt = v.alt === true;
+  const meta = v.meta === true;
+  // A bare key would steal typing and the editor's own one-key tools.
+  if (!ctrl && !alt && !meta && !/^F([1-9]|1[0-9]|2[0-4])$/.test(v.key)) return null;
+  return { id: v.id, key: v.key, ctrl, alt, shift: v.shift === true, meta };
+}
 
 /**
  * Editor command ids a panel may never run: files, the app, the account, help, plugin
@@ -136,6 +169,33 @@ export function parseToolPanelMessage(raw: unknown): ToolPanelParse {
     if (!panelMayRunEditorCommand(raw.command)) return invalid(`a panel may not run '${raw.command}'`);
     return { id, type: 'editorCommand', command: raw.command };
   }
+  if (raw.type === 'runScript') {
+    if (typeof raw.source !== 'string' || !raw.source.trim()) return invalid('the script is empty');
+    if (raw.source.length > MAX_PANEL_TEXT) return invalid('the script is too large');
+    const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 80) : 'Panel script';
+    return { id, type: 'runScript', source: raw.source, name };
+  }
+  if (raw.type === 'setShortcuts') {
+    if (!Array.isArray(raw.shortcuts) || raw.shortcuts.length > MAX_PANEL_SHORTCUTS) return invalid(`send 0-${MAX_PANEL_SHORTCUTS} shortcuts`);
+    const shortcuts: PanelShortcutBinding[] = [];
+    for (const s of raw.shortcuts) {
+      const b = bindingOf(s);
+      if (!b) return invalid('a shortcut is { id, key, ctrl?, alt?, shift?, meta? } with Ctrl, Alt or Cmd (or an F key)');
+      shortcuts.push(b);
+    }
+    return { id, type: 'setShortcuts', shortcuts };
+  }
+  if (raw.type === 'saveFile') {
+    if (typeof raw.text !== 'string' || raw.text.length > MAX_PANEL_TEXT) return invalid('the file is text up to 1 MiB');
+    // A file NAME only: no folders, nothing Windows refuses, no control characters.
+    const name = typeof raw.name === 'string' ? [...raw.name].map((c) => (c < ' ' || '\\/:*?"<>|'.includes(c) ? '_' : c)).join('').slice(0, 120) : '';
+    if (!name) return invalid('name the file');
+    return { id, type: 'saveFile', name, text: raw.text };
+  }
+  if (raw.type === 'openFile') {
+    const accept = typeof raw.accept === 'string' ? raw.accept.slice(0, 200) : '';
+    return { id, type: 'openFile', accept };
+  }
   return invalid(`unknown message '${raw.type}'`);
 }
 
@@ -149,16 +209,44 @@ export function toolPanelLabel(commands: readonly Command[], label: string, pane
   return panelName;
 }
 
+/** A selected keyframe as the engine names it (`updateKeyframes` takes `key`). */
+export interface ToolPanelKey {
+  layer: string;
+  key: string;
+  /** The API property path the key is on. */
+  path: string;
+  /** The member row (X of Position = 0) when one dimension's diamond is selected. */
+  member?: number;
+}
+
+/** A selected property row, as an engine PropRef plus its member. */
+export interface ToolPanelProperty {
+  layer: string;
+  path: string;
+  member: number;
+}
+
 export interface ToolPanelContext {
   plugin: string;
   comp: string;
   layers: readonly string[];
   /** Composition time, flicks. */
   time: number;
+  keyframes?: readonly ToolPanelKey[];
+  properties?: readonly ToolPanelProperty[];
 }
 
 export function toolPanelContext(c: ToolPanelContext): Record<string, unknown> {
-  return { premation: TOOL_PANEL_PROTOCOL, type: 'context', plugin: c.plugin, comp: c.comp, layers: [...c.layers], time: c.time };
+  return {
+    premation: TOOL_PANEL_PROTOCOL,
+    type: 'context',
+    plugin: c.plugin,
+    comp: c.comp,
+    layers: [...c.layers],
+    time: c.time,
+    keyframes: [...(c.keyframes ?? [])],
+    properties: [...(c.properties ?? [])],
+  };
 }
 
 export function toolPanelReply(id: number, r: { ok: true; result: unknown } | { ok: false; error: string }): Record<string, unknown> {

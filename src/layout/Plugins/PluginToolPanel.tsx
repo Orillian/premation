@@ -26,7 +26,19 @@ import { usePluginContrib } from '@hooks/usePluginContrib';
 import { useThrottledTime } from '@stores/playbackClockStore';
 import { useProjectStore } from '@stores/projectStore';
 import { useSelectionStore } from '@stores/selectionStore';
-import { panelEditorCommands, pluginPanelSettings, runPanelEditorCommand } from './panelEditorCommands';
+import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
+import { usePropertySelectionStore } from '@stores/propertySelectionStore';
+import {
+  acceptPanelShortcuts,
+  openPanelFile,
+  panelEditorCommands,
+  panelSelection,
+  panelShortcutFor,
+  pluginPanelSettings,
+  runPanelEditorCommand,
+  runPanelScript,
+  savePanelFile,
+} from './panelEditorCommands';
 import { runPanelShortcut } from './panelShortcut';
 import { PluginEffectHomePanel } from './PluginEffectHomePanel';
 import { t } from '@core/i18n';
@@ -52,8 +64,14 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
   const time = useThrottledTime();
   const comp = useProjectStore((s) => (s.activeTabId ? s.tabs[s.activeTabId]?.compositionId ?? '' : ''));
   const layers = useSelectionStore((s) => s.ids);
+  const keySelection = useKeyframeSelectionStore((s) => s.ids);
+  const propSelection = usePropertySelectionStore((s) => s.entries);
   const live = useRef({ comp, layers, time });
   live.current = { comp, layers, time };
+  // The panel's editor-wide shortcuts (chord key → binding id), and how long a delivered one
+  // lets the panel act as if clicked (runPanelEditorCommand / runPanelScript / files).
+  const shortcuts = useRef(new Map<string, string>());
+  const grantedUntil = useRef(0);
 
   const post = useCallback((msg: unknown) => {
     frame.current?.contentWindow?.postMessage(msg, '*');
@@ -61,16 +79,28 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
 
   const pushContext = useCallback(() => {
     const { comp: c, layers: l, time: now } = live.current;
-    post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(now) }));
+    post(toolPanelContext({ plugin, comp: c, layers: [...l], time: secondsToFlicks(now), ...panelSelection() }));
   }, [plugin, post]);
 
   const run = useCallback(async (msg: Exclude<ToolPanelMessage, { type: 'ready' } | { type: 'shortcut' }>) => {
-    if (msg.type === 'settings') return toolPanelReply(msg.id, { ok: true, result: pluginPanelSettings(plugin, msg.set) });
-    if (msg.type === 'listEditorCommands') return toolPanelReply(msg.id, { ok: true, result: { commands: panelEditorCommands() } });
+    const ok = (result: unknown) => toolPanelReply(msg.id, { ok: true, result });
+    if (msg.type === 'settings') return ok(pluginPanelSettings(plugin, msg.set));
+    if (msg.type === 'listEditorCommands') return ok({ commands: panelEditorCommands() });
     if (msg.type === 'editorCommand') {
-      await runPanelEditorCommand(msg.command, frame.current);
-      return toolPanelReply(msg.id, { ok: true, result: {} });
+      await runPanelEditorCommand(msg.command, frame.current, grantedUntil.current);
+      return ok({});
     }
+    if (msg.type === 'runScript') return ok({ value: await runPanelScript(msg.source, msg.name, frame.current, grantedUntil.current) });
+    if (msg.type === 'setShortcuts') {
+      const { accepted, refused } = acceptPanelShortcuts(msg.shortcuts);
+      shortcuts.current = accepted;
+      return ok({ refused });
+    }
+    if (msg.type === 'saveFile') {
+      savePanelFile(msg.name, msg.text, frame.current, grantedUntil.current);
+      return ok({});
+    }
+    if (msg.type === 'openFile') return ok(await openPanelFile(msg.accept, frame.current, grantedUntil.current));
     const client = engine();
     if (msg.type === 'query') {
       const res = await client.query(msg.request);
@@ -111,10 +141,25 @@ function ToolFrame({ plugin, page, name }: { plugin: string; page: string; name:
     return () => window.removeEventListener('message', onMessage);
   }, [pushContext, run, post]);
 
+  // The panel's shortcuts work anywhere in the editor while the panel is open. Capture phase so a
+  // binding the editor does not own reaches the panel; acceptPanelShortcuts refused any it owns.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const id = panelShortcutFor(e, shortcuts.current);
+      if (!id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      grantedUntil.current = performance.now() + 2000;
+      post({ premation: 1, type: 'invoke', id });
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [post]);
+
   // Every document change (an edit from anywhere, undo, redo), selection or time change.
   useEffect(() => {
     if (ready.current) pushContext();
-  }, [revision, time, comp, layers, pushContext]);
+  }, [revision, time, comp, layers, keySelection, propSelection, pushContext]);
 
   return (
     <iframe

@@ -749,8 +749,14 @@ the editor by `window.parent.postMessage({ premation: 1, … }, '*')`:
 | `{ id, type: 'settings', set? }` | the plugin's saved settings (`result`, an object; `{}` at first). `set` (an object, ≤ 256 KiB) replaces them first. Editor prefs, per user — never the document |
 | `{ id, type: 'listEditorCommands' }` | `result.commands`: `{ id, label, shortcut, enabled }` for every editor command a panel may run |
 | `{ id, type: 'editorCommand', command }` | runs that editor command as its menu item would — only while the frame has the focus (the click that asked was in the panel). File, app, account, help and plugin-management commands are refused |
+| `{ id, type: 'runScript', source, name }` | runs a Premation script as File ▸ Scripts does: the user's consent prompt, the Script Editor console, one undo step. `result.value` is the script's return value. Same focus rule |
+| `{ id, type: 'setShortcuts', shortcuts: [{ id, key, ctrl?, alt?, shift?, meta? }] }` | binds chords editor-wide while the panel is open; each needs Ctrl, Alt or Cmd (or is an F key). A chord an editor command owns is refused (`result.refused: [{ id, reason }]`). A press sends the panel `{ type: 'invoke', id }`, and for 2 s the panel may act as if clicked |
+| `{ id, type: 'saveFile', name, text }` | the save dialog for a text file (≤ 1 MiB) named `name`. Same focus rule |
+| `{ id, type: 'openFile', accept }` | the open dialog; `result` is `{ name, text }` (≤ 1 MiB) or null when cancelled. Same focus rule |
 
-The editor sends `{ type: 'context', plugin, comp, layers, time }` on `ready`
+The editor sends `{ type: 'context', plugin, comp, layers, time, keyframes, properties }`
+(`keyframes`: `[{ layer, key, path, member? }]`, the selected keys by engine id, for
+`updateKeyframes`; `properties`: `[{ layer, path, member }]`, the selected property rows) on `ready`
 and after every document change (undo and redo too), selection or time change,
 and `{ type: 'reply', id, ok, result?, error? }` to each request. Requests over
 1 MiB, non-edit commands (undo, save, transport, jobs) and unknown types are
