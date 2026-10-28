@@ -659,6 +659,7 @@ UI's business (it may re-select the ids named in the undone entry's events).
 | `setViewportHiddenLayers` | `{viewport, layers}` — the layers a viewport does not draw (the text layer being edited in place). Replaces the viewport's set; empty = all draw; closing the viewport drops it. View state: no history, no revision; exports, thumbnails and other viewports still draw the layer. |
 | `setViewportFocus` | `{viewport, layers}` — Focus Mode's working set: every other layer of that viewport's frames draws as a dim reference (12 % of its opacity). Replaces the viewport's set; empty = no focus; closing the viewport drops it. View state: no history, no revision; exports, thumbnails and other viewports are untouched. |
 | `setViewerLut` | `{lut, intensity}` — the viewer LUT (View ▸ Viewer LUT): the stored `.cube` table as JSON text, applied after the display transform on every viewport's frames; `''` clears it. View state: no history, no revision; never in an export or a thumbnail. |
+| `setUseProxies` | `{enabled}` — Use Proxies (View ▸ Use Proxies): viewport frames decode a footage item from its enabled proxy (setProxy) in the original's box and timing; a missing or unreadable proxy draws the original, said as a `warning`. View state: no history, no revision; off at engine start; never in an export, the Render Queue or a thumbnail. |
 
 The engine reports the clock with ephemeral `playhead` events (at most once per
 displayed frame, and after every seek) and `transportChanged` on state changes;

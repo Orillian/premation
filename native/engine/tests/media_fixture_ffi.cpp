@@ -73,7 +73,7 @@ void fill(AVFrame* f, const Spec& s, int i) {
         } else {
           // Left half: the frame index in 8 bands (in this plane's own columns); right half: a ramp.
           const int half = std::max(1, w / 2);
-          v = x < half ? fixture_code(i, std::min(kBands - 1, x * kBands / half)) : 16 + (x * 200) / std::max(1, w);
+          v = x < half ? fixture_code(i + s.codeOffset, std::min(kBands - 1, x * kBands / half)) : 16 + (x * 200) / std::max(1, w);
         }
         v *= scale;
         std::uint8_t* row = f->data[plane] + static_cast<std::ptrdiff_t>(y) * f->linesize[plane];  // NOLINT

@@ -526,6 +526,10 @@ void Flattener::feed(const RLayer& l, double parentScale) {
     r.key = "asset:" + l.id;
     r.kind = TexKind::media;
     r.src = l.src.value_or("");
+    if (l.proxySrc && l.kind == LayerKind::video) {  // Use Proxies: the proxy, the original behind it
+      r.fallbackSrc = std::move(r.src);
+      r.src = *l.proxySrc;
+    }
     r.sourceTime = l.sourceTime.value_or(0);
     r.video = l.kind == LayerKind::video;
     r.premultiplied = l.premultipliedSource;
@@ -586,6 +590,7 @@ void Flattener::feed(const RLayer& l, double parentScale) {
     if (l.kind == LayerKind::video && l.contentAwareFillSrc) {
       // A content-aware fill frame: the still stands in for the decoded footage.
       r.src = *l.contentAwareFillSrc;
+      r.fallbackSrc.clear();
       r.video = false;
       textures_.push_back(std::move(r));
     } else if (l.kind == LayerKind::video && l.frameBlend && !has_paint_strokes(l) && !layer_is_baked(l)) {

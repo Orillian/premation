@@ -320,6 +320,9 @@ std::uint64_t frame_content_hash(const BuiltFrame& frame, wire::Writer& scratch)
     h.f64(t.resolutionScale);
     h.f64(t.padding);
     h.str(t.src);
+    // Use Proxies: a proxy frame is never the original's (src is the proxy
+    // then); mixed only when set, so every other frame keeps its key.
+    if (!t.fallbackSrc.empty()) h.str(t.fallbackSrc);
     h.f64(t.sourceTime);
     h.u64((t.video ? 1U : 0U) | (t.premultiplied ? 2U : 0U) | (t.pixelMotion ? 4U : 0U));
     h.f64(t.compFps);
@@ -443,6 +446,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
       BuildContext ctx = context(d, view, expr, cache);
       ctx.hiddenLayers = viewport.hiddenLayers;  // setViewportHiddenLayers: the text under the in-place editor
       ctx.focusLayers = viewport.focusLayers;    // setViewportFocus: layers outside the set are dim references
+      ctx.useProxies = viewport.useProxies;      // setUseProxies: footage from its enabled proxy (viewport frames only)
       SnapshotComp sc = with_viewport_view(snapshot_comp_of(d, comp), viewport);
       if (!viewport.layer.empty()) {
         // The Layer panel: the layer alone at its source size, over transparency,
@@ -1079,6 +1083,7 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
     h.u64(salt_);
     for (const TextureRequest& t : frame.textures) {
       if (!t.src.empty()) h.u64(footage_stamp(t.src, now));
+      if (!t.fallbackSrc.empty()) h.u64(footage_stamp(t.fallbackSrc, now));
     }
     return h.value();
   }

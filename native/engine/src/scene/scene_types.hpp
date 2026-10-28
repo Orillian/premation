@@ -211,6 +211,11 @@ struct RLayer {
   // ── media ──
   std::optional<std::string> src;
   std::optional<std::string> assetId;
+  /// Use Proxies: the item's proxy file, decoded in place of `src` (which the
+  /// texture feed falls back to when the proxy does not open). Set only when
+  /// BuildContext::useProxies and the file exists; the layer's box, timing and
+  /// interpretation stay the original's.
+  std::optional<std::string> proxySrc;
   /// A content-aware fill frame (a still `data:` URL) standing in for the footage.
   std::optional<std::string> contentAwareFillSrc;
   /// The Object Matte frame (setLayerMatte) nearest the layer's time, when an

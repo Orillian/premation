@@ -527,7 +527,7 @@ export class ProcessEngineClient extends EngineClientBase {
       if (b.kind !== 'command') return;
       const c = b.value;
       if (c.type === 'setViewport' || c.type === 'closeViewport') lastControl.set(`viewport:${c.viewport}`, i);
-      else if (c.type === 'seek' || c.type === 'setActiveComposition' || c.type === 'setPreviewQuality' || c.type === 'setLoop' || c.type === 'setViewerLut') lastControl.set(c.type, i);
+      else if (c.type === 'seek' || c.type === 'setActiveComposition' || c.type === 'setPreviewQuality' || c.type === 'setLoop' || c.type === 'setViewerLut' || c.type === 'setUseProxies') lastControl.set(c.type, i);
     });
     const superseded = (i: number): boolean => {
       const b = this.log[i]!.request.body;

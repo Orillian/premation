@@ -36,6 +36,10 @@ struct TextureRequest {
   double padding = 0;
   /// Media: the source path / URL, the time in the source (seconds), video vs still.
   std::string src;
+  /// Use Proxies: `src` is the item's proxy and this is the original, which the
+  /// texture feed decodes instead when the proxy does not open (said, never a
+  /// blank layer). Empty = `src` is the original.
+  std::string fallbackSrc;
   double sourceTime = 0;
   bool video = false;
   bool premultiplied = false;

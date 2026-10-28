@@ -43,6 +43,7 @@ import { useRenderQualityStore, type PreviewResolution } from '@stores/renderQua
 import { useViewportDisplayStore, viewportHudStats } from '@stores/viewportDisplayStore';
 import { useOnionSkinStore } from '@stores/onionSkinStore';
 import { useViewerLutStore } from '@stores/viewerLutStore';
+import { usePreferenceStore } from '@stores/preferenceStore';
 import { toStoredLut } from '@core/effects/cubeLut';
 import type { RenderView } from '@core/workspace/renderView';
 import { publishFrameGeometry, publishFrameView, setEngineDrivenViewport } from '@stores/overlayGeometry';
@@ -686,6 +687,19 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
     };
     const unLut = useViewerLutStore.subscribe(sendViewerLut);
     sendViewerLut();
+    // View ▸ Use Proxies → the engine (setUseProxies): viewport frames decode
+    // footage from its enabled proxy. Editor state; exports never use it.
+    let lastProxies: boolean | null = null;
+    const sendUseProxies = (): void => {
+      const enabled = usePreferenceStore.getState().useProxies;
+      if (enabled === lastProxies) return;
+      lastProxies = enabled;
+      void client.execute({ type: 'setUseProxies', enabled }).then((res) => {
+        if (!res.ok) fail(`setUseProxies: ${res.error.code} ${res.error.message}`);
+      });
+    };
+    const unProxies = usePreferenceStore.subscribe(sendUseProxies);
+    sendUseProxies();
     // A restarted engine has no viewport until it is told again (the replay
     // restores it too; resending is cheap and makes the surface self-healing).
     const unsub = client.subscribe((batch: EventBatch) => {
@@ -694,7 +708,9 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
           stats.lastViewport = null;
           lastQuality = '';
           lastLut = '';
+          lastProxies = null;
           sendViewerLut();
+          sendUseProxies();
           requestViewport();
           sendResolution();
         } else if (e.type === 'renderStatsUpdated') {
@@ -727,6 +743,7 @@ function EngineSurfaceInner({ client, mode, notice }: { client: ProcessEngineCli
       unCompare();
       unQuality();
       unLut();
+      unProxies();
       ro.disconnect();
       dprQuery?.removeEventListener('change', onDpr);
       if (raf) cancelAnimationFrame(raf);

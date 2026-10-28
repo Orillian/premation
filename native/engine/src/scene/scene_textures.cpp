@@ -651,30 +651,37 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
   if (is_still_image_path(p) && !r.video) return baked_still(image_ref(r, p, stats));
 #if defined(PREMATION_HAVE_MEDIA)
   if (media_ == nullptr) return {};
-  const std::string key = utf8_path(p.lexically_normal());
   // A SourceId stays valid for the MediaSystem's lifetime, but its decoder may
   // be closed for the decoder-pool cap at any time (media_system.hpp). Nothing
   // here needs it open: index() / info() come from the probe, and the frame is
   // requested through MediaTextures, whose miss re-opens the source and draws
   // a stand-in until the frame settles (render_thread's retry).
-  std::uint32_t id = 0;
-  if (const auto it = sources_.find(key); it != sources_.end()) {
-    id = it->second;
-  } else {
-    if (const auto oe = openErrors_.find(key); oe != openErrors_.end()) {
-      stats.unsupported.emplace_back(r.key, "footage did not open: " + oe->second);
-      return {};
+  std::string error;
+  std::optional<std::uint32_t> sid = open_media(utf8_path(p.lexically_normal()), error);
+  if (!r.fallbackSrc.empty()) {
+    // Use Proxies: `p` is the item's proxy. One that does not open, or holds no
+    // video, is dropped for the original behind it (said — never a blank
+    // layer). Its own source id makes every hash of its frames its own, so
+    // proxy and original frames never share a converted texture or a bake.
+    // (The strings below are built on this failure path only.)
+    media::MediaInfo proxyInfo;
+    if (sid && !(media_->info(*sid, proxyInfo) && proxyInfo.video)) {
+      sid.reset();
+      error = "no video stream";
     }
-    std::string error;
-    const auto sid = media_->open(key, error);
     if (!sid) {
-      openErrors_.emplace(key, error);
-      stats.unsupported.emplace_back(r.key, "footage did not open: " + error);
-      return {};
+      stats.unsupported.emplace_back(r.key, "proxy did not open (" + error + "); drawn from the original");
+      std::filesystem::path original = file_url_fs_path(r.fallbackSrc);
+      if (original.is_relative() && !opts_.mediaBase.empty()) original = opts_.mediaBase / original;
+      error.clear();
+      sid = open_media(utf8_path(original.lexically_normal()), error);
     }
-    id = *sid;
-    sources_.emplace(key, id);
   }
+  if (!sid) {
+    stats.unsupported.emplace_back(r.key, "footage did not open: " + error);
+    return {};
+  }
+  const std::uint32_t id = *sid;
   if (mediaFrames_ != nullptr) {
     mediaFrames_->set_alpha(id, r.premultiplied ? media::AlphaMode::premultiplied : media::AlphaMode::straight);
   }
@@ -715,6 +722,22 @@ std::string SceneTextures::media_ref(const TextureRequest& r, PrepareStats& stat
 }
 
 #if defined(PREMATION_HAVE_MEDIA)
+std::optional<std::uint32_t> SceneTextures::open_media(const std::string& key, std::string& error) {
+  // A source opens once per path; a path that failed stays failed (no re-probe per frame).
+  if (const auto it = sources_.find(key); it != sources_.end()) return it->second;
+  if (const auto oe = openErrors_.find(key); oe != openErrors_.end()) {
+    error = oe->second;
+    return std::nullopt;
+  }
+  const auto sid = media_->open(key, error);
+  if (!sid) {
+    openErrors_.emplace(key, error);
+    return std::nullopt;
+  }
+  sources_.emplace(key, *sid);
+  return *sid;
+}
+
 namespace {
 
 float half_bits_to_float(std::uint16_t half) noexcept {

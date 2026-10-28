@@ -397,6 +397,57 @@ TEST_CASE("session hooks: the viewer's preview settings reach the frame builder"
   CHECK(builder.lastViewport.viewerLut == nullptr);
 }
 
+TEST_CASE("session hooks: setUseProxies reaches viewport frames only while an item has an enabled proxy", "[session][frames][proxy]") {
+  Harness h(64);
+  FakeBuilder builder;
+  h.session.set_frame_builder(&builder);
+  (void)h.hello();
+  (void)open_comp(h);
+  CHECK_FALSE(builder.lastViewport.useProxies);  // off until the page says otherwise
+
+  // On, but no item has a proxy: the frame (and its cache scope) is the same as off.
+  REQUIRE(is_ok(h.run(cmd(api::SetUseProxies{true}))));
+  api::SetViewport v;
+  v.viewport = 1;
+  v.width = 640;
+  v.height = 360;
+  v.device_pixel_ratio = 1.0;
+  v.zoom = 1.5;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK_FALSE(builder.lastViewport.useProxies);
+
+  // A footage item with an enabled proxy: viewport frames use it.
+  api::ImportFiles imp;
+  imp.files = {api::ImportFile{"C:/m/plate.mp4", false, {}, {}, false, {}}};
+  const auto r = h.run(cmd(imp));
+  REQUIRE(is_ok(r));
+  const api::ItemId item = result_as<api::ItemList>(r).items.at(0);
+  api::SetProxy p;
+  p.item = item;
+  p.path = "C:/m/Proxies/plate_proxy.mp4";
+  p.enabled = true;
+  REQUIRE(is_ok(h.run(cmd(p))));
+  v.zoom = 1.25;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK(builder.lastViewport.useProxies);
+
+  // Off again: the originals. Editor state — the document never changed for it.
+  const api::Revision before = h.session.revision();
+  REQUIRE(is_ok(h.run(cmd(api::SetUseProxies{false}))));
+  v.zoom = 1.5;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK_FALSE(builder.lastViewport.useProxies);
+  CHECK(h.session.revision() == before);
+
+  // The item's proxy switched off (setProxy enabled false): the switch has nothing to use.
+  REQUIRE(is_ok(h.run(cmd(api::SetUseProxies{true}))));
+  p.enabled = false;
+  REQUIRE(is_ok(h.run(cmd(p))));
+  v.zoom = 1.25;
+  REQUIRE(is_ok(h.run(cmd(v))));
+  CHECK_FALSE(builder.lastViewport.useProxies);
+}
+
 TEST_CASE("session hooks: getLayerErrors answers the set last announced (D5)", "[session][frames]") {
   Harness h(64);
   FakeBuilder builder;

@@ -600,6 +600,9 @@ class Session {
   bool previewMotionBlur_ = true;
   /// setViewerLut (editor state): null = none. Shared with the frame jobs (see ViewportConfig::viewerLut).
   std::shared_ptr<const ViewerLut> viewerLut_;
+  /// setUseProxies (editor state): viewport frames decode footage from its
+  /// enabled proxy. Off until the page says otherwise; exports never read it.
+  bool useProxies_ = false;
   bool renderDirty_ = false;
   /// B4 round 2: the overlay geometry push (setOverlayGeometry) — at most one subscription per viewport.
   std::vector<doc::OverlaySubscription> overlays_;

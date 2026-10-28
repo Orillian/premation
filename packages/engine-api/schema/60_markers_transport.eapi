@@ -169,6 +169,8 @@ command setViewportHiddenLayers = 813 [control] { viewport: u32 = 1; layers: Lay
 command setViewportFocus = 814 [control] { viewport: u32 = 1; layers: LayerId[] = 2; }
 /// The viewer LUT (View ▸ Viewer LUT) — editor state, not document state: a `.cube` table applied after the display transform on every viewport's frames (never in an export or a thumbnail). `lut` is the stored table as JSON text (cubeLut.ts StoredLut: size, size1d, data, domainMin, domainMax); '' clears it. `intensity` 0..1. A table that does not parse: `invalidArgument`. A control: no history, no revision.
 command setViewerLut = 815 [control] { lut: string = 1; intensity: f64 = 2; }
+/// Use Proxies (View ▸ Use Proxies) — editor state, not document state: `enabled` true makes viewport frames (playback, scrubbing, Cache Work Area, the Layer panel) decode a footage item from its proxy when the item's proxy is enabled (setProxy) and the file opens. The proxy frame is drawn into the ORIGINAL's pixel box at the original's timing, so nothing moves. A proxy that is missing or does not open is drawn from the original and said (stage `warning`). Exports, the Render Queue and thumbnails never use proxies. The engine starts with it off. A control: no history, no revision.
+command setUseProxies = 816 [control] { enabled: bool = 1; }
 
 /// B4 — what the overlay geometry push carries for each subscribed layer (FrameGeometry, 95_frames).
 /// `plugin` (plugin SDK 1.1): the viewer overlays the layer's native plugin effects draw (PR_CMD_DRAW_OVERLAY).

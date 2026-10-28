@@ -2972,6 +2972,11 @@ export interface SetViewerLut {
   intensity: number;
 }
 
+/** Use Proxies (View ▸ Use Proxies) — editor state, not document state: `enabled` true makes viewport frames (playback, scrubbing, Cache Work Area, the Layer panel) decode a footage item from its proxy when the item's proxy is enabled (setProxy) and the file opens. The proxy frame is drawn into the ORIGINAL's pixel box at the original's timing, so nothing moves. A proxy that is missing or does not open is drawn from the original and said (stage `warning`). Exports, the Render Queue and thumbnails never use proxies. The engine starts with it off. A control: no history, no revision. */
+export interface SetUseProxies {
+  enabled: boolean;
+}
+
 /** B4 round 5 — one overlay's share of a subscription (setOverlayGeometry `groups`): its layers get ITS kinds, not every kind another overlay asked for. */
 export interface OverlayRequest {
   layers: LayerId[];
@@ -5949,6 +5954,7 @@ export type Command =
   | ({ type: 'setViewportHiddenLayers' } & SetViewportHiddenLayers)
   | ({ type: 'setViewportFocus' } & SetViewportFocus)
   | ({ type: 'setViewerLut' } & SetViewerLut)
+  | ({ type: 'setUseProxies' } & SetUseProxies)
   | ({ type: 'setOverlayGeometry' } & SetOverlayGeometry)
   | ({ type: 'setLayerTrackers' } & SetLayerTrackers)
   | ({ type: 'setCameraSolve' } & SetCameraSolve)
@@ -6128,6 +6134,7 @@ export type CommandResult =
   | ({ type: 'setViewportHiddenLayers' } & Empty)
   | ({ type: 'setViewportFocus' } & Empty)
   | ({ type: 'setViewerLut' } & Empty)
+  | ({ type: 'setUseProxies' } & Empty)
   | ({ type: 'setOverlayGeometry' } & Empty)
   | ({ type: 'setLayerTrackers' } & Empty)
   | ({ type: 'setCameraSolve' } & Empty)
@@ -6471,6 +6478,7 @@ export interface CommandArgs {
   setViewportHiddenLayers: SetViewportHiddenLayers;
   setViewportFocus: SetViewportFocus;
   setViewerLut: SetViewerLut;
+  setUseProxies: SetUseProxies;
   setOverlayGeometry: SetOverlayGeometry;
   setLayerTrackers: SetLayerTrackers;
   setCameraSolve: SetCameraSolve;
@@ -6650,6 +6658,7 @@ export interface CommandResults {
   setViewportHiddenLayers: Empty;
   setViewportFocus: Empty;
   setViewerLut: Empty;
+  setUseProxies: Empty;
   setOverlayGeometry: Empty;
   setLayerTrackers: Empty;
   setCameraSolve: Empty;

@@ -184,6 +184,9 @@ class SceneTextures final : public rg::ExternalTextureSource {
   /// nearer frame's media hash while either is still decoding.
   std::string pixel_motion_ref(const TextureRequest& r, std::uint32_t id, const media::FramePick& a,
                                const media::FramePick& b, PrepareStats& stats);
+  /// The media source of a resolved footage path (`key`), opened on first use;
+  /// nullopt with `error` when it does not open (remembered: no re-probe per frame).
+  std::optional<std::uint32_t> open_media(const std::string& key, std::string& error);
   /// A converted frame's pixels as RGBA8 (premultiplied, as converted), top-down.
   bool read_frame_rgba8(const media::ConvertedFrame& f, std::vector<std::uint8_t>& rgba, std::string& error);
   /// Pixel Motion flow per frame pair (render thread only), most recent first.

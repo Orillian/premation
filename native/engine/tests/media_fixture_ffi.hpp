@@ -25,6 +25,9 @@ struct Spec {
   int frames = 30;
   int fpsNum = 24000;
   int fpsDen = 1001;
+  /// Frame i carries the code of frame i + codeOffset (a stand-in file — a
+  /// proxy — whose frames read differently from the original's).
+  int codeOffset = 0;
 };
 
 /// The left half of every frame is 8 vertical bands, bit b of the frame index

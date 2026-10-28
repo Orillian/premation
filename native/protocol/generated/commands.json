@@ -800,6 +800,11 @@
     "type": "setViewerLut"
   },
   {
+    "id": 816,
+    "kind": "control",
+    "type": "setUseProxies"
+  },
+  {
     "id": 1771,
     "kind": "control",
     "type": "setOverlayGeometry"

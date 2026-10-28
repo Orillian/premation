@@ -153,6 +153,11 @@ struct BuildContext {
   /// The project folder relative media paths resolve against (the texture
   /// feed's mediaBase); empty = none (a relative path is reported).
   std::filesystem::path mediaBase{};
+  /// Use Proxies (setUseProxies, a viewport frame only): a video layer whose
+  /// item has an enabled proxy file decodes from it (RLayer::proxySrc), drawn in
+  /// the original's box at the original's timing. Off for everything else —
+  /// exports, the Render Queue, stills — by polarity: nothing sets it there.
+  bool useProxies = false;
   /// Program X1: build the time taps temporal deep effects read (off inside a
   /// tap's own build, so taps never nest).
   bool timeTaps = true;
