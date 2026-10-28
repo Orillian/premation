@@ -91,6 +91,9 @@ constexpr auto kHandled = std::to_array<std::string_view>({
     "liquid-morph",
     "bend-it",
     "bender",
+    // Batch 8 - on an Object Matte.
+    "matte-stroke",
+    "selective-color-ai",
 });
 
 /// The deep effects whose pixels move with the layer clock (`time`) — kept as
@@ -1548,6 +1551,77 @@ std::vector<float> particle_world_data(const Params& P, const RLayer& l) {
   return out;
 }
 
+// ── Batch 8: on an Object Matte ───────────────────────────────────────────────
+
+// Matte Stroke: the matte's distance field (the jump flood the Alpha Stroke
+// style uses, fx_distance.hpp) → the stroke band (dashed by the contour's
+// angle about the matte's centroid, a 256-column reduction) → its glow (a
+// Gaussian of the band) → composited on the input, behind it (an outside
+// stroke of the layer's own alpha) or alone.
+api::RenderEffect matte_stroke(const Params& P, Box b) {
+  Graph g("matte-stroke", b.lw, b.lh);
+  const std::string matte = P.layer("matteLayerId");
+  const bool own = matte.empty();
+  if (!own) g.map(0, matte);
+  const int src = own ? fxg::IN : fxg::MAP;
+  const double w = std::max(0.0, P.n("width"));
+  const double soft = std::max(0.0, P.n("softness"));
+  const int pos = std::clamp(P.e("position"), 0, 2);
+  const double outward = pos == 0 ? w : pos == 1 ? w / 2 : 0;
+  const double inward = pos == 0 ? 0 : pos == 1 ? w / 2 : w;
+  g.field(fxg::X0, src, std::max(outward, inward) + soft + 2);
+  const bool dashed = P.on("dashed");
+  if (dashed) {
+    g.pass("fxx-mstroke-strip", fxg::STRIP, {src, -1, -1, -1}, Rows());
+    g.pass("fxx-mstroke-centroid", fxg::Q0, {fxg::STRIP, -1, -1, -1}, Rows());
+  }
+  // An outside stroke of the layer's own alpha runs on under the layer: no seam at its edge.
+  const bool behind = own && pos == 0;
+  g.pass("fxx-mstroke-band", fxg::X1, {fxg::X0, dashed ? fxg::Q0 : fxg::X0, -1, -1},
+         Rows()
+             .r(w, pos, soft, behind ? 1 : 0)
+             .r(dashed ? 1 : 0, std::max(0.0, P.n("dashLength")), std::max(0.0, P.n("gapLength")), P.n("dashOffset")));
+  const double glowAmount = std::max(0.0, P.pct("glowAmount"));
+  const double glowRadius = std::max(0.0, P.n("glowRadius"));
+  const bool glow = glowAmount > 0 && glowRadius > 0;
+  if (glow) g.blur(fxg::X2, fxg::X1, glowRadius * 0.5, fxg::X3);
+  const int composite = std::clamp(P.e("composite"), 0, 1);
+  g.pass("fxx-mstroke-comp", fxg::A, {fxg::IN, fxg::X1, glow ? fxg::X2 : fxg::X1, -1},
+         Rows().c3(P.l3("color", {1, 1, 1}), clampd(P.pct("opacity"), 0, 1)).r(glowAmount, composite, behind ? 1 : 0, glow ? 1 : 0));
+  // How far past the matte it draws (layer px): the band, its ramp, the glow's 3.5 sigma.
+  const double reach = outward + soft + 2 + (glow ? glowRadius * 1.75 + 2 : 0);
+  return g.done(fxg::A, std::max(1.0, reach));
+}
+
+// Selective Color (AI): the matte (another layer's alpha, the layer's own
+// Object Matte frame through its placement, or its alpha) → choked by its
+// distance field → feathered by a Gaussian → a linear-light HSL / colorize
+// correction mixed in through it (or its inverse). Per pixel of the input.
+api::RenderEffect selective_color_ai(const Params& P, Box b, const Ctx& c) {
+  Graph g("selective-color-ai", b.lw, b.lh);
+  const std::string matte = P.layer("matteLayerId");
+  int src = fxg::IN;
+  if (!matte.empty()) {
+    g.map(0, matte);
+    src = fxg::MAP;
+  } else if (c.l.objectMatteSrc) {
+    g.mask(0, object_matte_key(c.l.id));
+    src = fxg::MASK0;
+  }
+  const double choke = P.n("matteChoke");
+  const bool choked = std::abs(choke) > 1e-3;
+  if (choked) g.field(fxg::X0, src, std::abs(choke) + 2);
+  g.pass("fxx-selcol-matte", fxg::X1, {src, choked ? fxg::X0 : src, -1, -1}, Rows().r(choke, choked ? 1 : 0, 0, 0));
+  const double feather = std::max(0.0, P.n("matteFeather"));
+  if (feather > 0) g.blur(fxg::X1, fxg::X1, feather * 0.5, fxg::X2);
+  g.pass("fxx-selcol", fxg::A, {fxg::IN, fxg::X1, -1, -1},
+         Rows()
+             .r(P.rad("hue"), clampd(P.n("saturation") / 100, -1, 1), clampd(P.n("lightness") / 100, -1, 1), std::clamp(P.e("applyTo"), 0, 1))
+             .r(P.on("colorize") ? 1 : 0, clampd(P.pct("colorizeAmount"), 0, 1), 0, 0)
+             .c3(P.l3("colorizeColor", {1, 0.42, 0.1})));
+  return g.done(fxg::A, 0.0);
+}
+
 bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   if (t == "lens-bloom") out.push_back(lens_bloom(P, b));
   else if (t == "shine") out.push_back(shine(P, b));
@@ -1610,6 +1684,8 @@ bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   else if (t == "liquid-morph") out.push_back(liquid_morph(P, b));
   else if (t == "bend-it") out.push_back(bend_it(P, b));
   else if (t == "bender") out.push_back(bender(P, b));
+  else if (t == "matte-stroke") out.push_back(matte_stroke(P, b));
+  else if (t == "selective-color-ai") out.push_back(selective_color_ai(P, b, c));
   else return false;
   return true;
 }
@@ -1658,21 +1734,39 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
       addMask(mask_path(l, P, "foregroundMask", true));
       addMask(mask_path(l, P, "backgroundMask", false));
     } else if (t == "energy-saber" && P.e("coreType") != 1) {
-      if (const Json* path = mask_path(l, P, "pathMask", true)) out.push_back({data_key(c, "path"), Json(), saber_path_data(*path)});
+      if (const Json* path = mask_path(l, P, "pathMask", true)) out.push_back({data_key(c, "path"), Json(), saber_path_data(*path), {}});
     } else if (t == "ps-arbitrary-map") {
-      out.push_back({data_key(c, "map"), Json(), arbitrary_map_data(P)});
+      out.push_back({data_key(c, "map"), Json(), arbitrary_map_data(P), {}});
     } else if (t == "particle-world") {
-      out.push_back({data_key(c, "particles"), Json(), particle_world_data(P, l)});
+      out.push_back({data_key(c, "particles"), Json(), particle_world_data(P, l), {}});
     } else if (t == "stroke-3d") {
       if (const Json* path = mask_path(l, P, "pathMask", true)) {
         std::vector<float> d = stroke3d_data(P, l, *path);
-        if (!d.empty()) out.push_back({data_key(c, "stroke"), Json(), std::move(d)});
+        if (!d.empty()) out.push_back({data_key(c, "stroke"), Json(), std::move(d), {}});
       }
+    } else if (t == "selective-color-ai" && P.layer("matteLayerId").empty() && l.objectMatteSrc) {
+      // The layer's own Object Matte frame, read as a matte (one texture however many effects read it).
+      std::string key = object_matte_key(l.id);
+      if (std::ranges::none_of(out, [&](const DeepFxTexture& d) { return d.key == key; })) out.push_back({std::move(key), Json(), {}, *l.objectMatteSrc});
     } else if (deep_effect_reads_scene(t)) {
-      out.push_back({data_key(c, "scene"), Json(), scene_data(P)});
+      out.push_back({data_key(c, "scene"), Json(), scene_data(P), {}});
     }
   }
   return out;
+}
+
+bool reads_own_object_matte(const RLayer& l) {
+  return std::ranges::any_of(l.effects, [](const Json& e) {
+    if (!effect_enabled(e) || !e.at("type").is_string() || e.at("type").str() != "selective-color-ai") return false;
+    const Json params = doc::params_of(e);
+    return Params{params}.layer("matteLayerId").empty();
+  });
+}
+
+std::string object_matte_key(std::string_view layerId) {
+  std::string k = "fxmatte:";
+  k += layerId;
+  return k;
 }
 
 // ── the scene hand-off (deep_fx_scene.hpp) ────────────────────────────────────

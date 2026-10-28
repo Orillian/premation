@@ -128,6 +128,13 @@ class Graph {
   Graph& copy(int out, int in, int blend = kReplace, unsigned flags = 0) {
     return pass("fxx-copy", out, {in, NONE, NONE, NONE}, Rows(), blend, flags);
   }
+  /// The alpha distance field of `in` (render_graph/fx_distance.hpp) into the
+  /// float slot `out`, exact to `rangePx` layer px: r = signed distance to the
+  /// 1/2-contour in buffer texels (+ outside; × pxPerOut() = layer px), g = alpha.
+  Graph& field(int out, int in, double rangePx) {
+    head(4, rangePx, out, {in, NONE, NONE, NONE}, kReplace, 0, 0);
+    return *this;
+  }
   /// The layer a MAP slot reads (`k` 0..2).
   Graph& map(int k, std::string layerId) {
     maps_.at(static_cast<std::size_t>(std::clamp(k, 0, 2))) = std::move(layerId);

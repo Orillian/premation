@@ -34,12 +34,21 @@ bool spatial_c(const Json& e, const Json& params, const RLayer& layer, std::vect
 bool spatial_x(const Json& e, const Json& params, const RLayer& layer, std::vector<api::RenderEffect>& out);
 /// Program X: a texture a deep effect reads — a raster of one mask path
 /// (`mask` = {paths: [...]}) or a table of floats (`floats`, when `mask` is not
-/// an object), under the key its fx-graph entry names.
+/// an object), or a still picture (`src`, when set: the layer's Object Matte
+/// frame), under the key its fx-graph entry names.
 struct DeepFxTexture {
   std::string key;
   Json mask;
   std::vector<float> floats;
+  std::string src;
 };
+/// Program X batch 8: an enabled effect on the layer reads its own Object
+/// Matte (setLayerMatte's `alphaMatte`) AS A MATTE — Selective Color (AI) with
+/// no Matte Layer. The matte frame is then a texture of that effect
+/// (`RLayer::objectMatteSrc`), and the layer is not cut out by it.
+[[nodiscard]] bool reads_own_object_matte(const RLayer& l);
+/// The texture key the layer's Object Matte frame is fed under.
+[[nodiscard]] std::string object_matte_key(std::string_view layerId);
 /// The textures the layer's deep effects read this frame (frame_build.cpp).
 [[nodiscard]] std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l);
 /// Program X: a deep effect whose pixels move with the layer clock (`time`).

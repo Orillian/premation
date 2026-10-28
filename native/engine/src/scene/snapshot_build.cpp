@@ -21,6 +21,7 @@
 #include "fonts.hpp"
 #include "effect_handoff.hpp"
 #include "effects_port.hpp"
+#include "effects_spatial.hpp"
 #include "frame_build.hpp"
 #include "rig_bridge.hpp"
 #include "rig_coverage.hpp"
@@ -1694,7 +1695,12 @@ void Walk::build_node(const doc::Node& n) {
         bestD = dd;
       }
     }
-    if (best->at("src").is_string()) l.contentAwareFillSrc = best->at("src").str();
+    // Read as a matte by an effect (Selective Color (AI)), the frame is that
+    // effect's texture and the footage stays whole.
+    if (best->at("src").is_string()) {
+      if (reads_own_object_matte(l)) l.objectMatteSrc = best->at("src").str();
+      else l.contentAwareFillSrc = best->at("src").str();
+    }
   }
   l.sourceTime = retimed_source_at(n.id, t_);  // its own Speed % / Time Remap (retime_port.cpp)
   if (layerKind == LayerKind::video) {

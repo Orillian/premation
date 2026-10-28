@@ -398,7 +398,13 @@
     "fxx-xtal-aux",
     "fxx-xtal-init",
     "fxx-xtal-render",
-    "fxx-xtal-step"
+    "fxx-xtal-step",
+    "fxx-mstroke-band",
+    "fxx-mstroke-centroid",
+    "fxx-mstroke-comp",
+    "fxx-mstroke-strip",
+    "fxx-selcol",
+    "fxx-selcol-matte"
   ],
   "materials": [
     {
