@@ -10772,5 +10772,6 @@
   "command.view.toggleLeftSidebar": "Toggle Left Sidebar",
   "command.view.toggleRightInspector": "Toggle Inspector",
   "command.view.toggleTimeline": "Toggle Timeline",
-  "command.workspace.saveAs": "Save Layout as Workspace…"
+  "command.workspace.saveAs": "Save Layout as Workspace…",
+  "workspace.textBehind.followFirst": "Follow the subject through the shot first (it is selected on one frame)"
 }

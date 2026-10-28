@@ -24,6 +24,7 @@ import { useTextBehindStore } from '@stores/textBehindStore';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { t } from '@core/i18n';
 import { runPlaceBehindSubject } from './placeBehindSubjectCommand';
+import { followSubject, subjectStateNow } from './subjectActions';
 import styles from './TextBehindDialog.module.css';
 
 export function openTextBehind(layer: string): void {
@@ -46,6 +47,8 @@ export function TextBehindDialog(): JSX.Element | null {
   const [subject, setSubject] = useState<string>('');
   const [entrance, setEntrance] = useState<string>('Rise Up');
   const [softEdge, setSoftEdge] = useState(true);
+  // A subject selected on one frame does not move with the footage: follow it first (AE: propagate, then stack).
+  const [followFirst, setFollowFirst] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const m = documentMirror();
@@ -64,11 +67,13 @@ export function TextBehindDialog(): JSX.Element | null {
   }, [layer]);
 
   if (!layer) return null;
+  const followed = subject ? subjectStateNow(subject).followed : false;
 
   const place = async (): Promise<void> => {
     if (!subject || !comp) return;
     setBusy(true);
     try {
+      if (followFirst && !followed) await followSubject(subject);
       let behind = texts;
       if (behind.length === 0) {
         // A new title, created above the footage, then moved behind the person.
@@ -131,6 +136,12 @@ export function TextBehindDialog(): JSX.Element | null {
           {ENTRANCES.map((x) => <option key={x.id} value={x.id}>{x.label()}</option>)}
         </select>
       </div>
+      {!followed && (
+        <label className={styles.check}>
+          <input type="checkbox" checked={followFirst} onChange={(e) => setFollowFirst(e.target.checked)} />
+          {t('workspace.textBehind.followFirst', 'Follow the subject through the shot first (it is selected on one frame)')}
+        </label>
+      )}
       <label className={styles.check}>
         <input type="checkbox" checked={softEdge} onChange={(e) => setSoftEdge(e.target.checked)} />
         {t('workspace.textBehind.softEdgeLabel', 'Soft edge where they overlap')}

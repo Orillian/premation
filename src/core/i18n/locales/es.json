@@ -10041,5 +10041,6 @@
   "workspace.textBehind.subject": "Sujeto",
   "workspace.textBehind.title": "Texto detrás del sujeto",
   "command.tool.refine-edge": "Herramienta Refinar borde",
-  "command.tool.selection-brush": "Herramienta Pincel de selección"
+  "command.tool.selection-brush": "Herramienta Pincel de selección",
+  "workspace.textBehind.followFirst": "Seguir primero al sujeto en toda la toma (está seleccionado en un fotograma)"
 }

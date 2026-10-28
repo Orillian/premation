@@ -10041,5 +10041,6 @@
   "workspace.textBehind.subject": "主体",
   "workspace.textBehind.title": "主体后方的文字",
   "command.tool.refine-edge": "调整边缘工具",
-  "command.tool.selection-brush": "选区画笔工具"
+  "command.tool.selection-brush": "选区画笔工具",
+  "workspace.textBehind.followFirst": "先在整个镜头中跟随主体（目前只在一帧上选中）"
 }

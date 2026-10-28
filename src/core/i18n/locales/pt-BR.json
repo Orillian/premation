@@ -10041,5 +10041,6 @@
   "workspace.textBehind.subject": "Objeto",
   "workspace.textBehind.title": "Texto atrás do objeto",
   "command.tool.refine-edge": "Ferramenta Refinar borda",
-  "command.tool.selection-brush": "Ferramenta Pincel de seleção"
+  "command.tool.selection-brush": "Ferramenta Pincel de seleção",
+  "workspace.textBehind.followFirst": "Seguir o objeto pela tomada primeiro (ele está selecionado em um quadro)"
 }
