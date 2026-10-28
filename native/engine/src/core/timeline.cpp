@@ -8,6 +8,7 @@
 
 #include "anim.hpp"
 #include "jsmath.hpp"
+#include "readmodel.hpp"
 #include "scene.hpp"
 
 namespace premation::doc {
@@ -501,14 +502,170 @@ thread_local int g_subFrame = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-gl
 TlSubFrameScope::TlSubFrameScope() { ++g_subFrame; }
 TlSubFrameScope::~TlSubFrameScope() { --g_subFrame; }
 
+// ── responsive time (AE Responsive Design – Time) ──────────────────────
+
+namespace {
+
+/// A composition's protected regions against its authored length, when its
+/// duration has since changed (template/responsiveTime.ts, the editor's twin):
+/// regions sorted, clamped and merged; nullopt = nothing to remap.
+struct ResponsiveMap {
+  double authored = 0;
+  double target = 0;
+  std::vector<std::pair<double, double>> regions;
+  double scale = 1;  ///< how the unprotected time stretches
+};
+
+/// Whether any composition carries Responsive Time — the hot path's gate:
+/// keys are sampled through comp_to_keyframe_time per property per frame, and
+/// almost no document has a responsive composition. Cached per thread on the
+/// compositions' root nodes: a write is copy-on-write, so an edited root is a
+/// new pointer and the cache sees it; the check is then one pointer compare
+/// per composition.
+bool any_responsive(const Document& d) {
+  struct Cache {
+    const Document* doc = nullptr;
+    std::vector<const Node*> roots;
+    bool any = false;
+  };
+  thread_local Cache cache;
+  const auto& comps = d.comps();
+  bool same = cache.doc == &d && cache.roots.size() == comps.size();
+  if (same) {
+    std::size_t i = 0;
+    for (const auto& entry : comps) {
+      if (cache.roots[i++] != d.node(entry.first)) {
+        same = false;
+        break;
+      }
+    }
+  }
+  if (same) return cache.any;
+  cache.doc = &d;
+  cache.roots.clear();
+  cache.any = false;
+  for (const auto& entry : comps) {
+    const Node* root = d.node(entry.first);
+    cache.roots.push_back(root);
+    if (root == nullptr) continue;
+    for (const Component& c : root->components) cache.any = cache.any || c.props.at("__responsiveTime").is_object();
+  }
+  return cache.any;
+}
+
+std::optional<ResponsiveMap> responsive_map_of(const Document& d, std::string_view node) {
+  if (!any_responsive(d)) return std::nullopt;
+  const auto comp = comp_of_layer(d, node);
+  if (!comp) return std::nullopt;
+  const Node* root = d.node(*comp);
+  if (root == nullptr) return std::nullopt;
+  const Json* cfg = nullptr;
+  for (const Component& c : root->components) {
+    const Json& v = c.props.at("__responsiveTime");
+    if (v.is_object()) {
+      cfg = &v;
+      break;
+    }
+  }
+  if (cfg == nullptr || !cfg->at("authoredDurationSec").is_number() || !cfg->at("protectedRegions").is_array()) return std::nullopt;
+  const double fps = std::max(1.0, comp_fps(d, *comp));
+  ResponsiveMap m;
+  m.authored = cfg->at("authoredDurationSec").num();
+  m.target = comp_duration_frames(d, *comp) / fps;
+  if (!(m.authored > 0) || !(m.target > 0) || std::fabs(m.authored - m.target) < 1e-6) return std::nullopt;
+  for (const Json& r : cfg->at("protectedRegions").arr()) {
+    const double a = r.at("startSec").num();
+    const double b = r.at("endSec").num();
+    const double lo = std::clamp(std::min(a, b), 0.0, m.authored);
+    const double hi = std::clamp(std::max(a, b), 0.0, m.authored);
+    if (hi - lo > 1e-9) m.regions.emplace_back(lo, hi);
+  }
+  std::ranges::sort(m.regions);
+  std::vector<std::pair<double, double>> merged;
+  for (const auto& r : m.regions) {
+    if (!merged.empty() && r.first <= merged.back().second + 1e-9) merged.back().second = std::max(merged.back().second, r.second);
+    else merged.push_back(r);
+  }
+  m.regions = std::move(merged);
+  double prot = 0;
+  for (const auto& r : m.regions) prot += r.second - r.first;
+  const double flexAuthored = std::max(0.0, m.authored - prot);
+  if (flexAuthored <= 1e-9) return std::nullopt;  // all protected: the comp simply is its authored length
+  m.scale = std::max(0.0, m.target - prot) / flexAuthored;
+  return m;
+}
+
+/// The segments of the authored timeline and where each lands when stretched:
+/// (authoredStart, authoredLength, stretchedStart, protected).
+template <typename Fn>
+void responsive_segments(const ResponsiveMap& m, Fn&& fn) {
+  double a = 0;
+  double s = 0;
+  for (const auto& [lo, hi] : m.regions) {
+    if (lo - a > 1e-9) {
+      if (fn(a, lo - a, s, false)) return;
+      s += (lo - a) * m.scale;
+      a = lo;
+    }
+    if (fn(a, hi - lo, s, true)) return;
+    s += hi - lo;
+    a = hi;
+  }
+  if (m.authored - a > 1e-9) (void)fn(a, m.authored - a, s, false);
+}
+
+/// Stretched (the composition's current) time → authored time: protected spans 1:1, the rest scaled.
+double stretched_to_authored(const ResponsiveMap& m, double t) {
+  double out = t;
+  bool found = false;
+  double endA = 0;
+  double endS = 0;
+  responsive_segments(m, [&](double a, double len, double s, bool prot) {
+    const double slen = prot ? len : len * m.scale;
+    endA = a + len;
+    endS = s + slen;
+    if (t < s + slen) {
+      out = prot ? a + (t - s) : a + (m.scale > 1e-9 ? (t - s) / m.scale : 0);
+      found = true;
+      return true;
+    }
+    return false;
+  });
+  // Past the end: on at authored speed, never frozen on the last frame.
+  return found ? out : endA + (t - endS);
+}
+
+/// Authored time → stretched time (where a key authored at `t` now plays).
+double authored_to_stretched(const ResponsiveMap& m, double t) {
+  double out = t;
+  bool found = false;
+  double endA = 0;
+  double endS = 0;
+  responsive_segments(m, [&](double a, double len, double s, bool prot) {
+    endA = a + len;
+    endS = s + (prot ? len : len * m.scale);
+    if (t < a + len) {
+      out = s + (prot ? t - a : (t - a) * m.scale);
+      found = true;
+      return true;
+    }
+    return false;
+  });
+  return found ? out : endS + (t - endA);
+}
+
+}  // namespace
+
 double comp_to_keyframe_time(const Document& d, const EditorView& v, std::string_view node, double compTime,
                              std::string_view prop) {
-  // Responsive time (templates) and animated precomp-ancestor remaps: neither
-  // exists in documents the engine API builds (no template comps; precomp
-  // COMPOSITIONS are separate roots, not ancestor groups).
+  // Responsive time first (AE Responsive Design – Time): a composition whose
+  // duration moved off its authored length samples its keys on the authored
+  // axis, protected regions at authored speed. Animated precomp-ancestor
+  // remaps do not exist here (precomp COMPOSITIONS are separate roots).
   const double fps = tl_fps_for_node(d, v, node);
   double time = compTime;
   if (prop == "timeRemap" || prop == "precompTime") return time;
+  if (const auto rmap = responsive_map_of(d, node)) time = stretched_to_authored(*rmap, time);
   const double frame = motion::js::round(time * fps);
   // Governing clips: the node's own, else an enclosing plain GROUP's.
   std::vector<const Bar*> clips = tl_bars_for_node(d, v, node);
@@ -606,6 +763,8 @@ double keyframe_to_comp_time(const Document& d, const EditorView& v, std::string
     }
     if (best) t = *best / fps;
   }
+  // Where the key plays once responsive time stretches the composition.
+  if (const auto rmap = responsive_map_of(d, node)) t = authored_to_stretched(*rmap, t);
   return t;
 }
 
