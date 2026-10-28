@@ -54,8 +54,11 @@ class Models {
 
 /// Load the encoder and decoder files. Null with `error` (missing file, not a
 /// model, no runtime in this build). `withEncoder` false loads the decoder
-/// only (an embedding-cache hit): encode() then fails.
+/// only (an embedding-cache hit): encode() then fails. `gpuEncoderPath` (when
+/// set) is a float encoder tried first on a GPU provider; when no GPU opens it,
+/// `encoderPath` (the quantized one, faster on the CPU) is used instead.
 [[nodiscard]] std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& decoderPath,
-                                           std::string& error, bool withEncoder = true);
+                                           std::string& error, bool withEncoder = true,
+                                           const std::string& gpuEncoderPath = {});
 
 }  // namespace premation::jobs::sam

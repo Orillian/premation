@@ -1356,6 +1356,7 @@ if(FFMPEG_FOUND AND TARGET engine_audio)
   add_library(engine_jobs STATIC
     src/jobs/media_input_ffi.cpp
     src/jobs/child_job.cpp
+    src/jobs/job_worker.cpp  # the long-lived model process (Object Matte's hover)
     src/jobs/job_kinds.cpp
     src/jobs/kind_audio.cpp
     src/jobs/kind_scene_detect.cpp
@@ -1459,10 +1460,12 @@ if(MOTION_BUILD_TESTS)
                                  tests/test_jobs_round2.cpp tests/test_roto_matte.cpp tests/test_content_aware.cpp
                                  tests/test_reframe_path.cpp tests/test_saliency.cpp
                                  tests/test_reframe_analyse.cpp tests/test_job_retime.cpp
-                                 tests/test_transcribe.cpp tests/test_mask_fit.cpp tests/test_sam2_track.cpp)
+                                 tests/test_transcribe.cpp tests/test_mask_fit.cpp tests/test_sam2_track.cpp
+                                 tests/test_sam_gpu_encoder.cpp)
   target_link_libraries(engine_jobs_tests PRIVATE engine_jobs_core motion::options Catch2::Catch2WithMain)
   # Camera program D3: the depth model's ORT run (the test skips without PREMATION_DEPTH_TEST_MODEL).
-  target_sources(engine_jobs_tests PRIVATE src/jobs/depth_ort_ffi.cpp src/jobs/sam2_ort_ffi.cpp)
+  # Object Matte: the float encoder on the GPU vs the quantized one on the CPU (skips without the models).
+  target_sources(engine_jobs_tests PRIVATE src/jobs/depth_ort_ffi.cpp src/jobs/sam2_ort_ffi.cpp src/jobs/sam_ort_ffi.cpp)
   if(MSVC)
     target_compile_definitions(engine_jobs_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
   endif()
@@ -1517,6 +1520,19 @@ if(TARGET engine_jobs)
     target_compile_definitions(engine_live_host_tests PRIVATE PREMATION_LIVE_FAKE_CHILD="$<TARGET_FILE:live_fake_child>")
     add_dependencies(engine_live_host_tests live_fake_child)
     add_test(NAME engine_live_host_tests COMMAND engine_live_host_tests --reporter compact)
+    # The long-lived job worker over a fake worker process (the real loop, fake works): reuse,
+    # restart after a kill / crash, timeout, latest-wins, cancel, idle shutdown.
+    add_executable(job_worker_fake tests/job_worker_fake.cpp src/os_ffi.cpp)
+    target_link_libraries(job_worker_fake PRIVATE engine_jobs motion::options)
+    add_executable(engine_job_worker_tests tests/test_job_worker.cpp src/os_ffi.cpp)
+    target_link_libraries(engine_job_worker_tests PRIVATE engine_jobs motion::options Catch2::Catch2WithMain)
+    target_compile_definitions(engine_job_worker_tests PRIVATE PREMATION_JOB_WORKER_FAKE="$<TARGET_FILE:job_worker_fake>")
+    add_dependencies(engine_job_worker_tests job_worker_fake)
+    if(MSVC)
+      target_compile_definitions(job_worker_fake PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+      target_compile_definitions(engine_job_worker_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_test(NAME engine_job_worker_tests COMMAND engine_job_worker_tests --reporter compact)
   endif()
 endif()
 add_executable(premation-live-spike tools/premation_live_spike.cpp)

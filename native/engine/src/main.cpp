@@ -25,6 +25,7 @@
 //                    [--version]
 //   premation-engine --export JOB.json     F1: render one export job and exit (export/export_job.hpp)
 //   premation-engine --job JOB.json        an engine job's crash-isolated half (jobs/child_job.hpp)
+//   premation-engine --job-worker START    the long-lived job process (jobs/job_worker.hpp)
 //
 // stdin/stdout: the command pipe; fd 3/4: the frame channel; stderr: log.
 // See engine_process.hpp for the thread structure and exit codes.
@@ -139,6 +140,20 @@ int run(int argc, char** argv) {
         return 64;
       }
       return premation::run_job_child(std::string(v));
+#else
+      std::fprintf(stderr, "premation-engine: built without engine jobs\n");
+      return 3;
+#endif
+    } else if (k == "--job-worker") {
+      // The long-lived job process (jobs/job_worker.hpp): requests on stdin,
+      // answers on stdout, models kept loaded between them. A crash here
+      // fails the request in flight only; the engine starts a new worker.
+#if defined(PREMATION_HAVE_JOBS)
+      if (v.empty()) {
+        std::fprintf(stderr, "premation-engine: --job-worker needs a start file\n");
+        return 64;
+      }
+      return premation::run_job_worker(std::string(v));
 #else
       std::fprintf(stderr, "premation-engine: built without engine jobs\n");
       return 3;

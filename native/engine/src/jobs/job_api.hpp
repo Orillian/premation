@@ -123,6 +123,9 @@ struct JobDocContext {
   /// A layer's base (unscaled) box at composition second `s`, px: {width,
   /// height} (layer_geometry_at). nullopt for a kind with no box. Empty = none.
   std::function<std::optional<std::array<double, 2>>(std::string_view layer, double seconds)> layerSize;
+  /// The job was started with apply: false (a preview the UI may drop): a kind may let a newer
+  /// preview of the same target supersede it (objectMatte's hover, job_worker.hpp).
+  bool preview = false;
 };
 
 /// The job kinds this engine build can run (engine_jobs: make_job_kinds).

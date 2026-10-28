@@ -108,7 +108,7 @@ api::CommandResult Session::start_job(const api::StartJob& c) {
   }
   catalogCache_.clear();
   ensure_timelines();
-  const jobs::JobDocContext ctx{doc_, bundleRoot_, projectPath_, apiTime_, layer_to_comp(), layer_values(), layer_size()};
+  const jobs::JobDocContext ctx{doc_, bundleRoot_, projectPath_, apiTime_, layer_to_comp(), layer_values(), layer_size(), !c.apply};
   // prepare validates against the document and snapshots the inputs; a refusal
   // is the command's answer and nothing is queued.
   jobs::PreparedJob prepared = jobKinds_->prepare(c.job, ctx);
@@ -381,7 +381,7 @@ api::CommandResult Session::auto_trace_in_journal(const api::AutoTrace& c, api::
   spec.invert = false;
   api::JobSpec job;
   job.v = std::move(spec);
-  const jobs::JobDocContext ctx{doc_, bundleRoot_, projectPath_, apiTime_, layer_to_comp(), layer_values(), layer_size()};
+  const jobs::JobDocContext ctx{doc_, bundleRoot_, projectPath_, apiTime_, layer_to_comp(), layer_values(), layer_size(), false};
   // prepare: notFound / invalidArgument (not footage, retimed, no file) / outOfRange.
   jobs::PreparedJob prepared = jobKinds_->prepare(job, ctx);
   if (!prepared.work) fail(ErrorCode::internal, "the autoTrace job prepared no work");

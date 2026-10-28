@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace premation::jobs::sam {
 
@@ -12,6 +14,77 @@ namespace {
 double js_round(double x) noexcept {
   const double r = std::floor(x);
   return x - r >= 0.5 ? r + 1 : r;
+}
+
+/// The mask's largest 8-connected subject (>= 128) with its holes filled, 0 / 255: the one
+/// region whose outer contour matte_contour wants. Tracing the raw matte of a cluttered
+/// frame (thousands of specks and holes) took minutes at 2560×1440; this pass is linear.
+std::vector<std::uint8_t> largest_filled(std::span<const std::uint8_t> mask, std::uint32_t width, std::uint32_t height) {
+  const std::size_t w = width;
+  const std::size_t h = height;
+  const std::size_t n = w * h;
+  std::vector<std::uint32_t> label(n, 0);
+  std::vector<std::size_t> stack;
+  std::uint32_t next = 0;
+  std::uint32_t best = 0;
+  std::size_t bestCount = 0;
+  for (std::size_t s = 0; s < n; ++s) {
+    if (mask[s] < 128 || label[s] != 0) continue;
+    const std::uint32_t id = ++next;
+    std::size_t count = 0;
+    label[s] = id;
+    stack.push_back(s);
+    while (!stack.empty()) {
+      const std::size_t i = stack.back();
+      stack.pop_back();
+      ++count;
+      const std::size_t x = i % w;
+      const std::size_t y = i / w;
+      for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+          if ((dx == 0 && dy == 0) || (dx < 0 && x == 0) || (dy < 0 && y == 0) || (dx > 0 && x + 1 >= w) || (dy > 0 && y + 1 >= h)) continue;
+          const std::size_t j = (y + static_cast<std::size_t>(static_cast<std::ptrdiff_t>(dy) + 1) - 1) * w +
+                                (x + static_cast<std::size_t>(static_cast<std::ptrdiff_t>(dx) + 1) - 1);
+          if (mask[j] < 128 || label[j] != 0) continue;
+          label[j] = id;
+          stack.push_back(j);
+        }
+      }
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      best = id;
+    }
+  }
+  std::vector<std::uint8_t> out(n, 0);
+  if (best == 0) return out;
+  // Holes: everything not the subject that the border cannot reach (4-connected) is inside it.
+  std::vector<std::uint8_t> outside(n, 0);
+  auto seed = [&](std::size_t i) {
+    if (label[i] == best || outside[i] != 0) return;
+    outside[i] = 1;
+    stack.push_back(i);
+  };
+  for (std::size_t x = 0; x < w; ++x) {
+    seed(x);
+    seed((h - 1) * w + x);
+  }
+  for (std::size_t y = 0; y < h; ++y) {
+    seed(y * w);
+    seed(y * w + w - 1);
+  }
+  while (!stack.empty()) {
+    const std::size_t i = stack.back();
+    stack.pop_back();
+    const std::size_t x = i % w;
+    const std::size_t y = i / w;
+    if (x > 0) seed(i - 1);
+    if (x + 1 < w) seed(i + 1);
+    if (y > 0) seed(i - w);
+    if (y + 1 < h) seed(i + w);
+  }
+  for (std::size_t i = 0; i < n; ++i) out[i] = outside[i] != 0 ? 0 : 255;
+  return out;
 }
 
 }  // namespace
@@ -127,7 +200,9 @@ std::vector<std::uint8_t> mask_from_decoder(std::span<const float> iouScores, st
 std::vector<trace::TracePoint> matte_contour(std::span<const std::uint8_t> mask, std::uint32_t width,
                                              std::uint32_t height, std::size_t maxPoints) {
   trace::TraceOptions opts;  // traceBitmap.ts defaults: 128, tolerance 1, min area 4
-  const std::vector<trace::TracedContour> contours = trace::trace_bitmap(mask, width, height, 1, opts);
+  if (mask.size() < std::size_t{width} * height) return {};
+  const std::vector<std::uint8_t> subject = largest_filled(mask, width, height);
+  const std::vector<trace::TracedContour> contours = trace::trace_bitmap(subject, width, height, 1, opts);
   const trace::TracedContour* best = nullptr;
   double bestArea = 0;
   for (const trace::TracedContour& c : contours) {
