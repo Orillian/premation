@@ -45,7 +45,8 @@ void tl_sync_all(Document& d);
 [[nodiscard]] bool tl_in_sync(const Document& d, std::string_view comp);
 
 /// `registryForNode`: the comp whose timeline owns the node's bars (its parent
-/// when that is a registered comp, else the active tab's comp).
+/// when that is a registered comp, else the comp it is nested in, else the
+/// active tab's comp).
 [[nodiscard]] std::string tl_owner_comp(const Document& d, const EditorView& v, std::string_view node);
 /// `getLayersForNode`: the node's bars, sorted by start (stable).
 [[nodiscard]] std::vector<const Bar*> tl_bars_for_node(const Document& d, const EditorView& v, std::string_view node);

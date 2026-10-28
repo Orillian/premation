@@ -1196,6 +1196,7 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
                                       tests/test_oversize_texture.cpp  # an enormous layer clamps / is refused, never blanks the frame
                                       tests/test_unported_warnings.cpp  # 2026-10-20: ported text features; what a layer draws without is a `warning`
                                       tests/test_unicode_media_paths.cpp  # 2026-10-23: footage named outside the ANSI code page (Japanese user crash loop)
+                                      tests/test_nested_bars.cpp  # 2026-10-27: a nested layer's In/Out in a comp the tab does not show
                                       tests/test_walk_cache.cpp)  # 2026-10-28: the walk's flatten memo across frames (once per revision)
     target_compile_definitions(engine_scene_tests PRIVATE PREMATION_ENGINE_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
       PREMATION_RASTER_FONTS="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/harness/fonts/fonts.json")

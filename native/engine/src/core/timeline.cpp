@@ -313,6 +313,9 @@ void tl_sync_all(Document& d) {
 std::string tl_owner_comp(const Document& d, const EditorView& v, std::string_view node) {
   const Node* n = d.node(node);
   if (n != nullptr && n->parent && d.timeline(*n->parent) != nullptr) return *n->parent;
+  // A layer parented to another layer is on its comp's track too (collect_nodes, write_geoms). The tab is no
+  // stand-in for that comp: the live session never moves view.tabComp off the tab open at load.
+  if (const auto comp = enclosing_comp_root_of(d, node); comp && d.timeline(*comp) != nullptr) return *comp;
   return v.tabComp;
 }
 
@@ -644,9 +647,7 @@ void tl_set_duration(Timeline& t, double frames) {
 }
 
 std::string tl_comp_id_for_node(const Document& d, const EditorView& v, std::string_view node) {
-  const Node* n = d.node(node);
-  if (n != nullptr && n->parent && d.timeline(*n->parent) != nullptr) return *n->parent;
-  return v.tabComp;
+  return tl_owner_comp(d, v, node);
 }
 
 void tl_transfer_node_clips(Document& d, const std::vector<std::string>& nodeIds, std::string_view from,
