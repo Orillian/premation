@@ -100,6 +100,7 @@ import { CompareOverlay } from './CompareOverlay';
 import { RotoBrushOverlay } from './RotoBrushOverlay';
 import { ObjectMatteOverlay } from './ObjectMatteOverlay';
 import { SubjectChips } from './SubjectChips';
+import { TextBehindDialog } from './TextBehindDialog';
 import { InlineAiPrompt } from './InlineAiPrompt';
 import { installViewportCommands } from './viewportCommands';
 import { installLayerSettingsCommands } from '@layout/Composition/layerSettingsCommands';
@@ -769,6 +770,8 @@ export function WorkspaceViewport({
           {/* Object Matte: hover preview, click / box selection (same store). */}
           <ObjectMatteOverlay />
           <SubjectChips />
+          {/* Text Behind Subject's popover (opened from the Subject actions). */}
+          <TextBehindDialog />
           {/* Snapshot comparison (F5 / Shift+F5). Above the picture, below the
               interactive handles — a wipe must not cover the gizmo you drag. */}
           <CompareOverlay />

@@ -517,15 +517,17 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Tools ────────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.rotoTool),
-      label: t('workspace.command.rotoTool', 'Object Matte / Roto Brush Tool'),
-      description: t('workspace.command.rotoToolDescription', 'Object Matte: hover and click a subject. Press again for the Roto Brush (paint strokes).'),
+      label: t('workspace.command.rotoTool', 'Object Matte Tools'),
+      description: t('workspace.command.rotoToolDescription', 'Object Matte, then Quick Selection, Selection Brush and Refine Edge on each press.'),
       icon: 'object-matte',
       shortcut: { key: 'w', alt: true },
       enabled: () => true,
       // AE 26.2: Object Matte took the Roto Brush's slot; the key cycles the family.
       execute: () => {
         const ui = useUIStore.getState();
-        ui.setActiveTool(ui.activeTool === 'object-matte' ? 'roto' : 'object-matte');
+        const group = ['object-matte', 'roto', 'selection-brush', 'refine-edge'] as const;
+        const at = group.indexOf(ui.activeTool as (typeof group)[number]);
+        ui.setActiveTool(group[at < 0 ? 0 : (at + 1) % group.length]!);
       },
     },
     // ── 3D gizmo (AE parity 4.6) ─────────────────────────────────────

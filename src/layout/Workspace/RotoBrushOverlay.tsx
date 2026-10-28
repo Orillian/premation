@@ -45,6 +45,7 @@ import { secondsToFlicks } from '@motion/engine-api';
 import { MAIN_VIEWPORT, overlayLayer } from '@stores/overlayGeometry';
 import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
+import { applyRefineEdgeStroke, applySelectionBrushEdit } from './selectionBrush';
 import { useDisplayedCamera2D } from './useOverlayView';
 import styles from './RotoBrushOverlay.module.css';
 import { t } from '@core/i18n';
@@ -71,7 +72,9 @@ export function RotoBrushOverlay(): JSX.Element | null {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const paintingRef = useRef(false);
 
-  const active = activeTool === 'roto';
+  // One overlay paints for the three brush tools of the Object Matte group.
+  const active = activeTool === 'roto' || activeTool === 'selection-brush' || activeTool === 'refine-edge';
+  const brushMode = activeTool === 'selection-brush' ? 'exact' : activeTool === 'refine-edge' ? 'refine' : 'snap';
 
   // Switching layer drops the strokes: they are in the OLD layer's local
   // pixels and mean nothing in the new one's.
@@ -144,6 +147,22 @@ export function RotoBrushOverlay(): JSX.Element | null {
     const store = useRotoBrushStore.getState();
     const done = store.end();
     if (!done || !nodeId) return;
+    if (brushMode !== 'snap') {
+      // The stroke is the edit itself, not a prompt for the model.
+      store.removeStroke(done.id);
+      // The brush's screen radius, in layer px (the strokes' space).
+      const a = mapping?.screenToLocal(0, 0);
+      const b = mapping?.screenToLocal(store.size / 2, 0);
+      const radius = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : store.size / 2;
+      if (brushMode === 'refine') {
+        applyRefineEdgeStroke(radius);
+        return;
+      }
+      void applySelectionBrushEdit(nodeId, done.points, radius, done.kind === 'bg', time).then((ok) => {
+        if (ok) getWorkspaceController().requestRender();
+      });
+      return;
+    }
     if (done.points.length < 2 && e) {
       pendingClickRef.current = {
         strokeId: done.id,
@@ -157,7 +176,7 @@ export function RotoBrushOverlay(): JSX.Element | null {
       return;
     }
     segmentNow();
-  }, [nodeId, segmentNow]);
+  }, [nodeId, segmentNow, brushMode, mapping, time]);
 
   /** A second press close to a pending click: open the layer, if it is under it. */
   const takeDoubleClick = (e: React.PointerEvent<HTMLDivElement>): boolean => {

@@ -58,6 +58,8 @@ const TOOL_MAP: Record<UITool, string> = {
   roto: 'roto',
   // Same engine tool as roto (no pointer-down of its own): `ObjectMatteOverlay` claims the pointer.
   'object-matte': 'roto',
+  'selection-brush': 'roto',
+  'refine-edge': 'roto',
 };
 
 export class WorkspaceController {

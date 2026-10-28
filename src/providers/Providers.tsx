@@ -503,9 +503,12 @@ function buildToolCommands(): ReadonlyArray<Command> {
     { tool: 'convert-vertex', label: 'Convert Vertex Tool' },
     { tool: 'mask-feather', label: 'Mask Feather Tool' },
     // Alt+W stays the viewport command's (viewportCommands.ts); this makes the toolbar button rebindable.
-    { tool: 'roto', label: 'Roto Brush Tool' },
-    // AE 26.2: Object Matte heads the roto family (Alt+W cycles the two, viewportCommands.ts).
+    // AE 26.2's Object Matte group (Alt+W cycles it, viewportCommands.ts): the
+    // Roto Brush is the group's Quick Selection Tool.
     { tool: 'object-matte', label: 'Object Matte Tool' },
+    { tool: 'roto', label: 'Quick Selection Tool' },
+    { tool: 'selection-brush', label: 'Selection Brush Tool' },
+    { tool: 'refine-edge', label: 'Refine Edge Tool' },
   ];
   // Every tool used 'crosshair', so the palette/menus showed eleven identical
   // icons — give each tool its actual glyph.
@@ -544,6 +547,8 @@ function buildToolCommands(): ReadonlyArray<Command> {
     knife: 'knife',
     roto: 'magic-wand',
     'object-matte': 'object-matte',
+    'selection-brush': 'brush',
+    'refine-edge': 'mask-feather',
   };
   return tools.map(({ tool, label, chord }) => ({
     id: asCommandId(`tool.${tool}`),

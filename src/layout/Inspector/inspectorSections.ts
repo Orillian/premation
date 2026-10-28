@@ -72,6 +72,7 @@ import { AudioControls } from './AudioControls';
 import { PinnedSection, hasPinnedSection } from './PinnedSection';
 import { CameraSection, LensPresetsMenu } from './CameraSection';
 import { DepthParallaxSection } from './DepthParallaxSection';
+import { SubjectSection, isSubjectCandidate } from './SubjectSection';
 import { CameraRigSection, hasCameraRig } from './CameraRigSection';
 import { CompositingSection } from './CompositingSection';
 import { Ik3DSection, isIk3DTip } from './Ik3DSection';
@@ -313,6 +314,18 @@ export const INSPECTOR_SECTIONS: readonly InspectorSectionDef[] = [
     keywords: 'null object controller',
     appliesTo: isKind('null'),
     Component: NullInfoSection,
+  },
+  // The Subject workflow (approved mockup, screen 3): a footage layer's
+  // subject and its next moves — Text Behind, Outline, Color, Track…
+  {
+    id: 'subject',
+    title: () => t('inspector.sections.subject', 'Subject'),
+    icon: 'object-matte',
+    category: 'layer',
+    defaultOpen: true,
+    keywords: 'subject person object matte roto select cut out text behind outline glow color background blur remove track',
+    appliesTo: (id) => isSubjectCandidate(id),
+    Component: SubjectSection,
   },
   // ── 2. Masks, then Effects (AE applies masks → effects → transform) ────
   // AE parity 5.4: the layer's masks (moved out of the Effects panel), above

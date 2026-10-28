@@ -68,6 +68,9 @@ import {
 } from './layerMenuEdits';
 import { t } from '@core/i18n';
 import { runPlaceBehindSubject } from './placeBehindSubjectCommand';
+import { subjectMenuItems } from './subjectActions';
+import { openTextBehind } from './TextBehindDialog';
+import { isSubjectCandidate as isFootageLayer } from '@layout/Inspector/SubjectSection';
 
 /**
  * Right-click menu for a canvas node — the same actions as the scene-tree menu
@@ -343,6 +346,9 @@ export function nodeContextMenuItems(id: string): ContextMenuItem[] {
     ...(isGroup ? [{ id: 'ungroup', label: t('workspace.layerMenu.ungroup', 'Ungroup'), onSelect: () => { void ungroupSelectedEdit(); } }] : []),
     { id: 'precompose', label: t('workspace.layerMenu.precompose', 'Pre-compose…'), onSelect: () => openPrecomposeDialog() },
     { id: 'place-behind-subject', label: t('workspace.layerMenu.placeBehindSubject', 'Place Behind Subject'), onSelect: () => { void runPlaceBehindSubject(useSelectionStore.getState().ids); } },
+    ...(isFootageLayer(id)
+      ? [{ id: 'subject', label: t('workspace.layerMenu.subject', 'Subject'), children: subjectMenuItems(id, { openTextBehind }) }]
+      : []),
     { id: 'rig-logo', label: t('workspace.layerMenu.rigLogo', 'Rig Logo for Animation'), onSelect: () => { void rigLogoForAnimation(); } },
     ...svgContextMenuItems(id),
     ...(useSelectionStore.getState().ids.length >= 2

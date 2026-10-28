@@ -28,7 +28,7 @@ import { openFootagePreview } from '@layout/Assets/FootagePreviewDialog';
 import type { SceneNode } from '@core/types';
 
 /** Tools whose double-click always means "open the Layer panel" in AE. */
-const LAYER_PANEL_TOOLS: ReadonlySet<string> = new Set(['brush', 'paint', 'eraser', 'roto', 'object-matte']);
+const LAYER_PANEL_TOOLS: ReadonlySet<string> = new Set(['brush', 'paint', 'eraser', 'roto', 'object-matte', 'selection-brush', 'refine-edge']);
 
 /** A composition layer (it shows another composition). */
 function isCompLayer(layer: LayerInfo): boolean {

@@ -88,7 +88,13 @@ export type Tool =
   // (or drag a box) to select it, Shift / Alt-click to add / subtract. The
   // host owns the gesture (`ObjectMatteOverlay`); propagation and Freeze are
   // the Roto Brush's (same store, same engine job).
-  | 'object-matte';
+  | 'object-matte'
+  // The rest of AE 26's Object Matte group: paint the selection exactly
+  // (no edge snapping), and paint over hair to set the refine-edge radius.
+  // Both are host gestures in RotoBrushOverlay, like the Roto Brush
+  // (which the group calls Quick Selection).
+  | 'selection-brush'
+  | 'refine-edge';
 
 interface UIState {
   /** Active tool in the toolbar. */

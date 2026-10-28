@@ -338,9 +338,15 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
         )}
       </>
     );
-  } else if (activeTool === 'roto' || activeTool === 'object-matte') {
+  } else if (activeTool === 'roto' || activeTool === 'object-matte' || activeTool === 'selection-brush' || activeTool === 'refine-edge') {
     // ── VIEWPORT-ROTO-OPTIONS (unique anchor) ──────────────────────────
-    content = <RotoOptions objectMatteTool={activeTool === 'object-matte'} />;
+    // The Object Matte group: one options row; the brushes show their size.
+    content = (
+      <RotoOptions
+        objectMatteTool={activeTool === 'object-matte'}
+        brush={activeTool === 'selection-brush' ? 'exact' : activeTool === 'refine-edge' ? 'refine' : undefined}
+      />
+    );
   }
 
   // AE's toolbar Fill / Stroke beside the shape and pen tools — the paint the
@@ -395,7 +401,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
  * The strokes themselves are `Workspace/RotoBrushOverlay`; this is the row of
  * numbers that gesture needs and cannot hold.
  */
-function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean }): JSX.Element {
+function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boolean; brush?: 'exact' | 'refine' }): JSX.Element {
   const kind = useRotoBrushStore((s) => s.kind);
   const setKind = useRotoBrushStore((s) => s.setKind);
   const size = useRotoBrushStore((s) => s.size);
@@ -414,7 +420,7 @@ function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean })
   const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0);
   const canPropagate = !!nodeId && (strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;
   // The Object Matte tool always follows with the model; the brush has the choice.
-  const engine = useRotoBrushStore((s) => (objectMatteTool ? 'objectMatte' : s.engine));
+  const engine = useRotoBrushStore((s) => (objectMatteTool || brush ? 'objectMatte' : s.engine));
   const refine = useRotoBrushStore((s) => s.refine);
   const [refineOpen, setRefineOpen] = useState(false);
 
@@ -477,8 +483,26 @@ function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean })
 
   return (
     <>
-      <span className={styles.optLabel}>{objectMatteTool ? t('topNav.roto.objectMatteLabel', 'Object Matte') : t('topNav.roto.label', 'Roto')}</span>
-      {objectMatteTool ? (<>
+      <span className={styles.optLabel}>{objectMatteTool
+        ? t('topNav.roto.objectMatteLabel', 'Object Matte')
+        : brush === 'exact'
+          ? t('topNav.roto.selectionBrushLabel', 'Selection Brush')
+          : brush === 'refine'
+            ? t('topNav.roto.refineEdgeLabel', 'Refine Edge')
+            : t('topNav.roto.quickSelectionLabel', 'Quick Selection')}</span>
+      {brush ? (<>
+        <Row label={t('topNav.toolOptions.size', 'Size')}>
+          <ValueField value={size} unit="px" min={2} max={200} precision={0} onChange={(v) => useRotoBrushStore.getState().setSize(Number(v))} />
+        </Row>
+        <span className={styles.hint} title={brush === 'exact'
+          ? t('topNav.roto.selectionBrushHint', 'Paint to add to the selection exactly; Alt-paint erases. No edge snapping.')
+          : t('topNav.roto.refineEdgeHint', 'Paint over hair or fur: the brush sets the refined edge width, used when you Propagate.')}>
+          {brush === 'exact'
+            ? t('topNav.roto.selectionBrushHint', 'Paint to add to the selection exactly; Alt-paint erases. No edge snapping.')
+            : t('topNav.roto.refineEdgeHint', 'Paint over hair or fur: the brush sets the refined edge width, used when you Propagate.')}
+        </span>
+      </>) : null}
+      {brush ? null : objectMatteTool ? (<>
         {/* AE's marquee modes for the drag: Rectangle or Lasso. */}
         <div className={styles.kinds} role="group" aria-label={t('topNav.roto.marqueeGroup', 'Marquee')}>
           <button
@@ -526,7 +550,7 @@ function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean })
       <Row label={t('topNav.toolOptions.feather', 'Feather')}>
         <ValueField value={featherPx} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setFeather(Number(v))} />
       </Row>
-      {!objectMatteTool && <div className={styles.kinds} role="group" aria-label={t('topNav.roto.engineGroup', 'Matte engine')}>
+      {!objectMatteTool && !brush && <div className={styles.kinds} role="group" aria-label={t('topNav.roto.engineGroup', 'Matte engine')}>
         <button
           type="button"
           className={engine === 'objectMatte' ? styles.kindActive : styles.kind}

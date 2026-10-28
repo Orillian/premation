@@ -14,13 +14,13 @@ import { useEffect, useState } from 'react';
 import { useUIStore } from '@stores/uiStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
-import { openContextMenu, type ContextMenuItem } from '@stores/contextMenuStore';
+import { openContextMenu } from '@stores/contextMenuStore';
 import { useActiveCompRootId, useMirrorRevisionFrame } from '@hooks/useMirrorFrame';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
-import { edit } from '@core/engine/uiEdits';
 import { Icon } from '@components/Icon';
 import { t } from '@core/i18n';
-import { runCreateSubjectTrack, runPlaceBehindSubject } from './placeBehindSubjectCommand';
+import { subjectMenuItems } from './subjectActions';
+import { openTextBehind } from './TextBehindDialog';
 import { matteOutlineKeys } from './subjectTrack';
 import styles from './SubjectChips.module.css';
 
@@ -50,14 +50,6 @@ async function subjectsOf(comp: string): Promise<Subject[]> {
   return out;
 }
 
-/** One effect on the subject's layer, selected so Effect Controls shows it. */
-async function addSubjectEffect(layer: string, effect: 'matte-stroke' | 'selective-color-ai'): Promise<void> {
-  const label = effect === 'matte-stroke' ? 'Outline Subject' : 'Color Subject';
-  const res = await edit(label, { type: 'addEffect', layers: [layer], effect, params: [] });
-  if (res.ok) useSelectionStore.getState().set([layer]);
-}
-
-/** The gate: with no roto tool up, a document revision re-renders nothing here. */
 export function SubjectChips(): JSX.Element | null {
   const on = useUIStore((s) => s.activeTool === 'object-matte' || s.activeTool === 'roto');
   return on ? <SubjectChipsActive /> : null;
@@ -81,26 +73,8 @@ function SubjectChipsActive(): JSX.Element | null {
   if (!on || subjects.length === 0) return null;
 
   const menu = (s: Subject, x: number, y: number): void => {
-    const others = useSelectionStore.getState().ids.filter((id) => id !== s.layer);
-    const items: ContextMenuItem[] = [
-      {
-        id: 'behind',
-        label: t('workspace.subjects.placeBehind', 'Place Selected Layers Behind'),
-        disabled: others.length === 0,
-        onSelect: () => { void runPlaceBehindSubject([s.layer, ...others]); },
-      },
-      {
-        id: 'track',
-        label: t('workspace.subjects.track', 'Create Subject Track (Null)'),
-        disabled: !s.tracked,
-        onSelect: () => { void runCreateSubjectTrack(s.layer); },
-      },
-      { id: 'sep', separator: true },
-      // Both read the layer's own Object Matte when their matte layer is None.
-      { id: 'outline', label: t('workspace.subjects.outline', 'Outline Subject (Matte Stroke)'), onSelect: () => { void addSubjectEffect(s.layer, 'matte-stroke'); } },
-      { id: 'colour', label: t('workspace.subjects.colour', 'Color Subject (Selective Color AI)'), onSelect: () => { void addSubjectEffect(s.layer, 'selective-color-ai'); } },
-    ];
-    openContextMenu(x, y, items);
+    // The same actions as Properties ▸ Subject and right-click ▸ Subject.
+    openContextMenu(x, y, subjectMenuItems(s.layer, { openTextBehind }));
   };
 
   return (

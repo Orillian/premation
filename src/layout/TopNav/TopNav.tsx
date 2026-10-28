@@ -170,12 +170,16 @@ const maskTools = (): ToolDef[] => [
 const boneTool = (): ToolDef => ({ id: 'bone', icon: 'bone', label: t('topNav.tools.bone', 'Bone Tool') });
 
 /**
- * AE 26.2's roto family: Object Matte (hover, click, propagate) heads it and
- * the Roto Brush (paint strokes) shares its flyout. Alt+W cycles the two.
+ * AE 26.2's Object Matte group, one toolbar slot: Object Matte (hover, click,
+ * propagate), Quick Selection (the Roto Brush: strokes that snap to the
+ * subject's edges), Selection Brush (paints the selection exactly) and Refine
+ * Edge (paint over hair). Alt+W cycles them.
  */
 const rotoTools = (): ToolDef[] => [
   { id: 'object-matte', icon: 'object-matte', label: t('topNav.tools.objectMatte', 'Object Matte Tool'), hint: t('topNav.tools.objectMatteHint', 'Hover a subject to preview its matte, click to select it') },
-  { id: 'roto', icon: 'magic-wand', label: t('topNav.tools.roto', 'Roto Brush'), hint: t('topNav.tools.rotoHint', 'Paint over the subject; Alt-paint marks background') },
+  { id: 'roto', icon: 'magic-wand', label: t('topNav.tools.quickSelection', 'Quick Selection Tool'), hint: t('topNav.tools.quickSelectionHint', 'Paint over the subject and the selection snaps to its edges; Alt-paint takes away') },
+  { id: 'selection-brush', icon: 'brush', label: t('topNav.tools.selectionBrush', 'Selection Brush Tool'), hint: t('topNav.tools.selectionBrushHint', 'Paint the selection exactly where you brush; Alt-paint erases it') },
+  { id: 'refine-edge', icon: 'mask-feather', label: t('topNav.tools.refineEdge', 'Refine Edge Tool'), hint: t('topNav.tools.refineEdgeHint', 'Paint over hair and fur so the edge is refined there') },
 ];
 
 /** "Selection Tool (V)" — the ACCESSIBLE name, chord read live from the registry. */
