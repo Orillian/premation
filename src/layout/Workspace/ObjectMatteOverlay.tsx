@@ -41,6 +41,8 @@ import { t } from '@core/i18n';
 
 /** How long the pointer rests before a hover preview starts. */
 const HOVER_MS = 300;
+/** How long the playhead rests on a frame before it is warmed (scrubbing warms nothing). */
+const WARM_MS = 250;
 /** A press that moves further than this is a box, not a click. */
 const DRAG_PX = 4;
 /** A click this close (layer px) to the previewed point applies the held preview. */
@@ -121,6 +123,24 @@ export function ObjectMatteOverlay(): JSX.Element | null {
 
   // A new frame, layer or tool invalidates the preview: it is of one frame of one layer.
   useEffect(() => clearHover, [active, nodeId, time, sceneTick, clearHover]);
+
+  // Warm the frame: the job caches the encoder's output per frame on disk
+  // (the slow half of SAM), so segmenting the frame once as soon as the tool
+  // rests on it makes the first real hover a decoder-only pass. Its result is
+  // dropped; nothing is written.
+  const warmed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active || !nodeId) return;
+    const key = `${nodeId}@${time}`;
+    if (warmed.current === key) return;
+    const timer = window.setTimeout(() => {
+      if (useRotoBrushStore.getState().busy) return;
+      warmed.current = key;
+      const probe = [{ id: 'warm', kind: 'fg' as const, points: [{ x: 0, y: 0 }], time }];
+      void previewObjectMatte(nodeId, probe, time).then((p) => p?.discard()).catch(() => undefined);
+    }, WARM_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, nodeId, time]);
 
   const fps = (): number => settingsFps(activeCompSettingsNow());
 
