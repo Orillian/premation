@@ -9937,5 +9937,13 @@
   "command.layer.placeBehindSubject": "Colocar detrás del sujeto",
   "command.tool.object-matte": "Herramienta Object Matte",
   "menu.effect.add.matte-stroke": "Matte Stroke",
-  "menu.effect.add.selective-color-ai": "Selective Color (AI)"
+  "menu.effect.add.selective-color-ai": "Selective Color (AI)",
+  "timeline.matte.span": "Object Matte: {from}–{to} s",
+  "topNav.roto.marqueeGroup": "Marco",
+  "topNav.roto.marqueeLasso": "Lazo",
+  "topNav.roto.marqueeLassoTitle": "Arrastra un lazo alrededor del sujeto: se selecciona lo que queda dentro",
+  "topNav.roto.marqueeRect": "Rectángulo",
+  "topNav.roto.marqueeRectTitle": "Arrastra un rectángulo alrededor del sujeto",
+  "workspace.objectMatte.clickToSelectLasso": "Clic para seleccionar · Mayús+clic añade · Alt+clic resta · arrastra un lazo",
+  "workspace.objectMatte.lassoEmpty": "Dibuja el lazo alrededor del sujeto (un bucle cerrado)."
 }

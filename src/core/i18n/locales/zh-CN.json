@@ -9937,5 +9937,13 @@
   "command.layer.placeBehindSubject": "置于主体后方",
   "command.tool.object-matte": "Object Matte 工具",
   "menu.effect.add.matte-stroke": "Matte Stroke（遮罩描边）",
-  "menu.effect.add.selective-color-ai": "Selective Color (AI)（AI 选择性着色）"
+  "menu.effect.add.selective-color-ai": "Selective Color (AI)（AI 选择性着色）",
+  "timeline.matte.span": "Object Matte：{from}–{to} 秒",
+  "topNav.roto.marqueeGroup": "选框",
+  "topNav.roto.marqueeLasso": "套索",
+  "topNav.roto.marqueeLassoTitle": "在主体周围拖出一个环：环内的内容会被选中",
+  "topNav.roto.marqueeRect": "矩形",
+  "topNav.roto.marqueeRectTitle": "在主体周围拖出一个矩形",
+  "workspace.objectMatte.clickToSelectLasso": "单击选中 · Shift+单击添加 · Alt+单击减去 · 拖动套索",
+  "workspace.objectMatte.lassoEmpty": "请在主体周围绘制套索（闭合的环）。"
 }
