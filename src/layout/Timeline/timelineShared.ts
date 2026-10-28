@@ -176,7 +176,9 @@ export type Row =
       /** One applied effect's twirl inside Effects (AE): its id and fx switch. Its key is `effects/<id>`. */
       effect?: { id: string; enabled: boolean };
     }
-  | { type: 'prop'; track: TimelineTrack; prop: TimelinePropertyTrack; categoryKey: string };
+  | { type: 'prop'; track: TimelineTrack; prop: TimelinePropertyTrack; categoryKey: string }
+  /** One selection under Effects ▸ Object Matte ▸ Selections (AE): the mask it is drawn as, and Add / Subtract. */
+  | { type: 'selection'; track: TimelineTrack; categoryKey: string; maskId: string; label: string; mode: 'add' | 'subtract' };
 
 /**
  * The heading each section gets, in AE's own twirl order.

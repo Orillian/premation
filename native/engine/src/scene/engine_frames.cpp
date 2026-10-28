@@ -454,7 +454,7 @@ class EngineFrameBuilder final : public FrameBuilder, public TextQueries, public
         ctx.layerView = BuildContext::LayerView{
             viewport.layer, viewport.layerRenderEffects,
             viewport.layerSourceTime ? std::optional<double>(doc::flicks_to_seconds(*viewport.layerSourceTime)) : std::nullopt,
-            viewport.layerTransparencyGrid, viewport.layerAlphaView};
+            viewport.layerTransparencyGrid, viewport.layerAlphaView, viewport.layerAlphaOverlayColor, viewport.layerAlphaOverlayOpacity};
         for (const api::LayerSourceSize& z : doc::source_sizes(d, {viewport.layer})) {
           if (z.width > 0 && z.height > 0) {
             sc.width = z.width;

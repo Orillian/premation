@@ -9,6 +9,7 @@
  */
 
 import type { TimelinePropertyTrack } from './TimelineModel';
+import type { MirrorTreeLike } from '@core/mirror/trackIndex';
 
 export interface EffectRowGroup {
   /** The effect's id; null = rows of the section that belong to no one effect (paint strokes). */
@@ -17,6 +18,36 @@ export interface EffectRowGroup {
   /** The effect's fx switch (AE's Effect toggle on its twirl). */
   enabled: boolean;
   props: TimelinePropertyTrack[];
+}
+
+/** One selection of an Object Matte (AE lists them under the effect): the outline mask it is drawn as. */
+export interface ObjectMatteSelection {
+  maskId: string;
+  name: string;
+  mode: 'add' | 'subtract';
+}
+
+/** The masks the Object Matte / Roto Brush tools write (rotoBrushTool.ts, the objectMatte job). */
+const SELECTION_NAMES: ReadonlySet<string> = new Set(['Object Matte', 'Roto Brush', 'Roto Brush (Frozen)']);
+
+/**
+ * The layer's Object Matte selections, in mask order: each mask the Object
+ * Matte or Roto Brush tool wrote, with how it takes part (a Subtract mode or an
+ * inverted mask subtracts; anything else — the tool's own None outline — adds).
+ * Today a layer has one.
+ */
+export function objectMatteSelections(tree: MirrorTreeLike | undefined): ObjectMatteSelection[] {
+  if (!tree) return [];
+  const out: ObjectMatteSelection[] = [];
+  for (const path of tree.nodes.get('masks')?.children ?? []) {
+    const g = tree.nodes.get(path);
+    if (!g || !SELECTION_NAMES.has(g.name)) continue;
+    const mode = tree.nodes.get(`${path}/mode`)?.value;
+    const inverted = tree.nodes.get(`${path}/inverted`)?.value;
+    const subtract = (mode?.kind === 'choice' && mode.value === 'subtract') || (inverted?.kind === 'bool' && inverted.value);
+    out.push({ maskId: path.slice('masks/'.length), name: g.name, mode: subtract ? 'subtract' : 'add' });
+  }
+  return out;
 }
 
 /** `effect.<id>.<param>` → `<id>`; null for any other row. */

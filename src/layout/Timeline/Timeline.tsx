@@ -46,7 +46,8 @@ import { documentMirror } from '@stores/documentMirror';
 import { mirrorEffectHeaders } from '@core/mirror/effects';
 import { effectDisplayNames, type Effect } from '@core/inspector/effectCatalog';
 import { resetEffectEdit, setEffectEnabledEdit } from '@layout/Effects/effectEdits';
-import { groupEffectRows } from './effectRowGroups';
+import { groupEffectRows, objectMatteSelections } from './effectRowGroups';
+import { SelectionRowHeader } from './SelectionRowHeader';
 import { barOf, replaceSourceWithAsset, replaceTargetAt, splitLayersAt, timeStretchEdit } from './timelineEdits';
 import {
   layoutTransitions,
@@ -780,7 +781,28 @@ function Timeline({
                     count: g.props.length,
                     effect: { id: g.effectId, enabled: g.enabled },
                   });
-                  if (fxExpanded) for (const prop of g.props) out.push({ type: 'prop', track, prop, categoryKey: fxKey });
+                  if (!fxExpanded) continue;
+                  // AE: Object Matte ▸ Selections, each selection (its mask) with Add / Subtract.
+                  const selections = headers.find((hd) => hd.id === g.effectId)?.type === 'object-matte' ? objectMatteSelections(tree) : [];
+                  if (selections.length > 0) {
+                    const selKey = `${fxKey}/selections`;
+                    const selExpanded = !collapsedCategoryKeys.has(`${track.id}:${selKey}`);
+                    out.push({
+                      type: 'category',
+                      track,
+                      categoryKey: selKey,
+                      label: t('timeline.objectMatte.selections', 'Selections'),
+                      icon: 'mask-square',
+                      expanded: selExpanded,
+                      count: selections.length,
+                    });
+                    if (selExpanded) {
+                      for (const s of selections) {
+                        out.push({ type: 'selection', track, categoryKey: selKey, maskId: s.maskId, label: s.name, mode: s.mode });
+                      }
+                    }
+                  }
+                  for (const prop of g.props) out.push({ type: 'prop', track, prop, categoryKey: fxKey });
                 }
               } else if (isCatExpanded) {
                 for (const prop of cat.props) {
@@ -2599,8 +2621,8 @@ function Timeline({
                 const fx = row.effect;
                 const categoryStyle: CSSProperties = {
                   ...rowStyle,
-                  // An effect's twirl sits one step inside Effects.
-                  paddingLeft: 88 + (row.track.depth ?? 0) * 14 + (fx ? 14 : 0),
+                  // An effect's twirl sits one step inside Effects; its Selections one more.
+                  paddingLeft: 88 + (row.track.depth ?? 0) * 14 + (fx ? 14 : 0) + (row.categoryKey.endsWith('/selections') ? 28 : 0),
                 };
                 return (
                   <TrackCategoryHeader
@@ -2621,6 +2643,18 @@ function Timeline({
                           : undefined
                     }
                     fx={fx ? { enabled: fx.enabled, onToggle: () => { void setEffectEnabledEdit(row.track.id, fx.id, !fx.enabled, row.label); } } : undefined}
+                  />
+                );
+              }
+              if (row.type === 'selection') {
+                return (
+                  <SelectionRowHeader
+                    key={`h_${row.track.id}_sel_${row.maskId}`}
+                    nodeId={row.track.id}
+                    maskId={row.maskId}
+                    label={row.label}
+                    mode={row.mode}
+                    style={{ ...rowStyle, paddingLeft: 124 + (row.track.depth ?? 0) * 14 + 28 }}
                   />
                 );
               }
@@ -3166,14 +3200,16 @@ function Timeline({
                 ? `bg_${row.track.id}`
                 : row.type === 'category'
                   ? `bg_${row.track.id}_cat_${row.categoryKey}`
-                  : `bg_${row.track.id}_${row.prop.prop}`;
+                  : row.type === 'selection'
+                    ? `bg_${row.track.id}_sel_${row.maskId}`
+                    : `bg_${row.track.id}_${row.prop.prop}`;
               return (
                 <div
                   key={key}
                   className={cn(
                     styles.lane,
                     row.type === 'track' && styles.laneLayer,
-                    row.type === 'prop' && styles.lanePropBg,
+                    (row.type === 'prop' || row.type === 'selection') && styles.lanePropBg,
                     realIndex % 2 === 0 && styles.laneAlt,
                   )}
                   style={{ position: 'absolute', top: TIMELINE_TOP_PADDING + realIndex * trackHeight, left: 0, right: 0, height: trackHeight }}
@@ -3204,9 +3240,9 @@ function Timeline({
                   />
                 );
               }
-              if (row.type === 'category') {
+              if (row.type === 'category' || row.type === 'selection') {
                 return (
-                  <LaneRow key={`c_${row.track.id}_cat_${row.categoryKey}`} top={top} trackHeight={trackHeight}>
+                  <LaneRow key={row.type === 'category' ? `c_${row.track.id}_cat_${row.categoryKey}` : `c_${row.track.id}_sel_${row.maskId}`} top={top} trackHeight={trackHeight}>
                     <div />
                   </LaneRow>
                 );

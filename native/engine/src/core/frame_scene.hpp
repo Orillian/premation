@@ -265,6 +265,10 @@ struct ViewportConfig {
   bool layerTransparencyGrid = false;
   /// setViewport `layerAlphaView`, with `layer`: '' (the layer as it is), 'alpha', 'boundary' or 'overlay'.
   std::string layerAlphaView;
+  /// setViewport `layerAlphaOverlayColor` / `layerAlphaOverlayOpacity`: the
+  /// Alpha Overlay tint (`#rrggbb`) and its opacity 0..1.
+  std::string layerAlphaOverlayColor = "#ff3df5";
+  double layerAlphaOverlayOpacity = 0.5;
   /// setViewport `time`: a held comp time this viewport renders at (the Layer
   /// panel's own ruler); absent = the session clock.
   std::optional<api::Time> time;
