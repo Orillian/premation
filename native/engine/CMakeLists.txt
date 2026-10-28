@@ -1381,6 +1381,35 @@ if(FFMPEG_FOUND AND TARGET engine_audio)
   if(onnxruntime_FOUND)
     target_link_libraries(engine_jobs PRIVATE onnxruntime::onnxruntime)
     target_compile_definitions(engine_jobs PRIVATE PREMATION_HAVE_ONNXRUNTIME=1)
+    # AE parity 3.1: the vcpkg overlay builds ORT with the DirectML provider
+    # (native/vcpkg-overlays/onnxruntime). The static runtime links DirectML.lib,
+    # so every executable delay-loads DirectML.dll — an exe without it next to
+    # it still starts, and ort_providers_ffi.hpp loads the DLL before the first
+    # DML call (CPU when it cannot) — and the ones that run models get the DLL
+    # copied beside them (scripts/stageEngine.cjs ships it with the engine).
+    set(PREMATION_DIRECTML_DLL "")
+    get_filename_component(_ort_prefix "${onnxruntime_DIR}/../.." ABSOLUTE)
+    # The provider factories (dml_ / coreml_provider_factory.h) and DirectML.h
+    # sit in include/onnxruntime and include each other flat.
+    if(EXISTS "${_ort_prefix}/include/onnxruntime")
+      set_property(TARGET onnxruntime::onnxruntime APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_ort_prefix}/include/onnxruntime")
+    endif()
+    if(WIN32)
+      if(EXISTS "${_ort_prefix}/bin/DirectML.dll")
+        set(PREMATION_DIRECTML_DLL "${_ort_prefix}/bin/DirectML.dll")
+        set_property(TARGET onnxruntime::onnxruntime APPEND PROPERTY INTERFACE_LINK_OPTIONS "/DELAYLOAD:DirectML.dll")
+        set_property(TARGET onnxruntime::onnxruntime APPEND PROPERTY INTERFACE_LINK_LIBRARIES delayimp)
+        message(STATUS "premation-engine: ONNX Runtime with DirectML (${PREMATION_DIRECTML_DLL})")
+      endif()
+    endif()
+    function(premation_stage_directml target)
+      if(PREMATION_DIRECTML_DLL AND TARGET ${target})
+        add_custom_command(TARGET ${target} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PREMATION_DIRECTML_DLL}" $<TARGET_FILE_DIR:${target}>
+          VERBATIM)
+      endif()
+    endfunction()
+    premation_stage_directml(premation-engine)
   else()
     message(STATUS "premation-engine: onnxruntime not found — the object-matte job answers unsupported")
   endif()
@@ -1430,6 +1459,9 @@ if(MOTION_BUILD_TESTS)
   if(MSVC)
     target_compile_options(engine_jobs_tests PRIVATE /bigobj)
   endif()
+  if(COMMAND premation_stage_directml)
+    premation_stage_directml(engine_jobs_tests)
+  endif()
   add_test(NAME engine_jobs_tests COMMAND engine_jobs_tests --reporter compact)
 endif()
 
@@ -1476,6 +1508,9 @@ if(TARGET engine_jobs)
 endif()
 add_executable(premation-live-spike tools/premation_live_spike.cpp)
 target_link_libraries(premation-live-spike PRIVATE engine_live motion::options)
+if(COMMAND premation_stage_directml)
+  premation_stage_directml(premation-live-spike)
+endif()
 if(MOTION_BUILD_TESTS)
   add_executable(engine_live_tests tests/test_live_hand.cpp)
   target_link_libraries(engine_live_tests PRIVATE engine_live_core motion::options Catch2::Catch2WithMain)

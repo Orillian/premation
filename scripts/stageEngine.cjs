@@ -14,7 +14,8 @@
  *
  * Per platform, from native/build/<preset>/engine:
  *   win32    premation-engine.exe + dxcompiler.dll + dxil.dll (Dawn loads DXC
- *            at runtime) — all required                  windows-clang-cl-engine
+ *            at runtime) + DirectML.dll (ONNX Runtime's DirectML provider for
+ *            the ML jobs; the engine delay-loads it) — all required                  windows-clang-cl-engine
  *   darwin   premation-engine + premation-host-bridge.node (Electron main's
  *            IOSurface lookup for the viewport) — both required. The dmg's
  *            arch picks the build: arm64 → macos-clang-engine, x64 →
@@ -55,7 +56,7 @@ function presetsFor(platform, arch) {
 
 /** The files to stage from `dir` ({ f, required }). Linux adds whatever .so files sit beside the engine. */
 function filesFor(platform, dir) {
-  if (platform === 'win32') return ['premation-engine.exe', 'dxcompiler.dll', 'dxil.dll'].map((f) => ({ f, required: true }));
+  if (platform === 'win32') return ['premation-engine.exe', 'dxcompiler.dll', 'dxil.dll', 'DirectML.dll'].map((f) => ({ f, required: true }));
   if (platform === 'darwin') return ['premation-engine', 'premation-host-bridge.node'].map((f) => ({ f, required: true }));
   const libs = existsSync(dir) ? readdirSync(dir).filter((f) => /\.so(\.\d+)*$/.test(f)) : [];
   // The host bridge is optional on Linux: without it the viewport takes the route-A copy.

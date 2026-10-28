@@ -60,9 +60,9 @@ describe('stageEngine', () => {
 
   it('stages Windows with DXC, macOS with the host bridge, Linux with its shared libraries', () => {
     const log = quiet();
-    built('windows-clang-cl-engine', ['premation-engine.exe', 'dxcompiler.dll', 'dxil.dll', 'premation-render.exe']);
+    built('windows-clang-cl-engine', ['premation-engine.exe', 'dxcompiler.dll', 'dxil.dll', 'DirectML.dll', 'premation-render.exe']);
     stageEngine('win32', 1, {}, root);
-    expect(staged()).toEqual(['dxcompiler.dll', 'dxil.dll', 'premation-engine.exe']);
+    expect(staged()).toEqual(['DirectML.dll', 'dxcompiler.dll', 'dxil.dll', 'premation-engine.exe']);
 
     built('macos-clang-engine-x64', ['premation-engine', 'premation-host-bridge.node', 'engine_tests']);
     stageEngine('darwin', 1, {}, root);
