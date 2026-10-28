@@ -72,6 +72,8 @@ interface RotoBrushStore {
   refine: RotoRefine;
   /** The Object Matte tool's box prompt, if the selection started from one. */
   box: RotoBox | null;
+  /** The Object Matte tool's drag: AE's Rectangle or Lasso marquee. */
+  marquee: 'rect' | 'lasso';
 
   setEngine: (e: RotoEngine) => void;
   setRefine: (patch: Partial<RotoRefine>) => void;
@@ -91,6 +93,14 @@ interface RotoBrushStore {
   setBusy: (busy: boolean, progress?: number) => void;
   setStatus: (s: string | null) => void;
   setBox: (box: RotoBox | null) => void;
+  setMarquee: (m: 'rect' | 'lasso') => void;
+  /**
+   * A lasso on the frame at `time` (layer-local polygon): the frame's selection
+   * starts over from foreground points inside it and background points just
+   * outside its edge, so the shape drawn is what is asked for (a box prompt
+   * would win over points in the engine and throw the shape away).
+   */
+  setLasso: (polygon: ReadonlyArray<{ x: number; y: number }>, time: number, fps?: number) => boolean;
   /**
    * The Object Matte tool's click: one point prompt at `time`. `mode` 'new'
    * starts the selection over on that frame (strokes and box there go);
@@ -100,6 +110,51 @@ interface RotoBrushStore {
 }
 
 let seq = 0;
+
+function insidePolygon(p: { x: number; y: number }, poly: ReadonlyArray<{ x: number; y: number }>): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * A lasso → point prompts: up to 9 foreground points on a grid inside the
+ * polygon, and 12 background points on its outline pushed 6 % of its size
+ * away from the centre. Null for a lasso with no inside (a line, a scribble).
+ */
+export function lassoPrompts(polygon: ReadonlyArray<{ x: number; y: number }>): { inside: Array<{ x: number; y: number }>; outside: Array<{ x: number; y: number }> } | null {
+  if (polygon.length < 3) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, cx = 0, cy = 0;
+  for (const p of polygon) {
+    x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+    cx += p.x; cy += p.y;
+  }
+  cx /= polygon.length; cy /= polygon.length;
+  const w = x1 - x0, h = y1 - y0;
+  if (w < 4 || h < 4) return null;
+  const inside: Array<{ x: number; y: number }> = [];
+  for (let gy = 1; gy <= 3; gy++) {
+    for (let gx = 1; gx <= 3; gx++) {
+      const p = { x: x0 + (w * gx) / 4, y: y0 + (h * gy) / 4 };
+      if (insidePolygon(p, polygon)) inside.push(p);
+    }
+  }
+  if (inside.length === 0 && insidePolygon({ x: cx, y: cy }, polygon)) inside.push({ x: cx, y: cy });
+  if (inside.length === 0) return null;
+  const outside: Array<{ x: number; y: number }> = [];
+  const push = 0.06 * Math.max(w, h);
+  for (let k = 0; k < 12; k++) {
+    const p = polygon[Math.floor((k * polygon.length) / 12)]!;
+    const dx = p.x - cx, dy = p.y - cy;
+    const d = Math.hypot(dx, dy) || 1;
+    outside.push({ x: p.x + (dx / d) * push, y: p.y + (dy / d) * push });
+  }
+  return { inside, outside };
+}
 
 export const useRotoBrushStore = create<RotoBrushStore>((set, get) => ({
   nodeId: null,
@@ -115,6 +170,7 @@ export const useRotoBrushStore = create<RotoBrushStore>((set, get) => ({
   engine: 'objectMatte',
   refine: { edgeRadius: 6, decontaminate: 50, motionBlur: false, choke: 0, reduceChatter: 30 },
   box: null,
+  marquee: 'rect',
 
   setEngine: (engine) => set({ engine }),
   setRefine: (patch) => set((s) => ({ refine: { ...s.refine, ...patch } })),
@@ -145,6 +201,21 @@ export const useRotoBrushStore = create<RotoBrushStore>((set, get) => ({
   setBusy: (busy, progress = 0) => set({ busy, progress }),
   setStatus: (status) => set({ status }),
   setBox: (box) => set({ box }),
+  setMarquee: (marquee) => set({ marquee }),
+  setLasso: (polygon, time, fps = 30) => {
+    const prompts = lassoPrompts(polygon);
+    if (!prompts) return false;
+    const half = 0.5 / Math.max(1, fps);
+    set((s) => ({
+      box: null,
+      strokes: [
+        ...s.strokes.filter((x) => x.time !== undefined && Math.abs(x.time - time) > half),
+        { id: `roto_${++seq}`, kind: 'fg', points: prompts.inside, time },
+        { id: `roto_${++seq}`, kind: 'bg', points: prompts.outside, time },
+      ],
+    }));
+    return true;
+  },
   addPoint: (p, time, mode, fps = 30) => {
     const stroke: RotoStroke = { id: `roto_${++seq}`, kind: mode === 'subtract' ? 'bg' : 'fg', points: [p], time };
     const half = 0.5 / Math.max(1, fps);

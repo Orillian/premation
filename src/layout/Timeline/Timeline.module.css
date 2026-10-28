@@ -2676,3 +2676,15 @@
   outline: 1px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
+
+/* Object Matte: the frames a selection has been propagated to (AE 26's green
+   segments along the bottom of the layer bar). Above the clip, under the
+   keyframes; never takes the pointer. */
+.matteSpan {
+  position: absolute;
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--color-success);
+  pointer-events: none;
+  z-index: 3;
+}

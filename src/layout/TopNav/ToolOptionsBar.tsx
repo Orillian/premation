@@ -405,6 +405,7 @@ function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean })
   const progress = useRotoBrushStore((s) => s.progress);
   const nodeId = useRotoBrushStore((s) => s.nodeId);
   const box = useRotoBrushStore((s) => s.box);
+  const marquee = useRotoBrushStore((s) => s.marquee);
 
   // Re-read on every document change: frozen is the matte mask's own name.
   const rotoTree = useMirrorTree(nodeId);
@@ -477,11 +478,32 @@ function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean })
   return (
     <>
       <span className={styles.optLabel}>{objectMatteTool ? t('topNav.roto.objectMatteLabel', 'Object Matte') : t('topNav.roto.label', 'Roto')}</span>
-      {objectMatteTool ? (
+      {objectMatteTool ? (<>
+        {/* AE's marquee modes for the drag: Rectangle or Lasso. */}
+        <div className={styles.kinds} role="group" aria-label={t('topNav.roto.marqueeGroup', 'Marquee')}>
+          <button
+            type="button"
+            className={marquee === 'rect' ? styles.kindActive : styles.kind}
+            aria-pressed={marquee === 'rect'}
+            title={t('topNav.roto.marqueeRectTitle', 'Drag a rectangle around the subject')}
+            onClick={() => useRotoBrushStore.getState().setMarquee('rect')}
+          >
+            {t('topNav.roto.marqueeRect', 'Rectangle')}
+          </button>
+          <button
+            type="button"
+            className={marquee === 'lasso' ? styles.kindActive : styles.kind}
+            aria-pressed={marquee === 'lasso'}
+            title={t('topNav.roto.marqueeLassoTitle', 'Drag a loop around the subject: what is inside it is selected')}
+            onClick={() => useRotoBrushStore.getState().setMarquee('lasso')}
+          >
+            {t('topNav.roto.marqueeLasso', 'Lasso')}
+          </button>
+        </div>
         <span className={styles.hint} title={t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}>
           {t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}
         </span>
-      ) : (<>
+      </>) : (<>
       <div className={styles.kinds} role="group" aria-label={t('topNav.roto.strokeGroup', 'Roto brush stroke')}>
         {rotoStrokeKinds().map(({ kind: k, label, hint }) => (
           <button

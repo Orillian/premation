@@ -164,8 +164,11 @@ async function singleFrameSpec(
   const box = rect && rect.width > 1 && rect.height > 1 ? rect : null;
   if (prompts.fg.length === 0 && !box) return null;
   // The tool's previous paths go: the one it wrote last (by id) and any other it left (by name).
-  const replace = new Set<string>(opts.replacePathId ? [opts.replacePathId] : []);
-  for (const m of mirrorMaskHeaders(documentMirror().tree(nodeId))) if (m.name === ROTO_PATH_NAME) replace.add(m.id);
+  // Only masks still on the layer: a propagation or an undo may have taken the
+  // remembered one away, and naming a missing mask fails the whole job.
+  const headers = mirrorMaskHeaders(documentMirror().tree(nodeId));
+  const replace = new Set<string>(opts.replacePathId && headers.some((m) => m.id === opts.replacePathId) ? [opts.replacePathId] : []);
+  for (const m of headers) if (m.name === ROTO_PATH_NAME) replace.add(m.id);
   return {
     kind: 'objectMatte',
     value: {

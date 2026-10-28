@@ -54,6 +54,7 @@ import { useUIStore } from '@stores/uiStore';
 import { EnginePaneSurface } from '@components/EngineSurface/EnginePaneSurface';
 import { LayerMaskEditor } from './LayerMaskEditor';
 import { LayerPaintSurface } from './LayerPaintSurface';
+import { ObjectMatteOverlay } from '@layout/Workspace/ObjectMatteOverlay';
 import { LayerPaintSelect } from './LayerPaintSelect';
 import { canOpenLayerComposition } from './openLayer';
 import { openLayerComposition } from '@layout/Composition/compNavigationEdits';
@@ -702,6 +703,10 @@ export function LayerViewer(): JSX.Element | null {
         ) : null}
         {overlayHost && showTracker && trackedHere ? (
           <div className={styles.hosted}><TrackPointOverlay host={overlayHost} /></div>
+        ) : null}
+        {/* Object Matte in the Layer panel, as in AE 26 (the gate renders nothing for other tools). */}
+        {overlayHost ? (
+          <div className={styles.hosted}><ObjectMatteOverlay host={{ mapping: overlayHost.mapping, nodeId, time: renderCompTime }} /></div>
         ) : null}
         {view && showRulers ? (
           <ViewerRulers

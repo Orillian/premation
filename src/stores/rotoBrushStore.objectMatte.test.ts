@@ -4,7 +4,7 @@
  * adds, Alt subtracts; a box is layer-local and converts to the job's Rect.
  */
 
-import { useRotoBrushStore } from './rotoBrushStore';
+import { lassoPrompts, useRotoBrushStore } from './rotoBrushStore';
 import { boxAt, boxToRect } from '@core/workspace/rotoBrushTool';
 
 beforeEach(() => {
@@ -48,4 +48,20 @@ it('a layer change drops the box with the strokes', () => {
   s.setBox({ x0: 0, y0: 0, x1: 1, y1: 1, time: 0 });
   s.setNode('other');
   expect(useRotoBrushStore.getState().box).toBeNull();
+});
+
+it('a lasso becomes points inside it and points just outside its edge, replacing this frame', () => {
+  const s = useRotoBrushStore.getState();
+  s.addPoint({ x: 9, y: 9 }, 0, 'new');
+  const square = [{ x: -50, y: -50 }, { x: 50, y: -50 }, { x: 50, y: 50 }, { x: -50, y: 50 }];
+  expect(s.setLasso(square, 0)).toBe(true);
+  const strokes = useRotoBrushStore.getState().strokes;
+  expect(strokes.map((x) => x.kind)).toEqual(['fg', 'bg']);
+  for (const p of strokes[0]!.points) expect(Math.abs(p.x) < 50 && Math.abs(p.y) < 50).toBe(true);
+  for (const p of strokes[1]!.points) expect(Math.max(Math.abs(p.x), Math.abs(p.y))).toBeGreaterThan(50);
+});
+
+it('refuses a lasso with no inside', () => {
+  expect(lassoPrompts([{ x: 0, y: 0 }, { x: 10, y: 0 }])).toBeNull();
+  expect(lassoPrompts([{ x: 0, y: 0 }, { x: 100, y: 1 }, { x: 200, y: 0 }])).toBeNull();
 });

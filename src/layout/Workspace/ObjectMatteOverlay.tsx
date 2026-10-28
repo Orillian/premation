@@ -7,7 +7,8 @@
  *                frame is segmented from the click
  *   Shift-click  add to the selection (a foreground point)
  *   Alt-click    subtract from it (a background point)
- *   drag         a box around the subject (AE's Rectangle marquee)
+ *   drag         a box around the subject, or a lasso (AE's Rectangle /
+ *                Lasso marquee, picked on the options bar)
  *
  * The prompts are the Roto Brush's (`rotoBrushStore`: a click is a one-point
  * stroke, the box rides beside them), so the tool options' Propagate, Refine
@@ -34,6 +35,7 @@ import { explainObjectMatteError } from '@core/tracking/samModelInstall';
 import { settingsFps } from '@core/mirror/compFacts';
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
+import type { LayerScreenMapping } from './layerScreen';
 import { useDisplayedCamera2D } from './useOverlayView';
 import { autoInstallObjectMatte, offerSam2Tracking } from '@layout/Settings/objectMatteJob';
 import styles from './ObjectMatteOverlay.module.css';
@@ -43,6 +45,8 @@ import { t } from '@core/i18n';
 const HOVER_MS = 300;
 /** How long the playhead rests on a frame before it is warmed (scrubbing warms nothing). */
 const WARM_MS = 250;
+/** The frame last warmed, shared: the Composition viewer and the Layer panel warm it once between them. */
+let warmedFrame: string | null = null;
 /** A press that moves further than this is a box, not a click. */
 const DRAG_PX = 4;
 /** A click this close (layer px) to the previewed point applies the held preview. */
@@ -72,15 +76,28 @@ function reportFailure(err: unknown): void {
  * up a drag or a played frame re-renders nothing of this overlay (the inner
  * part reads the time and the document revision).
  */
-export function ObjectMatteOverlay(): JSX.Element | null {
-  const on = useUIStore((s) => s.activeTool === 'object-matte');
-  return on ? <ObjectMatteOverlayActive /> : null;
+/**
+ * Where the overlay is hosted when it is not the Composition viewer's: the
+ * Layer panel passes its own camera (layer-local px ↔ its stage), the layer
+ * it shows and the composition time of the frame on screen. AE's Object Matte
+ * works in the Layer panel; here it works in both.
+ */
+export interface ObjectMatteHost {
+  mapping: LayerScreenMapping;
+  nodeId: string;
+  time: number;
 }
 
-function ObjectMatteOverlayActive(): JSX.Element | null {
+export function ObjectMatteOverlay({ host }: { host?: ObjectMatteHost } = {}): JSX.Element | null {
+  const on = useUIStore((s) => s.activeTool === 'object-matte');
+  return on ? <ObjectMatteOverlayActive host={host} /> : null;
+}
+
+function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Element | null {
   const activeTool = useUIStore((s) => s.activeTool);
   const ids = useSelectionStore((s) => s.ids);
-  const time = useCurrentTime();
+  const playhead = useCurrentTime();
+  const time = host ? host.time : playhead;
   const comp = useActiveCompSize();
   const sceneTick = useMirrorRevisionFrame();
   const busy = useRotoBrushStore((s) => s.busy);
@@ -88,12 +105,13 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
   const box = useRotoBrushStore((s) => s.box);
 
   const active = activeTool === 'object-matte';
-  const nodeId = ids.length === 1 ? ids[0]! : null;
+  const nodeId = host ? host.nodeId : ids.length === 1 ? ids[0]! : null;
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [looking, setLooking] = useState(false);
-  const [drag, setDrag] = useState<{ from: Pt; to: Pt } | null>(null);
+  const [drag, setDrag] = useState<{ from: Pt; to: Pt; path: Pt[] } | null>(null);
+  const marquee = useRotoBrushStore((s) => s.marquee);
   const pressRef = useRef<{ from: Pt; client: Pt; shift: boolean; alt: boolean } | null>(null);
   const hoverTimer = useRef<number | null>(null);
   // Bumped by every move: a preview that comes back for an older pointer position is stale.
@@ -109,7 +127,10 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
   }, [active]);
 
   const camera = useDisplayedCamera2D();
-  const mapping = useLayerScreenMapping(nodeId, time, comp, camera, sceneTick);
+  // Hosted: the host's camera. The comp viewer's projection is still asked for
+  // (hooks run unconditionally) but for no layer, so it subscribes to nothing.
+  const compMapping = useLayerScreenMapping(host ? null : nodeId, time, comp, camera, sceneTick);
+  const mapping = host ? host.mapping : compMapping;
 
   const toLocal = useCallback(
     (clientX: number, clientY: number): Pt | null => {
@@ -138,14 +159,13 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
   // (the slow half of SAM), so segmenting the frame once as soon as the tool
   // rests on it makes the first real hover a decoder-only pass. Its result is
   // dropped; nothing is written.
-  const warmed = useRef<string | null>(null);
   useEffect(() => {
     if (!active || !nodeId) return;
     const key = `${nodeId}@${time}`;
-    if (warmed.current === key) return;
+    if (warmedFrame === key) return;
     const timer = window.setTimeout(() => {
-      if (useRotoBrushStore.getState().busy) return;
-      warmed.current = key;
+      if (useRotoBrushStore.getState().busy || warmedFrame === key) return;
+      warmedFrame = key;
       const probe = [{ id: 'warm', kind: 'fg' as const, points: [{ x: 0, y: 0 }], time }];
       void previewObjectMatte(nodeId, probe, time).then((p) => p?.discard()).catch(() => undefined);
     }, WARM_MS);
@@ -266,6 +286,8 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
     const c = [toScreen(a.x, a.y), toScreen(b.x, a.y), toScreen(b.x, b.y), toScreen(a.x, b.y)];
     return `M ${c.map((q) => `${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' L ')} Z`;
   };
+  const lassoPath = (pts: readonly Pt[]): string =>
+    pts.length < 2 ? '' : `${pts.map((q, i) => { const s = toScreen(q.x, q.y); return `${i === 0 ? 'M' : 'L'} ${s.x.toFixed(1)} ${s.y.toFixed(1)}`; }).join(' ')} Z`;
   const shownBox = drag ?? (boxAt(box, time, fps()) ? { from: { x: box!.x0, y: box!.y0 }, to: { x: box!.x1, y: box!.y1 } } : null);
 
   const message = !nodeId
@@ -273,7 +295,9 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
     : status ?? (looking
       ? t('workspace.objectMatte.looking', 'Looking…')
       : hover
-        ? t('workspace.objectMatte.clickToSelect', 'Click to select · Shift-click adds · Alt-click subtracts · drag for a box')
+        ? (marquee === 'lasso'
+          ? t('workspace.objectMatte.clickToSelectLasso', 'Click to select · Shift-click adds · Alt-click subtracts · drag a lasso')
+          : t('workspace.objectMatte.clickToSelect', 'Click to select · Shift-click adds · Alt-click subtracts · drag for a box'))
         : null);
 
   return (
@@ -296,7 +320,7 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
         if (press) {
           if (drag || Math.hypot(e.clientX - press.client.x, e.clientY - press.client.y) > DRAG_PX) {
             if (!drag) clearHover();
-            setDrag({ from: press.from, to: p });
+            setDrag((d) => ({ from: press.from, to: p, path: d ? (Math.hypot(p.x - d.path[d.path.length - 1]!.x, p.y - d.path[d.path.length - 1]!.y) > 1 ? [...d.path, p] : d.path) : [press.from, p] }));
           }
           return;
         }
@@ -313,6 +337,14 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
         if (drag) {
           const d = drag;
           setDrag(null);
+          if (marquee === 'lasso') {
+            if (!useRotoBrushStore.getState().setLasso(d.path, time, fps())) {
+              useRotoBrushStore.getState().setStatus(t('workspace.objectMatte.lassoEmpty', 'Draw the lasso around the subject (a closed loop).'));
+              return;
+            }
+            segment();
+            return;
+          }
           if (Math.abs(d.to.x - d.from.x) < 2 || Math.abs(d.to.y - d.from.y) < 2) return;
           const store = useRotoBrushStore.getState();
           // A box starts the selection over on this frame (it wins over points in the engine).
@@ -334,7 +366,9 @@ function ObjectMatteOverlayActive(): JSX.Element | null {
         {hover && (
           <path className={styles.preview} d={outlinePath(hover.preview.outline)} />
         )}
-        {shownBox && (
+        {drag && marquee === 'lasso' ? (
+          <path className={styles.box} d={lassoPath(drag.path)} />
+        ) : shownBox && (
           <path className={styles.box} d={rectPath(shownBox.from, shownBox.to)} />
         )}
       </svg>

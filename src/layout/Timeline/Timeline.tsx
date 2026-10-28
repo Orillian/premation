@@ -89,6 +89,7 @@ import { MARKER_LANE_HEIGHT } from './markerGeometry';
 import { TranscriptLane } from './TranscriptLane';
 import { TRANSCRIPT_LANE_HEIGHT } from './transcriptGeometry';
 import { HeatLane } from './HeatLane';
+import { MatteLane } from './MatteLane';
 import { addCompMarkerAtPlayhead, addLayerMarkersAtPlayhead, installTimelineMarkerCommands } from './markerCommands';
 import { deleteSelectionFromTimeline, installTimelineClipEditCommands, rippleDeleteSelection } from './clipEditCommands';
 import { stickyStackFor } from './stickyStack';
@@ -3403,6 +3404,18 @@ function Timeline({
               trackHeight={trackHeight}
               topPadding={TIMELINE_TOP_PADDING}
               window={timeWindow}
+            />
+
+            {/* Object Matte: green segments where a subject's matte runs (AE 26). */}
+            <MatteLane
+              tracks={model.tracks}
+              trackRowIndex={trackRowIndex}
+              pps={pps}
+              leftOffset={TIMELINE_LEFT_OFFSET}
+              trackHeight={trackHeight}
+              topPadding={TIMELINE_TOP_PADDING}
+              window={timeWindow}
+              fps={model.frameRate || 30}
             />
 
             {/* Marker GUIDES — the full-height line only. The chip you grab
