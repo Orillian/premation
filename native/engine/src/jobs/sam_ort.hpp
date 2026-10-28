@@ -45,14 +45,17 @@ class Models {
   /// `pixels` = preprocess() output (3·1024·1024). False with `error`.
   virtual bool encode(std::span<const float> pixels, Embeddings& out, std::string& error) = 0;
   virtual bool decode(const Embeddings& emb, const Prompts& prompts, Decoded& out, std::string& error) = 0;
+  /// The execution provider the encoder runs on ("dml", "coreml", "cuda", "cpu").
+  [[nodiscard]] virtual std::string provider() const = 0;
 };
 
 /// False in an engine build without ONNX Runtime (load() then always fails).
 [[nodiscard]] bool runtime_available() noexcept;
 
 /// Load the encoder and decoder files. Null with `error` (missing file, not a
-/// model, no runtime in this build).
+/// model, no runtime in this build). `withEncoder` false loads the decoder
+/// only (an embedding-cache hit): encode() then fails.
 [[nodiscard]] std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& decoderPath,
-                                           std::string& error);
+                                           std::string& error, bool withEncoder = true);
 
 }  // namespace premation::jobs::sam

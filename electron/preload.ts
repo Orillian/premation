@@ -188,6 +188,18 @@ const bridge = {
       return () => ipcRenderer.removeListener('handModel:downloadProgress', listener);
     },
   },
+  // Object Matte walks' SAM 2.1 video model (electron/sam2Model.ts): a PINNED download on first use.
+  sam2Model: {
+    status: () => ipcRenderer.invoke('sam2Model:status'),
+    install: (request: { requestId: string }) => ipcRenderer.invoke('sam2Model:install', request),
+    remove: () => ipcRenderer.invoke('sam2Model:remove'),
+    cancelDownload: (requestId: string) => ipcRenderer.invoke('objectMatte:cancelDownload', requestId),
+    onDownloadProgress: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('sam2Model:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('sam2Model:downloadProgress', listener);
+    },
+  },
   // Export's ffmpeg: health, one-click repair, "choose file" (electron/ffmpegService.ts).
   ffmpeg: {
     status: (force?: boolean) => ipcRenderer.invoke('ffmpeg:status', force === true),

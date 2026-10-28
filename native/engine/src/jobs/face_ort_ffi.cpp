@@ -38,8 +38,7 @@ class OrtLandmarks final : public LandmarkModel {
  public:
   explicit OrtLandmarks(const std::string& path)
       : env_(ORT_LOGGING_LEVEL_WARNING, "premation-face"),
-        options_(ort::session_options(provider_)),
-        session_(env_, path_of(path).c_str(), options_),
+        session_(ort::open_session(env_, path_of(path).c_str(), provider_)),
         memory_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {
     Ort::AllocatorWithDefaultOptions alloc;
     inName_ = session_.GetInputNameAllocated(0, alloc).get();
@@ -98,7 +97,6 @@ class OrtLandmarks final : public LandmarkModel {
   static constexpr std::size_t kLandmarks = 468;
   std::string provider_;
   Ort::Env env_;
-  Ort::SessionOptions options_;
   Ort::Session session_;
   Ort::MemoryInfo memory_;
   std::string inName_;

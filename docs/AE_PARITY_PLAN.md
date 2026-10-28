@@ -158,6 +158,14 @@ Editor (`isroil01/premation`) and backend (`isroil01/motion-back`, branch `dev`)
      with a GPU execution provider.
    - Propagate forward, backward, or both. Correction strokes work on any
      frame. Add it to the toolbar.
+   - Status 2026-10-28: the walk runs SAM 2.1 Hiera-Tiny with its memory
+     bank (`src/jobs/sam2_track.hpp`, the square-zero-labs video export) when
+     `<userData>/models/sam2-video` holds it (`electron/sam2Model.ts`, a
+     pinned download awaiting owner approval), SlimSAM per frame otherwise.
+     ONNX Runtime has the DirectML provider on Windows (the
+     `native/vcpkg-overlays/onnxruntime` overlay). Core ML on macOS is wired
+     in the overlay but not built or tried on a Mac yet. No UI install button
+     yet: the IPC is `sam2Model:install`.
 2. **Soft alpha mattes.**
    - Store a per-frame alpha matte, the way Content-Aware Fill frames are
      stored, instead of a path of at most 48/128 points.

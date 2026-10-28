@@ -192,7 +192,8 @@ export async function installModelFiles(
     if (f.sha256 !== null && sha256Hex(res.bytes) !== f.sha256.toLowerCase()) {
       return { ok: false, message: 'The downloaded model does not match its pinned checksum — nothing was installed.' };
     }
-    if (!looksLikeOnnx(res.bytes)) {
+    // A pinned side file (SAM 2's constants.json) is proved by its checksum; only .onnx must parse as one.
+    if (f.name.toLowerCase().endsWith('.onnx') && !looksLikeOnnx(res.bytes)) {
       return { ok: false, message: `The ${label(i)} URL did not return an ONNX model — check it points at the .onnx file itself.` };
     }
     got.push(res.bytes);

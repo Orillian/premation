@@ -38,16 +38,15 @@ Ort::Env& shared_env() {
   return env;
 }
 
-Ort::SessionOptions options_for(bool cpuOnly, std::string& provider) {
+// A live stream: one frame at a time, so on the CPU a couple of threads beat many.
+constexpr int kLiveCpuThreads = 2;
+
+Ort::Session open_for(const std::string& path, bool cpuOnly, std::string& provider) {
   if (cpuOnly) {
-    Ort::SessionOptions o;
-    o.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    // A live stream: one frame at a time, so a couple of threads beat many.
-    o.SetIntraOpNumThreads(2);
     provider = "cpu";
-    return o;
+    return Ort::Session(shared_env(), path_of(path).c_str(), jobs::ort::cpu_options(kLiveCpuThreads));
   }
-  return jobs::ort::session_options(provider);
+  return jobs::ort::open_session(shared_env(), path_of(path).c_str(), provider, kLiveCpuThreads);
 }
 
 std::string shape_text(const std::vector<std::int64_t>& s) {
@@ -61,8 +60,7 @@ std::string shape_text(const std::vector<std::int64_t>& s) {
 class OrtModel final : public Model {
  public:
   OrtModel(const std::string& path, bool cpuOnly)
-      : options_(options_for(cpuOnly, provider_)),
-        session_(shared_env(), path_of(path).c_str(), options_),
+      : session_(open_for(path, cpuOnly, provider_)),
         memory_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {
     Ort::AllocatorWithDefaultOptions alloc;
     inName_ = session_.GetInputNameAllocated(0, alloc).get();
@@ -118,7 +116,6 @@ class OrtModel final : public Model {
 
  private:
   std::string provider_;
-  Ort::SessionOptions options_;
   Ort::Session session_;
   Ort::MemoryInfo memory_;
   std::string inName_;

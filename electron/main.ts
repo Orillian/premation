@@ -1497,6 +1497,7 @@ app.whenReady().then(() => {
     faceUserDir: modelUserDir(app.getPath('userData'), 'face-landmarks'),
     depthUserDir: modelUserDir(app.getPath('userData'), 'depth-anything'),
     handUserDir: modelUserDir(app.getPath('userData'), 'hand-landmarks'),
+    sam2UserDir: modelUserDir(app.getPath('userData'), 'sam2-video'),
     userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>

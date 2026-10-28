@@ -37,7 +37,8 @@ extraResources:
   # scripts/stageEngine.cjs (the beforePack hook below) stages the build for
   # this platform + arch into build/engine/ and fails the package when it is
   # missing (docs/TS_ENGINE_REMOVAL.md: one engine). Beside it:
-  #   Windows  dxcompiler.dll + dxil.dll — Dawn loads DXC at runtime
+  #   Windows  dxcompiler.dll + dxil.dll — Dawn loads DXC at runtime;
+  #            DirectML.dll — ONNX Runtime's GPU provider for the ML jobs
   #   macOS    premation-host-bridge.node — main's IOSurface lookup (route C)
   #   Linux    any shared libraries the engine was linked against (*.so, *.so.N)
   - from: build/engine
