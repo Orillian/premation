@@ -213,6 +213,10 @@ struct RLayer {
   std::optional<std::string> assetId;
   /// A content-aware fill frame (a still `data:` URL) standing in for the footage.
   std::optional<std::string> contentAwareFillSrc;
+  /// The Object Matte frame (setLayerMatte) nearest the layer's time, when an
+  /// effect reads it as a matte (effects_spatial.hpp reads_own_object_matte)
+  /// instead of it standing in for the footage.
+  std::optional<std::string> objectMatteSrc;
   std::optional<std::array<double, 4>> uvRect;
   bool premultipliedSource = false;
   /// Interpret Footage ▸ Remove Pulldown (buildSnapshot `pulldownSource`): the

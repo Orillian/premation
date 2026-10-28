@@ -114,6 +114,19 @@ Each row: type id · what makes it deep · foundation.
 | 55 | `bend-it` CC Bend It | AE's: bends the layer along a start / end line | [x] |
 | 56 | `bender` CC Bender | AE's: marionette / bend / sharp bend between top and base | [x] |
 
+### Batch 8 — on an Object Matte (2026-10-28)
+| # | Effect | Depth | |
+|---|---|---|---|
+| 57 | `matte-stroke` Matte Stroke | an outline around a matte (this layer's alpha, or a Matte Layer's) from its jump-flood distance field (the graph's `field` op = the Alpha Stroke style's fx_distance.cpp), so a soft per-frame Object Matte with no contour strokes cleanly: outside / center / inside, softness, glow (Gaussian of the band), dashes by the contour's angle about the matte's centroid (a 256-column reduction; a whole number of periods round the circle of the matte's own area, so no seam; Offset marches them), on original / on transparent | [x] |
+| 58 | `selective-color-ai` Selective Color (AI) | hue / saturation / lightness + colorize in linear light, unclamped, confined to a matte or its outside: a Matte Layer's alpha, or the layer's own Object Matte frame (`alphaMatte`) read as a texture through the layer's placement — the layer is then NOT cut out by it (snapshot_build `objectMatteSrc`); the matte choked by its distance field, feathered by a Gaussian | [x] |
+
+Matte Stroke differs from the Alpha Stroke style (`stroke`: width / colour /
+opacity / position on the layer's alpha) by its matte source, softness, glow,
+dashes and composite; Selective Color (AI) from Hue/Saturation, Change to
+Color, Tint and Colorama by its matte. Covered by
+`src/core/engine/matteEffects.native.test.ts` and the goldens
+`effect-matte-stroke`, `effect-selective-color-ai`.
+
 ## Status (2026-10-19)
 
 All 56 landed (batches 1–5 with X0 / X1, batches 6–7 with X2). Every one is covered by

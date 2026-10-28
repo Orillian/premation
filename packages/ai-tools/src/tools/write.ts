@@ -892,7 +892,8 @@ export const addEffectDef: AiToolDef = {
           'pixel-motion-blur', 'time-displacement', 'time-difference', 'time-blend', 'light-trails', 'datamosh',
           'temporal-denoise', 'fluid-ink', 'reaction-diffusion', 'crystal-growth', 'mr-mercury', 'foam', 'hair',
           'rain-on-glass', 'particle-world', 'warp-stabilizer', 'match-grain', 'color-stabilizer',
-          'camera-shake-deblur', 'burn-dissolve', 'liquid-morph', 'bend-it', 'bender',
+          'camera-shake-deblur', 'burn-dissolve', 'liquid-morph', 'bend-it', 'bender', 'matte-stroke',
+          'selective-color-ai',
           // deepfx:ai:end
         ],
       },

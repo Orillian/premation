@@ -716,7 +716,13 @@ void Flattener::feed(const RLayer& l, double parentScale) {
     TextureRequest r;
     r.key = std::move(d.key);
     r.layerId = l.id;
-    if (d.mask.is_object()) {
+    if (!d.src.empty()) {
+      // A still (the layer's Object Matte frame), drawn by the graph through the layer's placement.
+      r.kind = TexKind::media;
+      r.src = std::move(d.src);
+      r.video = false;
+      r.compFps = fps_;
+    } else if (d.mask.is_object()) {
       r.kind = TexKind::mask;
       r.spec = layer_json(l, "mask");
       r.spec.set("mask", std::move(d.mask));

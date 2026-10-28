@@ -10,7 +10,10 @@
 //   g      nums  the passes, each a 10-number header + its rows:
 //                  op  arg  out  in0 in1 in2 in3  blend  flags  nrows  [rows × 4]
 //                op 0 shader (arg = index into mats), 1 blur along x, 2 blur
-//                along y (arg = sigma in layer px; reads in0), 3 copy in0.
+//                along y (arg = sigma in layer px; reads in0), 3 copy in0,
+//                4 the alpha distance field of in0 (fx_distance.hpp; arg =
+//                its range in layer px): r = signed distance to the
+//                1/2-contour in buffer texels (+ outside), g = the alpha.
 //                flags bit 0: keep `out` (no clear); bit 1: the pass reads the
 //                scene depth at binding 6.
 //   out    num   the slot holding the result.

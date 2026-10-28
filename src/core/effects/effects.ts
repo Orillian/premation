@@ -440,6 +440,8 @@ export type EffectType =
   | 'liquid-morph'
   | 'bend-it'
   | 'bender'
+  | 'matte-stroke'
+  | 'selective-color-ai'
   // deepfx:union:end
   | 'scribble';
 
@@ -7024,6 +7026,47 @@ export const EFFECT_DEFS: EffectDef[] = [
       { key: 'topY', label: 'Top Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: -150 },
       { key: 'baseX', label: 'Base X', type: 'number', unit: 'px', min: -100000, max: 100000, default: 0 },
       { key: 'baseY', label: 'Base Y', type: 'number', unit: 'px', min: -100000, max: 100000, default: 150 },
+    ],
+    css: () => '',
+  },
+  {
+    /* An outline around a matte — the layer's own alpha or another layer's (an Object Matte cut-out) — from the matte's jump-flood distance field, so soft per-frame mattes with no contour stroke cleanly: outside / center / inside, softness, glow, marching dashes. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'matte-stroke',
+    label: 'Matte Stroke',
+    gpuOnly: true,
+    params: [
+      { key: 'matteLayerId', label: 'Matte Layer', type: 'layer', noneLabel: 'This Layer\'s Alpha', default: '' },
+      { key: 'color', label: 'Color', type: 'color', default: '#ffffff' },
+      { key: 'width', label: 'Width', type: 'number', unit: 'px', min: 0, max: 500, default: 6 },
+      { key: 'position', label: 'Position', type: 'enum', default: 0, options: [{ value: 0, label: 'Outside' }, { value: 1, label: 'Center' }, { value: 2, label: 'Inside' }] },
+      { key: 'softness', label: 'Softness', type: 'number', unit: 'px', min: 0, max: 200, default: 0 },
+      { key: 'opacity', label: 'Opacity', type: 'number', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'glowAmount', label: 'Glow Amount', type: 'number', group: 'Glow', unit: '%', min: 0, max: 1000, default: 0 },
+      { key: 'glowRadius', label: 'Glow Radius', type: 'number', group: 'Glow', unit: 'px', min: 0, max: 1000, default: 20 },
+      { key: 'dashed', label: 'Dashed', type: 'checkbox', group: 'Dashes', default: false },
+      { key: 'dashLength', label: 'Dash Length', type: 'number', group: 'Dashes', unit: 'px', min: 0, max: 10000, default: 20 },
+      { key: 'gapLength', label: 'Gap Length', type: 'number', group: 'Dashes', unit: 'px', min: 0, max: 10000, default: 12 },
+      { key: 'dashOffset', label: 'Offset', type: 'number', group: 'Dashes', unit: 'px', min: -100000, max: 100000, default: 0 },
+      { key: 'composite', label: 'Composite', type: 'enum', default: 0, options: [{ value: 0, label: 'On Original' }, { value: 1, label: 'On Transparent' }] },
+    ],
+    css: () => '',
+  },
+  {
+    /* Hue / saturation / lightness and colorize confined to a matte — another layer's alpha, or the layer's own Object Matte (read as a matte: the layer is not cut out) — or to everything outside it, in linear light; the matte feathered and choked by its distance field. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'selective-color-ai',
+    label: 'Selective Color (AI)',
+    gpuOnly: true,
+    params: [
+      { key: 'matteLayerId', label: 'Matte Layer', type: 'layer', noneLabel: 'Object Matte (This Layer)', default: '' },
+      { key: 'applyTo', label: 'Apply To', type: 'enum', default: 0, options: [{ value: 0, label: 'Inside Matte' }, { value: 1, label: 'Outside Matte' }] },
+      { key: 'hue', label: 'Hue Shift', type: 'number', unit: '°', min: -180, max: 180, default: 0 },
+      { key: 'saturation', label: 'Saturation', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'lightness', label: 'Lightness', type: 'number', min: -100, max: 100, default: 0 },
+      { key: 'colorize', label: 'Colorize', type: 'checkbox', group: 'Colorize', default: false },
+      { key: 'colorizeColor', label: 'Colorize Color', type: 'color', group: 'Colorize', default: '#ff6a1a' },
+      { key: 'colorizeAmount', label: 'Colorize Amount', type: 'number', group: 'Colorize', unit: '%', min: 0, max: 100, default: 100 },
+      { key: 'matteFeather', label: 'Matte Feather', type: 'number', group: 'Matte', unit: 'px', min: 0, max: 500, default: 0 },
+      { key: 'matteChoke', label: 'Matte Choke', type: 'number', group: 'Matte', unit: 'px', min: -200, max: 200, default: 0 },
     ],
     css: () => '',
   },

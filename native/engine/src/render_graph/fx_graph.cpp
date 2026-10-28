@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "effect_chain.hpp"
+#include "fx_distance.hpp"
 #include "materials.hpp"
 #include "passes.hpp"
 #include "uniforms.hpp"
@@ -23,6 +24,10 @@ constexpr int kOpShader = 0;
 constexpr int kOpBlurX = 1;
 constexpr int kOpBlurY = 2;
 constexpr int kOpCopy = 3;
+constexpr int kOpField = 4;
+static_assert(kOpField == kOpCopy + 1, "the ops are dense: parse() accepts kOpShader..kOpField");
+/// The field op's slot copy (raw: the signed distance is negative inside).
+constexpr std::string_view kFieldCopy = "fxx-copy";
 constexpr unsigned kFlagKeep = 1U;
 constexpr unsigned kFlagDepth = 2U;
 constexpr std::array<std::string_view, 2> kHalf = {"plugin-half1", "plugin-half2"};
@@ -70,7 +75,7 @@ struct Pass {
   int op = 0;
   int arg = 0;
   int out = 0;
-  double argValue = 0;  ///< the blur ops' sigma (layer px)
+  double argValue = 0;  ///< the blur ops' sigma, the field op's range (layer px)
   std::array<int, 4> in{};
   Blend blend = Blend::none;
   unsigned flags = 0;
@@ -102,7 +107,7 @@ std::optional<std::vector<Pass>> parse(std::span<const double> g, std::size_t ma
     p.rows = g.subspan(i + kHeader, nrows * 4);
     i += kHeader + nrows * 4;
     const auto writable = [&](int s) { return simProgram ? is_sim(s) : (s >= kFxgA && s < kFxgMap) || s == kFxgStrip; };
-    if (!writable(p.out) || p.op < kOpShader || p.op > kOpCopy || (p.op == kOpShader && (p.arg < 0 || static_cast<std::size_t>(p.arg) >= mats))) {
+    if (!writable(p.out) || p.op < kOpShader || p.op > kOpField || (p.op == kOpShader && (p.arg < 0 || static_cast<std::size_t>(p.arg) >= mats))) {
       why = "fx-graph: a malformed pass";
       return std::nullopt;
     }
@@ -333,7 +338,7 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
                                                             {5, BindingType::texture, kStageFragment},
                                                             {6, BindingType::unfilterable, kStageFragment}}};
   const auto materialOf = [&](const Pass& p) -> std::optional<Mat> {
-    const std::string_view shader = mats.at(static_cast<std::size_t>(p.arg));
+    const std::string_view shader = p.op == kOpField ? kFieldCopy : mats.at(static_cast<std::size_t>(p.arg));
     const std::string& wgsl = fx_graph_wgsl(shader);
     if (wgsl.empty()) {
       why = "fx-graph: no shader named \"" + std::string(shader) + "\"";
@@ -346,7 +351,7 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
   // shader (or layout) skips this effect, never the frame (device.hpp pipeline_error).
   for (const std::vector<Pass>* list : std::array<const std::vector<Pass>*, 3>{&passes, &simInit, &simStep}) {
     for (const Pass& p : *list) {
-      if (p.op != kOpShader) continue;
+      if (p.op != kOpShader && p.op != kOpField) continue;
       const std::optional<Mat> m = materialOf(p);
       if (!m) return std::nullopt;
       const RenderTarget* target = ctx.target(slot.at(static_cast<std::size_t>(p.out)).name);
@@ -355,7 +360,8 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
         return std::nullopt;
       }
       if (const std::string& err = ctx.dev.pipeline_error(*m, p.blend, target->format); !err.empty()) {
-        why = "fx-graph: " + std::string(mats.at(static_cast<std::size_t>(p.arg))) + ": " + err.substr(0, 400);
+        const std::string_view name = p.op == kOpField ? kFieldCopy : mats.at(static_cast<std::size_t>(p.arg));
+        why = "fx-graph: " + std::string(name) + ": " + err.substr(0, 400);
         return std::nullopt;
       }
     }
@@ -392,6 +398,23 @@ std::optional<FxGraphResult> run_fx_graph(PassContext& ctx, const Fx& fx, const 
       DrawItem& it = cmds.add(Mat::BLUR_MATERIAL, p.blend, pack_blur(ctx.packer(), io.mvp, io.targetUv, dx, dy, sigma));
       it.texture = texOf(p.in[0]);
       it.sampler = ctx.linear_clamp();
+    } else if (p.op == kOpField) {
+      // E4's jump-flood field of in0's alpha (fx_distance.hpp), exact to `arg`
+      // layer px: r = signed distance to the 1/2-contour in buffer texels
+      // (+ outside), g = the alpha. Copied raw into the slot; no field (an
+      // empty input) leaves the slot cleared.
+      const double rangeTex = std::max(1.0, std::max(0.0, p.argValue) * std::max(texPerPxX, texPerPxY));
+      const DistanceField f = distance_field(ctx, texOf(p.in[0]), rangeTex, 0);
+      const std::optional<Mat> copy = materialOf(p);  // validated up front
+      if (f.tex && copy.has_value()) {
+        const std::array<Vec4, kFxgRows + 2> none{};
+        DrawItem& it = cmds.add(copy.value(), Blend::none, pack_fx_block(ctx.packer(), io.mvp, io.targetUv, none, io.fxBox));
+        it.texture = f.tex;
+        it.sampler = ctx.nearest_clamp();
+        it.mask = f.tex;
+        it.origin = f.tex;
+        it.bind(5, f.tex);
+      }
     } else {
       emit_textured(ctx, cmds, io.mvp, Color::white(), 1, p.blend, texOf(p.in[0]), ctx.linear_clamp(), io.targetUv, kIdentityColor, true);
     }

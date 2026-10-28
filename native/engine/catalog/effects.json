@@ -24586,5 +24586,244 @@
         "default": 150
       }
     ]
+  },
+  {
+    "type": "matte-stroke",
+    "label": "Matte Stroke",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "matteLayerId",
+        "label": "Matte Layer",
+        "type": "layer",
+        "noneLabel": "This Layer's Alpha",
+        "default": ""
+      },
+      {
+        "key": "color",
+        "label": "Color",
+        "type": "color",
+        "default": "#ffffff"
+      },
+      {
+        "key": "width",
+        "label": "Width",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 500,
+        "default": 6
+      },
+      {
+        "key": "position",
+        "label": "Position",
+        "type": "enum",
+        "options": [
+          {
+            "value": 0,
+            "label": "Outside"
+          },
+          {
+            "value": 1,
+            "label": "Center"
+          },
+          {
+            "value": 2,
+            "label": "Inside"
+          }
+        ],
+        "default": 0
+      },
+      {
+        "key": "softness",
+        "label": "Softness",
+        "type": "number",
+        "unit": "px",
+        "min": 0,
+        "max": 200,
+        "default": 0
+      },
+      {
+        "key": "opacity",
+        "label": "Opacity",
+        "type": "number",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 100
+      },
+      {
+        "key": "glowAmount",
+        "label": "Glow Amount",
+        "type": "number",
+        "group": "Glow",
+        "unit": "%",
+        "min": 0,
+        "max": 1000,
+        "default": 0
+      },
+      {
+        "key": "glowRadius",
+        "label": "Glow Radius",
+        "type": "number",
+        "group": "Glow",
+        "unit": "px",
+        "min": 0,
+        "max": 1000,
+        "default": 20
+      },
+      {
+        "key": "dashed",
+        "label": "Dashed",
+        "type": "checkbox",
+        "group": "Dashes",
+        "default": false
+      },
+      {
+        "key": "dashLength",
+        "label": "Dash Length",
+        "type": "number",
+        "group": "Dashes",
+        "unit": "px",
+        "min": 0,
+        "max": 10000,
+        "default": 20
+      },
+      {
+        "key": "gapLength",
+        "label": "Gap Length",
+        "type": "number",
+        "group": "Dashes",
+        "unit": "px",
+        "min": 0,
+        "max": 10000,
+        "default": 12
+      },
+      {
+        "key": "dashOffset",
+        "label": "Offset",
+        "type": "number",
+        "group": "Dashes",
+        "unit": "px",
+        "min": -100000,
+        "max": 100000,
+        "default": 0
+      },
+      {
+        "key": "composite",
+        "label": "Composite",
+        "type": "enum",
+        "options": [
+          {
+            "value": 0,
+            "label": "On Original"
+          },
+          {
+            "value": 1,
+            "label": "On Transparent"
+          }
+        ],
+        "default": 0
+      }
+    ]
+  },
+  {
+    "type": "selective-color-ai",
+    "label": "Selective Color (AI)",
+    "gpuOnly": true,
+    "params": [
+      {
+        "key": "matteLayerId",
+        "label": "Matte Layer",
+        "type": "layer",
+        "noneLabel": "Object Matte (This Layer)",
+        "default": ""
+      },
+      {
+        "key": "applyTo",
+        "label": "Apply To",
+        "type": "enum",
+        "options": [
+          {
+            "value": 0,
+            "label": "Inside Matte"
+          },
+          {
+            "value": 1,
+            "label": "Outside Matte"
+          }
+        ],
+        "default": 0
+      },
+      {
+        "key": "hue",
+        "label": "Hue Shift",
+        "type": "number",
+        "unit": "°",
+        "min": -180,
+        "max": 180,
+        "default": 0
+      },
+      {
+        "key": "saturation",
+        "label": "Saturation",
+        "type": "number",
+        "min": -100,
+        "max": 100,
+        "default": 0
+      },
+      {
+        "key": "lightness",
+        "label": "Lightness",
+        "type": "number",
+        "min": -100,
+        "max": 100,
+        "default": 0
+      },
+      {
+        "key": "colorize",
+        "label": "Colorize",
+        "type": "checkbox",
+        "group": "Colorize",
+        "default": false
+      },
+      {
+        "key": "colorizeColor",
+        "label": "Colorize Color",
+        "type": "color",
+        "group": "Colorize",
+        "default": "#ff6a1a"
+      },
+      {
+        "key": "colorizeAmount",
+        "label": "Colorize Amount",
+        "type": "number",
+        "group": "Colorize",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "default": 100
+      },
+      {
+        "key": "matteFeather",
+        "label": "Matte Feather",
+        "type": "number",
+        "group": "Matte",
+        "unit": "px",
+        "min": 0,
+        "max": 500,
+        "default": 0
+      },
+      {
+        "key": "matteChoke",
+        "label": "Matte Choke",
+        "type": "number",
+        "group": "Matte",
+        "unit": "px",
+        "min": -200,
+        "max": 200,
+        "default": 0
+      }
+    ]
   }
 ]

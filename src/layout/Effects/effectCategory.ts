@@ -407,6 +407,8 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'liquid-morph': 'Transition',
   'bend-it': 'Distort',
   'bender': 'Distort',
+  'matte-stroke': 'Stylize',
+  'selective-color-ai': 'Color Correction',
   // deepfx:category:end
 };
 
