@@ -94,6 +94,7 @@ constexpr auto kHandled = std::to_array<std::string_view>({
     // Batch 8 - on an Object Matte.
     "matte-stroke",
     "selective-color-ai",
+    "object-matte",
 });
 
 /// The deep effects whose pixels move with the layer clock (`time`) — kept as
@@ -1622,6 +1623,33 @@ api::RenderEffect selective_color_ai(const Params& P, Box b, const Ctx& c) {
   return g.done(fxg::A, 0.0);
 }
 
+// Object Matte (After Effects' Object Matte card): the layer cut by its own
+// stored Object Matte frame (fed as a texture, as Selective Color (AI) reads
+// it). Fine-tune: Shift Edge moves the edge along the matte's distance field
+// (a percentage of the Feather, at least 10 px: + grows), Feather blurs it
+// (Gaussian), Contrast steepens it; Invert keeps the background. The
+// propagation controls (Quality, Edge Radius, Decontaminate, Motion Blur,
+// Reduce Chatter, Render Refine Edge) were baked into the frames: they are
+// read by the next propagation, not here. No frame: the chain keeps its input.
+void object_matte(const Params& P, Box b, const Ctx& c, Out& out) {
+  if (!c.l.objectMatteSrc) return;
+  Graph g("object-matte", b.lw, b.lh);
+  g.mask(0, object_matte_key(c.l.id));
+  const int src = fxg::MASK0;
+  const bool fine = P.on("fineTune");
+  const double feather = fine ? std::max(0.0, P.n("feather")) : 0.0;
+  const double shift = fine ? clampd(P.n("shiftEdge"), -100, 100) / 100 * std::max(10.0, feather) : 0.0;
+  const bool shifted = std::abs(shift) > 1e-3;
+  if (shifted) g.field(fxg::X0, src, std::abs(shift) + 2);
+  g.pass("fxx-selcol-matte", fxg::X1, {src, shifted ? fxg::X0 : src, -1, -1}, Rows().r(-shift, shifted ? 1 : 0, 0, 0));
+  if (feather > 0) g.blur(fxg::X1, fxg::X1, feather * 0.5, fxg::X2);
+  const bool invert = P.on("invert");
+  // The subject keeps the cut-out's own colour (decontaminated or not, as the
+  // propagation made it); inverted, the background is the footage's.
+  g.pass("fxx-omatte", fxg::A, {fxg::IN, fxg::X1, src, -1}, Rows().r(fine ? clampd(P.pct("contrast"), 0, 1) : 0, invert ? 1 : 0, invert ? 0 : 1, 0));
+  out.push_back(g.done(fxg::A, 0.0));
+}
+
 bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   if (t == "lens-bloom") out.push_back(lens_bloom(P, b));
   else if (t == "shine") out.push_back(shine(P, b));
@@ -1686,6 +1714,7 @@ bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   else if (t == "bender") out.push_back(bender(P, b));
   else if (t == "matte-stroke") out.push_back(matte_stroke(P, b));
   else if (t == "selective-color-ai") out.push_back(selective_color_ai(P, b, c));
+  else if (t == "object-matte") object_matte(P, b, c, out);
   else return false;
   return true;
 }
@@ -1744,7 +1773,7 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
         std::vector<float> d = stroke3d_data(P, l, *path);
         if (!d.empty()) out.push_back({data_key(c, "stroke"), Json(), std::move(d), {}});
       }
-    } else if (t == "selective-color-ai" && P.layer("matteLayerId").empty() && l.objectMatteSrc) {
+    } else if (((t == "selective-color-ai" && P.layer("matteLayerId").empty()) || t == "object-matte") && l.objectMatteSrc) {
       // The layer's own Object Matte frame, read as a matte (one texture however many effects read it).
       std::string key = object_matte_key(l.id);
       if (std::ranges::none_of(out, [&](const DeepFxTexture& d) { return d.key == key; })) out.push_back({std::move(key), Json(), {}, *l.objectMatteSrc});
@@ -1757,7 +1786,9 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
 
 bool reads_own_object_matte(const RLayer& l) {
   return std::ranges::any_of(l.effects, [](const Json& e) {
-    if (!effect_enabled(e) || !e.at("type").is_string() || e.at("type").str() != "selective-color-ai") return false;
+    if (!effect_enabled(e) || !e.at("type").is_string()) return false;
+    if (e.at("type").str() == "object-matte") return true;
+    if (e.at("type").str() != "selective-color-ai") return false;
     const Json params = doc::params_of(e);
     return Params{params}.layer("matteLayerId").empty();
   });

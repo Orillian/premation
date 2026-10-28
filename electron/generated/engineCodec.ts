@@ -7912,6 +7912,8 @@ function encS_SetViewport(w: Writer, v: T.SetViewport): void {
   if (v.layerAlphaView !== undefined) { w.varint(154); w.str(v.layerAlphaView); }
   if (v.clipToComp !== undefined) { w.varint(160); w.bool(v.clipToComp); }
   if (v.groundGrid !== undefined) { w.varint(168); w.bool(v.groundGrid); }
+  if (v.layerAlphaOverlayColor !== undefined) { w.varint(178); w.str(v.layerAlphaOverlayColor); }
+  if (v.layerAlphaOverlayOpacity !== undefined) { w.varint(185); w.f64(v.layerAlphaOverlayOpacity); }
 }
 function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let h_viewport = false;
@@ -7946,6 +7948,8 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   let v_layerAlphaView: string | undefined;
   let v_clipToComp: boolean | undefined;
   let v_groundGrid: boolean | undefined;
+  let v_layerAlphaOverlayColor: string | undefined;
+  let v_layerAlphaOverlayOpacity: number | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -7970,6 +7974,8 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
       case 154: v_layerAlphaView = r.str(); break;
       case 160: v_clipToComp = r.bool(); break;
       case 168: v_groundGrid = r.bool(); break;
+      case 178: v_layerAlphaOverlayColor = r.str(); break;
+      case 185: v_layerAlphaOverlayOpacity = r.f64(); break;
       default: r.skip(key);
     }
   }
@@ -8006,6 +8012,8 @@ function decS_SetViewport(r: Reader, end: number, o: any): T.SetViewport {
   if (v_layerAlphaView !== undefined) o.layerAlphaView = v_layerAlphaView;
   if (v_clipToComp !== undefined) o.clipToComp = v_clipToComp;
   if (v_groundGrid !== undefined) o.groundGrid = v_groundGrid;
+  if (v_layerAlphaOverlayColor !== undefined) o.layerAlphaOverlayColor = v_layerAlphaOverlayColor;
+  if (v_layerAlphaOverlayOpacity !== undefined) o.layerAlphaOverlayOpacity = v_layerAlphaOverlayOpacity;
   return o;
 }
 function encS_CloseViewport(w: Writer, v: T.CloseViewport): void {

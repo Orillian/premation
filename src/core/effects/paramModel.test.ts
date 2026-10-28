@@ -30,8 +30,11 @@ describe('enum params', () => {
   it('every enum declares options', () => {
     // An enum with no options renders an empty menu — a control the user can
     // look at and not use. Reported as {effect, key} so a failure names it.
+    // One option is a READ-ONLY readout (Effect Controls disables the menu):
+    // Object Matte's Version, as After Effects shows it. Listed, not inferred.
+    const readouts = new Set(['object-matte.version']);
     const bare = enums
-      .filter(({ param }) => (param.options?.length ?? 0) < 2)
+      .filter(({ effect, param }) => (param.options?.length ?? 0) < (readouts.has(`${effect}.${param.key}`) ? 1 : 2))
       .map(({ effect, param }) => `${effect}.${param.key}`);
     expect(bare).toEqual([]);
   });

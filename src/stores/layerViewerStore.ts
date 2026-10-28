@@ -42,6 +42,9 @@ export interface LayerViewerState {
    * layer as it is. The engine draws them (setViewport `layerAlphaView`).
    */
   alphaView: LayerAlphaView;
+  /** Alpha Overlay's tint (`#rrggbb`, AE's default magenta) and its opacity, 0–100 %. */
+  overlayColor: string;
+  overlayOpacity: number;
   /**
    * Exposure, in stops: how the VIEWER shows the picture (to look into
    * shadows or highlights). Never part of the render.
@@ -58,6 +61,9 @@ export interface LayerViewerState {
   open: (nodeId: string) => void;
   close: () => void;
   setView: (patch: Partial<Pick<LayerViewerState, 'render' | 'showMasks' | 'showAnchor' | 'showTracker' | 'showEffectPoints' | 'alphaView'>>) => void;
+  /** Alt+4 / 5 / 6 (AE): show that matte view, or the layer as it is when it is already on. */
+  toggleAlphaView: (view: Exclude<LayerAlphaView, 'off'>) => void;
+  setOverlay: (patch: { color?: string; opacity?: number }) => void;
   setExposure: (stops: number) => void;
   setRulers: (on: boolean) => void;
   setGuides: (guides: { x: readonly number[]; y: readonly number[] }) => void;
@@ -73,6 +79,8 @@ export const useLayerViewerStore = create<LayerViewerState>((set) => ({
   showTracker: true,
   showEffectPoints: true,
   alphaView: 'off',
+  overlayColor: '#ff3df5',
+  overlayOpacity: 50,
   exposure: 0,
   showRulers: false,
   guides: { x: [], y: [] },
@@ -82,6 +90,11 @@ export const useLayerViewerStore = create<LayerViewerState>((set) => ({
   open: (nodeId) => set((s) => (s.nodeId === nodeId ? s : { nodeId, maskSelection: null, guides: { x: [], y: [] } })),
   close: () => set({ nodeId: null, maskSelection: null }),
   setView: (patch) => set(patch),
+  toggleAlphaView: (view) => set((s) => ({ alphaView: s.alphaView === view ? 'off' : view })),
+  setOverlay: ({ color, opacity }) => set((s) => ({
+    overlayColor: color !== undefined && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : s.overlayColor,
+    overlayOpacity: opacity !== undefined && Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) : s.overlayOpacity,
+  })),
   setExposure: (stops) => set({ exposure: Math.max(-8, Math.min(8, Number.isFinite(stops) ? stops : 0)) }),
   setRulers: (showRulers) => set({ showRulers }),
   setGuides: (guides) => set({ guides }),

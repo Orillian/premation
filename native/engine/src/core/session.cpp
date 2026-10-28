@@ -1,6 +1,7 @@
 #include "session.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <thread>
@@ -1207,6 +1208,16 @@ struct ControlVisitor {
           fail(ErrorCode::invalid_argument, "layerAlphaView '" + av + "' is not alpha, boundary or overlay", {.layer = *c.layer});
         }
         v.layerAlphaView = av;
+      }
+      if (c.layer_alpha_overlay_color) {
+        const std::string& col = *c.layer_alpha_overlay_color;
+        const bool hex = col.size() == 7 && col[0] == '#' &&
+                         std::all_of(col.begin() + 1, col.end(), [](char ch) { return std::isxdigit(static_cast<unsigned char>(ch)) != 0; });
+        if (!hex) fail(ErrorCode::invalid_argument, "layerAlphaOverlayColor '" + col + "' is not #rrggbb", {.layer = *c.layer});
+        v.layerAlphaOverlayColor = col;
+      }
+      if (c.layer_alpha_overlay_opacity && std::isfinite(*c.layer_alpha_overlay_opacity)) {
+        v.layerAlphaOverlayOpacity = std::clamp(*c.layer_alpha_overlay_opacity, 0.0, 100.0) / 100;
       }
     } else {
       v.transparencyGrid = c.transparency_grid;

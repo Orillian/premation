@@ -56,6 +56,7 @@ import { LayerMaskEditor } from './LayerMaskEditor';
 import { LayerPaintSurface } from './LayerPaintSurface';
 import { ObjectMatteOverlay } from '@layout/Workspace/ObjectMatteOverlay';
 import { LayerPaintSelect } from './LayerPaintSelect';
+import { MatteViewControls } from './MatteViewControls';
 import { canOpenLayerComposition } from './openLayer';
 import { openLayerComposition } from '@layout/Composition/compNavigationEdits';
 import { TrackPointOverlay, type TrackPointHost } from '@layout/Workspace/TrackPointOverlay';
@@ -160,6 +161,8 @@ export function LayerViewer(): JSX.Element | null {
   const showAnchor = useLayerViewerStore((s) => s.showAnchor);
   const showTracker = useLayerViewerStore((s) => s.showTracker);
   const alphaView = useLayerViewerStore((s) => s.alphaView);
+  const overlayColor = useLayerViewerStore((s) => s.overlayColor);
+  const overlayOpacity = useLayerViewerStore((s) => s.overlayOpacity);
   const exposure = useLayerViewerStore((s) => s.exposure);
   const setExposure = useLayerViewerStore((s) => s.setExposure);
   const showRulers = useLayerViewerStore((s) => s.showRulers);
@@ -287,9 +290,10 @@ export function LayerViewer(): JSX.Element | null {
       id: nodeId,
       renderEffects: renderOn,
       ...(alphaView !== 'off' ? { alphaView } : {}),
+      ...(alphaView === 'overlay' ? { overlayColor, overlayOpacity } : {}),
       ...(heldLayerTime !== null ? { time: renderCompTime, sourceTime: heldLayerTime } : {}),
     } : undefined),
-    [node, nodeId, renderOn, alphaView, heldLayerTime, renderCompTime],
+    [node, nodeId, renderOn, alphaView, overlayColor, overlayOpacity, heldLayerTime, renderCompTime],
   );
 
   // ── Ruler: scrub + In/Out brackets ─────────────────────────────────
@@ -800,6 +804,7 @@ export function LayerViewer(): JSX.Element | null {
           </span>
         </span>
         <span className={styles.readout} title={t('layerViewer.viewer.theLayerSOwnSize', 'The layer’s own size')}>{Math.round(frame.width)} × {Math.round(frame.height)}</span>
+        <MatteViewControls nodeId={nodeId} locked={node.switches.locked} />
         <Dropdown
           placement="top-end"
           items={viewItems}

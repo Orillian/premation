@@ -110,6 +110,7 @@ import { PluginFileField, PluginGradientField, PluginTextField } from './PluginP
 import { isPluginEffectDef, pluginEffectDefsRevision, subscribePluginEffectDefs, type PluginEffectDef } from '@core/inspector/pluginEffectDefs';
 import row from '@layout/Inspector/TextAnimatorControls.module.css';
 import { t } from '@core/i18n';
+import { builtinGroupHint, builtinParamHint } from './builtinParamHints';
 
 /**
  * One parameter line: AE's disclosure gutter, then the row, then whatever the
@@ -438,7 +439,7 @@ function EffectParamControl({
   // it anyway (an older project), so the stopwatch can still take them off.
   const fixed = isPluginEffectDef(def) && def.fixed.has(param.key);
   // SDK 1.2: what the plugin says the param does — the label's tooltip.
-  const description = isPluginEffectDef(def) ? def.descriptions.get(param.key) : undefined;
+  const description = isPluginEffectDef(def) ? def.descriptions.get(param.key) : builtinParamHint(def.type, param.key);
   /** One write of this param: into the open gesture (a drag), else ONE entry. */
   const send = (raw: EffectParamValue): void => {
     e.send(`Set ${label}`, paramCommands(nodeId, effect.id, param, raw, time));
@@ -595,6 +596,8 @@ function EffectParamControl({
             onChange={(ev) => send(Number(ev.currentTarget.value))}
             aria-label={label}
             className={panel.paramSelect}
+            // One choice (Object Matte's Version): a read-only readout.
+            disabled={opts.length <= 1}
           >
             {opts.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -1152,7 +1155,7 @@ export function EffectStack({ nodeId }: { nodeId: string }): JSX.Element {
                     <EffectParamRow key={p.key} nodeId={nodeId} effect={e} def={def} param={p} />
                   ));
                   return section.group
-                    ? <ParamGroup key={`g:${section.group}:${si}`} name={section.group}>{rows}</ParamGroup>
+                    ? <ParamGroup key={`g:${section.group}:${si}`} name={section.group} description={builtinGroupHint(def.type, section.group)}>{rows}</ParamGroup>
                     : <Fragment key={`u:${si}`}>{rows}</Fragment>;
                 })}
                 {e.type === 'liquify' && <LiquifyBrushControls nodeId={nodeId} effectId={e.id} />}

@@ -3079,6 +3079,8 @@ struct SetViewport {
   std::optional<std::string> layer_alpha_view;
   std::optional<bool> clip_to_comp;
   std::optional<bool> ground_grid;
+  std::optional<std::string> layer_alpha_overlay_color;
+  std::optional<double> layer_alpha_overlay_opacity;
   bool operator==(const SetViewport&) const = default;
 };
 

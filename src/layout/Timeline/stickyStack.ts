@@ -31,7 +31,7 @@
 
 /** The minimum this module needs to know about a row. */
 export interface StickyRow {
-  type: 'track' | 'category' | 'prop';
+  type: 'track' | 'category' | 'prop' | 'selection';
   /** Only set for `category` rows. */
   categoryKey?: string;
 }

@@ -2688,3 +2688,13 @@
   pointer-events: none;
   z-index: 3;
 }
+
+/* An Object Matte selection's mode (Add / Subtract), read-only text in the value column. */
+.propValues > .selectionMode {
+  max-width: none;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}

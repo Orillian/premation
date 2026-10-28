@@ -409,6 +409,7 @@ export const EFFECT_CATEGORY: Record<EffectType, string> = {
   'bender': 'Distort',
   'matte-stroke': 'Stylize',
   'selective-color-ai': 'Color Correction',
+  'object-matte': 'Keying',
   // deepfx:category:end
 };
 

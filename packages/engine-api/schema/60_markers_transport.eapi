@@ -148,6 +148,10 @@ command setViewport = 808 [control, coalesce] {
   clipToComp?: bool = 20;
   /// E8: draw the 3D ground grid into this viewport's frames (View ▸ 3D Ground Plane, Draft 3D): the comp's ground plane (World ▸ Ground level), depth-tested against the scene, adaptive 1 / 2 / 5 spacing with minor cells, the X axis red, the Z axis blue, a distance fade. Absent = off. Never in an export, a thumbnail or the cache. Ignored on a layer view.
   groundGrid?: bool = 21;
+  /// With `layerAlphaView` 'overlay': the tint laid over everything outside the matte (`#rrggbb`, AE's Alpha Overlay colour). Absent = magenta #FF3DF5. Any other form: `invalidArgument`.
+  layerAlphaOverlayColor?: string = 22;
+  /// With `layerAlphaView` 'overlay': the tint's opacity, 0–100 %. Absent = 50.
+  layerAlphaOverlayOpacity?: f64 = 23;
 }
 command closeViewport = 809 [control] { viewport: u32 = 1; }
 command setCacheBudget = 810 [control] {

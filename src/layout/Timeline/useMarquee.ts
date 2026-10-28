@@ -62,6 +62,8 @@ export function useMarquee({
       rows.map((row) =>
         row.type === 'prop'
           ? { keyframes: row.prop.keyframes }
+          : row.type === 'selection'
+          ? { keyframes: [] }
           : // Collapsed summary rows stand in for their property keyframes
           // (track.keyframes is the flat union, same ids); expanded rows
           // defer to the property sub-rows that follow them.

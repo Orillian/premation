@@ -141,6 +141,9 @@ struct BuildContext {
     /// it is, 'alpha' = the matte white on black, 'boundary' = the source with
     /// the matte's edge outlined, 'overlay' = the source, red outside the matte.
     std::string alphaView{};
+    /// The Alpha Overlay tint (`#rrggbb`, AE's default magenta) and its opacity 0..1.
+    std::string overlayColor{"#ff3df5"};
+    double overlayOpacity = 0.5;
   };
   std::optional<LayerView> layerView{};
   /// Layers the viewport being built does not draw (setViewportHiddenLayers:

@@ -10481,6 +10481,8 @@ void encode(wire::Writer& w, const SetViewport& v) {
   if (v.layer_alpha_view.has_value()) { w.varint(154U); w.str(*v.layer_alpha_view); }
   if (v.clip_to_comp.has_value()) { w.varint(160U); w.boolean(*v.clip_to_comp); }
   if (v.ground_grid.has_value()) { w.varint(168U); w.boolean(*v.ground_grid); }
+  if (v.layer_alpha_overlay_color.has_value()) { w.varint(178U); w.str(*v.layer_alpha_overlay_color); }
+  if (v.layer_alpha_overlay_opacity.has_value()) { w.varint(185U); w.f64(*v.layer_alpha_overlay_opacity); }
 }
 
 Status decode(wire::Reader& r, SetViewport& out) {
@@ -10612,6 +10614,18 @@ Status decode(wire::Reader& r, SetViewport& out) {
         bool e = false;
         if (!r.boolean(e)) return Status::truncated;
         out.ground_grid = std::move(e);
+        break;
+      }
+      case 178U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.layer_alpha_overlay_color = std::move(e);
+        break;
+      }
+      case 185U: {
+        double e = 0.0;
+        if (!r.f64(e)) return Status::truncated;
+        out.layer_alpha_overlay_opacity = std::move(e);
         break;
       }
       default:

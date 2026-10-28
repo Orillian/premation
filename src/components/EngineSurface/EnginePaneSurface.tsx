@@ -45,6 +45,9 @@ export interface PaneLayerView {
   renderEffects: boolean;
   /** How the layer's alpha is shown (setViewport `layerAlphaView`); absent = the layer as it is. */
   alphaView?: 'alpha' | 'boundary' | 'overlay';
+  /** With alphaView 'overlay': the tint (`#rrggbb`) and its opacity, 0–100 % (setViewport `layerAlphaOverlayColor` / `…Opacity`). */
+  overlayColor?: string;
+  overlayOpacity?: number;
   /** A held comp time, seconds (the panel's own ruler); absent = the session clock. */
   time?: number;
   /** With `time`: the layer's source time at it, seconds. */
@@ -95,7 +98,8 @@ function sameCustomView(a: CustomViewParams | null, b: CustomViewParams | null):
 function sameLayerView(a: PaneLayerView | null, b: PaneLayerView | null): boolean {
   if (a === b) return true;
   if (a === null || b === null) return false;
-  return a.id === b.id && a.renderEffects === b.renderEffects && a.alphaView === b.alphaView && a.time === b.time && a.sourceTime === b.sourceTime;
+  return a.id === b.id && a.renderEffects === b.renderEffects && a.alphaView === b.alphaView && a.time === b.time && a.sourceTime === b.sourceTime
+    && a.overlayColor === b.overlayColor && a.overlayOpacity === b.overlayOpacity;
 }
 
 function sameDesired(a: Desired, b: Desired): boolean {
@@ -138,7 +142,7 @@ export function EnginePaneSurface({ mode, getView, framingRev, layer, surround, 
   const requestRef = useRef<() => void>(() => {});
   useEffect(() => {
     requestRef.current();
-  }, [mode, framingRev, layer?.id, layer?.renderEffects, layer?.alphaView, layer?.time, layer?.sourceTime]);
+  }, [mode, framingRev, layer?.id, layer?.renderEffects, layer?.alphaView, layer?.overlayColor, layer?.overlayOpacity, layer?.time, layer?.sourceTime]);
   // A new surround needs a frame to be painted around: ask the engine for one (paused, none would come).
   const refreshRef = useRef<() => void>(() => {});
   const surroundKey = surround ? `${surround.color.join(',')}|${surround.compWidth}x${surround.compHeight}` : '';
@@ -261,6 +265,8 @@ export function EnginePaneSurface({ mode, getView, framingRev, layer, surround, 
           layer: d.layer.id,
           layerRenderEffects: d.layer.renderEffects,
           ...(d.layer.alphaView ? { layerAlphaView: d.layer.alphaView } : {}),
+          ...(d.layer.alphaView === 'overlay' && d.layer.overlayColor ? { layerAlphaOverlayColor: d.layer.overlayColor } : {}),
+          ...(d.layer.alphaView === 'overlay' && d.layer.overlayOpacity !== undefined ? { layerAlphaOverlayOpacity: d.layer.overlayOpacity } : {}),
           ...(d.layer.time !== undefined ? { time: secondsToFlicks(d.layer.time) } : {}),
           ...(d.layer.time !== undefined && d.layer.sourceTime !== undefined ? { layerSourceTime: secondsToFlicks(d.layer.sourceTime) } : {}),
         } : { layerRenderEffects: true }),
