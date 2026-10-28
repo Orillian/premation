@@ -33,6 +33,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
+/// UTF-8 text <-> path without the ANSI code page: fs::path(std::string) and
+/// .string() go through it on Windows and throw (or mangle) on a name such as
+/// ダウンロード.mp4 (the 2026-10-23 crash loop). Every path here is UTF-8 in and out.
+fs::path u8path(const std::string& s) { return fs::path(std::u8string(s.begin(), s.end())); }
+std::string u8str(const fs::path& p) {
+  const std::u8string u = p.u8string();
+  return {u.begin(), u.end()};
+}
+
 constexpr double kTargetLongEdge = 1920;   // PROXY_TARGET_LONG_EDGE
 constexpr double kMinSourceLongEdge = 1280;  // PROXY_MIN_SOURCE_LONG_EDGE
 
@@ -112,9 +121,9 @@ PreparedJob prepare_proxy(const api::ProxyJob& spec, const JobDocContext& ctx) {
   const std::optional<Size> size = spec.max_edge ? halve_to(w, h, std::max<double>(2, *spec.max_edge), *spec.max_edge)
                                                  : halve_to(w, h, kTargetLongEdge, kMinSourceLongEdge);
   if (!size) fail(ErrorCode::invalid_argument, "this footage is small enough to edit without a proxy", {.item = spec.item});
-  fs::path folder = spec.output_folder;
+  fs::path folder = u8path(spec.output_folder);
   if (folder.empty()) {
-    folder = !ctx.projectPath.empty() ? fs::path(ctx.projectPath).parent_path() / "Proxies"
+    folder = !ctx.projectPath.empty() ? u8path(ctx.projectPath).parent_path() / "Proxies"
                                       : fs::temp_directory_path() / "premation-proxies";
   }
   const std::string ext = hasAlpha ? "webm" : "mp4";
@@ -125,11 +134,11 @@ PreparedJob prepare_proxy(const api::ProxyJob& spec, const JobDocContext& ctx) {
   return PreparedJob{"proxy", [item, file, target, sz, hasAlpha, durationSec, exe](JobControl& control) -> std::unique_ptr<JobResult> {
     std::error_code ec;
     fs::create_directories(target.parent_path(), ec);
-    if (ec) fail(ErrorCode::io, "cannot create '" + target.parent_path().string() + "': " + ec.message());
-    const fs::path temp = target.string() + ".partial";
+    if (ec) fail(ErrorCode::io, "cannot create '" + u8str(target.parent_path()) + "': " + ec.message());
+    const fs::path temp = u8path(u8str(target) + ".partial");
     std::string error;
     std::unique_ptr<exporter::ChildProcess> ff =
-        exporter::ChildProcess::spawn(exe, encode_args(file, temp.string(), sz, hasAlpha), target.string() + ".log", error, true);
+        exporter::ChildProcess::spawn(exe, encode_args(file, u8str(temp), sz, hasAlpha), u8str(target) + ".log", error, true);
     if (!ff) fail(ErrorCode::io, "could not start ffmpeg: " + error);
     std::atomic<bool> done{false};
     std::atomic<bool> killed{false};
@@ -168,14 +177,14 @@ PreparedJob prepare_proxy(const api::ProxyJob& spec, const JobDocContext& ctx) {
     }
     if (code != 0) {
       fs::remove(temp, ec);
-      fail(ErrorCode::io, "ffmpeg could not make the proxy (exit " + std::to_string(code) + "; log: " + target.string() + ".log)");
+      fail(ErrorCode::io, "ffmpeg could not make the proxy (exit " + std::to_string(code) + "; log: " + u8str(target) + ".log)");
     }
     fs::rename(temp, target, ec);
     if (ec) fail(ErrorCode::io, "cannot move the proxy into place: " + ec.message());
-    fs::remove(target.string() + ".log", ec);
+    fs::remove(u8path(u8str(target) + ".log"), ec);
     auto out = std::make_unique<ProxyResult>();
     out->item = item;
-    out->file = target.string();
+    out->file = u8str(target);
     out->size = sz;
     control.progress(1, "Done");
     return out;

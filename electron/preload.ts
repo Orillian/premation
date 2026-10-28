@@ -188,7 +188,7 @@ const bridge = {
       return () => ipcRenderer.removeListener('handModel:downloadProgress', listener);
     },
   },
-  // Object Matte walks' SAM 2.1 video model (electron/sam2Model.ts): a PINNED download on first use.
+  // Object Matte walks' SAM 2.1 video model (models.json `sam2-video`, electron/modelInstaller.ts): a PINNED download on first use.
   sam2Model: {
     status: () => ipcRenderer.invoke('sam2Model:status'),
     install: (request: { requestId: string }) => ipcRenderer.invoke('sam2Model:install', request),

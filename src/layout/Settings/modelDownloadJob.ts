@@ -16,7 +16,7 @@
 import { useUIStore } from '@stores/uiStore';
 import { t } from '@core/i18n';
 
-type OnDemandModel = 'depthModel' | 'handModel' | 'faceModel';
+type OnDemandModel = 'depthModel' | 'handModel' | 'faceModel' | 'sam2Model';
 
 export type EnsureModelOutcome = { ok: true } | { ok: false; message: string };
 
@@ -26,6 +26,7 @@ const inFlight = new Map<OnDemandModel, Promise<EnsureModelOutcome>>();
 
 function labels(kind: OnDemandModel): { downloading: string; done: string } {
   if (kind === 'depthModel') return { downloading: t('models.job.depthDownloading', 'Downloading the depth model…'), done: t('models.job.depthDone', 'Depth model installed') };
+  if (kind === 'sam2Model') return { downloading: t('models.job.sam2Downloading', 'Downloading the SAM 2.1 tracking model…'), done: t('models.job.sam2Done', 'SAM 2.1 tracking model installed') };
   if (kind === 'faceModel') return { downloading: t('models.job.faceDownloading', 'Downloading the face tracking model…'), done: t('models.job.faceDone', 'Face tracking model installed') };
   return { downloading: t('models.job.handDownloading', 'Downloading the hand tracking model…'), done: t('models.job.handDone', 'Hand tracking model installed') };
 }

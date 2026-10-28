@@ -606,7 +606,7 @@ export interface MotionEditorApi {
     cancelDownload(requestId: string): Promise<boolean>;
     onDownloadProgress(handler: (event: unknown) => void): () => void;
   };
-  /** Object Matte walks' SAM 2.1 video model in <userData>/models/sam2-video (electron/sam2Model.ts): pinned download. */
+  /** Object Matte walks' SAM 2.1 video model in <userData>/models/sam2-video (models.json `sam2-video`, electron/modelInstaller.ts): pinned download. */
   sam2Model?: {
     status(): Promise<{ urls: string[]; bytes: number; installedAt: number } | null>;
     install(request: { requestId: string }): Promise<{ ok: true; model: { urls: string[]; bytes: number; installedAt: number } } | { ok: false; message: string }>;

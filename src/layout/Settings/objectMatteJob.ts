@@ -15,6 +15,7 @@
 import { isObjectMatteModelMissing, SUGGESTED_MODEL } from '@core/tracking/samModelInstall';
 import { useSamModelStore } from '@stores/samModelStore';
 import { useUIStore } from '@stores/uiStore';
+import { ensureModelInstalled } from './modelDownloadJob';
 import { t } from '@core/i18n';
 
 export const OBJECT_MATTE_JOB_ID = 'object-matte-model';
@@ -56,6 +57,33 @@ export function installObjectMatteJob(): void {
       ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'cancelled', message: t('settings.objectMatte.jobCancelled', 'Model download cancelled') });
     }
   });
+}
+
+let sam2Offered = false;
+
+/**
+ * Object Matte follows a subject with SlimSAM frame by frame until SAM 2.1
+ * (models.json `sam2-video`, 190 MB, pinned) is installed; then it tracks with
+ * SAM 2's memory and holds the subject through occlusions. Too large to fetch
+ * unasked, so the first time the tool is picked in a session it is offered,
+ * once, with the download as a job (tray chip + Tasks panel).
+ */
+export function offerSam2Tracking(): void {
+  if (sam2Offered) return;
+  sam2Offered = true;
+  const bridge = typeof window !== 'undefined' ? window.motionEditor?.sam2Model : undefined;
+  if (!bridge) return;
+  void bridge.status().then((installed) => {
+    if (installed) return;
+    useUIStore.getState().notify({
+      level: 'info',
+      message: t('settings.sam2.offer', 'Track subjects through occlusions with SAM 2.1'),
+      detail: t('settings.sam2.offerDetail', 'A one-time 190 MB download. Until then, Object Matte follows the subject frame by frame.'),
+      durationMs: 12000,
+      group: 'sam2-model',
+      action: { label: t('settings.sam2.download', 'Download'), onSelect: () => { void ensureModelInstalled('sam2Model'); } },
+    });
+  }).catch(() => undefined);
 }
 
 /**

@@ -35,7 +35,7 @@ import { settingsFps } from '@core/mirror/compFacts';
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
 import { useDisplayedCamera2D } from './useOverlayView';
-import { autoInstallObjectMatte } from '@layout/Settings/objectMatteJob';
+import { autoInstallObjectMatte, offerSam2Tracking } from '@layout/Settings/objectMatteJob';
 import styles from './ObjectMatteOverlay.module.css';
 import { t } from '@core/i18n';
 
@@ -92,6 +92,9 @@ export function ObjectMatteOverlay(): JSX.Element | null {
   useEffect(() => {
     if (active) useRotoBrushStore.getState().setNode(nodeId);
   }, [active, nodeId]);
+  useEffect(() => {
+    if (active) offerSam2Tracking();
+  }, [active]);
 
   const camera = useDisplayedCamera2D();
   const mapping = useLayerScreenMapping(nodeId, time, comp, camera, sceneTick);
