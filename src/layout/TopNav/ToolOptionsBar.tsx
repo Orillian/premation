@@ -338,9 +338,9 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
         )}
       </>
     );
-  } else if (activeTool === 'roto') {
+  } else if (activeTool === 'roto' || activeTool === 'object-matte') {
     // ── VIEWPORT-ROTO-OPTIONS (unique anchor) ──────────────────────────
-    content = <RotoOptions />;
+    content = <RotoOptions objectMatteTool={activeTool === 'object-matte'} />;
   }
 
   // AE's toolbar Fill / Stroke beside the shape and pen tools — the paint the
@@ -395,7 +395,7 @@ export function ToolOptionsBar({ inline = false }: ToolOptionsBarProps = {}): JS
  * The strokes themselves are `Workspace/RotoBrushOverlay`; this is the row of
  * numbers that gesture needs and cannot hold.
  */
-function RotoOptions(): JSX.Element {
+function RotoOptions({ objectMatteTool = false }: { objectMatteTool?: boolean }): JSX.Element {
   const kind = useRotoBrushStore((s) => s.kind);
   const setKind = useRotoBrushStore((s) => s.setKind);
   const size = useRotoBrushStore((s) => s.size);
@@ -404,14 +404,16 @@ function RotoOptions(): JSX.Element {
   const busy = useRotoBrushStore((s) => s.busy);
   const progress = useRotoBrushStore((s) => s.progress);
   const nodeId = useRotoBrushStore((s) => s.nodeId);
+  const box = useRotoBrushStore((s) => s.box);
 
   // Re-read on every document change: frozen is the matte mask's own name.
   const rotoTree = useMirrorTree(nodeId);
   const mattes = nodeId && rotoTree ? rotoMattes(nodeId) : { live: [], frozen: [] };
   const frozen = mattes.frozen.length > 0;
   const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0);
-  const canPropagate = !!nodeId && strokes.some((s) => s.kind === 'fg') && !busy && !frozen;
-  const engine = useRotoBrushStore((s) => s.engine);
+  const canPropagate = !!nodeId && (strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;
+  // The Object Matte tool always follows with the model; the brush has the choice.
+  const engine = useRotoBrushStore((s) => (objectMatteTool ? 'objectMatte' : s.engine));
   const refine = useRotoBrushStore((s) => s.refine);
   const [refineOpen, setRefineOpen] = useState(false);
 
@@ -431,7 +433,7 @@ function RotoOptions(): JSX.Element {
     store.setBusy(true, 0);
     store.setStatus(t('topNav.roto.objectMatteBusy', 'Object Matte…'));
     propagateObjectMatte(nodeId, store.strokes, {
-      origin, start, end, fps: settingsFps(settings), direction, featherPx: store.featherPx, refine: store.refine,
+      origin, start, end, fps: settingsFps(settings), direction, featherPx: store.featherPx, refine: store.refine, box: store.box,
     }, (f) => {
       useRotoBrushStore.getState().setBusy(true, f);
       return useRotoBrushStore.getState().busy;
@@ -474,7 +476,12 @@ function RotoOptions(): JSX.Element {
 
   return (
     <>
-      <span className={styles.optLabel}>{t('topNav.roto.label', 'Roto')}</span>
+      <span className={styles.optLabel}>{objectMatteTool ? t('topNav.roto.objectMatteLabel', 'Object Matte') : t('topNav.roto.label', 'Roto')}</span>
+      {objectMatteTool ? (
+        <span className={styles.hint} title={t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}>
+          {t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}
+        </span>
+      ) : (<>
       <div className={styles.kinds} role="group" aria-label={t('topNav.roto.strokeGroup', 'Roto brush stroke')}>
         {rotoStrokeKinds().map(({ kind: k, label, hint }) => (
           <button
@@ -493,10 +500,11 @@ function RotoOptions(): JSX.Element {
       <Row label={t('topNav.toolOptions.size', 'Size')}>
         <ValueField value={size} unit="px" min={2} max={200} precision={0} onChange={(v) => useRotoBrushStore.getState().setSize(Number(v))} />
       </Row>
+      </>)}
       <Row label={t('topNav.toolOptions.feather', 'Feather')}>
         <ValueField value={featherPx} unit="px" min={0} max={64} precision={0} onChange={(v) => useRotoBrushStore.getState().setFeather(Number(v))} />
       </Row>
-      <div className={styles.kinds} role="group" aria-label={t('topNav.roto.engineGroup', 'Matte engine')}>
+      {!objectMatteTool && <div className={styles.kinds} role="group" aria-label={t('topNav.roto.engineGroup', 'Matte engine')}>
         <button
           type="button"
           className={engine === 'objectMatte' ? styles.kindActive : styles.kind}
@@ -515,7 +523,7 @@ function RotoOptions(): JSX.Element {
         >
           {t('topNav.roto.classic', 'Classic')}
         </button>
-      </div>
+      </div>}
       {engine === 'objectMatte' ? (
         <>
           <div className={styles.kinds} role="group" aria-label={t('topNav.roto.propagateGroup', 'Propagate')}>

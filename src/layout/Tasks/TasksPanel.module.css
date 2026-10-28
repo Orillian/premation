@@ -1,0 +1,152 @@
+/*
+  Tasks panel: a one-line summary with "Clear finished" on top, then one row
+  per job — icon, label (+ % and the stop ×), a thin bar while running, and a
+  help-sized line with the status / outcome and the elapsed · ETA. One 12px
+  inset and the panel type roles throughout, as in Cache & Memory (no heading
+  inside: the tab is the panel's title).
+*/
+.root {
+  --tasks-inset: var(--space-3);
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-panel);
+  color: var(--color-text-primary);
+  font-family: var(--panel-font-family);
+  font-size: var(--panel-font-size);
+  line-height: var(--panel-line-height);
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--tasks-inset);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex: none;
+}
+
+.summary {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--tasks-inset);
+  border-bottom: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+
+.icon {
+  --tone: var(--color-text-secondary);
+
+  display: inline-flex;
+  flex: none;
+  padding-top: 2px;
+  color: var(--tone);
+}
+
+.icon[data-tone='done'] { --tone: var(--color-success); }
+.icon[data-tone='failed'] { --tone: var(--color-danger); }
+.icon[data-tone='cancelled'] { --tone: var(--color-text-tertiary); }
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 20px;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--panel-weight-label);
+  color: var(--color-text-primary);
+}
+
+.row[data-status='cancelled'] .label {
+  color: var(--color-text-secondary);
+}
+
+.pct {
+  flex: none;
+  font-family: var(--panel-font-family-value);
+  font-weight: var(--panel-weight-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.bar {
+  width: 100%;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--panel-font-size-help);
+  line-height: var(--panel-line-height-help);
+  font-weight: var(--panel-weight-help);
+  color: var(--color-text-tertiary);
+}
+
+.note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An error is the one line worth reading whole. */
+.note[data-tone='failed'] {
+  color: var(--color-danger);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.time {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--panel-font-family-value);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

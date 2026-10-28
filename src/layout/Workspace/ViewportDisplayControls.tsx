@@ -19,8 +19,9 @@
  * ## The set
  *
  *   Left of play: 3D View · Layout · Snapshot + Compare.
- *   Right of play: Resolution · Preview · Transparency Grid · Overlays ·
- *   Channel · Exposure — AE's Composition panel footer, in its order.
+ *   Right of play: Resolution · Preview · Toggle Proxies · Transparency Grid ·
+ *   Overlays · Channel · Exposure — AE's Composition panel footer, in its
+ *   order, plus Premiere's Toggle Proxies (the global Use Proxies switch).
  *
  * Viewer LUT and the display mode are rows of the Preview menu (and View ▸
  * Viewport); camera bookmarks are View ▸ Viewport rows and Ctrl+Alt+1…9; pop
@@ -355,6 +356,9 @@ export interface ViewportDisplayModel {
   setExposure: (stops: number) => void;
   transparencyGrid: boolean;
   toggleTransparencyGrid: () => void;
+  /** Use Proxies (global, viewer only) — Premiere's Toggle Proxies button, through `view.useProxies`. */
+  useProxies: boolean;
+  toggleProxies: () => void;
 }
 
 export function useViewportDisplayModel(): ViewportDisplayModel {
@@ -630,6 +634,7 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
   const setExposure = useViewportDisplayStore((s) => s.setExposure);
   const transparencyGrid = useViewportDisplayStore((s) => s.transparencyGrid);
   const toggleTransparencyGrid = useViewportDisplayStore((s) => s.toggleTransparencyGrid);
+  const useProxies = usePreferenceStore((s) => s.useProxies);
 
   return {
     viewLayout,
@@ -651,6 +656,8 @@ export function useViewportDisplayModel(): ViewportDisplayModel {
     setExposure,
     transparencyGrid,
     toggleTransparencyGrid,
+    useProxies,
+    toggleProxies: () => run('view.useProxies'),
   };
 }
 
@@ -668,6 +675,7 @@ export function displayOverflowItems(m: ViewportDisplayModel, level: number): Dr
   if (shed('channel')) overflow.push({ type: 'item', id: 'vd-of-channel', icon: CHANNEL_ICON[m.channel], label: t('workspace.display.channelValue', 'Channel: {channel}', { channel: channelLabel(m.channel) }), submenu: m.channelItems });
   if (shed('resolution')) overflow.push({ type: 'item', id: 'vd-of-resolution', label: t('workspace.display.resolutionValue', 'Resolution: {resolution}', { resolution: resolutionLabel(m.resolution) }), submenu: m.resolutionItems });
   if (shed('preview')) overflow.push({ type: 'item', id: 'vd-of-preview', icon: 'tv', label: t('workspace.display.preview', 'Preview'), submenu: m.previewItems });
+  if (shed('proxies')) overflow.push({ type: 'checkbox', id: 'vd-of-proxies', label: t('workspace.display.useProxies', 'Use Proxies'), checked: m.useProxies, onChange: m.toggleProxies });
   if (shed('transparency')) overflow.push({ type: 'checkbox', id: 'vd-of-transparency', label: t('workspace.display.transparencyGrid', 'Transparency Grid'), checked: m.transparencyGrid, onChange: m.toggleTransparencyGrid });
   if (shed('overlays')) overflow.push({ type: 'item', id: 'vd-of-overlays', icon: 'grid', label: t('workspace.display.overlays', 'Overlays'), submenu: m.overlayItems });
   if (shed('exposure')) overflow.push({ type: 'item', id: 'vd-of-exposure', icon: 'theme', label: t('workspace.display.exposureValue', 'Exposure: {stops}', { stops: formatStops(m.exposure) }), submenu: exposureMenuItems(m) });
@@ -769,6 +777,20 @@ export function ViewportDisplayControlsView({
           )}
           {!shed('preview') && (
             <PreviewMenu className={tool.tool} activeClassName={cn(tool.tool, tool.toolActive)} placement="top-end" />
+          )}
+          {!shed('proxies') && (
+            <button
+              type="button"
+              className={cn(tool.tool, m.useProxies && tool.toolActive)}
+              aria-label={t('workspace.display.toggleProxies', 'Toggle Proxies')}
+              aria-pressed={m.useProxies}
+              title={m.useProxies
+                ? t('workspace.display.proxiesOn', 'Proxies: on — footage with a proxy plays from it in the viewer; exports always use the originals')
+                : t('workspace.display.proxiesOff', 'Proxies: off — the viewer decodes the original footage')}
+              onClick={m.toggleProxies}
+            >
+              <Icon name="media" size="sm" />
+            </button>
           )}
           {!shed('transparency') && (
             <button

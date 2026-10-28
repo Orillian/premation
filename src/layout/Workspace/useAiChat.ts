@@ -154,6 +154,7 @@ function toolActivity(): Record<string, string> {
     generate_speech: t('workspace.aiActivity.generatingVoice', 'Generating voice-over'),
     generate_3d_model: t('workspace.aiActivity.generating3d', 'Generating a 3D model'),
     export_video: t('workspace.aiActivity.queueingExport', 'Queueing export'),
+    place_behind_subject: t('workspace.aiActivity.placeBehindSubject', 'Placing layers behind the subject'),
     import_svg: t('workspace.aiActivity.drawingVectors', 'Drawing vectors'),
     create_media_from_attachment: placingMedia,
     create_mask: masking,

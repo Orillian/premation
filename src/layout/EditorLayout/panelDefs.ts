@@ -215,6 +215,13 @@ export const PANEL_DEFS: readonly PanelDef[] = [
    */
   { id: 'cacheMemory', get title() { return t('panel.cacheMemory', 'Cache & Memory'); }, get shortTitle() { return t('panel.cacheMemory.short', 'Memory'); }, icon: 'gpu', region: 'rightInspector', weight: 4.12, closable: true, onDemand: true },
   /**
+   * Background jobs — exports, downloads, transcription, imports — one row
+   * each with progress, time left and a stop button, plus the recent finished
+   * ones. Premiere's dockable Progress panel; AE has none (its jobs report in
+   * place). Opened from the status bar's job tray or Window ▸ Panels ▸ Tasks.
+   */
+  { id: 'tasks',       get title() { return t('panel.tasks', 'Tasks'); },     icon: 'queue',       region: 'rightInspector', weight: 4.11, closable: true, onDemand: true },
+  /**
    * The SOURCE viewer — one clip, before it is in the edit, with in/out points
    * and the four verbs that put the marked range into a comp. Every route that
    * hands it a clip (the Project panel's context menu, the footage dialog's

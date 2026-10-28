@@ -64,6 +64,8 @@ export interface ModelSelectionOutcome {
 export async function importModelSelection(
   files: readonly File[],
   onProgress?: (fraction: number, message: string) => void,
+  /** The engine's conversion job is running: its stop handle (the Tasks panel's ×). */
+  onStart?: (handle: { cancel(): void }) => void,
 ): Promise<ModelSelectionOutcome> {
   const { ANY_MODEL_FILE_PATTERN, MODEL_FILE_PATTERN, buildGltfModel, buildModelFiles } = await import('@core/scene/modelImport');
   // The model first: the job converts files[0] with the rest as its sidecars.
@@ -77,7 +79,7 @@ export async function importModelSelection(
   if (orderedPaths.every((p): p is string => typeof p === 'string')) {
     const outcome = await runEngineJob<ModelImportJobSummary>(
       { kind: 'modelImport', value: { files: orderedPaths, outputFolder: '' } },
-      { ...(onProgress ? { onProgress } : {}) },
+      { ...(onProgress ? { onProgress } : {}), ...(onStart ? { onStart } : {}) },
     );
     if (outcome) {
       if (outcome.status !== 'done' || !outcome.result) {

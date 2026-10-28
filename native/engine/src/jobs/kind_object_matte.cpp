@@ -104,6 +104,11 @@ class ObjectMatteResult final : public JobResult {
     s.set("engine", Json::string("onnx"));
     s.set("iou", Json::number(iou_));
     if (!mask_.empty()) s.set("mask", Json::string(mask_));
+    // The outline itself (layer-centred px, x y pairs): the Object Matte tool's
+    // hover preview runs this job with apply: false and draws it, writing nothing.
+    Json outline = Json::array();
+    for (const double v : path_.vertices) outline.arr_mut().push_back(Json::number(v));
+    s.set("outline", std::move(outline));
     return js::stringify(s);
   }
   [[nodiscard]] std::string label() const override { return "Object Mask"; }

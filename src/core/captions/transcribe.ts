@@ -26,6 +26,8 @@ export interface TranscribeOptions {
   rootId?: string;
   /** BCP-47-ish hint (`en`, `pt-BR`). Absent: the model detects one. */
   language?: string;
+  /** The engine job is running: its stop handle (the Tasks panel's ×). */
+  onStart?: (handle: { cancel(): void }) => void;
 }
 
 export class TranscribeError extends Error {
@@ -73,7 +75,7 @@ async function transcribeInEngine(opts: TranscribeOptions): Promise<Transcriptio
       range: { start: secondsToFlicks(opts.startSec), duration: secondsToFlicks(opts.endSec - opts.startSec) },
       provider: useAiProviderStore.getState().provider as AiVaultProvider,
     },
-  });
+  }, opts.onStart ? { onStart: opts.onStart } : {});
   if (!outcome) return null;
   if (outcome.status === 'cancelled') throw new TranscribeError('cancelled', 'Transcription was cancelled.');
   if (outcome.status !== 'done' || !outcome.result) {

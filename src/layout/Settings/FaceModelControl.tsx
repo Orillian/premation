@@ -1,16 +1,13 @@
 /**
- * Face Tracking's landmark model (AE parity 3.3) — downloaded on first use
- * into this computer's app data, where the engine's faceTrack job reads it
- * (electron/faceModel.ts). Nothing is bundled and nothing is fetched until
- * Install is pressed; the URL is on screen, and editable, before the request.
- *
- * The model is a MediaPipe Face Mesh class export (468 or 478 landmarks, a
- * 192×192 RGB input): `face_landmark.onnx`.
+ * Face Tracking's landmark model (AE parity 3.3): MediaPipe Face Mesh V2 as
+ * ONNX, bundled with the app and pinned to one revision and checksum
+ * (electron/models.json `face-landmarks`). Install re-fetches that pinned
+ * file into this computer's app data (a copy that survives a damaged
+ * install); there is no URL to type.
  */
 
 import { useEffect, useState } from 'react';
 import { Button } from '@components/Button';
-import { Input } from '@components/Input';
 import { t } from '@core/i18n';
 import styles from './ObjectMatteControl.module.css';
 
@@ -27,21 +24,21 @@ const bridge = (): NonNullable<Window['motionEditor']>['faceModel'] | undefined 
 
 export function FaceModelControl(): JSX.Element {
   const [status, setStatus] = useState<Status>({ kind: 'absent' });
-  const [url, setUrl] = useState('');
+  const [bundled, setBundled] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
 
   useEffect(() => {
-    void bridge()?.status().then((m) => { if (m) setStatus({ kind: 'ready', url: m.url, bytes: m.bytes }); }).catch(() => undefined);
+    void bridge()?.status().then((m) => {
+      if (!m) return;
+      setBundled(m.bundled === true);
+      setStatus({ kind: 'ready', url: m.url, bytes: m.bytes });
+    }).catch(() => undefined);
   }, []);
 
   const install = async (): Promise<void> => {
     const b = bridge();
     if (!b) {
       setStatus({ kind: 'failed', message: t('settings.faceModel.needsDesktop', 'Installing a model needs the desktop app: the engine reads it from this computer.') });
-      return;
-    }
-    if (!/^https:\/\//i.test(url.trim())) {
-      setStatus({ kind: 'failed', message: t('settings.faceModel.httpsOnly', 'Only https:// model URLs are accepted.') });
       return;
     }
     const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -54,7 +51,8 @@ export function FaceModelControl(): JSX.Element {
       }
     });
     try {
-      const r = await b.install({ url: url.trim(), requestId: id });
+      const r = await b.install({ requestId: id });
+      if (r.ok) setBundled(false);
       setStatus(r.ok ? { kind: 'ready', url: r.model.url, bytes: r.model.bytes } : { kind: 'failed', message: r.message });
     } finally {
       off();
@@ -66,10 +64,17 @@ export function FaceModelControl(): JSX.Element {
     return (
       <div className={styles.root}>
         <div className={styles.readyRow}>
-          <span className={styles.ready}>{t('settings.faceModel.installed', 'Installed · {size} MB', { size: (status.bytes / MB).toFixed(1) })}</span>
-          <Button variant="secondary" size="sm" onClick={() => { void bridge()?.remove().then(() => setStatus({ kind: 'absent' })); }}>
-            {t('settings.faceModel.remove', 'Remove')}
-          </Button>
+          <span className={styles.ready}>{bundled
+            ? t('settings.faceModel.bundled', 'Bundled with the app · {size} MB', { size: (status.bytes / MB).toFixed(1) })
+            : t('settings.faceModel.installed', 'Installed · {size} MB', { size: (status.bytes / MB).toFixed(1) })}</span>
+          {!bundled && (
+            <Button variant="secondary" size="sm" onClick={() => { void bridge()?.remove().then(() => bridge()?.status()).then((m) => {
+              setBundled(m?.bundled === true);
+              setStatus(m ? { kind: 'ready', url: m.url, bytes: m.bytes } : { kind: 'absent' });
+            }); }}>
+              {t('settings.faceModel.remove', 'Remove')}
+            </Button>
+          )}
         </div>
         <div className={styles.source} title={status.url}>{status.url}</div>
       </div>
@@ -94,20 +99,11 @@ export function FaceModelControl(): JSX.Element {
   return (
     <div className={styles.root}>
       <div className={styles.installRow}>
-        <Input
-          size="sm"
-          fullWidth
-          value={url}
-          placeholder="https://…/face_landmark.onnx"
-          onChange={(e) => setUrl(e.target.value)}
-          aria-label={t('settings.faceModel.urlAria', 'Face landmark model URL')}
-          spellCheck={false}
-        />
-        <Button variant="secondary" size="sm" disabled={!url.trim()} onClick={() => { void install(); }}>{t('settings.faceModel.install', 'Install')}</Button>
+        <Button variant="secondary" size="sm" onClick={() => { void install(); }}>{t('settings.faceModel.install', 'Install')}</Button>
       </div>
       {status.kind === 'failed' ? <div className={styles.error}>{status.message}</div> : null}
       <div className={styles.hint}>
-        {t('settings.faceModel.hint', 'Face Tracking needs a face landmark model (a MediaPipe Face Mesh ONNX export, face_landmark.onnx). It is downloaded once, from the URL above, and kept on this computer.')}
+        {t('settings.faceModel.hintPinned', 'MediaPipe Face Mesh V2 (Apache-2.0, 4.9 MB). It normally ships with the app; Install fetches the same pinned, checksum-verified file.')}
       </div>
     </div>
   );

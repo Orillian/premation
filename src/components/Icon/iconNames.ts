@@ -64,7 +64,7 @@ export const ICON_NAMES = [
   'gizmo-universal', 'gizmo-position', 'gizmo-scale', 'gizmo-rotation',
   'sphere', 'cylinder', 'text-3d', 'pop-out', 'gpu',
   // Effect-browser folder vocabulary, one glyph per AE folder.
-  'blur', 'palette', 'gradient', 'waves', 'eraser', 'clock', 'wipe', 'magic-wand',
+  'blur', 'palette', 'gradient', 'waves', 'eraser', 'clock', 'wipe', 'magic-wand', 'object-matte',
   // Developer / API, in the dashboard sidebar. NB: no apostrophes in comments
   // here — generate-sharp-icons.mjs scrapes this list with a quote regex and
   // reads one as the start of a name.

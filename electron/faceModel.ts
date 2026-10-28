@@ -1,9 +1,9 @@
 /**
  * The face landmark model for Face Tracking (models.json `face-landmarks`):
  * `face_landmark.onnx` in `<userData>/models/face-landmarks/`
- * (PREMATION_FACE_USER_DIR, engineHost.ts), downloaded on first use from a
- * URL the person supplies — no pinned source is known with certainty, so no
- * checksum is claimed (the manifest says `sha256: null`).
+ * (PREMATION_FACE_USER_DIR, engineHost.ts) when installed over the bundled
+ * copy (PREMATION_FACE_DIR). Pinned in the manifest: MediaPipe Face Mesh V2
+ * at one Hugging Face revision, SHA-256 checked.
  *
  * A thin adapter over modelInstaller.ts, kept for its callers and tests; the
  * IPC channels (`faceModel:*`) are registered by `registerModelsIpc`.

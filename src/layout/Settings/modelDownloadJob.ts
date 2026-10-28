@@ -16,7 +16,7 @@
 import { useUIStore } from '@stores/uiStore';
 import { t } from '@core/i18n';
 
-type OnDemandModel = 'depthModel' | 'handModel';
+type OnDemandModel = 'depthModel' | 'handModel' | 'faceModel';
 
 export type EnsureModelOutcome = { ok: true } | { ok: false; message: string };
 
@@ -25,9 +25,9 @@ const MB = 1024 * 1024;
 const inFlight = new Map<OnDemandModel, Promise<EnsureModelOutcome>>();
 
 function labels(kind: OnDemandModel): { downloading: string; done: string } {
-  return kind === 'depthModel'
-    ? { downloading: t('models.job.depthDownloading', 'Downloading the depth model…'), done: t('models.job.depthDone', 'Depth model installed') }
-    : { downloading: t('models.job.handDownloading', 'Downloading the hand tracking model…'), done: t('models.job.handDone', 'Hand tracking model installed') };
+  if (kind === 'depthModel') return { downloading: t('models.job.depthDownloading', 'Downloading the depth model…'), done: t('models.job.depthDone', 'Depth model installed') };
+  if (kind === 'faceModel') return { downloading: t('models.job.faceDownloading', 'Downloading the face tracking model…'), done: t('models.job.faceDone', 'Face tracking model installed') };
+  return { downloading: t('models.job.handDownloading', 'Downloading the hand tracking model…'), done: t('models.job.handDone', 'Hand tracking model installed') };
 }
 
 function newRequestId(): string {
@@ -59,7 +59,7 @@ async function run(kind: OnDemandModel): Promise<EnsureModelOutcome> {
   const jobId = `model-${kind}`;
   const requestId = newRequestId();
   const ui = useUIStore.getState();
-  ui.startJob({ id: jobId, label: downloading, progress: 'indeterminate' });
+  ui.startJob({ id: jobId, kind: 'download', label: downloading, progress: 'indeterminate', cancel: () => { void bridge.cancelDownload(requestId); } });
   const off = bridge.onDownloadProgress((e) => {
     const p = e as { requestId?: unknown; receivedBytes?: unknown; totalBytes?: unknown };
     if (p.requestId !== requestId || typeof p.receivedBytes !== 'number') return;

@@ -83,7 +83,12 @@ export type Tool =
   // Roto Brush: paint foreground / background strokes on a footage layer and
   // the segmenter writes the matte as a mask path. The HOST owns the gesture
   // (`RotoBrushOverlay`), like puppet-pin and bone.
-  | 'roto';
+  | 'roto'
+  // AE 26's Object Matte tool: hover a subject to preview its matte, click
+  // (or drag a box) to select it, Shift / Alt-click to add / subtract. The
+  // host owns the gesture (`ObjectMatteOverlay`); propagation and Freeze are
+  // the Roto Brush's (same store, same engine job).
+  | 'object-matte';
 
 interface UIState {
   /** Active tool in the toolbar. */
@@ -152,6 +157,39 @@ export interface Job {
   action?: Notification['action'];
   /** The toast this job drives, so progress writes land on one card. */
   toastId?: string;
+  /** What sort of work, for the Tasks panel's icon. Absent reads as `other`. */
+  kind?: JobKind;
+  /** The live status line while running ("Frame 120 of 300"), under the label. */
+  statusLine?: string;
+  /** A failed job's error text (the outcome's detail, else its message). */
+  error?: string;
+  /**
+   * Stop the work. Present only when the starter has a real handle (an engine
+   * job's `cancel`, a download's `cancelDownload`); the Tasks panel shows its
+   * × only then. The job stays `running` until the starter calls `finishJob`.
+   */
+  cancel?: () => void;
+  /** `cancelJob` was called; the starter reports the stop as `cancelled`. */
+  cancelRequested?: boolean;
+  /** When `progress` last changed to a number (the ETA's "now" sample). */
+  progressAt?: number;
+  /**
+   * The ETA's baseline: the first numeric sample after the warm-up
+   * (`ETA_WARMUP_MS` and `ETA_WARMUP_PROGRESS`), so a slow first frame or a
+   * file open does not skew the rate.
+   */
+  etaFrom?: { at: number; progress: number };
+}
+
+/** What a job is doing — picks its icon in the Tasks panel. */
+export type JobKind = 'export' | 'render' | 'download' | 'transcribe' | 'import' | 'analysis' | 'other';
+
+/** The fields a starter may set on a running job. */
+export interface JobPatch {
+  progress?: number | 'indeterminate';
+  label?: string;
+  statusLine?: string;
+  cancel?: () => void;
 }
 
 export interface Notification {
@@ -224,17 +262,35 @@ interface UIActions {
    * Begin a background job: adds it to the tray and opens its progress toast.
    * Re-using an id restarts that job (the previous toast is replaced).
    */
-  startJob(job: { id: string; label: string; progress?: number | 'indeterminate' }): void;
-  updateJob(id: string, patch: { progress?: number | 'indeterminate'; label?: string }): void;
+  startJob(job: {
+    id: string;
+    label: string;
+    progress?: number | 'indeterminate';
+    kind?: JobKind;
+    statusLine?: string;
+    /** Register the stop handle here, or later through `updateJob`. */
+    cancel?: () => void;
+  }): void;
+  /**
+   * Patch a running job. Coalesced to `JOB_UPDATE_INTERVAL_MS` per job (about
+   * 4 Hz): a download's progress events arrive far faster than anyone reads a
+   * bar, and each write re-renders the tray, the toast and the Tasks panel.
+   * A patch carrying `cancel` is applied at once.
+   */
+  updateJob(id: string, patch: JobPatch): void;
   /**
    * End a job. The progress toast is dismissed and, unless the job was
    * cancelled silently, a closing toast is shown with the outcome and its one
-   * follow-up action ("Reveal file", "Retry"). Finished jobs stay in the tray
-   * briefly (`JOB_LINGER_MS`) so the status bar can show the outcome, then drop.
+   * follow-up action ("Reveal file", "Retry"). The finished job stays in
+   * `jobs` as history for the Tasks panel (the newest `MAX_FINISHED_JOBS`).
    */
   finishJob(id: string, outcome: JobOutcome): void;
-  /** Drop a finished job from the tray now. */
+  /** Ask a running job to stop through its `cancel` handle. No-op without one. */
+  cancelJob(id: string): void;
+  /** Drop a finished job from the history now. */
   clearJob(id: string): void;
+  /** Drop every finished job (the Tasks panel's "Clear finished"). */
+  clearFinishedJobs(): void;
   setLastAutosaveAt(at: number | null): void;
   toggleSnap(): void;
   setGraphEditorOpen(open: boolean): void;
@@ -250,8 +306,61 @@ interface UIActions {
 
 export type UIStore = UIState & UIActions;
 
-/** How long a finished job stays in the tray before it drops out. */
-export const JOB_LINGER_MS = 6000;
+/** How many finished jobs the Tasks panel keeps as history. */
+export const MAX_FINISHED_JOBS = 20;
+/** Minimum gap between two applied `updateJob` patches of one job (~4 Hz). */
+export const JOB_UPDATE_INTERVAL_MS = 250;
+/** No time-remaining estimate before this much of the job has run… */
+export const ETA_WARMUP_MS = 1500;
+/** …or before this much progress: the first frames are rarely the typical ones. */
+export const ETA_WARMUP_PROGRESS = 0.03;
+
+/**
+ * Time left on a running job in ms, from its progress rate since the warm-up
+ * baseline (`etaFrom`) — null while there is nothing honest to say: an
+ * indeterminate job, one still warming up, or one that has not moved since.
+ * The time since the last sample is taken off, so the figure keeps counting
+ * down between sparse updates (never below zero).
+ */
+export function estimateJobRemainingMs(job: Job, now: number): number | null {
+  if (job.status !== 'running' || typeof job.progress !== 'number') return null;
+  if (job.progress >= 1) return 0;
+  const from = job.etaFrom;
+  const at = job.progressAt;
+  if (!from || at === undefined) return null;
+  const dp = job.progress - from.progress;
+  const dt = at - from.at;
+  if (dp <= 0 || dt <= 0) return null;
+  const remaining = ((1 - job.progress) * dt) / dp - Math.max(0, now - at);
+  return Math.max(0, remaining);
+}
+
+/** Whether `cancelJob` was called for the running job `id` (starters use it to report `cancelled`). */
+export function isJobCancelRequested(id: string): boolean {
+  return useUIStore.getState().jobs.some((j) => j.id === id && j.status === 'running' && j.cancelRequested === true);
+}
+
+/* Per-job coalescing of `updateJob` (module state: timers are not UI state). */
+const pendingJobPatches = new Map<string, { patch: JobPatch; timer: ReturnType<typeof setTimeout> }>();
+const lastJobFlushAt = new Map<string, number>();
+
+function dropPendingJobPatch(id: string): JobPatch | undefined {
+  const pending = pendingJobPatches.get(id);
+  if (!pending) return undefined;
+  clearTimeout(pending.timer);
+  pendingJobPatches.delete(id);
+  return pending.patch;
+}
+
+/** Keep the newest `MAX_FINISHED_JOBS` finished jobs; running ones always stay. */
+function trimFinished(jobs: Job[]): Job[] {
+  const finished = jobs.filter((j) => j.status !== 'running');
+  if (finished.length <= MAX_FINISHED_JOBS) return jobs;
+  const keep = new Set(
+    [...finished].sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)).slice(0, MAX_FINISHED_JOBS),
+  );
+  return jobs.filter((j) => j.status === 'running' || keep.has(j));
+}
 
 export const useUIStore = create<UIStore>()(
   subscribeWithSelector(
@@ -332,7 +441,9 @@ export const useUIStore = create<UIStore>()(
           s.notifications = s.notifications.filter((n) => n.id !== id);
         }),
 
-      startJob: ({ id, label, progress = 'indeterminate' }) => {
+      startJob: ({ id, label, progress = 'indeterminate', kind, statusLine, cancel }) => {
+        dropPendingJobPatch(id);
+        lastJobFlushAt.delete(id);
         const prev = useUIStore.getState().jobs.find((j) => j.id === id);
         if (prev?.toastId) useUIStore.getState().dismissNotification(prev.toastId);
         const toastId = useUIStore.getState().notify({
@@ -343,30 +454,45 @@ export const useUIStore = create<UIStore>()(
           sticky: true,
           group: `job:${id}`,
         });
+        const startedAt = Date.now();
         set((s) => {
-          s.jobs = [
-            ...s.jobs.filter((j) => j.id !== id),
-            { id, label, status: 'running', progress, startedAt: Date.now(), toastId },
-          ];
+          // A finished run under the same id (the Export panel reuses one) is
+          // history: it stays, renamed, so the restart does not erase it.
+          const rest = s.jobs.flatMap((j) => {
+            if (j.id !== id) return [j];
+            return j.status === 'running' ? [] : [{ ...j, id: `${j.id}#${j.finishedAt ?? j.startedAt}` }];
+          });
+          const job: Job = { id, label, status: 'running', progress, startedAt, toastId };
+          if (kind !== undefined) job.kind = kind;
+          if (statusLine !== undefined) job.statusLine = statusLine;
+          if (cancel !== undefined) job.cancel = cancel;
+          if (typeof progress === 'number') job.progressAt = startedAt;
+          s.jobs = [...rest, job];
         });
       },
       updateJob: (id, patch) => {
         const job = useUIStore.getState().jobs.find((j) => j.id === id);
         if (!job || job.status !== 'running') return;
-        set((s) => {
-          const j = s.jobs.find((x) => x.id === id);
-          if (!j) return;
-          if (patch.progress !== undefined) j.progress = patch.progress;
-          if (patch.label !== undefined) j.label = patch.label;
-        });
-        if (job.toastId) {
-          useUIStore.getState().updateNotification(job.toastId, {
-            ...(patch.progress !== undefined ? { progress: patch.progress } : {}),
-            ...(patch.label !== undefined ? { message: patch.label } : {}),
-          });
+        const now = Date.now();
+        const queued = pendingJobPatches.get(id);
+        if (queued) {
+          queued.patch = { ...queued.patch, ...patch };
+          if (patch.cancel !== undefined) flushJobPatch(id);
+          return;
         }
+        const last = lastJobFlushAt.get(id);
+        if (last === undefined || now - last >= JOB_UPDATE_INTERVAL_MS || patch.cancel !== undefined) {
+          lastJobFlushAt.set(id, now);
+          applyJobPatch(id, patch, now);
+          return;
+        }
+        const timer = setTimeout(() => flushJobPatch(id), JOB_UPDATE_INTERVAL_MS - (now - last));
+        pendingJobPatches.set(id, { patch, timer });
       },
       finishJob: (id, outcome) => {
+        // The last progress write first, so a coalesced label is not lost.
+        flushJobPatch(id);
+        lastJobFlushAt.delete(id);
         const job = useUIStore.getState().jobs.find((j) => j.id === id);
         if (!job) return;
         if (job.toastId) useUIStore.getState().dismissNotification(job.toastId);
@@ -378,8 +504,14 @@ export const useUIStore = create<UIStore>()(
           j.finishedAt = finishedAt;
           j.progress = outcome.status === 'done' ? 1 : j.progress;
           j.toastId = undefined;
+          j.cancel = undefined;
           if (outcome.message !== undefined) j.message = outcome.message;
           if (outcome.action !== undefined) j.action = outcome.action;
+          if (outcome.status === 'failed') {
+            const error = outcome.detail ?? outcome.message;
+            if (error !== undefined) j.error = error;
+          }
+          s.jobs = trimFinished(s.jobs);
         });
         // A cancelled job with nothing to say is not news.
         if (outcome.message) {
@@ -392,12 +524,29 @@ export const useUIStore = create<UIStore>()(
             ...(outcome.action !== undefined ? { action: outcome.action } : {}),
           });
         }
-        window.setTimeout(() => useUIStore.getState().clearJob(id), JOB_LINGER_MS);
+      },
+      cancelJob: (id) => {
+        const job = useUIStore.getState().jobs.find((j) => j.id === id);
+        if (!job || job.status !== 'running' || !job.cancel || job.cancelRequested) return;
+        const cancel = job.cancel;
+        set((s) => {
+          const j = s.jobs.find((x) => x.id === id);
+          if (j) j.cancelRequested = true;
+        });
+        try {
+          cancel();
+        } catch {
+          /* a handle that throws has nothing left to stop; the starter still reports the outcome */
+        }
       },
       clearJob: (id) =>
         set((s) => {
           // Only a FINISHED job clears; a running one is still the tray's business.
           s.jobs = s.jobs.filter((j) => j.id !== id || j.status === 'running');
+        }),
+      clearFinishedJobs: () =>
+        set((s) => {
+          s.jobs = s.jobs.filter((j) => j.status === 'running');
         }),
       setLastAutosaveAt: (at) =>
         set((s) => {
@@ -448,6 +597,44 @@ export const useUIStore = create<UIStore>()(
     })),
   ),
 );
+
+/** Apply a queued `updateJob` patch now (finishJob, a `cancel` patch, the timer). */
+function flushJobPatch(id: string): void {
+  const patch = dropPendingJobPatch(id);
+  if (!patch) return;
+  const now = Date.now();
+  lastJobFlushAt.set(id, now);
+  applyJobPatch(id, patch, now);
+}
+
+/** One store write (and one toast write) for a coalesced patch. */
+function applyJobPatch(id: string, patch: JobPatch, now: number): void {
+  const job = useUIStore.getState().jobs.find((j) => j.id === id);
+  if (!job || job.status !== 'running') return;
+  useUIStore.setState((s) => {
+    const j = s.jobs.find((x) => x.id === id);
+    if (!j) return;
+    if (patch.progress !== undefined) {
+      j.progress = patch.progress;
+      if (typeof patch.progress === 'number') {
+        j.progressAt = now;
+        // The baseline is the first sample past the warm-up, never earlier.
+        if (!j.etaFrom && now - j.startedAt >= ETA_WARMUP_MS && patch.progress >= ETA_WARMUP_PROGRESS) {
+          j.etaFrom = { at: now, progress: patch.progress };
+        }
+      }
+    }
+    if (patch.label !== undefined) j.label = patch.label;
+    if (patch.statusLine !== undefined) j.statusLine = patch.statusLine;
+    if (patch.cancel !== undefined) j.cancel = patch.cancel;
+  });
+  if (job.toastId && (patch.progress !== undefined || patch.label !== undefined)) {
+    useUIStore.getState().updateNotification(job.toastId, {
+      ...(patch.progress !== undefined ? { progress: patch.progress } : {}),
+      ...(patch.label !== undefined ? { message: patch.label } : {}),
+    });
+  }
+}
 
 /** Subscribe to a slice without React — for engines. */
 export function subscribeUI(

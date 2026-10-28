@@ -1712,7 +1712,7 @@ export function useWorkspace(args: UseWorkspaceArgs): { ready: boolean; renderEr
           // be selected, or a pen tool closing a path, is not a request to
           // open anything.
           const tool = useUIStore.getState().activeTool as string;
-          if (tool === 'select' || tool === 'brush' || tool === 'paint' || tool === 'eraser' || tool === 'roto') {
+          if (tool === 'select' || tool === 'brush' || tool === 'paint' || tool === 'eraser' || tool === 'roto' || tool === 'object-matte') {
             const hit = controller.ws.hitTestScreen(local(e as unknown as PointerEvent));
             if (hit && (hit.id === node.id || isMirrorDescendantOf(m, hit.id, node.id)) && openLayerOnDoubleClick(node.id, { alt: e.altKey })) {
               e.preventDefault();

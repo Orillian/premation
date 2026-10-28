@@ -148,11 +148,40 @@
   border-color: var(--color-border-strong);
 }
 
-/* Job tray: one compact chip per running job. */
+/* Job tray: one compact chip per running job. The whole tray is one button
+   that opens the Tasks panel (Premiere's Progress Dashboard → Progress panel). */
 .tray {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+.trayChips {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.trayChips:hover .job {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.trayChips:focus-visible {
+  outline: 2px solid var(--color-focus-ring, var(--color-primary));
+  outline-offset: 2px;
+  border-radius: var(--radius-full);
+}
+
+.trayChips .job {
+  cursor: pointer;
 }
 
 .job {

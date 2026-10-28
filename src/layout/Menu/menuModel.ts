@@ -175,6 +175,18 @@ export const APP_MENU: MenuGroupModel[] = [
       },
       { commandId: 'file.export', label: 'Export…' },
       {
+        // After Effects' File ▸ Create Proxy ▸ Movie… and Set Proxy ▸ None,
+        // folded under one entry so File stays within its 14-entry cap. Both
+        // act on the Project panel's selection (Assets/proxyCommands.ts); the
+        // panel's item menu has them as AE's two submenus.
+        label: 'Proxy',
+        labelKey: 'menu.sub.proxy',
+        children: [
+          { commandId: 'file.createProxyMovie', label: 'Create Proxy Movie…' },
+          { commandId: 'file.setProxyNone', label: 'Set Proxy: None' },
+        ],
+      },
+      {
         // After Effects' File ▸ Scripts: the fixed commands, then the user
         // Scripts folder's scripts (a thunk: they are user data — scriptsMenu.ts).
         label: 'Scripts',
@@ -481,6 +493,9 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'layer.bringForward', label: 'Bring Forward' },
           { commandId: 'layer.sendBackward', label: 'Send Backward' },
           { commandId: 'layer.sendToBack', label: 'Send to Back' },
+          { separator: true },
+          // The text-behind-the-person sandwich: an arrangement, with a cut-out copy on top.
+          { commandId: 'layer.placeBehindSubject', label: 'Place Behind Subject' },
         ],
       },
       { commandId: 'layer.precompose', label: 'Pre-compose…' },
@@ -496,6 +511,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'layer.shapesFromText', label: 'Shapes From Text' },
           { commandId: 'layer.masksFromText', label: 'Masks From Text' },
           { commandId: 'layer.autoTrace', label: 'Auto-trace…' },
+          { commandId: 'layer.createSubjectTrack', label: 'Subject Track (Null)' },
         ],
       },
       {
@@ -956,6 +972,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'view.scopes', label: 'Scopes' },
           { commandId: 'view.sourceMonitor', label: 'Source Monitor' },
           { commandId: 'view.swatches', label: 'Swatches' },
+          { commandId: 'view.tasks', label: 'Tasks' },
           { commandId: 'view.tracker', label: 'Tracker' },
           { commandId: 'view.contentAwareFill', label: 'Content-Aware Fill' },
         ],

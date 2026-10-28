@@ -3,6 +3,7 @@ import { usePreferenceStore } from '@stores/preferenceStore';
 import { useRenderQualityStore } from '@stores/renderQualityStore';
 import { CacheMemoryPanel } from './CacheMemoryPanel';
 import { healthCopy } from './memoryCopy';
+import { setCacheMemoryView } from './cacheMemoryView';
 import { readMemory } from '@core/perf/memoryHealth';
 
 // No engine in a unit test: the sampler's query rejects and the panel shows
@@ -12,7 +13,13 @@ jest.mock('@core/engine/engineInstance', () => ({
   subscribeEngine: () => () => {},
 }));
 // Nor a document: no active composition (30 fps), an empty cache lane.
-jest.mock('@hooks/useMirror', () => ({ useActiveMirrorComp: () => null, compFps: () => 30 }));
+jest.mock('@hooks/useMirror', () => ({
+  useActiveMirrorComp: () => null,
+  compFps: () => 30,
+  useActiveCompId: () => undefined,
+  useMirror: () => ({}),
+  useMirrorKeys: () => 0,
+}));
 jest.mock('@layout/Timeline/CacheActions', () => ({
   usePreviewCacheStats: () => ({ stats: { cached: 0, onDisk: 0, total: 0, workArea: true, ramMb: 0, diskMb: null }, refresh: () => {} }),
 }));
@@ -26,6 +33,7 @@ jest.mock('@layout/Timeline/previewCacheCommands', () => ({
 
 describe('CacheMemoryPanel', () => {
   beforeEach(() => {
+    setCacheMemoryView('overview');
     usePreferenceStore.getState().set('cacheBeforePlayback', false);
     usePreferenceStore.getState().set('idleRenderAhead', true);
   });
@@ -42,6 +50,14 @@ describe('CacheMemoryPanel', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Diagnostics' }));
     expect(screen.getByText('Engine memory')).toBeInTheDocument();
     expect(screen.getByText('No restarts or memory warnings.')).toBeInTheDocument();
+  });
+
+  it('opens on Health when asked (the status bar dot) and says when no composition is open', () => {
+    setCacheMemoryView('health');
+    render(<CacheMemoryPanel />);
+    expect(screen.getByRole('radio', { name: 'Health' })).toBeChecked();
+    expect(screen.getByText('Open a composition to see its health.')).toBeInTheDocument();
+    expect(screen.getByText('Suggestions')).toBeInTheDocument();
   });
 
   it('writes the preview switches and the resolution choice', () => {

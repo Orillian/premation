@@ -8,7 +8,8 @@
  *
  *   left    save state, or the assistant's current step · N layers · N selected · info readout
  *   centre  the composition chip (name, size, fps, dirty dot)
- *   right   job tray · VU · timeline zoom · fps · timecode · video health · search
+ *   right   job tray · VU · timeline zoom · fps · timecode · video health ·
+ *           project health dot (opens Cache & Memory ▸ Health) · search
  *
  * The account button used to end this row. It is in the top bar's right
  * cluster now (TopNav on the web, the title bar in Electron), beside Preview
@@ -34,6 +35,7 @@ import { InfoReadout } from './InfoReadout';
 import { VUMeter } from './VUMeter';
 import { StatusBarTimecode } from './StatusBarTimecode';
 import { VideoHealth } from './VideoHealth';
+import { ProjectHealthDot } from './ProjectHealthDot';
 import { JobTray } from './JobTray';
 import { AssistantWorkLine } from './AssistantWorkLine';
 import styles from './EditorStatusBar.module.css';
@@ -119,6 +121,8 @@ export function EditorStatusBar({ layerCount }: EditorStatusBarProps): JSX.Eleme
           <Sep />
           <StatusBarTimecode fps={compFps} startFrame={compStartFrame} />
           <VideoHealth />
+          <Sep />
+          <ProjectHealthDot />
           <Sep />
           <button
             type="button"

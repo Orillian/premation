@@ -26,6 +26,18 @@ export interface RotoStroke {
   time?: number;
 }
 
+/**
+ * A box drawn with the Object Matte tool (AE's Rectangle marquee): layer-local
+ * px, centre origin, like the strokes, on the frame at `time`.
+ */
+export interface RotoBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  time: number;
+}
+
 /** How the matte is carried through the shot. */
 export type RotoEngine = 'objectMatte' | 'classic';
 
@@ -58,6 +70,8 @@ interface RotoBrushStore {
   status: string | null;
   engine: RotoEngine;
   refine: RotoRefine;
+  /** The Object Matte tool's box prompt, if the selection started from one. */
+  box: RotoBox | null;
 
   setEngine: (e: RotoEngine) => void;
   setRefine: (patch: Partial<RotoRefine>) => void;
@@ -76,6 +90,13 @@ interface RotoBrushStore {
   setMaskPathId: (id: string | null) => void;
   setBusy: (busy: boolean, progress?: number) => void;
   setStatus: (s: string | null) => void;
+  setBox: (box: RotoBox | null) => void;
+  /**
+   * The Object Matte tool's click: one point prompt at `time`. `mode` 'new'
+   * starts the selection over on that frame (strokes and box there go);
+   * 'add' / 'subtract' keep it and add a foreground / background point.
+   */
+  addPoint: (p: { x: number; y: number }, time: number, mode: 'new' | 'add' | 'subtract', fps?: number) => RotoStroke;
 }
 
 let seq = 0;
@@ -93,11 +114,12 @@ export const useRotoBrushStore = create<RotoBrushStore>((set, get) => ({
   status: null,
   engine: 'objectMatte',
   refine: { edgeRadius: 6, decontaminate: 50, motionBlur: false, choke: 0, reduceChatter: 30 },
+  box: null,
 
   setEngine: (engine) => set({ engine }),
   setRefine: (patch) => set((s) => ({ refine: { ...s.refine, ...patch } })),
   setNode: (nodeId) =>
-    set((s) => (s.nodeId === nodeId ? s : { nodeId, strokes: [], live: null, maskPathId: null, status: null })),
+    set((s) => (s.nodeId === nodeId ? s : { nodeId, strokes: [], live: null, maskPathId: null, status: null, box: null })),
   setKind: (kind) => set({ kind }),
   setSize: (px) => set({ size: Math.max(2, Math.min(200, Math.round(px))) }),
   setFeather: (px) => set({ featherPx: Math.max(0, Math.min(64, Math.round(px))) }),
@@ -118,8 +140,21 @@ export const useRotoBrushStore = create<RotoBrushStore>((set, get) => ({
   },
   cancelLive: () => set({ live: null }),
   removeStroke: (id) => set((s) => ({ strokes: s.strokes.filter((x) => x.id !== id) })),
-  clearStrokes: () => set({ strokes: [], live: null, status: null }),
+  clearStrokes: () => set({ strokes: [], live: null, status: null, box: null }),
   setMaskPathId: (id) => set({ maskPathId: id }),
   setBusy: (busy, progress = 0) => set({ busy, progress }),
   setStatus: (status) => set({ status }),
+  setBox: (box) => set({ box }),
+  addPoint: (p, time, mode, fps = 30) => {
+    const stroke: RotoStroke = { id: `roto_${++seq}`, kind: mode === 'subtract' ? 'bg' : 'fg', points: [p], time };
+    const half = 0.5 / Math.max(1, fps);
+    set((s) => {
+      if (mode !== 'new') return { strokes: [...s.strokes, stroke] };
+      // A new selection replaces this frame's prompts only: corrections on
+      // other frames still belong to the subject being followed.
+      const keep = s.strokes.filter((x) => x.time !== undefined && Math.abs(x.time - time) > half);
+      return { strokes: [...keep, stroke], box: null };
+    });
+    return stroke;
+  },
 }));

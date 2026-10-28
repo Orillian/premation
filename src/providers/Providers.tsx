@@ -20,6 +20,7 @@ import { isLayer } from '@core/mirror/docFacts';
 import { useLayoutStore } from '@stores/layoutStore';
 import { toggleRenderQueue } from '@stores/timelinePanelStore';
 import { useSelectionStore } from '@stores/selectionStore';
+import { runCreateSubjectTrack, runPlaceBehindSubject } from '@layout/Workspace/placeBehindSubjectCommand';
 import { isPickArmed } from '@stores/trackerStore';
 import { pruneKeyframeSelectionToNodes, useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { prunePropertySelectionToNodes } from '@stores/propertySelectionStore';
@@ -32,7 +33,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
 import { useProjectStore, type CompositionSettings } from '@stores/projectStore';
 import { getTime } from '@stores/playbackClockStore';
-import { useUIStore } from '@stores/uiStore';
+import { isJobCancelRequested, useUIStore } from '@stores/uiStore';
 import { bumpScene } from '@stores/sceneStore';
 import { openProjectPath } from '@core/project/openProjectPath';
 import { openLocalMotionFile, saveToComputer } from '@core/project/localProjectIO';
@@ -424,13 +425,17 @@ async function pickAndImport3DModel(): Promise<void> {
   });
   if (files.length === 0) return;
   const jobId = 'model-import';
-  useUIStore.getState().startJob({ id: jobId, label: t('providers.model.importing', 'Importing 3D model…') });
+  useUIStore.getState().startJob({ id: jobId, kind: 'import', label: t('providers.model.importing', 'Importing 3D model…') });
   try {
     const outcome = await importModelSelection(files, (fraction, message) => {
       useUIStore.getState().updateJob(jobId, { progress: fraction, ...(message ? { label: message } : {}) });
-    });
+    }, (handle) => useUIStore.getState().updateJob(jobId, { cancel: () => handle.cancel() }));
     useUIStore.getState().finishJob(jobId, { status: 'done', message: modelImportMessage(outcome).message });
   } catch (err) {
+    if (isJobCancelRequested(jobId)) {
+      useUIStore.getState().finishJob(jobId, { status: 'cancelled', message: t('providers.model.importCancelled', '3D import cancelled') });
+      return;
+    }
     useUIStore.getState().finishJob(jobId, { status: 'failed', message: t('providers.model.importFailed', '3D import failed: {error}', { error: err instanceof Error ? err.message : String(err) }) });
   }
 }
@@ -498,7 +503,9 @@ function buildToolCommands(): ReadonlyArray<Command> {
     { tool: 'convert-vertex', label: 'Convert Vertex Tool' },
     { tool: 'mask-feather', label: 'Mask Feather Tool' },
     // Alt+W stays the viewport command's (viewportCommands.ts); this makes the toolbar button rebindable.
-    { tool: 'roto', label: 'Roto Brush & Object Matte Tool' },
+    { tool: 'roto', label: 'Roto Brush Tool' },
+    // AE 26.2: Object Matte heads the roto family (Alt+W cycles the two, viewportCommands.ts).
+    { tool: 'object-matte', label: 'Object Matte Tool' },
   ];
   // Every tool used 'crosshair', so the palette/menus showed eleven identical
   // icons — give each tool its actual glyph.
@@ -535,6 +542,8 @@ function buildToolCommands(): ReadonlyArray<Command> {
     paint: 'paint',
     eraser: 'eraser',
     knife: 'knife',
+    roto: 'magic-wand',
+    'object-matte': 'object-matte',
   };
   return tools.map(({ tool, label, chord }) => ({
     id: asCommandId(`tool.${tool}`),
@@ -2015,6 +2024,23 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       // AE's dialog: name, Leave / Move all attributes, trim to span, open.
       execute: () => openPrecomposeDialog(),
     },
+    {
+      // The "text behind the person" sandwich (placeBehindSubject.ts): footage
+      // duplicated, the copy keeps the subject's matte, the selection between.
+      id: asCommandId('layer.placeBehindSubject'),
+      label: 'Place Behind Subject',
+      icon: 'object-matte',
+      enabled: () => useSelectionStore.getState().count() > 0,
+      execute: () => { void runPlaceBehindSubject(useSelectionStore.getState().ids); },
+    },
+    {
+      // A null that follows the Object Matte subject (subjectTrack.ts): parent anything to it.
+      id: asCommandId('layer.createSubjectTrack'),
+      label: 'Subject Track (Null)',
+      icon: 'object-matte',
+      enabled: () => useSelectionStore.getState().count() === 1,
+      execute: () => { void runCreateSubjectTrack(useSelectionStore.getState().ids[0]!); },
+    },
     // ── Fit (AE's Layer ▸ Transform submenu) ──────────────────────────
     // One-shot commands that COMPUTE a size and write it, rather than a stored
     // "fit mode" the renderer re-resolves every frame. The old Media panel had
@@ -2736,6 +2762,7 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
             { id: 'view.info', panel: 'info', label: 'Info', icon: 'info' },
             { id: 'view.scopes', panel: 'scopes', label: 'Scopes', icon: 'waves' },
             { id: 'view.cacheMemory', panel: 'cacheMemory', label: 'Cache & Memory', icon: 'gpu' },
+            { id: 'view.tasks', panel: 'tasks', label: 'Tasks', icon: 'queue' },
             { id: 'view.preview', panel: 'preview', label: 'Preview', icon: 'play' },
             { id: 'view.recordAudio', panel: 'recordAudio', label: 'Record Audio', icon: 'mic' },
             { id: 'view.sourceMonitor', panel: 'sourceMonitor', label: 'Source Monitor', icon: 'tv' },

@@ -56,6 +56,8 @@ const TOOL_MAP: Record<UITool, string> = {
   // The engine tool exists (cursor + label + shortcut) but the strokes are the
   // host's: `RotoBrushOverlay` sits above the canvas and claims the pointer.
   roto: 'roto',
+  // Same engine tool as roto (no pointer-down of its own): `ObjectMatteOverlay` claims the pointer.
+  'object-matte': 'roto',
 };
 
 export class WorkspaceController {

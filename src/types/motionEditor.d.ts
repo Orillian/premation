@@ -584,7 +584,8 @@ export interface MotionEditorApi {
   /** Face Tracking's landmark model in <userData>/models/face-landmarks (electron/faceModel.ts). */
   faceModel?: {
     status(): Promise<{ url: string; bytes: number; installedAt: number; bundled?: boolean } | null>;
-    install(request: { url: string; requestId: string }): Promise<{ ok: true; model: { url: string; bytes: number; installedAt: number } } | { ok: false; message: string }>;
+    /** Pinned (models.json): the URL is the manifest's; a request's own `url` is refused unless it is that one. */
+    install(request: { url?: string; requestId: string }): Promise<{ ok: true; model: { url: string; bytes: number; installedAt: number } } | { ok: false; message: string }>;
     remove(): Promise<boolean>;
     cancelDownload(requestId: string): Promise<boolean>;
     onDownloadProgress(handler: (event: unknown) => void): () => void;

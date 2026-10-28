@@ -59,6 +59,8 @@ const GLYPHS = {
 
   // Layer, animate & snapping
   'layer-plus': '<path d="M8 2.8 L14.6 6.1 L8 9.4 L1.4 6.1 Z"/><path d="M1.4 9.6 L8 12.9 L10.2 11.8"/><path d="M14 10.6 V16.2 M11.2 13.4 H16.8"/>',
+  // Object Matte: a picture frame with the AI sparkle (the pixel set uses Fluent image_sparkle).
+  'object-matte': '<path d="M9 3 H3.5 A1.5 1.5 0 0 0 2 4.5 V14.5 A1.5 1.5 0 0 0 3.5 16 H13.5 A1.5 1.5 0 0 0 15 14.5 V10"/><path d="M2.4 13.6 L6.6 9.6 L10 12.8 L11.6 11.4 L14.8 14.2"/><path fill="currentColor" stroke="none" d="M14 1 L14.9 3.6 L17.5 4.5 L14.9 5.4 L14 8 L13.1 5.4 L10.5 4.5 L13.1 3.6 Z"/>',
   'magic-wand': '<path d="M2.8 15.2 L9.6 8.4" stroke-width="2.2"/><path fill="currentColor" stroke="none" d="M12.6 1.6 L13.6 4.4 L16.4 5.4 L13.6 6.4 L12.6 9.2 L11.6 6.4 L8.8 5.4 L11.6 4.4 Z"/><path d="M14.8 11.2 V14 M13.4 12.6 H16.2 M5.6 3 V5.4 M4.4 4.2 H6.8" stroke-width="1.2"/>',
   'undo': '<path d="M6.4 3.4 L2.9 6.9 L6.4 10.4"/><path d="M2.9 6.9 H11 A4 4 0 0 1 11 14.9 H7.4"/>',
   'redo': '<path d="M11.6 3.4 L15.1 6.9 L11.6 10.4"/><path d="M15.1 6.9 H7 A4 4 0 0 0 7 14.9 H10.6"/>',
@@ -229,6 +231,7 @@ export const PIXEL_ICON_NAMES: ReadonlySet<IconName> = new Set<IconName>([
   'cube',
   'layer-plus',
   'magic-wand',
+  'object-matte',
   'more-horizontal',
   'pan-camera',
   'perspective',

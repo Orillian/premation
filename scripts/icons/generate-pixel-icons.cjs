@@ -126,6 +126,8 @@ const MAP = {
   'cube': { 16: 'cube', 20: 'cube_add' },
   'layer-plus': 'add_square_multiple',
   'magic-wand': 'wand',
+  // AE 26's Object Matte tool: a picture with the AI sparkle (hover, click, matte).
+  'object-matte': 'image_sparkle',
   'more-horizontal': 'more_horizontal',
   'pan-camera': 'hand_left',
   'perspective': 'arrow_expand',

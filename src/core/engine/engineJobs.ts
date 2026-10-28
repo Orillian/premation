@@ -41,6 +41,12 @@ export interface StartEngineJobOptions {
   apply?: boolean;
   /** Progress 0…1 with the engine's status line. */
   onProgress?: (fraction: number, message: string) => void;
+  /**
+   * The job is running: its handle, before any progress. For callers that go
+   * through {@link runEngineJob} but still need the `cancel` (a Tasks panel
+   * row's ×, registered with `uiStore.updateJob(id, { cancel })`).
+   */
+  onStart?: (handle: EngineJobHandle) => void;
   client?: EngineClient;
 }
 
@@ -103,11 +109,13 @@ export async function startEngineJob<R = unknown>(spec: JobSpec, opts: StartEngi
   id = res.value.job;
   for (const b of early.splice(0)) onBatch(b);
   const jobId = id;
-  return {
+  const handle: EngineJobHandle<R> = {
     id: jobId,
     cancel: () => { void client.execute({ type: 'cancelJob', job: jobId }); },
     done,
   };
+  opts.onStart?.(handle);
+  return handle;
 }
 
 /**

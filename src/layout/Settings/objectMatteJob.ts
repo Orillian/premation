@@ -37,7 +37,7 @@ export function installObjectMatteJob(): void {
         : t('settings.objectMatte.jobMb', 'Downloading Object Matte model… {size} MB', { size: (receivedBytes / MB).toFixed(0) });
       // No percentage without a Content-Length — inventing one would be a lie.
       const progress = totalBytes ? Math.min(1, receivedBytes / totalBytes) : 'indeterminate';
-      if (!wasDownloading) ui.startJob({ id: OBJECT_MATTE_JOB_ID, label, progress });
+      if (!wasDownloading) ui.startJob({ id: OBJECT_MATTE_JOB_ID, kind: 'download', label, progress, cancel: () => state.cancel() });
       else ui.updateJob(OBJECT_MATTE_JOB_ID, { label, progress });
       wasDownloading = true;
       return;
@@ -56,6 +56,20 @@ export function installObjectMatteJob(): void {
       ui.finishJob(OBJECT_MATTE_JOB_ID, { status: 'cancelled', message: t('settings.objectMatte.jobCancelled', 'Model download cancelled') });
     }
   });
+}
+
+/**
+ * The model is missing (the engine said so) and the person picked a tool that
+ * needs it: start the download now, as a job (tray chip + Tasks panel), with no
+ * toast to answer first. Premiere does the same for its masking models on first
+ * use. Returns whether `message` was that failure.
+ */
+export function autoInstallObjectMatte(message: string): boolean {
+  if (!isObjectMatteModelMissing(message)) return false;
+  installObjectMatteJob();
+  const sam = useSamModelStore.getState();
+  if (sam.status.kind !== 'downloading') void sam.install(SUGGESTED_MODEL.encoderUrl, SUGGESTED_MODEL.decoderUrl);
+  return true;
 }
 
 /**

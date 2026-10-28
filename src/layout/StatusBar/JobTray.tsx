@@ -4,17 +4,25 @@
  *
  * Reads `uiStore.jobs` directly: each job also drives one progress toast, but
  * a toast is dismissable and a render is not over just because its card is
- * gone. The tray is the persistent view. Only RUNNING jobs are shown; a
- * finished job's outcome is the closing toast's business.
+ * gone. The tray is the compact view (Premiere's Progress Dashboard): only
+ * RUNNING jobs, at most `MAX_CHIPS` of them plus a `+N`. A click anywhere on
+ * it opens (or brings forward) the Tasks panel, which has every job, the
+ * history, the time left and the stop buttons.
  */
 
 import { Progress } from '@components/Progress';
 import { Badge } from '@components/Badge';
 import { useUIStore } from '@stores/uiStore';
+import { useLayoutStore } from '@stores/layoutStore';
 import { t } from '@core/i18n';
 import styles from './EditorStatusBar.module.css';
 
 const MAX_CHIPS = 2;
+
+/** The Tasks panel (layout/Tasks), opened or brought to the front. */
+export function openTasksPanel(): void {
+  useLayoutStore.getState().openPanel('tasks');
+}
 
 export function JobTray(): JSX.Element | null {
   const jobs = useUIStore((s) => s.jobs);
@@ -24,28 +32,35 @@ export function JobTray(): JSX.Element | null {
   const more = running.length - shown.length;
   return (
     <div className={styles.tray} role="group" aria-label={t('statusBar.jobs.ariaLabel', 'Background jobs')}>
-      {shown.map((job) => {
-        const indeterminate = job.progress === 'indeterminate';
-        const pct = indeterminate ? null : Math.round((job.progress as number) * 100);
-        return (
-          <div
-            key={job.id}
-            className={styles.job}
-            title={pct === null ? job.label : t('statusBar.jobs.progress', '{label} — {pct}%', { label: job.label, pct })}
-          >
-            <span className={styles.jobLabel}>{job.label}</span>
-            <Progress
-              className={styles.jobBar}
-              size="sm"
-              value={indeterminate ? 0 : (job.progress as number)}
-              indeterminate={indeterminate}
-              aria-label={job.label}
-            />
-            {pct !== null ? <span className={styles.jobPct}>{pct}%</span> : null}
-          </div>
-        );
-      })}
-      {more > 0 ? <Badge size="sm" title={t('statusBar.jobs.more', '{n} more running', { n: more })}>+{more}</Badge> : null}
+      <button
+        type="button"
+        className={styles.trayChips}
+        title={t('statusBar.jobs.openTasks', 'Show all tasks')}
+        onClick={openTasksPanel}
+      >
+        {shown.map((job) => {
+          const indeterminate = job.progress === 'indeterminate';
+          const pct = indeterminate ? null : Math.round((job.progress as number) * 100);
+          return (
+            <span
+              key={job.id}
+              className={styles.job}
+              title={pct === null ? job.label : t('statusBar.jobs.progress', '{label} — {pct}%', { label: job.label, pct })}
+            >
+              <span className={styles.jobLabel}>{job.label}</span>
+              <Progress
+                className={styles.jobBar}
+                size="sm"
+                value={indeterminate ? 0 : (job.progress as number)}
+                indeterminate={indeterminate}
+                aria-label={job.label}
+              />
+              {pct !== null ? <span className={styles.jobPct}>{pct}%</span> : null}
+            </span>
+          );
+        })}
+        {more > 0 ? <Badge size="sm" title={t('statusBar.jobs.more', '{n} more running', { n: more })}>+{more}</Badge> : null}
+      </button>
       <span className={styles.dot} aria-hidden>·</span>
     </div>
   );

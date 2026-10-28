@@ -25,6 +25,7 @@ struct P2 {
   double y = 0;
 };
 
+/// Face Mesh V1's crop side; V2 (478 points) takes 256. The model's own input shape decides (LandmarkModel::input_side).
 inline constexpr int kInput = 192;
 inline constexpr std::size_t kLandmarks = 468;
 
@@ -51,12 +52,13 @@ struct Roi {
   double angle = 0;
 };
 
-/// The crop of a frame for `roi`, RGBA8 → kInput² RGB floats in [0, 1]
+/// The crop of a frame for `roi`, RGBA8 → side² RGB floats in [0, 1]
 /// (NHWC, or NCHW when `planar`). Outside the frame is black.
-[[nodiscard]] std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int height, const Roi& roi, bool planar);
+[[nodiscard]] std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int height, const Roi& roi, bool planar,
+                                      int side = kInput);
 
-/// Crop px (0…kInput) → frame px.
-[[nodiscard]] P2 crop_to_frame(const Roi& roi, P2 c) noexcept;
+/// Crop px (0…side) → frame px.
+[[nodiscard]] P2 crop_to_frame(const Roi& roi, P2 c, int side = kInput) noexcept;
 
 /// The upright face box from a mask outline (frame px): its bounds grown 1.25×, no rotation.
 [[nodiscard]] Roi roi_from_outline(std::span<const P2> outline);

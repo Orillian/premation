@@ -347,7 +347,40 @@ export const createGradientDef: AiToolDef = {
  * ABSENT in the audit until the rasterizer grows a superellipse path.
  */
 
+export const placeBehindSubjectDef: AiToolDef = {
+  name: 'place_behind_subject',
+  kind: 'write',
+  description:
+    'Put layers BEHIND the person or object in a video or photo — the "text behind the subject" look. ' +
+    'Duplicates the footage layer; the copy on top keeps only the subject (an AI Object Matte cut-out), ' +
+    'and the given layers go between the original and the copy, so the subject passes in front of them. ' +
+    'Give `point` (a spot on the subject, footage pixels from the top-left, at the playhead) to cut the ' +
+    'subject out through the whole shot; without it, an existing matte on the footage is used, or the ' +
+    'user is asked to click the subject. One undo step for the layering.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nodeIds'],
+    properties: {
+      nodeIds: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 1,
+        description: 'The layers to put behind the subject (text, shapes…). Include the footage layer to choose it; otherwise the nearest video/image layer below them is used.',
+      },
+      point: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['x', 'y'],
+        properties: { x: { type: 'number' }, y: { type: 'number' } },
+        description: 'A point on the subject in footage pixels (top-left origin) on the frame at the playhead.',
+      },
+    },
+  },
+};
+
 export const CRAFT_TOOL_DEFS: readonly AiToolDef[] = [
+  placeBehindSubjectDef,
   setSpringDef,
   setMotionBlurDef,
   createPrecompDef,

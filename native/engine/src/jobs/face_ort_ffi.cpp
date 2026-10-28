@@ -45,17 +45,23 @@ class OrtLandmarks final : public LandmarkModel {
     inName_ = session_.GetInputNameAllocated(0, alloc).get();
     const std::vector<std::int64_t> shape = session_.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
     planar_ = shape.size() == 4 && shape[1] == 3;
+    // NCHW [1,3,S,S] or NHWC [1,S,S,3]; a dynamic (-1) side keeps V1's 192.
+    if (shape.size() == 4) {
+      const std::int64_t s = planar_ ? shape[2] : shape[1];
+      if (s >= 64 && s <= 1024) side_ = static_cast<int>(s);
+    }
     for (std::size_t i = 0; i < session_.GetOutputCount(); ++i) outNames_.emplace_back(session_.GetOutputNameAllocated(i, alloc).get());
   }
 
   [[nodiscard]] bool planar() const noexcept override { return planar_; }
+  [[nodiscard]] int input_side() const noexcept override { return side_; }
   [[nodiscard]] std::string provider() const override { return provider_; }
 
   bool run(std::span<const float> input, MeshOut& out, std::string& error) override {
     try {
       std::vector<float> in(input.begin(), input.end());
       const std::array<std::int64_t, 4> shape =
-          planar_ ? std::array<std::int64_t, 4>{1, 3, kInput, kInput} : std::array<std::int64_t, 4>{1, kInput, kInput, 3};
+          planar_ ? std::array<std::int64_t, 4>{1, 3, side_, side_} : std::array<std::int64_t, 4>{1, side_, side_, 3};
       Ort::Value tensor = Ort::Value::CreateTensor<float>(memory_, in.data(), in.size(), shape.data(), shape.size());
       const char* inName = inName_.c_str();
       std::vector<const char*> outNames;
@@ -98,6 +104,7 @@ class OrtLandmarks final : public LandmarkModel {
   std::string inName_;
   std::vector<std::string> outNames_;
   bool planar_ = false;
+  int side_ = kInput;
 };
 
 }  // namespace

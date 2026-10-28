@@ -50,7 +50,14 @@ function mirrorToTray(prev: ExportJobRecord | undefined, next: ExportJobRecord):
   const isLive = !isFinishedStatus(next.status);
 
   if (isLive && !wasLive) {
-    ui.startJob({ id: trayId, label, progress: next.status === 'queued' ? 'indeterminate' : next.progress.fraction });
+    ui.startJob({
+      id: trayId,
+      kind: 'export',
+      label,
+      progress: next.status === 'queued' ? 'indeterminate' : next.progress.fraction,
+      // The supervisor's own Cancel: the job then arrives `cancelled` here.
+      cancel: () => { void useExportQueueStore.getState().cancel(next.id); },
+    });
     return;
   }
   if (isLive) {

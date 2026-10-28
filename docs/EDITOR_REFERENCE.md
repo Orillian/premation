@@ -68,7 +68,7 @@ rediscovered in git history and believed a second time.
 | Mask modes | 7 | `src/core/effects/mask.ts` → `MaskMode` |
 | Light types | 5 | `src/core/scene/light.ts` → `LightType` |
 | Canvas tools | 23 | `packages/workspace/src/tools/builtin.ts` |
-| AI tools | 73 | `packages/ai-tools/src/tools/{read,write,craft,compose}.ts` |
+| AI tools | 74 | `packages/ai-tools/src/tools/{read,write,craft,compose}.ts` |
 | Export formats | 18 | `renderSpec.ts` → `VideoFormat` + `exportManager.ts` → `ExportFormat` / `DataExportFormat` |
 | Stores | 98 | `src/stores/*.ts` |
 | Packages | 15 | `packages/*` |

@@ -72,7 +72,13 @@ export function ModelsSettingsSection(): JSX.Element {
     setDownloads((d) => ({ ...d, [m.id]: { requestId, received: 0, total: m.bytes } }));
     const jobId = `model-${m.id}`;
     const ui = useUIStore.getState();
-    ui.startJob({ id: jobId, label: t('settings.models.jobDownloading', 'Downloading {name}…', { name: m.name }), progress: 'indeterminate' });
+    ui.startJob({
+      id: jobId,
+      kind: 'download',
+      label: t('settings.models.jobDownloading', 'Downloading {name}…', { name: m.name }),
+      progress: 'indeterminate',
+      cancel: () => { void b.cancelDownload(requestId); },
+    });
     const off = b.onDownloadProgress((e) => {
       const p = e as { requestId?: unknown; receivedBytes?: unknown; totalBytes?: unknown };
       if (p.requestId !== requestId || typeof p.receivedBytes !== 'number') return;

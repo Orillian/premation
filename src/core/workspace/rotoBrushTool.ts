@@ -21,10 +21,10 @@
 
 import { secondsToFlicks } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
-import { requireEngineJob, runEngineJob, startEngineJob } from '@core/engine/engineJobs';
+import { applyEngineJob, requireEngineJob, runEngineJob, startEngineJob } from '@core/engine/engineJobs';
 import { documentMirror } from '@stores/documentMirror';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
-import type { RotoStroke } from '@stores/rotoBrushStore';
+import type { RotoBox, RotoStroke } from '@stores/rotoBrushStore';
 import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
 
@@ -123,6 +123,18 @@ export function strokesAt(strokes: readonly RotoStroke[], time: number, fps = 30
   return strokes.filter((s) => s.time === undefined || Math.abs(s.time - time) <= half);
 }
 
+/** A box (layer-local, centre origin) → the job's `box` Rect in layer px, top-left origin. */
+export function boxToRect(box: RotoBox, layer: { width: number; height: number }): { x: number; y: number; width: number; height: number } {
+  const x0 = Math.min(box.x0, box.x1) + layer.width / 2;
+  const y0 = Math.min(box.y0, box.y1) + layer.height / 2;
+  return { x: x0, y: y0, width: Math.abs(box.x1 - box.x0), height: Math.abs(box.y1 - box.y0) };
+}
+
+/** The box when it was drawn on the frame at `time`, else null. */
+export function boxAt(box: RotoBox | null | undefined, time: number, fps = 30): RotoBox | null {
+  return box && Math.abs(box.time - time) <= 0.5 / Math.max(1, fps) ? box : null;
+}
+
 /** The footage's display size — the layer px the strokes and prompts live in. */
 async function layerSize(nodeId: string): Promise<{ width: number; height: number } | null> {
   const res = await engine().query({ type: 'getSourceSize', layers: [nodeId] });
@@ -134,6 +146,97 @@ export interface SegmentStrokesOptions {
   featherPx?: number;
   /** Replace this path id if it is still on the layer. */
   replacePathId?: string | null;
+  /** The Object Matte tool's marquee on this frame: a box prompt (it wins over points in the engine). */
+  box?: RotoBox | null;
+}
+
+/** The objectMatte job of one frame, built from the tool's prompts (null when there is nothing to segment). */
+async function singleFrameSpec(
+  nodeId: string,
+  strokes: readonly RotoStroke[],
+  timeSec: number,
+  opts: SegmentStrokesOptions,
+): Promise<Parameters<typeof runEngineJob>[0] | null> {
+  const size = await layerSize(nodeId);
+  if (!size) return null;
+  const prompts = strokesToPrompts(strokes, size);
+  const rect = opts.box ? boxToRect(opts.box, size) : null;
+  const box = rect && rect.width > 1 && rect.height > 1 ? rect : null;
+  if (prompts.fg.length === 0 && !box) return null;
+  // The tool's previous paths go: the one it wrote last (by id) and any other it left (by name).
+  const replace = new Set<string>(opts.replacePathId ? [opts.replacePathId] : []);
+  for (const m of mirrorMaskHeaders(documentMirror().tree(nodeId))) if (m.name === ROTO_PATH_NAME) replace.add(m.id);
+  return {
+    kind: 'objectMatte',
+    value: {
+      strokes: [],
+      layer: nodeId,
+      range: { start: secondsToFlicks(timeSec), duration: secondsToFlicks(1 / 30) },
+      prompts: prompts.fg,
+      backgroundPrompts: prompts.bg,
+      encoderModel: '',
+      decoderModel: '',
+      maskName: ROTO_PATH_NAME,
+      maskMode: 'add',
+      feather: opts.featherPx ?? 2,
+      replaceMasks: [...replace],
+      ...(box ? { box } : {}),
+    },
+  };
+}
+
+/** A hover preview: the outline a click would write, held in the engine until applied or discarded. */
+export interface ObjectMattePreview {
+  /** Layer-local px (centre origin), x y pairs. */
+  outline: number[];
+  /** Write the held result (one undo entry). Resolves the mask id, or null when it could not. */
+  apply(): Promise<string | null>;
+  /** Drop the held result; nothing was written. */
+  discard(): void;
+}
+
+/**
+ * The Object Matte tool's hover (AE 26.2: hovering a subject previews its
+ * matte). The job runs with `apply: false`; its summary carries the outline,
+ * and a click on the same spot applies the held result instead of segmenting
+ * again. Resolves null when there was nothing there, or when `isStale()`
+ * turned true while it ran (the pointer moved on).
+ */
+export async function previewObjectMatte(
+  nodeId: string,
+  strokes: readonly RotoStroke[],
+  timeSec: number,
+  opts: SegmentStrokesOptions & { isStale?: () => boolean } = {},
+): Promise<ObjectMattePreview | null> {
+  if (isRotoFrozen(nodeId)) return null;
+  const spec = await singleFrameSpec(nodeId, strokes, timeSec, opts);
+  if (!spec) return null;
+  const handle = await startEngineJob<{ outline?: number[] }>(spec, { apply: false });
+  if (!handle) return null;
+  const out = await handle.done;
+  const drop = (): void => { if (!out.job.applied) handle.cancel(); };
+  const outline = out.result?.outline;
+  if (out.status !== 'done' || !Array.isArray(outline) || outline.length < 6 || opts.isStale?.()) {
+    drop();
+    return null;
+  }
+  let used = false;
+  return {
+    outline,
+    apply: async () => {
+      if (used) return null;
+      used = true;
+      if (!(await applyEngineJob(handle.id))) return null;
+      // The summary names the mask only after apply; the newest tool path is it.
+      const live = rotoMattes(nodeId).live;
+      return live[live.length - 1] ?? null;
+    },
+    discard: () => {
+      if (used) return;
+      used = true;
+      drop();
+    },
+  };
 }
 
 /**
@@ -149,30 +252,10 @@ export async function segmentStrokesToMask(
   opts: SegmentStrokesOptions = {},
 ): Promise<string | null> {
   if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
-  if (!strokes.some((s) => s.kind === 'fg' && s.points.length > 0)) return null;
-  const size = await layerSize(nodeId);
-  if (!size) return null;
-  const prompts = strokesToPrompts(strokes, size);
-  if (prompts.fg.length === 0) return null;
-  // The tool's previous paths go: the one it wrote last (by id) and any other it left (by name).
-  const replace = new Set<string>(opts.replacePathId ? [opts.replacePathId] : []);
-  for (const m of mirrorMaskHeaders(documentMirror().tree(nodeId))) if (m.name === ROTO_PATH_NAME) replace.add(m.id);
-  const out = requireEngineJob(await runEngineJob<{ mask?: string }>({
-    kind: 'objectMatte',
-    value: {
-      strokes: [],
-      layer: nodeId,
-      range: { start: secondsToFlicks(timeSec), duration: secondsToFlicks(1 / 30) },
-      prompts: prompts.fg,
-      backgroundPrompts: prompts.bg,
-      encoderModel: '',
-      decoderModel: '',
-      maskName: ROTO_PATH_NAME,
-      maskMode: 'add',
-      feather: opts.featherPx ?? 2,
-      replaceMasks: [...replace],
-    },
-  }), 'Roto Brush');
+  if (!opts.box && !strokes.some((s) => s.kind === 'fg' && s.points.length > 0)) return null;
+  const spec = await singleFrameSpec(nodeId, strokes, timeSec, opts);
+  if (!spec) return null;
+  const out = requireEngineJob(await runEngineJob<{ mask?: string }>(spec), 'Roto Brush');
   if (out.status !== 'done') {
     if (out.status === 'failed') throw new Error(out.error?.message ?? 'Roto Brush failed');
     return null;
@@ -253,6 +336,8 @@ export async function propagateObjectMatte(
     direction: 'forward' | 'backward' | 'both';
     featherPx: number;
     refine: { edgeRadius: number; decontaminate: number; motionBlur: boolean; choke: number; reduceChatter: number };
+    /** The Object Matte tool's marquee on the origin frame. */
+    box?: RotoBox | null;
   },
   onProgress?: (f: number) => boolean | void,
 ): Promise<RotoBrushResult> {
@@ -260,7 +345,10 @@ export async function propagateObjectMatte(
   const size = await layerSize(nodeId);
   if (!size) throw new Error('Layer has no sized video source.');
   const here = strokesToPrompts(strokesAt(strokes, opts.origin, opts.fps), size);
-  if (here.fg.length === 0) throw new Error('Paint a foreground stroke on this frame first.');
+  const originBox = boxAt(opts.box, opts.origin, opts.fps);
+  const rect = originBox ? boxToRect(originBox, size) : null;
+  const box = rect && rect.width > 1 && rect.height > 1 ? rect : null;
+  if (here.fg.length === 0 && !box) throw new Error('Select the subject on this frame first: click it, or paint a foreground stroke.');
   const half = 0.5 / Math.max(1, opts.fps);
   const corrections = strokes
     .filter((s) => s.time !== undefined && Math.abs(s.time - opts.origin) > half)
@@ -283,6 +371,7 @@ export async function propagateObjectMatte(
         encoderModel: '',
         decoderModel: '',
         replaceMasks: [...replace],
+        ...(box ? { box } : {}),
         direction: opts.direction,
         origin: secondsToFlicks(opts.origin),
         strokes: corrections,

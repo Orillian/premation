@@ -17,18 +17,19 @@ double alpha(double cutoff, double dt) {
 
 }  // namespace
 
-std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int height, const Roi& roi, bool planar) {
-  const auto n = static_cast<std::size_t>(kInput) * static_cast<std::size_t>(kInput);
+std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int height, const Roi& roi, bool planar, int side) {
+  const int kIn = side > 0 ? side : kInput;
+  const auto n = static_cast<std::size_t>(kIn) * static_cast<std::size_t>(kIn);
   std::vector<float> out(n * 3, 0.0f);
   if (width <= 0 || height <= 0 || rgba.size() < static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4) return out;
   const double c = std::cos(roi.angle);
   const double s = std::sin(roi.angle);
-  const double k = roi.side / kInput;
-  for (int y = 0; y < kInput; ++y) {
-    for (int x = 0; x < kInput; ++x) {
+  const double k = roi.side / kIn;
+  for (int y = 0; y < kIn; ++y) {
+    for (int x = 0; x < kIn; ++x) {
       // Crop pixel centre → frame.
-      const double u = (x + 0.5 - kInput / 2.0) * k;
-      const double v = (y + 0.5 - kInput / 2.0) * k;
+      const double u = (x + 0.5 - kIn / 2.0) * k;
+      const double v = (y + 0.5 - kIn / 2.0) * k;
       const double fx = roi.centre.x + c * u - s * v - 0.5;
       const double fy = roi.centre.y + s * u + c * v - 0.5;
       const int x0 = static_cast<int>(std::floor(fx));
@@ -46,7 +47,7 @@ std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int heigh
           for (std::size_t ch = 0; ch < 3; ++ch) acc[ch] += w * rgba[i + ch];
         }
       }
-      const std::size_t o = static_cast<std::size_t>(y) * static_cast<std::size_t>(kInput) + static_cast<std::size_t>(x);
+      const std::size_t o = static_cast<std::size_t>(y) * static_cast<std::size_t>(kIn) + static_cast<std::size_t>(x);
       for (std::size_t ch = 0; ch < 3; ++ch) {
         const auto v01 = static_cast<float>(acc[ch] / 255.0);
         if (planar) out[ch * n + o] = v01;
@@ -57,10 +58,11 @@ std::vector<float> crop(std::span<const std::uint8_t> rgba, int width, int heigh
   return out;
 }
 
-P2 crop_to_frame(const Roi& roi, P2 p) noexcept {
-  const double k = roi.side / kInput;
-  const double u = (p.x - kInput / 2.0) * k;
-  const double v = (p.y - kInput / 2.0) * k;
+P2 crop_to_frame(const Roi& roi, P2 p, int side) noexcept {
+  const int kIn = side > 0 ? side : kInput;
+  const double k = roi.side / kIn;
+  const double u = (p.x - kIn / 2.0) * k;
+  const double v = (p.y - kIn / 2.0) * k;
   const double c = std::cos(roi.angle);
   const double s = std::sin(roi.angle);
   return P2{roi.centre.x + c * u - s * v, roi.centre.y + s * u + c * v};

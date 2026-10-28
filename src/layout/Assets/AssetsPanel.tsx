@@ -83,7 +83,7 @@ import { useMirrorStructRevision } from '@hooks/useMirror';
 import { useSelectionStore } from '@stores/selectionStore';
 import { getAssetVisualInfo, FOLDER_COLOR } from '@layout/Assets/assetVisuals';
 import { openContextMenu, type ContextMenuItem } from '@stores/contextMenuStore';
-import { useUIStore } from '@stores/uiStore';
+import { isJobCancelRequested, useUIStore } from '@stores/uiStore';
 import { useLayoutStore } from '@stores/layoutStore';
 import { getEventBus } from '@core/events/EventBus';
 import { replaceTargetLayer } from './replaceTarget';
@@ -100,6 +100,8 @@ import { AssetThumb } from './AssetThumb';
 import { AssetDrawer } from './AssetDrawer';
 import { MediaBrowser, canBrowseMedia } from './MediaBrowser';
 import { installAssetCommands, revealLabel, setAssetImportOpeners } from './assetCommands';
+import { ProxyBox } from './ProxyBox';
+import { proxyMenuItems } from './proxyMenu';
 import { assetDiskPath, canRevealAssets, revealAsset } from './assetReveal';
 import {
   createFolderEdit,
@@ -394,14 +396,18 @@ export function AssetsPanel(): JSX.Element {
   /** One model selection through the importer, as a job with progress and its outcome toast. */
   const runModelImport = async (files: File[]): Promise<void> => {
     const jobId = 'model-import';
-    useUIStore.getState().startJob({ id: jobId, label: t('assets.panel.importingModel', 'Importing 3D model…') });
+    useUIStore.getState().startJob({ id: jobId, kind: 'import', label: t('assets.panel.importingModel', 'Importing 3D model…') });
     try {
       const outcome = await importModelSelection(files, (fraction, message) => {
         useUIStore.getState().updateJob(jobId, { progress: fraction, ...(message ? { label: message } : {}) });
-      });
+      }, (handle) => useUIStore.getState().updateJob(jobId, { cancel: () => handle.cancel() }));
       const { message } = modelImportMessage(outcome);
       useUIStore.getState().finishJob(jobId, { status: 'done', message });
     } catch (err) {
+      if (isJobCancelRequested(jobId)) {
+        useUIStore.getState().finishJob(jobId, { status: 'cancelled', message: t('assets.panel.modelImportCancelled', '3D import cancelled') });
+        return;
+      }
       useUIStore.getState().finishJob(jobId, { status: 'failed', message: t('assets.panel.modelImportFailed', '3D import failed: {error}', { error: err instanceof Error ? err.message : String(err) }) });
     }
   };
@@ -745,6 +751,8 @@ export function AssetsPanel(): JSX.Element {
           onSelect: () => { void replaceSourceWithAsset(target, asset.id); },
         }];
       })(),
+      // AE's Create Proxy ▸ Movie… and Set Proxy ▸ None, on the rows right-clicked.
+      ...proxyMenuItems(targetIds),
       { id: 'sep-org', separator: true },
       { id: 'label', label: t('assets.panel.label', 'Label'), children: labelMenuItems(targetIds, many ? undefined : asset.label) },
       { id: 'tags', label: t('assets.panel.editTags', 'Edit Tags…'), onSelect: () => { void editTags(targets); } },
@@ -1216,6 +1224,7 @@ export function AssetsPanel(): JSX.Element {
       >
         <AssetThumb asset={asset} variant="row" />
         {label && <span className={styles.assetLabelDot} style={{ background: label }} aria-hidden />}
+        <ProxyBox itemId={asset.id} />
         <span className={styles.assetRowName}>{asset.name}</span>
         {asset.tags && asset.tags.length > 0 && (
           <span className={styles.assetRowTags} aria-label={t('assets.panel.tagsAria', 'Tags: {tags}', { tags: asset.tags.join(', ') })}>

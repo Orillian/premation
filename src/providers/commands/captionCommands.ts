@@ -116,12 +116,21 @@ async function generateCaptions(): Promise<void> {
   const { startSec, endSec } = captionRange(comp);
   // A JOB rather than a timed toast: the transcription can run for a while.
   const ui = useUIStore.getState();
-  ui.startJob({ id: 'transcribe', label: t('providers.captions.transcribing', 'Transcribing {seconds}s of audio…', { seconds: (endSec - startSec).toFixed(1) }) });
+  ui.startJob({ id: 'transcribe', kind: 'transcribe', label: t('providers.captions.transcribing', 'Transcribing {seconds}s of audio…', { seconds: (endSec - startSec).toFixed(1) }) });
   try {
-    const cues = await transcribeComposition({ startSec, endSec, rootId: comp });
+    const cues = await transcribeComposition({
+      startSec,
+      endSec,
+      rootId: comp,
+      onStart: (handle) => useUIStore.getState().updateJob('transcribe', { cancel: () => handle.cancel() }),
+    });
     const r = await replaceCaptions(cues);
     useUIStore.getState().finishJob('transcribe', { status: 'done', message: t('providers.captions.generated', 'Generated {n} caption layer(s)', { n: r.added.length }) });
   } catch (err) {
+    if (err instanceof TranscribeError && err.code === 'cancelled') {
+      useUIStore.getState().finishJob('transcribe', { status: 'cancelled', message: t('providers.captions.transcribeCancelled', 'Transcription cancelled') });
+      return;
+    }
     useUIStore.getState().finishJob('transcribe', {
       status: 'failed',
       message: err instanceof TranscribeError ? err.message : t('providers.captions.transcribeFailed', 'Transcription failed: {error}', { error: String(err) }),

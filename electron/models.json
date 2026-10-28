@@ -31,18 +31,17 @@
       "id": "face-landmarks",
       "ipc": "faceModel",
       "env": "FACE",
-      "name": "Face landmarks (MediaPipe Face Mesh)",
-      "description": "468- or 478-point face mesh for the Tracker's Face tracking: a 192×192 RGB input, planar or interleaved (native/engine/src/jobs/face_ort_ffi.cpp). No pinned source is known with certainty, so the URL is supplied in Settings and downloaded on first use.",
-      "licence": "Apache-2.0 (MediaPipe) — the chosen export's own licence applies",
-      "bundled": false,
-      "source": "user",
+      "name": "Face landmarks (MediaPipe Face Mesh V2)",
+      "description": "478-point face mesh (with irises) for the Tracker's Face tracking: Google's Face Landmarks Detector V2 as ONNX, a 256×256 RGB crop in, landmarks in crop pixels out (native/engine/src/jobs/face_ort_ffi.cpp reads the input side from the model). Bundled with the app; pinned to an exact revision and checksum.",
+      "licence": "Apache-2.0",
+      "bundled": true,
+      "source": "pinned",
       "files": [
         {
           "name": "face_landmark.onnx",
-          "url": null,
-          "sha256": null,
-          "bytes": null,
-          "minBytes": 16
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/32714088ed9830a98df6ee653ad406a3b83ef014/face_landmarks.onnx",
+          "sha256": "d16e5a55e6a480284d468ee32469692464049518c311662ab3956681de31e3e9",
+          "bytes": 4920979
         }
       ]
     },

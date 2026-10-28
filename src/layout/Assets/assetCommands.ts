@@ -17,6 +17,7 @@ import { useLayoutStore } from '@stores/layoutStore';
 import { documentMirror } from '@stores/documentMirror';
 import { panelAssetSelectionIds, selectedPanelAssets } from '@core/composition/assetSelection';
 import { canRevealAssets, revealAsset } from './assetReveal';
+import { buildProxyCommands } from './proxyCommands';
 import { t } from '@core/i18n';
 
 export const ASSETS_TOGGLE_VIEW_COMMAND = asCommandId('assets.toggleGridView');
@@ -144,6 +145,8 @@ export function buildAssetCommands(): ReadonlyArray<Command> {
         if (asset) await revealAsset(asset);
       },
     },
+    // File ▸ Proxy ▸ Create Proxy Movie… / Set Proxy: None (AE), on the panel selection.
+    ...buildProxyCommands(),
   ];
 }
 

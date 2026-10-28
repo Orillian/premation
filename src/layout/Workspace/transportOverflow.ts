@@ -32,6 +32,7 @@
  */
 export const DISPLAY_DEMOTE_ORDER = [
   'exposure',
+  'proxies',
   'transparency',
   'compare',
   'overlays',

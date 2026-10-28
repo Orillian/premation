@@ -28,6 +28,7 @@ import { t } from '@core/i18n';
 import { needsSelfApplyConfirm, selfApplyConfirmCopy } from './applyTargetGuard';
 import { explainObjectMatteError } from '@core/tracking/samModelInstall';
 import { offerObjectMatteDownload } from '@layout/Settings/objectMatteJob';
+import { ensureModelInstalled } from '@layout/Settings/modelDownloadJob';
 
 export type StabVariant = 'similarity' | 'subspace' | 'rolling-shutter';
 
@@ -320,6 +321,13 @@ export function trackMotionActions(ctx: TrackMotionContext) {
 
   /** Face tracking (AE parity 3.3): masks (and nulls) written in one entry. */
   const runFaceTrack = async (direction: TrackDirectionChoice, walk: { range: { start: number; duration: number }; origin: number }): Promise<void> => {
+    // The model ships with the app; when it is missing (a dev tree, a damaged
+    // install) the pinned download starts here, as a job, not from Settings.
+    const model = await ensureModelInstalled('faceModel');
+    if (!model.ok) {
+      store.getState().finishTracking(null, t('inspector.trackMotion.faceModelFailed', 'Face tracking needs its model, and the download failed: {message}', { message: model.message }));
+      return;
+    }
     const st = store.getState();
     let cancelFace: (() => void) | null = null;
     const job = requireEngineJob(await startEngineJob<{ frames: number; status: string; masks: string[]; nulls: string[]; provider: string }>(

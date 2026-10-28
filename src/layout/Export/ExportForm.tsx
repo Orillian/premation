@@ -310,7 +310,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     const controller = new AbortController();
     store.begin(controller);
     const ui = useUIStore.getState();
-    ui.startJob({ id: EXPORT_JOB_ID, label: t('export.form.jobLabel', 'Exporting {name}', { name: outputName }), progress: 0 });
+    ui.startJob({ id: EXPORT_JOB_ID, kind: 'export', label: t('export.form.jobLabel', 'Exporting {name}', { name: outputName }), progress: 0, cancel: () => controller.abort() });
     try {
       await runDataExport({
         format,

@@ -19,6 +19,7 @@ function labels(): Record<string, string> {
     save_project: t('ui.claude.tool.saveProject', 'Saving'),
     import_media: t('ui.claude.tool.importMedia', 'Importing media'),
     export_video: t('ui.claude.tool.exportVideo', 'Rendering video'),
+    place_behind_subject: t('ui.claude.tool.placeBehindSubject', 'Placing layers behind the subject'),
     describe_scene: t('ui.claude.tool.describeScene', 'Reading the scene'),
     get_selection: t('ui.claude.tool.getSelection', 'Reading the selection'),
     list_capabilities: t('ui.claude.tool.listCapabilities', 'Checking what Premation can do'),

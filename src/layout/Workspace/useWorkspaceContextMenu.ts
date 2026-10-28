@@ -67,6 +67,7 @@ import {
   ungroupSelectedEdit,
 } from './layerMenuEdits';
 import { t } from '@core/i18n';
+import { runPlaceBehindSubject } from './placeBehindSubjectCommand';
 
 /**
  * Right-click menu for a canvas node — the same actions as the scene-tree menu
@@ -341,6 +342,7 @@ export function nodeContextMenuItems(id: string): ContextMenuItem[] {
     },
     ...(isGroup ? [{ id: 'ungroup', label: t('workspace.layerMenu.ungroup', 'Ungroup'), onSelect: () => { void ungroupSelectedEdit(); } }] : []),
     { id: 'precompose', label: t('workspace.layerMenu.precompose', 'Pre-compose…'), onSelect: () => openPrecomposeDialog() },
+    { id: 'place-behind-subject', label: t('workspace.layerMenu.placeBehindSubject', 'Place Behind Subject'), onSelect: () => { void runPlaceBehindSubject(useSelectionStore.getState().ids); } },
     { id: 'rig-logo', label: t('workspace.layerMenu.rigLogo', 'Rig Logo for Animation'), onSelect: () => { void rigLogoForAnimation(); } },
     ...svgContextMenuItems(id),
     ...(useSelectionStore.getState().ids.length >= 2

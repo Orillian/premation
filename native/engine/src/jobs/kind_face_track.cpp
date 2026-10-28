@@ -124,7 +124,7 @@ std::string face_track_child(const std::string& inputJson, JobControl& control) 
         for (const face::P2& p : outline) o.push_back(face::P2{p.x * kx, p.y * ky});
         roi = face::roi_from_outline(o);
       }
-      const std::vector<float> input = face::crop(img.rgba, static_cast<int>(img.width), static_cast<int>(img.height), *roi, model->planar());
+      const std::vector<float> input = face::crop(img.rgba, static_cast<int>(img.width), static_cast<int>(img.height), *roi, model->planar(), model->input_side());
       face::MeshOut out;
       if (!model->run(input, out, error)) fail(ErrorCode::internal, "Face model: " + error);
       if (out.score < 0.5) {
@@ -134,7 +134,7 @@ std::string face_track_child(const std::string& inputJson, JobControl& control) 
       std::vector<face::P2> lm;
       const std::size_t n = out.landmarks.size() / 3;
       lm.reserve(n);
-      for (std::size_t i = 0; i < n; ++i) lm.push_back(face::crop_to_frame(*roi, face::P2{out.landmarks[i * 3], out.landmarks[i * 3 + 1]}));
+      for (std::size_t i = 0; i < n; ++i) lm.push_back(face::crop_to_frame(*roi, face::P2{out.landmarks[i * 3], out.landmarks[i * 3 + 1]}, model->input_side()));
       roi = face::roi_from_landmarks(lm);
       const std::vector<face::P2> sm = smooth.filter(lm, first ? 0.0 : std::abs(compTime - prevT));
       first = false;

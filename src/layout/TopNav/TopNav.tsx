@@ -169,8 +169,14 @@ const maskTools = (): ToolDef[] => [
 
 const boneTool = (): ToolDef => ({ id: 'bone', icon: 'bone', label: t('topNav.tools.bone', 'Bone Tool') });
 
-/** AE parity 3.1: Roto Brush & Object Matte on the toolbar (it was reachable only by Alt+W). */
-const rotoTool = (): ToolDef => ({ id: 'roto', icon: 'magic-wand', label: t('topNav.tools.roto', 'Roto Brush') });
+/**
+ * AE 26.2's roto family: Object Matte (hover, click, propagate) heads it and
+ * the Roto Brush (paint strokes) shares its flyout. Alt+W cycles the two.
+ */
+const rotoTools = (): ToolDef[] => [
+  { id: 'object-matte', icon: 'object-matte', label: t('topNav.tools.objectMatte', 'Object Matte Tool'), hint: t('topNav.tools.objectMatteHint', 'Hover a subject to preview its matte, click to select it') },
+  { id: 'roto', icon: 'magic-wand', label: t('topNav.tools.roto', 'Roto Brush'), hint: t('topNav.tools.rotoHint', 'Paint over the subject; Alt-paint marks background') },
+];
 
 /** "Selection Tool (V)" — the ACCESSIBLE name, chord read live from the registry. */
 const withShortcut = (tool: ToolDef): string => toolLabelWithShortcut(tool.label, tool.id);
@@ -337,7 +343,7 @@ export function TopNav(): JSX.Element {
   const TEXT_TOOLS = textTools();
   const MASK_TOOLS = maskTools();
   const BONE_TOOL = boneTool();
-  const ROTO_TOOL = rotoTool();
+  const ROTO_TOOLS = rotoTools();
 
   const playhead = useActiveWorkspace()?.time ?? 0;
   const snap = useUIStore((s) => s.snap);
@@ -419,11 +425,11 @@ export function TopNav(): JSX.Element {
   // The Roto Brush shares the mask flyout (2026-10-19: it was a permanent
   // button beside it; one flyout per family, like AE's long-press groups), and
   // lights the same trigger — picking it must not leave the row with no armed tool.
-  const isRotoActive = activeTool === ROTO_TOOL.id;
-  const isMaskActive = isMaskFamilyActive || isRotoActive;
-  const maskDropdownTool: ToolDef = isRotoActive
-    ? ROTO_TOOL
-    : MASK_TOOLS.find(t => t.id === (isMaskFamilyActive ? activeTool : lastMaskTool)) || MASK_TOOLS[0]!;
+  const isMaskActive = isMaskFamilyActive;
+  const maskDropdownTool: ToolDef =
+    MASK_TOOLS.find(t => t.id === (isMaskFamilyActive ? activeTool : lastMaskTool)) || MASK_TOOLS[0]!;
+  const isRotoActive = ROTO_TOOLS.some(t => t.id === activeTool);
+  const rotoDropdownTool: ToolDef = ROTO_TOOLS.find(t => t.id === activeTool) || ROTO_TOOLS[0]!;
 
   const isPuppetActive = activeTool === 'puppet-pin';
   // The Bone tool shares the puppet flyout the same way.
@@ -518,7 +524,7 @@ export function TopNav(): JSX.Element {
 
   if (hideMask) {
     pushSeparator();
-    for (const tool of [...MASK_TOOLS, ROTO_TOOL]) {
+    for (const tool of [...MASK_TOOLS, ...ROTO_TOOLS]) {
       overflowItems.push({ type: 'item', id: `${tool.id}-item`, label: tool.label, icon: tool.icon, onSelect: () => setTool(tool.id) });
     }
   }
@@ -670,23 +676,24 @@ export function TopNav(): JSX.Element {
                 <span className={styles.toolDivider} aria-hidden />
                 <div className={styles.toolGroup}>
                   {!hideMask && (
-                    /* The three mask tools and the Roto Brush: one flyout. */
+                    /* The three mask tools: one flyout. */
                     <ToolFlyout
                       icon={maskDropdownTool.icon}
                       label={withShortcut(maskDropdownTool)}
                       shortcut={toolShortcut(maskDropdownTool.id)}
                       active={isMaskActive}
-                      items={[
-                        ...flyoutItems(MASK_TOOLS, setTool),
-                        {
-                          id: ROTO_TOOL.id,
-                          label: ROTO_TOOL.label,
-                          icon: ROTO_TOOL.icon,
-                          shortcut: toolShortcut(ROTO_TOOL.id),
-                          separatorBefore: true,
-                          onSelect: () => setTool(ROTO_TOOL.id),
-                        },
-                      ]}
+                      items={flyoutItems(MASK_TOOLS, setTool)}
+                    />
+                  )}
+                  {!hideMask && (
+                    /* AE 26.2: Object Matte has its own slot, the Roto Brush in its flyout. */
+                    <ToolFlyout
+                      icon={rotoDropdownTool.icon}
+                      label={withShortcut(rotoDropdownTool)}
+                      shortcut={toolShortcut(rotoDropdownTool.id)}
+                      active={isRotoActive}
+                      items={flyoutItems(ROTO_TOOLS, setTool)}
+                      data-tour="object-matte-tool"
                     />
                   )}
 

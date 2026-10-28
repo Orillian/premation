@@ -64,6 +64,11 @@ extraResources:
     filter:
       - '*.onnx'
       - model.json
+  - from: dist/models/face-landmarks
+    to: models/face-landmarks
+    filter:
+      - '*.onnx'
+      - model.json
   # The fonts the engine registers first (resources/fonts, scripts/fetchFonts.cjs):
   # outside app.asar because the engine reads them; main points it at fonts.json
   # with PREMATION_FONTS_MANIFEST (engineHost.ts bundledFontsManifest).

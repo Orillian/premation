@@ -34,6 +34,8 @@ class LandmarkModel {
 
   /// True when the model takes NCHW (planar) input.
   [[nodiscard]] virtual bool planar() const noexcept = 0;
+  /// The square crop side the model takes (192 for Face Mesh V1, 256 for V2).
+  [[nodiscard]] virtual int input_side() const noexcept = 0;
   /// The execution provider in use (cpu, directml, coreml, cuda).
   [[nodiscard]] virtual std::string provider() const = 0;
   virtual bool run(std::span<const float> input, MeshOut& out, std::string& error) = 0;

@@ -46,6 +46,11 @@ extraResources:
     filter:
       - '*.onnx'
       - model.json
+  - from: dist/models/face-landmarks
+    to: models/face-landmarks
+    filter:
+      - '*.onnx'
+      - model.json
   # Repeated: the bundled fonts (resources/fonts).
   - from: resources/fonts
     to: fonts

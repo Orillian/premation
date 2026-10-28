@@ -13,6 +13,10 @@
  *                  before playback, resolution) and the RAM budget;
  *   • Location     the disk cache's folder, its size limit and measured read
  *                  speed, and every drive with its free space;
+ *   • Health       Project Health (ProjectHealthView.tsx): the active comp's
+ *                  cache, video layers, layer errors and missing footage, and
+ *                  one suggestion + action per problem (create proxies, cache
+ *                  the work area, purge…) — the status bar's dot opens it;
  *   • Diagnostics  this frame's build / GPU / decode time against the frame
  *                  budget, engine memory over 30 minutes, memory outside the
  *                  caches (the leak signal), what happened this session, and
@@ -49,15 +53,18 @@ import {
 import { DISK_CACHE_MAX_GB, DISK_CACHE_MIN_GB, defaultDiskCacheFolder } from '@layout/Timeline/diskCacheSync';
 import { engineMemorySnapshot, refreshEngineMemory, subscribeEngineMemory, type EngineMemorySnapshot, type MemoryEvent } from './engineMemory';
 import { healthCopy, healthTone } from './memoryCopy';
+import { setCacheMemoryView, useCacheMemoryView, type CacheMemoryView } from './cacheMemoryView';
+import { ProjectHealthView } from './ProjectHealthView';
 import styles from './CacheMemoryPanel.module.css';
 
-type View = 'overview' | 'location' | 'diagnostics';
+type View = CacheMemoryView;
 
 const GiB = 1024 ** 3;
 
 function views(): ReadonlyArray<SegmentedOption<View>> {
   return [
     { value: 'overview', label: t('cacheMemory.view.overview', 'Overview') },
+    { value: 'health', label: t('cacheMemory.view.health', 'Health') },
     { value: 'location', label: t('cacheMemory.view.location', 'Location') },
     { value: 'diagnostics', label: t('cacheMemory.view.diagnostics', 'Diagnostics') },
   ];
@@ -69,7 +76,9 @@ export function useEngineMemory(): EngineMemorySnapshot {
 
 export function CacheMemoryPanel(): JSX.Element {
   const mem = useEngineMemory();
-  const [view, setView] = useState<View>('overview');
+  // Module state, so the status bar's health dot can open the panel on Health.
+  const view = useCacheMemoryView();
+  const setView = setCacheMemoryView;
   const copy = healthCopy(mem.health, mem.readout);
 
   return (
@@ -93,6 +102,7 @@ export function CacheMemoryPanel(): JSX.Element {
       </div>
       <div className={styles.body}>
         {view === 'overview' && <Overview readout={mem.readout} />}
+        {view === 'health' && <ProjectHealthView />}
         {view === 'location' && <Location readout={mem.readout} />}
         {view === 'diagnostics' && <Diagnostics mem={mem} />}
       </div>
@@ -306,7 +316,7 @@ function Overview({ readout }: { readout: MemoryReadout | null }): JSX.Element {
                     ? t('cacheMemory.ramBudget.autoShort', 'Auto{budget}', { budget: r?.ramBudget ? ` · ${formatBytes(r.ramBudget)}` : '' })
                     : `${ramCacheGb} GB`}
                 </span>
-                <Icon name="chevron-down" size={10} />
+                <Icon name="chevron-down" size="sm" />
               </button>
             }
             items={ramBudgetItems(physical, ramCacheGb)}

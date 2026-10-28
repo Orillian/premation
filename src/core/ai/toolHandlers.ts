@@ -34,6 +34,7 @@ import { isRiggableKind } from '@core/scene/rigLogo';
 import { nextRigIds, usedRigIds } from '@core/rig/rigIds';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { documentMirror } from '@stores/documentMirror';
+import { placeBehindSubject } from '@core/workspace/placeBehindSubjectPort';
 import { renderedBoxes } from './renderedBounds';
 import { layerBox, layerInfo, puppetPins } from './mirrorReads';
 
@@ -1823,6 +1824,19 @@ const generate3dModel: AiTool['handler'] = async (input, ctx) => {
   );
 };
 
+const placeBehindSubjectTool: AiTool['handler'] = async (input, ctx) => {
+  const i = input as { nodeIds: string[]; point?: { x: number; y: number } };
+  for (const id of i.nodeIds) if (!await ctx.scene.has(id)) return fail(await unknownNode(ctx, id));
+  const r = await placeBehindSubject(i.nodeIds, i.point ? { point: i.point } : {});
+  if (!r.ok) return fail(r.message);
+  const how = r.matte === 'kept'
+    ? 'it already had a subject matte, now on the copy'
+    : r.matte === 'made'
+      ? `the subject was cut out over ${r.frames ?? 0} frames`
+      : 'no matte yet: the user is asked to click the subject with the Object Matte tool (or call again with `point`)';
+  return ok(`Placed ${i.nodeIds.join(', ')} behind the subject. '${r.subject}' is the cut-out copy on top; ${how}.`, { subject: r.subject, matte: r.matte });
+};
+
 const exportVideoTool: AiTool['handler'] = async (input, ctx) => {
   const { format, quality, useWorkArea, mode } = input as {
     format?: 'mp4' | 'webm' | 'gif';
@@ -2895,6 +2909,7 @@ export const ENGINE_ROUTED_TOOLS: ReadonlySet<string> = new Set([
   'add_surface_treatment', 'define_style', 'add_background', 'add_title', 'add_emblem', 'add_cards', 'stagger_in',
   'add_camera_move', 'add_kinetic_title', 'add_light_sweep', 'add_ambient_orbs', 'add_lower_third', 'add_scene',
   'add_transition', 'add_logo_reveal', 'add_radial_burst', 'add_path_morph', 'export_video', 'merge_paths',
+  'place_behind_subject',
 ]);
 
 const HANDLERS: Record<string, AiTool['handler']> = {
@@ -2945,6 +2960,7 @@ const HANDLERS: Record<string, AiTool['handler']> = {
   generate_speech: generateSpeech,
   generate_3d_model: generate3dModel,
   export_video: exportVideoTool,
+  place_behind_subject: placeBehindSubjectTool,
   get_export_status: getExportStatus,
   import_svg: importSvg,
   analyse_audio: analyseAudioTool,

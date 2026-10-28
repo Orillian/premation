@@ -123,6 +123,7 @@ it('balances controls across the left and right sides of the centered play butto
     'Smart guides',
     expect.stringMatching(/^Preview resolution:/),
     'Preview',
+    'Toggle Proxies',
     'Toggle Transparency Grid',
     expect.stringMatching(/^Overlays/),
     expect.stringMatching(/^Show channel:/),

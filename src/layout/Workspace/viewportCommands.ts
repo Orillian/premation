@@ -517,12 +517,16 @@ export function buildViewportCommands(): ReadonlyArray<Command> {
     // ── Tools ────────────────────────────────────────────────────────
     {
       id: asCommandId(VIEWPORT_COMMAND_IDS.rotoTool),
-      label: t('workspace.command.rotoTool', 'Roto Brush Tool'),
-      description: t('workspace.command.rotoToolDescription', 'Paint over the subject to cut a matte; Alt-paint marks background.'),
-      icon: 'brush',
+      label: t('workspace.command.rotoTool', 'Object Matte / Roto Brush Tool'),
+      description: t('workspace.command.rotoToolDescription', 'Object Matte: hover and click a subject. Press again for the Roto Brush (paint strokes).'),
+      icon: 'object-matte',
       shortcut: { key: 'w', alt: true },
       enabled: () => true,
-      execute: () => useUIStore.getState().setActiveTool('roto'),
+      // AE 26.2: Object Matte took the Roto Brush's slot; the key cycles the family.
+      execute: () => {
+        const ui = useUIStore.getState();
+        ui.setActiveTool(ui.activeTool === 'object-matte' ? 'roto' : 'object-matte');
+      },
     },
     // ── 3D gizmo (AE parity 4.6) ─────────────────────────────────────
     // Shift+Alt+1…4 pick the gizmo (Alt+1…4 are the multicam angles); the

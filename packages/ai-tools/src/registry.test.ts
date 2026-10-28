@@ -212,9 +212,11 @@ describe('the tool surface itself', () => {
     // stacking copies of a 4 s file, with no loop and no fades.
     // 72 → 73: `paint_strokes`. The Paint system (pressure-tapered brush,
     // Write On) was the editor's and no tool could reach it — no calligraphy.
-    expect(ALL_TOOL_DEFS).toHaveLength(73);
+    // 73 → 74: `place_behind_subject`. "Text behind the person" took four
+    // tools and a matte the model could not make; now it is one call.
+    expect(ALL_TOOL_DEFS).toHaveLength(74);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'read')).toHaveLength(11);
-    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(46);
+    expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'write')).toHaveLength(47);
     expect(ALL_TOOL_DEFS.filter((t) => t.kind === 'compose')).toHaveLength(16);
   });
 
@@ -239,7 +241,7 @@ describe('the tool surface itself', () => {
     // 'write' silently drops the compose tools — and it was a literal 'write'
     // test that decided which calls appear in the user's pending-changes list.
     const mutating = ALL_TOOL_DEFS.filter((t) => mutates(t.kind));
-    expect(mutating).toHaveLength(62);
+    expect(mutating).toHaveLength(63);
     expect(mutating.map((t) => t.name)).toContain('add_title');
     expect(mutating.map((t) => t.name)).toContain('set_spring');
   });

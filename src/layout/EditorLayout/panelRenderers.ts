@@ -27,6 +27,7 @@ import { ScriptEditorPanel } from '@layout/Scripts/ScriptEditorPanel';
 import { SwatchesPanel } from '@layout/Swatches';
 import { ScopesPanel } from '@layout/Scopes';
 import { CacheMemoryPanel } from '@layout/CacheMemory/CacheMemoryPanel';
+import { TasksPanel } from '@layout/Tasks/TasksPanel';
 // Imported from the barrel deliberately: it also registers the transcript's
 // commands on load. See `layout/Transcript/index.ts`.
 import { TranscriptPanel } from '@layout/Transcript';
@@ -88,6 +89,7 @@ export const PANEL_COMPONENTS: Readonly<Record<string, ComponentType>> = {
   recordAudio: RecordAudioPanel,
   scopes: ScopesPanel,
   cacheMemory: CacheMemoryPanel,
+  tasks: TasksPanel,
   preview: PreviewPanel,
   tracker: TrackerPanel,
   contentAwareFill: ContentAwareFillPanel,
