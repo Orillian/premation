@@ -1,6 +1,7 @@
 #include "handlers_native.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -354,6 +355,39 @@ void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c) {
     fail(ErrorCode::internal, "plugin '" + ne->provider + "': " + f->message, {.layer = group.layer, .path = group.path});
   }
   x.label = ne->def.label;
+  apply_native_edit(x, group, seg[1], std::get<NativeEdit>(result));
+}
+
+void native_param_ui_drag(HCtx& x, const api::DragEffectParamUi& c) {
+  const api::PropRef& group = c.group;
+  Document& d = x.d;
+  const Node& node = require_layer(d, group.layer);
+  const std::vector<std::string> seg = split(group.path, '/');
+  const std::vector<Json> effects = read_node_effects(node);  // owns what `e` points into
+  const Json* e = seg.size() == 2 && seg[0] == "effects" ? find_by_id(effects, seg[1]) : nullptr;
+  const std::string type = e != nullptr && e->at("type").is_string() ? e->at("type").str() : "";
+  const NativeEffect* ne = NativeEffects::find(type);
+  const auto box = ne != nullptr ? std::ranges::find(ne->customUis, c.key, &NativeCustomUi::key) : std::vector<NativeCustomUi>::const_iterator{};
+  if (e == nullptr || ne == nullptr || box == ne->customUis.end()) {
+    fail(ErrorCode::not_found, "no plugin custom UI '" + c.key + "' at '" + group.path + "'", {.layer = group.layer, .path = group.path});
+  }
+  for (const double v : {c.x, c.y, c.start_x, c.start_y, c.width}) {
+    if (!std::isfinite(v)) fail(ErrorCode::invalid_argument, "the pointer must be finite", {.layer = group.layer, .path = group.path});
+  }
+  NativeActionRequest req = native_request(d, node, group.layer, seg[1], *e, *ne, x.time);
+  req.paramUi = NativeParamUiTarget{c.key, std::clamp(c.width, 16.0, 4096.0), box->height};
+  NativeOverlayDrag drag;
+  drag.handle = c.handle;
+  drag.phase = static_cast<std::int32_t>(std::min<std::uint32_t>(c.phase, 2));
+  drag.x = c.x;
+  drag.y = c.y;
+  drag.startX = c.start_x;
+  drag.startY = c.start_y;
+  const std::variant<NativeEdit, NativeFailure> result = NativeEffects::overlay_drag(req, drag);
+  if (const auto* f = std::get_if<NativeFailure>(&result)) {
+    fail(ErrorCode::internal, "plugin '" + ne->provider + "': " + f->message, {.layer = group.layer, .path = group.path});
+  }
+  x.label = box->label.empty() ? ne->def.label : ne->def.label + ": " + box->label;
   apply_native_edit(x, group, seg[1], std::get<NativeEdit>(result));
 }
 

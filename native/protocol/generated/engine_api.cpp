@@ -8947,6 +8947,94 @@ Status decode(wire::Reader& r, DragEffectOverlay& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const DragEffectParamUi& v) {
+  w.varint(10U); { const std::size_t s = w.begin_ld(); encode(w, v.group); w.end_ld(s); }
+  w.varint(18U); w.str(v.key);
+  w.varint(24U); w.varint(v.handle);
+  w.varint(33U); w.f64(v.x);
+  w.varint(41U); w.f64(v.y);
+  w.varint(49U); w.f64(v.start_x);
+  w.varint(57U); w.f64(v.start_y);
+  w.varint(64U); w.varint(v.phase);
+  w.varint(73U); w.f64(v.width);
+}
+
+Status decode(wire::Reader& r, DragEffectParamUi& out) {
+  bool has_group = false;
+  bool has_key = false;
+  bool has_handle = false;
+  bool has_x = false;
+  bool has_y = false;
+  bool has_start_x = false;
+  bool has_start_y = false;
+  bool has_phase = false;
+  bool has_width = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, out.group); st != Status::ok) return st; }
+        has_group = true;
+        break;
+      }
+      case 18U: {
+        if (!r.str(out.key)) return Status::truncated;
+        has_key = true;
+        break;
+      }
+      case 24U: {
+        if (!r.u32(out.handle)) return Status::bad_value;
+        has_handle = true;
+        break;
+      }
+      case 33U: {
+        if (!r.f64(out.x)) return Status::truncated;
+        has_x = true;
+        break;
+      }
+      case 41U: {
+        if (!r.f64(out.y)) return Status::truncated;
+        has_y = true;
+        break;
+      }
+      case 49U: {
+        if (!r.f64(out.start_x)) return Status::truncated;
+        has_start_x = true;
+        break;
+      }
+      case 57U: {
+        if (!r.f64(out.start_y)) return Status::truncated;
+        has_start_y = true;
+        break;
+      }
+      case 64U: {
+        if (!r.u32(out.phase)) return Status::bad_value;
+        has_phase = true;
+        break;
+      }
+      case 73U: {
+        if (!r.f64(out.width)) return Status::truncated;
+        has_width = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_group) return Status::missing_field;
+  if (!has_key) return Status::missing_field;
+  if (!has_handle) return Status::missing_field;
+  if (!has_x) return Status::missing_field;
+  if (!has_y) return Status::missing_field;
+  if (!has_start_x) return Status::missing_field;
+  if (!has_start_y) return Status::missing_field;
+  if (!has_phase) return Status::missing_field;
+  if (!has_width) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const AddProperties& v) {
   w.varint(10U); { const std::size_t s = w.begin_ld(); encode(w, v.parent); w.end_ld(s); }
   for (const auto& e : v.names) { w.varint(18U); w.str(e); }
@@ -13675,7 +13763,7 @@ Status decode(wire::Reader& r, StopLiveInput& out) {
 }
 
 Command::Kind Command::kind() const noexcept {
-  static constexpr std::array<Kind, 174> kKinds = {Kind::undo, Kind::redo, Kind::jump_to_history, Kind::begin_gesture, Kind::end_gesture, Kind::clear_history, Kind::set_history_limit, Kind::add_history_checkpoint, Kind::restore_document, Kind::new_project, Kind::open_project, Kind::save_project, Kind::import_project, Kind::set_project_settings, Kind::revert_project, Kind::collect_files, Kind::set_autosave, Kind::set_guides, Kind::set_swatches, Kind::set_materials, Kind::set_motion_blur, Kind::set_color_management, Kind::import_files, Kind::import_bytes, Kind::relink_item, Kind::reload_items, Kind::remove_items, Kind::rename_item, Kind::create_folder, Kind::move_items, Kind::set_interpretation, Kind::set_item_label, Kind::remove_unused_items, Kind::set_proxy, Kind::set_item_comment, Kind::set_item_tags, Kind::create_composition, Kind::duplicate_composition, Kind::set_composition_settings, Kind::set_work_area, Kind::clear_work_area, Kind::precompose, Kind::trim_comp_to_work_area, Kind::crop_composition, Kind::assemble_composition, Kind::migrate_legacy_precomps, Kind::set_essential_prop, Kind::add_render_items, Kind::set_render_item, Kind::remove_render_items, Kind::reorder_render_items, Kind::create_layer, Kind::delete_layers, Kind::duplicate_layers, Kind::reorder_layers, Kind::set_parent, Kind::rename_layer, Kind::set_layer_switches, Kind::set_blend_mode, Kind::set_track_matte, Kind::replace_layer_source, Kind::group_layers, Kind::ungroup_layer, Kind::convert_layer, Kind::paste_layers, Kind::separate_layer, Kind::auto_trace, Kind::set_layer_comment, Kind::set_pinned_properties, Kind::pose_ik3_d, Kind::bake_ik3_d, Kind::create_live_merge, Kind::set_layer_timing, Kind::move_layers_in_time, Kind::trim_layers, Kind::slip_layers, Kind::slide_layer, Kind::roll_edit, Kind::split_layers, Kind::ripple_delete_layers, Kind::edit_work_area, Kind::insert_gap, Kind::time_reverse_layers, Kind::set_time_remap, Kind::freeze_frame, Kind::set_retime, Kind::sequence_layers, Kind::time_stretch_layers, Kind::unfreeze_layers, Kind::ripple_delete_range, Kind::lift_range, Kind::shift_layer_keyframes, Kind::add_transition, Kind::set_transition, Kind::remove_transitions, Kind::set_property, Kind::set_properties, Kind::reset_property, Kind::set_animated, Kind::set_dimensions_separated, Kind::set_expression, Kind::set_expression_enabled, Kind::convert_expression_to_keyframes, Kind::link_property, Kind::add_keyframes, Kind::delete_keyframes, Kind::move_keyframes, Kind::update_keyframes, Kind::scale_keyframes, Kind::reverse_keyframes, Kind::paste_keyframes, Kind::set_keyframes, Kind::set_member_keyframes, Kind::add_effect, Kind::add_mask, Kind::add_property_group, Kind::remove_property_groups, Kind::move_property_group, Kind::duplicate_property_groups, Kind::set_group_enabled, Kind::rename_property_group, Kind::copy_property_groups, Kind::apply_preset, Kind::invoke_effect_action, Kind::drag_effect_overlay, Kind::add_properties, Kind::remove_properties, Kind::paste_effects, Kind::remove_stroke, Kind::add_paint_stroke, Kind::update_paint_stroke, Kind::remove_paint_strokes, Kind::set_paint_on_transparent, Kind::set_paint_stroke_path, Kind::set_paint_path_animated, Kind::edit_path_topology, Kind::set_shape_outline, Kind::set_performance_take, Kind::clear_performance_takes, Kind::add_markers, Kind::update_markers, Kind::delete_markers, Kind::move_markers, Kind::play, Kind::pause, Kind::seek, Kind::step, Kind::set_loop, Kind::set_preview_quality, Kind::set_audio_preview, Kind::set_active_composition, Kind::set_viewport, Kind::close_viewport, Kind::set_cache_budget, Kind::purge_cache, Kind::set_interacting, Kind::set_viewport_hidden_layers, Kind::set_viewport_focus, Kind::set_viewer_lut, Kind::set_overlay_geometry, Kind::set_layer_trackers, Kind::set_camera_solve, Kind::set_layer_matte, Kind::start_job, Kind::cancel_job, Kind::apply_job_result, Kind::set_content_aware_fill, Kind::set_captions, Kind::set_plugin_enabled, Kind::rescan_plugins, Kind::set_plugin_data, Kind::run_plugin_command, Kind::start_live_input, Kind::stop_live_input};
+  static constexpr std::array<Kind, 175> kKinds = {Kind::undo, Kind::redo, Kind::jump_to_history, Kind::begin_gesture, Kind::end_gesture, Kind::clear_history, Kind::set_history_limit, Kind::add_history_checkpoint, Kind::restore_document, Kind::new_project, Kind::open_project, Kind::save_project, Kind::import_project, Kind::set_project_settings, Kind::revert_project, Kind::collect_files, Kind::set_autosave, Kind::set_guides, Kind::set_swatches, Kind::set_materials, Kind::set_motion_blur, Kind::set_color_management, Kind::import_files, Kind::import_bytes, Kind::relink_item, Kind::reload_items, Kind::remove_items, Kind::rename_item, Kind::create_folder, Kind::move_items, Kind::set_interpretation, Kind::set_item_label, Kind::remove_unused_items, Kind::set_proxy, Kind::set_item_comment, Kind::set_item_tags, Kind::create_composition, Kind::duplicate_composition, Kind::set_composition_settings, Kind::set_work_area, Kind::clear_work_area, Kind::precompose, Kind::trim_comp_to_work_area, Kind::crop_composition, Kind::assemble_composition, Kind::migrate_legacy_precomps, Kind::set_essential_prop, Kind::add_render_items, Kind::set_render_item, Kind::remove_render_items, Kind::reorder_render_items, Kind::create_layer, Kind::delete_layers, Kind::duplicate_layers, Kind::reorder_layers, Kind::set_parent, Kind::rename_layer, Kind::set_layer_switches, Kind::set_blend_mode, Kind::set_track_matte, Kind::replace_layer_source, Kind::group_layers, Kind::ungroup_layer, Kind::convert_layer, Kind::paste_layers, Kind::separate_layer, Kind::auto_trace, Kind::set_layer_comment, Kind::set_pinned_properties, Kind::pose_ik3_d, Kind::bake_ik3_d, Kind::create_live_merge, Kind::set_layer_timing, Kind::move_layers_in_time, Kind::trim_layers, Kind::slip_layers, Kind::slide_layer, Kind::roll_edit, Kind::split_layers, Kind::ripple_delete_layers, Kind::edit_work_area, Kind::insert_gap, Kind::time_reverse_layers, Kind::set_time_remap, Kind::freeze_frame, Kind::set_retime, Kind::sequence_layers, Kind::time_stretch_layers, Kind::unfreeze_layers, Kind::ripple_delete_range, Kind::lift_range, Kind::shift_layer_keyframes, Kind::add_transition, Kind::set_transition, Kind::remove_transitions, Kind::set_property, Kind::set_properties, Kind::reset_property, Kind::set_animated, Kind::set_dimensions_separated, Kind::set_expression, Kind::set_expression_enabled, Kind::convert_expression_to_keyframes, Kind::link_property, Kind::add_keyframes, Kind::delete_keyframes, Kind::move_keyframes, Kind::update_keyframes, Kind::scale_keyframes, Kind::reverse_keyframes, Kind::paste_keyframes, Kind::set_keyframes, Kind::set_member_keyframes, Kind::add_effect, Kind::add_mask, Kind::add_property_group, Kind::remove_property_groups, Kind::move_property_group, Kind::duplicate_property_groups, Kind::set_group_enabled, Kind::rename_property_group, Kind::copy_property_groups, Kind::apply_preset, Kind::invoke_effect_action, Kind::drag_effect_overlay, Kind::drag_effect_param_ui, Kind::add_properties, Kind::remove_properties, Kind::paste_effects, Kind::remove_stroke, Kind::add_paint_stroke, Kind::update_paint_stroke, Kind::remove_paint_strokes, Kind::set_paint_on_transparent, Kind::set_paint_stroke_path, Kind::set_paint_path_animated, Kind::edit_path_topology, Kind::set_shape_outline, Kind::set_performance_take, Kind::clear_performance_takes, Kind::add_markers, Kind::update_markers, Kind::delete_markers, Kind::move_markers, Kind::play, Kind::pause, Kind::seek, Kind::step, Kind::set_loop, Kind::set_preview_quality, Kind::set_audio_preview, Kind::set_active_composition, Kind::set_viewport, Kind::close_viewport, Kind::set_cache_budget, Kind::purge_cache, Kind::set_interacting, Kind::set_viewport_hidden_layers, Kind::set_viewport_focus, Kind::set_viewer_lut, Kind::set_overlay_geometry, Kind::set_layer_trackers, Kind::set_camera_solve, Kind::set_layer_matte, Kind::start_job, Kind::cancel_job, Kind::apply_job_result, Kind::set_content_aware_fill, Kind::set_captions, Kind::set_plugin_enabled, Kind::rescan_plugins, Kind::set_plugin_data, Kind::run_plugin_command, Kind::start_live_input, Kind::stop_live_input};
   return kKinds[v.index()];
 }
 
@@ -13806,55 +13894,56 @@ void encode(wire::Writer& w, const Command& v) {
     case 122: w.varint(4874U); { const std::size_t s = w.begin_ld(); encode(w, std::get<122>(v.v)); w.end_ld(s); } return;
     case 123: w.varint(4882U); { const std::size_t s = w.begin_ld(); encode(w, std::get<123>(v.v)); w.end_ld(s); } return;
     case 124: w.varint(5058U); { const std::size_t s = w.begin_ld(); encode(w, std::get<124>(v.v)); w.end_ld(s); } return;
-    case 125: w.varint(4890U); { const std::size_t s = w.begin_ld(); encode(w, std::get<125>(v.v)); w.end_ld(s); } return;
-    case 126: w.varint(4898U); { const std::size_t s = w.begin_ld(); encode(w, std::get<126>(v.v)); w.end_ld(s); } return;
-    case 127: w.varint(4906U); { const std::size_t s = w.begin_ld(); encode(w, std::get<127>(v.v)); w.end_ld(s); } return;
-    case 128: w.varint(4914U); { const std::size_t s = w.begin_ld(); encode(w, std::get<128>(v.v)); w.end_ld(s); } return;
-    case 129: w.varint(4922U); { const std::size_t s = w.begin_ld(); encode(w, std::get<129>(v.v)); w.end_ld(s); } return;
-    case 130: w.varint(4930U); { const std::size_t s = w.begin_ld(); encode(w, std::get<130>(v.v)); w.end_ld(s); } return;
-    case 131: w.varint(4938U); { const std::size_t s = w.begin_ld(); encode(w, std::get<131>(v.v)); w.end_ld(s); } return;
-    case 132: w.varint(4946U); { const std::size_t s = w.begin_ld(); encode(w, std::get<132>(v.v)); w.end_ld(s); } return;
-    case 133: w.varint(4954U); { const std::size_t s = w.begin_ld(); encode(w, std::get<133>(v.v)); w.end_ld(s); } return;
-    case 134: w.varint(4962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<134>(v.v)); w.end_ld(s); } return;
-    case 135: w.varint(5042U); { const std::size_t s = w.begin_ld(); encode(w, std::get<135>(v.v)); w.end_ld(s); } return;
-    case 136: w.varint(5050U); { const std::size_t s = w.begin_ld(); encode(w, std::get<136>(v.v)); w.end_ld(s); } return;
-    case 137: w.varint(15602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<137>(v.v)); w.end_ld(s); } return;
-    case 138: w.varint(15610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<138>(v.v)); w.end_ld(s); } return;
-    case 139: w.varint(5602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<139>(v.v)); w.end_ld(s); } return;
-    case 140: w.varint(5610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<140>(v.v)); w.end_ld(s); } return;
-    case 141: w.varint(5618U); { const std::size_t s = w.begin_ld(); encode(w, std::get<141>(v.v)); w.end_ld(s); } return;
-    case 142: w.varint(5626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<142>(v.v)); w.end_ld(s); } return;
-    case 143: w.varint(6402U); { const std::size_t s = w.begin_ld(); encode(w, std::get<143>(v.v)); w.end_ld(s); } return;
-    case 144: w.varint(6410U); { const std::size_t s = w.begin_ld(); encode(w, std::get<144>(v.v)); w.end_ld(s); } return;
-    case 145: w.varint(6418U); { const std::size_t s = w.begin_ld(); encode(w, std::get<145>(v.v)); w.end_ld(s); } return;
-    case 146: w.varint(6426U); { const std::size_t s = w.begin_ld(); encode(w, std::get<146>(v.v)); w.end_ld(s); } return;
-    case 147: w.varint(6434U); { const std::size_t s = w.begin_ld(); encode(w, std::get<147>(v.v)); w.end_ld(s); } return;
-    case 148: w.varint(6442U); { const std::size_t s = w.begin_ld(); encode(w, std::get<148>(v.v)); w.end_ld(s); } return;
-    case 149: w.varint(6450U); { const std::size_t s = w.begin_ld(); encode(w, std::get<149>(v.v)); w.end_ld(s); } return;
-    case 150: w.varint(6458U); { const std::size_t s = w.begin_ld(); encode(w, std::get<150>(v.v)); w.end_ld(s); } return;
-    case 151: w.varint(6466U); { const std::size_t s = w.begin_ld(); encode(w, std::get<151>(v.v)); w.end_ld(s); } return;
-    case 152: w.varint(6474U); { const std::size_t s = w.begin_ld(); encode(w, std::get<152>(v.v)); w.end_ld(s); } return;
-    case 153: w.varint(6482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<153>(v.v)); w.end_ld(s); } return;
-    case 154: w.varint(6490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<154>(v.v)); w.end_ld(s); } return;
-    case 155: w.varint(6498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<155>(v.v)); w.end_ld(s); } return;
-    case 156: w.varint(6506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<156>(v.v)); w.end_ld(s); } return;
-    case 157: w.varint(6514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<157>(v.v)); w.end_ld(s); } return;
-    case 158: w.varint(6522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<158>(v.v)); w.end_ld(s); } return;
-    case 159: w.varint(14170U); { const std::size_t s = w.begin_ld(); encode(w, std::get<159>(v.v)); w.end_ld(s); } return;
-    case 160: w.varint(15562U); { const std::size_t s = w.begin_ld(); encode(w, std::get<160>(v.v)); w.end_ld(s); } return;
-    case 161: w.varint(15570U); { const std::size_t s = w.begin_ld(); encode(w, std::get<161>(v.v)); w.end_ld(s); } return;
-    case 162: w.varint(15578U); { const std::size_t s = w.begin_ld(); encode(w, std::get<162>(v.v)); w.end_ld(s); } return;
-    case 163: w.varint(6802U); { const std::size_t s = w.begin_ld(); encode(w, std::get<163>(v.v)); w.end_ld(s); } return;
-    case 164: w.varint(6810U); { const std::size_t s = w.begin_ld(); encode(w, std::get<164>(v.v)); w.end_ld(s); } return;
-    case 165: w.varint(6818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<165>(v.v)); w.end_ld(s); } return;
-    case 166: w.varint(14818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<166>(v.v)); w.end_ld(s); } return;
-    case 167: w.varint(14826U); { const std::size_t s = w.begin_ld(); encode(w, std::get<167>(v.v)); w.end_ld(s); } return;
-    case 168: w.varint(6962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<168>(v.v)); w.end_ld(s); } return;
-    case 169: w.varint(6978U); { const std::size_t s = w.begin_ld(); encode(w, std::get<169>(v.v)); w.end_ld(s); } return;
-    case 170: w.varint(6970U); { const std::size_t s = w.begin_ld(); encode(w, std::get<170>(v.v)); w.end_ld(s); } return;
-    case 171: w.varint(6986U); { const std::size_t s = w.begin_ld(); encode(w, std::get<171>(v.v)); w.end_ld(s); } return;
-    case 172: w.varint(15586U); { const std::size_t s = w.begin_ld(); encode(w, std::get<172>(v.v)); w.end_ld(s); } return;
-    case 173: w.varint(15594U); { const std::size_t s = w.begin_ld(); encode(w, std::get<173>(v.v)); w.end_ld(s); } return;
+    case 125: w.varint(5066U); { const std::size_t s = w.begin_ld(); encode(w, std::get<125>(v.v)); w.end_ld(s); } return;
+    case 126: w.varint(4890U); { const std::size_t s = w.begin_ld(); encode(w, std::get<126>(v.v)); w.end_ld(s); } return;
+    case 127: w.varint(4898U); { const std::size_t s = w.begin_ld(); encode(w, std::get<127>(v.v)); w.end_ld(s); } return;
+    case 128: w.varint(4906U); { const std::size_t s = w.begin_ld(); encode(w, std::get<128>(v.v)); w.end_ld(s); } return;
+    case 129: w.varint(4914U); { const std::size_t s = w.begin_ld(); encode(w, std::get<129>(v.v)); w.end_ld(s); } return;
+    case 130: w.varint(4922U); { const std::size_t s = w.begin_ld(); encode(w, std::get<130>(v.v)); w.end_ld(s); } return;
+    case 131: w.varint(4930U); { const std::size_t s = w.begin_ld(); encode(w, std::get<131>(v.v)); w.end_ld(s); } return;
+    case 132: w.varint(4938U); { const std::size_t s = w.begin_ld(); encode(w, std::get<132>(v.v)); w.end_ld(s); } return;
+    case 133: w.varint(4946U); { const std::size_t s = w.begin_ld(); encode(w, std::get<133>(v.v)); w.end_ld(s); } return;
+    case 134: w.varint(4954U); { const std::size_t s = w.begin_ld(); encode(w, std::get<134>(v.v)); w.end_ld(s); } return;
+    case 135: w.varint(4962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<135>(v.v)); w.end_ld(s); } return;
+    case 136: w.varint(5042U); { const std::size_t s = w.begin_ld(); encode(w, std::get<136>(v.v)); w.end_ld(s); } return;
+    case 137: w.varint(5050U); { const std::size_t s = w.begin_ld(); encode(w, std::get<137>(v.v)); w.end_ld(s); } return;
+    case 138: w.varint(15602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<138>(v.v)); w.end_ld(s); } return;
+    case 139: w.varint(15610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<139>(v.v)); w.end_ld(s); } return;
+    case 140: w.varint(5602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<140>(v.v)); w.end_ld(s); } return;
+    case 141: w.varint(5610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<141>(v.v)); w.end_ld(s); } return;
+    case 142: w.varint(5618U); { const std::size_t s = w.begin_ld(); encode(w, std::get<142>(v.v)); w.end_ld(s); } return;
+    case 143: w.varint(5626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<143>(v.v)); w.end_ld(s); } return;
+    case 144: w.varint(6402U); { const std::size_t s = w.begin_ld(); encode(w, std::get<144>(v.v)); w.end_ld(s); } return;
+    case 145: w.varint(6410U); { const std::size_t s = w.begin_ld(); encode(w, std::get<145>(v.v)); w.end_ld(s); } return;
+    case 146: w.varint(6418U); { const std::size_t s = w.begin_ld(); encode(w, std::get<146>(v.v)); w.end_ld(s); } return;
+    case 147: w.varint(6426U); { const std::size_t s = w.begin_ld(); encode(w, std::get<147>(v.v)); w.end_ld(s); } return;
+    case 148: w.varint(6434U); { const std::size_t s = w.begin_ld(); encode(w, std::get<148>(v.v)); w.end_ld(s); } return;
+    case 149: w.varint(6442U); { const std::size_t s = w.begin_ld(); encode(w, std::get<149>(v.v)); w.end_ld(s); } return;
+    case 150: w.varint(6450U); { const std::size_t s = w.begin_ld(); encode(w, std::get<150>(v.v)); w.end_ld(s); } return;
+    case 151: w.varint(6458U); { const std::size_t s = w.begin_ld(); encode(w, std::get<151>(v.v)); w.end_ld(s); } return;
+    case 152: w.varint(6466U); { const std::size_t s = w.begin_ld(); encode(w, std::get<152>(v.v)); w.end_ld(s); } return;
+    case 153: w.varint(6474U); { const std::size_t s = w.begin_ld(); encode(w, std::get<153>(v.v)); w.end_ld(s); } return;
+    case 154: w.varint(6482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<154>(v.v)); w.end_ld(s); } return;
+    case 155: w.varint(6490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<155>(v.v)); w.end_ld(s); } return;
+    case 156: w.varint(6498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<156>(v.v)); w.end_ld(s); } return;
+    case 157: w.varint(6506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<157>(v.v)); w.end_ld(s); } return;
+    case 158: w.varint(6514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<158>(v.v)); w.end_ld(s); } return;
+    case 159: w.varint(6522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<159>(v.v)); w.end_ld(s); } return;
+    case 160: w.varint(14170U); { const std::size_t s = w.begin_ld(); encode(w, std::get<160>(v.v)); w.end_ld(s); } return;
+    case 161: w.varint(15562U); { const std::size_t s = w.begin_ld(); encode(w, std::get<161>(v.v)); w.end_ld(s); } return;
+    case 162: w.varint(15570U); { const std::size_t s = w.begin_ld(); encode(w, std::get<162>(v.v)); w.end_ld(s); } return;
+    case 163: w.varint(15578U); { const std::size_t s = w.begin_ld(); encode(w, std::get<163>(v.v)); w.end_ld(s); } return;
+    case 164: w.varint(6802U); { const std::size_t s = w.begin_ld(); encode(w, std::get<164>(v.v)); w.end_ld(s); } return;
+    case 165: w.varint(6810U); { const std::size_t s = w.begin_ld(); encode(w, std::get<165>(v.v)); w.end_ld(s); } return;
+    case 166: w.varint(6818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<166>(v.v)); w.end_ld(s); } return;
+    case 167: w.varint(14818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<167>(v.v)); w.end_ld(s); } return;
+    case 168: w.varint(14826U); { const std::size_t s = w.begin_ld(); encode(w, std::get<168>(v.v)); w.end_ld(s); } return;
+    case 169: w.varint(6962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<169>(v.v)); w.end_ld(s); } return;
+    case 170: w.varint(6978U); { const std::size_t s = w.begin_ld(); encode(w, std::get<170>(v.v)); w.end_ld(s); } return;
+    case 171: w.varint(6970U); { const std::size_t s = w.begin_ld(); encode(w, std::get<171>(v.v)); w.end_ld(s); } return;
+    case 172: w.varint(6986U); { const std::size_t s = w.begin_ld(); encode(w, std::get<172>(v.v)); w.end_ld(s); } return;
+    case 173: w.varint(15586U); { const std::size_t s = w.begin_ld(); encode(w, std::get<173>(v.v)); w.end_ld(s); } return;
+    case 174: w.varint(15594U); { const std::size_t s = w.begin_ld(); encode(w, std::get<174>(v.v)); w.end_ld(s); } return;
     default: return;
   }
 }
@@ -14865,11 +14954,19 @@ Status decode(wire::Reader& r, Command& out) {
         seen = true;
         break;
       }
+      case 5066U: {
+        if (seen) return Status::multiple_variants;
+        DragEffectParamUi e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.v.emplace<125>(std::move(e));
+        seen = true;
+        break;
+      }
       case 4890U: {
         if (seen) return Status::multiple_variants;
         AddProperties e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<125>(std::move(e));
+        out.v.emplace<126>(std::move(e));
         seen = true;
         break;
       }
@@ -14877,7 +14974,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         RemoveProperties e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<126>(std::move(e));
+        out.v.emplace<127>(std::move(e));
         seen = true;
         break;
       }
@@ -14885,7 +14982,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         PasteEffects e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<127>(std::move(e));
+        out.v.emplace<128>(std::move(e));
         seen = true;
         break;
       }
@@ -14893,7 +14990,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         RemoveStroke e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<128>(std::move(e));
+        out.v.emplace<129>(std::move(e));
         seen = true;
         break;
       }
@@ -14901,7 +14998,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         AddPaintStroke e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<129>(std::move(e));
+        out.v.emplace<130>(std::move(e));
         seen = true;
         break;
       }
@@ -14909,7 +15006,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         UpdatePaintStroke e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<130>(std::move(e));
+        out.v.emplace<131>(std::move(e));
         seen = true;
         break;
       }
@@ -14917,7 +15014,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         RemovePaintStrokes e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<131>(std::move(e));
+        out.v.emplace<132>(std::move(e));
         seen = true;
         break;
       }
@@ -14925,7 +15022,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPaintOnTransparent e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<132>(std::move(e));
+        out.v.emplace<133>(std::move(e));
         seen = true;
         break;
       }
@@ -14933,7 +15030,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPaintStrokePath e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<133>(std::move(e));
+        out.v.emplace<134>(std::move(e));
         seen = true;
         break;
       }
@@ -14941,7 +15038,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPaintPathAnimated e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<134>(std::move(e));
+        out.v.emplace<135>(std::move(e));
         seen = true;
         break;
       }
@@ -14949,7 +15046,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         EditPathTopology e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<135>(std::move(e));
+        out.v.emplace<136>(std::move(e));
         seen = true;
         break;
       }
@@ -14957,7 +15054,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetShapeOutline e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<136>(std::move(e));
+        out.v.emplace<137>(std::move(e));
         seen = true;
         break;
       }
@@ -14965,7 +15062,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPerformanceTake e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<137>(std::move(e));
+        out.v.emplace<138>(std::move(e));
         seen = true;
         break;
       }
@@ -14973,7 +15070,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         ClearPerformanceTakes e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<138>(std::move(e));
+        out.v.emplace<139>(std::move(e));
         seen = true;
         break;
       }
@@ -14981,7 +15078,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         AddMarkers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<139>(std::move(e));
+        out.v.emplace<140>(std::move(e));
         seen = true;
         break;
       }
@@ -14989,7 +15086,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         UpdateMarkers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<140>(std::move(e));
+        out.v.emplace<141>(std::move(e));
         seen = true;
         break;
       }
@@ -14997,7 +15094,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         DeleteMarkers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<141>(std::move(e));
+        out.v.emplace<142>(std::move(e));
         seen = true;
         break;
       }
@@ -15005,7 +15102,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         MoveMarkers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<142>(std::move(e));
+        out.v.emplace<143>(std::move(e));
         seen = true;
         break;
       }
@@ -15013,7 +15110,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         Play e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<143>(std::move(e));
+        out.v.emplace<144>(std::move(e));
         seen = true;
         break;
       }
@@ -15021,7 +15118,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         Pause e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<144>(std::move(e));
+        out.v.emplace<145>(std::move(e));
         seen = true;
         break;
       }
@@ -15029,7 +15126,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         Seek e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<145>(std::move(e));
+        out.v.emplace<146>(std::move(e));
         seen = true;
         break;
       }
@@ -15037,7 +15134,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         Step e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<146>(std::move(e));
+        out.v.emplace<147>(std::move(e));
         seen = true;
         break;
       }
@@ -15045,7 +15142,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetLoop e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<147>(std::move(e));
+        out.v.emplace<148>(std::move(e));
         seen = true;
         break;
       }
@@ -15053,7 +15150,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPreviewQuality e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<148>(std::move(e));
+        out.v.emplace<149>(std::move(e));
         seen = true;
         break;
       }
@@ -15061,7 +15158,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetAudioPreview e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<149>(std::move(e));
+        out.v.emplace<150>(std::move(e));
         seen = true;
         break;
       }
@@ -15069,7 +15166,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetActiveComposition e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<150>(std::move(e));
+        out.v.emplace<151>(std::move(e));
         seen = true;
         break;
       }
@@ -15077,7 +15174,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetViewport e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<151>(std::move(e));
+        out.v.emplace<152>(std::move(e));
         seen = true;
         break;
       }
@@ -15085,7 +15182,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         CloseViewport e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<152>(std::move(e));
+        out.v.emplace<153>(std::move(e));
         seen = true;
         break;
       }
@@ -15093,7 +15190,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetCacheBudget e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<153>(std::move(e));
+        out.v.emplace<154>(std::move(e));
         seen = true;
         break;
       }
@@ -15101,7 +15198,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         PurgeCache e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<154>(std::move(e));
+        out.v.emplace<155>(std::move(e));
         seen = true;
         break;
       }
@@ -15109,7 +15206,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetInteracting e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<155>(std::move(e));
+        out.v.emplace<156>(std::move(e));
         seen = true;
         break;
       }
@@ -15117,7 +15214,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetViewportHiddenLayers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<156>(std::move(e));
+        out.v.emplace<157>(std::move(e));
         seen = true;
         break;
       }
@@ -15125,7 +15222,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetViewportFocus e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<157>(std::move(e));
+        out.v.emplace<158>(std::move(e));
         seen = true;
         break;
       }
@@ -15133,7 +15230,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetViewerLut e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<158>(std::move(e));
+        out.v.emplace<159>(std::move(e));
         seen = true;
         break;
       }
@@ -15141,7 +15238,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetOverlayGeometry e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<159>(std::move(e));
+        out.v.emplace<160>(std::move(e));
         seen = true;
         break;
       }
@@ -15149,7 +15246,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetLayerTrackers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<160>(std::move(e));
+        out.v.emplace<161>(std::move(e));
         seen = true;
         break;
       }
@@ -15157,7 +15254,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetCameraSolve e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<161>(std::move(e));
+        out.v.emplace<162>(std::move(e));
         seen = true;
         break;
       }
@@ -15165,7 +15262,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetLayerMatte e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<162>(std::move(e));
+        out.v.emplace<163>(std::move(e));
         seen = true;
         break;
       }
@@ -15173,7 +15270,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         StartJob e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<163>(std::move(e));
+        out.v.emplace<164>(std::move(e));
         seen = true;
         break;
       }
@@ -15181,7 +15278,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         CancelJob e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<164>(std::move(e));
+        out.v.emplace<165>(std::move(e));
         seen = true;
         break;
       }
@@ -15189,7 +15286,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         ApplyJobResult e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<165>(std::move(e));
+        out.v.emplace<166>(std::move(e));
         seen = true;
         break;
       }
@@ -15197,7 +15294,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetContentAwareFill e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<166>(std::move(e));
+        out.v.emplace<167>(std::move(e));
         seen = true;
         break;
       }
@@ -15205,7 +15302,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetCaptions e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<167>(std::move(e));
+        out.v.emplace<168>(std::move(e));
         seen = true;
         break;
       }
@@ -15213,7 +15310,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPluginEnabled e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<168>(std::move(e));
+        out.v.emplace<169>(std::move(e));
         seen = true;
         break;
       }
@@ -15221,7 +15318,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         RescanPlugins e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<169>(std::move(e));
+        out.v.emplace<170>(std::move(e));
         seen = true;
         break;
       }
@@ -15229,7 +15326,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         SetPluginData e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<170>(std::move(e));
+        out.v.emplace<171>(std::move(e));
         seen = true;
         break;
       }
@@ -15237,7 +15334,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         RunPluginCommand e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<171>(std::move(e));
+        out.v.emplace<172>(std::move(e));
         seen = true;
         break;
       }
@@ -15245,7 +15342,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         StartLiveInput e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<172>(std::move(e));
+        out.v.emplace<173>(std::move(e));
         seen = true;
         break;
       }
@@ -15253,7 +15350,7 @@ Status decode(wire::Reader& r, Command& out) {
         if (seen) return Status::multiple_variants;
         StopLiveInput e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<173>(std::move(e));
+        out.v.emplace<174>(std::move(e));
         seen = true;
         break;
       }
@@ -16494,6 +16591,61 @@ Status decode(wire::Reader& r, GetEffectUi& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const DrawEffectParamUi& v) {
+  w.varint(10U); w.str(v.layer);
+  w.varint(18U); w.str(v.effect);
+  w.varint(26U); w.str(v.key);
+  w.varint(33U); w.f64(v.width);
+  if (v.time.has_value()) { w.varint(40U); w.svarint(*v.time); }
+}
+
+Status decode(wire::Reader& r, DrawEffectParamUi& out) {
+  bool has_layer = false;
+  bool has_effect = false;
+  bool has_key = false;
+  bool has_width = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.layer)) return Status::truncated;
+        has_layer = true;
+        break;
+      }
+      case 18U: {
+        if (!r.str(out.effect)) return Status::truncated;
+        has_effect = true;
+        break;
+      }
+      case 26U: {
+        if (!r.str(out.key)) return Status::truncated;
+        has_key = true;
+        break;
+      }
+      case 33U: {
+        if (!r.f64(out.width)) return Status::truncated;
+        has_width = true;
+        break;
+      }
+      case 40U: {
+        Time e = 0;
+        if (!r.svarint(e)) return Status::truncated;
+        out.time = std::move(e);
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_layer) return Status::missing_field;
+  if (!has_effect) return Status::missing_field;
+  if (!has_key) return Status::missing_field;
+  if (!has_width) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const GetLayerFaces& v) {
   w.varint(10U); w.str(v.layer);
   w.varint(16U); w.svarint(v.time);
@@ -17098,7 +17250,7 @@ Query::~Query() = default;
 bool Query::operator==(const Query&) const = default;
 
 Query::Kind Query::kind() const noexcept {
-  static constexpr std::array<Kind, 58> kKinds = {Kind::get_performance_takes, Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage, Kind::list_cameras};
+  static constexpr std::array<Kind, 59> kKinds = {Kind::get_performance_takes, Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::draw_effect_param_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage, Kind::list_cameras};
   return kKinds[v.index()];
 }
 
@@ -17145,23 +17297,24 @@ void encode(wire::Writer& w, const Query& v) {
     case 38: w.varint(8346U); { const std::size_t s = w.begin_ld(); encode(w, std::get<38>(v.v)); w.end_ld(s); } return;
     case 39: w.varint(8690U); { const std::size_t s = w.begin_ld(); encode(w, std::get<39>(v.v)); w.end_ld(s); } return;
     case 40: w.varint(8698U); { const std::size_t s = w.begin_ld(); encode(w, std::get<40>(v.v)); w.end_ld(s); } return;
-    case 41: w.varint(15490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<41>(v.v)); w.end_ld(s); } return;
-    case 42: w.varint(8482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<42>(v.v)); w.end_ld(s); } return;
-    case 43: w.varint(8490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<43>(v.v)); w.end_ld(s); } return;
-    case 44: w.varint(8498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<44>(v.v)); w.end_ld(s); } return;
-    case 45: w.varint(8506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<45>(v.v)); w.end_ld(s); } return;
-    case 46: w.varint(8514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<46>(v.v)); w.end_ld(s); } return;
-    case 47: w.varint(8522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<47>(v.v)); w.end_ld(s); } return;
-    case 48: w.varint(8530U); { const std::size_t s = w.begin_ld(); encode(w, std::get<48>(v.v)); w.end_ld(s); } return;
-    case 49: w.varint(8538U); { const std::size_t s = w.begin_ld(); encode(w, std::get<49>(v.v)); w.end_ld(s); } return;
-    case 50: w.varint(8642U); { const std::size_t s = w.begin_ld(); encode(w, std::get<50>(v.v)); w.end_ld(s); } return;
-    case 51: w.varint(8650U); { const std::size_t s = w.begin_ld(); encode(w, std::get<51>(v.v)); w.end_ld(s); } return;
-    case 52: w.varint(8658U); { const std::size_t s = w.begin_ld(); encode(w, std::get<52>(v.v)); w.end_ld(s); } return;
-    case 53: w.varint(8666U); { const std::size_t s = w.begin_ld(); encode(w, std::get<53>(v.v)); w.end_ld(s); } return;
-    case 54: w.varint(8674U); { const std::size_t s = w.begin_ld(); encode(w, std::get<54>(v.v)); w.end_ld(s); } return;
-    case 55: w.varint(8682U); { const std::size_t s = w.begin_ld(); encode(w, std::get<55>(v.v)); w.end_ld(s); } return;
-    case 56: w.varint(8714U); { const std::size_t s = w.begin_ld(); encode(w, std::get<56>(v.v)); w.end_ld(s); } return;
-    case 57: w.varint(15506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<57>(v.v)); w.end_ld(s); } return;
+    case 41: w.varint(15626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<41>(v.v)); w.end_ld(s); } return;
+    case 42: w.varint(15490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<42>(v.v)); w.end_ld(s); } return;
+    case 43: w.varint(8482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<43>(v.v)); w.end_ld(s); } return;
+    case 44: w.varint(8490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<44>(v.v)); w.end_ld(s); } return;
+    case 45: w.varint(8498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<45>(v.v)); w.end_ld(s); } return;
+    case 46: w.varint(8506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<46>(v.v)); w.end_ld(s); } return;
+    case 47: w.varint(8514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<47>(v.v)); w.end_ld(s); } return;
+    case 48: w.varint(8522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<48>(v.v)); w.end_ld(s); } return;
+    case 49: w.varint(8530U); { const std::size_t s = w.begin_ld(); encode(w, std::get<49>(v.v)); w.end_ld(s); } return;
+    case 50: w.varint(8538U); { const std::size_t s = w.begin_ld(); encode(w, std::get<50>(v.v)); w.end_ld(s); } return;
+    case 51: w.varint(8642U); { const std::size_t s = w.begin_ld(); encode(w, std::get<51>(v.v)); w.end_ld(s); } return;
+    case 52: w.varint(8650U); { const std::size_t s = w.begin_ld(); encode(w, std::get<52>(v.v)); w.end_ld(s); } return;
+    case 53: w.varint(8658U); { const std::size_t s = w.begin_ld(); encode(w, std::get<53>(v.v)); w.end_ld(s); } return;
+    case 54: w.varint(8666U); { const std::size_t s = w.begin_ld(); encode(w, std::get<54>(v.v)); w.end_ld(s); } return;
+    case 55: w.varint(8674U); { const std::size_t s = w.begin_ld(); encode(w, std::get<55>(v.v)); w.end_ld(s); } return;
+    case 56: w.varint(8682U); { const std::size_t s = w.begin_ld(); encode(w, std::get<56>(v.v)); w.end_ld(s); } return;
+    case 57: w.varint(8714U); { const std::size_t s = w.begin_ld(); encode(w, std::get<57>(v.v)); w.end_ld(s); } return;
+    case 58: w.varint(15506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<58>(v.v)); w.end_ld(s); } return;
     default: return;
   }
 }
@@ -17500,11 +17653,19 @@ Status decode(wire::Reader& r, Query& out) {
         seen = true;
         break;
       }
+      case 15626U: {
+        if (seen) return Status::multiple_variants;
+        DrawEffectParamUi e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.v.emplace<41>(std::move(e));
+        seen = true;
+        break;
+      }
       case 15490U: {
         if (seen) return Status::multiple_variants;
         GetLayerFaces e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<41>(std::move(e));
+        out.v.emplace<42>(std::move(e));
         seen = true;
         break;
       }
@@ -17512,7 +17673,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         HitTest e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<42>(std::move(e));
+        out.v.emplace<43>(std::move(e));
         seen = true;
         break;
       }
@@ -17520,7 +17681,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetLayerBounds e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<43>(std::move(e));
+        out.v.emplace<44>(std::move(e));
         seen = true;
         break;
       }
@@ -17528,7 +17689,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetLayerTransforms e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<44>(std::move(e));
+        out.v.emplace<45>(std::move(e));
         seen = true;
         break;
       }
@@ -17536,7 +17697,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetTextLayout e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<45>(std::move(e));
+        out.v.emplace<46>(std::move(e));
         seen = true;
         break;
       }
@@ -17544,7 +17705,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         EvaluateExpression e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<46>(std::move(e));
+        out.v.emplace<47>(std::move(e));
         seen = true;
         break;
       }
@@ -17552,7 +17713,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         ReadPixels e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<47>(std::move(e));
+        out.v.emplace<48>(std::move(e));
         seen = true;
         break;
       }
@@ -17560,7 +17721,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         FindLayers e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<48>(std::move(e));
+        out.v.emplace<49>(std::move(e));
         seen = true;
         break;
       }
@@ -17568,7 +17729,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetDependencies e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<49>(std::move(e));
+        out.v.emplace<50>(std::move(e));
         seen = true;
         break;
       }
@@ -17576,7 +17737,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetHistory e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<50>(std::move(e));
+        out.v.emplace<51>(std::move(e));
         seen = true;
         break;
       }
@@ -17584,7 +17745,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetRenderStats e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<51>(std::move(e));
+        out.v.emplace<52>(std::move(e));
         seen = true;
         break;
       }
@@ -17592,7 +17753,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetLayerErrors e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<52>(std::move(e));
+        out.v.emplace<53>(std::move(e));
         seen = true;
         break;
       }
@@ -17600,7 +17761,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetJobs e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<53>(std::move(e));
+        out.v.emplace<54>(std::move(e));
         seen = true;
         break;
       }
@@ -17608,7 +17769,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetRenderQueue e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<54>(std::move(e));
+        out.v.emplace<55>(std::move(e));
         seen = true;
         break;
       }
@@ -17616,7 +17777,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetCommandLog e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<55>(std::move(e));
+        out.v.emplace<56>(std::move(e));
         seen = true;
         break;
       }
@@ -17624,7 +17785,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         GetCacheCoverage e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<56>(std::move(e));
+        out.v.emplace<57>(std::move(e));
         seen = true;
         break;
       }
@@ -17632,7 +17793,7 @@ Status decode(wire::Reader& r, Query& out) {
         if (seen) return Status::multiple_variants;
         ListCameras e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<57>(std::move(e));
+        out.v.emplace<58>(std::move(e));
         seen = true;
         break;
       }
@@ -19026,7 +19187,7 @@ Status decode(wire::Reader& r, PluginCommandResult& out) {
 }
 
 CommandResult::Kind CommandResult::kind() const noexcept {
-  static constexpr std::array<Kind, 174> kKinds = {Kind::undo, Kind::redo, Kind::jump_to_history, Kind::begin_gesture, Kind::end_gesture, Kind::clear_history, Kind::set_history_limit, Kind::add_history_checkpoint, Kind::restore_document, Kind::new_project, Kind::open_project, Kind::save_project, Kind::import_project, Kind::set_project_settings, Kind::revert_project, Kind::collect_files, Kind::set_autosave, Kind::set_guides, Kind::set_swatches, Kind::set_materials, Kind::set_motion_blur, Kind::set_color_management, Kind::import_files, Kind::import_bytes, Kind::relink_item, Kind::reload_items, Kind::remove_items, Kind::rename_item, Kind::create_folder, Kind::move_items, Kind::set_interpretation, Kind::set_item_label, Kind::remove_unused_items, Kind::set_proxy, Kind::set_item_comment, Kind::set_item_tags, Kind::create_composition, Kind::duplicate_composition, Kind::set_composition_settings, Kind::set_work_area, Kind::clear_work_area, Kind::precompose, Kind::trim_comp_to_work_area, Kind::crop_composition, Kind::assemble_composition, Kind::migrate_legacy_precomps, Kind::set_essential_prop, Kind::add_render_items, Kind::set_render_item, Kind::remove_render_items, Kind::reorder_render_items, Kind::create_layer, Kind::delete_layers, Kind::duplicate_layers, Kind::reorder_layers, Kind::set_parent, Kind::rename_layer, Kind::set_layer_switches, Kind::set_blend_mode, Kind::set_track_matte, Kind::replace_layer_source, Kind::group_layers, Kind::ungroup_layer, Kind::convert_layer, Kind::paste_layers, Kind::separate_layer, Kind::auto_trace, Kind::set_layer_comment, Kind::set_pinned_properties, Kind::pose_ik3_d, Kind::bake_ik3_d, Kind::create_live_merge, Kind::set_layer_timing, Kind::move_layers_in_time, Kind::trim_layers, Kind::slip_layers, Kind::slide_layer, Kind::roll_edit, Kind::split_layers, Kind::ripple_delete_layers, Kind::edit_work_area, Kind::insert_gap, Kind::time_reverse_layers, Kind::set_time_remap, Kind::freeze_frame, Kind::set_retime, Kind::sequence_layers, Kind::time_stretch_layers, Kind::unfreeze_layers, Kind::ripple_delete_range, Kind::lift_range, Kind::shift_layer_keyframes, Kind::add_transition, Kind::set_transition, Kind::remove_transitions, Kind::set_property, Kind::set_properties, Kind::reset_property, Kind::set_animated, Kind::set_dimensions_separated, Kind::set_expression, Kind::set_expression_enabled, Kind::convert_expression_to_keyframes, Kind::link_property, Kind::add_keyframes, Kind::delete_keyframes, Kind::move_keyframes, Kind::update_keyframes, Kind::scale_keyframes, Kind::reverse_keyframes, Kind::paste_keyframes, Kind::set_keyframes, Kind::set_member_keyframes, Kind::add_effect, Kind::add_mask, Kind::add_property_group, Kind::remove_property_groups, Kind::move_property_group, Kind::duplicate_property_groups, Kind::set_group_enabled, Kind::rename_property_group, Kind::copy_property_groups, Kind::apply_preset, Kind::invoke_effect_action, Kind::drag_effect_overlay, Kind::add_properties, Kind::remove_properties, Kind::paste_effects, Kind::remove_stroke, Kind::add_paint_stroke, Kind::update_paint_stroke, Kind::remove_paint_strokes, Kind::set_paint_on_transparent, Kind::set_paint_stroke_path, Kind::set_paint_path_animated, Kind::edit_path_topology, Kind::set_shape_outline, Kind::set_performance_take, Kind::clear_performance_takes, Kind::add_markers, Kind::update_markers, Kind::delete_markers, Kind::move_markers, Kind::play, Kind::pause, Kind::seek, Kind::step, Kind::set_loop, Kind::set_preview_quality, Kind::set_audio_preview, Kind::set_active_composition, Kind::set_viewport, Kind::close_viewport, Kind::set_cache_budget, Kind::purge_cache, Kind::set_interacting, Kind::set_viewport_hidden_layers, Kind::set_viewport_focus, Kind::set_viewer_lut, Kind::set_overlay_geometry, Kind::set_layer_trackers, Kind::set_camera_solve, Kind::set_layer_matte, Kind::start_job, Kind::cancel_job, Kind::apply_job_result, Kind::set_content_aware_fill, Kind::set_captions, Kind::set_plugin_enabled, Kind::rescan_plugins, Kind::set_plugin_data, Kind::run_plugin_command, Kind::start_live_input, Kind::stop_live_input};
+  static constexpr std::array<Kind, 175> kKinds = {Kind::undo, Kind::redo, Kind::jump_to_history, Kind::begin_gesture, Kind::end_gesture, Kind::clear_history, Kind::set_history_limit, Kind::add_history_checkpoint, Kind::restore_document, Kind::new_project, Kind::open_project, Kind::save_project, Kind::import_project, Kind::set_project_settings, Kind::revert_project, Kind::collect_files, Kind::set_autosave, Kind::set_guides, Kind::set_swatches, Kind::set_materials, Kind::set_motion_blur, Kind::set_color_management, Kind::import_files, Kind::import_bytes, Kind::relink_item, Kind::reload_items, Kind::remove_items, Kind::rename_item, Kind::create_folder, Kind::move_items, Kind::set_interpretation, Kind::set_item_label, Kind::remove_unused_items, Kind::set_proxy, Kind::set_item_comment, Kind::set_item_tags, Kind::create_composition, Kind::duplicate_composition, Kind::set_composition_settings, Kind::set_work_area, Kind::clear_work_area, Kind::precompose, Kind::trim_comp_to_work_area, Kind::crop_composition, Kind::assemble_composition, Kind::migrate_legacy_precomps, Kind::set_essential_prop, Kind::add_render_items, Kind::set_render_item, Kind::remove_render_items, Kind::reorder_render_items, Kind::create_layer, Kind::delete_layers, Kind::duplicate_layers, Kind::reorder_layers, Kind::set_parent, Kind::rename_layer, Kind::set_layer_switches, Kind::set_blend_mode, Kind::set_track_matte, Kind::replace_layer_source, Kind::group_layers, Kind::ungroup_layer, Kind::convert_layer, Kind::paste_layers, Kind::separate_layer, Kind::auto_trace, Kind::set_layer_comment, Kind::set_pinned_properties, Kind::pose_ik3_d, Kind::bake_ik3_d, Kind::create_live_merge, Kind::set_layer_timing, Kind::move_layers_in_time, Kind::trim_layers, Kind::slip_layers, Kind::slide_layer, Kind::roll_edit, Kind::split_layers, Kind::ripple_delete_layers, Kind::edit_work_area, Kind::insert_gap, Kind::time_reverse_layers, Kind::set_time_remap, Kind::freeze_frame, Kind::set_retime, Kind::sequence_layers, Kind::time_stretch_layers, Kind::unfreeze_layers, Kind::ripple_delete_range, Kind::lift_range, Kind::shift_layer_keyframes, Kind::add_transition, Kind::set_transition, Kind::remove_transitions, Kind::set_property, Kind::set_properties, Kind::reset_property, Kind::set_animated, Kind::set_dimensions_separated, Kind::set_expression, Kind::set_expression_enabled, Kind::convert_expression_to_keyframes, Kind::link_property, Kind::add_keyframes, Kind::delete_keyframes, Kind::move_keyframes, Kind::update_keyframes, Kind::scale_keyframes, Kind::reverse_keyframes, Kind::paste_keyframes, Kind::set_keyframes, Kind::set_member_keyframes, Kind::add_effect, Kind::add_mask, Kind::add_property_group, Kind::remove_property_groups, Kind::move_property_group, Kind::duplicate_property_groups, Kind::set_group_enabled, Kind::rename_property_group, Kind::copy_property_groups, Kind::apply_preset, Kind::invoke_effect_action, Kind::drag_effect_overlay, Kind::drag_effect_param_ui, Kind::add_properties, Kind::remove_properties, Kind::paste_effects, Kind::remove_stroke, Kind::add_paint_stroke, Kind::update_paint_stroke, Kind::remove_paint_strokes, Kind::set_paint_on_transparent, Kind::set_paint_stroke_path, Kind::set_paint_path_animated, Kind::edit_path_topology, Kind::set_shape_outline, Kind::set_performance_take, Kind::clear_performance_takes, Kind::add_markers, Kind::update_markers, Kind::delete_markers, Kind::move_markers, Kind::play, Kind::pause, Kind::seek, Kind::step, Kind::set_loop, Kind::set_preview_quality, Kind::set_audio_preview, Kind::set_active_composition, Kind::set_viewport, Kind::close_viewport, Kind::set_cache_budget, Kind::purge_cache, Kind::set_interacting, Kind::set_viewport_hidden_layers, Kind::set_viewport_focus, Kind::set_viewer_lut, Kind::set_overlay_geometry, Kind::set_layer_trackers, Kind::set_camera_solve, Kind::set_layer_matte, Kind::start_job, Kind::cancel_job, Kind::apply_job_result, Kind::set_content_aware_fill, Kind::set_captions, Kind::set_plugin_enabled, Kind::rescan_plugins, Kind::set_plugin_data, Kind::run_plugin_command, Kind::start_live_input, Kind::stop_live_input};
   return kKinds[v.index()];
 }
 
@@ -19157,55 +19318,56 @@ void encode(wire::Writer& w, const CommandResult& v) {
     case 122: w.varint(4874U); { const std::size_t s = w.begin_ld(); encode(w, std::get<122>(v.v)); w.end_ld(s); } return;
     case 123: w.varint(4882U); { const std::size_t s = w.begin_ld(); encode(w, std::get<123>(v.v)); w.end_ld(s); } return;
     case 124: w.varint(5058U); { const std::size_t s = w.begin_ld(); encode(w, std::get<124>(v.v)); w.end_ld(s); } return;
-    case 125: w.varint(4890U); { const std::size_t s = w.begin_ld(); encode(w, std::get<125>(v.v)); w.end_ld(s); } return;
-    case 126: w.varint(4898U); { const std::size_t s = w.begin_ld(); encode(w, std::get<126>(v.v)); w.end_ld(s); } return;
-    case 127: w.varint(4906U); { const std::size_t s = w.begin_ld(); encode(w, std::get<127>(v.v)); w.end_ld(s); } return;
-    case 128: w.varint(4914U); { const std::size_t s = w.begin_ld(); encode(w, std::get<128>(v.v)); w.end_ld(s); } return;
-    case 129: w.varint(4922U); { const std::size_t s = w.begin_ld(); encode(w, std::get<129>(v.v)); w.end_ld(s); } return;
-    case 130: w.varint(4930U); { const std::size_t s = w.begin_ld(); encode(w, std::get<130>(v.v)); w.end_ld(s); } return;
-    case 131: w.varint(4938U); { const std::size_t s = w.begin_ld(); encode(w, std::get<131>(v.v)); w.end_ld(s); } return;
-    case 132: w.varint(4946U); { const std::size_t s = w.begin_ld(); encode(w, std::get<132>(v.v)); w.end_ld(s); } return;
-    case 133: w.varint(4954U); { const std::size_t s = w.begin_ld(); encode(w, std::get<133>(v.v)); w.end_ld(s); } return;
-    case 134: w.varint(4962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<134>(v.v)); w.end_ld(s); } return;
-    case 135: w.varint(5042U); { const std::size_t s = w.begin_ld(); encode(w, std::get<135>(v.v)); w.end_ld(s); } return;
-    case 136: w.varint(5050U); { const std::size_t s = w.begin_ld(); encode(w, std::get<136>(v.v)); w.end_ld(s); } return;
-    case 137: w.varint(15602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<137>(v.v)); w.end_ld(s); } return;
-    case 138: w.varint(15610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<138>(v.v)); w.end_ld(s); } return;
-    case 139: w.varint(5602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<139>(v.v)); w.end_ld(s); } return;
-    case 140: w.varint(5610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<140>(v.v)); w.end_ld(s); } return;
-    case 141: w.varint(5618U); { const std::size_t s = w.begin_ld(); encode(w, std::get<141>(v.v)); w.end_ld(s); } return;
-    case 142: w.varint(5626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<142>(v.v)); w.end_ld(s); } return;
-    case 143: w.varint(6402U); { const std::size_t s = w.begin_ld(); encode(w, std::get<143>(v.v)); w.end_ld(s); } return;
-    case 144: w.varint(6410U); { const std::size_t s = w.begin_ld(); encode(w, std::get<144>(v.v)); w.end_ld(s); } return;
-    case 145: w.varint(6418U); { const std::size_t s = w.begin_ld(); encode(w, std::get<145>(v.v)); w.end_ld(s); } return;
-    case 146: w.varint(6426U); { const std::size_t s = w.begin_ld(); encode(w, std::get<146>(v.v)); w.end_ld(s); } return;
-    case 147: w.varint(6434U); { const std::size_t s = w.begin_ld(); encode(w, std::get<147>(v.v)); w.end_ld(s); } return;
-    case 148: w.varint(6442U); { const std::size_t s = w.begin_ld(); encode(w, std::get<148>(v.v)); w.end_ld(s); } return;
-    case 149: w.varint(6450U); { const std::size_t s = w.begin_ld(); encode(w, std::get<149>(v.v)); w.end_ld(s); } return;
-    case 150: w.varint(6458U); { const std::size_t s = w.begin_ld(); encode(w, std::get<150>(v.v)); w.end_ld(s); } return;
-    case 151: w.varint(6466U); { const std::size_t s = w.begin_ld(); encode(w, std::get<151>(v.v)); w.end_ld(s); } return;
-    case 152: w.varint(6474U); { const std::size_t s = w.begin_ld(); encode(w, std::get<152>(v.v)); w.end_ld(s); } return;
-    case 153: w.varint(6482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<153>(v.v)); w.end_ld(s); } return;
-    case 154: w.varint(6490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<154>(v.v)); w.end_ld(s); } return;
-    case 155: w.varint(6498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<155>(v.v)); w.end_ld(s); } return;
-    case 156: w.varint(6506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<156>(v.v)); w.end_ld(s); } return;
-    case 157: w.varint(6514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<157>(v.v)); w.end_ld(s); } return;
-    case 158: w.varint(6522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<158>(v.v)); w.end_ld(s); } return;
-    case 159: w.varint(14170U); { const std::size_t s = w.begin_ld(); encode(w, std::get<159>(v.v)); w.end_ld(s); } return;
-    case 160: w.varint(15562U); { const std::size_t s = w.begin_ld(); encode(w, std::get<160>(v.v)); w.end_ld(s); } return;
-    case 161: w.varint(15570U); { const std::size_t s = w.begin_ld(); encode(w, std::get<161>(v.v)); w.end_ld(s); } return;
-    case 162: w.varint(15578U); { const std::size_t s = w.begin_ld(); encode(w, std::get<162>(v.v)); w.end_ld(s); } return;
-    case 163: w.varint(6802U); { const std::size_t s = w.begin_ld(); encode(w, std::get<163>(v.v)); w.end_ld(s); } return;
-    case 164: w.varint(6810U); { const std::size_t s = w.begin_ld(); encode(w, std::get<164>(v.v)); w.end_ld(s); } return;
-    case 165: w.varint(6818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<165>(v.v)); w.end_ld(s); } return;
-    case 166: w.varint(14818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<166>(v.v)); w.end_ld(s); } return;
-    case 167: w.varint(14826U); { const std::size_t s = w.begin_ld(); encode(w, std::get<167>(v.v)); w.end_ld(s); } return;
-    case 168: w.varint(6962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<168>(v.v)); w.end_ld(s); } return;
-    case 169: w.varint(6978U); { const std::size_t s = w.begin_ld(); encode(w, std::get<169>(v.v)); w.end_ld(s); } return;
-    case 170: w.varint(6970U); { const std::size_t s = w.begin_ld(); encode(w, std::get<170>(v.v)); w.end_ld(s); } return;
-    case 171: w.varint(6986U); { const std::size_t s = w.begin_ld(); encode(w, std::get<171>(v.v)); w.end_ld(s); } return;
-    case 172: w.varint(15586U); { const std::size_t s = w.begin_ld(); encode(w, std::get<172>(v.v)); w.end_ld(s); } return;
-    case 173: w.varint(15594U); { const std::size_t s = w.begin_ld(); encode(w, std::get<173>(v.v)); w.end_ld(s); } return;
+    case 125: w.varint(5066U); { const std::size_t s = w.begin_ld(); encode(w, std::get<125>(v.v)); w.end_ld(s); } return;
+    case 126: w.varint(4890U); { const std::size_t s = w.begin_ld(); encode(w, std::get<126>(v.v)); w.end_ld(s); } return;
+    case 127: w.varint(4898U); { const std::size_t s = w.begin_ld(); encode(w, std::get<127>(v.v)); w.end_ld(s); } return;
+    case 128: w.varint(4906U); { const std::size_t s = w.begin_ld(); encode(w, std::get<128>(v.v)); w.end_ld(s); } return;
+    case 129: w.varint(4914U); { const std::size_t s = w.begin_ld(); encode(w, std::get<129>(v.v)); w.end_ld(s); } return;
+    case 130: w.varint(4922U); { const std::size_t s = w.begin_ld(); encode(w, std::get<130>(v.v)); w.end_ld(s); } return;
+    case 131: w.varint(4930U); { const std::size_t s = w.begin_ld(); encode(w, std::get<131>(v.v)); w.end_ld(s); } return;
+    case 132: w.varint(4938U); { const std::size_t s = w.begin_ld(); encode(w, std::get<132>(v.v)); w.end_ld(s); } return;
+    case 133: w.varint(4946U); { const std::size_t s = w.begin_ld(); encode(w, std::get<133>(v.v)); w.end_ld(s); } return;
+    case 134: w.varint(4954U); { const std::size_t s = w.begin_ld(); encode(w, std::get<134>(v.v)); w.end_ld(s); } return;
+    case 135: w.varint(4962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<135>(v.v)); w.end_ld(s); } return;
+    case 136: w.varint(5042U); { const std::size_t s = w.begin_ld(); encode(w, std::get<136>(v.v)); w.end_ld(s); } return;
+    case 137: w.varint(5050U); { const std::size_t s = w.begin_ld(); encode(w, std::get<137>(v.v)); w.end_ld(s); } return;
+    case 138: w.varint(15602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<138>(v.v)); w.end_ld(s); } return;
+    case 139: w.varint(15610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<139>(v.v)); w.end_ld(s); } return;
+    case 140: w.varint(5602U); { const std::size_t s = w.begin_ld(); encode(w, std::get<140>(v.v)); w.end_ld(s); } return;
+    case 141: w.varint(5610U); { const std::size_t s = w.begin_ld(); encode(w, std::get<141>(v.v)); w.end_ld(s); } return;
+    case 142: w.varint(5618U); { const std::size_t s = w.begin_ld(); encode(w, std::get<142>(v.v)); w.end_ld(s); } return;
+    case 143: w.varint(5626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<143>(v.v)); w.end_ld(s); } return;
+    case 144: w.varint(6402U); { const std::size_t s = w.begin_ld(); encode(w, std::get<144>(v.v)); w.end_ld(s); } return;
+    case 145: w.varint(6410U); { const std::size_t s = w.begin_ld(); encode(w, std::get<145>(v.v)); w.end_ld(s); } return;
+    case 146: w.varint(6418U); { const std::size_t s = w.begin_ld(); encode(w, std::get<146>(v.v)); w.end_ld(s); } return;
+    case 147: w.varint(6426U); { const std::size_t s = w.begin_ld(); encode(w, std::get<147>(v.v)); w.end_ld(s); } return;
+    case 148: w.varint(6434U); { const std::size_t s = w.begin_ld(); encode(w, std::get<148>(v.v)); w.end_ld(s); } return;
+    case 149: w.varint(6442U); { const std::size_t s = w.begin_ld(); encode(w, std::get<149>(v.v)); w.end_ld(s); } return;
+    case 150: w.varint(6450U); { const std::size_t s = w.begin_ld(); encode(w, std::get<150>(v.v)); w.end_ld(s); } return;
+    case 151: w.varint(6458U); { const std::size_t s = w.begin_ld(); encode(w, std::get<151>(v.v)); w.end_ld(s); } return;
+    case 152: w.varint(6466U); { const std::size_t s = w.begin_ld(); encode(w, std::get<152>(v.v)); w.end_ld(s); } return;
+    case 153: w.varint(6474U); { const std::size_t s = w.begin_ld(); encode(w, std::get<153>(v.v)); w.end_ld(s); } return;
+    case 154: w.varint(6482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<154>(v.v)); w.end_ld(s); } return;
+    case 155: w.varint(6490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<155>(v.v)); w.end_ld(s); } return;
+    case 156: w.varint(6498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<156>(v.v)); w.end_ld(s); } return;
+    case 157: w.varint(6506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<157>(v.v)); w.end_ld(s); } return;
+    case 158: w.varint(6514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<158>(v.v)); w.end_ld(s); } return;
+    case 159: w.varint(6522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<159>(v.v)); w.end_ld(s); } return;
+    case 160: w.varint(14170U); { const std::size_t s = w.begin_ld(); encode(w, std::get<160>(v.v)); w.end_ld(s); } return;
+    case 161: w.varint(15562U); { const std::size_t s = w.begin_ld(); encode(w, std::get<161>(v.v)); w.end_ld(s); } return;
+    case 162: w.varint(15570U); { const std::size_t s = w.begin_ld(); encode(w, std::get<162>(v.v)); w.end_ld(s); } return;
+    case 163: w.varint(15578U); { const std::size_t s = w.begin_ld(); encode(w, std::get<163>(v.v)); w.end_ld(s); } return;
+    case 164: w.varint(6802U); { const std::size_t s = w.begin_ld(); encode(w, std::get<164>(v.v)); w.end_ld(s); } return;
+    case 165: w.varint(6810U); { const std::size_t s = w.begin_ld(); encode(w, std::get<165>(v.v)); w.end_ld(s); } return;
+    case 166: w.varint(6818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<166>(v.v)); w.end_ld(s); } return;
+    case 167: w.varint(14818U); { const std::size_t s = w.begin_ld(); encode(w, std::get<167>(v.v)); w.end_ld(s); } return;
+    case 168: w.varint(14826U); { const std::size_t s = w.begin_ld(); encode(w, std::get<168>(v.v)); w.end_ld(s); } return;
+    case 169: w.varint(6962U); { const std::size_t s = w.begin_ld(); encode(w, std::get<169>(v.v)); w.end_ld(s); } return;
+    case 170: w.varint(6978U); { const std::size_t s = w.begin_ld(); encode(w, std::get<170>(v.v)); w.end_ld(s); } return;
+    case 171: w.varint(6970U); { const std::size_t s = w.begin_ld(); encode(w, std::get<171>(v.v)); w.end_ld(s); } return;
+    case 172: w.varint(6986U); { const std::size_t s = w.begin_ld(); encode(w, std::get<172>(v.v)); w.end_ld(s); } return;
+    case 173: w.varint(15586U); { const std::size_t s = w.begin_ld(); encode(w, std::get<173>(v.v)); w.end_ld(s); } return;
+    case 174: w.varint(15594U); { const std::size_t s = w.begin_ld(); encode(w, std::get<174>(v.v)); w.end_ld(s); } return;
     default: return;
   }
 }
@@ -20216,11 +20378,19 @@ Status decode(wire::Reader& r, CommandResult& out) {
         seen = true;
         break;
       }
+      case 5066U: {
+        if (seen) return Status::multiple_variants;
+        Empty e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.v.emplace<125>(std::move(e));
+        seen = true;
+        break;
+      }
       case 4890U: {
         if (seen) return Status::multiple_variants;
         PropertyPaths e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<125>(std::move(e));
+        out.v.emplace<126>(std::move(e));
         seen = true;
         break;
       }
@@ -20228,7 +20398,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<126>(std::move(e));
+        out.v.emplace<127>(std::move(e));
         seen = true;
         break;
       }
@@ -20236,7 +20406,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         GroupList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<127>(std::move(e));
+        out.v.emplace<128>(std::move(e));
         seen = true;
         break;
       }
@@ -20244,7 +20414,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<128>(std::move(e));
+        out.v.emplace<129>(std::move(e));
         seen = true;
         break;
       }
@@ -20252,7 +20422,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         PaintStrokeId e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<129>(std::move(e));
+        out.v.emplace<130>(std::move(e));
         seen = true;
         break;
       }
@@ -20260,7 +20430,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<130>(std::move(e));
+        out.v.emplace<131>(std::move(e));
         seen = true;
         break;
       }
@@ -20268,7 +20438,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<131>(std::move(e));
+        out.v.emplace<132>(std::move(e));
         seen = true;
         break;
       }
@@ -20276,7 +20446,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<132>(std::move(e));
+        out.v.emplace<133>(std::move(e));
         seen = true;
         break;
       }
@@ -20284,7 +20454,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<133>(std::move(e));
+        out.v.emplace<134>(std::move(e));
         seen = true;
         break;
       }
@@ -20292,7 +20462,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<134>(std::move(e));
+        out.v.emplace<135>(std::move(e));
         seen = true;
         break;
       }
@@ -20300,7 +20470,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<135>(std::move(e));
+        out.v.emplace<136>(std::move(e));
         seen = true;
         break;
       }
@@ -20308,7 +20478,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<136>(std::move(e));
+        out.v.emplace<137>(std::move(e));
         seen = true;
         break;
       }
@@ -20316,7 +20486,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<137>(std::move(e));
+        out.v.emplace<138>(std::move(e));
         seen = true;
         break;
       }
@@ -20324,7 +20494,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<138>(std::move(e));
+        out.v.emplace<139>(std::move(e));
         seen = true;
         break;
       }
@@ -20332,7 +20502,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         MarkerIds e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<139>(std::move(e));
+        out.v.emplace<140>(std::move(e));
         seen = true;
         break;
       }
@@ -20340,7 +20510,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<140>(std::move(e));
+        out.v.emplace<141>(std::move(e));
         seen = true;
         break;
       }
@@ -20348,7 +20518,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<141>(std::move(e));
+        out.v.emplace<142>(std::move(e));
         seen = true;
         break;
       }
@@ -20356,7 +20526,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<142>(std::move(e));
+        out.v.emplace<143>(std::move(e));
         seen = true;
         break;
       }
@@ -20364,7 +20534,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<143>(std::move(e));
+        out.v.emplace<144>(std::move(e));
         seen = true;
         break;
       }
@@ -20372,7 +20542,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<144>(std::move(e));
+        out.v.emplace<145>(std::move(e));
         seen = true;
         break;
       }
@@ -20380,7 +20550,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<145>(std::move(e));
+        out.v.emplace<146>(std::move(e));
         seen = true;
         break;
       }
@@ -20388,7 +20558,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<146>(std::move(e));
+        out.v.emplace<147>(std::move(e));
         seen = true;
         break;
       }
@@ -20396,7 +20566,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<147>(std::move(e));
+        out.v.emplace<148>(std::move(e));
         seen = true;
         break;
       }
@@ -20404,7 +20574,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<148>(std::move(e));
+        out.v.emplace<149>(std::move(e));
         seen = true;
         break;
       }
@@ -20412,7 +20582,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<149>(std::move(e));
+        out.v.emplace<150>(std::move(e));
         seen = true;
         break;
       }
@@ -20420,7 +20590,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<150>(std::move(e));
+        out.v.emplace<151>(std::move(e));
         seen = true;
         break;
       }
@@ -20428,7 +20598,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<151>(std::move(e));
+        out.v.emplace<152>(std::move(e));
         seen = true;
         break;
       }
@@ -20436,7 +20606,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<152>(std::move(e));
+        out.v.emplace<153>(std::move(e));
         seen = true;
         break;
       }
@@ -20444,7 +20614,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<153>(std::move(e));
+        out.v.emplace<154>(std::move(e));
         seen = true;
         break;
       }
@@ -20452,7 +20622,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<154>(std::move(e));
+        out.v.emplace<155>(std::move(e));
         seen = true;
         break;
       }
@@ -20460,7 +20630,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<155>(std::move(e));
+        out.v.emplace<156>(std::move(e));
         seen = true;
         break;
       }
@@ -20468,7 +20638,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<156>(std::move(e));
+        out.v.emplace<157>(std::move(e));
         seen = true;
         break;
       }
@@ -20476,7 +20646,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<157>(std::move(e));
+        out.v.emplace<158>(std::move(e));
         seen = true;
         break;
       }
@@ -20484,7 +20654,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<158>(std::move(e));
+        out.v.emplace<159>(std::move(e));
         seen = true;
         break;
       }
@@ -20492,7 +20662,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<159>(std::move(e));
+        out.v.emplace<160>(std::move(e));
         seen = true;
         break;
       }
@@ -20500,7 +20670,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<160>(std::move(e));
+        out.v.emplace<161>(std::move(e));
         seen = true;
         break;
       }
@@ -20508,7 +20678,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<161>(std::move(e));
+        out.v.emplace<162>(std::move(e));
         seen = true;
         break;
       }
@@ -20516,7 +20686,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<162>(std::move(e));
+        out.v.emplace<163>(std::move(e));
         seen = true;
         break;
       }
@@ -20524,7 +20694,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         JobRef e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<163>(std::move(e));
+        out.v.emplace<164>(std::move(e));
         seen = true;
         break;
       }
@@ -20532,7 +20702,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<164>(std::move(e));
+        out.v.emplace<165>(std::move(e));
         seen = true;
         break;
       }
@@ -20540,7 +20710,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         ItemList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<165>(std::move(e));
+        out.v.emplace<166>(std::move(e));
         seen = true;
         break;
       }
@@ -20548,7 +20718,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<166>(std::move(e));
+        out.v.emplace<167>(std::move(e));
         seen = true;
         break;
       }
@@ -20556,7 +20726,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         LayerList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<167>(std::move(e));
+        out.v.emplace<168>(std::move(e));
         seen = true;
         break;
       }
@@ -20564,7 +20734,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<168>(std::move(e));
+        out.v.emplace<169>(std::move(e));
         seen = true;
         break;
       }
@@ -20572,7 +20742,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         PluginList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<169>(std::move(e));
+        out.v.emplace<170>(std::move(e));
         seen = true;
         break;
       }
@@ -20580,7 +20750,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<170>(std::move(e));
+        out.v.emplace<171>(std::move(e));
         seen = true;
         break;
       }
@@ -20588,7 +20758,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         PluginCommandResult e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<171>(std::move(e));
+        out.v.emplace<172>(std::move(e));
         seen = true;
         break;
       }
@@ -20596,7 +20766,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<172>(std::move(e));
+        out.v.emplace<173>(std::move(e));
         seen = true;
         break;
       }
@@ -20604,7 +20774,7 @@ Status decode(wire::Reader& r, CommandResult& out) {
         if (seen) return Status::multiple_variants;
         Empty e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<173>(std::move(e));
+        out.v.emplace<174>(std::move(e));
         seen = true;
         break;
       }
@@ -24431,6 +24601,77 @@ Status decode(wire::Reader& r, EffectGroupInfo& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const EffectCustomUiInfo& v) {
+  w.varint(10U); w.str(v.key);
+  w.varint(18U); w.str(v.label);
+  w.varint(26U); w.str(v.group);
+  w.varint(32U); w.varint(v.at);
+  w.varint(41U); w.f64(v.height);
+  if (v.description.has_value()) { w.varint(50U); w.str(*v.description); }
+  w.varint(56U); w.varint(v.after_buttons);
+}
+
+Status decode(wire::Reader& r, EffectCustomUiInfo& out) {
+  bool has_key = false;
+  bool has_label = false;
+  bool has_group = false;
+  bool has_at = false;
+  bool has_height = false;
+  bool has_after_buttons = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.key)) return Status::truncated;
+        has_key = true;
+        break;
+      }
+      case 18U: {
+        if (!r.str(out.label)) return Status::truncated;
+        has_label = true;
+        break;
+      }
+      case 26U: {
+        if (!r.str(out.group)) return Status::truncated;
+        has_group = true;
+        break;
+      }
+      case 32U: {
+        if (!r.u32(out.at)) return Status::bad_value;
+        has_at = true;
+        break;
+      }
+      case 41U: {
+        if (!r.f64(out.height)) return Status::truncated;
+        has_height = true;
+        break;
+      }
+      case 50U: {
+        std::string e;
+        if (!r.str(e)) return Status::truncated;
+        out.description = std::move(e);
+        break;
+      }
+      case 56U: {
+        if (!r.u32(out.after_buttons)) return Status::bad_value;
+        has_after_buttons = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_key) return Status::missing_field;
+  if (!has_label) return Status::missing_field;
+  if (!has_group) return Status::missing_field;
+  if (!has_at) return Status::missing_field;
+  if (!has_height) return Status::missing_field;
+  if (!has_after_buttons) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const EffectInfo& v) {
   w.varint(10U); w.str(v.match_name);
   w.varint(18U); w.str(v.display_name);
@@ -24443,6 +24684,7 @@ void encode(wire::Writer& w, const EffectInfo& v) {
   for (const auto& e : v.actions) { w.varint(74U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
   for (const auto& e : v.groups) { w.varint(82U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
   if (v.about.has_value()) { w.varint(90U); w.str(*v.about); }
+  for (const auto& e : v.custom_uis) { w.varint(98U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
 }
 
 Status decode(wire::Reader& r, EffectInfo& out) {
@@ -24511,6 +24753,11 @@ Status decode(wire::Reader& r, EffectInfo& out) {
         std::string e;
         if (!r.str(e)) return Status::truncated;
         out.about = std::move(e);
+        break;
+      }
+      case 98U: {
+        auto& e = out.custom_uis.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         break;
       }
       default:
@@ -24931,6 +25178,122 @@ Status decode(wire::Reader& r, EffectUi& out) {
   }
   if (!has_plugin) return Status::missing_field;
   if (!has_panel) return Status::missing_field;
+  return Status::ok;
+}
+
+void encode(wire::Writer& w, const ParamUiItem& v) {
+  w.varint(10U); w.str(v.kind);
+  if (!v.points.empty()) { w.varint(18U); const std::size_t s = w.begin_ld(); for (const auto& e : v.points) w.f64(e); w.end_ld(s); }
+  w.varint(24U); w.boolean(v.closed);
+  if (!v.color.empty()) { w.varint(34U); const std::size_t s = w.begin_ld(); for (const auto& e : v.color) w.f64(e); w.end_ld(s); }
+  w.varint(40U); w.varint(v.handle);
+  w.varint(48U); w.varint(v.shape);
+  w.varint(58U); w.str(v.text);
+  w.varint(65U); w.f64(v.size);
+  w.varint(72U); w.varint(v.align);
+}
+
+Status decode(wire::Reader& r, ParamUiItem& out) {
+  bool has_kind = false;
+  bool has_closed = false;
+  bool has_handle = false;
+  bool has_shape = false;
+  bool has_text = false;
+  bool has_size = false;
+  bool has_align = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        if (!r.str(out.kind)) return Status::truncated;
+        has_kind = true;
+        break;
+      }
+      case 18U: {
+        wire::Reader sub;
+        if (!r.ld(sub)) return Status::truncated;
+        while (!sub.at_end()) { double e = 0.0; if (!sub.f64(e)) return Status::truncated; out.points.push_back(e); }
+        break;
+      }
+      case 24U: {
+        if (!r.boolean(out.closed)) return Status::truncated;
+        has_closed = true;
+        break;
+      }
+      case 34U: {
+        wire::Reader sub;
+        if (!r.ld(sub)) return Status::truncated;
+        while (!sub.at_end()) { double e = 0.0; if (!sub.f64(e)) return Status::truncated; out.color.push_back(e); }
+        break;
+      }
+      case 40U: {
+        if (!r.u32(out.handle)) return Status::bad_value;
+        has_handle = true;
+        break;
+      }
+      case 48U: {
+        if (!r.u32(out.shape)) return Status::bad_value;
+        has_shape = true;
+        break;
+      }
+      case 58U: {
+        if (!r.str(out.text)) return Status::truncated;
+        has_text = true;
+        break;
+      }
+      case 65U: {
+        if (!r.f64(out.size)) return Status::truncated;
+        has_size = true;
+        break;
+      }
+      case 72U: {
+        if (!r.u32(out.align)) return Status::bad_value;
+        has_align = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_kind) return Status::missing_field;
+  if (!has_closed) return Status::missing_field;
+  if (!has_handle) return Status::missing_field;
+  if (!has_shape) return Status::missing_field;
+  if (!has_text) return Status::missing_field;
+  if (!has_size) return Status::missing_field;
+  if (!has_align) return Status::missing_field;
+  return Status::ok;
+}
+
+void encode(wire::Writer& w, const ParamUiDrawing& v) {
+  for (const auto& e : v.items) { w.varint(10U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  w.varint(17U); w.f64(v.height);
+}
+
+Status decode(wire::Reader& r, ParamUiDrawing& out) {
+  bool has_height = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 10U: {
+        auto& e = out.items.emplace_back();
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        break;
+      }
+      case 17U: {
+        if (!r.f64(out.height)) return Status::truncated;
+        has_height = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_height) return Status::missing_field;
   return Status::ok;
 }
 
@@ -26234,7 +26597,7 @@ QueryResult::~QueryResult() = default;
 bool QueryResult::operator==(const QueryResult&) const = default;
 
 QueryResult::Kind QueryResult::kind() const noexcept {
-  static constexpr std::array<Kind, 58> kKinds = {Kind::get_performance_takes, Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage, Kind::list_cameras};
+  static constexpr std::array<Kind, 59> kKinds = {Kind::get_performance_takes, Kind::get_layer_trackers, Kind::get_camera_solve, Kind::list_plugin_commands, Kind::get_document, Kind::export_document, Kind::get_composition, Kind::get_layers, Kind::get_property_tree, Kind::get_property_values, Kind::sample_property, Kind::get_keyframes, Kind::get_motion_path, Kind::get_markers, Kind::copy_layers, Kind::copy_keyframes, Kind::get_member_keyframes, Kind::copy_effects, Kind::get_search_facts, Kind::get_document_colors, Kind::get_caption_cues, Kind::map_layer_time, Kind::get_source_size, Kind::check_precompose, Kind::get_timeline_rows, Kind::get_rig_pose, Kind::sample_camera, Kind::get_waveform, Kind::list_fonts, Kind::get_items, Kind::get_svg_document, Kind::get_cryptomatte, Kind::get_thumbnail, Kind::render_document_still, Kind::list_effects, Kind::list_group_types, Kind::list_presets, Kind::capture_preset, Kind::get_capabilities, Kind::list_plugins, Kind::get_effect_ui, Kind::draw_effect_param_ui, Kind::get_layer_faces, Kind::hit_test, Kind::get_layer_bounds, Kind::get_layer_transforms, Kind::get_text_layout, Kind::evaluate_expression, Kind::read_pixels, Kind::find_layers, Kind::get_dependencies, Kind::get_history, Kind::get_render_stats, Kind::get_layer_errors, Kind::get_jobs, Kind::get_render_queue, Kind::get_command_log, Kind::get_cache_coverage, Kind::list_cameras};
   return kKinds[v.index()];
 }
 
@@ -26281,23 +26644,24 @@ void encode(wire::Writer& w, const QueryResult& v) {
     case 38: w.varint(8346U); { const std::size_t s = w.begin_ld(); encode(w, std::get<38>(v.v)); w.end_ld(s); } return;
     case 39: w.varint(8690U); { const std::size_t s = w.begin_ld(); encode(w, std::get<39>(v.v)); w.end_ld(s); } return;
     case 40: w.varint(8698U); { const std::size_t s = w.begin_ld(); encode(w, std::get<40>(v.v)); w.end_ld(s); } return;
-    case 41: w.varint(15490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<41>(v.v)); w.end_ld(s); } return;
-    case 42: w.varint(8482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<42>(v.v)); w.end_ld(s); } return;
-    case 43: w.varint(8490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<43>(v.v)); w.end_ld(s); } return;
-    case 44: w.varint(8498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<44>(v.v)); w.end_ld(s); } return;
-    case 45: w.varint(8506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<45>(v.v)); w.end_ld(s); } return;
-    case 46: w.varint(8514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<46>(v.v)); w.end_ld(s); } return;
-    case 47: w.varint(8522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<47>(v.v)); w.end_ld(s); } return;
-    case 48: w.varint(8530U); { const std::size_t s = w.begin_ld(); encode(w, std::get<48>(v.v)); w.end_ld(s); } return;
-    case 49: w.varint(8538U); { const std::size_t s = w.begin_ld(); encode(w, std::get<49>(v.v)); w.end_ld(s); } return;
-    case 50: w.varint(8642U); { const std::size_t s = w.begin_ld(); encode(w, std::get<50>(v.v)); w.end_ld(s); } return;
-    case 51: w.varint(8650U); { const std::size_t s = w.begin_ld(); encode(w, std::get<51>(v.v)); w.end_ld(s); } return;
-    case 52: w.varint(8658U); { const std::size_t s = w.begin_ld(); encode(w, std::get<52>(v.v)); w.end_ld(s); } return;
-    case 53: w.varint(8666U); { const std::size_t s = w.begin_ld(); encode(w, std::get<53>(v.v)); w.end_ld(s); } return;
-    case 54: w.varint(8674U); { const std::size_t s = w.begin_ld(); encode(w, std::get<54>(v.v)); w.end_ld(s); } return;
-    case 55: w.varint(8682U); { const std::size_t s = w.begin_ld(); encode(w, std::get<55>(v.v)); w.end_ld(s); } return;
-    case 56: w.varint(8714U); { const std::size_t s = w.begin_ld(); encode(w, std::get<56>(v.v)); w.end_ld(s); } return;
-    case 57: w.varint(15506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<57>(v.v)); w.end_ld(s); } return;
+    case 41: w.varint(15626U); { const std::size_t s = w.begin_ld(); encode(w, std::get<41>(v.v)); w.end_ld(s); } return;
+    case 42: w.varint(15490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<42>(v.v)); w.end_ld(s); } return;
+    case 43: w.varint(8482U); { const std::size_t s = w.begin_ld(); encode(w, std::get<43>(v.v)); w.end_ld(s); } return;
+    case 44: w.varint(8490U); { const std::size_t s = w.begin_ld(); encode(w, std::get<44>(v.v)); w.end_ld(s); } return;
+    case 45: w.varint(8498U); { const std::size_t s = w.begin_ld(); encode(w, std::get<45>(v.v)); w.end_ld(s); } return;
+    case 46: w.varint(8506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<46>(v.v)); w.end_ld(s); } return;
+    case 47: w.varint(8514U); { const std::size_t s = w.begin_ld(); encode(w, std::get<47>(v.v)); w.end_ld(s); } return;
+    case 48: w.varint(8522U); { const std::size_t s = w.begin_ld(); encode(w, std::get<48>(v.v)); w.end_ld(s); } return;
+    case 49: w.varint(8530U); { const std::size_t s = w.begin_ld(); encode(w, std::get<49>(v.v)); w.end_ld(s); } return;
+    case 50: w.varint(8538U); { const std::size_t s = w.begin_ld(); encode(w, std::get<50>(v.v)); w.end_ld(s); } return;
+    case 51: w.varint(8642U); { const std::size_t s = w.begin_ld(); encode(w, std::get<51>(v.v)); w.end_ld(s); } return;
+    case 52: w.varint(8650U); { const std::size_t s = w.begin_ld(); encode(w, std::get<52>(v.v)); w.end_ld(s); } return;
+    case 53: w.varint(8658U); { const std::size_t s = w.begin_ld(); encode(w, std::get<53>(v.v)); w.end_ld(s); } return;
+    case 54: w.varint(8666U); { const std::size_t s = w.begin_ld(); encode(w, std::get<54>(v.v)); w.end_ld(s); } return;
+    case 55: w.varint(8674U); { const std::size_t s = w.begin_ld(); encode(w, std::get<55>(v.v)); w.end_ld(s); } return;
+    case 56: w.varint(8682U); { const std::size_t s = w.begin_ld(); encode(w, std::get<56>(v.v)); w.end_ld(s); } return;
+    case 57: w.varint(8714U); { const std::size_t s = w.begin_ld(); encode(w, std::get<57>(v.v)); w.end_ld(s); } return;
+    case 58: w.varint(15506U); { const std::size_t s = w.begin_ld(); encode(w, std::get<58>(v.v)); w.end_ld(s); } return;
     default: return;
   }
 }
@@ -26636,11 +27000,19 @@ Status decode(wire::Reader& r, QueryResult& out) {
         seen = true;
         break;
       }
+      case 15626U: {
+        if (seen) return Status::multiple_variants;
+        ParamUiDrawing e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.v.emplace<41>(std::move(e));
+        seen = true;
+        break;
+      }
       case 15490U: {
         if (seen) return Status::multiple_variants;
         LayerFaces e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<41>(std::move(e));
+        out.v.emplace<42>(std::move(e));
         seen = true;
         break;
       }
@@ -26648,7 +27020,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         HitResult e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<42>(std::move(e));
+        out.v.emplace<43>(std::move(e));
         seen = true;
         break;
       }
@@ -26656,7 +27028,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         LayerBoundsList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<43>(std::move(e));
+        out.v.emplace<44>(std::move(e));
         seen = true;
         break;
       }
@@ -26664,7 +27036,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         LayerTransformList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<44>(std::move(e));
+        out.v.emplace<45>(std::move(e));
         seen = true;
         break;
       }
@@ -26672,7 +27044,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         TextLayout e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<45>(std::move(e));
+        out.v.emplace<46>(std::move(e));
         seen = true;
         break;
       }
@@ -26680,7 +27052,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         ExpressionEvaluation e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<46>(std::move(e));
+        out.v.emplace<47>(std::move(e));
         seen = true;
         break;
       }
@@ -26688,7 +27060,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         PixelSamples e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<47>(std::move(e));
+        out.v.emplace<48>(std::move(e));
         seen = true;
         break;
       }
@@ -26696,7 +27068,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         LayerList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<48>(std::move(e));
+        out.v.emplace<49>(std::move(e));
         seen = true;
         break;
       }
@@ -26704,7 +27076,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         Dependencies e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<49>(std::move(e));
+        out.v.emplace<50>(std::move(e));
         seen = true;
         break;
       }
@@ -26712,7 +27084,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         HistoryState e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<50>(std::move(e));
+        out.v.emplace<51>(std::move(e));
         seen = true;
         break;
       }
@@ -26720,7 +27092,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         RenderStats e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<51>(std::move(e));
+        out.v.emplace<52>(std::move(e));
         seen = true;
         break;
       }
@@ -26728,7 +27100,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         LayerErrorList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<52>(std::move(e));
+        out.v.emplace<53>(std::move(e));
         seen = true;
         break;
       }
@@ -26736,7 +27108,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         JobList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<53>(std::move(e));
+        out.v.emplace<54>(std::move(e));
         seen = true;
         break;
       }
@@ -26744,7 +27116,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         RenderQueueState e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<54>(std::move(e));
+        out.v.emplace<55>(std::move(e));
         seen = true;
         break;
       }
@@ -26752,7 +27124,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         CommandLog e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<55>(std::move(e));
+        out.v.emplace<56>(std::move(e));
         seen = true;
         break;
       }
@@ -26760,7 +27132,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         CacheCoverage e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<56>(std::move(e));
+        out.v.emplace<57>(std::move(e));
         seen = true;
         break;
       }
@@ -26768,7 +27140,7 @@ Status decode(wire::Reader& r, QueryResult& out) {
         if (seen) return Status::multiple_variants;
         CameraList e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
-        out.v.emplace<57>(std::move(e));
+        out.v.emplace<58>(std::move(e));
         seen = true;
         break;
       }
@@ -32495,7 +32867,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 562> kNames = {
+constexpr std::array<std::string_view, 567> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -32708,6 +33080,7 @@ constexpr std::array<std::string_view, 562> kNames = {
     "ApplyPreset",
     "InvokeEffectAction",
     "DragEffectOverlay",
+    "DragEffectParamUi",
     "AddProperties",
     "RemoveProperties",
     "PasteEffects",
@@ -32898,6 +33271,7 @@ constexpr std::array<std::string_view, 562> kNames = {
     "EffectParamInfo",
     "EffectInfo",
     "EffectActionInfo",
+    "EffectCustomUiInfo",
     "EffectGroupInfo",
     "ListEffects",
     "ListGroupTypes",
@@ -32906,6 +33280,9 @@ constexpr std::array<std::string_view, 562> kNames = {
     "GetCapabilities",
     "ListPlugins",
     "GetEffectUi",
+    "DrawEffectParamUi",
+    "ParamUiDrawing",
+    "ParamUiItem",
     "PluginInfo",
     "PluginList",
     "PluginPresetInfo",
@@ -33276,6 +33653,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "ApplyPreset") return roundtrip<ApplyPreset>(bytes, out);
   if (type == "InvokeEffectAction") return roundtrip<InvokeEffectAction>(bytes, out);
   if (type == "DragEffectOverlay") return roundtrip<DragEffectOverlay>(bytes, out);
+  if (type == "DragEffectParamUi") return roundtrip<DragEffectParamUi>(bytes, out);
   if (type == "AddProperties") return roundtrip<AddProperties>(bytes, out);
   if (type == "RemoveProperties") return roundtrip<RemoveProperties>(bytes, out);
   if (type == "PasteEffects") return roundtrip<PasteEffects>(bytes, out);
@@ -33466,6 +33844,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "EffectParamInfo") return roundtrip<EffectParamInfo>(bytes, out);
   if (type == "EffectInfo") return roundtrip<EffectInfo>(bytes, out);
   if (type == "EffectActionInfo") return roundtrip<EffectActionInfo>(bytes, out);
+  if (type == "EffectCustomUiInfo") return roundtrip<EffectCustomUiInfo>(bytes, out);
   if (type == "EffectGroupInfo") return roundtrip<EffectGroupInfo>(bytes, out);
   if (type == "ListEffects") return roundtrip<ListEffects>(bytes, out);
   if (type == "ListGroupTypes") return roundtrip<ListGroupTypes>(bytes, out);
@@ -33474,6 +33853,9 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "GetCapabilities") return roundtrip<GetCapabilities>(bytes, out);
   if (type == "ListPlugins") return roundtrip<ListPlugins>(bytes, out);
   if (type == "GetEffectUi") return roundtrip<GetEffectUi>(bytes, out);
+  if (type == "DrawEffectParamUi") return roundtrip<DrawEffectParamUi>(bytes, out);
+  if (type == "ParamUiDrawing") return roundtrip<ParamUiDrawing>(bytes, out);
+  if (type == "ParamUiItem") return roundtrip<ParamUiItem>(bytes, out);
   if (type == "PluginInfo") return roundtrip<PluginInfo>(bytes, out);
   if (type == "PluginList") return roundtrip<PluginList>(bytes, out);
   if (type == "PluginPresetInfo") return roundtrip<PluginPresetInfo>(bytes, out);

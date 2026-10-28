@@ -525,7 +525,11 @@ PrErr PR_CALL cb_add_param(PrHost* h, const PrParamDef* def) {
     if (h->setupError.empty()) h->setupError = std::move(why);
     return PR_ERR_INVALID_PARAM;
   };
-  if (s.type < PR_PARAM_LAYER || s.type > PR_PARAM_FILE) return fail_with("param '" + s.name + "': unknown type");
+  if (s.type < PR_PARAM_LAYER || s.type > PR_PARAM_CUSTOM_UI) return fail_with("param '" + s.name + "': unknown type");
+  if (s.type == PR_PARAM_CUSTOM_UI) {
+    // SDK 1.3: no value of its own; value[0] is the box's height (0 = the default).
+    s.def[0] = s.def[0] <= 0 || !std::isfinite(s.def[0]) ? 120.0 : std::clamp(s.def[0], 24.0, 600.0);
+  }
   if (s.type >= PR_PARAM_STRING) {
     // SDK 1.1 types: their defaults live in the fields a 1.0 struct does not have.
     if (def->struct_size < offsetof(PrParamDef, file_missing) + sizeof(def->file_missing)) {
@@ -958,9 +962,12 @@ constexpr std::size_t kMaxOverlayPoints = 2048;
 constexpr std::uint32_t kMaxOverlayPathPoints = 192;
 
 PrErr overlay_push(PrHost* h, doc::NativeOverlayItem item) {
-  if (h == nullptr || h->cmd != PR_CMD_DRAW_OVERLAY || h->overlay == nullptr) return PR_ERR_INVALID_CALLBACK;
+  // SDK 1.3: an Effect Controls box (DRAW_PARAM_UI) takes the same draw list, in box px.
+  if (h == nullptr || (h->cmd != PR_CMD_DRAW_OVERLAY && h->cmd != PR_CMD_DRAW_PARAM_UI) || h->overlay == nullptr) {
+    return PR_ERR_INVALID_CALLBACK;
+  }
   if (h->overlay->size() >= kMaxOverlayItems) return PR_ERR_OUT_OF_MEMORY;
-  item.space = h->overlaySpace;  // SDK 1.2: layer px or comp px (overlay_set_space)
+  item.space = h->cmd == PR_CMD_DRAW_OVERLAY ? h->overlaySpace : PR_OVERLAY_SPACE_LAYER;  // SDK 1.2: layer px or comp px
   std::size_t points = item.points.size() / 2;
   for (const auto& i : *h->overlay) points += i.points.size() / 2;
   if (points > kMaxOverlayPoints) return PR_ERR_OUT_OF_MEMORY;
@@ -1003,6 +1010,34 @@ PrErr PR_CALL cb_overlay_handle(PrHost* h, std::uint32_t id, double x, double y,
   return overlay_push(h, std::move(i));
 }
 
+// ── SDK 1.3: an Effect Controls box's fills and labels (DRAW_PARAM_UI only) ──
+
+constexpr std::size_t kMaxUiTextBytes = 256;
+
+PrErr PR_CALL cb_ui_fill(PrHost* h, const double* xy, std::uint32_t count, const float* rgba) {
+  if (h == nullptr || h->cmd != PR_CMD_DRAW_PARAM_UI) return PR_ERR_INVALID_CALLBACK;
+  if (xy == nullptr || count < 3 || count > kMaxOverlayPathPoints) return PR_ERR_INVALID_PARAM;
+  doc::NativeOverlayItem i;
+  i.kind = "fill";
+  i.points.assign(xy, xy + std::size_t{count} * 2);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): the SDK's xy array
+  i.closed = true;
+  i.color = rgba_of(rgba);
+  return overlay_push(h, std::move(i));
+}
+
+PrErr PR_CALL cb_ui_text(PrHost* h, double x, double y, const char* utf8, double size, std::uint32_t align, const float* rgba) {
+  if (h == nullptr || h->cmd != PR_CMD_DRAW_PARAM_UI) return PR_ERR_INVALID_CALLBACK;
+  if (utf8 == nullptr || !std::isfinite(size)) return PR_ERR_INVALID_PARAM;
+  doc::NativeOverlayItem i;
+  i.kind = "text";
+  i.points = {x, y};
+  i.text = std::string(utf8, strnlen(utf8, kMaxUiTextBytes));
+  i.size = std::clamp(size, 6.0, 48.0);
+  i.align = align <= PR_UI_TEXT_RIGHT ? align : PR_UI_TEXT_LEFT;
+  i.color = rgba_of(rgba);
+  return overlay_push(h, std::move(i));
+}
+
 PrErr PR_CALL cb_overlay_set_space(PrHost* h, std::uint32_t space) {
   if (h == nullptr || h->cmd != PR_CMD_DRAW_OVERLAY || h->overlay == nullptr) return PR_ERR_INVALID_CALLBACK;
   if (space != PR_OVERLAY_SPACE_LAYER && space != PR_OVERLAY_SPACE_COMP) return PR_ERR_INVALID_PARAM;
@@ -1040,11 +1075,15 @@ PrErr PR_CALL cb_set_param_ui(PrHost* h, std::uint32_t index, std::uint32_t flag
   return PR_ERR_NONE;
 }
 
+/// The selectors that edit: a supervised change / button, a viewer handle's drag, SDK 1.3 a box handle's.
+bool writing_cmd(PrCmd cmd) noexcept {
+  return cmd == PR_CMD_USER_CHANGED_PARAM || cmd == PR_CMD_OVERLAY_DRAG || cmd == PR_CMD_PARAM_UI_DRAG;
+}
+
 PrErr PR_CALL cb_set_param_value(PrHost* h, std::uint32_t index, const double* value, std::uint32_t count) {
-  if (h == nullptr || (h->cmd != PR_CMD_USER_CHANGED_PARAM && h->cmd != PR_CMD_OVERLAY_DRAG) || h->writes == nullptr || h->params == nullptr) {
-    return PR_ERR_INVALID_CALLBACK;
-  }
+  if (h == nullptr || !writing_cmd(h->cmd) || h->writes == nullptr || h->params == nullptr) return PR_ERR_INVALID_CALLBACK;
   if (index == 0 || index > h->params->size() || value == nullptr || count == 0 || count > 4) return PR_ERR_INVALID_PARAM;
+  if (h->params->at(index - 1).type == PR_PARAM_CUSTOM_UI) return PR_ERR_INVALID_PARAM;  // a box has no value
   std::array<double, 4> v{};
   for (std::uint32_t i = 0; i < count; ++i) v.at(i) = value[i];  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
   h->writes->emplace_back(index, v);
@@ -1052,9 +1091,7 @@ PrErr PR_CALL cb_set_param_value(PrHost* h, std::uint32_t index, const double* v
 }
 
 PrErr PR_CALL cb_set_arb_data(PrHost* h, std::uint32_t index, const std::uint8_t* data, std::uint32_t size) {
-  if (h == nullptr || (h->cmd != PR_CMD_USER_CHANGED_PARAM && h->cmd != PR_CMD_OVERLAY_DRAG) || h->arbWrites == nullptr || h->params == nullptr) {
-    return PR_ERR_INVALID_CALLBACK;
-  }
+  if (h == nullptr || !writing_cmd(h->cmd) || h->arbWrites == nullptr || h->params == nullptr) return PR_ERR_INVALID_CALLBACK;
   if (index == 0 || index > h->params->size() || h->params->at(index - 1).type != PR_PARAM_ARBITRARY_DATA) return PR_ERR_INVALID_PARAM;
   if (size > 256U * 1024U) return PR_ERR_OUT_OF_MEMORY;  // setPluginData's per-key limit
   std::vector<std::uint8_t> bytes;
@@ -1186,6 +1223,8 @@ PluginHost::PluginHost(HostOptions options) : impl_(std::make_unique<Impl>(*this
   s.overlay_set_space = &cb_overlay_set_space;  // SDK 1.2: overlay space
   s.checkout_scene_depth_gpu_at = &cb_checkout_scene_depth_gpu_at;  // SDK 1.2: scene depth at a sample
   s.checkout_scene_depth_at = &cb_checkout_scene_depth_at;
+  s.ui_fill = &cb_ui_fill;  // SDK 1.3: Effect Controls boxes
+  s.ui_text = &cb_ui_text;
 
   int threads = m.options.threads;
   if (threads <= 0) threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) - 1, 0, 16);
@@ -1667,6 +1706,12 @@ void PluginHost::Impl::register_document(const Plugin& p) {
         case PR_PARAM_BUTTON:
           ne.actions.push_back({s.key, s.name, s.group, static_cast<std::uint32_t>(ne.def.params.size())});
           break;
+        case PR_PARAM_CUSTOM_UI: {  // SDK 1.3: a box the plugin draws, placed like a button
+          const auto at = static_cast<std::uint32_t>(ne.def.params.size());
+          const auto before = static_cast<std::uint32_t>(std::ranges::count(ne.actions, at, &doc::NativeAction::at));
+          ne.customUis.push_back({s.key, s.name, s.group, at, s.def[0], s.description, before});
+          break;
+        }
         // SDK 1.1 — static values: a string, the Curves effect's point list, stops, a project item.
         case PR_PARAM_STRING:
           d.type = "text";
@@ -2465,8 +2510,32 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::user_changed(const
   return instance_call(req, PR_CMD_USER_CHANGED_PARAM, index, &x, nullptr);
 }
 
+/// SDK 1.3: the 1-based index of PR_PARAM_CUSTOM_UI param `key` of effect `type`, 0 when there is none.
+std::uint32_t PluginHost::custom_ui_index(const std::string& type, const std::string& key) const {
+  const Impl& m = *impl_;
+  const std::shared_lock lock(m.pluginsMutex);
+  const auto it = m.effects.find(type);
+  if (it == m.effects.end()) return 0;
+  const std::vector<ParamSpec>& params = it->second->params;
+  for (std::size_t i = 0; i < params.size(); ++i) {
+    if (params[i].key == key && params[i].type == PR_PARAM_CUSTOM_UI) return static_cast<std::uint32_t>(i + 1);
+  }
+  return 0;
+}
+
 std::variant<std::vector<doc::NativeOverlayItem>, doc::NativeFailure> PluginHost::draw_overlay(const doc::NativeActionRequest& req) {
   std::vector<doc::NativeOverlayItem> items;
+  if (req.paramUi) {  // SDK 1.3: an Effect Controls box
+    PrParamUiExtra u{};
+    u.struct_size = sizeof(PrParamUiExtra);
+    u.param_index = custom_ui_index(req.type, req.paramUi->key);
+    if (u.param_index == 0) return doc::NativeFailure{"'" + req.type + "' has no custom UI '" + req.paramUi->key + "'"};
+    u.width = req.paramUi->width;
+    u.height = req.paramUi->height;
+    auto r = instance_call(req, PR_CMD_DRAW_PARAM_UI, u.param_index, &u, &items);
+    if (auto* f = std::get_if<doc::NativeFailure>(&r)) return std::move(*f);
+    return items;
+  }
   PrOverlayExtra x{};
   x.struct_size = sizeof(PrOverlayExtra);
   x.comp_width = req.scene ? req.scene->compW : 0;  // SDK 1.2: the space of comp-space items
@@ -2478,6 +2547,21 @@ std::variant<std::vector<doc::NativeOverlayItem>, doc::NativeFailure> PluginHost
 
 std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::overlay_drag(const doc::NativeActionRequest& req,
                                                                            const doc::NativeOverlayDrag& d) {
+  if (req.paramUi) {  // SDK 1.3: a handle in an Effect Controls box
+    PrParamUiDragExtra u{};
+    u.struct_size = sizeof(PrParamUiDragExtra);
+    u.param_index = custom_ui_index(req.type, req.paramUi->key);
+    if (u.param_index == 0) return doc::NativeFailure{"'" + req.type + "' has no custom UI '" + req.paramUi->key + "'"};
+    u.handle_id = d.handle;
+    u.phase = d.phase;
+    u.x = d.x;
+    u.y = d.y;
+    u.start_x = d.startX;
+    u.start_y = d.startY;
+    u.width = req.paramUi->width;
+    u.height = req.paramUi->height;
+    return instance_call(req, PR_CMD_PARAM_UI_DRAG, u.param_index, &u, nullptr);
+  }
   PrOverlayDragExtra x{};
   x.struct_size = sizeof(PrOverlayDragExtra);
   x.handle_id = d.handle;
@@ -2599,8 +2683,8 @@ std::variant<doc::NativeEdit, doc::NativeFailure> PluginHost::instance_call(cons
   if (r.ok && out.sequence_data != 0) live = out.sequence_data;
 
   doc::NativeEdit edit;
-  // DRAW_OVERLAY reads; only an edit flattens what the plugin changed.
-  if (r.ok && cmd != PR_CMD_DRAW_OVERLAY && e->has(PR_OUT_FLAG_SEQUENCE_DATA)) {
+  // DRAW_OVERLAY / DRAW_PARAM_UI read; only an edit flattens what the plugin changed.
+  if (r.ok && cmd != PR_CMD_DRAW_OVERLAY && cmd != PR_CMD_DRAW_PARAM_UI && e->has(PR_OUT_FLAG_SEQUENCE_DATA)) {
     ctx.cmd = PR_CMD_SEQUENCE_FLATTEN;
     d.sequence_data = live;
     Impl::reset_out(out, e->globalData, live);

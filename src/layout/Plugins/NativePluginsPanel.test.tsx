@@ -40,7 +40,7 @@ beforeEach(() => {
   jest.mocked(engine).mockReturnValue({
     query: jest.fn(async () => ({ ok: true, value: { type: 'listPlugins', plugins: [glow, grade] }, revision: 1 })),
   } as never);
-  setPluginEffectDefs([{ matchName: 'premation.deepglow', displayName: 'Deep Glow', category: 'Stylize', gpu: true, provider: 'premation.deepglow', params: [], supportsFloat: true, audio: false, actions: [], groups: [] }]);
+  setPluginEffectDefs([{ matchName: 'premation.deepglow', displayName: 'Deep Glow', category: 'Stylize', gpu: true, provider: 'premation.deepglow', params: [], supportsFloat: true, audio: false, actions: [], groups: [], customUis: [] }]);
   setPluginPresets([{ id: 'premation.deepglow', presets: [{ name: 'Neon', effect: 'premation.deepglow', values: [], category: '' }] }]);
   realOpen = useLayoutStore.getState().openPanel;
   useLayoutStore.setState({ openPanel });

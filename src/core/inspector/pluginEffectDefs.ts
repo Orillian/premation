@@ -35,7 +35,21 @@ export type PluginEffectDef = EffectDef & {
   readonly descriptions: ReadonlyMap<string, string>;
   /** PR_CMD_ABOUT's text ('' = none): the card's About. */
   readonly about: string;
+  /** SDK 1.3 PR_PARAM_CUSTOM_UI boxes the plugin draws (drawEffectParamUi), placed like buttons. */
+  readonly customUis: ReadonlyArray<PluginEffectCustomUi>;
 };
+
+export interface PluginEffectCustomUi {
+  readonly key: string;
+  readonly label: string;
+  readonly group: string;
+  readonly at: number;
+  /** The box's height, px (the plugin's; the width is the card's). */
+  readonly height: number;
+  readonly description: string;
+  /** How many of the buttons at the same `at` come before it (declaration order). */
+  readonly afterButtons: number;
+}
 
 export interface PluginEffectAction {
   readonly key: string;
@@ -125,6 +139,15 @@ export function effectInfoToDef(info: EffectInfo): PluginEffectDef {
     fixed,
     descriptions,
     about: info.about ?? '',
+    customUis: (info.customUis ?? []).map((u) => ({
+      key: u.key,
+      label: u.label,
+      group: u.group ?? '',
+      at: u.at !== undefined && u.at < uiIndexOf.length ? uiIndexOf[u.at]! : params.length,
+      height: u.height,
+      description: u.description ?? '',
+      afterButtons: u.afterButtons ?? 0,
+    })),
   };
 }
 

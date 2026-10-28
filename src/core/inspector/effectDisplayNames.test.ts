@@ -21,6 +21,7 @@ const grade: EffectInfo = {
   audio: false,
   actions: [],
   groups: [],
+  customUis: [],
 };
 
 afterEach(() => setPluginEffectDefs([]));

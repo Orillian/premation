@@ -20,6 +20,11 @@ export function useResizeObserver<T extends HTMLElement>(): {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // No ResizeObserver (jsdom): the first measurement only.
+    if (typeof ResizeObserver === 'undefined') {
+      setSize({ width: el.offsetWidth, height: el.offsetHeight });
+      return;
+    }
     const ro = new ResizeObserver((entries) => {
       const e = entries[0];
       if (!e) return;

@@ -110,13 +110,17 @@ void write_bytes(const fs::path& p, const std::string& bytes) {
 }  // namespace
 
 TEST_CASE("SDK 1.2: the version, appended and gated", "[plugins][sdk12]") {
-  CHECK(PR_SDK_VERSION_MINOR == 2);
+  CHECK(PR_SDK_VERSION_MINOR == 3);  // SDK 1.3: Effect Controls boxes (test_plugin_param_ui.cpp)
   std::string why;
   CHECK(pl::sdk_compatible(1, 0, why));
   CHECK(pl::sdk_compatible(1, 1, why));
   CHECK(pl::sdk_compatible(1, 2, why));
-  CHECK_FALSE(pl::sdk_compatible(1, 3, why));
-  CHECK(why.find("needs SDK 1.3") != std::string::npos);
+  CHECK(pl::sdk_compatible(1, 3, why));
+  CHECK_FALSE(pl::sdk_compatible(1, 4, why));
+  CHECK(why.find("needs SDK 1.4") != std::string::npos);
+  // SDK 1.3 appends its box callbacks after every 1.2 one.
+  CHECK(offsetof(PrHostSuite, checkout_scene_depth_at) < offsetof(PrHostSuite, ui_fill));
+  CHECK(offsetof(PrHostSuite, ui_fill) < offsetof(PrHostSuite, ui_text));
   // Appended, never reordered: the 1.1 callbacks keep their place in front of the 1.2 ones.
   CHECK(offsetof(PrHostSuite, get_asset_bytes) < offsetof(PrHostSuite, checkout_time));
   CHECK(offsetof(PrHostSuite, checkout_time) < offsetof(PrHostSuite, get_asset_sibling_bytes));

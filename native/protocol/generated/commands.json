@@ -625,6 +625,11 @@
     "type": "dragEffectOverlay"
   },
   {
+    "id": 633,
+    "kind": "edit",
+    "type": "dragEffectParamUi"
+  },
+  {
     "id": 611,
     "kind": "edit",
     "type": "addProperties"

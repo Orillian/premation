@@ -21,7 +21,9 @@ import type { PluginEffectDef } from './pluginEffectDefs';
 
 export type PluginCardItem =
   | { readonly kind: 'param'; readonly param: EffectParamDef; readonly disabled: boolean }
-  | { readonly kind: 'button'; readonly key: string; readonly label: string; readonly disabled: boolean };
+  | { readonly kind: 'button'; readonly key: string; readonly label: string; readonly disabled: boolean }
+  /** SDK 1.3: a box the plugin draws (PR_PARAM_CUSTOM_UI), `height` px. */
+  | { readonly kind: 'customUi'; readonly key: string; readonly label: string; readonly height: number; readonly description: string; readonly disabled: boolean };
 
 export interface PluginCardSection {
   /** The group's path ("Glow / Advanced"); absent for top-level items. */
@@ -52,14 +54,24 @@ export function pluginCardSections(def: PluginEffectDef, ui: ReadonlyMap<string,
   const hiddenGroups = def.groups.filter((g) => ui?.get(g.key)?.hidden).map((g) => g.name);
   const hiddenByGroup = (group: string | undefined): boolean => hiddenGroups.some((path) => inside(group, path));
 
-  // Declaration order: each button before the param it was declared ahead of.
+  // Declaration order: each button / box before the param it was declared ahead of.
   const ordered: Array<{ group?: string; item: PluginCardItem }> = [];
   const buttonsAt = (i: number, last: boolean): void => {
-    for (const a of def.actions) {
-      if (a.at === i || (last && a.at > i)) {
-        ordered.push({ group: a.group || undefined, item: { kind: 'button', key: a.key, label: a.label, disabled: false } });
-      }
-    }
+    const here = (at: number): boolean => at === i || (last && at > i);
+    const buttons = def.actions.filter((a) => here(a.at));
+    const boxes = (def.customUis ?? []).filter((u) => here(u.at));
+    const box = (u: (typeof boxes)[number]): void => {
+      ordered.push({
+        group: u.group || undefined,
+        item: { kind: 'customUi', key: u.key, label: u.label, height: u.height, description: u.description, disabled: false },
+      });
+    };
+    // A box sits after the `afterButtons` buttons declared before it at the same place.
+    buttons.forEach((a, n) => {
+      for (const u of boxes) if (u.afterButtons === n) box(u);
+      ordered.push({ group: a.group || undefined, item: { kind: 'button', key: a.key, label: a.label, disabled: false } });
+    });
+    for (const u of boxes) if (u.afterButtons >= buttons.length) box(u);
   };
   def.params.forEach((p, i) => {
     buttonsAt(i, false);
@@ -76,7 +88,9 @@ export function pluginCardSections(def: PluginEffectDef, ui: ReadonlyMap<string,
     const disabled = u?.enabled === false;
     const shown: PluginCardItem = item.kind === 'param'
       ? { kind: 'param', param: u?.name && u.name !== item.param.label ? { ...item.param, label: u.name } : item.param, disabled }
-      : { kind: 'button', key: item.key, label: u?.name || item.label, disabled };
+      : item.kind === 'button'
+        ? { kind: 'button', key: item.key, label: u?.name || item.label, disabled }
+        : { ...item, label: u?.name || item.label, disabled };
     // Contiguity, as splitParamGroups: a group interrupted by top-level items is two sections.
     const last = out[out.length - 1];
     if (last && last.group === group) last.items.push(shown);

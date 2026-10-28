@@ -248,7 +248,8 @@ void read_values(const Index& ix, const EffectSpec& spec, const std::string& pre
             break;
           case PR_PARAM_GROUP_START:
           case PR_PARAM_GROUP_END:
-          case PR_PARAM_BUTTON: break;
+          case PR_PARAM_BUTTON:
+          case PR_PARAM_CUSTOM_UI: break;
           default: v.v[0] = ix.num(k, s.def[0]); break;
         }
         break;

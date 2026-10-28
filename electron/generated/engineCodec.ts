@@ -6624,6 +6624,72 @@ function decS_DragEffectOverlay(r: Reader, end: number, o: any): T.DragEffectOve
   o.space = v_space;
   return o;
 }
+function encS_DragEffectParamUi(w: Writer, v: T.DragEffectParamUi): void {
+  w.byte(10); { const s = w.beginLd(); encS_PropRef(w, v.group); w.endLd(s); }
+  w.byte(18); w.str(v.key);
+  w.byte(24); w.u32(v.handle);
+  w.byte(33); w.f64(v.x);
+  w.byte(41); w.f64(v.y);
+  w.byte(49); w.f64(v.startX);
+  w.byte(57); w.f64(v.startY);
+  w.byte(64); w.u32(v.phase);
+  w.byte(73); w.f64(v.width);
+}
+function decS_DragEffectParamUi(r: Reader, end: number, o: any): T.DragEffectParamUi {
+  let h_group = false;
+  let h_key = false;
+  let h_handle = false;
+  let h_x = false;
+  let h_y = false;
+  let h_startX = false;
+  let h_startY = false;
+  let h_phase = false;
+  let h_width = false;
+  let v_group: T.PropRef | undefined;
+  let v_key: string | undefined;
+  let v_handle: number | undefined;
+  let v_x: number | undefined;
+  let v_y: number | undefined;
+  let v_startX: number | undefined;
+  let v_startY: number | undefined;
+  let v_phase: number | undefined;
+  let v_width: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_group = decS_PropRef(r, r.ldEnd(), {}); h_group = true; break;
+      case 18: v_key = r.str(); h_key = true; break;
+      case 24: v_handle = r.u32(); h_handle = true; break;
+      case 33: v_x = r.f64(); h_x = true; break;
+      case 41: v_y = r.f64(); h_y = true; break;
+      case 49: v_startX = r.f64(); h_startX = true; break;
+      case 57: v_startY = r.f64(); h_startY = true; break;
+      case 64: v_phase = r.u32(); h_phase = true; break;
+      case 73: v_width = r.f64(); h_width = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_group) throw new DecodeError('DragEffectParamUi.group: missing', 'missingField');
+  if (!h_key) throw new DecodeError('DragEffectParamUi.key: missing', 'missingField');
+  if (!h_handle) throw new DecodeError('DragEffectParamUi.handle: missing', 'missingField');
+  if (!h_x) throw new DecodeError('DragEffectParamUi.x: missing', 'missingField');
+  if (!h_y) throw new DecodeError('DragEffectParamUi.y: missing', 'missingField');
+  if (!h_startX) throw new DecodeError('DragEffectParamUi.startX: missing', 'missingField');
+  if (!h_startY) throw new DecodeError('DragEffectParamUi.startY: missing', 'missingField');
+  if (!h_phase) throw new DecodeError('DragEffectParamUi.phase: missing', 'missingField');
+  if (!h_width) throw new DecodeError('DragEffectParamUi.width: missing', 'missingField');
+  o.group = v_group;
+  o.key = v_key;
+  o.handle = v_handle;
+  o.x = v_x;
+  o.y = v_y;
+  o.startX = v_startX;
+  o.startY = v_startY;
+  o.phase = v_phase;
+  o.width = v_width;
+  return o;
+}
 function encS_AddProperties(w: Writer, v: T.AddProperties): void {
   w.byte(10); { const s = w.beginLd(); encS_PropRef(w, v.parent); w.endLd(s); }
   { const a = v.names; for (let i = 0; i < a.length; i++) { w.byte(18); w.str(a[i]!); } }
@@ -12741,11 +12807,13 @@ function encS_EffectInfo(w: Writer, v: T.EffectInfo): void {
   { const a = v.actions; for (let i = 0; i < a.length; i++) { w.byte(74); { const s = w.beginLd(); encS_EffectActionInfo(w, a[i]!); w.endLd(s); } } }
   { const a = v.groups; for (let i = 0; i < a.length; i++) { w.byte(82); { const s = w.beginLd(); encS_EffectGroupInfo(w, a[i]!); w.endLd(s); } } }
   if (v.about !== undefined) { w.byte(90); w.str(v.about); }
+  { const a = v.customUis; for (let i = 0; i < a.length; i++) { w.byte(98); { const s = w.beginLd(); encS_EffectCustomUiInfo(w, a[i]!); w.endLd(s); } } }
 }
 function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
   const l_params: T.EffectParamInfo[] = [];
   const l_actions: T.EffectActionInfo[] = [];
   const l_groups: T.EffectGroupInfo[] = [];
+  const l_customUis: T.EffectCustomUiInfo[] = [];
   let h_matchName = false;
   let h_displayName = false;
   let h_category = false;
@@ -12775,6 +12843,7 @@ function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
       case 74: l_actions.push(decS_EffectActionInfo(r, r.ldEnd(), {})); break;
       case 82: l_groups.push(decS_EffectGroupInfo(r, r.ldEnd(), {})); break;
       case 90: v_about = r.str(); break;
+      case 98: l_customUis.push(decS_EffectCustomUiInfo(r, r.ldEnd(), {})); break;
       default: r.skip(key);
     }
   }
@@ -12797,6 +12866,7 @@ function decS_EffectInfo(r: Reader, end: number, o: any): T.EffectInfo {
   o.actions = l_actions;
   o.groups = l_groups;
   if (v_about !== undefined) o.about = v_about;
+  o.customUis = l_customUis;
   return o;
 }
 function encS_EffectActionInfo(w: Writer, v: T.EffectActionInfo): void {
@@ -12833,6 +12903,58 @@ function decS_EffectActionInfo(r: Reader, end: number, o: any): T.EffectActionIn
   o.label = v_label;
   o.group = v_group;
   o.at = v_at;
+  return o;
+}
+function encS_EffectCustomUiInfo(w: Writer, v: T.EffectCustomUiInfo): void {
+  w.byte(10); w.str(v.key);
+  w.byte(18); w.str(v.label);
+  w.byte(26); w.str(v.group);
+  w.byte(32); w.u32(v.at);
+  w.byte(41); w.f64(v.height);
+  if (v.description !== undefined) { w.byte(50); w.str(v.description); }
+  w.byte(56); w.u32(v.afterButtons);
+}
+function decS_EffectCustomUiInfo(r: Reader, end: number, o: any): T.EffectCustomUiInfo {
+  let h_key = false;
+  let h_label = false;
+  let h_group = false;
+  let h_at = false;
+  let h_height = false;
+  let h_afterButtons = false;
+  let v_key: string | undefined;
+  let v_label: string | undefined;
+  let v_group: string | undefined;
+  let v_at: number | undefined;
+  let v_height: number | undefined;
+  let v_description: string | undefined;
+  let v_afterButtons: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_key = r.str(); h_key = true; break;
+      case 18: v_label = r.str(); h_label = true; break;
+      case 26: v_group = r.str(); h_group = true; break;
+      case 32: v_at = r.u32(); h_at = true; break;
+      case 41: v_height = r.f64(); h_height = true; break;
+      case 50: v_description = r.str(); break;
+      case 56: v_afterButtons = r.u32(); h_afterButtons = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_key) throw new DecodeError('EffectCustomUiInfo.key: missing', 'missingField');
+  if (!h_label) throw new DecodeError('EffectCustomUiInfo.label: missing', 'missingField');
+  if (!h_group) throw new DecodeError('EffectCustomUiInfo.group: missing', 'missingField');
+  if (!h_at) throw new DecodeError('EffectCustomUiInfo.at: missing', 'missingField');
+  if (!h_height) throw new DecodeError('EffectCustomUiInfo.height: missing', 'missingField');
+  if (!h_afterButtons) throw new DecodeError('EffectCustomUiInfo.afterButtons: missing', 'missingField');
+  o.key = v_key;
+  o.label = v_label;
+  o.group = v_group;
+  o.at = v_at;
+  o.height = v_height;
+  if (v_description !== undefined) o.description = v_description;
+  o.afterButtons = v_afterButtons;
   return o;
 }
 function encS_EffectGroupInfo(w: Writer, v: T.EffectGroupInfo): void {
@@ -12999,6 +13121,130 @@ function decS_GetEffectUi(r: Reader, end: number, o: any): T.GetEffectUi {
   o.layer = v_layer;
   o.effect = v_effect;
   if (v_time !== undefined) o.time = v_time;
+  return o;
+}
+function encS_DrawEffectParamUi(w: Writer, v: T.DrawEffectParamUi): void {
+  w.byte(10); w.str(v.layer);
+  w.byte(18); w.str(v.effect);
+  w.byte(26); w.str(v.key);
+  w.byte(33); w.f64(v.width);
+  if (v.time !== undefined) { w.byte(40); w.i64(v.time); }
+}
+function decS_DrawEffectParamUi(r: Reader, end: number, o: any): T.DrawEffectParamUi {
+  let h_layer = false;
+  let h_effect = false;
+  let h_key = false;
+  let h_width = false;
+  let v_layer: string | undefined;
+  let v_effect: string | undefined;
+  let v_key: string | undefined;
+  let v_width: number | undefined;
+  let v_time: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_layer = r.str(); h_layer = true; break;
+      case 18: v_effect = r.str(); h_effect = true; break;
+      case 26: v_key = r.str(); h_key = true; break;
+      case 33: v_width = r.f64(); h_width = true; break;
+      case 40: v_time = r.i64(); break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_layer) throw new DecodeError('DrawEffectParamUi.layer: missing', 'missingField');
+  if (!h_effect) throw new DecodeError('DrawEffectParamUi.effect: missing', 'missingField');
+  if (!h_key) throw new DecodeError('DrawEffectParamUi.key: missing', 'missingField');
+  if (!h_width) throw new DecodeError('DrawEffectParamUi.width: missing', 'missingField');
+  o.layer = v_layer;
+  o.effect = v_effect;
+  o.key = v_key;
+  o.width = v_width;
+  if (v_time !== undefined) o.time = v_time;
+  return o;
+}
+function encS_ParamUiDrawing(w: Writer, v: T.ParamUiDrawing): void {
+  { const a = v.items; for (let i = 0; i < a.length; i++) { w.byte(10); { const s = w.beginLd(); encS_ParamUiItem(w, a[i]!); w.endLd(s); } } }
+  w.byte(17); w.f64(v.height);
+}
+function decS_ParamUiDrawing(r: Reader, end: number, o: any): T.ParamUiDrawing {
+  const l_items: T.ParamUiItem[] = [];
+  let h_height = false;
+  let v_height: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: l_items.push(decS_ParamUiItem(r, r.ldEnd(), {})); break;
+      case 17: v_height = r.f64(); h_height = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_height) throw new DecodeError('ParamUiDrawing.height: missing', 'missingField');
+  o.items = l_items;
+  o.height = v_height;
+  return o;
+}
+function encS_ParamUiItem(w: Writer, v: T.ParamUiItem): void {
+  w.byte(10); w.str(v.kind);
+  { const a = v.points; if (a.length) { w.byte(18); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
+  w.byte(24); w.bool(v.closed);
+  { const a = v.color; if (a.length) { w.byte(34); w.varint(a.length * 8); for (let i = 0; i < a.length; i++) w.f64(a[i]!); } }
+  w.byte(40); w.u32(v.handle);
+  w.byte(48); w.u32(v.shape);
+  w.byte(58); w.str(v.text);
+  w.byte(65); w.f64(v.size);
+  w.byte(72); w.u32(v.align);
+}
+function decS_ParamUiItem(r: Reader, end: number, o: any): T.ParamUiItem {
+  const l_points: number[] = [];
+  const l_color: number[] = [];
+  let h_kind = false;
+  let h_closed = false;
+  let h_handle = false;
+  let h_shape = false;
+  let h_text = false;
+  let h_size = false;
+  let h_align = false;
+  let v_kind: string | undefined;
+  let v_closed: boolean | undefined;
+  let v_handle: number | undefined;
+  let v_shape: number | undefined;
+  let v_text: string | undefined;
+  let v_size: number | undefined;
+  let v_align: number | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 10: v_kind = r.str(); h_kind = true; break;
+      case 18: { const e = r.ldEnd(); while (r.pos < e) l_points.push(r.f64()); r.expectAt(e); break; }
+      case 24: v_closed = r.bool(); h_closed = true; break;
+      case 34: { const e = r.ldEnd(); while (r.pos < e) l_color.push(r.f64()); r.expectAt(e); break; }
+      case 40: v_handle = r.u32(); h_handle = true; break;
+      case 48: v_shape = r.u32(); h_shape = true; break;
+      case 58: v_text = r.str(); h_text = true; break;
+      case 65: v_size = r.f64(); h_size = true; break;
+      case 72: v_align = r.u32(); h_align = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_kind) throw new DecodeError('ParamUiItem.kind: missing', 'missingField');
+  if (!h_closed) throw new DecodeError('ParamUiItem.closed: missing', 'missingField');
+  if (!h_handle) throw new DecodeError('ParamUiItem.handle: missing', 'missingField');
+  if (!h_shape) throw new DecodeError('ParamUiItem.shape: missing', 'missingField');
+  if (!h_text) throw new DecodeError('ParamUiItem.text: missing', 'missingField');
+  if (!h_size) throw new DecodeError('ParamUiItem.size: missing', 'missingField');
+  if (!h_align) throw new DecodeError('ParamUiItem.align: missing', 'missingField');
+  o.kind = v_kind;
+  o.points = l_points;
+  o.closed = v_closed;
+  o.color = l_color;
+  o.handle = v_handle;
+  o.shape = v_shape;
+  o.text = v_text;
+  o.size = v_size;
+  o.align = v_align;
   return o;
 }
 function encS_PluginInfo(w: Writer, v: T.PluginInfo): void {
@@ -18775,6 +19021,7 @@ function encU_Command(w: Writer, v: T.Command): void {
     case 'editPathTopology': w.varint(5042); { const s = w.beginLd(); encS_EditPathTopology(w, v); w.endLd(s); } return;
     case 'setShapeOutline': w.varint(5050); { const s = w.beginLd(); encS_SetShapeOutline(w, v); w.endLd(s); } return;
     case 'dragEffectOverlay': w.varint(5058); { const s = w.beginLd(); encS_DragEffectOverlay(w, v); w.endLd(s); } return;
+    case 'dragEffectParamUi': w.varint(5066); { const s = w.beginLd(); encS_DragEffectParamUi(w, v); w.endLd(s); } return;
     case 'addMarkers': w.varint(5602); { const s = w.beginLd(); encS_AddMarkers(w, v); w.endLd(s); } return;
     case 'updateMarkers': w.varint(5610); { const s = w.beginLd(); encS_UpdateMarkers(w, v); w.endLd(s); } return;
     case 'deleteMarkers': w.varint(5618); { const s = w.beginLd(); encS_DeleteMarkers(w, v); w.endLd(s); } return;
@@ -18958,6 +19205,7 @@ function decU_Command(r: Reader, end: number): T.Command {
       case 5042: out = decS_EditPathTopology(r, r.ldEnd(), { type: 'editPathTopology' }) as T.Command; break;
       case 5050: out = decS_SetShapeOutline(r, r.ldEnd(), { type: 'setShapeOutline' }) as T.Command; break;
       case 5058: out = decS_DragEffectOverlay(r, r.ldEnd(), { type: 'dragEffectOverlay' }) as T.Command; break;
+      case 5066: out = decS_DragEffectParamUi(r, r.ldEnd(), { type: 'dragEffectParamUi' }) as T.Command; break;
       case 5602: out = decS_AddMarkers(r, r.ldEnd(), { type: 'addMarkers' }) as T.Command; break;
       case 5610: out = decS_UpdateMarkers(r, r.ldEnd(), { type: 'updateMarkers' }) as T.Command; break;
       case 5618: out = decS_DeleteMarkers(r, r.ldEnd(), { type: 'deleteMarkers' }) as T.Command; break;
@@ -19141,6 +19389,7 @@ function encU_CommandResult(w: Writer, v: T.CommandResult): void {
     case 'editPathTopology': w.varint(5042); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'setShapeOutline': w.varint(5050); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'dragEffectOverlay': w.varint(5058); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
+    case 'dragEffectParamUi': w.varint(5066); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'addMarkers': w.varint(5602); { const s = w.beginLd(); encS_MarkerIds(w, v); w.endLd(s); } return;
     case 'updateMarkers': w.varint(5610); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
     case 'deleteMarkers': w.varint(5618); { const s = w.beginLd(); encS_Empty(w, v); w.endLd(s); } return;
@@ -19324,6 +19573,7 @@ function decU_CommandResult(r: Reader, end: number): T.CommandResult {
       case 5042: out = decS_Empty(r, r.ldEnd(), { type: 'editPathTopology' }) as T.CommandResult; break;
       case 5050: out = decS_Empty(r, r.ldEnd(), { type: 'setShapeOutline' }) as T.CommandResult; break;
       case 5058: out = decS_Empty(r, r.ldEnd(), { type: 'dragEffectOverlay' }) as T.CommandResult; break;
+      case 5066: out = decS_Empty(r, r.ldEnd(), { type: 'dragEffectParamUi' }) as T.CommandResult; break;
       case 5602: out = decS_MarkerIds(r, r.ldEnd(), { type: 'addMarkers' }) as T.CommandResult; break;
       case 5610: out = decS_Empty(r, r.ldEnd(), { type: 'updateMarkers' }) as T.CommandResult; break;
       case 5618: out = decS_Empty(r, r.ldEnd(), { type: 'deleteMarkers' }) as T.CommandResult; break;
@@ -19436,6 +19686,7 @@ function encU_Query(w: Writer, v: T.Query): void {
     case 'getTimelineRows': w.varint(15498); { const s = w.beginLd(); encS_GetTimelineRows(w, v); w.endLd(s); } return;
     case 'listCameras': w.varint(15506); { const s = w.beginLd(); encS_ListCameras(w, v); w.endLd(s); } return;
     case 'getPerformanceTakes': w.varint(15618); { const s = w.beginLd(); encS_GetPerformanceTakes(w, v); w.endLd(s); } return;
+    case 'drawEffectParamUi': w.varint(15626); { const s = w.beginLd(); encS_DrawEffectParamUi(w, v); w.endLd(s); } return;
     default: throw new RangeError('Query: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -19503,6 +19754,7 @@ function decU_Query(r: Reader, end: number): T.Query {
       case 15498: out = decS_GetTimelineRows(r, r.ldEnd(), { type: 'getTimelineRows' }) as T.Query; break;
       case 15506: out = decS_ListCameras(r, r.ldEnd(), { type: 'listCameras' }) as T.Query; break;
       case 15618: out = decS_GetPerformanceTakes(r, r.ldEnd(), { type: 'getPerformanceTakes' }) as T.Query; break;
+      case 15626: out = decS_DrawEffectParamUi(r, r.ldEnd(), { type: 'drawEffectParamUi' }) as T.Query; break;
       default: r.skip(key);
     }
   }
@@ -19570,6 +19822,7 @@ function encU_QueryResult(w: Writer, v: T.QueryResult): void {
     case 'getTimelineRows': w.varint(15498); { const s = w.beginLd(); encS_TimelineRowSets(w, v); w.endLd(s); } return;
     case 'listCameras': w.varint(15506); { const s = w.beginLd(); encS_CameraList(w, v); w.endLd(s); } return;
     case 'getPerformanceTakes': w.varint(15618); { const s = w.beginLd(); encS_PerformanceTakes(w, v); w.endLd(s); } return;
+    case 'drawEffectParamUi': w.varint(15626); { const s = w.beginLd(); encS_ParamUiDrawing(w, v); w.endLd(s); } return;
     default: throw new RangeError('QueryResult: unknown type ' + String((v as { type?: unknown }).type));
   }
 }
@@ -19637,6 +19890,7 @@ function decU_QueryResult(r: Reader, end: number): T.QueryResult {
       case 15498: out = decS_TimelineRowSets(r, r.ldEnd(), { type: 'getTimelineRows' }) as T.QueryResult; break;
       case 15506: out = decS_CameraList(r, r.ldEnd(), { type: 'listCameras' }) as T.QueryResult; break;
       case 15618: out = decS_PerformanceTakes(r, r.ldEnd(), { type: 'getPerformanceTakes' }) as T.QueryResult; break;
+      case 15626: out = decS_ParamUiDrawing(r, r.ldEnd(), { type: 'drawEffectParamUi' }) as T.QueryResult; break;
       default: r.skip(key);
     }
   }
@@ -19955,6 +20209,7 @@ export const codecs = {
   ApplyPreset: mk<T.ApplyPreset>(encS_ApplyPreset, (r, e) => decS_ApplyPreset(r, e, {})),
   InvokeEffectAction: mk<T.InvokeEffectAction>(encS_InvokeEffectAction, (r, e) => decS_InvokeEffectAction(r, e, {})),
   DragEffectOverlay: mk<T.DragEffectOverlay>(encS_DragEffectOverlay, (r, e) => decS_DragEffectOverlay(r, e, {})),
+  DragEffectParamUi: mk<T.DragEffectParamUi>(encS_DragEffectParamUi, (r, e) => decS_DragEffectParamUi(r, e, {})),
   AddProperties: mk<T.AddProperties>(encS_AddProperties, (r, e) => decS_AddProperties(r, e, {})),
   RemoveProperties: mk<T.RemoveProperties>(encS_RemoveProperties, (r, e) => decS_RemoveProperties(r, e, {})),
   PasteEffects: mk<T.PasteEffects>(encS_PasteEffects, (r, e) => decS_PasteEffects(r, e, {})),
@@ -20145,6 +20400,7 @@ export const codecs = {
   EffectParamInfo: mk<T.EffectParamInfo>(encS_EffectParamInfo, (r, e) => decS_EffectParamInfo(r, e, {})),
   EffectInfo: mk<T.EffectInfo>(encS_EffectInfo, (r, e) => decS_EffectInfo(r, e, {})),
   EffectActionInfo: mk<T.EffectActionInfo>(encS_EffectActionInfo, (r, e) => decS_EffectActionInfo(r, e, {})),
+  EffectCustomUiInfo: mk<T.EffectCustomUiInfo>(encS_EffectCustomUiInfo, (r, e) => decS_EffectCustomUiInfo(r, e, {})),
   EffectGroupInfo: mk<T.EffectGroupInfo>(encS_EffectGroupInfo, (r, e) => decS_EffectGroupInfo(r, e, {})),
   ListEffects: mk<T.ListEffects>(encS_ListEffects, (r, e) => decS_ListEffects(r, e, {})),
   ListGroupTypes: mk<T.ListGroupTypes>(encS_ListGroupTypes, (r, e) => decS_ListGroupTypes(r, e, {})),
@@ -20153,6 +20409,9 @@ export const codecs = {
   GetCapabilities: mk<T.GetCapabilities>(encS_GetCapabilities, (r, e) => decS_GetCapabilities(r, e, {})),
   ListPlugins: mk<T.ListPlugins>(encS_ListPlugins, (r, e) => decS_ListPlugins(r, e, {})),
   GetEffectUi: mk<T.GetEffectUi>(encS_GetEffectUi, (r, e) => decS_GetEffectUi(r, e, {})),
+  DrawEffectParamUi: mk<T.DrawEffectParamUi>(encS_DrawEffectParamUi, (r, e) => decS_DrawEffectParamUi(r, e, {})),
+  ParamUiDrawing: mk<T.ParamUiDrawing>(encS_ParamUiDrawing, (r, e) => decS_ParamUiDrawing(r, e, {})),
+  ParamUiItem: mk<T.ParamUiItem>(encS_ParamUiItem, (r, e) => decS_ParamUiItem(r, e, {})),
   PluginInfo: mk<T.PluginInfo>(encS_PluginInfo, (r, e) => decS_PluginInfo(r, e, {})),
   PluginList: mk<T.PluginList>(encS_PluginList, (r, e) => decS_PluginList(r, e, {})),
   PluginPresetInfo: mk<T.PluginPresetInfo>(encS_PluginPresetInfo, (r, e) => decS_PluginPresetInfo(r, e, {})),

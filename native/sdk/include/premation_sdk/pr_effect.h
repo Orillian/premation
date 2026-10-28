@@ -61,6 +61,11 @@ extern "C" {
  *                                                        (a .gltf's buffers and images): add_file() each,
  *                                                        relative to the asset's folder. Document side,
  *                                                        at Collect Files; no render, no instance.
+ *   DRAW_PARAM_UI (1.3)        PrParamUiExtra*           a PR_PARAM_CUSTOM_UI row in Effect Controls (AE's
+ *                                                        custom ECW UI, PF_Cmd_EVENT draw): overlay_line /
+ *                                                        _path / _handle, ui_fill, ui_text, in the box's px
+ *   PARAM_UI_DRAG (1.3)        PrParamUiDragExtra*       a handle in that box was dragged: set_param_value /
+ *                                                        set_arb_data (the whole drag is ONE undo step)
  */
 typedef int32_t PrCmd;
 #define PR_CMD_ABOUT 0
@@ -84,7 +89,9 @@ typedef int32_t PrCmd;
 #define PR_CMD_DRAW_OVERLAY 18 /* SDK 1.1 */
 #define PR_CMD_OVERLAY_DRAG 19 /* SDK 1.1 */
 #define PR_CMD_LIST_ASSET_FILES 20 /* SDK 1.2 */
-#define PR_CMD_COUNT 21
+#define PR_CMD_DRAW_PARAM_UI 21 /* SDK 1.3 */
+#define PR_CMD_PARAM_UI_DRAG 22 /* SDK 1.3 */
+#define PR_CMD_COUNT 23
 
 /* ── out flags (GLOBAL_SETUP) ─────────────────────────────────────────────── */
 #define PR_OUT_FLAG_DEEP_COLOR_AWARE (1u << 0)     /* processes 16-bit worlds */
@@ -241,6 +248,32 @@ typedef struct PrOverlayDragExtra {
   uint32_t space;
   uint32_t reserved_1_2; /* 0 */
 } PrOverlayDragExtra;
+
+/* SDK 1.3 — DRAW_PARAM_UI: draw PR_PARAM_CUSTOM_UI param `param_index`'s box in Effect Controls, (0, 0)
+ * its top-left, `width` × `height` px (the card's width; the height the param declared). The params
+ * are the effect's values at the editor's time. The editor draws the list in its own theme: an item
+ * with a NULL colour takes the theme's (lines and paths: the secondary text colour; text: the text
+ * colour; fills: the control surface; handles: the accent), so a box that passes NULL matches light,
+ * dark and high contrast. */
+typedef struct PrParamUiExtra {
+  uint32_t struct_size;
+  uint32_t param_index;
+  double width;
+  double height;
+} PrParamUiExtra;
+
+/* SDK 1.3 — PARAM_UI_DRAG: handle `handle_id` in param `param_index`'s box is at (x, y), box px
+ * (PR_OVERLAY_DRAG_* phases, as OVERLAY_DRAG). Write params with set_param_value / set_arb_data;
+ * every phase of one drag lands in the same undo step. */
+typedef struct PrParamUiDragExtra {
+  uint32_t struct_size;
+  uint32_t param_index;
+  uint32_t handle_id;
+  int32_t phase;           /* PR_OVERLAY_DRAG_* */
+  double x, y;             /* the pointer, box px */
+  double start_x, start_y; /* where the drag began, box px */
+  double width, height;    /* the box, px (as DRAW_PARAM_UI had it) */
+} PrParamUiDragExtra;
 
 /* PR_CMD_LIST_ASSET_FILES (SDK 1.2): Collect Files asks which files beside a FILE param's asset
  * the effect reads with get_asset_sibling_bytes, so the collected project carries them (the

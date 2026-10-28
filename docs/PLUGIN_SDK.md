@@ -76,6 +76,7 @@ The plugin id and the match names must match the manifest.
 | `UPDATE_PARAMS_UI` | same | `set_param_ui` (enable / hide / rename) |
 | `GPU_DEVICE_SETUP` / `_SETDOWN`, `SMART_RENDER_GPU` | `PF_Cmd_GPU_DEVICE_SETUP`, `PF_Cmd_SMART_RENDER_GPU` | Dawn/WebGPU on the engine's own device (see GPU) |
 | `DRAW_OVERLAY` / `OVERLAY_DRAG` (1.1) | `PF_Cmd_EVENT` (draw / drag) | the viewer overlay (see Viewer overlays) |
+| `DRAW_PARAM_UI` / `PARAM_UI_DRAG` (1.3) | `PF_Cmd_EVENT` in the Effect Controls window (custom ECW UI) | a `CUSTOM_UI` param's box in the effect card (see Custom UI in Effect Controls) |
 | `LIST_ASSET_FILES` (1.2) | AE's Collect Files has no plugin hook (Element 3D ships its own model folders) | the files beside a `FILE` param's asset the effect reads, so Collect Files carries them (see Assets) |
 
 Out flags (SDK 1.2 adds `SAMPLES_TIME`, `USES_SHUTTER`, `COMP_SPACE`, below): `DEEP_COLOR_AWARE` (16-bit), `FLOAT_COLOR_AWARE` (32-bit float),
@@ -538,6 +539,47 @@ sits in the wrong place under any camera that is not the default. So:
 - The comp px are those of the comp camera (the active camera layer, else the
   default view): in a viewer looking through a custom or axis view the handles
   follow the comp camera, as the effect's render does.
+
+## Custom UI in Effect Controls (SDK 1.3)
+
+AE lets a plugin draw its own control inside Effect Controls (`PF_PUI_CONTROL`:
+a curve editor, a histogram, a palette strip between the param rows), drawn on
+`PF_Cmd_EVENT` with Drawbot. Premation does the same without plugin code in the
+UI process: the engine runs the plugin, and the editor draws what it returns.
+
+- Declare a `PR_PARAM_CUSTOM_UI` param in `PARAMS_SETUP`; `value[0]` is the box's
+  height in px (24..600; 0 = 120). It has no value of its own, so it shows and
+  edits other params or arbitrary data. The card draws it where you declared it
+  (inside its group, between the rows around it), as wide as the card, with the
+  param's name above it. `set_param_ui` hides, renames and disables it like any
+  row. **An older host refuses the unknown type and fails the whole plugin:**
+  declare the box only when `PR_SDK_VERSION_MINOR_OF(in_data->host_sdk_version)
+  >= 3` (the `rings` sample does).
+- `PR_CMD_DRAW_PARAM_UI` (`PrParamUiExtra`: the param's index, the box's `width`
+  and `height`): draw with `overlay_line`, `overlay_path`, `overlay_handle` and
+  the SDK 1.3 `ui_fill` (a filled polygon) and `ui_text` (one line of UTF-8, at
+  its baseline, left / centre / right) in box px, `(0, 0)` the top-left. The
+  params are the effect's values at the editor's time (animated ones included),
+  with the instance's sequence and arbitrary data. Same limits as the overlay
+  (256 items, 2048 points).
+- `PR_CMD_PARAM_UI_DRAG` (`PrParamUiDragExtra`: handle id, phase
+  `BEGIN`/`MOVE`/`END`, pointer and start in box px, the box size): write with
+  `set_param_value` / `set_arb_data`. The editor sends `dragEffectParamUi`
+  inside one gesture: begin → end is **one** undo entry, and Esc reverts it.
+- **Colours.** Pass `NULL` and the editor draws the item in its theme: lines and
+  paths in the secondary text colour, text in the text colour, fills in the
+  control surface, handles in the accent. A box drawn with `NULL` colours
+  matches dark, light and high contrast. Pass RGBA for data colours (a palette,
+  a histogram's channels).
+- The box is drawn again when the time or the document changes. A plugin that
+  fails or crashes while drawing draws nothing: the card shows an empty box.
+
+The `rings` sample's **Palette** box shows the palette's colours (Shuffle
+Palette updates them) and Spacing on a track; dragging its handle sets Spacing.
+
+Engine API: `EffectInfo.customUis` (`key`, `label`, `group`, `at`, `height`),
+the query `drawEffectParamUi { layer, effect, key, width, time? }` →
+`{ items, height }`, and the command `dragEffectParamUi`.
 
 ## Plugin panels (SDK 1.1)
 

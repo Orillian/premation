@@ -217,7 +217,24 @@ typedef struct PrHostSuite {
    * time (a precomp's instance copy) keeps its frame pose. Each distinct time is its own pass. */
   PrErr(PR_CALL* checkout_scene_depth_gpu_at)(PrHost* host, int64_t time, const PrGpuWorld** out_world);
   PrErr(PR_CALL* checkout_scene_depth_at)(PrHost* host, int64_t time, PrWorld** out_world);
+
+  /* ── SDK 1.3, Effect Controls boxes (appended after checkout_scene_depth_at; check struct_size >=
+   *    offsetof(PrHostSuite, ui_text) + sizeof(void*) before calling) ──
+   * PR_CMD_DRAW_PARAM_UI only (else PR_ERR_INVALID_CALLBACK), in the box's px, with overlay_line /
+   * overlay_path / overlay_handle (which DRAW_PARAM_UI also takes). Colours are straight RGBA 0..1;
+   * NULL = the editor theme's (see PrParamUiExtra). Same limits as the overlay: 256 items, 2048 points.
+   *
+   * ui_fill: a filled polygon (`point_count` x, y pairs, 3..192), drawn under the lines that follow.
+   * ui_text: one line of UTF-8 (≤ 256 bytes) at (x, y) = its baseline's start (PR_UI_TEXT_LEFT), centre
+   *   (_CENTER) or end (_RIGHT), `size` px (6..48), in the editor's UI font. */
+  PrErr(PR_CALL* ui_fill)(PrHost* host, const double* xy, uint32_t point_count, const float* rgba);
+  PrErr(PR_CALL* ui_text)(PrHost* host, double x, double y, const char* utf8, double size, uint32_t align, const float* rgba);
 } PrHostSuite;
+
+/* SDK 1.3: ui_text's `align`. */
+#define PR_UI_TEXT_LEFT 0
+#define PR_UI_TEXT_CENTER 1
+#define PR_UI_TEXT_RIGHT 2
 
 #define PR_OVERLAY_HANDLE_SQUARE 0
 #define PR_OVERLAY_HANDLE_CIRCLE 1

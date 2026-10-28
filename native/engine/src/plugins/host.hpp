@@ -377,9 +377,13 @@ class PluginHost {
   /// USER_CHANGED_PARAM (invokeEffectAction).
   std::variant<doc::NativeEdit, doc::NativeFailure> user_changed(const doc::NativeActionRequest& r);
   /// SDK 1.1 DRAW_OVERLAY: the effect instance's viewer overlay (layer px).
+  /// SDK 1.3: with r.paramUi, DRAW_PARAM_UI — that Effect Controls box (box px).
   std::variant<std::vector<doc::NativeOverlayItem>, doc::NativeFailure> draw_overlay(const doc::NativeActionRequest& r);
   /// SDK 1.1 OVERLAY_DRAG (dragEffectOverlay): what the plugin wrote for the handle's new position.
+  /// SDK 1.3: with r.paramUi, PARAM_UI_DRAG (dragEffectParamUi).
   std::variant<doc::NativeEdit, doc::NativeFailure> overlay_drag(const doc::NativeActionRequest& r, const doc::NativeOverlayDrag& d);
+  /// SDK 1.3: the 1-based index of effect `type`'s PR_PARAM_CUSTOM_UI param `key`; 0 = none.
+  [[nodiscard]] std::uint32_t custom_ui_index(const std::string& type, const std::string& key) const;
   /// UPDATE_PARAMS_UI (getEffectUi): every param's UI state for these inputs.
   std::variant<std::vector<ParamUi>, std::string> params_ui(const RenderInputs& in);
   /// getEffectUi for a document effect instance (the document's static params, sequence and arbitrary data).

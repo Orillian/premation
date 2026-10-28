@@ -102,6 +102,7 @@ import { ParamExpression } from './ParamExpression';
 import { altClickStopwatchEdit } from '@providers/commands/expressionCommands';
 import { requestExpressionEditor } from '@core/animation/expressionEditorRequests';
 import { MissingPluginCard, PluginEffectButton, usePluginEffectUi } from './PluginEffectParts';
+import { PluginCustomUi } from './PluginCustomUi';
 import { pluginCardSections } from '@core/inspector/pluginCardLayout';
 import { pluginPresetsFor, type PluginPreset } from '@core/nativePlugins/pluginPresets';
 import { PluginHeaderActions, PluginHeaderIcon } from './PluginCardHeader';
@@ -364,6 +365,14 @@ function PluginEffectBody({ nodeId, effect, def }: { nodeId: string; effect: Eff
         const rows = section.items.map((it) => {
           if (it.kind === 'button') {
             return <PluginEffectButton key={it.key} nodeId={nodeId} effect={effect} def={def} action={it.key} label={it.label} disabled={it.disabled} />;
+          }
+          if (it.kind === 'customUi') {  // SDK 1.3: the plugin's own box (PluginCustomUi.tsx)
+            return (
+              <PluginCustomUi
+                key={it.key} nodeId={nodeId} effect={effect} def={def} uiKey={it.key} label={it.label}
+                height={it.height} description={it.description} time={time} disabled={it.disabled}
+              />
+            );
           }
           const r = <EffectParamRow key={it.param.key} nodeId={nodeId} effect={effect} def={def} param={it.param} />;
           return it.disabled

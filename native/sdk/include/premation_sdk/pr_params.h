@@ -45,6 +45,10 @@ typedef int32_t PrParamType;
 #define PR_PARAM_CURVE 15         /* a Curves-style transfer curve (`curve`: x, y pairs in 0..1, x ascending) */
 #define PR_PARAM_GRADIENT 16      /* colour stops (`gradient`: position 0..1, r, g, b, a per stop) */
 #define PR_PARAM_FILE 17          /* a project asset (a model, a LUT, a texture): `file_*`, get_asset_path / _bytes */
+/* SDK 1.3: a box the plugin draws in Effect Controls (DRAW_PARAM_UI) whose handles it drags
+ * (PARAM_UI_DRAG) — AE's custom ECW UI (PF_PUI_CONTROL). No value of its own: it shows and edits
+ * other params or arbitrary data. value[0] at setup = the box's height, px (24..600; 0 = 120). */
+#define PR_PARAM_CUSTOM_UI 18
 
 /* PrParamDef.flags */
 #define PR_PARAM_FLAG_CANNOT_ANIMATE (1u << 0)  /* never keyframeable */

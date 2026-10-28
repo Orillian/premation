@@ -117,7 +117,8 @@ maybe('a plugin effect card, engine side', () => {
     const sections = pluginCardSections(effectInfoToDef(await ringsInfo()), new Map(ui.params.map((p) => [p.key, p])));
     const keys = (s: (typeof sections)[number]) => s.items.map((it) => (it.kind === 'param' ? it.param.key : `[${it.label}]`));
     expect(sections.map((s) => [s.group ?? '', s.collapsed])).toEqual([['', false], ['Debug', true]]);
-    expect(keys(sections[0]!)).toEqual(['p1X', 'p1Y', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', '[Shuffle Palette]']);
+    // SDK 1.3: the Palette box, declared after Opacity and before Shuffle Palette.
+    expect(keys(sections[0]!)).toEqual(['p1X', 'p1Y', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', '[Palette]', '[Shuffle Palette]']);
     expect(keys(sections[1]!)).toEqual(['p901']);
   });
 

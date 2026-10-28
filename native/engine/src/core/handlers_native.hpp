@@ -26,6 +26,8 @@ void native_effect_added(Document& d, std::string_view layer, std::string_view e
 void native_invoke_action(HCtx& x, const api::PropRef& group, const std::string& action, const std::string& payload = {});
 /// dragEffectOverlay (plugin SDK 1.1): OVERLAY_DRAG on the effect, its writes applied like an action's.
 void native_overlay_drag(HCtx& x, const api::DragEffectOverlay& c);
+/// dragEffectParamUi (plugin SDK 1.3): PARAM_UI_DRAG on the effect's custom UI box, its writes applied like an action's.
+void native_param_ui_drag(HCtx& x, const api::DragEffectParamUi& c);
 /// Write what a plugin changed (params — keyed at the playhead when animated —, sequence, arbitrary data).
 void apply_native_edit(HCtx& x, const api::PropRef& group, const std::string& effectId, const NativeEdit& edit);
 /// The host request for one document effect instance (static params, flat sequence, arbitrary data) at `time`.

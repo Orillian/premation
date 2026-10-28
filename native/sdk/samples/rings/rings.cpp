@@ -18,9 +18,11 @@
 //   Opacity · Shuffle Palette (button) · Set Palette (hidden button) ▸ Debug: Fault
 #include <premation_sdk/premation_sdk.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <numbers>
 
@@ -28,7 +30,8 @@
 
 namespace {
 
-enum : uint32_t { kCenter = 1, kSpacing = 2, kRotation = 3, kMix = 4, kColorA = 5, kColorB = 6, kOpacity = 7, kShuffle = 8, kSetPalette = 9, kSwapColors = 10 };
+enum : uint32_t { kCenter = 1, kSpacing = 2, kRotation = 3, kMix = 4, kColorA = 5, kColorB = 6, kOpacity = 7, kShuffle = 8, kSetPalette = 9, kSwapColors = 10,
+                  kPaletteBox = 11 };
 
 constexpr uint32_t kMagic = 0x52494E47;  // 'RING'
 constexpr uint32_t kFormat = 1;
@@ -113,6 +116,12 @@ PrErr params_setup(const PrInData* in) {
   if (e == PR_ERR_NONE) e = prs::add_simple(in, PR_PARAM_COLOR, kColorA, "Color A", {1, 1, 1, 1});
   if (e == PR_ERR_NONE) e = prs::add_simple(in, PR_PARAM_COLOR, kColorB, "Color B", {0, 0, 0, 1});
   if (e == PR_ERR_NONE) e = prs::add_float(in, kOpacity, "Opacity", 100, 0, 100, 0, 100, 1);
+  // SDK 1.3: a box in Effect Controls (the palette, and a Spacing handle). An older host would refuse
+  // the unknown type and fail the whole plugin, so declare it only where the host can draw it.
+  const uint32_t host = in->host_sdk_version;
+  if (e == PR_ERR_NONE && PR_SDK_VERSION_MAJOR_OF(host) == 1 && PR_SDK_VERSION_MINOR_OF(host) >= 3) {
+    e = prs::add_simple(in, PR_PARAM_CUSTOM_UI, kPaletteBox, "Palette", {64, 0, 0, 0});
+  }
   if (e == PR_ERR_NONE) e = prs::add_simple(in, PR_PARAM_BUTTON, kShuffle, "Shuffle Palette", {}, PR_PARAM_FLAG_SUPERVISE);
   if (e == PR_ERR_NONE) {
     e = prs::add_simple(in, PR_PARAM_BUTTON, kSetPalette, "Set Palette", {}, PR_PARAM_FLAG_SUPERVISE | PR_PARAM_FLAG_HIDDEN);
@@ -210,6 +219,61 @@ PrErr overlay_drag(const PrInData* in, PrParamDef* const* params, const PrOverla
   return PR_ERR_NONE;
 }
 
+// ── SDK 1.3: the Palette box in Effect Controls ──
+// The palette's swatches across the top, then Spacing on a track whose handle drags it. Colours the
+// plugin does not choose are NULL: the editor draws them in its theme (dark, light, high contrast).
+
+constexpr uint32_t kSpacingHandle = 1;
+constexpr double kPad = 10;
+constexpr double kTrackY = 50;
+constexpr double kSpacingMin = 2;
+constexpr double kSpacingMax = 200;  // the Spacing slider's span
+
+uint32_t index_of(const PrInData* in, PrParamDef* const* params, uint32_t id) {
+  for (uint32_t i = 1; i < in->num_params; ++i) {
+    if (params[i] != nullptr && params[i]->id == id) return i;  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  }
+  return 0;
+}
+
+double track_x(double spacing, double width) {
+  const double t = (std::clamp(spacing, kSpacingMin, kSpacingMax) - kSpacingMin) / (kSpacingMax - kSpacingMin);
+  return kPad + t * std::max(1.0, width - 2 * kPad);
+}
+
+PrErr draw_param_ui(const PrInData* in, PrParamDef* const* params, const PrParamUiExtra* box) {
+  if (box == nullptr || in->host->struct_size < offsetof(PrHostSuite, ui_text) + sizeof(void*)) return PR_ERR_UNSUPPORTED;
+  const PrHostSuite& h = *in->host;
+  Palette pal;
+  if (!read_palette(in, in->sequence_data, pal)) roll(pal);
+  const double w = box->width;
+  const double cell = (w - 2 * kPad) / std::max(1U, pal.count);
+  for (uint32_t i = 0; i < pal.count; ++i) {
+    const double x0 = kPad + cell * i;
+    const double x1 = x0 + cell - 2;
+    const std::array<double, 8> xy{x0, 8, x1, 8, x1, 26, x0, 26};
+    const auto& c = pal.colors.at(i);
+    const float rgba[4] = {c[0], c[1], c[2], 1};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays): the SDK's rgba
+    if (PrErr e = h.ui_fill(in->host_ref, xy.data(), 4, rgba); e != PR_ERR_NONE) return e;
+  }
+  const double spacing = prs::num(params, in, kSpacing);
+  char label[48];  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays)
+  std::snprintf(label, sizeof(label), "Spacing %.0f px", spacing);
+  if (PrErr e = h.ui_text(in->host_ref, kPad, 41, label, 11, PR_UI_TEXT_LEFT, nullptr); e != PR_ERR_NONE) return e;
+  if (PrErr e = h.overlay_line(in->host_ref, kPad, kTrackY, w - kPad, kTrackY, nullptr); e != PR_ERR_NONE) return e;
+  return h.overlay_handle(in->host_ref, kSpacingHandle, track_x(spacing, w), kTrackY, PR_OVERLAY_HANDLE_CIRCLE);
+}
+
+/// PARAM_UI_DRAG: Spacing follows the handle along the track.
+PrErr param_ui_drag(const PrInData* in, PrParamDef* const* params, const PrParamUiDragExtra* drag) {
+  if (drag == nullptr || drag->handle_id != kSpacingHandle) return PR_ERR_NONE;
+  const uint32_t i = index_of(in, params, kSpacing);
+  if (i == 0) return PR_ERR_NONE;
+  const double t = std::clamp((drag->x - kPad) / std::max(1.0, drag->width - 2 * kPad), 0.0, 1.0);
+  const double v[1] = {std::round(kSpacingMin + t * (kSpacingMax - kSpacingMin))};  // NOLINT(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays)
+  return in->host->set_param_value(in->host_ref, i, v, 1);
+}
+
 PrErr PR_CALL rings_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamDef* const* params, PrWorld* /*output*/,
                          void* extra) {
   switch (cmd) {
@@ -276,6 +340,8 @@ PrErr PR_CALL rings_main(PrCmd cmd, const PrInData* in, PrOutData* out, PrParamD
     case PR_CMD_SMART_RENDER: return smart_render(in, out, params);
     case PR_CMD_DRAW_OVERLAY: return draw_overlay(in, params);
     case PR_CMD_OVERLAY_DRAG: return overlay_drag(in, params, static_cast<const PrOverlayDragExtra*>(extra));
+    case PR_CMD_DRAW_PARAM_UI: return draw_param_ui(in, params, static_cast<const PrParamUiExtra*>(extra));  // SDK 1.3
+    case PR_CMD_PARAM_UI_DRAG: return param_ui_drag(in, params, static_cast<const PrParamUiDragExtra*>(extra));
     default: return PR_ERR_NONE;
   }
 }

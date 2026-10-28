@@ -57,6 +57,19 @@ struct NativeGroup {
   std::string description;  ///< the GROUP_START's PrParamDef.description (SDK 1.2): the header's tooltip
 };
 
+/// SDK 1.3 — a PR_PARAM_CUSTOM_UI row: placed like a button (`at` params before it, in `group`),
+/// `height` px tall.
+struct NativeCustomUi {
+  std::string key;
+  std::string label;
+  std::string group;
+  std::uint32_t at = 0;
+  double height = 120;
+  std::string description;
+  /// How many of the buttons at the same `at` were declared before it (their order between the same params).
+  std::uint32_t afterButtons = 0;
+};
+
 struct NativeEffect {
   EffectDef def;         ///< type = the plugin's match name
   std::string provider;  ///< the plugin id
@@ -82,17 +95,29 @@ struct NativeEffect {
   /// SDK 1.1 FILE params: the document key and the extensions offered ("cube|3dl", "" = any).
   /// The value is a project item id, so collect / relink / save carry the file.
   std::vector<std::pair<std::string, std::string>> files;
+  /// SDK 1.3 PR_PARAM_CUSTOM_UI rows: boxes the plugin draws in Effect Controls (DRAW_PARAM_UI).
+  std::vector<NativeCustomUi> customUis;
 };
 
-/// SDK 1.1 — one item of a plugin's viewer overlay (DRAW_OVERLAY), layer px (SDK 1.2: or comp px, `space`).
+/// SDK 1.1 — one item of a plugin's viewer overlay (DRAW_OVERLAY), layer px (SDK 1.2: or comp px, `space`);
+/// SDK 1.3 — or of an Effect Controls box (DRAW_PARAM_UI), box px.
 struct NativeOverlayItem {
-  std::string kind;  ///< "line" | "path" | "handle"
+  std::string kind;  ///< "line" | "path" | "handle"; SDK 1.3 boxes also "fill" | "text"
   std::vector<double> points;  ///< x, y pairs
   bool closed = false;
   std::vector<double> color;   ///< straight rgba 0..1; empty = the viewer's handle colour
   std::uint32_t handle = 0;    ///< a handle's id (OVERLAY_DRAG)
   std::uint32_t shape = 0;     ///< PR_OVERLAY_HANDLE_*
   std::uint32_t space = 0;     ///< SDK 1.2 PR_OVERLAY_SPACE_*: 0 layer px, 1 composition px
+  std::string text;            ///< SDK 1.3 "text": UTF-8, one line
+  double size = 0;             ///< SDK 1.3 "text": px
+  std::uint32_t align = 0;     ///< SDK 1.3 "text": PR_UI_TEXT_*
+};
+
+/// SDK 1.3 — the Effect Controls box a DRAW_PARAM_UI / PARAM_UI_DRAG call is for.
+struct NativeParamUiTarget {
+  std::string key;  ///< the PR_PARAM_CUSTOM_UI param's key (`p7`)
+  double width = 0, height = 0;
 };
 
 /// SDK 1.1 — dragEffectOverlay's pointer, in the handle's space (layer px; SDK 1.2: or comp px).
@@ -148,6 +173,9 @@ struct NativeActionRequest {
   /// native_layer_frame). Wins over the size the instance's last render saw, which is none
   /// before the first render.
   std::optional<std::pair<double, double>> layerSize;
+  /// SDK 1.3: set = draw_overlay / overlay_drag run the Effect Controls box's selectors
+  /// (DRAW_PARAM_UI / PARAM_UI_DRAG) instead of the viewer overlay's.
+  std::optional<NativeParamUiTarget> paramUi;
 };
 
 /// What the plugin changed.

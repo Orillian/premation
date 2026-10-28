@@ -23,6 +23,7 @@
 #include "handlers_misc.hpp"
 #include "item_facts.hpp"
 #include "handlers_native.hpp"
+#include "overlay_geometry.hpp"
 #include "handlers_performance.hpp"
 #include "layer_geometry.hpp"
 #include "native_contrib.hpp"
@@ -809,6 +810,11 @@ struct Q {
       e.gpu = ne->gpu;
       e.supports_float = ne->supportsFloat;
       for (const NativeAction& a : ne->actions) e.actions.push_back(api::EffectActionInfo{a.key, a.label, a.group, a.at});
+      for (const NativeCustomUi& u : ne->customUis) {  // SDK 1.3: Effect Controls boxes
+        api::EffectCustomUiInfo ci{u.key, u.label, u.group, u.at, u.height, std::nullopt, u.afterButtons};
+        if (!u.description.empty()) ci.description = u.description;
+        e.custom_uis.push_back(std::move(ci));
+      }
       for (const NativeGroup& g : ne->groups) {
         api::EffectGroupInfo gi{g.path, g.key, g.collapsed, std::nullopt};
         if (!g.description.empty()) gi.description = g.description;
@@ -873,6 +879,9 @@ struct Q {
   }
   api::QueryResult operator()(const api::GetEffectUi& q) const {
     return query_result_for<api::GetEffectUi>(native_effect_ui(d, q.layer, q.effect, q.time.value_or(0)));
+  }
+  api::QueryResult operator()(const api::DrawEffectParamUi& q) const {  // plugin SDK 1.3 — overlay_geometry.cpp
+    return query_result_for<api::DrawEffectParamUi>(native_param_ui_draw(pc, q.layer, q.effect, q.key, q.width, q.time.value_or(0)));
   }
   api::QueryResult operator()(const api::HitTest& q) const {
     require_comp(d, q.comp);

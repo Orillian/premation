@@ -81,4 +81,10 @@ inline constexpr std::uint32_t kOverlayPathPoints = 128;
                                                                  std::vector<api::OverlayLayerGeometry> layers,
                                                                  std::vector<api::OverlayView> views = {});
 
+/// Plugin SDK 1.3 (drawEffectParamUi): what effect `path`'s plugin draws in its PR_PARAM_CUSTOM_UI box `key`
+/// (PR_CMD_DRAW_PARAM_UI), `width` px wide, for the effect's values at comp `time` (animated params included).
+/// notFound for no such layer, effect or box; a plugin that fails draws nothing.
+[[nodiscard]] api::ParamUiDrawing native_param_ui_draw(const PCtx& pc, const std::string& layer, const std::string& path,
+                                                       const std::string& key, double width, api::Time time);
+
 }  // namespace premation::doc

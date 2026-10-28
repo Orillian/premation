@@ -423,9 +423,13 @@ struct EffectInfo {
   groups: EffectGroupInfo[] = 10;
   /// A native plugin effect's PR_CMD_ABOUT text (name, version, credits): the card's About. '' for builtins.
   about?: string = 11;
+  /// Plugin SDK 1.3 — a native plugin effect's PR_PARAM_CUSTOM_UI boxes (AE's custom Effect Controls UI): drawEffectParamUi draws one, dragEffectParamUi drags its handles. Empty for builtins.
+  customUis: EffectCustomUiInfo[] = 12;
 }
 /// `group`: the enclosing group path, as `EffectParamInfo.group` spells it ('' = top level). `at`: how many of `params` come before the button — the card draws it there, in the plugin's own order.
 struct EffectActionInfo { key: string = 1; label: string = 2; group: string = 3; at: u32 = 4; }
+/// Plugin SDK 1.3 — a box the plugin draws in its effect card: placed like a button (`group`, `at`), `height` px tall (24..600), as wide as the card. `afterButtons`: how many of the buttons with the same `at` the plugin declared before it — the card keeps their order.
+struct EffectCustomUiInfo { key: string = 1; label: string = 2; group: string = 3; at: u32 = 4; height: f64 = 5; description?: string = 6; afterButtons: u32 = 7; }
 /// `name`: the group's path as its params' `EffectParamInfo.group` spells it ("Glow / Advanced" for a nested one). `key`: the GROUP_START param's key (`p4`) — getEffectUi reports it hidden when the plugin hides the whole group. `collapsed`: PR_PARAM_FLAG_START_COLLAPSED (the card opens it twirled up).
 struct EffectGroupInfo { name: string = 1; key: string = 2; collapsed: bool = 3; description?: string = 4; }
 
@@ -440,6 +444,24 @@ query getCapabilities = 1043 {} -> Capabilities;
 query listPlugins = 1086 {} -> PluginList;
 /// G1 — a native plugin effect's parameter UI at `time` (UPDATE_PARAMS_UI: which params are enabled, hidden or renamed for the current values). A builtin effect answers every param enabled and visible under its catalog name. `notFound` for no such layer or effect.
 query getEffectUi = 1087 { layer: LayerId = 1; effect: PropPath = 2; time?: Time = 3; } -> EffectUi;
+/// Plugin SDK 1.3 — what a native plugin draws in its PR_PARAM_CUSTOM_UI box `key` (PR_CMD_DRAW_PARAM_UI) for the effect's values at `time`, in box px ((0, 0) the top-left; `width` × the param's height). A plugin that fails or crashes draws nothing (`items` empty) and the error is not raised: the card shows an empty box. `notFound` for no such layer, effect or box.
+query drawEffectParamUi = 1953 { layer: LayerId = 1; effect: PropPath = 2; key: string = 3; width: f64 = 4; time?: Time = 5; } -> ParamUiDrawing;
+struct ParamUiDrawing { items: ParamUiItem[] = 1; height: f64 = 2; }
+/// One item of a PR_PARAM_CUSTOM_UI box, box px. `kind`: `line` | `path` | `fill` | `handle` | `text`. `color` empty = the editor theme's (lines / paths: the secondary text colour, text: the text colour, fills: the control surface, handles: the accent).
+struct ParamUiItem {
+  kind: string = 1;
+  /// x, y pairs: a line's ends, a path's / fill's points, a handle's or text's position (text: the baseline at `align`).
+  points: f64[] = 2;
+  closed: bool = 3;
+  color: f64[] = 4;
+  /// A handle's id (dragEffectParamUi `handle`) and shape (0 square, 1 circle, 2 crosshair).
+  handle: u32 = 5;
+  shape: u32 = 6;
+  /// `text`: UTF-8, its size in px and alignment (0 left, 1 centre, 2 right).
+  text: string = 7;
+  size: f64 = 8;
+  align: u32 = 9;
+}
 
 /// `revoked`: on the registry's signed revocation list (Electron passes it with `--revoked`); its code never runs.
 /// `locked`: its manifest requires an entitlement (`"entitlement": "premation-cloud"`) and no valid entitlement token was passed (`--entitlement`); its code never runs and its effects pass through, recorded on `layerErrors` (plan §3.2).

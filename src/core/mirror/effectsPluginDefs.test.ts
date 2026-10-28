@@ -24,7 +24,7 @@ const tree = {
 };
 
 const grade: EffectInfo = {
-  matchName: 'com.acme.grade', displayName: 'Grade', category: 'Acme', gpu: false, provider: 'com.acme.grade', supportsFloat: true, audio: false, actions: [], groups: [],
+  matchName: 'com.acme.grade', displayName: 'Grade', category: 'Acme', gpu: false, provider: 'com.acme.grade', supportsFloat: true, audio: false, actions: [], groups: [], customUis: [],
   params: [{ matchName: 'p1', name: 'Channels', kind: 'text', valueType: 'string', defaultValue: { kind: 'string', value: 'rgb' }, choices: [] } as unknown as EffectInfo['params'][number]],
 };
 

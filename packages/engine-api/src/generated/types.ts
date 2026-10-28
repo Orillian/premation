@@ -2561,6 +2561,19 @@ export interface DragEffectOverlay {
   space: number;
 }
 
+/** Plugin SDK 1.3 — a handle in a native plugin's PR_PARAM_CUSTOM_UI box `key` was dragged (PR_CMD_PARAM_UI_DRAG): the pointer and the drag's start in box px, `phase` 0 begin / 1 move / 2 end, the box `width` as drawEffectParamUi had it. The plugin's writes land like an action's; send a drag's steps inside one gesture for one undo entry. */
+export interface DragEffectParamUi {
+  group: PropRef;
+  key: string;
+  handle: number;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  phase: number;
+  width: number;
+}
+
 /** AE's Add ▸ Property: add OPTIONAL properties that exist only once added — a text animator's Anchor Point, Skew Axis, Line Anchor, Character Value, Fill / Stroke Hue·Saturation·Brightness, Stroke Opacity, Fill Color, Stroke Color, and Font Axis properties ('axis<TAG>'). `parent` is the property group ('text/animators/<id>/props'); `names` are the new properties' path leaves. A property already present is kept as it is (AE's menu disables it). Returns the property paths in input order. Undo removes what this added. */
 export interface AddProperties {
   parent: PropRef;
@@ -4205,6 +4218,8 @@ export interface EffectInfo {
   groups: EffectGroupInfo[];
   /** A native plugin effect's PR_CMD_ABOUT text (name, version, credits): the card's About. '' for builtins. */
   about?: string;
+  /** Plugin SDK 1.3 — a native plugin effect's PR_PARAM_CUSTOM_UI boxes (AE's custom Effect Controls UI): drawEffectParamUi draws one, dragEffectParamUi drags its handles. Empty for builtins. */
+  customUis: EffectCustomUiInfo[];
 }
 
 /** `group`: the enclosing group path, as `EffectParamInfo.group` spells it ('' = top level). `at`: how many of `params` come before the button — the card draws it there, in the plugin's own order. */
@@ -4213,6 +4228,17 @@ export interface EffectActionInfo {
   label: string;
   group: string;
   at: number;
+}
+
+/** Plugin SDK 1.3 — a box the plugin draws in its effect card: placed like a button (`group`, `at`), `height` px tall (24..600), as wide as the card. `afterButtons`: how many of the buttons with the same `at` the plugin declared before it — the card keeps their order. */
+export interface EffectCustomUiInfo {
+  key: string;
+  label: string;
+  group: string;
+  at: number;
+  height: number;
+  description?: string;
+  afterButtons: number;
 }
 
 /** `name`: the group's path as its params' `EffectParamInfo.group` spells it ("Glow / Advanced" for a nested one). `key`: the GROUP_START param's key (`p4`) — getEffectUi reports it hidden when the plugin hides the whole group. `collapsed`: PR_PARAM_FLAG_START_COLLAPSED (the card opens it twirled up). */
@@ -4252,6 +4278,36 @@ export interface GetEffectUi {
   layer: LayerId;
   effect: PropPath;
   time?: Time;
+}
+
+/** Plugin SDK 1.3 — what a native plugin draws in its PR_PARAM_CUSTOM_UI box `key` (PR_CMD_DRAW_PARAM_UI) for the effect's values at `time`, in box px ((0, 0) the top-left; `width` × the param's height). A plugin that fails or crashes draws nothing (`items` empty) and the error is not raised: the card shows an empty box. `notFound` for no such layer, effect or box. */
+export interface DrawEffectParamUi {
+  layer: LayerId;
+  effect: PropPath;
+  key: string;
+  width: number;
+  time?: Time;
+}
+
+export interface ParamUiDrawing {
+  items: ParamUiItem[];
+  height: number;
+}
+
+/** One item of a PR_PARAM_CUSTOM_UI box, box px. `kind`: `line` | `path` | `fill` | `handle` | `text`. `color` empty = the editor theme's (lines / paths: the secondary text colour, text: the text colour, fills: the control surface, handles: the accent). */
+export interface ParamUiItem {
+  kind: string;
+  /** x, y pairs: a line's ends, a path's / fill's points, a handle's or text's position (text: the baseline at `align`). */
+  points: number[];
+  closed: boolean;
+  color: number[];
+  /** A handle's id (dragEffectParamUi `handle`) and shape (0 square, 1 circle, 2 crosshair). */
+  handle: number;
+  shape: number;
+  /** `text`: UTF-8, its size in px and alignment (0 left, 1 centre, 2 right). */
+  text: string;
+  size: number;
+  align: number;
 }
 
 export interface PluginInfo {
@@ -5858,6 +5914,7 @@ export type Command =
   | ({ type: 'applyPreset' } & ApplyPreset)
   | ({ type: 'invokeEffectAction' } & InvokeEffectAction)
   | ({ type: 'dragEffectOverlay' } & DragEffectOverlay)
+  | ({ type: 'dragEffectParamUi' } & DragEffectParamUi)
   | ({ type: 'addProperties' } & AddProperties)
   | ({ type: 'removeProperties' } & RemoveProperties)
   | ({ type: 'pasteEffects' } & PasteEffects)
@@ -6036,6 +6093,7 @@ export type CommandResult =
   | ({ type: 'applyPreset' } & GroupList)
   | ({ type: 'invokeEffectAction' } & Empty)
   | ({ type: 'dragEffectOverlay' } & Empty)
+  | ({ type: 'dragEffectParamUi' } & Empty)
   | ({ type: 'addProperties' } & PropertyPaths)
   | ({ type: 'removeProperties' } & Empty)
   | ({ type: 'pasteEffects' } & GroupList)
@@ -6130,6 +6188,7 @@ export type Query =
   | ({ type: 'getCapabilities' } & GetCapabilities)
   | ({ type: 'listPlugins' } & ListPlugins)
   | ({ type: 'getEffectUi' } & GetEffectUi)
+  | ({ type: 'drawEffectParamUi' } & DrawEffectParamUi)
   | ({ type: 'getLayerFaces' } & GetLayerFaces)
   | ({ type: 'hitTest' } & HitTest)
   | ({ type: 'getLayerBounds' } & GetLayerBounds)
@@ -6192,6 +6251,7 @@ export type QueryResult =
   | ({ type: 'getCapabilities' } & Capabilities)
   | ({ type: 'listPlugins' } & PluginList)
   | ({ type: 'getEffectUi' } & EffectUi)
+  | ({ type: 'drawEffectParamUi' } & ParamUiDrawing)
   | ({ type: 'getLayerFaces' } & LayerFaces)
   | ({ type: 'hitTest' } & HitResult)
   | ({ type: 'getLayerBounds' } & LayerBoundsList)
@@ -6376,6 +6436,7 @@ export interface CommandArgs {
   applyPreset: ApplyPreset;
   invokeEffectAction: InvokeEffectAction;
   dragEffectOverlay: DragEffectOverlay;
+  dragEffectParamUi: DragEffectParamUi;
   addProperties: AddProperties;
   removeProperties: RemoveProperties;
   pasteEffects: PasteEffects;
@@ -6554,6 +6615,7 @@ export interface CommandResults {
   applyPreset: GroupList;
   invokeEffectAction: Empty;
   dragEffectOverlay: Empty;
+  dragEffectParamUi: Empty;
   addProperties: PropertyPaths;
   removeProperties: Empty;
   pasteEffects: GroupList;
@@ -6648,6 +6710,7 @@ export interface QueryArgs {
   getCapabilities: GetCapabilities;
   listPlugins: ListPlugins;
   getEffectUi: GetEffectUi;
+  drawEffectParamUi: DrawEffectParamUi;
   getLayerFaces: GetLayerFaces;
   hitTest: HitTest;
   getLayerBounds: GetLayerBounds;
@@ -6710,6 +6773,7 @@ export interface QueryResults {
   getCapabilities: Capabilities;
   listPlugins: PluginList;
   getEffectUi: EffectUi;
+  drawEffectParamUi: ParamUiDrawing;
   getLayerFaces: LayerFaces;
   hitTest: HitResult;
   getLayerBounds: LayerBoundsList;

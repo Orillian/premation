@@ -713,4 +713,56 @@ std::vector<api::FrameGeometry> pack_frame_geometry(std::uint32_t viewport, std:
   return out;
 }
 
+api::ParamUiDrawing native_param_ui_draw(const PCtx& pc, const std::string& layer, const std::string& path, const std::string& key,
+                                         double width, api::Time time) {
+  const Node* node = pc.d.node(layer);
+  if (node == nullptr) fail(api::ErrorCode::not_found, "no layer '" + layer + "'", {.layer = layer});
+  const std::string_view prefix = "effects/";
+  const std::string effectId = path.starts_with(prefix) ? path.substr(prefix.size()) : std::string();
+  const std::vector<Json> effects = read_node_effects(*node);  // owns what `e` points into
+  const Json* e = nullptr;
+  for (const Json& fx : effects) {
+    if (!effectId.empty() && fx.at("id").is_string() && fx.at("id").str() == effectId) e = &fx;
+  }
+  const std::string type = e != nullptr && e->at("type").is_string() ? e->at("type").str() : "";
+  const NativeEffect* ne = NativeEffects::find(type);
+  const NativeCustomUi* box = nullptr;
+  if (ne != nullptr) {
+    const auto it = std::ranges::find(ne->customUis, key, &NativeCustomUi::key);
+    if (it != ne->customUis.end()) box = &*it;
+  }
+  if (box == nullptr) fail(api::ErrorCode::not_found, "no plugin custom UI '" + key + "' at '" + path + "'", {.layer = layer, .path = path});
+
+  api::ParamUiDrawing out;
+  out.height = box->height;
+  if (!NativeEffects::available(type)) return out;  // a disabled / failed plugin: an empty box
+  // The effect's values at the editor's time, as the viewer overlay reads them (animated params too).
+  const double seconds = flicks_to_seconds(time);
+  NativeActionRequest req = native_request(pc.d, *node, layer, effectId, *e, *ne, time);
+  const std::string valuePrefix = "effect." + effectId + ".";
+  for (const auto& [k, v] : values_at(pc, layer, seconds)) {
+    if (k.starts_with(valuePrefix)) req.params.set(k.substr(valuePrefix.size()), Json::number(v));
+  }
+  req.paramUi = NativeParamUiTarget{key, std::clamp(std::isfinite(width) ? width : 0.0, 16.0, 4096.0), box->height};
+  auto items = NativeEffects::draw_overlay(req);
+  // A plugin that fails or crashes draws nothing: the card shows an empty box (the crash is on the
+  // plugin's record, as for the viewer overlay).
+  if (auto* list = std::get_if<std::vector<NativeOverlayItem>>(&items)) {
+    for (NativeOverlayItem& i : *list) {
+      api::ParamUiItem o;
+      o.kind = std::move(i.kind);
+      o.points = std::move(i.points);
+      o.closed = i.closed;
+      o.color = std::move(i.color);
+      o.handle = i.handle;
+      o.shape = i.shape;
+      o.text = std::move(i.text);
+      o.size = i.size;
+      o.align = i.align;
+      out.items.push_back(std::move(o));
+    }
+  }
+  return out;
+}
+
 }  // namespace premation::doc

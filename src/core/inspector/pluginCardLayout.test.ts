@@ -26,6 +26,7 @@ const info: EffectInfo = {
     { name: 'Input / Iris', key: 'p5g', collapsed: false },
     { name: 'Quality', key: 'p7', collapsed: true },
   ],
+  customUis: [],
 };
 const def = effectInfoToDef(info);
 
@@ -64,6 +65,34 @@ it('hides, renames and disables buttons like params', () => {
   const s = pluginCardSections(def, ui({ key: 'p5', hidden: true }, { key: 'p11', name: 'Randomise', enabled: false }));
   expect(keys(s[1]!)).toEqual(['p4:Threshold']);
   expect(s[4]!.items[1]).toEqual({ kind: 'button', key: 'p11', label: 'Randomise', disabled: true });
+});
+
+it('places a custom UI box (SDK 1.3) where it was declared, and hides / renames / disables it like a param', () => {
+  const boxed = effectInfoToDef({
+    ...info,
+    customUis: [
+      { key: 'p12', label: 'Falloff', group: 'Input', at: 3, height: 90, description: 'Drag the knee.', afterButtons: 0 }, // before Threshold
+      { key: 'p13', label: '', group: '', at: 99, height: 40, afterButtons: 1 }, // past the end, after Shuffle: last
+    ],
+  });
+  const s = pluginCardSections(boxed, null);
+  expect(keys(s[1]!)).toEqual(['[Falloff]', 'p4:Threshold', '[Swap]']);
+  expect(s[1]!.items[0]).toEqual({ kind: 'customUi', key: 'p12', label: 'Falloff', height: 90, description: 'Drag the knee.', disabled: false });
+  expect(s[4]!.items.map((it) => it.kind)).toEqual(['param', 'button', 'customUi']);
+  const shown = pluginCardSections(boxed, ui({ key: 'p12', name: 'Curve', enabled: false }, { key: 'p13', hidden: true }));
+  expect(shown[1]!.items[0]).toMatchObject({ kind: 'customUi', label: 'Curve', disabled: true });
+  expect(shown[4]!.items.map((it) => it.kind)).toEqual(['param', 'button']);
+});
+
+it('keeps a box and buttons at the same place in declaration order', () => {
+  const at = (afterButtons: number) => effectInfoToDef({
+    ...info,
+    actions: [{ key: 'p11', label: 'Shuffle', group: '', at: 7 }, { key: 'p14', label: 'Reset', group: '', at: 7 }],
+    customUis: [{ key: 'p13', label: 'Strip', group: '', at: 7, height: 40, afterButtons }],
+  });
+  expect(keys(pluginCardSections(at(0), null)[4]!)).toEqual(['p10:Opacity', '[Strip]', '[Shuffle]', '[Reset]']);
+  expect(keys(pluginCardSections(at(1), null)[4]!)).toEqual(['p10:Opacity', '[Shuffle]', '[Strip]', '[Reset]']);
+  expect(keys(pluginCardSections(at(2), null)[4]!)).toEqual(['p10:Opacity', '[Shuffle]', '[Reset]', '[Strip]']);
 });
 
 it('CANNOT_ANIMATE numbers are fixed', () => {

@@ -667,6 +667,7 @@ if(MOTION_BUILD_TESTS)
   add_dependencies(engine_plugins_tests premation-plugins ripple rings checkout particles grademap distribute ppmio ppmseq statspanel)
   add_test(NAME engine_plugins_tests COMMAND engine_plugins_tests --reporter compact)
   target_sources(engine_plugins_tests PRIVATE tests/test_plugin_sdk12.cpp)  # SDK 1.2: times, shutter, assets, presets
+  target_sources(engine_plugins_tests PRIVATE tests/test_plugin_param_ui.cpp)  # SDK 1.3: Effect Controls boxes
   target_sources(engine_plugins_tests PRIVATE tests/test_plugin_model3d.cpp)  # SDK 1.2 (S8): the model3d sample's CPU path
   add_dependencies(engine_plugins_tests model3d)
   # P7b: analysis jobs read plugin footage through its importer (jobs/media_input.cpp open_plugin_frames).
