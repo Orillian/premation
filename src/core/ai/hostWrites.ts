@@ -310,7 +310,8 @@ export async function addMaskFromPath(session: AiEngineSession, layer: string, m
   if (!id) throw new AiEngineError('internal', `adding a mask to '${layer}' returned no mask`);
   const nums: Record<string, number> = {};
   if (mask.feather) nums[`mask.${id}.feather`] = mask.feather;
-  if (mask.opacity !== undefined && mask.opacity !== 1) nums[`mask.${id}.opacity`] = mask.opacity;
+  // The tools' opacity is 0..1; the Mask Opacity property is in %.
+  if (mask.opacity !== undefined && mask.opacity !== 1) nums[`mask.${id}.opacity`] = mask.opacity * 100;
   if (mask.expansion) nums[`mask.${id}.expansion`] = mask.expansion;
   if (Object.keys(nums).length > 0) {
     const writes = await memberWritesNow(layer, nums);
@@ -342,7 +343,7 @@ export async function patchMask(session: AiEngineSession, layer: string, maskId:
   if (patch.inverted !== undefined) writes.push({ prop: { layer, path: `masks/${maskId}/inverted` }, value: { kind: 'bool', value: patch.inverted } });
   const nums: Record<string, number> = {};
   if (patch.feather !== undefined) nums[`mask.${maskId}.feather`] = patch.feather;
-  if (patch.opacity !== undefined) nums[`mask.${maskId}.opacity`] = patch.opacity;
+  if (patch.opacity !== undefined) nums[`mask.${maskId}.opacity`] = patch.opacity * 100;
   if (patch.expansion !== undefined) nums[`mask.${maskId}.expansion`] = patch.expansion;
   if (Object.keys(nums).length > 0) {
     const w = await memberWritesNow(layer, nums);

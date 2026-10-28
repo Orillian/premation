@@ -5,8 +5,10 @@
  * inverted, the shape at a time with its per-vertex feathers, feather /
  * opacity / expansion at that time). Pure: takes the mirror, never the engine.
  *
- * Numbers leave the API in stored units here (a mask's opacity is 0..1, its
- * feather and expansion px — none is scaled, ENGINE_API.md §3.5).
+ * Numbers leave the API in its property units (feather and expansion px, a
+ * mask's opacity in % like layer Opacity). `MaskPath.opacity` is 0..1, so
+ * the percent is divided here — passing it through made every mask read 100
+ * (Properties showed "10000 %").
  */
 
 import type { BezierPath, Value } from '@motion/engine-api';
@@ -71,7 +73,7 @@ export function mirrorMasksAt(m: MirrorMaskRead, layer: string, time: number): M
       closed: shape?.kind === 'path' ? shape.value.closed : true,
       points: shape?.kind === 'path' ? bezierToMaskPoints(shape.value) : [],
       feather: num(`${base}/feather`, 0),
-      opacity: num(`${base}/opacity`, 1),
+      opacity: num(`${base}/opacity`, 100) / 100,
       expansion: num(`${base}/expansion`, 0),
       inverted: inverted?.kind === 'bool' && inverted.value,
     });
