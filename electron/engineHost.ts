@@ -70,6 +70,7 @@ export const ENGINE_IPC_CHANNELS = [
   'engine:pixelsRelease',
   'engine:receiverReady',
   'engine:request',
+  'engine:restartToFreeMemory',
   'engine:status',
   'engine:viewportBase',
 ] as const;

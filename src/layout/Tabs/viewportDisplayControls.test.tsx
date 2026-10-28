@@ -130,9 +130,10 @@ it('exposure and the transparency grid write the viewer store (never the documen
 it('the resolution dropdown writes the store', () => {
   const b = bar();
   fireEvent.click(within(b).getByRole('button', { name: /^Preview resolution/ }));
+  // Auto, then Full / Half / Third / Quarter.
   const items = screen.getAllByRole('menuitemcheckbox');
-  expect(items).toHaveLength(4);
-  fireEvent.click(items[1]!);
+  expect(items).toHaveLength(5);
+  fireEvent.click(items[2]!);
   expect(useRenderQualityStore.getState().resolution).toBe(2);
   // The Preview menu no longer carries a resolution row.
   fireEvent.click(within(b).getByRole('button', { name: 'Preview' }));
