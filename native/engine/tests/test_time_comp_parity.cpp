@@ -520,3 +520,81 @@ TEST_CASE("an audio waveform outline matches the TypeScript envelope geometry", 
   const premation::js::Json empty = sc::waveform_points({}, 4, 100, 100, 0, "full", 4, 1, 0, 1);
   CHECK(empty.arr().empty());
 }
+namespace {
+
+/// The nested-comp fixture (tests/data/nested_preserve.json): a 10 fps "Inner"
+/// comp (opacity 0 → 100 over 2 s on a shape) nested at 300 % in a 30 fps comp.
+struct Nested {
+  doc::Document d;
+  doc::EditorView view;
+  doc::ExprCache cache;
+  std::optional<doc::DocExprEnv> env;
+  Json root;
+  explicit Nested(bool preserve) {
+    premation::test::JsonFixture fx("nested_preserve.json");
+    REQUIRE(fx.ok());
+    root = fx.root();
+    Json document = root.at("document");
+    Json comps = document.at("comps");
+    Json inner = comps.at(root.at("inner").str());
+    inner.set("preserveFrameRate", Json::boolean(preserve));
+    inner.set("preserveResolution", Json::boolean(preserve));
+    comps.set(root.at("inner").str(), std::move(inner));
+    document.set("comps", std::move(comps));
+    (void)doc::restore_document(d, view, document, {});
+    env.emplace(d, view, cache);
+  }
+  sc::Snapshot at(double seconds) {
+    const sc::BuildContext ctx{d, view, *env, cache, nullptr, {}};
+    return sc::build_snapshot(ctx, sc::snapshot_comp_of(d, "comp_root"), seconds, std::nullopt);
+  }
+  /// The nested shape as the frame builds it.
+  const sc::RLayer* shape(const sc::Snapshot& s) const {
+    for (const sc::RLayer& l : s.layers) {
+      if (!l.precompLayers) continue;
+      for (const sc::RLayer& c : *l.precompLayers) {
+        if (c.id.ends_with(root.at("shape").str())) return &c;
+      }
+    }
+    return nullptr;
+  }
+};
+
+}  // namespace
+
+TEST_CASE("Preserve Frame Rate When Nested: the nested comp's time steps on its own frames", "[scene][nested]") {
+  // Parent frame 7 (7/30 s): a 10 fps comp shows its 0.2 s frame (opacity 10 %).
+  constexpr double kT = 7.0 / 30.0;
+  Nested on(true);
+  const sc::Snapshot a = on.at(kT);
+  const sc::RLayer* s = on.shape(a);
+  REQUIRE(s != nullptr);
+  REQUIRE(s->compSeconds.has_value());
+  CHECK(std::abs(*s->compSeconds - 0.2) < 1e-9);
+  CHECK(std::abs(s->opacity - 0.10) < 1e-6);
+  // Off: the nested comp follows the parent's frames (7/30 s → 11.67 %).
+  Nested off(false);
+  const sc::Snapshot b = off.at(kT);
+  const sc::RLayer* t = off.shape(b);
+  REQUIRE(t != nullptr);
+  CHECK(std::abs(t->opacity - kT / 2) < 1e-6);
+}
+
+TEST_CASE("Preserve Resolution When Nested: nested layers rasterise at their own size, not the container's 300 %", "[scene][nested]") {
+  const auto rasterScaleOf = [](Nested& n) {
+    const sc::Snapshot s = n.at(1.0);
+    const sc::FrameBuild fb = sc::build_frame_scene(s, 1);
+    double scale = 0;
+    for (const sc::TextureRequest& r : fb.textures) {
+      if (r.layerId.ends_with(n.root.at("shape").str())) scale = std::max(scale, r.resolutionScale);
+    }
+    return scale;
+  };
+  Nested on(true);
+  Nested off(false);
+  const double kept = rasterScaleOf(on);
+  const double scaled = rasterScaleOf(off);
+  REQUIRE(kept > 0);
+  CHECK(std::abs(kept - 1.0) < 1e-6);
+  CHECK(scaled > 2.5);  // without it, the shape re-rasterises for the 300 % container
+}

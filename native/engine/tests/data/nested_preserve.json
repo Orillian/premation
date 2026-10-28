@@ -1,0 +1,385 @@
+{
+ "document": {
+  "version": "1.1.0",
+  "scene": {
+   "version": "1.0.0",
+   "nodes": [
+    {
+     "id": "comp_root",
+     "name": "Composition 1",
+     "children": [
+      "layer_2"
+     ],
+     "parent": null,
+     "transform": {
+      "position": {
+       "x": 0,
+       "y": 0
+      },
+      "rotation": 0,
+      "scale": {
+       "x": 1,
+       "y": 1
+      }
+     },
+     "components": [
+      {
+       "id": "comp_root_meta",
+       "type": "group",
+       "props": {
+        "__kind": "group"
+       }
+      }
+     ],
+     "visible": true,
+     "locked": false,
+     "solo": false
+    },
+    {
+     "id": "comp_1",
+     "name": "Inner",
+     "children": [
+      "layer_1"
+     ],
+     "parent": null,
+     "transform": {
+      "position": {
+       "x": 0,
+       "y": 0
+      },
+      "rotation": 0,
+      "scale": {
+       "x": 1,
+       "y": 1
+      }
+     },
+     "components": [
+      {
+       "id": "comp_1_meta",
+       "type": "group",
+       "props": {
+        "__kind": "group"
+       }
+      }
+     ],
+     "visible": true,
+     "locked": false,
+     "solo": false
+    },
+    {
+     "id": "layer_1",
+     "name": "dot",
+     "children": [],
+     "parent": "comp_1",
+     "transform": {
+      "position": {
+       "x": 200,
+       "y": 100
+      },
+      "rotation": 0,
+      "scale": {
+       "x": 1,
+       "y": 1
+      }
+     },
+     "components": [
+      {
+       "id": "layer_1_t",
+       "type": "Transform",
+       "props": {
+        "__kind": "shape",
+        "x": 200,
+        "y": 100,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "anchorX": 0,
+        "anchorY": 0,
+        "width": 280,
+        "height": 280,
+        "shapeType": "rect"
+       }
+      },
+      {
+       "id": "layer_1_s",
+       "type": "Style",
+       "props": {
+        "opacity": 100,
+        "fill": "#3b8276"
+       }
+      },
+      {
+       "id": "layer_1_fx",
+       "type": "fx",
+       "props": {
+        "stroke": {
+         "enabled": true,
+         "width": 6,
+         "color": "#ffffff",
+         "opacity": 1
+        }
+       }
+      }
+     ],
+     "visible": true,
+     "locked": false,
+     "solo": false
+    },
+    {
+     "id": "layer_2",
+     "name": "nest",
+     "children": [],
+     "parent": "comp_root",
+     "transform": {
+      "position": {
+       "x": 960,
+       "y": 540
+      },
+      "rotation": 0,
+      "scale": {
+       "x": 1,
+       "y": 1
+      }
+     },
+     "components": [
+      {
+       "id": "layer_2_t",
+       "type": "Transform",
+       "props": {
+        "__kind": "comp",
+        "x": 960,
+        "y": 540,
+        "rotation": 0,
+        "scaleX": 3,
+        "scaleY": 3,
+        "anchorX": 0,
+        "anchorY": 0,
+        "width": 400,
+        "height": 200
+       }
+      },
+      {
+       "id": "layer_2_s",
+       "type": "Style",
+       "props": {
+        "opacity": 100
+       }
+      },
+      {
+       "id": "layer_2_fx",
+       "type": "fx",
+       "props": {
+        "precomp": true,
+        "__compRef": "comp_1"
+       }
+      }
+     ],
+     "visible": true,
+     "locked": false,
+     "solo": false
+    }
+   ]
+  },
+  "animation": {
+   "tracks": {
+    "layer_1": {
+     "opacity": {
+      "nodeId": "layer_1",
+      "prop": "opacity",
+      "keyframes": [
+       {
+        "t": 0,
+        "value": 0,
+        "id": "k1"
+       },
+       {
+        "t": 2,
+        "value": 100,
+        "id": "k2"
+       }
+      ]
+     }
+    }
+   },
+   "expressions": {}
+  },
+  "comps": {
+   "comp_root": {
+    "id": "comp_root",
+    "name": "Composition 1",
+    "pristine": true,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationSeconds": 10,
+    "background": "#101014",
+    "transparent": false,
+    "startFrame": 0
+   },
+   "comp_1": {
+    "width": 400,
+    "height": 200,
+    "fps": 10,
+    "durationSeconds": 4,
+    "background": "#101014",
+    "transparent": false,
+    "startFrame": 0,
+    "name": "Inner",
+    "id": "comp_1",
+    "preserveFrameRate": true,
+    "preserveResolution": true
+   }
+  },
+  "timelines": {
+   "comp_root": {
+    "version": 1,
+    "id": "timeline_comp_root",
+    "name": "Composition",
+    "frameRate": {
+     "fps": 30,
+     "nominal": 30,
+     "dropFrame": false
+    },
+    "duration": 300,
+    "tracks": [
+     {
+      "id": "track_comp_root",
+      "name": "Composition",
+      "kind": "group",
+      "layers": [
+       {
+        "id": "clip:layer_2",
+        "name": "nest",
+        "trackId": "track_comp_root",
+        "clip": {
+         "start": 0,
+         "duration": 120,
+         "sourceIn": 0,
+         "sourceDuration": 120
+        },
+        "enabled": true,
+        "locked": false,
+        "sourceId": "layer_2",
+        "markers": [],
+        "metadata": {}
+       }
+      ],
+      "flags": {
+       "locked": false,
+       "hidden": false,
+       "muted": false,
+       "solo": false
+      },
+      "height": 28,
+      "groupId": null,
+      "markers": [],
+      "metadata": {}
+     }
+    ],
+    "groups": [],
+    "markers": [],
+    "ranges": {
+     "loop": {
+      "start": 0,
+      "duration": 300
+     },
+     "preview": null,
+     "workArea": null
+    }
+   },
+   "comp_1": {
+    "version": 1,
+    "id": "timeline_comp_1",
+    "name": "Composition",
+    "frameRate": {
+     "fps": 10,
+     "nominal": 10,
+     "dropFrame": false
+    },
+    "duration": 40,
+    "tracks": [
+     {
+      "id": "track_comp_1",
+      "name": "Composition",
+      "kind": "group",
+      "layers": [
+       {
+        "id": "clip:layer_1",
+        "name": "dot",
+        "trackId": "track_comp_1",
+        "clip": {
+         "start": 0,
+         "duration": 40,
+         "sourceIn": 0,
+         "sourceDuration": null
+        },
+        "enabled": true,
+        "locked": false,
+        "sourceId": "layer_1",
+        "markers": [],
+        "metadata": {}
+       }
+      ],
+      "flags": {
+       "locked": false,
+       "hidden": false,
+       "muted": false,
+       "solo": false
+      },
+      "height": 28,
+      "groupId": null,
+      "markers": [],
+      "metadata": {}
+     }
+    ],
+    "groups": [],
+    "markers": [],
+    "ranges": {
+     "loop": {
+      "start": 0,
+      "duration": 40
+     },
+     "preview": null,
+     "workArea": null
+    }
+   }
+  },
+  "motionBlur": {
+   "enabled": true,
+   "shutterAngle": 180,
+   "shutterPhase": -90,
+   "samples": 8,
+   "adaptiveSampleLimit": 128
+  },
+  "guides": {
+   "rulers": false,
+   "grid": false,
+   "gridSpacing": 100,
+   "gridSubdivisions": 4,
+   "snapToGrid": false,
+   "gridColor": "#ffffff14",
+   "gridStyle": "lines",
+   "proportionalGrid": false,
+   "proportionalColumns": 8,
+   "proportionalRows": 6,
+   "safeArea": false,
+   "motionPathVisible": true,
+   "motionPathDots": "small"
+  },
+  "colorManagement": {
+   "workingSpace": "srgb-linear",
+   "displayTransform": "srgb",
+   "bitDepth": 16
+  },
+  "swatches": [],
+  "materials": [],
+  "transitions": {},
+  "projectItems": {
+   "folders": [],
+   "footage": {}
+  }
+ },
+ "inner": "comp_1",
+ "shape": "layer_1",
+ "nest": "layer_2"
+}

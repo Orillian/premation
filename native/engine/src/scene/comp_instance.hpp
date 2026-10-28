@@ -97,6 +97,8 @@ struct NestedComp {
   std::vector<RLayer> layers;  ///< prefixed with `<instanceId>::`
   std::optional<PrecompScene3D> scene3d;
   std::vector<LayerError> errors;  ///< the nested pass's, re-keyed under the instance
+  /// The composition's Preserve Resolution When Nested (RLayer::preserveResolution).
+  bool preserveResolution = false;
 };
 
 /// `nestedCompLayers(node, ref)`: the referenced comp through its own recursive

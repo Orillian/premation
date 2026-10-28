@@ -1309,6 +1309,8 @@ void Walk::build_node(const doc::Node& n) {
           for (LayerError& e : nested->errors) errors_.push_back(std::move(e));
         }
         RLayer c = precomp_container(n, &nested);
+        // Collapsed layers re-rasterise through the container whatever the comp says (AE).
+        c.preserveResolution = nested && nested->preserveResolution && !c.continuousRaster;
         emit_time_taps(n, c);
         emit(std::move(c), n);
       }

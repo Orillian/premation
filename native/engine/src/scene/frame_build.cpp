@@ -299,6 +299,21 @@ class Flattener {
   bool svgDisplayScale_ = false;
   const api::RenderCamera3D* camera3d_ = nullptr;
   double compLong_ = 0;  ///< the comp's long edge (px): an SVG never needs more texels than the comp shows
+  /// Inside a Preserve Resolution precomp (RLayer::preserveResolution): its layers
+  /// rasterise at their own size, the container's scale no longer raises it.
+  int preserveRes_ = 0;
+  /// Flatten a precomp's children, honouring its Preserve Resolution.
+  void flatten_precomp(const RLayer& l, const Mat3& childParent, double opacity, std::vector<api::Renderable>& out,
+                       const Mat3* placement) {
+    if (l.preserveResolution) ++preserveRes_;
+    try {
+      flatten(*l.precompLayers, childParent, opacity, out, placement);
+    } catch (...) {
+      if (l.preserveResolution) --preserveRes_;
+      throw;
+    }
+    if (l.preserveResolution) --preserveRes_;
+  }
 };
 
 double Flattener::screen_per_layer_px(const RLayer& l, double parentScale) const {
@@ -904,7 +919,7 @@ api::Renderable Flattener::precomp_to_renderable(const RLayer& l, const Mat3& pa
   // A sealed comp with its own 3D frame draws through its own camera, which carries
   // `childParent`; a card's children are drawn in the card, not the scene.
   const Mat3* innerPlacement = l.precompScene3d ? &childParent : cardModel ? nullptr : placement;
-  if (l.precompLayers) flatten(*l.precompLayers, childParent, 1, inner, innerPlacement);  // callers pass only precomps with layers
+  if (l.precompLayers) flatten_precomp(l, childParent, 1, inner, innerPlacement);  // callers pass only precomps with layers
   const Mat3 model = cardModel ? mat3_mul(parent, *cardModel) : mat3_mul(parent, center_model(l));
   const int adv = advanced_blend_id(l.blend);
   r.id = l.id;
@@ -1066,7 +1081,7 @@ std::optional<api::Renderable> Flattener::adjustment_to_renderable(const RLayer&
 
 void Flattener::flatten(const std::vector<RLayer>& layers, const Mat3& parent, double parentOpacity,
                         std::vector<api::Renderable>& out, const Mat3* placement) {
-  const double parentScale = parent_scale(parent);
+  const double parentScale = preserveRes_ > 0 ? 1.0 : parent_scale(parent);
   for (const RLayer& l : layers) {
     const std::size_t mark = out.size();
     try {
@@ -1107,7 +1122,7 @@ void Flattener::flatten(const std::vector<RLayer>& layers, const Mat3& parent, d
         const double rad = (l.rotation * std::numbers::pi) / 180;
         const Mat3 tOrigin = translation(-l.width / 2 - l.anchorX, -l.height / 2 - l.anchorY);
         const Mat3 childParent = mat3_mul(parent, mat3_mul(compose(l.x, l.y, rad, l.scaleX, l.scaleY), tOrigin));
-        flatten(*l.precompLayers, childParent, parentOpacity * l.opacity, out, placement);
+        flatten_precomp(l, childParent, parentOpacity * l.opacity, out, placement);
       } else if (l.kind == LayerKind::video && l.frameBlend && !has_paint_strokes(l) && !layer_is_baked(l)) {
         // (A baked clip skips frame blending, as the feed does: the bake is one frame.)
         // Frame blending: Pixel Motion samples the flow-warped in-between (`vfm:`);

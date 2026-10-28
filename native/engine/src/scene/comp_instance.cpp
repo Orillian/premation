@@ -5,6 +5,7 @@
 #include <cmath>
 #include <string_view>
 
+#include "readmodel.hpp"
 #include "scene.hpp"
 
 namespace premation::scene {
@@ -286,8 +287,22 @@ std::optional<NestedComp> nested_comp_layers(const BuildContext& c, const Snapsh
   nested.compStack = stack;
   nested.compStack.push_back(ref);
   nested.fps = hostFps;
-  Snapshot s = build_snapshot(c, nested, nestedTime, motionBlur);
+  // AE's Preserve Frame Rate When Nested: the composition keeps its own rate —
+  // its time steps on its own frames, and its motion blur samples its shutter.
+  const Json* rec = c.d.comp(ref);
+  const auto flag = [rec](const char* k) { return rec != nullptr && rec->at(k).is_bool() && rec->at(k).b(); };
+  std::optional<MotionBlurCfg> blur = motionBlur;
+  if (flag("preserveFrameRate")) {
+    const double own = doc::comp_fps(c.d, ref);
+    if (own > 0 && std::fabs(own - hostFps) > 1e-9) {
+      nested.fps = own;
+      nestedTime = std::floor(nestedTime * own + 1e-6) / own;
+      if (blur) blur->fps = own;
+    }
+  }
+  Snapshot s = build_snapshot(c, nested, nestedTime, blur);
   NestedComp out;
+  out.preserveResolution = flag("preserveResolution");
   const std::string prefix = instance.id + "::";
   for (LayerError& e : s.layerErrors) {
     e.layerId = prefix + e.layerId;

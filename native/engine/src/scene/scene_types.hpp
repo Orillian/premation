@@ -141,6 +141,9 @@ struct RLayer {
   bool continuousRaster = false;
   /// A precomp container: its inner layers (present = container).
   std::optional<std::vector<RLayer>> precompLayers;
+  /// AE's Preserve Resolution When Nested on the container's composition: its
+  /// layers rasterise at their own size, not at the container's scale.
+  bool preserveResolution = false;
   /// A sealed comp instance's own 3D frame (see PrecompScene3D).
   std::optional<PrecompScene3D> precompScene3d;
   /// A 3D comp CARD: the card's projected corners (TL, TR, BR, BL; comp px).
