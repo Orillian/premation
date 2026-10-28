@@ -2397,7 +2397,6 @@
   "core.ingest.exrFailed": "EXR import failed: {error}",
   "core.ingest.rawFailed": "Camera raw decode failed for “{name}”. Host ffmpeg may lack libraw — convert to DNG/EXR externally.",
   "core.ingest.rawNeedsDesktop": "Camera raw “{name}” needs the desktop app (ffmpeg).",
-  "core.ingest.transcoding": "Transcoding “{name}” for editing ({codec})…",
   "core.labelColor.coolSlate": "Cool Slate",
   "core.labelColor.dustyAqua": "Dusty Aqua",
   "core.labelColor.mutedAmber": "Muted Amber",

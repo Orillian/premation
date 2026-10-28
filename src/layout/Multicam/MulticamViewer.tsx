@@ -29,6 +29,8 @@ import { Button } from '@components/Button';
 import { EmptyState } from '@components/EmptyState';
 import { moveBars } from '@layout/Timeline/timelineEdits';
 import styles from './MulticamViewer.module.css';
+import { browserCanPlayVideo } from '@core/media/browserPlayable';
+import { EngineFootageFrame } from '@components/EngineFootageFrame/EngineFootageFrame';
 import { t } from '@core/i18n';
 
 interface AngleView {
@@ -36,6 +38,8 @@ interface AngleView {
   angle: number;
   name: string;
   src: string | null;
+  /** The footage item, when the page's <video> cannot play it: its frames come from the engine. */
+  engineItem: string | null;
   /** Comp seconds where this angle's bar starts. */
   barStartSec: number;
   /** Seconds into the source where the bar's content begins. */
@@ -59,6 +63,10 @@ function collectAngleViews(): AngleView[] {
       angle: l.angle,
       name: layer?.name || l.name,
       src: l.src,
+      engineItem: (() => {
+        const item = layer?.source ? m.item(layer.source) : undefined;
+        return item && !browserCanPlayVideo(item.name || item.path, item.codec) ? item.id : null;
+      })(),
       barStartSec: timing ? flicksToSeconds(timing.inPoint) : 0,
       sourceInSec: timing ? flicksToSeconds(timing.inPoint - timing.startTime) : 0,
     };
@@ -188,7 +196,15 @@ export function MulticamViewerBody(): JSX.Element {
             title={t('multicam.viewer.cutTo', 'Cut to angle {angle} (Alt+{angle})', { angle: v.angle })}
             onClick={() => { void switchMulticamAngleEdit(v.angle, views); }}
           >
-            {v.src ? (
+            {v.engineItem ? (
+              <EngineFootageFrame
+                className={styles.video}
+                itemId={v.engineItem}
+                seconds={Math.max(0, displayTime - v.barStartSec + v.sourceInSec)}
+                maxSize={640}
+                alt={v.name}
+              />
+            ) : v.src ? (
               <video
                 muted={live !== v.angle}
                 playsInline

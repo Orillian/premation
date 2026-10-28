@@ -47,6 +47,16 @@ export async function engineCompStill(compId: string, seconds: number, maxSize: 
 }
 
 /**
+ * A footage ITEM at source second `seconds`, decoded by the engine (ProRes,
+ * DNx, MXF… — whatever the page's <video> cannot play). One attempt: a viewer
+ * asking for the next frame supersedes a busy one.
+ */
+export async function engineFootageStill(itemId: string, seconds: number, maxSize: number): Promise<Blob | null> {
+  const res = await engine().query({ type: 'getThumbnail', item: itemId, time: secondsToFlicks(Math.max(0, seconds)), maxSize: clampSize(maxSize) });
+  return res.ok ? toBlob(res.value) : null;
+}
+
+/**
  * One frame of a composition as a PNG at full size (up to ENGINE_STILL_MAX) —
  * Save Frame As / Copy Frame. `frame` is a composition frame index.
  */

@@ -1,26 +1,12 @@
 /**
- * Import ingest — the decision rules and the encode contracts. The transcode
- * itself is ffmpeg behind the IPC (integration territory); what must hold
- * here is WHO gets transcoded and to WHAT, because a wrong yes re-encodes
- * footage that played fine and a wrong no re-ships the black-frame import
- * this module exists to end.
+ * Import ingest: stills the engine cannot read as they are get converted, and
+ * VIDEO never does — the engine decodes ProRes / DNx / MXF at full quality, so
+ * a transcode would only lose bit depth and alpha (and read the whole file into
+ * memory). Which files the page's <video> can play is browserPlayable's call.
  */
 
-import { ingestCandidate, ingestEncodeArgs, needsIngest, isCameraRawStill, rawStillEncodeArgs } from './ingest';
-
-describe('ingestCandidate — the cheap pre-filter', () => {
-  it('passes ordinary browser formats untouched (no probe cost)', () => {
-    for (const name of ['clip.mp4', 'clip.webm', 'clip.png', 'clip.mp3', 'clip.svg']) {
-      expect(ingestCandidate(name)).toBe(false);
-    }
-  });
-
-  it('flags unplayable containers and probe-worthy ones', () => {
-    for (const name of ['tape.mxf', 'old.avi', 'cam.MTS', 'shot.mov', 'x.mkv', 'y.m2ts', 'still.dng', 'cam.CR2', 'reel.r3d']) {
-      expect(ingestCandidate(name)).toBe(true);
-    }
-  });
-});
+import { isCameraRawStill, maybeIngestForImport, rawStillEncodeArgs } from './ingest';
+import { browserCanPlayVideo } from '@core/media/browserPlayable';
 
 describe('camera raw stills', () => {
   it('recognises DNG/CR2 and builds a one-frame PNG encode', () => {
@@ -33,49 +19,31 @@ describe('camera raw stills', () => {
   });
 });
 
-describe('needsIngest — the decision', () => {
-  it('unplayable containers ingest even when the probe failed', () => {
-    expect(needsIngest('tape.mxf', undefined)).toBe(true);
-    expect(needsIngest('old.avi', undefined)).toBe(true);
-  });
-
-  it('an H.264 .mov plays natively and must NOT pay a re-encode', () => {
-    expect(needsIngest('shot.mov', 'h264')).toBe(false);
-    expect(needsIngest('shot.mov', undefined)).toBe(false);
-  });
-
-  it('a ProRes/DNxHD .mov ingests', () => {
-    expect(needsIngest('shot.mov', 'prores')).toBe(true);
-    expect(needsIngest('shot.mov', 'ProRes 4444')).toBe(true);
-    expect(needsIngest('export.mov', 'dnxhd')).toBe(true);
-    expect(needsIngest('grab.mov', 'mjpeg')).toBe(true);
-  });
-
-  it('a VP9 .mkv plays and stays', () => {
-    expect(needsIngest('rip.mkv', 'vp9')).toBe(false);
+describe('video is imported as it is', () => {
+  it('a ProRes .mov, an MXF and an AVI are never transcoded, even with ffmpeg on the bridge', async () => {
+    const generateProxy = jest.fn();
+    (window as unknown as { motionEditor: unknown }).motionEditor = { media: { generateProxy, probe: jest.fn() } };
+    try {
+      for (const name of ['shot.mov', 'tape.mxf', 'old.avi', 'clip.mkv']) {
+        expect(await maybeIngestForImport(new File([new Uint8Array(8)], name, { type: 'video/quicktime' }))).toBeNull();
+      }
+      expect(generateProxy).not.toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as { motionEditor?: unknown }).motionEditor;
+    }
   });
 });
 
-describe('ingestEncodeArgs — the encode contracts', () => {
-  it('opaque → H.264 MP4 with faststart and the IPC placeholders', () => {
-    const { args, outExt, mime } = ingestEncodeArgs(false);
-    expect(outExt).toBe('mp4');
-    expect(mime).toBe('video/mp4');
-    expect(args).toContain('__IN__');
-    expect(args[args.length - 1]).toBe('__OUT__');
-    expect(args).toContain('libx264');
-    // +faststart: the mp4 demuxer's index read must be one seek, not a scan
-    // to the tail — this is what makes an ingested file exact-decoder food.
-    expect(args).toContain('+faststart');
-    // yuv420p: the one pixel format every decoder in the chain accepts.
-    expect(args).toContain('yuv420p');
+describe('browserCanPlayVideo', () => {
+  it('H.264 / VP9 in an MP4, MOV or WebM play in the page', () => {
+    expect(browserCanPlayVideo('shot.mp4', 'h264')).toBe(true);
+    expect(browserCanPlayVideo('shot.mov', 'h264')).toBe(true);
+    expect(browserCanPlayVideo('shot.webm', 'vp9')).toBe(true);
+    expect(browserCanPlayVideo('shot.mov', undefined)).toBe(true);
   });
 
-  it('alpha → VP9 WebM carrying the alpha plane', () => {
-    const { args, outExt, mime } = ingestEncodeArgs(true);
-    expect(outExt).toBe('webm');
-    expect(mime).toBe('video/webm');
-    expect(args).toContain('libvpx-vp9');
-    expect(args).toContain('yuva420p');
+  it('pro codecs and broadcast containers do not', () => {
+    for (const codec of ['prores', 'ProRes 4444', 'dnxhd', 'cfhd', 'mpeg2video']) expect(browserCanPlayVideo('shot.mov', codec)).toBe(false);
+    for (const name of ['tape.mxf', 'old.avi', 'cam.MTS', 'clip.mkv']) expect(browserCanPlayVideo(name, 'h264')).toBe(false);
   });
 });

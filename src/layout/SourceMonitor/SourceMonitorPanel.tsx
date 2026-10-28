@@ -31,6 +31,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { browserCanPlayVideo } from '@core/media/browserPlayable';
+import { EngineFootageFrame } from '@components/EngineFootageFrame/EngineFootageFrame';
 import { Icon } from '@components/Icon';
 import { EmptyState } from '@components/EmptyState';
 import { cn } from '@utils/cn';
@@ -168,6 +170,9 @@ function SourceMonitorBody({
   const stepper = useExactStepper(asset);
   const inFrames = stepper.mode === 'frames';
   const isVideo = asset.type === 'video';
+  // Footage the page's <video> cannot decode (ProRes, DNx, MXF…) is shown from
+  // the engine's own decode, which reads it at full quality.
+  const engineFrames = isVideo && !browserCanPlayVideo(asset.name, asset.metadata?.codec);
   const fps = displayFps(asset);
   const range = sourceRange({ duration, inPoint, outPoint });
 
@@ -222,19 +227,22 @@ function SourceMonitorBody({
   }, [asset.metadata?.duration, store]);
 
   // The shuttle. Forward is the element's own playback (audio included);
-  // reverse is a timer, because a negative `playbackRate` plays nowhere.
+  // reverse is a timer, because a negative `playbackRate` plays nowhere. With
+  // no element (engine-decoded footage) the timer drives both directions.
   useEffect(() => {
     store.getState().setPlaying(shuttle !== 0);
     const el = mediaEl();
-    if (!el) return;
-    if (shuttle > 0) {
+    if (!el && !engineFrames) return;
+    if (el && shuttle > 0) {
       el.playbackRate = shuttle;
       try { void el.play()?.catch(() => setShuttle(0)); } catch { setShuttle(0); }
       return;
     }
     // `paused` first: pausing an already-paused element is a no-op everywhere
     // that matters and a console-noise generator in jsdom.
-    try { if (!el.paused) el.pause(); } catch { /* not implemented (jsdom) */ }
+    if (el) {
+      try { if (!el.paused) el.pause(); } catch { /* not implemented (jsdom) */ }
+    }
     if (shuttle === 0) return;
     const perTick = (-shuttle) * (REVERSE_TICK_MS / 1000);
     const id = window.setInterval(() => {
@@ -244,10 +252,15 @@ function SourceMonitorBody({
         seekTo(0);
         return;
       }
+      if (duration > 0 && next >= duration) {
+        setShuttle(0);
+        seekTo(duration);
+        return;
+      }
       seekTo(next);
     }, REVERSE_TICK_MS);
     return () => window.clearInterval(id);
-  }, [shuttle, mediaEl, seekTo, store]);
+  }, [shuttle, mediaEl, seekTo, store, engineFrames, duration]);
 
   // Playing must never outlive the panel: an unmounted monitor whose <video>
   // kept its audio going is the bug every hidden media element eventually has.
@@ -328,7 +341,17 @@ function SourceMonitorBody({
         )}
       </div>
 
-      {isVideo && !failed ? (
+      {engineFrames && !failed ? (
+        <FootageStage natural={natural}>
+          <EngineFootageFrame
+            className={styles.media}
+            itemId={asset.id}
+            seconds={time}
+            alt={asset.name}
+            onSize={(size) => setMeasured({ src: asset.src, ...size })}
+          />
+        </FootageStage>
+      ) : isVideo && !failed ? (
         // The picture under the Footage viewer's camera: zoom, exposure, guides.
         <FootageStage natural={natural}>
           {/* Both mounted, one shown — same reason as the dialog: unmounting
@@ -478,7 +501,7 @@ function SourceMonitorBody({
           {t('sourceMonitor.panel.clear', 'Clear')}
         </button>
 
-        {isVideo && webCodecsAvailable() && !inFrames && !failed && (
+        {isVideo && !engineFrames && webCodecsAvailable() && !inFrames && !failed && (
           <button type="button" className={styles.btn} onClick={stepper.enter} title={t('sourceMonitor.panel.exactSteppingOnTrueFrame', 'Exact stepping on true frame boundaries (WebCodecs decode)')}>
             {t('sourceMonitor.panel.frameByFrame', 'Frame by frame')}
           </button>

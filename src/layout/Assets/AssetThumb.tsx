@@ -20,6 +20,7 @@ import { getAssetVisualInfo } from './assetVisuals';
 import { formatDuration } from './assetListLogic';
 import { peekVideoPoster, requestVideoPoster } from './videoPosters';
 import { browserDecodes, peekEngineThumb, requestEngineThumb } from './engineThumbs';
+import { browserCanPlayVideo } from '@core/media/browserPlayable';
 import styles from '@layout/EditorLayout/panels.module.css';
 
 export interface AssetThumbProps {
@@ -31,7 +32,8 @@ export interface AssetThumbProps {
 }
 
 function useVideoPoster(asset: ImportedAsset): string | null {
-  const wanted = asset.type === 'video' && !asset.thumbSrc;
+  // The browser's own poster, only for video it can decode (the rest is the engine's, useEngineThumb).
+  const wanted = asset.type === 'video' && !asset.thumbSrc && browserCanPlayVideo(asset.name || asset.src || '', asset.metadata?.codec);
   const [poster, setPoster] = useState<string | null>(() => (wanted ? peekVideoPoster(asset.id) ?? null : null));
   useEffect(() => {
     if (!wanted) return;
@@ -50,7 +52,12 @@ function useVideoPoster(asset: ImportedAsset): string | null {
  * is the engine's thumbnail (engineThumbs.ts), through the importer the render uses; null = the glyph.
  */
 export function useEngineThumb(asset: ImportedAsset | null, failed: boolean): string | null | undefined {
-  const wanted = !!asset && asset.type === 'image' && !asset.thumbSrc && (failed || !browserDecodes(asset.name || asset.src || ''));
+  const wanted = !!asset && !asset.thumbSrc && (
+    asset.type === 'image'
+      ? failed || !browserDecodes(asset.name || asset.src || '')
+      // Video the page's <video> cannot decode (ProRes, DNx, MXF…): its poster is the engine's.
+      : asset.type === 'video' && !browserCanPlayVideo(asset.name || asset.src || '', asset.metadata?.codec)
+  );
   const id = asset?.id ?? '';
   const [thumb, setThumb] = useState<string | null | undefined>(() => (wanted ? peekEngineThumb(id) : undefined));
   useEffect(() => {
@@ -68,7 +75,7 @@ export function AssetThumb({ asset, variant, scrub = false }: AssetThumbProps): 
   const visual = getAssetVisualInfo(asset);
   const glyphClass = (styles as Record<string, string>)[visual.className] ?? styles.assetGlyphFile;
   const duration = asset.metadata?.duration;
-  const canScrub = scrub && variant === 'card' && asset.type === 'video';
+  const canScrub = scrub && variant === 'card' && asset.type === 'video' && engineThumb === undefined;
 
   const wellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
