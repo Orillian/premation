@@ -9886,7 +9886,7 @@
   "tasks.row.took": "Tardó {time}",
   "tasks.summary.idle": "Nada en curso",
   "tasks.summary.running": "{n} en curso",
-  "topNav.roto.objectMatteHint": "Pasa el cursor sobre un sujeto y haz clic para seleccionarlo. Mayús+clic añade, Alt+clic resta, arrastrar dibuja un cuadro.",
+  "topNav.roto.objectMatteHint": "Pasa el cursor, clic · Mayús añade · Alt resta · arrastra un cuadro",
   "topNav.roto.objectMatteLabel": "Object Matte",
   "topNav.tools.objectMatte": "Herramienta Object Matte",
   "topNav.tools.objectMatteHint": "Pasa el cursor sobre un sujeto para previsualizar su mate y haz clic para seleccionarlo",

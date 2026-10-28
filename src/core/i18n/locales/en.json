@@ -9307,7 +9307,7 @@
   "topNav.roto.objectMatteBusy": "Object Matte…",
   "topNav.roto.objectMatteDone": "Object Matte: {n} frames.",
   "topNav.roto.objectMatteFailed": "Object Matte failed.",
-  "topNav.roto.objectMatteHint": "Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.",
+  "topNav.roto.objectMatteHint": "Hover, click · Shift adds · Alt subtracts · drag a box",
   "topNav.roto.objectMatteLabel": "Object Matte",
   "topNav.roto.objectMatteTitle": "Object Matte: the segmentation model follows the subject frame by frame (soft matte, refined edges)",
   "topNav.roto.propagateBackward": "Propagate backward",

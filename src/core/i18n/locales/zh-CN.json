@@ -9886,7 +9886,7 @@
   "tasks.row.took": "用时 {time}",
   "tasks.summary.idle": "没有正在运行的任务",
   "tasks.summary.running": "{n} 个正在运行",
-  "topNav.roto.objectMatteHint": "将指针悬停在主体上，单击即可选中。Shift+单击添加，Alt+单击减去，拖动绘制方框。",
+  "topNav.roto.objectMatteHint": "悬停、单击 · Shift 添加 · Alt 减去 · 拖出方框",
   "topNav.roto.objectMatteLabel": "Object Matte",
   "topNav.tools.objectMatte": "Object Matte 工具",
   "topNav.tools.objectMatteHint": "悬停在主体上预览其遮罩，单击即可选中",

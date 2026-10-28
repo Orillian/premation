@@ -9886,7 +9886,7 @@
   "tasks.row.took": "Levou {time}",
   "tasks.summary.idle": "Nada em execução",
   "tasks.summary.running": "{n} em execução",
-  "topNav.roto.objectMatteHint": "Passe o cursor sobre um objeto e clique para selecioná-lo. Shift+clique adiciona, Alt+clique subtrai, arrastar desenha uma caixa.",
+  "topNav.roto.objectMatteHint": "Passe o cursor, clique · Shift adiciona · Alt subtrai · arraste uma caixa",
   "topNav.roto.objectMatteLabel": "Object Matte",
   "topNav.tools.objectMatte": "Ferramenta Object Matte",
   "topNav.tools.objectMatteHint": "Passe o cursor sobre um objeto para pré-visualizar o fosco e clique para selecioná-lo",

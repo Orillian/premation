@@ -526,8 +526,8 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
             {t('topNav.roto.marqueeLasso', 'Lasso')}
           </button>
         </div>
-        <span className={styles.hint} title={t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}>
-          {t('topNav.roto.objectMatteHint', 'Hover a subject, click to select it. Shift-click adds, Alt-click subtracts, drag draws a box.')}
+        <span className={styles.hint} title={t('topNav.roto.objectMatteHint', 'Hover, click · Shift adds · Alt subtracts · drag a box')}>
+          {t('topNav.roto.objectMatteHint', 'Hover, click · Shift adds · Alt subtracts · drag a box')}
         </span>
       </>) : (<>
       <div className={styles.kinds} role="group" aria-label={t('topNav.roto.strokeGroup', 'Roto brush stroke')}>
