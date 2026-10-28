@@ -300,7 +300,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'local-file', privileges: { bypassCSP: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
   // A native plugin's panel (plan P5): a standard scheme so each plugin is its
   // own host. Not bypassCSP: every response carries the panel's strict policy.
-  { scheme: PANEL_SCHEME, privileges: { standard: true, secure: true } },
+  // corsEnabled: a panel's bundled fonts are CORS fetches from its opaque origin;
+  // only font responses carry Access-Control-Allow-Origin (registerPluginPanelProtocol).
+  { scheme: PANEL_SCHEME, privileges: { standard: true, secure: true, corsEnabled: true } },
 ]);
 
 const PROJECT_FILTERS = [
@@ -1227,6 +1229,9 @@ function registerPluginPanelProtocol(): void {
         'Content-Security-Policy': file.csp,
         'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'no-store',
+        // Fonts are always fetched in CORS mode, and the sandboxed panel's origin is opaque
+        // ('null'), so a bundled font loads only with this. Fonts only: nothing else needs it.
+        ...(file.contentType.startsWith('font/') ? { 'Access-Control-Allow-Origin': '*' } : {}),
       },
     });
   });
