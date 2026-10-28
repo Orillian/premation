@@ -151,9 +151,17 @@ export const APP_MENU: MenuGroupModel[] = [
       },
       { commandId: ProjectCommands.IncrementAndSave, label: 'Increment and Save' },
       {
-        commandId: 'file.collectFiles',
-        label: 'Collect Files…',
-        visible: () => tryCoreServices()?.files.environment === 'electron',
+        // AE's File ▸ Dependencies.
+        label: 'Dependencies',
+        labelKey: 'menu.sub.dependencies',
+        children: [
+          {
+            commandId: 'file.collectFiles',
+            label: 'Collect Files…',
+            visible: () => tryCoreServices()?.files.environment === 'electron',
+          },
+          { commandId: 'file.removeUnusedFootage', label: 'Remove Unused Footage' },
+        ],
       },
       { separator: true },
       { commandId: ProjectCommands.Sync, label: 'Sync Project…' },
@@ -218,6 +226,7 @@ export const APP_MENU: MenuGroupModel[] = [
       { separator: true },
       { commandId: 'edit.cut', label: 'Cut' },
       { commandId: 'edit.copy', label: 'Copy' },
+      { commandId: 'edit.copyWithPropertyLinks', label: 'Copy with Property Links' },
       { commandId: 'edit.copyExpressionOnly', label: 'Copy Expression Only' },
       { commandId: 'edit.paste', label: 'Paste' },
       { separator: true },
@@ -230,8 +239,16 @@ export const APP_MENU: MenuGroupModel[] = [
       // saving it there reloads it here (Assets/editOriginal.ts).
       { commandId: 'edit.editOriginal', label: 'Edit Original' },
       { separator: true },
-      { commandId: 'text.findReplace', label: 'Find and Replace Text…' },
-      { commandId: 'text.replaceFonts', label: 'Find and Replace Fonts…' },
+      {
+        // One row for both Find and Replace dialogs (the Edit menu is at its
+        // top-level cap; AE's own Edit menu is longer than is comfortable).
+        label: 'Find and Replace',
+        labelKey: 'menu.sub.findReplace',
+        children: [
+          { commandId: 'text.findReplace', label: 'Find and Replace Text…' },
+          { commandId: 'text.replaceFonts', label: 'Find and Replace Fonts…' },
+        ],
+      },
       { separator: true },
       {
         // Text-based editing. Both act on the transcript panel's selection
@@ -273,6 +290,8 @@ export const APP_MENU: MenuGroupModel[] = [
       },
       { separator: true },
       { commandId: 'comp.settings', label: 'Composition Settings…' },
+      { commandId: 'comp.trimToWorkArea', label: 'Trim Comp to Work Area' },
+      { commandId: 'comp.cropToRoi', label: 'Crop Comp to Region of Interest' },
       { commandId: 'comp.delete', label: 'Delete Composition' },
       { commandId: 'comp.openPrevious', label: 'Open Previous Composition' },
       { commandId: 'comp.miniFlowchart', label: 'Composition Mini-Flowchart' },

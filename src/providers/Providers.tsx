@@ -91,6 +91,7 @@ import { buildBeatCommands } from '@core/audio/beatCommands';
 import { buildSpeedRampCommands } from './commands/speedRampCommands';
 import { buildLayerTimeCommands } from './commands/layerTimeCommands';
 import { buildMaskCommands } from './commands/maskCommands';
+import { buildCompUtilityCommands } from './commands/compUtilityCommands';
 import { buildExpressionCommands } from './commands/expressionCommands';
 import { buildLayerTransformCommands } from '@core/scene/layerTransformCommands';
 import { buildOpenLayerCommands } from '@layout/LayerViewer/openLayerCommands';
@@ -1635,6 +1636,7 @@ export function buildStaticCommands(): ReadonlyArray<Command> {
     ...buildSpeedRampCommands(),
     ...buildLayerTimeCommands({ openTimeStretch: openTimeStretchDialog }),
     ...buildMaskCommands(),
+    ...buildCompUtilityCommands(),
     ...buildExpressionCommands(),
     ...buildLayerTransformCommands({ openAutoOrient: openAutoOrientDialog, resetTransform: resetTransformEdit }),
     ...buildOpenLayerCommands(),

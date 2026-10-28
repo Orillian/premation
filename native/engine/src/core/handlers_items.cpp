@@ -479,11 +479,48 @@ ResultOf<api::SetItemLabel> handle(const api::SetItemLabel& c, HCtx& x) {
   return {};
 }
 
+namespace {
+
+/// Every string anywhere in `j` (object values and array items, any depth).
+void collect_strings(const Json& j, std::set<std::string, std::less<>>& out) {
+  if (j.is_string()) {
+    out.insert(j.str());
+  } else if (j.is_array()) {
+    for (const Json& e : j.arr()) collect_strings(e, out);
+  } else if (j.is_object()) {
+    for (const Json::Member& m : j.obj()) collect_strings(m.value, out);
+  }
+}
+
+}  // namespace
+
 ResultOf<api::RemoveUnusedItems> handle(const api::RemoveUnusedItems& /*c*/, HCtx& x) {
   Document& d = x.d;
+  // AE's File ▸ Dependencies ▸ Remove Unused Footage. "Used" is anything that
+  // names the item, not only a layer's source: an environment light's image,
+  // a material's height map, a particle sprite, a plugin's LUT or model, a
+  // keyframed swap. Erring this way keeps footage; erring the other deletes
+  // something the project draws.
+  std::set<std::string, std::less<>> named;
+  std::vector<std::string> exprs;
+  for (const auto& [id, n] : d.nodes()) {
+    for (const Component& c : n->components) collect_strings(c.props, named);
+    // Keyed data (a swapped source, a text track) and expressions can name an item too.
+    if (const NodeAnim* a = d.anim(id)) {
+      for (const auto& entry : a->data) {
+        for (const DataKey& k : entry.second.keys) collect_strings(k.value, named);
+      }
+      for (const auto& entry : a->exprs) exprs.push_back(entry.second.src);
+    }
+  }
   std::vector<std::string> unused;
   for (const Json& a : d.items().assets) {
     const std::string id = a.at("id").is_string() ? a.at("id").str() : "";
+    if (id.empty() || named.contains(id)) continue;
+    // An expression that spells the id inside its source.
+    if (std::ranges::any_of(exprs, [&](const std::string& s) { return s.find(id) != std::string::npos; })) continue;
+    // A project item a plugin reads (`type: data`) is never footage to tidy.
+    if (a.at("type").is_string() && a.at("type").str() == "data") continue;
     if (layers_using_item(d, id).empty()) unused.push_back(id);
   }
   x.label = "Remove Unused Footage";

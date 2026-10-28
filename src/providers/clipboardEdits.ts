@@ -30,7 +30,8 @@ import { engine } from '@core/engine/engineInstance';
 import { edit, reportEngineError } from '@core/engine/uiEdits';
 import { expressionTargets } from '@core/animation/expressionEditorRequests';
 import { trackExpressionFacts } from '@core/mirror/memberExpressions';
-import { expressionCommands } from '@layout/Inspector/inspectorEdits';
+import { expressionCommands, trackRef } from '@layout/Inspector/inspectorEdits';
+import { linkablePaths, linkCommands } from './propertyLinks';
 import { usePropertySelectionStore } from '@stores/propertySelectionStore';
 import { apiParentOf, compOfLayer, isLayer, layerIdsOfComp } from '@core/mirror/docFacts';
 import { copyKeyframes } from '@core/animation/keyframeClipboard';
@@ -68,8 +69,21 @@ interface HeldExpression {
   track: string;
 }
 
+/**
+ * Edit ▸ Copy with Property Links: the copied layers (pasted as linked copies)
+ * or the copied property rows (pasted as links on the selected layers).
+ */
+type HeldLinks =
+  | ({ source: 'layers'; layers: string[] } & HeldLayers)
+  | { source: 'props'; refs: Array<{ layer: string; path: string }> };
+
 /** What Copy put on the app clipboard last (keyframes live in the keyframe clipboard). */
-let held: { kind: 'keyframes' } | ({ kind: 'layers' } & HeldLayers) | ({ kind: 'expression' } & HeldExpression) | null = null;
+let held:
+  | { kind: 'keyframes' }
+  | ({ kind: 'layers' } & HeldLayers)
+  | ({ kind: 'expression' } & HeldExpression)
+  | ({ kind: 'links' } & HeldLinks)
+  | null = null;
 
 /** The first of `refs` (default: the focused inspector row, else the selected property rows) that carries an expression. */
 function selectedExpression(refs: ReadonlyArray<{ nodeId: string; prop: string }> = expressionTargets()): HeldExpression | null {
@@ -212,6 +226,83 @@ export async function copyEdit(): Promise<CopyKind> {
   return (await fragment) ? 'layers' : null;
 }
 
+/** Whether Copy with Property Links has something to copy: property rows, else layers. */
+export function canCopyWithPropertyLinks(): boolean {
+  return usePropertySelectionStore.getState().entries.length > 0 || topLayers(useSelectionStore.getState().ids).length > 0;
+}
+
+/**
+ * Edit ▸ Copy with Property Links (AE): the selected property rows, else the
+ * selected layers, held so the paste LINKS rather than copies values.
+ */
+export async function copyWithPropertyLinksEdit(): Promise<CopyKind> {
+  noteOsClipboardAtCopy();
+  const rows = usePropertySelectionStore.getState().entries;
+  if (rows.length > 0) {
+    await documentMirror().loadTrees([...new Set(rows.map((r) => r.nodeId))]);
+    const refs = new Map<string, { layer: string; path: string }>();
+    for (const r of rows) {
+      const ref = trackRef(r.nodeId, r.prop);
+      if (ref) refs.set(`${r.nodeId}|${ref.ref.path}`, { layer: r.nodeId, path: ref.ref.path });
+    }
+    if (refs.size === 0) return null;
+    held = { kind: 'links', source: 'props', refs: [...refs.values()] };
+    return 'layers';
+  }
+  const layers = topLayers(useSelectionStore.getState().ids);
+  if (layers.length === 0) return null;
+  const fragment = engine()
+    .query({ type: 'copyLayers', layers })
+    .then((res) => {
+      if (res.ok) return { version: res.value.version, data: res.value.data };
+      reportEngineError('Copy with Property Links', res.error);
+      return null;
+    });
+  const names = layers.map((id) => documentMirror().layer(id)?.name ?? '');
+  held = { kind: 'links', source: 'layers', layers, fragment, names };
+  return (await fragment) ? 'layers' : null;
+}
+
+/**
+ * Paste what Copy with Property Links held: linked copies of the layers, or
+ * the copied properties linked onto every selected layer. ONE entry.
+ */
+async function pasteLinksEdit(h: HeldLinks): Promise<PasteResult> {
+  const m = documentMirror();
+  if (h.source === 'props') {
+    const targets = useSelectionStore.getState().ids.filter((id) => isLayer(id));
+    const sources = [...new Set(h.refs.map((r) => r.layer))].filter((id) => m.layer(id));
+    await m.loadTrees([...targets, ...sources]);
+    const cmds: Command[] = [];
+    for (const target of targets) {
+      const follower = m.tree(target);
+      if (!follower) continue;
+      for (const leaderId of sources) {
+        if (leaderId === target) continue;  // a property cannot follow itself
+        const leader = m.tree(leaderId);
+        if (!leader) continue;
+        cmds.push(...linkCommands(leader, follower, h.refs.filter((r) => r.layer === leaderId).map((r) => r.path)));
+      }
+    }
+    if (cmds.length === 0) return null;
+    const res = await edit('Paste Property Links', cmds);
+    return res.ok ? 'layers' : null;
+  }
+  // The links ride the paste's own entry: one undo removes the copies and their links together.
+  const copies = await pasteLayersEdit(h, async (tops) => {
+    const originals = h.layers.filter((id) => m.layer(id));
+    await m.loadTrees([...tops, ...originals]);
+    const cmds: Command[] = [];
+    tops.forEach((copy, i) => {
+      const leader = m.tree(h.layers[i] ?? '');
+      const follower = m.tree(copy);
+      if (leader && follower) cmds.push(...linkCommands(leader, follower, linkablePaths(leader)));
+    });
+    return cmds;
+  });
+  return copies && copies.length > 0 ? 'layers' : null;
+}
+
 /** Edit ▸ Cut: Copy, then delete the originals (a path is only copied). */
 export async function cutEdit(): Promise<CopyKind> {
   const kfIds = [...useKeyframeSelectionStore.getState().ids];
@@ -231,7 +322,11 @@ export async function cutEdit(): Promise<CopyKind> {
  * returns the new ids, so the renames run in the same engine
  * gesture. Resolves to the new top-level ids.
  */
-async function pasteLayersEdit(h: HeldLayers): Promise<string[] | null> {
+async function pasteLayersEdit(
+  h: HeldLayers,
+  /** More commands for the pasted top-level layers, in the paste's own entry (Copy with Property Links). */
+  extra?: (tops: string[]) => Promise<Command[]>,
+): Promise<string[] | null> {
   const fragment = await h.fragment;
   if (!fragment) return null;
   const target = activeInsertTarget();
@@ -267,6 +362,14 @@ async function pasteLayersEdit(h: HeldLayers): Promise<string[] | null> {
         ok = false;
       }
     }
+    const more = ok && extra ? await extra(tops) : [];
+    if (more.length > 0) {
+      const r = await client.batch(label, more);
+      if (!r.ok) {
+        reportEngineError(label, r.error);
+        ok = false;
+      }
+    }
   }
   const closed = await client.endGesture(opened.value.gesture, ok);
   if (!closed.ok) reportEngineError(label, closed.error);
@@ -292,6 +395,10 @@ export async function pasteEdit(): Promise<PasteResult> {
   const text = await readOsClipboardExpression();
   if (text !== null && text !== osTextAtCopy) {
     const done = await pasteExpressionEdit(text, null);
+    if (done) return done;
+  }
+  if (held?.kind === 'links') {
+    const done = await pasteLinksEdit(held);
     if (done) return done;
   }
   if (held?.kind === 'keyframes') {
