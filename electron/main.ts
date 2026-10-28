@@ -51,6 +51,7 @@ import { objectMatteUserDir, registerObjectMatteModelIpc } from './objectMatteMo
 import { faceModelUserDir, registerFaceModelIpc } from './faceModel';
 import { depthModelUserDir, registerDepthModelIpc } from './depthModel';
 import { handModelUserDir, registerHandModelIpc } from './handModel';
+import { registerSam2ModelIpc, sam2ModelUserDir } from './sam2Model';
 import { registerMediaKeyIpc } from './mediaKeyVault';
 import { registerAiMediaProxyIpc } from './aiMediaProxy';
 import { registerApiProxyIpc, abortAllApiStreams, sendWithAuth } from './apiProxy';
@@ -1425,6 +1426,8 @@ app.whenReady().then(() => {
   registerDepthModelIpc(() => app.getPath('userData'));
   // Live performance input's hand models, a PINNED download on first use (handModel.ts).
   registerHandModelIpc(() => app.getPath('userData'));
+  // Object Matte walks' SAM 2.1 video model, a PINNED download on first use (sam2Model.ts).
+  registerSam2ModelIpc(() => app.getPath('userData'));
   registerModelDownloadIpc();
   // Export's ffmpeg: health check, one-click repair download, "choose file"
   // (ffmpegService.ts). Ungated for the same reason as the model download.
@@ -1497,6 +1500,7 @@ app.whenReady().then(() => {
     faceUserDir: faceModelUserDir(app.getPath('userData')),
     depthUserDir: depthModelUserDir(app.getPath('userData')),
     handUserDir: handModelUserDir(app.getPath('userData')),
+    sam2UserDir: sam2ModelUserDir(app.getPath('userData')),
     userDataPath: app.getPath('userData'),
     // The transcribe job's key: main's keystore → the startJob, per job (never logged, never to a page).
     transcribeCredential: async (provider) =>

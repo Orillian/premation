@@ -29,6 +29,7 @@
 #include <array>
 #include <exception>
 #include <filesystem>
+#include <optional>
 #include <string_view>
 #include <utility>
 #endif
@@ -65,14 +66,20 @@ bool copy_out(const Ort::Value& v, Tensor& out, std::string_view name, std::stri
 
 class OrtModels final : public Models {
  public:
-  OrtModels(const std::string& encoderPath, const std::string& decoderPath)
+  OrtModels(const std::string& encoderPath, const std::string& decoderPath, bool withEncoder)
       : env_(ORT_LOGGING_LEVEL_WARNING, "premation-sam"),
-        options_(make_options()),
-        encoder_(env_, path_of(encoderPath).c_str(), options_),
-        decoder_(env_, path_of(decoderPath).c_str(), options_),
-        memory_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {}
+        decoder_(ort::open_session(env_, path_of(decoderPath).c_str(), decoderProvider_)),
+        memory_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {
+    if (withEncoder) encoder_.emplace(ort::open_session(env_, path_of(encoderPath).c_str(), encoderProvider_));
+  }
+
+  [[nodiscard]] std::string provider() const override { return encoder_ ? encoderProvider_ : decoderProvider_; }
 
   bool encode(std::span<const float> pixels, Embeddings& out, std::string& error) override {
+    if (!encoder_) {
+      error = "the encoder was not loaded";
+      return false;
+    }
     try {
       std::vector<float> in(pixels.begin(), pixels.end());
       const std::array<std::int64_t, 4> shape{1, 3, kInputSize, kInputSize};
@@ -80,7 +87,7 @@ class OrtModels final : public Models {
       const std::array<const char*, 1> inNames{"pixel_values"};
       const std::array<const char*, 2> outNames{"image_embeddings", "image_positional_embeddings"};
       std::vector<Ort::Value> outs =
-          encoder_.Run(Ort::RunOptions{nullptr}, inNames.data(), &input, inNames.size(), outNames.data(), outNames.size());
+          encoder_->Run(Ort::RunOptions{nullptr}, inNames.data(), &input, inNames.size(), outNames.data(), outNames.size());
       if (outs.size() != 2) {
         error = "the encoder answered " + std::to_string(outs.size()) + " outputs";
         return false;
@@ -129,16 +136,12 @@ class OrtModels final : public Models {
   }
 
  private:
-  static Ort::SessionOptions make_options() {
-    std::string provider;
-    return ort::session_options(provider);
-  }
-
   // Declaration order is construction order: the Env outlives the sessions.
+  std::string encoderProvider_;
+  std::string decoderProvider_;
   Ort::Env env_;
-  Ort::SessionOptions options_;
-  Ort::Session encoder_;
   Ort::Session decoder_;
+  std::optional<Ort::Session> encoder_;
   Ort::MemoryInfo memory_;
 };
 
@@ -146,9 +149,10 @@ class OrtModels final : public Models {
 
 bool runtime_available() noexcept { return true; }
 
-std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& decoderPath, std::string& error) {
+std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& decoderPath, std::string& error,
+                             bool withEncoder) {
   try {
-    return std::make_unique<OrtModels>(encoderPath, decoderPath);
+    return std::make_unique<OrtModels>(encoderPath, decoderPath, withEncoder);
   } catch (const std::exception& e) {
     error = e.what();
     return nullptr;
@@ -160,7 +164,7 @@ std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& 
 bool runtime_available() noexcept { return false; }
 
 std::unique_ptr<Models> load(const std::string& /*encoderPath*/, const std::string& /*decoderPath*/,
-                             std::string& error) {
+                             std::string& error, bool /*withEncoder*/) {
   error = "this engine build has no ONNX Runtime";
   return nullptr;
 }

@@ -25,6 +25,12 @@
 //                    — setLayerMatte, which the renderer shows in place of the
 //                    footage — and its outline keyed on an "Object Matte" mask
 //                    (mode none) for editing and Track mask. One entry.
+//                    With SAM 2.1 installed ($PREMATION_SAM2_USER_DIR) the walk
+//                    runs it instead (sam2_track.hpp): its memory bank carries
+//                    the subject, no flow seeds, occlusion keeps the walk going,
+//                    and a stroke's frame becomes a conditioning frame.
+//                    The single-frame call caches the encoder's output per
+//                    (file, mtime, frame, model) on disk (sam_embed_cache.hpp).
 //   apply (core)     addMask (mode none, "Object mask") + its feather 2 — the
 //                    path objectMask.ts writes: geometry for Track mask and
 //                    the path effects, not a cut. The Roto Brush tool asks for
@@ -58,6 +64,8 @@
 #include "os_ffi.hpp"
 #include "sam_ort.hpp"
 #include "sam_pipeline.hpp"
+#include "sam2_track.hpp"
+#include "sam_embed_cache.hpp"
 #include "values.hpp"
 
 namespace premation::jobs {
@@ -95,14 +103,16 @@ class ObjectMatteResult final : public JobResult {
     std::vector<std::string> replace;
   };
 
-  ObjectMatteResult(std::string layer, api::BezierPath path, double iou, MaskOut out)
-      : layer_(std::move(layer)), path_(std::move(path)), iou_(iou), out_(std::move(out)) {}
+  ObjectMatteResult(std::string layer, api::BezierPath path, double iou, MaskOut out, std::string provider, bool cached)
+      : layer_(std::move(layer)), path_(std::move(path)), iou_(iou), out_(std::move(out)), provider_(std::move(provider)), cached_(cached) {}
 
   [[nodiscard]] std::string summary_json() const override {
     Json s = Json::object();
     s.set("contourPoints", Json::number(static_cast<double>(path_.vertices.size() / 2)));
     s.set("engine", Json::string("onnx"));
     s.set("iou", Json::number(iou_));
+    if (!provider_.empty()) s.set("provider", Json::string(provider_));
+    s.set("embeddingCached", Json::boolean(cached_));
     if (!mask_.empty()) s.set("mask", Json::string(mask_));
     return js::stringify(s);
   }
@@ -137,6 +147,8 @@ class ObjectMatteResult final : public JobResult {
   api::BezierPath path_;
   double iou_;
   MaskOut out_;
+  std::string provider_;
+  bool cached_;
   // Set by apply (the summary is read after it): the new mask's id.
   mutable std::string mask_;
 };
@@ -164,9 +176,23 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   const std::int64_t count = std::max<std::int64_t>(1, src->frame_count());
   const double fi = std::floor((std::max(0.0, srcSec) + 1e-6) * fps);
   const std::int64_t frame = std::clamp<std::int64_t>(static_cast<std::int64_t>(std::min(fi, 9.0e15)), 0, count - 1);
+  const std::string enc = in->at("encoder").is_string() ? in->at("encoder").str() : std::string();
+  const std::string dec = in->at("decoder").is_string() ? in->at("decoder").str() : std::string();
+
+  // Hover-to-preview asks the same frame again: the encoder's output for
+  // (file, mtime, frame, model) is cached on disk (sam_embed_cache.hpp), so a
+  // second prompt skips the decode and the encoder both.
+  const std::string cacheDir = in->at("embeddingCache").is_string() ? in->at("embeddingCache").str() : std::string();
+  const std::string cacheKey = cacheDir.empty() ? std::string() : sam::embedding_key(file, frame, enc);
+  std::optional<sam::CachedEmbedding> cached = sam::read_embedding(cacheDir, cacheKey);
   RgbaImage img;
-  if (!src->read(frame, img, error)) fail(ErrorCode::decode, "frame " + std::to_string(frame) + ": " + error);
-  if (img.empty()) fail(ErrorCode::decode, "frame " + std::to_string(frame) + " is empty");
+  if (cached) {
+    img.width = cached->width;
+    img.height = cached->height;
+  } else {
+    if (!src->read(frame, img, error)) fail(ErrorCode::decode, "frame " + std::to_string(frame) + ": " + error);
+    if (img.empty()) fail(ErrorCode::decode, "frame " + std::to_string(frame) + " is empty");
+  }
 
   // Prompts arrive in LAYER px; the decoded plane is frame px.
   const double layerW = num_or(*in, "layerWidth", 0) > 0 ? num_or(*in, "layerWidth", 0) : src->source_width();
@@ -191,18 +217,29 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
 
   if (control.cancelled()) return "{}";
   control.progress(0.08, "Loading the Object Matte model");
-  const std::string enc = in->at("encoder").is_string() ? in->at("encoder").str() : std::string();
-  const std::string dec = in->at("decoder").is_string() ? in->at("decoder").str() : std::string();
-  std::unique_ptr<sam::Models> models = sam::load(enc, dec, error);
+  std::unique_ptr<sam::Models> models = sam::load(enc, dec, error, /*withEncoder=*/!cached);
   if (!models) {
     fail(sam::runtime_available() ? ErrorCode::io : ErrorCode::unsupported, "Object Matte model: " + error);
   }
 
   if (control.cancelled()) return "{}";
-  control.progress(0.2, "Encoding the frame");
-  const std::vector<float> pixels = sam::preprocess(img.rgba, img.width, img.height);
   sam::Embeddings emb;
-  if (!models->encode(pixels, emb, error)) fail(ErrorCode::internal, "SAM encoder: " + error);
+  if (cached) {
+    emb.image = sam::Tensor{std::move(cached->image.data), std::move(cached->image.shape)};
+    emb.positional = sam::Tensor{std::move(cached->positional.data), std::move(cached->positional.shape)};
+  } else {
+    control.progress(0.2, "Encoding the frame");
+    const std::vector<float> pixels = sam::preprocess(img.rgba, img.width, img.height);
+    if (!models->encode(pixels, emb, error)) fail(ErrorCode::internal, "SAM encoder: " + error);
+    if (!cacheKey.empty()) {
+      sam::CachedEmbedding e;
+      e.width = img.width;
+      e.height = img.height;
+      e.image = sam::CachedTensor{emb.image.data, emb.image.shape};
+      e.positional = sam::CachedTensor{emb.positional.data, emb.positional.shape};
+      (void)sam::write_embedding(cacheDir, cacheKey, e);  // a cache that cannot be written only costs the next call time
+    }
+  }
 
   if (control.cancelled()) return "{}";
   control.progress(0.8, "Segmenting");
@@ -221,6 +258,8 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   o.set("height", Json::number(img.height));
   o.set("layerWidth", Json::number(layerW));
   o.set("layerHeight", Json::number(layerH));
+  o.set("provider", Json::string(models->provider()));
+  o.set("embeddingCached", Json::boolean(cached.has_value()));
   o.set("iou", Json::number(out.iouScores.data.empty()
                                 ? 0.0
                                 : static_cast<double>(out.iouScores.data[sam::best_mask(out.iouScores.data)])));
@@ -268,10 +307,178 @@ std::vector<sam::Point> points_of(const Json& a, double kx, double ky) {
   return out;
 }
 
+/// One walked frame's matte: refined (edges, motion blur, choke / feather,
+/// decontaminated colours), written as the cut-out PNG (temp + rename), and
+/// its outline in layer px — the child's {t, file, contour} entry.
+Json store_matte_frame(const RgbaImage& img, const std::vector<float>& alpha, const scene::pixmo::FlowField* flow, const VideoRefine& rf,
+                       const std::string& folder, double compTime, double compFps, double kx, double ky) {
+  const int w = static_cast<int>(img.width);
+  const int h = static_cast<int>(img.height);
+  std::vector<float> refined = alpha;
+  if (rf.edgeRadius > 0) refined = matte::guided_filter(refined, matte::luma(img.rgba, w, h), w, h, static_cast<int>(std::lround(rf.edgeRadius)), 1e-3);
+  if (rf.motionBlur && flow != nullptr) refined = matte::motion_blur(refined, *flow, w, h, rf.shutterAngle);
+  matte::choke_feather(refined, w, h, rf.choke, rf.feather);
+  std::vector<std::uint8_t> colours = img.rgba;
+  if (rf.decontaminate > 0) matte::decontaminate(colours, refined, w, h, rf.decontaminate);
+  const std::vector<std::uint8_t> cut = matte::cutout(colours, refined, w, h);
+  std::vector<std::uint8_t> png;
+  if (!exporter::encode_png_rgba8(cut, img.width, img.height, png)) fail(ErrorCode::io, "could not encode a matte frame");
+  std::string name = std::to_string(static_cast<long long>(std::llround(compTime * compFps)));
+  if (name.size() < 6) name.insert(0, 6 - name.size(), '0');
+  const std::filesystem::path path = std::filesystem::path(folder) / ("matte_" + name + ".png");
+  {
+    std::error_code ec;
+    std::filesystem::path tmp = path;
+    tmp += ".tmp";
+    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+    f.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
+    if (!f) fail(ErrorCode::io, "cannot write '" + tmp.string() + "'");
+    f.close();
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) fail(ErrorCode::io, "cannot write '" + path.string() + "': " + ec.message());
+  }
+  std::vector<std::uint8_t> bin(refined.size());
+  for (std::size_t i = 0; i < refined.size(); ++i) bin[i] = refined[i] >= 0.5f ? 255 : 0;
+  const std::vector<trace::TracePoint> contour = sam::matte_contour(bin, img.width, img.height, 128);
+  Json fr = Json::object();
+  fr.set("t", Json::number(compTime));
+  fr.set("file", Json::string(path.string()));
+  Json c = Json::array();
+  for (const trace::TracePoint& p : contour) {
+    c.arr_mut().push_back(Json::number(p.x / kx));
+    c.arr_mut().push_back(Json::number(p.y / ky));
+  }
+  fr.set("contour", std::move(c));
+  return fr;
+}
+
+/// The strokes whose time is this frame (half a comp frame either side).
+template <typename Fn>
+void strokes_at(const Json& strokes, double compTime, double compFps, Fn&& each) {
+  if (!strokes.is_array()) return;
+  for (const Json& st : strokes.arr()) {
+    if (std::abs(num_or(st, "t", -1e9) - compTime) > 0.5 / std::max(1.0, compFps)) continue;
+    each(st.at("points"));
+  }
+}
+
+/// AE parity Step 3.1: the SAM 2.1 walk. The model carries the subject in its
+/// memory bank (sam2_track.hpp) — no flow seeds, so it survives occlusion: a
+/// frame where the model says the object is gone stores an empty matte and the
+/// walk goes on. The user's click / box seeds the first frame of each walk, and
+/// a correction stroke makes its frame a new conditioning frame.
+std::string object_matte_video_sam2(const Json& in, JobControl& control) {
+  std::string error;
+  std::unique_ptr<FrameSource> src = open_frames(in.at("file").str(), 0, error);
+  if (!src) fail(ErrorCode::decode, "cannot read '" + in.at("file").str() + "': " + error);
+  control.progress(0.01, "Loading the SAM 2 model");
+  const std::string dir = in.at("sam2").str();
+  const std::optional<sam2::Constants> constants = sam2::load_constants(dir, error);
+  if (!constants) fail(ErrorCode::io, "SAM 2 model: " + error);
+  std::unique_ptr<sam2::Models> models = sam2::load(dir, error);
+  if (!models) fail(sam::runtime_available() ? ErrorCode::io : ErrorCode::unsupported, "SAM 2 model: " + error);
+  const double layerW = num_or(in, "layerWidth", 0) > 0 ? num_or(in, "layerWidth", 0) : src->source_width();
+  const double layerH = num_or(in, "layerHeight", 0) > 0 ? num_or(in, "layerHeight", 0) : src->source_height();
+  const double compFps = num_or(in, "fps", 30);
+  const double srcFps = src->fps() > 0 ? src->fps() : 30.0;
+  const std::int64_t count = std::max<std::int64_t>(1, src->frame_count());
+  const VideoRefine rf = refine_of(in.at("refine"));
+  const std::string folder = in.at("folder").str();
+  std::error_code ec;
+  std::filesystem::create_directories(folder, ec);
+  if (ec) fail(ErrorCode::io, "cannot create '" + folder + "': " + ec.message());
+
+  std::size_t total = 0;
+  for (const Json& w : in.at("walks").arr()) total += w.arr().size();
+  std::size_t done = 0;
+  double modelMs = 0;
+  Json frames = Json::array();
+  std::string status = "completed";
+  const bool needFlow = rf.motionBlur || rf.reduceChatter > 0;
+  for (const Json& walk : in.at("walks").arr()) {
+    sam2::Tracker tracker(*models, *constants, walk.arr().size());
+    stabilize::FloatLuma prevLuma;
+    std::vector<float> prevAlpha;
+    for (const Json& step : walk.arr()) {
+      if (control.cancelled()) return "{}";
+      const double compTime = step.arr()[0].num();
+      const double srcSec = step.arr()[1].num();
+      const std::int64_t frame = std::clamp<std::int64_t>(static_cast<std::int64_t>(std::floor((std::max(0.0, srcSec) + 1e-6) * srcFps)), 0, count - 1);
+      RgbaImage img;
+      if (!src->read(frame, img, error)) fail(ErrorCode::decode, "frame " + std::to_string(frame) + ": " + error);
+      const int w = static_cast<int>(img.width);
+      const int h = static_cast<int>(img.height);
+      const double kx = w / layerW;
+      const double ky = h / layerH;
+      std::vector<sam2::Prompt> prompts;
+      const auto addPoints = [&](const Json& a) {
+        for (const sam::Point& p : points_of(a, kx, ky)) prompts.push_back({p.x, p.y, p.label});
+      };
+      if (tracker.steps() == 0) {
+        addPoints(in.at("points"));
+        if (in.at("box").is_array() && in.at("box").arr().size() == 4) {
+          // SAM 2's prompt encoder takes a box as its two corners, labels 2 and 3.
+          const Json::Array& b = in.at("box").arr();
+          prompts.push_back({std::min(b[0].num(), b[2].num()) * kx, std::min(b[1].num(), b[3].num()) * ky, 2});
+          prompts.push_back({std::max(b[0].num(), b[2].num()) * kx, std::max(b[1].num(), b[3].num()) * ky, 3});
+        }
+        if (prompts.empty()) fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.");
+      }
+      strokes_at(in.at("strokes"), compTime, compFps, addPoints);
+      sam2::FrameResult res;
+      if (!tracker.step(img.rgba, img.width, img.height, prompts, res, error)) fail(ErrorCode::internal, "SAM 2: " + error);
+      modelMs += res.encodeMs + res.attendMs + res.decodeMs + res.memoryMs;
+      std::vector<float>& alpha = res.alpha;
+      std::size_t area = 0;
+      for (const float a : alpha) area += a >= 0.5f ? 1 : 0;
+      if (area < 16 && tracker.steps() == 1) {
+        status = "empty";
+        break;
+      }
+      std::optional<scene::pixmo::FlowField> flow;
+      stabilize::FloatLuma lum;
+      if (needFlow) {
+        lum = stabilize::luma_255_of(img.rgba, w, h);
+        if (!prevAlpha.empty()) {
+          scene::pixmo::FlowOptions fo;
+          fo.step = 8;
+          flow = stabilize::compute_flow_f32(prevLuma, lum, fo);
+        }
+      }
+      if (flow && rf.reduceChatter > 0 && !res.conditioning) {
+        // Chatter: where this frame and the carried matte nearly agree, settle between them.
+        const std::vector<float> warped = matte::warp_by_flow(prevAlpha, *flow, w, h);
+        const auto k = static_cast<float>(std::clamp(rf.reduceChatter, 0.0, 100.0) / 200.0);
+        for (std::size_t i = 0; i < alpha.size(); ++i)
+          if (std::abs(alpha[i] - warped[i]) < 0.5f) alpha[i] += k * (warped[i] - alpha[i]);
+      }
+      if (needFlow) {
+        prevAlpha = alpha;
+        prevLuma = std::move(lum);
+      }
+      frames.arr_mut().push_back(store_matte_frame(img, alpha, flow ? &*flow : nullptr, rf, folder, compTime, compFps, kx, ky));
+      ++done;
+      control.progress(0.03 + 0.95 * static_cast<double>(done) / static_cast<double>(std::max<std::size_t>(1, total)),
+                       "Object Matte (SAM 2), frame " + std::to_string(done) + " of " + std::to_string(total));
+    }
+    if (status != "completed") break;
+  }
+  Json o = Json::object();
+  o.set("frames", std::move(frames));
+  o.set("status", Json::string(status));
+  o.set("layerWidth", Json::number(layerW));
+  o.set("layerHeight", Json::number(layerH));
+  o.set("model", Json::string("sam2.1-tiny"));
+  o.set("provider", Json::string(models->provider()));
+  o.set("msPerFrame", Json::number(done > 0 ? modelMs / static_cast<double>(done) : 0));
+  return js::stringify(o);
+}
+
 /// Input: {file, encoder, decoder, layerWidth, layerHeight, points, box?, strokes:[{t, points}], walks, fps, refine, folder}.
 std::string object_matte_video_child(const std::string& inputJson, JobControl& control) {
   const std::optional<Json> in = js::parse(inputJson);
   if (!in || !in->is_object() || !in->at("file").is_string()) fail(ErrorCode::invalid_argument, "objectMatte video: bad input");
+  if (in->at("sam2").is_string() && !in->at("sam2").str().empty()) return object_matte_video_sam2(*in, control);
   std::string error;
   std::unique_ptr<FrameSource> src = open_frames(in->at("file").str(), 0, error);
   if (!src) fail(ErrorCode::decode, "cannot read '" + in->at("file").str() + "': " + error);
@@ -336,10 +543,9 @@ std::string object_matte_video_child(const std::string& inputJson, JobControl& c
         pts = seeds.points;
         box = seeds.box;
       }
-      for (const Json& st : in->at("strokes").arr()) {
-        if (std::abs(num_or(st, "t", -1e9) - compTime) > 0.5 / std::max(1.0, compFps)) continue;
-        for (const sam::Point& p : points_of(st.at("points"), kx, ky)) pts.push_back(p);
-      }
+      strokes_at(in->at("strokes"), compTime, compFps, [&](const Json& a) {
+        for (const sam::Point& p : points_of(a, kx, ky)) pts.push_back(p);
+      });
       const sam::Letterbox lb = sam::letterbox(img.width, img.height);
       // A box with points: the points prompt, the box constrains (the decoder export takes points only).
       const std::optional<sam::Prompts> prompts = sam::prompts_for(pts, pts.empty() ? box : std::nullopt, lb.scale);
@@ -376,42 +582,7 @@ std::string object_matte_video_child(const std::string& inputJson, JobControl& c
       prevAlpha = alpha;
       prevLuma = lum;
       first = false;
-      // Refine for the stored frame.
-      std::vector<float> refined = alpha;
-      if (rf.edgeRadius > 0) refined = matte::guided_filter(refined, matte::luma(img.rgba, w, h), w, h, static_cast<int>(std::lround(rf.edgeRadius)), 1e-3);
-      if (rf.motionBlur && flow) refined = matte::motion_blur(refined, *flow, w, h, rf.shutterAngle);
-      matte::choke_feather(refined, w, h, rf.choke, rf.feather);
-      std::vector<std::uint8_t> colours = img.rgba;
-      if (rf.decontaminate > 0) matte::decontaminate(colours, refined, w, h, rf.decontaminate);
-      const std::vector<std::uint8_t> cut = matte::cutout(colours, refined, w, h);
-      std::vector<std::uint8_t> png;
-      if (!exporter::encode_png_rgba8(cut, img.width, img.height, png)) fail(ErrorCode::io, "could not encode a matte frame");
-      std::string name = std::to_string(static_cast<long long>(std::llround(compTime * compFps)));
-      if (name.size() < 6) name.insert(0, 6 - name.size(), '0');
-      const std::filesystem::path path = std::filesystem::path(folder) / ("matte_" + name + ".png");
-      {
-        std::filesystem::path tmp = path;
-        tmp += ".tmp";
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        f.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
-        if (!f) fail(ErrorCode::io, "cannot write '" + tmp.string() + "'");
-        f.close();
-        std::filesystem::rename(tmp, path, ec);
-        if (ec) fail(ErrorCode::io, "cannot write '" + path.string() + "': " + ec.message());
-      }
-      std::vector<std::uint8_t> bin(refined.size());
-      for (std::size_t i = 0; i < refined.size(); ++i) bin[i] = refined[i] >= 0.5f ? 255 : 0;
-      const std::vector<trace::TracePoint> contour = sam::matte_contour(bin, img.width, img.height, 128);
-      Json fr = Json::object();
-      fr.set("t", Json::number(compTime));
-      fr.set("file", Json::string(path.string()));
-      Json c = Json::array();
-      for (const trace::TracePoint& p : contour) {
-        c.arr_mut().push_back(Json::number(p.x / kx));
-        c.arr_mut().push_back(Json::number(p.y / ky));
-      }
-      fr.set("contour", std::move(c));
-      frames.arr_mut().push_back(std::move(fr));
+      frames.arr_mut().push_back(store_matte_frame(img, alpha, flow ? &*flow : nullptr, rf, folder, compTime, compFps, kx, ky));
       ++done;
       control.progress(0.03 + 0.95 * static_cast<double>(done) / static_cast<double>(std::max<std::size_t>(1, total)),
                        "Object Matte, frame " + std::to_string(done) + " of " + std::to_string(total));
@@ -422,6 +593,8 @@ std::string object_matte_video_child(const std::string& inputJson, JobControl& c
   o.set("status", Json::string(status));
   o.set("layerWidth", Json::number(layerW));
   o.set("layerHeight", Json::number(layerH));
+  o.set("model", Json::string("slimsam"));
+  o.set("provider", Json::string(models->provider()));
   return js::stringify(o);
 }
 
@@ -433,14 +606,25 @@ struct MatteFrame {
 
 class ObjectMatteVideoResult final : public JobResult {
  public:
+  /// Which model walked the range, on which execution provider, how fast.
+  struct Run {
+    std::string model;
+    std::string provider;
+    double msPerFrame = 0;
+  };
+
   ObjectMatteVideoResult(std::string layer, std::vector<MatteFrame> frames, std::string status, bool storeMatte,
-                         std::vector<std::string> replace)
-      : layer_(std::move(layer)), frames_(std::move(frames)), status_(std::move(status)), storeMatte_(storeMatte), replace_(std::move(replace)) {}
+                         std::vector<std::string> replace, Run run)
+      : layer_(std::move(layer)), frames_(std::move(frames)), status_(std::move(status)), storeMatte_(storeMatte), replace_(std::move(replace)),
+        run_(std::move(run)) {}
 
   [[nodiscard]] std::string summary_json() const override {
     Json s = Json::object();
     s.set("frames", Json::number(static_cast<double>(frames_.size())));
     s.set("status", Json::string(status_));
+    s.set("model", Json::string(run_.model));
+    if (!run_.provider.empty()) s.set("provider", Json::string(run_.provider));
+    if (run_.msPerFrame > 0) s.set("msPerFrame", Json::number(std::round(run_.msPerFrame)));
     if (!mask_.empty()) s.set("mask", Json::string(mask_));
     return js::stringify(s);
   }
@@ -499,6 +683,7 @@ class ObjectMatteVideoResult final : public JobResult {
   std::string status_;
   bool storeMatte_;
   std::vector<std::string> replace_;
+  Run run_;
   mutable std::string mask_;
 };
 
@@ -524,14 +709,26 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     }
     if (!dir) dir = os::env_var("PREMATION_SAM_DIR");
   }
+  // AE parity 3.1: a walk (direction set) runs SAM 2.1 with its memory bank
+  // when the user installed it ($PREMATION_SAM2_USER_DIR, Electron's
+  // sam2Model.ts) — unless the spec names SlimSAM files, or
+  // PREMATION_OBJECT_MATTE_MODEL=slimsam asks for the per-frame model.
+  std::string sam2Dir;
+  if (spec.direction && spec.encoder_model.empty() && spec.decoder_model.empty()) {
+    const std::optional<std::string> pick = os::env_var("PREMATION_OBJECT_MATTE_MODEL");
+    if (!pick || *pick != "slimsam") {
+      if (const std::optional<std::string> s2 = os::env_var("PREMATION_SAM2_USER_DIR"); s2 && sam2::installed(*s2)) sam2Dir = *s2;
+    }
+  }
   const std::string encoder = model_path(spec.encoder_model, dir, kEncoderFile);
   const std::string decoder = model_path(spec.decoder_model, dir, kDecoderFile);
-  if (encoder.empty() || decoder.empty()) {
+  if (sam2Dir.empty() && (encoder.empty() || decoder.empty())) {
     fail(ErrorCode::unsupported,
          "no Object Matte model: pass encoderModel / decoderModel, or set PREMATION_SAM_DIR to the folder holding " +
              std::string(kEncoderFile) + " and " + kDecoderFile);
   }
   for (const std::string* p : {&encoder, &decoder}) {
+    if (!sam2Dir.empty()) break;  // the walk does not read the SlimSAM pair
     std::error_code ec;
     if (!std::filesystem::is_regular_file(std::filesystem::path(*p), ec)) {
       fail(ErrorCode::not_found, "Object Matte model '" + *p + "' does not exist");
@@ -572,6 +769,16 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
   input.set("points", std::move(points));
   input.set("encoder", Json::string(encoder));
   input.set("decoder", Json::string(decoder));
+  if (!spec.direction) {
+    // The single-frame call's encoder cache (sam_embed_cache.hpp): the OS temp folder unless the host names one.
+    std::string cache = os::env_var("PREMATION_SAM_CACHE_DIR").value_or("");
+    if (cache.empty()) {
+      std::error_code ec;
+      const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec);
+      if (!ec) cache = (tmp / "premation-sam-embeddings").string();
+    }
+    if (!cache.empty()) input.set("embeddingCache", Json::string(cache));
+  }
 
   if (spec.direction) {
     // AE parity 3.1 / 3.2: follow the subject through the range.
@@ -595,6 +802,7 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     if (*spec.direction != api::TrackDirection::backward) walks.arr_mut().push_back(walk(origin, last));
     if (*spec.direction != api::TrackDirection::forward && origin > first) walks.arr_mut().push_back(walk(origin, first));
     input.set("walks", std::move(walks));
+    if (!sam2Dir.empty()) input.set("sam2", Json::string(sam2Dir));
     input.set("fps", Json::number(fps));
     Json strokes = Json::array();
     for (const api::ObjectMatteStroke& st : spec.strokes) {
@@ -659,7 +867,11 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
       if (byTime.empty()) fail(ErrorCode::not_found, kNothingFound, {.layer = layer});
       std::vector<MatteFrame> frames;
       for (auto& [t, f] : byTime) frames.push_back(std::move(f));
-      return std::make_unique<ObjectMatteVideoResult>(layer, std::move(frames), status, store, replace);
+      ObjectMatteVideoResult::Run run;
+      run.model = r->at("model").is_string() ? r->at("model").str() : "slimsam";
+      run.provider = r->at("provider").is_string() ? r->at("provider").str() : "";
+      run.msPerFrame = num_or(*r, "msPerFrame", 0);
+      return std::make_unique<ObjectMatteVideoResult>(layer, std::move(frames), status, store, replace, std::move(run));
     };
     return job;
   }
@@ -696,7 +908,9 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     if (path.vertices.size() < 6) fail(ErrorCode::not_found, kNothingFound, {.layer = layer});
     path.in_tangents.assign(path.vertices.size(), 0.0);
     path.out_tangents.assign(path.vertices.size(), 0.0);
-    return std::make_unique<ObjectMatteResult>(layer, std::move(path), num_or(*r, "iou", 0), maskOut);
+    return std::make_unique<ObjectMatteResult>(layer, std::move(path), num_or(*r, "iou", 0), maskOut,
+                                               r->at("provider").is_string() ? r->at("provider").str() : std::string(),
+                                               r->at("embeddingCached").is_bool() && r->at("embeddingCached").b());
   };
   return job;
 }

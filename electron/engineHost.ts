@@ -639,6 +639,8 @@ export interface EngineHostOptions {
   depthUserDir?: string;
   /** The hand models for live performance input (<userData>/models/hand-landmarks; handModel.ts). */
   handUserDir?: string;
+  /** The SAM 2.1 video model for Object Matte walks (<userData>/models/sam2-video; sam2Model.ts). */
+  sam2UserDir?: string;
   /** app.getPath('userData'): lets PREMATION_FFMPEG find the in-app repaired ffmpeg (ffmpegRepair.ts). */
   userDataPath?: string;
   log?(line: string): void;
@@ -790,6 +792,8 @@ export class EngineHost {
               ...(o.depthUserDir ? { PREMATION_DEPTH_USER_DIR: o.depthUserDir } : {}),
               // Read at every startLiveInput, so an install applies to the next start.
               ...(o.handUserDir ? { PREMATION_HAND_USER_DIR: o.handUserDir } : {}),
+              // Read per objectMatte walk: with all six files there the walk tracks with SAM 2's memory.
+              ...(o.sam2UserDir ? { PREMATION_SAM2_USER_DIR: o.sam2UserDir } : {}),
               PREMATION_SAM_DIR: process.env.PREMATION_SAM_DIR
                 ?? (o.isPackaged ? path.join(o.resourcesPath, 'models', 'object-matte') : path.join(o.appPath, 'dist', 'models', 'object-matte')),
               // The fonts the app ships (resources/fonts, scripts/fetchFonts.cjs): the

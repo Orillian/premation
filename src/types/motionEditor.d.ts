@@ -575,6 +575,14 @@ export interface MotionEditorApi {
     cancelDownload(requestId: string): Promise<boolean>;
     onDownloadProgress(handler: (event: unknown) => void): () => void;
   };
+  /** Object Matte walks' SAM 2.1 video model in <userData>/models/sam2-video (electron/sam2Model.ts): pinned download. */
+  sam2Model?: {
+    status(): Promise<{ urls: string[]; bytes: number; installedAt: number } | null>;
+    install(request: { requestId: string }): Promise<{ ok: true; model: { urls: string[]; bytes: number; installedAt: number } } | { ok: false; message: string }>;
+    remove(): Promise<boolean>;
+    cancelDownload(requestId: string): Promise<boolean>;
+    onDownloadProgress(handler: (event: unknown) => void): () => void;
+  };
   /** Export's ffmpeg: health check, one-click repair, "choose file" (electron/ffmpegService.ts). */
   ffmpeg?: {
     status(force?: boolean): Promise<FfmpegStatus>;
