@@ -731,7 +731,7 @@ std::optional<api::CameraSolveData> camera_solve_of(const Document& d, const Edi
 
 ResultOf<api::SetLayerMatte> handle(const api::SetLayerMatte& c, HCtx& x) {
   Document& d = x.d;
-  (void)require_layer(d, c.layer);
+  const bool footage = require_layer(d, c.layer).kind() == "video";
   x.label = "Object Matte";
   if (c.frames.empty()) {
     sg_set_fx(d, c.layer, "alphaMatte", Json());
@@ -748,6 +748,28 @@ ResultOf<api::SetLayerMatte> handle(const api::SetLayerMatte& c, HCtx& x) {
   }
   Json record = Json::object();
   record.set("frames", std::move(frames));
+  if (footage) {
+    // After Effects' Object Matte card: footage given an Object Matte gets the
+    // `object-matte` effect (first in the stack, in this same history entry),
+    // and the matte cuts the layer through it — its Invert / Fine-tune are
+    // live, its propagation settings feed the next propagation. The record
+    // says so (`cutByEffect`): the effect disabled or removed, the layer
+    // shows uncut. A layer that already has the card keeps it as it is.
+    record.set("cutByEffect", Json::boolean(true));
+    std::vector<Json> effects = get_node_effects(d, c.layer);
+    const bool has = std::ranges::any_of(effects, [](const Json& e) { return e.at("type").is_string() && e.at("type").str() == "object-matte"; });
+    if (const EffectDef* def = registry().effect("object-matte"); !has && def != nullptr) {
+      const std::string id = x.mint_group_id("fx_", [&](const std::string& v) {
+        return std::ranges::any_of(effects, [&](const Json& e) { return e.at("id").is_string() && e.at("id").str() == v; });
+      });
+      Json e = Json::object();
+      e.set("id", Json::string(id));
+      e.set("type", Json::string("object-matte"));
+      e.set("params", new_instance_params_of(*def));
+      effects.insert(effects.begin(), std::move(e));
+      write_node_effects(d, c.layer, std::move(effects));
+    }
+  }
   sg_set_fx(d, c.layer, "alphaMatte", std::move(record));
   return {};
 }

@@ -1720,11 +1720,18 @@ void Walk::build_node(const doc::Node& n) {
         bestD = dd;
       }
     }
-    // Read as a matte by an effect (Selective Color (AI)), the frame is that
-    // effect's texture and the footage stays whole.
+    // Read as a matte by an effect (the Object Matte effect, which cuts the
+    // layer with it live, or Selective Color (AI)), the frame is that effect's
+    // texture and the footage stays whole. A matte stored with its Object
+    // Matte effect (`cutByEffect`, setLayerMatte) cuts only through it: that
+    // effect disabled or removed, the layer shows uncut. A record from before
+    // the effect existed still stands in for the footage.
     if (best->at("src").is_string()) {
+      const Json& by = fx.at("alphaMatte").at("cutByEffect");
+      const bool byEffect = by.is_bool() && by.b();
+      const bool hasCard = std::ranges::any_of(l.effects, [](const Json& e) { return e.at("type").is_string() && e.at("type").str() == "object-matte"; });
       if (reads_own_object_matte(l)) l.objectMatteSrc = best->at("src").str();
-      else l.contentAwareFillSrc = best->at("src").str();
+      else if (!byEffect && !hasCard) l.contentAwareFillSrc = best->at("src").str();
     }
   }
   l.sourceTime = retimed_source_at(n.id, t_);  // its own Speed % / Time Remap (retime_port.cpp)
@@ -2291,9 +2298,10 @@ Snapshot Walk::run() {
         layers_.back().effects.push_back(effect("alpha-view-fill", "fill", std::move(p)));
         layers_.insert(layers_.begin(), flat("alpha-black", "#000000", 1));
       } else if (alphaView == "overlay") {
-        // The source everywhere; outside the matte it sits under a red tint.
+        // The source everywhere; outside the matte it sits under the overlay
+        // tint (setViewport layerAlphaOverlayColor / Opacity; magenta, 50 %).
         RLayer src = source();
-        RLayer tint = flat("alpha-tint", "#ff0000", 0.5);
+        RLayer tint = flat("alpha-tint", c_.layerView->overlayColor, c_.layerView->overlayOpacity);
         layers_.insert(layers_.begin(), std::move(tint));
         layers_.insert(layers_.begin(), std::move(src));
       } else if (alphaView == "boundary") {

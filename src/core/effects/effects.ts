@@ -442,6 +442,7 @@ export type EffectType =
   | 'bender'
   | 'matte-stroke'
   | 'selective-color-ai'
+  | 'object-matte'
   // deepfx:union:end
   | 'scribble';
 
@@ -7067,6 +7068,29 @@ export const EFFECT_DEFS: EffectDef[] = [
       { key: 'colorizeAmount', label: 'Colorize Amount', type: 'number', group: 'Colorize', unit: '%', min: 0, max: 100, default: 100 },
       { key: 'matteFeather', label: 'Matte Feather', type: 'number', group: 'Matte', unit: 'px', min: 0, max: 500, default: 0 },
       { key: 'matteChoke', label: 'Matte Choke', type: 'number', group: 'Matte', unit: 'px', min: -200, max: 200, default: 0 },
+    ],
+    css: () => '',
+  },
+  {
+    /* After Effects' Object Matte card: the layer's stored per-frame Object Matte (setLayerMatte) cuts the layer through this effect — Invert, Fine-tune (Feather, Contrast, Shift Edge) live in the shader; Quality, Edge Radius, Decontaminate, Motion Blur, Reduce Chatter and Render Refine Edge are the propagation's, used by the next propagation. Disabled or removed: the layer shows uncut. GPU only (docs/PROGRAM_DEEP_EFFECTS.md). */
+    type: 'object-matte',
+    label: 'Object Matte',
+    gpuOnly: true,
+    params: [
+      { key: 'version', label: 'Version', type: 'enum', default: 0, options: [{ value: 0, label: '4.0' }] },
+      { key: 'quality', label: 'Quality', type: 'enum', group: 'Propagation', default: 0, options: [{ value: 0, label: 'Standard' }, { value: 1, label: 'Best' }] },
+      { key: 'edgeRadius', label: 'Edge Radius', type: 'number', group: 'Propagation', unit: 'px', min: 0, max: 64, precision: 0, default: 6 },
+      { key: 'decontaminate', label: 'Decontaminate Edge Colors', type: 'checkbox', group: 'Propagation', default: true },
+      { key: 'decontaminationAmount', label: 'Decontamination Amount', type: 'number', group: 'Propagation', unit: '%', min: 0, max: 100, default: 50 },
+      { key: 'motionBlur', label: 'Use Motion Blur', type: 'checkbox', group: 'Propagation', default: false },
+      { key: 'reduceChatter', label: 'Reduce Chatter', type: 'checkbox', group: 'Propagation', default: true },
+      { key: 'invert', label: 'Invert Foreground/Background', type: 'checkbox', default: false },
+      { key: 'fineTune', label: 'Fine-tune Roto Brush Matte', type: 'checkbox', default: false },
+      { key: 'feather', label: 'Feather', type: 'number', group: 'Roto Brush Matte', unit: 'px', min: 0, max: 500, default: 0 },
+      { key: 'contrast', label: 'Contrast', type: 'number', group: 'Roto Brush Matte', unit: '%', min: 0, max: 100, default: 0 },
+      { key: 'shiftEdge', label: 'Shift Edge', type: 'number', group: 'Roto Brush Matte', unit: '%', min: -100, max: 100, default: 0 },
+      { key: 'chatterAmount', label: 'Reduce Chatter', type: 'number', group: 'Roto Brush Matte', unit: '%', min: 0, max: 100, default: 30 },
+      { key: 'renderRefineEdge', label: 'Render Refine Edge', type: 'checkbox', default: true },
     ],
     css: () => '',
   },

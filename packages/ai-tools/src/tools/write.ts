@@ -893,7 +893,7 @@ export const addEffectDef: AiToolDef = {
           'temporal-denoise', 'fluid-ink', 'reaction-diffusion', 'crystal-growth', 'mr-mercury', 'foam', 'hair',
           'rain-on-glass', 'particle-world', 'warp-stabilizer', 'match-grain', 'color-stabilizer',
           'camera-shake-deblur', 'burn-dissolve', 'liquid-morph', 'bend-it', 'bender', 'matte-stroke',
-          'selective-color-ai',
+          'selective-color-ai', 'object-matte',
           // deepfx:ai:end
         ],
       },

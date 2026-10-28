@@ -27,6 +27,7 @@ import { mirrorMaskHeaders } from '@core/mirror/effects';
 import type { RotoBox, RotoStroke } from '@stores/rotoBrushStore';
 import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
+import { objectMatteBake } from './objectMatteEffect';
 
 /** The name every path this tool writes carries, so a re-segment replaces it. */
 export const ROTO_PATH_NAME = 'Roto Brush';
@@ -362,6 +363,8 @@ export async function propagateObjectMatte(
     .filter((c) => c.points.length > 0);
   const replace = new Set<string>(rotoMattes(nodeId).live);
   for (const m of mirrorMaskHeaders(documentMirror().tree(nodeId))) if (m.name === 'Object Matte') replace.add(m.id);
+  // The layer's Object Matte effect card holds the bake settings once it exists (objectMatteEffect.ts).
+  const bake = objectMatteBake(nodeId, { ...opts.refine, featherPx: opts.featherPx });
   let cancel: (() => void) | null = null;
   const handle = requireEngineJob(await startEngineJob<{ frames: number; status: string }>(
     {
@@ -380,13 +383,13 @@ export async function propagateObjectMatte(
         strokes: corrections,
         matte: true,
         refine: {
-          edgeRadius: opts.refine.edgeRadius,
-          decontaminate: opts.refine.decontaminate / 100,
-          motionBlur: opts.refine.motionBlur,
+          edgeRadius: bake.edgeRadius,
+          decontaminate: bake.decontaminate / 100,
+          motionBlur: bake.motionBlur,
           shutterAngle: 180,
-          feather: opts.featherPx,
-          choke: opts.refine.choke,
-          reduceChatter: opts.refine.reduceChatter,
+          feather: bake.featherPx,
+          choke: bake.choke,
+          reduceChatter: bake.reduceChatter,
         },
       },
     },
