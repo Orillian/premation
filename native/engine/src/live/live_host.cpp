@@ -291,12 +291,16 @@ int live_main(const std::string& configFile) {
   }).detach();
 
   std::string error;
-  auto palm = load_model(str_or(*cfg, "palm"), /*cpuOnly=*/true, error);
+  // The shared provider choice (DirectML / Core ML when present): measured
+  // 2026-10-28 on an RTX 4060 laptop, palm 14.6 -> 1.4-2.5 ms and hand
+  // 4.4 -> 2.3 ms p50 per frame against the 2-thread CPU session, upload
+  // included. PREMATION_ORT_PROVIDER=cpu keeps the CPU.
+  auto palm = load_model(str_or(*cfg, "palm"), /*cpuOnly=*/false, error);
   if (!palm) {
     emit_error("The hand tracking model could not be loaded: " + error);
     return 0;
   }
-  auto hand = load_model(str_or(*cfg, "hand"), /*cpuOnly=*/true, error);
+  auto hand = load_model(str_or(*cfg, "hand"), /*cpuOnly=*/false, error);
   if (!hand) {
     emit_error("The hand tracking model could not be loaded: " + error);
     return 0;
@@ -317,6 +321,7 @@ int live_main(const std::string& configFile) {
     o.set("width", Json::number(cam->width()));
     o.set("height", Json::number(cam->height()));
     o.set("fps", Json::number(cam->fps()));
+    o.set("provider", Json::string(palm->provider()));
     emit(js::stringify(o));
   }
 

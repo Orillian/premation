@@ -32,7 +32,7 @@ class Model {
   [[nodiscard]] virtual bool planar() const noexcept = 0;
   /// The square input side the model declares (0 when dynamic).
   [[nodiscard]] virtual int input_side() const noexcept = 0;
-  /// The execution provider in use (cpu, directml, coreml, cuda).
+  /// The execution provider in use (cpu, dml, coreml, cuda).
   [[nodiscard]] virtual std::string provider() const = 0;
   /// Inputs and outputs with their shapes, one line each (diagnostics).
   [[nodiscard]] virtual std::string describe() const = 0;
