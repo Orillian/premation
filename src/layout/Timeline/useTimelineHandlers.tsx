@@ -21,7 +21,9 @@ import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { bumpScene } from '@stores/sceneStore';
 import { getTime as playheadNow } from '@stores/playbackClockStore';
 import { clipRippleMenuItems } from '@layout/Timeline/clipEditCommands';
-import { deleteKeyframesUi, easePresetOnKeys, moveKeyframesTo, pasteKeyframesAt } from '@layout/Timeline/keyframeEdits';
+import { deleteKeyframesUi, easePresetOnKeys, moveKeyframesTo, pasteKeyframesAt, setKeyLabelOnKeys } from '@layout/Timeline/keyframeEdits';
+import { LABEL_COLORS } from '@core/scene/labelColor';
+import { LabelSwatch } from '@layout/Scene/sceneMenu';
 import { resolveSelectionKey, storedTimeOf } from '@core/mirror/keySelection';
 import { documentMirror } from '@stores/documentMirror';
 import {
@@ -84,7 +86,7 @@ import { mirrorStretchPercent, retimableLayerIds } from '@core/mirror/motionAssi
 import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { renameLayerEdit } from '@layout/Scene/sceneEdits';
 import { useFocusStore } from '@stores/focusStore';
-import { openContextMenu } from '@stores/contextMenuStore';
+import { openContextMenu, type ContextMenuItem } from '@stores/contextMenuStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { openInterpretFootage } from '@layout/Assets/InterpretFootageModal';
 import { canOpenOriginals, editOriginalItem, editOriginalShortcutLabel } from '@layout/Assets/editOriginal';
@@ -586,6 +588,31 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
             });
           }
         },
+      },
+      {
+        // AE's keyframe Label: colour-mark keys (the diamond takes the colour).
+        id: 'kf-label',
+        label: t('timeline.keyframeMenu.label', 'Label'),
+        children: [
+          {
+            id: 'kf-label-none',
+            label: t('timeline.keyframeMenu.labelNone', 'None'),
+            icon: !(currentKf.label > 0) ? 'check' : undefined,
+            onSelect: () => { void setKeyLabelOnKeys(easeTargets, 0); },
+          },
+          { id: 'kf-label-sep', separator: true },
+          ...LABEL_COLORS.map((c, i): ContextMenuItem => ({
+            id: `kf-label-${c.id}`,
+            label: (
+              <>
+                <LabelSwatch color={c.color} />
+                {c.label}
+              </>
+            ),
+            icon: currentKf.label === i + 1 ? 'check' : undefined,
+            onSelect: () => { void setKeyLabelOnKeys(easeTargets, i + 1); },
+          })),
+        ],
       },
       { id: 'sep-ease', separator: true },
       {

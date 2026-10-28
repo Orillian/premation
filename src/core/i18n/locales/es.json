@@ -10096,5 +10096,7 @@
   "command.comp.cropToRoi": "Recortar composición a la región de interés",
   "command.comp.trimToWorkArea": "Recortar composición al área de trabajo",
   "command.edit.copyWithPropertyLinks": "Copiar con vínculos de propiedades",
-  "command.file.removeUnusedFootage": "Quitar material de archivo no utilizado"
+  "command.file.removeUnusedFootage": "Quitar material de archivo no utilizado",
+  "timeline.keyframeMenu.label": "Etiqueta",
+  "timeline.keyframeMenu.labelNone": "Ninguna"
 }

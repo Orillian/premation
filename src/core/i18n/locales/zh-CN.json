@@ -10096,5 +10096,7 @@
   "command.comp.cropToRoi": "将合成裁剪到目标区域",
   "command.comp.trimToWorkArea": "将合成修剪至工作区域",
   "command.edit.copyWithPropertyLinks": "带属性链接复制",
-  "command.file.removeUnusedFootage": "删除未使用的素材"
+  "command.file.removeUnusedFootage": "删除未使用的素材",
+  "timeline.keyframeMenu.label": "标签",
+  "timeline.keyframeMenu.labelNone": "无"
 }

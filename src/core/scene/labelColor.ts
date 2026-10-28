@@ -37,6 +37,11 @@ export const LABEL_COLORS: ReadonlyArray<LabelColor> = [
   { id: 'coolgray',   get label() { return t('core.labelColor.coolSlate', 'Cool Slate'); },     color: '#7d8ca3' },
 ];
 
+/** A keyframe's colour label (AE: 1-based into the label palette, 0 = none) as its colour. */
+export function keyframeLabelColor(label: number): string | undefined {
+  return label > 0 ? LABEL_COLORS[label - 1]?.color : undefined;
+}
+
 /** Pure read — the node's explicit label color, or undefined for kind default. */
 export function readNodeLabelColor(node: SceneNode): string | undefined {
   return node.color;

@@ -10,7 +10,8 @@
  * playback fell from 30 to 20 fps (docs/PROGRAM_PERFORMANCE.md U1).
  */
 
-import { memo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { keyframeLabelColor } from '@core/scene/labelColor';
 import { cn } from '@utils/cn';
 import { t } from '@core/i18n';
 import { keyframeShapes, keyframePaths, describeShapes, keyframeInterp } from './keyframeShape';
@@ -65,6 +66,7 @@ export const Keyframes = memo(function Keyframes({
         const paths = keyframePaths(shapes.left, shapes.right);
         const hold = shapes.right === 'hold' && !kf.isLast;
         const x = TIMELINE_LEFT_OFFSET + time * pps;
+        const labelColor = kf.label ? keyframeLabelColor(kf.label) : undefined;
         if (!kf.roving) {
           glyphs.push(
             // The row's <svg> is the 12px band on the row's centre line: the glyph's 12×12 box at x.
@@ -77,6 +79,8 @@ export const Keyframes = memo(function Keyframes({
                   hovered === kf.id && !locked && styles.kfGlyphHover,
                 )}
                 data-interp={keyframeInterp(shapes, kf.isLast === true)}
+                data-label={labelColor ? '' : undefined}
+                style={labelColor ? ({ '--kf-label': labelColor } as CSSProperties) : undefined}
               >
                 <path d={paths.left} />
                 <path d={paths.right} />

@@ -91,6 +91,7 @@ function summaryKeys(layerId: string, keys: ReadonlyMap<string, readonly Keyfram
         roving: kf.roving || undefined,
         isHold: text || kf.easing === 'hold' || kf.easing === 'step' || undefined,
         easeOut: kf.easing,
+        ...(kf.label > 0 ? { label: kf.label } : {}),
       });
     }
   }

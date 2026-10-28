@@ -470,6 +470,14 @@ export async function setRovingOnKeys(uiIds: ReadonlyArray<string>, roving: bool
   await edit(roving ? 'Enable roving keyframe' : 'Disable roving keyframe', { type: 'updateKeyframes', patches });
 }
 
+/** AE's keyframe Label (the diamond menu): 1-based into the label palette, 0 = None. One entry. */
+export async function setKeyLabelOnKeys(uiIds: ReadonlyArray<string>, label: number): Promise<void> {
+  const ids = await resolveKeyIds(uiIds);
+  if (!ids || ids.size === 0) return;
+  const patches: KeyframePatch[] = [...new Set(ids.values())].map((id) => ({ id, label, spatialIn: [], spatialOut: [] }));
+  await edit(label > 0 ? 'Label keyframes' : 'Clear keyframe label', { type: 'updateKeyframes', patches });
+}
+
 // ── Member-level editors (graph editor, velocity dialog) ─────────────
 
 /**

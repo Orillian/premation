@@ -67,8 +67,8 @@ function run(id: string): void {
   void getCommandSystem().execute(asCommandId(id));
 }
 
-/** A small round swatch shown next to a color name in the Label Color menu. */
-function LabelSwatch({ color }: { color: string }): JSX.Element {
+/** A small round swatch shown next to a color name in a Label menu (layers, keyframes). */
+export function LabelSwatch({ color }: { color: string }): JSX.Element {
   return <span aria-hidden="true" className={styles.labelSwatch} style={{ background: color }} />;
 }
 

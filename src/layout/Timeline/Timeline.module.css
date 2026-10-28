@@ -646,6 +646,12 @@
 .kfGlyph[data-interp='auto'] path   { fill: var(--color-timeline-kf-auto); }
 .kfGlyph[data-interp='hold'] path   { fill: var(--color-timeline-kf-hold); }
 
+/* AE keyframe colour label: the fill is the label's, so a marked key reads at a
+   glance; hover, drag and the selection still repaint it as they do any key. */
+.kfGlyph[data-label]:not(.kfGlyphHover):not(.kfGlyphDragging):not(.kfGlyphSelected) path {
+  fill: var(--kf-label);
+}
+
 /* A hold keyframe's TAIL — the flat stretch until the next key. A short bar
    to the right of the glyph, in the hold colour, so a hold is legible even
    when the diamond's right half is hidden under the selection ring. */

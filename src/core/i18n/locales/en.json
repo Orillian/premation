@@ -8983,6 +8983,8 @@
   "timeline.keyframeMenu.hold": "Hold",
   "timeline.keyframeMenu.holdOn": "Hold ✓",
   "timeline.keyframeMenu.interpolation": "Keyframe Interpolation",
+  "timeline.keyframeMenu.label": "Label",
+  "timeline.keyframeMenu.labelNone": "None",
   "timeline.keyframeMenu.linear": "Linear",
   "timeline.keyframeMenu.motionPath": "Motion Path",
   "timeline.keyframeMenu.pasteAtPlayhead": "Paste at Playhead",

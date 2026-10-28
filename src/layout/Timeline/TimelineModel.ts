@@ -50,6 +50,8 @@ export interface TimelineKeyframeRef {
   /** True for the first / last keyframe of its track (no segment on that side). */
   isFirst?: boolean;
   isLast?: boolean;
+  /** AE keyframe colour label, 1-based into LABEL_COLORS; absent = none. */
+  label?: number;
 }
 
 /**

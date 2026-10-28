@@ -101,6 +101,7 @@ function keyRefs(nodeId: string, a: AnimatedTrack, member: number | undefined): 
       easeOut: kf.easing as TimelineKeyframeRef['easeOut'],
       isFirst: i === 0,
       isLast: i === keys.length - 1,
+      ...(kf.label > 0 ? { label: kf.label } : {}),
     };
   });
 }
