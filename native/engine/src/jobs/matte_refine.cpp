@@ -1,6 +1,7 @@
 #include "matte_refine.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -66,6 +67,61 @@ void gaussian(std::vector<float>& a, int w, int h, double sigma) {
     }
 }
 
+/// A plane averaged down by an integer factor `f` (each low cell = the mean of its f×f block, the
+/// edge blocks of what is there): `dw` × `dh` = ceil(w / f) × ceil(h / f).
+template <typename T>
+std::vector<T> downsample(const std::vector<T>& v, int w, int h, int f, int& dw, int& dh) {
+  dw = (w + f - 1) / f;
+  dh = (h + f - 1) / f;
+  std::vector<double> sum(px(dw, dh), 0.0);
+  std::vector<int> cnt(px(dw, dh), 0);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const std::size_t j = at((y / f) * dw + x / f);
+      sum[j] += static_cast<double>(v[at(y * w + x)]);
+      ++cnt[j];
+    }
+  std::vector<T> out(sum.size());
+  for (std::size_t j = 0; j < out.size(); ++j) out[j] = static_cast<T>(sum[j] / std::max(1, cnt[j]));
+  return out;
+}
+
+/// A `dw` × `dh` plane (from downsample by `f`) back to w × h, bilinear between block centres.
+template <typename T>
+std::vector<T> upsample(const std::vector<T>& v, int dw, int dh, int w, int h, int f) {
+  std::vector<T> out(px(w, h));
+  // Per column: the two low cells and the weight (block centres at (i + 0.5)·f − 0.5).
+  std::vector<int> x0s(at(w));
+  std::vector<double> txs(at(w));
+  for (int x = 0; x < w; ++x) {
+    const double fx = std::clamp((x + 0.5) / f - 0.5, 0.0, static_cast<double>(dw - 1));
+    x0s[at(x)] = std::min(static_cast<int>(fx), std::max(0, dw - 2));
+    txs[at(x)] = dw > 1 ? fx - x0s[at(x)] : 0.0;
+  }
+  for (int y = 0; y < h; ++y) {
+    const double fy = std::clamp((y + 0.5) / f - 0.5, 0.0, static_cast<double>(dh - 1));
+    const int y0 = std::min(static_cast<int>(fy), std::max(0, dh - 2));
+    const int y1 = std::min(y0 + 1, dh - 1);
+    const double ty = dh > 1 ? fy - y0 : 0.0;
+    for (int x = 0; x < w; ++x) {
+      const int x0 = x0s[at(x)];
+      const int x1 = std::min(x0 + 1, dw - 1);
+      const double tx = txs[at(x)];
+      const double top = static_cast<double>(v[at(y0 * dw + x0)]) * (1 - tx) + static_cast<double>(v[at(y0 * dw + x1)]) * tx;
+      const double bot = static_cast<double>(v[at(y1 * dw + x0)]) * (1 - tx) + static_cast<double>(v[at(y1 * dw + x1)]) * tx;
+      out[at(y * w + x)] = static_cast<T>(top * (1 - ty) + bot * ty);
+    }
+  }
+  return out;
+}
+
+/// Catmull-Rom weights for the fraction t of the way from tap 1 to tap 2.
+std::array<double, 4> cubic_weights(double t) {
+  const double t2 = t * t;
+  const double t3 = t2 * t;
+  return {-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2};
+}
+
 /// Chamfer (3-4) distance to the nearest pixel where `inside(i)` is false, in px.
 std::vector<float> distance_inside(const std::vector<std::uint8_t>& in, int w, int h) {
   constexpr float kInf = 1e9f;
@@ -103,18 +159,37 @@ std::vector<float> soft_mask(std::span<const float> logits, std::size_t offset, 
   constexpr std::size_t M = sam::kMaskSize;
   std::vector<float> out(static_cast<std::size_t>(width) * height, 0.0f);
   if (logits.size() < offset + M * M) return out;
+  // Bicubic (Catmull-Rom) in logit space, pixel centres on cell centres. One logit cell covers
+  // 1 / step frame px (10 px of a 2560-wide frame): bilinear made the 0.5 edge a polyline with a
+  // corner per cell — the stair-steps along a long edge — and was half a pixel off.
   const double step = scale / (static_cast<double>(sam::kInputSize) / M);
-  constexpr double kMaxF = static_cast<double>(M) - 1.001;
+  const auto last = static_cast<std::ptrdiff_t>(M) - 1;
+  struct Taps {
+    std::array<std::size_t, 4> i{};
+    std::array<double, 4> w{};
+  };
+  auto taps = [&](std::size_t p) {
+    const double f = std::clamp((static_cast<double>(p) + 0.5) * step - 0.5, 0.0, static_cast<double>(last));
+    const auto i1 = static_cast<std::ptrdiff_t>(std::floor(f));
+    Taps t;
+    t.w = cubic_weights(f - static_cast<double>(i1));
+    for (std::ptrdiff_t k = 0; k < 4; ++k) t.i[static_cast<std::size_t>(k)] = static_cast<std::size_t>(std::clamp<std::ptrdiff_t>(i1 - 1 + k, 0, last));
+    return t;
+  };
+  std::vector<Taps> xs(width);
+  for (std::size_t x = 0; x < width; ++x) xs[x] = taps(x);
+  std::vector<double> row(M);
   for (std::size_t y = 0; y < height; ++y) {
-    const double fy = std::min(kMaxF, static_cast<double>(y) * step);
-    const auto y0 = static_cast<std::size_t>(std::floor(fy));
-    const double ty = fy - static_cast<double>(y0);
+    const Taps ty = taps(y);
+    // The four logit rows blended vertically once per frame row, then each pixel blends four columns.
+    for (std::size_t c = 0; c < M; ++c) {
+      double v = 0;
+      for (std::size_t k = 0; k < 4; ++k) v += ty.w[k] * logits[offset + ty.i[k] * M + c];
+      row[c] = v;
+    }
     for (std::size_t x = 0; x < width; ++x) {
-      const double fx = std::min(kMaxF, static_cast<double>(x) * step);
-      const auto x0 = static_cast<std::size_t>(std::floor(fx));
-      const double tx = fx - static_cast<double>(x0);
-      const double v = logits[offset + y0 * M + x0] * (1 - tx) * (1 - ty) + logits[offset + y0 * M + x0 + 1] * tx * (1 - ty) +
-                       logits[offset + (y0 + 1) * M + x0] * (1 - tx) * ty + logits[offset + (y0 + 1) * M + x0 + 1] * tx * ty;
+      const Taps& tx = xs[x];
+      const double v = tx.w[0] * row[tx.i[0]] + tx.w[1] * row[tx.i[1]] + tx.w[2] * row[tx.i[2]] + tx.w[3] * row[tx.i[3]];
       out[y * width + x] = static_cast<float>(1 / (1 + std::exp(-v)));
     }
   }
@@ -135,28 +210,45 @@ std::vector<float> guided_filter(std::span<const float> p, std::span<const float
   if (p.size() < n || I.size() < n || radius <= 0) return std::vector<float>(p.begin(), p.end());
   std::vector<double> Id(n);
   std::vector<double> pd(n);
-  std::vector<double> II(n);
-  std::vector<double> Ip(n);
   for (std::size_t i = 0; i < n; ++i) {
     Id[i] = I[i];
     pd[i] = p[i];
-    II[i] = Id[i] * Id[i];
-    Ip[i] = Id[i] * pd[i];
   }
-  const std::vector<double> mI = box_mean(Id, width, height, radius);
-  const std::vector<double> mp = box_mean(pd, width, height, radius);
-  const std::vector<double> mII = box_mean(II, width, height, radius);
-  const std::vector<double> mIp = box_mean(Ip, width, height, radius);
-  std::vector<double> a(n);
-  std::vector<double> b(n);
-  for (std::size_t i = 0; i < n; ++i) {
+  // He & Sun's fast guided filter: the linear coefficients are smooth, so they are solved on
+  // a copy subsampled to at most kGuidedEdge px on the long side and upsampled; only the final
+  // q = a·I + b runs at full resolution (the edge still follows the full-resolution picture).
+  constexpr int kGuidedEdge = 1280;
+  const int s = std::max(1, (std::max(width, height) + kGuidedEdge - 1) / kGuidedEdge);
+  int lw = width;
+  int lh = height;
+  const std::vector<double> Il = s > 1 ? downsample(Id, width, height, s, lw, lh) : Id;
+  const std::vector<double> pl = s > 1 ? downsample(pd, width, height, s, lw, lh) : pd;
+  const int r = std::max(1, static_cast<int>(std::lround(static_cast<double>(radius) / s)));
+  const std::size_t ln = px(lw, lh);
+  std::vector<double> II(ln);
+  std::vector<double> Ip(ln);
+  for (std::size_t i = 0; i < ln; ++i) {
+    II[i] = Il[i] * Il[i];
+    Ip[i] = Il[i] * pl[i];
+  }
+  const std::vector<double> mI = box_mean(Il, lw, lh, r);
+  const std::vector<double> mp = box_mean(pl, lw, lh, r);
+  const std::vector<double> mII = box_mean(II, lw, lh, r);
+  const std::vector<double> mIp = box_mean(Ip, lw, lh, r);
+  std::vector<double> a(ln);
+  std::vector<double> b(ln);
+  for (std::size_t i = 0; i < ln; ++i) {
     const double varI = mII[i] - mI[i] * mI[i];
     const double cov = mIp[i] - mI[i] * mp[i];
     a[i] = cov / (varI + eps);
     b[i] = mp[i] - a[i] * mI[i];
   }
-  const std::vector<double> ma = box_mean(a, width, height, radius);
-  const std::vector<double> mb = box_mean(b, width, height, radius);
+  std::vector<double> ma = box_mean(a, lw, lh, r);
+  std::vector<double> mb = box_mean(b, lw, lh, r);
+  if (s > 1) {
+    ma = upsample(ma, lw, lh, width, height, s);
+    mb = upsample(mb, lw, lh, width, height, s);
+  }
   std::vector<float> out(n);
   for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<float>(std::clamp(ma[i] * Id[i] + mb[i], 0.0, 1.0));
   return out;
@@ -174,11 +266,26 @@ void decontaminate(std::span<std::uint8_t> rgba, std::span<const float> alpha, i
     for (std::size_t c = 0; c < 3; ++c) bg[i * 3 + c] = w * rgba[i * 4 + c];
   }
   const double sigma = std::max(4.0, std::min(width, height) / 80.0);
-  gaussian(wgt, width, height, sigma);
+  // The background estimate is a wide blur (σ 18 px at 1440 rows: 109 taps a pass at full size,
+  // seconds a frame). Blurred at 1/f size with σ/f ≥ 3 and upsampled it is the same smooth
+  // field for a fraction of the work.
+  const int f = std::max(1, static_cast<int>(std::floor(sigma / 3.0)));
+  auto blur = [&](std::vector<float>& plane) {
+    if (f == 1) {
+      gaussian(plane, width, height, sigma);
+      return;
+    }
+    int dw = 0;
+    int dh = 0;
+    std::vector<float> low = downsample(plane, width, height, f, dw, dh);
+    gaussian(low, dw, dh, sigma / f);
+    plane = upsample(low, dw, dh, width, height, f);
+  };
+  blur(wgt);
   for (std::size_t c = 0; c < 3; ++c) {
     std::vector<float> ch(n);
     for (std::size_t i = 0; i < n; ++i) ch[i] = bg[i * 3 + c];
-    gaussian(ch, width, height, sigma);
+    blur(ch);
     for (std::size_t i = 0; i < n; ++i) bg[i * 3 + c] = ch[i];
   }
   const double k = std::min(1.0, amount);

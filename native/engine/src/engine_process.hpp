@@ -82,6 +82,10 @@ int run_engine(const EngineOptions& options);
 /// host the job file asks for (P7b). Built with the engine jobs only.
 int run_job_child(const std::string& jobFile);
 
+/// `premation-engine --job-worker FILE` (jobs/job_worker.hpp): the long-lived job process —
+/// one request per stdin line, models kept loaded between them. Built with the engine jobs only.
+int run_job_worker(const std::string& startFile);
+
 /// `premation-engine --live FILE` (live/live_host.hpp): the camera + hand model child. Built with the engine jobs only.
 int run_live_child(const std::string& settingsFile);
 

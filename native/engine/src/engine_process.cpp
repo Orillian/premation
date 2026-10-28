@@ -36,7 +36,10 @@
 #include "scene/engine_frames.hpp"
 #endif
 #if defined(PREMATION_HAVE_JOBS)
+#include <iostream>
+
 #include "jobs/child_job.hpp"
+#include "jobs/job_worker.hpp"
 #include "plugins/contrib.hpp"  // P7b: importers_off, for a child job's plugin set
 #include "jobs/job_kinds.hpp"
 #include "jobs/media_input.hpp"
@@ -623,20 +626,29 @@ class ChildPluginHost final : public jobs::ChildPluginScope {
 
 int run_live_child(const std::string& settingsFile) { return live::live_main(settingsFile); }
 
-int run_job_child(const std::string& jobFile) {
-  // As the export process starts its host (export_job.cpp): the engine's folders, disabled set,
-  // revocations and entitlement — no crash journal (a crash here fails the job, not the engine).
-  return jobs::child_main(jobFile, [](const jobs::ChildPlugins& cp) -> std::unique_ptr<jobs::ChildPluginScope> {
-    plugins::HostOptions ho;
-    ho.searchPaths.assign(cp.paths.begin(), cp.paths.end());
-    ho.disabled = cp.disabled;
-    if (!cp.revoked.empty()) ho.revoked = plugins::read_revoked_file(cp.revoked);
-    ho.entitlement = cp.entitlement;
-    auto host = std::make_unique<plugins::PluginHost>(std::move(ho));
-    const std::vector<plugins::PluginRecord> recs = host->scan();
-    PREMATION_LOG(info, "job_plugins").kv("count", static_cast<std::uint64_t>(recs.size()));
-    return std::make_unique<ChildPluginHost>(std::move(host));
-  });
+namespace {
+
+/// As the export process starts its host (export_job.cpp): the engine's folders, disabled set,
+/// revocations and entitlement — no crash journal (a crash here fails the job, not the engine).
+std::unique_ptr<jobs::ChildPluginScope> start_child_plugins(const jobs::ChildPlugins& cp) {
+  plugins::HostOptions ho;
+  ho.searchPaths.assign(cp.paths.begin(), cp.paths.end());
+  ho.disabled = cp.disabled;
+  if (!cp.revoked.empty()) ho.revoked = plugins::read_revoked_file(cp.revoked);
+  ho.entitlement = cp.entitlement;
+  auto host = std::make_unique<plugins::PluginHost>(std::move(ho));
+  const std::vector<plugins::PluginRecord> recs = host->scan();
+  PREMATION_LOG(info, "job_plugins").kv("count", static_cast<std::uint64_t>(recs.size()));
+  return std::make_unique<ChildPluginHost>(std::move(host));
+}
+
+}  // namespace
+
+int run_job_child(const std::string& jobFile) { return jobs::child_main(jobFile, start_child_plugins); }
+
+int run_job_worker(const std::string& startFile) {
+  jobs::register_child_works();
+  return jobs::worker_main(startFile, std::cin, std::cout, start_child_plugins);
 }
 #endif
 

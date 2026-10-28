@@ -85,4 +85,16 @@ using ChildPluginStarter = std::function<std::unique_ptr<ChildPluginScope>(const
 /// runs before the work when the job file lists plugin folders.
 int child_main(const std::string& jobFile, const ChildPluginStarter& startPlugins = {});
 
+/// Shared with the long-lived worker (job_worker.hpp): the same registry, error
+/// names and plugin set the one-shot child uses.
+namespace child_detail {
+[[nodiscard]] ChildWork find_work(const std::string& name);
+[[nodiscard]] std::string code_name(api::ErrorCode c);
+[[nodiscard]] api::ErrorCode code_named(const std::string& s);
+/// The engine's plugin set right now as the job file's "plugins" JSON (nullopt = none).
+[[nodiscard]] std::optional<std::string> current_plugins();
+/// Parse that JSON back (an empty set when it is not one).
+[[nodiscard]] ChildPlugins plugins_from(const std::string& json);
+}  // namespace child_detail
+
 }  // namespace premation::jobs

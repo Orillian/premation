@@ -314,4 +314,29 @@ int child_main(const std::string& jobFile, const ChildPluginStarter& startPlugin
   return 0;
 }
 
+namespace child_detail {
+
+ChildWork find_work(const std::string& name) { return jobs::find_work(name); }
+std::string code_name(ErrorCode c) { return jobs::code_name(c); }
+ErrorCode code_named(const std::string& s) { return jobs::code_named(s); }
+
+std::optional<std::string> current_plugins() {
+  std::optional<Json> j = current_plugins_json();
+  if (!j) return std::nullopt;
+  return js::stringify(*j);
+}
+
+ChildPlugins plugins_from(const std::string& json) {
+  ChildPlugins cp;
+  const std::optional<Json> pj = js::parse(json);
+  if (!pj || !pj->is_object()) return cp;
+  cp.paths = json_strings(pj->at("paths"));
+  cp.disabled = json_strings(pj->at("disabled"));
+  cp.revoked = pj->at("revoked").is_string() ? pj->at("revoked").str() : std::string();
+  cp.entitlement = pj->at("entitlement").is_string() ? pj->at("entitlement").str() : std::string();
+  return cp;
+}
+
+}  // namespace child_detail
+
 }  // namespace premation::jobs

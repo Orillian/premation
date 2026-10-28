@@ -64,13 +64,36 @@ bool copy_out(const Ort::Value& v, Tensor& out, std::string_view name, std::stri
   return true;
 }
 
+constexpr int kDecoderThreads = 4;
+
 class OrtModels final : public Models {
  public:
-  OrtModels(const std::string& encoderPath, const std::string& decoderPath, bool withEncoder)
+  OrtModels(const std::string& encoderPath, const std::string& decoderPath, bool withEncoder, const std::string& gpuEncoderPath)
       : env_(ORT_LOGGING_LEVEL_WARNING, "premation-sam"),
-        decoder_(ort::open_session(env_, path_of(decoderPath).c_str(), decoderProvider_)),
+        // The decoder is small (one prompt against a held embedding): four threads answer it
+        // sooner than a pool the width of the machine, which also keeps the hover's cost low.
+        decoder_(ort::open_session(env_, path_of(decoderPath).c_str(), decoderProvider_, kDecoderThreads)),
         memory_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {
-    if (withEncoder) encoder_.emplace(ort::open_session(env_, path_of(encoderPath).c_str(), encoderProvider_));
+    if (!withEncoder) return;
+    // The float encoder on a GPU provider when one is there and opens it (the quantized
+    // SlimSAM crashes DirectML, ort_providers_ffi.hpp); otherwise the quantized on the CPU,
+    // where it is the faster of the two.
+    std::string gpu;
+    (void)ort::session_options(gpu);
+    if (!gpuEncoderPath.empty() && gpu != "cpu") {
+      try {
+        // The export's one free dimension pinned, so the GPU provider plans static shapes.
+        std::string provider;
+        Ort::SessionOptions o = ort::session_options(provider);
+        Ort::ThrowOnError(Ort::GetApi().AddFreeDimensionOverrideByName(o, "batch_size", 1));        encoder_.emplace(env_, path_of(gpuEncoderPath).c_str(), o);
+        encoderProvider_ = provider;
+        return;
+      } catch (const Ort::Exception& e) {
+        ort::note_gpu_refusal("the GPU encoder", e.what());
+        encoder_.reset();
+      }
+    }
+    encoder_.emplace(ort::open_session(env_, path_of(encoderPath).c_str(), encoderProvider_));
   }
 
   [[nodiscard]] std::string provider() const override { return encoder_ ? encoderProvider_ : decoderProvider_; }
@@ -150,9 +173,9 @@ class OrtModels final : public Models {
 bool runtime_available() noexcept { return true; }
 
 std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& decoderPath, std::string& error,
-                             bool withEncoder) {
+                             bool withEncoder, const std::string& gpuEncoderPath) {
   try {
-    return std::make_unique<OrtModels>(encoderPath, decoderPath, withEncoder);
+    return std::make_unique<OrtModels>(encoderPath, decoderPath, withEncoder, gpuEncoderPath);
   } catch (const std::exception& e) {
     error = e.what();
     return nullptr;
@@ -164,7 +187,7 @@ std::unique_ptr<Models> load(const std::string& encoderPath, const std::string& 
 bool runtime_available() noexcept { return false; }
 
 std::unique_ptr<Models> load(const std::string& /*encoderPath*/, const std::string& /*decoderPath*/,
-                             std::string& error, bool /*withEncoder*/) {
+                             std::string& error, bool /*withEncoder*/, const std::string& /*gpuEncoderPath*/) {
   error = "this engine build has no ONNX Runtime";
   return nullptr;
 }

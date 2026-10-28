@@ -35,7 +35,7 @@ void chunk(std::vector<std::uint8_t>& out, std::string_view type, std::span<cons
 }  // namespace
 
 bool encode_png_rgba8(std::span<const std::uint8_t> rgba, std::uint32_t width, std::uint32_t height,
-                      std::vector<std::uint8_t>& out) {
+                      std::vector<std::uint8_t>& out, int zlibLevel) {
   const std::size_t row = std::size_t{width} * 4;
   std::vector<std::uint8_t> filtered((row + 1) * height);
   for (std::uint32_t y = 0; y < height; ++y) {
@@ -51,7 +51,7 @@ bool encode_png_rgba8(std::span<const std::uint8_t> rgba, std::uint32_t width, s
     }
   }
   std::vector<std::uint8_t> idat;
-  if (!zlib_compress(filtered, kZlibLevel, idat)) return false;
+  if (!zlib_compress(filtered, zlibLevel < 0 ? kZlibLevel : zlibLevel, idat)) return false;
 
   out.clear();
   out.reserve(idat.size() + 64);

@@ -13,7 +13,8 @@
 namespace premation::exporter {
 
 /// Tight straight RGBA8 rows, top-down → a PNG file. False when compression fails.
+/// `zlibLevel` −1 = the export's level 6; an Object Matte walk's frames use 1 (several times faster).
 bool encode_png_rgba8(std::span<const std::uint8_t> rgba, std::uint32_t width, std::uint32_t height,
-                      std::vector<std::uint8_t>& out);
+                      std::vector<std::uint8_t>& out, int zlibLevel = -1);
 
 }  // namespace premation::exporter
