@@ -297,6 +297,10 @@ struct ViewportConfig {
   /// shared_ptr: one read-only table shared by every viewport's frame job on
   /// the render thread, instead of a copy of a 33³ table per frame.
   std::shared_ptr<const ViewerLut> viewerLut;
+  /// setUseProxies, filled per frame by the Session like `viewerLut` (and only
+  /// while some item has an enabled proxy): footage decodes from its proxy.
+  /// Part of the cache view (same_cache_view), never of a surface's stored config.
+  bool useProxies = false;
   /// Build this frame with a transparent background (an onion ghost). Never
   /// stored on a surface — only the copy handed to the frame builder.
   bool ghost = false;

@@ -26,6 +26,7 @@
 #include "rig_coverage.hpp"
 #include "fxstate.hpp"
 #include "layer_styles.hpp"
+#include "media_paths.hpp"
 #include "merge_paths.hpp"
 #include "misc_port.hpp"
 #include "paint_port.hpp"
@@ -1813,6 +1814,27 @@ void Walk::build_node(const doc::Node& n) {
       }
     }
     l.src = src;
+    // Use Proxies (a viewport frame): the item's enabled proxy is decoded in
+    // place of the original — the layer keeps the original's box, so the
+    // proxy frame is scaled up into it and nothing moves; its timing and
+    // interpretation stay the original's (the proxy is a 1:1 transcode). A
+    // proxy the engine cannot reach is drawn from the original and said.
+    if (c_.useProxies && layerKind == LayerKind::video && asset != nullptr && src && !src->empty()) {
+      if (std::string proxy = doc::asset_proxy_src(*asset); !proxy.empty()) {
+        if (doc::is_session_url(proxy) || proxy.starts_with("data:")) {
+          warning(l, n, "proxy is not a file on disk; drawn from the original");
+        } else {
+          std::filesystem::path p = file_url_fs_path(proxy);
+          if (p.is_relative() && !c_.mediaBase.empty()) p = c_.mediaBase / p;
+          std::error_code ec;
+          if (std::filesystem::is_regular_file(p, ec)) {
+            l.proxySrc = std::move(proxy);
+          } else {
+            warning(l, n, "proxy file is missing (" + utf8_path(p) + "); drawn from the original");
+          }
+        }
+      }
+    }
     // P7b: footage a native plugin importer failed to read (scene_textures_plugin.cpp) — named on
     // layerErrors; the layer draws nothing and the frame renders.
     if (asset != nullptr && asset->at("path").is_string()) {

@@ -94,6 +94,14 @@ struct ViewTransform {
 /// the path. Empty when neither is set. The engine never gets a `blob:` it
 /// could have avoided.
 [[nodiscard]] std::string asset_media_src(const Json& asset);
+/// A VIDEO asset's enabled proxy (`proxy.status` 'ready' with a `src`:
+/// setProxy / the proxy job; proxy.ts resolveMediaSrc's viewport tier): the
+/// file viewport frames decode instead of the original under Use Proxies.
+/// Empty when the item has none (or it is off). A session URL is returned as
+/// it is — the caller cannot read it, and says so.
+[[nodiscard]] std::string asset_proxy_src(const Json& asset);
+/// Whether any footage item has an enabled proxy (asset_proxy_src non-empty).
+[[nodiscard]] bool any_proxy_enabled(const Document& d);
 [[nodiscard]] const Folder* find_folder(const Document& d, std::string_view id);
 
 enum class ItemRefKind : std::uint8_t { composition, footage, folder };

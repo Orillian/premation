@@ -1193,10 +1193,15 @@ if(TARGET engine_raster AND TARGET engine_render_graph)
                                       tests/test_overlay_render_agreement.cpp  # the overlay maths place a 3D layer where the frame drew it
                                       tests/test_oversize_texture.cpp  # an enormous layer clamps / is refused, never blanks the frame
                                       tests/test_unported_warnings.cpp  # 2026-10-20: ported text features; what a layer draws without is a `warning`
-                                      tests/test_unicode_media_paths.cpp)  # 2026-10-23: footage named outside the ANSI code page (Japanese user crash loop)
+                                      tests/test_unicode_media_paths.cpp  # 2026-10-23: footage named outside the ANSI code page (Japanese user crash loop)
+                                      tests/test_proxy_render.cpp)  # setUseProxies: viewport frames from the proxy, exports from the original
     target_compile_definitions(engine_scene_tests PRIVATE PREMATION_ENGINE_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
       PREMATION_RASTER_FONTS="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/render-tests/harness/fonts/fonts.json")
     target_link_libraries(engine_scene_tests PRIVATE engine_scene motion::options Catch2::Catch2WithMain)
+    if(TARGET engine_media_gpu)  # test_proxy_render.cpp: the original and its proxy made in-process
+      target_sources(engine_scene_tests PRIVATE tests/media_fixture_ffi.cpp)
+      target_include_directories(engine_scene_tests SYSTEM PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    endif()
     if(MSVC)
       target_compile_options(engine_scene_tests PRIVATE /bigobj)
       target_compile_definitions(engine_scene_tests PRIVATE _CRT_SECURE_NO_WARNINGS)  # getenv in parity_rebless.hpp

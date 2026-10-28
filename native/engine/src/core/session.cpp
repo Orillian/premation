@@ -1302,6 +1302,16 @@ struct ControlVisitor {
     if (s.any_viewport_open()) s.request_render();
     return result_for<api::SetViewerLut>();
   }
+  R operator()(const api::SetUseProxies& c) const {
+    // Editor state for every viewport (never an export): frame_port carries it
+    // to each frame, and to the cache scope — the proxy frames and the
+    // original frames are never the same cached frame.
+    if (s.useProxies_ != c.enabled) {
+      s.useProxies_ = c.enabled;
+      if (s.any_viewport_open()) s.request_render();
+    }
+    return result_for<api::SetUseProxies>();
+  }
   R operator()(const api::SetOverlayGeometry& c) const {
     // B4 round 2: replace this viewport's subscription (none = unsubscribe); the next frame carries it.
     auto& subs = s.overlays_;
@@ -1896,6 +1906,11 @@ ViewportConfig Session::frame_port(const ViewportConfig& surface, const std::str
   if (const auto hidden = hiddenLayers_.find(surface.viewport); hidden != hiddenLayers_.end()) port.hiddenLayers = hidden->second;
   if (const auto focus = focusLayers_.find(surface.viewport); focus != focusLayers_.end()) port.focusLayers = focus->second;
   port.viewerLut = viewerLut_;
+  // Use Proxies, only while some footage item has an enabled proxy: a part of
+  // the view state (same_cache_view compares it), so a frame drawn from a
+  // proxy and the same frame from the original never share a cache scope —
+  // and a project without proxies keeps its scope (and its cache) on a toggle.
+  port.useProxies = useProxies_ && doc::any_proxy_enabled(doc_);
   // Comp-space caching (frame_scene.hpp comp_space_frame): a composition view
   // whose slots take copies draws the comp's own pixels, so its cached frames
   // outlive a pane resize or a pan. Decided here, once per frame, and carried

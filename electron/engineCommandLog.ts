@@ -39,6 +39,7 @@ export const CMD = {
   setViewport: 808,
   closeViewport: 809,
   setViewerLut: 815,
+  setUseProxies: 816,
   startJob: 850,
   applyJobResult: 852,
   runPluginCommand: 873,
@@ -51,7 +52,7 @@ export const CMD = {
  * again, or apply a cancelled / failed / still-held one.
  */
 const REPLAY_SKIP = new Set<number>([CMD.play, CMD.pause, CMD.step, CMD.startJob]);
-const LAST_ONLY = new Set<number>([CMD.seek, CMD.setActiveComposition, CMD.setPreviewQuality, CMD.setLoop, CMD.setViewerLut]);
+const LAST_ONLY = new Set<number>([CMD.seek, CMD.setActiveComposition, CMD.setPreviewQuality, CMD.setLoop, CMD.setViewerLut, CMD.setUseProxies]);
 
 export interface LoggedRequest {
   /** The encoded EngineMessage{request} as it was sent to the engine. */

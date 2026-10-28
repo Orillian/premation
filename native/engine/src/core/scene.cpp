@@ -457,6 +457,17 @@ std::string asset_media_src(const Json& asset) {
   return src;
 }
 
+std::string asset_proxy_src(const Json& asset) {
+  if (!(asset.at("type").is_string() && asset.at("type").str() == "video")) return {};
+  const Json& proxy = asset.at("proxy");
+  if (!proxy.is_object() || !(proxy.at("status").is_string() && proxy.at("status").str() == "ready")) return {};
+  return proxy.at("src").is_string() ? proxy.at("src").str() : std::string();
+}
+
+bool any_proxy_enabled(const Document& d) {
+  return std::ranges::any_of(d.items().assets, [](const Json& a) { return !asset_proxy_src(a).empty(); });
+}
+
 const Folder* find_folder(const Document& d, std::string_view id) {
   for (const auto& f : d.items().folders) {
     if (f.id == id) return &f;
