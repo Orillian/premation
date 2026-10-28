@@ -37,7 +37,11 @@ import { collectClipSnapTargets, snapClipTime } from './clipSnap';
 import { collectClipCuts, findClipCutNear, type ClipCut } from './clipCuts';
 import { useTimelineEditModeStore } from './timelineEditMode';
 import { isLayerTransitionDrag, isTransitionDrag, readLayerTransitionDrag, readTransitionDrag, readTransitionDragEffect } from './transitionDrag';
-import { hasCanvasDrag, readCanvasDrag } from '@core/dnd/canvasDrag';
+import { draggedAssetIds, hasCanvasDrag, readCanvasDrag } from '@core/dnd/canvasDrag';
+import { importBrowserFilesEdit } from '@layout/Assets/assetEdits';
+import { isMediaFile } from '@layout/Assets/mediaBrowserTree';
+import { insertMediaEdit } from '@layout/Workspace/footageEdits';
+import { assetRecordNow } from '@stores/assetSession';
 import { documentMirror } from '@stores/documentMirror';
 import { mirrorEffectHeaders } from '@core/mirror/effects';
 import { effectDisplayNames, type Effect } from '@core/inspector/effectCatalog';
@@ -1713,7 +1717,10 @@ function Timeline({
       }
       if (!isTransitionDrag(e.dataTransfer)) {
         // AE Alt-drag from the Assets panel onto a layer bar: replace source.
-        if (e.altKey && hasCanvasDrag(e)) {
+        // A plain drag of an asset, or of files from the OS, adds layers that
+        // start where they are dropped (AE's drag-to-timeline).
+        const isFileDrag = Array.from(e.dataTransfer.types).includes('Files');
+        if (hasCanvasDrag(e) || isFileDrag) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }
@@ -1746,13 +1753,34 @@ function Timeline({
         return;
       }
       if (!kind) {
+        // Where in time the drop landed: new layers start there (AE drag-to-timeline).
+        const startSec = Math.max(0, lanesTimeAt(e.clientX) ?? 0);
+        // OS files: import every media file and add them all as layers, in one entry.
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (files.length > 0) {
+          e.preventDefault();
+          const media = files.filter((f) => /^(video|image|audio)\//.test(f.type) || isMediaFile(f.name));
+          if (media.length === 0) {
+            useUIStore.getState().notify({ level: 'info', message: t('workspace.drop.mediaOnly', 'Drop video, image or audio files.'), durationMs: 2600 });
+            return;
+          }
+          void (async () => {
+            const { imported } = await importBrowserFilesEdit(media.map((file) => ({ file })));
+            if (imported.length > 0) await insertMediaEdit(imported, { startSec });
+          })();
+          return;
+        }
+        const payload = readCanvasDrag(e);
+        if (payload?.kind !== 'asset') return;
+        e.preventDefault();
         // Alt-drop an asset on a layer's lane → replace that layer's source
         // (transforms, keyframes and effects kept).
-        const payload = e.altKey ? readCanvasDrag(e) : null;
-        if (payload?.kind === 'asset') {
-          e.preventDefault();
+        if (e.altKey) {
           void replaceSourceWithAsset(replaceTargetAt(lanesTrackIdAt(e.clientY)), payload.assetId);
+          return;
         }
+        const assets = draggedAssetIds(payload).map(assetRecordNow).filter((a): a is NonNullable<typeof a> => !!a);
+        if (assets.length > 0) void insertMediaEdit(assets, { startSec });
         return;
       }
       e.preventDefault();
@@ -1760,7 +1788,7 @@ function Timeline({
       setTransitionError(cut ? null : t('timeline.transition.dropOnCut', 'Drop a transition on a cut — the point where one clip ends and the next begins.'));
       if (cut) applyTransition(cut, kind, effect);
     },
-    [lanesCutAt, applyTransition, lanesTrackIdAt, lanesEdgeAt, onLayerTransitionDrop],
+    [lanesCutAt, applyTransition, lanesTrackIdAt, lanesEdgeAt, lanesTimeAt, onLayerTransitionDrop],
   );
 
   /** Double-click a cut → the default 12-frame cross dissolve. */

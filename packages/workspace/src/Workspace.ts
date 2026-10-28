@@ -853,6 +853,12 @@ export class Workspace implements InputSink {
     const handles: OverlayHandle[] = activeTool?.getHandles
       ? activeTool.getHandles(ctx).map(decorate)
       : this.selectionController.handles().map(decorate);
+    // A multi-selection's grips sit on a group box: draw it, so they are not
+    // eight squares floating with nothing joining them.
+    const group = selectionBoxes.length > 1 && handles.some((h) => h.kind === 'resize')
+      ? this.selectionController.transformBounds()
+      : null;
+    const groupBox = group ? this.worldRectToScreen(group) : null;
 
     const marqueeWorld = activeTool?.getMarquee?.() ?? this.selectionController.marqueeRect;
     const marquee = marqueeWorld ? this.worldRectToScreen(marqueeWorld) : null;
@@ -898,6 +904,7 @@ export class Workspace implements InputSink {
     return {
       selectionBounds,
       selectionBoxes,
+      groupBox,
       handles,
       marquee,
       snapLines,

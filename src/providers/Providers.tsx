@@ -1526,6 +1526,7 @@ function buildBuiltinCommands(): ReadonlyArray<Command> {
         // Keyframes: `pasteKeyframes`; layers: the `copyLayers` fragment as one `pasteLayers` (clipboardEdits).
         void pasteEdit().then((kind) => {
           if (kind === 'svg') notify(t('providers.edit.pastedSvg', 'Pasted SVG'), 'success');
+          else if (kind === 'media') notify(t('providers.edit.pastedMedia', 'Pasted footage at the playhead'), 'success');
           else if (kind) notify(t('providers.edit.pasted', 'Pasted'), 'success');
           else notify(t('providers.edit.nothingToPaste', 'Nothing to paste'), 'info');
         });

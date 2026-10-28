@@ -11,8 +11,8 @@
  *   Paste  the path onto the selected path; else the copied keyframes at the
  *          playhead on every selected layer (`pasteKeyframes`); else the copied
  *          layers as ONE `pasteLayers` at the top of the active composition,
- *          each copy named "<name> copy" and nudged +20 px when its Position is
- *          static (what the legacy clipboard did); else SVG markup on the OS
+ *          each copy named "<name> copy", in place (AE pastes where the layer
+ *          was copied from); else SVG markup on the OS
  *          clipboard, built off-document and sent as one `pasteLayers`.
  *
  * Expressions (After Effects' Copy Expression Only): a selected property's
@@ -25,14 +25,14 @@
  * kept its own snapshot of nodes and tracks and wrote them with the graph.
  */
 
-import type { Command, DocumentFragment, Value } from '@motion/engine-api';
+import type { Command, DocumentFragment } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
 import { edit, reportEngineError } from '@core/engine/uiEdits';
 import { expressionTargets } from '@core/animation/expressionEditorRequests';
 import { trackExpressionFacts } from '@core/mirror/memberExpressions';
 import { expressionCommands } from '@layout/Inspector/inspectorEdits';
 import { usePropertySelectionStore } from '@stores/propertySelectionStore';
-import { apiParentOf, isLayer } from '@core/mirror/docFacts';
+import { apiParentOf, compOfLayer, isLayer, layerIdsOfComp } from '@core/mirror/docFacts';
 import { copyKeyframes } from '@core/animation/keyframeClipboard';
 import { readOsClipboardSvg } from '@core/commands/clipboard';
 import { copyPathFromSelection, pastePathEdit } from '@core/workspace/pathCommands';
@@ -44,12 +44,13 @@ import { deleteSelectedLayersEdit } from '@layout/Workspace/layerMenuEdits';
 import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { getTime } from '@stores/playbackClockStore';
+import type { ImportedAsset } from '@stores/assetStore';
+import { importBrowserFilesEdit, importPathsEdit } from '@layout/Assets/assetEdits';
+import { isMediaFile } from '@layout/Assets/mediaBrowserTree';
+import { insertMediaEdit } from '@layout/Workspace/footageEdits';
 
 export type CopyKind = 'path' | 'keyframes' | 'layers' | 'expression' | null;
-export type PasteResult = 'keyframes' | 'layers' | 'svg' | 'path' | 'expression' | null;
-
-/** The legacy paste's placement nudge for a pasted copy (px). */
-const PASTE_OFFSET = 20;
+export type PasteResult = 'keyframes' | 'layers' | 'svg' | 'path' | 'expression' | 'media' | null;
 
 interface HeldLayers {
   fragment: Promise<DocumentFragment | null>;
@@ -154,13 +155,25 @@ async function readOsClipboardExpression(): Promise<string | null> {
   }
 }
 
-/** The selected layers without those whose ancestor is also selected (the fragment carries descendants). */
+/**
+ * The selected layers without those whose ancestor is also selected (the
+ * fragment carries descendants), in STACK order, front-most first — the order
+ * a pasted fragment stacks in. AE pastes layers in their stacking order, not
+ * the order they were clicked.
+ */
 function topLayers(ids: readonly string[]): string[] {
   const picked = new Set(ids.filter((id) => isLayer(id)));
-  return [...picked].filter((id) => {
-    for (let p = apiParentOf(id); p; p = apiParentOf(p)) if (picked.has(p)) return false;
-    return true;
-  });
+  const stackIndex = new Map<string, number>();
+  for (const id of picked) {
+    const comp = compOfLayer(id);
+    if (comp && !stackIndex.has(id)) layerIdsOfComp(comp).forEach((l, i) => stackIndex.set(l, i));
+  }
+  return [...picked]
+    .filter((id) => {
+      for (let p = apiParentOf(id); p; p = apiParentOf(p)) if (picked.has(p)) return false;
+      return true;
+    })
+    .sort((a, b) => (stackIndex.get(a) ?? 0) - (stackIndex.get(b) ?? 0));
 }
 
 /**
@@ -213,36 +226,9 @@ export async function cutEdit(): Promise<CopyKind> {
 }
 
 /**
- * A static Position +PASTE_OFFSET on both axes (none when animated or not
- * addressable), read from the layer's property tree in the mirror — the
- * caller waits for the mirror to reach the paste before asking.
- */
-async function nudgeCommands(layer: string): Promise<Command[]> {
-  const m = documentMirror();
-  await m.loadTree(layer);
-  const out: Command[] = [];
-  const bump = (path: string, v: Value): void => { out.push({ type: 'setProperty', prop: { layer, path }, value: v }); };
-  const whole = m.property(layer, 'transform/position');
-  if (whole && !whole.separated) {
-    const v = whole.value;
-    if (whole.animated || !v) return [];
-    if (v.kind === 'vec2') bump(whole.path, { kind: 'vec2', value: { x: v.value.x + PASTE_OFFSET, y: v.value.y + PASTE_OFFSET } });
-    else if (v.kind === 'vec3') bump(whole.path, { kind: 'vec3', value: { ...v.value, x: v.value.x + PASTE_OFFSET, y: v.value.y + PASTE_OFFSET } });
-    return out;
-  }
-  // Separated dimensions: each static one moves.
-  for (const dim of ['x', 'y']) {
-    const d = m.property(layer, `transform/position/${dim}`);
-    if (!d || d.animated || d.value?.kind !== 'scalar') continue;
-    bump(d.path, { kind: 'scalar', value: d.value.value + PASTE_OFFSET });
-  }
-  return out;
-}
-
-/**
  * The copied layers into the active composition (into the open group when the
  * tab is a group), at the top of the stack — ONE entry named "Paste". The paste
- * returns the new ids, so the renames and nudges run in the same engine
+ * returns the new ids, so the renames run in the same engine
  * gesture. Resolves to the new top-level ids.
  */
 async function pasteLayersEdit(h: HeldLayers): Promise<string[] | null> {
@@ -273,7 +259,6 @@ async function pasteLayersEdit(h: HeldLayers): Promise<string[] | null> {
     for (const [i, id] of tops.entries()) {
       const name = h.names[i];
       if (name) follow.push({ type: 'renameLayer', layer: id, name: `${name} copy` });
-      follow.push(...(await nudgeCommands(id)));
     }
     if (follow.length > 0) {
       const r = await client.batch(label, follow);
@@ -319,14 +304,64 @@ export async function pasteEdit(): Promise<PasteResult> {
     const ids = await pasteLayersEdit(held);
     return ids && ids.length > 0 ? 'layers' : null;
   }
-  // Checked LAST, only once the app's own clipboard is empty, and built by the
-  // importer a dropped .svg file takes, so both land identically.
+  // Footage copied in the OS (files in Explorer / Finder, or an image such as a
+  // screenshot): imported and added as layers at the playhead, every file in
+  // one entry — AE pastes copied files the same way. Checked once the app's own
+  // clipboard is empty, before SVG text.
+  const media = await pasteOsMediaEdit();
+  if (media) return media;
+  // Checked LAST, and built by the importer a dropped .svg file takes, so both
+  // land identically.
   const svg = await readOsClipboardSvg();
   if (!svg) return null;
   const comp = activeInsertTarget()?.comp;
   if (!comp) return null;
   const ids = await pasteSvgDocument(comp, svg);
   return ids && ids.length > 0 ? 'svg' : null;
+}
+
+/**
+ * Footage on the OS clipboard → layers at the playhead in the composition in
+ * view, as ONE entry per step (import, then insert). Files copied in the file
+ * manager come as paths (imported like File ▸ Import); an image on the clipboard
+ * (a screenshot, a browser's Copy Image) as PNG bytes. Null when there is none.
+ */
+async function pasteOsMediaEdit(): Promise<PasteResult> {
+  if (!activeInsertTarget()?.comp) return null;
+  let paths: string[] = [];
+  try {
+    paths = (await window.motionEditor?.shell?.readClipboardFiles?.()) ?? [];
+  } catch {
+    paths = [];
+  }
+  const media = paths.filter((p) => isMediaFile(p));
+  let imported: ImportedAsset[] = [];
+  if (media.length > 0) {
+    imported = (await importPathsEdit(media)).imported;
+  } else {
+    const image = await readOsClipboardImage();
+    if (image) imported = (await importBrowserFilesEdit([{ file: image }])).imported;
+  }
+  if (imported.length === 0) return null;
+  const ids = await insertMediaEdit(imported, { atPlayhead: true, label: imported.length === 1 ? `Paste ${imported[0]!.name}` : `Paste ${imported.length} Layers` });
+  return ids && ids.length > 0 ? 'media' : null;
+}
+
+/** A bitmap on the OS clipboard as a PNG `File`, or null (none, or no clipboard access). */
+async function readOsClipboardImage(): Promise<File | null> {
+  try {
+    const items = (await navigator.clipboard?.read?.()) ?? [];
+    for (const item of items) {
+      const type = item.types.find((ty) => ty === 'image/png' || ty === 'image/jpeg' || ty === 'image/webp');
+      if (!type) continue;
+      const blob = await item.getType(type);
+      const ext = type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : 'webp';
+      return new File([blob], `Pasted Image.${ext}`, { type });
+    }
+  } catch {
+    // no permission or nothing readable
+  }
+  return null;
 }
 
 /**

@@ -48,11 +48,10 @@ export class Marquee {
   }
 
   /**
-   * Selection semantics based on drag direction: dragging leftward (moving.x <
-   * anchor.x) uses crossing/intersect; rightward uses window/contain.
+   * Selection semantics: AE's marquee selects every layer it TOUCHES, whichever
+   * way it is dragged (no CAD-style window/crossing split).
    */
   mode(): MarqueeMode {
-    if (!this.anchor || !this.moving) return 'intersect';
-    return this.moving.x >= this.anchor.x ? 'contain' : 'intersect';
+    return 'intersect';
   }
 }

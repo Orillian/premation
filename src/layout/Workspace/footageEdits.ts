@@ -99,8 +99,11 @@ interface BuiltMedia {
 /**
  * Lay the media router (sceneInsert.ts `buildMedia`: contain-fit, PAR, SVG
  * routing, audio layers) into a fragment for `comp`, fitted against `frame`
- * (default: the composition's, from the mirror). `at` lands the LAST asset's
- * layer there (comp px). Null when nothing was built.
+ * (default: the composition's, from the mirror). `at` lands every asset's
+ * layer there (comp px), as AE centres each dropped item on the drop point.
+ * The FIRST asset ends up on top (AE: the first selected item becomes layer 1):
+ * the fragment stacks later layers above earlier ones, so it is laid in reverse.
+ * Null when nothing was built.
  */
 function buildMediaFragment(
   comp: string,
@@ -112,8 +115,8 @@ function buildMediaFragment(
   const placed: string[] = [];
   const reports: Array<() => void> = [];
   const b = new FragmentBuilder({ idPrefix: 'media' });
-  prepared.forEach(({ asset, svg }, i) => {
-    const made = buildMedia(b, frame, asset, svg, i === prepared.length - 1 ? at : undefined);
+  [...prepared].reverse().forEach(({ asset, svg }) => {
+    const made = buildMedia(b, frame, asset, svg, at);
     if (!made) {
       unreadable.push(asset.name);
       return;
@@ -121,6 +124,10 @@ function buildMediaFragment(
     placed.push(made.id);
     reports.push(made.report);
   });
+  // Back to the order the assets were given.
+  placed.reverse();
+  unreadable.reverse();
+  reports.reverse();
   for (const name of unreadable) notifyUnreadable(name);
   for (const report of reports) report();
   const built = b.build();
@@ -139,7 +146,7 @@ function mapScratch(built: BuiltFragment, ids: readonly string[], scratch: reado
 export interface MediaInsertOptions {
   /** The undo entry's name (default "Insert <name>" / "Insert N Layers"). */
   label?: string;
-  /** Land the inserted layer that ends up selected here, in comp pixels (a canvas drop). */
+  /** Land every inserted layer here, in comp pixels (a canvas drop). */
   at?: { x: number; y: number };
   /**
    * Start every inserted clip AT THE PLAYHEAD instead of frame 0 (AE's
@@ -151,6 +158,8 @@ export interface MediaInsertOptions {
   atPlayhead?: boolean;
   /** Start every inserted clip at this comp time, seconds (wins over `atPlayhead`): a caller that names the time. */
   startSec?: number;
+  /** The composition to insert into (default: the one in view) — a caller that just made it. */
+  comp?: string;
   /**
    * Commands that need the new layers' ids (a source range, overwrite trims):
    * computed after the paste and sent in the SAME entry (one engine gesture).
@@ -170,8 +179,8 @@ export interface MediaInsertOptions {
 
 /**
  * Insert media assets (existing project items) into the active composition as
- * ONE undo entry, and select what the router selected (the last asset's
- * layer). Resolves to the new layer ids (`[]` when nothing was inserted), or
+ * ONE undo entry, and select every inserted asset's layer. Resolves to the
+ * new layer ids (`[]` when nothing was inserted), or
  * null when the engine refused (toasted).
  *
  * The router runs off-document, which must be synchronous: an SVG's markup is
@@ -189,8 +198,8 @@ export async function insertMediaEdit(
   const prepared = await prepareMedia(assets);
   if (prepared.length === 0) return [];
   const label = opts.label ?? (prepared.length === 1 ? `Insert ${prepared[0]!.asset.name}` : `Insert ${prepared.length} Layers`);
-  // The composition in view (the mirror's), else the document's first.
-  const comp = activeCompIdNow() ?? documentMirror().compIds[0] ?? 'comp_root';
+  // The caller's composition, else the one in view (the mirror's), else the document's first.
+  const comp = opts.comp ?? activeCompIdNow() ?? documentMirror().compIds[0] ?? 'comp_root';
   let media: BuiltMedia | null;
   try {
     media = buildMediaFragment(comp, prepared, opts.at);
@@ -274,9 +283,9 @@ export async function insertMediaEdit(
   return ids;
 }
 
-/** The new ids of the layers the builder left selected (else its top layers). */
+/** The new ids of every inserted asset's layer (AE selects all of them), else the builder's top layers. */
 function selectedOf(media: BuiltMedia, ids: readonly string[]): string[] {
-  return mapScratch(media.built, ids, media.placed.length > 0 ? media.placed.slice(-1) : media.built.tops);
+  return mapScratch(media.built, ids, media.placed.length > 0 ? media.placed : media.built.tops);
 }
 
 // ── New Comp from Footage ─────────────────────────────────────────────
@@ -628,4 +637,18 @@ export async function assembleShotsEdit(layer: string, plan: AssemblyPlan): Prom
   }
   useSelectionStore.getState().set(shots);
   return { shots, dropped, sequenced };
+}
+
+/**
+ * New Comp from Footage for one file or several (AE's New Comp from Selection,
+ * Single Composition): the comp is made from the first video (else the first
+ * image, else the first file) — its size, frame rate and length — and every
+ * other file is added to it as a layer, in the order they were chosen.
+ */
+export async function compFromFootage(imported: readonly ImportedAsset[]): Promise<void> {
+  const base = imported.find((a) => a.type === 'video') ?? imported.find((a) => a.type === 'image') ?? imported[0];
+  if (!base) return;
+  const made = await newCompFromFootageEdit(base);
+  const rest = imported.filter((a) => a !== base);
+  if (made && rest.length > 0) await insertMediaEdit(rest, { comp: made.comp });
 }

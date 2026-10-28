@@ -17,7 +17,11 @@ export const CANVAS_DRAG_MIME = 'application/x-motion-drag';
 export type CanvasDragPayload =
   | { kind: 'shape'; primitive: ShapeKind; label: string }
   | { kind: 'text'; label: string; fontSize: number; weight: number; extra?: Record<string, unknown> }
-  | { kind: 'asset'; assetId: string }
+  /**
+   * Project items. `assetIds` (panel order, includes `assetId`) is every
+   * selected item when the dragged one is selected — AE drags the selection.
+   */
+  | { kind: 'asset'; assetId: string; assetIds?: string[] }
   | { kind: 'component'; componentId: string }
   | { kind: 'component-preset'; presetId: string; label: string }
   | { kind: 'effect'; effectType: EffectType }
@@ -51,6 +55,11 @@ export function setCanvasDrag(e: { dataTransfer: DataTransfer | null }, payload:
 /** True if this drag carries a canvas payload (safe to call during dragover). */
 export function hasCanvasDrag(e: { dataTransfer: DataTransfer | null }): boolean {
   return !!e.dataTransfer && Array.from(e.dataTransfer.types).includes(CANVAS_DRAG_MIME);
+}
+
+/** Every asset an `asset` drag carries (the selection, or just the dragged one). */
+export function draggedAssetIds(payload: Extract<CanvasDragPayload, { kind: 'asset' }>): string[] {
+  return payload.assetIds && payload.assetIds.length > 0 ? payload.assetIds : [payload.assetId];
 }
 
 /** Read the payload on drop. Returns null if absent or malformed. */

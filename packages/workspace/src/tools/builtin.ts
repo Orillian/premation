@@ -232,7 +232,8 @@ export class SelectTool implements Tool {
     // Hidden layer controls: no grip is drawn, so none is grabbable (getHandles,
     // pickHandle and the rotate ring all read this list).
     if (ctx.transformHandlesHidden?.()) return [];
-    const b = ctx.selection.selectionBounds();
+    // A multi-selection's grips sit on the box of what a group transform moves.
+    const b = ctx.selectionIds().length > 1 ? ctx.selection.transformBounds() : ctx.selection.selectionBounds();
     if (!b) return [];
     // screenDistanceToWorld is the inverse of what we need (world px per
     // screen px), so invert it to get screen px per world unit.
@@ -341,7 +342,7 @@ export class SelectTool implements Tool {
     // what keeps the maths stable while the layers move under it.
     if (this.downRotate && sel.length > 1) {
       const ids = this.multiTransformIds(ctx);
-      const bounds = ctx.selection.selectionBounds();
+      const bounds = ctx.selection.transformBounds();
       if (ids && bounds) {
         this.mode = 'rotate';
         this.multiPivot = R.center(bounds);
@@ -361,7 +362,7 @@ export class SelectTool implements Tool {
     // applies rather than the single-layer anchor rule.
     if (this.downHandle && sel.length > 1) {
       const ids = this.multiTransformIds(ctx);
-      const bounds = ctx.selection.selectionBounds();
+      const bounds = ctx.selection.transformBounds();
       if (ids && bounds) {
         this.mode = 'resize';
         this.startBounds = bounds;
@@ -409,7 +410,9 @@ export class SelectTool implements Tool {
       return;
     }
     if (!isSelected(ctx, this.downNodeId)) {
-      ctx.selection.select(this.downNodeId);
+      // AE: Shift/Ctrl on the press adds the layer to the selection and drags them all.
+      if (e.modifiers.shift || e.modifiers.mod) ctx.selection.addToSelection(this.downNodeId);
+      else ctx.selection.select(this.downNodeId);
     }
     this.mode = 'move';
     this.moveIds = [...currentSelection(ctx)];

@@ -7087,6 +7087,7 @@
   "providers.edit.duplicated": "Duplicated layers",
   "providers.edit.nothingToPaste": "Nothing to paste",
   "providers.edit.pasted": "Pasted",
+  "providers.edit.pastedMedia": "Pasted footage at the playhead",
   "providers.edit.pastedSvg": "Pasted SVG",
   "providers.effects.added": "Added {effect}",
   "providers.exponentialScale.done": "Exponential scale — {total} keyframes across {tracks} tracks",

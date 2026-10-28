@@ -23,14 +23,14 @@ function setup() {
 }
 
 describe('Marquee', () => {
-  it('normalizes the rect and reports mode by direction', () => {
+  it('normalizes the rect; intersects whichever way it is dragged (AE)', () => {
     const m = new Marquee();
     m.begin({ x: 100, y: 100 });
     m.update({ x: 50, y: 50 });
     expect(m.rect()).toEqual({ x: 50, y: 50, width: 50, height: 50 });
     expect(m.mode()).toBe('intersect'); // dragged left
     m.update({ x: 200, y: 200 });
-    expect(m.mode()).toBe('contain'); // dragged right
+    expect(m.mode()).toBe('intersect'); // dragged right: still touch-selects
   });
 });
 

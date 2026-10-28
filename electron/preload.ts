@@ -348,6 +348,8 @@ const bridge = {
     revealInFolder: (filePath: string) => ipcRenderer.invoke('shell:revealInFolder', filePath),
     pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
     pickFiles: () => ipcRenderer.invoke('dialog:pickFiles'),
+    /** Paths of the files copied in the OS file manager (Edit ▸ Paste of footage). */
+    readClipboardFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
     listDir: (dir: string) => ipcRenderer.invoke('fs:listDir', dir),
   },
 

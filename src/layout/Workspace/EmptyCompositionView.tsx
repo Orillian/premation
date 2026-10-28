@@ -11,7 +11,7 @@ import { openNewCompositionDialog } from '@layout/Composition/NewCompositionDial
 import { useUIStore } from '@stores/uiStore';
 import { setViewerEmpty } from '@stores/onboardingStore';
 import { importBrowserFilesEdit, importPathsEdit } from '@layout/Assets/assetEdits';
-import { newCompFromFootageEdit } from './footageEdits';
+import { compFromFootage } from './footageEdits';
 import styles from './EmptyCompositionView.module.css';
 import { t } from '@core/i18n';
 
@@ -135,10 +135,12 @@ export function EmptyCompositionView(): JSX.Element {
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Desktop: the native picker hands a PATH, so the file is imported through the
-  // engine (`importFiles`, "Import File") and the comp made from the item ("New
-  // Comp from Footage"). The web build has no path: its <input> File goes
-  // through the store's importer.
+  // Desktop: the native picker hands PATHS, so the files are imported through the
+  // engine (`importFiles`) and the comp made from the footage ("New Comp from
+  // Footage"). The web build has no path: its <input> Files go through the
+  // store's importer. Several files: AE's New Comp from Selection, Single
+  // Composition — the comp takes the first footage's size, rate and length, and
+  // every other file becomes a layer in it (it used to keep only the first).
   const handlePickFootage = (): void => {
     const pick = typeof window !== 'undefined' ? window.motionEditor?.shell?.pickFiles : undefined;
     if (typeof pick !== 'function') {
@@ -147,15 +149,13 @@ export function EmptyCompositionView(): JSX.Element {
     }
     void (async () => {
       const chosen = await pick();
-      const path = chosen?.[0];
-      if (!path) return;
-      const { imported } = await importPathsEdit([path]);
-      const asset = imported[0];
-      if (asset) await newCompFromFootageEdit(asset);
+      if (!chosen || chosen.length === 0) return;
+      const { imported } = await importPathsEdit(chosen);
+      if (imported.length > 0) await compFromFootage(imported);
       else {
         useUIStore.getState().notify({
           level: 'error',
-          message: t('workspace.emptyComp.importFailed', 'Could not create composition from footage: “{file}” could not be imported.', { file: path.replace(/^.*[\\/]/, '') }),
+          message: t('workspace.emptyComp.importFailed', 'Could not create composition from footage: “{file}” could not be imported.', { file: chosen[0]!.replace(/^.*[\\/]/, '') }),
           durationMs: 4000,
         });
       }
@@ -163,12 +163,13 @@ export function EmptyCompositionView(): JSX.Element {
   };
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';  // picking the same files again fires onChange again
+    if (files.length === 0) return;
     try {
       // A picked browser `File` carries no path: imported from its bytes.
-      const { imported: [asset] } = await importBrowserFilesEdit([{ file }]);
-      if (asset) await newCompFromFootageEdit(asset);
+      const { imported } = await importBrowserFilesEdit(files.map((file) => ({ file })));
+      if (imported.length > 0) await compFromFootage(imported);
     } catch (err) {
       useUIStore.getState().notify({
         level: 'error',
@@ -200,21 +201,23 @@ export function EmptyCompositionView(): JSX.Element {
     e.preventDefault();
     e.stopPropagation();
     setFootageHover(false);
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    if (file && !isFootageFile(file)) {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    // Every dropped media file (it used to take the first and drop the rest);
+    // anything else is named, not silently skipped.
+    const media = files.filter(isFootageFile);
+    const other = files.find((f) => !isFootageFile(f));
+    if (other) {
       useUIStore.getState().notify({
-        level: 'error',
-        message: t('workspace.emptyComp.notMedia', '“{file}” is not a media file this editor can use as footage.', { file: file.name }),
+        level: media.length > 0 ? 'warning' : 'error',
+        message: t('workspace.emptyComp.notMedia', '“{file}” is not a media file this editor can use as footage.', { file: other.name }),
         durationMs: 4000,
       });
-      return;
     }
-    if (file) {
+    if (media.length > 0) {
       try {
-        const { imported: [asset] } = await importBrowserFilesEdit([{ file }]);
-        if (asset) await newCompFromFootageEdit(asset);
+        const { imported } = await importBrowserFilesEdit(media.map((file) => ({ file })));
+        if (imported.length > 0) await compFromFootage(imported);
       } catch (err) {
         useUIStore.getState().notify({
           level: 'error',
@@ -230,6 +233,7 @@ export function EmptyCompositionView(): JSX.Element {
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.m4v,.png,.jpg,.jpeg,.gif,.svg,.mp3,.wav,.mxf,.avi,.mts,.m2ts,.mpg,.wmv,.mkv,.dng,.cr2,.cr3,.nef,.arw,.exr,.hdr,.dpx,.psd"
         style={{ display: 'none' }}
         onChange={(e) => void handleFileSelected(e)}

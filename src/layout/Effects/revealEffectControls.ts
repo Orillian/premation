@@ -34,8 +34,8 @@ export function revealAppliedEffects(): void {
   s.openPanel('effectControls');
 }
 
-/** Add an effect to a layer (ONE engine entry) and bring its parameters on screen. */
-export function addEffectAndReveal(nodeId: string, type: EffectType): void {
-  void addEffectEdit([nodeId], type);
+/** Add an effect to a layer or several (ONE engine entry) and bring its parameters on screen. */
+export function addEffectAndReveal(nodeIds: string | readonly string[], type: EffectType): void {
+  void addEffectEdit(typeof nodeIds === 'string' ? [nodeIds] : nodeIds, type);
   revealAppliedEffects();
 }

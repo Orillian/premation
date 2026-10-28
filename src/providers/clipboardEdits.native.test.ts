@@ -1,7 +1,7 @@
 /**
  * Edit ▸ Cut / Copy / Paste of layers through the engine API: Copy captures a
  * `copyLayers` fragment, Paste is ONE `pasteLayers` entry (the copy renamed
- * "<name> copy" and nudged +20 px, as the legacy clipboard did), undo takes it
+ * "<name> copy", in place as AE pastes), undo takes it
  * back whole; Cut is Copy + the Delete command.
  */
 
@@ -45,7 +45,7 @@ const position = async (id: string): Promise<unknown> => {
 };
 
 describe('Copy → Paste of layers', () => {
-  it('pastes ONE entry: a renamed, nudged copy on top, selected — and undo removes it', async () => {
+  it('pastes ONE entry: a renamed copy in place, on top, selected — and undo removes it', async () => {
     const a = await addShape('Box', 100, 50);
     useSelectionStore.getState().set([a]);
     expect(await copyEdit()).toBe('layers');
@@ -59,7 +59,7 @@ describe('Copy → Paste of layers', () => {
     expect(added).toHaveLength(1);
     const copy = added[0]!;
     expect((await docView()).getNode(copy)?.name).toBe('Box copy');
-    expect(await position(copy)).toEqual({ x: 120, y: 70 });
+    expect(await position(copy)).toEqual({ x: 100, y: 50 });
     // The original is untouched, and the copy is what is selected.
     expect(await position(a)).toEqual({ x: 100, y: 50 });
     expect(useSelectionStore.getState().ids).toEqual([copy]);

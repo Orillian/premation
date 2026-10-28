@@ -61,7 +61,7 @@ async function expectOneUndoableEntry(label: string, entries: number, before: st
 }
 
 describe('insertMediaEdit', () => {
-  it('a footage layer contain-fitted by the router — ONE entry, selected, undoable', async () => {
+  it('a footage layer at its native size (AE) — ONE entry, selected, undoable', async () => {
     const [clip] = await importAssets('C:/media/clip.mp4');
     const comp = activeComp();
     const settings = useProjectStore.getState().comps[comp]!;
@@ -73,11 +73,11 @@ describe('insertMediaEdit', () => {
     const id = ids![0]!;
     expect((await docView()).layerIdsOfComp(comp)).toContain(id);
     expect((await docView()).getNode(id)!.name).toBe('clip.mp4');
-    // Contain-fit of 640×360 (16:9) into the comp frame: the router's size, not the file's.
+    // 640×360 fits the comp frame, so it lands at its native size (AE: no upscale).
     const t = (await transform(id));
     expect(t.assetId).toBe(clip!.id);
-    expect(Math.min(settings.width / (t.width as number), settings.height / (t.height as number))).toBeCloseTo(1, 5);
-    expect((t.width as number) / (t.height as number)).toBeCloseTo(640 / 360, 2);
+    expect(settings.width).toBeGreaterThanOrEqual(640);
+    expect([t.width, t.height]).toEqual([640, 360]);
     expect(useSelectionStore.getState().ids).toEqual([id]);
     expect((await docView()).getLayersForNode(id)).toHaveLength(1);
 
@@ -94,7 +94,7 @@ describe('insertMediaEdit', () => {
     expect((await historyLabels()).slice(entries)).toEqual(['Insert clip.mp4']);
   });
 
-  it('several files (video + audio) are ONE entry; the last one is selected', async () => {
+  it('several files (video + audio) are ONE entry; all selected, the first on top (AE)', async () => {
     const assets = await importAssets('C:/media/clip.mp4', 'C:/media/tone.wav');
     const before = (await h.doc());
     const entries = (await historyLabels()).length;
@@ -103,7 +103,11 @@ describe('insertMediaEdit', () => {
     const view = await docView();
     const audio = ids.find((id) => view.getNode(id)!.components.some((c) => c.type === 'Audio'));
     expect(audio).toBeDefined();
-    expect(useSelectionStore.getState().ids).toEqual([audio]);
+    expect([...useSelectionStore.getState().ids].sort()).toEqual([...ids].sort());
+    // The first asset given is layer 1: front of the stack.
+    const stack = view.layerIdsOfComp(activeComp());
+    expect(stack.indexOf(ids[0]!)).toBeLessThan(stack.indexOf(ids[1]!));
+    expect(ids[1]).toBe(audio);
     await expectOneUndoableEntry('Insert 2 Layers', entries, before);
   });
 

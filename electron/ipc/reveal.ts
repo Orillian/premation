@@ -15,7 +15,8 @@
  * the user expects to see.
  */
 
-import { app, dialog, shell } from 'electron';
+import { app, clipboard, dialog, shell } from 'electron';
+import { readClipboardFilePaths } from '../clipboardFiles';
 import { existsSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -81,6 +82,9 @@ export function registerRevealIpc(): void {
    * Multi-select; the renderer imports each path through the same
    * `importMediaFile` the browser's rows use. Null if cancelled.
    */
+  /** Files copied in the OS file manager, for Edit ▸ Paste (electron/clipboardFiles.ts). Read only. */
+  handle('clipboard:readFiles', () => readClipboardFilePaths(clipboard));
+
   handle('dialog:pickFiles', async () => {
     // P7b: footage formats installed native plugins import (.ppm, …).
     const pluginExts = await pluginImportExtensions([path.join(app.getPath('userData'), 'native-plugins')]);

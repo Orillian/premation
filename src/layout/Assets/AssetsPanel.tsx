@@ -88,13 +88,13 @@ import { useLayoutStore } from '@stores/layoutStore';
 import { getEventBus } from '@core/events/EventBus';
 import { replaceTargetLayer } from './replaceTarget';
 import { replaceSourceWithAsset } from '@layout/Timeline/timelineEdits';
-import { insertMediaEdit, newCompFromFootageEdit } from '@layout/Workspace/footageEdits';
+import { compFromFootage, insertMediaEdit, newCompFromFootageEdit } from '@layout/Workspace/footageEdits';
 import { setPanelAssetSelection } from '@core/composition/assetSelection';
 import { LABEL_COLORS } from '@core/scene/labelColor';
 import { openFootagePreview } from '@layout/Assets/FootagePreviewDialog';
 import { openInterpretFootage } from '@layout/Assets/InterpretFootageModal';
 import { runNewCompFromClips, runAssembleFromFootage } from '@layout/Assets/footageAssembly';
-import { setCanvasDrag } from '@core/dnd/canvasDrag';
+import { draggedAssetIds, readCanvasDrag, setCanvasDrag } from '@core/dnd/canvasDrag';
 import { ScrollableStrip } from '@components/ScrollableStrip';
 import { AssetThumb } from './AssetThumb';
 import { AssetDrawer } from './AssetDrawer';
@@ -145,6 +145,14 @@ const FILTER_NOTE_MS = 6000;
 const SORT_KEYS: readonly AssetSortKey[] = ['name', 'type', 'size', 'date', 'used'];
 
 /** The sort key as a menu item / column label. */
+/** The Project items a drop carries: the dragged selection, else the one text/asset-id. */
+function droppedAssetIds(e: React.DragEvent): string[] {
+  const payload = readCanvasDrag(e);
+  if (payload?.kind === 'asset') return draggedAssetIds(payload);
+  const one = e.dataTransfer.getData('text/asset-id');
+  return one ? [one] : [];
+}
+
 function sortLabel(key: AssetSortKey): string {
   switch (key) {
     case 'name': return t('assets.panel.sortName', 'Name');
@@ -1043,8 +1051,8 @@ export function AssetsPanel(): JSX.Element {
           onDragLeave={() => setDropFolderId((cur) => (cur === row.folder.id ? null : cur))}
           onDrop={(e) => {
             e.preventDefault();
-            const assetId = e.dataTransfer.getData('text/asset-id');
-            if (assetId) void moveItemsEdit([assetId], row.folder.id);
+            const ids = droppedAssetIds(e);
+            if (ids.length > 0) void moveItemsEdit(ids, row.folder.id);
             setDropFolderId(null);
           }}
         >
@@ -1118,8 +1126,8 @@ export function AssetsPanel(): JSX.Element {
         onDragLeave={() => setDropFolderId((cur) => (cur === row.folder.id ? null : cur))}
         onDrop={(e) => {
           e.preventDefault();
-          const assetId = e.dataTransfer.getData('text/asset-id');
-          if (assetId) void moveItemsEdit([assetId], row.folder.id);
+          const ids = droppedAssetIds(e);
+          if (ids.length > 0) void moveItemsEdit(ids, row.folder.id);
           setDropFolderId(null);
         }}
       >
@@ -1177,8 +1185,8 @@ export function AssetsPanel(): JSX.Element {
       onDragLeave={() => setDropFolderId((cur) => (cur === row.folder.id ? null : cur))}
       onDrop={(e) => {
         e.preventDefault();
-        const assetId = e.dataTransfer.getData('text/asset-id');
-        if (assetId) void moveItemsEdit([assetId], row.folder.id);
+        const ids = droppedAssetIds(e);
+        if (ids.length > 0) void moveItemsEdit(ids, row.folder.id);
         setDropFolderId(null);
       }}
     >
@@ -1201,7 +1209,11 @@ export function AssetsPanel(): JSX.Element {
     draggable: true,
     onDragStart: (e: React.DragEvent) => {
       e.dataTransfer.setData('text/asset-id', asset.id);
-      setCanvasDrag(e, { kind: 'asset', assetId: asset.id });
+      // AE drags the whole selection when the grabbed item is part of it.
+      const assetIds = selectedAssetIds.has(asset.id) && selectedAssetIds.size > 1
+        ? orderedAssetIds.filter((id) => selectedAssetIds.has(id))
+        : undefined;
+      setCanvasDrag(e, { kind: 'asset', assetId: asset.id, assetIds });
     },
   });
 
@@ -1641,9 +1653,10 @@ export function AssetsPanel(): JSX.Element {
                 onDrop={(e) => {
                   e.preventDefault();
                   setDockCompDropActive(false);
-                  const assetId = e.dataTransfer.getData('text/asset-id');
-                  const dropped = assets.find((a) => a.id === assetId);
-                  if (dropped && dropped.type !== 'audio') void newCompFromFootageEdit(dropped);
+                  // Several dropped items: one comp from the first footage, the rest as its layers.
+                  const ids = droppedAssetIds(e);
+                  const dropped = ids.map((id) => assets.find((a) => a.id === id)).filter((a): a is ImportedAsset => !!a);
+                  if (dropped.some((a) => a.type !== 'audio')) void compFromFootage(dropped);
                 }}
               >
                 <Icon name="component" size="sm" className={singleSelectedAsset && singleSelectedAsset.type !== 'audio' ? styles.assetGlyphComp : undefined} />

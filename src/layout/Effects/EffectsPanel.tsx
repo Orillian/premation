@@ -399,17 +399,20 @@ export function EffectBrowser({ nodeId }: { nodeId: string | null }): JSX.Elemen
       useUIStore.getState().notify({ level: 'warning', message: t('effects.browser.selectLayerToAdd', 'Select a layer to add this to'), durationMs: 2000 });
       return;
     }
+    // AE applies an effect or preset to EVERY selected layer, one undo entry.
+    const sel = useSelectionStore.getState().ids;
+    const targets = sel.includes(primary) ? sel.filter((id) => !!m.layer(id)) : [primary];
     switch (row.kind) {
       case 'effect':
-        addEffectAndReveal(primary, row.def.type);
+        addEffectAndReveal(targets, row.def.type);
         break;
       case 'preset':
-        void applyEffectPresetEdit(row.name, [primary]);
+        void applyEffectPresetEdit(row.name, targets);
         revealAppliedEffects();
         break;
       case 'pluginPreset':
         // One addEffect with the preset's values: one undo entry.
-        void edit(`Apply ${row.preset.name}`, applyPluginPresetCommand(row.preset, [primary]));
+        void edit(`Apply ${row.preset.name}`, applyPluginPresetCommand(row.preset, targets));
         revealAppliedEffects();
         break;
       case 'shapeOp':

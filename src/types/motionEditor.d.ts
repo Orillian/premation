@@ -785,6 +785,8 @@ export interface MotionEditorApi {
     pickFolder?(): Promise<string | null>;
     /** Native multi-file picker for media; null if cancelled. */
     pickFiles?(): Promise<string[] | null>;
+    /** Paths of the files copied in the OS file manager ([] for none) — Edit ▸ Paste of footage. */
+    readClipboardFiles?(): Promise<string[]>;
     /** Hidden entries removed; null if the directory cannot be read. */
     listDir?(dir: string): Promise<Array<{ name: string; path: string; kind: 'dir' | 'file'; size?: number; mtimeMs?: number }> | null>;
   };

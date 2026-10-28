@@ -54,6 +54,14 @@ function makeCtx(nodes: FakeNode[], selection: string[]) {
   const selected = [...selection];
   const bounds = (): Rect | null =>
     R.bounds(selected.map((id) => nodes.find((n) => n.id === id)?.worldBounds).filter((b): b is Rect => !!b));
+  // SelectionController.transformBounds: only what a group transform moves.
+  const transformBounds = (): Rect | null =>
+    R.bounds(
+      selected
+        .map((id) => nodes.find((n) => n.id === id))
+        .filter((n): n is FakeNode => !!n && !n.is3D && !n.device && !n.locked)
+        .map((n) => n.worldBounds),
+    );
   const ctx = {
     requestRender: () => {},
     setSnapLines: () => {},
@@ -64,8 +72,9 @@ function makeCtx(nodes: FakeNode[], selection: string[]) {
       select: (id: string) => { selected.splice(0, selected.length, id); },
       clickAt: () => {},
       selectionBounds: bounds,
+      transformBounds,
       handles: () => {
-        const b = bounds();
+        const b = selected.length > 1 ? transformBounds() : bounds();
         return b ? computeHandles(b) : [];
       },
     },
@@ -111,11 +120,15 @@ describe('multi-select handles', () => {
     const nodes = [...twoNodes(), node('cam', { x: 600, y: 600 }, 48, { device: true })];
     const { ctx, resizes } = makeCtx(nodes, ['a', 'b', 'cam']);
     const t = new SelectTool();
-    expect(t.getHandles(ctx)).toHaveLength(8);
-    // Union now spans to the camera's box; grab its 'se' corner and drag.
-    t.onPointerDown(point(624, 624), ctx);
-    t.onDragStart(drag({ x: 624, y: 624 }, { x: 624, y: 624 }), ctx);
-    t.onDrag(drag({ x: 624, y: 624 }, { x: 700, y: 700 }), ctx);
+    const grips = t.getHandles(ctx);
+    expect(grips).toHaveLength(8);
+    // The grips enclose what the drag moves — the two 2D layers, not the camera
+    // out at (600, 600): 'se' is the 2D layers' corner.
+    expect(grips.find((h) => h.id === 'se')!.position).toEqual({ x: 400, y: 300 });
+    expect(ctx.selection.transformBounds()).toEqual(R.rect(100, 100, 300, 200));
+    t.onPointerDown(point(400, 300), ctx);
+    t.onDragStart(drag({ x: 400, y: 300 }, { x: 400, y: 300 }), ctx);
+    t.onDrag(drag({ x: 400, y: 300 }, { x: 700, y: 500 }), ctx);
     const items = resizes.at(-1)!.items;
     expect(items.map((i) => i.id).sort()).toEqual(['a', 'b']);
   });

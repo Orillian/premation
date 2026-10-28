@@ -1496,10 +1496,9 @@ export function buildMedia(
   return { id, report: () => {} };
 }
 
-/** {@link insertMedia}'s image / video layer (contain-fit, PAR) laid into `sink`; returns its id. */
+/** {@link insertMedia}'s image / video layer (native size, scaled down to fit; PAR) laid into `sink`; returns its id. */
 export function buildFootage(sink: LayerSink, frame: InsertFrame, asset: ImportedAsset, at?: { x: number; y: number }): string {
   const kind = asset.type === 'video' ? 'video' : 'image';
-  const hasProbedSize = !!(asset.metadata?.width && asset.metadata?.height);
   const storedW = asset.metadata?.width ?? 400;
   const storedH = asset.metadata?.height ?? 400;
   // PAR is a property of the FILE, so it applies before any fitting: an
@@ -1510,12 +1509,14 @@ export function buildFootage(sink: LayerSink, frame: InsertFrame, asset: Importe
     { width: frame.width, height: frame.height },
     'contain',
   );
-  // A probe-failed source falls back to a 400×400 GUESS. Contain-fitting the
-  // guess upscaled it to a full-height square (1080×1080 in a 1080p comp) —
-  // wrong size, wrong aspect. A guessed box lands at its neutral size; the
-  // layer re-fits naturally when the user scales it or relinks the source.
-  const width = hasProbedSize ? fitted.width : Math.min(fitted.width, Math.round(storedW * par));
-  const height = hasProbedSize ? fitted.height : Math.min(fitted.height, storedH);
+  // AE adds footage at its NATIVE size: a source that fits the frame is never
+  // upscaled (an 800×600 image stays 800×600 in a 1080p comp). One larger than
+  // the frame is scaled DOWN to fit, so a 4K clip lands in view rather than
+  // four times outside it. Per axis, min(contain, native) is exactly that rule
+  // (contain's scale is the same on both axes). It also keeps a probe-failed
+  // source's 400×400 GUESS at its neutral size instead of a full-height square.
+  const width = Math.min(fitted.width, Math.round(storedW * par));
+  const height = Math.min(fitted.height, storedH);
 
   const node = makeNode(kind, asset.name);
   const transform = node.components.find(c => c.type === 'Transform');

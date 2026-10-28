@@ -72,6 +72,11 @@ export class SelectionController {
     return node.id;
   }
 
+  /** Add a node (expanded to its group) to the selection — a Shift/Ctrl press-drag on an unselected layer. */
+  addToSelection(id: NodeId): void {
+    for (const g of this.expand(id)) this.selection.add(g);
+  }
+
   /** Select a single node explicitly (expanded to its group when it has one). */
   select(id: NodeId): void {
     this.selection.set(this.expand(id));
@@ -114,7 +119,8 @@ export class SelectionController {
     this.marquee.end();
     if (!rect || (rect.width < 1e-6 && rect.height < 1e-6)) return [];
     const nodes = this.hit.hitTestRegion(rect, mode);
-    const ids = nodes.map((n) => n.id);
+    // A touched part of a group selects the group, as a click does.
+    const ids = [...new Set(nodes.flatMap((n) => this.expand(n.id)))];
     if (mods.shift || mods.mod) {
       for (const id of ids) this.selection.add(id);
     } else {
@@ -137,6 +143,21 @@ export class SelectionController {
    */
   selectionBounds(): Rect | null {
     return R.bounds(this.selectedNodes().map((s) => s.node.worldBounds));
+  }
+
+  /**
+   * Union AABB of the selected nodes a GROUP scale / rotate moves — 2D, unlocked,
+   * not a camera or light (the select tool's `multiTransformIds`) — or null when
+   * none can. The multi-selection grips and their dashed box sit on THIS box: on
+   * `selectionBounds` they enclosed a 3D layer or a camera that a drag then left
+   * where it was, so the grips surrounded more than they moved.
+   */
+  transformBounds(): Rect | null {
+    return R.bounds(
+      this.selectedNodes()
+        .filter(({ node }) => !node.is3D && !node.device && !node.locked)
+        .map((s) => s.node.worldBounds),
+    );
   }
 
   /** The resolved selection, for the duration of one {@link resolveOnce} call. */
@@ -231,7 +252,11 @@ export class SelectionController {
       if (only?.worldCorners) return orientedHandles(only.worldCorners);
     }
     // A MULTI-selection has no single orientation to honour, so its grips stay
-    // on the union AABB — which is also the box the move/marquee math uses.
+    // on a union AABB — the union of the layers a group scale / rotate moves.
+    if (ids.length > 1) {
+      const group = this.transformBounds();
+      return group ? computeHandles(group) : [];
+    }
     return computeHandles(bounds);
   }
 

@@ -39,7 +39,9 @@ import { isReplaceableSourceLayer, uiKindOf } from '@core/mirror/layerKinds';
 import { useWorkspaceViewStore } from '@stores/workspaceViewStore';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import { compScreenRect } from './compScreenRect';
-import { hasCanvasDrag, readCanvasDrag } from '@core/dnd/canvasDrag';
+import { draggedAssetIds, hasCanvasDrag, readCanvasDrag } from '@core/dnd/canvasDrag';
+import { useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
+import { deleteKeyframesUi } from '@layout/Timeline/keyframeEdits';
 import { insertShapeEdit, insertTextEdit } from '@/engine-client/insertEdits';
 import { insertFragment } from '@/engine-client/insertFragment';
 import { EmptyCompositionView } from './EmptyCompositionView';
@@ -161,6 +163,13 @@ const VIEWPORT_KEYS = new Set([
  * drift apart. See compScreenRect for the rounding rule that keeps the seam
  * stable at fractional zoom.
  */
+/** The layers a drop on `hit` applies to: the whole selection when `hit` is in it (AE), else just `hit`. */
+function dropTargets(hit: string): string[] {
+  const sel = useSelectionStore.getState().ids;
+  const m = documentMirror();
+  return sel.includes(hit) ? sel.filter((id) => !!m.layer(id)) : [hit];
+}
+
 function TransparencyGrid(): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null);
   const settings = useActiveMirrorComp()?.settings;
@@ -419,6 +428,11 @@ export function WorkspaceViewport({
       case 'Delete':
       case 'Backspace':
         e.preventDefault();
+        // AE: selected keyframes go first; the layers only when no key is selected.
+        if (useKeyframeSelectionStore.getState().ids.size > 0) {
+          void deleteKeyframesUi([...useKeyframeSelectionStore.getState().ids], 'Delete keyframes');
+          break;
+        }
         controller.deleteSelection();
         break;
       case 'Escape':
@@ -429,7 +443,8 @@ export function WorkspaceViewport({
       case 'ArrowUp':
       case 'ArrowDown': {
         e.preventDefault();
-        const step = e.shiftKey ? 10 : 1;
+        // AE nudges one SCREEN pixel at the current magnification (ten with Shift).
+        const step = (e.shiftKey ? 10 : 1) / Math.max(1e-3, controller.ws.camera.zoom);
         const dx = e.code === 'ArrowLeft' ? -step : e.code === 'ArrowRight' ? step : 0;
         const dy = e.code === 'ArrowUp'   ? -step : e.code === 'ArrowDown'  ? step : 0;
         controller.nudgeSelection(dx, dy);
@@ -544,8 +559,9 @@ export function WorkspaceViewport({
           void replaceSourceWithAsset(target, payload.assetId);
           break;
         }
-        const asset = assetRecordNow(payload.assetId);
-        if (asset) await insertMediaEdit([asset], { at: world });
+        // Several dragged Project items land together, one entry (AE drags the selection).
+        const assets = draggedAssetIds(payload).map(assetRecordNow).filter((a): a is NonNullable<typeof a> => !!a);
+        if (assets.length > 0) await insertMediaEdit(assets, { at: world });
         break;
       }
       case 'component': {
@@ -564,7 +580,8 @@ export function WorkspaceViewport({
       case 'effect': {
         // Effects apply to a layer — target the one under the cursor (AE-style).
         const node = controller.ws.hitTestScreen(local);
-        if (node) addEffectAndReveal(node.id, payload.effectType);
+        // Dropped on a selected layer: AE applies it to the whole selection.
+        if (node) addEffectAndReveal(dropTargets(node.id), payload.effectType);
         else useUIStore.getState().notify({ level: 'warning', message: t('workspace.drop.effectOnLayer', 'Drop an effect onto a layer.'), durationMs: 2400 });
         break;
       }
@@ -574,7 +591,7 @@ export function WorkspaceViewport({
           // The Motion Presets panel's write: the preset's keys (and any 3D
           // switch it flips) as one entry, addressed by name.
           void edit('Apply animation preset', {
-            type: 'applyPreset', layers: [node.id], preset: payload.name, time: compTime(getPlayheadTime()),
+            type: 'applyPreset', layers: dropTargets(node.id), preset: payload.name, time: compTime(getPlayheadTime()),
             ...withUserPresetBody(payload.name),
           });
         } else {

@@ -20,15 +20,13 @@ import { apiParentOf, compOfLayer, isLayer } from '@core/mirror/docFacts';
 import { buildMergedPaths, type MergeOp } from '@core/scene/mergePaths';
 import { decodeFragmentLayers, FragmentBuilder, type BuiltFragment } from '@/engine-client/fragmentBuilder';
 import { labelIndexOf } from '@core/engine/model';
-import { engine, engineIdle } from '@core/engine/engineInstance';
+import { engine } from '@core/engine/engineInstance';
 import { edit, reportEngineError } from '@core/engine/uiEdits';
 import { compTime, propRefForTrack } from '@core/engine/propRefs';
 import { useSelectionStore } from '@stores/selectionStore';
 import { documentMirror } from '@stores/documentMirror';
 import { canBe3DLayer } from '@core/mirror/layerKinds';
 import { childOrderOf } from '@core/mirror/layerTree';
-import { storedNumber, trackRefIn } from '@core/mirror/trackIndex';
-import { trackValueCommands } from './viewportEdits';
 
 /** Ids grouped by the composition they are layers of (non-layers dropped). */
 function byComp(ids: Iterable<string>): Map<string, string[]> {
@@ -93,14 +91,10 @@ export async function deleteSelectedLayersEdit(): Promise<void> {
 
 // ── Duplicate ─────────────────────────────────────────────────────────
 
-/** The legacy duplicate's placement nudge (Edit ▸ Duplicate offsets the copy). */
-const DUPLICATE_OFFSET = 20;
-
 /**
- * Duplicate the selected layers: each copy directly above its original, named
- * "<name> copy" and nudged +20 px / +20 px when its Position is static — what
- * `duplicateSelectedLayers` did — and the copies selected. ONE entry: the
- * duplicate returns the new ids, so the rename and nudge that need them run
+ * Duplicate the selected layers (AE Edit ▸ Duplicate): each copy directly above
+ * its original, in place, named "<name> copy", and the copies selected. ONE
+ * entry: the duplicate returns the new ids, so the renames that need them run
  * inside one engine gesture.
  */
 export async function duplicateSelectedLayersEdit(): Promise<string[]> {
@@ -108,8 +102,6 @@ export async function duplicateSelectedLayersEdit(): Promise<string[]> {
   const ids = useSelectionStore.getState().ids.filter((id) => !!m.layer(id));
   const groups = byComp(ids);
   if (groups.size === 0) return [];
-  // Whether a copy is nudged reads the original's Position off its property tree.
-  await m.loadTrees(ids);
   const label = ids.length === 1 ? 'Duplicate Layer' : 'Duplicate Layers';
   const client = engine();
   const opened = await client.beginGesture(label);
@@ -128,29 +120,10 @@ export async function duplicateSelectedLayersEdit(): Promise<string[]> {
       break;
     }
     const copies = (res.value as { layers?: string[] }).layers ?? [];
-    // The nudge writes through the copies' trees: let the mirror learn of them and load them.
-    await engineIdle();
-    await m.loadTrees(copies);
     copies.forEach((copy, i) => {
       const src = m.layer(layers[i]!);
       if (!src) return;
       follow.push({ type: 'renameLayer', layer: copy, name: `${src.name || 'Layer'} copy` });
-      // The copy carries the ORIGINAL's values and keys, so the original's
-      // Position says both; a static nudge on an animated Position would be a
-      // key the user never set.
-      const tree = m.tree(src.id);
-      const rx = trackRefIn(tree, 'x');
-      const ry = trackRefIn(tree, 'y');
-      const animated = !rx || !ry || [rx, ry].some((r) => r.info.animated || m.keyframes(src.id, r.path).length > 0);
-      const x = rx ? storedNumber(rx, rx.info.value) : undefined;
-      const y = ry ? storedNumber(ry, ry.info.value) : undefined;
-      if (x !== undefined && y !== undefined && !animated) {
-        const move = trackValueCommands(
-          [{ nodeId: copy, values: { x: x + DUPLICATE_OFFSET, y: y + DUPLICATE_OFFSET } }],
-          { seconds: 0 },
-        );
-        if (move) follow.push(...move);
-      }
       newIds.push(copy);
     });
   }

@@ -208,6 +208,12 @@ export interface WorkspaceOverlay {
    * selected, which outline belongs to which timeline row.
    */
   selectionBoxes: readonly ScreenSelectionBox[];
+  /**
+   * A multi-selection's group box, screen space: the dashed rectangle the eight
+   * grips sit on (the union of the layers a group scale / rotate moves). Null for
+   * one layer, or when no grips are shown.
+   */
+  groupBox?: Rect | null;
   handles: readonly OverlayHandle[];
   marquee: Rect | null;
   snapLines: readonly SnapLine[];

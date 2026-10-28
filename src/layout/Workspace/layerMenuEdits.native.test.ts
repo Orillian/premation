@@ -79,7 +79,7 @@ describe('delete', () => {
 });
 
 describe('duplicate', () => {
-  it('"<name> copy", nudged +20 px when Position is static, selected — ONE entry', async () => {
+  it('"<name> copy" in place (AE: no offset), selected — ONE entry', async () => {
     useSelectionStore.getState().set([s.A]);
     const ax = (await x(s.A));
     let copies: string[] = [];
@@ -87,11 +87,11 @@ describe('duplicate', () => {
     // (after redo the copy exists again with the same id)
     const copy = copies[0]!;
     expect((await node(copy)).name).toBe('A copy');
-    expect((await x(copy))).toBe(ax + 20);
+    expect((await x(copy))).toBe(ax);
     expect(useSelectionStore.getState().ids).toEqual([copy]);
   });
 
-  it('an animated Position is not nudged (it would be a new key)', async () => {
+  it('an animated Position keeps its keys', async () => {
     useSelectionStore.getState().set([s.B]);
     const [copy] = await duplicateSelectedLayersEdit();
     expect((await docView()).getTrackKeyframes(copy!, 'x')).toHaveLength(2);

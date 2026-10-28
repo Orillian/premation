@@ -2322,6 +2322,22 @@ export function paintOverlay(
     if (sel3D) ctx.setLineDash([]);
   }
 
+  // A multi-selection's group box: the dashed rectangle its eight grips sit on.
+  // Without it the grips floated over the layers with nothing joining them. It
+  // is the union of the layers a group scale / rotate moves (no 3D layer, camera
+  // or locked layer), so the box and the grips agree with what a drag does.
+  if (!isActivelyDrawing && showHandles && overlay.groupBox) {
+    const g = overlay.groupBox;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(Math.round(g.x) + 0.5, Math.round(g.y) + 0.5, Math.round(g.width), Math.round(g.height));
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(g.x) + 0.5, Math.round(g.y) + 0.5, Math.round(g.width), Math.round(g.height));
+    ctx.setLineDash([]);
+  }
+
   // Handles (hidden while actively drawing or painting a stroke, in 3D, and
   // while the selected text is being edited — its grips would resize a box
   // that is not there).
