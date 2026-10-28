@@ -67,7 +67,7 @@ std::vector<double> local_of(const PCtx& pc, const Node& n, double seconds) {
 bool bounds_of(const PCtx& pc, TextQueries* text, const std::string& layer, double seconds, api::OverlayLayerGeometry& g) {
   std::optional<LayerGeometry> geo;
   try {
-    geo = layer_geometry_at(SpaceCtx{pc.d, pc.view, pc.expr, pc.cache}, text, layer, seconds);
+    geo = visible_geometry_at(SpaceCtx{pc.d, pc.view, pc.expr, pc.cache}, text, layer, seconds);
   } catch (const EngineFail&) {
     return false;  // a text layer the text port cannot measure: no box this frame
   }

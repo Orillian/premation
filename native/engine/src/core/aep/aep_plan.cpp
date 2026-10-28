@@ -245,6 +245,8 @@ void plan_masks(const PlanContext& ctx, PlannedLayer& out) {
     m.name = mask.name;
     m.mode = mask.mode;
     m.inverted = mask.inverted;
+    m.locked = mask.locked;
+    m.color = {mask.color[0], mask.color[1], mask.color[2]};
     m.closed = mask.shape->closed;
     for (const AepShapeVertex& v : mask.shape->vertices) {
       const double x = v.x - ctx.width / 2;

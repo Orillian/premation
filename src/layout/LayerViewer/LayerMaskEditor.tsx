@@ -26,7 +26,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import type { MaskPath, MaskPoint } from '@core/effects/mask';
 import { secondsToFlicks } from '@motion/engine-api';
 import { documentMirror } from '@stores/documentMirror';
-import { mirrorMasksAt } from '@core/mirror/masks';
+import { mirrorMasksAt, type MirrorMask } from '@core/mirror/masks';
 import { edit } from '@core/engine/uiEdits';
 import { addMaskEdit, deleteMaskEdit, maskPathCommand } from '@layout/Workspace/viewportEdits';
 import { useLayerViewerStore } from '@stores/layerViewerStore';
@@ -99,7 +99,9 @@ export function LayerMaskEditor({
   // (evaluated at comp time; the parent re-renders on every document change).
   const m = documentMirror();
   const locked = m.layer(nodeId)?.switches.locked === true;
-  const paths: MaskPath[] = mirrorMasksAt(m, nodeId, secondsToFlicks(maskCompTime));
+  const paths: MirrorMask[] = mirrorMasksAt(m, nodeId, secondsToFlicks(maskCompTime));
+  // AE: a locked mask is drawn but cannot be picked, dragged or deleted here.
+  const maskLocked = (id: string): boolean => paths.find((p) => p.id === id)?.locked === true;
 
   // A tool change abandons a half-drawn pen path.
   useEffect(() => { setPen([]); }, [tool, nodeId]);
@@ -158,19 +160,19 @@ export function LayerMaskEditor({
     }
   };
   const onVertexDown = (e: ReactPointerEvent<SVGElement>, path: MaskPath, index: number): void => {
-    if (locked || tool !== 'select' || e.button !== 0) return;
+    if (locked || maskLocked(path.id) || tool !== 'select' || e.button !== 0) return;
     capture(e);
     const [x, y] = local(e);
     selectMask({ pathId: path.id, point: index });
     setDrag({ kind: 'vertex', pathId: path.id, index, startX: x, startY: y, points: path.points });
   };
   const onHandleDown = (e: ReactPointerEvent<SVGElement>, path: MaskPath, index: number, which: 'in' | 'out'): void => {
-    if (locked || tool !== 'select' || e.button !== 0) return;
+    if (locked || maskLocked(path.id) || tool !== 'select' || e.button !== 0) return;
     capture(e);
     setDrag({ kind: 'handle', pathId: path.id, index, which, points: path.points });
   };
   const onPathDown = (e: ReactPointerEvent<SVGElement>, path: MaskPath): void => {
-    if (locked || tool !== 'select' || e.button !== 0) return;
+    if (locked || maskLocked(path.id) || tool !== 'select' || e.button !== 0) return;
     capture(e);
     const [x, y] = local(e);
     selectMask({ pathId: path.id, point: null });
@@ -231,7 +233,7 @@ export function LayerMaskEditor({
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && pen.length > 0) {
       // Mid-draw, take back the last pen vertex — not the selected mask.
       setPen((pts) => pts.slice(0, -1));
-    } else if ((e.key === 'Delete' || e.key === 'Backspace') && selection && !locked) {
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && selection && !locked && !maskLocked(selection.pathId)) {
       const pathId = selection.pathId;
       selectMask(null);
       void deleteMaskEdit(nodeId, pathId);
@@ -245,7 +247,7 @@ export function LayerMaskEditor({
   if (!m.layer(nodeId)) return null;
 
   const shown = (p: MaskPath): MaskPoint[] => (draftPoints?.pathId === p.id ? draftPoints.points : p.points);
-  const sel = selection && paths.find((p) => p.id === selection.pathId) ? selection : null;
+  const sel = selection && paths.some((p) => p.id === selection.pathId && !p.locked) ? selection : null;
   const selPath = sel ? paths.find((p) => p.id === sel.pathId) : undefined;
   const selPoint = selPath && sel?.point !== null && sel?.point !== undefined ? shown(selPath)[sel.point] : undefined;
 
@@ -275,9 +277,9 @@ export function LayerMaskEditor({
         return (
           <g key={p.id}>
             {/* A wide invisible stroke makes the outline easy to grab. */}
-            <path d={d} className={styles.maskHit} onPointerDown={(e) => onPathDown(e, p)} />
-            <path d={d} className={cn(styles.mask, picked && styles.maskPicked)} />
-            {tool === 'select' && !locked
+            {p.locked ? null : <path d={d} className={styles.maskHit} onPointerDown={(e) => onPathDown(e, p)} />}
+            <path d={d} className={cn(styles.mask, picked && styles.maskPicked)} style={picked ? undefined : { stroke: p.color }} />
+            {tool === 'select' && !locked && !p.locked
               ? pts.map((pt, i) => {
                   const [vx, vy] = map(pt.x, pt.y);
                   const on = picked && sel?.point === i;

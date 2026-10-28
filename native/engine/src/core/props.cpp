@@ -234,6 +234,29 @@ Catalog catalog_for(const Document& d, std::string_view layerId) {
     roto.maskId = id;
     roto.animatable = false;
     add(std::move(roto));
+    // AE keeps these on the mask itself, not as properties of its twirl: the
+    // lock switch and colour swatch on the mask row, Feather Falloff and Motion
+    // Blur in Layer ▸ Mask. Static, held in every shape key.
+    auto attr = [&](const char* key, const char* name, const char* matchName, ValueType vt,
+                    std::optional<std::vector<std::string>> choices) {
+      PropBinding b;
+      b.path = "masks/" + id + "/" + key;
+      b.name = name;
+      b.matchName = matchName;
+      b.valueType = vt;
+      b.special = Special::maskAttr;
+      b.maskId = id;
+      b.paramKey = key;
+      b.animatable = false;
+      b.choices = std::move(choices);
+      add(std::move(b));
+    };
+    attr("locked", "Locked", "ADBE Mask Locked", ValueType::bool_, std::nullopt);
+    attr("color", "Mask Color", "ADBE Mask Color", ValueType::color, std::nullopt);
+    attr("featherFalloff", "Mask Feather Falloff", "ADBE Mask Feather Falloff", ValueType::choice,
+         std::vector<std::string>(kMaskFeatherFalloffs.begin(), kMaskFeatherFalloffs.end()));
+    attr("motionBlur", "Mask Motion Blur", "ADBE Mask Motion Blur", ValueType::choice,
+         std::vector<std::string>(kMaskMotionBlurs.begin(), kMaskMotionBlurs.end()));
   };
 
   // Compositing Options (B3z): Effect Opacity (keyed on effect.<id>.fx.opacity,
@@ -1676,6 +1699,27 @@ api::Value read_static(const Document& d, std::string_view layer, const PropBind
       const Json* p = mask ? mask_path_by_id(*mask, *b.maskId) : nullptr;
       return v_bool(p != nullptr && p->at("rotoBezier").is_bool() && p->at("rotoBezier").b());
     }
+    case Special::maskAttr: {
+      const auto mask = read_node_mask(n);
+      const Json* p = mask ? mask_path_by_id(*mask, *b.maskId) : nullptr;
+      const Json& v = p != nullptr ? p->at(*b.paramKey) : Json::null();
+      if (*b.paramKey == "locked") return v_bool(v.is_bool() && v.b());
+      if (*b.paramKey == "color") {
+        if (v.is_object()) return v_color(v.at("r").num(), v.at("g").num(), v.at("b").num(), 1);
+        // Unset: AE's cycle of mask colours, by the mask's place in the stack.
+        std::size_t idx = 0;
+        if (mask) {
+          const auto& paths = mask->at("paths").arr();
+          for (std::size_t i = 0; i < paths.size(); ++i) {
+            if (paths[i].at("id").is_string() && paths[i].at("id").str() == *b.maskId) idx = i;
+          }
+        }
+        const MaskRgb c = default_mask_color(idx);
+        return v_color(c.r, c.g, c.b, 1);
+      }
+      if (*b.paramKey == "featherFalloff") return v_choice(v.is_string() && v.str() == "linear" ? "linear" : "smooth");
+      return v_choice(v.is_string() && (v.str() == "on" || v.str() == "off") ? v.str() : "sameAsLayer");
+    }
     case Special::shapePath: {
       const Component* g = n.comp("Geometry");
       const Json* pts = g != nullptr ? as_points(g->props.at("points")) : nullptr;
@@ -1758,6 +1802,10 @@ std::optional<bool> is_stored_static(const Document& d, std::string_view layer, 
       const auto p = maskPath();
       return p && p->at("rotoBezier").is_bool();
     }
+    case Special::maskAttr: {
+      const auto p = maskPath();
+      return p && !p->at(*b.paramKey).is_undefined() && !p->at(*b.paramKey).is_null();
+    }
     case Special::shapePath: {
       const Component* g = n.comp("Geometry");
       return g != nullptr && as_points(g->props.at("points")) != nullptr;
@@ -1810,17 +1858,48 @@ void write_static(Document& d, std::string_view layer, const PropBinding& b, con
       write_shape_closed(d, layer, get<VK::path>(value).closed);
       return;
     }
-    case Special::maskRotoBezier: {
-      if (value.kind() != VK::bool_) mismatch("a bool");
-      const bool on = get<VK::bool_>(value);
-      // A switch of the whole outline: the static mask and every shape keyframe.
+    case Special::maskRotoBezier:
+    case Special::maskAttr: {
+      // The field and what it becomes (undefined = erased: the default).
+      std::string key = "rotoBezier";
+      Json stored;
+      if (b.special == Special::maskRotoBezier) {
+        if (value.kind() != VK::bool_) mismatch("a bool");
+        if (get<VK::bool_>(value)) stored = Json::boolean(true);
+      } else {
+        key = *b.paramKey;
+        if (key == "locked") {
+          if (value.kind() != VK::bool_) mismatch("a bool");
+          if (get<VK::bool_>(value)) stored = Json::boolean(true);
+        } else if (key == "color") {
+          if (value.kind() != VK::color) mismatch("a color");
+          const api::Color& c = get<VK::color>(value);
+          if (!std::isfinite(c.r) || !std::isfinite(c.g) || !std::isfinite(c.b)) mismatch("a finite color");
+          stored = Json::object();
+          stored.set("r", Json::number(std::clamp(c.r, 0.0, 1.0)));
+          stored.set("g", Json::number(std::clamp(c.g, 0.0, 1.0)));
+          stored.set("b", Json::number(std::clamp(c.b, 0.0, 1.0)));
+        } else {
+          const bool falloff = key == "featherFalloff";
+          const auto ok = [&](std::string_view s) {
+            return falloff ? std::ranges::find(kMaskFeatherFalloffs, s) != kMaskFeatherFalloffs.end()
+                           : std::ranges::find(kMaskMotionBlurs, s) != kMaskMotionBlurs.end();
+          };
+          if (value.kind() != VK::choice || !ok(get<VK::choice>(value))) {
+            mismatch(falloff ? "one of smooth, linear" : "one of sameAsLayer, on, off");
+          }
+          const std::string& s = get<VK::choice>(value);
+          if (s != (falloff ? "smooth" : "sameAsLayer")) stored = Json::string(s);
+        }
+      }
+      // A setting of the whole outline: the static mask and every shape keyframe.
       auto flip = [&](const Json& paths) {
         Json out = Json::array();
         for (const Json& p : paths.arr()) {
           if (p.at("id").is_string() && p.at("id").str() == *b.maskId) {
             Json q = p;
-            if (on) q.set("rotoBezier", Json::boolean(true));
-            else q.erase("rotoBezier");
+            if (!stored.is_undefined()) q.set(key, stored);
+            else q.erase(key);
             out.arr_mut().push_back(std::move(q));
           } else {
             out.arr_mut().push_back(p);

@@ -43,4 +43,20 @@ struct LayerGeometry {
 [[nodiscard]] std::optional<LayerGeometry> layer_geometry_at(const SpaceCtx& c, TextQueries* text, std::string_view node,
                                                              double seconds);
 
+/// The box of what the layer SHOWS: `layer_geometry_at` trimmed to what its
+/// masks (mode, Inverted, Expansion, Feather) and a cutting subject matte (the
+/// Object Matte / Roto Brush cut-out, by its traced outline) leave visible.
+/// After Effects keeps a masked layer's box at its source size; the editor's
+/// selection box, Centre Anchor, Align and getLayerBounds use this, so a
+/// small cut-out subject is handled as the subject. Source-size users (jobs,
+/// plugin frames, Fit to Comp) keep `layer_geometry_at`.
+[[nodiscard]] std::optional<LayerGeometry> visible_geometry_at(const SpaceCtx& c, TextQueries* text, std::string_view node,
+                                                               double seconds);
+
+/// Whether a point in the layer's box space (centre origin, before the anchor)
+/// lies in what its masks and cutting matte leave visible: click selection
+/// passes through the cut-away part to the layers underneath. True when
+/// nothing cuts.
+[[nodiscard]] bool visible_contains(const SpaceCtx& c, std::string_view node, double seconds, double x, double y);
+
 }  // namespace premation::doc

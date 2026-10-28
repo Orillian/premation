@@ -351,6 +351,8 @@ class Walk final : public Scene3DHost {
   std::vector<Json> effects_of(const doc::Node& n, const Values& a, std::optional<double> layerTime, RLayer* note);
   /// `matrixAt` (3D layers): the projected affine per sample (threed_port `matrix_at`).
   /// `quadAt`: a 3D comp card's perspective quad per sample (MotionSample.quad).
+  /// AE Mask Motion Blur: `motionSamples` on each animated outline of `mask`.
+  void mask_motion_samples(Json& mask, const doc::Node& n);
   void motion_samples(RLayer& l, const doc::Node& n, const Base& base, const std::string& id,
                       const std::function<Scene3D::MotionPose(double, double)>& matrixAt = {},
                       const std::function<std::optional<std::array<double, 8>>(double, double)>& quadAt = {});
@@ -1050,6 +1052,68 @@ void Walk::motion_samples(RLayer& l, const doc::Node& n, const Base& base, const
   if (out.size() > 1) l.motionSamples = std::move(out);
 }
 
+void Walk::mask_motion_samples(Json& mask, const doc::Node& n) {
+  if (!mb_ || !mb_->enabled || mask.is_undefined() || !mask.at("paths").is_array()) return;
+  // Only an outline keyed to change shape moves within the shutter; a layer's
+  // own travel is its transform's motion blur.
+  if (doc::read_node_mask_anim(n).size() < 2) return;
+  const bool layerOn = read_node_motion_blur(n);
+  const auto wants = [&](const Json& p) {
+    const Json& m = p.at("motionBlur");
+    const std::string_view s = m.is_string() ? std::string_view(m.str()) : std::string_view("sameAsLayer");
+    return s == "on" || (s != "off" && layerOn);
+  };
+  if (!std::ranges::any_of(mask.at("paths").arr(), wants)) return;
+  const MotionBlurCfg& cfg = *mb_;
+  const double limit = cfg.adaptiveSampleLimit;
+  const auto pathsAt = [&](double tc) { return read_node_mask_at(n, remap(n.id, tc, true)); };
+  const auto findPath = [](const Json& m, const Json& id) -> const Json* {
+    if (m.is_undefined() || !m.at("paths").is_array() || !id.is_string()) return nullptr;
+    for (const Json& q : m.at("paths").arr()) {
+      if (q.at("id").is_string() && q.at("id").str() == id.str()) return &q;
+    }
+    return nullptr;
+  };
+  // Samples from the outline's travel across the shutter, as the transform's are.
+  const std::vector<double> probe = motion_blur_sample_times(t_, cfg.fps, cfg.shutterAngle, 2, cfg.shutterPhase, limit);
+  if (probe.size() < 2) return;
+  const Json a = pathsAt(probe.front());
+  const Json b = pathsAt(probe.back());
+  double travel = 0;
+  for (const Json& p : mask.at("paths").arr()) {
+    const Json* pa = findPath(a, p.at("id"));
+    const Json* pb = findPath(b, p.at("id"));
+    if (pa == nullptr || pb == nullptr || !wants(p)) continue;
+    const auto& va = pa->at("points").arr();
+    const auto& vb = pb->at("points").arr();
+    for (std::size_t i = 0; i < std::min(va.size(), vb.size()); ++i) {
+      const double d = hypot2(vb[i].at("x").num() - va[i].at("x").num(), vb[i].at("y").num() - va[i].at("y").num());
+      if (std::isfinite(d)) travel = std::max(travel, d);
+    }
+  }
+  if (!(travel > 0.25)) return;  // the outline holds still across this frame's shutter
+  const double samples = std::min(64.0, adaptive_samples(cfg.samples, travel, limit));
+  const std::vector<double> times = motion_blur_sample_times(t_, cfg.fps, cfg.shutterAngle, samples, cfg.shutterPhase, limit);
+  if (times.size() < 2) return;
+  std::vector<Json> shapes;
+  shapes.reserve(times.size());
+  for (const double tc : times) shapes.push_back(pathsAt(tc));
+  Json paths = Json::array();
+  for (const Json& p : mask.at("paths").arr()) {
+    Json q = p;
+    if (wants(p)) {
+      Json per = Json::array();
+      for (const Json& s : shapes) {
+        const Json* at = findPath(s, p.at("id"));
+        per.arr_mut().push_back(at != nullptr ? at->at("points") : p.at("points"));
+      }
+      q.set("motionSamples", std::move(per));
+    }
+    paths.arr_mut().push_back(std::move(q));
+  }
+  mask.set("paths", std::move(paths));
+}
+
 /// Character-panel extras and the text paint fields (buildSnapshot's `kind === 'text'` block).
 void Walk::text_fields(RLayer& l, const doc::Node& n, const Base& base, const Values& a) {
   l.textTransform = base.textTransform;
@@ -1652,6 +1716,7 @@ void Walk::build_node(const doc::Node& n) {
                            sampleCorner("cornerRadiusBL", base.cornerRadiusBL)));
   const double resolvedCornerRadius = std::max({radii[0], radii[1], radii[2], radii[3]});
   Json mask = apply_mask_property_tracks(read_node_mask_at(n, layerTimeNow), a);
+  mask_motion_samples(mask, n);
   if ((layerKind == LayerKind::image || layerKind == LayerKind::video) && resolvedCornerRadius > 0.5 && layerW > 0 && layerH > 0) {
     Json round = rounded_rect_mask(layerW, layerH, radii, n.id + "::corners");
     if (mask.is_undefined() || mask.at("paths").arr().empty()) {

@@ -883,6 +883,22 @@ struct Q {
   api::QueryResult operator()(const api::DrawEffectParamUi& q) const {  // plugin SDK 1.3 — overlay_geometry.cpp
     return query_result_for<api::DrawEffectParamUi>(native_param_ui_draw(pc, q.layer, q.effect, q.key, q.width, q.time.value_or(0)));
   }
+  /// Whether a comp-space point lands on what a hit layer SHOWS (layer_geometry.hpp
+  /// visible_contains): the point taken back through its 2D chain and anchor, as
+  /// getLayerBounds maps the other way. A 3D layer keeps its quad hit.
+  [[nodiscard]] bool hit_visible(const Node& n, double seconds, api::Vec2 point) const {
+    if (is_3d_enabled(n)) return true;
+    const SpaceCtx sc{d, pc.view, pc.expr, pc.cache};
+    const auto m = world_2d_at(pc, n.id, seconds);
+    const double det = m.a * m.d - m.b * m.c;
+    if (!std::isfinite(det) || std::abs(det) < 1e-12) return true;
+    const double px = point.x - m.e;
+    const double py = point.y - m.f;
+    const auto own = local_3d_at(sc, n, seconds);
+    const double x = (m.d * px - m.c * py) / det + (own ? own->anchor_x : 0);
+    const double y = (-m.b * px + m.a * py) / det + (own ? own->anchor_y : 0);
+    return visible_contains(sc, n.id, seconds, x, y);
+  }
   api::QueryResult operator()(const api::HitTest& q) const {
     require_comp(d, q.comp);
     if (!std::isfinite(q.point.x) || !std::isfinite(q.point.y)) fail(ErrorCode::invalid_argument, "the point must be finite");
@@ -905,6 +921,9 @@ struct Q {
       const Node* n = d.node(it->second);
       if (n == nullptr || (n->locked && !q.include_locked)) continue;
       if (!taken.insert(it->second).second) continue;
+      // The quad is the layer's whole frame; a click on what its masks or
+      // subject matte cut away goes through to the layers underneath.
+      if (!hit_visible(*n, flicks_to_seconds(q.time), q.point)) continue;
       out.layers.push_back(it->second);
       if (q.mode == api::HitMode::topmost) break;
     }
@@ -922,7 +941,7 @@ struct Q {
     api::LayerBoundsList out;
     for (const auto& id : q.layers) {
       (void)require_layer(d, id);
-      const auto g = layer_geometry_at(sc, c.text, id, seconds);
+      const auto g = visible_geometry_at(sc, c.text, id, seconds);
       if (!g) continue;  // no canvas box (audio, adjustment)
       const double l = g->offsetX - g->width / 2;
       const double t = g->offsetY - g->height / 2;

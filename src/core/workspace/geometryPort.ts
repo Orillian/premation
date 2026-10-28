@@ -267,6 +267,9 @@ function treeFacts(id: string, t: number, loaded: ReadonlySet<string>): {
     for (const mid of maskIds) {
       const p = pathPoints(at(`masks/${mid}/path`));
       if (!p) continue;
+      // AE: a locked mask cannot be selected or edited in the Composition panel.
+      const lock = at(`masks/${mid}/locked`);
+      if (lock?.kind === 'bool' && lock.value) continue;
       const roto = at(`masks/${mid}/rotoBezier`);
       masks.push({ id: mid, points: p.points, closed: p.closed, rotoBezier: roto?.kind === 'bool' && roto.value });
     }

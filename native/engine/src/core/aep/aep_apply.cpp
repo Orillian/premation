@@ -361,6 +361,14 @@ void decorate(Ctx& c, const std::string& nodeId, const PlannedLayer& layer) {
     path.set("opacity", Json::number(mask.opacity));
     path.set("expansion", Json::number(mask.expansion));
     path.set("inverted", Json::boolean(mask.inverted));
+    if (mask.locked) path.set("locked", Json::boolean(true));
+    if (mask.color[0] != 0 || mask.color[1] != 0 || mask.color[2] != 0) {
+      Json rgb = Json::object();
+      rgb.set("r", Json::number(static_cast<double>(std::min(255u, mask.color[0])) / 255));
+      rgb.set("g", Json::number(static_cast<double>(std::min(255u, mask.color[1])) / 255));
+      rgb.set("b", Json::number(static_cast<double>(std::min(255u, mask.color[2])) / 255));
+      path.set("color", std::move(rgb));
+    }
     edit_every_mask_state(d, nodeId, [&](const Json& m) {
       Json next = m;
       Json paths = m.at("paths").is_array() ? m.at("paths") : Json::array();

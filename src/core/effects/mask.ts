@@ -100,6 +100,27 @@ export interface MaskPathEditState {
   rotoBezier?: boolean;
 }
 
+/** AE's Mask Feather Falloff: the blur's soft ramp, or a straight one across the feather. */
+export type MaskFeatherFalloff = 'smooth' | 'linear';
+/** AE's Mask Motion Blur: follow the layer's switch, or always / never blur a moving outline. */
+export type MaskMotionBlur = 'sameAsLayer' | 'on' | 'off';
+
+/**
+ * The settings After Effects keeps on the mask itself — the lock switch and
+ * colour swatch on its row, Feather Falloff and Motion Blur in Layer ▸ Mask —
+ * as the engine's static `masks/<id>/…` properties. Kept beside `MaskPath`
+ * for the same reason as the edit state: that interface is the pixel contract
+ * of the matte cache signature.
+ */
+export interface MaskPathSettings {
+  /** Locked: shown, but not selectable or editable in the viewers. */
+  locked?: boolean;
+  /** Outline colour, `#rrggbb`. */
+  color?: string;
+  featherFalloff?: MaskFeatherFalloff;
+  motionBlur?: MaskMotionBlur;
+}
+
 export interface LayerMask {
   paths: MaskPath[];
 }

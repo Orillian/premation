@@ -351,6 +351,19 @@ const bridge = {
     /** Paths of the files copied in the OS file manager (Edit ▸ Paste of footage). */
     readClipboardFiles: () => ipcRenderer.invoke('clipboard:readFiles'),
     listDir: (dir: string) => ipcRenderer.invoke('fs:listDir', dir),
+    /** Edit ▸ Edit Original: the file in the OS default app for its type (electron/ipc/footageFiles.ts). */
+    openFile: (filePath: string) => ipcRenderer.invoke('shell:openFile', filePath),
+  },
+
+  /** Footage file watching for the reload after Edit Original — see electron/ipc/footageFiles.ts. */
+  footage: {
+    watch: (req: { paths: string[]; priority: string[] }) => ipcRenderer.invoke('footage:watch', req),
+    check: () => ipcRenderer.invoke('footage:check'),
+    onChanged: (handler: (paths: string[]) => void) => {
+      const listener = (_event: unknown, paths: string[]): void => handler(paths);
+      ipcRenderer.on('footage:changed', listener);
+      return () => ipcRenderer.removeListener('footage:changed', listener);
+    },
   },
 
   /** File ▸ Scripts and the Script Editor — see electron/ipc/scripts.ts. */

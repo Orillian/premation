@@ -70,7 +70,44 @@ export function buildMaskCommands(): ReadonlyArray<Command> {
       if (cmds.length > 0) void edit('Mask Mode', cmds);
     },
   }));
+  // AE's Layer ▸ Mask ▸ Motion Blur / Feather Falloff: one value for every mask of the selection.
+  const choiceCmds = <K extends 'motionBlur' | 'featherFalloff'>(
+    key: K, undoLabel: string, items: ReadonlyArray<{ value: string; label: string }>,
+  ): Command[] => items.map(({ value, label }) => ({
+    id: asCommandId(`mask.${key}.${value}`),
+    label: `${undoLabel}: ${label}`,
+    description: `Set ${undoLabel} of every mask of the selected layers to ${label}`,
+    icon: 'mask-square',
+    enabled: hasMask,
+    execute: () => {
+      const cmds: EngineCommand[] = selectedMasks().map(({ layer, mask }) => ({
+        type: 'setProperty', prop: ref(layer, paths.mask(mask, key)), value: values.choice(value),
+      }));
+      if (cmds.length > 0) void edit(undoLabel, cmds);
+    },
+  }));
+  const lockCmd = (lock: boolean): Command => ({
+    id: asCommandId(lock ? 'mask.lockAll' : 'mask.unlockAll'),
+    label: lock ? 'Lock All Masks' : 'Unlock All Masks',
+    description: lock
+      ? 'Lock every mask of the selected layers: shown, not editable in the viewers'
+      : 'Unlock every mask of the selected layers',
+    icon: lock ? 'lock' : 'unlock',
+    enabled: hasMask,
+    execute: () => {
+      const cmds: EngineCommand[] = selectedMasks().map(({ layer, mask }) => ({
+        type: 'setProperty', prop: ref(layer, paths.mask(mask, 'locked')), value: values.bool(lock),
+      }));
+      if (cmds.length > 0) void edit(lock ? 'Lock Masks' : 'Unlock Masks', cmds);
+    },
+  });
   return [
+    ...choiceCmds('motionBlur', 'Mask Motion Blur', [
+      { value: 'sameAsLayer', label: 'Same As Layer' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' },
+    ]),
+    ...choiceCmds('featherFalloff', 'Mask Feather Falloff', [{ value: 'smooth', label: 'Smooth' }, { value: 'linear', label: 'Linear' }]),
+    lockCmd(true),
+    lockCmd(false),
     {
       id: asCommandId('mask.new'),
       label: 'New Mask',

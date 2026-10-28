@@ -62,7 +62,7 @@ import {
 } from '@core/effects/layerStyles';
 import { glassPropPath } from '@core/effects/glassResolve';
 import { GLASS_PROPERTIES, STYLE_FIELDS } from '@core/engine/effectFieldSpecs';
-import type { MaskPath } from '@core/effects/mask';
+import type { MaskPath, MaskPathSettings } from '@core/effects/mask';
 import type { FrameBlend as StoredFrameBlend } from '@core/scene/layerTime';
 import { Color } from '@core/paint/color';
 import { useWorkspaceStore } from '@stores/projectStore';
@@ -466,6 +466,24 @@ export function setMaskInvertedEdit(nodeId: string, maskId: string, inverted: bo
   return edit(inverted ? 'Invert Mask' : 'Uninvert Mask', {
     type: 'setProperty', prop: ref(nodeId, paths.mask(maskId, 'inverted')), value: values.bool(inverted),
   });
+}
+
+/** A mask's own setting (AE's lock switch, colour swatch, Feather Falloff, Motion Blur): one entry. */
+export function setMaskSettingEdit(nodeId: string, maskId: string, setting: Required<MaskPathSettings>, key: keyof MaskPathSettings): Promise<unknown> {
+  const prop = ref(nodeId, paths.mask(maskId, key));
+  switch (key) {
+    case 'locked':
+      return edit(setting.locked ? 'Lock Mask' : 'Unlock Mask', { type: 'setProperty', prop, value: values.bool(setting.locked) });
+    case 'color': {
+      const n = Number.parseInt(setting.color.replace('#', ''), 16);
+      const v = Number.isFinite(n) ? n : 0xf2c94c;
+      return edit('Mask Color', { type: 'setProperty', prop, value: values.color(((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255) });
+    }
+    case 'featherFalloff':
+      return edit('Mask Feather Falloff', { type: 'setProperty', prop, value: values.choice(setting.featherFalloff) });
+    case 'motionBlur':
+      return edit('Mask Motion Blur', { type: 'setProperty', prop, value: values.choice(setting.motionBlur) });
+  }
 }
 
 export function renameMaskEdit(nodeId: string, maskId: string, name: string): Promise<unknown> {

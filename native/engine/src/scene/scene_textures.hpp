@@ -152,6 +152,10 @@ class SceneTextures final : public rg::ExternalTextureSource {
   [[nodiscard]] const RasterEntry* raster(std::string_view hash) const;
   /// Drop every cached raster (fonts changed).
   void clear();
+  /// Footage files changed on disk (media_reload.hpp): close their decoders and
+  /// forget a failed open, so the next request opens the new bytes. Render
+  /// thread (the caller of prepare). `everything` = every footage source.
+  void forget_media(const std::vector<std::string>& paths, bool everything);
 
  private:
   struct Slot {

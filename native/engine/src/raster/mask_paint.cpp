@@ -63,16 +63,19 @@ std::vector<MPt> expand_mask_points(const std::vector<MPt>& points, double expan
   return out;
 }
 
-std::vector<MPt> mask_points(const Value& path) {
+/// The outline's vertices: `points` (the path's own, or one motion-blur
+/// sample's) pushed out by the path's Expansion.
+std::vector<MPt> mask_points(const Value& path, const Value& points) {
   std::vector<MPt> pts;
-  for (const auto& p : path["points"].items()) {
+  pts.reserve(points.items().size());
+  for (const auto& p : points.items()) {
     pts.push_back({p["x"].num(0), p["y"].num(0), p["inX"].num(0), p["inY"].num(0), p["outX"].num(0), p["outY"].num(0)});
   }
   return expand_mask_points(pts, path["expansion"].num(0));
 }
 
-std::optional<Path2D> mask_path_to_path2d(const Value& path, double w, double h) {
-  const std::vector<MPt> pts = mask_points(path);
+std::optional<Path2D> mask_path_to_path2d(const Value& path, const Value& points, double w, double h) {
+  const std::vector<MPt> pts = mask_points(path, points);
   const std::size_t n = pts.size();
   if (n < 2) return std::nullopt;
   const bool closed = path["closed"].truthy();
@@ -92,15 +95,15 @@ std::optional<Path2D> mask_path_to_path2d(const Value& path, double w, double h)
 /// maskFeather.ts `featherSamples`: the painted outline (expansion included)
 /// flattened to samples carrying the vertex feather lerped along each segment,
 /// mapped through `m` (the matte canvas's transform) into device pixels.
-std::vector<FeatherSample> feather_samples(const Value& path, const Mat2D& m, double& maxFeather) {
-  const std::vector<MPt> pts = mask_points(path);
+std::vector<FeatherSample> feather_samples(const Value& path, const Value& points, const Mat2D& m, double& maxFeather) {
+  const std::vector<MPt> pts = mask_points(path, points);
   std::vector<FeatherSample> out;
   const std::size_t n = pts.size();
   if (n < 2) return out;
   const double base = std::max(0.0, path["feather"].num(0));
   std::vector<double> vf;
   vf.reserve(n);
-  for (const auto& p : path["points"].items()) {
+  for (const auto& p : points.items()) {
     const double v = p["feather"].is_number() ? p["feather"].num() : -1;
     vf.push_back(v >= 0 ? v : base);
   }
@@ -127,44 +130,76 @@ std::vector<FeatherSample> feather_samples(const Value& path, const Mat2D& m, do
   return out;
 }
 
-/// maskFeather.ts `paintVariableFeatherPath`: hard coverage on a scratch
-/// canvas with the matte's transform, the ramp, drawn back in device pixels
-/// under the path's composite and opacity (already set on `g`). False when no
-/// scratch canvas exists; the caller falls back to the uniform blur.
-bool paint_variable_feather(Canvas2D& g, const Value& path, const Path2D& p2d) {
-  const std::uint32_t W = g.width();
-  const std::uint32_t H = g.height();
-  if (W == 0 || H == 0) return false;
-  std::unique_ptr<Canvas2D> scratch = g.create_canvas(W, H);
-  if (!scratch) return false;
-  scratch->set_will_read_frequently(true);
-  const Mat2D m = g.getTransform();
-  scratch->setTransform(m);
+/// The scratch canvas a matte's off-canvas outlines are drawn on: one per
+/// matte (made on first use), the device size of `g`, cleared per outline.
+class Scratch {
+ public:
+  explicit Scratch(Canvas2D& g) : g_(g), W_(g.width()), H_(g.height()) {}
+  [[nodiscard]] Canvas2D* get() {
+    if (!tried_) {
+      tried_ = true;
+      if (W_ > 0 && H_ > 0) canvas_ = g_.create_canvas(W_, H_);
+      if (canvas_) canvas_->set_will_read_frequently(true);
+    }
+    return canvas_.get();
+  }
+  [[nodiscard]] std::uint32_t W() const noexcept { return W_; }
+  [[nodiscard]] std::uint32_t H() const noexcept { return H_; }
+  [[nodiscard]] std::size_t count() const noexcept { return static_cast<std::size_t>(W_) * H_; }
+
+ private:
+  Canvas2D& g_;
+  std::uint32_t W_;
+  std::uint32_t H_;
+  bool tried_ = false;
+  std::unique_ptr<Canvas2D> canvas_;
+};
+
+/// One outline's alpha in device pixels (`count` bytes), drawn on `s` under the
+/// matte's transform `m`: hard coverage, then the distance-field ramp of a
+/// per-vertex or Linear feather (`distance`), or the uniform Smooth blur.
+/// `points` are the path's own vertices or one motion-blur sample's.
+std::vector<std::uint8_t> outline_alpha(Canvas2D& s, std::size_t count, std::uint32_t W, std::uint32_t H, const Mat2D& m,
+                                        const Value& path, const Value& points, double w, double h, bool distance,
+                                        FeatherRamp ramp) {
+  std::vector<std::uint8_t> alpha(count, 0);
+  const auto p2d = mask_path_to_path2d(path, points, w, h);
+  if (!p2d) return alpha;
+  s.setTransform(Mat2D{});
+  s.clearRect(0, 0, W, H);
+  s.save();
+  s.setTransform(m);
+  const double feather = path["feather"].num(0);
+  if (!distance && feather > 0) s.setFilter(css::Filter{feather / 2});
   Style white;
   white.color = css::Color{255, 255, 255, 1};
-  scratch->setFillStyle(white);
-  scratch->fill(p2d, FillRule::evenodd);
-  std::vector<std::uint8_t> image = scratch->getImageData(0, 0, W, H);
-  const std::size_t count = static_cast<std::size_t>(W) * H;
-  if (image.size() < count * 4) return false;
-  std::vector<std::uint8_t> coverage(count);
-  for (std::size_t i = 0; i < count; ++i) coverage[i] = image[i * 4 + 3];
+  s.setFillStyle(white);
+  s.fill(*p2d, FillRule::evenodd);
+  s.restore();
+  const std::vector<std::uint8_t> image = s.getImageData(0, 0, W, H);
+  if (image.size() < count * 4) return alpha;
+  for (std::size_t i = 0; i < count; ++i) alpha[i] = image[i * 4 + 3];
+  if (!distance) return alpha;
   double maxFeather = 0;
-  const std::vector<FeatherSample> samples = feather_samples(path, m, maxFeather);
-  const std::vector<std::uint8_t> alpha =
-      variable_feather_alpha(coverage, static_cast<int>(W), static_cast<int>(H), samples, maxFeather);
-  for (std::size_t i = 0; i < count; ++i) {
+  const std::vector<FeatherSample> samples = feather_samples(path, points, m, maxFeather);
+  return variable_feather_alpha(alpha, static_cast<int>(W), static_cast<int>(H), samples, maxFeather, ramp);
+}
+
+/// Draws `alpha` (white, device pixels) onto `g` under the composite and
+/// opacity already set on it.
+void draw_alpha(Canvas2D& g, Canvas2D& s, std::uint32_t W, std::uint32_t H, std::span<const std::uint8_t> alpha) {
+  std::vector<std::uint8_t> image(alpha.size() * 4);
+  for (std::size_t i = 0; i < alpha.size(); ++i) {
     image[i * 4] = image[i * 4 + 1] = image[i * 4 + 2] = 255;
     image[i * 4 + 3] = alpha[i];
   }
-  scratch->setTransform(Mat2D{});
-  scratch->clearRect(0, 0, W, H);
-  scratch->putImageData(image, W, H, 0, 0);
+  s.setTransform(Mat2D{});
+  s.clearRect(0, 0, W, H);
+  s.putImageData(image, W, H, 0, 0);
   g.save();
   g.setTransform(Mat2D{});
-  g.drawImage(*scratch, 0, 0, W, H, 0, 0, W, H);
+  g.drawImage(s, 0, 0, W, H, 0, 0, W, H);
   g.restore();
-  return true;
 }
 
 std::string_view composite_of(std::string_view mode) {
@@ -195,24 +230,54 @@ void paint_mask_matte(Canvas2D& g, const Value& mask, double w, double h, std::v
     g.setFillStyle(white);
     g.fillRect(-w / 2, -h / 2, w, h);
   }
+  Scratch scratch(g);
   for (const Value* path : paths) {
-    const auto p = mask_path_to_path2d(*path, w, h);
+    const Value& own = (*path)["points"];
+    const auto p = mask_path_to_path2d(*path, own, w, h);
     if (!p) continue;
     g.save();
     (void)g.setGlobalCompositeOperation(composite_of((*path)["mode"].str_or("")));
     const double op = (*path)["opacity"].is_number() ? (*path)["opacity"].num() : 1;
     g.setGlobalAlpha(op < 0 ? 0 : op > 1 ? 1 : op);
+    const double feather = (*path)["feather"].num(0);
     bool variable = false;
-    for (const auto& pt : (*path)["points"].items()) variable = variable || pt["feather"].is_number();
-    if (variable) {
-      if (paint_variable_feather(g, *path, *p)) {
+    for (const auto& pt : own.items()) variable = variable || pt["feather"].is_number();
+    // AE Feather Falloff: Smooth is the blur; Linear is a straight ramp across
+    // the feather, which only the distance field draws.
+    const FeatherRamp ramp = (*path)["featherFalloff"].str_or("") == "linear" ? FeatherRamp::linear : FeatherRamp::smooth;
+    const bool distance = variable || (ramp == FeatherRamp::linear && feather > 0);
+    // Mask Motion Blur: the snapshot hands the outline at each shutter sample.
+    const Value& mb = (*path)["motionSamples"];
+    const bool blurred = mb.is_array() && mb.items().size() >= 2;
+    if (distance || blurred) {
+      if (Canvas2D* s = scratch.get()) {
+        const Mat2D m = g.getTransform();
+        const std::size_t count = scratch.count();
+        if (!blurred) {
+          draw_alpha(g, *s, scratch.W(), scratch.H(),
+                     outline_alpha(*s, count, scratch.W(), scratch.H(), m, *path, own, w, h, distance, ramp));
+        } else {
+          // The shutter's average coverage. Sums of up to 64 samples × 255 fit 16 bits.
+          const auto& times = mb.items();
+          const std::size_t n = std::min<std::size_t>(times.size(), 64);
+          std::vector<std::uint16_t> sum(count, 0);
+          for (std::size_t k = 0; k < n; ++k) {
+            const std::vector<std::uint8_t> a =
+                outline_alpha(*s, count, scratch.W(), scratch.H(), m, *path, times[k], w, h, distance, ramp);
+            for (std::size_t i = 0; i < count; ++i) sum[i] = static_cast<std::uint16_t>(sum[i] + a[i]);
+          }
+          std::vector<std::uint8_t> avg(count);
+          for (std::size_t i = 0; i < count; ++i) avg[i] = static_cast<std::uint8_t>((sum[i] + n / 2) / n);
+          draw_alpha(g, *s, scratch.W(), scratch.H(), avg);
+        }
         g.restore();
         continue;
       }
-      // No scratch canvas: the uniform blur stands in, and the frame says so.
-      unsupported.emplace_back("variable (per-vertex) mask feather on this canvas (drawn with the uniform feather)");
+      // No scratch canvas: the uniform blur of the path's own outline stands in, and the frame says so.
+      if (variable) unsupported.emplace_back("variable (per-vertex) mask feather on this canvas (drawn with the uniform feather)");
+      if (ramp == FeatherRamp::linear) unsupported.emplace_back("linear mask feather falloff on this canvas (drawn smooth)");
+      if (blurred) unsupported.emplace_back("mask motion blur on this canvas (drawn without it)");
     }
-    const double feather = (*path)["feather"].num(0);
     if (feather > 0) g.setFilter(css::Filter{feather / 2});
     g.setFillStyle(white);
     g.fill(*p, FillRule::evenodd);
@@ -221,7 +286,7 @@ void paint_mask_matte(Canvas2D& g, const Value& mask, double w, double h, std::v
 }
 
 std::vector<std::uint8_t> variable_feather_alpha(std::span<const std::uint8_t> coverage, int w, int h,
-                                                 std::span<const FeatherSample> samples, double maxFeather) {
+                                                 std::span<const FeatherSample> samples, double maxFeather, FeatherRamp ramp) {
   std::vector<std::uint8_t> out(coverage.begin(), coverage.end());
   if (w < 1 || h < 1 || samples.empty() || maxFeather <= 0) return out;
   const auto W = static_cast<std::size_t>(w);
@@ -325,7 +390,8 @@ std::vector<std::uint8_t> variable_feather_alpha(std::span<const std::uint8_t> c
       if (wf < 0.5) continue;  // locally hard: keep the rasterized AA edge
       const double signedD = inside(i) ? d : -d;
       const double u = std::max(0.0, std::min(1.0, signedD / wf + 0.5));
-      out[i] = static_cast<std::uint8_t>(std::lround(u * u * (3 - 2 * u) * 255));
+      const double a = ramp == FeatherRamp::linear ? u : u * u * (3 - 2 * u);
+      out[i] = static_cast<std::uint8_t>(std::lround(a * 255));
     }
   }
   return out;

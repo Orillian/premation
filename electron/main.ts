@@ -27,6 +27,7 @@ import { shouldStartBackend, startBackend, stopBackend } from './backend';
 import { registerIndexIpc } from './localIndexDb';
 import { registerThumbIpc } from './thumbCache';
 import { registerRevealIpc } from './ipc/reveal';
+import { registerFootageFileIpc } from './ipc/footageFiles';
 import { registerScriptIpc } from './ipc/scripts';
 import { registerDiskCacheIpc } from './ipc/diskCache';
 import { registerMediaAccess } from './ipc/mediaAccess';
@@ -1348,6 +1349,8 @@ app.whenReady().then(() => {
   registerIndexIpc(app);
   registerThumbIpc(app);
   registerRevealIpc();
+  // Edit ▸ Edit Original: open footage in its default app, watch it, reload on save (electron/ipc/footageFiles.ts).
+  registerFootageFileIpc();
   // File ▸ Scripts: the user Scripts folder and the Script Editor's files (electron/ipc/scripts.ts).
   registerScriptIpc({ dir: () => path.join(app.getPath('userData'), 'Scripts') });
   // Preferences ▸ Media & Disk Cache: the default folder for the engine's disk cache.

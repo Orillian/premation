@@ -789,6 +789,27 @@ export interface MotionEditorApi {
     readClipboardFiles?(): Promise<string[]>;
     /** Hidden entries removed; null if the directory cannot be read. */
     listDir?(dir: string): Promise<Array<{ name: string; path: string; kind: 'dir' | 'file'; size?: number; mtimeMs?: number }> | null>;
+    /**
+     * Edit ▸ Edit Original: open the file in the OS default application for its
+     * type. A numbered-sequence pattern opens its first frame; executables are
+     * refused. Never rejects for a missing file — `reason` says what happened.
+     */
+    openFile?(filePath: string): Promise<
+      | { ok: true; path: string }
+      | { ok: false; reason: 'missing' | 'refused' | 'failed'; path: string; error?: string }
+    >;
+  };
+  /**
+   * Footage file watching (electron/ipc/footageFiles.ts): the project's footage
+   * paths are watched (directory watches, debounced, atomic-save aware) and a
+   * change is pushed as `onChanged` with the paths as passed to `watch`. An
+   * empty `paths` stops every watch of this window. `check` re-stats the whole
+   * set now (window focus) and answers what moved. Absent in the browser build.
+   */
+  footage?: {
+    watch?(req: { paths: string[]; priority: string[] }): Promise<void>;
+    check?(): Promise<string[]>;
+    onChanged?(handler: (paths: string[]) => void): () => void;
   };
   /**
    * The preview disk cache (electron/ipc/diskCache.ts): the folder the engine

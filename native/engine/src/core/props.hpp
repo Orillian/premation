@@ -10,6 +10,7 @@
 // transform scale as a multiplier, and the conversion happens here, both ways.
 #pragma once
 
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
@@ -37,9 +38,32 @@ struct PCtx {
 /// rig: a puppet / skeleton property (rig.hpp).
 /// maskRotoBezier: a mask's RotoBezier switch (static, held in every shape key); shapePath: a shape layer's drawn
 /// outline (`layer/path.points`: static Geometry points + Closed, keys on the `path.points` data track).
+/// maskAttr: one of a mask's static settings AE keeps on the mask itself — Locked, Color, Feather Falloff,
+/// Motion Blur — stored as `paramKey` on the mask path and held in every shape key like RotoBezier.
 enum class Special : std::uint8_t {
-  none, sourceText, maskPath, maskMode, maskInverted, maskRotoBezier, effectParam, field, layerFill, rig, fillStops, shapePath
+  none, sourceText, maskPath, maskMode, maskInverted, maskRotoBezier, maskAttr, effectParam, field, layerFill, rig, fillStops, shapePath
 };
+
+/// A mask's Feather Falloff (AE: Smooth | Linear) and Motion Blur (AE: Same As Layer | On | Off) choices.
+inline constexpr std::array<std::string_view, 2> kMaskFeatherFalloffs = {"smooth", "linear"};
+inline constexpr std::array<std::string_view, 3> kMaskMotionBlurs = {"sameAsLayer", "on", "off"};
+
+/// A mask's outline colour while it has none of its own: AE hands each new mask
+/// the next colour of a cycle, so neighbouring masks never share one.
+struct MaskRgb {
+  double r, g, b;
+};
+[[nodiscard]] inline MaskRgb default_mask_color(std::size_t index) noexcept {
+  constexpr std::array<MaskRgb, 8> kCycle = {{{0.949, 0.788, 0.298},   // yellow
+                                              {0.290, 0.565, 0.886},   // blue
+                                              {0.784, 0.427, 0.843},   // violet
+                                              {0.910, 0.365, 0.459},   // rose
+                                              {0.361, 0.788, 0.549},   // green
+                                              {0.949, 0.600, 0.290},   // orange
+                                              {0.337, 0.800, 0.949},   // cyan
+                                              {0.733, 0.420, 0.851}}}; // purple
+  return kCycle[index % kCycle.size()];
+}
 
 /// A shape layer's whole-outline keyframe track (AE's Path property).
 inline constexpr std::string_view kShapePathTrack = "path.points";

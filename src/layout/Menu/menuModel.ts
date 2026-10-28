@@ -226,6 +226,10 @@ export const APP_MENU: MenuGroupModel[] = [
       { separator: true },
       { commandId: BuiltinCommands.DuplicateSelected, label: 'Duplicate' },
       { separator: true },
+      // AE: Ctrl+E / Cmd+E — the selected footage in its own application;
+      // saving it there reloads it here (Assets/editOriginal.ts).
+      { commandId: 'edit.editOriginal', label: 'Edit Original' },
+      { separator: true },
       { commandId: 'text.findReplace', label: 'Find and Replace Text…' },
       { commandId: 'text.replaceFonts', label: 'Find and Replace Fonts…' },
       { separator: true },
@@ -458,6 +462,26 @@ export const APP_MENU: MenuGroupModel[] = [
             ],
           },
           { commandId: 'mask.invert', label: 'Inverted' },
+          {
+            label: 'Motion Blur',
+            labelKey: 'menu.sub.maskMotionBlur',
+            children: [
+              { commandId: 'mask.motionBlur.sameAsLayer', label: 'Same As Layer' },
+              { commandId: 'mask.motionBlur.on', label: 'On' },
+              { commandId: 'mask.motionBlur.off', label: 'Off' },
+            ],
+          },
+          {
+            label: 'Feather Falloff',
+            labelKey: 'menu.sub.maskFeatherFalloff',
+            children: [
+              { commandId: 'mask.featherFalloff.smooth', label: 'Smooth' },
+              { commandId: 'mask.featherFalloff.linear', label: 'Linear' },
+            ],
+          },
+          { separator: true },
+          { commandId: 'mask.lockAll', label: 'Lock All Masks' },
+          { commandId: 'mask.unlockAll', label: 'Unlock All Masks' },
           { separator: true },
           { commandId: 'mask.smartInterpolation', label: 'Smart Mask Interpolation…' },
           { commandId: 'mask.track', label: 'Track Mask…' },
@@ -511,6 +535,7 @@ export const APP_MENU: MenuGroupModel[] = [
           { commandId: 'layer.shapesFromText', label: 'Shapes From Text' },
           { commandId: 'layer.masksFromText', label: 'Masks From Text' },
           { commandId: 'layer.autoTrace', label: 'Auto-trace…' },
+          { commandId: 'layer.newLayerFromSubject', label: 'New Layer from Subject' },
           { commandId: 'layer.createSubjectTrack', label: 'Subject Track (Null)' },
         ],
       },

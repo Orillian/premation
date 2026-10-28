@@ -21,6 +21,7 @@ import { useLayoutStore } from '@stores/layoutStore';
 import { toggleRenderQueue } from '@stores/timelinePanelStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { runCreateSubjectTrack, runPlaceBehindSubject } from '@layout/Workspace/placeBehindSubjectCommand';
+import { canMakeLayerFromSubject, runNewLayerFromSubject } from '@layout/Workspace/newLayerFromSubjectCommand';
 import { isPickArmed } from '@stores/trackerStore';
 import { pruneKeyframeSelectionToNodes, useKeyframeSelectionStore } from '@stores/keyframeSelectionStore';
 import { prunePropertySelectionToNodes } from '@stores/propertySelectionStore';
@@ -39,6 +40,8 @@ import { openProjectPath } from '@core/project/openProjectPath';
 import { openLocalMotionFile, saveToComputer } from '@core/project/localProjectIO';
 import { offerRelink } from '@layout/Project/RelinkAssetsDialog';
 import { clearLastFootagePreview } from '@layout/Assets/FootagePreviewDialog';
+import { canEditOriginal, EDIT_ORIGINAL_CHORD, EDIT_ORIGINAL_COMMAND, runEditOriginal } from '@layout/Assets/editOriginal';
+import { installFootageWatchSync } from '@layout/Assets/footageWatchSync';
 import {
   runNewCompFromClips,
   runAssembleFromFootage,
@@ -2040,6 +2043,15 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       execute: () => { void runPlaceBehindSubject(useSelectionStore.getState().ids); },
     },
     {
+      // Photoshop's Layer via Copy for a cut-out (newLayerFromSubject.ts): the
+      // subject alone on a new layer above, without the original's effects.
+      id: asCommandId('layer.newLayerFromSubject'),
+      label: 'New Layer from Subject',
+      icon: 'object-matte',
+      enabled: () => canMakeLayerFromSubject(useSelectionStore.getState().ids[0]),
+      execute: () => runNewLayerFromSubject(),
+    },
+    {
       // A null that follows the Object Matte subject (subjectTrack.ts): parent anything to it.
       id: asCommandId('layer.createSubjectTrack'),
       label: 'Subject Track (Null)',
@@ -2445,6 +2457,19 @@ function buildProjectCommands(): ReadonlyArray<Command> {
       },
     },
     {
+      // AE: Edit ▸ Edit Original (Ctrl+E / Cmd+E). The selected footage's file
+      // in the OS default app for its type; a save there reloads the footage
+      // (Assets/editOriginal.ts, Assets/footageWatchSync.ts). Disabled for
+      // layers with no file (solid, text, shape, precomp) and in the browser.
+      id: asCommandId(EDIT_ORIGINAL_COMMAND),
+      label: 'Edit Original',
+      description: 'Open the selected footage in its default application; saving it there reloads it.',
+      icon: 'pop-out',
+      shortcut: EDIT_ORIGINAL_CHORD,
+      enabled: canEditOriginal,
+      execute: async () => { await runEditOriginal(); },
+    },
+    {
       id: asCommandId(ProjectCommands.IncrementAndSave),
       label: 'Increment and Save',
       // AE: Cmd/Ctrl+Alt+Shift+S — save a fresh copy with the next number.
@@ -2615,6 +2640,10 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
         // rather than snapshotted here. Tracked like every other subscription
         // (see the note above about Providers mounting per route).
         track(installSmartAnimateCommandSync());
+        // Edit Original's other half: footage saved in another app reloads
+        // (a file watch per footage folder, plus a re-check on window focus).
+        // The editor window only — a pop-out mirrors the same engine.
+        if (!isPopoutWindow()) track(installFootageWatchSync());
         registry.register({
           id: asCommandId(BuiltinCommands.Undo),
           label: 'Undo',

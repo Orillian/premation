@@ -12,7 +12,7 @@
  */
 
 import type { BezierPath, Value } from '@motion/engine-api';
-import type { MaskMode, MaskPath, MaskPoint } from '@core/effects/mask';
+import type { MaskFeatherFalloff, MaskMode, MaskMotionBlur, MaskPath, MaskPathSettings, MaskPoint } from '@core/effects/mask';
 import type { MirrorTreeLike } from './trackIndex';
 
 /** What these readers need from the mirror. `DocumentMirror` is one. */
@@ -50,15 +50,37 @@ export function mirrorMaskIds(tree: MirrorTreeLike | undefined): string[] {
   return (tree?.nodes.get('masks')?.children ?? []).map((p) => p.slice(p.lastIndexOf('/') + 1));
 }
 
+/** A mask with its own settings (lock, colour, Feather Falloff, Motion Blur). */
+export type MirrorMask = MaskPath & Required<MaskPathSettings>;
+
+const hex2 = (v: number): string => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+
+/** A mask's own settings from its tree nodes; the engine answers its default colour when it has none. */
+export function mirrorMaskSettings(tree: MirrorTreeLike | undefined, id: string): Required<MaskPathSettings> {
+  const base = `masks/${id}`;
+  const locked = tree?.nodes.get(`${base}/locked`)?.value;
+  const color = tree?.nodes.get(`${base}/color`)?.value;
+  const falloff = tree?.nodes.get(`${base}/featherFalloff`)?.value;
+  const blur = tree?.nodes.get(`${base}/motionBlur`)?.value;
+  const motionBlur: MaskMotionBlur = blur?.kind === 'choice' && (blur.value === 'on' || blur.value === 'off') ? blur.value : 'sameAsLayer';
+  const featherFalloff: MaskFeatherFalloff = falloff?.kind === 'choice' && falloff.value === 'linear' ? 'linear' : 'smooth';
+  return {
+    locked: locked?.kind === 'bool' && locked.value,
+    color: color?.kind === 'color' ? `#${hex2(color.value.r)}${hex2(color.value.g)}${hex2(color.value.b)}` : '#f2c94c',
+    featherFalloff,
+    motionBlur,
+  };
+}
+
 /** Every mask of `layer` at comp time `time` (flicks), in stack order. Empty when the tree has not arrived. */
-export function mirrorMasksAt(m: MirrorMaskRead, layer: string, time: number): MaskPath[] {
+export function mirrorMasksAt(m: MirrorMaskRead, layer: string, time: number): MirrorMask[] {
   const tree = m.tree(layer);
   if (!tree) return [];
   const num = (path: string, fallback: number): number => {
     const v = m.valueAt(layer, path, time);
     return v && (v.kind === 'scalar' || v.kind === 'int') ? v.value : fallback;
   };
-  const out: MaskPath[] = [];
+  const out: MirrorMask[] = [];
   mirrorMaskIds(tree).forEach((id, index) => {
     const base = `masks/${id}`;
     // The group reports "Mask N" for an unnamed mask: that is the list's own default label, not a name.
@@ -76,6 +98,7 @@ export function mirrorMasksAt(m: MirrorMaskRead, layer: string, time: number): M
       opacity: num(`${base}/opacity`, 100) / 100,
       expansion: num(`${base}/expansion`, 0),
       inverted: inverted?.kind === 'bool' && inverted.value,
+      ...mirrorMaskSettings(tree, id),
     });
   });
   return out;
@@ -90,7 +113,7 @@ export function mirrorMaskShapeKeyed(m: MirrorMaskRead, layer: string): boolean 
 export function mirrorMaskWatchKeys(tree: MirrorTreeLike | undefined, layer: string): string[] {
   const out = [`tree:${layer}`, `layer:${layer}`];
   for (const id of mirrorMaskIds(tree)) {
-    for (const k of ['path', 'feather', 'opacity', 'expansion', 'mode', 'inverted']) {
+    for (const k of ['path', 'feather', 'opacity', 'expansion', 'mode', 'inverted', 'locked', 'color', 'featherFalloff', 'motionBlur']) {
       const p = `masks/${id}/${k}`;
       out.push(`prop:${layer}|${p}`, `key:${layer}|${p}`, `value:${layer}|${p}`);
     }

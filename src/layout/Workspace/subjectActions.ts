@@ -22,11 +22,12 @@ import { useUIStore } from '@stores/uiStore';
 import type { ContextMenuItem } from '@stores/contextMenuStore';
 import { t } from '@core/i18n';
 import { placeBehindSubjectEdit } from './placeBehindSubject';
+import { newLayerFromSubject } from './newLayerFromSubjectCommand';
 import { runCreateSubjectTrack } from './placeBehindSubjectCommand';
 import { matteOutlineKeys } from './subjectTrack';
 
 export type SubjectActionId =
-  | 'select' | 'follow' | 'textBehind' | 'outline' | 'colorSubject' | 'colorBackground'
+  | 'select' | 'follow' | 'newLayer' | 'textBehind' | 'outline' | 'colorSubject' | 'colorBackground'
   | 'blurBackground' | 'removeBackground' | 'trackNull' | 'freeze';
 
 export interface SubjectAction {
@@ -223,6 +224,8 @@ export function subjectActions(layer: string, state: SubjectState, hooks: Subjec
       } },
     { id: 'follow', label: t('workspace.subjects.action.follow', 'Follow Through Shot'), description: t('workspace.subjects.action.followDesc', 'Carry the selection to every frame'),
       disabled: needs, run: () => { void followSubject(layer); } },
+    { id: 'newLayer', label: t('workspace.subjects.action.newLayer', 'New Layer from Subject'), description: t('workspace.subjects.action.newLayerDesc', 'The subject alone, on its own layer'),
+      disabled: needs, run: () => { void newLayerFromSubject(layer); } },
     { id: 'textBehind', label: t('workspace.subjects.action.textBehind', 'Text Behind'), description: t('workspace.subjects.action.textBehindDesc', 'Selected text goes behind the person'),
       disabled: needs, run: () => hooks.openTextBehind(layer) },
     { id: 'outline', label: t('workspace.subjects.action.outline', 'Outline / Glow'), description: t('workspace.subjects.action.outlineDesc', 'Border that follows them'),

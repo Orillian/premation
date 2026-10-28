@@ -5,6 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <cstdlib>
+#include <string>
 #include <vector>
 
 #include "mask_paint.hpp"
@@ -59,7 +61,85 @@ TEST_CASE("variable feather: the ramp widens where the vertex feather grows", "[
   for (int x = 20; x < 44; ++x) CHECK(e.at(out, x, 30) >= e.at(out, x + 1, 30));
 }
 
+TEST_CASE("feather falloff: Linear is a straight ramp, Smooth eases both ends", "[raster][mask]") {
+  // A uniform 16 px feather across the edge at x = 32: u runs 0 → 1 over x ∈ [24, 40].
+  const Edge e(16, 16);
+  const auto smooth = variable_feather_alpha(e.coverage, e.w, e.h, e.samples, 16, premation::raster::FeatherRamp::smooth);
+  const auto linear = variable_feather_alpha(e.coverage, e.w, e.h, e.samples, 16, premation::raster::FeatherRamp::linear);
+  // The middle of the ramp is half covered either way.
+  CHECK(std::abs(static_cast<int>(e.at(linear, 32, 16)) - 128) <= 20);
+  CHECK(std::abs(static_cast<int>(e.at(smooth, 32, 16)) - 128) <= 20);
+  // A quarter of the way in, the straight ramp holds more than the eased one,
+  // and a quarter from the end less: Smooth lingers near 0 and 1.
+  CHECK(e.at(linear, 36, 16) > e.at(smooth, 36, 16));
+  CHECK(e.at(linear, 28, 16) < e.at(smooth, 28, 16));
+  // Both stay monotonic and keep the hard coverage beyond the band.
+  for (int x = 20; x < 44; ++x) CHECK(e.at(linear, x, 16) >= e.at(linear, x + 1, 16));
+  CHECK(e.at(linear, 2, 16) == 255);
+  CHECK(e.at(linear, 62, 16) == 0);
+}
+
 TEST_CASE("variable feather: deterministic", "[raster][mask]") {
   const Edge e(4, 12);
   CHECK(variable_feather_alpha(e.coverage, e.w, e.h, e.samples, 12) == variable_feather_alpha(e.coverage, e.w, e.h, e.samples, 12));
+}
+
+namespace {
+
+/// A 64 x 32 canvas with the painter's centred origin, the matte painted from `json`.
+std::vector<std::uint8_t> painted(const char* json, std::vector<std::string>& unsupported) {
+  premation::raster::json::Value mask;
+  std::string error;
+  REQUIRE(premation::raster::json::parse(json, mask, error));
+  const premation::raster::CanvasOptions opts;
+  auto c = premation::raster::Canvas2D::make(64, 32, opts);
+  REQUIRE(c != nullptr);
+  c->translate(32, 16);
+  premation::raster::paint_mask_matte(*c, mask, 64, 32, unsupported);
+  return c->pixels();
+}
+
+std::uint8_t alpha(const std::vector<std::uint8_t>& px, int x, int y) { return px[static_cast<std::size_t>((y * 64 + x) * 4 + 3)]; }
+
+}  // namespace
+
+TEST_CASE("mask motion blur: the matte is the shutter's average outline", "[raster][mask]") {
+  // The outline is a 16 px square at x in [-16, 0) on the first sample and
+  // [0, 16) on the second: each half is covered half the shutter.
+  const char* json = R"({"paths":[{"id":"m","mode":"add","closed":true,"feather":0,"opacity":1,"expansion":0,
+    "points":[{"x":-16,"y":-8,"inX":-16,"inY":-8,"outX":-16,"outY":-8},{"x":0,"y":-8,"inX":0,"inY":-8,"outX":0,"outY":-8},
+              {"x":0,"y":8,"inX":0,"inY":8,"outX":0,"outY":8},{"x":-16,"y":8,"inX":-16,"inY":8,"outX":-16,"outY":8}],
+    "motionSamples":[
+      [{"x":-16,"y":-8,"inX":-16,"inY":-8,"outX":-16,"outY":-8},{"x":0,"y":-8,"inX":0,"inY":-8,"outX":0,"outY":-8},
+       {"x":0,"y":8,"inX":0,"inY":8,"outX":0,"outY":8},{"x":-16,"y":8,"inX":-16,"inY":8,"outX":-16,"outY":8}],
+      [{"x":0,"y":-8,"inX":0,"inY":-8,"outX":0,"outY":-8},{"x":16,"y":-8,"inX":16,"inY":-8,"outX":16,"outY":-8},
+       {"x":16,"y":8,"inX":16,"inY":8,"outX":16,"outY":8},{"x":0,"y":8,"inX":0,"inY":8,"outX":0,"outY":8}]]}]})";
+  std::vector<std::string> unsupported;
+  const auto px = painted(json, unsupported);
+  CHECK(unsupported.empty());
+  // Device x = local x + 32: both halves at about half coverage, outside clear.
+  CHECK(std::abs(static_cast<int>(alpha(px, 24, 16)) - 128) <= 3);
+  CHECK(std::abs(static_cast<int>(alpha(px, 40, 16)) - 128) <= 3);
+  CHECK(alpha(px, 8, 16) == 0);
+  CHECK(alpha(px, 56, 16) == 0);
+  CHECK(alpha(px, 32, 2) == 0);
+}
+
+TEST_CASE("mask feather falloff: Linear reaches the canvas through the distance field", "[raster][mask]") {
+  const auto square = [](const char* falloff) {
+    std::string j = R"({"paths":[{"id":"m","mode":"add","closed":true,"feather":12,"opacity":1,"expansion":0,"featherFalloff":")";
+    j += falloff;
+    j += R"(","points":[{"x":-12,"y":-12,"inX":-12,"inY":-12,"outX":-12,"outY":-12},{"x":12,"y":-12,"inX":12,"inY":-12,"outX":12,"outY":-12},
+      {"x":12,"y":12,"inX":12,"inY":12,"outX":12,"outY":12},{"x":-12,"y":12,"inX":-12,"inY":12,"outX":-12,"outY":12}]}]})";
+    return j;
+  };
+  std::vector<std::string> unsupported;
+  const auto linear = painted(square("linear").c_str(), unsupported);
+  CHECK(unsupported.empty());
+  // The edge at local x = 12 (device 44): half covered there, a straight ramp
+  // across 12 px, hard coverage deep inside, nothing past the band.
+  CHECK(std::abs(static_cast<int>(alpha(linear, 44, 16)) - 128) <= 24);
+  CHECK(alpha(linear, 32, 16) == 255);
+  CHECK(alpha(linear, 52, 16) == 0);
+  for (int x = 38; x < 50; ++x) CHECK(alpha(linear, x, 16) >= alpha(linear, x + 1, 16));
 }

@@ -202,15 +202,17 @@ describe('keyframe menu', () => {
 describe('registry commands', () => {
   const tp = async (id: string, p: string) => (await node(id)).components.find((c) => c.type === 'Transform')!.props[p] as number;
 
-  it('Centre Anchor: anchor to 0, Position compensated, the whole selection in ONE entry', async () => {
+  it('Centre Anchor: anchor to the visible content centre, Position compensated, the whole selection in ONE entry', async () => {
     await h.run({ type: 'setProperties', writes: [
       { prop: { layer: s.A, path: 'transform/anchorPoint' }, value: { kind: 'vec2', value: { x: 30, y: 40 } } },
       { prop: { layer: s.P, path: 'transform/anchorPoint' }, value: { kind: 'vec2', value: { x: -10, y: 5 } } },
     ] });
     const ax = (await tp(s.A, 'x'));
     await roundTrip(() => centreAnchorEdit([s.A, s.P], 0), 'Centre Anchor Point');
-    expect([(await tp(s.A, 'anchorX')), (await tp(s.A, 'anchorY'))]).toEqual([0, 0]);
-    expect((await tp(s.A, 'x'))).toBe(ax - 30);
+    // A shows only its 100 × 100 Add mask at (0, 0): its content centre is (50, 50).
+    expect([(await tp(s.A, 'anchorX')), (await tp(s.A, 'anchorY'))]).toEqual([50, 50]);
+    expect((await tp(s.A, 'x'))).toBe(ax + 20);
+    // A null's box is centred on its origin.
     expect((await tp(s.P, 'anchorX'))).toBe(0);
   });
 

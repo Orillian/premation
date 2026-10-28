@@ -45,7 +45,9 @@ import { parseCssColor } from '@core/text/cssColor';
 export type TransformProp =
   | 'anchorPoint' | 'position' | 'scale' | 'rotation' | 'xRotation' | 'yRotation' | 'orientation' | 'opacity';
 
-export type MaskProp = 'path' | 'feather' | 'opacity' | 'expansion' | 'mode' | 'inverted' | 'rotoBezier';
+export type MaskProp =
+  | 'path' | 'feather' | 'opacity' | 'expansion' | 'mode' | 'inverted' | 'rotoBezier'
+  | 'locked' | 'color' | 'featherFalloff' | 'motionBlur';
 
 export const paths = {
   transform: (p: TransformProp): string => propPath('transform', p),

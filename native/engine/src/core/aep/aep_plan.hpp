@@ -12,6 +12,7 @@
 //    the comp", never (0, 0).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -37,6 +38,9 @@ struct PlannedMask {
   std::string name;
   std::string mode;
   bool inverted = false;
+  bool locked = false;
+  /// AE's mask colour, 0..255 per channel.
+  std::array<std::uint32_t, 3> color = {0, 0, 0};
   bool closed = true;
   std::vector<PlannedMaskPoint> points;
   double feather = 0;

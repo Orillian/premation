@@ -65,6 +65,7 @@
 #include "media_config.hpp"
 #include "media_textures.hpp"
 #endif
+#include "media_reload.hpp"
 
 #if defined(PREMATION_HAVE_AUDIO)
 #include "audio_system.hpp"
@@ -1158,6 +1159,13 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
       mediaTex_->set_exact_timeout(std::chrono::milliseconds(60));
     }
 #endif
+    // Footage changed on disk since this drawer's last frame (reloadItems): its
+    // decoders close, so this frame opens the new bytes, and the disk key re-reads stamps.
+    if (MediaReloadLog::Pending reload = MediaReloadLog::instance().take(reloadSeen_);
+        reload.everything || !reload.paths.empty()) {
+      textures_->forget_media(reload.paths, reload.everything);
+      stamps_.clear();
+    }
     textures_->set_playing(frame.playing);
     // E4: Cache Work Area and stills draw SVGs at their exact step, synchronously.
     textures_->set_exact(exactMedia_ || still);
@@ -1285,6 +1293,8 @@ class ViewportDrawer final : public render::BuiltFrameDrawer {
   /// The profiler frame of the last sample take_layer_profile handed out.
   std::uint64_t takenProfileFrame_ = 0;
   std::unique_ptr<SceneTextures> textures_;
+  /// The last footage reload this drawer applied (media_reload.hpp).
+  std::uint64_t reloadSeen_ = MediaReloadLog::instance().generation();
   std::unique_ptr<plugins::RenderGlue> plugins_;
 #if defined(PREMATION_HAVE_MEDIA)
   std::unique_ptr<media::MediaSystem> media_;

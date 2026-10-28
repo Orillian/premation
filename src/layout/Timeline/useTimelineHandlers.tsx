@@ -87,6 +87,8 @@ import { useFocusStore } from '@stores/focusStore';
 import { openContextMenu } from '@stores/contextMenuStore';
 import { usePreferenceStore } from '@stores/preferenceStore';
 import { openInterpretFootage } from '@layout/Assets/InterpretFootageModal';
+import { canOpenOriginals, editOriginalItem, editOriginalShortcutLabel } from '@layout/Assets/editOriginal';
+import { isEditableOriginal } from '@layout/Assets/editOriginalLogic';
 import { itemAsset } from '@core/mirror/itemAssets';
 import { customPrompt, customAlert } from '@components/Modal';
 import { t } from '@core/i18n';
@@ -847,6 +849,16 @@ export function useTimelineHandlers(tracksRef: MutableRefObject<ReadonlyArray<Ti
               label: t('timeline.clipMenu.interpretFootage', 'Interpret Footage… (Ctrl+Alt+G)'),
               onSelect: () => openInterpretFootage(asset),
             },
+            // AE's Edit ▸ Edit Original on this clip's file (desktop; greyed when it has none).
+            ...(assetId && canOpenOriginals()
+              ? [{
+                  id: 'edit-original',
+                  label: t('timeline.clipMenu.editOriginal', 'Edit Original'),
+                  shortcut: editOriginalShortcutLabel(),
+                  disabled: !isEditableOriginal(assetInfo),
+                  onSelect: () => { void editOriginalItem(assetId); },
+                }]
+              : []),
             // AE's Layer ▸ Scene Edit Detection. Video only: a still has no cuts.
             // B4-kept: an engine job run from the UI (decodes the clip's pixels) — not registered as an engine job yet (G).
             ...(asset.type === 'video' && nodeId

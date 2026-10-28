@@ -366,12 +366,236 @@ std::optional<LayerGeometry> geometry(const SpaceCtx& c, TextQueries* text, cons
   return g;
 }
 
+// ── what masks and a stored subject matte leave visible ─────────────────────
+
+/// One mask outline flattened for the visible region: its polygon (layer
+/// space), exact extent, and how far its soft edge reaches past the line
+/// (Expansion + half the Feather, px; negative = pulled in).
+struct Outline {
+  std::vector<std::pair<double, double>> poly;
+  Box box{};
+  double grow = 0;
+  bool inverted = false;
+  std::string mode;
+};
+
+/// The masks the Object Matte / Roto Brush tools key the subject's outline on (rotoBrushTool.ts).
+bool is_matte_outline_name(const Json& name) {
+  if (!name.is_string()) return false;
+  const std::string& s = name.str();
+  return s == "Object Matte" || s == "Roto Brush" || s == "Roto Brush (Frozen)";
+}
+
+std::optional<Outline> outline_of(const Json& p, const Values& av) {
+  const Json& pts = p.at("points");
+  if (!pts.is_array() || pts.arr().size() < 2) return std::nullopt;
+  Extent e;
+  const bool open = p.at("closed").is_bool() && !p.at("closed").b();
+  add_path(e, pts, open);
+  if (!e.ok()) return std::nullopt;
+  Outline o;
+  o.box = Box{e.minX, e.minY, e.maxX, e.maxY};
+  const std::string id = p.at("id").is_string() ? p.at("id").str() : "";
+  const double feather = value_of(av, "mask." + id + ".feather").value_or(p.at("feather").is_number() ? p.at("feather").num() : 0);
+  const double expansion = value_of(av, "mask." + id + ".expansion").value_or(p.at("expansion").is_number() ? p.at("expansion").num() : 0);
+  double vertexFeather = 0;  // a per-vertex feather can reach further than the uniform one
+  for (const Json& pt : pts.arr()) {
+    if (pt.at("feather").is_number()) vertexFeather = std::max(vertexFeather, pt.at("feather").num());
+  }
+  o.grow = expansion + std::max(std::max(0.0, feather), vertexFeather) / 2;
+  o.inverted = p.at("inverted").is_bool() && p.at("inverted").b();
+  o.mode = p.at("mode").is_string() ? p.at("mode").str() : "add";
+  // 16 steps a segment: the hit test's polygon, within a fraction of a pixel of the curve at editor sizes.
+  const auto& v = pts.arr();
+  const std::size_t n = v.size();
+  const std::size_t segs = open ? n - 1 : n;
+  o.poly.reserve(segs * 16 + 1);
+  const auto num = [](const Json& j, const char* k, double fb) { return j.at(k).is_number() ? j.at(k).num() : fb; };
+  for (std::size_t i = 0; i < segs; ++i) {
+    const Json& a = v[i];
+    const Json& b = v[(i + 1) % n];
+    const double ax = num(a, "x", 0), ay = num(a, "y", 0), bx = num(b, "x", 0), by = num(b, "y", 0);
+    const double c1x = num(a, "outX", ax), c1y = num(a, "outY", ay), c2x = num(b, "inX", bx), c2y = num(b, "inY", by);
+    for (int s = 0; s < 16; ++s) {
+      const double t = s / 16.0;
+      const double u = 1 - t;
+      o.poly.emplace_back(u * u * u * ax + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * bx,
+                          u * u * u * ay + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * by);
+    }
+  }
+  return o;
+}
+
+/// Even-odd point in polygon, with the outline's soft edge: within `grow` px
+/// outside the line counts as inside (and a negative grow pulls the inside in).
+bool outline_contains(const Outline& o, double x, double y) {
+  const auto& p = o.poly;
+  if (p.size() < 3) return false;
+  bool in = false;
+  double best = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0, j = p.size() - 1; i < p.size(); j = i++) {
+    const auto [xi, yi] = p[i];
+    const auto [xj, yj] = p[j];
+    if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in = !in;
+    const double dx = xj - xi, dy = yj - yi;
+    const double len2 = dx * dx + dy * dy;
+    const double t = len2 > 0 ? std::clamp(((x - xi) * dx + (y - yi) * dy) / len2, 0.0, 1.0) : 0.0;
+    best = std::min(best, std::hypot(x - (xi + t * dx), y - (yi + t * dy)));
+  }
+  return o.grow >= 0 ? (in || best <= o.grow) : (in && best >= -o.grow);
+}
+
+Box grown(const Box& b, double by) { return Box{b.minX - by, b.minY - by, b.maxX + by, b.maxY + by}; }
+Box unite(const Box& a, const Box& b) {
+  return Box{std::min(a.minX, b.minX), std::min(a.minY, b.minY), std::max(a.maxX, b.maxX), std::max(a.maxY, b.maxY)};
+}
+Box meet(const Box& a, const Box& b) {
+  return Box{std::max(a.minX, b.minX), std::max(a.minY, b.minY), std::min(a.maxX, b.maxX), std::min(a.maxY, b.maxY)};
+}
+
+/// Whether the layer's stored subject matte (setLayerMatte, the Object Matte /
+/// Roto Brush cut-out) cuts it right now — snapshot_build.cpp's rule: through
+/// an enabled Object Matte effect (not inverted), or standing in for the
+/// footage when it was not stored for an effect and the layer has none.
+bool matte_cuts(const Node& n) {
+  const Json& am = n.fx().at("alphaMatte");
+  if (!am.is_object() || !am.at("frames").is_array() || am.at("frames").arr().empty()) return false;
+  bool card = false;
+  for (const Json& e : read_node_effects(n)) {
+    if (!(e.at("type").is_string() && e.at("type").str() == "object-matte")) continue;
+    card = true;
+    if (e.at("enabled").is_bool() && !e.at("enabled").b()) continue;
+    const Json& inv = params_of(e).at("invert");
+    if ((inv.is_bool() && inv.b()) || (inv.is_number() && inv.num() != 0)) return false;  // the background stays: no shrink
+    return true;
+  }
+  const Json& by = am.at("cutByEffect");
+  return !card && !(by.is_bool() && by.b());
+}
+
+/// What the layer's masks and stored matte leave visible at `seconds`.
+struct Visible {
+  std::vector<Outline> active;  ///< the masks that cut, in stack order
+  std::vector<Outline> matte;   ///< the stored matte's outline masks, when it cuts
+  bool baseFull = true;         ///< the stack starts from the whole layer (its first cut is not Add / Lighten)
+  bool cuts = false;
+};
+
+Visible visible_of(const SpaceCtx& c, const Node& n, double seconds) {
+  Visible v;
+  const double kt = comp_to_keyframe_time(c.d, c.view, n.id, seconds);
+  Json mask;
+  if (const std::vector<Json> anim = read_node_mask_anim(n); !anim.empty()) {
+    if (auto m = interpolate_mask(anim, kt)) mask = *m;
+  } else if (auto m = read_node_mask(n)) {
+    mask = *m;
+  }
+  if (!mask.is_object() || !mask.at("paths").is_array()) return v;
+  const Values av = animated_at(c, n.id, seconds);
+  const bool matte = matte_cuts(n);
+  for (const Json& p : mask.at("paths").arr()) {
+    const std::string mode = p.at("mode").is_string() ? p.at("mode").str() : "add";
+    if (mode == "none") {
+      if (matte && is_matte_outline_name(p.at("name"))) {
+        if (auto o = outline_of(p, av)) v.matte.push_back(std::move(*o));
+      }
+      continue;
+    }
+    auto o = outline_of(p, av);
+    if (!o) continue;
+    if (v.active.empty()) v.baseFull = !(mode == "add" || mode == "lighten");
+    v.active.push_back(std::move(*o));
+  }
+  v.cuts = !v.active.empty() || !v.matte.empty();
+  return v;
+}
+
+/// The box of what `v` leaves of `full` (layer space); nullopt = all of it.
+std::optional<Box> visible_box(const Visible& v, const Box& full) {
+  if (!v.cuts) return std::nullopt;
+  std::optional<Box> cur;
+  if (v.active.empty() || v.baseFull) cur = full;
+  for (const Outline& o : v.active) {
+    const Box b = grown(o.box, std::max(0.0, o.grow));
+    if (o.mode == "add" || o.mode == "lighten" || o.mode == "difference") {
+      cur = o.inverted ? full : (cur ? unite(*cur, b) : b);
+    } else if (o.mode == "subtract") {
+      if (o.inverted && cur) cur = meet(*cur, b);  // takes away everything outside it
+    } else if (!o.inverted && cur) {  // intersect / darken
+      cur = meet(*cur, b);
+    }
+  }
+  if (!v.matte.empty()) {
+    // A soft, refined matte edge can sit a few pixels past its traced outline.
+    Box m = grown(v.matte.front().box, std::max(4.0, v.matte.front().grow));
+    for (std::size_t i = 1; i < v.matte.size(); ++i) m = unite(m, grown(v.matte[i].box, std::max(4.0, v.matte[i].grow)));
+    cur = cur ? meet(*cur, m) : m;
+  }
+  if (!cur) return std::nullopt;
+  const Box r = meet(*cur, full);
+  // Nothing left (every outline off the layer): keep the whole box, so the layer stays reachable.
+  if (!(r.maxX - r.minX > 0.5) || !(r.maxY - r.minY > 0.5)) return std::nullopt;
+  constexpr double kEps = 0.01;
+  if (r.minX <= full.minX + kEps && r.minY <= full.minY + kEps && r.maxX >= full.maxX - kEps && r.maxY >= full.maxY - kEps) {
+    return std::nullopt;
+  }
+  return r;
+}
+
+/// The painter's mask stack (mask_paint.cpp), as a yes / no at one point.
+bool visible_at(const Visible& v, double x, double y) {
+  if (!v.cuts) return true;
+  bool in = v.active.empty() || v.baseFull;
+  for (const Outline& o : v.active) {
+    const bool hit = outline_contains(o, x, y) != o.inverted;
+    if (o.mode == "add" || o.mode == "lighten") in = in || hit;
+    else if (o.mode == "subtract") in = in && !hit;
+    else if (o.mode == "difference") in = in != hit;
+    else in = in && hit;  // intersect / darken
+  }
+  if (in && !v.matte.empty()) {
+    in = std::ranges::any_of(v.matte, [&](const Outline& o) {
+      Outline soft = o;
+      soft.grow = std::max(4.0, o.grow);
+      return outline_contains(soft, x, y);
+    });
+  }
+  return in;
+}
+
+/// Kinds whose box the masks can trim: everything drawn with pixels of its own.
+bool trims_to_visible(const std::string& kind) {
+  return kind != "group" && kind != "camera" && kind != "light" && kind != "null" && kind != "adjustment";
+}
+
 }  // namespace
 
 std::optional<LayerGeometry> layer_geometry_at(const SpaceCtx& c, TextQueries* text, std::string_view node, double seconds) {
   const Node* n = c.d.node(node);
   if (n == nullptr) return std::nullopt;
   return geometry(c, text, *n, seconds, 0);
+}
+
+std::optional<LayerGeometry> visible_geometry_at(const SpaceCtx& c, TextQueries* text, std::string_view node, double seconds) {
+  const Node* n = c.d.node(node);
+  if (n == nullptr) return std::nullopt;
+  auto g = geometry(c, text, *n, seconds, 0);
+  if (!g || !trims_to_visible(n->kind())) return g;
+  const Box full{g->offsetX - g->width / 2, g->offsetY - g->height / 2, g->offsetX + g->width / 2, g->offsetY + g->height / 2};
+  const auto b = visible_box(visible_of(c, *n, seconds), full);
+  if (!b) return g;
+  g->width = b->maxX - b->minX;
+  g->height = b->maxY - b->minY;
+  g->offsetX = (b->minX + b->maxX) / 2;
+  g->offsetY = (b->minY + b->maxY) / 2;
+  g->ellipse = false;
+  return g;
+}
+
+bool visible_contains(const SpaceCtx& c, std::string_view node, double seconds, double x, double y) {
+  const Node* n = c.d.node(node);
+  if (n == nullptr || !trims_to_visible(n->kind())) return true;
+  return visible_at(visible_of(c, *n, seconds), x, y);
 }
 
 }  // namespace premation::doc

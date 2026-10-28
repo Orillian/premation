@@ -15,6 +15,7 @@
 #include "fail.hpp"
 #include "fxstate.hpp"
 #include "handlers.hpp"
+#include "handlers_common.hpp"
 #include "log.hpp"
 #include "native_effects.hpp"
 #include "queries.hpp"
@@ -23,6 +24,7 @@
 #include "scene_build.hpp"
 #include "onion_skin.hpp"
 #include "render/coverage_ledger.hpp"
+#include "scene/media_reload.hpp"
 #include "time_conv.hpp"
 #include "variant_util.hpp"
 
@@ -1030,7 +1032,30 @@ struct ControlVisitor {
     }
     return result_for<api::CollectFiles>(std::move(r));
   }
-  R operator()(const api::ReloadItems&) const { return result_for<api::ReloadItems>(); }
+  R operator()(const api::ReloadItems& c) const {
+    // AE's Reload Footage (and Edit Original's save): the document is unchanged —
+    // no history entry, nothing dirty — but every viewport drops what it decoded
+    // or cached from those files and draws them again from disk. Footage only;
+    // an unknown id fails, compositions and folders have no file.
+    std::vector<std::string> files;
+    for (const std::string& id : c.items) {
+      const doc::ItemRef ref = doc::require_item(s.doc_, id);
+      if (ref.kind != doc::ItemRefKind::footage) continue;
+      const doc::Json* a = doc::find_asset(s.doc_, id);
+      if (a == nullptr) continue;
+      for (const doc::Json* f : {&a->at("path"), &a->at("src"), &a->at("proxy").at("src")}) {
+        if (f->is_string() && !f->str().empty() && !f->str().starts_with("data:") && !f->str().starts_with("blob:")) files.push_back(f->str());
+      }
+    }
+    if (!files.empty()) {
+      PREMATION_LOG(info, "reload_items").kv("items", c.items.size()).kv("files", files.size());
+      (void)scene::MediaReloadLog::instance().post(std::move(files));
+      // Cached frames are keyed by content, not file stamps: any of them may show the old bytes.
+      s.sink_.purge_frame_cache();
+      if (s.any_viewport_open()) s.request_render();
+    }
+    return result_for<api::ReloadItems>();
+  }
   R operator()(const api::StartJob& c) const { return s.start_job(c); }
   R operator()(const api::CancelJob& c) const { return s.cancel_job(c); }
   R operator()(const api::SetPluginEnabled& c) const {

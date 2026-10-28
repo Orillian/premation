@@ -397,19 +397,49 @@ async function sendTransform(label: string, entries: ReadonlyArray<{ nodeId: str
 }
 
 /**
+ * The anchor that centres a layer on its content and the Position that keeps
+ * it still: the content draws at Position + R·S·(c − anchor), so moving the
+ * anchor by Δ moves Position by R·S·Δ (Scale as a multiplier, Rotation in
+ * degrees). Null when the anchor is already there.
+ */
+export function centredAnchor(
+  centre: { x: number; y: number },
+  t: { anchorX: number; anchorY: number; x: number; y: number; scaleX: number; scaleY: number; rotation: number },
+): Record<string, number> | null {
+  const dx = centre.x - t.anchorX;
+  const dy = centre.y - t.anchorY;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return null;
+  const r = (t.rotation * Math.PI) / 180;
+  const wx = dx * t.scaleX;
+  const wy = dy * t.scaleY;
+  return {
+    anchorX: centre.x,
+    anchorY: centre.y,
+    x: t.x + wx * Math.cos(r) - wy * Math.sin(r),
+    y: t.y + wx * Math.sin(r) + wy * Math.cos(r),
+  };
+}
+
+/**
  * AE's Centre Anchor Point in Layer Content over the selection: the anchor
- * goes to 0,0 (the content centre) and Position moves by the same offset so
- * nothing jumps — evaluated at the time by the engine (`trackValuesAt`, B4).
- * One entry for the whole selection. False → legacy.
+ * goes to the centre of what the layer SHOWS — the engine's layer-space box
+ * (`getLayerBounds`: a shape's drawn outline, a text's measured box, a masked
+ * or cut-out layer's visible part) — and Position moves through the layer's
+ * scale and rotation so nothing jumps. Evaluated at the time by the engine
+ * (`trackValuesAt`, B4). One entry for the whole selection. False → legacy.
  */
 export async function centreAnchorEdit(nodeIds: readonly string[], seconds: number): Promise<boolean> {
   // Its writes resolve on the layers' property trees (loaded over the pipe).
   await documentMirror().loadTrees(nodeIds);
+  const res = await engine().query({ type: 'getLayerBounds', layers: [...nodeIds], time: compTime(seconds), space: 'layer', includeEffects: false });
+  const centres = new Map((res.ok ? res.value.bounds : []).map((b) => [b.layer, { x: b.bounds.x + b.bounds.width / 2, y: b.bounds.y + b.bounds.height / 2 }]));
   const entries: Array<{ nodeId: string; values: Record<string, number> }> = [];
   for (const nodeId of nodeIds) {
-    const [ax = 0, ay = 0, x = 0, y = 0] = await trackValuesAt(nodeId, ['anchorX', 'anchorY', 'x', 'y'], seconds);
-    if (ax === 0 && ay === 0) continue;
-    entries.push({ nodeId, values: { anchorX: 0, anchorY: 0, x: x - ax, y: y - ay } });
+    const [anchorX = 0, anchorY = 0, x = 0, y = 0, scaleX = 1, scaleY = 1, rotation = 0] =
+      await trackValuesAt(nodeId, ['anchorX', 'anchorY', 'x', 'y', 'scaleX', 'scaleY', 'rotation'], seconds);
+    // No box (audio, a text with no measurer): the content centre is the layer origin.
+    const values = centredAnchor(centres.get(nodeId) ?? { x: 0, y: 0 }, { anchorX, anchorY, x, y, scaleX, scaleY, rotation });
+    if (values) entries.push({ nodeId, values });
   }
   return sendTransform('Centre Anchor Point', entries, seconds);
 }

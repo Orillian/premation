@@ -260,6 +260,47 @@ void SceneTextures::clear() {
   contentBytes_ = 0;
 }
 
+namespace {
+
+/// A path as forget_media compares it: one separator, and case-folded on
+/// Windows (whose file names are case-insensitive), lexically normal.
+std::string comparable_path(const std::string& path) {
+  std::string s = utf8_path(file_url_fs_path(path).lexically_normal());
+  for (char& ch : s) {
+    if (ch == '\\') ch = '/';
+#if defined(_WIN32)
+    if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+#endif
+  }
+  return s;
+}
+
+}  // namespace
+
+void SceneTextures::forget_media(const std::vector<std::string>& paths, bool everything) {
+  if (!everything && paths.empty()) return;
+  std::unordered_set<std::string> wanted;
+  wanted.reserve(paths.size());
+  for (const std::string& p : paths) {
+    // A document `src` (file:// / local-file:// URL) or `path`; relative ones against the project, as prepare resolves them.
+    std::filesystem::path fs = file_url_fs_path(p);
+    if (fs.is_relative() && !opts_.mediaBase.empty()) fs = opts_.mediaBase / fs;
+    wanted.insert(comparable_path(utf8_path(fs)));
+  }
+  const auto hit = [&](const std::string& key) { return everything || wanted.contains(comparable_path(key)); };
+  for (auto it = sources_.begin(); it != sources_.end();) {
+    if (!hit(it->first)) {
+      ++it;
+      continue;
+    }
+#if defined(PREMATION_HAVE_MEDIA)
+    if (media_ != nullptr) media_->close(it->second);
+#endif
+    it = sources_.erase(it);
+  }
+  for (auto it = openErrors_.begin(); it != openErrors_.end();) it = hit(it->first) ? openErrors_.erase(it) : std::next(it);
+}
+
 std::shared_ptr<const raster::BakedContent> SceneTextures::find_content(std::uint64_t key) {
   const std::scoped_lock lock(m_);
   const auto it = contentByKey_.find(key);

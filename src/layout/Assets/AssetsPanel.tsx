@@ -103,6 +103,8 @@ import { installAssetCommands, revealLabel, setAssetImportOpeners } from './asse
 import { ProxyBox } from './ProxyBox';
 import { proxyMenuItems } from './proxyMenu';
 import { assetDiskPath, canRevealAssets, revealAsset } from './assetReveal';
+import { canOpenOriginals, editOriginalItems, editOriginalShortcutLabel } from './editOriginal';
+import { isEditableOriginal } from './editOriginalLogic';
 import {
   createFolderEdit,
   createFolderTreeEdit,
@@ -772,6 +774,16 @@ export function AssetsPanel(): JSX.Element {
             label: revealLabel(),
             disabled: many || !assetDiskPath(asset),
             onSelect: () => { void revealAsset(asset); },
+          }]
+        : []),
+      // AE's Edit ▸ Edit Original on the rows right-clicked: each file in its own application.
+      ...(canOpenOriginals()
+        ? [{
+            id: 'edit-original',
+            label: t('assets.panel.editOriginal', 'Edit Original'),
+            shortcut: editOriginalShortcutLabel(),
+            disabled: !targetIds.some((id) => isEditableOriginal(documentMirror().item(id))),
+            onSelect: () => { void editOriginalItems(targetIds.map((id) => documentMirror().item(id))); },
           }]
         : []),
       { id: 'sep-a', separator: true },

@@ -11,22 +11,30 @@
  * scrub.
  */
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Icon } from '@components/Icon';
 import { ValueField } from '@components/ValueField';
 import { Checkbox } from '@components/Checkbox';
 import { PropertyRow } from '@components/PropertyRow';
 import { Dropdown } from '@components/Dropdown';
+import { cn } from '@utils/cn';
 import { useActiveWorkspace } from '@stores/projectStore';
 import { useUIStore } from '@stores/uiStore';
 import { documentMirror } from '@stores/documentMirror';
 import { useMirrorKeys, useMirrorLayer, useMirrorTree } from '@hooks/useMirror';
 import { secondsToFlicks } from '@motion/engine-api';
 import { t } from '@core/i18n';
-import { mirrorMaskShapeKeyed, mirrorMasksAt, mirrorMaskWatchKeys } from '@core/mirror/masks';
+import { mirrorMaskShapeKeyed, mirrorMasksAt, mirrorMaskWatchKeys, type MirrorMask } from '@core/mirror/masks';
 import { uiKindOf } from '@core/mirror/layerKinds';
 import { trackKeyTimes } from '@core/mirror/selection';
-import { rectangleMask, ellipseMask, type MaskMode, type MaskPath } from '@core/effects/mask';
+import {
+  rectangleMask,
+  ellipseMask,
+  type MaskFeatherFalloff,
+  type MaskMode,
+  type MaskMotionBlur,
+  type MaskPathSettings,
+} from '@core/effects/mask';
 import { SIZE } from '@core/scene/layerKindSize';
 import { DEFAULT_SMART_MASK_OPTIONS } from '@core/masks/smartMaskInterpolation';
 import { useEngineEdit } from './useEngineEdit';
@@ -37,6 +45,7 @@ import {
   renameMaskEdit,
   setMaskInvertedEdit,
   setMaskModeEdit,
+  setMaskSettingEdit,
   setMaskShapeAnimatedEdit,
   setMaskVertexFeatherEdit,
   smartMaskInterpolationEdit,
@@ -64,6 +73,44 @@ function maskModes(): ReadonlyArray<{ mode: MaskMode; label: string }> {
  * one gesture (they hold across the shape's keys when the SHAPE is keyframed);
  * per-vertex feather is one write of the path's feather points.
  */
+function featherFalloffs(): ReadonlyArray<{ value: MaskFeatherFalloff; label: string }> {
+  return [
+    { value: 'smooth', label: t('inspector.masks.falloffSmooth', 'Smooth') },
+    { value: 'linear', label: t('inspector.masks.falloffLinear', 'Linear') },
+  ];
+}
+
+function maskMotionBlurs(): ReadonlyArray<{ value: MaskMotionBlur; label: string }> {
+  return [
+    { value: 'sameAsLayer', label: t('inspector.masks.blurSameAsLayer', 'Same As Layer') },
+    { value: 'on', label: t('inspector.masks.blurOn', 'On') },
+    { value: 'off', label: t('inspector.masks.blurOff', 'Off') },
+  ];
+}
+
+/**
+ * The mask's colour swatch. The native picker reports every step of a drag
+ * as `input`; only its `change` (the picker closed on a colour) is committed,
+ * so a pick is one undo entry, not one per pixel the pointer crossed.
+ */
+function MaskSwatch({ color, label, onCommit }: { color: string; label: string; onCommit: (hex: string) => void }): JSX.Element {
+  const [live, setLive] = useState<string | null>(null);
+  const commit = useRef(onCommit);
+  commit.current = onCommit;
+  const bind = useCallback((el: HTMLInputElement | null) => {
+    if (!el) return;
+    el.addEventListener('change', () => {
+      setLive(null);
+      commit.current(el.value);
+    });
+  }, []);
+  return (
+    <label className={styles.maskSwatch} style={{ background: live ?? color }} title={label}>
+      <input ref={bind} type="color" value={live ?? color} aria-label={label} onChange={(ev) => setLive(ev.target.value)} />
+    </label>
+  );
+}
+
 function MaskCard({
   nodeId,
   mask: m,
@@ -71,12 +118,16 @@ function MaskCard({
   time,
 }: {
   nodeId: string;
-  mask: MaskPath;
+  mask: MirrorMask;
   index: number;
   /** The playhead, comp seconds. */
   time: number;
 }): JSX.Element {
   const e = useEngineEdit();
+  const setSetting = (patch: MaskPathSettings): void => {
+    const key = Object.keys(patch)[0] as keyof MaskPathSettings;
+    void setMaskSettingEdit(nodeId, m.id, { ...m, ...patch }, key);
+  };
   // The name commits on blur / Enter — one "Rename Mask" entry, not one per keystroke.
   const [draft, setDraft] = useState<string | null>(null);
   const commitName = (): void => {
@@ -93,6 +144,11 @@ function MaskCard({
   const modes = maskModes();
   const defaultName = t('inspector.masks.defaultName', 'Mask {n}', { n: i + 1 });
   const removeLabel = t('inspector.masks.remove', 'Remove Mask {n}', { n: i + 1 });
+  const lockLabel = m.locked
+    ? t('inspector.masks.unlock', 'Unlock Mask {n}', { n: i + 1 })
+    : t('inspector.masks.lock', 'Lock Mask {n} (shown, not editable in the viewers)', { n: i + 1 });
+  const falloffs = featherFalloffs();
+  const blurs = maskMotionBlurs();
 
   return (
     // Same card as an applied effect: header band, then the parameters
@@ -101,9 +157,11 @@ function MaskCard({
     // two different shapes was the only reason they read as unrelated.
     <div className={styles.effectCardItem}>
       <div className={styles.effectCardHead}>
-        <span className={styles.maskMark} aria-hidden>
-          <Icon name="mask-square" size="sm" />
-        </span>
+        <MaskSwatch
+          color={m.color}
+          label={t('inspector.masks.colorAria', 'Mask {n} colour', { n: i + 1 })}
+          onCommit={(hex) => { if (hex.toLowerCase() !== m.color.toLowerCase()) setSetting({ color: hex }); }}
+        />
         <span className={styles.itemLabel}>{m.name?.trim() || defaultName}</span>
         <Dropdown
           placement="left-start"
@@ -122,6 +180,16 @@ function MaskCard({
           }))}
         />
         <div className={styles.itemActions}>
+          <button
+            type="button"
+            className={cn(styles.remove, m.locked && styles.lockOn)}
+            aria-pressed={m.locked}
+            aria-label={lockLabel}
+            title={lockLabel}
+            onClick={() => setSetting({ locked: !m.locked })}
+          >
+            <Icon name={m.locked ? 'lock' : 'unlock'} size="sm" />
+          </button>
           <button
             type="button"
             className={styles.remove}
@@ -185,6 +253,24 @@ function MaskCard({
               />
             </PropertyRow>
           ))}
+        <PropertyRow label={t('inspector.masks.featherFalloff', 'Feather Falloff')} compact>
+          <Dropdown
+            placement="left-start"
+            trigger={
+              <button type="button" className={styles.blendTrigger} aria-label={t('inspector.masks.featherFalloffAria', 'Mask {n} feather falloff', { n: i + 1 })}>
+                {falloffs.find((x) => x.value === m.featherFalloff)?.label}
+                <Icon name="chevron-down" size="sm" />
+              </button>
+            }
+            items={falloffs.map((x) => ({
+              type: 'item',
+              id: x.value,
+              label: x.label,
+              icon: x.value === m.featherFalloff ? 'check' : undefined,
+              onSelect: () => { if (x.value !== m.featherFalloff) setSetting({ featherFalloff: x.value }); },
+            }))}
+          />
+        </PropertyRow>
         <PropertyRow label={t('inspector.masks.opacity', 'Opacity')} compact>
           <ValueField {...e.scrub('Set Mask Opacity')} value={Math.round(m.opacity * 100)} min={0} max={100} precision={0} unit="%"
             onChange={(v) => setValue('opacity', v, 'Set Mask Opacity')} aria-label={t('inspector.masks.opacityAria', 'Mask opacity')} />
@@ -199,6 +285,26 @@ function MaskCard({
             onChange={() => { void setMaskInvertedEdit(nodeId, m.id, !m.inverted); }}
             aria-label={t('inspector.masks.invertAria', 'Invert Mask {n}', { n: i + 1 })}
             style={{ width: 14, height: 14 }}
+          />
+        </PropertyRow>
+        {/* AE's Layer ▸ Mask ▸ Motion Blur: a keyframed outline blurs across
+            the shutter when the comp's motion blur is on. */}
+        <PropertyRow label={t('inspector.masks.motionBlur', 'Motion Blur')} compact>
+          <Dropdown
+            placement="left-start"
+            trigger={
+              <button type="button" className={styles.blendTrigger} aria-label={t('inspector.masks.motionBlurAria', 'Mask {n} motion blur', { n: i + 1 })}>
+                {blurs.find((x) => x.value === m.motionBlur)?.label}
+                <Icon name="chevron-down" size="sm" />
+              </button>
+            }
+            items={blurs.map((x) => ({
+              type: 'item',
+              id: x.value,
+              label: x.label,
+              icon: x.value === m.motionBlur ? 'check' : undefined,
+              onSelect: () => { if (x.value !== m.motionBlur) setSetting({ motionBlur: x.value }); },
+            }))}
           />
         </PropertyRow>
       </div>
